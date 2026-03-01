@@ -304,10 +304,11 @@ export default function ResultScreen() {
     prevExchangeActiveRef.current = isActive;
   }, [gameState?.exchangePhase?.active]);
 
-  if (!gameState) {
-    router.replace("/");
-    return null;
-  }
+  useEffect(() => {
+    if (!gameState) router.replace("/");
+  }, [gameState]);
+
+  if (!gameState) return null;
 
   const showExchange = gameState.exchangePhase?.active === true || gameState.exchangePhase?.bothJokersException === true;
   const isMultiRound = totalRounds > 1;

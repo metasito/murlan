@@ -436,11 +436,9 @@ export default function OnlineGameScreen() {
   const reactionTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
-    if (Platform.OS !== "web") {
-      ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.LANDSCAPE);
-    }
+    ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.LANDSCAPE);
     return () => {
-      if (Platform.OS !== "web") ScreenOrientation.unlockAsync();
+      ScreenOrientation.unlockAsync();
     };
   }, []);
 
@@ -772,6 +770,16 @@ export default function OnlineGameScreen() {
           </ScrollView>
         </Animated.View>
       )}
+
+      {W < H && (
+        <View style={portraitStyles.overlay}>
+          <View style={portraitStyles.card}>
+            <Ionicons name="phone-landscape-outline" size={56} color={Colors.gold} />
+            <Text style={portraitStyles.title}>Ruota il dispositivo</Text>
+            <Text style={portraitStyles.sub}>Il gioco richiede la modalità orizzontale</Text>
+          </View>
+        </View>
+      )}
     </View>
   );
 }
@@ -1080,4 +1088,33 @@ const goStyles = StyleSheet.create({
   rematchBtnDim: { opacity: 0.6 },
   rematchGradient: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 10, paddingVertical: 16 },
   rematchText: { fontFamily: "Rajdhani_700Bold", fontSize: 17, color: "#0A1F18", letterSpacing: 0.5 },
+});
+
+const portraitStyles = StyleSheet.create({
+  overlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: "rgba(3,16,8,0.97)",
+    alignItems: "center",
+    justifyContent: "center",
+    zIndex: 999,
+  },
+  card: {
+    alignItems: "center",
+    gap: 16,
+    paddingHorizontal: 40,
+  },
+  title: {
+    fontFamily: "Rajdhani_700Bold",
+    fontSize: 26,
+    color: Colors.text,
+    letterSpacing: 1,
+    textAlign: "center",
+  },
+  sub: {
+    fontFamily: "Inter_400Regular",
+    fontSize: 14,
+    color: Colors.textSecondary,
+    textAlign: "center",
+    lineHeight: 22,
+  },
 });

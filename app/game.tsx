@@ -477,11 +477,9 @@ export default function GameScreen() {
   const passaPulseVal = useSharedValue(1);
 
   useEffect(() => {
-    if (Platform.OS !== "web") {
-      ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.LANDSCAPE);
-    }
+    ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.LANDSCAPE);
     return () => {
-      if (Platform.OS !== "web") ScreenOrientation.unlockAsync();
+      ScreenOrientation.unlockAsync();
     };
   }, []);
 
@@ -602,10 +600,11 @@ export default function GameScreen() {
     transform: [{ scale: passaPulseVal.value }],
   }));
 
-  if (!gameState) {
-    router.replace("/");
-    return null;
-  }
+  useEffect(() => {
+    if (!gameState) router.replace("/");
+  }, [gameState]);
+
+  if (!gameState) return null;
 
   const humanPlayer = gameState.players[humanIdx];
   const currentPlayer = gameState.players[gameState.currentTurnIndex];
@@ -866,6 +865,16 @@ export default function GameScreen() {
           direction={flyInfo.dir}
           onDone={() => setFlyInfo(null)}
         />
+      )}
+
+      {W < H && (
+        <View style={portraitStyles.overlay}>
+          <View style={portraitStyles.card}>
+            <Ionicons name="phone-landscape-outline" size={56} color={Colors.gold} />
+            <Text style={portraitStyles.title}>Ruota il dispositivo</Text>
+            <Text style={portraitStyles.sub}>Il gioco richiede la modalità orizzontale</Text>
+          </View>
+        </View>
       )}
     </View>
   );
@@ -1262,5 +1271,34 @@ const styles = StyleSheet.create({
     height: CARD_H,
     alignItems: "center",
     justifyContent: "center",
+  },
+});
+
+const portraitStyles = StyleSheet.create({
+  overlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: "rgba(3,16,8,0.97)",
+    alignItems: "center",
+    justifyContent: "center",
+    zIndex: 999,
+  },
+  card: {
+    alignItems: "center",
+    gap: 16,
+    paddingHorizontal: 40,
+  },
+  title: {
+    fontFamily: "Rajdhani_700Bold",
+    fontSize: 26,
+    color: Colors.text,
+    letterSpacing: 1,
+    textAlign: "center",
+  },
+  sub: {
+    fontFamily: "Inter_400Regular",
+    fontSize: 14,
+    color: Colors.textSecondary,
+    textAlign: "center",
+    lineHeight: 22,
   },
 });
