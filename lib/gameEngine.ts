@@ -480,10 +480,19 @@ export function processPass(state: GameState): GameState {
   const activeCount = activePlayers.length;
 
   if (newState.passCount >= activeCount - 1) {
-    newState.currentTurnIndex = newState.lastPlayedBy;
     newState.lastPlayedCombination = null;
     newState.passCount = 0;
     newState.roundWinner = newState.lastPlayedBy;
+
+    const lastWinner = newState.players[newState.lastPlayedBy];
+    if (lastWinner && lastWinner.hand.length > 0) {
+      newState.currentTurnIndex = newState.lastPlayedBy;
+    } else {
+      newState.currentTurnIndex = getNextActivePlayer({
+        ...newState,
+        currentTurnIndex: newState.lastPlayedBy,
+      });
+    }
   } else {
     newState.roundWinner = null;
     newState.currentTurnIndex = getNextActivePlayer(newState);

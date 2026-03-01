@@ -284,6 +284,12 @@ export default function HomeScreen() {
           onPress={() => {}}
           delay={540}
         />
+        <MenuButton
+          label="Regole & FAQ"
+          icon="book-outline"
+          onPress={() => router.push("/rules")}
+          delay={660}
+        />
       </View>
 
       <Animated.View style={[subtitleStyle, styles.footer]}>

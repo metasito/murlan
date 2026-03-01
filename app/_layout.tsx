@@ -27,6 +27,7 @@ function RootLayoutNav() {
     <Stack screenOptions={{ headerShown: false, animation: "fade" }}>
       <Stack.Screen name="index" />
       <Stack.Screen name="lobby" />
+      <Stack.Screen name="rules" />
       <Stack.Screen name="game" options={{ animation: "slide_from_bottom" }} />
       <Stack.Screen name="result" options={{ animation: "fade" }} />
     </Stack>
