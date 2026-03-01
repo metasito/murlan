@@ -23,6 +23,7 @@ interface CardViewProps {
   faceDown?: boolean;
   disabled?: boolean;
   style?: object;
+  noLift?: boolean;
 }
 
 function JokerFigure({ colored, size }: { colored: boolean; size: number }) {
@@ -94,15 +95,20 @@ export function CardView({
   faceDown = false,
   disabled = false,
   style,
+  noLift = false,
 }: CardViewProps) {
   const translateY = useSharedValue(0);
 
   useEffect(() => {
+    if (noLift) {
+      translateY.value = 0;
+      return;
+    }
     translateY.value = withSpring(selected ? -14 : 0, {
       damping: 15,
       stiffness: 300,
     });
-  }, [selected]);
+  }, [selected, noLift]);
 
   const animStyle = useAnimatedStyle(() => ({
     transform: [{ translateY: translateY.value }],

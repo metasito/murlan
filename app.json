@@ -3,7 +3,7 @@
     "name": "Murlan",
     "slug": "murlan",
     "version": "1.0.0",
-    "orientation": "portrait",
+    "orientation": "default",
     "icon": "./assets/images/icon.png",
     "scheme": "murlan",
     "userInterfaceStyle": "dark",
