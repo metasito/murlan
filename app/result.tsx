@@ -1,4 +1,4 @@
-import React, { useEffect } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import {
   View,
   Text,
@@ -23,6 +23,8 @@ import { LinearGradient } from "expo-linear-gradient";
 import * as Haptics from "expo-haptics";
 import { Ionicons } from "@expo/vector-icons";
 import { useGame } from "@/context/GameContext";
+import { CardView } from "@/components/CardView";
+import { sortHand } from "@/lib/gameEngine";
 import Colors from "@/constants/colors";
 
 const POSITION_MEDALS = ["trophy", "medal", "ribbon", "remove-circle"];
@@ -146,14 +148,137 @@ function WinnerCelebration({ name }: { name: string }) {
   );
 }
 
+function CardExchangeOverlay({
+  gameState,
+  chooseExchangeCard,
+}: {
+  gameState: NonNullable<ReturnType<typeof useGame>["gameState"]>;
+  chooseExchangeCard: (cardId: string) => void;
+}) {
+  const ep = gameState.exchangePhase!;
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const autoRef = useRef(false);
+
+  const winner = gameState.players[ep.winnerIdx];
+  const loser = gameState.players[ep.loserIdx];
+
+  const exchangeCards = sortHand(winner.hand.filter(
+    (c) => ["3","4","5","6","7","8","9","10"].includes(c.rank)
+  ));
+
+  useEffect(() => {
+    if (ep.bothJokersException) {
+      const t = setTimeout(() => router.replace("/game"), 2500);
+      return () => clearTimeout(t);
+    }
+    if (winner.type === "ai" && !autoRef.current) {
+      autoRef.current = true;
+      const t = setTimeout(() => {
+        if (exchangeCards.length > 0) chooseExchangeCard(exchangeCards[0].id);
+      }, 900);
+      return () => clearTimeout(t);
+    }
+  }, []);
+
+  if (ep.bothJokersException) {
+    return (
+      <View style={exStyles.overlay}>
+        <View style={exStyles.card}>
+          <View style={exStyles.jokerRow}>
+            <Text style={exStyles.jokerEmoji}>🃏🃏</Text>
+          </View>
+          <Text style={exStyles.title}>IL PERDENTE HA ENTRAMBI I JOLLY!</Text>
+          <Text style={exStyles.subtitle}>
+            {winner.name} inizia libero.{"\n"}Nessuno scambio di carte.
+          </Text>
+        </View>
+      </View>
+    );
+  }
+
+  return (
+    <View style={exStyles.overlay}>
+      <View style={exStyles.card}>
+        <Text style={exStyles.title}>SCAMBIO CARTE</Text>
+
+        <View style={exStyles.section}>
+          <Text style={exStyles.label}>{loser.name} cede a {winner.name}:</Text>
+          <View style={exStyles.singleCard}>
+            <CardView card={ep.cardFromLoser} />
+          </View>
+        </View>
+
+        {winner.type === "ai" ? (
+          <View style={exStyles.section}>
+            <Text style={exStyles.label}>{winner.name} sceglie...</Text>
+            <Text style={exStyles.aiChoosing}>⏳ Scelta in corso</Text>
+          </View>
+        ) : (
+          <View style={exStyles.section}>
+            <Text style={exStyles.label}>
+              {winner.name} sceglie una carta da restituire (3–10):
+            </Text>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={exStyles.pickRow}>
+              {exchangeCards.map((card) => {
+                const picked = selectedId === card.id;
+                return (
+                  <Pressable
+                    key={card.id}
+                    onPress={() => { setSelectedId(card.id); Haptics.selectionAsync(); }}
+                    style={[exStyles.pickCardWrap, picked && exStyles.pickCardLifted]}
+                  >
+                    <CardView card={card} selected={picked} noLift />
+                  </Pressable>
+                );
+              })}
+              {exchangeCards.length === 0 && (
+                <Text style={exStyles.noCards}>Nessuna carta 3–10 disponibile</Text>
+              )}
+            </ScrollView>
+
+            <Pressable
+              onPress={() => { if (selectedId) { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium); chooseExchangeCard(selectedId); } }}
+              style={[exStyles.confirmBtn, !selectedId && exStyles.confirmBtnDim]}
+              disabled={!selectedId}
+            >
+              <LinearGradient
+                colors={selectedId ? [Colors.gold, Colors.goldDark] : [Colors.bgSurface, Colors.bgSurface]}
+                start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}
+                style={exStyles.confirmGrad}
+              >
+                <Text style={[exStyles.confirmText, !selectedId && { color: Colors.textMuted }]}>
+                  Conferma scambio
+                </Text>
+              </LinearGradient>
+            </Pressable>
+          </View>
+        )}
+      </View>
+    </View>
+  );
+}
+
 export default function ResultScreen() {
   const insets = useSafeAreaInsets();
-  const { gameState, setupGame, resetGame } = useGame();
+  const { gameState, setupRematch, chooseExchangeCard, resetGame } = useGame();
+  const prevExchangeActiveRef = useRef<boolean | undefined>(undefined);
+
+  useEffect(() => {
+    if (!gameState?.exchangePhase) return;
+    const wasActive = prevExchangeActiveRef.current;
+    const isActive = gameState.exchangePhase.active;
+    if (wasActive === true && isActive === false && !gameState.exchangePhase.bothJokersException) {
+      router.replace("/game");
+    }
+    prevExchangeActiveRef.current = isActive;
+  }, [gameState?.exchangePhase?.active]);
 
   if (!gameState) {
     router.replace("/");
     return null;
   }
+
+  const showExchange = gameState.exchangePhase?.active === true || gameState.exchangePhase?.bothJokersException === true;
 
   const sortedPlayers = [...gameState.players].sort(
     (a, b) => (a.finishPosition ?? 99) - (b.finishPosition ?? 99)
@@ -174,8 +299,7 @@ export default function ResultScreen() {
       difficulty: p.difficulty,
       team: p.team,
     }));
-    setupGame(playerSetups, gameState.gameMode);
-    router.replace("/game");
+    setupRematch(playerSetups, gameState.gameMode, gameState.rankings);
   };
 
   const handleHome = () => {
@@ -270,6 +394,13 @@ export default function ResultScreen() {
           </LinearGradient>
         </Pressable>
       </View>
+
+      {showExchange && gameState.exchangePhase && (
+        <CardExchangeOverlay
+          gameState={gameState}
+          chooseExchangeCard={chooseExchangeCard}
+        />
+      )}
     </View>
   );
 }
@@ -473,5 +604,102 @@ const styles = StyleSheet.create({
     fontSize: 17,
     color: "#0A1F18",
     letterSpacing: 0.5,
+  },
+});
+
+const exStyles = StyleSheet.create({
+  overlay: {
+    position: "absolute",
+    top: 0, left: 0, right: 0, bottom: 0,
+    backgroundColor: "rgba(0,0,0,0.88)",
+    alignItems: "center",
+    justifyContent: "center",
+    zIndex: 100,
+  },
+  card: {
+    backgroundColor: Colors.bgCard,
+    borderRadius: 20,
+    borderWidth: 1.5,
+    borderColor: Colors.border,
+    padding: 24,
+    width: "90%",
+    maxWidth: 420,
+    gap: 20,
+  },
+  title: {
+    fontFamily: "Rajdhani_700Bold",
+    fontSize: 16,
+    color: Colors.gold,
+    letterSpacing: 2,
+    textAlign: "center",
+  },
+  section: {
+    gap: 10,
+  },
+  label: {
+    fontFamily: "Inter_400Regular",
+    fontSize: 13,
+    color: Colors.textSecondary,
+  },
+  singleCard: {
+    alignItems: "center",
+    paddingVertical: 4,
+  },
+  pickRow: {
+    flexGrow: 0,
+  },
+  pickCardWrap: {
+    marginRight: 8,
+    paddingVertical: 4,
+  },
+  pickCardLifted: {
+    transform: [{ translateY: -10 }],
+  },
+  confirmBtn: {
+    borderRadius: 12,
+    overflow: "hidden",
+    marginTop: 4,
+  },
+  confirmBtnDim: {
+    opacity: 0.5,
+  },
+  confirmGrad: {
+    paddingVertical: 14,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  confirmText: {
+    fontFamily: "Rajdhani_700Bold",
+    fontSize: 16,
+    color: "#0A1F18",
+    letterSpacing: 0.5,
+  },
+  noCards: {
+    fontFamily: "Inter_400Regular",
+    fontSize: 12,
+    color: Colors.textMuted,
+    alignSelf: "center",
+    paddingVertical: 20,
+  },
+  aiChoosing: {
+    fontFamily: "Inter_400Regular",
+    fontSize: 13,
+    color: Colors.textMuted,
+    textAlign: "center",
+    paddingVertical: 10,
+  },
+  jokerRow: {
+    alignItems: "center",
+    paddingVertical: 8,
+  },
+  jokerEmoji: {
+    fontSize: 44,
+  },
+  subtitle: {
+    fontFamily: "Inter_400Regular",
+    fontSize: 14,
+    color: Colors.textSecondary,
+    textAlign: "center",
+    lineHeight: 22,
   },
 });

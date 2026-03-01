@@ -13,6 +13,8 @@ import {
   PlayerType,
   AIDifficulty,
   initializeGame,
+  initializeRematch,
+  processExchangeChoice,
   processPlay,
   processPass,
   aiChoosePlay,
@@ -33,6 +35,8 @@ interface GameContextValue {
   selectedCards: string[];
   lastRoundWinner: number | null;
   setupGame: (players: PlayerSetupConfig[], mode: GameMode) => void;
+  setupRematch: (players: PlayerSetupConfig[], mode: GameMode, prevRankings: string[]) => void;
+  chooseExchangeCard: (cardId: string) => void;
   selectCard: (cardId: string) => void;
   playSelected: () => boolean;
   passTurn: () => void;
@@ -53,6 +57,28 @@ export function GameProvider({ children }: { children: ReactNode }) {
       setGameState(state);
       setSelectedCards([]);
       setLastRoundWinner(null);
+    },
+    []
+  );
+
+  const setupRematch = useCallback(
+    (players: PlayerSetupConfig[], mode: GameMode, prevRankings: string[]) => {
+      const playersWithId = players.map((p, i) => ({ ...p, id: `player_${i}` }));
+      const state = initializeRematch(playersWithId, mode, prevRankings);
+      setGameState(state);
+      setSelectedCards([]);
+      setLastRoundWinner(null);
+    },
+    []
+  );
+
+  const chooseExchangeCard = useCallback(
+    (cardId: string) => {
+      setGameState((prev) => {
+        if (!prev) return prev;
+        return processExchangeChoice(prev, cardId);
+      });
+      setSelectedCards([]);
     },
     []
   );
@@ -162,6 +188,8 @@ export function GameProvider({ children }: { children: ReactNode }) {
       selectedCards,
       lastRoundWinner,
       setupGame,
+      setupRematch,
+      chooseExchangeCard,
       selectCard,
       playSelected,
       passTurn,
@@ -173,6 +201,8 @@ export function GameProvider({ children }: { children: ReactNode }) {
       selectedCards,
       lastRoundWinner,
       setupGame,
+      setupRematch,
+      chooseExchangeCard,
       selectCard,
       playSelected,
       passTurn,

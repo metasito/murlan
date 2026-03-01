@@ -53,6 +53,14 @@ export interface Player {
   finishPosition?: number;
 }
 
+export interface ExchangePhase {
+  active: boolean;
+  winnerIdx: number;
+  loserIdx: number;
+  cardFromLoser: Card;
+  bothJokersException: boolean;
+}
+
 export interface GameState {
   players: Player[];
   currentTurnIndex: number;
@@ -64,6 +72,7 @@ export interface GameState {
   gameOver: boolean;
   rankings: string[];
   firstPlayMade: boolean;
+  exchangePhase?: ExchangePhase;
 }
 
 // Game strength order (for singles, pairs, triples, bombs)
@@ -541,6 +550,116 @@ export function getSuitSymbol(suit: Suit | null): string {
 
 export function isRedSuit(suit: Suit | null): boolean {
   return suit === "hearts" || suit === "diamonds";
+}
+
+const EXCHANGE_VALID_RANKS: Rank[] = ["3","4","5","6","7","8","9","10"];
+
+export function initializeRematch(
+  playerSetup: Array<{
+    name: string;
+    type: PlayerType;
+    difficulty?: AIDifficulty;
+    team?: "A" | "B";
+    id?: string;
+  }>,
+  gameMode: GameMode,
+  prevRankings: string[]
+): GameState {
+  const { hands } = dealCards(playerSetup.length);
+
+  const players: Player[] = playerSetup.map((setup, i) => ({
+    id: setup.id ?? `player_${i}`,
+    name: setup.name,
+    hand: sortHand(hands[i]),
+    type: setup.type,
+    difficulty: setup.difficulty,
+    team: setup.team,
+    finishPosition: undefined,
+  }));
+
+  const winnerId = prevRankings[0];
+  const loserId = prevRankings[prevRankings.length - 1];
+  const winnerIdx = players.findIndex((p) => p.id === winnerId);
+  const loserIdx = players.findIndex((p) => p.id === loserId);
+
+  const safeWinnerIdx = winnerIdx >= 0 ? winnerIdx : 0;
+  const safeLoserIdx = loserIdx >= 0 ? loserIdx : players.length - 1;
+
+  const loserHand = players[safeLoserIdx].hand;
+  const hasColoredJoker = loserHand.some((c) => c.rank === "joker_colored");
+  const hasBwJoker = loserHand.some((c) => c.rank === "joker_bw");
+  const bothJokersException = hasColoredJoker && hasBwJoker;
+
+  let exchangePhase: ExchangePhase;
+
+  if (bothJokersException) {
+    const startState: GameState = {
+      players,
+      currentTurnIndex: safeWinnerIdx,
+      lastPlayedCombination: null,
+      lastPlayedBy: safeWinnerIdx,
+      passCount: 0,
+      gameMode,
+      roundWinner: null,
+      gameOver: false,
+      rankings: [],
+      firstPlayMade: true,
+      exchangePhase: {
+        active: false,
+        winnerIdx: safeWinnerIdx,
+        loserIdx: safeLoserIdx,
+        cardFromLoser: loserHand[0],
+        bothJokersException: true,
+      },
+    };
+    return startState;
+  }
+
+  const sortedLoserHand = [...loserHand].sort((a, b) => cardStrength(b) - cardStrength(a));
+  const cardFromLoser = sortedLoserHand[0];
+
+  players[safeLoserIdx].hand = players[safeLoserIdx].hand.filter((c) => c.id !== cardFromLoser.id);
+  players[safeWinnerIdx].hand = sortHand([...players[safeWinnerIdx].hand, cardFromLoser]);
+
+  exchangePhase = {
+    active: true,
+    winnerIdx: safeWinnerIdx,
+    loserIdx: safeLoserIdx,
+    cardFromLoser,
+    bothJokersException: false,
+  };
+
+  return {
+    players,
+    currentTurnIndex: safeWinnerIdx,
+    lastPlayedCombination: null,
+    lastPlayedBy: safeWinnerIdx,
+    passCount: 0,
+    gameMode,
+    roundWinner: null,
+    gameOver: false,
+    rankings: [],
+    firstPlayMade: true,
+    exchangePhase,
+  };
+}
+
+export function processExchangeChoice(state: GameState, cardId: string): GameState {
+  if (!state.exchangePhase?.active) return state;
+  const { winnerIdx, loserIdx } = state.exchangePhase;
+  const newState = deepCloneState(state);
+  const winnerHand = newState.players[winnerIdx].hand;
+  const cardIdx = winnerHand.findIndex((c) => c.id === cardId);
+  if (cardIdx < 0) return state;
+  const card = winnerHand[cardIdx];
+  if (!EXCHANGE_VALID_RANKS.includes(card.rank)) return state;
+
+  newState.players[winnerIdx].hand = winnerHand.filter((_, i) => i !== cardIdx);
+  newState.players[loserIdx].hand = sortHand([...newState.players[loserIdx].hand, card]);
+  newState.currentTurnIndex = loserIdx;
+  newState.lastPlayedBy = loserIdx;
+  newState.exchangePhase!.active = false;
+  return newState;
 }
 
 export function initializeGame(

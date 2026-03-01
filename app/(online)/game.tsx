@@ -15,6 +15,8 @@ import Animated, {
   withSpring,
   withTiming,
   withSequence,
+  Easing,
+  runOnJS,
   FadeIn,
   FadeOut,
   SlideInRight,
@@ -129,6 +131,61 @@ function FloatingReaction({ reaction, seatCount }: { reaction: Reaction; seatCou
   );
 }
 
+type FlyDirection = "top" | "bottom" | "left" | "right";
+
+const FLY_OFFSETS: Record<FlyDirection, { dx: number; dy: number }> = {
+  bottom: { dx: 0, dy: 120 },
+  top: { dx: 0, dy: -80 },
+  left: { dx: -140, dy: 0 },
+  right: { dx: 140, dy: 0 },
+};
+const FLY_ROTS: Record<FlyDirection, number> = {
+  bottom: -8, top: 8, left: -12, right: 12,
+};
+
+function FlyingCards({ cards, direction, onDone }: { cards: Card[]; direction: FlyDirection; onDone: () => void }) {
+  const { dx, dy } = FLY_OFFSETS[direction];
+  const tx = useSharedValue(dx);
+  const ty = useSharedValue(dy);
+  const rot = useSharedValue(FLY_ROTS[direction]);
+  const opacity = useSharedValue(0.9);
+
+  useEffect(() => {
+    const easing = Easing.out(Easing.cubic);
+    tx.value = withTiming(0, { duration: 420, easing });
+    ty.value = withTiming(0, { duration: 420, easing });
+    rot.value = withTiming(0, { duration: 420, easing });
+    opacity.value = withSequence(
+      withTiming(1, { duration: 280 }),
+      withTiming(0, { duration: 170 }, (finished) => {
+        if (finished) runOnJS(onDone)();
+      })
+    );
+  }, []);
+
+  const aStyle = useAnimatedStyle(() => ({
+    transform: [{ translateX: tx.value }, { translateY: ty.value }, { rotate: `${rot.value}deg` }],
+    opacity: opacity.value,
+  }));
+
+  const display = cards.slice(0, 3);
+
+  return (
+    <View style={styles.flyingContainer} pointerEvents="none">
+      <Animated.View style={[styles.flyingInner, aStyle]}>
+        {display.map((card, i) => (
+          <View
+            key={card.id}
+            style={{ position: "absolute", left: i * 12 - (display.length - 1) * 6, zIndex: i, transform: [{ rotate: `${(i - (display.length - 1) / 2) * 10}deg` }] }}
+          >
+            <CardView card={card} />
+          </View>
+        ))}
+      </Animated.View>
+    </View>
+  );
+}
+
 function ReactionPanel({ onSelect, onClose }: { onSelect: (e: string) => void; onClose: () => void }) {
   return (
     <Animated.View entering={SlideInRight.duration(200)} style={styles.reactionPanel}>
@@ -168,6 +225,7 @@ export default function OnlineGameScreen() {
   const [playedPile, setPlayedPile] = useState<Combination[]>([]);
   const [showReactions, setShowReactions] = useState(false);
   const [showGameOver, setShowGameOver] = useState(false);
+  const [flyInfo, setFlyInfo] = useState<{ key: string; dir: FlyDirection; cards: Card[] } | null>(null);
   const prevComboRef = useRef<Combination | null>(null);
   const prevRoundWinnerRef = useRef<number | null>(null);
   const reactionTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -186,6 +244,19 @@ export default function OnlineGameScreen() {
     const combo = gameState.lastPlayedCombination;
     if (combo !== null && combo !== prevComboRef.current) {
       setPlayedPile((prev) => [...prev.slice(-5), combo]);
+      const playedBy = gameState.lastPlayedBy;
+      let dir: FlyDirection;
+      if (playedBy === mySeatIndex) {
+        dir = "bottom";
+      } else {
+        const totalOpponents = gameState.players.length - 1;
+        const steps = ((playedBy - mySeatIndex + gameState.players.length) % gameState.players.length);
+        if (totalOpponents === 1) dir = "top";
+        else if (steps === 1) dir = "right";
+        else if (steps === 2) dir = "top";
+        else dir = "left";
+      }
+      setFlyInfo({ key: combo.cards[0].id + String(playedBy), dir, cards: combo.cards });
     }
     if (combo === null) setPlayedPile([]);
     prevComboRef.current = combo;
@@ -444,6 +515,15 @@ export default function OnlineGameScreen() {
         </View>
       </View>
 
+      {flyInfo && (
+        <FlyingCards
+          key={flyInfo.key}
+          cards={flyInfo.cards}
+          direction={flyInfo.dir}
+          onDone={() => setFlyInfo(null)}
+        />
+      )}
+
       {showGameOver && gameState.gameOver && (
         <Animated.View entering={FadeIn.duration(400)} style={styles.gameOverOverlay}>
           <View style={styles.gameOverCard}>
@@ -641,4 +721,17 @@ const styles = StyleSheet.create({
   gameOverBtn: { width: "100%", borderRadius: 12, overflow: "hidden" },
   gameOverBtnGrad: { paddingVertical: 14, alignItems: "center" },
   gameOverBtnText: { fontFamily: "Rajdhani_700Bold", fontSize: 17, color: "#0A1F18" },
+  flyingContainer: {
+    position: "absolute",
+    top: 0, left: 0, right: 0, bottom: 0,
+    alignItems: "center",
+    justifyContent: "center",
+    zIndex: 60,
+  },
+  flyingInner: {
+    width: CARD_W * 2.5,
+    height: CARD_H,
+    alignItems: "center",
+    justifyContent: "center",
+  },
 });

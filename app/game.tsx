@@ -16,6 +16,8 @@ import Animated, {
   withSpring,
   withTiming,
   withSequence,
+  Easing,
+  runOnJS,
   FadeIn,
   FadeOut,
 } from "react-native-reanimated";
@@ -209,6 +211,86 @@ function SideOppSlot({
   );
 }
 
+type FlyDirection = "top" | "bottom" | "left" | "right";
+
+const FLY_OFFSETS: Record<FlyDirection, { dx: number; dy: number }> = {
+  bottom: { dx: 0, dy: 130 },
+  top: { dx: 0, dy: -90 },
+  left: { dx: -160, dy: 0 },
+  right: { dx: 160, dy: 0 },
+};
+const FLY_ROTS: Record<FlyDirection, number> = {
+  bottom: -8,
+  top: 8,
+  left: -12,
+  right: 12,
+};
+
+function FlyingCards({
+  cards,
+  direction,
+  onDone,
+}: {
+  cards: Card[];
+  direction: FlyDirection;
+  onDone: () => void;
+}) {
+  const { dx, dy } = FLY_OFFSETS[direction];
+  const startRot = FLY_ROTS[direction];
+
+  const tx = useSharedValue(dx);
+  const ty = useSharedValue(dy);
+  const rot = useSharedValue(startRot);
+  const opacity = useSharedValue(0.9);
+
+  useEffect(() => {
+    const easing = Easing.out(Easing.cubic);
+    tx.value = withTiming(0, { duration: 420, easing });
+    ty.value = withTiming(0, { duration: 420, easing });
+    rot.value = withTiming(0, { duration: 420, easing });
+    opacity.value = withSequence(
+      withTiming(1, { duration: 280 }),
+      withTiming(0, { duration: 170 }, (finished) => {
+        if (finished) runOnJS(onDone)();
+      })
+    );
+  }, []);
+
+  const aStyle = useAnimatedStyle(() => ({
+    transform: [
+      { translateX: tx.value },
+      { translateY: ty.value },
+      { rotate: `${rot.value}deg` },
+    ],
+    opacity: opacity.value,
+  }));
+
+  const display = cards.slice(0, 3);
+
+  return (
+    <View style={styles.flyingContainer} pointerEvents="none">
+      <Animated.View style={[styles.flyingInner, aStyle]}>
+        {display.map((card, i) => {
+          const angle = (i - (display.length - 1) / 2) * 10;
+          return (
+            <View
+              key={card.id}
+              style={{
+                position: "absolute",
+                left: i * 12 - (display.length - 1) * 6,
+                zIndex: i,
+                transform: [{ rotate: `${angle}deg` }],
+              }}
+            >
+              <CardView card={card} />
+            </View>
+          );
+        })}
+      </Animated.View>
+    </View>
+  );
+}
+
 function PlayedPile({
   history,
   roundWinner,
@@ -378,9 +460,13 @@ export default function GameScreen() {
   const runAITurnRef = useRef(runAITurn);
   runAITurnRef.current = runAITurn;
 
+  const humanIdx = gameState?.players.findIndex((p) => p.type === "human") ?? -1;
+  const totalOpponents = (gameState?.players.length ?? 1) - 1;
+
   const [roundWinner, setRoundWinner] = useState<string | null>(null);
   const [playedPile, setPlayedPile] = useState<Combination[]>([]);
   const [timeLeft, setTimeLeft] = useState(HUMAN_TURN_SECONDS);
+  const [flyInfo, setFlyInfo] = useState<{ key: string; dir: FlyDirection; cards: Card[] } | null>(null);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const prevComboRef = useRef<Combination | null>(null);
 
@@ -425,12 +511,21 @@ export default function GameScreen() {
     const combo = gameState.lastPlayedCombination;
     if (combo !== null && combo !== prevComboRef.current) {
       setPlayedPile((prev) => [...prev.slice(-5), combo]);
+      const playedBy = gameState.lastPlayedBy;
+      let dir: FlyDirection;
+      if (playedBy === humanIdx) {
+        dir = "bottom";
+      } else {
+        const steps = ((playedBy - humanIdx + gameState.players.length) % gameState.players.length);
+        const pos = getOpponentPosition(steps, totalOpponents);
+        dir = pos;
+      }
+      setFlyInfo({ key: combo.cards[0].id + String(playedBy), dir, cards: combo.cards });
     }
     if (combo === null) setPlayedPile([]);
     prevComboRef.current = combo;
   }, [gameState?.lastPlayedCombination]);
 
-  const humanIdx = gameState ? gameState.players.findIndex((p) => p.type === "human") : -1;
   const isHumanTurn = gameState ? gameState.currentTurnIndex === humanIdx : false;
   const isFinished = gameState
     ? gameState.players[humanIdx]?.finishPosition !== undefined
@@ -481,7 +576,6 @@ export default function GameScreen() {
   const opponents = gameState.players
     .map((p, idx) => ({ p, idx }))
     .filter(({ idx }) => idx !== humanIdx);
-  const totalOpponents = opponents.length;
 
   const handlePlay = () => {
     if (!playBtnValid) return;
@@ -706,6 +800,15 @@ export default function GameScreen() {
           </View>
         )}
       </Pressable>
+
+      {flyInfo && (
+        <FlyingCards
+          key={flyInfo.key}
+          cards={flyInfo.cards}
+          direction={flyInfo.dir}
+          onDone={() => setFlyInfo(null)}
+        />
+      )}
     </View>
   );
 }
@@ -1079,5 +1182,22 @@ const styles = StyleSheet.create({
     color: "rgba(201,168,76,0.3)",
     letterSpacing: 0.5,
     textAlign: "center",
+  },
+
+  flyingContainer: {
+    position: "absolute",
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    alignItems: "center",
+    justifyContent: "center",
+    zIndex: 60,
+  },
+  flyingInner: {
+    width: CARD_W * 2.5,
+    height: CARD_H,
+    alignItems: "center",
+    justifyContent: "center",
   },
 });
