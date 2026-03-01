@@ -16,6 +16,8 @@
     "lint:fix": "npx expo lint --fix"
   },
   "dependencies": {
+    "@expo-google-fonts/inter": "^0.4.2",
+    "@expo-google-fonts/rajdhani": "^0.4.1",
     "@expo/vector-icons": "^15.0.3",
     "@react-native-async-storage/async-storage": "2.2.0",
     "@stardazed/streams-text-encoding": "^1.0.2",
@@ -61,10 +63,10 @@
   },
   "devDependencies": {
     "@babel/core": "^7.25.2",
-    "babel-plugin-react-compiler": "^19.0.0-beta-e993439-20250117",
     "@expo/ngrok": "^4.1.0",
     "@types/express": "^5.0.0",
     "@types/react": "~19.1.10",
+    "babel-plugin-react-compiler": "^19.0.0-beta-e993439-20250117",
     "drizzle-kit": "^0.31.4",
     "eslint": "^9.31.0",
     "eslint-config-expo": "~10.0.0",
