@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState, useCallback } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import {
   View,
   Text,
@@ -21,6 +21,7 @@ import Animated, {
 } from "react-native-reanimated";
 import { LinearGradient } from "expo-linear-gradient";
 import * as Haptics from "expo-haptics";
+import * as ScreenOrientation from "expo-screen-orientation";
 import { Ionicons } from "@expo/vector-icons";
 import { useGame } from "@/context/GameContext";
 import { CardView } from "@/components/CardView";
@@ -36,22 +37,24 @@ import Colors from "@/constants/colors";
 
 const AI_DELAY = 1100;
 const HUMAN_TURN_SECONDS = 20;
+const PASS_BTN_W = 82;
+const PLAY_BTN_W = 82;
+const CARD_W = 58;
+const CARD_H = 84;
 
 function getOpponentPosition(
   clockwiseSteps: number,
   totalOpponents: number
 ): "top" | "left" | "right" {
   if (totalOpponents === 1) return "top";
-  if (totalOpponents === 2) {
-    return clockwiseSteps === 1 ? "right" : "left";
-  }
+  if (totalOpponents === 2) return clockwiseSteps === 1 ? "right" : "left";
   if (clockwiseSteps === 1) return "right";
   if (clockwiseSteps === 2) return "top";
   return "left";
 }
 
-function CombinationLabel({ combo }: { combo: Combination }) {
-  const labels: Record<string, string> = {
+function ComboLabel({ combo }: { combo: Combination }) {
+  const map: Record<string, string> = {
     single: "Singola",
     pair: "Coppia",
     triple: "Tris",
@@ -60,188 +63,208 @@ function CombinationLabel({ combo }: { combo: Combination }) {
   return (
     <View style={styles.comboChip}>
       <Text style={styles.comboChipText}>
-        {labels[combo.type]}
-        {combo.cards.length > 2 ? ` x${combo.cards.length}` : ""}
+        {map[combo.type]}{combo.cards.length > 2 ? ` ×${combo.cards.length}` : ""}
       </Text>
     </View>
   );
 }
 
-function TimerRing({
-  seconds,
-  total,
-  active,
-}: {
-  seconds: number;
-  total: number;
-  active: boolean;
-}) {
-  if (!active) return null;
-  const pct = seconds / total;
-  const urgent = seconds <= 5;
-  const size = 34;
-  const stroke = 3;
-  const r = (size - stroke) / 2;
-  const circ = 2 * Math.PI * r;
-  const dash = circ * pct;
-
-  return (
-    <View style={{ width: size, height: size, alignItems: "center", justifyContent: "center" }}>
-      <View
-        style={{
-          position: "absolute",
-          width: size,
-          height: size,
-          borderRadius: size / 2,
-          borderWidth: stroke,
-          borderColor: "rgba(255,255,255,0.1)",
-        }}
-      />
-      <View
-        style={{
-          position: "absolute",
-          width: size,
-          height: size,
-          borderRadius: size / 2,
-          borderWidth: stroke,
-          borderColor: urgent ? "#FF5252" : Colors.gold,
-          borderTopColor: "transparent",
-          borderRightColor: pct > 0.25 ? (urgent ? "#FF5252" : Colors.gold) : "transparent",
-          borderBottomColor: pct > 0.5 ? (urgent ? "#FF5252" : Colors.gold) : "transparent",
-          borderLeftColor: pct > 0.75 ? (urgent ? "#FF5252" : Colors.gold) : "transparent",
-        }}
-      />
-      <Text
-        style={{
-          fontFamily: "Rajdhani_700Bold",
-          fontSize: 12,
-          color: urgent ? "#FF5252" : Colors.gold,
-        }}
-      >
-        {seconds}
-      </Text>
-    </View>
-  );
-}
-
-function OpponentBadge({
-  player,
+function Avatar({
+  name,
   isActive,
-  position,
+  cardCount,
+  finishPos,
+  size = 54,
 }: {
-  player: Player;
+  name: string;
   isActive: boolean;
-  position: "top" | "left" | "right";
+  cardCount: number;
+  finishPos?: number;
+  size?: number;
 }) {
   const pulse = useSharedValue(1);
   useEffect(() => {
     if (isActive) {
       pulse.value = withSequence(
-        withTiming(1.06, { duration: 350 }),
-        withTiming(1, { duration: 350 })
+        withTiming(1.08, { duration: 400 }),
+        withTiming(1, { duration: 400 })
       );
     }
   }, [isActive]);
-  const pStyle = useAnimatedStyle(() => ({ transform: [{ scale: pulse.value }] }));
-  const isFinished = player.finishPosition !== undefined;
-  const displayCards = Math.min(player.hand.length, 5);
-  const isVertical = position === "left" || position === "right";
+  const aStyle = useAnimatedStyle(() => ({ transform: [{ scale: pulse.value }] }));
+
+  const initials = name
+    .split(" ")
+    .map((w) => w[0])
+    .slice(0, 2)
+    .join("")
+    .toUpperCase();
 
   return (
-    <Animated.View
-      style={[
-        styles.opponentBadge,
-        isActive && styles.opponentBadgeActive,
-        isVertical && styles.opponentBadgeVertical,
-        pStyle,
-      ]}
-    >
-      <View style={styles.opponentInfo}>
-        <View
-          style={[styles.opponentDot, { backgroundColor: isActive ? Colors.gold : "transparent" }]}
-        />
-        <Text style={styles.opponentName} numberOfLines={1}>
-          {player.name}
-        </Text>
-        {isFinished ? (
-          <View style={styles.finishBadge}>
-            <Ionicons name="trophy" size={9} color={Colors.gold} />
-            <Text style={styles.finishBadgeText}>#{player.finishPosition}</Text>
-          </View>
-        ) : (
-          <Text style={styles.opponentCount}>{player.hand.length}</Text>
-        )}
-      </View>
-
-      {!isFinished && (
+    <Animated.View style={aStyle}>
+      <View
+        style={[
+          styles.avatarRing,
+          { width: size + 6, height: size + 6, borderRadius: (size + 6) / 2 },
+          isActive && styles.avatarRingActive,
+        ]}
+      >
         <View
           style={[
-            styles.miniHand,
-            isVertical && styles.miniHandVertical,
+            styles.avatarCircle,
+            { width: size, height: size, borderRadius: size / 2 },
           ]}
         >
-          {Array.from({ length: displayCards }, (_, i) => (
-            <View
-              key={i}
-              style={[
-                isVertical ? styles.miniCardVertical : styles.miniCardHorizontal,
-                {
-                  marginTop: isVertical && i > 0 ? -22 : 0,
-                  marginLeft: !isVertical && i > 0 ? -16 : 0,
-                  transform: isVertical
-                    ? [{ rotate: `${(i - (displayCards - 1) / 2) * 4}deg` }]
-                    : [{ rotate: `${(i - (displayCards - 1) / 2) * 5}deg` }],
-                  zIndex: i,
-                },
-              ]}
-            >
-              <CardView
-                card={{ id: `back_${i}`, suit: null, rank: "3", isJoker: false }}
-                faceDown
-                small
-              />
-            </View>
-          ))}
+          <Text style={[styles.avatarInitials, { fontSize: size * 0.36 }]}>
+            {initials}
+          </Text>
         </View>
-      )}
+        {finishPos !== undefined && (
+          <View style={styles.finishBadge}>
+            <Ionicons name="trophy" size={9} color={Colors.gold} />
+            <Text style={styles.finishBadgeText}>#{finishPos}</Text>
+          </View>
+        )}
+        {finishPos === undefined && (
+          <View style={styles.cardCountBubble}>
+            <Text style={styles.cardCountBubbleText}>{cardCount}</Text>
+          </View>
+        )}
+      </View>
     </Animated.View>
+  );
+}
+
+function MiniCardFan({
+  count,
+  direction,
+}: {
+  count: number;
+  direction: "left" | "right" | "down";
+}) {
+  const n = Math.min(count, 6);
+  if (n === 0) return null;
+
+  return (
+    <View style={[styles.miniFan, direction === "down" && styles.miniFanDown]}>
+      {Array.from({ length: n }, (_, i) => {
+        const spread = (i - (n - 1) / 2) * (direction === "down" ? 5 : 4);
+        const translateX = direction === "down" ? 0 : (direction === "right" ? -i * 8 : i * 8);
+        const translateY = direction === "down" ? -i * 6 : 0;
+        return (
+          <View
+            key={i}
+            style={[
+              styles.miniFanCard,
+              {
+                marginLeft: direction !== "down" && i > 0 ? -22 : 0,
+                marginTop: direction === "down" && i > 0 ? -28 : 0,
+                transform: [
+                  { rotate: `${spread}deg` },
+                ],
+                zIndex: i,
+              },
+            ]}
+          >
+            <CardView
+              card={{ id: `bk_${i}`, suit: null, rank: "3", isJoker: false }}
+              faceDown
+              small
+            />
+          </View>
+        );
+      })}
+    </View>
+  );
+}
+
+function TopOpponent({
+  player,
+  isActive,
+  tableW,
+  tableX,
+}: {
+  player: Player;
+  isActive: boolean;
+  tableW: number;
+  tableX: number;
+}) {
+  const cardCount = player.hand.length;
+  return (
+    <View style={[styles.topOppContainer, { left: tableX + tableW / 2 - 55 }]}>
+      <View style={styles.topOppInner}>
+        <Avatar
+          name={player.name}
+          isActive={isActive}
+          cardCount={cardCount}
+          finishPos={player.finishPosition}
+          size={48}
+        />
+        <Text style={styles.oppName} numberOfLines={1}>{player.name}</Text>
+      </View>
+      {cardCount > 0 && (
+        <MiniCardFan count={cardCount} direction="down" />
+      )}
+    </View>
+  );
+}
+
+function SideOpponent({
+  player,
+  isActive,
+  position,
+  y,
+}: {
+  player: Player;
+  isActive: boolean;
+  position: "left" | "right";
+  y: number;
+}) {
+  const cardCount = player.hand.length;
+  const isLeft = position === "left";
+  return (
+    <View
+      style={[
+        styles.sideOppContainer,
+        isLeft ? styles.sideOppLeft : styles.sideOppRight,
+        { top: y },
+      ]}
+    >
+      {!isLeft && cardCount > 0 && (
+        <MiniCardFan count={cardCount} direction="right" />
+      )}
+      <View style={styles.sideOppInner}>
+        <Avatar
+          name={player.name}
+          isActive={isActive}
+          cardCount={cardCount}
+          finishPos={player.finishPosition}
+          size={46}
+        />
+        <Text style={styles.oppName} numberOfLines={1}>{player.name}</Text>
+      </View>
+      {isLeft && cardCount > 0 && (
+        <MiniCardFan count={cardCount} direction="left" />
+      )}
+    </View>
   );
 }
 
 function PlayedPile({
   history,
-  roundWinnerName,
-  tableW,
-  tableH,
+  roundWinner,
 }: {
   history: Combination[];
-  roundWinnerName: string | null;
-  tableW: number;
-  tableH: number;
+  roundWinner: string | null;
 }) {
   const topCombo = history.length > 0 ? history[history.length - 1] : null;
 
   return (
-    <View style={[styles.tableEllipse, { width: tableW, height: tableH, borderRadius: tableW * 0.45 }]}>
-      <LinearGradient
-        colors={[Colors.feltLight, Colors.felt, Colors.feltDark]}
-        style={StyleSheet.absoluteFill}
-      />
-      <View
-        style={[
-          styles.tableEllipseBorder,
-          { borderRadius: tableW * 0.45 },
-        ]}
-      />
-
-      {roundWinnerName && (
-        <Animated.View
-          entering={FadeIn.duration(300)}
-          exiting={FadeOut.duration(300)}
-          style={styles.roundWinnerBanner}
-        >
+    <View style={styles.playedPileArea}>
+      {roundWinner && (
+        <Animated.View entering={FadeIn.duration(250)} exiting={FadeOut.duration(250)} style={styles.winnerBanner}>
           <Ionicons name="star" size={10} color={Colors.gold} />
-          <Text style={styles.roundWinnerText}>{roundWinnerName}</Text>
+          <Text style={styles.winnerText}>{roundWinner}</Text>
         </Animated.View>
       )}
 
@@ -250,51 +273,39 @@ function PlayedPile({
       )}
 
       {history.length > 0 && (
-        <View style={styles.pileContainer}>
-          {history.slice(-4).map((combo, stackIdx, arr) => {
-            const isTop = stackIdx === arr.length - 1;
-            const stackOffset = (stackIdx - (arr.length - 1)) * 4;
-            const baseRotate = (stackIdx * 7 - 10) % 15;
+        <View style={styles.pileStack}>
+          {history.slice(-4).map((combo, si, arr) => {
+            const isTop = si === arr.length - 1;
+            const rot = (si * 9 - 12) % 18;
+            const offsetY = (si - arr.length + 1) * 3;
             return (
               <View
-                key={`pile_${stackIdx}`}
+                key={`pl_${si}`}
                 style={[
                   styles.pileLayer,
                   {
-                    transform: [
-                      { rotate: `${baseRotate}deg` },
-                      { translateY: stackOffset },
-                    ],
-                    zIndex: stackIdx,
-                    opacity: isTop ? 1 : 0.55 + stackIdx * 0.1,
+                    zIndex: si,
+                    transform: [{ rotate: `${rot}deg` }, { translateY: offsetY }],
+                    opacity: isTop ? 1 : 0.45 + si * 0.15,
                   },
                 ]}
               >
-                <View style={styles.playedCardsRow}>
-                  {combo.cards.slice(0, 5).map((card, ci) => {
-                    const total = Math.min(combo.cards.length, 5);
-                    const angle = (ci - (total - 1) / 2) * 5;
-                    return (
-                      <View
-                        key={card.id}
-                        style={{
-                          marginLeft: ci > 0 ? -16 : 0,
-                          transform: [{ rotate: `${angle}deg` }],
-                          zIndex: ci,
-                        }}
-                      >
-                        <CardView card={card} />
-                      </View>
-                    );
-                  })}
+                <View style={styles.playedCardRow}>
+                  {combo.cards.slice(0, 5).map((card, ci) => (
+                    <View
+                      key={card.id}
+                      style={{ marginLeft: ci > 0 ? -14 : 0, zIndex: ci }}
+                    >
+                      <CardView card={card} />
+                    </View>
+                  ))}
                 </View>
               </View>
             );
           })}
-
           {topCombo && (
-            <View style={[styles.comboChipTable, { zIndex: 10 }]}>
-              <CombinationLabel combo={topCombo} />
+            <View style={styles.topComboLabel}>
+              <ComboLabel combo={topCombo} />
             </View>
           )}
         </View>
@@ -303,101 +314,47 @@ function PlayedPile({
   );
 }
 
-function StagingArea({
-  cards,
-  combo,
-  onClear,
-}: {
-  cards: Card[];
-  combo: Combination | null;
-  onClear: () => void;
-}) {
-  if (cards.length === 0) return null;
-  return (
-    <View style={styles.stagingArea}>
-      <View style={styles.stagingCards}>
-        {cards.map((card, i) => (
-          <View key={card.id} style={{ marginLeft: i > 0 ? -8 : 0, zIndex: i }}>
-            <CardView card={card} small />
-          </View>
-        ))}
-      </View>
-      <View style={styles.stagingInfo}>
-        {combo ? (
-          <CombinationLabel combo={combo} />
-        ) : (
-          <Text style={styles.stagingInvalidText}>Combinazione non valida</Text>
-        )}
-      </View>
-      <Pressable onPress={onClear} style={styles.stagingClear} hitSlop={10}>
-        <Ionicons name="close-circle" size={20} color="rgba(240,234,214,0.4)" />
-      </Pressable>
-    </View>
-  );
-}
-
-function FanHand({
+function StraightHand({
   cards,
   selectedIds,
-  onCardPress,
+  onPress,
   disabled,
-  W,
+  availW,
 }: {
   cards: ReturnType<typeof sortHand>;
   selectedIds: string[];
-  onCardPress: (id: string) => void;
+  onPress: (id: string) => void;
   disabled: boolean;
-  W: number;
+  availW: number;
 }) {
-  const total = cards.length;
-  if (total === 0) {
+  const n = cards.length;
+  if (n === 0) {
     return (
-      <View style={styles.emptyHand}>
-        <Ionicons name="checkmark-circle" size={28} color={Colors.gold} />
+      <View style={[styles.handWrap, { width: availW }]}>
+        <Ionicons name="checkmark-circle" size={26} color={Colors.gold} />
         <Text style={styles.emptyHandText}>Carte finite!</Text>
       </View>
     );
   }
 
-  const CARD_W = 58;
-  const MAX_SPREAD = W - 60;
-  const OVERLAP = Math.max(14, Math.min(36, (total * CARD_W - MAX_SPREAD) / Math.max(total - 1, 1)));
-  const effectiveStep = CARD_W - OVERLAP;
-  const totalWidth = effectiveStep * (total - 1) + CARD_W;
-  const maxAngle = Math.min(28, total * 2.2);
+  const step = Math.max(22, Math.min(CARD_W, (availW - CARD_W) / Math.max(n - 1, 1)));
+  const totalW = step * (n - 1) + CARD_W;
 
   return (
-    <View style={[styles.fanContainer, { height: 100 }]}>
-      <View style={[styles.fanRow, { width: Math.min(totalWidth, MAX_SPREAD + CARD_W) }]}>
+    <View style={[styles.handWrap, { width: availW }]}>
+      <View style={[styles.handRow, { width: Math.min(totalW, availW) }]}>
         {cards.map((card, i) => {
-          const center = (total - 1) / 2;
-          const angle = ((i - center) / Math.max(center, 1)) * maxAngle;
-          const arcRise = Math.abs(i - center) * 2.5;
           const isSelected = selectedIds.includes(card.id);
-
           return (
-            <View
+            <CardItem
               key={card.id}
-              style={[
-                styles.fanCardWrap,
-                {
-                  left: i * effectiveStep,
-                  transform: [
-                    { rotate: `${angle}deg` },
-                    { translateY: arcRise },
-                  ],
-                  zIndex: isSelected ? total + 10 : i,
-                },
-              ]}
-            >
-              <CardView
-                card={card}
-                selected={isSelected}
-                onPress={() => onCardPress(card.id)}
-                disabled={disabled}
-                noLift
-              />
-            </View>
+              card={card}
+              isSelected={isSelected}
+              left={i * step}
+              onPress={() => onPress(card.id)}
+              disabled={disabled}
+              zIndex={isSelected ? n + 10 : i}
+            />
           );
         })}
       </View>
@@ -405,10 +362,39 @@ function FanHand({
   );
 }
 
+function CardItem({
+  card,
+  isSelected,
+  left,
+  onPress,
+  disabled,
+  zIndex,
+}: {
+  card: Card;
+  isSelected: boolean;
+  left: number;
+  onPress: () => void;
+  disabled: boolean;
+  zIndex: number;
+}) {
+  const liftY = useSharedValue(0);
+  useEffect(() => {
+    liftY.value = withSpring(isSelected ? -38 : 0, { damping: 14, stiffness: 260 });
+  }, [isSelected]);
+  const aStyle = useAnimatedStyle(() => ({
+    transform: [{ translateY: liftY.value }],
+  }));
+
+  return (
+    <Animated.View style={[styles.handCardWrap, { left, zIndex }, aStyle]}>
+      <CardView card={card} selected={isSelected} onPress={onPress} disabled={disabled} noLift />
+    </Animated.View>
+  );
+}
+
 export default function GameScreen() {
   const insets = useSafeAreaInsets();
   const { width: W, height: H } = useWindowDimensions();
-  const isLandscape = W > H;
 
   const {
     gameState,
@@ -424,24 +410,33 @@ export default function GameScreen() {
   const runAITurnRef = useRef(runAITurn);
   runAITurnRef.current = runAITurn;
 
-  const [roundWinnerName, setRoundWinnerName] = useState<string | null>(null);
+  const [roundWinner, setRoundWinner] = useState<string | null>(null);
   const [playedPile, setPlayedPile] = useState<Combination[]>([]);
   const [timeLeft, setTimeLeft] = useState(HUMAN_TURN_SECONDS);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const prevComboRef = useRef<Combination | null>(null);
 
   useEffect(() => {
+    if (Platform.OS !== "web") {
+      ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.LANDSCAPE);
+    }
+    return () => {
+      if (Platform.OS !== "web") {
+        ScreenOrientation.unlockAsync();
+      }
+    };
+  }, []);
+
+  useEffect(() => {
     if (!gameState) return;
     if (gameState.gameOver) {
-      setTimeout(() => router.replace("/result"), 1000);
+      setTimeout(() => router.replace("/result"), 800);
       return;
     }
-    const currentPlayer = gameState.players[gameState.currentTurnIndex];
-    if (currentPlayer.type === "ai") {
-      const timer = setTimeout(() => {
-        runAITurnRef.current();
-      }, AI_DELAY);
-      return () => clearTimeout(timer);
+    const cur = gameState.players[gameState.currentTurnIndex];
+    if (cur.type === "ai") {
+      const t = setTimeout(() => runAITurnRef.current(), AI_DELAY);
+      return () => clearTimeout(t);
     }
   }, [
     gameState?.currentTurnIndex,
@@ -453,8 +448,8 @@ export default function GameScreen() {
   useEffect(() => {
     if (lastRoundWinner !== null && gameState) {
       const name = gameState.players[lastRoundWinner]?.name ?? "";
-      setRoundWinnerName(name);
-      const t = setTimeout(() => setRoundWinnerName(null), 1800);
+      setRoundWinner(name);
+      const t = setTimeout(() => setRoundWinner(null), 1800);
       return () => clearTimeout(t);
     }
   }, [lastRoundWinner]);
@@ -465,9 +460,7 @@ export default function GameScreen() {
     if (combo !== null && combo !== prevComboRef.current) {
       setPlayedPile((prev) => [...prev.slice(-5), combo]);
     }
-    if (combo === null) {
-      setPlayedPile([]);
-    }
+    if (combo === null) setPlayedPile([]);
     prevComboRef.current = combo;
   }, [gameState?.lastPlayedCombination]);
 
@@ -476,10 +469,7 @@ export default function GameScreen() {
   const isFinished = gameState ? gameState.players[humanIdx]?.finishPosition !== undefined : false;
 
   useEffect(() => {
-    if (timerRef.current) {
-      clearInterval(timerRef.current);
-      timerRef.current = null;
-    }
+    if (timerRef.current) clearInterval(timerRef.current);
     if (!isHumanTurn || isFinished || !gameState || gameState.gameOver) {
       setTimeLeft(HUMAN_TURN_SECONDS);
       return;
@@ -489,18 +479,13 @@ export default function GameScreen() {
       setTimeLeft((prev) => {
         if (prev <= 1) {
           if (timerRef.current) clearInterval(timerRef.current);
-          const isNewRound = gameState.lastPlayedCombination === null;
-          if (!isNewRound) {
-            passTurn();
-          }
+          if (gameState.lastPlayedCombination !== null) passTurn();
           return HUMAN_TURN_SECONDS;
         }
         return prev - 1;
       });
     }, 1000);
-    return () => {
-      if (timerRef.current) clearInterval(timerRef.current);
-    };
+    return () => { if (timerRef.current) clearInterval(timerRef.current); };
   }, [isHumanTurn, isFinished, gameState?.currentTurnIndex, gameState?.lastPlayedCombination]);
 
   if (!gameState) {
@@ -515,16 +500,13 @@ export default function GameScreen() {
   const sortedHand = sortHand(humanPlayer?.hand ?? []);
   const selectedObjs = sortedHand.filter((c) => selectedCards.includes(c.id));
   const tentativeCombo = selectedObjs.length > 0 ? buildCombination(selectedObjs) : null;
-  const isValidPlay =
-    tentativeCombo !== null &&
-    canPlay(tentativeCombo, isNewRound ? null : gameState.lastPlayedCombination);
+  const isValidPlay = tentativeCombo !== null && canPlay(tentativeCombo, isNewRound ? null : gameState.lastPlayedCombination);
   const canPassNow = !isNewRound && isHumanTurn && !isFinished;
   const playBtnValid = isValidPlay && isHumanTurn && !isFinished;
 
   const opponents = gameState.players
     .map((p, idx) => ({ p, idx }))
     .filter(({ idx }) => idx !== humanIdx);
-
   const totalOpponents = opponents.length;
 
   const handlePlay = () => {
@@ -542,14 +524,7 @@ export default function GameScreen() {
   const handleQuit = () => {
     Alert.alert("Abbandona", "Vuoi uscire dalla partita?", [
       { text: "Annulla", style: "cancel" },
-      {
-        text: "Esci",
-        style: "destructive",
-        onPress: () => {
-          resetGame();
-          router.replace("/");
-        },
-      },
+      { text: "Esci", style: "destructive", onPress: () => { resetGame(); router.replace("/"); } },
     ]);
   };
 
@@ -559,657 +534,404 @@ export default function GameScreen() {
     selectCard(id);
   };
 
-  const handleClearSelection = () => {
-    selectedCards.forEach((id) => selectCard(id));
-  };
+  const handleClear = () => selectedCards.forEach((id) => selectCard(id));
 
   const topPad = Platform.OS === "web" ? 67 : insets.top;
   const bottomPad = Platform.OS === "web" ? 34 : insets.bottom;
+  const leftPad = Platform.OS === "web" ? 0 : insets.left;
+  const rightPad = Platform.OS === "web" ? 0 : insets.right;
 
-  const tableW = isLandscape ? Math.min(W * 0.4, 280) : W * 0.76;
-  const tableH = isLandscape ? Math.min(H * 0.52, 200) : tableW * 0.7;
+  const TOP_BAR_H = 44;
+  const BOTTOM_AREA_H = CARD_H + 20 + bottomPad;
+  const gameAreaH = H - topPad - TOP_BAR_H - BOTTOM_AREA_H;
 
-  return (
-    <View style={[styles.container, { paddingTop: topPad }]}>
-      <LinearGradient
-        colors={["#072A18", "#0B3B25", "#062012"]}
-        locations={[0, 0.5, 1]}
-        style={StyleSheet.absoluteFill}
-      />
+  const TOP_OPP_SPACE = 68;
+  const tableX = leftPad + 8;
+  const tableW = W - leftPad - rightPad - 16;
+  const tableTop = TOP_OPP_SPACE;
+  const tableH = Math.max(100, gameAreaH - TOP_OPP_SPACE - 4);
 
-      <View style={styles.topBar}>
-        <Pressable onPress={handleQuit} style={styles.quitBtn} hitSlop={12}>
-          <Ionicons name="close" size={18} color="rgba(240,234,214,0.5)" />
-        </Pressable>
+  const sideOppY = tableTop + tableH * 0.5 - 55;
 
-        <View style={styles.turnIndicator}>
-          <View
-            style={[
-              styles.turnDot,
-              { backgroundColor: isHumanTurn ? Colors.gold : Colors.accent },
-            ]}
-          />
-          <Text style={styles.turnText} numberOfLines={1}>
-            {isHumanTurn
-              ? isFinished
-                ? "Aspetti gli altri..."
-                : "Il tuo turno"
-              : `${currentPlayer.name} pensa...`}
-          </Text>
-        </View>
+  const handAvailW = W - leftPad - rightPad - PASS_BTN_W - PLAY_BTN_W - 24;
 
-        {isHumanTurn && !isFinished ? (
-          <TimerRing seconds={timeLeft} total={HUMAN_TURN_SECONDS} active />
-        ) : (
-          <View style={styles.cardCountBadge}>
-            <Text style={styles.cardCountText}>{humanPlayer?.hand.length ?? 0}</Text>
-          </View>
-        )}
-      </View>
-
-      <View style={[styles.gameArea, isLandscape && styles.gameAreaLandscape]}>
-        {isLandscape ? (
-          <LandscapeLayout
-            opponents={opponents}
-            humanIdx={humanIdx}
-            totalOpponents={totalOpponents}
-            gameState={gameState}
-            playedPile={playedPile}
-            roundWinnerName={roundWinnerName}
-            tableW={tableW}
-            tableH={tableH}
-            sortedHand={sortedHand}
-            selectedCards={selectedCards}
-            selectedObjs={selectedObjs}
-            tentativeCombo={tentativeCombo}
-            isHumanTurn={isHumanTurn}
-            isFinished={isFinished}
-            playBtnValid={playBtnValid}
-            canPassNow={canPassNow}
-            bottomPad={bottomPad}
-            W={W}
-            onCardPress={handleCardPress}
-            onPlay={handlePlay}
-            onPass={handlePass}
-            onClear={handleClearSelection}
-          />
-        ) : (
-          <PortraitLayout
-            opponents={opponents}
-            humanIdx={humanIdx}
-            totalOpponents={totalOpponents}
-            gameState={gameState}
-            playedPile={playedPile}
-            roundWinnerName={roundWinnerName}
-            tableW={tableW}
-            tableH={tableH}
-            sortedHand={sortedHand}
-            selectedCards={selectedCards}
-            selectedObjs={selectedObjs}
-            tentativeCombo={tentativeCombo}
-            isHumanTurn={isHumanTurn}
-            isFinished={isFinished}
-            playBtnValid={playBtnValid}
-            canPassNow={canPassNow}
-            bottomPad={bottomPad}
-            W={W}
-            onCardPress={handleCardPress}
-            onPlay={handlePlay}
-            onPass={handlePass}
-            onClear={handleClearSelection}
-          />
-        )}
-      </View>
-    </View>
-  );
-}
-
-type LayoutProps = {
-  opponents: { p: Player; idx: number }[];
-  humanIdx: number;
-  totalOpponents: number;
-  gameState: NonNullable<ReturnType<typeof useGame>["gameState"]>;
-  playedPile: Combination[];
-  roundWinnerName: string | null;
-  tableW: number;
-  tableH: number;
-  sortedHand: ReturnType<typeof sortHand>;
-  selectedCards: string[];
-  selectedObjs: Card[];
-  tentativeCombo: Combination | null;
-  isHumanTurn: boolean;
-  isFinished: boolean;
-  playBtnValid: boolean;
-  canPassNow: boolean;
-  bottomPad: number;
-  W: number;
-  onCardPress: (id: string) => void;
-  onPlay: () => void;
-  onPass: () => void;
-  onClear: () => void;
-};
-
-function PortraitLayout({
-  opponents,
-  humanIdx,
-  totalOpponents,
-  gameState,
-  playedPile,
-  roundWinnerName,
-  tableW,
-  tableH,
-  sortedHand,
-  selectedCards,
-  selectedObjs,
-  tentativeCombo,
-  isHumanTurn,
-  isFinished,
-  playBtnValid,
-  canPassNow,
-  bottomPad,
-  W,
-  onCardPress,
-  onPlay,
-  onPass,
-  onClear,
-}: LayoutProps) {
-  const topOpp = opponents.find((o, i) => {
-    const steps = ((o.idx - humanIdx) % gameState.players.length + gameState.players.length) % gameState.players.length;
+  const topOpp = opponents.find((o) => {
+    const steps = ((o.idx - humanIdx + gameState.players.length) % gameState.players.length);
     return getOpponentPosition(steps, totalOpponents) === "top";
   });
   const leftOpp = opponents.find((o) => {
-    const steps = ((o.idx - humanIdx) % gameState.players.length + gameState.players.length) % gameState.players.length;
+    const steps = ((o.idx - humanIdx + gameState.players.length) % gameState.players.length);
     return getOpponentPosition(steps, totalOpponents) === "left";
   });
   const rightOpp = opponents.find((o) => {
-    const steps = ((o.idx - humanIdx) % gameState.players.length + gameState.players.length) % gameState.players.length;
+    const steps = ((o.idx - humanIdx + gameState.players.length) % gameState.players.length);
     return getOpponentPosition(steps, totalOpponents) === "right";
   });
 
+  const urgent = timeLeft <= 5 && isHumanTurn && !isFinished;
+
   return (
-    <View style={{ flex: 1 }}>
-      <View style={styles.compassTable}>
-        {topOpp && (
-          <View style={styles.topOppWrapper}>
-            <OpponentBadge
-              player={topOpp.p}
-              isActive={topOpp.idx === gameState.currentTurnIndex}
-              position="top"
-            />
-          </View>
-        )}
+    <View style={[styles.root, { paddingTop: topPad, paddingLeft: leftPad, paddingRight: rightPad }]}>
+      <LinearGradient colors={["#041A0E", "#072A18", "#041A0E"]} style={StyleSheet.absoluteFill} />
 
-        <View style={styles.sideRow}>
-          {leftOpp ? (
-            <View style={styles.leftOppWrapper}>
-              <OpponentBadge
-                player={leftOpp.p}
-                isActive={leftOpp.idx === gameState.currentTurnIndex}
-                position="left"
-              />
-            </View>
-          ) : (
-            <View style={styles.sideOppPlaceholder} />
+      <View style={[styles.topBar, { height: TOP_BAR_H }]}>
+        <Pressable onPress={handleQuit} style={styles.quitBtn} hitSlop={10}>
+          <Ionicons name="close" size={17} color="rgba(240,234,214,0.45)" />
+        </Pressable>
+
+        <View style={styles.turnPill}>
+          <View style={[styles.turnDot, { backgroundColor: isHumanTurn ? Colors.gold : Colors.accent }]} />
+          <Text style={styles.turnText} numberOfLines={1}>
+            {isHumanTurn
+              ? isFinished ? "Aspetti gli altri..." : "Il tuo turno"
+              : `${currentPlayer.name} pensa...`}
+          </Text>
+          {isHumanTurn && !isFinished && (
+            <Text style={[styles.timerNum, urgent && styles.timerUrgent]}>{timeLeft}</Text>
           )}
+        </View>
 
-          <PlayedPile
-            history={playedPile}
-            roundWinnerName={roundWinnerName}
-            tableW={tableW}
-            tableH={tableH}
-          />
-
-          {rightOpp ? (
-            <View style={styles.rightOppWrapper}>
-              <OpponentBadge
-                player={rightOpp.p}
-                isActive={rightOpp.idx === gameState.currentTurnIndex}
-                position="right"
-              />
-            </View>
-          ) : (
-            <View style={styles.sideOppPlaceholder} />
-          )}
+        <View style={styles.cardCountPill}>
+          <Text style={styles.cardCountNum}>{humanPlayer?.hand.length ?? 0}</Text>
         </View>
       </View>
 
-      <PlayerBottomArea
-        sortedHand={sortedHand}
-        selectedCards={selectedCards}
-        selectedObjs={selectedObjs}
-        tentativeCombo={tentativeCombo}
-        isHumanTurn={isHumanTurn}
-        isFinished={isFinished}
-        playBtnValid={playBtnValid}
-        canPassNow={canPassNow}
-        bottomPad={bottomPad}
-        W={W}
-        onCardPress={onCardPress}
-        onPlay={onPlay}
-        onPass={onPass}
-        onClear={onClear}
-        humanHandLength={0}
-        finishPosition={undefined}
-      />
-    </View>
-  );
-}
+      <View style={[styles.gameArea, { height: gameAreaH }]}>
+        <View
+          style={[
+            styles.table,
+            {
+              left: tableX,
+              top: tableTop,
+              width: tableW,
+              height: tableH,
+            },
+          ]}
+        >
+          <LinearGradient
+            colors={[Colors.feltLight, Colors.felt, Colors.feltDark]}
+            style={StyleSheet.absoluteFill}
+          />
+          <View style={[styles.tableBorder, { borderRadius: 20 }]} />
 
-function LandscapeLayout({
-  opponents,
-  humanIdx,
-  totalOpponents,
-  gameState,
-  playedPile,
-  roundWinnerName,
-  tableW,
-  tableH,
-  sortedHand,
-  selectedCards,
-  selectedObjs,
-  tentativeCombo,
-  isHumanTurn,
-  isFinished,
-  playBtnValid,
-  canPassNow,
-  bottomPad,
-  W,
-  onCardPress,
-  onPlay,
-  onPass,
-  onClear,
-}: LayoutProps) {
-  const leftOpp = opponents.find((o) => {
-    const steps = ((o.idx - humanIdx) % gameState.players.length + gameState.players.length) % gameState.players.length;
-    const pos = getOpponentPosition(steps, totalOpponents);
-    return pos === "left" || (totalOpponents === 1 && pos === "top");
-  });
-  const rightOpp = opponents.find((o) => {
-    const steps = ((o.idx - humanIdx) % gameState.players.length + gameState.players.length) % gameState.players.length;
-    return getOpponentPosition(steps, totalOpponents) === "right";
-  });
-  const topOpp = opponents.find((o) => {
-    const steps = ((o.idx - humanIdx) % gameState.players.length + gameState.players.length) % gameState.players.length;
-    const pos = getOpponentPosition(steps, totalOpponents);
-    return totalOpponents === 3 && pos === "top";
-  });
+          <PlayedPile history={playedPile} roundWinner={roundWinner} />
+        </View>
 
-  return (
-    <View style={{ flex: 1, flexDirection: "row" }}>
-      <View style={styles.landscapeLeft}>
+        {topOpp && (
+          <TopOpponent
+            player={topOpp.p}
+            isActive={topOpp.idx === gameState.currentTurnIndex}
+            tableW={tableW}
+            tableX={tableX}
+          />
+        )}
+
         {leftOpp && (
-          <OpponentBadge
+          <SideOpponent
             player={leftOpp.p}
             isActive={leftOpp.idx === gameState.currentTurnIndex}
             position="left"
+            y={sideOppY}
           />
         )}
-      </View>
 
-      <View style={styles.landscapeCenter}>
-        {topOpp && (
-          <View style={{ marginBottom: 6 }}>
-            <OpponentBadge
-              player={topOpp.p}
-              isActive={topOpp.idx === gameState.currentTurnIndex}
-              position="top"
-            />
-          </View>
-        )}
-        <PlayedPile
-          history={playedPile}
-          roundWinnerName={roundWinnerName}
-          tableW={tableW}
-          tableH={tableH}
-        />
-        <PlayerBottomArea
-          sortedHand={sortedHand}
-          selectedCards={selectedCards}
-          selectedObjs={selectedObjs}
-          tentativeCombo={tentativeCombo}
-          isHumanTurn={isHumanTurn}
-          isFinished={isFinished}
-          playBtnValid={playBtnValid}
-          canPassNow={canPassNow}
-          bottomPad={bottomPad}
-          W={W * 0.6}
-          onCardPress={onCardPress}
-          onPlay={onPlay}
-          onPass={onPass}
-          onClear={onClear}
-          humanHandLength={0}
-          finishPosition={undefined}
-          compact
-        />
-      </View>
-
-      <View style={styles.landscapeRight}>
         {rightOpp && (
-          <OpponentBadge
+          <SideOpponent
             player={rightOpp.p}
             isActive={rightOpp.idx === gameState.currentTurnIndex}
             position="right"
+            y={sideOppY}
           />
         )}
       </View>
-    </View>
-  );
-}
 
-function PlayerBottomArea({
-  sortedHand,
-  selectedCards,
-  selectedObjs,
-  tentativeCombo,
-  isHumanTurn,
-  isFinished,
-  playBtnValid,
-  canPassNow,
-  bottomPad,
-  W,
-  onCardPress,
-  onPlay,
-  onPass,
-  onClear,
-  compact,
-}: LayoutProps & { humanHandLength: number; finishPosition: number | undefined; compact?: boolean }) {
-  return (
-    <View style={[styles.playerArea, { paddingBottom: bottomPad + 8 }]}>
-      {selectedObjs.length > 0 && (
-        <StagingArea cards={selectedObjs} combo={tentativeCombo} onClear={onClear} />
-      )}
-
-      <View style={[styles.actionRow, compact && { paddingHorizontal: 8 }]}>
+      <View style={[styles.bottomArea, { height: BOTTOM_AREA_H, paddingBottom: bottomPad }]}>
         <Pressable
-          onPress={onPass}
+          onPress={handlePass}
           disabled={!canPassNow}
-          style={[styles.passBtn, !canPassNow && styles.btnDisabled]}
+          style={[styles.passBtn, !canPassNow && styles.passBtnDisabled]}
         >
-          <Ionicons
-            name="arrow-undo"
-            size={16}
-            color={canPassNow ? Colors.textSecondary : Colors.textMuted}
-          />
-          <Text style={[styles.passBtnText, !canPassNow && { color: Colors.textMuted }]}>
-            Passa
-          </Text>
+          <Text style={[styles.passBtnText, !canPassNow && styles.passBtnTextDim]}>PASSA</Text>
         </Pressable>
 
+        {isFinished ? (
+          <View style={[styles.handWrap, { width: handAvailW, justifyContent: "center", flexDirection: "row", gap: 8 }]}>
+            <Ionicons name="trophy" size={20} color={Colors.gold} />
+            <Text style={styles.finishedTxt}>Hai finito! Aspetti gli altri...</Text>
+          </View>
+        ) : (
+          <StraightHand
+            cards={sortedHand}
+            selectedIds={selectedCards}
+            onPress={handleCardPress}
+            disabled={!isHumanTurn}
+            availW={handAvailW}
+          />
+        )}
+
         <Pressable
-          onPress={onPlay}
-          disabled={!playBtnValid}
-          style={[styles.playBtn, !playBtnValid && styles.playBtnDisabled]}
+          onPress={playBtnValid ? handlePlay : undefined}
+          style={[styles.playBtn, !playBtnValid && styles.playBtnDim]}
         >
           {playBtnValid ? (
             <LinearGradient
               colors={[Colors.goldLight, Colors.gold, Colors.goldDark]}
               start={{ x: 0, y: 0 }}
               end={{ x: 1, y: 1 }}
-              style={styles.playBtnInner}
+              style={styles.playBtnGrad}
             >
-              <Ionicons name="play" size={16} color="#0A1F18" />
-              <Text style={styles.playBtnTextActive}>
-                {`Gioca${selectedCards.length > 1 ? ` (${selectedCards.length})` : ""}`}
-              </Text>
+              <Text style={styles.playBtnText}>GIOCA</Text>
+              {selectedCards.length > 1 && (
+                <Text style={styles.playBtnCount}>{selectedCards.length}</Text>
+              )}
             </LinearGradient>
           ) : (
-            <View style={styles.playBtnInner}>
-              <Ionicons name="play" size={16} color={Colors.textMuted} />
+            <View style={styles.playBtnGrad}>
               <Text style={styles.playBtnTextDim}>
                 {!isHumanTurn || isFinished
                   ? "—"
                   : selectedCards.length === 0
-                  ? "Seleziona carte"
+                  ? "GIOCA"
                   : tentativeCombo === null
-                  ? "Combinazione invalida"
-                  : "Carta troppo bassa"}
+                  ? "INVALIDA"
+                  : "TROPPO\nBASSA"}
               </Text>
             </View>
           )}
         </Pressable>
       </View>
-
-      {isFinished ? (
-        <View style={styles.finishedBanner}>
-          <Ionicons name="trophy" size={18} color={Colors.gold} />
-          <Text style={styles.finishedText}>Hai finito! Aspetti gli altri...</Text>
-        </View>
-      ) : (
-        <FanHand
-          cards={sortedHand}
-          selectedIds={selectedCards}
-          onCardPress={onCardPress}
-          disabled={!isHumanTurn}
-          W={W}
-        />
-      )}
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: "#072A18" },
+  root: {
+    flex: 1,
+    backgroundColor: "#041A0E",
+    overflow: "hidden",
+  },
 
   topBar: {
     flexDirection: "row",
     alignItems: "center",
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-    gap: 10,
+    paddingHorizontal: 10,
+    gap: 8,
   },
   quitBtn: {
-    width: 34,
-    height: 34,
-    borderRadius: 17,
-    backgroundColor: "rgba(0,0,0,0.25)",
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: "rgba(0,0,0,0.3)",
     alignItems: "center",
     justifyContent: "center",
   },
-  turnIndicator: {
+  turnPill: {
     flex: 1,
     flexDirection: "row",
     alignItems: "center",
-    justifyContent: "center",
-    gap: 7,
-    backgroundColor: "rgba(0,0,0,0.2)",
-    borderRadius: 20,
-    paddingVertical: 7,
-    paddingHorizontal: 14,
+    backgroundColor: "rgba(0,0,0,0.25)",
+    borderRadius: 16,
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+    gap: 6,
   },
-  turnDot: {
-    width: 7,
-    height: 7,
-    borderRadius: 3.5,
-  },
+  turnDot: { width: 6, height: 6, borderRadius: 3 },
   turnText: {
     fontFamily: "Rajdhani_600SemiBold",
+    fontSize: 13,
+    color: Colors.text,
+    flex: 1,
+  },
+  timerNum: {
+    fontFamily: "Rajdhani_700Bold",
     fontSize: 14,
-    color: Colors.text,
-    letterSpacing: 0.3,
-  },
-  cardCountBadge: {
-    width: 34,
-    height: 34,
-    borderRadius: 17,
-    backgroundColor: "rgba(0,0,0,0.25)",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  cardCountText: {
-    fontFamily: "Rajdhani_700Bold",
-    fontSize: 16,
     color: Colors.gold,
+    minWidth: 20,
+    textAlign: "right",
   },
-
-  gameArea: { flex: 1 },
-  gameAreaLandscape: { flexDirection: "row" },
-
-  compassTable: {
-    flex: 1,
-    alignItems: "center",
-    justifyContent: "center",
-    paddingVertical: 8,
-  },
-  topOppWrapper: {
-    marginBottom: 8,
-    alignItems: "center",
-  },
-  sideRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 8,
-    flex: 1,
-  },
-  leftOppWrapper: {
-    alignItems: "flex-end",
-  },
-  rightOppWrapper: {
-    alignItems: "flex-start",
-  },
-  sideOppPlaceholder: {
-    width: 90,
-  },
-
-  landscapeLeft: {
-    width: 110,
-    justifyContent: "center",
-    alignItems: "center",
-    paddingHorizontal: 4,
-  },
-  landscapeCenter: {
-    flex: 1,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  landscapeRight: {
-    width: 110,
-    justifyContent: "center",
-    alignItems: "center",
-    paddingHorizontal: 4,
-  },
-
-  opponentBadge: {
+  timerUrgent: { color: "#FF5252" },
+  cardCountPill: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
     backgroundColor: "rgba(0,0,0,0.3)",
-    borderRadius: 12,
-    paddingHorizontal: 10,
-    paddingVertical: 8,
     alignItems: "center",
-    gap: 6,
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.07)",
-    maxWidth: 110,
+    justifyContent: "center",
   },
-  opponentBadgeActive: {
-    borderColor: Colors.gold,
-    backgroundColor: "rgba(201,168,76,0.12)",
-  },
-  opponentBadgeVertical: {
-    maxWidth: 105,
-  },
-  opponentInfo: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 5,
-  },
-  opponentDot: {
-    width: 5,
-    height: 5,
-    borderRadius: 2.5,
-  },
-  opponentName: {
-    fontFamily: "Rajdhani_600SemiBold",
-    fontSize: 12,
-    color: Colors.text,
-    maxWidth: 60,
-  },
-  opponentCount: {
+  cardCountNum: {
     fontFamily: "Rajdhani_700Bold",
-    fontSize: 12,
-    color: Colors.textMuted,
-  },
-  finishBadge: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 2,
-  },
-  finishBadgeText: {
-    fontFamily: "Rajdhani_700Bold",
-    fontSize: 10,
+    fontSize: 15,
     color: Colors.gold,
   },
-  miniHand: {
-    flexDirection: "row",
-    alignItems: "flex-end",
-    height: 52,
-    justifyContent: "center",
-    paddingHorizontal: 2,
-  },
-  miniHandVertical: {
-    flexDirection: "column",
-    height: "auto" as any,
-    width: 42,
-  },
-  miniCardHorizontal: {},
-  miniCardVertical: {},
 
-  tableEllipse: {
+  gameArea: {
+    position: "relative",
+    overflow: "visible",
+  },
+
+  table: {
+    position: "absolute",
+    borderRadius: 20,
     overflow: "hidden",
+    borderWidth: 3,
+    borderColor: "rgba(201,168,76,0.25)",
     alignItems: "center",
     justifyContent: "center",
-    borderWidth: 2,
-    borderColor: "rgba(201,168,76,0.22)",
   },
-  tableEllipseBorder: {
+  tableBorder: {
     position: "absolute",
     top: 6,
     left: 6,
     right: 6,
     bottom: 6,
-    borderWidth: 1,
-    borderColor: "rgba(201,168,76,0.1)",
+    borderWidth: 1.5,
+    borderColor: "rgba(201,168,76,0.12)",
   },
-  roundWinnerBanner: {
+
+  topOppContainer: {
     position: "absolute",
-    top: 12,
+    top: 0,
+    alignItems: "center",
+    width: 110,
+  },
+  topOppInner: {
+    alignItems: "center",
+    gap: 3,
+  },
+
+  sideOppContainer: {
+    position: "absolute",
     flexDirection: "row",
     alignItems: "center",
-    gap: 5,
+    gap: 4,
+  },
+  sideOppLeft: { left: 2 },
+  sideOppRight: { right: 2, flexDirection: "row-reverse" },
+  sideOppInner: {
+    alignItems: "center",
+    gap: 3,
+  },
+
+  oppName: {
+    fontFamily: "Rajdhani_600SemiBold",
+    fontSize: 10,
+    color: "rgba(240,234,214,0.7)",
+    maxWidth: 70,
+    textAlign: "center",
+  },
+
+  avatarRing: {
+    borderWidth: 2,
+    borderColor: "rgba(255,255,255,0.15)",
+    alignItems: "center",
+    justifyContent: "center",
+    position: "relative",
+  },
+  avatarRingActive: {
+    borderColor: Colors.gold,
+    shadowColor: Colors.gold,
+    shadowOpacity: 0.6,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 0 },
+  },
+  avatarCircle: {
+    backgroundColor: "rgba(11,59,37,0.9)",
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 1,
+    borderColor: "rgba(201,168,76,0.2)",
+  },
+  avatarInitials: {
+    fontFamily: "Rajdhani_700Bold",
+    color: Colors.text,
+    letterSpacing: 1,
+  },
+  finishBadge: {
+    position: "absolute",
+    bottom: -2,
+    right: -2,
+    flexDirection: "row",
+    alignItems: "center",
     backgroundColor: Colors.goldMuted,
-    borderRadius: 12,
+    borderRadius: 8,
+    paddingHorizontal: 4,
+    paddingVertical: 2,
+    gap: 2,
+  },
+  finishBadgeText: {
+    fontFamily: "Rajdhani_700Bold",
+    fontSize: 8,
+    color: Colors.gold,
+  },
+  cardCountBubble: {
+    position: "absolute",
+    bottom: -2,
+    right: -2,
+    backgroundColor: "rgba(0,0,0,0.7)",
+    borderRadius: 8,
+    minWidth: 16,
+    height: 16,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: 3,
+  },
+  cardCountBubbleText: {
+    fontFamily: "Rajdhani_700Bold",
+    fontSize: 9,
+    color: Colors.gold,
+  },
+
+  miniFan: {
+    flexDirection: "row",
+    alignItems: "flex-end",
+  },
+  miniFanDown: {
+    flexDirection: "column",
+    alignItems: "center",
+  },
+  miniFanCard: {},
+
+  playedPileArea: {
+    alignItems: "center",
+    justifyContent: "center",
+    minHeight: 80,
+  },
+  winnerBanner: {
+    position: "absolute",
+    top: -24,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    backgroundColor: Colors.goldMuted,
+    borderRadius: 10,
     paddingHorizontal: 10,
     paddingVertical: 4,
     borderWidth: 1,
     borderColor: Colors.goldDark,
-    zIndex: 20,
   },
-  roundWinnerText: {
+  winnerText: {
     fontFamily: "Rajdhani_600SemiBold",
     fontSize: 11,
     color: Colors.gold,
   },
   emptyTableText: {
     fontFamily: "Rajdhani_500Medium",
-    fontSize: 14,
-    color: "rgba(240,234,214,0.2)",
+    fontSize: 13,
+    color: "rgba(240,234,214,0.18)",
   },
-  pileContainer: {
+  pileStack: {
     alignItems: "center",
     justifyContent: "center",
-    position: "relative",
   },
-  pileLayer: {
-    position: "absolute",
-  },
-  playedCardsRow: {
+  pileLayer: { position: "absolute" },
+  playedCardRow: {
     flexDirection: "row",
     alignItems: "flex-end",
-    justifyContent: "center",
   },
-  comboChipTable: {
-    position: "absolute",
-    bottom: -36,
+  topComboLabel: {
+    marginTop: CARD_H + 8,
   },
+
   comboChip: {
     backgroundColor: "rgba(201,168,76,0.2)",
     borderRadius: 8,
@@ -1220,145 +942,116 @@ const styles = StyleSheet.create({
   },
   comboChipText: {
     fontFamily: "Rajdhani_700Bold",
-    fontSize: 11,
+    fontSize: 10,
     color: Colors.gold,
     letterSpacing: 1,
     textTransform: "uppercase",
   },
 
-  stagingArea: {
+  bottomArea: {
     flexDirection: "row",
-    alignItems: "center",
-    marginHorizontal: 14,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    backgroundColor: "rgba(201,168,76,0.08)",
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: "rgba(201,168,76,0.2)",
-    gap: 10,
-    minHeight: 52,
-  },
-  stagingCards: {
-    flexDirection: "row",
-    alignItems: "center",
-    flex: 1,
-  },
-  stagingInfo: {
     alignItems: "flex-end",
-  },
-  stagingInvalidText: {
-    fontFamily: "Rajdhani_500Medium",
-    fontSize: 11,
-    color: "rgba(255,100,100,0.8)",
-  },
-  stagingClear: {
-    padding: 4,
+    paddingHorizontal: 6,
+    gap: 6,
   },
 
-  playerArea: {
-    backgroundColor: "rgba(0,0,0,0.3)",
-    borderTopWidth: 1,
-    borderTopColor: "rgba(201,168,76,0.15)",
-    paddingTop: 10,
-    gap: 10,
-  },
-
-  fanContainer: {
+  passBtn: {
+    width: PASS_BTN_W,
+    height: CARD_H,
+    borderRadius: CARD_H / 2,
+    backgroundColor: "#5C1A1A",
     alignItems: "center",
-    justifyContent: "flex-end",
+    justifyContent: "center",
+    borderWidth: 2,
+    borderColor: "#8B2222",
+    shadowColor: "#000",
+    shadowOpacity: 0.4,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 8,
   },
-  fanRow: {
+  passBtnDisabled: {
+    backgroundColor: "rgba(50,20,20,0.5)",
+    borderColor: "rgba(139,34,34,0.3)",
+  },
+  passBtnText: {
+    fontFamily: "Rajdhani_700Bold",
+    fontSize: 14,
+    color: "#FF8A8A",
+    letterSpacing: 1,
+  },
+  passBtnTextDim: {
+    color: "rgba(255,138,138,0.35)",
+  },
+
+  playBtn: {
+    width: PLAY_BTN_W,
+    height: CARD_H,
+    borderRadius: CARD_H / 2,
+    overflow: "hidden",
+    shadowColor: Colors.gold,
+    shadowOpacity: 0.4,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 8,
+  },
+  playBtnDim: {
+    shadowOpacity: 0,
+  },
+  playBtnGrad: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "rgba(50,40,10,0.5)",
+    borderWidth: 2,
+    borderColor: "rgba(201,168,76,0.25)",
+    borderRadius: CARD_H / 2,
+    gap: 2,
+  },
+  playBtnText: {
+    fontFamily: "Rajdhani_700Bold",
+    fontSize: 14,
+    color: "#0A1F18",
+    letterSpacing: 1,
+  },
+  playBtnTextDim: {
+    fontFamily: "Rajdhani_600SemiBold",
+    fontSize: 10,
+    color: "rgba(201,168,76,0.35)",
+    letterSpacing: 0.5,
+    textAlign: "center",
+  },
+  playBtnCount: {
+    fontFamily: "Rajdhani_700Bold",
+    fontSize: 11,
+    color: "#0A1F18",
+  },
+
+  handWrap: {
+    alignItems: "center",
+    justifyContent: "center",
+    height: CARD_H,
+    flexDirection: "row",
+    gap: 6,
+  },
+  handRow: {
     position: "relative",
-    height: 90,
+    height: CARD_H,
     alignSelf: "center",
   },
-  fanCardWrap: {
+  handCardWrap: {
     position: "absolute",
     bottom: 0,
   },
 
-  emptyHand: {
-    height: 90,
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 6,
-  },
   emptyHandText: {
-    fontFamily: "Rajdhani_600SemiBold",
-    fontSize: 15,
-    color: Colors.gold,
-  },
-
-  finishedBanner: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 8,
-    paddingVertical: 10,
-    marginHorizontal: 14,
-    backgroundColor: Colors.goldMuted,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: Colors.goldDark,
-  },
-  finishedText: {
     fontFamily: "Rajdhani_600SemiBold",
     fontSize: 13,
     color: Colors.gold,
   },
-
-  actionRow: {
-    flexDirection: "row",
-    gap: 10,
-    paddingHorizontal: 14,
-  },
-  passBtn: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-    paddingVertical: 13,
-    paddingHorizontal: 18,
-    borderRadius: 12,
-    backgroundColor: "rgba(255,255,255,0.06)",
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.08)",
-  },
-  passBtnText: {
+  finishedTxt: {
     fontFamily: "Rajdhani_600SemiBold",
-    fontSize: 15,
-    color: Colors.textSecondary,
+    fontSize: 12,
+    color: Colors.gold,
   },
-  playBtn: {
-    flex: 1,
-    borderRadius: 12,
-    overflow: "hidden",
-  },
-  playBtnDisabled: {
-    opacity: 0.55,
-    backgroundColor: "rgba(255,255,255,0.04)",
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.07)",
-  },
-  playBtnInner: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 8,
-    paddingVertical: 13,
-    paddingHorizontal: 10,
-    backgroundColor: "rgba(255,255,255,0.04)",
-  },
-  playBtnTextActive: {
-    fontFamily: "Rajdhani_700Bold",
-    fontSize: 16,
-    color: "#0A1F18",
-    letterSpacing: 0.5,
-  },
-  playBtnTextDim: {
-    fontFamily: "Rajdhani_500Medium",
-    fontSize: 14,
-    color: Colors.textMuted,
-  },
-  btnDisabled: { opacity: 0.45 },
 });
