@@ -82,6 +82,14 @@ export function GameProvider({ children }: { children: ReactNode }) {
     if (!canPlay(combo, isNewRound ? null : gameState.lastPlayedCombination))
       return false;
 
+    // First play of the game must include the 3♠
+    if (!gameState.firstPlayMade) {
+      const has3Spades = combo.cards.some(
+        (c) => c.rank === "3" && c.suit === "spades"
+      );
+      if (!has3Spades) return false;
+    }
+
     const newState = processPlay(gameState, combo);
     setLastRoundWinner(null);
     setGameState(newState);
@@ -113,11 +121,17 @@ export function GameProvider({ children }: { children: ReactNode }) {
       .filter((_, i) => i !== gameState.currentTurnIndex)
       .map((p) => p.hand.length);
 
+    // First play must include the 3♠
+    const requireCard = !gameState.firstPlayMade
+      ? currentPlayer.hand.find((c) => c.rank === "3" && c.suit === "spades")
+      : undefined;
+
     const play = aiChoosePlay(
       currentPlayer,
       isNewRound ? null : gameState.lastPlayedCombination,
       isNewRound,
-      otherCounts
+      otherCounts,
+      requireCard
     );
 
     if (play) {

@@ -32,7 +32,7 @@ const FAQS: FAQ[] = [
   {
     question: "Chi inizia per primo?",
     answer:
-      "Il giocatore che ha il 3 di cuori (♥3) inizia sempre per primo e deve giocare quella carta come prima mossa. Il giro prosegue in senso orario.",
+      "Il giocatore che ha il 3 di picche (♠3) inizia sempre per primo. La sua prima giocata DEVE includere il 3♠ — può giocare il 3 da solo, in coppia, tris o come parte di una scala, purché il 3♠ sia compreso. Il giro prosegue in senso orario.",
   },
   {
     question: "Qual è la forza delle carte?",
@@ -42,12 +42,17 @@ const FAQS: FAQ[] = [
   {
     question: "Quali combinazioni posso giocare?",
     answer:
-      "• Carta singola: una qualsiasi carta\n• Coppia: due carte dello stesso valore\n• Tris: tre carte dello stesso valore\n• Scala: tre o più carte consecutive (es. 7-8-9 o J-Q-K). Il 2 NON può essere usato nelle scale.",
+      "• Singola: una qualsiasi carta\n• Coppia: due carte dello stesso valore\n• Tris: tre carte dello stesso valore\n• Scala: tre o più carte consecutive\n• Bomba: quattro carte dello stesso valore (batte tutto!)\n• Scala Reale: scala con tutte le carte dello stesso seme (batte anche la bomba!)",
+  },
+  {
+    question: "Come funzionano le scale?",
+    answer:
+      "Una scala è una sequenza di 3 o più carte consecutive per valore.\n\nLa scala più bassa possibile è A-2-3-4-5.\nLa scala più alta possibile è 10-J-Q-K-A.\n\nDue scale si confrontano sempre sulla carta più alta della sequenza. Per battere una scala devi giocare una scala della stessa lunghezza ma più alta.",
   },
   {
     question: "Come funzionano i turni?",
     answer:
-      "Devi giocare la stessa tipo di combinazione del giocatore precedente, ma di valore superiore. Oppure puoi passare il tuo turno.\n\nEsempio: se viene giocata una coppia di 9, puoi rispondere solo con una coppia di valore superiore (10, J, Q, K, A, 2 o Joker).",
+      "Devi giocare la stessa tipo di combinazione del giocatore precedente, ma STRETTAMENTE più alta.\n\nEsempio: se viene giocata una coppia di 9, devi rispondere con una coppia di 10 o superiore. Una coppia di 9 uguale NON è valida — deve essere superiore.",
   },
   {
     question: "Quando si vince un round?",
@@ -57,7 +62,17 @@ const FAQS: FAQ[] = [
   {
     question: "Cosa sono i Joker?",
     answer:
-      "I Joker sono le carte più forti del mazzo:\n• Joker Colorato ★: il più forte in assoluto\n• Joker B/N ☆: secondo per forza\n\nI Joker battono qualsiasi altra carta, incluso il 2.",
+      "I Joker sono le carte più forti del mazzo nelle combinazioni normali:\n• Joker Colorato ★: il più forte in assoluto\n• Joker B/N ☆: secondo per forza\n\nAttenzione: un Joker giocato come carta singola può essere battuto da una Bomba!",
+  },
+  {
+    question: "Cos'è una Bomba?",
+    answer:
+      "La Bomba è quando giochi 4 carte dello stesso valore (es. 7-7-7-7). È una mossa rarissima e potentissima:\n\n• Batte qualsiasi singola, coppia, tris, scala e persino i Joker\n• Una Bomba più alta (es. 8-8-8-8) batte una Bomba più bassa (7-7-7-7)\n• L'unica cosa che batte la Bomba è la Scala Reale",
+  },
+  {
+    question: "Cos'è una Scala Reale?",
+    answer:
+      "La Scala Reale è una scala in cui tutte le carte hanno lo stesso seme (es. 3♠-4♠-5♠-6♠-7♠).\n\n• Batte qualsiasi altra combinazione, inclusa la Bomba più forte (2-2-2-2)\n• Una Scala Reale più alta batte una più bassa\n• È la combinazione più potente del gioco!",
   },
   {
     question: "Come funziona la modalità a coppie?",
@@ -77,7 +92,7 @@ const FAQS: FAQ[] = [
   {
     question: "Come funziona l'AI?",
     answer:
-      "L'AI ha tre livelli:\n• Facile: gioca la prima combinazione valida\n• Medio: gioca sempre la combinazione più bassa possibile per conservare le carte forti\n• Difficile: usa una strategia avanzata, conserva il 2 e i Joker, e diventa aggressiva quando gli avversari sono vicini a vincere",
+      "L'AI ha tre livelli:\n• Facile: gioca la prima combinazione valida\n• Medio: gioca sempre la combinazione più bassa possibile, conserva le carte forti\n• Difficile: strategia avanzata — conserva 2, Joker e Bombe; diventa aggressiva quando un avversario è vicino a vincere",
   },
   {
     question: "Il gioco finisce subito quando termino le mie carte?",
@@ -191,9 +206,11 @@ export default function RulesScreen() {
           <View style={styles.comboGrid}>
             {[
               { name: "Singola", desc: "1 carta qualsiasi", icon: "card" },
-              { name: "Coppia", desc: "2 carte stessa forza", icon: "copy" },
-              { name: "Tris", desc: "3 carte stessa forza", icon: "layers" },
-              { name: "Scala", desc: "3+ carte consecutive", icon: "trending-up" },
+              { name: "Coppia", desc: "2 carte dello stesso valore", icon: "copy" },
+              { name: "Tris", desc: "3 carte dello stesso valore", icon: "layers" },
+              { name: "Scala", desc: "3+ carte consecutive (A-2-3-4-5 → 10-J-Q-K-A)", icon: "trending-up" },
+              { name: "Bomba 💣", desc: "4 carte stesso valore · batte tutto", icon: "flash" },
+              { name: "Scala Reale ★", desc: "Scala stesso seme · batte anche la Bomba", icon: "star" },
             ].map((c) => (
               <View key={c.name} style={styles.comboCard}>
                 <Ionicons

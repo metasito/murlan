@@ -275,7 +275,7 @@ function PlayedPile({
             <View style={styles.comboLabel}>
               <View style={styles.comboChip}>
                 <Text style={styles.comboChipText}>
-                  {({ single: "Singola", pair: "Coppia", triple: "Tris", straight: "Scala" } as Record<string, string>)[topCombo.type]}
+                  {({ single: "Singola", pair: "Coppia", triple: "Tris", straight: "Scala", bomb: "💣 Bomba", royal_straight: "★ Scala Reale" } as Record<string, string>)[topCombo.type]}
                   {topCombo.cards.length > 2 ? ` ×${topCombo.cards.length}` : ""}
                 </Text>
               </View>
@@ -470,9 +470,11 @@ export default function GameScreen() {
   const sortedHand = sortHand(humanPlayer?.hand ?? []);
   const selectedObjs = sortedHand.filter((c) => selectedCards.includes(c.id));
   const tentativeCombo = selectedObjs.length > 0 ? buildCombination(selectedObjs) : null;
+  const requires3Spades = !gameState.firstPlayMade;
   const isValidPlay =
     tentativeCombo !== null &&
-    canPlay(tentativeCombo, isNewRound ? null : gameState.lastPlayedCombination);
+    canPlay(tentativeCombo, isNewRound ? null : gameState.lastPlayedCombination) &&
+    (!requires3Spades || tentativeCombo.cards.some((c) => c.rank === "3" && c.suit === "spades"));
   const canPassNow = !isNewRound && isHumanTurn && !isFinished;
   const playBtnValid = isValidPlay && isHumanTurn && !isFinished;
 
