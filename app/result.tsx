@@ -378,11 +378,11 @@ export default function ResultScreen() {
           style={StyleSheet.absoluteFill}
           pointerEvents="none"
         />
-        <Pressable onPress={handleHome} style={styles.homeBtn}>
+        <Pressable testID="btn-home" onPress={handleHome} style={styles.homeBtn}>
           <Ionicons name="home" size={18} color={Colors.textSecondary} />
           <Text style={styles.homeBtnText}>Home</Text>
         </Pressable>
-        <Pressable onPress={handleRematch} style={styles.rematchBtn}>
+        <Pressable testID="btn-rivincita" onPress={handleRematch} style={styles.rematchBtn}>
           <LinearGradient
             colors={[Colors.gold, Colors.goldDark]}
             start={{ x: 0, y: 0 }}

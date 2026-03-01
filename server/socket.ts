@@ -150,10 +150,15 @@ export function setupSocket(httpServer: HttpServer) {
       const roomId = socketRoomMap.get(socket.id);
       if (!roomId) return;
       const room = await storage.getRoomById(roomId);
-      if (!room || room.hostUserId !== userId || room.status !== "waiting") return;
+      if (!room || room.hostUserId !== userId || (room.status !== "waiting" && room.status !== "finished")) return;
 
       const players = await storage.getRoomPlayers(room.id);
       if (players.length < 2) { socket.emit("room:error", { message: "Servono almeno 2 giocatori" }); return; }
+
+      // Clear any existing game state when restarting from finished
+      if (activeGames.has(roomId)) {
+        activeGames.delete(roomId);
+      }
 
       // Build player setup for game engine
       const playerSetup = players.map((p) => ({

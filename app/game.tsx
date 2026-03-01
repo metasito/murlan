@@ -301,7 +301,7 @@ function PlayedPile({
   const topCombo = history.length > 0 ? history[history.length - 1] : null;
 
   return (
-    <View style={styles.pileArea}>
+    <View style={styles.pileArea} testID="pile-area">
       {roundWinner && (
         <Animated.View
           entering={FadeIn.duration(250)}
@@ -670,6 +670,7 @@ export default function GameScreen() {
       </View>
 
       <View
+        testID="game-table"
         style={[
           styles.table,
           {
@@ -747,6 +748,7 @@ export default function GameScreen() {
       </View>
 
       <Pressable
+        testID="btn-passa"
         onPress={handlePass}
         disabled={!canPassNow}
         style={[
@@ -764,6 +766,7 @@ export default function GameScreen() {
       </Pressable>
 
       <Pressable
+        testID="btn-gioca"
         onPress={playBtnValid ? handlePlay : undefined}
         style={[
           styles.playBtn,

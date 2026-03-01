@@ -39,6 +39,7 @@ interface OnlineGameContextValue {
   leaveRoom: () => void;
   setRoomGameMode: (mode: "free_for_all" | "teams") => void;
   startGame: () => void;
+  requestPlayAgain: () => void;
   playCards: (cardIds: string[]) => void;
   pass: () => void;
   sendReaction: (emoji: string) => void;
@@ -117,6 +118,10 @@ export function OnlineGameProvider({ userId, children }: { userId: string; child
     socketRef.current.emit("room:start");
   }, []);
 
+  const requestPlayAgain = useCallback(() => {
+    socketRef.current.emit("room:start");
+  }, []);
+
   const playCards = useCallback((cardIds: string[]) => {
     socketRef.current.emit("game:play", { cardIds });
   }, []);
@@ -145,6 +150,7 @@ export function OnlineGameProvider({ userId, children }: { userId: string; child
         leaveRoom,
         setRoomGameMode,
         startGame,
+        requestPlayAgain,
         playCards,
         pass,
         sendReaction,
