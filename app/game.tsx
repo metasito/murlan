@@ -16,6 +16,7 @@ import Animated, {
   withSpring,
   withTiming,
   withSequence,
+  withRepeat,
   Easing,
   runOnJS,
   FadeIn,
@@ -470,6 +471,11 @@ export default function GameScreen() {
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const prevComboRef = useRef<Combination | null>(null);
 
+  // Turn-highlighting animation values
+  const handScaleVal = useSharedValue(1);
+  const giocaPulseVal = useSharedValue(1);
+  const passaPulseVal = useSharedValue(1);
+
   useEffect(() => {
     if (Platform.OS !== "web") {
       ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.LANDSCAPE);
@@ -552,6 +558,49 @@ export default function GameScreen() {
       if (timerRef.current) clearInterval(timerRef.current);
     };
   }, [isHumanTurn, isFinished, gameState?.currentTurnIndex, gameState?.lastPlayedCombination]);
+
+  // Animate hand section: lift when it's the human's turn
+  useEffect(() => {
+    if (isHumanTurn && !isFinished) {
+      handScaleVal.value = withSpring(1.025, { damping: 14, stiffness: 180 });
+    } else {
+      handScaleVal.value = withTiming(1, { duration: 250 });
+    }
+  }, [isHumanTurn, isFinished]);
+
+  // Animate GIOCA button when a valid play exists
+  const prevSelectedLen = useRef(0);
+  useEffect(() => {
+    const hasSelection = selectedCards.length > 0 && isHumanTurn && !isFinished;
+    if (hasSelection && prevSelectedLen.current !== selectedCards.length) {
+      giocaPulseVal.value = withSequence(
+        withTiming(1.1, { duration: 120 }),
+        withSpring(1, { damping: 10, stiffness: 200 })
+      );
+    }
+    prevSelectedLen.current = selectedCards.length;
+  }, [selectedCards.length, isHumanTurn, isFinished]);
+
+  // Pulse PASSA button once when it becomes available
+  useEffect(() => {
+    const canPass = gameState?.lastPlayedCombination !== null && isHumanTurn && !isFinished;
+    if (canPass) {
+      passaPulseVal.value = withSequence(
+        withTiming(1.08, { duration: 200 }),
+        withSpring(1, { damping: 10, stiffness: 180 })
+      );
+    }
+  }, [gameState?.lastPlayedCombination, isHumanTurn, isFinished]);
+
+  const handSectionAnimStyle = useAnimatedStyle(() => ({
+    transform: [{ scale: handScaleVal.value }],
+  }));
+  const giocaAnimStyle = useAnimatedStyle(() => ({
+    transform: [{ scale: giocaPulseVal.value }],
+  }));
+  const passaAnimStyle = useAnimatedStyle(() => ({
+    transform: [{ scale: passaPulseVal.value }],
+  }));
 
   if (!gameState) {
     router.replace("/");
@@ -726,7 +775,7 @@ export default function GameScreen() {
             </View>
           </View>
 
-          <View style={[styles.handSection, { height: HAND_SECTION_H }]}>
+          <Animated.View style={[styles.handSection, { height: HAND_SECTION_H }, handSectionAnimStyle]}>
             {isFinished ? (
               <View style={styles.finishedRow}>
                 <Ionicons name="trophy" size={18} color={Colors.gold} />
@@ -743,66 +792,72 @@ export default function GameScreen() {
                 availW={handAvailW}
               />
             )}
-          </View>
+          </Animated.View>
         </View>
       </View>
 
-      <Pressable
-        testID="btn-passa"
-        onPress={handlePass}
-        disabled={!canPassNow}
+      <Animated.View
         style={[
           styles.passBtn,
-          {
-            left: leftPad + TABLE_M - 2,
-            bottom: bottomPad + TABLE_M - 2,
-          },
+          { left: leftPad + TABLE_M - 2, bottom: bottomPad + TABLE_M - 2 },
           !canPassNow && styles.passBtnDim,
+          passaAnimStyle,
         ]}
       >
-        <Text style={[styles.passBtnLabel, !canPassNow && styles.passBtnLabelDim]}>
-          PASSA
-        </Text>
-      </Pressable>
-
-      <Pressable
-        testID="btn-gioca"
-        onPress={playBtnValid ? handlePlay : undefined}
-        style={[
-          styles.playBtn,
-          {
-            right: rightPad + TABLE_M - 2,
-            bottom: bottomPad + TABLE_M - 2,
-          },
-          !playBtnValid && styles.playBtnDim,
-        ]}
-      >
-        {playBtnValid ? (
-          <LinearGradient
-            colors={[Colors.goldLight, Colors.gold, Colors.goldDark]}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 1 }}
-            style={styles.playBtnGrad}
-          >
-            <Text style={styles.playBtnLabel}>GIOCA</Text>
-            {selectedCards.length > 1 && (
-              <Text style={styles.playBtnSub}>{selectedCards.length} carte</Text>
-            )}
-          </LinearGradient>
-        ) : (
-          <View style={[styles.playBtnGrad, styles.playBtnGradDim]}>
-            <Text style={styles.playBtnLabelDim}>
-              {!isHumanTurn || isFinished
-                ? "GIOCA"
-                : selectedCards.length === 0
-                ? "GIOCA"
-                : tentativeCombo === null
-                ? "NON\nVALIDA"
-                : "TROPPO\nBASSA"}
+        <Pressable
+          testID="btn-passa"
+          onPress={handlePass}
+          disabled={!canPassNow}
+          style={StyleSheet.absoluteFill}
+        >
+          <View style={styles.passBtnInner}>
+            <Text style={[styles.passBtnLabel, !canPassNow && styles.passBtnLabelDim]}>
+              PASSA
             </Text>
           </View>
-        )}
-      </Pressable>
+        </Pressable>
+      </Animated.View>
+
+      <Animated.View
+        style={[
+          styles.playBtn,
+          { right: rightPad + TABLE_M - 2, bottom: bottomPad + TABLE_M - 2 },
+          !playBtnValid && styles.playBtnDim,
+          giocaAnimStyle,
+        ]}
+      >
+        <Pressable
+          testID="btn-gioca"
+          onPress={playBtnValid ? handlePlay : undefined}
+          style={StyleSheet.absoluteFill}
+        >
+          {playBtnValid ? (
+            <LinearGradient
+              colors={[Colors.goldLight, Colors.gold, Colors.goldDark]}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 1 }}
+              style={styles.playBtnGrad}
+            >
+              <Text style={styles.playBtnLabel}>GIOCA</Text>
+              {selectedCards.length > 1 && (
+                <Text style={styles.playBtnSub}>{selectedCards.length} carte</Text>
+              )}
+            </LinearGradient>
+          ) : (
+            <View style={[styles.playBtnGrad, styles.playBtnGradDim]}>
+              <Text style={styles.playBtnLabelDim}>
+                {!isHumanTurn || isFinished
+                  ? "GIOCA"
+                  : selectedCards.length === 0
+                  ? "GIOCA"
+                  : tentativeCombo === null
+                  ? "NON\nVALIDA"
+                  : "TROPPO\nBASSA"}
+              </Text>
+            </View>
+          )}
+        </Pressable>
+      </Animated.View>
 
       {flyInfo && (
         <FlyingCards
@@ -1137,6 +1192,11 @@ const styles = StyleSheet.create({
   },
   passBtnLabelDim: {
     color: "rgba(255,128,128,0.3)",
+  },
+  passBtnInner: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
   },
 
   playBtn: {

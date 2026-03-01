@@ -102,6 +102,8 @@ function PlayerRow({ index, config, onChange, isHuman, lobbyMode }: PlayerRowPro
   );
 }
 
+const ROUND_OPTIONS = [1, 3, 5, 7];
+
 export default function LobbyScreen() {
   const insets = useSafeAreaInsets();
   const { mode } = useLocalSearchParams<{ mode: LobbyMode }>();
@@ -111,6 +113,7 @@ export default function LobbyScreen() {
 
   const [playerCount, setPlayerCount] = useState(2);
   const [gameMode, setGameMode] = useState<GameMode>("free_for_all");
+  const [totalRounds, setTotalRounds] = useState(1);
 
   const getTeam = (i: number, count: number, gm: GameMode): "A" | "B" | undefined => {
     if (gm !== "teams" || count !== 4) return undefined;
@@ -159,7 +162,7 @@ export default function LobbyScreen() {
 
   const handleStart = () => {
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-    setupGame(players, gameMode);
+    setupGame(players, gameMode, totalRounds);
     router.replace("/game");
   };
 
@@ -250,6 +253,33 @@ export default function LobbyScreen() {
             </View>
           </View>
         )}
+
+        <View style={styles.section}>
+          <Text style={styles.sectionLabel}>MANCHE</Text>
+          <View style={styles.countRow}>
+            {ROUND_OPTIONS.map((n) => (
+              <Pressable
+                key={n}
+                onPress={() => { setTotalRounds(n); Haptics.selectionAsync(); }}
+                style={[styles.countBtn, totalRounds === n && styles.countBtnActive]}
+              >
+                <Text style={[styles.countBtnText, totalRounds === n && styles.countBtnTextActive]}>
+                  {n}
+                </Text>
+                {n > 1 && (
+                  <Text style={[styles.roundSubLabel, totalRounds === n && { color: Colors.gold }]}>
+                    manche
+                  </Text>
+                )}
+                {n === 1 && (
+                  <Text style={[styles.roundSubLabel, totalRounds === n && { color: Colors.gold }]}>
+                    partita
+                  </Text>
+                )}
+              </Pressable>
+            ))}
+          </View>
+        </View>
 
         <View style={styles.section}>
           <Text style={styles.sectionLabel}>GIOCATORI</Text>
@@ -371,6 +401,13 @@ const styles = StyleSheet.create({
   },
   countBtnTextActive: {
     color: Colors.gold,
+  },
+  roundSubLabel: {
+    fontFamily: "Inter_400Regular",
+    fontSize: 9,
+    color: Colors.textMuted,
+    marginTop: 2,
+    letterSpacing: 0.5,
   },
   modeRow: {
     flexDirection: "row",

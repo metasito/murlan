@@ -30,12 +30,36 @@ export interface PlayerSetupConfig {
   team?: "A" | "B";
 }
 
+export interface RoundResult {
+  round: number;
+  rankings: string[];
+  pointsAwarded: Record<string, number>;
+}
+
+/**
+ * Calculate points for each player given rankings and player count.
+ * Formula: max(0, numPlayers - 1 - position)
+ *   1st place gets (numPlayers - 1) pts, last place gets 0.
+ */
+export function calcRoundPoints(rankings: string[], numPlayers: number): Record<string, number> {
+  const pts: Record<string, number> = {};
+  rankings.forEach((name, pos) => {
+    pts[name] = Math.max(0, numPlayers - 1 - pos);
+  });
+  return pts;
+}
+
 interface GameContextValue {
   gameState: GameState | null;
   selectedCards: string[];
   lastRoundWinner: number | null;
-  setupGame: (players: PlayerSetupConfig[], mode: GameMode) => void;
+  totalRounds: number;
+  currentRound: number;
+  cumulativeScores: Record<string, number>;
+  roundHistory: RoundResult[];
+  setupGame: (players: PlayerSetupConfig[], mode: GameMode, rounds?: number) => void;
   setupRematch: (players: PlayerSetupConfig[], mode: GameMode, prevRankings: string[]) => void;
+  startNextRound: () => void;
   chooseExchangeCard: (cardId: string) => void;
   selectCard: (cardId: string) => void;
   playSelected: () => boolean;
@@ -51,12 +75,25 @@ export function GameProvider({ children }: { children: ReactNode }) {
   const [selectedCards, setSelectedCards] = useState<string[]>([]);
   const [lastRoundWinner, setLastRoundWinner] = useState<number | null>(null);
 
+  const [totalRounds, setTotalRounds] = useState(1);
+  const [currentRound, setCurrentRound] = useState(1);
+  const [cumulativeScores, setCumulativeScores] = useState<Record<string, number>>({});
+  const [roundHistory, setRoundHistory] = useState<RoundResult[]>([]);
+  const [savedPlayerConfigs, setSavedPlayerConfigs] = useState<PlayerSetupConfig[]>([]);
+  const [savedGameMode, setSavedGameMode] = useState<GameMode>("free_for_all");
+
   const setupGame = useCallback(
-    (players: PlayerSetupConfig[], mode: GameMode) => {
+    (players: PlayerSetupConfig[], mode: GameMode, rounds = 1) => {
       const state = initializeGame(players, mode);
       setGameState(state);
       setSelectedCards([]);
       setLastRoundWinner(null);
+      setTotalRounds(rounds);
+      setCurrentRound(1);
+      setCumulativeScores({});
+      setRoundHistory([]);
+      setSavedPlayerConfigs(players);
+      setSavedGameMode(mode);
     },
     []
   );
@@ -71,6 +108,31 @@ export function GameProvider({ children }: { children: ReactNode }) {
     },
     []
   );
+
+  const startNextRound = useCallback(() => {
+    if (!gameState) return;
+    const numPlayers = gameState.players.length;
+    const pointsThisRound = calcRoundPoints(gameState.rankings, numPlayers);
+
+    const newScores = { ...cumulativeScores };
+    for (const [name, pts] of Object.entries(pointsThisRound)) {
+      newScores[name] = (newScores[name] ?? 0) + pts;
+    }
+    const newHistory: RoundResult[] = [
+      ...roundHistory,
+      { round: currentRound, rankings: gameState.rankings, pointsAwarded: pointsThisRound },
+    ];
+
+    setCumulativeScores(newScores);
+    setRoundHistory(newHistory);
+    setCurrentRound((prev) => prev + 1);
+
+    const playersWithId = savedPlayerConfigs.map((p, i) => ({ ...p, id: `player_${i}` }));
+    const state = initializeRematch(playersWithId, savedGameMode, gameState.rankings);
+    setGameState(state);
+    setSelectedCards([]);
+    setLastRoundWinner(null);
+  }, [gameState, cumulativeScores, roundHistory, currentRound, savedPlayerConfigs, savedGameMode]);
 
   const chooseExchangeCard = useCallback(
     (cardId: string) => {
@@ -108,7 +170,6 @@ export function GameProvider({ children }: { children: ReactNode }) {
     if (!canPlay(combo, isNewRound ? null : gameState.lastPlayedCombination))
       return false;
 
-    // First play of the game must include the 3♠
     if (!gameState.firstPlayMade) {
       const has3Spades = combo.cards.some(
         (c) => c.rank === "3" && c.suit === "spades"
@@ -147,7 +208,6 @@ export function GameProvider({ children }: { children: ReactNode }) {
       .filter((_, i) => i !== gameState.currentTurnIndex)
       .map((p) => p.hand.length);
 
-    // First play must include the 3♠
     const requireCard = !gameState.firstPlayMade
       ? currentPlayer.hand.find((c) => c.rank === "3" && c.suit === "spades")
       : undefined;
@@ -180,6 +240,10 @@ export function GameProvider({ children }: { children: ReactNode }) {
     setGameState(null);
     setSelectedCards([]);
     setLastRoundWinner(null);
+    setTotalRounds(1);
+    setCurrentRound(1);
+    setCumulativeScores({});
+    setRoundHistory([]);
   }, []);
 
   const value = useMemo(
@@ -187,8 +251,13 @@ export function GameProvider({ children }: { children: ReactNode }) {
       gameState,
       selectedCards,
       lastRoundWinner,
+      totalRounds,
+      currentRound,
+      cumulativeScores,
+      roundHistory,
       setupGame,
       setupRematch,
+      startNextRound,
       chooseExchangeCard,
       selectCard,
       playSelected,
@@ -200,8 +269,13 @@ export function GameProvider({ children }: { children: ReactNode }) {
       gameState,
       selectedCards,
       lastRoundWinner,
+      totalRounds,
+      currentRound,
+      cumulativeScores,
+      roundHistory,
       setupGame,
       setupRematch,
+      startNextRound,
       chooseExchangeCard,
       selectCard,
       playSelected,
