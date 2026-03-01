@@ -412,7 +412,7 @@ export default function ResultScreen() {
           <WinnerCelebration name={displayName} subtitle={`Vince la Manche ${currentRound}`} />
         )}
 
-        {/* This round's rankings with points earned */}
+        {/* This round's rankings with points earned — always show points */}
         <View style={styles.rankingSection}>
           <Text style={styles.rankingTitle}>
             {isMultiRound ? `RISULTATI MANCHE ${currentRound}` : "CLASSIFICA"}
@@ -426,37 +426,37 @@ export default function ResultScreen() {
                 isWinner={idx === 0}
                 delay={idx * 100 + 300}
                 team={isTeamMode ? player.team : undefined}
-                pointsEarned={isMultiRound ? thisRoundPoints[player.name] : undefined}
+                pointsEarned={thisRoundPoints[player.name]}
               />
             ))}
           </View>
         </View>
 
-        {/* Cumulative scoreboard — only in multi-round mode */}
-        {isMultiRound && (
-          <View style={styles.rankingSection}>
-            <Text style={styles.rankingTitle}>CLASSIFICA GENERALE</Text>
-            <View style={sbStyles.board}>
-              {scoreboardEntries.map(([name, score], idx) => (
-                <ScoreRow
-                  key={name}
-                  name={name}
-                  score={score}
-                  isLeader={idx === 0}
-                  rank={idx}
-                  delay={idx * 80 + 500}
-                />
-              ))}
-            </View>
-            {/* Points legend */}
-            <View style={sbStyles.legend}>
-              <Ionicons name="information-circle-outline" size={13} color={Colors.textMuted} />
-              <Text style={sbStyles.legendText}>
-                Punti: {Array.from({ length: numPlayers }, (_, i) => Math.max(0, numPlayers - 1 - i)).join(" / ")} (1° → ultimo)
-              </Text>
-            </View>
+        {/* Scoreboard — always visible; "PUNTEGGIO" for single round, "CLASSIFICA GENERALE" for multi */}
+        <View style={styles.rankingSection}>
+          <Text style={styles.rankingTitle}>
+            {isMultiRound ? "CLASSIFICA GENERALE" : "PUNTEGGIO"}
+          </Text>
+          <View style={sbStyles.board}>
+            {scoreboardEntries.map(([name, score], idx) => (
+              <ScoreRow
+                key={name}
+                name={name}
+                score={score}
+                isLeader={idx === 0}
+                rank={idx}
+                delay={idx * 80 + 500}
+              />
+            ))}
           </View>
-        )}
+          {/* Points legend */}
+          <View style={sbStyles.legend}>
+            <Ionicons name="information-circle-outline" size={13} color={Colors.textMuted} />
+            <Text style={sbStyles.legendText}>
+              Punti: {Array.from({ length: numPlayers }, (_, i) => Math.max(0, numPlayers - 1 - i)).join(" / ")} (1° → ultimo)
+            </Text>
+          </View>
+        </View>
 
         {/* Stats */}
         <View style={styles.statsSection}>

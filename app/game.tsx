@@ -469,7 +469,7 @@ export default function GameScreen() {
   const [timeLeft, setTimeLeft] = useState(HUMAN_TURN_SECONDS);
   const [flyInfo, setFlyInfo] = useState<{ key: string; dir: FlyDirection; cards: Card[] } | null>(null);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const prevComboRef = useRef<Combination | null>(null);
+  const prevComboKeyRef = useRef<string>("");
 
   // Turn-highlighting animation values
   const handScaleVal = useSharedValue(1);
@@ -513,21 +513,26 @@ export default function GameScreen() {
   useEffect(() => {
     if (!gameState) return;
     const combo = gameState.lastPlayedCombination;
-    if (combo !== null && combo !== prevComboRef.current) {
-      setPlayedPile((prev) => [...prev.slice(-5), combo]);
-      const playedBy = gameState.lastPlayedBy;
-      let dir: FlyDirection;
-      if (playedBy === humanIdx) {
-        dir = "bottom";
-      } else {
-        const steps = ((playedBy - humanIdx + gameState.players.length) % gameState.players.length);
-        const pos = getOpponentPosition(steps, totalOpponents);
-        dir = pos;
+
+    if (combo !== null) {
+      const comboKey = combo.cards.map((c) => c.id).join(",") + "_" + gameState.lastPlayedBy;
+      if (comboKey !== prevComboKeyRef.current) {
+        prevComboKeyRef.current = comboKey;
+        setPlayedPile((prev) => [...prev.slice(-5), combo]);
+        const playedBy = gameState.lastPlayedBy;
+        let dir: FlyDirection;
+        if (playedBy === humanIdx) {
+          dir = "bottom";
+        } else {
+          const steps = ((playedBy - humanIdx + gameState.players.length) % gameState.players.length);
+          dir = getOpponentPosition(steps, totalOpponents);
+        }
+        setFlyInfo({ key: comboKey, dir, cards: combo.cards });
       }
-      setFlyInfo({ key: combo.cards[0].id + String(playedBy), dir, cards: combo.cards });
+    } else {
+      prevComboKeyRef.current = "";
+      setPlayedPile([]);
     }
-    if (combo === null) setPlayedPile([]);
-    prevComboRef.current = combo;
   }, [gameState?.lastPlayedCombination]);
 
   const isHumanTurn = gameState ? gameState.currentTurnIndex === humanIdx : false;
