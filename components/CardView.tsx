@@ -235,20 +235,15 @@ const styles = StyleSheet.create({
     height: 58,
   },
   cardSelected: {
-    borderColor: Colors.gold,
-    borderWidth: 2.5,
-    shadowColor: Colors.gold,
-    shadowOpacity: 0.6,
-    shadowRadius: 10,
+    borderColor: "rgba(255,255,255,0.35)",
+    borderWidth: 1,
   },
   cardInner: {
     flex: 1,
     padding: 4,
     justifyContent: "space-between",
   },
-  cardInnerSelected: {
-    backgroundColor: "rgba(201,168,76,0.04)",
-  },
+  cardInnerSelected: {},
   cardBack: {
     backgroundColor: Colors.felt,
     borderColor: Colors.goldDark,

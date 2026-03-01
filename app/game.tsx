@@ -352,7 +352,7 @@ function StraightHand({
             left={i * step}
             onPress={() => onPress(card.id)}
             disabled={disabled}
-            zIndex={selectedIds.includes(card.id) ? n + 10 : i}
+            zIndex={i}
           />
         ))}
       </View>
