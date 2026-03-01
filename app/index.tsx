@@ -5,7 +5,6 @@ import {
   StyleSheet,
   Pressable,
   Platform,
-  ImageBackground,
 } from "react-native";
 import { router } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -21,6 +20,7 @@ import Animated, {
 import { LinearGradient } from "expo-linear-gradient";
 import * as Haptics from "expo-haptics";
 import { Ionicons } from "@expo/vector-icons";
+import { useAuth } from "@/context/AuthContext";
 import Colors from "@/constants/colors";
 
 interface MenuButtonProps {
@@ -138,14 +138,8 @@ function FloatingCard({
       delay,
       withRepeat(
         withSequence(
-          withTiming(-20, {
-            duration: 3000 + Math.random() * 1000,
-            easing: Easing.inOut(Easing.sin),
-          }),
-          withTiming(0, {
-            duration: 3000 + Math.random() * 1000,
-            easing: Easing.inOut(Easing.sin),
-          })
+          withTiming(-20, { duration: 3000 + Math.random() * 1000, easing: Easing.inOut(Easing.sin) }),
+          withTiming(0, { duration: 3000 + Math.random() * 1000, easing: Easing.inOut(Easing.sin) })
         ),
         -1,
         false
@@ -165,29 +159,18 @@ function FloatingCard({
   }, []);
 
   const animStyle = useAnimatedStyle(() => ({
-    transform: [
-      { translateY: translateY.value },
-      { rotate: `${rotate.value}deg` },
-    ],
+    transform: [{ translateY: translateY.value }, { rotate: `${rotate.value}deg` }],
   }));
 
   return (
     <Animated.View
       style={[
         styles.floatingCard,
-        {
-          left: x,
-          width: size,
-          height: size * 1.45,
-          opacity: baseOpacity,
-        },
+        { left: x, width: size, height: size * 1.45, opacity: baseOpacity },
         animStyle,
       ]}
     >
-      <LinearGradient
-        colors={[Colors.feltLight, Colors.felt]}
-        style={StyleSheet.absoluteFill}
-      />
+      <LinearGradient colors={[Colors.feltLight, Colors.felt]} style={StyleSheet.absoluteFill} />
       <View style={styles.floatingCardPattern} />
     </Animated.View>
   );
@@ -195,16 +178,14 @@ function FloatingCard({
 
 export default function HomeScreen() {
   const insets = useSafeAreaInsets();
+  const { user, logout } = useAuth();
   const titleOpacity = useSharedValue(0);
   const titleScale = useSharedValue(0.85);
   const subtitleOpacity = useSharedValue(0);
 
   useEffect(() => {
     titleOpacity.value = withDelay(200, withTiming(1, { duration: 700 }));
-    titleScale.value = withDelay(
-      200,
-      withTiming(1, { duration: 700, easing: Easing.out(Easing.back(1.5)) })
-    );
+    titleScale.value = withDelay(200, withTiming(1, { duration: 700, easing: Easing.out(Easing.back(1.5)) }));
     subtitleOpacity.value = withDelay(500, withTiming(1, { duration: 600 }));
   }, []);
 
@@ -249,14 +230,21 @@ export default function HomeScreen() {
         </Animated.View>
       </View>
 
+      {user && (
+        <Animated.View style={[subtitleStyle, styles.userRow]}>
+          <Ionicons name="person-circle-outline" size={15} color={Colors.gold} />
+          <Text style={styles.userText}>{user.username}</Text>
+          <Pressable onPress={logout} style={styles.logoutBtn}>
+            <Text style={styles.logoutText}>Esci</Text>
+          </Pressable>
+        </Animated.View>
+      )}
+
       <View style={styles.cardDecoration}>
         {["♠", "♥", "♦", "♣"].map((suit, i) => (
           <Text
             key={suit}
-            style={[
-              styles.suitDecor,
-              { color: i % 2 === 1 ? Colors.red : Colors.textMuted },
-            ]}
+            style={[styles.suitDecor, { color: i % 2 === 1 ? Colors.red : Colors.textMuted }]}
           >
             {suit}
           </Text>
@@ -280,8 +268,13 @@ export default function HomeScreen() {
         <MenuButton
           label="Online"
           icon="wifi"
-          disabled
-          onPress={() => {}}
+          onPress={() => {
+            if (user) {
+              router.push("/(online)");
+            } else {
+              router.push("/auth");
+            }
+          }}
           delay={540}
         />
         <MenuButton
@@ -293,23 +286,17 @@ export default function HomeScreen() {
       </View>
 
       <Animated.View style={[subtitleStyle, styles.footer]}>
-        <Text style={styles.footerText}>2–4 giocatori · Tutte le modalità</Text>
+        <Text style={styles.footerText}>
+          {user ? `Connesso come ${user.username} · Codice: ${user.friendCode}` : "2–4 giocatori · Tutte le modalità"}
+        </Text>
       </Animated.View>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: Colors.bg,
-  },
-  header: {
-    alignItems: "center",
-    paddingTop: 40,
-    paddingBottom: 12,
-    gap: 6,
-  },
+  container: { flex: 1, backgroundColor: Colors.bg },
+  header: { alignItems: "center", paddingTop: 40, paddingBottom: 12, gap: 6 },
   title: {
     fontFamily: "Rajdhani_700Bold",
     fontSize: 56,
@@ -317,11 +304,7 @@ const styles = StyleSheet.create({
     letterSpacing: 12,
     textAlign: "center",
   },
-  titleUnderline: {
-    width: 160,
-    alignSelf: "center",
-    marginTop: 4,
-  },
+  titleUnderline: { width: 160, alignSelf: "center", marginTop: 4 },
   subtitle: {
     fontFamily: "Inter_400Regular",
     fontSize: 13,
@@ -331,22 +314,19 @@ const styles = StyleSheet.create({
     textAlign: "center",
     marginTop: 4,
   },
-  cardDecoration: {
+  userRow: {
     flexDirection: "row",
+    alignItems: "center",
     justifyContent: "center",
-    gap: 20,
-    paddingVertical: 24,
+    gap: 6,
+    marginTop: 4,
   },
-  suitDecor: {
-    fontSize: 24,
-    opacity: 0.7,
-  },
-  menu: {
-    flex: 1,
-    paddingHorizontal: 24,
-    justifyContent: "center",
-    gap: 12,
-  },
+  userText: { fontFamily: "Inter_500Medium", fontSize: 13, color: Colors.text },
+  logoutBtn: { paddingHorizontal: 8, paddingVertical: 2 },
+  logoutText: { fontFamily: "Inter_400Regular", fontSize: 12, color: Colors.textMuted },
+  cardDecoration: { flexDirection: "row", justifyContent: "center", gap: 20, paddingVertical: 24 },
+  suitDecor: { fontSize: 24, opacity: 0.7 },
+  menu: { flex: 1, paddingHorizontal: 24, justifyContent: "center", gap: 12 },
   menuButton: {
     flexDirection: "row",
     alignItems: "center",
@@ -358,15 +338,8 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: Colors.border,
   },
-  menuButtonAccent: {
-    padding: 0,
-    overflow: "hidden",
-    borderColor: Colors.gold,
-  },
-  menuButtonDisabled: {
-    borderColor: Colors.border,
-    opacity: 0.5,
-  },
+  menuButtonAccent: { padding: 0, overflow: "hidden", borderColor: Colors.gold },
+  menuButtonDisabled: { borderColor: Colors.border, opacity: 0.5 },
   accentGradient: {
     flex: 1,
     flexDirection: "row",
@@ -382,10 +355,7 @@ const styles = StyleSheet.create({
     color: Colors.text,
     letterSpacing: 0.5,
   },
-  menuLabelAccent: {
-    color: "#0A1F18",
-    fontFamily: "Rajdhani_700Bold",
-  },
+  menuLabelAccent: { color: "#0A1F18", fontFamily: "Rajdhani_700Bold" },
   floatingCard: {
     position: "absolute",
     top: "12%",
@@ -404,14 +374,6 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: "rgba(201,168,76,0.3)",
   },
-  footer: {
-    alignItems: "center",
-    paddingTop: 20,
-  },
-  footerText: {
-    fontFamily: "Inter_400Regular",
-    fontSize: 12,
-    color: Colors.textMuted,
-    letterSpacing: 1,
-  },
+  footer: { alignItems: "center", paddingTop: 20 },
+  footerText: { fontFamily: "Inter_400Regular", fontSize: 12, color: Colors.textMuted, letterSpacing: 1 },
 });

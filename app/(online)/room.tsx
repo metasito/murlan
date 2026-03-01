@@ -1,0 +1,364 @@
+import React, { useEffect } from "react";
+import {
+  View,
+  Text,
+  StyleSheet,
+  Pressable,
+  Platform,
+  Share,
+  Alert,
+} from "react-native";
+import { router } from "expo-router";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
+import Animated, { FadeIn } from "react-native-reanimated";
+import { LinearGradient } from "expo-linear-gradient";
+import * as Haptics from "expo-haptics";
+import * as Clipboard from "expo-clipboard";
+import { Ionicons } from "@expo/vector-icons";
+import { useOnlineGame } from "@/context/OnlineGameContext";
+import { useAuth } from "@/context/AuthContext";
+import Colors from "@/constants/colors";
+
+const SEAT_LABELS = ["Posto 1", "Posto 2", "Posto 3", "Posto 4"];
+const TEAM_COLORS = { A: Colors.gold, B: "#6b8ef5" };
+
+export default function RoomScreen() {
+  const insets = useSafeAreaInsets();
+  const { user } = useAuth();
+  const {
+    room,
+    gameState,
+    error,
+    clearError,
+    leaveRoom,
+    setRoomGameMode,
+    startGame,
+  } = useOnlineGame();
+
+  const topPad = Platform.OS === "web" ? 67 : insets.top;
+  const bottomPad = Platform.OS === "web" ? 34 : insets.bottom;
+
+  useEffect(() => {
+    if (gameState) {
+      router.replace("/(online)/game");
+    }
+  }, [!!gameState]);
+
+  useEffect(() => {
+    if (!room) {
+      router.replace("/(online)");
+    }
+  }, [room]);
+
+  useEffect(() => {
+    if (error) {
+      Alert.alert("Errore", error, [{ text: "OK", onPress: clearError }]);
+    }
+  }, [error]);
+
+  if (!room) return null;
+
+  const isHost = room.hostUserId === user?.id;
+  const canStart = isHost && room.players.length >= 2 && room.status === "waiting";
+  const maxSeats = room.maxPlayers;
+
+  async function handleCopyCode() {
+    await Clipboard.setStringAsync(room!.code);
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+  }
+
+  async function handleShare() {
+    await Share.share({ message: `Unisciti alla mia stanza Murlan! Codice: ${room!.code}` });
+  }
+
+  function handleLeave() {
+    Alert.alert(
+      "Lascia la stanza",
+      "Sei sicuro di voler lasciare la stanza?",
+      [
+        { text: "Annulla", style: "cancel" },
+        {
+          text: "Lascia",
+          style: "destructive",
+          onPress: () => {
+            leaveRoom();
+            router.replace("/(online)");
+          },
+        },
+      ]
+    );
+  }
+
+  function handleStart() {
+    if (!canStart) return;
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    startGame();
+  }
+
+  return (
+    <View style={[styles.container, { paddingTop: topPad, paddingBottom: bottomPad + 16 }]}>
+      <LinearGradient
+        colors={[Colors.bg, Colors.bgCard]}
+        style={StyleSheet.absoluteFill}
+      />
+
+      <View style={styles.topBar}>
+        <Pressable onPress={handleLeave} style={styles.backBtn}>
+          <Ionicons name="chevron-back" size={22} color={Colors.textMuted} />
+        </Pressable>
+        <Text style={styles.screenTitle}>Stanza</Text>
+        <View style={{ width: 38 }} />
+      </View>
+
+      <View style={styles.body}>
+        <Animated.View entering={FadeIn.duration(400)} style={styles.codeSection}>
+          <Text style={styles.codeLabel}>CODICE STANZA</Text>
+          <Text style={styles.codeText}>{room.code}</Text>
+          <View style={styles.codeActions}>
+            <Pressable onPress={handleCopyCode} style={styles.codeBtn}>
+              <Ionicons name="copy-outline" size={16} color={Colors.gold} />
+              <Text style={styles.codeBtnText}>Copia</Text>
+            </Pressable>
+            <Pressable onPress={handleShare} style={styles.codeBtn}>
+              <Ionicons name="share-outline" size={16} color={Colors.gold} />
+              <Text style={styles.codeBtnText}>Condividi</Text>
+            </Pressable>
+          </View>
+        </Animated.View>
+
+        {isHost && (
+          <View style={styles.modeSection}>
+            <Text style={styles.modeLabel}>MODALITÀ</Text>
+            <View style={styles.modeToggle}>
+              {(["free_for_all", "teams"] as const).map((m) => (
+                <Pressable
+                  key={m}
+                  onPress={() => setRoomGameMode(m)}
+                  style={[styles.modeBtn, room.gameMode === m && styles.modeBtnActive]}
+                >
+                  <Ionicons
+                    name={m === "free_for_all" ? "person" : "people"}
+                    size={14}
+                    color={room.gameMode === m ? Colors.gold : Colors.textMuted}
+                  />
+                  <Text style={[styles.modeBtnText, room.gameMode === m && styles.modeBtnTextActive]}>
+                    {m === "free_for_all" ? "Tutti contro tutti" : "A coppie"}
+                  </Text>
+                </Pressable>
+              ))}
+            </View>
+          </View>
+        )}
+
+        <View style={styles.slotsSection}>
+          <Text style={styles.slotsSectionTitle}>
+            GIOCATORI ({room.players.length}/{maxSeats})
+          </Text>
+          <View style={styles.slotsGrid}>
+            {Array.from({ length: maxSeats }, (_, i) => {
+              const player = room.players.find((p) => p.seatIndex === i);
+              const team = room.gameMode === "teams" ? (i % 2 === 0 ? "A" : "B") : null;
+              return (
+                <View
+                  key={i}
+                  style={[
+                    styles.slot,
+                    player && styles.slotFilled,
+                    team && { borderLeftColor: TEAM_COLORS[team], borderLeftWidth: 3 },
+                  ]}
+                >
+                  {player ? (
+                    <>
+                      <View style={styles.slotAvatar}>
+                        <Text style={styles.slotInitial}>
+                          {player.username.charAt(0).toUpperCase()}
+                        </Text>
+                      </View>
+                      <View style={styles.slotInfo}>
+                        <Text style={styles.slotName} numberOfLines={1}>
+                          {player.username}
+                          {player.userId === user?.id ? " (tu)" : ""}
+                        </Text>
+                        {room.hostUserId === player.userId && (
+                          <Text style={styles.hostBadge}>Host</Text>
+                        )}
+                      </View>
+                      {team && (
+                        <Text style={[styles.teamBadge, { color: TEAM_COLORS[team] }]}>
+                          Squadra {team}
+                        </Text>
+                      )}
+                    </>
+                  ) : (
+                    <>
+                      <View style={[styles.slotAvatar, styles.slotAvatarEmpty]}>
+                        <Ionicons name="person-add-outline" size={18} color={Colors.textMuted} />
+                      </View>
+                      <Text style={styles.slotWaiting}>In attesa…</Text>
+                    </>
+                  )}
+                </View>
+              );
+            })}
+          </View>
+        </View>
+      </View>
+
+      <View style={styles.footer}>
+        {isHost ? (
+          <Pressable
+            onPress={handleStart}
+            disabled={!canStart}
+            style={({ pressed }) => [
+              styles.startBtn,
+              !canStart && styles.startBtnDisabled,
+              pressed && { opacity: 0.85 },
+            ]}
+          >
+            <LinearGradient
+              colors={canStart ? [Colors.gold, Colors.goldDark] : [Colors.bgSurface, Colors.bgSurface]}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 1 }}
+              style={styles.startGrad}
+            >
+              <Ionicons
+                name="play-circle"
+                size={22}
+                color={canStart ? "#0A1F18" : Colors.textMuted}
+              />
+              <Text style={[styles.startText, !canStart && { color: Colors.textMuted }]}>
+                {room.players.length < 2 ? "In attesa di giocatori…" : "Inizia Partita"}
+              </Text>
+            </LinearGradient>
+          </Pressable>
+        ) : (
+          <View style={styles.waitingHost}>
+            <Ionicons name="time-outline" size={18} color={Colors.textMuted} />
+            <Text style={styles.waitingText}>In attesa che l'host avvii la partita…</Text>
+          </View>
+        )}
+      </View>
+    </View>
+  );
+}
+
+const styles = StyleSheet.create({
+  container: { flex: 1, backgroundColor: Colors.bg },
+  topBar: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: 8,
+    paddingBottom: 8,
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.border,
+  },
+  backBtn: { padding: 8 },
+  screenTitle: {
+    flex: 1,
+    textAlign: "center",
+    fontFamily: "Rajdhani_700Bold",
+    fontSize: 20,
+    color: Colors.text,
+    letterSpacing: 3,
+  },
+  body: { flex: 1, paddingHorizontal: 20, paddingTop: 20, gap: 20 },
+  codeSection: {
+    backgroundColor: Colors.bgSurface,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: Colors.goldDark,
+    padding: 20,
+    alignItems: "center",
+    gap: 8,
+  },
+  codeLabel: {
+    fontFamily: "Inter_400Regular",
+    fontSize: 11,
+    color: Colors.textMuted,
+    letterSpacing: 2,
+  },
+  codeText: {
+    fontFamily: "Rajdhani_700Bold",
+    fontSize: 42,
+    color: Colors.gold,
+    letterSpacing: 10,
+  },
+  codeActions: { flexDirection: "row", gap: 20, marginTop: 4 },
+  codeBtn: { flexDirection: "row", alignItems: "center", gap: 6, padding: 4 },
+  codeBtnText: { fontFamily: "Inter_500Medium", fontSize: 13, color: Colors.gold },
+  modeSection: { gap: 10 },
+  modeLabel: {
+    fontFamily: "Inter_400Regular",
+    fontSize: 11,
+    color: Colors.textMuted,
+    letterSpacing: 2,
+  },
+  modeToggle: { flexDirection: "row", gap: 8 },
+  modeBtn: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    paddingVertical: 12,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    backgroundColor: Colors.bgCard,
+  },
+  modeBtnActive: { borderColor: Colors.gold, backgroundColor: "rgba(201,168,76,0.1)" },
+  modeBtnText: { fontFamily: "Rajdhani_600SemiBold", fontSize: 14, color: Colors.textMuted },
+  modeBtnTextActive: { color: Colors.gold },
+  slotsSection: { gap: 12 },
+  slotsSectionTitle: {
+    fontFamily: "Inter_400Regular",
+    fontSize: 11,
+    color: Colors.textMuted,
+    letterSpacing: 2,
+  },
+  slotsGrid: { gap: 8 },
+  slot: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: Colors.bgSurface,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    padding: 12,
+    gap: 12,
+  },
+  slotFilled: { borderColor: "rgba(201,168,76,0.3)" },
+  slotAvatar: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: Colors.felt,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  slotAvatarEmpty: { backgroundColor: Colors.bgCard },
+  slotInitial: { fontFamily: "Rajdhani_700Bold", fontSize: 18, color: Colors.gold },
+  slotInfo: { flex: 1, gap: 2 },
+  slotName: { fontFamily: "Inter_500Medium", fontSize: 14, color: Colors.text },
+  hostBadge: {
+    fontFamily: "Inter_400Regular",
+    fontSize: 11,
+    color: Colors.gold,
+    letterSpacing: 0.5,
+  },
+  slotWaiting: { flex: 1, fontFamily: "Inter_400Regular", fontSize: 13, color: Colors.textMuted },
+  teamBadge: { fontFamily: "Rajdhani_700Bold", fontSize: 13, letterSpacing: 1 },
+  footer: { paddingHorizontal: 20, paddingTop: 12 },
+  startBtn: { borderRadius: 14, overflow: "hidden" },
+  startBtnDisabled: {},
+  startGrad: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 10, paddingVertical: 16 },
+  startText: { fontFamily: "Rajdhani_700Bold", fontSize: 18, color: "#0A1F18", letterSpacing: 0.5 },
+  waitingHost: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 10,
+    paddingVertical: 16,
+  },
+  waitingText: { fontFamily: "Inter_400Regular", fontSize: 14, color: Colors.textMuted },
+});

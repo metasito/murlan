@@ -108,7 +108,7 @@ function isConsecutiveSequence(
 }
 
 function isStraight(cards: Card[]): boolean {
-  if (cards.length < 3) return false;
+  if (cards.length < 5) return false;
   const jokers = cards.filter((c) => c.isJoker);
   const nonJokers = cards.filter((c) => !c.isJoker);
 
@@ -153,7 +153,7 @@ function isBomb(cards: Card[]): boolean {
 }
 
 function isRoyalStraight(cards: Card[]): boolean {
-  if (cards.length < 3) return false;
+  if (cards.length < 5) return false;
   const nonJokers = cards.filter((c) => !c.isJoker);
   if (nonJokers.length < 2) return false;
   const suit = nonJokers[0].suit;
@@ -239,12 +239,15 @@ export function getCombinationType(cards: Card[]): CombinationType | null {
   if (cards.length === 3) {
     const nonJokerRanks = new Set(nonJokers.map((c) => c.rank));
     if (nonJokerRanks.size <= 1) return "triple"; // same rank (jokers fill rest)
-    if (isRoyalStraight(cards)) return "royal_straight";
-    if (isStraight(cards)) return "straight";
+    return null; // 3-card straights are not valid
+  }
+
+  if (cards.length === 4) {
+    // Only bomb (handled above) is valid for exactly 4 cards
     return null;
   }
 
-  // 4+ cards (bomb already handled above)
+  // 5+ cards: straight or royal straight only
   if (isRoyalStraight(cards)) return "royal_straight";
   if (isStraight(cards)) return "straight";
   return null;

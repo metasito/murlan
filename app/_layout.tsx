@@ -7,6 +7,7 @@ import { KeyboardProvider } from "react-native-keyboard-controller";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { queryClient } from "@/lib/query-client";
 import { GameProvider } from "@/context/GameContext";
+import { AuthProvider } from "@/context/AuthContext";
 import {
   useFonts,
   Rajdhani_400Regular,
@@ -28,6 +29,8 @@ function RootLayoutNav() {
       <Stack.Screen name="index" />
       <Stack.Screen name="lobby" />
       <Stack.Screen name="rules" />
+      <Stack.Screen name="auth" />
+      <Stack.Screen name="(online)" />
       <Stack.Screen name="game" options={{ animation: "slide_from_bottom" }} />
       <Stack.Screen name="result" options={{ animation: "fade" }} />
     </Stack>
@@ -58,9 +61,11 @@ export default function RootLayout() {
       <QueryClientProvider client={queryClient}>
         <GestureHandlerRootView style={{ flex: 1 }}>
           <KeyboardProvider>
-            <GameProvider>
-              <RootLayoutNav />
-            </GameProvider>
+            <AuthProvider>
+              <GameProvider>
+                <RootLayoutNav />
+              </GameProvider>
+            </AuthProvider>
           </KeyboardProvider>
         </GestureHandlerRootView>
       </QueryClientProvider>

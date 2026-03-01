@@ -4,69 +4,95 @@ A mobile card game app built with Expo React Native.
 
 ## Overview
 
-Murlan is a classic Italian card game app with the following features:
+Murlan is a classic Italian card game app with:
 - Full offline single-player (vs AI opponents)
-- Local multiplayer pass-and-play (2-4 players)
+- Local multiplayer pass-and-play (2–4 players)
+- **Online multiplayer** — private rooms by code, 2v2 teams / FFA, emoji reactions
 - Complete game engine with all combination rules
 - AI with 3 difficulty levels (Easy, Medium, Hard)
 - Teams mode for 4 players
+- Italian UI throughout
 
 ## Tech Stack
 
 - **Frontend:** Expo Router (React Native)
-- **Backend:** Express.js (API server on port 5000)
-- **State:** React Context + useState
-- **Fonts:** @expo-google-fonts/rajdhani + @expo-google-fonts/inter
+- **Backend:** Express.js + Socket.io (port 5000)
+- **Database:** Replit PostgreSQL (Drizzle ORM)
+- **Auth:** bcryptjs passwords + express-session (stored in PostgreSQL)
+- **Real-time:** socket.io / socket.io-client
+- **State:** React Context + @tanstack/react-query
+- **Fonts:** Rajdhani + Inter (via @expo-google-fonts)
 - **Animations:** react-native-reanimated
-- **Orientation:** expo-screen-orientation (landscape lock for game screen)
 
 ## Architecture
 
-### App Structure (no tabs - stack navigation)
+### App Structure
 ```
 app/
-  _layout.tsx       # Root layout with fonts, providers
-  index.tsx         # Home screen
-  lobby.tsx         # Game setup screen
-  game.tsx          # Game table screen (landscape locked)
-  result.tsx        # End game results
-  rules.tsx         # Rules & FAQ screen
+  _layout.tsx           # Root layout (AuthProvider + GameProvider)
+  index.tsx             # Home screen (with auth-aware Online button)
+  auth.tsx              # Login/Register screen
+  lobby.tsx             # Offline game setup
+  game.tsx              # Offline game table (landscape)
+  result.tsx            # Offline end-game results
+  rules.tsx             # Rules & FAQ
+  (online)/
+    _layout.tsx         # OnlineGameProvider wrapper (requires auth)
+    index.tsx           # Online lobby (create/join room)
+    room.tsx            # Waiting room
+    game.tsx            # Online game table (landscape + emoji reactions)
+    friends.tsx         # Friend management
+
+server/
+  index.ts              # Express setup with session middleware
+  routes.ts             # Auth + friend API routes
+  socket.ts             # Socket.io server (room + game engine)
+  storage.ts            # DrizzleStorage (PostgreSQL)
+  db.ts                 # Drizzle + pg pool
+
+lib/
+  gameEngine.ts         # Game logic (cards, combos, AI)
+  socket.ts             # socket.io-client singleton
+  query-client.ts       # API fetcher + React Query config
+
+context/
+  GameContext.tsx       # Offline game state
+  AuthContext.tsx       # User auth (username, friendCode, session)
+  OnlineGameContext.tsx # Online game state (socket events)
+
+shared/
+  schema.ts             # DB schema (users, rooms, room_players, friends)
 ```
 
-### Key Files
-```
-lib/gameEngine.ts      # Complete game logic (cards, combos, AI)
-context/GameContext.tsx # Game state management
-components/CardView.tsx # Card rendering (noLift prop for fan use)
-constants/colors.ts    # Dark felt theme colors
-```
-
-## Design
-
-- Dark green felt theme (#061410 background, #0B3B25 felt)
-- Gold accent (#C9A84C)
-- Fonts: Rajdhani (headers) + Inter (body)
-- Animations with react-native-reanimated
-
-## Game Rules
+## Game Rules (Murlan)
 
 - 54-card deck (52 + 2 jokers)
 - Card strength: Joker★ > Joker > 2 > A > K > Q > J > 10 > ... > 3
-- Combinations: Single, Pair, Triple, Straight (min 3)
-- Start: player with 3♥ goes first
+- Combinations: Single, Pair, Triple, Straight (min **5** cards), Bomb (4×same rank), Royal Straight
+- Start: player with 3♠ goes first; first play must include 3♠
 - Win: first to empty hand wins
+- Round: players must beat or pass; when all pass, winner starts new round
+- Straights: face-value based, A-2-3-4-5 to 10-J-Q-K-A valid
+- Royal Straight: all same suit, beats regular straights
+- Bomb (4 of a kind): beats all except Royal Straight
+- Jokers: strongest singles; only one joker single can beat another
 
-## Game Screen Design
+## Online Multiplayer
 
-- **Orientation:** Landscape only (forced via expo-screen-orientation on mount, restored on unmount)
-- **Layout:** Full-screen landscape — table in upper area, hand at bottom
-- **Table:** Large rounded rectangle with dark green felt + gold border
-- **Opponents:** Avatar circles with initials + card fans, compass positions (top-center, left-center, right-center)
-- **Played pile:** Last 4 combos stacked/overlapping on table center
-- **Hand:** Straight horizontal spread (no arc rotation), cards lift UP on selection
-- **PASSA:** Dark crimson pill button bottom-left (disabled when starting a round)
-- **GIOCA:** Gold gradient pill button bottom-right (appears active only when valid combo selected)
-- **Timer:** 20-second countdown shown inline in top bar; auto-pass when expired
+- Auth: username + password, 30-day session via httpOnly cookie
+- Friend codes: unique 6-char codes for adding friends
+- Rooms: 6-char random code, 2–4 players, FFA or Teams
+- Socket: auth via `socket.handshake.auth.userId`
+- Server-authoritative: server validates all moves, broadcasts sanitized state
+- Opponent hands are hidden (only card count visible)
+- Emoji reactions: 😂 🔥 😤 👏 😱 🤡 💣 👑 — float animation per player
+
+## Design
+
+- Dark felt aesthetic (#031008 bg, #0B3B25 felt, #C9A84C gold)
+- Landscape for game screens, portrait for menus
+- CARD_W=58, CARD_H=84; cards lift with translateY on selection
+- Avatar circles with initials + card count badge
 
 ## Workflows
 

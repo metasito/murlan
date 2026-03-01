@@ -42,12 +42,12 @@ const FAQS: FAQ[] = [
   {
     question: "Quali combinazioni posso giocare?",
     answer:
-      "• Singola: una qualsiasi carta\n• Coppia: due carte dello stesso valore\n• Tris: tre carte dello stesso valore\n• Scala: tre o più carte consecutive\n• Bomba: quattro carte dello stesso valore (batte tutto!)\n• Scala Reale: scala con tutte le carte dello stesso seme (batte anche la bomba!)",
+      "• Singola: una qualsiasi carta\n• Coppia: due carte dello stesso valore\n• Tris: tre carte dello stesso valore\n• Scala: minimo 5 carte consecutive\n• Bomba: quattro carte dello stesso valore (batte tutto!)\n• Scala Reale: scala (5+) con tutte le carte dello stesso seme (batte anche la bomba!)",
   },
   {
     question: "Come funzionano le scale?",
     answer:
-      "Una scala è una sequenza di 3 o più carte consecutive per valore.\n\nLa scala più bassa possibile è A-2-3-4-5.\nLa scala più alta possibile è 10-J-Q-K-A.\n\nDue scale si confrontano sempre sulla carta più alta della sequenza. Per battere una scala devi giocare una scala della stessa lunghezza ma più alta.",
+      "Una scala è una sequenza di minimo 5 carte consecutive per valore.\n\nLa scala più bassa possibile è A-2-3-4-5.\nLa scala più alta possibile è 10-J-Q-K-A.\n\nDue scale si confrontano sulla carta più alta della sequenza. Per battere una scala devi giocare una scala della stessa lunghezza ma più alta.",
   },
   {
     question: "Come funzionano i turni?",
@@ -208,7 +208,7 @@ export default function RulesScreen() {
               { name: "Singola", desc: "1 carta qualsiasi", icon: "card" },
               { name: "Coppia", desc: "2 carte dello stesso valore", icon: "copy" },
               { name: "Tris", desc: "3 carte dello stesso valore", icon: "layers" },
-              { name: "Scala", desc: "3+ carte consecutive (A-2-3-4-5 → 10-J-Q-K-A)", icon: "trending-up" },
+              { name: "Scala", desc: "Min. 5 carte consecutive (A-2-3-4-5 → 10-J-Q-K-A)", icon: "trending-up" },
               { name: "Bomba 💣", desc: "4 carte stesso valore · batte tutto", icon: "flash" },
               { name: "Scala Reale ★", desc: "Scala stesso seme · batte anche la Bomba", icon: "star" },
             ].map((c) => (
