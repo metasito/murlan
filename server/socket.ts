@@ -28,6 +28,16 @@ const userSocketMap = new Map<string, string>();
 // roomId -> true for public quickmatch rooms still open for players
 const publicRoomIds = new Set<string>();
 
+let _io: SocketServer | null = null;
+
+export function emitToUser(userId: string, event: string, data: unknown) {
+  if (!_io) return;
+  const socketId = userSocketMap.get(userId);
+  if (socketId) {
+    _io.to(socketId).emit(event, data);
+  }
+}
+
 function sanitizeStateForPlayer(state: GameState, viewerUserId: string, playerMap: Record<number, string>) {
   return {
     ...state,
@@ -51,6 +61,7 @@ export function setupSocket(httpServer: HttpServer) {
     },
     transports: ["websocket", "polling"],
   });
+  _io = io;
 
   // Auth middleware: expect userId in handshake.auth
   io.use(async (socket, next) => {
@@ -419,6 +430,20 @@ export function setupSocket(httpServer: HttpServer) {
       const friendSocket = userSocketMap.get(friendUserId);
       if (friendSocket) {
         io.to(friendSocket).emit("friend:invite", { from: socket.data.username, roomCode });
+      }
+    });
+
+    // ── Friend online list (on-demand refresh) ───────────────────────────────
+
+    socket.on("friend:get_online_list", async () => {
+      try {
+        const userFriends = await storage.getFriends(userId);
+        const onlineIds = userFriends
+          .map((f) => f.friend.id)
+          .filter((id) => userSocketMap.has(id));
+        socket.emit("friend:online_list", { onlineIds });
+      } catch {
+        // non-critical
       }
     });
 

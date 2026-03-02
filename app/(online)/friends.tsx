@@ -100,12 +100,28 @@ export default function FriendsScreen() {
       });
     };
 
+    const handleRequestIncoming = () => {
+      qc.invalidateQueries({ queryKey: ["/api/friends/requests"] });
+    };
+
+    const handleRequestAccepted = () => {
+      qc.invalidateQueries({ queryKey: ["/api/friends"] });
+      qc.invalidateQueries({ queryKey: ["/api/friends/requests"] });
+    };
+
     socket.on("friend:online_list", handleOnlineList);
     socket.on("friend:status", handleStatus);
+    socket.on("friend:request_incoming", handleRequestIncoming);
+    socket.on("friend:request_accepted", handleRequestAccepted);
+
+    // Request fresh online list when screen mounts
+    socket.emit("friend:get_online_list");
 
     return () => {
       socket.off("friend:online_list", handleOnlineList);
       socket.off("friend:status", handleStatus);
+      socket.off("friend:request_incoming", handleRequestIncoming);
+      socket.off("friend:request_accepted", handleRequestAccepted);
     };
   }, [user?.id]);
 

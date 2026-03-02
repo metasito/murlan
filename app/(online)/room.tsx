@@ -61,6 +61,9 @@ function InviteFriendsPanel({ roomCode, playerUserIds, myUserId }: {
     socket.on("friend:online_list", handleOnlineList);
     socket.on("friend:status", handleStatus);
 
+    // Request fresh online list when panel mounts
+    socket.emit("friend:get_online_list");
+
     return () => {
       socket.off("friend:online_list", handleOnlineList);
       socket.off("friend:status", handleStatus);

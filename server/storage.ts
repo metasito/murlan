@@ -24,8 +24,9 @@ export interface IStorage {
 
   getFriends(userId: string): Promise<(Friend & { friend: User })[]>;
   getPendingFriendRequests(userId: string): Promise<(Friend & { requester: User })[]>;
+  hasPendingRequest(userId: string, friendUserId: string): Promise<boolean>;
   addFriend(userId: string, friendUserId: string): Promise<void>;
-  acceptFriend(id: string): Promise<void>;
+  acceptFriend(id: string): Promise<{ requesterId: string } | null>;
   areFriends(userId: string, friendUserId: string): Promise<boolean>;
   removeFriend(userId: string, friendUserId: string): Promise<void>;
   declineFriendRequest(id: string): Promise<void>;
@@ -153,11 +154,27 @@ class DrizzleStorage implements IStorage {
     return rows.map((r) => ({ ...r.friends, requester: r.users }));
   }
 
+  async hasPendingRequest(userId: string, friendUserId: string): Promise<boolean> {
+    const [row] = await db
+      .select()
+      .from(friends)
+      .where(
+        and(
+          or(
+            and(eq(friends.userId, userId), eq(friends.friendUserId, friendUserId)),
+            and(eq(friends.userId, friendUserId), eq(friends.friendUserId, userId))
+          ),
+          eq(friends.status, "pending")
+        )
+      );
+    return !!row;
+  }
+
   async addFriend(userId: string, friendUserId: string) {
     await db.insert(friends).values({ userId, friendUserId, status: "pending" });
   }
 
-  async acceptFriend(id: string) {
+  async acceptFriend(id: string): Promise<{ requesterId: string } | null> {
     await db.update(friends).set({ status: "accepted" }).where(eq(friends.id, id));
     const [f] = await db.select().from(friends).where(eq(friends.id, id));
     if (f) {
@@ -169,7 +186,9 @@ class DrizzleStorage implements IStorage {
           status: "accepted",
         });
       }
+      return { requesterId: f.userId };
     }
+    return null;
   }
 
   async areFriends(userId: string, friendUserId: string): Promise<boolean> {

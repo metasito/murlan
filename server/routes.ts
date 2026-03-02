@@ -3,6 +3,7 @@ import { createServer, type Server } from "node:http";
 import bcrypt from "bcryptjs";
 import { storage } from "./storage";
 import { insertUserSchema } from "@shared/schema";
+import { emitToUser } from "./socket";
 
 declare module "express-session" {
   interface SessionData {
@@ -138,12 +139,32 @@ export async function registerRoutes(app: Express): Promise<Server> {
       return;
     }
 
+    const pending = await storage.hasPendingRequest(req.session.userId!, friend.id);
+    if (pending) {
+      res.status(409).json({ message: "Richiesta di amicizia già inviata" });
+      return;
+    }
+
+    const sender = await storage.getUser(req.session.userId!);
     await storage.addFriend(req.session.userId!, friend.id);
+
+    // Notify the target user in real time if they're online
+    emitToUser(friend.id, "friend:request_incoming", {
+      from: sender?.username ?? "Qualcuno",
+    });
+
     res.json({ ok: true, username: friend.username });
   });
 
   app.post("/api/friends/accept/:id", requireAuth, async (req, res) => {
-    await storage.acceptFriend(req.params.id);
+    const result = await storage.acceptFriend(req.params.id);
+    if (result) {
+      const accepter = await storage.getUser(req.session.userId!);
+      // Notify the original requester that their request was accepted
+      emitToUser(result.requesterId, "friend:request_accepted", {
+        by: accepter?.username ?? "Qualcuno",
+      });
+    }
     res.json({ ok: true });
   });
 

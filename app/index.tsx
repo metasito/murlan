@@ -22,8 +22,9 @@ import Animated, {
 import { LinearGradient } from "expo-linear-gradient";
 import * as Haptics from "expo-haptics";
 import { Ionicons } from "@expo/vector-icons";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "@/context/AuthContext";
+import { getSocket } from "@/lib/socket";
 import Colors from "@/constants/colors";
 
 interface MenuButtonProps {
@@ -185,16 +186,41 @@ function FloatingCard({
 
 function FriendsButton({ compact }: { compact?: boolean }) {
   const { user } = useAuth();
+  const qc = useQueryClient();
 
   const { data: requests = [] } = useQuery<{ id: string }[]>({
     queryKey: ["/api/friends/requests"],
     enabled: !!user,
-    staleTime: 30000,
+    staleTime: 15000,
+    refetchOnWindowFocus: true,
   });
+
+  // Real-time badge updates via socket
+  useEffect(() => {
+    if (!user) return;
+    const socket = getSocket(user.id);
+
+    const refresh = () => {
+      qc.invalidateQueries({ queryKey: ["/api/friends/requests"] });
+    };
+    const refreshFriends = () => {
+      qc.invalidateQueries({ queryKey: ["/api/friends"] });
+      qc.invalidateQueries({ queryKey: ["/api/friends/requests"] });
+    };
+
+    socket.on("friend:request_incoming", refresh);
+    socket.on("friend:request_accepted", refreshFriends);
+
+    return () => {
+      socket.off("friend:request_incoming", refresh);
+      socket.off("friend:request_accepted", refreshFriends);
+    };
+  }, [user?.id]);
 
   const badgeCount = requests.length;
 
   function handlePress() {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     if (user) {
       router.push("/(online)/friends");
     } else {
@@ -203,8 +229,13 @@ function FriendsButton({ compact }: { compact?: boolean }) {
   }
 
   return (
-    <Pressable onPress={handlePress} style={styles.friendsBtn} hitSlop={8}>
-      <Ionicons name="people-outline" size={compact ? 18 : 20} color={Colors.gold} />
+    <Pressable
+      onPress={handlePress}
+      style={({ pressed }) => [styles.friendsBtn, compact && styles.friendsBtnCompact, pressed && { opacity: 0.8 }]}
+      hitSlop={4}
+    >
+      <Ionicons name="people" size={compact ? 16 : 20} color={compact ? Colors.gold : "#0A1F18"} />
+      {!compact && <Text style={styles.friendsBtnText}>Amici</Text>}
       {badgeCount > 0 && (
         <View style={styles.badge}>
           <Text style={styles.badgeText}>{badgeCount > 9 ? "9+" : String(badgeCount)}</Text>
@@ -447,25 +478,47 @@ const styles = StyleSheet.create({
   logoutText: { fontFamily: "Inter_400Regular", fontSize: 12, color: Colors.textMuted },
   friendsBtn: {
     position: "relative",
-    padding: 4,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    backgroundColor: Colors.gold,
+    borderRadius: 20,
+    paddingVertical: 7,
+    paddingHorizontal: 14,
+  },
+  friendsBtnCompact: {
+    backgroundColor: "transparent",
+    borderWidth: 1,
+    borderColor: Colors.gold,
+    paddingVertical: 4,
+    paddingHorizontal: 10,
+    borderRadius: 14,
+  },
+  friendsBtnText: {
+    fontFamily: "Rajdhani_700Bold",
+    fontSize: 14,
+    color: "#0A1F18",
+    letterSpacing: 0.5,
   },
   badge: {
     position: "absolute",
-    top: 0,
-    right: 0,
-    minWidth: 16,
-    height: 16,
-    borderRadius: 8,
+    top: -4,
+    right: -4,
+    minWidth: 18,
+    height: 18,
+    borderRadius: 9,
     backgroundColor: "#e74c3c",
     alignItems: "center",
     justifyContent: "center",
-    paddingHorizontal: 3,
+    paddingHorizontal: 4,
+    borderWidth: 1.5,
+    borderColor: Colors.bg,
   },
   badgeText: {
     fontFamily: "Inter_600SemiBold",
-    fontSize: 9,
+    fontSize: 10,
     color: "#fff",
-    lineHeight: 12,
+    lineHeight: 13,
   },
   cardDecoration: { flexDirection: "row", justifyContent: "center", gap: 20, paddingVertical: 24 },
   suitDecor: { fontSize: 24, opacity: 0.7 },
