@@ -24,7 +24,7 @@ export default function OnlineLayout() {
         <Stack.Screen name="room" />
         <Stack.Screen name="game" options={{ animation: "slide_from_bottom" }} />
         <Stack.Screen name="friends" />
-        <Stack.Screen name="quickmatch" />
+        <Stack.Screen name="quickmatch" options={{ gestureEnabled: false }} />
       </Stack>
     </OnlineGameProvider>
   );

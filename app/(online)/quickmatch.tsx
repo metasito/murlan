@@ -6,6 +6,7 @@ import {
   Pressable,
   Animated,
   Platform,
+  BackHandler,
   ScrollView,
   useWindowDimensions,
 } from "react-native";
@@ -80,6 +81,18 @@ export default function QuickmatchScreen() {
       router.replace("/(online)/room");
     }
   }, [room?.roomId]);
+
+  useEffect(() => {
+    const sub = BackHandler.addEventListener("hardwareBackPress", () => {
+      if (phase === "searching") {
+        handleCancelSearch();
+      } else {
+        router.replace("/");
+      }
+      return true;
+    });
+    return () => sub.remove();
+  }, [phase]);
 
   useEffect(() => {
     if (phase !== "searching") return;
