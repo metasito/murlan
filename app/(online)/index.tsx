@@ -143,7 +143,7 @@ export default function OnlineLobbyScreen() {
         <Pressable onPress={() => router.back()} style={styles.backBtn}>
           <Ionicons name="chevron-back" size={22} color={Colors.textMuted} />
         </Pressable>
-        <Text style={styles.screenTitle}>Online</Text>
+        <Text style={styles.screenTitle}>Con Amici</Text>
         <View style={{ width: 38 }} />
       </View>
 

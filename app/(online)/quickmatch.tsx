@@ -48,7 +48,7 @@ const MODES: ModeOption[] = [
     gameMode: "free_for_all",
     icon: "apps-outline",
     label: "4 Liberi",
-    desc: "Quattro giocatori, tutti contro tutti",
+    desc: "Quattro, tutti contro tutti",
     playerLabel: "4",
   },
   {
@@ -128,6 +128,10 @@ export default function QuickmatchScreen() {
   const dots = ".".repeat(dotCount) + "\u00A0".repeat(3 - dotCount);
 
   if (phase === "selecting") {
+    const cardW = isLandscape
+      ? Math.floor((W - insets.left - insets.right - 40 - 36) / 4)
+      : Math.floor((Math.min(W, 500) - 40 - 12) / 2);
+
     return (
       <View style={[styles.container, { paddingTop: topPad, paddingBottom: bottomPad }]}>
         {!isLandscape && (
@@ -139,9 +143,10 @@ export default function QuickmatchScreen() {
         )}
 
         <ScrollView
+          style={styles.scrollView}
           contentContainerStyle={[
             styles.modeGrid,
-            isLandscape ? styles.modeGridLandscape : styles.modeGridPortrait,
+            isLandscape && styles.modeGridLandscape,
           ]}
           showsVerticalScrollIndicator={false}
         >
@@ -151,12 +156,17 @@ export default function QuickmatchScreen() {
               <Text style={styles.landscapeHeaderText}>Scegli il formato</Text>
             </View>
           )}
-          <View style={[styles.modeCardsRow, isLandscape && styles.modeCardsRowLandscape]}>
+
+          <View style={[
+            styles.modeCardsRow,
+            isLandscape && styles.modeCardsRowLandscape,
+          ]}>
             {MODES.map((mode) => (
               <Pressable
                 key={`${mode.maxPlayers}-${mode.gameMode}`}
                 style={({ pressed }) => [
                   styles.modeCard,
+                  { width: cardW },
                   isLandscape && styles.modeCardLandscape,
                   pressed && styles.modeCardPressed,
                 ]}
@@ -164,7 +174,7 @@ export default function QuickmatchScreen() {
               >
                 <View style={styles.modeIconRow}>
                   <View style={[styles.modeIconBg, isLandscape && styles.modeIconBgSmall]}>
-                    <Ionicons name={mode.icon} size={isLandscape ? 22 : 28} color={Colors.gold} />
+                    <Ionicons name={mode.icon} size={isLandscape ? 20 : 26} color={Colors.gold} />
                   </View>
                   <View style={styles.playerBadge}>
                     <Text style={styles.playerBadgeText}>{mode.playerLabel}</Text>
@@ -177,7 +187,7 @@ export default function QuickmatchScreen() {
           </View>
         </ScrollView>
 
-        <Pressable style={styles.cancelBtn} onPress={handleCancelHome}>
+        <Pressable style={[styles.cancelBtn, { paddingBottom: Math.max(bottomPad, 12) }]} onPress={handleCancelHome}>
           <Text style={styles.cancelText}>Indietro</Text>
         </Pressable>
       </View>
@@ -223,7 +233,7 @@ export default function QuickmatchScreen() {
         </View>
       </View>
 
-      <Pressable style={styles.cancelBtn} onPress={handleCancelSearch}>
+      <Pressable style={[styles.cancelBtn, { paddingBottom: Math.max(bottomPad, 12) }]} onPress={handleCancelSearch}>
         <Text style={styles.cancelText}>Annulla</Text>
       </Pressable>
     </View>
@@ -234,7 +244,7 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: Colors.bg,
-    alignItems: "center",
+    alignItems: "stretch",
     justifyContent: "space-between",
   },
   header: {
@@ -259,8 +269,8 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: 8,
-    marginBottom: 8,
-    alignSelf: "flex-start",
+    marginBottom: 10,
+    alignSelf: "center",
   },
   landscapeHeaderText: {
     fontFamily: "Rajdhani_600SemiBold",
@@ -268,28 +278,32 @@ const styles = StyleSheet.create({
     color: Colors.gold,
     letterSpacing: 1,
   },
+  scrollView: {
+    flex: 1,
+    width: "100%",
+  },
   modeGrid: {
     flexGrow: 1,
-    width: "100%",
     alignItems: "center",
     paddingHorizontal: 20,
-    paddingVertical: 8,
+    paddingVertical: 12,
+    justifyContent: "center",
   },
-  modeGridPortrait: { justifyContent: "center" },
-  modeGridLandscape: { justifyContent: "flex-start", paddingTop: 4 },
+  modeGridLandscape: {
+    paddingVertical: 8,
+    justifyContent: "center",
+  },
   modeCardsRow: {
     flexDirection: "row",
     flexWrap: "wrap",
     justifyContent: "center",
     gap: 12,
-    width: "100%",
   },
   modeCardsRowLandscape: {
     flexWrap: "nowrap",
     gap: 10,
   },
   modeCard: {
-    width: "44%",
     backgroundColor: Colors.felt,
     borderRadius: 16,
     borderWidth: 1.5,
@@ -299,10 +313,8 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   modeCardLandscape: {
-    width: undefined,
-    flex: 1,
-    padding: 12,
-    gap: 6,
+    padding: 10,
+    gap: 5,
     borderRadius: 12,
   },
   modeCardPressed: {
@@ -313,25 +325,25 @@ const styles = StyleSheet.create({
     position: "relative",
     alignItems: "center",
     justifyContent: "center",
-    marginBottom: 4,
+    marginBottom: 2,
   },
   modeIconBg: {
-    width: 56,
-    height: 56,
-    borderRadius: 28,
+    width: 52,
+    height: 52,
+    borderRadius: 26,
     backgroundColor: "rgba(201,168,76,0.1)",
     alignItems: "center",
     justifyContent: "center",
   },
   modeIconBgSmall: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
+    width: 38,
+    height: 38,
+    borderRadius: 19,
   },
   playerBadge: {
     position: "absolute",
     top: -4,
-    right: -10,
+    right: -8,
     backgroundColor: Colors.gold,
     borderRadius: 10,
     minWidth: 20,
@@ -350,8 +362,9 @@ const styles = StyleSheet.create({
     fontSize: 18,
     color: Colors.text,
     letterSpacing: 0.3,
+    textAlign: "center",
   },
-  modeLabelSmall: { fontSize: 15 },
+  modeLabelSmall: { fontSize: 14 },
   modeDesc: {
     fontFamily: "Inter_400Regular",
     fontSize: 11,
@@ -414,6 +427,7 @@ const styles = StyleSheet.create({
     fontSize: 22,
     color: Colors.gold,
     letterSpacing: 0.5,
+    textAlign: "center",
   },
   dots: {
     color: Colors.gold,
@@ -445,7 +459,7 @@ const styles = StyleSheet.create({
     fontSize: 16,
   },
   cancelBtn: {
-    marginBottom: 12,
+    alignSelf: "center",
     paddingVertical: 14,
     paddingHorizontal: 40,
   },
