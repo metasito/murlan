@@ -87,7 +87,7 @@ export default function QuickmatchScreen() {
       if (phase === "searching") {
         handleCancelSearch();
       } else {
-        router.replace("/");
+        router.navigate("/");
       }
       return true;
     });
@@ -135,7 +135,7 @@ export default function QuickmatchScreen() {
   };
 
   const handleCancelHome = () => {
-    router.replace("/");
+    router.navigate("/");
   };
 
   const dots = ".".repeat(dotCount) + "\u00A0".repeat(3 - dotCount);
