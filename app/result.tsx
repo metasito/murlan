@@ -192,6 +192,19 @@ function CardExchangeOverlay({
           <Text style={exStyles.subtitle}>
             {winner.name} inizia libero.{"\n"}Nessuno scambio.
           </Text>
+          <Pressable
+            onPress={() => router.replace("/game")}
+            style={exStyles.confirmBtn}
+          >
+            <LinearGradient
+              colors={[Colors.gold, Colors.goldDark]}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 1 }}
+              style={exStyles.confirmGrad}
+            >
+              <Text style={exStyles.confirmText}>OK, inizia!</Text>
+            </LinearGradient>
+          </Pressable>
         </View>
       </View>
     );
@@ -415,7 +428,7 @@ export default function ResultScreen() {
       <View style={[styles.container, { paddingTop: topPad, paddingBottom: bottomPad, paddingLeft: leftPad, paddingRight: rightPad }]}>
         <LinearGradient colors={[Colors.bg, Colors.bgCard, Colors.bg]} locations={[0, 0.5, 1]} style={StyleSheet.absoluteFill} />
 
-        <View style={styles.header}>
+        <View style={[styles.header, { paddingHorizontal: 12 }]}>
           {isMultiRound ? (
             <View style={styles.headerMulti}>
               <Text style={styles.headerTitle}>
@@ -596,19 +609,22 @@ const styles = StyleSheet.create({
   landscapeBody: {
     flex: 1,
     flexDirection: "row",
-    paddingHorizontal: 12,
+    paddingHorizontal: 6,
     paddingTop: 6,
     paddingBottom: 8,
-    gap: 14,
+    gap: 10,
   },
   landscapeLeft: {
-    width: 200,
+    width: 170,
+    minWidth: 130,
+    maxWidth: 200,
     justifyContent: "space-between",
     paddingVertical: 4,
     gap: 8,
   },
   landscapeRight: {
     flex: 1,
+    minWidth: 0,
     paddingVertical: 4,
     gap: 6,
   },

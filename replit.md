@@ -4,26 +4,40 @@ A mobile card game app built with Expo React Native.
 
 ## Overview
 
-Murlan is a classic Italian card game app with:
+Murlan is a classic Italian card game with:
 - Full offline single-player (vs AI opponents)
 - Local multiplayer pass-and-play (2–4 players)
 - **Online multiplayer** — private rooms by code, 2v2 teams / FFA, emoji reactions
-- Complete game engine with all combination rules
-- Smarter AI with 3 difficulty levels (Easy, Medium, Hard) — "finish hand" detection, dump strategy, bomb timing
+- Complete game engine with all Murlan rules
+- AI with 3 difficulty levels (Easy, Medium, Hard)
 - Teams mode for 4 players
 - Italian UI throughout
-- Landscape + portrait adaptive layout on all menus and result screens
-- Username shown everywhere (replaces "Tu" with the authenticated user's name)
-- Sound effects on both web (Web Audio API synthesized) and native (expo-av)
-  - Card select, play, pass; your turn ping; round start fanfare; round win; urgent timer tick
-- Exchange phase UI: winner gives a weak card back to loser after each round
+- Landscape-locked game screens; portrait+landscape result/menu screens
+- 12 bundled WAV sound effects (expo-av on native, Web Audio API synth on web)
 
-## Key Bug Fixes
-- **Timer bug**: `passTurn` was called inside a `setTimeLeft` updater (React anti-pattern). Fixed with ref-based countdown + `passTurnRef`
-- **Null crash** (`Cannot read property 'cards' of null`): combo was captured in a stale setState closure. Fixed by capturing value synchronously before calling setState
-- **Game stuck when AI starts**: caused by the timer bug — now correctly auto-passes when time expires
-- **AI missing valid plays**: `getAllValidPlays` used bitmask limited to first 15 cards — missed singles/pairs from cards 15–25 in 2-player games. Fixed with structure-aware enumeration for all hand sizes
-- **PlayedPile null**: added `.filter(Boolean)` guard on history array
+## Game Rules (MUST NOT CHANGE)
+
+- 54-card deck (52 standard + 2 jokers)
+- **Always deal 4 groups of 13 cards** — regardless of player count. With 2 players, 2 groups are unused/excluded.
+- Card strength (low→high): 3 4 5 6 7 8 9 10 J Q K A 2 Joker★ Joker★★
+- Combinations: Single, Pair, Triple, Straight (min 5 cards), Bomb (4×same rank), Royal Straight
+- **Jokers can ONLY be played as single cards** — never in pairs, triples, straights, or any multi-card combination
+- **3♠ starts first game**: player holding 3 of spades goes first; first play must include 3♠
+- **Clockwise turn order**: `getNextActivePlayer` wraps indices clockwise
+- Win: first to empty hand wins the round; game continues until all finish
+- Round: players must beat the current combo or pass; when all pass, the round winner starts fresh
+- Bomb (4 of a kind): beats any non-bomb combination
+- Royal Straight: all same suit 5+ straight, beats regular straights and bombs
+
+## Exchange Phase (MUST NOT CHANGE)
+
+After each round (before the next deal):
+1. **Loser gives best card** to winner — taken automatically in `initializeRematch`
+2. **Winner must give a 3–10 card back** to loser (winner picks from their valid cards)
+3. **Loser starts** the new round (after exchange)
+4. **Both-jokers exception**: if the loser has both jokers, no exchange occurs — winner starts instead
+5. Exchange dialog shows the received card as a `<CardView>` image (not text)
+6. Both-jokers screen has an OK button to dismiss
 
 ## Tech Stack
 
@@ -35,6 +49,7 @@ Murlan is a classic Italian card game app with:
 - **State:** React Context + @tanstack/react-query
 - **Fonts:** Rajdhani + Inter (via @expo-google-fonts)
 - **Animations:** react-native-reanimated
+- **Audio:** expo-av + 12 real WAV files in `assets/sounds/`
 
 ## Architecture
 
@@ -45,8 +60,8 @@ app/
   index.tsx             # Home screen (with auth-aware Online button)
   auth.tsx              # Login/Register screen
   lobby.tsx             # Offline game setup
-  game.tsx              # Offline game table (landscape)
-  result.tsx            # Offline end-game results
+  game.tsx              # Offline game table (landscape-locked)
+  result.tsx            # End-game results + exchange overlay
   rules.tsx             # Rules & FAQ
   (online)/
     _layout.tsx         # OnlineGameProvider wrapper (requires auth)
@@ -63,7 +78,8 @@ server/
   db.ts                 # Drizzle + pg pool
 
 lib/
-  gameEngine.ts         # Game logic (cards, combos, AI)
+  gameEngine.ts         # Game logic (cards, combos, AI, exchange)
+  sounds.ts             # Sound playback (expo-av native + Web Audio API web)
   socket.ts             # socket.io-client singleton
   query-client.ts       # API fetcher + React Query config
 
@@ -72,22 +88,58 @@ context/
   AuthContext.tsx       # User auth (username, friendCode, session)
   OnlineGameContext.tsx # Online game state (socket events)
 
-shared/
-  schema.ts             # DB schema (users, rooms, room_players, friends)
+assets/sounds/          # 12 WAV files (RIFF format, distinct sizes)
+  card_select.mp3, card_play.mp3, card_pass.mp3
+  your_turn.mp3, round_start.mp3, round_win.mp3
+  urgent_tick.mp3, bomb.mp3, deal.mp3
+  exchange.mp3, game_win.mp3, game_lose.mp3
+
+scripts/
+  gen-sounds.js         # WAV PCM generator (run if audio files need regeneration)
 ```
 
-## Game Rules (Murlan)
+## Layout Constants (in GameShared.tsx — MUST NOT CHANGE without updating both game files)
 
-- 54-card deck (52 + 2 jokers)
-- Card strength: Joker★ > Joker > 2 > A > K > Q > J > 10 > ... > 3
-- Combinations: Single, Pair, Triple, Straight (min **5** cards), Bomb (4×same rank), Royal Straight
-- Start: player with 3♠ goes first; first play must include 3♠
-- Win: first to empty hand wins
-- Round: players must beat or pass; when all pass, winner starts new round
-- Straights: face-value based, A-2-3-4-5 to 10-J-Q-K-A valid
-- Royal Straight: all same suit, beats regular straights
-- Bomb (4 of a kind): beats all except Royal Straight
-- Jokers: strongest singles; only one joker single can beat another
+```
+CARD_W = 58, CARD_H = 84
+SIDE_BTN_W = 50           # Width of inline PASSA/GIOCA buttons
+BTN_W = 84, BTN_H = 84   # Legacy (not used for main buttons)
+TOP_BAR_H = 40
+TABLE_M = 4               # Margin around game table (tight, maximizes board size)
+SIDE_SECTION_W = 130      # Opponent side panels
+TOP_SECTION_H = 70        # Opponent top panel
+HAND_SECTION_H = CARD_H + 16
+```
+
+## Game Table Layout
+
+- Table fills screen edge-to-edge minus `TABLE_M=4` margins on all sides
+- **Inline buttons**: PASSA and GIOCA are inside the hand section row (left/right sides)
+  - PASSA: width=SIDE_BTN_W (50px), height=CARD_H, red pill
+  - GIOCA: width=SIDE_BTN_W+4 (54px), height=CARD_H, gold gradient pill
+  - `handAvailW = tableW - (SIDE_BTN_W+6)*2 - 8`
+- `handSection` is `flexDirection: "row"` with buttons flanking `StraightHand`
+- No absolute-positioned buttons outside the table
+- Hand glow: native shadow (`shadowColor: gold, shadowRadius: 20`) when player's turn; web uses `boxShadow` inline style
+- No visible border line on hand section (removed `borderTopWidth`)
+
+## Flying Card Animation + Pile (MUST NOT CHANGE)
+
+- `pileState = { prev: Combination | null, current: Combination | null }` derived from `gameState.lastPlayedCombination`
+- `pileState.current` set **immediately** when new combo detected (no waiting for animation)
+- **T005 fix**: `<PlayedPile current={flyInfo ? null : pileState.current} />` — pile's current layer hidden while animation is in flight, preventing duplicate rendering of the same cards
+- `FlyingCards.onDone` only calls `setFlyInfo(null)` — nothing else
+- `cancelAnimation` called on all Reanimated values in FlyingCards cleanup (prevents ghost flicker)
+- Cards appear exactly once: flying during animation, then settled in pile
+
+## Sounds
+
+All 12 events: `playCardSelect`, `playCardPlay`, `playCardPass`, `playYourTurn`, `playRoundStart`, `playRoundWin`, `playUrgentTick`, `playBomb`, `playGameWin`, `playGameLose`, `playDeal`, `playExchange`
+- Preloaded on game mount via `preloadSounds()`
+- `playDeal()` fires after preload completes
+- `playBomb()` fires for bomb + royal_straight combos
+- `playExchange()` fires when exchange phase becomes active
+- `playGameWin/Lose()` fires based on finish position
 
 ## Online Multiplayer
 
@@ -101,38 +153,21 @@ shared/
 
 ## Design
 
-- Dark felt aesthetic (#031008 bg, #0B3B25 felt, #C9A84C gold)
-- Landscape for game screens (locked); result.tsx also locked landscape
-- Two-column landscape layout on result/game-over screens (no ScrollView)
-- CARD_W=58, CARD_H=84; cards lift with translateY on selection
-- Avatar circles with initials + card count badge
-
-## Shared Components
-
-- `components/GameShared.tsx` — single source of truth for both game screens:
-  - CardFan, AvatarCircle, TopOppSlot, SideOppSlot, FlyingCards, PlayedPile, CardItem, StraightHand
-  - Shared styles: sharedTableStyles, sharedStyles, portraitOverlayStyles
-  - Layout constants: CARD_W, CARD_H, BTN_W, BTN_H, TOP_BAR_H, TABLE_M, SIDE_SECTION_W, TOP_SECTION_H, HAND_SECTION_H
-  - getOpponentPosition: steps=1→right, steps=2→top, steps=3→left (visual only)
-- `lib/sounds.ts` — card sound effects via expo-av (card_select, card_play, card_pass)
-  - card_select.mp3 (volume 0.35), card_play.mp3 (0.9), card_pass.mp3 (0.5)
-  - Preload on game screen mount, unload on unmount
-
-## Turn Order
-
-- `getNextActivePlayer` decrements index (clockwise): bottom→left→top→right
-- Player 0 always gets 3♠ (hand swap in `initializeGame` + server)
-- getOpponentPosition visual: steps=1→right, steps=2→top, steps=3→left
-
-## Testing (Landscape UX)
-
-IMPORTANT: The game and result screens are landscape-only. Use browser devtools:
-1. Open DevTools → Device toolbar (Ctrl+Shift+M)
-2. Set width ≥ 600px and height ≤ 400px (landscape)
-3. Verify game table, player hands, and result screen all fit without scrolling
-4. On result screen: left column = winner + stats + buttons; right column = rankings (+ scoreboard for multi-round)
+- Dark felt: `#031008` bg, `#0B3B25` felt, `#C9A84C` gold
+- Fonts: Rajdhani (headings) + Inter (body)
+- Landscape locked for game screens via `ScreenOrientation.lockAsync`
+- Safe area via `useSafeAreaInsets()` — never hardcode top/bottom/left/right padding
+- Web insets: top=67px, bottom=34px (applied only on `Platform.OS === "web"`)
+- Result screen landscape: `paddingLeft/Right = insets.left/right`; `landscapeLeft` has `minWidth: 130, maxWidth: 200`
 
 ## Workflows
 
 - **Start Backend:** `npm run server:dev` (port 5000)
 - **Start Frontend:** `npm run expo:dev` (port 8081)
+
+## Known Constraints
+
+- Expo Go compatible libraries only (no native builds)
+- No `uuid` package — use `Date.now().toString() + Math.random().toString(36).substr(2, 9)` or `expo-crypto`
+- `expo-av` deprecation warning is harmless (used for audio, works fine in SDK 53)
+- Only one TypeScript error exists (pre-existing, in `server/routes.ts`) — safe to ignore

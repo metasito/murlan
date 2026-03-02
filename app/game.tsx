@@ -35,6 +35,7 @@ import {
   CARD_H,
   BTN_W,
   BTN_H,
+  SIDE_BTN_W,
   TOP_BAR_H,
   TABLE_M,
   SIDE_SECTION_W,
@@ -75,6 +76,33 @@ const AI_DELAY = 1100;
 const HUMAN_TURN_SECONDS = 20;
 
 const EXCHANGE_VALID_RANKS = new Set(["3","4","5","6","7","8","9","10"]);
+
+function BothJokersExceptionOverlay({ winnerName }: { winnerName: string }) {
+  const [dismissed, setDismissed] = React.useState(false);
+  useEffect(() => {
+    const t = setTimeout(() => setDismissed(true), 3000);
+    return () => clearTimeout(t);
+  }, []);
+  if (dismissed) return null;
+  return (
+    <View style={{ ...StyleSheet.absoluteFillObject, backgroundColor: "rgba(3,16,8,0.92)", alignItems: "center", justifyContent: "center", zIndex: 100 }}>
+      <View style={{ backgroundColor: "#0B2A1A", borderRadius: 20, borderWidth: 2, borderColor: "rgba(201,168,76,0.4)", padding: 28, alignItems: "center", gap: 14, maxWidth: 380, width: "80%" }}>
+        <Text style={{ fontSize: 36 }}>🃏🃏</Text>
+        <Text style={{ fontFamily: "Rajdhani_700Bold", fontSize: 20, color: Colors.gold, letterSpacing: 1, textAlign: "center" }}>NESSUNO SCAMBIO</Text>
+        <Text style={{ fontFamily: "Inter_400Regular", fontSize: 13, color: Colors.text, textAlign: "center", lineHeight: 20 }}>
+          Il perdente ha entrambi i jolly.{"\n"}
+          <Text style={{ color: Colors.gold }}>{winnerName}</Text> inizia il round.
+        </Text>
+        <Pressable
+          onPress={() => setDismissed(true)}
+          style={{ marginTop: 4, backgroundColor: Colors.gold, borderRadius: 12, paddingHorizontal: 28, paddingVertical: 10 }}
+        >
+          <Text style={{ fontFamily: "Rajdhani_700Bold", fontSize: 16, color: "#0A1F10", letterSpacing: 1 }}>OK</Text>
+        </Pressable>
+      </View>
+    </View>
+  );
+}
 
 export default function GameScreen() {
   const insets = useSafeAreaInsets();
@@ -428,7 +456,7 @@ export default function GameScreen() {
     return getOpponentPosition(steps, totalOpponents) === "right";
   });
 
-  const handAvailW = tableW - (BTN_W + 10) * 2;
+  const handAvailW = tableW - (SIDE_BTN_W + 6) * 2 - 8;
 
   // Exchange phase — human winner must give back a weak card
   const exchangeActive = gameState.exchangePhase?.active === true;
@@ -560,7 +588,7 @@ export default function GameScreen() {
               {gameState.firstPlayMade && (
                 <PlayedPile
                   prev={pileState.prev}
-                  current={pileState.current}
+                  current={flyInfo ? null : pileState.current}
                   roundWinner={roundWinner}
                 />
               )}
@@ -585,8 +613,23 @@ export default function GameScreen() {
               handSectionAnimStyle,
             ]}
           >
+            {/* PASSA — left side of hand row */}
+            <Animated.View style={[localStyles.passBtn, !canPassNow && localStyles.passBtnDim, passaAnimStyle]}>
+              <Pressable
+                testID="btn-passa"
+                onPress={handlePass}
+                disabled={!canPassNow}
+                style={localStyles.passBtnInner}
+              >
+                <Text style={[localStyles.passBtnLabel, !canPassNow && localStyles.passBtnLabelDim]}>
+                  PASSA
+                </Text>
+              </Pressable>
+            </Animated.View>
+
+            {/* Hand cards */}
             {isFinished ? (
-              <View style={localStyles.finishedRow}>
+              <View style={[localStyles.finishedRow, { flex: 1 }]}>
                 <Ionicons name="trophy" size={18} color={Colors.gold} />
                 <Text style={localStyles.finishedText}>
                   Hai finito! Aspetti gli altri...
@@ -602,79 +645,46 @@ export default function GameScreen() {
                 isMyTurn={isHumanTurn && !isFinished}
               />
             )}
+
+            {/* GIOCA — right side of hand row */}
+            <Animated.View style={[localStyles.playBtn, !playBtnValid && localStyles.playBtnDim, giocaAnimStyle]}>
+              <Pressable
+                testID="btn-gioca"
+                onPress={playBtnValid ? handlePlay : undefined}
+                style={localStyles.playBtnInner}
+              >
+                {playBtnValid ? (
+                  <LinearGradient
+                    colors={[Colors.goldLight, Colors.gold, Colors.goldDark]}
+                    start={{ x: 0, y: 0 }}
+                    end={{ x: 1, y: 1 }}
+                    style={localStyles.playBtnGrad}
+                  >
+                    <Text style={localStyles.playBtnLabel}>GIOCA</Text>
+                    {selectedCards.length > 1 && (
+                      <Text style={localStyles.playBtnSub}>
+                        {selectedCards.length}c
+                      </Text>
+                    )}
+                  </LinearGradient>
+                ) : (
+                  <View style={[localStyles.playBtnGrad, localStyles.playBtnGradDim]}>
+                    <Text style={localStyles.playBtnLabelDim}>
+                      {!isHumanTurn || isFinished
+                        ? "GIOCA"
+                        : selectedCards.length === 0
+                        ? "GIOCA"
+                        : tentativeCombo === null
+                        ? "NON\nVALIDA"
+                        : "TROPPO\nBASSA"}
+                    </Text>
+                  </View>
+                )}
+              </Pressable>
+            </Animated.View>
           </Animated.View>
         </View>
       </View>
-
-      <Animated.View
-        style={[
-          localStyles.passBtn,
-          { left: leftPad + TABLE_M - 2, bottom: bottomPad + TABLE_M - 2 },
-          !canPassNow && localStyles.passBtnDim,
-          passaAnimStyle,
-        ]}
-      >
-        <Pressable
-          testID="btn-passa"
-          onPress={handlePass}
-          disabled={!canPassNow}
-          style={StyleSheet.absoluteFill}
-        >
-          <View style={localStyles.passBtnInner}>
-            <Text
-              style={[
-                localStyles.passBtnLabel,
-                !canPassNow && localStyles.passBtnLabelDim,
-              ]}
-            >
-              PASSA
-            </Text>
-          </View>
-        </Pressable>
-      </Animated.View>
-
-      <Animated.View
-        style={[
-          localStyles.playBtn,
-          { right: rightPad + TABLE_M - 2, bottom: bottomPad + TABLE_M - 2 },
-          !playBtnValid && localStyles.playBtnDim,
-          giocaAnimStyle,
-        ]}
-      >
-        <Pressable
-          testID="btn-gioca"
-          onPress={playBtnValid ? handlePlay : undefined}
-          style={StyleSheet.absoluteFill}
-        >
-          {playBtnValid ? (
-            <LinearGradient
-              colors={[Colors.goldLight, Colors.gold, Colors.goldDark]}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 1 }}
-              style={localStyles.playBtnGrad}
-            >
-              <Text style={localStyles.playBtnLabel}>GIOCA</Text>
-              {selectedCards.length > 1 && (
-                <Text style={localStyles.playBtnSub}>
-                  {selectedCards.length} carte
-                </Text>
-              )}
-            </LinearGradient>
-          ) : (
-            <View style={[localStyles.playBtnGrad, localStyles.playBtnGradDim]}>
-              <Text style={localStyles.playBtnLabelDim}>
-                {!isHumanTurn || isFinished
-                  ? "GIOCA"
-                  : selectedCards.length === 0
-                  ? "GIOCA"
-                  : tentativeCombo === null
-                  ? "NON\nVALIDA"
-                  : "TROPPO\nBASSA"}
-              </Text>
-            </View>
-          )}
-        </Pressable>
-      </Animated.View>
 
       {flyInfo && (
         <FlyingCards
@@ -687,19 +697,9 @@ export default function GameScreen() {
 
       {/* Both-jokers exception banner */}
       {bothJokersException && (
-        <View style={localStyles.exchangeOverlay}>
-          <View style={localStyles.exchangeCard}>
-            <Ionicons name="shuffle" size={28} color={Colors.gold} />
-            <Text style={localStyles.exchangeTitle}>Nessuno scambio</Text>
-            <Text style={localStyles.exchangeSub}>
-              Il perdente ha entrambi i jolly.{"\n"}
-              <Text style={{ color: Colors.gold }}>
-                {gameState.players[gameState.exchangePhase!.winnerIdx]?.name}
-              </Text>{" "}
-              inizia il round.
-            </Text>
-          </View>
-        </View>
+        <BothJokersExceptionOverlay
+          winnerName={gameState.players[gameState.exchangePhase!.winnerIdx]?.name ?? ""}
+        />
       )}
 
       {/* Exchange phase overlay — human must give a weak card to the loser */}
@@ -709,13 +709,14 @@ export default function GameScreen() {
             <Ionicons name="swap-horizontal" size={28} color={Colors.gold} />
             <Text style={localStyles.exchangeTitle}>Scambio di carte</Text>
             <Text style={localStyles.exchangeSub}>
-              Sei il vincitore! Hai ricevuto{" "}
-              <Text style={{ color: Colors.gold }}>
-                {cardTakenFromLoser.rank === "joker_colored" || cardTakenFromLoser.rank === "joker_bw"
-                  ? "Jolly"
-                  : `${cardTakenFromLoser.rank} da ${exchangeLoser.name}`}
-              </Text>
-              {"\n"}Ora dai una carta a{" "}
+              Hai ricevuto da{" "}
+              <Text style={{ color: Colors.gold }}>{exchangeLoser.name}</Text>:
+            </Text>
+            <View style={localStyles.exchangeReceivedCard}>
+              <CardView card={cardTakenFromLoser} />
+            </View>
+            <Text style={localStyles.exchangeSub}>
+              Ora dai una carta a{" "}
               <Text style={{ color: Colors.gold }}>{exchangeLoser.name}</Text>:
             </Text>
             <ScrollView
@@ -861,30 +862,22 @@ const localStyles = StyleSheet.create({
   },
 
   passBtn: {
-    position: "absolute",
-    width: BTN_W,
-    height: BTN_H,
-    borderRadius: BTN_H / 2,
+    width: SIDE_BTN_W,
+    height: CARD_H,
+    borderRadius: 12,
     backgroundColor: "#5C1212",
-    alignItems: "center",
-    justifyContent: "center",
-    borderWidth: 2.5,
+    borderWidth: 2,
     borderColor: "#8B1A1A",
-    zIndex: 20,
-    shadowColor: "#000",
-    shadowOpacity: 0.5,
-    shadowRadius: 8,
-    shadowOffset: { width: 0, height: 4 },
-    elevation: 10,
+    marginHorizontal: 3,
+    overflow: "hidden",
   },
   passBtnDim: {
     backgroundColor: "rgba(50,12,12,0.55)",
     borderColor: "rgba(100,20,20,0.35)",
-    shadowOpacity: 0,
   },
   passBtnLabel: {
     fontFamily: "Rajdhani_700Bold",
-    fontSize: 15,
+    fontSize: 12,
     color: "#FF8080",
     letterSpacing: 1,
   },
@@ -896,47 +889,44 @@ const localStyles = StyleSheet.create({
   },
 
   playBtn: {
-    position: "absolute",
-    width: BTN_W,
-    height: BTN_H,
-    borderRadius: BTN_H / 2,
+    width: SIDE_BTN_W + 4,
+    height: CARD_H,
+    borderRadius: 12,
     overflow: "hidden",
-    zIndex: 20,
-    shadowColor: Colors.gold,
-    shadowOpacity: 0.5,
-    shadowRadius: 8,
-    shadowOffset: { width: 0, height: 4 },
-    elevation: 10,
+    marginHorizontal: 3,
   },
-  playBtnDim: { shadowOpacity: 0 },
+  playBtnDim: { opacity: 0.55 },
+  playBtnInner: {
+    flex: 1,
+  },
   playBtnGrad: {
     flex: 1,
     alignItems: "center",
     justifyContent: "center",
-    gap: 1,
+    gap: 2,
   },
   playBtnGradDim: {
-    backgroundColor: "rgba(40,30,5,0.55)",
-    borderWidth: 2.5,
+    backgroundColor: "rgba(40,30,5,0.7)",
+    borderWidth: 2,
     borderColor: "rgba(201,168,76,0.2)",
-    borderRadius: BTN_H / 2,
+    borderRadius: 12,
   },
   playBtnLabel: {
     fontFamily: "Rajdhani_700Bold",
-    fontSize: 15,
+    fontSize: 13,
     color: "#0A1F10",
     letterSpacing: 1,
   },
   playBtnSub: {
     fontFamily: "Rajdhani_500Medium",
-    fontSize: 9,
+    fontSize: 10,
     color: "#0A1F10",
     opacity: 0.7,
   },
   playBtnLabelDim: {
     fontFamily: "Rajdhani_600SemiBold",
-    fontSize: 11,
-    color: "rgba(201,168,76,0.3)",
+    fontSize: 10,
+    color: "rgba(201,168,76,0.4)",
     letterSpacing: 0.5,
     textAlign: "center",
   },
@@ -953,28 +943,31 @@ const localStyles = StyleSheet.create({
     borderRadius: 20,
     borderWidth: 2,
     borderColor: "rgba(201,168,76,0.4)",
-    padding: 24,
+    padding: 20,
     alignItems: "center",
-    gap: 12,
+    gap: 10,
     maxWidth: 520,
     width: "80%",
   },
   exchangeTitle: {
     fontFamily: "Rajdhani_700Bold",
-    fontSize: 22,
+    fontSize: 20,
     color: Colors.gold,
     letterSpacing: 1,
   },
   exchangeSub: {
     fontFamily: "Inter_400Regular",
-    fontSize: 14,
+    fontSize: 13,
     color: Colors.text,
     textAlign: "center",
+  },
+  exchangeReceivedCard: {
+    paddingVertical: 4,
   },
   exchangeCardRow: {
     flexDirection: "row",
     gap: 10,
-    paddingVertical: 8,
+    paddingVertical: 6,
   },
   exchangeCardItem: {
     transform: [{ scale: 1 }],

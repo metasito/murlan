@@ -191,13 +191,14 @@ export function shuffleDeck(deck: Card[]): Card[] {
 
 export function dealCards(playerCount: number): { hands: Card[][]; excluded: Card[] } {
   const deck = shuffleDeck(createDeck());
-  const cardsPerPlayer: Record<number, number> = { 2: 26, 3: 17, 4: 13 };
-  const count = cardsPerPlayer[playerCount] ?? 13;
-  const hands: Card[][] = Array.from({ length: playerCount }, () => []);
-  for (let i = 0; i < count * playerCount; i++) {
-    hands[i % playerCount].push(deck[i]);
-  }
-  return { hands, excluded: deck.slice(count * playerCount) };
+  // Always deal 4 groups of 13 cards regardless of player count.
+  // Players receive one group each; remaining groups are excluded (unused).
+  const CARDS_PER_GROUP = 13;
+  const hands: Card[][] = Array.from({ length: playerCount }, (_, i) =>
+    deck.slice(i * CARDS_PER_GROUP, (i + 1) * CARDS_PER_GROUP)
+  );
+  const excluded = deck.slice(playerCount * CARDS_PER_GROUP);
+  return { hands, excluded };
 }
 
 export function sortHand(hand: Card[]): Card[] {

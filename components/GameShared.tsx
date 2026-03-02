@@ -22,11 +22,12 @@ export const CARD_W = 58;
 export const CARD_H = 84;
 export const BTN_W = 84;
 export const BTN_H = 84;
-export const TOP_BAR_H = 44;
-export const TABLE_M = 8;
-export const SIDE_SECTION_W = 160;
-export const TOP_SECTION_H = 82;
-export const HAND_SECTION_H = CARD_H + 14;
+export const SIDE_BTN_W = 50;
+export const TOP_BAR_H = 40;
+export const TABLE_M = 4;
+export const SIDE_SECTION_W = 130;
+export const TOP_SECTION_H = 70;
+export const HAND_SECTION_H = CARD_H + 16;
 
 export type FlyDirection = "top" | "bottom" | "left" | "right";
 
@@ -562,9 +563,9 @@ export const sharedTableStyles = StyleSheet.create({
   },
   centerSection: { flex: 1, alignItems: "center", justifyContent: "center" },
   handSection: {
+    flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
-    paddingHorizontal: BTN_W + 10,
   },
   handSectionActive: {
     backgroundColor: "rgba(201,168,76,0.05)",

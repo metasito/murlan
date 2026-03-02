@@ -42,6 +42,7 @@ import {
   CARD_H,
   BTN_W,
   BTN_H,
+  SIDE_BTN_W,
   TOP_BAR_H,
   TABLE_M,
   SIDE_SECTION_W,
@@ -526,7 +527,7 @@ export default function OnlineGameScreen() {
   const tableRight = rightPad + TABLE_M;
   const tableBottom = bottomPad + TABLE_M;
   const handAvailW =
-    W - tableLeft - tableRight - (BTN_W + 10) * 2;
+    W - tableLeft - tableRight - (SIDE_BTN_W + 6) * 2 - 8;
 
   function toggleCard(id: string) {
     setSelectedIds((prev) =>
@@ -673,7 +674,7 @@ export default function OnlineGameScreen() {
             <View style={sharedTableStyles.centerSection}>
               <PlayedPile
                 prev={pileState.prev}
-                current={pileState.current}
+                current={flyInfo ? null : pileState.current}
                 roundWinner={roundWinner}
               />
             </View>
@@ -695,8 +696,21 @@ export default function OnlineGameScreen() {
             isMyTurn && !isFinished && sharedTableStyles.handSectionActive,
             { height: HAND_SECTION_H },
           ]}>
+            {/* PASSA — left side */}
+            <Pressable
+              testID="btn-passa"
+              onPress={handlePass}
+              disabled={!canPassNow}
+              style={[localStyles.passBtn, !canPassNow && localStyles.passBtnDim]}
+            >
+              <Text style={[localStyles.passBtnLabel, !canPassNow && localStyles.passBtnLabelDim]}>
+                PASSA
+              </Text>
+            </Pressable>
+
+            {/* Hand cards */}
             {isFinished ? (
-              <View style={localStyles.finishedRow}>
+              <View style={[localStyles.finishedRow, { flex: 1 }]}>
                 <Ionicons name="trophy" size={18} color={Colors.gold} />
                 <Text style={localStyles.finishedText}>
                   Hai finito! Aspetti gli altri...
@@ -712,59 +726,36 @@ export default function OnlineGameScreen() {
                 isMyTurn={isMyTurn && !isFinished}
               />
             )}
+
+            {/* GIOCA — right side */}
+            <Pressable
+              testID="btn-gioca"
+              onPress={playBtnValid ? handlePlay : undefined}
+              style={[localStyles.playBtn, !playBtnValid && localStyles.playBtnDim]}
+            >
+              {playBtnValid ? (
+                <LinearGradient
+                  colors={[Colors.goldLight, Colors.gold, Colors.goldDark]}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 1 }}
+                  style={localStyles.playBtnGrad}
+                >
+                  <Text style={localStyles.playBtnLabel}>GIOCA</Text>
+                  {selectedIds.length > 1 && (
+                    <Text style={localStyles.playBtnSub}>
+                      {selectedIds.length}c
+                    </Text>
+                  )}
+                </LinearGradient>
+              ) : (
+                <View style={[localStyles.playBtnGrad, localStyles.playBtnGradDim]}>
+                  <Text style={localStyles.playBtnLabelDim}>GIOCA</Text>
+                </View>
+              )}
+            </Pressable>
           </View>
         </View>
       </View>
-
-      <Pressable
-        testID="btn-passa"
-        onPress={handlePass}
-        disabled={!canPassNow}
-        style={[
-          localStyles.passBtn,
-          { left: leftPad + TABLE_M - 2, bottom: bottomPad + TABLE_M - 2 },
-          !canPassNow && localStyles.passBtnDim,
-        ]}
-      >
-        <Text
-          style={[
-            localStyles.passBtnLabel,
-            !canPassNow && localStyles.passBtnLabelDim,
-          ]}
-        >
-          PASSA
-        </Text>
-      </Pressable>
-
-      <Pressable
-        testID="btn-gioca"
-        onPress={playBtnValid ? handlePlay : undefined}
-        style={[
-          localStyles.playBtn,
-          { right: rightPad + TABLE_M - 2, bottom: bottomPad + TABLE_M - 2 },
-          !playBtnValid && localStyles.playBtnDim,
-        ]}
-      >
-        {playBtnValid ? (
-          <LinearGradient
-            colors={[Colors.goldLight, Colors.gold, Colors.goldDark]}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 1 }}
-            style={localStyles.playBtnGrad}
-          >
-            <Text style={localStyles.playBtnLabel}>GIOCA</Text>
-            {selectedIds.length > 1 && (
-              <Text style={localStyles.playBtnSub}>
-                {selectedIds.length} carte
-              </Text>
-            )}
-          </LinearGradient>
-        ) : (
-          <View style={[localStyles.playBtnGrad, localStyles.playBtnGradDim]}>
-            <Text style={localStyles.playBtnLabelDim}>GIOCA</Text>
-          </View>
-        )}
-      </Pressable>
 
       {flyInfo && (
         <FlyingCards
@@ -912,72 +903,62 @@ const localStyles = StyleSheet.create({
   },
 
   passBtn: {
-    position: "absolute",
-    width: BTN_W,
-    height: BTN_H,
-    borderRadius: BTN_H / 2,
+    width: SIDE_BTN_W,
+    height: CARD_H,
+    borderRadius: 12,
     backgroundColor: "#5C1212",
     alignItems: "center",
     justifyContent: "center",
-    borderWidth: 2.5,
+    borderWidth: 2,
     borderColor: "#8B1A1A",
-    zIndex: 20,
-    shadowColor: "#000",
-    shadowOpacity: 0.5,
-    shadowRadius: 8,
-    shadowOffset: { width: 0, height: 4 },
-    elevation: 10,
+    marginHorizontal: 3,
   },
   passBtnDim: {
     backgroundColor: "rgba(50,12,12,0.55)",
     borderColor: "rgba(100,20,20,0.35)",
-    shadowOpacity: 0,
   },
   passBtnLabel: {
     fontFamily: "Rajdhani_700Bold",
-    fontSize: 15,
+    fontSize: 12,
     color: "#FF8080",
     letterSpacing: 1,
   },
   passBtnLabelDim: { color: "rgba(255,128,128,0.3)" },
 
   playBtn: {
-    position: "absolute",
-    width: BTN_W,
-    height: BTN_H,
-    borderRadius: BTN_H / 2,
+    width: SIDE_BTN_W + 4,
+    height: CARD_H,
+    borderRadius: 12,
     overflow: "hidden",
-    zIndex: 20,
-    shadowColor: Colors.gold,
-    shadowOpacity: 0.5,
-    shadowRadius: 8,
-    shadowOffset: { width: 0, height: 4 },
-    elevation: 10,
+    marginHorizontal: 3,
   },
-  playBtnDim: { shadowOpacity: 0 },
+  playBtnDim: { opacity: 0.55 },
   playBtnGrad: { flex: 1, alignItems: "center", justifyContent: "center", gap: 1 },
   playBtnGradDim: {
-    backgroundColor: "rgba(40,30,5,0.55)",
-    borderWidth: 2.5,
+    backgroundColor: "rgba(40,30,5,0.7)",
+    borderWidth: 2,
     borderColor: "rgba(201,168,76,0.2)",
-    borderRadius: BTN_H / 2,
+    borderRadius: 12,
+    flex: 1,
+    alignItems: "center" as const,
+    justifyContent: "center" as const,
   },
   playBtnLabel: {
     fontFamily: "Rajdhani_700Bold",
-    fontSize: 15,
+    fontSize: 13,
     color: "#0A1F10",
     letterSpacing: 1,
   },
   playBtnSub: {
     fontFamily: "Rajdhani_500Medium",
-    fontSize: 9,
+    fontSize: 10,
     color: "#0A1F10",
     opacity: 0.7,
   },
   playBtnLabelDim: {
     fontFamily: "Rajdhani_600SemiBold",
-    fontSize: 11,
-    color: "rgba(201,168,76,0.3)",
+    fontSize: 10,
+    color: "rgba(201,168,76,0.4)",
     letterSpacing: 0.5,
     textAlign: "center",
   },
