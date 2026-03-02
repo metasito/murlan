@@ -1,10 +1,11 @@
 import { eq, and, or, sql } from "drizzle-orm";
 import { randomUUID } from "crypto";
-import { db } from "./db";
+import { db, pool } from "./db";
 import { users, rooms, roomPlayers, friends } from "@shared/schema";
 import type { User, InsertUser, Room, RoomPlayer, Friend } from "@shared/schema";
 
 export interface IStorage {
+  deleteUser(userId: string): Promise<void>;
   getUser(id: string): Promise<User | undefined>;
   getUserByUsername(username: string): Promise<User | undefined>;
   getUserByFriendCode(code: string): Promise<User | undefined>;
@@ -41,6 +42,17 @@ function generateRoomCode(): string {
 }
 
 class DrizzleStorage implements IStorage {
+  async deleteUser(userId: string): Promise<void> {
+    await db.delete(friends).where(
+      or(eq(friends.userId, userId), eq(friends.friendUserId, userId))
+    );
+    await pool.query(
+      `DELETE FROM session WHERE sess->>'userId' = $1`,
+      [userId]
+    );
+    await db.delete(users).where(eq(users.id, userId));
+  }
+
   async getUser(id: string) {
     const [user] = await db.select().from(users).where(eq(users.id, id));
     return user;

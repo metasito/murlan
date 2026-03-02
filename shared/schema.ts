@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { pgTable, text, varchar, timestamp, integer, pgEnum } from "drizzle-orm/pg-core";
+import { pgTable, text, varchar, timestamp, integer, pgEnum, jsonb, boolean } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
@@ -41,6 +41,16 @@ export const friends = pgTable("friends", {
   friendUserId: varchar("friend_user_id").references(() => users.id).notNull(),
   status: friendStatusEnum("status").default("pending").notNull(),
   createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const activeGames = pgTable("active_games", {
+  roomCode:   text("room_code").primaryKey(),
+  gameState:  jsonb("game_state").notNull().default({}),
+  playerIds:  jsonb("player_ids").notNull().default([]),
+  isPublic:   boolean("is_public").notNull().default(false),
+  maxPlayers: integer("max_players").notNull().default(4),
+  gameMode:   text("game_mode").notNull().default("free_for_all"),
+  updatedAt:  timestamp("updated_at").defaultNow().notNull(),
 });
 
 export const insertUserSchema = createInsertSchema(users).pick({

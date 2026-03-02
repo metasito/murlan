@@ -1,5 +1,5 @@
 entrypoint = "README.md"
-modules = ["nodejs-22", "javascript"]
+modules = ["nodejs-22", "javascript", "postgresql-16"]
 
 [nix]
 channel = "stable-24_05"
@@ -72,3 +72,11 @@ task = "shell.exec"
 args = "npm run expo:dev"
 waitForPort = 8081
 ensurePreviewReachable = "/status"
+
+[userenv]
+
+[userenv.development]
+NODE_ENV = "development"
+
+[userenv.production]
+NODE_ENV = "production"

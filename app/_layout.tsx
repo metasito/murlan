@@ -11,7 +11,9 @@ import { queryClient } from "@/lib/query-client";
 import { GameProvider } from "@/context/GameContext";
 import { AuthProvider } from "@/context/AuthContext";
 import { SocketProvider, useSocket } from "@/context/SocketContext";
+import { SettingsProvider } from "@/context/SettingsContext";
 import NotificationBanner from "@/components/NotificationBanner";
+import { OfflineBanner } from "@/components/OfflineBanner";
 import {
   useFonts,
   Rajdhani_400Regular,
@@ -42,6 +44,7 @@ function RootLayoutNav() {
         <Stack.Screen name="result" options={{ animation: "fade" }} />
       </Stack>
       <NotificationBanner notification={notification} onDismiss={dismissNotification} />
+      <OfflineBanner />
     </View>
   );
 }
@@ -67,21 +70,23 @@ export default function RootLayout() {
 
   return (
     <ErrorBoundary>
-      <QueryClientProvider client={queryClient}>
-        <SafeAreaProvider>
-          <GestureHandlerRootView style={{ flex: 1 }}>
-            <KeyboardProvider>
-              <AuthProvider>
-                <SocketProvider>
-                  <GameProvider>
-                    <RootLayoutNav />
-                  </GameProvider>
-                </SocketProvider>
-              </AuthProvider>
-            </KeyboardProvider>
-          </GestureHandlerRootView>
-        </SafeAreaProvider>
-      </QueryClientProvider>
+      <SettingsProvider>
+        <QueryClientProvider client={queryClient}>
+          <SafeAreaProvider>
+            <GestureHandlerRootView style={{ flex: 1 }}>
+              <KeyboardProvider>
+                <AuthProvider>
+                  <SocketProvider>
+                    <GameProvider>
+                      <RootLayoutNav />
+                    </GameProvider>
+                  </SocketProvider>
+                </AuthProvider>
+              </KeyboardProvider>
+            </GestureHandlerRootView>
+          </SafeAreaProvider>
+        </QueryClientProvider>
+      </SettingsProvider>
     </ErrorBoundary>
   );
 }

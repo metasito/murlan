@@ -1,0 +1,1166 @@
+# MURLAN — PRODUCTION-HARDENING IMPLEMENTATION SPEC
+# ✅ = Expo Go compatible   🖥️ = Server only (no Expo Go impact)
+#
+# Replit environment and PostgreSQL stay as-is.
+# DATABASE_URL is auto-injected by Replit — never define or override it.
+# DO NOT modify any game rules, layout constants, combo logic,
+# or anything marked MUST NOT CHANGE in replit.md.
+# Apply ALL sections in order. Verify dev server starts after each section.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+## SECTION 0 — INSTALL DEPENDENCIES
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+# 🖥️ Backend — plain npm (server only, no Expo impact)
+npm install helmet express-rate-limit zod connect-pg-simple pino pino-http pino-pretty
+npm install --save-dev @types/connect-pg-simple
+
+# ✅ Frontend — MUST use `npx expo install` so Expo resolves
+#    the exact version compatible with your current SDK.
+#    DO NOT use npm install for these.
+npx expo install expo-haptics
+npx expo install @react-native-community/netinfo
+npx expo install @react-native-async-storage/async-storage
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+## SECTION 1 — SECRETS / ENVIRONMENT CONFIGURATION 🖥️
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+DO NOT create a .env file. Use the Replit Secrets tab (lock icon
+in sidebar). Add the following three Secrets:
+
+  Key: SESSION_SECRET
+  Value: <generate: node -e "console.log(require('crypto').randomBytes(32).toString('hex'))">
+
+  Key: CORS_ORIGIN
+  Value: http://localhost:8081
+
+  Key: NODE_ENV
+  Value: development
+
+DATABASE_URL, PGHOST, PGUSER, PGPASSWORD, PGDATABASE, PGPORT are
+already auto-injected by Replit PostgreSQL. Never redefine them.
+
+In `server/index.ts`, add at the very top to validate secrets at startup:
+
+  // Validates required secrets exist before the server starts
+  const REQUIRED_ENV = ['SESSION_SECRET', 'DATABASE_URL'];
+  for (const key of REQUIRED_ENV) {
+    if (!process.env[key]) throw new Error(`Missing required Replit Secret: ${key}`);
+  }
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+## SECTION 2 — SECURITY LAYER 🖥️ (server/index.ts)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Add imports at the top of `server/index.ts`:
+
+  import helmet from 'helmet';
+  import rateLimit from 'express-rate-limit';
+  import session from 'express-session';
+  import connectPgSimple from 'connect-pg-simple';
+  import { pool } from './db';  // existing Replit pg pool
+
+### 2a — Helmet (11 security headers in one line)
+Apply IMMEDIATELY after `const app = express()`:
+
+  app.use(helmet({
+    contentSecurityPolicy: false,      // Expo web needs inline scripts
+    crossOriginEmbedderPolicy: false,  // needed for Expo web assets
+  }));
+
+### 2b — Rate Limiters
+Add BEFORE route registration:
+
+  const authLimiter = rateLimit({
+    windowMs: 15 * 60 * 1000,  // 15-minute window
+    max: 20,                    // max 20 attempts per window
+    standardHeaders: true,
+    legacyHeaders: false,
+    message: { error: 'Troppi tentativi, riprova tra 15 minuti.' },
+  });
+
+  const friendLimiter = rateLimit({
+    windowMs: 60 * 1000,  // 1-minute window
+    max: 10,
+    message: { error: 'Troppe richieste, rallenta.' },
+  });
+
+In `server/routes.ts`, apply to routes:
+  router.post('/auth/login',    authLimiter,  ...);
+  router.post('/auth/register', authLimiter,  ...);
+  router.post('/friends/add',   friendLimiter, ...);
+
+### 2c — Session store backed by Replit PostgreSQL
+Replace the ENTIRE existing `app.use(session({...}))` block with this.
+The `export` is required — Section 2e reuses it for Socket.io:
+
+  const PgSession = connectPgSimple(session);
+
+  export const sessionMiddleware = session({
+    store: new PgSession({
+      pool,                         // Replit PostgreSQL pool from db.ts
+      tableName: 'user_sessions',
+      createTableIfMissing: true,   // creates table automatically on first run
+    }),
+    secret: process.env.SESSION_SECRET!,
+    resave: false,
+    saveUninitialized: false,
+    cookie: {
+      maxAge: 30 * 24 * 60 * 60 * 1000,  // 30 days
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: process.env.NODE_ENV === 'production' ? 'strict' : 'lax',
+    },
+  });
+
+  app.use(sessionMiddleware);
+
+  WHY THIS MATTERS: Default express-session uses in-memory storage.
+  Every Replit restart logs out every active user. Storing in the
+  existing PostgreSQL DB makes sessions survive restarts at zero cost.
+
+### 2d — CORS lockdown
+Replace existing CORS config with:
+
+  import cors from 'cors';
+  app.use(cors({
+    origin: (process.env.CORS_ORIGIN ?? 'http://localhost:8081').split(','),
+    credentials: true,
+  }));
+
+### 2e — Fix Socket.io auth (server/socket.ts)
+CRITICAL: `socket.handshake.auth.userId` is CLIENT-provided and can
+be spoofed. Any player can impersonate another by sending a different
+userId. Replace with server-session validation.
+
+In `server/socket.ts`:
+
+  import { sessionMiddleware } from './index';
+
+  // Step 1: inject session into every socket request
+  io.use((socket, next) => {
+    sessionMiddleware(socket.request as any, {} as any, next);
+  });
+
+  // Step 2: reject unauthenticated connections
+  io.use((socket, next) => {
+    const req = socket.request as any;
+    const userId: number | undefined = req.session?.userId;
+    if (!userId) return next(new Error('Non autenticato'));
+    (socket as any).userId = userId;
+    next();
+  });
+
+  // Step 3: inside io.on('connection', (socket) => { ... })
+  // Replace whatever line extracts userId from handshake.auth with:
+  const userId: number = (socket as any).userId;
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+## SECTION 3 — ZOD VALIDATION LAYER 🖥️ (server/)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Create new file: `server/validate.ts`
+──────────────────────────────────────
+import { z } from 'zod';
+import { Request, Response, NextFunction } from 'express';
+
+export function validate(schema: z.ZodTypeAny) {
+  return (req: Request, res: Response, next: NextFunction) => {
+    const result = schema.safeParse(req.body);
+    if (!result.success) {
+      return res.status(400).json({
+        error: 'Dati non validi',
+        details: result.error.flatten().fieldErrors,
+      });
+    }
+    req.body = result.data;  // replace raw body with safely parsed data
+    next();
+  };
+}
+
+Create new file: `server/schemas.ts`
+──────────────────────────────────────
+import { z } from 'zod';
+
+export const RegisterSchema = z.object({
+  username: z.string().min(3).max(30).regex(/^[a-zA-Z0-9_]+$/, {
+    message: 'Solo lettere, numeri e underscore',
+  }),
+  password: z.string().min(6).max(100),
+});
+
+export const LoginSchema = z.object({
+  username: z.string().min(1).max(30),
+  password: z.string().min(1).max(100),
+});
+
+export const AddFriendSchema = z.object({
+  friendCode: z.string().length(6).toUpperCase().regex(/^[A-Z0-9]{6}$/),
+});
+
+export const ExchangeCardSchema = z.object({
+  cardIndex: z.number().int().min(0).max(52),
+});
+
+In `server/routes.ts`:
+  import { validate } from './validate';
+  import { RegisterSchema, LoginSchema, AddFriendSchema } from './schemas';
+
+  router.post('/auth/register', authLimiter, validate(RegisterSchema), registerHandler);
+  router.post('/auth/login',    authLimiter, validate(LoginSchema),    loginHandler);
+  router.post('/friends/add',   friendLimiter, validate(AddFriendSchema), addFriendHandler);
+
+  // For all req.params.id usage, replace String() workaround with:
+  const id = z.coerce.number().int().parse(req.params.id);
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+## SECTION 4 — STRUCTURED LOGGING 🖥️ (server/)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Create new file: `server/logger.ts`
+────────────────────────────────────
+import pino from 'pino';
+
+export const logger = pino({
+  level: process.env.NODE_ENV === 'production' ? 'info' : 'debug',
+  transport: process.env.NODE_ENV !== 'production'
+    ? { target: 'pino-pretty', options: { colorize: true } }
+    : undefined,
+});
+
+In `server/index.ts`:
+  import pinoHttp from 'pino-http';
+  import { logger } from './logger';
+
+  // Add immediately after helmet middleware:
+  app.use(pinoHttp({
+    logger,
+    autoLogging: { ignore: (req) => req.url === '/health' }, // skip health spam
+  }));
+
+In `server/socket.ts` and `server/routes.ts`:
+  import { logger } from './logger';
+
+  // Replace ALL console.log/error/warn — adapt to match existing messages:
+  logger.info({ event: 'room:create', roomCode, userId }, 'Room created');
+  logger.warn({ event: 'game:invalid_move', roomCode, userId }, 'Invalid move');
+  logger.error({ err, event: 'socket:error' }, 'Unhandled socket error');
+
+  DO NOT delete any existing log content — only swap console.* → logger.*
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+## SECTION 5 — HEALTH CHECK + GRACEFUL SHUTDOWN 🖥️
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+In `server/index.ts`, add BEFORE all other routes:
+
+  app.get('/health', async (_req, res) => {
+    try {
+      await pool.query('SELECT 1');
+      res.json({
+        status: 'ok',
+        db: 'connected',
+        uptime: Math.floor(process.uptime()),
+        env: process.env.NODE_ENV,
+      });
+    } catch (err) {
+      logger.error({ err }, 'Health check DB failure');
+      res.status(503).json({ status: 'error', db: 'disconnected' });
+    }
+  });
+
+At the BOTTOM of `server/index.ts`, AFTER `server.listen(...)`:
+
+  const shutdown = async (signal: string) => {
+    logger.info({ signal }, 'Graceful shutdown initiated');
+    server.close(async () => {
+      io.close();
+      await pool.end();
+      logger.info('Server shut down cleanly');
+      process.exit(0);
+    });
+    setTimeout(() => { logger.error('Forced shutdown after timeout'); process.exit(1); }, 10_000);
+  };
+
+  process.on('SIGTERM', () => shutdown('SIGTERM'));
+  process.on('SIGINT',  () => shutdown('SIGINT'));
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+## SECTION 6 — GAME STATE PERSISTENCE 🖥️ (Replit PostgreSQL)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+All changes use the EXISTING Replit PostgreSQL via db.ts — no new
+connections, no external services.
+
+### 6a — Extend Drizzle schema (server/db.ts)
+ADD these table definitions — do not modify existing tables:
+
+  import { pgTable, text, jsonb, timestamp, integer, boolean } from 'drizzle-orm/pg-core';
+
+  export const activeGames = pgTable('active_games', {
+    roomCode:   text('room_code').primaryKey(),
+    gameState:  jsonb('game_state').notNull().default({}),
+    playerIds:  jsonb('player_ids').notNull().default([]),  // number[]
+    isPublic:   boolean('is_public').notNull().default(false),
+    maxPlayers: integer('max_players').notNull().default(4),
+    gameMode:   text('game_mode').notNull().default('ffa'),
+    updatedAt:  timestamp('updated_at').defaultNow().notNull(),
+  });
+
+Then push schema to Replit PostgreSQL (safe — only adds, never modifies):
+  npx drizzle-kit push
+
+### 6b — Persist state after every move (server/socket.ts)
+  import { activeGames } from './db';
+  import { eq } from 'drizzle-orm';
+
+  // After EVERY io.to(roomCode).emit('game:state', ...) broadcast:
+  db.insert(activeGames)
+    .values({
+      roomCode,
+      gameState: newGameState,
+      playerIds: room.playerIds,
+      isPublic: false,
+      maxPlayers: room.maxPlayers,
+      gameMode: room.gameMode,
+      updatedAt: new Date(),
+    })
+    .onConflictDoUpdate({
+      target: activeGames.roomCode,
+      set: { gameState: newGameState, updatedAt: new Date() },
+    })
+    .catch(err => logger.error({ err, roomCode }, 'Failed to persist game state'));
+  // .catch not .await — fire-and-forget so it never blocks the socket handler
+
+### 6c — Rejoin handler (server/socket.ts)
+  socket.on('game:rejoin', async ({ roomCode }: { roomCode: string }) => {
+    try {
+      const row = await db.query.activeGames.findFirst({
+        where: eq(activeGames.roomCode, roomCode),
+      });
+      if (!row) return socket.emit('game:rejoin_failed', { reason: 'Partita non trovata' });
+
+      const ids = row.playerIds as number[];
+      if (!ids.includes(userId)) return socket.emit('game:rejoin_failed', { reason: 'Non autorizzato' });
+
+      socket.join(roomCode);
+      // sanitizeStateForPlayer must be the same function used for live broadcasts
+      socket.emit('game:state', sanitizeStateForPlayer(row.gameState as any, userId));
+    } catch (err) {
+      logger.error({ err, roomCode, userId }, 'Rejoin failed');
+      socket.emit('game:rejoin_failed', { reason: 'Errore del server' });
+    }
+  });
+
+### 6d — Cleanup on game end (server/socket.ts)
+  // After io.to(roomCode).emit('game:over', ...)
+  db.delete(activeGames)
+    .where(eq(activeGames.roomCode, roomCode))
+    .catch(err => logger.error({ err, roomCode }, 'Failed to delete game state'));
+
+### 6e — Fix quickmatch queue (server/socket.ts)
+  // DELETE: const publicRoomIds = new Set<string>();
+
+  async function addPublicRoom(roomCode: string, maxPlayers: number, gameMode: string) {
+    await db.insert(activeGames)
+      .values({ roomCode, gameState: {}, playerIds: [], isPublic: true, maxPlayers, gameMode })
+      .onConflictDoNothing();
+  }
+
+  async function removePublicRoom(roomCode: string) {
+    await db.update(activeGames)
+      .set({ isPublic: false })
+      .where(eq(activeGames.roomCode, roomCode));
+  }
+
+  async function findPublicRoom(maxPlayers: number, gameMode: string): Promise<string | null> {
+    const row = await db.query.activeGames.findFirst({
+      where: (t, { and, eq: eqOp }) =>
+        and(eqOp(t.isPublic, true), eqOp(t.maxPlayers, maxPlayers), eqOp(t.gameMode, gameMode)),
+    });
+    return row?.roomCode ?? null;
+  }
+
+  Replace all publicRoomIds.add/has/delete calls with these helpers.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+## SECTION 7 — AFK / DISCONNECT HANDLING 🖥️ (server/socket.ts)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Add at module scope in socket.ts (outside any handler):
+
+  const afkTimers = new Map<string, NodeJS.Timeout>(); // key: `${roomCode}:${userId}`
+
+  function clearAfkTimer(roomCode: string, userId: number) {
+    const key = `${roomCode}:${userId}`;
+    const t = afkTimers.get(key);
+    if (t) { clearTimeout(t); afkTimers.delete(key); }
+  }
+
+  function startAfkTimer(roomCode: string, userId: number, username: string) {
+    clearAfkTimer(roomCode, userId);
+    afkTimers.set(`${roomCode}:${userId}`, setTimeout(() => {
+      afkTimers.delete(`${roomCode}:${userId}`);
+      handleAutoPass(roomCode, userId);
+      io.to(roomCode).emit('game:notification', {
+        type: 'afk',
+        message: `${username} è inattivo — passato automaticamente`,
+      });
+    }, 30_000));
+  }
+
+After EVERY game state broadcast, call:
+  startAfkTimer(roomCode, currentTurnUserId, currentTurnUsername);
+
+When any player makes a valid move (play or pass), call:
+  clearAfkTimer(roomCode, userId);
+
+Add handleAutoPass:
+  function handleAutoPass(roomCode: string, userId: number) {
+    const room = rooms.get(roomCode);
+    if (!room?.gameState) return;
+    if (room.gameState.currentTurnUserId !== userId) return;
+    // Call the same logic as your existing pass handler
+    // e.g. processMove(roomCode, userId, { type: 'pass' })
+  }
+
+On socket disconnect:
+  socket.on('disconnect', () => {
+    clearAfkTimer(currentRoomCode, userId);
+    if (currentRoomCode && isGameActive(currentRoomCode)) {
+      io.to(currentRoomCode).emit('game:player_disconnected', {
+        userId,
+        message: `${username} si è disconnesso. Ha 60 secondi per rientrare.`,
+      });
+      setTimeout(async () => {
+        const sockets = await io.in(currentRoomCode).fetchSockets();
+        const stillGone = !sockets.some(s => (s as any).userId === userId);
+        if (stillGone) {
+          handleAutoPass(currentRoomCode, userId);
+          io.to(currentRoomCode).emit('game:notification', {
+            type: 'disconnect_timeout',
+            message: `${username} non è rientrato — passato automaticamente`,
+          });
+        }
+      }, 60_000);
+    }
+  });
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+## SECTION 8 — REMATCH VOTE IDEMPOTENCY 🖥️ (server/socket.ts)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+In the room state object, add:
+  rematchVotes: Set<number>  // initialized as new Set() on room creation
+
+Replace the existing `game:rematch_vote` handler with:
+
+  socket.on('game:rematch_vote', async ({ roomCode }: { roomCode: string }) => {
+    const room = rooms.get(roomCode);
+    if (!room) return;
+    if (!room.rematchVotes) room.rematchVotes = new Set<number>();
+
+    room.rematchVotes.add(userId);  // Set = idempotent, duplicates ignored
+
+    io.to(roomCode).emit('game:rematch_votes', {
+      count: room.rematchVotes.size,
+      total: room.playerIds.length,
+      voters: Array.from(room.rematchVotes),
+    });
+
+    if (room.rematchVotes.size >= room.playerIds.length) {
+      room.rematchVotes.clear();
+      await initializeRematch(roomCode);  // existing function unchanged
+    }
+  });
+
+  // When a player leaves mid-vote:
+  room.rematchVotes?.delete(userId);
+  io.to(roomCode).emit('game:rematch_votes', {
+    count: room.rematchVotes?.size ?? 0,
+    total: room.playerIds.length,
+  });
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+## SECTION 9 — SETTINGS: SOUNDS & HAPTICS TOGGLE ✅
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Uses only `@react-native-async-storage/async-storage` (Expo Go ✅),
+React Context, and core React Native components (Switch, Modal).
+No new libraries beyond what Section 0 already installs.
+
+### 9a — Create SettingsContext (context/SettingsContext.tsx)
+────────────────────────────────────────────────────────────
+import React, { createContext, useContext, useEffect, useState } from 'react';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+
+interface Settings {
+  soundsEnabled: boolean;
+  hapticsEnabled: boolean;
+}
+
+interface SettingsContextValue extends Settings {
+  setSoundsEnabled: (v: boolean) => void;
+  setHapticsEnabled: (v: boolean) => void;
+}
+
+const STORAGE_KEY = '@murlan_settings';
+const defaults: Settings = { soundsEnabled: true, hapticsEnabled: true };
+
+const SettingsContext = createContext<SettingsContextValue>({
+  ...defaults,
+  setSoundsEnabled: () => {},
+  setHapticsEnabled: () => {},
+});
+
+export function SettingsProvider({ children }: { children: React.ReactNode }) {
+  const [settings, setSettings] = useState<Settings>(defaults);
+
+  // Load persisted settings on mount
+  useEffect(() => {
+    AsyncStorage.getItem(STORAGE_KEY).then(raw => {
+      if (raw) {
+        try { setSettings({ ...defaults, ...JSON.parse(raw) }); } catch {}
+      }
+    });
+  }, []);
+
+  // Persist whenever settings change
+  useEffect(() => {
+    AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(settings)).catch(() => {});
+  }, [settings]);
+
+  const setSoundsEnabled  = (v: boolean) => setSettings(s => ({ ...s, soundsEnabled: v }));
+  const setHapticsEnabled = (v: boolean) => setSettings(s => ({ ...s, hapticsEnabled: v }));
+
+  return (
+    <SettingsContext.Provider value={{ ...settings, setSoundsEnabled, setHapticsEnabled }}>
+      {children}
+    </SettingsContext.Provider>
+  );
+}
+
+export const useSettings = () => useContext(SettingsContext);
+
+### 9b — Register SettingsProvider in root layout (app/_layout.tsx)
+Wrap AROUND the existing providers — it must be outermost so all
+screens and contexts can call useSettings():
+
+  import { SettingsProvider } from '@/context/SettingsContext';
+
+  // Existing layout (simplified):
+  // QueryClientProvider → AuthProvider → SocketProvider → ...
+  // Becomes:
+  <SettingsProvider>
+    <QueryClientProvider client={queryClient}>
+      <AuthProvider>
+        <SocketProvider>
+          {/* rest of layout unchanged */}
+          <NotificationBanner />
+          <OfflineBanner />
+        </SocketProvider>
+      </AuthProvider>
+    </QueryClientProvider>
+  </SettingsProvider>
+
+### 9c — Guard sounds with settings (lib/sounds.ts)
+The sounds lib is a module — it cannot call a hook directly.
+Use a module-level ref that SettingsContext updates:
+
+Add to `lib/sounds.ts`:
+  let _soundsEnabled = true;
+  export function setSoundsMasterEnabled(v: boolean) { _soundsEnabled = v; }
+
+Then in every play* function, add a guard at the top:
+  export async function playCardPlay() {
+    if (!_soundsEnabled) return;  // ← add this line to EVERY play* function
+    // existing implementation unchanged
+  }
+
+In `context/SettingsContext.tsx`, import and sync on change:
+  import { setSoundsMasterEnabled } from '@/lib/sounds';
+
+  // Inside SettingsProvider, add this effect:
+  useEffect(() => {
+    setSoundsMasterEnabled(settings.soundsEnabled);
+  }, [settings.soundsEnabled]);
+
+### 9d — Guard haptics with settings (lib/haptics.ts)
+Same pattern — module-level ref:
+
+In `lib/haptics.ts`, add:
+  let _hapticsEnabled = true;
+  export function setHapticsMasterEnabled(v: boolean) { _hapticsEnabled = v; }
+
+Wrap every exported haptic function:
+  export const hapticLight = () =>
+    _hapticsEnabled && isNative &&
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+
+  // Apply same _hapticsEnabled guard to ALL haptic* exports
+
+In `context/SettingsContext.tsx`:
+  import { setHapticsMasterEnabled } from '@/lib/haptics';
+
+  useEffect(() => {
+    setHapticsMasterEnabled(settings.hapticsEnabled);
+  }, [settings.hapticsEnabled]);
+
+### 9e — Create SettingsModal (components/SettingsModal.tsx)
+────────────────────────────────────────────────────────────
+import React from 'react';
+import {
+  Modal, View, Text, Switch, TouchableOpacity,
+  StyleSheet, Platform,
+} from 'react-native';
+import { useSettings } from '@/context/SettingsContext';
+
+interface Props { visible: boolean; onClose: () => void; }
+
+export function SettingsModal({ visible, onClose }: Props) {
+  const { soundsEnabled, hapticsEnabled, setSoundsEnabled, setHapticsEnabled } = useSettings();
+
+  return (
+    <Modal
+      visible={visible}
+      transparent
+      animationType="fade"
+      onRequestClose={onClose}
+      statusBarTranslucent
+    >
+      <TouchableOpacity style={styles.backdrop} activeOpacity={1} onPress={onClose}>
+        <TouchableOpacity activeOpacity={1} style={styles.card}>
+          {/* Prevent tap-through to backdrop */}
+
+          <Text style={styles.title}>Impostazioni</Text>
+
+          {/* Sound toggle */}
+          <View style={styles.row}>
+            <View style={styles.rowLeft}>
+              <Text style={styles.icon}>🔊</Text>
+              <View>
+                <Text style={styles.label}>Suoni</Text>
+                <Text style={styles.sublabel}>Effetti sonori di gioco</Text>
+              </View>
+            </View>
+            <Switch
+              value={soundsEnabled}
+              onValueChange={setSoundsEnabled}
+              trackColor={{ false: '#333', true: '#C9A84C' }}
+              thumbColor={soundsEnabled ? '#fff' : '#888'}
+              accessibilityLabel="Attiva o disattiva i suoni"
+            />
+          </View>
+
+          {/* Haptics toggle — only meaningful on native */}
+          {Platform.OS !== 'web' && (
+            <View style={styles.row}>
+              <View style={styles.rowLeft}>
+                <Text style={styles.icon}>📳</Text>
+                <View>
+                  <Text style={styles.label}>Vibrazione</Text>
+                  <Text style={styles.sublabel}>Feedback aptico</Text>
+                </View>
+              </View>
+              <Switch
+                value={hapticsEnabled}
+                onValueChange={setHapticsEnabled}
+                trackColor={{ false: '#333', true: '#C9A84C' }}
+                thumbColor={hapticsEnabled ? '#fff' : '#888'}
+                accessibilityLabel="Attiva o disattiva la vibrazione"
+              />
+            </View>
+          )}
+
+          <TouchableOpacity style={styles.closeBtn} onPress={onClose}>
+            <Text style={styles.closeBtnText}>Chiudi</Text>
+          </TouchableOpacity>
+
+        </TouchableOpacity>
+      </TouchableOpacity>
+    </Modal>
+  );
+}
+
+const styles = StyleSheet.create({
+  backdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.7)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  card: {
+    backgroundColor: '#0B3B25',
+    borderRadius: 20,
+    padding: 24,
+    width: 300,
+    borderWidth: 1,
+    borderColor: '#C9A84C44',
+    ...(Platform.OS === 'web'
+      ? { boxShadow: '0 8px 32px rgba(0,0,0,0.5)' }
+      : { shadowColor: '#000', shadowOffset: { width: 0, height: 8 },
+          shadowOpacity: 0.5, shadowRadius: 16, elevation: 20 }),
+  },
+  title: {
+    color: '#C9A84C',
+    fontFamily: 'Rajdhani_700Bold',
+    fontSize: 22,
+    marginBottom: 20,
+    textAlign: 'center',
+  },
+  row: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 12,
+    borderTopWidth: 1,
+    borderTopColor: '#ffffff11',
+  },
+  rowLeft: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  icon:     { fontSize: 22, width: 32, textAlign: 'center' },
+  label:    { color: '#fff', fontFamily: 'Inter_600SemiBold', fontSize: 15 },
+  sublabel: { color: '#aaa', fontFamily: 'Inter_400Regular', fontSize: 12 },
+  closeBtn: {
+    marginTop: 20,
+    backgroundColor: '#C9A84C',
+    borderRadius: 24,
+    paddingVertical: 10,
+    alignItems: 'center',
+  },
+  closeBtnText: {
+    color: '#031008',
+    fontFamily: 'Rajdhani_700Bold',
+    fontSize: 16,
+  },
+});
+
+### 9f — Add settings gear button to home screen (app/index.tsx)
+Add a gear icon to the top-right of the home screen.
+Uses `@expo/vector-icons` (already in project via Expo SDK):
+
+  import { Ionicons } from '@expo/vector-icons';
+  import { SettingsModal } from '@/components/SettingsModal';
+  import { useState } from 'react';
+
+  // Inside the home screen component:
+  const [settingsVisible, setSettingsVisible] = useState(false);
+
+  // Add in the JSX, positioned top-right using absolute positioning
+  // or within your existing header/top bar:
+  <TouchableOpacity
+    style={styles.settingsBtn}
+    onPress={() => setSettingsVisible(true)}
+    accessibilityLabel="Apri impostazioni"
+    accessibilityRole="button"
+  >
+    <Ionicons name="settings-outline" size={24} color="#C9A84C" />
+  </TouchableOpacity>
+
+  <SettingsModal
+    visible={settingsVisible}
+    onClose={() => setSettingsVisible(false)}
+  />
+
+  // Add to StyleSheet:
+  settingsBtn: {
+    position: 'absolute',
+    top: 16,  // adjust to sit below safe area
+    right: 16,
+    padding: 8,
+    zIndex: 10,
+  },
+
+  NOTE: Also add the same button + modal to `app/lobby.tsx`
+  and `app/(online)/index.tsx` so users can toggle settings
+  from any lobby screen before a game starts.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+## SECTION 10 — PERFORMANCE OPTIMIZATIONS ✅
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+### 10a — React.memo for card components (components/GameShared.tsx)
+DO NOT change any logic, props, or styles — only wrap the exports:
+
+  export const CardView = React.memo(CardViewImpl, (prev, next) =>
+    prev.card.id === next.card.id &&
+    prev.selected === next.selected &&
+    prev.disabled === next.disabled &&
+    prev.style === next.style
+  );
+
+  export const StraightHand = React.memo(function StraightHand(props) {
+    // existing implementation unchanged
+  });
+
+  export const PlayedPile = React.memo(function PlayedPile(props) {
+    // existing implementation unchanged
+  });
+
+### 10b — useCallback for handlers (app/game.tsx + app/(online)/game.tsx)
+  const handleCardPress  = useCallback((i: number) => toggleCardSelection(i), [toggleCardSelection]);
+  const handlePlayPress  = useCallback(() => playSelectedCards(), [playSelectedCards]);
+  const handlePassPress  = useCallback(() => pass(), [pass]);
+
+### 10c — useMemo for derived state (GameContext + OnlineGameContext)
+  const canPlay = useMemo(() =>
+    selectedCards.length > 0 &&
+    isValidCombination(selectedCards) &&
+    beatsCurrentCombo(selectedCards, gameState?.lastPlayedCombination ?? null),
+    [selectedCards, gameState?.lastPlayedCombination]
+  );
+
+  const myHand = useMemo(() =>   // online game only
+    gameState?.players.find(p => p.userId === user?.id)?.hand ?? [],
+    [gameState?.players, user?.id]
+  );
+
+### 10d — Non-blocking audio preload (lib/sounds.ts)
+Add guards at module level:
+  let soundsLoaded = false;
+  let soundsLoading = false;
+
+  export async function preloadSounds(): Promise<void> {
+    if (soundsLoaded || soundsLoading) return;
+    soundsLoading = true;
+    try {
+      await Promise.all([/* existing Sound.loadAsync() calls unchanged */]);
+      soundsLoaded = true;
+    } catch (err) {
+      console.warn('[sounds] Preload failed (non-fatal):', err);
+    } finally {
+      soundsLoading = false;
+    }
+  }
+
+In both game screens:
+  useEffect(() => { preloadSounds(); }, []); // fire-and-forget, no await
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+## SECTION 11 — HAPTIC FEEDBACK ✅ (expo-haptics)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Create new file: `lib/haptics.ts`
+──────────────────────────────────
+import * as Haptics from 'expo-haptics';
+import { Platform } from 'react-native';
+
+const isNative = Platform.OS === 'ios' || Platform.OS === 'android';
+let _hapticsEnabled = true;
+export function setHapticsMasterEnabled(v: boolean) { _hapticsEnabled = v; }
+
+const guard = () => _hapticsEnabled && isNative;
+
+export const hapticLight   = () => guard() && Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+export const hapticMedium  = () => guard() && Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+export const hapticHeavy   = () => guard() && Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
+export const hapticSuccess = () => guard() && Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+export const hapticError   = () => guard() && Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+export const hapticWarn    = () => guard() && Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+
+Add haptic calls ALONGSIDE existing sound calls (never replace):
+  playCardSelect()  → also hapticLight()
+  playCardPlay()    → also hapticMedium()
+  playCardPass()    → also hapticLight()
+  playBomb()        → also hapticHeavy()
+  playYourTurn()    → also hapticWarn()
+  playGameWin()     → also hapticSuccess()
+  playGameLose()    → also hapticError()
+  playExchange()    → also hapticMedium()
+  playRoundWin()    → also hapticMedium()
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+## SECTION 12 — OFFLINE DETECTION BANNER ✅
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Create new file: `components/OfflineBanner.tsx`
+────────────────────────────────────────────────
+import React, { useEffect, useState } from 'react';
+import { Text, StyleSheet, Platform } from 'react-native';
+import NetInfo from '@react-native-community/netinfo';
+import Animated, {
+  useSharedValue, useAnimatedStyle, withTiming,
+} from 'react-native-reanimated';  // already in project — no new install
+
+export function OfflineBanner() {
+  const [isOffline, setIsOffline] = useState(false);
+  const translateY = useSharedValue(-44);
+
+  useEffect(() => {
+    const unsub = NetInfo.addEventListener(state => {
+      const offline = !(state.isConnected && state.isInternetReachable !== false);
+      setIsOffline(offline);
+      translateY.value = withTiming(offline ? 0 : -44, { duration: 300 });
+    });
+    return () => unsub();
+  }, []);
+
+  const animStyle = useAnimatedStyle(() => ({
+    transform: [{ translateY: translateY.value }],
+  }));
+
+  if (!isOffline) return null;
+
+  return (
+    <Animated.View style={[styles.banner, animStyle]} pointerEvents="none">
+      <Text style={styles.text}>⚠️ Nessuna connessione Internet</Text>
+    </Animated.View>
+  );
+}
+
+const styles = StyleSheet.create({
+  banner: {
+    position: 'absolute', top: 0, left: 0, right: 0,
+    zIndex: 10000,              // above NotificationBanner
+    backgroundColor: '#B71C1C',
+    paddingVertical: 10,
+    alignItems: 'center',
+    ...(Platform.OS === 'web'
+      ? { boxShadow: '0 2px 8px rgba(0,0,0,0.4)' } as any
+      : { shadowColor: '#000', shadowOffset: { width: 0, height: 2 },
+          shadowOpacity: 0.4, shadowRadius: 4, elevation: 10 }),
+  },
+  text: { color: '#fff', fontFamily: 'Inter_400Regular', fontSize: 13 },
+});
+
+In `app/_layout.tsx`:
+  import { OfflineBanner } from '@/components/OfflineBanner';
+
+  // Add AFTER <NotificationBanner /> at the end of the root layout:
+  <NotificationBanner />
+  <OfflineBanner />
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+## SECTION 13 — ERROR BOUNDARY ✅
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Create new file: `components/ErrorBoundary.tsx`
+────────────────────────────────────────────────
+import React, { Component, ReactNode } from 'react';
+import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
+
+interface Props { children: ReactNode; fallbackMessage?: string; onReset?: () => void; }
+interface State { hasError: boolean; }
+
+export class ErrorBoundary extends Component<Props, State> {
+  state: State = { hasError: false };
+
+  static getDerivedStateFromError(): State { return { hasError: true }; }
+
+  componentDidCatch(error: Error, info: React.ErrorInfo) {
+    console.error('[ErrorBoundary]', error, info.componentStack);
+  }
+
+  reset = () => { this.setState({ hasError: false }); this.props.onReset?.(); };
+
+  render() {
+    if (!this.state.hasError) return this.props.children;
+    return (
+      <View style={s.container}>
+        <Text style={s.title}>Qualcosa è andato storto</Text>
+        <Text style={s.msg}>{this.props.fallbackMessage ?? 'Errore inatteso. Riprova.'}</Text>
+        <TouchableOpacity style={s.btn} onPress={this.reset}>
+          <Text style={s.btnText}>Riprova</Text>
+        </TouchableOpacity>
+      </View>
+    );
+  }
+}
+
+const s = StyleSheet.create({
+  container: { flex: 1, backgroundColor: '#031008', justifyContent: 'center',
+    alignItems: 'center', padding: 24 },
+  title:   { color: '#C9A84C', fontFamily: 'Rajdhani_700Bold', fontSize: 22, marginBottom: 12 },
+  msg:     { color: '#fff', fontFamily: 'Inter_400Regular', fontSize: 14,
+    textAlign: 'center', marginBottom: 24 },
+  btn:     { backgroundColor: '#C9A84C', borderRadius: 24, paddingHorizontal: 32, paddingVertical: 12 },
+  btnText: { color: '#031008', fontFamily: 'Rajdhani_700Bold', fontSize: 16 },
+});
+
+Wrap `app/(online)/game.tsx` and `app/(online)/room.tsx`:
+  import { ErrorBoundary } from '@/components/ErrorBoundary';
+  import { useRouter } from 'expo-router';
+
+  // In online game component return:
+  <ErrorBoundary
+    fallbackMessage="Errore nella partita online. Torna alla lobby."
+    onReset={() => router.replace('/(online)')}
+  >
+    {/* existing JSX unchanged */}
+  </ErrorBoundary>
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+## SECTION 14 — GDPR: DELETE ACCOUNT ENDPOINT 🖥️ + ✅
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+In `server/storage.ts`, add:
+  async deleteUser(userId: number): Promise<void> {
+    await db.delete(friendships).where(
+      or(eq(friendships.userId, userId), eq(friendships.friendId, userId))
+    );
+    await db.delete(friendRequests).where(
+      or(eq(friendRequests.fromId, userId), eq(friendRequests.toId, userId))
+    );
+    // user_sessions table is managed by connect-pg-simple; filter by session data:
+    await pool.query(`DELETE FROM user_sessions WHERE sess->>'userId' = $1`, [String(userId)]);
+    await db.delete(users).where(eq(users.id, userId));
+  }
+
+In `server/routes.ts`:
+  router.delete('/users/me', requireAuth, async (req, res) => {
+    try {
+      const userId = (req.session as any).userId as number;
+      await storage.deleteUser(userId);
+      req.session.destroy(() => {});
+      res.json({ message: 'Account eliminato con successo' });
+    } catch (err) {
+      logger.error({ err }, 'Delete user failed');
+      res.status(500).json({ error: 'Eliminazione fallita' });
+    }
+  });
+
+Add "Elimina account" to the settings modal (bottom of SettingsModal.tsx):
+  // Below the Chiudi button:
+  <TouchableOpacity
+    style={styles.deleteBtn}
+    onPress={() => Alert.alert(
+      'Elimina account',
+      'Tutti i dati, amici e partite verranno eliminati. Irreversibile.',
+      [
+        { text: 'Annulla', style: 'cancel' },
+        { text: 'Elimina', style: 'destructive', onPress: handleDeleteAccount },
+      ]
+    )}
+  >
+    <Text style={styles.deleteBtnText}>Elimina account</Text>
+  </TouchableOpacity>
+
+  // Handler (in SettingsModal or passed as prop):
+  const handleDeleteAccount = async () => {
+    await fetch('/api/users/me', { method: 'DELETE', credentials: 'include' });
+    logout();                          // from AuthContext
+    router.replace('/auth');
+    onClose();
+  };
+
+  // Add to StyleSheet:
+  deleteBtn:     { marginTop: 8, alignItems: 'center', paddingVertical: 8 },
+  deleteBtnText: { color: '#ff4444', fontFamily: 'Inter_400Regular', fontSize: 13 },
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+## SECTION 15 — ACCESSIBILITY LABELS ✅
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+In `components/GameShared.tsx`, add to CardView TouchableOpacity:
+  accessibilityLabel={`${card.rank} di ${card.suit}${selected ? ', selezionata' : ''}`}
+  accessibilityRole="button"
+  accessibilityState={{ selected }}
+
+In both game screens, add to action buttons:
+  // GIOCA:
+  accessibilityLabel="Gioca le carte selezionate"
+  accessibilityRole="button"
+  accessibilityState={{ disabled: !canPlay }}
+
+  // PASSA:
+  accessibilityLabel="Passa il turno"
+  accessibilityRole="button"
+  accessibilityState={{ disabled: !isMyTurn }}
+
+In `app/(online)/friends.tsx`:
+  // Status dot:
+  accessibilityLabel={isOnline ? `${f.username} è online` : `${f.username} offline`}
+  // Remove button:
+  accessibilityLabel={`Rimuovi amico ${f.username}`}
+  accessibilityRole="button"
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+## SECTION 16 — UNIT TESTS 🖥️ (game engine)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  npm install --save-dev jest ts-jest @types/jest
+
+Add to `package.json`:
+  "jest": {
+    "preset": "ts-jest",
+    "testEnvironment": "node",
+    "testMatch": ["**/__tests__/**/*.test.ts"],
+    "moduleNameMapper": { "^@/(.*)$": "<rootDir>/$1" }
+  },
+  "scripts": { "test": "jest" }
+
+Create `__tests__/gameEngine.test.ts` with tests covering:
+  - Single / Pair / Triple validation
+  - Straight minimum 5 cards
+  - Joker cannot be in pair, triple, or straight
+  - Bomb beats any non-bomb
+  - Royal straight beats bomb
+  - 3♠ must be in first play of first game
+  - Exchange: loser gives highest, winner gives back 3–10
+  - Both-jokers exception: no exchange
+  - getNextActivePlayer wraps clockwise, skips finished players
+
+Run: npm test
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+## SECTION 17 — API TESTS 🖥️
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  npm install --save-dev supertest @types/supertest
+
+Export app from `server/index.ts`:
+  export { app };
+
+Create `__tests__/api.test.ts` covering:
+  - POST /api/auth/register → 201 on valid input
+  - POST /api/auth/register → 400 on short username (zod rejects)
+  - POST /api/auth/login    → 200 + set-cookie on valid credentials
+  - POST /api/auth/login    → 401 on wrong password
+  - POST /api/friends/add  → 409 on duplicate request
+  - POST /api/friends/add  → 400 on invalid friend code format
+  - GET  /health            → 200 { status: 'ok' }
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+## SECTION 18 — DB SCRIPTS 🖥️
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Add to `package.json` scripts:
+  "db:push":     "drizzle-kit push",
+  "db:studio":   "drizzle-kit studio",
+  "db:generate": "drizzle-kit generate",
+  "db:migrate":  "drizzle-kit migrate"
+
+Run after any schema change:
+  npm run db:push
+
+Uses Replit's auto-injected DATABASE_URL — no config needed.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+## EXECUTION ORDER
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+1.  Section 0  — install all dependencies
+2.  Section 1  — add Replit Secrets
+3.  Section 4  — logger.ts first (imported by all server sections)
+4.  Section 2  — security layer (helmet, rate limit, session, socket auth)
+5.  Section 3  — zod validation schemas
+6.  Section 5  — health check + graceful shutdown
+7.  Section 6a — extend Drizzle schema → npm run db:push
+8.  Section 6b–6e — game state persistence + quickmatch fix
+9.  Section 7  — AFK/disconnect timers
+10. Section 8  — rematch vote idempotency
+11. Section 9a–9b — SettingsContext + SettingsProvider in _layout
+12. Section 9c–9d — guard sounds and haptics with settings
+13. Section 9e  — SettingsModal component
+14. Section 9f  — gear button on home/lobby/online-lobby screens
+15. Section 10  — React.memo + useCallback + useMemo + audio fix
+16. Section 11  — lib/haptics.ts + add calls to game screens
+17. Section 12  — OfflineBanner → add to _layout.tsx
+18. Section 13  — ErrorBoundary → wrap online game + room screens
+19. Section 14  — GDPR delete endpoint + button inside SettingsModal
+20. Section 15  — accessibility labels
+21. Section 16–17 — tests
+22. Section 18  — db scripts in package.json
+
+After EACH section, restart backend (npm run server:dev) and verify
+Expo Go still loads without errors before proceeding to the next.

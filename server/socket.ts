@@ -1,6 +1,11 @@
 import { Server as SocketServer } from "socket.io";
 import type { Server as HttpServer } from "node:http";
+import { eq } from "drizzle-orm";
 import { storage } from "./storage";
+import { logger } from "./logger";
+import { sessionMiddleware } from "./session";
+import { db } from "./db";
+import { activeGames as activeGamesTable } from "@shared/schema";
 import {
   initializeGame,
   processPlay,
@@ -19,14 +24,13 @@ interface OnlineGameState {
   cumulativeScores: Record<string, number>;
 }
 
-// In-memory map of active online games
 const activeGames = new Map<string, OnlineGameState>();
-// socketId -> roomId (for quick disconnect lookup)
 const socketRoomMap = new Map<string, string>();
-// userId -> socketId (for friend notifications)
 const userSocketMap = new Map<string, string>();
-// roomId -> true for public quickmatch rooms still open for players
 const publicRoomIds = new Set<string>();
+
+// AFK timer tracking
+const afkTimers = new Map<string, NodeJS.Timeout>();
 
 let _io: SocketServer | null = null;
 
@@ -38,7 +42,11 @@ export function emitToUser(userId: string, event: string, data: unknown) {
   }
 }
 
-function sanitizeStateForPlayer(state: GameState, viewerUserId: string, playerMap: Record<number, string>) {
+function sanitizeStateForPlayer(
+  state: GameState,
+  viewerUserId: string,
+  playerMap: Record<number, string>
+) {
   return {
     ...state,
     players: state.players.map((p, idx) => {
@@ -52,6 +60,71 @@ function sanitizeStateForPlayer(state: GameState, viewerUserId: string, playerMa
   };
 }
 
+function clearAfkTimer(roomCode: string, userId: string) {
+  const key = `${roomCode}:${userId}`;
+  const t = afkTimers.get(key);
+  if (t) {
+    clearTimeout(t);
+    afkTimers.delete(key);
+  }
+}
+
+function handleAutoPass(roomCode: string, userId: string) {
+  if (!_io) return;
+  const game = activeGames.get(roomCode);
+  if (!game || game.gameState.gameOver) return;
+  const { gameState, playerMap } = game;
+  const currentIdx = gameState.currentTurnIndex;
+  if (playerMap[currentIdx] !== userId) return;
+  if (gameState.lastPlayedCombination === null) return; // can't pass at round start
+  const newState = processPass(gameState);
+  game.gameState = newState;
+  broadcastGameState(_io, game);
+  persistGameState(roomCode, game);
+}
+
+function startAfkTimer(
+  roomCode: string,
+  userId: string,
+  username: string
+) {
+  clearAfkTimer(roomCode, userId);
+  afkTimers.set(
+    `${roomCode}:${userId}`,
+    setTimeout(() => {
+      afkTimers.delete(`${roomCode}:${userId}`);
+      handleAutoPass(roomCode, userId);
+      if (_io) {
+        _io.to(roomCode).emit("game:notification", {
+          type: "afk",
+          message: `${username} è inattivo — passato automaticamente`,
+        });
+      }
+    }, 30_000)
+  );
+}
+
+function persistGameState(roomCode: string, game: OnlineGameState) {
+  const playerIds = Object.values(game.playerMap);
+  db.insert(activeGamesTable)
+    .values({
+      roomCode,
+      gameState: game.gameState as any,
+      playerIds: playerIds as any,
+      isPublic: false,
+      maxPlayers: playerIds.length,
+      gameMode: "free_for_all",
+      updatedAt: new Date(),
+    })
+    .onConflictDoUpdate({
+      target: activeGamesTable.roomCode,
+      set: { gameState: game.gameState as any, updatedAt: new Date() },
+    })
+    .catch((err: unknown) =>
+      logger.error({ err, roomCode }, "Failed to persist game state")
+    );
+}
+
 export function setupSocket(httpServer: HttpServer) {
   const io = new SocketServer(httpServer, {
     cors: {
@@ -63,25 +136,46 @@ export function setupSocket(httpServer: HttpServer) {
   });
   _io = io;
 
-  // Auth middleware: expect userId in handshake.auth
+  // Inject session into socket requests
+  io.use((socket, next) => {
+    sessionMiddleware(socket.request as any, {} as any, next);
+  });
+
+  // Auth: prefer session, fall back to handshake.auth.userId
   io.use(async (socket, next) => {
-    const userId = socket.handshake.auth?.userId as string | undefined;
-    if (!userId) return next(new Error("Non autenticato"));
-    const user = await storage.getUser(userId);
-    if (!user) return next(new Error("Utente non trovato"));
-    socket.data.userId = userId;
-    socket.data.username = user.username;
-    next();
+    const req = socket.request as any;
+
+    const sessionUserId = req.session?.userId as string | undefined;
+    if (sessionUserId) {
+      const user = await storage.getUser(sessionUserId).catch(() => null);
+      if (user) {
+        socket.data.userId = sessionUserId;
+        socket.data.username = user.username;
+        return next();
+      }
+    }
+
+    const handshakeUserId = socket.handshake.auth?.userId as string | undefined;
+    if (handshakeUserId) {
+      const user = await storage.getUser(handshakeUserId).catch(() => null);
+      if (user) {
+        socket.data.userId = handshakeUserId;
+        socket.data.username = user.username;
+        return next();
+      }
+    }
+
+    return next(new Error("Non autenticato"));
   });
 
   io.on("connection", async (socket) => {
     const userId = socket.data.userId as string;
+    const username = socket.data.username as string;
     userSocketMap.set(userId, socket.id);
+    logger.debug({ userId, username, socketId: socket.id }, "Socket connected");
 
-    // Notify friends of online status
     emitFriendStatus(io, userId, true);
 
-    // Send this socket the list of which friends are currently online
     try {
       const friends = await storage.getFriends(userId);
       const onlineIds = friends
@@ -89,43 +183,72 @@ export function setupSocket(httpServer: HttpServer) {
         .filter((id) => userSocketMap.has(id));
       socket.emit("friend:online_list", { onlineIds });
     } catch {
-      // non-critical, ignore
+      // non-critical
     }
 
     // ── Room events ──────────────────────────────────────────────────────────
 
-    socket.on("room:create", async ({ gameMode, maxPlayers }: { gameMode: "free_for_all" | "teams"; maxPlayers: number }) => {
-      try {
-        const room = await storage.createRoom(userId, gameMode, maxPlayers);
-        await storage.addRoomPlayer(room.id, userId, 0);
+    socket.on(
+      "room:create",
+      async ({
+        gameMode,
+        maxPlayers,
+      }: {
+        gameMode: "free_for_all" | "teams";
+        maxPlayers: number;
+      }) => {
+        try {
+          const room = await storage.createRoom(userId, gameMode, maxPlayers);
+          await storage.addRoomPlayer(room.id, userId, 0);
 
-        socket.join(room.id);
-        socketRoomMap.set(socket.id, room.id);
+          socket.join(room.id);
+          socketRoomMap.set(socket.id, room.id);
 
-        const players = await storage.getRoomPlayers(room.id);
-        socket.emit("room:state", {
-          roomId: room.id,
-          code: room.code,
-          hostUserId: room.hostUserId,
-          status: room.status,
-          gameMode: room.gameMode,
-          maxPlayers: room.maxPlayers,
-          players: players.map((p) => ({ seatIndex: p.seatIndex, userId: p.userId, username: p.user.username })),
-        });
-      } catch (err) {
-        socket.emit("room:error", { message: "Errore nella creazione della stanza" });
+          const players = await storage.getRoomPlayers(room.id);
+          socket.emit("room:state", {
+            roomId: room.id,
+            code: room.code,
+            hostUserId: room.hostUserId,
+            status: room.status,
+            gameMode: room.gameMode,
+            maxPlayers: room.maxPlayers,
+            players: players.map((p) => ({
+              seatIndex: p.seatIndex,
+              userId: p.userId,
+              username: p.user.username,
+            })),
+          });
+          logger.info({ roomId: room.id, code: room.code, userId }, "Room created");
+        } catch (err) {
+          logger.error({ err, userId }, "room:create error");
+          socket.emit("room:error", {
+            message: "Errore nella creazione della stanza",
+          });
+        }
       }
-    });
+    );
 
     socket.on("room:join", async ({ code }: { code: string }) => {
       try {
         const room = await storage.getRoomByCode(code.toUpperCase());
-        if (!room) { socket.emit("room:error", { message: "Stanza non trovata" }); return; }
-        if (room.status !== "waiting") { socket.emit("room:error", { message: "Partita già iniziata" }); return; }
+        if (!room) {
+          socket.emit("room:error", { message: "Stanza non trovata" });
+          return;
+        }
+        if (room.status !== "waiting") {
+          socket.emit("room:error", { message: "Partita già iniziata" });
+          return;
+        }
 
         const players = await storage.getRoomPlayers(room.id);
-        if (players.length >= room.maxPlayers) { socket.emit("room:error", { message: "Stanza piena" }); return; }
-        if (players.some((p) => p.userId === userId)) { socket.emit("room:error", { message: "Sei già nella stanza" }); return; }
+        if (players.length >= room.maxPlayers) {
+          socket.emit("room:error", { message: "Stanza piena" });
+          return;
+        }
+        if (players.some((p) => p.userId === userId)) {
+          socket.emit("room:error", { message: "Sei già nella stanza" });
+          return;
+        }
 
         const seatIndex = players.length;
         await storage.addRoomPlayer(room.id, userId, seatIndex);
@@ -141,155 +264,218 @@ export function setupSocket(httpServer: HttpServer) {
           status: room.status,
           gameMode: room.gameMode,
           maxPlayers: room.maxPlayers,
-          players: updatedPlayers.map((p) => ({ seatIndex: p.seatIndex, userId: p.userId, username: p.user.username })),
+          players: updatedPlayers.map((p) => ({
+            seatIndex: p.seatIndex,
+            userId: p.userId,
+            username: p.user.username,
+          })),
         };
         io.to(room.id).emit("room:state", roomState);
       } catch (err) {
-        socket.emit("room:error", { message: "Errore nell'unirsi alla stanza" });
+        logger.error({ err, userId, code }, "room:join error");
+        socket.emit("room:error", {
+          message: "Errore nell'unirsi alla stanza",
+        });
       }
     });
 
     socket.on("room:leave", async () => {
       const leavingRoomId = socketRoomMap.get(socket.id);
       await handleLeaveRoom(io, socket, userId);
-      // Clean up empty public rooms
       if (leavingRoomId && publicRoomIds.has(leavingRoomId)) {
         const remaining = await storage.getRoomPlayers(leavingRoomId);
         if (remaining.length === 0) publicRoomIds.delete(leavingRoomId);
       }
     });
 
-    socket.on("room:quickmatch", async ({ maxPlayers, gameMode }: { maxPlayers: number; gameMode: "free_for_all" | "teams" }) => {
-      try {
-        const safeMax = [2, 3, 4].includes(maxPlayers) ? maxPlayers : 4;
-        const safeMode: "free_for_all" | "teams" = gameMode === "teams" ? "teams" : "free_for_all";
+    socket.on(
+      "room:quickmatch",
+      async ({
+        maxPlayers,
+        gameMode,
+      }: {
+        maxPlayers: number;
+        gameMode: "free_for_all" | "teams";
+      }) => {
+        try {
+          const safeMax = [2, 3, 4].includes(maxPlayers) ? maxPlayers : 4;
+          const safeMode: "free_for_all" | "teams" =
+            gameMode === "teams" ? "teams" : "free_for_all";
 
-        // Try to find an open public room matching the requested format
-        let joinedRoomId: string | null = null;
-        for (const roomId of publicRoomIds) {
-          const room = await storage.getRoomById(roomId);
-          if (!room || room.status !== "waiting") { publicRoomIds.delete(roomId); continue; }
-          // Must match the requested format
-          if (room.maxPlayers !== safeMax || room.gameMode !== safeMode) continue;
-          const players = await storage.getRoomPlayers(roomId);
-          if (players.length >= room.maxPlayers) { publicRoomIds.delete(roomId); continue; }
-          if (players.some((p) => p.userId === userId)) continue;
+          let joinedRoomId: string | null = null;
+          for (const roomId of publicRoomIds) {
+            const room = await storage.getRoomById(roomId);
+            if (!room || room.status !== "waiting") {
+              publicRoomIds.delete(roomId);
+              continue;
+            }
+            if (room.maxPlayers !== safeMax || room.gameMode !== safeMode)
+              continue;
+            const players = await storage.getRoomPlayers(roomId);
+            if (players.length >= room.maxPlayers) {
+              publicRoomIds.delete(roomId);
+              continue;
+            }
+            if (players.some((p) => p.userId === userId)) continue;
 
-          const seatIndex = players.length;
-          await storage.addRoomPlayer(roomId, userId, seatIndex);
-          socket.join(roomId);
-          socketRoomMap.set(socket.id, roomId);
+            const seatIndex = players.length;
+            await storage.addRoomPlayer(roomId, userId, seatIndex);
+            socket.join(roomId);
+            socketRoomMap.set(socket.id, roomId);
 
-          const updatedPlayers = await storage.getRoomPlayers(roomId);
-          const roomState = {
-            roomId: room.id,
-            code: room.code,
-            hostUserId: room.hostUserId,
-            status: room.status,
-            gameMode: room.gameMode,
-            maxPlayers: room.maxPlayers,
-            players: updatedPlayers.map((p) => ({ seatIndex: p.seatIndex, userId: p.userId, username: p.user.username })),
-          };
-          io.to(roomId).emit("room:state", roomState);
+            const updatedPlayers = await storage.getRoomPlayers(roomId);
+            const roomState = {
+              roomId: room.id,
+              code: room.code,
+              hostUserId: room.hostUserId,
+              status: room.status,
+              gameMode: room.gameMode,
+              maxPlayers: room.maxPlayers,
+              players: updatedPlayers.map((p) => ({
+                seatIndex: p.seatIndex,
+                userId: p.userId,
+                username: p.user.username,
+              })),
+            };
+            io.to(roomId).emit("room:state", roomState);
 
-          // Remove from public pool if now full
-          if (updatedPlayers.length >= room.maxPlayers) publicRoomIds.delete(roomId);
-          joinedRoomId = roomId;
-          break;
-        }
+            if (updatedPlayers.length >= room.maxPlayers)
+              publicRoomIds.delete(roomId);
+            joinedRoomId = roomId;
+            break;
+          }
 
-        if (!joinedRoomId) {
-          // No matching open room — create a new public one with the requested format
-          const room = await storage.createRoom(userId, safeMode, safeMax);
-          await storage.addRoomPlayer(room.id, userId, 0);
-          publicRoomIds.add(room.id);
-          socket.join(room.id);
-          socketRoomMap.set(socket.id, room.id);
+          if (!joinedRoomId) {
+            const room = await storage.createRoom(userId, safeMode, safeMax);
+            await storage.addRoomPlayer(room.id, userId, 0);
+            publicRoomIds.add(room.id);
+            socket.join(room.id);
+            socketRoomMap.set(socket.id, room.id);
 
-          const players = await storage.getRoomPlayers(room.id);
-          socket.emit("room:state", {
-            roomId: room.id,
-            code: room.code,
-            hostUserId: room.hostUserId,
-            status: room.status,
-            gameMode: room.gameMode,
-            maxPlayers: room.maxPlayers,
-            players: players.map((p) => ({ seatIndex: p.seatIndex, userId: p.userId, username: p.user.username })),
+            const players = await storage.getRoomPlayers(room.id);
+            socket.emit("room:state", {
+              roomId: room.id,
+              code: room.code,
+              hostUserId: room.hostUserId,
+              status: room.status,
+              gameMode: room.gameMode,
+              maxPlayers: room.maxPlayers,
+              players: players.map((p) => ({
+                seatIndex: p.seatIndex,
+                userId: p.userId,
+                username: p.user.username,
+              })),
+            });
+          }
+        } catch (err) {
+          logger.error({ err, userId }, "room:quickmatch error");
+          socket.emit("room:error", {
+            message: "Errore nella ricerca di una partita",
           });
         }
-      } catch (err) {
-        socket.emit("room:error", { message: "Errore nella ricerca di una partita" });
       }
-    });
+    );
 
-    socket.on("room:set_game_mode", async ({ gameMode }: { gameMode: "free_for_all" | "teams" }) => {
-      const roomId = socketRoomMap.get(socket.id);
-      if (!roomId) return;
-      const room = await storage.getRoomById(roomId);
-      if (!room || room.hostUserId !== userId) return;
-      await storage.updateRoomGameMode(roomId, gameMode);
-      const players = await storage.getRoomPlayers(roomId);
-      const updatedRoom = await storage.getRoomById(roomId);
-      io.to(roomId).emit("room:state", {
-        roomId: updatedRoom!.id,
-        code: updatedRoom!.code,
-        hostUserId: updatedRoom!.hostUserId,
-        status: updatedRoom!.status,
-        gameMode: updatedRoom!.gameMode,
-        maxPlayers: updatedRoom!.maxPlayers,
-        players: players.map((p) => ({ seatIndex: p.seatIndex, userId: p.userId, username: p.user.username })),
-      });
-    });
+    socket.on(
+      "room:set_game_mode",
+      async ({ gameMode }: { gameMode: "free_for_all" | "teams" }) => {
+        const roomId = socketRoomMap.get(socket.id);
+        if (!roomId) return;
+        const room = await storage.getRoomById(roomId);
+        if (!room || room.hostUserId !== userId) return;
+        await storage.updateRoomGameMode(roomId, gameMode);
+        const players = await storage.getRoomPlayers(roomId);
+        const updatedRoom = await storage.getRoomById(roomId);
+        io.to(roomId).emit("room:state", {
+          roomId: updatedRoom!.id,
+          code: updatedRoom!.code,
+          hostUserId: updatedRoom!.hostUserId,
+          status: updatedRoom!.status,
+          gameMode: updatedRoom!.gameMode,
+          maxPlayers: updatedRoom!.maxPlayers,
+          players: players.map((p) => ({
+            seatIndex: p.seatIndex,
+            userId: p.userId,
+            username: p.user.username,
+          })),
+        });
+      }
+    );
 
     socket.on("room:start", async () => {
       const roomId = socketRoomMap.get(socket.id);
       if (!roomId) return;
       const room = await storage.getRoomById(roomId);
-      if (!room || room.hostUserId !== userId || (room.status !== "waiting" && room.status !== "finished")) return;
+      if (
+        !room ||
+        room.hostUserId !== userId ||
+        (room.status !== "waiting" && room.status !== "finished")
+      )
+        return;
 
       const players = await storage.getRoomPlayers(room.id);
-      if (players.length < 2) { socket.emit("room:error", { message: "Servono almeno 2 giocatori" }); return; }
+      if (players.length < 2) {
+        socket.emit("room:error", {
+          message: "Servono almeno 2 giocatori",
+        });
+        return;
+      }
 
-      // Clear any existing game state when restarting from finished
       if (activeGames.has(roomId)) {
         activeGames.delete(roomId);
       }
 
-      // Build player setup for game engine
       const playerSetup = players.map((p) => ({
         name: p.user.username,
         type: "human" as const,
-        team: room.gameMode === "teams" ? (p.seatIndex % 2 === 0 ? "A" : "B") as "A" | "B" : undefined,
+        team:
+          room.gameMode === "teams"
+            ? ((p.seatIndex % 2 === 0 ? "A" : "B") as "A" | "B")
+            : undefined,
       }));
 
       const gameState = initializeGame(playerSetup, room.gameMode);
       const playerMap: Record<number, string> = {};
-      players.forEach((p) => { playerMap[p.seatIndex] = p.userId; });
+      players.forEach((p) => {
+        playerMap[p.seatIndex] = p.userId;
+      });
 
       const existingGame = activeGames.get(roomId);
-      activeGames.set(roomId, {
+      const newGame: OnlineGameState = {
         gameState,
         playerMap,
         socketMap: {},
         roomId,
         rematchVotes: new Set(),
         cumulativeScores: existingGame?.cumulativeScores ?? {},
-      });
+      };
+      activeGames.set(roomId, newGame);
 
-      // Remove from public quickmatch pool — game is starting
       publicRoomIds.delete(roomId);
-
       await storage.updateRoomStatus(roomId, "in_progress");
 
-      // Send each player their personalized game state
       players.forEach((p) => {
         const playerSocket = userSocketMap.get(p.userId);
         if (playerSocket) {
-          io.to(playerSocket).emit("game:state", sanitizeStateForPlayer(gameState, p.userId, playerMap));
+          io.to(playerSocket).emit(
+            "game:state",
+            sanitizeStateForPlayer(gameState, p.userId, playerMap)
+          );
         }
       });
 
       io.to(roomId).emit("game:started");
+
+      // Start AFK timer for first turn
+      const firstTurnIdx = gameState.currentTurnIndex;
+      const firstTurnUserId = playerMap[firstTurnIdx];
+      const firstTurnUsername = gameState.players[firstTurnIdx]?.name ?? "";
+      if (firstTurnUserId) {
+        startAfkTimer(roomId, firstTurnUserId, firstTurnUsername);
+      }
+
+      persistGameState(roomId, newGame);
+      logger.info({ roomId, playerCount: players.length }, "Game started");
     });
 
     // ── Game events ──────────────────────────────────────────────────────────
@@ -302,23 +488,27 @@ export function setupSocket(httpServer: HttpServer) {
 
       const { gameState, playerMap } = game;
       const currentIdx = gameState.currentTurnIndex;
-      if (playerMap[currentIdx] !== userId) return; // not your turn
+      if (playerMap[currentIdx] !== userId) return;
 
       const player = gameState.players[currentIdx];
       const cards = player.hand.filter((c) => cardIds.includes(c.id));
       if (cards.length !== cardIds.length) return;
 
       const combo = buildCombination(cards);
-      if (!combo) { socket.emit("game:error", { message: "Combinazione non valida" }); return; }
+      if (!combo) {
+        socket.emit("game:error", { message: "Combinazione non valida" });
+        return;
+      }
 
       const isNewRound = gameState.lastPlayedCombination === null;
 
-      // First play must include the starting spade (3♠ or next lowest if 3♠ is excluded)
       if (!gameState.firstPlayMade && gameState.startCard) {
         const startCardId = gameState.startCard.id;
         if (!combo.cards.some((c) => c.id === startCardId)) {
           const sc = gameState.startCard!;
-          socket.emit("game:error", { message: `Devi giocare il ${sc.rank}♠ come prima carta` });
+          socket.emit("game:error", {
+            message: `Devi giocare il ${sc.rank}♠ come prima carta`,
+          });
           return;
         }
       }
@@ -328,25 +518,40 @@ export function setupSocket(httpServer: HttpServer) {
         return;
       }
 
+      clearAfkTimer(roomId, userId);
+
       const newState = processPlay(gameState, combo);
       game.gameState = newState;
 
-      // Broadcast personalized state to each player
       broadcastGameState(io, game);
+      persistGameState(roomId, game);
 
       if (newState.gameOver) {
-        // Update cumulative scores: position 0 gets (n-1) pts, position 1 gets (n-2) pts, etc.
         const numPlayers = newState.players.length;
         const updatedCumulative = { ...game.cumulativeScores };
         newState.rankings.forEach((playerName, rankIdx) => {
           const pts = Math.max(0, numPlayers - 1 - rankIdx);
-          updatedCumulative[playerName] = (updatedCumulative[playerName] ?? 0) + pts;
+          updatedCumulative[playerName] =
+            (updatedCumulative[playerName] ?? 0) + pts;
         });
         game.cumulativeScores = updatedCumulative;
         game.gameState = newState;
         game.rematchVotes = new Set();
-        io.to(roomId).emit("game:over", { rankings: newState.rankings, cumulativeScores: updatedCumulative });
+        io.to(roomId).emit("game:over", {
+          rankings: newState.rankings,
+          cumulativeScores: updatedCumulative,
+        });
         await storage.updateRoomStatus(roomId, "finished");
+        db.delete(activeGamesTable)
+          .where(eq(activeGamesTable.roomCode, roomId))
+          .catch((err: unknown) =>
+            logger.error({ err, roomId }, "Failed to delete game state")
+          );
+      } else {
+        const nextTurnIdx = newState.currentTurnIndex;
+        const nextUserId = playerMap[nextTurnIdx];
+        const nextUsername = newState.players[nextTurnIdx]?.name ?? "";
+        if (nextUserId) startAfkTimer(roomId, nextUserId, nextUsername);
       }
     });
 
@@ -359,12 +564,23 @@ export function setupSocket(httpServer: HttpServer) {
       const { gameState, playerMap } = game;
       const currentIdx = gameState.currentTurnIndex;
       if (playerMap[currentIdx] !== userId) return;
-      if (gameState.lastPlayedCombination === null) { socket.emit("game:error", { message: "Non puoi passare" }); return; }
+      if (gameState.lastPlayedCombination === null) {
+        socket.emit("game:error", { message: "Non puoi passare" });
+        return;
+      }
+
+      clearAfkTimer(roomId, userId);
 
       const newState = processPass(gameState);
       game.gameState = newState;
 
       broadcastGameState(io, game);
+      persistGameState(roomId, game);
+
+      const nextTurnIdx = newState.currentTurnIndex;
+      const nextUserId = playerMap[nextTurnIdx];
+      const nextUsername = newState.players[nextTurnIdx]?.name ?? "";
+      if (nextUserId) startAfkTimer(roomId, nextUserId, nextUsername);
     });
 
     socket.on("game:rematch_vote", async () => {
@@ -373,14 +589,20 @@ export function setupSocket(httpServer: HttpServer) {
       const game = activeGames.get(roomId);
       if (!game || !game.gameState.gameOver) return;
 
+      if (!game.rematchVotes) game.rematchVotes = new Set<string>();
       game.rematchVotes.add(userId);
+
       const totalPlayers = Object.keys(game.playerMap).length;
       const voteList = Array.from(game.rematchVotes);
 
-      io.to(roomId).emit("game:vote_state", { votes: voteList, total: totalPlayers });
+      io.to(roomId).emit("game:vote_state", {
+        votes: voteList,
+        total: totalPlayers,
+      });
 
       if (game.rematchVotes.size >= totalPlayers) {
-        // All voted — restart the game
+        game.rematchVotes.clear();
+
         const room = await storage.getRoomById(roomId);
         if (!room) return;
         const players = await storage.getRoomPlayers(roomId);
@@ -389,51 +611,124 @@ export function setupSocket(httpServer: HttpServer) {
         const playerSetup = players.map((p) => ({
           name: p.user.username,
           type: "human" as const,
-          team: room.gameMode === "teams" ? (p.seatIndex % 2 === 0 ? "A" : "B") as "A" | "B" : undefined,
+          team:
+            room.gameMode === "teams"
+              ? ((p.seatIndex % 2 === 0 ? "A" : "B") as "A" | "B")
+              : undefined,
         }));
 
         const newGameState = initializeGame(playerSetup, room.gameMode);
         const playerMap: Record<number, string> = {};
-        players.forEach((p) => { playerMap[p.seatIndex] = p.userId; });
+        players.forEach((p) => {
+          playerMap[p.seatIndex] = p.userId;
+        });
 
         game.gameState = newGameState;
         game.playerMap = playerMap;
-        game.rematchVotes = new Set();
 
         await storage.updateRoomStatus(roomId, "in_progress");
 
         players.forEach((p) => {
           const playerSocket = userSocketMap.get(p.userId);
           if (playerSocket) {
-            io.to(playerSocket).emit("game:state", sanitizeStateForPlayer(newGameState, p.userId, playerMap));
+            io.to(playerSocket).emit(
+              "game:state",
+              sanitizeStateForPlayer(newGameState, p.userId, playerMap)
+            );
           }
         });
 
         io.to(roomId).emit("game:started");
+
+        const firstTurnIdx = newGameState.currentTurnIndex;
+        const firstTurnUserId = playerMap[firstTurnIdx];
+        const firstTurnUsername = newGameState.players[firstTurnIdx]?.name ?? "";
+        if (firstTurnUserId) {
+          startAfkTimer(roomId, firstTurnUserId, firstTurnUsername);
+        }
+
+        persistGameState(roomId, game);
       }
     });
 
-    socket.on("game:reaction", ({ emoji }: { emoji: string }) => {
-      const roomId = socketRoomMap.get(socket.id);
-      if (!roomId) return;
-      const game = activeGames.get(roomId);
-      if (!game) return;
+    socket.on("game:rejoin", async ({ roomCode }: { roomCode: string }) => {
+      try {
+        const row = await db.query.activeGames.findFirst({
+          where: eq(activeGamesTable.roomCode, roomCode),
+        });
+        if (!row) {
+          socket.emit("game:rejoin_failed", { reason: "Partita non trovata" });
+          return;
+        }
 
-      // Find sender's seat
-      const seatIndex = Object.entries(game.playerMap).find(([, uid]) => uid === userId)?.[0];
-      io.to(roomId).emit("game:reaction", { emoji, fromSeat: seatIndex ? parseInt(seatIndex) : 0, username: socket.data.username });
+        const ids = row.playerIds as string[];
+        if (!ids.includes(userId)) {
+          socket.emit("game:rejoin_failed", { reason: "Non autorizzato" });
+          return;
+        }
+
+        socket.join(roomCode);
+        socketRoomMap.set(socket.id, roomCode);
+
+        const game = activeGames.get(roomCode);
+        if (game) {
+          socket.emit(
+            "game:state",
+            sanitizeStateForPlayer(game.gameState, userId, game.playerMap)
+          );
+        } else {
+          socket.emit("game:state",
+            sanitizeStateForPlayer(row.gameState as GameState, userId,
+              Object.fromEntries(ids.map((id, i) => [i, id]))
+            )
+          );
+        }
+        logger.info({ userId, roomCode }, "Player rejoined game");
+      } catch (err) {
+        logger.error({ err, roomCode, userId }, "game:rejoin failed");
+        socket.emit("game:rejoin_failed", { reason: "Errore del server" });
+      }
     });
+
+    socket.on(
+      "game:reaction",
+      ({ emoji }: { emoji: string }) => {
+        const roomId = socketRoomMap.get(socket.id);
+        if (!roomId) return;
+        const game = activeGames.get(roomId);
+        if (!game) return;
+
+        const seatIndex = Object.entries(game.playerMap).find(
+          ([, uid]) => uid === userId
+        )?.[0];
+        io.to(roomId).emit("game:reaction", {
+          emoji,
+          fromSeat: seatIndex ? parseInt(seatIndex) : 0,
+          username: socket.data.username,
+        });
+      }
+    );
 
     // ── Friend invite ────────────────────────────────────────────────────────
 
-    socket.on("friend:invite", async ({ friendUserId, roomCode }: { friendUserId: string; roomCode: string }) => {
-      const friendSocket = userSocketMap.get(friendUserId);
-      if (friendSocket) {
-        io.to(friendSocket).emit("friend:invite", { from: socket.data.username, roomCode });
+    socket.on(
+      "friend:invite",
+      async ({
+        friendUserId,
+        roomCode,
+      }: {
+        friendUserId: string;
+        roomCode: string;
+      }) => {
+        const friendSocket = userSocketMap.get(friendUserId);
+        if (friendSocket) {
+          io.to(friendSocket).emit("friend:invite", {
+            from: socket.data.username,
+            roomCode,
+          });
+        }
       }
-    });
-
-    // ── Friend online list (on-demand refresh) ───────────────────────────────
+    );
 
     socket.on("friend:get_online_list", async () => {
       try {
@@ -451,10 +746,40 @@ export function setupSocket(httpServer: HttpServer) {
 
     socket.on("disconnect", async () => {
       userSocketMap.delete(userId);
-      // Update last seen before notifying friends
-      try { await storage.updateLastSeen(userId); } catch { /* ignore */ }
+      logger.debug({ userId, socketId: socket.id }, "Socket disconnected");
+
+      try {
+        await storage.updateLastSeen(userId);
+      } catch { /* ignore */ }
+
       const lastSeen = new Date().toISOString();
       emitFriendStatusOffline(io, userId, lastSeen);
+
+      const currentRoomId = socketRoomMap.get(socket.id);
+      if (currentRoomId) {
+        clearAfkTimer(currentRoomId, userId);
+        const game = activeGames.get(currentRoomId);
+        if (game && !game.gameState.gameOver) {
+          io.to(currentRoomId).emit("game:player_disconnected", {
+            userId,
+            message: `${username} si è disconnesso. Ha 60 secondi per rientrare.`,
+          });
+          setTimeout(async () => {
+            const sockets = await io.in(currentRoomId).fetchSockets();
+            const stillGone = !sockets.some(
+              (s) => (s as any).data?.userId === userId
+            );
+            if (stillGone) {
+              handleAutoPass(currentRoomId, userId);
+              io.to(currentRoomId).emit("game:notification", {
+                type: "disconnect_timeout",
+                message: `${username} non è rientrato — passato automaticamente`,
+              });
+            }
+          }, 60_000);
+        }
+      }
+
       await handleLeaveRoom(io, socket, userId);
     });
   });
@@ -464,15 +789,22 @@ export function setupSocket(httpServer: HttpServer) {
 
 function broadcastGameState(io: SocketServer, game: OnlineGameState) {
   const { gameState, playerMap, roomId } = game;
-  Object.entries(playerMap).forEach(([seatStr, uid]) => {
+  Object.entries(playerMap).forEach(([, uid]) => {
     const playerSocket = userSocketMap.get(uid);
     if (playerSocket) {
-      io.to(playerSocket).emit("game:state", sanitizeStateForPlayer(gameState, uid, playerMap));
+      io.to(playerSocket).emit(
+        "game:state",
+        sanitizeStateForPlayer(gameState, uid, playerMap)
+      );
     }
   });
 }
 
-async function handleLeaveRoom(io: SocketServer, socket: { id: string; leave: (r: string) => void }, userId: string) {
+async function handleLeaveRoom(
+  io: SocketServer,
+  socket: { id: string; leave: (r: string) => void },
+  userId: string
+) {
   const roomId = socketRoomMap.get(socket.id);
   if (!roomId) return;
   socketRoomMap.delete(socket.id);
@@ -489,10 +821,6 @@ async function handleLeaveRoom(io: SocketServer, socket: { id: string; leave: (r
       await storage.updateRoomStatus(roomId, "finished");
       return;
     }
-    // Reassign host if needed
-    if (room.hostUserId === userId && remaining.length > 0) {
-      // For now just notify remaining players
-    }
     io.to(roomId).emit("room:state", {
       roomId: room.id,
       code: room.code,
@@ -500,14 +828,29 @@ async function handleLeaveRoom(io: SocketServer, socket: { id: string; leave: (r
       status: room.status,
       gameMode: room.gameMode,
       maxPlayers: room.maxPlayers,
-      players: remaining.map((p) => ({ seatIndex: p.seatIndex, userId: p.userId, username: p.user.username })),
+      players: remaining.map((p) => ({
+        seatIndex: p.seatIndex,
+        userId: p.userId,
+        username: p.user.username,
+      })),
     });
   } else if (room.status === "in_progress") {
-    io.to(roomId).emit("game:player_left", { userId, username: socket.id });
+    const game = activeGames.get(roomId);
+    if (game) {
+      game.rematchVotes?.delete(userId);
+    }
+    io.to(roomId).emit("game:player_left", {
+      userId,
+      username: socket.id,
+    });
   }
 }
 
-async function emitFriendStatus(io: SocketServer, userId: string, online: boolean) {
+async function emitFriendStatus(
+  io: SocketServer,
+  userId: string,
+  online: boolean
+) {
   const friends = await storage.getFriends(userId).catch(() => []);
   friends.forEach((f) => {
     const friendSocket = userSocketMap.get(f.friend.id);
@@ -517,12 +860,20 @@ async function emitFriendStatus(io: SocketServer, userId: string, online: boolea
   });
 }
 
-async function emitFriendStatusOffline(io: SocketServer, userId: string, lastSeen: string) {
+async function emitFriendStatusOffline(
+  io: SocketServer,
+  userId: string,
+  lastSeen: string
+) {
   const friends = await storage.getFriends(userId).catch(() => []);
   friends.forEach((f) => {
     const friendSocket = userSocketMap.get(f.friend.id);
     if (friendSocket) {
-      io.to(friendSocket).emit("friend:status", { userId, online: false, lastSeen });
+      io.to(friendSocket).emit("friend:status", {
+        userId,
+        online: false,
+        lastSeen,
+      });
     }
   });
 }

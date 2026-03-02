@@ -1,15 +1,34 @@
 import type { Express, Request, Response } from "express";
 import { createServer, type Server } from "node:http";
 import bcrypt from "bcryptjs";
+import rateLimit from "express-rate-limit";
 import { storage } from "./storage";
+import { logger } from "./logger";
+import { validate } from "./validate";
+import { RegisterSchema, LoginSchema, AddFriendSchema } from "./schemas";
 import { insertUserSchema } from "@shared/schema";
 import { emitToUser } from "./socket";
+import { z } from "zod";
 
 declare module "express-session" {
   interface SessionData {
     userId: string;
   }
 }
+
+const authLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 20,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: "Troppi tentativi, riprova tra 15 minuti." },
+});
+
+const friendLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 10,
+  message: { error: "Troppe richieste, rallenta." },
+});
 
 function requireAuth(req: Request, res: Response, next: () => void) {
   if (!req.session.userId) {
@@ -23,26 +42,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // ── Auth ──────────────────────────────────────────────────────────────────
 
-  app.post("/api/auth/register", async (req, res) => {
-    const parsed = insertUserSchema.safeParse(req.body);
-    if (!parsed.success) {
-      res.status(400).json({ message: "Username e password richiesti" });
-      return;
-    }
-    const { username, password } = parsed.data;
-
-    if (username.length < 3 || username.length > 20) {
-      res.status(400).json({ message: "Username deve essere tra 3 e 20 caratteri" });
-      return;
-    }
-    if (!/^[a-zA-Z0-9_]+$/.test(username)) {
-      res.status(400).json({ message: "Username può contenere solo lettere, numeri e _" });
-      return;
-    }
-    if (password.length < 6) {
-      res.status(400).json({ message: "Password deve essere almeno 6 caratteri" });
-      return;
-    }
+  app.post("/api/auth/register", authLimiter, validate(RegisterSchema), async (req, res) => {
+    const { username, password } = req.body as { username: string; password: string };
 
     const existing = await storage.getUserByUsername(username);
     if (existing) {
@@ -54,15 +55,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
     const user = await storage.createUser({ username, password: passwordHash });
 
     req.session.userId = user.id;
+    logger.info({ userId: user.id, username }, "User registered");
     res.json({ id: user.id, username: user.username, friendCode: user.friendCode });
   });
 
-  app.post("/api/auth/login", async (req, res) => {
-    const { username, password } = req.body as { username?: string; password?: string };
-    if (!username || !password) {
-      res.status(400).json({ message: "Username e password richiesti" });
-      return;
-    }
+  app.post("/api/auth/login", authLimiter, validate(LoginSchema), async (req, res) => {
+    const { username, password } = req.body as { username: string; password: string };
 
     const user = await storage.getUserByUsername(username);
     if (!user) {
@@ -77,6 +75,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
 
     req.session.userId = user.id;
+    logger.info({ userId: user.id, username }, "User logged in");
     res.json({ id: user.id, username: user.username, friendCode: user.friendCode });
   });
 
@@ -99,6 +98,21 @@ export async function registerRoutes(app: Express): Promise<Server> {
     res.json({ id: user.id, username: user.username, friendCode: user.friendCode });
   });
 
+  // ── User ─────────────────────────────────────────────────────────────────
+
+  app.delete("/api/users/me", requireAuth, async (req, res) => {
+    try {
+      const userId = req.session.userId!;
+      await storage.deleteUser(userId);
+      req.session.destroy(() => {});
+      logger.info({ userId }, "User account deleted");
+      res.json({ message: "Account eliminato con successo" });
+    } catch (err) {
+      logger.error({ err }, "Delete user failed");
+      res.status(500).json({ error: "Eliminazione fallita" });
+    }
+  });
+
   // ── Friends ───────────────────────────────────────────────────────────────
 
   app.get("/api/friends", requireAuth, async (req, res) => {
@@ -113,17 +127,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.get("/api/friends/requests", requireAuth, async (req, res) => {
     const requests = await storage.getPendingFriendRequests(req.session.userId!);
-    res.json(requests.map((r) => ({ id: r.id, username: r.requester.username, friendCode: r.requester.friendCode })));
+    res.json(requests.map((r) => ({
+      id: r.id,
+      username: r.requester.username,
+      friendCode: r.requester.friendCode,
+    })));
   });
 
-  app.post("/api/friends/add", requireAuth, async (req, res) => {
-    const { friendCode } = req.body as { friendCode?: string };
-    if (!friendCode) {
-      res.status(400).json({ message: "Codice amico richiesto" });
-      return;
-    }
+  app.post("/api/friends/add", requireAuth, friendLimiter, validate(AddFriendSchema), async (req, res) => {
+    const { friendCode } = req.body as { friendCode: string };
 
-    const friend = await storage.getUserByFriendCode(friendCode.toUpperCase());
+    const friend = await storage.getUserByFriendCode(friendCode);
     if (!friend) {
       res.status(404).json({ message: "Nessun giocatore trovato con questo codice" });
       return;
@@ -148,16 +162,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
     const sender = await storage.getUser(req.session.userId!);
     await storage.addFriend(req.session.userId!, friend.id);
 
-    // Notify the target user in real time if they're online
     emitToUser(friend.id, "friend:request_incoming", {
       from: sender?.username ?? "Qualcuno",
     });
 
+    logger.info({ from: req.session.userId, to: friend.id }, "Friend request sent");
     res.json({ ok: true, username: friend.username });
   });
 
   app.post("/api/friends/accept/:id", requireAuth, async (req, res) => {
-    const id = String(req.params.id);
+    const id = z.string().parse(req.params.id);
     const result = await storage.acceptFriend(id);
     if (result) {
       const accepter = await storage.getUser(req.session.userId!);
@@ -169,12 +183,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   app.post("/api/friends/decline/:id", requireAuth, async (req, res) => {
-    await storage.declineFriendRequest(String(req.params.id));
+    const id = z.string().parse(req.params.id);
+    await storage.declineFriendRequest(id);
     res.json({ ok: true });
   });
 
   app.delete("/api/friends/:friendUserId", requireAuth, async (req, res) => {
-    await storage.removeFriend(req.session.userId!, String(req.params.friendUserId));
+    const friendUserId = z.string().parse(req.params.friendUserId);
+    await storage.removeFriend(req.session.userId!, friendUserId);
     res.json({ ok: true });
   });
 

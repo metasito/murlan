@@ -174,71 +174,95 @@ async function playNative(key: string, assetModule: number, volume = 1.0): Promi
   } catch {}
 }
 
+// ─── Master enable/disable ────────────────────────────────────────────────────
+
+let _soundsEnabled = true;
+export function setSoundsMasterEnabled(v: boolean) { _soundsEnabled = v; }
+
 // ─── Public API ───────────────────────────────────────────────────────────────
 
 export async function playCardSelect(): Promise<void> {
+  if (!_soundsEnabled) return;
   if (Platform.OS === "web") { webCardSelect(); return; }
   await playNative("select", require("../assets/sounds/card_select.mp3"), 0.75);
 }
 
 export async function playCardPlay(): Promise<void> {
+  if (!_soundsEnabled) return;
   if (Platform.OS === "web") { webCardPlay(); return; }
   await playNative("play", require("../assets/sounds/card_play.mp3"), 1.0);
 }
 
 export async function playCardPass(): Promise<void> {
+  if (!_soundsEnabled) return;
   if (Platform.OS === "web") { webCardPass(); return; }
   await playNative("pass", require("../assets/sounds/card_pass.mp3"), 0.75);
 }
 
 export async function playYourTurn(): Promise<void> {
+  if (!_soundsEnabled) return;
   if (Platform.OS === "web") { webYourTurn(); return; }
   await playNative("your_turn", require("../assets/sounds/your_turn.mp3"), 0.9);
 }
 
 export async function playRoundStart(): Promise<void> {
+  if (!_soundsEnabled) return;
   if (Platform.OS === "web") { webRoundStart(); return; }
   await playNative("round_start", require("../assets/sounds/round_start.mp3"), 0.85);
 }
 
 export async function playRoundWin(): Promise<void> {
+  if (!_soundsEnabled) return;
   if (Platform.OS === "web") { webRoundWin(); return; }
   await playNative("round_win", require("../assets/sounds/round_win.mp3"), 1.0);
 }
 
 export async function playUrgentTick(): Promise<void> {
+  if (!_soundsEnabled) return;
   if (Platform.OS === "web") { webUrgentTick(); return; }
   await playNative("urgent", require("../assets/sounds/urgent_tick.mp3"), 0.8);
 }
 
 export async function playBomb(): Promise<void> {
+  if (!_soundsEnabled) return;
   if (Platform.OS === "web") { webBomb(); return; }
   await playNative("bomb", require("../assets/sounds/bomb.mp3"), 1.0);
 }
 
 export async function playGameWin(): Promise<void> {
+  if (!_soundsEnabled) return;
   if (Platform.OS === "web") { webGameWin(); return; }
   await playNative("game_win", require("../assets/sounds/game_win.mp3"), 1.0);
 }
 
 export async function playGameLose(): Promise<void> {
+  if (!_soundsEnabled) return;
   if (Platform.OS === "web") { webGameLose(); return; }
   await playNative("game_lose", require("../assets/sounds/game_lose.mp3"), 0.85);
 }
 
 export async function playDeal(): Promise<void> {
+  if (!_soundsEnabled) return;
   if (Platform.OS === "web") { webDeal(); return; }
   await playNative("deal", require("../assets/sounds/deal.mp3"), 0.8);
 }
 
 export async function playExchange(): Promise<void> {
+  if (!_soundsEnabled) return;
   if (Platform.OS === "web") { webExchange(); return; }
   await playNative("exchange", require("../assets/sounds/exchange.mp3"), 0.85);
 }
 
+let soundsLoaded = false;
+let soundsLoading = false;
+
 export async function preloadSounds(): Promise<void> {
+  if (soundsLoaded || soundsLoading) return;
+  soundsLoading = true;
   if (Platform.OS === "web") {
     getWebCtx();
+    soundsLoaded = true;
+    soundsLoading = false;
     return;
   }
   try {
@@ -257,7 +281,12 @@ export async function preloadSounds(): Promise<void> {
       loadSound("deal", require("../assets/sounds/deal.mp3")),
       loadSound("exchange", require("../assets/sounds/exchange.mp3")),
     ]);
-  } catch {}
+    soundsLoaded = true;
+  } catch (err) {
+    console.warn("[sounds] Preload failed (non-fatal):", err);
+  } finally {
+    soundsLoading = false;
+  }
 }
 
 export function unloadSounds(): void {
