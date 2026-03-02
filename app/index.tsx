@@ -277,8 +277,15 @@ export default function HomeScreen() {
       <FloatingCard delay={1200} x={320} size={38} opacity={0.15} />
 
       <View style={styles.header}>
-        <Animated.View style={titleStyle}>
-          <Text style={styles.title}>MURLAN</Text>
+        <Animated.View style={[titleStyle, { alignItems: "center" }]}>
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
+            <Text style={styles.title}>MURLAN</Text>
+            {__DEV__ && (
+              <View style={styles.devBadge}>
+                <Text style={styles.devBadgeText}>DEV</Text>
+              </View>
+            )}
+          </View>
           <View style={styles.titleUnderline}>
             <LinearGradient colors={[Colors.goldDark, Colors.gold, Colors.goldDark]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={{ flex: 1, height: 2, borderRadius: 1 }} />
           </View>
@@ -372,6 +379,19 @@ const styles = StyleSheet.create({
     textAlign: "center",
   },
   titleUnderline: { width: 160, alignSelf: "center", marginTop: 4 },
+  devBadge: {
+    backgroundColor: "#c0392b",
+    borderRadius: 6,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    alignSelf: "center",
+  },
+  devBadgeText: {
+    fontFamily: "Inter_600SemiBold",
+    fontSize: 10,
+    color: "#fff",
+    letterSpacing: 1,
+  },
   subtitle: {
     fontFamily: "Inter_400Regular",
     fontSize: 13,

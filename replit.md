@@ -150,6 +150,26 @@ All 12 events: `playCardSelect`, `playCardPlay`, `playCardPass`, `playYourTurn`,
 - Server-authoritative: server validates all moves, broadcasts sanitized state
 - Opponent hands are hidden (only card count visible)
 - Emoji reactions: 😂 🔥 😤 👏 😱 🤡 💣 👑 — float animation per player
+- **Quickmatch**: `room:quickmatch` server event matches players by (maxPlayers+gameMode). `publicRoomIds` Set tracks open rooms.
+- **Vote-based rivincita**: `game:rematch_vote` event; all players vote; restarts when all agree. `cumulativeScores` accumulate across rounds.
+- **entrySource** in `OnlineGameContext`: `"quickmatch"` or `"friends"` — determines navigation on exit (quickmatch → `/quickmatch`, friends → `/(online)`)
+- **Room lobby**: mode is read-only for all players (set at creation, not editable in lobby)
+
+## UI/UX Rules
+
+- All menu/lobby screens must be fully usable in both portrait AND landscape — use `useWindowDimensions` to detect and switch layouts
+- Never let elements be clipped or unreachable in any orientation
+- Game screens (offline + online) are landscape-locked via `ScreenOrientation.lockAsync`
+- Shared game logic (banners, overlays, slot components, rankings) must live in `components/GameShared.tsx` — never duplicate between game files
+- `StartReasonBanner` is exported from `GameShared.tsx` — import from there in both game files
+
+## Navigation Conventions
+
+- On exit from online game or room lobby, navigate based on `entrySource` from `OnlineGameContext`:
+  - `"quickmatch"` → `router.replace("/(online)/quickmatch")`
+  - `"friends"` (or null) → `router.replace("/(online)")`
+- `leaveRoom()` in context does NOT navigate — navigation is the screen's responsibility
+- `entrySource` is set in context: `"quickmatch"` when `quickmatch()` is called, `"friends"` when `createRoom()` or `joinRoom()` is called
 
 ## Design
 

@@ -6,6 +6,7 @@ import {
   Pressable,
   Platform,
   useWindowDimensions,
+  Alert,
 } from "react-native";
 import { router } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -59,6 +60,7 @@ import {
   sharedTableStyles,
   sharedStyles,
   portraitOverlayStyles,
+  StartReasonBanner,
 } from "@/components/GameShared";
 import {
   playCardSelect,
@@ -193,87 +195,24 @@ function RankCard({
   );
 }
 
-function StartReasonBanner({
-  reason,
-  players,
-  topOffset,
-}: {
-  reason: StartReason;
-  players: Array<{ name: string; type: string }>;
-  topOffset: number;
-}) {
-  const [visible, setVisible] = React.useState(true);
-  useEffect(() => {
-    const t = setTimeout(() => setVisible(false), 4000);
-    return () => clearTimeout(t);
-  }, []);
-  if (!visible) return null;
-
-  const playerName = players[reason.playerIdx]?.name ?? "?";
-  let mainText = "";
-  let subText = "";
-
-  if (reason.type === "start_card" && reason.card) {
-    const label = `${reason.card.rank}♠`;
-    mainText = `${playerName} inizia — ha il ${label}`;
-    if (reason.card.rank !== "3") subText = "(il 3♠ è escluso)";
-  } else if (reason.type === "lost_round") {
-    mainText = `${playerName} inizia — ha perso il round`;
-  } else if (reason.type === "won_no_swap") {
-    mainText = `${playerName} inizia — ha vinto (nessuno scambio)`;
-  }
-
-  return (
-    <Pressable
-      onPress={() => setVisible(false)}
-      style={{
-        position: "absolute",
-        top: topOffset,
-        left: 0,
-        right: 0,
-        alignItems: "center",
-        zIndex: 50,
-        pointerEvents: "box-none" as any,
-      }}
-    >
-      <View style={{
-        backgroundColor: "rgba(3,16,8,0.90)",
-        borderColor: Colors.gold,
-        borderWidth: 1,
-        borderRadius: 20,
-        paddingHorizontal: 18,
-        paddingVertical: 8,
-        alignItems: "center",
-        maxWidth: 420,
-        gap: 2,
-      }}>
-        <Text style={{ fontFamily: "Rajdhani_600SemiBold", fontSize: 14, color: Colors.gold, letterSpacing: 0.5, textAlign: "center" }}>
-          {mainText}
-        </Text>
-        {subText ? (
-          <Text style={{ fontFamily: "Inter_400Regular", fontSize: 11, color: Colors.textSecondary, textAlign: "center" }}>
-            {subText}
-          </Text>
-        ) : null}
-      </View>
-    </Pressable>
-  );
-}
-
 function GameOverOverlay({
   gameState,
   topPad,
   bottomPad,
-  isHost,
   onLeave,
-  onRematch,
+  onVoteRematch,
+  voteState,
+  myUserId,
+  cumulativeScores,
 }: {
   gameState: NonNullable<ReturnType<typeof useOnlineGame>["gameState"]>;
   topPad: number;
   bottomPad: number;
-  isHost: boolean;
   onLeave: () => void;
-  onRematch: () => void;
+  onVoteRematch: () => void;
+  voteState: { votes: string[]; total: number } | null;
+  myUserId: string;
+  cumulativeScores: Record<string, number>;
 }) {
   const winnerName = gameState.rankings[0] ?? "";
   const scale = useSharedValue(0);
@@ -286,6 +225,10 @@ function GameOverOverlay({
     transform: [{ scale: scale.value }],
     opacity: opacity.value,
   }));
+
+  const hasVoted = voteState?.votes.includes(myUserId) ?? false;
+  const voteCount = voteState?.votes.length ?? 0;
+  const voteTotal = voteState?.total ?? gameState.players.length;
 
   return (
     <Animated.View
@@ -315,36 +258,31 @@ function GameOverOverlay({
           <View style={goStyles.actions}>
             <Pressable onPress={onLeave} style={goStyles.homeBtn}>
               <Ionicons name="home" size={16} color={Colors.textSecondary} />
-              <Text style={goStyles.homeBtnText}>Home</Text>
+              <Text style={goStyles.homeBtnText}>Esci</Text>
             </Pressable>
             <Pressable
               testID="btn-rivincita"
-              onPress={isHost ? onRematch : undefined}
-              style={[goStyles.rematchBtn, !isHost && goStyles.rematchBtnDim]}
+              onPress={hasVoted ? undefined : onVoteRematch}
+              style={[goStyles.rematchBtn, hasVoted && goStyles.rematchBtnDim]}
             >
               <LinearGradient
-                colors={
-                  isHost
-                    ? [Colors.gold, Colors.goldDark]
-                    : [Colors.bgSurface, Colors.bgSurface]
-                }
+                colors={hasVoted ? [Colors.bgSurface, Colors.bgSurface] : [Colors.gold, Colors.goldDark]}
                 start={{ x: 0, y: 0 }}
                 end={{ x: 1, y: 1 }}
                 style={goStyles.rematchGradient}
               >
                 <Ionicons
-                  name="refresh"
+                  name={hasVoted ? "checkmark-circle" : "refresh"}
                   size={16}
-                  color={isHost ? "#0A1F18" : Colors.textMuted}
+                  color={hasVoted ? Colors.accent : "#0A1F18"}
                 />
                 <Text
-                  style={[
-                    goStyles.rematchText,
-                    !isHost && { color: Colors.textMuted },
-                  ]}
+                  style={[goStyles.rematchText, hasVoted && { color: Colors.textMuted }]}
                   numberOfLines={1}
                 >
-                  {isHost ? "Rivincita" : "Solo l'host può riavviare"}
+                  {hasVoted
+                    ? `${voteCount}/${voteTotal} vogliono giocare`
+                    : "Rivincita"}
                 </Text>
               </LinearGradient>
             </Pressable>
@@ -354,15 +292,24 @@ function GameOverOverlay({
         <View style={goStyles.rightCol}>
           <Text style={goStyles.sectionTitle}>CLASSIFICA</Text>
           <View style={goStyles.rankList}>
-            {gameState.rankings.map((name, i) => (
-              <RankCard
-                key={i}
-                rank={i}
-                name={name}
-                isWinner={i === 0}
-                delay={i * 80 + 300}
-              />
-            ))}
+            {gameState.rankings.map((name, i) => {
+              const cumPts = cumulativeScores[name];
+              return (
+                <View key={i} style={goStyles.rankRow}>
+                  <RankCard
+                    rank={i}
+                    name={name}
+                    isWinner={i === 0}
+                    delay={i * 80 + 300}
+                  />
+                  {cumPts !== undefined && cumPts > 0 && (
+                    <View style={goStyles.cumScore}>
+                      <Text style={goStyles.cumScoreText}>{cumPts}pt</Text>
+                    </View>
+                  )}
+                </View>
+              );
+            })}
           </View>
 
           <Text style={[goStyles.sectionTitle, { marginTop: 10 }]}>
@@ -392,7 +339,7 @@ function GameOverOverlay({
             <View style={goStyles.statItem}>
               <Ionicons name="wifi" size={16} color={Colors.accent} />
               <Text style={goStyles.statValue}>Online</Text>
-              <Text style={goStyles.statLabel}>Modalità</Text>
+              <Text style={goStyles.statLabel}>Tipo</Text>
             </View>
           </View>
         </View>
@@ -414,7 +361,10 @@ export default function OnlineGameScreen() {
     pass,
     sendReaction,
     leaveRoom,
-    requestPlayAgain,
+    voteRematch,
+    entrySource,
+    rematchVoteState,
+    cumulativeScores,
   } = useOnlineGame();
 
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
@@ -634,7 +584,27 @@ export default function OnlineGameScreen() {
     }
   }
 
-  const isHost = room?.hostUserId === user?.id;
+  function handleExit() {
+    Alert.alert(
+      "Lascia la partita",
+      "Sei sicuro di voler lasciare la partita in corso?",
+      [
+        { text: "Annulla", style: "cancel" },
+        {
+          text: "Lascia",
+          style: "destructive",
+          onPress: () => {
+            leaveRoom();
+            if (entrySource === "quickmatch") {
+              router.replace("/(online)/quickmatch");
+            } else {
+              router.replace("/(online)");
+            }
+          },
+        },
+      ]
+    );
+  }
 
   return (
     <View style={localStyles.root}>
@@ -677,13 +647,22 @@ export default function OnlineGameScreen() {
           </View>
         </View>
 
-        <Pressable
-          onPress={handleReactionBtnPress}
-          style={localStyles.reactionTrigger}
-          hitSlop={8}
-        >
-          <Text style={localStyles.reactionTriggerText}>💬</Text>
-        </Pressable>
+        <View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
+          <Pressable
+            onPress={handleReactionBtnPress}
+            style={localStyles.reactionTrigger}
+            hitSlop={8}
+          >
+            <Text style={localStyles.reactionTriggerText}>💬</Text>
+          </Pressable>
+          <Pressable
+            onPress={handleExit}
+            style={localStyles.exitBtn}
+            hitSlop={8}
+          >
+            <Ionicons name="close" size={18} color={Colors.textMuted} />
+          </Pressable>
+        </View>
       </View>
 
       {showReactions && (
@@ -853,15 +832,21 @@ export default function OnlineGameScreen() {
           gameState={gameState}
           topPad={topPad}
           bottomPad={bottomPad}
-          isHost={isHost}
           onLeave={() => {
             leaveRoom();
-            router.replace("/(online)");
+            if (entrySource === "quickmatch") {
+              router.replace("/(online)/quickmatch");
+            } else {
+              router.replace("/(online)");
+            }
           }}
-          onRematch={() => {
+          onVoteRematch={() => {
             Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-            requestPlayAgain();
+            voteRematch();
           }}
+          voteState={rematchVoteState}
+          myUserId={user?.id ?? ""}
+          cumulativeScores={cumulativeScores}
         />
       )}
 
@@ -937,6 +922,14 @@ const localStyles = StyleSheet.create({
   },
   reactionTrigger: { padding: 6 },
   reactionTriggerText: { fontSize: 20 },
+  exitBtn: {
+    width: 30,
+    height: 30,
+    alignItems: "center",
+    justifyContent: "center",
+    borderRadius: 15,
+    backgroundColor: "rgba(0,0,0,0.25)",
+  },
   reactionPanel: {
     position: "absolute",
     right: 12,
@@ -1146,6 +1139,21 @@ const goStyles = StyleSheet.create({
     fontSize: 9,
     color: Colors.gold,
     letterSpacing: 1,
+  },
+
+  rankRow: { flexDirection: "row", alignItems: "center", gap: 6 },
+  cumScore: {
+    backgroundColor: "rgba(201,168,76,0.15)",
+    borderRadius: 8,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderWidth: 1,
+    borderColor: Colors.goldDark,
+  },
+  cumScoreText: {
+    fontFamily: "Rajdhani_700Bold",
+    fontSize: 11,
+    color: Colors.gold,
   },
 
   statsRow: { flexDirection: "row", gap: 8 },

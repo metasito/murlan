@@ -32,7 +32,7 @@ const FAQS: FAQ[] = [
   {
     question: "Chi inizia per primo?",
     answer:
-      "Il giocatore che ha il 3 di picche (♠3) inizia sempre per primo. La sua prima giocata DEVE includere il 3♠ — può giocare il 3 da solo, in coppia, tris o come parte di una scala, purché il 3♠ sia compreso. Il giro prosegue in senso orario.",
+      "La prima mano della partita:\nIl giocatore con la picca più bassa inizia. Di solito è il 3♠, ma se il 3♠ è escluso (es. in alcune distribuzioni), si cerca il 4♠, poi il 5♠ e così via, fino alla picca più bassa disponibile tra le mani dei giocatori.\n\nLa prima giocata DEVE includere quella carta di picche.\n\nRound successivi:\n• Chi ha perso il round (ha giocato per ultimo senza far passare tutti) inizia il round successivo.\n• Se il vincitore del round ha vinto senza che avvenga scambio (eccezione dei due Joker), il vincitore inizia lui stesso il turno successivo.\n\nIl giro prosegue sempre in senso orario.",
   },
   {
     question: "Qual è la forza delle carte?",
@@ -60,9 +60,24 @@ const FAQS: FAQ[] = [
       "Quando tutti i giocatori passano consecutivamente (tranne uno), chi ha giocato l'ultima combinazione vince il round. Questo giocatore inizia un nuovo round con qualsiasi combinazione.",
   },
   {
+    question: "Come si calcolano i punti?",
+    answer:
+      "In una partita con N giocatori, i punti vengono assegnati in base all'ordine di arrivo:\n• 1° posto: N-1 punti\n• 2° posto: N-2 punti\n• ...\n• Ultimo posto: 0 punti\n\nEsempi:\n▸ 2 giocatori: 1° = 1pt, 2° = 0pt\n▸ 3 giocatori: 1° = 2pt, 2° = 1pt, 3° = 0pt\n▸ 4 giocatori: 1° = 3pt, 2° = 2pt, 3° = 1pt, 4° = 0pt\n\nI punti si accumulano tra più partite (rivincita). Chi ha più punti vince la sessione!",
+  },
+  {
+    question: "Quali modalità di gioco esistono?",
+    answer:
+      "Murlan supporta 4 formati:\n\n• 1 vs 1 — due giocatori, vince chi finisce le carte per primo\n• Trio — tre giocatori, tutti contro tutti\n• 4 Liberi — quattro giocatori, tutti contro tutti\n• 2 vs 2 — quattro giocatori divisi in due coppie: Giocatore 1&3 vs Giocatore 2&4. Vince la coppia il cui primo membro termina le carte.\n\nNella modalità Online trovi tutti e 4 i formati. In offline scegli tu quanti giocatori e quale modalità.",
+  },
+  {
+    question: "Come funziona lo scambio di carte?",
+    answer:
+      "Dopo ogni manche (quando tutti hanno finito le carte), avviene uno scambio:\n\n1. Il perdente (ultimo classificato) dà automaticamente la sua carta più forte al vincitore (primo classificato).\n2. Il vincitore sceglie una carta da 3 a 10 da restituire al perdente.\n3. Dopodichè il perdente inizia il round successivo.\n\nEccezione dei due Joker: se il perdente ha in mano entrambi i Joker (colorato e B/N), lo scambio NON avviene. Il vincitore inizia lui stesso il round seguente.",
+  },
+  {
     question: "Cosa sono i Joker?",
     answer:
-      "I Joker sono le carte più forti del mazzo nelle combinazioni normali:\n• Joker Colorato ★: il più forte in assoluto\n• Joker B/N ☆: secondo per forza\n\nAttenzione: un Joker giocato come carta singola può essere battuto da una Bomba!",
+      "I Joker sono le carte più forti del mazzo nelle combinazioni normali:\n• Joker Colorato ★: il più forte in assoluto\n• Joker B/N ☆: secondo per forza\n\nAttenzione: i Joker si possono giocare SOLO come singola carta — mai in coppia, tris o scala. Un Joker giocato come carta singola può essere battuto da una Bomba!",
   },
   {
     question: "Cos'è una Bomba?",
@@ -75,11 +90,6 @@ const FAQS: FAQ[] = [
       "La Scala Reale è una scala in cui tutte le carte hanno lo stesso seme (es. 3♠-4♠-5♠-6♠-7♠).\n\n• Batte qualsiasi altra combinazione, inclusa la Bomba più forte (2-2-2-2)\n• Una Scala Reale più alta batte una più bassa\n• È la combinazione più potente del gioco!",
   },
   {
-    question: "Come funziona la modalità a coppie?",
-    answer:
-      "Con 4 giocatori puoi giocare a coppie:\n• Team A: Giocatore 1 & 3\n• Team B: Giocatore 2 & 4\n\nVince la coppia il cui primo membro termina le carte. I compagni non possono comunicare o vedere le carte degli altri.",
-  },
-  {
     question: "Posso passare quando voglio?",
     answer:
       "Puoi passare solo se c'è una combinazione attiva sul tavolo. Se sei il primo a giocare nel round (o hai vinto il round precedente), DEVI giocare una combinazione, non puoi passare.",
@@ -88,6 +98,11 @@ const FAQS: FAQ[] = [
     question: "Quante carte si distribuiscono?",
     answer:
       "• 2 giocatori: 26 carte ciascuno (mazzo completo)\n• 3 giocatori: 17 carte ciascuno (1 carta esclusa dal gioco)\n• 4 giocatori: 13 carte ciascuno",
+  },
+  {
+    question: "Come funziona la Rivincita online?",
+    answer:
+      "Nella modalità Online, la rivincita è democratica:\n\n• Tutti i giocatori vedono il pulsante \"Rivincita\" nella schermata di fine partita\n• Una nuova partita inizia SOLO quando TUTTI i giocatori hanno cliccato Rivincita\n• Il contatore mostra in tempo reale quanti hanno già votato (es. 2/4 vogliono giocare)\n• Se non tutti votano, si può sempre uscire premendo il tasto Esci\n\nI punteggi si accumulano tra una rivincita e l'altra — chi ha il totale più alto vince la sessione!",
   },
   {
     question: "Come funziona l'AI?",

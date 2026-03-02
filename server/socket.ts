@@ -15,6 +15,8 @@ interface OnlineGameState {
   playerMap: Record<number, string>; // seatIndex -> userId
   socketMap: Record<string, string>; // socketId -> userId
   roomId: string;
+  rematchVotes: Set<string>;
+  cumulativeScores: Record<string, number>;
 }
 
 // In-memory map of active online games
@@ -242,11 +244,14 @@ export function setupSocket(httpServer: HttpServer) {
       const playerMap: Record<number, string> = {};
       players.forEach((p) => { playerMap[p.seatIndex] = p.userId; });
 
+      const existingGame = activeGames.get(roomId);
       activeGames.set(roomId, {
         gameState,
         playerMap,
         socketMap: {},
         roomId,
+        rematchVotes: new Set(),
+        cumulativeScores: existingGame?.cumulativeScores ?? {},
       });
 
       // Remove from public quickmatch pool — game is starting
@@ -308,9 +313,18 @@ export function setupSocket(httpServer: HttpServer) {
       broadcastGameState(io, game);
 
       if (newState.gameOver) {
-        io.to(roomId).emit("game:over", { rankings: newState.rankings });
+        // Update cumulative scores: position 0 gets (n-1) pts, position 1 gets (n-2) pts, etc.
+        const numPlayers = newState.players.length;
+        const updatedCumulative = { ...game.cumulativeScores };
+        newState.rankings.forEach((playerName, rankIdx) => {
+          const pts = Math.max(0, numPlayers - 1 - rankIdx);
+          updatedCumulative[playerName] = (updatedCumulative[playerName] ?? 0) + pts;
+        });
+        game.cumulativeScores = updatedCumulative;
+        game.gameState = newState;
+        game.rematchVotes = new Set();
+        io.to(roomId).emit("game:over", { rankings: newState.rankings, cumulativeScores: updatedCumulative });
         await storage.updateRoomStatus(roomId, "finished");
-        activeGames.delete(roomId);
       }
     });
 
@@ -329,6 +343,52 @@ export function setupSocket(httpServer: HttpServer) {
       game.gameState = newState;
 
       broadcastGameState(io, game);
+    });
+
+    socket.on("game:rematch_vote", async () => {
+      const roomId = socketRoomMap.get(socket.id);
+      if (!roomId) return;
+      const game = activeGames.get(roomId);
+      if (!game || !game.gameState.gameOver) return;
+
+      game.rematchVotes.add(userId);
+      const totalPlayers = Object.keys(game.playerMap).length;
+      const voteList = Array.from(game.rematchVotes);
+
+      io.to(roomId).emit("game:vote_state", { votes: voteList, total: totalPlayers });
+
+      if (game.rematchVotes.size >= totalPlayers) {
+        // All voted — restart the game
+        const room = await storage.getRoomById(roomId);
+        if (!room) return;
+        const players = await storage.getRoomPlayers(roomId);
+        if (players.length < 2) return;
+
+        const playerSetup = players.map((p) => ({
+          name: p.user.username,
+          type: "human" as const,
+          team: room.gameMode === "teams" ? (p.seatIndex % 2 === 0 ? "A" : "B") as "A" | "B" : undefined,
+        }));
+
+        const newGameState = initializeGame(playerSetup, room.gameMode);
+        const playerMap: Record<number, string> = {};
+        players.forEach((p) => { playerMap[p.seatIndex] = p.userId; });
+
+        game.gameState = newGameState;
+        game.playerMap = playerMap;
+        game.rematchVotes = new Set();
+
+        await storage.updateRoomStatus(roomId, "in_progress");
+
+        players.forEach((p) => {
+          const playerSocket = userSocketMap.get(p.userId);
+          if (playerSocket) {
+            io.to(playerSocket).emit("game:state", sanitizeStateForPlayer(newGameState, p.userId, playerMap));
+          }
+        });
+
+        io.to(roomId).emit("game:started");
+      }
     });
 
     socket.on("game:reaction", ({ emoji }: { emoji: string }) => {

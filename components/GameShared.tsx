@@ -1,5 +1,5 @@
-import React, { useEffect } from "react";
-import { View, Text, StyleSheet, Platform } from "react-native";
+import React, { useEffect, useState } from "react";
+import { View, Text, StyleSheet, Platform, Pressable } from "react-native";
 import Animated, {
   useAnimatedStyle,
   useSharedValue,
@@ -15,7 +15,7 @@ import Animated, {
 import { Ionicons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
 import { CardView } from "@/components/CardView";
-import type { Card, Combination, Player } from "@/lib/gameEngine";
+import type { Card, Combination, Player, StartReason } from "@/lib/gameEngine";
 import Colors from "@/constants/colors";
 
 export const CARD_W = 58;
@@ -497,6 +497,72 @@ export function StraightHand({
         </View>
       </View>
     </View>
+  );
+}
+
+export function StartReasonBanner({
+  reason,
+  players,
+  topOffset,
+}: {
+  reason: StartReason;
+  players: Array<{ name: string; type: string }>;
+  topOffset: number;
+}) {
+  const [visible, setVisible] = useState(true);
+  useEffect(() => {
+    const t = setTimeout(() => setVisible(false), 4000);
+    return () => clearTimeout(t);
+  }, []);
+  if (!visible) return null;
+
+  const playerName = players[reason.playerIdx]?.name ?? "?";
+  let mainText = "";
+  let subText = "";
+
+  if (reason.type === "start_card" && reason.card) {
+    mainText = `${playerName} inizia — ha il ${reason.card.rank}♠`;
+    if (reason.card.rank !== "3") subText = "(il 3♠ è escluso)";
+  } else if (reason.type === "lost_round") {
+    mainText = `${playerName} inizia — ha perso il round`;
+  } else if (reason.type === "won_no_swap") {
+    mainText = `${playerName} inizia — ha vinto (nessuno scambio)`;
+  }
+
+  return (
+    <Pressable
+      onPress={() => setVisible(false)}
+      style={{
+        position: "absolute",
+        top: topOffset,
+        left: 0,
+        right: 0,
+        alignItems: "center",
+        zIndex: 50,
+        pointerEvents: "box-none" as any,
+      }}
+    >
+      <View style={{
+        backgroundColor: "rgba(3,16,8,0.90)",
+        borderColor: Colors.gold,
+        borderWidth: 1,
+        borderRadius: 20,
+        paddingHorizontal: 18,
+        paddingVertical: 8,
+        alignItems: "center",
+        maxWidth: 420,
+        gap: 2,
+      }}>
+        <Text style={{ fontFamily: "Rajdhani_600SemiBold", fontSize: 14, color: Colors.gold, letterSpacing: 0.5, textAlign: "center" }}>
+          {mainText}
+        </Text>
+        {subText ? (
+          <Text style={{ fontFamily: "Inter_400Regular", fontSize: 11, color: Colors.textSecondary, textAlign: "center" }}>
+            {subText}
+          </Text>
+        ) : null}
+      </View>
+    </Pressable>
   );
 }
 

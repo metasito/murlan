@@ -31,8 +31,8 @@ export default function RoomScreen() {
     error,
     clearError,
     leaveRoom,
-    setRoomGameMode,
     startGame,
+    entrySource,
   } = useOnlineGame();
 
   const topPad = Platform.OS === "web" ? 67 : insets.top;
@@ -82,7 +82,11 @@ export default function RoomScreen() {
           style: "destructive",
           onPress: () => {
             leaveRoom();
-            router.replace("/(online)");
+            if (entrySource === "quickmatch") {
+              router.replace("/(online)/quickmatch");
+            } else {
+              router.replace("/(online)");
+            }
           },
         },
       ]
@@ -126,29 +130,16 @@ export default function RoomScreen() {
           </View>
         </Animated.View>
 
-        {isHost && (
-          <View style={styles.modeSection}>
-            <Text style={styles.modeLabel}>MODALITÀ</Text>
-            <View style={styles.modeToggle}>
-              {(["free_for_all", "teams"] as const).map((m) => (
-                <Pressable
-                  key={m}
-                  onPress={() => setRoomGameMode(m)}
-                  style={[styles.modeBtn, room.gameMode === m && styles.modeBtnActive]}
-                >
-                  <Ionicons
-                    name={m === "free_for_all" ? "person" : "people"}
-                    size={14}
-                    color={room.gameMode === m ? Colors.gold : Colors.textMuted}
-                  />
-                  <Text style={[styles.modeBtnText, room.gameMode === m && styles.modeBtnTextActive]}>
-                    {m === "free_for_all" ? "Tutti contro tutti" : "A coppie"}
-                  </Text>
-                </Pressable>
-              ))}
-            </View>
-          </View>
-        )}
+        <View style={styles.modePill}>
+          <Ionicons
+            name={room.gameMode === "teams" ? "people" : "person"}
+            size={13}
+            color={Colors.textMuted}
+          />
+          <Text style={styles.modePillText}>
+            {room.gameMode === "teams" ? "A coppie" : "Tutti contro tutti"} · {room.maxPlayers} giocatori
+          </Text>
+        </View>
 
         <View style={styles.slotsSection}>
           <Text style={styles.slotsSectionTitle}>
@@ -286,29 +277,23 @@ const styles = StyleSheet.create({
   codeActions: { flexDirection: "row", gap: 20, marginTop: 4 },
   codeBtn: { flexDirection: "row", alignItems: "center", gap: 6, padding: 4 },
   codeBtnText: { fontFamily: "Inter_500Medium", fontSize: 13, color: Colors.gold },
-  modeSection: { gap: 10 },
-  modeLabel: {
-    fontFamily: "Inter_400Regular",
-    fontSize: 11,
-    color: Colors.textMuted,
-    letterSpacing: 2,
-  },
-  modeToggle: { flexDirection: "row", gap: 8 },
-  modeBtn: {
-    flex: 1,
+  modePill: {
     flexDirection: "row",
     alignItems: "center",
-    justifyContent: "center",
-    gap: 8,
-    paddingVertical: 12,
+    alignSelf: "flex-start",
+    gap: 6,
+    backgroundColor: Colors.bgCard,
     borderRadius: 12,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
     borderWidth: 1,
     borderColor: Colors.border,
-    backgroundColor: Colors.bgCard,
   },
-  modeBtnActive: { borderColor: Colors.gold, backgroundColor: "rgba(201,168,76,0.1)" },
-  modeBtnText: { fontFamily: "Rajdhani_600SemiBold", fontSize: 14, color: Colors.textMuted },
-  modeBtnTextActive: { color: Colors.gold },
+  modePillText: {
+    fontFamily: "Inter_400Regular",
+    fontSize: 12,
+    color: Colors.textMuted,
+  },
   slotsSection: { gap: 12 },
   slotsSectionTitle: {
     fontFamily: "Inter_400Regular",
@@ -326,6 +311,7 @@ const styles = StyleSheet.create({
     borderColor: Colors.border,
     padding: 12,
     gap: 12,
+    minHeight: 68,
   },
   slotFilled: { borderColor: "rgba(201,168,76,0.3)" },
   slotAvatar: {

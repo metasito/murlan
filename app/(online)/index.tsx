@@ -8,6 +8,8 @@ import {
   Platform,
   Modal,
   Alert,
+  ScrollView,
+  useWindowDimensions,
 } from "react-native";
 import { router } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -20,6 +22,7 @@ import Colors from "@/constants/colors";
 
 export default function OnlineLobbyScreen() {
   const insets = useSafeAreaInsets();
+  const { width: W, height: H } = useWindowDimensions();
   const { user } = useAuth();
   const { createRoom, joinRoom, room, connected, error, clearError } = useOnlineGame();
   const [joinModalVisible, setJoinModalVisible] = useState(false);
@@ -27,6 +30,7 @@ export default function OnlineLobbyScreen() {
   const [createMode, setCreateMode] = useState<"free_for_all" | "teams">("free_for_all");
   const [createPlayers, setCreatePlayers] = useState(4);
 
+  const isLandscape = W > H;
   const topPad = Platform.OS === "web" ? 67 : insets.top;
   const bottomPad = Platform.OS === "web" ? 34 : insets.bottom;
 
@@ -55,6 +59,79 @@ export default function OnlineLobbyScreen() {
     setJoinCode("");
   }
 
+  const CreateSection = (
+    <View style={styles.section}>
+      <Text style={styles.sectionTitle}>CREA STANZA</Text>
+
+      <View style={styles.optRow}>
+        <Text style={styles.optLabel}>Modalità</Text>
+        <View style={styles.toggle}>
+          {(["free_for_all", "teams"] as const).map((m) => (
+            <Pressable
+              key={m}
+              onPress={() => setCreateMode(m)}
+              style={[styles.toggleBtn, createMode === m && styles.toggleActive]}
+            >
+              <Text style={[styles.toggleText, createMode === m && styles.toggleTextActive]}>
+                {m === "free_for_all" ? "Libera" : "Coppie"}
+              </Text>
+            </Pressable>
+          ))}
+        </View>
+      </View>
+
+      <View style={styles.optRow}>
+        <Text style={styles.optLabel}>Giocatori</Text>
+        <View style={styles.toggle}>
+          {[2, 3, 4].map((n) => (
+            <Pressable
+              key={n}
+              onPress={() => setCreatePlayers(n)}
+              style={[styles.toggleBtn, createPlayers === n && styles.toggleActive]}
+            >
+              <Text style={[styles.toggleText, createPlayers === n && styles.toggleTextActive]}>
+                {n}
+              </Text>
+            </Pressable>
+          ))}
+        </View>
+      </View>
+
+      {createMode === "teams" && createPlayers !== 4 && (
+        <Text style={styles.warn}>La modalità Coppie richiede 4 giocatori</Text>
+      )}
+
+      <Pressable
+        onPress={handleCreate}
+        disabled={createMode === "teams" && createPlayers !== 4}
+        style={({ pressed }) => [styles.primaryBtn, pressed && { opacity: 0.85 }]}
+      >
+        <LinearGradient
+          colors={[Colors.gold, Colors.goldDark]}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+          style={styles.primaryGrad}
+        >
+          <Ionicons name="add-circle-outline" size={20} color="#0A1F18" />
+          <Text style={styles.primaryBtnText}>Crea Stanza</Text>
+        </LinearGradient>
+      </Pressable>
+    </View>
+  );
+
+  const JoinSection = (
+    <View style={styles.section}>
+      <Text style={styles.sectionTitle}>ENTRA IN UNA STANZA</Text>
+      <Pressable
+        onPress={() => setJoinModalVisible(true)}
+        style={({ pressed }) => [styles.secondaryBtn, pressed && { opacity: 0.85 }]}
+      >
+        <Ionicons name="enter-outline" size={20} color={Colors.gold} />
+        <Text style={styles.secondaryBtnText}>Inserisci codice stanza</Text>
+      </Pressable>
+    </View>
+  );
+
   return (
     <View style={[styles.container, { paddingTop: topPad, paddingBottom: bottomPad + 16 }]}>
       <LinearGradient
@@ -67,12 +144,17 @@ export default function OnlineLobbyScreen() {
           <Ionicons name="chevron-back" size={22} color={Colors.textMuted} />
         </Pressable>
         <Text style={styles.screenTitle}>Online</Text>
-        <Pressable onPress={() => router.push("/(online)/friends")} style={styles.iconBtn}>
-          <Ionicons name="people" size={22} color={Colors.gold} />
-        </Pressable>
+        <View style={{ width: 38 }} />
       </View>
 
-      <View style={styles.body}>
+      <ScrollView
+        contentContainerStyle={[
+          styles.body,
+          isLandscape && styles.bodyLandscape,
+        ]}
+        showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
+      >
         <View style={styles.statusRow}>
           <View style={[styles.dot, { backgroundColor: connected ? "#4CAF50" : Colors.textMuted }]} />
           <Text style={styles.statusText}>
@@ -80,81 +162,24 @@ export default function OnlineLobbyScreen() {
           </Text>
         </View>
 
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>CREA STANZA</Text>
-
-          <View style={styles.optRow}>
-            <Text style={styles.optLabel}>Modalità</Text>
-            <View style={styles.toggle}>
-              {(["free_for_all", "teams"] as const).map((m) => (
-                <Pressable
-                  key={m}
-                  onPress={() => setCreateMode(m)}
-                  style={[styles.toggleBtn, createMode === m && styles.toggleActive]}
-                >
-                  <Text style={[styles.toggleText, createMode === m && styles.toggleTextActive]}>
-                    {m === "free_for_all" ? "Libera" : "Coppie"}
-                  </Text>
-                </Pressable>
-              ))}
-            </View>
+        {isLandscape ? (
+          <View style={styles.landscapeRow}>
+            <View style={{ flex: 1 }}>{CreateSection}</View>
+            <View style={styles.dividerV} />
+            <View style={{ flex: 1 }}>{JoinSection}</View>
           </View>
-
-          <View style={styles.optRow}>
-            <Text style={styles.optLabel}>Giocatori</Text>
-            <View style={styles.toggle}>
-              {[2, 3, 4].map((n) => (
-                <Pressable
-                  key={n}
-                  onPress={() => setCreatePlayers(n)}
-                  style={[styles.toggleBtn, createPlayers === n && styles.toggleActive]}
-                >
-                  <Text style={[styles.toggleText, createPlayers === n && styles.toggleTextActive]}>
-                    {n}
-                  </Text>
-                </Pressable>
-              ))}
+        ) : (
+          <>
+            {CreateSection}
+            <View style={styles.divider}>
+              <View style={styles.divLine} />
+              <Text style={styles.divText}>oppure</Text>
+              <View style={styles.divLine} />
             </View>
-          </View>
-
-          {createMode === "teams" && createPlayers !== 4 && (
-            <Text style={styles.warn}>La modalità Coppie richiede 4 giocatori</Text>
-          )}
-
-          <Pressable
-            onPress={handleCreate}
-            disabled={createMode === "teams" && createPlayers !== 4}
-            style={({ pressed }) => [styles.primaryBtn, pressed && { opacity: 0.85 }]}
-          >
-            <LinearGradient
-              colors={[Colors.gold, Colors.goldDark]}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 1 }}
-              style={styles.primaryGrad}
-            >
-              <Ionicons name="add-circle-outline" size={20} color="#0A1F18" />
-              <Text style={styles.primaryBtnText}>Crea Stanza</Text>
-            </LinearGradient>
-          </Pressable>
-        </View>
-
-        <View style={styles.divider}>
-          <View style={styles.divLine} />
-          <Text style={styles.divText}>oppure</Text>
-          <View style={styles.divLine} />
-        </View>
-
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>ENTRA IN UNA STANZA</Text>
-          <Pressable
-            onPress={() => setJoinModalVisible(true)}
-            style={({ pressed }) => [styles.secondaryBtn, pressed && { opacity: 0.85 }]}
-          >
-            <Ionicons name="enter-outline" size={20} color={Colors.gold} />
-            <Text style={styles.secondaryBtnText}>Inserisci codice stanza</Text>
-          </Pressable>
-        </View>
-      </View>
+            {JoinSection}
+          </>
+        )}
+      </ScrollView>
 
       <Modal
         visible={joinModalVisible}
@@ -208,7 +233,6 @@ const styles = StyleSheet.create({
     borderBottomColor: Colors.border,
   },
   backBtn: { padding: 8 },
-  iconBtn: { padding: 8 },
   screenTitle: {
     flex: 1,
     textAlign: "center",
@@ -217,7 +241,10 @@ const styles = StyleSheet.create({
     color: Colors.text,
     letterSpacing: 3,
   },
-  body: { flex: 1, paddingHorizontal: 20, paddingTop: 20, gap: 20 },
+  body: { paddingHorizontal: 20, paddingTop: 16, paddingBottom: 16, gap: 16 },
+  bodyLandscape: { paddingTop: 12, gap: 12 },
+  landscapeRow: { flexDirection: "row", gap: 16, alignItems: "flex-start" },
+  dividerV: { width: 1, backgroundColor: Colors.border, alignSelf: "stretch" },
   statusRow: { flexDirection: "row", alignItems: "center", gap: 8 },
   dot: { width: 8, height: 8, borderRadius: 4 },
   statusText: { fontFamily: "Inter_400Regular", fontSize: 13, color: Colors.textMuted },
@@ -251,7 +278,7 @@ const styles = StyleSheet.create({
   toggleTextActive: { color: Colors.gold },
   warn: { fontFamily: "Inter_400Regular", fontSize: 12, color: "#ff6b6b" },
   primaryBtn: { borderRadius: 12, overflow: "hidden" },
-  primaryGrad: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, paddingVertical: 15 },
+  primaryGrad: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, paddingVertical: 14 },
   primaryBtnText: { fontFamily: "Rajdhani_700Bold", fontSize: 17, color: "#0A1F18", letterSpacing: 0.5 },
   divider: { flexDirection: "row", alignItems: "center", gap: 12 },
   divLine: { flex: 1, height: 1, backgroundColor: Colors.border },
@@ -264,7 +291,7 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     borderWidth: 1,
     borderColor: Colors.gold,
-    paddingVertical: 15,
+    paddingVertical: 14,
   },
   secondaryBtnText: { fontFamily: "Rajdhani_600SemiBold", fontSize: 16, color: Colors.gold },
   modalOverlay: { flex: 1, backgroundColor: "rgba(0,0,0,0.7)", alignItems: "center", justifyContent: "center" },

@@ -6,6 +6,8 @@ import {
   Pressable,
   Animated,
   Platform,
+  ScrollView,
+  useWindowDimensions,
 } from "react-native";
 import { router } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -61,6 +63,7 @@ const MODES: ModeOption[] = [
 
 export default function QuickmatchScreen() {
   const insets = useSafeAreaInsets();
+  const { width: W, height: H } = useWindowDimensions();
   const { quickmatch, leaveRoom, room, error, clearError } = useOnlineGame();
 
   const [phase, setPhase] = useState<"selecting" | "searching">("selecting");
@@ -68,17 +71,16 @@ export default function QuickmatchScreen() {
   const [dotCount, setDotCount] = useState(0);
   const pulseAnim = useRef(new Animated.Value(1)).current;
 
+  const isLandscape = W > H;
   const topPad = Platform.OS === "web" ? 67 : insets.top;
   const bottomPad = Platform.OS === "web" ? 34 : insets.bottom;
 
-  // Navigate to room when assigned
   useEffect(() => {
     if (room) {
       router.replace("/(online)/room");
     }
   }, [room?.roomId]);
 
-  // Pulsing globe animation (only while searching)
   useEffect(() => {
     if (phase !== "searching") return;
     const pulse = Animated.loop(
@@ -91,7 +93,6 @@ export default function QuickmatchScreen() {
     return () => pulse.stop();
   }, [phase]);
 
-  // Dots animation (only while searching)
   useEffect(() => {
     if (phase !== "searching") return;
     const id = setInterval(() => {
@@ -129,32 +130,52 @@ export default function QuickmatchScreen() {
   if (phase === "selecting") {
     return (
       <View style={[styles.container, { paddingTop: topPad, paddingBottom: bottomPad }]}>
-        <View style={styles.header}>
-          <Ionicons name="earth-outline" size={32} color={Colors.gold} />
-          <Text style={styles.headerTitle}>Online</Text>
-          <Text style={styles.headerSub}>Scegli il formato di gioco</Text>
-        </View>
+        {!isLandscape && (
+          <View style={styles.header}>
+            <Ionicons name="earth-outline" size={28} color={Colors.gold} />
+            <Text style={styles.headerTitle}>Online</Text>
+            <Text style={styles.headerSub}>Scegli il formato di gioco</Text>
+          </View>
+        )}
 
-        <View style={styles.modeGrid}>
-          {MODES.map((mode) => (
-            <Pressable
-              key={`${mode.maxPlayers}-${mode.gameMode}`}
-              style={({ pressed }) => [styles.modeCard, pressed && styles.modeCardPressed]}
-              onPress={() => handleSelectMode(mode)}
-            >
-              <View style={styles.modeIconRow}>
-                <View style={styles.modeIconBg}>
-                  <Ionicons name={mode.icon} size={28} color={Colors.gold} />
+        <ScrollView
+          contentContainerStyle={[
+            styles.modeGrid,
+            isLandscape ? styles.modeGridLandscape : styles.modeGridPortrait,
+          ]}
+          showsVerticalScrollIndicator={false}
+        >
+          {isLandscape && (
+            <View style={styles.landscapeHeader}>
+              <Ionicons name="earth-outline" size={20} color={Colors.gold} />
+              <Text style={styles.landscapeHeaderText}>Scegli il formato</Text>
+            </View>
+          )}
+          <View style={[styles.modeCardsRow, isLandscape && styles.modeCardsRowLandscape]}>
+            {MODES.map((mode) => (
+              <Pressable
+                key={`${mode.maxPlayers}-${mode.gameMode}`}
+                style={({ pressed }) => [
+                  styles.modeCard,
+                  isLandscape && styles.modeCardLandscape,
+                  pressed && styles.modeCardPressed,
+                ]}
+                onPress={() => handleSelectMode(mode)}
+              >
+                <View style={styles.modeIconRow}>
+                  <View style={[styles.modeIconBg, isLandscape && styles.modeIconBgSmall]}>
+                    <Ionicons name={mode.icon} size={isLandscape ? 22 : 28} color={Colors.gold} />
+                  </View>
+                  <View style={styles.playerBadge}>
+                    <Text style={styles.playerBadgeText}>{mode.playerLabel}</Text>
+                  </View>
                 </View>
-                <View style={styles.playerBadge}>
-                  <Text style={styles.playerBadgeText}>{mode.playerLabel}</Text>
-                </View>
-              </View>
-              <Text style={styles.modeLabel}>{mode.label}</Text>
-              <Text style={styles.modeDesc}>{mode.desc}</Text>
-            </Pressable>
-          ))}
-        </View>
+                <Text style={[styles.modeLabel, isLandscape && styles.modeLabelSmall]}>{mode.label}</Text>
+                <Text style={styles.modeDesc}>{mode.desc}</Text>
+              </Pressable>
+            ))}
+          </View>
+        </ScrollView>
 
         <Pressable style={styles.cancelBtn} onPress={handleCancelHome}>
           <Text style={styles.cancelText}>Indietro</Text>
@@ -165,35 +186,41 @@ export default function QuickmatchScreen() {
 
   return (
     <View style={[styles.container, { paddingTop: topPad, paddingBottom: bottomPad }]}>
-      <View style={styles.content}>
-        <Animated.View style={[styles.globeWrapper, { transform: [{ scale: pulseAnim }] }]}>
-          <View style={styles.globeCircle}>
-            <Ionicons name="earth-outline" size={64} color={Colors.gold} />
+      <View style={[styles.content, isLandscape && styles.contentLandscape]}>
+        <Animated.View style={[
+          styles.globeWrapper,
+          { transform: [{ scale: pulseAnim }] },
+          isLandscape && { marginBottom: 0 },
+        ]}>
+          <View style={[styles.globeCircle, isLandscape && styles.globeCircleSmall]}>
+            <Ionicons name="earth-outline" size={isLandscape ? 36 : 64} color={Colors.gold} />
           </View>
         </Animated.View>
 
-        {selectedMode && (
-          <View style={styles.selectedModeTag}>
-            <Ionicons name={selectedMode.icon} size={14} color={Colors.gold} />
-            <Text style={styles.selectedModeText}>{selectedMode.label}</Text>
-          </View>
-        )}
+        <View style={isLandscape ? styles.searchTextCol : undefined}>
+          {selectedMode && (
+            <View style={styles.selectedModeTag}>
+              <Ionicons name={selectedMode.icon} size={14} color={Colors.gold} />
+              <Text style={styles.selectedModeText}>{selectedMode.label}</Text>
+            </View>
+          )}
 
-        {error ? (
-          <>
-            <Text style={styles.errorText}>{error}</Text>
-            <Pressable style={styles.retryBtn} onPress={handleRetry}>
-              <Text style={styles.retryText}>Riprova</Text>
-            </Pressable>
-          </>
-        ) : (
-          <>
-            <Text style={styles.searchingLabel}>
-              Cerco giocatori<Text style={styles.dots}>{dots}</Text>
-            </Text>
-            <Text style={styles.subtitle}>Ti uniremo a una partita appena possibile</Text>
-          </>
-        )}
+          {error ? (
+            <>
+              <Text style={styles.errorText}>{error}</Text>
+              <Pressable style={styles.retryBtn} onPress={handleRetry}>
+                <Text style={styles.retryText}>Riprova</Text>
+              </Pressable>
+            </>
+          ) : (
+            <>
+              <Text style={styles.searchingLabel}>
+                Cerco giocatori<Text style={styles.dots}>{dots}</Text>
+              </Text>
+              <Text style={styles.subtitle}>Ti uniremo a una partita appena possibile</Text>
+            </>
+          )}
+        </View>
       </View>
 
       <Pressable style={styles.cancelBtn} onPress={handleCancelSearch}>
@@ -212,38 +239,71 @@ const styles = StyleSheet.create({
   },
   header: {
     alignItems: "center",
-    paddingTop: 24,
-    gap: 6,
+    paddingTop: 16,
+    paddingBottom: 4,
+    gap: 4,
   },
   headerTitle: {
-    fontSize: 28,
-    fontWeight: "700",
+    fontFamily: "Rajdhani_700Bold",
+    fontSize: 26,
     color: Colors.gold,
     letterSpacing: 1,
   },
   headerSub: {
-    fontSize: 14,
-    color: "rgba(255,255,255,0.45)",
+    fontFamily: "Inter_400Regular",
+    fontSize: 13,
+    color: Colors.textMuted,
     marginTop: 2,
   },
+  landscapeHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    marginBottom: 8,
+    alignSelf: "flex-start",
+  },
+  landscapeHeaderText: {
+    fontFamily: "Rajdhani_600SemiBold",
+    fontSize: 16,
+    color: Colors.gold,
+    letterSpacing: 1,
+  },
   modeGrid: {
+    flexGrow: 1,
+    width: "100%",
+    alignItems: "center",
+    paddingHorizontal: 20,
+    paddingVertical: 8,
+  },
+  modeGridPortrait: { justifyContent: "center" },
+  modeGridLandscape: { justifyContent: "flex-start", paddingTop: 4 },
+  modeCardsRow: {
     flexDirection: "row",
     flexWrap: "wrap",
     justifyContent: "center",
-    gap: 14,
-    paddingHorizontal: 20,
-    flex: 1,
-    alignItems: "center",
+    gap: 12,
+    width: "100%",
+  },
+  modeCardsRowLandscape: {
+    flexWrap: "nowrap",
+    gap: 10,
   },
   modeCard: {
     width: "44%",
-    backgroundColor: "#0B3B25",
+    backgroundColor: Colors.felt,
     borderRadius: 16,
     borderWidth: 1.5,
     borderColor: "rgba(201,168,76,0.25)",
     padding: 18,
     alignItems: "center",
     gap: 8,
+  },
+  modeCardLandscape: {
+    width: undefined,
+    flex: 1,
+    padding: 12,
+    gap: 6,
+    borderRadius: 12,
   },
   modeCardPressed: {
     borderColor: Colors.gold,
@@ -263,6 +323,11 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
+  modeIconBgSmall: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+  },
   playerBadge: {
     position: "absolute",
     top: -4,
@@ -281,14 +346,16 @@ const styles = StyleSheet.create({
     fontWeight: "800",
   },
   modeLabel: {
+    fontFamily: "Rajdhani_700Bold",
     fontSize: 18,
-    fontWeight: "700",
-    color: "#fff",
+    color: Colors.text,
     letterSpacing: 0.3,
   },
+  modeLabelSmall: { fontSize: 15 },
   modeDesc: {
+    fontFamily: "Inter_400Regular",
     fontSize: 11,
-    color: "rgba(255,255,255,0.45)",
+    color: Colors.textMuted,
     textAlign: "center",
     lineHeight: 15,
   },
@@ -299,6 +366,15 @@ const styles = StyleSheet.create({
     gap: 20,
     paddingHorizontal: 32,
   },
+  contentLandscape: {
+    flexDirection: "row",
+    gap: 28,
+    paddingHorizontal: 40,
+  },
+  searchTextCol: {
+    alignItems: "center",
+    gap: 12,
+  },
   globeWrapper: {
     marginBottom: 8,
   },
@@ -306,11 +382,16 @@ const styles = StyleSheet.create({
     width: 120,
     height: 120,
     borderRadius: 60,
-    backgroundColor: "#0B3B25",
+    backgroundColor: Colors.felt,
     borderWidth: 2,
     borderColor: Colors.gold,
     alignItems: "center",
     justifyContent: "center",
+  },
+  globeCircleSmall: {
+    width: 76,
+    height: 76,
+    borderRadius: 38,
   },
   selectedModeTag: {
     flexDirection: "row",
@@ -324,27 +405,29 @@ const styles = StyleSheet.create({
     borderColor: "rgba(201,168,76,0.3)",
   },
   selectedModeText: {
+    fontFamily: "Rajdhani_600SemiBold",
     color: Colors.gold,
     fontSize: 13,
-    fontWeight: "600",
   },
   searchingLabel: {
+    fontFamily: "Rajdhani_700Bold",
     fontSize: 22,
-    fontWeight: "700",
     color: Colors.gold,
     letterSpacing: 0.5,
   },
   dots: {
     color: Colors.gold,
-    fontWeight: "700",
+    fontFamily: "Rajdhani_700Bold",
   },
   subtitle: {
+    fontFamily: "Inter_400Regular",
     fontSize: 14,
-    color: "rgba(255,255,255,0.5)",
+    color: Colors.textMuted,
     textAlign: "center",
     lineHeight: 20,
   },
   errorText: {
+    fontFamily: "Inter_400Regular",
     fontSize: 15,
     color: "#e57373",
     textAlign: "center",
@@ -357,18 +440,18 @@ const styles = StyleSheet.create({
     borderRadius: 12,
   },
   retryText: {
+    fontFamily: "Rajdhani_700Bold",
     color: "#031008",
     fontSize: 16,
-    fontWeight: "700",
   },
   cancelBtn: {
-    marginBottom: 16,
+    marginBottom: 12,
     paddingVertical: 14,
     paddingHorizontal: 40,
   },
   cancelText: {
-    color: "rgba(255,255,255,0.45)",
+    fontFamily: "Rajdhani_600SemiBold",
+    color: Colors.textMuted,
     fontSize: 16,
-    fontWeight: "600",
   },
 });

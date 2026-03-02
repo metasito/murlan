@@ -27,6 +27,11 @@ export interface Reaction {
   id: string;
 }
 
+export interface RematchVoteState {
+  votes: string[];
+  total: number;
+}
+
 interface OnlineGameContextValue {
   room: RoomState | null;
   gameState: GameState | null;
@@ -34,6 +39,9 @@ interface OnlineGameContextValue {
   connected: boolean;
   error: string | null;
   mySeatIndex: number;
+  entrySource: "quickmatch" | "friends" | null;
+  rematchVoteState: RematchVoteState | null;
+  cumulativeScores: Record<string, number>;
   createRoom: (gameMode: "free_for_all" | "teams", maxPlayers: number) => void;
   joinRoom: (code: string) => void;
   leaveRoom: () => void;
@@ -41,6 +49,7 @@ interface OnlineGameContextValue {
   setRoomGameMode: (mode: "free_for_all" | "teams") => void;
   startGame: () => void;
   requestPlayAgain: () => void;
+  voteRematch: () => void;
   playCards: (cardIds: string[]) => void;
   pass: () => void;
   sendReaction: (emoji: string) => void;
@@ -55,6 +64,9 @@ export function OnlineGameProvider({ userId, children }: { userId: string; child
   const [reactions, setReactions] = useState<Reaction[]>([]);
   const [connected, setConnected] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [entrySource, setEntrySource] = useState<"quickmatch" | "friends" | null>(null);
+  const [rematchVoteState, setRematchVoteState] = useState<RematchVoteState | null>(null);
+  const [cumulativeScores, setCumulativeScores] = useState<Record<string, number>>({});
   const socketRef = useRef(getSocket(userId));
 
   useEffect(() => {
@@ -66,10 +78,19 @@ export function OnlineGameProvider({ userId, children }: { userId: string; child
     s.on("room:state", (data: RoomState) => setRoom(data));
     s.on("room:error", ({ message }: { message: string }) => setError(message));
 
-    s.on("game:state", (state: GameState) => setGameState(state));
+    s.on("game:state", (state: GameState) => {
+      setGameState(state);
+      setRematchVoteState(null);
+    });
     s.on("game:error", ({ message }: { message: string }) => setError(message));
     s.on("game:started", () => {});
-    s.on("game:over", () => {});
+    s.on("game:over", ({ cumulativeScores: cs }: { cumulativeScores?: Record<string, number> }) => {
+      if (cs) setCumulativeScores(cs);
+    });
+
+    s.on("game:vote_state", (vs: RematchVoteState) => {
+      setRematchVoteState(vs);
+    });
 
     s.on("game:reaction", (r: { emoji: string; fromSeat: number; username: string }) => {
       const id = Date.now().toString() + Math.random().toString(36).substr(2, 5);
@@ -90,6 +111,7 @@ export function OnlineGameProvider({ userId, children }: { userId: string; child
       s.off("game:error");
       s.off("game:started");
       s.off("game:over");
+      s.off("game:vote_state");
       s.off("game:reaction");
       s.off("game:player_left");
     };
@@ -98,10 +120,12 @@ export function OnlineGameProvider({ userId, children }: { userId: string; child
   const mySeatIndex = room?.players.find((p) => p.userId === userId)?.seatIndex ?? 0;
 
   const createRoom = useCallback((gameMode: "free_for_all" | "teams", maxPlayers: number) => {
+    setEntrySource("friends");
     socketRef.current.emit("room:create", { gameMode, maxPlayers });
   }, []);
 
   const joinRoom = useCallback((code: string) => {
+    setEntrySource("friends");
     socketRef.current.emit("room:join", { code });
   }, []);
 
@@ -109,9 +133,12 @@ export function OnlineGameProvider({ userId, children }: { userId: string; child
     socketRef.current.emit("room:leave");
     setRoom(null);
     setGameState(null);
+    setRematchVoteState(null);
+    setCumulativeScores({});
   }, []);
 
   const quickmatch = useCallback((maxPlayers: number, gameMode: "free_for_all" | "teams") => {
+    setEntrySource("quickmatch");
     socketRef.current.emit("room:quickmatch", { maxPlayers, gameMode });
   }, []);
 
@@ -125,6 +152,10 @@ export function OnlineGameProvider({ userId, children }: { userId: string; child
 
   const requestPlayAgain = useCallback(() => {
     socketRef.current.emit("room:start");
+  }, []);
+
+  const voteRematch = useCallback(() => {
+    socketRef.current.emit("game:rematch_vote");
   }, []);
 
   const playCards = useCallback((cardIds: string[]) => {
@@ -150,6 +181,9 @@ export function OnlineGameProvider({ userId, children }: { userId: string; child
         connected,
         error,
         mySeatIndex,
+        entrySource,
+        rematchVoteState,
+        cumulativeScores,
         createRoom,
         joinRoom,
         leaveRoom,
@@ -157,6 +191,7 @@ export function OnlineGameProvider({ userId, children }: { userId: string; child
         setRoomGameMode,
         startGame,
         requestPlayAgain,
+        voteRematch,
         playCards,
         pass,
         sendReaction,

@@ -53,6 +53,7 @@ import {
   sharedTableStyles,
   sharedStyles,
   portraitOverlayStyles,
+  StartReasonBanner,
 } from "@/components/GameShared";
 import { CardView } from "@/components/CardView";
 import {
@@ -108,75 +109,6 @@ function BothJokersExceptionOverlay({ winnerName }: { winnerName: string }) {
 
 function formatSpadeLabel(card: Card): string {
   return `${card.rank}♠`;
-}
-
-function StartReasonBanner({
-  reason,
-  players,
-  topOffset,
-}: {
-  reason: StartReason;
-  players: Array<{ name: string; type: string }>;
-  topOffset: number;
-}) {
-  const [visible, setVisible] = React.useState(true);
-  useEffect(() => {
-    const t = setTimeout(() => setVisible(false), 4000);
-    return () => clearTimeout(t);
-  }, []);
-  if (!visible) return null;
-
-  const playerName = players[reason.playerIdx]?.name ?? "?";
-  let mainText = "";
-  let subText = "";
-
-  if (reason.type === "start_card" && reason.card) {
-    const label = formatSpadeLabel(reason.card);
-    mainText = `${playerName} inizia — ha il ${label}`;
-    if (reason.card.rank !== "3") {
-      subText = "(il 3♠ è escluso)";
-    }
-  } else if (reason.type === "lost_round") {
-    mainText = `${playerName} inizia — ha perso il round`;
-  } else if (reason.type === "won_no_swap") {
-    mainText = `${playerName} inizia — ha vinto (nessuno scambio)`;
-  }
-
-  return (
-    <Pressable
-      onPress={() => setVisible(false)}
-      style={{
-        position: "absolute",
-        top: topOffset,
-        left: 0,
-        right: 0,
-        alignItems: "center",
-        zIndex: 50,
-        pointerEvents: "box-none" as any,
-      }}
-    >
-      <View style={{
-        backgroundColor: "rgba(3,16,8,0.90)",
-        borderColor: Colors.gold,
-        borderWidth: 1,
-        borderRadius: 20,
-        paddingHorizontal: 18,
-        paddingVertical: 8,
-        alignItems: "center",
-        maxWidth: 420,
-        gap: 2,
-      }}>
-        <Text style={{ fontFamily: "Rajdhani_600SemiBold", fontSize: 14, color: Colors.gold, letterSpacing: 0.5, textAlign: "center" }}>
-          {mainText}
-        </Text>
-        {subText ? (
-          <Text style={{ fontFamily: "Inter_400Regular", fontSize: 11, color: Colors.textSecondary, textAlign: "center" }}>
-            {subText}
-          </Text>
-        ) : null}
-      </View>
-    </Pressable>
-  );
 }
 
 export default function GameScreen() {
