@@ -9,11 +9,21 @@ Murlan is a classic Italian card game app with:
 - Local multiplayer pass-and-play (2–4 players)
 - **Online multiplayer** — private rooms by code, 2v2 teams / FFA, emoji reactions
 - Complete game engine with all combination rules
-- AI with 3 difficulty levels (Easy, Medium, Hard)
+- Smarter AI with 3 difficulty levels (Easy, Medium, Hard) — "finish hand" detection, dump strategy, bomb timing
 - Teams mode for 4 players
 - Italian UI throughout
 - Landscape + portrait adaptive layout on all menus and result screens
 - Username shown everywhere (replaces "Tu" with the authenticated user's name)
+- Sound effects on both web (Web Audio API synthesized) and native (expo-av)
+  - Card select, play, pass; your turn ping; round start fanfare; round win; urgent timer tick
+- Exchange phase UI: winner gives a weak card back to loser after each round
+
+## Key Bug Fixes
+- **Timer bug**: `passTurn` was called inside a `setTimeLeft` updater (React anti-pattern). Fixed with ref-based countdown + `passTurnRef`
+- **Null crash** (`Cannot read property 'cards' of null`): combo was captured in a stale setState closure. Fixed by capturing value synchronously before calling setState
+- **Game stuck when AI starts**: caused by the timer bug — now correctly auto-passes when time expires
+- **AI missing valid plays**: `getAllValidPlays` used bitmask limited to first 15 cards — missed singles/pairs from cards 15–25 in 2-player games. Fixed with structure-aware enumeration for all hand sizes
+- **PlayedPile null**: added `.filter(Boolean)` guard on history array
 
 ## Tech Stack
 

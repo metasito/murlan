@@ -75,7 +75,6 @@ export interface GameState {
   exchangePhase?: ExchangePhase;
 }
 
-// Game strength order (for singles, pairs, triples, bombs)
 const RANK_ORDER: Rank[] = [
   "3", "4", "5", "6", "7", "8", "9", "10",
   "J", "Q", "K", "A", "2", "joker_bw", "joker_colored",
@@ -88,8 +87,6 @@ export function getRankStrength(rank: Rank): number {
 export function cardStrength(card: Card): number {
   return getRankStrength(card.rank);
 }
-
-// ─── Straight helpers (face-value based, A can be low=1 or high=14) ──────────
 
 function getStraightFaceValue(rank: Rank, aceAsHigh: boolean): number | null {
   if (rank === "joker_bw" || rank === "joker_colored") return null;
@@ -109,7 +106,7 @@ function isConsecutiveSequence(
   if (faceValues.length === 0) return jokerCount >= totalLen;
   const sorted = [...faceValues].sort((a, b) => a - b);
   const unique = [...new Set(sorted)];
-  if (unique.length !== sorted.length) return false; // duplicate face values
+  if (unique.length !== sorted.length) return false;
   const range = unique[unique.length - 1] - unique[0];
   if (range >= totalLen) return false;
   const gapsInRange = range - (unique.length - 1);
@@ -142,7 +139,7 @@ function getStraightStrength(cards: Card[]): number {
     if (!isConsecutiveSequence(faceValues, jokers.length, cards.length))
       continue;
 
-    if (faceValues.length === 0) return jokers.length; // all jokers
+    if (faceValues.length === 0) return jokers.length;
     const sorted = [...faceValues].sort((a, b) => a - b);
     const max = sorted[sorted.length - 1];
     const gapsInRange = sorted[sorted.length - 1] - sorted[0] - (sorted.length - 1);
@@ -151,8 +148,6 @@ function getStraightStrength(cards: Card[]): number {
   }
   return 0;
 }
-
-// ─── Bomb & Royal Straight detection ─────────────────────────────────────────
 
 function isBomb(cards: Card[]): boolean {
   if (cards.length !== 4) return false;
@@ -169,8 +164,6 @@ function isRoyalStraight(cards: Card[]): boolean {
   if (!suit) return false;
   return nonJokers.every((c) => c.suit === suit) && isStraight(cards);
 }
-
-// ─── Deck ─────────────────────────────────────────────────────────────────────
 
 export function createDeck(): Card[] {
   const suits: Suit[] = ["hearts", "diamonds", "clubs", "spades"];
@@ -217,7 +210,6 @@ export function sortHand(hand: Card[]): Card[] {
   });
 }
 
-// Starting player holds 3♠ (3 of spades)
 export function findStartingPlayer(players: Player[]): number {
   for (let i = 0; i < players.length; i++) {
     if (players[i].hand.some((c) => c.rank === "3" && c.suit === "spades"))
@@ -226,12 +218,9 @@ export function findStartingPlayer(players: Player[]): number {
   return 0;
 }
 
-// ─── Combination building ─────────────────────────────────────────────────────
-
 export function getCombinationType(cards: Card[]): CombinationType | null {
   if (cards.length === 0) return null;
 
-  // Bomb: exactly 4 natural cards of the same rank
   if (isBomb(cards)) return "bomb";
 
   if (cards.length === 1) return "single";
@@ -240,23 +229,21 @@ export function getCombinationType(cards: Card[]): CombinationType | null {
   const nonJokers = cards.filter((c) => !c.isJoker);
 
   if (cards.length === 2) {
-    if (jokers.length >= 1) return "pair"; // joker pairs with anything
+    if (jokers.length >= 1) return "pair";
     if (nonJokers[0].rank === nonJokers[1].rank) return "pair";
     return null;
   }
 
   if (cards.length === 3) {
     const nonJokerRanks = new Set(nonJokers.map((c) => c.rank));
-    if (nonJokerRanks.size <= 1) return "triple"; // same rank (jokers fill rest)
-    return null; // 3-card straights are not valid
-  }
-
-  if (cards.length === 4) {
-    // Only bomb (handled above) is valid for exactly 4 cards
+    if (nonJokerRanks.size <= 1) return "triple";
     return null;
   }
 
-  // 5+ cards: straight or royal straight only
+  if (cards.length === 4) {
+    return null;
+  }
+
   if (isRoyalStraight(cards)) return "royal_straight";
   if (isStraight(cards)) return "straight";
   return null;
@@ -281,7 +268,7 @@ export function getCombinationStrength(combination: Combination): number {
     case "royal_straight":
       return getStraightStrength(cards);
     case "bomb":
-      return cardStrength(cards[0]); // rank game strength
+      return cardStrength(cards[0]);
   }
 }
 
@@ -293,18 +280,12 @@ export function buildCombination(cards: Card[]): Combination | null {
   return combo;
 }
 
-// ─── canPlay: tier-based comparison ──────────────────────────────────────────
-// Tier 3: Royal Straight (beats everything)
-// Tier 2: Bomb (beats tiers 0-1, beaten by tier 3 or higher bomb)
-// Tier 1: Single / Pair / Triple / Straight (including jokers in these roles)
-
 export function canPlay(
   candidate: Combination,
   lastPlayed: Combination | null
 ): boolean {
   if (!lastPlayed) return true;
 
-  // Royal Straight beats everything (or beats lower royal straight of same length)
   if (candidate.type === "royal_straight") {
     if (lastPlayed.type === "royal_straight") {
       return (
@@ -312,26 +293,25 @@ export function canPlay(
         candidate.strength > lastPlayed.strength
       );
     }
-    return true; // beats bomb, and all normal combos
+    return true;
   }
 
-  // Bomb beats everything except royal straight (or beats lower bomb)
   if (candidate.type === "bomb") {
     if (lastPlayed.type === "royal_straight") return false;
     if (lastPlayed.type === "bomb") return candidate.strength > lastPlayed.strength;
-    return true; // beats singles, pairs, triples, straights (even joker singles)
+    return true;
   }
 
-  // Normal combos cannot beat bombs or royal straights
   if (lastPlayed.type === "bomb" || lastPlayed.type === "royal_straight") return false;
 
-  // Same type required, same card count, strictly higher strength
   if (candidate.type !== lastPlayed.type) return false;
   if (candidate.cards.length !== lastPlayed.cards.length) return false;
   return candidate.strength > lastPlayed.strength;
 }
 
-// ─── AI ───────────────────────────────────────────────────────────────────────
+// ─── Complete, correct valid-play enumeration ─────────────────────────────────
+// Handles any hand size by enumerating by combination structure,
+// not bitmask (bitmask fails for 2-player hands of 26 cards).
 
 function getAllValidPlays(
   hand: Card[],
@@ -340,34 +320,106 @@ function getAllValidPlays(
   requireCard?: Card
 ): Combination[] {
   const plays: Combination[] = [];
-  const n = hand.length;
+  const seen = new Set<string>();
 
-  for (let mask = 1; mask < 1 << Math.min(n, 15); mask++) {
-    const selected: Card[] = [];
-    for (let bit = 0; bit < Math.min(n, 15); bit++) {
-      if (mask & (1 << bit)) selected.push(hand[bit]);
-    }
-    if (requireCard && !selected.some((c) => c.id === requireCard.id)) continue;
+  function tryAdd(selected: Card[]): void {
+    if (!selected.length) return;
+    if (requireCard && !selected.some((c) => c.id === requireCard.id)) return;
+    const key = selected
+      .map((c) => c.id)
+      .sort()
+      .join(",");
+    if (seen.has(key)) return;
+    seen.add(key);
     const combo = buildCombination(selected);
-    if (combo && canPlay(combo, isNewRound ? null : lastPlayed)) {
-      plays.push(combo);
-    }
+    if (combo && canPlay(combo, isNewRound ? null : lastPlayed)) plays.push(combo);
   }
 
-  if (n > 15) {
-    for (let len = 3; len <= n - 15; len++) {
-      for (let start = 0; start <= n - 15 - len; start++) {
-        const subset = hand.slice(15, 15 + start + len);
-        if (requireCard && !subset.some((c) => c.id === requireCard.id)) continue;
-        const combo = buildCombination(subset);
-        if (combo && canPlay(combo, isNewRound ? null : lastPlayed)) {
-          plays.push(combo);
-        }
+  const jokers = hand.filter((c) => c.isJoker);
+  const nj = hand.filter((c) => !c.isJoker);
+
+  const byRank = new Map<string, Card[]>();
+  for (const c of nj) {
+    const g = byRank.get(c.rank) ?? [];
+    g.push(c);
+    byRank.set(c.rank, g);
+  }
+
+  // Singles
+  for (const c of hand) tryAdd([c]);
+
+  // Pairs
+  for (const group of byRank.values()) {
+    for (let i = 0; i < group.length; i++)
+      for (let j = i + 1; j < group.length; j++)
+        tryAdd([group[i], group[j]]);
+  }
+  for (let ji = 0; ji < jokers.length; ji++) {
+    for (const c of nj) tryAdd([jokers[ji], c]);
+    for (let jj = ji + 1; jj < jokers.length; jj++)
+      tryAdd([jokers[ji], jokers[jj]]);
+  }
+
+  // Triples
+  for (const group of byRank.values()) {
+    for (let i = 0; i < group.length; i++)
+      for (let j = i + 1; j < group.length; j++)
+        for (let k = j + 1; k < group.length; k++)
+          tryAdd([group[i], group[j], group[k]]);
+
+    for (let i = 0; i < group.length; i++)
+      for (let j = i + 1; j < group.length; j++)
+        for (const jk of jokers)
+          tryAdd([group[i], group[j], jk]);
+
+    if (jokers.length >= 2)
+      for (const c of group)
+        for (let ji = 0; ji < jokers.length; ji++)
+          for (let jj = ji + 1; jj < jokers.length; jj++)
+            tryAdd([c, jokers[ji], jokers[jj]]);
+  }
+  if (jokers.length >= 3) tryAdd(jokers.slice(0, 3));
+
+  // Bombs (4 natural same rank)
+  for (const group of byRank.values()) {
+    if (group.length >= 4) tryAdd(group.slice(0, 4));
+  }
+
+  // Straights (5+ consecutive)
+  function enumStraights(sorted: Card[]): void {
+    for (let lo = 0; lo < sorted.length; lo++) {
+      for (let hi = lo + 4; hi < sorted.length && hi - lo <= 8; hi++) {
+        const window = sorted.slice(lo, hi + 1);
+        tryAdd(window);
+        for (let jc = 1; jc <= jokers.length; jc++)
+          tryAdd([...window, ...jokers.slice(0, jc)]);
       }
     }
   }
 
+  const njSortedLow = [...nj].sort((a, b) => {
+    const va = getStraightFaceValue(a.rank, false) ?? 0;
+    const vb = getStraightFaceValue(b.rank, false) ?? 0;
+    return va - vb;
+  });
+  const njSortedHigh = [...nj].sort((a, b) => {
+    const va = getStraightFaceValue(a.rank, true) ?? 0;
+    const vb = getStraightFaceValue(b.rank, true) ?? 0;
+    return va - vb;
+  });
+  enumStraights(njSortedLow);
+  enumStraights(njSortedHigh);
+
   return plays;
+}
+
+// ─── AI ────────────────────────────────────────────────────────────────────────
+
+function scorePlayForDump(play: Combination): number {
+  const cardCount = play.cards.length;
+  const hasHighCards = play.cards.some((c) => c.rank === "2" || c.isJoker);
+  const avgStrength = play.strength / Math.max(cardCount, 1);
+  return cardCount * 3 - avgStrength * 0.3 - (hasHighCards ? 5 : 0);
 }
 
 export function aiChoosePlay(
@@ -381,47 +433,88 @@ export function aiChoosePlay(
   if (plays.length === 0) return null;
 
   const diff = player.difficulty ?? "medium";
+  const myCards = player.hand.length;
+  const minOpponent = Math.min(...otherPlayersHandCount);
+
+  // Universal: if this play empties the hand, always do it
+  const finishingPlays = plays.filter((p) => p.cards.length === myCards);
+  if (finishingPlays.length > 0) {
+    return finishingPlays.sort((a, b) => b.cards.length - a.cards.length)[0];
+  }
 
   if (diff === "easy") {
-    return plays[0];
-  }
-
-  if (diff === "medium") {
-    // Prefer lowest valid play; avoid spending bombs/royal straights unless necessary
-    const normal = plays.filter(
-      (p) => p.type !== "bomb" && p.type !== "royal_straight"
-    );
-    const pool = normal.length > 0 ? normal : plays;
-    return pool.sort((a, b) => a.strength - b.strength)[0];
-  }
-
-  if (diff === "hard") {
-    const minOpponent = Math.min(...otherPlayersHandCount);
-    const myCards = player.hand.length;
-
-    const bombs = plays.filter((p) => p.type === "bomb" || p.type === "royal_straight");
-    const normal = plays.filter(
-      (p) => p.type !== "bomb" && p.type !== "royal_straight"
-    );
-    const has2 = normal.filter((p) => p.cards.some((c) => c.rank === "2"));
-    const hasJoker = normal.filter((p) => p.cards.some((c) => c.isJoker));
-    const conservative = normal
-      .filter((p) => !p.cards.some((c) => c.rank === "2" || c.isJoker))
-      .sort((a, b) => a.strength - b.strength);
-
-    // Play bomb if an opponent is nearly done and we have no other option
-    if (minOpponent <= 3 && myCards > 3 && normal.length === 0 && bombs.length > 0) {
-      return bombs.sort((a, b) => a.strength - b.strength)[0];
-    }
-
-    if (conservative.length > 0) return conservative[0];
-    if (has2.length > 0) return has2.sort((a, b) => a.strength - b.strength)[0];
-    if (hasJoker.length > 0) return hasJoker.sort((a, b) => a.strength - b.strength)[0];
-    if (normal.length > 0) return normal.sort((a, b) => a.strength - b.strength)[0];
     return plays.sort((a, b) => a.strength - b.strength)[0];
   }
 
-  return plays[0];
+  const bombs = plays.filter(
+    (p) => p.type === "bomb" || p.type === "royal_straight"
+  );
+  const normal = plays.filter(
+    (p) => p.type !== "bomb" && p.type !== "royal_straight"
+  );
+
+  if (diff === "medium") {
+    // Prefer lowest normal play; save bombs
+    const pool = normal.length > 0 ? normal : bombs;
+    // Slightly prefer multi-card plays when hand is large
+    if (isNewRound && myCards > 8 && normal.length > 0) {
+      const multi = normal.filter((p) => p.cards.length >= 2);
+      if (multi.length > 0)
+        return multi.sort((a, b) => b.cards.length - a.cards.length || a.strength - b.strength)[0];
+    }
+    return pool.sort((a, b) => a.strength - b.strength)[0];
+  }
+
+  // ── Hard AI ──────────────────────────────────────────────────────────────
+  const conservative = normal.filter(
+    (p) => !p.cards.some((c) => c.rank === "2" || c.isJoker)
+  );
+  const withHighCards = normal.filter((p) =>
+    p.cards.some((c) => c.rank === "2" || c.isJoker)
+  );
+
+  // Emergency: opponent about to finish — use lowest bomb immediately
+  if (minOpponent <= 1 && !isNewRound && bombs.length > 0) {
+    return bombs.sort((a, b) => a.strength - b.strength)[0];
+  }
+
+  if (isNewRound) {
+    // We control the round: dump as many weak cards as efficiently as possible
+    const near3 = plays.filter((p) => p.cards.length >= myCards - 2);
+    if (near3.length > 0)
+      return near3.sort((a, b) => b.cards.length - a.cards.length)[0];
+
+    // Prefer combos that score high on dump value (many cards, low strength)
+    const candidates = conservative.length > 0 ? conservative : normal.length > 0 ? normal : bombs;
+    if (candidates.length > 0)
+      return candidates.sort((a, b) => scorePlayForDump(b) - scorePlayForDump(a))[0];
+
+    return plays.sort((a, b) => scorePlayForDump(b) - scorePlayForDump(a))[0];
+  }
+
+  // Responding to opponent's combo
+  // If near finishing, be aggressive
+  if (myCards <= 4 && normal.length > 0) {
+    return normal.sort((a, b) => a.strength - b.strength)[0];
+  }
+
+  // Prefer beating with lowest conservative card (preserve 2s/jokers)
+  if (conservative.length > 0) {
+    return conservative.sort((a, b) => a.strength - b.strength)[0];
+  }
+
+  // Use high cards only if hand is small or opponent is close to winning
+  if ((myCards <= 6 || minOpponent <= 3) && withHighCards.length > 0) {
+    return withHighCards.sort((a, b) => a.strength - b.strength)[0];
+  }
+
+  // Use bomb when opponent is close to winning and we have no normal play
+  if (minOpponent <= 3 && bombs.length > 0) {
+    return bombs.sort((a, b) => a.strength - b.strength)[0];
+  }
+
+  // Pass (return null) — let the low-strength combo win this round
+  return null;
 }
 
 // ─── Game state processing ────────────────────────────────────────────────────
@@ -590,10 +683,8 @@ export function initializeRematch(
   const hasBwJoker = loserHand.some((c) => c.rank === "joker_bw");
   const bothJokersException = hasColoredJoker && hasBwJoker;
 
-  let exchangePhase: ExchangePhase;
-
   if (bothJokersException) {
-    const startState: GameState = {
+    return {
       players,
       currentTurnIndex: safeWinnerIdx,
       lastPlayedCombination: null,
@@ -612,7 +703,6 @@ export function initializeRematch(
         bothJokersException: true,
       },
     };
-    return startState;
   }
 
   const sortedLoserHand = [...loserHand].sort((a, b) => cardStrength(b) - cardStrength(a));
@@ -620,14 +710,6 @@ export function initializeRematch(
 
   players[safeLoserIdx].hand = players[safeLoserIdx].hand.filter((c) => c.id !== cardFromLoser.id);
   players[safeWinnerIdx].hand = sortHand([...players[safeWinnerIdx].hand, cardFromLoser]);
-
-  exchangePhase = {
-    active: true,
-    winnerIdx: safeWinnerIdx,
-    loserIdx: safeLoserIdx,
-    cardFromLoser,
-    bothJokersException: false,
-  };
 
   return {
     players,
@@ -640,7 +722,13 @@ export function initializeRematch(
     gameOver: false,
     rankings: [],
     firstPlayMade: true,
-    exchangePhase,
+    exchangePhase: {
+      active: true,
+      winnerIdx: safeWinnerIdx,
+      loserIdx: safeLoserIdx,
+      cardFromLoser,
+      bothJokersException: false,
+    },
   };
 }
 
@@ -685,7 +773,7 @@ export function initializeGame(
 
   const startIdx = findStartingPlayer(players);
 
-  const state: GameState = {
+  return {
     players,
     currentTurnIndex: startIdx,
     lastPlayedCombination: null,
@@ -697,6 +785,4 @@ export function initializeGame(
     rankings: [],
     firstPlayMade: false,
   };
-
-  return state;
 }

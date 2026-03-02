@@ -7,6 +7,7 @@ import {
   Alert,
   Platform,
   useWindowDimensions,
+  ScrollView,
 } from "react-native";
 import { router } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -27,7 +28,7 @@ import {
   buildCombination,
   canPlay,
   sortHand,
-  Player,
+  cardStrength,
 } from "@/lib/gameEngine";
 import {
   CARD_W,
@@ -50,10 +51,15 @@ import {
   sharedStyles,
   portraitOverlayStyles,
 } from "@/components/GameShared";
+import { CardView } from "@/components/CardView";
 import {
   playCardSelect,
   playCardPlay,
   playCardPass,
+  playYourTurn,
+  playRoundStart,
+  playRoundWin,
+  playUrgentTick,
   preloadSounds,
   unloadSounds,
 } from "@/lib/sounds";
@@ -62,6 +68,8 @@ import Colors from "@/constants/colors";
 
 const AI_DELAY = 1100;
 const HUMAN_TURN_SECONDS = 20;
+
+const EXCHANGE_VALID_RANKS = new Set(["3","4","5","6","7","8","9","10"]);
 
 export default function GameScreen() {
   const insets = useSafeAreaInsets();
@@ -76,10 +84,16 @@ export default function GameScreen() {
     passTurn,
     resetGame,
     runAITurn,
+    chooseExchangeCard,
   } = useGame();
 
+  // Keep refs to latest functions to avoid stale closures in timers
   const runAITurnRef = useRef(runAITurn);
   runAITurnRef.current = runAITurn;
+  const passTurnRef = useRef(passTurn);
+  passTurnRef.current = passTurn;
+  const chooseExchangeRef = useRef(chooseExchangeCard);
+  chooseExchangeRef.current = chooseExchangeCard;
 
   const humanIdx = gameState?.players.findIndex((p) => p.type === "human") ?? -1;
   const totalOpponents = (gameState?.players.length ?? 1) - 1;
@@ -92,14 +106,18 @@ export default function GameScreen() {
     dir: FlyDirection;
     cards: Combination["cards"];
   } | null>(null);
+
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const prevComboKeyRef = useRef<string>("");
   const pendingComboRef = useRef<Combination | null>(null);
+  const prevIsHumanTurnRef = useRef(false);
+  const prevUrgentRef = useRef(false);
 
   const handScaleVal = useSharedValue(1);
   const giocaPulseVal = useSharedValue(1);
   const passaPulseVal = useSharedValue(1);
 
+  // Lock to landscape & preload sounds
   useEffect(() => {
     ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.LANDSCAPE);
     preloadSounds();
@@ -109,12 +127,14 @@ export default function GameScreen() {
     };
   }, []);
 
+  // AI turn trigger
   useEffect(() => {
     if (!gameState) return;
     if (gameState.gameOver) {
       setTimeout(() => router.replace("/result"), 800);
       return;
     }
+    if (gameState.exchangePhase?.active) return;
     const cur = gameState.players[gameState.currentTurnIndex];
     if (cur.type === "ai") {
       const t = setTimeout(() => runAITurnRef.current(), AI_DELAY);
@@ -125,17 +145,38 @@ export default function GameScreen() {
     gameState?.gameOver,
     gameState?.passCount,
     gameState?.lastPlayedCombination,
+    gameState?.exchangePhase?.active,
   ]);
 
+  // Auto-handle AI exchange
+  useEffect(() => {
+    if (!gameState?.exchangePhase?.active) return;
+    const { winnerIdx } = gameState.exchangePhase;
+    const winner = gameState.players[winnerIdx];
+    if (winner.type !== "ai") return;
+    const validCards = winner.hand
+      .filter((c) => EXCHANGE_VALID_RANKS.has(c.rank))
+      .sort((a, b) => cardStrength(a) - cardStrength(b));
+    if (validCards.length > 0) {
+      const t = setTimeout(() => {
+        chooseExchangeRef.current(validCards[0].id);
+      }, 600);
+      return () => clearTimeout(t);
+    }
+  }, [gameState?.exchangePhase?.active]);
+
+  // Round winner banner
   useEffect(() => {
     if (lastRoundWinner !== null && gameState) {
       const name = gameState.players[lastRoundWinner]?.name ?? "";
       setRoundWinner(name);
+      playRoundWin();
       const t = setTimeout(() => setRoundWinner(null), 1800);
       return () => clearTimeout(t);
     }
   }, [lastRoundWinner]);
 
+  // Flying card animation when combo is played
   useEffect(() => {
     if (!gameState) return;
     const combo = gameState.lastPlayedCombination;
@@ -144,7 +185,6 @@ export default function GameScreen() {
         combo.cards.map((c) => c.id).join(",") + "_" + gameState.lastPlayedBy;
       if (comboKey !== prevComboKeyRef.current) {
         prevComboKeyRef.current = comboKey;
-        // Store the combo; pile is updated when the flying card lands (onFlyDone)
         pendingComboRef.current = combo;
         const playedBy = gameState.lastPlayedBy;
         let dir: FlyDirection;
@@ -170,29 +210,67 @@ export default function GameScreen() {
   const isFinished = gameState
     ? gameState.players[humanIdx]?.finishPosition !== undefined
     : false;
+  const isNewRound = gameState ? gameState.lastPlayedCombination === null : true;
+  // Timer only active when human must respond to a played combo
+  const shouldRunTimer = isHumanTurn && !isFinished && !isNewRound &&
+    !!gameState && !gameState.gameOver && !gameState.exchangePhase?.active;
 
+  // Fixed timer — no side effects inside state updater
   useEffect(() => {
     if (timerRef.current) clearInterval(timerRef.current);
-    if (!isHumanTurn || isFinished || !gameState || gameState.gameOver) {
+    if (!shouldRunTimer) {
       setTimeLeft(HUMAN_TURN_SECONDS);
       return;
     }
-    setTimeLeft(HUMAN_TURN_SECONDS);
+    let remaining = HUMAN_TURN_SECONDS;
+    setTimeLeft(remaining);
     timerRef.current = setInterval(() => {
-      setTimeLeft((prev) => {
-        if (prev <= 1) {
-          if (timerRef.current) clearInterval(timerRef.current);
-          if (gameState.lastPlayedCombination !== null) passTurn();
-          return HUMAN_TURN_SECONDS;
-        }
-        return prev - 1;
-      });
+      remaining -= 1;
+      setTimeLeft(remaining);
+      if (remaining <= 0) {
+        if (timerRef.current) clearInterval(timerRef.current);
+        passTurnRef.current();
+      }
     }, 1000);
     return () => {
       if (timerRef.current) clearInterval(timerRef.current);
     };
-  }, [isHumanTurn, isFinished, gameState?.currentTurnIndex, gameState?.lastPlayedCombination]);
+  }, [shouldRunTimer, gameState?.currentTurnIndex]);
 
+  // Sound: your turn
+  useEffect(() => {
+    if (isHumanTurn && !isFinished && !prevIsHumanTurnRef.current) {
+      playYourTurn();
+    }
+    prevIsHumanTurnRef.current = isHumanTurn;
+  }, [isHumanTurn, isFinished]);
+
+  // Sound: new round started
+  const prevLastPlayed = useRef(gameState?.lastPlayedCombination);
+  useEffect(() => {
+    if (
+      gameState?.lastPlayedCombination === null &&
+      prevLastPlayed.current !== null &&
+      prevLastPlayed.current !== undefined
+    ) {
+      playRoundStart();
+    }
+    prevLastPlayed.current = gameState?.lastPlayedCombination;
+  }, [gameState?.lastPlayedCombination]);
+
+  // Sound: urgent tick
+  const urgent = timeLeft <= 5 && shouldRunTimer;
+  useEffect(() => {
+    if (urgent && !prevUrgentRef.current) {
+      playUrgentTick();
+    }
+    if (urgent && prevUrgentRef.current) {
+      playUrgentTick();
+    }
+    prevUrgentRef.current = urgent;
+  }, [timeLeft, urgent]);
+
+  // Hand scale animation
   useEffect(() => {
     if (isHumanTurn && !isFinished) {
       handScaleVal.value = withSpring(1.025, { damping: 14, stiffness: 180 });
@@ -214,8 +292,7 @@ export default function GameScreen() {
   }, [selectedCards.length, isHumanTurn, isFinished]);
 
   useEffect(() => {
-    const canPass =
-      gameState?.lastPlayedCombination !== null && isHumanTurn && !isFinished;
+    const canPass = !isNewRound && isHumanTurn && !isFinished;
     if (canPass) {
       passaPulseVal.value = withSequence(
         withTiming(1.08, { duration: 200 }),
@@ -242,7 +319,6 @@ export default function GameScreen() {
 
   const humanPlayer = gameState.players[humanIdx];
   const currentPlayer = gameState.players[gameState.currentTurnIndex];
-  const isNewRound = gameState.lastPlayedCombination === null;
 
   const sortedHand = sortHand(humanPlayer?.hand ?? []);
   const selectedObjs = sortedHand.filter((c) => selectedCards.includes(c.id));
@@ -302,7 +378,6 @@ export default function GameScreen() {
   const bottomPad = Platform.OS === "web" ? 34 : insets.bottom;
   const leftPad = Platform.OS === "web" ? 0 : insets.left;
   const rightPad = Platform.OS === "web" ? 0 : insets.right;
-  const urgent = timeLeft <= 5 && isHumanTurn && !isFinished;
 
   const tableLeft = leftPad + TABLE_M;
   const tableTop = topPad + TOP_BAR_H + TABLE_M;
@@ -330,6 +405,19 @@ export default function GameScreen() {
   });
 
   const handAvailW = tableW - (BTN_W + 10) * 2;
+
+  // Exchange phase — human winner must give back a weak card
+  const exchangeActive = gameState.exchangePhase?.active === true;
+  const exchangeWinner = exchangeActive
+    ? gameState.players[gameState.exchangePhase!.winnerIdx]
+    : null;
+  const exchangeLoser = exchangeActive
+    ? gameState.players[gameState.exchangePhase!.loserIdx]
+    : null;
+  const isHumanExchange =
+    exchangeActive &&
+    gameState.exchangePhase!.winnerIdx === humanIdx &&
+    exchangeWinner?.type === "human";
 
   return (
     <View style={localStyles.root}>
@@ -363,7 +451,7 @@ export default function GameScreen() {
                 : "Il tuo turno"
               : `${currentPlayer.name} pensa...`}
           </Text>
-          {isHumanTurn && !isFinished && (
+          {shouldRunTimer && (
             <Text
               style={[
                 localStyles.timerNum,
@@ -543,13 +631,54 @@ export default function GameScreen() {
           cards={flyInfo.cards}
           direction={flyInfo.dir}
           onDone={() => {
-            if (pendingComboRef.current) {
-              setPlayedPile((prev) => [...prev.slice(-5), pendingComboRef.current!]);
-              pendingComboRef.current = null;
+            // Capture combo value synchronously before any async state update
+            const combo = pendingComboRef.current;
+            pendingComboRef.current = null;
+            if (combo) {
+              setPlayedPile((prev) => [...prev.slice(-5), combo]);
             }
             setFlyInfo(null);
           }}
         />
+      )}
+
+      {/* Exchange phase overlay — human must give a weak card to the loser */}
+      {isHumanExchange && exchangeLoser && (
+        <View style={localStyles.exchangeOverlay}>
+          <View style={localStyles.exchangeCard}>
+            <Ionicons name="swap-horizontal" size={28} color={Colors.gold} />
+            <Text style={localStyles.exchangeTitle}>Scambio di carte</Text>
+            <Text style={localStyles.exchangeSub}>
+              Sei il vincitore! Dai una carta a{" "}
+              <Text style={{ color: Colors.gold }}>{exchangeLoser.name}</Text>
+            </Text>
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={localStyles.exchangeCardRow}
+            >
+              {gameState.players[gameState.exchangePhase!.winnerIdx].hand
+                .filter((c) => EXCHANGE_VALID_RANKS.has(c.rank))
+                .sort((a, b) => cardStrength(a) - cardStrength(b))
+                .map((card) => (
+                  <Pressable
+                    key={card.id}
+                    onPress={() => {
+                      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+                      playCardPlay();
+                      chooseExchangeCard(card.id);
+                    }}
+                    style={localStyles.exchangeCardItem}
+                  >
+                    <CardView card={card} />
+                  </Pressable>
+                ))}
+            </ScrollView>
+            <Text style={localStyles.exchangeHint}>
+              Tocca una carta per darla (solo 3–10)
+            </Text>
+          </View>
+        </View>
       )}
 
       {W < H && (
@@ -722,6 +851,51 @@ const localStyles = StyleSheet.create({
     fontSize: 11,
     color: "rgba(201,168,76,0.3)",
     letterSpacing: 0.5,
+    textAlign: "center",
+  },
+
+  exchangeOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: "rgba(3,16,8,0.92)",
+    alignItems: "center",
+    justifyContent: "center",
+    zIndex: 100,
+  },
+  exchangeCard: {
+    backgroundColor: "#0B2A1A",
+    borderRadius: 20,
+    borderWidth: 2,
+    borderColor: "rgba(201,168,76,0.4)",
+    padding: 24,
+    alignItems: "center",
+    gap: 12,
+    maxWidth: 520,
+    width: "80%",
+  },
+  exchangeTitle: {
+    fontFamily: "Rajdhani_700Bold",
+    fontSize: 22,
+    color: Colors.gold,
+    letterSpacing: 1,
+  },
+  exchangeSub: {
+    fontFamily: "Inter_400Regular",
+    fontSize: 14,
+    color: Colors.text,
+    textAlign: "center",
+  },
+  exchangeCardRow: {
+    flexDirection: "row",
+    gap: 10,
+    paddingVertical: 8,
+  },
+  exchangeCardItem: {
+    transform: [{ scale: 1 }],
+  },
+  exchangeHint: {
+    fontFamily: "Inter_400Regular",
+    fontSize: 11,
+    color: Colors.textSecondary,
     textAlign: "center",
   },
 });

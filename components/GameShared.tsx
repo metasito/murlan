@@ -350,7 +350,7 @@ export function PlayedPile({
 
       {history.length > 0 && (
         <View style={sharedStyles.pileStack}>
-          {history.slice(-4).map((combo, si, arr) => {
+          {history.filter(Boolean).slice(-4).map((combo, si, arr) => {
             const isTop = si === arr.length - 1;
             const angle = (si - (arr.length - 1)) * 8;
             const ddx = (si - (arr.length - 1)) * 5;
