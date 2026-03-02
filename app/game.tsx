@@ -100,6 +100,7 @@ export default function GameScreen() {
 
   const [roundWinner, setRoundWinner] = useState<string | null>(null);
   const [playedPile, setPlayedPile] = useState<Combination[]>([]);
+  const [pendingComboForLabel, setPendingComboForLabel] = useState<Combination | null>(null);
   const [timeLeft, setTimeLeft] = useState(HUMAN_TURN_SECONDS);
   const [flyInfo, setFlyInfo] = useState<{
     key: string;
@@ -186,6 +187,8 @@ export default function GameScreen() {
       if (comboKey !== prevComboKeyRef.current) {
         prevComboKeyRef.current = comboKey;
         pendingComboRef.current = combo;
+        // Show combo label immediately (before animation completes)
+        setPendingComboForLabel(combo);
         const playedBy = gameState.lastPlayedBy;
         let dir: FlyDirection;
         if (playedBy === humanIdx) {
@@ -201,6 +204,7 @@ export default function GameScreen() {
     } else {
       prevComboKeyRef.current = "";
       pendingComboRef.current = null;
+      setPendingComboForLabel(null);
       setPlayedPile([]);
       setFlyInfo(null);
     }
@@ -270,12 +274,12 @@ export default function GameScreen() {
     prevUrgentRef.current = urgent;
   }, [timeLeft, urgent]);
 
-  // Hand scale animation
+  // Hand scale animation — stays zoomed while it's the human's turn
   useEffect(() => {
     if (isHumanTurn && !isFinished) {
-      handScaleVal.value = withSpring(1.025, { damping: 14, stiffness: 180 });
+      handScaleVal.value = withSpring(1.04, { damping: 12, stiffness: 160 });
     } else {
-      handScaleVal.value = withTiming(1, { duration: 250 });
+      handScaleVal.value = withTiming(1, { duration: 280 });
     }
   }, [isHumanTurn, isFinished]);
 
@@ -514,7 +518,26 @@ export default function GameScreen() {
             </View>
 
             <View style={sharedTableStyles.centerSection}>
-              <PlayedPile history={playedPile} roundWinner={roundWinner} />
+              {!gameState.firstPlayMade && (
+                <View style={localStyles.threeSpadesBanner}>
+                  <Text style={localStyles.threeSpadesEmoji}>♠</Text>
+                  <Text style={localStyles.threeSpadesText}>
+                    {(() => {
+                      const starter = gameState.players[gameState.currentTurnIndex];
+                      return starter.type === "human"
+                        ? "Inizi tu! Hai il 3 di picche"
+                        : `${starter.name} inizia con il 3 di picche`;
+                    })()}
+                  </Text>
+                </View>
+              )}
+              {gameState.firstPlayMade && (
+                <PlayedPile
+                  history={playedPile}
+                  roundWinner={roundWinner}
+                  pendingCombo={pendingComboForLabel}
+                />
+              )}
             </View>
 
             <View style={sharedTableStyles.sideSection}>
@@ -531,6 +554,7 @@ export default function GameScreen() {
           <Animated.View
             style={[
               sharedTableStyles.handSection,
+              isHumanTurn && !isFinished && sharedTableStyles.handSectionActive,
               { height: HAND_SECTION_H },
               handSectionAnimStyle,
             ]}
@@ -549,6 +573,7 @@ export default function GameScreen() {
                 onPress={handleCardPress}
                 disabled={!isHumanTurn}
                 availW={handAvailW}
+                isMyTurn={isHumanTurn && !isFinished}
               />
             )}
           </Animated.View>
@@ -631,12 +656,12 @@ export default function GameScreen() {
           cards={flyInfo.cards}
           direction={flyInfo.dir}
           onDone={() => {
-            // Capture combo value synchronously before any async state update
             const combo = pendingComboRef.current;
             pendingComboRef.current = null;
             if (combo) {
-              setPlayedPile((prev) => [...prev.slice(-5), combo]);
+              setPlayedPile((prev) => [...prev, combo]);
             }
+            setPendingComboForLabel(null);
             setFlyInfo(null);
           }}
         />
@@ -771,6 +796,27 @@ const localStyles = StyleSheet.create({
     fontFamily: "Rajdhani_600SemiBold",
     fontSize: 13,
     color: Colors.gold,
+  },
+  threeSpadesBanner: {
+    alignItems: "center",
+    gap: 6,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderRadius: 14,
+    backgroundColor: "rgba(0,0,0,0.35)",
+    borderWidth: 1,
+    borderColor: "rgba(201,168,76,0.25)",
+  },
+  threeSpadesEmoji: {
+    fontSize: 28,
+    color: Colors.text,
+  },
+  threeSpadesText: {
+    fontFamily: "Rajdhani_600SemiBold",
+    fontSize: 13,
+    color: Colors.text,
+    textAlign: "center",
+    letterSpacing: 0.5,
   },
 
   passBtn: {

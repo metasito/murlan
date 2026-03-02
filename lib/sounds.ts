@@ -91,11 +91,28 @@ function webUrgentTick(): void {
 // ─── Native sounds (expo-av) ──────────────────────────────────────────────────
 
 let soundCache: Record<string, Audio.Sound> = {};
+let _audioModeSet = false;
+
+async function ensureAudioMode(): Promise<void> {
+  if (_audioModeSet) return;
+  try {
+    await Audio.setAudioModeAsync({
+      playsInSilentModeIOS: true,
+      staysActiveInBackground: false,
+      shouldDuckAndroid: true,
+    });
+    _audioModeSet = true;
+  } catch {}
+}
 
 async function loadSound(key: string, assetModule: number): Promise<Audio.Sound | null> {
   if (soundCache[key]) return soundCache[key];
   try {
-    const { sound } = await Audio.Sound.createAsync(assetModule);
+    await ensureAudioMode();
+    const { sound } = await Audio.Sound.createAsync(assetModule, {
+      shouldPlay: false,
+      volume: 1.0,
+    });
     soundCache[key] = sound;
     return sound;
   } catch {
@@ -110,10 +127,13 @@ async function playNative(
   rate = 1.0
 ): Promise<void> {
   try {
+    await ensureAudioMode();
     const sound = await loadSound(key, assetModule);
     if (!sound) return;
     await sound.setVolumeAsync(volume);
-    await sound.setRateAsync(rate, true);
+    if (rate !== 1.0) {
+      await sound.setRateAsync(rate, true);
+    }
     await sound.setPositionAsync(0);
     await sound.playAsync();
   } catch {}
@@ -123,37 +143,37 @@ async function playNative(
 
 export async function playCardSelect(): Promise<void> {
   if (Platform.OS === "web") { webCardSelect(); return; }
-  await playNative("select", require("../assets/sounds/card_select.mp3"), 0.35, 1.0);
+  await playNative("select", require("../assets/sounds/card_select.mp3"), 0.7, 1.0);
 }
 
 export async function playCardPlay(): Promise<void> {
   if (Platform.OS === "web") { webCardPlay(); return; }
-  await playNative("play", require("../assets/sounds/card_play.mp3"), 0.9, 1.0);
+  await playNative("play", require("../assets/sounds/card_play.mp3"), 1.0, 1.0);
 }
 
 export async function playCardPass(): Promise<void> {
   if (Platform.OS === "web") { webCardPass(); return; }
-  await playNative("pass", require("../assets/sounds/card_pass.mp3"), 0.5, 1.0);
+  await playNative("pass", require("../assets/sounds/card_pass.mp3"), 0.7, 1.0);
 }
 
 export async function playYourTurn(): Promise<void> {
   if (Platform.OS === "web") { webYourTurn(); return; }
-  await playNative("your_turn", require("../assets/sounds/card_select.mp3"), 0.55, 1.6);
+  await playNative("your_turn", require("../assets/sounds/card_select.mp3"), 0.9, 1.5);
 }
 
 export async function playRoundStart(): Promise<void> {
   if (Platform.OS === "web") { webRoundStart(); return; }
-  await playNative("round_start", require("../assets/sounds/card_play.mp3"), 0.65, 1.3);
+  await playNative("round_start", require("../assets/sounds/card_play.mp3"), 0.8, 1.2);
 }
 
 export async function playRoundWin(): Promise<void> {
   if (Platform.OS === "web") { webRoundWin(); return; }
-  await playNative("round_win", require("../assets/sounds/card_play.mp3"), 0.9, 0.75);
+  await playNative("round_win", require("../assets/sounds/card_play.mp3"), 1.0, 0.8);
 }
 
 export async function playUrgentTick(): Promise<void> {
   if (Platform.OS === "web") { webUrgentTick(); return; }
-  await playNative("urgent", require("../assets/sounds/card_select.mp3"), 0.45, 2.2);
+  await playNative("urgent", require("../assets/sounds/card_select.mp3"), 0.8, 2.0);
 }
 
 export async function preloadSounds(): Promise<void> {
@@ -162,7 +182,7 @@ export async function preloadSounds(): Promise<void> {
     return;
   }
   try {
-    await Audio.setAudioModeAsync({ playsInSilentModeIOS: true });
+    await ensureAudioMode();
     await Promise.all([
       loadSound("select", require("../assets/sounds/card_select.mp3")),
       loadSound("play", require("../assets/sounds/card_play.mp3")),
@@ -174,4 +194,5 @@ export async function preloadSounds(): Promise<void> {
 export function unloadSounds(): void {
   Object.values(soundCache).forEach((s) => s.unloadAsync().catch(() => {}));
   soundCache = {};
+  _audioModeSet = false;
 }

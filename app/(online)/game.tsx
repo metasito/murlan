@@ -347,6 +347,7 @@ export default function OnlineGameScreen() {
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [roundWinner, setRoundWinner] = useState<string | null>(null);
   const [playedPile, setPlayedPile] = useState<Combination[]>([]);
+  const [pendingComboForLabel, setPendingComboForLabel] = useState<Combination | null>(null);
   const [showReactions, setShowReactions] = useState(false);
   const [showGameOver, setShowGameOver] = useState(false);
   const [flyInfo, setFlyInfo] = useState<{
@@ -380,6 +381,7 @@ export default function OnlineGameScreen() {
         prevComboKeyRef.current = comboKey;
         // Store the combo; pile is updated when the flying card lands (onFlyDone)
         pendingComboRef.current = combo;
+        setPendingComboForLabel(combo);
         const playedBy = gameState.lastPlayedBy;
         let dir: FlyDirection;
         if (playedBy === mySeatIndex) {
@@ -399,6 +401,7 @@ export default function OnlineGameScreen() {
       }
       prevComboKeyRef.current = "";
       pendingComboRef.current = null;
+      setPendingComboForLabel(null);
       setPlayedPile([]);
       setFlyInfo(null);
     }
@@ -648,7 +651,11 @@ export default function OnlineGameScreen() {
             </View>
 
             <View style={sharedTableStyles.centerSection}>
-              <PlayedPile history={playedPile} roundWinner={roundWinner} />
+              <PlayedPile
+                history={playedPile}
+                roundWinner={roundWinner}
+                pendingCombo={pendingComboForLabel}
+              />
             </View>
 
             <View style={sharedTableStyles.sideSection}>
@@ -663,7 +670,11 @@ export default function OnlineGameScreen() {
             </View>
           </View>
 
-          <View style={[sharedTableStyles.handSection, { height: HAND_SECTION_H }]}>
+          <View style={[
+            sharedTableStyles.handSection,
+            isMyTurn && !isFinished && sharedTableStyles.handSectionActive,
+            { height: HAND_SECTION_H },
+          ]}>
             {isFinished ? (
               <View style={localStyles.finishedRow}>
                 <Ionicons name="trophy" size={18} color={Colors.gold} />
@@ -678,6 +689,7 @@ export default function OnlineGameScreen() {
                 onPress={toggleCard}
                 disabled={!isMyTurn}
                 availW={handAvailW}
+                isMyTurn={isMyTurn && !isFinished}
               />
             )}
           </View>
@@ -743,8 +755,9 @@ export default function OnlineGameScreen() {
             const combo = pendingComboRef.current;
             pendingComboRef.current = null;
             if (combo) {
-              setPlayedPile((prev) => [...prev.slice(-5), combo]);
+              setPlayedPile((prev) => [...prev, combo]);
             }
+            setPendingComboForLabel(null);
             setFlyInfo(null);
           }}
         />

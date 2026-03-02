@@ -1,12 +1,11 @@
 import React, { useEffect } from "react";
-import { View, Text, StyleSheet } from "react-native";
+import { View, Text, StyleSheet, Platform } from "react-native";
 import Animated, {
   useAnimatedStyle,
   useSharedValue,
   withSpring,
   withTiming,
   withSequence,
-  withDelay,
   Easing,
   runOnJS,
   FadeIn,
@@ -258,23 +257,16 @@ export function FlyingCards({
   const opacity = useSharedValue(0);
 
   useEffect(() => {
-    const FLIGHT = 360;
+    const FLIGHT = 340;
     const easing = Easing.bezier(0.22, 0.61, 0.36, 1.0);
 
-    // Appear immediately as card lifts from hand
     opacity.value = withTiming(1, { duration: 60 });
-
-    // Slide to table center
     tx.value = withTiming(0, { duration: FLIGHT, easing });
     ty.value = withTiming(0, { duration: FLIGHT, easing });
-
-    // Rotation settles to final resting angle
     rot.value = withTiming(landingRot, { duration: FLIGHT, easing: Easing.out(Easing.cubic) });
-
-    // Scale: rises slightly during flight, settles on landing, then onDone fires
     scale.value = withSequence(
       withTiming(1.06, { duration: FLIGHT * 0.65, easing: Easing.out(Easing.cubic) }),
-      withSpring(0.97, { damping: 18, stiffness: 320 }),      // gentle landing
+      withSpring(0.97, { damping: 18, stiffness: 320 }),
       withSpring(1.0, { damping: 30, stiffness: 180 }, (finished) => {
         if (finished) runOnJS(onDone)();
       })
@@ -298,12 +290,13 @@ export function FlyingCards({
       <Animated.View style={[sharedStyles.flyingInner, aStyle]}>
         {display.map((card, i) => {
           const angle = (i - (display.length - 1) / 2) * 10;
+          const overlap = display.length > 7 ? 8 : display.length > 4 ? 10 : 12;
           return (
             <View
               key={card.id}
               style={{
                 position: "absolute",
-                left: i * 12 - (display.length - 1) * 6,
+                left: i * overlap - (display.length - 1) * (overlap / 2),
                 zIndex: i,
                 transform: [{ rotate: `${angle}deg` }],
               }}
@@ -326,14 +319,41 @@ const COMBO_LABELS: Record<string, string> = {
   royal_straight: "★ Scala Reale",
 };
 
+function PileComboCards({ cards }: { cards: Card[] }) {
+  const overlap = cards.length > 8 ? 9 : cards.length > 5 ? 12 : 14;
+  const totalW = overlap * (cards.length - 1) + CARD_W;
+  return (
+    <View style={{ width: totalW, height: CARD_H, position: "relative" }}>
+      {cards.map((card, ci) => (
+        <View
+          key={card.id}
+          style={{
+            position: "absolute",
+            left: ci * overlap,
+            zIndex: ci,
+          }}
+        >
+          <CardView card={card} />
+        </View>
+      ))}
+    </View>
+  );
+}
+
 export function PlayedPile({
   history,
   roundWinner,
+  pendingCombo,
 }: {
   history: Combination[];
   roundWinner: string | null;
+  pendingCombo?: Combination | null;
 }) {
-  const topCombo = history.length > 0 ? history[history.length - 1] : null;
+  const filtered = history.filter(Boolean);
+  const prev = filtered.length >= 2 ? filtered[filtered.length - 2] : null;
+  const current = filtered.length >= 1 ? filtered[filtered.length - 1] : null;
+
+  const labelCombo = current ?? pendingCombo ?? null;
 
   return (
     <View style={sharedStyles.pileArea} testID="pile-area">
@@ -348,52 +368,31 @@ export function PlayedPile({
         </Animated.View>
       )}
 
-      {history.length > 0 && (
-        <View style={sharedStyles.pileStack}>
-          {history.filter(Boolean).slice(-4).map((combo, si, arr) => {
-            const isTop = si === arr.length - 1;
-            const angle = (si - (arr.length - 1)) * 8;
-            const ddx = (si - (arr.length - 1)) * 5;
-            const ddy = (si - (arr.length - 1)) * 3;
-            return (
-              <View
-                key={`p${si}`}
-                style={[
-                  sharedStyles.pileLayer,
-                  {
-                    zIndex: si,
-                    opacity: isTop ? 1 : 0.4 + si * 0.15,
-                    transform: [
-                      { rotate: `${angle}deg` },
-                      { translateX: ddx },
-                      { translateY: ddy },
-                    ],
-                  },
-                ]}
-              >
-                <View style={sharedStyles.pileCards}>
-                  {combo.cards.slice(0, 5).map((card, ci) => (
-                    <View
-                      key={card.id}
-                      style={{ marginLeft: ci > 0 ? -14 : 0, zIndex: ci }}
-                    >
-                      <CardView card={card} />
-                    </View>
-                  ))}
-                </View>
-              </View>
-            );
-          })}
-          {topCombo && (
-            <View style={sharedStyles.comboLabel}>
-              <View style={sharedStyles.comboChip}>
-                <Text style={sharedStyles.comboChipText}>
-                  {COMBO_LABELS[topCombo.type] ?? topCombo.type}
-                  {topCombo.cards.length > 2 ? ` ×${topCombo.cards.length}` : ""}
-                </Text>
-              </View>
-            </View>
-          )}
+      <View style={sharedStyles.pileStack}>
+        {prev && (
+          <View
+            style={[
+              sharedStyles.pilePrevLayer,
+            ]}
+          >
+            <PileComboCards cards={prev.cards} />
+          </View>
+        )}
+        {current && (
+          <View style={sharedStyles.pileCurrentLayer}>
+            <PileComboCards cards={current.cards} />
+          </View>
+        )}
+      </View>
+
+      {labelCombo && (
+        <View style={sharedStyles.comboLabel}>
+          <View style={sharedStyles.comboChip}>
+            <Text style={sharedStyles.comboChipText}>
+              {COMBO_LABELS[labelCombo.type] ?? labelCombo.type}
+              {labelCombo.cards.length > 2 ? ` ×${labelCombo.cards.length}` : ""}
+            </Text>
+          </View>
         </View>
       )}
     </View>
@@ -446,12 +445,14 @@ export function StraightHand({
   onPress,
   disabled,
   availW,
+  isMyTurn,
 }: {
   cards: Card[];
   selectedIds: string[];
   onPress: (id: string) => void;
   disabled: boolean;
   availW: number;
+  isMyTurn?: boolean;
 }) {
   const n = cards.length;
   if (n === 0) {
@@ -465,20 +466,34 @@ export function StraightHand({
   const step = Math.max(20, Math.min(CARD_W, (availW - CARD_W) / Math.max(n - 1, 1)));
   const totalW = step * (n - 1) + CARD_W;
 
+  const glowStyle = Platform.OS === "web"
+    ? ({
+        boxShadow: isMyTurn ? "0 0 22px 8px rgba(201,168,76,0.28)" : "none",
+      } as any)
+    : {};
+
   return (
     <View style={[sharedStyles.handCenter, { width: availW }]}>
-      <View style={[sharedStyles.handRow, { width: Math.min(totalW, availW) }]}>
-        {cards.map((card, i) => (
-          <CardItem
-            key={card.id}
-            card={card}
-            isSelected={selectedIds.includes(card.id)}
-            left={i * step}
-            onPress={() => onPress(card.id)}
-            disabled={disabled}
-            zIndex={i}
-          />
-        ))}
+      <View
+        style={[
+          sharedStyles.handGlowWrap,
+          isMyTurn && sharedStyles.handGlowWrapActive,
+          glowStyle,
+        ]}
+      >
+        <View style={[sharedStyles.handRow, { width: Math.min(totalW, availW) }]}>
+          {cards.map((card, i) => (
+            <CardItem
+              key={card.id}
+              card={card}
+              isSelected={selectedIds.includes(card.id)}
+              left={i * step}
+              onPress={() => onPress(card.id)}
+              disabled={disabled}
+              zIndex={i}
+            />
+          ))}
+        </View>
       </View>
     </View>
   );
@@ -552,6 +567,10 @@ export const sharedTableStyles = StyleSheet.create({
     paddingHorizontal: BTN_W + 10,
     borderTopWidth: 1,
     borderTopColor: "rgba(201,168,76,0.08)",
+  },
+  handSectionActive: {
+    borderTopColor: "rgba(201,168,76,0.35)",
+    backgroundColor: "rgba(201,168,76,0.04)",
   },
 });
 
@@ -669,19 +688,20 @@ export const sharedStyles = StyleSheet.create({
     fontSize: 11,
     color: Colors.gold,
   },
-  emptyText: {
-    fontFamily: "Rajdhani_500Medium",
-    fontSize: 12,
-    color: "rgba(240,234,214,0.18)",
-  },
-  pileStack: { alignItems: "center", justifyContent: "center" },
-  pileLayer: {
-    position: "absolute",
+  pileStack: {
     alignItems: "center",
     justifyContent: "center",
+    position: "relative",
   },
-  pileCards: { flexDirection: "row", alignItems: "flex-end" },
-  comboLabel: { marginTop: CARD_H + 12 },
+  pilePrevLayer: {
+    opacity: 0.35,
+    transform: [{ scale: 0.84 }, { translateY: 4 }],
+    marginBottom: -CARD_H * 0.14,
+  },
+  pileCurrentLayer: {
+    opacity: 1,
+  },
+  comboLabel: { marginTop: 10 },
   comboChip: {
     backgroundColor: "rgba(201,168,76,0.2)",
     borderRadius: 8,
@@ -704,6 +724,15 @@ export const sharedStyles = StyleSheet.create({
     height: CARD_H,
     flexDirection: "row",
     gap: 6,
+  },
+  handGlowWrap: {
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: "transparent",
+    padding: 4,
+  },
+  handGlowWrapActive: {
+    borderColor: "rgba(201,168,76,0.45)",
   },
   handRow: {
     position: "relative",
