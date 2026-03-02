@@ -8,6 +8,7 @@ import Animated, {
   withSequence,
   Easing,
   runOnJS,
+  cancelAnimation,
   FadeIn,
   FadeOut,
 } from "react-native-reanimated";
@@ -271,6 +272,14 @@ export function FlyingCards({
         if (finished) runOnJS(onDone)();
       })
     );
+
+    return () => {
+      cancelAnimation(tx);
+      cancelAnimation(ty);
+      cancelAnimation(rot);
+      cancelAnimation(scale);
+      cancelAnimation(opacity);
+    };
   }, []);
 
   const aStyle = useAnimatedStyle(() => ({
@@ -341,20 +350,14 @@ function PileComboCards({ cards }: { cards: Card[] }) {
 }
 
 export function PlayedPile({
-  history,
+  prev,
+  current,
   roundWinner,
-  pendingCombo,
 }: {
-  history: Combination[];
+  prev: Combination | null;
+  current: Combination | null;
   roundWinner: string | null;
-  pendingCombo?: Combination | null;
 }) {
-  const filtered = history.filter(Boolean);
-  const prev = filtered.length >= 2 ? filtered[filtered.length - 2] : null;
-  const current = filtered.length >= 1 ? filtered[filtered.length - 1] : null;
-
-  const labelCombo = current ?? pendingCombo ?? null;
-
   return (
     <View style={sharedStyles.pileArea} testID="pile-area">
       {roundWinner && (
@@ -370,11 +373,7 @@ export function PlayedPile({
 
       <View style={sharedStyles.pileStack}>
         {prev && (
-          <View
-            style={[
-              sharedStyles.pilePrevLayer,
-            ]}
-          >
+          <View style={sharedStyles.pilePrevLayer}>
             <PileComboCards cards={prev.cards} />
           </View>
         )}
@@ -385,12 +384,12 @@ export function PlayedPile({
         )}
       </View>
 
-      {labelCombo && (
+      {current && (
         <View style={sharedStyles.comboLabel}>
           <View style={sharedStyles.comboChip}>
             <Text style={sharedStyles.comboChipText}>
-              {COMBO_LABELS[labelCombo.type] ?? labelCombo.type}
-              {labelCombo.cards.length > 2 ? ` ×${labelCombo.cards.length}` : ""}
+              {COMBO_LABELS[current.type] ?? current.type}
+              {current.cards.length > 2 ? ` ×${current.cards.length}` : ""}
             </Text>
           </View>
         </View>
@@ -468,7 +467,8 @@ export function StraightHand({
 
   const glowStyle = Platform.OS === "web"
     ? ({
-        boxShadow: isMyTurn ? "0 0 22px 8px rgba(201,168,76,0.28)" : "none",
+        boxShadow: isMyTurn ? "0 0 28px 14px rgba(201,168,76,0.35)" : "none",
+        borderRadius: 14,
       } as any)
     : {};
 
@@ -565,12 +565,9 @@ export const sharedTableStyles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     paddingHorizontal: BTN_W + 10,
-    borderTopWidth: 1,
-    borderTopColor: "rgba(201,168,76,0.08)",
   },
   handSectionActive: {
-    borderTopColor: "rgba(201,168,76,0.35)",
-    backgroundColor: "rgba(201,168,76,0.04)",
+    backgroundColor: "rgba(201,168,76,0.05)",
   },
 });
 
@@ -727,13 +724,15 @@ export const sharedStyles = StyleSheet.create({
   },
   handGlowWrap: {
     borderRadius: 14,
-    borderWidth: 1,
-    borderColor: "transparent",
     padding: 4,
   },
-  handGlowWrapActive: {
-    borderColor: "rgba(201,168,76,0.45)",
-  },
+  handGlowWrapActive: Platform.OS !== "web" ? {
+    shadowColor: Colors.gold,
+    shadowRadius: 20,
+    shadowOpacity: 0.6,
+    shadowOffset: { width: 0, height: 0 },
+    elevation: 14,
+  } : {},
   handRow: {
     position: "relative",
     height: CARD_H,

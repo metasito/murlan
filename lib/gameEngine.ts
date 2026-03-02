@@ -115,36 +115,35 @@ function isConsecutiveSequence(
 
 function isStraight(cards: Card[]): boolean {
   if (cards.length < 5) return false;
-  const jokers = cards.filter((c) => c.isJoker);
-  const nonJokers = cards.filter((c) => !c.isJoker);
+  // Jokers cannot be used in straights — only as single cards
+  if (cards.some((c) => c.isJoker)) return false;
+  const nonJokers = cards;
 
   for (const aceAsHigh of [false, true]) {
     const faceValues = nonJokers
       .map((c) => getStraightFaceValue(c.rank, aceAsHigh))
       .filter((v): v is number => v !== null);
-    if (isConsecutiveSequence(faceValues, jokers.length, cards.length))
+    if (isConsecutiveSequence(faceValues, 0, cards.length))
       return true;
   }
   return false;
 }
 
 function getStraightStrength(cards: Card[]): number {
-  const jokers = cards.filter((c) => c.isJoker);
-  const nonJokers = cards.filter((c) => !c.isJoker);
+  // No jokers allowed in straights
+  if (cards.some((c) => c.isJoker)) return 0;
+  const nonJokers = cards;
 
   for (const aceAsHigh of [true, false]) {
     const faceValues = nonJokers
       .map((c) => getStraightFaceValue(c.rank, aceAsHigh))
       .filter((v): v is number => v !== null);
-    if (!isConsecutiveSequence(faceValues, jokers.length, cards.length))
+    if (!isConsecutiveSequence(faceValues, 0, cards.length))
       continue;
 
-    if (faceValues.length === 0) return jokers.length;
+    if (faceValues.length === 0) return 0;
     const sorted = [...faceValues].sort((a, b) => a - b);
-    const max = sorted[sorted.length - 1];
-    const gapsInRange = sorted[sorted.length - 1] - sorted[0] - (sorted.length - 1);
-    const jokersToExtend = jokers.length - gapsInRange;
-    return max + Math.max(0, jokersToExtend);
+    return sorted[sorted.length - 1];
   }
   return 0;
 }
@@ -158,11 +157,11 @@ function isBomb(cards: Card[]): boolean {
 
 function isRoyalStraight(cards: Card[]): boolean {
   if (cards.length < 5) return false;
-  const nonJokers = cards.filter((c) => !c.isJoker);
-  if (nonJokers.length < 2) return false;
-  const suit = nonJokers[0].suit;
+  // Jokers not allowed in straights or royal straights
+  if (cards.some((c) => c.isJoker)) return false;
+  const suit = cards[0].suit;
   if (!suit) return false;
-  return nonJokers.every((c) => c.suit === suit) && isStraight(cards);
+  return cards.every((c) => c.suit === suit) && isStraight(cards);
 }
 
 export function createDeck(): Card[] {
@@ -223,20 +222,21 @@ export function getCombinationType(cards: Card[]): CombinationType | null {
 
   if (isBomb(cards)) return "bomb";
 
+  // Jokers can ONLY be played as single cards — never in multi-card combos
   if (cards.length === 1) return "single";
 
-  const jokers = cards.filter((c) => c.isJoker);
-  const nonJokers = cards.filter((c) => !c.isJoker);
+  if (cards.some((c) => c.isJoker)) return null;
+
+  const nonJokers = cards;
 
   if (cards.length === 2) {
-    if (jokers.length >= 1) return "pair";
     if (nonJokers[0].rank === nonJokers[1].rank) return "pair";
     return null;
   }
 
   if (cards.length === 3) {
     const nonJokerRanks = new Set(nonJokers.map((c) => c.rank));
-    if (nonJokerRanks.size <= 1) return "triple";
+    if (nonJokerRanks.size === 1) return "triple";
     return null;
   }
 
@@ -348,51 +348,32 @@ function getAllValidPlays(
   // Singles
   for (const c of hand) tryAdd([c]);
 
-  // Pairs
+  // Pairs (natural only — no jokers in pairs)
   for (const group of byRank.values()) {
     for (let i = 0; i < group.length; i++)
       for (let j = i + 1; j < group.length; j++)
         tryAdd([group[i], group[j]]);
   }
-  for (let ji = 0; ji < jokers.length; ji++) {
-    for (const c of nj) tryAdd([jokers[ji], c]);
-    for (let jj = ji + 1; jj < jokers.length; jj++)
-      tryAdd([jokers[ji], jokers[jj]]);
-  }
 
-  // Triples
+  // Triples (natural only — no jokers in triples)
   for (const group of byRank.values()) {
     for (let i = 0; i < group.length; i++)
       for (let j = i + 1; j < group.length; j++)
         for (let k = j + 1; k < group.length; k++)
           tryAdd([group[i], group[j], group[k]]);
-
-    for (let i = 0; i < group.length; i++)
-      for (let j = i + 1; j < group.length; j++)
-        for (const jk of jokers)
-          tryAdd([group[i], group[j], jk]);
-
-    if (jokers.length >= 2)
-      for (const c of group)
-        for (let ji = 0; ji < jokers.length; ji++)
-          for (let jj = ji + 1; jj < jokers.length; jj++)
-            tryAdd([c, jokers[ji], jokers[jj]]);
   }
-  if (jokers.length >= 3) tryAdd(jokers.slice(0, 3));
 
-  // Bombs (4 natural same rank)
+  // Bombs (4 natural same rank — no jokers)
   for (const group of byRank.values()) {
     if (group.length >= 4) tryAdd(group.slice(0, 4));
   }
 
-  // Straights (5+ consecutive)
+  // Straights (5+ consecutive non-joker cards only)
   function enumStraights(sorted: Card[]): void {
     for (let lo = 0; lo < sorted.length; lo++) {
       for (let hi = lo + 4; hi < sorted.length && hi - lo <= 8; hi++) {
         const window = sorted.slice(lo, hi + 1);
         tryAdd(window);
-        for (let jc = 1; jc <= jokers.length; jc++)
-          tryAdd([...window, ...jokers.slice(0, jc)]);
       }
     }
   }

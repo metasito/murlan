@@ -65,6 +65,10 @@ import {
   playYourTurn,
   playRoundWin,
   playRoundStart,
+  playBomb,
+  playGameWin,
+  playGameLose,
+  playDeal,
   preloadSounds,
   unloadSounds,
 } from "@/lib/sounds";
@@ -346,8 +350,7 @@ export default function OnlineGameScreen() {
 
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [roundWinner, setRoundWinner] = useState<string | null>(null);
-  const [playedPile, setPlayedPile] = useState<Combination[]>([]);
-  const [pendingComboForLabel, setPendingComboForLabel] = useState<Combination | null>(null);
+  const [pileState, setPileState] = useState<{ prev: Combination | null; current: Combination | null }>({ prev: null, current: null });
   const [showReactions, setShowReactions] = useState(false);
   const [showGameOver, setShowGameOver] = useState(false);
   const [flyInfo, setFlyInfo] = useState<{
@@ -359,18 +362,19 @@ export default function OnlineGameScreen() {
   const prevComboKeyRef = useRef<string>("");
   const prevRoundWinnerRef = useRef<number | null>(null);
   const reactionTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const pendingComboRef = useRef<Combination | null>(null);
   const prevMyTurnRef = useRef(false);
+  const prevGameOverRef = useRef(false);
 
   useEffect(() => {
     ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.LANDSCAPE);
-    preloadSounds();
+    preloadSounds().then(() => playDeal());
     return () => {
       ScreenOrientation.unlockAsync();
       unloadSounds();
     };
   }, []);
 
+  // Flying card animation + pile state — no race condition
   useEffect(() => {
     if (!gameState) return;
     const combo = gameState.lastPlayedCombination;
@@ -379,9 +383,12 @@ export default function OnlineGameScreen() {
         combo.cards.map((c) => c.id).join(",") + "_" + gameState.lastPlayedBy;
       if (comboKey !== prevComboKeyRef.current) {
         prevComboKeyRef.current = comboKey;
-        // Store the combo; pile is updated when the flying card lands (onFlyDone)
-        pendingComboRef.current = combo;
-        setPendingComboForLabel(combo);
+        // Update pile immediately — old current becomes prev
+        setPileState((s) => ({ prev: s.current, current: combo }));
+        // Play bomb sound for special combos
+        if (combo.type === "bomb" || combo.type === "royal_straight") {
+          playBomb();
+        }
         const playedBy = gameState.lastPlayedBy;
         let dir: FlyDirection;
         if (playedBy === mySeatIndex) {
@@ -400,9 +407,7 @@ export default function OnlineGameScreen() {
         playRoundStart();
       }
       prevComboKeyRef.current = "";
-      pendingComboRef.current = null;
-      setPendingComboForLabel(null);
-      setPlayedPile([]);
+      setPileState({ prev: null, current: null });
       setFlyInfo(null);
     }
   }, [gameState?.lastPlayedCombination]);
@@ -430,6 +435,21 @@ export default function OnlineGameScreen() {
       return () => clearTimeout(t);
     } else {
       setShowGameOver(false);
+    }
+  }, [gameState?.gameOver]);
+
+  // Sound: game over (win or lose based on seat position in rankings)
+  useEffect(() => {
+    if (!gameState?.gameOver || prevGameOverRef.current) return;
+    prevGameOverRef.current = true;
+    const myName = gameState.players[mySeatIndex]?.name;
+    if (myName) {
+      const myRank = gameState.rankings.indexOf(myName);
+      if (myRank === 0) {
+        playGameWin();
+      } else if (myRank === gameState.rankings.length - 1) {
+        playGameLose();
+      }
     }
   }, [gameState?.gameOver]);
 
@@ -652,9 +672,9 @@ export default function OnlineGameScreen() {
 
             <View style={sharedTableStyles.centerSection}>
               <PlayedPile
-                history={playedPile}
+                prev={pileState.prev}
+                current={pileState.current}
                 roundWinner={roundWinner}
-                pendingCombo={pendingComboForLabel}
               />
             </View>
 
@@ -751,15 +771,7 @@ export default function OnlineGameScreen() {
           key={flyInfo.key}
           cards={flyInfo.cards}
           direction={flyInfo.dir}
-          onDone={() => {
-            const combo = pendingComboRef.current;
-            pendingComboRef.current = null;
-            if (combo) {
-              setPlayedPile((prev) => [...prev, combo]);
-            }
-            setPendingComboForLabel(null);
-            setFlyInfo(null);
-          }}
+          onDone={() => setFlyInfo(null)}
         />
       )}
 

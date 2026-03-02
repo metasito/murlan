@@ -60,6 +60,11 @@ import {
   playRoundStart,
   playRoundWin,
   playUrgentTick,
+  playBomb,
+  playGameWin,
+  playGameLose,
+  playDeal,
+  playExchange,
   preloadSounds,
   unloadSounds,
 } from "@/lib/sounds";
@@ -99,8 +104,7 @@ export default function GameScreen() {
   const totalOpponents = (gameState?.players.length ?? 1) - 1;
 
   const [roundWinner, setRoundWinner] = useState<string | null>(null);
-  const [playedPile, setPlayedPile] = useState<Combination[]>([]);
-  const [pendingComboForLabel, setPendingComboForLabel] = useState<Combination | null>(null);
+  const [pileState, setPileState] = useState<{ prev: Combination | null; current: Combination | null }>({ prev: null, current: null });
   const [timeLeft, setTimeLeft] = useState(HUMAN_TURN_SECONDS);
   const [flyInfo, setFlyInfo] = useState<{
     key: string;
@@ -110,9 +114,9 @@ export default function GameScreen() {
 
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const prevComboKeyRef = useRef<string>("");
-  const pendingComboRef = useRef<Combination | null>(null);
   const prevIsHumanTurnRef = useRef(false);
-  const prevUrgentRef = useRef(false);
+  const prevExchangeActiveRef = useRef(false);
+  const prevGameOverRef = useRef(false);
 
   const handScaleVal = useSharedValue(1);
   const giocaPulseVal = useSharedValue(1);
@@ -121,7 +125,7 @@ export default function GameScreen() {
   // Lock to landscape & preload sounds
   useEffect(() => {
     ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.LANDSCAPE);
-    preloadSounds();
+    preloadSounds().then(() => playDeal());
     return () => {
       ScreenOrientation.unlockAsync();
       unloadSounds();
@@ -177,7 +181,7 @@ export default function GameScreen() {
     }
   }, [lastRoundWinner]);
 
-  // Flying card animation when combo is played
+  // Flying card animation + pile state — derived directly from game state (no race condition)
   useEffect(() => {
     if (!gameState) return;
     const combo = gameState.lastPlayedCombination;
@@ -186,9 +190,12 @@ export default function GameScreen() {
         combo.cards.map((c) => c.id).join(",") + "_" + gameState.lastPlayedBy;
       if (comboKey !== prevComboKeyRef.current) {
         prevComboKeyRef.current = comboKey;
-        pendingComboRef.current = combo;
-        // Show combo label immediately (before animation completes)
-        setPendingComboForLabel(combo);
+        // Update pile immediately — old current becomes prev, new combo is current
+        setPileState((s) => ({ prev: s.current, current: combo }));
+        // Play bomb sound for special combos
+        if (combo.type === "bomb" || combo.type === "royal_straight") {
+          playBomb();
+        }
         const playedBy = gameState.lastPlayedBy;
         let dir: FlyDirection;
         if (playedBy === humanIdx) {
@@ -203,9 +210,7 @@ export default function GameScreen() {
       }
     } else {
       prevComboKeyRef.current = "";
-      pendingComboRef.current = null;
-      setPendingComboForLabel(null);
-      setPlayedPile([]);
+      setPileState({ prev: null, current: null });
       setFlyInfo(null);
     }
   }, [gameState?.lastPlayedCombination]);
@@ -262,17 +267,32 @@ export default function GameScreen() {
     prevLastPlayed.current = gameState?.lastPlayedCombination;
   }, [gameState?.lastPlayedCombination]);
 
-  // Sound: urgent tick
+  // Sound: urgent tick — one per second when timer ≤5
   const urgent = timeLeft <= 5 && shouldRunTimer;
   useEffect(() => {
-    if (urgent && !prevUrgentRef.current) {
-      playUrgentTick();
+    if (urgent) playUrgentTick();
+  }, [timeLeft]);
+
+  // Sound: exchange phase started
+  useEffect(() => {
+    const exchangeActive = gameState?.exchangePhase?.active === true;
+    if (exchangeActive && !prevExchangeActiveRef.current) {
+      playExchange();
     }
-    if (urgent && prevUrgentRef.current) {
-      playUrgentTick();
+    prevExchangeActiveRef.current = exchangeActive;
+  }, [gameState?.exchangePhase?.active]);
+
+  // Sound: game over (win or lose)
+  useEffect(() => {
+    if (!gameState?.gameOver || prevGameOverRef.current) return;
+    prevGameOverRef.current = true;
+    const humanPlayer = gameState.players[humanIdx];
+    if (humanPlayer?.finishPosition === 1) {
+      playGameWin();
+    } else if (humanPlayer?.finishPosition === gameState.players.length) {
+      playGameLose();
     }
-    prevUrgentRef.current = urgent;
-  }, [timeLeft, urgent]);
+  }, [gameState?.gameOver]);
 
   // Hand scale animation — stays zoomed while it's the human's turn
   useEffect(() => {
@@ -422,6 +442,12 @@ export default function GameScreen() {
     exchangeActive &&
     gameState.exchangePhase!.winnerIdx === humanIdx &&
     exchangeWinner?.type === "human";
+  const cardTakenFromLoser = exchangeActive
+    ? gameState.exchangePhase!.cardFromLoser
+    : null;
+  const bothJokersException =
+    gameState.exchangePhase?.bothJokersException === true &&
+    !gameState.exchangePhase?.active;
 
   return (
     <View style={localStyles.root}>
@@ -533,9 +559,9 @@ export default function GameScreen() {
               )}
               {gameState.firstPlayMade && (
                 <PlayedPile
-                  history={playedPile}
+                  prev={pileState.prev}
+                  current={pileState.current}
                   roundWinner={roundWinner}
-                  pendingCombo={pendingComboForLabel}
                 />
               )}
             </View>
@@ -655,27 +681,42 @@ export default function GameScreen() {
           key={flyInfo.key}
           cards={flyInfo.cards}
           direction={flyInfo.dir}
-          onDone={() => {
-            const combo = pendingComboRef.current;
-            pendingComboRef.current = null;
-            if (combo) {
-              setPlayedPile((prev) => [...prev, combo]);
-            }
-            setPendingComboForLabel(null);
-            setFlyInfo(null);
-          }}
+          onDone={() => setFlyInfo(null)}
         />
       )}
 
+      {/* Both-jokers exception banner */}
+      {bothJokersException && (
+        <View style={localStyles.exchangeOverlay}>
+          <View style={localStyles.exchangeCard}>
+            <Ionicons name="shuffle" size={28} color={Colors.gold} />
+            <Text style={localStyles.exchangeTitle}>Nessuno scambio</Text>
+            <Text style={localStyles.exchangeSub}>
+              Il perdente ha entrambi i jolly.{"\n"}
+              <Text style={{ color: Colors.gold }}>
+                {gameState.players[gameState.exchangePhase!.winnerIdx]?.name}
+              </Text>{" "}
+              inizia il round.
+            </Text>
+          </View>
+        </View>
+      )}
+
       {/* Exchange phase overlay — human must give a weak card to the loser */}
-      {isHumanExchange && exchangeLoser && (
+      {isHumanExchange && exchangeLoser && cardTakenFromLoser && (
         <View style={localStyles.exchangeOverlay}>
           <View style={localStyles.exchangeCard}>
             <Ionicons name="swap-horizontal" size={28} color={Colors.gold} />
             <Text style={localStyles.exchangeTitle}>Scambio di carte</Text>
             <Text style={localStyles.exchangeSub}>
-              Sei il vincitore! Dai una carta a{" "}
-              <Text style={{ color: Colors.gold }}>{exchangeLoser.name}</Text>
+              Sei il vincitore! Hai ricevuto{" "}
+              <Text style={{ color: Colors.gold }}>
+                {cardTakenFromLoser.rank === "joker_colored" || cardTakenFromLoser.rank === "joker_bw"
+                  ? "Jolly"
+                  : `${cardTakenFromLoser.rank} da ${exchangeLoser.name}`}
+              </Text>
+              {"\n"}Ora dai una carta a{" "}
+              <Text style={{ color: Colors.gold }}>{exchangeLoser.name}</Text>:
             </Text>
             <ScrollView
               horizontal
