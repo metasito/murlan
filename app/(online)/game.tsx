@@ -35,6 +35,7 @@ import {
   Card,
   Combination,
   Player,
+  type StartReason,
 } from "@/lib/gameEngine";
 import type { Reaction } from "@/context/OnlineGameContext";
 import {
@@ -189,6 +190,73 @@ function RankCard({
         </View>
       )}
     </Animated.View>
+  );
+}
+
+function StartReasonBanner({
+  reason,
+  players,
+  topOffset,
+}: {
+  reason: StartReason;
+  players: Array<{ name: string; type: string }>;
+  topOffset: number;
+}) {
+  const [visible, setVisible] = React.useState(true);
+  useEffect(() => {
+    const t = setTimeout(() => setVisible(false), 4000);
+    return () => clearTimeout(t);
+  }, []);
+  if (!visible) return null;
+
+  const playerName = players[reason.playerIdx]?.name ?? "?";
+  let mainText = "";
+  let subText = "";
+
+  if (reason.type === "start_card" && reason.card) {
+    const label = `${reason.card.rank}♠`;
+    mainText = `${playerName} inizia — ha il ${label}`;
+    if (reason.card.rank !== "3") subText = "(il 3♠ è escluso)";
+  } else if (reason.type === "lost_round") {
+    mainText = `${playerName} inizia — ha perso il round`;
+  } else if (reason.type === "won_no_swap") {
+    mainText = `${playerName} inizia — ha vinto (nessuno scambio)`;
+  }
+
+  return (
+    <Pressable
+      onPress={() => setVisible(false)}
+      style={{
+        position: "absolute",
+        top: topOffset,
+        left: 0,
+        right: 0,
+        alignItems: "center",
+        zIndex: 50,
+        pointerEvents: "box-none" as any,
+      }}
+    >
+      <View style={{
+        backgroundColor: "rgba(3,16,8,0.90)",
+        borderColor: Colors.gold,
+        borderWidth: 1,
+        borderRadius: 20,
+        paddingHorizontal: 18,
+        paddingVertical: 8,
+        alignItems: "center",
+        maxWidth: 420,
+        gap: 2,
+      }}>
+        <Text style={{ fontFamily: "Rajdhani_600SemiBold", fontSize: 14, color: Colors.gold, letterSpacing: 0.5, textAlign: "center" }}>
+          {mainText}
+        </Text>
+        {subText ? (
+          <Text style={{ fontFamily: "Inter_400Regular", fontSize: 11, color: Colors.textSecondary, textAlign: "center" }}>
+            {subText}
+          </Text>
+        ) : null}
+      </View>
+    </Pressable>
   );
 }
 
@@ -477,15 +545,15 @@ export default function OnlineGameScreen() {
   const selectedObjs = sortedHand.filter((c) => selectedIds.includes(c.id));
   const tentativeCombo =
     selectedObjs.length > 0 ? buildCombination(selectedObjs) : null;
-  const requires3Spades = !gameState.firstPlayMade;
+  const requiresStartCard = !gameState.firstPlayMade && !!gameState.startCard;
   const isValidPlay =
     tentativeCombo !== null &&
     canPlay(
       tentativeCombo,
       isNewRound ? null : gameState.lastPlayedCombination
     ) &&
-    (!requires3Spades ||
-      tentativeCombo.cards.some((c) => c.rank === "3" && c.suit === "spades"));
+    (!requiresStartCard ||
+      tentativeCombo.cards.some((c) => c.id === (gameState.startCard as Card).id));
   const canPassNow = !isNewRound && isMyTurn && !isFinished;
   const playBtnValid = isValidPlay && isMyTurn && !isFinished;
 
@@ -625,16 +693,11 @@ export default function OnlineGameScreen() {
         />
       )}
 
+      {/* Table background — clips to rounded corners, decoration only */}
       <View
-        testID="game-table"
         style={[
-          sharedTableStyles.table,
-          {
-            left: tableLeft,
-            top: tableTop,
-            right: tableRight,
-            bottom: tableBottom,
-          },
+          sharedTableStyles.tableBg,
+          { left: tableLeft, top: tableTop, right: tableRight, bottom: tableBottom },
         ]}
       >
         <LinearGradient
@@ -643,7 +706,16 @@ export default function OnlineGameScreen() {
           style={StyleSheet.absoluteFill}
         />
         <View style={sharedTableStyles.tableInnerBorder} />
+      </View>
 
+      {/* Table overlay — same coords, overflow visible so elements can extend outside */}
+      <View
+        testID="game-table"
+        style={[
+          sharedTableStyles.tableOverlay,
+          { left: tableLeft, top: tableTop, right: tableRight, bottom: tableBottom },
+        ]}
+      >
         <View style={sharedTableStyles.tableContent}>
           <View
             style={[sharedTableStyles.topSection, { height: TOP_SECTION_H }]}
@@ -763,6 +835,16 @@ export default function OnlineGameScreen() {
           cards={flyInfo.cards}
           direction={flyInfo.dir}
           onDone={() => setFlyInfo(null)}
+        />
+      )}
+
+      {/* Start reason banner — shown at round start, dismisses after 4s or on tap */}
+      {gameState.startReason && (
+        <StartReasonBanner
+          key={`reason-${gameState.startReason.type}-${gameState.startReason.playerIdx}`}
+          reason={gameState.startReason}
+          players={gameState.players}
+          topOffset={topPad + TOP_BAR_H + TABLE_M + 8}
         />
       )}
 

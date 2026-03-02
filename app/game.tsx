@@ -29,6 +29,8 @@ import {
   canPlay,
   sortHand,
   cardStrength,
+  type StartReason,
+  type Card,
 } from "@/lib/gameEngine";
 import {
   CARD_W,
@@ -101,6 +103,79 @@ function BothJokersExceptionOverlay({ winnerName }: { winnerName: string }) {
         </Pressable>
       </View>
     </View>
+  );
+}
+
+function formatSpadeLabel(card: Card): string {
+  return `${card.rank}♠`;
+}
+
+function StartReasonBanner({
+  reason,
+  players,
+  topOffset,
+}: {
+  reason: StartReason;
+  players: Array<{ name: string; type: string }>;
+  topOffset: number;
+}) {
+  const [visible, setVisible] = React.useState(true);
+  useEffect(() => {
+    const t = setTimeout(() => setVisible(false), 4000);
+    return () => clearTimeout(t);
+  }, []);
+  if (!visible) return null;
+
+  const playerName = players[reason.playerIdx]?.name ?? "?";
+  let mainText = "";
+  let subText = "";
+
+  if (reason.type === "start_card" && reason.card) {
+    const label = formatSpadeLabel(reason.card);
+    mainText = `${playerName} inizia — ha il ${label}`;
+    if (reason.card.rank !== "3") {
+      subText = "(il 3♠ è escluso)";
+    }
+  } else if (reason.type === "lost_round") {
+    mainText = `${playerName} inizia — ha perso il round`;
+  } else if (reason.type === "won_no_swap") {
+    mainText = `${playerName} inizia — ha vinto (nessuno scambio)`;
+  }
+
+  return (
+    <Pressable
+      onPress={() => setVisible(false)}
+      style={{
+        position: "absolute",
+        top: topOffset,
+        left: 0,
+        right: 0,
+        alignItems: "center",
+        zIndex: 50,
+        pointerEvents: "box-none" as any,
+      }}
+    >
+      <View style={{
+        backgroundColor: "rgba(3,16,8,0.90)",
+        borderColor: Colors.gold,
+        borderWidth: 1,
+        borderRadius: 20,
+        paddingHorizontal: 18,
+        paddingVertical: 8,
+        alignItems: "center",
+        maxWidth: 420,
+        gap: 2,
+      }}>
+        <Text style={{ fontFamily: "Rajdhani_600SemiBold", fontSize: 14, color: Colors.gold, letterSpacing: 0.5, textAlign: "center" }}>
+          {mainText}
+        </Text>
+        {subText ? (
+          <Text style={{ fontFamily: "Inter_400Regular", fontSize: 11, color: Colors.textSecondary, textAlign: "center" }}>
+            {subText}
+          </Text>
+        ) : null}
+      </View>
+    </Pressable>
   );
 }
 
@@ -376,16 +451,16 @@ export default function GameScreen() {
   const selectedObjs = sortedHand.filter((c) => selectedCards.includes(c.id));
   const tentativeCombo =
     selectedObjs.length > 0 ? buildCombination(selectedObjs) : null;
-  const requires3Spades = !gameState.firstPlayMade;
+  const requiresStartCard = !gameState.firstPlayMade && !!gameState.startCard;
   const isValidPlay =
     tentativeCombo !== null &&
     canPlay(
       tentativeCombo,
       isNewRound ? null : gameState.lastPlayedCombination
     ) &&
-    (!requires3Spades ||
+    (!requiresStartCard ||
       tentativeCombo.cards.some(
-        (c) => c.rank === "3" && c.suit === "spades"
+        (c) => c.id === gameState.startCard!.id
       ));
   const canPassNow = !isNewRound && isHumanTurn && !isFinished;
   const playBtnValid = isValidPlay && isHumanTurn && !isFinished;
@@ -527,16 +602,11 @@ export default function GameScreen() {
         </View>
       </View>
 
+      {/* Table background — clips to rounded corners, decoration only */}
       <View
-        testID="game-table"
         style={[
-          sharedTableStyles.table,
-          {
-            left: tableLeft,
-            top: tableTop,
-            right: tableRight,
-            bottom: tableBottom,
-          },
+          sharedTableStyles.tableBg,
+          { left: tableLeft, top: tableTop, right: tableRight, bottom: tableBottom },
         ]}
       >
         <LinearGradient
@@ -545,7 +615,16 @@ export default function GameScreen() {
           style={StyleSheet.absoluteFill}
         />
         <View style={sharedTableStyles.tableInnerBorder} />
+      </View>
 
+      {/* Table overlay — same coords, overflow visible so buttons/slots can extend outside */}
+      <View
+        testID="game-table"
+        style={[
+          sharedTableStyles.tableOverlay,
+          { left: tableLeft, top: tableTop, right: tableRight, bottom: tableBottom },
+        ]}
+      >
         <View style={sharedTableStyles.tableContent}>
           <View
             style={[sharedTableStyles.topSection, { height: TOP_SECTION_H }]}
@@ -572,15 +651,17 @@ export default function GameScreen() {
             </View>
 
             <View style={sharedTableStyles.centerSection}>
-              {!gameState.firstPlayMade && (
+              {!gameState.firstPlayMade && gameState.startCard && (
                 <View style={localStyles.threeSpadesBanner}>
                   <Text style={localStyles.threeSpadesEmoji}>♠</Text>
                   <Text style={localStyles.threeSpadesText}>
                     {(() => {
+                      const sc = gameState.startCard!;
                       const starter = gameState.players[gameState.currentTurnIndex];
+                      const cardLabel = `${sc.rank === "J" ? "J" : sc.rank === "Q" ? "Q" : sc.rank === "K" ? "K" : sc.rank === "A" ? "A" : sc.rank}♠`;
                       return starter.type === "human"
-                        ? "Inizi tu! Hai il 3 di picche"
-                        : `${starter.name} inizia con il 3 di picche`;
+                        ? `Inizi tu! Hai il ${cardLabel}`
+                        : `${starter.name} inizia con il ${cardLabel}`;
                     })()}
                   </Text>
                 </View>
@@ -699,6 +780,16 @@ export default function GameScreen() {
       {bothJokersException && (
         <BothJokersExceptionOverlay
           winnerName={gameState.players[gameState.exchangePhase!.winnerIdx]?.name ?? ""}
+        />
+      )}
+
+      {/* Start reason banner — shown at round start, dismisses after 4s or on tap */}
+      {gameState.startReason && (
+        <StartReasonBanner
+          key={`reason-${gameState.startReason.type}-${gameState.startReason.playerIdx}`}
+          reason={gameState.startReason}
+          players={gameState.players}
+          topOffset={topPad + TOP_BAR_H + TABLE_M + 8}
         />
       )}
 

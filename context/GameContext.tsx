@@ -170,11 +170,11 @@ export function GameProvider({ children }: { children: ReactNode }) {
     if (!canPlay(combo, isNewRound ? null : gameState.lastPlayedCombination))
       return false;
 
-    if (!gameState.firstPlayMade) {
-      const has3Spades = combo.cards.some(
-        (c) => c.rank === "3" && c.suit === "spades"
+    if (!gameState.firstPlayMade && gameState.startCard) {
+      const hasStartCard = combo.cards.some(
+        (c) => c.id === gameState.startCard!.id
       );
-      if (!has3Spades) return false;
+      if (!hasStartCard) return false;
     }
 
     const newState = processPlay(gameState, combo);
@@ -208,8 +208,8 @@ export function GameProvider({ children }: { children: ReactNode }) {
       .filter((_, i) => i !== gameState.currentTurnIndex)
       .map((p) => p.hand.length);
 
-    const requireCard = !gameState.firstPlayMade
-      ? currentPlayer.hand.find((c) => c.rank === "3" && c.suit === "spades")
+    const requireCard = !gameState.firstPlayMade && gameState.startCard
+      ? currentPlayer.hand.find((c) => c.id === gameState.startCard!.id)
       : undefined;
 
     const play = aiChoosePlay(

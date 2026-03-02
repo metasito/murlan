@@ -212,10 +212,12 @@ export function setupSocket(httpServer: HttpServer) {
 
       const isNewRound = gameState.lastPlayedCombination === null;
 
-      // First play must include 3♠
-      if (!gameState.firstPlayMade) {
-        if (!combo.cards.some((c) => c.rank === "3" && c.suit === "spades")) {
-          socket.emit("game:error", { message: "Devi giocare il 3♠ come prima carta" });
+      // First play must include the starting spade (3♠ or next lowest if 3♠ is excluded)
+      if (!gameState.firstPlayMade && gameState.startCard) {
+        const startCardId = gameState.startCard.id;
+        if (!combo.cards.some((c) => c.id === startCardId)) {
+          const sc = gameState.startCard!;
+          socket.emit("game:error", { message: `Devi giocare il ${sc.rank}♠ come prima carta` });
           return;
         }
       }

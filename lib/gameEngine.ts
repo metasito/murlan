@@ -61,6 +61,12 @@ export interface ExchangePhase {
   bothJokersException: boolean;
 }
 
+export interface StartReason {
+  type: "start_card" | "lost_round" | "won_no_swap";
+  card?: Card;
+  playerIdx: number;
+}
+
 export interface GameState {
   players: Player[];
   currentTurnIndex: number;
@@ -72,6 +78,8 @@ export interface GameState {
   gameOver: boolean;
   rankings: string[];
   firstPlayMade: boolean;
+  startCard?: Card;
+  startReason?: StartReason;
   exchangePhase?: ExchangePhase;
 }
 
@@ -210,12 +218,26 @@ export function sortHand(hand: Card[]): Card[] {
   });
 }
 
-export function findStartingPlayer(players: Player[]): number {
-  for (let i = 0; i < players.length; i++) {
-    if (players[i].hand.some((c) => c.rank === "3" && c.suit === "spades"))
-      return i;
+// Spade ranks in ascending order (lowest to highest strength)
+const SPADE_RANK_ORDER: Rank[] = [
+  "3", "4", "5", "6", "7", "8", "9", "10", "J", "Q", "K", "A", "2",
+];
+
+export function findStartingPlayer(
+  players: Player[]
+): { playerIdx: number; startCard: Card } {
+  // Find the lowest spade held by any active player.
+  // Scan spades 3♠ → 4♠ → ... → 2♠; first match wins.
+  for (const rank of SPADE_RANK_ORDER) {
+    for (let i = 0; i < players.length; i++) {
+      const card = players[i].hand.find(
+        (c) => c.rank === rank && c.suit === "spades"
+      );
+      if (card) return { playerIdx: i, startCard: card };
+    }
   }
-  return 0;
+  // Fallback (should never happen — 13 spades always dealt to someone)
+  return { playerIdx: 0, startCard: players[0].hand[0] };
 }
 
 export function getCombinationType(cards: Card[]): CombinationType | null {
@@ -677,6 +699,7 @@ export function initializeRematch(
       gameOver: false,
       rankings: [],
       firstPlayMade: true,
+      startReason: { type: "won_no_swap", playerIdx: safeWinnerIdx },
       exchangePhase: {
         active: false,
         winnerIdx: safeWinnerIdx,
@@ -704,6 +727,7 @@ export function initializeRematch(
     gameOver: false,
     rankings: [],
     firstPlayMade: true,
+    startReason: { type: "lost_round", playerIdx: safeLoserIdx },
     exchangePhase: {
       active: true,
       winnerIdx: safeWinnerIdx,
@@ -753,7 +777,7 @@ export function initializeGame(
     finishPosition: undefined,
   }));
 
-  const startIdx = findStartingPlayer(players);
+  const { playerIdx: startIdx, startCard } = findStartingPlayer(players);
 
   return {
     players,
@@ -766,5 +790,7 @@ export function initializeGame(
     gameOver: false,
     rankings: [],
     firstPlayMade: false,
+    startCard,
+    startReason: { type: "start_card", card: startCard, playerIdx: startIdx },
   };
 }

@@ -530,12 +530,16 @@ export const portraitOverlayStyles = StyleSheet.create({
 });
 
 export const sharedTableStyles = StyleSheet.create({
-  table: {
+  tableBg: {
     position: "absolute",
     borderRadius: 22,
     overflow: "hidden",
     borderWidth: 3,
     borderColor: "rgba(201,168,76,0.3)",
+  },
+  tableOverlay: {
+    position: "absolute",
+    overflow: "visible",
   },
   tableInnerBorder: {
     position: "absolute",
