@@ -23,6 +23,8 @@ const activeGames = new Map<string, OnlineGameState>();
 const socketRoomMap = new Map<string, string>();
 // userId -> socketId (for friend notifications)
 const userSocketMap = new Map<string, string>();
+// roomId -> true for public quickmatch rooms still open for players
+const publicRoomIds = new Set<string>();
 
 function sanitizeStateForPlayer(state: GameState, viewerUserId: string, playerMap: Record<number, string>) {
   return {
@@ -124,7 +126,71 @@ export function setupSocket(httpServer: HttpServer) {
     });
 
     socket.on("room:leave", async () => {
+      const leavingRoomId = socketRoomMap.get(socket.id);
       await handleLeaveRoom(io, socket, userId);
+      // Clean up empty public rooms
+      if (leavingRoomId && publicRoomIds.has(leavingRoomId)) {
+        const remaining = await storage.getRoomPlayers(leavingRoomId);
+        if (remaining.length === 0) publicRoomIds.delete(leavingRoomId);
+      }
+    });
+
+    socket.on("room:quickmatch", async () => {
+      try {
+        // Try to find an open public room
+        let joinedRoomId: string | null = null;
+        for (const roomId of publicRoomIds) {
+          const room = await storage.getRoomById(roomId);
+          if (!room || room.status !== "waiting") { publicRoomIds.delete(roomId); continue; }
+          const players = await storage.getRoomPlayers(roomId);
+          if (players.length >= room.maxPlayers) { publicRoomIds.delete(roomId); continue; }
+          if (players.some((p) => p.userId === userId)) continue;
+
+          const seatIndex = players.length;
+          await storage.addRoomPlayer(roomId, userId, seatIndex);
+          socket.join(roomId);
+          socketRoomMap.set(socket.id, roomId);
+
+          const updatedPlayers = await storage.getRoomPlayers(roomId);
+          const roomState = {
+            roomId: room.id,
+            code: room.code,
+            hostUserId: room.hostUserId,
+            status: room.status,
+            gameMode: room.gameMode,
+            maxPlayers: room.maxPlayers,
+            players: updatedPlayers.map((p) => ({ seatIndex: p.seatIndex, userId: p.userId, username: p.user.username })),
+          };
+          io.to(roomId).emit("room:state", roomState);
+
+          // Remove from public pool if now full
+          if (updatedPlayers.length >= room.maxPlayers) publicRoomIds.delete(roomId);
+          joinedRoomId = roomId;
+          break;
+        }
+
+        if (!joinedRoomId) {
+          // No open room found — create a new public one
+          const room = await storage.createRoom(userId, "free_for_all", 4);
+          await storage.addRoomPlayer(room.id, userId, 0);
+          publicRoomIds.add(room.id);
+          socket.join(room.id);
+          socketRoomMap.set(socket.id, room.id);
+
+          const players = await storage.getRoomPlayers(room.id);
+          socket.emit("room:state", {
+            roomId: room.id,
+            code: room.code,
+            hostUserId: room.hostUserId,
+            status: room.status,
+            gameMode: room.gameMode,
+            maxPlayers: room.maxPlayers,
+            players: players.map((p) => ({ seatIndex: p.seatIndex, userId: p.userId, username: p.user.username })),
+          });
+        }
+      } catch (err) {
+        socket.emit("room:error", { message: "Errore nella ricerca di una partita" });
+      }
     });
 
     socket.on("room:set_game_mode", async ({ gameMode }: { gameMode: "free_for_all" | "teams" }) => {
@@ -177,6 +243,9 @@ export function setupSocket(httpServer: HttpServer) {
         socketMap: {},
         roomId,
       });
+
+      // Remove from public quickmatch pool — game is starting
+      publicRoomIds.delete(roomId);
 
       await storage.updateRoomStatus(roomId, "in_progress");
 

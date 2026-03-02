@@ -213,9 +213,9 @@ export default function HomeScreen() {
 
   const menuButtons = (compact: boolean) => (
     <>
-      <MenuButton compact={compact} label="Gioca vs AI" icon="game-controller" accent onPress={() => router.push({ pathname: "/lobby", params: { mode: "ai" } })} delay={300} />
-      <MenuButton compact={compact} label="Passa e Gioca" icon="people" onPress={() => router.push({ pathname: "/lobby", params: { mode: "local" } })} delay={420} />
-      <MenuButton compact={compact} label="Online" icon="wifi" onPress={() => { if (user) router.push("/(online)"); else router.push("/auth"); }} delay={540} />
+      <MenuButton compact={compact} label="Offline" icon="game-controller" accent onPress={() => router.push({ pathname: "/lobby", params: { mode: "ai" } })} delay={300} />
+      <MenuButton compact={compact} label="Play with Friends" icon="people" onPress={() => { if (user) router.push("/(online)"); else router.push("/auth"); }} delay={420} />
+      <MenuButton compact={compact} label="Online" icon="earth-outline" onPress={() => { if (user) router.push("/(online)/quickmatch"); else router.push("/auth"); }} delay={540} />
       <MenuButton compact={compact} label="Regole & FAQ" icon="book-outline" onPress={() => router.push("/rules")} delay={660} />
     </>
   );
