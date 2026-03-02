@@ -135,13 +135,18 @@ export function setupSocket(httpServer: HttpServer) {
       }
     });
 
-    socket.on("room:quickmatch", async () => {
+    socket.on("room:quickmatch", async ({ maxPlayers, gameMode }: { maxPlayers: number; gameMode: "free_for_all" | "teams" }) => {
       try {
-        // Try to find an open public room
+        const safeMax = [2, 3, 4].includes(maxPlayers) ? maxPlayers : 4;
+        const safeMode: "free_for_all" | "teams" = gameMode === "teams" ? "teams" : "free_for_all";
+
+        // Try to find an open public room matching the requested format
         let joinedRoomId: string | null = null;
         for (const roomId of publicRoomIds) {
           const room = await storage.getRoomById(roomId);
           if (!room || room.status !== "waiting") { publicRoomIds.delete(roomId); continue; }
+          // Must match the requested format
+          if (room.maxPlayers !== safeMax || room.gameMode !== safeMode) continue;
           const players = await storage.getRoomPlayers(roomId);
           if (players.length >= room.maxPlayers) { publicRoomIds.delete(roomId); continue; }
           if (players.some((p) => p.userId === userId)) continue;
@@ -170,8 +175,8 @@ export function setupSocket(httpServer: HttpServer) {
         }
 
         if (!joinedRoomId) {
-          // No open room found — create a new public one
-          const room = await storage.createRoom(userId, "free_for_all", 4);
+          // No matching open room — create a new public one with the requested format
+          const room = await storage.createRoom(userId, safeMode, safeMax);
           await storage.addRoomPlayer(room.id, userId, 0);
           publicRoomIds.add(room.id);
           socket.join(room.id);

@@ -37,7 +37,7 @@ interface OnlineGameContextValue {
   createRoom: (gameMode: "free_for_all" | "teams", maxPlayers: number) => void;
   joinRoom: (code: string) => void;
   leaveRoom: () => void;
-  quickmatch: () => void;
+  quickmatch: (maxPlayers: number, gameMode: "free_for_all" | "teams") => void;
   setRoomGameMode: (mode: "free_for_all" | "teams") => void;
   startGame: () => void;
   requestPlayAgain: () => void;
@@ -111,8 +111,8 @@ export function OnlineGameProvider({ userId, children }: { userId: string; child
     setGameState(null);
   }, []);
 
-  const quickmatch = useCallback(() => {
-    socketRef.current.emit("room:quickmatch");
+  const quickmatch = useCallback((maxPlayers: number, gameMode: "free_for_all" | "teams") => {
+    socketRef.current.emit("room:quickmatch", { maxPlayers, gameMode });
   }, []);
 
   const setRoomGameMode = useCallback((gameMode: "free_for_all" | "teams") => {
