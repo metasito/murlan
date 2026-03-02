@@ -1,0 +1,205 @@
+import React, {
+  createContext,
+  useContext,
+  useState,
+  useEffect,
+  useRef,
+  useCallback,
+  ReactNode,
+} from "react";
+import { Alert } from "react-native";
+import { router } from "expo-router";
+import { useQueryClient } from "@tanstack/react-query";
+import { useAuth } from "@/context/AuthContext";
+import { connectSocket, disconnectSocket, getSocket } from "@/lib/socket";
+import type { Socket } from "socket.io-client";
+import type { NotificationData } from "@/components/NotificationBanner";
+
+interface PendingInvite {
+  from: string;
+  roomCode: string;
+}
+
+interface SocketContextValue {
+  socket: Socket | null;
+  connected: boolean;
+  onlineIds: Set<string>;
+  pendingInvite: PendingInvite | null;
+  clearInvite: () => void;
+  notification: NotificationData | null;
+  dismissNotification: () => void;
+}
+
+const SocketContext = createContext<SocketContextValue>({
+  socket: null,
+  connected: false,
+  onlineIds: new Set(),
+  pendingInvite: null,
+  clearInvite: () => {},
+  notification: null,
+  dismissNotification: () => {},
+});
+
+export function useSocket() {
+  return useContext(SocketContext);
+}
+
+export function SocketProvider({ children }: { children: ReactNode }) {
+  const { user } = useAuth();
+  const qc = useQueryClient();
+  const [connected, setConnected] = useState(false);
+  const [onlineIds, setOnlineIds] = useState<Set<string>>(new Set());
+  const [pendingInvite, setPendingInvite] = useState<PendingInvite | null>(null);
+  const [notification, setNotification] = useState<NotificationData | null>(null);
+  const socketRef = useRef<Socket | null>(null);
+  const notifTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const showNotification = useCallback((n: NotificationData) => {
+    if (notifTimerRef.current) clearTimeout(notifTimerRef.current);
+    setNotification(n);
+  }, []);
+
+  const dismissNotification = useCallback(() => {
+    setNotification(null);
+  }, []);
+
+  const clearInvite = useCallback(() => setPendingInvite(null), []);
+
+  useEffect(() => {
+    if (!user) {
+      if (socketRef.current) {
+        const uid = (socketRef.current.auth as { userId?: string })?.userId;
+        if (uid) disconnectSocket(uid);
+        socketRef.current = null;
+      }
+      setConnected(false);
+      setOnlineIds(new Set());
+      return;
+    }
+
+    const socket = connectSocket(user.id);
+    socketRef.current = socket;
+
+    const onConnect = () => {
+      setConnected(true);
+      // Request fresh online list on every connect/reconnect
+      socket.emit("friend:get_online_list");
+    };
+
+    const onDisconnect = () => {
+      setConnected(false);
+    };
+
+    const onOnlineList = ({ onlineIds: ids }: { onlineIds: string[] }) => {
+      setOnlineIds(new Set(ids));
+    };
+
+    const onFriendStatus = ({
+      userId,
+      online,
+      lastSeen,
+    }: {
+      userId: string;
+      online: boolean;
+      lastSeen?: string;
+    }) => {
+      setOnlineIds((prev) => {
+        const next = new Set(prev);
+        if (online) {
+          next.add(userId);
+        } else {
+          next.delete(userId);
+        }
+        return next;
+      });
+    };
+
+    const onRequestIncoming = ({ from }: { from: string }) => {
+      qc.invalidateQueries({ queryKey: ["/api/friends/requests"] });
+      showNotification({
+        type: "friend_request",
+        title: "Richiesta di amicizia",
+        message: `${from} vuole essere tuo amico`,
+        onPress: () => router.push("/(online)/friends"),
+      });
+    };
+
+    const onRequestAccepted = ({ by }: { by: string }) => {
+      qc.invalidateQueries({ queryKey: ["/api/friends"] });
+      qc.invalidateQueries({ queryKey: ["/api/friends/requests"] });
+      showNotification({
+        type: "friend_accepted",
+        title: "Amicizia accettata!",
+        message: `${by} ha accettato la tua richiesta`,
+        onPress: () => router.push("/(online)/friends"),
+      });
+    };
+
+    const onInvite = ({ from, roomCode }: { from: string; roomCode: string }) => {
+      showNotification({
+        type: "game_invite",
+        title: `${from} ti invita a giocare!`,
+        message: "Tocca per unirti alla partita",
+        onPress: () => {
+          setPendingInvite({ from, roomCode });
+          router.push("/(online)");
+        },
+      });
+      // Also show Alert as backup
+      Alert.alert(
+        "Invito di gioco",
+        `${from} ti ha invitato a giocare!\nCodice stanza: ${roomCode}`,
+        [
+          {
+            text: "Unisciti",
+            onPress: () => {
+              setPendingInvite({ from, roomCode });
+              router.push("/(online)");
+            },
+          },
+          { text: "Ignora", style: "cancel" },
+        ]
+      );
+    };
+
+    socket.on("connect", onConnect);
+    socket.on("disconnect", onDisconnect);
+    socket.on("friend:online_list", onOnlineList);
+    socket.on("friend:status", onFriendStatus);
+    socket.on("friend:request_incoming", onRequestIncoming);
+    socket.on("friend:request_accepted", onRequestAccepted);
+    socket.on("friend:invite", onInvite);
+
+    // If already connected, fire immediately
+    if (socket.connected) {
+      setConnected(true);
+      socket.emit("friend:get_online_list");
+    }
+
+    return () => {
+      socket.off("connect", onConnect);
+      socket.off("disconnect", onDisconnect);
+      socket.off("friend:online_list", onOnlineList);
+      socket.off("friend:status", onFriendStatus);
+      socket.off("friend:request_incoming", onRequestIncoming);
+      socket.off("friend:request_accepted", onRequestAccepted);
+      socket.off("friend:invite", onInvite);
+    };
+  }, [user?.id]);
+
+  return (
+    <SocketContext.Provider
+      value={{
+        socket: socketRef.current,
+        connected,
+        onlineIds,
+        pendingInvite,
+        clearInvite,
+        notification,
+        dismissNotification,
+      }}
+    >
+      {children}
+    </SocketContext.Provider>
+  );
+}

@@ -157,10 +157,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   app.post("/api/friends/accept/:id", requireAuth, async (req, res) => {
-    const result = await storage.acceptFriend(req.params.id);
+    const id = String(req.params.id);
+    const result = await storage.acceptFriend(id);
     if (result) {
       const accepter = await storage.getUser(req.session.userId!);
-      // Notify the original requester that their request was accepted
       emitToUser(result.requesterId, "friend:request_accepted", {
         by: accepter?.username ?? "Qualcuno",
       });
@@ -169,12 +169,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   app.post("/api/friends/decline/:id", requireAuth, async (req, res) => {
-    await storage.declineFriendRequest(req.params.id);
+    await storage.declineFriendRequest(String(req.params.id));
     res.json({ ok: true });
   });
 
   app.delete("/api/friends/:friendUserId", requireAuth, async (req, res) => {
-    await storage.removeFriend(req.session.userId!, req.params.friendUserId);
+    await storage.removeFriend(req.session.userId!, String(req.params.friendUserId));
     res.json({ ok: true });
   });
 

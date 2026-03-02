@@ -1,4 +1,4 @@
-import React, { useEffect, useRef } from "react";
+import React, { useEffect } from "react";
 import {
   View,
   Text,
@@ -22,9 +22,8 @@ import Animated, {
 import { LinearGradient } from "expo-linear-gradient";
 import * as Haptics from "expo-haptics";
 import { Ionicons } from "@expo/vector-icons";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import { useAuth } from "@/context/AuthContext";
-import { getSocket } from "@/lib/socket";
 import Colors from "@/constants/colors";
 
 interface MenuButtonProps {
@@ -186,7 +185,6 @@ function FloatingCard({
 
 function FriendsButton({ compact }: { compact?: boolean }) {
   const { user } = useAuth();
-  const qc = useQueryClient();
 
   const { data: requests = [] } = useQuery<{ id: string }[]>({
     queryKey: ["/api/friends/requests"],
@@ -194,28 +192,6 @@ function FriendsButton({ compact }: { compact?: boolean }) {
     staleTime: 15000,
     refetchOnWindowFocus: true,
   });
-
-  // Real-time badge updates via socket
-  useEffect(() => {
-    if (!user) return;
-    const socket = getSocket(user.id);
-
-    const refresh = () => {
-      qc.invalidateQueries({ queryKey: ["/api/friends/requests"] });
-    };
-    const refreshFriends = () => {
-      qc.invalidateQueries({ queryKey: ["/api/friends"] });
-      qc.invalidateQueries({ queryKey: ["/api/friends/requests"] });
-    };
-
-    socket.on("friend:request_incoming", refresh);
-    socket.on("friend:request_accepted", refreshFriends);
-
-    return () => {
-      socket.off("friend:request_incoming", refresh);
-      socket.off("friend:request_accepted", refreshFriends);
-    };
-  }, [user?.id]);
 
   const badgeCount = requests.length;
 

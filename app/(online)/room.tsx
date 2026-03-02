@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useState, useEffect } from "react";
 import {
   View,
   Text,
@@ -20,6 +20,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { useQuery } from "@tanstack/react-query";
 import { useOnlineGame } from "@/context/OnlineGameContext";
 import { useAuth } from "@/context/AuthContext";
+import { useSocket } from "@/context/SocketContext";
 import { getSocket } from "@/lib/socket";
 import Colors from "@/constants/colors";
 
@@ -37,38 +38,12 @@ function InviteFriendsPanel({ roomCode, playerUserIds, myUserId }: {
   playerUserIds: string[];
   myUserId: string;
 }) {
-  const [onlineIds, setOnlineIds] = useState<Set<string>>(new Set());
+  const { onlineIds } = useSocket();
   const [sentIds, setSentIds] = useState<Set<string>>(new Set());
 
   const { data: friends = [] } = useQuery<FriendInfo[]>({
     queryKey: ["/api/friends"],
   });
-
-  useEffect(() => {
-    const socket = getSocket(myUserId);
-
-    const handleOnlineList = ({ onlineIds: ids }: { onlineIds: string[] }) => {
-      setOnlineIds(new Set(ids));
-    };
-    const handleStatus = ({ userId, online }: { userId: string; online: boolean }) => {
-      setOnlineIds((prev) => {
-        const next = new Set(prev);
-        if (online) next.add(userId); else next.delete(userId);
-        return next;
-      });
-    };
-
-    socket.on("friend:online_list", handleOnlineList);
-    socket.on("friend:status", handleStatus);
-
-    // Request fresh online list when panel mounts
-    socket.emit("friend:get_online_list");
-
-    return () => {
-      socket.off("friend:online_list", handleOnlineList);
-      socket.off("friend:status", handleStatus);
-    };
-  }, [myUserId]);
 
   const onlineFriendsNotInRoom = friends.filter(
     (f) => onlineIds.has(f.id) && !playerUserIds.includes(f.id)

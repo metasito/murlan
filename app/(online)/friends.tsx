@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useCallback } from "react";
 import {
   View,
   Text,
@@ -18,8 +18,8 @@ import { Ionicons } from "@expo/vector-icons";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { LinearGradient } from "expo-linear-gradient";
 import { useAuth } from "@/context/AuthContext";
+import { useSocket } from "@/context/SocketContext";
 import { apiRequest } from "@/lib/query-client";
-import { getSocket } from "@/lib/socket";
 import Colors from "@/constants/colors";
 
 interface FriendInfo {
@@ -45,85 +45,23 @@ function italianRelativeTime(isoString: string | null | undefined): string {
 export default function FriendsScreen() {
   const insets = useSafeAreaInsets();
   const { user } = useAuth();
+  const { onlineIds } = useSocket();
   const qc = useQueryClient();
   const [addCode, setAddCode] = useState("");
   const [addLoading, setAddLoading] = useState(false);
-  const [onlineIds, setOnlineIds] = useState<Set<string>>(new Set());
-  const [lastSeenMap, setLastSeenMap] = useState<Record<string, string>>({});
 
   const topPad = Platform.OS === "web" ? 67 : insets.top;
   const bottomPad = Platform.OS === "web" ? 34 : insets.bottom;
 
   const { data: friends = [], isLoading: friendsLoading } = useQuery<FriendInfo[]>({
     queryKey: ["/api/friends"],
+    refetchOnWindowFocus: true,
   });
 
   const { data: requests = [] } = useQuery<FriendRequest[]>({
     queryKey: ["/api/friends/requests"],
+    refetchOnWindowFocus: true,
   });
-
-  // Seed lastSeenMap from API response
-  useEffect(() => {
-    if (friends.length === 0) return;
-    setLastSeenMap((prev) => {
-      const next = { ...prev };
-      friends.forEach((f) => {
-        if (f.lastSeen && !next[f.id]) {
-          next[f.id] = f.lastSeen;
-        }
-      });
-      return next;
-    });
-  }, [friends]);
-
-  // Socket listeners for real-time status
-  useEffect(() => {
-    if (!user) return;
-    const socket = getSocket(user.id);
-
-    const handleOnlineList = ({ onlineIds: ids }: { onlineIds: string[] }) => {
-      setOnlineIds(new Set(ids));
-    };
-
-    const handleStatus = ({ userId, online, lastSeen }: { userId: string; online: boolean; lastSeen?: string }) => {
-      setOnlineIds((prev) => {
-        const next = new Set(prev);
-        if (online) {
-          next.add(userId);
-        } else {
-          next.delete(userId);
-          if (lastSeen) {
-            setLastSeenMap((m) => ({ ...m, [userId]: lastSeen }));
-          }
-        }
-        return next;
-      });
-    };
-
-    const handleRequestIncoming = () => {
-      qc.invalidateQueries({ queryKey: ["/api/friends/requests"] });
-    };
-
-    const handleRequestAccepted = () => {
-      qc.invalidateQueries({ queryKey: ["/api/friends"] });
-      qc.invalidateQueries({ queryKey: ["/api/friends/requests"] });
-    };
-
-    socket.on("friend:online_list", handleOnlineList);
-    socket.on("friend:status", handleStatus);
-    socket.on("friend:request_incoming", handleRequestIncoming);
-    socket.on("friend:request_accepted", handleRequestAccepted);
-
-    // Request fresh online list when screen mounts
-    socket.emit("friend:get_online_list");
-
-    return () => {
-      socket.off("friend:online_list", handleOnlineList);
-      socket.off("friend:status", handleStatus);
-      socket.off("friend:request_incoming", handleRequestIncoming);
-      socket.off("friend:request_accepted", handleRequestAccepted);
-    };
-  }, [user?.id]);
 
   const acceptMutation = useMutation({
     mutationFn: async (id: string) => {
@@ -200,7 +138,7 @@ export default function FriendsScreen() {
 
   const renderFriendRow = useCallback(({ item }: { item: FriendInfo }) => {
     const isOnline = onlineIds.has(item.id);
-    const seenAt = lastSeenMap[item.id] ?? item.lastSeen;
+    const seenAt = item.lastSeen;
     return (
       <View style={styles.friendRow}>
         <View style={styles.avatarWrapper}>
@@ -211,8 +149,8 @@ export default function FriendsScreen() {
         </View>
         <View style={styles.friendInfo}>
           <Text style={styles.friendName}>{item.username}</Text>
-          <Text style={styles.friendStatus}>
-            {isOnline ? "Online" : `Visto ${italianRelativeTime(seenAt)}`}
+          <Text style={[styles.friendStatus, isOnline && styles.friendStatusOnline]}>
+            {isOnline ? "● Online" : `Visto ${italianRelativeTime(seenAt)}`}
           </Text>
         </View>
         <Pressable
@@ -224,7 +162,7 @@ export default function FriendsScreen() {
         </Pressable>
       </View>
     );
-  }, [onlineIds, lastSeenMap]);
+  }, [onlineIds]);
 
   return (
     <View style={[styles.container, { paddingTop: topPad, paddingBottom: bottomPad + 16 }]}>
@@ -305,7 +243,9 @@ export default function FriendsScreen() {
               </View>
             )}
 
-            <Text style={styles.sectionTitle}>AMICI ({friends.length})</Text>
+            <Text style={styles.sectionTitle}>
+              AMICI ({friends.length}) · {Array.from(onlineIds).filter(id => friends.some(f => f.id === id)).length} Online
+            </Text>
           </>
         }
         data={friends}
@@ -470,6 +410,7 @@ const styles = StyleSheet.create({
   friendInfo: { flex: 1, gap: 2 },
   friendName: { fontFamily: "Inter_500Medium", fontSize: 14, color: Colors.text },
   friendStatus: { fontFamily: "Inter_400Regular", fontSize: 12, color: Colors.textMuted },
+  friendStatusOnline: { color: "#4CAF50" },
   removeBtn: {
     padding: 6,
   },

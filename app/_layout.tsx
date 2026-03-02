@@ -2,13 +2,16 @@ import { QueryClientProvider } from "@tanstack/react-query";
 import { Stack } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
 import React, { useEffect } from "react";
+import { View } from "react-native";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { KeyboardProvider } from "react-native-keyboard-controller";
+import { SafeAreaProvider } from "react-native-safe-area-context";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { queryClient } from "@/lib/query-client";
 import { GameProvider } from "@/context/GameContext";
 import { AuthProvider } from "@/context/AuthContext";
-import { InviteProvider } from "@/context/InviteContext";
+import { SocketProvider, useSocket } from "@/context/SocketContext";
+import NotificationBanner from "@/components/NotificationBanner";
 import {
   useFonts,
   Rajdhani_400Regular,
@@ -25,21 +28,26 @@ import {
 SplashScreen.preventAutoHideAsync();
 
 function RootLayoutNav() {
+  const { notification, dismissNotification } = useSocket();
+
   return (
-    <Stack screenOptions={{ headerShown: false, animation: "fade" }}>
-      <Stack.Screen name="index" />
-      <Stack.Screen name="lobby" />
-      <Stack.Screen name="rules" />
-      <Stack.Screen name="auth" />
-      <Stack.Screen name="(online)" />
-      <Stack.Screen name="game" options={{ animation: "slide_from_bottom" }} />
-      <Stack.Screen name="result" options={{ animation: "fade" }} />
-    </Stack>
+    <View style={{ flex: 1 }}>
+      <Stack screenOptions={{ headerShown: false, animation: "fade" }}>
+        <Stack.Screen name="index" />
+        <Stack.Screen name="lobby" />
+        <Stack.Screen name="rules" />
+        <Stack.Screen name="auth" />
+        <Stack.Screen name="(online)" />
+        <Stack.Screen name="game" options={{ animation: "slide_from_bottom" }} />
+        <Stack.Screen name="result" options={{ animation: "fade" }} />
+      </Stack>
+      <NotificationBanner notification={notification} onDismiss={dismissNotification} />
+    </View>
   );
 }
 
 export default function RootLayout() {
-  const [fontsLoaded] = useFonts({
+  const [fontsLoaded, fontError] = useFonts({
     Rajdhani_400Regular,
     Rajdhani_500Medium,
     Rajdhani_600SemiBold,
@@ -50,27 +58,29 @@ export default function RootLayout() {
   });
 
   useEffect(() => {
-    if (fontsLoaded) {
+    if (fontsLoaded || fontError) {
       SplashScreen.hideAsync();
     }
-  }, [fontsLoaded]);
+  }, [fontsLoaded, fontError]);
 
-  if (!fontsLoaded) return null;
+  if (!fontsLoaded && !fontError) return null;
 
   return (
     <ErrorBoundary>
       <QueryClientProvider client={queryClient}>
-        <GestureHandlerRootView style={{ flex: 1 }}>
-          <KeyboardProvider>
-            <AuthProvider>
-              <InviteProvider>
-                <GameProvider>
-                  <RootLayoutNav />
-                </GameProvider>
-              </InviteProvider>
-            </AuthProvider>
-          </KeyboardProvider>
-        </GestureHandlerRootView>
+        <SafeAreaProvider>
+          <GestureHandlerRootView style={{ flex: 1 }}>
+            <KeyboardProvider>
+              <AuthProvider>
+                <SocketProvider>
+                  <GameProvider>
+                    <RootLayoutNav />
+                  </GameProvider>
+                </SocketProvider>
+              </AuthProvider>
+            </KeyboardProvider>
+          </GestureHandlerRootView>
+        </SafeAreaProvider>
       </QueryClientProvider>
     </ErrorBoundary>
   );

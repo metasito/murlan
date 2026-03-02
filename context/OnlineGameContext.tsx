@@ -7,7 +7,8 @@ import React, {
   useRef,
   ReactNode,
 } from "react";
-import { getSocket, disconnectSocket } from "@/lib/socket";
+import { getSocket } from "@/lib/socket";
+import type { Socket } from "socket.io-client";
 import type { GameState } from "@/lib/gameEngine";
 
 export interface RoomState {
@@ -67,108 +68,114 @@ export function OnlineGameProvider({ userId, children }: { userId: string; child
   const [entrySource, setEntrySource] = useState<"quickmatch" | "friends" | null>(null);
   const [rematchVoteState, setRematchVoteState] = useState<RematchVoteState | null>(null);
   const [cumulativeScores, setCumulativeScores] = useState<Record<string, number>>({});
-  const socketRef = useRef(getSocket(userId));
+
+  // Always use the singleton socket — already connected by SocketProvider
+  const socket: Socket = getSocket(userId);
 
   useEffect(() => {
-    const s = socketRef.current;
+    const onConnect = () => setConnected(true);
+    const onDisconnect = () => setConnected(false);
 
-    s.on("connect", () => setConnected(true));
-    s.on("disconnect", () => setConnected(false));
-
-    s.on("room:state", (data: RoomState) => setRoom(data));
-    s.on("room:error", ({ message }: { message: string }) => setError(message));
-
-    s.on("game:state", (state: GameState) => {
+    const onRoomState = (data: RoomState) => setRoom(data);
+    const onRoomError = ({ message }: { message: string }) => setError(message);
+    const onGameState = (state: GameState) => {
       setGameState(state);
       setRematchVoteState(null);
-    });
-    s.on("game:error", ({ message }: { message: string }) => setError(message));
-    s.on("game:started", () => {});
-    s.on("game:over", ({ cumulativeScores: cs }: { cumulativeScores?: Record<string, number> }) => {
+    };
+    const onGameError = ({ message }: { message: string }) => setError(message);
+    const onGameOver = ({ cumulativeScores: cs }: { cumulativeScores?: Record<string, number> }) => {
       if (cs) setCumulativeScores(cs);
-    });
-
-    s.on("game:vote_state", (vs: RematchVoteState) => {
-      setRematchVoteState(vs);
-    });
-
-    s.on("game:reaction", (r: { emoji: string; fromSeat: number; username: string }) => {
+    };
+    const onVoteState = (vs: RematchVoteState) => setRematchVoteState(vs);
+    const onReaction = (r: { emoji: string; fromSeat: number; username: string }) => {
       const id = Date.now().toString() + Math.random().toString(36).substr(2, 5);
       setReactions((prev) => [...prev.slice(-9), { ...r, id }]);
       setTimeout(() => setReactions((prev) => prev.filter((x) => x.id !== id)), 2500);
-    });
+    };
+    const onPlayerLeft = () => setError("Un giocatore ha abbandonato la partita");
 
-    s.on("game:player_left", () => setError("Un giocatore ha abbandonato la partita"));
+    socket.on("connect", onConnect);
+    socket.on("disconnect", onDisconnect);
+    socket.on("room:state", onRoomState);
+    socket.on("room:error", onRoomError);
+    socket.on("game:state", onGameState);
+    socket.on("game:error", onGameError);
+    socket.on("game:started", () => {});
+    socket.on("game:over", onGameOver);
+    socket.on("game:vote_state", onVoteState);
+    socket.on("game:reaction", onReaction);
+    socket.on("game:player_left", onPlayerLeft);
 
-    if (!s.connected) s.connect();
+    // Sync connection state immediately
+    if (socket.connected) setConnected(true);
 
     return () => {
-      s.off("connect");
-      s.off("disconnect");
-      s.off("room:state");
-      s.off("room:error");
-      s.off("game:state");
-      s.off("game:error");
-      s.off("game:started");
-      s.off("game:over");
-      s.off("game:vote_state");
-      s.off("game:reaction");
-      s.off("game:player_left");
+      socket.off("connect", onConnect);
+      socket.off("disconnect", onDisconnect);
+      socket.off("room:state", onRoomState);
+      socket.off("room:error", onRoomError);
+      socket.off("game:state", onGameState);
+      socket.off("game:error", onGameError);
+      socket.off("game:started");
+      socket.off("game:over", onGameOver);
+      socket.off("game:vote_state", onVoteState);
+      socket.off("game:reaction", onReaction);
+      socket.off("game:player_left", onPlayerLeft);
     };
-  }, []);
+  }, [userId]);
 
   const mySeatIndex = room?.players.find((p) => p.userId === userId)?.seatIndex ?? 0;
 
   const createRoom = useCallback((gameMode: "free_for_all" | "teams", maxPlayers: number) => {
     setEntrySource("friends");
-    socketRef.current.emit("room:create", { gameMode, maxPlayers });
-  }, []);
+    socket.emit("room:create", { gameMode, maxPlayers });
+  }, [userId]);
 
   const joinRoom = useCallback((code: string) => {
     setEntrySource("friends");
-    socketRef.current.emit("room:join", { code });
-  }, []);
+    socket.emit("room:join", { code });
+  }, [userId]);
 
   const leaveRoom = useCallback(() => {
-    socketRef.current.emit("room:leave");
+    socket.emit("room:leave");
     setRoom(null);
     setGameState(null);
     setRematchVoteState(null);
     setCumulativeScores({});
-  }, []);
+  }, [userId]);
 
   const quickmatch = useCallback((maxPlayers: number, gameMode: "free_for_all" | "teams") => {
     setEntrySource("quickmatch");
-    socketRef.current.emit("room:quickmatch", { maxPlayers, gameMode });
-  }, []);
+    socket.emit("room:quickmatch", { maxPlayers, gameMode });
+  }, [userId]);
 
   const setRoomGameMode = useCallback((gameMode: "free_for_all" | "teams") => {
-    socketRef.current.emit("room:set_game_mode", { gameMode });
-  }, []);
+    socket.emit("room:set_game_mode", { gameMode });
+  }, [userId]);
 
   const startGame = useCallback(() => {
-    socketRef.current.emit("room:start");
-  }, []);
+    socket.emit("room:start");
+  }, [userId]);
 
   const requestPlayAgain = useCallback(() => {
-    socketRef.current.emit("room:start");
-  }, []);
+    socket.emit("room:start");
+  }, [userId]);
 
   const voteRematch = useCallback(() => {
-    socketRef.current.emit("game:rematch_vote");
-  }, []);
+    socket.emit("game:rematch_vote");
+  }, [userId]);
 
   const playCards = useCallback((cardIds: string[]) => {
-    socketRef.current.emit("game:play", { cardIds });
-  }, []);
+    socket.emit("game:play", { cardIds });
+  }, [userId]);
 
   const pass = useCallback(() => {
-    socketRef.current.emit("game:pass");
-  }, []);
+    socket.emit("game:pass");
+  }, [userId]);
 
   const sendReaction = useCallback((emoji: string) => {
-    socketRef.current.emit("game:reaction", { emoji });
-  }, []);
+    socket.emit("game:reaction", { emoji });
+  }, [userId]);
 
   const clearError = useCallback(() => setError(null), []);
 

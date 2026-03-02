@@ -18,7 +18,7 @@ import * as Haptics from "expo-haptics";
 import { Ionicons } from "@expo/vector-icons";
 import { useOnlineGame } from "@/context/OnlineGameContext";
 import { useAuth } from "@/context/AuthContext";
-import { useInvite } from "@/context/InviteContext";
+import { useSocket } from "@/context/SocketContext";
 import Colors from "@/constants/colors";
 
 export default function OnlineLobbyScreen() {
@@ -26,7 +26,7 @@ export default function OnlineLobbyScreen() {
   const { width: W, height: H } = useWindowDimensions();
   const { user } = useAuth();
   const { createRoom, joinRoom, room, connected, error, clearError } = useOnlineGame();
-  const { pendingInvite, clearInvite } = useInvite();
+  const { pendingInvite, clearInvite } = useSocket();
   const [joinModalVisible, setJoinModalVisible] = useState(false);
   const [joinCode, setJoinCode] = useState("");
   const [createMode, setCreateMode] = useState<"free_for_all" | "teams">("free_for_all");

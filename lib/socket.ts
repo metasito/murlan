@@ -1,26 +1,38 @@
 import { io, Socket } from "socket.io-client";
 import { getApiUrl } from "@/lib/query-client";
 
-let socket: Socket | null = null;
+const socketMap = new Map<string, Socket>();
 
-export function getSocket(userId: string): Socket {
-  if (!socket || !socket.connected) {
-    const baseUrl = getApiUrl().replace(/\/$/, "");
-    socket = io(baseUrl, {
-      auth: { userId },
-      transports: ["websocket", "polling"],
-      autoConnect: false,
-      reconnection: true,
-      reconnectionAttempts: 10,
-      reconnectionDelay: 1000,
-    });
+export function connectSocket(userId: string): Socket {
+  if (socketMap.has(userId)) {
+    return socketMap.get(userId)!;
   }
+  const baseUrl = getApiUrl().replace(/\/$/, "");
+  const socket = io(baseUrl, {
+    auth: { userId },
+    transports: ["websocket", "polling"],
+    autoConnect: true,
+    reconnection: true,
+    reconnectionAttempts: Infinity,
+    reconnectionDelay: 1000,
+    reconnectionDelayMax: 5000,
+  });
+  socketMap.set(userId, socket);
   return socket;
 }
 
-export function disconnectSocket() {
-  if (socket) {
-    socket.disconnect();
-    socket = null;
+export function getSocket(userId: string): Socket {
+  const s = socketMap.get(userId);
+  if (!s) {
+    return connectSocket(userId);
+  }
+  return s;
+}
+
+export function disconnectSocket(userId: string) {
+  const s = socketMap.get(userId);
+  if (s) {
+    s.disconnect();
+    socketMap.delete(userId);
   }
 }
