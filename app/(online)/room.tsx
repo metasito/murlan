@@ -1,4 +1,4 @@
-import React, { useEffect } from "react";
+import React, { useEffect, useState } from "react";
 import {
   View,
   Text,
@@ -17,11 +17,104 @@ import { LinearGradient } from "expo-linear-gradient";
 import * as Haptics from "expo-haptics";
 import * as Clipboard from "expo-clipboard";
 import { Ionicons } from "@expo/vector-icons";
+import { useQuery } from "@tanstack/react-query";
 import { useOnlineGame } from "@/context/OnlineGameContext";
 import { useAuth } from "@/context/AuthContext";
+import { getSocket } from "@/lib/socket";
 import Colors from "@/constants/colors";
 
 const TEAM_COLORS = { A: Colors.gold, B: "#6b8ef5" };
+
+interface FriendInfo {
+  id: string;
+  username: string;
+  friendCode: string;
+  lastSeen: string | null;
+}
+
+function InviteFriendsPanel({ roomCode, playerUserIds, myUserId }: {
+  roomCode: string;
+  playerUserIds: string[];
+  myUserId: string;
+}) {
+  const [onlineIds, setOnlineIds] = useState<Set<string>>(new Set());
+  const [sentIds, setSentIds] = useState<Set<string>>(new Set());
+
+  const { data: friends = [] } = useQuery<FriendInfo[]>({
+    queryKey: ["/api/friends"],
+  });
+
+  useEffect(() => {
+    const socket = getSocket(myUserId);
+
+    const handleOnlineList = ({ onlineIds: ids }: { onlineIds: string[] }) => {
+      setOnlineIds(new Set(ids));
+    };
+    const handleStatus = ({ userId, online }: { userId: string; online: boolean }) => {
+      setOnlineIds((prev) => {
+        const next = new Set(prev);
+        if (online) next.add(userId); else next.delete(userId);
+        return next;
+      });
+    };
+
+    socket.on("friend:online_list", handleOnlineList);
+    socket.on("friend:status", handleStatus);
+
+    return () => {
+      socket.off("friend:online_list", handleOnlineList);
+      socket.off("friend:status", handleStatus);
+    };
+  }, [myUserId]);
+
+  const onlineFriendsNotInRoom = friends.filter(
+    (f) => onlineIds.has(f.id) && !playerUserIds.includes(f.id)
+  );
+
+  function handleInvite(friend: FriendInfo) {
+    const socket = getSocket(myUserId);
+    socket.emit("friend:invite", { friendUserId: friend.id, roomCode });
+    setSentIds((prev) => new Set(prev).add(friend.id));
+    setTimeout(() => {
+      setSentIds((prev) => {
+        const next = new Set(prev);
+        next.delete(friend.id);
+        return next;
+      });
+    }, 2000);
+  }
+
+  return (
+    <View style={inviteStyles.panel}>
+      <Text style={inviteStyles.panelTitle}>INVITA AMICI</Text>
+      {onlineFriendsNotInRoom.length === 0 ? (
+        <Text style={inviteStyles.emptyText}>Nessun amico online</Text>
+      ) : (
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={inviteStyles.chipRow}>
+          {onlineFriendsNotInRoom.map((friend) => {
+            const sent = sentIds.has(friend.id);
+            return (
+              <Pressable
+                key={friend.id}
+                onPress={() => handleInvite(friend)}
+                style={({ pressed }) => [inviteStyles.chip, pressed && { opacity: 0.85 }]}
+              >
+                <View style={inviteStyles.chipAvatar}>
+                  <Text style={inviteStyles.chipInitial}>{friend.username.charAt(0).toUpperCase()}</Text>
+                  <View style={inviteStyles.onlineDot} />
+                </View>
+                <Text style={inviteStyles.chipName} numberOfLines={1}>{friend.username}</Text>
+                {sent && (
+                  <Ionicons name="checkmark-circle" size={14} color="#4CAF50" />
+                )}
+              </Pressable>
+            );
+          })}
+        </ScrollView>
+      )}
+    </View>
+  );
+}
 
 export default function RoomScreen() {
   const insets = useSafeAreaInsets();
@@ -68,6 +161,8 @@ export default function RoomScreen() {
   const isHost = room.hostUserId === user?.id;
   const canStart = isHost && room.players.length >= 2 && room.status === "waiting";
   const maxSeats = room.maxPlayers;
+  const hasEmptySeats = room.players.length < maxSeats;
+  const showInvitePanel = room.status === "waiting" && hasEmptySeats && !!user;
 
   async function handleCopyCode() {
     await Clipboard.setStringAsync(room!.code);
@@ -108,6 +203,8 @@ export default function RoomScreen() {
 
   const modeLabel = room.gameMode === "teams" ? "A coppie" : "Tutti contro tutti";
   const modeIcon: "people" | "person" = room.gameMode === "teams" ? "people" : "person";
+
+  const playerUserIds = room.players.map((p) => p.userId);
 
   const SlotsGrid = (
     <View style={styles.slotsSection}>
@@ -238,6 +335,14 @@ export default function RoomScreen() {
               </Text>
             </View>
 
+            {showInvitePanel && (
+              <InviteFriendsPanel
+                roomCode={room.code}
+                playerUserIds={playerUserIds}
+                myUserId={user!.id}
+              />
+            )}
+
             <View style={styles.landscapeFooter}>
               {FooterContent}
             </View>
@@ -296,6 +401,14 @@ export default function RoomScreen() {
         </View>
 
         {SlotsGrid}
+
+        {showInvitePanel && (
+          <InviteFriendsPanel
+            roomCode={room.code}
+            playerUserIds={playerUserIds}
+            myUserId={user!.id}
+          />
+        )}
       </ScrollView>
 
       <View style={styles.footer}>
@@ -304,6 +417,70 @@ export default function RoomScreen() {
     </View>
   );
 }
+
+const inviteStyles = StyleSheet.create({
+  panel: {
+    backgroundColor: Colors.bgSurface,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    padding: 14,
+    gap: 10,
+  },
+  panelTitle: {
+    fontFamily: "Inter_400Regular",
+    fontSize: 11,
+    color: Colors.textMuted,
+    letterSpacing: 2,
+  },
+  emptyText: {
+    fontFamily: "Inter_400Regular",
+    fontSize: 13,
+    color: Colors.textMuted,
+  },
+  chipRow: {
+    flexDirection: "row",
+    gap: 12,
+    paddingVertical: 2,
+  },
+  chip: {
+    alignItems: "center",
+    gap: 4,
+    minWidth: 54,
+  },
+  chipAvatar: {
+    width: 42,
+    height: 42,
+    borderRadius: 21,
+    backgroundColor: Colors.felt,
+    alignItems: "center",
+    justifyContent: "center",
+    position: "relative",
+  },
+  chipInitial: {
+    fontFamily: "Rajdhani_700Bold",
+    fontSize: 17,
+    color: Colors.gold,
+  },
+  onlineDot: {
+    position: "absolute",
+    bottom: 1,
+    right: 1,
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+    backgroundColor: "#4CAF50",
+    borderWidth: 1.5,
+    borderColor: Colors.bgSurface,
+  },
+  chipName: {
+    fontFamily: "Inter_400Regular",
+    fontSize: 11,
+    color: Colors.text,
+    textAlign: "center",
+    maxWidth: 54,
+  },
+});
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: Colors.bg },

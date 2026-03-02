@@ -9,6 +9,7 @@ export const users = pgTable("users", {
   password: text("password").notNull(),
   friendCode: varchar("friend_code", { length: 8 }).notNull().unique(),
   createdAt: timestamp("created_at").defaultNow(),
+  lastSeen: timestamp("last_seen"),
 });
 
 export const roomStatusEnum = pgEnum("room_status", ["waiting", "in_progress", "finished"]);

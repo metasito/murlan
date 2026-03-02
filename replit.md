@@ -87,6 +87,7 @@ context/
   GameContext.tsx       # Offline game state
   AuthContext.tsx       # User auth (username, friendCode, session)
   OnlineGameContext.tsx # Online game state (socket events)
+  InviteContext.tsx     # Global friend invite listener + pendingInvite state
 
 assets/sounds/          # 12 WAV files (RIFF format, distinct sizes)
   card_select.mp3, card_play.mp3, card_pass.mp3
@@ -170,6 +171,16 @@ All 12 events: `playCardSelect`, `playCardPlay`, `playCardPass`, `playYourTurn`,
   - `"friends"` (or null) → `router.replace("/(online)")`
 - `leaveRoom()` in context does NOT navigate — navigation is the screen's responsibility
 - `entrySource` is set in context: `"quickmatch"` when `quickmatch()` is called, `"friends"` when `createRoom()` or `joinRoom()` is called
+
+## Friends System
+
+- **Home screen**: Friends icon button (`people-outline`) in the user row, shows red badge with pending request count (fetched from `/api/friends/requests`). Navigates to `/online/friends`.
+- **Friends screen**: Real-time online/offline status dots (green #4CAF50 / grey textMuted), Italian relative time for last seen, remove friend (trash icon + alert), decline requests (× button).
+- **Room lobby invite panel**: Shows online friends not yet in the room as avatar chips. Tapping emits `friend:invite` socket event. Visible only when `room.status === "waiting"` and there are empty seats.
+- **Invite notification**: `InviteContext` listens globally for `friend:invite` socket events. Shows `Alert.alert` from any screen. Pressing "Unisciti" navigates to Con Amici with the join modal pre-filled with the room code.
+- **Socket events**: `friend:online_list` (emitted on connect with current online friend IDs), `friend:status` (online/offline + lastSeen on disconnect), `friend:invite` (room invite from friend).
+- **DB**: `users.last_seen` timestamp column — updated on socket disconnect via `storage.updateLastSeen()`.
+- **API**: `DELETE /api/friends/:friendUserId`, `POST /api/friends/decline/:id`, `GET /api/friends` now includes `lastSeen` field.
 
 ## Design
 

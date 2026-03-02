@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import {
   View,
   Text,
@@ -18,6 +18,7 @@ import * as Haptics from "expo-haptics";
 import { Ionicons } from "@expo/vector-icons";
 import { useOnlineGame } from "@/context/OnlineGameContext";
 import { useAuth } from "@/context/AuthContext";
+import { useInvite } from "@/context/InviteContext";
 import Colors from "@/constants/colors";
 
 export default function OnlineLobbyScreen() {
@@ -25,6 +26,7 @@ export default function OnlineLobbyScreen() {
   const { width: W, height: H } = useWindowDimensions();
   const { user } = useAuth();
   const { createRoom, joinRoom, room, connected, error, clearError } = useOnlineGame();
+  const { pendingInvite, clearInvite } = useInvite();
   const [joinModalVisible, setJoinModalVisible] = useState(false);
   const [joinCode, setJoinCode] = useState("");
   const [createMode, setCreateMode] = useState<"free_for_all" | "teams">("free_for_all");
@@ -34,17 +36,26 @@ export default function OnlineLobbyScreen() {
   const topPad = Platform.OS === "web" ? 67 : insets.top;
   const bottomPad = Platform.OS === "web" ? 34 : insets.bottom;
 
-  React.useEffect(() => {
+  useEffect(() => {
     if (room) {
       router.push("/(online)/room");
     }
   }, [room?.roomId]);
 
-  React.useEffect(() => {
+  useEffect(() => {
     if (error) {
       Alert.alert("Errore", error, [{ text: "OK", onPress: clearError }]);
     }
   }, [error]);
+
+  // Auto-open join modal if there's a pending invite
+  useEffect(() => {
+    if (pendingInvite) {
+      setJoinCode(pendingInvite.roomCode);
+      setJoinModalVisible(true);
+      clearInvite();
+    }
+  }, [pendingInvite]);
 
   function handleCreate() {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);

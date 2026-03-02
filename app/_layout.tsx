@@ -8,6 +8,7 @@ import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { queryClient } from "@/lib/query-client";
 import { GameProvider } from "@/context/GameContext";
 import { AuthProvider } from "@/context/AuthContext";
+import { InviteProvider } from "@/context/InviteContext";
 import {
   useFonts,
   Rajdhani_400Regular,
@@ -62,9 +63,11 @@ export default function RootLayout() {
         <GestureHandlerRootView style={{ flex: 1 }}>
           <KeyboardProvider>
             <AuthProvider>
-              <GameProvider>
-                <RootLayoutNav />
-              </GameProvider>
+              <InviteProvider>
+                <GameProvider>
+                  <RootLayoutNav />
+                </GameProvider>
+              </InviteProvider>
             </AuthProvider>
           </KeyboardProvider>
         </GestureHandlerRootView>

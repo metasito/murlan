@@ -102,7 +102,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.get("/api/friends", requireAuth, async (req, res) => {
     const friends = await storage.getFriends(req.session.userId!);
-    res.json(friends.map((f) => ({ id: f.friend.id, username: f.friend.username, friendCode: f.friend.friendCode })));
+    res.json(friends.map((f) => ({
+      id: f.friend.id,
+      username: f.friend.username,
+      friendCode: f.friend.friendCode,
+      lastSeen: f.friend.lastSeen ? f.friend.lastSeen.toISOString() : null,
+    })));
   });
 
   app.get("/api/friends/requests", requireAuth, async (req, res) => {
@@ -139,6 +144,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.post("/api/friends/accept/:id", requireAuth, async (req, res) => {
     await storage.acceptFriend(req.params.id);
+    res.json({ ok: true });
+  });
+
+  app.post("/api/friends/decline/:id", requireAuth, async (req, res) => {
+    await storage.declineFriendRequest(req.params.id);
+    res.json({ ok: true });
+  });
+
+  app.delete("/api/friends/:friendUserId", requireAuth, async (req, res) => {
+    await storage.removeFriend(req.session.userId!, req.params.friendUserId);
     res.json({ ok: true });
   });
 

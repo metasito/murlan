@@ -1,4 +1,4 @@
-import { eq, and, or } from "drizzle-orm";
+import { eq, and, or, sql } from "drizzle-orm";
 import { randomUUID } from "crypto";
 import { db } from "./db";
 import { users, rooms, roomPlayers, friends } from "@shared/schema";
@@ -9,6 +9,7 @@ export interface IStorage {
   getUserByUsername(username: string): Promise<User | undefined>;
   getUserByFriendCode(code: string): Promise<User | undefined>;
   createUser(user: InsertUser): Promise<User>;
+  updateLastSeen(userId: string): Promise<void>;
 
   createRoom(hostUserId: string, gameMode: "free_for_all" | "teams", maxPlayers: number): Promise<Room>;
   getRoomByCode(code: string): Promise<Room | undefined>;
@@ -26,6 +27,8 @@ export interface IStorage {
   addFriend(userId: string, friendUserId: string): Promise<void>;
   acceptFriend(id: string): Promise<void>;
   areFriends(userId: string, friendUserId: string): Promise<boolean>;
+  removeFriend(userId: string, friendUserId: string): Promise<void>;
+  declineFriendRequest(id: string): Promise<void>;
 }
 
 function generateFriendCode(): string {
@@ -54,7 +57,6 @@ class DrizzleStorage implements IStorage {
 
   async createUser(insertUser: InsertUser): Promise<User> {
     let friendCode = generateFriendCode();
-    // Retry until unique
     for (let i = 0; i < 10; i++) {
       const existing = await this.getUserByFriendCode(friendCode);
       if (!existing) break;
@@ -67,9 +69,12 @@ class DrizzleStorage implements IStorage {
     return user;
   }
 
+  async updateLastSeen(userId: string): Promise<void> {
+    await db.update(users).set({ lastSeen: new Date() }).where(eq(users.id, userId));
+  }
+
   async createRoom(hostUserId: string, gameMode: "free_for_all" | "teams", maxPlayers: number): Promise<Room> {
     let code = generateRoomCode();
-    // Retry until unique
     for (let i = 0; i < 10; i++) {
       const existing = await this.getRoomByCode(code);
       if (!existing) break;
@@ -154,7 +159,6 @@ class DrizzleStorage implements IStorage {
 
   async acceptFriend(id: string) {
     await db.update(friends).set({ status: "accepted" }).where(eq(friends.id, id));
-    // Also create the reverse friendship
     const [f] = await db.select().from(friends).where(eq(friends.id, id));
     if (f) {
       const exists = await this.areFriends(f.friendUserId, f.userId);
@@ -180,6 +184,19 @@ class DrizzleStorage implements IStorage {
         )
       );
     return !!row;
+  }
+
+  async removeFriend(userId: string, friendUserId: string): Promise<void> {
+    await db.delete(friends).where(
+      or(
+        and(eq(friends.userId, userId), eq(friends.friendUserId, friendUserId)),
+        and(eq(friends.userId, friendUserId), eq(friends.friendUserId, userId))
+      )
+    );
+  }
+
+  async declineFriendRequest(id: string): Promise<void> {
+    await db.delete(friends).where(eq(friends.id, id));
   }
 }
 

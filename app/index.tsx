@@ -22,6 +22,7 @@ import Animated, {
 import { LinearGradient } from "expo-linear-gradient";
 import * as Haptics from "expo-haptics";
 import { Ionicons } from "@expo/vector-icons";
+import { useQuery } from "@tanstack/react-query";
 import { useAuth } from "@/context/AuthContext";
 import Colors from "@/constants/colors";
 
@@ -182,6 +183,37 @@ function FloatingCard({
   );
 }
 
+function FriendsButton({ compact }: { compact?: boolean }) {
+  const { user } = useAuth();
+
+  const { data: requests = [] } = useQuery<{ id: string }[]>({
+    queryKey: ["/api/friends/requests"],
+    enabled: !!user,
+    staleTime: 30000,
+  });
+
+  const badgeCount = requests.length;
+
+  function handlePress() {
+    if (user) {
+      router.push("/(online)/friends");
+    } else {
+      router.push("/auth");
+    }
+  }
+
+  return (
+    <Pressable onPress={handlePress} style={styles.friendsBtn} hitSlop={8}>
+      <Ionicons name="people-outline" size={compact ? 18 : 20} color={Colors.gold} />
+      {badgeCount > 0 && (
+        <View style={styles.badge}>
+          <Text style={styles.badgeText}>{badgeCount > 9 ? "9+" : String(badgeCount)}</Text>
+        </View>
+      )}
+    </Pressable>
+  );
+}
+
 export default function HomeScreen() {
   const insets = useSafeAreaInsets();
   const { user, logout } = useAuth();
@@ -250,6 +282,7 @@ export default function HomeScreen() {
                 <Pressable onPress={logout} style={styles.logoutBtn}>
                   <Text style={styles.logoutText}>Esci</Text>
                 </Pressable>
+                <FriendsButton compact />
               </Animated.View>
             )}
           </View>
@@ -302,6 +335,7 @@ export default function HomeScreen() {
           <Pressable onPress={logout} style={styles.logoutBtn}>
             <Text style={styles.logoutText}>Esci</Text>
           </Pressable>
+          <FriendsButton />
         </Animated.View>
       )}
 
@@ -411,6 +445,28 @@ const styles = StyleSheet.create({
   userText: { fontFamily: "Inter_500Medium", fontSize: 13, color: Colors.text },
   logoutBtn: { paddingHorizontal: 8, paddingVertical: 2 },
   logoutText: { fontFamily: "Inter_400Regular", fontSize: 12, color: Colors.textMuted },
+  friendsBtn: {
+    position: "relative",
+    padding: 4,
+  },
+  badge: {
+    position: "absolute",
+    top: 0,
+    right: 0,
+    minWidth: 16,
+    height: 16,
+    borderRadius: 8,
+    backgroundColor: "#e74c3c",
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: 3,
+  },
+  badgeText: {
+    fontFamily: "Inter_600SemiBold",
+    fontSize: 9,
+    color: "#fff",
+    lineHeight: 12,
+  },
   cardDecoration: { flexDirection: "row", justifyContent: "center", gap: 20, paddingVertical: 24 },
   suitDecor: { fontSize: 24, opacity: 0.7 },
   menu: { flex: 1, paddingHorizontal: 24, justifyContent: "center", gap: 12 },

@@ -63,12 +63,23 @@ export function setupSocket(httpServer: HttpServer) {
     next();
   });
 
-  io.on("connection", (socket) => {
+  io.on("connection", async (socket) => {
     const userId = socket.data.userId as string;
     userSocketMap.set(userId, socket.id);
 
     // Notify friends of online status
     emitFriendStatus(io, userId, true);
+
+    // Send this socket the list of which friends are currently online
+    try {
+      const friends = await storage.getFriends(userId);
+      const onlineIds = friends
+        .map((f) => f.friend.id)
+        .filter((id) => userSocketMap.has(id));
+      socket.emit("friend:online_list", { onlineIds });
+    } catch {
+      // non-critical, ignore
+    }
 
     // ── Room events ──────────────────────────────────────────────────────────
 
@@ -415,7 +426,10 @@ export function setupSocket(httpServer: HttpServer) {
 
     socket.on("disconnect", async () => {
       userSocketMap.delete(userId);
-      emitFriendStatus(io, userId, false);
+      // Update last seen before notifying friends
+      try { await storage.updateLastSeen(userId); } catch { /* ignore */ }
+      const lastSeen = new Date().toISOString();
+      emitFriendStatusOffline(io, userId, lastSeen);
       await handleLeaveRoom(io, socket, userId);
     });
   });
@@ -474,6 +488,16 @@ async function emitFriendStatus(io: SocketServer, userId: string, online: boolea
     const friendSocket = userSocketMap.get(f.friend.id);
     if (friendSocket) {
       io.to(friendSocket).emit("friend:status", { userId, online });
+    }
+  });
+}
+
+async function emitFriendStatusOffline(io: SocketServer, userId: string, lastSeen: string) {
+  const friends = await storage.getFriends(userId).catch(() => []);
+  friends.forEach((f) => {
+    const friendSocket = userSocketMap.get(f.friend.id);
+    if (friendSocket) {
+      io.to(friendSocket).emit("friend:status", { userId, online: false, lastSeen });
     }
   });
 }
