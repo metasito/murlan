@@ -10,7 +10,7 @@ import {
   ScrollView,
   useWindowDimensions,
 } from "react-native";
-import { router } from "expo-router";
+import { router, useNavigation } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { useOnlineGame } from "@/context/OnlineGameContext";
@@ -66,6 +66,7 @@ export default function QuickmatchScreen() {
   const insets = useSafeAreaInsets();
   const { width: W, height: H } = useWindowDimensions();
   const { quickmatch, leaveRoom, room, error, clearError } = useOnlineGame();
+  const navigation = useNavigation();
 
   const [phase, setPhase] = useState<"selecting" | "searching">("selecting");
   const [selectedMode, setSelectedMode] = useState<ModeOption | null>(null);
@@ -87,7 +88,9 @@ export default function QuickmatchScreen() {
       if (phase === "searching") {
         handleCancelSearch();
       } else {
-        router.navigate("/");
+        const parent = navigation.getParent();
+        if (parent) parent.goBack();
+        else navigation.goBack();
       }
       return true;
     });
@@ -135,7 +138,9 @@ export default function QuickmatchScreen() {
   };
 
   const handleCancelHome = () => {
-    router.navigate("/");
+    const parent = navigation.getParent();
+    if (parent) parent.goBack();
+    else navigation.goBack();
   };
 
   const dots = ".".repeat(dotCount) + "\u00A0".repeat(3 - dotCount);
