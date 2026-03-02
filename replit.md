@@ -90,9 +90,35 @@ shared/
 ## Design
 
 - Dark felt aesthetic (#031008 bg, #0B3B25 felt, #C9A84C gold)
-- Landscape for game screens, portrait for menus
+- Landscape for game screens (locked); result.tsx also locked landscape
+- Two-column landscape layout on result/game-over screens (no ScrollView)
 - CARD_W=58, CARD_H=84; cards lift with translateY on selection
 - Avatar circles with initials + card count badge
+
+## Shared Components
+
+- `components/GameShared.tsx` — single source of truth for both game screens:
+  - CardFan, AvatarCircle, TopOppSlot, SideOppSlot, FlyingCards, PlayedPile, CardItem, StraightHand
+  - Shared styles: sharedTableStyles, sharedStyles, portraitOverlayStyles
+  - Layout constants: CARD_W, CARD_H, BTN_W, BTN_H, TOP_BAR_H, TABLE_M, SIDE_SECTION_W, TOP_SECTION_H, HAND_SECTION_H
+  - getOpponentPosition: steps=1→right, steps=2→top, steps=3→left (visual only)
+- `lib/sounds.ts` — card sound effects via expo-av (card_select, card_play, card_pass)
+  - card_select.mp3 (volume 0.35), card_play.mp3 (0.9), card_pass.mp3 (0.5)
+  - Preload on game screen mount, unload on unmount
+
+## Turn Order
+
+- `getNextActivePlayer` decrements index (clockwise): bottom→left→top→right
+- Player 0 always gets 3♠ (hand swap in `initializeGame` + server)
+- getOpponentPosition visual: steps=1→right, steps=2→top, steps=3→left
+
+## Testing (Landscape UX)
+
+IMPORTANT: The game and result screens are landscape-only. Use browser devtools:
+1. Open DevTools → Device toolbar (Ctrl+Shift+M)
+2. Set width ≥ 600px and height ≤ 400px (landscape)
+3. Verify game table, player hands, and result screen all fit without scrolling
+4. On result screen: left column = winner + stats + buttons; right column = rankings (+ scoreboard for multi-round)
 
 ## Workflows
 

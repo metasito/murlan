@@ -5,7 +5,6 @@ import {
   StyleSheet,
   Pressable,
   Platform,
-  ScrollView,
   useWindowDimensions,
 } from "react-native";
 import { router } from "expo-router";
@@ -19,7 +18,6 @@ import Animated, {
   withRepeat,
   withDelay,
   Easing,
-  runOnJS,
   FadeIn,
   FadeOut,
   SlideInRight,
@@ -30,370 +28,153 @@ import * as ScreenOrientation from "expo-screen-orientation";
 import { Ionicons } from "@expo/vector-icons";
 import { useOnlineGame } from "@/context/OnlineGameContext";
 import { useAuth } from "@/context/AuthContext";
-import { CardView } from "@/components/CardView";
-import { buildCombination, canPlay, sortHand, Card, Combination, Player } from "@/lib/gameEngine";
+import {
+  buildCombination,
+  canPlay,
+  sortHand,
+  Card,
+  Combination,
+  Player,
+} from "@/lib/gameEngine";
 import type { Reaction } from "@/context/OnlineGameContext";
+import {
+  CARD_W,
+  CARD_H,
+  BTN_W,
+  BTN_H,
+  TOP_BAR_H,
+  TABLE_M,
+  SIDE_SECTION_W,
+  TOP_SECTION_H,
+  HAND_SECTION_H,
+  FlyDirection,
+  getOpponentPosition,
+  TopOppSlot,
+  SideOppSlot,
+  FlyingCards,
+  PlayedPile,
+  StraightHand,
+  sharedTableStyles,
+  sharedStyles,
+  portraitOverlayStyles,
+} from "@/components/GameShared";
+import {
+  playCardSelect,
+  playCardPlay,
+  playCardPass,
+  preloadSounds,
+  unloadSounds,
+} from "@/lib/sounds";
 import Colors from "@/constants/colors";
 
-// ─── Layout constants (mirror offline game) ──────────────────────────────────
-const CARD_W = 58;
-const CARD_H = 84;
-const BTN_W = 84;
-const BTN_H = 84;
-const TOP_BAR_H = 44;
-const TABLE_M = 8;
-const SIDE_SECTION_W = 160;
-const TOP_SECTION_H = 82;
-const HAND_SECTION_H = CARD_H + 14;
-
 const EMOJIS = ["😂", "🔥", "😤", "👏", "😱", "🤡", "💣", "👑"];
-
 const POSITION_MEDALS = ["trophy", "medal", "ribbon", "remove-circle"] as const;
 const POSITION_COLORS = [Colors.gold, "#C0C0C0", "#CD7F32", Colors.textMuted];
 const POSITION_LABELS = ["1°", "2°", "3°", "4°"];
-
-// ─── Opponent position logic (identical to offline) ───────────────────────────
-function getOpponentPosition(steps: number, total: number): "top" | "left" | "right" {
-  if (total === 1) return "top";
-  if (total === 2) return steps === 1 ? "right" : "top";
-  if (steps === 1) return "right";
-  if (steps === 2) return "top";
-  return "left";
-}
-
-// ─── Sub-components ──────────────────────────────────────────────────────────
-
-function CardFan({ count, maxCards = 7 }: { count: number; maxCards?: number }) {
-  const n = Math.min(count, maxCards);
-  if (n === 0) return null;
-  const step = 15;
-  const totalW = step * (n - 1) + 40;
-  return (
-    <View style={{ width: totalW, height: 66 }}>
-      {Array.from({ length: n }, (_, i) => {
-        const c = (n - 1) / 2;
-        const angle = ((i - c) / Math.max(c, 1)) * 22;
-        const rise = Math.abs(i - c) * 4;
-        return (
-          <View
-            key={i}
-            style={{ position: "absolute", left: i * step, bottom: rise, transform: [{ rotate: `${angle}deg` }], zIndex: i }}
-          >
-            <CardView card={{ id: `bk${i}`, suit: null, rank: "3", isJoker: false }} faceDown small />
-          </View>
-        );
-      })}
-    </View>
-  );
-}
-
-function AvatarCircle({
-  name, isActive, cardCount, finishPos, size = 44,
-}: {
-  name: string; isActive: boolean; cardCount: number; finishPos?: number; size?: number;
-}) {
-  const pulse = useSharedValue(1);
-  useEffect(() => {
-    if (isActive) {
-      pulse.value = withSequence(withTiming(1.1, { duration: 350 }), withTiming(1, { duration: 350 }));
-    }
-  }, [isActive]);
-  const anim = useAnimatedStyle(() => ({ transform: [{ scale: pulse.value }] }));
-  const initials = name.split(" ").map((w) => w[0]).slice(0, 2).join("").toUpperCase();
-
-  return (
-    <Animated.View style={anim}>
-      <View style={[
-        styles.avatarOuter,
-        { width: size + 6, height: size + 6, borderRadius: (size + 6) / 2 },
-        isActive && styles.avatarOuterActive,
-      ]}>
-        <View style={[styles.avatarInner, { width: size, height: size, borderRadius: size / 2 }]}>
-          <Text style={[styles.avatarInitials, { fontSize: size * 0.36 }]}>{initials}</Text>
-        </View>
-        <View style={styles.countBubble}>
-          {finishPos !== undefined
-            ? <Ionicons name="trophy" size={8} color={Colors.gold} />
-            : <Text style={styles.countBubbleText}>{cardCount}</Text>
-          }
-        </View>
-      </View>
-    </Animated.View>
-  );
-}
-
-function TopOppSlot({ player, isActive, cardCount }: { player: Player; isActive: boolean; cardCount: number }) {
-  return (
-    <View style={styles.topOppSlot}>
-      <View style={styles.topOppRow}>
-        <View style={styles.topOppAvatarCol}>
-          <AvatarCircle name={player.name} isActive={isActive} cardCount={cardCount} finishPos={player.finishPosition} size={42} />
-          <Text style={styles.oppName} numberOfLines={1}>{player.name}</Text>
-        </View>
-        {player.finishPosition === undefined && cardCount > 0 && (
-          <CardFan count={cardCount} maxCards={7} />
-        )}
-      </View>
-    </View>
-  );
-}
-
-function SideOppSlot({ player, isActive, side, cardCount }: { player: Player; isActive: boolean; side: "left" | "right"; cardCount: number }) {
-  const isLeft = side === "left";
-  return (
-    <View style={[styles.sideOppSlot, isLeft ? styles.sideLeft : styles.sideRight]}>
-      {!isLeft && cardCount > 0 && player.finishPosition === undefined && (
-        <CardFan count={cardCount} maxCards={5} />
-      )}
-      <View style={styles.sideOppAvatarCol}>
-        <AvatarCircle name={player.name} isActive={isActive} cardCount={cardCount} finishPos={player.finishPosition} size={40} />
-        <Text style={styles.oppName} numberOfLines={1}>{player.name}</Text>
-      </View>
-      {isLeft && cardCount > 0 && player.finishPosition === undefined && (
-        <CardFan count={cardCount} maxCards={5} />
-      )}
-    </View>
-  );
-}
-
-type FlyDirection = "top" | "bottom" | "left" | "right";
-
-const FLY_OFFSETS: Record<FlyDirection, { dx: number; dy: number }> = {
-  bottom: { dx: 0, dy: 130 },
-  top: { dx: 0, dy: -90 },
-  left: { dx: -160, dy: 0 },
-  right: { dx: 160, dy: 0 },
-};
-const FLY_ROTS: Record<FlyDirection, number> = { bottom: -8, top: 8, left: -12, right: 12 };
-
-function FlyingCards({ cards, direction, onDone }: { cards: Card[]; direction: FlyDirection; onDone: () => void }) {
-  const { dx, dy } = FLY_OFFSETS[direction];
-  const tx = useSharedValue(dx);
-  const ty = useSharedValue(dy);
-  const rot = useSharedValue(FLY_ROTS[direction]);
-  const opacity = useSharedValue(0.9);
-
-  useEffect(() => {
-    const easing = Easing.out(Easing.cubic);
-    tx.value = withTiming(0, { duration: 420, easing });
-    ty.value = withTiming(0, { duration: 420, easing });
-    rot.value = withTiming(0, { duration: 420, easing });
-    opacity.value = withSequence(
-      withTiming(1, { duration: 280 }),
-      withTiming(0, { duration: 170 }, (finished) => {
-        if (finished) runOnJS(onDone)();
-      })
-    );
-  }, []);
-
-  const aStyle = useAnimatedStyle(() => ({
-    transform: [{ translateX: tx.value }, { translateY: ty.value }, { rotate: `${rot.value}deg` }],
-    opacity: opacity.value,
-  }));
-
-  const display = cards.slice(0, 3);
-
-  return (
-    <View style={styles.flyingContainer} pointerEvents="none">
-      <Animated.View style={[styles.flyingInner, aStyle]}>
-        {display.map((card, i) => (
-          <View
-            key={card.id}
-            style={{ position: "absolute", left: i * 12 - (display.length - 1) * 6, zIndex: i, transform: [{ rotate: `${(i - (display.length - 1) / 2) * 10}deg` }] }}
-          >
-            <CardView card={card} />
-          </View>
-        ))}
-      </Animated.View>
-    </View>
-  );
-}
-
-function PlayedPile({ history, roundWinner }: { history: Combination[]; roundWinner: string | null }) {
-  const topCombo = history.length > 0 ? history[history.length - 1] : null;
-  return (
-    <View style={styles.pileArea} testID="pile-area">
-      {roundWinner && (
-        <Animated.View entering={FadeIn.duration(250)} exiting={FadeOut.duration(250)} style={styles.winnerTag}>
-          <Ionicons name="star" size={9} color={Colors.gold} />
-          <Text style={styles.winnerText}>{roundWinner}</Text>
-        </Animated.View>
-      )}
-      {history.length === 0 && (
-        <Text style={styles.emptyText}>Inizia il round</Text>
-      )}
-      {history.length > 0 && (
-        <View style={styles.pileStack}>
-          {history.slice(-4).map((combo, si, arr) => {
-            const isTop = si === arr.length - 1;
-            const angle = (si - (arr.length - 1)) * 8;
-            const dx = (si - (arr.length - 1)) * 5;
-            const dy = (si - (arr.length - 1)) * 3;
-            return (
-              <View key={`p${si}`} style={[styles.pileLayer, { zIndex: si, opacity: isTop ? 1 : 0.4 + si * 0.15, transform: [{ rotate: `${angle}deg` }, { translateX: dx }, { translateY: dy }] }]}>
-                <View style={styles.pileCards}>
-                  {combo.cards.slice(0, 5).map((card, ci) => (
-                    <View key={card.id} style={{ marginLeft: ci > 0 ? -14 : 0, zIndex: ci }}>
-                      <CardView card={card} />
-                    </View>
-                  ))}
-                </View>
-              </View>
-            );
-          })}
-          {topCombo && (
-            <View style={styles.comboLabel}>
-              <View style={styles.comboChip}>
-                <Text style={styles.comboChipText}>
-                  {({ single: "Singola", pair: "Coppia", triple: "Tris", straight: "Scala", bomb: "💣 Bomba", royal_straight: "★ Scala Reale" } as Record<string, string>)[topCombo.type]}
-                  {topCombo.cards.length > 2 ? ` ×${topCombo.cards.length}` : ""}
-                </Text>
-              </View>
-            </View>
-          )}
-        </View>
-      )}
-    </View>
-  );
-}
-
-function CardItem({ card, isSelected, left, onPress, disabled, zIndex }: {
-  card: Card; isSelected: boolean; left: number; onPress: () => void; disabled: boolean; zIndex: number;
-}) {
-  const liftY = useSharedValue(0);
-  useEffect(() => {
-    liftY.value = withSpring(isSelected ? -40 : 0, { damping: 14, stiffness: 260 });
-  }, [isSelected]);
-  const aStyle = useAnimatedStyle(() => ({ transform: [{ translateY: liftY.value }] }));
-  return (
-    <Animated.View style={[styles.handCardWrap, { left, zIndex }, aStyle]}>
-      <CardView card={card} selected={isSelected} onPress={onPress} disabled={disabled} noLift />
-    </Animated.View>
-  );
-}
-
-function StraightHand({ cards, selectedIds, onPress, disabled, availW }: {
-  cards: Card[]; selectedIds: string[]; onPress: (id: string) => void; disabled: boolean; availW: number;
-}) {
-  const n = cards.length;
-  if (n === 0) {
-    return (
-      <View style={[styles.handCenter, { width: availW }]}>
-        <Ionicons name="checkmark-circle" size={24} color={Colors.gold} />
-        <Text style={styles.emptyHandText}>Carte finite!</Text>
-      </View>
-    );
-  }
-  const step = Math.max(20, Math.min(CARD_W, (availW - CARD_W) / Math.max(n - 1, 1)));
-  const totalW = step * (n - 1) + CARD_W;
-  return (
-    <View style={[styles.handCenter, { width: availW }]}>
-      <View style={[styles.handRow, { width: Math.min(totalW, availW) }]}>
-        {cards.map((card, i) => (
-          <CardItem
-            key={card.id}
-            card={card}
-            isSelected={selectedIds.includes(card.id)}
-            left={i * step}
-            onPress={() => onPress(card.id)}
-            disabled={disabled}
-            zIndex={i}
-          />
-        ))}
-      </View>
-    </View>
-  );
-}
 
 function FloatingReaction({ reaction }: { reaction: Reaction }) {
   const y = useSharedValue(0);
   const opacity = useSharedValue(1);
   useEffect(() => {
     y.value = withTiming(-80, { duration: 1800 });
-    opacity.value = withSequence(withTiming(1, { duration: 200 }), withTiming(0, { duration: 1600 }));
+    opacity.value = withSequence(
+      withTiming(1, { duration: 200 }),
+      withTiming(0, { duration: 1600 })
+    );
   }, []);
-  const aStyle = useAnimatedStyle(() => ({ transform: [{ translateY: y.value }], opacity: opacity.value }));
+  const aStyle = useAnimatedStyle(() => ({
+    transform: [{ translateY: y.value }],
+    opacity: opacity.value,
+  }));
   const posMap = ["50%", "80%", "20%", "60%"];
   const left = posMap[reaction.fromSeat % posMap.length];
   return (
-    <Animated.View style={[styles.floatingEmoji, { left: left as any }, aStyle]}>
-      <Text style={styles.floatingEmojiText}>{reaction.emoji}</Text>
-      <Text style={styles.floatingEmojiName}>{reaction.username}</Text>
+    <Animated.View
+      style={[localStyles.floatingEmoji, { left: left as any }, aStyle]}
+    >
+      <Text style={localStyles.floatingEmojiText}>{reaction.emoji}</Text>
+      <Text style={localStyles.floatingEmojiName}>{reaction.username}</Text>
     </Animated.View>
   );
 }
 
-function ReactionPanel({ onSelect, onClose }: { onSelect: (e: string) => void; onClose: () => void }) {
+function ReactionPanel({
+  onSelect,
+  onClose,
+}: {
+  onSelect: (e: string) => void;
+  onClose: () => void;
+}) {
   return (
-    <Animated.View entering={SlideInRight.duration(200)} style={styles.reactionPanel}>
+    <Animated.View
+      entering={SlideInRight.duration(200)}
+      style={localStyles.reactionPanel}
+    >
       {EMOJIS.map((e) => (
-        <Pressable key={e} onPress={() => { onSelect(e); onClose(); }} style={({ pressed }) => [styles.emojiBtn, pressed && { opacity: 0.6 }]}>
-          <Text style={styles.emojiBtnText}>{e}</Text>
+        <Pressable
+          key={e}
+          onPress={() => {
+            onSelect(e);
+            onClose();
+          }}
+          style={({ pressed }) => [
+            localStyles.emojiBtn,
+            pressed && { opacity: 0.6 },
+          ]}
+        >
+          <Text style={localStyles.emojiBtnText}>{e}</Text>
         </Pressable>
       ))}
     </Animated.View>
   );
 }
 
-// ─── Game Over Result Screen ──────────────────────────────────────────────────
-
-function WinnerCelebration({ name }: { name: string }) {
-  const scale = useSharedValue(0);
+function RankCard({
+  rank,
+  name,
+  isWinner,
+  delay,
+}: {
+  rank: number;
+  name: string;
+  isWinner: boolean;
+  delay: number;
+}) {
   const opacity = useSharedValue(0);
-  const glow = useSharedValue(0.6);
-
+  const tx = useSharedValue(40);
   useEffect(() => {
-    scale.value = withSpring(1, { damping: 8, stiffness: 150 });
-    opacity.value = withTiming(1, { duration: 600 });
-    glow.value = withRepeat(
-      withSequence(
-        withTiming(1, { duration: 1200, easing: Easing.inOut(Easing.sin) }),
-        withTiming(0.6, { duration: 1200, easing: Easing.inOut(Easing.sin) })
-      ),
-      -1, false
-    );
+    opacity.value = withDelay(delay, withTiming(1, { duration: 350 }));
+    tx.value = withDelay(delay, withSpring(0, { damping: 15, stiffness: 200 }));
   }, []);
-
-  const containerStyle = useAnimatedStyle(() => ({ transform: [{ scale: scale.value }], opacity: opacity.value }));
-  const glowStyle = useAnimatedStyle(() => ({ opacity: glow.value }));
-
-  return (
-    <Animated.View style={[goStyles.celebration, containerStyle]}>
-      <Animated.View style={[goStyles.celebrationGlow, glowStyle]} />
-      <View style={goStyles.trophyCircle}>
-        <LinearGradient colors={[Colors.gold, Colors.goldDark]} style={goStyles.trophyGradient}>
-          <Ionicons name="trophy" size={44} color="#0A1F18" />
-        </LinearGradient>
-      </View>
-      <Text style={goStyles.winnerName}>{name}</Text>
-      <Text style={goStyles.winnerSubtitle}>Vincitore</Text>
-    </Animated.View>
-  );
-}
-
-function RankCard({ rank, name, isWinner, delay }: { rank: number; name: string; isWinner: boolean; delay: number }) {
-  const opacity = useSharedValue(0);
-  const translateX = useSharedValue(60);
-
-  useEffect(() => {
-    opacity.value = withDelay(delay, withTiming(1, { duration: 400 }));
-    translateX.value = withDelay(delay, withSpring(0, { damping: 15, stiffness: 200 }));
-  }, []);
-
-  const animStyle = useAnimatedStyle(() => ({ opacity: opacity.value, transform: [{ translateX: translateX.value }] }));
-
+  const animStyle = useAnimatedStyle(() => ({
+    opacity: opacity.value,
+    transform: [{ translateX: tx.value }],
+  }));
   const color = POSITION_COLORS[rank] ?? Colors.textMuted;
   const icon = POSITION_MEDALS[rank] ?? "person";
   const label = POSITION_LABELS[rank] ?? `${rank + 1}°`;
 
   return (
-    <Animated.View style={[goStyles.rankCard, isWinner && goStyles.rankCardWinner, animStyle]}>
-      {isWinner && <LinearGradient colors={["rgba(201,168,76,0.15)", "transparent"]} style={StyleSheet.absoluteFill} />}
+    <Animated.View
+      style={[goStyles.rankCard, isWinner && goStyles.rankCardWinner, animStyle]}
+    >
+      {isWinner && (
+        <LinearGradient
+          colors={["rgba(201,168,76,0.15)", "transparent"]}
+          style={StyleSheet.absoluteFill}
+        />
+      )}
       <View style={[goStyles.positionBadge, { borderColor: color }]}>
         <Text style={[goStyles.positionLabel, { color }]}>{label}</Text>
       </View>
-      <Ionicons name={icon as React.ComponentProps<typeof Ionicons>["name"]} size={24} color={color} />
-      <Text style={goStyles.playerName}>{name}</Text>
+      <Ionicons
+        name={icon as React.ComponentProps<typeof Ionicons>["name"]}
+        size={18}
+        color={color}
+      />
+      <Text style={goStyles.playerName} numberOfLines={1}>
+        {name}
+      </Text>
       {isWinner && (
         <View style={goStyles.winnerBadge}>
           <Text style={goStyles.winnerBadgeText}>VINCITORE</Text>
@@ -403,7 +184,146 @@ function RankCard({ rank, name, isWinner, delay }: { rank: number; name: string;
   );
 }
 
-// ─── Main screen ──────────────────────────────────────────────────────────────
+function GameOverOverlay({
+  gameState,
+  topPad,
+  bottomPad,
+  isHost,
+  onLeave,
+  onRematch,
+}: {
+  gameState: NonNullable<ReturnType<typeof useOnlineGame>["gameState"]>;
+  topPad: number;
+  bottomPad: number;
+  isHost: boolean;
+  onLeave: () => void;
+  onRematch: () => void;
+}) {
+  const winnerName = gameState.rankings[0] ?? "";
+  const scale = useSharedValue(0);
+  const opacity = useSharedValue(0);
+  useEffect(() => {
+    scale.value = withSpring(1, { damping: 9, stiffness: 140 });
+    opacity.value = withTiming(1, { duration: 500 });
+  }, []);
+  const celebStyle = useAnimatedStyle(() => ({
+    transform: [{ scale: scale.value }],
+    opacity: opacity.value,
+  }));
+
+  return (
+    <Animated.View
+      entering={FadeIn.duration(400)}
+      style={[
+        goStyles.overlay,
+        { paddingTop: topPad + 8, paddingBottom: bottomPad + 8 },
+      ]}
+    >
+      <View style={goStyles.twoCol}>
+        <View style={goStyles.leftCol}>
+          <Animated.View style={[goStyles.celebration, celebStyle]}>
+            <View style={goStyles.trophyCircle}>
+              <LinearGradient
+                colors={[Colors.gold, Colors.goldDark]}
+                style={goStyles.trophyGradient}
+              >
+                <Ionicons name="trophy" size={32} color="#0A1F18" />
+              </LinearGradient>
+            </View>
+            <Text style={goStyles.winnerName} numberOfLines={1}>
+              {winnerName}
+            </Text>
+            <Text style={goStyles.winnerSubtitle}>Vincitore</Text>
+          </Animated.View>
+
+          <View style={goStyles.actions}>
+            <Pressable onPress={onLeave} style={goStyles.homeBtn}>
+              <Ionicons name="home" size={16} color={Colors.textSecondary} />
+              <Text style={goStyles.homeBtnText}>Home</Text>
+            </Pressable>
+            <Pressable
+              testID="btn-rivincita"
+              onPress={isHost ? onRematch : undefined}
+              style={[goStyles.rematchBtn, !isHost && goStyles.rematchBtnDim]}
+            >
+              <LinearGradient
+                colors={
+                  isHost
+                    ? [Colors.gold, Colors.goldDark]
+                    : [Colors.bgSurface, Colors.bgSurface]
+                }
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 1 }}
+                style={goStyles.rematchGradient}
+              >
+                <Ionicons
+                  name="refresh"
+                  size={16}
+                  color={isHost ? "#0A1F18" : Colors.textMuted}
+                />
+                <Text
+                  style={[
+                    goStyles.rematchText,
+                    !isHost && { color: Colors.textMuted },
+                  ]}
+                  numberOfLines={1}
+                >
+                  {isHost ? "Rivincita" : "Solo l'host può riavviare"}
+                </Text>
+              </LinearGradient>
+            </Pressable>
+          </View>
+        </View>
+
+        <View style={goStyles.rightCol}>
+          <Text style={goStyles.sectionTitle}>CLASSIFICA</Text>
+          <View style={goStyles.rankList}>
+            {gameState.rankings.map((name, i) => (
+              <RankCard
+                key={i}
+                rank={i}
+                name={name}
+                isWinner={i === 0}
+                delay={i * 80 + 300}
+              />
+            ))}
+          </View>
+
+          <Text style={[goStyles.sectionTitle, { marginTop: 10 }]}>
+            RIEPILOGO
+          </Text>
+          <View style={goStyles.statsRow}>
+            <View style={goStyles.statItem}>
+              <Ionicons name="people" size={16} color={Colors.gold} />
+              <Text style={goStyles.statValue}>{gameState.players.length}</Text>
+              <Text style={goStyles.statLabel}>Giocatori</Text>
+            </View>
+            <View style={goStyles.statItem}>
+              <Ionicons
+                name={
+                  gameState.gameMode === "teams"
+                    ? "people-circle"
+                    : "person-circle"
+                }
+                size={16}
+                color={Colors.gold}
+              />
+              <Text style={goStyles.statValue}>
+                {gameState.gameMode === "teams" ? "Coppie" : "Libero"}
+              </Text>
+              <Text style={goStyles.statLabel}>Modalità</Text>
+            </View>
+            <View style={goStyles.statItem}>
+              <Ionicons name="wifi" size={16} color={Colors.accent} />
+              <Text style={goStyles.statValue}>Online</Text>
+              <Text style={goStyles.statLabel}>Modalità</Text>
+            </View>
+          </View>
+        </View>
+      </View>
+    </Animated.View>
+  );
+}
 
 export default function OnlineGameScreen() {
   const insets = useSafeAreaInsets();
@@ -414,8 +334,6 @@ export default function OnlineGameScreen() {
     gameState,
     reactions,
     mySeatIndex,
-    error,
-    clearError,
     playCards,
     pass,
     sendReaction,
@@ -428,26 +346,31 @@ export default function OnlineGameScreen() {
   const [playedPile, setPlayedPile] = useState<Combination[]>([]);
   const [showReactions, setShowReactions] = useState(false);
   const [showGameOver, setShowGameOver] = useState(false);
-  const [flyInfo, setFlyInfo] = useState<{ key: string; dir: FlyDirection; cards: Card[] } | null>(null);
+  const [flyInfo, setFlyInfo] = useState<{
+    key: string;
+    dir: FlyDirection;
+    cards: Card[];
+  } | null>(null);
 
-  // T003: Use string key to avoid duplicate animation on re-broadcast
   const prevComboKeyRef = useRef<string>("");
   const prevRoundWinnerRef = useRef<number | null>(null);
   const reactionTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.LANDSCAPE);
+    preloadSounds();
     return () => {
       ScreenOrientation.unlockAsync();
+      unloadSounds();
     };
   }, []);
 
   useEffect(() => {
     if (!gameState) return;
     const combo = gameState.lastPlayedCombination;
-
     if (combo !== null) {
-      const comboKey = combo.cards.map((c) => c.id).join(",") + "_" + gameState.lastPlayedBy;
+      const comboKey =
+        combo.cards.map((c) => c.id).join(",") + "_" + gameState.lastPlayedBy;
       if (comboKey !== prevComboKeyRef.current) {
         prevComboKeyRef.current = comboKey;
         setPlayedPile((prev) => [...prev.slice(-5), combo]);
@@ -456,9 +379,11 @@ export default function OnlineGameScreen() {
         if (playedBy === mySeatIndex) {
           dir = "bottom";
         } else {
-          const totalOpponents = gameState.players.length - 1;
-          const steps = ((playedBy - mySeatIndex + gameState.players.length) % gameState.players.length);
-          dir = getOpponentPosition(steps, totalOpponents);
+          const totalOpps = gameState.players.length - 1;
+          const steps =
+            ((playedBy - mySeatIndex + gameState.players.length) %
+              gameState.players.length);
+          dir = getOpponentPosition(steps, totalOpps);
         }
         setFlyInfo({ key: comboKey, dir, cards: combo.cards });
       }
@@ -469,7 +394,10 @@ export default function OnlineGameScreen() {
   }, [gameState?.lastPlayedCombination]);
 
   useEffect(() => {
-    if (gameState?.roundWinner !== null && gameState?.roundWinner !== undefined) {
+    if (
+      gameState?.roundWinner !== null &&
+      gameState?.roundWinner !== undefined
+    ) {
       if (gameState.roundWinner !== prevRoundWinnerRef.current) {
         prevRoundWinnerRef.current = gameState.roundWinner;
         const name = gameState.players[gameState.roundWinner]?.name ?? "";
@@ -486,7 +414,6 @@ export default function OnlineGameScreen() {
       const t = setTimeout(() => setShowGameOver(true), 800);
       return () => clearTimeout(t);
     } else {
-      // New game started — hide the game over overlay
       setShowGameOver(false);
     }
   }, [gameState?.gameOver]);
@@ -500,30 +427,45 @@ export default function OnlineGameScreen() {
 
   const sortedHand = sortHand(me?.hand ?? []);
   const selectedObjs = sortedHand.filter((c) => selectedIds.includes(c.id));
-  const tentativeCombo = selectedObjs.length > 0 ? buildCombination(selectedObjs) : null;
+  const tentativeCombo =
+    selectedObjs.length > 0 ? buildCombination(selectedObjs) : null;
   const requires3Spades = !gameState.firstPlayMade;
   const isValidPlay =
     tentativeCombo !== null &&
-    canPlay(tentativeCombo, isNewRound ? null : gameState.lastPlayedCombination) &&
-    (!requires3Spades || tentativeCombo.cards.some((c) => c.rank === "3" && c.suit === "spades"));
+    canPlay(
+      tentativeCombo,
+      isNewRound ? null : gameState.lastPlayedCombination
+    ) &&
+    (!requires3Spades ||
+      tentativeCombo.cards.some((c) => c.rank === "3" && c.suit === "spades"));
   const canPassNow = !isNewRound && isMyTurn && !isFinished;
   const playBtnValid = isValidPlay && isMyTurn && !isFinished;
 
   const totalOpponents = gameState.players.length - 1;
   const opponents = gameState.players
-    .map((p, i) => ({ ...p, idx: i, handCount: (p as any).handCount ?? p.hand.length }))
+    .map((p, i) => ({
+      ...p,
+      idx: i,
+      handCount: (p as any).handCount ?? p.hand.length,
+    }))
     .filter((_, i) => i !== mySeatIndex);
 
   const topOpp = opponents.find(({ idx }) => {
-    const steps = ((idx - mySeatIndex + gameState.players.length) % gameState.players.length);
+    const steps =
+      ((idx - mySeatIndex + gameState.players.length) %
+        gameState.players.length);
     return getOpponentPosition(steps, totalOpponents) === "top";
   });
   const leftOpp = opponents.find(({ idx }) => {
-    const steps = ((idx - mySeatIndex + gameState.players.length) % gameState.players.length);
+    const steps =
+      ((idx - mySeatIndex + gameState.players.length) %
+        gameState.players.length);
     return getOpponentPosition(steps, totalOpponents) === "left";
   });
   const rightOpp = opponents.find(({ idx }) => {
-    const steps = ((idx - mySeatIndex + gameState.players.length) % gameState.players.length);
+    const steps =
+      ((idx - mySeatIndex + gameState.players.length) %
+        gameState.players.length);
     return getOpponentPosition(steps, totalOpponents) === "right";
   });
 
@@ -536,16 +478,21 @@ export default function OnlineGameScreen() {
   const tableTop = topPad + TOP_BAR_H + TABLE_M;
   const tableRight = rightPad + TABLE_M;
   const tableBottom = bottomPad + TABLE_M;
-  const handAvailW = (W - tableLeft - tableRight) - (BTN_W + 10) * 2;
+  const handAvailW =
+    W - tableLeft - tableRight - (BTN_W + 10) * 2;
 
   function toggleCard(id: string) {
-    setSelectedIds((prev) => prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]);
+    setSelectedIds((prev) =>
+      prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]
+    );
     Haptics.selectionAsync();
+    playCardSelect();
   }
 
   function handlePlay() {
     if (!playBtnValid) return;
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    playCardPlay();
     playCards(selectedIds);
     setSelectedIds([]);
   }
@@ -553,6 +500,7 @@ export default function OnlineGameScreen() {
   function handlePass() {
     if (!canPassNow) return;
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    playCardPass();
     pass();
     setSelectedIds([]);
   }
@@ -571,87 +519,133 @@ export default function OnlineGameScreen() {
   }
 
   const isHost = room?.hostUserId === user?.id;
-  const winnerName = gameState.rankings[0] ?? "";
 
   return (
-    <View style={styles.root}>
-      <LinearGradient colors={["#031008", "#072A18", "#031008"]} style={StyleSheet.absoluteFill} />
+    <View style={localStyles.root}>
+      <LinearGradient
+        colors={["#031008", "#072A18", "#031008"]}
+        style={StyleSheet.absoluteFill}
+      />
 
       {reactions.map((r) => (
         <FloatingReaction key={r.id} reaction={r} />
       ))}
 
-      {/* Top bar */}
-      <View style={[styles.topBar, { top: topPad, left: leftPad, right: rightPad }]}>
-        <View style={styles.onlineIndicator}>
-          <View style={[styles.dot, { backgroundColor: "#4CAF50" }]} />
-          <Text style={styles.onlineLabel}>Online</Text>
+      <View
+        style={[
+          localStyles.topBar,
+          { top: topPad, left: leftPad, right: rightPad },
+        ]}
+      >
+        <View style={localStyles.onlineIndicator}>
+          <View style={[localStyles.dot, { backgroundColor: "#4CAF50" }]} />
+          <Text style={localStyles.onlineLabel}>Online</Text>
         </View>
 
-        <View style={styles.turnPill}>
-          <View style={[styles.turnDot, { backgroundColor: isMyTurn ? Colors.gold : Colors.accent }]} />
-          <Text style={styles.turnText} numberOfLines={1}>
+        <View style={localStyles.turnPill}>
+          <View
+            style={[
+              localStyles.turnDot,
+              { backgroundColor: isMyTurn ? Colors.gold : Colors.accent },
+            ]}
+          />
+          <Text style={localStyles.turnText} numberOfLines={1}>
             {isMyTurn
-              ? isFinished ? "Aspetti gli altri..." : "Il tuo turno"
+              ? isFinished
+                ? "Aspetti gli altri..."
+                : "Il tuo turno"
               : `${gameState.players[gameState.currentTurnIndex]?.name} pensa...`}
           </Text>
-          <View style={styles.cardCountBadge}>
-            <Text style={styles.cardCountText}>{me?.hand.length ?? 0}</Text>
+          <View style={localStyles.cardCountBadge}>
+            <Text style={localStyles.cardCountText}>{me?.hand.length ?? 0}</Text>
           </View>
         </View>
 
-        <Pressable onPress={handleReactionBtnPress} style={styles.reactionTrigger} hitSlop={8}>
-          <Text style={styles.reactionTriggerText}>💬</Text>
+        <Pressable
+          onPress={handleReactionBtnPress}
+          style={localStyles.reactionTrigger}
+          hitSlop={8}
+        >
+          <Text style={localStyles.reactionTriggerText}>💬</Text>
         </Pressable>
       </View>
 
       {showReactions && (
-        <ReactionPanel onSelect={handleReaction} onClose={() => setShowReactions(false)} />
+        <ReactionPanel
+          onSelect={handleReaction}
+          onClose={() => setShowReactions(false)}
+        />
       )}
 
-      {/* Felt table — absolute positioned, identical to offline */}
       <View
         testID="game-table"
-        style={[styles.table, { left: tableLeft, top: tableTop, right: tableRight, bottom: tableBottom }]}
+        style={[
+          sharedTableStyles.table,
+          {
+            left: tableLeft,
+            top: tableTop,
+            right: tableRight,
+            bottom: tableBottom,
+          },
+        ]}
       >
-        <LinearGradient colors={["#0D4A2E", Colors.felt, "#082B1A"]} locations={[0, 0.5, 1]} style={StyleSheet.absoluteFill} />
-        <View style={styles.tableInnerBorder} />
+        <LinearGradient
+          colors={["#0D4A2E", Colors.felt, "#082B1A"]}
+          locations={[0, 0.5, 1]}
+          style={StyleSheet.absoluteFill}
+        />
+        <View style={sharedTableStyles.tableInnerBorder} />
 
-        <View style={styles.tableContent}>
-          {/* Top opponent */}
-          <View style={[styles.topSection, { height: TOP_SECTION_H }]}>
+        <View style={sharedTableStyles.tableContent}>
+          <View
+            style={[sharedTableStyles.topSection, { height: TOP_SECTION_H }]}
+          >
             {topOpp ? (
-              <TopOppSlot player={topOpp} isActive={topOpp.idx === gameState.currentTurnIndex} cardCount={topOpp.handCount} />
+              <TopOppSlot
+                player={topOpp}
+                isActive={topOpp.idx === gameState.currentTurnIndex}
+                cardCount={topOpp.handCount}
+              />
             ) : (
               <View />
             )}
           </View>
 
-          {/* Mid: left | pile | right */}
-          <View style={styles.midSection}>
-            <View style={styles.sideSection}>
+          <View style={sharedTableStyles.midSection}>
+            <View style={sharedTableStyles.sideSection}>
               {leftOpp && (
-                <SideOppSlot player={leftOpp} isActive={leftOpp.idx === gameState.currentTurnIndex} side="left" cardCount={leftOpp.handCount} />
+                <SideOppSlot
+                  player={leftOpp}
+                  isActive={leftOpp.idx === gameState.currentTurnIndex}
+                  side="left"
+                  cardCount={leftOpp.handCount}
+                />
               )}
             </View>
 
-            <View style={styles.centerSection}>
+            <View style={sharedTableStyles.centerSection}>
               <PlayedPile history={playedPile} roundWinner={roundWinner} />
             </View>
 
-            <View style={styles.sideSection}>
+            <View style={sharedTableStyles.sideSection}>
               {rightOpp && (
-                <SideOppSlot player={rightOpp} isActive={rightOpp.idx === gameState.currentTurnIndex} side="right" cardCount={rightOpp.handCount} />
+                <SideOppSlot
+                  player={rightOpp}
+                  isActive={rightOpp.idx === gameState.currentTurnIndex}
+                  side="right"
+                  cardCount={rightOpp.handCount}
+                />
               )}
             </View>
           </View>
 
-          {/* Hand section */}
-          <View style={[styles.handSection, { height: HAND_SECTION_H }]}>
+          <View style={[sharedTableStyles.handSection, { height: HAND_SECTION_H }]}>
             {isFinished ? (
-              <View style={styles.finishedRow}>
+              <View style={localStyles.finishedRow}>
                 <Ionicons name="trophy" size={18} color={Colors.gold} />
-                <Text style={styles.finishedText}>Hai finito! Aspetti gli altri...</Text>
+                <Text style={localStyles.finishedText}>
+                  Hai finito! Aspetti gli altri...
+                </Text>
               </View>
             ) : (
               <StraightHand
@@ -666,117 +660,96 @@ export default function OnlineGameScreen() {
         </View>
       </View>
 
-      {/* PASSA button */}
       <Pressable
         testID="btn-passa"
         onPress={handlePass}
         disabled={!canPassNow}
-        style={[styles.passBtn, { left: leftPad + TABLE_M - 2, bottom: bottomPad + TABLE_M - 2 }, !canPassNow && styles.passBtnDim]}
+        style={[
+          localStyles.passBtn,
+          { left: leftPad + TABLE_M - 2, bottom: bottomPad + TABLE_M - 2 },
+          !canPassNow && localStyles.passBtnDim,
+        ]}
       >
-        <Text style={[styles.passBtnLabel, !canPassNow && styles.passBtnLabelDim]}>PASSA</Text>
+        <Text
+          style={[
+            localStyles.passBtnLabel,
+            !canPassNow && localStyles.passBtnLabelDim,
+          ]}
+        >
+          PASSA
+        </Text>
       </Pressable>
 
-      {/* GIOCA button */}
       <Pressable
         testID="btn-gioca"
         onPress={playBtnValid ? handlePlay : undefined}
-        style={[styles.playBtn, { right: rightPad + TABLE_M - 2, bottom: bottomPad + TABLE_M - 2 }, !playBtnValid && styles.playBtnDim]}
+        style={[
+          localStyles.playBtn,
+          { right: rightPad + TABLE_M - 2, bottom: bottomPad + TABLE_M - 2 },
+          !playBtnValid && localStyles.playBtnDim,
+        ]}
       >
         {playBtnValid ? (
-          <LinearGradient colors={[Colors.goldLight, Colors.gold, Colors.goldDark]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.playBtnGrad}>
-            <Text style={styles.playBtnLabel}>GIOCA</Text>
-            {selectedIds.length > 1 && <Text style={styles.playBtnSub}>{selectedIds.length} carte</Text>}
+          <LinearGradient
+            colors={[Colors.goldLight, Colors.gold, Colors.goldDark]}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
+            style={localStyles.playBtnGrad}
+          >
+            <Text style={localStyles.playBtnLabel}>GIOCA</Text>
+            {selectedIds.length > 1 && (
+              <Text style={localStyles.playBtnSub}>
+                {selectedIds.length} carte
+              </Text>
+            )}
           </LinearGradient>
         ) : (
-          <View style={[styles.playBtnGrad, styles.playBtnGradDim]}>
-            <Text style={styles.playBtnLabelDim}>GIOCA</Text>
+          <View style={[localStyles.playBtnGrad, localStyles.playBtnGradDim]}>
+            <Text style={localStyles.playBtnLabelDim}>GIOCA</Text>
           </View>
         )}
       </Pressable>
 
-      {/* Card throw animation */}
       {flyInfo && (
-        <FlyingCards key={flyInfo.key} cards={flyInfo.cards} direction={flyInfo.dir} onDone={() => setFlyInfo(null)} />
+        <FlyingCards
+          key={flyInfo.key}
+          cards={flyInfo.cards}
+          direction={flyInfo.dir}
+          onDone={() => setFlyInfo(null)}
+        />
       )}
 
-      {/* Full-screen game over result */}
       {showGameOver && gameState.gameOver && (
-        <Animated.View entering={FadeIn.duration(400)} style={goStyles.overlay}>
-          <ScrollView
-            contentContainerStyle={[goStyles.scroll, { paddingTop: topPad + 16, paddingBottom: bottomPad + 16 }]}
-            showsVerticalScrollIndicator={false}
-          >
-            <Text style={goStyles.title}>Partita Finita</Text>
-
-            <WinnerCelebration name={winnerName} />
-
-            <View style={goStyles.section}>
-              <Text style={goStyles.sectionTitle}>CLASSIFICA</Text>
-              <View style={goStyles.rankList}>
-                {gameState.rankings.map((name, i) => (
-                  <RankCard key={i} rank={i} name={name} isWinner={i === 0} delay={i * 100 + 400} />
-                ))}
-              </View>
-            </View>
-
-            <View style={goStyles.section}>
-              <Text style={goStyles.sectionTitle}>RIEPILOGO</Text>
-              <View style={goStyles.statsGrid}>
-                <View style={goStyles.statItem}>
-                  <Ionicons name="people" size={20} color={Colors.gold} />
-                  <Text style={goStyles.statValue}>{gameState.players.length}</Text>
-                  <Text style={goStyles.statLabel}>Giocatori</Text>
-                </View>
-                <View style={goStyles.statItem}>
-                  <Ionicons name={gameState.gameMode === "teams" ? "people-circle" : "person-circle"} size={20} color={Colors.gold} />
-                  <Text style={goStyles.statValue}>{gameState.gameMode === "teams" ? "Coppie" : "1 vs 1"}</Text>
-                  <Text style={goStyles.statLabel}>Modalità</Text>
-                </View>
-                <View style={goStyles.statItem}>
-                  <Ionicons name="wifi" size={20} color={Colors.accent} />
-                  <Text style={goStyles.statValue}>Online</Text>
-                  <Text style={goStyles.statLabel}>Modalità</Text>
-                </View>
-              </View>
-            </View>
-
-            <View style={goStyles.actions}>
-              <Pressable
-                testID="btn-home"
-                onPress={() => { leaveRoom(); router.replace("/(online)"); }}
-                style={goStyles.homeBtn}
-              >
-                <Ionicons name="home" size={18} color={Colors.textSecondary} />
-                <Text style={goStyles.homeBtnText}>Home</Text>
-              </Pressable>
-
-              <Pressable
-                testID="btn-rivincita"
-                onPress={isHost ? () => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium); requestPlayAgain(); } : undefined}
-                style={[goStyles.rematchBtn, !isHost && goStyles.rematchBtnDim]}
-              >
-                <LinearGradient
-                  colors={isHost ? [Colors.gold, Colors.goldDark] : [Colors.bgSurface, Colors.bgSurface]}
-                  start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}
-                  style={goStyles.rematchGradient}
-                >
-                  <Ionicons name="refresh" size={18} color={isHost ? "#0A1F18" : Colors.textMuted} />
-                  <Text style={[goStyles.rematchText, !isHost && { color: Colors.textMuted }]}>
-                    {isHost ? "Rivincita" : "Solo l'host può riavviare"}
-                  </Text>
-                </LinearGradient>
-              </Pressable>
-            </View>
-          </ScrollView>
-        </Animated.View>
+        <GameOverOverlay
+          gameState={gameState}
+          topPad={topPad}
+          bottomPad={bottomPad}
+          isHost={isHost}
+          onLeave={() => {
+            leaveRoom();
+            router.replace("/(online)");
+          }}
+          onRematch={() => {
+            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+            requestPlayAgain();
+          }}
+        />
       )}
 
       {W < H && (
-        <View style={portraitStyles.overlay}>
-          <View style={portraitStyles.card}>
-            <Ionicons name="phone-landscape-outline" size={56} color={Colors.gold} />
-            <Text style={portraitStyles.title}>Ruota il dispositivo</Text>
-            <Text style={portraitStyles.sub}>Il gioco richiede la modalità orizzontale</Text>
+        <View style={portraitOverlayStyles.overlay}>
+          <View style={portraitOverlayStyles.card}>
+            <Ionicons
+              name="phone-landscape-outline"
+              size={56}
+              color={Colors.gold}
+            />
+            <Text style={portraitOverlayStyles.title}>
+              Ruota il dispositivo
+            </Text>
+            <Text style={portraitOverlayStyles.sub}>
+              Il gioco richiede la modalità orizzontale
+            </Text>
           </View>
         </View>
       )}
@@ -784,8 +757,7 @@ export default function OnlineGameScreen() {
   );
 }
 
-// ─── Game styles (identical to offline game) ──────────────────────────────────
-const styles = StyleSheet.create({
+const localStyles = StyleSheet.create({
   root: { flex: 1, backgroundColor: "#031008" },
 
   topBar: {
@@ -799,7 +771,11 @@ const styles = StyleSheet.create({
   },
   onlineIndicator: { flexDirection: "row", alignItems: "center", gap: 5 },
   dot: { width: 7, height: 7, borderRadius: 3.5 },
-  onlineLabel: { fontFamily: "Inter_400Regular", fontSize: 10, color: Colors.textMuted },
+  onlineLabel: {
+    fontFamily: "Inter_400Regular",
+    fontSize: 10,
+    color: Colors.textMuted,
+  },
   turnPill: {
     flex: 1,
     flexDirection: "row",
@@ -811,7 +787,12 @@ const styles = StyleSheet.create({
     gap: 6,
   },
   turnDot: { width: 6, height: 6, borderRadius: 3 },
-  turnText: { fontFamily: "Rajdhani_600SemiBold", fontSize: 13, color: Colors.text, flex: 1 },
+  turnText: {
+    fontFamily: "Rajdhani_600SemiBold",
+    fontSize: 13,
+    color: Colors.text,
+    flex: 1,
+  },
   cardCountBadge: {
     width: 28,
     height: 28,
@@ -820,7 +801,11 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
-  cardCountText: { fontFamily: "Rajdhani_700Bold", fontSize: 14, color: Colors.gold },
+  cardCountText: {
+    fontFamily: "Rajdhani_700Bold",
+    fontSize: 14,
+    color: Colors.gold,
+  },
   reactionTrigger: { padding: 6 },
   reactionTriggerText: { fontSize: 20 },
   reactionPanel: {
@@ -838,9 +823,20 @@ const styles = StyleSheet.create({
     width: 180,
     zIndex: 100,
   },
-  emojiBtn: { width: 36, height: 36, alignItems: "center", justifyContent: "center", borderRadius: 8 },
+  emojiBtn: {
+    width: 36,
+    height: 36,
+    alignItems: "center",
+    justifyContent: "center",
+    borderRadius: 8,
+  },
   emojiBtnText: { fontSize: 22 },
-  floatingEmoji: { position: "absolute", bottom: "35%", alignItems: "center", zIndex: 200 },
+  floatingEmoji: {
+    position: "absolute",
+    bottom: "35%",
+    alignItems: "center",
+    zIndex: 200,
+  },
   floatingEmojiText: { fontSize: 36 },
   floatingEmojiName: {
     fontFamily: "Inter_400Regular",
@@ -852,160 +848,55 @@ const styles = StyleSheet.create({
     paddingVertical: 1,
   },
 
-  table: {
-    position: "absolute",
-    borderRadius: 22,
-    overflow: "hidden",
-    borderWidth: 3,
-    borderColor: "rgba(201,168,76,0.3)",
-  },
-  tableInnerBorder: {
-    position: "absolute",
-    top: 6, left: 6, right: 6, bottom: 6,
-    borderRadius: 18,
-    borderWidth: 1.5,
-    borderColor: "rgba(201,168,76,0.12)",
-  },
-  tableContent: { flex: 1, flexDirection: "column" },
-
-  topSection: {
-    alignItems: "center",
-    justifyContent: "center",
-    borderBottomWidth: 1,
-    borderBottomColor: "rgba(201,168,76,0.08)",
-  },
-  topOppSlot: { alignItems: "center", justifyContent: "center", paddingVertical: 6 },
-  topOppRow: { flexDirection: "row", alignItems: "center", gap: 12 },
-  topOppAvatarCol: { alignItems: "center", gap: 3 },
-
-  midSection: { flex: 1, flexDirection: "row", alignItems: "center" },
-  sideSection: { width: SIDE_SECTION_W, alignItems: "center", justifyContent: "center", paddingHorizontal: 8 },
-  sideOppSlot: { alignItems: "center", justifyContent: "center", gap: 6 },
-  sideLeft: { flexDirection: "row" },
-  sideRight: { flexDirection: "row-reverse" },
-  sideOppAvatarCol: { alignItems: "center", gap: 3, marginHorizontal: 6 },
-
-  centerSection: { flex: 1, alignItems: "center", justifyContent: "center" },
-
-  handSection: {
-    alignItems: "center",
-    justifyContent: "center",
-    paddingHorizontal: BTN_W + 10,
-    borderTopWidth: 1,
-    borderTopColor: "rgba(201,168,76,0.08)",
-  },
-
-  oppName: {
-    fontFamily: "Rajdhani_600SemiBold",
-    fontSize: 10,
-    color: "rgba(240,234,214,0.65)",
-    maxWidth: 70,
-    textAlign: "center",
-  },
-
-  avatarOuter: {
-    borderWidth: 2,
-    borderColor: "rgba(255,255,255,0.12)",
-    alignItems: "center",
-    justifyContent: "center",
-    position: "relative",
-  },
-  avatarOuterActive: {
-    borderColor: Colors.gold,
-    shadowColor: Colors.gold,
-    shadowOpacity: 0.7,
-    shadowRadius: 8,
-    shadowOffset: { width: 0, height: 0 },
-    elevation: 8,
-  },
-  avatarInner: {
-    backgroundColor: "rgba(11,59,37,0.95)",
-    alignItems: "center",
-    justifyContent: "center",
-    borderWidth: 1,
-    borderColor: "rgba(201,168,76,0.18)",
-  },
-  avatarInitials: { fontFamily: "Rajdhani_700Bold", color: Colors.text, letterSpacing: 0.5 },
-  countBubble: {
-    position: "absolute",
-    bottom: -3, right: -3,
-    backgroundColor: "rgba(4,16,8,0.9)",
-    borderRadius: 9,
-    minWidth: 18,
-    height: 18,
-    alignItems: "center",
-    justifyContent: "center",
-    paddingHorizontal: 3,
-    borderWidth: 1,
-    borderColor: "rgba(201,168,76,0.3)",
-  },
-  countBubbleText: { fontFamily: "Rajdhani_700Bold", fontSize: 10, color: Colors.gold },
-
-  pileArea: { alignItems: "center", justifyContent: "center", minHeight: 80 },
-  winnerTag: {
-    position: "absolute",
-    top: -28,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 4,
-    backgroundColor: Colors.goldMuted,
-    borderRadius: 10,
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderWidth: 1,
-    borderColor: Colors.goldDark,
-    zIndex: 20,
-  },
-  winnerText: { fontFamily: "Rajdhani_600SemiBold", fontSize: 11, color: Colors.gold },
-  emptyText: { fontFamily: "Rajdhani_500Medium", fontSize: 12, color: "rgba(240,234,214,0.18)" },
-  pileStack: { alignItems: "center", justifyContent: "center" },
-  pileLayer: { position: "absolute", alignItems: "center", justifyContent: "center" },
-  pileCards: { flexDirection: "row", alignItems: "flex-end" },
-  comboLabel: { marginTop: CARD_H + 12 },
-  comboChip: {
-    backgroundColor: "rgba(201,168,76,0.2)",
-    borderRadius: 8,
-    paddingHorizontal: 10,
-    paddingVertical: 3,
-    borderWidth: 1,
-    borderColor: "rgba(201,168,76,0.4)",
-  },
-  comboChipText: {
-    fontFamily: "Rajdhani_700Bold",
-    fontSize: 10,
-    color: Colors.gold,
-    letterSpacing: 1,
-    textTransform: "uppercase",
-  },
-
-  handCenter: { alignItems: "center", justifyContent: "center", height: CARD_H, flexDirection: "row", gap: 6 },
-  handRow: { position: "relative", height: CARD_H, alignSelf: "center" },
-  handCardWrap: { position: "absolute", bottom: 0 },
-  emptyHandText: { fontFamily: "Rajdhani_600SemiBold", fontSize: 13, color: Colors.gold },
   finishedRow: { flexDirection: "row", alignItems: "center", gap: 8 },
-  finishedText: { fontFamily: "Rajdhani_600SemiBold", fontSize: 13, color: Colors.gold },
+  finishedText: {
+    fontFamily: "Rajdhani_600SemiBold",
+    fontSize: 13,
+    color: Colors.gold,
+  },
 
   passBtn: {
     position: "absolute",
-    width: BTN_W, height: BTN_H,
+    width: BTN_W,
+    height: BTN_H,
     borderRadius: BTN_H / 2,
     backgroundColor: "#5C1212",
-    alignItems: "center", justifyContent: "center",
-    borderWidth: 2.5, borderColor: "#8B1A1A",
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 2.5,
+    borderColor: "#8B1A1A",
     zIndex: 20,
-    shadowColor: "#000", shadowOpacity: 0.5, shadowRadius: 8, shadowOffset: { width: 0, height: 4 }, elevation: 10,
+    shadowColor: "#000",
+    shadowOpacity: 0.5,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 10,
   },
-  passBtnDim: { backgroundColor: "rgba(50,12,12,0.55)", borderColor: "rgba(100,20,20,0.35)", shadowOpacity: 0 },
-  passBtnLabel: { fontFamily: "Rajdhani_700Bold", fontSize: 15, color: "#FF8080", letterSpacing: 1 },
+  passBtnDim: {
+    backgroundColor: "rgba(50,12,12,0.55)",
+    borderColor: "rgba(100,20,20,0.35)",
+    shadowOpacity: 0,
+  },
+  passBtnLabel: {
+    fontFamily: "Rajdhani_700Bold",
+    fontSize: 15,
+    color: "#FF8080",
+    letterSpacing: 1,
+  },
   passBtnLabelDim: { color: "rgba(255,128,128,0.3)" },
 
   playBtn: {
     position: "absolute",
-    width: BTN_W, height: BTN_H,
+    width: BTN_W,
+    height: BTN_H,
     borderRadius: BTN_H / 2,
     overflow: "hidden",
     zIndex: 20,
-    shadowColor: Colors.gold, shadowOpacity: 0.5, shadowRadius: 8, shadowOffset: { width: 0, height: 4 }, elevation: 10,
+    shadowColor: Colors.gold,
+    shadowOpacity: 0.5,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 10,
   },
   playBtnDim: { shadowOpacity: 0 },
   playBtnGrad: { flex: 1, alignItems: "center", justifyContent: "center", gap: 1 },
@@ -1015,106 +906,184 @@ const styles = StyleSheet.create({
     borderColor: "rgba(201,168,76,0.2)",
     borderRadius: BTN_H / 2,
   },
-  playBtnLabel: { fontFamily: "Rajdhani_700Bold", fontSize: 15, color: "#0A1F10", letterSpacing: 1 },
-  playBtnSub: { fontFamily: "Rajdhani_500Medium", fontSize: 9, color: "#0A1F10", opacity: 0.7 },
-  playBtnLabelDim: { fontFamily: "Rajdhani_600SemiBold", fontSize: 11, color: "rgba(201,168,76,0.3)", letterSpacing: 0.5, textAlign: "center" },
-
-  flyingContainer: { position: "absolute", top: 0, left: 0, right: 0, bottom: 0, alignItems: "center", justifyContent: "center", zIndex: 60 },
-  flyingInner: { width: CARD_W * 2.5, height: CARD_H, alignItems: "center", justifyContent: "center" },
+  playBtnLabel: {
+    fontFamily: "Rajdhani_700Bold",
+    fontSize: 15,
+    color: "#0A1F10",
+    letterSpacing: 1,
+  },
+  playBtnSub: {
+    fontFamily: "Rajdhani_500Medium",
+    fontSize: 9,
+    color: "#0A1F10",
+    opacity: 0.7,
+  },
+  playBtnLabelDim: {
+    fontFamily: "Rajdhani_600SemiBold",
+    fontSize: 11,
+    color: "rgba(201,168,76,0.3)",
+    letterSpacing: 0.5,
+    textAlign: "center",
+  },
 });
 
-// ─── Game over result styles ──────────────────────────────────────────────────
 const goStyles = StyleSheet.create({
   overlay: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: "rgba(6,20,16,0.95)",
+    backgroundColor: "rgba(6,20,16,0.96)",
     zIndex: 300,
+    paddingHorizontal: 16,
   },
-  scroll: { padding: 20, gap: 28, alignItems: "stretch" },
-  title: {
+  twoCol: {
+    flex: 1,
+    flexDirection: "row",
+    gap: 16,
+  },
+  leftCol: {
+    width: 200,
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingVertical: 8,
+  },
+  rightCol: {
+    flex: 1,
+    paddingVertical: 8,
+    gap: 6,
+  },
+  celebration: {
+    alignItems: "center",
+    gap: 8,
+  },
+  trophyCircle: {
+    width: 72,
+    height: 72,
+    borderRadius: 36,
+    overflow: "hidden",
+    borderWidth: 2,
+    borderColor: Colors.gold,
+  },
+  trophyGradient: { flex: 1, alignItems: "center", justifyContent: "center" },
+  winnerName: {
     fontFamily: "Rajdhani_700Bold",
     fontSize: 22,
     color: Colors.text,
-    letterSpacing: 2,
+    letterSpacing: 1,
+    maxWidth: 180,
     textAlign: "center",
   },
-  celebration: { alignItems: "center", gap: 12, paddingVertical: 16 },
-  celebrationGlow: {
-    position: "absolute",
-    width: 160, height: 160, borderRadius: 80,
-    backgroundColor: Colors.gold, top: 0, opacity: 0.08,
+  winnerSubtitle: {
+    fontFamily: "Inter_500Medium",
+    fontSize: 11,
+    color: Colors.gold,
+    letterSpacing: 2,
+    textTransform: "uppercase",
   },
-  trophyCircle: { width: 100, height: 100, borderRadius: 50, overflow: "hidden", borderWidth: 2, borderColor: Colors.gold },
-  trophyGradient: { flex: 1, alignItems: "center", justifyContent: "center" },
-  winnerName: { fontFamily: "Rajdhani_700Bold", fontSize: 32, color: Colors.text, letterSpacing: 2 },
-  winnerSubtitle: { fontFamily: "Inter_500Medium", fontSize: 13, color: Colors.gold, letterSpacing: 3, textTransform: "uppercase" },
 
-  section: { gap: 12 },
-  sectionTitle: { fontFamily: "Inter_600SemiBold", fontSize: 11, color: Colors.textMuted, letterSpacing: 2 },
-  rankList: { gap: 10 },
+  sectionTitle: {
+    fontFamily: "Inter_600SemiBold",
+    fontSize: 10,
+    color: Colors.textMuted,
+    letterSpacing: 2,
+  },
+  rankList: { gap: 6 },
   rankCard: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 14,
+    gap: 10,
     backgroundColor: Colors.bgSurface,
-    borderRadius: 14,
-    padding: 16,
+    borderRadius: 10,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
     borderWidth: 1,
     borderColor: Colors.border,
     overflow: "hidden",
   },
   rankCardWinner: { borderColor: Colors.gold },
-  positionBadge: { width: 36, height: 36, borderRadius: 18, borderWidth: 1.5, alignItems: "center", justifyContent: "center" },
-  positionLabel: { fontFamily: "Rajdhani_700Bold", fontSize: 14 },
-  playerName: { fontFamily: "Rajdhani_600SemiBold", fontSize: 17, color: Colors.text, flex: 1 },
-  winnerBadge: { backgroundColor: Colors.goldMuted, borderRadius: 6, paddingHorizontal: 8, paddingVertical: 3, borderWidth: 1, borderColor: Colors.goldDark },
-  winnerBadgeText: { fontFamily: "Rajdhani_700Bold", fontSize: 10, color: Colors.gold, letterSpacing: 1 },
-
-  statsGrid: { flexDirection: "row", gap: 10 },
-  statItem: { flex: 1, backgroundColor: Colors.bgSurface, borderRadius: 12, padding: 14, alignItems: "center", gap: 6, borderWidth: 1, borderColor: Colors.border },
-  statValue: { fontFamily: "Rajdhani_700Bold", fontSize: 18, color: Colors.text },
-  statLabel: { fontFamily: "Inter_400Regular", fontSize: 11, color: Colors.textMuted },
-
-  actions: { flexDirection: "row", gap: 12, paddingTop: 4 },
-  homeBtn: {
-    flexDirection: "row", alignItems: "center", gap: 8,
-    paddingVertical: 16, paddingHorizontal: 20,
+  positionBadge: {
+    width: 28,
+    height: 28,
     borderRadius: 14,
-    backgroundColor: Colors.bgSurface,
-    borderWidth: 1, borderColor: Colors.border,
-  },
-  homeBtnText: { fontFamily: "Rajdhani_600SemiBold", fontSize: 16, color: Colors.textSecondary },
-  rematchBtn: { flex: 1, borderRadius: 14, overflow: "hidden" },
-  rematchBtnDim: { opacity: 0.6 },
-  rematchGradient: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 10, paddingVertical: 16 },
-  rematchText: { fontFamily: "Rajdhani_700Bold", fontSize: 17, color: "#0A1F18", letterSpacing: 0.5 },
-});
-
-const portraitStyles = StyleSheet.create({
-  overlay: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: "rgba(3,16,8,0.97)",
+    borderWidth: 1.5,
     alignItems: "center",
     justifyContent: "center",
-    zIndex: 999,
   },
-  card: {
-    alignItems: "center",
-    gap: 16,
-    paddingHorizontal: 40,
-  },
-  title: {
-    fontFamily: "Rajdhani_700Bold",
-    fontSize: 26,
+  positionLabel: { fontFamily: "Rajdhani_700Bold", fontSize: 12 },
+  playerName: {
+    fontFamily: "Rajdhani_600SemiBold",
+    fontSize: 14,
     color: Colors.text,
-    letterSpacing: 1,
-    textAlign: "center",
+    flex: 1,
   },
-  sub: {
+  winnerBadge: {
+    backgroundColor: Colors.goldMuted,
+    borderRadius: 5,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderWidth: 1,
+    borderColor: Colors.goldDark,
+  },
+  winnerBadgeText: {
+    fontFamily: "Rajdhani_700Bold",
+    fontSize: 9,
+    color: Colors.gold,
+    letterSpacing: 1,
+  },
+
+  statsRow: { flexDirection: "row", gap: 8 },
+  statItem: {
+    flex: 1,
+    backgroundColor: Colors.bgSurface,
+    borderRadius: 10,
+    padding: 10,
+    alignItems: "center",
+    gap: 4,
+    borderWidth: 1,
+    borderColor: Colors.border,
+  },
+  statValue: {
+    fontFamily: "Rajdhani_700Bold",
+    fontSize: 14,
+    color: Colors.text,
+  },
+  statLabel: {
     fontFamily: "Inter_400Regular",
+    fontSize: 9,
+    color: Colors.textMuted,
+  },
+
+  actions: { width: "100%", gap: 8 },
+  homeBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 6,
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    borderRadius: 12,
+    backgroundColor: Colors.bgSurface,
+    borderWidth: 1,
+    borderColor: Colors.border,
+  },
+  homeBtnText: {
+    fontFamily: "Rajdhani_600SemiBold",
     fontSize: 14,
     color: Colors.textSecondary,
-    textAlign: "center",
-    lineHeight: 22,
+  },
+  rematchBtn: { borderRadius: 12, overflow: "hidden" },
+  rematchBtnDim: { opacity: 0.6 },
+  rematchGradient: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+  },
+  rematchText: {
+    fontFamily: "Rajdhani_700Bold",
+    fontSize: 14,
+    color: "#0A1F18",
+    letterSpacing: 0.5,
+    flexShrink: 1,
   },
 });

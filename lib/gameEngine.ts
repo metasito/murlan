@@ -510,10 +510,10 @@ export function processPass(state: GameState): GameState {
 
 function getNextActivePlayer(state: GameState): number {
   const total = state.players.length;
-  let next = (state.currentTurnIndex + 1) % total;
+  let next = (state.currentTurnIndex - 1 + total) % total;
   let attempts = 0;
   while (state.players[next].hand.length === 0 && attempts < total) {
-    next = (next + 1) % total;
+    next = (next - 1 + total) % total;
     attempts++;
   }
   return next;
@@ -672,6 +672,15 @@ export function initializeGame(
   gameMode: GameMode
 ): GameState {
   const { hands } = dealCards(playerSetup.length);
+
+  const starterHandIdx = hands.findIndex((h) =>
+    h.some((c) => c.rank === "3" && c.suit === "spades")
+  );
+  if (starterHandIdx > 0) {
+    const tmp = hands[0];
+    hands[0] = hands[starterHandIdx];
+    hands[starterHandIdx] = tmp;
+  }
 
   const players: Player[] = playerSetup.map((setup, i) => ({
     id: `player_${i}`,
