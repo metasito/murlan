@@ -7,11 +7,10 @@ import React, {
   useCallback,
   ReactNode,
 } from "react";
-import { Alert } from "react-native";
 import { router } from "expo-router";
 import { useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "@/context/AuthContext";
-import { connectSocket, disconnectSocket, getSocket } from "@/lib/socket";
+import { connectSocket, disconnectSocket } from "@/lib/socket";
 import type { Socket } from "socket.io-client";
 import type { NotificationData } from "@/components/NotificationBanner";
 
@@ -136,30 +135,15 @@ export function SocketProvider({ children }: { children: ReactNode }) {
     };
 
     const onInvite = ({ from, roomCode }: { from: string; roomCode: string }) => {
+      setPendingInvite({ from, roomCode });
       showNotification({
         type: "game_invite",
         title: `${from} ti invita a giocare!`,
-        message: "Tocca per unirti alla partita",
+        message: `Stanza: ${roomCode} — Tocca per unirti`,
         onPress: () => {
-          setPendingInvite({ from, roomCode });
           router.push("/(online)");
         },
       });
-      // Also show Alert as backup
-      Alert.alert(
-        "Invito di gioco",
-        `${from} ti ha invitato a giocare!\nCodice stanza: ${roomCode}`,
-        [
-          {
-            text: "Unisciti",
-            onPress: () => {
-              setPendingInvite({ from, roomCode });
-              router.push("/(online)");
-            },
-          },
-          { text: "Ignora", style: "cancel" },
-        ]
-      );
     };
 
     socket.on("connect", onConnect);

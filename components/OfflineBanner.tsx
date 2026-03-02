@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef } from "react";
 import { Text, StyleSheet, Platform } from "react-native";
 import NetInfo from "@react-native-community/netinfo";
 import Animated, {
@@ -7,17 +7,19 @@ import Animated, {
   withTiming,
 } from "react-native-reanimated";
 
+const BANNER_H = 44;
+
 export function OfflineBanner() {
-  const [isOffline, setIsOffline] = useState(false);
-  const translateY = useSharedValue(-44);
+  const translateY = useSharedValue(-BANNER_H);
+  const isOfflineRef = useRef(false);
 
   useEffect(() => {
     const unsub = NetInfo.addEventListener((state) => {
-      const offline = !(
-        state.isConnected && state.isInternetReachable !== false
-      );
-      setIsOffline(offline);
-      translateY.value = withTiming(offline ? 0 : -44, { duration: 300 });
+      // Only flag offline when definitively false — treat null/undefined as online
+      const offline = state.isConnected === false;
+      if (offline === isOfflineRef.current) return;
+      isOfflineRef.current = offline;
+      translateY.value = withTiming(offline ? 0 : -BANNER_H, { duration: 300 });
     });
     return () => unsub();
   }, []);
@@ -26,8 +28,7 @@ export function OfflineBanner() {
     transform: [{ translateY: translateY.value }],
   }));
 
-  if (!isOffline) return null;
-
+  // Always rendered — animation controls visibility
   return (
     <Animated.View style={[styles.banner, animStyle]} pointerEvents="none">
       <Text style={styles.text}>⚠️ Nessuna connessione Internet</Text>
@@ -44,7 +45,9 @@ const styles = StyleSheet.create({
     zIndex: 10000,
     backgroundColor: "#B71C1C",
     paddingVertical: 10,
+    height: BANNER_H,
     alignItems: "center",
+    justifyContent: "center",
     ...(Platform.OS === "web"
       ? ({ boxShadow: "0 2px 8px rgba(0,0,0,0.4)" } as any)
       : {

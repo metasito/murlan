@@ -65,8 +65,11 @@ Murlan is built with a client-server architecture.
 - **Game Persistence:** `active_games` table persists live game state to PostgreSQL after every move. Reconnect grace: 60s.
 - **AFK Handling:** 30s timer auto-passes for inactive players. Clears on each move/pass.
 - **Settings:** `SettingsContext` provides sound/haptic toggles. `SettingsModal` component accessible from home screen.
-- **Offline Detection:** `OfflineBanner` uses `@react-native-community/netinfo` (installed in node_modules).
+- **Offline Detection:** `OfflineBanner` uses `@react-native-community/netinfo`. Always-mounted; animation-controlled visibility. Only flags offline when `state.isConnected === false` (no false-positives from null values).
 - **Structured Logging:** pino/pino-http replaces all console.log on the server.
+- **NotificationBanner:** Always mounted (never returns null). Animation sequenced via callback chain: slide-in (320ms) → wait 4s → slide-out. Prevents the bug where a second `withTiming` assignment immediately overwrites the slide-in animation.
+- **Friends FlatList:** `extraData={onlineIds}` on FlatList ensures rows re-render when online status changes, without waiting for the friends data array to change.
+- **Game Invite:** `SocketContext` sets `pendingInvite` BEFORE showing notification. No duplicate Alert — banner-only UX. `index.tsx` auto-fills join code and opens modal via `pendingInvite` effect.
 
 **3. Feature Specifications:**
 - **Online Multiplayer Features:** Hidden opponent hands (only card count visible), emoji reactions with float animations, Quickmatch functionality, and vote-based rematch.

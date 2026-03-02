@@ -178,6 +178,7 @@ export default function FriendsScreen() {
 
       <FlatList
         contentContainerStyle={[styles.listContent, { paddingBottom: bottomPad + 20 }]}
+        extraData={onlineIds}
         ListHeaderComponent={
           <>
             <View style={styles.myCodeCard}>

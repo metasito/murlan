@@ -37,6 +37,9 @@ const COLOR_MAP: Record<NotificationType, string> = {
   game_invite: "#6b8ef5",
 };
 
+const SLIDE_DURATION = 320;
+const VISIBLE_DURATION = 4000;
+
 export default function NotificationBanner({ notification, onDismiss }: Props) {
   const insets = useSafeAreaInsets();
   const translateY = useSharedValue(-120);
@@ -46,18 +49,25 @@ export default function NotificationBanner({ notification, onDismiss }: Props) {
 
   useEffect(() => {
     if (notification) {
-      translateY.value = withTiming(0, { duration: 350 });
-      opacity.value = withTiming(1, { duration: 300 });
-      translateY.value = withDelay(
-        4000,
-        withTiming(-120, { duration: 350 }, (finished) => {
-          if (finished) runOnJS(onDismiss)();
-        })
-      );
-      opacity.value = withDelay(4000, withTiming(0, { duration: 300 }));
+      // Slide in first, then after VISIBLE_DURATION auto-dismiss
+      translateY.value = withTiming(0, { duration: SLIDE_DURATION }, () => {
+        translateY.value = withDelay(
+          VISIBLE_DURATION,
+          withTiming(-120, { duration: SLIDE_DURATION }, (finished) => {
+            if (finished) runOnJS(onDismiss)();
+          })
+        );
+      });
+      opacity.value = withTiming(1, { duration: SLIDE_DURATION }, () => {
+        opacity.value = withDelay(
+          VISIBLE_DURATION + SLIDE_DURATION * 0.5,
+          withTiming(0, { duration: SLIDE_DURATION })
+        );
+      });
     } else {
-      translateY.value = -120;
-      opacity.value = 0;
+      // Instantly reset when dismissed programmatically
+      translateY.value = withTiming(-120, { duration: SLIDE_DURATION });
+      opacity.value = withTiming(0, { duration: SLIDE_DURATION });
     }
   }, [notification]);
 
@@ -66,35 +76,30 @@ export default function NotificationBanner({ notification, onDismiss }: Props) {
     opacity: opacity.value,
   }));
 
-  if (!notification) return null;
-
-  const color = COLOR_MAP[notification.type];
-  const icon = ICON_MAP[notification.type];
-
   function handlePress() {
-    translateY.value = withTiming(-120, { duration: 300 });
-    opacity.value = withTiming(0, { duration: 250 }, (finished) => {
+    translateY.value = withTiming(-120, { duration: SLIDE_DURATION });
+    opacity.value = withTiming(0, { duration: SLIDE_DURATION * 0.75 }, (finished) => {
       if (finished) runOnJS(onDismiss)();
     });
     if (notification) notification.onPress?.();
   }
 
+  // Always render — animation controls visibility, never unmount
+  const color = notification ? COLOR_MAP[notification.type] : Colors.gold;
+  const icon = notification ? ICON_MAP[notification.type] : "notifications";
+
   return (
     <Animated.View
-      style={[
-        styles.container,
-        { top: topOffset + 8 },
-        animStyle,
-      ]}
-      pointerEvents="box-none"
+      style={[styles.container, { top: topOffset + 8 }, animStyle]}
+      pointerEvents={notification ? "box-none" : "none"}
     >
       <Pressable onPress={handlePress} style={[styles.banner, { borderLeftColor: color }]}>
         <View style={[styles.iconCircle, { backgroundColor: color + "22" }]}>
           <Ionicons name={icon} size={20} color={color} />
         </View>
         <View style={styles.textGroup}>
-          <Text style={styles.title}>{notification.title}</Text>
-          <Text style={styles.message} numberOfLines={1}>{notification.message}</Text>
+          <Text style={styles.title}>{notification?.title ?? ""}</Text>
+          <Text style={styles.message} numberOfLines={1}>{notification?.message ?? ""}</Text>
         </View>
         <Pressable onPress={handlePress} hitSlop={8} style={styles.closeBtn}>
           <Ionicons name="close" size={16} color={Colors.textMuted} />
