@@ -355,6 +355,7 @@ export default function OnlineGameScreen() {
   const prevComboKeyRef = useRef<string>("");
   const prevRoundWinnerRef = useRef<number | null>(null);
   const reactionTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const pendingComboRef = useRef<Combination | null>(null);
 
   useEffect(() => {
     ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.LANDSCAPE);
@@ -373,7 +374,8 @@ export default function OnlineGameScreen() {
         combo.cards.map((c) => c.id).join(",") + "_" + gameState.lastPlayedBy;
       if (comboKey !== prevComboKeyRef.current) {
         prevComboKeyRef.current = comboKey;
-        setPlayedPile((prev) => [...prev.slice(-5), combo]);
+        // Store the combo; pile is updated when the flying card lands (onFlyDone)
+        pendingComboRef.current = combo;
         const playedBy = gameState.lastPlayedBy;
         let dir: FlyDirection;
         if (playedBy === mySeatIndex) {
@@ -389,7 +391,9 @@ export default function OnlineGameScreen() {
       }
     } else {
       prevComboKeyRef.current = "";
+      pendingComboRef.current = null;
       setPlayedPile([]);
+      setFlyInfo(null);
     }
   }, [gameState?.lastPlayedCombination]);
 
@@ -715,7 +719,13 @@ export default function OnlineGameScreen() {
           key={flyInfo.key}
           cards={flyInfo.cards}
           direction={flyInfo.dir}
-          onDone={() => setFlyInfo(null)}
+          onDone={() => {
+            if (pendingComboRef.current) {
+              setPlayedPile((prev) => [...prev.slice(-5), pendingComboRef.current!]);
+              pendingComboRef.current = null;
+            }
+            setFlyInfo(null);
+          }}
         />
       )}
 

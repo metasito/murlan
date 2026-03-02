@@ -28,27 +28,31 @@ import { CardView } from "@/components/CardView";
 import { sortHand } from "@/lib/gameEngine";
 import Colors from "@/constants/colors";
 
-const POSITION_MEDALS = ["trophy", "medal", "ribbon", "remove-circle"];
 const POSITION_COLORS = [Colors.gold, "#C0C0C0", "#CD7F32", Colors.textMuted];
 const POSITION_LABELS = ["1°", "2°", "3°", "4°"];
+const POSITION_ICONS = ["trophy", "medal", "ribbon", "remove-circle"] as const;
 
-function RankCard({
+function ScoreRow({
   rank,
   name,
+  totalScore,
+  pointsEarned,
   isWinner,
   delay,
   team,
-  pointsEarned,
+  isMultiRound,
 }: {
   rank: number;
   name: string;
+  totalScore: number;
+  pointsEarned: number;
   isWinner: boolean;
   delay: number;
   team?: "A" | "B";
-  pointsEarned?: number;
+  isMultiRound: boolean;
 }) {
   const opacity = useSharedValue(0);
-  const tx = useSharedValue(50);
+  const tx = useSharedValue(40);
   useEffect(() => {
     opacity.value = withDelay(delay, withTiming(1, { duration: 380 }));
     tx.value = withDelay(delay, withSpring(0, { damping: 14, stiffness: 200 }));
@@ -58,7 +62,7 @@ function RankCard({
     transform: [{ translateX: tx.value }],
   }));
   const color = POSITION_COLORS[rank] ?? Colors.textMuted;
-  const icon = POSITION_MEDALS[rank] ?? "person";
+  const icon = POSITION_ICONS[rank] ?? "person";
   const label = POSITION_LABELS[rank] ?? `${rank + 1}°`;
 
   return (
@@ -74,72 +78,25 @@ function RankCard({
       </View>
       <Ionicons
         name={icon as React.ComponentProps<typeof Ionicons>["name"]}
-        size={20}
+        size={18}
         color={color}
       />
       <View style={{ flex: 1 }}>
         <Text style={styles.playerName} numberOfLines={1}>{name}</Text>
         {team && (
-          <Text
-            style={[
-              styles.teamLabel,
-              { color: team === "A" ? Colors.accent : Colors.gold },
-            ]}
-          >
+          <Text style={[styles.teamLabel, { color: team === "A" ? Colors.accent : Colors.gold }]}>
             Team {team}
           </Text>
         )}
       </View>
-      {pointsEarned !== undefined && (
-        <View style={styles.ptsBadge}>
-          <Text style={styles.ptsText}>+{pointsEarned}</Text>
-        </View>
-      )}
-      {isWinner && pointsEarned === undefined && (
-        <View style={styles.winBadge}>
-          <Text style={styles.winBadgeText}>VINCITORE</Text>
-        </View>
-      )}
-    </Animated.View>
-  );
-}
-
-function ScoreRow({
-  name,
-  score,
-  isLeader,
-  rank,
-  delay,
-}: {
-  name: string;
-  score: number;
-  isLeader: boolean;
-  rank: number;
-  delay: number;
-}) {
-  const opacity = useSharedValue(0);
-  const tx = useSharedValue(30);
-  useEffect(() => {
-    opacity.value = withDelay(delay, withTiming(1, { duration: 320 }));
-    tx.value = withDelay(delay, withSpring(0, { damping: 14, stiffness: 200 }));
-  }, []);
-  const anim = useAnimatedStyle(() => ({
-    opacity: opacity.value,
-    transform: [{ translateX: tx.value }],
-  }));
-  const color = POSITION_COLORS[rank] ?? Colors.textMuted;
-  return (
-    <Animated.View style={[sbStyles.row, isLeader && sbStyles.rowLeader, anim]}>
-      {isLeader && (
-        <LinearGradient
-          colors={["rgba(201,168,76,0.1)", "transparent"]}
-          style={StyleSheet.absoluteFill}
-        />
-      )}
-      <Text style={[sbStyles.rankNum, { color }]}>{rank + 1}</Text>
-      <Text style={sbStyles.name} numberOfLines={1}>{name}</Text>
-      <Text style={[sbStyles.score, isLeader && sbStyles.scoreLeader]}>{score}</Text>
-      {isLeader && <Ionicons name="star" size={11} color={Colors.gold} />}
+      <View style={styles.scoreBlock}>
+        <Text style={[styles.totalScore, isWinner && styles.totalScoreWinner]}>
+          {totalScore}
+        </Text>
+        <Text style={styles.scoreSub}>
+          {isMultiRound ? `+${pointsEarned} ora` : `punti`}
+        </Text>
+      </View>
     </Animated.View>
   );
 }
@@ -365,25 +322,29 @@ export default function ResultScreen() {
   const isLastRound = currentRound >= totalRounds;
   const numPlayers = gameState.players.length;
 
+  // Points earned this round (keyed by player ID)
   const thisRoundPoints = calcRoundPoints(gameState.rankings, numPlayers);
-  const fullScores: Record<string, number> = {};
-  for (const name of gameState.rankings) {
-    fullScores[name] =
-      (cumulativeScores[name] ?? 0) + (thisRoundPoints[name] ?? 0);
-  }
-  const scoreboardEntries = Object.entries(fullScores).sort(
-    (a, b) => b[1] - a[1]
-  );
-  const overallWinner = scoreboardEntries[0]?.[0] ?? "";
 
+  // Total score per player (cumulative + this round), keyed by player ID
+  const totalScoreById: Record<string, number> = {};
+  for (const player of gameState.players) {
+    totalScoreById[player.id] =
+      (cumulativeScores[player.id] ?? 0) + (thisRoundPoints[player.id] ?? 0);
+  }
+
+  // Single sorted list: highest total score first
   const sortedPlayers = [...gameState.players].sort(
-    (a, b) => (a.finishPosition ?? 99) - (b.finishPosition ?? 99)
+    (a, b) => (totalScoreById[b.id] ?? 0) - (totalScoreById[a.id] ?? 0)
   );
+
   const winner = sortedPlayers[0];
   const isTeamMode = gameState.gameMode === "teams";
   const winnerTeam = isTeamMode ? winner.team : null;
   const displayName =
     isTeamMode && winnerTeam ? `Team ${winnerTeam}` : winner.name;
+
+  // For multi-round overall winner label — player with highest cumulative total
+  const overallWinner = sortedPlayers[0]?.name ?? "";
 
   const topPad = Platform.OS === "web" ? 67 : insets.top;
   const bottomPad = Platform.OS === "web" ? 34 : insets.bottom;
@@ -542,59 +503,32 @@ export default function ResultScreen() {
         </View>
 
         <View style={styles.rightCol}>
-          <Text style={styles.sectionTitle}>
-            {isMultiRound
-              ? `RISULTATI MANCHE ${currentRound}`
-              : "CLASSIFICA"}
-          </Text>
+          <Text style={styles.sectionTitle}>CLASSIFICA</Text>
           <View style={styles.rankList}>
             {sortedPlayers.map((player, idx) => (
-              <RankCard
+              <ScoreRow
                 key={player.id}
                 rank={idx}
                 name={player.name}
+                totalScore={totalScoreById[player.id] ?? 0}
+                pointsEarned={thisRoundPoints[player.id] ?? 0}
                 isWinner={idx === 0}
                 delay={idx * 80 + 200}
                 team={isTeamMode ? player.team : undefined}
-                pointsEarned={thisRoundPoints[player.name]}
+                isMultiRound={isMultiRound}
               />
             ))}
           </View>
-
-          {isMultiRound && (
-            <>
-              <Text style={[styles.sectionTitle, { marginTop: 10 }]}>
-                CLASSIFICA GENERALE
-              </Text>
-              <View style={sbStyles.board}>
-                {scoreboardEntries.map(([name, score], idx) => (
-                  <ScoreRow
-                    key={name}
-                    name={name}
-                    score={score}
-                    isLeader={idx === 0}
-                    rank={idx}
-                    delay={idx * 70 + 400}
-                  />
-                ))}
-              </View>
-              <View style={sbStyles.legend}>
-                <Ionicons
-                  name="information-circle-outline"
-                  size={11}
-                  color={Colors.textMuted}
-                />
-                <Text style={sbStyles.legendText}>
-                  Punti:{" "}
-                  {Array.from(
-                    { length: numPlayers },
-                    (_, i) => Math.max(0, numPlayers - 1 - i)
-                  ).join(" / ")}{" "}
-                  (1° → ultimo)
-                </Text>
-              </View>
-            </>
-          )}
+          <View style={styles.legend}>
+            <Ionicons
+              name="information-circle-outline"
+              size={11}
+              color={Colors.textMuted}
+            />
+            <Text style={styles.legendText}>
+              +{numPlayers - 1} / +{numPlayers - 2} ... +0 per 1° → ultimo
+            </Text>
+          </View>
         </View>
       </View>
 
@@ -786,74 +720,27 @@ const styles = StyleSheet.create({
     color: Colors.text,
   },
   teamLabel: { fontFamily: "Inter_500Medium", fontSize: 10, marginTop: 1 },
-  ptsBadge: {
-    backgroundColor: Colors.accentMuted,
-    borderRadius: 7,
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderWidth: 1,
-    borderColor: Colors.accent,
+  scoreBlock: {
+    alignItems: "flex-end",
+    gap: 1,
   },
-  ptsText: {
+  totalScore: {
     fontFamily: "Rajdhani_700Bold",
-    fontSize: 13,
-    color: Colors.accent,
+    fontSize: 22,
+    color: Colors.textSecondary,
+    lineHeight: 24,
   },
-  winBadge: {
-    backgroundColor: Colors.goldMuted,
-    borderRadius: 5,
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    borderWidth: 1,
-    borderColor: Colors.goldDark,
-  },
-  winBadgeText: {
-    fontFamily: "Rajdhani_700Bold",
+  totalScoreWinner: { color: Colors.gold },
+  scoreSub: {
+    fontFamily: "Inter_400Regular",
     fontSize: 9,
-    color: Colors.gold,
-    letterSpacing: 1,
+    color: Colors.textMuted,
   },
-});
-
-const sbStyles = StyleSheet.create({
-  board: {
-    backgroundColor: Colors.bgSurface,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: Colors.border,
-    overflow: "hidden",
-  },
-  row: {
-    flexDirection: "row",
-    alignItems: "center",
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    gap: 10,
-    borderBottomWidth: 1,
-    borderBottomColor: Colors.border,
-    overflow: "hidden",
-  },
-  rowLeader: { borderBottomColor: "rgba(201,168,76,0.2)" },
-  rankNum: {
-    fontFamily: "Rajdhani_700Bold",
-    fontSize: 16,
-    width: 18,
-    textAlign: "center",
-  },
-  name: {
-    fontFamily: "Rajdhani_600SemiBold",
-    fontSize: 14,
-    color: Colors.text,
-    flex: 1,
-  },
-  score: { fontFamily: "Rajdhani_700Bold", fontSize: 18, color: Colors.textSecondary },
-  scoreLeader: { color: Colors.gold },
   legend: {
     flexDirection: "row",
     alignItems: "center",
     gap: 5,
-    paddingTop: 6,
-    paddingHorizontal: 2,
+    paddingTop: 4,
   },
   legendText: {
     fontFamily: "Inter_400Regular",
@@ -861,6 +748,7 @@ const sbStyles = StyleSheet.create({
     color: Colors.textMuted,
   },
 });
+
 
 const exStyles = StyleSheet.create({
   overlay: {

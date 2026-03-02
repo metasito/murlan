@@ -254,40 +254,32 @@ export function FlyingCards({
   const tx = useSharedValue(dx);
   const ty = useSharedValue(dy);
   const rot = useSharedValue(startRot);
-  const scale = useSharedValue(0.9);
+  const scale = useSharedValue(0.85);
   const opacity = useSharedValue(0);
 
   useEffect(() => {
-    const FLIGHT = 380;
-    const easing = Easing.bezier(0.25, 0.46, 0.45, 0.94);
+    const FLIGHT = 360;
+    const easing = Easing.bezier(0.22, 0.61, 0.36, 1.0);
 
-    opacity.value = withTiming(1, { duration: 80 });
+    // Appear immediately as card lifts from hand
+    opacity.value = withTiming(1, { duration: 60 });
 
+    // Slide to table center
     tx.value = withTiming(0, { duration: FLIGHT, easing });
     ty.value = withTiming(0, { duration: FLIGHT, easing });
 
-    rot.value = withSequence(
-      withTiming(landingRot * 0.4, {
-        duration: FLIGHT * 0.75,
-        easing: Easing.out(Easing.cubic),
-      }),
-      withSpring(landingRot, { damping: 10, stiffness: 180 })
-    );
+    // Rotation settles to final resting angle
+    rot.value = withTiming(landingRot, { duration: FLIGHT, easing: Easing.out(Easing.cubic) });
 
+    // Scale: rises slightly during flight, squishes on landing, then onDone fires
+    // No fade-out — card lands and "becomes" the pile card seamlessly
     scale.value = withSequence(
-      withTiming(1.12, { duration: FLIGHT * 0.7, easing: Easing.out(Easing.cubic) }),
-      withSpring(0.96, { damping: 6, stiffness: 400 }),
-      withSpring(1.0, { damping: 14, stiffness: 250 })
-    );
-
-    opacity.value = withSequence(
-      withTiming(1, { duration: 80 }),
-      withDelay(
-        FLIGHT + 300,
-        withTiming(0, { duration: 180 }, (finished) => {
-          if (finished) runOnJS(onDone)();
-        })
-      )
+      withTiming(1.08, { duration: FLIGHT * 0.65, easing: Easing.out(Easing.cubic) }),
+      withSpring(0.93, { damping: 5, stiffness: 500 }),       // landing squish
+      withSpring(1.0, { damping: 18, stiffness: 280 }, (finished) => {
+        // Card has fully landed — unmount flying card; pile card already rendered underneath
+        if (finished) runOnJS(onDone)();
+      })
     );
   }, []);
 

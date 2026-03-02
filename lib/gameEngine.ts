@@ -673,15 +673,6 @@ export function initializeGame(
 ): GameState {
   const { hands } = dealCards(playerSetup.length);
 
-  const starterHandIdx = hands.findIndex((h) =>
-    h.some((c) => c.rank === "3" && c.suit === "spades")
-  );
-  if (starterHandIdx > 0) {
-    const tmp = hands[0];
-    hands[0] = hands[starterHandIdx];
-    hands[starterHandIdx] = tmp;
-  }
-
   const players: Player[] = playerSetup.map((setup, i) => ({
     id: `player_${i}`,
     name: setup.name,

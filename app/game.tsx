@@ -94,6 +94,7 @@ export default function GameScreen() {
   } | null>(null);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const prevComboKeyRef = useRef<string>("");
+  const pendingComboRef = useRef<Combination | null>(null);
 
   const handScaleVal = useSharedValue(1);
   const giocaPulseVal = useSharedValue(1);
@@ -143,7 +144,8 @@ export default function GameScreen() {
         combo.cards.map((c) => c.id).join(",") + "_" + gameState.lastPlayedBy;
       if (comboKey !== prevComboKeyRef.current) {
         prevComboKeyRef.current = comboKey;
-        setPlayedPile((prev) => [...prev.slice(-5), combo]);
+        // Store the combo; pile is updated when the flying card lands (onFlyDone)
+        pendingComboRef.current = combo;
         const playedBy = gameState.lastPlayedBy;
         let dir: FlyDirection;
         if (playedBy === humanIdx) {
@@ -158,7 +160,9 @@ export default function GameScreen() {
       }
     } else {
       prevComboKeyRef.current = "";
+      pendingComboRef.current = null;
       setPlayedPile([]);
+      setFlyInfo(null);
     }
   }, [gameState?.lastPlayedCombination]);
 
@@ -538,7 +542,13 @@ export default function GameScreen() {
           key={flyInfo.key}
           cards={flyInfo.cards}
           direction={flyInfo.dir}
-          onDone={() => setFlyInfo(null)}
+          onDone={() => {
+            if (pendingComboRef.current) {
+              setPlayedPile((prev) => [...prev.slice(-5), pendingComboRef.current!]);
+              pendingComboRef.current = null;
+            }
+            setFlyInfo(null);
+          }}
         />
       )}
 
