@@ -5,6 +5,8 @@ import {
   StyleSheet,
   Pressable,
   Platform,
+  useWindowDimensions,
+  ScrollView,
 } from "react-native";
 import { router } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -30,6 +32,7 @@ interface MenuButtonProps {
   delay?: number;
   accent?: boolean;
   disabled?: boolean;
+  compact?: boolean;
 }
 
 function MenuButton({
@@ -39,6 +42,7 @@ function MenuButton({
   delay = 0,
   accent = false,
   disabled = false,
+  compact = false,
 }: MenuButtonProps) {
   const opacity = useSharedValue(0);
   const translateY = useSharedValue(30);
@@ -74,6 +78,7 @@ function MenuButton({
         disabled={disabled}
         style={({ pressed }) => [
           styles.menuButton,
+          compact && styles.menuButtonCompact,
           accent && styles.menuButtonAccent,
           disabled && styles.menuButtonDisabled,
           pressed && { opacity: 0.85 },
@@ -84,24 +89,25 @@ function MenuButton({
             colors={[Colors.gold, Colors.goldDark]}
             start={{ x: 0, y: 0 }}
             end={{ x: 1, y: 1 }}
-            style={styles.accentGradient}
+            style={compact ? styles.accentGradientCompact : styles.accentGradient}
           >
-            <Ionicons name={icon} size={20} color="#0A1F18" />
-            <Text style={[styles.menuLabel, styles.menuLabelAccent]}>
+            <Ionicons name={icon} size={compact ? 18 : 20} color="#0A1F18" />
+            <Text style={[styles.menuLabel, styles.menuLabelAccent, compact && styles.menuLabelCompact]}>
               {label}
             </Text>
-            <View style={{ width: 20 }} />
+            <View style={{ width: compact ? 18 : 20 }} />
           </LinearGradient>
         ) : (
           <>
             <Ionicons
               name={icon}
-              size={20}
+              size={compact ? 18 : 20}
               color={disabled ? Colors.textMuted : Colors.gold}
             />
             <Text
               style={[
                 styles.menuLabel,
+                compact && styles.menuLabelCompact,
                 disabled && { color: Colors.textMuted },
               ]}
             >
@@ -109,8 +115,8 @@ function MenuButton({
             </Text>
             <Ionicons
               name="chevron-forward"
-              size={16}
-              color={disabled ? Colors.textMuted : Colors.textMuted}
+              size={compact ? 14 : 16}
+              color={Colors.textMuted}
             />
           </>
         )}
@@ -179,6 +185,9 @@ function FloatingCard({
 export default function HomeScreen() {
   const insets = useSafeAreaInsets();
   const { user, logout } = useAuth();
+  const { width: W, height: H } = useWindowDimensions();
+  const isLandscape = W > H;
+
   const titleOpacity = useSharedValue(0);
   const titleScale = useSharedValue(0.85);
   const subtitleOpacity = useSharedValue(0);
@@ -199,14 +208,68 @@ export default function HomeScreen() {
 
   const topPad = Platform.OS === "web" ? 67 : insets.top;
   const bottomPad = Platform.OS === "web" ? 34 : insets.bottom;
+  const leftPad = isLandscape ? (Platform.OS === "web" ? 0 : insets.left) : 0;
+  const rightPad = isLandscape ? (Platform.OS === "web" ? 0 : insets.right) : 0;
+
+  const menuButtons = (compact: boolean) => (
+    <>
+      <MenuButton compact={compact} label="Gioca vs AI" icon="game-controller" accent onPress={() => router.push({ pathname: "/lobby", params: { mode: "ai" } })} delay={300} />
+      <MenuButton compact={compact} label="Passa e Gioca" icon="people" onPress={() => router.push({ pathname: "/lobby", params: { mode: "local" } })} delay={420} />
+      <MenuButton compact={compact} label="Online" icon="wifi" onPress={() => { if (user) router.push("/(online)"); else router.push("/auth"); }} delay={540} />
+      <MenuButton compact={compact} label="Regole & FAQ" icon="book-outline" onPress={() => router.push("/rules")} delay={660} />
+    </>
+  );
+
+  if (isLandscape) {
+    return (
+      <View style={[styles.container, { paddingTop: topPad, paddingBottom: bottomPad, paddingLeft: leftPad, paddingRight: rightPad }]}>
+        <LinearGradient colors={[Colors.bg, Colors.bgCard, Colors.feltDark]} locations={[0, 0.5, 1]} style={StyleSheet.absoluteFill} />
+        <FloatingCard delay={0} x={20} size={40} opacity={0.2} />
+        <FloatingCard delay={800} x={90} size={32} opacity={0.15} />
+
+        <View style={styles.landscapeRow}>
+          <View style={styles.landscapeLeft}>
+            <Animated.View style={[titleStyle, { alignItems: "center" }]}>
+              <Text style={styles.titleLandscape}>MURLAN</Text>
+              <View style={styles.titleUnderlineLandscape}>
+                <LinearGradient colors={[Colors.goldDark, Colors.gold, Colors.goldDark]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={{ flex: 1, height: 2, borderRadius: 1 }} />
+              </View>
+            </Animated.View>
+            <Animated.View style={subtitleStyle}>
+              <Text style={styles.subtitleLandscape}>Il Gioco di Carte</Text>
+            </Animated.View>
+            <View style={styles.cardDecorationLandscape}>
+              {["♠", "♥", "♦", "♣"].map((suit, i) => (
+                <Text key={suit} style={[styles.suitDecorSmall, { color: i % 2 === 1 ? Colors.red : Colors.textMuted }]}>{suit}</Text>
+              ))}
+            </View>
+            {user && (
+              <Animated.View style={[subtitleStyle, styles.userRowLandscape]}>
+                <Ionicons name="person-circle-outline" size={13} color={Colors.gold} />
+                <Text style={styles.userTextSmall} numberOfLines={1}>{user.username}</Text>
+                <Pressable onPress={logout} style={styles.logoutBtn}>
+                  <Text style={styles.logoutText}>Esci</Text>
+                </Pressable>
+              </Animated.View>
+            )}
+          </View>
+
+          <ScrollView style={styles.landscapeRight} contentContainerStyle={styles.landscapeMenuContent} showsVerticalScrollIndicator={false}>
+            {menuButtons(true)}
+            <Animated.View style={subtitleStyle}>
+              <Text style={[styles.footerText, { textAlign: "center", marginTop: 8 }]}>
+                {user ? `Codice: ${user.friendCode}` : "2–4 giocatori · Tutte le modalità"}
+              </Text>
+            </Animated.View>
+          </ScrollView>
+        </View>
+      </View>
+    );
+  }
 
   return (
     <View style={[styles.container, { paddingTop: topPad, paddingBottom: bottomPad + 20 }]}>
-      <LinearGradient
-        colors={[Colors.bg, Colors.bgCard, Colors.feltDark]}
-        locations={[0, 0.5, 1]}
-        style={StyleSheet.absoluteFill}
-      />
+      <LinearGradient colors={[Colors.bg, Colors.bgCard, Colors.feltDark]} locations={[0, 0.5, 1]} style={StyleSheet.absoluteFill} />
 
       <FloatingCard delay={0} x={20} size={55} opacity={0.25} />
       <FloatingCard delay={800} x={120} size={42} opacity={0.18} />
@@ -217,12 +280,7 @@ export default function HomeScreen() {
         <Animated.View style={titleStyle}>
           <Text style={styles.title}>MURLAN</Text>
           <View style={styles.titleUnderline}>
-            <LinearGradient
-              colors={[Colors.goldDark, Colors.gold, Colors.goldDark]}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 0 }}
-              style={{ flex: 1, height: 2, borderRadius: 1 }}
-            />
+            <LinearGradient colors={[Colors.goldDark, Colors.gold, Colors.goldDark]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={{ flex: 1, height: 2, borderRadius: 1 }} />
           </View>
         </Animated.View>
         <Animated.View style={subtitleStyle}>
@@ -242,47 +300,12 @@ export default function HomeScreen() {
 
       <View style={styles.cardDecoration}>
         {["♠", "♥", "♦", "♣"].map((suit, i) => (
-          <Text
-            key={suit}
-            style={[styles.suitDecor, { color: i % 2 === 1 ? Colors.red : Colors.textMuted }]}
-          >
-            {suit}
-          </Text>
+          <Text key={suit} style={[styles.suitDecor, { color: i % 2 === 1 ? Colors.red : Colors.textMuted }]}>{suit}</Text>
         ))}
       </View>
 
       <View style={styles.menu}>
-        <MenuButton
-          label="Gioca vs AI"
-          icon="game-controller"
-          accent
-          onPress={() => router.push({ pathname: "/lobby", params: { mode: "ai" } })}
-          delay={300}
-        />
-        <MenuButton
-          label="Passa e Gioca"
-          icon="people"
-          onPress={() => router.push({ pathname: "/lobby", params: { mode: "local" } })}
-          delay={420}
-        />
-        <MenuButton
-          label="Online"
-          icon="wifi"
-          onPress={() => {
-            if (user) {
-              router.push("/(online)");
-            } else {
-              router.push("/auth");
-            }
-          }}
-          delay={540}
-        />
-        <MenuButton
-          label="Regole & FAQ"
-          icon="book-outline"
-          onPress={() => router.push("/rules")}
-          delay={660}
-        />
+        {menuButtons(false)}
       </View>
 
       <Animated.View style={[subtitleStyle, styles.footer]}>
@@ -296,6 +319,50 @@ export default function HomeScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: Colors.bg },
+
+  landscapeRow: { flex: 1, flexDirection: "row" },
+  landscapeLeft: {
+    width: "38%",
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: 20,
+    gap: 8,
+    borderRightWidth: 1,
+    borderRightColor: Colors.border,
+  },
+  landscapeRight: { flex: 1 },
+  landscapeMenuContent: {
+    padding: 16,
+    gap: 10,
+    justifyContent: "center",
+  },
+  titleLandscape: {
+    fontFamily: "Rajdhani_700Bold",
+    fontSize: 38,
+    color: Colors.text,
+    letterSpacing: 8,
+    textAlign: "center",
+  },
+  titleUnderlineLandscape: { width: 110, alignSelf: "center", marginTop: 2 },
+  subtitleLandscape: {
+    fontFamily: "Inter_400Regular",
+    fontSize: 10,
+    color: Colors.gold,
+    letterSpacing: 3,
+    textTransform: "uppercase",
+    textAlign: "center",
+  },
+  cardDecorationLandscape: { flexDirection: "row", gap: 12, paddingVertical: 6 },
+  suitDecorSmall: { fontSize: 18, opacity: 0.7 },
+  userRowLandscape: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 5,
+    flexWrap: "wrap",
+  },
+  userTextSmall: { fontFamily: "Inter_500Medium", fontSize: 11, color: Colors.text, maxWidth: 100 },
+
   header: { alignItems: "center", paddingTop: 40, paddingBottom: 12, gap: 6 },
   title: {
     fontFamily: "Rajdhani_700Bold",
@@ -338,6 +405,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: Colors.border,
   },
+  menuButtonCompact: { paddingVertical: 12, paddingHorizontal: 16 },
   menuButtonAccent: { padding: 0, overflow: "hidden", borderColor: Colors.gold },
   menuButtonDisabled: { borderColor: Colors.border, opacity: 0.5 },
   accentGradient: {
@@ -348,6 +416,14 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     gap: 14,
   },
+  accentGradientCompact: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    gap: 12,
+  },
   menuLabel: {
     flex: 1,
     fontFamily: "Rajdhani_600SemiBold",
@@ -355,6 +431,7 @@ const styles = StyleSheet.create({
     color: Colors.text,
     letterSpacing: 0.5,
   },
+  menuLabelCompact: { fontSize: 15 },
   menuLabelAccent: { color: "#0A1F18", fontFamily: "Rajdhani_700Bold" },
   floatingCard: {
     position: "absolute",

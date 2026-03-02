@@ -271,13 +271,11 @@ export function FlyingCards({
     // Rotation settles to final resting angle
     rot.value = withTiming(landingRot, { duration: FLIGHT, easing: Easing.out(Easing.cubic) });
 
-    // Scale: rises slightly during flight, squishes on landing, then onDone fires
-    // No fade-out — card lands and "becomes" the pile card seamlessly
+    // Scale: rises slightly during flight, settles on landing, then onDone fires
     scale.value = withSequence(
-      withTiming(1.08, { duration: FLIGHT * 0.65, easing: Easing.out(Easing.cubic) }),
-      withSpring(0.93, { damping: 5, stiffness: 500 }),       // landing squish
-      withSpring(1.0, { damping: 18, stiffness: 280 }, (finished) => {
-        // Card has fully landed — unmount flying card; pile card already rendered underneath
+      withTiming(1.06, { duration: FLIGHT * 0.65, easing: Easing.out(Easing.cubic) }),
+      withSpring(0.97, { damping: 18, stiffness: 320 }),      // gentle landing
+      withSpring(1.0, { damping: 30, stiffness: 180 }, (finished) => {
         if (finished) runOnJS(onDone)();
       })
     );
@@ -293,7 +291,7 @@ export function FlyingCards({
     opacity: opacity.value,
   }));
 
-  const display = cards.slice(0, 3);
+  const display = cards;
 
   return (
     <View style={sharedStyles.flyingContainer} pointerEvents="none">
@@ -348,10 +346,6 @@ export function PlayedPile({
           <Ionicons name="star" size={9} color={Colors.gold} />
           <Text style={sharedStyles.winnerText}>{roundWinner}</Text>
         </Animated.View>
-      )}
-
-      {history.length === 0 && (
-        <Text style={sharedStyles.emptyText}>Inizia il round</Text>
       )}
 
       {history.length > 0 && (
@@ -573,7 +567,7 @@ export const sharedStyles = StyleSheet.create({
     zIndex: 60,
   },
   flyingInner: {
-    width: CARD_W * 2.5,
+    width: CARD_W * 5,
     height: CARD_H,
     alignItems: "center",
     justifyContent: "center",

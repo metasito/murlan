@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import {
   View,
   Text,
@@ -7,6 +7,7 @@ import {
   ScrollView,
   TextInput,
   Platform,
+  useWindowDimensions,
 } from "react-native";
 import { router, useLocalSearchParams } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -14,6 +15,7 @@ import { LinearGradient } from "expo-linear-gradient";
 import * as Haptics from "expo-haptics";
 import { Ionicons } from "@expo/vector-icons";
 import { useGame, PlayerSetupConfig } from "@/context/GameContext";
+import { useAuth } from "@/context/AuthContext";
 import { GameMode, AIDifficulty } from "@/lib/gameEngine";
 import Colors from "@/constants/colors";
 
@@ -106,8 +108,12 @@ const ROUND_OPTIONS = [1, 3, 5, 7];
 
 export default function LobbyScreen() {
   const insets = useSafeAreaInsets();
+  const { width: W, height: H } = useWindowDimensions();
+  const isLandscape = W > H;
   const { mode } = useLocalSearchParams<{ mode: LobbyMode }>();
   const { setupGame } = useGame();
+  const { user } = useAuth();
+  const myName = user?.username ?? "Giocatore 1";
 
   const isAI = mode === "ai";
 
@@ -122,7 +128,7 @@ export default function LobbyScreen() {
 
   const buildDefaultPlayers = (count: number, gm: GameMode): PlayerSetupConfig[] => {
     return Array.from({ length: count }, (_, i) => ({
-      name: i === 0 ? "Tu" : isAI ? `AI ${i}` : `Giocatore ${i + 1}`,
+      name: i === 0 ? myName : isAI ? `AI ${i}` : `Giocatore ${i + 1}`,
       type: i === 0 || !isAI ? "human" : "ai",
       difficulty: "medium" as AIDifficulty,
       team: getTeam(i, count, gm),
@@ -132,6 +138,12 @@ export default function LobbyScreen() {
   const [players, setPlayers] = useState<PlayerSetupConfig[]>(
     buildDefaultPlayers(2, "free_for_all")
   );
+
+  useEffect(() => {
+    setPlayers((prev) =>
+      prev.map((p, i) => (i === 0 ? { ...p, name: myName } : p))
+    );
+  }, [myName]);
 
   const handleCountChange = (count: number) => {
     setPlayerCount(count);
@@ -168,181 +180,161 @@ export default function LobbyScreen() {
 
   const topPad = Platform.OS === "web" ? 67 : insets.top;
   const bottomPad = Platform.OS === "web" ? 34 : insets.bottom;
+  const leftPad = isLandscape ? (Platform.OS === "web" ? 0 : insets.left) : 0;
+  const rightPad = isLandscape ? (Platform.OS === "web" ? 0 : insets.right) : 0;
+
+  const startButton = (
+    <Pressable onPress={handleStart} style={styles.startBtn}>
+      <LinearGradient
+        colors={[Colors.gold, Colors.goldDark]}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 1 }}
+        style={styles.startGradient}
+      >
+        <Ionicons name="play" size={20} color="#0A1F18" />
+        <Text style={styles.startText}>Inizia Partita</Text>
+      </LinearGradient>
+    </Pressable>
+  );
+
+  const configSection = (
+    <>
+      <View style={styles.section}>
+        <Text style={styles.sectionLabel}>N° GIOCATORI</Text>
+        <View style={styles.countRow}>
+          {[2, 3, 4].map((n) => (
+            <Pressable key={n} onPress={() => handleCountChange(n)} style={[styles.countBtn, playerCount === n && styles.countBtnActive]}>
+              <Text style={[styles.countBtnText, playerCount === n && styles.countBtnTextActive]}>{n}</Text>
+            </Pressable>
+          ))}
+        </View>
+      </View>
+
+      {playerCount === 4 && (
+        <View style={styles.section}>
+          <Text style={styles.sectionLabel}>MODALITÀ</Text>
+          <View style={styles.modeRow}>
+            {(["free_for_all", "teams"] as GameMode[]).map((gm) => (
+              <Pressable key={gm} onPress={() => handleModeChange(gm)} style={[styles.modeBtn, gameMode === gm && styles.modeBtnActive]}>
+                <Ionicons name={gm === "teams" ? "people" : "person"} size={16} color={gameMode === gm ? Colors.gold : Colors.textSecondary} />
+                <Text style={[styles.modeBtnText, gameMode === gm && styles.modeBtnTextActive]}>
+                  {gm === "teams" ? "A Coppie" : "Tutti vs Tutti"}
+                </Text>
+              </Pressable>
+            ))}
+          </View>
+        </View>
+      )}
+
+      <View style={styles.section}>
+        <Text style={styles.sectionLabel}>MANCHE</Text>
+        <View style={styles.countRow}>
+          {ROUND_OPTIONS.map((n) => (
+            <Pressable key={n} onPress={() => { setTotalRounds(n); Haptics.selectionAsync(); }} style={[styles.countBtn, totalRounds === n && styles.countBtnActive]}>
+              <Text style={[styles.countBtnText, totalRounds === n && styles.countBtnTextActive]}>{n}</Text>
+              <Text style={[styles.roundSubLabel, totalRounds === n && { color: Colors.gold }]}>
+                {n === 1 ? "partita" : "manche"}
+              </Text>
+            </Pressable>
+          ))}
+        </View>
+      </View>
+    </>
+  );
+
+  const playerListSection = (
+    <View style={styles.section}>
+      <Text style={styles.sectionLabel}>GIOCATORI</Text>
+      <View style={styles.playerList}>
+        {players.map((p, i) => (
+          <PlayerRow key={i} index={i} config={p} isHuman={p.type === "human"} onChange={(c) => handlePlayerChange(i, c)} lobbyMode={mode ?? "ai"} />
+        ))}
+      </View>
+    </View>
+  );
 
   return (
-    <View style={[styles.container, { paddingTop: topPad }]}>
-      <LinearGradient
-        colors={[Colors.bg, Colors.bgCard]}
-        style={StyleSheet.absoluteFill}
-      />
+    <View style={[styles.container, { paddingTop: topPad, paddingLeft: leftPad, paddingRight: rightPad }]}>
+      <LinearGradient colors={[Colors.bg, Colors.bgCard]} style={StyleSheet.absoluteFill} />
 
       <View style={styles.headerBar}>
-        <Pressable
-          onPress={() => router.back()}
-          style={styles.backBtn}
-          hitSlop={12}
-        >
+        <Pressable onPress={() => router.back()} style={styles.backBtn} hitSlop={12}>
           <Ionicons name="chevron-back" size={22} color={Colors.gold} />
         </Pressable>
-        <Text style={styles.headerTitle}>
-          {isAI ? "Gioca vs AI" : "Passa e Gioca"}
-        </Text>
+        <Text style={styles.headerTitle}>{isAI ? "Gioca vs AI" : "Passa e Gioca"}</Text>
         <View style={{ width: 40 }} />
       </View>
 
-      <ScrollView
-        contentContainerStyle={[
-          styles.scroll,
-          { paddingBottom: bottomPad + 120 },
-        ]}
-        showsVerticalScrollIndicator={false}
-      >
-        <View style={styles.section}>
-          <Text style={styles.sectionLabel}>GIOCATORI</Text>
-          <View style={styles.countRow}>
-            {[2, 3, 4].map((n) => (
-              <Pressable
-                key={n}
-                onPress={() => handleCountChange(n)}
-                style={[
-                  styles.countBtn,
-                  playerCount === n && styles.countBtnActive,
-                ]}
-              >
-                <Text
-                  style={[
-                    styles.countBtnText,
-                    playerCount === n && styles.countBtnTextActive,
-                  ]}
-                >
-                  {n}
-                </Text>
-              </Pressable>
-            ))}
+      {isLandscape ? (
+        <View style={styles.landscapeBody}>
+          <View style={styles.landscapeLeftCol}>
+            <ScrollView contentContainerStyle={styles.landscapeLeftScroll} showsVerticalScrollIndicator={false}>
+              {configSection}
+            </ScrollView>
           </View>
-        </View>
-
-        {playerCount === 4 && (
-          <View style={styles.section}>
-            <Text style={styles.sectionLabel}>MODALITÀ</Text>
-            <View style={styles.modeRow}>
-              {(["free_for_all", "teams"] as GameMode[]).map((gm) => (
-                <Pressable
-                  key={gm}
-                  onPress={() => handleModeChange(gm)}
-                  style={[
-                    styles.modeBtn,
-                    gameMode === gm && styles.modeBtnActive,
-                  ]}
-                >
-                  <Ionicons
-                    name={gm === "teams" ? "people" : "person"}
-                    size={16}
-                    color={gameMode === gm ? Colors.gold : Colors.textSecondary}
-                  />
-                  <Text
-                    style={[
-                      styles.modeBtnText,
-                      gameMode === gm && styles.modeBtnTextActive,
-                    ]}
-                  >
-                    {gm === "teams" ? "A Coppie" : "Tutti vs Tutti"}
-                  </Text>
-                </Pressable>
-              ))}
+          <View style={styles.landscapeRightCol}>
+            <ScrollView contentContainerStyle={styles.landscapeRightScroll} showsVerticalScrollIndicator={false}>
+              {playerListSection}
+            </ScrollView>
+            <View style={[styles.landscapeStartWrap, { paddingBottom: bottomPad + 8 }]}>
+              {startButton}
             </View>
           </View>
-        )}
-
-        <View style={styles.section}>
-          <Text style={styles.sectionLabel}>MANCHE</Text>
-          <View style={styles.countRow}>
-            {ROUND_OPTIONS.map((n) => (
-              <Pressable
-                key={n}
-                onPress={() => { setTotalRounds(n); Haptics.selectionAsync(); }}
-                style={[styles.countBtn, totalRounds === n && styles.countBtnActive]}
-              >
-                <Text style={[styles.countBtnText, totalRounds === n && styles.countBtnTextActive]}>
-                  {n}
-                </Text>
-                {n > 1 && (
-                  <Text style={[styles.roundSubLabel, totalRounds === n && { color: Colors.gold }]}>
-                    manche
-                  </Text>
-                )}
-                {n === 1 && (
-                  <Text style={[styles.roundSubLabel, totalRounds === n && { color: Colors.gold }]}>
-                    partita
-                  </Text>
-                )}
-              </Pressable>
-            ))}
-          </View>
         </View>
-
-        <View style={styles.section}>
-          <Text style={styles.sectionLabel}>GIOCATORI</Text>
-          <View style={styles.playerList}>
-            {players.map((p, i) => (
-              <PlayerRow
-                key={i}
-                index={i}
-                config={p}
-                isHuman={p.type === "human"}
-                onChange={(c) => handlePlayerChange(i, c)}
-                lobbyMode={mode ?? "ai"}
-              />
-            ))}
-          </View>
-        </View>
-
-        <View style={styles.section}>
-          <Text style={styles.rulesTitle}>Forza Carte</Text>
-          <View style={styles.rulesRow}>
-            {[
-              { label: "JKR★", desc: "Joker Colorato" },
-              { label: "JKR", desc: "Joker B/N" },
-              { label: "2", desc: "Più forte" },
-              { label: "A", desc: "Asso" },
-              { label: "K", desc: "Re" },
-              { label: "3", desc: "Più basso" },
-            ].map((r) => (
-              <View key={r.label} style={styles.ruleCard}>
-                <Text style={styles.ruleRank}>{r.label}</Text>
-                <Text style={styles.ruleDesc}>{r.desc}</Text>
+      ) : (
+        <>
+          <ScrollView contentContainerStyle={[styles.scroll, { paddingBottom: bottomPad + 120 }]} showsVerticalScrollIndicator={false}>
+            {configSection}
+            {playerListSection}
+            <View style={styles.section}>
+              <Text style={styles.rulesTitle}>Forza Carte</Text>
+              <View style={styles.rulesRow}>
+                {[
+                  { label: "JKR★", desc: "Joker Colorato" },
+                  { label: "JKR", desc: "Joker B/N" },
+                  { label: "2", desc: "Più forte" },
+                  { label: "A", desc: "Asso" },
+                  { label: "K", desc: "Re" },
+                  { label: "3", desc: "Più basso" },
+                ].map((r) => (
+                  <View key={r.label} style={styles.ruleCard}>
+                    <Text style={styles.ruleRank}>{r.label}</Text>
+                    <Text style={styles.ruleDesc}>{r.desc}</Text>
+                  </View>
+                ))}
               </View>
-            ))}
-          </View>
-        </View>
-      </ScrollView>
+            </View>
+          </ScrollView>
 
-      <View
-        style={[styles.startContainer, { paddingBottom: bottomPad + 16 }]}
-      >
-        <LinearGradient
-          colors={["transparent", Colors.bg, Colors.bg]}
-          style={StyleSheet.absoluteFill}
-          pointerEvents="none"
-        />
-        <Pressable onPress={handleStart} style={styles.startBtn}>
-          <LinearGradient
-            colors={[Colors.gold, Colors.goldDark]}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 1 }}
-            style={styles.startGradient}
-          >
-            <Ionicons name="play" size={20} color="#0A1F18" />
-            <Text style={styles.startText}>Inizia Partita</Text>
-          </LinearGradient>
-        </Pressable>
-      </View>
+          <View style={[styles.startContainer, { paddingBottom: bottomPad + 16 }]}>
+            <LinearGradient colors={["transparent", Colors.bg, Colors.bg]} style={StyleSheet.absoluteFill} pointerEvents="none" />
+            {startButton}
+          </View>
+        </>
+      )}
     </View>
   );
 }
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: Colors.bg },
+
+  landscapeBody: { flex: 1, flexDirection: "row" },
+  landscapeLeftCol: {
+    width: "42%",
+    borderRightWidth: 1,
+    borderRightColor: Colors.border,
+  },
+  landscapeLeftScroll: { padding: 16, gap: 20 },
+  landscapeRightCol: { flex: 1, flexDirection: "column" },
+  landscapeRightScroll: { padding: 16, gap: 16 },
+  landscapeStartWrap: {
+    padding: 16,
+    paddingTop: 8,
+    borderTopWidth: 1,
+    borderTopColor: Colors.border,
+  },
+
   headerBar: {
     flexDirection: "row",
     alignItems: "center",

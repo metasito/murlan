@@ -12,6 +12,8 @@ Murlan is a classic Italian card game app with:
 - AI with 3 difficulty levels (Easy, Medium, Hard)
 - Teams mode for 4 players
 - Italian UI throughout
+- Landscape + portrait adaptive layout on all menus and result screens
+- Username shown everywhere (replaces "Tu" with the authenticated user's name)
 
 ## Tech Stack
 

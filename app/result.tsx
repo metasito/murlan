@@ -6,10 +6,10 @@ import {
   Pressable,
   ScrollView,
   Platform,
+  useWindowDimensions,
 } from "react-native";
 import { router } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import * as ScreenOrientation from "expo-screen-orientation";
 import Animated, {
   useAnimatedStyle,
   useSharedValue,
@@ -278,6 +278,8 @@ function CardExchangeOverlay({
 
 export default function ResultScreen() {
   const insets = useSafeAreaInsets();
+  const { width: W, height: H } = useWindowDimensions();
+  const isLandscape = W > H;
   const {
     gameState,
     setupRematch,
@@ -290,10 +292,6 @@ export default function ResultScreen() {
   } = useGame();
   const prevExchangeActiveRef = useRef<boolean | undefined>(undefined);
 
-  useEffect(() => {
-    ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.LANDSCAPE);
-    return () => { ScreenOrientation.unlockAsync(); };
-  }, []);
 
   useEffect(() => {
     if (!gameState?.exchangePhase) return;
@@ -370,37 +368,102 @@ export default function ResultScreen() {
     router.replace("/");
   };
 
+  const winnerBlock = (
+    <>
+      {isLastRound || !isMultiRound ? (
+        <WinnerCelebration name={isMultiRound ? overallWinner : displayName} subtitle={isMultiRound ? "Campione del Torneo" : "Vincitore"} />
+      ) : (
+        <WinnerCelebration name={displayName} subtitle={`Vince la Manche ${currentRound}`} />
+      )}
+    </>
+  );
+
+  const statsBlock = (
+    <View style={styles.statsRow}>
+      <View style={styles.statItem}>
+        <Ionicons name="people" size={16} color={Colors.gold} />
+        <Text style={styles.statValue}>{numPlayers}</Text>
+        <Text style={styles.statLabel}>Giocatori</Text>
+      </View>
+      {isMultiRound && (
+        <View style={styles.statItem}>
+          <Ionicons name="layers" size={16} color={Colors.gold} />
+          <Text style={styles.statValue}>{currentRound}/{totalRounds}</Text>
+          <Text style={styles.statLabel}>Manche</Text>
+        </View>
+      )}
+      <View style={styles.statItem}>
+        <Ionicons name={gameState.gameMode === "teams" ? "people-circle" : "person-circle"} size={16} color={Colors.gold} />
+        <Text style={styles.statValue}>{gameState.gameMode === "teams" ? "Coppie" : "Libero"}</Text>
+        <Text style={styles.statLabel}>Modalità</Text>
+      </View>
+    </View>
+  );
+
+  const actionsBlock = (
+    <View style={styles.actions}>
+      <Pressable testID="btn-home" onPress={handleHome} style={styles.homeBtn}>
+        <Ionicons name="home" size={16} color={Colors.textSecondary} />
+        <Text style={styles.homeBtnText}>Home</Text>
+      </Pressable>
+      {isMultiRound && !isLastRound ? (
+        <Pressable testID="btn-prossimo" onPress={handleNextRound} style={styles.rematchBtn}>
+          <LinearGradient colors={[Colors.gold, Colors.goldDark]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.rematchGrad}>
+            <Ionicons name="play-forward" size={16} color="#0A1F18" />
+            <Text style={styles.rematchText}>Prossima Manche</Text>
+          </LinearGradient>
+        </Pressable>
+      ) : (
+        <Pressable testID="btn-rivincita" onPress={handleRematch} style={styles.rematchBtn}>
+          <LinearGradient colors={[Colors.gold, Colors.goldDark]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.rematchGrad}>
+            <Ionicons name="refresh" size={16} color="#0A1F18" />
+            <Text style={styles.rematchText}>Rivincita</Text>
+          </LinearGradient>
+        </Pressable>
+      )}
+    </View>
+  );
+
+  const rankBlock = (
+    <View style={styles.rightCol}>
+      <Text style={styles.sectionTitle}>CLASSIFICA</Text>
+      <View style={styles.rankList}>
+        {sortedPlayers.map((player, idx) => (
+          <ScoreRow
+            key={player.id}
+            rank={idx}
+            name={player.name}
+            totalScore={totalScoreById[player.id] ?? 0}
+            pointsEarned={thisRoundPoints[player.id] ?? 0}
+            isWinner={idx === 0}
+            delay={idx * 80 + 200}
+            team={isTeamMode ? player.team : undefined}
+            isMultiRound={isMultiRound}
+          />
+        ))}
+      </View>
+      <View style={styles.legend}>
+        <Ionicons name="information-circle-outline" size={11} color={Colors.textMuted} />
+        <Text style={styles.legendText}>
+          +{numPlayers - 1} / +{numPlayers - 2} ... +0 per 1° → ultimo
+        </Text>
+      </View>
+    </View>
+  );
+
   return (
-    <View
-      style={[
-        styles.container,
-        { paddingTop: topPad, paddingBottom: bottomPad },
-      ]}
-    >
-      <LinearGradient
-        colors={[Colors.bg, Colors.bgCard, Colors.bg]}
-        locations={[0, 0.5, 1]}
-        style={StyleSheet.absoluteFill}
-      />
+    <View style={[styles.container, { paddingTop: topPad, paddingBottom: isLandscape ? bottomPad : 0 }]}>
+      <LinearGradient colors={[Colors.bg, Colors.bgCard, Colors.bg]} locations={[0, 0.5, 1]} style={StyleSheet.absoluteFill} />
 
       <View style={styles.header}>
         {isMultiRound ? (
           <View style={styles.headerMulti}>
             <Text style={styles.headerTitle}>
-              {isLastRound
-                ? "Partita Finita!"
-                : `Manche ${currentRound} di ${totalRounds}`}
+              {isLastRound ? "Partita Finita!" : `Manche ${currentRound} di ${totalRounds}`}
             </Text>
             <View style={styles.roundPips}>
               {Array.from({ length: totalRounds }, (_, i) => (
-                <View
-                  key={i}
-                  style={[
-                    styles.pip,
-                    i < currentRound && styles.pipDone,
-                    i === currentRound - 1 && styles.pipCurrent,
-                  ]}
-                />
+                <View key={i} style={[styles.pip, i < currentRound && styles.pipDone, i === currentRound - 1 && styles.pipCurrent]} />
               ))}
             </View>
           </View>
@@ -409,134 +472,26 @@ export default function ResultScreen() {
         )}
       </View>
 
-      <View style={styles.twoCol}>
-        <View style={styles.leftCol}>
-          {isLastRound || !isMultiRound ? (
-            <WinnerCelebration
-              name={isMultiRound ? overallWinner : displayName}
-              subtitle={
-                isMultiRound ? "Campione del Torneo" : "Vincitore"
-              }
-            />
-          ) : (
-            <WinnerCelebration
-              name={displayName}
-              subtitle={`Vince la Manche ${currentRound}`}
-            />
-          )}
-
-          <View style={styles.statsRow}>
-            <View style={styles.statItem}>
-              <Ionicons name="people" size={16} color={Colors.gold} />
-              <Text style={styles.statValue}>{numPlayers}</Text>
-              <Text style={styles.statLabel}>Giocatori</Text>
-            </View>
-            {isMultiRound && (
-              <View style={styles.statItem}>
-                <Ionicons name="layers" size={16} color={Colors.gold} />
-                <Text style={styles.statValue}>
-                  {currentRound}/{totalRounds}
-                </Text>
-                <Text style={styles.statLabel}>Manche</Text>
-              </View>
-            )}
-            <View style={styles.statItem}>
-              <Ionicons
-                name={
-                  gameState.gameMode === "teams"
-                    ? "people-circle"
-                    : "person-circle"
-                }
-                size={16}
-                color={Colors.gold}
-              />
-              <Text style={styles.statValue}>
-                {gameState.gameMode === "teams" ? "Coppie" : "Libero"}
-              </Text>
-              <Text style={styles.statLabel}>Modalità</Text>
-            </View>
+      {isLandscape ? (
+        <View style={styles.twoCol}>
+          <View style={styles.leftCol}>
+            {winnerBlock}
+            {statsBlock}
+            {actionsBlock}
           </View>
-
-          <View style={styles.actions}>
-            <Pressable
-              testID="btn-home"
-              onPress={handleHome}
-              style={styles.homeBtn}
-            >
-              <Ionicons name="home" size={16} color={Colors.textSecondary} />
-              <Text style={styles.homeBtnText}>Home</Text>
-            </Pressable>
-            {isMultiRound && !isLastRound ? (
-              <Pressable
-                testID="btn-prossimo"
-                onPress={handleNextRound}
-                style={styles.rematchBtn}
-              >
-                <LinearGradient
-                  colors={[Colors.gold, Colors.goldDark]}
-                  start={{ x: 0, y: 0 }}
-                  end={{ x: 1, y: 1 }}
-                  style={styles.rematchGrad}
-                >
-                  <Ionicons name="play-forward" size={16} color="#0A1F18" />
-                  <Text style={styles.rematchText}>Prossima Manche</Text>
-                </LinearGradient>
-              </Pressable>
-            ) : (
-              <Pressable
-                testID="btn-rivincita"
-                onPress={handleRematch}
-                style={styles.rematchBtn}
-              >
-                <LinearGradient
-                  colors={[Colors.gold, Colors.goldDark]}
-                  start={{ x: 0, y: 0 }}
-                  end={{ x: 1, y: 1 }}
-                  style={styles.rematchGrad}
-                >
-                  <Ionicons name="refresh" size={16} color="#0A1F18" />
-                  <Text style={styles.rematchText}>Rivincita</Text>
-                </LinearGradient>
-              </Pressable>
-            )}
-          </View>
+          {rankBlock}
         </View>
-
-        <View style={styles.rightCol}>
-          <Text style={styles.sectionTitle}>CLASSIFICA</Text>
-          <View style={styles.rankList}>
-            {sortedPlayers.map((player, idx) => (
-              <ScoreRow
-                key={player.id}
-                rank={idx}
-                name={player.name}
-                totalScore={totalScoreById[player.id] ?? 0}
-                pointsEarned={thisRoundPoints[player.id] ?? 0}
-                isWinner={idx === 0}
-                delay={idx * 80 + 200}
-                team={isTeamMode ? player.team : undefined}
-                isMultiRound={isMultiRound}
-              />
-            ))}
-          </View>
-          <View style={styles.legend}>
-            <Ionicons
-              name="information-circle-outline"
-              size={11}
-              color={Colors.textMuted}
-            />
-            <Text style={styles.legendText}>
-              +{numPlayers - 1} / +{numPlayers - 2} ... +0 per 1° → ultimo
-            </Text>
-          </View>
-        </View>
-      </View>
+      ) : (
+        <ScrollView contentContainerStyle={[styles.portraitScroll, { paddingBottom: bottomPad + 24 }]} showsVerticalScrollIndicator={false}>
+          {winnerBlock}
+          {statsBlock}
+          {rankBlock}
+          {actionsBlock}
+        </ScrollView>
+      )}
 
       {showExchange && gameState.exchangePhase && (
-        <CardExchangeOverlay
-          gameState={gameState}
-          chooseExchangeCard={chooseExchangeCard}
-        />
+        <CardExchangeOverlay gameState={gameState} chooseExchangeCard={chooseExchangeCard} />
       )}
     </View>
   );
@@ -573,6 +528,10 @@ const styles = StyleSheet.create({
     width: 16,
   },
 
+  portraitScroll: {
+    padding: 16,
+    gap: 20,
+  },
   twoCol: {
     flex: 1,
     flexDirection: "row",
