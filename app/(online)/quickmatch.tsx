@@ -7,14 +7,17 @@ import {
   Animated,
   Platform,
   BackHandler,
-  ScrollView,
   useWindowDimensions,
+  ActivityIndicator,
 } from "react-native";
 import { router, useNavigation } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { useOnlineGame } from "@/context/OnlineGameContext";
 import Colors from "@/constants/colors";
+import { MenuLayout } from "@/components/MenuLayout";
+import { MenuCard } from "@/components/MenuCard";
+import { MenuButton } from "@/components/MenuButton";
 
 type GameMode = "free_for_all" | "teams";
 
@@ -74,8 +77,6 @@ export default function QuickmatchScreen() {
   const pulseAnim = useRef(new Animated.Value(1)).current;
 
   const isLandscape = W > H;
-  const topPad = Platform.OS === "web" ? 67 : insets.top;
-  const bottomPad = Platform.OS === "web" ? 34 : insets.bottom;
 
   useEffect(() => {
     if (room) {
@@ -151,7 +152,7 @@ export default function QuickmatchScreen() {
       : Math.floor((Math.min(W, 500) - 40 - 12) / 2);
 
     return (
-      <View style={[styles.container, { paddingTop: topPad, paddingBottom: bottomPad }]}>
+      <MenuLayout scrollable={true} centered={false} style={{ justifyContent: "space-between" }}>
         {!isLandscape && (
           <View style={styles.header}>
             <Ionicons name="earth-outline" size={28} color={Colors.gold} />
@@ -160,61 +161,56 @@ export default function QuickmatchScreen() {
           </View>
         )}
 
-        <ScrollView
-          style={styles.scrollView}
-          contentContainerStyle={[
-            styles.modeGrid,
-            isLandscape && styles.modeGridLandscape,
-          ]}
-          showsVerticalScrollIndicator={false}
-        >
-          {isLandscape && (
-            <View style={styles.landscapeHeader}>
-              <Ionicons name="earth-outline" size={20} color={Colors.gold} />
-              <Text style={styles.landscapeHeaderText}>Scegli il formato</Text>
-            </View>
-          )}
-
-          <View style={[
-            styles.modeCardsRow,
-            isLandscape && styles.modeCardsRowLandscape,
-          ]}>
-            {MODES.map((mode) => (
-              <Pressable
-                key={`${mode.maxPlayers}-${mode.gameMode}`}
-                style={({ pressed }) => [
-                  styles.modeCard,
-                  { width: cardW },
-                  isLandscape && styles.modeCardLandscape,
-                  pressed && styles.modeCardPressed,
-                ]}
-                onPress={() => handleSelectMode(mode)}
-              >
-                <View style={styles.modeIconRow}>
-                  <View style={[styles.modeIconBg, isLandscape && styles.modeIconBgSmall]}>
-                    <Ionicons name={mode.icon} size={isLandscape ? 20 : 26} color={Colors.gold} />
-                  </View>
-                  <View style={styles.playerBadge}>
-                    <Text style={styles.playerBadgeText}>{mode.playerLabel}</Text>
-                  </View>
-                </View>
-                <Text style={[styles.modeLabel, isLandscape && styles.modeLabelSmall]}>{mode.label}</Text>
-                <Text style={styles.modeDesc}>{mode.desc}</Text>
-              </Pressable>
-            ))}
+        {isLandscape && (
+          <View style={styles.landscapeHeader}>
+            <Ionicons name="earth-outline" size={20} color={Colors.gold} />
+            <Text style={styles.landscapeHeaderText}>Scegli il formato</Text>
           </View>
-        </ScrollView>
+        )}
 
-        <Pressable style={[styles.cancelBtn, { paddingBottom: Math.max(bottomPad, 12) }]} onPress={handleCancelHome}>
-          <Text style={styles.cancelText}>Indietro</Text>
-        </Pressable>
-      </View>
+        <View style={[
+          styles.modeCardsRow,
+          isLandscape && styles.modeCardsRowLandscape,
+        ]}>
+          {MODES.map((mode) => (
+            <Pressable
+              key={`${mode.maxPlayers}-${mode.gameMode}`}
+              style={({ pressed }) => [
+                styles.modeCard,
+                { width: cardW },
+                isLandscape && styles.modeCardLandscape,
+                pressed && styles.modeCardPressed,
+              ]}
+              onPress={() => handleSelectMode(mode)}
+            >
+              <View style={styles.modeIconRow}>
+                <View style={[styles.modeIconBg, isLandscape && styles.modeIconBgSmall]}>
+                  <Ionicons name={mode.icon} size={isLandscape ? 20 : 26} color={Colors.gold} />
+                </View>
+                <View style={styles.playerBadge}>
+                  <Text style={styles.playerBadgeText}>{mode.playerLabel}</Text>
+                </View>
+              </View>
+              <Text style={[styles.modeLabel, isLandscape && styles.modeLabelSmall]}>{mode.label}</Text>
+              <Text style={styles.modeDesc}>{mode.desc}</Text>
+            </Pressable>
+          ))}
+        </View>
+
+        <MenuButton
+          label="Indietro"
+          onPress={handleCancelHome}
+          variant="ghost"
+          fullWidth={false}
+          style={styles.cancelBtnStyle}
+        />
+      </MenuLayout>
     );
   }
 
   return (
-    <View style={[styles.container, { paddingTop: topPad, paddingBottom: bottomPad }]}>
-      <View style={[styles.content, isLandscape && styles.contentLandscape]}>
+    <MenuLayout scrollable={false} centered={true}>
+      <View style={[styles.searchContent, isLandscape && styles.searchContentLandscape]}>
         <Animated.View style={[
           styles.globeWrapper,
           { transform: [{ scale: pulseAnim }] },
@@ -225,7 +221,7 @@ export default function QuickmatchScreen() {
           </View>
         </Animated.View>
 
-        <View style={isLandscape ? styles.searchTextCol : undefined}>
+        <MenuCard style={styles.searchCard}>
           {selectedMode && (
             <View style={styles.selectedModeTag}>
               <Ionicons name={selectedMode.icon} size={14} color={Colors.gold} />
@@ -236,38 +232,34 @@ export default function QuickmatchScreen() {
           {error ? (
             <>
               <Text style={styles.errorText}>{error}</Text>
-              <Pressable style={styles.retryBtn} onPress={handleRetry}>
-                <Text style={styles.retryText}>Riprova</Text>
-              </Pressable>
+              <MenuButton label="Riprova" onPress={handleRetry} />
             </>
           ) : (
             <>
+              <ActivityIndicator color={Colors.gold} size="small" style={{ marginBottom: 8 }} />
               <Text style={styles.searchingLabel}>
                 Cerco giocatori<Text style={styles.dots}>{dots}</Text>
               </Text>
               <Text style={styles.subtitle}>Ti uniremo a una partita appena possibile</Text>
             </>
           )}
-        </View>
+        </MenuCard>
       </View>
 
-      <Pressable style={[styles.cancelBtn, { paddingBottom: Math.max(bottomPad, 12) }]} onPress={handleCancelSearch}>
-        <Text style={styles.cancelText}>Annulla</Text>
-      </Pressable>
-    </View>
+      <MenuButton
+        label="Annulla"
+        onPress={handleCancelSearch}
+        variant="ghost"
+        fullWidth={false}
+        style={styles.cancelBtnStyle}
+      />
+    </MenuLayout>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: Colors.bg,
-    alignItems: "stretch",
-    justifyContent: "space-between",
-  },
   header: {
     alignItems: "center",
-    paddingTop: 16,
     paddingBottom: 4,
     gap: 4,
   },
@@ -296,26 +288,12 @@ const styles = StyleSheet.create({
     color: Colors.gold,
     letterSpacing: 1,
   },
-  scrollView: {
-    flex: 1,
-    width: "100%",
-  },
-  modeGrid: {
-    flexGrow: 1,
-    alignItems: "center",
-    paddingHorizontal: 20,
-    paddingVertical: 12,
-    justifyContent: "center",
-  },
-  modeGridLandscape: {
-    paddingVertical: 8,
-    justifyContent: "center",
-  },
   modeCardsRow: {
     flexDirection: "row",
     flexWrap: "wrap",
     justifyContent: "center",
     gap: 12,
+    marginVertical: 16,
   },
   modeCardsRowLandscape: {
     flexWrap: "nowrap",
@@ -390,21 +368,21 @@ const styles = StyleSheet.create({
     textAlign: "center",
     lineHeight: 15,
   },
-  content: {
+  cancelBtnStyle: {
+    alignSelf: "center",
+    paddingHorizontal: 40,
+  },
+  searchContent: {
     flex: 1,
     alignItems: "center",
     justifyContent: "center",
     gap: 20,
-    paddingHorizontal: 32,
+    paddingHorizontal: 16,
+    width: "100%",
   },
-  contentLandscape: {
+  searchContentLandscape: {
     flexDirection: "row",
     gap: 28,
-    paddingHorizontal: 40,
-  },
-  searchTextCol: {
-    alignItems: "center",
-    gap: 12,
   },
   globeWrapper: {
     marginBottom: 8,
@@ -424,6 +402,14 @@ const styles = StyleSheet.create({
     height: 76,
     borderRadius: 38,
   },
+  searchCard: {
+    minHeight: 120,
+    alignItems: "center",
+    justifyContent: "center",
+    width: "100%",
+    maxWidth: 320,
+    marginBottom: 0,
+  },
   selectedModeTag: {
     flexDirection: "row",
     alignItems: "center",
@@ -434,6 +420,7 @@ const styles = StyleSheet.create({
     paddingVertical: 6,
     borderWidth: 1,
     borderColor: "rgba(201,168,76,0.3)",
+    marginBottom: 8,
   },
   selectedModeText: {
     fontFamily: "Rajdhani_600SemiBold",
@@ -457,6 +444,7 @@ const styles = StyleSheet.create({
     color: Colors.textMuted,
     textAlign: "center",
     lineHeight: 20,
+    marginTop: 4,
   },
   errorText: {
     fontFamily: "Inter_400Regular",
@@ -464,26 +452,5 @@ const styles = StyleSheet.create({
     color: "#e57373",
     textAlign: "center",
     marginBottom: 4,
-  },
-  retryBtn: {
-    backgroundColor: Colors.gold,
-    paddingHorizontal: 32,
-    paddingVertical: 12,
-    borderRadius: 12,
-  },
-  retryText: {
-    fontFamily: "Rajdhani_700Bold",
-    color: "#031008",
-    fontSize: 16,
-  },
-  cancelBtn: {
-    alignSelf: "center",
-    paddingVertical: 14,
-    paddingHorizontal: 40,
-  },
-  cancelText: {
-    fontFamily: "Rajdhani_600SemiBold",
-    color: Colors.textMuted,
-    fontSize: 16,
   },
 });

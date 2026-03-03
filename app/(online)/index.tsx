@@ -20,6 +20,8 @@ import { useOnlineGame } from "@/context/OnlineGameContext";
 import { useAuth } from "@/context/AuthContext";
 import { useSocket } from "@/context/SocketContext";
 import Colors from "@/constants/colors";
+import { MenuCard } from "@/components/MenuCard";
+import { MenuButton } from "@/components/MenuButton";
 
 export default function OnlineLobbyScreen() {
   const insets = useSafeAreaInsets();
@@ -48,7 +50,6 @@ export default function OnlineLobbyScreen() {
     }
   }, [error]);
 
-  // Auto-open join modal if there's a pending invite
   useEffect(() => {
     if (pendingInvite) {
       setJoinCode(pendingInvite.roomCode);
@@ -71,9 +72,7 @@ export default function OnlineLobbyScreen() {
   }
 
   const CreateSection = (
-    <View style={styles.section}>
-      <Text style={styles.sectionTitle}>CREA STANZA</Text>
-
+    <MenuCard title="Crea Stanza" style={styles.sectionCard}>
       <View style={styles.optRow}>
         <Text style={styles.optLabel}>Modalità</Text>
         <View style={styles.toggle}>
@@ -112,39 +111,28 @@ export default function OnlineLobbyScreen() {
         <Text style={styles.warn}>La modalità Coppie richiede 4 giocatori</Text>
       )}
 
-      <Pressable
+      <MenuButton
+        label="Crea Stanza"
         onPress={handleCreate}
         disabled={createMode === "teams" && createPlayers !== 4}
-        style={({ pressed }) => [styles.primaryBtn, pressed && { opacity: 0.85 }]}
-      >
-        <LinearGradient
-          colors={[Colors.gold, Colors.goldDark]}
-          start={{ x: 0, y: 0 }}
-          end={{ x: 1, y: 1 }}
-          style={styles.primaryGrad}
-        >
-          <Ionicons name="add-circle-outline" size={20} color="#0A1F18" />
-          <Text style={styles.primaryBtnText}>Crea Stanza</Text>
-        </LinearGradient>
-      </Pressable>
-    </View>
+        icon={<Ionicons name="add-circle-outline" size={20} color="#0A1F18" />}
+      />
+    </MenuCard>
   );
 
   const JoinSection = (
-    <View style={styles.section}>
-      <Text style={styles.sectionTitle}>ENTRA IN UNA STANZA</Text>
-      <Pressable
+    <MenuCard title="Entra in una Stanza" style={styles.sectionCard}>
+      <MenuButton
+        label="Inserisci codice stanza"
         onPress={() => setJoinModalVisible(true)}
-        style={({ pressed }) => [styles.secondaryBtn, pressed && { opacity: 0.85 }]}
-      >
-        <Ionicons name="enter-outline" size={20} color={Colors.gold} />
-        <Text style={styles.secondaryBtnText}>Inserisci codice stanza</Text>
-      </Pressable>
-    </View>
+        variant="secondary"
+        icon={<Ionicons name="enter-outline" size={20} color={Colors.gold} />}
+      />
+    </MenuCard>
   );
 
   return (
-    <View style={[styles.container, { paddingTop: topPad, paddingBottom: bottomPad + 16 }]}>
+    <View style={[styles.container, { paddingTop: topPad }]}>
       <LinearGradient
         colors={[Colors.bg, Colors.bgCard]}
         style={StyleSheet.absoluteFill}
@@ -161,35 +149,38 @@ export default function OnlineLobbyScreen() {
       <ScrollView
         contentContainerStyle={[
           styles.body,
+          { paddingBottom: bottomPad + 16 },
           isLandscape && styles.bodyLandscape,
         ]}
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
       >
-        <View style={styles.statusRow}>
-          <View style={[styles.dot, { backgroundColor: connected ? "#4CAF50" : Colors.textMuted }]} />
-          <Text style={styles.statusText}>
-            {connected ? `Connesso come ${user?.username}` : "Connessione…"}
-          </Text>
-        </View>
-
-        {isLandscape ? (
-          <View style={styles.landscapeRow}>
-            <View style={{ flex: 1 }}>{CreateSection}</View>
-            <View style={styles.dividerV} />
-            <View style={{ flex: 1 }}>{JoinSection}</View>
+        <View style={styles.contentWrapper}>
+          <View style={styles.statusRow}>
+            <View style={[styles.dot, { backgroundColor: connected ? "#4CAF50" : Colors.textMuted }]} />
+            <Text style={styles.statusText}>
+              {connected ? `Connesso come ${user?.username}` : "Connessione…"}
+            </Text>
           </View>
-        ) : (
-          <>
-            {CreateSection}
-            <View style={styles.divider}>
-              <View style={styles.divLine} />
-              <Text style={styles.divText}>oppure</Text>
-              <View style={styles.divLine} />
+
+          {isLandscape ? (
+            <View style={styles.landscapeRow}>
+              <View style={{ flex: 1 }}>{CreateSection}</View>
+              <View style={styles.dividerV} />
+              <View style={{ flex: 1 }}>{JoinSection}</View>
             </View>
-            {JoinSection}
-          </>
-        )}
+          ) : (
+            <>
+              {CreateSection}
+              <View style={styles.divider}>
+                <View style={styles.divLine} />
+                <Text style={styles.divText}>oppure</Text>
+                <View style={styles.divLine} />
+              </View>
+              {JoinSection}
+            </>
+          )}
+        </View>
       </ScrollView>
 
       <Modal
@@ -201,16 +192,18 @@ export default function OnlineLobbyScreen() {
         <View style={styles.modalOverlay}>
           <View style={styles.modalBox}>
             <Text style={styles.modalTitle}>Entra in una stanza</Text>
-            <TextInput
-              style={styles.codeInput}
-              value={joinCode}
-              onChangeText={(v) => setJoinCode(v.toUpperCase())}
-              placeholder="CODICE"
-              placeholderTextColor={Colors.textMuted}
-              autoCapitalize="characters"
-              maxLength={8}
-              autoFocus
-            />
+            <MenuCard title="Codice Stanza" style={{ marginBottom: 0 }}>
+              <TextInput
+                style={styles.codeInput}
+                value={joinCode}
+                onChangeText={(v) => setJoinCode(v.toUpperCase())}
+                placeholder="CODICE"
+                placeholderTextColor={Colors.textMuted}
+                autoCapitalize="characters"
+                maxLength={8}
+                autoFocus
+              />
+            </MenuCard>
             <View style={styles.modalRow}>
               <Pressable
                 onPress={() => { setJoinModalVisible(false); setJoinCode(""); }}
@@ -252,28 +245,21 @@ const styles = StyleSheet.create({
     color: Colors.text,
     letterSpacing: 3,
   },
-  body: { paddingHorizontal: 20, paddingTop: 16, paddingBottom: 16, gap: 16 },
+  body: { paddingHorizontal: 20, paddingTop: 16, gap: 16 },
   bodyLandscape: { paddingTop: 12, gap: 12 },
+  contentWrapper: {
+    width: "100%",
+    maxWidth: 440,
+    alignSelf: "center",
+    gap: 16,
+  },
   landscapeRow: { flexDirection: "row", gap: 16, alignItems: "flex-start" },
   dividerV: { width: 1, backgroundColor: Colors.border, alignSelf: "stretch" },
   statusRow: { flexDirection: "row", alignItems: "center", gap: 8 },
   dot: { width: 8, height: 8, borderRadius: 4 },
   statusText: { fontFamily: "Inter_400Regular", fontSize: 13, color: Colors.textMuted },
-  section: {
-    backgroundColor: Colors.bgSurface,
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: Colors.border,
-    padding: 18,
-    gap: 14,
-  },
-  sectionTitle: {
-    fontFamily: "Rajdhani_600SemiBold",
-    fontSize: 13,
-    color: Colors.gold,
-    letterSpacing: 2,
-  },
-  optRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
+  sectionCard: { marginBottom: 0 },
+  optRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 8 },
   optLabel: { fontFamily: "Inter_400Regular", fontSize: 14, color: Colors.text },
   toggle: { flexDirection: "row", gap: 6 },
   toggleBtn: {
@@ -287,24 +273,10 @@ const styles = StyleSheet.create({
   toggleActive: { borderColor: Colors.gold, backgroundColor: "rgba(201,168,76,0.12)" },
   toggleText: { fontFamily: "Rajdhani_600SemiBold", fontSize: 14, color: Colors.textMuted },
   toggleTextActive: { color: Colors.gold },
-  warn: { fontFamily: "Inter_400Regular", fontSize: 12, color: "#ff6b6b" },
-  primaryBtn: { borderRadius: 12, overflow: "hidden" },
-  primaryGrad: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, paddingVertical: 14 },
-  primaryBtnText: { fontFamily: "Rajdhani_700Bold", fontSize: 17, color: "#0A1F18", letterSpacing: 0.5 },
+  warn: { fontFamily: "Inter_400Regular", fontSize: 12, color: "#ff6b6b", marginBottom: 4 },
   divider: { flexDirection: "row", alignItems: "center", gap: 12 },
   divLine: { flex: 1, height: 1, backgroundColor: Colors.border },
   divText: { fontFamily: "Inter_400Regular", fontSize: 12, color: Colors.textMuted },
-  secondaryBtn: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 10,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: Colors.gold,
-    paddingVertical: 14,
-  },
-  secondaryBtnText: { fontFamily: "Rajdhani_600SemiBold", fontSize: 16, color: Colors.gold },
   modalOverlay: { flex: 1, backgroundColor: "rgba(0,0,0,0.7)", alignItems: "center", justifyContent: "center" },
   modalBox: {
     backgroundColor: Colors.bgSurface,

@@ -50,6 +50,8 @@ Murlan is built with a client-server architecture.
 - **Layout:** Game table fills the screen with minimal margins. `PASSA` and `GIOCA` buttons are inline within the hand section.
 - **Animations:** Flying card animations for played cards, hand glow for current player's turn, and emoji reaction animations.
 - **NotificationBanner:** A global, animated slide-down banner for real-time events (e.g., friend requests).
+- **Design System:** `lib/theme.ts` is the single source of truth for Colors, Spacing, Radius, FontSize, and Shadow tokens. New components use this file. Existing screens still reference `constants/colors.ts` — do not retroactively replace.
+- **Base Menu Components:** `components/MenuLayout.tsx` (safe-area-aware scrollable/fixed container), `components/MenuCard.tsx` (felt-colored card group), `components/MenuButton.tsx` (primary/secondary/danger/ghost variants). All new menu screens MUST use these. Offline lobby (`app/lobby.tsx`) is the reference design.
 
 **2. Technical Implementations:**
 - **Game Engine:** Encapsulated in `lib/gameEngine.ts`, handling all game logic, AI, and exchange rules.

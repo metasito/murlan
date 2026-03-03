@@ -23,6 +23,8 @@ import { useAuth } from "@/context/AuthContext";
 import { useSocket } from "@/context/SocketContext";
 import { getSocket } from "@/lib/socket";
 import Colors from "@/constants/colors";
+import { MenuCard } from "@/components/MenuCard";
+import { MenuButton } from "@/components/MenuButton";
 
 const TEAM_COLORS = { A: Colors.gold, B: "#6b8ef5" };
 
@@ -63,8 +65,7 @@ function InviteFriendsPanel({ roomCode, playerUserIds, myUserId }: {
   }
 
   return (
-    <View style={inviteStyles.panel}>
-      <Text style={inviteStyles.panelTitle}>INVITA AMICI</Text>
+    <MenuCard title="Invita Amici" style={{ maxHeight: 200, marginBottom: 0 }}>
       {onlineFriendsNotInRoom.length === 0 ? (
         <Text style={inviteStyles.emptyText}>Nessun amico online</Text>
       ) : (
@@ -90,7 +91,7 @@ function InviteFriendsPanel({ roomCode, playerUserIds, myUserId }: {
           })}
         </ScrollView>
       )}
-    </View>
+    </MenuCard>
   );
 }
 
@@ -194,45 +195,46 @@ export default function RoomScreen() {
           const player = room.players.find((p) => p.seatIndex === i);
           const team = room.gameMode === "teams" ? (i % 2 === 0 ? "A" : "B") : null;
           return (
-            <View
+            <MenuCard
               key={i}
               style={[
-                styles.slot,
-                player && styles.slotFilled,
-                team && { borderLeftColor: TEAM_COLORS[team as "A" | "B"], borderLeftWidth: 3 },
+                styles.slotCard,
+                team ? { borderLeftColor: TEAM_COLORS[team as "A" | "B"], borderLeftWidth: 3 } : undefined,
               ]}
             >
-              {player ? (
-                <>
-                  <View style={styles.slotAvatar}>
-                    <Text style={styles.slotInitial}>
-                      {player.username.charAt(0).toUpperCase()}
-                    </Text>
-                  </View>
-                  <View style={styles.slotInfo}>
-                    <Text style={styles.slotName} numberOfLines={1}>
-                      {player.username}
-                      {player.userId === user?.id ? " (tu)" : ""}
-                    </Text>
-                    {room.hostUserId === player.userId && (
-                      <Text style={styles.hostBadge}>Host</Text>
+              <View style={styles.slotInner}>
+                {player ? (
+                  <>
+                    <View style={styles.slotAvatar}>
+                      <Text style={styles.slotInitial}>
+                        {player.username.charAt(0).toUpperCase()}
+                      </Text>
+                    </View>
+                    <View style={styles.slotInfo}>
+                      <Text style={styles.slotName} numberOfLines={1}>
+                        {player.username}
+                        {player.userId === user?.id ? " (tu)" : ""}
+                      </Text>
+                      {room.hostUserId === player.userId && (
+                        <Text style={styles.hostBadge}>Host</Text>
+                      )}
+                    </View>
+                    {team && (
+                      <Text style={[styles.teamBadge, { color: TEAM_COLORS[team as "A" | "B"] }]}>
+                        {team}
+                      </Text>
                     )}
-                  </View>
-                  {team && (
-                    <Text style={[styles.teamBadge, { color: TEAM_COLORS[team as "A" | "B"] }]}>
-                      {team}
-                    </Text>
-                  )}
-                </>
-              ) : (
-                <>
-                  <View style={[styles.slotAvatar, styles.slotAvatarEmpty]}>
-                    <Ionicons name="person-add-outline" size={18} color={Colors.textMuted} />
-                  </View>
-                  <Text style={styles.slotWaiting}>In attesa…</Text>
-                </>
-              )}
-            </View>
+                  </>
+                ) : (
+                  <>
+                    <View style={[styles.slotAvatar, styles.slotAvatarEmpty]}>
+                      <Ionicons name="person-add-outline" size={18} color={Colors.textMuted} />
+                    </View>
+                    <Text style={styles.slotWaiting}>In attesa…</Text>
+                  </>
+                )}
+              </View>
+            </MenuCard>
           );
         })}
       </View>
@@ -242,37 +244,23 @@ export default function RoomScreen() {
   const FooterContent = (
     <>
       {isHost ? (
-        <Pressable
+        <MenuButton
+          label={room.players.length < 2 ? "In attesa di giocatori…" : "Inizia Partita"}
           onPress={handleStart}
           disabled={!canStart}
-          style={({ pressed }) => [
-            styles.startBtn,
-            !canStart && styles.startBtnDisabled,
-            pressed && { opacity: 0.85 },
-          ]}
-        >
-          <LinearGradient
-            colors={canStart ? [Colors.gold, Colors.goldDark] : [Colors.bgSurface, Colors.bgSurface]}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 1 }}
-            style={styles.startGrad}
-          >
-            <Ionicons
-              name="play-circle"
-              size={22}
-              color={canStart ? "#0A1F18" : Colors.textMuted}
-            />
-            <Text style={[styles.startText, !canStart && { color: Colors.textMuted }]}>
-              {room.players.length < 2 ? "In attesa di giocatori…" : "Inizia Partita"}
-            </Text>
-          </LinearGradient>
-        </Pressable>
+          icon={<Ionicons name="play-circle" size={22} color={canStart ? "#0A1F18" : Colors.textMuted} />}
+        />
       ) : (
         <View style={styles.waitingHost}>
           <Ionicons name="time-outline" size={18} color={Colors.textMuted} />
           <Text style={styles.waitingText}>In attesa che l'host avvii la partita…</Text>
         </View>
       )}
+      <MenuButton
+        label="Lascia Stanza"
+        onPress={handleLeave}
+        variant="danger"
+      />
     </>
   );
 
@@ -397,20 +385,6 @@ export default function RoomScreen() {
 }
 
 const inviteStyles = StyleSheet.create({
-  panel: {
-    backgroundColor: Colors.bgSurface,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: Colors.border,
-    padding: 14,
-    gap: 10,
-  },
-  panelTitle: {
-    fontFamily: "Inter_400Regular",
-    fontSize: 11,
-    color: Colors.textMuted,
-    letterSpacing: 2,
-  },
   emptyText: {
     fontFamily: "Inter_400Regular",
     fontSize: 13,
@@ -489,7 +463,7 @@ const styles = StyleSheet.create({
     gap: 0,
   },
   landscapeLeft: {
-    width: 220,
+    width: 240,
     gap: 12,
     paddingRight: 16,
   },
@@ -503,6 +477,7 @@ const styles = StyleSheet.create({
   },
   landscapeFooter: {
     marginTop: "auto",
+    gap: 8,
   },
 
   codeSection: {
@@ -569,18 +544,16 @@ const styles = StyleSheet.create({
     letterSpacing: 2,
   },
   slotsGrid: { gap: 8 },
-  slot: {
+  slotCard: {
+    marginBottom: 0,
+    minHeight: 72,
+  },
+  slotInner: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: Colors.bgSurface,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: Colors.border,
-    padding: 12,
     gap: 12,
-    minHeight: 60,
+    minHeight: 40,
   },
-  slotFilled: { borderColor: "rgba(201,168,76,0.3)" },
   slotAvatar: {
     width: 36,
     height: 36,
@@ -601,11 +574,7 @@ const styles = StyleSheet.create({
   },
   slotWaiting: { flex: 1, fontFamily: "Inter_400Regular", fontSize: 13, color: Colors.textMuted },
   teamBadge: { fontFamily: "Rajdhani_700Bold", fontSize: 13, letterSpacing: 1 },
-  footer: { paddingHorizontal: 20, paddingTop: 8, paddingBottom: 4 },
-  startBtn: { borderRadius: 14, overflow: "hidden" },
-  startBtnDisabled: {},
-  startGrad: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 10, paddingVertical: 14 },
-  startText: { fontFamily: "Rajdhani_700Bold", fontSize: 18, color: "#0A1F18", letterSpacing: 0.5 },
+  footer: { paddingHorizontal: 20, paddingTop: 8, paddingBottom: 4, gap: 4 },
   waitingHost: {
     flexDirection: "row",
     alignItems: "center",
