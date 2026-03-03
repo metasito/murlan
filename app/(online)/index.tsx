@@ -354,17 +354,24 @@ const styles = StyleSheet.create({
   divider: { flexDirection: "row", alignItems: "center", gap: 12 },
   divLine: { flex: 1, height: 1, backgroundColor: Colors.border },
   divText: { fontFamily: "Inter_400Regular", fontSize: 12, color: Colors.textMuted },
-  modalOverlay: { flex: 1, backgroundColor: "rgba(0,0,0,0.7)" },
-  modalScroll: { flexGrow: 1, justifyContent: 'center', alignItems: 'center', padding: 20 },
+  modalOverlay: { 
+    flex: 1, 
+    backgroundColor: "rgba(0,0,0,0.7)",
+  },
+  modalScroll: { 
+    flexGrow: 1, 
+    justifyContent: 'center', 
+    alignItems: 'center', 
+    padding: 20 
+  },
   modalBox: {
     backgroundColor: Colors.bgSurface,
     borderRadius: 20,
     borderWidth: 1,
     borderColor: Colors.border,
     padding: 24,
-    width: "90%",
+    width: "100%",
     maxWidth: 400,
-    alignSelf: 'center',
     gap: 16,
   },
   modalBoxLandscape: {
