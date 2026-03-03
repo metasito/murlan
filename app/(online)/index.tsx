@@ -233,36 +233,42 @@ export default function OnlineLobbyScreen() {
           behavior={Platform.OS === "ios" ? "padding" : "height"}
           style={styles.modalOverlay}
         >
-          <View style={[styles.modalBox, isLandscape && styles.modalBoxLandscape]}>
-            <Text style={styles.modalTitle}>Entra in una stanza</Text>
-            <MenuCard title="Codice Stanza" style={{ marginBottom: 0 }}>
-              <TextInput
-                style={[styles.codeInput, isLandscape && styles.codeInputLandscape]}
-                value={joinCode}
-                onChangeText={(v) => setJoinCode(v.toUpperCase())}
-                placeholder="CODICE"
-                placeholderTextColor={Colors.textMuted}
-                autoCapitalize="characters"
-                maxLength={8}
-                autoFocus
-              />
-            </MenuCard>
-            <View style={styles.modalRow}>
-              <Pressable
-                onPress={() => { setJoinModalVisible(false); setJoinCode(""); }}
-                style={styles.modalCancelBtn}
-              >
-                <Text style={styles.modalCancelText}>Annulla</Text>
-              </Pressable>
-              <Pressable
-                onPress={handleJoin}
-                disabled={joinCode.length < 4}
-                style={({ pressed }) => [styles.modalOkBtn, pressed && { opacity: 0.85 }]}
-              >
-                <Text style={styles.modalOkText}>Entra</Text>
-              </Pressable>
+          <ScrollView 
+            contentContainerStyle={styles.modalScroll}
+            bounces={false}
+            keyboardShouldPersistTaps="handled"
+          >
+            <View style={[styles.modalBox, isLandscape && styles.modalBoxLandscape]}>
+              <Text style={styles.modalTitle}>Entra in una stanza</Text>
+              <MenuCard title="Codice Stanza" style={{ marginBottom: 0 }}>
+                <TextInput
+                  style={[styles.codeInput, isLandscape && styles.codeInputLandscape]}
+                  value={joinCode}
+                  onChangeText={(v) => setJoinCode(v.toUpperCase())}
+                  placeholder="CODICE"
+                  placeholderTextColor={Colors.textMuted}
+                  autoCapitalize="characters"
+                  maxLength={8}
+                  autoFocus
+                />
+              </MenuCard>
+              <View style={styles.modalRow}>
+                <Pressable
+                  onPress={() => { setJoinModalVisible(false); setJoinCode(""); }}
+                  style={styles.modalCancelBtn}
+                >
+                  <Text style={styles.modalCancelText}>Annulla</Text>
+                </Pressable>
+                <Pressable
+                  onPress={handleJoin}
+                  disabled={joinCode.length < 4}
+                  style={({ pressed }) => [styles.modalOkBtn, pressed && { opacity: 0.85 }]}
+                >
+                  <Text style={styles.modalOkText}>Entra</Text>
+                </Pressable>
+              </View>
             </View>
-          </View>
+          </ScrollView>
         </KeyboardAvoidingView>
       </Modal>
     </View>
@@ -349,7 +355,8 @@ const styles = StyleSheet.create({
   divider: { flexDirection: "row", alignItems: "center", gap: 12 },
   divLine: { flex: 1, height: 1, backgroundColor: Colors.border },
   divText: { fontFamily: "Inter_400Regular", fontSize: 12, color: Colors.textMuted },
-  modalOverlay: { flex: 1, backgroundColor: "rgba(0,0,0,0.7)", alignItems: "center", justifyContent: "center" },
+  modalOverlay: { flex: 1, backgroundColor: "rgba(0,0,0,0.7)" },
+  modalScroll: { flexGrow: 1, justifyContent: 'center', alignItems: 'center', padding: 20 },
   modalBox: {
     backgroundColor: Colors.bgSurface,
     borderRadius: 20,
