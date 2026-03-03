@@ -3,6 +3,7 @@ modules = ["nodejs-22", "javascript", "postgresql-16"]
 
 [nix]
 channel = "stable-24_05"
+packages = ["dig", "q"]
 
 [deployment]
 deploymentTarget = "cloudrun"
