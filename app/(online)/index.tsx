@@ -238,7 +238,7 @@ export default function OnlineLobbyScreen() {
             bounces={false}
             keyboardShouldPersistTaps="handled"
           >
-            <View style={[styles.modalBox, isLandscape && styles.modalBoxLandscape]}>
+            <View style={[styles.modalBox, isLandscape && styles.modalBoxLandscape, { width: isLandscape ? "80%" : "100%", maxWidth: isLandscape ? 600 : 400 }]}>
               <Text style={styles.modalTitle}>Entra in una stanza</Text>
               <MenuCard title="Codice Stanza" style={{ marginBottom: 0 }}>
                 <TextInput
@@ -248,6 +248,7 @@ export default function OnlineLobbyScreen() {
                   placeholder="CODICE"
                   placeholderTextColor={Colors.textMuted}
                   autoCapitalize="characters"
+                  autoFocus={true}
                   maxLength={8}
                 />
               </MenuCard>
