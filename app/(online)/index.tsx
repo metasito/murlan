@@ -226,17 +226,18 @@ export default function OnlineLobbyScreen() {
         visible={joinModalVisible}
         transparent
         animationType="fade"
+        statusBarTranslucent
         onRequestClose={() => setJoinModalVisible(false)}
       >
         <KeyboardAvoidingView
           behavior={Platform.OS === "ios" ? "padding" : "height"}
           style={styles.modalOverlay}
         >
-          <View style={styles.modalBox}>
+          <View style={[styles.modalBox, isLandscape && styles.modalBoxLandscape]}>
             <Text style={styles.modalTitle}>Entra in una stanza</Text>
             <MenuCard title="Codice Stanza" style={{ marginBottom: 0 }}>
               <TextInput
-                style={styles.codeInput}
+                style={[styles.codeInput, isLandscape && styles.codeInputLandscape]}
                 value={joinCode}
                 onChangeText={(v) => setJoinCode(v.toUpperCase())}
                 placeholder="CODICE"
@@ -360,6 +361,10 @@ const styles = StyleSheet.create({
     alignSelf: 'center',
     gap: 16,
   },
+  modalBoxLandscape: {
+    padding: 16,
+    gap: 8,
+  },
   modalTitle: { fontFamily: "Rajdhani_700Bold", fontSize: 20, color: Colors.text, textAlign: "center" },
   codeInput: {
     backgroundColor: Colors.bgCard,
@@ -372,6 +377,10 @@ const styles = StyleSheet.create({
     textAlign: "center",
     letterSpacing: 6,
     paddingVertical: 14,
+  },
+  codeInputLandscape: {
+    paddingVertical: 8,
+    fontSize: 22,
   },
   modalRow: { flexDirection: "row", gap: 12 },
   modalCancelBtn: {
