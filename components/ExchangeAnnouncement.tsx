@@ -7,10 +7,10 @@ import {
   Platform,
 } from "react-native";
 import Animated, { FadeIn, FadeOut } from "react-native-reanimated";
-import { Ionicons } from "@expo/vector-icons";
 import type { Card } from "@/lib/gameEngine";
 import { CardView } from "@/components/CardView";
 import Colors from "@/constants/colors";
+import { Shadow } from "@/lib/theme";
 
 const DISMISS_MS = 3500;
 
@@ -22,6 +22,41 @@ interface ExchangeAnnouncementProps {
   cardGiven?: Card;
   cardReceived?: Card;
   onDismiss: () => void;
+}
+
+function AvatarBubble({ name }: { name: string }) {
+  const initial = name.charAt(0).toUpperCase();
+  return (
+    <View style={styles.avatarBubble}>
+      <Text style={styles.avatarInitial}>{initial}</Text>
+    </View>
+  );
+}
+
+function ExchangeRow({
+  from,
+  card,
+  to,
+}: {
+  from: string;
+  card?: Card;
+  to: string;
+}) {
+  return (
+    <View style={styles.exchangeRow}>
+      <AvatarBubble name={from} />
+      <Text style={styles.arrow}>→</Text>
+      {card ? (
+        <View style={styles.cardWrap}>
+          <CardView card={card} />
+        </View>
+      ) : (
+        <View style={styles.cardWrap} />
+      )}
+      <Text style={styles.arrow}>→</Text>
+      <AvatarBubble name={to} />
+    </View>
+  );
 }
 
 export function ExchangeAnnouncement({
@@ -60,26 +95,6 @@ export function ExchangeAnnouncement({
     onDismiss();
   }
 
-  if (bothJokersException) {
-    return (
-      <Animated.View
-        entering={FadeIn.duration(300)}
-        exiting={FadeOut.duration(300)}
-        style={styles.overlay}
-      >
-        <Pressable onPress={handleDismiss} style={styles.card}>
-          <Text style={styles.emoji}>🃏🃏</Text>
-          <Text style={styles.titleNoSwap}>NESSUNO SCAMBIO</Text>
-          <Text style={styles.body}>
-            Il perdente ha entrambi i jolly.{"\n"}
-            <Text style={styles.accent}>{winnerName}</Text> inizia il round.
-          </Text>
-          <Text style={styles.dismissHint}>Tocca per chiudere</Text>
-        </Pressable>
-      </Animated.View>
-    );
-  }
-
   return (
     <Animated.View
       entering={FadeIn.duration(300)}
@@ -87,32 +102,33 @@ export function ExchangeAnnouncement({
       style={styles.overlay}
     >
       <Pressable onPress={handleDismiss} style={styles.card}>
-        <Ionicons name="swap-horizontal" size={28} color={Colors.gold} />
-        <Text style={styles.title}>SCAMBIO COMPLETATO</Text>
-        <Text style={styles.body}>
-          <Text style={styles.accent}>{loserName}</Text> ha dato a{" "}
-          <Text style={styles.accent}>{winnerName}</Text>:
-        </Text>
-        {cardReceived && (
-          <View style={styles.cardRow}>
-            <View style={styles.cardWrap}>
-              <CardView card={cardReceived} />
-            </View>
+        <Text style={styles.title}>Scambio</Text>
+
+        {bothJokersException ? (
+          <Text style={styles.noSwapText}>
+            Nessuno scambio — Jolly doppio 🃏
+          </Text>
+        ) : (
+          <View style={styles.rowsContainer}>
+            {cardReceived && (
+              <ExchangeRow
+                from={loserName}
+                card={cardReceived}
+                to={winnerName}
+              />
+            )}
+            {cardReceived && cardGiven && (
+              <View style={styles.separator} />
+            )}
+            {cardGiven && (
+              <ExchangeRow
+                from={winnerName}
+                card={cardGiven}
+                to={loserName}
+              />
+            )}
           </View>
         )}
-        {cardGiven && (
-          <>
-            <Text style={styles.body}>
-              <Text style={styles.accent}>{winnerName}</Text> ha restituito:
-            </Text>
-            <View style={styles.cardRow}>
-              <View style={styles.cardWrap}>
-                <CardView card={cardGiven} />
-              </View>
-            </View>
-          </>
-        )}
-        <Text style={styles.dismissHint}>Tocca per chiudere</Text>
       </Pressable>
     </Animated.View>
   );
@@ -121,66 +137,77 @@ export function ExchangeAnnouncement({
 const styles = StyleSheet.create({
   overlay: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: "rgba(3,16,8,0.88)",
+    backgroundColor: Colors.overlay,
     alignItems: "center",
     justifyContent: "center",
-    zIndex: 120,
+    zIndex: 150,
   },
   card: {
-    backgroundColor: "#0B2A1A",
+    backgroundColor: "rgba(3, 16, 8, 0.96)",
     borderRadius: 20,
-    borderWidth: 2,
-    borderColor: "rgba(201,168,76,0.4)",
-    padding: 28,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    paddingVertical: 16,
+    paddingHorizontal: 20,
     alignItems: "center",
-    gap: 12,
-    maxWidth: 400,
-    width: "82%",
+    gap: 8,
+    maxWidth: 300,
+    width: "80%",
     ...Platform.select({
-      ios: {
-        shadowColor: Colors.gold,
-        shadowOpacity: 0.25,
-        shadowRadius: 20,
-        shadowOffset: { width: 0, height: 0 },
-      },
-      android: { elevation: 14 },
+      ios: Shadow.gold,
+      android: { elevation: Shadow.gold.elevation },
     }),
   },
-  emoji: { fontSize: 36 },
   title: {
     fontFamily: "Rajdhani_700Bold",
-    fontSize: 18,
+    fontSize: 16,
     color: Colors.gold,
-    letterSpacing: 2,
+    textAlign: "center",
+    marginBottom: 8,
   },
-  titleNoSwap: {
-    fontFamily: "Rajdhani_700Bold",
-    fontSize: 20,
-    color: Colors.gold,
-    letterSpacing: 2,
-  },
-  body: {
+  noSwapText: {
     fontFamily: "Inter_400Regular",
     fontSize: 13,
-    color: Colors.text,
+    color: Colors.textSecondary,
     textAlign: "center",
-    lineHeight: 20,
   },
-  accent: {
-    color: Colors.gold,
-    fontFamily: "Rajdhani_700Bold",
+  rowsContainer: {
+    width: "100%",
+    gap: 0,
   },
-  cardRow: {
+  exchangeRow: {
     flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 6,
+    paddingVertical: 4,
+  },
+  avatarBubble: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: Colors.feltLight,
+    alignItems: "center",
     justifyContent: "center",
   },
-  cardWrap: {
-    transform: [{ scale: 1.0 }],
+  avatarInitial: {
+    fontFamily: "Rajdhani_700Bold",
+    fontSize: 13,
+    color: Colors.gold,
   },
-  dismissHint: {
-    fontFamily: "Inter_400Regular",
-    fontSize: 11,
+  arrow: {
     color: Colors.textMuted,
-    marginTop: 4,
+    fontSize: 12,
+  },
+  cardWrap: {
+    transform: [{ scale: 0.65 }],
+    marginHorizontal: -(58 * 0.175),
+    marginVertical: -(84 * 0.175),
+  },
+  separator: {
+    height: 1,
+    backgroundColor: Colors.border,
+    marginVertical: 8,
+    width: "100%",
   },
 });

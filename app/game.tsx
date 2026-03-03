@@ -54,6 +54,8 @@ import {
   portraitOverlayStyles,
   StartReasonBanner,
   useTurnPulse,
+  GameBillboard,
+  getComboLabel,
 } from "@/components/GameShared";
 import { ExchangeModal } from "@/components/ExchangeModal";
 import { ExchangeAnnouncement } from "@/components/ExchangeAnnouncement";
@@ -309,7 +311,7 @@ export default function GameScreen() {
   // Hand scale animation — stays zoomed while it's the human's turn
   useEffect(() => {
     if (isHumanTurn && !isFinished) {
-      handScaleVal.value = withSpring(1.04, { damping: 12, stiffness: 160 });
+      handScaleVal.value = withSpring(1.02, { damping: 12, stiffness: 160 });
     } else {
       handScaleVal.value = withTiming(1, { duration: 280 });
     }
@@ -441,7 +443,7 @@ export default function GameScreen() {
     return getOpponentPosition(steps, totalOpponents) === "right";
   });
 
-  const handAvailW = tableW - (SIDE_BTN_W + 6) * 2 - 8;
+  const handAvailW = tableW - (SIDE_BTN_W + 8) * 2 - 8;
 
   // Exchange phase — human winner must give back a weak card
   const exchangeActive = gameState.exchangePhase?.active === true;
@@ -472,33 +474,17 @@ export default function GameScreen() {
         <Pressable onPress={handleQuit} style={localStyles.quitBtn} hitSlop={10}>
           <Ionicons name="close" size={17} color="rgba(240,234,214,0.5)" />
         </Pressable>
-        <View style={localStyles.turnPill}>
-          <View
-            style={[
-              localStyles.turnDot,
-              {
-                backgroundColor: isHumanTurn ? Colors.gold : Colors.accent,
-              },
-            ]}
-          />
-          <Text style={localStyles.turnText} numberOfLines={1}>
-            {isHumanTurn
-              ? isFinished
-                ? "Aspetti gli altri..."
-                : "Il tuo turno"
-              : `${currentPlayer.name} pensa...`}
+        <GameBillboard
+          roundLabel="Partita"
+          currentComboLabel={getComboLabel(pileState.current)}
+          currentTurnName={currentPlayer.name}
+          isLocalPlayerTurn={isHumanTurn && !isFinished}
+        />
+        {shouldRunTimer && (
+          <Text style={[localStyles.timerNum, urgent && localStyles.timerUrgent]}>
+            {timeLeft}
           </Text>
-          {shouldRunTimer && (
-            <Text
-              style={[
-                localStyles.timerNum,
-                urgent && localStyles.timerUrgent,
-              ]}
-            >
-              {timeLeft}
-            </Text>
-          )}
-        </View>
+        )}
         <View style={localStyles.cardCountBadge}>
           <Text style={localStyles.cardCountText}>
             {humanPlayer?.hand.length ?? 0}
@@ -846,9 +832,9 @@ const localStyles = StyleSheet.create({
   },
   passBtnLabel: {
     fontFamily: "Rajdhani_700Bold",
-    fontSize: 12,
+    fontSize: 13,
     color: "#FF8080",
-    letterSpacing: 1,
+    letterSpacing: 0.5,
   },
   passBtnLabelDim: { color: "rgba(255,128,128,0.3)" },
   passBtnInner: {
@@ -858,7 +844,7 @@ const localStyles = StyleSheet.create({
   },
 
   playBtn: {
-    width: SIDE_BTN_W + 4,
+    width: SIDE_BTN_W + 6,
     height: CARD_H,
     borderRadius: 12,
     overflow: "hidden",
@@ -884,7 +870,7 @@ const localStyles = StyleSheet.create({
     fontFamily: "Rajdhani_700Bold",
     fontSize: 13,
     color: "#0A1F10",
-    letterSpacing: 1,
+    letterSpacing: 0.5,
   },
   playBtnSub: {
     fontFamily: "Rajdhani_500Medium",

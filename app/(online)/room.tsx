@@ -64,7 +64,7 @@ function InviteFriendsPanel({ roomCode, playerUserIds, myUserId }: {
   }
 
   return (
-    <MenuCard title="Invita Amici" style={{ maxHeight: 200, marginBottom: 0 }}>
+    <MenuCard title="Invita Amici" style={{ maxHeight: 180, marginBottom: 0 }}>
       {onlineFriendsNotInRoom.length === 0 ? (
         <Text style={inviteStyles.emptyText}>Nessun amico online</Text>
       ) : (
@@ -444,7 +444,7 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     paddingHorizontal: 8,
-    paddingBottom: 8,
+    paddingVertical: 8,
     borderBottomWidth: 1,
     borderBottomColor: Colors.border,
   },

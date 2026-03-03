@@ -62,6 +62,8 @@ import {
   portraitOverlayStyles,
   StartReasonBanner,
   useTurnPulse,
+  GameBillboard,
+  getComboLabel,
 } from "@/components/GameShared";
 import { ExchangeModal } from "@/components/ExchangeModal";
 import { ExchangeAnnouncement } from "@/components/ExchangeAnnouncement";
@@ -561,7 +563,7 @@ export default function OnlineGameScreen() {
   const tableRight = rightPad + TABLE_M;
   const tableBottom = bottomPad + TABLE_M;
   const handAvailW =
-    W - tableLeft - tableRight - (SIDE_BTN_W + 6) * 2 - 8;
+    W - tableLeft - tableRight - (SIDE_BTN_W + 8) * 2 - 8;
 
   function toggleCard(id: string) {
     setSelectedIds((prev) =>
@@ -639,44 +641,31 @@ export default function OnlineGameScreen() {
           { top: topPad, left: leftPad, right: rightPad },
         ]}
       >
-        <View style={localStyles.onlineIndicator}>
-          <View style={[localStyles.dot, { backgroundColor: "#4CAF50" }]} />
-          <Text style={localStyles.onlineLabel}>Online</Text>
-        </View>
+        <Pressable
+          onPress={handleExit}
+          style={localStyles.exitBtn}
+          hitSlop={8}
+        >
+          <Ionicons name="close" size={18} color={Colors.textMuted} />
+        </Pressable>
 
-        <View style={localStyles.turnPill}>
-          <View
-            style={[
-              localStyles.turnDot,
-              { backgroundColor: isMyTurn ? Colors.gold : Colors.accent },
-            ]}
-          />
-          <Text style={localStyles.turnText} numberOfLines={1}>
-            {isMyTurn
-              ? isFinished
-                ? "Aspetti gli altri..."
-                : "Il tuo turno"
-              : `${gameState.players[gameState.currentTurnIndex]?.name} pensa...`}
-          </Text>
+        <GameBillboard
+          roundLabel="Online"
+          currentComboLabel={getComboLabel(pileState.current)}
+          currentTurnName={gameState.players[gameState.currentTurnIndex]?.name ?? ""}
+          isLocalPlayerTurn={isMyTurn && !isFinished}
+        />
+
+        <View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
           <View style={localStyles.cardCountBadge}>
             <Text style={localStyles.cardCountText}>{me?.hand.length ?? 0}</Text>
           </View>
-        </View>
-
-        <View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
           <Pressable
             onPress={handleReactionBtnPress}
             style={localStyles.reactionTrigger}
             hitSlop={8}
           >
             <Text style={localStyles.reactionTriggerText}>💬</Text>
-          </Pressable>
-          <Pressable
-            onPress={handleExit}
-            style={localStyles.exitBtn}
-            hitSlop={8}
-          >
-            <Ionicons name="close" size={18} color={Colors.textMuted} />
           </Pressable>
         </View>
       </View>
@@ -1050,14 +1039,14 @@ const localStyles = StyleSheet.create({
   },
   passBtnLabel: {
     fontFamily: "Rajdhani_700Bold",
-    fontSize: 12,
+    fontSize: 13,
     color: "#FF8080",
-    letterSpacing: 1,
+    letterSpacing: 0.5,
   },
   passBtnLabelDim: { color: "rgba(255,128,128,0.3)" },
 
   playBtn: {
-    width: SIDE_BTN_W + 4,
+    width: SIDE_BTN_W + 6,
     height: CARD_H,
     borderRadius: 12,
     overflow: "hidden",
@@ -1078,7 +1067,7 @@ const localStyles = StyleSheet.create({
     fontFamily: "Rajdhani_700Bold",
     fontSize: 13,
     color: "#0A1F10",
-    letterSpacing: 1,
+    letterSpacing: 0.5,
   },
   playBtnSub: {
     fontFamily: "Rajdhani_500Medium",

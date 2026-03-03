@@ -10,6 +10,8 @@ import Animated, {
   Easing,
   runOnJS,
   cancelAnimation,
+  interpolate,
+  Extrapolation,
   FadeIn,
   FadeOut,
 } from "react-native-reanimated";
@@ -23,7 +25,7 @@ export const CARD_W = 58;
 export const CARD_H = 84;
 export const BTN_W = 84;
 export const BTN_H = 84;
-export const SIDE_BTN_W = 50;
+export const SIDE_BTN_W = 62;
 export const TOP_BAR_H = 40;
 export const TABLE_M = 4;
 export const SIDE_SECTION_W = 130;
@@ -417,9 +419,9 @@ export function CardItem({
 }) {
   const liftY = useSharedValue(0);
   useEffect(() => {
-    liftY.value = withSpring(isSelected ? -40 : 0, {
-      damping: 14,
-      stiffness: 260,
+    liftY.value = withTiming(isSelected ? -10 : 0, {
+      duration: 160,
+      easing: Easing.out(Easing.quad),
     });
   }, [isSelected]);
   const aStyle = useAnimatedStyle(() => ({
@@ -467,20 +469,12 @@ export function StraightHand({
   const step = Math.max(20, Math.min(CARD_W, (availW - CARD_W) / Math.max(n - 1, 1)));
   const totalW = step * (n - 1) + CARD_W;
 
-  const glowStyle = Platform.OS === "web"
-    ? ({
-        boxShadow: isMyTurn ? "0 0 28px 14px rgba(201,168,76,0.35)" : "none",
-        borderRadius: 14,
-      } as any)
-    : {};
-
   return (
     <View style={[sharedStyles.handCenter, { width: availW }]}>
       <View
         style={[
           sharedStyles.handGlowWrap,
           isMyTurn && sharedStyles.handGlowWrapActive,
-          glowStyle,
         ]}
       >
         <View style={[sharedStyles.handRow, { width: Math.min(totalW, availW) }]}>
@@ -644,30 +638,48 @@ export const sharedTableStyles = StyleSheet.create({
 });
 
 export function useTurnPulse(active: boolean) {
-  const glowOpacity = useSharedValue(0);
+  const glowV = useSharedValue(0);
 
   useEffect(() => {
     if (active) {
-      glowOpacity.value = withRepeat(
+      glowV.value = 0.35;
+      glowV.value = withRepeat(
         withSequence(
-          withTiming(0.18, { duration: 700, easing: Easing.inOut(Easing.ease) }),
-          withTiming(0.65, { duration: 700, easing: Easing.inOut(Easing.ease) })
+          withTiming(0.85, { duration: 900 }),
+          withTiming(0.35, { duration: 900 })
         ),
-        -1
+        -1,
+        false
       );
     } else {
-      cancelAnimation(glowOpacity);
-      glowOpacity.value = withTiming(0, { duration: 300 });
+      cancelAnimation(glowV);
+      glowV.value = withTiming(0, { duration: 300 });
     }
   }, [active]);
 
-  return useAnimatedStyle(() => ({
-    shadowColor: Colors.gold,
-    shadowOpacity: Platform.OS !== "web" ? glowOpacity.value : 0,
-    shadowRadius: 18,
-    shadowOffset: { width: 0, height: 0 },
-    elevation: glowOpacity.value * 12,
-  }));
+  return useAnimatedStyle(() => {
+    const v = glowV.value;
+    const shadowRadius = v < 0.01 ? 0 : interpolate(v, [0.35, 0.85], [8, 22], Extrapolation.CLAMP);
+    const shadowOpacity = v;
+    const elevation = interpolate(v, [0, 0.85], [0, 20], Extrapolation.CLAMP);
+
+    if (Platform.OS === "web") {
+      const blur = v < 0.01 ? 0 : interpolate(v, [0.35, 0.85], [8, 20], Extrapolation.CLAMP);
+      const alpha = v < 0.01 ? 0 : interpolate(v, [0.35, 0.85], [0.35, 0.85], Extrapolation.CLAMP);
+      return {
+        boxShadow: v < 0.01 ? "none" : `0 0 ${blur}px rgba(201,168,76,${alpha})`,
+        borderRadius: 14,
+      } as any;
+    }
+
+    return {
+      shadowColor: Colors.gold,
+      shadowOpacity,
+      shadowRadius,
+      shadowOffset: { width: 0, height: 0 },
+      elevation,
+    };
+  });
 }
 
 export const sharedStyles = StyleSheet.create({
@@ -825,13 +837,7 @@ export const sharedStyles = StyleSheet.create({
     borderRadius: 14,
     padding: 4,
   },
-  handGlowWrapActive: Platform.OS !== "web" ? {
-    shadowColor: Colors.gold,
-    shadowRadius: 20,
-    shadowOpacity: 0.6,
-    shadowOffset: { width: 0, height: 0 },
-    elevation: 14,
-  } : {},
+  handGlowWrapActive: {},
   handRow: {
     position: "relative",
     height: CARD_H,
@@ -842,5 +848,81 @@ export const sharedStyles = StyleSheet.create({
     fontFamily: "Rajdhani_600SemiBold",
     fontSize: 13,
     color: Colors.gold,
+  },
+});
+
+export function getComboLabel(combo: Combination | null): string | null {
+  if (!combo) return null;
+  const label = COMBO_LABELS[combo.type] ?? combo.type;
+  if (combo.cards.length > 2) return `${label} ×${combo.cards.length}`;
+  return label;
+}
+
+export function GameBillboard({
+  roundLabel,
+  currentComboLabel,
+  currentTurnName,
+  isLocalPlayerTurn,
+}: {
+  roundLabel: string;
+  currentComboLabel: string | null;
+  currentTurnName: string;
+  isLocalPlayerTurn: boolean;
+}) {
+  return (
+    <View style={billboardStyles.container}>
+      <Text style={billboardStyles.comboLabel} numberOfLines={1}>
+        {currentComboLabel ?? "— Tavolo libero —"}
+      </Text>
+      <View style={billboardStyles.bottomRow}>
+        <Text style={billboardStyles.roundLabel} numberOfLines={1}>{roundLabel}</Text>
+        <Text
+          style={[
+            billboardStyles.turnLabel,
+            isLocalPlayerTurn && billboardStyles.turnLabelActive,
+          ]}
+          numberOfLines={1}
+        >
+          {isLocalPlayerTurn ? "Il tuo turno ✦" : `Turno di ${currentTurnName}`}
+        </Text>
+      </View>
+    </View>
+  );
+}
+
+const billboardStyles = StyleSheet.create({
+  container: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "transparent",
+    paddingHorizontal: 4,
+    gap: 1,
+  },
+  comboLabel: {
+    fontFamily: "Rajdhani_700Bold",
+    fontSize: 12,
+    color: Colors.gold,
+    letterSpacing: 0.5,
+    textAlign: "center",
+  },
+  bottomRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+  },
+  roundLabel: {
+    fontFamily: "Inter_400Regular",
+    fontSize: 9,
+    color: Colors.textMuted,
+  },
+  turnLabel: {
+    fontFamily: "Inter_400Regular",
+    fontSize: 10,
+    color: Colors.textSecondary,
+  },
+  turnLabelActive: {
+    color: Colors.gold,
+    fontFamily: "Rajdhani_600SemiBold",
   },
 });
