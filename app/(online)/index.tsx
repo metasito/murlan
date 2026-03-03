@@ -72,16 +72,21 @@ export default function OnlineLobbyScreen() {
   }
 
   const CreateSection = (
-    <MenuCard title="Crea Stanza" style={styles.sectionCard}>
-      <View style={styles.optRow}>
-        <Text style={styles.optLabel}>Modalità</Text>
+    <MenuCard title="CREA STANZA" style={styles.sectionCard}>
+      <View style={styles.optSection}>
+        <Text style={styles.optLabelSmall}>MODALITÀ</Text>
         <View style={styles.toggle}>
           {(["free_for_all", "teams"] as const).map((m) => (
             <Pressable
               key={m}
-              onPress={() => setCreateMode(m)}
+              onPress={() => { setCreateMode(m); Haptics.selectionAsync(); }}
               style={[styles.toggleBtn, createMode === m && styles.toggleActive]}
             >
+              <Ionicons 
+                name={m === "teams" ? "people" : "person"} 
+                size={16} 
+                color={createMode === m ? Colors.gold : Colors.textSecondary} 
+              />
               <Text style={[styles.toggleText, createMode === m && styles.toggleTextActive]}>
                 {m === "free_for_all" ? "Libera" : "Coppie"}
               </Text>
@@ -90,16 +95,16 @@ export default function OnlineLobbyScreen() {
         </View>
       </View>
 
-      <View style={styles.optRow}>
-        <Text style={styles.optLabel}>Giocatori</Text>
+      <View style={styles.optSection}>
+        <Text style={styles.optLabelSmall}>GIOCATORI</Text>
         <View style={styles.toggle}>
           {[2, 3, 4].map((n) => (
             <Pressable
               key={n}
-              onPress={() => setCreatePlayers(n)}
-              style={[styles.toggleBtn, createPlayers === n && styles.toggleActive]}
+              onPress={() => { setCreatePlayers(n); Haptics.selectionAsync(); }}
+              style={[styles.toggleBtn, { flex: 1 }, createPlayers === n && styles.toggleActive]}
             >
-              <Text style={[styles.toggleText, createPlayers === n && styles.toggleTextActive]}>
+              <Text style={[styles.toggleText, createPlayers === n && styles.toggleTextActive, { fontSize: 18 }]}>
                 {n}
               </Text>
             </Pressable>
@@ -111,23 +116,27 @@ export default function OnlineLobbyScreen() {
         <Text style={styles.warn}>La modalità Coppie richiede 4 giocatori</Text>
       )}
 
-      <MenuButton
-        label="Crea Stanza"
-        onPress={handleCreate}
-        disabled={createMode === "teams" && createPlayers !== 4}
-        icon={<Ionicons name="add-circle-outline" size={20} color="#0A1F18" />}
-      />
+      <View style={{ marginTop: 4 }}>
+        <MenuButton
+          label="Crea Stanza"
+          onPress={handleCreate}
+          disabled={createMode === "teams" && createPlayers !== 4}
+          icon={<Ionicons name="add-circle-outline" size={20} color={createMode === "teams" && createPlayers !== 4 ? Colors.textMuted : "#0A1F18"} />}
+        />
+      </View>
     </MenuCard>
   );
 
   const JoinSection = (
-    <MenuCard title="Entra in una Stanza" style={styles.sectionCard}>
-      <MenuButton
-        label="Inserisci codice stanza"
-        onPress={() => setJoinModalVisible(true)}
-        variant="secondary"
-        icon={<Ionicons name="enter-outline" size={20} color={Colors.gold} />}
-      />
+    <MenuCard title="ENTRA IN UNA STANZA" style={styles.sectionCard}>
+      <View style={{ paddingVertical: 10 }}>
+        <MenuButton
+          label="Inserisci codice stanza"
+          onPress={() => setJoinModalVisible(true)}
+          variant="secondary"
+          icon={<Ionicons name="enter-outline" size={20} color={Colors.gold} />}
+        />
+      </View>
     </MenuCard>
   );
 
@@ -262,20 +271,33 @@ const styles = StyleSheet.create({
   statusRow: { flexDirection: "row", alignItems: "center", gap: 8 },
   dot: { width: 8, height: 8, borderRadius: 4 },
   statusText: { fontFamily: "Inter_400Regular", fontSize: 13, color: Colors.textMuted },
-  sectionCard: { marginBottom: 0 },
-  optRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 8 },
-  optLabel: { fontFamily: "Inter_400Regular", fontSize: 14, color: Colors.text },
-  toggle: { flexDirection: "row", gap: 6 },
+  sectionCard: { marginBottom: 0, paddingHorizontal: 16, paddingVertical: 12 },
+  optSection: { gap: 8, marginBottom: 12 },
+  optLabelSmall: {
+    fontFamily: "Inter_600SemiBold",
+    fontSize: 10,
+    color: Colors.textMuted,
+    letterSpacing: 1.5,
+    marginBottom: 2,
+  },
+  toggle: { flexDirection: "row", gap: 10 },
   toggleBtn: {
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-    borderRadius: 8,
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    paddingVertical: 12,
+    borderRadius: 12,
     borderWidth: 1,
     borderColor: Colors.border,
-    backgroundColor: Colors.bgCard,
+    backgroundColor: Colors.bgSurface,
   },
-  toggleActive: { borderColor: Colors.gold, backgroundColor: "rgba(201,168,76,0.12)" },
-  toggleText: { fontFamily: "Rajdhani_600SemiBold", fontSize: 14, color: Colors.textMuted },
+  toggleActive: { 
+    borderColor: Colors.gold, 
+    backgroundColor: Colors.goldMuted || "rgba(201,168,76,0.12)" 
+  },
+  toggleText: { fontFamily: "Rajdhani_600SemiBold", fontSize: 14, color: Colors.textSecondary },
   toggleTextActive: { color: Colors.gold },
   warn: { fontFamily: "Inter_400Regular", fontSize: 12, color: "#ff6b6b", marginBottom: 4 },
   divider: { flexDirection: "row", alignItems: "center", gap: 12 },
