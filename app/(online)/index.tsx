@@ -6,7 +6,6 @@ import {
   Pressable,
   TextInput,
   Platform,
-  Modal,
   Alert,
   ScrollView,
   useWindowDimensions,
@@ -222,18 +221,14 @@ export default function OnlineLobbyScreen() {
         </ScrollView>
       )}
 
-      <Modal
-        visible={joinModalVisible}
-        transparent
-        animationType="fade"
-        statusBarTranslucent
-        onRequestClose={() => setJoinModalVisible(false)}
-      >
+      {joinModalVisible && (
         <KeyboardAvoidingView
           behavior={Platform.OS === "ios" ? "padding" : "height"}
           style={styles.modalOverlay}
+          pointerEvents="box-none"
         >
-          <ScrollView 
+          <Pressable style={StyleSheet.absoluteFill} onPress={() => { setJoinModalVisible(false); setJoinCode(""); }} />
+          <ScrollView
             contentContainerStyle={styles.modalScroll}
             bounces={false}
             keyboardShouldPersistTaps="handled"
@@ -270,7 +265,7 @@ export default function OnlineLobbyScreen() {
             </View>
           </ScrollView>
         </KeyboardAvoidingView>
-      </Modal>
+      )}
     </View>
   );
 }
@@ -355,9 +350,10 @@ const styles = StyleSheet.create({
   divider: { flexDirection: "row", alignItems: "center", gap: 12 },
   divLine: { flex: 1, height: 1, backgroundColor: Colors.border },
   divText: { fontFamily: "Inter_400Regular", fontSize: 12, color: Colors.textMuted },
-  modalOverlay: { 
-    flex: 1, 
+  modalOverlay: {
+    ...StyleSheet.absoluteFillObject,
     backgroundColor: "rgba(0,0,0,0.7)",
+    zIndex: 100,
   },
   modalScroll: { 
     flexGrow: 1, 
