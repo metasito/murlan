@@ -5,7 +5,6 @@ import { apiRequest } from "@/lib/query-client";
 export interface AuthUser {
   id: string;
   username: string;
-  friendCode: string;
 }
 
 interface AuthContextValue {

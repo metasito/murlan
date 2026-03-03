@@ -27,11 +27,10 @@ import Colors from "@/constants/colors";
 interface FriendInfo {
   id: string;
   username: string;
-  friendCode: string;
   lastSeen: string | null;
 }
-interface FriendRequest { id: string; username: string; friendCode: string }
-interface SearchResult { id: string; username: string; friendCode: string }
+interface FriendRequest { id: string; username: string }
+interface SearchResult { id: string; username: string }
 
 function italianRelativeTime(isoString: string | null | undefined): string {
   if (!isoString) return "Tempo fa";
@@ -71,7 +70,6 @@ export default function FriendsScreen() {
   const { user } = useAuth();
   const { onlineIds } = useSocket();
   const qc = useQueryClient();
-  const [addInput, setAddInput] = useState("");
   const [addLoading, setAddLoading] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [searchLoading, setSearchLoading] = useState(false);
@@ -151,13 +149,6 @@ export default function FriendsScreen() {
     );
   }
 
-  async function handleCopyCode() {
-    if (!user?.friendCode) return;
-    await Clipboard.setStringAsync(user.friendCode);
-    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-    Alert.alert("Copiato!", "Il tuo codice amico è stato copiato");
-  }
-
   async function handleSearchUsername() {
     if (!searchQuery.trim()) return;
     setSearchLoading(true);
@@ -181,30 +172,6 @@ export default function FriendsScreen() {
       setSearchDone(true);
     } finally {
       setSearchLoading(false);
-    }
-  }
-
-  async function handleAddByCode() {
-    if (!addInput.trim()) return;
-    setAddLoading(true);
-    try {
-      const res = await apiRequest("POST", "/api/friends/add", { friendCode: addInput.trim().toUpperCase() });
-      const data = await res.json();
-      Alert.alert("Richiesta inviata", `Richiesta di amicizia inviata a ${data.username}`);
-      setAddInput("");
-      qc.invalidateQueries({ queryKey: ["/api/friends"] });
-      qc.invalidateQueries({ queryKey: ["/api/friends/sent"] });
-    } catch (e: unknown) {
-      const msg = e instanceof Error ? e.message : "Errore";
-      const match = msg.match(/\d+: (.+)/);
-      try {
-        const parsed = JSON.parse(match ? match[1] : msg);
-        Alert.alert("Errore", parsed.message ?? msg);
-      } catch {
-        Alert.alert("Errore", match ? match[1] : msg);
-      }
-    } finally {
-      setAddLoading(false);
     }
   }
 
@@ -283,16 +250,6 @@ export default function FriendsScreen() {
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
       >
-        {/* My code card */}
-        <View style={styles.myCodeCard}>
-          <Text style={styles.myCodeLabel}>IL TUO CODICE AMICO</Text>
-          <Text style={styles.myCodeText}>{user?.friendCode ?? "—"}</Text>
-          <Pressable onPress={handleCopyCode} style={styles.copyBtn}>
-            <Ionicons name="copy-outline" size={15} color="#0A1F18" />
-            <Text style={styles.copyBtnText}>Copia</Text>
-          </Pressable>
-        </View>
-
         {/* ── SECTION 1: Amici ── */}
         <SectionHeader
           title="AMICI"
@@ -301,7 +258,7 @@ export default function FriendsScreen() {
         {friends.length === 0 && !friendsLoading && (
           <View style={styles.empty}>
             <Ionicons name="people-outline" size={36} color={Colors.textMuted} />
-            <Text style={styles.emptyText}>Nessun amico ancora.{"\n"}Condividi il tuo codice o cerca un username!</Text>
+            <Text style={styles.emptyText}>Nessun amico ancora.{"\n"}Cerca un username!</Text>
           </View>
         )}
         {friendsLoading && <ActivityIndicator color={Colors.gold} style={{ marginVertical: 16 }} />}
@@ -341,7 +298,6 @@ export default function FriendsScreen() {
                   <Avatar name={r.username} />
                   <View style={styles.rowInfo}>
                     <Text style={styles.rowName}>{r.username}</Text>
-                    <Text style={styles.rowSub}>{r.friendCode}</Text>
                   </View>
                   <View style={styles.actionRow}>
                     <Pressable
@@ -430,7 +386,6 @@ export default function FriendsScreen() {
               <Avatar name={searchResult.username} />
               <View style={styles.rowInfo}>
                 <Text style={styles.rowName}>{searchResult.username}</Text>
-                <Text style={styles.rowSub}>{searchResult.friendCode}</Text>
               </View>
               <Pressable
                 onPress={handleSendRequestToFound}
@@ -452,35 +407,6 @@ export default function FriendsScreen() {
               <Text style={styles.searchErrorText}>{searchError}</Text>
             </View>
           )}
-        </View>
-
-        {/* Friend code input */}
-        <View style={styles.inputCard}>
-          <Text style={styles.inputCardLabel}>Oppure inserisci il codice amico</Text>
-          <View style={styles.inputRow}>
-            <TextInput
-              style={[styles.input, { fontFamily: "Rajdhani_700Bold", fontSize: 18, letterSpacing: 3 }]}
-              value={addInput}
-              onChangeText={(v) => setAddInput(v.toUpperCase())}
-              placeholder="XXXXXXXX"
-              placeholderTextColor={Colors.textMuted}
-              autoCapitalize="characters"
-              maxLength={8}
-              onSubmitEditing={handleAddByCode}
-              returnKeyType="send"
-            />
-            <Pressable
-              onPress={handleAddByCode}
-              disabled={addLoading || !addInput.trim()}
-              style={({ pressed }) => [styles.addBtn, pressed && { opacity: 0.85 }, (!addInput.trim()) && styles.addBtnDim]}
-            >
-              {addLoading ? (
-                <ActivityIndicator color="#0A1F18" size="small" />
-              ) : (
-                <Ionicons name="person-add" size={18} color={(!addInput.trim()) ? Colors.textMuted : "#0A1F18"} />
-              )}
-            </Pressable>
-          </View>
         </View>
       </ScrollView>
     </View>
@@ -507,29 +433,6 @@ const styles = StyleSheet.create({
     letterSpacing: 3,
   },
   scrollContent: { padding: 16, gap: 12 },
-  myCodeCard: {
-    backgroundColor: Colors.bgSurface,
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: Colors.goldDark,
-    padding: 20,
-    alignItems: "center",
-    gap: 8,
-    marginBottom: 4,
-  },
-  myCodeLabel: { fontFamily: "Inter_400Regular", fontSize: 11, color: Colors.textMuted, letterSpacing: 2 },
-  myCodeText: { fontFamily: "Rajdhani_700Bold", fontSize: 32, color: Colors.gold, letterSpacing: 6 },
-  copyBtn: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-    backgroundColor: Colors.gold,
-    borderRadius: 8,
-    paddingVertical: 8,
-    paddingHorizontal: 16,
-  },
-  copyBtnText: { fontFamily: "Rajdhani_700Bold", fontSize: 14, color: "#0A1F18" },
-
   sectionHeader: {
     flexDirection: "row",
     alignItems: "center",

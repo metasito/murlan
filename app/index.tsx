@@ -298,7 +298,7 @@ export default function HomeScreen() {
             {menuButtons(true)}
             <Animated.View style={subtitleStyle}>
               <Text style={[styles.footerText, { textAlign: "center", marginTop: 8 }]}>
-                {user ? `Codice: ${user.friendCode}` : "2–4 giocatori · Tutte le modalità"}
+                {"2–4 giocatori · Tutte le modalità"}
               </Text>
             </Animated.View>
           </ScrollView>
@@ -358,7 +358,7 @@ export default function HomeScreen() {
 
       <Animated.View style={[subtitleStyle, styles.footer]}>
         <Text style={styles.footerText}>
-          {user ? `Connesso come ${user.username} · Codice: ${user.friendCode}` : "2–4 giocatori · Tutte le modalità"}
+          {"2–4 giocatori · Tutte le modalità"}
         </Text>
       </Animated.View>
     </View>

@@ -31,7 +31,6 @@ const TEAM_COLORS = { A: Colors.gold, B: "#6b8ef5" };
 interface FriendInfo {
   id: string;
   username: string;
-  friendCode: string;
   lastSeen: string | null;
 }
 

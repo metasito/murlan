@@ -8,7 +8,6 @@ export interface IStorage {
   deleteUser(userId: string): Promise<void>;
   getUser(id: string): Promise<User | undefined>;
   getUserByUsername(username: string): Promise<User | undefined>;
-  getUserByFriendCode(code: string): Promise<User | undefined>;
   searchUserByUsername(username: string): Promise<User | undefined>;
   createUser(user: InsertUser): Promise<User>;
   updateLastSeen(userId: string): Promise<void>;
@@ -34,10 +33,6 @@ export interface IStorage {
   removeFriend(userId: string, friendUserId: string): Promise<void>;
   declineFriendRequest(id: string): Promise<void>;
   cancelFriendRequest(requestId: string, fromUserId: string): Promise<void>;
-}
-
-function generateFriendCode(): string {
-  return Math.random().toString(36).substring(2, 8).toUpperCase();
 }
 
 function generateRoomCode(): string {
@@ -66,22 +61,8 @@ class DrizzleStorage implements IStorage {
     return user;
   }
 
-  async getUserByFriendCode(code: string) {
-    const [user] = await db.select().from(users).where(eq(users.friendCode, code));
-    return user;
-  }
-
   async createUser(insertUser: InsertUser): Promise<User> {
-    let friendCode = generateFriendCode();
-    for (let i = 0; i < 10; i++) {
-      const existing = await this.getUserByFriendCode(friendCode);
-      if (!existing) break;
-      friendCode = generateFriendCode();
-    }
-    const [user] = await db.insert(users).values({
-      ...insertUser,
-      friendCode,
-    }).returning();
+    const [user] = await db.insert(users).values(insertUser).returning();
     return user;
   }
 

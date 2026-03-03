@@ -56,7 +56,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
     req.session.userId = user.id;
     logger.info({ userId: user.id, username }, "User registered");
-    res.json({ id: user.id, username: user.username, friendCode: user.friendCode });
+    res.json({ id: user.id, username: user.username });
   });
 
   app.post("/api/auth/login", authLimiter, validate(LoginSchema), async (req, res) => {
@@ -76,7 +76,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
     req.session.userId = user.id;
     logger.info({ userId: user.id, username }, "User logged in");
-    res.json({ id: user.id, username: user.username, friendCode: user.friendCode });
+    res.json({ id: user.id, username: user.username });
   });
 
   app.post("/api/auth/logout", (req, res) => {
@@ -95,7 +95,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.status(401).json({ message: "Utente non trovato" });
       return;
     }
-    res.json({ id: user.id, username: user.username, friendCode: user.friendCode });
+    res.json({ id: user.id, username: user.username });
   });
 
   // ── User ─────────────────────────────────────────────────────────────────
@@ -120,7 +120,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
     res.json(friends.map((f) => ({
       id: f.friend.id,
       username: f.friend.username,
-      friendCode: f.friend.friendCode,
       lastSeen: f.friend.lastSeen ? f.friend.lastSeen.toISOString() : null,
     })));
   });
@@ -130,7 +129,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
     res.json(requests.map((r) => ({
       id: r.id,
       username: r.requester.username,
-      friendCode: r.requester.friendCode,
     })));
   });
 
@@ -145,7 +143,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.status(404).json({ message: "Utente non trovato" });
       return;
     }
-    res.json({ id: found.id, username: found.username, friendCode: found.friendCode });
+    res.json({ id: found.id, username: found.username });
   });
 
   app.get("/api/friends/sent", requireAuth, async (req, res) => {
@@ -153,29 +151,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
     res.json(sent.map((r) => ({
       id: r.id,
       username: r.recipient.username,
-      friendCode: r.recipient.friendCode,
     })));
   });
 
   app.post("/api/friends/add", requireAuth, friendLimiter, validate(AddFriendSchema), async (req, res) => {
-    const { friendCode, username } = req.body as { friendCode?: string; username?: string };
+    const { username } = req.body as { username: string };
 
-    let friend: Awaited<ReturnType<typeof storage.getUserByFriendCode>> | undefined;
-
-    if (friendCode) {
-      friend = await storage.getUserByFriendCode(friendCode);
-      if (!friend) {
-        res.status(404).json({ message: "Nessun giocatore trovato con questo codice" });
-        return;
-      }
-    } else if (username) {
-      friend = await storage.searchUserByUsername(username);
-      if (!friend) {
-        res.status(404).json({ message: "Utente non trovato" });
-        return;
-      }
-    } else {
-      res.status(400).json({ message: "Fornisci un codice amico o username" });
+    const friend = await storage.searchUserByUsername(username);
+    if (!friend) {
+      res.status(404).json({ message: "Utente non trovato" });
       return;
     }
 
