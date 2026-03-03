@@ -756,6 +756,29 @@ export function processExchangeChoice(state: GameState, cardId: string): GameSta
   return newState;
 }
 
+export function getValidGivebackCards(hand: Card[]): Card[] {
+  return hand.filter((c) => EXCHANGE_VALID_RANKS.includes(c.rank));
+}
+
+export function loserHasBothJokers(hand: Card[]): boolean {
+  return (
+    hand.some((c) => c.rank === "joker_colored") &&
+    hand.some((c) => c.rank === "joker_bw")
+  );
+}
+
+export function getBestCardFromHand(hand: Card[]): Card | undefined {
+  if (hand.length === 0) return undefined;
+  return [...hand].sort((a, b) => cardStrength(b) - cardStrength(a))[0];
+}
+
+export function getStartingPlayerAfterExchange(state: GameState): number {
+  if (!state.exchangePhase) return state.currentTurnIndex;
+  return state.exchangePhase.bothJokersException
+    ? state.exchangePhase.winnerIdx
+    : state.exchangePhase.loserIdx;
+}
+
 export function initializeGame(
   playerSetup: Array<{
     name: string;

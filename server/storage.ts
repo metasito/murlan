@@ -9,6 +9,7 @@ export interface IStorage {
   getUser(id: string): Promise<User | undefined>;
   getUserByUsername(username: string): Promise<User | undefined>;
   getUserByFriendCode(code: string): Promise<User | undefined>;
+  searchUserByUsername(username: string): Promise<User | undefined>;
   createUser(user: InsertUser): Promise<User>;
   updateLastSeen(userId: string): Promise<void>;
 
@@ -25,12 +26,14 @@ export interface IStorage {
 
   getFriends(userId: string): Promise<(Friend & { friend: User })[]>;
   getPendingFriendRequests(userId: string): Promise<(Friend & { requester: User })[]>;
+  getSentFriendRequests(userId: string): Promise<(Friend & { recipient: User })[]>;
   hasPendingRequest(userId: string, friendUserId: string): Promise<boolean>;
   addFriend(userId: string, friendUserId: string): Promise<void>;
   acceptFriend(id: string): Promise<{ requesterId: string } | null>;
   areFriends(userId: string, friendUserId: string): Promise<boolean>;
   removeFriend(userId: string, friendUserId: string): Promise<void>;
   declineFriendRequest(id: string): Promise<void>;
+  cancelFriendRequest(requestId: string, fromUserId: string): Promise<void>;
 }
 
 function generateFriendCode(): string {
@@ -228,6 +231,31 @@ class DrizzleStorage implements IStorage {
 
   async declineFriendRequest(id: string): Promise<void> {
     await db.delete(friends).where(eq(friends.id, id));
+  }
+
+  async searchUserByUsername(username: string): Promise<User | undefined> {
+    const [user] = await db
+      .select()
+      .from(users)
+      .where(eq(users.username, username));
+    return user;
+  }
+
+  async getSentFriendRequests(userId: string): Promise<(Friend & { recipient: User })[]> {
+    const rows = await db
+      .select()
+      .from(friends)
+      .innerJoin(users, eq(friends.friendUserId, users.id))
+      .where(and(eq(friends.userId, userId), eq(friends.status, "pending")));
+    return rows.map((r) => ({ ...r.friends, recipient: r.users }));
+  }
+
+  async cancelFriendRequest(requestId: string, fromUserId: string): Promise<void> {
+    await db
+      .delete(friends)
+      .where(
+        and(eq(friends.id, requestId), eq(friends.userId, fromUserId), eq(friends.status, "pending"))
+      );
   }
 }
 

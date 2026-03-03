@@ -134,14 +134,51 @@ export async function registerRoutes(app: Express): Promise<Server> {
     })));
   });
 
-  app.post("/api/friends/add", requireAuth, friendLimiter, validate(AddFriendSchema), async (req, res) => {
-    const { friendCode } = req.body as { friendCode: string };
-
-    const friend = await storage.getUserByFriendCode(friendCode);
-    if (!friend) {
-      res.status(404).json({ message: "Nessun giocatore trovato con questo codice" });
+  app.get("/api/users/search", requireAuth, async (req, res) => {
+    const username = z.string().min(1).max(30).safeParse(req.query.username);
+    if (!username.success) {
+      res.status(400).json({ message: "Username non valido" });
       return;
     }
+    const found = await storage.searchUserByUsername(username.data);
+    if (!found || found.id === req.session.userId) {
+      res.status(404).json({ message: "Utente non trovato" });
+      return;
+    }
+    res.json({ id: found.id, username: found.username, friendCode: found.friendCode });
+  });
+
+  app.get("/api/friends/sent", requireAuth, async (req, res) => {
+    const sent = await storage.getSentFriendRequests(req.session.userId!);
+    res.json(sent.map((r) => ({
+      id: r.id,
+      username: r.recipient.username,
+      friendCode: r.recipient.friendCode,
+    })));
+  });
+
+  app.post("/api/friends/add", requireAuth, friendLimiter, validate(AddFriendSchema), async (req, res) => {
+    const { friendCode, username } = req.body as { friendCode?: string; username?: string };
+
+    let friend: Awaited<ReturnType<typeof storage.getUserByFriendCode>> | undefined;
+
+    if (friendCode) {
+      friend = await storage.getUserByFriendCode(friendCode);
+      if (!friend) {
+        res.status(404).json({ message: "Nessun giocatore trovato con questo codice" });
+        return;
+      }
+    } else if (username) {
+      friend = await storage.searchUserByUsername(username);
+      if (!friend) {
+        res.status(404).json({ message: "Utente non trovato" });
+        return;
+      }
+    } else {
+      res.status(400).json({ message: "Fornisci un codice amico o username" });
+      return;
+    }
+
     if (friend.id === req.session.userId) {
       res.status(400).json({ message: "Non puoi aggiungere te stesso" });
       return;
@@ -168,6 +205,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
     logger.info({ from: req.session.userId, to: friend.id }, "Friend request sent");
     res.json({ ok: true, username: friend.username });
+  });
+
+  app.delete("/api/friends/requests/:id", requireAuth, async (req, res) => {
+    const id = z.string().parse(req.params.id);
+    await storage.cancelFriendRequest(id, req.session.userId!);
+    res.json({ ok: true });
   });
 
   app.post("/api/friends/accept/:id", requireAuth, async (req, res) => {

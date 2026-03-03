@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useRef } from "react";
 import { View, Text, StyleSheet, Platform, Pressable } from "react-native";
 import Animated, {
   useAnimatedStyle,
@@ -6,6 +6,7 @@ import Animated, {
   withSpring,
   withTiming,
   withSequence,
+  withRepeat,
   Easing,
   runOnJS,
   cancelAnimation,
@@ -641,6 +642,33 @@ export const sharedTableStyles = StyleSheet.create({
     backgroundColor: "rgba(201,168,76,0.05)",
   },
 });
+
+export function useTurnPulse(active: boolean) {
+  const glowOpacity = useSharedValue(0);
+
+  useEffect(() => {
+    if (active) {
+      glowOpacity.value = withRepeat(
+        withSequence(
+          withTiming(0.18, { duration: 700, easing: Easing.inOut(Easing.ease) }),
+          withTiming(0.65, { duration: 700, easing: Easing.inOut(Easing.ease) })
+        ),
+        -1
+      );
+    } else {
+      cancelAnimation(glowOpacity);
+      glowOpacity.value = withTiming(0, { duration: 300 });
+    }
+  }, [active]);
+
+  return useAnimatedStyle(() => ({
+    shadowColor: Colors.gold,
+    shadowOpacity: Platform.OS !== "web" ? glowOpacity.value : 0,
+    shadowRadius: 18,
+    shadowOffset: { width: 0, height: 0 },
+    elevation: glowOpacity.value * 12,
+  }));
+}
 
 export const sharedStyles = StyleSheet.create({
   flyingContainer: {

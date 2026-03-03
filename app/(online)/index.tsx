@@ -132,7 +132,11 @@ export default function OnlineLobbyScreen() {
   );
 
   return (
-    <View style={[styles.container, { paddingTop: topPad }]}>
+    <View style={[styles.container, {
+      paddingTop: topPad,
+      paddingLeft: isLandscape ? insets.left : 0,
+      paddingRight: isLandscape ? insets.right : 0,
+    }]}>
       <LinearGradient
         colors={[Colors.bg, Colors.bgCard]}
         style={StyleSheet.absoluteFill}

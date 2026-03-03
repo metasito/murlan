@@ -7,7 +7,6 @@ import {
   Alert,
   Platform,
   useWindowDimensions,
-  ScrollView,
 } from "react-native";
 import { router } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -54,8 +53,10 @@ import {
   sharedStyles,
   portraitOverlayStyles,
   StartReasonBanner,
+  useTurnPulse,
 } from "@/components/GameShared";
-import { CardView } from "@/components/CardView";
+import { ExchangeModal } from "@/components/ExchangeModal";
+import { ExchangeAnnouncement } from "@/components/ExchangeAnnouncement";
 import {
   playCardSelect,
   playCardPlay,
@@ -80,33 +81,6 @@ const HUMAN_TURN_SECONDS = 20;
 
 const EXCHANGE_VALID_RANKS = new Set(["3","4","5","6","7","8","9","10"]);
 
-function BothJokersExceptionOverlay({ winnerName }: { winnerName: string }) {
-  const [dismissed, setDismissed] = React.useState(false);
-  useEffect(() => {
-    const t = setTimeout(() => setDismissed(true), 3000);
-    return () => clearTimeout(t);
-  }, []);
-  if (dismissed) return null;
-  return (
-    <View style={{ ...StyleSheet.absoluteFillObject, backgroundColor: "rgba(3,16,8,0.92)", alignItems: "center", justifyContent: "center", zIndex: 100 }}>
-      <View style={{ backgroundColor: "#0B2A1A", borderRadius: 20, borderWidth: 2, borderColor: "rgba(201,168,76,0.4)", padding: 28, alignItems: "center", gap: 14, maxWidth: 380, width: "80%" }}>
-        <Text style={{ fontSize: 36 }}>🃏🃏</Text>
-        <Text style={{ fontFamily: "Rajdhani_700Bold", fontSize: 20, color: Colors.gold, letterSpacing: 1, textAlign: "center" }}>NESSUNO SCAMBIO</Text>
-        <Text style={{ fontFamily: "Inter_400Regular", fontSize: 13, color: Colors.text, textAlign: "center", lineHeight: 20 }}>
-          Il perdente ha entrambi i jolly.{"\n"}
-          <Text style={{ color: Colors.gold }}>{winnerName}</Text> inizia il round.
-        </Text>
-        <Pressable
-          onPress={() => setDismissed(true)}
-          style={{ marginTop: 4, backgroundColor: Colors.gold, borderRadius: 12, paddingHorizontal: 28, paddingVertical: 10 }}
-        >
-          <Text style={{ fontFamily: "Rajdhani_700Bold", fontSize: 16, color: "#0A1F10", letterSpacing: 1 }}>OK</Text>
-        </Pressable>
-      </View>
-    </View>
-  );
-}
-
 function formatSpadeLabel(card: Card): string {
   return `${card.rank}♠`;
 }
@@ -125,6 +99,9 @@ export default function GameScreen() {
     resetGame,
     runAITurn,
     chooseExchangeCard,
+    exchangeAnnouncing,
+    exchangeAnnounceData,
+    acknowledgeExchange,
   } = useGame();
 
   // Keep refs to latest functions to avoid stale closures in timers
@@ -369,6 +346,7 @@ export default function GameScreen() {
   const passaAnimStyle = useAnimatedStyle(() => ({
     transform: [{ scale: passaPulseVal.value }],
   }));
+  const turnPulseStyle = useTurnPulse(isHumanTurn && !isFinished && !gameState?.exchangePhase?.active);
 
   useEffect(() => {
     if (!gameState) router.replace("/");
@@ -477,12 +455,6 @@ export default function GameScreen() {
     exchangeActive &&
     gameState.exchangePhase!.winnerIdx === humanIdx &&
     exchangeWinner?.type === "human";
-  const cardTakenFromLoser = exchangeActive
-    ? gameState.exchangePhase!.cardFromLoser
-    : null;
-  const bothJokersException =
-    gameState.exchangePhase?.bothJokersException === true &&
-    !gameState.exchangePhase?.active;
 
   return (
     <View style={localStyles.root}>
@@ -624,6 +596,7 @@ export default function GameScreen() {
               isHumanTurn && !isFinished && sharedTableStyles.handSectionActive,
               { height: HAND_SECTION_H },
               handSectionAnimStyle,
+              turnPulseStyle,
             ]}
           >
             {/* PASSA — left side of hand row */}
@@ -708,13 +681,6 @@ export default function GameScreen() {
         />
       )}
 
-      {/* Both-jokers exception banner */}
-      {bothJokersException && (
-        <BothJokersExceptionOverlay
-          winnerName={gameState.players[gameState.exchangePhase!.winnerIdx]?.name ?? ""}
-        />
-      )}
-
       {/* Start reason banner — shown at round start, dismisses after 4s or on tap */}
       {gameState.startReason && (
         <StartReasonBanner
@@ -725,50 +691,30 @@ export default function GameScreen() {
         />
       )}
 
-      {/* Exchange phase overlay — human must give a weak card to the loser */}
-      {isHumanExchange && exchangeLoser && cardTakenFromLoser && (
-        <View style={localStyles.exchangeOverlay}>
-          <View style={localStyles.exchangeCard}>
-            <Ionicons name="swap-horizontal" size={28} color={Colors.gold} />
-            <Text style={localStyles.exchangeTitle}>Scambio di carte</Text>
-            <Text style={localStyles.exchangeSub}>
-              Hai ricevuto da{" "}
-              <Text style={{ color: Colors.gold }}>{exchangeLoser.name}</Text>:
-            </Text>
-            <View style={localStyles.exchangeReceivedCard}>
-              <CardView card={cardTakenFromLoser} />
-            </View>
-            <Text style={localStyles.exchangeSub}>
-              Ora dai una carta a{" "}
-              <Text style={{ color: Colors.gold }}>{exchangeLoser.name}</Text>:
-            </Text>
-            <ScrollView
-              horizontal
-              showsHorizontalScrollIndicator={false}
-              contentContainerStyle={localStyles.exchangeCardRow}
-            >
-              {gameState.players[gameState.exchangePhase!.winnerIdx].hand
-                .filter((c) => EXCHANGE_VALID_RANKS.has(c.rank))
-                .sort((a, b) => cardStrength(a) - cardStrength(b))
-                .map((card) => (
-                  <Pressable
-                    key={card.id}
-                    onPress={() => {
-                      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-                      playCardPlay();
-                      chooseExchangeCard(card.id);
-                    }}
-                    style={localStyles.exchangeCardItem}
-                  >
-                    <CardView card={card} />
-                  </Pressable>
-                ))}
-            </ScrollView>
-            <Text style={localStyles.exchangeHint}>
-              Tocca una carta per darla (solo 3–10)
-            </Text>
-          </View>
-        </View>
+      {/* Exchange phase overlay — human winner must give a weak card */}
+      {isHumanExchange && exchangeLoser && (
+        <ExchangeModal
+          phase={gameState.exchangePhase!}
+          winnerHand={gameState.players[gameState.exchangePhase!.winnerIdx].hand}
+          loserName={exchangeLoser.name}
+          onSelectCard={(cardId) => {
+            playCardPlay();
+            chooseExchangeCard(cardId);
+          }}
+        />
+      )}
+
+      {/* Post-exchange announcement */}
+      {exchangeAnnounceData && (
+        <ExchangeAnnouncement
+          visible={exchangeAnnouncing}
+          winnerName={exchangeAnnounceData.winnerName}
+          loserName={exchangeAnnounceData.loserName}
+          bothJokersException={exchangeAnnounceData.bothJokersException}
+          cardGiven={exchangeAnnounceData.cardGiven}
+          cardReceived={exchangeAnnounceData.cardReceived}
+          onDismiss={acknowledgeExchange}
+        />
       )}
 
       {W < H && (
@@ -954,51 +900,4 @@ const localStyles = StyleSheet.create({
     textAlign: "center",
   },
 
-  exchangeOverlay: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: "rgba(3,16,8,0.92)",
-    alignItems: "center",
-    justifyContent: "center",
-    zIndex: 100,
-  },
-  exchangeCard: {
-    backgroundColor: "#0B2A1A",
-    borderRadius: 20,
-    borderWidth: 2,
-    borderColor: "rgba(201,168,76,0.4)",
-    padding: 20,
-    alignItems: "center",
-    gap: 10,
-    maxWidth: 520,
-    width: "80%",
-  },
-  exchangeTitle: {
-    fontFamily: "Rajdhani_700Bold",
-    fontSize: 20,
-    color: Colors.gold,
-    letterSpacing: 1,
-  },
-  exchangeSub: {
-    fontFamily: "Inter_400Regular",
-    fontSize: 13,
-    color: Colors.text,
-    textAlign: "center",
-  },
-  exchangeReceivedCard: {
-    paddingVertical: 4,
-  },
-  exchangeCardRow: {
-    flexDirection: "row",
-    gap: 10,
-    paddingVertical: 6,
-  },
-  exchangeCardItem: {
-    transform: [{ scale: 1 }],
-  },
-  exchangeHint: {
-    fontFamily: "Inter_400Regular",
-    fontSize: 11,
-    color: Colors.textSecondary,
-    textAlign: "center",
-  },
 });

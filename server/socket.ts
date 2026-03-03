@@ -8,8 +8,10 @@ import { db } from "./db";
 import { activeGames as activeGamesTable } from "@shared/schema";
 import {
   initializeGame,
+  initializeRematch,
   processPlay,
   processPass,
+  processExchangeChoice,
   buildCombination,
   canPlay,
 } from "../lib/gameEngine";
@@ -608,7 +610,9 @@ export function setupSocket(httpServer: HttpServer) {
         const players = await storage.getRoomPlayers(roomId);
         if (players.length < 2) return;
 
+        const prevRankings = game.gameState.rankings;
         const playerSetup = players.map((p) => ({
+          id: `player_${p.seatIndex}`,
           name: p.user.username,
           type: "human" as const,
           team:
@@ -617,7 +621,10 @@ export function setupSocket(httpServer: HttpServer) {
               : undefined,
         }));
 
-        const newGameState = initializeGame(playerSetup, room.gameMode);
+        const newGameState =
+          prevRankings.length >= 2
+            ? initializeRematch(playerSetup, room.gameMode, prevRankings)
+            : initializeGame(playerSetup, room.gameMode);
         const playerMap: Record<number, string> = {};
         players.forEach((p) => {
           playerMap[p.seatIndex] = p.userId;
@@ -708,6 +715,25 @@ export function setupSocket(httpServer: HttpServer) {
         });
       }
     );
+
+    // ── Exchange card give ───────────────────────────────────────────────────
+
+    socket.on("game:exchange_give_card", ({ cardId }: { cardId: string }) => {
+      const roomId = socketRoomMap.get(socket.id);
+      if (!roomId) return;
+      const game = activeGames.get(roomId);
+      if (!game?.gameState.exchangePhase?.active) return;
+
+      const winnerSeat = game.gameState.exchangePhase.winnerIdx;
+      const mySeat = Object.entries(game.playerMap).find(
+        ([, uid]) => uid === userId
+      )?.[0];
+      if (mySeat === undefined || parseInt(mySeat) !== winnerSeat) return;
+
+      game.gameState = processExchangeChoice(game.gameState, cardId);
+      broadcastGameState(io, game);
+      persistGameState(roomId, game);
+    });
 
     // ── Friend invite ────────────────────────────────────────────────────────
 

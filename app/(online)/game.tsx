@@ -61,7 +61,10 @@ import {
   sharedStyles,
   portraitOverlayStyles,
   StartReasonBanner,
+  useTurnPulse,
 } from "@/components/GameShared";
+import { ExchangeModal } from "@/components/ExchangeModal";
+import { ExchangeAnnouncement } from "@/components/ExchangeAnnouncement";
 import {
   playCardSelect,
   playCardPlay,
@@ -359,12 +362,16 @@ export default function OnlineGameScreen() {
     mySeatIndex,
     playCards,
     pass,
+    giveExchangeCard,
     sendReaction,
     leaveRoom,
     voteRematch,
     entrySource,
     rematchVoteState,
     cumulativeScores,
+    exchangeAnnouncing,
+    exchangeAnnounceData,
+    acknowledgeExchange,
   } = useOnlineGame();
 
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
@@ -490,6 +497,15 @@ export default function OnlineGameScreen() {
   const isMyTurn = gameState.currentTurnIndex === mySeatIndex;
   const isNewRound = gameState.lastPlayedCombination === null;
   const isFinished = me?.finishPosition !== undefined;
+
+  const exchangeActive = gameState.exchangePhase?.active === true;
+  const isMyExchangeWinner =
+    exchangeActive && gameState.exchangePhase!.winnerIdx === mySeatIndex;
+  const exchangeLoserPlayer = exchangeActive
+    ? gameState.players[gameState.exchangePhase!.loserIdx]
+    : null;
+
+  const turnPulseStyle = useTurnPulse(isMyTurn && !isFinished && !exchangeActive);
 
   const sortedHand = sortHand(me?.hand ?? []);
   const selectedObjs = sortedHand.filter((c) => selectedIds.includes(c.id));
@@ -742,10 +758,11 @@ export default function OnlineGameScreen() {
             </View>
           </View>
 
-          <View style={[
+          <Animated.View style={[
             sharedTableStyles.handSection,
             isMyTurn && !isFinished && sharedTableStyles.handSectionActive,
             { height: HAND_SECTION_H },
+            turnPulseStyle,
           ]}>
             {/* PASSA — left side */}
             <Pressable
@@ -804,7 +821,7 @@ export default function OnlineGameScreen() {
                 </View>
               )}
             </Pressable>
-          </View>
+          </Animated.View>
         </View>
       </View>
 
@@ -824,6 +841,45 @@ export default function OnlineGameScreen() {
           reason={gameState.startReason}
           players={gameState.players}
           topOffset={topPad + TOP_BAR_H + TABLE_M + 8}
+        />
+      )}
+
+      {/* Exchange: my turn to give a card to the loser */}
+      {isMyExchangeWinner && exchangeLoserPlayer && (
+        <ExchangeModal
+          phase={gameState.exchangePhase!}
+          winnerHand={me?.hand ?? []}
+          loserName={exchangeLoserPlayer.name}
+          onSelectCard={(cardId) => {
+            playCardPlay();
+            giveExchangeCard(cardId);
+          }}
+        />
+      )}
+
+      {/* Exchange: waiting for the winner to send their card */}
+      {exchangeActive && !isMyExchangeWinner && (
+        <View style={{ ...StyleSheet.absoluteFillObject, backgroundColor: "rgba(3,16,8,0.88)", alignItems: "center", justifyContent: "center", zIndex: 100 }}>
+          <View style={{ backgroundColor: "#0B2A1A", borderRadius: 20, borderWidth: 2, borderColor: "rgba(201,168,76,0.3)", padding: 28, alignItems: "center", gap: 12, maxWidth: 380, width: "80%" }}>
+            <Text style={{ fontSize: 32 }}>🔄</Text>
+            <Text style={{ fontFamily: "Rajdhani_700Bold", fontSize: 18, color: Colors.gold, letterSpacing: 1, textAlign: "center" }}>Scambio in corso...</Text>
+            <Text style={{ fontFamily: "Inter_400Regular", fontSize: 13, color: Colors.text, textAlign: "center", lineHeight: 20 }}>
+              Il vincitore sta scegliendo la carta da darti.
+            </Text>
+          </View>
+        </View>
+      )}
+
+      {/* Post-exchange announcement */}
+      {exchangeAnnounceData && (
+        <ExchangeAnnouncement
+          visible={exchangeAnnouncing}
+          winnerName={exchangeAnnounceData.winnerName}
+          loserName={exchangeAnnounceData.loserName}
+          bothJokersException={exchangeAnnounceData.bothJokersException}
+          cardGiven={exchangeAnnounceData.cardGiven}
+          cardReceived={exchangeAnnounceData.cardReceived}
+          onDismiss={acknowledgeExchange}
         />
       )}
 

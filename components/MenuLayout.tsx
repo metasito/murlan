@@ -1,27 +1,36 @@
 import React from 'react';
 import {
-  View, ScrollView, StyleSheet,
+  View, ScrollView, StyleSheet, Platform,
   useWindowDimensions, ViewStyle,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Colors, Spacing } from '@/lib/theme';
+import { Colors } from '@/lib/theme';
+
+const CONTENT_H_PAD = 20;
 
 interface MenuLayoutProps {
   children: React.ReactNode;
   scrollable?: boolean;
   centered?: boolean;
   style?: ViewStyle;
+  contentPad?: number;
 }
 
-export function MenuLayout({ children, scrollable = true, centered = true, style }: MenuLayoutProps) {
+export function MenuLayout({
+  children,
+  scrollable = true,
+  centered = true,
+  style,
+  contentPad = CONTENT_H_PAD,
+}: MenuLayoutProps) {
   const insets = useSafeAreaInsets();
   const { width, height } = useWindowDimensions();
   const isLandscape = width > height;
 
-  const paddingTop    = Math.max(insets.top    + Spacing.md, Spacing.lg);
-  const paddingBottom = Math.max(insets.bottom + Spacing.md, Spacing.lg);
-  const paddingLeft   = Math.max(insets.left   + Spacing.md, isLandscape ? Spacing.xl : Spacing.md);
-  const paddingRight  = Math.max(insets.right  + Spacing.md, isLandscape ? Spacing.xl : Spacing.md);
+  const paddingTop    = Platform.OS === 'web' ? 67 : Math.max(insets.top, contentPad);
+  const paddingBottom = Platform.OS === 'web' ? 34 : Math.max(insets.bottom, contentPad);
+  const paddingLeft   = insets.left  + contentPad;
+  const paddingRight  = insets.right + contentPad;
 
   const containerStyle = [
     styles.root,
@@ -48,6 +57,8 @@ export function MenuLayout({ children, scrollable = true, centered = true, style
     </ScrollView>
   );
 }
+
+export { CONTENT_H_PAD };
 
 const styles = StyleSheet.create({
   root:     { flex: 1, backgroundColor: Colors.bg },

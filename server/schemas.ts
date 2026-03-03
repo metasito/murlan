@@ -14,13 +14,19 @@ export const LoginSchema = z.object({
   password: z.string().min(1).max(100),
 });
 
-export const AddFriendSchema = z.object({
-  friendCode: z
-    .string()
-    .length(6)
-    .toUpperCase()
-    .regex(/^[A-Z0-9]{6}$/),
-});
+export const AddFriendSchema = z
+  .object({
+    friendCode: z
+      .string()
+      .length(6)
+      .toUpperCase()
+      .regex(/^[A-Z0-9]{6}$/)
+      .optional(),
+    username: z.string().min(3).max(30).optional(),
+  })
+  .refine((d) => d.friendCode || d.username, {
+    message: "Fornisci un codice amico o username",
+  });
 
 export const ExchangeCardSchema = z.object({
   cardIndex: z.number().int().min(0).max(52),

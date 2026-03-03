@@ -10,6 +10,7 @@ import React, {
 import { getSocket } from "@/lib/socket";
 import type { Socket } from "socket.io-client";
 import type { GameState } from "@/lib/gameEngine";
+import type { ExchangeAnnounceData } from "@/lib/sharedGameFlow";
 
 export interface RoomState {
   roomId: string;
@@ -43,6 +44,8 @@ interface OnlineGameContextValue {
   entrySource: "quickmatch" | "friends" | null;
   rematchVoteState: RematchVoteState | null;
   cumulativeScores: Record<string, number>;
+  exchangeAnnouncing: boolean;
+  exchangeAnnounceData: ExchangeAnnounceData | null;
   createRoom: (gameMode: "free_for_all" | "teams", maxPlayers: number) => void;
   joinRoom: (code: string) => void;
   leaveRoom: () => void;
@@ -53,6 +56,8 @@ interface OnlineGameContextValue {
   voteRematch: () => void;
   playCards: (cardIds: string[]) => void;
   pass: () => void;
+  giveExchangeCard: (cardId: string) => void;
+  acknowledgeExchange: () => void;
   sendReaction: (emoji: string) => void;
   clearError: () => void;
 }
@@ -68,6 +73,11 @@ export function OnlineGameProvider({ userId, children }: { userId: string; child
   const [entrySource, setEntrySource] = useState<"quickmatch" | "friends" | null>(null);
   const [rematchVoteState, setRematchVoteState] = useState<RematchVoteState | null>(null);
   const [cumulativeScores, setCumulativeScores] = useState<Record<string, number>>({});
+  const [exchangeAnnouncing, setExchangeAnnouncing] = useState(false);
+  const [exchangeAnnounceData, setExchangeAnnounceData] = useState<ExchangeAnnounceData | null>(null);
+
+  const prevExchangeActiveRef = useRef(false);
+  const prevGameStateRef = useRef<GameState | null>(null);
 
   // Always use the singleton socket — already connected by SocketProvider
   const socket: Socket = getSocket(userId);
@@ -79,6 +89,35 @@ export function OnlineGameProvider({ userId, children }: { userId: string; child
     const onRoomState = (data: RoomState) => setRoom(data);
     const onRoomError = ({ message }: { message: string }) => setError(message);
     const onGameState = (state: GameState) => {
+      const wasActive = prevExchangeActiveRef.current;
+      const isActive = state.exchangePhase?.active === true;
+      prevExchangeActiveRef.current = isActive;
+
+      if (wasActive && !isActive && state.exchangePhase) {
+        const prevPhase = prevGameStateRef.current?.exchangePhase;
+        const winnerName = state.players[state.exchangePhase.winnerIdx]?.name ?? "";
+        const loserName = state.players[state.exchangePhase.loserIdx]?.name ?? "";
+        setExchangeAnnounceData({
+          winnerName,
+          loserName,
+          bothJokersException: state.exchangePhase.bothJokersException,
+          cardReceived: prevPhase?.cardFromLoser,
+        });
+        setExchangeAnnouncing(true);
+      }
+
+      if (!isActive && state.exchangePhase?.bothJokersException && !wasActive) {
+        const winnerName = state.players[state.exchangePhase.winnerIdx]?.name ?? "";
+        const loserName = state.players[state.exchangePhase.loserIdx]?.name ?? "";
+        setExchangeAnnounceData({
+          winnerName,
+          loserName,
+          bothJokersException: true,
+        });
+        setExchangeAnnouncing(true);
+      }
+
+      prevGameStateRef.current = state;
       setGameState(state);
       setRematchVoteState(null);
     };
@@ -173,6 +212,14 @@ export function OnlineGameProvider({ userId, children }: { userId: string; child
     socket.emit("game:pass");
   }, [userId]);
 
+  const giveExchangeCard = useCallback((cardId: string) => {
+    socket.emit("game:exchange_give_card", { cardId });
+  }, [userId]);
+
+  const acknowledgeExchange = useCallback(() => {
+    setExchangeAnnouncing(false);
+  }, []);
+
   const sendReaction = useCallback((emoji: string) => {
     socket.emit("game:reaction", { emoji });
   }, [userId]);
@@ -191,6 +238,8 @@ export function OnlineGameProvider({ userId, children }: { userId: string; child
         entrySource,
         rematchVoteState,
         cumulativeScores,
+        exchangeAnnouncing,
+        exchangeAnnounceData,
         createRoom,
         joinRoom,
         leaveRoom,
@@ -201,6 +250,8 @@ export function OnlineGameProvider({ userId, children }: { userId: string; child
         voteRematch,
         playCards,
         pass,
+        giveExchangeCard,
+        acknowledgeExchange,
         sendReaction,
         clearError,
       }}

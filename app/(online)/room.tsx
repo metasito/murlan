@@ -266,7 +266,12 @@ export default function RoomScreen() {
 
   if (isLandscape) {
     return (
-      <View style={[styles.container, { paddingTop: topPad, paddingBottom: bottomPad }]}>
+      <View style={[styles.container, {
+        paddingTop: topPad,
+        paddingBottom: bottomPad,
+        paddingLeft: insets.left,
+        paddingRight: insets.right,
+      }]}>
         <LinearGradient colors={[Colors.bg, Colors.bgCard]} style={StyleSheet.absoluteFill} />
 
         <View style={styles.topBar}>
@@ -333,7 +338,7 @@ export default function RoomScreen() {
       <LinearGradient colors={[Colors.bg, Colors.bgCard]} style={StyleSheet.absoluteFill} />
 
       <View style={styles.topBar}>
-        <Pressable onPress={handleLeave} style={styles.backBtn}>
+        <Pressable onPress={handleLeave} style={styles.backBtn} hitSlop={8}>
           <Ionicons name="chevron-back" size={22} color={Colors.textMuted} />
         </Pressable>
         <Text style={styles.screenTitle}>Stanza</Text>

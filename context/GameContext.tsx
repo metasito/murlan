@@ -4,6 +4,7 @@ import React, {
   useState,
   useCallback,
   useMemo,
+  useRef,
   ReactNode,
 } from "react";
 import {
@@ -22,6 +23,7 @@ import {
   canPlay,
   deepCloneState,
 } from "@/lib/gameEngine";
+import type { ExchangeAnnounceData } from "@/lib/sharedGameFlow";
 
 export interface PlayerSetupConfig {
   name: string;
@@ -57,10 +59,13 @@ interface GameContextValue {
   currentRound: number;
   cumulativeScores: Record<string, number>;
   roundHistory: RoundResult[];
+  exchangeAnnouncing: boolean;
+  exchangeAnnounceData: ExchangeAnnounceData | null;
   setupGame: (players: PlayerSetupConfig[], mode: GameMode, rounds?: number) => void;
   setupRematch: (players: PlayerSetupConfig[], mode: GameMode, prevRankings: string[]) => void;
   startNextRound: () => void;
   chooseExchangeCard: (cardId: string) => void;
+  acknowledgeExchange: () => void;
   selectCard: (cardId: string) => void;
   playSelected: () => boolean;
   passTurn: () => void;
@@ -81,6 +86,11 @@ export function GameProvider({ children }: { children: ReactNode }) {
   const [roundHistory, setRoundHistory] = useState<RoundResult[]>([]);
   const [savedPlayerConfigs, setSavedPlayerConfigs] = useState<PlayerSetupConfig[]>([]);
   const [savedGameMode, setSavedGameMode] = useState<GameMode>("free_for_all");
+
+  const [exchangeAnnouncing, setExchangeAnnouncing] = useState(false);
+  const [exchangeAnnounceData, setExchangeAnnounceData] = useState<ExchangeAnnounceData | null>(null);
+  const gameStateRef = useRef<GameState | null>(null);
+  gameStateRef.current = gameState;
 
   const setupGame = useCallback(
     (players: PlayerSetupConfig[], mode: GameMode, rounds = 1) => {
@@ -129,6 +139,17 @@ export function GameProvider({ children }: { children: ReactNode }) {
 
     const playersWithId = savedPlayerConfigs.map((p, i) => ({ ...p, id: `player_${i}` }));
     const state = initializeRematch(playersWithId, savedGameMode, gameState.rankings);
+
+    if (state.exchangePhase?.bothJokersException) {
+      const ep = state.exchangePhase;
+      setExchangeAnnounceData({
+        winnerName: state.players[ep.winnerIdx]?.name ?? "",
+        loserName: state.players[ep.loserIdx]?.name ?? "",
+        bothJokersException: true,
+      });
+      setExchangeAnnouncing(true);
+    }
+
     setGameState(state);
     setSelectedCards([]);
     setLastRoundWinner(null);
@@ -136,6 +157,22 @@ export function GameProvider({ children }: { children: ReactNode }) {
 
   const chooseExchangeCard = useCallback(
     (cardId: string) => {
+      const gs = gameStateRef.current;
+      if (gs?.exchangePhase?.active) {
+        const ep = gs.exchangePhase;
+        const winnerName = gs.players[ep.winnerIdx]?.name ?? "";
+        const loserName = gs.players[ep.loserIdx]?.name ?? "";
+        const cardReceived = ep.cardFromLoser;
+        const cardGiven = gs.players[ep.winnerIdx].hand.find((c) => c.id === cardId);
+        setExchangeAnnounceData({
+          winnerName,
+          loserName,
+          bothJokersException: false,
+          cardGiven,
+          cardReceived,
+        });
+        setExchangeAnnouncing(true);
+      }
       setGameState((prev) => {
         if (!prev) return prev;
         return processExchangeChoice(prev, cardId);
@@ -144,6 +181,10 @@ export function GameProvider({ children }: { children: ReactNode }) {
     },
     []
   );
+
+  const acknowledgeExchange = useCallback(() => {
+    setExchangeAnnouncing(false);
+  }, []);
 
   const selectCard = useCallback(
     (cardId: string) => {
@@ -255,10 +296,13 @@ export function GameProvider({ children }: { children: ReactNode }) {
       currentRound,
       cumulativeScores,
       roundHistory,
+      exchangeAnnouncing,
+      exchangeAnnounceData,
       setupGame,
       setupRematch,
       startNextRound,
       chooseExchangeCard,
+      acknowledgeExchange,
       selectCard,
       playSelected,
       passTurn,
@@ -273,10 +317,13 @@ export function GameProvider({ children }: { children: ReactNode }) {
       currentRound,
       cumulativeScores,
       roundHistory,
+      exchangeAnnouncing,
+      exchangeAnnounceData,
       setupGame,
       setupRematch,
       startNextRound,
       chooseExchangeCard,
+      acknowledgeExchange,
       selectCard,
       playSelected,
       passTurn,

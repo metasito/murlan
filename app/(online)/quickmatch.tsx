@@ -15,7 +15,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { useOnlineGame } from "@/context/OnlineGameContext";
 import Colors from "@/constants/colors";
-import { MenuLayout } from "@/components/MenuLayout";
+import { MenuLayout, CONTENT_H_PAD } from "@/components/MenuLayout";
 import { MenuCard } from "@/components/MenuCard";
 import { MenuButton } from "@/components/MenuButton";
 
@@ -147,9 +147,11 @@ export default function QuickmatchScreen() {
   const dots = ".".repeat(dotCount) + "\u00A0".repeat(3 - dotCount);
 
   if (phase === "selecting") {
+    const hPad = insets.left + insets.right + 2 * CONTENT_H_PAD;
+    const availW = W - hPad;
     const cardW = isLandscape
-      ? Math.floor((W - insets.left - insets.right - 40 - 36) / 4)
-      : Math.floor((Math.min(W, 500) - 40 - 12) / 2);
+      ? Math.floor((availW - 3 * 10) / 4)
+      : Math.floor((Math.min(availW, 460) - 12) / 2);
 
     return (
       <MenuLayout scrollable={true} centered={false} style={{ justifyContent: "space-between" }}>
