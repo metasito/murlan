@@ -249,7 +249,6 @@ export default function OnlineLobbyScreen() {
                   placeholderTextColor={Colors.textMuted}
                   autoCapitalize="characters"
                   maxLength={8}
-                  autoFocus
                 />
               </MenuCard>
               <View style={styles.modalRow}>
