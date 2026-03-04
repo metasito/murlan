@@ -267,12 +267,10 @@ export default function RoomScreen() {
         </View>
 
         <View style={styles.landscapeBody}>
+          {/* LEFT: code, mode, giocatori, invita amici */}
           <View style={styles.landscapeLeft}>
             <View style={{ flex: 1, gap: 8 }}>
-              <Animated.View
-                entering={FadeIn.duration(400)}
-                style={styles.codeSectionCompact}
-              >
+              <Animated.View entering={FadeIn.duration(400)} style={styles.codeSectionCompact}>
                 <Text style={styles.codeLabel}>CODICE STANZA</Text>
                 <Text style={styles.codeTextCompact}>{room.code}</Text>
                 <View style={styles.codeActions}>
@@ -294,6 +292,66 @@ export default function RoomScreen() {
                 </Text>
               </View>
 
+              <View style={{ gap: 4 }}>
+                <Text style={[styles.slotsSectionTitle, { marginBottom: 2 }]}>
+                  GIOCATORI ({room.players.length}/{maxSeats})
+                </Text>
+                <View style={{ gap: playerListGap }}>
+                  {Array.from({ length: maxSeats }, (_, i) => {
+                    const player = room.players.find((p) => p.seatIndex === i);
+                    const team = room.gameMode === "teams" ? (i % 2 === 0 ? "A" : "B") : null;
+                    return (
+                      <View
+                        key={i}
+                        style={[
+                          {
+                            height: playerItemHeight,
+                            paddingVertical: playerItemPaddingVertical,
+                            paddingHorizontal: 12,
+                            backgroundColor: Colors.bgCard,
+                            borderRadius: 10,
+                            flexDirection: "row",
+                            alignItems: "center",
+                          },
+                          team ? { borderLeftColor: TEAM_COLORS[team as "A" | "B"], borderLeftWidth: 3 } : undefined,
+                        ]}
+                      >
+                        {player ? (
+                          <>
+                            <View style={[styles.slotAvatar, styles.slotAvatarCompact]}>
+                              <Text style={[styles.slotInitial, styles.slotInitialCompact]}>
+                                {player.username.charAt(0).toUpperCase()}
+                              </Text>
+                            </View>
+                            <View style={[styles.slotInfo, { marginLeft: 8 }]}>
+                              <Text style={styles.slotName} numberOfLines={1}>
+                                {player.username}
+                                {player.userId === user?.id ? " (tu)" : ""}
+                              </Text>
+                              {room.hostUserId === player.userId && (
+                                <Text style={[styles.hostBadge, styles.hostBadgeCompact]}>Host</Text>
+                              )}
+                            </View>
+                            {team && (
+                              <Text style={[styles.teamBadge, { color: TEAM_COLORS[team as "A" | "B"] }]}>
+                                {team}
+                              </Text>
+                            )}
+                          </>
+                        ) : (
+                          <>
+                            <View style={[styles.slotAvatar, styles.slotAvatarEmpty, styles.slotAvatarCompact]}>
+                              <Ionicons name="person-add-outline" size={14} color={Colors.textMuted} />
+                            </View>
+                            <Text style={[styles.slotWaiting, { marginLeft: 8 }]}>In attesa…</Text>
+                          </>
+                        )}
+                      </View>
+                    );
+                  })}
+                </View>
+              </View>
+
               {showInvitePanel && (
                 <InviteFriendsPanel
                   roomCode={room.code}
@@ -303,72 +361,13 @@ export default function RoomScreen() {
                 />
               )}
             </View>
-
-            <View style={styles.landscapeFooter}>
-              {StartButton}
-            </View>
           </View>
 
           <View style={styles.landscapeDivider} />
 
-          <View style={[styles.landscapeRight, { paddingRight: 8, paddingTop: 4 }]}>
-            <Text style={[styles.slotsSectionTitle, { marginBottom: isLandscape ? 4 : 6 }]}>
-              GIOCATORI ({room.players.length}/{maxSeats})
-            </Text>
-            <View style={{ gap: playerListGap }}>
-              {Array.from({ length: maxSeats }, (_, i) => {
-                const player = room.players.find((p) => p.seatIndex === i);
-                const team = room.gameMode === "teams" ? (i % 2 === 0 ? "A" : "B") : null;
-                return (
-                  <View
-                    key={i}
-                    style={[
-                      {
-                        height: playerItemHeight,
-                        paddingVertical: playerItemPaddingVertical,
-                        paddingHorizontal: 12,
-                        backgroundColor: Colors.bgCard,
-                        borderRadius: 10,
-                        flexDirection: "row",
-                        alignItems: "center",
-                      },
-                      team ? { borderLeftColor: TEAM_COLORS[team as "A" | "B"], borderLeftWidth: 3 } : undefined,
-                    ]}
-                  >
-                    {player ? (
-                      <>
-                        <View style={[styles.slotAvatar, styles.slotAvatarCompact]}>
-                          <Text style={[styles.slotInitial, styles.slotInitialCompact]}>
-                            {player.username.charAt(0).toUpperCase()}
-                          </Text>
-                        </View>
-                        <View style={[styles.slotInfo, { marginLeft: 8 }]}>
-                          <Text style={styles.slotName} numberOfLines={1}>
-                            {player.username}
-                            {player.userId === user?.id ? " (tu)" : ""}
-                          </Text>
-                          {room.hostUserId === player.userId && (
-                            <Text style={[styles.hostBadge, styles.hostBadgeCompact]}>Host</Text>
-                          )}
-                        </View>
-                        {team && (
-                          <Text style={[styles.teamBadge, { color: TEAM_COLORS[team as "A" | "B"] }]}>
-                            {team}
-                          </Text>
-                        )}
-                      </>
-                    ) : (
-                      <>
-                        <View style={[styles.slotAvatar, styles.slotAvatarEmpty, styles.slotAvatarCompact]}>
-                          <Ionicons name="person-add-outline" size={14} color={Colors.textMuted} />
-                        </View>
-                        <Text style={[styles.slotWaiting, { marginLeft: 8 }]}>In attesa…</Text>
-                      </>
-                    )}
-                  </View>
-                );
-              })}
-            </View>
+          {/* RIGHT: start button */}
+          <View style={styles.landscapeRight}>
+            {StartButton}
           </View>
         </View>
       </View>
@@ -583,7 +582,7 @@ const styles = StyleSheet.create({
     gap: 0,
   },
   landscapeLeft: {
-    width: 240,
+    flex: 1,
     flexDirection: "column",
     paddingLeft: 12,
     paddingRight: 12,
@@ -591,17 +590,13 @@ const styles = StyleSheet.create({
   landscapeDivider: {
     width: 1,
     backgroundColor: Colors.border,
-    marginRight: 12,
+    marginRight: 0,
   },
   landscapeRight: {
-    flex: 1,
-  },
-  landscapeFooter: {
-    gap: 6,
-    paddingTop: 8,
+    width: 180,
+    paddingHorizontal: 12,
     paddingBottom: 4,
-    borderTopWidth: 1,
-    borderTopColor: Colors.border,
+    justifyContent: "flex-end",
   },
 
   codeSection: {
