@@ -7,7 +7,7 @@ import {
   Platform,
   Share,
   Alert,
-  ScrollView,
+  FlatList,
   useWindowDimensions,
 } from "react-native";
 import { router } from "expo-router";
@@ -38,12 +38,12 @@ function InviteFriendsPanel({
   roomCode,
   playerUserIds,
   myUserId,
-  compact,
+  isLandscape,
 }: {
   roomCode: string;
   playerUserIds: string[];
   myUserId: string;
-  compact?: boolean;
+  isLandscape: boolean;
 }) {
   const { onlineIds } = useSocket();
   const [sentIds, setSentIds] = useState<Set<string>>(new Set());
@@ -69,63 +69,66 @@ function InviteFriendsPanel({
     }, 2000);
   }
 
-  const ROW_H = compact ? 36 : 40;
+  const ROW_H = isLandscape ? 36 : 44;
   const maxVisible = 3;
-  const listMaxHeight = ROW_H * maxVisible + 8;
-  const hasMore = onlineFriendsNotInRoom.length > maxVisible;
+  const listMaxHeight = ROW_H * maxVisible + 12;
 
   return (
-    <MenuCard title="Invita Amici" style={{ marginBottom: 0, flex: compact ? 1 : undefined }}>
+    <View style={{ flex: 1, minHeight: isLandscape ? 80 : 110 }}>
+      <Text style={[styles.slotsSectionTitle, { color: Colors.gold, marginBottom: isLandscape ? 4 : 6 }]}>
+        INVITA AMICI
+      </Text>
       {onlineFriendsNotInRoom.length === 0 ? (
-        <Text style={inviteStyles.emptyText}>Nessun amico online</Text>
-      ) : (
-        <View style={{ maxHeight: listMaxHeight, position: "relative" }}>
-          <ScrollView
-            showsVerticalScrollIndicator={false}
-            nestedScrollEnabled
-          >
-            {onlineFriendsNotInRoom.map((friend) => {
-              const sent = sentIds.has(friend.id);
-              return (
-                <Pressable
-                  key={friend.id}
-                  onPress={() => handleInvite(friend)}
-                  style={({ pressed }) => [
-                    inviteStyles.row,
-                    { height: ROW_H },
-                    pressed && { opacity: 0.8 },
-                  ]}
-                >
-                  <View style={inviteStyles.avatar}>
-                    <Text style={inviteStyles.avatarInitial}>
-                      {friend.username.charAt(0).toUpperCase()}
-                    </Text>
-                    <View style={inviteStyles.onlineDot} />
-                  </View>
-                  <Text style={inviteStyles.friendName} numberOfLines={1}>
-                    {friend.username}
-                  </Text>
-                  {sent ? (
-                    <Ionicons name="checkmark-circle" size={16} color="#4CAF50" />
-                  ) : (
-                    <View style={inviteStyles.inviteBtn}>
-                      <Text style={inviteStyles.inviteBtnText}>Invita</Text>
-                    </View>
-                  )}
-                </Pressable>
-              );
-            })}
-          </ScrollView>
-          {hasMore && (
-            <LinearGradient
-              colors={["transparent", "rgba(3,16,8,0.92)"]}
-              style={inviteStyles.fadeGradient}
-              pointerEvents="none"
-            />
-          )}
+        <View style={[inviteStyles.emptyContainer, { backgroundColor: Colors.bgCard, borderRadius: 10 }]}>
+          <Text style={inviteStyles.emptyText}>Nessun amico online</Text>
         </View>
+      ) : (
+        <FlatList
+          data={onlineFriendsNotInRoom.slice(0, maxVisible)}
+          keyExtractor={(f) => f.id}
+          scrollEnabled={true}
+          style={{
+            maxHeight: listMaxHeight,
+            borderRadius: 10,
+            backgroundColor: Colors.bgCard,
+          }}
+          showsVerticalScrollIndicator={true}
+          renderItem={({ item: friend }) => {
+            const sent = sentIds.has(friend.id);
+            return (
+              <Pressable
+                onPress={() => handleInvite(friend)}
+                style={({ pressed }) => [
+                  inviteStyles.row,
+                  { height: ROW_H },
+                  pressed && { opacity: 0.8 },
+                ]}
+              >
+                <View style={inviteStyles.avatar}>
+                  <Text style={inviteStyles.avatarInitial}>
+                    {friend.username.charAt(0).toUpperCase()}
+                  </Text>
+                  <View style={inviteStyles.onlineDot} />
+                </View>
+                <Text style={inviteStyles.friendName} numberOfLines={1}>
+                  {friend.username}
+                </Text>
+                {sent ? (
+                  <Ionicons name="checkmark-circle" size={16} color="#4CAF50" />
+                ) : (
+                  <View style={inviteStyles.inviteBtn}>
+                    <Text style={inviteStyles.inviteBtnText}>Invita</Text>
+                  </View>
+                )}
+              </Pressable>
+            );
+          }}
+          ListEmptyComponent={
+            <Text style={inviteStyles.emptyText}>Nessun amico online</Text>
+          }
+        />
       )}
-    </MenuCard>
+    </View>
   );
 }
 
@@ -146,6 +149,10 @@ export default function RoomScreen() {
   const isLandscape = W > H;
   const topPad = Platform.OS === "web" ? 67 : insets.top;
   const bottomPad = Platform.OS === "web" ? 34 : insets.bottom;
+
+  const playerItemHeight = isLandscape ? 36 : 44;
+  const playerItemPaddingVertical = isLandscape ? 4 : 8;
+  const playerListGap = isLandscape ? 4 : 6;
 
   useEffect(() => {
     if (gameState) {
@@ -219,85 +226,18 @@ export default function RoomScreen() {
 
   const playerUserIds = room.players.map((p) => p.userId);
 
-  const SlotsGrid = (
-    <View style={styles.slotsSection}>
-      <Text style={styles.slotsSectionTitle}>
-        GIOCATORI ({room.players.length}/{maxSeats})
-      </Text>
-      <View style={styles.slotsGrid}>
-        {Array.from({ length: maxSeats }, (_, i) => {
-          const player = room.players.find((p) => p.seatIndex === i);
-          const team = room.gameMode === "teams" ? (i % 2 === 0 ? "A" : "B") : null;
-          return (
-            <MenuCard
-              key={i}
-              style={[
-                isLandscape ? styles.slotCardCompact : styles.slotCard,
-                team ? { borderLeftColor: TEAM_COLORS[team as "A" | "B"], borderLeftWidth: 3 } : undefined,
-              ]}
-            >
-              <View style={[styles.slotInner, isLandscape && styles.slotInnerCompact]}>
-                {player ? (
-                  <>
-                    <View style={[styles.slotAvatar, isLandscape && styles.slotAvatarCompact]}>
-                      <Text style={[styles.slotInitial, isLandscape && styles.slotInitialCompact]}>
-                        {player.username.charAt(0).toUpperCase()}
-                      </Text>
-                    </View>
-                    <View style={styles.slotInfo}>
-                      <Text style={styles.slotName} numberOfLines={1}>
-                        {player.username}
-                        {player.userId === user?.id ? " (tu)" : ""}
-                      </Text>
-                      {room.hostUserId === player.userId && (
-                        <Text style={[styles.hostBadge, isLandscape && styles.hostBadgeCompact]}>
-                          Host
-                        </Text>
-                      )}
-                    </View>
-                    {team && (
-                      <Text style={[styles.teamBadge, { color: TEAM_COLORS[team as "A" | "B"] }]}>
-                        {team}
-                      </Text>
-                    )}
-                  </>
-                ) : (
-                  <>
-                    <View style={[styles.slotAvatar, styles.slotAvatarEmpty, isLandscape && styles.slotAvatarCompact]}>
-                      <Ionicons name="person-add-outline" size={isLandscape ? 14 : 18} color={Colors.textMuted} />
-                    </View>
-                    <Text style={styles.slotWaiting}>In attesa…</Text>
-                  </>
-                )}
-              </View>
-            </MenuCard>
-          );
-        })}
-      </View>
+  const StartButton = isHost ? (
+    <MenuButton
+      label={room.players.length < 2 ? "In attesa di giocatori" : "Inizia Partita"}
+      onPress={handleStart}
+      disabled={!canStart}
+      icon={<Ionicons name="play-circle" size={22} color={canStart ? "#0A1F18" : Colors.textMuted} />}
+    />
+  ) : (
+    <View style={styles.waitingHost}>
+      <Ionicons name="time-outline" size={18} color={Colors.textMuted} />
+      <Text style={styles.waitingText}>In attesa che l'host avvii la partita…</Text>
     </View>
-  );
-
-  const FooterContent = (
-    <>
-      {isHost ? (
-        <MenuButton
-          label={room.players.length < 2 ? "In attesa di giocatori…" : "Inizia Partita"}
-          onPress={handleStart}
-          disabled={!canStart}
-          icon={<Ionicons name="play-circle" size={22} color={canStart ? "#0A1F18" : Colors.textMuted} />}
-        />
-      ) : (
-        <View style={styles.waitingHost}>
-          <Ionicons name="time-outline" size={18} color={Colors.textMuted} />
-          <Text style={styles.waitingText}>In attesa che l'host avvii la partita…</Text>
-        </View>
-      )}
-      <MenuButton
-        label="Lascia Stanza"
-        onPress={handleLeave}
-        variant="danger"
-      />
-    </>
   );
 
   if (isLandscape) {
@@ -328,11 +268,7 @@ export default function RoomScreen() {
 
         <View style={styles.landscapeBody}>
           <View style={styles.landscapeLeft}>
-            <ScrollView
-              style={{ flex: 1 }}
-              contentContainerStyle={styles.landscapeLeftContent}
-              showsVerticalScrollIndicator={false}
-            >
+            <View style={{ flex: 1, gap: 8 }}>
               <Animated.View
                 entering={FadeIn.duration(400)}
                 style={styles.codeSectionCompact}
@@ -363,25 +299,77 @@ export default function RoomScreen() {
                   roomCode={room.code}
                   playerUserIds={playerUserIds}
                   myUserId={user!.id}
-                  compact
+                  isLandscape={isLandscape}
                 />
               )}
-            </ScrollView>
+            </View>
 
             <View style={styles.landscapeFooter}>
-              {FooterContent}
+              {StartButton}
             </View>
           </View>
 
           <View style={styles.landscapeDivider} />
 
-          <ScrollView
-            style={styles.landscapeRight}
-            contentContainerStyle={{ paddingVertical: 4 }}
-            showsVerticalScrollIndicator={false}
-          >
-            {SlotsGrid}
-          </ScrollView>
+          <View style={[styles.landscapeRight, { paddingRight: 8, paddingTop: 4 }]}>
+            <Text style={[styles.slotsSectionTitle, { marginBottom: isLandscape ? 4 : 6 }]}>
+              GIOCATORI ({room.players.length}/{maxSeats})
+            </Text>
+            <View style={{ gap: playerListGap }}>
+              {Array.from({ length: maxSeats }, (_, i) => {
+                const player = room.players.find((p) => p.seatIndex === i);
+                const team = room.gameMode === "teams" ? (i % 2 === 0 ? "A" : "B") : null;
+                return (
+                  <View
+                    key={i}
+                    style={[
+                      {
+                        height: playerItemHeight,
+                        paddingVertical: playerItemPaddingVertical,
+                        paddingHorizontal: 12,
+                        backgroundColor: Colors.bgCard,
+                        borderRadius: 10,
+                        flexDirection: "row",
+                        alignItems: "center",
+                      },
+                      team ? { borderLeftColor: TEAM_COLORS[team as "A" | "B"], borderLeftWidth: 3 } : undefined,
+                    ]}
+                  >
+                    {player ? (
+                      <>
+                        <View style={[styles.slotAvatar, styles.slotAvatarCompact]}>
+                          <Text style={[styles.slotInitial, styles.slotInitialCompact]}>
+                            {player.username.charAt(0).toUpperCase()}
+                          </Text>
+                        </View>
+                        <View style={[styles.slotInfo, { marginLeft: 8 }]}>
+                          <Text style={styles.slotName} numberOfLines={1}>
+                            {player.username}
+                            {player.userId === user?.id ? " (tu)" : ""}
+                          </Text>
+                          {room.hostUserId === player.userId && (
+                            <Text style={[styles.hostBadge, styles.hostBadgeCompact]}>Host</Text>
+                          )}
+                        </View>
+                        {team && (
+                          <Text style={[styles.teamBadge, { color: TEAM_COLORS[team as "A" | "B"] }]}>
+                            {team}
+                          </Text>
+                        )}
+                      </>
+                    ) : (
+                      <>
+                        <View style={[styles.slotAvatar, styles.slotAvatarEmpty, styles.slotAvatarCompact]}>
+                          <Ionicons name="person-add-outline" size={14} color={Colors.textMuted} />
+                        </View>
+                        <Text style={[styles.slotWaiting, { marginLeft: 8 }]}>In attesa…</Text>
+                      </>
+                    )}
+                  </View>
+                );
+              })}
+            </View>
+          </View>
         </View>
       </View>
     );
@@ -391,7 +379,7 @@ export default function RoomScreen() {
     <View
       style={[
         styles.container,
-        { paddingTop: topPad, paddingBottom: bottomPad + 16 },
+        { paddingTop: topPad, paddingBottom: bottomPad + 8 },
       ]}
     >
       <LinearGradient
@@ -407,10 +395,7 @@ export default function RoomScreen() {
         <View style={{ width: 38 }} />
       </View>
 
-      <ScrollView
-        contentContainerStyle={styles.body}
-        showsVerticalScrollIndicator={false}
-      >
+      <View style={{ flex: 1, paddingHorizontal: 20, paddingTop: 16, paddingBottom: 8, gap: 12 }}>
         <Animated.View entering={FadeIn.duration(400)} style={styles.codeSection}>
           <Text style={styles.codeLabel}>CODICE STANZA</Text>
           <Text style={styles.codeText}>{room.code}</Text>
@@ -433,23 +418,86 @@ export default function RoomScreen() {
           </Text>
         </View>
 
-        {SlotsGrid}
+        <View style={{ gap: 6 }}>
+          <Text style={[styles.slotsSectionTitle, { marginBottom: 2 }]}>
+            GIOCATORI ({room.players.length}/{maxSeats})
+          </Text>
+          <View style={{ gap: playerListGap }}>
+            {Array.from({ length: maxSeats }, (_, i) => {
+              const player = room.players.find((p) => p.seatIndex === i);
+              const team = room.gameMode === "teams" ? (i % 2 === 0 ? "A" : "B") : null;
+              return (
+                <View
+                  key={i}
+                  style={[
+                    {
+                      height: playerItemHeight,
+                      paddingVertical: playerItemPaddingVertical,
+                      paddingHorizontal: 12,
+                      backgroundColor: Colors.bgCard,
+                      borderRadius: 10,
+                      flexDirection: "row",
+                      alignItems: "center",
+                    },
+                    team ? { borderLeftColor: TEAM_COLORS[team as "A" | "B"], borderLeftWidth: 3 } : undefined,
+                  ]}
+                >
+                  {player ? (
+                    <>
+                      <View style={styles.slotAvatar}>
+                        <Text style={styles.slotInitial}>
+                          {player.username.charAt(0).toUpperCase()}
+                        </Text>
+                      </View>
+                      <View style={[styles.slotInfo, { marginLeft: 12 }]}>
+                        <Text style={styles.slotName} numberOfLines={1}>
+                          {player.username}
+                          {player.userId === user?.id ? " (tu)" : ""}
+                        </Text>
+                        {room.hostUserId === player.userId && (
+                          <Text style={styles.hostBadge}>Host</Text>
+                        )}
+                      </View>
+                      {team && (
+                        <Text style={[styles.teamBadge, { color: TEAM_COLORS[team as "A" | "B"] }]}>
+                          {team}
+                        </Text>
+                      )}
+                    </>
+                  ) : (
+                    <>
+                      <View style={[styles.slotAvatar, styles.slotAvatarEmpty]}>
+                        <Ionicons name="person-add-outline" size={18} color={Colors.textMuted} />
+                      </View>
+                      <Text style={[styles.slotWaiting, { marginLeft: 12 }]}>In attesa…</Text>
+                    </>
+                  )}
+                </View>
+              );
+            })}
+          </View>
+        </View>
 
         {showInvitePanel && (
           <InviteFriendsPanel
             roomCode={room.code}
             playerUserIds={playerUserIds}
             myUserId={user!.id}
+            isLandscape={isLandscape}
           />
         )}
-      </ScrollView>
+      </View>
 
-      <View style={styles.footer}>{FooterContent}</View>
+      <View style={styles.footer}>{StartButton}</View>
     </View>
   );
 }
 
 const inviteStyles = StyleSheet.create({
+  emptyContainer: {
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+  },
   emptyText: {
     fontFamily: "Inter_400Regular",
     fontSize: 13,
@@ -459,7 +507,7 @@ const inviteStyles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: 10,
-    paddingVertical: 2,
+    paddingHorizontal: 12,
   },
   avatar: {
     width: 30,
@@ -506,13 +554,6 @@ const inviteStyles = StyleSheet.create({
     fontSize: 11,
     color: Colors.gold,
   },
-  fadeGradient: {
-    position: "absolute",
-    bottom: 0,
-    left: 0,
-    right: 0,
-    height: 28,
-  },
 });
 
 const styles = StyleSheet.create({
@@ -534,7 +575,6 @@ const styles = StyleSheet.create({
     color: Colors.text,
     letterSpacing: 3,
   },
-  body: { paddingHorizontal: 20, paddingTop: 20, paddingBottom: 16, gap: 16 },
 
   landscapeBody: {
     flex: 1,
@@ -548,11 +588,6 @@ const styles = StyleSheet.create({
     paddingLeft: 12,
     paddingRight: 12,
   },
-  landscapeLeftContent: {
-    gap: 10,
-    paddingTop: 4,
-    paddingBottom: 8,
-  },
   landscapeDivider: {
     width: 1,
     backgroundColor: Colors.border,
@@ -560,7 +595,6 @@ const styles = StyleSheet.create({
   },
   landscapeRight: {
     flex: 1,
-    paddingRight: 8,
   },
   landscapeFooter: {
     gap: 6,
@@ -575,7 +609,8 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     borderWidth: 1,
     borderColor: Colors.goldDark,
-    padding: 20,
+    paddingVertical: 12,
+    paddingHorizontal: 20,
     alignItems: "center",
     gap: 8,
   },
@@ -584,7 +619,8 @@ const styles = StyleSheet.create({
     borderRadius: 14,
     borderWidth: 1,
     borderColor: Colors.goldDark,
-    padding: 12,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
     alignItems: "center",
     gap: 4,
   },
@@ -627,32 +663,11 @@ const styles = StyleSheet.create({
     color: Colors.textMuted,
   },
 
-  slotsSection: { gap: 8 },
   slotsSectionTitle: {
     fontFamily: "Inter_400Regular",
     fontSize: 11,
     color: Colors.textMuted,
     letterSpacing: 2,
-  },
-  slotsGrid: { gap: 6 },
-  slotCard: {
-    marginBottom: 0,
-    minHeight: 68,
-  },
-  slotCardCompact: {
-    marginBottom: 0,
-    minHeight: 44,
-    paddingVertical: 2,
-  },
-  slotInner: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 12,
-    minHeight: 40,
-  },
-  slotInnerCompact: {
-    minHeight: 32,
-    gap: 8,
   },
   slotAvatar: {
     width: 36,
