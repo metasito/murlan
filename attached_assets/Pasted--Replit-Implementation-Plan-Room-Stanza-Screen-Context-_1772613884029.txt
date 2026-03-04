@@ -1,0 +1,180 @@
+# Replit Implementation Plan — Room/Stanza Screen
+
+## Context
+The Room screen overflows in both portrait and landscape. The goal is to make
+everything fit on one screen without scrolling. Edit the Room/Stanza screen
+component (likely `app/room.tsx` or `app/(online)/room.tsx`).
+
+---
+
+## Step 1 — Remove "Lascia Stanza" Button
+
+Find the `<MenuButton>` or `<TouchableOpacity>` rendering "Lascia Stanza"
+(danger/red variant) and DELETE it entirely. The `<` back arrow already handles
+navigation back. This frees significant vertical space in both orientations.
+
+---
+
+## Step 2 — Fix "In attesa di giocatori" to One Line
+
+Find the `<Text>` containing "In attesa di giocatori..." and apply:
+
+```tsx
+// BEFORE (approximate)
+<Text>In attesa di{"\n"}giocatori...</Text>
+
+// AFTER
+<Text numberOfLines={1} adjustsFontSizeToFit={false}>
+  In attesa di giocatori
+</Text>
+```
+
+- Remove the three trailing dots (`...`)
+- Remove any forced line break (`{"\n"}` or fixed width causing wrap)
+- Add `numberOfLines={1}` to enforce single line
+- Reduce the button's `paddingVertical` to `8` (portrait) / `6` (landscape)
+- Reduce `minHeight` of the button container from ~52px to ~38px
+
+---
+
+## Step 3 — Compact the Player Slot Boxes
+
+Keep font sizes unchanged. Reduce box padding and gap only.
+Locate the FlatList or map() rendering player rows and apply:
+
+```tsx
+const { width, height } = useWindowDimensions();
+const isLandscape = width > height;
+
+const playerItemHeight = isLandscape ? 36 : 44;
+const playerItemPaddingVertical = isLandscape ? 4 : 8;
+const playerListGap = isLandscape ? 4 : 6;
+```
+
+For each player slot item:
+
+```tsx
+<View style={{
+  height: playerItemHeight,
+  paddingVertical: playerItemPaddingVertical,
+  paddingHorizontal: 12,
+  marginBottom: playerListGap,
+  backgroundColor: Colors.felt,
+  borderRadius: Radius.md,
+  flexDirection: 'row',
+  alignItems: 'center',
+}}>
+```
+
+Do NOT change fontSize on username or "In attesa..." placeholder texts.
+
+---
+
+## Step 4 — Invite Friends Section Always Visible
+
+Restructure the screen layout to use flex distribution instead of a plain
+ScrollView, so "INVITA AMICI" is always on screen without scrolling.
+Max 3 online friends shown; list is internally scrollable.
+
+```tsx
+<View style={{ flex: 1 }}>
+
+  {/* Room code card — fixed */}
+  <RoomCodeCard />
+
+  {/* Mode badge — fixed */}
+  <ModeBadge />
+
+  {/* Player list — plain View, no ScrollView */}
+  <View style={{ marginBottom: isLandscape ? 6 : 10 }}>
+    <Text style={styles.sectionLabel}>GIOCATORI ({joined}/{max})</Text>
+    {players.map(p => <PlayerSlot key={p.id} player={p} />)}
+  </View>
+
+  {/* "In attesa di giocatori" status button */}
+  <WaitingButton />
+
+  {/* Invite section — always visible, friends list scrollable inside */}
+  <View style={{ flex: 1, minHeight: isLandscape ? 80 : 110 }}>
+    <Text style={[styles.sectionLabel, { color: Colors.gold }]}>
+      INVITA AMICI
+    </Text>
+    <FlatList
+      data={onlineFriends.slice(0, 3)}
+      keyExtractor={f => f.id}
+      scrollEnabled={true}
+      style={{
+        maxHeight: isLandscape ? 36 * 3 + 8 : 44 * 3 + 12,
+        borderRadius: Radius.md,
+        backgroundColor: Colors.felt,
+      }}
+      renderItem={({ item }) => <FriendInviteRow friend={item} />}
+      ListEmptyComponent={
+        <Text style={styles.mutedText}>Nessun amico online</Text>
+      }
+      showsVerticalScrollIndicator={true}
+      indicatorStyle="white"
+    />
+  </View>
+
+</View>
+```
+
+Key UX rules:
+- `onlineFriends.slice(0, 3)` — max 3 entries, no empty placeholders
+- FlatList has fixed maxHeight = 3 × row height + spacing
+- `scrollEnabled={true}` so it scrolls within its own box
+- `indicatorStyle="white"` for visible scrollbar on dark background
+- "INVITA AMICI" label in gold (#C9A84C) to distinguish from player list
+
+---
+
+## Step 5 — Responsive Spacing Constants
+
+Apply this sizing table using `useWindowDimensions`:
+
+| Element                              | Portrait | Landscape |
+|--------------------------------------|----------|-----------|
+| Room code card `paddingVertical`     | 12       | 8         |
+| Section label `marginBottom`         | 6        | 4         |
+| Section label `fontSize`             | keep     | keep      |
+| Player slot height                   | 44       | 36        |
+| Player slot gap                      | 6        | 4         |
+| "In attesa di giocatori" btn height  | 38       | 32        |
+| Friends list max visible rows        | 3        | 3         |
+| Friends row height                   | 44       | 36        |
+
+---
+
+## Step 6 — Remove Outer ScrollView
+
+The outer container of the Room screen MUST NOT be a `<ScrollView>`.
+If it currently is, replace it with a plain View:
+
+```tsx
+// BEFORE
+<ScrollView>...</ScrollView>
+
+// AFTER
+<SafeAreaView style={{ flex: 1 }}>
+  <View style={{ flex: 1 }}>
+    ...
+  </View>
+</SafeAreaView>
+```
+
+Only the friends FlatList should be internally scrollable.
+This is the most critical structural fix.
+
+---
+
+## Checklist Before Commit
+
+- [ ] "Lascia Stanza" button removed
+- [ ] "In attesa di giocatori" renders on one line, no trailing dots
+- [ ] All 4 player slots fully visible in portrait without scrolling
+- [ ] All 4 player slots fully visible in landscape without scrolling
+- [ ] "INVITA AMICI" label visible in both orientations without scrolling
+- [ ] Friends list shows max 3 online friends, scrollable within its container
+- [ ] No ScrollView wrapping the entire screen
+- [ ] Friends System Architecture untouched (only rendering layer changed)
