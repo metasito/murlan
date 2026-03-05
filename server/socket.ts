@@ -956,6 +956,8 @@ async function emitFriendStatus(
   online: boolean
 ) {
   const friends = await storage.getFriends(userId).catch(() => []);
+  // Abort if user disconnected while we were fetching friends
+  if (online && !userSocketMap.has(userId)) return;
   friends.forEach((f) => {
     const friendSocket = userSocketMap.get(f.friend.id);
     if (friendSocket) {
@@ -969,7 +971,13 @@ async function emitFriendStatusOffline(
   userId: string,
   lastSeen: string
 ) {
+  // Short debounce: if the user reconnects within 400ms, skip the offline emit
+  await new Promise((resolve) => setTimeout(resolve, 400));
+  // Abort if user already reconnected before the delay elapsed
+  if (userSocketMap.has(userId)) return;
   const friends = await storage.getFriends(userId).catch(() => []);
+  // Double-check after the DB query: reconnect might have happened during getFriends
+  if (userSocketMap.has(userId)) return;
   friends.forEach((f) => {
     const friendSocket = userSocketMap.get(f.friend.id);
     if (friendSocket) {

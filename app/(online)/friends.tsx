@@ -12,7 +12,7 @@ import {
   useWindowDimensions,
   ScrollView,
 } from "react-native";
-import { router } from "expo-router";
+import { router, useFocusEffect } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import * as Clipboard from "expo-clipboard";
 import * as Haptics from "expo-haptics";
@@ -69,7 +69,7 @@ function Avatar({ name }: { name: string }) {
 export default function FriendsScreen() {
   const insets = useSafeAreaInsets();
   const { user } = useAuth();
-  const { onlineIds, gameInvites, dismissGameInvite } = useSocket();
+  const { socket, onlineIds, gameInvites, dismissGameInvite } = useSocket();
   const { joinRoom, room } = useOnlineGame();
   const qc = useQueryClient();
   const [addLoading, setAddLoading] = useState(false);
@@ -242,6 +242,12 @@ export default function FriendsScreen() {
       router.push("/(online)/room");
     }
   }, [room?.roomId]);
+
+  useFocusEffect(
+    useCallback(() => {
+      if (socket) socket.emit("friend:get_online_list");
+    }, [socket])
+  );
 
   function handleJoinGameInvite(roomCode: string) {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
