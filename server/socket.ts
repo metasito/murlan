@@ -94,6 +94,11 @@ function handleAutoPass(roomCode: string, userId: string) {
       game.gameState = newState;
       broadcastGameState(_io, game);
       persistGameState(roomCode, game);
+      // Start AFK timer for the next player (loser goes first after exchange)
+      const nextIdx = newState.currentTurnIndex;
+      const nextUserId = playerMap[nextIdx];
+      const nextUsername = newState.players[nextIdx]?.name ?? "";
+      if (nextUserId) startAfkTimer(roomCode, nextUserId, nextUsername);
     }
     return;
   }
@@ -733,6 +738,12 @@ export function setupSocket(httpServer: HttpServer) {
 
         const game = activeGames.get(roomCode);
         if (game) {
+          // Re-add player to roomPlayers if they were removed during disconnect window
+          const seatEntry = Object.entries(game.playerMap).find(([, uid]) => uid === userId);
+          if (seatEntry) {
+            const seatIndex = parseInt(seatEntry[0]);
+            await storage.addRoomPlayer(roomCode, userId, seatIndex).catch(() => {});
+          }
           socket.emit(
             "game:state",
             sanitizeStateForPlayer(game.gameState, userId, game.playerMap)
@@ -784,9 +795,15 @@ export function setupSocket(httpServer: HttpServer) {
       )?.[0];
       if (mySeat === undefined || parseInt(mySeat) !== winnerSeat) return;
 
+      clearAfkTimer(roomId, userId);
       game.gameState = processExchangeChoice(game.gameState, cardId);
       broadcastGameState(io, game);
       persistGameState(roomId, game);
+      // Start AFK timer for the next player (loser goes first after exchange)
+      const nextIdx = game.gameState.currentTurnIndex;
+      const nextUserId = game.playerMap[nextIdx];
+      const nextUsername = game.gameState.players[nextIdx]?.name ?? "";
+      if (nextUserId) startAfkTimer(roomId, nextUserId, nextUsername);
     });
 
     // ── Friend invite ────────────────────────────────────────────────────────
@@ -889,7 +906,7 @@ function broadcastGameState(io: SocketServer, game: OnlineGameState) {
 
 async function handleLeaveRoom(
   io: SocketServer,
-  socket: { id: string; leave: (r: string) => void },
+  socket: { id: string; leave: (r: string) => void; data?: { username?: string } },
   userId: string
 ) {
   const roomId = socketRoomMap.get(socket.id);
@@ -928,7 +945,7 @@ async function handleLeaveRoom(
     }
     io.to(roomId).emit("game:player_left", {
       userId,
-      username: socket.id,
+      username: socket.data?.username ?? userId,
     });
   }
 }
