@@ -21,6 +21,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { LinearGradient } from "expo-linear-gradient";
 import { useAuth } from "@/context/AuthContext";
 import { useSocket } from "@/context/SocketContext";
+import { useOnlineGame } from "@/context/OnlineGameContext";
 import { apiRequest } from "@/lib/query-client";
 import Colors from "@/constants/colors";
 
@@ -68,7 +69,8 @@ function Avatar({ name }: { name: string }) {
 export default function FriendsScreen() {
   const insets = useSafeAreaInsets();
   const { user } = useAuth();
-  const { onlineIds } = useSocket();
+  const { onlineIds, gameInvites, dismissGameInvite } = useSocket();
+  const { joinRoom, room } = useOnlineGame();
   const qc = useQueryClient();
   const [addLoading, setAddLoading] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
@@ -235,6 +237,18 @@ export default function FriendsScreen() {
 
   const onlineCount = friends.filter(f => onlineIds.has(f.id)).length;
 
+  useEffect(() => {
+    if (room) {
+      router.push("/(online)/room");
+    }
+  }, [room?.roomId]);
+
+  function handleJoinGameInvite(roomCode: string) {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    dismissGameInvite(roomCode);
+    joinRoom(roomCode);
+  }
+
   return (
     <View style={[styles.container, {
       paddingTop: topPad,
@@ -295,7 +309,42 @@ export default function FriendsScreen() {
           </View>
         )}
 
-        {/* ── SECTION 2: Richieste Ricevute ── */}
+        {/* ── SECTION 2: Inviti a Giocare ── */}
+        {gameInvites.length > 0 && (
+          <>
+            <SectionHeader title="INVITI A GIOCARE" count={gameInvites.length} />
+            <View style={styles.listBlock}>
+              {gameInvites.map((invite) => (
+                <View key={invite.roomCode} style={styles.row}>
+                  <View style={styles.avatarWrapper}>
+                    <Avatar name={invite.from} />
+                    <View style={[styles.statusDot, { backgroundColor: "#4CAF50" }]} />
+                  </View>
+                  <View style={styles.rowInfo}>
+                    <Text style={styles.rowName}>{invite.from}</Text>
+                    <Text style={styles.rowSub}>Stanza: {invite.roomCode}</Text>
+                  </View>
+                  <View style={styles.actionRow}>
+                    <Pressable
+                      onPress={() => dismissGameInvite(invite.roomCode)}
+                      style={styles.declineBtn}
+                    >
+                      <Ionicons name="close" size={16} color={Colors.textMuted} />
+                    </Pressable>
+                    <Pressable
+                      onPress={() => handleJoinGameInvite(invite.roomCode)}
+                      style={styles.joinBtn}
+                    >
+                      <Text style={styles.joinBtnText}>Unisciti</Text>
+                    </Pressable>
+                  </View>
+                </View>
+              ))}
+            </View>
+          </>
+        )}
+
+        {/* ── SECTION 3: Richieste Ricevute ── */}
         {requests.length > 0 && (
           <>
             <SectionHeader title="RICHIESTE RICEVUTE" count={requests.length} />
@@ -523,6 +572,19 @@ const styles = StyleSheet.create({
     backgroundColor: "#4CAF50",
     alignItems: "center",
     justifyContent: "center",
+  },
+  joinBtn: {
+    height: 36,
+    borderRadius: 10,
+    backgroundColor: Colors.gold,
+    paddingHorizontal: 14,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  joinBtnText: {
+    fontFamily: "Rajdhani_700Bold",
+    fontSize: 14,
+    color: "#0A1F18",
   },
 
   inputCard: {

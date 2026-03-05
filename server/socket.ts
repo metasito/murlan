@@ -13,6 +13,7 @@ import {
   processPass,
   processExchangeChoice,
   buildCombination,
+  sortHand,
   canPlay,
 } from "../lib/gameEngine";
 import type { GameState, Card } from "../lib/gameEngine";
@@ -33,6 +34,7 @@ const publicRoomIds = new Set<string>();
 
 // AFK timer tracking
 const afkTimers = new Map<string, NodeJS.Timeout>();
+const disconnectTimers = new Map<string, NodeJS.Timeout>();
 
 let _io: SocketServer | null = null;
 
@@ -98,7 +100,32 @@ function handleAutoPass(roomCode: string, userId: string) {
 
   const currentIdx = gameState.currentTurnIndex;
   if (playerMap[currentIdx] !== userId) return;
-  if (gameState.lastPlayedCombination === null) return; // can't pass at round start
+
+  if (gameState.lastPlayedCombination === null) {
+    // Round/game start — must play a card, cannot pass
+    const player = gameState.players[currentIdx];
+    let cardToPlay: Card | undefined;
+    if (!gameState.firstPlayMade) {
+      // First play of the game: 3♠ is mandatory
+      cardToPlay = player.hand.find((c) => c.rank === "3" && c.suit === "spades");
+    }
+    if (!cardToPlay) {
+      // New round start: play lowest card
+      const sorted = sortHand([...player.hand]);
+      cardToPlay = sorted[0];
+    }
+    if (cardToPlay) {
+      const combo = buildCombination([cardToPlay]);
+      if (combo) {
+        const newState = processPlay(gameState, combo);
+        game.gameState = newState;
+        broadcastGameState(_io, game);
+        persistGameState(roomCode, game);
+      }
+    }
+    return;
+  }
+
   const newState = processPass(gameState);
   game.gameState = newState;
   broadcastGameState(_io, game);
@@ -195,6 +222,13 @@ export function setupSocket(httpServer: HttpServer) {
     const username = socket.data.username as string;
     userSocketMap.set(userId, socket.id);
     logger.debug({ userId, username, socketId: socket.id }, "Socket connected");
+
+    // Cancel any pending disconnect-timeout for this user (they reconnected in time)
+    const pendingDcTimer = disconnectTimers.get(userId);
+    if (pendingDcTimer) {
+      clearTimeout(pendingDcTimer);
+      disconnectTimers.delete(userId);
+    }
 
     emitFriendStatus(io, userId, true);
 
@@ -810,7 +844,13 @@ export function setupSocket(httpServer: HttpServer) {
             userId,
             message: `${username} si è disconnesso. Ha 60 secondi per rientrare.`,
           });
-          setTimeout(async () => {
+
+          // Cancel any existing disconnect timer for this player
+          const prevTimer = disconnectTimers.get(userId);
+          if (prevTimer) clearTimeout(prevTimer);
+
+          const dcTimer = setTimeout(async () => {
+            disconnectTimers.delete(userId);
             const sockets = await io.in(currentRoomId).fetchSockets();
             const stillGone = !sockets.some(
               (s) => (s as any).data?.userId === userId
@@ -823,6 +863,7 @@ export function setupSocket(httpServer: HttpServer) {
               });
             }
           }, 60_000);
+          disconnectTimers.set(userId, dcTimer);
         }
       }
 

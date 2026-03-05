@@ -45,7 +45,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post("/api/auth/register", authLimiter, validate(RegisterSchema), async (req, res) => {
     const { username, password } = req.body as { username: string; password: string };
 
-    const existing = await storage.getUserByUsername(username);
+    const existing = await storage.searchUserByUsername(username);
     if (existing) {
       res.status(409).json({ message: "Username già in uso" });
       return;

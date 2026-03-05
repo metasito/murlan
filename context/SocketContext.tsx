@@ -25,6 +25,8 @@ interface SocketContextValue {
   onlineIds: Set<string>;
   pendingInvite: PendingInvite | null;
   clearInvite: () => void;
+  gameInvites: PendingInvite[];
+  dismissGameInvite: (roomCode: string) => void;
   notification: NotificationData | null;
   dismissNotification: () => void;
 }
@@ -35,6 +37,8 @@ const SocketContext = createContext<SocketContextValue>({
   onlineIds: new Set(),
   pendingInvite: null,
   clearInvite: () => {},
+  gameInvites: [],
+  dismissGameInvite: () => {},
   notification: null,
   dismissNotification: () => {},
 });
@@ -49,6 +53,7 @@ export function SocketProvider({ children }: { children: ReactNode }) {
   const [connected, setConnected] = useState(false);
   const [onlineIds, setOnlineIds] = useState<Set<string>>(new Set());
   const [pendingInvite, setPendingInvite] = useState<PendingInvite | null>(null);
+  const [gameInvites, setGameInvites] = useState<PendingInvite[]>([]);
   const [notification, setNotification] = useState<NotificationData | null>(null);
   const socketRef = useRef<Socket | null>(null);
   const notifTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -63,6 +68,10 @@ export function SocketProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const clearInvite = useCallback(() => setPendingInvite(null), []);
+
+  const dismissGameInvite = useCallback((roomCode: string) => {
+    setGameInvites((prev) => prev.filter((i) => i.roomCode !== roomCode));
+  }, []);
 
   useEffect(() => {
     if (!user) {
@@ -137,6 +146,10 @@ export function SocketProvider({ children }: { children: ReactNode }) {
 
     const onInvite = ({ from, roomCode }: { from: string; roomCode: string }) => {
       setPendingInvite({ from, roomCode });
+      setGameInvites((prev) => {
+        if (prev.some((i) => i.roomCode === roomCode)) return prev;
+        return [...prev, { from, roomCode }];
+      });
       showNotification({
         type: "game_invite",
         title: `${from} ti invita a giocare!`,
@@ -180,6 +193,8 @@ export function SocketProvider({ children }: { children: ReactNode }) {
         onlineIds,
         pendingInvite,
         clearInvite,
+        gameInvites,
+        dismissGameInvite,
         notification,
         dismissNotification,
       }}

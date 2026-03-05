@@ -45,8 +45,12 @@ function InviteFriendsPanel({
   myUserId: string;
   isLandscape: boolean;
 }) {
-  const { onlineIds } = useSocket();
+  const { onlineIds, socket } = useSocket();
   const [sentIds, setSentIds] = useState<Set<string>>(new Set());
+
+  useEffect(() => {
+    if (socket) socket.emit("friend:get_online_list");
+  }, [socket]);
 
   const { data: friends = [] } = useQuery<FriendInfo[]>({
     queryKey: ["/api/friends"],
