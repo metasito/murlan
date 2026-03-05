@@ -40,6 +40,7 @@ interface OnlineGameContextValue {
   reactions: Reaction[];
   connected: boolean;
   error: string | null;
+  playerLeft: boolean;
   mySeatIndex: number;
   entrySource: "quickmatch" | "friends" | null;
   rematchVoteState: RematchVoteState | null;
@@ -60,6 +61,7 @@ interface OnlineGameContextValue {
   acknowledgeExchange: () => void;
   sendReaction: (emoji: string) => void;
   clearError: () => void;
+  clearPlayerLeft: () => void;
 }
 
 const OnlineGameContext = createContext<OnlineGameContextValue | null>(null);
@@ -70,6 +72,7 @@ export function OnlineGameProvider({ userId, children }: { userId: string; child
   const [reactions, setReactions] = useState<Reaction[]>([]);
   const [connected, setConnected] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [playerLeft, setPlayerLeft] = useState(false);
   const [entrySource, setEntrySource] = useState<"quickmatch" | "friends" | null>(null);
   const [rematchVoteState, setRematchVoteState] = useState<RematchVoteState | null>(null);
   const [cumulativeScores, setCumulativeScores] = useState<Record<string, number>>({});
@@ -78,6 +81,8 @@ export function OnlineGameProvider({ userId, children }: { userId: string; child
 
   const prevExchangeActiveRef = useRef(false);
   const prevGameStateRef = useRef<GameState | null>(null);
+  const prevBothJokersExceptionRef = useRef(false);
+  const validSeatIndexRef = useRef<number | null>(null);
 
   // Always use the singleton socket — already connected by SocketProvider
   const socket: Socket = getSocket(userId);
@@ -106,9 +111,14 @@ export function OnlineGameProvider({ userId, children }: { userId: string; child
         setExchangeAnnouncing(true);
       }
 
-      if (!isActive && state.exchangePhase?.bothJokersException && !wasActive) {
-        const winnerName = state.players[state.exchangePhase.winnerIdx]?.name ?? "";
-        const loserName = state.players[state.exchangePhase.loserIdx]?.name ?? "";
+      // Show "Jolly doppio" banner only when bothJokersException transitions false → true
+      const prevBothJolly = prevBothJokersExceptionRef.current;
+      const currBothJolly = state.exchangePhase?.bothJokersException ?? false;
+      prevBothJokersExceptionRef.current = currBothJolly;
+
+      if (!isActive && currBothJolly && !prevBothJolly) {
+        const winnerName = state.players[state.exchangePhase!.winnerIdx]?.name ?? "";
+        const loserName = state.players[state.exchangePhase!.loserIdx]?.name ?? "";
         setExchangeAnnounceData({
           winnerName,
           loserName,
@@ -131,7 +141,7 @@ export function OnlineGameProvider({ userId, children }: { userId: string; child
       setReactions((prev) => [...prev.slice(-9), { ...r, id }]);
       setTimeout(() => setReactions((prev) => prev.filter((x) => x.id !== id)), 2500);
     };
-    const onPlayerLeft = () => setError("Un giocatore ha abbandonato la partita");
+    const onPlayerLeft = () => setPlayerLeft(true);
 
     socket.on("connect", onConnect);
     socket.on("disconnect", onDisconnect);
@@ -163,7 +173,12 @@ export function OnlineGameProvider({ userId, children }: { userId: string; child
     };
   }, [userId]);
 
-  const mySeatIndex = room?.players.find((p) => p.userId === userId)?.seatIndex ?? 0;
+  // Track the last valid seatIndex to avoid race condition fallback to 0
+  const foundSeat = room?.players.find((p) => p.userId === userId)?.seatIndex;
+  if (foundSeat !== undefined) {
+    validSeatIndexRef.current = foundSeat;
+  }
+  const mySeatIndex = validSeatIndexRef.current ?? 0;
 
   const createRoom = useCallback((gameMode: "free_for_all" | "teams", maxPlayers: number) => {
     setEntrySource("friends");
@@ -181,6 +196,10 @@ export function OnlineGameProvider({ userId, children }: { userId: string; child
     setGameState(null);
     setRematchVoteState(null);
     setCumulativeScores({});
+    setPlayerLeft(false);
+    validSeatIndexRef.current = null;
+    prevBothJokersExceptionRef.current = false;
+    prevExchangeActiveRef.current = false;
   }, [userId]);
 
   const quickmatch = useCallback((maxPlayers: number, gameMode: "free_for_all" | "teams") => {
@@ -225,6 +244,7 @@ export function OnlineGameProvider({ userId, children }: { userId: string; child
   }, [userId]);
 
   const clearError = useCallback(() => setError(null), []);
+  const clearPlayerLeft = useCallback(() => setPlayerLeft(false), []);
 
   return (
     <OnlineGameContext.Provider
@@ -234,6 +254,7 @@ export function OnlineGameProvider({ userId, children }: { userId: string; child
         reactions,
         connected,
         error,
+        playerLeft,
         mySeatIndex,
         entrySource,
         rematchVoteState,
@@ -254,6 +275,7 @@ export function OnlineGameProvider({ userId, children }: { userId: string; child
         acknowledgeExchange,
         sendReaction,
         clearError,
+        clearPlayerLeft,
       }}
     >
       {children}

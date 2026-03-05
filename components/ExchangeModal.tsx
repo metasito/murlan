@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useEffect } from "react";
 import {
   View,
   Text,
@@ -7,7 +7,16 @@ import {
   ScrollView,
   Platform,
 } from "react-native";
-import Animated, { FadeIn, FadeOut } from "react-native-reanimated";
+import Animated, {
+  FadeIn,
+  FadeOut,
+  useSharedValue,
+  useAnimatedStyle,
+  withSpring,
+  withTiming,
+  withDelay,
+  withSequence,
+} from "react-native-reanimated";
 import * as Haptics from "expo-haptics";
 import { Ionicons } from "@expo/vector-icons";
 import type { ExchangePhase, Card } from "@/lib/gameEngine";
@@ -19,18 +28,93 @@ interface ExchangeModalProps {
   phase: ExchangePhase;
   winnerHand: Card[];
   loserName: string;
+  winnerName: string;
   onSelectCard: (cardId: string) => void;
+}
+
+function AnimatedCard({ card, delay = 0 }: { card: Card; delay?: number }) {
+  const ty = useSharedValue(-30);
+  const opacity = useSharedValue(0);
+  const scale = useSharedValue(0.8);
+
+  useEffect(() => {
+    ty.value = withDelay(delay, withSpring(0, { damping: 12, stiffness: 200 }));
+    opacity.value = withDelay(delay, withTiming(1, { duration: 250 }));
+    scale.value = withDelay(delay, withSpring(1, { damping: 10, stiffness: 180 }));
+  }, []);
+
+  const anim = useAnimatedStyle(() => ({
+    opacity: opacity.value,
+    transform: [{ translateY: ty.value }, { scale: scale.value }],
+  }));
+
+  return (
+    <Animated.View style={anim}>
+      <CardView card={card} />
+    </Animated.View>
+  );
+}
+
+function SelectableCard({
+  card,
+  onPress,
+}: {
+  card: Card;
+  onPress: () => void;
+}) {
+  const scale = useSharedValue(1);
+  const opacity = useSharedValue(1);
+
+  function handlePress() {
+    scale.value = withSequence(
+      withSpring(0.88, { damping: 8, stiffness: 300 }),
+      withSpring(1, { damping: 10, stiffness: 200 })
+    );
+    opacity.value = withSequence(
+      withTiming(0.7, { duration: 80 }),
+      withTiming(1, { duration: 120 })
+    );
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    onPress();
+  }
+
+  const anim = useAnimatedStyle(() => ({
+    transform: [{ scale: scale.value }],
+    opacity: opacity.value,
+  }));
+
+  return (
+    <Pressable onPress={handlePress}>
+      <Animated.View style={[styles.cardItem, anim]}>
+        <CardView card={card} />
+      </Animated.View>
+    </Pressable>
+  );
 }
 
 export function ExchangeModal({
   phase,
   winnerHand,
   loserName,
+  winnerName,
   onSelectCard,
 }: ExchangeModalProps) {
   const validCards = getValidGivebackCards(winnerHand).sort(
     (a, b) => cardStrength(a) - cardStrength(b)
   );
+
+  const arrowScale = useSharedValue(0.6);
+  const arrowOpacity = useSharedValue(0);
+
+  useEffect(() => {
+    arrowScale.value = withDelay(300, withSpring(1, { damping: 12, stiffness: 200 }));
+    arrowOpacity.value = withDelay(300, withTiming(1, { duration: 300 }));
+  }, []);
+
+  const arrowAnim = useAnimatedStyle(() => ({
+    transform: [{ scale: arrowScale.value }],
+    opacity: arrowOpacity.value,
+  }));
 
   return (
     <Animated.View
@@ -40,23 +124,50 @@ export function ExchangeModal({
     >
       <View style={styles.card}>
         <View style={styles.headerRow}>
-          <Ionicons name="swap-horizontal" size={26} color={Colors.gold} />
+          <Ionicons name="swap-horizontal" size={22} color={Colors.gold} />
           <Text style={styles.title}>SCAMBIO DI CARTE</Text>
         </View>
 
-        <Text style={styles.sub}>
-          Hai ricevuto da{" "}
-          <Text style={styles.accent}>{loserName}</Text>:
-        </Text>
+        {/* Winner row — receives card from loser */}
+        <View style={styles.playerRow}>
+          <View style={styles.playerInfo}>
+            <Ionicons name="trophy" size={14} color={Colors.gold} />
+            <Text style={styles.playerName} numberOfLines={1}>{winnerName}</Text>
+            <View style={styles.receivesTag}>
+              <Text style={styles.receivesTagText}>riceve</Text>
+            </View>
+          </View>
+          <View style={styles.cardSlot}>
+            <AnimatedCard card={phase.cardFromLoser} delay={100} />
+          </View>
+        </View>
 
-        <View style={styles.receivedCardWrap}>
-          <CardView card={phase.cardFromLoser} />
+        {/* Arrow */}
+        <Animated.View style={[styles.arrowRow, arrowAnim]}>
+          <View style={styles.arrowLine} />
+          <Ionicons name="arrow-down" size={18} color={Colors.gold} />
+          <Ionicons name="arrow-up" size={18} color={Colors.textSecondary} />
+          <View style={styles.arrowLine} />
+        </Animated.View>
+
+        {/* Loser row — sends a card */}
+        <View style={styles.playerRow}>
+          <View style={styles.playerInfo}>
+            <Ionicons name="person" size={14} color={Colors.textSecondary} />
+            <Text style={styles.playerName} numberOfLines={1}>{loserName}</Text>
+            <View style={[styles.receivesTag, styles.givesTag]}>
+              <Text style={[styles.receivesTagText, styles.givesTagText]}>dà</Text>
+            </View>
+          </View>
+          <View style={styles.cardSlotEmpty}>
+            <Ionicons name="help-circle-outline" size={28} color="rgba(201,168,76,0.3)" />
+          </View>
         </View>
 
         <View style={styles.divider} />
 
         <Text style={styles.sub}>
-          Dai una carta a{" "}
+          Scegli una carta da dare a{" "}
           <Text style={styles.accent}>{loserName}</Text> (solo 3–10):
         </Text>
 
@@ -69,19 +180,11 @@ export function ExchangeModal({
             contentContainerStyle={styles.cardRow}
           >
             {validCards.map((card) => (
-              <Pressable
+              <SelectableCard
                 key={card.id}
-                onPress={() => {
-                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-                  onSelectCard(card.id);
-                }}
-                style={({ pressed }) => [
-                  styles.cardItem,
-                  pressed && styles.cardItemPressed,
-                ]}
-              >
-                <CardView card={card} />
-              </Pressable>
+                card={card}
+                onPress={() => onSelectCard(card.id)}
+              />
             ))}
           </ScrollView>
         )}
@@ -95,7 +198,7 @@ export function ExchangeModal({
 const styles = StyleSheet.create({
   overlay: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: "rgba(3,16,8,0.90)",
+    backgroundColor: "rgba(3,16,8,0.92)",
     alignItems: "center",
     justifyContent: "center",
     zIndex: 110,
@@ -105,11 +208,11 @@ const styles = StyleSheet.create({
     borderRadius: 20,
     borderWidth: 2,
     borderColor: "rgba(201,168,76,0.45)",
-    padding: 24,
+    padding: 20,
     alignItems: "center",
-    gap: 12,
-    maxWidth: 420,
-    width: "88%",
+    gap: 10,
+    maxWidth: 440,
+    width: "90%",
     ...Platform.select({
       ios: {
         shadowColor: Colors.gold,
@@ -123,35 +226,101 @@ const styles = StyleSheet.create({
   headerRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 10,
+    gap: 8,
   },
   title: {
     fontFamily: "Rajdhani_700Bold",
-    fontSize: 18,
+    fontSize: 16,
     color: Colors.gold,
     letterSpacing: 2,
     textTransform: "uppercase",
   },
-  sub: {
-    fontFamily: "Inter_400Regular",
+  playerRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    width: "100%",
+    gap: 12,
+    backgroundColor: "rgba(255,255,255,0.03)",
+    borderRadius: 12,
+    padding: 10,
+    borderWidth: 1,
+    borderColor: "rgba(201,168,76,0.15)",
+  },
+  playerInfo: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    flexWrap: "nowrap",
+  },
+  playerName: {
+    fontFamily: "Rajdhani_600SemiBold",
     fontSize: 13,
     color: Colors.text,
-    textAlign: "center",
-    lineHeight: 20,
+    flex: 1,
   },
-  accent: {
+  receivesTag: {
+    backgroundColor: "rgba(201,168,76,0.15)",
+    borderRadius: 4,
+    paddingHorizontal: 5,
+    paddingVertical: 2,
+    borderWidth: 1,
+    borderColor: "rgba(201,168,76,0.3)",
+  },
+  receivesTagText: {
+    fontFamily: "Inter_500Medium",
+    fontSize: 9,
     color: Colors.gold,
-    fontFamily: "Rajdhani_700Bold",
+    letterSpacing: 0.5,
   },
-  receivedCardWrap: {
-    transform: [{ scale: 1.05 }],
-    marginVertical: 4,
+  givesTag: {
+    backgroundColor: "rgba(255,255,255,0.05)",
+    borderColor: "rgba(255,255,255,0.1)",
+  },
+  givesTagText: {
+    color: Colors.textSecondary,
+  },
+  cardSlot: {
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  cardSlotEmpty: {
+    alignItems: "center",
+    justifyContent: "center",
+    width: 52,
+    height: 72,
+    borderRadius: 8,
+    borderWidth: 1.5,
+    borderColor: "rgba(201,168,76,0.2)",
+    borderStyle: "dashed",
+  },
+  arrowRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    width: "100%",
+    paddingHorizontal: 8,
+  },
+  arrowLine: {
+    flex: 1,
+    height: 1,
+    backgroundColor: "rgba(201,168,76,0.2)",
   },
   divider: {
     width: "100%",
     height: 1,
-    backgroundColor: "rgba(201,168,76,0.15)",
-    marginVertical: 2,
+    backgroundColor: "rgba(201,168,76,0.12)",
+  },
+  sub: {
+    fontFamily: "Inter_400Regular",
+    fontSize: 12,
+    color: Colors.text,
+    textAlign: "center",
+    lineHeight: 18,
+  },
+  accent: {
+    color: Colors.gold,
+    fontFamily: "Rajdhani_700Bold",
   },
   cardRow: {
     flexDirection: "row",
@@ -164,10 +333,6 @@ const styles = StyleSheet.create({
     borderWidth: 2,
     borderColor: "rgba(201,168,76,0.3)",
     overflow: "hidden",
-  },
-  cardItemPressed: {
-    borderColor: Colors.gold,
-    transform: [{ scale: 0.95 }],
   },
   hint: {
     fontFamily: "Inter_400Regular",

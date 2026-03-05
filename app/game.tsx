@@ -678,11 +678,12 @@ export default function GameScreen() {
       )}
 
       {/* Exchange phase overlay — human winner must give a weak card */}
-      {isHumanExchange && exchangeLoser && (
+      {isHumanExchange && exchangeLoser && exchangeWinner && (
         <ExchangeModal
           phase={gameState.exchangePhase!}
           winnerHand={gameState.players[gameState.exchangePhase!.winnerIdx].hand}
           loserName={exchangeLoser.name}
+          winnerName={exchangeWinner.name}
           onSelectCard={(cardId) => {
             playCardPlay();
             chooseExchangeCard(cardId);

@@ -7,6 +7,7 @@ import {
   Platform,
   useWindowDimensions,
   Alert,
+  ScrollView,
 } from "react-native";
 import { router } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -150,11 +151,13 @@ function RankCard({
   name,
   isWinner,
   delay,
+  cumPts,
 }: {
   rank: number;
   name: string;
   isWinner: boolean;
   delay: number;
+  cumPts?: number;
 }) {
   const opacity = useSharedValue(0);
   const tx = useSharedValue(40);
@@ -185,15 +188,15 @@ function RankCard({
       </View>
       <Ionicons
         name={icon as React.ComponentProps<typeof Ionicons>["name"]}
-        size={18}
+        size={16}
         color={color}
       />
       <Text style={goStyles.playerName} numberOfLines={1}>
         {name}
       </Text>
-      {isWinner && (
-        <View style={goStyles.winnerBadge}>
-          <Text style={goStyles.winnerBadgeText}>VINCITORE</Text>
+      {cumPts !== undefined && cumPts > 0 && (
+        <View style={goStyles.cumScore}>
+          <Text style={goStyles.cumScoreText}>{cumPts}pt</Text>
         </View>
       )}
     </Animated.View>
@@ -222,14 +225,24 @@ function GameOverOverlay({
   const winnerName = gameState.rankings[0] ?? "";
   const scale = useSharedValue(0);
   const opacity = useSharedValue(0);
+  const glow = useSharedValue(0.5);
   useEffect(() => {
-    scale.value = withSpring(1, { damping: 9, stiffness: 140 });
-    opacity.value = withTiming(1, { duration: 500 });
+    scale.value = withSpring(1, { damping: 8, stiffness: 150 });
+    opacity.value = withTiming(1, { duration: 600 });
+    glow.value = withRepeat(
+      withSequence(
+        withTiming(1, { duration: 1200, easing: Easing.inOut(Easing.sin) }),
+        withTiming(0.5, { duration: 1200, easing: Easing.inOut(Easing.sin) })
+      ),
+      -1,
+      false
+    );
   }, []);
   const celebStyle = useAnimatedStyle(() => ({
     transform: [{ scale: scale.value }],
     opacity: opacity.value,
   }));
+  const glowAnim = useAnimatedStyle(() => ({ opacity: glow.value }));
 
   const hasVoted = voteState?.votes.includes(myUserId) ?? false;
   const voteCount = voteState?.votes.length ?? 0;
@@ -243,9 +256,18 @@ function GameOverOverlay({
         { paddingTop: topPad + 8, paddingBottom: bottomPad + 8 },
       ]}
     >
+      <LinearGradient
+        colors={[Colors.bg, Colors.bgCard, Colors.bg]}
+        locations={[0, 0.5, 1]}
+        style={StyleSheet.absoluteFill}
+      />
+
+      {/* Two-column layout: left = winner + actions, right = rankings */}
       <View style={goStyles.twoCol}>
+        {/* LEFT: winner celebration + action buttons */}
         <View style={goStyles.leftCol}>
           <Animated.View style={[goStyles.celebration, celebStyle]}>
+            <Animated.View style={[goStyles.celebGlow, glowAnim]} />
             <View style={goStyles.trophyCircle}>
               <LinearGradient
                 colors={[Colors.gold, Colors.goldDark]}
@@ -259,6 +281,25 @@ function GameOverOverlay({
             </Text>
             <Text style={goStyles.winnerSubtitle}>Vincitore</Text>
           </Animated.View>
+
+          <View style={goStyles.statsRow}>
+            <View style={goStyles.statItem}>
+              <Ionicons name="people" size={14} color={Colors.gold} />
+              <Text style={goStyles.statValue}>{gameState.players.length}</Text>
+              <Text style={goStyles.statLabel}>Giocatori</Text>
+            </View>
+            <View style={goStyles.statItem}>
+              <Ionicons
+                name={gameState.gameMode === "teams" ? "people-circle" : "person-circle"}
+                size={14}
+                color={Colors.gold}
+              />
+              <Text style={goStyles.statValue}>
+                {gameState.gameMode === "teams" ? "Coppie" : "Libero"}
+              </Text>
+              <Text style={goStyles.statLabel}>Modalità</Text>
+            </View>
+          </View>
 
           <View style={goStyles.actions}>
             <Pressable onPress={onLeave} style={goStyles.homeBtn}>
@@ -294,58 +335,31 @@ function GameOverOverlay({
           </View>
         </View>
 
+        {/* RIGHT: rankings */}
         <View style={goStyles.rightCol}>
           <Text style={goStyles.sectionTitle}>CLASSIFICA</Text>
-          <View style={goStyles.rankList}>
+          <ScrollView
+            showsVerticalScrollIndicator={false}
+            style={{ flex: 1 }}
+            contentContainerStyle={goStyles.rankList}
+          >
             {gameState.rankings.map((name, i) => {
               const cumPts = cumulativeScores[name];
               return (
-                <View key={i} style={goStyles.rankRow}>
-                  <RankCard
-                    rank={i}
-                    name={name}
-                    isWinner={i === 0}
-                    delay={i * 80 + 300}
-                  />
-                  {cumPts !== undefined && cumPts > 0 && (
-                    <View style={goStyles.cumScore}>
-                      <Text style={goStyles.cumScoreText}>{cumPts}pt</Text>
-                    </View>
-                  )}
-                </View>
+                <RankCard
+                  key={i}
+                  rank={i}
+                  name={name}
+                  isWinner={i === 0}
+                  delay={i * 80 + 300}
+                  cumPts={cumPts}
+                />
               );
             })}
-          </View>
-
-          <Text style={[goStyles.sectionTitle, { marginTop: 10 }]}>
-            RIEPILOGO
-          </Text>
-          <View style={goStyles.statsRow}>
-            <View style={goStyles.statItem}>
-              <Ionicons name="people" size={16} color={Colors.gold} />
-              <Text style={goStyles.statValue}>{gameState.players.length}</Text>
-              <Text style={goStyles.statLabel}>Giocatori</Text>
-            </View>
-            <View style={goStyles.statItem}>
-              <Ionicons
-                name={
-                  gameState.gameMode === "teams"
-                    ? "people-circle"
-                    : "person-circle"
-                }
-                size={16}
-                color={Colors.gold}
-              />
-              <Text style={goStyles.statValue}>
-                {gameState.gameMode === "teams" ? "Coppie" : "Libero"}
-              </Text>
-              <Text style={goStyles.statLabel}>Modalità</Text>
-            </View>
-            <View style={goStyles.statItem}>
-              <Ionicons name="wifi" size={16} color={Colors.accent} />
-              <Text style={goStyles.statValue}>Online</Text>
-              <Text style={goStyles.statLabel}>Tipo</Text>
-            </View>
+          </ScrollView>
+          <View style={goStyles.legend}>
+            <Ionicons name="wifi" size={10} color={Colors.accent} />
+            <Text style={goStyles.legendText}>Online</Text>
           </View>
         </View>
       </View>
@@ -362,6 +376,7 @@ export default function OnlineGameScreen() {
     gameState,
     reactions,
     mySeatIndex,
+    playerLeft,
     playCards,
     pass,
     giveExchangeCard,
@@ -374,6 +389,7 @@ export default function OnlineGameScreen() {
     exchangeAnnouncing,
     exchangeAnnounceData,
     acknowledgeExchange,
+    clearPlayerLeft,
   } = useOnlineGame();
 
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
@@ -493,21 +509,47 @@ export default function OnlineGameScreen() {
     prevMyTurnRef.current = isMyTurnNow;
   }, [gameState?.currentTurnIndex]);
 
-  if (!gameState) return null;
+  // Handle other player leaving — navigate remaining player back to lobby
+  useEffect(() => {
+    if (!playerLeft) return;
+    Alert.alert(
+      "Partita interrotta",
+      "Un giocatore ha abbandonato la partita.",
+      [
+        {
+          text: "Torna alla lobby",
+          onPress: () => {
+            clearPlayerLeft();
+            leaveRoom();
+            if (entrySource === "quickmatch") {
+              router.replace("/(online)/quickmatch");
+            } else {
+              router.replace("/(online)");
+            }
+          },
+        },
+      ],
+      { cancelable: false }
+    );
+  }, [playerLeft]);
 
-  const me = gameState.players[mySeatIndex];
-  const isMyTurn = gameState.currentTurnIndex === mySeatIndex;
-  const isNewRound = gameState.lastPlayedCombination === null;
+  // Derive game-state-dependent values (safe to read before hooks — they guard with ?.optional)
+  const me = gameState?.players[mySeatIndex];
+  const isMyTurn = gameState ? gameState.currentTurnIndex === mySeatIndex : false;
+  const isNewRound = gameState ? gameState.lastPlayedCombination === null : false;
   const isFinished = me?.finishPosition !== undefined;
 
-  const exchangeActive = gameState.exchangePhase?.active === true;
+  const exchangeActive = gameState?.exchangePhase?.active === true;
   const isMyExchangeWinner =
-    exchangeActive && gameState.exchangePhase!.winnerIdx === mySeatIndex;
+    exchangeActive && gameState!.exchangePhase!.winnerIdx === mySeatIndex;
   const exchangeLoserPlayer = exchangeActive
-    ? gameState.players[gameState.exchangePhase!.loserIdx]
+    ? gameState!.players[gameState!.exchangePhase!.loserIdx]
     : null;
 
-  const turnPulseStyle = useTurnPulse(isMyTurn && !isFinished && !exchangeActive);
+  // useTurnPulse must be called unconditionally (before any early return)
+  const turnPulseStyle = useTurnPulse(!!gameState && isMyTurn && !isFinished && !exchangeActive);
+
+  if (!gameState) return null;
 
   const sortedHand = sortHand(me?.hand ?? []);
   const selectedObjs = sortedHand.filter((c) => selectedIds.includes(c.id));
@@ -839,6 +881,7 @@ export default function OnlineGameScreen() {
           phase={gameState.exchangePhase!}
           winnerHand={me?.hand ?? []}
           loserName={exchangeLoserPlayer.name}
+          winnerName={me?.name ?? ""}
           onSelectCard={(cardId) => {
             playCardPlay();
             giveExchangeCard(cardId);
@@ -1087,17 +1130,16 @@ const localStyles = StyleSheet.create({
 const goStyles = StyleSheet.create({
   overlay: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: "rgba(6,20,16,0.96)",
     zIndex: 300,
     paddingHorizontal: 16,
   },
   twoCol: {
     flex: 1,
     flexDirection: "row",
-    gap: 16,
+    gap: 14,
   },
   leftCol: {
-    width: 200,
+    width: 190,
     alignItems: "center",
     justifyContent: "space-between",
     paddingVertical: 8,
@@ -1105,16 +1147,27 @@ const goStyles = StyleSheet.create({
   rightCol: {
     flex: 1,
     paddingVertical: 8,
-    gap: 6,
+    gap: 8,
   },
   celebration: {
     alignItems: "center",
-    gap: 8,
+    gap: 6,
+    position: "relative",
+  },
+  celebGlow: {
+    position: "absolute",
+    width: 120,
+    height: 120,
+    borderRadius: 60,
+    backgroundColor: Colors.gold,
+    opacity: 0.12,
+    top: -10,
+    alignSelf: "center",
   },
   trophyCircle: {
-    width: 72,
-    height: 72,
-    borderRadius: 36,
+    width: 64,
+    height: 64,
+    borderRadius: 32,
     overflow: "hidden",
     borderWidth: 2,
     borderColor: Colors.gold,
@@ -1122,15 +1175,15 @@ const goStyles = StyleSheet.create({
   trophyGradient: { flex: 1, alignItems: "center", justifyContent: "center" },
   winnerName: {
     fontFamily: "Rajdhani_700Bold",
-    fontSize: 22,
+    fontSize: 20,
     color: Colors.text,
     letterSpacing: 1,
-    maxWidth: 180,
+    maxWidth: 175,
     textAlign: "center",
   },
   winnerSubtitle: {
     fontFamily: "Inter_500Medium",
-    fontSize: 11,
+    fontSize: 10,
     color: Colors.gold,
     letterSpacing: 2,
     textTransform: "uppercase",
@@ -1142,58 +1195,44 @@ const goStyles = StyleSheet.create({
     color: Colors.textMuted,
     letterSpacing: 2,
   },
-  rankList: { gap: 6 },
+  rankList: { gap: 5, paddingBottom: 4 },
   rankCard: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 10,
+    gap: 8,
     backgroundColor: Colors.bgSurface,
     borderRadius: 10,
     paddingVertical: 8,
-    paddingHorizontal: 12,
+    paddingHorizontal: 10,
     borderWidth: 1,
     borderColor: Colors.border,
     overflow: "hidden",
   },
   rankCardWinner: { borderColor: Colors.gold },
   positionBadge: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
+    width: 26,
+    height: 26,
+    borderRadius: 13,
     borderWidth: 1.5,
     alignItems: "center",
     justifyContent: "center",
+    flexShrink: 0,
   },
-  positionLabel: { fontFamily: "Rajdhani_700Bold", fontSize: 12 },
+  positionLabel: { fontFamily: "Rajdhani_700Bold", fontSize: 11 },
   playerName: {
     fontFamily: "Rajdhani_600SemiBold",
-    fontSize: 14,
+    fontSize: 13,
     color: Colors.text,
     flex: 1,
   },
-  winnerBadge: {
-    backgroundColor: Colors.goldMuted,
-    borderRadius: 5,
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    borderWidth: 1,
-    borderColor: Colors.goldDark,
-  },
-  winnerBadgeText: {
-    fontFamily: "Rajdhani_700Bold",
-    fontSize: 9,
-    color: Colors.gold,
-    letterSpacing: 1,
-  },
-
-  rankRow: { flexDirection: "row", alignItems: "center", gap: 6 },
   cumScore: {
     backgroundColor: "rgba(201,168,76,0.15)",
-    borderRadius: 8,
+    borderRadius: 6,
     paddingHorizontal: 6,
     paddingVertical: 2,
     borderWidth: 1,
     borderColor: Colors.goldDark,
+    flexShrink: 0,
   },
   cumScoreText: {
     fontFamily: "Rajdhani_700Bold",
@@ -1201,23 +1240,35 @@ const goStyles = StyleSheet.create({
     color: Colors.gold,
   },
 
-  statsRow: { flexDirection: "row", gap: 8 },
+  statsRow: { flexDirection: "row", gap: 6, width: "100%" },
   statItem: {
     flex: 1,
     backgroundColor: Colors.bgSurface,
-    borderRadius: 10,
-    padding: 10,
+    borderRadius: 8,
+    padding: 8,
     alignItems: "center",
-    gap: 4,
+    gap: 3,
     borderWidth: 1,
     borderColor: Colors.border,
   },
   statValue: {
     fontFamily: "Rajdhani_700Bold",
-    fontSize: 14,
+    fontSize: 12,
     color: Colors.text,
   },
   statLabel: {
+    fontFamily: "Inter_400Regular",
+    fontSize: 9,
+    color: Colors.textMuted,
+  },
+
+  legend: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    marginTop: 2,
+  },
+  legendText: {
     fontFamily: "Inter_400Regular",
     fontSize: 9,
     color: Colors.textMuted,
@@ -1229,7 +1280,7 @@ const goStyles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     gap: 6,
-    paddingVertical: 12,
+    paddingVertical: 10,
     paddingHorizontal: 16,
     borderRadius: 12,
     backgroundColor: Colors.bgSurface,
@@ -1248,7 +1299,7 @@ const goStyles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     gap: 8,
-    paddingVertical: 12,
+    paddingVertical: 10,
     paddingHorizontal: 16,
   },
   rematchText: {
