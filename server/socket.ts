@@ -44,6 +44,10 @@ export function emitToUser(userId: string, event: string, data: unknown) {
   }
 }
 
+export function isUserOnline(userId: string): boolean {
+  return userSocketMap.has(userId);
+}
+
 function sanitizeStateForPlayer(
   state: GameState,
   viewerUserId: string,
@@ -76,6 +80,22 @@ function handleAutoPass(roomCode: string, userId: string) {
   const game = activeGames.get(roomCode);
   if (!game || game.gameState.gameOver) return;
   const { gameState, playerMap } = game;
+
+  if (gameState.exchangePhase?.active) {
+    const winnerSeat = gameState.exchangePhase.winnerIdx;
+    if (playerMap[winnerSeat] !== userId) return;
+    const VALID = ["3","4","5","6","7","8","9","10"];
+    const winnerHand = gameState.players[winnerSeat].hand;
+    const validCard = winnerHand.find((c) => VALID.includes(c.rank));
+    if (validCard) {
+      const newState = processExchangeChoice(gameState, validCard.id);
+      game.gameState = newState;
+      broadcastGameState(_io, game);
+      persistGameState(roomCode, game);
+    }
+    return;
+  }
+
   const currentIdx = gameState.currentTurnIndex;
   if (playerMap[currentIdx] !== userId) return;
   if (gameState.lastPlayedCombination === null) return; // can't pass at round start

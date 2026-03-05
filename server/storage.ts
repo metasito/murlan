@@ -218,7 +218,7 @@ class DrizzleStorage implements IStorage {
     const [user] = await db
       .select()
       .from(users)
-      .where(eq(users.username, username));
+      .where(sql`lower(${users.username}) = lower(${username})`);
     return user;
   }
 

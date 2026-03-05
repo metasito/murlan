@@ -126,6 +126,7 @@ export function SocketProvider({ children }: { children: ReactNode }) {
     const onRequestAccepted = ({ by }: { by: string }) => {
       qc.invalidateQueries({ queryKey: ["/api/friends"] });
       qc.invalidateQueries({ queryKey: ["/api/friends/requests"] });
+      socket.emit("friend:get_online_list");
       showNotification({
         type: "friend_accepted",
         title: "Amicizia accettata!",

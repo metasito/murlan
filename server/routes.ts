@@ -7,7 +7,7 @@ import { logger } from "./logger";
 import { validate } from "./validate";
 import { RegisterSchema, LoginSchema, AddFriendSchema } from "./schemas";
 import { insertUserSchema } from "@shared/schema";
-import { emitToUser } from "./socket";
+import { emitToUser, isUserOnline } from "./socket";
 import { z } from "zod";
 
 declare module "express-session" {
@@ -199,12 +199,22 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.post("/api/friends/accept/:id", requireAuth, async (req, res) => {
     const id = z.string().parse(req.params.id);
+    const accepterId = req.session.userId!;
     const result = await storage.acceptFriend(id);
     if (result) {
-      const accepter = await storage.getUser(req.session.userId!);
-      emitToUser(result.requesterId, "friend:request_accepted", {
+      const accepter = await storage.getUser(accepterId);
+      const requesterId = result.requesterId;
+
+      emitToUser(requesterId, "friend:request_accepted", {
         by: accepter?.username ?? "Qualcuno",
       });
+
+      if (isUserOnline(accepterId)) {
+        emitToUser(requesterId, "friend:status", { userId: accepterId, online: true });
+      }
+      if (isUserOnline(requesterId)) {
+        emitToUser(accepterId, "friend:status", { userId: requesterId, online: true });
+      }
     }
     res.json({ ok: true });
   });

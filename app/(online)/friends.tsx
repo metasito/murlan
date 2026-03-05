@@ -101,6 +101,13 @@ export default function FriendsScreen() {
     mutationFn: async (id: string) => {
       await apiRequest("POST", `/api/friends/accept/${id}`);
     },
+    onMutate: async (id) => {
+      await qc.cancelQueries({ queryKey: ["/api/friends/requests"] });
+      qc.setQueryData(
+        ["/api/friends/requests"],
+        (old: FriendRequest[] = []) => old.filter((r) => r.id !== id)
+      );
+    },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["/api/friends"] });
       qc.invalidateQueries({ queryKey: ["/api/friends/requests"] });
