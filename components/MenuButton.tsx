@@ -44,7 +44,7 @@ export function MenuButton({
         ? <ActivityIndicator color={variant === 'primary' ? Colors.bg : Colors.gold} />
         : <>
             {icon && <>{icon}</>}
-            <Text style={[styles.label, styles[`${variant}Label` as any]]}>{label}</Text>
+            <Text style={[styles.label, styles[`${variant}Label` as keyof typeof styles]]}>{label}</Text>
           </>
       }
     </TouchableOpacity>

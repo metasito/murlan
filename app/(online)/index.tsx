@@ -224,8 +224,7 @@ export default function OnlineLobbyScreen() {
       {joinModalVisible && (
         <KeyboardAvoidingView
           behavior={Platform.OS === "ios" ? "padding" : "height"}
-          style={styles.modalOverlay}
-          pointerEvents="box-none"
+          style={[styles.modalOverlay, { pointerEvents: "box-none" as const }]}
         >
           <Pressable style={StyleSheet.absoluteFill} onPress={() => { setJoinModalVisible(false); setJoinCode(""); }} />
           <ScrollView

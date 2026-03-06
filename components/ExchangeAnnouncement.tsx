@@ -4,7 +4,6 @@ import {
   Text,
   StyleSheet,
   Pressable,
-  Platform,
   useWindowDimensions,
 } from "react-native";
 import Animated, {
@@ -231,10 +230,7 @@ const styles = StyleSheet.create({
     gap: 8,
     maxWidth: 300,
     width: "82%",
-    ...Platform.select({
-      ios: Shadow.gold,
-      android: { elevation: Shadow.gold.elevation },
-    }),
+    ...Shadow.gold,
   },
   title: {
     fontFamily: "Rajdhani_700Bold",

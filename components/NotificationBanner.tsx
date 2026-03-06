@@ -10,6 +10,7 @@ import Animated, {
 import { Ionicons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import Colors from "@/constants/colors";
+import { Shadow } from "@/lib/theme";
 
 export type NotificationType = "friend_request" | "friend_accepted" | "game_invite";
 
@@ -90,8 +91,7 @@ export default function NotificationBanner({ notification, onDismiss }: Props) {
 
   return (
     <Animated.View
-      style={[styles.container, { top: topOffset + 8 }, animStyle]}
-      pointerEvents={notification ? "box-none" : "none"}
+      style={[styles.container, { top: topOffset + 8, pointerEvents: notification ? "box-none" as const : "none" as const }, animStyle]}
     >
       <Pressable onPress={handlePress} style={[styles.banner, { borderLeftColor: color }]}>
         <View style={[styles.iconCircle, { backgroundColor: color + "22" }]}>
@@ -127,11 +127,7 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     paddingHorizontal: 14,
     gap: 12,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
-    elevation: 8,
+    ...Shadow.dark,
   },
   iconCircle: {
     width: 38,

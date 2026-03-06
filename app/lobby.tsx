@@ -307,7 +307,7 @@ export default function LobbyScreen() {
           </ScrollView>
 
           <View style={[styles.startContainer, { paddingBottom: bottomPad + 16 }]}>
-            <LinearGradient colors={["transparent", Colors.bg, Colors.bg]} style={StyleSheet.absoluteFill} pointerEvents="none" />
+            <LinearGradient colors={["transparent", Colors.bg, Colors.bg]} style={[StyleSheet.absoluteFill, { pointerEvents: "none" as const }]} />
             {startButton}
           </View>
         </>

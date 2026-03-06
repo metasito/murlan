@@ -30,7 +30,7 @@ export function OfflineBanner() {
 
   // Always rendered — animation controls visibility
   return (
-    <Animated.View style={[styles.banner, animStyle]} pointerEvents="none">
+    <Animated.View style={[styles.banner, { pointerEvents: "none" as const }, animStyle]}>
       <Text style={styles.text}>⚠️ Nessuna connessione Internet</Text>
     </Animated.View>
   );

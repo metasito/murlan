@@ -1,3 +1,5 @@
+import { Platform } from "react-native";
+
 export const Colors = {
   bg:           '#031008',
   felt:         '#0B3B25',
@@ -28,19 +30,37 @@ export const FontSize = {
   xs: 11, sm: 13, md: 15, lg: 18, xl: 22, xxl: 28, hero: 36,
 };
 
+function hexToRgb(hex: string): { r: number; g: number; b: number } {
+  const h = hex.replace("#", "");
+  return {
+    r: parseInt(h.substring(0, 2), 16),
+    g: parseInt(h.substring(2, 4), 16),
+    b: parseInt(h.substring(4, 6), 16),
+  };
+}
+
+function makeShadow(
+  color: string,
+  offsetX: number,
+  offsetY: number,
+  opacity: number,
+  radius: number,
+  elevation: number
+): Record<string, any> {
+  if (Platform.OS === "web") {
+    const { r, g, b } = hexToRgb(color);
+    return { boxShadow: `${offsetX}px ${offsetY}px ${radius}px rgba(${r},${g},${b},${opacity})` };
+  }
+  return {
+    shadowColor: color,
+    shadowOffset: { width: offsetX, height: offsetY },
+    shadowOpacity: opacity,
+    shadowRadius: radius,
+    elevation,
+  };
+}
+
 export const Shadow = {
-  gold: {
-    shadowColor: '#C9A84C',
-    shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 0.6,
-    shadowRadius: 12,
-    elevation: 10,
-  },
-  dark: {
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.5,
-    shadowRadius: 8,
-    elevation: 8,
-  },
+  gold: makeShadow('#C9A84C', 0, 0, 0.6, 12, 10),
+  dark: makeShadow('#000000', 0, 4, 0.5, 8, 8),
 };

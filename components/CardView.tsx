@@ -13,6 +13,7 @@ import Animated, {
 } from "react-native-reanimated";
 import { Card, isRedSuit, getCardDisplayRank, getSuitSymbol } from "@/lib/gameEngine";
 import Colors from "@/constants/colors";
+import { Shadow } from "@/lib/theme";
 import Svg, { Path, Circle, Ellipse, G, Rect, Polygon, Text as SvgText } from "react-native-svg";
 
 interface CardViewProps {
@@ -220,11 +221,7 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     borderWidth: 1,
     borderColor: "rgba(0,0,0,0.1)",
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 6,
-    elevation: 8,
+    ...Shadow.dark,
   },
   cardNormal: {
     width: 58,

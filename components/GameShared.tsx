@@ -18,6 +18,7 @@ import Animated, {
 import { Ionicons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
 import { CardView } from "@/components/CardView";
+import { Shadow } from "@/lib/theme";
 import type { Card, Combination, Player, StartReason } from "@/lib/gameEngine";
 import Colors from "@/constants/colors";
 
@@ -299,7 +300,7 @@ export function FlyingCards({
   const display = cards;
 
   return (
-    <View style={sharedStyles.flyingContainer} pointerEvents="none">
+    <View style={[sharedStyles.flyingContainer, { pointerEvents: "none" as const }]}>
       <Animated.View style={[sharedStyles.flyingInner, aStyle]}>
         {display.map((card, i) => {
           const angle = (i - (display.length - 1) / 2) * 10;
@@ -734,11 +735,7 @@ export const sharedStyles = StyleSheet.create({
   },
   avatarOuterActive: {
     borderColor: Colors.gold,
-    shadowColor: Colors.gold,
-    shadowOpacity: 0.7,
-    shadowRadius: 8,
-    shadowOffset: { width: 0, height: 0 },
-    elevation: 8,
+    ...Shadow.gold,
   },
   avatarInner: {
     backgroundColor: "rgba(11,59,37,0.95)",

@@ -5,7 +5,6 @@ import {
   StyleSheet,
   Pressable,
   ScrollView,
-  Platform,
 } from "react-native";
 import Animated, {
   FadeIn,
@@ -23,6 +22,7 @@ import type { ExchangePhase, Card } from "@/lib/gameEngine";
 import { cardStrength, getValidGivebackCards } from "@/lib/gameEngine";
 import { CardView } from "@/components/CardView";
 import Colors from "@/constants/colors";
+import { Shadow } from "@/lib/theme";
 
 interface ExchangeModalProps {
   phase: ExchangePhase;
@@ -213,15 +213,7 @@ const styles = StyleSheet.create({
     gap: 10,
     maxWidth: 440,
     width: "90%",
-    ...Platform.select({
-      ios: {
-        shadowColor: Colors.gold,
-        shadowOpacity: 0.3,
-        shadowRadius: 24,
-        shadowOffset: { width: 0, height: 0 },
-      },
-      android: { elevation: 16 },
-    }),
+    ...Shadow.gold,
   },
   headerRow: {
     flexDirection: "row",

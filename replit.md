@@ -38,7 +38,7 @@ Murlan is built with a client-server architecture.
 - **State Management:** React Context + @tanstack/react-query
 - **Fonts:** Rajdhani and Inter (via @expo-google-fonts)
 - **Animations:** react-native-reanimated
-- **Audio:** expo-av (native), Web Audio API (web)
+- **Audio:** expo-av (native — deprecated, migration pending), Web Audio API (web)
 
 **Core Architectural Decisions & Design Patterns:**
 
@@ -50,7 +50,7 @@ Murlan is built with a client-server architecture.
 - **Layout:** Game table fills the screen with minimal margins. `PASSA` and `GIOCA` buttons are inline within the hand section.
 - **Animations:** Flying card animations for played cards, hand glow for current player's turn, and emoji reaction animations.
 - **NotificationBanner:** A global, animated slide-down banner for real-time events (e.g., friend requests).
-- **Design System:** `lib/theme.ts` is the single source of truth for Colors, Spacing, Radius, FontSize, and Shadow tokens. New components use this file. Existing screens still reference `constants/colors.ts` — do not retroactively replace.
+- **Design System:** `lib/theme.ts` is the single source of truth for Colors, Spacing, Radius, FontSize, and Shadow tokens. `Shadow.gold` and `Shadow.dark` are platform-aware: they return `boxShadow` on web and `shadowColor/shadowOffset/shadowOpacity/shadowRadius/elevation` on native. New components use this file. Existing screens still reference `constants/colors.ts` — do not retroactively replace.
 - **Base Menu Components:** `components/MenuLayout.tsx` (safe-area-aware scrollable/fixed container), `components/MenuCard.tsx` (felt-colored card group), `components/MenuButton.tsx` (primary/secondary/danger/ghost variants). All new menu screens MUST use these. Offline lobby (`app/lobby.tsx`) is the reference design.
 
 **2. Technical Implementations:**

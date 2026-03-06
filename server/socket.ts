@@ -33,8 +33,8 @@ const userSocketMap = new Map<string, string>();
 const publicRoomIds = new Set<string>();
 
 // AFK timer tracking
-const afkTimers = new Map<string, NodeJS.Timeout>();
-const disconnectTimers = new Map<string, NodeJS.Timeout>();
+const afkTimers = new Map<string, ReturnType<typeof setTimeout>>();
+const disconnectTimers = new Map<string, ReturnType<typeof setTimeout>>();
 
 let _io: SocketServer | null = null;
 
@@ -192,7 +192,7 @@ export function setupSocket(httpServer: HttpServer) {
 
   // Inject session into socket requests
   io.use((socket, next) => {
-    sessionMiddleware(socket.request as any, {} as any, next);
+    sessionMiddleware(socket.request as any, {} as any, next as any);
   });
 
   // Auth: prefer session, fall back to handshake.auth.userId
