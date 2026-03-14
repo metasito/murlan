@@ -7,6 +7,7 @@ export const users = pgTable("users", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   username: text("username").notNull().unique(),
   password: text("password").notNull(),
+  friendCode: varchar("friend_code", { length: 6 }).notNull().unique(),
   createdAt: timestamp("created_at").defaultNow(),
   lastSeen: timestamp("last_seen"),
 });

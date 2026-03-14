@@ -61,9 +61,30 @@ class DrizzleStorage implements IStorage {
     return user;
   }
 
+  private generateFriendCode(): string {
+    const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+    let code = "";
+    for (let i = 0; i < 6; i++) {
+      code += chars[Math.floor(Math.random() * chars.length)];
+    }
+    return code;
+  }
+
   async createUser(insertUser: InsertUser): Promise<User> {
-    const [user] = await db.insert(users).values(insertUser).returning();
-    return user;
+    for (let attempt = 0; attempt < 10; attempt++) {
+      try {
+        const friendCode = this.generateFriendCode();
+        const [user] = await db
+          .insert(users)
+          .values({ ...insertUser, friendCode })
+          .returning();
+        return user;
+      } catch (err: any) {
+        if (err?.constraint?.includes("friend_code") && attempt < 9) continue;
+        throw err;
+      }
+    }
+    throw new Error("Failed to generate unique friend code");
   }
 
   async updateLastSeen(userId: string): Promise<void> {
