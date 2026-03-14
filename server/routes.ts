@@ -55,8 +55,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
     const user = await storage.createUser({ username, password: passwordHash });
 
     req.session.userId = user.id;
-    logger.info({ userId: user.id, username }, "User registered");
-    res.json({ id: user.id, username: user.username });
+    req.session.save((err) => {
+      if (err) {
+        logger.error({ err }, "Session save failed on register");
+        res.status(500).json({ message: "Errore interno del server" });
+        return;
+      }
+      logger.info({ userId: user.id, username }, "User registered");
+      res.json({ id: user.id, username: user.username });
+    });
   });
 
   app.post("/api/auth/login", authLimiter, validate(LoginSchema), async (req, res) => {
@@ -75,8 +82,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
 
     req.session.userId = user.id;
-    logger.info({ userId: user.id, username }, "User logged in");
-    res.json({ id: user.id, username: user.username });
+    req.session.save((err) => {
+      if (err) {
+        logger.error({ err }, "Session save failed on login");
+        res.status(500).json({ message: "Errore interno del server" });
+        return;
+      }
+      logger.info({ userId: user.id, username }, "User logged in");
+      res.json({ id: user.id, username: user.username });
+    });
   });
 
   app.post("/api/auth/logout", (req, res) => {

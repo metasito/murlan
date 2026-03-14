@@ -253,7 +253,7 @@ function GameOverOverlay({
       entering={FadeIn.duration(400)}
       style={[
         goStyles.overlay,
-        { paddingTop: topPad + 8, paddingBottom: bottomPad + 8 },
+        { paddingTop: topPad + 4, paddingBottom: bottomPad + 4 },
       ]}
     >
       <LinearGradient
@@ -262,105 +262,97 @@ function GameOverOverlay({
         style={StyleSheet.absoluteFill}
       />
 
-      {/* Two-column layout: left = winner + actions, right = rankings */}
-      <View style={goStyles.twoCol}>
-        {/* LEFT: winner celebration + action buttons */}
-        <View style={goStyles.leftCol}>
-          <Animated.View style={[goStyles.celebration, celebStyle]}>
-            <Animated.View style={[goStyles.celebGlow, glowAnim]} />
-            <View style={goStyles.trophyCircle}>
-              <LinearGradient
-                colors={[Colors.gold, Colors.goldDark]}
-                style={goStyles.trophyGradient}
-              >
-                <Ionicons name="trophy" size={32} color="#0A1F18" />
-              </LinearGradient>
-            </View>
+      {/* Vertical layout: header | rankings | actions */}
+      <View style={goStyles.innerCol}>
+        {/* TOP: winner celebration (compact, horizontal) */}
+        <Animated.View style={[goStyles.celebRow, celebStyle]}>
+          <Animated.View style={[goStyles.celebGlow, glowAnim]} />
+          <View style={goStyles.trophyCircle}>
+            <LinearGradient
+              colors={[Colors.gold, Colors.goldDark]}
+              style={goStyles.trophyGradient}
+            >
+              <Ionicons name="trophy" size={26} color="#0A1F18" />
+            </LinearGradient>
+          </View>
+          <View style={goStyles.celebTextBlock}>
             <Text style={goStyles.winnerName} numberOfLines={1}>
               {winnerName}
             </Text>
-            <Text style={goStyles.winnerSubtitle}>Vincitore</Text>
-          </Animated.View>
-
-          <View style={goStyles.statsRow}>
-            <View style={goStyles.statItem}>
-              <Ionicons name="people" size={14} color={Colors.gold} />
-              <Text style={goStyles.statValue}>{gameState.players.length}</Text>
-              <Text style={goStyles.statLabel}>Giocatori</Text>
+            <Text style={goStyles.winnerSubtitle}>VINCITORE · Online</Text>
+          </View>
+          <View style={goStyles.statPills}>
+            <View style={goStyles.statPill}>
+              <Ionicons name="people" size={11} color={Colors.gold} />
+              <Text style={goStyles.statPillText}>{gameState.players.length}P</Text>
             </View>
-            <View style={goStyles.statItem}>
+            <View style={goStyles.statPill}>
               <Ionicons
                 name={gameState.gameMode === "teams" ? "people-circle" : "person-circle"}
-                size={14}
-                color={Colors.gold}
+                size={11}
+                color={Colors.textMuted}
               />
-              <Text style={goStyles.statValue}>
+              <Text style={goStyles.statPillText}>
                 {gameState.gameMode === "teams" ? "Coppie" : "Libero"}
               </Text>
-              <Text style={goStyles.statLabel}>Modalità</Text>
             </View>
           </View>
+        </Animated.View>
 
-          <View style={goStyles.actions}>
-            <Pressable onPress={onLeave} style={goStyles.homeBtn}>
-              <Ionicons name="home" size={16} color={Colors.textSecondary} />
-              <Text style={goStyles.homeBtnText}>Esci</Text>
-            </Pressable>
-            <Pressable
-              testID="btn-rivincita"
-              onPress={hasVoted ? undefined : onVoteRematch}
-              style={[goStyles.rematchBtn, hasVoted && goStyles.rematchBtnDim]}
-            >
-              <LinearGradient
-                colors={hasVoted ? [Colors.bgSurface, Colors.bgSurface] : [Colors.gold, Colors.goldDark]}
-                start={{ x: 0, y: 0 }}
-                end={{ x: 1, y: 1 }}
-                style={goStyles.rematchGradient}
-              >
-                <Ionicons
-                  name={hasVoted ? "checkmark-circle" : "refresh"}
-                  size={16}
-                  color={hasVoted ? Colors.accent : "#0A1F18"}
-                />
-                <Text
-                  style={[goStyles.rematchText, hasVoted && { color: Colors.textMuted }]}
-                  numberOfLines={1}
-                >
-                  {hasVoted
-                    ? `${voteCount}/${voteTotal} vogliono giocare`
-                    : "Rivincita"}
-                </Text>
-              </LinearGradient>
-            </Pressable>
-          </View>
-        </View>
+        {/* MIDDLE: rankings */}
+        <Text style={goStyles.sectionTitle}>CLASSIFICA</Text>
+        <ScrollView
+          showsVerticalScrollIndicator={false}
+          style={goStyles.rankScroll}
+          contentContainerStyle={goStyles.rankList}
+        >
+          {gameState.rankings.map((name, i) => {
+            const cumPts = cumulativeScores[name];
+            return (
+              <RankCard
+                key={i}
+                rank={i}
+                name={name}
+                isWinner={i === 0}
+                delay={i * 80 + 300}
+                cumPts={cumPts}
+              />
+            );
+          })}
+        </ScrollView>
 
-        {/* RIGHT: rankings */}
-        <View style={goStyles.rightCol}>
-          <Text style={goStyles.sectionTitle}>CLASSIFICA</Text>
-          <ScrollView
-            showsVerticalScrollIndicator={false}
-            style={{ flex: 1 }}
-            contentContainerStyle={goStyles.rankList}
+        {/* BOTTOM: actions */}
+        <View style={goStyles.actions}>
+          <Pressable onPress={onLeave} style={goStyles.homeBtn}>
+            <Ionicons name="home" size={15} color={Colors.textSecondary} />
+            <Text style={goStyles.homeBtnText}>Esci</Text>
+          </Pressable>
+          <Pressable
+            testID="btn-rivincita"
+            onPress={hasVoted ? undefined : onVoteRematch}
+            style={[goStyles.rematchBtn, hasVoted && goStyles.rematchBtnDim]}
           >
-            {gameState.rankings.map((name, i) => {
-              const cumPts = cumulativeScores[name];
-              return (
-                <RankCard
-                  key={i}
-                  rank={i}
-                  name={name}
-                  isWinner={i === 0}
-                  delay={i * 80 + 300}
-                  cumPts={cumPts}
-                />
-              );
-            })}
-          </ScrollView>
-          <View style={goStyles.legend}>
-            <Ionicons name="wifi" size={10} color={Colors.accent} />
-            <Text style={goStyles.legendText}>Online</Text>
-          </View>
+            <LinearGradient
+              colors={hasVoted ? [Colors.bgSurface, Colors.bgSurface] : [Colors.gold, Colors.goldDark]}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 1 }}
+              style={goStyles.rematchGradient}
+            >
+              <Ionicons
+                name={hasVoted ? "checkmark-circle" : "refresh"}
+                size={15}
+                color={hasVoted ? Colors.accent : "#0A1F18"}
+              />
+              <Text
+                style={[goStyles.rematchText, hasVoted && { color: Colors.textMuted }]}
+                numberOfLines={1}
+              >
+                {hasVoted
+                  ? `${voteCount}/${voteTotal} vogliono giocare`
+                  : "Rivincita"}
+              </Text>
+            </LinearGradient>
+          </Pressable>
         </View>
       </View>
     </Animated.View>
@@ -1131,78 +1123,105 @@ const goStyles = StyleSheet.create({
   overlay: {
     ...StyleSheet.absoluteFillObject,
     zIndex: 300,
-    paddingHorizontal: 16,
+    paddingHorizontal: 20,
   },
-  twoCol: {
+
+  innerCol: {
     flex: 1,
-    flexDirection: "row",
-    gap: 14,
-  },
-  leftCol: {
-    width: 190,
-    alignItems: "center",
-    justifyContent: "space-between",
-    paddingVertical: 8,
-  },
-  rightCol: {
-    flex: 1,
-    paddingVertical: 8,
-    gap: 8,
-  },
-  celebration: {
-    alignItems: "center",
+    flexDirection: "column",
     gap: 6,
+  },
+
+  /* Winner celebration — compact horizontal strip */
+  celebRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    backgroundColor: "rgba(201,168,76,0.06)",
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: "rgba(201,168,76,0.25)",
+    paddingVertical: 8,
+    paddingHorizontal: 12,
     position: "relative",
+    overflow: "hidden",
   },
   celebGlow: {
     position: "absolute",
-    width: 120,
-    height: 120,
-    borderRadius: 60,
+    width: 100,
+    height: 100,
+    borderRadius: 50,
     backgroundColor: Colors.gold,
-    opacity: 0.12,
-    top: -10,
-    alignSelf: "center",
+    opacity: 0.08,
+    left: -20,
+    top: -30,
   },
   trophyCircle: {
-    width: 64,
-    height: 64,
-    borderRadius: 32,
+    width: 44,
+    height: 44,
+    borderRadius: 22,
     overflow: "hidden",
     borderWidth: 2,
     borderColor: Colors.gold,
+    flexShrink: 0,
   },
   trophyGradient: { flex: 1, alignItems: "center", justifyContent: "center" },
+  celebTextBlock: {
+    flex: 1,
+    minWidth: 0,
+    gap: 1,
+  },
   winnerName: {
     fontFamily: "Rajdhani_700Bold",
-    fontSize: 20,
+    fontSize: 18,
     color: Colors.text,
     letterSpacing: 1,
-    maxWidth: 175,
-    textAlign: "center",
   },
   winnerSubtitle: {
     fontFamily: "Inter_500Medium",
-    fontSize: 10,
+    fontSize: 9,
     color: Colors.gold,
-    letterSpacing: 2,
+    letterSpacing: 1.5,
     textTransform: "uppercase",
+  },
+  statPills: {
+    flexDirection: "row",
+    gap: 5,
+    flexShrink: 0,
+  },
+  statPill: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 3,
+    backgroundColor: Colors.bgSurface,
+    borderRadius: 6,
+    paddingHorizontal: 6,
+    paddingVertical: 3,
+    borderWidth: 1,
+    borderColor: Colors.border,
+  },
+  statPillText: {
+    fontFamily: "Rajdhani_600SemiBold",
+    fontSize: 10,
+    color: Colors.textMuted,
   },
 
   sectionTitle: {
     fontFamily: "Inter_600SemiBold",
-    fontSize: 10,
+    fontSize: 9,
     color: Colors.textMuted,
     letterSpacing: 2,
+    textTransform: "uppercase",
   },
-  rankList: { gap: 5, paddingBottom: 4 },
+  rankScroll: { flex: 1 },
+  rankList: { gap: 4, paddingBottom: 2 },
   rankCard: {
     flexDirection: "row",
     alignItems: "center",
     gap: 8,
     backgroundColor: Colors.bgSurface,
     borderRadius: 10,
-    paddingVertical: 8,
+    paddingVertical: 7,
     paddingHorizontal: 10,
     borderWidth: 1,
     borderColor: Colors.border,
@@ -1210,15 +1229,15 @@ const goStyles = StyleSheet.create({
   },
   rankCardWinner: { borderColor: Colors.gold },
   positionBadge: {
-    width: 26,
-    height: 26,
-    borderRadius: 13,
+    width: 24,
+    height: 24,
+    borderRadius: 12,
     borderWidth: 1.5,
     alignItems: "center",
     justifyContent: "center",
     flexShrink: 0,
   },
-  positionLabel: { fontFamily: "Rajdhani_700Bold", fontSize: 11 },
+  positionLabel: { fontFamily: "Rajdhani_700Bold", fontSize: 10 },
   playerName: {
     fontFamily: "Rajdhani_600SemiBold",
     fontSize: 13,
@@ -1240,48 +1259,17 @@ const goStyles = StyleSheet.create({
     color: Colors.gold,
   },
 
-  statsRow: { flexDirection: "row", gap: 6, width: "100%" },
-  statItem: {
-    flex: 1,
-    backgroundColor: Colors.bgSurface,
-    borderRadius: 8,
-    padding: 8,
-    alignItems: "center",
-    gap: 3,
-    borderWidth: 1,
-    borderColor: Colors.border,
-  },
-  statValue: {
-    fontFamily: "Rajdhani_700Bold",
-    fontSize: 12,
-    color: Colors.text,
-  },
-  statLabel: {
-    fontFamily: "Inter_400Regular",
-    fontSize: 9,
-    color: Colors.textMuted,
-  },
-
-  legend: {
+  actions: {
     flexDirection: "row",
-    alignItems: "center",
-    gap: 4,
-    marginTop: 2,
+    gap: 8,
   },
-  legendText: {
-    fontFamily: "Inter_400Regular",
-    fontSize: 9,
-    color: Colors.textMuted,
-  },
-
-  actions: { width: "100%", gap: 8 },
   homeBtn: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
-    gap: 6,
-    paddingVertical: 10,
-    paddingHorizontal: 16,
+    gap: 5,
+    paddingVertical: 9,
+    paddingHorizontal: 14,
     borderRadius: 12,
     backgroundColor: Colors.bgSurface,
     borderWidth: 1,
@@ -1289,22 +1277,22 @@ const goStyles = StyleSheet.create({
   },
   homeBtnText: {
     fontFamily: "Rajdhani_600SemiBold",
-    fontSize: 14,
+    fontSize: 13,
     color: Colors.textSecondary,
   },
-  rematchBtn: { borderRadius: 12, overflow: "hidden" },
+  rematchBtn: { flex: 1, borderRadius: 12, overflow: "hidden" },
   rematchBtnDim: { opacity: 0.6 },
   rematchGradient: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
-    gap: 8,
-    paddingVertical: 10,
-    paddingHorizontal: 16,
+    gap: 6,
+    paddingVertical: 9,
+    paddingHorizontal: 14,
   },
   rematchText: {
     fontFamily: "Rajdhani_700Bold",
-    fontSize: 14,
+    fontSize: 13,
     color: "#0A1F18",
     letterSpacing: 0.5,
     flexShrink: 1,
