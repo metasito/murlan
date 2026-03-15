@@ -938,7 +938,7 @@ export function setupSocket(httpServer: HttpServer) {
               if (g) {
                 g.rematchVotes?.delete(userId);
                 const seatKey = Object.entries(g.playerMap).find(([, uid]) => uid === userId)?.[0];
-                if (seatKey) delete g.playerMap[seatKey as any];
+                if (seatKey) delete g.playerMap[Number(seatKey)];
                 const remainingPlayerIds = Object.values(g.playerMap);
 
                 db.update(activeGamesTable)
