@@ -369,6 +369,7 @@ export default function OnlineGameScreen() {
     reactions,
     mySeatIndex,
     playerLeft,
+    reconnectNotice,
     playCards,
     pass,
     giveExchangeCard,
@@ -709,6 +710,13 @@ export default function OnlineGameScreen() {
           onSelect={handleReaction}
           onClose={() => setShowReactions(false)}
         />
+      )}
+
+      {reconnectNotice && (
+        <View style={localStyles.reconnectBanner}>
+          <Ionicons name="wifi" size={14} color="#FFD700" />
+          <Text style={localStyles.reconnectBannerText} numberOfLines={1}>{reconnectNotice}</Text>
+        </View>
       )}
 
       {/* Table background — clips to rounded corners, decoration only */}
@@ -1116,6 +1124,25 @@ const localStyles = StyleSheet.create({
     color: "rgba(201,168,76,0.4)",
     letterSpacing: 0.5,
     textAlign: "center",
+  },
+
+  reconnectBanner: {
+    position: "absolute",
+    top: 2,
+    alignSelf: "center",
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    backgroundColor: "rgba(0,0,0,0.75)",
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 5,
+    zIndex: 50,
+  },
+  reconnectBannerText: {
+    fontFamily: "Inter_500Medium",
+    fontSize: 12,
+    color: "#FFD700",
   },
 });
 

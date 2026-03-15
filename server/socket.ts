@@ -228,11 +228,33 @@ export function setupSocket(httpServer: HttpServer) {
     userSocketMap.set(userId, socket.id);
     logger.debug({ userId, username, socketId: socket.id }, "Socket connected");
 
-    // Cancel any pending disconnect-timeout for this user (they reconnected in time)
     const pendingDcTimer = disconnectTimers.get(userId);
     if (pendingDcTimer) {
       clearTimeout(pendingDcTimer);
       disconnectTimers.delete(userId);
+
+      for (const [roomId, game] of activeGames.entries()) {
+        const seatEntry = Object.entries(game.playerMap).find(([, uid]) => uid === userId);
+        if (seatEntry && !game.gameState.gameOver) {
+          socket.join(roomId);
+          socketRoomMap.set(socket.id, roomId);
+          socket.emit(
+            "game:state",
+            sanitizeStateForPlayer(game.gameState, userId, game.playerMap)
+          );
+          io.to(roomId).emit("game:player_reconnected", {
+            userId,
+            username,
+          });
+
+          const currentIdx = game.gameState.currentTurnIndex;
+          if (game.playerMap[currentIdx] === userId) {
+            startAfkTimer(roomId, userId, username);
+          }
+          logger.info({ userId, username, roomId }, "Player reconnected within grace period");
+          break;
+        }
+      }
     }
 
     emitFriendStatus(io, userId, true);
@@ -738,7 +760,6 @@ export function setupSocket(httpServer: HttpServer) {
 
         const game = activeGames.get(roomCode);
         if (game) {
-          // Re-add player to roomPlayers if they were removed during disconnect window
           const seatEntry = Object.entries(game.playerMap).find(([, uid]) => uid === userId);
           if (seatEntry) {
             const seatIndex = parseInt(seatEntry[0]);
@@ -755,6 +776,10 @@ export function setupSocket(httpServer: HttpServer) {
             )
           );
         }
+        io.to(roomCode).emit("game:player_reconnected", {
+          userId,
+          username: socket.data.username ?? userId,
+        });
         logger.info({ userId, roomCode }, "Player rejoined game");
       } catch (err) {
         logger.error({ err, roomCode, userId }, "game:rejoin failed");
@@ -853,16 +878,19 @@ export function setupSocket(httpServer: HttpServer) {
       emitFriendStatusOffline(io, userId, lastSeen);
 
       const currentRoomId = socketRoomMap.get(socket.id);
+      socketRoomMap.delete(socket.id);
+
       if (currentRoomId) {
         clearAfkTimer(currentRoomId, userId);
         const game = activeGames.get(currentRoomId);
+
         if (game && !game.gameState.gameOver) {
           io.to(currentRoomId).emit("game:player_disconnected", {
             userId,
+            username,
             message: `${username} si è disconnesso. Ha 60 secondi per rientrare.`,
           });
 
-          // Cancel any existing disconnect timer for this player
           const prevTimer = disconnectTimers.get(userId);
           if (prevTimer) clearTimeout(prevTimer);
 
@@ -874,17 +902,32 @@ export function setupSocket(httpServer: HttpServer) {
             );
             if (stillGone) {
               handleAutoPass(currentRoomId, userId);
-              io.to(currentRoomId).emit("game:notification", {
-                type: "disconnect_timeout",
-                message: `${username} non è rientrato — passato automaticamente`,
+              await storage.removeRoomPlayer(currentRoomId, userId).catch(() => {});
+              const g = activeGames.get(currentRoomId);
+              if (g) {
+                g.rematchVotes?.delete(userId);
+                delete g.playerMap[
+                  Object.entries(g.playerMap).find(([, uid]) => uid === userId)?.[0] as string
+                ];
+                const remainingPlayerIds = Object.values(g.playerMap);
+                if (remainingPlayerIds.length <= 1) {
+                  activeGames.delete(currentRoomId);
+                  await storage.updateRoomStatus(currentRoomId, "finished").catch(() => {});
+                }
+              }
+
+              io.to(currentRoomId).emit("game:player_left", {
+                userId,
+                username,
               });
+              logger.info({ userId, username, roomId: currentRoomId }, "Player disconnect timeout — removed from game");
             }
           }, 60_000);
           disconnectTimers.set(userId, dcTimer);
+        } else {
+          await handleLeaveRoom_lobby(io, currentRoomId, userId, username);
         }
       }
-
-      await handleLeaveRoom(io, socket, userId);
     });
   });
 
@@ -913,6 +956,12 @@ async function handleLeaveRoom(
   if (!roomId) return;
   socketRoomMap.delete(socket.id);
 
+  const dcTimer = disconnectTimers.get(userId);
+  if (dcTimer) {
+    clearTimeout(dcTimer);
+    disconnectTimers.delete(userId);
+  }
+
   await storage.removeRoomPlayer(roomId, userId);
   socket.leave(roomId);
 
@@ -925,10 +974,16 @@ async function handleLeaveRoom(
       await storage.updateRoomStatus(roomId, "finished");
       return;
     }
+    let newHostId = room.hostUserId;
+    if (room.hostUserId === userId) {
+      const nextHost = remaining.sort((a, b) => a.seatIndex - b.seatIndex)[0];
+      newHostId = nextHost.userId;
+      await storage.updateRoomHost(roomId, newHostId).catch(() => {});
+    }
     io.to(roomId).emit("room:state", {
       roomId: room.id,
       code: room.code,
-      hostUserId: room.hostUserId,
+      hostUserId: newHostId,
       status: room.status,
       gameMode: room.gameMode,
       maxPlayers: room.maxPlayers,
@@ -947,6 +1002,50 @@ async function handleLeaveRoom(
       userId,
       username: socket.data?.username ?? userId,
     });
+  }
+}
+
+async function handleLeaveRoom_lobby(
+  io: SocketServer,
+  roomId: string,
+  userId: string,
+  username: string
+) {
+  await storage.removeRoomPlayer(roomId, userId).catch(() => {});
+
+  const room = await storage.getRoomById(roomId);
+  if (!room) return;
+
+  if (room.status === "waiting") {
+    const remaining = await storage.getRoomPlayers(roomId);
+    if (remaining.length === 0) {
+      await storage.updateRoomStatus(roomId, "finished");
+      return;
+    }
+    let newHostId = room.hostUserId;
+    if (room.hostUserId === userId) {
+      const nextHost = remaining.sort((a, b) => a.seatIndex - b.seatIndex)[0];
+      newHostId = nextHost.userId;
+      await storage.updateRoomHost(roomId, newHostId).catch(() => {});
+    }
+    io.to(roomId).emit("room:state", {
+      roomId: room.id,
+      code: room.code,
+      hostUserId: newHostId,
+      status: room.status,
+      gameMode: room.gameMode,
+      maxPlayers: room.maxPlayers,
+      players: remaining.map((p) => ({
+        seatIndex: p.seatIndex,
+        userId: p.userId,
+        username: p.user.username,
+      })),
+    });
+  } else if (room.status === "finished") {
+    const remaining = await storage.getRoomPlayers(roomId);
+    if (remaining.length === 0) {
+      await storage.updateRoomStatus(roomId, "finished");
+    }
   }
 }
 

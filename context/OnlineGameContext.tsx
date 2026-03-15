@@ -41,6 +41,8 @@ interface OnlineGameContextValue {
   connected: boolean;
   error: string | null;
   playerLeft: boolean;
+  disconnectedPlayers: Set<string>;
+  reconnectNotice: string | null;
   mySeatIndex: number;
   entrySource: "quickmatch" | "friends" | null;
   rematchVoteState: RematchVoteState | null;
@@ -78,20 +80,33 @@ export function OnlineGameProvider({ userId, children }: { userId: string; child
   const [cumulativeScores, setCumulativeScores] = useState<Record<string, number>>({});
   const [exchangeAnnouncing, setExchangeAnnouncing] = useState(false);
   const [exchangeAnnounceData, setExchangeAnnounceData] = useState<ExchangeAnnounceData | null>(null);
+  const [disconnectedPlayers, setDisconnectedPlayers] = useState<Set<string>>(new Set());
+  const [reconnectNotice, setReconnectNotice] = useState<string | null>(null);
 
   const prevExchangeActiveRef = useRef(false);
   const prevGameStateRef = useRef<GameState | null>(null);
   const prevBothJokersExceptionRef = useRef(false);
   const validSeatIndexRef = useRef<number | null>(null);
+  const roomRef = useRef<RoomState | null>(null);
+  const gameStateRef = useRef<GameState | null>(null);
 
-  // Always use the singleton socket — already connected by SocketProvider
   const socket: Socket = getSocket(userId);
 
   useEffect(() => {
-    const onConnect = () => setConnected(true);
+    const onConnect = () => {
+      setConnected(true);
+      const currentRoom = roomRef.current;
+      const currentGame = gameStateRef.current;
+      if (currentRoom && currentGame && !currentGame.gameOver) {
+        socket.emit("game:rejoin", { roomCode: currentRoom.roomId });
+      }
+    };
     const onDisconnect = () => setConnected(false);
 
-    const onRoomState = (data: RoomState) => setRoom(data);
+    const onRoomState = (data: RoomState) => {
+      roomRef.current = data;
+      setRoom(data);
+    };
     const onRoomError = ({ message }: { message: string }) => setError(message);
     const onGameState = (state: GameState) => {
       const wasActive = prevExchangeActiveRef.current;
@@ -111,7 +126,6 @@ export function OnlineGameProvider({ userId, children }: { userId: string; child
         setExchangeAnnouncing(true);
       }
 
-      // Show "Jolly doppio" banner only when bothJokersException transitions false → true
       const prevBothJolly = prevBothJokersExceptionRef.current;
       const currBothJolly = state.exchangePhase?.bothJokersException ?? false;
       prevBothJokersExceptionRef.current = currBothJolly;
@@ -128,6 +142,7 @@ export function OnlineGameProvider({ userId, children }: { userId: string; child
       }
 
       prevGameStateRef.current = state;
+      gameStateRef.current = state;
       setGameState(state);
       setRematchVoteState(null);
     };
@@ -142,6 +157,33 @@ export function OnlineGameProvider({ userId, children }: { userId: string; child
       setTimeout(() => setReactions((prev) => prev.filter((x) => x.id !== id)), 2500);
     };
     const onPlayerLeft = () => setPlayerLeft(true);
+    const onPlayerDisconnected = ({ userId: dcUserId, username: dcUsername }: { userId: string; username: string; message: string }) => {
+      setDisconnectedPlayers((prev) => {
+        const next = new Set(prev);
+        next.add(dcUserId);
+        return next;
+      });
+      setReconnectNotice(`${dcUsername} si è disconnesso. Ha 60 secondi per rientrare.`);
+    };
+    const onPlayerReconnected = ({ userId: rcUserId, username: rcUsername }: { userId: string; username: string }) => {
+      setDisconnectedPlayers((prev) => {
+        const next = new Set(prev);
+        next.delete(rcUserId);
+        return next;
+      });
+      setReconnectNotice(`${rcUsername} si è riconnesso!`);
+      setTimeout(() => setReconnectNotice((cur) => cur === `${rcUsername} si è riconnesso!` ? null : cur), 3000);
+    };
+    const onRejoinFailed = () => {
+      gameStateRef.current = null;
+      setGameState(null);
+      setRoom(null);
+      roomRef.current = null;
+      setPlayerLeft(false);
+      setDisconnectedPlayers(new Set());
+      setReconnectNotice(null);
+      setError("Non è stato possibile rientrare nella partita.");
+    };
 
     socket.on("connect", onConnect);
     socket.on("disconnect", onDisconnect);
@@ -154,8 +196,10 @@ export function OnlineGameProvider({ userId, children }: { userId: string; child
     socket.on("game:vote_state", onVoteState);
     socket.on("game:reaction", onReaction);
     socket.on("game:player_left", onPlayerLeft);
+    socket.on("game:player_disconnected", onPlayerDisconnected);
+    socket.on("game:player_reconnected", onPlayerReconnected);
+    socket.on("game:rejoin_failed", onRejoinFailed);
 
-    // Sync connection state immediately
     if (socket.connected) setConnected(true);
 
     return () => {
@@ -170,6 +214,9 @@ export function OnlineGameProvider({ userId, children }: { userId: string; child
       socket.off("game:vote_state", onVoteState);
       socket.off("game:reaction", onReaction);
       socket.off("game:player_left", onPlayerLeft);
+      socket.off("game:player_disconnected", onPlayerDisconnected);
+      socket.off("game:player_reconnected", onPlayerReconnected);
+      socket.off("game:rejoin_failed", onRejoinFailed);
     };
   }, [userId]);
 
@@ -193,10 +240,14 @@ export function OnlineGameProvider({ userId, children }: { userId: string; child
   const leaveRoom = useCallback(() => {
     socket.emit("room:leave");
     setRoom(null);
+    roomRef.current = null;
     setGameState(null);
+    gameStateRef.current = null;
     setRematchVoteState(null);
     setCumulativeScores({});
     setPlayerLeft(false);
+    setDisconnectedPlayers(new Set());
+    setReconnectNotice(null);
     validSeatIndexRef.current = null;
     prevBothJokersExceptionRef.current = false;
     prevExchangeActiveRef.current = false;
@@ -255,6 +306,8 @@ export function OnlineGameProvider({ userId, children }: { userId: string; child
         connected,
         error,
         playerLeft,
+        disconnectedPlayers,
+        reconnectNotice,
         mySeatIndex,
         entrySource,
         rematchVoteState,

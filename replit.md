@@ -65,6 +65,7 @@ Murlan is built with a client-server architecture.
 - **Rematch System:** Vote-based rematch system (`game:rematch_vote`) in online multiplayer, requiring all players to agree.
 - **Session Store:** Uses `express-session` + `connect-pg-simple` with `tableName: "session"` (matches existing DB table), `createTableIfMissing: false`. DB table was pre-created.
 - **Game Persistence:** `active_games` table persists live game state to PostgreSQL after every move. Reconnect grace: 60s.
+- **Disconnect/Reconnect:** On socket disconnect during an in-progress game, the server does NOT immediately remove the player. It emits `game:player_disconnected` and starts a 60-second grace timer. If the player reconnects within 60s, they are auto-restored to their room. If not, `game:player_left` fires and the player is removed. The client emits `game:rejoin` on socket connect if it has an active game, handling both brief disconnects and server restarts. `handleLeaveRoom` is only called for intentional `room:leave` events. `handleLeaveRoom_lobby` handles lobby-only disconnect cleanup (including host transfer).
 - **AFK Handling:** 30s timer auto-passes for inactive players. Clears on each move/pass.
 - **Settings:** `SettingsContext` provides sound/haptic toggles. `SettingsModal` component accessible from home screen.
 - **Offline Detection:** `OfflineBanner` uses `@react-native-community/netinfo`. Always-mounted; animation-controlled visibility. Only flags offline when `state.isConnected === false` (no false-positives from null values).
