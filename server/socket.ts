@@ -741,6 +741,34 @@ export function setupSocket(httpServer: HttpServer) {
 
     socket.on("game:rejoin", async ({ roomCode }: { roomCode: string }) => {
       try {
+        const existingGame = activeGames.get(roomCode);
+        if (existingGame) {
+          const inPlayerMap = Object.values(existingGame.playerMap).includes(userId);
+          if (!inPlayerMap) {
+            socket.emit("game:rejoin_failed", { reason: "Non autorizzato" });
+            return;
+          }
+
+          socket.join(roomCode);
+          socketRoomMap.set(socket.id, roomCode);
+
+          const seatEntry = Object.entries(existingGame.playerMap).find(([, uid]) => uid === userId);
+          if (seatEntry) {
+            const seatIndex = parseInt(seatEntry[0]);
+            await storage.addRoomPlayer(roomCode, userId, seatIndex).catch(() => {});
+          }
+          socket.emit(
+            "game:state",
+            sanitizeStateForPlayer(existingGame.gameState, userId, existingGame.playerMap)
+          );
+          io.to(roomCode).emit("game:player_reconnected", {
+            userId,
+            username: socket.data.username ?? userId,
+          });
+          logger.info({ userId, roomCode }, "Player rejoined game (from memory)");
+          return;
+        }
+
         const row = await db.query.activeGames.findFirst({
           where: eq(activeGamesTable.roomCode, roomCode),
         });
@@ -758,20 +786,17 @@ export function setupSocket(httpServer: HttpServer) {
         socket.join(roomCode);
         socketRoomMap.set(socket.id, roomCode);
 
-        let game = activeGames.get(roomCode);
-        if (!game) {
-          const restoredState = row.gameState as GameState;
-          game = {
-            roomId: roomCode,
-            gameState: restoredState,
-            playerMap: Object.fromEntries(ids.map((id, i) => [i, id])),
-            socketMap: {},
-            rematchVotes: new Set(),
-            cumulativeScores: {},
-          };
-          activeGames.set(roomCode, game);
-          logger.info({ roomCode }, "Rehydrated activeGames from DB after server restart");
-        }
+        const restoredState = row.gameState as GameState;
+        const game: OnlineGameState = {
+          roomId: roomCode,
+          gameState: restoredState,
+          playerMap: Object.fromEntries(ids.map((id, i) => [i, id])),
+          socketMap: {},
+          rematchVotes: new Set(),
+          cumulativeScores: {},
+        };
+        activeGames.set(roomCode, game);
+        logger.info({ roomCode }, "Rehydrated activeGames from DB after server restart");
 
         const seatEntry = Object.entries(game.playerMap).find(([, uid]) => uid === userId);
         if (seatEntry) {
@@ -786,7 +811,7 @@ export function setupSocket(httpServer: HttpServer) {
           userId,
           username: socket.data.username ?? userId,
         });
-        logger.info({ userId, roomCode }, "Player rejoined game");
+        logger.info({ userId, roomCode }, "Player rejoined game (from DB)");
       } catch (err) {
         logger.error({ err, roomCode, userId }, "game:rejoin failed");
         socket.emit("game:rejoin_failed", { reason: "Errore del server" });
@@ -912,12 +937,20 @@ export function setupSocket(httpServer: HttpServer) {
               const g = activeGames.get(currentRoomId);
               if (g) {
                 g.rematchVotes?.delete(userId);
-                delete g.playerMap[
-                  Object.entries(g.playerMap).find(([, uid]) => uid === userId)?.[0] as string
-                ];
+                const seatKey = Object.entries(g.playerMap).find(([, uid]) => uid === userId)?.[0];
+                if (seatKey) delete g.playerMap[seatKey as any];
                 const remainingPlayerIds = Object.values(g.playerMap);
+
+                db.update(activeGamesTable)
+                  .set({ playerIds: remainingPlayerIds as any, updatedAt: new Date() })
+                  .where(eq(activeGamesTable.roomCode, currentRoomId))
+                  .catch((err: unknown) => logger.error({ err, roomId: currentRoomId }, "Failed to update playerIds after timeout"));
+
                 if (remainingPlayerIds.length <= 1) {
                   activeGames.delete(currentRoomId);
+                  db.delete(activeGamesTable)
+                    .where(eq(activeGamesTable.roomCode, currentRoomId))
+                    .catch(() => {});
                   await storage.updateRoomStatus(currentRoomId, "finished").catch(() => {});
                 }
               }
