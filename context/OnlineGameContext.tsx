@@ -173,8 +173,10 @@ export function OnlineGameProvider({ userId, children }: { userId: string; child
         next.delete(rcUserId);
         return next;
       });
-      setReconnectNotice(`${rcUsername} si è riconnesso!`);
-      setTimeout(() => setReconnectNotice((cur) => cur === `${rcUsername} si è riconnesso!` ? null : cur), 3000);
+      if (rcUserId !== userId) {
+        setReconnectNotice(`${rcUsername} si è riconnesso!`);
+        setTimeout(() => setReconnectNotice((cur) => cur === `${rcUsername} si è riconnesso!` ? null : cur), 3000);
+      }
     };
     const onRejoinFailed = () => {
       gameStateRef.current = null;
