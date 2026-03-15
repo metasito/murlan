@@ -41,6 +41,7 @@ interface OnlineGameContextValue {
   connected: boolean;
   error: string | null;
   playerLeft: boolean;
+  rejoinFailed: boolean;
   disconnectedPlayers: Set<string>;
   reconnectNotice: string | null;
   mySeatIndex: number;
@@ -80,6 +81,7 @@ export function OnlineGameProvider({ userId, children }: { userId: string; child
   const [cumulativeScores, setCumulativeScores] = useState<Record<string, number>>({});
   const [exchangeAnnouncing, setExchangeAnnouncing] = useState(false);
   const [exchangeAnnounceData, setExchangeAnnounceData] = useState<ExchangeAnnounceData | null>(null);
+  const [rejoinFailed, setRejoinFailed] = useState(false);
   const [disconnectedPlayers, setDisconnectedPlayers] = useState<Set<string>>(new Set());
   const [reconnectNotice, setReconnectNotice] = useState<string | null>(null);
 
@@ -182,7 +184,7 @@ export function OnlineGameProvider({ userId, children }: { userId: string; child
       setPlayerLeft(false);
       setDisconnectedPlayers(new Set());
       setReconnectNotice(null);
-      setError("Non è stato possibile rientrare nella partita.");
+      setRejoinFailed(true);
     };
 
     socket.on("connect", onConnect);
@@ -246,6 +248,7 @@ export function OnlineGameProvider({ userId, children }: { userId: string; child
     setRematchVoteState(null);
     setCumulativeScores({});
     setPlayerLeft(false);
+    setRejoinFailed(false);
     setDisconnectedPlayers(new Set());
     setReconnectNotice(null);
     validSeatIndexRef.current = null;
@@ -306,6 +309,7 @@ export function OnlineGameProvider({ userId, children }: { userId: string; child
         connected,
         error,
         playerLeft,
+        rejoinFailed,
         disconnectedPlayers,
         reconnectNotice,
         mySeatIndex,

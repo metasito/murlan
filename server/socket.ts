@@ -758,24 +758,30 @@ export function setupSocket(httpServer: HttpServer) {
         socket.join(roomCode);
         socketRoomMap.set(socket.id, roomCode);
 
-        const game = activeGames.get(roomCode);
-        if (game) {
-          const seatEntry = Object.entries(game.playerMap).find(([, uid]) => uid === userId);
-          if (seatEntry) {
-            const seatIndex = parseInt(seatEntry[0]);
-            await storage.addRoomPlayer(roomCode, userId, seatIndex).catch(() => {});
-          }
-          socket.emit(
-            "game:state",
-            sanitizeStateForPlayer(game.gameState, userId, game.playerMap)
-          );
-        } else {
-          socket.emit("game:state",
-            sanitizeStateForPlayer(row.gameState as GameState, userId,
-              Object.fromEntries(ids.map((id, i) => [i, id]))
-            )
-          );
+        let game = activeGames.get(roomCode);
+        if (!game) {
+          const restoredState = row.gameState as GameState;
+          game = {
+            roomId: roomCode,
+            gameState: restoredState,
+            playerMap: Object.fromEntries(ids.map((id, i) => [i, id])),
+            socketMap: {},
+            rematchVotes: new Set(),
+            cumulativeScores: {},
+          };
+          activeGames.set(roomCode, game);
+          logger.info({ roomCode }, "Rehydrated activeGames from DB after server restart");
         }
+
+        const seatEntry = Object.entries(game.playerMap).find(([, uid]) => uid === userId);
+        if (seatEntry) {
+          const seatIndex = parseInt(seatEntry[0]);
+          await storage.addRoomPlayer(roomCode, userId, seatIndex).catch(() => {});
+        }
+        socket.emit(
+          "game:state",
+          sanitizeStateForPlayer(game.gameState, userId, game.playerMap)
+        );
         io.to(roomCode).emit("game:player_reconnected", {
           userId,
           username: socket.data.username ?? userId,

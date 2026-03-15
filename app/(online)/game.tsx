@@ -369,6 +369,7 @@ export default function OnlineGameScreen() {
     reactions,
     mySeatIndex,
     playerLeft,
+    rejoinFailed,
     reconnectNotice,
     playCards,
     pass,
@@ -525,6 +526,16 @@ export default function OnlineGameScreen() {
       { cancelable: false }
     );
   }, [playerLeft]);
+
+  useEffect(() => {
+    if (!rejoinFailed) return;
+    leaveRoom();
+    if (entrySource === "quickmatch") {
+      router.replace("/(online)/quickmatch");
+    } else {
+      router.replace("/(online)");
+    }
+  }, [rejoinFailed]);
 
   // Derive game-state-dependent values (safe to read before hooks — they guard with ?.optional)
   const me = gameState?.players[mySeatIndex];
