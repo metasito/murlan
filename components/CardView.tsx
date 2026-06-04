@@ -289,6 +289,7 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     borderWidth: 1,
     borderColor: "rgba(0,0,0,0.1)",
+    overflow: "hidden",
     ...Shadow.dark,
   },
   cardNormal: {
@@ -354,10 +355,10 @@ const styles = StyleSheet.create({
     fontSize: 8,
   },
   suitCenter: {
-    fontSize: 34,
+    fontSize: 30,
     textAlign: "center",
     fontFamily: Platform.OS === "ios" ? "System" : "sans-serif",
-    lineHeight: 40,
+    lineHeight: 34,
   },
   jokerFull: {
     flex: 1,
