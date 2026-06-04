@@ -244,6 +244,8 @@ export default function OnlineLobbyScreen() {
                   autoCapitalize="characters"
                   autoFocus={true}
                   maxLength={8}
+                  accessibilityLabel="Codice stanza"
+                  accessibilityHint="Inserisci il codice a 6 caratteri della stanza a cui vuoi unirti"
                 />
               </MenuCard>
               <View style={styles.modalRow}>

@@ -429,6 +429,8 @@ export default function FriendsScreen() {
               maxLength={30}
               onSubmitEditing={handleSearchUsername}
               returnKeyType="search"
+              accessibilityLabel="Ricerca username"
+              accessibilityHint="Digita lo username di un giocatore per cercarla e aggiungere come amico"
             />
             <Pressable
               onPress={handleSearchUsername}

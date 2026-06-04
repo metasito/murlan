@@ -76,6 +76,8 @@ function PlayerRow({ index, config, onChange, isHuman, lobbyMode }: PlayerRowPro
             style={styles.nameInput}
             placeholderTextColor={Colors.textMuted}
             maxLength={12}
+            accessibilityLabel="Nome giocatore intelligente"
+            accessibilityHint="Inserisci il nome per questo giocatore controllato dal computer"
           />
         ) : (
           <Text style={styles.playerName}>{config.name}</Text>

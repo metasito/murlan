@@ -117,6 +117,8 @@ export default function AuthScreen() {
                     autoCorrect={false}
                     returnKeyType="next"
                     onSubmitEditing={() => pwdRef.current?.focus()}
+                    accessibilityLabel="Nome utente"
+                    accessibilityHint="Inserisci il tuo nome utente per accedere o registrarti"
                   />
                 </View>
               </View>
@@ -136,6 +138,8 @@ export default function AuthScreen() {
                     autoCapitalize="none"
                     returnKeyType="done"
                     onSubmitEditing={handleSubmit}
+                    accessibilityLabel="Password"
+                    accessibilityHint="Inserisci la tua password per accedere"
                   />
                   <Pressable onPress={() => setShowPwd((v) => !v)} style={styles.eyeBtn}>
                     <Ionicons

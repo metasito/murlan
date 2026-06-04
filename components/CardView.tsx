@@ -178,11 +178,32 @@ export function CardView({
   const suitSymbol = getSuitSymbol(card.suit);
   const color = card.suit ? Colors[card.suit as keyof typeof Colors] : Colors.spade;
 
+  // Build accessible card description
+  const getSuitName = (suit: string | null) => {
+    switch (suit) {
+      case "hearts": return "Cuori";
+      case "diamonds": return "Quadri";
+      case "clubs": return "Fiori";
+      case "spades": return "Picche";
+      default: return "";
+    }
+  };
+
+  const getCardLabel = () => {
+    if (card.isJoker) {
+      return `Joker ${card.rank === "joker_colored" ? "colorato" : "nero"}`;
+    }
+    return `${rankText} di ${getSuitName(card.suit)}`;
+  };
+
   return (
     <Animated.View style={[animStyle, style]}>
       <Pressable
         onPress={handlePress}
         disabled={disabled || !onPress}
+        accessibilityLabel={getCardLabel()}
+        accessibilityRole="button"
+        accessibilityHint={selected ? "Selezionata" : undefined}
         style={[
           styles.card,
           small ? styles.cardSmall : styles.cardNormal,

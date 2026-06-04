@@ -101,8 +101,8 @@ export default function NotificationBanner({ notification, onDismiss }: Props) {
           <Text style={styles.title}>{notification?.title ?? ""}</Text>
           <Text style={styles.message} numberOfLines={1}>{notification?.message ?? ""}</Text>
         </View>
-        <Pressable onPress={handlePress} hitSlop={8} style={styles.closeBtn}>
-          <Ionicons name="close" size={16} color={Colors.textMuted} />
+        <Pressable onPress={handlePress} hitSlop={16} style={styles.closeBtn}>
+          <Ionicons name="close" size={20} color={Colors.textMuted} />
         </Pressable>
       </Pressable>
     </Animated.View>
