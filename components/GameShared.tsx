@@ -8,13 +8,13 @@ import Animated, {
   withSequence,
   withRepeat,
   Easing,
+  runOnJS,
   cancelAnimation,
   interpolate,
   Extrapolation,
   FadeIn,
   FadeOut,
 } from "react-native-reanimated";
-import { scheduleOnRN } from "react-native-worklets";
 import { Ionicons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
 import { CardView } from "@/components/CardView";
@@ -333,7 +333,7 @@ export function FlyingCards({
       withTiming(1.06, { duration: FLIGHT * 0.65, easing: Easing.out(Easing.cubic) }),
       withSpring(0.97, { damping: 18, stiffness: 320 }),
       withSpring(1.0, { damping: 30, stiffness: 180 }, (finished) => {
-        if (finished) scheduleOnRN(onDone);
+        if (finished) runOnJS(onDone)();
       })
     );
 
