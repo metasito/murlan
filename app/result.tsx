@@ -113,6 +113,7 @@ function WinnerCelebration({
   const scale = useSharedValue(0);
   const opacity = useSharedValue(0);
   const glow = useSharedValue(0.5);
+  const glowScale = useSharedValue(1.0);
   useEffect(() => {
     scale.value = withSpring(1, { damping: 8, stiffness: 150 });
     opacity.value = withTiming(1, { duration: 600 });
@@ -124,13 +125,24 @@ function WinnerCelebration({
       -1,
       false
     );
+    glowScale.value = withRepeat(
+      withSequence(
+        withTiming(1.15, { duration: 1200, easing: Easing.inOut(Easing.sin) }),
+        withTiming(1.0, { duration: 1200, easing: Easing.inOut(Easing.sin) })
+      ),
+      -1,
+      false
+    );
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
   }, []);
   const containerAnim = useAnimatedStyle(() => ({
     transform: [{ scale: scale.value }],
     opacity: opacity.value,
   }));
-  const glowAnim = useAnimatedStyle(() => ({ opacity: glow.value }));
+  const glowAnim = useAnimatedStyle(() => ({
+    opacity: glow.value,
+    transform: [{ scale: glowScale.value }],
+  }));
   const trophySize = compact ? 56 : 72;
   const iconSize = compact ? 28 : 36;
 

@@ -8,13 +8,13 @@ import Animated, {
   withSequence,
   withRepeat,
   Easing,
-  runOnJS,
   cancelAnimation,
   interpolate,
   Extrapolation,
   FadeIn,
   FadeOut,
 } from "react-native-reanimated";
+import { scheduleOnRN } from "react-native-worklets";
 import { Ionicons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
 import { CardView } from "@/components/CardView";
@@ -37,21 +37,15 @@ export type FlyDirection = "top" | "bottom" | "left" | "right";
 
 export const FLY_OFFSETS: Record<FlyDirection, { dx: number; dy: number }> = {
   bottom: { dx: 0, dy: 140 },
-  top: { dx: 0, dy: -100 },
-  left: { dx: -180, dy: 0 },
-  right: { dx: 180, dy: 0 },
+  top:    { dx: 0, dy: -100 },
+  left:   { dx: -180, dy: 0 },
+  right:  { dx: 180, dy: 0 },
 };
 const FLY_ROTS: Record<FlyDirection, number> = {
-  bottom: -12,
-  top: 12,
-  left: -18,
-  right: 18,
+  bottom: -12, top: 12, left: -18, right: 18,
 };
 const FLY_LANDING_ROTS: Record<FlyDirection, number> = {
-  bottom: -4,
-  top: 5,
-  left: -7,
-  right: 7,
+  bottom: -4, top: 5, left: -7, right: 7,
 };
 
 export function getOpponentPosition(
@@ -64,6 +58,52 @@ export function getOpponentPosition(
   if (steps === 2) return "top";
   return "left";
 }
+
+// ─── Table vignette ───────────────────────────────────────────────────────────
+
+export function TableVignette() {
+  return (
+    <View style={StyleSheet.absoluteFill} pointerEvents="none">
+      {/* Top edge */}
+      <LinearGradient
+        colors={["rgba(0,0,0,0.30)", "transparent"]}
+        style={vignetteStyles.top}
+        pointerEvents="none"
+      />
+      {/* Bottom edge */}
+      <LinearGradient
+        colors={["transparent", "rgba(0,0,0,0.30)"]}
+        style={vignetteStyles.bottom}
+        pointerEvents="none"
+      />
+      {/* Left edge */}
+      <LinearGradient
+        colors={["rgba(0,0,0,0.22)", "transparent"]}
+        start={{ x: 0, y: 0.5 }}
+        end={{ x: 1, y: 0.5 }}
+        style={vignetteStyles.left}
+        pointerEvents="none"
+      />
+      {/* Right edge */}
+      <LinearGradient
+        colors={["transparent", "rgba(0,0,0,0.22)"]}
+        start={{ x: 0, y: 0.5 }}
+        end={{ x: 1, y: 0.5 }}
+        style={vignetteStyles.right}
+        pointerEvents="none"
+      />
+    </View>
+  );
+}
+
+const vignetteStyles = StyleSheet.create({
+  top:    { position: "absolute", top: 0, left: 0, right: 0, height: "18%" },
+  bottom: { position: "absolute", bottom: 0, left: 0, right: 0, height: "18%" },
+  left:   { position: "absolute", top: 0, bottom: 0, left: 0, width: "14%" },
+  right:  { position: "absolute", top: 0, bottom: 0, right: 0, width: "14%" },
+});
+
+// ─── CardFan ──────────────────────────────────────────────────────────────────
 
 export function CardFan({
   count,
@@ -107,6 +147,8 @@ export function CardFan({
   );
 }
 
+// ─── AvatarCircle ─────────────────────────────────────────────────────────────
+
 export function AvatarCircle({
   name,
   isActive,
@@ -146,7 +188,8 @@ export function AvatarCircle({
           isActive && sharedStyles.avatarOuterActive,
         ]}
       >
-        <View
+        <LinearGradient
+          colors={["#0D4A2E", "#0B3B25"]}
           style={[
             sharedStyles.avatarInner,
             { width: size, height: size, borderRadius: size / 2 },
@@ -155,8 +198,11 @@ export function AvatarCircle({
           <Text style={[sharedStyles.avatarInitials, { fontSize: size * 0.36 }]}>
             {initials}
           </Text>
-        </View>
-        <View style={sharedStyles.countBubble}>
+        </LinearGradient>
+        <View style={[
+          sharedStyles.countBubble,
+          finishPos !== undefined && sharedStyles.countBubbleFinished,
+        ]}>
           {finishPos !== undefined ? (
             <Ionicons name="trophy" size={8} color={Colors.gold} />
           ) : (
@@ -167,6 +213,8 @@ export function AvatarCircle({
     </Animated.View>
   );
 }
+
+// ─── TopOppSlot ───────────────────────────────────────────────────────────────
 
 export function TopOppSlot({
   player,
@@ -200,6 +248,8 @@ export function TopOppSlot({
     </View>
   );
 }
+
+// ─── SideOppSlot ──────────────────────────────────────────────────────────────
 
 export function SideOppSlot({
   player,
@@ -243,6 +293,8 @@ export function SideOppSlot({
   );
 }
 
+// ─── FlyingCards ──────────────────────────────────────────────────────────────
+
 export function FlyingCards({
   cards,
   direction,
@@ -261,20 +313,27 @@ export function FlyingCards({
   const rot = useSharedValue(startRot);
   const scale = useSharedValue(0.85);
   const opacity = useSharedValue(0);
+  // Parabolic arc — peak at mid-flight, then land
+  const arcY = useSharedValue(0);
 
   useEffect(() => {
-    const FLIGHT = 340;
+    const FLIGHT = 380;
     const easing = Easing.bezier(0.22, 0.61, 0.36, 1.0);
 
     opacity.value = withTiming(1, { duration: 60 });
     tx.value = withTiming(0, { duration: FLIGHT, easing });
     ty.value = withTiming(0, { duration: FLIGHT, easing });
     rot.value = withTiming(landingRot, { duration: FLIGHT, easing: Easing.out(Easing.cubic) });
+    // Arc: rise to -20 at midpoint, then land
+    arcY.value = withSequence(
+      withTiming(-20, { duration: FLIGHT * 0.5, easing: Easing.out(Easing.quad) }),
+      withTiming(0, { duration: FLIGHT * 0.5, easing: Easing.in(Easing.quad) })
+    );
     scale.value = withSequence(
       withTiming(1.06, { duration: FLIGHT * 0.65, easing: Easing.out(Easing.cubic) }),
       withSpring(0.97, { damping: 18, stiffness: 320 }),
       withSpring(1.0, { damping: 30, stiffness: 180 }, (finished) => {
-        if (finished) runOnJS(onDone)();
+        if (finished) scheduleOnRN(onDone);
       })
     );
 
@@ -284,13 +343,14 @@ export function FlyingCards({
       cancelAnimation(rot);
       cancelAnimation(scale);
       cancelAnimation(opacity);
+      cancelAnimation(arcY);
     };
   }, []);
 
   const aStyle = useAnimatedStyle(() => ({
     transform: [
       { translateX: tx.value },
-      { translateY: ty.value },
+      { translateY: ty.value + arcY.value },
       { rotate: `${rot.value}deg` },
       { scale: scale.value },
     ],
@@ -324,14 +384,18 @@ export function FlyingCards({
   );
 }
 
+// ─── PlayedPile ───────────────────────────────────────────────────────────────
+
 const COMBO_LABELS: Record<string, string> = {
-  single: "Singola",
-  pair: "Coppia",
-  triple: "Tris",
-  straight: "Scala",
-  bomb: "💣 Bomba",
+  single:        "Singola",
+  pair:          "Coppia",
+  triple:        "Tris",
+  straight:      "Scala",
+  bomb:          "💣 Bomba",
   royal_straight: "★ Scala Reale",
 };
+
+const POWER_COMBOS = new Set(["bomb", "royal_straight"]);
 
 function PileComboCards({ cards }: { cards: Card[] }) {
   const overlap = cards.length > 8 ? 9 : cards.length > 5 ? 12 : 14;
@@ -341,11 +405,7 @@ function PileComboCards({ cards }: { cards: Card[] }) {
       {cards.map((card, ci) => (
         <View
           key={card.id}
-          style={{
-            position: "absolute",
-            left: ci * overlap,
-            zIndex: ci,
-          }}
+          style={{ position: "absolute", left: ci * overlap, zIndex: ci }}
         >
           <CardView card={card} />
         </View>
@@ -358,13 +418,31 @@ export function PlayedPile({
   prev,
   current,
   roundWinner,
+  bounceTrigger,
 }: {
   prev: Combination | null;
   current: Combination | null;
   roundWinner: string | null;
+  bounceTrigger?: number;
 }) {
+  const bounceScale = useSharedValue(1);
+
+  useEffect(() => {
+    if (!bounceTrigger) return;
+    bounceScale.value = withSequence(
+      withSpring(1.05, { damping: 10, stiffness: 420 }),
+      withSpring(1.0, { damping: 16, stiffness: 280 })
+    );
+  }, [bounceTrigger]);
+
+  const bounceStyle = useAnimatedStyle(() => ({
+    transform: [{ scale: bounceScale.value }],
+  }));
+
+  const isPower = current && POWER_COMBOS.has(current.type);
+
   return (
-    <View style={sharedStyles.pileArea} testID="pile-area">
+    <Animated.View style={[sharedStyles.pileArea, bounceStyle]} testID="pile-area">
       {roundWinner && (
         <Animated.View
           entering={FadeIn.duration(250)}
@@ -391,17 +469,20 @@ export function PlayedPile({
 
       {current && (
         <View style={sharedStyles.comboLabel}>
-          <View style={sharedStyles.comboChip}>
-            <Text style={sharedStyles.comboChipText}>
+          <View style={[sharedStyles.comboChip, isPower && sharedStyles.comboChipPower]}>
+            <Text style={[sharedStyles.comboChipText, isPower && sharedStyles.comboChipTextPower]}>
+              {isPower ? "✦ " : ""}
               {COMBO_LABELS[current.type] ?? current.type}
               {current.cards.length > 2 ? ` ×${current.cards.length}` : ""}
             </Text>
           </View>
         </View>
       )}
-    </View>
+    </Animated.View>
   );
 }
+
+// ─── CardItem ─────────────────────────────────────────────────────────────────
 
 export function CardItem({
   card,
@@ -419,15 +500,26 @@ export function CardItem({
   zIndex: number;
 }) {
   const liftY = useSharedValue(0);
+  const cardScale = useSharedValue(1);
+
   useEffect(() => {
-    liftY.value = withTiming(isSelected ? -10 : 0, {
-      duration: 160,
-      easing: Easing.out(Easing.quad),
+    liftY.value = withSpring(isSelected ? -14 : 0, {
+      damping: 12,
+      stiffness: 280,
+    });
+    cardScale.value = withSpring(isSelected ? 1.04 : 1.0, {
+      damping: 10,
+      stiffness: 260,
     });
   }, [isSelected]);
+
   const aStyle = useAnimatedStyle(() => ({
-    transform: [{ translateY: liftY.value }],
+    transform: [
+      { translateY: liftY.value },
+      { scale: cardScale.value },
+    ],
   }));
+
   return (
     <Animated.View
       style={[sharedStyles.handCardWrap, { left, zIndex }, aStyle]}
@@ -442,6 +534,8 @@ export function CardItem({
     </Animated.View>
   );
 }
+
+// ─── StraightHand ─────────────────────────────────────────────────────────────
 
 export function StraightHand({
   cards,
@@ -495,6 +589,8 @@ export function StraightHand({
     </View>
   );
 }
+
+// ─── StartReasonBanner ────────────────────────────────────────────────────────
 
 export function StartReasonBanner({
   reason,
@@ -562,6 +658,8 @@ export function StartReasonBanner({
   );
 }
 
+// ─── Portrait overlay ─────────────────────────────────────────────────────────
+
 export const portraitOverlayStyles = StyleSheet.create({
   overlay: {
     ...StyleSheet.absoluteFillObject,
@@ -591,13 +689,15 @@ export const portraitOverlayStyles = StyleSheet.create({
   },
 });
 
+// ─── Shared table styles ──────────────────────────────────────────────────────
+
 export const sharedTableStyles = StyleSheet.create({
   tableBg: {
     position: "absolute",
     borderRadius: 22,
     overflow: "hidden",
-    borderWidth: 3,
-    borderColor: "rgba(201,168,76,0.3)",
+    borderWidth: 3.5,
+    borderColor: "rgba(201,168,76,0.5)",
   },
   tableOverlay: {
     position: "absolute",
@@ -611,7 +711,7 @@ export const sharedTableStyles = StyleSheet.create({
     bottom: 6,
     borderRadius: 18,
     borderWidth: 1.5,
-    borderColor: "rgba(201,168,76,0.12)",
+    borderColor: "rgba(201,168,76,0.2)",
   },
   tableContent: { flex: 1, flexDirection: "column" },
   topSection: {
@@ -635,8 +735,12 @@ export const sharedTableStyles = StyleSheet.create({
   },
   handSectionActive: {
     backgroundColor: "rgba(201,168,76,0.05)",
+    borderTopWidth: 1,
+    borderTopColor: "rgba(201,168,76,0.0)",
   },
 });
+
+// ─── useTurnPulse ─────────────────────────────────────────────────────────────
 
 export function useTurnPulse(active: boolean) {
   const glowV = useSharedValue(0);
@@ -663,6 +767,7 @@ export function useTurnPulse(active: boolean) {
     const shadowRadius = v < 0.01 ? 0 : interpolate(v, [0.35, 0.85], [8, 22], Extrapolation.CLAMP);
     const shadowOpacity = v;
     const elevation = interpolate(v, [0, 0.85], [0, 20], Extrapolation.CLAMP);
+    const borderAlpha = interpolate(v, [0, 0.85], [0, 0.3], Extrapolation.CLAMP);
 
     if (Platform.OS === "web") {
       const blur = v < 0.01 ? 0 : interpolate(v, [0.35, 0.85], [8, 20], Extrapolation.CLAMP);
@@ -670,6 +775,8 @@ export function useTurnPulse(active: boolean) {
       return {
         boxShadow: v < 0.01 ? "none" : `0 0 ${blur}px rgba(201,168,76,${alpha})`,
         borderRadius: 14,
+        borderTopWidth: 1,
+        borderTopColor: `rgba(201,168,76,${borderAlpha})`,
       } as any;
     }
 
@@ -679,9 +786,13 @@ export function useTurnPulse(active: boolean) {
       shadowRadius,
       shadowOffset: { width: 0, height: 0 },
       elevation,
+      borderTopWidth: 1,
+      borderTopColor: `rgba(201,168,76,${borderAlpha})`,
     };
   });
 }
+
+// ─── Shared styles ────────────────────────────────────────────────────────────
 
 export const sharedStyles = StyleSheet.create({
   flyingContainer: {
@@ -701,22 +812,14 @@ export const sharedStyles = StyleSheet.create({
     justifyContent: "center",
   },
 
-  topOppSlot: {
-    alignItems: "center",
-    justifyContent: "center",
-    paddingVertical: 6,
-  },
+  topOppSlot: { alignItems: "center", justifyContent: "center", paddingVertical: 6 },
   topOppRow: { flexDirection: "row", alignItems: "center", gap: 12 },
   topOppAvatarCol: { alignItems: "center", gap: 3 },
 
   sideOppSlot: { alignItems: "center", justifyContent: "center", gap: 6 },
   sideLeft: { flexDirection: "row" },
   sideRight: { flexDirection: "row-reverse" },
-  sideOppAvatarCol: {
-    alignItems: "center",
-    gap: 3,
-    marginHorizontal: 6,
-  },
+  sideOppAvatarCol: { alignItems: "center", gap: 3, marginHorizontal: 6 },
 
   oppName: {
     fontFamily: "Rajdhani_600SemiBold",
@@ -738,7 +841,6 @@ export const sharedStyles = StyleSheet.create({
     ...Shadow.gold,
   },
   avatarInner: {
-    backgroundColor: "rgba(11,59,37,0.95)",
     alignItems: "center",
     justifyContent: "center",
     borderWidth: 1,
@@ -761,7 +863,11 @@ export const sharedStyles = StyleSheet.create({
     justifyContent: "center",
     paddingHorizontal: 3,
     borderWidth: 1,
-    borderColor: "rgba(201,168,76,0.3)",
+    borderColor: "rgba(201,168,76,0.55)",
+  },
+  countBubbleFinished: {
+    backgroundColor: Colors.goldMuted,
+    borderColor: Colors.gold,
   },
   countBubbleText: {
     fontFamily: "Rajdhani_700Bold",
@@ -803,24 +909,29 @@ export const sharedStyles = StyleSheet.create({
     transform: [{ scale: 0.84 }, { translateY: 4 }],
     marginBottom: -CARD_H * 0.14,
   },
-  pileCurrentLayer: {
-    opacity: 1,
-  },
+  pileCurrentLayer: { opacity: 1 },
   comboLabel: { marginTop: 10 },
   comboChip: {
-    backgroundColor: "rgba(201,168,76,0.2)",
+    backgroundColor: "rgba(201,168,76,0.28)",
     borderRadius: 8,
     paddingHorizontal: 10,
     paddingVertical: 3,
     borderWidth: 1,
-    borderColor: "rgba(201,168,76,0.4)",
+    borderColor: "rgba(201,168,76,0.45)",
+  },
+  comboChipPower: {
+    backgroundColor: "rgba(255,80,80,0.22)",
+    borderColor: "rgba(255,80,80,0.55)",
   },
   comboChipText: {
     fontFamily: "Rajdhani_700Bold",
     fontSize: 10,
     color: Colors.gold,
-    letterSpacing: 1,
+    letterSpacing: 1.5,
     textTransform: "uppercase",
+  },
+  comboChipTextPower: {
+    color: "#FF8888",
   },
 
   handCenter: {
@@ -830,10 +941,7 @@ export const sharedStyles = StyleSheet.create({
     flexDirection: "row",
     gap: 6,
   },
-  handGlowWrap: {
-    borderRadius: 14,
-    padding: 4,
-  },
+  handGlowWrap: { borderRadius: 14, padding: 4 },
   handGlowWrapActive: {},
   handRow: {
     position: "relative",
@@ -848,12 +956,16 @@ export const sharedStyles = StyleSheet.create({
   },
 });
 
+// ─── getComboLabel ────────────────────────────────────────────────────────────
+
 export function getComboLabel(combo: Combination | null): string | null {
   if (!combo) return null;
   const label = COMBO_LABELS[combo.type] ?? combo.type;
   if (combo.cards.length > 2) return `${label} ×${combo.cards.length}`;
   return label;
 }
+
+// ─── GameBillboard ────────────────────────────────────────────────────────────
 
 export function GameBillboard({
   roundLabel,
@@ -866,6 +978,26 @@ export function GameBillboard({
   currentTurnName: string;
   isLocalPlayerTurn: boolean;
 }) {
+  const dotOpacity = useSharedValue(0.3);
+
+  useEffect(() => {
+    if (isLocalPlayerTurn) {
+      dotOpacity.value = withRepeat(
+        withSequence(
+          withTiming(1.0, { duration: 600 }),
+          withTiming(0.3, { duration: 600 })
+        ),
+        -1,
+        false
+      );
+    } else {
+      cancelAnimation(dotOpacity);
+      dotOpacity.value = withTiming(0, { duration: 200 });
+    }
+  }, [isLocalPlayerTurn]);
+
+  const dotStyle = useAnimatedStyle(() => ({ opacity: dotOpacity.value }));
+
   return (
     <View style={billboardStyles.container}>
       <Text style={billboardStyles.comboLabel} numberOfLines={1}>
@@ -873,6 +1005,9 @@ export function GameBillboard({
       </Text>
       <View style={billboardStyles.bottomRow}>
         <Text style={billboardStyles.roundLabel} numberOfLines={1}>{roundLabel}</Text>
+        {isLocalPlayerTurn && (
+          <Animated.Text style={[billboardStyles.turnDot, dotStyle]}>●</Animated.Text>
+        )}
         <Text
           style={[
             billboardStyles.turnLabel,
@@ -880,7 +1015,7 @@ export function GameBillboard({
           ]}
           numberOfLines={1}
         >
-          {isLocalPlayerTurn ? "Il tuo turno ✦" : `Turno di ${currentTurnName}`}
+          {isLocalPlayerTurn ? "Il tuo turno" : `Turno di ${currentTurnName}`}
         </Text>
       </View>
     </View>
@@ -898,7 +1033,7 @@ const billboardStyles = StyleSheet.create({
   },
   comboLabel: {
     fontFamily: "Rajdhani_700Bold",
-    fontSize: 12,
+    fontSize: 13,
     color: Colors.gold,
     letterSpacing: 0.5,
     textAlign: "center",
@@ -906,12 +1041,17 @@ const billboardStyles = StyleSheet.create({
   bottomRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 6,
+    gap: 5,
   },
   roundLabel: {
     fontFamily: "Inter_400Regular",
     fontSize: 9,
     color: Colors.textMuted,
+  },
+  turnDot: {
+    fontFamily: "Inter_400Regular",
+    fontSize: 8,
+    color: Colors.gold,
   },
   turnLabel: {
     fontFamily: "Inter_400Regular",

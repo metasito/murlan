@@ -16,6 +16,8 @@ import Animated, {
   withSpring,
   withTiming,
   withSequence,
+  withRepeat,
+  cancelAnimation,
   Easing,
 } from "react-native-reanimated";
 import { LinearGradient } from "expo-linear-gradient";
@@ -49,6 +51,7 @@ import {
   FlyingCards,
   PlayedPile,
   StraightHand,
+  TableVignette,
   sharedTableStyles,
   sharedStyles,
   portraitOverlayStyles,
@@ -135,6 +138,9 @@ export default function GameScreen() {
   const handScaleVal = useSharedValue(1);
   const giocaPulseVal = useSharedValue(1);
   const passaPulseVal = useSharedValue(1);
+  const giocaGlowVal = useSharedValue(0);
+  const shakeX = useSharedValue(0);
+  const [pileBounceTrigger, setPileBounceTrigger] = useState(0);
 
   // Lock to landscape & preload sounds
   useEffect(() => {
@@ -206,9 +212,18 @@ export default function GameScreen() {
         prevComboKeyRef.current = comboKey;
         // Update pile immediately — old current becomes prev, new combo is current
         setPileState((s) => ({ prev: s.current, current: combo }));
-        // Play bomb sound for special combos
+        // Play bomb sound + screen shake for special combos
         if (combo.type === "bomb" || combo.type === "royal_straight") {
           playBomb();
+          shakeX.value = withSequence(
+            withTiming(5,  { duration: 45 }),
+            withTiming(-5, { duration: 45 }),
+            withTiming(4,  { duration: 40 }),
+            withTiming(-4, { duration: 40 }),
+            withTiming(2,  { duration: 35 }),
+            withTiming(-2, { duration: 35 }),
+            withTiming(0,  { duration: 30 })
+          );
         }
         const playedBy = gameState.lastPlayedBy;
         let dir: FlyDirection;
@@ -345,8 +360,26 @@ export default function GameScreen() {
   const giocaAnimStyle = useAnimatedStyle(() => ({
     transform: [{ scale: giocaPulseVal.value }],
   }));
+  const giocaGlowStyle = useAnimatedStyle(() => {
+    const v = giocaGlowVal.value;
+    if (Platform.OS === "web") {
+      return {
+        boxShadow: v < 0.01 ? "none" : `0 0 ${Math.round(22 * v)}px rgba(201,168,76,${(v * 0.65).toFixed(2)})`,
+      } as any;
+    }
+    return {
+      shadowColor: "#C9A84C",
+      shadowOpacity: v * 0.7,
+      shadowRadius: 18 * v,
+      shadowOffset: { width: 0, height: 0 },
+      elevation: Math.round(14 * v),
+    };
+  });
   const passaAnimStyle = useAnimatedStyle(() => ({
     transform: [{ scale: passaPulseVal.value }],
+  }));
+  const shakeStyle = useAnimatedStyle(() => ({
+    transform: [{ translateX: shakeX.value }],
   }));
   const turnPulseStyle = useTurnPulse(isHumanTurn && !isFinished && !gameState?.exchangePhase?.active);
 
@@ -376,6 +409,23 @@ export default function GameScreen() {
       ));
   const canPassNow = !isNewRound && isHumanTurn && !isFinished;
   const playBtnValid = isValidPlay && isHumanTurn && !isFinished;
+
+  // GIOCA bloom — slow gold pulse when the button is valid
+  useEffect(() => {
+    if (playBtnValid) {
+      giocaGlowVal.value = withRepeat(
+        withSequence(
+          withTiming(1.0, { duration: 1000, easing: Easing.inOut(Easing.sin) }),
+          withTiming(0.35, { duration: 1000, easing: Easing.inOut(Easing.sin) })
+        ),
+        -1,
+        false
+      );
+    } else {
+      cancelAnimation(giocaGlowVal);
+      giocaGlowVal.value = withTiming(0, { duration: 150 });
+    }
+  }, [playBtnValid]);
 
   const opponents = gameState.players
     .map((p, idx) => ({ p, idx }))
@@ -459,7 +509,7 @@ export default function GameScreen() {
     exchangeWinner?.type === "human";
 
   return (
-    <View style={localStyles.root}>
+    <Animated.View style={[localStyles.root, shakeStyle]}>
       <LinearGradient
         colors={["#031008", "#072A18", "#031008"]}
         style={StyleSheet.absoluteFill}
@@ -500,10 +550,11 @@ export default function GameScreen() {
         ]}
       >
         <LinearGradient
-          colors={["#0D4A2E", Colors.felt, "#082B1A"]}
-          locations={[0, 0.5, 1]}
+          colors={["#0F5A35", "#0D4A2E", "#0B3B25", "#082B1A", "#061E12"]}
+          locations={[0, 0.25, 0.5, 0.75, 1]}
           style={StyleSheet.absoluteFill}
         />
+        <TableVignette />
         <View style={sharedTableStyles.tableInnerBorder} />
       </View>
 
@@ -561,6 +612,7 @@ export default function GameScreen() {
                   prev={pileState.prev}
                   current={flyInfo ? null : pileState.current}
                   roundWinner={roundWinner}
+                  bounceTrigger={pileBounceTrigger}
                 />
               )}
             </View>
@@ -619,7 +671,7 @@ export default function GameScreen() {
             )}
 
             {/* GIOCA — right side of hand row */}
-            <Animated.View style={[localStyles.playBtn, !playBtnValid && localStyles.playBtnDim, giocaAnimStyle]}>
+            <Animated.View style={[localStyles.playBtn, !playBtnValid && localStyles.playBtnDim, giocaAnimStyle, playBtnValid && giocaGlowStyle]}>
               <Pressable
                 testID="btn-gioca"
                 onPress={playBtnValid ? handlePlay : undefined}
@@ -663,7 +715,10 @@ export default function GameScreen() {
           key={flyInfo.key}
           cards={flyInfo.cards}
           direction={flyInfo.dir}
-          onDone={() => setFlyInfo(null)}
+          onDone={() => {
+            setFlyInfo(null);
+            setPileBounceTrigger((t) => t + 1);
+          }}
         />
       )}
 
@@ -721,7 +776,7 @@ export default function GameScreen() {
           </View>
         </View>
       )}
-    </View>
+    </Animated.View>
   );
 }
 
@@ -848,7 +903,6 @@ const localStyles = StyleSheet.create({
     width: SIDE_BTN_W + 6,
     height: CARD_H,
     borderRadius: 12,
-    overflow: "hidden",
     marginHorizontal: 3,
   },
   playBtnDim: { opacity: 0.55 },
@@ -860,6 +914,8 @@ const localStyles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     gap: 2,
+    borderRadius: 12,
+    overflow: "hidden",
   },
   playBtnGradDim: {
     backgroundColor: "rgba(40,30,5,0.7)",

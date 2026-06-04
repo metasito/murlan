@@ -14,7 +14,9 @@ import Animated, {
 import { Card, isRedSuit, getCardDisplayRank, getSuitSymbol } from "@/lib/gameEngine";
 import { Colors } from '@/lib/theme';
 import { Shadow } from "@/lib/theme";
-import Svg, { Path, Circle, Ellipse, G, Rect, Polygon, Text as SvgText } from "react-native-svg";
+import Svg, { Path, Circle, Ellipse, G, Rect, Polygon, Text as SvgText, Defs, ClipPath } from "react-native-svg";
+
+const FACE_RANKS = new Set(["J", "Q", "K"]);
 
 interface CardViewProps {
   card: Card;
@@ -27,6 +29,62 @@ interface CardViewProps {
   noLift?: boolean;
 }
 
+// ─── Ornate SVG card back ─────────────────────────────────────────────────────
+
+function OrnateCardBack({ width, height }: { width: number; height: number }) {
+  const w = width;
+  const h = height;
+  const spacing = 9;
+  const padX = 8;
+  const padY = 10;
+
+  const dots: Array<{ x: number; y: number }> = [];
+  for (let x = padX; x <= w - padX; x += spacing) {
+    for (let y = padY; y <= h - padY; y += spacing) {
+      dots.push({ x, y });
+    }
+  }
+
+  const cx = w / 2;
+  const cy = h / 2;
+
+  return (
+    <Svg width={w} height={h} style={StyleSheet.absoluteFill}>
+      {/* Outer gold border */}
+      <Rect x={2} y={2} width={w - 4} height={h - 4} rx={6} ry={6}
+        fill="none" stroke="#C9A84C" strokeWidth={1.5} strokeOpacity={0.82} />
+      {/* Inner border */}
+      <Rect x={5.5} y={5.5} width={w - 11} height={h - 11} rx={3.5} ry={3.5}
+        fill="none" stroke="#C9A84C" strokeWidth={0.75} strokeOpacity={0.38} />
+      {/* Diamond dot grid */}
+      {dots.map((d, i) => (
+        <Polygon
+          key={i}
+          points={`${d.x},${d.y - 2.5} ${d.x + 1.8},${d.y} ${d.x},${d.y + 2.5} ${d.x - 1.8},${d.y}`}
+          fill="#C9A84C"
+          fillOpacity={0.22}
+        />
+      ))}
+      {/* Central diamond outer ring */}
+      <Polygon
+        points={`${cx},${cy - 11} ${cx + 8},${cy} ${cx},${cy + 11} ${cx - 8},${cy}`}
+        fill="none"
+        stroke="#C9A84C"
+        strokeWidth={0.8}
+        strokeOpacity={0.45}
+      />
+      {/* Central diamond fill */}
+      <Polygon
+        points={`${cx},${cy - 7} ${cx + 5},${cy} ${cx},${cy + 7} ${cx - 5},${cy}`}
+        fill="#C9A84C"
+        fillOpacity={0.65}
+      />
+    </Svg>
+  );
+}
+
+// ─── Joker figure ─────────────────────────────────────────────────────────────
+
 function JokerFigure({ colored, size }: { colored: boolean; size: number }) {
   const s = size;
   const primaryColor = colored ? "#C0392B" : "#2C3E50";
@@ -36,57 +94,40 @@ function JokerFigure({ colored, size }: { colored: boolean; size: number }) {
 
   return (
     <Svg width={s} height={s * 1.3} viewBox="0 0 60 80">
-      {/* Hat with bells */}
       <Path d="M30 5 L20 28 L40 28 Z" fill={hatColor} />
       <Path d="M20 28 L10 18 L22 30 Z" fill={primaryColor} />
       <Path d="M40 28 L50 18 L38 30 Z" fill={primaryColor} />
       <Circle cx="10" cy="17" r="3" fill={accentColor} />
       <Circle cx="50" cy="17" r="3" fill={accentColor} />
       <Circle cx="30" cy="4" r="3" fill={accentColor} />
-
-      {/* Face */}
       <Ellipse cx="30" cy="36" rx="10" ry="11" fill={skinColor} />
-
-      {/* Eyes */}
       <Circle cx="26" cy="34" r="2" fill="#333" />
       <Circle cx="34" cy="34" r="2" fill="#333" />
       <Circle cx="26.7" cy="33.3" r="0.7" fill="white" />
       <Circle cx="34.7" cy="33.3" r="0.7" fill="white" />
-
-      {/* Smile */}
       <Path d="M24 40 Q30 46 36 40" stroke="#C0392B" strokeWidth="1.5" fill="none" strokeLinecap="round" />
-
-      {/* Collar */}
       <Path d="M20 46 Q25 44 30 47 Q35 44 40 46 L38 52 L22 52 Z" fill={primaryColor} />
-      {/* Collar diamonds */}
       <Polygon points="25,47 28,44 31,47 28,50" fill={accentColor} />
       <Polygon points="29,47 32,44 35,47 32,50" fill={hatColor} />
-
-      {/* Body */}
       <Rect x="22" y="52" width="16" height="20" rx="2" fill={primaryColor} />
-      {/* Body pattern */}
       <Path d="M22 57 L38 57" stroke={accentColor} strokeWidth="0.8" />
       <Path d="M22 63 L38 63" stroke={accentColor} strokeWidth="0.8" />
       <Path d="M30 52 L30 72" stroke={accentColor} strokeWidth="0.8" />
-
-      {/* Arms */}
       <Path d="M22 55 L10 48" stroke={skinColor} strokeWidth="4" strokeLinecap="round" />
       <Path d="M38 55 L50 48" stroke={skinColor} strokeWidth="4" strokeLinecap="round" />
-
-      {/* Hands with playing cards */}
       <Rect x="5" y="44" width="8" height="10" rx="1" fill="white" stroke={primaryColor} strokeWidth="0.5" />
       <Text style={{ fontSize: 5 }}>
         <SvgText x="7" y="52" fontSize="6" fill={colored ? "#C0392B" : "#333"} fontWeight="bold">♦</SvgText>
       </Text>
       <Rect x="47" y="44" width="8" height="10" rx="1" fill="white" stroke={primaryColor} strokeWidth="0.5" />
       <SvgText x="49" y="52" fontSize="6" fill={colored ? "#C0392B" : "#333"} fontWeight="bold">♠</SvgText>
-
-      {/* Legs */}
       <Path d="M24 72 L20 80" stroke={hatColor} strokeWidth="4" strokeLinecap="round" />
       <Path d="M36 72 L40 80" stroke={hatColor} strokeWidth="4" strokeLinecap="round" />
     </Svg>
   );
 }
+
+// ─── CardView ─────────────────────────────────────────────────────────────────
 
 export function CardView({
   card,
@@ -121,14 +162,12 @@ export function CardView({
   };
 
   if (faceDown) {
+    const w = small ? 40 : 58;
+    const h = small ? 58 : 84;
     return (
       <Animated.View style={[animStyle, style]}>
         <View style={[styles.card, small ? styles.cardSmall : styles.cardNormal, styles.cardBack]}>
-          <View style={styles.backPattern}>
-            <View style={styles.backDiamond} />
-            <View style={[styles.backDiamond, { transform: [{ rotate: "45deg" }] }]} />
-          </View>
-          <View style={styles.backBorder} />
+          <OrnateCardBack width={w} height={h} />
         </View>
       </Animated.View>
     );
@@ -137,7 +176,7 @@ export function CardView({
   if (card.isJoker) {
     const colored = card.rank === "joker_colored";
     const titleColor = colored ? "#C0392B" : "#2C3E50";
-    const bgColor = colored ? "#FFF9F0" : "#F5F5F5";
+    const bgColor = colored ? "#FFF8F0" : "#F4F4F4";
 
     return (
       <Animated.View style={[animStyle, style]}>
@@ -177,8 +216,8 @@ export function CardView({
   const rankText = getCardDisplayRank(card.rank);
   const suitSymbol = getSuitSymbol(card.suit);
   const color = card.suit ? Colors[card.suit as keyof typeof Colors] : Colors.spade;
+  const isFaceCard = FACE_RANKS.has(card.rank);
 
-  // Build accessible card description
   const getSuitName = (suit: string | null) => {
     switch (suit) {
       case "hearts": return "Cuori";
@@ -190,9 +229,7 @@ export function CardView({
   };
 
   const getCardLabel = () => {
-    if (card.isJoker) {
-      return `Joker ${card.rank === "joker_colored" ? "colorato" : "nero"}`;
-    }
+    if (card.isJoker) return `Joker ${card.rank === "joker_colored" ? "colorato" : "nero"}`;
     return `${rankText} di ${getSuitName(card.suit)}`;
   };
 
@@ -207,6 +244,7 @@ export function CardView({
         style={[
           styles.card,
           small ? styles.cardSmall : styles.cardNormal,
+          isFaceCard && styles.cardFace,
           selected && styles.cardSelected,
         ]}
       >
@@ -220,7 +258,17 @@ export function CardView({
             </Text>
           </View>
           {!small && (
-            <Text style={[styles.suitCenter, { color }]}>
+            <Text
+              style={[
+                styles.suitCenter,
+                { color },
+                Platform.OS !== "web" && {
+                  textShadowColor: color,
+                  textShadowOffset: { width: 0, height: 0 },
+                  textShadowRadius: 6,
+                },
+              ]}
+            >
               {suitSymbol}
             </Text>
           )}
@@ -251,10 +299,25 @@ const styles = StyleSheet.create({
     width: 40,
     height: 58,
   },
-  cardSelected: {
-    borderColor: "rgba(255,255,255,0.35)",
-    borderWidth: 1,
+  cardFace: {
+    borderColor: "rgba(201,168,76,0.45)",
+    borderWidth: 1.5,
   },
+  cardSelected: Platform.OS === "web"
+    ? ({
+        borderColor: "#C9A84C",
+        borderWidth: 2,
+        boxShadow: "0 0 0 1px #C9A84C, 0 0 14px rgba(201,168,76,0.55)",
+      } as any)
+    : {
+        borderColor: "#C9A84C",
+        borderWidth: 2,
+        shadowColor: "#C9A84C",
+        shadowOpacity: 0.55,
+        shadowRadius: 8,
+        shadowOffset: { width: 0, height: 0 },
+        elevation: 8,
+      },
   cardInner: {
     flex: 1,
     padding: 4,
@@ -267,33 +330,6 @@ const styles = StyleSheet.create({
     borderWidth: 1.5,
     overflow: "hidden",
   },
-  backBorder: {
-    position: "absolute",
-    top: 4,
-    left: 4,
-    right: 4,
-    bottom: 4,
-    borderRadius: 5,
-    borderWidth: 1.5,
-    borderColor: Colors.gold,
-  },
-  backPattern: {
-    position: "absolute",
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  backDiamond: {
-    position: "absolute",
-    width: "85%",
-    height: "85%",
-    borderRadius: 2,
-    borderWidth: 1,
-    borderColor: "rgba(201,168,76,0.25)",
-  },
   topCorner: {
     alignItems: "flex-start",
   },
@@ -305,10 +341,10 @@ const styles = StyleSheet.create({
     lineHeight: 16,
   },
   rankTextNormal: {
-    fontSize: 14,
+    fontSize: 15,
   },
   rankTextSmall: {
-    fontSize: 10,
+    fontSize: 11,
   },
   suitCorner: {
     fontSize: 11,
@@ -318,10 +354,10 @@ const styles = StyleSheet.create({
     fontSize: 8,
   },
   suitCenter: {
-    fontSize: 30,
+    fontSize: 34,
     textAlign: "center",
     fontFamily: Platform.OS === "ios" ? "System" : "sans-serif",
-    lineHeight: 36,
+    lineHeight: 40,
   },
   jokerFull: {
     flex: 1,

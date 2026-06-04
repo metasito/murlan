@@ -19,6 +19,7 @@ import Animated, {
   withSequence,
   withRepeat,
   withDelay,
+  cancelAnimation,
   Easing,
   FadeIn,
   FadeOut,
@@ -58,6 +59,7 @@ import {
   FlyingCards,
   PlayedPile,
   StraightHand,
+  TableVignette,
   sharedTableStyles,
   sharedStyles,
   portraitOverlayStyles,
@@ -425,9 +427,18 @@ function OnlineGameScreenBase() {
         prevComboKeyRef.current = comboKey;
         // Update pile immediately — old current becomes prev
         setPileState((s) => ({ prev: s.current, current: combo }));
-        // Play bomb sound for special combos
+        // Play bomb sound + screen shake for special combos
         if (combo.type === "bomb" || combo.type === "royal_straight") {
           playBomb();
+          shakeX.value = withSequence(
+            withTiming(5,  { duration: 45 }),
+            withTiming(-5, { duration: 45 }),
+            withTiming(4,  { duration: 40 }),
+            withTiming(-4, { duration: 40 }),
+            withTiming(2,  { duration: 35 }),
+            withTiming(-2, { duration: 35 }),
+            withTiming(0,  { duration: 30 })
+          );
         }
         const playedBy = gameState.lastPlayedBy;
         let dir: FlyDirection;
@@ -567,6 +578,11 @@ function OnlineGameScreenBase() {
   // useTurnPulse must be called unconditionally (before any early return)
   const turnPulseStyle = useTurnPulse(!!gameState && isMyTurn && !isFinished && !exchangeActive);
 
+  // Shared values for GIOCA bloom and screen shake — must be declared before early return
+  const giocaGlowVal = useSharedValue(0);
+  const shakeX = useSharedValue(0);
+  const [pileBounceTrigger, setPileBounceTrigger] = useState(0);
+
   if (!gameState) return null;
 
   const sortedHand = useMemo(() => sortHand(me?.hand ?? []), [me?.hand]);
@@ -592,6 +608,43 @@ function OnlineGameScreenBase() {
   );
   const canPassNow = !isNewRound && isMyTurn && !isFinished;
   const playBtnValid = isValidPlay && isMyTurn && !isFinished;
+
+  // GIOCA bloom
+  useEffect(() => {
+    if (playBtnValid) {
+      giocaGlowVal.value = withRepeat(
+        withSequence(
+          withTiming(1.0, { duration: 1000, easing: Easing.inOut(Easing.sin) }),
+          withTiming(0.35, { duration: 1000, easing: Easing.inOut(Easing.sin) })
+        ),
+        -1,
+        false
+      );
+    } else {
+      cancelAnimation(giocaGlowVal);
+      giocaGlowVal.value = withTiming(0, { duration: 150 });
+    }
+  }, [playBtnValid]);
+
+  const giocaGlowStyle = useAnimatedStyle(() => {
+    const v = giocaGlowVal.value;
+    if (Platform.OS === "web") {
+      return {
+        boxShadow: v < 0.01 ? "none" : `0 0 ${Math.round(22 * v)}px rgba(201,168,76,${(v * 0.65).toFixed(2)})`,
+      } as any;
+    }
+    return {
+      shadowColor: "#C9A84C",
+      shadowOpacity: v * 0.7,
+      shadowRadius: 18 * v,
+      shadowOffset: { width: 0, height: 0 },
+      elevation: Math.round(14 * v),
+    };
+  });
+
+  const shakeStyle = useAnimatedStyle(() => ({
+    transform: [{ translateX: shakeX.value }],
+  }));
 
   const totalOpponents = gameState.players.length - 1;
   const opponents = useMemo(
@@ -699,7 +752,7 @@ function OnlineGameScreenBase() {
   }
 
   return (
-    <View style={localStyles.root}>
+    <Animated.View style={[localStyles.root, shakeStyle]}>
       <LinearGradient
         colors={["#031008", "#072A18", "#031008"]}
         style={StyleSheet.absoluteFill}
@@ -766,10 +819,11 @@ function OnlineGameScreenBase() {
         ]}
       >
         <LinearGradient
-          colors={["#0D4A2E", Colors.felt, "#082B1A"]}
-          locations={[0, 0.5, 1]}
+          colors={["#0F5A35", "#0D4A2E", "#0B3B25", "#082B1A", "#061E12"]}
+          locations={[0, 0.25, 0.5, 0.75, 1]}
           style={StyleSheet.absoluteFill}
         />
+        <TableVignette />
         <View style={sharedTableStyles.tableInnerBorder} />
       </View>
 
@@ -813,6 +867,7 @@ function OnlineGameScreenBase() {
                 prev={pileState.prev}
                 current={flyInfo ? null : pileState.current}
                 roundWinner={roundWinner}
+                bounceTrigger={pileBounceTrigger}
               />
             </View>
 
@@ -866,31 +921,33 @@ function OnlineGameScreenBase() {
             )}
 
             {/* GIOCA — right side */}
-            <Pressable
-              testID="btn-gioca"
-              onPress={playBtnValid ? handlePlay : undefined}
-              style={[localStyles.playBtn, !playBtnValid && localStyles.playBtnDim]}
-            >
-              {playBtnValid ? (
-                <LinearGradient
-                  colors={[Colors.goldLight, Colors.gold, Colors.goldDark]}
-                  start={{ x: 0, y: 0 }}
-                  end={{ x: 1, y: 1 }}
-                  style={localStyles.playBtnGrad}
-                >
-                  <Text style={localStyles.playBtnLabel}>GIOCA</Text>
-                  {selectedIds.length > 1 && (
-                    <Text style={localStyles.playBtnSub}>
-                      {selectedIds.length}c
-                    </Text>
-                  )}
-                </LinearGradient>
-              ) : (
-                <View style={[localStyles.playBtnGrad, localStyles.playBtnGradDim]}>
-                  <Text style={localStyles.playBtnLabelDim}>GIOCA</Text>
-                </View>
-              )}
-            </Pressable>
+            <Animated.View style={[localStyles.playBtn, !playBtnValid && localStyles.playBtnDim, playBtnValid && giocaGlowStyle]}>
+              <Pressable
+                testID="btn-gioca"
+                onPress={playBtnValid ? handlePlay : undefined}
+                style={localStyles.playBtnInner}
+              >
+                {playBtnValid ? (
+                  <LinearGradient
+                    colors={[Colors.goldLight, Colors.gold, Colors.goldDark]}
+                    start={{ x: 0, y: 0 }}
+                    end={{ x: 1, y: 1 }}
+                    style={localStyles.playBtnGrad}
+                  >
+                    <Text style={localStyles.playBtnLabel}>GIOCA</Text>
+                    {selectedIds.length > 1 && (
+                      <Text style={localStyles.playBtnSub}>
+                        {selectedIds.length}c
+                      </Text>
+                    )}
+                  </LinearGradient>
+                ) : (
+                  <View style={[localStyles.playBtnGrad, localStyles.playBtnGradDim]}>
+                    <Text style={localStyles.playBtnLabelDim}>GIOCA</Text>
+                  </View>
+                )}
+              </Pressable>
+            </Animated.View>
           </Animated.View>
         </View>
       </View>
@@ -900,7 +957,10 @@ function OnlineGameScreenBase() {
           key={flyInfo.key}
           cards={flyInfo.cards}
           direction={flyInfo.dir}
-          onDone={() => setFlyInfo(null)}
+          onDone={() => {
+            setFlyInfo(null);
+            setPileBounceTrigger((t) => t + 1);
+          }}
         />
       )}
 
@@ -1010,7 +1070,7 @@ function OnlineGameScreenBase() {
           </View>
         </View>
       )}
-    </View>
+    </Animated.View>
   );
 }
 
@@ -1147,11 +1207,11 @@ const localStyles = StyleSheet.create({
     width: SIDE_BTN_W + 6,
     height: CARD_H,
     borderRadius: 12,
-    overflow: "hidden",
     marginHorizontal: 3,
   },
+  playBtnInner: { flex: 1 },
   playBtnDim: { opacity: 0.55 },
-  playBtnGrad: { flex: 1, alignItems: "center", justifyContent: "center", gap: 1 },
+  playBtnGrad: { flex: 1, alignItems: "center", justifyContent: "center", gap: 1, borderRadius: 12, overflow: "hidden" },
   playBtnGradDim: {
     backgroundColor: "rgba(40,30,5,0.7)",
     borderWidth: 2,
