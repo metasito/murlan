@@ -24,7 +24,7 @@ import * as Haptics from "expo-haptics";
 import { Ionicons } from "@expo/vector-icons";
 import { useQuery } from "@tanstack/react-query";
 import { useAuth } from "@/context/AuthContext";
-import Colors from "@/constants/colors";
+import { Colors } from '@/lib/theme';
 
 interface MenuButtonProps {
   label: string;

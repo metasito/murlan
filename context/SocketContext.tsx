@@ -5,6 +5,7 @@ import React, {
   useEffect,
   useRef,
   useCallback,
+  useMemo,
   ReactNode,
 } from "react";
 import { router } from "expo-router";
@@ -186,20 +187,23 @@ export function SocketProvider({ children }: { children: ReactNode }) {
     };
   }, [user?.id]);
 
+  const contextValue = useMemo(
+    () => ({
+      socket: socketRef.current,
+      connected,
+      onlineIds,
+      pendingInvite,
+      clearInvite,
+      gameInvites,
+      dismissGameInvite,
+      notification,
+      dismissNotification,
+    }),
+    [connected, onlineIds, pendingInvite, gameInvites, notification]
+  );
+
   return (
-    <SocketContext.Provider
-      value={{
-        socket: socketRef.current,
-        connected,
-        onlineIds,
-        pendingInvite,
-        clearInvite,
-        gameInvites,
-        dismissGameInvite,
-        notification,
-        dismissNotification,
-      }}
-    >
+    <SocketContext.Provider value={contextValue}>
       {children}
     </SocketContext.Provider>
   );

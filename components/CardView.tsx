@@ -12,7 +12,7 @@ import Animated, {
   withSpring,
 } from "react-native-reanimated";
 import { Card, isRedSuit, getCardDisplayRank, getSuitSymbol } from "@/lib/gameEngine";
-import Colors from "@/constants/colors";
+import { Colors } from '@/lib/theme';
 import { Shadow } from "@/lib/theme";
 import Svg, { Path, Circle, Ellipse, G, Rect, Polygon, Text as SvgText } from "react-native-svg";
 
@@ -174,10 +174,9 @@ export function CardView({
     );
   }
 
-  const red = isRedSuit(card.suit);
   const rankText = getCardDisplayRank(card.rank);
   const suitSymbol = getSuitSymbol(card.suit);
-  const color = red ? "#C0392B" : "#1A1A2E";
+  const color = card.suit ? Colors[card.suit as keyof typeof Colors] : Colors.spade;
 
   return (
     <Animated.View style={[animStyle, style]}>

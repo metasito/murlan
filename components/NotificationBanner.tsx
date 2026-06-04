@@ -9,7 +9,7 @@ import Animated, {
 } from "react-native-reanimated";
 import { Ionicons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import Colors from "@/constants/colors";
+import { Colors } from '@/lib/theme';
 import { Shadow } from "@/lib/theme";
 
 export type NotificationType = "friend_request" | "friend_accepted" | "game_invite";
@@ -34,8 +34,8 @@ const ICON_MAP: Record<NotificationType, React.ComponentProps<typeof Ionicons>["
 
 const COLOR_MAP: Record<NotificationType, string> = {
   friend_request: Colors.gold,
-  friend_accepted: "#4CAF50",
-  game_invite: "#6b8ef5",
+  friend_accepted: Colors.success,
+  game_invite: Colors.info,
 };
 
 const SLIDE_DURATION = 320;

@@ -76,7 +76,7 @@ import {
   unloadSounds,
 } from "@/lib/sounds";
 import type { Combination } from "@/lib/gameEngine";
-import Colors from "@/constants/colors";
+import { Colors } from '@/lib/theme';
 
 const AI_DELAY = 1100;
 const HUMAN_TURN_SECONDS = 20;

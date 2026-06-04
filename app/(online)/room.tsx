@@ -22,7 +22,7 @@ import { useOnlineGame } from "@/context/OnlineGameContext";
 import { useAuth } from "@/context/AuthContext";
 import { useSocket } from "@/context/SocketContext";
 import { getSocket } from "@/lib/socket";
-import Colors from "@/constants/colors";
+import { Colors } from '@/lib/theme';
 import { MenuCard } from "@/components/MenuCard";
 import { MenuButton } from "@/components/MenuButton";
 
@@ -118,7 +118,7 @@ function InviteFriendsPanel({
                   {friend.username}
                 </Text>
                 {sent ? (
-                  <Ionicons name="checkmark-circle" size={16} color="#4CAF50" />
+                  <Ionicons name="checkmark-circle" size={16} color="Colors.success" />
                 ) : (
                   <View style={inviteStyles.inviteBtn}>
                     <Text style={inviteStyles.inviteBtnText}>Invita</Text>
@@ -536,7 +536,7 @@ const inviteStyles = StyleSheet.create({
     width: 9,
     height: 9,
     borderRadius: 4.5,
-    backgroundColor: "#4CAF50",
+    backgroundColor: "Colors.success",
     borderWidth: 1.5,
     borderColor: Colors.bgSurface,
   },

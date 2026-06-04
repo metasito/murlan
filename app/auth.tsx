@@ -16,7 +16,7 @@ import { LinearGradient } from "expo-linear-gradient";
 import * as Haptics from "expo-haptics";
 import { Ionicons } from "@expo/vector-icons";
 import { useAuth } from "@/context/AuthContext";
-import Colors from "@/constants/colors";
+import { Colors } from '@/lib/theme';
 
 type Tab = "login" | "register";
 

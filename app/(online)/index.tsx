@@ -19,7 +19,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { useOnlineGame } from "@/context/OnlineGameContext";
 import { useAuth } from "@/context/AuthContext";
 import { useSocket } from "@/context/SocketContext";
-import Colors from "@/constants/colors";
+import { Colors } from '@/lib/theme';
 import { MenuCard } from "@/components/MenuCard";
 import { MenuButton } from "@/components/MenuButton";
 
@@ -180,7 +180,7 @@ export default function OnlineLobbyScreen() {
         <View style={[styles.body, styles.bodyLandscape]}>
           <View style={styles.contentWrapperLandscape}>
             <View style={styles.statusRow}>
-              <View style={[styles.dot, { backgroundColor: connected ? "#4CAF50" : Colors.textMuted }]} />
+              <View style={[styles.dot, { backgroundColor: connected ? "Colors.success" : Colors.textMuted }]} />
               <Text style={styles.statusText}>
                 {connected ? `Connesso come ${user?.username}` : "Connessione…"}
               </Text>
@@ -204,7 +204,7 @@ export default function OnlineLobbyScreen() {
         >
           <View style={styles.contentWrapper}>
             <View style={styles.statusRow}>
-              <View style={[styles.dot, { backgroundColor: connected ? "#4CAF50" : Colors.textMuted }]} />
+              <View style={[styles.dot, { backgroundColor: connected ? "Colors.success" : Colors.textMuted }]} />
               <Text style={styles.statusText}>
                 {connected ? `Connesso come ${user?.username}` : "Connessione…"}
               </Text>

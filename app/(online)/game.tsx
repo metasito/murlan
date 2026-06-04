@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState, memo } from "react";
+import React, { useEffect, useRef, useState, memo, useMemo, useCallback } from "react";
 import {
   View,
   Text,
@@ -82,7 +82,7 @@ import {
   preloadSounds,
   unloadSounds,
 } from "@/lib/sounds";
-import Colors from "@/constants/colors";
+import { Colors } from '@/lib/theme';
 
 const EMOJIS = ["😂", "🔥", "😤", "👏", "😱", "🤡", "💣", "👑"];
 const POSITION_MEDALS = ["trophy", "medal", "ribbon", "remove-circle"] as const;
@@ -555,49 +555,63 @@ function OnlineGameScreenBase() {
 
   if (!gameState) return null;
 
-  const sortedHand = sortHand(me?.hand ?? []);
-  const selectedObjs = sortedHand.filter((c) => selectedIds.includes(c.id));
-  const tentativeCombo =
-    selectedObjs.length > 0 ? buildCombination(selectedObjs) : null;
+  const sortedHand = useMemo(() => sortHand(me?.hand ?? []), [me?.hand]);
+  const selectedObjs = useMemo(
+    () => sortedHand.filter((c) => selectedIds.includes(c.id)),
+    [sortedHand, selectedIds]
+  );
+  const tentativeCombo = useMemo(
+    () => (selectedObjs.length > 0 ? buildCombination(selectedObjs) : null),
+    [selectedObjs]
+  );
   const requiresStartCard = !gameState.firstPlayMade && !!gameState.startCard;
-  const isValidPlay =
-    tentativeCombo !== null &&
-    canPlay(
-      tentativeCombo,
-      isNewRound ? null : gameState.lastPlayedCombination
-    ) &&
-    (!requiresStartCard ||
-      tentativeCombo.cards.some((c) => c.id === (gameState.startCard as Card).id));
+  const isValidPlay = useMemo(
+    () =>
+      tentativeCombo !== null &&
+      canPlay(
+        tentativeCombo,
+        isNewRound ? null : gameState.lastPlayedCombination
+      ) &&
+      (!requiresStartCard ||
+        tentativeCombo.cards.some((c) => c.id === (gameState.startCard as Card).id)),
+    [tentativeCombo, isNewRound, gameState.lastPlayedCombination, gameState.startCard, requiresStartCard]
+  );
   const canPassNow = !isNewRound && isMyTurn && !isFinished;
   const playBtnValid = isValidPlay && isMyTurn && !isFinished;
 
   const totalOpponents = gameState.players.length - 1;
-  const opponents = gameState.players
-    .map((p, i) => ({
-      ...p,
-      idx: i,
-      handCount: (p as any).handCount ?? p.hand.length,
-    }))
-    .filter((_, i) => i !== mySeatIndex);
+  const opponents = useMemo(
+    () =>
+      gameState.players
+        .map((p, i) => ({
+          ...p,
+          idx: i,
+          handCount: (p as any).handCount ?? p.hand.length,
+        }))
+        .filter((_, i) => i !== mySeatIndex),
+    [gameState.players, mySeatIndex]
+  );
 
-  const topOpp = opponents.find(({ idx }) => {
+  const topOpp = useMemo(() => opponents.find(({ idx }) => {
     const steps =
       ((idx - mySeatIndex + gameState.players.length) %
         gameState.players.length);
     return getOpponentPosition(steps, totalOpponents) === "top";
-  });
-  const leftOpp = opponents.find(({ idx }) => {
+  }), [opponents, mySeatIndex, gameState.players.length, totalOpponents]);
+
+  const leftOpp = useMemo(() => opponents.find(({ idx }) => {
     const steps =
       ((idx - mySeatIndex + gameState.players.length) %
         gameState.players.length);
     return getOpponentPosition(steps, totalOpponents) === "left";
-  });
-  const rightOpp = opponents.find(({ idx }) => {
+  }), [opponents, mySeatIndex, gameState.players.length, totalOpponents]);
+
+  const rightOpp = useMemo(() => opponents.find(({ idx }) => {
     const steps =
       ((idx - mySeatIndex + gameState.players.length) %
         gameState.players.length);
     return getOpponentPosition(steps, totalOpponents) === "right";
-  });
+  }), [opponents, mySeatIndex, gameState.players.length, totalOpponents]);
 
   const topPad = Platform.OS === "web" ? 67 : insets.top;
   const bottomPad = Platform.OS === "web" ? 34 : insets.bottom;

@@ -26,7 +26,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { useGame, calcRoundPoints } from "@/context/GameContext";
 import { CardView } from "@/components/CardView";
 import { sortHand } from "@/lib/gameEngine";
-import Colors from "@/constants/colors";
+import { Colors } from '@/lib/theme';
 
 const POSITION_COLORS = [Colors.gold, "#C0C0C0", "#CD7F32", Colors.textMuted];
 const POSITION_LABELS = ["1°", "2°", "3°", "4°"];

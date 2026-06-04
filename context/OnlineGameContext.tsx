@@ -5,6 +5,7 @@ import React, {
   useCallback,
   useEffect,
   useRef,
+  useMemo,
   ReactNode,
 } from "react";
 import { getSocket } from "@/lib/socket";
@@ -302,40 +303,45 @@ export function OnlineGameProvider({ userId, children }: { userId: string; child
   const clearError = useCallback(() => setError(null), []);
   const clearPlayerLeft = useCallback(() => setPlayerLeft(false), []);
 
+  const contextValue = useMemo(
+    () => ({
+      room,
+      gameState,
+      reactions,
+      connected,
+      error,
+      playerLeft,
+      rejoinFailed,
+      disconnectedPlayers,
+      reconnectNotice,
+      mySeatIndex,
+      entrySource,
+      rematchVoteState,
+      cumulativeScores,
+      exchangeAnnouncing,
+      exchangeAnnounceData,
+      createRoom,
+      joinRoom,
+      leaveRoom,
+      quickmatch,
+      setRoomGameMode,
+      startGame,
+      requestPlayAgain,
+      voteRematch,
+      playCards,
+      pass,
+      giveExchangeCard,
+      acknowledgeExchange,
+      sendReaction,
+      clearError,
+      clearPlayerLeft,
+    }),
+    [room, gameState, reactions, connected, error, playerLeft, rejoinFailed, disconnectedPlayers, reconnectNotice, mySeatIndex, entrySource, rematchVoteState, cumulativeScores, exchangeAnnouncing, exchangeAnnounceData, createRoom, joinRoom, leaveRoom, quickmatch, setRoomGameMode, startGame, requestPlayAgain, voteRematch, playCards, pass, giveExchangeCard, acknowledgeExchange, sendReaction, clearError, clearPlayerLeft]
+  );
+
   return (
     <OnlineGameContext.Provider
-      value={{
-        room,
-        gameState,
-        reactions,
-        connected,
-        error,
-        playerLeft,
-        rejoinFailed,
-        disconnectedPlayers,
-        reconnectNotice,
-        mySeatIndex,
-        entrySource,
-        rematchVoteState,
-        cumulativeScores,
-        exchangeAnnouncing,
-        exchangeAnnounceData,
-        createRoom,
-        joinRoom,
-        leaveRoom,
-        quickmatch,
-        setRoomGameMode,
-        startGame,
-        requestPlayAgain,
-        voteRematch,
-        playCards,
-        pass,
-        giveExchangeCard,
-        acknowledgeExchange,
-        sendReaction,
-        clearError,
-        clearPlayerLeft,
-      }}
+      value={contextValue}
     >
       {children}
     </OnlineGameContext.Provider>

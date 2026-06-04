@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useEffect, useState } from "react";
+import React, { createContext, useContext, useEffect, useState, useMemo } from "react";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { setSoundsMasterEnabled } from "@/lib/sounds";
 import { setHapticsMasterEnabled } from "@/lib/haptics";
@@ -52,10 +52,13 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
   const setHapticsEnabled = (v: boolean) =>
     setSettings((s) => ({ ...s, hapticsEnabled: v }));
 
+  const contextValue = useMemo(
+    () => ({ ...settings, setSoundsEnabled, setHapticsEnabled }),
+    [settings, setSoundsEnabled, setHapticsEnabled]
+  );
+
   return (
-    <SettingsContext.Provider
-      value={{ ...settings, setSoundsEnabled, setHapticsEnabled }}
-    >
+    <SettingsContext.Provider value={contextValue}>
       {children}
     </SettingsContext.Provider>
   );

@@ -17,7 +17,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { useGame, PlayerSetupConfig } from "@/context/GameContext";
 import { useAuth } from "@/context/AuthContext";
 import { GameMode, AIDifficulty } from "@/lib/gameEngine";
-import Colors from "@/constants/colors";
+import { Colors } from '@/lib/theme';
 
 type LobbyMode = "ai" | "local";
 

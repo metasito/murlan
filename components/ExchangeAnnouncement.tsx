@@ -16,7 +16,7 @@ import Animated, {
 } from "react-native-reanimated";
 import type { Card } from "@/lib/gameEngine";
 import { CardView } from "@/components/CardView";
-import Colors from "@/constants/colors";
+import { Colors } from '@/lib/theme';
 import { Shadow } from "@/lib/theme";
 
 const DISMISS_MS = 4200;

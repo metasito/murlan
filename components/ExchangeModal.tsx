@@ -21,7 +21,7 @@ import { Ionicons } from "@expo/vector-icons";
 import type { ExchangePhase, Card } from "@/lib/gameEngine";
 import { cardStrength, getValidGivebackCards } from "@/lib/gameEngine";
 import { CardView } from "@/components/CardView";
-import Colors from "@/constants/colors";
+import { Colors } from '@/lib/theme';
 import { Shadow } from "@/lib/theme";
 
 interface ExchangeModalProps {

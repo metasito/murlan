@@ -23,7 +23,7 @@ import { useAuth } from "@/context/AuthContext";
 import { useSocket } from "@/context/SocketContext";
 import { useOnlineGame } from "@/context/OnlineGameContext";
 import { apiRequest } from "@/lib/query-client";
-import Colors from "@/constants/colors";
+import { Colors } from '@/lib/theme';
 
 interface FriendInfo {
   id: string;
@@ -216,11 +216,11 @@ export default function FriendsScreen() {
       <View style={styles.row}>
         <View style={styles.avatarWrapper}>
           <Avatar name={item.username} />
-          <View style={[styles.statusDot, { backgroundColor: isOnline ? "#4CAF50" : Colors.textMuted }]} />
+          <View style={[styles.statusDot, { backgroundColor: isOnline ? "Colors.success" : Colors.textMuted }]} />
         </View>
         <View style={styles.rowInfo}>
           <Text style={styles.rowName}>{item.username}</Text>
-          <Text style={[styles.rowSub, isOnline && { color: "#4CAF50" }]}>
+          <Text style={[styles.rowSub, isOnline && { color: "Colors.success" }]}>
             {isOnline ? "● Online" : `Visto ${italianRelativeTime(item.lastSeen)}`}
           </Text>
         </View>
@@ -295,11 +295,11 @@ export default function FriendsScreen() {
               <View key={item.id} style={styles.row}>
                 <View style={styles.avatarWrapper}>
                   <Avatar name={item.username} />
-                  <View style={[styles.statusDot, { backgroundColor: onlineIds.has(item.id) ? "#4CAF50" : Colors.textMuted }]} />
+                  <View style={[styles.statusDot, { backgroundColor: onlineIds.has(item.id) ? "Colors.success" : Colors.textMuted }]} />
                 </View>
                 <View style={styles.rowInfo}>
                   <Text style={styles.rowName}>{item.username}</Text>
-                  <Text style={[styles.rowSub, onlineIds.has(item.id) && { color: "#4CAF50" }]}>
+                  <Text style={[styles.rowSub, onlineIds.has(item.id) && { color: "Colors.success" }]}>
                     {onlineIds.has(item.id) ? "● Online" : `Visto ${italianRelativeTime(item.lastSeen)}`}
                   </Text>
                 </View>
@@ -324,7 +324,7 @@ export default function FriendsScreen() {
                 <View key={invite.roomCode} style={styles.row}>
                   <View style={styles.avatarWrapper}>
                     <Avatar name={invite.from} />
-                    <View style={[styles.statusDot, { backgroundColor: "#4CAF50" }]} />
+                    <View style={[styles.statusDot, { backgroundColor: "Colors.success" }]} />
                   </View>
                   <View style={styles.rowInfo}>
                     <Text style={styles.rowName}>{invite.from}</Text>
@@ -575,7 +575,7 @@ const styles = StyleSheet.create({
     width: 36,
     height: 36,
     borderRadius: 18,
-    backgroundColor: "#4CAF50",
+    backgroundColor: "Colors.success",
     alignItems: "center",
     justifyContent: "center",
   },

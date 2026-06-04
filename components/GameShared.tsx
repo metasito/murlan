@@ -20,7 +20,7 @@ import { LinearGradient } from "expo-linear-gradient";
 import { CardView } from "@/components/CardView";
 import { Shadow } from "@/lib/theme";
 import type { Card, Combination, Player, StartReason } from "@/lib/gameEngine";
-import Colors from "@/constants/colors";
+import { Colors } from '@/lib/theme';
 
 export const CARD_W = 58;
 export const CARD_H = 84;

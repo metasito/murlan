@@ -2,7 +2,7 @@ import { Stack, Redirect } from "expo-router";
 import { useAuth } from "@/context/AuthContext";
 import { OnlineGameProvider } from "@/context/OnlineGameContext";
 import { View, ActivityIndicator } from "react-native";
-import Colors from "@/constants/colors";
+import { Colors } from '@/lib/theme';
 
 export default function OnlineLayout() {
   const { user, loading } = useAuth();
