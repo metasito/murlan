@@ -146,7 +146,7 @@ function configureExpoAndLanding(app: express.Application) {
     // Web build present — serve SPA for browser clients
     app.use(express.static(distPath));
     // Catch-all: any non-API path not matched by static files gets index.html (SPA routing)
-    app.get("*", (req: Request, res: Response, next: NextFunction) => {
+    app.get("*path", (req: Request, res: Response, next: NextFunction) => {
       if (req.path.startsWith("/api")) return next();
       res.sendFile(webIndexPath);
     });
