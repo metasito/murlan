@@ -131,13 +131,15 @@ function configureExpoAndLanding(app: express.Application) {
   const webIndexPath = path.join(distPath, "index.html");
   const hasWebBuild = fs.existsSync(webIndexPath);
 
-  // Always serve native Expo Go manifests (for Expo Go mobile clients)
-  app.use("/manifest", (req: Request, res: Response, next: NextFunction) => {
+  // Expo Go sends manifest requests to both / and /manifest with expo-platform header
+  const expoManifestHandler = (req: Request, res: Response, next: NextFunction) => {
     const platform = req.header("expo-platform");
     if (platform === "ios" || platform === "android")
       return serveExpoManifest(platform, res);
     next();
-  });
+  };
+  app.use("/manifest", expoManifestHandler);
+  app.get("/", expoManifestHandler);
 
   app.use("/assets", express.static(path.resolve(process.cwd(), "assets")));
   app.use(express.static(path.resolve(process.cwd(), "static-build")));
