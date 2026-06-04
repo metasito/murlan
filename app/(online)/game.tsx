@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useRef, useState, memo } from "react";
 import {
   View,
   Text,
@@ -359,7 +359,7 @@ function GameOverOverlay({
   );
 }
 
-export default function OnlineGameScreen() {
+function OnlineGameScreenBase() {
   const insets = useSafeAreaInsets();
   const { width: W, height: H } = useWindowDimensions();
   const { user } = useAuth();
@@ -1336,3 +1336,5 @@ const goStyles = StyleSheet.create({
     flexShrink: 1,
   },
 });
+
+export default memo(OnlineGameScreenBase);

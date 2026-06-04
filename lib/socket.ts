@@ -32,6 +32,7 @@ export function getSocket(userId: string): Socket {
 export function disconnectSocket(userId: string) {
   const s = socketMap.get(userId);
   if (s) {
+    s.removeAllListeners();
     s.disconnect();
     socketMap.delete(userId);
   }

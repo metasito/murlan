@@ -77,6 +77,17 @@ function clearAfkTimer(roomCode: string, userId: string) {
   }
 }
 
+function clearAllTimersForUser(userId: string, roomCode?: string) {
+  const dcTimer = disconnectTimers.get(userId);
+  if (dcTimer) {
+    clearTimeout(dcTimer);
+    disconnectTimers.delete(userId);
+  }
+  if (roomCode) {
+    clearAfkTimer(roomCode, userId);
+  }
+}
+
 function handleAutoPass(roomCode: string, userId: string) {
   if (!_io) return;
   const game = activeGames.get(roomCode);
@@ -86,9 +97,10 @@ function handleAutoPass(roomCode: string, userId: string) {
   if (gameState.exchangePhase?.active) {
     const winnerSeat = gameState.exchangePhase.winnerIdx;
     if (playerMap[winnerSeat] !== userId) return;
+    const winnerPlayer = gameState.players[winnerSeat];
+    if (!winnerPlayer) return;
     const VALID = ["3","4","5","6","7","8","9","10"];
-    const winnerHand = gameState.players[winnerSeat].hand;
-    const validCard = winnerHand.find((c) => VALID.includes(c.rank));
+    const validCard = winnerPlayer.hand.find((c) => VALID.includes(c.rank));
     if (validCard) {
       const newState = processExchangeChoice(gameState, validCard.id);
       game.gameState = newState;
@@ -109,6 +121,7 @@ function handleAutoPass(roomCode: string, userId: string) {
   if (gameState.lastPlayedCombination === null) {
     // Round/game start — must play a card, cannot pass
     const player = gameState.players[currentIdx];
+    if (!player) return;
     let cardToPlay: Card | undefined;
     if (!gameState.firstPlayMade) {
       // First play of the game: 3♠ is mandatory
@@ -574,6 +587,7 @@ export function setupSocket(httpServer: HttpServer) {
       if (playerMap[currentIdx] !== userId) return;
 
       const player = gameState.players[currentIdx];
+      if (!player) return;
       const cards = player.hand.filter((c) => cardIds.includes(c.id));
       if (cards.length !== cardIds.length) return;
 
@@ -932,7 +946,10 @@ export function setupSocket(httpServer: HttpServer) {
               (s) => (s as any).data?.userId === userId
             );
             if (stillGone) {
-              handleAutoPass(currentRoomId, userId);
+              const game = activeGames.get(currentRoomId);
+              if (game && !game.gameState.gameOver) {
+                handleAutoPass(currentRoomId, userId);
+              }
               await storage.removeRoomPlayer(currentRoomId, userId).catch(() => {});
               const g = activeGames.get(currentRoomId);
               if (g) {
@@ -995,11 +1012,7 @@ async function handleLeaveRoom(
   if (!roomId) return;
   socketRoomMap.delete(socket.id);
 
-  const dcTimer = disconnectTimers.get(userId);
-  if (dcTimer) {
-    clearTimeout(dcTimer);
-    disconnectTimers.delete(userId);
-  }
+  clearAllTimersForUser(userId, roomId);
 
   await storage.removeRoomPlayer(roomId, userId);
   socket.leave(roomId);
