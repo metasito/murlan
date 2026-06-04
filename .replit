@@ -7,7 +7,7 @@ packages = ["dig", "q"]
 
 [deployment]
 deploymentTarget = "cloudrun"
-build = ["sh", "-c", "npm run expo:static:build && npm run server:build"]
+build = ["sh", "-c", "npm run expo:static:build && npm run expo:web:build && npm run server:build"]
 run = ["npm", "run", "server:prod"]
 
 [[ports]]

@@ -127,28 +127,40 @@ function serveLandingPage({
 }
 
 function configureExpoAndLanding(app: express.Application) {
-  const templatePath = path.resolve(
-    process.cwd(),
-    "server",
-    "templates",
-    "landing-page.html"
-  );
-  const landingPageTemplate = fs.readFileSync(templatePath, "utf-8");
-  const appName = getAppName();
-  logger.info("Serving static Expo files with dynamic manifest routing");
-  app.use((req: Request, res: Response, next: NextFunction) => {
-    if (req.path.startsWith("/api")) return next();
-    if (req.path !== "/" && req.path !== "/manifest") return next();
+  const distPath = path.resolve(process.cwd(), "dist");
+  const webIndexPath = path.join(distPath, "index.html");
+  const hasWebBuild = fs.existsSync(webIndexPath);
+
+  // Always serve native Expo Go manifests (for Expo Go mobile clients)
+  app.use("/manifest", (req: Request, res: Response, next: NextFunction) => {
     const platform = req.header("expo-platform");
-    if (platform && (platform === "ios" || platform === "android"))
+    if (platform === "ios" || platform === "android")
       return serveExpoManifest(platform, res);
-    if (req.path === "/")
-      return serveLandingPage({ req, res, landingPageTemplate, appName });
     next();
   });
+
   app.use("/assets", express.static(path.resolve(process.cwd(), "assets")));
   app.use(express.static(path.resolve(process.cwd(), "static-build")));
-  logger.info("Expo routing: Checking expo-platform header on / and /manifest");
+
+  if (hasWebBuild) {
+    // Web build present — serve SPA for browser clients
+    app.use(express.static(distPath));
+    // Catch-all: any non-API path not matched by static files gets index.html (SPA routing)
+    app.get("*", (req: Request, res: Response, next: NextFunction) => {
+      if (req.path.startsWith("/api")) return next();
+      res.sendFile(webIndexPath);
+    });
+    logger.info("Serving Expo web build from dist/");
+  } else {
+    // No web build — show Expo Go QR landing page
+    const templatePath = path.resolve(process.cwd(), "server", "templates", "landing-page.html");
+    const landingPageTemplate = fs.readFileSync(templatePath, "utf-8");
+    const appName = getAppName();
+    app.get("/", (req: Request, res: Response) => {
+      serveLandingPage({ req, res, landingPageTemplate, appName });
+    });
+    logger.info("No web build found — serving Expo Go landing page");
+  }
 }
 
 function setupErrorHandler(app: express.Application) {
