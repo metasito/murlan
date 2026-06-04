@@ -12,8 +12,8 @@ import { router } from "expo-router";
 import { useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "@/context/AuthContext";
 import { connectSocket, disconnectSocket } from "@/lib/socket";
+import { useNotification } from "@/context/NotificationContext";
 import type { Socket } from "socket.io-client";
-import type { NotificationData } from "@/components/NotificationBanner";
 
 interface PendingInvite {
   from: string;
@@ -28,8 +28,6 @@ interface SocketContextValue {
   clearInvite: () => void;
   gameInvites: PendingInvite[];
   dismissGameInvite: (roomCode: string) => void;
-  notification: NotificationData | null;
-  dismissNotification: () => void;
 }
 
 const SocketContext = createContext<SocketContextValue>({
@@ -40,8 +38,6 @@ const SocketContext = createContext<SocketContextValue>({
   clearInvite: () => {},
   gameInvites: [],
   dismissGameInvite: () => {},
-  notification: null,
-  dismissNotification: () => {},
 });
 
 export function useSocket() {
@@ -51,22 +47,12 @@ export function useSocket() {
 export function SocketProvider({ children }: { children: ReactNode }) {
   const { user } = useAuth();
   const qc = useQueryClient();
+  const { showNotification } = useNotification();
   const [connected, setConnected] = useState(false);
   const [onlineIds, setOnlineIds] = useState<Set<string>>(new Set());
   const [pendingInvite, setPendingInvite] = useState<PendingInvite | null>(null);
   const [gameInvites, setGameInvites] = useState<PendingInvite[]>([]);
-  const [notification, setNotification] = useState<NotificationData | null>(null);
   const socketRef = useRef<Socket | null>(null);
-  const notifTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  const showNotification = useCallback((n: NotificationData) => {
-    if (notifTimerRef.current) clearTimeout(notifTimerRef.current);
-    setNotification(n);
-  }, []);
-
-  const dismissNotification = useCallback(() => {
-    setNotification(null);
-  }, []);
 
   const clearInvite = useCallback(() => setPendingInvite(null), []);
 
@@ -91,7 +77,6 @@ export function SocketProvider({ children }: { children: ReactNode }) {
 
     const onConnect = () => {
       setConnected(true);
-      // Request fresh online list on every connect/reconnect
       socket.emit("friend:get_online_list");
     };
 
@@ -106,7 +91,6 @@ export function SocketProvider({ children }: { children: ReactNode }) {
     const onFriendStatus = ({
       userId,
       online,
-      lastSeen,
     }: {
       userId: string;
       online: boolean;
@@ -156,6 +140,7 @@ export function SocketProvider({ children }: { children: ReactNode }) {
         type: "game_invite",
         title: `${from} ti invita a giocare!`,
         message: `Stanza: ${roomCode} — Tocca per unirti`,
+        duration: 6000,
         onPress: () => {
           router.push("/(online)");
         },
@@ -170,7 +155,6 @@ export function SocketProvider({ children }: { children: ReactNode }) {
     socket.on("friend:request_accepted", onRequestAccepted);
     socket.on("friend:invite", onInvite);
 
-    // If already connected, fire immediately
     if (socket.connected) {
       setConnected(true);
       socket.emit("friend:get_online_list");
@@ -196,10 +180,8 @@ export function SocketProvider({ children }: { children: ReactNode }) {
       clearInvite,
       gameInvites,
       dismissGameInvite,
-      notification,
-      dismissNotification,
     }),
-    [connected, onlineIds, pendingInvite, gameInvites, notification]
+    [connected, onlineIds, pendingInvite, gameInvites]
   );
 
   return (

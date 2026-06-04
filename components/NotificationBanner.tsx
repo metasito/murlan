@@ -11,15 +11,9 @@ import { Ionicons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Colors } from '@/lib/theme';
 import { Shadow } from "@/lib/theme";
+import type { NotificationType, NotificationData } from "@/context/NotificationContext";
 
-export type NotificationType = "friend_request" | "friend_accepted" | "game_invite";
-
-export interface NotificationData {
-  type: NotificationType;
-  title: string;
-  message: string;
-  onPress?: () => void;
-}
+export type { NotificationType, NotificationData };
 
 interface Props {
   notification: NotificationData | null;
@@ -30,16 +24,24 @@ const ICON_MAP: Record<NotificationType, React.ComponentProps<typeof Ionicons>["
   friend_request: "person-add",
   friend_accepted: "people",
   game_invite: "game-controller",
+  game_info: "information-circle",
+  game_error: "alert-circle",
+  afk: "timer-outline",
+  connection: "wifi",
 };
 
 const COLOR_MAP: Record<NotificationType, string> = {
   friend_request: Colors.gold,
   friend_accepted: Colors.success,
   game_invite: Colors.info,
+  game_info: Colors.textSecondary,
+  game_error: Colors.red,
+  afk: "#E0A830",
+  connection: Colors.success,
 };
 
 const SLIDE_DURATION = 320;
-const VISIBLE_DURATION = 4000;
+const DEFAULT_VISIBLE_DURATION = 4500;
 
 export default function NotificationBanner({ notification, onDismiss }: Props) {
   const insets = useSafeAreaInsets();
@@ -50,10 +52,11 @@ export default function NotificationBanner({ notification, onDismiss }: Props) {
 
   useEffect(() => {
     if (notification) {
-      // Slide in first, then after VISIBLE_DURATION auto-dismiss
+      const visibleDuration = notification.duration ?? DEFAULT_VISIBLE_DURATION;
+      // Slide in first, then after visibleDuration auto-dismiss via callback chain
       translateY.value = withTiming(0, { duration: SLIDE_DURATION }, () => {
         translateY.value = withDelay(
-          VISIBLE_DURATION,
+          visibleDuration,
           withTiming(-120, { duration: SLIDE_DURATION }, (finished) => {
             if (finished) runOnJS(onDismiss)();
           })
@@ -61,7 +64,7 @@ export default function NotificationBanner({ notification, onDismiss }: Props) {
       });
       opacity.value = withTiming(1, { duration: SLIDE_DURATION }, () => {
         opacity.value = withDelay(
-          VISIBLE_DURATION + SLIDE_DURATION * 0.5,
+          visibleDuration + SLIDE_DURATION * 0.5,
           withTiming(0, { duration: SLIDE_DURATION })
         );
       });
@@ -99,7 +102,7 @@ export default function NotificationBanner({ notification, onDismiss }: Props) {
         </View>
         <View style={styles.textGroup}>
           <Text style={styles.title}>{notification?.title ?? ""}</Text>
-          <Text style={styles.message} numberOfLines={1}>{notification?.message ?? ""}</Text>
+          <Text style={styles.message} numberOfLines={2}>{notification?.message ?? ""}</Text>
         </View>
         <Pressable onPress={handlePress} hitSlop={16} style={styles.closeBtn}>
           <Ionicons name="close" size={20} color={Colors.textMuted} />
@@ -150,6 +153,7 @@ const styles = StyleSheet.create({
     fontFamily: "Inter_400Regular",
     fontSize: 12,
     color: Colors.textMuted,
+    lineHeight: 17,
   },
   closeBtn: {
     padding: 4,

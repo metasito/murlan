@@ -19,7 +19,7 @@ import { CardView } from "@/components/CardView";
 import { Colors } from '@/lib/theme';
 import { Shadow } from "@/lib/theme";
 
-const DISMISS_MS = 4200;
+const DISMISS_MS = 5500;
 
 function getItalianCardName(card: Card): string {
   if (card.isJoker) return "Jolly";

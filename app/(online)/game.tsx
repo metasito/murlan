@@ -371,6 +371,8 @@ function OnlineGameScreenBase() {
     playerLeft,
     rejoinFailed,
     reconnectNotice,
+    error,
+    clearError,
     playCards,
     pass,
     giveExchangeCard,
@@ -537,6 +539,13 @@ function OnlineGameScreenBase() {
     }
   }, [rejoinFailed]);
 
+  // Auto-clear in-game errors after 3s
+  useEffect(() => {
+    if (!error) return;
+    const t = setTimeout(clearError, 3000);
+    return () => clearTimeout(t);
+  }, [error]);
+
   // Derive game-state-dependent values (safe to read before hooks — they guard with ?.optional)
   const me = gameState?.players[mySeatIndex];
   const isMyTurn = gameState ? gameState.currentTurnIndex === mySeatIndex : false;
@@ -549,6 +558,11 @@ function OnlineGameScreenBase() {
   const exchangeLoserPlayer = exchangeActive
     ? gameState!.players[gameState!.exchangePhase!.loserIdx]
     : null;
+  const exchangeWinnerPlayer = exchangeActive
+    ? gameState!.players[gameState!.exchangePhase!.winnerIdx]
+    : null;
+  const isMyExchangeLoser =
+    exchangeActive && gameState!.exchangePhase!.loserIdx === mySeatIndex;
 
   // useTurnPulse must be called unconditionally (before any early return)
   const turnPulseStyle = useTurnPulse(!!gameState && isMyTurn && !isFinished && !exchangeActive);
@@ -890,8 +904,8 @@ function OnlineGameScreenBase() {
         />
       )}
 
-      {/* Start reason banner — shown at round start, dismisses after 4s or on tap */}
-      {gameState.startReason && (
+      {/* Start reason banner — shown at round start; gated on !exchangeAnnouncing so it sequences after exchange announcement */}
+      {gameState.startReason && !exchangeAnnouncing && (
         <StartReasonBanner
           key={`reason-${gameState.startReason.type}-${gameState.startReason.playerIdx}`}
           reason={gameState.startReason}
@@ -919,11 +933,27 @@ function OnlineGameScreenBase() {
         <View style={{ ...StyleSheet.absoluteFillObject, backgroundColor: "rgba(3,16,8,0.88)", alignItems: "center", justifyContent: "center", zIndex: 100 }}>
           <View style={{ backgroundColor: "#0B2A1A", borderRadius: 20, borderWidth: 2, borderColor: "rgba(201,168,76,0.3)", padding: 28, alignItems: "center", gap: 12, maxWidth: 380, width: "80%" }}>
             <Text style={{ fontSize: 32 }}>🔄</Text>
-            <Text style={{ fontFamily: "Rajdhani_700Bold", fontSize: 18, color: Colors.gold, letterSpacing: 1, textAlign: "center" }}>Scambio in corso...</Text>
-            <Text style={{ fontFamily: "Inter_400Regular", fontSize: 13, color: Colors.text, textAlign: "center", lineHeight: 20 }}>
-              Il vincitore sta scegliendo la carta da darti.
+            <Text style={{ fontFamily: "Rajdhani_700Bold", fontSize: 18, color: Colors.gold, letterSpacing: 1, textAlign: "center" }}>
+              Scambio in corso...
             </Text>
+            {isMyExchangeLoser ? (
+              <Text style={{ fontFamily: "Inter_400Regular", fontSize: 13, color: Colors.text, textAlign: "center", lineHeight: 20 }}>
+                {exchangeWinnerPlayer?.name ?? "Il vincitore"} sta scegliendo la carta da darti.
+              </Text>
+            ) : (
+              <Text style={{ fontFamily: "Inter_400Regular", fontSize: 13, color: Colors.text, textAlign: "center", lineHeight: 20 }}>
+                {exchangeWinnerPlayer?.name ?? "Il vincitore"} sta scegliendo la carta per {exchangeLoserPlayer?.name ?? "il perdente"}.
+              </Text>
+            )}
           </View>
+        </View>
+      )}
+
+      {/* In-game error toast — auto-clears after 3s */}
+      {error && (
+        <View style={localStyles.gameErrorToast}>
+          <Ionicons name="alert-circle" size={15} color="#fff" />
+          <Text style={localStyles.gameErrorText}>{error}</Text>
         </View>
       )}
 
@@ -1168,6 +1198,27 @@ const localStyles = StyleSheet.create({
     fontFamily: "Inter_500Medium",
     fontSize: 12,
     color: "#FFD700",
+  },
+
+  gameErrorToast: {
+    position: "absolute",
+    bottom: 100,
+    alignSelf: "center",
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    backgroundColor: "rgba(200,50,50,0.92)",
+    borderRadius: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    zIndex: 300,
+    maxWidth: 340,
+  },
+  gameErrorText: {
+    fontFamily: "Inter_500Medium",
+    fontSize: 12,
+    color: "#fff",
+    flexShrink: 1,
   },
 });
 

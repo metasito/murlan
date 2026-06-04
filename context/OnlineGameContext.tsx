@@ -9,6 +9,7 @@ import React, {
   ReactNode,
 } from "react";
 import { getSocket } from "@/lib/socket";
+import { useNotification } from "@/context/NotificationContext";
 import type { Socket } from "socket.io-client";
 import type { GameState } from "@/lib/gameEngine";
 import type { ExchangeAnnounceData } from "@/lib/sharedGameFlow";
@@ -71,6 +72,7 @@ interface OnlineGameContextValue {
 const OnlineGameContext = createContext<OnlineGameContextValue | null>(null);
 
 export function OnlineGameProvider({ userId, children }: { userId: string; children: ReactNode }) {
+  const { showNotification } = useNotification();
   const [room, setRoom] = useState<RoomState | null>(null);
   const [gameState, setGameState] = useState<GameState | null>(null);
   const [reactions, setReactions] = useState<Reaction[]>([]);
@@ -92,6 +94,7 @@ export function OnlineGameProvider({ userId, children }: { userId: string; child
   const validSeatIndexRef = useRef<number | null>(null);
   const roomRef = useRef<RoomState | null>(null);
   const gameStateRef = useRef<GameState | null>(null);
+  const reconnectNoticeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const socket: Socket = getSocket(userId);
 
@@ -110,7 +113,11 @@ export function OnlineGameProvider({ userId, children }: { userId: string; child
       roomRef.current = data;
       setRoom(data);
     };
-    const onRoomError = ({ message }: { message: string }) => setError(message);
+
+    const onRoomError = ({ message }: { message: string }) => {
+      setError(message);
+    };
+
     const onGameState = (state: GameState) => {
       const wasActive = prevExchangeActiveRef.current;
       const isActive = state.exchangePhase?.active === true;
@@ -149,36 +156,72 @@ export function OnlineGameProvider({ userId, children }: { userId: string; child
       setGameState(state);
       setRematchVoteState(null);
     };
-    const onGameError = ({ message }: { message: string }) => setError(message);
+
+    const onGameError = ({ message }: { message: string }) => {
+      // Error is shown as an in-game toast in game.tsx (auto-clears after 3s)
+      setError(message);
+    };
+
+    const onGameNotification = ({ type: notifType, message }: { type: string; message: string }) => {
+      if (notifType === "afk") {
+        showNotification({
+          type: "afk",
+          title: "Passaggio automatico",
+          message,
+          duration: 4500,
+        });
+      } else {
+        showNotification({
+          type: "game_info",
+          title: "Avviso",
+          message,
+          duration: 4000,
+        });
+      }
+    };
+
     const onGameOver = ({ cumulativeScores: cs }: { cumulativeScores?: Record<string, number> }) => {
       if (cs) setCumulativeScores(cs);
     };
+
     const onVoteState = (vs: RematchVoteState) => setRematchVoteState(vs);
+
     const onReaction = (r: { emoji: string; fromSeat: number; username: string }) => {
       const id = Date.now().toString() + Math.random().toString(36).substr(2, 5);
       setReactions((prev) => [...prev.slice(-9), { ...r, id }]);
       setTimeout(() => setReactions((prev) => prev.filter((x) => x.id !== id)), 2500);
     };
+
     const onPlayerLeft = () => setPlayerLeft(true);
+
     const onPlayerDisconnected = ({ userId: dcUserId, username: dcUsername }: { userId: string; username: string; message: string }) => {
       setDisconnectedPlayers((prev) => {
         const next = new Set(prev);
         next.add(dcUserId);
         return next;
       });
-      setReconnectNotice(`${dcUsername} si è disconnesso. Ha 60 secondi per rientrare.`);
+      const msg = `${dcUsername} si è disconnesso — 60s per rientrare`;
+      setReconnectNotice(msg);
+      if (reconnectNoticeTimerRef.current) clearTimeout(reconnectNoticeTimerRef.current);
+      reconnectNoticeTimerRef.current = setTimeout(() => {
+        setReconnectNotice((cur) => (cur === msg ? null : cur));
+      }, 10_000);
     };
+
     const onPlayerReconnected = ({ userId: rcUserId, username: rcUsername }: { userId: string; username: string }) => {
       setDisconnectedPlayers((prev) => {
         const next = new Set(prev);
         next.delete(rcUserId);
         return next;
       });
-      if (rcUserId !== userId) {
-        setReconnectNotice(`${rcUsername} si è riconnesso!`);
-        setTimeout(() => setReconnectNotice((cur) => cur === `${rcUsername} si è riconnesso!` ? null : cur), 3000);
-      }
+      const msg = `${rcUsername} si è riconnesso!`;
+      setReconnectNotice(msg);
+      if (reconnectNoticeTimerRef.current) clearTimeout(reconnectNoticeTimerRef.current);
+      reconnectNoticeTimerRef.current = setTimeout(() => {
+        setReconnectNotice((cur) => (cur === msg ? null : cur));
+      }, 3_500);
     };
+
     const onRejoinFailed = () => {
       gameStateRef.current = null;
       setGameState(null);
@@ -187,6 +230,7 @@ export function OnlineGameProvider({ userId, children }: { userId: string; child
       setPlayerLeft(false);
       setDisconnectedPlayers(new Set());
       setReconnectNotice(null);
+      if (reconnectNoticeTimerRef.current) clearTimeout(reconnectNoticeTimerRef.current);
       setRejoinFailed(true);
     };
 
@@ -196,6 +240,7 @@ export function OnlineGameProvider({ userId, children }: { userId: string; child
     socket.on("room:error", onRoomError);
     socket.on("game:state", onGameState);
     socket.on("game:error", onGameError);
+    socket.on("game:notification", onGameNotification);
     socket.on("game:started", () => {});
     socket.on("game:over", onGameOver);
     socket.on("game:vote_state", onVoteState);
@@ -214,6 +259,7 @@ export function OnlineGameProvider({ userId, children }: { userId: string; child
       socket.off("room:error", onRoomError);
       socket.off("game:state", onGameState);
       socket.off("game:error", onGameError);
+      socket.off("game:notification", onGameNotification);
       socket.off("game:started");
       socket.off("game:over", onGameOver);
       socket.off("game:vote_state", onVoteState);
@@ -254,6 +300,7 @@ export function OnlineGameProvider({ userId, children }: { userId: string; child
     setRejoinFailed(false);
     setDisconnectedPlayers(new Set());
     setReconnectNotice(null);
+    if (reconnectNoticeTimerRef.current) clearTimeout(reconnectNoticeTimerRef.current);
     validSeatIndexRef.current = null;
     prevBothJokersExceptionRef.current = false;
     prevExchangeActiveRef.current = false;
@@ -340,9 +387,7 @@ export function OnlineGameProvider({ userId, children }: { userId: string; child
   );
 
   return (
-    <OnlineGameContext.Provider
-      value={contextValue}
-    >
+    <OnlineGameContext.Provider value={contextValue}>
       {children}
     </OnlineGameContext.Provider>
   );

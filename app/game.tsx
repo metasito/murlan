@@ -667,8 +667,8 @@ export default function GameScreen() {
         />
       )}
 
-      {/* Start reason banner — shown at round start, dismisses after 4s or on tap */}
-      {gameState.startReason && (
+      {/* Start reason banner — gated on !exchangeAnnouncing so it sequences after exchange announcement */}
+      {gameState.startReason && !exchangeAnnouncing && (
         <StartReasonBanner
           key={`reason-${gameState.startReason.type}-${gameState.startReason.playerIdx}`}
           reason={gameState.startReason}

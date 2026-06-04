@@ -10,8 +10,9 @@ import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { queryClient } from "@/lib/query-client";
 import { GameProvider } from "@/context/GameContext";
 import { AuthProvider } from "@/context/AuthContext";
-import { SocketProvider, useSocket } from "@/context/SocketContext";
+import { SocketProvider } from "@/context/SocketContext";
 import { SettingsProvider } from "@/context/SettingsContext";
+import { NotificationProvider, useNotification } from "@/context/NotificationContext";
 import NotificationBanner from "@/components/NotificationBanner";
 import { OfflineBanner } from "@/components/OfflineBanner";
 import {
@@ -30,7 +31,7 @@ import {
 SplashScreen.preventAutoHideAsync();
 
 function RootLayoutNav() {
-  const { notification, dismissNotification } = useSocket();
+  const { notification, dismissNotification } = useNotification();
 
   return (
     <View style={{ flex: 1 }}>
@@ -75,13 +76,15 @@ export default function RootLayout() {
           <SafeAreaProvider>
             <GestureHandlerRootView style={{ flex: 1 }}>
               <KeyboardProvider>
-                <AuthProvider>
-                  <SocketProvider>
-                    <GameProvider>
-                      <RootLayoutNav />
-                    </GameProvider>
-                  </SocketProvider>
-                </AuthProvider>
+                <NotificationProvider>
+                  <AuthProvider>
+                    <SocketProvider>
+                      <GameProvider>
+                        <RootLayoutNav />
+                      </GameProvider>
+                    </SocketProvider>
+                  </AuthProvider>
+                </NotificationProvider>
               </KeyboardProvider>
             </GestureHandlerRootView>
           </SafeAreaProvider>

@@ -507,7 +507,7 @@ export function StartReasonBanner({
 }) {
   const [visible, setVisible] = useState(true);
   useEffect(() => {
-    const t = setTimeout(() => setVisible(false), 4000);
+    const t = setTimeout(() => setVisible(false), 5000);
     return () => clearTimeout(t);
   }, []);
   if (!visible) return null;
