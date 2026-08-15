@@ -8,10 +8,12 @@ import Animated, {
 } from "react-native-reanimated";
 import { usePrefersReducedMotion } from "@/lib/accessibility";
 import { Colors, Type, Motion, Shadow } from "@/lib/theme";
+import { useTranslation } from "@/lib/i18n";
 
 const BANNER_H = 44;
 
 export function OfflineBanner() {
+  const { t } = useTranslation();
   const translateY = useSharedValue(-BANNER_H);
   const isOfflineRef = useRef(false);
   const [isOffline, setIsOffline] = useState(false);
@@ -45,7 +47,7 @@ export function OfflineBanner() {
       accessibilityElementsHidden={!isOffline}
       importantForAccessibility={isOffline ? "yes" : "no-hide-descendants"}
     >
-      <Text style={styles.text}>⚠️ Nessuna connessione Internet</Text>
+      <Text style={styles.text}>{t("offlineBanner.text")}</Text>
     </Animated.View>
   );
 }

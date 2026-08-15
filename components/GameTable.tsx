@@ -58,11 +58,12 @@ import {
   playButtonLabel,
   readExchange,
   seatDirection,
-  startCardBannerText,
   turnTimerActive,
   type FlyDirection,
   type PileState,
+  type PlayButtonLabel,
 } from "@/components/gameTableModel";
+import { useTranslation, type TranslationKey } from "@/lib/i18n";
 import {
   TopOppSlot,
   SideOppSlot,
@@ -104,6 +105,21 @@ import { Colors, FontSize, Motion, Radius, Spacing } from "@/lib/theme";
 const ROUND_WINNER_MS = 1800;
 // Below this the countdown turns red and ticks audibly.
 const URGENT_SECONDS = 5;
+
+// gameTableModel.ts's `playButtonLabel` returns one of these three literals —
+// they are pinned by tests/gameTableModel.test.ts as state identifiers, not
+// as display copy, so the model itself is not localised. This is the
+// translation boundary: map the identifier to display text (and to a
+// screen-reader-friendly spoken form) here, in the presentational layer.
+const PLAY_LABEL_KEYS: Record<PlayButtonLabel, TranslationKey> = {
+  "GIOCA": "gameTable.playLabelGioca",
+  "NON\nVALIDA": "gameTable.playLabelInvalid",
+  "TROPPO\nBASSA": "gameTable.playLabelTooLow",
+};
+const PLAY_A11Y_SPOKEN_KEYS: Partial<Record<PlayButtonLabel, TranslationKey>> = {
+  "NON\nVALIDA": "gameTable.playA11ySpokenInvalid",
+  "TROPPO\nBASSA": "gameTable.playA11ySpokenTooLow",
+};
 
 export interface TurnTimerConfig {
   /** Length of the countdown, in seconds. */
@@ -227,6 +243,7 @@ export function GameTable({
   banners,
   overlays,
 }: GameTableProps) {
+  const { t } = useTranslation();
   const insets = useSafeAreaInsets();
   const { width: W, height: H } = useWindowDimensions();
   const reduceMotion = usePrefersReducedMotion();
@@ -546,14 +563,14 @@ export function GameTable({
           style={styles.quitBtn}
           hitSlop={10}
           accessibilityRole="button"
-          accessibilityLabel="Abbandona la partita"
+          accessibilityLabel={t("gameTable.leaveA11yLabel")}
         >
           <Ionicons name="close" size={18} color={Colors.textMuted} />
         </Pressable>
 
         <GameBillboard
           roundLabel={roundLabel}
-          currentComboLabel={getComboLabel(pileState.current)}
+          currentComboLabel={getComboLabel(pileState.current, t)}
           currentTurnName={players[gameState.currentTurnIndex]?.name ?? ""}
           isLocalPlayerTurn={isMyTurn && !isFinished}
         />
@@ -639,11 +656,12 @@ export function GameTable({
                 <View style={styles.startCardBanner}>
                   <Text style={styles.startCardGlyph}>♠</Text>
                   <Text style={styles.startCardText}>
-                    {startCardBannerText({
-                      card: gameState.startCard!,
-                      starterName: players[gameState.currentTurnIndex]?.name ?? "",
-                      viewerIsStarter: gameState.currentTurnIndex === viewerSeat,
-                    })}
+                    {gameState.currentTurnIndex === viewerSeat
+                      ? t("gameTable.startCardBannerSelf", { rank: gameState.startCard!.rank })
+                      : t("gameTable.startCardBannerOther", {
+                          name: players[gameState.currentTurnIndex]?.name ?? "",
+                          rank: gameState.startCard!.rank,
+                        })}
                   </Text>
                 </View>
               ) : (
@@ -686,13 +704,13 @@ export function GameTable({
                 disabled={!canPass}
                 style={styles.passBtnInner}
                 accessibilityRole="button"
-                accessibilityLabel="Passa il turno"
+                accessibilityLabel={t("gameTable.passA11yLabel")}
                 accessibilityState={{ disabled: !canPass }}
               >
                 <Text
                   style={[styles.passBtnLabel, !canPass && styles.passBtnLabelDim]}
                 >
-                  PASSA
+                  {t("gameTable.passLabel")}
                 </Text>
               </Pressable>
             </Animated.View>
@@ -700,7 +718,7 @@ export function GameTable({
             {isFinished ? (
               <View style={styles.finishedRow}>
                 <Ionicons name="trophy" size={18} color={Colors.gold} />
-                <Text style={styles.finishedText}>Hai finito! Aspetti gli altri...</Text>
+                <Text style={styles.finishedText}>{t("gameTable.waitingOthers")}</Text>
               </View>
             ) : (
               <StraightHand
@@ -728,8 +746,10 @@ export function GameTable({
                 accessibilityRole="button"
                 accessibilityLabel={
                   playBtnValid
-                    ? "Gioca le carte selezionate"
-                    : `Gioca — non disponibile: ${dimLabel.replace("\n", " ").toLowerCase()}`
+                    ? t("gameTable.playA11yValid")
+                    : t("gameTable.playA11yUnavailable", {
+                        reason: PLAY_A11Y_SPOKEN_KEYS[dimLabel] ? t(PLAY_A11Y_SPOKEN_KEYS[dimLabel]!) : dimLabel,
+                      })
                 }
                 accessibilityState={{ disabled: !playBtnValid }}
               >
@@ -740,15 +760,15 @@ export function GameTable({
                     end={{ x: 1, y: 1 }}
                     style={styles.playBtnGrad}
                   >
-                    <Text style={styles.playBtnLabel}>GIOCA</Text>
+                    <Text style={styles.playBtnLabel}>{t("gameTable.playLabelGioca")}</Text>
                     {selectedIds.length > 1 && (
-                      <Text style={styles.playBtnSub}>{selectedIds.length}c</Text>
+                      <Text style={styles.playBtnSub}>{t("gameTable.selectedCountSuffix", { n: selectedIds.length })}</Text>
                     )}
                   </LinearGradient>
                 ) : (
                   <View style={[styles.playBtnGrad, styles.playBtnGradDim]}>
                     <Text style={styles.playBtnLabelDim} numberOfLines={2}>
-                      {dimLabel}
+                      {t(PLAY_LABEL_KEYS[dimLabel])}
                     </Text>
                   </View>
                 )}

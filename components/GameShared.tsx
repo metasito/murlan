@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { View, Text, StyleSheet, Platform, Pressable, ScrollView } from "react-native";
 import Animated, {
   useAnimatedStyle,
@@ -20,6 +20,7 @@ import { LinearGradient } from "expo-linear-gradient";
 import { CardView } from "@/components/CardView";
 import { Colors, Motion, Shadow } from "@/lib/theme";
 import { usePrefersReducedMotion } from "@/lib/accessibility";
+import { useTranslation, type TranslationKey } from "@/lib/i18n";
 import type { Card, Combination, Player, StartReason } from "@/lib/gameEngine";
 import { CARD_W, computeHandLayout } from "@/components/handLayout";
 import {
@@ -393,13 +394,13 @@ export function FlyingCards({
 
 // ─── PlayedPile ───────────────────────────────────────────────────────────────
 
-const COMBO_LABELS: Record<string, string> = {
-  single:        "Singola",
-  pair:          "Coppia",
-  triple:        "Tris",
-  straight:      "Scala",
-  bomb:          "💣 Bomba",
-  royal_straight: "★ Scala Reale",
+const COMBO_LABEL_KEYS: Record<string, TranslationKey> = {
+  single:        "gameShared.comboSingle",
+  pair:          "gameShared.comboPair",
+  triple:        "gameShared.comboTriple",
+  straight:      "gameShared.comboStraight",
+  bomb:          "gameShared.comboBomb",
+  royal_straight: "gameShared.comboRoyalStraight",
 };
 
 const POWER_COMBOS = new Set(["bomb", "royal_straight"]);
@@ -432,6 +433,7 @@ export function PlayedPile({
   roundWinner: string | null;
   bounceTrigger?: number;
 }) {
+  const { t } = useTranslation();
   const bounceScale = useSharedValue(1);
 
   useEffect(() => {
@@ -479,8 +481,8 @@ export function PlayedPile({
           <View style={[sharedStyles.comboChip, isPower && sharedStyles.comboChipPower]}>
             <Text style={[sharedStyles.comboChipText, isPower && sharedStyles.comboChipTextPower]}>
               {isPower ? "✦ " : ""}
-              {COMBO_LABELS[current.type] ?? current.type}
-              {current.cards.length > 2 ? ` ×${current.cards.length}` : ""}
+              {COMBO_LABEL_KEYS[current.type] ? t(COMBO_LABEL_KEYS[current.type]) : current.type}
+              {current.cards.length > 2 ? t("gameShared.comboMultiplier", { count: current.cards.length }) : ""}
             </Text>
           </View>
         </View>
@@ -490,7 +492,14 @@ export function PlayedPile({
 }
 
 // ─── CardItem ─────────────────────────────────────────────────────────────────
-
+//
+// `onPress` takes the card id rather than being a bound zero-arg callback.
+// The caller (StraightHand, below) passes its own `onPress` prop straight
+// through — unchanged reference per card — instead of minting a new
+// `() => onPress(card.id)` closure per card on every render. CardItem binds
+// its own id once here via useCallback, so CardView only ever sees a new
+// `onPress` reference when this card's id or the caller's callback actually
+// changes, not whenever some other card's selection state changes.
 export function CardItem({
   card,
   isSelected,
@@ -502,7 +511,7 @@ export function CardItem({
   card: Card;
   isSelected: boolean;
   left: number;
-  onPress: () => void;
+  onPress: (id: string) => void;
   disabled: boolean;
   zIndex: number;
 }) {
@@ -527,6 +536,9 @@ export function CardItem({
     ],
   }));
 
+  const cardId = card.id;
+  const handlePress = useCallback(() => onPress(cardId), [onPress, cardId]);
+
   return (
     <Animated.View
       style={[sharedStyles.handCardWrap, { left, zIndex }, aStyle]}
@@ -534,7 +546,7 @@ export function CardItem({
       <CardView
         card={card}
         selected={isSelected}
-        onPress={onPress}
+        onPress={handlePress}
         disabled={disabled}
         noLift
       />
@@ -559,12 +571,18 @@ export function StraightHand({
   availW: number;
   isMyTurn?: boolean;
 }) {
+  const { t } = useTranslation();
   const n = cards.length;
+  // O(1) membership check per card instead of `selectedIds.includes(card.id)`
+  // (an O(k) scan repeated for every one of the up to 27 cards in a hand).
+  // Computed before the early return below — Rules of Hooks requires every
+  // hook to run unconditionally on every render of this component.
+  const selectedSet = useMemo(() => new Set(selectedIds), [selectedIds]);
   if (n === 0) {
     return (
       <View style={[sharedStyles.handCenter, { width: availW }]}>
         <Ionicons name="checkmark-circle" size={24} color={Colors.gold} />
-        <Text style={sharedStyles.emptyHandText}>Carte finite!</Text>
+        <Text style={sharedStyles.emptyHandText}>{t("gameShared.emptyHand")}</Text>
       </View>
     );
   }
@@ -576,9 +594,9 @@ export function StraightHand({
         <CardItem
           key={card.id}
           card={card}
-          isSelected={selectedIds.includes(card.id)}
+          isSelected={selectedSet.has(card.id)}
           left={i * step}
-          onPress={() => onPress(card.id)}
+          onPress={onPress}
           disabled={disabled}
           zIndex={i}
         />
@@ -629,10 +647,11 @@ export function StartReasonBanner({
   players: Array<{ name: string; type: string }>;
   topOffset: number;
 }) {
+  const { t } = useTranslation();
   const [visible, setVisible] = useState(true);
   useEffect(() => {
-    const t = setTimeout(() => setVisible(false), 5000);
-    return () => clearTimeout(t);
+    const timer = setTimeout(() => setVisible(false), 5000);
+    return () => clearTimeout(timer);
   }, []);
   if (!visible) return null;
 
@@ -641,12 +660,12 @@ export function StartReasonBanner({
   let subText = "";
 
   if (reason.type === "start_card" && reason.card) {
-    mainText = `${playerName} inizia — ha il ${reason.card.rank}♠`;
-    if (reason.card.rank !== "3") subText = "(il 3♠ è escluso)";
+    mainText = t("gameShared.startReasonCard", { name: playerName, rank: reason.card.rank });
+    if (reason.card.rank !== "3") subText = t("gameShared.startReasonCardSub");
   } else if (reason.type === "lost_round") {
-    mainText = `${playerName} inizia — ha perso il round`;
+    mainText = t("gameShared.startReasonLostRound", { name: playerName });
   } else if (reason.type === "won_no_swap") {
-    mainText = `${playerName} inizia — ha vinto (nessuno scambio)`;
+    mainText = t("gameShared.startReasonWonNoSwap", { name: playerName });
   }
 
   return (
@@ -996,10 +1015,14 @@ export const sharedStyles = StyleSheet.create({
 
 // ─── getComboLabel ────────────────────────────────────────────────────────────
 
-export function getComboLabel(combo: Combination | null): string | null {
+export function getComboLabel(
+  combo: Combination | null,
+  t: (key: TranslationKey, params?: Record<string, string | number>) => string
+): string | null {
   if (!combo) return null;
-  const label = COMBO_LABELS[combo.type] ?? combo.type;
-  if (combo.cards.length > 2) return `${label} ×${combo.cards.length}`;
+  const key = COMBO_LABEL_KEYS[combo.type];
+  const label = key ? t(key) : combo.type;
+  if (combo.cards.length > 2) return `${label}${t("gameShared.comboMultiplier", { count: combo.cards.length })}`;
   return label;
 }
 
@@ -1016,6 +1039,7 @@ export function GameBillboard({
   currentTurnName: string;
   isLocalPlayerTurn: boolean;
 }) {
+  const { t } = useTranslation();
   const dotOpacity = useSharedValue(0.3);
   const reduceMotion = usePrefersReducedMotion();
 
@@ -1048,7 +1072,7 @@ export function GameBillboard({
   return (
     <View style={billboardStyles.container}>
       <Text style={billboardStyles.comboLabel} numberOfLines={1}>
-        {currentComboLabel ?? "— Tavolo libero —"}
+        {currentComboLabel ?? t("gameShared.emptyTable")}
       </Text>
       <View style={billboardStyles.bottomRow}>
         <Text style={billboardStyles.roundLabel} numberOfLines={1}>{roundLabel}</Text>
@@ -1062,7 +1086,7 @@ export function GameBillboard({
           ]}
           numberOfLines={1}
         >
-          {isLocalPlayerTurn ? "Il tuo turno" : `Turno di ${currentTurnName}`}
+          {isLocalPlayerTurn ? t("gameShared.yourTurn") : t("gameShared.turnOf", { name: currentTurnName })}
         </Text>
       </View>
     </View>

@@ -14,6 +14,7 @@ import { LinearGradient } from "expo-linear-gradient";
 import { Feather } from "@expo/vector-icons";
 import { Colors, Spacing, Radius, FontSize, Shadow } from "@/lib/theme";
 import { MenuButton } from "@/components/MenuButton";
+import { useTranslation } from "@/lib/i18n";
 
 export type ErrorFallbackProps = {
   error: Error;
@@ -22,6 +23,7 @@ export type ErrorFallbackProps = {
 
 export function ErrorFallback({ error, resetError }: ErrorFallbackProps) {
   const insets = useSafeAreaInsets();
+  const { t } = useTranslation();
   const [isModalVisible, setIsModalVisible] = useState(false);
   const [restarting, setRestarting] = useState(false);
 
@@ -37,9 +39,9 @@ export function ErrorFallback({ error, resetError }: ErrorFallbackProps) {
   };
 
   const formatErrorDetails = (): string => {
-    let details = `Errore: ${error.message}\n\n`;
+    let details = t("errorFallback.errorLabel", { message: error.message });
     if (error.stack) {
-      details += `Stack trace:\n${error.stack}`;
+      details += t("errorFallback.stackTraceLabel", { stack: error.stack });
     }
     return details;
   };
@@ -57,7 +59,7 @@ export function ErrorFallback({ error, resetError }: ErrorFallbackProps) {
       {__DEV__ ? (
         <Pressable
           onPress={() => setIsModalVisible(true)}
-          accessibilityLabel="Visualizza dettagli errore"
+          accessibilityLabel={t("errorFallback.viewDetailsA11yLabel")}
           accessibilityRole="button"
           hitSlop={Spacing.xs}
           style={({ pressed }) => [
@@ -74,28 +76,27 @@ export function ErrorFallback({ error, resetError }: ErrorFallbackProps) {
           <Feather name="alert-triangle" size={40} color={Colors.gold} />
         </View>
 
-        <Text style={styles.title}>Qualcosa è andato storto</Text>
+        <Text style={styles.title}>{t("errorFallback.title")}</Text>
 
         <Text style={styles.message}>
-          Si è verificato un errore imprevisto. Puoi riprovare a continuare
-          oppure riavviare l'app.
+          {t("errorFallback.message")}
         </Text>
 
         <View style={styles.actions}>
           <MenuButton
-            label={restarting ? "Riavvio in corso…" : "Riavvia l'app"}
+            label={restarting ? t("errorFallback.restarting") : t("errorFallback.restart")}
             onPress={handleRestart}
             variant="primary"
             loading={restarting}
             icon={!restarting ? <Feather name="refresh-cw" size={18} color={Colors.bg} /> : undefined}
-            accessibilityHint="Ricarica completamente l'applicazione"
+            accessibilityHint={t("errorFallback.restartA11yHint")}
           />
           <MenuButton
-            label="Continua"
+            label={t("errorFallback.continue")}
             onPress={resetError}
             variant="ghost"
             disabled={restarting}
-            accessibilityHint="Prova a tornare alla schermata precedente senza riavviare"
+            accessibilityHint={t("errorFallback.continueA11yHint")}
           />
         </View>
       </View>
@@ -110,10 +111,10 @@ export function ErrorFallback({ error, resetError }: ErrorFallbackProps) {
           <View style={styles.modalOverlay}>
             <View style={styles.modalContainer}>
               <View style={styles.modalHeader}>
-                <Text style={styles.modalTitle}>Dettagli errore</Text>
+                <Text style={styles.modalTitle}>{t("errorFallback.detailsTitle")}</Text>
                 <Pressable
                   onPress={() => setIsModalVisible(false)}
-                  accessibilityLabel="Chiudi dettagli errore"
+                  accessibilityLabel={t("errorFallback.closeDetailsA11yLabel")}
                   accessibilityRole="button"
                   hitSlop={Spacing.xs}
                   style={({ pressed }) => [styles.closeButton, { opacity: pressed ? 0.6 : 1 }]}

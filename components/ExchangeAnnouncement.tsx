@@ -19,6 +19,7 @@ import type { Card } from "@/lib/gameEngine";
 import { CardView } from "@/components/CardView";
 import { Colors, Spacing, Radius, FontSize, Type, Motion, Shadow } from "@/lib/theme";
 import { usePrefersReducedMotion } from "@/lib/accessibility";
+import { useTranslation, type TranslationKey } from "@/lib/i18n";
 
 // Mirrors the private CARD_W/CARD_H in components/CardView.tsx (not exported,
 // and that file is owned elsewhere) — used only to shrink a rendered CardView
@@ -32,23 +33,24 @@ const CARD_H = 84;
 const DISMISS_MS = 5500;
 const FLIGHT_DURATION = 750;
 
-function getItalianCardName(card: Card): string {
-  if (card.isJoker) return "Jolly";
-  const rankMap: Record<string, string> = {
-    A: "Asso",
-    J: "Fante",
-    Q: "Donna",
-    K: "Re",
+function getCardName(t: (key: TranslationKey, params?: Record<string, string | number>) => string, card: Card): string {
+  if (card.isJoker) return t("cards.joker");
+  const rankMap: Record<string, TranslationKey> = {
+    A: "cards.rankAce",
+    J: "cards.rankJack",
+    Q: "cards.rankQueen",
+    K: "cards.rankKing",
   };
-  const suitMap: Record<string, string> = {
-    hearts: "Cuori",
-    diamonds: "Quadri",
-    clubs: "Fiori",
-    spades: "Picche",
+  const suitMap: Record<string, TranslationKey> = {
+    hearts: "cards.suitHearts",
+    diamonds: "cards.suitDiamonds",
+    clubs: "cards.suitClubs",
+    spades: "cards.suitSpades",
   };
-  const r = rankMap[card.rank as string] ?? String(card.rank);
-  const s = card.suit ? suitMap[card.suit] : "";
-  return `${r} di ${s}`;
+  const rankKey = rankMap[card.rank as string];
+  const r = rankKey ? t(rankKey) : String(card.rank);
+  const s = card.suit ? t(suitMap[card.suit]) : "";
+  return t("cards.nameFormat", { rank: r, suit: s });
 }
 
 function FlyingCard({
@@ -105,6 +107,7 @@ export function ExchangeAnnouncement({
   cardReceived,
   onDismiss,
 }: ExchangeAnnouncementProps) {
+  const { t } = useTranslation();
   const [shown, setShown] = useState(false);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const { width: screenWidth, height: screenHeight } = useWindowDimensions();
@@ -138,10 +141,20 @@ export function ExchangeAnnouncement({
   const isMutual = !!(cardReceived && cardGiven);
 
   const a11yLabel = bothJokersException
-    ? `Scambio: nessuno scambio, ${loserName} ha mostrato entrambi i Jolly`
+    ? t("exchangeAnnouncement.a11yNoSwap", { loserName })
     : [
-        cardReceived && `${loserName} dà ${getItalianCardName(cardReceived)} a ${winnerName}`,
-        cardGiven && `${winnerName} dà ${getItalianCardName(cardGiven)} a ${loserName}`,
+        cardReceived &&
+          t("exchangeAnnouncement.giveLine", {
+            from: loserName,
+            card: getCardName(t, cardReceived),
+            to: winnerName,
+          }),
+        cardGiven &&
+          t("exchangeAnnouncement.giveLine", {
+            from: winnerName,
+            card: getCardName(t, cardGiven),
+            to: loserName,
+          }),
       ]
         .filter(Boolean)
         .join(". ");
@@ -187,23 +200,23 @@ export function ExchangeAnnouncement({
         accessibilityViewIsModal
         accessibilityRole="alert"
         accessibilityLabel={a11yLabel}
-        accessibilityHint="Tocca per chiudere"
+        accessibilityHint={t("exchangeAnnouncement.dismissA11yHint")}
       >
         <Pressable
           onPress={handleDismiss}
           style={({ pressed }) => [styles.closeBtn, { opacity: pressed ? 0.6 : 1 }]}
           hitSlop={Spacing.xs}
           accessibilityRole="button"
-          accessibilityLabel="Chiudi annuncio scambio"
+          accessibilityLabel={t("exchangeAnnouncement.closeA11yLabel")}
         >
           <Feather name="x" size={18} color={Colors.textMuted} />
         </Pressable>
 
-        <Text style={styles.title}>Scambio</Text>
+        <Text style={styles.title}>{t("exchangeAnnouncement.title")}</Text>
 
         {bothJokersException ? (
           <Text style={styles.noSwapText}>
-            Nessuno scambio — Jolly doppio 🃏
+            {t("exchangeAnnouncement.noSwapText")}
           </Text>
         ) : (
           <View style={styles.rowsContainer}>
@@ -220,9 +233,9 @@ export function ExchangeAnnouncement({
                 </View>
                 <Text style={styles.descText}>
                   <Text style={styles.descName}>{loserName}</Text>
-                  <Text style={styles.descPlain}>{" dà "}</Text>
-                  <Text style={styles.descCard}>{getItalianCardName(cardReceived)}</Text>
-                  <Text style={styles.descPlain}>{" a "}</Text>
+                  <Text style={styles.descPlain}>{t("exchangeAnnouncement.givesWord")}</Text>
+                  <Text style={styles.descCard}>{getCardName(t, cardReceived)}</Text>
+                  <Text style={styles.descPlain}>{t("exchangeAnnouncement.toWord")}</Text>
                   <Text style={styles.descName}>{winnerName}</Text>
                 </Text>
               </View>
@@ -245,9 +258,9 @@ export function ExchangeAnnouncement({
                 </View>
                 <Text style={styles.descText}>
                   <Text style={styles.descName}>{winnerName}</Text>
-                  <Text style={styles.descPlain}>{" dà "}</Text>
-                  <Text style={styles.descCard}>{getItalianCardName(cardGiven)}</Text>
-                  <Text style={styles.descPlain}>{" a "}</Text>
+                  <Text style={styles.descPlain}>{t("exchangeAnnouncement.givesWord")}</Text>
+                  <Text style={styles.descCard}>{getCardName(t, cardGiven)}</Text>
+                  <Text style={styles.descPlain}>{t("exchangeAnnouncement.toWord")}</Text>
                   <Text style={styles.descName}>{loserName}</Text>
                 </Text>
               </View>

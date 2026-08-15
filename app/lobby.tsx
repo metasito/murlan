@@ -18,6 +18,7 @@ import { useGame, PlayerSetupConfig } from "@/context/GameContext";
 import { useAuth } from "@/context/AuthContext";
 import { GameMode, AIDifficulty } from "@/lib/gameEngine";
 import { Colors } from '@/lib/theme';
+import { useTranslation, type TranslationKey } from "@/lib/i18n";
 
 type LobbyMode = "ai" | "local";
 
@@ -29,13 +30,14 @@ interface PlayerRowProps {
   lobbyMode: LobbyMode;
 }
 
-const DIFFICULTY_LABELS: Record<AIDifficulty, string> = {
-  easy: "Facile",
-  medium: "Medio",
-  hard: "Difficile",
+const DIFFICULTY_LABEL_KEYS: Record<AIDifficulty, TranslationKey> = {
+  easy: "lobby.difficultyEasy",
+  medium: "lobby.difficultyMedium",
+  hard: "lobby.difficultyHard",
 };
 
 function PlayerRow({ index, config, onChange, isHuman, lobbyMode }: PlayerRowProps) {
+  const { t } = useTranslation();
   const isAI = config.type === "ai";
 
   const cycleDifficulty = () => {
@@ -47,7 +49,7 @@ function PlayerRow({ index, config, onChange, isHuman, lobbyMode }: PlayerRowPro
   };
 
   const teamColors = { A: Colors.accent, B: Colors.gold };
-  const teamLabel = config.team ? `Team ${config.team}` : null;
+  const teamLabel = config.team ? t("lobby.team", { team: config.team }) : null;
 
   return (
     <View style={styles.playerRow}>
@@ -72,12 +74,12 @@ function PlayerRow({ index, config, onChange, isHuman, lobbyMode }: PlayerRowPro
         {lobbyMode === "local" && !isHuman ? (
           <TextInput
             value={config.name}
-            onChangeText={(t) => onChange({ ...config, name: t })}
+            onChangeText={(newName) => onChange({ ...config, name: newName })}
             style={styles.nameInput}
             placeholderTextColor={Colors.textMuted}
             maxLength={12}
-            accessibilityLabel="Nome giocatore intelligente"
-            accessibilityHint="Inserisci il nome per questo giocatore controllato dal computer"
+            accessibilityLabel={t("lobby.aiNameA11yLabel")}
+            accessibilityHint={t("lobby.aiNameA11yHint")}
           />
         ) : (
           <Text style={styles.playerName}>{config.name}</Text>
@@ -97,7 +99,7 @@ function PlayerRow({ index, config, onChange, isHuman, lobbyMode }: PlayerRowPro
       {isAI && (
         <Pressable onPress={cycleDifficulty} style={styles.difficultyBtn}>
           <Text style={styles.difficultyText}>
-            {DIFFICULTY_LABELS[config.difficulty ?? "medium"]}
+            {t(DIFFICULTY_LABEL_KEYS[config.difficulty ?? "medium"])}
           </Text>
           <Ionicons name="chevron-down" size={12} color={Colors.gold} />
         </Pressable>
@@ -110,12 +112,13 @@ const ROUND_OPTIONS = [1, 3, 5, 7];
 
 export default function LobbyScreen() {
   const insets = useSafeAreaInsets();
+  const { t } = useTranslation();
   const { width: W, height: H } = useWindowDimensions();
   const isLandscape = W > H;
   const { mode } = useLocalSearchParams<{ mode: LobbyMode }>();
   const { setupGame } = useGame();
   const { user } = useAuth();
-  const myName = user?.username ?? "Giocatore 1";
+  const myName = user?.username ?? t("lobby.defaultPlayerName1");
 
   const isAI = mode === "ai";
 
@@ -130,7 +133,7 @@ export default function LobbyScreen() {
 
   const buildDefaultPlayers = (count: number, gm: GameMode): PlayerSetupConfig[] => {
     return Array.from({ length: count }, (_, i) => ({
-      name: i === 0 ? myName : isAI ? `AI ${i}` : `Giocatore ${i + 1}`,
+      name: i === 0 ? myName : isAI ? t("lobby.aiPlayerName", { n: i }) : t("lobby.playerName", { n: i + 1 }),
       type: i === 0 || !isAI ? "human" : "ai",
       difficulty: "medium" as AIDifficulty,
       team: getTeam(i, count, gm),
@@ -194,7 +197,7 @@ export default function LobbyScreen() {
         style={styles.startGradient}
       >
         <Ionicons name="play" size={20} color="#0A1F18" />
-        <Text style={styles.startText}>Inizia Partita</Text>
+        <Text style={styles.startText}>{t("lobby.start")}</Text>
       </LinearGradient>
     </Pressable>
   );
@@ -202,7 +205,7 @@ export default function LobbyScreen() {
   const configSection = (
     <>
       <View style={styles.section}>
-        <Text style={styles.sectionLabel}>N° GIOCATORI</Text>
+        <Text style={styles.sectionLabel}>{t("lobby.playerCountLabel")}</Text>
         <View style={styles.countRow}>
           {[2, 3, 4].map((n) => (
             <Pressable key={n} onPress={() => handleCountChange(n)} style={[styles.countBtn, playerCount === n && styles.countBtnActive]}>
@@ -214,13 +217,13 @@ export default function LobbyScreen() {
 
       {playerCount === 4 && (
         <View style={styles.section}>
-          <Text style={styles.sectionLabel}>MODALITÀ</Text>
+          <Text style={styles.sectionLabel}>{t("lobby.modeLabel")}</Text>
           <View style={styles.modeRow}>
             {(["free_for_all", "teams"] as GameMode[]).map((gm) => (
               <Pressable key={gm} onPress={() => handleModeChange(gm)} style={[styles.modeBtn, gameMode === gm && styles.modeBtnActive]}>
                 <Ionicons name={gm === "teams" ? "people" : "person"} size={16} color={gameMode === gm ? Colors.gold : Colors.textSecondary} />
                 <Text style={[styles.modeBtnText, gameMode === gm && styles.modeBtnTextActive]}>
-                  {gm === "teams" ? "A Coppie" : "Tutti vs Tutti"}
+                  {gm === "teams" ? t("lobby.modeTeams") : t("lobby.modeFreeForAll")}
                 </Text>
               </Pressable>
             ))}
@@ -229,13 +232,13 @@ export default function LobbyScreen() {
       )}
 
       <View style={styles.section}>
-        <Text style={styles.sectionLabel}>MANCHE</Text>
+        <Text style={styles.sectionLabel}>{t("lobby.roundsLabel")}</Text>
         <View style={styles.countRow}>
           {ROUND_OPTIONS.map((n) => (
             <Pressable key={n} onPress={() => { setTotalRounds(n); Haptics.selectionAsync(); }} style={[styles.countBtn, totalRounds === n && styles.countBtnActive]}>
               <Text style={[styles.countBtnText, totalRounds === n && styles.countBtnTextActive]}>{n}</Text>
               <Text style={[styles.roundSubLabel, totalRounds === n && { color: Colors.gold }]}>
-                {n === 1 ? "partita" : "manche"}
+                {n === 1 ? t("lobby.roundSingle") : t("lobby.roundMultiple")}
               </Text>
             </Pressable>
           ))}
@@ -246,7 +249,7 @@ export default function LobbyScreen() {
 
   const playerListSection = (
     <View style={styles.section}>
-      <Text style={styles.sectionLabel}>GIOCATORI</Text>
+      <Text style={styles.sectionLabel}>{t("lobby.playersLabel")}</Text>
       <View style={styles.playerList}>
         {players.map((p, i) => (
           <PlayerRow key={i} index={i} config={p} isHuman={p.type === "human"} onChange={(c) => handlePlayerChange(i, c)} lobbyMode={mode ?? "ai"} />
@@ -263,7 +266,7 @@ export default function LobbyScreen() {
         <Pressable onPress={() => router.back()} style={styles.backBtn} hitSlop={12}>
           <Ionicons name="chevron-back" size={22} color={Colors.gold} />
         </Pressable>
-        <Text style={styles.headerTitle}>{isAI ? "Gioca vs AI" : "Passa e Gioca"}</Text>
+        <Text style={styles.headerTitle}>{isAI ? t("lobby.titleVsAI") : t("lobby.titlePassPlay")}</Text>
         <View style={{ width: 40 }} />
       </View>
 
@@ -289,15 +292,15 @@ export default function LobbyScreen() {
             {configSection}
             {playerListSection}
             <View style={styles.section}>
-              <Text style={styles.rulesTitle}>Forza Carte</Text>
+              <Text style={styles.rulesTitle}>{t("lobby.rulesTitle")}</Text>
               <View style={styles.rulesRow}>
                 {[
-                  { label: "JKR★", desc: "Joker Colorato" },
-                  { label: "JKR", desc: "Joker B/N" },
-                  { label: "2", desc: "Più forte" },
-                  { label: "A", desc: "Asso" },
-                  { label: "K", desc: "Re" },
-                  { label: "3", desc: "Più basso" },
+                  { label: "JKR★", desc: t("lobby.rankJokerColored") },
+                  { label: "JKR", desc: t("lobby.rankJokerBlack") },
+                  { label: "2", desc: t("lobby.rankStrongest") },
+                  { label: "A", desc: t("lobby.rankAce") },
+                  { label: "K", desc: t("lobby.rankKing") },
+                  { label: "3", desc: t("lobby.rankWeakest") },
                 ].map((r) => (
                   <View key={r.label} style={styles.ruleCard}>
                     <Text style={styles.ruleRank}>{r.label}</Text>

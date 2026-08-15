@@ -1,4 +1,4 @@
-import React, { useEffect } from "react";
+import React, { useEffect, useState } from "react";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import {
   View,
@@ -22,10 +22,12 @@ import Animated, {
 } from "react-native-reanimated";
 import { LinearGradient } from "expo-linear-gradient";
 import * as Haptics from "expo-haptics";
-import { Ionicons } from "@expo/vector-icons";
+import { Ionicons, Feather } from "@expo/vector-icons";
 import { useQuery } from "@tanstack/react-query";
 import { useAuth } from "@/context/AuthContext";
 import { Colors } from '@/lib/theme';
+import { useTranslation } from "@/lib/i18n";
+import { SettingsModal } from "@/components/SettingsModal";
 
 interface MenuButtonProps {
   label: string;
@@ -186,6 +188,7 @@ function FloatingCard({
 
 function FriendsButton({ compact }: { compact?: boolean }) {
   const { user } = useAuth();
+  const { t } = useTranslation();
 
   const { data: requests = [] } = useQuery<{ id: string }[]>({
     queryKey: ["/api/friends/requests"],
@@ -212,7 +215,7 @@ function FriendsButton({ compact }: { compact?: boolean }) {
       hitSlop={4}
     >
       <Ionicons name="people" size={compact ? 16 : 20} color={compact ? Colors.gold : "#0A1F18"} />
-      {!compact && <Text style={styles.friendsBtnText}>Amici</Text>}
+      {!compact && <Text style={styles.friendsBtnText}>{t("home.friendsLabel")}</Text>}
       {badgeCount > 0 && (
         <View style={styles.badge}>
           <Text style={styles.badgeText}>{badgeCount > 9 ? "9+" : String(badgeCount)}</Text>
@@ -222,11 +225,28 @@ function FriendsButton({ compact }: { compact?: boolean }) {
   );
 }
 
+function SettingsButton({ compact, onPress }: { compact?: boolean; onPress: () => void }) {
+  const { t } = useTranslation();
+  return (
+    <Pressable
+      onPress={onPress}
+      accessibilityRole="button"
+      accessibilityLabel={t("home.settingsA11yLabel")}
+      style={({ pressed }) => [styles.settingsBtn, pressed && { opacity: 0.8 }]}
+      hitSlop={8}
+    >
+      <Feather name="settings" size={compact ? 16 : 18} color={Colors.gold} />
+    </Pressable>
+  );
+}
+
 export default function HomeScreen() {
   const insets = useSafeAreaInsets();
   const { user, logout } = useAuth();
+  const { t } = useTranslation();
   const { width: W, height: H } = useWindowDimensions();
   const isLandscape = W > H;
+  const [settingsVisible, setSettingsVisible] = useState(false);
 
   const titleOpacity = useSharedValue(0);
   const titleScale = useSharedValue(0.85);
@@ -262,11 +282,11 @@ export default function HomeScreen() {
 
   const menuButtons = (compact: boolean) => (
     <>
-      <MenuButton compact={compact} label="Offline" icon="game-controller" accent onPress={() => router.push({ pathname: "/lobby", params: { mode: "ai" } })} delay={300} />
-      <MenuButton compact={compact} label="Gioca con amici" icon="people" onPress={() => { if (user) router.push("/(online)"); else router.push("/auth"); }} delay={420} />
-      <MenuButton compact={compact} label="Online" icon="earth-outline" onPress={() => { if (user) router.push("/(online)/quickmatch"); else router.push("/auth"); }} delay={540} />
-      <MenuButton compact={compact} label="Tutorial" icon="school-outline" onPress={() => router.push("/tutorial")} delay={600} />
-      <MenuButton compact={compact} label="Regole & FAQ" icon="book-outline" onPress={() => router.push("/rules")} delay={660} />
+      <MenuButton compact={compact} label={t("home.modeOffline")} icon="game-controller" accent onPress={() => router.push({ pathname: "/lobby", params: { mode: "ai" } })} delay={300} />
+      <MenuButton compact={compact} label={t("home.modePlayWithFriends")} icon="people" onPress={() => { if (user) router.push("/(online)"); else router.push("/auth"); }} delay={420} />
+      <MenuButton compact={compact} label={t("home.modeOnline")} icon="earth-outline" onPress={() => { if (user) router.push("/(online)/quickmatch"); else router.push("/auth"); }} delay={540} />
+      <MenuButton compact={compact} label={t("home.modeTutorial")} icon="school-outline" onPress={() => router.push("/tutorial")} delay={600} />
+      <MenuButton compact={compact} label={t("home.modeRules")} icon="book-outline" onPress={() => router.push("/rules")} delay={660} />
     </>
   );
 
@@ -286,7 +306,7 @@ export default function HomeScreen() {
               </View>
             </Animated.View>
             <Animated.View style={subtitleStyle}>
-              <Text style={styles.subtitleLandscape}>Il Gioco di Carte</Text>
+              <Text style={styles.subtitleLandscape}>{t("home.subtitle")}</Text>
             </Animated.View>
             <View style={styles.cardDecorationLandscape}>
               {["♠", "♥", "♦", "♣"].map((suit, i) => (
@@ -298,10 +318,16 @@ export default function HomeScreen() {
                 <Ionicons name="person-circle-outline" size={13} color={Colors.gold} />
                 <Text style={styles.userTextSmall} numberOfLines={1}>{user.username}</Text>
                 <Pressable onPress={logout} style={styles.logoutBtn}>
-                  <Text style={styles.logoutText}>Esci</Text>
+                  <Text style={styles.logoutText}>{t("home.logout")}</Text>
                 </Pressable>
                 <FriendsButton compact />
+                <SettingsButton compact onPress={() => setSettingsVisible(true)} />
               </Animated.View>
+            )}
+            {!user && (
+              <View style={styles.userRowLandscape}>
+                <SettingsButton compact onPress={() => setSettingsVisible(true)} />
+              </View>
             )}
           </View>
 
@@ -309,11 +335,12 @@ export default function HomeScreen() {
             {menuButtons(true)}
             <Animated.View style={subtitleStyle}>
               <Text style={[styles.footerText, { textAlign: "center", marginTop: 8 }]}>
-                {"2–4 giocatori · Tutte le modalità"}
+                {t("home.footer")}
               </Text>
             </Animated.View>
           </ScrollView>
         </View>
+        <SettingsModal visible={settingsVisible} onClose={() => setSettingsVisible(false)} />
       </View>
     );
   }
@@ -342,7 +369,7 @@ export default function HomeScreen() {
           </View>
         </Animated.View>
         <Animated.View style={subtitleStyle}>
-          <Text style={styles.subtitle}>Il Gioco di Carte</Text>
+          <Text style={styles.subtitle}>{t("home.subtitle")}</Text>
         </Animated.View>
       </View>
 
@@ -351,9 +378,15 @@ export default function HomeScreen() {
           <Ionicons name="person-circle-outline" size={15} color={Colors.gold} />
           <Text style={styles.userText}>{user.username}</Text>
           <Pressable onPress={logout} style={styles.logoutBtn}>
-            <Text style={styles.logoutText}>Esci</Text>
+            <Text style={styles.logoutText}>{t("home.logout")}</Text>
           </Pressable>
           <FriendsButton />
+          <SettingsButton onPress={() => setSettingsVisible(true)} />
+        </Animated.View>
+      )}
+      {!user && (
+        <Animated.View style={[subtitleStyle, styles.userRow, { justifyContent: "center" }]}>
+          <SettingsButton onPress={() => setSettingsVisible(true)} />
         </Animated.View>
       )}
 
@@ -369,9 +402,10 @@ export default function HomeScreen() {
 
       <Animated.View style={[subtitleStyle, styles.footer]}>
         <Text style={styles.footerText}>
-          {"2–4 giocatori · Tutte le modalità"}
+          {t("home.footer")}
         </Text>
       </Animated.View>
+      <SettingsModal visible={settingsVisible} onClose={() => setSettingsVisible(false)} />
     </View>
   );
 }
@@ -486,6 +520,15 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: "#0A1F18",
     letterSpacing: 0.5,
+  },
+  settingsBtn: {
+    width: 32,
+    height: 32,
+    alignItems: "center",
+    justifyContent: "center",
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: Colors.border,
   },
   badge: {
     position: "absolute",

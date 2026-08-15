@@ -24,6 +24,11 @@ import { useSocket } from "@/context/SocketContext";
 import { useOnlineGame } from "@/context/OnlineGameContext";
 import { apiRequest } from "@/lib/query-client";
 import { Colors } from '@/lib/theme';
+import { useTranslation, translateServerPayload } from "@/lib/i18n";
+import type { TranslationKey, TranslationParams } from "@/lib/i18n";
+
+type TFn = (key: TranslationKey, params?: TranslationParams) => string;
+type TnFn = (base: string, count: number, params?: TranslationParams) => string;
 
 interface FriendInfo {
   id: string;
@@ -33,16 +38,16 @@ interface FriendInfo {
 interface FriendRequest { id: string; username: string }
 interface SearchResult { id: string; username: string }
 
-function italianRelativeTime(isoString: string | null | undefined): string {
-  if (!isoString) return "Tempo fa";
+function relativeTime(isoString: string | null | undefined, t: TFn, tn: TnFn): string {
+  if (!isoString) return t("friends.timeUnknown");
   const diff = Date.now() - new Date(isoString).getTime();
   const mins = Math.floor(diff / 60000);
-  if (mins < 1) return "Poco fa";
-  if (mins < 60) return `${mins} min fa`;
+  if (mins < 1) return t("friends.timeJustNow");
+  if (mins < 60) return t("friends.timeMinutesAgo", { n: mins });
   const hours = Math.floor(mins / 60);
-  if (hours < 24) return `${hours} or${hours === 1 ? "a" : "e"} fa`;
+  if (hours < 24) return tn("friends.timeHoursAgo", hours);
   const days = Math.floor(hours / 24);
-  return `${days} giorn${days === 1 ? "o" : "i"} fa`;
+  return tn("friends.timeDaysAgo", days);
 }
 
 function SectionHeader({ title, count }: { title: string; count?: number }) {
@@ -68,6 +73,7 @@ function Avatar({ name }: { name: string }) {
 
 export default function FriendsScreen() {
   const insets = useSafeAreaInsets();
+  const { t, tn } = useTranslation();
   const { user } = useAuth();
   const { socket, onlineIds, gameInvites, dismissGameInvite } = useSocket();
   const { joinRoom, room } = useOnlineGame();
@@ -145,12 +151,12 @@ export default function FriendsScreen() {
 
   function handleRemoveFriend(friend: FriendInfo) {
     Alert.alert(
-      "Rimuovi amico",
-      `Vuoi rimuovere ${friend.username} dagli amici?`,
+      t("friends.removeConfirmTitle"),
+      t("friends.removeConfirmBody", { username: friend.username }),
       [
-        { text: "Annulla", style: "cancel" },
+        { text: t("common.cancel"), style: "cancel" },
         {
-          text: "Rimuovi",
+          text: t("friends.removeConfirmConfirm"),
           style: "destructive",
           onPress: () => removeMutation.mutate(friend.id),
         },
@@ -170,13 +176,13 @@ export default function FriendsScreen() {
       setSearchResult(data);
       setSearchDone(true);
     } catch (e: unknown) {
-      const msg = e instanceof Error ? e.message : "Errore";
+      const msg = e instanceof Error ? e.message : t("common.error");
       const match = msg.match(/\d+: (.+)/);
       try {
         const parsed = JSON.parse(match ? match[1] : msg);
-        setSearchError(parsed.message ?? "Utente non trovato");
+        setSearchError(translateServerPayload(parsed) ?? t("friends.userNotFound"));
       } catch {
-        setSearchError("Utente non trovato");
+        setSearchError(t("friends.userNotFound"));
       }
       setSearchDone(true);
     } finally {
@@ -191,19 +197,19 @@ export default function FriendsScreen() {
       const res = await apiRequest("POST", "/api/friends/add", { username: searchResult.username });
       const data = await res.json();
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      Alert.alert("Richiesta inviata", `Richiesta di amicizia inviata a ${data.username}`);
+      Alert.alert(t("friends.requestSentTitle"), t("friends.requestSentBody", { username: data.username }));
       setSearchQuery("");
       setSearchResult(null);
       setSearchDone(false);
       qc.invalidateQueries({ queryKey: ["/api/friends/sent"] });
     } catch (e: unknown) {
-      const msg = e instanceof Error ? e.message : "Errore";
+      const msg = e instanceof Error ? e.message : t("common.error");
       const match = msg.match(/\d+: (.+)/);
       try {
         const parsed = JSON.parse(match ? match[1] : msg);
-        Alert.alert("Errore", parsed.message ?? msg);
+        Alert.alert(t("common.error"), translateServerPayload(parsed) ?? msg);
       } catch {
-        Alert.alert("Errore", match ? match[1] : msg);
+        Alert.alert(t("common.error"), match ? match[1] : msg);
       }
     } finally {
       setAddLoading(false);
@@ -221,7 +227,7 @@ export default function FriendsScreen() {
         <View style={styles.rowInfo}>
           <Text style={styles.rowName}>{item.username}</Text>
           <Text style={[styles.rowSub, isOnline && { color: "Colors.success" }]}>
-            {isOnline ? "● Online" : `Visto ${italianRelativeTime(item.lastSeen)}`}
+            {isOnline ? t("friends.online") : t("friends.seenAgo", { time: relativeTime(item.lastSeen, t, tn) })}
           </Text>
         </View>
         <Pressable
@@ -268,7 +274,7 @@ export default function FriendsScreen() {
         <Pressable onPress={() => router.back()} style={styles.backBtn}>
           <Ionicons name="chevron-back" size={22} color={Colors.textMuted} />
         </Pressable>
-        <Text style={styles.screenTitle}>Amici</Text>
+        <Text style={styles.screenTitle}>{t("friends.title")}</Text>
         <View style={{ width: 38 }} />
       </View>
 
@@ -279,13 +285,13 @@ export default function FriendsScreen() {
       >
         {/* ── SECTION 1: Amici ── */}
         <SectionHeader
-          title="AMICI"
+          title={t("friends.sectionFriends")}
           count={friends.length > 0 ? friends.length : undefined}
         />
         {friends.length === 0 && !friendsLoading && (
           <View style={styles.empty}>
             <Ionicons name="people-outline" size={36} color={Colors.textMuted} />
-            <Text style={styles.emptyText}>Nessun amico ancora.{"\n"}Cerca un username!</Text>
+            <Text style={styles.emptyText}>{t("friends.emptyFriends")}</Text>
           </View>
         )}
         {friendsLoading && <ActivityIndicator color={Colors.gold} style={{ marginVertical: 16 }} />}
@@ -300,7 +306,7 @@ export default function FriendsScreen() {
                 <View style={styles.rowInfo}>
                   <Text style={styles.rowName}>{item.username}</Text>
                   <Text style={[styles.rowSub, onlineIds.has(item.id) && { color: "Colors.success" }]}>
-                    {onlineIds.has(item.id) ? "● Online" : `Visto ${italianRelativeTime(item.lastSeen)}`}
+                    {onlineIds.has(item.id) ? t("friends.online") : t("friends.seenAgo", { time: relativeTime(item.lastSeen, t, tn) })}
                   </Text>
                 </View>
                 <Pressable
@@ -318,7 +324,7 @@ export default function FriendsScreen() {
         {/* ── SECTION 2: Inviti a Giocare ── */}
         {gameInvites.length > 0 && (
           <>
-            <SectionHeader title="INVITI A GIOCARE" count={gameInvites.length} />
+            <SectionHeader title={t("friends.sectionGameInvites")} count={gameInvites.length} />
             <View style={styles.listBlock}>
               {gameInvites.map((invite) => (
                 <View key={invite.roomCode} style={styles.row}>
@@ -328,7 +334,7 @@ export default function FriendsScreen() {
                   </View>
                   <View style={styles.rowInfo}>
                     <Text style={styles.rowName}>{invite.from}</Text>
-                    <Text style={styles.rowSub}>Stanza: {invite.roomCode}</Text>
+                    <Text style={styles.rowSub}>{t("friends.roomLabel", { code: invite.roomCode })}</Text>
                   </View>
                   <View style={styles.actionRow}>
                     <Pressable
@@ -341,7 +347,7 @@ export default function FriendsScreen() {
                       onPress={() => handleJoinGameInvite(invite.roomCode)}
                       style={styles.joinBtn}
                     >
-                      <Text style={styles.joinBtnText}>Unisciti</Text>
+                      <Text style={styles.joinBtnText}>{t("friends.join")}</Text>
                     </Pressable>
                   </View>
                 </View>
@@ -353,7 +359,7 @@ export default function FriendsScreen() {
         {/* ── SECTION 3: Richieste Ricevute ── */}
         {requests.length > 0 && (
           <>
-            <SectionHeader title="RICHIESTE RICEVUTE" count={requests.length} />
+            <SectionHeader title={t("friends.sectionReceivedRequests")} count={requests.length} />
             <View style={styles.listBlock}>
               {requests.map(r => (
                 <View key={r.id} style={styles.row}>
@@ -384,14 +390,14 @@ export default function FriendsScreen() {
         {/* ── SECTION 3: Richieste Inviate ── */}
         {sentRequests.length > 0 && (
           <>
-            <SectionHeader title="RICHIESTE INVIATE" count={sentRequests.length} />
+            <SectionHeader title={t("friends.sectionSentRequests")} count={sentRequests.length} />
             <View style={styles.listBlock}>
               {sentRequests.map(r => (
                 <View key={r.id} style={styles.row}>
                   <Avatar name={r.username} />
                   <View style={styles.rowInfo}>
                     <Text style={styles.rowName}>{r.username}</Text>
-                    <Text style={styles.rowSub}>In attesa di risposta...</Text>
+                    <Text style={styles.rowSub}>{t("friends.awaitingResponse")}</Text>
                   </View>
                   <Pressable
                     onPress={() => cancelMutation.mutate(r.id)}
@@ -407,11 +413,11 @@ export default function FriendsScreen() {
         )}
 
         {/* ── SECTION 4: Aggiungi Amico ── */}
-        <SectionHeader title="AGGIUNGI AMICO" />
+        <SectionHeader title={t("friends.sectionAddFriend")} />
 
         {/* Username search */}
         <View style={styles.inputCard}>
-          <Text style={styles.inputCardLabel}>Cerca per username</Text>
+          <Text style={styles.inputCardLabel}>{t("friends.searchByUsername")}</Text>
           <View style={styles.inputRow}>
             <TextInput
               style={styles.input}
@@ -422,15 +428,15 @@ export default function FriendsScreen() {
                 setSearchResult(null);
                 setSearchError(null);
               }}
-              placeholder="@username"
+              placeholder={t("friends.usernamePlaceholder")}
               placeholderTextColor={Colors.textMuted}
               autoCapitalize="none"
               autoCorrect={false}
               maxLength={30}
               onSubmitEditing={handleSearchUsername}
               returnKeyType="search"
-              accessibilityLabel="Ricerca username"
-              accessibilityHint="Digita lo username di un giocatore per cercarla e aggiungere come amico"
+              accessibilityLabel={t("friends.searchA11yLabel")}
+              accessibilityHint={t("friends.searchA11yHint")}
             />
             <Pressable
               onPress={handleSearchUsername}

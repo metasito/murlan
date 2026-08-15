@@ -11,6 +11,7 @@ import { router } from "expo-router";
 import { useGame } from "@/context/GameContext";
 import { cardStrength } from "@/lib/gameEngine";
 import { GameTable } from "@/components/GameTable";
+import { useTranslation } from "@/lib/i18n";
 
 /** How long an AI "thinks" before playing. */
 const AI_DELAY = 1100;
@@ -25,6 +26,7 @@ const RESULT_DELAY = 800;
 const EXCHANGE_VALID_RANKS = new Set(["3", "4", "5", "6", "7", "8", "9", "10"]);
 
 export default function GameScreen() {
+  const { t } = useTranslation();
   const {
     gameState,
     selectedCards,
@@ -96,17 +98,17 @@ export default function GameScreen() {
     <GameTable
       gameState={gameState}
       viewerSeat={humanIdx}
-      roundLabel="Partita"
+      roundLabel={t("offlineGame.roundLabel")}
       selectedIds={selectedCards}
       onSelectCard={selectCard}
       onPlay={playSelected}
       onPass={passTurn}
       onExchangeGive={chooseExchangeCard}
       onQuit={() =>
-        Alert.alert("Abbandona", "Vuoi uscire dalla partita?", [
-          { text: "Annulla", style: "cancel" },
+        Alert.alert(t("offlineGame.quitConfirmTitle"), t("offlineGame.quitConfirmBody"), [
+          { text: t("common.cancel"), style: "cancel" },
           {
-            text: "Esci",
+            text: t("offlineGame.quitConfirmConfirm"),
             style: "destructive",
             onPress: () => {
               resetGame();

@@ -407,6 +407,7 @@ function runBotTurn(roomId: string) {
     logger.error({ roomId, seat }, "Vacant seat could not act — closing table");
     io.to(roomId).emit("game:notification", {
       type: "abandoned",
+      code: "GAME_INTERRUPTED_EMPTY_SEAT",
       message: "Partita interrotta: un posto vuoto non può giocare.",
     });
     void storage.updateRoomStatus(roomId, "finished").catch(() => {});
@@ -462,7 +463,9 @@ function startAfkTimer(roomId: string, userId: string, username: string) {
       if (acted && _io) {
         _io.to(roomId).emit("game:notification", {
           type: "afk",
+          code: "PLAYER_AFK_AUTO_PASS",
           message: `${username} è inattivo — passato automaticamente`,
+          params: { username },
         });
       }
     }, AFK_TIMEOUT_MS)
@@ -519,7 +522,9 @@ async function vacateSeat(
     io.to(roomId).emit("game:player_left", { userId, username, seatIndex: seat });
     io.to(roomId).emit("game:notification", {
       type: "abandoned",
+      code: "PLAYER_LEFT_ABANDONED",
       message: `${username} ha lasciato la partita.`,
+      params: { username },
     });
     await storage.updateRoomStatus(roomId, "finished").catch(() => {});
     disposeGame(roomId);
@@ -534,7 +539,9 @@ async function vacateSeat(
     userId,
     username,
     seatIndex: seat,
+    code: "PLAYER_LEFT_BOT_TAKEOVER",
     message: `${username} ha lasciato la partita — il computer gioca al suo posto.`,
+    params: { username },
   });
 
   broadcastGameState(io, game);
@@ -765,17 +772,20 @@ export function setupSocket(httpServer: HttpServer) {
       async ({ code }) => {
         const room = await storage.getRoomByCode(code.toUpperCase());
         if (!room) {
-          socket.emit("room:error", { message: "Stanza non trovata" });
+          socket.emit("room:error", { message: "Stanza non trovata", code: "ROOM_NOT_FOUND" });
           return;
         }
         if (room.status !== "waiting") {
-          socket.emit("room:error", { message: "Partita già iniziata" });
+          socket.emit("room:error", { message: "Partita già iniziata", code: "GAME_ALREADY_STARTED" });
           return;
         }
 
         const claim = await storage.claimRoomSeat(room.id, userId);
         if (!claim.ok) {
-          socket.emit("room:error", { message: seatClaimMessage(claim.reason) });
+          socket.emit("room:error", {
+            message: seatClaimMessage(claim.reason),
+            code: seatClaimCode(claim.reason),
+          });
           return;
         }
 
@@ -882,6 +892,7 @@ export function setupSocket(httpServer: HttpServer) {
         if (room.status !== "waiting") {
           socket.emit("room:error", {
             message: "Non puoi cambiare modalità a partita iniziata",
+            code: "CANNOT_CHANGE_MODE_IN_PROGRESS",
           });
           return;
         }
@@ -911,7 +922,7 @@ export function setupSocket(httpServer: HttpServer) {
 
         const players = await storage.getRoomPlayers(room.id);
         if (players.length < 2) {
-          socket.emit("room:error", { message: "Servono almeno 2 giocatori" });
+          socket.emit("room:error", { message: "Servono almeno 2 giocatori", code: "MIN_PLAYERS_REQUIRED" });
           return;
         }
 
@@ -987,6 +998,7 @@ export function setupSocket(httpServer: HttpServer) {
         if (gameState.exchangePhase?.active) {
           socket.emit("game:error", {
             message: "Devi prima completare lo scambio",
+            code: "EXCHANGE_PENDING",
           });
           return;
         }
@@ -1002,7 +1014,7 @@ export function setupSocket(httpServer: HttpServer) {
 
         const combo = buildCombination(cards);
         if (!combo) {
-          socket.emit("game:error", { message: "Combinazione non valida" });
+          socket.emit("game:error", { message: "Combinazione non valida", code: "INVALID_COMBINATION" });
           return;
         }
 
@@ -1014,13 +1026,15 @@ export function setupSocket(httpServer: HttpServer) {
             const sc = gameState.startCard;
             socket.emit("game:error", {
               message: `Devi giocare il ${sc.rank}♠ come prima carta`,
+              code: "MUST_PLAY_START_CARD",
+              params: { rank: sc.rank },
             });
             return;
           }
         }
 
         if (!canPlay(combo, isNewRound ? null : gameState.lastPlayedCombination)) {
-          socket.emit("game:error", { message: "Mossa non valida" });
+          socket.emit("game:error", { message: "Mossa non valida", code: "INVALID_MOVE" });
           return;
         }
 
@@ -1053,6 +1067,7 @@ export function setupSocket(httpServer: HttpServer) {
         if (gameState.exchangePhase?.active) {
           socket.emit("game:error", {
             message: "Devi prima completare lo scambio",
+            code: "EXCHANGE_PENDING",
           });
           return;
         }
@@ -1060,7 +1075,7 @@ export function setupSocket(httpServer: HttpServer) {
         const currentIdx = gameState.currentTurnIndex;
         if (playerMap[currentIdx] !== userId) return;
         if (gameState.lastPlayedCombination === null) {
-          socket.emit("game:error", { message: "Non puoi passare" });
+          socket.emit("game:error", { message: "Non puoi passare", code: "CANNOT_PASS" });
           return;
         }
 
@@ -1156,7 +1171,7 @@ export function setupSocket(httpServer: HttpServer) {
           if (existingGame) {
             const seat = seatOfUser(existingGame, userId);
             if (seat === null) {
-              socket.emit("game:rejoin_failed", { reason: "Non autorizzato", roomCode });
+              socket.emit("game:rejoin_failed", { reason: "Non autorizzato", code: "UNAUTHORIZED", roomCode });
               return;
             }
 
@@ -1196,7 +1211,7 @@ export function setupSocket(httpServer: HttpServer) {
             where: eq(activeGamesTable.roomCode, roomCode),
           });
           if (!row) {
-            socket.emit("game:rejoin_failed", { reason: "Partita non trovata", roomCode });
+            socket.emit("game:rejoin_failed", { reason: "Partita non trovata", code: "GAME_NOT_FOUND", roomCode });
             return;
           }
 
@@ -1212,7 +1227,7 @@ export function setupSocket(httpServer: HttpServer) {
               "Discarding stale persisted game (schema mismatch)"
             );
             disposeGame(roomCode);
-            socket.emit("game:rejoin_failed", { reason: "Partita non più valida", roomCode });
+            socket.emit("game:rejoin_failed", { reason: "Partita non più valida", code: "GAME_NO_LONGER_VALID", roomCode });
             return;
           }
           // isStaleSchema is a plain boolean helper (kept dependency-free for
@@ -1222,7 +1237,7 @@ export function setupSocket(httpServer: HttpServer) {
 
           const playerMap = readPersistedPlayerMap(row.playerMap, row.playerIds);
           if (!Object.values(playerMap).includes(userId)) {
-            socket.emit("game:rejoin_failed", { reason: "Non autorizzato", roomCode });
+            socket.emit("game:rejoin_failed", { reason: "Non autorizzato", code: "UNAUTHORIZED", roomCode });
             return;
           }
 
@@ -1268,7 +1283,7 @@ export function setupSocket(httpServer: HttpServer) {
           logger.info({ userId, roomCode }, "Player rejoined game (from DB)");
         } catch (err) {
           logger.error({ err, roomCode, userId }, "game:rejoin failed");
-          socket.emit("game:rejoin_failed", { reason: "Errore del server", roomCode });
+          socket.emit("game:rejoin_failed", { reason: "Errore del server", code: "SERVER_ERROR", roomCode });
         }
       },
       { limit: 20, windowMs: 60_000 }
@@ -1313,7 +1328,7 @@ export function setupSocket(httpServer: HttpServer) {
 
         const next = processExchangeChoice(game.gameState, cardId);
         if (next === game.gameState) {
-          socket.emit("game:error", { message: "Carta non valida" });
+          socket.emit("game:error", { message: "Carta non valida", code: "INVALID_CARD" });
           return;
         }
         game.gameState = next;
@@ -1336,7 +1351,7 @@ export function setupSocket(httpServer: HttpServer) {
         // spam any userId. Only accepted friends, and only a few per minute.
         const areFriends = await storage.areFriends(userId, friendUserId);
         if (!areFriends) {
-          socket.emit("friend:error", { message: "Non siete amici" });
+          socket.emit("friend:error", { message: "Non siete amici", code: "NOT_FRIENDS" });
           return;
         }
         const friendSocket = userSocketMap.get(friendUserId);
@@ -1398,7 +1413,9 @@ export function setupSocket(httpServer: HttpServer) {
           io.to(currentRoomId).emit("game:player_disconnected", {
             userId,
             username,
+            code: "PLAYER_DISCONNECTED_GRACE",
             message: `${username} si è disconnesso. Ha 60 secondi per rientrare.`,
+            params: { username },
           });
 
           // A vacant seat must keep playing while we wait, or the table stalls
@@ -1497,6 +1514,23 @@ function seatClaimMessage(
       return "Stanza piena";
     case "already_joined":
       return "Sei già nella stanza";
+  }
+}
+
+// Stable code counterpart to seatClaimMessage's Italian text, so the client
+// can localise the same rejection reason (see docs on the `code` field above).
+function seatClaimCode(
+  reason: "no_room" | "not_waiting" | "full" | "already_joined"
+): string {
+  switch (reason) {
+    case "no_room":
+      return "ROOM_NOT_FOUND";
+    case "not_waiting":
+      return "GAME_ALREADY_STARTED";
+    case "full":
+      return "ROOM_FULL";
+    case "already_joined":
+      return "ALREADY_IN_ROOM";
   }
 }
 

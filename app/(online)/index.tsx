@@ -22,9 +22,11 @@ import { useSocket } from "@/context/SocketContext";
 import { Colors } from '@/lib/theme';
 import { MenuCard } from "@/components/MenuCard";
 import { MenuButton } from "@/components/MenuButton";
+import { useTranslation } from "@/lib/i18n";
 
 export default function OnlineLobbyScreen() {
   const insets = useSafeAreaInsets();
+  const { t } = useTranslation();
   const { width: W, height: H } = useWindowDimensions();
   const { user } = useAuth();
   const { createRoom, joinRoom, room, connected, error, clearError } = useOnlineGame();
@@ -46,7 +48,7 @@ export default function OnlineLobbyScreen() {
 
   useEffect(() => {
     if (error) {
-      Alert.alert("Errore", error, [{ text: "OK", onPress: clearError }]);
+      Alert.alert(t("common.error"), error, [{ text: t("common.ok"), onPress: clearError }]);
     }
   }, [error]);
 
@@ -73,9 +75,9 @@ export default function OnlineLobbyScreen() {
 
   const CreateSection = (
     <View style={{ flex: 1 }}>
-      <MenuCard title="CREA STANZA" style={isLandscape ? styles.compactCard : undefined}>
+      <MenuCard title={t("onlineLobby.createRoomTitle")} style={isLandscape ? styles.compactCard : undefined}>
         <View style={isLandscape ? styles.optSectionLandscape : styles.optSection}>
-          <Text style={styles.optLabelSmall}>MODALITÀ</Text>
+          <Text style={styles.optLabelSmall}>{t("onlineLobby.modeLabel")}</Text>
           <View style={[styles.toggle, isLandscape && styles.gapXs]}>
             {(["free_for_all", "teams"] as const).map((m) => (
               <Pressable
@@ -93,7 +95,7 @@ export default function OnlineLobbyScreen() {
                   color={createMode === m ? Colors.gold : Colors.textSecondary} 
                 />
                 <Text style={[styles.toggleText, createMode === m && styles.toggleTextActive, isLandscape && { fontSize: 12 }]}>
-                  {m === "free_for_all" ? "Libera" : "Coppie"}
+                  {m === "free_for_all" ? t("onlineLobby.modeFreeForAll") : t("onlineLobby.modeTeams")}
                 </Text>
               </Pressable>
             ))}
@@ -101,7 +103,7 @@ export default function OnlineLobbyScreen() {
         </View>
 
         <View style={isLandscape ? styles.optSectionLandscape : styles.optSection}>
-          <Text style={styles.optLabelSmall}>GIOCATORI</Text>
+          <Text style={styles.optLabelSmall}>{t("onlineLobby.playersLabel")}</Text>
           <View style={[styles.toggle, isLandscape && styles.gapXs]}>
             {[2, 3, 4].map((n) => (
               <Pressable
@@ -122,12 +124,12 @@ export default function OnlineLobbyScreen() {
         </View>
 
         {createMode === "teams" && createPlayers !== 4 && (
-          <Text style={styles.warn}>La modalità Coppie richiede 4 giocatori</Text>
+          <Text style={styles.warn}>{t("onlineLobby.teamsRequire4")}</Text>
         )}
 
         <View style={{ marginTop: isLandscape ? 4 : 8 }}>
           <MenuButton
-            label="Crea Stanza"
+            label={t("onlineLobby.createRoom")}
             onPress={handleCreate}
             variant="primary"
             fullWidth={true}
@@ -142,10 +144,10 @@ export default function OnlineLobbyScreen() {
 
   const JoinSection = (
     <View style={{ flex: 1 }}>
-      <MenuCard title="ENTRA IN UNA STANZA" style={isLandscape ? styles.compactCard : undefined}>
+      <MenuCard title={t("onlineLobby.joinRoomTitle")} style={isLandscape ? styles.compactCard : undefined}>
         <View style={{ paddingVertical: isLandscape ? 2 : 4 }}>
           <MenuButton
-            label="Inserisci codice stanza"
+            label={t("onlineLobby.enterRoomCode")}
             onPress={() => setJoinModalVisible(true)}
             variant="secondary"
             fullWidth={true}
@@ -172,7 +174,7 @@ export default function OnlineLobbyScreen() {
         <Pressable onPress={() => router.back()} style={styles.backBtn}>
           <Ionicons name="chevron-back" size={22} color={Colors.textMuted} />
         </Pressable>
-        <Text style={styles.screenTitle}>Con Amici</Text>
+        <Text style={styles.screenTitle}>{t("onlineLobby.title")}</Text>
         <View style={{ width: 38 }} />
       </View>
 
@@ -182,7 +184,7 @@ export default function OnlineLobbyScreen() {
             <View style={styles.statusRow}>
               <View style={[styles.dot, { backgroundColor: connected ? Colors.success : Colors.textMuted }]} />
               <Text style={styles.statusText}>
-                {connected ? `Connesso come ${user?.username}` : "Connessione…"}
+                {connected ? t("onlineLobby.connectedAs", { username: user?.username ?? "" }) : t("onlineLobby.connecting")}
               </Text>
             </View>
 
@@ -206,14 +208,14 @@ export default function OnlineLobbyScreen() {
             <View style={styles.statusRow}>
               <View style={[styles.dot, { backgroundColor: connected ? Colors.success : Colors.textMuted }]} />
               <Text style={styles.statusText}>
-                {connected ? `Connesso come ${user?.username}` : "Connessione…"}
+                {connected ? t("onlineLobby.connectedAs", { username: user?.username ?? "" }) : t("onlineLobby.connecting")}
               </Text>
             </View>
 
             {CreateSection}
             <View style={styles.divider}>
               <View style={styles.divLine} />
-              <Text style={styles.divText}>oppure</Text>
+              <Text style={styles.divText}>{t("onlineLobby.or")}</Text>
               <View style={styles.divLine} />
             </View>
             {JoinSection}
@@ -233,19 +235,19 @@ export default function OnlineLobbyScreen() {
             keyboardShouldPersistTaps="handled"
           >
             <View style={[styles.modalBox, isLandscape && styles.modalBoxLandscape, { width: isLandscape ? "80%" : "100%", maxWidth: isLandscape ? 600 : 400 }]}>
-              <Text style={styles.modalTitle}>Entra in una stanza</Text>
-              <MenuCard title="Codice Stanza" style={{ marginBottom: 0 }}>
+              <Text style={styles.modalTitle}>{t("onlineLobby.joinModalTitle")}</Text>
+              <MenuCard title={t("onlineLobby.roomCodeCardTitle")} style={{ marginBottom: 0 }}>
                 <TextInput
                   style={[styles.codeInput, isLandscape && styles.codeInputLandscape]}
                   value={joinCode}
                   onChangeText={(v) => setJoinCode(v.toUpperCase())}
-                  placeholder="CODICE"
+                  placeholder={t("onlineLobby.roomCodePlaceholder")}
                   placeholderTextColor={Colors.textMuted}
                   autoCapitalize="characters"
                   autoFocus={true}
                   maxLength={8}
-                  accessibilityLabel="Codice stanza"
-                  accessibilityHint="Inserisci il codice a 6 caratteri della stanza a cui vuoi unirti"
+                  accessibilityLabel={t("onlineLobby.roomCodeA11yLabel")}
+                  accessibilityHint={t("onlineLobby.roomCodeA11yHint")}
                 />
               </MenuCard>
               <View style={styles.modalRow}>
@@ -253,14 +255,14 @@ export default function OnlineLobbyScreen() {
                   onPress={() => { setJoinModalVisible(false); setJoinCode(""); }}
                   style={styles.modalCancelBtn}
                 >
-                  <Text style={styles.modalCancelText}>Annulla</Text>
+                  <Text style={styles.modalCancelText}>{t("common.cancel")}</Text>
                 </Pressable>
                 <Pressable
                   onPress={handleJoin}
                   disabled={joinCode.length < 4}
                   style={({ pressed }) => [styles.modalOkBtn, pressed && { opacity: 0.85 }]}
                 >
-                  <Text style={styles.modalOkText}>Entra</Text>
+                  <Text style={styles.modalOkText}>{t("onlineLobby.enter")}</Text>
                 </Pressable>
               </View>
             </View>

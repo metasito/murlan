@@ -14,6 +14,7 @@ import Animated, {
 import { Card, Suit, isRedSuit, getCardDisplayRank, getSuitSymbol } from "@/lib/gameEngine";
 import { Colors } from '@/lib/theme';
 import { Shadow } from "@/lib/theme";
+import { useTranslation, type TranslationKey } from "@/lib/i18n";
 import Svg, { Path, Circle, G, Rect, Polygon } from "react-native-svg";
 
 const FACE_RANKS = new Set(["J", "Q", "K"]);
@@ -55,20 +56,40 @@ interface CardViewProps {
 }
 
 // ─── Ornate SVG card back ─────────────────────────────────────────────────────
+//
+// The diamond dot grid depends only on (width, height), and in practice only
+// two sizes ever occur (CARD_W/CARD_H and CARD_W_SMALL/CARD_H_SMALL — see
+// below). React Compiler already memoizes this per component instance keyed
+// on (w, h) (verified by compiling this file through the same babel-preset-
+// expo + react-compiler pipeline Metro uses), but that cache lives on each
+// mounted OrnateCardBack's own fiber, so every face-down card on screen still
+// pays for the grid once on its own first render, with its own array. A
+// hand can show many face-down opponent cards at once, so a true module-level
+// cache — computed once, ever, and shared by reference — is a strict
+// improvement over the compiler's per-instance memo, not a fight against it.
+const dotGridCache = new Map<string, { x: number; y: number }[]>();
+function getDotGrid(w: number, h: number): { x: number; y: number }[] {
+  const key = `${w}x${h}`;
+  let grid = dotGridCache.get(key);
+  if (!grid) {
+    const spacing = 9;
+    const padX = 8;
+    const padY = 10;
+    grid = [];
+    for (let x = padX; x <= w - padX; x += spacing) {
+      for (let y = padY; y <= h - padY; y += spacing) {
+        grid.push({ x, y });
+      }
+    }
+    dotGridCache.set(key, grid);
+  }
+  return grid;
+}
 
 function OrnateCardBack({ width, height }: { width: number; height: number }) {
   const w = width;
   const h = height;
-  const spacing = 9;
-  const padX = 8;
-  const padY = 10;
-
-  const dots: Array<{ x: number; y: number }> = [];
-  for (let x = padX; x <= w - padX; x += spacing) {
-    for (let y = padY; y <= h - padY; y += spacing) {
-      dots.push({ x, y });
-    }
-  }
+  const dots = getDotGrid(w, h);
 
   const cx = w / 2;
   const cy = h / 2;
@@ -247,6 +268,7 @@ export function CardView({
   style,
   noLift = false,
 }: CardViewProps) {
+  const { t } = useTranslation();
   const translateY = useSharedValue(0);
 
   useEffect(() => {
@@ -327,18 +349,18 @@ export function CardView({
   const isFaceCard = FACE_RANKS.has(card.rank);
 
   const getSuitName = (suit: string | null) => {
-    switch (suit) {
-      case "hearts": return "Cuori";
-      case "diamonds": return "Quadri";
-      case "clubs": return "Fiori";
-      case "spades": return "Picche";
-      default: return "";
-    }
+    const key: TranslationKey | null =
+      suit === "hearts" ? "cards.suitHearts"
+      : suit === "diamonds" ? "cards.suitDiamonds"
+      : suit === "clubs" ? "cards.suitClubs"
+      : suit === "spades" ? "cards.suitSpades"
+      : null;
+    return key ? t(key) : "";
   };
 
   const getCardLabel = () => {
-    if (card.isJoker) return `Joker ${card.rank === "joker_colored" ? "colorato" : "nero"}`;
-    return `${rankText} di ${getSuitName(card.suit)}`;
+    if (card.isJoker) return t(card.rank === "joker_colored" ? "cardView.jokerColored" : "cardView.jokerBlack");
+    return t("cards.nameFormat", { rank: rankText, suit: getSuitName(card.suit) });
   };
 
   return (
@@ -348,7 +370,7 @@ export function CardView({
         disabled={disabled || !onPress}
         accessibilityLabel={getCardLabel()}
         accessibilityRole="button"
-        accessibilityHint={selected ? "Selezionata" : undefined}
+        accessibilityHint={selected ? t("cardView.selectedA11yHint") : undefined}
         style={[
           styles.card,
           small ? styles.cardSmall : styles.cardNormal,

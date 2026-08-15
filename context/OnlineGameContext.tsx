@@ -11,6 +11,7 @@ import React, {
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { getSocket } from "@/lib/socket";
 import { useNotification } from "@/context/NotificationContext";
+import { t, translateServerPayload, type ServerPayload } from "@/lib/i18n";
 import type { Socket } from "socket.io-client";
 import type { GameState } from "@/lib/gameEngine";
 import type { ExchangeAnnounceData } from "@/lib/sharedGameFlow";
@@ -173,8 +174,10 @@ export function OnlineGameProvider({ userId, children }: { userId: string; child
       persistActiveRoom(data.status === "in_progress" ? data.roomId : null);
     };
 
-    const onRoomError = ({ message }: { message: string }) => {
-      setError(message);
+    // Server payloads carry { code, params, message }; render the code in the
+    // player's language and fall back to the server's Italian text if unknown.
+    const onRoomError = (payload: ServerPayload) => {
+      setError(translateServerPayload(payload));
     };
 
     const onGameState = (state: GameState & { viewerSeatIndex?: number | null }) => {
@@ -229,24 +232,27 @@ export function OnlineGameProvider({ userId, children }: { userId: string; child
       }
     };
 
-    const onGameError = ({ message }: { message: string }) => {
+    const onGameError = (payload: ServerPayload) => {
       // Error is shown as an in-game toast in game.tsx (auto-clears after 3s)
-      setError(message);
+      setError(translateServerPayload(payload));
     };
 
-    const onGameNotification = ({ type: notifType, message }: { type: string; message: string }) => {
-      if (notifType === "afk") {
+    const onGameNotification = (
+      payload: ServerPayload & { type: string }
+    ) => {
+      const text = translateServerPayload(payload);
+      if (payload.type === "afk") {
         showNotification({
           type: "afk",
-          title: "Passaggio automatico",
-          message,
+          title: t("online.autoPassTitle"),
+          message: text,
           duration: 4500,
         });
       } else {
         showNotification({
           type: "game_info",
-          title: "Avviso",
-          message,
+          title: t("common.notice"),
+          message: text,
           duration: 4000,
         });
       }

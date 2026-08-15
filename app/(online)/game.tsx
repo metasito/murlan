@@ -22,6 +22,7 @@ import {
 import { GameOverOverlay } from "@/components/GameOverOverlay";
 import { Colors, FontSize, Radius, Spacing } from "@/lib/theme";
 import { hapticLight, hapticMedium } from "@/lib/haptics";
+import { useTranslation } from "@/lib/i18n";
 
 /** The server's AFK window (server/socket.ts AFK_TIMEOUT_MS). The client only
  *  displays the countdown — the server owns the timeout and the auto-pass. */
@@ -35,6 +36,7 @@ const ERROR_TOAST_MS = 3000;
 
 export default function OnlineGameScreen() {
   const insets = useSafeAreaInsets();
+  const { t } = useTranslation();
   const { user } = useAuth();
   const {
     gameState,
@@ -124,11 +126,11 @@ export default function OnlineGameScreen() {
   useEffect(() => {
     if (!playerLeft) return;
     Alert.alert(
-      "Partita interrotta",
-      "Un giocatore ha abbandonato la partita.",
+      t("onlineGame.playerLeftTitle"),
+      t("onlineGame.playerLeftBody"),
       [
         {
-          text: "Torna alla lobby",
+          text: t("onlineGame.backToLobby"),
           onPress: () => {
             clearPlayerLeft();
             leaveRoom();
@@ -185,7 +187,7 @@ export default function OnlineGameScreen() {
     <GameTable
       gameState={gameState}
       viewerSeat={mySeatIndex}
-      roundLabel="Online"
+      roundLabel={t("onlineGame.roundLabel")}
       selectedIds={selectedIds}
       onSelectCard={toggleCard}
       onPlay={handlePlay}
@@ -196,11 +198,11 @@ export default function OnlineGameScreen() {
       onExchangeGive={giveExchangeCard}
       onQuit={() =>
         Alert.alert(
-          "Lascia la partita",
-          "Sei sicuro di voler lasciare la partita in corso?",
+          t("onlineGame.quitConfirmTitle"),
+          t("onlineGame.quitConfirmBody"),
           [
-            { text: "Annulla", style: "cancel" },
-            { text: "Lascia", style: "destructive", onPress: leaveAndExit },
+            { text: t("common.cancel"), style: "cancel" },
+            { text: t("onlineGame.quitConfirmConfirm"), style: "destructive", onPress: leaveAndExit },
           ]
         )
       }
@@ -246,11 +248,14 @@ export default function OnlineGameScreen() {
             <View style={styles.waitOverlay}>
               <View style={styles.waitCard}>
                 <Text style={styles.waitGlyph}>🔄</Text>
-                <Text style={styles.waitTitle}>Scambio in corso...</Text>
+                <Text style={styles.waitTitle}>{t("onlineGame.exchangeInProgressTitle")}</Text>
                 <Text style={styles.waitBody}>
                   {exchange.viewerIsLoser
-                    ? `${exchange.winner?.name ?? "Il vincitore"} sta scegliendo la carta da darti.`
-                    : `${exchange.winner?.name ?? "Il vincitore"} sta scegliendo la carta per ${exchange.loser?.name ?? "il perdente"}.`}
+                    ? t("onlineGame.exchangeWaitAsLoser", { winner: exchange.winner?.name ?? t("onlineGame.theWinner") })
+                    : t("onlineGame.exchangeWaitAsOther", {
+                        winner: exchange.winner?.name ?? t("onlineGame.theWinner"),
+                        loser: exchange.loser?.name ?? t("onlineGame.theLoser"),
+                      })}
                 </Text>
               </View>
             </View>

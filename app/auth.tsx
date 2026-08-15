@@ -17,11 +17,13 @@ import * as Haptics from "expo-haptics";
 import { Ionicons } from "@expo/vector-icons";
 import { useAuth } from "@/context/AuthContext";
 import { Colors } from '@/lib/theme';
+import { useTranslation, translateServerPayload } from "@/lib/i18n";
 
 type Tab = "login" | "register";
 
 export default function AuthScreen() {
   const insets = useSafeAreaInsets();
+  const { t } = useTranslation();
   const { login, register } = useAuth();
   const [tab, setTab] = useState<Tab>("login");
   const [username, setUsername] = useState("");
@@ -37,7 +39,7 @@ export default function AuthScreen() {
   async function handleSubmit() {
     setError(null);
     if (!username.trim() || !password.trim()) {
-      setError("Inserisci username e password");
+      setError(t("auth.missingFields"));
       return;
     }
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
@@ -50,11 +52,11 @@ export default function AuthScreen() {
       }
       router.replace("/");
     } catch (e: unknown) {
-      const msg = e instanceof Error ? e.message : "Errore sconosciuto";
+      const msg = e instanceof Error ? e.message : t("auth.unknownError");
       const match = msg.match(/\d+: (.+)/);
       try {
         const parsed = JSON.parse(match ? match[1] : msg);
-        setError(parsed.message ?? msg);
+        setError(translateServerPayload(parsed) ?? msg);
       } catch {
         setError(match ? match[1] : msg);
       }
@@ -84,19 +86,19 @@ export default function AuthScreen() {
 
           <View style={styles.header}>
             <Text style={styles.title}>MURLAN</Text>
-            <Text style={styles.subtitle}>Accesso Online</Text>
+            <Text style={styles.subtitle}>{t("auth.subtitle")}</Text>
           </View>
 
           <View style={styles.card}>
             <View style={styles.tabs}>
-              {(["login", "register"] as Tab[]).map((t) => (
+              {(["login", "register"] as Tab[]).map((tabOption) => (
                 <Pressable
-                  key={t}
-                  onPress={() => { setTab(t); setError(null); }}
-                  style={[styles.tabBtn, tab === t && styles.tabActive]}
+                  key={tabOption}
+                  onPress={() => { setTab(tabOption); setError(null); }}
+                  style={[styles.tabBtn, tab === tabOption && styles.tabActive]}
                 >
-                  <Text style={[styles.tabText, tab === t && styles.tabTextActive]}>
-                    {t === "login" ? "Accedi" : "Registrati"}
+                  <Text style={[styles.tabText, tab === tabOption && styles.tabTextActive]}>
+                    {tabOption === "login" ? t("auth.tabLogin") : t("auth.tabRegister")}
                   </Text>
                 </Pressable>
               ))}
@@ -104,27 +106,27 @@ export default function AuthScreen() {
 
             <View style={styles.form}>
               <View style={styles.field}>
-                <Text style={styles.label}>Username</Text>
+                <Text style={styles.label}>{t("auth.usernameLabel")}</Text>
                 <View style={styles.inputRow}>
                   <Ionicons name="person-outline" size={16} color={Colors.textMuted} style={styles.inputIcon} />
                   <TextInput
                     style={styles.input}
                     value={username}
                     onChangeText={(v) => { setUsername(v); setError(null); }}
-                    placeholder="il_tuo_nick"
+                    placeholder={t("auth.usernamePlaceholder")}
                     placeholderTextColor={Colors.textMuted}
                     autoCapitalize="none"
                     autoCorrect={false}
                     returnKeyType="next"
                     onSubmitEditing={() => pwdRef.current?.focus()}
-                    accessibilityLabel="Nome utente"
-                    accessibilityHint="Inserisci il tuo nome utente per accedere o registrarti"
+                    accessibilityLabel={t("auth.usernameA11yLabel")}
+                    accessibilityHint={t("auth.usernameA11yHint")}
                   />
                 </View>
               </View>
 
               <View style={styles.field}>
-                <Text style={styles.label}>Password</Text>
+                <Text style={styles.label}>{t("auth.passwordLabel")}</Text>
                 <View style={styles.inputRow}>
                   <Ionicons name="lock-closed-outline" size={16} color={Colors.textMuted} style={styles.inputIcon} />
                   <TextInput
@@ -138,8 +140,8 @@ export default function AuthScreen() {
                     autoCapitalize="none"
                     returnKeyType="done"
                     onSubmitEditing={handleSubmit}
-                    accessibilityLabel="Password"
-                    accessibilityHint="Inserisci la tua password per accedere"
+                    accessibilityLabel={t("auth.passwordA11yLabel")}
+                    accessibilityHint={t("auth.passwordA11yHint")}
                   />
                   <Pressable onPress={() => setShowPwd((v) => !v)} style={styles.eyeBtn}>
                     <Ionicons
@@ -173,17 +175,14 @@ export default function AuthScreen() {
                     <ActivityIndicator color="#0A1F18" size="small" />
                   ) : (
                     <Text style={styles.submitText}>
-                      {tab === "login" ? "Entra" : "Crea account"}
+                      {tab === "login" ? t("auth.submitLogin") : t("auth.submitRegister")}
                     </Text>
                   )}
                 </LinearGradient>
               </Pressable>
 
               {tab === "register" && (
-                <Text style={styles.hint}>
-                  Username: 3–20 caratteri (lettere, numeri, _){"\n"}
-                  Password: minimo 6 caratteri
-                </Text>
+                <Text style={styles.hint}>{t("auth.hint")}</Text>
               )}
             </View>
           </View>

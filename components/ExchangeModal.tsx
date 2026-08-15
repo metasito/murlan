@@ -23,6 +23,7 @@ import { cardStrength, getValidGivebackCards } from "@/lib/gameEngine";
 import { CardView } from "@/components/CardView";
 import { Colors, Shadow } from '@/lib/theme';
 import { usePrefersReducedMotion } from "@/lib/accessibility";
+import { useTranslation } from "@/lib/i18n";
 
 interface ExchangeModalProps {
   phase: ExchangePhase;
@@ -100,6 +101,7 @@ export function ExchangeModal({
   winnerName,
   onSelectCard,
 }: ExchangeModalProps) {
+  const { t } = useTranslation();
   const reduceMotion = usePrefersReducedMotion();
 
   const validCards = getValidGivebackCards(winnerHand).sort(
@@ -129,7 +131,7 @@ export function ExchangeModal({
       <View style={styles.card}>
         <View style={styles.headerRow}>
           <Ionicons name="swap-horizontal" size={22} color={Colors.gold} />
-          <Text style={styles.title}>Scambio di carte</Text>
+          <Text style={styles.title}>{t("exchangeModal.title")}</Text>
         </View>
 
         {/* Winner row — receives card from loser */}
@@ -138,7 +140,7 @@ export function ExchangeModal({
             <Ionicons name="trophy" size={14} color={Colors.gold} />
             <Text style={styles.playerName} numberOfLines={1}>{winnerName}</Text>
             <View style={styles.receivesTag}>
-              <Text style={styles.receivesTagText}>riceve</Text>
+              <Text style={styles.receivesTagText}>{t("exchangeModal.receives")}</Text>
             </View>
           </View>
           <View style={styles.cardSlot}>
@@ -160,7 +162,7 @@ export function ExchangeModal({
             <Ionicons name="person" size={14} color={Colors.textSecondary} />
             <Text style={styles.playerName} numberOfLines={1}>{loserName}</Text>
             <View style={[styles.receivesTag, styles.givesTag]}>
-              <Text style={[styles.receivesTagText, styles.givesTagText]}>dà</Text>
+              <Text style={[styles.receivesTagText, styles.givesTagText]}>{t("exchangeModal.gives")}</Text>
             </View>
           </View>
           <View style={styles.cardSlotEmpty}>
@@ -171,12 +173,12 @@ export function ExchangeModal({
         <View style={styles.divider} />
 
         <Text style={styles.sub}>
-          Scegli una carta da dare a{" "}
-          <Text style={styles.accent}>{loserName}</Text> (solo 3–10):
+          {t("exchangeModal.subPrefix")}{" "}
+          <Text style={styles.accent}>{loserName}</Text> {t("exchangeModal.subSuffix")}
         </Text>
 
         {validCards.length === 0 ? (
-          <Text style={styles.hint}>Nessuna carta valida da restituire.</Text>
+          <Text style={styles.hint}>{t("exchangeModal.noValidCards")}</Text>
         ) : (
           <ScrollView
             horizontal
@@ -193,7 +195,7 @@ export function ExchangeModal({
           </ScrollView>
         )}
 
-        <Text style={styles.hint}>Tocca una carta per darla al perdente</Text>
+        <Text style={styles.hint}>{t("exchangeModal.hint")}</Text>
       </View>
     </Animated.View>
   );

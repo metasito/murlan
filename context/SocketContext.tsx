@@ -13,6 +13,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "@/context/AuthContext";
 import { connectSocket, disconnectSocket, setSocketAuthFailureHandler } from "@/lib/socket";
 import { useNotification } from "@/context/NotificationContext";
+import { t, translateServerPayload, type ServerPayload } from "@/lib/i18n";
 import type { Socket } from "socket.io-client";
 
 const RETRY_BASE_MS = 2000;
@@ -199,11 +200,25 @@ export function SocketProvider({ children }: { children: ReactNode }) {
     // The server rejects/rate-limits invites and other actions with these —
     // previously nothing listened, so e.g. a friend:invite to a non-friend
     // failed silently for the sender.
-    const onFriendError = ({ message }: { message: string }) => {
-      showNotification({ type: "game_error", title: "Errore", message, duration: 4000 });
+    // Keep the whole payload: the server emits a stable `code` (plus `params`)
+    // alongside the Italian `message`, so the client can render it in the
+    // player's own language. `translateServerPayload` falls back to the
+    // server's plain text if the code is unknown to this build.
+    const onFriendError = (payload: ServerPayload) => {
+      showNotification({
+        type: "game_error",
+        title: t("common.error"),
+        message: translateServerPayload(payload),
+        duration: 4000,
+      });
     };
-    const onSocketError = ({ message }: { message: string }) => {
-      showNotification({ type: "game_error", title: "Errore", message, duration: 4000 });
+    const onSocketError = (payload: ServerPayload) => {
+      showNotification({
+        type: "game_error",
+        title: t("common.error"),
+        message: translateServerPayload(payload),
+        duration: 4000,
+      });
     };
 
     socket.on("connect", onConnect);

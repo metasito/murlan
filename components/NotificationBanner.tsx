@@ -11,6 +11,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Colors, Spacing, Radius, Type, Shadow } from "@/lib/theme";
 import { usePrefersReducedMotion } from "@/lib/accessibility";
+import { useTranslation } from "@/lib/i18n";
 import type { NotificationType, NotificationData } from "@/context/NotificationContext";
 
 export type { NotificationType, NotificationData };
@@ -50,6 +51,7 @@ const SLIDE_DURATION = 320;
 const DEFAULT_VISIBLE_DURATION = 4500;
 
 export default function NotificationBanner({ notification, onDismiss }: Props) {
+  const { t } = useTranslation();
   const insets = useSafeAreaInsets();
   const translateY = useSharedValue(-120);
   const opacity = useSharedValue(0);
@@ -116,7 +118,7 @@ export default function NotificationBanner({ notification, onDismiss }: Props) {
         accessibilityRole="alert"
         accessibilityLiveRegion={notification ? "polite" : "none"}
         accessibilityLabel={a11yLabel}
-        accessibilityHint="Tocca per chiudere la notifica"
+        accessibilityHint={t("notificationBanner.dismissA11yHint")}
       >
         <View style={[styles.iconCircle, { backgroundColor: color + "22" }]}>
           <Ionicons name={icon} size={20} color={color} />
@@ -130,7 +132,7 @@ export default function NotificationBanner({ notification, onDismiss }: Props) {
           hitSlop={Spacing.md}
           style={styles.closeBtn}
           accessibilityRole="button"
-          accessibilityLabel="Chiudi notifica"
+          accessibilityLabel={t("notificationBanner.closeA11yLabel")}
         >
           <Ionicons name="close" size={20} color={Colors.textMuted} />
         </Pressable>

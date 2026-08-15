@@ -27,9 +27,17 @@ import { useGame, calcRoundPoints } from "@/context/GameContext";
 import { CardView } from "@/components/CardView";
 import { sortHand } from "@/lib/gameEngine";
 import { Colors } from '@/lib/theme';
+import { useTranslation, type TranslationKey } from "@/lib/i18n";
 
 const POSITION_COLORS = [Colors.gold, "#C0C0C0", "#CD7F32", Colors.textMuted];
-const POSITION_LABELS = ["1°", "2°", "3°", "4°"];
+// Shares its display text with components/GameOverOverlay.tsx's identical
+// "1°"/"2°"/"3°"/"4°" position badges — same keys, one source of truth.
+const POSITION_LABEL_KEYS: TranslationKey[] = [
+  "gameOverOverlay.position1",
+  "gameOverOverlay.position2",
+  "gameOverOverlay.position3",
+  "gameOverOverlay.position4",
+];
 const POSITION_ICONS = ["trophy", "medal", "ribbon", "remove-circle"] as const;
 
 function ScoreRow({
@@ -51,6 +59,7 @@ function ScoreRow({
   team?: "A" | "B";
   isMultiRound: boolean;
 }) {
+  const { t } = useTranslation();
   const opacity = useSharedValue(0);
   const tx = useSharedValue(30);
   useEffect(() => {
@@ -63,7 +72,8 @@ function ScoreRow({
   }));
   const color = POSITION_COLORS[rank] ?? Colors.textMuted;
   const icon = POSITION_ICONS[rank] ?? "person";
-  const label = POSITION_LABELS[rank] ?? `${rank + 1}°`;
+  const labelKey = POSITION_LABEL_KEYS[rank];
+  const label = labelKey ? t(labelKey) : `${rank + 1}°`;
 
   return (
     <Animated.View style={[styles.rankCard, isWinner && styles.rankCardWinner, anim]}>
@@ -85,7 +95,7 @@ function ScoreRow({
         <Text style={styles.playerName} numberOfLines={1}>{name}</Text>
         {team && (
           <Text style={[styles.teamLabel, { color: team === "A" ? Colors.accent : Colors.gold }]}>
-            Team {team}
+            {t("lobby.team", { team })}
           </Text>
         )}
       </View>
@@ -94,7 +104,7 @@ function ScoreRow({
           {totalScore}
         </Text>
         <Text style={styles.scoreSub}>
-          {isMultiRound ? `+${pointsEarned}` : `pts`}
+          {isMultiRound ? t("result.pointsDelta", { n: pointsEarned }) : t("result.ptsAbbrev")}
         </Text>
       </View>
     </Animated.View>
@@ -110,6 +120,7 @@ function WinnerCelebration({
   subtitle?: string;
   compact?: boolean;
 }) {
+  const { t } = useTranslation();
   const scale = useSharedValue(0);
   const opacity = useSharedValue(0);
   const glow = useSharedValue(0.5);
@@ -158,7 +169,7 @@ function WinnerCelebration({
         </LinearGradient>
       </View>
       <Text style={[styles.winnerName, compact && styles.winnerNameCompact]} numberOfLines={1}>{name}</Text>
-      <Text style={styles.winnerSub}>{subtitle ?? "Vincitore"}</Text>
+      <Text style={styles.winnerSub}>{subtitle ?? t("result.winnerDefault")}</Text>
     </Animated.View>
   );
 }
@@ -170,6 +181,7 @@ function CardExchangeOverlay({
   gameState: NonNullable<ReturnType<typeof useGame>["gameState"]>;
   chooseExchangeCard: (cardId: string) => void;
 }) {
+  const { t } = useTranslation();
   const ep = gameState.exchangePhase!;
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const autoRef = useRef(false);
@@ -200,9 +212,9 @@ function CardExchangeOverlay({
       <View style={exStyles.overlay}>
         <View style={exStyles.card}>
           <Text style={exStyles.jokerEmoji}>🃏🃏</Text>
-          <Text style={exStyles.title}>IL PERDENTE HA ENTRAMBI I JOLLY!</Text>
+          <Text style={exStyles.title}>{t("result.bothJokersTitle")}</Text>
           <Text style={exStyles.subtitle}>
-            {winner.name} inizia libero.{"\n"}Nessuno scambio.
+            {t("result.bothJokersBody", { name: winner.name })}
           </Text>
           <Pressable
             onPress={() => router.replace("/game")}
@@ -214,7 +226,7 @@ function CardExchangeOverlay({
               end={{ x: 1, y: 1 }}
               style={exStyles.confirmGrad}
             >
-              <Text style={exStyles.confirmText}>OK, inizia!</Text>
+              <Text style={exStyles.confirmText}>{t("result.bothJokersConfirm")}</Text>
             </LinearGradient>
           </Pressable>
         </View>
@@ -225,21 +237,21 @@ function CardExchangeOverlay({
   return (
     <View style={exStyles.overlay}>
       <View style={exStyles.card}>
-        <Text style={exStyles.title}>SCAMBIO CARTE</Text>
+        <Text style={exStyles.title}>{t("result.exchangeTitle")}</Text>
         <View style={exStyles.section}>
           <Text style={exStyles.label}>
-            {loser.name} cede a {winner.name}:
+            {t("result.exchangeGiveLabel", { loser: loser.name, winner: winner.name })}
           </Text>
           <View style={exStyles.singleCard}>
             <CardView card={ep.cardFromLoser} />
           </View>
         </View>
         {winner.type === "ai" ? (
-          <Text style={exStyles.aiChoosing}>⏳ {winner.name} sceglie...</Text>
+          <Text style={exStyles.aiChoosing}>{t("result.exchangeAiChoosing", { winner: winner.name })}</Text>
         ) : (
           <View style={exStyles.section}>
             <Text style={exStyles.label}>
-              {winner.name} restituisce (3–10):
+              {t("result.exchangeReturnLabel", { winner: winner.name })}
             </Text>
             <ScrollView
               horizontal
@@ -265,7 +277,7 @@ function CardExchangeOverlay({
                 );
               })}
               {exchangeCards.length === 0 && (
-                <Text style={exStyles.noCards}>Nessuna carta 3–10</Text>
+                <Text style={exStyles.noCards}>{t("result.exchangeNoCards")}</Text>
               )}
             </ScrollView>
             <Pressable
@@ -294,7 +306,7 @@ function CardExchangeOverlay({
                     !selectedId && { color: Colors.textMuted },
                   ]}
                 >
-                  Conferma scambio
+                  {t("result.exchangeConfirm")}
                 </Text>
               </LinearGradient>
             </Pressable>
@@ -307,6 +319,7 @@ function CardExchangeOverlay({
 
 export default function ResultScreen() {
   const insets = useSafeAreaInsets();
+  const { t } = useTranslation();
   const { width: W, height: H } = useWindowDimensions();
   const isLandscape = W > H;
   const {
@@ -397,20 +410,20 @@ export default function ResultScreen() {
     <View style={[styles.actions, compact && styles.actionsRow]}>
       <Pressable testID="btn-home" onPress={handleHome} style={[styles.homeBtn, compact && styles.homeBtnCompact]}>
         <Ionicons name="home" size={18} color={Colors.textSecondary} />
-        {!compact && <Text style={styles.homeBtnText}>Home</Text>}
+        {!compact && <Text style={styles.homeBtnText}>{t("result.home")}</Text>}
       </Pressable>
       {isMultiRound && !isLastRound ? (
         <Pressable testID="btn-prossimo" onPress={handleNextRound} style={[styles.rematchBtn, compact && styles.rematchBtnFlex]}>
           <LinearGradient colors={[Colors.gold, Colors.goldDark]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={[styles.rematchGrad, compact && styles.rematchGradCompact]}>
             <Ionicons name="play-forward" size={18} color="#0A1F18" />
-            <Text style={styles.rematchText}>Prossima Manche</Text>
+            <Text style={styles.rematchText}>{t("result.nextRound")}</Text>
           </LinearGradient>
         </Pressable>
       ) : (
         <Pressable testID="btn-rivincita" onPress={handleRematch} style={[styles.rematchBtn, compact && styles.rematchBtnFlex]}>
           <LinearGradient colors={[Colors.gold, Colors.goldDark]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={[styles.rematchGrad, compact && styles.rematchGradCompact]}>
             <Ionicons name="refresh" size={18} color="#0A1F18" />
-            <Text style={styles.rematchText}>Rivincita</Text>
+            <Text style={styles.rematchText}>{t("gameOverOverlay.rematch")}</Text>
           </LinearGradient>
         </Pressable>
       )}
@@ -444,7 +457,7 @@ export default function ResultScreen() {
           {isMultiRound ? (
             <View style={styles.headerMulti}>
               <Text style={styles.headerTitle}>
-                {isLastRound ? "Partita Finita!" : `Manche ${currentRound} di ${totalRounds}`}
+                {isLastRound ? t("result.matchOverTitle") : t("result.roundOfTotal", { current: currentRound, total: totalRounds })}
               </Text>
               <View style={styles.roundPips}>
                 {Array.from({ length: totalRounds }, (_, i) => (
@@ -453,7 +466,7 @@ export default function ResultScreen() {
               </View>
             </View>
           ) : (
-            <Text style={styles.headerTitle}>Partita Finita</Text>
+            <Text style={styles.headerTitle}>{t("result.gameOverTitle")}</Text>
           )}
         </View>
 
@@ -461,20 +474,20 @@ export default function ResultScreen() {
           <View style={styles.landscapeLeft}>
             <WinnerCelebration
               name={isMultiRound ? (isLastRound ? overallWinner : displayName) : displayName}
-              subtitle={isMultiRound ? (isLastRound ? "Campione del Torneo" : `Vince Manche ${currentRound}`) : "Vincitore"}
+              subtitle={isMultiRound ? (isLastRound ? t("result.tournamentChampion") : t("result.wonRound", { n: currentRound })) : t("result.winnerDefault")}
               compact
             />
             <View style={styles.statsRowLandscape}>
               <View style={styles.statItem}>
                 <Ionicons name="people" size={14} color={Colors.gold} />
                 <Text style={styles.statValue}>{numPlayers}</Text>
-                <Text style={styles.statLabel}>Giocatori</Text>
+                <Text style={styles.statLabel}>{t("result.statPlayers")}</Text>
               </View>
               {isMultiRound && (
                 <View style={styles.statItem}>
                   <Ionicons name="layers" size={14} color={Colors.gold} />
                   <Text style={styles.statValue}>{currentRound}/{totalRounds}</Text>
-                  <Text style={styles.statLabel}>Manche</Text>
+                  <Text style={styles.statLabel}>{t("result.statRounds")}</Text>
                 </View>
               )}
             </View>
@@ -482,7 +495,7 @@ export default function ResultScreen() {
           </View>
 
           <View style={styles.landscapeRight}>
-            <Text style={styles.sectionTitle}>CLASSIFICA</Text>
+            <Text style={styles.sectionTitle}>{t("gameOverOverlay.rankingsTitle")}</Text>
             <ScrollView showsVerticalScrollIndicator={false} style={{ flex: 1 }} contentContainerStyle={{ gap: 5 }}>
               {sortedPlayers.map((player, idx) => (
                 <ScoreRow
@@ -501,7 +514,7 @@ export default function ResultScreen() {
             <View style={styles.legend}>
               <Ionicons name="information-circle-outline" size={10} color={Colors.textMuted} />
               <Text style={styles.legendText}>
-                +{numPlayers - 1} / +{numPlayers - 2} ... +0 per 1° → ultimo
+                {t("result.legend", { a: numPlayers - 1, b: numPlayers - 2 })}
               </Text>
             </View>
           </View>
@@ -522,7 +535,7 @@ export default function ResultScreen() {
         {isMultiRound ? (
           <View style={styles.headerMulti}>
             <Text style={styles.headerTitle}>
-              {isLastRound ? "Partita Finita!" : `Manche ${currentRound} di ${totalRounds}`}
+              {isLastRound ? t("result.matchOverTitle") : t("result.roundOfTotal", { current: currentRound, total: totalRounds })}
             </Text>
             <View style={styles.roundPips}>
               {Array.from({ length: totalRounds }, (_, i) => (
@@ -531,7 +544,7 @@ export default function ResultScreen() {
             </View>
           </View>
         ) : (
-          <Text style={styles.headerTitle}>Partita Finita</Text>
+          <Text style={styles.headerTitle}>{t("result.gameOverTitle")}</Text>
         )}
       </View>
 
@@ -541,34 +554,34 @@ export default function ResultScreen() {
       >
         <WinnerCelebration
           name={isMultiRound ? (isLastRound ? overallWinner : displayName) : displayName}
-          subtitle={isMultiRound ? (isLastRound ? "Campione del Torneo" : `Vince Manche ${currentRound}`) : "Vincitore"}
+          subtitle={isMultiRound ? (isLastRound ? t("result.tournamentChampion") : t("result.wonRound", { n: currentRound })) : t("result.winnerDefault")}
         />
         <View style={styles.statsRow}>
           <View style={styles.statItem}>
             <Ionicons name="people" size={16} color={Colors.gold} />
             <Text style={styles.statValue}>{numPlayers}</Text>
-            <Text style={styles.statLabel}>Giocatori</Text>
+            <Text style={styles.statLabel}>{t("result.statPlayers")}</Text>
           </View>
           {isMultiRound && (
             <View style={styles.statItem}>
               <Ionicons name="layers" size={16} color={Colors.gold} />
               <Text style={styles.statValue}>{currentRound}/{totalRounds}</Text>
-              <Text style={styles.statLabel}>Manche</Text>
+              <Text style={styles.statLabel}>{t("result.statRounds")}</Text>
             </View>
           )}
           <View style={styles.statItem}>
             <Ionicons name={gameState.gameMode === "teams" ? "people-circle" : "person-circle"} size={16} color={Colors.gold} />
-            <Text style={styles.statValue}>{gameState.gameMode === "teams" ? "Coppie" : "Libero"}</Text>
-            <Text style={styles.statLabel}>Modalità</Text>
+            <Text style={styles.statValue}>{gameState.gameMode === "teams" ? t("gameOverOverlay.modeTeams") : t("gameOverOverlay.modeFreeForAll")}</Text>
+            <Text style={styles.statLabel}>{t("result.statMode")}</Text>
           </View>
         </View>
         <View style={{ gap: 6 }}>
-          <Text style={styles.sectionTitle}>CLASSIFICA</Text>
+          <Text style={styles.sectionTitle}>{t("gameOverOverlay.rankingsTitle")}</Text>
           {rankBlock}
           <View style={styles.legend}>
             <Ionicons name="information-circle-outline" size={11} color={Colors.textMuted} />
             <Text style={styles.legendText}>
-              +{numPlayers - 1} / +{numPlayers - 2} ... +0 per 1° → ultimo
+              {t("result.legend", { a: numPlayers - 1, b: numPlayers - 2 })}
             </Text>
           </View>
         </View>

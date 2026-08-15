@@ -25,6 +25,9 @@ import {
   getValidGivebackCards,
   processExchangeChoice,
 } from "@/lib/gameEngine";
+import { useTranslation, type TranslationKey, type TranslationParams } from "@/lib/i18n";
+
+type TFn = (key: TranslationKey, params?: TranslationParams) => string;
 
 // ─── Storage keys ──────────────────────────────────────────────────────────
 const SEEN_KEY = "@murlan_tutorial_seen";
@@ -41,13 +44,13 @@ function mk(rank: Exclude<Rank, "joker_bw" | "joker_colored">, suit: Suit): Card
 }
 const JOKER_COLORED: Card = { id: "joker_colored", suit: null, rank: "joker_colored", isJoker: true };
 
-const TYPE_LABEL: Record<CombinationType, string> = {
-  single: "una Singola",
-  pair: "una Coppia",
-  triple: "un Tris",
-  straight: "una Scala",
-  bomb: "una Bomba",
-  royal_straight: "una Scala Reale",
+const TYPE_LABEL_KEYS: Record<CombinationType, TranslationKey> = {
+  single: "tutorial.typeSingle",
+  pair: "tutorial.typePair",
+  triple: "tutorial.typeTriple",
+  straight: "tutorial.typeStraight",
+  bomb: "tutorial.typeBomb",
+  royal_straight: "tutorial.typeRoyalStraight",
 };
 
 // ─── Beat model ─────────────────────────────────────────────────────────────
@@ -124,203 +127,211 @@ const royalLastPlayed = buildCombination([
 const exchangeWinnerCard = mk("5", "diamonds");
 const exchangeDeadCard = mk("K", "clubs");
 const exchangeThreeHearts = mk("3", "hearts");
-const exchangeState: GameState = {
-  players: [
-    {
-      id: "player_0",
-      name: "Tu",
-      hand: [JOKER_COLORED, exchangeWinnerCard, exchangeDeadCard, exchangeThreeHearts],
-      type: "human",
+// A function, not a module-level constant: the player's own display name
+// ("Tu") is translated, so it has to be rebuilt with the current `t` on
+// every render rather than frozen at import time (before the device locale
+// is even known).
+function buildExchangeState(t: TFn): GameState {
+  return {
+    players: [
+      {
+        id: "player_0",
+        name: t("tutorial.you"),
+        hand: [JOKER_COLORED, exchangeWinnerCard, exchangeDeadCard, exchangeThreeHearts],
+        type: "human",
+      },
+      {
+        id: "player_1",
+        name: "Dea",
+        hand: [mk("4", "spades"), mk("7", "spades")],
+        type: "ai",
+      },
+    ],
+    currentTurnIndex: 0,
+    lastPlayedCombination: null,
+    lastPlayedBy: 0,
+    passCount: 0,
+    gameMode: "free_for_all",
+    roundWinner: null,
+    gameOver: false,
+    rankings: [],
+    firstPlayMade: true,
+    exchangePhase: {
+      active: true,
+      winnerIdx: 0,
+      loserIdx: 1,
+      cardFromLoser: JOKER_COLORED,
+      bothJokersException: false,
     },
-    {
-      id: "player_1",
-      name: "Dea",
-      hand: [mk("4", "spades"), mk("7", "spades")],
-      type: "ai",
-    },
-  ],
-  currentTurnIndex: 0,
-  lastPlayedCombination: null,
-  lastPlayedBy: 0,
-  passCount: 0,
-  gameMode: "free_for_all",
-  roundWinner: null,
-  gameOver: false,
-  rankings: [],
-  firstPlayMade: true,
-  exchangePhase: {
-    active: true,
-    winnerIdx: 0,
-    loserIdx: 1,
-    cardFromLoser: JOKER_COLORED,
-    bothJokersException: false,
-  },
-};
+  };
+}
 
-const BEATS: Beat[] = [
-  {
-    kind: "info",
-    id: "welcome",
-    title: "Benvenuto a Murlan!",
-    body: [
-      "Murlan è un gioco di carte di origine albanese per 2-4 giocatori. L'obiettivo: rimanere senza carte in mano per primi.",
-      "A ogni turno giochi una combinazione di carte più forte di quella sul tavolo, oppure passi. Chi fa passare tutti gli altri vince il turno e ne apre uno nuovo, con la combinazione che preferisce.",
-      "Impariamo giocando: userai una mano di carte già decisa contro Dea, un'avversaria di prova. Ogni mossa che proverai viene controllata dalle stesse regole della partita vera.",
-    ],
-    cta: "Inizia",
-  },
-  {
-    kind: "play",
-    id: "open",
-    title: "La prima giocata",
-    instruction:
-      "La primissima mano di ogni partita comincia sempre con chi ha il 3 di Picche (3♠), e questa carta deve far parte della giocata. Selezionalo e gioca.",
-    handCards: [threeSpades, mk("4", "diamonds"), mk("7", "hearts")],
-    lastPlayed: null,
-    isNewRound: true,
-    requireCard: threeSpades,
-    expectedType: "single",
-    highlightIds: [threeSpades.id],
-    successNarrative:
-      "Perfetto! Dea non ha interesse a rispondere così presto con una carta forte: passa. Hai vinto il turno.",
-  },
-  {
-    kind: "play",
-    id: "respond",
-    title: "Rispondere a una carta",
-    instruction: "Dea apre il turno successivo con un 6♠. Per batterla ti serve una carta singola più forte.",
-    tip: "Ricorda: serve una carta STRETTAMENTE più forte. Una carta dello stesso valore non basta.",
-    handCards: [mk("5", "hearts"), mk("6", "hearts"), mk("9", "clubs"), mk("2", "diamonds")],
-    lastPlayed: respondLastPlayed,
-    isNewRound: false,
-    expectedType: "single",
-    highlightIds: [],
-    opponentLabel: "Dea ha giocato: 6♠",
-    successNarrative: "Ottimo! Hai risposto con una carta più forte. Hai vinto il turno.",
-  },
-  {
-    kind: "play",
-    id: "pair",
-    title: "Coppie",
-    instruction:
-      "Hai vinto l'ultimo turno: ora tocca a te decidere cosa giocare, con qualsiasi combinazione. Prova una Coppia: due carte dello stesso valore.",
-    handCards: [mk("8", "hearts"), mk("8", "diamonds"), mk("5", "clubs"), mk("4", "clubs")],
-    lastPlayed: null,
-    isNewRound: true,
-    expectedType: "pair",
-    highlightIds: [],
-    successNarrative: "Coppia di 8! Dea passa: non ha una coppia più alta pronta.",
-  },
-  {
-    kind: "play",
-    id: "triple",
-    title: "Tris",
-    instruction: "Un'altra vittoria, un'altra scelta libera. Prova un Tris: tre carte dello stesso valore.",
-    handCards: [mk("J", "clubs"), mk("J", "diamonds"), mk("J", "hearts"), mk("3", "diamonds"), mk("6", "clubs")],
-    lastPlayed: null,
-    isNewRound: true,
-    expectedType: "triple",
-    highlightIds: [],
-    successNarrative: "Tris di Fanti! Dea passa di nuovo.",
-  },
-  {
-    kind: "play",
-    id: "straight",
-    title: "Scale",
-    instruction: "Prova una Scala: minimo 5 carte consecutive per valore, di semi qualsiasi.",
-    handCards: [
-      mk("5", "spades"),
-      mk("6", "diamonds"),
-      mk("7", "clubs"),
-      mk("8", "clubs"),
-      mk("9", "diamonds"),
-      mk("2", "clubs"),
-    ],
-    lastPlayed: null,
-    isNewRound: true,
-    expectedType: "straight",
-    highlightIds: [],
-    successNarrative:
-      "Scala centrale (5-9)! Dea non riesce a rispondere in tempo, passa. Nota: il 2 che avevi in mano vale pochissimo dentro una scala — è la carta più bassa di tutte, anche se di solito è la più forte del mazzo! L'Asso invece può stare in fondo (prima del 2) o in cima (dopo il Re): una scala può arrivare fino a 13 carte.",
-  },
-  {
-    kind: "play",
-    id: "bomb",
-    title: "La Bomba",
-    instruction:
-      "Questa volta apre Dea, con una Scala fortissima. Sembra imbattibile... ma tu hai qualcosa di speciale in mano.",
-    tip: "Una Bomba (4 carte dello stesso valore) batte qualsiasi Singola, Coppia, Tris o Scala, indipendentemente da quanto siano forti.",
-    handCards: [mk("K", "spades"), mk("K", "hearts"), mk("K", "diamonds"), mk("K", "clubs"), mk("A", "clubs")],
-    lastPlayed: bombLastPlayed,
-    isNewRound: false,
-    expectedType: "bomb",
-    highlightIds: [],
-    opponentLabel: "Dea ha giocato: Scala 7-J",
-    successNarrative: "BOMBA! Quattro Re spazzano via la scala di Dea. Vinci il turno alla grande.",
-  },
-  {
-    kind: "play",
-    id: "royal",
-    title: "La Scala Reale",
-    instruction:
-      "Dea rilancia con una Bomba di 5: sembra inarrestabile. C'è solo una cosa al mondo che la batte.",
-    tip: "La Scala Reale — una scala con tutte le carte dello stesso seme — batte anche la Bomba più forte. È la combinazione più potente del gioco (una regola non tradizionale, adottata in questa versione).",
-    handCards: [
-      mk("8", "spades"),
-      mk("9", "spades"),
-      mk("10", "spades"),
-      mk("J", "spades"),
-      mk("Q", "spades"),
-      mk("Q", "hearts"),
-    ],
-    lastPlayed: royalLastPlayed,
-    isNewRound: false,
-    expectedType: "royal_straight",
-    highlightIds: [],
-    opponentLabel: "Dea ha giocato: Bomba di 5",
-    successNarrative: "SCALA REALE di Picche! Nulla può batterla. Turno vinto in grande stile.",
-  },
-  {
-    kind: "exchange",
-    id: "exchange",
-    title: "Lo scambio di carte",
-    instruction:
-      "Dopo ogni manche, chi ha vinto e chi ha perso si scambiano una carta. Hai vinto l'ultima manche: chi ha perso ti ha già dato automaticamente la sua carta più forte, il Joker Colorato. Ora scegli tu una carta da restituirgli, di valore compreso tra 3 e 10.",
-    tip: "Eccezione dei due Joker: se chi ha perso ha in mano ENTRAMBI i Joker, lo scambio non avviene affatto — mostra semplicemente le due carte, e chi ha vinto apre subito il turno successivo.",
-    state: exchangeState,
-    successNarrative: "Scambio completato! Chi ha perso la manche precedente apre il turno successivo.",
-  },
-  {
-    kind: "complete",
-    id: "done",
-    title: "Sei pronto!",
-    body: [
-      "Hai visto tutte le combinazioni — Singola, Coppia, Tris, Scala, Bomba e Scala Reale — oltre all'apertura con il 3♠ e lo scambio di carte a fine manche.",
-      "Nella partita vera userai le stesse regole che hai appena provato: il gioco non ti lascerà mai fare una mossa non valida.",
-      "Puoi rivedere questo tutorial in qualsiasi momento dalla schermata iniziale, oppure consultare le Regole & FAQ complete.",
-    ],
-    cta: "Vai alla partita",
-  },
-];
+// Built with the current `t` on every render (via useMemo in the screen
+// component) rather than frozen at import time, so every string — including
+// the AI's reported moves and the success narratives — follows a live
+// language change with no app restart.
+function buildBeats(t: TFn): Beat[] {
+  return [
+    {
+      kind: "info",
+      id: "welcome",
+      title: t("tutorial.beat.welcome.title"),
+      body: [
+        t("tutorial.beat.welcome.body1"),
+        t("tutorial.beat.welcome.body2"),
+        t("tutorial.beat.welcome.body3"),
+      ],
+      cta: t("tutorial.beat.welcome.cta"),
+    },
+    {
+      kind: "play",
+      id: "open",
+      title: t("tutorial.beat.open.title"),
+      instruction: t("tutorial.beat.open.instruction"),
+      handCards: [threeSpades, mk("4", "diamonds"), mk("7", "hearts")],
+      lastPlayed: null,
+      isNewRound: true,
+      requireCard: threeSpades,
+      expectedType: "single",
+      highlightIds: [threeSpades.id],
+      successNarrative: t("tutorial.beat.open.successNarrative"),
+    },
+    {
+      kind: "play",
+      id: "respond",
+      title: t("tutorial.beat.respond.title"),
+      instruction: t("tutorial.beat.respond.instruction"),
+      tip: t("tutorial.beat.respond.tip"),
+      handCards: [mk("5", "hearts"), mk("6", "hearts"), mk("9", "clubs"), mk("2", "diamonds")],
+      lastPlayed: respondLastPlayed,
+      isNewRound: false,
+      expectedType: "single",
+      highlightIds: [],
+      opponentLabel: t("tutorial.beat.respond.opponentLabel"),
+      successNarrative: t("tutorial.beat.respond.successNarrative"),
+    },
+    {
+      kind: "play",
+      id: "pair",
+      title: t("tutorial.beat.pair.title"),
+      instruction: t("tutorial.beat.pair.instruction"),
+      handCards: [mk("8", "hearts"), mk("8", "diamonds"), mk("5", "clubs"), mk("4", "clubs")],
+      lastPlayed: null,
+      isNewRound: true,
+      expectedType: "pair",
+      highlightIds: [],
+      successNarrative: t("tutorial.beat.pair.successNarrative"),
+    },
+    {
+      kind: "play",
+      id: "triple",
+      title: t("tutorial.beat.triple.title"),
+      instruction: t("tutorial.beat.triple.instruction"),
+      handCards: [mk("J", "clubs"), mk("J", "diamonds"), mk("J", "hearts"), mk("3", "diamonds"), mk("6", "clubs")],
+      lastPlayed: null,
+      isNewRound: true,
+      expectedType: "triple",
+      highlightIds: [],
+      successNarrative: t("tutorial.beat.triple.successNarrative"),
+    },
+    {
+      kind: "play",
+      id: "straight",
+      title: t("tutorial.beat.straight.title"),
+      instruction: t("tutorial.beat.straight.instruction"),
+      handCards: [
+        mk("5", "spades"),
+        mk("6", "diamonds"),
+        mk("7", "clubs"),
+        mk("8", "clubs"),
+        mk("9", "diamonds"),
+        mk("2", "clubs"),
+      ],
+      lastPlayed: null,
+      isNewRound: true,
+      expectedType: "straight",
+      highlightIds: [],
+      successNarrative: t("tutorial.beat.straight.successNarrative"),
+    },
+    {
+      kind: "play",
+      id: "bomb",
+      title: t("tutorial.beat.bomb.title"),
+      instruction: t("tutorial.beat.bomb.instruction"),
+      tip: t("tutorial.beat.bomb.tip"),
+      handCards: [mk("K", "spades"), mk("K", "hearts"), mk("K", "diamonds"), mk("K", "clubs"), mk("A", "clubs")],
+      lastPlayed: bombLastPlayed,
+      isNewRound: false,
+      expectedType: "bomb",
+      highlightIds: [],
+      opponentLabel: t("tutorial.beat.bomb.opponentLabel"),
+      successNarrative: t("tutorial.beat.bomb.successNarrative"),
+    },
+    {
+      kind: "play",
+      id: "royal",
+      title: t("tutorial.beat.royal.title"),
+      instruction: t("tutorial.beat.royal.instruction"),
+      tip: t("tutorial.beat.royal.tip"),
+      handCards: [
+        mk("8", "spades"),
+        mk("9", "spades"),
+        mk("10", "spades"),
+        mk("J", "spades"),
+        mk("Q", "spades"),
+        mk("Q", "hearts"),
+      ],
+      lastPlayed: royalLastPlayed,
+      isNewRound: false,
+      expectedType: "royal_straight",
+      highlightIds: [],
+      opponentLabel: t("tutorial.beat.royal.opponentLabel"),
+      successNarrative: t("tutorial.beat.royal.successNarrative"),
+    },
+    {
+      kind: "exchange",
+      id: "exchange",
+      title: t("tutorial.beat.exchange.title"),
+      instruction: t("tutorial.beat.exchange.instruction"),
+      tip: t("tutorial.beat.exchange.tip"),
+      state: buildExchangeState(t),
+      successNarrative: t("tutorial.beat.exchange.successNarrative"),
+    },
+    {
+      kind: "complete",
+      id: "done",
+      title: t("tutorial.beat.done.title"),
+      body: [
+        t("tutorial.beat.done.body1"),
+        t("tutorial.beat.done.body2"),
+        t("tutorial.beat.done.body3"),
+      ],
+      cta: t("tutorial.beat.done.cta"),
+    },
+  ];
+}
 
 // ─── Engine-backed validation ───────────────────────────────────────────────
 // Every legality check below goes through lib/gameEngine.ts — the tutorial can
 // never accept (or reject) a move the real game engine wouldn't.
 
-function evaluatePlay(selected: Card[], beat: PlayBeat): { ok: boolean; message: string } {
+function evaluatePlay(selected: Card[], beat: PlayBeat, t: TFn): { ok: boolean; message: string } {
   if (selected.length === 0) {
-    return { ok: false, message: "Seleziona almeno una carta dalla tua mano." };
+    return { ok: false, message: t("tutorial.errSelectAtLeastOne") };
   }
 
   const combo = buildCombination(selected);
   if (!combo) {
-    return { ok: false, message: "Queste carte non formano una combinazione valida." };
+    return { ok: false, message: t("tutorial.errNotAValidCombo") };
   }
 
   if (beat.requireCard && !selected.some((c) => c.id === beat.requireCard!.id)) {
     return {
       ok: false,
-      message: `La prima giocata deve includere il ${getCardDisplayRank(beat.requireCard.rank)}${getSuitSymbol(beat.requireCard.suit)}.`,
+      message: t("tutorial.errMustIncludeCard", {
+        rank: getCardDisplayRank(beat.requireCard.rank),
+        suit: getSuitSymbol(beat.requireCard.suit),
+      }),
     };
   }
 
@@ -328,50 +339,52 @@ function evaluatePlay(selected: Card[], beat: PlayBeat): { ok: boolean; message:
   if (!legal) {
     const lp = beat.lastPlayed;
     if (lp?.type === "royal_straight") {
-      return { ok: false, message: "La Scala Reale batte tutto: qui non puoi rispondere." };
+      return { ok: false, message: t("tutorial.errRoyalBeatsAll") };
     }
     if (lp?.type === "bomb" && combo.type !== "bomb") {
-      return { ok: false, message: "Solo una Bomba più alta può battere questa." };
+      return { ok: false, message: t("tutorial.errOnlyHigherBomb") };
     }
     if (lp && combo.type !== lp.type) {
-      return { ok: false, message: "Devi rispondere con lo stesso tipo di combinazione, oppure passare." };
+      return { ok: false, message: t("tutorial.errSameType") };
     }
     if (lp && combo.cards.length !== lp.cards.length) {
-      return { ok: false, message: "Deve avere lo stesso numero di carte di quella sul tavolo." };
+      return { ok: false, message: t("tutorial.errSameLength") };
     }
-    return { ok: false, message: "Questa combinazione non è abbastanza forte: serve una carta più alta." };
+    return { ok: false, message: t("tutorial.errTooWeak") };
   }
 
   if (combo.type !== beat.expectedType) {
     return {
       ok: false,
-      message: `Mossa valida, ma in questa lezione proviamo con ${TYPE_LABEL[beat.expectedType]}. Riprova.`,
+      message: t("tutorial.errWrongExpectedType", { type: t(TYPE_LABEL_KEYS[beat.expectedType]) }),
     };
   }
 
   return { ok: true, message: beat.successNarrative };
 }
 
-function evaluateExchange(selected: Card, beat: ExchangeBeat): { ok: boolean; message: string } {
+function evaluateExchange(selected: Card, beat: ExchangeBeat, t: TFn): { ok: boolean; message: string } {
   const winnerHand = beat.state.players[beat.state.exchangePhase!.winnerIdx].hand;
   const valid = getValidGivebackCards(winnerHand);
   if (!valid.some((c) => c.id === selected.id)) {
     if (selected.id === beat.state.exchangePhase!.cardFromLoser.id) {
-      return { ok: false, message: "Quella l'hai appena ricevuta dal perdente: non puoi restituire proprio lei." };
+      return { ok: false, message: t("tutorial.errJustReceived") };
     }
-    return { ok: false, message: "Puoi restituire solo una carta di valore compreso tra 3 e 10." };
+    return { ok: false, message: t("tutorial.errExchangeRange") };
   }
   const result = processExchangeChoice(beat.state, selected.id);
   if (result.exchangePhase?.active === false) {
     return { ok: true, message: beat.successNarrative };
   }
-  return { ok: false, message: "Qualcosa non torna: riprova." };
+  return { ok: false, message: t("tutorial.errExchangeGeneric") };
 }
 
 // ─── Screen ─────────────────────────────────────────────────────────────────
 
 export default function TutorialScreen() {
+  const { t } = useTranslation();
   const reduceMotion = usePrefersReducedMotion();
+  const BEATS = React.useMemo(() => buildBeats(t), [t]);
   const [stepIndex, setStepIndex] = useState(0);
   const [loaded, setLoaded] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
@@ -448,7 +461,7 @@ export default function TutorialScreen() {
 
   function submitPlay(b: PlayBeat) {
     const selected = b.handCards.filter((c) => selectedIds.has(c.id));
-    const result = evaluatePlay(selected, b);
+    const result = evaluatePlay(selected, b, t);
     setFeedback({ ok: result.ok, text: result.message });
     if (result.ok) {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
@@ -462,10 +475,10 @@ export default function TutorialScreen() {
     const winnerHand = b.state.players[b.state.exchangePhase!.winnerIdx].hand;
     const selected = winnerHand.find((c) => selectedIds.has(c.id));
     if (!selected) {
-      setFeedback({ ok: false, text: "Seleziona una carta da restituire." });
+      setFeedback({ ok: false, text: t("tutorial.errSelectCardToReturn") });
       return;
     }
-    const result = evaluateExchange(selected, b);
+    const result = evaluateExchange(selected, b, t);
     setFeedback({ ok: result.ok, text: result.message });
     if (result.ok) {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
@@ -477,7 +490,7 @@ export default function TutorialScreen() {
 
   const header = (
     <View style={styles.header}>
-      <Pressable onPress={goBack} style={styles.headerBtn} hitSlop={Spacing.sm} accessibilityRole="button" accessibilityLabel="Indietro">
+      <Pressable onPress={goBack} style={styles.headerBtn} hitSlop={Spacing.sm} accessibilityRole="button" accessibilityLabel={t("tutorial.backA11yLabel")}>
         <Ionicons name="chevron-back" size={22} color={Colors.gold} />
       </Pressable>
       <View style={styles.progressWrap}>
@@ -485,11 +498,11 @@ export default function TutorialScreen() {
           <View style={[styles.progressFill, { width: `${((stepIndex + 1) / BEATS.length) * 100}%` }]} />
         </View>
         <Text style={styles.progressText}>
-          {stepIndex + 1} / {BEATS.length}
+          {t("tutorial.progressText", { current: stepIndex + 1, total: BEATS.length })}
         </Text>
       </View>
-      <Pressable onPress={handleSkip} style={styles.headerBtn} hitSlop={Spacing.sm} accessibilityRole="button" accessibilityLabel="Salta il tutorial">
-        <Text style={styles.skipText}>Salta</Text>
+      <Pressable onPress={handleSkip} style={styles.headerBtn} hitSlop={Spacing.sm} accessibilityRole="button" accessibilityLabel={t("tutorial.skipA11yLabel")}>
+        <Text style={styles.skipText}>{t("tutorial.skip")}</Text>
       </Pressable>
     </View>
   );
@@ -497,7 +510,7 @@ export default function TutorialScreen() {
   function renderBody() {
     if (beat.kind === "info" || beat.kind === "complete") {
       return (
-        <MenuCard title={beat.kind === "complete" ? "Tutorial completato" : "Guida rapida"}>
+        <MenuCard title={beat.kind === "complete" ? t("tutorial.cardTitleComplete") : t("tutorial.cardTitleQuickGuide")}>
           <Text style={styles.beatTitle}>{beat.title}</Text>
           {beat.body.map((p, i) => (
             <Text key={i} style={styles.paragraph}>
@@ -522,7 +535,7 @@ export default function TutorialScreen() {
           </MenuCard>
 
           {beat.lastPlayed && (
-            <MenuCard title={beat.opponentLabel ?? "Sul tavolo"}>
+            <MenuCard title={beat.opponentLabel ?? t("tutorial.onTable")}>
               <View style={styles.cardRow}>
                 {beat.lastPlayed.cards.map((c) => (
                   <CardView key={c.id} card={c} small noLift />
@@ -531,7 +544,7 @@ export default function TutorialScreen() {
             </MenuCard>
           )}
 
-          <MenuCard title="La tua mano">
+          <MenuCard title={t("tutorial.yourHand")}>
             <View style={styles.cardRow}>
               {beat.handCards.map((c) => (
                 <CardView
@@ -561,14 +574,14 @@ export default function TutorialScreen() {
 
           {!beatDone ? (
             <MenuButton
-              label="Gioca la combinazione"
+              label={t("tutorial.playCombination")}
               onPress={() => submitPlay(beat)}
               disabled={selectedIds.size === 0}
               icon={<Ionicons name="play" size={18} color={Colors.bg} />}
             />
           ) : (
             <MenuButton
-              label={isLast ? "Continua" : "Continua"}
+              label={t("tutorial.continue")}
               onPress={goNext}
               icon={<Ionicons name="arrow-forward" size={18} color={Colors.bg} />}
             />
@@ -590,7 +603,7 @@ export default function TutorialScreen() {
           </View>
         </MenuCard>
 
-        <MenuCard title="La tua mano (dopo aver ricevuto la carta)">
+        <MenuCard title={t("tutorial.yourHandAfterReceiving")}>
           <View style={styles.cardRow}>
             {winnerHand.map((c) => {
               const isReceived = c.id === receivedId;
@@ -602,7 +615,7 @@ export default function TutorialScreen() {
                     disabled={beatDone || isReceived}
                     onPress={isReceived ? undefined : () => toggleCard(c, true)}
                   />
-                  {isReceived && <Text style={styles.receivedLabel}>appena ricevuta</Text>}
+                  {isReceived && <Text style={styles.receivedLabel}>{t("tutorial.justReceived")}</Text>}
                 </View>
               );
             })}
@@ -624,13 +637,13 @@ export default function TutorialScreen() {
 
         {!beatDone ? (
           <MenuButton
-            label="Restituisci carta"
+            label={t("tutorial.returnCard")}
             onPress={() => submitExchange(beat)}
             disabled={selectedIds.size === 0}
             icon={<Ionicons name="swap-horizontal" size={18} color={Colors.bg} />}
           />
         ) : (
-          <MenuButton label="Continua" onPress={goNext} icon={<Ionicons name="arrow-forward" size={18} color={Colors.bg} />} />
+          <MenuButton label={t("tutorial.continue")} onPress={goNext} icon={<Ionicons name="arrow-forward" size={18} color={Colors.bg} />} />
         )}
       </>
     );
@@ -656,8 +669,8 @@ export default function TutorialScreen() {
 
         {beat.kind === "complete" && (
           <View style={styles.postCompleteRow}>
-            <MenuButton label="Rileggi le Regole & FAQ" variant="secondary" onPress={() => router.push("/rules")} />
-            <MenuButton label="Torna alla Home" variant="ghost" onPress={() => router.replace("/")} />
+            <MenuButton label={t("tutorial.rereadRules")} variant="secondary" onPress={() => router.push("/rules")} />
+            <MenuButton label={t("tutorial.backToHome")} variant="ghost" onPress={() => router.replace("/")} />
           </View>
         )}
       </Animated.View>

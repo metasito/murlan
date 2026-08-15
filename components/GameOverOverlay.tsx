@@ -22,10 +22,16 @@ import { Ionicons } from "@expo/vector-icons";
 import type { GameState } from "@/lib/gameEngine";
 import { Colors, FontSize, Motion, Radius, Spacing } from "@/lib/theme";
 import { usePrefersReducedMotion } from "@/lib/accessibility";
+import { useTranslation, type TranslationKey } from "@/lib/i18n";
 
 const POSITION_MEDALS = ["trophy", "medal", "ribbon", "remove-circle"] as const;
 const POSITION_COLORS = [Colors.gold, "#C0C0C0", "#CD7F32", Colors.textMuted];
-const POSITION_LABELS = ["1°", "2°", "3°", "4°"];
+const POSITION_LABEL_KEYS: TranslationKey[] = [
+  "gameOverOverlay.position1",
+  "gameOverOverlay.position2",
+  "gameOverOverlay.position3",
+  "gameOverOverlay.position4",
+];
 
 /** Stagger between ranking rows, after an initial beat. */
 const RANK_STAGGER_MS = 80;
@@ -49,6 +55,7 @@ function RankCard({
   delay: number;
   cumPts?: number;
 }) {
+  const { t } = useTranslation();
   const reduceMotion = usePrefersReducedMotion();
   const opacity = useSharedValue(0);
   const tx = useSharedValue(40);
@@ -70,7 +77,8 @@ function RankCard({
 
   const color = POSITION_COLORS[rank] ?? Colors.textMuted;
   const icon = POSITION_MEDALS[rank] ?? "person";
-  const label = POSITION_LABELS[rank] ?? `${rank + 1}°`;
+  const labelKey = POSITION_LABEL_KEYS[rank];
+  const label = labelKey ? t(labelKey) : `${rank + 1}°`;
 
   return (
     <Animated.View style={[styles.rankCard, isWinner && styles.rankCardWinner, animStyle]}>
@@ -93,7 +101,7 @@ function RankCard({
       </Text>
       {cumPts !== undefined && cumPts > 0 && (
         <View style={styles.cumScore}>
-          <Text style={styles.cumScoreText}>{cumPts}pt</Text>
+          <Text style={styles.cumScoreText}>{t("gameOverOverlay.pointsAbbrev", { n: cumPts })}</Text>
         </View>
       )}
     </Animated.View>
@@ -119,6 +127,7 @@ export function GameOverOverlay({
   myUserId: string;
   cumulativeScores: Record<string, number>;
 }) {
+  const { t } = useTranslation();
   const winnerName = gameState.rankings[0] ?? "";
   const reduceMotion = usePrefersReducedMotion();
   const scale = useSharedValue(0);
@@ -183,7 +192,7 @@ export function GameOverOverlay({
             <Text style={styles.winnerName} numberOfLines={1}>
               {winnerName}
             </Text>
-            <Text style={styles.winnerSubtitle}>VINCITORE · Online</Text>
+            <Text style={styles.winnerSubtitle}>{t("gameOverOverlay.winnerSubtitle")}</Text>
           </View>
           <View style={styles.statPills}>
             <View style={styles.statPill}>
@@ -197,13 +206,13 @@ export function GameOverOverlay({
                 color={Colors.textMuted}
               />
               <Text style={styles.statPillText}>
-                {gameState.gameMode === "teams" ? "Coppie" : "Libero"}
+                {gameState.gameMode === "teams" ? t("gameOverOverlay.modeTeams") : t("gameOverOverlay.modeFreeForAll")}
               </Text>
             </View>
           </View>
         </Animated.View>
 
-        <Text style={styles.sectionTitle}>CLASSIFICA</Text>
+        <Text style={styles.sectionTitle}>{t("gameOverOverlay.rankingsTitle")}</Text>
         <ScrollView
           showsVerticalScrollIndicator={false}
           style={styles.rankScroll}
@@ -226,17 +235,17 @@ export function GameOverOverlay({
             onPress={onLeave}
             style={styles.homeBtn}
             accessibilityRole="button"
-            accessibilityLabel="Esci dalla partita"
+            accessibilityLabel={t("gameOverOverlay.leaveA11yLabel")}
           >
             <Ionicons name="home" size={15} color={Colors.textSecondary} />
-            <Text style={styles.homeBtnText}>Esci</Text>
+            <Text style={styles.homeBtnText}>{t("gameOverOverlay.leave")}</Text>
           </Pressable>
           <Pressable
             testID="btn-rivincita"
             onPress={hasVoted ? undefined : onVoteRematch}
             style={[styles.rematchBtn, hasVoted && styles.rematchBtnDim]}
             accessibilityRole="button"
-            accessibilityLabel="Vota per la rivincita"
+            accessibilityLabel={t("gameOverOverlay.voteRematchA11yLabel")}
             accessibilityState={{ disabled: hasVoted }}
           >
             <LinearGradient
@@ -258,7 +267,7 @@ export function GameOverOverlay({
                 style={[styles.rematchText, hasVoted && { color: Colors.textMuted }]}
                 numberOfLines={1}
               >
-                {hasVoted ? `${voteCount}/${voteTotal} vogliono giocare` : "Rivincita"}
+                {hasVoted ? t("gameOverOverlay.rematchVotes", { count: voteCount, total: voteTotal }) : t("gameOverOverlay.rematch")}
               </Text>
             </LinearGradient>
           </Pressable>

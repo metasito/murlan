@@ -16,6 +16,7 @@ import Animated, {
 } from "react-native-reanimated";
 import { Colors, FontSize, Motion, Radius, Spacing } from "@/lib/theme";
 import { usePrefersReducedMotion } from "@/lib/accessibility";
+import { useTranslation } from "@/lib/i18n";
 
 export const EMOJIS = ["😂", "🔥", "😤", "👏", "😱", "🤡", "💣", "👑"];
 
@@ -76,13 +77,14 @@ export function FloatingReactions({ reactions }: { reactions: TableReaction[] })
 }
 
 export function ReactionTrigger({ onPress }: { onPress: () => void }) {
+  const { t } = useTranslation();
   return (
     <Pressable
       onPress={onPress}
       style={styles.trigger}
       hitSlop={8}
       accessibilityRole="button"
-      accessibilityLabel="Invia una reazione"
+      accessibilityLabel={t("reactionLayer.triggerA11yLabel")}
     >
       <Text style={styles.triggerText}>💬</Text>
     </Pressable>
@@ -96,6 +98,7 @@ export function ReactionPanel({
   onSelect: (emoji: string) => void;
   onClose: () => void;
 }) {
+  const { t } = useTranslation();
   return (
     <Animated.View
       entering={SlideInRight.duration(Motion.duration.base)}
@@ -110,7 +113,7 @@ export function ReactionPanel({
           }}
           style={({ pressed }) => [styles.emojiBtn, pressed && { opacity: 0.6 }]}
           accessibilityRole="button"
-          accessibilityLabel={`Reazione ${e}`}
+          accessibilityLabel={t("reactionLayer.emojiA11yLabel", { emoji: e })}
         >
           <Text style={styles.emojiBtnText}>{e}</Text>
         </Pressable>

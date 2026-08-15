@@ -17,6 +17,7 @@ import { apiRequest, queryClient } from "@/lib/query-client";
 import { hapticSelection } from "@/lib/haptics";
 import { usePrefersReducedMotion } from "@/lib/accessibility";
 import { Colors, Spacing, Radius, FontSize, Type, Shadow } from "@/lib/theme";
+import { useTranslation, type Locale } from "@/lib/i18n";
 
 interface Props {
   visible: boolean;
@@ -30,6 +31,7 @@ export function SettingsModal({ visible, onClose }: Props) {
   const router = useRouter();
   const reduceMotion = usePrefersReducedMotion();
   const [deleting, setDeleting] = useState(false);
+  const { t, locale, setLocale, locales, localeLabels } = useTranslation();
 
   async function handleDeleteAccount() {
     setDeleting(true);
@@ -43,19 +45,24 @@ export function SettingsModal({ visible, onClose }: Props) {
       router.replace("/auth");
     } catch {
       setDeleting(false);
-      Alert.alert("Errore", "Eliminazione dell'account fallita. Riprova più tardi.");
+      Alert.alert(t("settings.deleteFailedTitle"), t("settings.deleteFailedBody"));
     }
   }
 
   function confirmDelete() {
     Alert.alert(
-      "Elimina account",
-      "Tutti i dati, gli amici e le partite verranno eliminati definitivamente. L'operazione è irreversibile.",
+      t("settings.deleteConfirmTitle"),
+      t("settings.deleteConfirmBody"),
       [
-        { text: "Annulla", style: "cancel" },
-        { text: "Elimina", style: "destructive", onPress: handleDeleteAccount },
+        { text: t("common.cancel"), style: "cancel" },
+        { text: t("settings.deleteAccount"), style: "destructive", onPress: handleDeleteAccount },
       ]
     );
+  }
+
+  function handleSelectLocale(next: Locale) {
+    hapticSelection();
+    void setLocale(next);
   }
 
   function toggleHaptics(v: boolean) {
@@ -83,12 +90,12 @@ export function SettingsModal({ visible, onClose }: Props) {
         <View style={styles.card} accessibilityViewIsModal accessibilityRole="none">
           <View style={styles.header}>
             <Text style={styles.title} accessibilityRole="header">
-              Impostazioni
+              {t("settings.title")}
             </Text>
             <Pressable
               onPress={onClose}
               accessibilityRole="button"
-              accessibilityLabel="Chiudi impostazioni"
+              accessibilityLabel={t("settings.closeA11yLabel")}
               hitSlop={Spacing.xs}
               style={({ pressed }) => [styles.closeBtn, { opacity: pressed ? 0.6 : 1 }]}
             >
@@ -100,8 +107,8 @@ export function SettingsModal({ visible, onClose }: Props) {
             <View style={styles.rowLeft}>
               <Text style={styles.icon}>🔊</Text>
               <View>
-                <Text style={styles.label}>Suoni</Text>
-                <Text style={styles.sublabel}>Effetti sonori di gioco</Text>
+                <Text style={styles.label}>{t("settings.sounds")}</Text>
+                <Text style={styles.sublabel}>{t("settings.soundsSubtitle")}</Text>
               </View>
             </View>
             <Switch
@@ -110,8 +117,8 @@ export function SettingsModal({ visible, onClose }: Props) {
               trackColor={{ false: Colors.bgElevated, true: Colors.gold }}
               thumbColor={soundsEnabled ? Colors.white : Colors.textMuted}
               accessibilityRole="switch"
-              accessibilityLabel="Suoni di gioco"
-              accessibilityHint="Attiva o disattiva gli effetti sonori"
+              accessibilityLabel={t("settings.soundsA11yLabel")}
+              accessibilityHint={t("settings.soundsA11yHint")}
             />
           </View>
 
@@ -120,8 +127,8 @@ export function SettingsModal({ visible, onClose }: Props) {
               <View style={styles.rowLeft}>
                 <Text style={styles.icon}>📳</Text>
                 <View>
-                  <Text style={styles.label}>Vibrazione</Text>
-                  <Text style={styles.sublabel}>Feedback aptico</Text>
+                  <Text style={styles.label}>{t("settings.haptics")}</Text>
+                  <Text style={styles.sublabel}>{t("settings.hapticsSubtitle")}</Text>
                 </View>
               </View>
               <Switch
@@ -130,11 +137,44 @@ export function SettingsModal({ visible, onClose }: Props) {
                 trackColor={{ false: Colors.bgElevated, true: Colors.gold }}
                 thumbColor={hapticsEnabled ? Colors.white : Colors.textMuted}
                 accessibilityRole="switch"
-                accessibilityLabel="Vibrazione"
-                accessibilityHint="Attiva o disattiva il feedback aptico"
+                accessibilityLabel={t("settings.hapticsA11yLabel")}
+                accessibilityHint={t("settings.hapticsA11yHint")}
               />
             </View>
           )}
+
+          <View style={styles.row}>
+            <View style={styles.rowLeft}>
+              <Text style={styles.icon}>🌐</Text>
+              <View>
+                <Text style={styles.label}>{t("settings.language")}</Text>
+                <Text style={styles.sublabel}>{t("settings.languageSubtitle")}</Text>
+              </View>
+            </View>
+            <View style={styles.localeGroup}>
+              {locales.map((code) => {
+                const active = code === locale;
+                return (
+                  <Pressable
+                    key={code}
+                    onPress={() => handleSelectLocale(code)}
+                    accessibilityRole="button"
+                    accessibilityLabel={localeLabels[code]}
+                    accessibilityState={{ selected: active }}
+                    style={({ pressed }) => [
+                      styles.localeBtn,
+                      active && styles.localeBtnActive,
+                      pressed && { opacity: 0.8 },
+                    ]}
+                  >
+                    <Text style={[styles.localeBtnText, active && styles.localeBtnTextActive]}>
+                      {code.toUpperCase()}
+                    </Text>
+                  </Pressable>
+                );
+              })}
+            </View>
+          </View>
 
           <View style={styles.divider} />
 
@@ -142,8 +182,8 @@ export function SettingsModal({ visible, onClose }: Props) {
             onPress={confirmDelete}
             disabled={deleting}
             accessibilityRole="button"
-            accessibilityLabel="Elimina account"
-            accessibilityHint="Elimina definitivamente il tuo account e tutti i dati associati"
+            accessibilityLabel={t("settings.deleteAccount")}
+            accessibilityHint={t("settings.deleteAccountA11yHint")}
             accessibilityState={{ disabled: deleting, busy: deleting }}
             style={({ pressed }) => [
               styles.deleteBtn,
@@ -152,7 +192,7 @@ export function SettingsModal({ visible, onClose }: Props) {
             ]}
           >
             <Text style={styles.deleteBtnText}>
-              {deleting ? "Eliminazione in corso…" : "Elimina account"}
+              {deleting ? t("settings.deleting") : t("settings.deleteAccount")}
             </Text>
           </Pressable>
         </View>
@@ -211,6 +251,20 @@ const styles = StyleSheet.create({
   icon: { fontSize: FontSize.xl, width: 32, textAlign: "center" },
   label: { ...Type.bodyStrong, fontSize: FontSize.md, color: Colors.text },
   sublabel: { ...Type.caption },
+  localeGroup: { flexDirection: "row", gap: Spacing.xs },
+  localeBtn: {
+    minWidth: 40,
+    minHeight: 32,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: Spacing.xs,
+    borderRadius: Radius.sm,
+    borderWidth: 1,
+    borderColor: Colors.border,
+  },
+  localeBtnActive: { borderColor: Colors.gold, backgroundColor: Colors.gold + "26" },
+  localeBtnText: { ...Type.caption, color: Colors.textMuted },
+  localeBtnTextActive: { color: Colors.gold, fontFamily: Type.bodyStrong.fontFamily },
   divider: {
     height: 1,
     backgroundColor: Colors.border,

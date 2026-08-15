@@ -25,6 +25,7 @@ import { getSocket } from "@/lib/socket";
 import { Colors } from '@/lib/theme';
 import { MenuCard } from "@/components/MenuCard";
 import { MenuButton } from "@/components/MenuButton";
+import { useTranslation } from "@/lib/i18n";
 
 const TEAM_COLORS = { A: Colors.gold, B: "#6b8ef5" };
 
@@ -45,6 +46,7 @@ function InviteFriendsPanel({
   myUserId: string;
   isLandscape: boolean;
 }) {
+  const { t } = useTranslation();
   const { onlineIds, socket } = useSocket();
   const [sentIds, setSentIds] = useState<Set<string>>(new Set());
 
@@ -80,11 +82,11 @@ function InviteFriendsPanel({
   return (
     <View style={{ flex: 1, minHeight: isLandscape ? 80 : 110 }}>
       <Text style={[styles.slotsSectionTitle, { color: Colors.gold, marginBottom: isLandscape ? 4 : 6 }]}>
-        INVITA AMICI
+        {t("room.inviteFriendsTitle")}
       </Text>
       {onlineFriendsNotInRoom.length === 0 ? (
         <View style={[inviteStyles.emptyContainer, { backgroundColor: Colors.bgCard, borderRadius: 10 }]}>
-          <Text style={inviteStyles.emptyText}>Nessun amico online</Text>
+          <Text style={inviteStyles.emptyText}>{t("room.noFriendsOnline")}</Text>
         </View>
       ) : (
         <FlatList
@@ -121,14 +123,14 @@ function InviteFriendsPanel({
                   <Ionicons name="checkmark-circle" size={16} color="Colors.success" />
                 ) : (
                   <View style={inviteStyles.inviteBtn}>
-                    <Text style={inviteStyles.inviteBtnText}>Invita</Text>
+                    <Text style={inviteStyles.inviteBtnText}>{t("room.invite")}</Text>
                   </View>
                 )}
               </Pressable>
             );
           }}
           ListEmptyComponent={
-            <Text style={inviteStyles.emptyText}>Nessun amico online</Text>
+            <Text style={inviteStyles.emptyText}>{t("room.noFriendsOnline")}</Text>
           }
         />
       )}
@@ -138,6 +140,7 @@ function InviteFriendsPanel({
 
 export default function RoomScreen() {
   const insets = useSafeAreaInsets();
+  const { t } = useTranslation();
   const { width: W, height: H } = useWindowDimensions();
   const { user } = useAuth();
   const {
@@ -176,7 +179,7 @@ export default function RoomScreen() {
 
   useEffect(() => {
     if (error) {
-      Alert.alert("Errore", error, [{ text: "OK", onPress: clearError }]);
+      Alert.alert(t("common.error"), error, [{ text: t("common.ok"), onPress: clearError }]);
     }
   }, [error]);
 
@@ -194,17 +197,17 @@ export default function RoomScreen() {
   }
 
   async function handleShare() {
-    await Share.share({ message: `Unisciti alla mia stanza Murlan! Codice: ${room!.code}` });
+    await Share.share({ message: t("room.shareMessage", { code: room!.code }) });
   }
 
   function handleLeave() {
     Alert.alert(
-      "Lascia la stanza",
-      "Sei sicuro di voler lasciare la stanza?",
+      t("room.leaveConfirmTitle"),
+      t("room.leaveConfirmBody"),
       [
-        { text: "Annulla", style: "cancel" },
+        { text: t("common.cancel"), style: "cancel" },
         {
-          text: "Lascia",
+          text: t("room.leaveConfirmConfirm"),
           style: "destructive",
           onPress: () => {
             leaveRoom();
@@ -225,14 +228,14 @@ export default function RoomScreen() {
     startGame();
   }
 
-  const modeLabel = room.gameMode === "teams" ? "A coppie" : "Tutti contro tutti";
+  const modeLabel = room.gameMode === "teams" ? t("room.modeTeams") : t("room.modeFreeForAll");
   const modeIcon: "people" | "person" = room.gameMode === "teams" ? "people" : "person";
 
   const playerUserIds = room.players.map((p) => p.userId);
 
   const StartButton = isHost ? (
     <MenuButton
-      label={room.players.length < 2 ? "In attesa di giocatori" : "Inizia Partita"}
+      label={room.players.length < 2 ? t("room.waitingForPlayers") : t("room.startGame")}
       onPress={handleStart}
       disabled={!canStart}
       icon={<Ionicons name="play-circle" size={22} color={canStart ? "#0A1F18" : Colors.textMuted} />}
@@ -240,7 +243,7 @@ export default function RoomScreen() {
   ) : (
     <View style={styles.waitingHost}>
       <Ionicons name="time-outline" size={18} color={Colors.textMuted} />
-      <Text style={styles.waitingText}>In attesa che l'host avvii la partita…</Text>
+      <Text style={styles.waitingText}>{t("room.waitingForHost")}</Text>
     </View>
   );
 
@@ -266,7 +269,7 @@ export default function RoomScreen() {
           <Pressable onPress={handleLeave} style={styles.backBtn}>
             <Ionicons name="chevron-back" size={22} color={Colors.textMuted} />
           </Pressable>
-          <Text style={styles.screenTitle}>Stanza</Text>
+          <Text style={styles.screenTitle}>{t("room.title")}</Text>
           <View style={{ width: 38 }} />
         </View>
 
@@ -275,16 +278,16 @@ export default function RoomScreen() {
           <View style={styles.landscapeLeft}>
             <View style={{ flex: 1, gap: 8 }}>
               <Animated.View entering={FadeIn.duration(400)} style={styles.codeSectionCompact}>
-                <Text style={styles.codeLabel}>CODICE STANZA</Text>
+                <Text style={styles.codeLabel}>{t("room.codeLabel")}</Text>
                 <Text style={styles.codeTextCompact}>{room.code}</Text>
                 <View style={styles.codeActions}>
                   <Pressable onPress={handleCopyCode} style={styles.codeBtn}>
                     <Ionicons name="copy-outline" size={15} color={Colors.gold} />
-                    <Text style={styles.codeBtnText}>Copia</Text>
+                    <Text style={styles.codeBtnText}>{t("common.copy")}</Text>
                   </Pressable>
                   <Pressable onPress={handleShare} style={styles.codeBtn}>
                     <Ionicons name="share-outline" size={15} color={Colors.gold} />
-                    <Text style={styles.codeBtnText}>Condividi</Text>
+                    <Text style={styles.codeBtnText}>{t("room.share")}</Text>
                   </Pressable>
                 </View>
               </Animated.View>
@@ -292,7 +295,7 @@ export default function RoomScreen() {
               <View style={styles.modePill}>
                 <Ionicons name={modeIcon} size={13} color={Colors.textMuted} />
                 <Text style={styles.modePillText}>
-                  {modeLabel} · {room.maxPlayers} giocatori
+                  {t("room.modeAndPlayers", { mode: modeLabel, n: room.maxPlayers })}
                 </Text>
               </View>
             </View>
@@ -308,7 +311,7 @@ export default function RoomScreen() {
           <View style={styles.landscapeRight}>
             <View style={{ gap: 4, marginBottom: 8 }}>
               <Text style={[styles.slotsSectionTitle, { marginBottom: 2 }]}>
-                GIOCATORI ({room.players.length}/{maxSeats})
+                {t("room.playersCount", { current: room.players.length, max: maxSeats })}
               </Text>
               <View style={{ gap: playerListGap }}>
                 {Array.from({ length: maxSeats }, (_, i) => {
@@ -340,10 +343,10 @@ export default function RoomScreen() {
                           <View style={[styles.slotInfo, { marginLeft: 8 }]}>
                             <Text style={styles.slotName} numberOfLines={1}>
                               {player.username}
-                              {player.userId === user?.id ? " (tu)" : ""}
+                              {player.userId === user?.id ? t("room.youSuffix") : ""}
                             </Text>
                             {room.hostUserId === player.userId && (
-                              <Text style={[styles.hostBadge, styles.hostBadgeCompact]}>Host</Text>
+                              <Text style={[styles.hostBadge, styles.hostBadgeCompact]}>{t("room.hostBadge")}</Text>
                             )}
                           </View>
                           {team && (
@@ -357,7 +360,7 @@ export default function RoomScreen() {
                           <View style={[styles.slotAvatar, styles.slotAvatarEmpty, styles.slotAvatarCompact]}>
                             <Ionicons name="person-add-outline" size={14} color={Colors.textMuted} />
                           </View>
-                          <Text style={[styles.slotWaiting, { marginLeft: 8 }]}>In attesa…</Text>
+                          <Text style={[styles.slotWaiting, { marginLeft: 8 }]}>{t("room.waitingSeat")}</Text>
                         </>
                       )}
                     </View>
@@ -396,22 +399,22 @@ export default function RoomScreen() {
         <Pressable onPress={handleLeave} style={styles.backBtn} hitSlop={8}>
           <Ionicons name="chevron-back" size={22} color={Colors.textMuted} />
         </Pressable>
-        <Text style={styles.screenTitle}>Stanza</Text>
+        <Text style={styles.screenTitle}>{t("room.title")}</Text>
         <View style={{ width: 38 }} />
       </View>
 
       <View style={{ flex: 1, paddingHorizontal: 20, paddingTop: 16, paddingBottom: 8, gap: 12 }}>
         <Animated.View entering={FadeIn.duration(400)} style={styles.codeSection}>
-          <Text style={styles.codeLabel}>CODICE STANZA</Text>
+          <Text style={styles.codeLabel}>{t("room.codeLabel")}</Text>
           <Text style={styles.codeText}>{room.code}</Text>
           <View style={styles.codeActions}>
             <Pressable onPress={handleCopyCode} style={styles.codeBtn}>
               <Ionicons name="copy-outline" size={16} color={Colors.gold} />
-              <Text style={styles.codeBtnText}>Copia</Text>
+              <Text style={styles.codeBtnText}>{t("common.copy")}</Text>
             </Pressable>
             <Pressable onPress={handleShare} style={styles.codeBtn}>
               <Ionicons name="share-outline" size={16} color={Colors.gold} />
-              <Text style={styles.codeBtnText}>Condividi</Text>
+              <Text style={styles.codeBtnText}>{t("room.share")}</Text>
             </Pressable>
           </View>
         </Animated.View>
@@ -419,13 +422,13 @@ export default function RoomScreen() {
         <View style={styles.modePill}>
           <Ionicons name={modeIcon} size={13} color={Colors.textMuted} />
           <Text style={styles.modePillText}>
-            {modeLabel} · {room.maxPlayers} giocatori
+            {t("room.modeAndPlayers", { mode: modeLabel, n: room.maxPlayers })}
           </Text>
         </View>
 
         <View style={{ gap: 6 }}>
           <Text style={[styles.slotsSectionTitle, { marginBottom: 2 }]}>
-            GIOCATORI ({room.players.length}/{maxSeats})
+            {t("room.playersCount", { current: room.players.length, max: maxSeats })}
           </Text>
           <View style={{ gap: playerListGap }}>
             {Array.from({ length: maxSeats }, (_, i) => {
@@ -457,10 +460,10 @@ export default function RoomScreen() {
                       <View style={[styles.slotInfo, { marginLeft: 12 }]}>
                         <Text style={styles.slotName} numberOfLines={1}>
                           {player.username}
-                          {player.userId === user?.id ? " (tu)" : ""}
+                          {player.userId === user?.id ? t("room.youSuffix") : ""}
                         </Text>
                         {room.hostUserId === player.userId && (
-                          <Text style={styles.hostBadge}>Host</Text>
+                          <Text style={styles.hostBadge}>{t("room.hostBadge")}</Text>
                         )}
                       </View>
                       {team && (
@@ -474,7 +477,7 @@ export default function RoomScreen() {
                       <View style={[styles.slotAvatar, styles.slotAvatarEmpty]}>
                         <Ionicons name="person-add-outline" size={18} color={Colors.textMuted} />
                       </View>
-                      <Text style={[styles.slotWaiting, { marginLeft: 12 }]}>In attesa…</Text>
+                      <Text style={[styles.slotWaiting, { marginLeft: 12 }]}>{t("room.waitingSeat")}</Text>
                     </>
                   )}
                 </View>
