@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useRef } from "react";
-import { View, Text, StyleSheet, Platform, Pressable } from "react-native";
+import { View, Text, StyleSheet, Platform, Pressable, ScrollView } from "react-native";
 import Animated, {
   useAnimatedStyle,
   useSharedValue,
@@ -21,8 +21,9 @@ import { CardView } from "@/components/CardView";
 import { Shadow } from "@/lib/theme";
 import type { Card, Combination, Player, StartReason } from "@/lib/gameEngine";
 import { Colors } from '@/lib/theme';
+import { CARD_W, computeHandLayout } from "@/components/handLayout";
 
-export const CARD_W = 58;
+export { CARD_W };
 export const CARD_H = 84;
 export const BTN_W = 84;
 export const BTN_H = 84;
@@ -32,6 +33,10 @@ export const TABLE_M = 4;
 export const SIDE_SECTION_W = 130;
 export const TOP_SECTION_H = 70;
 export const HAND_SECTION_H = CARD_H + 16;
+// Extra top clearance the fixed HAND_SECTION_H already gives the CARD_H-tall
+// hand row (it's centered inside the taller section). Reused as the
+// ScrollView headroom in StraightHand's scrollable fallback — see there.
+const HAND_LIFT_HEADROOM = HAND_SECTION_H - CARD_H;
 
 export type FlyDirection = "top" | "bottom" | "left" | "right";
 
@@ -561,8 +566,23 @@ export function StraightHand({
       </View>
     );
   }
-  const step = Math.max(20, Math.min(CARD_W, (availW - CARD_W) / Math.max(n - 1, 1)));
-  const totalW = step * (n - 1) + CARD_W;
+  const { step, totalW, scrollable } = computeHandLayout(n, availW);
+
+  const row = (
+    <View style={[sharedStyles.handRow, { width: scrollable ? totalW : Math.min(totalW, availW) }]}>
+      {cards.map((card, i) => (
+        <CardItem
+          key={card.id}
+          card={card}
+          isSelected={selectedIds.includes(card.id)}
+          left={i * step}
+          onPress={() => onPress(card.id)}
+          disabled={disabled}
+          zIndex={i}
+        />
+      ))}
+    </View>
+  );
 
   return (
     <View style={[sharedStyles.handCenter, { width: availW }]}>
@@ -572,19 +592,25 @@ export function StraightHand({
           isMyTurn && sharedStyles.handGlowWrapActive,
         ]}
       >
-        <View style={[sharedStyles.handRow, { width: Math.min(totalW, availW) }]}>
-          {cards.map((card, i) => (
-            <CardItem
-              key={card.id}
-              card={card}
-              isSelected={selectedIds.includes(card.id)}
-              left={i * step}
-              onPress={() => onPress(card.id)}
-              disabled={disabled}
-              zIndex={i}
-            />
-          ))}
-        </View>
+        {scrollable ? (
+          // Too many cards to keep the readable minimum step inside availW
+          // (e.g. a 27-card hand on a narrow device). Scroll instead of
+          // clipping or shrinking the step past legibility. HAND_LIFT_HEADROOM
+          // reproduces the same top clearance the fixed-height, non-scrolling
+          // path gets for free from HAND_SECTION_H (CARD_H + 16) being taller
+          // than the CARD_H row it centers — without it, the ScrollView's own
+          // clipping bounds would cut off the -14px selection lift.
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            style={{ width: availW, height: CARD_H + HAND_LIFT_HEADROOM }}
+            contentContainerStyle={{ paddingTop: HAND_LIFT_HEADROOM, width: totalW }}
+          >
+            {row}
+          </ScrollView>
+        ) : (
+          row
+        )}
       </View>
     </View>
   );

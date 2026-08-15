@@ -8,6 +8,7 @@ import { validate } from "./validate";
 import { RegisterSchema, LoginSchema, AddFriendSchema } from "./schemas";
 import { insertUserSchema } from "@shared/schema";
 import { emitToUser, isUserOnline } from "./socket";
+import { mintSocketTicket } from "./ticket";
 import { z } from "zod";
 
 declare module "express-session" {
@@ -27,6 +28,16 @@ const authLimiter = rateLimit({
 const friendLimiter = rateLimit({
   windowMs: 60 * 1000,
   max: 10,
+  message: { error: "Troppe richieste, rallenta." },
+});
+
+// One ticket per socket connection attempt, including every reconnect, so this
+// has to tolerate a flapping mobile connection while still being bounded.
+const ticketLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 60,
+  standardHeaders: true,
+  legacyHeaders: false,
   message: { error: "Troppe richieste, rallenta." },
 });
 
@@ -110,6 +121,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
       return;
     }
     res.json({ id: user.id, username: user.username });
+  });
+
+  // Mints the short-lived, single-use ticket the socket handshake accepts in
+  // place of a session cookie (native clients do not send cookies on upgrade).
+  app.post("/api/auth/socket-ticket", requireAuth, ticketLimiter, (req, res) => {
+    const { ticket, expiresAt } = mintSocketTicket(req.session.userId!);
+    res.json({ ticket, expiresAt });
   });
 
   // ── User ─────────────────────────────────────────────────────────────────
@@ -206,41 +224,57 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   app.delete("/api/friends/requests/:id", requireAuth, async (req, res) => {
-    const id = z.string().parse(req.params.id);
-    await storage.cancelFriendRequest(id, req.session.userId!);
-    res.json({ ok: true });
-  });
-
-  app.post("/api/friends/accept/:id", requireAuth, async (req, res) => {
-    const id = z.string().parse(req.params.id);
-    const accepterId = req.session.userId!;
-    const result = await storage.acceptFriend(id);
-    if (result) {
-      const accepter = await storage.getUser(accepterId);
-      const requesterId = result.requesterId;
-
-      emitToUser(requesterId, "friend:request_accepted", {
-        by: accepter?.username ?? "Qualcuno",
-      });
-
-      if (isUserOnline(accepterId)) {
-        emitToUser(requesterId, "friend:status", { userId: accepterId, online: true });
-      }
-      if (isUserOnline(requesterId)) {
-        emitToUser(accepterId, "friend:status", { userId: requesterId, online: true });
-      }
+    const id = z.string().min(1).max(64).parse(req.params.id);
+    // Only the sender can cancel — enforced inside cancelFriendRequest.
+    const cancelled = await storage.cancelFriendRequest(id, req.session.userId!);
+    if (!cancelled) {
+      res.status(404).json({ message: "Richiesta non trovata" });
+      return;
     }
     res.json({ ok: true });
   });
 
+  app.post("/api/friends/accept/:id", requireAuth, async (req, res) => {
+    const id = z.string().min(1).max(64).parse(req.params.id);
+    const accepterId = req.session.userId!;
+    // Scoped to the recipient: a sender used to be able to accept their own
+    // request by id (IDOR).
+    const result = await storage.acceptFriend(id, accepterId);
+    if (!result) {
+      res.status(404).json({ message: "Richiesta non trovata" });
+      return;
+    }
+    const accepter = await storage.getUser(accepterId);
+    const requesterId = result.requesterId;
+
+    emitToUser(requesterId, "friend:request_accepted", {
+      by: accepter?.username ?? "Qualcuno",
+    });
+
+    if (isUserOnline(accepterId)) {
+      emitToUser(requesterId, "friend:status", { userId: accepterId, online: true });
+    }
+    if (isUserOnline(requesterId)) {
+      emitToUser(accepterId, "friend:status", { userId: requesterId, online: true });
+    }
+
+    res.json({ ok: true });
+  });
+
   app.post("/api/friends/decline/:id", requireAuth, async (req, res) => {
-    const id = z.string().parse(req.params.id);
-    await storage.declineFriendRequest(id);
+    const id = z.string().min(1).max(64).parse(req.params.id);
+    // Only the recipient can decline (IDOR: any user could destroy any
+    // pending request by id).
+    const declined = await storage.declineFriendRequest(id, req.session.userId!);
+    if (!declined) {
+      res.status(404).json({ message: "Richiesta non trovata" });
+      return;
+    }
     res.json({ ok: true });
   });
 
   app.delete("/api/friends/:friendUserId", requireAuth, async (req, res) => {
-    const friendUserId = z.string().parse(req.params.friendUserId);
+    const friendUserId = z.string().min(1).max(64).parse(req.params.friendUserId);
     await storage.removeFriend(req.session.userId!, friendUserId);
     res.json({ ok: true });
   });

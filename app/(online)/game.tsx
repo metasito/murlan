@@ -26,7 +26,6 @@ import Animated, {
   SlideInRight,
 } from "react-native-reanimated";
 import { LinearGradient } from "expo-linear-gradient";
-import * as Haptics from "expo-haptics";
 import * as ScreenOrientation from "expo-screen-orientation";
 import { Ionicons } from "@expo/vector-icons";
 import { useOnlineGame } from "@/context/OnlineGameContext";
@@ -85,6 +84,8 @@ import {
   unloadSounds,
 } from "@/lib/sounds";
 import { Colors } from '@/lib/theme';
+import { hapticLight, hapticMedium, hapticSelection, hapticSuccess } from "@/lib/haptics";
+import { usePrefersReducedMotion } from "@/lib/accessibility";
 
 const EMOJIS = ["😂", "🔥", "😤", "👏", "😱", "🤡", "💣", "👑"];
 const POSITION_MEDALS = ["trophy", "medal", "ribbon", "remove-circle"] as const;
@@ -228,7 +229,14 @@ function GameOverOverlay({
   const scale = useSharedValue(0);
   const opacity = useSharedValue(0);
   const glow = useSharedValue(0.5);
+  const reduceMotion = usePrefersReducedMotion();
   useEffect(() => {
+    if (reduceMotion) {
+      scale.value = 1;
+      opacity.value = 1;
+      glow.value = 0.75;
+      return;
+    }
     scale.value = withSpring(1, { damping: 8, stiffness: 150 });
     opacity.value = withTiming(1, { duration: 600 });
     glow.value = withRepeat(
@@ -239,7 +247,10 @@ function GameOverOverlay({
       -1,
       false
     );
-  }, []);
+    return () => {
+      cancelAnimation(glow);
+    };
+  }, [reduceMotion]);
   const celebStyle = useAnimatedStyle(() => ({
     transform: [{ scale: scale.value }],
     opacity: opacity.value,
@@ -406,6 +417,11 @@ function OnlineGameScreenBase() {
   const reactionTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const prevMyTurnRef = useRef(false);
   const prevGameOverRef = useRef(false);
+  // Card ids sent to the server and not yet acknowledged. The selection is only
+  // cleared once the server confirms the play, so a rejected move keeps it.
+  const pendingPlayRef = useRef<string[] | null>(null);
+
+  const reduceMotion = usePrefersReducedMotion();
 
   useEffect(() => {
     ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.LANDSCAPE);
@@ -413,6 +429,8 @@ function OnlineGameScreenBase() {
     return () => {
       ScreenOrientation.unlockAsync();
       unloadSounds();
+      // Would otherwise setState after unmount.
+      if (reactionTimerRef.current) clearTimeout(reactionTimerRef.current);
     };
   }, []);
 
@@ -481,7 +499,7 @@ function OnlineGameScreenBase() {
 
   useEffect(() => {
     if (gameState?.gameOver) {
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      hapticSuccess();
       const t = setTimeout(() => setShowGameOver(true), 800);
       return () => clearTimeout(t);
     } else {
@@ -578,12 +596,12 @@ function OnlineGameScreenBase() {
   // useTurnPulse must be called unconditionally (before any early return)
   const turnPulseStyle = useTurnPulse(!!gameState && isMyTurn && !isFinished && !exchangeActive);
 
-  // Shared values for GIOCA bloom and screen shake — must be declared before early return
+  // Shared values for GIOCA/PASSA feedback and screen shake.
   const giocaGlowVal = useSharedValue(0);
+  const giocaPulseVal = useSharedValue(1);
+  const passaPulseVal = useSharedValue(1);
   const shakeX = useSharedValue(0);
   const [pileBounceTrigger, setPileBounceTrigger] = useState(0);
-
-  if (!gameState) return null;
 
   const sortedHand = useMemo(() => sortHand(me?.hand ?? []), [me?.hand]);
   const selectedObjs = useMemo(
@@ -594,24 +612,42 @@ function OnlineGameScreenBase() {
     () => (selectedObjs.length > 0 ? buildCombination(selectedObjs) : null),
     [selectedObjs]
   );
-  const requiresStartCard = !gameState.firstPlayMade && !!gameState.startCard;
+  const requiresStartCard =
+    !!gameState && !gameState.firstPlayMade && !!gameState.startCard;
   const isValidPlay = useMemo(
     () =>
       tentativeCombo !== null &&
       canPlay(
         tentativeCombo,
-        isNewRound ? null : gameState.lastPlayedCombination
+        isNewRound ? null : gameState?.lastPlayedCombination ?? null
       ) &&
       (!requiresStartCard ||
-        tentativeCombo.cards.some((c) => c.id === (gameState.startCard as Card).id)),
-    [tentativeCombo, isNewRound, gameState.lastPlayedCombination, gameState.startCard, requiresStartCard]
+        tentativeCombo.cards.some((c) => c.id === (gameState!.startCard as Card).id)),
+    [tentativeCombo, isNewRound, gameState?.lastPlayedCombination, gameState?.startCard, requiresStartCard]
   );
   const canPassNow = !isNewRound && isMyTurn && !isFinished;
   const playBtnValid = isValidPlay && isMyTurn && !isFinished;
 
-  // GIOCA bloom
+  // Clear the selection only once the server acknowledges the play: the played
+  // cards leaving my hand is the acknowledgement. A rejected move keeps it.
   useEffect(() => {
-    if (playBtnValid) {
+    const pending = pendingPlayRef.current;
+    if (!pending || !me) return;
+    const handIds = new Set(me.hand.map((c) => c.id));
+    if (pending.every((id) => !handIds.has(id))) {
+      pendingPlayRef.current = null;
+      setSelectedIds([]);
+    }
+  }, [me?.hand]);
+
+  // A server error means the play was rejected — stop waiting for an ack.
+  useEffect(() => {
+    if (error) pendingPlayRef.current = null;
+  }, [error]);
+
+  // GIOCA bloom — slow gold pulse when the button is valid (parity with offline)
+  useEffect(() => {
+    if (playBtnValid && !reduceMotion) {
       giocaGlowVal.value = withRepeat(
         withSequence(
           withTiming(1.0, { duration: 1000, easing: Easing.inOut(Easing.sin) }),
@@ -622,9 +658,52 @@ function OnlineGameScreenBase() {
       );
     } else {
       cancelAnimation(giocaGlowVal);
-      giocaGlowVal.value = withTiming(0, { duration: 150 });
+      giocaGlowVal.value = reduceMotion && playBtnValid ? 0.6 : withTiming(0, { duration: 150 });
     }
-  }, [playBtnValid]);
+    return () => {
+      cancelAnimation(giocaGlowVal);
+    };
+  }, [playBtnValid, reduceMotion]);
+
+  // GIOCA pop when the selection size changes (parity with offline)
+  const prevSelectedLen = useRef(0);
+  useEffect(() => {
+    const hasSelection = selectedIds.length > 0 && isMyTurn && !isFinished;
+    if (hasSelection && prevSelectedLen.current !== selectedIds.length && !reduceMotion) {
+      giocaPulseVal.value = withSequence(
+        withTiming(1.1, { duration: 120 }),
+        withSpring(1, { damping: 10, stiffness: 200 })
+      );
+    }
+    prevSelectedLen.current = selectedIds.length;
+  }, [selectedIds.length, isMyTurn, isFinished, reduceMotion]);
+
+  // PASSA pop when passing becomes possible (parity with offline)
+  useEffect(() => {
+    if (canPassNow && !reduceMotion) {
+      passaPulseVal.value = withSequence(
+        withTiming(1.08, { duration: 200 }),
+        withSpring(1, { damping: 10, stiffness: 180 })
+      );
+    }
+  }, [gameState?.lastPlayedCombination, isMyTurn, isFinished, canPassNow, reduceMotion]);
+
+  // Reanimated keeps driving shared values after unmount unless cancelled.
+  useEffect(
+    () => () => {
+      cancelAnimation(giocaPulseVal);
+      cancelAnimation(passaPulseVal);
+      cancelAnimation(shakeX);
+    },
+    []
+  );
+
+  const giocaAnimStyle = useAnimatedStyle(() => ({
+    transform: [{ scale: giocaPulseVal.value }],
+  }));
+  const passaAnimStyle = useAnimatedStyle(() => ({
+    transform: [{ scale: passaPulseVal.value }],
+  }));
 
   const giocaGlowStyle = useAnimatedStyle(() => {
     const v = giocaGlowVal.value;
@@ -646,39 +725,34 @@ function OnlineGameScreenBase() {
     transform: [{ translateX: shakeX.value }],
   }));
 
-  const totalOpponents = gameState.players.length - 1;
+  const playerCount = gameState?.players.length ?? 0;
+  const totalOpponents = playerCount - 1;
   const opponents = useMemo(
     () =>
-      gameState.players
+      (gameState?.players ?? [])
         .map((p, i) => ({
           ...p,
           idx: i,
           handCount: (p as any).handCount ?? p.hand.length,
         }))
         .filter((_, i) => i !== mySeatIndex),
-    [gameState.players, mySeatIndex]
+    [gameState?.players, mySeatIndex]
   );
 
   const topOpp = useMemo(() => opponents.find(({ idx }) => {
-    const steps =
-      ((idx - mySeatIndex + gameState.players.length) %
-        gameState.players.length);
+    const steps = ((idx - mySeatIndex + playerCount) % playerCount);
     return getOpponentPosition(steps, totalOpponents) === "top";
-  }), [opponents, mySeatIndex, gameState.players.length, totalOpponents]);
+  }), [opponents, mySeatIndex, playerCount, totalOpponents]);
 
   const leftOpp = useMemo(() => opponents.find(({ idx }) => {
-    const steps =
-      ((idx - mySeatIndex + gameState.players.length) %
-        gameState.players.length);
+    const steps = ((idx - mySeatIndex + playerCount) % playerCount);
     return getOpponentPosition(steps, totalOpponents) === "left";
-  }), [opponents, mySeatIndex, gameState.players.length, totalOpponents]);
+  }), [opponents, mySeatIndex, playerCount, totalOpponents]);
 
   const rightOpp = useMemo(() => opponents.find(({ idx }) => {
-    const steps =
-      ((idx - mySeatIndex + gameState.players.length) %
-        gameState.players.length);
+    const steps = ((idx - mySeatIndex + playerCount) % playerCount);
     return getOpponentPosition(steps, totalOpponents) === "right";
-  }), [opponents, mySeatIndex, gameState.players.length, totalOpponents]);
+  }), [opponents, mySeatIndex, playerCount, totalOpponents]);
 
   const topPad = Platform.OS === "web" ? 67 : insets.top;
   const bottomPad = Platform.OS === "web" ? 34 : insets.bottom;
@@ -696,28 +770,30 @@ function OnlineGameScreenBase() {
     setSelectedIds((prev) =>
       prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]
     );
-    Haptics.selectionAsync();
+    hapticSelection();
     playCardSelect();
   }
 
   function handlePlay() {
     if (!playBtnValid) return;
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    hapticMedium();
     playCardPlay();
+    // Selection is cleared on acknowledgement, not on send — see the pending-play
+    // effect above. A server rejection must not cost the player their selection.
+    pendingPlayRef.current = selectedIds;
     playCards(selectedIds);
-    setSelectedIds([]);
   }
 
   function handlePass() {
     if (!canPassNow) return;
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    hapticLight();
     playCardPass();
     pass();
     setSelectedIds([]);
   }
 
   function handleReaction(emoji: string) {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    hapticLight();
     sendReaction(emoji);
   }
 
@@ -750,6 +826,10 @@ function OnlineGameScreenBase() {
       ]
     );
   }
+
+  // Every hook above runs unconditionally; the "no game yet" case is handled by
+  // rendering nothing, never by returning before a hook.
+  if (!gameState) return null;
 
   return (
     <Animated.View style={[localStyles.root, shakeStyle]}>
@@ -890,16 +970,18 @@ function OnlineGameScreenBase() {
             turnPulseStyle,
           ]}>
             {/* PASSA — left side */}
-            <Pressable
-              testID="btn-passa"
-              onPress={handlePass}
-              disabled={!canPassNow}
-              style={[localStyles.passBtn, !canPassNow && localStyles.passBtnDim]}
-            >
-              <Text style={[localStyles.passBtnLabel, !canPassNow && localStyles.passBtnLabelDim]}>
-                PASSA
-              </Text>
-            </Pressable>
+            <Animated.View style={[localStyles.passBtn, !canPassNow && localStyles.passBtnDim, passaAnimStyle]}>
+              <Pressable
+                testID="btn-passa"
+                onPress={handlePass}
+                disabled={!canPassNow}
+                style={localStyles.passBtnInner}
+              >
+                <Text style={[localStyles.passBtnLabel, !canPassNow && localStyles.passBtnLabelDim]}>
+                  PASSA
+                </Text>
+              </Pressable>
+            </Animated.View>
 
             {/* Hand cards */}
             {isFinished ? (
@@ -921,7 +1003,7 @@ function OnlineGameScreenBase() {
             )}
 
             {/* GIOCA — right side */}
-            <Animated.View style={[localStyles.playBtn, !playBtnValid && localStyles.playBtnDim, playBtnValid && giocaGlowStyle]}>
+            <Animated.View style={[localStyles.playBtn, !playBtnValid && localStyles.playBtnDim, giocaAnimStyle, playBtnValid && giocaGlowStyle]}>
               <Pressable
                 testID="btn-gioca"
                 onPress={playBtnValid ? handlePlay : undefined}
@@ -943,7 +1025,15 @@ function OnlineGameScreenBase() {
                   </LinearGradient>
                 ) : (
                   <View style={[localStyles.playBtnGrad, localStyles.playBtnGradDim]}>
-                    <Text style={localStyles.playBtnLabelDim}>GIOCA</Text>
+                    <Text style={localStyles.playBtnLabelDim}>
+                      {!isMyTurn || isFinished
+                        ? "GIOCA"
+                        : selectedIds.length === 0
+                        ? "GIOCA"
+                        : tentativeCombo === null
+                        ? "NON\nVALIDA"
+                        : "TROPPO\nBASSA"}
+                    </Text>
                   </View>
                 )}
               </Pressable>
@@ -1044,7 +1134,7 @@ function OnlineGameScreenBase() {
             }
           }}
           onVoteRematch={() => {
-            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+            hapticMedium();
             voteRematch();
           }}
           voteState={rematchVoteState}
@@ -1185,11 +1275,15 @@ const localStyles = StyleSheet.create({
     height: CARD_H,
     borderRadius: 12,
     backgroundColor: "#5C1212",
-    alignItems: "center",
-    justifyContent: "center",
     borderWidth: 2,
     borderColor: "#8B1A1A",
     marginHorizontal: 3,
+    overflow: "hidden",
+  },
+  passBtnInner: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
   },
   passBtnDim: {
     backgroundColor: "rgba(50,12,12,0.55)",

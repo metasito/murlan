@@ -11,12 +11,23 @@ import { logger } from "./logger";
 import { sessionMiddleware } from "./session";
 import { pool } from "./db";
 import { registerRoutes } from "./routes";
+import { isAllowedOrigin, isBehindProxy } from "./cors";
+import { installProcessGuards } from "./socketSafety";
 import * as fs from "fs";
 import * as path from "path";
 
 export { sessionMiddleware };
 
 const app = express();
+
+// Exactly one proxy hop (Replit's TLS terminator). Without this the secure
+// session cookie is never sent in production and express-rate-limit buckets
+// every user under the proxy's IP — one attacker locks out every login.
+if (isBehindProxy()) {
+  app.set("trust proxy", 1);
+}
+
+installProcessGuards();
 
 declare module "http" {
   interface IncomingMessage {
@@ -40,19 +51,9 @@ app.use(
 
 function setupCors(app: express.Application) {
   app.use((req, res, next) => {
-    const origins = new Set<string>();
-    if (process.env.REPLIT_DEV_DOMAIN)
-      origins.add(`https://${process.env.REPLIT_DEV_DOMAIN}`);
-    if (process.env.REPLIT_DOMAINS) {
-      process.env.REPLIT_DOMAINS.split(",").forEach((d) =>
-        origins.add(`https://${d.trim()}`)
-      );
-    }
     const origin = req.header("origin");
-    const isLocalhost =
-      origin?.startsWith("http://localhost:") ||
-      origin?.startsWith("http://127.0.0.1:");
-    if (origin && (origins.has(origin) || isLocalhost)) {
+    res.header("Vary", "Origin");
+    if (origin && isAllowedOrigin(origin)) {
       res.header("Access-Control-Allow-Origin", origin);
       res.header(
         "Access-Control-Allow-Methods",

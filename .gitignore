@@ -34,8 +34,16 @@ yarn-error.*
 # local env files
 .env*.local
 
+# EAS / store credentials
+google-service-account.json
+*.keystore
+
 # typescript
 *.tsbuildinfo
 .vercel
 
 .env
+
+# tool scratch / runtime noise
+.superpowers/
+err.log

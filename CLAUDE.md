@@ -124,7 +124,14 @@ Rules:
 - **Players:** 2–4
 - **Deck:** Standard 52-card deck + Joker
 - **Combinations:** Single, Pair, Triple, Straight, Bomb, Royal Straight
-- **Card strength order:** 3 < 4 < ... < K < A < 2 < Joker (suit also matters for tiebreaks)
+- **Card strength order:** 3 < 4 < ... < K < A < 2 < Black Joker < Red Joker.
+  **Suit does NOT break ties.** No source assigns a suit order and `cardStrength()` ignores
+  suit entirely. Equal ranks are equal strength, and since a beating play must be *strictly*
+  higher, a same-rank answer is simply illegal. Suit matters only for identifying the 3♠
+  opening and for royal straights. (Corrected 2026-08-15; the previous "suit also matters
+  for tiebreaks" claim was unsourced and contradicted the implementation.)
+- **Canonical rules:** `docs/RULES.md` (18 sources). Rule decisions: `docs/BRIEF.md` §3.1.
+  Where this file disagrees with those, those win.
 - **Exchange phase:** After each round, winner and loser exchange cards (special rule for two Jokers)
 - **Teams mode:** 2v2 with partners
 - **Win condition:** First to empty hand

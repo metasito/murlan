@@ -3,6 +3,10 @@
   "compilerOptions": {
     "baseUrl": ".",
     "strict": true,
+    // Node 24 strips TS types natively but requires explicit .ts specifiers in
+    // test imports; this lets tsc accept them without a bundler change.
+    "allowImportingTsExtensions": true,
+    "noEmit": true,
     "paths": {
       "@/*": [
         "./*"

@@ -1,12 +1,18 @@
-import { Platform } from 'react-native';
+import { AccessibilityInfo, Platform } from 'react-native';
 import { useState, useEffect } from 'react';
 
+/**
+ * True when the user has asked the OS (or browser) to reduce motion.
+ * Callers must use this to skip infinite/looping animations.
+ */
 export function usePrefersReducedMotion(): boolean {
   const [reduceMotion, setReduceMotion] = useState(false);
 
   useEffect(() => {
+    let mounted = true;
+
     if (Platform.OS === 'web') {
-      // Web: check CSS media query
+      if (typeof window === 'undefined' || !window.matchMedia) return;
       const mq = window.matchMedia('(prefers-reduced-motion: reduce)');
       setReduceMotion(mq.matches);
 
@@ -20,8 +26,23 @@ export function usePrefersReducedMotion(): boolean {
         return () => mq.removeListener(handler);
       }
     }
-    // Native: would use AccessibilityInfo.isReduceMotionEnabled() here if available
-    // For now, default to false on native (can be enhanced later)
+
+    // Native: read the current value, then subscribe to changes.
+    AccessibilityInfo.isReduceMotionEnabled()
+      .then((v) => {
+        if (mounted) setReduceMotion(v);
+      })
+      .catch(() => {});
+
+    const sub = AccessibilityInfo.addEventListener(
+      'reduceMotionChanged',
+      (v: boolean) => setReduceMotion(v)
+    );
+
+    return () => {
+      mounted = false;
+      sub?.remove();
+    };
   }, []);
 
   return reduceMotion;

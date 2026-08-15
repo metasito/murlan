@@ -14,7 +14,7 @@ import {
 import { router } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { LinearGradient } from "expo-linear-gradient";
-import * as Haptics from "expo-haptics";
+import { hapticMedium, hapticSelection } from "@/lib/haptics";
 import { Ionicons } from "@expo/vector-icons";
 import { useOnlineGame } from "@/context/OnlineGameContext";
 import { useAuth } from "@/context/AuthContext";
@@ -59,13 +59,13 @@ export default function OnlineLobbyScreen() {
   }, [pendingInvite]);
 
   function handleCreate() {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    hapticMedium();
     createRoom(createMode, createPlayers);
   }
 
   function handleJoin() {
     if (joinCode.length < 4) return;
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    hapticMedium();
     joinRoom(joinCode.trim().toUpperCase());
     setJoinModalVisible(false);
     setJoinCode("");
@@ -80,7 +80,7 @@ export default function OnlineLobbyScreen() {
             {(["free_for_all", "teams"] as const).map((m) => (
               <Pressable
                 key={m}
-                onPress={() => { setCreateMode(m); Haptics.selectionAsync(); }}
+                onPress={() => { setCreateMode(m); hapticSelection(); }}
                 style={[
                   styles.toggleBtn, 
                   createMode === m && styles.toggleActive,
@@ -106,7 +106,7 @@ export default function OnlineLobbyScreen() {
             {[2, 3, 4].map((n) => (
               <Pressable
                 key={n}
-                onPress={() => { setCreatePlayers(n); Haptics.selectionAsync(); }}
+                onPress={() => { setCreatePlayers(n); hapticSelection(); }}
                 style={[
                   styles.toggleBtn, 
                   createPlayers === n && styles.toggleActive,
@@ -180,7 +180,7 @@ export default function OnlineLobbyScreen() {
         <View style={[styles.body, styles.bodyLandscape]}>
           <View style={styles.contentWrapperLandscape}>
             <View style={styles.statusRow}>
-              <View style={[styles.dot, { backgroundColor: connected ? "Colors.success" : Colors.textMuted }]} />
+              <View style={[styles.dot, { backgroundColor: connected ? Colors.success : Colors.textMuted }]} />
               <Text style={styles.statusText}>
                 {connected ? `Connesso come ${user?.username}` : "Connessione…"}
               </Text>
@@ -204,7 +204,7 @@ export default function OnlineLobbyScreen() {
         >
           <View style={styles.contentWrapper}>
             <View style={styles.statusRow}>
-              <View style={[styles.dot, { backgroundColor: connected ? "Colors.success" : Colors.textMuted }]} />
+              <View style={[styles.dot, { backgroundColor: connected ? Colors.success : Colors.textMuted }]} />
               <Text style={styles.statusText}>
                 {connected ? `Connesso come ${user?.username}` : "Connessione…"}
               </Text>

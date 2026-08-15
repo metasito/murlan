@@ -11,12 +11,23 @@ import Animated, {
   useSharedValue,
   withSpring,
 } from "react-native-reanimated";
-import { Card, isRedSuit, getCardDisplayRank, getSuitSymbol } from "@/lib/gameEngine";
+import { Card, Suit, isRedSuit, getCardDisplayRank, getSuitSymbol } from "@/lib/gameEngine";
 import { Colors } from '@/lib/theme';
 import { Shadow } from "@/lib/theme";
 import Svg, { Path, Circle, Ellipse, G, Rect, Polygon, Text as SvgText, Defs, ClipPath } from "react-native-svg";
 
 const FACE_RANKS = new Set(["J", "Q", "K"]);
+
+// Suit → colour. `Suit` is plural ("spades") while the theme tokens are singular
+// ("spade"), so the mapping has to be explicit. Typed as Record<Suit, string> so
+// the compiler catches a missing or misspelled suit instead of silently
+// yielding undefined (which is what the previous keyof-cast lookup did).
+const SUIT_COLORS: Record<Suit, string> = {
+  spades: Colors.spade,
+  hearts: Colors.heart,
+  diamonds: Colors.diamond,
+  clubs: Colors.club,
+};
 
 interface CardViewProps {
   card: Card;
@@ -215,7 +226,7 @@ export function CardView({
 
   const rankText = getCardDisplayRank(card.rank);
   const suitSymbol = getSuitSymbol(card.suit);
-  const color = card.suit ? Colors[card.suit as keyof typeof Colors] : Colors.spade;
+  const color = card.suit ? SUIT_COLORS[card.suit] : Colors.spade;
   const isFaceCard = FACE_RANKS.has(card.rank);
 
   const getSuitName = (suit: string | null) => {
