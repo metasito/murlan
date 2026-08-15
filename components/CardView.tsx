@@ -14,7 +14,7 @@ import Animated, {
 import { Card, Suit, isRedSuit, getCardDisplayRank, getSuitSymbol } from "@/lib/gameEngine";
 import { Colors } from '@/lib/theme';
 import { Shadow } from "@/lib/theme";
-import Svg, { Path, Circle, Ellipse, G, Rect, Polygon, Text as SvgText, Defs, ClipPath } from "react-native-svg";
+import Svg, { Path, Circle, G, Rect, Polygon } from "react-native-svg";
 
 const FACE_RANKS = new Set(["J", "Q", "K"]);
 
@@ -28,6 +28,20 @@ const SUIT_COLORS: Record<Suit, string> = {
   diamonds: Colors.diamond,
   clubs: Colors.club,
 };
+
+// ponytail: theme.ts has no card-dimension or "ink" tokens yet — centralised
+// here and flagged in this task's `deferred` output rather than edited into
+// theme.ts by an agent scoped to CardView.tsx only.
+const CARD_W = 58;
+const CARD_H = 84;
+const CARD_W_SMALL = 40;
+const CARD_H_SMALL = 58;
+const FACE_FIGURE_SIZE = 32;
+// Neutral engraving ink for the black/white joker (has no suit colour of its own).
+const INK = "#26323C";
+// Selected-card ring colour needs a fixed low-opacity gold theme.ts doesn't expose
+// (goldMuted is 0.15, this wants ~0.45); same deferral as above.
+const CARD_FACE_BORDER = "rgba(201,168,76,0.45)";
 
 interface CardViewProps {
   card: Card;
@@ -63,16 +77,16 @@ function OrnateCardBack({ width, height }: { width: number; height: number }) {
     <Svg width={w} height={h} style={StyleSheet.absoluteFill}>
       {/* Outer gold border */}
       <Rect x={2} y={2} width={w - 4} height={h - 4} rx={6} ry={6}
-        fill="none" stroke="#C9A84C" strokeWidth={1.5} strokeOpacity={0.82} />
+        fill="none" stroke={Colors.gold} strokeWidth={1.5} strokeOpacity={0.82} />
       {/* Inner border */}
       <Rect x={5.5} y={5.5} width={w - 11} height={h - 11} rx={3.5} ry={3.5}
-        fill="none" stroke="#C9A84C" strokeWidth={0.75} strokeOpacity={0.38} />
+        fill="none" stroke={Colors.gold} strokeWidth={0.75} strokeOpacity={0.38} />
       {/* Diamond dot grid */}
       {dots.map((d, i) => (
         <Polygon
           key={i}
           points={`${d.x},${d.y - 2.5} ${d.x + 1.8},${d.y} ${d.x},${d.y + 2.5} ${d.x - 1.8},${d.y}`}
-          fill="#C9A84C"
+          fill={Colors.gold}
           fillOpacity={0.22}
         />
       ))}
@@ -80,60 +94,143 @@ function OrnateCardBack({ width, height }: { width: number; height: number }) {
       <Polygon
         points={`${cx},${cy - 11} ${cx + 8},${cy} ${cx},${cy + 11} ${cx - 8},${cy}`}
         fill="none"
-        stroke="#C9A84C"
+        stroke={Colors.gold}
         strokeWidth={0.8}
         strokeOpacity={0.45}
       />
       {/* Central diamond fill */}
       <Polygon
         points={`${cx},${cy - 7} ${cx + 5},${cy} ${cx},${cy + 7} ${cx - 5},${cy}`}
-        fill="#C9A84C"
+        fill={Colors.gold}
         fillOpacity={0.65}
       />
     </Svg>
   );
 }
 
-// ─── Joker figure ─────────────────────────────────────────────────────────────
+// ─── Engraved court figures (J, Q, K, and both jokers) ────────────────────────
+//
+// Traditional court cards are built from a single figure duplicated with a
+// true 180° rotation (not a mirror reflection) so the card reads right-side-up
+// from either end. We draw one "half" — bust, headwear, held object — inside
+// a 60×60 viewBox whose vertical centre (y=30) is the rotation axis, then
+// render it twice: once as-is, once rotated 180° about (30,30).
+//
+// The four kinds share one silhouette family (bust + collar) and differ only
+// in headwear + held object, so the deck reads as one coherent set:
+//   K            — three-point crown, sword
+//   Q            — arched tiara + bloom, flower sceptre
+//   J            — soft lopsided cap + feather, halberd
+//   joker_colored (Red Joker, strongest card in the game) — reuses the King's
+//                   crown (it outranks the King) + a star-tipped marotte
+//   joker_bw      (Black Joker, second-strongest) — reuses the Jack's cap
+//                   + a plain-bauble marotte
+type FigureKind = "J" | "Q" | "K" | "joker_colored" | "joker_bw";
 
-function JokerFigure({ colored, size }: { colored: boolean; size: number }) {
-  const s = size;
-  const primaryColor = colored ? "#C0392B" : "#2C3E50";
-  const accentColor = colored ? "#E74C3C" : "#555";
-  const hatColor = colored ? "#C0392B" : "#333";
-  const skinColor = "#F0D09C";
+function renderCourtHalf(kind: FigureKind, color: string, cream: string, keyPrefix: string) {
+  const body = (
+    <Path
+      key={`${keyPrefix}-body`}
+      d="M15,30 L15,21 Q15,16 21,15 L39,15 Q45,16 45,21 L45,30 Z"
+      fill={color}
+    />
+  );
+  const head = <Circle key={`${keyPrefix}-head`} cx={30} cy={9} r={6.5} fill={color} />;
+  const collar = (
+    <Path key={`${keyPrefix}-collar`} d="M21,15 L39,15" stroke={cream} strokeWidth={0.9} fill="none" />
+  );
+
+  let headwear: React.ReactNode;
+  if (kind === "K" || kind === "joker_colored") {
+    headwear = (
+      <G key={`${keyPrefix}-crown`}>
+        <Path d="M22,4 L22,2 L25,-3 L28,2 L30,-4 L32,2 L35,-3 L38,2 L38,4 Z" fill={color} />
+        <Circle cx={25} cy={-2} r={0.8} fill={cream} />
+        <Circle cx={30} cy={-3} r={0.8} fill={cream} />
+        <Circle cx={35} cy={-2} r={0.8} fill={cream} />
+      </G>
+    );
+  } else if (kind === "Q") {
+    headwear = (
+      <G key={`${keyPrefix}-tiara`}>
+        <Path d="M23,4 L23,2 Q30,-2 37,2 L37,4 Z" fill={color} />
+        <Circle cx={26.5} cy={-1.5} r={1.4} fill={color} />
+        <Circle cx={33.5} cy={-1.5} r={1.4} fill={color} />
+        <Circle cx={30} cy={-3.5} r={2.2} fill={color} />
+        <Circle cx={30} cy={-3.5} r={0.8} fill={cream} />
+      </G>
+    );
+  } else {
+    // J, joker_bw
+    headwear = (
+      <G key={`${keyPrefix}-cap`}>
+        <Path d="M22,4 Q21,-1 28,-3 Q36,-4 38,2 L38,4 Z" fill={color} />
+        {kind === "J" && <Path d="M35,-3 L41,-6 L37,0 Z" fill={color} />}
+      </G>
+    );
+  }
+
+  let accessory: React.ReactNode;
+  if (kind === "K") {
+    accessory = (
+      <G key={`${keyPrefix}-sword`} transform="rotate(-18 46 17)">
+        <Rect x={45} y={2} width={2} height={24} rx={0.5} fill={color} />
+        <Rect x={41} y={23} width={10} height={2} rx={0.5} fill={color} />
+        <Circle cx={46} cy={27} r={1.6} fill={color} />
+      </G>
+    );
+  } else if (kind === "Q") {
+    accessory = (
+      <G key={`${keyPrefix}-scepter`} transform="rotate(12 46 17)">
+        <Rect x={45.3} y={6} width={1.4} height={22} rx={0.5} fill={color} />
+        <Circle cx={46} cy={5} r={3} fill={color} />
+        <Circle cx={46} cy={5} r={1.1} fill={cream} />
+      </G>
+    );
+  } else if (kind === "J") {
+    accessory = (
+      <G key={`${keyPrefix}-halberd`} transform="rotate(-12 46 17)">
+        <Rect x={45.3} y={1} width={1.4} height={27} rx={0.5} fill={color} />
+        <Path d="M41,1 L50,1 L52,6 L46,9 L43,6 Z" fill={color} />
+      </G>
+    );
+  } else if (kind === "joker_colored") {
+    accessory = (
+      <G key={`${keyPrefix}-marotte`} transform="rotate(14 46 17)">
+        <Rect x={45.3} y={6} width={1.4} height={22} rx={0.5} fill={color} />
+        <Polygon
+          points="46,1.5 47.2,4.4 50.3,4.6 47.9,6.6 48.7,9.6 46,7.9 43.3,9.6 44.1,6.6 41.7,4.6 44.8,4.4"
+          fill={color}
+        />
+      </G>
+    );
+  } else {
+    accessory = (
+      <G key={`${keyPrefix}-marotte-bw`} transform="rotate(14 46 17)">
+        <Rect x={45.3} y={6} width={1.4} height={22} rx={0.5} fill={color} />
+        <Circle cx={46} cy={5} r={2.6} fill={color} />
+        <Circle cx={46} cy={5} r={1} fill={cream} />
+      </G>
+    );
+  }
 
   return (
-    <Svg width={s} height={s * 1.3} viewBox="0 0 60 80">
-      <Path d="M30 5 L20 28 L40 28 Z" fill={hatColor} />
-      <Path d="M20 28 L10 18 L22 30 Z" fill={primaryColor} />
-      <Path d="M40 28 L50 18 L38 30 Z" fill={primaryColor} />
-      <Circle cx="10" cy="17" r="3" fill={accentColor} />
-      <Circle cx="50" cy="17" r="3" fill={accentColor} />
-      <Circle cx="30" cy="4" r="3" fill={accentColor} />
-      <Ellipse cx="30" cy="36" rx="10" ry="11" fill={skinColor} />
-      <Circle cx="26" cy="34" r="2" fill="#333" />
-      <Circle cx="34" cy="34" r="2" fill="#333" />
-      <Circle cx="26.7" cy="33.3" r="0.7" fill="white" />
-      <Circle cx="34.7" cy="33.3" r="0.7" fill="white" />
-      <Path d="M24 40 Q30 46 36 40" stroke="#C0392B" strokeWidth="1.5" fill="none" strokeLinecap="round" />
-      <Path d="M20 46 Q25 44 30 47 Q35 44 40 46 L38 52 L22 52 Z" fill={primaryColor} />
-      <Polygon points="25,47 28,44 31,47 28,50" fill={accentColor} />
-      <Polygon points="29,47 32,44 35,47 32,50" fill={hatColor} />
-      <Rect x="22" y="52" width="16" height="20" rx="2" fill={primaryColor} />
-      <Path d="M22 57 L38 57" stroke={accentColor} strokeWidth="0.8" />
-      <Path d="M22 63 L38 63" stroke={accentColor} strokeWidth="0.8" />
-      <Path d="M30 52 L30 72" stroke={accentColor} strokeWidth="0.8" />
-      <Path d="M22 55 L10 48" stroke={skinColor} strokeWidth="4" strokeLinecap="round" />
-      <Path d="M38 55 L50 48" stroke={skinColor} strokeWidth="4" strokeLinecap="round" />
-      <Rect x="5" y="44" width="8" height="10" rx="1" fill="white" stroke={primaryColor} strokeWidth="0.5" />
-      <Text style={{ fontSize: 5 }}>
-        <SvgText x="7" y="52" fontSize="6" fill={colored ? "#C0392B" : "#333"} fontWeight="bold">♦</SvgText>
-      </Text>
-      <Rect x="47" y="44" width="8" height="10" rx="1" fill="white" stroke={primaryColor} strokeWidth="0.5" />
-      <SvgText x="49" y="52" fontSize="6" fill={colored ? "#C0392B" : "#333"} fontWeight="bold">♠</SvgText>
-      <Path d="M24 72 L20 80" stroke={hatColor} strokeWidth="4" strokeLinecap="round" />
-      <Path d="M36 72 L40 80" stroke={hatColor} strokeWidth="4" strokeLinecap="round" />
+    <React.Fragment key={keyPrefix}>
+      {body}
+      {head}
+      {collar}
+      {headwear}
+      {accessory}
+    </React.Fragment>
+  );
+}
+
+function CourtFigure({ kind, color, size }: { kind: FigureKind; color: string; size: number }) {
+  const cream = Colors.cardBg;
+  return (
+    <Svg width={size} height={size} viewBox="0 0 60 60">
+      <G>{renderCourtHalf(kind, color, cream, "top")}</G>
+      <G transform="rotate(180 30 30)">{renderCourtHalf(kind, color, cream, "bot")}</G>
     </Svg>
   );
 }
@@ -173,8 +270,8 @@ export function CardView({
   };
 
   if (faceDown) {
-    const w = small ? 40 : 58;
-    const h = small ? 58 : 84;
+    const w = small ? CARD_W_SMALL : CARD_W;
+    const h = small ? CARD_H_SMALL : CARD_H;
     return (
       <Animated.View style={[animStyle, style]}>
         <View style={[styles.card, small ? styles.cardSmall : styles.cardNormal, styles.cardBack]}>
@@ -185,9 +282,8 @@ export function CardView({
   }
 
   if (card.isJoker) {
-    const colored = card.rank === "joker_colored";
-    const titleColor = colored ? "#C0392B" : "#2C3E50";
-    const bgColor = colored ? "#FFF8F0" : "#F4F4F4";
+    const kind: FigureKind = card.rank === "joker_colored" ? "joker_colored" : "joker_bw";
+    const jokerColor = kind === "joker_colored" ? Colors.danger : INK;
 
     return (
       <Animated.View style={[animStyle, style]}>
@@ -197,24 +293,25 @@ export function CardView({
           style={[
             styles.card,
             small ? styles.cardSmall : styles.cardNormal,
-            { backgroundColor: bgColor },
             selected && styles.cardSelected,
           ]}
         >
           {small ? (
             <View style={styles.jokerSmall}>
-              <Text style={[styles.jokerSmallRank, { color: titleColor }]}>J</Text>
-              <Text style={[styles.jokerSmallSuit, { color: titleColor }]}>★</Text>
+              <Text style={[styles.jokerSmallRank, { color: jokerColor }]}>J</Text>
+              <Text style={[styles.jokerSmallSuit, { color: jokerColor }]}>
+                {kind === "joker_colored" ? "★" : "☆"}
+              </Text>
             </View>
           ) : (
             <View style={styles.jokerFull}>
-              <Text style={[styles.jokerTopLabel, { color: titleColor }]}>
-                {colored ? "★" : "☆"}
+              <Text style={[styles.jokerTopLabel, { color: jokerColor }]}>
+                {kind === "joker_colored" ? "★" : "☆"}
               </Text>
-              <View style={styles.jokerFigureContainer}>
-                <JokerFigure colored={colored} size={36} />
+              <View style={styles.courtFigureContainer}>
+                <CourtFigure kind={kind} color={jokerColor} size={FACE_FIGURE_SIZE} />
               </View>
-              <Text style={[styles.jokerBottomLabel, { color: titleColor }]}>
+              <Text style={[styles.jokerBottomLabel, { color: jokerColor }]}>
                 JKR
               </Text>
             </View>
@@ -269,19 +366,15 @@ export function CardView({
             </Text>
           </View>
           {!small && (
-            <Text
-              style={[
-                styles.suitCenter,
-                { color },
-                Platform.OS !== "web" && {
-                  textShadowColor: color,
-                  textShadowOffset: { width: 0, height: 0 },
-                  textShadowRadius: 6,
-                },
-              ]}
-            >
-              {suitSymbol}
-            </Text>
+            isFaceCard ? (
+              <View style={styles.courtFigureContainer}>
+                <CourtFigure kind={card.rank as FigureKind} color={color} size={FACE_FIGURE_SIZE} />
+              </View>
+            ) : (
+              <Text style={[styles.suitCenter, { color }]}>
+                {suitSymbol}
+              </Text>
+            )
           )}
           <View style={styles.bottomCorner}>
             <Text style={[styles.rankText, small ? styles.rankTextSmall : styles.rankTextNormal, { color, transform: [{ rotate: "180deg" }] }]}>
@@ -296,7 +389,7 @@ export function CardView({
 
 const styles = StyleSheet.create({
   card: {
-    backgroundColor: "#FAFAF8",
+    backgroundColor: Colors.cardBg,
     borderRadius: 8,
     borderWidth: 1,
     borderColor: "rgba(0,0,0,0.1)",
@@ -304,31 +397,27 @@ const styles = StyleSheet.create({
     ...Shadow.dark,
   },
   cardNormal: {
-    width: 58,
-    height: 84,
+    width: CARD_W,
+    height: CARD_H,
   },
   cardSmall: {
-    width: 40,
-    height: 58,
+    width: CARD_W_SMALL,
+    height: CARD_H_SMALL,
   },
   cardFace: {
-    borderColor: "rgba(201,168,76,0.45)",
+    borderColor: CARD_FACE_BORDER,
     borderWidth: 1.5,
   },
   cardSelected: Platform.OS === "web"
     ? ({
-        borderColor: "#C9A84C",
+        borderColor: Colors.gold,
         borderWidth: 2,
-        boxShadow: "0 0 0 1px #C9A84C, 0 0 14px rgba(201,168,76,0.55)",
+        ...Shadow.gold,
       } as any)
     : {
-        borderColor: "#C9A84C",
+        borderColor: Colors.gold,
         borderWidth: 2,
-        shadowColor: "#C9A84C",
-        shadowOpacity: 0.55,
-        shadowRadius: 8,
-        shadowOffset: { width: 0, height: 0 },
-        elevation: 8,
+        ...Shadow.gold,
       },
   cardInner: {
     flex: 1,
@@ -349,7 +438,7 @@ const styles = StyleSheet.create({
     alignItems: "flex-end",
   },
   rankText: {
-    fontFamily: "Rajdhani_700Bold",
+    fontFamily: "Inter_600SemiBold",
     lineHeight: 16,
   },
   rankTextNormal: {
@@ -371,6 +460,12 @@ const styles = StyleSheet.create({
     fontFamily: Platform.OS === "ios" ? "System" : "sans-serif",
     lineHeight: 34,
   },
+  courtFigureContainer: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    marginVertical: 2,
+  },
   jokerFull: {
     flex: 1,
     alignItems: "center",
@@ -380,18 +475,12 @@ const styles = StyleSheet.create({
   },
   jokerTopLabel: {
     fontSize: 13,
-    fontFamily: "Rajdhani_700Bold",
+    fontFamily: "Inter_600SemiBold",
     letterSpacing: 0.5,
-  },
-  jokerFigureContainer: {
-    flex: 1,
-    alignItems: "center",
-    justifyContent: "center",
-    marginVertical: 2,
   },
   jokerBottomLabel: {
     fontSize: 9,
-    fontFamily: "Rajdhani_700Bold",
+    fontFamily: "Inter_600SemiBold",
     letterSpacing: 1,
     transform: [{ rotate: "180deg" }],
   },
@@ -402,7 +491,7 @@ const styles = StyleSheet.create({
     gap: 1,
   },
   jokerSmallRank: {
-    fontFamily: "Rajdhani_700Bold",
+    fontFamily: "Inter_600SemiBold",
     fontSize: 12,
     lineHeight: 14,
   },

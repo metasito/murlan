@@ -21,8 +21,8 @@ import { Ionicons } from "@expo/vector-icons";
 import type { ExchangePhase, Card } from "@/lib/gameEngine";
 import { cardStrength, getValidGivebackCards } from "@/lib/gameEngine";
 import { CardView } from "@/components/CardView";
-import { Colors } from '@/lib/theme';
-import { Shadow } from "@/lib/theme";
+import { Colors, Shadow } from '@/lib/theme';
+import { usePrefersReducedMotion } from "@/lib/accessibility";
 
 interface ExchangeModalProps {
   phase: ExchangePhase;
@@ -32,12 +32,13 @@ interface ExchangeModalProps {
   onSelectCard: (cardId: string) => void;
 }
 
-function AnimatedCard({ card, delay = 0 }: { card: Card; delay?: number }) {
-  const ty = useSharedValue(-30);
-  const opacity = useSharedValue(0);
-  const scale = useSharedValue(0.8);
+function AnimatedCard({ card, delay = 0, reduceMotion }: { card: Card; delay?: number; reduceMotion: boolean }) {
+  const ty = useSharedValue(reduceMotion ? 0 : -30);
+  const opacity = useSharedValue(reduceMotion ? 1 : 0);
+  const scale = useSharedValue(reduceMotion ? 1 : 0.8);
 
   useEffect(() => {
+    if (reduceMotion) return;
     ty.value = withDelay(delay, withSpring(0, { damping: 12, stiffness: 200 }));
     opacity.value = withDelay(delay, withTiming(1, { duration: 250 }));
     scale.value = withDelay(delay, withSpring(1, { damping: 10, stiffness: 180 }));
@@ -99,14 +100,17 @@ export function ExchangeModal({
   winnerName,
   onSelectCard,
 }: ExchangeModalProps) {
+  const reduceMotion = usePrefersReducedMotion();
+
   const validCards = getValidGivebackCards(winnerHand).sort(
     (a, b) => cardStrength(a) - cardStrength(b)
   );
 
-  const arrowScale = useSharedValue(0.6);
-  const arrowOpacity = useSharedValue(0);
+  const arrowScale = useSharedValue(reduceMotion ? 1 : 0.6);
+  const arrowOpacity = useSharedValue(reduceMotion ? 1 : 0);
 
   useEffect(() => {
+    if (reduceMotion) return;
     arrowScale.value = withDelay(300, withSpring(1, { damping: 12, stiffness: 200 }));
     arrowOpacity.value = withDelay(300, withTiming(1, { duration: 300 }));
   }, []);
@@ -118,14 +122,14 @@ export function ExchangeModal({
 
   return (
     <Animated.View
-      entering={FadeIn.duration(280)}
-      exiting={FadeOut.duration(200)}
+      entering={reduceMotion ? undefined : FadeIn.duration(280)}
+      exiting={reduceMotion ? undefined : FadeOut.duration(200)}
       style={styles.overlay}
     >
       <View style={styles.card}>
         <View style={styles.headerRow}>
           <Ionicons name="swap-horizontal" size={22} color={Colors.gold} />
-          <Text style={styles.title}>SCAMBIO DI CARTE</Text>
+          <Text style={styles.title}>Scambio di carte</Text>
         </View>
 
         {/* Winner row — receives card from loser */}
@@ -138,7 +142,7 @@ export function ExchangeModal({
             </View>
           </View>
           <View style={styles.cardSlot}>
-            <AnimatedCard card={phase.cardFromLoser} delay={100} />
+            <AnimatedCard card={phase.cardFromLoser} delay={100} reduceMotion={reduceMotion} />
           </View>
         </View>
 
@@ -198,7 +202,7 @@ export function ExchangeModal({
 const styles = StyleSheet.create({
   overlay: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: "rgba(3,16,8,0.92)",
+    backgroundColor: Colors.overlay,
     alignItems: "center",
     justifyContent: "center",
     zIndex: 110,
@@ -227,6 +231,8 @@ const styles = StyleSheet.create({
     letterSpacing: 2,
     textTransform: "uppercase",
   },
+  // (unchanged — title style already used uppercase transform; kept here as
+  // the reference other modals in this pass are aligned to.)
   playerRow: {
     flexDirection: "row",
     alignItems: "center",

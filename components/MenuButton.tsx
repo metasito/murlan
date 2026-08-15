@@ -1,53 +1,71 @@
 import React from 'react';
 import {
-  TouchableOpacity, Text, StyleSheet,
-  ViewStyle, ActivityIndicator,
+  Pressable, Text, StyleSheet,
+  ViewStyle, ActivityIndicator, GestureResponderEvent,
 } from 'react-native';
 import { Colors, Spacing, Radius, FontSize, Shadow } from '@/lib/theme';
 
 type Variant = 'primary' | 'secondary' | 'danger' | 'ghost';
+type Size = 'sm' | 'md' | 'lg';
 
 interface MenuButtonProps {
   label: string;
-  onPress: () => void;
+  onPress: (e: GestureResponderEvent) => void;
   variant?: Variant;
+  size?: Size;
   disabled?: boolean;
   loading?: boolean;
   icon?: React.ReactNode;
   style?: ViewStyle;
   fullWidth?: boolean;
+  accessibilityLabel?: string;
+  accessibilityHint?: string;
 }
 
+// Subtle press washes — decorative only, not design tokens, so kept local
+// rather than added to lib/theme.ts (another agent owns that file right now).
+const PRESSED_GHOST_BG = 'rgba(240,234,214,0.08)';
+
 export function MenuButton({
-  label, onPress, variant = 'primary',
+  label, onPress, variant = 'primary', size = 'md',
   disabled, loading, icon, style, fullWidth = true,
+  accessibilityLabel, accessibilityHint,
 }: MenuButtonProps) {
-  const isDisabled = disabled || loading;
+  const isDisabled = !!(disabled || loading);
 
   return (
-    <TouchableOpacity
-      style={[
+    <Pressable
+      onPress={onPress}
+      disabled={isDisabled}
+      hitSlop={Spacing.xs}
+      accessibilityRole="button"
+      accessibilityLabel={accessibilityLabel ?? label}
+      accessibilityHint={accessibilityHint}
+      accessibilityState={{ disabled: isDisabled, busy: !!loading }}
+      style={({ pressed }) => [
         styles.base,
         styles[variant],
+        sizeStyles[size],
         fullWidth && styles.fullWidth,
+        pressed && !isDisabled && pressedStyles[variant],
         isDisabled && styles.disabled,
         style,
       ]}
-      onPress={onPress}
-      disabled={isDisabled}
-      activeOpacity={0.75}
-      accessibilityRole="button"
-      accessibilityLabel={label}
-      accessibilityState={{ disabled: isDisabled }}
     >
-      {loading
-        ? <ActivityIndicator color={variant === 'primary' ? Colors.bg : Colors.gold} />
-        : <>
-            {icon && <>{icon}</>}
-            <Text style={[styles.label, styles[`${variant}Label` as keyof typeof styles]]}>{label}</Text>
-          </>
-      }
-    </TouchableOpacity>
+      {loading ? (
+        <ActivityIndicator color={variant === 'primary' ? Colors.bg : Colors.gold} />
+      ) : (
+        <>
+          {icon}
+          <Text
+            style={[styles.label, labelStyles[variant], sizeLabelStyles[size]]}
+            numberOfLines={1}
+          >
+            {label}
+          </Text>
+        </>
+      )}
+    </Pressable>
   );
 }
 
@@ -57,22 +75,45 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     gap: Spacing.sm,
-    paddingVertical: Spacing.md,
-    paddingHorizontal: Spacing.xl,
     borderRadius: Radius.full,
-    minHeight: 52,
     marginVertical: Spacing.xs,
     ...Shadow.dark,
   },
   fullWidth: { width: '100%' },
-  primary: { backgroundColor: Colors.gold, ...Shadow.gold },
-  primaryLabel: { color: Colors.bg, fontFamily: 'Rajdhani_700Bold', fontSize: FontSize.lg },
-  secondary: { backgroundColor: 'transparent', borderWidth: 1.5, borderColor: Colors.gold },
-  secondaryLabel: { color: Colors.gold, fontFamily: 'Rajdhani_600SemiBold', fontSize: FontSize.lg },
-  danger: { backgroundColor: Colors.danger },
-  dangerLabel: { color: Colors.white, fontFamily: 'Rajdhani_700Bold', fontSize: FontSize.lg },
-  ghost: { backgroundColor: 'transparent' },
-  ghostLabel: { color: Colors.textSecondary, fontFamily: 'Inter_400Regular', fontSize: FontSize.md },
-  disabled: { opacity: 0.4 },
   label: {},
+
+  primary: { backgroundColor: Colors.gold, ...Shadow.gold },
+  secondary: { backgroundColor: 'transparent', borderWidth: 1.5, borderColor: Colors.gold },
+  danger: { backgroundColor: Colors.danger },
+  ghost: { backgroundColor: 'transparent' },
+
+  disabled: { opacity: 0.4 },
+});
+
+const sizeStyles = StyleSheet.create({
+  sm: { minHeight: 44, paddingVertical: Spacing.sm, paddingHorizontal: Spacing.lg },
+  md: { minHeight: 52, paddingVertical: Spacing.md, paddingHorizontal: Spacing.xl },
+  lg: { minHeight: 60, paddingVertical: Spacing.lg, paddingHorizontal: Spacing.xl },
+});
+
+const sizeLabelStyles = StyleSheet.create({
+  sm: { fontSize: FontSize.md },
+  md: { fontSize: FontSize.lg },
+  lg: { fontSize: FontSize.xl },
+});
+
+const labelStyles = StyleSheet.create({
+  primary: { color: Colors.bg, fontFamily: 'Rajdhani_700Bold' },
+  secondary: { color: Colors.gold, fontFamily: 'Rajdhani_600SemiBold' },
+  danger: { color: Colors.white, fontFamily: 'Rajdhani_700Bold' },
+  ghost: { color: Colors.textSecondary, fontFamily: 'Inter_400Regular' },
+});
+
+// Real pressed states — distinct from `disabled`, applied only while the
+// finger is down and the button is interactive.
+const pressedStyles = StyleSheet.create({
+  primary: { backgroundColor: Colors.goldDark },
+  secondary: { backgroundColor: Colors.goldMuted, borderColor: Colors.goldLight },
+  danger: { backgroundColor: Colors.dangerDim },
+  ghost: { backgroundColor: PRESSED_GHOST_BG },
 });
