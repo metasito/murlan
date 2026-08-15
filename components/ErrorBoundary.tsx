@@ -30,6 +30,17 @@ export class ErrorBoundary extends Component<
   }
 
   componentDidCatch(error: Error, info: { componentStack: string }): void {
+    // Always report enough context to diagnose the crash, even when nobody
+    // wired up `onError` — the root <ErrorBoundary> in app/_layout.tsx
+    // currently passes none, so this is the only record of what broke.
+    console.error(
+      "[ErrorBoundary] Caught render error:",
+      error.message,
+      "\n",
+      error.stack ?? "(no stack)",
+      "\nComponent stack:",
+      info.componentStack
+    );
     if (typeof this.props.onError === "function") {
       this.props.onError(error, info.componentStack);
     }

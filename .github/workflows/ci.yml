@@ -1,0 +1,43 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    name: Typecheck, test, lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # Node 22+ is required: tests run via `node --test` against .ts files
+      # directly, relying on Node's native TypeScript type-stripping
+      # (stable since Node 22.6, no ts-node/tsx/vitest needed). Node 24 is
+      # the current LTS-track release and what the project is developed
+      # against, so pin to it to keep local and CI runs identical.
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Test
+        run: npm test
+
+      - name: Lint
+        # expo lint currently reports pre-existing violations (tracked as
+        # deferred debt, not introduced by this workflow). Non-blocking
+        # until that debt is cleared, so unrelated PRs are not held
+        # hostage by it; the annotations still surface in the run summary.
+        run: npm run lint
+        continue-on-error: true

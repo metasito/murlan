@@ -1,19 +1,22 @@
-import React from "react";
+import React, { useState } from "react";
 import {
   Modal,
   View,
   Text,
   Switch,
-  TouchableOpacity,
+  Pressable,
   StyleSheet,
   Platform,
   Alert,
 } from "react-native";
 import { useRouter } from "expo-router";
+import { Feather } from "@expo/vector-icons";
 import { useSettings } from "@/context/SettingsContext";
 import { useAuth } from "@/context/AuthContext";
-import { getApiUrl } from "@/lib/query-client";
-import { queryClient } from "@/lib/query-client";
+import { apiRequest, queryClient } from "@/lib/query-client";
+import { hapticSelection } from "@/lib/haptics";
+import { usePrefersReducedMotion } from "@/lib/accessibility";
+import { Colors, Spacing, Radius, FontSize, Type, Shadow } from "@/lib/theme";
 
 interface Props {
   visible: boolean;
@@ -25,24 +28,29 @@ export function SettingsModal({ visible, onClose }: Props) {
     useSettings();
   const { logout } = useAuth();
   const router = useRouter();
+  const reduceMotion = usePrefersReducedMotion();
+  const [deleting, setDeleting] = useState(false);
 
   async function handleDeleteAccount() {
+    setDeleting(true);
     try {
-      const url = new URL("/api/users/me", getApiUrl());
-      await fetch(url.toString(), { method: "DELETE", credentials: "include" });
+      // apiRequest throws on a non-ok response, so a failed deletion always
+      // lands in the catch below instead of silently logging the user out.
+      await apiRequest("DELETE", "/api/users/me");
       queryClient.clear();
       onClose();
-      logout();
+      await logout();
       router.replace("/auth");
     } catch {
-      Alert.alert("Errore", "Eliminazione fallita. Riprova.");
+      setDeleting(false);
+      Alert.alert("Errore", "Eliminazione dell'account fallita. Riprova più tardi.");
     }
   }
 
   function confirmDelete() {
     Alert.alert(
       "Elimina account",
-      "Tutti i dati, amici e partite verranno eliminati. Irreversibile.",
+      "Tutti i dati, gli amici e le partite verranno eliminati definitivamente. L'operazione è irreversibile.",
       [
         { text: "Annulla", style: "cancel" },
         { text: "Elimina", style: "destructive", onPress: handleDeleteAccount },
@@ -50,17 +58,43 @@ export function SettingsModal({ visible, onClose }: Props) {
     );
   }
 
+  function toggleHaptics(v: boolean) {
+    // Fire on the current setting (before the flip) so the user feels the
+    // effect they're about to turn off, or confirms the one they're enabling.
+    hapticSelection();
+    setHapticsEnabled(v);
+  }
+
   return (
     <Modal
       visible={visible}
       transparent
-      animationType="fade"
+      animationType={reduceMotion ? "none" : "fade"}
       onRequestClose={onClose}
       statusBarTranslucent
     >
-      <TouchableOpacity style={styles.backdrop} activeOpacity={1} onPress={onClose}>
-        <TouchableOpacity activeOpacity={1} style={styles.card}>
-          <Text style={styles.title}>Impostazioni</Text>
+      <View style={styles.backdrop}>
+        <Pressable
+          style={StyleSheet.absoluteFill}
+          onPress={onClose}
+          accessibilityElementsHidden
+          importantForAccessibility="no-hide-descendants"
+        />
+        <View style={styles.card} accessibilityViewIsModal accessibilityRole="none">
+          <View style={styles.header}>
+            <Text style={styles.title} accessibilityRole="header">
+              Impostazioni
+            </Text>
+            <Pressable
+              onPress={onClose}
+              accessibilityRole="button"
+              accessibilityLabel="Chiudi impostazioni"
+              hitSlop={Spacing.xs}
+              style={({ pressed }) => [styles.closeBtn, { opacity: pressed ? 0.6 : 1 }]}
+            >
+              <Feather name="x" size={FontSize.xl} color={Colors.text} />
+            </Pressable>
+          </View>
 
           <View style={styles.row}>
             <View style={styles.rowLeft}>
@@ -73,9 +107,11 @@ export function SettingsModal({ visible, onClose }: Props) {
             <Switch
               value={soundsEnabled}
               onValueChange={setSoundsEnabled}
-              trackColor={{ false: "#333", true: "#C9A84C" }}
-              thumbColor={soundsEnabled ? "#fff" : "#888"}
-              accessibilityLabel="Attiva o disattiva i suoni"
+              trackColor={{ false: Colors.bgElevated, true: Colors.gold }}
+              thumbColor={soundsEnabled ? Colors.white : Colors.textMuted}
+              accessibilityRole="switch"
+              accessibilityLabel="Suoni di gioco"
+              accessibilityHint="Attiva o disattiva gli effetti sonori"
             />
           </View>
 
@@ -90,23 +126,37 @@ export function SettingsModal({ visible, onClose }: Props) {
               </View>
               <Switch
                 value={hapticsEnabled}
-                onValueChange={setHapticsEnabled}
-                trackColor={{ false: "#333", true: "#C9A84C" }}
-                thumbColor={hapticsEnabled ? "#fff" : "#888"}
-                accessibilityLabel="Attiva o disattiva la vibrazione"
+                onValueChange={toggleHaptics}
+                trackColor={{ false: Colors.bgElevated, true: Colors.gold }}
+                thumbColor={hapticsEnabled ? Colors.white : Colors.textMuted}
+                accessibilityRole="switch"
+                accessibilityLabel="Vibrazione"
+                accessibilityHint="Attiva o disattiva il feedback aptico"
               />
             </View>
           )}
 
-          <TouchableOpacity style={styles.closeBtn} onPress={onClose}>
-            <Text style={styles.closeBtnText}>Chiudi</Text>
-          </TouchableOpacity>
+          <View style={styles.divider} />
 
-          <TouchableOpacity style={styles.deleteBtn} onPress={confirmDelete}>
-            <Text style={styles.deleteBtnText}>Elimina account</Text>
-          </TouchableOpacity>
-        </TouchableOpacity>
-      </TouchableOpacity>
+          <Pressable
+            onPress={confirmDelete}
+            disabled={deleting}
+            accessibilityRole="button"
+            accessibilityLabel="Elimina account"
+            accessibilityHint="Elimina definitivamente il tuo account e tutti i dati associati"
+            accessibilityState={{ disabled: deleting, busy: deleting }}
+            style={({ pressed }) => [
+              styles.deleteBtn,
+              pressed && !deleting && styles.deleteBtnPressed,
+              deleting && styles.deleteBtnDisabled,
+            ]}
+          >
+            <Text style={styles.deleteBtnText}>
+              {deleting ? "Eliminazione in corso…" : "Elimina account"}
+            </Text>
+          </Pressable>
+        </View>
+      </View>
     </Modal>
   );
 }
@@ -114,62 +164,67 @@ export function SettingsModal({ visible, onClose }: Props) {
 const styles = StyleSheet.create({
   backdrop: {
     flex: 1,
-    backgroundColor: "rgba(0,0,0,0.7)",
+    backgroundColor: Colors.overlay,
     justifyContent: "center",
     alignItems: "center",
+    padding: Spacing.lg,
   },
   card: {
-    backgroundColor: "#0B3B25",
-    borderRadius: 20,
-    padding: 24,
-    width: 300,
+    width: "100%",
+    maxWidth: 340,
+    backgroundColor: Colors.bgCard,
+    borderRadius: Radius.lg,
     borderWidth: 1,
-    borderColor: "#C9A84C44",
-    ...(Platform.OS === "web"
-      ? ({ boxShadow: "0 8px 32px rgba(0,0,0,0.5)" } as any)
-      : {
-          shadowColor: "#000",
-          shadowOffset: { width: 0, height: 8 },
-          shadowOpacity: 0.5,
-          shadowRadius: 16,
-          elevation: 20,
-        }),
+    borderColor: Colors.border,
+    padding: Spacing.lg,
+    ...Shadow.overlay,
+  },
+  header: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginBottom: Spacing.sm,
   },
   title: {
-    color: "#C9A84C",
-    fontFamily: "Rajdhani_700Bold",
-    fontSize: 22,
-    marginBottom: 20,
-    textAlign: "center",
+    ...Type.heading,
+    color: Colors.gold,
+    letterSpacing: 1,
+    textTransform: "uppercase",
+  },
+  closeBtn: {
+    width: 44,
+    height: 44,
+    alignItems: "center",
+    justifyContent: "center",
+    marginRight: -Spacing.sm,
   },
   row: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    paddingVertical: 12,
+    minHeight: 44,
+    paddingVertical: Spacing.sm,
     borderTopWidth: 1,
-    borderTopColor: "#ffffff11",
+    borderTopColor: Colors.border,
   },
-  rowLeft: { flexDirection: "row", alignItems: "center", gap: 12 },
-  icon: { fontSize: 22, width: 32, textAlign: "center" },
-  label: { color: "#fff", fontFamily: "Inter_600SemiBold", fontSize: 15 },
-  sublabel: { color: "#aaa", fontFamily: "Inter_400Regular", fontSize: 12 },
-  closeBtn: {
-    marginTop: 20,
-    backgroundColor: "#C9A84C",
-    borderRadius: 24,
-    paddingVertical: 10,
+  rowLeft: { flexDirection: "row", alignItems: "center", gap: Spacing.sm },
+  icon: { fontSize: FontSize.xl, width: 32, textAlign: "center" },
+  label: { ...Type.bodyStrong, fontSize: FontSize.md, color: Colors.text },
+  sublabel: { ...Type.caption },
+  divider: {
+    height: 1,
+    backgroundColor: Colors.border,
+    marginTop: Spacing.md,
+    marginBottom: Spacing.sm,
+  },
+  deleteBtn: {
+    minHeight: 44,
     alignItems: "center",
+    justifyContent: "center",
+    borderRadius: Radius.sm,
+    paddingVertical: Spacing.sm,
   },
-  closeBtnText: {
-    color: "#031008",
-    fontFamily: "Rajdhani_700Bold",
-    fontSize: 16,
-  },
-  deleteBtn: { marginTop: 8, alignItems: "center", paddingVertical: 8 },
-  deleteBtnText: {
-    color: "#ff4444",
-    fontFamily: "Inter_400Regular",
-    fontSize: 13,
-  },
+  deleteBtnPressed: { backgroundColor: Colors.dangerDim + "1A" },
+  deleteBtnDisabled: { opacity: 0.5 },
+  deleteBtnText: { ...Type.body, color: Colors.danger, textAlign: "center" },
 });

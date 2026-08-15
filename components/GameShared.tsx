@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useRef } from "react";
+import React, { useEffect, useState } from "react";
 import { View, Text, StyleSheet, Platform, Pressable, ScrollView } from "react-native";
 import Animated, {
   useAnimatedStyle,
@@ -18,27 +18,40 @@ import Animated, {
 import { Ionicons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
 import { CardView } from "@/components/CardView";
-import { Shadow } from "@/lib/theme";
+import { Colors, Motion, Shadow } from "@/lib/theme";
+import { usePrefersReducedMotion } from "@/lib/accessibility";
 import type { Card, Combination, Player, StartReason } from "@/lib/gameEngine";
-import { Colors } from '@/lib/theme';
 import { CARD_W, computeHandLayout } from "@/components/handLayout";
+import {
+  CARD_H,
+  HAND_SECTION_H,
+  SIDE_SECTION_W,
+  type FlyDirection,
+} from "@/components/gameTableModel";
 
+// The layout constants and the seat-rotation maths now live in the JSX-free
+// gameTableModel.ts so they can be unit-tested and so the shared table can use
+// them without importing this file. Re-exported here unchanged — every existing
+// `import { CARD_H, ... } from "@/components/GameShared"` keeps working.
 export { CARD_W };
-export const CARD_H = 84;
-export const BTN_W = 84;
-export const BTN_H = 84;
-export const SIDE_BTN_W = 62;
-export const TOP_BAR_H = 40;
-export const TABLE_M = 4;
-export const SIDE_SECTION_W = 130;
-export const TOP_SECTION_H = 70;
-export const HAND_SECTION_H = CARD_H + 16;
+export {
+  CARD_H,
+  BTN_W,
+  BTN_H,
+  SIDE_BTN_W,
+  TOP_BAR_H,
+  TABLE_M,
+  SIDE_SECTION_W,
+  TOP_SECTION_H,
+  HAND_SECTION_H,
+  getOpponentPosition,
+  type FlyDirection,
+} from "@/components/gameTableModel";
+
 // Extra top clearance the fixed HAND_SECTION_H already gives the CARD_H-tall
 // hand row (it's centered inside the taller section). Reused as the
 // ScrollView headroom in StraightHand's scrollable fallback — see there.
 const HAND_LIFT_HEADROOM = HAND_SECTION_H - CARD_H;
-
-export type FlyDirection = "top" | "bottom" | "left" | "right";
 
 export const FLY_OFFSETS: Record<FlyDirection, { dx: number; dy: number }> = {
   bottom: { dx: 0, dy: 140 },
@@ -52,17 +65,6 @@ const FLY_ROTS: Record<FlyDirection, number> = {
 const FLY_LANDING_ROTS: Record<FlyDirection, number> = {
   bottom: -4, top: 5, left: -7, right: 7,
 };
-
-export function getOpponentPosition(
-  steps: number,
-  total: number
-): "top" | "left" | "right" {
-  if (total === 1) return "top";
-  if (total === 2) return steps === 1 ? "right" : "top";
-  if (steps === 1) return "right";
-  if (steps === 2) return "top";
-  return "left";
-}
 
 // ─── Table vignette ───────────────────────────────────────────────────────────
 
@@ -770,8 +772,15 @@ export const sharedTableStyles = StyleSheet.create({
 
 export function useTurnPulse(active: boolean) {
   const glowV = useSharedValue(0);
+  const reduceMotion = usePrefersReducedMotion();
 
   useEffect(() => {
+    if (active && reduceMotion) {
+      // Same affordance, no breathing: hold the glow at its midpoint.
+      cancelAnimation(glowV);
+      glowV.value = 0.6;
+      return;
+    }
     if (active) {
       glowV.value = 0.35;
       glowV.value = withRepeat(
@@ -784,9 +793,12 @@ export function useTurnPulse(active: boolean) {
       );
     } else {
       cancelAnimation(glowV);
-      glowV.value = withTiming(0, { duration: 300 });
+      glowV.value = withTiming(0, { duration: Motion.duration.moderate });
     }
-  }, [active]);
+    return () => {
+      cancelAnimation(glowV);
+    };
+  }, [active, reduceMotion]);
 
   return useAnimatedStyle(() => {
     const v = glowV.value;
@@ -1005,22 +1017,31 @@ export function GameBillboard({
   isLocalPlayerTurn: boolean;
 }) {
   const dotOpacity = useSharedValue(0.3);
+  const reduceMotion = usePrefersReducedMotion();
 
   useEffect(() => {
+    if (isLocalPlayerTurn && reduceMotion) {
+      cancelAnimation(dotOpacity);
+      dotOpacity.value = 1;
+      return;
+    }
     if (isLocalPlayerTurn) {
       dotOpacity.value = withRepeat(
         withSequence(
-          withTiming(1.0, { duration: 600 }),
-          withTiming(0.3, { duration: 600 })
+          withTiming(1.0, { duration: Motion.duration.slow }),
+          withTiming(0.3, { duration: Motion.duration.slow })
         ),
         -1,
         false
       );
     } else {
       cancelAnimation(dotOpacity);
-      dotOpacity.value = withTiming(0, { duration: 200 });
+      dotOpacity.value = withTiming(0, { duration: Motion.duration.base });
     }
-  }, [isLocalPlayerTurn]);
+    return () => {
+      cancelAnimation(dotOpacity);
+    };
+  }, [isLocalPlayerTurn, reduceMotion]);
 
   const dotStyle = useAnimatedStyle(() => ({ opacity: dotOpacity.value }));
 

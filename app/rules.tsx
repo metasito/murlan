@@ -32,7 +32,7 @@ const FAQS: FAQ[] = [
   {
     question: "Chi inizia per primo?",
     answer:
-      "La prima mano della partita:\nIl giocatore con la picca più bassa inizia. Di solito è il 3♠, ma se il 3♠ è escluso (es. in alcune distribuzioni), si cerca il 4♠, poi il 5♠ e così via, fino alla picca più bassa disponibile tra le mani dei giocatori.\n\nLa prima giocata DEVE includere quella carta di picche.\n\nRound successivi:\n• Chi ha perso il round (ha giocato per ultimo senza far passare tutti) inizia il round successivo.\n• Se il vincitore del round ha vinto senza che avvenga scambio (eccezione dei due Joker), il vincitore inizia lui stesso il turno successivo.\n\nIl giro prosegue sempre in senso orario.",
+      "La prima mano della partita:\nSi distribuisce sempre l'intero mazzo, quindi il 3♠ è sempre in mano a qualcuno. Chi lo possiede apre la partita, e la prima giocata DEVE includere quella carta.\n\nManche successive (dopo lo scambio di carte):\n• Chi ha perso la manche precedente apre la manche successiva.\n• Se il vincitore ha vinto senza che avvenga scambio (eccezione dei due Joker), è il vincitore ad aprire lui stesso la manche successiva.\n\nIl giro prosegue sempre in senso orario.",
   },
   {
     question: "Qual è la forza delle carte?",
@@ -42,12 +42,12 @@ const FAQS: FAQ[] = [
   {
     question: "Quali combinazioni posso giocare?",
     answer:
-      "• Singola: una qualsiasi carta\n• Coppia: due carte dello stesso valore\n• Tris: tre carte dello stesso valore\n• Scala: minimo 5 carte consecutive\n• Bomba: quattro carte dello stesso valore (batte tutto!)\n• Scala Reale: scala (5+) con tutte le carte dello stesso seme (batte anche la bomba!)",
+      "• Singola: una qualsiasi carta\n• Coppia: due carte dello stesso valore\n• Tris: tre carte dello stesso valore\n• Scala: minimo 5 carte consecutive (fino a 13)\n• Bomba: quattro carte dello stesso valore (batte Singola, Coppia, Tris e Scala di qualsiasi forza — ma non la Scala Reale)\n• Scala Reale: scala (5+) con tutte le carte dello stesso seme — batte anche la Bomba più forte, è la combinazione più potente del gioco",
   },
   {
     question: "Come funzionano le scale?",
     answer:
-      "Una scala è una sequenza di minimo 5 carte consecutive per valore.\n\nLa scala più bassa possibile è A-2-3-4-5.\nLa scala più alta possibile è 10-J-Q-K-A.\n\nDue scale si confrontano sulla carta più alta della sequenza. Per battere una scala devi giocare una scala della stessa lunghezza ma più alta.",
+      "Una scala è una sequenza di carte consecutive per valore: minimo 5, massimo 13 (l'intero mazzo di semi, un asso può fare da estremo basso o alto ma non entrambi insieme).\n\nDentro una scala il 2 vale pochissimo — è la carta più bassa di tutte, anche se normalmente è la più forte del mazzo! L'Asso può stare prima del 2 (scala più bassa a 5 carte: A-2-3-4-5) oppure dopo il Re (scala più alta a 5 carte: 10-J-Q-K-A).\n\nDue scale si confrontano sulla carta più alta della sequenza, e devono avere lo STESSO numero di carte: una scala di 6 non può essere battuta da una di 5.",
   },
   {
     question: "Come funzionano i turni?",
@@ -62,12 +62,12 @@ const FAQS: FAQ[] = [
   {
     question: "Come si calcolano i punti?",
     answer:
-      "In una partita con N giocatori, i punti vengono assegnati in base all'ordine di arrivo:\n• 1° posto: N-1 punti\n• 2° posto: N-2 punti\n• ...\n• Ultimo posto: 0 punti\n\nEsempi:\n▸ 2 giocatori: 1° = 1pt, 2° = 0pt\n▸ 3 giocatori: 1° = 2pt, 2° = 1pt, 3° = 0pt\n▸ 4 giocatori: 1° = 3pt, 2° = 2pt, 3° = 1pt, 4° = 0pt\n\nI punti si accumulano tra più partite (rivincita). Chi ha più punti vince la sessione!",
+      "In una partita con N giocatori, ogni manche assegna punti in base all'ordine di arrivo:\n• 1° posto: N-1 punti\n• 2° posto: N-2 punti\n• ...\n• Ultimo posto: 0 punti\n\nEsempi:\n▸ 2 giocatori: 1° = 1pt, 2° = 0pt\n▸ 3 giocatori: 1° = 2pt, 2° = 1pt, 3° = 0pt\n▸ 4 giocatori: 1° = 3pt, 2° = 2pt, 3° = 1pt, 4° = 0pt\n\nI punti si accumulano tra le manche di rivincita. Si vince la partita arrivando per primi a 21 punti. Se più giocatori raggiungono i 21 punti nella stessa manche, il traguardo sale a 31, poi 41, poi 51: se il pareggio persiste anche a 51, la partita finisce in parità.",
   },
   {
     question: "Quali modalità di gioco esistono?",
     answer:
-      "Murlan supporta 4 formati:\n\n• 1 vs 1 — due giocatori, vince chi finisce le carte per primo\n• Trio — tre giocatori, tutti contro tutti\n• 4 Liberi — quattro giocatori, tutti contro tutti\n• 2 vs 2 — quattro giocatori divisi in due coppie: Giocatore 1&3 vs Giocatore 2&4. Vince la coppia il cui primo membro termina le carte.\n\nNella modalità Online trovi tutti e 4 i formati. In offline scegli tu quanti giocatori e quale modalità.",
+      "Murlan supporta 4 formati:\n\n• 1 vs 1 — due giocatori, vince chi finisce le carte per primo\n• Trio — tre giocatori, tutti contro tutti\n• 4 Liberi — quattro giocatori, tutti contro tutti\n• 2 vs 2 — quattro giocatori divisi in due coppie sedute una di fronte all'altra: Giocatore 1&3 vs Giocatore 2&4. La manche si gioca fino in fondo: non finisce quando il primo membro di una coppia resta senza carte, ma quando ENTRAMBI i compagni hanno finito (oppure quando l'intera coppia avversaria ha finito). I punti di piazzamento dei due compagni si sommano: vince la coppia con il totale più alto.\n\nNella modalità Online trovi tutti e 4 i formati. In offline scegli tu quanti giocatori e quale modalità.",
   },
   {
     question: "Come funziona lo scambio di carte?",
@@ -92,12 +92,12 @@ const FAQS: FAQ[] = [
   {
     question: "Posso passare quando voglio?",
     answer:
-      "Puoi passare solo se c'è una combinazione attiva sul tavolo. Se sei il primo a giocare nel round (o hai vinto il round precedente), DEVI giocare una combinazione, non puoi passare.",
+      "Puoi passare solo se c'è una combinazione attiva sul tavolo. Se sei il primo a giocare nel turno (o hai vinto il turno precedente), DEVI giocare una combinazione: non puoi passare.\n\nAttenzione: passare NON ti esclude dal resto del turno. Se dopo di te qualcun altro gioca una carta più forte e il turno torna a te, puoi provare a batterla — resti fuori solo quando finisci le carte.",
   },
   {
     question: "Quante carte si distribuiscono?",
     answer:
-      "• 2 giocatori: 26 carte ciascuno (mazzo completo)\n• 3 giocatori: 17 carte ciascuno (1 carta esclusa dal gioco)\n• 4 giocatori: 13 carte ciascuno",
+      "Si distribuisce sempre l'intero mazzo da 54 carte (52 + 2 Joker), senza escludere nulla:\n\n• 2 giocatori: 27 carte ciascuno\n• 3 giocatori: 18 carte ciascuno\n• 4 giocatori: 14 carte a due giocatori, 13 agli altri due (54 non si divide esattamente per 4)\n\nPoiché il mazzo è sempre completo, il 3♠ e entrambi i Joker sono sempre in gioco.",
   },
   {
     question: "Come funziona la Rivincita online?",
@@ -192,6 +192,11 @@ export default function RulesScreen() {
           </View>
           <Text style={styles.heroTitle}>MURLAN</Text>
           <Text style={styles.heroSubtitle}>Guida al Gioco</Text>
+          <Pressable onPress={() => router.push("/tutorial")} style={styles.tutorialLink} hitSlop={12}>
+            <Ionicons name="school-outline" size={14} color={Colors.gold} />
+            <Text style={styles.tutorialLinkText}>Preferisci imparare giocando? Prova il Tutorial guidato</Text>
+            <Ionicons name="chevron-forward" size={14} color={Colors.gold} />
+          </Pressable>
         </View>
 
         <View style={styles.quickRef}>
@@ -223,8 +228,8 @@ export default function RulesScreen() {
               { name: "Singola", desc: "1 carta qualsiasi", icon: "card" },
               { name: "Coppia", desc: "2 carte dello stesso valore", icon: "copy" },
               { name: "Tris", desc: "3 carte dello stesso valore", icon: "layers" },
-              { name: "Scala", desc: "Min. 5 carte consecutive (A-2-3-4-5 → 10-J-Q-K-A)", icon: "trending-up" },
-              { name: "Bomba 💣", desc: "4 carte stesso valore · batte tutto", icon: "flash" },
+              { name: "Scala", desc: "Min. 5 carte consecutive, fino a 13 (es. A-2-3-4-5)", icon: "trending-up" },
+              { name: "Bomba 💣", desc: "4 carte stesso valore · batte tutto tranne la Scala Reale", icon: "flash" },
               { name: "Scala Reale ★", desc: "Scala stesso seme · batte anche la Bomba", icon: "star" },
             ].map((c) => (
               <View key={c.name} style={styles.comboCard}>
@@ -314,6 +319,25 @@ const styles = StyleSheet.create({
     color: Colors.gold,
     letterSpacing: 3,
     textTransform: "uppercase",
+  },
+  tutorialLink: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    marginTop: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 10,
+    backgroundColor: Colors.goldMuted,
+    borderWidth: 1,
+    borderColor: Colors.border,
+  },
+  tutorialLinkText: {
+    fontFamily: "Inter_500Medium",
+    fontSize: 11,
+    color: Colors.gold,
+    textAlign: "center",
+    flexShrink: 1,
   },
 
   quickRef: {

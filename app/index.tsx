@@ -1,4 +1,5 @@
 import React, { useEffect } from "react";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import {
   View,
   Text,
@@ -237,6 +238,15 @@ export default function HomeScreen() {
     subtitleOpacity.value = withDelay(500, withTiming(1, { duration: 600 }));
   }, []);
 
+  // First-launch onboarding: offer the interactive tutorial automatically, once.
+  // Never gates play — the player can skip or navigate away immediately, and
+  // the flag is set the moment they do either (see app/tutorial.tsx).
+  useEffect(() => {
+    AsyncStorage.getItem("@murlan_tutorial_seen").then((seen) => {
+      if (!seen) router.push("/tutorial");
+    });
+  }, []);
+
   const titleStyle = useAnimatedStyle(() => ({
     opacity: titleOpacity.value,
     transform: [{ scale: titleScale.value }],
@@ -255,6 +265,7 @@ export default function HomeScreen() {
       <MenuButton compact={compact} label="Offline" icon="game-controller" accent onPress={() => router.push({ pathname: "/lobby", params: { mode: "ai" } })} delay={300} />
       <MenuButton compact={compact} label="Gioca con amici" icon="people" onPress={() => { if (user) router.push("/(online)"); else router.push("/auth"); }} delay={420} />
       <MenuButton compact={compact} label="Online" icon="earth-outline" onPress={() => { if (user) router.push("/(online)/quickmatch"); else router.push("/auth"); }} delay={540} />
+      <MenuButton compact={compact} label="Tutorial" icon="school-outline" onPress={() => router.push("/tutorial")} delay={600} />
       <MenuButton compact={compact} label="Regole & FAQ" icon="book-outline" onPress={() => router.push("/rules")} delay={660} />
     </>
   );

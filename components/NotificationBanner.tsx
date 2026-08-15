@@ -9,8 +9,8 @@ import Animated, {
 } from "react-native-reanimated";
 import { Ionicons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { Colors } from '@/lib/theme';
-import { Shadow } from "@/lib/theme";
+import { Colors, Spacing, Radius, Type, Shadow } from "@/lib/theme";
+import { usePrefersReducedMotion } from "@/lib/accessibility";
 import type { NotificationType, NotificationData } from "@/context/NotificationContext";
 
 export type { NotificationType, NotificationData };
@@ -36,10 +36,16 @@ const COLOR_MAP: Record<NotificationType, string> = {
   game_invite: Colors.info,
   game_info: Colors.textSecondary,
   game_error: Colors.red,
-  afk: "#E0A830",
+  afk: Colors.gold,
   connection: Colors.success,
 };
 
+// Pinned by an app invariant (see CLAUDE.md / ExchangeAnnouncement neighbours):
+// slide-in 320ms → wait ~4s → slide-out, always as a single callback chain,
+// never as parallel withTiming calls (a second assignment would clobber the
+// slide-in before it finishes). Not a lib/theme.ts Motion value because no
+// entry there matches 320ms and this exact number is the contract, not a
+// generic transition duration.
 const SLIDE_DURATION = 320;
 const DEFAULT_VISIBLE_DURATION = 4500;
 
@@ -47,33 +53,38 @@ export default function NotificationBanner({ notification, onDismiss }: Props) {
   const insets = useSafeAreaInsets();
   const translateY = useSharedValue(-120);
   const opacity = useSharedValue(0);
+  const reduceMotion = usePrefersReducedMotion();
 
   const topOffset = Platform.OS === "web" ? 67 : insets.top;
+  // Reduced motion: keep the exact same callback chain (still a single,
+  // sequential path to onDismiss) but collapse every leg to ~0ms so nothing
+  // visibly slides.
+  const slideDur = reduceMotion ? 0 : SLIDE_DURATION;
 
   useEffect(() => {
     if (notification) {
       const visibleDuration = notification.duration ?? DEFAULT_VISIBLE_DURATION;
       // Slide in first, then after visibleDuration auto-dismiss via callback chain
-      translateY.value = withTiming(0, { duration: SLIDE_DURATION }, () => {
+      translateY.value = withTiming(0, { duration: slideDur }, () => {
         translateY.value = withDelay(
           visibleDuration,
-          withTiming(-120, { duration: SLIDE_DURATION }, (finished) => {
+          withTiming(-120, { duration: slideDur }, (finished) => {
             if (finished) runOnJS(onDismiss)();
           })
         );
       });
-      opacity.value = withTiming(1, { duration: SLIDE_DURATION }, () => {
+      opacity.value = withTiming(1, { duration: slideDur }, () => {
         opacity.value = withDelay(
-          visibleDuration + SLIDE_DURATION * 0.5,
-          withTiming(0, { duration: SLIDE_DURATION })
+          visibleDuration + slideDur * 0.5,
+          withTiming(0, { duration: slideDur })
         );
       });
     } else {
       // Instantly reset when dismissed programmatically
-      translateY.value = withTiming(-120, { duration: SLIDE_DURATION });
-      opacity.value = withTiming(0, { duration: SLIDE_DURATION });
+      translateY.value = withTiming(-120, { duration: slideDur });
+      opacity.value = withTiming(0, { duration: slideDur });
     }
-  }, [notification]);
+  }, [notification, slideDur]);
 
   const animStyle = useAnimatedStyle(() => ({
     transform: [{ translateY: translateY.value }],
@@ -81,8 +92,8 @@ export default function NotificationBanner({ notification, onDismiss }: Props) {
   }));
 
   function handlePress() {
-    translateY.value = withTiming(-120, { duration: SLIDE_DURATION });
-    opacity.value = withTiming(0, { duration: SLIDE_DURATION * 0.75 }, (finished) => {
+    translateY.value = withTiming(-120, { duration: slideDur });
+    opacity.value = withTiming(0, { duration: slideDur * 0.75 }, (finished) => {
       if (finished) runOnJS(onDismiss)();
     });
     if (notification) notification.onPress?.();
@@ -91,12 +102,22 @@ export default function NotificationBanner({ notification, onDismiss }: Props) {
   // Always render — animation controls visibility, never unmount
   const color = notification ? COLOR_MAP[notification.type] : Colors.gold;
   const icon = notification ? ICON_MAP[notification.type] : "notifications";
+  const a11yLabel = notification
+    ? `${notification.title}. ${notification.message}`
+    : undefined;
 
   return (
     <Animated.View
       style={[styles.container, { top: topOffset + 8, pointerEvents: notification ? "box-none" as const : "none" as const }, animStyle]}
     >
-      <Pressable onPress={handlePress} style={[styles.banner, { borderLeftColor: color }]}>
+      <Pressable
+        onPress={handlePress}
+        style={[styles.banner, { borderLeftColor: color }]}
+        accessibilityRole="alert"
+        accessibilityLiveRegion={notification ? "polite" : "none"}
+        accessibilityLabel={a11yLabel}
+        accessibilityHint="Tocca per chiudere la notifica"
+      >
         <View style={[styles.iconCircle, { backgroundColor: color + "22" }]}>
           <Ionicons name={icon} size={20} color={color} />
         </View>
@@ -104,7 +125,13 @@ export default function NotificationBanner({ notification, onDismiss }: Props) {
           <Text style={styles.title}>{notification?.title ?? ""}</Text>
           <Text style={styles.message} numberOfLines={2}>{notification?.message ?? ""}</Text>
         </View>
-        <Pressable onPress={handlePress} hitSlop={16} style={styles.closeBtn}>
+        <Pressable
+          onPress={handlePress}
+          hitSlop={Spacing.md}
+          style={styles.closeBtn}
+          accessibilityRole="button"
+          accessibilityLabel="Chiudi notifica"
+        >
           <Ionicons name="close" size={20} color={Colors.textMuted} />
         </Pressable>
       </Pressable>
@@ -115,21 +142,21 @@ export default function NotificationBanner({ notification, onDismiss }: Props) {
 const styles = StyleSheet.create({
   container: {
     position: "absolute",
-    left: 12,
-    right: 12,
+    left: Spacing.sm + 4,
+    right: Spacing.sm + 4,
     zIndex: 9999,
   },
   banner: {
     flexDirection: "row",
     alignItems: "center",
     backgroundColor: Colors.bgSurface,
-    borderRadius: 14,
+    borderRadius: Radius.md,
     borderWidth: 1,
     borderColor: Colors.border,
     borderLeftWidth: 4,
-    paddingVertical: 12,
-    paddingHorizontal: 14,
-    gap: 12,
+    paddingVertical: Spacing.sm + 4,
+    paddingHorizontal: Spacing.md - 2,
+    gap: Spacing.sm + 4,
     ...Shadow.dark,
   },
   iconCircle: {
@@ -144,18 +171,20 @@ const styles = StyleSheet.create({
     gap: 2,
   },
   title: {
-    fontFamily: "Rajdhani_700Bold",
-    fontSize: 15,
+    ...Type.subheading,
     color: Colors.text,
     letterSpacing: 0.3,
   },
   message: {
-    fontFamily: "Inter_400Regular",
-    fontSize: 12,
-    color: Colors.textMuted,
-    lineHeight: 17,
+    ...Type.caption,
+    lineHeight: 16,
   },
   closeBtn: {
-    padding: 4,
+    width: 44,
+    height: 44,
+    marginVertical: -12,
+    marginRight: -8,
+    alignItems: "center",
+    justifyContent: "center",
   },
 });

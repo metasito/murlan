@@ -39,6 +39,7 @@ function RootLayoutNav() {
         <Stack.Screen name="index" />
         <Stack.Screen name="lobby" />
         <Stack.Screen name="rules" />
+        <Stack.Screen name="tutorial" />
         <Stack.Screen name="auth" />
         <Stack.Screen name="(online)" />
         <Stack.Screen name="game" options={{ animation: "slide_from_bottom" }} />
