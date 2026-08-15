@@ -2,13 +2,13 @@ import type { Express, Request, Response } from "express";
 import { createServer, type Server } from "node:http";
 import bcrypt from "bcryptjs";
 import rateLimit from "express-rate-limit";
-import { storage } from "./storage";
-import { logger } from "./logger";
-import { validate } from "./validate";
-import { RegisterSchema, LoginSchema, AddFriendSchema } from "./schemas";
-import { insertUserSchema } from "@shared/schema";
-import { emitToUser, isUserOnline } from "./socket";
-import { mintSocketTicket } from "./ticket";
+import { storage } from "./storage.ts";
+import { logger } from "./logger.ts";
+import { validate } from "./validate.ts";
+import { RegisterSchema, LoginSchema, AddFriendSchema } from "./schemas.ts";
+import { insertUserSchema } from "../shared/schema.ts";
+import { emitToUser, isUserOnline } from "./socket.ts";
+import { mintSocketTicket } from "./ticket.ts";
 import { z } from "zod";
 
 declare module "express-session" {

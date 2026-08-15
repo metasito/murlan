@@ -1,8 +1,8 @@
 import { eq, and, or, sql, inArray } from "drizzle-orm";
 import { randomInt } from "node:crypto";
-import { db } from "./db";
-import { users, rooms, roomPlayers, friends, activeGames } from "@shared/schema";
-import type { User, InsertUser, Room, RoomPlayer, Friend } from "@shared/schema";
+import { db } from "./db.ts";
+import { users, rooms, roomPlayers, friends, activeGames } from "../shared/schema.ts";
+import type { User, InsertUser, Room, RoomPlayer, Friend } from "../shared/schema.ts";
 
 export type SeatClaim =
   | { ok: true; seatIndex: number }

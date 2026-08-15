@@ -1,6 +1,6 @@
 import type { Socket } from "socket.io";
 import { z } from "zod";
-import { logger } from "./logger";
+import { logger } from "./logger.ts";
 
 /**
  * Boundary wrapper for socket events: validate the payload, rate limit the

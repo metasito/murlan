@@ -7,12 +7,12 @@ import express from "express";
 import type { Request, Response, NextFunction } from "express";
 import helmet from "helmet";
 import pinoHttp from "pino-http";
-import { logger } from "./logger";
-import { sessionMiddleware } from "./session";
-import { pool } from "./db";
-import { registerRoutes } from "./routes";
-import { isAllowedOrigin, isBehindProxy } from "./cors";
-import { installProcessGuards } from "./socketSafety";
+import { logger } from "./logger.ts";
+import { sessionMiddleware } from "./session.ts";
+import { pool } from "./db.ts";
+import { registerRoutes } from "./routes.ts";
+import { isAllowedOrigin, isBehindProxy } from "./cors.ts";
+import { installProcessGuards } from "./socketSafety.ts";
 import * as fs from "fs";
 import * as path from "path";
 
@@ -207,7 +207,7 @@ function setupErrorHandler(app: express.Application) {
 
   const server = await registerRoutes(app);
 
-  const { setupSocket } = await import("./socket");
+  const { setupSocket } = await import("./socket.ts");
   setupSocket(server);
 
   setupErrorHandler(app);

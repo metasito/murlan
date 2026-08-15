@@ -2,14 +2,14 @@ import { Server as SocketServer } from "socket.io";
 import type { Socket } from "socket.io";
 import type { Server as HttpServer } from "node:http";
 import { eq } from "drizzle-orm";
-import { storage } from "./storage";
-import { logger } from "./logger";
-import { sessionMiddleware } from "./session";
-import { db } from "./db";
-import { activeGames as activeGamesTable } from "@shared/schema";
-import { consumeSocketTicket } from "./ticket";
-import { isAllowedOrigin } from "./cors";
-import { onEvent } from "./socketSafety";
+import { storage } from "./storage.ts";
+import { logger } from "./logger.ts";
+import { sessionMiddleware } from "./session.ts";
+import { db } from "./db.ts";
+import { activeGames as activeGamesTable } from "../shared/schema.ts";
+import { consumeSocketTicket } from "./ticket.ts";
+import { isAllowedOrigin } from "./cors.ts";
+import { onEvent } from "./socketSafety.ts";
 import {
   readPersistedPlayerMap,
   seatOfUser as seatOfUserInMap,
@@ -18,7 +18,7 @@ import {
   excludeBotSeats,
   GAME_SCHEMA_VERSION,
   isStaleSchema,
-} from "./onlineGameLogic";
+} from "./onlineGameLogic.ts";
 import {
   NoPayloadSchema,
   RoomCreateSchema,
@@ -30,7 +30,7 @@ import {
   GameReactionSchema,
   GameExchangeGiveCardSchema,
   FriendInviteSchema,
-} from "./socketSchemas";
+} from "./socketSchemas.ts";
 import {
   initializeGame,
   initializeRematch,
@@ -48,8 +48,8 @@ import {
   addHandScores,
   resolveMatch,
   MATCH_TARGETS,
-} from "../lib/gameEngine";
-import type { GameState, Card, GameMode } from "../lib/gameEngine";
+} from "../lib/gameEngine.ts";
+import type { GameState, Card, GameMode } from "../lib/gameEngine.ts";
 
 interface OnlineGameState {
   gameState: GameState;
