@@ -49,7 +49,7 @@ every point. `Src` gives the item's original home.
 | Q21 ✅ | **Daily streaks.** Standard, effective, low risk. Achievements already ship; this is the returning-player half. | S | BRIEF T2 |
 | Q22 | **Ranked ladder with a visible rating.** Gives skilled players a reason to return. Seasons need resetting and rewards defining, and a public ladder changes the cheating-pressure posture — decide the season policy before building. | L | A7 |
 | Q23 | **"Your turn" push notifications.** The strongest retention lever for a turn-based game, and the code is routine. Ships inert until the owner supplies FCM (Android) and APNs (iOS) credentials via EAS, and it stores push tokens — new personal data, so it needs a privacy-policy entry before release. | L | A6, BRIEF T1 |
-| Q24 | **Error reporting.** Wanted, but every third-party crash SDK is a data processor and changes the App Store privacy answers. Build the in-house version first: a single authenticated endpoint the existing `ErrorFallback` posts to. No new dependency, no new processor. | M | A9 |
+| Q24 ✅ | **Error reporting.** Wanted, but every third-party crash SDK is a data processor and changes the App Store privacy answers. Build the in-house version first: a single authenticated endpoint the existing `ErrorFallback` posts to. No new dependency, no new processor. | M | A9 |
 | Q25 | **Cosmetics: card backs and table felts.** Non-invasive, and the natural monetization surface if one is ever wanted. Useful without IAP. | L | BRIEF T3 |
 | Q26 | **Tournaments.** Bracketed multi-table events. Significant work, high ceiling. Last in the queue deliberately. | XL | BRIEF T3 |
 | **The polish pass** |

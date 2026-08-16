@@ -5,7 +5,7 @@ import rateLimit from "express-rate-limit";
 import { storage } from "./storage.ts";
 import { logger } from "./logger.ts";
 import { validate } from "./validate.ts";
-import { RegisterSchema, LoginSchema, AddFriendSchema } from "./schemas.ts";
+import { RegisterSchema, LoginSchema, AddFriendSchema, ClientErrorSchema } from "./schemas.ts";
 import { insertUserSchema } from "../shared/schema.ts";
 import { emitToUser, isUserOnline } from "./socket.ts";
 import { mintSocketTicket } from "./ticket.ts";
@@ -59,6 +59,16 @@ const friendLimiter = rateLimit({
 const ticketLimiter = rateLimit({
   windowMs: 60 * 1000,
   max: 60,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: "Troppe richieste, rallenta.", code: "RATE_LIMITED" },
+});
+
+// A crashing client can crash repeatedly. This is deliberately tight: enough
+// to catch a crash loop starting, not enough for one device to flood the log.
+const errorReportLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 5,
   standardHeaders: true,
   legacyHeaders: false,
   message: { error: "Troppe richieste, rallenta.", code: "RATE_LIMITED" },
@@ -323,6 +333,39 @@ export async function registerRoutes(app: Express): Promise<Server> {
     const history = await getMatchHistory(req.session.userId!);
     res.json(history);
   });
+
+  // ── Client crash reports ──────────────────────────────────────────────────
+  //
+  // In-house rather than a third-party crash SDK: any such SDK is a data
+  // processor, which changes the App Store privacy answers and adds a
+  // dependency that runs in every session. This writes to the log the server
+  // already has, so a crash on a device is visible wherever the server's
+  // output is read.
+  //
+  // Authenticated on purpose. An open endpoint is an open log-injection
+  // vector, and a crash worth chasing is one a real account hit.
+  app.post(
+    "/api/client-errors",
+    requireAuth,
+    errorReportLimiter,
+    validate(ClientErrorSchema),
+    (req, res) => {
+      const report = req.body as {
+        message: string;
+        stack?: string;
+        componentStack?: string;
+        platform?: string;
+        appVersion?: string;
+      };
+      logger.error(
+        { userId: req.session.userId, clientError: report },
+        "Client reported an unhandled error"
+      );
+      // Nothing to say back. The client is already showing its error screen and
+      // must not depend on this having worked.
+      res.status(204).end();
+    }
+  );
 
   app.get("/api/stats/achievements", requireAuth, async (req, res) => {
     const achievements = await getUserAchievements(req.session.userId!);
