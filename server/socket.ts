@@ -51,7 +51,7 @@ import {
   resolveMatch,
   MATCH_TARGETS,
 } from "../lib/gameEngine.ts";
-import type { GameState, Card, GameMode } from "../lib/gameEngine.ts";
+import type { GameState, Card, GameMode, Combination } from "../lib/gameEngine.ts";
 import { recordGameResult } from "./stats.ts";
 import type { GameResult } from "../lib/achievements.ts";
 
@@ -130,7 +130,22 @@ export function isUserOnline(userId: string): boolean {
 export const __testables = {
   actingSeat: (state: GameState) => actingSeat(state),
   autoMoveForSeat: (state: GameState, seat: number, useAi: boolean) =>
-    autoMoveForSeat({ gameState: state } as OnlineGameState, seat, useAi),
+    autoMoveForSeat(
+      { gameState: state, handFlags: {} } as OnlineGameState,
+      seat,
+      useAi
+    ),
+  /**
+   * Same as autoMoveForSeat, but also returns the OnlineGameState.handFlags
+   * an AFK-forced/bot move produced — regression coverage for the
+   * bomb/joker achievement bookkeeping living in recordPlayFlags, which a
+   * bare GameState result can't expose.
+   */
+  autoMoveForSeatWithFlags: (state: GameState, seat: number, useAi: boolean) => {
+    const game = { gameState: state, handFlags: {} } as OnlineGameState;
+    const next = autoMoveForSeat(game, seat, useAi);
+    return { state: next, handFlags: game.handFlags };
+  },
   readPersistedPlayerMap: (storedMap: unknown, storedIds: unknown) =>
     readPersistedPlayerMap(storedMap, storedIds),
 };
@@ -324,6 +339,20 @@ function resolveStuckExchange(state: GameState): GameState {
 }
 
 /**
+ * Achievement bookkeeping (Task 8): the engine has no notion of "did this
+ * seat play a bomb/joker this hand", so every path that actually plays a
+ * combination — the human game:play handler and this module's own
+ * bot/AFK-forced auto-play — has to update it here, or a forced move (most
+ * commonly an AFK-forced lone joker) silently under-counts the purist /
+ * iron_will / wild_card achievements.
+ */
+function recordPlayFlags(game: OnlineGameState, seat: number, combo: Combination) {
+  const flags = (game.handFlags[seat] ??= { bomb: false, joker: false });
+  if (combo.type === "bomb") flags.bomb = true;
+  if (combo.cards.some((c) => c.isJoker)) flags.joker = true;
+}
+
+/**
  * One automated action for a seat.
  *
  * `useAi` picks the real engine AI (a seat abandoned by its player), otherwise
@@ -365,7 +394,10 @@ function autoMoveForSeat(
       otherCounts.length > 0 ? otherCounts : [0],
       requireCard
     );
-    if (combo) return processPlay(state, combo);
+    if (combo) {
+      recordPlayFlags(game, seat, combo);
+      return processPlay(state, combo);
+    }
     if (!isNewRound) return processPass(state);
     // A new round cannot be passed — fall through to the forced minimum play.
   }
@@ -379,7 +411,9 @@ function autoMoveForSeat(
     const card = forced ?? sortHand([...player.hand])[0];
     if (!card) return null;
     const combo = buildCombination([card]);
-    return combo ? processPlay(state, combo) : null;
+    if (!combo) return null;
+    recordPlayFlags(game, seat, combo);
+    return processPlay(state, combo);
   }
 
   return processPass(state);
@@ -641,60 +675,6 @@ async function handleGameOver(
 
   game.rematchVotes = new Set();
 
-  // ── Stats / history / achievements (Task 8) ──────────────────────────────
-  //
-  // `state.rankings` only carries an entry for a player once their placement
-  // is actually known: in free-for-all mode every seat eventually gets one
-  // (the very last active seat is auto-assigned last place without ever
-  // emptying its hand — see processPlay), but in teams mode the hand can end
-  // as soon as one team is done, leaving the losing team's players with no
-  // rankings entry and thus no knowable placement this hand. Those seats are
-  // skipped here, mirroring scoreHand's own "absent from rankings -> not in
-  // the result" contract instead of inventing a placement for them.
-  const playerCount = state.players.length;
-  const isFreeForAll = game.gameMode !== "teams";
-  // How many seats actually emptied their hand this round (as opposed to
-  // being auto-assigned last place while still holding cards): every FFA
-  // rankings entry except the final one, or every teams rankings entry (the
-  // teams path never auto-assigns — see the comment above).
-  const realFinisherCount = isFreeForAll
-    ? Math.max(playerCount - 1, 0)
-    : state.rankings.length;
-
-  const gameResults: GameResult[] = state.rankings
-    .map((engineId, idx) => {
-      const seat = seatOfEngineId.get(engineId);
-      if (seat === undefined) return null;
-      const placement = idx + 1;
-      const key = scoreKeyForSeat(game, seat);
-      const flags = game.handFlags[seat] ?? { bomb: false, joker: false };
-      // True only for the one FFA seat that was auto-assigned without
-      // emptying its hand — it never counts as one of its own opponents'
-      // finishes, but it also is not itself a "finisher" to subtract out.
-      const isAutoAssignedLast = isFreeForAll && placement === playerCount;
-      const result: GameResult = {
-        userId: key,
-        placement,
-        playerCount,
-        playedBomb: flags.bomb,
-        playedJoker: flags.joker,
-        matchWon: matchWinners.includes(key),
-        opponentsFinished: Math.max(
-          realFinisherCount - (isAutoAssignedLast ? 0 : 1),
-          0
-        ),
-      };
-      return result;
-    })
-    .filter((r): r is GameResult => r !== null);
-
-  // Deliberately not awaited: a stats/history/achievement write must never
-  // be able to block or fail the game-over broadcast below. Any failure
-  // (missing table, slow DB, thrown error) is only logged.
-  recordGameResult(gameResults, game.gameMode).catch((err) =>
-    logger.error({ err, roomId }, "Failed to record game results")
-  );
-
   const winnerNames = matchWinners
     .map(
       (key) =>
@@ -724,6 +704,76 @@ async function handleGameOver(
   // The row is kept (not deleted) so a restart between hands restores the
   // running match instead of silently resetting the scoreboard.
   persistGameState(roomId, game);
+
+  // ── Stats / history / achievements (Task 8) ──────────────────────────────
+  //
+  // Deliberately placed after every broadcast/persist above, not before: the
+  // game-over guarantee is "a stats write must never block or fail the
+  // game", and handleGameOver is itself async with two call sites that
+  // invoke it as bare `void` (see runBotTurn / the game:play handler) — a
+  // throw anywhere above this point would reject its promise and surface as
+  // an unhandled rejection *before* game:over ever reached the room. Putting
+  // the whole block, including the synchronous result-shaping below, after
+  // the broadcast makes that ordering obvious rather than relying on a
+  // try/catch staying in place.
+  try {
+    // `state.rankings` only carries an entry for a player once their
+    // placement is actually known: in free-for-all mode every seat
+    // eventually gets one (the very last active seat is auto-assigned last
+    // place without ever emptying its hand — see processPlay), but in teams
+    // mode the hand can end as soon as one team is done, leaving the losing
+    // team's players with no rankings entry and thus no knowable placement
+    // this hand. Those seats are skipped here, mirroring scoreHand's own
+    // "absent from rankings -> not in the result" contract instead of
+    // inventing a placement for them.
+    const playerCount = state.players.length;
+    const isFreeForAll = game.gameMode !== "teams";
+    // How many seats actually emptied their hand this round (as opposed to
+    // being auto-assigned last place while still holding cards): every FFA
+    // rankings entry except the final one, or every teams rankings entry
+    // (the teams path never auto-assigns — see the comment above).
+    const realFinisherCount = isFreeForAll
+      ? Math.max(playerCount - 1, 0)
+      : state.rankings.length;
+
+    const gameResults: GameResult[] = state.rankings
+      .map((engineId, idx) => {
+        const seat = seatOfEngineId.get(engineId);
+        if (seat === undefined) return null;
+        const placement = idx + 1;
+        const key = scoreKeyForSeat(game, seat);
+        const flags = game.handFlags[seat] ?? { bomb: false, joker: false };
+        // True only for the one FFA seat that was auto-assigned without
+        // emptying its hand — it never counts as one of its own opponents'
+        // finishes, but it also is not itself a "finisher" to subtract out.
+        const isAutoAssignedLast = isFreeForAll && placement === playerCount;
+        const result: GameResult = {
+          userId: key,
+          placement,
+          playerCount,
+          playedBomb: flags.bomb,
+          playedJoker: flags.joker,
+          matchWon: matchWinners.includes(key),
+          opponentsFinished: Math.max(
+            realFinisherCount - (isAutoAssignedLast ? 0 : 1),
+            0
+          ),
+        };
+        return result;
+      })
+      .filter((r): r is GameResult => r !== null);
+
+    // Deliberately not awaited: a stats write must never be able to block
+    // or delay whatever runs after handleGameOver at any of its call sites.
+    recordGameResult(gameResults, game.gameMode).catch((err) =>
+      logger.error({ err, roomId }, "Failed to record game results")
+    );
+  } catch (err) {
+    // Belt-and-braces: even the synchronous shaping above must not be able
+    // to throw back into handleGameOver's own promise (see the comment
+    // above this block).
+    logger.error({ err, roomId }, "Failed to shape game results for stats");
+  }
 }
 
 /** Between hands: a finished match starts over, an unfinished one carries on. */
@@ -1112,12 +1162,9 @@ export function setupSocket(httpServer: HttpServer) {
           return;
         }
 
-        // Achievement bookkeeping (Task 8): the engine has no notion of
-        // "did this seat play a bomb/joker this hand", so it is tracked here,
-        // at the one place every validated human play passes through.
-        const seatFlags = (game.handFlags[currentIdx] ??= { bomb: false, joker: false });
-        if (combo.type === "bomb") seatFlags.bomb = true;
-        if (combo.cards.some((c) => c.isJoker)) seatFlags.joker = true;
+        // Achievement bookkeeping (Task 8) — see recordPlayFlags; this is the
+        // human-initiated path, autoMoveForSeat covers bot/AFK-forced plays.
+        recordPlayFlags(game, currentIdx, combo);
 
         const newState = processPlay(gameState, combo);
         game.gameState = newState;
