@@ -13,11 +13,10 @@
 // from lib/i18n.ts — `import type` erases at compile time, so it does not
 // drag in that module's AsyncStorage/expo-localization dependencies.
 //
-// Task 8 (server/stats.ts) calls `evaluateAchievements` at game-over and
-// persists the returned ids with `onConflictDoNothing`, so an id appearing
-// here on every qualifying game (e.g. every win unlocks "first_win") is by
-// design — idempotent persistence, not "first ever" tracking, is what makes
-// it actually mean "first".
+// `evaluateAchievements` returns every id the result qualifies for, including
+// ones already unlocked. server/stats.ts persists with `onConflictDoNothing`,
+// so idempotent writes — not first-ever tracking — are what make "first_win"
+// mean first.
 import type { TranslationKey } from "./i18n.ts";
 
 /** One completed game's outcome for a single player, as recorded at game over. */

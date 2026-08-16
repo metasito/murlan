@@ -439,9 +439,9 @@ export function getAllValidPlays(
   }
 
   // ── Straights ───────────────────────────────────────────────────────────
-  // Enumerate by SEQUENCE POSITION, not by slicing a sorted array: a duplicate
-  // rank inside the span used to poison every window containing it, which made
-  // legal straights unfindable (e.g. 3-4-5-6-7 out of 3,4,5,5,6,7).
+  // Enumerate by sequence position, not by slicing a sorted array: a duplicate
+  // rank in the span would poison every window containing it, hiding legal
+  // straights such as 3-4-5-6-7 within 3,4,5,5,6,7.
   //
   // Cards are bucketed by straight face value 1..14 (Ace occupies both 1 and
   // 14; a run is capped at 13 cards so it can never use the Ace twice). For a
@@ -706,11 +706,10 @@ export function processPlay(state: GameState, combination: Combination): GameSta
           (p) => p.hand.length > 0 && p.team !== winnerTeam
         ).length === 0
       ) {
-        // The hand is decided, but the losing pair is still owed its
-        // placement points (RULES.md §11/§12: both partners' finishing
-        // positions count). Leaving them out of `rankings` used to mean the
-        // losing team scored nothing and — because the stats writer skips
-        // anyone absent from rankings — never recorded a game played at all.
+        // The hand is decided, but the losing pair is still owed its placement
+        // points (RULES.md §11/§12: both partners' finishing positions count).
+        // Every seat must reach `rankings` — the stats writer skips anyone
+        // absent from it.
         assignRemainingPlacements(newState);
         newState.gameOver = true;
         return newState;

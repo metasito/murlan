@@ -6,9 +6,6 @@
 // cannot parse a .tsx file, and it cannot resolve the `@/` bundler alias at
 // runtime. Type-only imports are erased before resolution, so they are safe;
 // a value import from "@/lib/gameEngine" would break the test suite.
-//
-// Everything here used to exist twice — once in app/game.tsx and once in
-// app/(online)/game.tsx — and had already drifted apart. It lives here once.
 
 import type { Card, Combination, GameState, Player } from "@/lib/gameEngine";
 
