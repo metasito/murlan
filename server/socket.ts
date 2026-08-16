@@ -62,7 +62,10 @@ import {
 } from "../lib/gameEngine.ts";
 import type { GameState, Card, GameMode, Combination, MatchLength } from "../lib/gameEngine.ts";
 import { recordGameResult } from "./stats.ts";
+import { saveReplay } from "./replays.ts";
+import { appendReplayMove, replaySeatsOf, startReplayLog } from "./replayShape.ts";
 import type { GameResult } from "../lib/achievements.ts";
+import type { ReplayMove } from "../lib/replay.ts";
 
 interface OnlineGameState {
   gameState: GameState;
@@ -100,6 +103,17 @@ interface OnlineGameState {
    * who reconnects spectates again, and a restart dropping them costs nothing.
    */
   spectators: Set<string>;
+  /**
+   * This hand's move log, written once to `match_replays` at game over.
+   *
+   * In memory only, unlike handFlags: the game_state envelope is rewritten
+   * after every move, and carrying a few hundred combinations through each of
+   * those writes would buy nothing but a replay of a hand a restart
+   * interrupted — a hand that has no replay yet either way. `null` means this
+   * hand cannot produce one (rehydrated after a restart, or past
+   * MAX_REPLAY_MOVES) and nothing will be written for it.
+   */
+  moveLog: ReplayMove[] | null;
 }
 
 const activeGames = new Map<string, OnlineGameState>();
@@ -161,7 +175,7 @@ export const __testables = {
   actingSeat: (state: GameState) => actingSeat(state),
   autoMoveForSeat: (state: GameState, seat: number, useAi: boolean) =>
     autoMoveForSeat(
-      { gameState: state, handFlags: {} } as OnlineGameState,
+      { gameState: state, handFlags: {}, moveLog: null } as OnlineGameState,
       seat,
       useAi
     ),
@@ -172,7 +186,7 @@ export const __testables = {
    * bare GameState result can't expose.
    */
   autoMoveForSeatWithFlags: (state: GameState, seat: number, useAi: boolean) => {
-    const game = { gameState: state, handFlags: {} } as OnlineGameState;
+    const game = { gameState: state, handFlags: {}, moveLog: null } as OnlineGameState;
     const next = autoMoveForSeat(game, seat, useAi);
     return { state: next, handFlags: game.handFlags };
   },
@@ -418,6 +432,12 @@ function autoMoveForSeat(
   // The start card is only mandatory for the very first play of the hand.
   const requireCard = !state.firstPlayMade ? state.startCard : undefined;
 
+  /** Records the move for the replay log and hands back the state it produced. */
+  const logged = (combo: Combination | null, next: GameState): GameState => {
+    appendReplayMove(game, seat, combo, next);
+    return next;
+  };
+
   if (useAi) {
     const otherCounts = state.players
       .filter((_, i) => i !== seat)
@@ -431,9 +451,9 @@ function autoMoveForSeat(
     );
     if (combo) {
       recordPlayFlags(game, seat, combo);
-      return processPlay(state, combo);
+      return logged(combo, processPlay(state, combo));
     }
-    if (!isNewRound) return processPass(state);
+    if (!isNewRound) return logged(null, processPass(state));
     // A new round cannot be passed — fall through to the forced minimum play.
   }
 
@@ -448,10 +468,10 @@ function autoMoveForSeat(
     const combo = buildCombination([card]);
     if (!combo) return null;
     recordPlayFlags(game, seat, combo);
-    return processPlay(state, combo);
+    return logged(combo, processPlay(state, combo));
   }
 
-  return processPass(state);
+  return logged(null, processPass(state));
 }
 
 /**
@@ -847,6 +867,20 @@ async function handleGameOver(
       recordGameResult(gameResults, game.gameMode).catch((err) =>
         logger.error({ err, roomId }, "Failed to record game results")
       );
+    }
+
+    // A replay is written for any table with a human seat, bot-majority ones
+    // included: it records what happened, it awards nothing. Not awaited, and
+    // the table is not required to exist — until `db:push` has run the insert
+    // fails, is logged, and the only consequence is an empty replays list.
+    if (game.moveLog && game.moveLog.length > 0) {
+      saveReplay({
+        roomCode: roomId,
+        gameMode: game.gameMode,
+        seats: replaySeatsOf(state.players, game.playerMap),
+        moves: game.moveLog,
+        rankings: state.rankings,
+      }).catch((err) => logger.error({ err, roomId }, "Failed to save replay"));
     }
   } catch (err) {
     // Belt-and-braces: even the synchronous shaping above must not be able
@@ -1262,6 +1296,7 @@ export function setupSocket(httpServer: HttpServer) {
           matchOver: previous?.matchOver ?? false,
           handFlags: {},
           spectators: new Set<string>(),
+          moveLog: startReplayLog(),
         };
         rollMatchForward(newGame);
         activeGames.set(roomId, newGame);
@@ -1352,6 +1387,7 @@ export function setupSocket(httpServer: HttpServer) {
         recordPlayFlags(game, currentIdx, combo);
 
         const newState = processPlay(gameState, combo);
+        appendReplayMove(game, currentIdx, combo, newState);
         game.gameState = newState;
 
         broadcastGameState(io, game);
@@ -1392,7 +1428,9 @@ export function setupSocket(httpServer: HttpServer) {
           return;
         }
 
-        game.gameState = processPass(gameState);
+        const newState = processPass(gameState);
+        appendReplayMove(game, currentIdx, null, newState);
+        game.gameState = newState;
 
         broadcastGameState(io, game);
         persistGameState(roomId, game);
@@ -1474,8 +1512,10 @@ export function setupSocket(httpServer: HttpServer) {
         game.gameMode = room.gameMode;
         game.maxPlayers = room.maxPlayers;
         // A rematch deals a brand new hand — last hand's bomb/joker plays
-        // must not leak into this one's achievement evaluation.
+        // must not leak into this one's achievement evaluation, and its move
+        // log has already been written to its own replay.
         game.handFlags = {};
+        game.moveLog = startReplayLog();
         rollMatchForward(game);
 
         await storage.updateRoomStatus(roomId, "in_progress");
@@ -1603,6 +1643,9 @@ export function setupSocket(httpServer: HttpServer) {
                 : !!restoredResolution && restoredResolution.newTarget === null,
             handFlags: restoredHandFlags,
             spectators: new Set<string>(),
+            // The log is memory-only, so a hand restored after a restart has
+            // none and produces no replay. The next hand starts a fresh one.
+            moveLog: null,
           };
           activeGames.set(roomCode, game);
           if (row.isPublic) publicRoomIds.add(roomCode);
