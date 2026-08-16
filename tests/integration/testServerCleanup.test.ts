@@ -14,13 +14,17 @@ import { hasDatabase, skipMessage, startTestServer } from "../helpers/testServer
  * cleanly via hasDatabase()/skipMessage() when none is configured.
  */
 
-async function countTestSchemas(connectionString: string): Promise<number> {
+async function schemaExists(
+  connectionString: string,
+  schemaName: string
+): Promise<boolean> {
   const admin = new pg.Pool({ connectionString });
   try {
-    const { rows } = await admin.query<{ count: string }>(
-      `SELECT count(*)::text AS count FROM information_schema.schemata WHERE schema_name LIKE 'test\\_%'`
+    const { rows } = await admin.query<{ exists: boolean }>(
+      `SELECT EXISTS(SELECT 1 FROM information_schema.schemata WHERE schema_name = $1) AS exists`,
+      [schemaName]
     );
-    return Number(rows[0].count);
+    return rows[0].exists;
   } finally {
     await admin.end();
   }
@@ -33,8 +37,24 @@ test("startTestServer() cleans up after a failure during schema push", async (t)
   }
 
   const originalDatabaseUrl = process.env.DATABASE_URL!;
-  const before = await countTestSchemas(originalDatabaseUrl);
 
+  // First, verify the happy path: schema is created and then dropped on stop()
+  const server = await startTestServer();
+  const testSchema = server.schema;
+
+  const existsBeforeStop = await schemaExists(originalDatabaseUrl, testSchema);
+  assert.ok(existsBeforeStop, `the created schema ${testSchema} must exist`);
+
+  await server.stop();
+
+  const existsAfterStop = await schemaExists(originalDatabaseUrl, testSchema);
+  assert.equal(
+    existsAfterStop,
+    false,
+    `the schema ${testSchema} must be dropped on stop()`
+  );
+
+  // Then, verify the failure path: schema is created but dropped when DDL fails
   await assert.rejects(
     () => startTestServer({ ddlOverride: "THIS IS NOT VALID SQL AT ALL;" }),
     /syntax error/i,
@@ -45,12 +65,5 @@ test("startTestServer() cleans up after a failure during schema push", async (t)
     process.env.DATABASE_URL,
     originalDatabaseUrl,
     "DATABASE_URL must be restored to its original value after a failed startTestServer()"
-  );
-
-  const after = await countTestSchemas(originalDatabaseUrl);
-  assert.equal(
-    after,
-    before,
-    "the throwaway schema created before the DDL failure must be dropped, not leaked"
   );
 });
