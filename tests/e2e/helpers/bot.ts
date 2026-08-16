@@ -122,6 +122,14 @@ async function playOrPass(page: Page, desc: string): Promise<string | null> {
   const giocaBtn = page.locator('[data-testid="btn-gioca"]');
   const passBtn = page.locator('[data-testid="btn-passa"]');
 
+  // An empty hand is the end of the race described above, not a stuck table:
+  // the viewer has just played their last card, the hand is already gone, and
+  // the table's own description has not caught up for a tick. The
+  // play-or-pass invariant below is about a hand that still has cards in it —
+  // asserting it here turns a finished game into a failure. Handing back null
+  // lets the caller's isFinished check see the game-over overlay.
+  if (labels.length === 0) return null;
+
   function cardByLabel(label: string): Locator {
     return page.locator(`${HAND_CARDS}${labelSelector(label)}`);
   }

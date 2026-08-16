@@ -560,11 +560,17 @@ export function CardView({
         accessibilityElementsHidden={decorative}
         importantForAccessibility={decorative ? "no-hide-descendants" : "auto"}
         accessibilityLabel={decorative ? undefined : cardSpokenName(card, t)}
-        // A card that cannot be pressed is information, not a control: the
+        // A card with no onPress at all is information, not a control: the
         // pile, and the card the loser hands over between hands. It keeps its
         // name so a screen reader can read it, but claiming `button` there
         // announces an action that does not exist.
-        accessibilityRole={interactive ? "button" : undefined}
+        //
+        // A card that *has* an onPress but is momentarily disabled — the hand
+        // while it is not your turn — stays a button and reports itself
+        // unavailable, which is what a screen reader expects of a control that
+        // will come back. Dropping the role there would make the hand vanish
+        // and reappear in the button rotation every turn.
+        accessibilityRole={onPress ? "button" : undefined}
         accessibilityHint={
           decorative || !selected ? undefined : t("cardView.selectedA11yHint")
         }

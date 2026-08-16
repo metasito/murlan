@@ -60,9 +60,14 @@ describe('CardView decorative', () => {
     expect(view.queryAllByRole('button')).toHaveLength(1);
   });
 
-  it('is not a button while it is disabled', async () => {
+  // A control that is temporarily unavailable is still a control. Dropping the
+  // role would make the whole hand leave and rejoin a screen reader's button
+  // rotation on every turn, and it is what the E2E harness locates cards by.
+  it('stays a button while disabled, and reports itself unavailable', async () => {
     const view = await render(<CardView card={ACE} onPress={() => {}} disabled />);
-    expect(view.queryAllByRole('button')).toHaveLength(0);
+    const buttons = view.queryAllByRole('button');
+    expect(buttons).toHaveLength(1);
+    expect(buttons[0].props.accessibilityState?.disabled).toBe(true);
   });
 
   it('is silent when it is the content of an enclosing labelled control', async () => {
