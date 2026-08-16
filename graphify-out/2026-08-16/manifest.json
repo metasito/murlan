@@ -90,8 +90,8 @@
     "semantic_hash": "34794b19082d0cd2d02fe4c3ac1e3767"
   },
   "components/CardView.tsx": {
-    "mtime": 1786892167.120818,
-    "ast_hash": "8b1b2715e8965006905a68cd97436389",
+    "mtime": 1786915008.6517465,
+    "ast_hash": "7febbd4eedfa5765abea7570a9bf64a8",
     "semantic_hash": ""
   },
   "components/ErrorBoundary.tsx": {
@@ -115,8 +115,8 @@
     "semantic_hash": ""
   },
   "components/GameShared.tsx": {
-    "mtime": 1786902659.8453438,
-    "ast_hash": "a960704373de648baa329991cab9ec31",
+    "mtime": 1786915008.7006314,
+    "ast_hash": "5949120531b0b3bf11a9f6b4b540c6ca",
     "semantic_hash": ""
   },
   "components/MenuButton.tsx": {
@@ -145,8 +145,8 @@
     "semantic_hash": ""
   },
   "components/SettingsModal.tsx": {
-    "mtime": 1786896337.9295368,
-    "ast_hash": "0996cd3a52d6ec657267d391d9d0a35d",
+    "mtime": 1786914857.7421794,
+    "ast_hash": "60b6be5f79069daca4dca34c8b3f62c7",
     "semantic_hash": ""
   },
   "context/AuthContext.tsx": {
@@ -170,8 +170,8 @@
     "semantic_hash": ""
   },
   "context/SettingsContext.tsx": {
-    "mtime": 1786896240.1399653,
-    "ast_hash": "3392ea21d9e0bfa4073c0143be6041ab",
+    "mtime": 1786915008.7207928,
+    "ast_hash": "e31e5d757e2cc68f9a1cc2ecd08f89b7",
     "semantic_hash": ""
   },
   "context/SocketContext.tsx": {
@@ -185,8 +185,8 @@
     "semantic_hash": "0d23c328c6159074d5b761ef61305f22"
   },
   "eslint.config.js": {
-    "mtime": 1786888345.066087,
-    "ast_hash": "98b191698187ae3c0bf5ee92385c2cd6",
+    "mtime": 1786914727.4048095,
+    "ast_hash": "27b4fb2d25c88e01dbcce7c58b44d22d",
     "semantic_hash": ""
   },
   "lib/gameEngine.ts": {
@@ -220,8 +220,8 @@
     "semantic_hash": ""
   },
   "lib/theme.ts": {
-    "mtime": 1786886442.2794306,
-    "ast_hash": "759374c78b5da90f90ed5fd7c796aa95",
+    "mtime": 1786914714.9047835,
+    "ast_hash": "3d3867abdcdd45e2e9064b9e89e18db7",
     "semantic_hash": ""
   },
   "metro.config.js": {
@@ -985,8 +985,8 @@
     "semantic_hash": ""
   },
   "components/GameTable.tsx": {
-    "mtime": 1786914116.5455098,
-    "ast_hash": "a717f13bce0475b19b7a12da09c58c20",
+    "mtime": 1786915008.6749375,
+    "ast_hash": "c02185c33043bc4f5237e393f49838d1",
     "semantic_hash": ""
   },
   "components/ReactionLayer.tsx": {
@@ -1030,23 +1030,23 @@
     "semantic_hash": ""
   },
   "lib/tokens.ts": {
-    "mtime": 1786913877.1816533,
-    "ast_hash": "5acfd873e339b93c304b770be93d579e",
+    "mtime": 1786914628.5958269,
+    "ast_hash": "e9e1c5696a56339410317c22b01500ce",
     "semantic_hash": ""
   },
   "locales/en.ts": {
-    "mtime": 1786913898.7199595,
-    "ast_hash": "8dcc8575d0e44d4f1c80df56b31a1c8f",
+    "mtime": 1786914851.7092397,
+    "ast_hash": "b23d2b342f3d8c33cd921bf5749f0980",
     "semantic_hash": ""
   },
   "locales/it.ts": {
-    "mtime": 1786913898.7189548,
-    "ast_hash": "c3753d62730f8bc31469f09e2cb83819",
+    "mtime": 1786914851.707239,
+    "ast_hash": "eb20287a3b030722d728075983ea14bb",
     "semantic_hash": ""
   },
   "locales/sq.ts": {
-    "mtime": 1786913898.722068,
-    "ast_hash": "bbbd58fb49dc7dfc156d5e5550a803a7",
+    "mtime": 1786914851.7102394,
+    "ast_hash": "b8108b0291f5beef18e8e78ad748fdc6",
     "semantic_hash": ""
   },
   "scripts/bundle-report.mjs": {
@@ -2070,8 +2070,8 @@
     "semantic_hash": ""
   },
   "CLAUDE.md": {
-    "mtime": 1786914242.4980645,
-    "ast_hash": "2ea63adb19c76969827627ebb22852b9",
+    "mtime": 1786915086.7335663,
+    "ast_hash": "92c694fd57a13c393c18cb5361dfc928",
     "semantic_hash": ""
   },
   "README.md": {
@@ -2080,8 +2080,8 @@
     "semantic_hash": ""
   },
   "docs/ARCHITECTURE.md": {
-    "mtime": 1786914219.9466794,
-    "ast_hash": "ca17e6e78c01a231eabdbe7eda1cee9d",
+    "mtime": 1786915094.2197702,
+    "ast_hash": "090206c69713c43d84c318408235aa34",
     "semantic_hash": ""
   },
   "docs/BRIEF.md": {
@@ -2335,8 +2335,8 @@
     "semantic_hash": ""
   },
   "docs/BACKLOG.md": {
-    "mtime": 1786914230.7622528,
-    "ast_hash": "1f36c712661579e10bb7d830ab53c7ab",
+    "mtime": 1786915086.7335663,
+    "ast_hash": "4839185d6fc8fc5af8b691517267a9d5",
     "semantic_hash": ""
   },
   "docs/HANDOFF.md": {
@@ -2447,6 +2447,16 @@
   "docs/superpowers/plans/2026-08-16-murlan-replay.md": {
     "mtime": 1786913459.7179606,
     "ast_hash": "a871df1d8442992447a91b18c330d418",
+    "semantic_hash": ""
+  },
+  "lib/cosmetics.ts": {
+    "mtime": 1786914995.4256542,
+    "ast_hash": "6c27930c623494aa7a175dae88e0eeee",
+    "semantic_hash": ""
+  },
+  "tests/cosmetics.test.ts": {
+    "mtime": 1786914890.2392879,
+    "ast_hash": "590481de80721e1b8f1e5c4e0e6d3a60",
     "semantic_hash": ""
   }
 }

@@ -21,6 +21,7 @@ import { usePrefersReducedMotion } from "@/lib/accessibility";
 import type { GameMode } from "@/lib/gameEngine";
 import type { ReplaySummary } from "@/lib/replay";
 import { REPLAY_RETENTION_DAYS } from "@/lib/replay";
+import { PROVISIONAL_GAMES } from "@/lib/rating";
 
 type TFn = (key: TranslationKey, params?: TranslationParams) => string;
 type TnFn = (base: string, count: number, params?: TranslationParams) => string;
@@ -39,6 +40,13 @@ interface UserStatsDto {
   dailyStreak: number;
   bombsPlayed: number;
   updatedAt: string;
+}
+
+interface RatingDto {
+  season: string;
+  rating: number;
+  games: number;
+  provisional: boolean;
 }
 
 interface MatchHistoryDto {
@@ -149,11 +157,13 @@ export default function ProfileScreen() {
   const historyQuery = useQuery<MatchHistoryDto[]>({ queryKey: ["/api/stats/history"] });
   const achievementsQuery = useQuery<AchievementStatusDto[]>({ queryKey: ["/api/stats/achievements"] });
   const replaysQuery = useQuery<ReplaySummary[]>({ queryKey: ["/api/replays"] });
+  const ratingQuery = useQuery<RatingDto>({ queryKey: ["/api/ratings/me"] });
 
   const stats = statsQuery.data;
   const history = historyQuery.data ?? [];
   const achievements = achievementsQuery.data ?? [];
   const replays = replaysQuery.data ?? [];
+  const rating = ratingQuery.data;
   const unlockedCount = achievements.filter((a) => a.unlocked).length;
   const winRate = stats && stats.gamesPlayed > 0 ? Math.round((stats.gamesWon / stats.gamesPlayed) * 100) : 0;
 
@@ -278,6 +288,34 @@ export default function ProfileScreen() {
                   })}
                 </View>
               )}
+            </MenuCard>
+          </Animated.View>
+
+          {/* ── Classifica ── */}
+          <Animated.View entering={entering}>
+            <MenuCard title={t("ladder.cardTitle")}>
+              {ratingQuery.isLoading && <LoadingBlock label={t("ladder.loadingA11yLabel")} />}
+              {rating && (
+                <View style={styles.ratingBlock} accessible
+                  accessibilityLabel={`${t("ladder.ratingLabel")}: ${rating.rating}. ${t("ladder.seasonLabel", { season: rating.season })}`}
+                >
+                  <Text style={styles.ratingValue}>{rating.rating}</Text>
+                  <Text style={styles.ratingSeason}>{t("ladder.seasonLabel", { season: rating.season })}</Text>
+                  <Text style={styles.ratingGames}>
+                    {rating.provisional
+                      ? t("ladder.provisional", { n: PROVISIONAL_GAMES - rating.games })
+                      : t("ladder.gamesLabel", { n: rating.games })}
+                  </Text>
+                </View>
+              )}
+              <MenuButton
+                label={t("ladder.open")}
+                onPress={() => router.push("/(online)/leaderboard")}
+                variant="secondary"
+                size="sm"
+                accessibilityLabel={t("ladder.open")}
+                icon={<Ionicons name="trophy-outline" size={16} color={Colors.gold} />}
+              />
             </MenuCard>
           </Animated.View>
 
@@ -465,6 +503,11 @@ const styles = StyleSheet.create({
   statLabel: { ...Type.caption, textAlign: "center" },
 
   listBlock: { gap: Spacing.sm },
+
+  ratingBlock: { alignItems: "center", gap: Spacing.xs / 2, paddingBottom: Spacing.md },
+  ratingValue: { fontFamily: "Rajdhani_700Bold", fontSize: FontSize.hero, color: Colors.gold },
+  ratingSeason: { ...Type.label },
+  ratingGames: { ...Type.caption, textAlign: "center" },
 
   row: {
     flexDirection: "row",

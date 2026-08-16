@@ -130,8 +130,10 @@ what the code does now; a claim that no longer holds is removed the moment it is
 | `lib/streak.ts` | Consecutive-days-played, pure |
 | `lib/botPersonalities.ts` | The five named AI opponents. Pure; the only place a bot's name, tier or knobs are defined |
 | `lib/replay.ts` | A finished hand's stored shape, and the fold back into a `GameState`. Pure, and the one home of `REPLAY_RETENTION_DAYS` |
+| `lib/rating.ts` | The ladder's arithmetic: pairwise Elo over placement, the season key, the soft reset. Pure |
 | `lib/cosmetics.ts` | The card backs and table felts, and the module store `SettingsProvider` pushes the choice into. Consumers read it with `useCardBack`/`useTableFelt` rather than the context, which would drag expo-audio into every card |
 | `server/replays.ts` | `match_replays` reads and writes. `server/replayShape.ts` is its pure half, so tests can load it |
+| `server/ratings.ts` | `user_ratings` reads and writes, and the leaderboard query |
 | `lib/tokens.ts` | Pure design tokens (Colors, Spacing, Radius, FontSize, Type, Motion, Scrim, Highlight, FeltGradient, FeltGradients, CardBacks). No react-native import, so tests can load it |
 | `lib/theme.ts` | Re-exports the tokens and adds the platform-aware `Shadow`. Import from here in components |
 | `server/index.ts` | Express entry point |

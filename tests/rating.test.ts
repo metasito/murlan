@@ -7,6 +7,7 @@ import {
   START_RATING,
   expectedScore,
   kFactor,
+  ratedFinishers,
   ratingDeltas,
   seasonKey,
   seedRating,
@@ -159,4 +160,37 @@ test("a new season keeps half the distance from the mean", () => {
 test("the provisional gate is smaller than the window K treats as new", () => {
   assert.ok(PROVISIONAL_GAMES > 0);
   assert.equal(kFactor(PROVISIONAL_GAMES), kFactor(0), "still provisional-speed at the gate");
+});
+
+test("bots are dropped and the humans renumbered among themselves", () => {
+  // A bot took second of four; the humans placed 1st, 3rd and 4th.
+  const rated = ratedFinishers([
+    { userId: "u1", placement: 1 },
+    { userId: "bot:2", placement: 2 },
+    { userId: "u2", placement: 3 },
+    { userId: "u3", placement: 4 },
+  ]);
+  assert.deepEqual(rated, [
+    { userId: "u1", placement: 1 },
+    { userId: "u2", placement: 2 },
+    { userId: "u3", placement: 3 },
+  ]);
+});
+
+// Renumbering is what keeps `actual` inside [0, 1]: a placement above the
+// number of rated seats would make it negative and invert the result.
+test("renumbered placements always produce a well-formed contest", () => {
+  const rated = ratedFinishers([
+    { userId: "bot:0", placement: 1 },
+    { userId: "u1", placement: 2 },
+    { userId: "bot:2", placement: 3 },
+    { userId: "u2", placement: 4 },
+  ]);
+  const deltas = ratingDeltas(rated.map((r) => seat(r.userId, r.placement)));
+  assert.equal(deltas.get("u1"), kFactor(30) / 2, "the better human wins the pair outright");
+  assert.equal(sum(deltas), 0);
+});
+
+test("a table of one human plus bots is not a contest", () => {
+  assert.equal(ratedFinishers([{ userId: "u1", placement: 1 }, { userId: "bot:1", placement: 2 }]).length, 1);
 });

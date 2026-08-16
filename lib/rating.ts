@@ -55,6 +55,28 @@ export function expectedScore(a: number, b: number): number {
   return 1 / (1 + 10 ** ((b - a) / 400));
 }
 
+/** Bot seats carry this synthetic id instead of a real users.id — the same
+ *  convention scoring and history already use (server/onlineGameLogic.ts). */
+const BOT_ID_PREFIX = "bot:";
+
+/**
+ * The human seats of a finished hand, renumbered 1..n among themselves.
+ *
+ * Renumbering is the part that is easy to get wrong: with a bot finishing
+ * second of four, the humans placed 1st, 3rd and 4th, and rating them on those
+ * numbers would treat a three-player result as if two seats were missing —
+ * `actual` is derived from `n - placement`, so a placement above `n` goes
+ * negative. Among the people being rated, that third place *is* second.
+ */
+export function ratedFinishers(
+  seatResults: { userId: string; placement: number }[]
+): { userId: string; placement: number }[] {
+  return seatResults
+    .filter((r) => !r.userId.startsWith(BOT_ID_PREFIX))
+    .sort((a, b) => a.placement - b.placement)
+    .map((r, i) => ({ userId: r.userId, placement: i + 1 }));
+}
+
 export interface RatedSeat {
   userId: string;
   rating: number;

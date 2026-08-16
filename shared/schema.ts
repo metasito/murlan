@@ -130,6 +130,20 @@ export const matchReplays = pgTable("match_replays", {
   rankings: jsonb("rankings").notNull().default([]),
 }, (t) => [index("match_replays_finished_idx").on(t.finishedAt)]);
 
+// One row per player per season. `season` is part of the key rather than a
+// value that gets overwritten, so a reset is a new row and the previous
+// season stays readable.
+export const userRatings = pgTable("user_ratings", {
+  userId: varchar("user_id").references(() => users.id, { onDelete: "cascade" }).notNull(),
+  season: text("season").notNull(),
+  rating: integer("rating").notNull(),
+  games: integer("games").notNull().default(0),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+}, (t) => [
+  primaryKey({ columns: [t.userId, t.season] }),
+  index("user_ratings_season_idx").on(t.season, t.rating),
+]);
+
 export const insertUserSchema = createInsertSchema(users).pick({
   username: true,
   password: true,

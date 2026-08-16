@@ -344,6 +344,22 @@ export const sq: Record<keyof typeof it, string> = {
   "cosmetics.felt.bordeaux": "Bordo",
   "cosmetics.felt.notte": "Natë",
 
+  // ---------------------------------------------------------------- ladder.*
+  "ladder.title": "Klasifikimi",
+  "ladder.cardTitle": "I klasifikuar",
+  "ladder.ratingLabel": "Vlerësimi",
+  "ladder.seasonLabel": "Sezoni {{season}}",
+  "ladder.gamesLabel": "{{n}} duar të klasifikuara",
+  "ladder.provisional": "I përkohshëm — edhe {{n}} duar për të hyrë në klasifikim",
+  "ladder.open": "Shiko klasifikimin",
+  "ladder.loadingA11yLabel": "Duke ngarkuar klasifikimin",
+  "ladder.errorTitle": "Klasifikimi i padisponueshëm",
+  "ladder.errorRetry": "Provo përsëri",
+  "ladder.emptyTitle": "Askush i klasifikuar",
+  "ladder.emptyBody": "Duhen {{n}} duar të klasifikuara për të dalë këtu.",
+  "ladder.rowA11yLabel": "{{rank}}: {{name}}, {{rating}} pikë",
+  "ladder.rankedOnlyNote": "Vetëm online të gjithë kundër të gjithëve, pa botë.",
+
   // -------------------------------------------------------------------- bot.*
   // The names are proper nouns and stay as they are; only the play style is translated.
   "bot.luanBlurb": "Impulsiv dhe i paparashikueshëm",

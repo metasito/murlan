@@ -11,6 +11,7 @@ import { emitToUser, isUserOnline } from "./socket.ts";
 import { mintSocketTicket } from "./ticket.ts";
 import { getUserStats, getMatchHistory, getUserAchievements } from "./stats.ts";
 import { getReplayForUser, listReplaysForUser } from "./replays.ts";
+import { getLeaderboard, getRating } from "./ratings.ts";
 import { z } from "zod";
 
 declare module "express-session" {
@@ -333,6 +334,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get("/api/stats/history", requireAuth, async (req, res) => {
     const history = await getMatchHistory(req.session.userId!);
     res.json(history);
+  });
+
+  // ── Ranked ladder ─────────────────────────────────────────────────────────
+  //
+  // The season is derived from the clock on every read, so a month boundary
+  // needs no job to cross: `getRating` seeds the new season from the previous
+  // one and only writes when a rated hand actually finishes.
+  app.get("/api/ratings/me", requireAuth, async (req, res) => {
+    res.json(await getRating(req.session.userId!, new Date()));
+  });
+
+  app.get("/api/ratings/leaderboard", requireAuth, async (_req, res) => {
+    res.json(await getLeaderboard(new Date()));
   });
 
   // ── Replays ───────────────────────────────────────────────────────────────

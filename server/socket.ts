@@ -63,6 +63,7 @@ import {
 import type { GameState, Card, GameMode, Combination, MatchLength } from "../lib/gameEngine.ts";
 import { recordGameResult } from "./stats.ts";
 import { saveReplay } from "./replays.ts";
+import { recordRatedResult } from "./ratings.ts";
 import { appendReplayMove, replaySeatsOf, startReplayLog } from "./replayShape.ts";
 import type { GameResult } from "../lib/achievements.ts";
 import type { ReplayMove } from "../lib/replay.ts";
@@ -866,6 +867,16 @@ async function handleGameOver(
       // or delay whatever runs after handleGameOver at any of its call sites.
       recordGameResult(gameResults, game.gameMode).catch((err) =>
         logger.error({ err, roomId }, "Failed to record game results")
+      );
+    }
+
+    // The ladder moves on the same gate as stats: a bot-majority table awards
+    // nothing, or a private room of bots would be free rating. Human seats only,
+    // and free-for-all only — recordRatedResult declines a teams result, whose
+    // placement belongs to the pair rather than to either partner.
+    if (isContestedTable(humanSeats, botSeats)) {
+      recordRatedResult(gameResults, game.gameMode, new Date()).catch((err) =>
+        logger.error({ err, roomId }, "Failed to record rated result")
       );
     }
 

@@ -318,6 +318,22 @@ export const en: Record<keyof typeof it, string> = {
   "cosmetics.felt.bordeaux": "Burgundy",
   "cosmetics.felt.notte": "Night",
 
+  // ---------------------------------------------------------------- ladder.*
+  "ladder.title": "Leaderboard",
+  "ladder.cardTitle": "Ranked",
+  "ladder.ratingLabel": "Rating",
+  "ladder.seasonLabel": "Season {{season}}",
+  "ladder.gamesLabel": "{{n}} ranked hands",
+  "ladder.provisional": "Provisional — {{n}} more hands to enter the leaderboard",
+  "ladder.open": "View the leaderboard",
+  "ladder.loadingA11yLabel": "Loading leaderboard",
+  "ladder.errorTitle": "Leaderboard unavailable",
+  "ladder.errorRetry": "Retry",
+  "ladder.emptyTitle": "Nobody ranked yet",
+  "ladder.emptyBody": "It takes {{n}} ranked hands to appear here.",
+  "ladder.rowA11yLabel": "{{rank}}: {{name}}, {{rating}} points",
+  "ladder.rankedOnlyNote": "Online free-for-all only, no bots.",
+
   // -------------------------------------------------------------------- bot.*
   // The names are proper nouns and stay as they are; only the play style is translated.
   "bot.luanBlurb": "Impulsive and unpredictable",

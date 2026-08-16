@@ -333,6 +333,22 @@ export const it = {
   "cosmetics.felt.bordeaux": "Bordeaux",
   "cosmetics.felt.notte": "Notte",
 
+  // ---------------------------------------------------------------- ladder.*
+  "ladder.title": "Classifica",
+  "ladder.cardTitle": "Classifica",
+  "ladder.ratingLabel": "Punteggio",
+  "ladder.seasonLabel": "Stagione {{season}}",
+  "ladder.gamesLabel": "{{n}} mani classificate",
+  "ladder.provisional": "Provvisorio — ancora {{n}} mani per entrare in classifica",
+  "ladder.open": "Vedi la classifica",
+  "ladder.loadingA11yLabel": "Caricamento classifica",
+  "ladder.errorTitle": "Classifica non disponibile",
+  "ladder.errorRetry": "Riprova",
+  "ladder.emptyTitle": "Classifica vuota",
+  "ladder.emptyBody": "Servono {{n}} mani classificate per comparire qui.",
+  "ladder.rowA11yLabel": "{{rank}}º: {{name}}, {{rating}} punti",
+  "ladder.rankedOnlyNote": "Solo partite online tutti contro tutti, senza bot.",
+
   // -------------------------------------------------------------------- bot.*
   // The names are proper nouns and stay as they are; only the play style is translated.
   "bot.luanBlurb": "Impulsivo e imprevedibile",

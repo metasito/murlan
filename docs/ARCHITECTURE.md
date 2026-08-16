@@ -112,6 +112,12 @@ later turns.
   to up to four players, so a per-player cap could not delete one alone. The write is not
   awaited and the table is not required to exist: until `npm run db:push` has run the
   insert fails, is logged, and the only consequence is an empty replays list.
+- **`user_ratings`**: one row per player per season, primary key `(user_id, season)`.
+  The season is `YYYY-MM` **derived from the clock**, never written by a scheduled job:
+  a reset that has to run on a host that sleeps is a reset that eventually does not.
+  A new season is a new row seeded from half the previous one's distance to 1000, so
+  last season stays readable. Written per manche beside the stats write, on the same
+  `isContestedTable` gate, free-for-all only. Not awaited and not required to exist.
 - **`rooms` / `room_players` / `friends` / `users`**: relational state for lobby, matchmaking
   and the friends system, unrelated to in-hand game state.
 
