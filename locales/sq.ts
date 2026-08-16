@@ -127,6 +127,7 @@ export const sq: Record<keyof typeof it, string> = {
   "home.modeOffline": "Offline",
   "home.modePlayWithFriends": "Luaj me miq",
   "home.modeOnline": "Online",
+  "home.modeProfile": "Profili im",
   "home.modeTutorial": "Tutorial",
   "home.modeRules": "Rregullat & FAQ",
 
@@ -598,4 +599,39 @@ export const sq: Record<keyof typeof it, string> = {
   "achievements.matchChampion.desc": "Fito një ndeshje të plotë duke arritur pikëzimin final.",
   "achievements.ironWill.name": "Vullnet i Hekurt",
   "achievements.ironWill.desc": "Fito një ndeshje të plotë pa luajtur Xholi në manchen përfundimtare.",
+
+  // ------------------------------------------------------------- profile.*
+  "profile.title": "Profili",
+  "profile.loggedInAs": "Identifikuar si {{username}}",
+
+  "profile.statsTitle": "Statistikat",
+  "profile.statsLoadingA11yLabel": "Duke ngarkuar statistikat",
+  "profile.statsErrorTitle": "Nuk u ngarkuan dot statistikat",
+  "profile.retryStatsA11yLabel": "Provo përsëri të ngarkosh statistikat",
+  "profile.statsEmptyTitle": "Ende asnjë lojë",
+  "profile.statsEmptyBody": "Luaj mancën tënde të parë për të filluar ndërtimin e statistikave.",
+  "profile.statGamesPlayed": "Manche të luajtura",
+  "profile.statGamesWon": "Manche të fituara",
+  "profile.statWinRate": "% fitoresh",
+  "profile.statMatchesWon": "Ndeshje të fituara",
+  "profile.statCurrentStreak": "Seria aktuale",
+  "profile.statBestStreak": "Seria më e mirë",
+  "profile.statBombsPlayed": "Bomba të luajtura",
+
+  "profile.historyTitle": "Ndeshjet e fundit",
+  "profile.historyLoadingA11yLabel": "Duke ngarkuar historikun e ndeshjeve",
+  "profile.historyErrorTitle": "Nuk u ngarkua dot historiku",
+  "profile.retryHistoryA11yLabel": "Provo përsëri të ngarkosh historikun",
+  "profile.historyEmptyTitle": "Ende asnjë ndeshje",
+  "profile.historyEmptyBody": "Historiku i ndeshjeve të tua do të shfaqet këtu sapo të luash mancën tënde të parë.",
+  "profile.historyPlayers_one": "{{count}} lojtar",
+  "profile.historyPlayers_other": "{{count}} lojtarë",
+  "profile.historyRowA11yLabel": "Vendi {{position}}, {{mode}}, {{points}} pikë, {{time}}",
+
+  "profile.achievementsTitle": "Arritjet",
+  "profile.achievementsLoadingA11yLabel": "Duke ngarkuar arritjet",
+  "profile.achievementsErrorTitle": "Nuk u ngarkuan dot arritjet",
+  "profile.retryAchievementsA11yLabel": "Provo përsëri të ngarkosh arritjet",
+  "profile.achievementLockedLabel": "E kyçur",
+  "profile.achievementUnlockedOn": "E zhbllokuar · {{time}}",
 };

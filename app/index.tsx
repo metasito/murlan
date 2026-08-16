@@ -37,6 +37,7 @@ interface MenuButtonProps {
   accent?: boolean;
   disabled?: boolean;
   compact?: boolean;
+  accessibilityLabel?: string;
 }
 
 function MenuButton({
@@ -47,6 +48,7 @@ function MenuButton({
   accent = false,
   disabled = false,
   compact = false,
+  accessibilityLabel,
 }: MenuButtonProps) {
   const opacity = useSharedValue(0);
   const translateY = useSharedValue(30);
@@ -80,6 +82,9 @@ function MenuButton({
       <Pressable
         onPress={handlePress}
         disabled={disabled}
+        accessibilityRole="button"
+        accessibilityLabel={accessibilityLabel ?? label}
+        accessibilityState={{ disabled }}
         style={({ pressed }) => [
           styles.menuButton,
           compact && styles.menuButtonCompact,
@@ -285,6 +290,7 @@ export default function HomeScreen() {
       <MenuButton compact={compact} label={t("home.modeOffline")} icon="game-controller" accent onPress={() => router.push({ pathname: "/lobby", params: { mode: "ai" } })} delay={300} />
       <MenuButton compact={compact} label={t("home.modePlayWithFriends")} icon="people" onPress={() => { if (user) router.push("/(online)"); else router.push("/auth"); }} delay={420} />
       <MenuButton compact={compact} label={t("home.modeOnline")} icon="earth-outline" onPress={() => { if (user) router.push("/(online)/quickmatch"); else router.push("/auth"); }} delay={540} />
+      <MenuButton compact={compact} label={t("home.modeProfile")} icon="stats-chart-outline" onPress={() => { if (user) router.push("/(online)/profile"); else router.push("/auth"); }} delay={580} />
       <MenuButton compact={compact} label={t("home.modeTutorial")} icon="school-outline" onPress={() => router.push("/tutorial")} delay={600} />
       <MenuButton compact={compact} label={t("home.modeRules")} icon="book-outline" onPress={() => router.push("/rules")} delay={660} />
     </>

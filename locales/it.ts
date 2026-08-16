@@ -117,6 +117,7 @@ export const it = {
   "home.modeOffline": "Offline",
   "home.modePlayWithFriends": "Gioca con amici",
   "home.modeOnline": "Online",
+  "home.modeProfile": "Il mio profilo",
   "home.modeTutorial": "Tutorial",
   "home.modeRules": "Regole & FAQ",
 
@@ -585,4 +586,39 @@ export const it = {
   "achievements.matchChampion.desc": "Vinci un'intera partita raggiungendo il punteggio finale.",
   "achievements.ironWill.name": "Volontà di Ferro",
   "achievements.ironWill.desc": "Vinci un'intera partita senza giocare Jolly nell'ultima mano.",
+
+  // ------------------------------------------------------------- profile.*
+  "profile.title": "Profilo",
+  "profile.loggedInAs": "Connesso come {{username}}",
+
+  "profile.statsTitle": "Statistiche",
+  "profile.statsLoadingA11yLabel": "Caricamento statistiche",
+  "profile.statsErrorTitle": "Impossibile caricare le statistiche",
+  "profile.retryStatsA11yLabel": "Riprova a caricare le statistiche",
+  "profile.statsEmptyTitle": "Ancora nessuna partita",
+  "profile.statsEmptyBody": "Gioca la tua prima mano per iniziare a costruire le tue statistiche.",
+  "profile.statGamesPlayed": "Mani giocate",
+  "profile.statGamesWon": "Mani vinte",
+  "profile.statWinRate": "% vittorie",
+  "profile.statMatchesWon": "Partite vinte",
+  "profile.statCurrentStreak": "Serie attuale",
+  "profile.statBestStreak": "Serie migliore",
+  "profile.statBombsPlayed": "Bombe giocate",
+
+  "profile.historyTitle": "Partite recenti",
+  "profile.historyLoadingA11yLabel": "Caricamento cronologia partite",
+  "profile.historyErrorTitle": "Impossibile caricare la cronologia",
+  "profile.retryHistoryA11yLabel": "Riprova a caricare la cronologia",
+  "profile.historyEmptyTitle": "Nessuna partita ancora",
+  "profile.historyEmptyBody": "La cronologia delle tue partite apparirà qui non appena giocherai la tua prima mano.",
+  "profile.historyPlayers_one": "{{count}} giocatore",
+  "profile.historyPlayers_other": "{{count}} giocatori",
+  "profile.historyRowA11yLabel": "{{position}} posto, {{mode}}, {{points}} punti, {{time}}",
+
+  "profile.achievementsTitle": "Obiettivi",
+  "profile.achievementsLoadingA11yLabel": "Caricamento obiettivi",
+  "profile.achievementsErrorTitle": "Impossibile caricare gli obiettivi",
+  "profile.retryAchievementsA11yLabel": "Riprova a caricare gli obiettivi",
+  "profile.achievementLockedLabel": "Bloccato",
+  "profile.achievementUnlockedOn": "Sbloccato · {{time}}",
 } as const;

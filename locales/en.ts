@@ -105,6 +105,7 @@ export const en: Record<keyof typeof it, string> = {
   "home.modeOffline": "Offline",
   "home.modePlayWithFriends": "Play with friends",
   "home.modeOnline": "Online",
+  "home.modeProfile": "My profile",
   "home.modeTutorial": "Tutorial",
   "home.modeRules": "Rules & FAQ",
 
@@ -569,4 +570,39 @@ export const en: Record<keyof typeof it, string> = {
   "achievements.matchChampion.desc": "Win an entire match by reaching the target score.",
   "achievements.ironWill.name": "Iron Will",
   "achievements.ironWill.desc": "Win an entire match without playing a Joker in the final hand.",
+
+  // ------------------------------------------------------------- profile.*
+  "profile.title": "Profile",
+  "profile.loggedInAs": "Signed in as {{username}}",
+
+  "profile.statsTitle": "Stats",
+  "profile.statsLoadingA11yLabel": "Loading stats",
+  "profile.statsErrorTitle": "Couldn't load your stats",
+  "profile.retryStatsA11yLabel": "Retry loading stats",
+  "profile.statsEmptyTitle": "No games yet",
+  "profile.statsEmptyBody": "Play your first hand to start building your stats.",
+  "profile.statGamesPlayed": "Hands played",
+  "profile.statGamesWon": "Hands won",
+  "profile.statWinRate": "Win rate",
+  "profile.statMatchesWon": "Matches won",
+  "profile.statCurrentStreak": "Current streak",
+  "profile.statBestStreak": "Best streak",
+  "profile.statBombsPlayed": "Bombs played",
+
+  "profile.historyTitle": "Recent matches",
+  "profile.historyLoadingA11yLabel": "Loading match history",
+  "profile.historyErrorTitle": "Couldn't load your match history",
+  "profile.retryHistoryA11yLabel": "Retry loading match history",
+  "profile.historyEmptyTitle": "No matches yet",
+  "profile.historyEmptyBody": "Your match history will show up here as soon as you play your first hand.",
+  "profile.historyPlayers_one": "{{count}} player",
+  "profile.historyPlayers_other": "{{count}} players",
+  "profile.historyRowA11yLabel": "{{position}} place, {{mode}}, {{points}} points, {{time}}",
+
+  "profile.achievementsTitle": "Achievements",
+  "profile.achievementsLoadingA11yLabel": "Loading achievements",
+  "profile.achievementsErrorTitle": "Couldn't load your achievements",
+  "profile.retryAchievementsA11yLabel": "Retry loading achievements",
+  "profile.achievementLockedLabel": "Locked",
+  "profile.achievementUnlockedOn": "Unlocked · {{time}}",
 };
