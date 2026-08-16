@@ -95,7 +95,7 @@ what the code does now; a claim that no longer holds is removed the moment it is
 - The app runs on Replit. The Express server serves both the REST API and the Expo web bundle.
 - **Port:** Use `process.env.PORT` — Replit assigns this dynamically.
 - **Database:** Replit-managed PostgreSQL, connection string at `process.env.DATABASE_URL`.
-- **Session table:** `session` — pre-created, never drop or recreate it. `createTableIfMissing: false`.
+- **Session table:** `session` — pre-created, never drop or recreate it. `createTableIfMissing: false`. `drizzle.config.ts` excludes it from push.
 - **Env vars:** `DATABASE_URL`, `SESSION_SECRET`, `PORT` must always be set in Replit Secrets.
 - Do not add build steps that require local tooling unavailable on Replit (e.g. native compilation).
 - The app must be launchable from Replit's Run button without extra setup.
@@ -189,7 +189,11 @@ Each of these is a bug that shipped. Verify against source before changing any o
 - **Socket singleton** — one socket per userId via `lib/socket.ts`; `SocketContext` owns the
   lifecycle.
 - **Friends system** — 6-character codes; the `FlatList` needs `extraData={onlineIds}`.
-- **Session table** — pre-created, `createTableIfMissing: false`. Clear its rows, never drop it.
+- **Session table** — pre-created, `createTableIfMissing: false`. Clear its rows, never
+  drop it. It is deliberately absent from `shared/schema.ts`, which means drizzle-kit
+  sees a table it does not own: on any push that also adds one, it asks whether the new
+  table is a *rename* of `session`. `drizzle.config.ts` excludes it (`tablesFilter`) so
+  the question is never asked. Pinned by `tests/dbPush.test.ts`.
 
 ---
 

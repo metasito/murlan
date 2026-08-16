@@ -42,7 +42,10 @@ All three must be set in Replit Secrets or the server refuses to boot
 - **`process.env.PORT`.** Replit assigns it dynamically.
 - **The `session` table.** Pre-created, and `connect-pg-simple` runs with
   `createTableIfMissing: false`. Clearing its rows is fine; dropping the table stops the
-  server booting. `scripts/reset-db.mjs` deliberately preserves it for this reason.
+  server booting. `scripts/reset-db.mjs` deliberately preserves it for this reason, and
+  `drizzle.config.ts` excludes it from `db:push` — without that exclusion, a push that
+  adds any new table asks whether the new one is a *rename* of `session`, and answering
+  yes renames it and logs out every account.
 - **`app.set("trust proxy", 1)`** in `server/index.ts`. Replit terminates TLS at a proxy,
   so without this Express never considers the connection secure, `Set-Cookie` is silently
   dropped in production, and `express-rate-limit` collapses every client into one bucket.
