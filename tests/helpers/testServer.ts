@@ -16,6 +16,26 @@ export function skipMessage(): string {
   return "DATABASE_URL not set — skipping integration tests (unit tests still run)";
 }
 
+/**
+ * Waits for the app's own in-flight queries to finish before the pool closes.
+ *
+ * Everything `handleGameOver` writes — stats, history, achievements, replays,
+ * ratings — is deliberately fire-and-forget, so a test whose assertions are
+ * satisfied early can reach teardown while the tail of one of those chains is
+ * still running. `pool.end()` lets the current query finish but rejects the
+ * next one, which surfaces as "Cannot use a pool after calling end on the
+ * pool" and, worse, silently abandons a write a test might have been about to
+ * check. Waiting on the pool's own active-client count is a real condition,
+ * not a sleep; the bound is there so a genuinely stuck query fails loudly
+ * rather than hanging the suite.
+ */
+async function drainPool(pool: { totalCount: number; idleCount: number }, ms = 5_000) {
+  const deadline = Date.now() + ms;
+  while (pool.totalCount - pool.idleCount > 0 && Date.now() < deadline) {
+    await new Promise((r) => setTimeout(r, 25));
+  }
+}
+
 export interface TestServer {
   url: string;
   port: number;
@@ -371,6 +391,7 @@ export async function startTestServer(
         try {
           io.close();
           await new Promise<void>((resolve) => server.close(() => resolve()));
+          await drainPool(appPool);
           // The app's own pool (session store + storage) is a module-level
           // singleton that nothing else closes — server/index.ts only does
           // so in its SIGTERM/SIGINT handler, which this harness never goes
