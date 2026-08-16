@@ -5,19 +5,11 @@
  * and clears all login sessions. Intended for a deliberate clean slate — it is
  * NOT a migration and it preserves nothing.
  *
- * The `session` TABLE itself is deliberately left in place: connect-pg-simple
- * runs with createTableIfMissing:false, so dropping it would break the server.
- * Only its rows are removed (everyone gets logged out, which is unavoidable
- * once the users they reference are gone).
+ * The `session` table is left in place — connect-pg-simple runs with
+ * createTableIfMissing:false — and only its rows are cleared.
  *
  * Usage:  ALLOW_DESTRUCTIVE=1 node scripts/reset-db.mjs --yes
  * Then:   npm run db:push
- *
- * Guarding on a CLI flag alone was not a guard: `npm run db:reset` passed
- * `--yes` itself, so typing `db:reset` instead of `db:push` wiped whatever
- * DATABASE_URL pointed at — on Replit, production. The gate is now an
- * environment variable the npm script deliberately does NOT set, plus a hard
- * refusal under NODE_ENV=production. Both have to be got past on purpose.
  */
 import pg from "pg";
 
@@ -27,9 +19,6 @@ const HOW_TO =
   "On Windows PowerShell:\n" +
   '  $env:ALLOW_DESTRUCTIVE=1; node scripts/reset-db.mjs --yes';
 
-// Hard stop first: no combination of flags or env vars may wipe a production
-// database from this script. Anyone who genuinely means it has to unset
-// NODE_ENV, which is not something you do by accident.
 if (process.env.NODE_ENV === "production") {
   console.error(
     "Refusing to run with NODE_ENV=production.\n" +
@@ -58,8 +47,6 @@ if (!process.env.DATABASE_URL) {
   process.exit(1);
 }
 
-// Order does not matter because of CASCADE, but active_games is listed first
-// since it is the table most likely to hold rows in an incompatible old shape.
 const TABLES = ["active_games", "room_players", "rooms", "friends", "users"];
 
 const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL });

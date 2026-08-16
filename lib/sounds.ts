@@ -1,12 +1,8 @@
 import { createAudioPlayer, setAudioModeAsync, type AudioPlayer } from "expo-audio";
 import { Platform } from "react-native";
 
-// ─── Web Audio API — plays the same WAV assets as native via fetch + decode ───
-//
-// The 12 effects are synthesized by scripts/gen-sounds.js (seeded, reproducible)
-// rather than licensed, and ship as 22.05 kHz mono WAV. WAV avoids an MP3
-// encoder dependency — every usable encoder needs native compilation, which is
-// not available on Replit — and at this length the whole set is ~257 KB.
+// Effects are synthesized by scripts/gen-sounds.js and ship as 22.05 kHz mono WAV.
+// Web decodes the same assets through the Web Audio API.
 
 let _webCtx: AudioContext | null = null;
 
@@ -55,9 +51,6 @@ async function playWeb(key: string, assetModule: number, volume: number): Promis
   } catch {}
 }
 
-// ─── Native sounds (expo-audio) ───────────────────────────────────────────────
-// Migrated from expo-av, which is deprecated and removed in Expo SDK 55.
-// createAudioPlayer() is synchronous, so loading no longer needs to be awaited.
 
 let soundCache: Record<string, AudioPlayer> = {};
 let _audioModeSet = false;
@@ -66,8 +59,7 @@ async function ensureAudioMode(): Promise<void> {
   if (_audioModeSet) return;
   try {
     await setAudioModeAsync({
-      // Card games are played with the ringer off constantly — without this the
-      // whole sound design is silent for a large share of iOS users.
+      // Card games are routinely played with the ringer off.
       playsInSilentMode: true,
       shouldPlayInBackground: false,
       interruptionModeAndroid: "duckOthers",
@@ -94,8 +86,7 @@ async function playNative(key: string, assetModule: number, volume = 1.0): Promi
     const player = loadSound(key, assetModule);
     if (!player) return;
     player.volume = volume;
-    // Rewind before replaying: a player left at the end of its buffer is silent
-    // on a second play(), which is exactly the rapid-fire case (card select).
+    // A player parked at the end of its buffer plays silence, so rewind first.
     player.seekTo(0);
     player.play();
   } catch {}
