@@ -378,7 +378,7 @@ export default function FriendsScreen() {
                       onPress={() => acceptMutation.mutate(r.id)}
                       style={styles.acceptBtn}
                     >
-                      <Ionicons name="checkmark" size={16} color="#0A1F18" />
+                      <Ionicons name="checkmark" size={16} color={Colors.bgCard} />
                     </Pressable>
                   </View>
                 </View>
@@ -444,9 +444,9 @@ export default function FriendsScreen() {
               style={({ pressed }) => [styles.addBtn, pressed && { opacity: 0.85 }, (!searchQuery.trim()) && styles.addBtnDim]}
             >
               {searchLoading ? (
-                <ActivityIndicator color="#0A1F18" size="small" />
+                <ActivityIndicator color={Colors.bgCard} size="small" />
               ) : (
-                <Ionicons name="search" size={18} color={(!searchQuery.trim()) ? Colors.textMuted : "#0A1F18"} />
+                <Ionicons name="search" size={18} color={(!searchQuery.trim()) ? Colors.textMuted : Colors.bgCard} />
               )}
             </Pressable>
           </View>
@@ -463,9 +463,9 @@ export default function FriendsScreen() {
                 style={styles.sendBtn}
               >
                 {addLoading ? (
-                  <ActivityIndicator color="#0A1F18" size="small" />
+                  <ActivityIndicator color={Colors.bgCard} size="small" />
                 ) : (
-                  <Ionicons name="person-add" size={16} color="#0A1F18" />
+                  <Ionicons name="person-add" size={16} color={Colors.bgCard} />
                 )}
               </Pressable>
             </View>
@@ -598,7 +598,7 @@ const styles = StyleSheet.create({
   joinBtnText: {
     fontFamily: "Rajdhani_700Bold",
     fontSize: 14,
-    color: "#0A1F18",
+    color: Colors.bgCard,
   },
 
   inputCard: {
@@ -654,7 +654,7 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.bgCard,
     borderRadius: 10,
     borderWidth: 1,
-    borderColor: "rgba(201,168,76,0.3)",
+    borderColor: Colors.goldBorder,
     padding: 10,
     gap: 10,
   },

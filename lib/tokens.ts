@@ -27,6 +27,12 @@ export const Colors = {
   goldDark:     '#A8832B',
   goldDim:      '#A07830',
   goldMuted:    'rgba(201,168,76,0.15)',
+  // Gold-accent borders — stronger than goldMuted (a background wash), used on
+  // card/row outlines that need a visible gold edge. Two call sites, two
+  // slightly different alphas already in use; kept distinct rather than
+  // merged so no rendered colour shifts.
+  goldBorder:       'rgba(201,168,76,0.3)',
+  goldBorderStrong: 'rgba(201,168,76,0.35)',
 
   // Text colors
   // Ratios below are the worst case across the three surfaces text actually

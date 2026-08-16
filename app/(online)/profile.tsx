@@ -307,7 +307,7 @@ export default function ProfileScreen() {
                           <Ionicons
                             name={a.unlocked ? "trophy" : "lock-closed"}
                             size={18}
-                            color={a.unlocked ? "#0A1F18" : Colors.textMuted}
+                            color={a.unlocked ? Colors.bgCard : Colors.textMuted}
                           />
                         </View>
                         <View style={styles.rowInfo}>
@@ -435,7 +435,7 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.bgSurface,
     borderRadius: Radius.md,
     borderWidth: 1,
-    borderColor: "rgba(201,168,76,0.35)",
+    borderColor: Colors.goldBorderStrong,
     padding: Spacing.sm,
     gap: Spacing.sm,
     minHeight: 44,
