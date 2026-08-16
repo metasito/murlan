@@ -23,6 +23,23 @@ declare module "express-session" {
 // localises by `code` (see lib/i18n.ts's `translateServerPayload`) and
 // falls back to the plain-text Italian string if a code is ever unknown to
 // it — the server does not keep its own copy of the translation table.
+/**
+ * Route-parameter validation. These used to call `.parse`, which throws on a
+ * bad value — Express turns that into an uncaught 500 and logs it as a server
+ * fault, when a malformed id in the URL is squarely the caller's mistake.
+ * Returns the parsed value, or null after having already sent a 400.
+ */
+const RouteParamSchema = z.string().min(1).max(64);
+
+function readParam(res: Response, raw: unknown): string | null {
+  const parsed = RouteParamSchema.safeParse(raw);
+  if (!parsed.success) {
+    res.status(400).json({ message: "Parametro non valido", code: "INVALID_PARAMETER" });
+    return null;
+  }
+  return parsed.data;
+}
+
 const authLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: 20,
@@ -230,7 +247,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   app.delete("/api/friends/requests/:id", requireAuth, async (req, res) => {
-    const id = z.string().min(1).max(64).parse(req.params.id);
+    const id = readParam(res, req.params.id);
+    if (id === null) return;
     // Only the sender can cancel — enforced inside cancelFriendRequest.
     const cancelled = await storage.cancelFriendRequest(id, req.session.userId!);
     if (!cancelled) {
@@ -241,7 +259,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   app.post("/api/friends/accept/:id", requireAuth, async (req, res) => {
-    const id = z.string().min(1).max(64).parse(req.params.id);
+    const id = readParam(res, req.params.id);
+    if (id === null) return;
     const accepterId = req.session.userId!;
     // Scoped to the recipient: a sender used to be able to accept their own
     // request by id (IDOR).
@@ -268,7 +287,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   app.post("/api/friends/decline/:id", requireAuth, async (req, res) => {
-    const id = z.string().min(1).max(64).parse(req.params.id);
+    const id = readParam(res, req.params.id);
+    if (id === null) return;
     // Only the recipient can decline (IDOR: any user could destroy any
     // pending request by id).
     const declined = await storage.declineFriendRequest(id, req.session.userId!);
@@ -280,7 +300,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   app.delete("/api/friends/:friendUserId", requireAuth, async (req, res) => {
-    const friendUserId = z.string().min(1).max(64).parse(req.params.friendUserId);
+    const friendUserId = readParam(res, req.params.friendUserId);
+    if (friendUserId === null) return;
     await storage.removeFriend(req.session.userId!, friendUserId);
     res.json({ ok: true });
   });

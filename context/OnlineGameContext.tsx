@@ -9,6 +9,7 @@ import React, {
   ReactNode,
 } from "react";
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import { useQueryClient } from "@tanstack/react-query";
 import { getSocket } from "@/lib/socket";
 import { useNotification } from "@/context/NotificationContext";
 import { t, translateServerPayload, type ServerPayload } from "@/lib/i18n";
@@ -79,6 +80,7 @@ const ACTIVE_ROOM_KEY = "@murlan_active_room";
 
 export function OnlineGameProvider({ userId, children }: { userId: string; children: ReactNode }) {
   const { showNotification } = useNotification();
+  const qc = useQueryClient();
   const [room, setRoom] = useState<RoomState | null>(null);
   const [gameState, setGameState] = useState<GameState | null>(null);
   const [reactions, setReactions] = useState<Reaction[]>([]);
@@ -260,6 +262,14 @@ export function OnlineGameProvider({ userId, children }: { userId: string; child
 
     const onGameOver = ({ cumulativeScores: cs }: { cumulativeScores?: Record<string, number> }) => {
       if (cs) setCumulativeScores(cs);
+      // The stats queries are configured with `staleTime: Infinity`
+      // (lib/query-client.ts), so without this the profile keeps showing
+      // whatever it read on first open for the rest of the session — a player
+      // finishes a game and their counters, history and achievements do not
+      // move. A hand just finished, so this is exactly when they are stale.
+      qc.invalidateQueries({ queryKey: ["/api/stats/me"] });
+      qc.invalidateQueries({ queryKey: ["/api/stats/history"] });
+      qc.invalidateQueries({ queryKey: ["/api/stats/achievements"] });
     };
 
     const onVoteState = (vs: RematchVoteState) => setRematchVoteState(vs);
@@ -380,7 +390,7 @@ export function OnlineGameProvider({ userId, children }: { userId: string; child
       reactionTimersRef.current.forEach(clearTimeout);
       reactionTimersRef.current.clear();
     };
-  }, [userId, attemptRejoin, persistActiveRoom, showNotification]);
+  }, [userId, attemptRejoin, persistActiveRoom, showNotification, qc]);
 
   const createRoom = useCallback((gameMode: "free_for_all" | "teams", maxPlayers: number) => {
     setEntrySource("friends");

@@ -31,6 +31,7 @@ export const en: Record<keyof typeof it, string> = {
   "server.ACCOUNT_DELETED": "Account deleted successfully",
   "server.ACCOUNT_DELETE_FAILED": "Deletion failed",
   "server.INVALID_USERNAME": "Invalid username",
+  "server.INVALID_PARAMETER": "Invalid parameter",
   "server.CANNOT_ADD_SELF": "You can't add yourself",
   "server.ALREADY_FRIENDS": "You're already friends",
   "server.FRIEND_REQUEST_ALREADY_SENT": "Friend request already sent",

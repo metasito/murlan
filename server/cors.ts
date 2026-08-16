@@ -20,10 +20,14 @@ export function isAllowedOrigin(origin: string | undefined | null): boolean {
   // server-to-server calls. Nothing to check against, and blocking it would
   // break the mobile app.
   if (!origin) return true;
+  // Any page on any localhost port used to be trusted with credentials, in
+  // production too — so anything a user ran locally could drive their live
+  // session. The dev loop genuinely needs it; production does not.
   const isLocalhost =
     origin.startsWith("http://localhost:") ||
     origin.startsWith("http://127.0.0.1:");
-  return isLocalhost || allowedOrigins().has(origin);
+  if (isLocalhost && process.env.NODE_ENV !== "production") return true;
+  return allowedOrigins().has(origin);
 }
 
 /**
