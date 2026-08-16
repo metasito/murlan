@@ -302,6 +302,22 @@ export const en: Record<keyof typeof it, string> = {
   "replay.loadErrorBody": "This hand is no longer available.",
   "replay.back": "Close",
 
+  // ------------------------------------------------------------- cosmetics.*
+  "settings.cardBack": "Card back",
+  "settings.cardBackSubtitle": "How face-down cards are drawn",
+  "settings.cardBackA11yLabel": "Card back",
+  "settings.tableFelt": "Table felt",
+  "settings.tableFeltSubtitle": "The colour of the playing surface",
+  "settings.tableFeltA11yLabel": "Table felt",
+  "cosmetics.back.oro": "Gold",
+  "cosmetics.back.rubino": "Ruby",
+  "cosmetics.back.zaffiro": "Sapphire",
+  "cosmetics.back.inchiostro": "Ink",
+  "cosmetics.felt.verde": "Green",
+  "cosmetics.felt.blu": "Blue",
+  "cosmetics.felt.bordeaux": "Burgundy",
+  "cosmetics.felt.notte": "Night",
+
   // -------------------------------------------------------------------- bot.*
   // The names are proper nouns and stay as they are; only the play style is translated.
   "bot.luanBlurb": "Impulsive and unpredictable",

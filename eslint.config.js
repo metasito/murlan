@@ -4,7 +4,7 @@ const expoConfig = require('eslint-config-expo/flat');
 // React Native renders an invalid colour as nothing at all — no warning, no
 // fallback, just an invisible element. Every rule below targets a way to
 // produce one that neither TypeScript nor a render test catches.
-const TOKEN_OBJECTS = 'Colors|Spacing|Radius|FontSize|Type|Motion|Scrim|Highlight|Shadow|FeltGradient';
+const TOKEN_OBJECTS = 'Colors|Spacing|Radius|FontSize|Type|Motion|Scrim|Highlight|Shadow|FeltGradient|FeltGradients|CardBacks';
 
 module.exports = defineConfig([
   expoConfig,

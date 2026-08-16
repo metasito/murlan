@@ -125,7 +125,7 @@ React Context, one provider per concern:
 | `GameContext` | Offline `GameState`, calls `lib/gameEngine.ts` directly |
 | `OnlineGameContext` | Online `GameState` as received from the server, socket intents |
 | `SocketContext` | The socket singleton lifecycle, friend presence events, invites |
-| `SettingsContext` | Sound/haptic toggles |
+| `SettingsContext` | Sound, haptics, motion, and the card back / table felt |
 | `NotificationContext` | Queue-based banner notifications; sits above `SocketContext` — both `SocketContext` and `OnlineGameContext` call `useNotification()` |
 
 `@tanstack/react-query` handles request/response REST data (friends list, auth checks) —

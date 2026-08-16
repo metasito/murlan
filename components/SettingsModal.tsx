@@ -11,11 +11,20 @@ import {
 } from "react-native";
 import { useRouter } from "expo-router";
 import { Feather } from "@expo/vector-icons";
+import { LinearGradient } from "expo-linear-gradient";
 import { useSettings } from "@/context/SettingsContext";
 import { useAuth } from "@/context/AuthContext";
 import { apiRequest, queryClient } from "@/lib/query-client";
 import { hapticSelection } from "@/lib/haptics";
 import { usePrefersReducedMotion } from "@/lib/accessibility";
+import {
+  CARD_BACK_IDS,
+  TABLE_FELT_IDS,
+  cardBackField,
+  cardBackNameKey,
+  getTableFelt,
+  tableFeltNameKey,
+} from "@/lib/cosmetics";
 import { Colors, Spacing, Radius, FontSize, Type, Shadow } from "@/lib/theme";
 import { useTranslation, type Locale, type TranslationKey } from "@/lib/i18n";
 import type { MotionPreference } from "@/lib/accessibility";
@@ -51,6 +60,8 @@ const MOTION_LABELS: Record<MotionPreference, TranslationKey> = {
 interface Segment<T> {
   value: T;
   label: string;
+  /** Colour chip above the label — for choices that *are* a colour. */
+  swatch?: readonly [string, string];
 }
 
 /**
@@ -96,6 +107,14 @@ function Segmented<T extends string | number>({
               pressed && { opacity: 0.8 },
             ]}
           >
+            {seg.swatch && (
+              <LinearGradient
+                colors={seg.swatch}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 1 }}
+                style={styles.swatch}
+              />
+            )}
             <Text
               numberOfLines={1}
               style={[styles.segmentText, active && styles.segmentTextActive]}
@@ -115,10 +134,14 @@ export function SettingsModal({ visible, onClose }: Props) {
     soundVolume,
     hapticsEnabled,
     motion,
+    cardBack,
+    tableFelt,
     setSoundsEnabled,
     setSoundVolume,
     setHapticsEnabled,
     setMotion,
+    setCardBack,
+    setTableFelt,
   } = useSettings();
   const { logout } = useAuth();
   const router = useRouter();
@@ -248,6 +271,46 @@ export function SettingsModal({ visible, onClose }: Props) {
               selected={motion}
               onSelect={setMotion}
               a11yLabel={t("settings.motionA11yLabel")}
+            />
+          </View>
+
+          <View style={styles.stackRow}>
+            <View style={styles.rowLeft}>
+              <Text style={styles.icon}>🃏</Text>
+              <View style={styles.rowLabels}>
+                <Text style={styles.label}>{t("settings.cardBack")}</Text>
+                <Text style={styles.sublabel}>{t("settings.cardBackSubtitle")}</Text>
+              </View>
+            </View>
+            <Segmented
+              segments={CARD_BACK_IDS.map((id) => ({
+                value: id,
+                label: t(cardBackNameKey(id)),
+                swatch: [cardBackField(id)[1], cardBackField(id)[4]] as const,
+              }))}
+              selected={cardBack}
+              onSelect={setCardBack}
+              a11yLabel={t("settings.cardBackA11yLabel")}
+            />
+          </View>
+
+          <View style={styles.stackRow}>
+            <View style={styles.rowLeft}>
+              <Text style={styles.icon}>🎴</Text>
+              <View style={styles.rowLabels}>
+                <Text style={styles.label}>{t("settings.tableFelt")}</Text>
+                <Text style={styles.sublabel}>{t("settings.tableFeltSubtitle")}</Text>
+              </View>
+            </View>
+            <Segmented
+              segments={TABLE_FELT_IDS.map((id) => ({
+                value: id,
+                label: t(tableFeltNameKey(id)),
+                swatch: [getTableFelt(id)[0], getTableFelt(id)[4]] as const,
+              }))}
+              selected={tableFelt}
+              onSelect={setTableFelt}
+              a11yLabel={t("settings.tableFeltA11yLabel")}
             />
           </View>
 
@@ -384,6 +447,12 @@ const styles = StyleSheet.create({
   rowLabels: { flexShrink: 1 },
   segmentRow: { flexDirection: "row", gap: Spacing.xs },
   segmentRowDisabled: { opacity: 0.4 },
+  swatch: {
+    width: 22,
+    height: 14,
+    borderRadius: Radius.sm / 2,
+    marginBottom: 2,
+  },
   segment: {
     flex: 1,
     minHeight: 36,

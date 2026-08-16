@@ -328,6 +328,22 @@ export const sq: Record<keyof typeof it, string> = {
   "replay.loadErrorBody": "Kjo dorë nuk është më e disponueshme.",
   "replay.back": "Mbyll",
 
+  // ------------------------------------------------------------- cosmetics.*
+  "settings.cardBack": "Pjesa e pasme e letrave",
+  "settings.cardBackSubtitle": "Si vizatohen letrat e mbuluara",
+  "settings.cardBackA11yLabel": "Pjesa e pasme e letrave",
+  "settings.tableFelt": "Cohja e tavolinës",
+  "settings.tableFeltSubtitle": "Ngjyra e siperfaqes së lojës",
+  "settings.tableFeltA11yLabel": "Cohja e tavolinës",
+  "cosmetics.back.oro": "Ar",
+  "cosmetics.back.rubino": "Rubin",
+  "cosmetics.back.zaffiro": "Safir",
+  "cosmetics.back.inchiostro": "Bojë",
+  "cosmetics.felt.verde": "Jeshile",
+  "cosmetics.felt.blu": "Blu",
+  "cosmetics.felt.bordeaux": "Bordo",
+  "cosmetics.felt.notte": "Natë",
+
   // -------------------------------------------------------------------- bot.*
   // The names are proper nouns and stay as they are; only the play style is translated.
   "bot.luanBlurb": "Impulsiv dhe i paparashikueshëm",

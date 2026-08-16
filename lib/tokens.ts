@@ -3,6 +3,10 @@
 // adds the platform-aware Shadow.
 import type { TextStyle } from "react-native";
 
+// Named once because two unrelated roles want the same ink: the second-place
+// podium and the silver card back.
+const SILVER = '#C0C0C0';
+
 export const Colors = {
   // Background layers
   bg:           '#031008',
@@ -79,7 +83,7 @@ export const Colors = {
   bombFill:     'rgba(255,80,80,0.22)',
 
   podiumGold:   '#C9A84C',
-  podiumSilver: '#C0C0C0',
+  podiumSilver: SILVER,
   podiumBronze: '#CD7F32',
 };
 
@@ -105,14 +109,31 @@ export const CardFaceGradient = [
   Colors.cardPaperEdge,
 ] as const;
 
-// Table felt, light centre to dark rim. Order is the gradient order.
-export const FeltGradient = [
-  '#0F5A35',
-  '#0D4A2E',
-  '#0B3B25',
-  '#082B1A',
-  '#061E12',
-] as const;
+// Table felts, light centre to dark rim. Order is the gradient order.
+//
+// Every alternate is at or below the green's luminance at every stop, so the
+// contrast ratios tests/contrast.test.ts pins against `Colors.felt` are a
+// floor for all four — pinned by tests/cosmetics.test.ts.
+export const FeltGradients = {
+  verde:    ['#0F5A35', '#0D4A2E', '#0B3B25', '#082B1A', '#061E12'],
+  blu:      ['#144C7A', '#113F66', '#0E3253', '#0A2540', '#071A2E'],
+  bordeaux: ['#6B2230', '#5A1C29', '#491722', '#38111A', '#280C12'],
+  notte:    ['#2E3338', '#272B2F', '#1F2226', '#171A1D', '#101214'],
+} as const;
+
+/** The default felt. Anything not themed by the player's choice uses this. */
+export const FeltGradient = FeltGradients.verde;
+
+// Card backs. Only three things survive at card size — the ink, the field
+// colour and how dense the lattice is — so a back is those plus a star count,
+// not a bespoke drawing. The field reuses a felt palette rather than
+// introducing a fifth set of greens, blues and reds.
+export const CardBacks = {
+  oro:        { field: 'verde',    ink: Colors.gold, lattice: 7, starPoints: 8 },
+  rubino:     { field: 'bordeaux', ink: Colors.gold, lattice: 7, starPoints: 8 },
+  zaffiro:    { field: 'blu',      ink: SILVER,      lattice: 9, starPoints: 6 },
+  inchiostro: { field: 'notte',    ink: Colors.gold, lattice: 5, starPoints: 4 },
+} as const;
 
 export const Spacing = {
   xs: 4, sm: 8, md: 16, lg: 24, xl: 32, xxl: 48,

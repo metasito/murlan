@@ -107,7 +107,8 @@ import {
 } from "@/lib/sounds";
 import { hapticHeavy, hapticLight, hapticMedium, hapticSelection, hapticSuccess } from "@/lib/haptics";
 import { usePrefersReducedMotion } from "@/lib/accessibility";
-import { Colors, FeltGradient, FontSize, Highlight, Motion, Radius, Scrim, Shadow, Spacing, Type } from "@/lib/theme";
+import { Colors, FontSize, Highlight, Motion, Radius, Scrim, Shadow, Spacing, Type } from "@/lib/theme";
+import { useTableFelt } from "@/lib/cosmetics";
 
 // How long the round-winner tag stays over the pile. A domain beat, not a
 // generic UI transition, so it is not a Motion token.
@@ -401,6 +402,7 @@ export function GameTable({
   const insets = useSafeAreaInsets();
   const { width: W, height: H } = useWindowDimensions();
   const reduceMotion = usePrefersReducedMotion();
+  const felt = useTableFelt();
 
   const [roundWinner, setRoundWinner] = useState<string | null>(null);
   const [pileState, setPileState] = useState<PileState>(EMPTY_PILE);
@@ -913,7 +915,7 @@ export function GameTable({
         ]}
       >
         <LinearGradient
-          colors={FeltGradient}
+          colors={felt}
           locations={[0, 0.25, 0.5, 0.75, 1]}
           style={StyleSheet.absoluteFill}
         />

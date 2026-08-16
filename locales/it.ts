@@ -317,6 +317,22 @@ export const it = {
   "replay.loadErrorBody": "Questa mano non è più disponibile.",
   "replay.back": "Chiudi",
 
+  // ------------------------------------------------------------- cosmetics.*
+  "settings.cardBack": "Dorso delle carte",
+  "settings.cardBackSubtitle": "Come sono disegnate le carte coperte",
+  "settings.cardBackA11yLabel": "Dorso delle carte",
+  "settings.tableFelt": "Panno del tavolo",
+  "settings.tableFeltSubtitle": "Il colore del tavolo da gioco",
+  "settings.tableFeltA11yLabel": "Panno del tavolo",
+  "cosmetics.back.oro": "Oro",
+  "cosmetics.back.rubino": "Rubino",
+  "cosmetics.back.zaffiro": "Zaffiro",
+  "cosmetics.back.inchiostro": "Inchiostro",
+  "cosmetics.felt.verde": "Verde",
+  "cosmetics.felt.blu": "Blu",
+  "cosmetics.felt.bordeaux": "Bordeaux",
+  "cosmetics.felt.notte": "Notte",
+
   // -------------------------------------------------------------------- bot.*
   // The names are proper nouns and stay as they are; only the play style is translated.
   "bot.luanBlurb": "Impulsivo e imprevedibile",

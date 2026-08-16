@@ -13,11 +13,12 @@ import { Card, Suit, getCardDisplayRank } from "@/lib/gameEngine";
 import {
   CardFaceGradient,
   Colors,
-  FeltGradient,
+  FeltGradients,
   Motion,
   Radius,
   Shadow,
 } from "@/lib/theme";
+import { useCardBack } from "@/lib/cosmetics";
 import { usePrefersReducedMotion } from "@/lib/accessibility";
 import { useTranslation } from "@/lib/i18n";
 import { cardSpokenName } from "@/lib/cardNames";
@@ -382,16 +383,14 @@ function CourtArt({ card, w, h }: { card: Card; w: number; h: number }) {
 // blobs, because a line keeps its identity when it falls below a pixel and a
 // dot does not. The whole thing is two Paths and a medallion.
 
-const LATTICE_SPACING = 7;
-
 const latticeCache = new Map<string, string>();
-function getLattice(w: number, h: number): string {
-  const key = `${w}x${h}`;
+function getLattice(w: number, h: number, spacing: number): string {
+  const key = `${w}x${h}x${spacing}`;
   let d = latticeCache.get(key);
   if (!d) {
     const span = w + h;
     const parts: string[] = [];
-    for (let i = -h; i < span; i += LATTICE_SPACING) {
+    for (let i = -h; i < span; i += spacing) {
       parts.push(`M${i},0 L${i + h},${h}`);
       parts.push(`M${i},${h} L${i + h},0`);
     }
@@ -401,29 +400,42 @@ function getLattice(w: number, h: number): string {
   return d;
 }
 
-function OrnateCardBack({ width: w, height: h }: { width: number; height: number }) {
+/** A `points`-pointed star as one polygon: alternate long and short radii. */
+function starPath(cx: number, cy: number, r: number, points: number): string {
+  const verts: string[] = [];
+  for (let i = 0; i < points * 2; i++) {
+    const rad = (Math.PI * i) / points - Math.PI / 2;
+    const rr = i % 2 === 0 ? r : r * 0.46;
+    verts.push(`${(cx + Math.cos(rad) * rr).toFixed(2)},${(cy + Math.sin(rad) * rr).toFixed(2)}`);
+  }
+  return `M${verts.join(" L")} Z`;
+}
+
+function OrnateCardBack({
+  width: w,
+  height: h,
+  back,
+}: {
+  width: number;
+  height: number;
+  back: ReturnType<typeof useCardBack>;
+}) {
   const cx = w / 2;
   const cy = h / 2;
   const r = Math.min(w, h) * 0.19;
-
-  // An eight-point star: two squares, one rotated 45°, drawn as one polygon.
-  const points: string[] = [];
-  for (let i = 0; i < 16; i++) {
-    const rad = (Math.PI * 2 * i) / 16 - Math.PI / 2;
-    const rr = i % 2 === 0 ? r : r * 0.46;
-    points.push(`${(cx + Math.cos(rad) * rr).toFixed(2)},${(cy + Math.sin(rad) * rr).toFixed(2)}`);
-  }
+  const ink = back.ink;
+  const field = FeltGradients[back.field];
 
   return (
     <Svg width={w} height={h} style={StyleSheet.absoluteFill} pointerEvents="none">
-      <Path d={getLattice(w, h)} stroke={Colors.gold} strokeOpacity={0.13} strokeWidth={0.6} fill="none" />
+      <Path d={getLattice(w, h, back.lattice)} stroke={ink} strokeOpacity={0.13} strokeWidth={0.6} fill="none" />
       <Rect x={2.5} y={2.5} width={w - 5} height={h - 5} rx={5} ry={5}
-        fill="none" stroke={Colors.gold} strokeWidth={1.4} strokeOpacity={0.85} />
+        fill="none" stroke={ink} strokeWidth={1.4} strokeOpacity={0.85} />
       <Rect x={5.5} y={5.5} width={w - 11} height={h - 11} rx={3} ry={3}
-        fill="none" stroke={Colors.gold} strokeWidth={0.7} strokeOpacity={0.35} />
-      <Path d={`M${points.join(" L")} Z`} fill={Colors.gold} fillOpacity={0.55} />
-      <Circle cx={cx} cy={cy} r={r * 0.42} fill={FeltGradient[4]} />
-      <Circle cx={cx} cy={cy} r={r * 0.42} fill="none" stroke={Colors.gold} strokeOpacity={0.7} strokeWidth={0.8} />
+        fill="none" stroke={ink} strokeWidth={0.7} strokeOpacity={0.35} />
+      <Path d={starPath(cx, cy, r, back.starPoints)} fill={ink} fillOpacity={0.55} />
+      <Circle cx={cx} cy={cy} r={r * 0.42} fill={field[4]} />
+      <Circle cx={cx} cy={cy} r={r * 0.42} fill="none" stroke={ink} strokeOpacity={0.7} strokeWidth={0.8} />
     </Svg>
   );
 }
@@ -460,6 +472,8 @@ export function CardView({
 }: CardViewProps) {
   const { t } = useTranslation();
   const reduceMotion = usePrefersReducedMotion();
+  const back = useCardBack();
+  const backField = FeltGradients[back.field];
   const translateY = useSharedValue(0);
   // Finger-down acknowledgement. Separate from the selection lift so a press
   // reads instantly even when the resulting selection is rejected.
@@ -516,12 +530,12 @@ export function CardView({
       <Animated.View style={[animStyle, style]}>
         <View style={[styles.card, small ? styles.cardSmall : styles.cardNormal, styles.cardBack]}>
           <LinearGradient
-            colors={[FeltGradient[1], FeltGradient[2], FeltGradient[4]]}
+            colors={[backField[1], backField[2], backField[4]]}
             start={{ x: 0.15, y: 0 }}
             end={{ x: 0.85, y: 1 }}
             style={StyleSheet.absoluteFill}
           />
-          <OrnateCardBack width={w} height={h} />
+          <OrnateCardBack width={w} height={h} back={back} />
         </View>
       </Animated.View>
     );

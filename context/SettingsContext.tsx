@@ -3,6 +3,15 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import { setSoundsMasterEnabled, setSoundsMasterVolume } from "@/lib/sounds";
 import { setHapticsMasterEnabled } from "@/lib/haptics";
 import { setMotionPreference, type MotionPreference } from "@/lib/accessibility";
+import {
+  DEFAULT_CARD_BACK,
+  DEFAULT_TABLE_FELT,
+  isCardBackId,
+  isTableFeltId,
+  setCosmetics,
+  type CardBackId,
+  type TableFeltId,
+} from "@/lib/cosmetics";
 
 interface Settings {
   soundsEnabled: boolean;
@@ -10,6 +19,8 @@ interface Settings {
   soundVolume: number;
   hapticsEnabled: boolean;
   motion: MotionPreference;
+  cardBack: CardBackId;
+  tableFelt: TableFeltId;
 }
 
 interface SettingsContextValue extends Settings {
@@ -17,6 +28,8 @@ interface SettingsContextValue extends Settings {
   setSoundVolume: (v: number) => void;
   setHapticsEnabled: (v: boolean) => void;
   setMotion: (v: MotionPreference) => void;
+  setCardBack: (v: CardBackId) => void;
+  setTableFelt: (v: TableFeltId) => void;
 }
 
 const STORAGE_KEY = "@murlan_settings";
@@ -25,6 +38,8 @@ const defaults: Settings = {
   soundVolume: 1,
   hapticsEnabled: true,
   motion: "system",
+  cardBack: DEFAULT_CARD_BACK,
+  tableFelt: DEFAULT_TABLE_FELT,
 };
 
 const SettingsContext = createContext<SettingsContextValue>({
@@ -33,6 +48,8 @@ const SettingsContext = createContext<SettingsContextValue>({
   setSoundVolume: () => {},
   setHapticsEnabled: () => {},
   setMotion: () => {},
+  setCardBack: () => {},
+  setTableFelt: () => {},
 });
 
 /**
@@ -53,6 +70,8 @@ function parseStored(raw: string): Partial<Settings> {
   if (v.motion === "system" || v.motion === "on" || v.motion === "off") {
     out.motion = v.motion;
   }
+  if (isCardBackId(v.cardBack)) out.cardBack = v.cardBack;
+  if (isTableFeltId(v.tableFelt)) out.tableFelt = v.tableFelt;
   return out;
 }
 
@@ -88,6 +107,10 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
     setMotionPreference(settings.motion);
   }, [settings.motion]);
 
+  useEffect(() => {
+    setCosmetics(settings.cardBack, settings.tableFelt);
+  }, [settings.cardBack, settings.tableFelt]);
+
   const setSoundsEnabled = (v: boolean) =>
     setSettings((s) => ({ ...s, soundsEnabled: v }));
   const setSoundVolume = (v: number) =>
@@ -96,6 +119,10 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
     setSettings((s) => ({ ...s, hapticsEnabled: v }));
   const setMotion = (v: MotionPreference) =>
     setSettings((s) => ({ ...s, motion: v }));
+  const setCardBack = (v: CardBackId) =>
+    setSettings((s) => ({ ...s, cardBack: v }));
+  const setTableFelt = (v: TableFeltId) =>
+    setSettings((s) => ({ ...s, tableFelt: v }));
 
   const contextValue = useMemo(
     () => ({
@@ -104,6 +131,8 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
       setSoundVolume,
       setHapticsEnabled,
       setMotion,
+      setCardBack,
+      setTableFelt,
     }),
     // eslint-disable-next-line react-hooks/exhaustive-deps -- the setters are stable in behaviour; only the settings object should re-publish the context
     [settings]

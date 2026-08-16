@@ -19,7 +19,8 @@ import Animated, {
 import { Ionicons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
 import { CardView } from "@/components/CardView";
-import { Colors, FeltGradient, FontSize, Highlight, Motion, Radius, Scrim, Shadow, Spacing } from "@/lib/theme";
+import { Colors, FontSize, Highlight, Motion, Radius, Scrim, Shadow, Spacing } from "@/lib/theme";
+import { useTableFelt } from "@/lib/cosmetics";
 import { usePrefersReducedMotion } from "@/lib/accessibility";
 import { useTranslation, type TranslationKey } from "@/lib/i18n";
 import type { Card, Combination, Player, StartReason } from "@/lib/gameEngine";
@@ -210,6 +211,9 @@ export function AvatarCircle({
   const pingScale = useSharedValue(1);
   const pingOpacity = useSharedValue(0);
   const reduceMotion = usePrefersReducedMotion();
+  // The avatar sits on the felt, so it takes the felt's colour: a green bubble
+  // on a bordeaux table reads as an oversight rather than a choice.
+  const felt = useTableFelt();
 
   useEffect(() => {
     ringOpacity.value = withTiming(isActive ? 1 : 0, {
@@ -271,7 +275,7 @@ export function AvatarCircle({
         ]}
       >
         <LinearGradient
-          colors={[FeltGradient[1], Colors.felt]}
+          colors={[felt[1], felt[3]]}
           style={[
             sharedStyles.avatarInner,
             { width: size, height: size, borderRadius: size / 2 },
