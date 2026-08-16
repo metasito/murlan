@@ -395,6 +395,8 @@ export function FlyingCards({
   // mount-only animation effect from restarting mid-flight when that happens.
   const onDoneRef = useRef(onDone);
   onDoneRef.current = onDone;
+  // Defined on the JS thread so runOnJS receives a real JS-thread reference.
+  const notifyDone = useCallback(() => onDoneRef.current(), []);
 
   const tx = useSharedValue(dx);
   const ty = useSharedValue(dy);
@@ -428,7 +430,7 @@ export function FlyingCards({
       withSequence(
         withTiming(1, { duration: Motion.duration.flash }),
         withSpring(0, Motion.spring.land, (finished) => {
-          if (finished) runOnJS(() => onDoneRef.current())();
+          if (finished) runOnJS(notifyDone)();
         })
       )
     );
