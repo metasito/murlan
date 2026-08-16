@@ -44,6 +44,7 @@ export const Colors = {
   redMuted:     'rgba(239,68,68,0.15)',
   danger:       '#E53935',
   dangerDim:    '#C9655E',
+  dangerScrim:  'rgba(229,57,53,0.92)', // error toast over the felt
 
   // Card specific
   cardBg:       '#FAFAF8',

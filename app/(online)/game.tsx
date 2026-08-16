@@ -350,10 +350,9 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: 6,
-    // Colors.danger (#E53935) at 0.92 alpha — no translucent danger token exists
     // yet in lib/tokens.ts (only the gold alpha scale does), so this stays a
     // literal anchored to the danger hue rather than an arbitrary red.
-    backgroundColor: "rgba(229,57,53,0.92)",
+    backgroundColor: Colors.dangerScrim,
     borderRadius: Radius.md,
     paddingHorizontal: 14,
     paddingVertical: Spacing.sm,

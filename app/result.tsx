@@ -29,7 +29,7 @@ import { sortHand } from "@/lib/gameEngine";
 import { Colors } from '@/lib/theme';
 import { useTranslation, type TranslationKey } from "@/lib/i18n";
 
-const POSITION_COLORS = [Colors.gold, "#C0C0C0", "#CD7F32", Colors.textMuted];
+const POSITION_COLORS = [Colors.podiumGold, Colors.podiumSilver, Colors.podiumBronze, Colors.textMuted];
 // Shares its display text with components/GameOverOverlay.tsx's identical
 // "1°"/"2°"/"3°"/"4°" position badges — same keys, one source of truth.
 const POSITION_LABEL_KEYS: TranslationKey[] = [
