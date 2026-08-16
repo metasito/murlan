@@ -1,4 +1,7 @@
 import pg from "pg";
+import { is, SQL, StringChunk } from "drizzle-orm";
+import { getTableConfig, PgTable } from "drizzle-orm/pg-core";
+import * as schema from "../../shared/schema.ts";
 
 export function hasDatabase(): boolean {
   return Boolean(process.env.DATABASE_URL);
@@ -20,112 +23,264 @@ export interface TestServer {
   stop(): Promise<void>;
 }
 
+function quoteIdent(name: string): string {
+  return `"${name.replace(/"/g, '""')}"`;
+}
+
+function sqlStringLiteral(value: string): string {
+  return `'${value.replace(/'/g, "''")}'`;
+}
+
 /**
- * Schema DDL for the throwaway test schema, kept in sync by hand with
- * `shared/schema.ts`. `drizzle-kit push` has no non-interactive mode for
- * pushing to an arbitrary/ephemeral schema (it prompts for confirmation and
- * targets whatever schema is in the connection string, but offers no
- * programmatic API to drive that from a test harness), and there is no
- * migrations directory to replay (`drizzle.config.ts` has no migrations
- * committed) — so this harness creates the tables with explicit SQL instead.
- * If `shared/schema.ts` changes, this DDL must be updated to match by hand.
+ * Renders a column's DEFAULT clause (or undefined if it has none). Handles
+ * the two shapes `shared/schema.ts` actually uses: a raw SQL default (e.g.
+ * `sql\`gen_random_uuid()\``, `.defaultNow()`) and a plain JS literal
+ * (string/number/boolean/plain object|array, the last rendered as `jsonb`).
+ * Throws on anything else (a client-side `$defaultFn`, a parameterized SQL
+ * default) rather than silently emitting DDL that doesn't match the schema.
  */
-const SCHEMA_DDL = `
-  CREATE TYPE room_status AS ENUM ('waiting', 'in_progress', 'finished');
-  CREATE TYPE game_mode_type AS ENUM ('free_for_all', 'teams');
-  CREATE TYPE friend_status AS ENUM ('pending', 'accepted');
-
-  CREATE TABLE users (
-    id varchar PRIMARY KEY DEFAULT gen_random_uuid(),
-    username text NOT NULL UNIQUE,
-    password text NOT NULL,
-    friend_code varchar(6) NOT NULL UNIQUE,
-    created_at timestamp DEFAULT now(),
-    last_seen timestamp
+function formatDefaultClause(
+  col: { name: string; hasDefault: boolean; default: unknown },
+  tableName: string
+): string | undefined {
+  if (!col.hasDefault) return undefined;
+  if (col.default === undefined) {
+    throw new Error(
+      `generateSchemaDdl: column "${tableName}.${col.name}" has a client-side ` +
+        `default (e.g. $defaultFn) with no DB-side default, which can't be ` +
+        `expressed as DDL — update generateSchemaDdl() in tests/helpers/testServer.ts.`
+    );
+  }
+  if (is(col.default, SQL)) {
+    const chunks = (col.default as SQL).queryChunks;
+    const text = chunks
+      .map((chunk) => {
+        if (!is(chunk, StringChunk)) {
+          throw new Error(
+            `generateSchemaDdl: column "${tableName}.${col.name}" has a ` +
+              `parameterized SQL default, which is not supported — update ` +
+              `generateSchemaDdl() in tests/helpers/testServer.ts.`
+          );
+        }
+        return chunk.value.join("");
+      })
+      .join("");
+    return `DEFAULT ${text}`;
+  }
+  const value = col.default;
+  if (typeof value === "string") return `DEFAULT ${sqlStringLiteral(value)}`;
+  if (typeof value === "boolean" || typeof value === "number") return `DEFAULT ${value}`;
+  if (typeof value === "object" && value !== null) {
+    return `DEFAULT ${sqlStringLiteral(JSON.stringify(value))}::jsonb`;
+  }
+  throw new Error(
+    `generateSchemaDdl: column "${tableName}.${col.name}" has a default of an ` +
+      `unsupported type (${typeof value}) — update generateSchemaDdl() in ` +
+      `tests/helpers/testServer.ts.`
   );
+}
 
-  CREATE TABLE rooms (
-    id varchar PRIMARY KEY DEFAULT gen_random_uuid(),
-    code varchar(6) NOT NULL UNIQUE,
-    host_user_id varchar REFERENCES users(id),
-    status room_status NOT NULL DEFAULT 'waiting',
-    game_mode game_mode_type NOT NULL DEFAULT 'free_for_all',
-    max_players integer NOT NULL DEFAULT 4,
-    created_at timestamp DEFAULT now()
-  );
-  CREATE INDEX rooms_host_user_id_idx ON rooms (host_user_id);
-  CREATE INDEX rooms_status_idx ON rooms (status);
+type TableConfig = ReturnType<typeof getTableConfig>;
 
-  CREATE TABLE room_players (
-    id varchar PRIMARY KEY DEFAULT gen_random_uuid(),
-    room_id varchar NOT NULL REFERENCES rooms(id),
-    user_id varchar NOT NULL REFERENCES users(id),
-    seat_index integer NOT NULL,
-    team varchar(1)
-  );
-  CREATE INDEX room_players_room_id_idx ON room_players (room_id);
-  CREATE INDEX room_players_user_id_idx ON room_players (user_id);
-  CREATE UNIQUE INDEX room_players_room_user_uq ON room_players (room_id, user_id);
-  CREATE UNIQUE INDEX room_players_room_seat_uq ON room_players (room_id, seat_index);
+function foreignKeysByColumn(
+  cfg: TableConfig
+): Map<string, { table: string; column: string; onDelete: string | undefined }> {
+  const map = new Map<string, { table: string; column: string; onDelete: string | undefined }>();
+  for (const fk of cfg.foreignKeys) {
+    const ref = fk.reference();
+    if (ref.columns.length !== 1) {
+      throw new Error(
+        `generateSchemaDdl: table "${cfg.name}" has a composite foreign key, ` +
+          `which is not supported — update generateSchemaDdl() in tests/helpers/testServer.ts.`
+      );
+    }
+    const foreignCfg = getTableConfig(ref.foreignTable);
+    map.set(ref.columns[0].name, {
+      table: foreignCfg.name,
+      column: ref.foreignColumns[0].name,
+      onDelete: fk.onDelete,
+    });
+  }
+  return map;
+}
 
-  CREATE TABLE friends (
-    id varchar PRIMARY KEY DEFAULT gen_random_uuid(),
-    user_id varchar NOT NULL REFERENCES users(id),
-    friend_user_id varchar NOT NULL REFERENCES users(id),
-    status friend_status NOT NULL DEFAULT 'pending',
-    created_at timestamp DEFAULT now()
-  );
-  CREATE INDEX friends_user_id_idx ON friends (user_id);
-  CREATE INDEX friends_friend_user_id_idx ON friends (friend_user_id);
+/**
+ * Generates the throwaway test schema's DDL directly from `shared/schema.ts`
+ * via `getTableConfig()` (drizzle-orm/pg-core), instead of hand-maintaining a
+ * parallel copy. This makes drift between the two structurally impossible:
+ * add a column/table/index to `shared/schema.ts` and this DDL picks it up
+ * automatically the next time tests run.
+ *
+ * Why generation instead of `drizzle-kit push`: `drizzle-kit push` has no
+ * non-interactive mode for targeting an arbitrary/ephemeral schema (it
+ * prompts for confirmation and always targets whatever schema is in the
+ * connection string, with no programmatic API to drive it from a test
+ * harness), and there is no migrations directory to replay (`drizzle.config.ts`
+ * has no migrations committed).
+ *
+ * Deliberately narrow: it understands exactly the schema features
+ * `shared/schema.ts` currently uses (enums, varchar/text/integer/boolean/
+ * jsonb/timestamp columns, single-column foreign keys with `onDelete`,
+ * simple + composite primary keys, plain-column indexes/unique indexes,
+ * `.unique()` columns) and throws a descriptive error for anything else
+ * (check constraints, RLS, non-default schemas, expression indexes,
+ * parameterized SQL defaults, composite foreign keys) rather than silently
+ * emitting incomplete DDL.
+ */
+export function generateSchemaDdl(): string {
+  const tables = Object.values(schema).filter((v) => is(v, PgTable)) as PgTable[];
+  const configs = tables.map((table) => ({ table, cfg: getTableConfig(table as PgTable<any>) }));
 
-  CREATE TABLE active_games (
-    room_code text PRIMARY KEY,
-    game_state jsonb NOT NULL DEFAULT '{}',
-    player_ids jsonb NOT NULL DEFAULT '[]',
-    player_map jsonb NOT NULL DEFAULT '{}',
-    scores jsonb NOT NULL DEFAULT '{}',
-    is_public boolean NOT NULL DEFAULT false,
-    max_players integer NOT NULL DEFAULT 4,
-    game_mode text NOT NULL DEFAULT 'free_for_all',
-    match_target integer NOT NULL DEFAULT 21,
-    updated_at timestamp NOT NULL DEFAULT now()
-  );
+  for (const { cfg } of configs) {
+    if (cfg.checks.length > 0) {
+      throw new Error(
+        `generateSchemaDdl: table "${cfg.name}" has CHECK constraints, which ` +
+          `are not supported — update generateSchemaDdl() in tests/helpers/testServer.ts.`
+      );
+    }
+    if (cfg.uniqueConstraints.length > 0) {
+      throw new Error(
+        `generateSchemaDdl: table "${cfg.name}" has table-level unique ` +
+          `constraints, which are not supported — update generateSchemaDdl() ` +
+          `in tests/helpers/testServer.ts.`
+      );
+    }
+    if (cfg.policies.length > 0 || cfg.enableRLS) {
+      throw new Error(
+        `generateSchemaDdl: table "${cfg.name}" uses row-level security, ` +
+          `which is not supported — update generateSchemaDdl() in tests/helpers/testServer.ts.`
+      );
+    }
+    if (cfg.schema !== undefined) {
+      throw new Error(
+        `generateSchemaDdl: table "${cfg.name}" declares a non-default ` +
+          `Postgres schema, which is not supported — update generateSchemaDdl() ` +
+          `in tests/helpers/testServer.ts.`
+      );
+    }
+  }
 
-  CREATE TABLE user_stats (
-    user_id varchar PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
-    games_played integer NOT NULL DEFAULT 0,
-    games_won integer NOT NULL DEFAULT 0,
-    matches_won integer NOT NULL DEFAULT 0,
-    current_streak integer NOT NULL DEFAULT 0,
-    best_streak integer NOT NULL DEFAULT 0,
-    bombs_played integer NOT NULL DEFAULT 0,
-    updated_at timestamp NOT NULL DEFAULT now()
-  );
+  // --- enum types (CREATE TYPE ... AS ENUM), deduped by Postgres type name ---
+  const enums = new Map<string, readonly string[]>();
+  for (const { cfg } of configs) {
+    for (const col of cfg.columns) {
+      if (col.columnType !== "PgEnumColumn") continue;
+      const enumName = col.getSQLType();
+      const values = col.enumValues;
+      if (!values) {
+        throw new Error(
+          `generateSchemaDdl: enum column "${cfg.name}.${col.name}" has no ` +
+            `enumValues — update generateSchemaDdl() in tests/helpers/testServer.ts.`
+        );
+      }
+      const existing = enums.get(enumName);
+      if (existing && (existing.length !== values.length || existing.some((v, i) => v !== values[i]))) {
+        throw new Error(
+          `generateSchemaDdl: enum "${enumName}" has inconsistent values across ` +
+            `its usages in shared/schema.ts.`
+        );
+      }
+      enums.set(enumName, values);
+    }
+  }
+  const enumStatements = [...enums.keys()].sort().map((name) => {
+    const values = enums.get(name)!;
+    return `CREATE TYPE ${quoteIdent(name)} AS ENUM (${values.map(sqlStringLiteral).join(", ")});`;
+  });
 
-  CREATE TABLE match_history (
-    id varchar PRIMARY KEY DEFAULT gen_random_uuid(),
-    user_id varchar NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-    finished_at timestamp NOT NULL DEFAULT now(),
-    game_mode text NOT NULL,
-    placement integer NOT NULL,
-    player_count integer NOT NULL,
-    points integer NOT NULL,
-    opponents jsonb NOT NULL DEFAULT '[]'
-  );
-  CREATE INDEX match_history_user_idx ON match_history (user_id, finished_at);
+  // --- tables, in FK dependency order so REFERENCES always target an
+  // already-created table ---
+  const byPgName = new Map(configs.map((c) => [c.cfg.name, c] as const));
+  const sortedConfigs: typeof configs = [];
+  const done = new Set<string>();
 
-  CREATE TABLE user_achievements (
-    user_id varchar NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-    achievement_id text NOT NULL,
-    unlocked_at timestamp NOT NULL DEFAULT now(),
-    PRIMARY KEY (user_id, achievement_id)
-  );
+  function visit(entry: (typeof configs)[number], stack: Set<string>): void {
+    if (done.has(entry.cfg.name)) return;
+    if (stack.has(entry.cfg.name)) {
+      throw new Error(
+        `generateSchemaDdl: circular foreign key dependency involving table ` +
+          `"${entry.cfg.name}" — update generateSchemaDdl() in tests/helpers/testServer.ts.`
+      );
+    }
+    stack.add(entry.cfg.name);
+    for (const fk of entry.cfg.foreignKeys) {
+      const ref = fk.reference();
+      const foreignCfg = getTableConfig(ref.foreignTable);
+      const dep = byPgName.get(foreignCfg.name);
+      if (dep && dep !== entry) visit(dep, stack);
+    }
+    stack.delete(entry.cfg.name);
+    done.add(entry.cfg.name);
+    sortedConfigs.push(entry);
+  }
+  for (const entry of configs) visit(entry, new Set());
 
-  -- connect-pg-simple, table "session", createTableIfMissing: false (see
-  -- server/session.ts). The developer's real "session" table is pre-created
-  -- once and deliberately never dropped/recreated by app code; the throwaway
-  -- schema does not inherit it, so it must be created here too, matching
-  -- connect-pg-simple's own default DDL.
+  const tableStatements: string[] = [];
+  for (const { cfg } of sortedConfigs) {
+    const fkByColumn = foreignKeysByColumn(cfg);
+    const columnLines = cfg.columns.map((col) => {
+      const parts = [quoteIdent(col.name), col.getSQLType()];
+      if (col.notNull) parts.push("NOT NULL");
+      const defaultClause = formatDefaultClause(col, cfg.name);
+      if (defaultClause) parts.push(defaultClause);
+      if (col.primary) parts.push("PRIMARY KEY");
+      if (col.isUnique) parts.push("UNIQUE");
+      const fk = fkByColumn.get(col.name);
+      if (fk) {
+        let clause = `REFERENCES ${quoteIdent(fk.table)}(${quoteIdent(fk.column)})`;
+        if (fk.onDelete && fk.onDelete !== "no action") {
+          clause += ` ON DELETE ${fk.onDelete.toUpperCase()}`;
+        }
+        parts.push(clause);
+      }
+      return "  " + parts.join(" ");
+    });
+    const pkLines = cfg.primaryKeys.map(
+      (pk) => `  PRIMARY KEY (${pk.columns.map((c) => quoteIdent(c.name)).join(", ")})`
+    );
+    const body = [...columnLines, ...pkLines].join(",\n");
+    tableStatements.push(`CREATE TABLE ${quoteIdent(cfg.name)} (\n${body}\n);`);
+
+    for (const idx of cfg.indexes) {
+      const kind = idx.config.unique ? "CREATE UNIQUE INDEX" : "CREATE INDEX";
+      const indexName = idx.config.name;
+      if (!indexName) {
+        throw new Error(
+          `generateSchemaDdl: table "${cfg.name}" has an unnamed index — ` +
+            `update generateSchemaDdl() in tests/helpers/testServer.ts.`
+        );
+      }
+      const cols = idx.config.columns.map((c) => {
+        const colName = (c as { name?: string }).name;
+        if (!colName) {
+          throw new Error(
+            `generateSchemaDdl: index "${indexName}" on table "${cfg.name}" ` +
+              `indexes an expression, not a plain column — update ` +
+              `generateSchemaDdl() in tests/helpers/testServer.ts.`
+          );
+        }
+        return quoteIdent(colName);
+      });
+      tableStatements.push(
+        `${kind} ${quoteIdent(indexName)} ON ${quoteIdent(cfg.name)} (${cols.join(", ")});`
+      );
+    }
+  }
+
+  return [...enumStatements, ...tableStatements].join("\n\n");
+}
+
+/**
+ * connect-pg-simple, table "session", createTableIfMissing: false (see
+ * server/session.ts). This table is NOT in `shared/schema.ts` — Drizzle
+ * doesn't manage it, connect-pg-simple creates it by its own convention. The
+ * developer's real "session" table is pre-created once and deliberately
+ * never dropped/recreated by app code; the throwaway schema does not inherit
+ * it, so it must be created here too, matching connect-pg-simple's own
+ * default DDL. This one legitimately stays hand-written: there is no Drizzle
+ * schema for it to be generated from.
+ */
+const SESSION_TABLE_DDL = `
   CREATE TABLE session (
     sid varchar NOT NULL COLLATE "default" PRIMARY KEY,
     sess json NOT NULL,
@@ -133,6 +288,10 @@ const SCHEMA_DDL = `
   );
   CREATE INDEX "IDX_session_expire" ON session (expire);
 `;
+
+function buildSchemaDdl(): string {
+  return `${generateSchemaDdl()}\n\n${SESSION_TABLE_DDL}`;
+}
 
 async function dropSchema(baseUrl: string, schema: string): Promise<void> {
   const cleanup = new pg.Pool({ connectionString: baseUrl });
@@ -182,7 +341,7 @@ export async function startTestServer(
 
     const ddl = new pg.Pool({ connectionString: scopedUrl });
     try {
-      await ddl.query(opts.ddlOverride ?? SCHEMA_DDL);
+      await ddl.query(opts.ddlOverride ?? buildSchemaDdl());
     } finally {
       await ddl.end();
     }
