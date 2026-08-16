@@ -6,8 +6,18 @@ import { evaluateAchievements, ACHIEVEMENTS } from "../lib/achievements.ts";
 import type { GameResult } from "../lib/achievements.ts";
 import type { GameMode } from "../lib/gameEngine.ts";
 
-/** Match history is pruned to this many most-recent rows per user on every write. */
-const MAX_HISTORY_ROWS_PER_USER = 50;
+/**
+ * Match history kept per user, pruned on every write.
+ *
+ * This is a display list — the profile screen's "recent matches" — not an
+ * archive, and fifty is about as far back as anyone scrolls. It bounds the
+ * table's growth per user, which is the property that actually matters.
+ *
+ * The same number bounds the read: reading more than is kept would show rows
+ * on their way to being deleted, and reading fewer would hide rows that were
+ * deliberately retained. They must not become two numbers.
+ */
+export const MAX_HISTORY_ROWS_PER_USER = 50;
 
 /** Bot seats carry this synthetic id (see server/onlineGameLogic.ts's
  * `scoreKeyForSeat`) instead of a real users.id — the same convention the
@@ -102,9 +112,9 @@ export async function recordGameResult(
         opponents,
       });
 
-      // Prune to the 50 most recent rows for this user, in the same
-      // transaction as the insert above, so the table cannot grow without
-      // bound. The row just inserted is always among the kept set.
+      // Prune in the same transaction as the insert above, so the table
+      // cannot grow without bound. The row just inserted is always among the
+      // kept set.
       const keep = await tx
         .select({ id: matchHistory.id })
         .from(matchHistory)
