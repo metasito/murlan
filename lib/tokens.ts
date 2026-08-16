@@ -26,12 +26,22 @@ export const Colors = {
   goldLight:    '#E2C06A',
   goldDark:     '#A8832B',
   goldDim:      '#A07830',
-  goldMuted:    'rgba(201,168,76,0.15)',
-  // Gold-accent border — stronger than goldMuted (a background wash), for
-  // card/row outlines that need a visible gold edge. 0.3 is the established
-  // value (7 uses across the app); a lone 0.35 elsewhere was drift, not a
-  // distinction, and folding it in here shifts nothing anyone can see.
-  goldBorder: 'rgba(201,168,76,0.3)',
+  // ── Gold alpha scale ───────────────────────────────────────────────────────
+  // The app had accumulated SIXTEEN distinct gold alphas (0.05 … 0.55), each
+  // one someone eyeballing a value in the moment. That is not a palette, it is
+  // drift, and it is why a "make the gold subtler" request had sixteen places
+  // to touch. These five steps replace all of them.
+  //
+  // Collapsing does shift some values by up to 0.05 alpha. That is deliberate
+  // and imperceptible — the alternative is preserving typos forever.
+  //
+  // Pick by ROLE, not by eye. If none fits, the design is asking for something
+  // new — say so rather than inventing a sixteenth value.
+  goldGhost:  'rgba(201,168,76,0.06)', // barely-there wash behind large areas
+  goldMuted:  'rgba(201,168,76,0.15)', // subtle fill: chips, inactive pills
+  goldSoft:   'rgba(201,168,76,0.2)',  // hairline dividers, resting borders
+  goldBorder: 'rgba(201,168,76,0.3)',  // visible gold edge on cards and rows
+  goldStrong: 'rgba(201,168,76,0.5)',  // active/selected emphasis, focus rings
 
   // Text colors
   // Ratios below are the worst case across the three surfaces text actually
