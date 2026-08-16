@@ -228,6 +228,13 @@ export interface GameTableProps {
   gameState: GameState;
   /** Seat the table is drawn from. Always rendered at the bottom. */
   viewerSeat: number;
+  /**
+   * Watching, not playing. The bottom seat belongs to someone else, so its
+   * cards are drawn face-down from `handCount` and the actions are absent.
+   * An explicit prop rather than a null `viewerSeat`, which is read in a dozen
+   * places and would put a branch in each of them.
+   */
+  spectating?: boolean;
 
   selectedIds: string[];
   onSelectCard: (cardId: string) => void;
@@ -375,6 +382,7 @@ function RematchPromptPanel({
 export function GameTable({
   gameState,
   viewerSeat,
+  spectating = false,
   selectedIds,
   onSelectCard,
   onPlay,
@@ -440,7 +448,21 @@ export function GameTable({
   const isNewRound = gameState.lastPlayedCombination === null;
   const exchange = readExchange(gameState, viewerSeat);
 
-  const sortedHand = React.useMemo(() => sortHand(viewer?.hand ?? []), [viewer?.hand]);
+  // A spectator receives every hand blanked, so the bottom seat's cards come
+  // from its count. They carry synthetic ids because nothing may identify a
+  // card the watcher is not entitled to see.
+  const sortedHand = React.useMemo(() => {
+    if (spectating) {
+      const count = viewer ? handCountOf(viewer) : 0;
+      return Array.from({ length: count }, (_, i) => ({
+        id: `hidden-${i}`,
+        rank: "3",
+        suit: "spades",
+        isJoker: false,
+      })) as Card[];
+    }
+    return sortHand(viewer?.hand ?? []);
+  }, [spectating, viewer]);
   const selectedObjs = React.useMemo(
     () => sortedHand.filter((c) => selectedIds.includes(c.id)),
     [sortedHand, selectedIds]
@@ -985,6 +1007,7 @@ export function GameTable({
               turnPulseStyle,
             ]}
           >
+            {!spectating && (
             <Animated.View
               style={[styles.passBtn, !canPass && styles.passBtnDim, passaPressStyle]}
             >
@@ -1017,6 +1040,7 @@ export function GameTable({
                 </Text>
               </Pressable>
             </Animated.View>
+            )}
 
             {isFinished ? (
               <View style={styles.finishedRow}>
@@ -1030,6 +1054,7 @@ export function GameTable({
               // `accessible`, which would hide them behind one leaf node.
               <View accessibilityLabel={handA11yLabel}>
                 <StraightHand
+                  faceDown={spectating}
                   cards={sortedHand}
                   selectedIds={selectedIds}
                   onPress={handleCardPress}
@@ -1040,6 +1065,7 @@ export function GameTable({
               </View>
             )}
 
+            {!spectating && (
             <Animated.View
               style={[
                 styles.playBtn,
@@ -1091,6 +1117,7 @@ export function GameTable({
                 )}
               </Pressable>
             </Animated.View>
+            )}
           </Animated.View>
         </View>
       </View>

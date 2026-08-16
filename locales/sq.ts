@@ -548,6 +548,8 @@ export const sq: Record<keyof typeof it, string> = {
   "onlineLobby.roomCodeA11yLabel": "Kodi i dhomës",
   "onlineLobby.roomCodeA11yHint": "Shkruaj kodin 6-shifror të dhomës në të cilën dëshiron të hysh",
   "onlineLobby.enter": "Hyr",
+  "onlineLobby.watch": "Shiko",
+  "onlineLobby.watchA11yHint": "Hyr si spektator, pa zënë vend në tavolinë",
 
   // ------------------------------------------------------------------- room.*
   "room.inviteFriendsTitle": "FTO MIQ",

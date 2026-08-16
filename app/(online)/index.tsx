@@ -27,7 +27,7 @@ export default function OnlineLobbyScreen() {
   const { t } = useTranslation();
   const { width: W, height: H } = useWindowDimensions();
   const { user } = useAuth();
-  const { createRoom, joinRoom, room, connected, error, clearError } = useOnlineGame();
+  const { createRoom, joinRoom, spectateRoom, room, connected, error, clearError } = useOnlineGame();
   const { pendingInvite, clearInvite } = useSocket();
   const [joinModalVisible, setJoinModalVisible] = useState(false);
   const [joinCode, setJoinCode] = useState("");
@@ -68,6 +68,15 @@ export default function OnlineLobbyScreen() {
     joinRoom(joinCode.trim().toUpperCase());
     setJoinModalVisible(false);
     setJoinCode("");
+  }
+
+  function handleSpectate() {
+    if (joinCode.length < 4) return;
+    hapticMedium();
+    spectateRoom(joinCode.trim().toUpperCase());
+    setJoinModalVisible(false);
+    setJoinCode("");
+    router.push("/(online)/game");
   }
 
   const CreateSection = (
@@ -255,6 +264,17 @@ export default function OnlineLobbyScreen() {
                   accessibilityLabel={t("common.cancel")}
                 >
                   <Text style={styles.modalCancelText}>{t("common.cancel")}</Text>
+                </Pressable>
+                <Pressable
+                  onPress={handleSpectate}
+                  disabled={joinCode.length < 4}
+                  style={({ pressed }) => [styles.modalCancelBtn, pressed && { opacity: 0.85 }]}
+                  accessibilityRole="button"
+                  accessibilityLabel={t("onlineLobby.watch")}
+                  accessibilityHint={t("onlineLobby.watchA11yHint")}
+                  accessibilityState={{ disabled: joinCode.length < 4 }}
+                >
+                  <Text style={styles.modalCancelText}>{t("onlineLobby.watch")}</Text>
                 </Pressable>
                 <Pressable
                   onPress={handleJoin}

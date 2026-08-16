@@ -632,6 +632,7 @@ export function CardItem({
   zIndex,
   dealDelay,
   dealFromX,
+  faceDown = false,
 }: {
   card: Card;
   isSelected: boolean;
@@ -639,6 +640,8 @@ export function CardItem({
   onPress: (id: string) => void;
   disabled: boolean;
   zIndex: number;
+  /** Draw the back — the hand belongs to someone else. */
+  faceDown?: boolean;
   /** ms to wait before this card flies in, or -1 for no deal animation. */
   dealDelay: number;
   /** Horizontal distance back to the deck, so the fan converges on one point. */
@@ -713,6 +716,7 @@ export function CardItem({
         selected={isSelected}
         onPress={handlePress}
         disabled={disabled}
+        faceDown={faceDown}
         noLift
       />
     </Animated.View>
@@ -728,6 +732,7 @@ export function StraightHand({
   disabled,
   availW,
   isMyTurn,
+  faceDown = false,
 }: {
   cards: Card[];
   selectedIds: string[];
@@ -735,6 +740,8 @@ export function StraightHand({
   disabled: boolean;
   availW: number;
   isMyTurn?: boolean;
+  /** Draw backs instead of faces — the hand belongs to someone else. */
+  faceDown?: boolean;
 }) {
   const { t } = useTranslation();
   const n = cards.length;
@@ -773,6 +780,7 @@ export function StraightHand({
           left={i * step}
           onPress={onPress}
           disabled={disabled}
+          faceDown={faceDown}
           zIndex={i}
           dealDelay={dealArmed ? i * Motion.stagger.deal : -1}
           dealFromX={totalW / 2 - i * step - CARD_W / 2}

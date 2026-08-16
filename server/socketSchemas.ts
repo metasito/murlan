@@ -31,6 +31,9 @@ export const RoomJoinSchema = z.object({
     .regex(/^[A-Za-z0-9]+$/, "Codice non valido"),
 });
 
+/** Watching a table. Same shape as joining one; the difference is the seat. */
+export const RoomSpectateSchema = RoomJoinSchema;
+
 export const RoomQuickmatchSchema = z.object({
   maxPlayers: z.number().int().min(2).max(4),
   gameMode: GameModeSchema,

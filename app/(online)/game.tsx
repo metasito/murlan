@@ -48,6 +48,7 @@ export default function OnlineGameScreen() {
     gameState,
     reactions,
     mySeatIndex,
+    isSpectator,
     playerLeft,
     rejoinFailed,
     reconnectNotice,
@@ -200,7 +201,12 @@ export default function OnlineGameScreen() {
   return (
     <GameTable
       gameState={gameState}
-      viewerSeat={mySeatIndex}
+      // A spectator holds no seat, so the table is drawn from seat 0 and told
+      // it is being watched. Every hand arrives blank from the server either
+      // way; `spectating` is what makes the bottom one draw as backs rather
+      // than as an empty hand.
+      viewerSeat={isSpectator ? 0 : mySeatIndex}
+      spectating={isSpectator}
       roundLabel={
         matchState.length === "single"
           ? t("result.singleHandFormat")

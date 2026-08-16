@@ -28,6 +28,7 @@ import {
   NoPayloadSchema,
   RoomCreateSchema,
   RoomJoinSchema,
+  RoomSpectateSchema,
   RoomQuickmatchSchema,
   RoomSetGameModeSchema,
   RoomStartSchema,
@@ -94,10 +95,19 @@ interface OnlineGameState {
    * bomb/joker achievement eligibility.
    */
   handFlags: Record<number, { bomb: boolean; joker: boolean }>;
+  /**
+   * userIds watching without a seat. Deliberately not persisted: a spectator
+   * who reconnects spectates again, and a restart dropping them costs nothing.
+   */
+  spectators: Set<string>;
 }
 
 const activeGames = new Map<string, OnlineGameState>();
 const socketRoomMap = new Map<string, string>();
+// Spectators are tracked apart from socketRoomMap on purpose: that map drives
+// the disconnect and leave paths for *seated* players, and a spectator dropping
+// out must not run a single line of them.
+const spectatorRoomMap = new Map<string, string>();
 const userSocketMap = new Map<string, string>();
 const publicRoomIds = new Set<string>();
 
@@ -122,7 +132,10 @@ function timeoutFromEnv(name: string, defaultMs: number): number {
 
 const AFK_TIMEOUT_MS = timeoutFromEnv("MURLAN_AFK_TIMEOUT_MS", 30_000);
 const DISCONNECT_GRACE_MS = timeoutFromEnv("MURLAN_DISCONNECT_GRACE_MS", 60_000);
-const BOT_MOVE_DELAY_MS = 1_200;
+// Paced so a bot seat reads as thinking rather than as an instant reflex.
+// Tunable for tests, which otherwise pay it on every move of every table a
+// disconnect hands over to the AI.
+const BOT_MOVE_DELAY_MS = timeoutFromEnv("MURLAN_BOT_MOVE_DELAY_MS", 1_200);
 const SWEEP_INTERVAL_MS = 5 * 60_000;
 
 let _io: SocketServer | null = null;
@@ -317,15 +330,16 @@ function persistGameState(roomId: string, game: OnlineGameState) {
 
 function broadcastGameState(io: SocketServer, game: OnlineGameState) {
   const { gameState, playerMap } = game;
-  Object.values(playerMap).forEach((uid) => {
-    const playerSocket = userSocketMap.get(uid);
-    if (playerSocket) {
-      io.to(playerSocket).emit(
-        "game:state",
-        sanitizeStateForPlayer(gameState, uid, playerMap)
-      );
-    }
-  });
+  const send = (uid: string) => {
+    const target = userSocketMap.get(uid);
+    if (!target) return;
+    io.to(target).emit("game:state", sanitizeStateForPlayer(gameState, uid, playerMap));
+  };
+  Object.values(playerMap).forEach(send);
+  // Spectators go through the same sanitiser. findViewerSeat returns null for
+  // a userId that holds no seat, and every hand is blanked on that basis, so a
+  // spectator cannot be sent a card without the seated path breaking first.
+  game.spectators.forEach(send);
 }
 
 // ─── Turn arbitration ─────────────────────────────────────────────────────────
@@ -984,6 +998,60 @@ export function setupSocket(httpServer: HttpServer) {
       { limit: 5, windowMs: 60_000 }
     );
 
+    // ── Spectating ────────────────────────────────────────────────────────
+    //
+    // A spectator is a viewer with no seat. sanitizeStateForPlayer blanks the
+    // hand of every seat that is not the viewer's, so a seatless viewer sees
+    // no cards at all — there is no spectator-specific sanitiser to get wrong.
+    // For the same reason a spectator cannot act: every game handler resolves
+    // the actor by seat and returns when it does not match.
+    onEvent(
+      socket,
+      "room:spectate",
+      RoomSpectateSchema,
+      async ({ code }) => {
+        const room = await storage.getRoomByCode(code.toUpperCase());
+        if (!room) {
+          socket.emit("room:error", { message: "Stanza non trovata", code: "ROOM_NOT_FOUND" });
+          return;
+        }
+        const game = activeGames.get(room.id);
+        if (!game || game.gameState.gameOver) {
+          socket.emit("room:error", { message: "Partita non trovata", code: "GAME_NOT_FOUND" });
+          return;
+        }
+        // A seated player watching their own table would be handed the
+        // seatless view and lose sight of their own hand.
+        if (seatOfUser(game, userId) !== null) {
+          socket.emit("room:error", { message: "Sei già al tavolo", code: "ALREADY_IN_ROOM" });
+          return;
+        }
+
+        const previous = spectatorRoomMap.get(socket.id);
+        if (previous && previous !== room.id) {
+          activeGames.get(previous)?.spectators.delete(userId);
+          socket.leave(previous);
+        }
+        game.spectators.add(userId);
+        spectatorRoomMap.set(socket.id, room.id);
+        socket.join(room.id);
+        socket.emit(
+          "game:state",
+          sanitizeStateForPlayer(game.gameState, userId, game.playerMap)
+        );
+        logger.info({ roomId: room.id, userId }, "Spectator joined");
+      },
+      { limit: 10, windowMs: 60_000 }
+    );
+
+    socket.on("room:unspectate", () => {
+      const roomId = spectatorRoomMap.get(socket.id);
+      if (!roomId) return;
+      activeGames.get(roomId)?.spectators.delete(userId);
+      spectatorRoomMap.delete(socket.id);
+      socket.leave(roomId);
+    });
+
     onEvent(
       socket,
       "room:join",
@@ -1193,6 +1261,7 @@ export function setupSocket(httpServer: HttpServer) {
           matchLength: matchLength ?? previous?.matchLength ?? "match",
           matchOver: previous?.matchOver ?? false,
           handFlags: {},
+          spectators: new Set<string>(),
         };
         rollMatchForward(newGame);
         activeGames.set(roomId, newGame);
@@ -1533,6 +1602,7 @@ export function setupSocket(httpServer: HttpServer) {
                 ? (restoredState as GameState).gameOver
                 : !!restoredResolution && restoredResolution.newTarget === null,
             handFlags: restoredHandFlags,
+            spectators: new Set<string>(),
           };
           activeGames.set(roomCode, game);
           if (row.isPublic) publicRoomIds.add(roomCode);
@@ -1705,6 +1775,13 @@ export function setupSocket(httpServer: HttpServer) {
     socket.on("disconnect", () => {
       void (async () => {
         try {
+          // A spectator holds no seat, so none of the grace/AFK machinery below
+          // applies to them; they are simply dropped.
+          const spectatingRoom = spectatorRoomMap.get(socket.id);
+          if (spectatingRoom) {
+            activeGames.get(spectatingRoom)?.spectators.delete(userId);
+            spectatorRoomMap.delete(socket.id);
+          }
           // Only blank the mapping if it still points at THIS socket: a second
           // tab or a fast reconnect would otherwise black out the live one.
           if (userSocketMap.get(userId) === socket.id) {

@@ -522,6 +522,8 @@ export const en: Record<keyof typeof it, string> = {
   "onlineLobby.roomCodeA11yLabel": "Room code",
   "onlineLobby.roomCodeA11yHint": "Enter the 6-character code of the room you want to join",
   "onlineLobby.enter": "Join",
+  "onlineLobby.watch": "Watch",
+  "onlineLobby.watchA11yHint": "Join as a spectator, without taking a seat",
 
   // ------------------------------------------------------------------- room.*
   "room.inviteFriendsTitle": "INVITE FRIENDS",

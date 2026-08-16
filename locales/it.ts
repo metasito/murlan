@@ -537,6 +537,8 @@ export const it = {
   "onlineLobby.roomCodeA11yLabel": "Codice stanza",
   "onlineLobby.roomCodeA11yHint": "Inserisci il codice a 6 caratteri della stanza a cui vuoi unirti",
   "onlineLobby.enter": "Entra",
+  "onlineLobby.watch": "Guarda",
+  "onlineLobby.watchA11yHint": "Entra come spettatore, senza sederti al tavolo",
 
   // ------------------------------------------------------------------- room.*
   "room.inviteFriendsTitle": "INVITA AMICI",

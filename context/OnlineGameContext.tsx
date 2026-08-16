@@ -93,6 +93,10 @@ interface OnlineGameContextValue {
   exchangeAnnounceData: ExchangeAnnounceData | null;
   createRoom: (gameMode: "free_for_all" | "teams", maxPlayers: number) => void;
   joinRoom: (code: string) => void;
+  /** Watch a table without taking a seat. */
+  spectateRoom: (code: string) => void;
+  /** True while watching. No seat, no actions, every hand hidden. */
+  isSpectator: boolean;
   leaveRoom: () => void;
   quickmatch: (maxPlayers: number, gameMode: "free_for_all" | "teams") => void;
   setRoomGameMode: (mode: "free_for_all" | "teams") => void;
@@ -138,6 +142,7 @@ export function OnlineGameProvider({ userId, children }: { userId: string; child
   const [rejoinFailed, setRejoinFailed] = useState(false);
   const [disconnectedPlayers, setDisconnectedPlayers] = useState<Set<string>>(new Set());
   const [reconnectNotice, setReconnectNotice] = useState<string | null>(null);
+  const [isSpectator, setIsSpectator] = useState(false);
 
   const prevExchangeActiveRef = useRef(false);
   const prevGameStateRef = useRef<GameState | null>(null);
@@ -491,8 +496,24 @@ export function OnlineGameProvider({ userId, children }: { userId: string; child
     socket.emit("room:join", { code });
   }, [userId]);
 
+  const spectateRoom = useCallback(
+    (code: string) => {
+      setIsSpectator(true);
+      socket.emit("room:spectate", { code: code.toUpperCase() });
+    },
+    [socket]
+  );
+
   const leaveRoom = useCallback(() => {
-    socket.emit("room:leave");
+    // A spectator never took a seat, so room:leave has nothing to release —
+    // sending it anyway would run the seated teardown for a table this socket
+    // does not occupy.
+    if (isSpectator) {
+      socket.emit("room:unspectate");
+      setIsSpectator(false);
+    } else {
+      socket.emit("room:leave");
+    }
     persistActiveRoom(null);
     setRoom(null);
     roomRef.current = null;
@@ -600,6 +621,8 @@ export function OnlineGameProvider({ userId, children }: { userId: string; child
       exchangeAnnounceData,
       createRoom,
       joinRoom,
+      spectateRoom,
+      isSpectator,
       leaveRoom,
       quickmatch,
       setRoomGameMode,
@@ -615,7 +638,7 @@ export function OnlineGameProvider({ userId, children }: { userId: string; child
       clearError,
       clearPlayerLeft,
     }),
-    [room, gameState, reactions, connected, error, playerLeft, rejoinFailed, disconnectedPlayers, reconnectNotice, mySeatIndex, entrySource, rematchVoteState, cumulativeScores, matchState, rematchIntents, rematchPromptOpen, exchangeAnnouncing, exchangeAnnounceData, createRoom, joinRoom, leaveRoom, quickmatch, setRoomGameMode, startGame, requestPlayAgain, voteRematch, answerRematch, playCards, pass, giveExchangeCard, acknowledgeExchange, sendReaction, clearError, clearPlayerLeft]
+    [room, gameState, reactions, connected, error, playerLeft, rejoinFailed, disconnectedPlayers, reconnectNotice, mySeatIndex, entrySource, rematchVoteState, cumulativeScores, matchState, rematchIntents, rematchPromptOpen, exchangeAnnouncing, exchangeAnnounceData, createRoom, joinRoom, spectateRoom, isSpectator, leaveRoom, quickmatch, setRoomGameMode, startGame, requestPlayAgain, voteRematch, answerRematch, playCards, pass, giveExchangeCard, acknowledgeExchange, sendReaction, clearError, clearPlayerLeft]
   );
 
   return (
