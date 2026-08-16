@@ -35,7 +35,7 @@ Two lists: what I found, and what the owner asked for.
 
 | # | Item | Note |
 |---|---|---|
-| A12 | 28 npm vulnerabilities remain (0 critical, was 50 with 2 critical) | The rest need major-version bumps of Expo-managed packages. Revisit at the next SDK upgrade rather than fighting the resolver now. |
+| A12 | 30 npm vulnerabilities remain (0 critical; was 50 with 2 critical) | **Do not run `npm audit fix --force`.** Checked: it would bump `expo` 54 -> 57 (three major SDK versions, breaking the React 19.1.0 pin and Expo Go) and *downgrade* `drizzle-kit` 0.31 -> 0.18, breaking `db:push`. Every remaining advisory is in build tooling — metro, @expo/cli, @expo/config, @esbuild-kit, drizzle-kit — which runs on a dev machine and in CI, not in the shipped bundle or the running server. Plain `npm audit fix` is already exhausted (30 before, 30 after). Revisit at the next Expo SDK upgrade. |
 | A13 | `icon.png` 1.2 MB, `splash-icon.png` 1.37 MB | Large for 1024×1024. Re-encoding needs image tooling and risks visible quality loss on the app icon. Measured, deliberately deferred. |
 | A14 | `handFlags` (bomb/joker played this hand) live in memory only | A mid-hand server restart loses them, under-counting two achievements. Accepted; the alternative is persisting per-play state on every move. |
 | A15 | Match history pruned to the last 50 rows per user | The number is arbitrary but bounded. Revisit if replay (A11) ships. |
