@@ -1,37 +1,70 @@
 import React, { createContext, useContext, useEffect, useState, useMemo } from "react";
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { setSoundsMasterEnabled } from "@/lib/sounds";
+import { setSoundsMasterEnabled, setSoundsMasterVolume } from "@/lib/sounds";
 import { setHapticsMasterEnabled } from "@/lib/haptics";
+import { setMotionPreference, type MotionPreference } from "@/lib/accessibility";
 
 interface Settings {
   soundsEnabled: boolean;
+  /** 0–1, multiplied into every effect's own level. */
+  soundVolume: number;
   hapticsEnabled: boolean;
+  motion: MotionPreference;
 }
 
 interface SettingsContextValue extends Settings {
   setSoundsEnabled: (v: boolean) => void;
+  setSoundVolume: (v: number) => void;
   setHapticsEnabled: (v: boolean) => void;
+  setMotion: (v: MotionPreference) => void;
 }
 
 const STORAGE_KEY = "@murlan_settings";
-const defaults: Settings = { soundsEnabled: true, hapticsEnabled: true };
+const defaults: Settings = {
+  soundsEnabled: true,
+  soundVolume: 1,
+  hapticsEnabled: true,
+  motion: "system",
+};
 
 const SettingsContext = createContext<SettingsContextValue>({
   ...defaults,
   setSoundsEnabled: () => {},
+  setSoundVolume: () => {},
   setHapticsEnabled: () => {},
+  setMotion: () => {},
 });
+
+/**
+ * A stored value written by an older build can be any shape at all, and a bad
+ * one here is silent: a string volume mutes the game, an unknown motion value
+ * freezes every animation. Each field is validated rather than spread in.
+ */
+function parseStored(raw: string): Partial<Settings> {
+  const parsed: unknown = JSON.parse(raw);
+  if (typeof parsed !== "object" || parsed === null) return {};
+  const v = parsed as Record<string, unknown>;
+  const out: Partial<Settings> = {};
+  if (typeof v.soundsEnabled === "boolean") out.soundsEnabled = v.soundsEnabled;
+  if (typeof v.hapticsEnabled === "boolean") out.hapticsEnabled = v.hapticsEnabled;
+  if (typeof v.soundVolume === "number" && Number.isFinite(v.soundVolume)) {
+    out.soundVolume = Math.max(0, Math.min(1, v.soundVolume));
+  }
+  if (v.motion === "system" || v.motion === "on" || v.motion === "off") {
+    out.motion = v.motion;
+  }
+  return out;
+}
 
 export function SettingsProvider({ children }: { children: React.ReactNode }) {
   const [settings, setSettings] = useState<Settings>(defaults);
 
   useEffect(() => {
     AsyncStorage.getItem(STORAGE_KEY).then((raw) => {
-      if (raw) {
-        try {
-          setSettings({ ...defaults, ...JSON.parse(raw) });
-        } catch {}
-      }
+      if (!raw) return;
+      try {
+        setSettings({ ...defaults, ...parseStored(raw) });
+      } catch {}
     });
   }, []);
 
@@ -44,17 +77,36 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
   }, [settings.soundsEnabled]);
 
   useEffect(() => {
+    setSoundsMasterVolume(settings.soundVolume);
+  }, [settings.soundVolume]);
+
+  useEffect(() => {
     setHapticsMasterEnabled(settings.hapticsEnabled);
   }, [settings.hapticsEnabled]);
 
+  useEffect(() => {
+    setMotionPreference(settings.motion);
+  }, [settings.motion]);
+
   const setSoundsEnabled = (v: boolean) =>
     setSettings((s) => ({ ...s, soundsEnabled: v }));
+  const setSoundVolume = (v: number) =>
+    setSettings((s) => ({ ...s, soundVolume: Math.max(0, Math.min(1, v)) }));
   const setHapticsEnabled = (v: boolean) =>
     setSettings((s) => ({ ...s, hapticsEnabled: v }));
+  const setMotion = (v: MotionPreference) =>
+    setSettings((s) => ({ ...s, motion: v }));
 
   const contextValue = useMemo(
-    () => ({ ...settings, setSoundsEnabled, setHapticsEnabled }),
-    [settings, setSoundsEnabled, setHapticsEnabled]
+    () => ({
+      ...settings,
+      setSoundsEnabled,
+      setSoundVolume,
+      setHapticsEnabled,
+      setMotion,
+    }),
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- the setters are stable in behaviour; only the settings object should re-publish the context
+    [settings]
   );
 
   return (

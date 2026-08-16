@@ -113,20 +113,30 @@ const ASSETS = {
 
 type SoundKey = keyof typeof ASSETS;
 
-// ─── Master enable/disable ────────────────────────────────────────────────────
+// ─── Master enable/volume ─────────────────────────────────────────────────────
+//
+// The per-effect volumes below are a mix, balancing the effects against each
+// other. The master multiplies that mix rather than replacing it, so turning the
+// game down keeps a card select quieter than a bomb.
 
 let _soundsEnabled = true;
 export function setSoundsMasterEnabled(v: boolean) { _soundsEnabled = v; }
 
+let _masterVolume = 1;
+export function setSoundsMasterVolume(v: number) {
+  _masterVolume = Math.max(0, Math.min(1, v));
+}
+
 // ─── Unified play ─────────────────────────────────────────────────────────────
 
 async function play(key: SoundKey, volume: number): Promise<void> {
-  if (!_soundsEnabled) return;
+  if (!_soundsEnabled || _masterVolume === 0) return;
+  const level = volume * _masterVolume;
   const asset = ASSETS[key]();
   if (Platform.OS === "web") {
-    await playWeb(key, asset, volume);
+    await playWeb(key, asset, level);
   } else {
-    await playNative(key, asset, volume);
+    await playNative(key, asset, level);
   }
 }
 

@@ -76,6 +76,27 @@ describe('lib/sounds on a device', () => {
     expect(mockPlayer.play).not.toHaveBeenCalled();
   });
 
+  it('scales the per-effect volume by the master volume', async () => {
+    // The per-effect levels are a mix that balances the effects against each
+    // other. Turning the game down has to preserve that, not flatten it.
+    sounds.setSoundsMasterVolume(0.5);
+    await sounds.playCardSelect();
+    expect(mockPlayer.volume).toBeCloseTo(0.375, 5);
+  });
+
+  it('goes silent at zero volume without creating a player', async () => {
+    sounds.setSoundsMasterVolume(0);
+    await sounds.playCardPlay();
+    expect(mockCreateAudioPlayer).not.toHaveBeenCalled();
+    expect(mockPlayer.play).not.toHaveBeenCalled();
+  });
+
+  it('clamps a master volume outside 0..1 instead of distorting', async () => {
+    sounds.setSoundsMasterVolume(4);
+    await sounds.playCardPlay();
+    expect(mockPlayer.volume).toBe(1);
+  });
+
   it('releases players on unload', async () => {
     await sounds.playCardPlay();
     sounds.unloadSounds();

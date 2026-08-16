@@ -17,16 +17,109 @@ import { apiRequest, queryClient } from "@/lib/query-client";
 import { hapticSelection } from "@/lib/haptics";
 import { usePrefersReducedMotion } from "@/lib/accessibility";
 import { Colors, Spacing, Radius, FontSize, Type, Shadow } from "@/lib/theme";
-import { useTranslation, type Locale } from "@/lib/i18n";
+import { useTranslation, type Locale, type TranslationKey } from "@/lib/i18n";
+import type { MotionPreference } from "@/lib/accessibility";
 
 interface Props {
   visible: boolean;
   onClose: () => void;
 }
 
+// Presets rather than a continuous slider: no slider ships with the app, and
+// three named steps are easier to hit on a phone than a 4pt-tall track.
+const VOLUME_LEVELS = [0.35, 0.65, 1] as const;
+const VOLUME_LABELS: Record<number, TranslationKey> = {
+  0.35: "settings.volumeLow",
+  0.65: "settings.volumeMedium",
+  1: "settings.volumeHigh",
+};
+
+/** A stored volume from another build need not be one of the presets. */
+function nearestVolume(v: number): number {
+  return VOLUME_LEVELS.reduce((best, level) =>
+    Math.abs(level - v) < Math.abs(best - v) ? level : best
+  );
+}
+
+const MOTION_CHOICES: MotionPreference[] = ["system", "on", "off"];
+const MOTION_LABELS: Record<MotionPreference, TranslationKey> = {
+  system: "settings.motionSystem",
+  on: "settings.motionReduced",
+  off: "settings.motionFull",
+};
+
+interface Segment<T> {
+  value: T;
+  label: string;
+}
+
+/**
+ * A row of mutually exclusive choices. Laid out full width under its own
+ * label rather than beside it: the options are words, and words in three
+ * languages do not fit in a chip sized for "IT".
+ */
+function Segmented<T extends string | number>({
+  segments,
+  selected,
+  onSelect,
+  a11yLabel,
+  disabled = false,
+}: {
+  segments: Segment<T>[];
+  selected: T;
+  onSelect: (v: T) => void;
+  a11yLabel: string;
+  disabled?: boolean;
+}) {
+  return (
+    <View
+      style={[styles.segmentRow, disabled && styles.segmentRowDisabled]}
+      accessibilityRole="radiogroup"
+      accessibilityLabel={a11yLabel}
+    >
+      {segments.map((seg) => {
+        const active = seg.value === selected;
+        return (
+          <Pressable
+            key={String(seg.value)}
+            onPress={() => {
+              hapticSelection();
+              onSelect(seg.value);
+            }}
+            disabled={disabled}
+            accessibilityRole="radio"
+            accessibilityLabel={seg.label}
+            accessibilityState={{ selected: active, disabled }}
+            style={({ pressed }) => [
+              styles.segment,
+              active && styles.segmentActive,
+              pressed && { opacity: 0.8 },
+            ]}
+          >
+            <Text
+              numberOfLines={1}
+              style={[styles.segmentText, active && styles.segmentTextActive]}
+            >
+              {seg.label}
+            </Text>
+          </Pressable>
+        );
+      })}
+    </View>
+  );
+}
+
 export function SettingsModal({ visible, onClose }: Props) {
-  const { soundsEnabled, hapticsEnabled, setSoundsEnabled, setHapticsEnabled } =
-    useSettings();
+  const {
+    soundsEnabled,
+    soundVolume,
+    hapticsEnabled,
+    motion,
+    setSoundsEnabled,
+    setSoundVolume,
+    setHapticsEnabled,
+    setMotion,
+  } = useSettings();
   const { logout } = useAuth();
   const router = useRouter();
   const reduceMotion = usePrefersReducedMotion();
@@ -122,6 +215,39 @@ export function SettingsModal({ visible, onClose }: Props) {
               accessibilityRole="switch"
               accessibilityLabel={t("settings.soundsA11yLabel")}
               accessibilityHint={t("settings.soundsA11yHint")}
+            />
+          </View>
+
+          <View style={styles.stackRow}>
+            <View style={styles.rowLeft}>
+              <Text style={styles.icon}>🔉</Text>
+              <View style={styles.rowLabels}>
+                <Text style={styles.label}>{t("settings.volume")}</Text>
+                <Text style={styles.sublabel}>{t("settings.volumeSubtitle")}</Text>
+              </View>
+            </View>
+            <Segmented
+              segments={VOLUME_LEVELS.map((v) => ({ value: v, label: t(VOLUME_LABELS[v]) }))}
+              selected={nearestVolume(soundVolume)}
+              onSelect={setSoundVolume}
+              a11yLabel={t("settings.volumeA11yLabel")}
+              disabled={!soundsEnabled}
+            />
+          </View>
+
+          <View style={styles.stackRow}>
+            <View style={styles.rowLeft}>
+              <Text style={styles.icon}>🎬</Text>
+              <View style={styles.rowLabels}>
+                <Text style={styles.label}>{t("settings.motion")}</Text>
+                <Text style={styles.sublabel}>{t("settings.motionSubtitle")}</Text>
+              </View>
+            </View>
+            <Segmented
+              segments={MOTION_CHOICES.map((v) => ({ value: v, label: t(MOTION_LABELS[v]) }))}
+              selected={motion}
+              onSelect={setMotion}
+              a11yLabel={t("settings.motionA11yLabel")}
             />
           </View>
 
@@ -254,6 +380,23 @@ const styles = StyleSheet.create({
   icon: { fontSize: FontSize.xl, width: 32, textAlign: "center" },
   label: { ...Type.bodyStrong, fontSize: FontSize.md, color: Colors.text },
   sublabel: { ...Type.caption },
+  stackRow: { gap: Spacing.sm, paddingVertical: Spacing.sm },
+  rowLabels: { flexShrink: 1 },
+  segmentRow: { flexDirection: "row", gap: Spacing.xs },
+  segmentRowDisabled: { opacity: 0.4 },
+  segment: {
+    flex: 1,
+    minHeight: 36,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: Spacing.xs,
+    borderRadius: Radius.sm,
+    borderWidth: 1,
+    borderColor: Colors.border,
+  },
+  segmentActive: { borderColor: Colors.gold, backgroundColor: Colors.goldMuted },
+  segmentText: { ...Type.caption, color: Colors.textMuted },
+  segmentTextActive: { color: Colors.gold, fontFamily: Type.bodyStrong.fontFamily },
   localeGroup: { flexDirection: "row", gap: Spacing.xs },
   localeBtn: {
     minWidth: 40,
@@ -265,7 +408,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: Colors.border,
   },
-  localeBtnActive: { borderColor: Colors.gold, backgroundColor: Colors.gold + "26" },
+  localeBtnActive: { borderColor: Colors.gold, backgroundColor: Colors.goldMuted },
   localeBtnText: { ...Type.caption, color: Colors.textMuted },
   localeBtnTextActive: { color: Colors.gold, fontFamily: Type.bodyStrong.fontFamily },
   divider: {
