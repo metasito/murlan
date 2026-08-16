@@ -24,7 +24,7 @@ import { LinearGradient } from "expo-linear-gradient";
 import { hapticLight, hapticMedium, hapticSuccess } from "@/lib/haptics";
 import { Ionicons } from "@expo/vector-icons";
 import { useGame } from "@/context/GameContext";
-import { ResultExchangeOverlay } from "@/components/ResultExchangeOverlay";
+import { ResultExchangeOverlay, shouldShowResultExchange } from "@/components/ResultExchangeOverlay";
 import { Colors, FontSize, Spacing, Type } from '@/lib/theme';
 import { useTranslation, type TranslationKey } from "@/lib/i18n";
 
@@ -208,9 +208,7 @@ export default function ResultScreen() {
 
   if (!gameState) return null;
 
-  const showExchange =
-    gameState.exchangePhase?.active === true ||
-    gameState.exchangePhase?.bothJokersException === true;
+  const showExchange = shouldShowResultExchange(gameState);
   const numPlayers = gameState.players.length;
   const isTeamMode = gameState.gameMode === "teams";
   const isSingleHand = match.length === "single";

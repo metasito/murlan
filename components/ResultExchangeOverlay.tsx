@@ -18,6 +18,22 @@ import { Colors } from "@/lib/theme";
 import { useTranslation } from "@/lib/i18n";
 import { cardSpokenName } from "@/lib/cardNames";
 
+/**
+ * Whether the result screen should be showing this overlay at all.
+ *
+ * `bothJokersException` is set when a hand is *dealt* and is never cleared, so
+ * it is still true when that same hand finishes — at which point the result
+ * screen would put the two-joker notice up again, stale, over a hand that is
+ * already over. Its button then leaves for `/game`, where there is nothing
+ * left to play. An exchange belongs to a hand about to start, never to one
+ * that has just ended, and `gameOver` is what tells those apart.
+ */
+export function shouldShowResultExchange(gameState: GameState): boolean {
+  if (gameState.gameOver) return false;
+  const ep = gameState.exchangePhase;
+  return ep?.active === true || ep?.bothJokersException === true;
+}
+
 /** How long the AI appears to think before returning its card. */
 const AI_PICK_DELAY_MS = 900;
 /** How long the two-joker notice sits before the next hand deals itself. */
@@ -34,13 +50,29 @@ export function ResultExchangeOverlay({
   const ep = gameState.exchangePhase!;
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const autoRef = useRef(false);
+  const leftRef = useRef(false);
+
+  /**
+   * Leaves for the next hand, at most once.
+   *
+   * Two independent things want to do this on the two-joker exception: the
+   * button, and the timer that moves the game on if nobody presses it.
+   * Navigation is not synchronous, so pressing the button does not unmount
+   * this overlay before the timer fires — without the guard, the app issues a
+   * second `replace` to a route it is already leaving.
+   */
+  const leaveForNextHand = () => {
+    if (leftRef.current) return;
+    leftRef.current = true;
+    router.replace("/game");
+  };
   const winner = gameState.players[ep.winnerIdx];
   const loser = gameState.players[ep.loserIdx];
   const exchangeCards = sortHand(getValidGivebackCards(winner.hand));
 
   useEffect(() => {
     if (ep.bothJokersException) {
-      const t = setTimeout(() => router.replace("/game"), BOTH_JOKERS_HOLD_MS);
+      const t = setTimeout(leaveForNextHand, BOTH_JOKERS_HOLD_MS);
       return () => clearTimeout(t);
     }
     if (winner.type === "ai" && !autoRef.current) {
@@ -64,7 +96,7 @@ export function ResultExchangeOverlay({
             {t("result.bothJokersBody", { name: winner.name })}
           </Text>
           <Pressable
-            onPress={() => router.replace("/game")}
+            onPress={leaveForNextHand}
             style={exStyles.confirmBtn}
             accessibilityRole="button"
             accessibilityLabel={t("result.bothJokersConfirm")}

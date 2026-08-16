@@ -17,11 +17,18 @@ jest.mock('expo-haptics', () => ({
   NotificationFeedbackType: { Success: 'success', Error: 'error', Warning: 'warning' },
 }));
 
+// The factory must build its own mock rather than close over a module-scope
+// one: jest hoists `jest.mock` above the imports, so a `const` declared here
+// has not initialised by the time the factory runs and would be captured as
+// undefined. Read the mock back off the module instead.
+jest.mock('expo-router', () => ({ router: { replace: jest.fn() } }));
+
 import React from 'react';
-import { render, fireEvent, waitFor } from '@testing-library/react-native';
+import { router } from 'expo-router';
+import { render, fireEvent, waitFor, act } from '@testing-library/react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
-import { ResultExchangeOverlay } from '@/components/ResultExchangeOverlay';
+import { ResultExchangeOverlay, shouldShowResultExchange } from '@/components/ResultExchangeOverlay';
 import type { Card, GameState, Player, Rank, Suit } from '@/lib/gameEngine';
 
 const METRICS = {
@@ -95,6 +102,8 @@ const WINNER_HAND = [
   card('A', 'spades'),
   card('2', 'hearts'),
 ];
+
+const replace = router.replace as unknown as ReturnType<typeof jest.fn>;
 
 const overlay = (state: GameState, chooseExchangeCard: (id: string) => void = () => {}) =>
   withSafeArea(
@@ -173,5 +182,82 @@ describe('the result screen card exchange', () => {
     expect(radios).toHaveLength(1);
     expect(radios[0].props.accessibilityLabel).toBe('Asso di Picche');
     await view.unmount();
+  });
+});
+
+// The two-joker overlay leaves the result screen from two independent places:
+// the button, and a timer that moves the game on if the player never presses
+// it. Exactly one may ever run. A second `replace` to a route the app is
+// already leaving is a plausible cause of docs/BACKLOG.md Q10b, where the URL
+// changes but the result screen stays mounted and the table never appears.
+describe('the two-joker overlay leaves the result screen exactly once', () => {
+  const bothJokers = () => exchangeState('human', [joker('bw'), joker('colored')], true);
+
+  it('does not navigate a second time on its own after the player presses on', async () => {
+    replace.mockClear();
+    jest.useFakeTimers();
+    try {
+      const view = await render(overlay(bothJokers()));
+      fireEvent.press(view.getByRole('button'));
+      await waitFor(() => expect(replace).toHaveBeenCalledTimes(1));
+
+      // Navigation is not synchronous, so the overlay is still mounted here and
+      // its timer is still armed — exactly the real situation.
+      await act(async () => {
+        jest.advanceTimersByTime(10_000);
+      });
+      expect(replace).toHaveBeenCalledTimes(1);
+      await view.unmount();
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  it('moves the game on by itself when the player never presses', async () => {
+    replace.mockClear();
+    jest.useFakeTimers();
+    try {
+      const view = await render(overlay(bothJokers()));
+      expect(replace).not.toHaveBeenCalled();
+      await act(async () => {
+        jest.advanceTimersByTime(10_000);
+      });
+      expect(replace).toHaveBeenCalledTimes(1);
+      expect(replace).toHaveBeenCalledWith('/game');
+      await view.unmount();
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+});
+
+// The result screen decides whether to show this overlay at all, and getting
+// that wrong strands the player: `bothJokersException` is set when a hand is
+// dealt and never cleared, so it is still true when that same hand ends.
+describe('when the result screen shows the exchange at all', () => {
+  const dealt = (state: GameState): GameState => ({ ...state, gameOver: false });
+
+  it('shows it for a hand about to be played', () => {
+    expect(shouldShowResultExchange(dealt(exchangeState('human', WINNER_HAND)))).toBe(true);
+  });
+
+  it('shows the two-joker notice for a hand about to be played', () => {
+    const s = dealt(exchangeState('human', [joker('bw'), joker('colored')], true));
+    expect(shouldShowResultExchange({ ...s, exchangePhase: { ...s.exchangePhase!, active: false } })).toBe(true);
+  });
+
+  // The regression. A finished hand still carries the flag from its own deal,
+  // and putting the notice back up over the scoreboard sends the player to a
+  // game that is already over.
+  it('does not show a stale two-joker notice over a finished hand', () => {
+    const finished = exchangeState('human', [joker('bw'), joker('colored')], true);
+    expect(finished.gameOver).toBe(true);
+    expect(finished.exchangePhase?.bothJokersException).toBe(true);
+    expect(shouldShowResultExchange(finished)).toBe(false);
+  });
+
+  it('shows nothing when there is no exchange phase at all', () => {
+    const s = dealt(exchangeState('human', WINNER_HAND));
+    expect(shouldShowResultExchange({ ...s, exchangePhase: undefined })).toBe(false);
   });
 });
