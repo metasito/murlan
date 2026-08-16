@@ -237,7 +237,23 @@ const GIVEBACK_CARD_LABEL = /^(3|4|5|6|7|8|9|10) di (Fiori|Cuori|Quadri|Picche)$
  * of those cannot legally nest, so whether the browser's parser actually
  * preserves that nesting in the live DOM is not something to bet a click on.
  */
+async function giveExchangeCandidateCount(page: Page): Promise<number> {
+  const candidates = page.locator(`[aria-label]:not(${TABLE} [aria-label])`);
+  const labels = (await candidates.evaluateAll((els) =>
+    els.map((el) => el.getAttribute("aria-label") ?? "")
+  )) as string[];
+  return labels.filter((l) => GIVEBACK_CARD_LABEL.test(l)).length;
+}
+
 async function giveExchangeCard(page: Page): Promise<boolean> {
+  // A successful pick collapses the whole modal (or at least removes this
+  // card from the offered list), so the giveback-shaped count dropping is
+  // real, independent proof the press worked — not just "no exception was
+  // thrown", which a press that silently missed the gesture responder would
+  // also produce.
+  const before = await giveExchangeCandidateCount(page);
+  if (before === 0) return false;
+
   const candidates = page.locator(`[aria-label]:not(${TABLE} [aria-label])`);
   const labels = (await candidates.evaluateAll((els) =>
     els.map((el) => el.getAttribute("aria-label") ?? "")
@@ -246,23 +262,28 @@ async function giveExchangeCard(page: Page): Promise<boolean> {
   for (let i = labels.length - 1; i >= 0; i--) {
     if (!GIVEBACK_CARD_LABEL.test(labels[i])) continue;
     const outer = candidates.nth(i).locator("xpath=ancestor::button[1]");
-    try {
-      const box = await outer.boundingBox({ timeout: CARD_CLICK_TIMEOUT_MS });
-      if (!box) continue;
-      const x = box.x + box.width / 2;
-      const y = box.y + box.height / 2;
-      // A plain synthetic `.click()` did not register here even though
-      // Playwright considered the element actionable — SelectableCard
-      // drives its lift/glow animation off onPressIn/onPressOut, and RNW's
-      // gesture responder for that shape seems to want a real press-hold-
-      // release rather than a single click event.
-      await page.mouse.move(x, y);
-      await page.mouse.down();
-      await sleep(60);
-      await page.mouse.up();
-      return true;
-    } catch {
-      continue; // try the next candidate rather than giving up on the whole exchange
+    // Neither a plain synthetic `.click()` nor a simulated OS-level
+    // mouse-down/hold/up reliably registered here — SelectableCard drives
+    // its lift/glow animation off onPressIn/onPressOut, and RNW's gesture
+    // responder for that shape seems to want the full pointer sequence a
+    // real tap produces. Dispatching pointerdown/pointerup/click directly on
+    // the resolved element sidesteps both coordinate hit-testing (irrelevant
+    // once the right element is already found) and the OS-level timing a
+    // simulated hold depends on. Each attempt is verified against the
+    // giveback-shaped candidate count actually dropping — not just "no
+    // exception was thrown" — before this function claims success, retrying
+    // a few times before moving on to the next matching card.
+    for (let attempt = 0; attempt < 4; attempt++) {
+      const handle = await outer.elementHandle({ timeout: CARD_CLICK_TIMEOUT_MS }).catch(() => null);
+      if (!handle) break;
+      await handle.evaluate((el) => {
+        const opts = { bubbles: true, cancelable: true } as const;
+        el.dispatchEvent(new PointerEvent("pointerdown", opts));
+        el.dispatchEvent(new PointerEvent("pointerup", opts));
+        (el as HTMLElement).click();
+      });
+      await sleep(250);
+      if ((await giveExchangeCandidateCount(page)) < before) return true;
     }
   }
   return false;
