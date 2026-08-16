@@ -19,7 +19,8 @@ import {
   Shadow,
 } from "@/lib/theme";
 import { usePrefersReducedMotion } from "@/lib/accessibility";
-import { useTranslation, type TranslationKey } from "@/lib/i18n";
+import { useTranslation } from "@/lib/i18n";
+import { cardSpokenName } from "@/lib/cardNames";
 
 // Suit → colour. `Suit` is plural ("spades") while the theme tokens are singular
 // ("spade"), so the mapping has to be explicit. Typed as Record<Suit, string> so
@@ -609,21 +610,6 @@ export function CardView({
     ? card.rank === "joker_colored" ? Colors.heart : Colors.cardInk
     : card.suit ? SUIT_COLORS[card.suit] : Colors.spade;
 
-  const getSuitName = (suit: string | null) => {
-    const key: TranslationKey | null =
-      suit === "hearts" ? "cards.suitHearts"
-      : suit === "diamonds" ? "cards.suitDiamonds"
-      : suit === "clubs" ? "cards.suitClubs"
-      : suit === "spades" ? "cards.suitSpades"
-      : null;
-    return key ? t(key) : "";
-  };
-
-  const getCardLabel = () => {
-    if (card.isJoker) return t(card.rank === "joker_colored" ? "cardView.jokerColored" : "cardView.jokerBlack");
-    return t("cards.nameFormat", { rank: getCardDisplayRank(card.rank), suit: getSuitName(card.suit) });
-  };
-
   return (
     <Animated.View style={[animStyle, style]}>
       <Pressable
@@ -631,7 +617,7 @@ export function CardView({
         onPressIn={handlePressIn}
         onPressOut={handlePressOut}
         disabled={!interactive}
-        accessibilityLabel={getCardLabel()}
+        accessibilityLabel={cardSpokenName(card, t)}
         accessibilityRole="button"
         accessibilityHint={selected ? t("cardView.selectedA11yHint") : undefined}
         style={[

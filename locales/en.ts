@@ -136,13 +136,13 @@ export const en: Record<keyof typeof it, string> = {
   "exchangeModal.subSuffix": "(3–10 only):",
   "exchangeModal.noValidCards": "No valid card to give back.",
   "exchangeModal.hint": "Tap a card to give it to the loser",
+  "exchangeModal.giveCardA11yHint": "Gives this card to the loser",
 
   // ----------------------------------------------------------------- cards.*
   "cards.rankAce": "Ace",
   "cards.rankJack": "Jack",
   "cards.rankQueen": "Queen",
   "cards.rankKing": "King",
-  "cards.joker": "Joker",
   "cards.suitHearts": "Hearts",
   "cards.suitDiamonds": "Diamonds",
   "cards.suitClubs": "Clubs",

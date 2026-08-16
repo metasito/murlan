@@ -71,6 +71,7 @@ import {
   type TableA11yStrings,
 } from "@/components/gameTableModel";
 import { useTranslation, type TranslationKey } from "@/lib/i18n";
+import { cardSpokenName, rankSpokenName, suitSpokenName, type TFn } from "@/lib/cardNames";
 import {
   TopOppSlot,
   SideOppSlot,
@@ -144,33 +145,9 @@ const PLAY_A11Y_SPOKEN_KEYS: Partial<Record<PlayButtonLabel, TranslationKey>> = 
 // ─── Screen-reader table description ───────────────────────────────────────
 //
 // describeTableForA11y (gameTableModel.ts) is pure and takes every phrase
-// pre-translated; this is the translation boundary that builds them, mirroring
-// the getCardName() helper in ExchangeAnnouncement.tsx. Rank/suit words reuse
-// the same cards.* keys CardView.tsx and ExchangeAnnouncement.tsx already use,
-// so a name spoken here always matches the name spoken for the card itself.
-type TFn = (key: TranslationKey, params?: Record<string, string | number>) => string;
-
-const RANK_SPOKEN_KEYS: Partial<Record<string, TranslationKey>> = {
-  A: "cards.rankAce",
-  J: "cards.rankJack",
-  Q: "cards.rankQueen",
-  K: "cards.rankKing",
-};
-function rankSpokenName(rank: string, t: TFn): string {
-  const key = RANK_SPOKEN_KEYS[rank];
-  return key ? t(key) : rank;
-}
-
-const SUIT_SPOKEN_KEYS: Record<string, TranslationKey> = {
-  hearts: "cards.suitHearts",
-  diamonds: "cards.suitDiamonds",
-  clubs: "cards.suitClubs",
-  spades: "cards.suitSpades",
-};
-function suitSpokenName(suit: string | null, t: TFn): string {
-  return suit ? t(SUIT_SPOKEN_KEYS[suit]) : "";
-}
-
+// pre-translated; this is the translation boundary that builds them. Card names
+// come from lib/cardNames so a card named here is named identically wherever
+// else it is spoken.
 /**
  * Spoken form of a played combination for describeTableForA11y — richer than
  * getComboLabel's visual chip text (which a sighted player pairs with the
@@ -180,13 +157,8 @@ function suitSpokenName(suit: string | null, t: TFn): string {
  */
 function lastPlayA11yLabel(combo: Combination, t: TFn): string {
   switch (combo.type) {
-    case "single": {
-      const c = combo.cards[0];
-      if (c.isJoker) {
-        return t(c.rank === "joker_colored" ? "cardView.jokerColored" : "cardView.jokerBlack");
-      }
-      return t("cards.nameFormat", { rank: rankSpokenName(c.rank, t), suit: suitSpokenName(c.suit, t) });
-    }
+    case "single":
+      return cardSpokenName(combo.cards[0], t);
     case "pair":
       return t("gameTable.a11yLastPlayPair", { rank: rankSpokenName(combo.cards[0].rank, t) });
     case "triple":

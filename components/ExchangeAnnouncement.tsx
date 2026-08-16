@@ -19,7 +19,8 @@ import type { Card } from "@/lib/gameEngine";
 import { CardView } from "@/components/CardView";
 import { Colors, Spacing, Radius, FontSize, Type, Motion, Shadow } from "@/lib/theme";
 import { usePrefersReducedMotion } from "@/lib/accessibility";
-import { useTranslation, type TranslationKey } from "@/lib/i18n";
+import { useTranslation } from "@/lib/i18n";
+import { cardSpokenName } from "@/lib/cardNames";
 
 // Mirrors the private CARD_W/CARD_H in components/CardView.tsx (not exported,
 // and that file is owned elsewhere) — used only to shrink a rendered CardView
@@ -33,25 +34,6 @@ const CARD_H = 84;
 const DISMISS_MS = 5500;
 const FLIGHT_DURATION = 750;
 
-function getCardName(t: (key: TranslationKey, params?: Record<string, string | number>) => string, card: Card): string {
-  if (card.isJoker) return t("cards.joker");
-  const rankMap: Record<string, TranslationKey> = {
-    A: "cards.rankAce",
-    J: "cards.rankJack",
-    Q: "cards.rankQueen",
-    K: "cards.rankKing",
-  };
-  const suitMap: Record<string, TranslationKey> = {
-    hearts: "cards.suitHearts",
-    diamonds: "cards.suitDiamonds",
-    clubs: "cards.suitClubs",
-    spades: "cards.suitSpades",
-  };
-  const rankKey = rankMap[card.rank as string];
-  const r = rankKey ? t(rankKey) : String(card.rank);
-  const s = card.suit ? t(suitMap[card.suit]) : "";
-  return t("cards.nameFormat", { rank: r, suit: s });
-}
 
 function FlyingCard({
   card,
@@ -147,13 +129,13 @@ export function ExchangeAnnouncement({
         cardReceived &&
           t("exchangeAnnouncement.giveLine", {
             from: loserName,
-            card: getCardName(t, cardReceived),
+            card: cardSpokenName(cardReceived, t),
             to: winnerName,
           }),
         cardGiven &&
           t("exchangeAnnouncement.giveLine", {
             from: winnerName,
-            card: getCardName(t, cardGiven),
+            card: cardSpokenName(cardGiven, t),
             to: loserName,
           }),
       ]
@@ -235,7 +217,7 @@ export function ExchangeAnnouncement({
                 <Text style={styles.descText}>
                   <Text style={styles.descName}>{loserName}</Text>
                   <Text style={styles.descPlain}>{t("exchangeAnnouncement.givesWord")}</Text>
-                  <Text style={styles.descCard}>{getCardName(t, cardReceived)}</Text>
+                  <Text style={styles.descCard}>{cardSpokenName(cardReceived, t)}</Text>
                   <Text style={styles.descPlain}>{t("exchangeAnnouncement.toWord")}</Text>
                   <Text style={styles.descName}>{winnerName}</Text>
                 </Text>
@@ -260,7 +242,7 @@ export function ExchangeAnnouncement({
                 <Text style={styles.descText}>
                   <Text style={styles.descName}>{winnerName}</Text>
                   <Text style={styles.descPlain}>{t("exchangeAnnouncement.givesWord")}</Text>
-                  <Text style={styles.descCard}>{getCardName(t, cardGiven)}</Text>
+                  <Text style={styles.descCard}>{cardSpokenName(cardGiven, t)}</Text>
                   <Text style={styles.descPlain}>{t("exchangeAnnouncement.toWord")}</Text>
                   <Text style={styles.descName}>{loserName}</Text>
                 </Text>

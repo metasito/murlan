@@ -148,6 +148,7 @@ export const it = {
   "exchangeModal.subSuffix": "(solo 3–10):",
   "exchangeModal.noValidCards": "Nessuna carta valida da restituire.",
   "exchangeModal.hint": "Tocca una carta per darla al perdente",
+  "exchangeModal.giveCardA11yHint": "Dà questa carta al perdente",
 
   // ----------------------------------------------------------------- cards.*
   // Card names as read aloud/announced (ExchangeAnnouncement) — card ranks
@@ -157,7 +158,6 @@ export const it = {
   "cards.rankJack": "Fante",
   "cards.rankQueen": "Donna",
   "cards.rankKing": "Re",
-  "cards.joker": "Jolly",
   "cards.suitHearts": "Cuori",
   "cards.suitDiamonds": "Quadri",
   "cards.suitClubs": "Fiori",

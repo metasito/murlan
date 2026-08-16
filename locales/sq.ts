@@ -158,6 +158,7 @@ export const sq: Record<keyof typeof it, string> = {
   "exchangeModal.subSuffix": "(vetëm 3–10):",
   "exchangeModal.noValidCards": "Nuk ka letër të vlefshme për ta dhënë.",
   "exchangeModal.hint": "Prek një letër për t'ia dhënë humbësit",
+  "exchangeModal.giveCardA11yHint": "Ia jep këtë letër humbësit",
 
   // ----------------------------------------------------------------- cards.*
   // UNSURE: suit names and the rank/suit name-format below are a best-effort
@@ -166,7 +167,6 @@ export const sq: Record<keyof typeof it, string> = {
   "cards.rankJack": "Fanti",
   "cards.rankQueen": "Zonja",
   "cards.rankKing": "Mbreti",
-  "cards.joker": "Xholi",
   "cards.suitHearts": "Kupa",
   "cards.suitDiamonds": "Karo",
   "cards.suitClubs": "Trefla",

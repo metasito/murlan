@@ -24,6 +24,7 @@ import { CardView } from "@/components/CardView";
 import { Colors, FontSize, Highlight, Motion, Radius, Shadow, Spacing } from '@/lib/theme';
 import { usePrefersReducedMotion } from "@/lib/accessibility";
 import { useTranslation } from "@/lib/i18n";
+import { cardSpokenName } from "@/lib/cardNames";
 
 interface ExchangeModalProps {
   phase: ExchangePhase;
@@ -69,6 +70,7 @@ function SelectableCard({
   onPress: () => void;
   reduceMotion: boolean;
 }) {
+  const { t } = useTranslation();
   // Lift and tip rather than scale: this wraps a CardView, whose rank
   // characters are rasterised text and go soft the moment they are resampled.
   const lift = useSharedValue(0);
@@ -111,6 +113,11 @@ function SelectableCard({
       onPressIn={() => setPress(true)}
       onPressOut={() => setPress(false)}
       accessibilityRole="button"
+      // The CardView inside is disabled, so its own label is not exposed —
+      // without this the whole control reads as an unnamed button.
+      accessible
+      accessibilityLabel={cardSpokenName(card, t)}
+      accessibilityHint={t("exchangeModal.giveCardA11yHint")}
     >
       <Animated.View style={anim}>
         <Animated.View pointerEvents="none" style={[styles.cardGlow, glowStyle]} />
