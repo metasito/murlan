@@ -376,8 +376,6 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: 6,
-    // yet in lib/tokens.ts (only the gold alpha scale does), so this stays a
-    // literal anchored to the danger hue rather than an arbitrary red.
     backgroundColor: Colors.dangerScrim,
     borderRadius: Radius.md,
     paddingHorizontal: 14,

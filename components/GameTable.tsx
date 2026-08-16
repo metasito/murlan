@@ -105,13 +105,26 @@ import {
 } from "@/lib/sounds";
 import { hapticLight, hapticMedium, hapticSelection, hapticSuccess } from "@/lib/haptics";
 import { usePrefersReducedMotion } from "@/lib/accessibility";
-import { Colors, FeltGradient, FontSize, Highlight, Motion, Radius, Scrim, Spacing, Type } from "@/lib/theme";
+import { Colors, FeltGradient, FontSize, Highlight, Motion, Radius, Scrim, Shadow, Spacing, Type } from "@/lib/theme";
 
 // How long the round-winner tag stays over the pile. A domain beat, not a
 // generic UI transition, so it is not a Motion token.
 const ROUND_WINNER_MS = 1800;
 // Below this the countdown turns red and ticks audibly.
 const URGENT_SECONDS = 5;
+
+// Whole-pixel travel, mirroring components/MenuButton.tsx: PASSA/GIOCA hold
+// text labels, and React Native rasterises text before transforming it, so a
+// fractional offset resamples the glyphs. 2px down is the smallest offset
+// that still reads as a press.
+const BTN_PRESS_TRAVEL = 2;
+
+// Raked light across the gold surface — bright at the top-left corner,
+// dropping to goldDark at the bottom-right — same treatment and same rake
+// angle as components/MenuButton.tsx's primary variant, so the table's most-
+// pressed control reads as struck metal like every other primary action.
+const GIOCA_GRADIENT = [Colors.goldLight, Colors.gold, Colors.goldDark] as const;
+const GIOCA_GRADIENT_PRESSED = [Colors.gold, Colors.goldDark, Colors.goldDim] as const;
 
 // gameTableModel.ts's `playButtonLabel` returns one of these three literals —
 // they are pinned by tests/gameTableModel.test.ts as state identifiers, not
@@ -422,11 +435,21 @@ export function GameTable({
 
   // Nothing here scales: a fractional scale on a view containing text makes
   // React Native resample the already-rasterised glyphs, and PASSA/GIOCA read
-  // as blurry for as long as it is applied. Emphasis is opacity and glow only.
+  // as blurry for as long as it is applied. Emphasis is opacity, glow and —
+  // for the press feedback below — a whole-pixel translateY only.
   const giocaFlashVal = useSharedValue(0);
   const passaFlashVal = useSharedValue(0);
   const giocaGlowVal = useSharedValue(0);
   const shakeX = useSharedValue(0);
+
+  // Real press feedback for the two most-pressed controls in the game,
+  // matching components/MenuButton.tsx: a discrete gradient swap (React
+  // state, since gradient `colors` arrays cannot be interpolated) plus a
+  // whole-pixel travel driven by a shared value.
+  const [giocaPressed, setGiocaPressed] = useState(false);
+  const [passaPressed, setPassaPressed] = useState(false);
+  const giocaPressVal = useSharedValue(0);
+  const passaPressVal = useSharedValue(0);
 
   // ── Derived view of the game ────────────────────────────────────────────────
 
@@ -685,13 +708,38 @@ export function GameTable({
       cancelAnimation(giocaFlashVal);
       cancelAnimation(passaFlashVal);
       cancelAnimation(shakeX);
+      cancelAnimation(giocaPressVal);
+      cancelAnimation(passaPressVal);
     },
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- unmount cleanup only; all three are stable shared values
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- unmount cleanup only; all five are stable shared values
     []
   );
 
+  // Guarded on the enabled flag so a disabled button (already visually dim)
+  // never also animates a press it did not accept.
+  const setGiocaPress = (down: boolean) => {
+    if (!playBtnValid) return;
+    setGiocaPressed(down);
+    giocaPressVal.value = reduceMotion
+      ? down ? 1 : 0
+      : withTiming(down ? 1 : 0, { duration: Motion.duration.fast });
+  };
+  const setPassaPress = (down: boolean) => {
+    if (!canPass) return;
+    setPassaPressed(down);
+    passaPressVal.value = reduceMotion
+      ? down ? 1 : 0
+      : withTiming(down ? 1 : 0, { duration: Motion.duration.fast });
+  };
+
   const giocaFlashStyle = useAnimatedStyle(() => ({ opacity: giocaFlashVal.value }));
   const passaFlashStyle = useAnimatedStyle(() => ({ opacity: passaFlashVal.value }));
+  const giocaPressStyle = useAnimatedStyle(() => ({
+    transform: [{ translateY: giocaPressVal.value * BTN_PRESS_TRAVEL }],
+  }));
+  const passaPressStyle = useAnimatedStyle(() => ({
+    transform: [{ translateY: passaPressVal.value * BTN_PRESS_TRAVEL }],
+  }));
   const shakeStyle = useAnimatedStyle(() => ({
     transform: [{ translateX: shakeX.value }],
   }));
@@ -921,16 +969,27 @@ export function GameTable({
               turnPulseStyle,
             ]}
           >
-            <View style={[styles.passBtn, !canPass && styles.passBtnDim]}>
+            <Animated.View
+              style={[styles.passBtn, !canPass && styles.passBtnDim, passaPressStyle]}
+            >
               <Pressable
                 testID="btn-passa"
                 onPress={handlePass}
+                onPressIn={() => setPassaPress(true)}
+                onPressOut={() => setPassaPress(false)}
                 disabled={!canPass}
                 style={styles.passBtnInner}
                 accessibilityRole="button"
                 accessibilityLabel={t("gameTable.passA11yLabel")}
                 accessibilityState={{ disabled: !canPass }}
               >
+                <LinearGradient
+                  colors={passaPressed ? PASS_GRADIENT_PRESSED : PASS_GRADIENT}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 0.35, y: 1 }}
+                  style={StyleSheet.absoluteFill}
+                />
+                <View pointerEvents="none" style={styles.btnTopHighlight} />
                 <Animated.View
                   pointerEvents="none"
                   style={[StyleSheet.absoluteFill, styles.btnFlash, passaFlashStyle]}
@@ -941,7 +1000,7 @@ export function GameTable({
                   {t("gameTable.passLabel")}
                 </Text>
               </Pressable>
-            </View>
+            </Animated.View>
 
             {isFinished ? (
               <View style={styles.finishedRow}>
@@ -970,11 +1029,15 @@ export function GameTable({
                 styles.playBtn,
                 !playBtnValid && styles.playBtnDim,
                 playBtnValid && giocaGlowStyle,
+                giocaPressStyle,
               ]}
             >
               <Pressable
                 testID="btn-gioca"
                 onPress={playBtnValid ? handlePlay : undefined}
+                onPressIn={() => setGiocaPress(true)}
+                onPressOut={() => setGiocaPress(false)}
+                disabled={!playBtnValid}
                 style={styles.playBtnInner}
                 accessibilityRole="button"
                 accessibilityLabel={
@@ -988,11 +1051,12 @@ export function GameTable({
               >
                 {playBtnValid ? (
                   <LinearGradient
-                    colors={[Colors.goldLight, Colors.gold, Colors.goldDark]}
+                    colors={giocaPressed ? GIOCA_GRADIENT_PRESSED : GIOCA_GRADIENT}
                     start={{ x: 0, y: 0 }}
-                    end={{ x: 1, y: 1 }}
+                    end={{ x: 0.35, y: 1 }}
                     style={styles.playBtnGrad}
                   >
+                    <View pointerEvents="none" style={styles.btnTopHighlight} />
                     <Animated.View
                       pointerEvents="none"
                       style={[StyleSheet.absoluteFill, styles.btnFlash, giocaFlashStyle]}
@@ -1028,13 +1092,16 @@ export function GameTable({
       )}
 
       {/* Gated on the exchange announcement so the two banners sequence rather
-          than stack on top of each other. */}
+          than stack on top of each other. topOffset clears TOP_SECTION_H —
+          the top opponent's avatar, name and card fan live in that band, and
+          card count is the single most important tactical signal on the
+          table, so the banner must never sit over it. */}
       {gameState.startReason && !exchangeAnnouncement?.visible && (
         <StartReasonBanner
           key={`reason-${gameState.startReason.type}-${gameState.startReason.playerIdx}`}
           reason={gameState.startReason}
           players={players}
-          topOffset={frame.topPad + TOP_BAR_H + TABLE_M + 8}
+          topOffset={frame.topPad + TOP_BAR_H + TABLE_M + TOP_SECTION_H + 8}
         />
       )}
 
@@ -1094,6 +1161,11 @@ export function GameTable({
 const PASS_BG = "#5C1212";
 const PASS_BORDER = "#8B1A1A";
 const PASS_LABEL = Colors.bombText;
+// Same raked-light technique as GIOCA_GRADIENT, tuned to PASSA's own red
+// rather than gold — the button gets the table's standard depth treatment
+// without adopting gold's colour identity.
+const PASS_GRADIENT = [PASS_BORDER, PASS_BG] as const;
+const PASS_GRADIENT_PRESSED = [PASS_BG, "#3A0C0C"] as const;
 
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: Colors.bg },
@@ -1144,15 +1216,32 @@ const styles = StyleSheet.create({
     fontFamily: "Rajdhani_600SemiBold", fontSize: FontSize.sm, color: Colors.gold,
   },
 
+  // overflow stays visible here — Shadow.dark lives on this view, and a
+  // native shadow is clipped by its own view's bounds. Corner-clipping the
+  // gradient happens one level in, on passBtnInner, same split as
+  // playBtn/playBtnGrad below.
   passBtn: {
     width: SIDE_BTN_W, height: CARD_H, borderRadius: Radius.md,
-    backgroundColor: PASS_BG, borderWidth: 2, borderColor: PASS_BORDER,
-    marginHorizontal: 3, overflow: "hidden",
+    borderWidth: 2, borderColor: PASS_BORDER,
+    marginHorizontal: 3,
+    ...Shadow.dark,
   },
-  passBtnDim: {
-    backgroundColor: "rgba(50,12,12,0.55)", borderColor: "rgba(100,20,20,0.35)",
+  // Matches playBtnDim's technique: fade the whole surface (gradient, border,
+  // label) uniformly rather than swapping in flat colours that fight the
+  // gradient now underneath them.
+  passBtnDim: { opacity: 0.55 },
+  passBtnInner: {
+    flex: 1, alignItems: "center", justifyContent: "center",
+    borderRadius: Radius.md - 2, overflow: "hidden",
   },
-  passBtnInner: { flex: 1, alignItems: "center", justifyContent: "center" },
+  // One hairline of light along the top edge — the cue that the surface has a
+  // thickness and is facing up. Same treatment as MenuButton's topHighlight.
+  btnTopHighlight: {
+    position: "absolute",
+    top: 0, left: "12%", right: "12%",
+    height: 1,
+    backgroundColor: Highlight.clear,
+  },
   // Sits behind the label, never over it: a wash on top of text would eat the
   // very contrast the flash is meant to draw attention to.
   btnFlash: { backgroundColor: Highlight.clear },
@@ -1160,11 +1249,15 @@ const styles = StyleSheet.create({
     fontFamily: "Rajdhani_700Bold", fontSize: FontSize.sm,
     color: PASS_LABEL, letterSpacing: 0.5,
   },
-  passBtnLabelDim: { color: Colors.bombFill },
+  // Fades the same label colour rather than swapping to an unrelated token —
+  // Colors.bombFill is a translucent fill meant for backgrounds, not text,
+  // and rendered as near-invisible red-on-red here.
+  passBtnLabelDim: { opacity: 0.6 },
 
   playBtn: {
     width: SIDE_BTN_W + 6, height: CARD_H,
     borderRadius: Radius.md, marginHorizontal: 3,
+    ...Shadow.dark,
   },
   playBtnDim: { opacity: 0.55 },
   playBtnInner: { flex: 1 },
