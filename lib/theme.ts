@@ -2,7 +2,7 @@
 // platform-aware Shadow.
 import { Platform } from "react-native";
 
-export { Colors, Spacing, Radius, FontSize, Type, Motion } from "./tokens";
+export { Colors, Spacing, Radius, FontSize, Type, Motion, Scrim, Highlight, FeltGradient } from "./tokens";
 
 import { Colors } from "./tokens";
 

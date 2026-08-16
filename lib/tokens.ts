@@ -61,7 +61,43 @@ export const Colors = {
   border:       'rgba(240,234,214,0.1)',
   borderStrong: 'rgba(240,234,214,0.2)',
   overlay:      'rgba(6,20,16,0.85)',
+  overlayStrong:'rgba(3,16,8,0.90)',
+  overlayOpaque:'rgba(3,16,8,0.97)',
+
+  // Bomb and royal-straight emphasis. Deliberately outside the danger family:
+  // these mark a dramatic play, not an error.
+  bombText:     '#FF8080',
+  bombBorder:   'rgba(255,80,80,0.55)',
+  bombFill:     'rgba(255,80,80,0.22)',
+
+  podiumGold:   '#C9A84C',
+  podiumSilver: '#C0C0C0',
+  podiumBronze: '#CD7F32',
 };
+
+// Black washes for depth and modal backdrops.
+export const Scrim = {
+  subtle: 'rgba(0,0,0,0.1)',
+  soft:   'rgba(0,0,0,0.22)',
+  medium: 'rgba(0,0,0,0.35)',
+  heavy:  'rgba(0,0,0,0.6)',
+} as const;
+
+// White lifts on dark surfaces: inner edges, glass highlights.
+export const Highlight = {
+  faint: 'rgba(255,255,255,0.03)',
+  soft:  'rgba(255,255,255,0.06)',
+  clear: 'rgba(255,255,255,0.12)',
+} as const;
+
+// Table felt, light centre to dark rim. Order is the gradient order.
+export const FeltGradient = [
+  '#0F5A35',
+  '#0D4A2E',
+  '#0B3B25',
+  '#082B1A',
+  '#061E12',
+] as const;
 
 export const Spacing = {
   xs: 4, sm: 8, md: 16, lg: 24, xl: 32, xxl: 48,
