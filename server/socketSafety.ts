@@ -14,10 +14,61 @@ interface RateWindow {
 }
 
 export interface EventOptions {
-  /** Max invocations per window for this socket. Omit for no limit. */
+  /** Max invocations per window for this user. Omit for no limit. */
   limit?: number;
   /** Window length in ms (default 10s). */
   windowMs?: number;
+}
+
+/**
+ * userId -> event -> window. Deliberately keyed by *user*, not by socket:
+ * nothing stops one session opening fifty websockets, and per-socket buckets
+ * gave that session fifty times every limit (room:create, friend:invite, the
+ * lot). The account is the thing that actually needs limiting.
+ */
+const userBuckets = new Map<string, Map<string, RateWindow>>();
+
+/**
+ * Expired windows are dropped on a lazy sweep rather than when a socket
+ * disconnects. Releasing on disconnect would hand back a fresh allowance to
+ * anyone willing to reconnect — the exact bypass this change closes — while
+ * an unswept map would grow with every account that ever connected.
+ */
+const SWEEP_INTERVAL_MS = 60_000;
+let lastSweepAt = 0;
+
+function sweepExpired(now: number): void {
+  if (now - lastSweepAt < SWEEP_INTERVAL_MS) return;
+  lastSweepAt = now;
+  for (const [userId, windows] of userBuckets) {
+    for (const [key, window] of windows) {
+      if (window.resetAt <= now) windows.delete(key);
+    }
+    if (windows.size === 0) userBuckets.delete(userId);
+  }
+}
+
+function bucketsFor(socket: Socket, now: number): Map<string, RateWindow> {
+  const userId = socket.data?.userId as string | undefined;
+  if (!userId) {
+    // No authenticated identity to key on (should be unreachable — the
+    // handshake middleware rejects those connections). Fall back to
+    // per-socket state so the limiter still applies rather than opening up.
+    return socket.data.rateBuckets ?? (socket.data.rateBuckets = new Map());
+  }
+  sweepExpired(now);
+  let windows = userBuckets.get(userId);
+  if (!windows) {
+    windows = new Map();
+    userBuckets.set(userId, windows);
+  }
+  return windows;
+}
+
+/** Test-only: drops all limiter state so cases cannot bleed into each other. */
+export function __resetRateLimits(): void {
+  userBuckets.clear();
+  lastSweepAt = 0;
 }
 
 function errorEventFor(event: string): string {
@@ -28,8 +79,8 @@ function errorEventFor(event: string): string {
 }
 
 /**
- * Per-socket fixed-window limiter. State lives on `socket.data`, so it is
- * collected with the socket and cannot leak.
+ * Per-*user* fixed-window limiter: every socket a given account has open
+ * shares one bucket, so opening more connections buys no extra allowance.
  */
 export function allowSocketAction(
   socket: Socket,
@@ -37,9 +88,8 @@ export function allowSocketAction(
   limit: number,
   windowMs: number
 ): boolean {
-  const buckets: Map<string, RateWindow> =
-    socket.data.rateBuckets ?? (socket.data.rateBuckets = new Map());
   const now = Date.now();
+  const buckets = bucketsFor(socket, now);
   const bucket = buckets.get(key);
   if (!bucket || bucket.resetAt <= now) {
     buckets.set(key, { count: 1, resetAt: now + windowMs });
