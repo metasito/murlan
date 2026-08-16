@@ -11,6 +11,14 @@
 //     (rendered here as "Xholi i zi" / "Xholi me ngjyrë" to match the
 //     app's colour-neutral "colored Joker" framing elsewhere in the UI)
 //
+// KNOWN INCONSISTENCY, highest priority for the reviewer: this file uses BOTH
+// "dorë"/"dora" (genuine Albanian for a hand) and "manche" (a French/Italian
+// loanword carried over from the Italian source) for the SAME concept — one
+// played-out hand. Pick one, almost certainly "dorë", and decline it properly
+// throughout: manche -> dorë, manchen -> dorën, manches -> dorës,
+// Manchet -> Duart. Left unresolved here because guessing at declension is
+// worse than flagging it.
+//
 // UNSOURCED terms: everything else — general UI chrome, combination names
 // other than "shkallë" (single/pair/triple/bomb/royal straight), suit
 // names, and all narrative/FAQ prose — is a good-faith machine translation,
