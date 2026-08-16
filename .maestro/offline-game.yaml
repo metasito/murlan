@@ -28,10 +28,22 @@
 # animations (the active-turn highlight, the selected-card glow), so
 # every single tap was blocking for its full internal timeout. Capping
 # the settle-wait fixed it. See docs/TESTING.md.
+# Requires a running Expo dev server the emulator can reach.
+#
+# `10.0.2.2` is the Android emulator's standard alias for the host machine's
+# loopback, so this one default works on any emulator anywhere — including a CI
+# runner — with no per-machine edit. It replaces a hardcoded LAN IP that only
+# ever resolved on the machine the flow was written on, which is what kept
+# these flows off CI.
+#
+# Override for a physical device (which has no such alias) with:
+#   maestro test -e MURLAN_PACKAGER_URL=exp://<lan-ip>:8081 .maestro/
 appId: host.exp.exponent
+env:
+  MURLAN_PACKAGER_URL: exp://10.0.2.2:8081
 ---
 - launchApp
-- openLink: "exp://192.168.1.217:8081"
+- openLink: "${MURLAN_PACKAGER_URL}"
 - extendedWaitUntil:
     visible: "IL GIOCO DI CARTE|GUIDA RAPIDA"
     timeout: 60000

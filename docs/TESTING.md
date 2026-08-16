@@ -269,10 +269,21 @@ maestro test .maestro/smoke.yaml
 maestro test .maestro/offline-game.yaml
 ```
 
-`npx expo start --android` must already be running and connected, and the
-packager URL baked into both flows (`exp://192.168.1.217:8081`) must match
-what that command printed — it is this machine's LAN IP, not portable. A
-human on a different machine/network updates that one line in both files.
+`npx expo start` must already be running. Both flows reach it at
+`exp://10.0.2.2:8081` — the Android emulator's standard alias for the host's
+loopback — so they need no per-machine edit and work unchanged on a CI runner.
+
+That address is the flow's `MURLAN_PACKAGER_URL` default. A **physical device**
+has no such alias and needs the host's real LAN address:
+
+```
+maestro test -e MURLAN_PACKAGER_URL=exp://<lan-ip>:8081 .maestro/smoke.yaml
+```
+
+Both flows previously hardcoded one machine's LAN IP, which had since changed —
+so they could not run even on the machine they were written on, let alone
+anywhere else. Verified both ways after the change: a cold start against the
+default passes, and the same flow against a wrong port fails.
 
 ### Real findings from actually running this, not just writing YAML
 
