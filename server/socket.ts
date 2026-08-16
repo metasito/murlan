@@ -722,41 +722,16 @@ export function setupSocket(httpServer: HttpServer) {
     userSocketMap.set(userId, socket.id);
     logger.debug({ userId, username, socketId: socket.id }, "Socket connected");
 
-    const pendingDcTimer = disconnectTimers.get(userId);
-    if (pendingDcTimer) {
-      clearTimeout(pendingDcTimer);
-      disconnectTimers.delete(userId);
-
-      for (const [roomId, game] of activeGames.entries()) {
-        if (seatOfUser(game, userId) === null || game.gameState.gameOver) continue;
-        socket.join(roomId);
-        socketRoomMap.set(socket.id, roomId);
-        await emitRoomStateTo(socket, roomId);
-        socket.emit(
-          "game:state",
-          sanitizeStateForPlayer(game.gameState, userId, game.playerMap)
-        );
-        io.to(roomId).emit("game:player_reconnected", { userId, username });
-        armTurn(roomId);
-        logger.info(
-          { userId, username, roomId },
-          "Player reconnected within grace period"
-        );
-        break;
-      }
-    }
-
-    void emitFriendStatus(io, userId, true);
-
-    try {
-      const friends = await storage.getFriends(userId);
-      const onlineIds = friends
-        .map((f) => f.friend.id)
-        .filter((id) => userSocketMap.has(id));
-      socket.emit("friend:online_list", { onlineIds });
-    } catch {
-      // non-critical
-    }
+    // Every onEvent(...)/socket.on(...) registration below is synchronous and
+    // must run before this function's first `await`. Socket.io starts
+    // delivering client packets the instant the transport is up — a client
+    // that emits on its own "connect" handler (the app's actual reconnect
+    // path: OnlineGameContext fires game:rejoin from there) can beat an
+    // `await` placed ahead of these registrations, and a packet that arrives
+    // with no listener attached is silently dropped: no error, no ack, the
+    // player just never hears back. The reconnect-notice and friends-list
+    // work below genuinely needs to await the database, so it runs after
+    // instead, once every listener already exists.
 
     // ── Room events ──────────────────────────────────────────────────────────
 
@@ -1390,6 +1365,46 @@ export function setupSocket(httpServer: HttpServer) {
       },
       { limit: 20, windowMs: 60_000 }
     );
+
+    // ── Reconnect notice + friends list (async — every listener above is
+    // already registered, so nothing emitted while these awaits are in
+    // flight can be dropped) ──────────────────────────────────────────────
+
+    const pendingDcTimer = disconnectTimers.get(userId);
+    if (pendingDcTimer) {
+      clearTimeout(pendingDcTimer);
+      disconnectTimers.delete(userId);
+
+      for (const [roomId, game] of activeGames.entries()) {
+        if (seatOfUser(game, userId) === null || game.gameState.gameOver) continue;
+        socket.join(roomId);
+        socketRoomMap.set(socket.id, roomId);
+        await emitRoomStateTo(socket, roomId);
+        socket.emit(
+          "game:state",
+          sanitizeStateForPlayer(game.gameState, userId, game.playerMap)
+        );
+        io.to(roomId).emit("game:player_reconnected", { userId, username });
+        armTurn(roomId);
+        logger.info(
+          { userId, username, roomId },
+          "Player reconnected within grace period"
+        );
+        break;
+      }
+    }
+
+    void emitFriendStatus(io, userId, true);
+
+    try {
+      const friends = await storage.getFriends(userId);
+      const onlineIds = friends
+        .map((f) => f.friend.id)
+        .filter((id) => userSocketMap.has(id));
+      socket.emit("friend:online_list", { onlineIds });
+    } catch {
+      // non-critical
+    }
 
     // ── Disconnect ───────────────────────────────────────────────────────────
 

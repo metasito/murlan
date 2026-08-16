@@ -1,6 +1,6 @@
 import { test, before, after, describe } from "node:test";
 import assert from "node:assert/strict";
-import type { Socket } from "socket.io-client";
+import { io as ioClient, type Socket } from "socket.io-client";
 import type { Card } from "../../lib/gameEngine.ts";
 import {
   startTestServer,
@@ -8,7 +8,7 @@ import {
   skipMessage,
   type TestServer,
 } from "../helpers/testServer.ts";
-import { connectAs, waitFor, type RegisteredUser } from "../helpers/client.ts";
+import { connectAs, register, waitFor, type RegisteredUser } from "../helpers/client.ts";
 
 /**
  * Shortened well below the 60s disconnect grace / 30s AFK production
@@ -108,6 +108,53 @@ describe("gameplay integrity", { skip: hasDatabase() ? false : skipMessage() }, 
     clients[0].socket.emit("room:start");
     return Promise.all(waits);
   }
+
+  // ── Test 0 ──────────────────────────────────────────────────────────────
+
+  /**
+   * Regression test for a startup race in the connection handler: it used
+   * to `await storage.getFriends(userId)` (a real DB round-trip) before
+   * registering any of the room:* / game:* listeners. An event emitted the
+   * instant the client sees "connect" could land in that window and be
+   * silently dropped — no error, no ack, nothing. This is exactly how the
+   * app's own reconnect path behaves (OnlineGameContext fires game:rejoin
+   * from its own "connect" handler), so a slow DB round-trip on a real
+   * reconnect could strand a player with no way back into their game.
+   *
+   * connectAs() in tests/helpers/client.ts works around this by waiting for
+   * friend:online_list before returning — deliberately not used here, since
+   * that wait is exactly what would hide the bug this test exists to catch.
+   */
+  test("an event emitted on the client's own connect handler is not dropped", async () => {
+    const { user, cookie } = await register(server, "connect_race_user");
+    const ticketRes = await fetch(`${server.url}/api/auth/socket-ticket`, {
+      method: "POST",
+      headers: { cookie },
+    });
+    const ticketText = await ticketRes.text();
+    assert.equal(ticketRes.status, 200, ticketText);
+    const { ticket } = JSON.parse(ticketText) as { ticket: string };
+
+    const socket: Socket = ioClient(server.url, {
+      auth: { ticket },
+      transports: ["websocket"],
+      reconnection: false,
+    });
+    try {
+      const response = waitFor<RoomState>(socket, "room:state", 3_000);
+      // Fired synchronously from within the "connect" handler itself —
+      // no waiting for any other server event first, matching how
+      // OnlineGameContext's attemptRejoin() fires game:rejoin on reconnect.
+      socket.once("connect", () => {
+        socket.emit("room:create", { gameMode: "free_for_all", maxPlayers: 2 });
+      });
+      const state = await response;
+      assert.ok(state.roomId, "room:create emitted on connect must still get a reply");
+      assert.equal(state.hostUserId, user.id);
+    } finally {
+      socket.close();
+    }
+  });
 
   // ── Test 1 ──────────────────────────────────────────────────────────────
 
