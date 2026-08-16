@@ -19,8 +19,10 @@ import {
   excludeBotSeats,
   isContestedTable,
   buildSeatRoster,
-  GAME_SCHEMA_VERSION,
   isStaleSchema,
+  packPersistedState,
+  unpackPersistedState,
+  type PersistedEnvelope,
 } from "./onlineGameLogic.ts";
 import {
   NoPayloadSchema,
@@ -87,8 +89,9 @@ interface OnlineGameState {
    * only (reset whenever a new hand deals — game start and rematch). Feeds
    * GameResult.playedBomb/playedJoker at game-over: the engine itself
    * (lib/gameEngine.ts) does not track this, and GameResult has no other
-   * honest source for it. Not persisted across a server restart mid-hand, so
-   * a restart loses that hand's bomb/joker achievement eligibility.
+   * honest source for it. Persisted inside the game_state envelope alongside
+   * schemaVersion, so a restart mid-hand does not silently cost the seat its
+   * bomb/joker achievement eligibility.
    */
   handFlags: Record<number, { bomb: boolean; joker: boolean }>;
 }
@@ -273,10 +276,7 @@ function persistGameState(roomId: string, game: OnlineGameState) {
   const playerMap = game.playerMap as Record<string, string>;
   // Stamped so a restart can tell a current-shape row from a stale one (see
   // GAME_SCHEMA_VERSION) rather than restoring a corrupt hand silently.
-  const persistedState = {
-    ...game.gameState,
-    schemaVersion: GAME_SCHEMA_VERSION,
-  };
+  const persistedState = packPersistedState(game.gameState, game.handFlags);
   const values = {
     roomCode: roomId,
     gameState: persistedState as any,
@@ -1483,9 +1483,7 @@ export function setupSocket(httpServer: HttpServer) {
             return;
           }
 
-          const persistedState = row.gameState as
-            | (GameState & { schemaVersion?: number })
-            | null;
+          const persistedState = row.gameState as PersistedEnvelope<GameState> | null;
           if (isStaleSchema(persistedState)) {
             // Written under an older persisted shape. Restoring it deals a
             // silently corrupt hand rather than crashing, which is worse
@@ -1501,7 +1499,8 @@ export function setupSocket(httpServer: HttpServer) {
           // isStaleSchema is a plain boolean helper (kept dependency-free for
           // unit testing), so TS can't narrow the null case through it —
           // the `return` above already ruled it out.
-          const { schemaVersion: _schemaVersion, ...restoredState } = persistedState!;
+          const { gameState: restoredState, handFlags: restoredHandFlags } =
+            unpackPersistedState(persistedState!);
 
           const playerMap = readPersistedPlayerMap(row.playerMap, row.playerIds);
           if (!Object.values(playerMap).includes(userId)) {
@@ -1530,10 +1529,7 @@ export function setupSocket(httpServer: HttpServer) {
               row.matchLength === "single"
                 ? (restoredState as GameState).gameOver
                 : !!restoredResolution && restoredResolution.newTarget === null,
-            // Not persisted (see the field's doc comment on OnlineGameState):
-            // a rejoin after a server restart mid-hand starts this hand's
-            // bomb/joker tracking over.
-            handFlags: {},
+            handFlags: restoredHandFlags,
           };
           activeGames.set(roomCode, game);
           if (row.isPublic) publicRoomIds.add(roomCode);

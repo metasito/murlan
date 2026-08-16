@@ -160,6 +160,40 @@ export function isStaleSchema(
   return !persisted || persisted.schemaVersion !== GAME_SCHEMA_VERSION;
 }
 
+export type HandFlags = Record<number, { bomb: boolean; joker: boolean }>;
+
+/** The stored `game_state` blob: the engine's state plus the fields that ride with it. */
+export type PersistedEnvelope<S> = S & {
+  schemaVersion: number;
+  handFlags?: HandFlags;
+};
+
+/**
+ * Wraps engine state for storage. `handFlags` travels here rather than in its
+ * own column because a new column cannot be written until someone runs
+ * `db:push` on Replit, and every persist would fail silently until they did.
+ */
+export function packPersistedState<S extends object>(
+  gameState: S,
+  handFlags: HandFlags
+): PersistedEnvelope<S> {
+  return { ...gameState, schemaVersion: GAME_SCHEMA_VERSION, handFlags };
+}
+
+/**
+ * Splits a stored blob back into engine state and the fields that rode with
+ * it. The envelope fields must not survive into the game state: it is
+ * broadcast to every client and compared against engine output.
+ */
+export function unpackPersistedState<S extends object>(
+  persisted: PersistedEnvelope<S>
+): { gameState: S; handFlags: HandFlags } {
+  const { schemaVersion: _schemaVersion, handFlags, ...gameState } = persisted;
+  // A row written before handFlags joined the envelope has none; starting that
+  // hand's tracking over is the pre-existing behaviour, so no schema bump.
+  return { gameState: gameState as unknown as S, handFlags: handFlags ?? {} };
+}
+
 export interface SeatEntry {
   seatIndex: number;
   userId: string;      // for bots, a synthetic "bot:<seat>" id
