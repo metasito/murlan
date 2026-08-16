@@ -199,7 +199,7 @@ export function ExchangeModal({
             </View>
           </View>
           <View style={styles.cardSlotEmpty}>
-            <Ionicons name="help-circle-outline" size={28} color={Colors.goldBorder} />
+            <Ionicons name="help-circle-outline" size={28} color={Colors.goldDim} />
           </View>
         </View>
 
