@@ -52,6 +52,8 @@ import {
   MATCH_TARGETS,
 } from "../lib/gameEngine.ts";
 import type { GameState, Card, GameMode } from "../lib/gameEngine.ts";
+import { recordGameResult } from "./stats.ts";
+import type { GameResult } from "../lib/achievements.ts";
 
 interface OnlineGameState {
   gameState: GameState;
@@ -65,6 +67,16 @@ interface OnlineGameState {
   maxPlayers: number;
   matchTarget: number;
   matchOver: boolean;
+  /**
+   * seat -> combination flags played by that seat during the *current hand*
+   * only (reset whenever a new hand deals — game start and rematch). Feeds
+   * GameResult.playedBomb/playedJoker (Task 8) at game-over: the engine
+   * itself (lib/gameEngine.ts) does not track this, and GameResult has no
+   * other honest source for it. Not persisted across a server restart mid-
+   * hand — a restart loses that hand's bomb/joker achievement eligibility,
+   * a documented, accepted gap (see task-8-report.md).
+   */
+  handFlags: Record<number, { bomb: boolean; joker: boolean }>;
 }
 
 const activeGames = new Map<string, OnlineGameState>();
@@ -629,6 +641,60 @@ async function handleGameOver(
 
   game.rematchVotes = new Set();
 
+  // ── Stats / history / achievements (Task 8) ──────────────────────────────
+  //
+  // `state.rankings` only carries an entry for a player once their placement
+  // is actually known: in free-for-all mode every seat eventually gets one
+  // (the very last active seat is auto-assigned last place without ever
+  // emptying its hand — see processPlay), but in teams mode the hand can end
+  // as soon as one team is done, leaving the losing team's players with no
+  // rankings entry and thus no knowable placement this hand. Those seats are
+  // skipped here, mirroring scoreHand's own "absent from rankings -> not in
+  // the result" contract instead of inventing a placement for them.
+  const playerCount = state.players.length;
+  const isFreeForAll = game.gameMode !== "teams";
+  // How many seats actually emptied their hand this round (as opposed to
+  // being auto-assigned last place while still holding cards): every FFA
+  // rankings entry except the final one, or every teams rankings entry (the
+  // teams path never auto-assigns — see the comment above).
+  const realFinisherCount = isFreeForAll
+    ? Math.max(playerCount - 1, 0)
+    : state.rankings.length;
+
+  const gameResults: GameResult[] = state.rankings
+    .map((engineId, idx) => {
+      const seat = seatOfEngineId.get(engineId);
+      if (seat === undefined) return null;
+      const placement = idx + 1;
+      const key = scoreKeyForSeat(game, seat);
+      const flags = game.handFlags[seat] ?? { bomb: false, joker: false };
+      // True only for the one FFA seat that was auto-assigned without
+      // emptying its hand — it never counts as one of its own opponents'
+      // finishes, but it also is not itself a "finisher" to subtract out.
+      const isAutoAssignedLast = isFreeForAll && placement === playerCount;
+      const result: GameResult = {
+        userId: key,
+        placement,
+        playerCount,
+        playedBomb: flags.bomb,
+        playedJoker: flags.joker,
+        matchWon: matchWinners.includes(key),
+        opponentsFinished: Math.max(
+          realFinisherCount - (isAutoAssignedLast ? 0 : 1),
+          0
+        ),
+      };
+      return result;
+    })
+    .filter((r): r is GameResult => r !== null);
+
+  // Deliberately not awaited: a stats/history/achievement write must never
+  // be able to block or fail the game-over broadcast below. Any failure
+  // (missing table, slow DB, thrown error) is only logged.
+  recordGameResult(gameResults, game.gameMode).catch((err) =>
+    logger.error({ err, roomId }, "Failed to record game results")
+  );
+
   const winnerNames = matchWinners
     .map(
       (key) =>
@@ -961,6 +1027,7 @@ export function setupSocket(httpServer: HttpServer) {
           maxPlayers: room.maxPlayers,
           matchTarget: previous?.matchTarget ?? MATCH_TARGETS[0],
           matchOver: previous?.matchOver ?? false,
+          handFlags: {},
         };
         rollMatchForward(newGame);
         activeGames.set(roomId, newGame);
@@ -1044,6 +1111,13 @@ export function setupSocket(httpServer: HttpServer) {
           socket.emit("game:error", { message: "Mossa non valida", code: "INVALID_MOVE" });
           return;
         }
+
+        // Achievement bookkeeping (Task 8): the engine has no notion of
+        // "did this seat play a bomb/joker this hand", so it is tracked here,
+        // at the one place every validated human play passes through.
+        const seatFlags = (game.handFlags[currentIdx] ??= { bomb: false, joker: false });
+        if (combo.type === "bomb") seatFlags.bomb = true;
+        if (combo.cards.some((c) => c.isJoker)) seatFlags.joker = true;
 
         const newState = processPlay(gameState, combo);
         game.gameState = newState;
@@ -1147,6 +1221,9 @@ export function setupSocket(httpServer: HttpServer) {
         game.playerMap = playerMap;
         game.gameMode = room.gameMode;
         game.maxPlayers = room.maxPlayers;
+        // A rematch deals a brand new hand — last hand's bomb/joker plays
+        // must not leak into this one's achievement evaluation.
+        game.handFlags = {};
         rollMatchForward(game);
 
         await storage.updateRoomStatus(roomId, "in_progress");
@@ -1265,6 +1342,10 @@ export function setupSocket(httpServer: HttpServer) {
             matchTarget: restoredTarget,
             matchOver:
               !!restoredResolution && restoredResolution.newTarget === null,
+            // Not persisted (see the field's doc comment on OnlineGameState):
+            // a rejoin after a server restart mid-hand starts this hand's
+            // bomb/joker tracking over.
+            handFlags: {},
           };
           activeGames.set(roomCode, game);
           if (row.isPublic) publicRoomIds.add(roomCode);

@@ -9,6 +9,7 @@ import { RegisterSchema, LoginSchema, AddFriendSchema } from "./schemas.ts";
 import { insertUserSchema } from "../shared/schema.ts";
 import { emitToUser, isUserOnline } from "./socket.ts";
 import { mintSocketTicket } from "./ticket.ts";
+import { getUserStats, getMatchHistory, getUserAchievements } from "./stats.ts";
 import { z } from "zod";
 
 declare module "express-session" {
@@ -282,6 +283,23 @@ export async function registerRoutes(app: Express): Promise<Server> {
     const friendUserId = z.string().min(1).max(64).parse(req.params.friendUserId);
     await storage.removeFriend(req.session.userId!, friendUserId);
     res.json({ ok: true });
+  });
+
+  // ── Stats / history / achievements (Task 8) ─────────────────────────────
+
+  app.get("/api/stats/me", requireAuth, async (req, res) => {
+    const stats = await getUserStats(req.session.userId!);
+    res.json(stats);
+  });
+
+  app.get("/api/stats/history", requireAuth, async (req, res) => {
+    const history = await getMatchHistory(req.session.userId!);
+    res.json(history);
+  });
+
+  app.get("/api/stats/achievements", requireAuth, async (req, res) => {
+    const achievements = await getUserAchievements(req.session.userId!);
+    res.json(achievements);
   });
 
   const httpServer = createServer(app);
