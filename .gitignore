@@ -58,3 +58,9 @@ test-output.txt
 
 # local dev stack
 .dev-stack/
+
+# Playwright E2E output
+tests/e2e/test-results/
+tests/e2e/playwright-report/
+test-results/
+playwright-report/
