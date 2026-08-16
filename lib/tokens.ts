@@ -51,12 +51,12 @@ export const Colors = {
   cardBorder:   'rgba(255,255,255,0.08)',
   cardBack:     '#1A1A2E',
 
-  // Four hues rather than the traditional red/black pair, so suits stay separable
-  // for colourblind players. The pip shape is the redundant channel.
-  spade:        '#1A3A7F',
-  heart:        '#E63946',
-  diamond:      '#F1A208',
-  club:         '#2D6A4F',
+  // Traditional red/black. Suit identity is carried by the pip glyph, so colour
+  // is not the only channel.
+  spade:        '#1A1A1A',
+  heart:        '#C8102E',
+  diamond:      '#C8102E',
+  club:         '#1A1A1A',
 
   // Borders & overlays
   border:       'rgba(240,234,214,0.1)',
