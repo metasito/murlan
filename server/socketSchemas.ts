@@ -41,6 +41,7 @@ export const RoomSetGameModeSchema = z.object({
 });
 
 const BotDifficultySchema = z.enum(["easy", "medium", "hard"]);
+const MatchLengthSchema = z.enum(["match", "single"]);
 
 /**
  * `room:start` is emitted with no payload from most call sites (rematch,
@@ -55,9 +56,15 @@ export const RoomStartSchema = z
     z.object({
       fillWithBots: z.boolean().optional(),
       botDifficulty: BotDifficultySchema.optional(),
+      matchLength: MatchLengthSchema.optional(),
     }),
   ])
   .transform((v) => v ?? {});
+
+/** The side-panel rematch question: one boolean per seat, majority decides. */
+export const GameRematchIntentSchema = z.object({
+  wants: z.boolean(),
+});
 
 export const GamePlaySchema = z.object({
   cardIds: z.array(IdSchema).min(1).max(14),

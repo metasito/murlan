@@ -23,10 +23,10 @@ import Animated, {
 import { LinearGradient } from "expo-linear-gradient";
 import * as Haptics from "expo-haptics";
 import { Ionicons } from "@expo/vector-icons";
-import { useGame, calcRoundPoints } from "@/context/GameContext";
+import { useGame } from "@/context/GameContext";
 import { CardView } from "@/components/CardView";
 import { sortHand, getValidGivebackCards, pickGivebackCard } from "@/lib/gameEngine";
-import { Colors } from '@/lib/theme';
+import { Colors, FontSize, Spacing, Type } from '@/lib/theme';
 import { useTranslation, type TranslationKey } from "@/lib/i18n";
 
 const POSITION_COLORS = [Colors.podiumGold, Colors.podiumSilver, Colors.podiumBronze, Colors.textMuted];
@@ -48,7 +48,6 @@ function ScoreRow({
   isWinner,
   delay,
   team,
-  isMultiRound,
 }: {
   rank: number;
   name: string;
@@ -57,7 +56,6 @@ function ScoreRow({
   isWinner: boolean;
   delay: number;
   team?: "A" | "B";
-  isMultiRound: boolean;
 }) {
   const { t } = useTranslation();
   const opacity = useSharedValue(0);
@@ -104,9 +102,7 @@ function ScoreRow({
         <Text style={[styles.totalScore, isWinner && styles.totalScoreWinner]}>
           {totalScore}
         </Text>
-        <Text style={styles.scoreSub}>
-          {isMultiRound ? t("result.pointsDelta", { n: pointsEarned }) : t("result.ptsAbbrev")}
-        </Text>
+        <Text style={styles.scoreSub}>{t("result.pointsDelta", { n: pointsEarned })}</Text>
       </View>
     </Animated.View>
   );
@@ -332,13 +328,12 @@ export default function ResultScreen() {
   const isLandscape = W > H;
   const {
     gameState,
-    setupRematch,
-    startNextRound,
+    match,
+    tableWantsRematch,
+    startNextHand,
+    startNewMatch,
     chooseExchangeCard,
     resetGame,
-    totalRounds,
-    currentRound,
-    cumulativeScores,
   } = useGame();
   const prevExchangeActiveRef = useRef<boolean | undefined>(undefined);
 
@@ -366,54 +361,81 @@ export default function ResultScreen() {
   const showExchange =
     gameState.exchangePhase?.active === true ||
     gameState.exchangePhase?.bothJokersException === true;
-  const isMultiRound = totalRounds > 1;
-  const isLastRound = currentRound >= totalRounds;
   const numPlayers = gameState.players.length;
+  const isTeamMode = gameState.gameMode === "teams";
+  const isSingleHand = match.length === "single";
 
-  const thisRoundPoints = calcRoundPoints(gameState.rankings, numPlayers);
-
-  const totalScoreById: Record<string, number> = {};
-  for (const player of gameState.players) {
-    totalScoreById[player.id] =
-      (cumulativeScores[player.id] ?? 0) + (thisRoundPoints[player.id] ?? 0);
-  }
-
+  // Scores are folded into the match by GameContext the moment the manche
+  // ends, so this screen only reads them.
+  const lastHand = match.hands[match.hands.length - 1];
+  const handPoints = lastHand?.pointsAwarded ?? {};
   const sortedPlayers = [...gameState.players].sort(
-    (a, b) => (totalScoreById[b.id] ?? 0) - (totalScoreById[a.id] ?? 0)
+    (a, b) => (match.scores[b.id] ?? 0) - (match.scores[a.id] ?? 0)
   );
 
-  const winner = sortedPlayers[0];
-  const isTeamMode = gameState.gameMode === "teams";
-  const winnerTeam = isTeamMode ? winner.team : null;
-  const displayName =
-    isTeamMode && winnerTeam ? `Team ${winnerTeam}` : winner.name;
-  const overallWinner = sortedPlayers[0]?.name ?? "";
+  const nameOf = (playerId: string) =>
+    gameState.players.find((p) => p.id === playerId)?.name ?? playerId;
+  const teamOf = (playerId: string) =>
+    gameState.players.find((p) => p.id === playerId)?.team;
+
+  const handWinnerId = lastHand?.rankings[0];
+  const matchWinnerId = match.winners[0];
+  const celebratedId = (match.over ? matchWinnerId : handWinnerId) ?? sortedPlayers[0]?.id;
+  const celebratedTeam = celebratedId ? teamOf(celebratedId) : undefined;
+  const celebratedName =
+    isTeamMode && celebratedTeam
+      ? t("lobby.team", { team: celebratedTeam })
+      : celebratedId
+        ? nameOf(celebratedId)
+        : "";
+
+  const headerTitle = match.over
+    ? match.isDraw
+      ? t("result.matchDrawTitle")
+      : t("result.matchOverTitle")
+    : t("result.handOverTitle");
+  const formatLine = isSingleHand
+    ? t("result.singleHandFormat")
+    : t("result.matchProgress", { target: match.target });
+  const celebrationSubtitle = match.over
+    ? match.isDraw
+      ? t("result.matchDrawSubtitle")
+      : t("result.matchWinner")
+    : t("result.handWinner");
 
   const topPad = Platform.OS === "web" ? 67 : insets.top;
   const bottomPad = Platform.OS === "web" ? 34 : insets.bottom;
   const leftPad = Platform.OS === "web" ? 0 : insets.left;
   const rightPad = Platform.OS === "web" ? 0 : insets.right;
 
-  const handleNextRound = () => {
+  const handleNextHand = () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    startNextRound();
+    startNextHand();
     router.replace("/game");
   };
-  const handleRematch = () => {
+  const handleNewMatch = () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    const playerSetups = gameState.players.map((p) => ({
-      name: p.name,
-      type: p.type,
-      difficulty: p.difficulty,
-      team: p.team,
-    }));
-    setupRematch(playerSetups, gameState.gameMode, gameState.rankings);
+    startNewMatch();
+    router.replace("/game");
   };
   const handleHome = () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     resetGame();
     router.replace("/");
   };
+
+  // The table was asked during the closing manche; a majority "no" ends it
+  // here, so there is no button offering to overrule them.
+  const continueAction = !match.over
+    ? { label: t("result.nextHand"), icon: "play-forward" as const, onPress: handleNextHand, testID: "btn-prossima-manche" }
+    : tableWantsRematch
+      ? { label: t("result.newMatch"), icon: "refresh" as const, onPress: handleNewMatch, testID: "btn-nuova-partita" }
+      : null;
+  const verdictLine = match.over
+    ? tableWantsRematch
+      ? t("result.tableContinues")
+      : t("result.tableStops")
+    : null;
 
   const actionsBlock = (compact?: boolean) => (
     <View style={[styles.actions, compact && styles.actionsRow]}>
@@ -427,52 +449,63 @@ export default function ResultScreen() {
         <Ionicons name="home" size={18} color={Colors.textSecondary} />
         {!compact && <Text style={styles.homeBtnText}>{t("result.home")}</Text>}
       </Pressable>
-      {isMultiRound && !isLastRound ? (
+      {continueAction && (
         <Pressable
-          testID="btn-prossimo"
-          onPress={handleNextRound}
+          testID={continueAction.testID}
+          onPress={continueAction.onPress}
           style={[styles.rematchBtn, compact && styles.rematchBtnFlex]}
           accessibilityRole="button"
-          accessibilityLabel={t("result.nextRound")}
+          accessibilityLabel={continueAction.label}
         >
           <LinearGradient colors={[Colors.gold, Colors.goldDark]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={[styles.rematchGrad, compact && styles.rematchGradCompact]}>
-            <Ionicons name="play-forward" size={18} color={Colors.bgCard} />
-            <Text style={styles.rematchText}>{t("result.nextRound")}</Text>
-          </LinearGradient>
-        </Pressable>
-      ) : (
-        <Pressable
-          testID="btn-rivincita"
-          onPress={handleRematch}
-          style={[styles.rematchBtn, compact && styles.rematchBtnFlex]}
-          accessibilityRole="button"
-          accessibilityLabel={t("gameOverOverlay.rematch")}
-        >
-          <LinearGradient colors={[Colors.gold, Colors.goldDark]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={[styles.rematchGrad, compact && styles.rematchGradCompact]}>
-            <Ionicons name="refresh" size={18} color={Colors.bgCard} />
-            <Text style={styles.rematchText}>{t("gameOverOverlay.rematch")}</Text>
+            <Ionicons name={continueAction.icon} size={18} color={Colors.bgCard} />
+            <Text style={styles.rematchText}>{continueAction.label}</Text>
           </LinearGradient>
         </Pressable>
       )}
     </View>
   );
 
-  const rankBlock = (
-    <View style={styles.rankList}>
-      {sortedPlayers.map((player, idx) => (
-        <ScoreRow
-          key={player.id}
-          rank={idx}
-          name={player.name}
-          totalScore={totalScoreById[player.id] ?? 0}
-          pointsEarned={thisRoundPoints[player.id] ?? 0}
-          isWinner={idx === 0}
-          delay={idx * 70 + 150}
-          team={isTeamMode ? player.team : undefined}
-          isMultiRound={isMultiRound}
-        />
-      ))}
+  const header = (
+    <View style={styles.headerMulti}>
+      <Text style={styles.headerTitle}>{headerTitle}</Text>
+      <Text style={styles.headerFormat}>{formatLine}</Text>
     </View>
+  );
+
+  const rankRows = sortedPlayers.map((player, idx) => (
+    <ScoreRow
+      key={player.id}
+      rank={idx}
+      name={player.name}
+      totalScore={match.scores[player.id] ?? 0}
+      pointsEarned={handPoints[player.id] ?? 0}
+      isWinner={idx === 0}
+      delay={idx * 70 + 150}
+      team={isTeamMode ? player.team : undefined}
+    />
+  ));
+
+  const statTiles = (iconSize: number) => (
+    <>
+      <View style={styles.statItem}>
+        <Ionicons name="people" size={iconSize} color={Colors.gold} />
+        <Text style={styles.statValue}>{numPlayers}</Text>
+        <Text style={styles.statLabel}>{t("result.statPlayers")}</Text>
+      </View>
+      <View style={styles.statItem}>
+        <Ionicons name="layers" size={iconSize} color={Colors.gold} />
+        <Text style={styles.statValue}>{match.hands.length}</Text>
+        <Text style={styles.statLabel}>{t("result.statHands")}</Text>
+      </View>
+      {!isSingleHand && (
+        <View style={styles.statItem}>
+          <Ionicons name="flag" size={iconSize} color={Colors.gold} />
+          <Text style={styles.statValue}>{match.target}</Text>
+          <Text style={styles.statLabel}>{t("result.statTarget")}</Text>
+        </View>
+      )}
+    </>
   );
 
   if (isLandscape) {
@@ -480,63 +513,20 @@ export default function ResultScreen() {
       <View style={[styles.container, { paddingTop: topPad, paddingBottom: bottomPad, paddingLeft: leftPad, paddingRight: rightPad }]}>
         <LinearGradient colors={[Colors.bg, Colors.bgCard, Colors.bg]} locations={[0, 0.5, 1]} style={StyleSheet.absoluteFill} />
 
-        <View style={[styles.header, { paddingHorizontal: 12 }]}>
-          {isMultiRound ? (
-            <View style={styles.headerMulti}>
-              <Text style={styles.headerTitle}>
-                {isLastRound ? t("result.matchOverTitle") : t("result.roundOfTotal", { current: currentRound, total: totalRounds })}
-              </Text>
-              <View style={styles.roundPips}>
-                {Array.from({ length: totalRounds }, (_, i) => (
-                  <View key={i} style={[styles.pip, i < currentRound && styles.pipDone, i === currentRound - 1 && styles.pipCurrent]} />
-                ))}
-              </View>
-            </View>
-          ) : (
-            <Text style={styles.headerTitle}>{t("result.gameOverTitle")}</Text>
-          )}
-        </View>
+        <View style={[styles.header, styles.headerLandscape]}>{header}</View>
 
         <View style={styles.landscapeBody}>
           <View style={styles.landscapeLeft}>
-            <WinnerCelebration
-              name={isMultiRound ? (isLastRound ? overallWinner : displayName) : displayName}
-              subtitle={isMultiRound ? (isLastRound ? t("result.tournamentChampion") : t("result.wonRound", { n: currentRound })) : t("result.winnerDefault")}
-              compact
-            />
-            <View style={styles.statsRowLandscape}>
-              <View style={styles.statItem}>
-                <Ionicons name="people" size={14} color={Colors.gold} />
-                <Text style={styles.statValue}>{numPlayers}</Text>
-                <Text style={styles.statLabel}>{t("result.statPlayers")}</Text>
-              </View>
-              {isMultiRound && (
-                <View style={styles.statItem}>
-                  <Ionicons name="layers" size={14} color={Colors.gold} />
-                  <Text style={styles.statValue}>{currentRound}/{totalRounds}</Text>
-                  <Text style={styles.statLabel}>{t("result.statRounds")}</Text>
-                </View>
-              )}
-            </View>
+            <WinnerCelebration name={celebratedName} subtitle={celebrationSubtitle} compact />
+            <View style={styles.statsRowLandscape}>{statTiles(14)}</View>
+            {verdictLine && <Text style={styles.verdictLine}>{verdictLine}</Text>}
             {actionsBlock(true)}
           </View>
 
           <View style={styles.landscapeRight}>
             <Text style={styles.sectionTitle}>{t("gameOverOverlay.rankingsTitle")}</Text>
-            <ScrollView showsVerticalScrollIndicator={false} style={{ flex: 1 }} contentContainerStyle={{ gap: 5 }}>
-              {sortedPlayers.map((player, idx) => (
-                <ScoreRow
-                  key={player.id}
-                  rank={idx}
-                  name={player.name}
-                  totalScore={totalScoreById[player.id] ?? 0}
-                  pointsEarned={thisRoundPoints[player.id] ?? 0}
-                  isWinner={idx === 0}
-                  delay={idx * 70 + 150}
-                  team={isTeamMode ? player.team : undefined}
-                  isMultiRound={isMultiRound}
-                />
-              ))}
+            <ScrollView showsVerticalScrollIndicator={false} style={styles.landscapeRankScroll} contentContainerStyle={styles.landscapeRankList}>
+              {rankRows}
             </ScrollView>
             <View style={styles.legend}>
               <Ionicons name="information-circle-outline" size={10} color={Colors.textMuted} />
@@ -558,53 +548,24 @@ export default function ResultScreen() {
     <View style={[styles.container, { paddingTop: topPad }]}>
       <LinearGradient colors={[Colors.bg, Colors.bgCard, Colors.bg]} locations={[0, 0.5, 1]} style={StyleSheet.absoluteFill} />
 
-      <View style={styles.header}>
-        {isMultiRound ? (
-          <View style={styles.headerMulti}>
-            <Text style={styles.headerTitle}>
-              {isLastRound ? t("result.matchOverTitle") : t("result.roundOfTotal", { current: currentRound, total: totalRounds })}
-            </Text>
-            <View style={styles.roundPips}>
-              {Array.from({ length: totalRounds }, (_, i) => (
-                <View key={i} style={[styles.pip, i < currentRound && styles.pipDone, i === currentRound - 1 && styles.pipCurrent]} />
-              ))}
-            </View>
-          </View>
-        ) : (
-          <Text style={styles.headerTitle}>{t("result.gameOverTitle")}</Text>
-        )}
-      </View>
+      <View style={styles.header}>{header}</View>
 
       <ScrollView
         contentContainerStyle={[styles.portraitScroll, { paddingBottom: bottomPad + 24 }]}
         showsVerticalScrollIndicator={false}
       >
-        <WinnerCelebration
-          name={isMultiRound ? (isLastRound ? overallWinner : displayName) : displayName}
-          subtitle={isMultiRound ? (isLastRound ? t("result.tournamentChampion") : t("result.wonRound", { n: currentRound })) : t("result.winnerDefault")}
-        />
+        <WinnerCelebration name={celebratedName} subtitle={celebrationSubtitle} />
         <View style={styles.statsRow}>
+          {statTiles(16)}
           <View style={styles.statItem}>
-            <Ionicons name="people" size={16} color={Colors.gold} />
-            <Text style={styles.statValue}>{numPlayers}</Text>
-            <Text style={styles.statLabel}>{t("result.statPlayers")}</Text>
-          </View>
-          {isMultiRound && (
-            <View style={styles.statItem}>
-              <Ionicons name="layers" size={16} color={Colors.gold} />
-              <Text style={styles.statValue}>{currentRound}/{totalRounds}</Text>
-              <Text style={styles.statLabel}>{t("result.statRounds")}</Text>
-            </View>
-          )}
-          <View style={styles.statItem}>
-            <Ionicons name={gameState.gameMode === "teams" ? "people-circle" : "person-circle"} size={16} color={Colors.gold} />
-            <Text style={styles.statValue}>{gameState.gameMode === "teams" ? t("gameOverOverlay.modeTeams") : t("gameOverOverlay.modeFreeForAll")}</Text>
+            <Ionicons name={isTeamMode ? "people-circle" : "person-circle"} size={16} color={Colors.gold} />
+            <Text style={styles.statValue}>{isTeamMode ? t("gameOverOverlay.modeTeams") : t("gameOverOverlay.modeFreeForAll")}</Text>
             <Text style={styles.statLabel}>{t("result.statMode")}</Text>
           </View>
         </View>
-        <View style={{ gap: 6 }}>
+        <View style={styles.rankSection}>
           <Text style={styles.sectionTitle}>{t("gameOverOverlay.rankingsTitle")}</Text>
-          {rankBlock}
+          <View style={styles.rankList}>{rankRows}</View>
           <View style={styles.legend}>
             <Ionicons name="information-circle-outline" size={11} color={Colors.textMuted} />
             <Text style={styles.legendText}>
@@ -612,6 +573,7 @@ export default function ResultScreen() {
             </Text>
           </View>
         </View>
+        {verdictLine && <Text style={styles.verdictLine}>{verdictLine}</Text>}
         {actionsBlock()}
       </ScrollView>
 
@@ -630,27 +592,22 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: Colors.border,
   },
-  headerMulti: { alignItems: "center", gap: 5 },
+  headerLandscape: { paddingHorizontal: Spacing.md - 4 },
+  headerMulti: { alignItems: "center", gap: Spacing.xs },
   headerTitle: {
     fontFamily: "Rajdhani_700Bold",
-    fontSize: 18,
+    fontSize: FontSize.lg,
     color: Colors.text,
     letterSpacing: 2,
   },
-  roundPips: { flexDirection: "row", gap: 5 },
-  pip: {
-    width: 7,
-    height: 7,
-    borderRadius: 3.5,
-    backgroundColor: Colors.bgSurface,
-    borderWidth: 1,
-    borderColor: Colors.border,
+  headerFormat: {
+    ...Type.caption,
+    color: Colors.gold,
+    letterSpacing: 1,
   },
-  pipDone: { backgroundColor: Colors.goldDark, borderColor: Colors.gold },
-  pipCurrent: {
-    backgroundColor: Colors.gold,
-    borderColor: Colors.gold,
-    width: 16,
+  verdictLine: {
+    ...Type.caption,
+    textAlign: "center",
   },
 
   portraitScroll: {
@@ -680,6 +637,10 @@ const styles = StyleSheet.create({
     paddingVertical: 4,
     gap: 6,
   },
+  landscapeRankScroll: { flex: 1 },
+  landscapeRankList: { gap: Spacing.xs + 1 },
+  rankSection: { gap: Spacing.xs + 2 },
+
 
   celebration: {
     alignItems: "center",

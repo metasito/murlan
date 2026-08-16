@@ -16,8 +16,8 @@ import * as Haptics from "expo-haptics";
 import { Ionicons } from "@expo/vector-icons";
 import { useGame, PlayerSetupConfig } from "@/context/GameContext";
 import { useAuth } from "@/context/AuthContext";
-import { GameMode, AIDifficulty } from "@/lib/gameEngine";
-import { Colors, Spacing, FontSize, Type } from '@/lib/theme';
+import { GameMode, AIDifficulty, MatchLength, MATCH_TARGETS } from "@/lib/gameEngine";
+import { Colors, Spacing, Radius, FontSize, Type } from '@/lib/theme';
 import { MenuLayout } from "@/components/MenuLayout";
 import { MenuButton } from "@/components/MenuButton";
 import { useTranslation, type TranslationKey } from "@/lib/i18n";
@@ -115,7 +115,8 @@ function PlayerRow({ index, config, onChange, isHuman, lobbyMode }: PlayerRowPro
   );
 }
 
-const ROUND_OPTIONS = [1, 3, 5, 7];
+/** Full match first: it is the canonical Murlan game (docs/RULES.md §12). */
+const FORMAT_OPTIONS: readonly MatchLength[] = ["match", "single"];
 
 export default function LobbyScreen() {
   const insets = useSafeAreaInsets();
@@ -132,7 +133,12 @@ export default function LobbyScreen() {
 
   const [playerCount, setPlayerCount] = useState(2);
   const [gameMode, setGameMode] = useState<GameMode>("free_for_all");
-  const [totalRounds, setTotalRounds] = useState(1);
+  const [matchLength, setMatchLength] = useState<MatchLength>("match");
+
+  const formatCopy = (length: MatchLength) =>
+    length === "match"
+      ? { title: t("lobby.formatMatch"), detail: t("lobby.formatMatchSub", { target: MATCH_TARGETS[0] }) }
+      : { title: t("lobby.formatSingle"), detail: t("lobby.formatSingleSub") };
 
   const getTeam = (i: number, count: number, gm: GameMode): "A" | "B" | undefined => {
     if (gm !== "teams" || count !== 4) return undefined;
@@ -187,7 +193,7 @@ export default function LobbyScreen() {
 
   const handleStart = () => {
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-    setupGame(players, gameMode, totalRounds);
+    setupGame(players, gameMode, matchLength);
     router.replace("/game");
   };
 
@@ -246,23 +252,25 @@ export default function LobbyScreen() {
       )}
 
       <View style={styles.section}>
-        <Text style={styles.sectionLabel}>{t("lobby.roundsLabel")}</Text>
-        <View style={styles.countRow}>
-          {ROUND_OPTIONS.map((n) => (
-            <Pressable
-              key={n}
-              onPress={() => { setTotalRounds(n); Haptics.selectionAsync(); }}
-              style={[styles.countBtn, totalRounds === n && styles.countBtnActive]}
-              accessibilityRole="radio"
-              accessibilityLabel={`${n} ${n === 1 ? t("lobby.roundSingle") : t("lobby.roundMultiple")}`}
-              accessibilityState={{ selected: totalRounds === n }}
-            >
-              <Text style={[styles.countBtnText, totalRounds === n && styles.countBtnTextActive]}>{n}</Text>
-              <Text style={[styles.roundSubLabel, totalRounds === n && { color: Colors.gold }]}>
-                {n === 1 ? t("lobby.roundSingle") : t("lobby.roundMultiple")}
-              </Text>
-            </Pressable>
-          ))}
+        <Text style={styles.sectionLabel}>{t("lobby.formatLabel")}</Text>
+        <View style={styles.formatRow}>
+          {FORMAT_OPTIONS.map((length) => {
+            const selected = matchLength === length;
+            const { title, detail } = formatCopy(length);
+            return (
+              <Pressable
+                key={length}
+                onPress={() => { setMatchLength(length); Haptics.selectionAsync(); }}
+                style={[styles.formatBtn, selected && styles.countBtnActive]}
+                accessibilityRole="radio"
+                accessibilityLabel={t("lobby.formatA11yLabel", { format: title, detail })}
+                accessibilityState={{ selected }}
+              >
+                <Text style={[styles.formatTitle, selected && styles.countBtnTextActive]}>{title}</Text>
+                <Text style={[styles.formatDetail, selected && styles.formatDetailActive]}>{detail}</Text>
+              </Pressable>
+            );
+          })}
         </View>
       </View>
     </>
@@ -423,13 +431,34 @@ const styles = StyleSheet.create({
   countBtnTextActive: {
     color: Colors.gold,
   },
-  roundSubLabel: {
-    fontFamily: "Inter_400Regular",
-    fontSize: 9,
-    color: Colors.textMuted,
-    marginTop: 2,
+  formatRow: {
+    flexDirection: "row",
+    gap: Spacing.sm + 2,
+  },
+  formatBtn: {
+    flex: 1,
+    minHeight: 44,
+    paddingVertical: Spacing.sm + 2,
+    paddingHorizontal: Spacing.sm,
+    borderRadius: Radius.md,
+    alignItems: "center",
+    justifyContent: "center",
+    gap: Spacing.xs / 2,
+    backgroundColor: Colors.bgSurface,
+    borderWidth: 1,
+    borderColor: Colors.border,
+  },
+  formatTitle: {
+    fontFamily: "Rajdhani_700Bold",
+    fontSize: FontSize.md,
+    color: Colors.textSecondary,
     letterSpacing: 0.5,
   },
+  formatDetail: {
+    ...Type.caption,
+    textAlign: "center",
+  },
+  formatDetailActive: { color: Colors.goldLight },
   modeRow: {
     flexDirection: "row",
     gap: 10,

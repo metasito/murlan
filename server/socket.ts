@@ -33,6 +33,7 @@ import {
   GameRejoinSchema,
   GameReactionSchema,
   GameExchangeGiveCardSchema,
+  GameRematchIntentSchema,
   FriendInviteSchema,
 } from "./socketSchemas.ts";
 import {
@@ -50,11 +51,13 @@ import {
   deepCloneState,
   scoreHand,
   addHandScores,
+  botWantsRematch,
+  isMajority,
   resolveMatch,
   resolveTeamMatch,
   MATCH_TARGETS,
 } from "../lib/gameEngine.ts";
-import type { GameState, Card, GameMode, Combination } from "../lib/gameEngine.ts";
+import type { GameState, Card, GameMode, Combination, MatchLength } from "../lib/gameEngine.ts";
 import { recordGameResult } from "./stats.ts";
 import type { GameResult } from "../lib/achievements.ts";
 
@@ -63,12 +66,21 @@ interface OnlineGameState {
   /** engine seat index -> userId. A missing seat is a vacated (bot) seat. */
   playerMap: Record<number, string>;
   roomId: string;
+  /** Ready gate for the next manche of the running match, by userId. */
   rematchVotes: Set<string>;
+  /**
+   * Answers to the side-panel rematch question, by userId. Asked while the
+   * closing manche is still in play and read once the match ends; a seat that
+   * never answered counts as a no. Bot seats are not stored — they are
+   * answered by rule at decision time (see tableWantsRematch).
+   */
+  rematchIntents: Map<string, boolean>;
   /** userId (or `bot:<seat>`) -> cumulative match points. */
   cumulativeScores: Record<string, number>;
   gameMode: GameMode;
   maxPlayers: number;
   matchTarget: number;
+  matchLength: MatchLength;
   matchOver: boolean;
   /**
    * seat -> combination flags played by that seat during the *current hand*
@@ -275,6 +287,7 @@ function persistGameState(roomId: string, game: OnlineGameState) {
     maxPlayers: game.maxPlayers,
     gameMode: game.gameMode,
     matchTarget: game.matchTarget,
+    matchLength: game.matchLength,
     updatedAt: new Date(),
   };
   db.insert(activeGamesTable)
@@ -293,6 +306,7 @@ function persistGameState(roomId: string, game: OnlineGameState) {
         maxPlayers: values.maxPlayers,
         gameMode: values.gameMode,
         matchTarget: values.matchTarget,
+        matchLength: values.matchLength,
         updatedAt: values.updatedAt,
       },
     })
@@ -671,26 +685,36 @@ async function handleGameOver(
 
   game.cumulativeScores = addHandScores(game.cumulativeScores, scorableHandByKey);
 
-  // Teams mode races to the target as a *pair* (docs/RULES.md §11: the two
-  // partners' placement points are summed), so the match must be resolved on
-  // the team total and both partners reported as winners. Free-for-all is
-  // unchanged.
-  const teamOfKey = teamKeyMap(game, state);
-  const resolution =
-    game.gameMode === "teams" && Object.keys(teamOfKey).length > 0
-      ? resolveTeamMatch(game.cumulativeScores, teamOfKey, game.matchTarget)
-      : resolveMatch(game.cumulativeScores, game.matchTarget);
   let matchWinners: string[] = [];
   let isDraw = false;
-  if (resolution) {
-    if (resolution.newTarget !== null) {
-      game.matchTarget = resolution.newTarget;
-    } else {
-      game.matchOver = true;
-      isDraw = resolution.isDraw;
-      matchWinners = resolution.winners;
+
+  if (game.matchLength === "single") {
+    // A quick game is one manche: whoever took it has won the match.
+    game.matchOver = true;
+    const topSeat = seatOfEngineId.get(state.rankings[0] ?? "");
+    matchWinners = topSeat === undefined ? [] : [scoreKeyForSeat(game, topSeat)];
+  } else {
+    // Teams mode races to the target as a *pair* (docs/RULES.md §11: the two
+    // partners' placement points are summed), so the match must be resolved on
+    // the team total and both partners reported as winners. Free-for-all is
+    // unchanged.
+    const teamOfKey = teamKeyMap(game, state);
+    const resolution =
+      game.gameMode === "teams" && Object.keys(teamOfKey).length > 0
+        ? resolveTeamMatch(game.cumulativeScores, teamOfKey, game.matchTarget)
+        : resolveMatch(game.cumulativeScores, game.matchTarget);
+    if (resolution) {
+      if (resolution.newTarget !== null) {
+        game.matchTarget = resolution.newTarget;
+      } else {
+        game.matchOver = true;
+        isDraw = resolution.isDraw;
+        matchWinners = resolution.winners;
+      }
     }
   }
+
+  const matchContinues = game.matchOver ? tableWantsRematch(game) : false;
 
   // Wire format: the clients index the scoreboard by display name.
   const byName: Record<string, number> = {};
@@ -721,8 +745,10 @@ async function handleGameOver(
     cumulativeScores: byName,
     scores: detailed,
     matchTarget: game.matchTarget,
+    matchLength: game.matchLength,
     matchOver: game.matchOver,
     matchWinners: winnerNames,
+    matchContinues,
     isDraw,
   });
 
@@ -731,6 +757,7 @@ async function handleGameOver(
       target: game.matchTarget,
       isDraw,
       winners: winnerNames,
+      continues: matchContinues,
     });
   }
 
@@ -821,7 +848,54 @@ function rollMatchForward(game: OnlineGameState) {
     game.cumulativeScores = {};
     game.matchTarget = MATCH_TARGETS[0];
     game.matchOver = false;
+    game.rematchIntents.clear();
   }
+}
+
+/**
+ * How many seats want another match, and how many seats there are. A human
+ * who never answered counts as a no; a bot seat answers by rule, so a table
+ * carried by bots still gives a meaningful verdict.
+ */
+function countRematchAnswers(game: OnlineGameState): { yes: number; total: number } {
+  const seats = game.gameState.players.length;
+  const leader = Math.max(0, ...Object.values(game.cumulativeScores));
+  let yes = 0;
+  for (let seat = 0; seat < seats; seat++) {
+    const userId = game.playerMap[seat];
+    if (userId === undefined) {
+      if (botWantsRematch(game.cumulativeScores[`bot:${seat}`] ?? 0, leader)) yes++;
+    } else if (game.rematchIntents.get(userId) === true) {
+      yes++;
+    }
+  }
+  return { yes, total: seats };
+}
+
+/**
+ * Cumulative match points keyed by display name — the one wire shape clients
+ * read, matching what `game:over` ships.
+ */
+function scoresByName(game: OnlineGameState): Record<string, number> {
+  const byName: Record<string, number> = {};
+  game.gameState.players.forEach((p, seat) => {
+    byName[p.name] = game.cumulativeScores[scoreKeyForSeat(game, seat)] ?? 0;
+  });
+  return byName;
+}
+
+function tableWantsRematch(game: OnlineGameState): boolean {
+  const { yes, total } = countRematchAnswers(game);
+  return isMajority(yes, total);
+}
+
+function broadcastRematchIntents(io: SocketServer, game: OnlineGameState) {
+  const { yes, total } = countRematchAnswers(game);
+  io.to(game.roomId).emit("game:rematch_intents", {
+    yes,
+    total,
+    answers: Object.fromEntries(game.rematchIntents),
+  });
 }
 
 // ─── Server ───────────────────────────────────────────────────────────────────
@@ -1054,7 +1128,7 @@ export function setupSocket(httpServer: HttpServer) {
       socket,
       "room:start",
       RoomStartSchema,
-      async ({ fillWithBots, botDifficulty }) => {
+      async ({ fillWithBots, botDifficulty, matchLength }) => {
         const roomId = socketRoomMap.get(socket.id);
         if (!roomId) return;
         const room = await storage.getRoomById(roomId);
@@ -1111,10 +1185,12 @@ export function setupSocket(httpServer: HttpServer) {
           playerMap,
           roomId,
           rematchVotes: new Set(),
+          rematchIntents: new Map(),
           cumulativeScores: previous?.cumulativeScores ?? {},
           gameMode: room.gameMode,
           maxPlayers: room.maxPlayers,
           matchTarget: previous?.matchTarget ?? MATCH_TARGETS[0],
+          matchLength: matchLength ?? previous?.matchLength ?? "match",
           matchOver: previous?.matchOver ?? false,
           handFlags: {},
         };
@@ -1128,7 +1204,8 @@ export function setupSocket(httpServer: HttpServer) {
         io.to(roomId).emit("game:started");
         io.to(roomId).emit("game:match_state", {
           target: newGame.matchTarget,
-          scores: newGame.cumulativeScores,
+          length: newGame.matchLength,
+          scores: scoresByName(newGame),
         });
 
         persistGameState(roomId, newGame);
@@ -1257,6 +1334,23 @@ export function setupSocket(httpServer: HttpServer) {
 
     onEvent(
       socket,
+      "game:rematch_intent",
+      GameRematchIntentSchema,
+      async ({ wants }) => {
+        const roomId = socketRoomMap.get(socket.id);
+        if (!roomId) return;
+        const game = activeGames.get(roomId);
+        if (!game) return;
+        if (seatOfUser(game, userId) === null) return;
+
+        game.rematchIntents.set(userId, wants);
+        broadcastRematchIntents(io, game);
+      },
+      { limit: 20, windowMs: 60_000 }
+    );
+
+    onEvent(
+      socket,
       "game:rematch_vote",
       NoPayloadSchema,
       async () => {
@@ -1265,6 +1359,9 @@ export function setupSocket(httpServer: HttpServer) {
         const game = activeGames.get(roomId);
         if (!game || !game.gameState.gameOver) return;
         if (seatOfUser(game, userId) === null) return;
+        // The table was asked during the closing manche and said no. Nobody
+        // gets to restart it from the results screen after that.
+        if (game.matchOver && !tableWantsRematch(game)) return;
 
         game.rematchVotes.add(userId);
 
@@ -1318,7 +1415,8 @@ export function setupSocket(httpServer: HttpServer) {
         io.to(roomId).emit("game:started");
         io.to(roomId).emit("game:match_state", {
           target: game.matchTarget,
-          scores: game.cumulativeScores,
+          length: game.matchLength,
+          scores: scoresByName(game),
         });
 
         persistGameState(roomId, game);
@@ -1422,12 +1520,16 @@ export function setupSocket(httpServer: HttpServer) {
             gameState: restoredState as GameState,
             playerMap,
             rematchVotes: new Set(),
+            rematchIntents: new Map(),
             cumulativeScores: restoredScores,
             gameMode: row.gameMode === "teams" ? "teams" : "free_for_all",
             maxPlayers: row.maxPlayers,
             matchTarget: restoredTarget,
+            matchLength: row.matchLength === "single" ? "single" : "match",
             matchOver:
-              !!restoredResolution && restoredResolution.newTarget === null,
+              row.matchLength === "single"
+                ? (restoredState as GameState).gameOver
+                : !!restoredResolution && restoredResolution.newTarget === null,
             // Not persisted (see the field's doc comment on OnlineGameState):
             // a rejoin after a server restart mid-hand starts this hand's
             // bomb/joker tracking over.

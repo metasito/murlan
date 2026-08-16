@@ -1,7 +1,8 @@
-// End-of-hand results for the online table: final standings, cumulative match
-// points, and the rematch vote. Offline has no equivalent — it navigates to
-// app/result.tsx instead — so this is passed to <GameTable> through the
-// `overlays` slot rather than living inside it.
+// End-of-manche results for the online table: standings, running match points,
+// and whatever comes next — the ready gate for the following manche, or the
+// verdict of the rematch question once the match itself is over. Offline has
+// no equivalent (it navigates to app/result.tsx), so this is passed to
+// <GameTable> through the `overlays` slot rather than living inside it.
 
 import React, { useEffect } from "react";
 import { View, Text, StyleSheet, Pressable, ScrollView } from "react-native";
@@ -40,6 +41,18 @@ const RANK_LEAD_IN_MS = 300;
 export interface RematchVote {
   votes: string[];
   total: number;
+}
+
+/** The match this manche belongs to, as the server reports it. */
+export interface MatchSummary {
+  target: number;
+  length: "match" | "single";
+  over: boolean;
+  /** Display names, empty until the match ends. */
+  winners: string[];
+  isDraw: boolean;
+  /** Whether the table's rematch answers came out in favour of another match. */
+  continues: boolean;
 }
 
 function RankCard({
@@ -118,6 +131,7 @@ export function GameOverOverlay({
   voteState,
   myUserId,
   cumulativeScores,
+  match,
 }: {
   gameState: GameState;
   topPad: number;
@@ -127,9 +141,28 @@ export function GameOverOverlay({
   voteState: RematchVote | null;
   myUserId: string;
   cumulativeScores: Record<string, number>;
+  match: MatchSummary;
 }) {
   const { t } = useTranslation();
-  const winnerName = gameState.rankings[0] ?? "";
+  // `rankings` holds engine player ids (`player_0`); everything shown here and
+  // every cumulative-score key is a display name.
+  const nameOf = (playerId: string) =>
+    gameState.players.find((p) => p.id === playerId)?.name ?? playerId;
+  const rankedNames = gameState.rankings.map(nameOf);
+  const celebratedName = match.over
+    ? (match.winners[0] ?? rankedNames[0] ?? "")
+    : (rankedNames[0] ?? "");
+  const celebrationSubtitle = match.over
+    ? match.isDraw
+      ? t("gameOverOverlay.drawSubtitle")
+      : t("gameOverOverlay.matchWinnerSubtitle")
+    : t("gameOverOverlay.handWinnerSubtitle");
+  const formatLine =
+    match.length === "single"
+      ? t("gameOverOverlay.singleHandFormat")
+      : t("gameOverOverlay.matchProgress", { target: match.target });
+  // A match the table voted down offers no way to restart it.
+  const canContinue = !match.over || match.continues;
   const reduceMotion = usePrefersReducedMotion();
   const scale = useSharedValue(0);
   const opacity = useSharedValue(0);
@@ -192,11 +225,15 @@ export function GameOverOverlay({
           </View>
           <View style={styles.celebTextBlock}>
             <Text style={styles.winnerName} numberOfLines={1}>
-              {winnerName}
+              {celebratedName}
             </Text>
-            <Text style={styles.winnerSubtitle}>{t("gameOverOverlay.winnerSubtitle")}</Text>
+            <Text style={styles.winnerSubtitle}>{celebrationSubtitle}</Text>
           </View>
           <View style={styles.statPills}>
+            <View style={styles.statPill}>
+              <Ionicons name="flag" size={11} color={Colors.gold} />
+              <Text style={styles.statPillText}>{formatLine}</Text>
+            </View>
             <View style={styles.statPill}>
               <Ionicons name="people" size={11} color={Colors.gold} />
               <Text style={styles.statPillText}>{gameState.players.length}P</Text>
@@ -220,7 +257,7 @@ export function GameOverOverlay({
           style={styles.rankScroll}
           contentContainerStyle={styles.rankList}
         >
-          {gameState.rankings.map((name, i) => (
+          {rankedNames.map((name, i) => (
             <RankCard
               key={i}
               rank={i}
@@ -242,37 +279,49 @@ export function GameOverOverlay({
             <Ionicons name="home" size={15} color={Colors.textSecondary} />
             <Text style={styles.homeBtnText}>{t("gameOverOverlay.leave")}</Text>
           </Pressable>
-          <Pressable
-            testID="btn-rivincita"
-            onPress={hasVoted ? undefined : onVoteRematch}
-            style={[styles.rematchBtn, hasVoted && styles.rematchBtnDim]}
-            accessibilityRole="button"
-            accessibilityLabel={t("gameOverOverlay.voteRematchA11yLabel")}
-            accessibilityState={{ disabled: hasVoted }}
-          >
-            <LinearGradient
-              colors={
-                hasVoted
-                  ? [Colors.bgSurface, Colors.bgSurface]
-                  : [Colors.gold, Colors.goldDark]
+          {canContinue ? (
+            <Pressable
+              testID="btn-rivincita"
+              onPress={hasVoted ? undefined : onVoteRematch}
+              style={[styles.rematchBtn, hasVoted && styles.rematchBtnDim]}
+              accessibilityRole="button"
+              accessibilityLabel={
+                match.over
+                  ? t("gameOverOverlay.newMatchA11yLabel")
+                  : t("gameOverOverlay.nextHandA11yLabel")
               }
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 1 }}
-              style={styles.rematchGradient}
+              accessibilityState={{ disabled: hasVoted }}
             >
-              <Ionicons
-                name={hasVoted ? "checkmark-circle" : "refresh"}
-                size={15}
-                color={hasVoted ? Colors.accent : Colors.bgCard}
-              />
-              <Text
-                style={[styles.rematchText, hasVoted && { color: Colors.textMuted }]}
-                numberOfLines={1}
+              <LinearGradient
+                colors={
+                  hasVoted
+                    ? [Colors.bgSurface, Colors.bgSurface]
+                    : [Colors.gold, Colors.goldDark]
+                }
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 1 }}
+                style={styles.rematchGradient}
               >
-                {hasVoted ? t("gameOverOverlay.rematchVotes", { count: voteCount, total: voteTotal }) : t("gameOverOverlay.rematch")}
-              </Text>
-            </LinearGradient>
-          </Pressable>
+                <Ionicons
+                  name={hasVoted ? "checkmark-circle" : match.over ? "refresh" : "play-forward"}
+                  size={15}
+                  color={hasVoted ? Colors.accent : Colors.bgCard}
+                />
+                <Text
+                  style={[styles.rematchText, hasVoted && styles.rematchTextWaiting]}
+                  numberOfLines={1}
+                >
+                  {hasVoted
+                    ? t("gameOverOverlay.nextHandWaiting", { count: voteCount, total: voteTotal })
+                    : match.over
+                      ? t("gameOverOverlay.newMatch")
+                      : t("gameOverOverlay.nextHand")}
+                </Text>
+              </LinearGradient>
+            </Pressable>
+          ) : (
+            <Text style={styles.tableStops}>{t("gameOverOverlay.tableStops")}</Text>
+          )}
         </View>
       </View>
     </Animated.View>
@@ -439,5 +488,14 @@ const styles = StyleSheet.create({
     color: Colors.bgCard,
     letterSpacing: 0.5,
     flexShrink: 1,
+  },
+  rematchTextWaiting: { color: Colors.textMuted },
+  tableStops: {
+    flex: 1,
+    alignSelf: "center",
+    textAlign: "center",
+    fontFamily: "Inter_400Regular",
+    fontSize: FontSize.xs,
+    color: Colors.textMuted,
   },
 });

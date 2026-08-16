@@ -1144,3 +1144,52 @@ export function resolveTeamMatch(
       .map(([key]) => key),
   };
 }
+
+// ─── Match length and the rematch question ────────────────────────────────────
+
+/**
+ * How long a game runs.
+ *
+ * - `match` — the canonical Murlan match (docs/RULES.md §12): first to
+ *   `MATCH_TARGETS[0]`, escalating on a tie at the target.
+ * - `single` — one manche and done.
+ */
+export type MatchLength = "match" | "single";
+
+/** Cards left in the shortest hand at or below which a manche counts as closing. */
+export const CLOSING_HAND_CARDS = 5;
+
+/**
+ * Whether the game is close enough to over to be worth asking the table
+ * whether they want another one — true once the current manche is nearly
+ * played out *and* it can be the last one, either because the game is a
+ * single manche or because the leader can reach the target from it.
+ */
+export function matchIsClosing(args: {
+  length: MatchLength;
+  target: number;
+  cumulative: Record<string, number>;
+  handCounts: number[];
+  playerCount: number;
+}): boolean {
+  const { length, target, cumulative, handCounts, playerCount } = args;
+  if (handCounts.length === 0) return false;
+  if (Math.min(...handCounts) > CLOSING_HAND_CARDS) return false;
+  if (length === "single") return true;
+  const leader = Math.max(0, ...Object.values(cumulative));
+  return leader + (playerCount - 1) >= target;
+}
+
+/**
+ * How a bot answers the rematch question. Deterministic rather than random so
+ * a table's answer is reproducible: a bot within reach of the leader wants
+ * another game, a thoroughly beaten one does not.
+ */
+export function botWantsRematch(botScore: number, leaderScore: number): boolean {
+  return leaderScore === 0 || botScore * 2 >= leaderScore;
+}
+
+/** Strictly more than half. A table split down the middle stops. */
+export function isMajority(yesCount: number, seatCount: number): boolean {
+  return yesCount * 2 > seatCount;
+}

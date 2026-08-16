@@ -23,12 +23,12 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import Animated, {
   useAnimatedStyle,
   useSharedValue,
-  withSpring,
   withTiming,
   withSequence,
   withRepeat,
   cancelAnimation,
   Easing,
+  FadeIn,
 } from "react-native-reanimated";
 import { LinearGradient } from "expo-linear-gradient";
 import * as ScreenOrientation from "expo-screen-orientation";
@@ -105,7 +105,7 @@ import {
 } from "@/lib/sounds";
 import { hapticLight, hapticMedium, hapticSelection, hapticSuccess } from "@/lib/haptics";
 import { usePrefersReducedMotion } from "@/lib/accessibility";
-import { Colors, FeltGradient, FontSize, Motion, Radius, Scrim, Spacing } from "@/lib/theme";
+import { Colors, FeltGradient, FontSize, Highlight, Motion, Radius, Scrim, Spacing, Type } from "@/lib/theme";
 
 // How long the round-winner tag stays over the pile. A domain beat, not a
 // generic UI transition, so it is not a Motion token.
@@ -210,6 +210,20 @@ export interface TurnTimerConfig {
   onExpire?: () => void;
 }
 
+/**
+ * The rematch question, put to the table down the side of the screen while the
+ * closing manche is still being played. Majority decides; a seat that never
+ * answers counts as a no.
+ */
+export interface RematchPromptSlot {
+  visible: boolean;
+  /** null until this player has answered. */
+  myAnswer: boolean | null;
+  yesCount: number;
+  seatCount: number;
+  onAnswer: (wants: boolean) => void;
+}
+
 export interface ExchangeAnnouncementSlot {
   visible: boolean;
   data: ExchangeAnnounceData | null;
@@ -238,6 +252,7 @@ export interface GameTableProps {
   roundLabel: string;
   turnTimer?: TurnTimerConfig;
   exchangeAnnouncement?: ExchangeAnnouncementSlot;
+  rematchPrompt?: RematchPromptSlot;
 
   /** Extra controls at the right end of the top bar (online: reactions). */
   topBarExtra?: React.ReactNode;
@@ -298,6 +313,74 @@ function TurnTimer({
   );
 }
 
+// ─── Rematch prompt ───────────────────────────────────────────────────────────
+//
+// Deliberately a side panel rather than a modal: it is asked while the closing
+// manche is still being played, so it must never take the table away from the
+// player. Once answered it shrinks to the running tally.
+
+function RematchPromptPanel({
+  prompt,
+  top,
+  left,
+}: {
+  prompt: RematchPromptSlot;
+  top: number;
+  left: number;
+}) {
+  const { t } = useTranslation();
+  const answered = prompt.myAnswer !== null;
+  const tally = t("gameTable.rematchTally", {
+    yes: prompt.yesCount,
+    total: prompt.seatCount,
+  });
+
+  return (
+    <Animated.View
+      entering={FadeIn.duration(Motion.duration.moderate)}
+      style={[styles.rematchPanel, { top, left }]}
+    >
+      {answered ? (
+        <Text style={styles.rematchTally} accessibilityLiveRegion="polite">
+          {tally}
+        </Text>
+      ) : (
+        <>
+          <Text style={styles.rematchTitle}>{t("gameTable.rematchPromptTitle")}</Text>
+          <Text style={styles.rematchSubtitle}>{t("gameTable.rematchPromptSubtitle")}</Text>
+          <View style={styles.rematchButtons}>
+            <Pressable
+              testID="btn-rematch-yes"
+              onPress={() => {
+                hapticSelection();
+                prompt.onAnswer(true);
+              }}
+              style={[styles.rematchChoice, styles.rematchChoiceYes]}
+              accessibilityRole="button"
+              accessibilityLabel={t("gameTable.rematchYesA11yLabel")}
+            >
+              <Text style={styles.rematchChoiceYesLabel}>{t("gameTable.rematchYes")}</Text>
+            </Pressable>
+            <Pressable
+              testID="btn-rematch-no"
+              onPress={() => {
+                hapticLight();
+                prompt.onAnswer(false);
+              }}
+              style={styles.rematchChoice}
+              accessibilityRole="button"
+              accessibilityLabel={t("gameTable.rematchNoA11yLabel")}
+            >
+              <Text style={styles.rematchChoiceLabel}>{t("gameTable.rematchNo")}</Text>
+            </Pressable>
+          </View>
+          <Text style={styles.rematchTally}>{tally}</Text>
+        </>
+      )}
+    </Animated.View>
+  );
+}
+
 // ─── GameTable ────────────────────────────────────────────────────────────────
 
 export function GameTable({
@@ -312,6 +395,7 @@ export function GameTable({
   roundLabel,
   turnTimer,
   exchangeAnnouncement,
+  rematchPrompt,
   topBarExtra,
   banners,
   overlays,
@@ -336,9 +420,11 @@ export function GameTable({
   const prevExchangeActiveRef = useRef(false);
   const prevGameOverRef = useRef(false);
 
-  const handScaleVal = useSharedValue(1);
-  const giocaPulseVal = useSharedValue(1);
-  const passaPulseVal = useSharedValue(1);
+  // Nothing here scales: a fractional scale on a view containing text makes
+  // React Native resample the already-rasterised glyphs, and PASSA/GIOCA read
+  // as blurry for as long as it is applied. Emphasis is opacity and glow only.
+  const giocaFlashVal = useSharedValue(0);
+  const passaFlashVal = useSharedValue(0);
   const giocaGlowVal = useSharedValue(0);
   const shakeX = useSharedValue(0);
 
@@ -544,18 +630,6 @@ export function GameTable({
 
   // ── Animation ───────────────────────────────────────────────────────────────
 
-  useEffect(() => {
-    if (reduceMotion) {
-      handScaleVal.value = 1;
-      return;
-    }
-    handScaleVal.value =
-      isMyTurn && !isFinished
-        ? withSpring(1.02, { damping: 12, stiffness: 160 })
-        : withTiming(1, { duration: Motion.duration.moderate });
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- handScaleVal is a stable shared value
-  }, [isMyTurn, isFinished, reduceMotion]);
-
   // GIOCA bloom — a slow gold pulse while the button is armed.
   useEffect(() => {
     if (playBtnValid && !reduceMotion) {
@@ -580,52 +654,44 @@ export function GameTable({
     // eslint-disable-next-line react-hooks/exhaustive-deps -- giocaGlowVal is a stable shared value
   }, [playBtnValid, reduceMotion]);
 
-  // GIOCA pop as the selection grows or shrinks.
+  // GIOCA flash as the selection grows or shrinks.
   const prevSelectedLen = useRef(0);
   useEffect(() => {
     const hasSelection = selectedIds.length > 0 && isMyTurn && !isFinished;
     if (hasSelection && prevSelectedLen.current !== selectedIds.length && !reduceMotion) {
-      giocaPulseVal.value = withSequence(
-        withTiming(1.1, { duration: Motion.duration.fast }),
-        withSpring(1, Motion.spring.settle)
+      giocaFlashVal.value = withSequence(
+        withTiming(1, { duration: Motion.duration.fast }),
+        withTiming(0, { duration: Motion.duration.base })
       );
     }
     prevSelectedLen.current = selectedIds.length;
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- giocaPulseVal is a stable shared value
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- giocaFlashVal is a stable shared value
   }, [selectedIds.length, isMyTurn, isFinished, reduceMotion]);
 
-  // PASSA pop the moment passing becomes possible.
+  // PASSA flash the moment passing becomes possible.
   useEffect(() => {
     if (canPass && !reduceMotion) {
-      passaPulseVal.value = withSequence(
-        withTiming(1.08, { duration: Motion.duration.base }),
-        withSpring(1, Motion.spring.gentle)
+      passaFlashVal.value = withSequence(
+        withTiming(1, { duration: Motion.duration.base }),
+        withTiming(0, { duration: Motion.duration.moderate })
       );
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- passaPulseVal is a stable shared value
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- passaFlashVal is a stable shared value
   }, [gameState.lastPlayedCombination, isMyTurn, isFinished, canPass, reduceMotion]);
 
   // Reanimated keeps driving shared values after unmount unless cancelled.
   useEffect(
     () => () => {
-      cancelAnimation(handScaleVal);
-      cancelAnimation(giocaPulseVal);
-      cancelAnimation(passaPulseVal);
+      cancelAnimation(giocaFlashVal);
+      cancelAnimation(passaFlashVal);
       cancelAnimation(shakeX);
     },
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- unmount cleanup only; all four are stable shared values
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- unmount cleanup only; all three are stable shared values
     []
   );
 
-  const handSectionAnimStyle = useAnimatedStyle(() => ({
-    transform: [{ scale: handScaleVal.value }],
-  }));
-  const giocaAnimStyle = useAnimatedStyle(() => ({
-    transform: [{ scale: giocaPulseVal.value }],
-  }));
-  const passaAnimStyle = useAnimatedStyle(() => ({
-    transform: [{ scale: passaPulseVal.value }],
-  }));
+  const giocaFlashStyle = useAnimatedStyle(() => ({ opacity: giocaFlashVal.value }));
+  const passaFlashStyle = useAnimatedStyle(() => ({ opacity: passaFlashVal.value }));
   const shakeStyle = useAnimatedStyle(() => ({
     transform: [{ translateX: shakeX.value }],
   }));
@@ -852,13 +918,10 @@ export function GameTable({
               sharedTableStyles.handSection,
               isMyTurn && !isFinished && sharedTableStyles.handSectionActive,
               { height: HAND_SECTION_H },
-              handSectionAnimStyle,
               turnPulseStyle,
             ]}
           >
-            <Animated.View
-              style={[styles.passBtn, !canPass && styles.passBtnDim, passaAnimStyle]}
-            >
+            <View style={[styles.passBtn, !canPass && styles.passBtnDim]}>
               <Pressable
                 testID="btn-passa"
                 onPress={handlePass}
@@ -868,13 +931,17 @@ export function GameTable({
                 accessibilityLabel={t("gameTable.passA11yLabel")}
                 accessibilityState={{ disabled: !canPass }}
               >
+                <Animated.View
+                  pointerEvents="none"
+                  style={[StyleSheet.absoluteFill, styles.btnFlash, passaFlashStyle]}
+                />
                 <Text
                   style={[styles.passBtnLabel, !canPass && styles.passBtnLabelDim]}
                 >
                   {t("gameTable.passLabel")}
                 </Text>
               </Pressable>
-            </Animated.View>
+            </View>
 
             {isFinished ? (
               <View style={styles.finishedRow}>
@@ -902,7 +969,6 @@ export function GameTable({
               style={[
                 styles.playBtn,
                 !playBtnValid && styles.playBtnDim,
-                giocaAnimStyle,
                 playBtnValid && giocaGlowStyle,
               ]}
             >
@@ -927,6 +993,10 @@ export function GameTable({
                     end={{ x: 1, y: 1 }}
                     style={styles.playBtnGrad}
                   >
+                    <Animated.View
+                      pointerEvents="none"
+                      style={[StyleSheet.absoluteFill, styles.btnFlash, giocaFlashStyle]}
+                    />
                     <Text style={styles.playBtnLabel}>{t("gameTable.playLabelGioca")}</Text>
                     {selectedIds.length > 1 && (
                       <Text style={styles.playBtnSub}>{t("gameTable.selectedCountSuffix", { n: selectedIds.length })}</Text>
@@ -978,6 +1048,14 @@ export function GameTable({
             playCardPlay();
             onExchangeGive(cardId);
           }}
+        />
+      )}
+
+      {rematchPrompt?.visible && (
+        <RematchPromptPanel
+          prompt={rematchPrompt}
+          top={frame.topPad + TOP_BAR_H + TABLE_M + Spacing.sm}
+          left={frame.leftPad + Spacing.sm}
         />
       )}
 
@@ -1075,6 +1153,9 @@ const styles = StyleSheet.create({
     backgroundColor: "rgba(50,12,12,0.55)", borderColor: "rgba(100,20,20,0.35)",
   },
   passBtnInner: { flex: 1, alignItems: "center", justifyContent: "center" },
+  // Sits behind the label, never over it: a wash on top of text would eat the
+  // very contrast the flash is meant to draw attention to.
+  btnFlash: { backgroundColor: Highlight.clear },
   passBtnLabel: {
     fontFamily: "Rajdhani_700Bold", fontSize: FontSize.sm,
     color: PASS_LABEL, letterSpacing: 0.5,
@@ -1104,6 +1185,61 @@ const styles = StyleSheet.create({
     fontFamily: "Rajdhani_500Medium", fontSize: FontSize.xs,
     color: Colors.bgCard, opacity: 0.7,
   },
+  rematchPanel: {
+    position: "absolute",
+    width: SIDE_BTN_W + Spacing.lg,
+    zIndex: 20,
+    gap: Spacing.xs,
+    paddingVertical: Spacing.sm,
+    paddingHorizontal: Spacing.xs + 2,
+    borderRadius: Radius.md,
+    backgroundColor: Scrim.heavy,
+    borderWidth: 1,
+    borderColor: Colors.goldBorder,
+    alignItems: "center",
+  },
+  rematchTitle: {
+    fontFamily: "Rajdhani_700Bold",
+    fontSize: FontSize.sm,
+    color: Colors.gold,
+    letterSpacing: 1,
+  },
+  rematchSubtitle: {
+    ...Type.caption,
+    fontSize: FontSize.xs - 2,
+    textAlign: "center",
+  },
+  rematchButtons: { alignSelf: "stretch", gap: Spacing.xs },
+  rematchChoice: {
+    minHeight: 32,
+    borderRadius: Radius.sm,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: Colors.bgSurface,
+    borderWidth: 1,
+    borderColor: Colors.border,
+  },
+  rematchChoiceYes: {
+    backgroundColor: Colors.goldMuted,
+    borderColor: Colors.goldStrong,
+  },
+  rematchChoiceLabel: {
+    fontFamily: "Rajdhani_700Bold",
+    fontSize: FontSize.sm,
+    color: Colors.textSecondary,
+    letterSpacing: 1,
+  },
+  rematchChoiceYesLabel: {
+    fontFamily: "Rajdhani_700Bold",
+    fontSize: FontSize.sm,
+    color: Colors.goldLight,
+    letterSpacing: 1,
+  },
+  rematchTally: {
+    ...Type.caption,
+    fontSize: FontSize.xs - 2,
+  },
+
   // Solid color: this is the only text explaining why a move was refused,
   // and must clear 4.5:1 contrast.
   playBtnLabelDim: {

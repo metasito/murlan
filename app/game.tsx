@@ -38,6 +38,10 @@ export default function GameScreen() {
     exchangeAnnouncing,
     exchangeAnnounceData,
     acknowledgeExchange,
+    rematchPromptOpen,
+    rematchAnswers,
+    answerRematch,
+    match,
   } = useGame();
 
   // Timers fire outside the render that scheduled them; refs keep them from
@@ -93,11 +97,18 @@ export default function GameScreen() {
 
   if (!gameState) return null;
 
+  const humanId = gameState.players[humanIdx]?.id;
+  const myAnswer = humanId !== undefined && humanId in rematchAnswers ? rematchAnswers[humanId] : null;
+
   return (
     <GameTable
       gameState={gameState}
       viewerSeat={humanIdx}
-      roundLabel={t("offlineGame.roundLabel")}
+      roundLabel={
+        match.length === "single"
+          ? t("result.singleHandFormat")
+          : t("gameTable.formatMatch", { target: match.target })
+      }
       selectedIds={selectedCards}
       onSelectCard={selectCard}
       onPlay={playSelected}
@@ -126,6 +137,13 @@ export default function GameScreen() {
         visible: exchangeAnnouncing,
         data: exchangeAnnounceData,
         onDismiss: acknowledgeExchange,
+      }}
+      rematchPrompt={{
+        visible: rematchPromptOpen,
+        myAnswer,
+        yesCount: Object.values(rematchAnswers).filter(Boolean).length,
+        seatCount: gameState.players.length,
+        onAnswer: answerRematch,
       }}
     />
   );

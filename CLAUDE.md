@@ -155,7 +155,16 @@ Each of these is a bug that shipped. Verify against source before changing any o
 
 **Game persistence:** `active_games` table stores live game state after every move.
 
-**Rematch:** Vote-based (`game:rematch_vote`) — all players must agree.
+**Game length:** A *manche* is one hand; a *partita* is the match those manches
+add up to. A game is either a full match (3/2/1/0 per manche, first to 21, escalating
+31 → 41 → 51 on a tie — `docs/RULES.md` §12) or a single manche, chosen in the lobby
+(offline) or by the host at `room:start` (online). There is no "N manches" format.
+
+**Rematch:** Asked as the match nears its end (`matchIsClosing`), on the side of the
+game table, one answer per seat — majority decides, an unanswered seat counts as no.
+Bots and offline AI answer by rule (`botWantsRematch`). Online, `game:rematch_intent`
+carries the answer and `game:rematch_vote` is the unanimous ready gate for dealing the
+next manche.
 
 **NotificationBanner:** Always mounted (never returns null). Animation is slide-in (320ms) → wait 4s → slide-out via callback chain — do not use parallel `withTiming` calls or the slide-in gets overwritten.
 

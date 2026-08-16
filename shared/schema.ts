@@ -82,6 +82,8 @@ export const activeGames = pgTable("active_games", {
   maxPlayers: integer("max_players").notNull().default(4),
   gameMode:   text("game_mode").notNull().default("free_for_all"),
   matchTarget: integer("match_target").notNull().default(21),
+  // "match" (play to matchTarget) or "single" (one manche and done).
+  matchLength: text("match_length").notNull().default("match"),
   updatedAt:  timestamp("updated_at").defaultNow().notNull(),
 });
 

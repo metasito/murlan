@@ -14,7 +14,9 @@ import { getSocket } from "@/lib/socket";
 import { useNotification } from "@/context/NotificationContext";
 import { t, translateServerPayload, type ServerPayload } from "@/lib/i18n";
 import type { Socket } from "socket.io-client";
-import type { GameState } from "@/lib/gameEngine";
+import { MATCH_TARGETS, matchIsClosing } from "@/lib/gameEngine";
+import { handCountOf } from "@/components/gameTableModel";
+import type { GameState, MatchLength } from "@/lib/gameEngine";
 import type { ExchangeAnnounceData } from "@/lib/sharedGameFlow";
 
 export interface RoomState {
@@ -39,6 +41,36 @@ export interface RematchVoteState {
   total: number;
 }
 
+/** The running match, as the server reports it. */
+export interface OnlineMatchState {
+  target: number;
+  length: MatchLength;
+  over: boolean;
+  /** Display names, empty until the match ends. */
+  winners: string[];
+  isDraw: boolean;
+  /** Verdict of the rematch question once the match is over. */
+  continues: boolean;
+}
+
+/** Answers to the side-panel rematch question, by userId. */
+export interface RematchIntentState {
+  yes: number;
+  total: number;
+  answers: Record<string, boolean>;
+}
+
+const INITIAL_MATCH: OnlineMatchState = {
+  target: MATCH_TARGETS[0],
+  length: "match",
+  over: false,
+  winners: [],
+  isDraw: false,
+  continues: false,
+};
+
+const INITIAL_INTENTS: RematchIntentState = { yes: 0, total: 0, answers: {} };
+
 interface OnlineGameContextValue {
   room: RoomState | null;
   gameState: GameState | null;
@@ -53,6 +85,10 @@ interface OnlineGameContextValue {
   entrySource: "quickmatch" | "friends" | null;
   rematchVoteState: RematchVoteState | null;
   cumulativeScores: Record<string, number>;
+  matchState: OnlineMatchState;
+  rematchIntents: RematchIntentState;
+  /** True while the table is being asked whether it wants another match. */
+  rematchPromptOpen: boolean;
   exchangeAnnouncing: boolean;
   exchangeAnnounceData: ExchangeAnnounceData | null;
   createRoom: (gameMode: "free_for_all" | "teams", maxPlayers: number) => void;
@@ -60,9 +96,14 @@ interface OnlineGameContextValue {
   leaveRoom: () => void;
   quickmatch: (maxPlayers: number, gameMode: "free_for_all" | "teams") => void;
   setRoomGameMode: (mode: "free_for_all" | "teams") => void;
-  startGame: (opts?: { fillWithBots?: boolean; botDifficulty?: "easy" | "medium" | "hard" }) => void;
+  startGame: (opts?: {
+    fillWithBots?: boolean;
+    botDifficulty?: "easy" | "medium" | "hard";
+    matchLength?: MatchLength;
+  }) => void;
   requestPlayAgain: () => void;
   voteRematch: () => void;
+  answerRematch: (wants: boolean) => void;
   playCards: (cardIds: string[]) => void;
   pass: () => void;
   giveExchangeCard: (cardId: string) => void;
@@ -90,6 +131,8 @@ export function OnlineGameProvider({ userId, children }: { userId: string; child
   const [entrySource, setEntrySource] = useState<"quickmatch" | "friends" | null>(null);
   const [rematchVoteState, setRematchVoteState] = useState<RematchVoteState | null>(null);
   const [cumulativeScores, setCumulativeScores] = useState<Record<string, number>>({});
+  const [matchState, setMatchState] = useState<OnlineMatchState>(INITIAL_MATCH);
+  const [rematchIntents, setRematchIntents] = useState<RematchIntentState>(INITIAL_INTENTS);
   const [exchangeAnnouncing, setExchangeAnnouncing] = useState(false);
   const [exchangeAnnounceData, setExchangeAnnounceData] = useState<ExchangeAnnounceData | null>(null);
   const [rejoinFailed, setRejoinFailed] = useState(false);
@@ -260,8 +303,40 @@ export function OnlineGameProvider({ userId, children }: { userId: string; child
       }
     };
 
-    const onGameOver = ({ cumulativeScores: cs }: { cumulativeScores?: Record<string, number> }) => {
+    const onMatchState = ({ target, length, scores }: { target: number; length: MatchLength; scores: Record<string, number> }) => {
+      setMatchState({ ...INITIAL_MATCH, target, length });
+      setCumulativeScores(scores);
+      setRematchIntents(INITIAL_INTENTS);
+    };
+
+    const onRematchIntents = (state: RematchIntentState) => setRematchIntents(state);
+
+    const onGameOver = ({
+      cumulativeScores: cs,
+      matchTarget,
+      matchLength,
+      matchOver,
+      matchWinners,
+      matchContinues,
+      isDraw,
+    }: {
+      cumulativeScores?: Record<string, number>;
+      matchTarget?: number;
+      matchLength?: MatchLength;
+      matchOver?: boolean;
+      matchWinners?: string[];
+      matchContinues?: boolean;
+      isDraw?: boolean;
+    }) => {
       if (cs) setCumulativeScores(cs);
+      setMatchState((prev) => ({
+        target: matchTarget ?? prev.target,
+        length: matchLength ?? prev.length,
+        over: matchOver ?? false,
+        winners: matchWinners ?? [],
+        isDraw: isDraw ?? false,
+        continues: matchContinues ?? false,
+      }));
       // The stats queries are configured with `staleTime: Infinity`
       // (lib/query-client.ts), so without this the profile keeps showing
       // whatever it read on first open for the rest of the session — a player
@@ -358,6 +433,8 @@ export function OnlineGameProvider({ userId, children }: { userId: string; child
     socket.on("game:notification", onGameNotification);
     socket.on("game:started", () => {});
     socket.on("game:over", onGameOver);
+    socket.on("game:match_state", onMatchState);
+    socket.on("game:rematch_intents", onRematchIntents);
     socket.on("game:vote_state", onVoteState);
     socket.on("game:reaction", onReaction);
     socket.on("game:player_left", onPlayerLeft);
@@ -378,6 +455,8 @@ export function OnlineGameProvider({ userId, children }: { userId: string; child
       socket.off("game:notification", onGameNotification);
       socket.off("game:started");
       socket.off("game:over", onGameOver);
+      socket.off("game:match_state", onMatchState);
+      socket.off("game:rematch_intents", onRematchIntents);
       socket.off("game:vote_state", onVoteState);
       socket.off("game:reaction", onReaction);
       socket.off("game:player_left", onPlayerLeft);
@@ -440,7 +519,11 @@ export function OnlineGameProvider({ userId, children }: { userId: string; child
     socket.emit("room:set_game_mode", { gameMode });
   }, [userId]);
 
-  const startGame = useCallback((opts?: { fillWithBots?: boolean; botDifficulty?: "easy" | "medium" | "hard" }) => {
+  const startGame = useCallback((opts?: {
+    fillWithBots?: boolean;
+    botDifficulty?: "easy" | "medium" | "hard";
+    matchLength?: MatchLength;
+  }) => {
     socket.emit("room:start", opts);
   }, [userId]);
 
@@ -451,6 +534,23 @@ export function OnlineGameProvider({ userId, children }: { userId: string; child
   const voteRematch = useCallback(() => {
     socket.emit("game:rematch_vote");
   }, [userId]);
+
+  const answerRematch = useCallback((wants: boolean) => {
+    socket.emit("game:rematch_intent", { wants });
+  }, [userId]);
+
+  // Same predicate as the offline table (lib/gameEngine), fed by the sanitized
+  // state: opponents' hands are blanked but `handCount` is not.
+  const rematchPromptOpen = useMemo(() => {
+    if (!gameState || gameState.gameOver || matchState.over) return false;
+    return matchIsClosing({
+      length: matchState.length,
+      target: matchState.target,
+      cumulative: cumulativeScores,
+      handCounts: gameState.players.map(handCountOf),
+      playerCount: gameState.players.length,
+    });
+  }, [gameState, matchState, cumulativeScores]);
 
   const playCards = useCallback((cardIds: string[]) => {
     socket.emit("game:play", { cardIds });
@@ -490,6 +590,9 @@ export function OnlineGameProvider({ userId, children }: { userId: string; child
       entrySource,
       rematchVoteState,
       cumulativeScores,
+      matchState,
+      rematchIntents,
+      rematchPromptOpen,
       exchangeAnnouncing,
       exchangeAnnounceData,
       createRoom,
@@ -500,6 +603,7 @@ export function OnlineGameProvider({ userId, children }: { userId: string; child
       startGame,
       requestPlayAgain,
       voteRematch,
+      answerRematch,
       playCards,
       pass,
       giveExchangeCard,
@@ -508,7 +612,7 @@ export function OnlineGameProvider({ userId, children }: { userId: string; child
       clearError,
       clearPlayerLeft,
     }),
-    [room, gameState, reactions, connected, error, playerLeft, rejoinFailed, disconnectedPlayers, reconnectNotice, mySeatIndex, entrySource, rematchVoteState, cumulativeScores, exchangeAnnouncing, exchangeAnnounceData, createRoom, joinRoom, leaveRoom, quickmatch, setRoomGameMode, startGame, requestPlayAgain, voteRematch, playCards, pass, giveExchangeCard, acknowledgeExchange, sendReaction, clearError, clearPlayerLeft]
+    [room, gameState, reactions, connected, error, playerLeft, rejoinFailed, disconnectedPlayers, reconnectNotice, mySeatIndex, entrySource, rematchVoteState, cumulativeScores, matchState, rematchIntents, rematchPromptOpen, exchangeAnnouncing, exchangeAnnounceData, createRoom, joinRoom, leaveRoom, quickmatch, setRoomGameMode, startGame, requestPlayAgain, voteRematch, answerRematch, playCards, pass, giveExchangeCard, acknowledgeExchange, sendReaction, clearError, clearPlayerLeft]
   );
 
   return (

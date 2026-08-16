@@ -56,6 +56,10 @@ export default function OnlineGameScreen() {
     entrySource,
     rematchVoteState,
     cumulativeScores,
+    matchState,
+    rematchIntents,
+    rematchPromptOpen,
+    answerRematch,
     exchangeAnnouncing,
     exchangeAnnounceData,
     acknowledgeExchange,
@@ -149,6 +153,10 @@ export default function OnlineGameScreen() {
 
   if (!gameState) return null;
 
+  const myUserId = user?.id ?? "";
+  const myRematchAnswer =
+    myUserId in rematchIntents.answers ? rematchIntents.answers[myUserId] : null;
+
   const exchange = readExchange(gameState, mySeatIndex);
   // The results overlay sits above the table and needs the same safe-area pads
   // the table uses; the table computes its own full frame from the same source.
@@ -186,7 +194,11 @@ export default function OnlineGameScreen() {
     <GameTable
       gameState={gameState}
       viewerSeat={mySeatIndex}
-      roundLabel={t("onlineGame.roundLabel")}
+      roundLabel={
+        matchState.length === "single"
+          ? t("result.singleHandFormat")
+          : t("gameTable.formatMatch", { target: matchState.target })
+      }
       selectedIds={selectedIds}
       onSelectCard={toggleCard}
       onPlay={handlePlay}
@@ -215,6 +227,13 @@ export default function OnlineGameScreen() {
         visible: exchangeAnnouncing,
         data: exchangeAnnounceData,
         onDismiss: acknowledgeExchange,
+      }}
+      rematchPrompt={{
+        visible: rematchPromptOpen,
+        myAnswer: myRematchAnswer,
+        yesCount: rematchIntents.yes,
+        seatCount: rematchIntents.total || gameState.players.length,
+        onAnswer: answerRematch,
       }}
       topBarExtra={<ReactionTrigger onPress={toggleReactionPanel} />}
       banners={
@@ -280,6 +299,14 @@ export default function OnlineGameScreen() {
               voteState={rematchVoteState}
               myUserId={user?.id ?? ""}
               cumulativeScores={cumulativeScores}
+              match={{
+                target: matchState.target,
+                length: matchState.length,
+                over: matchState.over,
+                winners: matchState.winners,
+                isDraw: matchState.isDraw,
+                continues: matchState.continues,
+              }}
             />
           )}
         </>

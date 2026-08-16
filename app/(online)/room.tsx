@@ -21,7 +21,8 @@ import { useAuth } from "@/context/AuthContext";
 import { useSocket } from "@/context/SocketContext";
 import { getSocket } from "@/lib/socket";
 import { Colors, Spacing, Radius, FontSize, Type } from '@/lib/theme';
-import type { AIDifficulty } from "@/lib/gameEngine";
+import { MATCH_TARGETS } from "@/lib/gameEngine";
+import type { AIDifficulty, MatchLength } from "@/lib/gameEngine";
 import { MenuLayout } from "@/components/MenuLayout";
 import { MenuButton } from "@/components/MenuButton";
 import { useTranslation, type TranslationKey } from "@/lib/i18n";
@@ -101,6 +102,90 @@ function BotFillControls({
     </View>
   );
 }
+
+/** Host-only: how long the game runs. Mirrors the offline lobby's picker. */
+function MatchLengthControls({
+  value,
+  onChange,
+}: {
+  value: MatchLength;
+  onChange: (length: MatchLength) => void;
+}) {
+  const { t } = useTranslation();
+  const copy = (length: MatchLength) =>
+    length === "match"
+      ? { title: t("lobby.formatMatch"), detail: t("lobby.formatMatchSub", { target: MATCH_TARGETS[0] }) }
+      : { title: t("lobby.formatSingle"), detail: t("lobby.formatSingleSub") };
+
+  return (
+    <View style={formatStyles.section}>
+      <Text style={formatStyles.label}>{t("room.formatLabel")}</Text>
+      <View style={formatStyles.row}>
+        {(["match", "single"] as MatchLength[]).map((length) => {
+          const selected = value === length;
+          const { title, detail } = copy(length);
+          return (
+            <Pressable
+              key={length}
+              onPress={() => {
+                onChange(length);
+                Haptics.selectionAsync();
+              }}
+              style={[formatStyles.option, selected && formatStyles.optionActive]}
+              accessibilityRole="radio"
+              accessibilityLabel={t("lobby.formatA11yLabel", { format: title, detail })}
+              accessibilityState={{ selected }}
+            >
+              <Text style={[formatStyles.optionTitle, selected && formatStyles.optionTitleActive]}>
+                {title}
+              </Text>
+              <Text style={[formatStyles.optionDetail, selected && formatStyles.optionDetailActive]}>
+                {detail}
+              </Text>
+            </Pressable>
+          );
+        })}
+      </View>
+    </View>
+  );
+}
+
+const formatStyles = StyleSheet.create({
+  section: { gap: Spacing.sm },
+  label: {
+    fontFamily: "Inter_600SemiBold",
+    fontSize: FontSize.xs,
+    color: Colors.textMuted,
+    letterSpacing: 2,
+  },
+  row: { flexDirection: "row", gap: Spacing.sm },
+  option: {
+    flex: 1,
+    minHeight: 44,
+    alignItems: "center",
+    justifyContent: "center",
+    gap: Spacing.xs / 2,
+    paddingVertical: Spacing.sm,
+    paddingHorizontal: Spacing.sm,
+    borderRadius: Radius.md,
+    backgroundColor: Colors.bgSurface,
+    borderWidth: 1,
+    borderColor: Colors.border,
+  },
+  optionActive: { borderColor: Colors.gold, backgroundColor: Colors.goldMuted },
+  optionTitle: {
+    fontFamily: "Rajdhani_700Bold",
+    fontSize: FontSize.md,
+    color: Colors.textSecondary,
+    letterSpacing: 0.5,
+  },
+  optionTitleActive: { color: Colors.gold },
+  optionDetail: {
+    ...Type.caption,
+    textAlign: "center",
+  },
+  optionDetailActive: { color: Colors.goldLight },
+});
 
 interface FriendInfo {
   id: string;
@@ -231,6 +316,7 @@ export default function RoomScreen() {
 
   const [fillWithBots, setFillWithBots] = useState(false);
   const [botDifficulty, setBotDifficulty] = useState<AIDifficulty>("medium");
+  const [matchLength, setMatchLength] = useState<MatchLength>("match");
 
   const isLandscape = W > H;
 
@@ -307,13 +393,17 @@ export default function RoomScreen() {
   function handleStart() {
     if (!canStart) return;
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    startGame({ fillWithBots, botDifficulty });
+    startGame({ fillWithBots, botDifficulty, matchLength });
   }
 
   const modeLabel = room.gameMode === "teams" ? t("room.modeTeams") : t("room.modeFreeForAll");
   const modeIcon: "people" | "person" = room.gameMode === "teams" ? "people" : "person";
 
   const playerUserIds = room.players.map((p) => p.userId);
+
+  const formatControls = isHost && room.status === "waiting" ? (
+    <MatchLengthControls value={matchLength} onChange={setMatchLength} />
+  ) : null;
 
   const botFillControls = showBotFillControls ? (
     <BotFillControls
@@ -393,7 +483,9 @@ export default function RoomScreen() {
                 </Text>
               </View>
 
-              {botFillControls}
+              {formatControls}
+              {formatControls}
+        {botFillControls}
             </View>
 
             <View style={styles.landscapeFooter}>
