@@ -1881,7 +1881,7 @@ function startSweeper() {
       logger.error({ err }, "Sweeper failed");
     }
   }, SWEEP_INTERVAL_MS);
-  sweeper.unref?.();
+  (sweeper as unknown as { unref?: () => void }).unref?.();
 }
 
 async function handleLeaveRoom(
