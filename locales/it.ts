@@ -562,4 +562,27 @@ export const it = {
   "errorFallback.closeDetailsA11yLabel": "Chiudi dettagli errore",
   "errorFallback.errorLabel": "Errore: {{message}}\n\n",
   "errorFallback.stackTraceLabel": "Stack trace:\n{{stack}}",
+
+  // ----------------------------------------------------------- achievements.*
+  // Names/descriptions for lib/achievements.ts's flat ACHIEVEMENTS catalogue.
+  "achievements.firstWin.name": "Prima Vittoria",
+  "achievements.firstWin.desc": "Vinci la tua prima mano.",
+  "achievements.runnerUp.name": "Secondo Posto",
+  "achievements.runnerUp.desc": "Termina una mano al secondo posto.",
+  "achievements.bombardier.name": "Bombardiere",
+  "achievements.bombardier.desc": "Vinci una mano dopo aver giocato una Bomba.",
+  "achievements.purist.name": "Purista",
+  "achievements.purist.desc": "Vinci una mano senza giocare nessun Jolly.",
+  "achievements.wildCard.name": "Asso nella Manica",
+  "achievements.wildCard.desc": "Vinci una mano dopo aver giocato sia una Bomba che un Jolly.",
+  "achievements.minimalist.name": "Vittoria Essenziale",
+  "achievements.minimalist.desc": "Vinci una mano senza giocare Bombe né Jolly.",
+  "achievements.duelist.name": "Duellante",
+  "achievements.duelist.desc": "Vinci una mano in una partita a due giocatori.",
+  "achievements.fullTable.name": "Tavolo al Completo",
+  "achievements.fullTable.desc": "Vinci una mano a quattro giocatori in cui tutti gli avversari hanno terminato le carte.",
+  "achievements.matchChampion.name": "Campione della Partita",
+  "achievements.matchChampion.desc": "Vinci un'intera partita raggiungendo il punteggio finale.",
+  "achievements.ironWill.name": "Volontà di Ferro",
+  "achievements.ironWill.desc": "Vinci un'intera partita senza giocare Jolly nell'ultima mano.",
 } as const;

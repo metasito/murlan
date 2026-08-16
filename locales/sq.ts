@@ -573,4 +573,29 @@ export const sq: Record<keyof typeof it, string> = {
   "errorFallback.closeDetailsA11yLabel": "Mbyll detajet e gabimit",
   "errorFallback.errorLabel": "Gabim: {{message}}\n\n",
   "errorFallback.stackTraceLabel": "Stack trace:\n{{stack}}",
+
+  // ----------------------------------------------------------- achievements.*
+  // Machine-translated, reusing this file's already-established terms for
+  // card vocabulary (Bombë, Xholi, letra, manche, ndeshje — see header and
+  // rules.*/result.* above); not checked by a native speaker.
+  "achievements.firstWin.name": "Fitorja e Parë",
+  "achievements.firstWin.desc": "Fito manchen tënde të parë.",
+  "achievements.runnerUp.name": "Vendi i Dytë",
+  "achievements.runnerUp.desc": "Përfundo një manche në vendin e dytë.",
+  "achievements.bombardier.name": "Bombardier",
+  "achievements.bombardier.desc": "Fito një manche pasi ke luajtur një Bombë.",
+  "achievements.purist.name": "Purist",
+  "achievements.purist.desc": "Fito një manche pa luajtur asnjë Xholi.",
+  "achievements.wildCard.name": "Karta Xhoker",
+  "achievements.wildCard.desc": "Fito një manche pasi ke luajtur si Bombë ashtu edhe Xholi.",
+  "achievements.minimalist.name": "Fitore e Thjeshtë",
+  "achievements.minimalist.desc": "Fito një manche pa luajtur Bomba apo Xhola.",
+  "achievements.duelist.name": "Duelisti",
+  "achievements.duelist.desc": "Fito një manche në një lojë me dy lojtarë.",
+  "achievements.fullTable.name": "Tavolina e Plotë",
+  "achievements.fullTable.desc": "Fito një manche me katër lojtarë ku çdo kundërshtar ka mbaruar letrat.",
+  "achievements.matchChampion.name": "Kampioni i Ndeshjes",
+  "achievements.matchChampion.desc": "Fito një ndeshje të plotë duke arritur pikëzimin final.",
+  "achievements.ironWill.name": "Vullnet i Hekurt",
+  "achievements.ironWill.desc": "Fito një ndeshje të plotë pa luajtur Xholi në manchen përfundimtare.",
 };
