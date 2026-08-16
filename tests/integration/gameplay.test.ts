@@ -409,4 +409,44 @@ describe("gameplay integrity", { skip: hasDatabase() ? false : skipMessage() }, 
     assert.ok(sawVacatedSeatAct, "the bot-controlled vacated seat never got to act");
     assert.ok(sawTurnPastVacatedSeat, "the turn never advanced past the vacated seat");
   });
+
+  // ── Test 5 ──────────────────────────────────────────────────────────────
+
+  test("room:start with fillWithBots seats bots in the empty seats and the turn arbiter drives them", async () => {
+    const [alice] = await makeClients(["botfill_alice"]);
+    await setUpRoom([alice], 3);
+
+    const opening = waitFor<SanitizedState>(alice.socket, "game:state");
+    alice.socket.emit("room:start", { fillWithBots: true, botDifficulty: "easy" });
+    const state = await opening;
+
+    // One human seat, two bot seats — the same buildSeatRoster contract
+    // tested in isolation by tests/botFill.test.ts, now exercised through
+    // the real room:start handler.
+    assert.equal(state.players.length, 3);
+    assert.equal(state.players.filter((p) => p.type === "ai").length, 2);
+    assert.equal(state.players.filter((p) => p.type === "human").length, 1);
+
+    // Bots must be driven by the same turn arbiter the disconnect-takeover
+    // path uses — not a second bot loop — so this proves a bot seat
+    // actually plays and the turn advances past it, exactly like the
+    // vacated-seat test above.
+    let sawBotAct = false;
+    let sawTurnPastBot = false;
+    let actedBotSeat = -1;
+    for (let i = 0; i < 15 && !(sawBotAct && sawTurnPastBot); i++) {
+      const s = await waitFor<SanitizedState>(alice.socket, "game:state", 8_000);
+      if (s.gameOver) break;
+      const actor = s.players[s.lastPlayedBy];
+      if (actor?.type === "ai") {
+        sawBotAct = true;
+        actedBotSeat = s.lastPlayedBy;
+      }
+      if (sawBotAct && s.currentTurnIndex !== actedBotSeat) {
+        sawTurnPastBot = true;
+      }
+    }
+    assert.ok(sawBotAct, "no bot seat ever played");
+    assert.ok(sawTurnPastBot, "the turn never advanced past a bot seat");
+  });
 });

@@ -16,6 +16,7 @@ import {
   scoreKeyForSeat as scoreKeyForMapSeat,
   findViewerSeat,
   excludeBotSeats,
+  buildSeatRoster,
   GAME_SCHEMA_VERSION,
   isStaleSchema,
 } from "./onlineGameLogic.ts";
@@ -25,6 +26,7 @@ import {
   RoomJoinSchema,
   RoomQuickmatchSchema,
   RoomSetGameModeSchema,
+  RoomStartSchema,
   GamePlaySchema,
   GameRejoinSchema,
   GameReactionSchema,
@@ -896,8 +898,8 @@ export function setupSocket(httpServer: HttpServer) {
     onEvent(
       socket,
       "room:start",
-      NoPayloadSchema,
-      async () => {
+      RoomStartSchema,
+      async ({ fillWithBots, botDifficulty }) => {
         const roomId = socketRoomMap.get(socket.id);
         if (!roomId) return;
         const room = await storage.getRoomById(roomId);
@@ -909,20 +911,34 @@ export function setupSocket(httpServer: HttpServer) {
           return;
 
         const players = await storage.getRoomPlayers(room.id);
-        if (players.length < 2) {
+        // With bots filling every empty seat, one seated human is enough —
+        // the min-2 guard only matters for an all-human table.
+        if (!fillWithBots && players.length < 2) {
           socket.emit("room:error", { message: "Servono almeno 2 giocatori", code: "MIN_PLAYERS_REQUIRED" });
           return;
         }
+        if (players.length < 1) return;
 
         const previous = activeGames.get(roomId);
         clearRoomTimers(roomId);
 
-        // Engine seat index is the position in this ordered list. playerMap is
-        // keyed the same way, so a gap in the DB seat numbering can never
-        // shift a hand onto the wrong player.
-        const playerSetup = players.map((p, idx) => ({
-          name: p.user.username,
-          type: "human" as const,
+        const humans = players.map((p) => ({
+          seatIndex: p.seatIndex,
+          userId: p.userId,
+          username: p.user.username,
+        }));
+        // Engine seat index is the position in this roster, sorted by seat.
+        // playerMap is keyed the same way, so a gap in the DB seat numbering
+        // (or a bot filling that gap) can never shift a hand onto the wrong
+        // player. Bot seats are simply left out of playerMap — armTurn/
+        // autoMoveForSeat already treat a missing playerMap entry as "drive
+        // this seat with the AI", exactly the path a disconnect takeover uses.
+        const roster = buildSeatRoster(humans, room.maxPlayers, { fillWithBots, botDifficulty });
+
+        const playerSetup = roster.map((r, idx) => ({
+          name: r.username,
+          type: (r.isBot ? "ai" : "human") as "human" | "ai",
+          difficulty: r.isBot ? r.difficulty : undefined,
           team:
             room.gameMode === "teams"
               ? ((idx % 2 === 0 ? "A" : "B") as "A" | "B")
@@ -931,8 +947,8 @@ export function setupSocket(httpServer: HttpServer) {
 
         const gameState = initializeGame(playerSetup, room.gameMode);
         const playerMap: Record<number, string> = {};
-        players.forEach((p, idx) => {
-          playerMap[idx] = p.userId;
+        roster.forEach((r, idx) => {
+          if (!r.isBot) playerMap[idx] = r.userId;
         });
 
         const newGame: OnlineGameState = {
@@ -961,7 +977,10 @@ export function setupSocket(httpServer: HttpServer) {
 
         persistGameState(roomId, newGame);
         armTurn(roomId);
-        logger.info({ roomId, playerCount: players.length }, "Game started");
+        logger.info(
+          { roomId, playerCount: players.length, botCount: roster.length - players.length },
+          "Game started"
+        );
       },
       { limit: 10, windowMs: 60_000 }
     );

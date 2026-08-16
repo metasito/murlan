@@ -508,6 +508,11 @@ export const sq: Record<keyof typeof it, string> = {
   "room.leaveConfirmBody": "Je i sigurt që dëshiron të largohesh nga dhoma?",
   "room.leaveConfirmConfirm": "Largohu",
   "room.shareMessage": "Bashkohu në dhomën time të Murlanit! Kodi: {{code}}",
+  "room.fillWithBotsLabel": "Plotëso me bot",
+  "room.fillWithBotsSubtitle": "Vendet e lira do të zihen nga lojtarë virtualë",
+  "room.fillWithBotsA11yLabel": "Plotëso vendet e lira me bot",
+  "room.fillWithBotsA11yHint": "Aktivizoje që kompjuteri të kontrollojë vendet e lira kur fillon loja",
+  "room.botDifficultyOptionA11yLabel": "Vështirësia e botit: {{level}}",
 
   // ---------------------------------------------------------------- friends.*
   "friends.timeUnknown": "Kohë më parë",

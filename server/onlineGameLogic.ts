@@ -101,3 +101,47 @@ export function isStaleSchema(
 ): boolean {
   return !persisted || persisted.schemaVersion !== GAME_SCHEMA_VERSION;
 }
+
+export interface SeatEntry {
+  seatIndex: number;
+  userId: string;      // for bots, a synthetic "bot:<seat>" id
+  username: string;
+  isBot: boolean;
+  difficulty?: "easy" | "medium" | "hard";
+}
+
+/**
+ * The full seat roster a game starts with: the seated humans, plus — when
+ * `fillWithBots` is requested — a bot seat for every gap up to `maxPlayers`.
+ *
+ * Pure function so room:start's seat-assignment logic (which of the humans
+ * plus bots occupies which engine seat) is unit-testable without spinning up
+ * a socket server. server/socket.ts imports this rather than reimplementing
+ * it, so tests exercise the exact code path the server runs.
+ */
+export function buildSeatRoster(
+  humans: { seatIndex: number; userId: string; username: string }[],
+  maxPlayers: number,
+  opts: { fillWithBots?: boolean; botDifficulty?: "easy" | "medium" | "hard" }
+): SeatEntry[] {
+  const roster: SeatEntry[] = humans
+    .map((h) => ({ ...h, isBot: false }))
+    .sort((a, b) => a.seatIndex - b.seatIndex);
+  if (!opts.fillWithBots) return roster;
+
+  const taken = new Set(roster.map((r) => r.seatIndex));
+  const difficulty = opts.botDifficulty ?? "medium";
+  for (let seat = 0; seat < maxPlayers; seat++) {
+    if (taken.has(seat)) continue;
+    roster.push({
+      seatIndex: seat,
+      // Synthetic id: bot seats must never collide with a real user id, and the
+      // scoring path already excludes ids with this prefix.
+      userId: `bot:${seat}`,
+      username: `Bot ${seat + 1}`,
+      isBot: true,
+      difficulty,
+    });
+  }
+  return roster.sort((a, b) => a.seatIndex - b.seatIndex);
+}

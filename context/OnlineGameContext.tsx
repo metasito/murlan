@@ -59,7 +59,7 @@ interface OnlineGameContextValue {
   leaveRoom: () => void;
   quickmatch: (maxPlayers: number, gameMode: "free_for_all" | "teams") => void;
   setRoomGameMode: (mode: "free_for_all" | "teams") => void;
-  startGame: () => void;
+  startGame: (opts?: { fillWithBots?: boolean; botDifficulty?: "easy" | "medium" | "hard" }) => void;
   requestPlayAgain: () => void;
   voteRematch: () => void;
   playCards: (cardIds: string[]) => void;
@@ -430,8 +430,8 @@ export function OnlineGameProvider({ userId, children }: { userId: string; child
     socket.emit("room:set_game_mode", { gameMode });
   }, [userId]);
 
-  const startGame = useCallback(() => {
-    socket.emit("room:start");
+  const startGame = useCallback((opts?: { fillWithBots?: boolean; botDifficulty?: "easy" | "medium" | "hard" }) => {
+    socket.emit("room:start", opts);
   }, [userId]);
 
   const requestPlayAgain = useCallback(() => {

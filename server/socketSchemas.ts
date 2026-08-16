@@ -40,6 +40,25 @@ export const RoomSetGameModeSchema = z.object({
   gameMode: GameModeSchema,
 });
 
+const BotDifficultySchema = z.enum(["easy", "medium", "hard"]);
+
+/**
+ * `room:start` is emitted with no payload from most call sites (rematch,
+ * legacy clients), so this must tolerate `undefined`/`null` the same way
+ * NoPayloadSchema does — but still validate the two optional bot-fill fields
+ * when the host's room does send them.
+ */
+export const RoomStartSchema = z
+  .union([
+    z.undefined(),
+    z.null(),
+    z.object({
+      fillWithBots: z.boolean().optional(),
+      botDifficulty: BotDifficultySchema.optional(),
+    }),
+  ])
+  .transform((v) => v ?? {});
+
 export const GamePlaySchema = z.object({
   cardIds: z.array(IdSchema).min(1).max(14),
 });

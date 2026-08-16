@@ -8,6 +8,7 @@ import {
   Share,
   Alert,
   FlatList,
+  Switch,
   useWindowDimensions,
 } from "react-native";
 import { router } from "expo-router";
@@ -22,12 +23,87 @@ import { useOnlineGame } from "@/context/OnlineGameContext";
 import { useAuth } from "@/context/AuthContext";
 import { useSocket } from "@/context/SocketContext";
 import { getSocket } from "@/lib/socket";
-import { Colors } from '@/lib/theme';
+import { Colors, Spacing, Radius } from '@/lib/theme';
+import type { AIDifficulty } from "@/lib/gameEngine";
 import { MenuCard } from "@/components/MenuCard";
 import { MenuButton } from "@/components/MenuButton";
-import { useTranslation } from "@/lib/i18n";
+import { useTranslation, type TranslationKey } from "@/lib/i18n";
 
 const TEAM_COLORS = { A: Colors.gold, B: "#6b8ef5" };
+
+const BOT_DIFFICULTY_LABEL_KEYS: Record<AIDifficulty, TranslationKey> = {
+  easy: "lobby.difficultyEasy",
+  medium: "lobby.difficultyMedium",
+  hard: "lobby.difficultyHard",
+};
+
+function BotFillControls({
+  fillWithBots,
+  onToggleFillWithBots,
+  botDifficulty,
+  onChangeBotDifficulty,
+}: {
+  fillWithBots: boolean;
+  onToggleFillWithBots: (value: boolean) => void;
+  botDifficulty: AIDifficulty;
+  onChangeBotDifficulty: (difficulty: AIDifficulty) => void;
+}) {
+  const { t } = useTranslation();
+
+  return (
+    <View style={botFillStyles.section}>
+      <View style={botFillStyles.row}>
+        <View style={botFillStyles.rowText}>
+          <Text style={botFillStyles.label}>{t("room.fillWithBotsLabel")}</Text>
+          <Text style={botFillStyles.sublabel}>{t("room.fillWithBotsSubtitle")}</Text>
+        </View>
+        <Switch
+          value={fillWithBots}
+          onValueChange={(value) => {
+            onToggleFillWithBots(value);
+            Haptics.selectionAsync();
+          }}
+          trackColor={{ false: Colors.bgElevated, true: Colors.gold }}
+          thumbColor={fillWithBots ? Colors.white : Colors.textMuted}
+          accessibilityRole="switch"
+          accessibilityLabel={t("room.fillWithBotsA11yLabel")}
+          accessibilityHint={t("room.fillWithBotsA11yHint")}
+        />
+      </View>
+
+      {fillWithBots && (
+        <View style={botFillStyles.difficultyRow}>
+          {(["easy", "medium", "hard"] as AIDifficulty[]).map((level) => {
+            const selected = botDifficulty === level;
+            const levelLabel = t(BOT_DIFFICULTY_LABEL_KEYS[level]);
+            return (
+              <Pressable
+                key={level}
+                onPress={() => {
+                  onChangeBotDifficulty(level);
+                  Haptics.selectionAsync();
+                }}
+                accessibilityRole="button"
+                accessibilityLabel={t("room.botDifficultyOptionA11yLabel", { level: levelLabel })}
+                accessibilityState={{ selected }}
+                style={[botFillStyles.difficultyPill, selected && botFillStyles.difficultyPillActive]}
+              >
+                <Text
+                  style={[
+                    botFillStyles.difficultyPillText,
+                    selected && botFillStyles.difficultyPillTextActive,
+                  ]}
+                >
+                  {levelLabel}
+                </Text>
+              </Pressable>
+            );
+          })}
+        </View>
+      )}
+    </View>
+  );
+}
 
 interface FriendInfo {
   id: string;
@@ -153,6 +229,9 @@ export default function RoomScreen() {
     entrySource,
   } = useOnlineGame();
 
+  const [fillWithBots, setFillWithBots] = useState(false);
+  const [botDifficulty, setBotDifficulty] = useState<AIDifficulty>("medium");
+
   const isLandscape = W > H;
   const topPad = Platform.OS === "web" ? 67 : insets.top;
   const bottomPad = Platform.OS === "web" ? 34 : insets.bottom;
@@ -186,10 +265,14 @@ export default function RoomScreen() {
   if (!room) return null;
 
   const isHost = room.hostUserId === user?.id;
-  const canStart = isHost && room.players.length >= 2 && room.status === "waiting";
   const maxSeats = room.maxPlayers;
   const hasEmptySeats = room.players.length < maxSeats;
   const showInvitePanel = room.status === "waiting" && hasEmptySeats && !!user;
+  // Bots fill every empty seat, so a single host is enough to start —
+  // otherwise at least 2 seated humans are required, same as before.
+  const notEnoughPlayers = !fillWithBots && room.players.length < 2;
+  const canStart = isHost && !notEnoughPlayers && room.status === "waiting";
+  const showBotFillControls = isHost && room.status === "waiting" && hasEmptySeats;
 
   async function handleCopyCode() {
     await Clipboard.setStringAsync(room!.code);
@@ -225,7 +308,7 @@ export default function RoomScreen() {
   function handleStart() {
     if (!canStart) return;
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    startGame();
+    startGame({ fillWithBots, botDifficulty });
   }
 
   const modeLabel = room.gameMode === "teams" ? t("room.modeTeams") : t("room.modeFreeForAll");
@@ -233,9 +316,18 @@ export default function RoomScreen() {
 
   const playerUserIds = room.players.map((p) => p.userId);
 
+  const botFillControls = showBotFillControls ? (
+    <BotFillControls
+      fillWithBots={fillWithBots}
+      onToggleFillWithBots={setFillWithBots}
+      botDifficulty={botDifficulty}
+      onChangeBotDifficulty={setBotDifficulty}
+    />
+  ) : null;
+
   const StartButton = isHost ? (
     <MenuButton
-      label={room.players.length < 2 ? t("room.waitingForPlayers") : t("room.startGame")}
+      label={notEnoughPlayers ? t("room.waitingForPlayers") : t("room.startGame")}
       onPress={handleStart}
       disabled={!canStart}
       icon={<Ionicons name="play-circle" size={22} color={canStart ? "#0A1F18" : Colors.textMuted} />}
@@ -298,6 +390,8 @@ export default function RoomScreen() {
                   {t("room.modeAndPlayers", { mode: modeLabel, n: room.maxPlayers })}
                 </Text>
               </View>
+
+              {botFillControls}
             </View>
 
             <View style={styles.landscapeFooter}>
@@ -426,6 +520,8 @@ export default function RoomScreen() {
           </Text>
         </View>
 
+        {botFillControls}
+
         <View style={{ gap: 6 }}>
           <Text style={[styles.slotsSectionTitle, { marginBottom: 2 }]}>
             {t("room.playersCount", { current: room.players.length, max: maxSeats })}
@@ -500,6 +596,62 @@ export default function RoomScreen() {
     </View>
   );
 }
+
+const botFillStyles = StyleSheet.create({
+  section: {
+    backgroundColor: Colors.bgCard,
+    borderRadius: Radius.md,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    paddingHorizontal: Spacing.md,
+    paddingVertical: Spacing.sm,
+    gap: Spacing.sm,
+  },
+  row: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    minHeight: 44,
+    gap: Spacing.sm,
+  },
+  rowText: { flex: 1, gap: 2 },
+  label: {
+    fontFamily: "Rajdhani_600SemiBold",
+    fontSize: 15,
+    color: Colors.text,
+  },
+  sublabel: {
+    fontFamily: "Inter_400Regular",
+    fontSize: 11,
+    color: Colors.textMuted,
+  },
+  difficultyRow: {
+    flexDirection: "row",
+    gap: Spacing.sm,
+  },
+  difficultyPill: {
+    flex: 1,
+    minHeight: 44,
+    alignItems: "center",
+    justifyContent: "center",
+    borderRadius: Radius.sm,
+    backgroundColor: Colors.bgSurface,
+    borderWidth: 1,
+    borderColor: Colors.border,
+  },
+  difficultyPillActive: {
+    borderColor: Colors.gold,
+    backgroundColor: Colors.goldMuted,
+  },
+  difficultyPillText: {
+    fontFamily: "Rajdhani_600SemiBold",
+    fontSize: 13,
+    color: Colors.textSecondary,
+  },
+  difficultyPillTextActive: {
+    color: Colors.gold,
+  },
+});
 
 const inviteStyles = StyleSheet.create({
   emptyContainer: {

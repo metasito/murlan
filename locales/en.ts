@@ -482,6 +482,11 @@ export const en: Record<keyof typeof it, string> = {
   "room.leaveConfirmBody": "Are you sure you want to leave the room?",
   "room.leaveConfirmConfirm": "Leave",
   "room.shareMessage": "Join my Murlan room! Code: {{code}}",
+  "room.fillWithBotsLabel": "Fill with bots",
+  "room.fillWithBotsSubtitle": "Empty seats will be taken by virtual players",
+  "room.fillWithBotsA11yLabel": "Fill empty seats with bots",
+  "room.fillWithBotsA11yHint": "Turn on to have the computer control empty seats when the game starts",
+  "room.botDifficultyOptionA11yLabel": "Bot difficulty: {{level}}",
 
   // ---------------------------------------------------------------- friends.*
   "friends.timeUnknown": "A while ago",

@@ -497,6 +497,11 @@ export const it = {
   "room.leaveConfirmBody": "Sei sicuro di voler lasciare la stanza?",
   "room.leaveConfirmConfirm": "Lascia",
   "room.shareMessage": "Unisciti alla mia stanza Murlan! Codice: {{code}}",
+  "room.fillWithBotsLabel": "Riempi con bot",
+  "room.fillWithBotsSubtitle": "I posti liberi saranno occupati da giocatori virtuali",
+  "room.fillWithBotsA11yLabel": "Riempi i posti liberi con bot",
+  "room.fillWithBotsA11yHint": "Attiva per far controllare al computer i posti liberi quando la partita inizia",
+  "room.botDifficultyOptionA11yLabel": "Difficoltà bot: {{level}}",
 
   // ---------------------------------------------------------------- friends.*
   "friends.timeUnknown": "Tempo fa",
