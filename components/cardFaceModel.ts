@@ -147,6 +147,24 @@ export const PIP_LAYOUTS: Record<string, PipSpot[]> = {
 
 export const COURT_RANKS = new Set(["J", "Q", "K"]);
 
+/**
+ * Where the court figure sits, as fractions of the card. These are the crop box
+ * the art was cut from its source card with — and because the source deck and
+ * this card have the same aspect (0.688 vs 0.690), placing it at the same
+ * fractions reproduces a real card's proportions rather than approximating them.
+ * `scripts/build-court-art.mjs` regenerates the art against these numbers.
+ */
+export const COURT_ART_BOX = { x0: 0.305, x1: 0.695, y0: 0.105, y1: 0.895 } as const;
+
+export function courtArtRect(w: number, h: number) {
+  return {
+    left: w * COURT_ART_BOX.x0,
+    top: h * COURT_ART_BOX.y0,
+    width: w * (COURT_ART_BOX.x1 - COURT_ART_BOX.x0),
+    height: h * (COURT_ART_BOX.y1 - COURT_ART_BOX.y0),
+  };
+}
+
 /** Ranks drawn as a pip field. Aces and courts are drawn differently. */
 export const PIP_RANKS = Object.keys(PIP_LAYOUTS);
 

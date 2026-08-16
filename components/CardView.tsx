@@ -1,5 +1,5 @@
 import React, { useEffect } from "react";
-import { View, Text, StyleSheet, Pressable } from "react-native";
+import { View, Text, StyleSheet, Pressable, Image } from "react-native";
 import Animated, {
   useAnimatedStyle,
   useSharedValue,
@@ -28,6 +28,7 @@ import {
   CARD_W,
   CARD_W_SMALL,
   COURT_RANKS,
+  courtArtRect,
   INDEX_SUIT_SIZE,
   INDEX_SUIT_Y,
   INDEX_TEXT_W,
@@ -114,25 +115,23 @@ function SuitMark({
   );
 }
 
-// ─── Court figures ────────────────────────────────────────────────────────────
+// ─── Joker figures ────────────────────────────────────────────────────────────
 //
-// A court card is one half-figure printed twice, the second rotated 180° about
-// the panel centre, so the card reads right way up from either end. The half is
-// authored in a fixed PANEL_BOX_W × PANEL_HALF_H box and the panel scales it.
+// Only the two jokers are drawn: the source deck's joker is four suit symbols,
+// identical in its red and black variants, and Murlan's two jokers are the
+// deck's top two cards and must be told apart at a glance. J/Q/K use real
+// engraved art instead (see CourtArt).
+//
+// The joker is one half-figure printed twice, the second rotated 180° about the
+// panel centre, so it reads right way up from either end. The half is authored
+// in a fixed PANEL_BOX_W × PANEL_HALF_H box and the panel scales it.
 //
 // Every feature is at least ~2 local units across. At the size these render
-// (a ~32pt-wide panel, so roughly 0.8px per local unit) anything finer than
-// that resolves to a smudge, which is what the previous jewels and 0.8-unit
-// circles did.
-//
-// The five kinds share one silhouette — crown/hat, head, shouldered robe, an
-// object held at the right shoulder — so the deck reads as one engraved set:
-//   K              spiked crown, beard, sword
-//   Q              arched tiara with a centre orb, flowered sceptre
-//   J              soft cap with a feather, halberd
+// (a ~32pt-wide panel, so roughly 0.8px per local unit) anything finer resolves
+// to a smudge. The two differ only in what they hold:
 //   joker_colored  belled jester cap, star-tipped marotte (Red Joker)
 //   joker_bw       belled jester cap, plain marotte (Black Joker)
-type FigureKind = "J" | "Q" | "K" | "joker_colored" | "joker_bw";
+type FigureKind = "joker_colored" | "joker_bw";
 
 // The robe is drawn as line work with a wash inside it, never as a solid fill:
 // at this size a filled bust is a black rectangle with a dot on top. Keeping
@@ -145,14 +144,11 @@ function CourtHalf({
   kind,
   color,
   paper,
-  suit,
 }: {
   kind: FigureKind;
   color: string;
   paper: string;
-  suit: Suit | null;
 }) {
-  const isJoker = kind === "joker_colored" || kind === "joker_bw";
   return (
     <G>
       <Path d={ROBE} fill={color} fillOpacity={0.16} stroke={color} strokeWidth={ROBE_STROKE} />
@@ -160,74 +156,22 @@ function CourtHalf({
           whole chest. A full-width band reads as a belt and flattens the
           figure into a capsule. */}
       <Path d="M15.4,23.4 L24.6,23.4 L26.4,28 L20,30.4 L13.6,28 Z" fill={color} />
-      {suit && !isJoker && <SuitMark suit={suit} x={20} y={34.2} size={7} color={color} />}
-      {isJoker && (
-        <G>
-          <Circle cx={13.5} cy={33} r={1.8} fill={color} />
-          <Circle cx={26.5} cy={33} r={1.8} fill={color} />
-        </G>
-      )}
+      <G>
+        <Circle cx={13.5} cy={33} r={1.8} fill={color} />
+        <Circle cx={26.5} cy={33} r={1.8} fill={color} />
+      </G>
 
       <Circle cx={20} cy={18.6} r={5.6} fill={color} />
-      {kind === "K" && <Path d="M14.6,19.4 Q20,27.8 25.4,19.4 Z" fill={color} />}
-      {kind === "Q" && (
-        <G>
-          <Path d="M14.2,13.8 Q11.8,19 13.8,23.8 L10.8,23.8 Q9,18.4 11.8,13 Z" fill={color} />
-          <Path d="M25.8,13.8 Q28.2,19 26.2,23.8 L29.2,23.8 Q31,18.4 28.2,13 Z" fill={color} />
-        </G>
-      )}
 
-      {kind === "K" && (
-        <G>
-          <Path d="M11,14 L11,10 L14.5,4.2 L17.5,10 L20,3 L22.5,10 L25.5,4.2 L29,10 L29,14 Z" fill={color} />
-          <Rect x={10.4} y={13.2} width={19.2} height={2.4} rx={1} fill={color} />
-        </G>
-      )}
-      {kind === "Q" && (
-        <G>
-          <Path d="M12,14.6 L12,10 Q20,4.6 28,10 L28,14.6 Z" fill={color} />
-          <Circle cx={14.4} cy={7.4} r={2.3} fill={color} />
-          <Circle cx={25.6} cy={7.4} r={2.3} fill={color} />
-          <Circle cx={20} cy={4.2} r={3.1} fill={color} />
-          <Circle cx={20} cy={4.2} r={1.2} fill={paper} />
-        </G>
-      )}
-      {kind === "J" && (
-        <G>
-          <Path d="M11,14.4 Q9.5,5.5 19,3.6 Q29.5,3.2 30,10 L30,14.4 Z" fill={color} />
-          <Path d="M26.5,5.2 L38,0.6 L31,10.4 Z" fill={color} />
-        </G>
-      )}
-      {isJoker && (
-        <G>
-          <Path d="M10,14.4 L11.6,6.4 L15.6,11 L20,4.2 L24.4,11 L28.4,6.4 L30,14.4 Z" fill={color} />
-          <Circle cx={11} cy={4.4} r={2.4} fill={color} />
-          <Circle cx={20} cy={2.4} r={2.4} fill={color} />
-          <Circle cx={29} cy={4.4} r={2.4} fill={color} />
-        </G>
-      )}
+      <G>
+        <Path d="M10,14.4 L11.6,6.4 L15.6,11 L20,4.2 L24.4,11 L28.4,6.4 L30,14.4 Z" fill={color} />
+        <Circle cx={11} cy={4.4} r={2.4} fill={color} />
+        <Circle cx={20} cy={2.4} r={2.4} fill={color} />
+        <Circle cx={29} cy={4.4} r={2.4} fill={color} />
+      </G>
 
       {/* Held object, kept inside the panel and thick enough to survive the
           scale — a hairline staff reads as an antenna. */}
-      {kind === "K" && (
-        <G transform="rotate(-14 32 20)">
-          <Rect x={30.8} y={5} width={2.6} height={24} rx={1} fill={color} />
-          <Rect x={27.6} y={24.4} width={9} height={2.6} rx={1} fill={color} />
-        </G>
-      )}
-      {kind === "Q" && (
-        <G transform="rotate(13 32 20)">
-          <Rect x={31} y={12} width={2.2} height={18} rx={1} fill={color} />
-          <Circle cx={32.1} cy={9.4} r={3.3} fill={color} />
-          <Circle cx={32.1} cy={9.4} r={1.3} fill={paper} />
-        </G>
-      )}
-      {kind === "J" && (
-        <G transform="rotate(-12 32 20)">
-          <Rect x={31} y={7} width={2.2} height={23} rx={1} fill={color} />
-          <Path d="M27.6,6.6 L36.4,5.6 L37.6,10.6 L32.1,13.2 L28.8,10.6 Z" fill={color} />
-        </G>
-      )}
       {kind === "joker_colored" && (
         <G transform="rotate(13 32 20)">
           <Rect x={31} y={12} width={2.2} height={18} rx={1} fill={color} />
@@ -251,13 +195,11 @@ function CourtHalf({
 function CourtPanel({
   kind,
   color,
-  suit,
   w,
   h,
 }: {
   kind: FigureKind;
   color: string;
-  suit: Suit | null;
   w: number;
   h: number;
 }) {
@@ -282,9 +224,9 @@ function CourtPanel({
         strokeWidth={0.9}
       />
       <G transform={`translate(${x0},${y0}) scale(${k})`}>
-        <CourtHalf kind={kind} color={color} paper={Colors.cardPaper} suit={suit} />
+        <CourtHalf kind={kind} color={color} paper={Colors.cardPaper} />
         <G transform={`rotate(180 ${PANEL_BOX_W / 2} ${boxH / 2})`}>
-          <CourtHalf kind={kind} color={color} paper={Colors.cardPaper} suit={suit} />
+          <CourtHalf kind={kind} color={color} paper={Colors.cardPaper} />
         </G>
         <Path
           d={`M2,${boxH / 2} L${PANEL_BOX_W - 2},${boxH / 2}`}
@@ -324,7 +266,6 @@ function CardFaceArt({
       <CourtPanel
         kind={card.rank === "joker_colored" ? "joker_colored" : "joker_bw"}
         color={color}
-        suit={null}
         w={w}
         h={h}
       />
@@ -333,7 +274,8 @@ function CardFaceArt({
     if (compact) {
       centre = <SuitMark suit={suit} x={w * 0.58} y={h * 0.62} size={h * 0.24} color={color} />;
     } else if (COURT_RANKS.has(card.rank)) {
-      centre = <CourtPanel kind={card.rank as FigureKind} color={color} suit={suit} w={w} h={h} />;
+      // Drawn as a bitmap sibling of this Svg (see CourtArt), not here.
+      centre = null;
     } else if (card.rank === "A") {
       centre = <SuitMark suit={suit} x={w * 0.5} y={h * 0.5} size={h * ACE_PIP_SIZE} color={color} />;
     } else {
@@ -391,6 +333,46 @@ function JokerStar({
         strokeWidth={filled ? 0 : 1.2}
       />
     </G>
+  );
+}
+
+// ─── Court art ────────────────────────────────────────────────────────────────
+//
+// The twelve court figures are real engraved artwork, not drawing code: a J, Q
+// or K is a specific figure that people recognise, and hand-written paths at
+// this size produced shapes that read as neither. Public domain, from Byron
+// Knoll's vector-playing-cards via hayeah/playing-cards-assets — provenance and
+// regeneration are recorded in assets/images/cards/README.md.
+//
+// Each key is a function so Metro can statically resolve the require() calls,
+// the same shape lib/sounds.ts uses.
+const COURT_ART: Record<string, () => number> = {
+  J_clubs:      () => require("../assets/images/cards/jack_of_clubs.png") as number,
+  J_diamonds:   () => require("../assets/images/cards/jack_of_diamonds.png") as number,
+  J_hearts:     () => require("../assets/images/cards/jack_of_hearts.png") as number,
+  J_spades:     () => require("../assets/images/cards/jack_of_spades.png") as number,
+  Q_clubs:      () => require("../assets/images/cards/queen_of_clubs.png") as number,
+  Q_diamonds:   () => require("../assets/images/cards/queen_of_diamonds.png") as number,
+  Q_hearts:     () => require("../assets/images/cards/queen_of_hearts.png") as number,
+  Q_spades:     () => require("../assets/images/cards/queen_of_spades.png") as number,
+  K_clubs:      () => require("../assets/images/cards/king_of_clubs.png") as number,
+  K_diamonds:   () => require("../assets/images/cards/king_of_diamonds.png") as number,
+  K_hearts:     () => require("../assets/images/cards/king_of_hearts.png") as number,
+  K_spades:     () => require("../assets/images/cards/king_of_spades.png") as number,
+};
+
+function CourtArt({ card, w, h }: { card: Card; w: number; h: number }) {
+  const source = card.suit ? COURT_ART[`${card.rank}_${card.suit}`] : undefined;
+  if (!source) return null;
+  const rect = courtArtRect(w, h);
+  return (
+    <Image
+      source={source()}
+      style={[styles.courtArt, rect]}
+      resizeMode="contain"
+      accessibilityElementsHidden
+      importantForAccessibility="no-hide-descendants"
+    />
   );
 }
 
@@ -582,6 +564,7 @@ export function CardView({
           style={StyleSheet.absoluteFill}
         />
         <CardFaceArt card={card} color={color} w={w} h={h} compact={small} />
+        {!small && COURT_RANKS.has(card.rank) && <CourtArt card={card} w={w} h={h} />}
         <Text
           style={[
             styles.rankText,
@@ -638,6 +621,9 @@ const styles = StyleSheet.create({
   },
   // The index characters sit in the drawn index column: the suit mark below
   // them comes from the SVG layer, so the two must agree on INDEX_X.
+  courtArt: {
+    position: "absolute",
+  },
   rankText: {
     position: "absolute",
     fontFamily: "Rajdhani_700Bold",
