@@ -38,6 +38,7 @@ import {
   canPlay,
   sortHand,
   type Card,
+  type Combination,
   type GameState,
 } from "@/lib/gameEngine";
 import type { ExchangeAnnounceData } from "@/lib/sharedGameFlow";
@@ -53,15 +54,21 @@ import {
   canPassNow as canPassNowOf,
   comboKey,
   computeTableFrame,
+  describeTableForA11y,
   EMPTY_PILE,
   handCountOf,
   playButtonLabel,
   readExchange,
   seatDirection,
+  straightTopRankChar,
   turnTimerActive,
   type FlyDirection,
   type PileState,
   type PlayButtonLabel,
+  type TableA11yExchange,
+  type TableA11yLastPlay,
+  type TableA11yOpponent,
+  type TableA11yStrings,
 } from "@/components/gameTableModel";
 import { useTranslation, type TranslationKey } from "@/lib/i18n";
 import {
@@ -120,6 +127,72 @@ const PLAY_A11Y_SPOKEN_KEYS: Partial<Record<PlayButtonLabel, TranslationKey>> = 
   "NON\nVALIDA": "gameTable.playA11ySpokenInvalid",
   "TROPPO\nBASSA": "gameTable.playA11ySpokenTooLow",
 };
+
+// ─── Screen-reader table description ───────────────────────────────────────
+//
+// describeTableForA11y (gameTableModel.ts) is pure and takes every phrase
+// pre-translated; this is the translation boundary that builds them, mirroring
+// the getCardName() helper in ExchangeAnnouncement.tsx. Rank/suit words reuse
+// the same cards.* keys CardView.tsx and ExchangeAnnouncement.tsx already use,
+// so a name spoken here always matches the name spoken for the card itself.
+type TFn = (key: TranslationKey, params?: Record<string, string | number>) => string;
+
+const RANK_SPOKEN_KEYS: Partial<Record<string, TranslationKey>> = {
+  A: "cards.rankAce",
+  J: "cards.rankJack",
+  Q: "cards.rankQueen",
+  K: "cards.rankKing",
+};
+function rankSpokenName(rank: string, t: TFn): string {
+  const key = RANK_SPOKEN_KEYS[rank];
+  return key ? t(key) : rank;
+}
+
+const SUIT_SPOKEN_KEYS: Record<string, TranslationKey> = {
+  hearts: "cards.suitHearts",
+  diamonds: "cards.suitDiamonds",
+  clubs: "cards.suitClubs",
+  spades: "cards.suitSpades",
+};
+function suitSpokenName(suit: string | null, t: TFn): string {
+  return suit ? t(SUIT_SPOKEN_KEYS[suit]) : "";
+}
+
+/**
+ * Spoken form of a played combination for describeTableForA11y — richer than
+ * getComboLabel's visual chip text (which a sighted player pairs with the
+ * cards they can already see): "coppia di 8", not just "Coppia". For a
+ * straight/royal straight only the top card is named (the fact that decides
+ * whether a reply beats it) rather than the whole run.
+ */
+function lastPlayA11yLabel(combo: Combination, t: TFn): string {
+  switch (combo.type) {
+    case "single": {
+      const c = combo.cards[0];
+      if (c.isJoker) {
+        return t(c.rank === "joker_colored" ? "cardView.jokerColored" : "cardView.jokerBlack");
+      }
+      return t("cards.nameFormat", { rank: rankSpokenName(c.rank, t), suit: suitSpokenName(c.suit, t) });
+    }
+    case "pair":
+      return t("gameTable.a11yLastPlayPair", { rank: rankSpokenName(combo.cards[0].rank, t) });
+    case "triple":
+      return t("gameTable.a11yLastPlayTriple", { rank: rankSpokenName(combo.cards[0].rank, t) });
+    case "bomb":
+      return t("gameTable.a11yLastPlayBomb", { rank: rankSpokenName(combo.cards[0].rank, t) });
+    case "straight":
+      return t("gameTable.a11yLastPlayStraight", {
+        count: combo.cards.length,
+        rank: rankSpokenName(straightTopRankChar(combo.strength), t),
+      });
+    case "royal_straight":
+      return t("gameTable.a11yLastPlayRoyalStraight", {
+        count: combo.cards.length,
+        rank: rankSpokenName(straightTopRankChar(combo.strength), t),
+        suit: suitSpokenName(combo.cards[0].suit, t),
+      });
+  }
+}
 
 export interface TurnTimerConfig {
   /** Length of the countdown, in seconds. */
@@ -243,7 +316,7 @@ export function GameTable({
   banners,
   overlays,
 }: GameTableProps) {
-  const { t } = useTranslation();
+  const { t, tn } = useTranslation();
   const insets = useSafeAreaInsets();
   const { width: W, height: H } = useWindowDimensions();
   const reduceMotion = usePrefersReducedMotion();
@@ -307,6 +380,80 @@ export function GameTable({
     insets,
     isWeb: Platform.OS === "web",
   });
+
+  // ── Screen-reader table description ─────────────────────────────────────────
+  //
+  // describeTableForA11y (gameTableModel.ts) does the ordering; this just
+  // gathers the translated pieces it asks for. viewer.hand.length (not
+  // handCountOf) on purpose — the viewer's own hand is never blanked, online
+  // or offline, unlike opponents'.
+
+  const tableA11yStrings: TableA11yStrings = React.useMemo(
+    () => ({
+      yourTurn: t("gameTable.a11yYourTurn"),
+      turnOf: (name) => t("gameTable.a11yTurnOf", { name }),
+      emptyTable: t("gameTable.a11yEmptyTable"),
+      youPlayed: (label) => t("gameTable.a11yYouPlayed", { label }),
+      playerPlayed: (name, label) => t("gameTable.a11yPlayerPlayed", { name, label }),
+      opponentCardCount: (name, count) => tn("gameTable.a11yOpponentCards", count, { name }),
+      yourCardCount: (count) => tn("gameTable.a11yYourCards", count),
+      exchangeGiveCard: (loserName) => t("gameTable.a11yExchangeGive", { name: loserName }),
+      exchangeWaitForCard: (winnerName) => t("gameTable.a11yExchangeWait", { name: winnerName }),
+    }),
+    [t, tn]
+  );
+
+  const tableA11yLabel = React.useMemo(() => {
+    const combo = gameState.lastPlayedCombination;
+    const lastPlay: TableA11yLastPlay | null = combo
+      ? {
+          label: lastPlayA11yLabel(combo, t),
+          byViewer: gameState.lastPlayedBy === viewerSeat,
+          byName: players[gameState.lastPlayedBy]?.name ?? "",
+        }
+      : null;
+    const opponentsA11y: TableA11yOpponent[] = players
+      .filter((_, seat) => seat !== viewerSeat)
+      .map((p) => ({ name: p.name, cardCount: handCountOf(p) }));
+    const exchangeA11y: TableA11yExchange | undefined = exchange.active
+      ? {
+          active: true,
+          viewerIsWinner: exchange.viewerIsWinner,
+          viewerIsLoser: exchange.viewerIsLoser,
+          winnerName: exchange.winner?.name ?? "",
+          loserName: exchange.loser?.name ?? "",
+        }
+      : undefined;
+
+    return describeTableForA11y(
+      {
+        isMyTurn,
+        currentTurnName: players[gameState.currentTurnIndex]?.name ?? "",
+        myCardCount: viewer?.hand.length ?? 0,
+        lastPlay,
+        opponents: opponentsA11y,
+        exchange: exchangeA11y,
+      },
+      tableA11yStrings
+    );
+  }, [
+    gameState.lastPlayedCombination,
+    gameState.lastPlayedBy,
+    gameState.currentTurnIndex,
+    players,
+    viewerSeat,
+    viewer?.hand.length,
+    isMyTurn,
+    exchange,
+    tableA11yStrings,
+    t,
+  ]);
+
+  const handA11yLabel = React.useMemo(() => {
+    const count = tn("gameTable.a11yHandCount", sortedHand.length);
+    const selected = selectedIds.length > 0 ? tn("gameTable.a11yHandSelected", selectedIds.length) : null;
+    return selected ? `${count} ${selected}` : count;
+  }, [tn, sortedHand.length, selectedIds.length]);
 
   // ── Lifecycle ───────────────────────────────────────────────────────────────
 
@@ -613,9 +760,15 @@ export function GameTable({
         <View style={sharedTableStyles.tableInnerBorder} />
       </View>
 
-      {/* Same coordinates, overflow visible so slots and buttons can extend out */}
+      {/* Same coordinates, overflow visible so slots and buttons can extend out.
+          accessibilityLabel carries the whole-table description a sighted
+          player gets for free from the felt (whose turn, what was last
+          played, every hand size) — deliberately without `accessible`, which
+          would collapse the PASSA/GIOCA buttons and every card underneath
+          into one unreachable leaf. */}
       <View
         testID="game-table"
+        accessibilityLabel={tableA11yLabel}
         style={[
           sharedTableStyles.tableOverlay,
           {
@@ -721,14 +874,20 @@ export function GameTable({
                 <Text style={styles.finishedText}>{t("gameTable.waitingOthers")}</Text>
               </View>
             ) : (
-              <StraightHand
-                cards={sortedHand}
-                selectedIds={selectedIds}
-                onPress={handleCardPress}
-                disabled={!isMyTurn}
-                availW={frame.handAvailW}
-                isMyTurn={isMyTurn && !isFinished}
-              />
+              // accessibilityLabel is a summary only (hand size + selection
+              // count) — individual cards keep their own labels from
+              // CardView.tsx, so this wrapper deliberately has no
+              // `accessible`, which would hide them behind one leaf node.
+              <View accessibilityLabel={handA11yLabel}>
+                <StraightHand
+                  cards={sortedHand}
+                  selectedIds={selectedIds}
+                  onPress={handleCardPress}
+                  disabled={!isMyTurn}
+                  availW={frame.handAvailW}
+                  isMyTurn={isMyTurn && !isFinished}
+                />
+              </View>
             )}
 
             <Animated.View
