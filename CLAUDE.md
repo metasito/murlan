@@ -84,7 +84,7 @@ actually depend on — each demonstrable, not asserted.
 | Real-time | socket.io / socket.io-client |
 | State | React Context (Auth, Game, OnlineGame, Socket, Settings) + @tanstack/react-query |
 | Animations | react-native-reanimated |
-| Audio | expo-av (native — deprecated, migration pending) + Web Audio API (web) |
+| Audio | expo-audio + Web Audio API; effects synthesized by `scripts/gen-sounds.js` |
 | Fonts | Rajdhani (headings), Inter (body) via @expo-google-fonts |
 
 ---
@@ -96,8 +96,8 @@ actually depend on — each demonstrable, not asserted.
 | `lib/gameEngine.ts` | All game logic, AI, card rules, exchange phase — **do not change game rules here** |
 | `lib/socket.ts` | Socket singleton `Map<userId, Socket>` — **never violate singleton rules** |
 | `lib/sounds.ts` | Unified sound API for native + web |
-| `lib/theme.ts` | Design tokens (Colors, Spacing, Radius, FontSize, Shadow) — single source of truth for new components |
-| `constants/colors.ts` | Legacy color constants — existing screens still use this; do not retroactively replace |
+| `lib/tokens.ts` | Pure design tokens (Colors, Spacing, Radius, FontSize, Type, Motion, Scrim, Highlight, FeltGradient). No react-native import, so tests can load it |
+| `lib/theme.ts` | Re-exports the tokens and adds the platform-aware `Shadow`. Import from here in components |
 | `server/index.ts` | Express entry point |
 | `server/routes.ts` | REST API routes |
 | `server/socket.ts` | Socket.io event handlers, game state mutations |
@@ -110,19 +110,34 @@ actually depend on — each demonstrable, not asserted.
 | `context/SettingsContext.tsx` | Sound/haptic toggles |
 | `app/_layout.tsx` | Root layout, NotificationBanner |
 | `app/lobby.tsx` | Reference design for offline lobby — all new menu screens follow this pattern |
-| `app/(online)/game.tsx` | Online game screen (OnlineGameScreen) |
-| `app/game.tsx` | Offline game screen (GameScreen) |
+| `components/GameTable.tsx` | The single presentational game table. Both screens render it |
+| `components/gameTableModel.ts` | Pure table logic and the layout constants |
+| `app/(online)/game.tsx`, `app/game.tsx` | Thin adapters mapping their state source into `GameTable` |
+| `lib/i18n.ts`, `locales/` | Typed localization (it/en/sq). Italian is the source of truth |
 
 ---
 
-## MUST NOT CHANGE (golden rules from replit.md)
+## Invariants
 
-- **Game rules** — card hierarchy, combinations, Joker rules in `lib/gameEngine.ts`
-- **Exchange Phase logic** — the card exchange between round winner/loser
-- **Layout constants** — `CARD_W`, `CARD_H`, `SIDE_BTN_W`, `TABLE_M`, etc. — if changed, both `app/game.tsx` and `app/(online)/game.tsx` must be updated together
-- **Flying card animation + pile state** — `pileState` card visibility logic
-- **Friends system architecture** — 6-character friend codes, SocketContext friend events
-- **Socket singleton** — one socket per userId, managed via `lib/socket.ts` singleton Map
+Each of these is a bug that shipped. Verify against source before changing any of them.
+
+- **Game rules** live in `lib/gameEngine.ts` and are specified by `docs/RULES.md`. Change
+  them only via a decision recorded in `docs/BRIEF.md` §3.1.
+- **Ticket auth** — the socket handshake accepts a live session or a single-use ticket from
+  `POST /api/auth/socket-ticket`, nothing else. A bare `handshake.auth.userId` branch was a
+  full impersonation vector.
+- **Listener registration precedes every `await`** in the socket connection handler.
+  Socket.io drops events with no listener attached, and the client emits `game:rejoin`
+  synchronously on connect.
+- **Layout constants** (`CARD_W`, `CARD_H`, `SIDE_BTN_W`, `TABLE_M`, `HAND_SECTION_H`) live
+  once in `components/gameTableModel.ts` and are pinned by a test. There is no second copy.
+- **Hooks before the null guard** in both game screens — every hook runs unconditionally
+  before `if (!gameState) return null`.
+- **Flying card / `pileState`** — a card appears exactly once, never twice, never zero times.
+- **Socket singleton** — one socket per userId via `lib/socket.ts`; `SocketContext` owns the
+  lifecycle.
+- **Friends system** — 6-character codes; the `FlatList` needs `extraData={onlineIds}`.
+- **Session table** — pre-created, `createTableIfMissing: false`. Clear its rows, never drop it.
 
 ---
 
@@ -154,11 +169,15 @@ actually depend on — each demonstrable, not asserted.
 
 ## Design System
 
-- **Background:** `#031008`
-- **Felt (table):** `#0B3B25`
-- **Gold accents:** `#C9A84C`
-- **New components:** use `lib/theme.ts` tokens + base components `MenuLayout`, `MenuCard`, `MenuButton` (from `components/`)
-- **Shadows:** `Shadow.gold` / `Shadow.dark` in `lib/theme.ts` are platform-aware (`boxShadow` on web, native shadow props on native)
+- **No hardcoded colours, spacing, radii, font sizes or animation timings.** Everything
+  comes from `lib/theme.ts`. A genuinely component-local one-off may be a named module
+  constant; a bare literal in a style object may not.
+- Gold uses the five-step alpha scale (`goldGhost` … `goldStrong`). Pick by role. If none
+  fits, the design wants something new — do not add a sixth value to split the difference.
+- **All menu screens** use `MenuLayout`, `MenuCard`, `MenuButton`. `app/lobby.tsx` and
+  `app/(online)/profile.tsx` are the reference. Game tables are the only exemption.
+- **Every user-facing string** goes through `t()` with keys in all three locales.
+- **Shadows** — `Shadow.*` is platform-aware (`boxShadow` on web, native props elsewhere)
 - **Orientation:** Game screens → landscape-locked. Menu/result screens → portrait + landscape via `useWindowDimensions`
 - **Safe area:** Always use `useSafeAreaInsets()` in game/layout components
 
@@ -167,14 +186,13 @@ actually depend on — each demonstrable, not asserted.
 ## Game Mechanics (reference)
 
 - **Players:** 2–4
-- **Deck:** Standard 52-card deck + Joker
+- **Deck:** 52 cards + 2 distinguishable Jokers, entire deck dealt (4p 14/14/13/13)
 - **Combinations:** Single, Pair, Triple, Straight, Bomb, Royal Straight
 - **Card strength order:** 3 < 4 < ... < K < A < 2 < Black Joker < Red Joker.
   **Suit does NOT break ties.** No source assigns a suit order and `cardStrength()` ignores
   suit entirely. Equal ranks are equal strength, and since a beating play must be *strictly*
   higher, a same-rank answer is simply illegal. Suit matters only for identifying the 3♠
-  opening and for royal straights. (Corrected 2026-08-15; the previous "suit also matters
-  for tiebreaks" claim was unsourced and contradicted the implementation.)
+  opening and for royal straights.
 - **Canonical rules:** `docs/RULES.md` (18 sources). Rule decisions: `docs/BRIEF.md` §3.1.
   Where this file disagrees with those, those win.
 - **Exchange phase:** After each round, winner and loser exchange cards (special rule for two Jokers)
@@ -186,10 +204,8 @@ actually depend on — each demonstrable, not asserted.
 ## Known Pitfalls / Past Bugs
 
 - `Cannot read property 'cards' of null` — always null-check game state before accessing `.cards`
-- `Rendered fewer hooks than expected` in `OnlineGameScreen` — never early-return before all hooks are called
 - `REPLACE navigation action not handled` — ensure `index` route exists in the navigator before navigating
 - React Compiler (`babel-plugin-react-compiler`) can miscompile `useEffect` references — if you see `useEffect doesn't exist`, check compiler output
-- `metro.config.js` has a self-import cycle — known, do not fix without testing metro still works
 
 ---
 

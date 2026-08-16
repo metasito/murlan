@@ -513,7 +513,8 @@ export function GameTable({
     playRoundWin();
     const t = setTimeout(() => setRoundWinner(null), ROUND_WINNER_MS);
     return () => clearTimeout(t);
-  }, [gameState.roundWinner, gameState.lastPlayedCombination, players]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- players changes on nearly every game update; adding it would cancel/reschedule this dismiss timer on unrelated renders and the banner would never auto-dismiss. players[winner] is read fresh from the same render as the winner index by construction.
+  }, [gameState.roundWinner, gameState.lastPlayedCombination]);
 
   useEffect(() => {
     if (isMyTurn && !isFinished && !prevMyTurnRef.current) playYourTurn();
