@@ -1,5 +1,5 @@
-import React, { useEffect, useState, useRef } from "react";
-import { View, Text, StyleSheet, Platform, Pressable } from "react-native";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { View, Text, StyleSheet, Platform, Pressable, ScrollView } from "react-native";
 import Animated, {
   useAnimatedStyle,
   useSharedValue,
@@ -7,6 +7,7 @@ import Animated, {
   withTiming,
   withSequence,
   withRepeat,
+  withDelay,
   Easing,
   runOnJS,
   cancelAnimation,
@@ -18,22 +19,41 @@ import Animated, {
 import { Ionicons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
 import { CardView } from "@/components/CardView";
-import { Shadow } from "@/lib/theme";
+import { Colors, FeltGradient, FontSize, Highlight, Motion, Radius, Scrim, Shadow, Spacing } from "@/lib/theme";
+import { usePrefersReducedMotion } from "@/lib/accessibility";
+import { useTranslation, type TranslationKey } from "@/lib/i18n";
 import type { Card, Combination, Player, StartReason } from "@/lib/gameEngine";
-import { Colors } from '@/lib/theme';
+import { CARD_W, computeHandLayout } from "@/components/handLayout";
+import {
+  CARD_H,
+  HAND_SECTION_H,
+  SIDE_SECTION_W,
+  type FlyDirection,
+} from "@/components/gameTableModel";
 
-export const CARD_W = 58;
-export const CARD_H = 84;
-export const BTN_W = 84;
-export const BTN_H = 84;
-export const SIDE_BTN_W = 62;
-export const TOP_BAR_H = 40;
-export const TABLE_M = 4;
-export const SIDE_SECTION_W = 130;
-export const TOP_SECTION_H = 70;
-export const HAND_SECTION_H = CARD_H + 16;
+// The layout constants and the seat-rotation maths now live in the JSX-free
+// gameTableModel.ts so they can be unit-tested and so the shared table can use
+// them without importing this file. Re-exported here unchanged — every existing
+// `import { CARD_H, ... } from "@/components/GameShared"` keeps working.
+export { CARD_W };
+export {
+  CARD_H,
+  BTN_W,
+  BTN_H,
+  SIDE_BTN_W,
+  TOP_BAR_H,
+  TABLE_M,
+  SIDE_SECTION_W,
+  TOP_SECTION_H,
+  HAND_SECTION_H,
+  getOpponentPosition,
+  type FlyDirection,
+} from "@/components/gameTableModel";
 
-export type FlyDirection = "top" | "bottom" | "left" | "right";
+// Extra top clearance the fixed HAND_SECTION_H already gives the CARD_H-tall
+// hand row (it's centered inside the taller section). Reused as the
+// ScrollView headroom in StraightHand's scrollable fallback — see there.
+const HAND_LIFT_HEADROOM = HAND_SECTION_H - CARD_H;
 
 export const FLY_OFFSETS: Record<FlyDirection, { dx: number; dy: number }> = {
   bottom: { dx: 0, dy: 140 },
@@ -47,60 +67,80 @@ const FLY_ROTS: Record<FlyDirection, number> = {
 const FLY_LANDING_ROTS: Record<FlyDirection, number> = {
   bottom: -4, top: 5, left: -7, right: 7,
 };
-
-export function getOpponentPosition(
-  steps: number,
-  total: number
-): "top" | "left" | "right" {
-  if (total === 1) return "top";
-  if (total === 2) return steps === 1 ? "right" : "top";
-  if (steps === 1) return "right";
-  if (steps === 2) return "top";
-  return "left";
-}
+// Domain beats for the card-to-pile flight, not generic UI transitions: how
+// long the throw takes, how high it arcs, and how far it drives into the felt
+// before rocking back.
+const FLIGHT_MS = 380;
+const ARC_PEAK = 22;
+const LAND_DIP = 5;
 
 // ─── Table vignette ───────────────────────────────────────────────────────────
 
+// Four edge washes plus four diagonal corner washes. The corners are the half
+// that makes it read as a lit table rather than as four dark stripes: without
+// them the corner is only as dark as one edge, so the darkest region of the
+// felt ends up on the edge midpoints instead of the extremities.
 export function TableVignette() {
   return (
     <View style={StyleSheet.absoluteFill} pointerEvents="none">
-      {/* Top edge */}
       <LinearGradient
-        colors={["rgba(0,0,0,0.30)", "transparent"]}
+        colors={[Scrim.medium, "transparent"]}
         style={vignetteStyles.top}
         pointerEvents="none"
       />
-      {/* Bottom edge */}
       <LinearGradient
-        colors={["transparent", "rgba(0,0,0,0.30)"]}
+        colors={["transparent", Scrim.heavy]}
         style={vignetteStyles.bottom}
         pointerEvents="none"
       />
-      {/* Left edge */}
       <LinearGradient
-        colors={["rgba(0,0,0,0.22)", "transparent"]}
+        colors={[Scrim.medium, "transparent"]}
         start={{ x: 0, y: 0.5 }}
         end={{ x: 1, y: 0.5 }}
         style={vignetteStyles.left}
         pointerEvents="none"
       />
-      {/* Right edge */}
       <LinearGradient
-        colors={["transparent", "rgba(0,0,0,0.22)"]}
+        colors={["transparent", Scrim.medium]}
         start={{ x: 0, y: 0.5 }}
         end={{ x: 1, y: 0.5 }}
         style={vignetteStyles.right}
         pointerEvents="none"
       />
+      <LinearGradient
+        colors={[Scrim.medium, "transparent"]}
+        start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}
+        style={vignetteStyles.cornerTL} pointerEvents="none"
+      />
+      <LinearGradient
+        colors={[Scrim.medium, "transparent"]}
+        start={{ x: 1, y: 0 }} end={{ x: 0, y: 1 }}
+        style={vignetteStyles.cornerTR} pointerEvents="none"
+      />
+      <LinearGradient
+        colors={[Scrim.medium, "transparent"]}
+        start={{ x: 0, y: 1 }} end={{ x: 1, y: 0 }}
+        style={vignetteStyles.cornerBL} pointerEvents="none"
+      />
+      <LinearGradient
+        colors={[Scrim.medium, "transparent"]}
+        start={{ x: 1, y: 1 }} end={{ x: 0, y: 0 }}
+        style={vignetteStyles.cornerBR} pointerEvents="none"
+      />
     </View>
   );
 }
 
+const CORNER = "34%";
 const vignetteStyles = StyleSheet.create({
-  top:    { position: "absolute", top: 0, left: 0, right: 0, height: "18%" },
-  bottom: { position: "absolute", bottom: 0, left: 0, right: 0, height: "18%" },
-  left:   { position: "absolute", top: 0, bottom: 0, left: 0, width: "14%" },
-  right:  { position: "absolute", top: 0, bottom: 0, right: 0, width: "14%" },
+  top:    { position: "absolute", top: 0, left: 0, right: 0, height: "22%" },
+  bottom: { position: "absolute", bottom: 0, left: 0, right: 0, height: "26%" },
+  left:   { position: "absolute", top: 0, bottom: 0, left: 0, width: "16%" },
+  right:  { position: "absolute", top: 0, bottom: 0, right: 0, width: "16%" },
+  cornerTL: { position: "absolute", top: 0, left: 0, width: CORNER, height: CORNER },
+  cornerTR: { position: "absolute", top: 0, right: 0, width: CORNER, height: CORNER },
+  cornerBL: { position: "absolute", bottom: 0, left: 0, width: CORNER, height: CORNER },
+  cornerBR: { position: "absolute", bottom: 0, right: 0, width: CORNER, height: CORNER },
 });
 
 // ─── CardFan ──────────────────────────────────────────────────────────────────
@@ -162,16 +202,42 @@ export function AvatarCircle({
   finishPos?: number;
   size?: number;
 }) {
-  const pulse = useSharedValue(1);
+  // The avatar itself never scales: it contains the initials, and React Native
+  // rasterises text before transforming it, so a scaled avatar is a blurred
+  // avatar. The turn signal is carried entirely by two textless sibling rings —
+  // a steady one that fades in, and a one-shot ping that expands and vanishes.
+  const ringOpacity = useSharedValue(0);
+  const pingScale = useSharedValue(1);
+  const pingOpacity = useSharedValue(0);
+  const reduceMotion = usePrefersReducedMotion();
+
   useEffect(() => {
-    if (isActive) {
-      pulse.value = withSequence(
-        withTiming(1.15, { duration: 300 }),
-        withSpring(1, { damping: 10, stiffness: 200 })
-      );
-    }
-  }, [isActive]);
-  const anim = useAnimatedStyle(() => ({ transform: [{ scale: pulse.value }] }));
+    ringOpacity.value = withTiming(isActive ? 1 : 0, {
+      duration: reduceMotion ? 0 : Motion.duration.base,
+    });
+    if (!isActive || reduceMotion) return;
+    pingScale.value = 1;
+    pingOpacity.value = 0.9;
+    pingScale.value = withTiming(1.75, { duration: Motion.duration.slow, easing: Easing.out(Easing.cubic) });
+    pingOpacity.value = withTiming(0, { duration: Motion.duration.slow, easing: Easing.out(Easing.quad) });
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- ring/ping are stable shared values
+  }, [isActive, reduceMotion]);
+
+  useEffect(
+    () => () => {
+      cancelAnimation(ringOpacity);
+      cancelAnimation(pingScale);
+      cancelAnimation(pingOpacity);
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- unmount cleanup only; all three are stable shared values
+    []
+  );
+
+  const ringStyle = useAnimatedStyle(() => ({ opacity: ringOpacity.value }));
+  const pingStyle = useAnimatedStyle(() => ({
+    opacity: pingOpacity.value,
+    transform: [{ scale: pingScale.value }],
+  }));
   const initials = name
     .split(" ")
     .map((w) => w[0])
@@ -179,17 +245,33 @@ export function AvatarCircle({
     .join("")
     .toUpperCase();
 
+  const outerSize = size + 6;
   return (
-    <Animated.View style={anim}>
+    <View>
+      <Animated.View
+        pointerEvents="none"
+        style={[
+          sharedStyles.avatarPing,
+          { width: outerSize, height: outerSize, borderRadius: outerSize / 2 },
+          pingStyle,
+        ]}
+      />
+      <Animated.View
+        pointerEvents="none"
+        style={[
+          sharedStyles.avatarRing,
+          { width: outerSize, height: outerSize, borderRadius: outerSize / 2 },
+          ringStyle,
+        ]}
+      />
       <View
         style={[
           sharedStyles.avatarOuter,
-          { width: size + 6, height: size + 6, borderRadius: (size + 6) / 2 },
-          isActive && sharedStyles.avatarOuterActive,
+          { width: outerSize, height: outerSize, borderRadius: outerSize / 2 },
         ]}
       >
         <LinearGradient
-          colors={["#0D4A2E", "#0B3B25"]}
+          colors={[FeltGradient[1], Colors.felt]}
           style={[
             sharedStyles.avatarInner,
             { width: size, height: size, borderRadius: size / 2 },
@@ -210,7 +292,7 @@ export function AvatarCircle({
           )}
         </View>
       </View>
-    </Animated.View>
+    </View>
   );
 }
 
@@ -307,52 +389,68 @@ export function FlyingCards({
   const { dx, dy } = FLY_OFFSETS[direction];
   const startRot = FLY_ROTS[direction];
   const landingRot = FLY_LANDING_ROTS[direction];
+  const reduceMotion = usePrefersReducedMotion();
+
+  // The caller passes a fresh onDone closure on every render; a ref keeps this
+  // mount-only animation effect from restarting mid-flight when that happens.
+  const onDoneRef = useRef(onDone);
+  onDoneRef.current = onDone;
+  // Defined on the JS thread so runOnJS receives a real JS-thread reference.
+  const notifyDone = useCallback(() => onDoneRef.current(), []);
 
   const tx = useSharedValue(dx);
   const ty = useSharedValue(dy);
   const rot = useSharedValue(startRot);
-  const scale = useSharedValue(0.85);
   const opacity = useSharedValue(0);
   // Parabolic arc — peak at mid-flight, then land
   const arcY = useSharedValue(0);
+  // Overshoot past the pile and rock back, so the card lands with weight
+  // instead of stopping dead on its mark.
+  const settle = useSharedValue(0);
 
   useEffect(() => {
-    const FLIGHT = 380;
+    if (reduceMotion) {
+      // The pile is about to show these cards anyway; skip the flight entirely
+      // and hand control straight back rather than jumping them across.
+      const id = setTimeout(() => onDoneRef.current(), Motion.duration.fast);
+      return () => clearTimeout(id);
+    }
     const easing = Easing.bezier(0.22, 0.61, 0.36, 1.0);
 
-    opacity.value = withTiming(1, { duration: 60 });
-    tx.value = withTiming(0, { duration: FLIGHT, easing });
-    ty.value = withTiming(0, { duration: FLIGHT, easing });
-    rot.value = withTiming(landingRot, { duration: FLIGHT, easing: Easing.out(Easing.cubic) });
-    // Arc: rise to -20 at midpoint, then land
+    opacity.value = withTiming(1, { duration: Motion.duration.flash * 0.7 });
+    tx.value = withTiming(0, { duration: FLIGHT_MS, easing });
+    ty.value = withTiming(0, { duration: FLIGHT_MS, easing });
+    rot.value = withTiming(landingRot, { duration: FLIGHT_MS, easing: Easing.out(Easing.cubic) });
     arcY.value = withSequence(
-      withTiming(-20, { duration: FLIGHT * 0.5, easing: Easing.out(Easing.quad) }),
-      withTiming(0, { duration: FLIGHT * 0.5, easing: Easing.in(Easing.quad) })
+      withTiming(-ARC_PEAK, { duration: FLIGHT_MS * 0.5, easing: Easing.out(Easing.quad) }),
+      withTiming(0, { duration: FLIGHT_MS * 0.5, easing: Easing.in(Easing.quad) })
     );
-    scale.value = withSequence(
-      withTiming(1.06, { duration: FLIGHT * 0.65, easing: Easing.out(Easing.cubic) }),
-      withSpring(0.97, { damping: 18, stiffness: 320 }),
-      withSpring(1.0, { damping: 30, stiffness: 180 }, (finished) => {
-        if (finished) runOnJS(onDone)();
-      })
+    settle.value = withDelay(
+      FLIGHT_MS * 0.82,
+      withSequence(
+        withTiming(1, { duration: Motion.duration.flash }),
+        withSpring(0, Motion.spring.land, (finished) => {
+          if (finished) runOnJS(notifyDone)();
+        })
+      )
     );
 
     return () => {
       cancelAnimation(tx);
       cancelAnimation(ty);
       cancelAnimation(rot);
-      cancelAnimation(scale);
       cancelAnimation(opacity);
       cancelAnimation(arcY);
+      cancelAnimation(settle);
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- one-shot mount animation (remounts via key per flight); shared values are stable, onDone read through a ref, reduceMotion fixed per flight
   }, []);
 
   const aStyle = useAnimatedStyle(() => ({
     transform: [
       { translateX: tx.value },
-      { translateY: ty.value + arcY.value },
-      { rotate: `${rot.value}deg` },
-      { scale: scale.value },
+      { translateY: ty.value + arcY.value + settle.value * LAND_DIP },
+      { rotate: `${rot.value + settle.value * landingRot * 0.4}deg` },
     ],
     opacity: opacity.value,
   }));
@@ -386,16 +484,26 @@ export function FlyingCards({
 
 // ─── PlayedPile ───────────────────────────────────────────────────────────────
 
-const COMBO_LABELS: Record<string, string> = {
-  single:        "Singola",
-  pair:          "Coppia",
-  triple:        "Tris",
-  straight:      "Scala",
-  bomb:          "💣 Bomba",
-  royal_straight: "★ Scala Reale",
+const COMBO_LABEL_KEYS: Record<string, TranslationKey> = {
+  single:        "gameShared.comboSingle",
+  pair:          "gameShared.comboPair",
+  triple:        "gameShared.comboTriple",
+  straight:      "gameShared.comboStraight",
+  bomb:          "gameShared.comboBomb",
+  royal_straight: "gameShared.comboRoyalStraight",
 };
 
 const POWER_COMBOS = new Set(["bomb", "royal_straight"]);
+
+// Cards thrown onto a table do not land square. Each one gets a small fixed
+// tilt derived from its own id, so the pile looks handled rather than stacked
+// — and so the same combination always looks the same, on every client.
+const PILE_MAX_TILT = 4.5;
+function tiltOf(id: string): number {
+  let hash = 0;
+  for (let i = 0; i < id.length; i++) hash = (hash * 31 + id.charCodeAt(i)) | 0;
+  return ((Math.abs(hash) % 200) / 100 - 1) * PILE_MAX_TILT;
+}
 
 function PileComboCards({ cards }: { cards: Card[] }) {
   const overlap = cards.length > 8 ? 9 : cards.length > 5 ? 12 : 14;
@@ -405,7 +513,12 @@ function PileComboCards({ cards }: { cards: Card[] }) {
       {cards.map((card, ci) => (
         <View
           key={card.id}
-          style={{ position: "absolute", left: ci * overlap, zIndex: ci }}
+          style={{
+            position: "absolute",
+            left: ci * overlap,
+            zIndex: ci,
+            transform: [{ rotate: `${tiltOf(card.id)}deg` }],
+          }}
         >
           <CardView card={card} />
         </View>
@@ -425,18 +538,31 @@ export function PlayedPile({
   roundWinner: string | null;
   bounceTrigger?: number;
 }) {
-  const bounceScale = useSharedValue(1);
+  const { t } = useTranslation();
+  const reduceMotion = usePrefersReducedMotion();
+  // The pile settles downward rather than scaling up: it holds card faces and
+  // a label, and scaling rasterised text is what makes it look cheap.
+  const settleY = useSharedValue(0);
 
   useEffect(() => {
-    if (!bounceTrigger) return;
-    bounceScale.value = withSequence(
-      withSpring(1.05, { damping: 10, stiffness: 420 }),
-      withSpring(1.0, { damping: 16, stiffness: 280 })
+    if (!bounceTrigger || reduceMotion) return;
+    settleY.value = withSequence(
+      withTiming(-5, { duration: Motion.duration.flash }),
+      withSpring(0, Motion.spring.land)
     );
-  }, [bounceTrigger]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- settleY is a stable shared value
+  }, [bounceTrigger, reduceMotion]);
+
+  useEffect(
+    () => () => {
+      cancelAnimation(settleY);
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- unmount cleanup only; settleY is a stable shared value
+    []
+  );
 
   const bounceStyle = useAnimatedStyle(() => ({
-    transform: [{ scale: bounceScale.value }],
+    transform: [{ translateY: settleY.value }],
   }));
 
   const isPower = current && POWER_COMBOS.has(current.type);
@@ -455,16 +581,14 @@ export function PlayedPile({
       )}
 
       <View style={sharedStyles.pileStack}>
+        {/* The beaten combination stays under the new one, rotated off-axis,
+            the way the previous trick sits under the one that took it. */}
         {prev && (
-          <View style={sharedStyles.pilePrevLayer}>
+          <View style={sharedStyles.pilePrevLayer} pointerEvents="none">
             <PileComboCards cards={prev.cards} />
           </View>
         )}
-        {current && (
-          <View style={sharedStyles.pileCurrentLayer}>
-            <PileComboCards cards={current.cards} />
-          </View>
-        )}
+        {current && <PileComboCards cards={current.cards} />}
       </View>
 
       {current && (
@@ -472,8 +596,8 @@ export function PlayedPile({
           <View style={[sharedStyles.comboChip, isPower && sharedStyles.comboChipPower]}>
             <Text style={[sharedStyles.comboChipText, isPower && sharedStyles.comboChipTextPower]}>
               {isPower ? "✦ " : ""}
-              {COMBO_LABELS[current.type] ?? current.type}
-              {current.cards.length > 2 ? ` ×${current.cards.length}` : ""}
+              {COMBO_LABEL_KEYS[current.type] ? t(COMBO_LABEL_KEYS[current.type]) : current.type}
+              {current.cards.length > 2 ? t("gameShared.comboMultiplier", { count: current.cards.length }) : ""}
             </Text>
           </View>
         </View>
@@ -483,6 +607,21 @@ export function PlayedPile({
 }
 
 // ─── CardItem ─────────────────────────────────────────────────────────────────
+//
+// `onPress` takes the card id rather than being a bound zero-arg callback.
+// The caller (StraightHand, below) passes its own `onPress` prop straight
+// through — unchanged reference per card — instead of minting a new
+// `() => onPress(card.id)` closure per card on every render. CardItem binds
+// its own id once here via useCallback, so CardView only ever sees a new
+// `onPress` reference when this card's id or the caller's callback actually
+// changes, not whenever some other card's selection state changes.
+// How far a selected card rises out of the fan, and how far it tips as it is
+// picked up. The rotation is what stops the lift reading as a flat slide.
+const SELECT_LIFT = -16;
+const SELECT_TILT = -3;
+// Where a dealt card comes from: up and in, i.e. the middle of the table.
+const DEAL_RISE = -CARD_H * 2.2;
+const DEAL_TILT = 14;
 
 export function CardItem({
   card,
@@ -491,43 +630,88 @@ export function CardItem({
   onPress,
   disabled,
   zIndex,
+  dealDelay,
+  dealFromX,
 }: {
   card: Card;
   isSelected: boolean;
   left: number;
-  onPress: () => void;
+  onPress: (id: string) => void;
   disabled: boolean;
   zIndex: number;
+  /** ms to wait before this card flies in, or -1 for no deal animation. */
+  dealDelay: number;
+  /** Horizontal distance back to the deck, so the fan converges on one point. */
+  dealFromX: number;
 }) {
+  const reduceMotion = usePrefersReducedMotion();
   const liftY = useSharedValue(0);
-  const cardScale = useSharedValue(1);
+  const tilt = useSharedValue(0);
+  const glow = useSharedValue(0);
+  const dealing = useSharedValue(dealDelay >= 0 && !reduceMotion ? 1 : 0);
 
   useEffect(() => {
-    liftY.value = withSpring(isSelected ? -14 : 0, {
-      damping: 12,
-      stiffness: 280,
-    });
-    cardScale.value = withSpring(isSelected ? 1.04 : 1.0, {
-      damping: 10,
-      stiffness: 260,
-    });
-  }, [isSelected]);
+    if (dealing.value === 0) return;
+    dealing.value = withDelay(
+      dealDelay,
+      withSpring(0, Motion.spring.land)
+    );
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- one-shot mount animation; dealing is a stable shared value and dealDelay is fixed per instance
+  }, []);
 
-  const aStyle = useAnimatedStyle(() => ({
-    transform: [
-      { translateY: liftY.value },
-      { scale: cardScale.value },
-    ],
-  }));
+  useEffect(() => {
+    if (reduceMotion) {
+      liftY.value = withTiming(isSelected ? SELECT_LIFT : 0, { duration: Motion.duration.fast });
+      tilt.value = 0;
+      glow.value = withTiming(isSelected ? 1 : 0, { duration: Motion.duration.fast });
+      return;
+    }
+    liftY.value = withSpring(isSelected ? SELECT_LIFT : 0, Motion.spring.pickup);
+    tilt.value = withSpring(isSelected ? SELECT_TILT : 0, Motion.spring.pickup);
+    glow.value = withTiming(isSelected ? 1 : 0, { duration: Motion.duration.fast });
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- liftY/tilt/glow are stable shared values
+  }, [isSelected, reduceMotion]);
+
+  useEffect(
+    () => () => {
+      cancelAnimation(liftY);
+      cancelAnimation(tilt);
+      cancelAnimation(glow);
+      cancelAnimation(dealing);
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- unmount cleanup only; all four are stable shared values
+    []
+  );
+
+  const aStyle = useAnimatedStyle(() => {
+    const d = dealing.value;
+    return {
+      opacity: 1 - d,
+      transform: [
+        { translateX: dealFromX * d },
+        { translateY: liftY.value + DEAL_RISE * d },
+        { rotate: `${tilt.value + DEAL_TILT * d}deg` },
+      ],
+    };
+  });
+
+  // A textless sibling behind the card carries the selection bloom, so the
+  // glow can be animated with opacity alone and never touches the card's own
+  // rasterised rank characters.
+  const glowStyle = useAnimatedStyle(() => ({ opacity: glow.value }));
+
+  const cardId = card.id;
+  const handlePress = useCallback(() => onPress(cardId), [onPress, cardId]);
 
   return (
     <Animated.View
       style={[sharedStyles.handCardWrap, { left, zIndex }, aStyle]}
     >
+      <Animated.View pointerEvents="none" style={[sharedStyles.cardGlow, glowStyle]} />
       <CardView
         card={card}
         selected={isSelected}
-        onPress={onPress}
+        onPress={handlePress}
         disabled={disabled}
         noLift
       />
@@ -552,17 +736,50 @@ export function StraightHand({
   availW: number;
   isMyTurn?: boolean;
 }) {
+  const { t } = useTranslation();
   const n = cards.length;
+  // O(1) membership check per card instead of `selectedIds.includes(card.id)`
+  // (an O(k) scan repeated for every one of the up to 27 cards in a hand).
+  // Computed before the early return below — Rules of Hooks requires every
+  // hook to run unconditionally on every render of this component.
+  const selectedSet = useMemo(() => new Set(selectedIds), [selectedIds]);
+
+  // Armed while the hand is empty, so the render on which a hand appears —
+  // the start of a game, or of the next one after a rematch — is the render
+  // whose cards mount staggered. A single card arriving later (the exchange
+  // give-back) mounts with the deal disarmed and simply appears in place.
+  const [dealArmed, setDealArmed] = useState(true);
+  useEffect(() => {
+    setDealArmed(n === 0);
+  }, [n]);
+
   if (n === 0) {
     return (
       <View style={[sharedStyles.handCenter, { width: availW }]}>
         <Ionicons name="checkmark-circle" size={24} color={Colors.gold} />
-        <Text style={sharedStyles.emptyHandText}>Carte finite!</Text>
+        <Text style={sharedStyles.emptyHandText}>{t("gameShared.emptyHand")}</Text>
       </View>
     );
   }
-  const step = Math.max(20, Math.min(CARD_W, (availW - CARD_W) / Math.max(n - 1, 1)));
-  const totalW = step * (n - 1) + CARD_W;
+  const { step, totalW, scrollable } = computeHandLayout(n, availW);
+
+  const row = (
+    <View style={[sharedStyles.handRow, { width: scrollable ? totalW : Math.min(totalW, availW) }]}>
+      {cards.map((card, i) => (
+        <CardItem
+          key={card.id}
+          card={card}
+          isSelected={selectedSet.has(card.id)}
+          left={i * step}
+          onPress={onPress}
+          disabled={disabled}
+          zIndex={i}
+          dealDelay={dealArmed ? i * Motion.stagger.deal : -1}
+          dealFromX={totalW / 2 - i * step - CARD_W / 2}
+        />
+      ))}
+    </View>
+  );
 
   return (
     <View style={[sharedStyles.handCenter, { width: availW }]}>
@@ -572,19 +789,25 @@ export function StraightHand({
           isMyTurn && sharedStyles.handGlowWrapActive,
         ]}
       >
-        <View style={[sharedStyles.handRow, { width: Math.min(totalW, availW) }]}>
-          {cards.map((card, i) => (
-            <CardItem
-              key={card.id}
-              card={card}
-              isSelected={selectedIds.includes(card.id)}
-              left={i * step}
-              onPress={() => onPress(card.id)}
-              disabled={disabled}
-              zIndex={i}
-            />
-          ))}
-        </View>
+        {scrollable ? (
+          // Too many cards to keep the readable minimum step inside availW
+          // (e.g. a 27-card hand on a narrow device). Scroll instead of
+          // clipping or shrinking the step past legibility. HAND_LIFT_HEADROOM
+          // reproduces the same top clearance the fixed-height, non-scrolling
+          // path gets for free from HAND_SECTION_H (CARD_H + 16) being taller
+          // than the CARD_H row it centers — without it, the ScrollView's own
+          // clipping bounds would cut off the -14px selection lift.
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            style={{ width: availW, height: CARD_H + HAND_LIFT_HEADROOM }}
+            contentContainerStyle={{ paddingTop: HAND_LIFT_HEADROOM, width: totalW }}
+          >
+            {row}
+          </ScrollView>
+        ) : (
+          row
+        )}
       </View>
     </View>
   );
@@ -598,13 +821,14 @@ export function StartReasonBanner({
   topOffset,
 }: {
   reason: StartReason;
-  players: Array<{ name: string; type: string }>;
+  players: { name: string; type: string }[];
   topOffset: number;
 }) {
+  const { t } = useTranslation();
   const [visible, setVisible] = useState(true);
   useEffect(() => {
-    const t = setTimeout(() => setVisible(false), 5000);
-    return () => clearTimeout(t);
+    const timer = setTimeout(() => setVisible(false), 5000);
+    return () => clearTimeout(timer);
   }, []);
   if (!visible) return null;
 
@@ -613,12 +837,12 @@ export function StartReasonBanner({
   let subText = "";
 
   if (reason.type === "start_card" && reason.card) {
-    mainText = `${playerName} inizia — ha il ${reason.card.rank}♠`;
-    if (reason.card.rank !== "3") subText = "(il 3♠ è escluso)";
+    mainText = t("gameShared.startReasonCard", { name: playerName, rank: reason.card.rank });
+    if (reason.card.rank !== "3") subText = t("gameShared.startReasonCardSub");
   } else if (reason.type === "lost_round") {
-    mainText = `${playerName} inizia — ha perso il round`;
+    mainText = t("gameShared.startReasonLostRound", { name: playerName });
   } else if (reason.type === "won_no_swap") {
-    mainText = `${playerName} inizia — ha vinto (nessuno scambio)`;
+    mainText = t("gameShared.startReasonWonNoSwap", { name: playerName });
   }
 
   return (
@@ -635,12 +859,12 @@ export function StartReasonBanner({
       }}
     >
       <View style={{
-        backgroundColor: "rgba(3,16,8,0.90)",
+        backgroundColor: Colors.overlayStrong,
         borderColor: Colors.gold,
         borderWidth: 1,
-        borderRadius: 20,
+        borderRadius: Radius.lg,
         paddingHorizontal: 18,
-        paddingVertical: 8,
+        paddingVertical: Spacing.sm,
         alignItems: "center",
         maxWidth: 420,
         gap: 2,
@@ -649,7 +873,7 @@ export function StartReasonBanner({
           {mainText}
         </Text>
         {subText ? (
-          <Text style={{ fontFamily: "Inter_400Regular", fontSize: 11, color: Colors.textSecondary, textAlign: "center" }}>
+          <Text style={{ fontFamily: "Inter_400Regular", fontSize: FontSize.xs, color: Colors.textSecondary, textAlign: "center" }}>
             {subText}
           </Text>
         ) : null}
@@ -663,14 +887,14 @@ export function StartReasonBanner({
 export const portraitOverlayStyles = StyleSheet.create({
   overlay: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: "rgba(3,16,8,0.97)",
+    backgroundColor: Colors.overlayOpaque,
     alignItems: "center",
     justifyContent: "center",
     zIndex: 999,
   },
   card: {
     alignItems: "center",
-    gap: 16,
+    gap: Spacing.md,
     paddingHorizontal: 40,
   },
   title: {
@@ -697,7 +921,7 @@ export const sharedTableStyles = StyleSheet.create({
     borderRadius: 22,
     overflow: "hidden",
     borderWidth: 3.5,
-    borderColor: "rgba(201,168,76,0.5)",
+    borderColor: Colors.goldStrong,
   },
   tableOverlay: {
     position: "absolute",
@@ -711,21 +935,21 @@ export const sharedTableStyles = StyleSheet.create({
     bottom: 6,
     borderRadius: 18,
     borderWidth: 1.5,
-    borderColor: "rgba(201,168,76,0.2)",
+    borderColor: Colors.goldSoft,
   },
   tableContent: { flex: 1, flexDirection: "column" },
   topSection: {
     alignItems: "center",
     justifyContent: "center",
     borderBottomWidth: 1,
-    borderBottomColor: "rgba(201,168,76,0.08)",
+    borderBottomColor: Colors.goldGhost,
   },
   midSection: { flex: 1, flexDirection: "row", alignItems: "center" },
   sideSection: {
     width: SIDE_SECTION_W,
     alignItems: "center",
     justifyContent: "center",
-    paddingHorizontal: 8,
+    paddingHorizontal: Spacing.sm,
   },
   centerSection: { flex: 1, alignItems: "center", justifyContent: "center" },
   handSection: {
@@ -734,8 +958,9 @@ export const sharedTableStyles = StyleSheet.create({
     justifyContent: "center",
   },
   handSectionActive: {
-    backgroundColor: "rgba(201,168,76,0.05)",
+    backgroundColor: Colors.goldGhost,
     borderTopWidth: 1,
+    // Must be fully transparent: useTurnPulse animates this border in from here.
     borderTopColor: "rgba(201,168,76,0.0)",
   },
 });
@@ -744,8 +969,15 @@ export const sharedTableStyles = StyleSheet.create({
 
 export function useTurnPulse(active: boolean) {
   const glowV = useSharedValue(0);
+  const reduceMotion = usePrefersReducedMotion();
 
   useEffect(() => {
+    if (active && reduceMotion) {
+      // Same affordance, no breathing: hold the glow at its midpoint.
+      cancelAnimation(glowV);
+      glowV.value = 0.6;
+      return;
+    }
     if (active) {
       glowV.value = 0.35;
       glowV.value = withRepeat(
@@ -758,20 +990,26 @@ export function useTurnPulse(active: boolean) {
       );
     } else {
       cancelAnimation(glowV);
-      glowV.value = withTiming(0, { duration: 300 });
+      glowV.value = withTiming(0, { duration: Motion.duration.moderate });
     }
-  }, [active]);
+    return () => {
+      cancelAnimation(glowV);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- glowV is a stable shared value
+  }, [active, reduceMotion]);
 
+  // borderAlpha is interpolated per frame (0→0.3) — a static token can't
+  // represent an animated value.
   return useAnimatedStyle(() => {
     const v = glowV.value;
-    const shadowRadius = v < 0.01 ? 0 : interpolate(v, [0.35, 0.85], [8, 22], Extrapolation.CLAMP);
-    const shadowOpacity = v;
-    const elevation = interpolate(v, [0, 0.85], [0, 20], Extrapolation.CLAMP);
+    const shadowRadius = v < 0.01 ? 0 : interpolate(v, [0.35, 0.85], [6, 15], Extrapolation.CLAMP);
+    const shadowOpacity = v * 0.55;
+    const elevation = interpolate(v, [0, 0.85], [0, 12], Extrapolation.CLAMP);
     const borderAlpha = interpolate(v, [0, 0.85], [0, 0.3], Extrapolation.CLAMP);
 
     if (Platform.OS === "web") {
-      const blur = v < 0.01 ? 0 : interpolate(v, [0.35, 0.85], [8, 20], Extrapolation.CLAMP);
-      const alpha = v < 0.01 ? 0 : interpolate(v, [0.35, 0.85], [0.35, 0.85], Extrapolation.CLAMP);
+      const blur = v < 0.01 ? 0 : interpolate(v, [0.35, 0.85], [6, 14], Extrapolation.CLAMP);
+      const alpha = v < 0.01 ? 0 : interpolate(v, [0.35, 0.85], [0.2, 0.45], Extrapolation.CLAMP);
       return {
         boxShadow: v < 0.01 ? "none" : `0 0 ${blur}px rgba(201,168,76,${alpha})`,
         borderRadius: 14,
@@ -824,27 +1062,34 @@ export const sharedStyles = StyleSheet.create({
   oppName: {
     fontFamily: "Rajdhani_600SemiBold",
     fontSize: 10,
-    color: "rgba(240,234,214,0.65)",
+    color: Colors.textMuted,
     maxWidth: 70,
     textAlign: "center",
   },
 
   avatarOuter: {
     borderWidth: 2,
-    borderColor: "rgba(255,255,255,0.12)",
+    borderColor: Highlight.clear,
     alignItems: "center",
     justifyContent: "center",
     position: "relative",
   },
-  avatarOuterActive: {
+  avatarRing: {
+    position: "absolute",
+    borderWidth: 2,
     borderColor: Colors.gold,
     ...Shadow.gold,
+  },
+  avatarPing: {
+    position: "absolute",
+    borderWidth: 1.5,
+    borderColor: Colors.goldStrong,
   },
   avatarInner: {
     alignItems: "center",
     justifyContent: "center",
     borderWidth: 1,
-    borderColor: "rgba(201,168,76,0.18)",
+    borderColor: Colors.goldSoft,
   },
   avatarInitials: {
     fontFamily: "Rajdhani_700Bold",
@@ -855,7 +1100,7 @@ export const sharedStyles = StyleSheet.create({
     position: "absolute",
     bottom: -3,
     right: -3,
-    backgroundColor: "rgba(4,16,8,0.9)",
+    backgroundColor: Colors.overlayStrong,
     borderRadius: 9,
     minWidth: 18,
     height: 18,
@@ -863,7 +1108,7 @@ export const sharedStyles = StyleSheet.create({
     justifyContent: "center",
     paddingHorizontal: 3,
     borderWidth: 1,
-    borderColor: "rgba(201,168,76,0.55)",
+    borderColor: Colors.goldStrong,
   },
   countBubbleFinished: {
     backgroundColor: Colors.goldMuted,
@@ -896,7 +1141,7 @@ export const sharedStyles = StyleSheet.create({
   },
   winnerText: {
     fontFamily: "Rajdhani_600SemiBold",
-    fontSize: 11,
+    fontSize: FontSize.xs,
     color: Colors.gold,
   },
   pileStack: {
@@ -905,23 +1150,22 @@ export const sharedStyles = StyleSheet.create({
     position: "relative",
   },
   pilePrevLayer: {
-    opacity: 0.35,
-    transform: [{ scale: 0.84 }, { translateY: 4 }],
-    marginBottom: -CARD_H * 0.14,
+    position: "absolute",
+    opacity: 0.3,
+    transform: [{ rotate: "-7deg" }, { translateY: 9 }],
   },
-  pileCurrentLayer: { opacity: 1 },
   comboLabel: { marginTop: 10 },
   comboChip: {
-    backgroundColor: "rgba(201,168,76,0.28)",
-    borderRadius: 8,
+    backgroundColor: Colors.goldBorder,
+    borderRadius: Radius.sm,
     paddingHorizontal: 10,
     paddingVertical: 3,
     borderWidth: 1,
-    borderColor: "rgba(201,168,76,0.45)",
+    borderColor: Colors.goldStrong,
   },
   comboChipPower: {
-    backgroundColor: "rgba(255,80,80,0.22)",
-    borderColor: "rgba(255,80,80,0.55)",
+    backgroundColor: Colors.bombFill,
+    borderColor: Colors.bombBorder,
   },
   comboChipText: {
     fontFamily: "Rajdhani_700Bold",
@@ -931,7 +1175,7 @@ export const sharedStyles = StyleSheet.create({
     textTransform: "uppercase",
   },
   comboChipTextPower: {
-    color: "#FF8888",
+    color: Colors.bombText,
   },
 
   handCenter: {
@@ -942,7 +1186,14 @@ export const sharedStyles = StyleSheet.create({
     gap: 6,
   },
   handGlowWrap: { borderRadius: 14, padding: 4 },
-  handGlowWrapActive: {},
+  handGlowWrapActive: { backgroundColor: Colors.goldGhost },
+  cardGlow: {
+    position: "absolute",
+    top: 2, left: 2, right: 2, bottom: 2,
+    borderRadius: Radius.sm,
+    backgroundColor: Colors.gold,
+    ...Shadow.goldSoft,
+  },
   handRow: {
     position: "relative",
     height: CARD_H,
@@ -958,10 +1209,14 @@ export const sharedStyles = StyleSheet.create({
 
 // ─── getComboLabel ────────────────────────────────────────────────────────────
 
-export function getComboLabel(combo: Combination | null): string | null {
+export function getComboLabel(
+  combo: Combination | null,
+  t: (key: TranslationKey, params?: Record<string, string | number>) => string
+): string | null {
   if (!combo) return null;
-  const label = COMBO_LABELS[combo.type] ?? combo.type;
-  if (combo.cards.length > 2) return `${label} ×${combo.cards.length}`;
+  const key = COMBO_LABEL_KEYS[combo.type];
+  const label = key ? t(key) : combo.type;
+  if (combo.cards.length > 2) return `${label}${t("gameShared.comboMultiplier", { count: combo.cards.length })}`;
   return label;
 }
 
@@ -978,30 +1233,41 @@ export function GameBillboard({
   currentTurnName: string;
   isLocalPlayerTurn: boolean;
 }) {
+  const { t } = useTranslation();
   const dotOpacity = useSharedValue(0.3);
+  const reduceMotion = usePrefersReducedMotion();
 
   useEffect(() => {
+    if (isLocalPlayerTurn && reduceMotion) {
+      cancelAnimation(dotOpacity);
+      dotOpacity.value = 1;
+      return;
+    }
     if (isLocalPlayerTurn) {
       dotOpacity.value = withRepeat(
         withSequence(
-          withTiming(1.0, { duration: 600 }),
-          withTiming(0.3, { duration: 600 })
+          withTiming(1.0, { duration: Motion.duration.slow }),
+          withTiming(0.3, { duration: Motion.duration.slow })
         ),
         -1,
         false
       );
     } else {
       cancelAnimation(dotOpacity);
-      dotOpacity.value = withTiming(0, { duration: 200 });
+      dotOpacity.value = withTiming(0, { duration: Motion.duration.base });
     }
-  }, [isLocalPlayerTurn]);
+    return () => {
+      cancelAnimation(dotOpacity);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- dotOpacity is a stable shared value
+  }, [isLocalPlayerTurn, reduceMotion]);
 
   const dotStyle = useAnimatedStyle(() => ({ opacity: dotOpacity.value }));
 
   return (
     <View style={billboardStyles.container}>
       <Text style={billboardStyles.comboLabel} numberOfLines={1}>
-        {currentComboLabel ?? "— Tavolo libero —"}
+        {currentComboLabel ?? t("gameShared.emptyTable")}
       </Text>
       <View style={billboardStyles.bottomRow}>
         <Text style={billboardStyles.roundLabel} numberOfLines={1}>{roundLabel}</Text>
@@ -1015,7 +1281,7 @@ export function GameBillboard({
           ]}
           numberOfLines={1}
         >
-          {isLocalPlayerTurn ? "Il tuo turno" : `Turno di ${currentTurnName}`}
+          {isLocalPlayerTurn ? t("gameShared.yourTurn") : t("gameShared.turnOf", { name: currentTurnName })}
         </Text>
       </View>
     </View>
@@ -1033,7 +1299,7 @@ const billboardStyles = StyleSheet.create({
   },
   comboLabel: {
     fontFamily: "Rajdhani_700Bold",
-    fontSize: 13,
+    fontSize: FontSize.sm,
     color: Colors.gold,
     letterSpacing: 0.5,
     textAlign: "center",

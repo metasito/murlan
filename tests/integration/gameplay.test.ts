@@ -1,0 +1,452 @@
+import { test, before, after, describe } from "node:test";
+import assert from "node:assert/strict";
+import { io as ioClient, type Socket } from "socket.io-client";
+import type { Card } from "../../lib/gameEngine.ts";
+import {
+  startTestServer,
+  hasDatabase,
+  skipMessage,
+  type TestServer,
+} from "../helpers/testServer.ts";
+import { connectAs, register, waitFor, type RegisteredUser } from "../helpers/client.ts";
+
+/**
+ * Shortened well below the 60s disconnect grace / 30s AFK production
+ * defaults so the exchange- and vacancy-focused tests below don't stall the
+ * suite for real-world timer lengths. `server/socket.ts` reads these once at
+ * module scope, so they must be set before that module is first imported —
+ * this file always runs as its own process under `node --test`, so the
+ * override never leaks into another test file's process.
+ */
+process.env.MURLAN_AFK_TIMEOUT_MS = "300";
+process.env.MURLAN_DISCONNECT_GRACE_MS = "500";
+
+interface SanitizedPlayer {
+  id: string;
+  name: string;
+  hand: Card[];
+  handCount: number;
+  type: string;
+  finishPosition?: number;
+}
+
+interface ExchangePhase {
+  active: boolean;
+  winnerIdx: number;
+  loserIdx: number;
+  cardFromLoser: Card;
+  bothJokersException: boolean;
+}
+
+interface SanitizedState {
+  players: SanitizedPlayer[];
+  currentTurnIndex: number;
+  lastPlayedCombination: unknown | null;
+  lastPlayedBy: number;
+  gameOver: boolean;
+  firstPlayMade: boolean;
+  startCard?: Card;
+  exchangePhase?: ExchangePhase;
+  viewerSeatIndex: number;
+}
+
+interface RoomState {
+  roomId: string;
+  code: string;
+  hostUserId: string | null;
+  status: string;
+  gameMode: string;
+  maxPlayers: number;
+  players: { seatIndex: number; userId: string; username: string }[];
+}
+
+interface Client {
+  socket: Socket;
+  user: RegisteredUser;
+}
+
+describe("gameplay integrity", { skip: hasDatabase() ? false : skipMessage() }, () => {
+  let server: TestServer;
+  before(async () => {
+    server = await startTestServer();
+  });
+  after(async () => {
+    await server.stop();
+  });
+
+  async function makeClients(usernames: string[]): Promise<Client[]> {
+    const clients: Client[] = [];
+    for (const name of usernames) {
+      clients.push(await connectAs(server, name));
+    }
+    return clients;
+  }
+
+  /** clients[0] creates the room, everyone else joins in order. Returns the
+   * room state after the last join. */
+  async function setUpRoom(
+    clients: Client[],
+    maxPlayers: number,
+    gameMode: "free_for_all" | "teams" = "free_for_all"
+  ): Promise<RoomState> {
+    const host = clients[0];
+    const created = waitFor<RoomState>(host.socket, "room:state");
+    host.socket.emit("room:create", { gameMode, maxPlayers });
+    let state = await created;
+    for (const guest of clients.slice(1)) {
+      const joined = waitFor<RoomState>(guest.socket, "room:state");
+      guest.socket.emit("room:join", { code: state.code });
+      state = await joined;
+    }
+    return state;
+  }
+
+  /** Starts the game and returns each client's own opening game:state,
+   * captured raw (no moves are made on their behalf). */
+  async function startGame(clients: Client[]): Promise<SanitizedState[]> {
+    const waits = clients.map((c) => waitFor<SanitizedState>(c.socket, "game:state"));
+    clients[0].socket.emit("room:start");
+    return Promise.all(waits);
+  }
+
+  // ── Test 0 ──────────────────────────────────────────────────────────────
+
+  /**
+   * Regression test for a startup race in the connection handler: it used
+   * to `await storage.getFriends(userId)` (a real DB round-trip) before
+   * registering any of the room:* / game:* listeners. An event emitted the
+   * instant the client sees "connect" could land in that window and be
+   * silently dropped — no error, no ack, nothing. This is exactly how the
+   * app's own reconnect path behaves (OnlineGameContext fires game:rejoin
+   * from its own "connect" handler), so a slow DB round-trip on a real
+   * reconnect could strand a player with no way back into their game.
+   *
+   * connectAs() in tests/helpers/client.ts works around this by waiting for
+   * friend:online_list before returning — deliberately not used here, since
+   * that wait is exactly what would hide the bug this test exists to catch.
+   */
+  test("an event emitted on the client's own connect handler is not dropped", async () => {
+    const { user, cookie } = await register(server, "connect_race_user");
+    const ticketRes = await fetch(`${server.url}/api/auth/socket-ticket`, {
+      method: "POST",
+      headers: { cookie },
+    });
+    const ticketText = await ticketRes.text();
+    assert.equal(ticketRes.status, 200, ticketText);
+    const { ticket } = JSON.parse(ticketText) as { ticket: string };
+
+    const socket: Socket = ioClient(server.url, {
+      auth: { ticket },
+      transports: ["websocket"],
+      reconnection: false,
+    });
+    try {
+      const response = waitFor<RoomState>(socket, "room:state", 3_000);
+      // Fired synchronously from within the "connect" handler itself —
+      // no waiting for any other server event first, matching how
+      // OnlineGameContext's attemptRejoin() fires game:rejoin on reconnect.
+      socket.once("connect", () => {
+        socket.emit("room:create", { gameMode: "free_for_all", maxPlayers: 2 });
+      });
+      const state = await response;
+      assert.ok(state.roomId, "room:create emitted on connect must still get a reply");
+      assert.equal(state.hostUserId, user.id);
+    } finally {
+      socket.close();
+    }
+  });
+
+  // ── Test 1 ──────────────────────────────────────────────────────────────
+
+  test("a player never receives another player's hand", async () => {
+    const [alice, bob] = await makeClients([
+      "hand_secrecy_alice",
+      "hand_secrecy_bob",
+    ]);
+    await setUpRoom([alice, bob], 2);
+    const [aliceState, bobState] = await startGame([alice, bob]);
+
+    for (const state of [aliceState, bobState]) {
+      state.players.forEach((p, seat) => {
+        if (seat === state.viewerSeatIndex) {
+          assert.ok(p.hand.length > 0, "own seat must carry a real hand");
+          assert.equal(p.handCount, p.hand.length);
+        } else {
+          assert.deepEqual(p.hand, [], `seat ${seat} must not leak cards to another viewer`);
+          assert.ok(p.handCount > 0, "handCount must still be reported for other seats");
+        }
+      });
+    }
+  });
+
+  // ── Test 2 ──────────────────────────────────────────────────────────────
+
+  type DriveResult =
+    | { stoppedOn: "gameOver"; payload: unknown }
+    | { stoppedOn: "exchange"; states: Map<Client, SanitizedState> };
+
+  /**
+   * Drives forced-minimum play for every idle client attached: whoever is
+   * leading a new round plays the largest same-rank group anchored on their
+   * lowest card (or the mandatory start card, for the very first play of the
+   * game), everyone else always passes. This mirrors the server's own
+   * AFK/bot forced-minimum path (see autoMoveForSeat in server/socket.ts),
+   * but is triggered immediately by the test instead of waiting on a timer,
+   * and sheds several cards per play to keep the per-socket event count
+   * comfortably under the rate limiter across repeated hands.
+   *
+   * Listeners are attached before `kickoff()` runs, so the very first
+   * game:state (which decides who must play the mandatory start card) is
+   * never missed. Resolves as soon as the hand ends (`game:over`) or an
+   * active exchange phase has been observed from every client's own
+   * viewpoint (so the caller can read the winner's real hand).
+   */
+  function driveHandToExchangeOrOver(
+    clients: Client[],
+    kickoff: () => void
+  ): Promise<DriveResult> {
+    return new Promise((resolve, reject) => {
+      let settled = false;
+      const exchangeStates = new Map<Client, SanitizedState>();
+      const stateHandlers: [Client, (s: SanitizedState) => void][] = [];
+      const overHandlers: [Client, (p: unknown) => void][] = [];
+
+      const timer = setTimeout(() => {
+        if (settled) return;
+        settled = true;
+        cleanup();
+        reject(new Error("timed out driving a hand toward completion or an exchange phase"));
+      }, 15_000);
+
+      function cleanup() {
+        clearTimeout(timer);
+        for (const [c, h] of stateHandlers) c.socket.off("game:state", h);
+        for (const [c, h] of overHandlers) c.socket.off("game:over", h);
+      }
+
+      function finish(result: DriveResult) {
+        if (settled) return;
+        settled = true;
+        cleanup();
+        resolve(result);
+      }
+
+      for (const client of clients) {
+        const onOver = (payload: unknown) => finish({ stoppedOn: "gameOver", payload });
+        overHandlers.push([client, onOver]);
+        client.socket.on("game:over", onOver);
+
+        const onState = (state: SanitizedState) => {
+          if (settled || state.gameOver) return;
+          if (state.exchangePhase?.active) {
+            exchangeStates.set(client, state);
+            if (exchangeStates.size === clients.length) {
+              finish({ stoppedOn: "exchange", states: exchangeStates });
+            }
+            return;
+          }
+          const seat = state.viewerSeatIndex;
+          if (state.currentTurnIndex !== seat) return;
+          const hand = state.players[seat]?.hand ?? [];
+          if (hand.length === 0) return;
+
+          if (state.lastPlayedCombination !== null) {
+            client.socket.emit("game:pass");
+            return;
+          }
+
+          let anchor = hand[0];
+          if (!state.firstPlayMade && state.startCard) {
+            const forced = hand.find((c) => c.id === state.startCard!.id);
+            if (forced) anchor = forced;
+          }
+          const group = hand.filter((c) => c.rank === anchor.rank).map((c) => c.id);
+          client.socket.emit("game:play", { cardIds: group });
+        };
+        stateHandlers.push([client, onState]);
+        client.socket.on("game:state", onState);
+      }
+
+      kickoff();
+    });
+  }
+
+  test("play and pass are rejected during an active exchange phase", async () => {
+    const [alice, bob] = await makeClients(["exchange_alice", "exchange_bob"]);
+    const room = await setUpRoom([alice, bob], 2);
+
+    // The very first hand never carries an exchange phase — only a rematch,
+    // seeded from the previous hand's winner/loser, does. Play it out with
+    // forced-minimum moves to reach game:over.
+    const opening = await driveHandToExchangeOrOver([alice, bob], () => {
+      alice.socket.emit("room:start");
+    });
+    assert.equal(opening.stoppedOn, "gameOver");
+
+    let exchange: Map<Client, SanitizedState> | null = null;
+    for (let attempt = 0; attempt < 6 && !exchange; attempt++) {
+      const result = await driveHandToExchangeOrOver([alice, bob], () => {
+        alice.socket.emit("game:rematch_vote");
+        bob.socket.emit("game:rematch_vote");
+      });
+      if (result.stoppedOn === "exchange") {
+        exchange = result.states;
+      }
+      // Otherwise the loser held both jokers — a documented exception where
+      // no card is owed back — so that hand ran straight through to
+      // game:over with no exchange. Vote again and try the next hand.
+    }
+    assert.ok(exchange, "never reached an active exchange phase after several rematches");
+
+    const anyState = [...exchange.values()][0];
+    const phase = anyState.exchangePhase!;
+    assert.equal(phase.active, true);
+
+    const winnerName = anyState.players[phase.winnerIdx].name;
+    const winner = [alice, bob].find((c) => c.user.username === winnerName);
+    assert.ok(winner, "could not map the exchange winner's seat back to a client");
+    const winnerState = exchange.get(winner!)!;
+    const handBefore = winnerState.players[phase.winnerIdx].hand;
+    assert.ok(handBefore.length > 0, "the exchange winner's own hand must be visible to them");
+
+    const playRejected = waitFor<{ code: string }>(winner!.socket, "game:error");
+    winner!.socket.emit("game:play", { cardIds: [handBefore[0].id] });
+    const playErr = await playRejected;
+    assert.equal(playErr.code, "EXCHANGE_PENDING");
+
+    const passRejected = waitFor<{ code: string }>(winner!.socket, "game:error");
+    winner!.socket.emit("game:pass");
+    const passErr = await passRejected;
+    assert.equal(passErr.code, "EXCHANGE_PENDING");
+
+    // The rejection must not just fail to reply — re-fetch the authoritative
+    // state (game:rejoin is a safe, idempotent read) and confirm the
+    // winner's hand and the exchange phase are byte-for-byte unchanged.
+    const freshState = waitFor<SanitizedState>(winner!.socket, "game:state");
+    winner!.socket.emit("game:rejoin", { roomCode: room.roomId });
+    const fresh = await freshState;
+    assert.equal(fresh.exchangePhase?.active, true);
+    assert.deepEqual(
+      fresh.players[phase.winnerIdx].hand.map((c) => c.id),
+      handBefore.map((c) => c.id)
+    );
+  });
+
+  // ── Test 3 ──────────────────────────────────────────────────────────────
+
+  test("a malformed payload on any event does not kill the process", async () => {
+    const [alice] = await makeClients(["malformed_alice"]);
+
+    const playErr = waitFor<{ message: string }>(alice.socket, "game:error");
+    alice.socket.emit("game:play", 42);
+    await playErr;
+
+    const reactionErr = waitFor<{ message: string }>(alice.socket, "game:error");
+    alice.socket.emit("game:reaction");
+    await reactionErr;
+
+    const joinErr = waitFor<{ message: string }>(alice.socket, "room:error");
+    alice.socket.emit("room:join", { code: 12345 });
+    await joinErr;
+
+    // If any of the malformed payloads above had thrown inside the handler
+    // uncontained, the whole process — every table on the server, not just
+    // this socket — would be dead, and this would simply hang or reject.
+    const created = waitFor<RoomState>(alice.socket, "room:state");
+    alice.socket.emit("room:create", { gameMode: "free_for_all", maxPlayers: 2 });
+    const state = await created;
+    assert.ok(state.roomId, "room:create must still succeed after malformed payloads");
+  });
+
+  // ── Test 4 ──────────────────────────────────────────────────────────────
+
+  test("a vacated seat does not deadlock the table", async () => {
+    const [alice, bob, carol] = await makeClients([
+      "vacancy_alice",
+      "vacancy_bob",
+      "vacancy_carol",
+    ]);
+    await setUpRoom([alice, bob, carol], 3);
+    await startGame([alice, bob, carol]);
+
+    // bob hard-disconnects mid-game — no room:leave, just the socket going
+    // away, exactly like a dropped connection.
+    const disconnectNotice = waitFor<{ userId: string }>(
+      alice.socket,
+      "game:player_disconnected",
+      5_000
+    );
+    bob.socket.disconnect();
+    await disconnectNotice;
+
+    // Past the shortened grace period the seat must be handed to a bot
+    // instead of stalling the table: the seat must be removed from
+    // playerMap AND marked AI-controlled together, or play deadlocks the
+    // moment the turn comes back around to it.
+    const takeover = await waitFor<{ seatIndex: number }>(
+      alice.socket,
+      "game:seat_bot_takeover",
+      5_000
+    );
+    const vacatedSeat = takeover.seatIndex;
+
+    // alice and carol are left idle too (no explicit moves below), so every
+    // further turn — including the bot's — has to run on the shortened
+    // AFK/bot timers. Collect state broadcasts until the bot-controlled
+    // vacated seat has actually played and the turn has moved on to someone
+    // else: proof the table kept advancing instead of freezing on the empty
+    // seat.
+    let sawVacatedSeatAct = false;
+    let sawTurnPastVacatedSeat = false;
+    for (let i = 0; i < 10 && !(sawVacatedSeatAct && sawTurnPastVacatedSeat); i++) {
+      const state = await waitFor<SanitizedState>(alice.socket, "game:state", 8_000);
+      if (state.gameOver) break;
+      if (state.lastPlayedBy === vacatedSeat) sawVacatedSeatAct = true;
+      if (sawVacatedSeatAct && state.currentTurnIndex !== vacatedSeat) {
+        sawTurnPastVacatedSeat = true;
+      }
+    }
+    assert.ok(sawVacatedSeatAct, "the bot-controlled vacated seat never got to act");
+    assert.ok(sawTurnPastVacatedSeat, "the turn never advanced past the vacated seat");
+  });
+
+  // ── Test 5 ──────────────────────────────────────────────────────────────
+
+  test("room:start with fillWithBots seats bots in the empty seats and the turn arbiter drives them", async () => {
+    const [alice] = await makeClients(["botfill_alice"]);
+    await setUpRoom([alice], 3);
+
+    const opening = waitFor<SanitizedState>(alice.socket, "game:state");
+    alice.socket.emit("room:start", { fillWithBots: true, botDifficulty: "easy" });
+    const state = await opening;
+
+    // One human seat, two bot seats — the same buildSeatRoster contract
+    // tested in isolation by tests/botFill.test.ts, now exercised through
+    // the real room:start handler.
+    assert.equal(state.players.length, 3);
+    assert.equal(state.players.filter((p) => p.type === "ai").length, 2);
+    assert.equal(state.players.filter((p) => p.type === "human").length, 1);
+
+    // Bots must be driven by the same turn arbiter the disconnect-takeover
+    // path uses — not a second bot loop — so this proves a bot seat
+    // actually plays and the turn advances past it, exactly like the
+    // vacated-seat test above.
+    let sawBotAct = false;
+    let sawTurnPastBot = false;
+    let actedBotSeat = -1;
+    for (let i = 0; i < 15 && !(sawBotAct && sawTurnPastBot); i++) {
+      const s = await waitFor<SanitizedState>(alice.socket, "game:state", 8_000);
+      if (s.gameOver) break;
+      const actor = s.players[s.lastPlayedBy];
+      if (actor?.type === "ai") {
+        sawBotAct = true;
+        actedBotSeat = s.lastPlayedBy;
+      }
+      if (sawBotAct && s.currentTurnIndex !== actedBotSeat) {
+        sawTurnPastBot = true;
+      }
+    }
+    assert.ok(sawBotAct, "no bot seat ever played");
+    assert.ok(sawTurnPastBot, "the turn never advanced past a bot seat");
+  });
+});

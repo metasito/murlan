@@ -4,7 +4,6 @@ import * as SplashScreen from "expo-splash-screen";
 import React, { useEffect } from "react";
 import { View } from "react-native";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
-import { KeyboardProvider } from "react-native-keyboard-controller";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { queryClient } from "@/lib/query-client";
@@ -15,6 +14,7 @@ import { SettingsProvider } from "@/context/SettingsContext";
 import { NotificationProvider, useNotification } from "@/context/NotificationContext";
 import NotificationBanner from "@/components/NotificationBanner";
 import { OfflineBanner } from "@/components/OfflineBanner";
+import { initLocale } from "@/lib/i18n";
 import {
   useFonts,
   Rajdhani_400Regular,
@@ -39,6 +39,7 @@ function RootLayoutNav() {
         <Stack.Screen name="index" />
         <Stack.Screen name="lobby" />
         <Stack.Screen name="rules" />
+        <Stack.Screen name="tutorial" />
         <Stack.Screen name="auth" />
         <Stack.Screen name="(online)" />
         <Stack.Screen name="game" options={{ animation: "slide_from_bottom" }} />
@@ -60,14 +61,19 @@ export default function RootLayout() {
     Inter_500Medium,
     Inter_600SemiBold,
   });
+  const [localeReady, setLocaleReady] = React.useState(false);
 
   useEffect(() => {
-    if (fontsLoaded || fontError) {
+    initLocale().finally(() => setLocaleReady(true));
+  }, []);
+
+  useEffect(() => {
+    if ((fontsLoaded || fontError) && localeReady) {
       SplashScreen.hideAsync();
     }
-  }, [fontsLoaded, fontError]);
+  }, [fontsLoaded, fontError, localeReady]);
 
-  if (!fontsLoaded && !fontError) return null;
+  if ((!fontsLoaded && !fontError) || !localeReady) return null;
 
   return (
     <ErrorBoundary>
@@ -75,7 +81,6 @@ export default function RootLayout() {
         <QueryClientProvider client={queryClient}>
           <SafeAreaProvider>
             <GestureHandlerRootView style={{ flex: 1 }}>
-              <KeyboardProvider>
                 <NotificationProvider>
                   <AuthProvider>
                     <SocketProvider>
@@ -85,7 +90,6 @@ export default function RootLayout() {
                     </SocketProvider>
                   </AuthProvider>
                 </NotificationProvider>
-              </KeyboardProvider>
             </GestureHandlerRootView>
           </SafeAreaProvider>
         </QueryClientProvider>

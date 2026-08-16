@@ -5,26 +5,26 @@ import {
   StyleSheet,
   Pressable,
   TextInput,
-  Platform,
   Alert,
   ScrollView,
   useWindowDimensions,
   KeyboardAvoidingView,
+  Platform,
 } from "react-native";
 import { router } from "expo-router";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { LinearGradient } from "expo-linear-gradient";
-import * as Haptics from "expo-haptics";
+import { hapticMedium, hapticSelection } from "@/lib/haptics";
 import { Ionicons } from "@expo/vector-icons";
 import { useOnlineGame } from "@/context/OnlineGameContext";
 import { useAuth } from "@/context/AuthContext";
 import { useSocket } from "@/context/SocketContext";
-import { Colors } from '@/lib/theme';
+import { Colors, Spacing, FontSize, Type } from '@/lib/theme';
+import { MenuLayout } from "@/components/MenuLayout";
 import { MenuCard } from "@/components/MenuCard";
 import { MenuButton } from "@/components/MenuButton";
+import { useTranslation } from "@/lib/i18n";
 
 export default function OnlineLobbyScreen() {
-  const insets = useSafeAreaInsets();
+  const { t } = useTranslation();
   const { width: W, height: H } = useWindowDimensions();
   const { user } = useAuth();
   const { createRoom, joinRoom, room, connected, error, clearError } = useOnlineGame();
@@ -35,20 +35,19 @@ export default function OnlineLobbyScreen() {
   const [createPlayers, setCreatePlayers] = useState(4);
 
   const isLandscape = W > H;
-  const topPad = Platform.OS === "web" ? 67 : insets.top;
-  const bottomPad = Platform.OS === "web" ? 34 : insets.bottom;
 
   useEffect(() => {
     if (room) {
       router.push("/(online)/room");
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- navigate once per room id, not on every room field update
   }, [room?.roomId]);
 
   useEffect(() => {
     if (error) {
-      Alert.alert("Errore", error, [{ text: "OK", onPress: clearError }]);
+      Alert.alert(t("common.error"), error, [{ text: t("common.ok"), onPress: clearError }]);
     }
-  }, [error]);
+  }, [error, clearError, t]);
 
   useEffect(() => {
     if (pendingInvite) {
@@ -56,16 +55,16 @@ export default function OnlineLobbyScreen() {
       setJoinModalVisible(true);
       clearInvite();
     }
-  }, [pendingInvite]);
+  }, [pendingInvite, clearInvite]);
 
   function handleCreate() {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    hapticMedium();
     createRoom(createMode, createPlayers);
   }
 
   function handleJoin() {
     if (joinCode.length < 4) return;
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    hapticMedium();
     joinRoom(joinCode.trim().toUpperCase());
     setJoinModalVisible(false);
     setJoinCode("");
@@ -73,19 +72,22 @@ export default function OnlineLobbyScreen() {
 
   const CreateSection = (
     <View style={{ flex: 1 }}>
-      <MenuCard title="CREA STANZA" style={isLandscape ? styles.compactCard : undefined}>
+      <MenuCard title={t("onlineLobby.createRoomTitle")} style={isLandscape ? styles.compactCard : undefined}>
         <View style={isLandscape ? styles.optSectionLandscape : styles.optSection}>
-          <Text style={styles.optLabelSmall}>MODALITÀ</Text>
+          <Text style={styles.optLabelSmall}>{t("onlineLobby.modeLabel")}</Text>
           <View style={[styles.toggle, isLandscape && styles.gapXs]}>
             {(["free_for_all", "teams"] as const).map((m) => (
               <Pressable
                 key={m}
-                onPress={() => { setCreateMode(m); Haptics.selectionAsync(); }}
+                onPress={() => { setCreateMode(m); hapticSelection(); }}
                 style={[
-                  styles.toggleBtn, 
+                  styles.toggleBtn,
                   createMode === m && styles.toggleActive,
                   isLandscape && styles.compactToggleBtn
                 ]}
+                accessibilityRole="radio"
+                accessibilityLabel={m === "free_for_all" ? t("onlineLobby.modeFreeForAll") : t("onlineLobby.modeTeams")}
+                accessibilityState={{ selected: createMode === m }}
               >
                 <Ionicons 
                   name={m === "teams" ? "people" : "person"} 
@@ -93,7 +95,7 @@ export default function OnlineLobbyScreen() {
                   color={createMode === m ? Colors.gold : Colors.textSecondary} 
                 />
                 <Text style={[styles.toggleText, createMode === m && styles.toggleTextActive, isLandscape && { fontSize: 12 }]}>
-                  {m === "free_for_all" ? "Libera" : "Coppie"}
+                  {m === "free_for_all" ? t("onlineLobby.modeFreeForAll") : t("onlineLobby.modeTeams")}
                 </Text>
               </Pressable>
             ))}
@@ -101,17 +103,20 @@ export default function OnlineLobbyScreen() {
         </View>
 
         <View style={isLandscape ? styles.optSectionLandscape : styles.optSection}>
-          <Text style={styles.optLabelSmall}>GIOCATORI</Text>
+          <Text style={styles.optLabelSmall}>{t("onlineLobby.playersLabel")}</Text>
           <View style={[styles.toggle, isLandscape && styles.gapXs]}>
             {[2, 3, 4].map((n) => (
               <Pressable
                 key={n}
-                onPress={() => { setCreatePlayers(n); Haptics.selectionAsync(); }}
+                onPress={() => { setCreatePlayers(n); hapticSelection(); }}
                 style={[
-                  styles.toggleBtn, 
+                  styles.toggleBtn,
                   createPlayers === n && styles.toggleActive,
                   isLandscape && styles.compactToggleBtn
                 ]}
+                accessibilityRole="radio"
+                accessibilityLabel={t("lobby.playerCountOptionA11yLabel", { n })}
+                accessibilityState={{ selected: createPlayers === n }}
               >
                 <Text style={[styles.toggleText, createPlayers === n && styles.toggleTextActive, { fontSize: isLandscape ? 14 : 18 }]}>
                   {n}
@@ -122,18 +127,18 @@ export default function OnlineLobbyScreen() {
         </View>
 
         {createMode === "teams" && createPlayers !== 4 && (
-          <Text style={styles.warn}>La modalità Coppie richiede 4 giocatori</Text>
+          <Text style={styles.warn}>{t("onlineLobby.teamsRequire4")}</Text>
         )}
 
         <View style={{ marginTop: isLandscape ? 4 : 8 }}>
           <MenuButton
-            label="Crea Stanza"
+            label={t("onlineLobby.createRoom")}
             onPress={handleCreate}
             variant="primary"
             fullWidth={true}
             style={isLandscape ? { minHeight: 44 } : undefined}
             disabled={createMode === "teams" && createPlayers !== 4}
-            icon={<Ionicons name="add-circle-outline" size={20} color={createMode === "teams" && createPlayers !== 4 ? Colors.textMuted : "#0A1F18"} />}
+            icon={<Ionicons name="add-circle-outline" size={20} color={createMode === "teams" && createPlayers !== 4 ? Colors.textMuted : Colors.bg} />}
           />
         </View>
       </MenuCard>
@@ -142,10 +147,10 @@ export default function OnlineLobbyScreen() {
 
   const JoinSection = (
     <View style={{ flex: 1 }}>
-      <MenuCard title="ENTRA IN UNA STANZA" style={isLandscape ? styles.compactCard : undefined}>
+      <MenuCard title={t("onlineLobby.joinRoomTitle")} style={isLandscape ? styles.compactCard : undefined}>
         <View style={{ paddingVertical: isLandscape ? 2 : 4 }}>
           <MenuButton
-            label="Inserisci codice stanza"
+            label={t("onlineLobby.enterRoomCode")}
             onPress={() => setJoinModalVisible(true)}
             variant="secondary"
             fullWidth={true}
@@ -158,21 +163,18 @@ export default function OnlineLobbyScreen() {
   );
 
   return (
-    <View style={[styles.container, {
-      paddingTop: topPad,
-      paddingLeft: isLandscape ? insets.left : 0,
-      paddingRight: isLandscape ? insets.right : 0,
-    }]}>
-      <LinearGradient
-        colors={[Colors.bg, Colors.bgCard]}
-        style={StyleSheet.absoluteFill}
-      />
-
+    <MenuLayout scrollable={false} centered={false} style={{ paddingBottom: 0 }}>
       <View style={styles.topBar}>
-        <Pressable onPress={() => router.back()} style={styles.backBtn}>
-          <Ionicons name="chevron-back" size={22} color={Colors.textMuted} />
+        <Pressable
+          onPress={() => router.back()}
+          style={styles.backBtn}
+          accessibilityRole="button"
+          accessibilityLabel={t("common.back")}
+          hitSlop={12}
+        >
+          <Ionicons name="chevron-back" size={22} color={Colors.gold} />
         </Pressable>
-        <Text style={styles.screenTitle}>Con Amici</Text>
+        <Text style={styles.screenTitle}>{t("onlineLobby.title")}</Text>
         <View style={{ width: 38 }} />
       </View>
 
@@ -180,9 +182,9 @@ export default function OnlineLobbyScreen() {
         <View style={[styles.body, styles.bodyLandscape]}>
           <View style={styles.contentWrapperLandscape}>
             <View style={styles.statusRow}>
-              <View style={[styles.dot, { backgroundColor: connected ? "Colors.success" : Colors.textMuted }]} />
+              <View style={[styles.dot, { backgroundColor: connected ? Colors.success : Colors.textMuted }]} />
               <Text style={styles.statusText}>
-                {connected ? `Connesso come ${user?.username}` : "Connessione…"}
+                {connected ? t("onlineLobby.connectedAs", { username: user?.username ?? "" }) : t("onlineLobby.connecting")}
               </Text>
             </View>
 
@@ -195,25 +197,22 @@ export default function OnlineLobbyScreen() {
         </View>
       ) : (
         <ScrollView
-          contentContainerStyle={[
-            styles.body,
-            { paddingBottom: bottomPad + 16 },
-          ]}
+          contentContainerStyle={[styles.body, { paddingBottom: Spacing.lg }]}
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled"
         >
           <View style={styles.contentWrapper}>
             <View style={styles.statusRow}>
-              <View style={[styles.dot, { backgroundColor: connected ? "Colors.success" : Colors.textMuted }]} />
+              <View style={[styles.dot, { backgroundColor: connected ? Colors.success : Colors.textMuted }]} />
               <Text style={styles.statusText}>
-                {connected ? `Connesso come ${user?.username}` : "Connessione…"}
+                {connected ? t("onlineLobby.connectedAs", { username: user?.username ?? "" }) : t("onlineLobby.connecting")}
               </Text>
             </View>
 
             {CreateSection}
             <View style={styles.divider}>
               <View style={styles.divLine} />
-              <Text style={styles.divText}>oppure</Text>
+              <Text style={styles.divText}>{t("onlineLobby.or")}</Text>
               <View style={styles.divLine} />
             </View>
             {JoinSection}
@@ -233,70 +232,74 @@ export default function OnlineLobbyScreen() {
             keyboardShouldPersistTaps="handled"
           >
             <View style={[styles.modalBox, isLandscape && styles.modalBoxLandscape, { width: isLandscape ? "80%" : "100%", maxWidth: isLandscape ? 600 : 400 }]}>
-              <Text style={styles.modalTitle}>Entra in una stanza</Text>
-              <MenuCard title="Codice Stanza" style={{ marginBottom: 0 }}>
+              <Text style={styles.modalTitle}>{t("onlineLobby.joinModalTitle")}</Text>
+              <MenuCard title={t("onlineLobby.roomCodeCardTitle")} style={{ marginBottom: 0 }}>
                 <TextInput
                   style={[styles.codeInput, isLandscape && styles.codeInputLandscape]}
                   value={joinCode}
                   onChangeText={(v) => setJoinCode(v.toUpperCase())}
-                  placeholder="CODICE"
+                  placeholder={t("onlineLobby.roomCodePlaceholder")}
                   placeholderTextColor={Colors.textMuted}
                   autoCapitalize="characters"
                   autoFocus={true}
                   maxLength={8}
-                  accessibilityLabel="Codice stanza"
-                  accessibilityHint="Inserisci il codice a 6 caratteri della stanza a cui vuoi unirti"
+                  accessibilityLabel={t("onlineLobby.roomCodeA11yLabel")}
+                  accessibilityHint={t("onlineLobby.roomCodeA11yHint")}
                 />
               </MenuCard>
               <View style={styles.modalRow}>
                 <Pressable
                   onPress={() => { setJoinModalVisible(false); setJoinCode(""); }}
                   style={styles.modalCancelBtn}
+                  accessibilityRole="button"
+                  accessibilityLabel={t("common.cancel")}
                 >
-                  <Text style={styles.modalCancelText}>Annulla</Text>
+                  <Text style={styles.modalCancelText}>{t("common.cancel")}</Text>
                 </Pressable>
                 <Pressable
                   onPress={handleJoin}
                   disabled={joinCode.length < 4}
                   style={({ pressed }) => [styles.modalOkBtn, pressed && { opacity: 0.85 }]}
+                  accessibilityRole="button"
+                  accessibilityLabel={t("onlineLobby.enter")}
+                  accessibilityState={{ disabled: joinCode.length < 4 }}
                 >
-                  <Text style={styles.modalOkText}>Entra</Text>
+                  <Text style={styles.modalOkText}>{t("onlineLobby.enter")}</Text>
                 </Pressable>
               </View>
             </View>
           </ScrollView>
         </KeyboardAvoidingView>
       )}
-    </View>
+    </MenuLayout>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: Colors.bg },
   topBar: {
     flexDirection: "row",
     alignItems: "center",
-    paddingHorizontal: 16,
-    paddingVertical: 14,
+    width: "100%",
+    paddingBottom: Spacing.sm,
+    marginBottom: Spacing.xs,
     borderBottomWidth: 1,
     borderBottomColor: Colors.border,
   },
   backBtn: {
-    width: 40,
-    height: 40,
+    width: 44,
+    height: 44,
     alignItems: "center",
     justifyContent: "center",
   },
   screenTitle: {
     flex: 1,
     textAlign: "center",
-    fontFamily: "Rajdhani_600SemiBold",
-    fontSize: 20,
-    color: Colors.text,
-    letterSpacing: 1,
+    ...Type.heading,
+    fontSize: FontSize.xl,
+    letterSpacing: 3,
   },
-  body: { paddingHorizontal: 20, paddingTop: 20, gap: 24 },
-  bodyLandscape: { paddingTop: 16, gap: 16, flex: 1 },
+  body: { gap: 24 },
+  bodyLandscape: { gap: 16, flex: 1 },
   contentWrapper: {
     width: "100%",
     maxWidth: 800,
@@ -341,19 +344,19 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.bgSurface,
   },
   compactToggleBtn: { paddingVertical: 8, minWidth: 60 },
-  toggleActive: { 
-    borderColor: Colors.gold, 
-    backgroundColor: "rgba(201,168,76,0.12)" 
+  toggleActive: {
+    borderColor: Colors.gold,
+    backgroundColor: Colors.goldMuted,
   },
   toggleText: { fontFamily: "Rajdhani_600SemiBold", fontSize: 14, color: Colors.textSecondary },
   toggleTextActive: { color: Colors.gold },
-  warn: { fontFamily: "Inter_400Regular", fontSize: 12, color: "#ff6b6b", marginBottom: 4 },
+  warn: { fontFamily: "Inter_400Regular", fontSize: 12, color: Colors.dangerDim, marginBottom: 4 },
   divider: { flexDirection: "row", alignItems: "center", gap: 12 },
   divLine: { flex: 1, height: 1, backgroundColor: Colors.border },
   divText: { fontFamily: "Inter_400Regular", fontSize: 12, color: Colors.textMuted },
   modalOverlay: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: "rgba(0,0,0,0.7)",
+    backgroundColor: Colors.overlay,
     zIndex: 100,
   },
   modalScroll: { 
@@ -410,5 +413,5 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.gold,
     alignItems: "center",
   },
-  modalOkText: { fontFamily: "Rajdhani_700Bold", fontSize: 16, color: "#0A1F18" },
+  modalOkText: { fontFamily: "Rajdhani_700Bold", fontSize: 16, color: Colors.bg },
 });

@@ -1,4 +1,14 @@
 # Murlan Visual & Audio Upgrade — Design Spec
+
+> **STATUS: SHIPPED.** Verified implemented on 2026-08-15 by reading the code, not the
+> changelog. The ornate SVG card back, the gold selected-glow ring, the `-14px` spring lift,
+> the face-card gold border and the unified MP3 web audio via `decodeAudioData` are all
+> present. This document is kept as a historical record of that work — it is **not** a
+> backlog item. Do not re-implement it.
+>
+> Current design direction lives in `docs/BRIEF.md`; this spec predates it and does not
+> describe the visual work still outstanding.
+
 **Date:** 2026-06-04
 **Aesthetic direction:** Opulent Casino — richer golds with glow, deeper felt, premium card rendering, satisfying sounds
 

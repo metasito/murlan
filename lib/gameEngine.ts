@@ -106,33 +106,33 @@ function getStraightFaceValue(rank: Rank, aceAsHigh: boolean): number | null {
   return map[rank] ?? null;
 }
 
-function isConsecutiveSequence(
-  faceValues: number[],
-  jokerCount: number,
-  totalLen: number
-): boolean {
-  if (faceValues.length === 0) return jokerCount >= totalLen;
+// A straight is 5..13 cards. The rules impose no maximum beyond the 13
+// distinct sequence positions available (the Ace picks one end, never both).
+export const STRAIGHT_MIN_LEN = 5;
+export const STRAIGHT_MAX_LEN = 13;
+
+// Jokers are never part of a sequence, so there is no joker substitution here:
+// the face values must be exactly `totalLen` strictly consecutive integers.
+function isConsecutiveSequence(faceValues: number[], totalLen: number): boolean {
+  if (faceValues.length !== totalLen) return false;
   const sorted = [...faceValues].sort((a, b) => a - b);
-  const unique = [...new Set(sorted)];
-  if (unique.length !== sorted.length) return false;
-  const range = unique[unique.length - 1] - unique[0];
-  if (range >= totalLen) return false;
-  const gapsInRange = range - (unique.length - 1);
-  return gapsInRange <= jokerCount;
+  for (let i = 1; i < sorted.length; i++) {
+    if (sorted[i] !== sorted[i - 1] + 1) return false;
+  }
+  return true;
 }
 
 function isStraight(cards: Card[]): boolean {
-  if (cards.length < 5) return false;
+  if (cards.length < STRAIGHT_MIN_LEN) return false;
+  if (cards.length > STRAIGHT_MAX_LEN) return false;
   // Jokers cannot be used in straights — only as single cards
   if (cards.some((c) => c.isJoker)) return false;
-  const nonJokers = cards;
 
   for (const aceAsHigh of [false, true]) {
-    const faceValues = nonJokers
+    const faceValues = cards
       .map((c) => getStraightFaceValue(c.rank, aceAsHigh))
       .filter((v): v is number => v !== null);
-    if (isConsecutiveSequence(faceValues, 0, cards.length))
-      return true;
+    if (isConsecutiveSequence(faceValues, cards.length)) return true;
   }
   return false;
 }
@@ -140,14 +140,12 @@ function isStraight(cards: Card[]): boolean {
 function getStraightStrength(cards: Card[]): number {
   // No jokers allowed in straights
   if (cards.some((c) => c.isJoker)) return 0;
-  const nonJokers = cards;
 
   for (const aceAsHigh of [true, false]) {
-    const faceValues = nonJokers
+    const faceValues = cards
       .map((c) => getStraightFaceValue(c.rank, aceAsHigh))
       .filter((v): v is number => v !== null);
-    if (!isConsecutiveSequence(faceValues, 0, cards.length))
-      continue;
+    if (!isConsecutiveSequence(faceValues, cards.length)) continue;
 
     if (faceValues.length === 0) return 0;
     const sorted = [...faceValues].sort((a, b) => a - b);
@@ -164,7 +162,7 @@ function isBomb(cards: Card[]): boolean {
 }
 
 function isRoyalStraight(cards: Card[]): boolean {
-  if (cards.length < 5) return false;
+  if (cards.length < STRAIGHT_MIN_LEN) return false;
   // Jokers not allowed in straights or royal straights
   if (cards.some((c) => c.isJoker)) return false;
   const suit = cards[0].suit;
@@ -188,25 +186,64 @@ export function createDeck(): Card[] {
   return cards;
 }
 
+// This module is imported by the React Native client as well as by the server,
+// so it must not `import` node:crypto at module scope — Metro would try to
+// bundle it. `globalThis.crypto.getRandomValues` exists in Node 18+ and in
+// React Native / Hermes; Math.random is only ever the last-resort fallback.
+type RandomSource = { getRandomValues(array: Uint32Array): Uint32Array };
+
+function getRandomSource(): RandomSource | null {
+  const c = (globalThis as { crypto?: Partial<RandomSource> }).crypto;
+  if (c && typeof c.getRandomValues === "function") return c as RandomSource;
+  return null;
+}
+
+/**
+ * Unbiased random integer in [0, maxExclusive).
+ * Rejection sampling over a uint32: a plain `% maxExclusive` is biased whenever
+ * maxExclusive does not divide 2^32 evenly.
+ */
+function randomBelow(maxExclusive: number): number {
+  if (maxExclusive <= 1) return 0;
+  const source = getRandomSource();
+  if (!source) return Math.floor(Math.random() * maxExclusive);
+  const range = 0x100000000;
+  const limit = range - (range % maxExclusive); // largest unbiased multiple
+  const buf = new Uint32Array(1);
+  let value: number;
+  do {
+    source.getRandomValues(buf);
+    value = buf[0];
+  } while (value >= limit);
+  return value % maxExclusive;
+}
+
 export function shuffleDeck(deck: Card[]): Card[] {
   const shuffled = [...deck];
   for (let i = shuffled.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
+    const j = randomBelow(i + 1);
     [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
   }
   return shuffled;
 }
 
+/**
+ * Deals the ENTIRE 54-card deck, one card at a time, round-robin, so the extra
+ * cards land deterministically on the first seats.
+ * 4 players = 14/14/13/13, 3 players = 18 each, 2 players = 27 each.
+ * Nothing is excluded — the 3♠ and both Jokers are always in play.
+ *
+ * `excluded` is kept in the return type for backward compatibility with
+ * existing callers and is now always empty.
+ */
 export function dealCards(playerCount: number): { hands: Card[][]; excluded: Card[] } {
+  if (playerCount < 1) return { hands: [], excluded: [] };
   const deck = shuffleDeck(createDeck());
-  // Always deal 4 groups of 13 cards regardless of player count.
-  // Players receive one group each; remaining groups are excluded (unused).
-  const CARDS_PER_GROUP = 13;
-  const hands: Card[][] = Array.from({ length: playerCount }, (_, i) =>
-    deck.slice(i * CARDS_PER_GROUP, (i + 1) * CARDS_PER_GROUP)
-  );
-  const excluded = deck.slice(playerCount * CARDS_PER_GROUP);
-  return { hands, excluded };
+  const hands: Card[][] = Array.from({ length: playerCount }, () => []);
+  for (let i = 0; i < deck.length; i++) {
+    hands[i % playerCount].push(deck[i]);
+  }
+  return { hands, excluded: [] };
 }
 
 export function sortHand(hand: Card[]): Card[] {
@@ -218,26 +255,41 @@ export function sortHand(hand: Card[]): Card[] {
   });
 }
 
-// Spade ranks in ascending order (lowest to highest strength)
-const SPADE_RANK_ORDER: Rank[] = [
-  "3", "4", "5", "6", "7", "8", "9", "10", "J", "Q", "K", "A", "2",
-];
-
+/**
+ * The holder of the 3♠ opens the first hand and must include it in the play.
+ * The whole deck is dealt, so the 3♠ is always in somebody's hand.
+ *
+ * The fallbacks below exist only so that a malformed/partial deal can never
+ * crash: lowest card held by anyone, then a synthesised 3♠.
+ */
 export function findStartingPlayer(
   players: Player[]
 ): { playerIdx: number; startCard: Card } {
-  // Find the lowest spade held by any active player.
-  // Scan spades 3♠ → 4♠ → ... → 2♠; first match wins.
-  for (const rank of SPADE_RANK_ORDER) {
-    for (let i = 0; i < players.length; i++) {
-      const card = players[i].hand.find(
-        (c) => c.rank === rank && c.suit === "spades"
-      );
-      if (card) return { playerIdx: i, startCard: card };
+  for (let i = 0; i < players.length; i++) {
+    const card = players[i].hand.find(
+      (c) => c.rank === "3" && c.suit === "spades"
+    );
+    if (card) return { playerIdx: i, startCard: card };
+  }
+
+  // Defensive fallback: lowest card held by any player.
+  let bestIdx = -1;
+  let bestCard: Card | undefined;
+  for (let i = 0; i < players.length; i++) {
+    for (const card of players[i].hand) {
+      if (!bestCard || cardStrength(card) < cardStrength(bestCard)) {
+        bestCard = card;
+        bestIdx = i;
+      }
     }
   }
-  // Fallback (should never happen — 13 spades always dealt to someone)
-  return { playerIdx: 0, startCard: players[0].hand[0] };
+  if (bestCard) return { playerIdx: bestIdx, startCard: bestCard };
+
+  // Unreachable unless every hand is empty.
+  return {
+    playerIdx: 0,
+    startCard: { id: "3_spades", suit: "spades", rank: "3", isJoker: false },
+  };
 }
 
 export function getCombinationType(cards: Card[]): CombinationType | null {
@@ -277,16 +329,11 @@ export function getCombinationStrength(combination: Combination): number {
   switch (combination.type) {
     case "single":
       return cardStrength(cards[0]);
-    case "pair": {
-      const nonJoker = cards.filter((c) => !c.isJoker);
-      return nonJoker.length > 0
-        ? cardStrength(nonJoker[nonJoker.length - 1])
-        : cardStrength(cards[0]);
-    }
-    case "triple": {
-      const nonJoker = cards.filter((c) => !c.isJoker);
-      return nonJoker.length > 0 ? cardStrength(nonJoker[0]) : cardStrength(cards[0]);
-    }
+    // Pairs, triples and bombs are same-rank by construction and can never
+    // contain a joker (jokers are singles only), so any card gives the rank.
+    case "pair":
+    case "triple":
+      return cardStrength(cards[0]);
     case "straight":
     case "royal_straight":
       return getStraightStrength(cards);
@@ -336,7 +383,7 @@ export function canPlay(
 // Handles any hand size by enumerating by combination structure,
 // not bitmask (bitmask fails for 2-player hands of 26 cards).
 
-function getAllValidPlays(
+export function getAllValidPlays(
   hand: Card[],
   lastPlayed: Combination | null,
   isNewRound: boolean,
@@ -391,30 +438,105 @@ function getAllValidPlays(
     if (group.length >= 4) tryAdd(group.slice(0, 4));
   }
 
-  // Straights (5+ consecutive non-joker cards only)
-  function enumStraights(sorted: Card[]): void {
-    for (let lo = 0; lo < sorted.length; lo++) {
-      for (let hi = lo + 4; hi < sorted.length && hi - lo <= 8; hi++) {
-        const window = sorted.slice(lo, hi + 1);
-        tryAdd(window);
-      }
+  // ── Straights ───────────────────────────────────────────────────────────
+  // Enumerate by sequence position, not by slicing a sorted array: a duplicate
+  // rank in the span would poison every window containing it, hiding legal
+  // straights such as 3-4-5-6-7 within 3,4,5,5,6,7.
+  //
+  // Cards are bucketed by straight face value 1..14 (Ace occupies both 1 and
+  // 14; a run is capped at 13 cards so it can never use the Ace twice). For a
+  // plain straight the choice of which duplicate fills a rank is irrelevant to
+  // legality and strength, so one card per value is enough — except that an
+  // all-one-suit pick would classify as a ROYAL straight, so a mixed-suit pick
+  // is preferred when one exists. Royal straights are then enumerated
+  // explicitly, per suit, where the suit choice does matter.
+  for (const groups of enumerateStraightWindows(nj)) {
+    tryAdd(selectStraightCards(groups, requireCard));
+  }
+  for (const suit of STRAIGHT_SUITS) {
+    const suited = nj.filter((c) => c.suit === suit);
+    if (suited.length < STRAIGHT_MIN_LEN) continue;
+    for (const groups of enumerateStraightWindows(suited)) {
+      tryAdd(selectStraightCards(groups, requireCard));
     }
   }
 
-  const njSortedLow = [...nj].sort((a, b) => {
-    const va = getStraightFaceValue(a.rank, false) ?? 0;
-    const vb = getStraightFaceValue(b.rank, false) ?? 0;
-    return va - vb;
-  });
-  const njSortedHigh = [...nj].sort((a, b) => {
-    const va = getStraightFaceValue(a.rank, true) ?? 0;
-    const vb = getStraightFaceValue(b.rank, true) ?? 0;
-    return va - vb;
-  });
-  enumStraights(njSortedLow);
-  enumStraights(njSortedHigh);
-
   return plays;
+}
+
+const STRAIGHT_SUITS: Suit[] = ["hearts", "diamonds", "clubs", "spades"];
+const STRAIGHT_MIN_VALUE = 1; // Ace low
+const STRAIGHT_MAX_VALUE = 14; // Ace high
+
+/**
+ * Buckets non-joker cards by straight face value. The Ace is filed under both
+ * 1 (low) and 14 (high) so both orientations are reachable from one map.
+ */
+function bucketByStraightValue(cards: Card[]): Map<number, Card[]> {
+  const byValue = new Map<number, Card[]>();
+  const push = (value: number, card: Card) => {
+    const group = byValue.get(value);
+    if (group) group.push(card);
+    else byValue.set(value, [card]);
+  };
+  for (const card of cards) {
+    if (card.isJoker) continue;
+    const low = getStraightFaceValue(card.rank, false);
+    if (low !== null) push(low, card);
+    if (card.rank === "A") push(STRAIGHT_MAX_VALUE, card);
+  }
+  return byValue;
+}
+
+/**
+ * Every contiguous run of 5..13 straight positions that the given cards can
+ * fill, yielded as the list of candidate cards per position.
+ *
+ * At most 14 starts x 9 lengths = 126 windows, so this stays far below a
+ * millisecond even for a 27-card two-player hand.
+ */
+function* enumerateStraightWindows(cards: Card[]): Generator<Card[][]> {
+  const byValue = bucketByStraightValue(cards);
+  for (let start = STRAIGHT_MIN_VALUE; start <= STRAIGHT_MAX_VALUE; start++) {
+    if (!byValue.has(start)) continue;
+    const run: Card[][] = [];
+    for (let value = start; value <= STRAIGHT_MAX_VALUE; value++) {
+      const group = byValue.get(value);
+      if (!group) break;
+      run.push(group);
+      if (run.length > STRAIGHT_MAX_LEN) break;
+      if (run.length >= STRAIGHT_MIN_LEN) yield [...run];
+    }
+  }
+}
+
+/**
+ * Picks one card per sequence position. `requireCard` (the forced 3♠ opening)
+ * wins its position outright. Otherwise a mixed-suit selection is preferred so
+ * the play is a plain straight; the all-one-suit variants are produced by the
+ * per-suit royal pass instead.
+ */
+function selectStraightCards(groups: Card[][], requireCard?: Card): Card[] {
+  const picked = groups.map((group) => {
+    if (requireCard) {
+      const forced = group.find((c) => c.id === requireCard.id);
+      if (forced) return forced;
+    }
+    return group[0];
+  });
+
+  const suit = picked[0].suit;
+  if (picked.every((c) => c.suit === suit)) {
+    for (let i = 0; i < groups.length; i++) {
+      if (requireCard && picked[i].id === requireCard.id) continue;
+      const alt = groups[i].find((c) => c.suit !== suit);
+      if (alt) {
+        picked[i] = alt;
+        break;
+      }
+    }
+  }
+  return picked;
 }
 
 // ─── AI ────────────────────────────────────────────────────────────────────────
@@ -523,6 +645,33 @@ export function aiChoosePlay(
 
 // ─── Game state processing ────────────────────────────────────────────────────
 
+/**
+ * Fills the remaining placements when a hand ends with players still holding
+ * cards. Every seat must end up in `rankings` — it is what the scoreboard
+ * awards points from and what the stats writer records a game from, so a seat
+ * missing from it is a player who silently played no game at all.
+ *
+ * Order among the unfinished seats is not something the sources specify (they
+ * only describe the hand ending), so the closest to finishing — fewest cards
+ * left, seat order as a stable tiebreak — takes the better position. In teams
+ * mode the remaining seats are partners on the same pair, so this ordering
+ * never changes the team total; it only decides which individual placement
+ * each of them records.
+ *
+ * Mutates `state` in place — callers already hold a fresh clone.
+ */
+function assignRemainingPlacements(state: GameState): void {
+  const remaining = state.players
+    .map((p, seat) => ({ p, seat }))
+    .filter(({ p }) => p.hand.length > 0 && p.finishPosition === undefined)
+    .sort((a, b) => a.p.hand.length - b.p.hand.length || a.seat - b.seat);
+
+  for (const { p } of remaining) {
+    p.finishPosition = state.rankings.length + 1;
+    state.rankings.push(p.id);
+  }
+}
+
 export function processPlay(state: GameState, combination: Combination): GameState {
   const newState = deepCloneState(state);
   const player = newState.players[newState.currentTurnIndex];
@@ -557,16 +706,18 @@ export function processPlay(state: GameState, combination: Combination): GameSta
           (p) => p.hand.length > 0 && p.team !== winnerTeam
         ).length === 0
       ) {
+        // The hand is decided, but the losing pair is still owed its placement
+        // points (RULES.md §11/§12: both partners' finishing positions count).
+        // Every seat must reach `rankings` — the stats writer skips anyone
+        // absent from it.
+        assignRemainingPlacements(newState);
         newState.gameOver = true;
         return newState;
       }
     }
 
     if (activePlayers.length <= 1) {
-      if (activePlayers.length === 1) {
-        activePlayers[0].finishPosition = newState.rankings.length + 1;
-        newState.rankings.push(activePlayers[0].id);
-      }
+      assignRemainingPlacements(newState);
       newState.gameOver = true;
       return newState;
     }
@@ -577,13 +728,27 @@ export function processPlay(state: GameState, combination: Combination): GameSta
 }
 
 export function processPass(state: GameState): GameState {
+  // A player leading a new round must play something — passing is not a legal
+  // move for them. The engine is the server-authoritative path, so it refuses
+  // here rather than relying on the UI. State is returned untouched.
+  if (state.lastPlayedCombination === null) return state;
+
   const newState = deepCloneState(state);
   newState.passCount += 1;
 
-  const activePlayers = newState.players.filter((p) => p.hand.length > 0);
-  const activeCount = activePlayers.length;
+  // The round closes once every OTHER player still holding cards has passed
+  // consecutively. If the player who made the last play has already gone out
+  // they are no longer among the active players, so every remaining active
+  // player must be given a chance to answer — hence the +1 in that case.
+  const activeCount = newState.players.filter((p) => p.hand.length > 0).length;
+  const lastPlayer = newState.players[newState.lastPlayedBy];
+  const lastPlayerStillActive = !!lastPlayer && lastPlayer.hand.length > 0;
+  const passesNeeded = Math.max(
+    1,
+    lastPlayerStillActive ? activeCount - 1 : activeCount
+  );
 
-  if (newState.passCount >= activeCount - 1) {
+  if (newState.passCount >= passesNeeded) {
     newState.lastPlayedCombination = null;
     newState.passCount = 0;
     newState.roundWinner = newState.lastPlayedBy;
@@ -746,7 +911,11 @@ export function processExchangeChoice(state: GameState, cardId: string): GameSta
   const cardIdx = winnerHand.findIndex((c) => c.id === cardId);
   if (cardIdx < 0) return state;
   const card = winnerHand[cardIdx];
-  if (!EXCHANGE_VALID_RANKS.includes(card.rank)) return state;
+  // Validate against the same list the UI offers, so the fallback below can
+  // never leave the winner with no legal choice (which froze the table).
+  if (!getValidGivebackCards(winnerHand).some((c) => c.id === card.id)) {
+    return state;
+  }
 
   newState.players[winnerIdx].hand = winnerHand.filter((_, i) => i !== cardIdx);
   newState.players[loserIdx].hand = sortHand([...newState.players[loserIdx].hand, card]);
@@ -756,8 +925,26 @@ export function processExchangeChoice(state: GameState, cardId: string): GameSta
   return newState;
 }
 
+/**
+ * Cards the round winner may hand back to the loser.
+ *
+ * Primary rule (canonical): any card ranked 3 through 10.
+ * Documented fallback: a hand can legitimately contain no card in 3-10 at all
+ * (e.g. all face cards, aces, 2s and jokers). Returning [] there deadlocked the
+ * exchange — every choice was rejected behind an undismissable overlay — so in
+ * that case the winner's single lowest card is the valid giveback.
+ */
+/** The card an AI gives back: the weakest legal choice, or the lowest card in
+ *  hand when nothing is in the 3-10 range. Never undefined for a non-empty hand. */
+export function pickGivebackCard(hand: Card[]): Card | undefined {
+  return sortHand(getValidGivebackCards(hand))[0];
+}
+
 export function getValidGivebackCards(hand: Card[]): Card[] {
-  return hand.filter((c) => EXCHANGE_VALID_RANKS.includes(c.rank));
+  const inRange = hand.filter((c) => EXCHANGE_VALID_RANKS.includes(c.rank));
+  if (inRange.length > 0) return inRange;
+  if (hand.length === 0) return [];
+  return [sortHand(hand)[0]];
 }
 
 export function loserHasBothJokers(hand: Card[]): boolean {
@@ -816,4 +1003,193 @@ export function initializeGame(
     startCard,
     startReason: { type: "start_card", card: startCard, playerIdx: startIdx },
   };
+}
+
+// ─── Match scoring ────────────────────────────────────────────────────────────
+// Pure, side-effect-free primitives. The server owns the cumulative totals and
+// the persistence; this module only says what a hand is worth and whether the
+// match is over.
+
+/**
+ * Match point targets, in escalation order. The match is won by the first
+ * player to reach the current target; if two or more reach it in the same hand
+ * the target escalates to the next entry. 51 is the last one — a tie there is
+ * a draw.
+ */
+export const MATCH_TARGETS: readonly number[] = [21, 31, 41, 51];
+
+export interface MatchResolution {
+  /** Match winner(s). Empty when the target merely escalated. */
+  winners: string[];
+  /** The new target to keep playing to, or null when the match has ended. */
+  newTarget: number | null;
+  /** True when the match ended tied at the final target. */
+  isDraw: boolean;
+}
+
+/**
+ * Points awarded for one hand. 4 players: 1st = 3, 2nd = 2, 3rd = 1, last = 0.
+ * Generalised to N players as N-1 down to 0.
+ *
+ * `rankings` is the finishing order (GameState.rankings), best first. Players
+ * absent from it score 0 and are not present in the result.
+ */
+export function scoreHand(
+  rankings: string[],
+  playerCount: number
+): Record<string, number> {
+  const scores: Record<string, number> = {};
+  for (let i = 0; i < rankings.length; i++) {
+    scores[rankings[i]] = Math.max(playerCount - 1 - i, 0);
+  }
+  return scores;
+}
+
+/** Adds a hand's points onto the running totals. Returns a new object. */
+export function addHandScores(
+  cumulative: Record<string, number>,
+  handScores: Record<string, number>
+): Record<string, number> {
+  const merged: Record<string, number> = { ...cumulative };
+  for (const [id, points] of Object.entries(handScores)) {
+    merged[id] = (merged[id] ?? 0) + points;
+  }
+  return merged;
+}
+
+/** The target that follows `target`, or null when `target` is the last one. */
+export function nextMatchTarget(target: number): number | null {
+  return MATCH_TARGETS.find((t) => t > target) ?? null;
+}
+
+/**
+ * Decides the state of the match after a hand has been scored.
+ *
+ * - Nobody at the target yet          → null (keep playing to the same target)
+ * - Exactly one player at the target  → { winners: [id], newTarget: null }
+ * - Two or more at the target         → escalate: { winners: [], newTarget }
+ * - Two or more at the final target   → { winners: [tied ids], isDraw: true }
+ */
+export function resolveMatch(
+  cumulative: Record<string, number>,
+  target: number
+): MatchResolution | null {
+  const reached = Object.entries(cumulative)
+    .filter(([, points]) => points >= target)
+    .map(([id]) => id);
+
+  if (reached.length === 0) return null;
+  if (reached.length === 1) {
+    return { winners: reached, newTarget: null, isDraw: false };
+  }
+
+  const escalated = nextMatchTarget(target);
+  if (escalated !== null) {
+    return { winners: [], newTarget: escalated, isDraw: false };
+  }
+
+  // Final target reached by more than one player — the match is a draw.
+  const best = Math.max(...reached.map((id) => cumulative[id]));
+  return {
+    winners: reached.filter((id) => cumulative[id] === best),
+    newTarget: null,
+    isDraw: true,
+  };
+}
+
+/**
+ * Sums each partner's cumulative points onto their team.
+ *
+ * `teamOfKey` maps a scoring key (a userId) to its team id. Keys absent from
+ * it are ignored entirely — that is how vacated/bot seats stay out of a team
+ * total, mirroring `excludeBotSeats` on the per-hand path.
+ */
+export function aggregateTeamScores(
+  cumulative: Record<string, number>,
+  teamOfKey: Record<string, string>
+): Record<string, number> {
+  const totals: Record<string, number> = {};
+  for (const [key, team] of Object.entries(teamOfKey)) {
+    totals[team] = (totals[team] ?? 0) + (cumulative[key] ?? 0);
+  }
+  return totals;
+}
+
+/**
+ * Teams-mode match resolution. RULES.md §11: the two partners' placement
+ * points are **summed** and the pair races to the target — the match is not
+ * decided per seat. Resolving per seat meant a pair could hold 20+20 points
+ * and still not have won, and that when one partner did cross the line alone
+ * only that one seat was reported as a winner, denying the other half of the
+ * winning team its `matchWon` credit.
+ *
+ * Escalation and the draw rule are unchanged — they just apply to team totals
+ * instead of individual ones. Winners are expanded back to every member key of
+ * each winning team, so both partners are reported.
+ */
+export function resolveTeamMatch(
+  cumulative: Record<string, number>,
+  teamOfKey: Record<string, string>,
+  target: number
+): MatchResolution | null {
+  const totals = aggregateTeamScores(cumulative, teamOfKey);
+  const resolution = resolveMatch(totals, target);
+  if (!resolution) return null;
+
+  const winningTeams = new Set(resolution.winners);
+  return {
+    ...resolution,
+    winners: Object.entries(teamOfKey)
+      .filter(([, team]) => winningTeams.has(team))
+      .map(([key]) => key),
+  };
+}
+
+// ─── Match length and the rematch question ────────────────────────────────────
+
+/**
+ * How long a game runs.
+ *
+ * - `match` — the canonical Murlan match (docs/RULES.md §12): first to
+ *   `MATCH_TARGETS[0]`, escalating on a tie at the target.
+ * - `single` — one manche and done.
+ */
+export type MatchLength = "match" | "single";
+
+/** Cards left in the shortest hand at or below which a manche counts as closing. */
+export const CLOSING_HAND_CARDS = 5;
+
+/**
+ * Whether the game is close enough to over to be worth asking the table
+ * whether they want another one — true once the current manche is nearly
+ * played out *and* it can be the last one, either because the game is a
+ * single manche or because the leader can reach the target from it.
+ */
+export function matchIsClosing(args: {
+  length: MatchLength;
+  target: number;
+  cumulative: Record<string, number>;
+  handCounts: number[];
+  playerCount: number;
+}): boolean {
+  const { length, target, cumulative, handCounts, playerCount } = args;
+  if (handCounts.length === 0) return false;
+  if (Math.min(...handCounts) > CLOSING_HAND_CARDS) return false;
+  if (length === "single") return true;
+  const leader = Math.max(0, ...Object.values(cumulative));
+  return leader + (playerCount - 1) >= target;
+}
+
+/**
+ * How a bot answers the rematch question. Deterministic rather than random so
+ * a table's answer is reproducible: a bot within reach of the leader wants
+ * another game, a thoroughly beaten one does not.
+ */
+export function botWantsRematch(botScore: number, leaderScore: number): boolean {
+  return leaderScore === 0 || botScore * 2 >= leaderScore;
+}
+
+/** Strictly more than half. A table split down the middle stops. */
+export function isMajority(yesCount: number, seatCount: number): boolean {
+  return yesCount * 2 > seatCount;
 }

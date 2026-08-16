@@ -1,0 +1,268 @@
+# Murlan — Production & App Store Readiness Brief
+
+> This document is a rewrite of an informal request ("make it perfect and App Store ready")
+> into an actionable engineering and product brief. It is the source of truth for scope.
+
+---
+
+## 1. Product vision
+
+**Murlan** is a traditional Albanian shedding-type card game. The app is the definitive
+digital version of it: fast, beautiful, fair, and playable both solo against credible AI
+and online against friends and strangers.
+
+Today it is a competent Replit prototype with a working game engine, real-time multiplayer,
+friends, and a coherent visual identity. It is **not** production software: its trust
+boundaries are broken, its failure modes are unhandled, it has no tests, and it carries
+store-rejection risks.
+
+The goal is not "more features". The goal is: **a player can install this from the App Store,
+understand it in 60 seconds, play a full game without a single desync, disconnect, or
+exploit — and want to come back tomorrow.**
+
+Three pillars, in priority order:
+
+1. **Trustworthy** — nobody can see another player's hand, act as another player, or
+   deadlock a table. The server is the only authority. Bugs that lose a game in progress
+   are treated as data loss.
+2. **Legible** — a person who has never heard of Murlan can learn it inside the app.
+   The rules are documented, consistent between code and UI, and researched against real
+   sources rather than inferred from the existing implementation.
+3. **Alive** — the app has a reason to be opened again tomorrow: progression, presence,
+   and a reason to invite a friend.
+
+---
+
+## 2. Current state — verified assessment
+
+Read directly from source, not inferred.
+
+### Blocking defects (security / correctness)
+
+| # | Location | Defect | Consequence |
+|---|---|---|---|
+| B1 | `server/socket.ts:225` | Socket auth falls back to `handshake.auth.userId` with no proof of ownership | **Any client can connect as any user** — read their hand, play their cards, read their friend list. Full impersonation. |
+| B2 | `server/routes.ts:214,236` | `acceptFriend` / `declineFriendRequest` never verify the caller owns the request | IDOR — any user can accept or destroy any friend request by id |
+| B3 | `server/storage.ts:44` | `deleteUser` omits `room_players`, which has an FK to `users.id` | **Account deletion throws.** Apple Guideline 5.1.1(v) requires working in-app account deletion |
+| B4 | `server/socket.ts:942-981` | Disconnect timeout deletes the seat from `playerMap` but leaves the hand in the game | When that seat's turn arrives, no user maps to it and no AFK timer is armed → **the table deadlocks permanently** |
+| B5 | `server/socket.ts:807` | DB rehydration rebuilds seats as `[0..n]` from a positional array | After anyone leaves, seats are non-contiguous → **players are dealt each other's hands on rejoin** |
+| B6 | `server/socket.ts:579,655` | `exchangePhase.active` is never checked in `game:play` / `game:pass` | The round winner can play or pass while owing an exchange card |
+
+### Correctness defects (gameplay)
+
+| # | Location | Defect | Consequence |
+|---|---|---|---|
+| C1 | `lib/gameEngine.ts:395` | `enumStraights` takes contiguous windows of a rank-sorted array; duplicate ranks poison the window | With `3,4,5,5,6,7` the engine never finds `3-4-5-6-7`. AI plays worse than it should and "you have no valid move" is sometimes a lie |
+| C2 | `lib/gameEngine.ts:397` | Straight length silently capped at 9 cards (`hi - lo <= 8`) | Undocumented arbitrary limit |
+| C3 | `lib/gameEngine.ts:103` | `2` is assigned face value 2 for straights while ranking above Ace everywhere else | `A-2-3-4-5` is currently a legal straight. **Needs rules research to confirm or reject** |
+| C4 | `server/socket.ts:174` | `persistGameState` hardcodes `gameMode: "free_for_all"` | A teams game restored after a restart becomes free-for-all |
+| C5 | `server/socket.ts:629` | `cumulativeScores` is keyed by engine ids (`player_0`), labelled as usernames | Scoreboard shows wrong names |
+| C6 | `server/socket.ts:520,539` | `activeGames.delete()` immediately precedes the `activeGames.get()` that reads prior scores | Dead code — cumulative scores reset every game |
+| C7 | `server/socket.ts:128` | AFK auto-play hardcodes `3♠` instead of reading `gameState.startCard` | Wrong forced opening when `3♠` was not dealt |
+| C8 | `server/storage.ts:39` | Room codes from `Math.random().toString(36)` — short, predictable, collision-prone | Room-guessing; occasional sub-6-character codes |
+| C9 | `server/socket.ts:349` | Seat index assigned as `players.length` with no unique constraint | Simultaneous joins collide on the same seat |
+
+### Structural debt
+
+- **~2,400 lines duplicated** between `app/game.tsx` (946) and `app/(online)/game.tsx` (1,465).
+  `CLAUDE.md` documents this as a manual-sync hazard. It is the single largest source of
+  future divergence bugs and must be unified behind one presentational layer.
+- **Zero tests.** For a rules engine with combination hierarchies, bombs, jokers and an
+  exchange phase, this is the highest-leverage gap in the entire codebase.
+- **11 unused dependencies**, including `expo-location` and `expo-image-picker` — these
+  inject permission declarations into the binary and trigger App Store privacy review for
+  capabilities the app does not have.
+- **`expo-av` is deprecated** and removed in SDK 55; migration to `expo-audio` is pending.
+- `Math.random()` shuffle — acceptable offline, wrong for competitive online play.
+- One live TypeScript error (`server/index.ts:47`). Otherwise the type surface is clean.
+- Two parallel colour systems: `lib/theme.ts` (canonical) and `constants/colors.ts` (legacy).
+
+### Store readiness gaps
+
+- No `eas.json`; no native build pipeline.
+- No `ios.buildNumber` / `android.versionCode`; no `runtimeVersion`.
+- No privacy policy, no support URL, no App Privacy questionnaire answers.
+- No `NSUserTrackingUsageDescription` or usage strings for the linked-but-unused libraries.
+- No onboarding — a reviewer who has never played Murlan cannot evaluate the app.
+- Italian is hardcoded throughout; no localization layer.
+- **To verify:** whether offline single-player is gated behind account creation. If it is,
+  that is a direct Guideline 5.1.1(v) rejection.
+
+---
+
+## 3. Decisions taken
+
+| Decision | Choice |
+|---|---|
+| Scope | Harden and re-architect the broken parts. Not a rewrite — the animation and layout work is real and worth preserving. |
+| Deployment | Replit stays the backend, unchanged. Add EAS Cloud for iOS/Android binaries pointing at the Replit API. |
+| Socket auth | Short-lived single-use signed ticket, minted by an authenticated REST endpoint, consumed in the handshake. No new dependencies. |
+| Game rules | Research Murlan rules from real sources, consolidate into one documented specification, reconcile code and UI against it. Escalate genuine ambiguities rather than guessing. |
+
+### 3.1 Rule decisions (taken after research — see `docs/RULES-RESEARCH.md`)
+
+Research consulted 18 sources including pagat.com, catsatcards.com, visixplay.com (IT/EN/AL),
+murlanarena.com, murlan.app, and the App Store / Play Store listings of the two largest
+existing Murlan apps.
+
+| Rule | Decision | Rationale |
+|---|---|---|
+| **The deal** | **Deal the entire 54-card deck.** 4p = 14/14/13/13, 3p = 18 each, 2p = 27 each. | Every source says the whole deck is dealt. The current 13-per-player deal discards 2 random cards, so ~7% of games contain no Joker and ~4% no 3♠. This is the root cause of the fake "lowest spade" opening fallback, which can then be deleted. |
+| **Royal straight** | **Keep as core, beating bombs. No engine change.** | Traditional Albanian sources have no flush at all, but both major modern implementations (murlanarena, murlan.app) have it and rank it above bombs — which is exactly what the engine already does. Only the documentation changes. |
+| **Royal straight comparison** | Beating royal straight must have the **same card count**, consistent with normal straights. | Matches existing engine behaviour; `app/rules.tsx:90` currently implies otherwise. |
+| **Teams win condition** | **Play the hand out and sum both partners' placement points.** | Matches current engine behaviour and the only source covering team play. `app/rules.tsx:70` is wrong and changes. |
+| **Match target** | **Add it: 3/2/1/0 per hand, first to 21, escalating 31 → 41 → 51 on ties.** | The most consistently attested rule across every source, and completely absent from the app today. Turns loose repeated hands into an actual match. |
+| **2 in straights** | **Keep — the engine is already correct.** `A-2-3-4-5` and `2-3-4-5-6` are legal; the 2 is low *only* inside a sequence. | Confirmed canonical by catsatcards and visixplay. No change. |
+| **Suit tiebreaks** | **None. The engine is correct; `CLAUDE.md` is wrong** and must be corrected. | No source assigns any suit order. Equal ranks are equal strength, so a same-rank answer is simply illegal. |
+| **Passing** | Passing does **not** lock a player out of the round (consecutive-pass counting). Engine is correct; state it explicitly on the rules screen. | Players arriving from Tien Len assume the opposite. |
+| **Straight length** | 5 to 13 cards, each rank at most once, Ace picks one end. **Remove the arbitrary 9-card cap.** | No source imposes a maximum. |
+
+---
+
+## 4. Workstreams
+
+**W1 — Trust & authority.** Kill the impersonation vector. Ticket-based socket auth.
+Authorize every socket event against seat ownership and phase. Fix the IDOR routes.
+Rate-limit socket events. Server-side CSPRNG shuffle.
+
+**W2 — Game integrity.** Research and document the canonical rule set. Rewrite the
+valid-play enumerator to be provably complete. Fix the exchange-phase gaps, the
+persistence round-trip, and scoring identity. Property-based tests over the engine.
+
+**W3 — Resilience.** Make disconnect, rejoin, seat vacancy, host migration, and server
+restart survivable states rather than deadlocks. A vacated seat must be resolvable —
+either bot takeover or forfeit — never a hang.
+
+**W4 — Client architecture.** Collapse the offline/online game screen duplication into a
+single presentational component driven by a common state interface. Delete the legacy
+colour constants. Migrate `expo-av` → `expo-audio`. Remove the 11 unused dependencies.
+
+**W5 — Test & CI.** Engine unit tests, rules property tests, server integration tests over
+a real socket, and a CI pipeline that runs typecheck, lint, and tests on every push.
+
+**W6 — Store readiness.** `eas.json`, versioning, privacy policy, App Privacy answers,
+store copy and screenshots, account deletion verified working, offline play verified
+ungated.
+
+**W7 — Product & design.** Onboarding, localization, accessibility, and the retention
+features selected in §5.
+
+**W8 — Documentation coherence.** Every `.md` file in the repo states the truth, states it
+once, and does not contradict any other. See §8.
+
+---
+
+## 8. Documentation architecture
+
+The repo currently carries four overlapping documents that repeat and contradict each other.
+Each document gets exactly one responsibility, and cross-references instead of restating.
+
+### Ownership map
+
+| Document | Owns — and nothing else | Must not contain |
+|---|---|---|
+| `CLAUDE.md` | Agent operating instructions: invariants, how to work here, pointers to the docs below | Product description, architecture prose, rule text |
+| `docs/ARCHITECTURE.md` *(new)* | How the system is built: layers, data flow, socket lifecycle, persistence, auth | Rules, scope, decisions |
+| `docs/RULES.md` ✅ | The canonical rule specification and its sources — **the only place rules live** | Implementation detail, scope |
+| `docs/BRIEF.md` (this file) | Scope, decisions and their rationale, workstreams, definition of done | Rule text, architecture prose |
+| `docs/PLAN.md` *(new)* | The ordered remediation plan and its current status | Anything not actionable |
+| `replit.md` ✅ | Replit-specific run/deploy notes only — how to start it, what env vars, what not to touch | Everything that duplicates `CLAUDE.md` |
+| `docs/superpowers/specs/*` ✅ | Historical specs, each stamped with its outcome | Anything presented as pending when it has shipped |
+
+✅ = done. Remaining: `CLAUDE.md` still needs its product/architecture prose separated out
+into `docs/ARCHITECTURE.md`, and line 127's unsourced "suit also matters for tiebreaks"
+claim still needs correcting (a first correction was reverted — awaiting confirmation that
+the revert was accidental before reapplying).
+
+### Contradictions to fix (verified, not assumed)
+
+| Where | Says | Reality |
+|---|---|---|
+| `replit.md:11` | "Implements all official Murlan rules" | The deal is wrong, the match target is absent, and the straight enumerator misses legal plays |
+| `replit.md:15` | "12 bundled **WAV** sound effects" | They are `.mp3` files |
+| `replit.md:88` | Lists `expo-crypto` as a dependency | Not in `package.json` |
+| `replit.md:62` | "Server Authority … ensuring fair play" | The socket handshake accepts an unverified `userId`; there is no fair play until W1 lands |
+| `replit.md:53` | "Existing screens still reference `constants/colors.ts` — do not retroactively replace" | This instruction actively preserves a bug: the legacy file's suit colours are the old red/black pair, so any screen importing it silently loses the colourblind-safe palette. The file is to be deleted, not preserved. |
+| `replit.md:46` vs `constants/colors.ts:2` vs `app.json` splash | `#031008` / `#061410` / `#061410` | Three different background colours; the launch seam is visible |
+| `replit.md:21-26` "MUST NOT CHANGE" | Game rules and exchange phase are frozen | Superseded by the decisions in §3.1, which change the deal and add a match target |
+| `CLAUDE.md` ↔ `replit.md` | Both describe the tech stack, design system, disconnect handling, notification banner and friends list | Same content twice, already drifting apart |
+| `docs/superpowers/specs/2026-06-04-…-visual-upgrade-design.md` | Reads as a pending design spec | Verified **already implemented** — the ornate SVG card back, gold selected-glow ring, `-14px` spring lift, face-card gold border and MP3 web audio via `decodeAudioData` are all in the code. To be stamped as shipped. |
+| `docs/BRIEF.md` §3.1 ↔ `docs/RULES.md` | Both carry rule content | `BRIEF` keeps the *decisions*; `RULES.md` keeps the *rules*. |
+
+### Standing rule
+
+A change to behaviour is not complete until every document that describes that behaviour has
+been updated in the same change. Docs are part of the diff, not a follow-up.
+
+---
+
+## 5. Proposed features — for your selection
+
+None of these are committed. They are candidates, ordered by my estimate of impact per
+unit of work.
+
+### Tier 1 — I would build these regardless
+
+- **Interactive tutorial.** Murlan is niche. A guided first game that teaches combinations,
+  bombs, and the exchange phase is simultaneously the biggest retention lever and the thing
+  that makes the app reviewable by someone who has never heard of it.
+- **Localization: Italian, Albanian, English.** The player base is Italian, the game is
+  Albanian, and the App Store is global. Currently every string is hardcoded Italian.
+- **"Your turn" push notifications.** Transforms online play from "both must be present"
+  into asynchronous play. Single highest-impact retention feature for a turn-based game.
+- **Rejoin-in-progress UX.** Right now a disconnect is a cliff. It should be a speed bump.
+
+### Tier 2 — strong candidates
+
+- **Ranked ladder with a visible rating.** Gives skilled players a reason to return.
+  Requires the fairness work in W1/W2 to be honest.
+- **Match history and hand replay.** Post-game review of what everyone held. Cheap to build
+  on top of the persistence layer that already exists; disproportionately loved by card players.
+- **Achievements and daily streaks.** Standard, effective, low risk.
+- **Bot personalities.** Named opponents with distinct play styles rather than
+  easy/medium/hard. Makes offline play feel like a game rather than a practice mode.
+- **Spectator mode.** Watch a friend's table. Nearly free given the existing broadcast
+  architecture.
+
+### Tier 3 — worth discussing
+
+- **Cosmetics: card backs and table felts.** The natural monetization surface if you ever
+  want one, and non-invasive. Does not require IAP to be useful.
+- **Tournaments.** Bracketed multi-table events. Significant work; high ceiling.
+- **Colourblind-safe suit differentiation.** Accessibility, and genuinely improves legibility
+  for everyone at small card sizes.
+- **Haptic and sound redesign.** The assets exist; the choreography does not.
+
+### Explicitly out of scope unless you say otherwise
+
+Real-money play, ads, social feeds, chat with free text (moderation burden), cross-promotion.
+
+---
+
+## 6. Definition of done
+
+The work is complete when all of the following hold:
+
+1. `npx tsc --noEmit` and `npx expo lint` are clean.
+2. The engine test suite covers every combination type, the exchange phase, joker rules,
+   and the win condition — including property tests asserting that the enumerator finds
+   every legal play in randomly generated hands.
+3. A player cannot, by any client-side manipulation, act as another player, observe a hand
+   that is not theirs, or place the table in an unrecoverable state.
+4. Killing and restarting the server mid-game restores every table with correct seats,
+   hands, mode, and scores.
+5. Account deletion succeeds and removes every row referencing the user.
+6. Offline single-player is reachable without an account.
+7. `eas build` produces a submittable iOS and Android binary.
+8. The Replit Run button still starts the app with no additional setup.
+9. Every rule enforced by the engine matches the documented rule set and the in-app rules screen.
+10. Every `.md` file in the repo reflects the shipped state, owns its topic per §8, and
+    contradicts no other document. Verified by re-reading them against the code, not by assertion.
+
+---
+
+## 7. Working method
+
+Parallel specialist agents, each owning one workstream, coordinated against this brief.
+Every change is verified by running it — no claim of completion without evidence.
+Findings that alter this brief are escalated rather than absorbed silently.

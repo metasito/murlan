@@ -14,15 +14,16 @@ import Animated, {
   withSpring,
   withTiming,
   withDelay,
-  withSequence,
+  cancelAnimation,
 } from "react-native-reanimated";
-import * as Haptics from "expo-haptics";
+import { hapticMedium } from "@/lib/haptics";
 import { Ionicons } from "@expo/vector-icons";
 import type { ExchangePhase, Card } from "@/lib/gameEngine";
 import { cardStrength, getValidGivebackCards } from "@/lib/gameEngine";
 import { CardView } from "@/components/CardView";
-import { Colors } from '@/lib/theme';
-import { Shadow } from "@/lib/theme";
+import { Colors, FontSize, Highlight, Motion, Radius, Shadow, Spacing } from '@/lib/theme';
+import { usePrefersReducedMotion } from "@/lib/accessibility";
+import { useTranslation } from "@/lib/i18n";
 
 interface ExchangeModalProps {
   phase: ExchangePhase;
@@ -32,20 +33,22 @@ interface ExchangeModalProps {
   onSelectCard: (cardId: string) => void;
 }
 
-function AnimatedCard({ card, delay = 0 }: { card: Card; delay?: number }) {
-  const ty = useSharedValue(-30);
-  const opacity = useSharedValue(0);
-  const scale = useSharedValue(0.8);
+function AnimatedCard({ card, delay = 0, reduceMotion }: { card: Card; delay?: number; reduceMotion: boolean }) {
+  const ty = useSharedValue(reduceMotion ? 0 : -30);
+  const rot = useSharedValue(reduceMotion ? 0 : -8);
+  const opacity = useSharedValue(reduceMotion ? 1 : 0);
 
   useEffect(() => {
-    ty.value = withDelay(delay, withSpring(0, { damping: 12, stiffness: 200 }));
-    opacity.value = withDelay(delay, withTiming(1, { duration: 250 }));
-    scale.value = withDelay(delay, withSpring(1, { damping: 10, stiffness: 180 }));
+    if (reduceMotion) return;
+    ty.value = withDelay(delay, withSpring(0, Motion.spring.land));
+    rot.value = withDelay(delay, withSpring(0, Motion.spring.land));
+    opacity.value = withDelay(delay, withTiming(1, { duration: Motion.duration.moderate }));
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- one-shot mount animation; ty/rot/opacity are stable shared values, delay/reduceMotion are fixed per instance
   }, []);
 
   const anim = useAnimatedStyle(() => ({
     opacity: opacity.value,
-    transform: [{ translateY: ty.value }, { scale: scale.value }],
+    transform: [{ translateY: ty.value }, { rotate: `${rot.value}deg` }],
   }));
 
   return (
@@ -55,38 +58,65 @@ function AnimatedCard({ card, delay = 0 }: { card: Card; delay?: number }) {
   );
 }
 
+const PICK_LIFT = -10;
+
 function SelectableCard({
   card,
   onPress,
+  reduceMotion,
 }: {
   card: Card;
   onPress: () => void;
+  reduceMotion: boolean;
 }) {
-  const scale = useSharedValue(1);
-  const opacity = useSharedValue(1);
+  // Lift and tip rather than scale: this wraps a CardView, whose rank
+  // characters are rasterised text and go soft the moment they are resampled.
+  const lift = useSharedValue(0);
+  const glow = useSharedValue(0);
+
+  useEffect(
+    () => () => {
+      cancelAnimation(lift);
+      cancelAnimation(glow);
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- unmount cleanup only; both are stable shared values
+    []
+  );
+
+  function setPress(down: boolean) {
+    if (reduceMotion) {
+      glow.value = down ? 1 : 0;
+      return;
+    }
+    lift.value = withSpring(down ? 1 : 0, down ? Motion.spring.pickup : Motion.spring.land);
+    glow.value = withTiming(down ? 1 : 0, { duration: Motion.duration.fast });
+  }
 
   function handlePress() {
-    scale.value = withSequence(
-      withSpring(0.88, { damping: 8, stiffness: 300 }),
-      withSpring(1, { damping: 10, stiffness: 200 })
-    );
-    opacity.value = withSequence(
-      withTiming(0.7, { duration: 80 }),
-      withTiming(1, { duration: 120 })
-    );
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    hapticMedium();
     onPress();
   }
 
   const anim = useAnimatedStyle(() => ({
-    transform: [{ scale: scale.value }],
-    opacity: opacity.value,
+    transform: [
+      { translateY: lift.value * PICK_LIFT },
+      { rotate: `${lift.value * -3}deg` },
+    ],
   }));
+  const glowStyle = useAnimatedStyle(() => ({ opacity: glow.value }));
 
   return (
-    <Pressable onPress={handlePress}>
-      <Animated.View style={[styles.cardItem, anim]}>
-        <CardView card={card} />
+    <Pressable
+      onPress={handlePress}
+      onPressIn={() => setPress(true)}
+      onPressOut={() => setPress(false)}
+      accessibilityRole="button"
+    >
+      <Animated.View style={anim}>
+        <Animated.View pointerEvents="none" style={[styles.cardGlow, glowStyle]} />
+        <View style={styles.cardItem}>
+          <CardView card={card} />
+        </View>
       </Animated.View>
     </Pressable>
   );
@@ -99,16 +129,21 @@ export function ExchangeModal({
   winnerName,
   onSelectCard,
 }: ExchangeModalProps) {
+  const { t } = useTranslation();
+  const reduceMotion = usePrefersReducedMotion();
+
   const validCards = getValidGivebackCards(winnerHand).sort(
     (a, b) => cardStrength(a) - cardStrength(b)
   );
 
-  const arrowScale = useSharedValue(0.6);
-  const arrowOpacity = useSharedValue(0);
+  const arrowScale = useSharedValue(reduceMotion ? 1 : 0.6);
+  const arrowOpacity = useSharedValue(reduceMotion ? 1 : 0);
 
   useEffect(() => {
+    if (reduceMotion) return;
     arrowScale.value = withDelay(300, withSpring(1, { damping: 12, stiffness: 200 }));
     arrowOpacity.value = withDelay(300, withTiming(1, { duration: 300 }));
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- one-shot mount animation; stable shared values, reduceMotion checked once at mount
   }, []);
 
   const arrowAnim = useAnimatedStyle(() => ({
@@ -118,14 +153,14 @@ export function ExchangeModal({
 
   return (
     <Animated.View
-      entering={FadeIn.duration(280)}
-      exiting={FadeOut.duration(200)}
+      entering={reduceMotion ? undefined : FadeIn.duration(280)}
+      exiting={reduceMotion ? undefined : FadeOut.duration(200)}
       style={styles.overlay}
     >
       <View style={styles.card}>
         <View style={styles.headerRow}>
           <Ionicons name="swap-horizontal" size={22} color={Colors.gold} />
-          <Text style={styles.title}>SCAMBIO DI CARTE</Text>
+          <Text style={styles.title}>{t("exchangeModal.title")}</Text>
         </View>
 
         {/* Winner row — receives card from loser */}
@@ -134,11 +169,11 @@ export function ExchangeModal({
             <Ionicons name="trophy" size={14} color={Colors.gold} />
             <Text style={styles.playerName} numberOfLines={1}>{winnerName}</Text>
             <View style={styles.receivesTag}>
-              <Text style={styles.receivesTagText}>riceve</Text>
+              <Text style={styles.receivesTagText}>{t("exchangeModal.receives")}</Text>
             </View>
           </View>
           <View style={styles.cardSlot}>
-            <AnimatedCard card={phase.cardFromLoser} delay={100} />
+            <AnimatedCard card={phase.cardFromLoser} delay={100} reduceMotion={reduceMotion} />
           </View>
         </View>
 
@@ -156,23 +191,23 @@ export function ExchangeModal({
             <Ionicons name="person" size={14} color={Colors.textSecondary} />
             <Text style={styles.playerName} numberOfLines={1}>{loserName}</Text>
             <View style={[styles.receivesTag, styles.givesTag]}>
-              <Text style={[styles.receivesTagText, styles.givesTagText]}>dà</Text>
+              <Text style={[styles.receivesTagText, styles.givesTagText]}>{t("exchangeModal.gives")}</Text>
             </View>
           </View>
           <View style={styles.cardSlotEmpty}>
-            <Ionicons name="help-circle-outline" size={28} color="rgba(201,168,76,0.3)" />
+            <Ionicons name="help-circle-outline" size={28} color={Colors.goldBorder} />
           </View>
         </View>
 
         <View style={styles.divider} />
 
         <Text style={styles.sub}>
-          Scegli una carta da dare a{" "}
-          <Text style={styles.accent}>{loserName}</Text> (solo 3–10):
+          {t("exchangeModal.subPrefix")}{" "}
+          <Text style={styles.accent}>{loserName}</Text> {t("exchangeModal.subSuffix")}
         </Text>
 
         {validCards.length === 0 ? (
-          <Text style={styles.hint}>Nessuna carta valida da restituire.</Text>
+          <Text style={styles.hint}>{t("exchangeModal.noValidCards")}</Text>
         ) : (
           <ScrollView
             horizontal
@@ -183,13 +218,14 @@ export function ExchangeModal({
               <SelectableCard
                 key={card.id}
                 card={card}
+                reduceMotion={reduceMotion}
                 onPress={() => onSelectCard(card.id)}
               />
             ))}
           </ScrollView>
         )}
 
-        <Text style={styles.hint}>Tocca una carta per darla al perdente</Text>
+        <Text style={styles.hint}>{t("exchangeModal.hint")}</Text>
       </View>
     </Animated.View>
   );
@@ -198,16 +234,16 @@ export function ExchangeModal({
 const styles = StyleSheet.create({
   overlay: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: "rgba(3,16,8,0.92)",
+    backgroundColor: Colors.overlay,
     alignItems: "center",
     justifyContent: "center",
     zIndex: 110,
   },
   card: {
-    backgroundColor: "#0B2A1A",
-    borderRadius: 20,
+    backgroundColor: Colors.feltDark,
+    borderRadius: Radius.lg,
     borderWidth: 2,
-    borderColor: "rgba(201,168,76,0.45)",
+    borderColor: Colors.goldStrong,
     padding: 20,
     alignItems: "center",
     gap: 10,
@@ -218,7 +254,7 @@ const styles = StyleSheet.create({
   headerRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 8,
+    gap: Spacing.sm,
   },
   title: {
     fontFamily: "Rajdhani_700Bold",
@@ -232,11 +268,11 @@ const styles = StyleSheet.create({
     alignItems: "center",
     width: "100%",
     gap: 12,
-    backgroundColor: "rgba(255,255,255,0.03)",
-    borderRadius: 12,
+    backgroundColor: Highlight.faint,
+    borderRadius: Radius.md,
     padding: 10,
     borderWidth: 1,
-    borderColor: "rgba(201,168,76,0.15)",
+    borderColor: Colors.goldMuted,
   },
   playerInfo: {
     flex: 1,
@@ -247,17 +283,17 @@ const styles = StyleSheet.create({
   },
   playerName: {
     fontFamily: "Rajdhani_600SemiBold",
-    fontSize: 13,
+    fontSize: FontSize.sm,
     color: Colors.text,
     flex: 1,
   },
   receivesTag: {
-    backgroundColor: "rgba(201,168,76,0.15)",
+    backgroundColor: Colors.goldMuted,
     borderRadius: 4,
     paddingHorizontal: 5,
     paddingVertical: 2,
     borderWidth: 1,
-    borderColor: "rgba(201,168,76,0.3)",
+    borderColor: Colors.goldBorder,
   },
   receivesTagText: {
     fontFamily: "Inter_500Medium",
@@ -266,8 +302,8 @@ const styles = StyleSheet.create({
     letterSpacing: 0.5,
   },
   givesTag: {
-    backgroundColor: "rgba(255,255,255,0.05)",
-    borderColor: "rgba(255,255,255,0.1)",
+    backgroundColor: Highlight.soft,
+    borderColor: Highlight.clear,
   },
   givesTagText: {
     color: Colors.textSecondary,
@@ -281,9 +317,9 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     width: 52,
     height: 72,
-    borderRadius: 8,
+    borderRadius: Radius.sm,
     borderWidth: 1.5,
-    borderColor: "rgba(201,168,76,0.2)",
+    borderColor: Colors.goldSoft,
     borderStyle: "dashed",
   },
   arrowRow: {
@@ -291,17 +327,17 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: 6,
     width: "100%",
-    paddingHorizontal: 8,
+    paddingHorizontal: Spacing.sm,
   },
   arrowLine: {
     flex: 1,
     height: 1,
-    backgroundColor: "rgba(201,168,76,0.2)",
+    backgroundColor: Colors.goldSoft,
   },
   divider: {
     width: "100%",
     height: 1,
-    backgroundColor: "rgba(201,168,76,0.12)",
+    backgroundColor: Colors.goldMuted,
   },
   sub: {
     fontFamily: "Inter_400Regular",
@@ -316,19 +352,26 @@ const styles = StyleSheet.create({
   },
   cardRow: {
     flexDirection: "row",
-    paddingHorizontal: 4,
+    paddingHorizontal: Spacing.xs,
     gap: 10,
     alignItems: "center",
   },
   cardItem: {
-    borderRadius: 10,
+    borderRadius: Radius.sm + 2,
     borderWidth: 2,
-    borderColor: "rgba(201,168,76,0.3)",
+    borderColor: Colors.goldBorder,
     overflow: "hidden",
+  },
+  cardGlow: {
+    position: "absolute",
+    top: 2, left: 2, right: 2, bottom: 2,
+    borderRadius: Radius.sm,
+    backgroundColor: Colors.gold,
+    ...Shadow.goldSoft,
   },
   hint: {
     fontFamily: "Inter_400Regular",
-    fontSize: 11,
+    fontSize: FontSize.xs,
     color: Colors.textMuted,
     textAlign: "center",
   },

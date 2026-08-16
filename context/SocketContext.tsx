@@ -11,9 +11,13 @@ import React, {
 import { router } from "expo-router";
 import { useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "@/context/AuthContext";
-import { connectSocket, disconnectSocket } from "@/lib/socket";
+import { connectSocket, disconnectSocket, setSocketAuthFailureHandler } from "@/lib/socket";
 import { useNotification } from "@/context/NotificationContext";
+import { t, translateServerPayload, type ServerPayload } from "@/lib/i18n";
 import type { Socket } from "socket.io-client";
+
+const RETRY_BASE_MS = 2000;
+const RETRY_MAX_MS = 30_000;
 
 interface PendingInvite {
   from: string;
@@ -45,7 +49,7 @@ export function useSocket() {
 }
 
 export function SocketProvider({ children }: { children: ReactNode }) {
-  const { user } = useAuth();
+  const { user, logout } = useAuth();
   const qc = useQueryClient();
   const { showNotification } = useNotification();
   const [connected, setConnected] = useState(false);
@@ -53,6 +57,13 @@ export function SocketProvider({ children }: { children: ReactNode }) {
   const [pendingInvite, setPendingInvite] = useState<PendingInvite | null>(null);
   const [gameInvites, setGameInvites] = useState<PendingInvite[]>([]);
   const socketRef = useRef<Socket | null>(null);
+  // The socket's auth is a ticket-minting callback now, so the connected user
+  // id has to be tracked here to tear the singleton down on logout.
+  const connectedUserIdRef = useRef<string | null>(null);
+  const retryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Consecutive failed handshake attempts, for the backoff below. Reset on
+  // every successful connect.
+  const retryAttemptRef = useRef(0);
 
   const clearInvite = useCallback(() => setPendingInvite(null), []);
 
@@ -62,10 +73,16 @@ export function SocketProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     if (!user) {
+      if (retryTimerRef.current) {
+        clearTimeout(retryTimerRef.current);
+        retryTimerRef.current = null;
+      }
+      setSocketAuthFailureHandler(null);
       if (socketRef.current) {
-        const uid = (socketRef.current.auth as { userId?: string })?.userId;
+        const uid = connectedUserIdRef.current;
         if (uid) disconnectSocket(uid);
         socketRef.current = null;
+        connectedUserIdRef.current = null;
       }
       setConnected(false);
       setOnlineIds(new Set());
@@ -74,14 +91,47 @@ export function SocketProvider({ children }: { children: ReactNode }) {
 
     const socket = connectSocket(user.id);
     socketRef.current = socket;
+    connectedUserIdRef.current = user.id;
+
+    // The ticket endpoint reported the session is dead (401): no amount of
+    // retrying will ever succeed. Stop hammering it, log out locally and
+    // send the user back to auth instead of looping forever.
+    const onAuthFailure = () => {
+      if (retryTimerRef.current) {
+        clearTimeout(retryTimerRef.current);
+        retryTimerRef.current = null;
+      }
+      retryAttemptRef.current = 0;
+      socket.io.reconnection(false);
+      socket.disconnect();
+      void logout().finally(() => router.replace("/auth"));
+    };
+    setSocketAuthFailureHandler(onAuthFailure);
 
     const onConnect = () => {
       setConnected(true);
+      retryAttemptRef.current = 0;
       socket.emit("friend:get_online_list");
     };
 
     const onDisconnect = () => {
       setConnected(false);
+    };
+
+    // A handshake rejected by server middleware (expired or already-used
+    // ticket) does not trigger socket.io's automatic reconnection, so retry
+    // manually — the auth callback mints a fresh ticket each attempt. Backs
+    // off exponentially (capped) instead of hammering the endpoint every 2s
+    // forever.
+    const onConnectError = () => {
+      setConnected(false);
+      if (retryTimerRef.current) clearTimeout(retryTimerRef.current);
+      const attempt = retryAttemptRef.current++;
+      const delay = Math.min(RETRY_BASE_MS * 2 ** attempt, RETRY_MAX_MS);
+      retryTimerRef.current = setTimeout(() => {
+        retryTimerRef.current = null;
+        if (!socket.connected) socket.connect();
+      }, delay);
     };
 
     const onOnlineList = ({ onlineIds: ids }: { onlineIds: string[] }) => {
@@ -147,13 +197,40 @@ export function SocketProvider({ children }: { children: ReactNode }) {
       });
     };
 
+    // The server rejects/rate-limits invites and other actions with these —
+    // previously nothing listened, so e.g. a friend:invite to a non-friend
+    // failed silently for the sender.
+    // Keep the whole payload: the server emits a stable `code` (plus `params`)
+    // alongside the Italian `message`, so the client can render it in the
+    // player's own language. `translateServerPayload` falls back to the
+    // server's plain text if the code is unknown to this build.
+    const onFriendError = (payload: ServerPayload) => {
+      showNotification({
+        type: "game_error",
+        title: t("common.error"),
+        message: translateServerPayload(payload),
+        duration: 4000,
+      });
+    };
+    const onSocketError = (payload: ServerPayload) => {
+      showNotification({
+        type: "game_error",
+        title: t("common.error"),
+        message: translateServerPayload(payload),
+        duration: 4000,
+      });
+    };
+
     socket.on("connect", onConnect);
     socket.on("disconnect", onDisconnect);
+    socket.on("connect_error", onConnectError);
     socket.on("friend:online_list", onOnlineList);
     socket.on("friend:status", onFriendStatus);
     socket.on("friend:request_incoming", onRequestIncoming);
     socket.on("friend:request_accepted", onRequestAccepted);
     socket.on("friend:invite", onInvite);
+    socket.on("friend:error", onFriendError);
+    socket.on("socket:error", onSocketError);
 
     if (socket.connected) {
       setConnected(true);
@@ -161,13 +238,21 @@ export function SocketProvider({ children }: { children: ReactNode }) {
     }
 
     return () => {
+      if (retryTimerRef.current) {
+        clearTimeout(retryTimerRef.current);
+        retryTimerRef.current = null;
+      }
+      setSocketAuthFailureHandler(null);
       socket.off("connect", onConnect);
       socket.off("disconnect", onDisconnect);
+      socket.off("connect_error", onConnectError);
       socket.off("friend:online_list", onOnlineList);
       socket.off("friend:status", onFriendStatus);
       socket.off("friend:request_incoming", onRequestIncoming);
       socket.off("friend:request_accepted", onRequestAccepted);
       socket.off("friend:invite", onInvite);
+      socket.off("friend:error", onFriendError);
+      socket.off("socket:error", onSocketError);
     };
   }, [user?.id]);
 
