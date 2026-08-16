@@ -82,8 +82,8 @@ export function ReactionTrigger({ onPress }: { onPress: () => void }) {
   return (
     <Pressable
       onPress={onPress}
-      style={styles.trigger}
-      hitSlop={8}
+      style={({ pressed }) => [styles.trigger, pressed && styles.triggerPressed]}
+      hitSlop={12}
       accessibilityRole="button"
       accessibilityLabel={t("reactionLayer.triggerA11yLabel")}
     >
@@ -100,9 +100,10 @@ export function ReactionPanel({
   onClose: () => void;
 }) {
   const { t } = useTranslation();
+  const reduceMotion = usePrefersReducedMotion();
   return (
     <Animated.View
-      entering={SlideInRight.duration(Motion.duration.base)}
+      entering={reduceMotion ? undefined : SlideInRight.duration(Motion.duration.base)}
       style={styles.panel}
     >
       {EMOJIS.map((e) => (
@@ -112,7 +113,7 @@ export function ReactionPanel({
             onSelect(e);
             onClose();
           }}
-          style={({ pressed }) => [styles.emojiBtn, pressed && { opacity: 0.6 }]}
+          style={({ pressed }) => [styles.emojiBtn, pressed && styles.emojiBtnPressed]}
           accessibilityRole="button"
           accessibilityLabel={t("reactionLayer.emojiA11yLabel", { emoji: e })}
         >
@@ -124,7 +125,14 @@ export function ReactionPanel({
 }
 
 const styles = StyleSheet.create({
-  trigger: { padding: 6 },
+  trigger: {
+    width: 44,
+    height: 44,
+    alignItems: "center",
+    justifyContent: "center",
+    borderRadius: Radius.sm,
+  },
+  triggerPressed: { backgroundColor: Colors.goldMuted },
   triggerText: { fontSize: 20 },
 
   panel: {
@@ -139,16 +147,18 @@ const styles = StyleSheet.create({
     flexWrap: "wrap",
     padding: Spacing.sm,
     gap: Spacing.xs,
-    width: 180,
+    width: 208,
     zIndex: 100,
   },
   emojiBtn: {
-    width: 36,
-    height: 36,
+    width: 44,
+    height: 44,
     alignItems: "center",
     justifyContent: "center",
     borderRadius: Radius.sm,
   },
+  // Colour, not scale: the "glyph" here is text, and scaling it resamples it.
+  emojiBtnPressed: { backgroundColor: Colors.goldMuted },
   emojiBtnText: { fontSize: 22 },
 
   floatingEmoji: {

@@ -1,27 +1,30 @@
 import React, { useEffect } from "react";
-import {
-  View,
-  Text,
-  StyleSheet,
-  Pressable,
-  Platform,
-} from "react-native";
+import { View, Text, StyleSheet, Pressable } from "react-native";
 import Animated, {
   useAnimatedStyle,
   useSharedValue,
   withSpring,
+  withTiming,
+  cancelAnimation,
 } from "react-native-reanimated";
-import { Card, Suit, getCardDisplayRank, getSuitSymbol } from "@/lib/gameEngine";
-import { Colors, Scrim, Shadow } from '@/lib/theme';
+import { LinearGradient } from "expo-linear-gradient";
+import Svg, { Path, Circle, G, Rect } from "react-native-svg";
+import { Card, Suit, getCardDisplayRank } from "@/lib/gameEngine";
+import {
+  CardFaceGradient,
+  Colors,
+  FeltGradient,
+  Motion,
+  Radius,
+  Shadow,
+} from "@/lib/theme";
+import { usePrefersReducedMotion } from "@/lib/accessibility";
 import { useTranslation, type TranslationKey } from "@/lib/i18n";
-import Svg, { Path, Circle, G, Rect, Polygon } from "react-native-svg";
-
-const FACE_RANKS = new Set(["J", "Q", "K"]);
 
 // Suit → colour. `Suit` is plural ("spades") while the theme tokens are singular
 // ("spade"), so the mapping has to be explicit. Typed as Record<Suit, string> so
 // the compiler catches a missing or misspelled suit instead of silently
-// yielding undefined (which is what the previous keyof-cast lookup did).
+// yielding undefined.
 const SUIT_COLORS: Record<Suit, string> = {
   spades: Colors.spade,
   hearts: Colors.heart,
@@ -36,10 +39,480 @@ const CARD_W = 58;
 const CARD_H = 84;
 const CARD_W_SMALL = 40;
 const CARD_H_SMALL = 58;
-const FACE_FIGURE_SIZE = 32;
-// Neutral engraving ink for the black/white joker (has no suit colour of its own).
-const INK = "#26323C";
-const CARD_FACE_BORDER = Colors.goldStrong;
+
+// ─── Card face geometry ───────────────────────────────────────────────────────
+//
+// Everything below is a fraction of the card's own width/height, so the same
+// drawing code serves both card sizes and would survive a dimension change.
+// The numbers reproduce a standard poker-deck layout: a narrow index column
+// down the left edge (repeated rotated at the bottom-right), and a three-column
+// pip field to its right.
+
+const INDEX_X = 0.118;      // centre of the index column
+const INDEX_SUIT_Y = 0.25;  // index suit mark, below the rank character
+const PIP_COL = { left: 0.34, centre: 0.5, right: 0.66 } as const;
+const PIP_TOP = 0.16;
+const PIP_BOTTOM = 0.84;
+const PIP_SIZE = 0.165;      // of card height
+const ACE_PIP_SIZE = 0.30;   // of card height
+const INDEX_SUIT_SIZE = 0.10;
+
+// Court panel: horizontal extent in card fractions, vertical extent derived
+// from the fixed local box the half-figure is authored in, so the two mirrored
+// halves always meet exactly on the panel's centre line.
+const PANEL_X0 = 0.22;
+const PANEL_X1 = 0.78;
+const PANEL_BOX_W = 40;
+const PANEL_HALF_H = 38;
+
+type PipColumn = keyof typeof PIP_COL;
+interface PipSpot {
+  col: PipColumn;
+  /** 0 = top row of the pip field, 1 = bottom row. */
+  row: number;
+}
+
+// The traditional pip grids. Anything at row > 0.5 prints upside down, exactly
+// as it does on a real card, so the card reads the same from either end.
+const THIRD = 1 / 3;
+const PIP_LAYOUTS: Record<string, PipSpot[]> = {
+  "2": [{ col: "centre", row: 0 }, { col: "centre", row: 1 }],
+  "3": [{ col: "centre", row: 0 }, { col: "centre", row: 0.5 }, { col: "centre", row: 1 }],
+  "4": [
+    { col: "left", row: 0 }, { col: "right", row: 0 },
+    { col: "left", row: 1 }, { col: "right", row: 1 },
+  ],
+  "5": [
+    { col: "left", row: 0 }, { col: "right", row: 0 },
+    { col: "centre", row: 0.5 },
+    { col: "left", row: 1 }, { col: "right", row: 1 },
+  ],
+  "6": [
+    { col: "left", row: 0 }, { col: "right", row: 0 },
+    { col: "left", row: 0.5 }, { col: "right", row: 0.5 },
+    { col: "left", row: 1 }, { col: "right", row: 1 },
+  ],
+  "7": [
+    { col: "left", row: 0 }, { col: "right", row: 0 },
+    { col: "centre", row: 0.25 },
+    { col: "left", row: 0.5 }, { col: "right", row: 0.5 },
+    { col: "left", row: 1 }, { col: "right", row: 1 },
+  ],
+  "8": [
+    { col: "left", row: 0 }, { col: "right", row: 0 },
+    { col: "centre", row: 0.25 },
+    { col: "left", row: 0.5 }, { col: "right", row: 0.5 },
+    { col: "centre", row: 0.75 },
+    { col: "left", row: 1 }, { col: "right", row: 1 },
+  ],
+  "9": [
+    { col: "left", row: 0 }, { col: "right", row: 0 },
+    { col: "left", row: THIRD }, { col: "right", row: THIRD },
+    { col: "centre", row: 0.5 },
+    { col: "left", row: 2 * THIRD }, { col: "right", row: 2 * THIRD },
+    { col: "left", row: 1 }, { col: "right", row: 1 },
+  ],
+  "10": [
+    { col: "left", row: 0 }, { col: "right", row: 0 },
+    { col: "centre", row: 1 / 6 },
+    { col: "left", row: THIRD }, { col: "right", row: THIRD },
+    { col: "left", row: 2 * THIRD }, { col: "right", row: 2 * THIRD },
+    { col: "centre", row: 5 / 6 },
+    { col: "left", row: 1 }, { col: "right", row: 1 },
+  ],
+};
+
+const COURT_RANKS = new Set(["J", "Q", "K"]);
+
+// ─── Suit marks ───────────────────────────────────────────────────────────────
+//
+// Drawn as vector paths rather than as the Unicode ♠♥♦♣ glyphs: the system font
+// that resolves those characters differs on every platform, so a text-based pip
+// is a different shape on iOS, Android and web. These are one shape everywhere.
+// Each is authored in a 10×10 box centred on the origin and scaled at use.
+
+const SUIT_PATHS: Record<Exclude<Suit, "clubs">, string> = {
+  hearts:
+    "M0,4.7 C-1.7,2.5 -4.7,0.5 -4.7,-1.8 C-4.7,-3.8 -3.3,-4.8 -2.1,-4.8 " +
+    "C-0.9,-4.8 -0.2,-3.9 0,-3.1 C0.2,-3.9 0.9,-4.8 2.1,-4.8 " +
+    "C3.3,-4.8 4.7,-3.8 4.7,-1.8 C4.7,0.5 1.7,2.5 0,4.7 Z",
+  diamonds: "M0,-4.9 L3.5,0 L0,4.9 L-3.5,0 Z",
+  spades:
+    "M0,-4.9 C-0.6,-3.6 -4.6,-0.6 -4.6,1.6 C-4.6,3.2 -3.4,4.0 -2.4,4.0 " +
+    "C-1.4,4.0 -0.7,3.5 -0.3,2.8 C-0.5,3.9 -1.3,4.6 -2.2,5.0 L2.2,5.0 " +
+    "C1.3,4.6 0.5,3.9 0.3,2.8 C0.7,3.5 1.4,4.0 2.4,4.0 C3.4,4.0 4.6,3.2 4.6,1.6 " +
+    "C4.6,-0.6 0.6,-3.6 0,-4.9 Z",
+};
+
+function SuitMark({
+  suit,
+  x,
+  y,
+  size,
+  color,
+  flipped = false,
+}: {
+  suit: Suit;
+  x: number;
+  y: number;
+  size: number;
+  color: string;
+  flipped?: boolean;
+}) {
+  const k = size / 10;
+  const transform = `translate(${x},${y}) scale(${k})${flipped ? " rotate(180)" : ""}`;
+  if (suit === "clubs") {
+    return (
+      <G transform={transform}>
+        <Circle cx={0} cy={-2.5} r={2.3} fill={color} />
+        <Circle cx={-2.7} cy={1.2} r={2.3} fill={color} />
+        <Circle cx={2.7} cy={1.2} r={2.3} fill={color} />
+        <Path d="M-2.2,5.0 C-0.9,4.1 -0.4,2.9 -0.3,1.4 L0.3,1.4 C0.4,2.9 0.9,4.1 2.2,5.0 Z" fill={color} />
+      </G>
+    );
+  }
+  return (
+    <G transform={transform}>
+      <Path d={SUIT_PATHS[suit]} fill={color} />
+    </G>
+  );
+}
+
+// ─── Court figures ────────────────────────────────────────────────────────────
+//
+// A court card is one half-figure printed twice, the second rotated 180° about
+// the panel centre, so the card reads right way up from either end. The half is
+// authored in a fixed PANEL_BOX_W × PANEL_HALF_H box and the panel scales it.
+//
+// Every feature is at least ~2 local units across. At the size these render
+// (a ~32pt-wide panel, so roughly 0.8px per local unit) anything finer than
+// that resolves to a smudge, which is what the previous jewels and 0.8-unit
+// circles did.
+//
+// The five kinds share one silhouette — crown/hat, head, shouldered robe, an
+// object held at the right shoulder — so the deck reads as one engraved set:
+//   K              spiked crown, beard, sword
+//   Q              arched tiara with a centre orb, flowered sceptre
+//   J              soft cap with a feather, halberd
+//   joker_colored  belled jester cap, star-tipped marotte (Red Joker)
+//   joker_bw       belled jester cap, plain marotte (Black Joker)
+type FigureKind = "J" | "Q" | "K" | "joker_colored" | "joker_bw";
+
+// The robe is drawn as line work with a wash inside it, never as a solid fill:
+// at this size a filled bust is a black rectangle with a dot on top. Keeping
+// the large shape open and reserving solid ink for the small shapes — head,
+// crown, held object — is what lets the figure read at all.
+const ROBE = "M6.5,38 L6.5,31 Q6.5,26 13,24.2 L27,24.2 Q33.5,26 33.5,31 L33.5,38 Z";
+const ROBE_STROKE = 1.5;
+
+function CourtHalf({
+  kind,
+  color,
+  paper,
+  suit,
+}: {
+  kind: FigureKind;
+  color: string;
+  paper: string;
+  suit: Suit | null;
+}) {
+  const isJoker = kind === "joker_colored" || kind === "joker_bw";
+  return (
+    <G>
+      <Path d={ROBE} fill={color} fillOpacity={0.16} stroke={color} strokeWidth={ROBE_STROKE} />
+      {/* Collar: a narrow shield under the chin rather than a band across the
+          whole chest. A full-width band reads as a belt and flattens the
+          figure into a capsule. */}
+      <Path d="M15.4,23.4 L24.6,23.4 L26.4,28 L20,30.4 L13.6,28 Z" fill={color} />
+      {suit && !isJoker && <SuitMark suit={suit} x={20} y={34.2} size={7} color={color} />}
+      {isJoker && (
+        <G>
+          <Circle cx={13.5} cy={33} r={1.8} fill={color} />
+          <Circle cx={26.5} cy={33} r={1.8} fill={color} />
+        </G>
+      )}
+
+      <Circle cx={20} cy={18.6} r={5.6} fill={color} />
+      {kind === "K" && <Path d="M14.6,19.4 Q20,27.8 25.4,19.4 Z" fill={color} />}
+      {kind === "Q" && (
+        <G>
+          <Path d="M14.2,13.8 Q11.8,19 13.8,23.8 L10.8,23.8 Q9,18.4 11.8,13 Z" fill={color} />
+          <Path d="M25.8,13.8 Q28.2,19 26.2,23.8 L29.2,23.8 Q31,18.4 28.2,13 Z" fill={color} />
+        </G>
+      )}
+
+      {kind === "K" && (
+        <G>
+          <Path d="M11,14 L11,10 L14.5,4.2 L17.5,10 L20,3 L22.5,10 L25.5,4.2 L29,10 L29,14 Z" fill={color} />
+          <Rect x={10.4} y={13.2} width={19.2} height={2.4} rx={1} fill={color} />
+        </G>
+      )}
+      {kind === "Q" && (
+        <G>
+          <Path d="M12,14.6 L12,10 Q20,4.6 28,10 L28,14.6 Z" fill={color} />
+          <Circle cx={14.4} cy={7.4} r={2.3} fill={color} />
+          <Circle cx={25.6} cy={7.4} r={2.3} fill={color} />
+          <Circle cx={20} cy={4.2} r={3.1} fill={color} />
+          <Circle cx={20} cy={4.2} r={1.2} fill={paper} />
+        </G>
+      )}
+      {kind === "J" && (
+        <G>
+          <Path d="M11,14.4 Q9.5,5.5 19,3.6 Q29.5,3.2 30,10 L30,14.4 Z" fill={color} />
+          <Path d="M26.5,5.2 L38,0.6 L31,10.4 Z" fill={color} />
+        </G>
+      )}
+      {isJoker && (
+        <G>
+          <Path d="M10,14.4 L11.6,6.4 L15.6,11 L20,4.2 L24.4,11 L28.4,6.4 L30,14.4 Z" fill={color} />
+          <Circle cx={11} cy={4.4} r={2.4} fill={color} />
+          <Circle cx={20} cy={2.4} r={2.4} fill={color} />
+          <Circle cx={29} cy={4.4} r={2.4} fill={color} />
+        </G>
+      )}
+
+      {/* Held object, kept inside the panel and thick enough to survive the
+          scale — a hairline staff reads as an antenna. */}
+      {kind === "K" && (
+        <G transform="rotate(-14 32 20)">
+          <Rect x={30.8} y={5} width={2.6} height={24} rx={1} fill={color} />
+          <Rect x={27.6} y={24.4} width={9} height={2.6} rx={1} fill={color} />
+        </G>
+      )}
+      {kind === "Q" && (
+        <G transform="rotate(13 32 20)">
+          <Rect x={31} y={12} width={2.2} height={18} rx={1} fill={color} />
+          <Circle cx={32.1} cy={9.4} r={3.3} fill={color} />
+          <Circle cx={32.1} cy={9.4} r={1.3} fill={paper} />
+        </G>
+      )}
+      {kind === "J" && (
+        <G transform="rotate(-12 32 20)">
+          <Rect x={31} y={7} width={2.2} height={23} rx={1} fill={color} />
+          <Path d="M27.6,6.6 L36.4,5.6 L37.6,10.6 L32.1,13.2 L28.8,10.6 Z" fill={color} />
+        </G>
+      )}
+      {kind === "joker_colored" && (
+        <G transform="rotate(13 32 20)">
+          <Rect x={31} y={12} width={2.2} height={18} rx={1} fill={color} />
+          <Path
+            d="M32.1,4.4 L33.8,8.5 L38.2,8.8 L34.8,11.7 L35.9,16 L32.1,13.6 L28.3,16 L29.4,11.7 L26,8.8 L30.4,8.5 Z"
+            fill={color}
+          />
+        </G>
+      )}
+      {kind === "joker_bw" && (
+        <G transform="rotate(13 32 20)">
+          <Rect x={31} y={12} width={2.2} height={18} rx={1} fill={color} />
+          <Circle cx={32.1} cy={9.4} r={3.3} fill={color} />
+          <Circle cx={32.1} cy={9.4} r={1.3} fill={paper} />
+        </G>
+      )}
+    </G>
+  );
+}
+
+function CourtPanel({
+  kind,
+  color,
+  suit,
+  w,
+  h,
+}: {
+  kind: FigureKind;
+  color: string;
+  suit: Suit | null;
+  w: number;
+  h: number;
+}) {
+  const x0 = w * PANEL_X0;
+  const panelW = w * (PANEL_X1 - PANEL_X0);
+  const k = panelW / PANEL_BOX_W;
+  const boxH = PANEL_HALF_H * 2;
+  const panelH = boxH * k;
+  const y0 = (h - panelH) / 2;
+
+  return (
+    <G>
+      <Rect
+        x={x0}
+        y={y0}
+        width={panelW}
+        height={panelH}
+        rx={3}
+        fill="none"
+        stroke={color}
+        strokeOpacity={0.22}
+        strokeWidth={0.9}
+      />
+      <G transform={`translate(${x0},${y0}) scale(${k})`}>
+        <CourtHalf kind={kind} color={color} paper={Colors.cardPaper} suit={suit} />
+        <G transform={`rotate(180 ${PANEL_BOX_W / 2} ${boxH / 2})`}>
+          <CourtHalf kind={kind} color={color} paper={Colors.cardPaper} suit={suit} />
+        </G>
+        <Path
+          d={`M2,${boxH / 2} L${PANEL_BOX_W - 2},${boxH / 2}`}
+          stroke={color}
+          strokeOpacity={0.45}
+          strokeWidth={1}
+        />
+      </G>
+    </G>
+  );
+}
+
+// ─── Card face art ────────────────────────────────────────────────────────────
+
+function CardFaceArt({
+  card,
+  color,
+  w,
+  h,
+  compact,
+}: {
+  card: Card;
+  color: string;
+  w: number;
+  h: number;
+  /** Too small for a pip field — one centred mark instead. */
+  compact: boolean;
+}) {
+  const suit = card.suit;
+  const indexSuitSize = h * INDEX_SUIT_SIZE;
+  const indexX = w * INDEX_X;
+  const indexY = h * INDEX_SUIT_Y;
+
+  let centre: React.ReactNode = null;
+  if (card.isJoker) {
+    centre = compact ? null : (
+      <CourtPanel
+        kind={card.rank === "joker_colored" ? "joker_colored" : "joker_bw"}
+        color={color}
+        suit={null}
+        w={w}
+        h={h}
+      />
+    );
+  } else if (suit) {
+    if (compact) {
+      centre = <SuitMark suit={suit} x={w * 0.58} y={h * 0.62} size={h * 0.24} color={color} />;
+    } else if (COURT_RANKS.has(card.rank)) {
+      centre = <CourtPanel kind={card.rank as FigureKind} color={color} suit={suit} w={w} h={h} />;
+    } else if (card.rank === "A") {
+      centre = <SuitMark suit={suit} x={w * 0.5} y={h * 0.5} size={h * ACE_PIP_SIZE} color={color} />;
+    } else {
+      const spots = PIP_LAYOUTS[card.rank] ?? [];
+      const size = h * PIP_SIZE * (spots.length > 6 ? 0.9 : 1);
+      centre = spots.map((spot, i) => (
+        <SuitMark
+          key={i}
+          suit={suit}
+          x={w * PIP_COL[spot.col]}
+          y={h * (PIP_TOP + spot.row * (PIP_BOTTOM - PIP_TOP))}
+          size={size}
+          color={color}
+          flipped={spot.row > 0.5}
+        />
+      ));
+    }
+  }
+
+  return (
+    <Svg width={w} height={h} style={StyleSheet.absoluteFill} pointerEvents="none">
+      {centre}
+      {suit && (
+        <>
+          <SuitMark suit={suit} x={indexX} y={indexY} size={indexSuitSize} color={color} />
+          <SuitMark suit={suit} x={w - indexX} y={h - indexY} size={indexSuitSize} color={color} flipped />
+        </>
+      )}
+      {card.isJoker && (
+        <>
+          <JokerStar x={indexX} y={indexY} size={indexSuitSize} color={color} filled={card.rank === "joker_colored"} />
+          <JokerStar
+            x={w - indexX}
+            y={h - indexY}
+            size={indexSuitSize}
+            color={color}
+            filled={card.rank === "joker_colored"}
+          />
+        </>
+      )}
+    </Svg>
+  );
+}
+
+// Red and black Joker differ by fill as well as by colour, so the two are still
+// distinguishable without colour vision.
+function JokerStar({
+  x, y, size, color, filled,
+}: { x: number; y: number; size: number; color: string; filled: boolean }) {
+  const k = size / 10;
+  return (
+    <G transform={`translate(${x},${y}) scale(${k})`}>
+      <Path
+        d="M0,-5 L1.5,-1.5 L5,-1.2 L2.3,1.3 L3.1,4.8 L0,2.8 L-3.1,4.8 L-2.3,1.3 L-5,-1.2 L-1.5,-1.5 Z"
+        fill={filled ? color : "none"}
+        stroke={color}
+        strokeWidth={filled ? 0 : 1.2}
+      />
+    </G>
+  );
+}
+
+// ─── Card back ────────────────────────────────────────────────────────────────
+//
+// A fine 45° lattice reads as texture at any size where a dot grid reads as
+// blobs, because a line keeps its identity when it falls below a pixel and a
+// dot does not. The whole thing is two Paths and a medallion.
+
+const LATTICE_SPACING = 7;
+
+const latticeCache = new Map<string, string>();
+function getLattice(w: number, h: number): string {
+  const key = `${w}x${h}`;
+  let d = latticeCache.get(key);
+  if (!d) {
+    const span = w + h;
+    const parts: string[] = [];
+    for (let i = -h; i < span; i += LATTICE_SPACING) {
+      parts.push(`M${i},0 L${i + h},${h}`);
+      parts.push(`M${i},${h} L${i + h},0`);
+    }
+    d = parts.join(" ");
+    latticeCache.set(key, d);
+  }
+  return d;
+}
+
+function OrnateCardBack({ width: w, height: h }: { width: number; height: number }) {
+  const cx = w / 2;
+  const cy = h / 2;
+  const r = Math.min(w, h) * 0.19;
+
+  // An eight-point star: two squares, one rotated 45°, drawn as one polygon.
+  const points: string[] = [];
+  for (let i = 0; i < 16; i++) {
+    const rad = (Math.PI * 2 * i) / 16 - Math.PI / 2;
+    const rr = i % 2 === 0 ? r : r * 0.46;
+    points.push(`${(cx + Math.cos(rad) * rr).toFixed(2)},${(cy + Math.sin(rad) * rr).toFixed(2)}`);
+  }
+
+  return (
+    <Svg width={w} height={h} style={StyleSheet.absoluteFill} pointerEvents="none">
+      <Path d={getLattice(w, h)} stroke={Colors.gold} strokeOpacity={0.13} strokeWidth={0.6} fill="none" />
+      <Rect x={2.5} y={2.5} width={w - 5} height={h - 5} rx={5} ry={5}
+        fill="none" stroke={Colors.gold} strokeWidth={1.4} strokeOpacity={0.85} />
+      <Rect x={5.5} y={5.5} width={w - 11} height={h - 11} rx={3} ry={3}
+        fill="none" stroke={Colors.gold} strokeWidth={0.7} strokeOpacity={0.35} />
+      <Path d={`M${points.join(" L")} Z`} fill={Colors.gold} fillOpacity={0.55} />
+      <Circle cx={cx} cy={cy} r={r * 0.42} fill={FeltGradient[4]} />
+      <Circle cx={cx} cy={cy} r={r * 0.42} fill="none" stroke={Colors.gold} strokeOpacity={0.7} strokeWidth={0.8} />
+    </Svg>
+  );
+}
+
+// ─── CardView ─────────────────────────────────────────────────────────────────
 
 interface CardViewProps {
   card: Card;
@@ -52,209 +525,6 @@ interface CardViewProps {
   noLift?: boolean;
 }
 
-// ─── Ornate SVG card back ─────────────────────────────────────────────────────
-//
-// The diamond dot grid depends only on (width, height), and in practice only
-// two sizes ever occur (CARD_W/CARD_H and CARD_W_SMALL/CARD_H_SMALL — see
-// below). React Compiler already memoizes this per component instance keyed
-// on (w, h) (verified by compiling this file through the same babel-preset-
-// expo + react-compiler pipeline Metro uses), but that cache lives on each
-// mounted OrnateCardBack's own fiber, so every face-down card on screen still
-// pays for the grid once on its own first render, with its own array. A
-// hand can show many face-down opponent cards at once, so a true module-level
-// cache — computed once, ever, and shared by reference — is a strict
-// improvement over the compiler's per-instance memo, not a fight against it.
-const dotGridCache = new Map<string, { x: number; y: number }[]>();
-function getDotGrid(w: number, h: number): { x: number; y: number }[] {
-  const key = `${w}x${h}`;
-  let grid = dotGridCache.get(key);
-  if (!grid) {
-    const spacing = 9;
-    const padX = 8;
-    const padY = 10;
-    grid = [];
-    for (let x = padX; x <= w - padX; x += spacing) {
-      for (let y = padY; y <= h - padY; y += spacing) {
-        grid.push({ x, y });
-      }
-    }
-    dotGridCache.set(key, grid);
-  }
-  return grid;
-}
-
-function OrnateCardBack({ width, height }: { width: number; height: number }) {
-  const w = width;
-  const h = height;
-  const dots = getDotGrid(w, h);
-
-  const cx = w / 2;
-  const cy = h / 2;
-
-  return (
-    <Svg width={w} height={h} style={StyleSheet.absoluteFill}>
-      {/* Outer gold border */}
-      <Rect x={2} y={2} width={w - 4} height={h - 4} rx={6} ry={6}
-        fill="none" stroke={Colors.gold} strokeWidth={1.5} strokeOpacity={0.82} />
-      {/* Inner border */}
-      <Rect x={5.5} y={5.5} width={w - 11} height={h - 11} rx={3.5} ry={3.5}
-        fill="none" stroke={Colors.gold} strokeWidth={0.75} strokeOpacity={0.38} />
-      {/* Diamond dot grid */}
-      {dots.map((d, i) => (
-        <Polygon
-          key={i}
-          points={`${d.x},${d.y - 2.5} ${d.x + 1.8},${d.y} ${d.x},${d.y + 2.5} ${d.x - 1.8},${d.y}`}
-          fill={Colors.gold}
-          fillOpacity={0.22}
-        />
-      ))}
-      {/* Central diamond outer ring */}
-      <Polygon
-        points={`${cx},${cy - 11} ${cx + 8},${cy} ${cx},${cy + 11} ${cx - 8},${cy}`}
-        fill="none"
-        stroke={Colors.gold}
-        strokeWidth={0.8}
-        strokeOpacity={0.45}
-      />
-      {/* Central diamond fill */}
-      <Polygon
-        points={`${cx},${cy - 7} ${cx + 5},${cy} ${cx},${cy + 7} ${cx - 5},${cy}`}
-        fill={Colors.gold}
-        fillOpacity={0.65}
-      />
-    </Svg>
-  );
-}
-
-// ─── Engraved court figures (J, Q, K, and both jokers) ────────────────────────
-//
-// Traditional court cards are built from a single figure duplicated with a
-// true 180° rotation (not a mirror reflection) so the card reads right-side-up
-// from either end. We draw one "half" — bust, headwear, held object — inside
-// a 60×60 viewBox whose vertical centre (y=30) is the rotation axis, then
-// render it twice: once as-is, once rotated 180° about (30,30).
-//
-// The four kinds share one silhouette family (bust + collar) and differ only
-// in headwear + held object, so the deck reads as one coherent set:
-//   K            — three-point crown, sword
-//   Q            — arched tiara + bloom, flower sceptre
-//   J            — soft lopsided cap + feather, halberd
-//   joker_colored (Red Joker, strongest card in the game) — reuses the King's
-//                   crown (it outranks the King) + a star-tipped marotte
-//   joker_bw      (Black Joker, second-strongest) — reuses the Jack's cap
-//                   + a plain-bauble marotte
-type FigureKind = "J" | "Q" | "K" | "joker_colored" | "joker_bw";
-
-function renderCourtHalf(kind: FigureKind, color: string, cream: string, keyPrefix: string) {
-  const body = (
-    <Path
-      key={`${keyPrefix}-body`}
-      d="M15,30 L15,21 Q15,16 21,15 L39,15 Q45,16 45,21 L45,30 Z"
-      fill={color}
-    />
-  );
-  const head = <Circle key={`${keyPrefix}-head`} cx={30} cy={9} r={6.5} fill={color} />;
-  const collar = (
-    <Path key={`${keyPrefix}-collar`} d="M21,15 L39,15" stroke={cream} strokeWidth={0.9} fill="none" />
-  );
-
-  let headwear: React.ReactNode;
-  if (kind === "K" || kind === "joker_colored") {
-    headwear = (
-      <G key={`${keyPrefix}-crown`}>
-        <Path d="M22,4 L22,2 L25,-3 L28,2 L30,-4 L32,2 L35,-3 L38,2 L38,4 Z" fill={color} />
-        <Circle cx={25} cy={-2} r={0.8} fill={cream} />
-        <Circle cx={30} cy={-3} r={0.8} fill={cream} />
-        <Circle cx={35} cy={-2} r={0.8} fill={cream} />
-      </G>
-    );
-  } else if (kind === "Q") {
-    headwear = (
-      <G key={`${keyPrefix}-tiara`}>
-        <Path d="M23,4 L23,2 Q30,-2 37,2 L37,4 Z" fill={color} />
-        <Circle cx={26.5} cy={-1.5} r={1.4} fill={color} />
-        <Circle cx={33.5} cy={-1.5} r={1.4} fill={color} />
-        <Circle cx={30} cy={-3.5} r={2.2} fill={color} />
-        <Circle cx={30} cy={-3.5} r={0.8} fill={cream} />
-      </G>
-    );
-  } else {
-    // J, joker_bw
-    headwear = (
-      <G key={`${keyPrefix}-cap`}>
-        <Path d="M22,4 Q21,-1 28,-3 Q36,-4 38,2 L38,4 Z" fill={color} />
-        {kind === "J" && <Path d="M35,-3 L41,-6 L37,0 Z" fill={color} />}
-      </G>
-    );
-  }
-
-  let accessory: React.ReactNode;
-  if (kind === "K") {
-    accessory = (
-      <G key={`${keyPrefix}-sword`} transform="rotate(-18 46 17)">
-        <Rect x={45} y={2} width={2} height={24} rx={0.5} fill={color} />
-        <Rect x={41} y={23} width={10} height={2} rx={0.5} fill={color} />
-        <Circle cx={46} cy={27} r={1.6} fill={color} />
-      </G>
-    );
-  } else if (kind === "Q") {
-    accessory = (
-      <G key={`${keyPrefix}-scepter`} transform="rotate(12 46 17)">
-        <Rect x={45.3} y={6} width={1.4} height={22} rx={0.5} fill={color} />
-        <Circle cx={46} cy={5} r={3} fill={color} />
-        <Circle cx={46} cy={5} r={1.1} fill={cream} />
-      </G>
-    );
-  } else if (kind === "J") {
-    accessory = (
-      <G key={`${keyPrefix}-halberd`} transform="rotate(-12 46 17)">
-        <Rect x={45.3} y={1} width={1.4} height={27} rx={0.5} fill={color} />
-        <Path d="M41,1 L50,1 L52,6 L46,9 L43,6 Z" fill={color} />
-      </G>
-    );
-  } else if (kind === "joker_colored") {
-    accessory = (
-      <G key={`${keyPrefix}-marotte`} transform="rotate(14 46 17)">
-        <Rect x={45.3} y={6} width={1.4} height={22} rx={0.5} fill={color} />
-        <Polygon
-          points="46,1.5 47.2,4.4 50.3,4.6 47.9,6.6 48.7,9.6 46,7.9 43.3,9.6 44.1,6.6 41.7,4.6 44.8,4.4"
-          fill={color}
-        />
-      </G>
-    );
-  } else {
-    accessory = (
-      <G key={`${keyPrefix}-marotte-bw`} transform="rotate(14 46 17)">
-        <Rect x={45.3} y={6} width={1.4} height={22} rx={0.5} fill={color} />
-        <Circle cx={46} cy={5} r={2.6} fill={color} />
-        <Circle cx={46} cy={5} r={1} fill={cream} />
-      </G>
-    );
-  }
-
-  return (
-    <React.Fragment key={keyPrefix}>
-      {body}
-      {head}
-      {collar}
-      {headwear}
-      {accessory}
-    </React.Fragment>
-  );
-}
-
-function CourtFigure({ kind, color, size }: { kind: FigureKind; color: string; size: number }) {
-  const cream = Colors.cardBg;
-  return (
-    <Svg width={size} height={size} viewBox="0 0 60 60">
-      <G>{renderCourtHalf(kind, color, cream, "top")}</G>
-      <G transform="rotate(180 30 30)">{renderCourtHalf(kind, color, cream, "bot")}</G>
-    </Svg>
-  );
-}
-
-// ─── CardView ─────────────────────────────────────────────────────────────────
-
 export function CardView({
   card,
   selected = false,
@@ -266,85 +536,78 @@ export function CardView({
   noLift = false,
 }: CardViewProps) {
   const { t } = useTranslation();
+  const reduceMotion = usePrefersReducedMotion();
   const translateY = useSharedValue(0);
+  // Finger-down acknowledgement. Separate from the selection lift so a press
+  // reads instantly even when the resulting selection is rejected.
+  const press = useSharedValue(0);
+
+  const interactive = !!onPress && !disabled;
 
   useEffect(() => {
     if (noLift) {
       translateY.value = 0;
       return;
     }
-    translateY.value = withSpring(selected ? -14 : 0, {
-      damping: 15,
-      stiffness: 300,
-    });
+    const target = selected ? -14 : 0;
+    translateY.value = reduceMotion
+      ? withTiming(target, { duration: Motion.duration.fast })
+      : withSpring(target, Motion.spring.pickup);
     // eslint-disable-next-line react-hooks/exhaustive-deps -- translateY is a stable shared value
-  }, [selected, noLift]);
+  }, [selected, noLift, reduceMotion]);
+
+  useEffect(
+    () => () => {
+      cancelAnimation(translateY);
+      cancelAnimation(press);
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- unmount cleanup only; both are stable shared values
+    []
+  );
 
   const animStyle = useAnimatedStyle(() => ({
-    transform: [{ translateY: translateY.value }],
+    transform: [
+      { translateY: translateY.value + press.value * -3 },
+      { rotate: `${press.value * -1.5}deg` },
+    ],
   }));
 
+  const handlePressIn = () => {
+    if (!interactive) return;
+    press.value = reduceMotion ? 1 : withSpring(1, Motion.spring.pickup);
+  };
+  const handlePressOut = () => {
+    if (!interactive) return;
+    press.value = reduceMotion ? 0 : withSpring(0, Motion.spring.land);
+  };
   const handlePress = () => {
-    if (disabled || !onPress) return;
-    onPress();
+    if (!interactive) return;
+    onPress!();
   };
 
+  const w = small ? CARD_W_SMALL : CARD_W;
+  const h = small ? CARD_H_SMALL : CARD_H;
+
   if (faceDown) {
-    const w = small ? CARD_W_SMALL : CARD_W;
-    const h = small ? CARD_H_SMALL : CARD_H;
     return (
       <Animated.View style={[animStyle, style]}>
         <View style={[styles.card, small ? styles.cardSmall : styles.cardNormal, styles.cardBack]}>
+          <LinearGradient
+            colors={[FeltGradient[1], FeltGradient[2], FeltGradient[4]]}
+            start={{ x: 0.15, y: 0 }}
+            end={{ x: 0.85, y: 1 }}
+            style={StyleSheet.absoluteFill}
+          />
           <OrnateCardBack width={w} height={h} />
         </View>
       </Animated.View>
     );
   }
 
-  if (card.isJoker) {
-    const kind: FigureKind = card.rank === "joker_colored" ? "joker_colored" : "joker_bw";
-    const jokerColor = kind === "joker_colored" ? Colors.danger : INK;
-
-    return (
-      <Animated.View style={[animStyle, style]}>
-        <Pressable
-          onPress={handlePress}
-          disabled={disabled || !onPress}
-          style={[
-            styles.card,
-            small ? styles.cardSmall : styles.cardNormal,
-            selected && styles.cardSelected,
-          ]}
-        >
-          {small ? (
-            <View style={styles.jokerSmall}>
-              <Text style={[styles.jokerSmallRank, { color: jokerColor }]}>J</Text>
-              <Text style={[styles.jokerSmallSuit, { color: jokerColor }]}>
-                {kind === "joker_colored" ? "★" : "☆"}
-              </Text>
-            </View>
-          ) : (
-            <View style={styles.jokerFull}>
-              <Text style={[styles.jokerTopLabel, { color: jokerColor }]}>
-                {kind === "joker_colored" ? "★" : "☆"}
-              </Text>
-              <View style={styles.courtFigureContainer}>
-                <CourtFigure kind={kind} color={jokerColor} size={FACE_FIGURE_SIZE} />
-              </View>
-              <Text style={[styles.jokerBottomLabel, { color: jokerColor }]}>
-                JKR
-              </Text>
-            </View>
-          )}
-        </Pressable>
-      </Animated.View>
-    );
-  }
-
-  const rankText = getCardDisplayRank(card.rank);
-  const suitSymbol = getSuitSymbol(card.suit);
-  const color = card.suit ? SUIT_COLORS[card.suit] : Colors.spade;
-  const isFaceCard = FACE_RANKS.has(card.rank);
+  const rankText = card.isJoker ? "JK" : getCardDisplayRank(card.rank);
+  const color = card.isJoker
+    ? card.rank === "joker_colored" ? Colors.heart : Colors.cardInk
+    : card.suit ? SUIT_COLORS[card.suit] : Colors.spade;
 
   const getSuitName = (suit: string | null) => {
     const key: TranslationKey | null =
@@ -358,50 +621,54 @@ export function CardView({
 
   const getCardLabel = () => {
     if (card.isJoker) return t(card.rank === "joker_colored" ? "cardView.jokerColored" : "cardView.jokerBlack");
-    return t("cards.nameFormat", { rank: rankText, suit: getSuitName(card.suit) });
+    return t("cards.nameFormat", { rank: getCardDisplayRank(card.rank), suit: getSuitName(card.suit) });
   };
 
   return (
     <Animated.View style={[animStyle, style]}>
       <Pressable
         onPress={handlePress}
-        disabled={disabled || !onPress}
+        onPressIn={handlePressIn}
+        onPressOut={handlePressOut}
+        disabled={!interactive}
         accessibilityLabel={getCardLabel()}
         accessibilityRole="button"
         accessibilityHint={selected ? t("cardView.selectedA11yHint") : undefined}
         style={[
           styles.card,
           small ? styles.cardSmall : styles.cardNormal,
-          isFaceCard && styles.cardFace,
           selected && styles.cardSelected,
         ]}
       >
-        <View style={[styles.cardInner, selected && styles.cardInnerSelected]}>
-          <View style={styles.topCorner}>
-            <Text style={[styles.rankText, small ? styles.rankTextSmall : styles.rankTextNormal, { color }]}>
-              {rankText}
-            </Text>
-            <Text style={[styles.suitCorner, small && styles.suitCornerSmall, { color }]}>
-              {suitSymbol}
-            </Text>
-          </View>
-          {!small && (
-            isFaceCard ? (
-              <View style={styles.courtFigureContainer}>
-                <CourtFigure kind={card.rank as FigureKind} color={color} size={FACE_FIGURE_SIZE} />
-              </View>
-            ) : (
-              <Text style={[styles.suitCenter, { color }]}>
-                {suitSymbol}
-              </Text>
-            )
-          )}
-          <View style={styles.bottomCorner}>
-            <Text style={[styles.rankText, small ? styles.rankTextSmall : styles.rankTextNormal, { color, transform: [{ rotate: "180deg" }] }]}>
-              {rankText}
-            </Text>
-          </View>
-        </View>
+        <LinearGradient
+          colors={CardFaceGradient}
+          locations={[0, 0.55, 1]}
+          start={{ x: 0.1, y: 0 }}
+          end={{ x: 0.9, y: 1 }}
+          style={StyleSheet.absoluteFill}
+        />
+        <CardFaceArt card={card} color={color} w={w} h={h} compact={small} />
+        <Text
+          style={[
+            styles.rankText,
+            small ? styles.rankTextSmall : styles.rankTextNormal,
+            card.isJoker && styles.rankTextJoker,
+            { color },
+          ]}
+        >
+          {rankText}
+        </Text>
+        <Text
+          style={[
+            styles.rankText,
+            small ? styles.rankTextSmall : styles.rankTextNormal,
+            card.isJoker && styles.rankTextJoker,
+            small ? styles.rankTextBottomSmall : styles.rankTextBottom,
+            { color },
+          ]}
+        >
+          {rankText}
+        </Text>
       </Pressable>
     </Animated.View>
   );
@@ -409,12 +676,12 @@ export function CardView({
 
 const styles = StyleSheet.create({
   card: {
-    backgroundColor: Colors.cardBg,
-    borderRadius: 8,
+    backgroundColor: Colors.cardPaper,
+    borderRadius: Radius.sm,
     borderWidth: 1,
-    borderColor: Scrim.subtle,
+    borderColor: Colors.cardEdge,
     overflow: "hidden",
-    ...Shadow.dark,
+    ...Shadow.card,
   },
   cardNormal: {
     width: CARD_W,
@@ -424,99 +691,53 @@ const styles = StyleSheet.create({
     width: CARD_W_SMALL,
     height: CARD_H_SMALL,
   },
-  cardFace: {
-    borderColor: CARD_FACE_BORDER,
-    borderWidth: 1.5,
+  cardSelected: {
+    borderColor: Colors.gold,
+    borderWidth: 2,
   },
-  cardSelected: Platform.OS === "web"
-    ? ({
-        borderColor: Colors.gold,
-        borderWidth: 2,
-        ...Shadow.gold,
-      } as any)
-    : {
-        borderColor: Colors.gold,
-        borderWidth: 2,
-        ...Shadow.gold,
-      },
-  cardInner: {
-    flex: 1,
-    padding: 4,
-    justifyContent: "space-between",
-  },
-  cardInnerSelected: {},
   cardBack: {
     backgroundColor: Colors.felt,
     borderColor: Colors.goldDark,
-    borderWidth: 1.5,
-    overflow: "hidden",
+    borderWidth: 1,
   },
-  topCorner: {
-    alignItems: "flex-start",
-  },
-  bottomCorner: {
-    alignItems: "flex-end",
-  },
+  // The index characters sit in the drawn index column: the suit mark below
+  // them comes from the SVG layer, so the two must agree on INDEX_X.
   rankText: {
-    fontFamily: "Inter_600SemiBold",
-    lineHeight: 16,
+    position: "absolute",
+    fontFamily: "Rajdhani_700Bold",
+    letterSpacing: -0.5,
+    textAlign: "center",
   },
   rankTextNormal: {
     fontSize: 15,
+    lineHeight: 15,
+    top: 3,
+    left: 0,
+    width: CARD_W * INDEX_X * 2,
   },
   rankTextSmall: {
     fontSize: 11,
+    lineHeight: 11,
+    top: 2,
+    left: 0,
+    width: CARD_W_SMALL * INDEX_X * 2,
   },
-  suitCorner: {
+  rankTextJoker: {
     fontSize: 11,
-    lineHeight: 13,
+    lineHeight: 12,
   },
-  suitCornerSmall: {
-    fontSize: 8,
-  },
-  suitCenter: {
-    fontSize: 30,
-    textAlign: "center",
-    fontFamily: Platform.OS === "ios" ? "System" : "sans-serif",
-    lineHeight: 34,
-  },
-  courtFigureContainer: {
-    flex: 1,
-    alignItems: "center",
-    justifyContent: "center",
-    marginVertical: 2,
-  },
-  jokerFull: {
-    flex: 1,
-    alignItems: "center",
-    justifyContent: "space-between",
-    paddingVertical: 4,
-    paddingHorizontal: 3,
-  },
-  jokerTopLabel: {
-    fontSize: 13,
-    fontFamily: "Inter_600SemiBold",
-    letterSpacing: 0.5,
-  },
-  jokerBottomLabel: {
-    fontSize: 9,
-    fontFamily: "Inter_600SemiBold",
-    letterSpacing: 1,
+  rankTextBottom: {
+    top: undefined,
+    left: undefined,
+    bottom: 3,
+    right: 0,
     transform: [{ rotate: "180deg" }],
   },
-  jokerSmall: {
-    flex: 1,
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 1,
-  },
-  jokerSmallRank: {
-    fontFamily: "Inter_600SemiBold",
-    fontSize: 12,
-    lineHeight: 14,
-  },
-  jokerSmallSuit: {
-    fontSize: 12,
-    lineHeight: 14,
+  rankTextBottomSmall: {
+    top: undefined,
+    left: undefined,
+    bottom: 2,
+    right: 0,
+    transform: [{ rotate: "180deg" }],
   },
 });

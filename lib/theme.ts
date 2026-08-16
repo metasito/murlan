@@ -2,7 +2,7 @@
 // platform-aware Shadow.
 import { Platform } from "react-native";
 
-export { Colors, Spacing, Radius, FontSize, Type, Motion, Scrim, Highlight, FeltGradient } from "./tokens";
+export { Colors, Spacing, Radius, FontSize, Type, Motion, Scrim, Highlight, FeltGradient, CardFaceGradient } from "./tokens";
 
 import { Colors } from "./tokens";
 
@@ -43,4 +43,8 @@ export const Shadow = {
   goldSoft: makeShadow(Colors.gold, 0, 0, 0.55, 14, 8),
   raised: makeShadow('#000000', 0, 2, 0.4, 8, 10),
   overlay: makeShadow('#000000', 0, 8, 0.5, 32, 20),
+  // A card lying on the felt: contact shadow, tight and close.
+  card: makeShadow('#000000', 0, 1, 0.45, 3, 3),
+  // The same card held above it: the shadow travels further and softens.
+  cardLifted: makeShadow('#000000', 0, 7, 0.5, 12, 14),
 };

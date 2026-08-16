@@ -115,7 +115,11 @@ export default function NotificationBanner({ notification, onDismiss }: Props) {
     >
       <Pressable
         onPress={handlePress}
-        style={[styles.banner, { borderLeftColor: color }]}
+        style={({ pressed }) => [
+          styles.banner,
+          { borderLeftColor: color },
+          pressed && styles.bannerPressed,
+        ]}
         accessibilityRole="alert"
         accessibilityLiveRegion={notification ? "polite" : "none"}
         accessibilityLabel={a11yLabel}
@@ -160,8 +164,9 @@ const styles = StyleSheet.create({
     paddingVertical: Spacing.sm + 4,
     paddingHorizontal: Spacing.md - 2,
     gap: Spacing.sm + 4,
-    ...Shadow.dark,
+    ...Shadow.overlay,
   },
+  bannerPressed: { backgroundColor: Colors.bgElevated },
   iconCircle: {
     width: 38,
     height: 38,

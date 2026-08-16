@@ -50,6 +50,13 @@ export const Colors = {
   cardBg:       '#FAFAF8',
   cardBorder:   'rgba(255,255,255,0.08)',
   cardBack:     '#1A1A2E',
+  // Printed-stock face: warm white in the light, cooling toward the edge.
+  cardPaper:    '#FFFDF7',
+  cardPaperMid: '#F7F4EA',
+  cardPaperEdge:'#E6E1D2',
+  // Engraved line work on the face — neutral, so it never fights the suit colour.
+  cardInk:      '#26323C',
+  cardEdge:     'rgba(90,78,52,0.45)',
 
   // Traditional red/black. Suit identity is carried by the pip glyph, so colour
   // is not the only channel.
@@ -91,6 +98,13 @@ export const Highlight = {
   clear: 'rgba(255,255,255,0.12)',
 } as const;
 
+// Card face, lit from the top-left corner. Order is the gradient order.
+export const CardFaceGradient = [
+  Colors.cardPaper,
+  Colors.cardPaperMid,
+  Colors.cardPaperEdge,
+] as const;
+
 // Table felt, light centre to dark rim. Order is the gradient order.
 export const FeltGradient = [
   '#0F5A35',
@@ -128,6 +142,8 @@ export const Type = {
 
 export const Motion = {
   duration: {
+    // A frame-scale flash: long enough to register, too short to read as a state.
+    flash: 90,
     fast: 120,
     base: 200,
     moderate: 300,
@@ -139,5 +155,15 @@ export const Motion = {
     gentle:   { damping: 10, stiffness: 180 },
     entrance: { damping: 12, stiffness: 200 },
     reveal:   { damping: 8,  stiffness: 150 },
+    // Direct manipulation: the object must arrive under the finger with no
+    // visible wobble, so this is stiffer and far more damped than `settle`.
+    pickup:   { damping: 16, stiffness: 340 },
+    // Something dropped onto a surface: fast approach, one small bounce.
+    land:     { damping: 14, stiffness: 260 },
+  },
+  // Gap between consecutive items in a run that should read as one gesture
+  // (a hand being dealt) rather than as simultaneous appearance.
+  stagger: {
+    deal: 42,
   },
 } as const;

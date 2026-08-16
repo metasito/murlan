@@ -2,8 +2,11 @@ import React from 'react';
 import {
   View, ScrollView, StyleSheet, Platform, ViewStyle,
 } from 'react-native';
+import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Colors } from '@/lib/theme';
+
+const BACKDROP = [Colors.bg, Colors.bg, Colors.feltDark] as const;
 
 const CONTENT_H_PAD = 20;
 
@@ -37,19 +40,30 @@ export function MenuLayout({
     style,
   ];
 
-  if (!scrollable) {
-    return <View style={[styles.root, contentStyle]}>{children}</View>;
-  }
-
   return (
-    <ScrollView
-      style={styles.root}
-      contentContainerStyle={[styles.scroll, contentStyle]}
-      keyboardShouldPersistTaps="handled"
-      showsVerticalScrollIndicator={false}
-    >
-      {children}
-    </ScrollView>
+    <View style={styles.root}>
+      {/* A faint green cast rising from the bottom edge: the same felt the
+          table is made of, read as a glow behind the menu rather than as a
+          surface. A flat fill at this size reads as an empty canvas. */}
+      <LinearGradient
+        colors={BACKDROP}
+        locations={[0, 0.55, 1]}
+        style={StyleSheet.absoluteFill}
+        pointerEvents="none"
+      />
+      {scrollable ? (
+        <ScrollView
+          style={styles.fill}
+          contentContainerStyle={[styles.scroll, contentStyle]}
+          keyboardShouldPersistTaps="handled"
+          showsVerticalScrollIndicator={false}
+        >
+          {children}
+        </ScrollView>
+      ) : (
+        <View style={[styles.fill, contentStyle]}>{children}</View>
+      )}
+    </View>
   );
 }
 
@@ -57,6 +71,7 @@ export { CONTENT_H_PAD };
 
 const styles = StyleSheet.create({
   root:     { flex: 1, backgroundColor: Colors.bg },
+  fill:     { flex: 1 },
   scroll:   { flexGrow: 1 },
   centered: { justifyContent: 'center', alignItems: 'center' },
 });

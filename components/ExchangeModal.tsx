@@ -14,14 +14,14 @@ import Animated, {
   withSpring,
   withTiming,
   withDelay,
-  withSequence,
+  cancelAnimation,
 } from "react-native-reanimated";
 import * as Haptics from "expo-haptics";
 import { Ionicons } from "@expo/vector-icons";
 import type { ExchangePhase, Card } from "@/lib/gameEngine";
 import { cardStrength, getValidGivebackCards } from "@/lib/gameEngine";
 import { CardView } from "@/components/CardView";
-import { Colors, FontSize, Highlight, Radius, Shadow, Spacing } from '@/lib/theme';
+import { Colors, FontSize, Highlight, Motion, Radius, Shadow, Spacing } from '@/lib/theme';
 import { usePrefersReducedMotion } from "@/lib/accessibility";
 import { useTranslation } from "@/lib/i18n";
 
@@ -35,20 +35,20 @@ interface ExchangeModalProps {
 
 function AnimatedCard({ card, delay = 0, reduceMotion }: { card: Card; delay?: number; reduceMotion: boolean }) {
   const ty = useSharedValue(reduceMotion ? 0 : -30);
+  const rot = useSharedValue(reduceMotion ? 0 : -8);
   const opacity = useSharedValue(reduceMotion ? 1 : 0);
-  const scale = useSharedValue(reduceMotion ? 1 : 0.8);
 
   useEffect(() => {
     if (reduceMotion) return;
-    ty.value = withDelay(delay, withSpring(0, { damping: 12, stiffness: 200 }));
-    opacity.value = withDelay(delay, withTiming(1, { duration: 250 }));
-    scale.value = withDelay(delay, withSpring(1, { damping: 10, stiffness: 180 }));
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- one-shot mount animation; ty/opacity/scale are stable shared values, delay/reduceMotion are fixed per instance
+    ty.value = withDelay(delay, withSpring(0, Motion.spring.land));
+    rot.value = withDelay(delay, withSpring(0, Motion.spring.land));
+    opacity.value = withDelay(delay, withTiming(1, { duration: Motion.duration.moderate }));
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- one-shot mount animation; ty/rot/opacity are stable shared values, delay/reduceMotion are fixed per instance
   }, []);
 
   const anim = useAnimatedStyle(() => ({
     opacity: opacity.value,
-    transform: [{ translateY: ty.value }, { scale: scale.value }],
+    transform: [{ translateY: ty.value }, { rotate: `${rot.value}deg` }],
   }));
 
   return (
@@ -58,38 +58,65 @@ function AnimatedCard({ card, delay = 0, reduceMotion }: { card: Card; delay?: n
   );
 }
 
+const PICK_LIFT = -10;
+
 function SelectableCard({
   card,
   onPress,
+  reduceMotion,
 }: {
   card: Card;
   onPress: () => void;
+  reduceMotion: boolean;
 }) {
-  const scale = useSharedValue(1);
-  const opacity = useSharedValue(1);
+  // Lift and tip rather than scale: this wraps a CardView, whose rank
+  // characters are rasterised text and go soft the moment they are resampled.
+  const lift = useSharedValue(0);
+  const glow = useSharedValue(0);
+
+  useEffect(
+    () => () => {
+      cancelAnimation(lift);
+      cancelAnimation(glow);
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- unmount cleanup only; both are stable shared values
+    []
+  );
+
+  function setPress(down: boolean) {
+    if (reduceMotion) {
+      glow.value = down ? 1 : 0;
+      return;
+    }
+    lift.value = withSpring(down ? 1 : 0, down ? Motion.spring.pickup : Motion.spring.land);
+    glow.value = withTiming(down ? 1 : 0, { duration: Motion.duration.fast });
+  }
 
   function handlePress() {
-    scale.value = withSequence(
-      withSpring(0.88, { damping: 8, stiffness: 300 }),
-      withSpring(1, { damping: 10, stiffness: 200 })
-    );
-    opacity.value = withSequence(
-      withTiming(0.7, { duration: 80 }),
-      withTiming(1, { duration: 120 })
-    );
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     onPress();
   }
 
   const anim = useAnimatedStyle(() => ({
-    transform: [{ scale: scale.value }],
-    opacity: opacity.value,
+    transform: [
+      { translateY: lift.value * PICK_LIFT },
+      { rotate: `${lift.value * -3}deg` },
+    ],
   }));
+  const glowStyle = useAnimatedStyle(() => ({ opacity: glow.value }));
 
   return (
-    <Pressable onPress={handlePress}>
-      <Animated.View style={[styles.cardItem, anim]}>
-        <CardView card={card} />
+    <Pressable
+      onPress={handlePress}
+      onPressIn={() => setPress(true)}
+      onPressOut={() => setPress(false)}
+      accessibilityRole="button"
+    >
+      <Animated.View style={anim}>
+        <Animated.View pointerEvents="none" style={[styles.cardGlow, glowStyle]} />
+        <View style={styles.cardItem}>
+          <CardView card={card} />
+        </View>
       </Animated.View>
     </Pressable>
   );
@@ -191,6 +218,7 @@ export function ExchangeModal({
               <SelectableCard
                 key={card.id}
                 card={card}
+                reduceMotion={reduceMotion}
                 onPress={() => onSelectCard(card.id)}
               />
             ))}
@@ -329,10 +357,17 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   cardItem: {
-    borderRadius: 10,
+    borderRadius: Radius.sm + 2,
     borderWidth: 2,
     borderColor: Colors.goldBorder,
     overflow: "hidden",
+  },
+  cardGlow: {
+    position: "absolute",
+    top: 2, left: 2, right: 2, bottom: 2,
+    borderRadius: Radius.sm,
+    backgroundColor: Colors.gold,
+    ...Shadow.goldSoft,
   },
   hint: {
     fontFamily: "Inter_400Regular",

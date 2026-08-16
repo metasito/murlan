@@ -7,6 +7,7 @@ import Animated, {
   withTiming,
   withSequence,
   withRepeat,
+  withDelay,
   Easing,
   runOnJS,
   cancelAnimation,
@@ -66,49 +67,80 @@ const FLY_ROTS: Record<FlyDirection, number> = {
 const FLY_LANDING_ROTS: Record<FlyDirection, number> = {
   bottom: -4, top: 5, left: -7, right: 7,
 };
+// Domain beats for the card-to-pile flight, not generic UI transitions: how
+// long the throw takes, how high it arcs, and how far it drives into the felt
+// before rocking back.
+const FLIGHT_MS = 380;
+const ARC_PEAK = 22;
+const LAND_DIP = 5;
 
 // ─── Table vignette ───────────────────────────────────────────────────────────
 
+// Four edge washes plus four diagonal corner washes. The corners are the half
+// that makes it read as a lit table rather than as four dark stripes: without
+// them the corner is only as dark as one edge, so the darkest region of the
+// felt ends up on the edge midpoints instead of the extremities.
 export function TableVignette() {
   return (
     <View style={StyleSheet.absoluteFill} pointerEvents="none">
-      {/* Top edge */}
       <LinearGradient
         colors={[Scrim.medium, "transparent"]}
         style={vignetteStyles.top}
         pointerEvents="none"
       />
-      {/* Bottom edge */}
       <LinearGradient
-        colors={["transparent", Scrim.medium]}
+        colors={["transparent", Scrim.heavy]}
         style={vignetteStyles.bottom}
         pointerEvents="none"
       />
-      {/* Left edge */}
       <LinearGradient
-        colors={[Scrim.soft, "transparent"]}
+        colors={[Scrim.medium, "transparent"]}
         start={{ x: 0, y: 0.5 }}
         end={{ x: 1, y: 0.5 }}
         style={vignetteStyles.left}
         pointerEvents="none"
       />
-      {/* Right edge */}
       <LinearGradient
-        colors={["transparent", Scrim.soft]}
+        colors={["transparent", Scrim.medium]}
         start={{ x: 0, y: 0.5 }}
         end={{ x: 1, y: 0.5 }}
         style={vignetteStyles.right}
         pointerEvents="none"
       />
+      <LinearGradient
+        colors={[Scrim.medium, "transparent"]}
+        start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}
+        style={vignetteStyles.cornerTL} pointerEvents="none"
+      />
+      <LinearGradient
+        colors={[Scrim.medium, "transparent"]}
+        start={{ x: 1, y: 0 }} end={{ x: 0, y: 1 }}
+        style={vignetteStyles.cornerTR} pointerEvents="none"
+      />
+      <LinearGradient
+        colors={[Scrim.medium, "transparent"]}
+        start={{ x: 0, y: 1 }} end={{ x: 1, y: 0 }}
+        style={vignetteStyles.cornerBL} pointerEvents="none"
+      />
+      <LinearGradient
+        colors={[Scrim.medium, "transparent"]}
+        start={{ x: 1, y: 1 }} end={{ x: 0, y: 0 }}
+        style={vignetteStyles.cornerBR} pointerEvents="none"
+      />
     </View>
   );
 }
 
+const CORNER = "34%";
 const vignetteStyles = StyleSheet.create({
-  top:    { position: "absolute", top: 0, left: 0, right: 0, height: "18%" },
-  bottom: { position: "absolute", bottom: 0, left: 0, right: 0, height: "18%" },
-  left:   { position: "absolute", top: 0, bottom: 0, left: 0, width: "14%" },
-  right:  { position: "absolute", top: 0, bottom: 0, right: 0, width: "14%" },
+  top:    { position: "absolute", top: 0, left: 0, right: 0, height: "22%" },
+  bottom: { position: "absolute", bottom: 0, left: 0, right: 0, height: "26%" },
+  left:   { position: "absolute", top: 0, bottom: 0, left: 0, width: "16%" },
+  right:  { position: "absolute", top: 0, bottom: 0, right: 0, width: "16%" },
+  cornerTL: { position: "absolute", top: 0, left: 0, width: CORNER, height: CORNER },
+  cornerTR: { position: "absolute", top: 0, right: 0, width: CORNER, height: CORNER },
+  cornerBL: { position: "absolute", bottom: 0, left: 0, width: CORNER, height: CORNER },
+  cornerBR: { position: "absolute", bottom: 0, right: 0, width: CORNER, height: CORNER },
 });
 
 // ─── CardFan ──────────────────────────────────────────────────────────────────
@@ -170,17 +202,42 @@ export function AvatarCircle({
   finishPos?: number;
   size?: number;
 }) {
-  const pulse = useSharedValue(1);
+  // The avatar itself never scales: it contains the initials, and React Native
+  // rasterises text before transforming it, so a scaled avatar is a blurred
+  // avatar. The turn signal is carried entirely by two textless sibling rings —
+  // a steady one that fades in, and a one-shot ping that expands and vanishes.
+  const ringOpacity = useSharedValue(0);
+  const pingScale = useSharedValue(1);
+  const pingOpacity = useSharedValue(0);
+  const reduceMotion = usePrefersReducedMotion();
+
   useEffect(() => {
-    if (isActive) {
-      pulse.value = withSequence(
-        withTiming(1.15, { duration: Motion.duration.moderate }),
-        withSpring(1, Motion.spring.settle)
-      );
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- pulse is a stable shared value
-  }, [isActive]);
-  const anim = useAnimatedStyle(() => ({ transform: [{ scale: pulse.value }] }));
+    ringOpacity.value = withTiming(isActive ? 1 : 0, {
+      duration: reduceMotion ? 0 : Motion.duration.base,
+    });
+    if (!isActive || reduceMotion) return;
+    pingScale.value = 1;
+    pingOpacity.value = 0.9;
+    pingScale.value = withTiming(1.75, { duration: Motion.duration.slow, easing: Easing.out(Easing.cubic) });
+    pingOpacity.value = withTiming(0, { duration: Motion.duration.slow, easing: Easing.out(Easing.quad) });
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- ring/ping are stable shared values
+  }, [isActive, reduceMotion]);
+
+  useEffect(
+    () => () => {
+      cancelAnimation(ringOpacity);
+      cancelAnimation(pingScale);
+      cancelAnimation(pingOpacity);
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- unmount cleanup only; all three are stable shared values
+    []
+  );
+
+  const ringStyle = useAnimatedStyle(() => ({ opacity: ringOpacity.value }));
+  const pingStyle = useAnimatedStyle(() => ({
+    opacity: pingOpacity.value,
+    transform: [{ scale: pingScale.value }],
+  }));
   const initials = name
     .split(" ")
     .map((w) => w[0])
@@ -188,13 +245,29 @@ export function AvatarCircle({
     .join("")
     .toUpperCase();
 
+  const outerSize = size + 6;
   return (
-    <Animated.View style={anim}>
+    <View>
+      <Animated.View
+        pointerEvents="none"
+        style={[
+          sharedStyles.avatarPing,
+          { width: outerSize, height: outerSize, borderRadius: outerSize / 2 },
+          pingStyle,
+        ]}
+      />
+      <Animated.View
+        pointerEvents="none"
+        style={[
+          sharedStyles.avatarRing,
+          { width: outerSize, height: outerSize, borderRadius: outerSize / 2 },
+          ringStyle,
+        ]}
+      />
       <View
         style={[
           sharedStyles.avatarOuter,
-          { width: size + 6, height: size + 6, borderRadius: (size + 6) / 2 },
-          isActive && sharedStyles.avatarOuterActive,
+          { width: outerSize, height: outerSize, borderRadius: outerSize / 2 },
         ]}
       >
         <LinearGradient
@@ -219,7 +292,7 @@ export function AvatarCircle({
           )}
         </View>
       </View>
-    </Animated.View>
+    </View>
   );
 }
 
@@ -316,6 +389,7 @@ export function FlyingCards({
   const { dx, dy } = FLY_OFFSETS[direction];
   const startRot = FLY_ROTS[direction];
   const landingRot = FLY_LANDING_ROTS[direction];
+  const reduceMotion = usePrefersReducedMotion();
 
   // The caller passes a fresh onDone closure on every render; a ref keeps this
   // mount-only animation effect from restarting mid-flight when that happens.
@@ -325,49 +399,56 @@ export function FlyingCards({
   const tx = useSharedValue(dx);
   const ty = useSharedValue(dy);
   const rot = useSharedValue(startRot);
-  const scale = useSharedValue(0.85);
   const opacity = useSharedValue(0);
   // Parabolic arc — peak at mid-flight, then land
   const arcY = useSharedValue(0);
+  // Overshoot past the pile and rock back, so the card lands with weight
+  // instead of stopping dead on its mark.
+  const settle = useSharedValue(0);
 
   useEffect(() => {
-    const FLIGHT = 380;
+    if (reduceMotion) {
+      // The pile is about to show these cards anyway; skip the flight entirely
+      // and hand control straight back rather than jumping them across.
+      const id = setTimeout(() => onDoneRef.current(), Motion.duration.fast);
+      return () => clearTimeout(id);
+    }
     const easing = Easing.bezier(0.22, 0.61, 0.36, 1.0);
 
-    opacity.value = withTiming(1, { duration: 60 });
-    tx.value = withTiming(0, { duration: FLIGHT, easing });
-    ty.value = withTiming(0, { duration: FLIGHT, easing });
-    rot.value = withTiming(landingRot, { duration: FLIGHT, easing: Easing.out(Easing.cubic) });
-    // Arc: rise to -20 at midpoint, then land
+    opacity.value = withTiming(1, { duration: Motion.duration.flash * 0.7 });
+    tx.value = withTiming(0, { duration: FLIGHT_MS, easing });
+    ty.value = withTiming(0, { duration: FLIGHT_MS, easing });
+    rot.value = withTiming(landingRot, { duration: FLIGHT_MS, easing: Easing.out(Easing.cubic) });
     arcY.value = withSequence(
-      withTiming(-20, { duration: FLIGHT * 0.5, easing: Easing.out(Easing.quad) }),
-      withTiming(0, { duration: FLIGHT * 0.5, easing: Easing.in(Easing.quad) })
+      withTiming(-ARC_PEAK, { duration: FLIGHT_MS * 0.5, easing: Easing.out(Easing.quad) }),
+      withTiming(0, { duration: FLIGHT_MS * 0.5, easing: Easing.in(Easing.quad) })
     );
-    scale.value = withSequence(
-      withTiming(1.06, { duration: FLIGHT * 0.65, easing: Easing.out(Easing.cubic) }),
-      withSpring(0.97, { damping: 18, stiffness: 320 }),
-      withSpring(1.0, { damping: 30, stiffness: 180 }, (finished) => {
-        if (finished) runOnJS(() => onDoneRef.current())();
-      })
+    settle.value = withDelay(
+      FLIGHT_MS * 0.82,
+      withSequence(
+        withTiming(1, { duration: Motion.duration.flash }),
+        withSpring(0, Motion.spring.land, (finished) => {
+          if (finished) runOnJS(() => onDoneRef.current())();
+        })
+      )
     );
 
     return () => {
       cancelAnimation(tx);
       cancelAnimation(ty);
       cancelAnimation(rot);
-      cancelAnimation(scale);
       cancelAnimation(opacity);
       cancelAnimation(arcY);
+      cancelAnimation(settle);
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- one-shot mount animation (remounts via key per flight); shared values are stable, onDone read through a ref
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- one-shot mount animation (remounts via key per flight); shared values are stable, onDone read through a ref, reduceMotion fixed per flight
   }, []);
 
   const aStyle = useAnimatedStyle(() => ({
     transform: [
       { translateX: tx.value },
-      { translateY: ty.value + arcY.value },
-      { rotate: `${rot.value}deg` },
-      { scale: scale.value },
+      { translateY: ty.value + arcY.value + settle.value * LAND_DIP },
+      { rotate: `${rot.value + settle.value * landingRot * 0.4}deg` },
     ],
     opacity: opacity.value,
   }));
@@ -412,6 +493,16 @@ const COMBO_LABEL_KEYS: Record<string, TranslationKey> = {
 
 const POWER_COMBOS = new Set(["bomb", "royal_straight"]);
 
+// Cards thrown onto a table do not land square. Each one gets a small fixed
+// tilt derived from its own id, so the pile looks handled rather than stacked
+// — and so the same combination always looks the same, on every client.
+const PILE_MAX_TILT = 4.5;
+function tiltOf(id: string): number {
+  let hash = 0;
+  for (let i = 0; i < id.length; i++) hash = (hash * 31 + id.charCodeAt(i)) | 0;
+  return ((Math.abs(hash) % 200) / 100 - 1) * PILE_MAX_TILT;
+}
+
 function PileComboCards({ cards }: { cards: Card[] }) {
   const overlap = cards.length > 8 ? 9 : cards.length > 5 ? 12 : 14;
   const totalW = overlap * (cards.length - 1) + CARD_W;
@@ -420,7 +511,12 @@ function PileComboCards({ cards }: { cards: Card[] }) {
       {cards.map((card, ci) => (
         <View
           key={card.id}
-          style={{ position: "absolute", left: ci * overlap, zIndex: ci }}
+          style={{
+            position: "absolute",
+            left: ci * overlap,
+            zIndex: ci,
+            transform: [{ rotate: `${tiltOf(card.id)}deg` }],
+          }}
         >
           <CardView card={card} />
         </View>
@@ -441,19 +537,30 @@ export function PlayedPile({
   bounceTrigger?: number;
 }) {
   const { t } = useTranslation();
-  const bounceScale = useSharedValue(1);
+  const reduceMotion = usePrefersReducedMotion();
+  // The pile settles downward rather than scaling up: it holds card faces and
+  // a label, and scaling rasterised text is what makes it look cheap.
+  const settleY = useSharedValue(0);
 
   useEffect(() => {
-    if (!bounceTrigger) return;
-    bounceScale.value = withSequence(
-      withSpring(1.05, { damping: 10, stiffness: 420 }),
-      withSpring(1.0, { damping: 16, stiffness: 280 })
+    if (!bounceTrigger || reduceMotion) return;
+    settleY.value = withSequence(
+      withTiming(-5, { duration: Motion.duration.flash }),
+      withSpring(0, Motion.spring.land)
     );
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- bounceScale is a stable shared value
-  }, [bounceTrigger]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- settleY is a stable shared value
+  }, [bounceTrigger, reduceMotion]);
+
+  useEffect(
+    () => () => {
+      cancelAnimation(settleY);
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- unmount cleanup only; settleY is a stable shared value
+    []
+  );
 
   const bounceStyle = useAnimatedStyle(() => ({
-    transform: [{ scale: bounceScale.value }],
+    transform: [{ translateY: settleY.value }],
   }));
 
   const isPower = current && POWER_COMBOS.has(current.type);
@@ -472,16 +579,14 @@ export function PlayedPile({
       )}
 
       <View style={sharedStyles.pileStack}>
+        {/* The beaten combination stays under the new one, rotated off-axis,
+            the way the previous trick sits under the one that took it. */}
         {prev && (
-          <View style={sharedStyles.pilePrevLayer}>
+          <View style={sharedStyles.pilePrevLayer} pointerEvents="none">
             <PileComboCards cards={prev.cards} />
           </View>
         )}
-        {current && (
-          <View style={sharedStyles.pileCurrentLayer}>
-            <PileComboCards cards={current.cards} />
-          </View>
-        )}
+        {current && <PileComboCards cards={current.cards} />}
       </View>
 
       {current && (
@@ -508,6 +613,14 @@ export function PlayedPile({
 // its own id once here via useCallback, so CardView only ever sees a new
 // `onPress` reference when this card's id or the caller's callback actually
 // changes, not whenever some other card's selection state changes.
+// How far a selected card rises out of the fan, and how far it tips as it is
+// picked up. The rotation is what stops the lift reading as a flat slide.
+const SELECT_LIFT = -16;
+const SELECT_TILT = -3;
+// Where a dealt card comes from: up and in, i.e. the middle of the table.
+const DEAL_RISE = -CARD_H * 2.2;
+const DEAL_TILT = 14;
+
 export function CardItem({
   card,
   isSelected,
@@ -515,6 +628,8 @@ export function CardItem({
   onPress,
   disabled,
   zIndex,
+  dealDelay,
+  dealFromX,
 }: {
   card: Card;
   isSelected: boolean;
@@ -522,28 +637,66 @@ export function CardItem({
   onPress: (id: string) => void;
   disabled: boolean;
   zIndex: number;
+  /** ms to wait before this card flies in, or -1 for no deal animation. */
+  dealDelay: number;
+  /** Horizontal distance back to the deck, so the fan converges on one point. */
+  dealFromX: number;
 }) {
+  const reduceMotion = usePrefersReducedMotion();
   const liftY = useSharedValue(0);
-  const cardScale = useSharedValue(1);
+  const tilt = useSharedValue(0);
+  const glow = useSharedValue(0);
+  const dealing = useSharedValue(dealDelay >= 0 && !reduceMotion ? 1 : 0);
 
   useEffect(() => {
-    liftY.value = withSpring(isSelected ? -14 : 0, {
-      damping: 12,
-      stiffness: 280,
-    });
-    cardScale.value = withSpring(isSelected ? 1.04 : 1.0, {
-      damping: 10,
-      stiffness: 260,
-    });
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- liftY/cardScale are stable shared values
-  }, [isSelected]);
+    if (dealing.value === 0) return;
+    dealing.value = withDelay(
+      dealDelay,
+      withSpring(0, Motion.spring.land)
+    );
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- one-shot mount animation; dealing is a stable shared value and dealDelay is fixed per instance
+  }, []);
 
-  const aStyle = useAnimatedStyle(() => ({
-    transform: [
-      { translateY: liftY.value },
-      { scale: cardScale.value },
-    ],
-  }));
+  useEffect(() => {
+    if (reduceMotion) {
+      liftY.value = withTiming(isSelected ? SELECT_LIFT : 0, { duration: Motion.duration.fast });
+      tilt.value = 0;
+      glow.value = withTiming(isSelected ? 1 : 0, { duration: Motion.duration.fast });
+      return;
+    }
+    liftY.value = withSpring(isSelected ? SELECT_LIFT : 0, Motion.spring.pickup);
+    tilt.value = withSpring(isSelected ? SELECT_TILT : 0, Motion.spring.pickup);
+    glow.value = withTiming(isSelected ? 1 : 0, { duration: Motion.duration.fast });
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- liftY/tilt/glow are stable shared values
+  }, [isSelected, reduceMotion]);
+
+  useEffect(
+    () => () => {
+      cancelAnimation(liftY);
+      cancelAnimation(tilt);
+      cancelAnimation(glow);
+      cancelAnimation(dealing);
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- unmount cleanup only; all four are stable shared values
+    []
+  );
+
+  const aStyle = useAnimatedStyle(() => {
+    const d = dealing.value;
+    return {
+      opacity: 1 - d,
+      transform: [
+        { translateX: dealFromX * d },
+        { translateY: liftY.value + DEAL_RISE * d },
+        { rotate: `${tilt.value + DEAL_TILT * d}deg` },
+      ],
+    };
+  });
+
+  // A textless sibling behind the card carries the selection bloom, so the
+  // glow can be animated with opacity alone and never touches the card's own
+  // rasterised rank characters.
+  const glowStyle = useAnimatedStyle(() => ({ opacity: glow.value }));
 
   const cardId = card.id;
   const handlePress = useCallback(() => onPress(cardId), [onPress, cardId]);
@@ -552,6 +705,7 @@ export function CardItem({
     <Animated.View
       style={[sharedStyles.handCardWrap, { left, zIndex }, aStyle]}
     >
+      <Animated.View pointerEvents="none" style={[sharedStyles.cardGlow, glowStyle]} />
       <CardView
         card={card}
         selected={isSelected}
@@ -587,6 +741,16 @@ export function StraightHand({
   // Computed before the early return below — Rules of Hooks requires every
   // hook to run unconditionally on every render of this component.
   const selectedSet = useMemo(() => new Set(selectedIds), [selectedIds]);
+
+  // Armed while the hand is empty, so the render on which a hand appears —
+  // the start of a game, or of the next one after a rematch — is the render
+  // whose cards mount staggered. A single card arriving later (the exchange
+  // give-back) mounts with the deal disarmed and simply appears in place.
+  const [dealArmed, setDealArmed] = useState(true);
+  useEffect(() => {
+    setDealArmed(n === 0);
+  }, [n]);
+
   if (n === 0) {
     return (
       <View style={[sharedStyles.handCenter, { width: availW }]}>
@@ -608,6 +772,8 @@ export function StraightHand({
           onPress={onPress}
           disabled={disabled}
           zIndex={i}
+          dealDelay={dealArmed ? i * Motion.stagger.deal : -1}
+          dealFromX={totalW / 2 - i * step - CARD_W / 2}
         />
       ))}
     </View>
@@ -834,14 +1000,14 @@ export function useTurnPulse(active: boolean) {
   // represent an animated value.
   return useAnimatedStyle(() => {
     const v = glowV.value;
-    const shadowRadius = v < 0.01 ? 0 : interpolate(v, [0.35, 0.85], [8, 22], Extrapolation.CLAMP);
-    const shadowOpacity = v;
-    const elevation = interpolate(v, [0, 0.85], [0, 20], Extrapolation.CLAMP);
+    const shadowRadius = v < 0.01 ? 0 : interpolate(v, [0.35, 0.85], [6, 15], Extrapolation.CLAMP);
+    const shadowOpacity = v * 0.55;
+    const elevation = interpolate(v, [0, 0.85], [0, 12], Extrapolation.CLAMP);
     const borderAlpha = interpolate(v, [0, 0.85], [0, 0.3], Extrapolation.CLAMP);
 
     if (Platform.OS === "web") {
-      const blur = v < 0.01 ? 0 : interpolate(v, [0.35, 0.85], [8, 20], Extrapolation.CLAMP);
-      const alpha = v < 0.01 ? 0 : interpolate(v, [0.35, 0.85], [0.35, 0.85], Extrapolation.CLAMP);
+      const blur = v < 0.01 ? 0 : interpolate(v, [0.35, 0.85], [6, 14], Extrapolation.CLAMP);
+      const alpha = v < 0.01 ? 0 : interpolate(v, [0.35, 0.85], [0.2, 0.45], Extrapolation.CLAMP);
       return {
         boxShadow: v < 0.01 ? "none" : `0 0 ${blur}px rgba(201,168,76,${alpha})`,
         borderRadius: 14,
@@ -906,9 +1072,16 @@ export const sharedStyles = StyleSheet.create({
     justifyContent: "center",
     position: "relative",
   },
-  avatarOuterActive: {
+  avatarRing: {
+    position: "absolute",
+    borderWidth: 2,
     borderColor: Colors.gold,
     ...Shadow.gold,
+  },
+  avatarPing: {
+    position: "absolute",
+    borderWidth: 1.5,
+    borderColor: Colors.goldStrong,
   },
   avatarInner: {
     alignItems: "center",
@@ -975,11 +1148,10 @@ export const sharedStyles = StyleSheet.create({
     position: "relative",
   },
   pilePrevLayer: {
-    opacity: 0.35,
-    transform: [{ scale: 0.84 }, { translateY: 4 }],
-    marginBottom: -CARD_H * 0.14,
+    position: "absolute",
+    opacity: 0.3,
+    transform: [{ rotate: "-7deg" }, { translateY: 9 }],
   },
-  pileCurrentLayer: { opacity: 1 },
   comboLabel: { marginTop: 10 },
   comboChip: {
     backgroundColor: Colors.goldBorder,
@@ -1012,7 +1184,14 @@ export const sharedStyles = StyleSheet.create({
     gap: 6,
   },
   handGlowWrap: { borderRadius: 14, padding: 4 },
-  handGlowWrapActive: {},
+  handGlowWrapActive: { backgroundColor: Colors.goldGhost },
+  cardGlow: {
+    position: "absolute",
+    top: 2, left: 2, right: 2, bottom: 2,
+    borderRadius: Radius.sm,
+    backgroundColor: Colors.gold,
+    ...Shadow.goldSoft,
+  },
   handRow: {
     position: "relative",
     height: CARD_H,
