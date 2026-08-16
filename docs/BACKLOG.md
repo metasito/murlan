@@ -41,6 +41,11 @@ Two lists: what I found, and what the owner asked for.
 | A15 | Match history pruned to the last 50 rows per user | The number is arbitrary but bounded. Revisit if replay (A11) ships. |
 | A16 | Exchange-phase integration test retries up to 6× | ~0.02% residual flake by design — reaching a non-both-jokers exchange is probabilistic. Could be made deterministic by stacking the loser's hand. |
 | A17 | **A lint rule for the "invisible colour" bug class** | Four instances found this session: a stringified `"Colors.success"`, a singular/plural theme-key mismatch that made every card colourless, and a translucent *fill* token used as a *text* colour. React Native renders an invalid colour as nothing, silently. A custom ESLint rule would catch all four shapes. |
+| A18 | **`ExchangeModal`'s `SelectableCard` has no `accessibilityLabel`** (`components/ExchangeModal.tsx:63`) | It sets `accessibilityRole="button"` but no label of its own — the only label nearby belongs to the *disabled* inner `CardView` it wraps. A screen-reader user gets an unnamed button. This is also the direct cause of A19, so fixing it closes both. |
+| A19 | **E2E exchange giveback click is ~1-in-5 flaky** (`tests/e2e/helpers/bot.ts`, `giveExchangeCard`) | Because of A18 the harness must find the inner label and dispatch `pointerdown`/`pointerup`/`click` on its `<button>` ancestor; RNW's gesture responder for that shape doesn't always react. Each attempt is verified against the offered-card count actually dropping, so a miss surfaces as a real stall, never a false pass — but the test does still fail intermittently. Fixing A18 is the proper fix. |
+| A20 | **One unreproduced online E2E stall** | A single run of the two-real-browsers test threw `Took action "played single 7 di Quadri" but the table state did not advance` late in a hand (viewer 3 cards, opponent 7), 10s after a click confirmed as delivered. Unknown whether it is a genuine server-authoritative race or an artefact of the harness running with `MURLAN_AFK_TIMEOUT_MS=5000` (down from 30s). Needs repeated runs to classify; recorded rather than silently absorbed into a longer timeout. |
+| A21 | **`ScreenOrientation.lockAsync`/`unlockAsync` unhandled rejection** (`components/GameTable.tsx:570,573`) | Neither call is `.catch()`ed. Fast game→result→game navigation makes them cancel each other, throwing "A call to screen.orientation.lock() or unlock() canceled this call." as an uncaught page error. Real users won't navigate that fast; the E2E suite does, now that its delays are shortened. A `.catch()` on both is the whole fix. |
+| A22 | **E2E coverage gaps** | Three areas the Playwright suite does not drive: the result screen's *own* rematch exchange (`app/result.tsx`'s `CardExchangeOverlay`, distinct from `GameTable`'s `ExchangeModal`) — blocked because its cards use raw `${card.rank} ${card.suit}` labels (`app/result.tsx:273`) instead of the localized card name every other surface uses, which is itself worth fixing; teams-mode partner coordination; and the AFK auto-pass / disconnect-reconnect paths. |
 
 ---
 
@@ -88,7 +93,7 @@ it costs.
   broken deal that removed a Joker from ~7% of games, three exchange freezes, the AI lead
   deadlock
 - i18n across three locales, the tutorial, achievements, stats
-- The Playwright end-to-end suite currently being built
+- The Playwright end-to-end suite, which plays real games through the rendered UI
 
 Rewrites do not carry bug fixes across. They re-earn them, one production incident at a
 time. The current stack is not what made this app buggy — **absent tests and unguarded
