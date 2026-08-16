@@ -84,7 +84,7 @@ actually depend on — each demonstrable, not asserted.
 | Real-time | socket.io / socket.io-client |
 | State | React Context (Auth, Game, OnlineGame, Socket, Settings) + @tanstack/react-query |
 | Animations | react-native-reanimated |
-| Audio | expo-audio + Web Audio API; effects synthesized by `scripts/gen-sounds.js` |
+| Audio | expo-audio + Web Audio API; CC0 effects built by `scripts/build-sounds.mjs` |
 | Fonts | Rajdhani (headings), Inter (body) via @expo-google-fonts |
 
 ---

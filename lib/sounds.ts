@@ -1,8 +1,9 @@
 import { createAudioPlayer, setAudioModeAsync, type AudioPlayer } from "expo-audio";
 import { Platform } from "react-native";
 
-// Effects are synthesized by scripts/gen-sounds.js and ship as 22.05 kHz mono WAV.
-// Web decodes the same assets through the Web Audio API.
+// Effects are CC0 recordings, built by scripts/build-sounds.mjs and shipped as
+// 44.1 kHz mono 16-bit WAV. WAV rather than the sources' OGG because iOS will
+// not play OGG. Web decodes the same assets through the Web Audio API.
 
 let _webCtx: AudioContext | null = null;
 
