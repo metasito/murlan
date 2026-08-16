@@ -40,13 +40,14 @@ export default function OnlineLobbyScreen() {
     if (room) {
       router.push("/(online)/room");
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- navigate once per room id, not on every room field update
   }, [room?.roomId]);
 
   useEffect(() => {
     if (error) {
       Alert.alert(t("common.error"), error, [{ text: t("common.ok"), onPress: clearError }]);
     }
-  }, [error]);
+  }, [error, clearError, t]);
 
   useEffect(() => {
     if (pendingInvite) {
@@ -54,7 +55,7 @@ export default function OnlineLobbyScreen() {
       setJoinModalVisible(true);
       clearInvite();
     }
-  }, [pendingInvite]);
+  }, [pendingInvite, clearInvite]);
 
   function handleCreate() {
     hapticMedium();

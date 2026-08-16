@@ -5,7 +5,6 @@ import {
   StyleSheet,
   Pressable,
   Animated,
-  Platform,
   BackHandler,
   useWindowDimensions,
   ActivityIndicator,
@@ -90,7 +89,15 @@ export default function QuickmatchScreen() {
     if (room) {
       router.replace("/(online)/room");
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- navigate once per room id, not on every room field update
   }, [room?.roomId]);
+
+  const handleCancelSearch = React.useCallback(() => {
+    leaveRoom();
+    clearError();
+    setPhase("selecting");
+    setSelectedMode(null);
+  }, [leaveRoom, clearError]);
 
   useEffect(() => {
     const sub = BackHandler.addEventListener("hardwareBackPress", () => {
@@ -104,7 +111,7 @@ export default function QuickmatchScreen() {
       return true;
     });
     return () => sub.remove();
-  }, [phase]);
+  }, [phase, handleCancelSearch, navigation]);
 
   useEffect(() => {
     if (phase !== "searching") return;
@@ -116,6 +123,7 @@ export default function QuickmatchScreen() {
     );
     pulse.start();
     return () => pulse.stop();
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- pulseAnim is a stable ref value
   }, [phase]);
 
   useEffect(() => {
@@ -137,13 +145,6 @@ export default function QuickmatchScreen() {
     if (!selectedMode) return;
     clearError();
     quickmatch(selectedMode.maxPlayers, selectedMode.gameMode);
-  };
-
-  const handleCancelSearch = () => {
-    leaveRoom();
-    clearError();
-    setPhase("selecting");
-    setSelectedMode(null);
   };
 
   const handleCancelHome = () => {

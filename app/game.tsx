@@ -67,6 +67,7 @@ export default function GameScreen() {
     if (gameState.players[gameState.currentTurnIndex]?.type !== "ai") return;
     const t = setTimeout(() => runAITurnRef.current(), AI_DELAY);
     return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- narrow on purpose: only these fields should restart the AI timer
   }, [
     gameState?.currentTurnIndex,
     gameState?.gameOver,
@@ -86,6 +87,7 @@ export default function GameScreen() {
     if (!weakest) return;
     const t = setTimeout(() => chooseExchangeRef.current(weakest.id), AI_EXCHANGE_DELAY);
     return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- narrow on purpose: winnerIdx is fixed for the duration of an active exchange phase
   }, [gameState?.exchangePhase?.active]);
 
   useEffect(() => {

@@ -43,6 +43,7 @@ function AnimatedCard({ card, delay = 0, reduceMotion }: { card: Card; delay?: n
     ty.value = withDelay(delay, withSpring(0, { damping: 12, stiffness: 200 }));
     opacity.value = withDelay(delay, withTiming(1, { duration: 250 }));
     scale.value = withDelay(delay, withSpring(1, { damping: 10, stiffness: 180 }));
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- one-shot mount animation; ty/opacity/scale are stable shared values, delay/reduceMotion are fixed per instance
   }, []);
 
   const anim = useAnimatedStyle(() => ({
@@ -115,6 +116,7 @@ export function ExchangeModal({
     if (reduceMotion) return;
     arrowScale.value = withDelay(300, withSpring(1, { damping: 12, stiffness: 200 }));
     arrowOpacity.value = withDelay(300, withTiming(1, { duration: 300 }));
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- one-shot mount animation; stable shared values, reduceMotion checked once at mount
   }, []);
 
   const arrowAnim = useAnimatedStyle(() => ({

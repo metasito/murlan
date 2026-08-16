@@ -73,6 +73,7 @@ function FlyingCard({
       delay,
       withTiming(toRight ? screenWidth + 20 : -80, { duration: FLIGHT_DURATION })
     );
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- one-shot mount animation; tx is a stable shared value, other props are fixed per instance
   }, []);
 
   const animStyle = useAnimatedStyle(() => ({
@@ -127,7 +128,7 @@ export function ExchangeAnnouncement({
     return () => {
       if (timerRef.current) clearTimeout(timerRef.current);
     };
-  }, [visible]);
+  }, [visible, onDismiss]);
 
   if (!visible || !shown) return null;
 

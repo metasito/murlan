@@ -11,9 +11,8 @@ import Animated, {
   useSharedValue,
   withSpring,
 } from "react-native-reanimated";
-import { Card, Suit, isRedSuit, getCardDisplayRank, getSuitSymbol } from "@/lib/gameEngine";
-import { Colors, Scrim } from '@/lib/theme';
-import { Shadow } from "@/lib/theme";
+import { Card, Suit, getCardDisplayRank, getSuitSymbol } from "@/lib/gameEngine";
+import { Colors, Scrim, Shadow } from '@/lib/theme';
 import { useTranslation, type TranslationKey } from "@/lib/i18n";
 import Svg, { Path, Circle, G, Rect, Polygon } from "react-native-svg";
 
@@ -278,6 +277,7 @@ export function CardView({
       damping: 15,
       stiffness: 300,
     });
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- translateY is a stable shared value
   }, [selected, noLift]);
 
   const animStyle = useAnimatedStyle(() => ({

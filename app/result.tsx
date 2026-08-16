@@ -65,6 +65,7 @@ function ScoreRow({
   useEffect(() => {
     opacity.value = withDelay(delay, withTiming(1, { duration: 320 }));
     tx.value = withDelay(delay, withSpring(0, { damping: 14, stiffness: 200 }));
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- one-shot mount animation; opacity/tx are stable shared values, delay is fixed per instance
   }, []);
   const anim = useAnimatedStyle(() => ({
     opacity: opacity.value,
@@ -145,6 +146,7 @@ function WinnerCelebration({
       false
     );
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- one-shot mount animation; stable shared values
   }, []);
   const containerAnim = useAnimatedStyle(() => ({
     transform: [{ scale: scale.value }],
@@ -205,7 +207,8 @@ function CardExchangeOverlay({
       }, 900);
       return () => clearTimeout(t);
     }
-  }, []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- one-shot per phase mount; ep/winner/exchangeCards are fixed for this phase's lifetime, chooseExchangeCard is stable
+  }, [chooseExchangeCard]);
 
   if (ep.bothJokersException) {
     return (
@@ -354,6 +357,7 @@ export default function ResultScreen() {
       router.replace("/game");
     }
     prevExchangeActiveRef.current = isActive;
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- tracks only the active->inactive transition, not every exchangePhase field
   }, [gameState?.exchangePhase?.active]);
 
   useEffect(() => {

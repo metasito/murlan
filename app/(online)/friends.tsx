@@ -12,7 +12,6 @@ import { router, useFocusEffect } from "expo-router";
 import * as Haptics from "expo-haptics";
 import { Ionicons } from "@expo/vector-icons";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { useAuth } from "@/context/AuthContext";
 import { useSocket } from "@/context/SocketContext";
 import { useOnlineGame } from "@/context/OnlineGameContext";
 import { apiRequest } from "@/lib/query-client";
@@ -68,7 +67,6 @@ function Avatar({ name }: { name: string }) {
 
 export default function FriendsScreen() {
   const { t, tn } = useTranslation();
-  const { user } = useAuth();
   const { socket, onlineIds, gameInvites, dismissGameInvite } = useSocket();
   const { joinRoom, room } = useOnlineGame();
   const qc = useQueryClient();
@@ -214,6 +212,7 @@ export default function FriendsScreen() {
     if (room) {
       router.push("/(online)/room");
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- navigate once per room id, not on every room field update
   }, [room?.roomId]);
 
   useFocusEffect(

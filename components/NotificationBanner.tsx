@@ -86,7 +86,8 @@ export default function NotificationBanner({ notification, onDismiss }: Props) {
       translateY.value = withTiming(-120, { duration: slideDur });
       opacity.value = withTiming(0, { duration: slideDur });
     }
-  }, [notification, slideDur]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- translateY/opacity are stable shared values
+  }, [notification, slideDur, onDismiss]);
 
   const animStyle = useAnimatedStyle(() => ({
     transform: [{ translateY: translateY.value }],

@@ -238,11 +238,12 @@ export default function RoomScreen() {
   const playerItemPaddingVertical = isLandscape ? 4 : 8;
   const playerListGap = isLandscape ? 4 : 6;
 
+  const hasGameState = !!gameState;
   useEffect(() => {
-    if (gameState) {
+    if (hasGameState) {
       router.replace("/(online)/game");
     }
-  }, [!!gameState]);
+  }, [hasGameState]);
 
   useEffect(() => {
     if (!room) {
@@ -252,13 +253,13 @@ export default function RoomScreen() {
         router.replace("/(online)");
       }
     }
-  }, [room]);
+  }, [room, entrySource]);
 
   useEffect(() => {
     if (error) {
       Alert.alert(t("common.error"), error, [{ text: t("common.ok"), onPress: clearError }]);
     }
-  }, [error]);
+  }, [error, clearError, t]);
 
   if (!room) return null;
 
@@ -267,7 +268,7 @@ export default function RoomScreen() {
   const hasEmptySeats = room.players.length < maxSeats;
   const showInvitePanel = room.status === "waiting" && hasEmptySeats && !!user;
   // Bots fill every empty seat, so a single host is enough to start —
-  // otherwise at least 2 seated humans are required, same as before.
+  // otherwise at least 2 seated humans are required.
   const notEnoughPlayers = !fillWithBots && room.players.length < 2;
   const canStart = isHost && !notEnoughPlayers && room.status === "waiting";
   const showBotFillControls = isHost && room.status === "waiting" && hasEmptySeats;

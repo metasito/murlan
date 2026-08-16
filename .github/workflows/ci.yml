@@ -74,9 +74,4 @@ jobs:
           echo "Integration suites ran against Postgres."
 
       - name: Lint
-        # expo lint currently reports pre-existing violations (tracked as
-        # deferred debt, not introduced by this workflow). Non-blocking
-        # until that debt is cleared, so unrelated PRs are not held
-        # hostage by it; the annotations still surface in the run summary.
         run: npm run lint
-        continue-on-error: true

@@ -500,6 +500,7 @@ export function GameTable({
       dir: seatDirection(gameState.lastPlayedBy, viewerSeat, players.length),
       cards: combo.cards,
     });
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- fires only on a genuine new play (lastPlayedCombination identity change); everything else is read fresh from that same render by construction, and reacting to it separately would re-fire this load-bearing pile logic on unrelated updates
   }, [gameState.lastPlayedCombination]);
 
   // Round-winner tag over the pile.
@@ -512,7 +513,7 @@ export function GameTable({
     playRoundWin();
     const t = setTimeout(() => setRoundWinner(null), ROUND_WINNER_MS);
     return () => clearTimeout(t);
-  }, [gameState.roundWinner, gameState.lastPlayedCombination]);
+  }, [gameState.roundWinner, gameState.lastPlayedCombination, players]);
 
   useEffect(() => {
     if (isMyTurn && !isFinished && !prevMyTurnRef.current) playYourTurn();
@@ -538,7 +539,7 @@ export function GameTable({
     const myRank = myName ? gameState.rankings.indexOf(myName) : -1;
     if (myRank === 0) playGameWin();
     else if (myRank >= 0 && myRank === gameState.rankings.length - 1) playGameLose();
-  }, [gameState.gameOver]);
+  }, [gameState.gameOver, gameState.rankings, viewer?.name]);
 
   // ── Animation ───────────────────────────────────────────────────────────────
 
@@ -551,6 +552,7 @@ export function GameTable({
       isMyTurn && !isFinished
         ? withSpring(1.02, { damping: 12, stiffness: 160 })
         : withTiming(1, { duration: Motion.duration.moderate });
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- handScaleVal is a stable shared value
   }, [isMyTurn, isFinished, reduceMotion]);
 
   // GIOCA bloom — a slow gold pulse while the button is armed.
@@ -574,6 +576,7 @@ export function GameTable({
     return () => {
       cancelAnimation(giocaGlowVal);
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- giocaGlowVal is a stable shared value
   }, [playBtnValid, reduceMotion]);
 
   // GIOCA pop as the selection grows or shrinks.
@@ -587,6 +590,7 @@ export function GameTable({
       );
     }
     prevSelectedLen.current = selectedIds.length;
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- giocaPulseVal is a stable shared value
   }, [selectedIds.length, isMyTurn, isFinished, reduceMotion]);
 
   // PASSA pop the moment passing becomes possible.
@@ -597,6 +601,7 @@ export function GameTable({
         withSpring(1, Motion.spring.gentle)
       );
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- passaPulseVal is a stable shared value
   }, [gameState.lastPlayedCombination, isMyTurn, isFinished, canPass, reduceMotion]);
 
   // Reanimated keeps driving shared values after unmount unless cancelled.
@@ -607,6 +612,7 @@ export function GameTable({
       cancelAnimation(passaPulseVal);
       cancelAnimation(shakeX);
     },
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- unmount cleanup only; all four are stable shared values
     []
   );
 

@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { View, Text, StyleSheet, Platform, Pressable, ScrollView } from "react-native";
 import Animated, {
   useAnimatedStyle,
@@ -178,6 +178,7 @@ export function AvatarCircle({
         withSpring(1, Motion.spring.settle)
       );
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- pulse is a stable shared value
   }, [isActive]);
   const anim = useAnimatedStyle(() => ({ transform: [{ scale: pulse.value }] }));
   const initials = name
@@ -316,6 +317,11 @@ export function FlyingCards({
   const startRot = FLY_ROTS[direction];
   const landingRot = FLY_LANDING_ROTS[direction];
 
+  // The caller passes a fresh onDone closure on every render; a ref keeps this
+  // mount-only animation effect from restarting mid-flight when that happens.
+  const onDoneRef = useRef(onDone);
+  onDoneRef.current = onDone;
+
   const tx = useSharedValue(dx);
   const ty = useSharedValue(dy);
   const rot = useSharedValue(startRot);
@@ -341,7 +347,7 @@ export function FlyingCards({
       withTiming(1.06, { duration: FLIGHT * 0.65, easing: Easing.out(Easing.cubic) }),
       withSpring(0.97, { damping: 18, stiffness: 320 }),
       withSpring(1.0, { damping: 30, stiffness: 180 }, (finished) => {
-        if (finished) runOnJS(onDone)();
+        if (finished) runOnJS(() => onDoneRef.current())();
       })
     );
 
@@ -353,6 +359,7 @@ export function FlyingCards({
       cancelAnimation(opacity);
       cancelAnimation(arcY);
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- one-shot mount animation (remounts via key per flight); shared values are stable, onDone read through a ref
   }, []);
 
   const aStyle = useAnimatedStyle(() => ({
@@ -442,6 +449,7 @@ export function PlayedPile({
       withSpring(1.05, { damping: 10, stiffness: 420 }),
       withSpring(1.0, { damping: 16, stiffness: 280 })
     );
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- bounceScale is a stable shared value
   }, [bounceTrigger]);
 
   const bounceStyle = useAnimatedStyle(() => ({
@@ -527,6 +535,7 @@ export function CardItem({
       damping: 10,
       stiffness: 260,
     });
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- liftY/cardScale are stable shared values
   }, [isSelected]);
 
   const aStyle = useAnimatedStyle(() => ({
@@ -644,7 +653,7 @@ export function StartReasonBanner({
   topOffset,
 }: {
   reason: StartReason;
-  players: Array<{ name: string; type: string }>;
+  players: { name: string; type: string }[];
   topOffset: number;
 }) {
   const { t } = useTranslation();
@@ -818,6 +827,7 @@ export function useTurnPulse(active: boolean) {
     return () => {
       cancelAnimation(glowV);
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- glowV is a stable shared value
   }, [active, reduceMotion]);
 
   // borderAlpha is interpolated per frame (0→0.3) — a static token can't
@@ -1068,6 +1078,7 @@ export function GameBillboard({
     return () => {
       cancelAnimation(dotOpacity);
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- dotOpacity is a stable shared value
   }, [isLocalPlayerTurn, reduceMotion]);
 
   const dotStyle = useAnimatedStyle(() => ({ opacity: dotOpacity.value }));

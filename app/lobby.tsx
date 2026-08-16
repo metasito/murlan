@@ -50,7 +50,6 @@ function PlayerRow({ index, config, onChange, isHuman, lobbyMode }: PlayerRowPro
     Haptics.selectionAsync();
   };
 
-  const teamColors = { A: Colors.accent, B: Colors.gold };
   const teamLabel = config.team ? t("lobby.team", { team: config.team }) : null;
 
   return (

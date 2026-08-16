@@ -73,9 +73,7 @@ export default function OnlineGameScreen() {
 
   const me = gameState?.players[mySeatIndex];
 
-  // Every hook runs unconditionally, before the null guard below. The eleven
-  // hooks that used to sit after it guaranteed a "Rendered fewer hooks than
-  // expected" crash on any non-null -> null transition (a failed rejoin).
+  // Every hook must run unconditionally, before the `if (!gameState) return null` guard below.
 
   useEffect(
     () => () => {
@@ -93,6 +91,7 @@ export default function OnlineGameScreen() {
       pendingPlayRef.current = null;
       setSelectedIds([]);
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- only the hand identity matters, not the whole player object
   }, [me?.hand]);
 
   // A server error means the play was rejected — stop waiting for an ack.
@@ -104,7 +103,7 @@ export default function OnlineGameScreen() {
     if (!error) return;
     const t = setTimeout(clearError, ERROR_TOAST_MS);
     return () => clearTimeout(t);
-  }, [error]);
+  }, [error, clearError]);
 
   useEffect(() => {
     if (!gameState?.gameOver) {
@@ -140,13 +139,13 @@ export default function OnlineGameScreen() {
       ],
       { cancelable: false }
     );
-  }, [playerLeft]);
+  }, [playerLeft, clearPlayerLeft, leaveRoom, t]);
 
   useEffect(() => {
     if (!rejoinFailed) return;
     leaveRoom();
     goToLobbyRef.current();
-  }, [rejoinFailed]);
+  }, [rejoinFailed, leaveRoom]);
 
   if (!gameState) return null;
 

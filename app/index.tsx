@@ -60,6 +60,7 @@ function MenuButton({
       delay,
       withTiming(0, { duration: 500, easing: Easing.out(Easing.cubic) })
     );
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- one-shot mount animation; opacity/translateY are stable shared values, delay is fixed per instance
   }, []);
 
   const animStyle = useAnimatedStyle(() => ({
@@ -171,6 +172,7 @@ function FloatingCard({
         false
       )
     );
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- one-shot mount animation; rotate/translateY are stable shared values, delay is fixed per instance
   }, []);
 
   const animStyle = useAnimatedStyle(() => ({
@@ -261,6 +263,7 @@ export default function HomeScreen() {
     titleOpacity.value = withDelay(200, withTiming(1, { duration: 700 }));
     titleScale.value = withDelay(200, withTiming(1, { duration: 700, easing: Easing.out(Easing.back(1.5)) }));
     subtitleOpacity.value = withDelay(500, withTiming(1, { duration: 600 }));
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- one-shot mount animation; stable shared values
   }, []);
 
   // First-launch onboarding: offer the interactive tutorial automatically, once.
