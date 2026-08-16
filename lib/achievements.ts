@@ -32,7 +32,15 @@ export interface GameResult {
   playedJoker: boolean;
   /** Did this player win the whole match (reached the 21/31/41/51 target), not just this hand? */
   matchWon: boolean;
-  /** How many opponents finished (went out) in this hand. */
+  /**
+   * How many opponents actually went out (emptied their hand) in this hand —
+   * NOT `playerCount - 1`. Per docs/RULES.md §9 and lib/gameEngine.ts:687-690
+   * ("The hand ends when only one player still holds cards; that player is
+   * last"), the last-place player is auto-assigned their finish position
+   * once they're the sole player left holding cards — they never empty
+   * their hand. So this value tops out at `playerCount - 2`: every player
+   * except the winner and the last-place finisher.
+   */
   opponentsFinished: number;
 }
 
@@ -94,7 +102,11 @@ const RULES: readonly AchievementRule[] = [
     id: "full_table",
     nameKey: "achievements.fullTable.name",
     descKey: "achievements.fullTable.desc",
-    isEarned: (r) => r.placement === 1 && r.playerCount === 4 && r.opponentsFinished === 3,
+    // Every opponent who *could* go out did: the winner plus both non-last
+    // opponents emptied their hands, and only the last-place player was left
+    // holding cards (see the `opponentsFinished` doc comment above — its max
+    // is `playerCount - 2`, never `playerCount - 1`).
+    isEarned: (r) => r.placement === 1 && r.playerCount === 4 && r.opponentsFinished === r.playerCount - 2,
   },
   {
     id: "match_champion",

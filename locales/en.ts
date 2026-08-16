@@ -564,7 +564,7 @@ export const en: Record<keyof typeof it, string> = {
   "achievements.duelist.name": "Duelist",
   "achievements.duelist.desc": "Win a hand in a two-player game.",
   "achievements.fullTable.name": "Full Table",
-  "achievements.fullTable.desc": "Win a four-player hand in which every opponent finished.",
+  "achievements.fullTable.desc": "Win a four-player hand in which both other opponents also go out (only the last player is left holding cards).",
   "achievements.matchChampion.name": "Match Champion",
   "achievements.matchChampion.desc": "Win an entire match by reaching the target score.",
   "achievements.ironWill.name": "Iron Will",

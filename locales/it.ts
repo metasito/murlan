@@ -580,7 +580,7 @@ export const it = {
   "achievements.duelist.name": "Duellante",
   "achievements.duelist.desc": "Vinci una mano in una partita a due giocatori.",
   "achievements.fullTable.name": "Tavolo al Completo",
-  "achievements.fullTable.desc": "Vinci una mano a quattro giocatori in cui tutti gli avversari hanno terminato le carte.",
+  "achievements.fullTable.desc": "Vinci una mano a quattro giocatori in cui anche gli altri due avversari finiscono le carte (solo l'ultimo resta con carte in mano).",
   "achievements.matchChampion.name": "Campione della Partita",
   "achievements.matchChampion.desc": "Vinci un'intera partita raggiungendo il punteggio finale.",
   "achievements.ironWill.name": "Volontà di Ferro",

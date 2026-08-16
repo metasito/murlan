@@ -593,7 +593,7 @@ export const sq: Record<keyof typeof it, string> = {
   "achievements.duelist.name": "Duelisti",
   "achievements.duelist.desc": "Fito një manche në një lojë me dy lojtarë.",
   "achievements.fullTable.name": "Tavolina e Plotë",
-  "achievements.fullTable.desc": "Fito një manche me katër lojtarë ku çdo kundërshtar ka mbaruar letrat.",
+  "achievements.fullTable.desc": "Fito një manche me katër lojtarë ku edhe dy kundërshtarët e tjerë i mbarojnë letrat (vetëm i fundit mbetet me letra në dorë).",
   "achievements.matchChampion.name": "Kampioni i Ndeshjes",
   "achievements.matchChampion.desc": "Fito një ndeshje të plotë duke arritur pikëzimin final.",
   "achievements.ironWill.name": "Vullnet i Hekurt",
