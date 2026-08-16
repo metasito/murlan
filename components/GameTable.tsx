@@ -567,10 +567,20 @@ export function GameTable({
   // ── Lifecycle ───────────────────────────────────────────────────────────────
 
   useEffect(() => {
-    ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.LANDSCAPE);
-    preloadSounds().then(() => playDeal());
+    let mounted = true;
+    // Fast game -> result -> game navigation makes these cancel each other, and an
+    // unhandled rejection here is fatal on device.
+    ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.LANDSCAPE).catch(() => {});
+    // Guarded: the cleanup removes every native player, so resolving after unmount
+    // would play through a released one.
+    preloadSounds()
+      .then(() => {
+        if (mounted) playDeal();
+      })
+      .catch(() => {});
     return () => {
-      ScreenOrientation.unlockAsync();
+      mounted = false;
+      ScreenOrientation.unlockAsync().catch(() => {});
       unloadSounds();
     };
   }, []);
