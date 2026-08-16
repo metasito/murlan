@@ -89,9 +89,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
     const user = await storage.createUser({ username, password: passwordHash });
 
     req.session.userId = user.id;
-    req.session.save((err) => {
+    req.session.save(async (err) => {
       if (err) {
+        // The account exists but the caller has no session and sees an error,
+        // so the username would be permanently taken by an account nobody can
+        // reach. Roll it back so they can retry.
         logger.error({ err }, "Session save failed on register");
+        await storage.deleteUser(user.id).catch((cleanupErr) =>
+          logger.error({ cleanupErr, userId: user.id }, "Failed to roll back orphaned registration")
+        );
         res.status(500).json({ message: "Errore interno del server", code: "INTERNAL_SERVER_ERROR" });
         return;
       }

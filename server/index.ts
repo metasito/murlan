@@ -20,7 +20,9 @@ export { sessionMiddleware };
   const { server } = await createApp();
 
   const port = parseInt(process.env.PORT || "5000", 10);
-  server.listen({ port, host: "0.0.0.0", reusePort: true }, () => {
+  // reusePort is Linux-only; Windows and macOS reject it with ENOTSUP.
+  const listenOpts = { port, host: "0.0.0.0", ...(process.platform === "linux" ? { reusePort: true } : {}) };
+  server.listen(listenOpts, () => {
     logger.info(`express server serving on port ${port}`);
   });
 

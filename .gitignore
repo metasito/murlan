@@ -55,3 +55,6 @@ google-service-account.json
 .superpowers/
 *.log
 test-output.txt
+
+# local dev stack
+.dev-stack/
