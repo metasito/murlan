@@ -79,6 +79,9 @@ export function SettingsModal({ visible, onClose }: Props) {
       animationType={reduceMotion ? "none" : "fade"}
       onRequestClose={onClose}
       statusBarTranslucent
+      // iOS defaults this to portrait only, which rotates the whole app when the
+      // modal opens in landscape and leaves the screen behind it mis-laid-out.
+      supportedOrientations={["portrait", "landscape"]}
     >
       <View style={styles.backdrop}>
         <Pressable

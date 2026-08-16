@@ -107,6 +107,10 @@ export function ErrorFallback({ error, resetError }: ErrorFallbackProps) {
           animationType="slide"
           transparent
           onRequestClose={() => setIsModalVisible(false)}
+          // iOS defaults this to portrait only, which rotates the whole app when
+          // the modal opens in landscape and leaves the screen behind it
+          // mis-laid-out.
+          supportedOrientations={["portrait", "landscape"]}
         >
           <View style={styles.modalOverlay}>
             <View style={styles.modalContainer}>
