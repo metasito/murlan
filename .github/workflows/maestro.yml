@@ -1,0 +1,102 @@
+name: Android UI (Maestro)
+
+# Manual for now, deliberately.
+#
+# This job has never run on a GitHub runner — it was written on a machine whose
+# own emulator cannot hold the animated game table for a whole hand
+# (docs/TESTING.md §5), which is exactly why the flows belong on CI in the
+# first place. Firing it on every push before it has ever gone green would make
+# every push red for reasons nobody could act on.
+#
+# `workflow_dispatch` is not a disabled check: run it and it passes or fails on
+# its own merits. What it does not yet do is catch regressions automatically.
+# Promoting it to `push` is one line — `on: push` — and is tracked in
+# docs/BACKLOG.md Q11 as the step that closes this out, once one manual run has
+# proven the setup end to end.
+on:
+  workflow_dispatch:
+
+concurrency:
+  group: maestro-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  android:
+    name: Drive the app on a real Android emulator
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      # KVM is present on the standard Linux runner but not exposed to the
+      # user by default; without it the emulator falls back to software
+      # emulation and is far too slow to finish a hand.
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' \
+            | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+
+      # The flows drive the app through Expo Go against a dev server, the same
+      # way they do locally. Started in the background here and reached from
+      # the emulator at 10.0.2.2 — the flows' own default, so nothing needs
+      # overriding.
+      - name: Start the Expo dev server
+        run: |
+          # nohup + disowned: a plain `cmd &` can be reaped when the step's own
+          # shell exits, and the next step would then find nothing listening.
+          nohup npx expo start --port 8081 > "$RUNNER_TEMP/metro.log" 2>&1 &
+          disown
+          for i in $(seq 1 60); do
+            if curl -sf http://127.0.0.1:8081/status | grep -q "packager-status:running"; then
+              echo "Metro is up."
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "::error::Metro never came up on 8081."
+          cat "$RUNNER_TEMP/metro.log"
+          exit 1
+
+      - name: Install Maestro
+        run: |
+          curl -Ls "https://get.maestro.mobile.dev" | bash
+          echo "$HOME/.maestro/bin" >> "$GITHUB_PATH"
+
+      # api-level and target match the AVD documented in docs/TESTING.md §5, so
+      # a failure here and a failure locally mean the same thing.
+      - name: Run the flows
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 34
+          target: google_apis
+          arch: x86_64
+          profile: pixel_6
+          emulator-options: -no-window -no-audio -no-boot-anim -gpu swiftshader_indirect -camera-back none
+          # Left on: this layer exists precisely to drive real Reanimated
+          # worklets on a real UI thread, and disabling the system animation
+          # scales would not stop them anyway. It is, however, the first knob to
+          # try if the runner turns out to have the same trouble holding the
+          # animated table that the local emulator does.
+          disable-animations: false
+          script: maestro test .maestro/
+
+      # Recordings, logs and screenshots from a failed flow are the only way to
+      # tell a real regression from an emulator that fell over.
+      - name: Upload Maestro debug output
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: maestro-debug
+          path: ~/.maestro/tests/
+          if-no-files-found: ignore
