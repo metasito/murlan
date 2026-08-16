@@ -13,14 +13,20 @@ import { pickGivebackCard } from "@/lib/gameEngine";
 import { GameTable } from "@/components/GameTable";
 import { useTranslation } from "@/lib/i18n";
 
+// Read once at module scope, never per-call. EXPO_PUBLIC_ vars are inlined
+// at bundle build time, so this only ever takes the fast path in a build the
+// E2E harness produced itself (scripts/e2e-server.mjs) — production pacing
+// is untouched.
+const E2E_FAST = process.env.EXPO_PUBLIC_E2E_FAST === "1";
+
 /** How long an AI "thinks" before playing. */
-const AI_DELAY = 1100;
+const AI_DELAY = E2E_FAST ? 0 : 1100;
 /** How long an AI takes to pick its giveback card in the exchange phase. */
-const AI_EXCHANGE_DELAY = 600;
+const AI_EXCHANGE_DELAY = E2E_FAST ? 0 : 600;
 /** Local response deadline. Offline there is no server, so the client enforces it. */
 const HUMAN_TURN_SECONDS = 20;
 /** Beat before the results screen takes over, so the last play is seen. */
-const RESULT_DELAY = 800;
+const RESULT_DELAY = E2E_FAST ? 0 : 800;
 
 /** Ranks the exchange phase accepts as a giveback (docs/RULES.md §Exchange). */
 

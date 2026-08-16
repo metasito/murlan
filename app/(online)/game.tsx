@@ -24,13 +24,19 @@ import { Colors, FontSize, Radius, Spacing } from "@/lib/theme";
 import { hapticLight, hapticMedium } from "@/lib/haptics";
 import { useTranslation } from "@/lib/i18n";
 
+// Read once at module scope, never per-call. EXPO_PUBLIC_ vars are inlined
+// at bundle build time, so this only ever takes the fast path in a build the
+// E2E harness produced itself (scripts/e2e-server.mjs) — production pacing
+// is untouched.
+const E2E_FAST = process.env.EXPO_PUBLIC_E2E_FAST === "1";
+
 /** The server's AFK window (server/socket.ts AFK_TIMEOUT_MS). The client only
  *  displays the countdown — the server owns the timeout and the auto-pass. */
 const SERVER_TURN_SECONDS = 30;
 /** How long the emoji picker stays open before hiding itself. */
 const REACTION_PANEL_MS = 4000;
 /** Beat before the results overlay covers the final play. */
-const GAME_OVER_DELAY = 800;
+const GAME_OVER_DELAY = E2E_FAST ? 0 : 800;
 /** In-game server errors are transient; clear them rather than stacking. */
 const ERROR_TOAST_MS = 3000;
 
