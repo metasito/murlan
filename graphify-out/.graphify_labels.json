@@ -518,5 +518,8 @@
   "516": "Hoist Static I/O to Module Level Rule",
   "517": "Parallel Data Fetching with Component Composition Rule",
   "518": "Minimize Serialization at RSC Boundaries Rule",
-  "519": "Server-Side Performance Patterns"
+  "519": "Server-Side Performance Patterns",
+  "520": "historyBound.test.ts",
+  "521": "jest.config.js",
+  "522": "setup.ts"
 }

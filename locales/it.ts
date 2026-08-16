@@ -295,17 +295,21 @@ export const it = {
   "onlineGame.theWinner": "Il vincitore",
   "onlineGame.theLoser": "il perdente",
 
+  // -------------------------------------------------------------------- bot.*
+  // The names are proper nouns and stay as they are; only the play style is translated.
+  "bot.luanBlurb": "Impulsivo e imprevedibile",
+  "bot.dritaBlurb": "Prudente, si tiene le carte alte",
+  "bot.besnikBlurb": "Contende ogni mano",
+  "bot.gentBlurb": "Spietato, non lascia passare nulla",
+  "bot.anaBlurb": "Paziente e calcolatrice",
+
   // ------------------------------------------------------------------ lobby.*
-  "lobby.difficultyEasy": "Facile",
-  "lobby.difficultyMedium": "Medio",
-  "lobby.difficultyHard": "Difficile",
   "lobby.team": "Team {{team}}",
   "lobby.aiNameA11yLabel": "Nome giocatore intelligente",
   "lobby.aiNameA11yHint": "Inserisci il nome per questo giocatore controllato dal computer",
-  "lobby.difficultyA11yLabel": "Difficoltà: {{level}}. Tocca per cambiare",
+  "lobby.personalityA11yLabel": "Avversario: {{name}}, {{style}}. Tocca per cambiare",
   "lobby.playerCountOptionA11yLabel": "{{n}} giocatori",
   "lobby.defaultPlayerName1": "Giocatore 1",
-  "lobby.aiPlayerName": "AI {{n}}",
   "lobby.playerName": "Giocatore {{n}}",
   "lobby.start": "Inizia Partita",
   "lobby.playerCountLabel": "N° GIOCATORI",
@@ -392,7 +396,7 @@ export const it = {
   "rules.faq.q16": "Come funziona la Rivincita online?",
   "rules.faq.a16": "Nella modalità Online, la rivincita è democratica:\n\n• Tutti i giocatori vedono il pulsante \"Rivincita\" nella schermata di fine partita\n• Una nuova partita inizia SOLO quando TUTTI i giocatori hanno cliccato Rivincita\n• Il contatore mostra in tempo reale quanti hanno già votato (es. 2/4 vogliono giocare)\n• Se non tutti votano, si può sempre uscire premendo il tasto Esci\n\nI punteggi si accumulano tra una rivincita e l'altra — chi ha il totale più alto vince la sessione!",
   "rules.faq.q17": "Come funziona l'AI?",
-  "rules.faq.a17": "L'AI ha tre livelli:\n• Facile: gioca la prima combinazione valida\n• Medio: gioca sempre la combinazione più bassa possibile, conserva le carte forti\n• Difficile: strategia avanzata — conserva 2, Joker e Bombe; diventa aggressiva quando un avversario è vicino a vincere",
+  "rules.faq.a17": "Ogni avversario controllato dal computer ha una personalità con un suo stile di gioco:\n• Luan: impulsivo e imprevedibile\n• Drita: prudente, si tiene le carte alte\n• Besnik: contende ogni mano\n• Gent: spietato, non lascia passare nulla\n• Ana: paziente e calcolatrice\nLo stile decide quando giocare un 2, un Joker o una Bomba, e quando passare — mai quali combinazioni sono valide.",
   "rules.faq.q18": "Il gioco finisce subito quando termino le mie carte?",
   "rules.faq.a18": "No! Se ci sono altri giocatori, il gioco continua tra di loro. Tu aspetti semplicemente che finiscano. Puoi vedere le posizioni finali nella schermata dei risultati (1°, 2°, 3°, 4°).",
 
@@ -568,7 +572,7 @@ export const it = {
   "room.fillWithBotsSubtitle": "I posti liberi saranno occupati da giocatori virtuali",
   "room.fillWithBotsA11yLabel": "Riempi i posti liberi con bot",
   "room.fillWithBotsA11yHint": "Attiva per far controllare al computer i posti liberi quando la partita inizia",
-  "room.botDifficultyOptionA11yLabel": "Difficoltà bot: {{level}}",
+  "room.botPersonalityOptionA11yLabel": "Bot: {{name}}, {{style}}",
   "room.formatLabel": "FORMATO",
 
   // ---------------------------------------------------------------- friends.*

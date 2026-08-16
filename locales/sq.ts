@@ -306,17 +306,21 @@ export const sq: Record<keyof typeof it, string> = {
   "onlineGame.theWinner": "Fituesi",
   "onlineGame.theLoser": "humbësi",
 
+  // -------------------------------------------------------------------- bot.*
+  // The names are proper nouns and stay as they are; only the play style is translated.
+  "bot.luanBlurb": "Impulsiv dhe i paparashikueshëm",
+  "bot.dritaBlurb": "E kujdesshme, i ruan letrat e larta",
+  "bot.besnikBlurb": "E kundërshton çdo raund",
+  "bot.gentBlurb": "I pamëshirshëm, nuk lë asgjë të kalojë",
+  "bot.anaBlurb": "E durueshme dhe llogaritëse",
+
   // ------------------------------------------------------------------ lobby.*
-  "lobby.difficultyEasy": "Lehtë",
-  "lobby.difficultyMedium": "Mesatare",
-  "lobby.difficultyHard": "Vështirë",
   "lobby.team": "Ekipi {{team}}",
   "lobby.aiNameA11yLabel": "Emri i lojtarit AI",
   "lobby.aiNameA11yHint": "Shkruaj emrin për këtë lojtar të kontrolluar nga kompjuteri",
-  "lobby.difficultyA11yLabel": "Vështirësia: {{level}}. Prek për ta ndryshuar",
+  "lobby.personalityA11yLabel": "Kundërshtari: {{name}}, {{style}}. Prek për ta ndryshuar",
   "lobby.playerCountOptionA11yLabel": "{{n}} lojtarë",
   "lobby.defaultPlayerName1": "Lojtari 1",
-  "lobby.aiPlayerName": "AI {{n}}",
   "lobby.playerName": "Lojtari {{n}}",
   "lobby.start": "Fillo Lojën",
   "lobby.playerCountLabel": "NR. LOJTARËSH",
@@ -403,7 +407,7 @@ export const sq: Record<keyof typeof it, string> = {
   "rules.faq.q16": "Si funksionon Rivanshi online?",
   "rules.faq.a16": "Në modalitetin Online, rivanshi është demokratik:\n\n• Të gjithë lojtarët shohin butonin \"Rivansh\" në ekranin e fundit të ndeshjes\n• Një lojë e re fillon VETËM kur TË GJITHË lojtarët kanë klikuar Rivansh\n• Numëruesi tregon në kohë reale sa kanë votuar tashmë (p.sh. 2/4 duan të luajnë)\n• Nëse jo të gjithë votojnë, mund të dalësh gjithmonë duke shtypur butonin Dil\n\nPikët grumbullohen nga një rivansh në tjetrin — kush ka totalin më të lartë fiton sesionin!",
   "rules.faq.q17": "Si funksionon AI?",
-  "rules.faq.a17": "AI ka tre nivele:\n• Lehtë: luan kombinimin e parë të vlefshëm\n• Mesatare: luan gjithmonë kombinimin më të ulët të mundshëm, ruan letrat e forta\n• Vështirë: strategji e avancuar — ruan 2-shet, Xholat dhe Bombat; bëhet agresive kur një kundërshtar është afër fitores",
+  "rules.faq.a17": "Çdo kundërshtar i kompjuterit ka një personalitet me stilin e vet:\n• Luan: impulsiv dhe i paparashikueshëm\n• Drita: e kujdesshme, i ruan letrat e larta\n• Besnik: e kundërshton çdo raund\n• Gent: i pamëshirshëm, nuk lë asgjë të kalojë\n• Ana: e durueshme dhe llogaritëse\nStili vendos kur shpenzohet një 2, një Xhol ose një Bombë, dhe kur lëshohet një raund — kurrë cilat kombinime janë të vlefshme.",
   "rules.faq.q18": "A mbyllet loja menjëherë kur mbaroj letrat e mia?",
   "rules.faq.a18": "Jo! Nëse ka lojtarë të tjerë, loja vazhdon mes tyre. Ti thjesht pret që të mbarojnë. Mund të shohësh pozicionet përfundimtare në ekranin e rezultateve (1°, 2°, 3°, 4°).",
 
@@ -579,7 +583,7 @@ export const sq: Record<keyof typeof it, string> = {
   "room.fillWithBotsSubtitle": "Vendet e lira do të zihen nga lojtarë virtualë",
   "room.fillWithBotsA11yLabel": "Plotëso vendet e lira me bot",
   "room.fillWithBotsA11yHint": "Aktivizoje që kompjuteri të kontrollojë vendet e lira kur fillon loja",
-  "room.botDifficultyOptionA11yLabel": "Vështirësia e botit: {{level}}",
+  "room.botPersonalityOptionA11yLabel": "Bot: {{name}}, {{style}}",
   "room.formatLabel": "FORMATI",
 
   // ---------------------------------------------------------------- friends.*

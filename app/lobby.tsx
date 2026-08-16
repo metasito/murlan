@@ -16,11 +16,12 @@ import { hapticSelection, hapticSuccess } from "@/lib/haptics";
 import { Ionicons } from "@expo/vector-icons";
 import { useGame, PlayerSetupConfig } from "@/context/GameContext";
 import { useAuth } from "@/context/AuthContext";
-import { GameMode, AIDifficulty, MatchLength, MATCH_TARGETS } from "@/lib/gameEngine";
+import { GameMode, MatchLength, MATCH_TARGETS } from "@/lib/gameEngine";
+import { BOT_PERSONALITIES, botBlurbKey, botSeatNames, getBotPersonality } from "@/lib/botPersonalities";
 import { Colors, Spacing, Radius, FontSize, Type } from '@/lib/theme';
 import { MenuLayout } from "@/components/MenuLayout";
 import { MenuButton } from "@/components/MenuButton";
-import { useTranslation, type TranslationKey } from "@/lib/i18n";
+import { useTranslation } from "@/lib/i18n";
 
 type LobbyMode = "ai" | "local";
 
@@ -32,21 +33,15 @@ interface PlayerRowProps {
   lobbyMode: LobbyMode;
 }
 
-const DIFFICULTY_LABEL_KEYS: Record<AIDifficulty, TranslationKey> = {
-  easy: "lobby.difficultyEasy",
-  medium: "lobby.difficultyMedium",
-  hard: "lobby.difficultyHard",
-};
-
 function PlayerRow({ index, config, onChange, isHuman, lobbyMode }: PlayerRowProps) {
   const { t } = useTranslation();
   const isAI = config.type === "ai";
+  const personality = getBotPersonality(config.personality);
 
-  const cycleDifficulty = () => {
-    const levels: AIDifficulty[] = ["easy", "medium", "hard"];
-    const current = config.difficulty ?? "medium";
-    const next = levels[(levels.indexOf(current) + 1) % levels.length];
-    onChange({ ...config, difficulty: next });
+  const cyclePersonality = () => {
+    const i = BOT_PERSONALITIES.findIndex((p) => p.id === personality.id);
+    const next = BOT_PERSONALITIES[(i + 1) % BOT_PERSONALITIES.length];
+    onChange({ ...config, personality: next.id });
     hapticSelection();
   };
 
@@ -99,14 +94,17 @@ function PlayerRow({ index, config, onChange, isHuman, lobbyMode }: PlayerRowPro
 
       {isAI && (
         <Pressable
-          onPress={cycleDifficulty}
-          style={styles.difficultyBtn}
+          onPress={cyclePersonality}
+          style={styles.personalityBtn}
           accessibilityRole="button"
-          accessibilityLabel={t("lobby.difficultyA11yLabel", { level: t(DIFFICULTY_LABEL_KEYS[config.difficulty ?? "medium"]) })}
+          accessibilityLabel={t("lobby.personalityA11yLabel", {
+            name: personality.name,
+            style: t(botBlurbKey(personality.id)),
+          })}
           hitSlop={8}
         >
-          <Text style={styles.difficultyText}>
-            {t(DIFFICULTY_LABEL_KEYS[config.difficulty ?? "medium"])}
+          <Text style={styles.personalityText} numberOfLines={1}>
+            {t(botBlurbKey(personality.id))}
           </Text>
           <Ionicons name="chevron-down" size={12} color={Colors.gold} />
         </Pressable>
@@ -145,14 +143,25 @@ export default function LobbyScreen() {
     return i % 2 === 0 ? "A" : "B";
   };
 
-  const buildDefaultPlayers = (count: number, gm: GameMode): PlayerSetupConfig[] => {
-    return Array.from({ length: count }, (_, i) => ({
-      name: i === 0 ? myName : isAI ? t("lobby.aiPlayerName", { n: i }) : t("lobby.playerName", { n: i + 1 }),
-      type: i === 0 || !isAI ? "human" : "ai",
-      difficulty: "medium" as AIDifficulty,
-      team: getTeam(i, count, gm),
-    }));
+  /** An AI seat is called after its personality; humans keep the name they were given. */
+  const withBotNames = (configs: PlayerSetupConfig[]): PlayerSetupConfig[] => {
+    const aiSeats = configs.flatMap((p, i) => (p.type === "ai" ? [i] : []));
+    const names = botSeatNames(aiSeats.map((i) => getBotPersonality(configs[i].personality).id));
+    const updated = [...configs];
+    aiSeats.forEach((seat, n) => (updated[seat] = { ...updated[seat], name: names[n] }));
+    return updated;
   };
+
+  const buildDefaultPlayers = (count: number, gm: GameMode): PlayerSetupConfig[] =>
+    withBotNames(
+      Array.from({ length: count }, (_, i) => ({
+        name: i === 0 ? myName : t("lobby.playerName", { n: i + 1 }),
+        type: i === 0 || !isAI ? "human" : "ai",
+        // Distinct opponents by default: a full table faces four different personalities.
+        personality: i > 0 && isAI ? BOT_PERSONALITIES[(i - 1) % BOT_PERSONALITIES.length].id : undefined,
+        team: getTeam(i, count, gm),
+      }))
+    );
 
   const [players, setPlayers] = useState<PlayerSetupConfig[]>(
     buildDefaultPlayers(2, "free_for_all")
@@ -187,7 +196,7 @@ export default function LobbyScreen() {
     setPlayers((prev) => {
       const updated = [...prev];
       updated[index] = config;
-      return updated;
+      return withBotNames(updated);
     });
   };
 
@@ -535,7 +544,7 @@ const styles = StyleSheet.create({
     marginTop: 2,
     letterSpacing: 0.5,
   },
-  difficultyBtn: {
+  personalityBtn: {
     flexDirection: "row",
     alignItems: "center",
     gap: 4,
@@ -546,7 +555,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: Colors.border,
   },
-  difficultyText: {
+  personalityText: {
     fontFamily: "Rajdhani_600SemiBold",
     fontSize: 13,
     color: Colors.gold,

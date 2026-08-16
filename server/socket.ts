@@ -1196,7 +1196,7 @@ export function setupSocket(httpServer: HttpServer) {
       socket,
       "room:start",
       RoomStartSchema,
-      async ({ fillWithBots, botDifficulty, matchLength }) => {
+      async ({ fillWithBots, botPersonality, matchLength }) => {
         const roomId = socketRoomMap.get(socket.id);
         if (!roomId) return;
         const room = await storage.getRoomById(roomId);
@@ -1230,12 +1230,12 @@ export function setupSocket(httpServer: HttpServer) {
         // player. Bot seats are simply left out of playerMap — armTurn/
         // autoMoveForSeat already treat a missing playerMap entry as "drive
         // this seat with the AI", exactly the path a disconnect takeover uses.
-        const roster = buildSeatRoster(humans, room.maxPlayers, { fillWithBots, botDifficulty });
+        const roster = buildSeatRoster(humans, room.maxPlayers, { fillWithBots, botPersonality });
 
         const playerSetup = roster.map((r, idx) => ({
           name: r.username,
           type: (r.isBot ? "ai" : "human") as "human" | "ai",
-          difficulty: r.isBot ? r.difficulty : undefined,
+          personality: r.isBot ? r.personality : undefined,
           team:
             room.gameMode === "teams"
               ? ((idx % 2 === 0 ? "A" : "B") as "A" | "B")

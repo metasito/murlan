@@ -61,6 +61,35 @@ actually depend on — each demonstrable, not asserted.
 
 ---
 
+## Standing working agreement
+
+**Autonomy.** Work the queue in `docs/BACKLOG.md` unattended, one item at a time, one
+commit per item. Do not stop to ask which item, which approach, or whether to proceed.
+When a choice is genuinely the owner's, record it in §2 Owner-blocked and take the next
+item. When the queue empties, brainstorm new items into it rather than idling.
+
+**Design before the hard ones.** Anything that touches storage, the socket protocol, or
+more than a handful of files gets a written design first (`superpowers:brainstorming` →
+`superpowers:writing-plans`) under `docs/superpowers/`. Small, contained items go
+straight to code.
+
+**No workarounds.** If the correct fix is bigger, do the correct fix. When the best
+practice for something is not known, look it up on the web rather than guessing.
+
+**The database is not precious.** There are no real users. Dropping and recreating a
+table to reach a clean shape is preferred over accreting compatibility. What is *not*
+free is adding a column to a hot table before `db:push` runs on Replit — Drizzle's upsert
+is one statement, so a missing column fails writes that have nothing to do with the
+feature. Order of preference: **derive from existing rows → ride an existing jsonb
+column → a new table → a new column**. Do not add a table per feature when an existing
+one answers the question.
+
+**Leave no residue.** Design docs that have been implemented, superseded plans, scratch
+scripts, empty directories and dead-end folders get deleted, not archived. Docs describe
+what the code does now; a claim that no longer holds is removed the moment it is found.
+
+---
+
 ## Replit Constraints
 
 - The app runs on Replit. The Express server serves both the REST API and the Expo web bundle.
@@ -99,6 +128,7 @@ actually depend on — each demonstrable, not asserted.
 | `lib/cardNames.ts` | The spoken name of a card. Every surface that names one uses this |
 | `lib/accessibility.ts` | `usePrefersReducedMotion`, and the setting that overrides the OS |
 | `lib/streak.ts` | Consecutive-days-played, pure |
+| `lib/botPersonalities.ts` | The five named AI opponents. Pure; the only place a bot's name, tier or knobs are defined |
 | `lib/tokens.ts` | Pure design tokens (Colors, Spacing, Radius, FontSize, Type, Motion, Scrim, Highlight, FeltGradient). No react-native import, so tests can load it |
 | `lib/theme.ts` | Re-exports the tokens and adds the platform-aware `Shadow`. Import from here in components |
 | `server/index.ts` | Express entry point |

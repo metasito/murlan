@@ -22,29 +22,25 @@ import { useSocket } from "@/context/SocketContext";
 import { getSocket } from "@/lib/socket";
 import { Colors, Spacing, Radius, FontSize, Type } from '@/lib/theme';
 import { MATCH_TARGETS } from "@/lib/gameEngine";
-import type { AIDifficulty, MatchLength } from "@/lib/gameEngine";
+import type { MatchLength } from "@/lib/gameEngine";
+import { BOT_PERSONALITIES, DEFAULT_BOT_PERSONALITY, botBlurbKey } from "@/lib/botPersonalities";
+import type { BotPersonalityId } from "@/lib/botPersonalities";
 import { MenuLayout } from "@/components/MenuLayout";
 import { MenuButton } from "@/components/MenuButton";
-import { useTranslation, type TranslationKey } from "@/lib/i18n";
+import { useTranslation } from "@/lib/i18n";
 
 const TEAM_COLORS = { A: Colors.gold, B: Colors.info };
-
-const BOT_DIFFICULTY_LABEL_KEYS: Record<AIDifficulty, TranslationKey> = {
-  easy: "lobby.difficultyEasy",
-  medium: "lobby.difficultyMedium",
-  hard: "lobby.difficultyHard",
-};
 
 function BotFillControls({
   fillWithBots,
   onToggleFillWithBots,
-  botDifficulty,
-  onChangeBotDifficulty,
+  botPersonality,
+  onChangeBotPersonality,
 }: {
   fillWithBots: boolean;
   onToggleFillWithBots: (value: boolean) => void;
-  botDifficulty: AIDifficulty;
-  onChangeBotDifficulty: (difficulty: AIDifficulty) => void;
+  botPersonality: BotPersonalityId;
+  onChangeBotPersonality: (id: BotPersonalityId) => void;
 }) {
   const { t } = useTranslation();
 
@@ -70,34 +66,39 @@ function BotFillControls({
       </View>
 
       {fillWithBots && (
-        <View style={botFillStyles.difficultyRow}>
-          {(["easy", "medium", "hard"] as AIDifficulty[]).map((level) => {
-            const selected = botDifficulty === level;
-            const levelLabel = t(BOT_DIFFICULTY_LABEL_KEYS[level]);
+        <View style={botFillStyles.personalityRow}>
+          {BOT_PERSONALITIES.map((p) => {
+            const selected = botPersonality === p.id;
             return (
               <Pressable
-                key={level}
+                key={p.id}
                 onPress={() => {
-                  onChangeBotDifficulty(level);
+                  onChangeBotPersonality(p.id);
                   hapticSelection();
                 }}
                 accessibilityRole="button"
-                accessibilityLabel={t("room.botDifficultyOptionA11yLabel", { level: levelLabel })}
+                accessibilityLabel={t("room.botPersonalityOptionA11yLabel", {
+                  name: p.name,
+                  style: t(botBlurbKey(p.id)),
+                })}
                 accessibilityState={{ selected }}
-                style={[botFillStyles.difficultyPill, selected && botFillStyles.difficultyPillActive]}
+                style={[botFillStyles.personalityPill, selected && botFillStyles.personalityPillActive]}
               >
                 <Text
                   style={[
-                    botFillStyles.difficultyPillText,
-                    selected && botFillStyles.difficultyPillTextActive,
+                    botFillStyles.personalityPillText,
+                    selected && botFillStyles.personalityPillTextActive,
                   ]}
                 >
-                  {levelLabel}
+                  {p.name}
                 </Text>
               </Pressable>
             );
           })}
         </View>
+      )}
+      {fillWithBots && (
+        <Text style={botFillStyles.sublabel}>{t(botBlurbKey(botPersonality))}</Text>
       )}
     </View>
   );
@@ -315,7 +316,7 @@ export default function RoomScreen() {
   } = useOnlineGame();
 
   const [fillWithBots, setFillWithBots] = useState(false);
-  const [botDifficulty, setBotDifficulty] = useState<AIDifficulty>("medium");
+  const [botPersonality, setBotPersonality] = useState<BotPersonalityId>(DEFAULT_BOT_PERSONALITY);
   const [matchLength, setMatchLength] = useState<MatchLength>("match");
 
   const isLandscape = W > H;
@@ -393,7 +394,7 @@ export default function RoomScreen() {
   function handleStart() {
     if (!canStart) return;
     hapticMedium();
-    startGame({ fillWithBots, botDifficulty, matchLength });
+    startGame({ fillWithBots, botPersonality, matchLength });
   }
 
   const modeLabel = room.gameMode === "teams" ? t("room.modeTeams") : t("room.modeFreeForAll");
@@ -409,8 +410,8 @@ export default function RoomScreen() {
     <BotFillControls
       fillWithBots={fillWithBots}
       onToggleFillWithBots={setFillWithBots}
-      botDifficulty={botDifficulty}
-      onChangeBotDifficulty={setBotDifficulty}
+      botPersonality={botPersonality}
+      onChangeBotPersonality={setBotPersonality}
     />
   ) : null;
 
@@ -715,12 +716,15 @@ const botFillStyles = StyleSheet.create({
     fontSize: 11,
     color: Colors.textMuted,
   },
-  difficultyRow: {
+  personalityRow: {
     flexDirection: "row",
+    flexWrap: "wrap",
     gap: Spacing.sm,
   },
-  difficultyPill: {
-    flex: 1,
+  personalityPill: {
+    // Five names never fit one phone-width row; wrap to two rather than clip.
+    flexGrow: 1,
+    flexBasis: "28%",
     minHeight: 44,
     alignItems: "center",
     justifyContent: "center",
@@ -729,16 +733,16 @@ const botFillStyles = StyleSheet.create({
     borderWidth: 1,
     borderColor: Colors.border,
   },
-  difficultyPillActive: {
+  personalityPillActive: {
     borderColor: Colors.gold,
     backgroundColor: Colors.goldMuted,
   },
-  difficultyPillText: {
+  personalityPillText: {
     fontFamily: "Rajdhani_600SemiBold",
     fontSize: 13,
     color: Colors.textSecondary,
   },
-  difficultyPillTextActive: {
+  personalityPillTextActive: {
     color: Colors.gold,
   },
 });

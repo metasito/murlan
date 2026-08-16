@@ -2,9 +2,11 @@
 // transitively imports storage/db/session/etc, whose own relative imports
 // lack the explicit `.ts` extensions Node's native TS loader requires — so it
 // cannot be imported by the plain `node --test` runner used in tests/. This
-// module has no runtime imports at all, so it can be, and server/socket.ts
-// imports these rather than reimplementing them so tests exercise the exact
-// code path the server runs.
+// module imports nothing beyond an equally pure sibling, so it can be, and
+// server/socket.ts imports these rather than reimplementing them so tests
+// exercise the exact code path the server runs.
+import { botSeatNames, getBotPersonality } from "../lib/botPersonalities.ts";
+import type { BotPersonalityId } from "../lib/botPersonalities.ts";
 
 /**
  * seat -> userId from the persisted map, falling back to the legacy positional
@@ -199,7 +201,7 @@ export interface SeatEntry {
   userId: string;      // for bots, a synthetic "bot:<seat>" id
   username: string;
   isBot: boolean;
-  difficulty?: "easy" | "medium" | "hard";
+  personality?: BotPersonalityId;
 }
 
 /**
@@ -214,7 +216,7 @@ export interface SeatEntry {
 export function buildSeatRoster(
   humans: { seatIndex: number; userId: string; username: string }[],
   maxPlayers: number,
-  opts: { fillWithBots?: boolean; botDifficulty?: "easy" | "medium" | "hard" }
+  opts: { fillWithBots?: boolean; botPersonality?: BotPersonalityId }
 ): SeatEntry[] {
   const roster: SeatEntry[] = humans
     .map((h) => ({ ...h, isBot: false }))
@@ -222,18 +224,20 @@ export function buildSeatRoster(
   if (!opts.fillWithBots) return roster;
 
   const taken = new Set(roster.map((r) => r.seatIndex));
-  const difficulty = opts.botDifficulty ?? "medium";
-  for (let seat = 0; seat < maxPlayers; seat++) {
-    if (taken.has(seat)) continue;
+  const personality = getBotPersonality(opts.botPersonality).id;
+  const emptySeats = Array.from({ length: maxPlayers }, (_, s) => s).filter((s) => !taken.has(s));
+  const names = botSeatNames(emptySeats.map(() => personality));
+
+  emptySeats.forEach((seat, i) => {
     roster.push({
       seatIndex: seat,
       // Synthetic id: bot seats must never collide with a real user id, and the
       // scoring path already excludes ids with this prefix.
       userId: `bot:${seat}`,
-      username: `Bot ${seat + 1}`,
+      username: names[i],
       isBot: true,
-      difficulty,
+      personality,
     });
-  }
+  });
   return roster.sort((a, b) => a.seatIndex - b.seatIndex);
 }

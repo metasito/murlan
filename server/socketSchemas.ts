@@ -1,4 +1,6 @@
 import { z } from "zod";
+import { BOT_PERSONALITIES } from "../lib/botPersonalities.ts";
+import type { BotPersonalityId } from "../lib/botPersonalities.ts";
 
 /**
  * Runtime schemas for every inbound socket event.
@@ -43,7 +45,9 @@ export const RoomSetGameModeSchema = z.object({
   gameMode: GameModeSchema,
 });
 
-const BotDifficultySchema = z.enum(["easy", "medium", "hard"]);
+const BotPersonalitySchema = z.enum(
+  BOT_PERSONALITIES.map((p) => p.id) as [BotPersonalityId, ...BotPersonalityId[]]
+);
 const MatchLengthSchema = z.enum(["match", "single"]);
 
 /**
@@ -58,7 +62,7 @@ export const RoomStartSchema = z
     z.null(),
     z.object({
       fillWithBots: z.boolean().optional(),
-      botDifficulty: BotDifficultySchema.optional(),
+      botPersonality: BotPersonalitySchema.optional(),
       matchLength: MatchLengthSchema.optional(),
     }),
   ])

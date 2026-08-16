@@ -7,11 +7,33 @@ test("empty seats are filled with bots up to maxPlayers", () => {
   const roster = buildSeatRoster(
     [{ seatIndex: 0, userId: "u1", username: "Ana" }],
     4,
-    { fillWithBots: true, botDifficulty: "medium" }
+    { fillWithBots: true, botPersonality: "gent" }
   );
   assert.equal(roster.length, 4);
   assert.equal(roster.filter((r) => r.isBot).length, 3);
   assert.deepEqual(roster.map((r) => r.seatIndex), [0, 1, 2, 3]);
+  for (const bot of roster.filter((r) => r.isBot)) assert.equal(bot.personality, "gent");
+});
+
+// Three seats on one personality would otherwise be three players called "Gent".
+test("bot seats sharing a personality get distinguishable names", () => {
+  const roster = buildSeatRoster(
+    [{ seatIndex: 0, userId: "u1", username: "Ana" }],
+    4,
+    { fillWithBots: true, botPersonality: "gent" }
+  );
+  const names = roster.filter((r) => r.isBot).map((r) => r.username);
+  assert.deepEqual(names, ["Gent 1", "Gent 2", "Gent 3"]);
+  assert.equal(new Set(names).size, names.length);
+});
+
+test("a single bot seat keeps the bare personality name", () => {
+  const roster = buildSeatRoster(
+    [{ seatIndex: 0, userId: "u1", username: "Ana" }],
+    2,
+    { fillWithBots: true, botPersonality: "drita" }
+  );
+  assert.deepEqual(roster.filter((r) => r.isBot).map((r) => r.username), ["Drita"]);
 });
 
 test("without fillWithBots the roster is only the humans", () => {

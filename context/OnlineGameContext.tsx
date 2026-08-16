@@ -18,6 +18,7 @@ import { MATCH_TARGETS, matchIsClosing } from "@/lib/gameEngine";
 import { handCountOf } from "@/components/gameTableModel";
 import type { GameState, MatchLength } from "@/lib/gameEngine";
 import type { ExchangeAnnounceData } from "@/lib/sharedGameFlow";
+import type { BotPersonalityId } from "@/lib/botPersonalities";
 
 export interface RoomState {
   roomId: string;
@@ -102,7 +103,7 @@ interface OnlineGameContextValue {
   setRoomGameMode: (mode: "free_for_all" | "teams") => void;
   startGame: (opts?: {
     fillWithBots?: boolean;
-    botDifficulty?: "easy" | "medium" | "hard";
+    botPersonality?: BotPersonalityId;
     matchLength?: MatchLength;
   }) => void;
   requestPlayAgain: () => void;
@@ -545,7 +546,7 @@ export function OnlineGameProvider({ userId, children }: { userId: string; child
 
   const startGame = useCallback((opts?: {
     fillWithBots?: boolean;
-    botDifficulty?: "easy" | "medium" | "hard";
+    botPersonality?: BotPersonalityId;
     matchLength?: MatchLength;
   }) => {
     socket.emit("room:start", opts);

@@ -1,3 +1,6 @@
+import { getBotPersonality } from "./botPersonalities.ts";
+import type { BotPersonalityId } from "./botPersonalities.ts";
+
 export type Suit = "hearts" | "diamonds" | "clubs" | "spades";
 export type JokerType = "colored" | "bw";
 
@@ -48,7 +51,8 @@ export interface Player {
   name: string;
   hand: Card[];
   type: PlayerType;
-  difficulty?: AIDifficulty;
+  /** AI seats only. Absent means the default personality (lib/botPersonalities.ts). */
+  personality?: BotPersonalityId;
   team?: "A" | "B";
   finishPosition?: number;
 }
@@ -548,28 +552,100 @@ function scorePlayForDump(play: Combination): number {
   return cardCount * 3 - avgStrength * 0.3 - (hasHighCards ? 5 : 0);
 }
 
+/** Spends a card worth hoarding: a 2, a joker, or a whole bomb. */
+function isPremiumPlay(play: Combination): boolean {
+  return (
+    play.type === "bomb" ||
+    play.type === "royal_straight" ||
+    play.cards.some((c) => c.rank === "2" || c.isJoker)
+  );
+}
+
+/**
+ * Applies a personality's two knobs to the strategy tier's choice. Both only
+ * re-rank plays the tier already had in hand, so nothing here can produce an
+ * illegal play — `plays` is `getAllValidPlays`' output, untouched.
+ */
+function applyPersonality(
+  choice: Combination | null,
+  plays: Combination[],
+  isNewRound: boolean,
+  traits: { aggression: number; unpredictability: number },
+  rng: () => number
+): Combination | null {
+  let result = choice;
+
+  if (result === null) {
+    // The tier would pass. An aggressive personality contests the round instead.
+    // Leading a round is never a pass, so this only ever runs when responding.
+    if (!isNewRound && rng() < traits.aggression) {
+      // Strength only compares within a shape, so answer in kind before
+      // reaching for a bomb — the tier's emergency branch owns those.
+      const inKind = plays.filter((p) => p.type !== "bomb" && p.type !== "royal_straight");
+      const pool = inKind.length > 0 ? inKind : plays;
+      const plain = pool.filter((p) => !isPremiumPlay(p));
+      result = [...(plain.length > 0 ? plain : pool)].sort((a, b) => a.strength - b.strength)[0] ?? null;
+    }
+  } else if (isPremiumPlay(result) && rng() >= traits.aggression) {
+    // A cautious personality keeps its 2s, jokers and bombs while a plain play
+    // exists — shedding as many cards as it can when leading, answering as
+    // cheaply as it can when not.
+    const plain = plays.filter((p) => !isPremiumPlay(p));
+    if (plain.length > 0) {
+      result = [...plain].sort(
+        isNewRound
+          ? (a, b) => b.cards.length - a.cards.length || a.strength - b.strength
+          : (a, b) => a.strength - b.strength
+      )[0];
+    }
+  }
+
+  if (result && rng() < traits.unpredictability) {
+    const self = result;
+    const alts = plays.filter(
+      (p) => p !== self && p.type === self.type && p.cards.length === self.cards.length
+    );
+    if (alts.length > 0) {
+      result = alts[Math.min(alts.length - 1, Math.floor(rng() * alts.length))];
+    }
+  }
+
+  return result;
+}
+
+/**
+ * The AI's move for `player`, or null to pass. `rng` is a parameter so that
+ * personalities can vary their play without making the engine untestable —
+ * tests inject a fixed sequence and stay deterministic.
+ */
 export function aiChoosePlay(
   player: Player,
   lastPlayed: Combination | null,
   isNewRound: boolean,
   otherPlayersHandCount: number[],
-  requireCard?: Card
+  requireCard?: Card,
+  rng: () => number = Math.random
 ): Combination | null {
   const plays = getAllValidPlays(player.hand, lastPlayed, isNewRound, requireCard);
   if (plays.length === 0) return null;
 
-  const diff = player.difficulty ?? "medium";
+  const personality = getBotPersonality(player.personality);
+  const diff = personality.difficulty;
   const myCards = player.hand.length;
   const minOpponent = Math.min(...otherPlayersHandCount);
 
-  // Universal: if this play empties the hand, always do it
+  // Universal: if this play empties the hand, always do it. No personality
+  // declines to win, so this returns before the knobs are applied.
   const finishingPlays = plays.filter((p) => p.cards.length === myCards);
   if (finishingPlays.length > 0) {
     return finishingPlays.sort((a, b) => b.cards.length - a.cards.length)[0];
   }
 
+  const withPersonality = (choice: Combination | null) =>
+    applyPersonality(choice, plays, isNewRound, personality, rng);
+
   if (diff === "easy") {
-    return plays.sort((a, b) => a.strength - b.strength)[0];
+    return withPersonality(plays.sort((a, b) => a.strength - b.strength)[0]);
   }
 
   const bombs = plays.filter(
@@ -586,9 +662,11 @@ export function aiChoosePlay(
     if (isNewRound && myCards > 8 && normal.length > 0) {
       const multi = normal.filter((p) => p.cards.length >= 2);
       if (multi.length > 0)
-        return multi.sort((a, b) => b.cards.length - a.cards.length || a.strength - b.strength)[0];
+        return withPersonality(
+          multi.sort((a, b) => b.cards.length - a.cards.length || a.strength - b.strength)[0]
+        );
     }
-    return pool.sort((a, b) => a.strength - b.strength)[0];
+    return withPersonality(pool.sort((a, b) => a.strength - b.strength)[0]);
   }
 
   // ── Hard AI ──────────────────────────────────────────────────────────────
@@ -599,7 +677,8 @@ export function aiChoosePlay(
     p.cards.some((c) => c.rank === "2" || c.isJoker)
   );
 
-  // Emergency: opponent about to finish — use lowest bomb immediately
+  // Emergency: opponent about to finish — use lowest bomb immediately. The one
+  // decision no personality softens, or a cautious bot hoards a bomb into a loss.
   if (minOpponent <= 1 && !isNewRound && bombs.length > 0) {
     return bombs.sort((a, b) => a.strength - b.strength)[0];
   }
@@ -608,39 +687,39 @@ export function aiChoosePlay(
     // We control the round: dump as many weak cards as efficiently as possible
     const near3 = plays.filter((p) => p.cards.length >= myCards - 2);
     if (near3.length > 0)
-      return near3.sort((a, b) => b.cards.length - a.cards.length)[0];
+      return withPersonality(near3.sort((a, b) => b.cards.length - a.cards.length)[0]);
 
     // Prefer combos that score high on dump value (many cards, low strength)
     const candidates = conservative.length > 0 ? conservative : normal.length > 0 ? normal : bombs;
     if (candidates.length > 0)
-      return candidates.sort((a, b) => scorePlayForDump(b) - scorePlayForDump(a))[0];
+      return withPersonality(candidates.sort((a, b) => scorePlayForDump(b) - scorePlayForDump(a))[0]);
 
-    return plays.sort((a, b) => scorePlayForDump(b) - scorePlayForDump(a))[0];
+    return withPersonality(plays.sort((a, b) => scorePlayForDump(b) - scorePlayForDump(a))[0]);
   }
 
   // Responding to opponent's combo
   // If near finishing, be aggressive
   if (myCards <= 4 && normal.length > 0) {
-    return normal.sort((a, b) => a.strength - b.strength)[0];
+    return withPersonality(normal.sort((a, b) => a.strength - b.strength)[0]);
   }
 
   // Prefer beating with lowest conservative card (preserve 2s/jokers)
   if (conservative.length > 0) {
-    return conservative.sort((a, b) => a.strength - b.strength)[0];
+    return withPersonality(conservative.sort((a, b) => a.strength - b.strength)[0]);
   }
 
   // Use high cards only if hand is small or opponent is close to winning
   if ((myCards <= 6 || minOpponent <= 3) && withHighCards.length > 0) {
-    return withHighCards.sort((a, b) => a.strength - b.strength)[0];
+    return withPersonality(withHighCards.sort((a, b) => a.strength - b.strength)[0]);
   }
 
   // Use bomb when opponent is close to winning and we have no normal play
   if (minOpponent <= 3 && bombs.length > 0) {
-    return bombs.sort((a, b) => a.strength - b.strength)[0];
+    return withPersonality(bombs.sort((a, b) => a.strength - b.strength)[0]);
   }
 
-  // Pass (return null) — let the low-strength combo win this round
-  return null;
+  // Pass — let the low-strength combo win this round, unless aggression contests it
+  return withPersonality(null);
 }
 
 // ─── Game state processing ────────────────────────────────────────────────────
@@ -820,7 +899,7 @@ export function initializeRematch(
   playerSetup: Array<{
     name: string;
     type: PlayerType;
-    difficulty?: AIDifficulty;
+    personality?: BotPersonalityId;
     team?: "A" | "B";
     id?: string;
   }>,
@@ -834,7 +913,7 @@ export function initializeRematch(
     name: setup.name,
     hand: sortHand(hands[i]),
     type: setup.type,
-    difficulty: setup.difficulty,
+    personality: setup.personality,
     team: setup.team,
     finishPosition: undefined,
   }));
@@ -970,7 +1049,7 @@ export function initializeGame(
   playerSetup: Array<{
     name: string;
     type: PlayerType;
-    difficulty?: AIDifficulty;
+    personality?: BotPersonalityId;
     team?: "A" | "B";
   }>,
   gameMode: GameMode
@@ -982,7 +1061,7 @@ export function initializeGame(
     name: setup.name,
     hand: sortHand(hands[i]),
     type: setup.type,
-    difficulty: setup.difficulty,
+    personality: setup.personality,
     team: setup.team,
     finishPosition: undefined,
   }));

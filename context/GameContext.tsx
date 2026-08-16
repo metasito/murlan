@@ -13,7 +13,6 @@ import {
   Combination,
   GameMode,
   PlayerType,
-  AIDifficulty,
   MatchLength,
   MATCH_TARGETS,
   addHandScores,
@@ -34,11 +33,12 @@ import {
   canPlay,
 } from "@/lib/gameEngine";
 import type { ExchangeAnnounceData } from "@/lib/sharedGameFlow";
+import type { BotPersonalityId } from "@/lib/botPersonalities";
 
 export interface PlayerSetupConfig {
   name: string;
   type: PlayerType;
-  difficulty?: AIDifficulty;
+  personality?: BotPersonalityId;
   team?: "A" | "B";
 }
 
