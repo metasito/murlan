@@ -30,6 +30,24 @@ Comment the code as it is, for someone reading it now.
   gets one line stating the constraint — not its history.
 - Prefer making the code self-evident over explaining it.
 
+## No self-defeating safeguards
+
+If you write a guard, do not also ship the thing that gets past it. Both of these
+happened here and both were caught only by review:
+
+- `scripts/reset-db.mjs` required `--yes`, and `package.json`'s `db:reset` supplied
+  `--yes` itself.
+- CI ran lint, with `continue-on-error: true`.
+
+**The tell is the justifying comment.** If a change needs a paragraph explaining why the
+compromise is acceptable — "pre-existing debt", "not introduced here", "non-blocking until
+cleared" — the compromise is the defect. Fix the underlying problem or say plainly that it
+is unfixed. Never encode the excuse in the repo, where it reads as a decision someone made
+on purpose.
+
+A check that cannot fail is worse than no check: it costs the same and buys false
+confidence.
+
 ## Freedom to change things
 
 Nothing here is sacred because it is old. Docs and comments are evidence, not authority:
