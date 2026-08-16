@@ -23,7 +23,6 @@ const HUMAN_TURN_SECONDS = 20;
 const RESULT_DELAY = 800;
 
 /** Ranks the exchange phase accepts as a giveback (docs/RULES.md §Exchange). */
-const EXCHANGE_VALID_RANKS = new Set(["3", "4", "5", "6", "7", "8", "9", "10"]);
 
 export default function GameScreen() {
   const { t } = useTranslation();
