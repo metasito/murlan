@@ -129,6 +129,8 @@ what the code does now; a claim that no longer holds is removed the moment it is
 | `lib/accessibility.ts` | `usePrefersReducedMotion`, and the setting that overrides the OS |
 | `lib/streak.ts` | Consecutive-days-played, pure |
 | `lib/botPersonalities.ts` | The five named AI opponents. Pure; the only place a bot's name, tier or knobs are defined |
+| `lib/replay.ts` | A finished hand's stored shape, and the fold back into a `GameState`. Pure, and the one home of `REPLAY_RETENTION_DAYS` |
+| `server/replays.ts` | `match_replays` reads and writes. `server/replayShape.ts` is its pure half, so tests can load it |
 | `lib/tokens.ts` | Pure design tokens (Colors, Spacing, Radius, FontSize, Type, Motion, Scrim, Highlight, FeltGradient). No react-native import, so tests can load it |
 | `lib/theme.ts` | Re-exports the tokens and adds the platform-aware `Shadow`. Import from here in components |
 | `server/index.ts` | Express entry point |
@@ -201,6 +203,12 @@ Each of these is a bug that shipped. Verify against source before changing any o
 **Session store:** `connect-pg-simple`, table `"session"`, `createTableIfMissing: false`. The table was pre-created — never recreate it.
 
 **Game persistence:** `active_games` table stores live game state after every move.
+
+**Replays:** a finished manche is written once to `match_replays`. The live move log is
+memory-only (`OnlineGameState.moveLog`) — the `game_state` envelope is rewritten after
+every move, and a hand a restart interrupts has no replay either way. No hand is stored,
+only what was played. `db:push` must run before the first replay can be written; until
+then the insert fails, is logged, and nothing else notices.
 
 **Game length:** A *manche* is one hand; a *partita* is the match those manches
 add up to. A game is either a full match (3/2/1/0 per manche, first to 21, escalating

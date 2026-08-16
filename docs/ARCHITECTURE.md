@@ -102,6 +102,16 @@ later turns.
   scoreboard are all refreshed, not written once at game start.
 - **`session`** (via `connect-pg-simple`): pre-created, `createTableIfMissing: false`. Never
   dropped or recreated by app code — see `replit.md`.
+- **`match_replays`**: one row per finished manche — `seats`, `moves` and `rankings` as
+  jsonb, plus `playerIds` for the containment filter both reads go through, so a player
+  can only ever fetch a hand they sat at. **No hand is stored**: a move carries what was
+  played and the counts that followed, never what anyone held. The live log is memory
+  only (`OnlineGameState.moveLog`), unlike `handFlags`, because the `game_state` envelope
+  is rewritten after every move and a hand a restart interrupts has no replay either way.
+  Pruned by age (`REPLAY_RETENTION_DAYS`) inside the insert's transaction — a row belongs
+  to up to four players, so a per-player cap could not delete one alone. The write is not
+  awaited and the table is not required to exist: until `npm run db:push` has run the
+  insert fails, is logged, and the only consequence is an empty replays list.
 - **`rooms` / `room_players` / `friends` / `users`**: relational state for lobby, matchmaking
   and the friends system, unrelated to in-hand game state.
 
