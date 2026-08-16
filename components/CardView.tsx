@@ -21,6 +21,22 @@ import {
 import { usePrefersReducedMotion } from "@/lib/accessibility";
 import { useTranslation } from "@/lib/i18n";
 import { cardSpokenName } from "@/lib/cardNames";
+import {
+  ACE_PIP_SIZE,
+  CARD_H,
+  CARD_H_SMALL,
+  CARD_W,
+  CARD_W_SMALL,
+  COURT_RANKS,
+  INDEX_SUIT_SIZE,
+  INDEX_SUIT_Y,
+  INDEX_TEXT_W,
+  RANK_FONT,
+  RANK_FONT_SMALL,
+  INDEX_X,
+  placedPips,
+  rankFontSize,
+} from "@/components/cardFaceModel";
 
 // Suit → colour. `Suit` is plural ("spades") while the theme tokens are singular
 // ("spade"), so the mapping has to be explicit. Typed as Record<Suit, string> so
@@ -33,30 +49,6 @@ const SUIT_COLORS: Record<Suit, string> = {
   clubs: Colors.club,
 };
 
-// ponytail: theme.ts has no card-dimension token yet — centralised here and
-// flagged in this task's `deferred` output rather than edited into theme.ts
-// by an agent scoped to CardView.tsx only.
-const CARD_W = 58;
-const CARD_H = 84;
-const CARD_W_SMALL = 40;
-const CARD_H_SMALL = 58;
-
-// ─── Card face geometry ───────────────────────────────────────────────────────
-//
-// Everything below is a fraction of the card's own width/height, so the same
-// drawing code serves both card sizes and would survive a dimension change.
-// The numbers reproduce a standard poker-deck layout: a narrow index column
-// down the left edge (repeated rotated at the bottom-right), and a three-column
-// pip field to its right.
-
-const INDEX_X = 0.118;      // centre of the index column
-const INDEX_SUIT_Y = 0.25;  // index suit mark, below the rank character
-const PIP_COL = { left: 0.34, centre: 0.5, right: 0.66 } as const;
-const PIP_TOP = 0.16;
-const PIP_BOTTOM = 0.84;
-const PIP_SIZE = 0.165;      // of card height
-const ACE_PIP_SIZE = 0.30;   // of card height
-const INDEX_SUIT_SIZE = 0.10;
 
 // Court panel: horizontal extent in card fractions, vertical extent derived
 // from the fixed local box the half-figure is authored in, so the two mirrored
@@ -66,64 +58,7 @@ const PANEL_X1 = 0.78;
 const PANEL_BOX_W = 40;
 const PANEL_HALF_H = 38;
 
-type PipColumn = keyof typeof PIP_COL;
-interface PipSpot {
-  col: PipColumn;
-  /** 0 = top row of the pip field, 1 = bottom row. */
-  row: number;
-}
 
-// The traditional pip grids. Anything at row > 0.5 prints upside down, exactly
-// as it does on a real card, so the card reads the same from either end.
-const THIRD = 1 / 3;
-const PIP_LAYOUTS: Record<string, PipSpot[]> = {
-  "2": [{ col: "centre", row: 0 }, { col: "centre", row: 1 }],
-  "3": [{ col: "centre", row: 0 }, { col: "centre", row: 0.5 }, { col: "centre", row: 1 }],
-  "4": [
-    { col: "left", row: 0 }, { col: "right", row: 0 },
-    { col: "left", row: 1 }, { col: "right", row: 1 },
-  ],
-  "5": [
-    { col: "left", row: 0 }, { col: "right", row: 0 },
-    { col: "centre", row: 0.5 },
-    { col: "left", row: 1 }, { col: "right", row: 1 },
-  ],
-  "6": [
-    { col: "left", row: 0 }, { col: "right", row: 0 },
-    { col: "left", row: 0.5 }, { col: "right", row: 0.5 },
-    { col: "left", row: 1 }, { col: "right", row: 1 },
-  ],
-  "7": [
-    { col: "left", row: 0 }, { col: "right", row: 0 },
-    { col: "centre", row: 0.25 },
-    { col: "left", row: 0.5 }, { col: "right", row: 0.5 },
-    { col: "left", row: 1 }, { col: "right", row: 1 },
-  ],
-  "8": [
-    { col: "left", row: 0 }, { col: "right", row: 0 },
-    { col: "centre", row: 0.25 },
-    { col: "left", row: 0.5 }, { col: "right", row: 0.5 },
-    { col: "centre", row: 0.75 },
-    { col: "left", row: 1 }, { col: "right", row: 1 },
-  ],
-  "9": [
-    { col: "left", row: 0 }, { col: "right", row: 0 },
-    { col: "left", row: THIRD }, { col: "right", row: THIRD },
-    { col: "centre", row: 0.5 },
-    { col: "left", row: 2 * THIRD }, { col: "right", row: 2 * THIRD },
-    { col: "left", row: 1 }, { col: "right", row: 1 },
-  ],
-  "10": [
-    { col: "left", row: 0 }, { col: "right", row: 0 },
-    { col: "centre", row: 1 / 6 },
-    { col: "left", row: THIRD }, { col: "right", row: THIRD },
-    { col: "left", row: 2 * THIRD }, { col: "right", row: 2 * THIRD },
-    { col: "centre", row: 5 / 6 },
-    { col: "left", row: 1 }, { col: "right", row: 1 },
-  ],
-};
-
-const COURT_RANKS = new Set(["J", "Q", "K"]);
 
 // ─── Suit marks ───────────────────────────────────────────────────────────────
 //
@@ -402,17 +337,15 @@ function CardFaceArt({
     } else if (card.rank === "A") {
       centre = <SuitMark suit={suit} x={w * 0.5} y={h * 0.5} size={h * ACE_PIP_SIZE} color={color} />;
     } else {
-      const spots = PIP_LAYOUTS[card.rank] ?? [];
-      const size = h * PIP_SIZE * (spots.length > 6 ? 0.9 : 1);
-      centre = spots.map((spot, i) => (
+      centre = placedPips(card.rank, w, h).map((pip, i) => (
         <SuitMark
           key={i}
           suit={suit}
-          x={w * PIP_COL[spot.col]}
-          y={h * (PIP_TOP + spot.row * (PIP_BOTTOM - PIP_TOP))}
-          size={size}
+          x={pip.x}
+          y={pip.y}
+          size={pip.size}
           color={color}
-          flipped={spot.row > 0.5}
+          flipped={pip.flipped}
         />
       ));
     }
@@ -613,6 +546,10 @@ export function CardView({
   }
 
   const rankText = card.isJoker ? "JK" : getCardDisplayRank(card.rank);
+  // "10" is the only two-glyph rank. At the single-glyph size it renders wider
+  // than the index column and collides with the left pip column; the pinned
+  // size in cardFaceModel is the one that fits.
+  const rankSize = { fontSize: rankFontSize(rankText, small) };
   const color = card.isJoker
     ? card.rank === "joker_colored" ? Colors.heart : Colors.cardInk
     : card.suit ? SUIT_COLORS[card.suit] : Colors.spade;
@@ -649,6 +586,7 @@ export function CardView({
           style={[
             styles.rankText,
             small ? styles.rankTextSmall : styles.rankTextNormal,
+            rankSize,
             card.isJoker && styles.rankTextJoker,
             { color },
           ]}
@@ -659,6 +597,7 @@ export function CardView({
           style={[
             styles.rankText,
             small ? styles.rankTextSmall : styles.rankTextNormal,
+            rankSize,
             card.isJoker && styles.rankTextJoker,
             small ? styles.rankTextBottomSmall : styles.rankTextBottom,
             { color },
@@ -706,18 +645,18 @@ const styles = StyleSheet.create({
     textAlign: "center",
   },
   rankTextNormal: {
-    fontSize: 15,
+    fontSize: RANK_FONT,
     lineHeight: 15,
     top: 3,
     left: 0,
-    width: CARD_W * INDEX_X * 2,
+    width: CARD_W * INDEX_TEXT_W,
   },
   rankTextSmall: {
-    fontSize: 11,
+    fontSize: RANK_FONT_SMALL,
     lineHeight: 11,
     top: 2,
     left: 0,
-    width: CARD_W_SMALL * INDEX_X * 2,
+    width: CARD_W_SMALL * INDEX_TEXT_W,
   },
   rankTextJoker: {
     fontSize: 11,
