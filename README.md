@@ -68,4 +68,5 @@ ALLOW_DESTRUCTIVE=1 node scripts/reset-db.mjs --yes && npm run db:push
 | [`docs/RULES.md`](./docs/RULES.md) | The canonical Murlan rule specification |
 | [`docs/BRIEF.md`](./docs/BRIEF.md) | Scope, decisions and their rationale |
 | [`docs/PLAN.md`](./docs/PLAN.md) | The ordered remediation plan and its status |
+- [`docs/BACKLOG.md`](docs/BACKLOG.md) — open items, owner decisions, and analysis of rejected directions
 | [`replit.md`](./replit.md) | Replit-specific run/deploy notes |
