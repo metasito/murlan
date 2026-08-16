@@ -20,7 +20,31 @@
 > respects the Replit "no native tooling" constraint better than the original proposal.
 > Scripts: `npm test`, `npm run typecheck`, `npm run verify`.
 >
-> **3. Status as of this amendment:** typecheck clean, **355 tests passing**. Waves 1 and
+> **3a. FINAL STATUS (2026-08-16).** Typecheck clean, **504 tests passing**, working tree
+> committed on `murlan-hardening`. The depth plan
+> (`docs/superpowers/plans/2026-08-16-murlan-depth.md`) is fully executed — all 11 tasks
+> implemented, each independently reviewed, plus a whole-branch review and its fix wave,
+> re-reviewed clean.
+>
+> The whole-branch review found five problems that per-task review structurally could not,
+> because each lived at a seam between tasks. All are fixed:
+> - teams mode resolved the match per player instead of per team, contradicting §3.1
+> - teams mode could never record a loss (losing seats never entered `rankings`)
+> - socket rate limits were keyed per socket, so one user with many sockets multiplied them
+> - `npm run db:reset` supplied its own `--yes` guard and could wipe production unprompted
+> - bot-filled tables recorded stats, making achievements farmable
+>
+> CI now runs the integration suites against a real Postgres service, and fails the build if
+> they ever silently skip — they are what guard impersonation, hand secrecy, the exchange
+> bypass and seat vacancy.
+>
+> **Outstanding, requiring the owner:** `eas.json` submit credentials are placeholders;
+> `assets/images/android-icon-monochrome.png` is 432×432 against 512×512 siblings;
+> `locales/sq.ts` is machine-translated outside the terms sourced in `docs/RULES.md` and
+> needs a native speaker. Business decisions deliberately not taken: push notifications,
+> ranked ladder, monetization, analytics SDKs.
+>
+> **3. Status at the previous amendment:** typecheck clean, **355 tests passing**. Waves 1 and
 > 1.5 are complete and independently reviewed. Fixed and confirmed: socket impersonation,
 > session cookie behind the proxy, runtime payload validation, friend-request IDOR,
 > exchange-phase bypass, the seat-vacancy deadlock, account-deletion cascade, the straight
