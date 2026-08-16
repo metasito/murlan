@@ -435,7 +435,7 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.bgSurface,
     borderRadius: Radius.md,
     borderWidth: 1,
-    borderColor: Colors.goldBorderStrong,
+    borderColor: Colors.goldBorder,
     padding: Spacing.sm,
     gap: Spacing.sm,
     minHeight: 44,

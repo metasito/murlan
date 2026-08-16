@@ -27,12 +27,11 @@ export const Colors = {
   goldDark:     '#A8832B',
   goldDim:      '#A07830',
   goldMuted:    'rgba(201,168,76,0.15)',
-  // Gold-accent borders — stronger than goldMuted (a background wash), used on
-  // card/row outlines that need a visible gold edge. Two call sites, two
-  // slightly different alphas already in use; kept distinct rather than
-  // merged so no rendered colour shifts.
-  goldBorder:       'rgba(201,168,76,0.3)',
-  goldBorderStrong: 'rgba(201,168,76,0.35)',
+  // Gold-accent border — stronger than goldMuted (a background wash), for
+  // card/row outlines that need a visible gold edge. 0.3 is the established
+  // value (7 uses across the app); a lone 0.35 elsewhere was drift, not a
+  // distinction, and folding it in here shifts nothing anyone can see.
+  goldBorder: 'rgba(201,168,76,0.3)',
 
   // Text colors
   // Ratios below are the worst case across the three surfaces text actually
