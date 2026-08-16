@@ -22,9 +22,7 @@ interface MenuButtonProps {
   accessibilityHint?: string;
 }
 
-// Subtle press washes — decorative only, not design tokens, so kept local
-// rather than added to lib/theme.ts (another agent owns that file right now).
-const PRESSED_GHOST_BG = 'rgba(240,234,214,0.08)';
+const PRESSED_GHOST_BG = Colors.border;
 
 export function MenuButton({
   label, onPress, variant = 'primary', size = 'md',

@@ -14,7 +14,7 @@ import Animated, {
   withSequence,
   SlideInRight,
 } from "react-native-reanimated";
-import { Colors, FontSize, Motion, Radius, Spacing } from "@/lib/theme";
+import { Colors, FontSize, Motion, Radius, Scrim, Spacing } from "@/lib/theme";
 import { usePrefersReducedMotion } from "@/lib/accessibility";
 import { useTranslation } from "@/lib/i18n";
 
@@ -161,9 +161,7 @@ const styles = StyleSheet.create({
     fontFamily: "Inter_400Regular",
     fontSize: FontSize.xs - 1,
     color: Colors.textMuted,
-    // Plain black wash behind the floating username tag — no Colors
-    // black-overlay entry at this value/role — left inline.
-    backgroundColor: "rgba(0,0,0,0.6)",
+    backgroundColor: Scrim.heavy,
     borderRadius: Radius.sm / 2,
     paddingHorizontal: Spacing.xs,
     paddingVertical: 1,

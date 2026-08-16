@@ -105,7 +105,7 @@ import {
 } from "@/lib/sounds";
 import { hapticLight, hapticMedium, hapticSelection, hapticSuccess } from "@/lib/haptics";
 import { usePrefersReducedMotion } from "@/lib/accessibility";
-import { Colors, FontSize, Motion, Radius, Spacing } from "@/lib/theme";
+import { Colors, FeltGradient, FontSize, Motion, Radius, Scrim, Spacing } from "@/lib/theme";
 
 // How long the round-winner tag stays over the pile. A domain beat, not a
 // generic UI transition, so it is not a Motion token.
@@ -625,8 +625,7 @@ export function GameTable({
   const giocaGlowStyle = useAnimatedStyle(() => {
     const v = giocaGlowVal.value;
     if (Platform.OS === "web") {
-      // Per-frame interpolated alpha (v * 0.65) — not one of the fixed
-      // gold-alpha steps, so left as a computed literal, not a token.
+      // Alpha is interpolated per frame — not representable as a static token.
       return {
         boxShadow:
           v < 0.01
@@ -696,9 +695,8 @@ export function GameTable({
 
   return (
     <Animated.View style={[styles.root, shakeStyle]}>
-      {/* #072A18: gradient-only midpoint, no exact Colors match — left inline. */}
       <LinearGradient
-        colors={[Colors.bg, "#072A18", Colors.bg]}
+        colors={[Colors.bg, Colors.feltDark, Colors.bg]}
         style={StyleSheet.absoluteFill}
       />
 
@@ -754,10 +752,8 @@ export function GameTable({
           },
         ]}
       >
-        {/* #0F5A35/#0D4A2E/#061E12: felt-gradient-only stops between the
-            named felt tokens, no exact Colors match — left inline. */}
         <LinearGradient
-          colors={["#0F5A35", "#0D4A2E", Colors.felt, Colors.feltDark, "#061E12"]}
+          colors={FeltGradient}
           locations={[0, 0.25, 0.5, 0.75, 1]}
           style={StyleSheet.absoluteFill}
         />
@@ -1007,12 +1003,12 @@ export function GameTable({
   );
 }
 
-// The PASSA button's reds are deliberate table furniture — a muted danger that
-// reads against the felt without competing with the gold. They have no token
-// because nothing else in the app uses them.
+// PASS_BG/PASS_BORDER are deliberate table furniture — a muted danger that
+// reads against the felt without competing with the gold — with no matching
+// token. PASS_LABEL's red coincides with Colors.bombText.
 const PASS_BG = "#5C1212";
 const PASS_BORDER = "#8B1A1A";
-const PASS_LABEL = "#FF8080";
+const PASS_LABEL = Colors.bombText;
 
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: Colors.bg },
@@ -1027,12 +1023,9 @@ const styles = StyleSheet.create({
     zIndex: 10,
   },
   topBarRight: { flexDirection: "row", alignItems: "center", gap: Spacing.xs },
-  // rgba(0,0,0,0.35): plain black wash reused below on cardCountBadge and
-  // startCardBanner too — not gold, no Colors black-overlay entry to match
-  // (Colors.overlay is a different rgb/alpha), left inline throughout.
   quitBtn: {
     width: 32, height: 32, borderRadius: 16,
-    backgroundColor: "rgba(0,0,0,0.35)",
+    backgroundColor: Scrim.medium,
     alignItems: "center", justifyContent: "center",
   },
   timerNum: {
@@ -1042,7 +1035,7 @@ const styles = StyleSheet.create({
   timerUrgent: { color: Colors.red },
   cardCountBadge: {
     width: 30, height: 30, borderRadius: 15,
-    backgroundColor: "rgba(0,0,0,0.35)",
+    backgroundColor: Scrim.medium,
     alignItems: "center", justifyContent: "center",
   },
   cardCountText: {
@@ -1052,7 +1045,7 @@ const styles = StyleSheet.create({
   startCardBanner: {
     alignItems: "center", gap: 6,
     paddingHorizontal: Spacing.md, paddingVertical: 10, borderRadius: 14,
-    backgroundColor: "rgba(0,0,0,0.35)",
+    backgroundColor: Scrim.medium,
     borderWidth: 1, borderColor: Colors.goldSoft,
   },
   startCardGlyph: { fontSize: 28, color: Colors.text },
@@ -1079,7 +1072,7 @@ const styles = StyleSheet.create({
     fontFamily: "Rajdhani_700Bold", fontSize: FontSize.sm,
     color: PASS_LABEL, letterSpacing: 0.5,
   },
-  passBtnLabelDim: { color: "rgba(255,128,128,0.3)" },
+  passBtnLabelDim: { color: Colors.bombFill },
 
   playBtn: {
     width: SIDE_BTN_W + 6, height: CARD_H,
@@ -1092,8 +1085,7 @@ const styles = StyleSheet.create({
     gap: 2, borderRadius: Radius.md, overflow: "hidden",
   },
   playBtnGradDim: {
-    // rgba(40,30,5,0.7): dark gold-brown wash, not a (201,168,76) gold alpha
-    // — no token, left inline.
+    // Dark gold-brown wash with no matching token.
     backgroundColor: "rgba(40,30,5,0.7)",
     borderWidth: 2, borderColor: Colors.goldSoft, borderRadius: Radius.md,
   },
@@ -1105,8 +1097,8 @@ const styles = StyleSheet.create({
     fontFamily: "Rajdhani_500Medium", fontSize: FontSize.xs,
     color: Colors.bgCard, opacity: 0.7,
   },
-  // Solid goldLight, not a 0.4-alpha gold: this is the only text that explains
-  // why a move was refused, and at 40% opacity it measured 2.23:1.
+  // Solid color: this is the only text explaining why a move was refused,
+  // and must clear 4.5:1 contrast.
   playBtnLabelDim: {
     fontFamily: "Rajdhani_600SemiBold", fontSize: FontSize.sm,
     color: Colors.goldLight, letterSpacing: 0.5, textAlign: "center",

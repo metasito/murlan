@@ -25,9 +25,7 @@ import { usePrefersReducedMotion } from "@/lib/accessibility";
 import { useTranslation, type TranslationKey } from "@/lib/i18n";
 
 const POSITION_MEDALS = ["trophy", "medal", "ribbon", "remove-circle"] as const;
-// Standard silver/bronze medal colors — not part of the app's gold/status
-// palette, no Colors entry to match, left inline.
-const POSITION_COLORS = [Colors.gold, "#C0C0C0", "#CD7F32", Colors.textMuted];
+const POSITION_COLORS = [Colors.podiumGold, Colors.podiumSilver, Colors.podiumBronze, Colors.textMuted];
 const POSITION_LABEL_KEYS: TranslationKey[] = [
   "gameOverOverlay.position1",
   "gameOverOverlay.position2",

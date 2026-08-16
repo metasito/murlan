@@ -12,7 +12,7 @@ import Animated, {
   withSpring,
 } from "react-native-reanimated";
 import { Card, Suit, isRedSuit, getCardDisplayRank, getSuitSymbol } from "@/lib/gameEngine";
-import { Colors } from '@/lib/theme';
+import { Colors, Scrim } from '@/lib/theme';
 import { Shadow } from "@/lib/theme";
 import { useTranslation, type TranslationKey } from "@/lib/i18n";
 import Svg, { Path, Circle, G, Rect, Polygon } from "react-native-svg";
@@ -39,10 +39,7 @@ const CARD_W_SMALL = 40;
 const CARD_H_SMALL = 58;
 const FACE_FIGURE_SIZE = 32;
 // Neutral engraving ink for the black/white joker (has no suit colour of its own).
-// No Colors entry matches this dark slate — left inline.
 const INK = "#26323C";
-// Face-card border ring. 0.45 is closest to the new Colors.goldStrong (0.5,
-// a 0.05 shift) — was hand-picked before that step existed.
 const CARD_FACE_BORDER = Colors.goldStrong;
 
 interface CardViewProps {
@@ -415,8 +412,7 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.cardBg,
     borderRadius: 8,
     borderWidth: 1,
-    // Plain black hairline, no Colors black-alpha entry to match — left inline.
-    borderColor: "rgba(0,0,0,0.1)",
+    borderColor: Scrim.subtle,
     overflow: "hidden",
     ...Shadow.dark,
   },

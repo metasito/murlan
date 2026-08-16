@@ -21,7 +21,7 @@ import { Ionicons } from "@expo/vector-icons";
 import type { ExchangePhase, Card } from "@/lib/gameEngine";
 import { cardStrength, getValidGivebackCards } from "@/lib/gameEngine";
 import { CardView } from "@/components/CardView";
-import { Colors, FontSize, Radius, Shadow, Spacing } from '@/lib/theme';
+import { Colors, FontSize, Highlight, Radius, Shadow, Spacing } from '@/lib/theme';
 import { usePrefersReducedMotion } from "@/lib/accessibility";
 import { useTranslation } from "@/lib/i18n";
 
@@ -210,9 +210,7 @@ const styles = StyleSheet.create({
     zIndex: 110,
   },
   card: {
-    // #0B2A1A: modal-only surface, no exact Colors match (bgCard/bgSurface
-    // are both different hex) — left inline.
-    backgroundColor: "#0B2A1A",
+    backgroundColor: Colors.feltDark,
     borderRadius: Radius.lg,
     borderWidth: 2,
     borderColor: Colors.goldStrong,
@@ -235,16 +233,12 @@ const styles = StyleSheet.create({
     letterSpacing: 2,
     textTransform: "uppercase",
   },
-  // (unchanged — title style already used uppercase transform; kept here as
-  // the reference other modals in this pass are aligned to.)
   playerRow: {
     flexDirection: "row",
     alignItems: "center",
     width: "100%",
     gap: 12,
-    // rgba(255,255,255,0.03): white wash, no matching token (only the gold
-    // scale is approved for fuzzy snapping) — left inline.
-    backgroundColor: "rgba(255,255,255,0.03)",
+    backgroundColor: Highlight.faint,
     borderRadius: Radius.md,
     padding: 10,
     borderWidth: 1,
@@ -278,9 +272,8 @@ const styles = StyleSheet.create({
     letterSpacing: 0.5,
   },
   givesTag: {
-    // White wash/border, no matching token (see playerRow above) — left inline.
-    backgroundColor: "rgba(255,255,255,0.05)",
-    borderColor: "rgba(255,255,255,0.1)",
+    backgroundColor: Highlight.soft,
+    borderColor: Highlight.clear,
   },
   givesTagText: {
     color: Colors.textSecondary,

@@ -18,7 +18,7 @@ import Animated, {
 import { Ionicons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
 import { CardView } from "@/components/CardView";
-import { Colors, FontSize, Motion, Radius, Shadow, Spacing } from "@/lib/theme";
+import { Colors, FeltGradient, FontSize, Highlight, Motion, Radius, Scrim, Shadow, Spacing } from "@/lib/theme";
 import { usePrefersReducedMotion } from "@/lib/accessibility";
 import { useTranslation, type TranslationKey } from "@/lib/i18n";
 import type { Card, Combination, Player, StartReason } from "@/lib/gameEngine";
@@ -69,27 +69,24 @@ const FLY_LANDING_ROTS: Record<FlyDirection, number> = {
 
 // ─── Table vignette ───────────────────────────────────────────────────────────
 
-// The four gradient stops below are a plain black wash (not gold), so the
-// gold-alpha scale doesn't apply, and Colors has no black-overlay entries to
-// match against (Colors.overlay is a different rgb and alpha) — left inline.
 export function TableVignette() {
   return (
     <View style={StyleSheet.absoluteFill} pointerEvents="none">
       {/* Top edge */}
       <LinearGradient
-        colors={["rgba(0,0,0,0.30)", "transparent"]}
+        colors={[Scrim.medium, "transparent"]}
         style={vignetteStyles.top}
         pointerEvents="none"
       />
       {/* Bottom edge */}
       <LinearGradient
-        colors={["transparent", "rgba(0,0,0,0.30)"]}
+        colors={["transparent", Scrim.medium]}
         style={vignetteStyles.bottom}
         pointerEvents="none"
       />
       {/* Left edge */}
       <LinearGradient
-        colors={["rgba(0,0,0,0.22)", "transparent"]}
+        colors={[Scrim.soft, "transparent"]}
         start={{ x: 0, y: 0.5 }}
         end={{ x: 1, y: 0.5 }}
         style={vignetteStyles.left}
@@ -97,7 +94,7 @@ export function TableVignette() {
       />
       {/* Right edge */}
       <LinearGradient
-        colors={["transparent", "rgba(0,0,0,0.22)"]}
+        colors={["transparent", Scrim.soft]}
         start={{ x: 0, y: 0.5 }}
         end={{ x: 1, y: 0.5 }}
         style={vignetteStyles.right}
@@ -200,7 +197,7 @@ export function AvatarCircle({
         ]}
       >
         <LinearGradient
-          colors={["#0D4A2E", Colors.felt]} // #0D4A2E: gradient-only stop between felt and feltLight, no exact token
+          colors={[FeltGradient[1], Colors.felt]}
           style={[
             sharedStyles.avatarInner,
             { width: size, height: size, borderRadius: size / 2 },
@@ -685,9 +682,7 @@ export function StartReasonBanner({
       }}
     >
       <View style={{
-        // rgba(3,16,8,0.90): near-Colors.bg wash at a one-off alpha — no
-        // Colors entry composes bg with a custom alpha, left inline.
-        backgroundColor: "rgba(3,16,8,0.90)",
+        backgroundColor: Colors.overlayStrong,
         borderColor: Colors.gold,
         borderWidth: 1,
         borderRadius: Radius.lg,
@@ -715,9 +710,7 @@ export function StartReasonBanner({
 export const portraitOverlayStyles = StyleSheet.create({
   overlay: {
     ...StyleSheet.absoluteFillObject,
-    // rgba(3,16,8,0.97): near-Colors.bg wash at a one-off alpha, same
-    // rationale as StartReasonBanner above — left inline.
-    backgroundColor: "rgba(3,16,8,0.97)",
+    backgroundColor: Colors.overlayOpaque,
     alignItems: "center",
     justifyContent: "center",
     zIndex: 999,
@@ -772,7 +765,6 @@ export const sharedTableStyles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     borderBottomWidth: 1,
-    // Nearly-invisible by design (0.08) — nearest step is goldGhost (0.06).
     borderBottomColor: Colors.goldGhost,
   },
   midSection: { flex: 1, flexDirection: "row", alignItems: "center" },
@@ -791,9 +783,7 @@ export const sharedTableStyles = StyleSheet.create({
   handSectionActive: {
     backgroundColor: Colors.goldGhost,
     borderTopWidth: 1,
-    // True transparent (alpha 0), not a wash step — useTurnPulse animates this
-    // border in from here, so it must start fully invisible, not "barely
-    // visible" (goldGhost would show a static hairline while idle).
+    // Must be fully transparent: useTurnPulse animates this border in from here.
     borderTopColor: "rgba(201,168,76,0.0)",
   },
 });
@@ -830,9 +820,8 @@ export function useTurnPulse(active: boolean) {
     };
   }, [active, reduceMotion]);
 
-  // The `rgba(201,168,76,${...})` strings below are per-frame interpolated
-  // alphas (borderAlpha ranges continuously 0→0.3), not one of the five fixed
-  // gold-alpha steps — a static token can't represent an animated value.
+  // borderAlpha is interpolated per frame (0→0.3) — a static token can't
+  // represent an animated value.
   return useAnimatedStyle(() => {
     const v = glowV.value;
     const shadowRadius = v < 0.01 ? 0 : interpolate(v, [0.35, 0.85], [8, 22], Extrapolation.CLAMP);
@@ -895,19 +884,14 @@ export const sharedStyles = StyleSheet.create({
   oppName: {
     fontFamily: "Rajdhani_600SemiBold",
     fontSize: 10,
-    // Between Colors.textMuted (0.58) and Colors.textSecondary (0.75) —
-    // neither is an exact match, and only the gold scale is approved for
-    // fuzzy snapping, so left inline rather than shift body-text contrast.
-    color: "rgba(240,234,214,0.65)",
+    color: Colors.textMuted,
     maxWidth: 70,
     textAlign: "center",
   },
 
   avatarOuter: {
     borderWidth: 2,
-    // No white-alpha token at this value (Colors.cardBorder is 0.08, a
-    // different role and value) — left inline.
-    borderColor: "rgba(255,255,255,0.12)",
+    borderColor: Highlight.clear,
     alignItems: "center",
     justifyContent: "center",
     position: "relative",
@@ -931,9 +915,7 @@ export const sharedStyles = StyleSheet.create({
     position: "absolute",
     bottom: -3,
     right: -3,
-    // Near-black but not Colors.bg (off by 1 in the red channel) — no exact
-    // token, left inline.
-    backgroundColor: "rgba(4,16,8,0.9)",
+    backgroundColor: Colors.overlayStrong,
     borderRadius: 9,
     minWidth: 18,
     height: 18,
@@ -997,12 +979,9 @@ export const sharedStyles = StyleSheet.create({
     borderWidth: 1,
     borderColor: Colors.goldStrong,
   },
-  // Custom "power play" red (bomb/royal straight) — deliberately distinct
-  // from Colors.red/redMuted (a different rgb entirely), same rationale as
-  // GameTable.tsx's PASS_* constants. No token, left inline.
   comboChipPower: {
-    backgroundColor: "rgba(255,80,80,0.22)",
-    borderColor: "rgba(255,80,80,0.55)",
+    backgroundColor: Colors.bombFill,
+    borderColor: Colors.bombBorder,
   },
   comboChipText: {
     fontFamily: "Rajdhani_700Bold",
@@ -1012,7 +991,7 @@ export const sharedStyles = StyleSheet.create({
     textTransform: "uppercase",
   },
   comboChipTextPower: {
-    color: "#FF8888",
+    color: Colors.bombText,
   },
 
   handCenter: {
