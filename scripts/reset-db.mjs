@@ -10,17 +10,46 @@
  * Only its rows are removed (everyone gets logged out, which is unavoidable
  * once the users they reference are gone).
  *
- * Usage:  node scripts/reset-db.mjs --yes
+ * Usage:  ALLOW_DESTRUCTIVE=1 node scripts/reset-db.mjs --yes
  * Then:   npm run db:push
+ *
+ * Guarding on a CLI flag alone was not a guard: `npm run db:reset` passed
+ * `--yes` itself, so typing `db:reset` instead of `db:push` wiped whatever
+ * DATABASE_URL pointed at — on Replit, production. The gate is now an
+ * environment variable the npm script deliberately does NOT set, plus a hard
+ * refusal under NODE_ENV=production. Both have to be got past on purpose.
  */
 import pg from "pg";
 
-if (!process.argv.includes("--yes")) {
+const HOW_TO =
+  "To really do it, type this yourself (the npm script cannot):\n" +
+  "  ALLOW_DESTRUCTIVE=1 node scripts/reset-db.mjs --yes\n" +
+  "On Windows PowerShell:\n" +
+  '  $env:ALLOW_DESTRUCTIVE=1; node scripts/reset-db.mjs --yes';
+
+// Hard stop first: no combination of flags or env vars may wipe a production
+// database from this script. Anyone who genuinely means it has to unset
+// NODE_ENV, which is not something you do by accident.
+if (process.env.NODE_ENV === "production") {
   console.error(
-    "Refusing to run without --yes.\n" +
-      "This DELETES ALL DATA (users, rooms, friends, games, sessions).\n" +
-      "Re-run as: node scripts/reset-db.mjs --yes"
+    "Refusing to run with NODE_ENV=production.\n" +
+      "This script DELETES ALL DATA and is never safe against a live database."
   );
+  process.exit(1);
+}
+
+if (process.env.ALLOW_DESTRUCTIVE !== "1") {
+  console.error(
+    "Refusing to run: ALLOW_DESTRUCTIVE=1 is not set.\n" +
+      "This DELETES ALL DATA (users, rooms, friends, games, sessions).\n" +
+      "If you wanted to apply schema changes, you want `npm run db:push`.\n" +
+      HOW_TO
+  );
+  process.exit(1);
+}
+
+if (!process.argv.includes("--yes")) {
+  console.error("Refusing to run without --yes.\n" + HOW_TO);
   process.exit(1);
 }
 

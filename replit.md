@@ -26,7 +26,7 @@ bundle. No extra setup.
 | `npm run server:build` / `server:prod` | esbuild bundle, then run it |
 | `npm run verify` | Typecheck + tests. Run this before pushing. |
 | `npm run db:push` | Apply `shared/schema.ts` to the database |
-| `npm run db:reset` | **Destructive.** Wipe all app data, then push the schema |
+| `npm run db:reset` | **Destructive.** Refuses on its own — needs `ALLOW_DESTRUCTIVE=1 node scripts/reset-db.mjs --yes`, and never runs under `NODE_ENV=production` |
 
 ## Required Secrets
 

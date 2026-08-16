@@ -46,12 +46,19 @@ npm run lint          # npx expo lint
 
 ```sh
 npm run db:push   # apply shared/schema.ts to the database
-npm run db:reset  # DESTRUCTIVE — wipes all app data, then re-applies the schema
+npm run db:reset  # DESTRUCTIVE — refuses unless you opt in explicitly (see below)
 ```
 
-`db:reset` drops and recreates every table's contents except `session` (which is only
-emptied, never dropped — see `replit.md` for why). Do not run it against data you want
-to keep.
+`db:reset` empties every table's contents except `session` (which is only
+emptied, never dropped — see `replit.md` for why), then re-applies the schema.
+
+It cannot run from the npm script alone, by design: the script does not set the
+opt-in variable, and the underlying script refuses outright when
+`NODE_ENV=production`. To really wipe a non-production database:
+
+```sh
+ALLOW_DESTRUCTIVE=1 node scripts/reset-db.mjs --yes && npm run db:push
+```
 
 ## Documentation map
 
