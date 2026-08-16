@@ -11,14 +11,6 @@
 //     (rendered here as "Xholi i zi" / "Xholi me ngjyrë" to match the
 //     app's colour-neutral "colored Joker" framing elsewhere in the UI)
 //
-// KNOWN INCONSISTENCY, highest priority for the reviewer: this file uses BOTH
-// "dorë"/"dora" (genuine Albanian for a hand) and "manche" (a French/Italian
-// loanword carried over from the Italian source) for the SAME concept — one
-// played-out hand. Pick one, almost certainly "dorë", and decline it properly
-// throughout: manche -> dorë, manchen -> dorën, manches -> dorës,
-// Manchet -> Duart. Left unresolved here because guessing at declension is
-// worse than flagging it.
-//
 // UNSOURCED terms: everything else — general UI chrome, combination names
 // other than "shkallë" (single/pair/triple/bomb/royal straight), suit
 // names, and all narrative/FAQ prose — is a good-faith machine translation,
@@ -367,7 +359,7 @@ export const sq: Record<keyof typeof it, string> = {
   "rules.faq.q1": "Cili është qëllimi i lojës?",
   "rules.faq.a1": "Të jesh lojtari (ose çifti) i parë që mbetet pa letra. Loja vazhdon derisa të gjithë lojtarët përveç të fundit të kenë mbaruar letrat.",
   "rules.faq.q2": "Kush fillon i pari?",
-  "rules.faq.a2": "Dora e parë e ndeshjes:\nGjithmonë shpërndahet i gjithë mazhi, kështu që 3♠ është gjithmonë në dorën e dikujt. Kush e ka atë hap lojën, dhe loja e parë DUHET ta përfshijë atë letër.\n\nManchet pasuese (pas shkëmbimit të letrave):\n• Kush ka humbur manchen e mëparshme hap manchen tjetër.\n• Nëse fituesi fitoi pa u bërë shkëmbim (përjashtimi i dy Xholave), është vetë fituesi që hap manchen tjetër.\n\nRadha vazhdon gjithmonë në kahun orar.",
+  "rules.faq.a2": "Dora e parë e ndeshjes:\nGjithmonë shpërndahet i gjithë mazhi, kështu që 3♠ është gjithmonë në dorën e dikujt. Kush e ka atë hap lojën, dhe loja e parë DUHET ta përfshijë atë letër.\n\nDuart pasuese (pas shkëmbimit të letrave):\n• Kush ka humbur dorën e mëparshme hap dorën tjetër.\n• Nëse fituesi fitoi pa u bërë shkëmbim (përjashtimi i dy Xholave), është vetë fituesi që hap dorën tjetër.\n\nRadha vazhdon gjithmonë në kahun orar.",
   "rules.faq.q3": "Cila është forca e letrave?",
   "rules.faq.a3": "Nga më e forta te më e dobëta:\n★ Xholi me Ngjyrë > ☆ Xholi B/Z > 2 > A > K > Q > J > 10 > 9 > 8 > 7 > 6 > 5 > 4 > 3\n\n2-shi është letra e zakonshme më e fortë e mazhit!",
   "rules.faq.q4": "Cilat kombinime mund të luaj?",
@@ -379,11 +371,11 @@ export const sq: Record<keyof typeof it, string> = {
   "rules.faq.q7": "Kur fitohet një raund?",
   "rules.faq.a7": "Kur të gjithë lojtarët kalojnë njëri pas tjetrit (përveç njërit), kush ka luajtur kombinimin e fundit fiton raundin. Ai lojtar fillon një raund të ri me çfarëdo kombinimi.",
   "rules.faq.q8": "Si llogariten pikët?",
-  "rules.faq.a8": "Në një ndeshje me N lojtarë, çdo manche jep pikë sipas rendit të mbërritjes:\n• Vendi 1: N-1 pikë\n• Vendi 2: N-2 pikë\n• ...\n• Vendi i fundit: 0 pikë\n\nShembuj:\n▸ 2 lojtarë: 1° = 1 pikë, 2° = 0 pikë\n▸ 3 lojtarë: 1° = 2 pikë, 2° = 1 pikë, 3° = 0 pikë\n▸ 4 lojtarë: 1° = 3 pikë, 2° = 2 pikë, 3° = 1 pikë, 4° = 0 pikë\n\nPikët grumbullohen ndërmjet mancheve të rivanshit. Fiton ndeshjen kush arrin i pari 21 pikë. Nëse më shumë se një lojtar arrin 21 pikë në të njëjtën manche, objektivi ngjitet në 31, pastaj 41, pastaj 51: nëse barazimi vazhdon edhe në 51, ndeshja mbyllet barazim.",
+  "rules.faq.a8": "Në një ndeshje me N lojtarë, çdo dorë jep pikë sipas rendit të mbërritjes:\n• Vendi 1: N-1 pikë\n• Vendi 2: N-2 pikë\n• ...\n• Vendi i fundit: 0 pikë\n\nShembuj:\n▸ 2 lojtarë: 1° = 1 pikë, 2° = 0 pikë\n▸ 3 lojtarë: 1° = 2 pikë, 2° = 1 pikë, 3° = 0 pikë\n▸ 4 lojtarë: 1° = 3 pikë, 2° = 2 pikë, 3° = 1 pikë, 4° = 0 pikë\n\nPikët grumbullohen ndërmjet duarve të rivanshit. Fiton ndeshjen kush arrin i pari 21 pikë. Nëse më shumë se një lojtar arrin 21 pikë në të njëjtën dorë, objektivi ngjitet në 31, pastaj 41, pastaj 51: nëse barazimi vazhdon edhe në 51, ndeshja mbyllet barazim.",
   "rules.faq.q9": "Cilat modalitete loje ekzistojnë?",
   "rules.faq.a9": "Murlani mbështet 4 formate:\n\n• 1 kundër 1 — dy lojtarë, fiton kush mbaron letrat i pari\n• Trio — tre lojtarë, të gjithë kundër të gjithëve\n• 4 të Lirë — katër lojtarë, të gjithë kundër të gjithëve\n• 2 kundër 2 — katër lojtarë të ndarë në dy çifte, ulur përballë njëri-tjetrit: Lojtari 1&3 kundër Lojtarit 2&4. Manchja luhet deri në fund: nuk mbyllet kur anëtari i parë i një çifti mbetet pa letra, por kur TË DY shokët kanë mbaruar (ose kur i gjithë çifti kundërshtar ka mbaruar). Pikët e vendosjes së dy shokëve mblidhen: fiton çifti me totalin më të lartë.\n\nNë modalitetin Online gjen të gjitha 4 formatet. Në offline zgjedh vetë sa lojtarë dhe cilin modalitet.",
   "rules.faq.q10": "Si funksionon shkëmbimi i letrave?",
-  "rules.faq.a10": "Pas çdo manche (kur të gjithë kanë mbaruar letrat), ndodh një shkëmbim:\n\n1. Humbësi (i klasifikuari i fundit) i jep automatikisht letrën e tij më të fortë fituesit (i klasifikuari i parë).\n2. Fituesi zgjedh një letër nga 3 deri në 10 për t'ia kthyer humbësit.\n3. Pastaj humbësi fillon raundin tjetër.\n\nPërjashtimi i dy Xholave: nëse humbësi ka në dorë të dy Xholat (me ngjyrë dhe B/Z), shkëmbimi NUK ndodh. Fituesi fillon vetë raundin tjetër.",
+  "rules.faq.a10": "Pas çdo dore (kur të gjithë kanë mbaruar letrat), ndodh një shkëmbim:\n\n1. Humbësi (i klasifikuari i fundit) i jep automatikisht letrën e tij më të fortë fituesit (i klasifikuari i parë).\n2. Fituesi zgjedh një letër nga 3 deri në 10 për t'ia kthyer humbësit.\n3. Pastaj humbësi fillon raundin tjetër.\n\nPërjashtimi i dy Xholave: nëse humbësi ka në dorë të dy Xholat (me ngjyrë dhe B/Z), shkëmbimi NUK ndodh. Fituesi fillon vetë raundin tjetër.",
   "rules.faq.q11": "Çfarë janë Xholat?",
   "rules.faq.a11": "Xholat janë letrat më të forta të mazhit në kombinimet normale:\n• Xholi me Ngjyrë ★: më i forti absolutisht\n• Xholi B/Z ☆: i dyti për forcë\n\nKujdes: Xholat mund të luhen VETËM si letër e vetme — kurrë në çift, tresh ose shkallë. Një Xhol i luajtur si letër e vetme mund të mundet nga një Bombë!",
   "rules.faq.q12": "Çfarë është një Bombë?",
@@ -512,12 +504,12 @@ export const sq: Record<keyof typeof it, string> = {
   "tutorial.beat.royal.successNarrative": "SHKALLË MBRETËRORE Pikash! Asgjë nuk mund ta mundë. Radhë e fituar në stil të madh.",
 
   "tutorial.beat.exchange.title": "Shkëmbimi i letrave",
-  "tutorial.beat.exchange.instruction": "Pas çdo manche, fituesi dhe humbësi shkëmbejnë një letër. Ke fituar manchen e fundit: humbësi tashmë ta ka dhënë automatikisht letrën e tij më të fortë, Xholin me Ngjyrë. Tani zgjidh një letër për t'ia kthyer, me vlerë nga 3 deri në 10.",
+  "tutorial.beat.exchange.instruction": "Pas çdo dore, fituesi dhe humbësi shkëmbejnë një letër. Ke fituar dorën e fundit: humbësi tashmë ta ka dhënë automatikisht letrën e tij më të fortë, Xholin me Ngjyrë. Tani zgjidh një letër për t'ia kthyer, me vlerë nga 3 deri në 10.",
   "tutorial.beat.exchange.tip": "Përjashtimi i dy Xholave: nëse humbësi ka në dorë TË DY Xholat, shkëmbimi nuk ndodh fare — thjesht tregon të dyja letrat, dhe fituesi hap menjëherë radhën tjetër.",
-  "tutorial.beat.exchange.successNarrative": "Shkëmbimi përfundoi! Kush humbi manchen e mëparshme hap radhën tjetër.",
+  "tutorial.beat.exchange.successNarrative": "Shkëmbimi përfundoi! Kush humbi dorën e mëparshme hap radhën tjetër.",
 
   "tutorial.beat.done.title": "Je gati!",
-  "tutorial.beat.done.body1": "Ke parë të gjitha kombinimet — E vetme, Çift, Tresh, Shkallë, Bombë dhe Shkallë Mbretërore — përveç hapjes me 3♠ dhe shkëmbimit të letrave në fund të manches.",
+  "tutorial.beat.done.body1": "Ke parë të gjitha kombinimet — E vetme, Çift, Tresh, Shkallë, Bombë dhe Shkallë Mbretërore — përveç hapjes me 3♠ dhe shkëmbimit të letrave në fund të dorës.",
   "tutorial.beat.done.body2": "Në ndeshjen e vërtetë do të përdorësh të njëjtat rregulla që sapo provove: loja nuk do të lejojë kurrë të bësh një lëvizje të pavlefshme.",
   "tutorial.beat.done.body3": "Mund ta rishikosh këtë tutorial në çdo moment nga ekrani kryesor, ose të konsultosh Rregullat & FAQ të plota.",
   "tutorial.beat.done.cta": "Shko te loja",
@@ -644,28 +636,28 @@ export const sq: Record<keyof typeof it, string> = {
 
   // ----------------------------------------------------------- achievements.*
   // Machine-translated, reusing this file's already-established terms for
-  // card vocabulary (Bombë, Xholi, letra, manche, ndeshje — see header and
+  // card vocabulary (Bombë, Xholi, letra, dorë, ndeshje — see header and
   // rules.*/result.* above); not checked by a native speaker.
   "achievements.firstWin.name": "Fitorja e Parë",
-  "achievements.firstWin.desc": "Fito manchen tënde të parë.",
+  "achievements.firstWin.desc": "Fito dorën tënde të parë.",
   "achievements.runnerUp.name": "Vendi i Dytë",
-  "achievements.runnerUp.desc": "Përfundo një manche në vendin e dytë.",
+  "achievements.runnerUp.desc": "Përfundo një dorë në vendin e dytë.",
   "achievements.bombardier.name": "Bombardier",
-  "achievements.bombardier.desc": "Fito një manche pasi ke luajtur një Bombë.",
+  "achievements.bombardier.desc": "Fito një dorë pasi ke luajtur një Bombë.",
   "achievements.purist.name": "Purist",
-  "achievements.purist.desc": "Fito një manche pa luajtur asnjë Xholi.",
+  "achievements.purist.desc": "Fito një dorë pa luajtur asnjë Xholi.",
   "achievements.wildCard.name": "Karta Xhoker",
-  "achievements.wildCard.desc": "Fito një manche pasi ke luajtur si Bombë ashtu edhe Xholi.",
+  "achievements.wildCard.desc": "Fito një dorë pasi ke luajtur si Bombë ashtu edhe Xholi.",
   "achievements.minimalist.name": "Fitore e Thjeshtë",
-  "achievements.minimalist.desc": "Fito një manche pa luajtur Bomba apo Xhola.",
+  "achievements.minimalist.desc": "Fito një dorë pa luajtur Bomba apo Xhola.",
   "achievements.duelist.name": "Duelisti",
-  "achievements.duelist.desc": "Fito një manche në një lojë me dy lojtarë.",
+  "achievements.duelist.desc": "Fito një dorë në një lojë me dy lojtarë.",
   "achievements.fullTable.name": "Tavolina e Plotë",
-  "achievements.fullTable.desc": "Fito një manche me katër lojtarë ku edhe dy kundërshtarët e tjerë i mbarojnë letrat (vetëm i fundit mbetet me letra në dorë).",
+  "achievements.fullTable.desc": "Fito një dorë me katër lojtarë ku edhe dy kundërshtarët e tjerë i mbarojnë letrat (vetëm i fundit mbetet me letra në dorë).",
   "achievements.matchChampion.name": "Kampioni i Ndeshjes",
   "achievements.matchChampion.desc": "Fito një ndeshje të plotë duke arritur pikëzimin final.",
   "achievements.ironWill.name": "Vullnet i Hekurt",
-  "achievements.ironWill.desc": "Fito një ndeshje të plotë pa luajtur Xholi në manchen përfundimtare.",
+  "achievements.ironWill.desc": "Fito një ndeshje të plotë pa luajtur Xholi në dorën përfundimtare.",
 
   // ------------------------------------------------------------- profile.*
   "profile.title": "Profili",
@@ -677,8 +669,8 @@ export const sq: Record<keyof typeof it, string> = {
   "profile.retryStatsA11yLabel": "Provo përsëri të ngarkosh statistikat",
   "profile.statsEmptyTitle": "Ende asnjë lojë",
   "profile.statsEmptyBody": "Luaj mancën tënde të parë për të filluar ndërtimin e statistikave.",
-  "profile.statGamesPlayed": "Manche të luajtura",
-  "profile.statGamesWon": "Manche të fituara",
+  "profile.statGamesPlayed": "Duar të luajtura",
+  "profile.statGamesWon": "Duar të fituara",
   "profile.statWinRate": "% fitoresh",
   "profile.statMatchesWon": "Ndeshje të fituara",
   "profile.statCurrentStreak": "Seria aktuale",
