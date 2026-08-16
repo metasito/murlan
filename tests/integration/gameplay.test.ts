@@ -283,8 +283,19 @@ describe("gameplay integrity", { skip: hasDatabase() ? false : skipMessage() }, 
     });
     assert.equal(opening.stoppedOn, "gameOver");
 
+    // Reaching an exchange is probabilistic: when the loser holds both jokers
+    // (docs/RULES.md §10) no card is owed back and the hand runs straight to
+    // game:over. Heads-up that is (27/54)·(26/53) = 24.5% per hand, so the
+    // expected number of attempts is ~1.3 and the cap only bites in the tail —
+    // raising it is close to free in runtime and takes the odds of a spurious
+    // failure from 2e-2% at 6 attempts to 6e-11% at 20.
+    //
+    // The alternative — dealing the loser a stacked hand — is deliberately not
+    // taken. It would mean a seam that rigs the deal in a server whose entire
+    // model is that the server alone decides what the cards are, and no test
+    // is worth putting that seam within reach of production.
     let exchange: Map<Client, SanitizedState> | null = null;
-    for (let attempt = 0; attempt < 6 && !exchange; attempt++) {
+    for (let attempt = 0; attempt < 20 && !exchange; attempt++) {
       const result = await driveHandToExchangeOrOver([alice, bob], () => {
         alice.socket.emit("game:rematch_vote");
         bob.socket.emit("game:rematch_vote");
@@ -292,9 +303,6 @@ describe("gameplay integrity", { skip: hasDatabase() ? false : skipMessage() }, 
       if (result.stoppedOn === "exchange") {
         exchange = result.states;
       }
-      // Otherwise the loser held both jokers — a documented exception where
-      // no card is owed back — so that hand ran straight through to
-      // game:over with no exchange. Vote again and try the next hand.
     }
     assert.ok(exchange, "never reached an active exchange phase after several rematches");
 
