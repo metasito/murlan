@@ -57,6 +57,7 @@ import {
   describeTableForA11y,
   EMPTY_PILE,
   handCountOf,
+  impactDelayMs,
   playButtonLabel,
   readExchange,
   seatDirection,
@@ -104,13 +105,16 @@ import {
   preloadSounds,
   unloadSounds,
 } from "@/lib/sounds";
-import { hapticLight, hapticMedium, hapticSelection, hapticSuccess } from "@/lib/haptics";
+import { hapticHeavy, hapticLight, hapticMedium, hapticSelection, hapticSuccess } from "@/lib/haptics";
 import { usePrefersReducedMotion } from "@/lib/accessibility";
 import { Colors, FeltGradient, FontSize, Highlight, Motion, Radius, Scrim, Shadow, Spacing, Type } from "@/lib/theme";
 
 // How long the round-winner tag stays over the pile. A domain beat, not a
 // generic UI transition, so it is not a Motion token.
 const ROUND_WINNER_MS = 1800;
+// Breathing room between the winning card's own impact sound and the round-win
+// sting, so the two read as cause and consequence rather than as one noise.
+const ROUND_WIN_STING_GAP_MS = 220;
 // Below this the countdown turns red and ticks audibly.
 const URGENT_SECONDS = 5;
 
@@ -399,6 +403,10 @@ export function GameTable({
     cards: Card[];
   } | null>(null);
 
+  // Impact feedback is scheduled for the moment the thrown card lands, so it
+  // has to be cancellable: a fast next play, or leaving the table, must not
+  // fire a bang for a card that is no longer in the air.
+  const impactTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const prevComboKeyRef = useRef<string>("");
   const prevRoundWinnerRef = useRef<number | null>(null);
   const prevMyTurnRef = useRef(false);
@@ -559,7 +567,15 @@ export function GameTable({
 
   // Flying card + pile state, derived straight from the game state so a card
   // can never be shown twice or dropped. CLAUDE.md marks this load-bearing.
+  useEffect(
+    () => () => {
+      if (impactTimerRef.current) clearTimeout(impactTimerRef.current);
+    },
+    []
+  );
+
   useEffect(() => {
+    if (impactTimerRef.current) clearTimeout(impactTimerRef.current);
     const combo = gameState.lastPlayedCombination;
     if (combo === null) {
       if (prevComboKeyRef.current !== "") playRoundStart();
@@ -572,20 +588,32 @@ export function GameTable({
     if (key === prevComboKeyRef.current) return;
     prevComboKeyRef.current = key;
     setPileState((s) => advancePile(s, combo));
-    if (combo.type === "bomb" || combo.type === "royal_straight") {
-      playBomb();
-      if (!reduceMotion) {
-        shakeX.value = withSequence(
-          withTiming(5, { duration: 45 }),
-          withTiming(-5, { duration: 45 }),
-          withTiming(4, { duration: 40 }),
-          withTiming(-4, { duration: 40 }),
-          withTiming(2, { duration: 35 }),
-          withTiming(-2, { duration: 35 }),
-          withTiming(0, { duration: 30 })
-        );
+
+    // The card is thrown here and arrives ~312ms later. Everything that reads
+    // as *impact* waits for it: the bang used to land a third of a second
+    // before the card that caused it. The play is announced for every seat, not
+    // just the viewer's — an opponent's card used to arrive in silence.
+    const heavy = combo.type === "bomb" || combo.type === "royal_straight";
+    impactTimerRef.current = setTimeout(() => {
+      if (heavy) {
+        playBomb();
+        hapticHeavy();
+        if (!reduceMotion) {
+          shakeX.value = withSequence(
+            withTiming(5, { duration: 45 }),
+            withTiming(-5, { duration: 45 }),
+            withTiming(4, { duration: 40 }),
+            withTiming(-4, { duration: 40 }),
+            withTiming(2, { duration: 35 }),
+            withTiming(-2, { duration: 35 }),
+            withTiming(0, { duration: 30 })
+          );
+        }
+      } else {
+        playCardPlay();
       }
-    }
+    }, impactDelayMs(reduceMotion));
+
     setFlyInfo({
       key,
       dir: seatDirection(gameState.lastPlayedBy, viewerSeat, players.length),
@@ -601,9 +629,15 @@ export function GameTable({
     if (winner === prevRoundWinnerRef.current) return;
     prevRoundWinnerRef.current = winner;
     setRoundWinner(players[winner]?.name ?? "");
-    playRoundWin();
+    // The winning card is still in the air. Let it land, and let its own impact
+    // sound clear, before the sting — three sounds inside 300ms is a pile-up,
+    // not a flourish.
+    const sting = setTimeout(playRoundWin, impactDelayMs(reduceMotion) + ROUND_WIN_STING_GAP_MS);
     const t = setTimeout(() => setRoundWinner(null), ROUND_WINNER_MS);
-    return () => clearTimeout(t);
+    return () => {
+      clearTimeout(sting);
+      clearTimeout(t);
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps -- players changes on nearly every game update; adding it would cancel/reschedule this dismiss timer on unrelated renders and the banner would never auto-dismiss. players[winner] is read fresh from the same render as the winner index by construction.
   }, [gameState.roundWinner, gameState.lastPlayedCombination]);
 
@@ -756,8 +790,9 @@ export function GameTable({
   };
   const handlePlay = () => {
     if (!playBtnValid) return;
+    // Haptic only: the throw is acknowledged in the hand, and card_play sounds
+    // when the card actually reaches the pile.
     hapticMedium();
-    playCardPlay();
     onPlay(selectedIds);
   };
   const handlePass = () => {

@@ -26,6 +26,7 @@ import type { Card, Combination, Player, StartReason } from "@/lib/gameEngine";
 import { CARD_W, computeHandLayout } from "@/components/handLayout";
 import {
   CARD_H,
+  FLIGHT_MS,
   HAND_SECTION_H,
   SIDE_SECTION_W,
   type FlyDirection,
@@ -67,10 +68,9 @@ const FLY_ROTS: Record<FlyDirection, number> = {
 const FLY_LANDING_ROTS: Record<FlyDirection, number> = {
   bottom: -4, top: 5, left: -7, right: 7,
 };
-// Domain beats for the card-to-pile flight, not generic UI transitions: how
-// long the throw takes, how high it arcs, and how far it drives into the felt
-// before rocking back.
-const FLIGHT_MS = 380;
+// How high the throw arcs and how far it drives into the felt before rocking
+// back. The flight's duration lives in gameTableModel, because the table times
+// its impact sound and shake against it.
 const ARC_PEAK = 22;
 const LAND_DIP = 5;
 

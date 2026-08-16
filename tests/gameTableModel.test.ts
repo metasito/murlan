@@ -31,6 +31,9 @@ import {
   readExchange,
   INACTIVE_EXCHANGE,
   describeTableForA11y,
+  impactDelayMs,
+  FLIGHT_MS,
+  LANDING_FRACTION,
   straightTopRankChar,
   type TableA11yStrings,
 } from "../components/gameTableModel.ts";
@@ -613,5 +616,30 @@ describe("straightTopRankChar", () => {
   test("an ace-high straight (e.g. 10-J-Q-K-A) tops out at A, via either face value", () => {
     assert.equal(straightTopRankChar(14), "A");
     assert.equal(straightTopRankChar(1), "A");
+  });
+});
+
+// ─── Impact timing ────────────────────────────────────────────────────────────
+
+describe("impact feedback is timed to the card landing, not to the throw", () => {
+  test("a played card takes 312ms to reach the pile", () => {
+    // Sound, haptics and the bomb shake are scheduled against this. When they
+    // fired at throw time instead, the bang arrived a third of a second before
+    // the card that caused it.
+    assert.equal(FLIGHT_MS, 380);
+    assert.equal(LANDING_FRACTION, 0.82);
+    assert.equal(impactDelayMs(false), 312);
+  });
+
+  test("under reduced motion there is no flight to wait for", () => {
+    // FlyingCards skips the animation entirely, so a delay here would be a
+    // gap of silence rather than anticipation.
+    assert.equal(impactDelayMs(true), 0);
+  });
+
+  test("the delay is a whole number of milliseconds", () => {
+    // setTimeout truncates, and a fractional delay would drift against the
+    // animation it is supposed to match.
+    assert.equal(impactDelayMs(false) % 1, 0);
   });
 });

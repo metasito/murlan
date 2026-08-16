@@ -116,6 +116,27 @@ export interface PileState {
 
 export const EMPTY_PILE: PileState = { prev: null, current: null };
 
+// ─── Flight and impact timing ─────────────────────────────────────────────────
+//
+// A played combination flies from its seat to the pile before it arrives. Sound,
+// haptics and the bomb's screen shake are the *impact*, so they belong at the
+// moment the card lands — firing them at launch puts the bang a third of a
+// second before the thing that caused it.
+//
+// FlyingCards (GameShared.tsx) owns the animation; these are the numbers both it
+// and the table's feedback read, so the two cannot drift apart.
+
+export const FLIGHT_MS = 380;
+/** Fraction of the flight after which the card is on the felt and settling. */
+export const LANDING_FRACTION = 0.82;
+
+/** Delay from a play being registered to the card touching the pile. */
+export function impactDelayMs(reduceMotion: boolean): number {
+  // Under reduced motion FlyingCards skips the flight, so there is nothing to
+  // wait for and the feedback fires immediately.
+  return reduceMotion ? 0 : Math.round(FLIGHT_MS * LANDING_FRACTION);
+}
+
 /**
  * Identity of a played combination. Two different players playing the same
  * card ids is impossible, but the same player replaying an identical-looking
