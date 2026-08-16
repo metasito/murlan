@@ -10,6 +10,7 @@ import { insertUserSchema } from "../shared/schema.ts";
 import { emitToUser, isUserOnline } from "./socket.ts";
 import { mintSocketTicket } from "./ticket.ts";
 import { getUserStats, getMatchHistory, getUserAchievements } from "./stats.ts";
+import { getReplayForUser, listReplaysForUser } from "./replays.ts";
 import { z } from "zod";
 
 declare module "express-session" {
@@ -332,6 +333,26 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get("/api/stats/history", requireAuth, async (req, res) => {
     const history = await getMatchHistory(req.session.userId!);
     res.json(history);
+  });
+
+  // ── Replays ───────────────────────────────────────────────────────────────
+  //
+  // Both reads are scoped to the caller's own seats: the query filters on
+  // player_ids, so an id lifted from somewhere else returns 404 rather than a
+  // stranger's game. A replay holds no hand, only what was played.
+  app.get("/api/replays", requireAuth, async (req, res) => {
+    res.json(await listReplaysForUser(req.session.userId!));
+  });
+
+  app.get("/api/replays/:id", requireAuth, async (req, res) => {
+    const id = readParam(res, req.params.id);
+    if (id === null) return;
+    const replay = await getReplayForUser(id, req.session.userId!);
+    if (!replay) {
+      res.status(404).json({ message: "Replay non trovato", code: "REPLAY_NOT_FOUND" });
+      return;
+    }
+    res.json(replay);
   });
 
   // ── Client crash reports ──────────────────────────────────────────────────
