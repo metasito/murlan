@@ -1,17 +1,15 @@
-// Pure, dependency-free helpers pulled out of server/socket.ts specifically
-// so they can be unit-tested directly. server/socket.ts itself transitively
-// imports storage/db/session/etc, whose own relative imports lack the
-// explicit `.ts` extensions Node's native TS loader requires — so it cannot
-// be imported by the plain `node --test` runner used in tests/. This module
-// has no runtime imports at all, so it can be.
-//
-// server/socket.ts imports these rather than re-implementing them, so the
-// tests exercise the exact code path the server runs.
+// Pure, dependency-free helpers used by server/socket.ts. server/socket.ts
+// transitively imports storage/db/session/etc, whose own relative imports
+// lack the explicit `.ts` extensions Node's native TS loader requires — so it
+// cannot be imported by the plain `node --test` runner used in tests/. This
+// module has no runtime imports at all, so it can be, and server/socket.ts
+// imports these rather than reimplementing them so tests exercise the exact
+// code path the server runs.
 
 /**
  * seat -> userId from the persisted map, falling back to the legacy positional
  * array. The array loses the seat association as soon as a seat is vacated,
- * which is how a rejoining player used to be dealt someone else's hand.
+ * so relying on it can hand a rejoining player someone else's hand.
  */
 export function readPersistedPlayerMap(
   storedMap: unknown,
@@ -133,8 +131,8 @@ export function visibleExchangePhase(
  *
  * A private room of one human plus bots stays fully playable — practice
  * against the AI is a feature — but the human's wins there are guaranteed
- * points, and they used to unlock `match_champion`, `iron_will` and endless
- * streaks for free. This is about what gets *recorded*, never about what is
+ * points, which would trivially unlock `match_champion`, `iron_will` and
+ * endless streaks. This is about what gets *recorded*, never about what is
  * allowed.
  *
  * The line is bot *majority*: 1 human + 3 bots and 1 human + 2 bots are out;
@@ -148,10 +146,10 @@ export function isContestedTable(humanSeats: number, botSeats: number): boolean 
 
 /**
  * Bumped whenever the persisted shape of `gameState` stops being safe to
- * restore verbatim (e.g. the deal changed from 13 cards/player to the full
- * deck). A row written under an older version holds hands that no longer
- * match the current rules — rehydrating it deals a silently corrupt game
- * instead of crashing, so it must be rejected, not restored.
+ * restore verbatim (e.g. a change to how many cards are dealt per player). A
+ * row written under an older version can hold hands that no longer match the
+ * current rules — rehydrating it deals a silently corrupt game instead of
+ * crashing, so it must be rejected, not restored.
  */
 export const GAME_SCHEMA_VERSION = 1;
 

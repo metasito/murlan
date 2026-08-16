@@ -3,10 +3,10 @@ import { z } from "zod";
 /**
  * Runtime schemas for every inbound socket event.
  *
- * TypeScript annotations on the handler payloads are erased at runtime, so a
- * hand-crafted emit (`code: 42`, `cardIds: "x"`, a 1 MB `emoji`) used to reach
- * the game logic and throw inside the io handler — taking the whole process
- * down for every table on the server.
+ * TypeScript annotations on the handler payloads are erased at runtime, so
+ * without these a hand-crafted emit (`code: 42`, `cardIds: "x"`, a 1 MB
+ * `emoji`) would reach the game logic and throw inside the io handler —
+ * taking the whole process down for every table on the server.
  */
 
 const GameModeSchema = z.enum(["free_for_all", "teams"]);

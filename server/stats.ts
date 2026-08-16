@@ -35,8 +35,8 @@ function pointsForPlacement(placement: number, playerCount: number): number {
  * writing stats for them would violate every foreign key here.
  *
  * `gameMode` is one value for the whole batch (every result in a single call
- * comes from the same hand). GameResult itself (Task 7's interface) has no
- * gameMode field — match_history.gameMode is NOT NULL, so the caller
+ * comes from the same hand). GameResult itself has no gameMode field —
+ * match_history.gameMode is NOT NULL, so the caller
  * (server/socket.ts's handleGameOver) threads the real value through as a
  * second argument rather than this module fabricating one.
  *

@@ -73,7 +73,8 @@ export const activeGames = pgTable("active_games", {
   gameState:  jsonb("game_state").notNull().default({}),
   playerIds:  jsonb("player_ids").notNull().default([]),
   // seatIndex -> userId. Authoritative: player_ids loses the seat association
-  // as soon as a seat is vacated, which used to hand players the wrong hand.
+  // as soon as a seat is vacated, so relying on it can hand a rejoining
+  // player someone else's hand.
   playerMap:  jsonb("player_map").notNull().default({}),
   // userId -> cumulative match points, so a restart does not reset the match.
   scores:     jsonb("scores").notNull().default({}),

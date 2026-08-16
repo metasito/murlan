@@ -1,7 +1,6 @@
 /**
  * Single source of truth for the CORS allowlist, shared by the Express
- * middleware and the socket.io server (which previously used `origin: "*"`
- * together with `credentials: true` — an invalid and permissive combination).
+ * middleware and the socket.io server.
  */
 export function allowedOrigins(): Set<string> {
   const origins = new Set<string>();
@@ -20,9 +19,8 @@ export function isAllowedOrigin(origin: string | undefined | null): boolean {
   // server-to-server calls. Nothing to check against, and blocking it would
   // break the mobile app.
   if (!origin) return true;
-  // Any page on any localhost port used to be trusted with credentials, in
-  // production too — so anything a user ran locally could drive their live
-  // session. The dev loop genuinely needs it; production does not.
+  // Localhost is only trusted with credentials outside production; the dev
+  // loop needs it, production does not.
   const isLocalhost =
     origin.startsWith("http://localhost:") ||
     origin.startsWith("http://127.0.0.1:");

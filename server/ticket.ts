@@ -3,11 +3,12 @@ import { createHmac, randomBytes, timingSafeEqual } from "node:crypto";
 /**
  * Short-lived, single-use socket handshake tickets.
  *
- * The socket handshake used to trust `handshake.auth.userId`, which let any
- * client connect as any user. A ticket is minted only by an authenticated REST
- * call, is signed with SESSION_SECRET, expires after 60s and can be redeemed
- * exactly once. Native clients frequently do not send the session cookie on the
- * websocket upgrade — the ticket is what makes those clients work.
+ * A ticket is minted only by an authenticated REST call, is signed with
+ * SESSION_SECRET, expires after 60s and can be redeemed exactly once —
+ * trusting a bare `handshake.auth.userId` instead would let any client
+ * connect as any user. Native clients frequently do not send the session
+ * cookie on the websocket upgrade — the ticket is what makes those clients
+ * work.
  */
 
 const TICKET_TTL_MS = 60_000;

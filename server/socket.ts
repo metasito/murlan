@@ -73,11 +73,10 @@ interface OnlineGameState {
   /**
    * seat -> combination flags played by that seat during the *current hand*
    * only (reset whenever a new hand deals — game start and rematch). Feeds
-   * GameResult.playedBomb/playedJoker (Task 8) at game-over: the engine
-   * itself (lib/gameEngine.ts) does not track this, and GameResult has no
-   * other honest source for it. Not persisted across a server restart mid-
-   * hand — a restart loses that hand's bomb/joker achievement eligibility,
-   * a documented, accepted gap (see task-8-report.md).
+   * GameResult.playedBomb/playedJoker at game-over: the engine itself
+   * (lib/gameEngine.ts) does not track this, and GameResult has no other
+   * honest source for it. Not persisted across a server restart mid-hand, so
+   * a restart loses that hand's bomb/joker achievement eligibility.
    */
   handFlags: Record<number, { bomb: boolean; joker: boolean }>;
 }
@@ -158,18 +157,15 @@ function sanitizeStateForPlayer(
   viewerUserId: string,
   playerMap: Record<number, string>
 ) {
-  // The client used to derive "which seat am I" from the lobby `room` object,
-  // which is null across a cold-start rejoin and defaulted to seat 0 — every
-  // player believed they were seat 0. The server already knows the answer
-  // authoritatively; ship it with every state instead of making the client
-  // guess.
+  // The server knows which seat the viewer occupies authoritatively; ship it
+  // with every state so the client never has to derive it (e.g. from a lobby
+  // `room` object that is null across a cold-start rejoin).
   const viewerSeatIndex = findViewerSeat(playerMap, viewerUserId);
   return {
     ...state,
     viewerSeatIndex,
-    // `exchangePhase` used to be spread verbatim, shipping `cardFromLoser` —
-    // a named card out of a named player's hand — to every seat, and keeping
-    // it visible long after the phase closed.
+    // Strips `cardFromLoser` — a named card out of a named player's hand —
+    // down to only the two seats in the exchange, and only while it is active.
     exchangePhase: visibleExchangePhase(
       state.exchangePhase,
       viewerSeatIndex
@@ -285,9 +281,9 @@ function persistGameState(roomId: string, game: OnlineGameState) {
     .values(values)
     .onConflictDoUpdate({
       target: activeGamesTable.roomCode,
-      // Everything mutable is refreshed: seats, scores, mode and player list
-      // used to be written once and never updated, so a restored game came
-      // back as a free-for-all with the wrong seats and no scoreboard.
+      // Everything mutable is refreshed on every write — seats, scores, mode
+      // and player list — so a restored game comes back with the correct
+      // seats and scoreboard instead of as a free-for-all.
       set: {
         gameState: values.gameState,
         playerIds: values.playerIds,
@@ -350,7 +346,7 @@ function resolveStuckExchange(state: GameState): GameState {
 }
 
 /**
- * Achievement bookkeeping (Task 8): the engine has no notion of "did this
+ * Achievement bookkeeping: the engine has no notion of "did this
  * seat play a bomb/joker this hand", so every path that actually plays a
  * combination — the human game:play handler and this module's own
  * bot/AFK-forced auto-play — has to update it here, or a forced move (most
@@ -530,8 +526,8 @@ function startAfkTimer(roomId: string, userId: string, username: string) {
     setTimeout(() => {
       afkTimers.delete(key);
       const acted = handleAutoPass(roomId, userId);
-      // Only announce when something actually happened — the timer used to
-      // announce even when it had returned early having done nothing.
+      // Only announce when something actually happened, not on an early
+      // return that did nothing.
       if (acted && _io) {
         _io.to(roomId).emit("game:notification", {
           type: "afk",
@@ -549,9 +545,9 @@ function startAfkTimer(roomId: string, userId: string, username: string) {
 /**
  * Frees a seat whose player is gone for good (grace period expired, or an
  * explicit leave mid-game) and hands it to a bot. The hand stays in play, so
- * the table can always continue — previously the seat was deleted from
- * playerMap while its cards remained, and the table deadlocked as soon as the
- * turn came round to it.
+ * the table can always continue: the seat must be removed from `playerMap`
+ * *and* marked AI-controlled together, or the table deadlocks as soon as the
+ * turn comes round to it.
  */
 async function vacateSeat(
   io: SocketServer,
@@ -605,8 +601,8 @@ async function vacateSeat(
 
   // The table survives with a bot in this seat — everyone else keeps
   // playing. This must NOT be `game:player_left`: that event drives the
-  // client's "Partita interrotta" teardown, which used to fire here too and
-  // eject every remaining human from a game the server was keeping alive.
+  // client's "Partita interrotta" teardown, which would eject every
+  // remaining human from a game the server is still keeping alive.
   io.to(roomId).emit("game:seat_bot_takeover", {
     userId,
     username,
@@ -743,7 +739,7 @@ async function handleGameOver(
   // running match instead of silently resetting the scoreboard.
   persistGameState(roomId, game);
 
-  // ── Stats / history / achievements (Task 8) ──────────────────────────────
+  // ── Stats / history / achievements ────────────────────────────────────────
   //
   // Deliberately placed after every broadcast/persist above, not before: the
   // game-over guarantee is "a stats write must never block or fail the
@@ -755,12 +751,11 @@ async function handleGameOver(
   // the broadcast makes that ordering obvious rather than relying on a
   // try/catch staying in place.
   try {
-    // Every seat now carries a placement by the time a hand ends — the engine
+    // Every seat carries a placement by the time a hand ends — the engine
     // fills the remaining positions for anyone still holding cards, in both
-    // modes (see assignRemainingPlacements). Teams mode used to end the hand
-    // the moment one pair was done and leave the losing pair out of
-    // `rankings` entirely, so those two players were skipped here: they could
-    // lose twenty hands and their profile still read `gamesPlayed: 0`.
+    // modes (see assignRemainingPlacements) — so every seated player is
+    // represented in `gameResults` and counted toward `gamesPlayed`, not just
+    // the ones who actually emptied their hand.
     const playerCount = state.players.length;
     // How many seats actually emptied their hand this hand, read straight off
     // the final state rather than inferred from the mode: a seat that was
@@ -795,8 +790,9 @@ async function handleGameOver(
       .filter((r): r is GameResult => r !== null);
 
     // Bot-filled tables stay fully playable, but nothing about them is
-    // recorded: a private room of one human plus bots was guaranteed points
-    // and free achievements. See isContestedTable for where the line sits.
+    // recorded: a private room of one human plus bots would otherwise be
+    // guaranteed points and free achievements. See isContestedTable for
+    // where the line sits.
     const humanSeats = Object.keys(game.playerMap).length;
     const botSeats = Math.max(playerCount - humanSeats, 0);
     if (!isContestedTable(humanSeats, botSeats)) {
@@ -853,8 +849,8 @@ export function setupSocket(httpServer: HttpServer) {
 
   /**
    * Handshake auth: a valid session, or a valid unconsumed ticket. Nothing
-   * else — a bare `handshake.auth.userId` used to be accepted, which let any
-   * client connect as any user.
+   * else — accepting a bare `handshake.auth.userId` would let any client
+   * connect as any user.
    */
   io.use(async (socket, next) => {
     try {
@@ -1205,7 +1201,7 @@ export function setupSocket(httpServer: HttpServer) {
           return;
         }
 
-        // Achievement bookkeeping (Task 8) — see recordPlayFlags; this is the
+        // Achievement bookkeeping — see recordPlayFlags; this is the
         // human-initiated path, autoMoveForSeat covers bot/AFK-forced plays.
         recordPlayFlags(game, currentIdx, combo);
 
@@ -1351,8 +1347,8 @@ export function setupSocket(httpServer: HttpServer) {
 
             socket.join(roomCode);
             socketRoomMap.set(socket.id, roomCode);
-            // Idempotent: this used to INSERT on every reconnect, piling up
-            // duplicate room_players rows that corrupted the next rematch.
+            // Idempotent — an INSERT on every reconnect would pile up
+            // duplicate room_players rows and corrupt the next rematch.
             await storage
               .upsertRoomPlayer(roomCode, userId, seat)
               .catch((err: unknown) =>
@@ -1360,8 +1356,8 @@ export function setupSocket(httpServer: HttpServer) {
               );
 
             // room:state is what the client's navigation chain
-            // (index -> room -> game) actually gates on. Replying with
-            // game:state alone used to leave `room` null forever.
+            // (index -> room -> game) actually gates on; replying with
+            // game:state alone leaves `room` null forever.
             await emitRoomStateTo(socket, roomCode);
 
             socket.emit(
@@ -1393,9 +1389,9 @@ export function setupSocket(httpServer: HttpServer) {
             | (GameState & { schemaVersion?: number })
             | null;
           if (isStaleSchema(persistedState)) {
-            // Written under an older persisted shape (e.g. the pre-full-deck
-            // 13-card deal). Restoring it deals a silently corrupt hand
-            // rather than crashing, which is worse than refusing outright.
+            // Written under an older persisted shape. Restoring it deals a
+            // silently corrupt hand rather than crashing, which is worse
+            // than refusing outright.
             logger.warn(
               { roomCode, foundVersion: persistedState?.schemaVersion },
               "Discarding stale persisted game (schema mismatch)"
@@ -1525,8 +1521,9 @@ export function setupSocket(httpServer: HttpServer) {
       "friend:invite",
       FriendInviteSchema,
       async ({ friendUserId, roomCode }) => {
-        // Invites were unauthenticated broadcast primitives: any user could
-        // spam any userId. Only accepted friends, and only a few per minute.
+        // Only accepted friends may invite each other, and only a few per
+        // minute — an invite is otherwise an unauthenticated broadcast
+        // primitive that would let any user spam any userId.
         const areFriends = await storage.areFriends(userId, friendUserId);
         if (!areFriends) {
           socket.emit("friend:error", { message: "Non siete amici", code: "NOT_FRIENDS" });
@@ -1821,8 +1818,9 @@ async function handleLeaveRoom(
       roomStatePayload({ ...room, hostUserId: newHostId }, remaining)
     );
   } else if (room.status === "in_progress") {
-    // Leaving mid-game used to remove the DB row but keep the seat, so the
-    // leaver went on receiving their hand and their seat kept auto-playing.
+    // Removing the DB row alone leaves the seat live in the in-memory game:
+    // vacateSeat must also run, or the leaver's seat keeps receiving their
+    // hand and auto-playing on their behalf.
     await vacateSeat(io, roomId, userId, socket.data?.username ?? username);
   }
 }

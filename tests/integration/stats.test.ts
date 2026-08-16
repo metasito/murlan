@@ -14,10 +14,10 @@ import {
 import { connectAs, waitFor, register } from "../helpers/client.ts";
 
 /**
- * Task 8: recordGameResult is called (fire-and-forget) from the game-over
- * path. Shortened well below production defaults so an active exchange
- * phase resolves quickly via the AFK path instead of stalling this suite —
- * same convention as tests/integration/gameplay.test.ts.
+ * recordGameResult is called (fire-and-forget) from the game-over path.
+ * Shortened well below production defaults so an active exchange phase
+ * resolves quickly via the AFK path instead of stalling this suite — same
+ * convention as tests/integration/gameplay.test.ts.
  */
 process.env.MURLAN_AFK_TIMEOUT_MS = "300";
 process.env.MURLAN_DISCONNECT_GRACE_MS = "500";

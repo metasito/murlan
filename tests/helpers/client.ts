@@ -3,9 +3,8 @@ import { io as ioClient, type Socket } from "socket.io-client";
 import type { TestServer } from "./testServer.ts";
 
 /**
- * Shared low-level test client helpers for integration suites. Extracted out
- * of tests/integration/auth.test.ts (Task 3) so the gameplay suite (Task 4)
- * doesn't have to copy-paste them.
+ * Shared low-level test client helpers for integration suites, so each
+ * suite doesn't have to copy-paste them.
  */
 
 export interface RegisteredUser {

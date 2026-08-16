@@ -1,12 +1,11 @@
-// tests/socketHandFlags.test.ts — regression coverage for recordPlayFlags
-// (Task 8 fix round, finding 2): a human's AFK-forced move goes through
-// autoMoveForSeat rather than the game:play handler, and used to skip
-// bomb/joker tracking entirely — silently under-counting the purist /
-// iron_will / wild_card achievements whenever a player's forced-minimum
-// card happened to be a lone joker. No socket server or database needed:
-// server/socket.ts loads fine standalone (see tests/serverLoadable.test.ts's
-// sibling modules), and __testables exposes the pure turn-resolution
-// helpers for exactly this kind of test.
+// tests/socketHandFlags.test.ts — regression coverage for recordPlayFlags:
+// a human's AFK-forced move goes through autoMoveForSeat rather than the
+// game:play handler, and must still record bomb/joker tracking — otherwise
+// the purist / iron_will / wild_card achievements silently under-count
+// whenever a player's forced-minimum card happens to be a lone joker. No
+// socket server or database needed: server/socket.ts loads fine standalone
+// (see tests/serverLoadable.test.ts's sibling modules), and __testables
+// exposes the pure turn-resolution helpers for exactly this kind of test.
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import type { GameState, Card } from "../lib/gameEngine.ts";

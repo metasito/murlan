@@ -62,8 +62,8 @@ function randomCode(length: number): string {
 }
 
 function generateRoomCode(): string {
-  // Math.random().toString(36).substring(2, 8) could return fewer than 6
-  // characters and was predictable enough to guess a live room.
+  // Cryptographically random and always exactly 6 characters — a live room
+  // code must not be guessable.
   return randomCode(6);
 }
 
@@ -194,9 +194,9 @@ class DrizzleStorage implements IStorage {
   }
 
   /**
-   * Idempotent seat write. `game:rejoin` used to INSERT unconditionally on
-   * every reconnect, growing room_players without bound and corrupting the
-   * seat -> hand mapping on the next rematch.
+   * Idempotent seat write — inserting unconditionally on every reconnect
+   * would grow room_players without bound and corrupt the seat -> hand
+   * mapping on the next rematch.
    */
   async upsertRoomPlayer(roomId: string, userId: string, seatIndex: number) {
     await db.transaction(async (tx) => {
@@ -219,9 +219,8 @@ class DrizzleStorage implements IStorage {
   }
 
   /**
-   * Allocates the lowest free seat under a row lock on the room, replacing the
-   * old check-then-act `seatIndex = players.length`, where two simultaneous
-   * joins were handed the same seat.
+   * Allocates the lowest free seat under a row lock on the room, so two
+   * simultaneous joins cannot race into the same seat.
    */
   async claimRoomSeat(roomId: string, userId: string): Promise<SeatClaim> {
     return db.transaction(async (tx): Promise<SeatClaim> => {
@@ -254,8 +253,8 @@ class DrizzleStorage implements IStorage {
 
   /**
    * Every still-waiting room out of a candidate set, with its seat count, in
-   * one round trip. The quickmatch loop used to issue two queries per
-   * candidate room (N+1) while the matchmaking request waited.
+   * one round trip — avoids an N+1 query pattern while the matchmaking
+   * request waits.
    */
   async getWaitingRooms(
     roomIds: string[],
@@ -331,8 +330,8 @@ class DrizzleStorage implements IStorage {
   }
 
   /**
-   * Only the recipient of a pending request may accept it. Previously any
-   * caller could accept any request by id — including the sender accepting
+   * Only the recipient of a pending request may accept it — otherwise any
+   * caller could accept any request by id, including the sender accepting
    * their own (IDOR).
    */
   async acceptFriend(

@@ -2,7 +2,7 @@
 // surfaces they actually render on: bg, bgCard, felt.
 //
 // This exists so a future palette edit can't silently regress accessibility —
-// see lib/theme.ts "Text colors" section and CLAUDE.md's palette-audit history.
+// see lib/theme.ts "Text colors" section.
 //
 // The .ts extension on the import is required by Node's ESM loader when it
 // type-strips these files (`node --test tests/**/*.test.ts`).
@@ -136,8 +136,6 @@ for (const [name, color] of Object.entries(LARGE_ONLY_TEXT_COLORS)) {
 // --- The specific regression this test file exists to catch ----------------
 
 test("Colors.dangerDim (move-rejection text) no longer fails contrast", () => {
-  // Was #B71C1C: ~2.96:1 on bg, ~2.62:1 on bgCard, ~1.92:1 on felt — all fail,
-  // even for large text. Fixed to #C9655E.
   const ratios = ratioAgainstAllSurfaces(Colors.dangerDim);
   assert.ok(ratios.bg >= BODY_MIN, `dangerDim vs bg: ${ratios.bg.toFixed(2)}:1`);
   assert.ok(ratios.bgCard >= BODY_MIN, `dangerDim vs bgCard: ${ratios.bgCard.toFixed(2)}:1`);
@@ -145,7 +143,6 @@ test("Colors.dangerDim (move-rejection text) no longer fails contrast", () => {
 });
 
 test("Colors.textMuted clears body text contrast on felt (the previously-failing surface)", () => {
-  // Was rgba(...,0.55) => 4.26:1 on felt, just under the 4.5:1 body threshold.
   const ratio = contrastRatio(resolve(Colors.textMuted, Colors.felt), Colors.felt);
   assert.ok(ratio >= BODY_MIN, `textMuted vs felt: ${ratio.toFixed(2)}:1`);
 });

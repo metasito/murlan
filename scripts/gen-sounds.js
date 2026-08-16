@@ -1,15 +1,13 @@
 // ─────────────────────────────────────────────────────────────────────────────
 // Murlan sound generator — synthesizes all 12 SFX from scratch (DSP, no samples).
 //
-// Output format: WAV (PCM16, mono, 44.1kHz), NOT mp3. Historically this script
-// wrote WAV bytes into files named "*.mp3" (someone renamed them by hand at
-// some point instead of encoding real MP3s) — `lib/sounds.ts` was silently
-// loading mislabeled WAV data. That is fixed here: the generator, the files on
-// disk, and the requires in lib/sounds.ts all agree the format is WAV. If you
-// ever want real MP3s (smaller, but needs an encoder — ffmpeg/lame are native
-// binaries not guaranteed to exist in the Replit build image), pipe this
-// script's WAV output through one as a separate, documented step; do not
-// re-introduce a silent extension mismatch.
+// Output format: WAV (PCM16, mono, 44.1kHz), NOT mp3: the generator, the
+// files on disk, and the requires in lib/sounds.ts must all agree on this,
+// or lib/sounds.ts silently loads mislabeled data. If you ever want real
+// MP3s (smaller, but needs an encoder — ffmpeg/lame are native binaries not
+// guaranteed to exist in the Replit build image), pipe this script's WAV
+// output through one as a separate, documented step; do not introduce a
+// silent extension mismatch.
 //
 // Determinism: every generator seeds its own PRNG from a hash of its sound
 // name (mulberry32), so noise layers are reproducible across runs/machines —

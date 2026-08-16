@@ -1,13 +1,14 @@
 // tests/teams.test.ts — teams mode is scored as a *pair* (docs/RULES.md §11,
 // BRIEF §3.1): the two partners' placement points are summed and the pair
-// races to 21. Two defects are pinned here:
+// races to 21. Two invariants are pinned here:
 //
-//  1. the match used to resolve per seat, so a pair holding 20 + 1 had not
-//     won, and when one partner did cross alone only that seat was reported
-//     as a winner — the other half of the winning team got matchWon: false;
-//  2. the hand ended the instant both partners of one team were out, leaving
-//     the losing pair with no placement at all: no points, and (because the
-//     stats writer skips anyone absent from `rankings`) no game recorded.
+//  1. the match must resolve on the pair's combined placement points, not
+//     per seat — a pair holding 20 + 1 has won, and both partners must be
+//     reported as winners even though only one of them crossed the line;
+//  2. the hand must not end until every seat has a placement — ending it the
+//     instant both partners of one team are out would leave the losing pair
+//     with no placement at all: no points, and (because the stats writer
+//     skips anyone absent from `rankings`) no game recorded.
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
 // @ts-ignore — see tests/helpers.ts

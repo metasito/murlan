@@ -1,8 +1,7 @@
-// tests/exchangeVisibility.test.ts — `sanitizeStateForPlayer` used to spread
-// exchangePhase verbatim into every seat's game:state, so `cardFromLoser` (a
-// named card out of a named player's hand) reached the whole table, and kept
-// being sent long after the phase had closed. Only the winner and the loser
-// have any use for it, and only while the phase is open.
+// tests/exchangeVisibility.test.ts — `visibleExchangePhase` strips
+// `cardFromLoser` (a named card out of a named player's hand) down to only
+// the two seats in the exchange, and only while the phase is active. Only
+// the winner and the loser have any use for it.
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
 // @ts-ignore — .ts extension required by Node's type-stripping loader

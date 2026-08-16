@@ -24,10 +24,10 @@ declare module "express-session" {
 // falls back to the plain-text Italian string if a code is ever unknown to
 // it — the server does not keep its own copy of the translation table.
 /**
- * Route-parameter validation. These used to call `.parse`, which throws on a
- * bad value — Express turns that into an uncaught 500 and logs it as a server
- * fault, when a malformed id in the URL is squarely the caller's mistake.
- * Returns the parsed value, or null after having already sent a 400.
+ * Route-parameter validation via `safeParse`, not `.parse`: `.parse` throws
+ * on a bad value, which Express turns into an uncaught 500 logged as a
+ * server fault, when a malformed id in the URL is squarely the caller's
+ * mistake. Returns the parsed value, or null after having already sent a 400.
  */
 const RouteParamSchema = z.string().min(1).max(64);
 
@@ -262,8 +262,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
     const id = readParam(res, req.params.id);
     if (id === null) return;
     const accepterId = req.session.userId!;
-    // Scoped to the recipient: a sender used to be able to accept their own
-    // request by id (IDOR).
+    // Scoped to the recipient: the sender must not be able to accept their
+    // own request by id (IDOR).
     const result = await storage.acceptFriend(id, accepterId);
     if (!result) {
       res.status(404).json({ message: "Richiesta non trovata", code: "FRIEND_REQUEST_NOT_FOUND" });
@@ -306,7 +306,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     res.json({ ok: true });
   });
 
-  // ── Stats / history / achievements (Task 8) ─────────────────────────────
+  // ── Stats / history / achievements ──────────────────────────────────────
 
   app.get("/api/stats/me", requireAuth, async (req, res) => {
     const stats = await getUserStats(req.session.userId!);

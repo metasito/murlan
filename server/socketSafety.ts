@@ -31,8 +31,8 @@ const userBuckets = new Map<string, Map<string, RateWindow>>();
 /**
  * Expired windows are dropped on a lazy sweep rather than when a socket
  * disconnects. Releasing on disconnect would hand back a fresh allowance to
- * anyone willing to reconnect — the exact bypass this change closes — while
- * an unswept map would grow with every account that ever connected.
+ * anyone willing to reconnect, while an unswept map would grow with every
+ * account that ever connected.
  */
 const SWEEP_INTERVAL_MS = 60_000;
 let lastSweepAt = 0;

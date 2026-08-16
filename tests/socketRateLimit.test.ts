@@ -1,8 +1,8 @@
 // tests/socketRateLimit.test.ts — the socket rate limiter must be keyed by
-// account, not by connection. Token buckets used to live on `socket.data`, so
-// one session opening N websockets got N times every limit (room:create,
-// friend:invite, …). server/socketSafety.ts has no runtime imports beyond the
-// logger, so it loads under plain `node --test` (see serverLoadable.test.ts).
+// account, not by connection: keying by socket would let one session opening
+// N websockets get N times every limit (room:create, friend:invite, …).
+// server/socketSafety.ts has no runtime imports beyond the logger, so it
+// loads under plain `node --test` (see serverLoadable.test.ts).
 import { test, describe, beforeEach } from "node:test";
 import assert from "node:assert/strict";
 // @ts-ignore — .ts extension required by Node's type-stripping loader

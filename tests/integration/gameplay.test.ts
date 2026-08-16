@@ -380,9 +380,9 @@ describe("gameplay integrity", { skip: hasDatabase() ? false : skipMessage() }, 
     await disconnectNotice;
 
     // Past the shortened grace period the seat must be handed to a bot
-    // instead of stalling the table — this is the bug: the seat used to be
-    // deleted from playerMap while its cards remained, deadlocking play the
-    // moment the turn came back around to it.
+    // instead of stalling the table: the seat must be removed from
+    // playerMap AND marked AI-controlled together, or play deadlocks the
+    // moment the turn comes back around to it.
     const takeover = await waitFor<{ seatIndex: number }>(
       alice.socket,
       "game:seat_bot_takeover",

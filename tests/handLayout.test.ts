@@ -16,9 +16,10 @@ const HAND_SIZES = Array.from({ length: 27 }, (_, i) => i + 1);
 
 describe("computeHandLayout", () => {
   test("MIN_READABLE_STEP is derived, not a guess, and bigger than the old floor", () => {
-    // The previous hardcoded floor was 20px, tuned for 13-card hands and never
-    // checked against the actual corner geometry. The derived value must be a
-    // finite, sane pixel count, comfortably under a full card width.
+    // A hardcoded floor tuned for one hand size would not generalize to
+    // others without being checked against the actual corner geometry. The
+    // derived value must be a finite, sane pixel count, comfortably under a
+    // full card width.
     assert.ok(Number.isFinite(MIN_READABLE_STEP));
     assert.ok(MIN_READABLE_STEP > 0);
     assert.ok(MIN_READABLE_STEP < CARD_W);
