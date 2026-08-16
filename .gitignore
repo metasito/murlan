@@ -54,3 +54,4 @@ google-service-account.json
 # tool scratch / runtime noise
 .superpowers/
 *.log
+test-output.txt

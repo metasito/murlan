@@ -12,6 +12,33 @@ jobs:
   verify:
     name: Typecheck, test, lint
     runs-on: ubuntu-latest
+
+    # Without a database the integration suites skip themselves (by design, so
+    # `npm test` works for a contributor with no Postgres). That is exactly the
+    # wrong behaviour in CI: the socket-layer tests are the ones guarding
+    # impersonation, hand secrecy, the exchange bypass and the seat-vacancy
+    # deadlock, and a silent skip would let any of those regress unnoticed.
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: murlan_test
+        ports:
+          - 5432:5432
+        # The job must not start testing before Postgres accepts connections.
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      DATABASE_URL: postgres://postgres:postgres@localhost:5432/murlan_test
+      # Required by server/index.ts's fail-fast env check. Test-only value.
+      SESSION_SECRET: ci-test-secret-not-used-in-production
+
     steps:
       - uses: actions/checkout@v4
 
@@ -32,7 +59,19 @@ jobs:
         run: npm run typecheck
 
       - name: Test
-        run: npm test
+        run: npm test | tee test-output.txt
+
+      # A skipped integration suite still exits 0, so without this a removed or
+      # broken Postgres service would turn the socket-layer tests into a no-op
+      # and CI would stay green. Fail loudly instead.
+      - name: Assert the integration suites actually ran
+        run: |
+          if grep -q "DATABASE_URL not set" test-output.txt; then
+            echo "::error::Integration suites skipped — the Postgres service is not reachable."
+            echo "These cover socket auth, hand secrecy, the exchange bypass and seat vacancy."
+            exit 1
+          fi
+          echo "Integration suites ran against Postgres."
 
       - name: Lint
         # expo lint currently reports pre-existing violations (tracked as
