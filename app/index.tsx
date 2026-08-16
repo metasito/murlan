@@ -100,7 +100,7 @@ function MenuButton({
             end={{ x: 1, y: 1 }}
             style={compact ? styles.accentGradientCompact : styles.accentGradient}
           >
-            <Ionicons name={icon} size={compact ? 18 : 20} color="#0A1F18" />
+            <Ionicons name={icon} size={compact ? 18 : 20} color={Colors.bgCard} />
             <Text style={[styles.menuLabel, styles.menuLabelAccent, compact && styles.menuLabelCompact]}>
               {label}
             </Text>
@@ -219,7 +219,7 @@ function FriendsButton({ compact }: { compact?: boolean }) {
       style={({ pressed }) => [styles.friendsBtn, compact && styles.friendsBtnCompact, pressed && { opacity: 0.8 }]}
       hitSlop={4}
     >
-      <Ionicons name="people" size={compact ? 16 : 20} color={compact ? Colors.gold : "#0A1F18"} />
+      <Ionicons name="people" size={compact ? 16 : 20} color={compact ? Colors.gold : Colors.bgCard} />
       {!compact && <Text style={styles.friendsBtnText}>{t("home.friendsLabel")}</Text>}
       {badgeCount > 0 && (
         <View style={styles.badge}>
@@ -472,7 +472,7 @@ const styles = StyleSheet.create({
   },
   titleUnderline: { width: 160, alignSelf: "center", marginTop: 4 },
   devBadge: {
-    backgroundColor: "#c0392b",
+    backgroundColor: Colors.danger,
     borderRadius: 6,
     paddingHorizontal: 6,
     paddingVertical: 2,
@@ -481,7 +481,7 @@ const styles = StyleSheet.create({
   devBadgeText: {
     fontFamily: "Inter_600SemiBold",
     fontSize: 10,
-    color: "#fff",
+    color: Colors.white,
     letterSpacing: 1,
   },
   subtitle: {
@@ -524,7 +524,7 @@ const styles = StyleSheet.create({
   friendsBtnText: {
     fontFamily: "Rajdhani_700Bold",
     fontSize: 14,
-    color: "#0A1F18",
+    color: Colors.bgCard,
     letterSpacing: 0.5,
   },
   settingsBtn: {
@@ -543,7 +543,7 @@ const styles = StyleSheet.create({
     minWidth: 18,
     height: 18,
     borderRadius: 9,
-    backgroundColor: "#e74c3c",
+    backgroundColor: Colors.danger,
     alignItems: "center",
     justifyContent: "center",
     paddingHorizontal: 4,
@@ -553,7 +553,7 @@ const styles = StyleSheet.create({
   badgeText: {
     fontFamily: "Inter_600SemiBold",
     fontSize: 10,
-    color: "#fff",
+    color: Colors.white,
     lineHeight: 13,
   },
   cardDecoration: { flexDirection: "row", justifyContent: "center", gap: 20, paddingVertical: 24 },
@@ -597,7 +597,7 @@ const styles = StyleSheet.create({
     letterSpacing: 0.5,
   },
   menuLabelCompact: { fontSize: 15 },
-  menuLabelAccent: { color: "#0A1F18", fontFamily: "Rajdhani_700Bold" },
+  menuLabelAccent: { color: Colors.bgCard, fontFamily: "Rajdhani_700Bold" },
   floatingCard: {
     position: "absolute",
     top: "12%",
@@ -614,7 +614,7 @@ const styles = StyleSheet.create({
     bottom: 4,
     borderRadius: 5,
     borderWidth: 1,
-    borderColor: "rgba(201,168,76,0.3)",
+    borderColor: Colors.goldBorder,
   },
   footer: { alignItems: "center", paddingTop: 20 },
   footerText: { fontFamily: "Inter_400Regular", fontSize: 12, color: Colors.textMuted, letterSpacing: 1 },

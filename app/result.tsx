@@ -79,7 +79,7 @@ function ScoreRow({
     <Animated.View style={[styles.rankCard, isWinner && styles.rankCardWinner, anim]}>
       {isWinner && (
         <LinearGradient
-          colors={["rgba(201,168,76,0.15)", "transparent"]}
+          colors={[Colors.goldMuted, "transparent"]}
           style={StyleSheet.absoluteFill}
         />
       )}
@@ -165,7 +165,7 @@ function WinnerCelebration({
           colors={[Colors.gold, Colors.goldDark]}
           style={styles.trophyGrad}
         >
-          <Ionicons name="trophy" size={iconSize} color="#0A1F18" />
+          <Ionicons name="trophy" size={iconSize} color={Colors.bgCard} />
         </LinearGradient>
       </View>
       <Text style={[styles.winnerName, compact && styles.winnerNameCompact]} numberOfLines={1}>{name}</Text>
@@ -219,6 +219,8 @@ function CardExchangeOverlay({
           <Pressable
             onPress={() => router.replace("/game")}
             style={exStyles.confirmBtn}
+            accessibilityRole="button"
+            accessibilityLabel={t("result.bothJokersConfirm")}
           >
             <LinearGradient
               colors={[Colors.gold, Colors.goldDark]}
@@ -271,6 +273,9 @@ function CardExchangeOverlay({
                       exStyles.pickCardWrap,
                       picked && exStyles.pickCardLifted,
                     ]}
+                    accessibilityRole="radio"
+                    accessibilityLabel={`${card.rank}${card.suit ? ` ${card.suit}` : ""}`}
+                    accessibilityState={{ selected: picked }}
                   >
                     <CardView card={card} selected={picked} noLift />
                   </Pressable>
@@ -289,6 +294,9 @@ function CardExchangeOverlay({
               }}
               style={[exStyles.confirmBtn, !selectedId && exStyles.confirmBtnDim]}
               disabled={!selectedId}
+              accessibilityRole="button"
+              accessibilityLabel={t("result.exchangeConfirm")}
+              accessibilityState={{ disabled: !selectedId }}
             >
               <LinearGradient
                 colors={
@@ -408,21 +416,39 @@ export default function ResultScreen() {
 
   const actionsBlock = (compact?: boolean) => (
     <View style={[styles.actions, compact && styles.actionsRow]}>
-      <Pressable testID="btn-home" onPress={handleHome} style={[styles.homeBtn, compact && styles.homeBtnCompact]}>
+      <Pressable
+        testID="btn-home"
+        onPress={handleHome}
+        style={[styles.homeBtn, compact && styles.homeBtnCompact]}
+        accessibilityRole="button"
+        accessibilityLabel={t("result.home")}
+      >
         <Ionicons name="home" size={18} color={Colors.textSecondary} />
         {!compact && <Text style={styles.homeBtnText}>{t("result.home")}</Text>}
       </Pressable>
       {isMultiRound && !isLastRound ? (
-        <Pressable testID="btn-prossimo" onPress={handleNextRound} style={[styles.rematchBtn, compact && styles.rematchBtnFlex]}>
+        <Pressable
+          testID="btn-prossimo"
+          onPress={handleNextRound}
+          style={[styles.rematchBtn, compact && styles.rematchBtnFlex]}
+          accessibilityRole="button"
+          accessibilityLabel={t("result.nextRound")}
+        >
           <LinearGradient colors={[Colors.gold, Colors.goldDark]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={[styles.rematchGrad, compact && styles.rematchGradCompact]}>
-            <Ionicons name="play-forward" size={18} color="#0A1F18" />
+            <Ionicons name="play-forward" size={18} color={Colors.bgCard} />
             <Text style={styles.rematchText}>{t("result.nextRound")}</Text>
           </LinearGradient>
         </Pressable>
       ) : (
-        <Pressable testID="btn-rivincita" onPress={handleRematch} style={[styles.rematchBtn, compact && styles.rematchBtnFlex]}>
+        <Pressable
+          testID="btn-rivincita"
+          onPress={handleRematch}
+          style={[styles.rematchBtn, compact && styles.rematchBtnFlex]}
+          accessibilityRole="button"
+          accessibilityLabel={t("gameOverOverlay.rematch")}
+        >
           <LinearGradient colors={[Colors.gold, Colors.goldDark]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={[styles.rematchGrad, compact && styles.rematchGradCompact]}>
-            <Ionicons name="refresh" size={18} color="#0A1F18" />
+            <Ionicons name="refresh" size={18} color={Colors.bgCard} />
             <Text style={styles.rematchText}>{t("gameOverOverlay.rematch")}</Text>
           </LinearGradient>
         </Pressable>
@@ -770,7 +796,7 @@ const styles = StyleSheet.create({
   rematchText: {
     fontFamily: "Rajdhani_700Bold",
     fontSize: 15,
-    color: "#0A1F18",
+    color: Colors.bgCard,
     letterSpacing: 0.5,
   },
 
@@ -845,7 +871,7 @@ const exStyles = StyleSheet.create({
     left: 0,
     right: 0,
     bottom: 0,
-    backgroundColor: "rgba(0,0,0,0.90)",
+    backgroundColor: Colors.overlay,
     alignItems: "center",
     justifyContent: "center",
     zIndex: 100,
@@ -906,7 +932,7 @@ const exStyles = StyleSheet.create({
   confirmText: {
     fontFamily: "Rajdhani_700Bold",
     fontSize: 15,
-    color: "#0A1F18",
+    color: Colors.bgCard,
     letterSpacing: 0.5,
   },
 });

@@ -5,25 +5,20 @@ import {
   StyleSheet,
   Pressable,
   TextInput,
-  FlatList,
-  Platform,
   Alert,
   ActivityIndicator,
-  useWindowDimensions,
-  ScrollView,
 } from "react-native";
 import { router, useFocusEffect } from "expo-router";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
-import * as Clipboard from "expo-clipboard";
 import * as Haptics from "expo-haptics";
 import { Ionicons } from "@expo/vector-icons";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { LinearGradient } from "expo-linear-gradient";
 import { useAuth } from "@/context/AuthContext";
 import { useSocket } from "@/context/SocketContext";
 import { useOnlineGame } from "@/context/OnlineGameContext";
 import { apiRequest } from "@/lib/query-client";
-import { Colors } from '@/lib/theme';
+import { Colors, Spacing, FontSize, Radius, Type } from '@/lib/theme';
+import { MenuButton } from "@/components/MenuButton";
+import { MenuLayout } from "@/components/MenuLayout";
 import { useTranslation, translateServerPayload } from "@/lib/i18n";
 import type { TranslationKey, TranslationParams } from "@/lib/i18n";
 
@@ -53,7 +48,7 @@ function relativeTime(isoString: string | null | undefined, t: TFn, tn: TnFn): s
 function SectionHeader({ title, count }: { title: string; count?: number }) {
   return (
     <View style={styles.sectionHeader}>
-      <Text style={styles.sectionTitle}>{title}</Text>
+      <Text style={styles.sectionTitle} accessibilityRole="header">{title}</Text>
       {count !== undefined && (
         <View style={styles.badge}>
           <Text style={styles.badgeText}>{count}</Text>
@@ -72,7 +67,6 @@ function Avatar({ name }: { name: string }) {
 }
 
 export default function FriendsScreen() {
-  const insets = useSafeAreaInsets();
   const { t, tn } = useTranslation();
   const { user } = useAuth();
   const { socket, onlineIds, gameInvites, dismissGameInvite } = useSocket();
@@ -85,12 +79,12 @@ export default function FriendsScreen() {
   const [searchError, setSearchError] = useState<string | null>(null);
   const [searchDone, setSearchDone] = useState(false);
 
-  const { width: W, height: H } = useWindowDimensions();
-  const isLandscape = W > H;
-  const topPad = Platform.OS === "web" ? 67 : insets.top;
-  const bottomPad = Platform.OS === "web" ? 34 : insets.bottom;
-
-  const { data: friends = [], isLoading: friendsLoading } = useQuery<FriendInfo[]>({
+  const {
+    data: friends = [],
+    isLoading: friendsLoading,
+    isError: friendsErrored,
+    refetch: refetchFriends,
+  } = useQuery<FriendInfo[]>({
     queryKey: ["/api/friends"],
     refetchOnWindowFocus: true,
   });
@@ -216,33 +210,6 @@ export default function FriendsScreen() {
     }
   }
 
-  const renderFriendRow = useCallback(({ item }: { item: FriendInfo }) => {
-    const isOnline = onlineIds.has(item.id);
-    return (
-      <View style={styles.row}>
-        <View style={styles.avatarWrapper}>
-          <Avatar name={item.username} />
-          <View style={[styles.statusDot, { backgroundColor: isOnline ? "Colors.success" : Colors.textMuted }]} />
-        </View>
-        <View style={styles.rowInfo}>
-          <Text style={styles.rowName}>{item.username}</Text>
-          <Text style={[styles.rowSub, isOnline && { color: "Colors.success" }]}>
-            {isOnline ? t("friends.online") : t("friends.seenAgo", { time: relativeTime(item.lastSeen, t, tn) })}
-          </Text>
-        </View>
-        <Pressable
-          onPress={() => handleRemoveFriend(item)}
-          style={styles.iconBtn}
-          hitSlop={8}
-        >
-          <Ionicons name="person-remove-outline" size={16} color={Colors.textMuted} />
-        </Pressable>
-      </View>
-    );
-  }, [onlineIds]);
-
-  const onlineCount = friends.filter(f => onlineIds.has(f.id)).length;
-
   useEffect(() => {
     if (room) {
       router.push("/(online)/room");
@@ -262,62 +229,83 @@ export default function FriendsScreen() {
   }
 
   return (
-    <View style={[styles.container, {
-      paddingTop: topPad,
-      paddingBottom: bottomPad + 16,
-      paddingLeft: isLandscape ? insets.left : 0,
-      paddingRight: isLandscape ? insets.right : 0,
-    }]}>
-      <LinearGradient colors={[Colors.bg, Colors.bgCard]} style={StyleSheet.absoluteFill} />
-
+    <MenuLayout scrollable centered={false}>
       <View style={styles.topBar}>
-        <Pressable onPress={() => router.back()} style={styles.backBtn}>
-          <Ionicons name="chevron-back" size={22} color={Colors.textMuted} />
+        <Pressable
+          onPress={() => router.back()}
+          style={styles.backBtn}
+          accessibilityRole="button"
+          accessibilityLabel={t("common.back")}
+          hitSlop={12}
+        >
+          <Ionicons name="chevron-back" size={22} color={Colors.gold} />
         </Pressable>
         <Text style={styles.screenTitle}>{t("friends.title")}</Text>
         <View style={{ width: 38 }} />
       </View>
 
-      <ScrollView
-        contentContainerStyle={[styles.scrollContent, { paddingBottom: bottomPad + 24 }]}
-        showsVerticalScrollIndicator={false}
-        keyboardShouldPersistTaps="handled"
-      >
+      <View style={styles.contentWrapper}>
         {/* ── SECTION 1: Amici ── */}
         <SectionHeader
           title={t("friends.sectionFriends")}
           count={friends.length > 0 ? friends.length : undefined}
         />
-        {friends.length === 0 && !friendsLoading && (
+        {friendsLoading && (
+          <ActivityIndicator
+            color={Colors.gold}
+            style={{ marginVertical: Spacing.md }}
+            accessibilityLabel={t("common.loading")}
+          />
+        )}
+        {!friendsLoading && friendsErrored && (
+          <View style={styles.empty}>
+            <Ionicons name="alert-circle-outline" size={32} color={Colors.textMuted} />
+            <Text style={styles.emptyText}>{t("friends.loadErrorTitle")}</Text>
+            <MenuButton
+              label={t("common.retry")}
+              onPress={() => refetchFriends()}
+              variant="secondary"
+              size="sm"
+              fullWidth={false}
+              icon={<Ionicons name="refresh" size={16} color={Colors.gold} />}
+            />
+          </View>
+        )}
+        {!friendsLoading && !friendsErrored && friends.length === 0 && (
           <View style={styles.empty}>
             <Ionicons name="people-outline" size={36} color={Colors.textMuted} />
             <Text style={styles.emptyText}>{t("friends.emptyFriends")}</Text>
           </View>
         )}
-        {friendsLoading && <ActivityIndicator color={Colors.gold} style={{ marginVertical: 16 }} />}
         {friends.length > 0 && (
           <View style={styles.listBlock}>
-            {friends.map(item => (
-              <View key={item.id} style={styles.row}>
-                <View style={styles.avatarWrapper}>
-                  <Avatar name={item.username} />
-                  <View style={[styles.statusDot, { backgroundColor: onlineIds.has(item.id) ? "Colors.success" : Colors.textMuted }]} />
+            {friends.map(item => {
+              const isOnline = onlineIds.has(item.id);
+              const statusText = isOnline ? t("friends.online") : t("friends.seenAgo", { time: relativeTime(item.lastSeen, t, tn) });
+              return (
+                <View key={item.id} style={styles.row} accessible accessibilityLabel={`${item.username}. ${statusText}`}>
+                  <View style={styles.avatarWrapper}>
+                    <Avatar name={item.username} />
+                    <View style={[styles.statusDot, { backgroundColor: isOnline ? Colors.success : Colors.textMuted }]} />
+                  </View>
+                  <View style={styles.rowInfo}>
+                    <Text style={styles.rowName}>{item.username}</Text>
+                    <Text style={[styles.rowSub, isOnline && { color: Colors.success }]}>
+                      {statusText}
+                    </Text>
+                  </View>
+                  <Pressable
+                    onPress={() => handleRemoveFriend(item)}
+                    style={styles.iconBtn}
+                    accessibilityRole="button"
+                    accessibilityLabel={t("friends.removeA11yLabel", { username: item.username })}
+                    hitSlop={12}
+                  >
+                    <Ionicons name="person-remove-outline" size={16} color={Colors.textMuted} />
+                  </Pressable>
                 </View>
-                <View style={styles.rowInfo}>
-                  <Text style={styles.rowName}>{item.username}</Text>
-                  <Text style={[styles.rowSub, onlineIds.has(item.id) && { color: "Colors.success" }]}>
-                    {onlineIds.has(item.id) ? t("friends.online") : t("friends.seenAgo", { time: relativeTime(item.lastSeen, t, tn) })}
-                  </Text>
-                </View>
-                <Pressable
-                  onPress={() => handleRemoveFriend(item)}
-                  style={styles.iconBtn}
-                  hitSlop={8}
-                >
-                  <Ionicons name="person-remove-outline" size={16} color={Colors.textMuted} />
-                </Pressable>
-              </View>
-            ))}
+              );
+            })}
           </View>
         )}
 
@@ -330,7 +318,7 @@ export default function FriendsScreen() {
                 <View key={invite.roomCode} style={styles.row}>
                   <View style={styles.avatarWrapper}>
                     <Avatar name={invite.from} />
-                    <View style={[styles.statusDot, { backgroundColor: "Colors.success" }]} />
+                    <View style={[styles.statusDot, { backgroundColor: Colors.success }]} />
                   </View>
                   <View style={styles.rowInfo}>
                     <Text style={styles.rowName}>{invite.from}</Text>
@@ -340,12 +328,17 @@ export default function FriendsScreen() {
                     <Pressable
                       onPress={() => dismissGameInvite(invite.roomCode)}
                       style={styles.declineBtn}
+                      accessibilityRole="button"
+                      accessibilityLabel={t("friends.dismissInviteA11yLabel", { username: invite.from })}
+                      hitSlop={8}
                     >
                       <Ionicons name="close" size={16} color={Colors.textMuted} />
                     </Pressable>
                     <Pressable
                       onPress={() => handleJoinGameInvite(invite.roomCode)}
                       style={styles.joinBtn}
+                      accessibilityRole="button"
+                      accessibilityLabel={t("friends.joinInviteA11yLabel", { username: invite.from })}
                     >
                       <Text style={styles.joinBtnText}>{t("friends.join")}</Text>
                     </Pressable>
@@ -371,12 +364,18 @@ export default function FriendsScreen() {
                     <Pressable
                       onPress={() => declineMutation.mutate(r.id)}
                       style={styles.declineBtn}
+                      accessibilityRole="button"
+                      accessibilityLabel={t("friends.declineRequestA11yLabel", { username: r.username })}
+                      hitSlop={8}
                     >
                       <Ionicons name="close" size={16} color={Colors.textMuted} />
                     </Pressable>
                     <Pressable
                       onPress={() => acceptMutation.mutate(r.id)}
                       style={styles.acceptBtn}
+                      accessibilityRole="button"
+                      accessibilityLabel={t("friends.acceptRequestA11yLabel", { username: r.username })}
+                      hitSlop={8}
                     >
                       <Ionicons name="checkmark" size={16} color={Colors.bgCard} />
                     </Pressable>
@@ -402,7 +401,9 @@ export default function FriendsScreen() {
                   <Pressable
                     onPress={() => cancelMutation.mutate(r.id)}
                     style={styles.iconBtn}
-                    hitSlop={8}
+                    accessibilityRole="button"
+                    accessibilityLabel={t("friends.cancelRequestA11yLabel", { username: r.username })}
+                    hitSlop={12}
                   >
                     <Ionicons name="close-circle-outline" size={18} color={Colors.textMuted} />
                   </Pressable>
@@ -442,6 +443,9 @@ export default function FriendsScreen() {
               onPress={handleSearchUsername}
               disabled={searchLoading || !searchQuery.trim()}
               style={({ pressed }) => [styles.addBtn, pressed && { opacity: 0.85 }, (!searchQuery.trim()) && styles.addBtnDim]}
+              accessibilityRole="button"
+              accessibilityLabel={t("friends.searchA11yLabel")}
+              accessibilityState={{ disabled: searchLoading || !searchQuery.trim() }}
             >
               {searchLoading ? (
                 <ActivityIndicator color={Colors.bgCard} size="small" />
@@ -461,6 +465,8 @@ export default function FriendsScreen() {
                 onPress={handleSendRequestToFound}
                 disabled={addLoading}
                 style={styles.sendBtn}
+                accessibilityRole="button"
+                accessibilityLabel={t("friends.sendRequestA11yLabel", { username: searchResult.username })}
               >
                 {addLoading ? (
                   <ActivityIndicator color={Colors.bgCard} size="small" />
@@ -478,31 +484,40 @@ export default function FriendsScreen() {
             </View>
           )}
         </View>
-      </ScrollView>
-    </View>
+      </View>
+    </MenuLayout>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: Colors.bg },
   topBar: {
     flexDirection: "row",
     alignItems: "center",
-    paddingHorizontal: 8,
-    paddingBottom: 8,
+    width: "100%",
+    paddingBottom: Spacing.sm,
+    marginBottom: Spacing.xs,
     borderBottomWidth: 1,
     borderBottomColor: Colors.border,
   },
-  backBtn: { padding: 8 },
+  backBtn: {
+    width: 44,
+    height: 44,
+    alignItems: "center",
+    justifyContent: "center",
+  },
   screenTitle: {
     flex: 1,
     textAlign: "center",
-    fontFamily: "Rajdhani_700Bold",
-    fontSize: 20,
-    color: Colors.text,
+    ...Type.heading,
+    fontSize: FontSize.xl,
     letterSpacing: 3,
   },
-  scrollContent: { padding: 16, gap: 12 },
+  contentWrapper: {
+    width: "100%",
+    maxWidth: 800,
+    alignSelf: "center",
+    gap: Spacing.sm,
+  },
   sectionHeader: {
     flexDirection: "row",
     alignItems: "center",
@@ -511,14 +526,13 @@ const styles = StyleSheet.create({
     marginBottom: 4,
   },
   sectionTitle: {
-    fontFamily: "Inter_400Regular",
-    fontSize: 11,
-    color: Colors.textMuted,
+    ...Type.label,
+    fontSize: FontSize.xs,
     letterSpacing: 2,
   },
   badge: {
     backgroundColor: Colors.bgSurface,
-    borderRadius: 10,
+    borderRadius: Radius.md,
     paddingHorizontal: 7,
     paddingVertical: 2,
     borderWidth: 1,
@@ -536,11 +550,12 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     backgroundColor: Colors.bgSurface,
-    borderRadius: 12,
+    borderRadius: Radius.md,
     borderWidth: 1,
     borderColor: Colors.border,
     padding: 12,
     gap: 12,
+    minHeight: 44,
   },
   avatarWrapper: { position: "relative" },
   avatar: {
@@ -563,10 +578,10 @@ const styles = StyleSheet.create({
   },
   avatarText: { fontFamily: "Rajdhani_700Bold", fontSize: 18, color: Colors.gold },
   rowInfo: { flex: 1, gap: 2 },
-  rowName: { fontFamily: "Inter_500Medium", fontSize: 14, color: Colors.text },
-  rowSub: { fontFamily: "Inter_400Regular", fontSize: 12, color: Colors.textMuted },
+  rowName: { ...Type.bodyStrong },
+  rowSub: { ...Type.caption },
 
-  iconBtn: { padding: 6 },
+  iconBtn: { width: 32, height: 32, alignItems: "center", justifyContent: "center" },
 
   actionRow: { flexDirection: "row", gap: 8 },
   declineBtn: {
@@ -583,12 +598,12 @@ const styles = StyleSheet.create({
     width: 36,
     height: 36,
     borderRadius: 18,
-    backgroundColor: "Colors.success",
+    backgroundColor: Colors.success,
     alignItems: "center",
     justifyContent: "center",
   },
   joinBtn: {
-    height: 36,
+    minHeight: 44,
     borderRadius: 10,
     backgroundColor: Colors.gold,
     paddingHorizontal: 14,
@@ -610,9 +625,7 @@ const styles = StyleSheet.create({
     gap: 10,
   },
   inputCardLabel: {
-    fontFamily: "Inter_400Regular",
-    fontSize: 11,
-    color: Colors.textMuted,
+    ...Type.caption,
     letterSpacing: 1.5,
   },
   inputRow: { flexDirection: "row", gap: 10 },
@@ -625,11 +638,13 @@ const styles = StyleSheet.create({
     color: Colors.text,
     fontFamily: "Inter_400Regular",
     fontSize: 15,
+    minHeight: 44,
     paddingVertical: 12,
     paddingHorizontal: 14,
   },
   addBtn: {
     width: 48,
+    minHeight: 44,
     alignItems: "center",
     justifyContent: "center",
     backgroundColor: Colors.gold,
@@ -664,16 +679,12 @@ const styles = StyleSheet.create({
     gap: 6,
   },
   searchErrorText: {
-    fontFamily: "Inter_400Regular",
-    fontSize: 12,
-    color: Colors.textMuted,
+    ...Type.caption,
   },
 
   empty: { alignItems: "center", paddingVertical: 28, gap: 10 },
   emptyText: {
-    fontFamily: "Inter_400Regular",
-    fontSize: 13,
-    color: Colors.textMuted,
+    ...Type.caption,
     textAlign: "center",
     lineHeight: 20,
   },

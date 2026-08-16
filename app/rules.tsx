@@ -5,10 +5,8 @@ import {
   StyleSheet,
   Pressable,
   ScrollView,
-  Platform,
 } from "react-native";
 import { router } from "expo-router";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
 import Animated, {
   useAnimatedStyle,
   useSharedValue,
@@ -16,7 +14,8 @@ import Animated, {
 } from "react-native-reanimated";
 import { LinearGradient } from "expo-linear-gradient";
 import { Ionicons } from "@expo/vector-icons";
-import { Colors } from '@/lib/theme';
+import { Colors, Spacing, FontSize, Type } from "@/lib/theme";
+import { MenuLayout } from "@/components/MenuLayout";
 import { useTranslation, type TranslationKey } from "@/lib/i18n";
 
 interface FAQ {
@@ -61,7 +60,14 @@ function FAQItem({ item, isLast }: { item: FAQ; isLast: boolean }) {
 
   return (
     <View style={[styles.faqItem, isLast && styles.faqItemLast]}>
-      <Pressable onPress={toggleOpen} style={styles.faqQuestion}>
+      <Pressable
+        onPress={toggleOpen}
+        style={styles.faqQuestion}
+        accessibilityRole="button"
+        accessibilityLabel={item.question}
+        accessibilityState={{ expanded: open }}
+        hitSlop={4}
+      >
         <Text style={styles.faqQuestionText}>{item.question}</Text>
         <Ionicons
           name={open ? "chevron-up" : "chevron-down"}
@@ -77,31 +83,26 @@ function FAQItem({ item, isLast }: { item: FAQ; isLast: boolean }) {
 }
 
 export default function RulesScreen() {
-  const insets = useSafeAreaInsets();
   const { t } = useTranslation();
   const faqs = useFaqs();
-  const topPad = Platform.OS === "web" ? 67 : insets.top;
-  const bottomPad = Platform.OS === "web" ? 34 : insets.bottom;
 
   return (
-    <View style={[styles.container, { paddingTop: topPad }]}>
-      <LinearGradient
-        colors={[Colors.bg, Colors.bgCard]}
-        style={StyleSheet.absoluteFill}
-      />
-
-      <View style={styles.headerBar}>
-        <Pressable onPress={() => router.back()} style={styles.backBtn} hitSlop={12}>
+    <MenuLayout scrollable centered={false}>
+      <View style={styles.topBar}>
+        <Pressable
+          onPress={() => router.back()}
+          style={styles.backBtn}
+          accessibilityRole="button"
+          accessibilityLabel={t("common.back")}
+          hitSlop={12}
+        >
           <Ionicons name="chevron-back" size={22} color={Colors.gold} />
         </Pressable>
-        <Text style={styles.headerTitle}>{t("rules.headerTitle")}</Text>
-        <View style={{ width: 40 }} />
+        <Text style={styles.screenTitle}>{t("rules.headerTitle")}</Text>
+        <View style={{ width: 38 }} />
       </View>
 
-      <ScrollView
-        contentContainerStyle={[styles.scroll, { paddingBottom: bottomPad + 24 }]}
-        showsVerticalScrollIndicator={false}
-      >
+      <View style={styles.contentWrapper}>
         <View style={styles.heroBanner}>
           <LinearGradient
             colors={[Colors.bgSurface, Colors.bgElevated]}
@@ -119,7 +120,13 @@ export default function RulesScreen() {
           </View>
           <Text style={styles.heroTitle}>{t("rules.heroTitle")}</Text>
           <Text style={styles.heroSubtitle}>{t("rules.heroSubtitle")}</Text>
-          <Pressable onPress={() => router.push("/tutorial")} style={styles.tutorialLink} hitSlop={12}>
+          <Pressable
+            onPress={() => router.push("/tutorial")}
+            style={styles.tutorialLink}
+            accessibilityRole="link"
+            accessibilityLabel={t("rules.tutorialLink")}
+            hitSlop={12}
+          >
             <Ionicons name="school-outline" size={14} color={Colors.gold} />
             <Text style={styles.tutorialLinkText}>{t("rules.tutorialLink")}</Text>
             <Ionicons name="chevron-forward" size={14} color={Colors.gold} />
@@ -130,8 +137,8 @@ export default function RulesScreen() {
           <Text style={styles.sectionLabel}>{t("rules.strengthSectionLabel")}</Text>
           <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.strengthRow}>
             {[
-              { rank: "JKR★", color: "#C0392B", label: t("rules.strengthJokerColored") },
-              { rank: "JKR☆", color: "#555", label: t("rules.strengthJokerBlack") },
+              { rank: "JKR★", color: Colors.danger, label: t("rules.strengthJokerColored") },
+              { rank: "JKR☆", color: Colors.textMuted, label: t("rules.strengthJokerBlack") },
               { rank: "2", color: Colors.text, label: t("rules.strengthTwo") },
               { rank: "A", color: Colors.text, label: t("rules.strengthAce") },
               { rank: "K", color: Colors.text, label: t("rules.strengthKing") },
@@ -180,40 +187,39 @@ export default function RulesScreen() {
             ))}
           </View>
         </View>
-      </ScrollView>
-    </View>
+      </View>
+    </MenuLayout>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: Colors.bg },
-
-  headerBar: {
+  topBar: {
     flexDirection: "row",
     alignItems: "center",
-    paddingHorizontal: 16,
-    paddingVertical: 14,
+    width: "100%",
+    paddingBottom: Spacing.sm,
+    marginBottom: Spacing.md,
     borderBottomWidth: 1,
     borderBottomColor: Colors.border,
   },
   backBtn: {
-    width: 40,
-    height: 40,
+    width: 44,
+    height: 44,
     alignItems: "center",
     justifyContent: "center",
   },
-  headerTitle: {
+  screenTitle: {
     flex: 1,
     textAlign: "center",
-    fontFamily: "Rajdhani_600SemiBold",
-    fontSize: 20,
-    color: Colors.text,
-    letterSpacing: 1,
+    ...Type.heading,
+    fontSize: FontSize.xl,
+    letterSpacing: 3,
   },
-
-  scroll: {
-    padding: 20,
-    gap: 24,
+  contentWrapper: {
+    width: "100%",
+    maxWidth: 800,
+    alignSelf: "center",
+    gap: Spacing.lg,
   },
 
   heroBanner: {
@@ -254,6 +260,7 @@ const styles = StyleSheet.create({
     marginTop: 12,
     paddingHorizontal: 12,
     paddingVertical: 8,
+    minHeight: 44,
     borderRadius: 10,
     backgroundColor: Colors.goldMuted,
     borderWidth: 1,
@@ -356,6 +363,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "space-between",
     paddingVertical: 14,
+    minHeight: 44,
     gap: 12,
   },
   faqQuestionText: {

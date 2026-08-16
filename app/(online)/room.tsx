@@ -4,7 +4,6 @@ import {
   Text,
   StyleSheet,
   Pressable,
-  Platform,
   Share,
   Alert,
   FlatList,
@@ -12,9 +11,7 @@ import {
   useWindowDimensions,
 } from "react-native";
 import { router } from "expo-router";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
 import Animated, { FadeIn } from "react-native-reanimated";
-import { LinearGradient } from "expo-linear-gradient";
 import * as Haptics from "expo-haptics";
 import * as Clipboard from "expo-clipboard";
 import { Ionicons } from "@expo/vector-icons";
@@ -23,13 +20,13 @@ import { useOnlineGame } from "@/context/OnlineGameContext";
 import { useAuth } from "@/context/AuthContext";
 import { useSocket } from "@/context/SocketContext";
 import { getSocket } from "@/lib/socket";
-import { Colors, Spacing, Radius } from '@/lib/theme';
+import { Colors, Spacing, Radius, FontSize, Type } from '@/lib/theme';
 import type { AIDifficulty } from "@/lib/gameEngine";
-import { MenuCard } from "@/components/MenuCard";
+import { MenuLayout } from "@/components/MenuLayout";
 import { MenuButton } from "@/components/MenuButton";
 import { useTranslation, type TranslationKey } from "@/lib/i18n";
 
-const TEAM_COLORS = { A: Colors.gold, B: "#6b8ef5" };
+const TEAM_COLORS = { A: Colors.gold, B: Colors.info };
 
 const BOT_DIFFICULTY_LABEL_KEYS: Record<AIDifficulty, TranslationKey> = {
   easy: "lobby.difficultyEasy",
@@ -180,11 +177,15 @@ function InviteFriendsPanel({
             return (
               <Pressable
                 onPress={() => handleInvite(friend)}
+                disabled={sent}
                 style={({ pressed }) => [
                   inviteStyles.row,
                   { height: ROW_H },
                   pressed && { opacity: 0.8 },
                 ]}
+                accessibilityRole="button"
+                accessibilityLabel={sent ? t("room.inviteSentA11yLabel", { username: friend.username }) : t("room.inviteA11yLabel", { username: friend.username })}
+                accessibilityState={{ disabled: sent }}
               >
                 <View style={inviteStyles.avatar}>
                   <Text style={inviteStyles.avatarInitial}>
@@ -196,7 +197,7 @@ function InviteFriendsPanel({
                   {friend.username}
                 </Text>
                 {sent ? (
-                  <Ionicons name="checkmark-circle" size={16} color="Colors.success" />
+                  <Ionicons name="checkmark-circle" size={16} color={Colors.success} />
                 ) : (
                   <View style={inviteStyles.inviteBtn}>
                     <Text style={inviteStyles.inviteBtnText}>{t("room.invite")}</Text>
@@ -215,7 +216,6 @@ function InviteFriendsPanel({
 }
 
 export default function RoomScreen() {
-  const insets = useSafeAreaInsets();
   const { t } = useTranslation();
   const { width: W, height: H } = useWindowDimensions();
   const { user } = useAuth();
@@ -233,8 +233,6 @@ export default function RoomScreen() {
   const [botDifficulty, setBotDifficulty] = useState<AIDifficulty>("medium");
 
   const isLandscape = W > H;
-  const topPad = Platform.OS === "web" ? 67 : insets.top;
-  const bottomPad = Platform.OS === "web" ? 34 : insets.bottom;
 
   const playerItemHeight = isLandscape ? 36 : 44;
   const playerItemPaddingVertical = isLandscape ? 4 : 8;
@@ -330,7 +328,7 @@ export default function RoomScreen() {
       label={notEnoughPlayers ? t("room.waitingForPlayers") : t("room.startGame")}
       onPress={handleStart}
       disabled={!canStart}
-      icon={<Ionicons name="play-circle" size={22} color={canStart ? "#0A1F18" : Colors.textMuted} />}
+      icon={<Ionicons name="play-circle" size={22} color={canStart ? Colors.bgCard : Colors.textMuted} />}
     />
   ) : (
     <View style={styles.waitingHost}>
@@ -341,25 +339,16 @@ export default function RoomScreen() {
 
   if (isLandscape) {
     return (
-      <View
-        style={[
-          styles.container,
-          {
-            paddingTop: topPad,
-            paddingBottom: bottomPad,
-            paddingLeft: insets.left,
-            paddingRight: insets.right,
-          },
-        ]}
-      >
-        <LinearGradient
-          colors={[Colors.bg, Colors.bgCard]}
-          style={StyleSheet.absoluteFill}
-        />
-
+      <MenuLayout scrollable={false} centered={false} style={{ paddingBottom: 0 }}>
         <View style={styles.topBar}>
-          <Pressable onPress={handleLeave} style={styles.backBtn}>
-            <Ionicons name="chevron-back" size={22} color={Colors.textMuted} />
+          <Pressable
+            onPress={handleLeave}
+            style={styles.backBtn}
+            accessibilityRole="button"
+            accessibilityLabel={t("room.leaveA11yLabel")}
+            hitSlop={8}
+          >
+            <Ionicons name="chevron-back" size={22} color={Colors.gold} />
           </Pressable>
           <Text style={styles.screenTitle}>{t("room.title")}</Text>
           <View style={{ width: 38 }} />
@@ -373,11 +362,23 @@ export default function RoomScreen() {
                 <Text style={styles.codeLabel}>{t("room.codeLabel")}</Text>
                 <Text style={styles.codeTextCompact}>{room.code}</Text>
                 <View style={styles.codeActions}>
-                  <Pressable onPress={handleCopyCode} style={styles.codeBtn}>
+                  <Pressable
+                    onPress={handleCopyCode}
+                    style={styles.codeBtn}
+                    accessibilityRole="button"
+                    accessibilityLabel={t("common.copy")}
+                    hitSlop={8}
+                  >
                     <Ionicons name="copy-outline" size={15} color={Colors.gold} />
                     <Text style={styles.codeBtnText}>{t("common.copy")}</Text>
                   </Pressable>
-                  <Pressable onPress={handleShare} style={styles.codeBtn}>
+                  <Pressable
+                    onPress={handleShare}
+                    style={styles.codeBtn}
+                    accessibilityRole="button"
+                    accessibilityLabel={t("room.share")}
+                    hitSlop={8}
+                  >
                     <Ionicons name="share-outline" size={15} color={Colors.gold} />
                     <Text style={styles.codeBtnText}>{t("room.share")}</Text>
                   </Pressable>
@@ -473,25 +474,21 @@ export default function RoomScreen() {
             )}
           </View>
         </View>
-      </View>
+      </MenuLayout>
     );
   }
 
   return (
-    <View
-      style={[
-        styles.container,
-        { paddingTop: topPad, paddingBottom: bottomPad + 8 },
-      ]}
-    >
-      <LinearGradient
-        colors={[Colors.bg, Colors.bgCard]}
-        style={StyleSheet.absoluteFill}
-      />
-
+    <MenuLayout scrollable={false} centered={false} style={{ paddingBottom: 0 }}>
       <View style={styles.topBar}>
-        <Pressable onPress={handleLeave} style={styles.backBtn} hitSlop={8}>
-          <Ionicons name="chevron-back" size={22} color={Colors.textMuted} />
+        <Pressable
+          onPress={handleLeave}
+          style={styles.backBtn}
+          accessibilityRole="button"
+          accessibilityLabel={t("room.leaveA11yLabel")}
+          hitSlop={8}
+        >
+          <Ionicons name="chevron-back" size={22} color={Colors.gold} />
         </Pressable>
         <Text style={styles.screenTitle}>{t("room.title")}</Text>
         <View style={{ width: 38 }} />
@@ -593,7 +590,7 @@ export default function RoomScreen() {
       </View>
 
       <View style={styles.footer}>{StartButton}</View>
-    </View>
+    </MenuLayout>
   );
 }
 
@@ -691,7 +688,7 @@ const inviteStyles = StyleSheet.create({
     width: 9,
     height: 9,
     borderRadius: 4.5,
-    backgroundColor: "Colors.success",
+    backgroundColor: Colors.success,
     borderWidth: 1.5,
     borderColor: Colors.bgSurface,
   },
@@ -717,22 +714,21 @@ const inviteStyles = StyleSheet.create({
 });
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: Colors.bg },
   topBar: {
     flexDirection: "row",
     alignItems: "center",
-    paddingHorizontal: 8,
-    paddingVertical: 8,
+    width: "100%",
+    paddingBottom: Spacing.sm,
+    marginBottom: Spacing.xs,
     borderBottomWidth: 1,
     borderBottomColor: Colors.border,
   },
-  backBtn: { padding: 8 },
+  backBtn: { width: 44, height: 44, alignItems: "center", justifyContent: "center" },
   screenTitle: {
     flex: 1,
     textAlign: "center",
-    fontFamily: "Rajdhani_700Bold",
-    fontSize: 20,
-    color: Colors.text,
+    ...Type.heading,
+    fontSize: FontSize.xl,
     letterSpacing: 3,
   },
 
@@ -806,7 +802,7 @@ const styles = StyleSheet.create({
     letterSpacing: 6,
   },
   codeActions: { flexDirection: "row", gap: 20, marginTop: 2 },
-  codeBtn: { flexDirection: "row", alignItems: "center", gap: 6, padding: 4 },
+  codeBtn: { flexDirection: "row", alignItems: "center", gap: 6, padding: 4, minHeight: 32 },
   codeBtnText: { fontFamily: "Inter_500Medium", fontSize: 13, color: Colors.gold },
   modePill: {
     flexDirection: "row",

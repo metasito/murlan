@@ -17,7 +17,9 @@ import { Ionicons } from "@expo/vector-icons";
 import { useGame, PlayerSetupConfig } from "@/context/GameContext";
 import { useAuth } from "@/context/AuthContext";
 import { GameMode, AIDifficulty } from "@/lib/gameEngine";
-import { Colors } from '@/lib/theme';
+import { Colors, Spacing, FontSize, Type } from '@/lib/theme';
+import { MenuLayout } from "@/components/MenuLayout";
+import { MenuButton } from "@/components/MenuButton";
 import { useTranslation, type TranslationKey } from "@/lib/i18n";
 
 type LobbyMode = "ai" | "local";
@@ -65,7 +67,7 @@ function PlayerRow({ index, config, onChange, isHuman, lobbyMode }: PlayerRowPro
           <Ionicons
             name={isHuman ? "person" : "hardware-chip"}
             size={18}
-            color={isHuman ? "#0A1F18" : Colors.textSecondary}
+            color={isHuman ? Colors.bgCard : Colors.textSecondary}
           />
         </LinearGradient>
       </View>
@@ -97,7 +99,13 @@ function PlayerRow({ index, config, onChange, isHuman, lobbyMode }: PlayerRowPro
       </View>
 
       {isAI && (
-        <Pressable onPress={cycleDifficulty} style={styles.difficultyBtn}>
+        <Pressable
+          onPress={cycleDifficulty}
+          style={styles.difficultyBtn}
+          accessibilityRole="button"
+          accessibilityLabel={t("lobby.difficultyA11yLabel", { level: t(DIFFICULTY_LABEL_KEYS[config.difficulty ?? "medium"]) })}
+          hitSlop={8}
+        >
           <Text style={styles.difficultyText}>
             {t(DIFFICULTY_LABEL_KEYS[config.difficulty ?? "medium"])}
           </Text>
@@ -113,6 +121,7 @@ const ROUND_OPTIONS = [1, 3, 5, 7];
 export default function LobbyScreen() {
   const insets = useSafeAreaInsets();
   const { t } = useTranslation();
+  const bottomInset = Platform.OS === "web" ? 34 : insets.bottom;
   const { width: W, height: H } = useWindowDimensions();
   const isLandscape = W > H;
   const { mode } = useLocalSearchParams<{ mode: LobbyMode }>();
@@ -183,23 +192,15 @@ export default function LobbyScreen() {
     router.replace("/game");
   };
 
-  const topPad = Platform.OS === "web" ? 67 : insets.top;
-  const bottomPad = Platform.OS === "web" ? 34 : insets.bottom;
-  const leftPad = isLandscape ? (Platform.OS === "web" ? 0 : insets.left) : 0;
-  const rightPad = isLandscape ? (Platform.OS === "web" ? 0 : insets.right) : 0;
-
   const startButton = (
-    <Pressable onPress={handleStart} style={styles.startBtn}>
-      <LinearGradient
-        colors={[Colors.gold, Colors.goldDark]}
-        start={{ x: 0, y: 0 }}
-        end={{ x: 1, y: 1 }}
-        style={styles.startGradient}
-      >
-        <Ionicons name="play" size={20} color="#0A1F18" />
-        <Text style={styles.startText}>{t("lobby.start")}</Text>
-      </LinearGradient>
-    </Pressable>
+    <MenuButton
+      label={t("lobby.start")}
+      onPress={handleStart}
+      variant="primary"
+      size="lg"
+      icon={<Ionicons name="play" size={20} color={Colors.bg} />}
+      accessibilityLabel={t("lobby.start")}
+    />
   );
 
   const configSection = (
@@ -208,7 +209,14 @@ export default function LobbyScreen() {
         <Text style={styles.sectionLabel}>{t("lobby.playerCountLabel")}</Text>
         <View style={styles.countRow}>
           {[2, 3, 4].map((n) => (
-            <Pressable key={n} onPress={() => handleCountChange(n)} style={[styles.countBtn, playerCount === n && styles.countBtnActive]}>
+            <Pressable
+              key={n}
+              onPress={() => handleCountChange(n)}
+              style={[styles.countBtn, playerCount === n && styles.countBtnActive]}
+              accessibilityRole="radio"
+              accessibilityLabel={t("lobby.playerCountOptionA11yLabel", { n })}
+              accessibilityState={{ selected: playerCount === n }}
+            >
               <Text style={[styles.countBtnText, playerCount === n && styles.countBtnTextActive]}>{n}</Text>
             </Pressable>
           ))}
@@ -220,7 +228,14 @@ export default function LobbyScreen() {
           <Text style={styles.sectionLabel}>{t("lobby.modeLabel")}</Text>
           <View style={styles.modeRow}>
             {(["free_for_all", "teams"] as GameMode[]).map((gm) => (
-              <Pressable key={gm} onPress={() => handleModeChange(gm)} style={[styles.modeBtn, gameMode === gm && styles.modeBtnActive]}>
+              <Pressable
+                key={gm}
+                onPress={() => handleModeChange(gm)}
+                style={[styles.modeBtn, gameMode === gm && styles.modeBtnActive]}
+                accessibilityRole="radio"
+                accessibilityLabel={gm === "teams" ? t("lobby.modeTeams") : t("lobby.modeFreeForAll")}
+                accessibilityState={{ selected: gameMode === gm }}
+              >
                 <Ionicons name={gm === "teams" ? "people" : "person"} size={16} color={gameMode === gm ? Colors.gold : Colors.textSecondary} />
                 <Text style={[styles.modeBtnText, gameMode === gm && styles.modeBtnTextActive]}>
                   {gm === "teams" ? t("lobby.modeTeams") : t("lobby.modeFreeForAll")}
@@ -235,7 +250,14 @@ export default function LobbyScreen() {
         <Text style={styles.sectionLabel}>{t("lobby.roundsLabel")}</Text>
         <View style={styles.countRow}>
           {ROUND_OPTIONS.map((n) => (
-            <Pressable key={n} onPress={() => { setTotalRounds(n); Haptics.selectionAsync(); }} style={[styles.countBtn, totalRounds === n && styles.countBtnActive]}>
+            <Pressable
+              key={n}
+              onPress={() => { setTotalRounds(n); Haptics.selectionAsync(); }}
+              style={[styles.countBtn, totalRounds === n && styles.countBtnActive]}
+              accessibilityRole="radio"
+              accessibilityLabel={`${n} ${n === 1 ? t("lobby.roundSingle") : t("lobby.roundMultiple")}`}
+              accessibilityState={{ selected: totalRounds === n }}
+            >
               <Text style={[styles.countBtnText, totalRounds === n && styles.countBtnTextActive]}>{n}</Text>
               <Text style={[styles.roundSubLabel, totalRounds === n && { color: Colors.gold }]}>
                 {n === 1 ? t("lobby.roundSingle") : t("lobby.roundMultiple")}
@@ -259,15 +281,19 @@ export default function LobbyScreen() {
   );
 
   return (
-    <View style={[styles.container, { paddingTop: topPad, paddingLeft: leftPad, paddingRight: rightPad }]}>
-      <LinearGradient colors={[Colors.bg, Colors.bgCard]} style={StyleSheet.absoluteFill} />
-
-      <View style={styles.headerBar}>
-        <Pressable onPress={() => router.back()} style={styles.backBtn} hitSlop={12}>
+    <MenuLayout scrollable={false} centered={false} style={{ paddingBottom: 0 }}>
+      <View style={styles.topBar}>
+        <Pressable
+          onPress={() => router.back()}
+          style={styles.backBtn}
+          accessibilityRole="button"
+          accessibilityLabel={t("common.back")}
+          hitSlop={12}
+        >
           <Ionicons name="chevron-back" size={22} color={Colors.gold} />
         </Pressable>
-        <Text style={styles.headerTitle}>{isAI ? t("lobby.titleVsAI") : t("lobby.titlePassPlay")}</Text>
-        <View style={{ width: 40 }} />
+        <Text style={styles.screenTitle}>{isAI ? t("lobby.titleVsAI") : t("lobby.titlePassPlay")}</Text>
+        <View style={{ width: 38 }} />
       </View>
 
       {isLandscape ? (
@@ -281,14 +307,14 @@ export default function LobbyScreen() {
             <ScrollView contentContainerStyle={styles.landscapeRightScroll} showsVerticalScrollIndicator={false}>
               {playerListSection}
             </ScrollView>
-            <View style={[styles.landscapeStartWrap, { paddingBottom: bottomPad + 8 }]}>
+            <View style={[styles.landscapeStartWrap, { paddingBottom: bottomInset + 8 }]}>
               {startButton}
             </View>
           </View>
         </View>
       ) : (
         <>
-          <ScrollView contentContainerStyle={[styles.scroll, { paddingBottom: bottomPad + 120 }]} showsVerticalScrollIndicator={false}>
+          <ScrollView contentContainerStyle={[styles.scroll, { paddingBottom: bottomInset + 120 }]} showsVerticalScrollIndicator={false}>
             {configSection}
             {playerListSection}
             <View style={styles.section}>
@@ -311,19 +337,17 @@ export default function LobbyScreen() {
             </View>
           </ScrollView>
 
-          <View style={[styles.startContainer, { paddingBottom: bottomPad + 16 }]}>
-            <LinearGradient colors={["transparent", Colors.bg, Colors.bg]} style={[StyleSheet.absoluteFill, { pointerEvents: "none" as const }]} />
+          <View style={[styles.startContainer, { paddingBottom: bottomInset + 16 }]} pointerEvents="box-none">
+            <LinearGradient colors={["transparent", Colors.bg, Colors.bg]} style={StyleSheet.absoluteFill} pointerEvents="none" />
             {startButton}
           </View>
         </>
       )}
-    </View>
+    </MenuLayout>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: Colors.bg },
-
   landscapeBody: { flex: 1, flexDirection: "row" },
   landscapeLeftCol: {
     width: "42%",
@@ -340,30 +364,30 @@ const styles = StyleSheet.create({
     borderTopColor: Colors.border,
   },
 
-  headerBar: {
+  topBar: {
     flexDirection: "row",
     alignItems: "center",
-    paddingHorizontal: 16,
-    paddingVertical: 14,
+    width: "100%",
+    paddingBottom: Spacing.sm,
+    marginBottom: Spacing.xs,
     borderBottomWidth: 1,
     borderBottomColor: Colors.border,
   },
   backBtn: {
-    width: 40,
-    height: 40,
+    width: 44,
+    height: 44,
     alignItems: "center",
     justifyContent: "center",
   },
-  headerTitle: {
+  screenTitle: {
     flex: 1,
     textAlign: "center",
-    fontFamily: "Rajdhani_600SemiBold",
-    fontSize: 20,
-    color: Colors.text,
-    letterSpacing: 1,
+    ...Type.heading,
+    fontSize: FontSize.xl,
+    letterSpacing: 3,
   },
   scroll: {
-    padding: 20,
+    paddingTop: 4,
     gap: 24,
   },
   section: { gap: 12 },
@@ -379,6 +403,7 @@ const styles = StyleSheet.create({
   },
   countBtn: {
     flex: 1,
+    minHeight: 44,
     paddingVertical: 14,
     borderRadius: 12,
     alignItems: "center",
@@ -412,6 +437,7 @@ const styles = StyleSheet.create({
   },
   modeBtn: {
     flex: 1,
+    minHeight: 44,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
@@ -536,22 +562,5 @@ const styles = StyleSheet.create({
     right: 0,
     padding: 20,
     paddingTop: 40,
-  },
-  startBtn: {
-    borderRadius: 14,
-    overflow: "hidden",
-  },
-  startGradient: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 10,
-    paddingVertical: 18,
-  },
-  startText: {
-    fontFamily: "Rajdhani_700Bold",
-    fontSize: 18,
-    color: "#0A1F18",
-    letterSpacing: 1,
   },
 });
