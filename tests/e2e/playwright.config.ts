@@ -38,7 +38,16 @@ export default defineConfig({
     url: BASE_URL,
     reuseExistingServer: !process.env.CI,
     timeout: 3 * 60_000,
-    env: { E2E_PORT: PORT },
+    env: {
+      E2E_PORT: PORT,
+      // The server defaults this to 5s under E2E so nothing waits on it. That
+      // is shorter than socket.io's own reconnect backoff, so a client that
+      // drops would have its seat vacated before it could possibly return —
+      // which makes the reconnect path untestable rather than fast. 30s is
+      // still well under production's 60s and only ever elapses in a test that
+      // deliberately stays offline.
+      MURLAN_DISCONNECT_GRACE_MS: "30000",
+    },
     stdout: "pipe",
     stderr: "pipe",
   },
