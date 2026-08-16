@@ -15,7 +15,9 @@ import {
   seatOfUser as seatOfUserInMap,
   scoreKeyForSeat as scoreKeyForMapSeat,
   findViewerSeat,
+  visibleExchangePhase,
   excludeBotSeats,
+  isContestedTable,
   buildSeatRoster,
   GAME_SCHEMA_VERSION,
   isStaleSchema,
@@ -49,6 +51,7 @@ import {
   scoreHand,
   addHandScores,
   resolveMatch,
+  resolveTeamMatch,
   MATCH_TARGETS,
 } from "../lib/gameEngine.ts";
 import type { GameState, Card, GameMode, Combination } from "../lib/gameEngine.ts";
@@ -164,6 +167,13 @@ function sanitizeStateForPlayer(
   return {
     ...state,
     viewerSeatIndex,
+    // `exchangePhase` used to be spread verbatim, shipping `cardFromLoser` —
+    // a named card out of a named player's hand — to every seat, and keeping
+    // it visible long after the phase closed.
+    exchangePhase: visibleExchangePhase(
+      state.exchangePhase,
+      viewerSeatIndex
+    ) as GameState["exchangePhase"],
     players: state.players.map((p, idx) => {
       const isViewer = playerMap[idx] === viewerUserId;
       return {
@@ -174,6 +184,7 @@ function sanitizeStateForPlayer(
     }),
   };
 }
+
 
 // ─── Timer bookkeeping ────────────────────────────────────────────────────────
 
@@ -612,6 +623,25 @@ async function vacateSeat(
 
 // ─── Match scoring ────────────────────────────────────────────────────────────
 
+/**
+ * Scoring key -> team id, for the seated humans only. Vacated (`bot:<seat>`)
+ * seats are left out on purpose: they are already excluded from
+ * `cumulativeScores` (see `excludeBotSeats`), so including them here would add
+ * a zero-scoring member that can never win but could be named as one.
+ */
+function teamKeyMap(
+  game: OnlineGameState,
+  state: GameState
+): Record<string, string> {
+  const map: Record<string, string> = {};
+  state.players.forEach((p, seat) => {
+    const userId = game.playerMap[seat];
+    if (userId === undefined || !p.team) return;
+    map[userId] = p.team;
+  });
+  return map;
+}
+
 async function handleGameOver(
   io: SocketServer,
   roomId: string,
@@ -645,7 +675,15 @@ async function handleGameOver(
 
   game.cumulativeScores = addHandScores(game.cumulativeScores, scorableHandByKey);
 
-  const resolution = resolveMatch(game.cumulativeScores, game.matchTarget);
+  // Teams mode races to the target as a *pair* (docs/RULES.md §11: the two
+  // partners' placement points are summed), so the match must be resolved on
+  // the team total and both partners reported as winners. Free-for-all is
+  // unchanged.
+  const teamOfKey = teamKeyMap(game, state);
+  const resolution =
+    game.gameMode === "teams" && Object.keys(teamOfKey).length > 0
+      ? resolveTeamMatch(game.cumulativeScores, teamOfKey, game.matchTarget)
+      : resolveMatch(game.cumulativeScores, game.matchTarget);
   let matchWinners: string[] = [];
   let isDraw = false;
   if (resolution) {
@@ -717,24 +755,20 @@ async function handleGameOver(
   // the broadcast makes that ordering obvious rather than relying on a
   // try/catch staying in place.
   try {
-    // `state.rankings` only carries an entry for a player once their
-    // placement is actually known: in free-for-all mode every seat
-    // eventually gets one (the very last active seat is auto-assigned last
-    // place without ever emptying its hand — see processPlay), but in teams
-    // mode the hand can end as soon as one team is done, leaving the losing
-    // team's players with no rankings entry and thus no knowable placement
-    // this hand. Those seats are skipped here, mirroring scoreHand's own
-    // "absent from rankings -> not in the result" contract instead of
-    // inventing a placement for them.
+    // Every seat now carries a placement by the time a hand ends — the engine
+    // fills the remaining positions for anyone still holding cards, in both
+    // modes (see assignRemainingPlacements). Teams mode used to end the hand
+    // the moment one pair was done and leave the losing pair out of
+    // `rankings` entirely, so those two players were skipped here: they could
+    // lose twenty hands and their profile still read `gamesPlayed: 0`.
     const playerCount = state.players.length;
-    const isFreeForAll = game.gameMode !== "teams";
-    // How many seats actually emptied their hand this round (as opposed to
-    // being auto-assigned last place while still holding cards): every FFA
-    // rankings entry except the final one, or every teams rankings entry
-    // (the teams path never auto-assigns — see the comment above).
-    const realFinisherCount = isFreeForAll
-      ? Math.max(playerCount - 1, 0)
-      : state.rankings.length;
+    // How many seats actually emptied their hand this hand, read straight off
+    // the final state rather than inferred from the mode: a seat that was
+    // auto-assigned its position while still holding cards never "finished",
+    // and must not be counted as one of anyone's finished opponents.
+    const realFinisherCount = state.players.filter(
+      (p) => p.hand.length === 0
+    ).length;
 
     const gameResults: GameResult[] = state.rankings
       .map((engineId, idx) => {
@@ -743,10 +777,7 @@ async function handleGameOver(
         const placement = idx + 1;
         const key = scoreKeyForSeat(game, seat);
         const flags = game.handFlags[seat] ?? { bomb: false, joker: false };
-        // True only for the one FFA seat that was auto-assigned without
-        // emptying its hand — it never counts as one of its own opponents'
-        // finishes, but it also is not itself a "finisher" to subtract out.
-        const isAutoAssignedLast = isFreeForAll && placement === playerCount;
+        const emptiedOwnHand = state.players[seat].hand.length === 0;
         const result: GameResult = {
           userId: key,
           placement,
@@ -755,7 +786,7 @@ async function handleGameOver(
           playedJoker: flags.joker,
           matchWon: matchWinners.includes(key),
           opponentsFinished: Math.max(
-            realFinisherCount - (isAutoAssignedLast ? 0 : 1),
+            realFinisherCount - (emptiedOwnHand ? 1 : 0),
             0
           ),
         };
@@ -763,11 +794,23 @@ async function handleGameOver(
       })
       .filter((r): r is GameResult => r !== null);
 
-    // Deliberately not awaited: a stats write must never be able to block
-    // or delay whatever runs after handleGameOver at any of its call sites.
-    recordGameResult(gameResults, game.gameMode).catch((err) =>
-      logger.error({ err, roomId }, "Failed to record game results")
-    );
+    // Bot-filled tables stay fully playable, but nothing about them is
+    // recorded: a private room of one human plus bots was guaranteed points
+    // and free achievements. See isContestedTable for where the line sits.
+    const humanSeats = Object.keys(game.playerMap).length;
+    const botSeats = Math.max(playerCount - humanSeats, 0);
+    if (!isContestedTable(humanSeats, botSeats)) {
+      logger.info(
+        { roomId, humanSeats, botSeats },
+        "Bot-majority table — stats, history and achievements not recorded"
+      );
+    } else {
+      // Deliberately not awaited: a stats write must never be able to block
+      // or delay whatever runs after handleGameOver at any of its call sites.
+      recordGameResult(gameResults, game.gameMode).catch((err) =>
+        logger.error({ err, roomId }, "Failed to record game results")
+      );
+    }
   } catch (err) {
     // Belt-and-braces: even the synchronous shaping above must not be able
     // to throw back into handleGameOver's own promise (see the comment

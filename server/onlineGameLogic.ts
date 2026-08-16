@@ -86,6 +86,66 @@ export function excludeBotSeats(
   return scorable;
 }
 
+/** The shape of GameState.exchangePhase, restated so this module keeps its
+ * "no imports at all" property (see the header). `cardFromLoser` is `unknown`
+ * here on purpose: this helper only decides whether to forward it. */
+export interface VisibleExchangePhaseInput {
+  active: boolean;
+  winnerIdx: number;
+  loserIdx: number;
+  bothJokersException: boolean;
+  cardFromLoser: unknown;
+}
+
+/**
+ * The part of an exchange phase a given seat is allowed to see.
+ *
+ * Only the two people in the exchange have any use for `cardFromLoser`: the
+ * winner's ExchangeModal shows the card they were handed, and the loser is
+ * entitled to see the card taken off them. Every other seat needs the two seat
+ * indices and the both-jokers flag — all the announcement banner reads — and
+ * once the phase has closed nobody needs the card at all.
+ */
+export function visibleExchangePhase(
+  phase: VisibleExchangePhaseInput | undefined,
+  viewerSeatIndex: number | null
+): Record<string, unknown> | undefined {
+  if (!phase) return undefined;
+
+  const visible: Record<string, unknown> = {
+    active: phase.active,
+    winnerIdx: phase.winnerIdx,
+    loserIdx: phase.loserIdx,
+    bothJokersException: phase.bothJokersException,
+  };
+
+  const isParticipant =
+    viewerSeatIndex !== null &&
+    (viewerSeatIndex === phase.winnerIdx || viewerSeatIndex === phase.loserIdx);
+
+  if (phase.active && isParticipant) visible.cardFromLoser = phase.cardFromLoser;
+  return visible;
+}
+
+/**
+ * True when a table was contested by enough real people for its outcome to be
+ * worth recording in stats / match history / achievements.
+ *
+ * A private room of one human plus bots stays fully playable — practice
+ * against the AI is a feature — but the human's wins there are guaranteed
+ * points, and they used to unlock `match_champion`, `iron_will` and endless
+ * streaks for free. This is about what gets *recorded*, never about what is
+ * allowed.
+ *
+ * The line is bot *majority*: 1 human + 3 bots and 1 human + 2 bots are out;
+ * an even split (1 v 1, 2 v 2) still counts. Seats vacated mid-game count as
+ * bots, so "invite three friends, have them all leave" is not a route back to
+ * the same free points.
+ */
+export function isContestedTable(humanSeats: number, botSeats: number): boolean {
+  return botSeats <= humanSeats;
+}
+
 /**
  * Bumped whenever the persisted shape of `gameState` stops being safe to
  * restore verbatim (e.g. the deal changed from 13 cards/player to the full
