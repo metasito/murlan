@@ -79,7 +79,8 @@ export const sq: Record<keyof typeof it, string> = {
   "server.SERVER_ERROR": "Gabim i serverit",
   "server.INVALID_CARD": "Letër e pavlefshme",
   "server.NOT_FRIENDS": "Nuk jeni miq",
-  "server.PLAYER_DISCONNECTED_GRACE": "{{username}} u shkëput. Ka 60 sekonda për t'u rikthyer.",
+  "server.PLAYER_DISCONNECTED_GRACE": "{{username}} u shkëput. Ka {{seconds}} sekonda për t'u rikthyer.",
+  "server.PLAYER_RECONNECTED": "{{username}} u kthye.",
 
   // ---------------------------------------------------------------- auth.*
   "auth.subtitle": "Qasje Online",
@@ -292,6 +293,7 @@ export const sq: Record<keyof typeof it, string> = {
   "offlineGame.quitConfirmConfirm": "Dil",
 
   // -------------------------------------------------------------- onlineGame.*
+  "onlineGame.reconnecting": "Lidhja u humb — po rilidhet…",
   "onlineGame.playerLeftTitle": "Loja u ndërpre",
   "onlineGame.playerLeftBody": "Një lojtar u largua nga loja.",
   "onlineGame.backToLobby": "Kthehu te lobi",

@@ -374,13 +374,16 @@ export function OnlineGameProvider({ userId, children }: { userId: string; child
       });
     };
 
-    const onPlayerDisconnected = ({ userId: dcUserId, username: dcUsername }: { userId: string; username: string; message: string }) => {
+    const onPlayerDisconnected = (payload: ServerPayload & { userId: string }) => {
       setDisconnectedPlayers((prev) => {
         const next = new Set(prev);
-        next.add(dcUserId);
+        next.add(payload.userId);
         return next;
       });
-      const msg = `${dcUsername} si è disconnesso — 60s per rientrare`;
+      // The server sends { code, params, message }; rendering it here rather
+      // than rebuilding the sentence keeps this in the player's language and
+      // keeps the grace period truthful — it is configurable server-side.
+      const msg = translateServerPayload(payload);
       setReconnectNotice(msg);
       if (reconnectNoticeTimerRef.current) clearTimeout(reconnectNoticeTimerRef.current);
       reconnectNoticeTimerRef.current = setTimeout(() => {
@@ -388,13 +391,13 @@ export function OnlineGameProvider({ userId, children }: { userId: string; child
       }, 10_000);
     };
 
-    const onPlayerReconnected = ({ userId: rcUserId, username: rcUsername }: { userId: string; username: string }) => {
+    const onPlayerReconnected = (payload: ServerPayload & { userId: string }) => {
       setDisconnectedPlayers((prev) => {
         const next = new Set(prev);
-        next.delete(rcUserId);
+        next.delete(payload.userId);
         return next;
       });
-      const msg = `${rcUsername} si è riconnesso!`;
+      const msg = translateServerPayload(payload);
       setReconnectNotice(msg);
       if (reconnectNoticeTimerRef.current) clearTimeout(reconnectNoticeTimerRef.current);
       reconnectNoticeTimerRef.current = setTimeout(() => {

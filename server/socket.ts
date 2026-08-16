@@ -1469,6 +1469,9 @@ export function setupSocket(httpServer: HttpServer) {
             io.to(roomCode).emit("game:player_reconnected", {
               userId,
               username,
+              code: "PLAYER_RECONNECTED",
+              message: `${username} è rientrato.`,
+              params: { username },
             });
             armTurn(roomCode);
             logger.info({ userId, roomCode }, "Player rejoined game (from memory)");
@@ -1550,7 +1553,13 @@ export function setupSocket(httpServer: HttpServer) {
             "game:state",
             sanitizeStateForPlayer(game.gameState, userId, game.playerMap)
           );
-          io.to(roomCode).emit("game:player_reconnected", { userId, username });
+          io.to(roomCode).emit("game:player_reconnected", {
+            userId,
+            username,
+            code: "PLAYER_RECONNECTED",
+            message: `${username} è rientrato.`,
+            params: { username },
+          });
           armTurn(roomCode);
           logger.info({ userId, roomCode }, "Player rejoined game (from DB)");
         } catch (err) {
@@ -1723,12 +1732,16 @@ export function setupSocket(httpServer: HttpServer) {
             return;
           }
 
+          const graceSeconds = Math.round(DISCONNECT_GRACE_MS / 1000);
           io.to(currentRoomId).emit("game:player_disconnected", {
             userId,
             username,
             code: "PLAYER_DISCONNECTED_GRACE",
-            message: `${username} si è disconnesso. Ha 60 secondi per rientrare.`,
-            params: { username },
+            // The grace period is configurable, so the number has to come from
+            // the same constant the timer below is armed with — a hardcoded
+            // "60 seconds" in the text is a promise the server may not keep.
+            message: `${username} si è disconnesso. Ha ${graceSeconds} secondi per rientrare.`,
+            params: { username, seconds: graceSeconds },
           });
 
           // A vacant seat must keep playing while we wait, or the table stalls

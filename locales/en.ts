@@ -57,7 +57,8 @@ export const en: Record<keyof typeof it, string> = {
   "server.SERVER_ERROR": "Server error",
   "server.INVALID_CARD": "Invalid card",
   "server.NOT_FRIENDS": "You're not friends",
-  "server.PLAYER_DISCONNECTED_GRACE": "{{username}} disconnected. They have 60 seconds to rejoin.",
+  "server.PLAYER_DISCONNECTED_GRACE": "{{username}} disconnected. They have {{seconds}} seconds to rejoin.",
+  "server.PLAYER_RECONNECTED": "{{username}} is back.",
 
   // ---------------------------------------------------------------- auth.*
   "auth.subtitle": "Online Access",
@@ -266,6 +267,7 @@ export const en: Record<keyof typeof it, string> = {
   "offlineGame.quitConfirmConfirm": "Leave",
 
   // -------------------------------------------------------------- onlineGame.*
+  "onlineGame.reconnecting": "Connection lost — reconnecting…",
   "onlineGame.playerLeftTitle": "Game interrupted",
   "onlineGame.playerLeftBody": "A player has left the game.",
   "onlineGame.backToLobby": "Back to lobby",

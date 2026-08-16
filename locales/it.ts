@@ -69,7 +69,8 @@ export const it = {
   "server.SERVER_ERROR": "Errore del server",
   "server.INVALID_CARD": "Carta non valida",
   "server.NOT_FRIENDS": "Non siete amici",
-  "server.PLAYER_DISCONNECTED_GRACE": "{{username}} si è disconnesso. Ha 60 secondi per rientrare.",
+  "server.PLAYER_DISCONNECTED_GRACE": "{{username}} si è disconnesso. Ha {{seconds}} secondi per rientrare.",
+  "server.PLAYER_RECONNECTED": "{{username}} è rientrato.",
 
   // ---------------------------------------------------------------- auth.*
   "auth.subtitle": "Accesso Online",
@@ -281,6 +282,7 @@ export const it = {
   "offlineGame.quitConfirmConfirm": "Esci",
 
   // -------------------------------------------------------------- onlineGame.*
+  "onlineGame.reconnecting": "Connessione persa — riconnessione…",
   "onlineGame.playerLeftTitle": "Partita interrotta",
   "onlineGame.playerLeftBody": "Un giocatore ha abbandonato la partita.",
   "onlineGame.backToLobby": "Torna alla lobby",

@@ -51,6 +51,7 @@ export default function OnlineGameScreen() {
     playerLeft,
     rejoinFailed,
     reconnectNotice,
+    connected,
     error,
     clearError,
     playCards,
@@ -243,7 +244,21 @@ export default function OnlineGameScreen() {
       }}
       topBarExtra={<ReactionTrigger onPress={toggleReactionPanel} />}
       banners={
-        reconnectNotice ? (
+        // Losing the connection used to show nothing at all: the table simply
+        // stopped updating, with no way to tell a thinking opponent from a
+        // dropped socket. This takes priority over another player's notice —
+        // the viewer's own connection is the more urgent fact.
+        !connected ? (
+          <View style={[styles.reconnectBanner, styles.reconnectBannerAlert]}>
+            <Ionicons name="cloud-offline" size={14} color={Colors.danger} />
+            <Text
+              style={[styles.reconnectBannerText, styles.reconnectBannerTextAlert]}
+              numberOfLines={1}
+            >
+              {t("onlineGame.reconnecting")}
+            </Text>
+          </View>
+        ) : reconnectNotice ? (
           <View style={styles.reconnectBanner}>
             <Ionicons name="wifi" size={14} color={Colors.gold} />
             <Text style={styles.reconnectBannerText} numberOfLines={1}>
@@ -340,6 +355,11 @@ const styles = StyleSheet.create({
     fontSize: FontSize.xs + 1,
     color: Colors.gold,
   },
+  reconnectBannerAlert: {
+    borderWidth: 1,
+    borderColor: Colors.danger,
+  },
+  reconnectBannerTextAlert: { color: Colors.danger },
 
   waitOverlay: {
     ...StyleSheet.absoluteFillObject,
