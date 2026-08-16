@@ -1,7 +1,8 @@
 # Testing
 
-Four layers run today. Each covers something the others structurally cannot, and
-none of them touches a real phone. This file says plainly where the coverage ends.
+Five layers exist today; four run reliably and the fifth — the only one that
+touches a real phone OS — is set up and partially working, with the exact
+blocker documented below rather than glossed over.
 
 | Layer | Command | Size | Needs |
 |---|---|---|---|
@@ -9,10 +10,12 @@ none of them touches a real phone. This file says plainly where the coverage end
 | Integration | `npm test` | folded into the above | `DATABASE_URL` |
 | Native renderer | `npm run test:native` | 166 (83 × ios/android) | nothing |
 | Web e2e | `npm run test:e2e` | Playwright, chromium | Docker + a built web bundle |
+| Android UI (Maestro) | `maestro test .maestro/*.yaml` | 2 flows | Android SDK + emulator + Maestro, see §5 |
 
 `npm run verify` runs typecheck, unit/integration and the native suite. The web
 e2e suite is deliberately excluded — it builds the Expo web bundle and is far
-slower than the rest.
+slower than the rest. The Maestro layer is not wired into `verify` or CI —
+see §5 for exactly what runs and what does not on this machine.
 
 ---
 
@@ -120,14 +123,16 @@ Verified on the development machine, not assumed:
 | OS | Windows 11 Home 10.0.26200 |
 | Node | v24.13.1 |
 | JDK | 21.0.11 (Microsoft OpenJDK) — present |
-| Android SDK | **absent** — no `ANDROID_HOME`, no `%LOCALAPPDATA%\Android` |
-| `adb` | **absent** |
-| Android Studio / emulator | **absent** |
-| Gradle | **absent** |
-| Hardware virtualization | present, so an emulator *would* be accelerated |
-| WSL 2 | present, Ubuntu 24.04 |
+| Android SDK | **installed** — `commandlinetools` + `platform-tools` + `platforms;android-34` + `system-images;android-34;google_apis;x86_64` + `emulator`, at `C:\Android\sdk` (outside the repo, gitignored if it were inside it) |
+| `adb` | **present** — `C:\Android\sdk\platform-tools\adb.exe`, version 37.0.1 |
+| Android emulator (AVD) | **present** — `murlan_test`, Pixel 6 profile, Android 14 (API 34), boots and runs |
+| Maestro | **present** — `~/.maestro/bin`, CLI 2.8.0, runs natively on Windows (no WSL needed — see below) |
+| Gradle | absent — not needed; Expo Go is the whole point |
+| Hardware virtualization | present (WHPX), the emulator is accelerated |
+| WSL 2 | present, Ubuntu 24.04, **not used** — see below |
 
-So layers 1–4 all run here. Nothing device-shaped does.
+So layers 1–4 all run here, and layer 5 (Android/Maestro) now exists and
+partially runs. Nothing iOS-shaped does — that remains impossible on Windows.
 
 ### iOS
 
@@ -146,45 +151,232 @@ then scan the QR from Expo Go on the device. This is why
 `react-native-keyboard-controller` was removed and why nothing here should
 reintroduce a library requiring a custom dev client. Manual checklist below.
 
-### Android
+## 5. Android UI automation — Maestro
 
-`npx expo run:android` **cannot work here today** — it needs the Android SDK,
-which is not installed, and it performs a full Gradle native build on top of that.
+**This is the only layer that drives a real Android OS**: real touch dispatch,
+real orientation lock, real Reanimated worklets on a UI thread, real haptics
+and audio calls reaching an actual (emulated) device, real Expo Go — none of
+which layer 3's Jest shim or layer 4's `react-native-web` can see. It is also
+the only layer that would have caught the tutorial button issue documented
+below, because it is the only one that taps at real screen coordinates through
+the real Android accessibility tree.
 
-To make Android automation possible, in order:
+### One-time setup
 
-1. Install Android Studio (or just the command-line tools), an SDK platform, and
-   a system image. Set `ANDROID_HOME` and put `platform-tools` on `PATH`.
-2. Create an AVD and boot it. Virtualization is already enabled here.
-3. Install **Expo Go** on the emulator and run `npx expo start` — this skips the
-   Gradle build entirely and is much the cheaper path.
-4. Drive it with Maestro (see below).
+**Android SDK.** Full Android Studio is not needed — just the command-line
+tools:
 
-### Maestro — the recommended next layer, once an emulator exists
+```
+# download commandlinetools-win-*_latest.zip from
+# https://dl.google.com/android/repository/commandlinetools-win-<ver>_latest.zip
+# unzip so the layout is <sdk>\cmdline-tools\latest\bin\sdkmanager.bat
+# (sdkmanager insists on the "latest" folder name — a straight unzip
+# produces <sdk>\cmdline-tools\cmdline-tools\bin, which it rejects)
 
-Maestro is the right choice over Detox: YAML flows, no native debug build, works
-against Expo Go, free. Two caveats, both real:
-
-- It has **no native Windows build**. It runs under WSL 2, which is installed
-  here, but Maestro's own documentation discourages the WSL route because it
-  needs advanced port forwarding to reach the emulator.
-- Its **iOS support is simulator-only**, so it contributes nothing to the iPhone
-  path described above. It is an Android layer on this machine.
-
-No flows are checked in, because none can be executed or verified here and an
-unrunnable suite rots. A minimal starting flow, once step 3 above works:
-
-```yaml
-appId: host.exp.exponent   # Expo Go; use com.murlan.cardgame for a dev build
----
-- launchApp
-- tapOn: "Gioca offline"
-- tapOn: "Inizia partita"
-- assertVisible: "Passa"
+sdkmanager --licenses
+sdkmanager "platform-tools" "platforms;android-34" "build-tools;34.0.0" ^
+  "system-images;android-34;google_apis;x86_64" "emulator"
 ```
 
-Selectors must be Italian — `locales/it.ts` is the source of truth, the same
-convention the Playwright suite follows.
+Installed at `C:\Android\sdk` on this machine (outside the repo — nothing
+downloaded here should ever land inside it or be committed).
+
+**Environment variables a human must set permanently** (this session set them
+per-shell only; they do not survive a new terminal without this):
+
+```
+ANDROID_HOME=C:\Android\sdk
+ANDROID_SDK_ROOT=C:\Android\sdk
+PATH += C:\Android\sdk\platform-tools;C:\Android\sdk\emulator;C:\Android\sdk\cmdline-tools\latest\bin
+```
+
+**AVD.**
+
+```
+avdmanager create avd -n murlan_test -k "system-images;android-34;google_apis;x86_64" -d pixel_6
+```
+
+**Boot it** (headless — no visible window, which is what a CI-style or
+background run needs):
+
+```
+emulator -avd murlan_test -no-window -no-audio -no-boot-anim -gpu swiftshader_indirect
+```
+
+Prove it booted:
+
+```
+adb devices                              # emulator-5554   device
+adb shell getprop sys.boot_completed     # 1
+```
+
+Boot takes a few minutes on first cold start; `boot_completed` polls until
+it flips, it does not appear instantly.
+
+**Locale.** The emulator defaults to `en-US`. The app's convention (matching
+the Playwright suite) is Italian selectors, and `lib/i18n.ts` falls back to
+Italian only for *unsupported* locales — `en-US` is supported, so it renders
+English unless told otherwise:
+
+```
+adb shell settings put system system_locales it-IT,en-US
+adb reboot          # a plain relaunch is not enough; the setting needs a reboot to take effect
+```
+
+**Maestro.** The documented WSL2 route was a dead end anyone would hit first —
+**it is unnecessary on this machine**. Maestro is a Java CLI; the standard
+installer (`curl -Ls "https://get.maestro.mobile.dev" | bash`) is a bash
+script, and Git Bash on Windows has bash, curl, unzip and (via the JDK
+already on this machine) java — everything the installer checks for. It runs
+natively there, installs to `~/.maestro`, and talks to the *same* Windows
+`adb` server the emulator is already registered with, so there is no
+cross-VM port-forwarding to set up at all. Confirmed with `maestro --version`
+→ `2.8.0`.
+
+**The app on the emulator.** Expo Go, not a dev build — the whole reason
+`react-native-keyboard-controller` was removed was to keep this path open:
+
+```
+npx expo start --android
+```
+
+With a connected/booted emulator and no Expo Go installed yet, this installs
+Expo Go automatically and opens the project via `exp://<lan-ip>:8081` deep
+link. Confirmed working: Metro bundled 1883 modules and the app rendered.
+
+### Running the flows
+
+```
+export ANDROID_HOME=/c/Android/sdk
+export PATH="$ANDROID_HOME/platform-tools:$PATH:$HOME/.maestro/bin"
+cd murlan
+maestro test .maestro/smoke.yaml
+maestro test .maestro/offline-game.yaml
+```
+
+`npx expo start --android` must already be running and connected, and the
+packager URL baked into both flows (`exp://192.168.1.217:8081`) must match
+what that command printed — it is this machine's LAN IP, not portable. A
+human on a different machine/network updates that one line in both files.
+
+### Real findings from actually running this, not just writing YAML
+
+**Expo Go's own dev-menu is two stacked layers, and the top one lies about
+being dismissible.** On a fresh connection Expo Go shows a "this is the dev
+menu" explainer *rendered on top of* its real dev menu sheet (Reload / Go
+Home / Show Element Inspector / etc). Tapping the explainer's own "Continue"
+button dismisses only the explainer — the sheet underneath stays open and
+silently swallows every further tap. `tapOn` against it reports `COMPLETED`
+with no observable effect, which is a bad failure mode: no error, just a
+flow that quietly does nothing from that point on. One hardware **back**
+press dismisses both layers together; that is what both flows use.
+
+**A center-tap on a fanned/overlapping hand card can select the wrong card.**
+The hand renders each card overlapping the next one drawn on top of it. Maestro
+(and a plain `adb shell input tap`) both tap the *center* of an element's
+reported accessibility bounds by default, and that center point is frequently
+covered by the next card's z-order, so the tap lands on the neighbor instead —
+confirmed with `adb shell uiautomator dump`: the reported bounds for the
+intended card were correct, the physical touch just hit the sibling. Tapping
+~20px into a card's exposed left sliver (the region before the next card's
+left edge starts covering it) is reliable; tapping center is not. This is a
+real rendering characteristic of the hand UI, not a test-tooling bug, and
+worth knowing before writing any flow that selects a specific card.
+
+**A missing accessibility label forced a fragile selector, and is worth
+fixing.** The tutorial screen's header "Salta" (skip) button renders its
+label as a plain child `Text` next to the `Pressable`, instead of the
+`Pressable` collapsing into one accessible node. That leaves *two* matchable
+nodes in the tree with the visible text "Salta": the real, correctly-labelled
+`Pressable` (`accessibilityLabel="Salta il tutorial"`, `clickable=true`), and
+the inner `Text` (`clickable=false`) that Maestro's plain-text selector
+happens to match. Tapping by that text — or even by the Pressable's own
+correct `accessibilityLabel` — lands on the right *element* by every
+diagnostic available (`uiautomator dump` shows correct bounds, `clickable:
+true`) but the tap still never fires the RN `onPress`; only a raw coordinate
+tap at the same point does. The root cause was not fully isolated in the time
+available, but the missing `accessible` grouping on `tutorial.tsx`'s header
+`Pressable`s (`~line 505-507`, same shape on the back-chevron button) is a
+real gap — screen readers see the same ambiguity Maestro does. Worth fixing
+in the app; `.maestro/smoke.yaml` documents the point-tap workaround in place
+of it.
+
+**Reanimated's continuous animations can make Maestro wait forever on a
+tap.** The game table has always-on Reanimated glow/pulse effects (the
+active-turn highlight, the selected-card glow). Maestro's default `tapOn`
+waits for the UI to "stop changing" before returning; against a screen that
+never stops changing, every single tap blocks for its full internal timeout.
+A first full `offline-game.yaml` run took **~17 minutes** for what should
+have been a few dozen fast taps, before the emulator gave out. Pinning
+`waitToSettleTimeoutMs: 500` on every `tapOn` in that screen's section
+dropped a comparable run to under 4 minutes. Any future flow that taps
+anything on the live game table needs this, or it will look "stuck" rather
+than failed.
+
+### What is confirmed working end-to-end
+
+- `smoke.yaml`: launches the app through Expo Go, clears the dev-menu and
+  first-launch tutorial, and asserts the home screen rendered — **passes
+  reliably, repeatedly**, including from a fully cleared app state.
+- `smoke.yaml` **can fail**: verified by swapping in an assertion for text
+  that does not exist (`maestro test` exited 1, real assertion failure
+  reported) — see the flow's own passing run alongside that check.
+- `offline-game.yaml`'s logic — lobby configuration (2 players, "Manche
+  secca"), the opening-move card-selection algorithm (including the
+  overlap-tap fix above), and a real card play accepted by the
+  server-authoritative engine with the AI responding — was verified
+  correct **step by step**, both by hand (`adb shell input tap` matching
+  each flow step, screenshotted at every stage) and by Maestro reaching and
+  correctly executing each of those steps in two full automated runs.
+
+### What is blocked, and where exactly
+
+**A full unattended `maestro test .maestro/offline-game.yaml` run does not
+reliably reach the result screen on this machine.** Across four full runs,
+after configuring the lobby and tapping "Inizia Partita" — i.e. right around
+the landscape rotation into the live, continuously-animated game table — the
+run failed two different ways:
+
+- Twice, Android itself force-killed the app's activity (`ActivityTaskManager:
+  Force finishing activity host.exp.exponent/.experience.ExperienceActivity`,
+  confirmed in `adb logcat`, followed by the process dying and Expo Go's own
+  launcher reappearing — not a JS crash, not a Maestro error).
+- Twice more, after trying `-gpu angle_indirect` and a larger `hw.ramSize`
+  (3072M) to rule out software-rendering exhaustion, the **emulator process
+  itself** died mid-run (`device 'emulator-5554' not found`), with no crash
+  message in its own log.
+
+Both failure modes land at the same point: the transition into the
+orientation-locked, Reanimated-heavy game table. This reads as a genuine
+performance/stability ceiling of software-rendered (`swiftshader_indirect`)
+headless emulation on this host under sustained animated load, not a flow
+logic defect — the flow's logic is independently verified correct (above).
+Reverting to the original `swiftshader_indirect` + default RAM configuration
+restored the known-stable baseline that `smoke.yaml` passes on.
+
+**What would unblock it, roughly in order of promise:**
+
+1. A host with real GPU passthrough for the emulator (a Hyper-V/WHPX
+   accelerated *display*, not just CPU virtualization — this machine has the
+   latter but the emulator still falls back to a software renderer for
+   OpenGL under `-no-window`).
+2. Reducing Maestro's own polling load on the accessibility tree during the
+   animated screen (fewer/less frequent hierarchy dumps), since the crashes
+   correlate with sustained high-frequency `uiautomator` dumps against a
+   screen that never stops re-rendering.
+3. Running the same flow on GitHub Actions' Android emulator action instead
+   of this machine, per `docs/BACKLOG.md` B2's original plan — CI runners
+   provide a different (often better-behaved) virtualization stack, and this
+   is exactly the kind of host-specific flakiness that's worth confirming
+   isn't universal before spending more time on it locally.
+
+### Selectors
+
+Prefer accessibility labels/`testID`s (`id: "btn-passa"`, `id: "btn-gioca"`,
+`id: "game-table"`, `id: "btn-home"` all exist and were used). Where a label
+doesn't exist or doesn't work as an element selector (see findings above),
+both flows fall back to `point:` percentage taps and say so in a comment at
+the point of use — never silently.
 
 **Detox** was considered and rejected: it requires a native debug build, so on
 Windows it is Android-only anyway, and it is markedly heavier to set up for

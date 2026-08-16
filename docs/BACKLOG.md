@@ -148,19 +148,40 @@ The client bundle is not where the weight is. `docs/BUNDLE.md` has the numbers, 
 
 ### B2 — Android UI automation
 
-Not built. The recommendation stands from the native-testing work: **Maestro**, YAML-driven,
-free, drives Expo Go or a dev build, no native build required.
+**Built, partially working.** Android SDK, an AVD, and Maestro are all installed and
+verified on this machine (see `docs/TESTING.md` §5 for exact versions and setup steps —
+Maestro runs natively on Windows via Git Bash, the documented WSL2 route is unnecessary
+here). `.maestro/smoke.yaml` and `.maestro/offline-game.yaml` exist and are checked in.
 
-**Blocked on tooling, not on decisions.** This machine has JDK 21, virtualisation and WSL2,
-but no Android SDK, no `adb`, no emulator.
+`smoke.yaml` passes reliably, repeatedly, including from a fully cleared app state, and
+was verified able to fail (a swapped-in false assertion produced a real exit-1 failure).
 
-To do it:
-1. Install Android Studio (or just the command-line SDK tools) and create an AVD.
-2. `curl -Ls "https://get.maestro.mobile.dev" | bash`
-3. Write flows under `.maestro/` — launch, play a full offline hand, exercise the exchange
-   phase and the rematch prompt.
-4. Wire into CI later; GitHub Actions Linux runners can host an Android emulator at 1×
-   minute cost, which is cheap.
+`offline-game.yaml`'s logic — lobby configuration, the opening-move card-selection
+algorithm, and a real card play accepted by the server-authoritative engine — is verified
+correct step by step, both by hand and by Maestro executing each step correctly across two
+full runs. But a full unattended run does not yet reliably reach the result screen on this
+machine: right around the landscape rotation into the live, continuously-animated game
+table, either Android force-kills the app's activity or the emulator process itself dies.
+This reads as a software-rendering/host-performance ceiling under sustained animated load,
+not a flow-logic defect — full diagnosis, evidence (`adb logcat` excerpts), and next steps
+(real GPU passthrough, fewer Maestro hierarchy dumps, or just trying CI's emulator instead)
+are in `docs/TESTING.md` §5.
+
+Two real app findings came out of actually running this, not just writing YAML — see
+`docs/TESTING.md` §5 for both:
+- Expo Go's own dev-menu is two stacked layers; tapping its "Continue" only dismisses the
+  top one and the sheet underneath silently swallows every further tap with no error.
+- `tutorial.tsx`'s header "Salta" button doesn't collapse into one accessible node
+  (`~line 505-507`), so tools (and screen readers) see an ambiguous second node whose tap
+  never fires the RN `onPress`. Worth fixing.
+
+1. ~~Install Android Studio (or just the command-line SDK tools) and create an AVD.~~ Done.
+2. ~~`curl -Ls "https://get.maestro.mobile.dev" | bash`~~ Done (via Git Bash, not WSL2).
+3. ~~Write flows under `.maestro/`~~ — `smoke.yaml` and `offline-game.yaml` exist. The
+   exchange phase and rematch prompt are not yet covered — natural next flows once a run
+   reliably reaches the result screen.
+4. Wire into CI; GitHub Actions Linux runners can host an Android emulator at 1× minute
+   cost, which is cheap, and may sidestep this machine's stability ceiling entirely.
 
 Worth doing because it covers a real platform end to end on hardware that behaves like a
 phone — gestures, insets, orientation lock, worklet timing — none of which the web suite
