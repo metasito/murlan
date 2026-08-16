@@ -141,6 +141,119 @@ Measured, in order:
 The client bundle is not where the weight is. `docs/BUNDLE.md` has the numbers, and
 `scripts/bundle-report.mjs` regenerates them.
 
+### B2 — Android UI automation
+
+Not built. The recommendation stands from the native-testing work: **Maestro**, YAML-driven,
+free, drives Expo Go or a dev build, no native build required.
+
+**Blocked on tooling, not on decisions.** This machine has JDK 21, virtualisation and WSL2,
+but no Android SDK, no `adb`, no emulator.
+
+To do it:
+1. Install Android Studio (or just the command-line SDK tools) and create an AVD.
+2. `curl -Ls "https://get.maestro.mobile.dev" | bash`
+3. Write flows under `.maestro/` — launch, play a full offline hand, exercise the exchange
+   phase and the rematch prompt.
+4. Wire into CI later; GitHub Actions Linux runners can host an Android emulator at 1×
+   minute cost, which is cheap.
+
+Worth doing because it covers a real platform end to end on hardware that behaves like a
+phone — gestures, insets, orientation lock, worklet timing — none of which the web suite
+or the native-renderer suite can see.
+
+### B3 — iOS testing without a Mac
+
+Researched. There is a genuine answer, and it is not a cloud Mac rental.
+
+| Option | Cost | What it actually gives |
+|---|---|---|
+| **EAS Workflows `maestro` job** ⭐ | EAS free tier (15 iOS builds/month) | **The recommendation.** EAS has a built-in job type that runs Maestro flows against an iOS simulator on Expo's own infrastructure. The build and the simulator both live on EAS, so no Mac and no macOS CI runner is needed. |
+| GitHub Actions macOS runner | $0.062/min, and drains the free allowance at **10×** — 2,000 free minutes = 200 macOS minutes | Works, and can drive an iOS simulator, but the 10× multiplier makes it the expensive way to buy the same thing. |
+| Expo Go on the owner's iPhone | Free, works today | Real device, real native runtime — but manual, not automated. Still the best way to *feel* the app. |
+| MacStadium / MacinCloud / Scaleway Mac | ~$25–60/month | A full Mac. Only worth it if Xcode itself is needed. |
+| BrowserStack / LambdaTest / Sauce Labs | ~$29–199/month | Real iOS *devices*, not simulators. The only option that catches device-specific issues. |
+
+Two limits to be honest about: a simulator is not a device — it will not catch worklet
+jank, real audio behaviour, or thermal effects. And Maestro's iOS support is
+**simulator-only**, so no automation route drives the owner's physical iPhone.
+
+Sequencing: B2 first (cheaper, and the flows are reusable), then point the same flows at
+the EAS `maestro` job for iOS.
+
+### B4 — Move the server off Replit
+
+Split out of B1 because it is the one infrastructure change worth making, and it should
+stay small.
+
+**Why:** in-process `Map`s hold all game state, so there is no horizontal scaling without
+Redis and sticky sessions. Cold starts drop live websockets. The proxy already caused a
+real production bug — an unset `trust proxy` meant the session cookie was silently never
+set, which is why the forgeable `userId` fallback existed. No managed backups, metrics or
+log retention.
+
+**Keep it lean.** The temptation is to arrive with Kubernetes, Redis, a queue and an
+observability stack. None of that is warranted for one Express process and a Postgres
+database. The minimum that fixes the actual problems:
+
+- One always-on container on Fly.io or Railway (no cold starts, websockets stay up)
+- Managed Postgres from the same provider
+- The provider's own logs and metrics
+
+That is the whole change. No new runtime dependencies, no architectural rework — the
+server uses no Replit-specific APIs. Only the client's base URL changes.
+
+**Defer horizontal scaling until it is needed.** Sharing state across instances means
+Redis plus a Socket.io adapter plus sticky sessions, and it is not worth carrying before
+there are enough players to require it. One well-hosted instance handles a great many
+concurrent card tables.
+
+**Not urgent while there are no players. Urgent the day there are.**
+
+### B5 — Port the client to Flutter (or Godot, or native)
+
+**What it would buy.** Bundle size, and only bundle size. Measured comparison in B1:
+Flutter ~8–15 MB against ~15–25 MB for Expo/RN. Native Swift+Kotlin is smaller still at
+~5–10 MB, at the cost of two codebases forever. Unity and Godot would make the app
+*larger*, because a 2D card game ships a renderer and physics it never uses.
+
+There is no performance argument. The engine's heaviest operation measures **0.96 ms per
+move**, there is no physics, no 3D, and at most 54 sprites on screen.
+
+**What it would cost**, measured from this repository:
+
+| Surface | Lines | Fate under a port |
+|---|---|---|
+| `app/` | 7,257 | Rewritten in Dart |
+| `components/` | 6,552 | Rewritten, including the hand-drawn SVG card art |
+| `context/` | 1,584 | Rewritten |
+| `lib/` | 2,217 | Rewritten — engine, i18n, sounds, theme |
+| `locales/` | 2,046 | Re-keyed (translations survive; plumbing does not) |
+| `tests/` | 4,961 | Rewritten in Dart |
+| `server/` + `shared/` | 4,025 | **Kept.** A client port does not touch the backend. |
+
+Roughly **19,700 lines of client code plus 5,000 lines of tests** to reproduce, to reach
+exactly the behaviour that exists today.
+
+**What is genuinely at risk beyond the line count:**
+- The 504-test safety net, including the property test proving the straight enumerator is
+  complete, has to be re-earned in Dart before the port can be trusted at all
+- Every bug fixed in this codebase — impersonation, the permanently deadlocking table, the
+  deal that removed a Joker from ~7% of games, three exchange-phase freezes, the AI lead
+  deadlock, four separate invisible-colour bugs — would need to *not* be reintroduced.
+  Rewrites do not carry fixes across; they re-earn them one incident at a time.
+- Expo Go testing disappears. Flutter needs a real build for device testing, so the free
+  path the owner has today would close.
+- `expo-audio`, `expo-haptics`, `expo-screen-orientation`, `expo-localization` and the
+  Reanimated animation work all need Flutter equivalents found, wired and re-verified.
+
+**Honest verdict:** the case is weak *today* and would be strong in one specific future —
+if this app ever needed heavy real-time rendering, which a turn-based card game does not.
+Saving ~10 MB does not justify re-earning a year of correctness. Revisit only against a
+measured problem React Native cannot solve, such as sustained frame drops during the deal
+animation on a low-end Android device. Bundle size alone is not that problem — and the
+largest single win available is 2.5 MB of icon and splash PNGs (A13), which needs no
+rewrite at all.
+
 ---
 
 ## C. Rejected, with reasons — so they are not re-proposed
