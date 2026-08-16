@@ -306,6 +306,28 @@ export const sq: Record<keyof typeof it, string> = {
   "onlineGame.theWinner": "Fituesi",
   "onlineGame.theLoser": "humbësi",
 
+  // ----------------------------------------------------------------- replay.*
+  "replay.title": "Replay",
+  "replay.cardTitle": "Rishiko duart",
+  "replay.emptyTitle": "Asnjë replay",
+  "replay.emptyBody": "Duart online mbeten të rishikueshme për {{days}} ditë.",
+  "replay.loadingA11yLabel": "Duke ngarkuar replay-t",
+  "replay.errorTitle": "Replay-t nuk janë të disponueshëm",
+  "replay.errorBody": "Nuk arritëm të ngarkojmë replay-t.",
+  "replay.errorRetry": "Provo përsëri",
+  "replay.rowA11yLabel": "Rishiko: {{mode}}, {{players}}, {{time}}",
+  "replay.moves": "lëvizje",
+  "replay.moveOf": "Lëvizja {{n}} nga {{total}}",
+  "replay.start": "Fillimi",
+  "replay.prevA11yLabel": "Lëvizja e mëparshme",
+  "replay.nextA11yLabel": "Lëvizja tjetër",
+  "replay.playA11yLabel": "Luaj",
+  "replay.pauseA11yLabel": "Pauzë",
+  "replay.restartA11yLabel": "Rifillo",
+  "replay.loadErrorTitle": "Replay i padisponueshëm",
+  "replay.loadErrorBody": "Kjo dorë nuk është më e disponueshme.",
+  "replay.back": "Mbyll",
+
   // -------------------------------------------------------------------- bot.*
   // The names are proper nouns and stay as they are; only the play style is translated.
   "bot.luanBlurb": "Impulsiv dhe i paparashikueshëm",

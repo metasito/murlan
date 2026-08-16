@@ -19,6 +19,8 @@ import { useTranslation } from "@/lib/i18n";
 import type { TranslationKey, TranslationParams } from "@/lib/i18n";
 import { usePrefersReducedMotion } from "@/lib/accessibility";
 import type { GameMode } from "@/lib/gameEngine";
+import type { ReplaySummary } from "@/lib/replay";
+import { REPLAY_RETENTION_DAYS } from "@/lib/replay";
 
 type TFn = (key: TranslationKey, params?: TranslationParams) => string;
 type TnFn = (base: string, count: number, params?: TranslationParams) => string;
@@ -146,10 +148,12 @@ export default function ProfileScreen() {
   const statsQuery = useQuery<UserStatsDto>({ queryKey: ["/api/stats/me"] });
   const historyQuery = useQuery<MatchHistoryDto[]>({ queryKey: ["/api/stats/history"] });
   const achievementsQuery = useQuery<AchievementStatusDto[]>({ queryKey: ["/api/stats/achievements"] });
+  const replaysQuery = useQuery<ReplaySummary[]>({ queryKey: ["/api/replays"] });
 
   const stats = statsQuery.data;
   const history = historyQuery.data ?? [];
   const achievements = achievementsQuery.data ?? [];
+  const replays = replaysQuery.data ?? [];
   const unlockedCount = achievements.filter((a) => a.unlocked).length;
   const winRate = stats && stats.gamesPlayed > 0 ? Math.round((stats.gamesWon / stats.gamesPlayed) * 100) : 0;
 
@@ -270,6 +274,65 @@ export default function ProfileScreen() {
                         </View>
                         <Text style={styles.rowPoints}>{pointsText}</Text>
                       </View>
+                    );
+                  })}
+                </View>
+              )}
+            </MenuCard>
+          </Animated.View>
+
+          {/* ── Replay ── */}
+          <Animated.View entering={entering}>
+            <MenuCard title={t("replay.cardTitle")}>
+              {replaysQuery.isLoading && <LoadingBlock label={t("replay.loadingA11yLabel")} />}
+              {replaysQuery.isError && (
+                <ErrorBlock
+                  title={t("replay.errorTitle")}
+                  retryLabel={t("replay.errorRetry")}
+                  retryA11yLabel={t("replay.errorRetry")}
+                  onRetry={() => replaysQuery.refetch()}
+                />
+              )}
+              {replaysQuery.isSuccess && replays.length === 0 && (
+                <EmptyBlock
+                  icon="play-circle-outline"
+                  title={t("replay.emptyTitle")}
+                  body={t("replay.emptyBody", { days: REPLAY_RETENTION_DAYS })}
+                />
+              )}
+              {replays.length > 0 && (
+                <View style={styles.listBlock}>
+                  {replays.map((r) => {
+                    const modeText = r.gameMode === "teams" ? t("gameOverOverlay.modeTeams") : t("gameOverOverlay.modeFreeForAll");
+                    const playersText = tn("profile.historyPlayers", r.playerCount);
+                    const timeText = relativeTime(r.finishedAt, t, tn);
+                    return (
+                      <Pressable
+                        key={r.id}
+                        style={styles.row}
+                        onPress={() => router.push({ pathname: "/(online)/replay", params: { id: r.id } })}
+                        accessibilityRole="button"
+                        accessibilityLabel={t("replay.rowA11yLabel", {
+                          mode: modeText,
+                          players: playersText,
+                          time: timeText,
+                        })}
+                      >
+                        <Ionicons
+                          name="play-circle"
+                          size={28}
+                          color={Colors.gold}
+                          accessibilityElementsHidden
+                          importantForAccessibility="no"
+                        />
+                        <View style={styles.rowInfo}>
+                          <Text style={styles.rowName}>{modeText} · {playersText}</Text>
+                          <Text style={styles.rowSub}>{timeText}</Text>
+                        </View>
+                        <Text style={styles.rowPoints}>
+                          {r.moveCount} {t("replay.moves")}
+                        </Text>
+                      </Pressable>
                     );
                   })}
                 </View>

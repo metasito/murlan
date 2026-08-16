@@ -166,4 +166,7 @@ export const Motion = {
   stagger: {
     deal: 42,
   },
+  // Gap between moves when a replay plays itself: slow enough to read one
+  // combination, fast enough that a whole hand is not a sitting.
+  replayStep: 1200,
 } as const;

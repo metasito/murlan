@@ -295,6 +295,28 @@ export const it = {
   "onlineGame.theWinner": "Il vincitore",
   "onlineGame.theLoser": "il perdente",
 
+  // ----------------------------------------------------------------- replay.*
+  "replay.title": "Replay",
+  "replay.cardTitle": "Rivedi le mani",
+  "replay.emptyTitle": "Nessun replay",
+  "replay.emptyBody": "I replay delle mani online restano disponibili per {{days}} giorni.",
+  "replay.loadingA11yLabel": "Caricamento replay",
+  "replay.errorTitle": "Replay non disponibili",
+  "replay.errorBody": "Non siamo riusciti a caricare i replay.",
+  "replay.errorRetry": "Riprova",
+  "replay.rowA11yLabel": "Rivedi: {{mode}}, {{players}}, {{time}}",
+  "replay.moves": "mosse",
+  "replay.moveOf": "Mossa {{n}} di {{total}}",
+  "replay.start": "Inizio",
+  "replay.prevA11yLabel": "Mossa precedente",
+  "replay.nextA11yLabel": "Mossa successiva",
+  "replay.playA11yLabel": "Riproduci",
+  "replay.pauseA11yLabel": "Pausa",
+  "replay.restartA11yLabel": "Ricomincia",
+  "replay.loadErrorTitle": "Replay non disponibile",
+  "replay.loadErrorBody": "Questa mano non è più disponibile.",
+  "replay.back": "Chiudi",
+
   // -------------------------------------------------------------------- bot.*
   // The names are proper nouns and stay as they are; only the play style is translated.
   "bot.luanBlurb": "Impulsivo e imprevedibile",

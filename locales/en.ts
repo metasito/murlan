@@ -280,6 +280,28 @@ export const en: Record<keyof typeof it, string> = {
   "onlineGame.theWinner": "The winner",
   "onlineGame.theLoser": "the loser",
 
+  // ----------------------------------------------------------------- replay.*
+  "replay.title": "Replay",
+  "replay.cardTitle": "Review your hands",
+  "replay.emptyTitle": "No replays yet",
+  "replay.emptyBody": "Online hands stay replayable for {{days}} days.",
+  "replay.loadingA11yLabel": "Loading replays",
+  "replay.errorTitle": "Replays unavailable",
+  "replay.errorBody": "We could not load your replays.",
+  "replay.errorRetry": "Retry",
+  "replay.rowA11yLabel": "Watch: {{mode}}, {{players}}, {{time}}",
+  "replay.moves": "moves",
+  "replay.moveOf": "Move {{n}} of {{total}}",
+  "replay.start": "Start",
+  "replay.prevA11yLabel": "Previous move",
+  "replay.nextA11yLabel": "Next move",
+  "replay.playA11yLabel": "Play",
+  "replay.pauseA11yLabel": "Pause",
+  "replay.restartA11yLabel": "Restart",
+  "replay.loadErrorTitle": "Replay unavailable",
+  "replay.loadErrorBody": "This hand is no longer available.",
+  "replay.back": "Close",
+
   // -------------------------------------------------------------------- bot.*
   // The names are proper nouns and stay as they are; only the play style is translated.
   "bot.luanBlurb": "Impulsive and unpredictable",

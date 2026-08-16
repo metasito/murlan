@@ -495,9 +495,10 @@ export function GameTable({
   // ── Screen-reader table description ─────────────────────────────────────────
   //
   // describeTableForA11y (gameTableModel.ts) does the ordering; this just
-  // gathers the translated pieces it asks for. viewer.hand.length (not
-  // handCountOf) on purpose — the viewer's own hand is never blanked, online
-  // or offline, unlike opponents'.
+  // gathers the translated pieces it asks for. The bottom seat's size comes
+  // from `sortedHand`, which is the real hand when playing and the count-derived
+  // face-down set when spectating — `viewer.hand.length` is 0 in that case,
+  // because a watcher is sent no cards at all.
 
   const tableA11yStrings: TableA11yStrings = React.useMemo(
     () => ({
@@ -540,7 +541,7 @@ export function GameTable({
       {
         isMyTurn,
         currentTurnName: players[gameState.currentTurnIndex]?.name ?? "",
-        myCardCount: viewer?.hand.length ?? 0,
+        myCardCount: sortedHand.length,
         lastPlay,
         opponents: opponentsA11y,
         exchange: exchangeA11y,
@@ -553,7 +554,7 @@ export function GameTable({
     gameState.currentTurnIndex,
     players,
     viewerSeat,
-    viewer?.hand.length,
+    sortedHand.length,
     isMyTurn,
     exchange,
     tableA11yStrings,
@@ -891,7 +892,7 @@ export function GameTable({
 
         <View style={styles.topBarRight}>
           <View style={styles.cardCountBadge}>
-            <Text style={styles.cardCountText}>{viewer?.hand.length ?? 0}</Text>
+            <Text style={styles.cardCountText}>{sortedHand.length}</Text>
           </View>
           {topBarExtra}
         </View>

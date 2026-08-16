@@ -2,19 +2,9 @@ import { and, desc, eq, lt, sql } from "drizzle-orm";
 import { db } from "./db.ts";
 import { matchReplays } from "../shared/schema.ts";
 import { replayPlayerIdsOf } from "./replayShape.ts";
+import { REPLAY_RETENTION_DAYS } from "../lib/replay.ts";
 import type { ReplayDto, ReplayMove, ReplaySeat, ReplaySummary } from "../lib/replay.ts";
 import type { GameMode } from "../lib/gameEngine.ts";
-
-/**
- * How long a finished hand stays replayable.
- *
- * Age, not "each player's newest N": a replay row belongs to up to four
- * players at once, so a per-player cap could not delete a row without first
- * checking that the other three had also moved past it. Age bounds the table
- * by games-per-day in a single indexed statement, and a replay is a "look at
- * what just happened" feature, not an archive.
- */
-export const REPLAY_RETENTION_DAYS = 14;
 
 /** The read is bounded too, so the list never grows with a busy fortnight. */
 export const MAX_REPLAYS_LISTED = 20;

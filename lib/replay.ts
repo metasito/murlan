@@ -44,6 +44,20 @@ export interface ReplaySummary {
 }
 
 /**
+ * How long a finished hand stays replayable.
+ *
+ * Age, not "each player's newest N": a replay row belongs to up to four
+ * players at once, so a per-player cap could not delete a row without first
+ * checking that the other three had also moved past it. Age bounds the table
+ * by games-per-day in a single indexed statement, and a replay is a "look at
+ * what just happened" feature, not an archive.
+ *
+ * Lives here rather than in server/replays.ts because the profile screen
+ * tells the player the same number the server prunes on.
+ */
+export const REPLAY_RETENTION_DAYS = 14;
+
+/**
  * A hand cannot legally run this long — 54 cards, and a round of passes ends
  * the round. The cap is a server-memory bound against a hand that loops, not a
  * game rule: past it the log is dropped and no replay is written.
