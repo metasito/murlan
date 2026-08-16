@@ -95,6 +95,20 @@ All 29 sites now route through the wrapper, verified repo-wide, and
 `hapticsBypass.test.tsx` prevents regression across `app/`, `components/`,
 `context/` and `lib/`.
 
+## One investigated non-bug
+
+Jest force-exited a worker on every run. Traced to `NotificationBanner`'s ~5s
+animation chain: a Reanimated animation lives on the shared value, not the
+component, so the test's `unmount()` cannot cancel it, and Reanimated's Jest
+shim backs each frame with a real self-rescheduling `setTimeout`. The worker was
+left holding ~5s of timers past teardown.
+
+**Harness artifact, not an app bug** — the banner is mounted once in
+`app/_layout.tsx` and never unmounts in production, which is the documented
+"always mounted" invariant. Fixed with fake timers scoped to that one `describe`
+block rather than `--forceExit`, which would have hidden the warning instead of
+removing its cause. Clean across three consecutive runs.
+
 ## What still needs a Mac or a device
 
 - **Reanimated worklets** — mounted and executed here, but under a shim with no

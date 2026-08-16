@@ -1,4 +1,4 @@
-import { describe, it, expect } from '@jest/globals';
+import { describe, it, expect, beforeEach, afterEach, jest } from '@jest/globals';
 import React from 'react';
 import { render } from '@testing-library/react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
@@ -65,6 +65,18 @@ describe('CardView renders every card natively', () => {
 });
 
 describe('NotificationBanner', () => {
+  // The banner animates for ~5s (slide in, wait, slide out) and these tests
+  // unmount after ~20ms. A Reanimated animation lives on the shared value, not
+  // the component, so unmounting cannot cancel it, and its Jest shim backs each
+  // frame with a real self-rescheduling setTimeout — which would outlive the
+  // worker. Fake timers are discarded at teardown, which stops that loop.
+  beforeEach(() => {
+    jest.useFakeTimers();
+  });
+  afterEach(() => {
+    jest.useRealTimers();
+  });
+
   // Invariant: the banner is always mounted — visibility is animated, never
   // unmounted. Returning null on an empty notification is what previously
   // overwrote the slide-in. Asserted against the banner's own alert role, not
