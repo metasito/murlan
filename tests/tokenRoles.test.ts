@@ -1,8 +1,7 @@
 // tests/tokenRoles.test.ts — React Native renders an invalid or invisible
-// colour as nothing at all: no warning, no fallback. Four bugs of this class
-// shipped, and none of them were caught by TypeScript (any string is a valid
-// colour) or by a render test (the element mounts fine — it is just not
-// visible).
+// colour as nothing at all: no warning, no fallback. TypeScript cannot catch
+// it (any string is a valid colour) and neither can a render test (the element
+// mounts fine — it is simply not visible).
 //
 // This pins the half a linter cannot see: whether a token is being used in the
 // role it was designed for. The stringified-token half ("Colors.success" in

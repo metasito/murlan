@@ -95,7 +95,10 @@ actually depend on — each demonstrable, not asserted.
 |---|---|
 | `lib/gameEngine.ts` | All game logic, AI, card rules, exchange phase — **do not change game rules here** |
 | `lib/socket.ts` | Socket singleton `Map<userId, Socket>` — **never violate singleton rules** |
-| `lib/sounds.ts` | Unified sound API for native + web |
+| `lib/sounds.ts` | Unified sound API for native + web, with master enable and volume |
+| `lib/cardNames.ts` | The spoken name of a card. Every surface that names one uses this |
+| `lib/accessibility.ts` | `usePrefersReducedMotion`, and the setting that overrides the OS |
+| `lib/streak.ts` | Consecutive-days-played, pure |
 | `lib/tokens.ts` | Pure design tokens (Colors, Spacing, Radius, FontSize, Type, Motion, Scrim, Highlight, FeltGradient). No react-native import, so tests can load it |
 | `lib/theme.ts` | Re-exports the tokens and adds the platform-aware `Shadow`. Import from here in components |
 | `server/index.ts` | Express entry point |
@@ -107,13 +110,16 @@ actually depend on — each demonstrable, not asserted.
 | `context/AuthContext.tsx` | Auth state (useAuth hook — god node with 22 edges) |
 | `context/OnlineGameContext.tsx` | Online game state |
 | `context/SocketContext.tsx` | Socket lifecycle, friend events, invite handling |
-| `context/SettingsContext.tsx` | Sound/haptic toggles |
+| `context/SettingsContext.tsx` | Sound on/off and volume, haptics, animation amount, language |
 | `app/_layout.tsx` | Root layout, NotificationBanner |
 | `app/lobby.tsx` | Reference design for offline lobby — all new menu screens follow this pattern |
 | `components/GameTable.tsx` | The single presentational game table. Both screens render it |
-| `components/gameTableModel.ts` | Pure table logic and the layout constants |
+| `components/gameTableModel.ts` | Pure table logic, the layout constants, and the flight/impact timing |
+| `components/cardFaceModel.ts` | Pure card-face geometry: index column, pip grid, court-art box |
 | `app/(online)/game.tsx`, `app/game.tsx` | Thin adapters mapping their state source into `GameTable` |
 | `lib/i18n.ts`, `locales/` | Typed localization (it/en/sq). Italian is the source of truth |
+| `scripts/build-sounds.mjs` | Rebuilds `assets/sounds/` from CC0 sources |
+| `scripts/build-court-art.mjs` | Rebuilds `assets/images/cards/` from the public-domain deck |
 
 ---
 
@@ -131,6 +137,17 @@ Each of these is a bug that shipped. Verify against source before changing any o
   synchronously on connect.
 - **Layout constants** (`CARD_W`, `CARD_H`, `SIDE_BTN_W`, `TABLE_M`, `HAND_SECTION_H`) live
   once in `components/gameTableModel.ts` and are pinned by a test. There is no second copy.
+- **Orientation** — only the game table forces one, and only to landscape. Every `<Modal>`
+  declares `supportedOrientations` including landscape; without it iOS rotates the app to
+  portrait and leaves the screen behind it mis-laid-out. Pinned by `tests/orientation.test.ts`.
+- **A labelled control exposes one accessible node.** `Pressable` already defaults
+  `accessible` to true, which does *not* remove its children from the accessibility tree —
+  decorative children must be hidden explicitly.
+- **Design tokens are used in the role they were named for.** A translucent fill or border
+  token used as a text colour renders as almost nothing, silently. Pinned by
+  `tests/tokenRoles.test.ts`; a token written as a string is caught by lint.
+- **Impact feedback is timed to the card landing**, not to the throw — 312ms of flight
+  separates them.
 - **Hooks before the null guard** in both game screens — every hook runs unconditionally
   before `if (!gameState) return null`.
 - **Flying card / `pileState`** — a card appears exactly once, never twice, never zero times.

@@ -1,7 +1,8 @@
 // tests/cardFace.test.ts — the card face is the thing a card game is looked at
-// through, and its geometry is all magic fractions. Two defects were reported
-// by eye: pips overlapping the corner index, and pip counts looking wrong.
-// This pins both numerically so neither can drift back.
+// through, and its geometry is all magic fractions. Two properties are easy to
+// break and only noticeable by eye: pips must not touch the corner index, and
+// a rank must draw exactly as many pips as its number. Both are pinned
+// numerically here.
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
 import {
@@ -73,8 +74,8 @@ describe("nothing collides with the corner index", () => {
   // The index is drawn at both sizes, so its glyphs must fit at both.
   for (const { name, w, small } of SIZES) {
     test(`the rank glyphs fit inside the index box on a ${name} card`, () => {
-      // "10" at the single-glyph size rendered wider than its box and spilled
-      // into the pip field — the reported "heart overlapping the number".
+      // "10" is the only two-glyph rank and needs its own size; at the
+      // single-glyph size it is wider than the box and reaches the pip field.
       const box = w * INDEX_TEXT_W;
       for (const rank of [...PIP_RANKS, "A", "J", "Q", "K"]) {
         const width = rankTextWidth(rank, small);

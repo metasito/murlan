@@ -244,10 +244,9 @@ export default function OnlineGameScreen() {
       }}
       topBarExtra={<ReactionTrigger onPress={toggleReactionPanel} />}
       banners={
-        // Losing the connection used to show nothing at all: the table simply
-        // stopped updating, with no way to tell a thinking opponent from a
-        // dropped socket. This takes priority over another player's notice —
-        // the viewer's own connection is the more urgent fact.
+        // The viewer's own connection outranks another player's notice: a
+        // table that has stopped updating is otherwise indistinguishable from
+        // an opponent taking their time.
         !connected ? (
           <View style={[styles.reconnectBanner, styles.reconnectBannerAlert]}>
             <Ionicons name="cloud-offline" size={14} color={Colors.danger} />

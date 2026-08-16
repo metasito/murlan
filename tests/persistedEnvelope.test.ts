@@ -1,12 +1,11 @@
 // tests/persistedEnvelope.test.ts — what rides alongside the engine state in
 // the stored game_state blob, and what must not survive being read back.
 //
-// handFlags (which seats played a bomb or a joker this hand) used to live only
-// in memory, so a server restart mid-hand silently cost those seats their
-// bomb/joker achievement eligibility. It now travels in the envelope. It does
-// NOT get a column of its own: a new column cannot be written until someone
-// runs db:push on Replit, and until they did every persist would fail
-// silently — a worse failure than the one being fixed.
+// handFlags (which seats played a bomb or a joker this hand) travels in the
+// envelope so a restart mid-hand does not cost those seats their bomb/joker
+// achievement eligibility. It does NOT get a column of its own: a new column
+// cannot be written until someone runs db:push on Replit, and until they do
+// every persist would fail silently — a worse failure than the one avoided.
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
 import {

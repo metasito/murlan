@@ -1,8 +1,7 @@
-// tests/cardNames.test.ts — the name a screen reader speaks for a card. This
-// logic had been copied into four places that had each drifted: one spoke the
-// printed glyph ("A di Cuori") instead of the word, one collapsed both jokers
-// into a single name even though they differ in strength, and one never got
-// localized at all. Pinned here so the shared version cannot drift back.
+// tests/cardNames.test.ts — the name a screen reader speaks for a card. One
+// shared builder serves every surface that names one, and the cases below are
+// what separate it from a naive implementation: the spoken word rather than
+// the glyph printed on the card, and the two jokers named apart.
 //
 // `t` is built from the real Italian catalogue rather than a stub, so a
 // renamed or deleted key fails these tests instead of silently producing

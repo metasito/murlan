@@ -589,10 +589,9 @@ export function GameTable({
     prevComboKeyRef.current = key;
     setPileState((s) => advancePile(s, combo));
 
-    // The card is thrown here and arrives ~312ms later. Everything that reads
-    // as *impact* waits for it: the bang used to land a third of a second
-    // before the card that caused it. The play is announced for every seat, not
-    // just the viewer's — an opponent's card used to arrive in silence.
+    // The card is thrown here and arrives ~312ms later, so everything that
+    // reads as *impact* waits for it. Announced for every seat, not only the
+    // viewer's: the sound belongs to a card landing, not to a tap.
     const heavy = combo.type === "bomb" || combo.type === "royal_straight";
     impactTimerRef.current = setTimeout(() => {
       if (heavy) {

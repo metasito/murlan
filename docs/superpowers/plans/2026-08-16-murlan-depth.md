@@ -1,6 +1,12 @@
 # Murlan Depth & Durability Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **STATUS: EXECUTED.** All eleven tasks are in the code — the integration
+> harness and suites, bot seat fill, the stats/history/achievements tables and
+> their endpoints, the profile screen, the table's screen-reader description
+> and the bundle report. Verified by reading the code, not the checkboxes: the
+> unticked `- [ ]` boxes below are how the plan was written, not a record of
+> what is outstanding. Kept as a historical record. Open work lives in
+> `docs/BACKLOG.md`.
 
 **Goal:** Make the multiplayer layer provably correct under integration test, stop rooms stalling for want of players, and give players a reason to come back — without changing any game rule.
 

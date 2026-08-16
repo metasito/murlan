@@ -38,11 +38,11 @@ Every output is then:
 
 1. **Trimmed** to the last moment it is still above 55 dB below its own peak,
    with a 60 ms fade. This removes silence and never audible sound. The floor is
-   absolute rather than "keep 99.9% of the energy", because a proportional
-   measure moves every time it is applied — trimming the quiet tail shrinks the
-   total it is a proportion of, so re-running the build would keep eating into
-   the sound. An earlier hand-written table of maximum durations was worse
-   still: it cut 0.4 s of audible card slide off `card_select`.
+   absolute rather than a proportion of total energy, because a proportional
+   measure is not idempotent — trimming the quiet tail shrinks the total it is a
+   proportion of, so each rebuild eats further into the sound. A fixed table of
+   maximum durations per effect is worse still: it cuts whatever happens to run
+   long, regardless of whether anything is audible there.
 2. **Normalised** to a common peak, because the two packs are mastered at
    different levels and one effect being startlingly louder than its neighbours
    is the thing people notice.
@@ -60,8 +60,7 @@ uses pitch-shifted layers. That is 0.003% of full scale on one sample out of
 
 ## Size
 
-844 KB for twelve files, up from 257 KB of synthesized audio. That is a
-deliberate trade: the effects are the game's whole sense of touch, and the
-previous set sounded synthetic because it was. Uncompressed WAV is kept because
-iOS will not play the sources' OGG and because decoding twelve short PCM files
+872 KB for twelve files. Recorded audio costs more than synthesis and it is
+worth it: the effects are most of the game's sense of touch. Uncompressed WAV,
+because iOS will not play the sources' OGG and decoding twelve short PCM files
 costs nothing at load.

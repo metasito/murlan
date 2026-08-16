@@ -169,14 +169,16 @@ Each document gets exactly one responsibility, and cross-references instead of r
 | `replit.md` ✅ | Replit-specific run/deploy notes only — how to start it, what env vars, what not to touch | Everything that duplicates `CLAUDE.md` |
 | `docs/superpowers/specs/*` ✅ | Historical specs, each stamped with its outcome | Anything presented as pending when it has shipped |
 
-✅ = done. Remaining: `CLAUDE.md` still needs its product/architecture prose separated out
-into `docs/ARCHITECTURE.md`, and line 127's unsourced "suit also matters for tiebreaks"
-claim still needs correcting (a first correction was reverted — awaiting confirmation that
-the revert was accidental before reapplying).
+✅ = done. `docs/ARCHITECTURE.md` exists and `CLAUDE.md` states plainly that suit does not
+break ties, so both remaining items on this map are closed.
 
-### Contradictions to fix (verified, not assumed)
+### Contradictions between documents
 
-| Where | Says | Reality |
+> **Resolved.** Every row below has been corrected in the document it names —
+> checked against the current files, not assumed. Kept as the record of what
+> the ownership map above was written to prevent.
+
+| Where | Said | Reality |
 |---|---|---|
 | `replit.md:11` | "Implements all official Murlan rules" | The deal is wrong, the match target is absent, and the straight enumerator misses legal plays |
 | `replit.md:15` | "12 bundled **WAV** sound effects" | They are `.mp3` files |
@@ -196,10 +198,16 @@ been updated in the same change. Docs are part of the diff, not a follow-up.
 
 ---
 
-## 5. Proposed features — for your selection
+## 5. Proposed features
 
-None of these are committed. They are candidates, ordered by my estimate of impact per
-unit of work.
+> This section is a record of what was proposed and why. It is **not** the work
+> queue — `docs/BACKLOG.md` is, and it carries current status for every item
+> below. Several have since shipped: the interactive tutorial, localization,
+> achievements, daily streaks, match history, rejoin-in-progress UX, and
+> colourblind-safe suit differentiation (measured: the existing palette already
+> passes). Do not read an entry here as outstanding.
+
+Ordered by estimated impact per unit of work.
 
 ### Tier 1 — I would build these regardless
 

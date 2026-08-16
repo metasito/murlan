@@ -2,8 +2,7 @@
 //
 //   node scripts/build-sounds.mjs
 //
-// These used to be synthesized from scratch with hand-written DSP, and sounded
-// like it. They are now real recordings: Kenney's Casino Audio for anything a
+// Real recordings rather than synthesis: Kenney's Casino Audio for anything a
 // hand of cards does, and Kenney's Interface Sounds for the stings. Both are
 // CC0 — see assets/sounds/README.md.
 //
@@ -84,10 +83,10 @@ const RECIPES = {
 // inaudible under any other sound in the game — plus a short fade so the cut is
 // not a click.
 //
-// An absolute floor rather than "keep 99.9% of the energy": a proportional
-// measure moves every time it is applied, because removing the quiet tail
-// shrinks the total it is a proportion of. This criterion gives the same answer
-// on a file that has already been trimmed.
+// The floor is absolute rather than a proportion of total energy, because a
+// proportional measure is not idempotent: removing the quiet tail shrinks the
+// total it is a proportion of, so each rebuild would cut further into the
+// sound. This criterion gives the same answer on an already-trimmed file.
 const SILENCE_FLOOR_DB = -55;
 const WINDOW_SECONDS = 0.01;
 const FADE = 0.06;

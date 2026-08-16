@@ -1,11 +1,10 @@
 // tests/suitColours.test.ts — can the suits be told apart, including by a
 // player with colour-vision deficiency?
 //
-// The backlog carried "colourblind-safe suit differentiation" as an
-// improvement to make. Measured, the traditional two-colour deck already
-// passes, and the obvious "fix" — a four-colour deck with a green club — is a
-// regression: red and green are the pair deuteranopes cannot separate. Both
-// facts are pinned here so the change is not made on intuition later.
+// The traditional two-ink deck passes. The obvious "improvement" — a
+// four-colour deck with a green club — does not: red against green is the pair
+// deuteranopes cannot separate. Both facts are pinned so the swap is not made
+// on intuition.
 //
 // Simulation is Viénot, Brettel & Mollon (1999), the standard dichromat model,
 // applied in linear RGB. Distance is CIE76 ΔE in Lab: crude next to CIEDE2000,

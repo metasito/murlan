@@ -6,9 +6,9 @@ blocker documented below rather than glossed over.
 
 | Layer | Command | Size | Needs |
 |---|---|---|---|
-| Unit | `npm test` | 504 pass, 1 skip | nothing |
+| Unit | `npm test` | 607 pass | nothing |
 | Integration | `npm test` | folded into the above | `DATABASE_URL` |
-| Native renderer | `npm run test:native` | 166 (83 × ios/android) | nothing |
+| Native renderer | `npm run test:native` | 190 (95 × ios/android) | nothing |
 | Web e2e | `npm run test:e2e` | Playwright, chromium | Docker + a built web bundle |
 | Android UI (Maestro) | `maestro test .maestro/*.yaml` | 2 flows | Android SDK + emulator + Maestro, see §5 |
 
@@ -23,7 +23,14 @@ see §5 for exactly what runs and what does not on this machine.
 
 `node --test` over `tests/**/*.test.ts`. Pure logic: the rules engine, card
 combinations, dealing, scoring, the exchange phase, the AI, the table layout
-model, i18n key parity, colour contrast.
+model, card-face geometry, spoken card names, the daily streak, i18n key
+parity, colour contrast and suit separation under colour-vision deficiency.
+
+Several suites read source or shipped assets rather than calling a function,
+because the property they protect is structural: that every `<Modal>` supports
+landscape, that no fill token is used as a text colour, that the twelve sound
+files are real non-silent PCM, that match history's prune and read share one
+bound.
 
 Node strips types natively, so these files import `.ts` specifiers directly and
 can only load modules that do not import `react-native`. That is why the table's
@@ -35,12 +42,12 @@ logic lives in `components/gameTableModel.ts` apart from the `.tsx` component.
 ## 2. Integration — same command, plus a database
 
 `tests/integration/` drives a real Socket.io server against real Postgres:
-auth and the socket handshake, gameplay integrity, stats persistence, test
-server cleanup.
+auth and the socket handshake, gameplay integrity, stats persistence, client
+crash reports, test server cleanup.
 
-Without `DATABASE_URL` these four suites skip and report why — that is the
-single skip in the count above. They are not silently absent; a skipped run
-prints `DATABASE_URL not set`.
+Without `DATABASE_URL` these suites skip and report why. They are not silently
+absent; a skipped run prints `DATABASE_URL not set`, and CI fails on that
+string rather than accepting a green run that tested nothing.
 
 **Covers:** server authority, ticket auth, disconnect grace, AFK timers,
 persistence.
@@ -65,6 +72,8 @@ unexercised by anything.
 | `hapticsBypass.test.tsx` | no module reaches `expo-haptics` except `lib/haptics.ts` |
 | `sounds.test.tsx` | the `expo-audio` path: rewind-before-play, volume, caching, one-time audio mode |
 | `render.test.tsx` | every card and the notification banner mount under the RN renderer with Reanimated worklets live |
+| `a11yCollapse.test.tsx` | a labelled control exposes one accessible node, not two |
+| `motionPreference.test.tsx` | the animation setting overrides the OS reduce-motion preference in both directions |
 
 Tests are named `.test.tsx` on purpose: `npm test` globs `tests/**/*.test.ts`
 and must not pick them up, since Node's type stripper cannot load `react-native`.
@@ -283,34 +292,26 @@ left edge starts covering it) is reliable; tapping center is not. This is a
 real rendering characteristic of the hand UI, not a test-tooling bug, and
 worth knowing before writing any flow that selects a specific card.
 
-**A duplicated accessibility node forced a fragile selector. Fixed.** The
-tutorial header's "Salta" (skip) button left *two* matchable nodes carrying
-the text "Salta": the correctly-labelled `Pressable`
-(`accessibilityLabel="Salta il tutorial"`, `clickable=true`) and the inner
-`Text` (`clickable=false`) that Maestro's plain-text selector happened to
-match.
+**A labelled control must hide its own children from the accessibility
+tree.** `Pressable` defaults `accessible` to true
+(`react-native/Libraries/Components/Pressable/Pressable.js`: `accessible:
+accessible !== false`), so setting that prop changes nothing. What the default
+does *not* do is remove children, so a visible label survives as a second
+matchable node with the same text — one `clickable=true`, one not, and a
+plain-text selector can match either.
 
-The cause is not a missing `accessible` prop, as first supposed —
-`Pressable` already defaults `accessible` to true
-(`react-native/Libraries/Components/Pressable/Pressable.js`, `accessible:
-accessible !== false`). Setting it changes nothing. What that default does
-*not* do is remove the children from the accessibility tree, so the visible
-label survives as a second node. `tests/native/a11yCollapse.test.tsx` pins
-both halves of this: the unhidden child is reachable, and hiding it leaves
-only the button.
+Decorative children are therefore hidden explicitly
+(`accessibilityElementsHidden` + `importantForAccessibility="no-hide-descendants"`).
+`CardView` takes a `decorative` prop for the case where a labelled wrapper
+contains a card that would otherwise announce itself again.
+`tests/native/a11yCollapse.test.tsx` pins both halves: an unhidden child is
+reachable, and hiding it leaves only the button.
 
-The fix is to hide the decorative child explicitly
-(`accessibilityElementsHidden` + `importantForAccessibility="no-hide-descendants"`),
-which is what the codebase already does for other decorative children. The
-same shape appeared in both card pickers, where a labelled wrapper contained
-a `CardView` that announced the same card again — `CardView` now takes a
-`decorative` prop for that case.
-
-Separately, and still unexplained: tapping that button by *either* selector
-landed on the right element by every diagnostic available (`uiautomator dump`
-showed correct bounds and `clickable: true`) yet never fired the RN
-`onPress`; only a raw coordinate tap did. That is a Maestro/RN interaction,
-not an accessibility defect, and `.maestro/smoke.yaml` keeps the point-tap workaround in place
+Unexplained, and separate from accessibility: on the tutorial header, tapping
+by *either* selector lands on the right element by every diagnostic available
+(`uiautomator dump` shows correct bounds and `clickable: true`) yet never
+fires the RN `onPress`; only a raw coordinate tap does. That is a Maestro/RN
+interaction, and `.maestro/smoke.yaml` keeps the point-tap workaround in place
 of it.
 
 **Reanimated's continuous animations can make Maestro wait forever on a
