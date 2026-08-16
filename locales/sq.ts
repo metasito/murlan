@@ -688,6 +688,7 @@ export const sq: Record<keyof typeof it, string> = {
   "profile.statWinRate": "% fitoresh",
   "profile.statMatchesWon": "Ndeshje të fituara",
   "profile.statCurrentStreak": "Seria aktuale",
+  "profile.statDailyStreak": "Ditë rresht",
   "profile.statBestStreak": "Seria më e mirë",
   "profile.statBombsPlayed": "Bomba të luajtura",
 

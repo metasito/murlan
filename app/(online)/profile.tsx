@@ -34,6 +34,7 @@ interface UserStatsDto {
   matchesWon: number;
   currentStreak: number;
   bestStreak: number;
+  dailyStreak: number;
   bombsPlayed: number;
   updatedAt: string;
 }
@@ -216,6 +217,7 @@ export default function ProfileScreen() {
                   <StatTile icon="flame" value={String(stats.currentStreak)} label={t("profile.statCurrentStreak")} />
                   <StatTile icon="flash" value={String(stats.bestStreak)} label={t("profile.statBestStreak")} />
                   <StatTile icon="rocket" value={String(stats.bombsPlayed)} label={t("profile.statBombsPlayed")} />
+                  <StatTile icon="calendar" value={String(stats.dailyStreak)} label={t("profile.statDailyStreak")} />
                 </View>
               )}
             </MenuCard>

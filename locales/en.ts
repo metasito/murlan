@@ -659,6 +659,7 @@ export const en: Record<keyof typeof it, string> = {
   "profile.statWinRate": "Win rate",
   "profile.statMatchesWon": "Matches won",
   "profile.statCurrentStreak": "Current streak",
+  "profile.statDailyStreak": "Day streak",
   "profile.statBestStreak": "Best streak",
   "profile.statBombsPlayed": "Bombs played",
 

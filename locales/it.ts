@@ -675,6 +675,7 @@ export const it = {
   "profile.statWinRate": "% vittorie",
   "profile.statMatchesWon": "Partite vinte",
   "profile.statCurrentStreak": "Serie attuale",
+  "profile.statDailyStreak": "Giorni di fila",
   "profile.statBestStreak": "Serie migliore",
   "profile.statBombsPlayed": "Bombe giocate",
 

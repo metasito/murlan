@@ -5,6 +5,7 @@ import type { UserStats, MatchHistory } from "../shared/schema.ts";
 import { evaluateAchievements, ACHIEVEMENTS } from "../lib/achievements.ts";
 import type { GameResult } from "../lib/achievements.ts";
 import type { GameMode } from "../lib/gameEngine.ts";
+import { dailyStreak, utcDay } from "../lib/streak.ts";
 
 /**
  * Match history kept per user, pruned on every write.
@@ -161,11 +162,37 @@ function emptyStats(userId: string): UserStats {
   };
 }
 
-export async function getUserStats(userId: string): Promise<UserStats> {
-  const row = await db.query.userStats.findFirst({
-    where: eq(userStats.userId, userId),
-  });
-  return row ?? emptyStats(userId);
+/** userStats plus the figures derived from match history rather than stored. */
+export interface UserStatsView extends UserStats {
+  /** Consecutive days played, counting back from today. */
+  dailyStreak: number;
+}
+
+export async function getUserStats(userId: string): Promise<UserStatsView> {
+  const [row, played] = await Promise.all([
+    db.query.userStats.findFirst({ where: eq(userStats.userId, userId) }),
+    db
+      .select({ finishedAt: matchHistory.finishedAt })
+      .from(matchHistory)
+      .where(eq(matchHistory.userId, userId))
+      .orderBy(desc(matchHistory.finishedAt))
+      .limit(MAX_HISTORY_ROWS_PER_USER),
+  ]);
+
+  // Derived from history rather than stored in its own columns. New columns on
+  // user_stats could not be written until someone ran db:push on Replit, and
+  // until they did *every* stats write would fail — a far worse outcome than
+  // this figure being approximate. It is bounded by the retained history, so a
+  // player with more than MAX_HISTORY_ROWS_PER_USER matches inside their streak
+  // would see it undercounted; a match is a full partita, so that is a great
+  // many games in a row of days.
+  return {
+    ...(row ?? emptyStats(userId)),
+    dailyStreak: dailyStreak(
+      played.map((r) => r.finishedAt),
+      utcDay(new Date())
+    ),
+  };
 }
 
 export async function getMatchHistory(userId: string): Promise<MatchHistory[]> {
