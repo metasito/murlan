@@ -524,6 +524,12 @@ interface CardViewProps {
   disabled?: boolean;
   style?: object;
   noLift?: boolean;
+  /**
+   * The card is the visual content of an enclosing labelled control, so it
+   * must not also announce itself — otherwise a screen reader reads the same
+   * card twice, once for the wrapper and once for this.
+   */
+  decorative?: boolean;
 }
 
 export function CardView({
@@ -535,6 +541,7 @@ export function CardView({
   disabled = false,
   style,
   noLift = false,
+  decorative = false,
 }: CardViewProps) {
   const { t } = useTranslation();
   const reduceMotion = usePrefersReducedMotion();
@@ -617,9 +624,13 @@ export function CardView({
         onPressIn={handlePressIn}
         onPressOut={handlePressOut}
         disabled={!interactive}
-        accessibilityLabel={cardSpokenName(card, t)}
-        accessibilityRole="button"
-        accessibilityHint={selected ? t("cardView.selectedA11yHint") : undefined}
+        accessibilityElementsHidden={decorative}
+        importantForAccessibility={decorative ? "no-hide-descendants" : "auto"}
+        accessibilityLabel={decorative ? undefined : cardSpokenName(card, t)}
+        accessibilityRole={decorative ? undefined : "button"}
+        accessibilityHint={
+          decorative || !selected ? undefined : t("cardView.selectedA11yHint")
+        }
         style={[
           styles.card,
           small ? styles.cardSmall : styles.cardNormal,

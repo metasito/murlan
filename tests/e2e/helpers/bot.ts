@@ -261,27 +261,15 @@ async function giveExchangeCard(page: Page): Promise<boolean> {
 
   for (let i = labels.length - 1; i >= 0; i--) {
     if (!GIVEBACK_CARD_LABEL.test(labels[i])) continue;
-    const outer = candidates.nth(i).locator("xpath=ancestor::button[1]");
-    // Neither a plain synthetic `.click()` nor a simulated OS-level
-    // mouse-down/hold/up reliably registered here — SelectableCard drives
-    // its lift/glow animation off onPressIn/onPressOut, and RNW's gesture
-    // responder for that shape seems to want the full pointer sequence a
-    // real tap produces. Dispatching pointerdown/pointerup/click directly on
-    // the resolved element sidesteps both coordinate hit-testing (irrelevant
-    // once the right element is already found) and the OS-level timing a
-    // simulated hold depends on. Each attempt is verified against the
-    // giveback-shaped candidate count actually dropping — not just "no
-    // exception was thrown" — before this function claims success, retrying
-    // a few times before moving on to the next matching card.
-    for (let attempt = 0; attempt < 4; attempt++) {
-      const handle = await outer.elementHandle({ timeout: CARD_CLICK_TIMEOUT_MS }).catch(() => null);
-      if (!handle) break;
-      await handle.evaluate((el) => {
-        const opts = { bubbles: true, cancelable: true } as const;
-        el.dispatchEvent(new PointerEvent("pointerdown", opts));
-        el.dispatchEvent(new PointerEvent("pointerup", opts));
-        (el as HTMLElement).click();
-      });
+    // The label now sits on SelectableCard's own Pressable rather than on the
+    // disabled CardView inside it, so the matched element is the control —
+    // a real click lands on it directly, with no ancestor climb and no
+    // hand-dispatched pointer sequence to stand in for one.
+    for (let attempt = 0; attempt < 3; attempt++) {
+      await candidates
+        .nth(i)
+        .click({ timeout: CARD_CLICK_TIMEOUT_MS })
+        .catch(() => {});
       await sleep(250);
       if ((await giveExchangeCandidateCount(page)) < before) return true;
     }

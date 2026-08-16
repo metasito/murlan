@@ -113,16 +113,13 @@ function SelectableCard({
       onPressIn={() => setPress(true)}
       onPressOut={() => setPress(false)}
       accessibilityRole="button"
-      // The CardView inside is disabled, so its own label is not exposed —
-      // without this the whole control reads as an unnamed button.
-      accessible
       accessibilityLabel={cardSpokenName(card, t)}
       accessibilityHint={t("exchangeModal.giveCardA11yHint")}
     >
       <Animated.View style={anim}>
         <Animated.View pointerEvents="none" style={[styles.cardGlow, glowStyle]} />
         <View style={styles.cardItem}>
-          <CardView card={card} />
+          <CardView card={card} decorative />
         </View>
       </Animated.View>
     </Pressable>

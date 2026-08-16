@@ -283,22 +283,34 @@ left edge starts covering it) is reliable; tapping center is not. This is a
 real rendering characteristic of the hand UI, not a test-tooling bug, and
 worth knowing before writing any flow that selects a specific card.
 
-**A missing accessibility label forced a fragile selector, and is worth
-fixing.** The tutorial screen's header "Salta" (skip) button renders its
-label as a plain child `Text` next to the `Pressable`, instead of the
-`Pressable` collapsing into one accessible node. That leaves *two* matchable
-nodes in the tree with the visible text "Salta": the real, correctly-labelled
-`Pressable` (`accessibilityLabel="Salta il tutorial"`, `clickable=true`), and
-the inner `Text` (`clickable=false`) that Maestro's plain-text selector
-happens to match. Tapping by that text — or even by the Pressable's own
-correct `accessibilityLabel` — lands on the right *element* by every
-diagnostic available (`uiautomator dump` shows correct bounds, `clickable:
-true`) but the tap still never fires the RN `onPress`; only a raw coordinate
-tap at the same point does. The root cause was not fully isolated in the time
-available, but the missing `accessible` grouping on `tutorial.tsx`'s header
-`Pressable`s (`~line 505-507`, same shape on the back-chevron button) is a
-real gap — screen readers see the same ambiguity Maestro does. Worth fixing
-in the app; `.maestro/smoke.yaml` documents the point-tap workaround in place
+**A duplicated accessibility node forced a fragile selector. Fixed.** The
+tutorial header's "Salta" (skip) button left *two* matchable nodes carrying
+the text "Salta": the correctly-labelled `Pressable`
+(`accessibilityLabel="Salta il tutorial"`, `clickable=true`) and the inner
+`Text` (`clickable=false`) that Maestro's plain-text selector happened to
+match.
+
+The cause is not a missing `accessible` prop, as first supposed —
+`Pressable` already defaults `accessible` to true
+(`react-native/Libraries/Components/Pressable/Pressable.js`, `accessible:
+accessible !== false`). Setting it changes nothing. What that default does
+*not* do is remove the children from the accessibility tree, so the visible
+label survives as a second node. `tests/native/a11yCollapse.test.tsx` pins
+both halves of this: the unhidden child is reachable, and hiding it leaves
+only the button.
+
+The fix is to hide the decorative child explicitly
+(`accessibilityElementsHidden` + `importantForAccessibility="no-hide-descendants"`),
+which is what the codebase already does for other decorative children. The
+same shape appeared in both card pickers, where a labelled wrapper contained
+a `CardView` that announced the same card again — `CardView` now takes a
+`decorative` prop for that case.
+
+Separately, and still unexplained: tapping that button by *either* selector
+landed on the right element by every diagnostic available (`uiautomator dump`
+showed correct bounds and `clickable: true`) yet never fired the RN
+`onPress`; only a raw coordinate tap did. That is a Maestro/RN interaction,
+not an accessibility defect, and `.maestro/smoke.yaml` keeps the point-tap workaround in place
 of it.
 
 **Reanimated's continuous animations can make Maestro wait forever on a

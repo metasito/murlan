@@ -271,13 +271,10 @@ function CardExchangeOverlay({
                       picked && exStyles.pickCardLifted,
                     ]}
                     accessibilityRole="radio"
-                    // The CardView inside is non-interactive, so its own label
-                    // is not exposed; collapse to one node and name it here.
-                    accessible
                     accessibilityLabel={cardSpokenName(card, t)}
                     accessibilityState={{ selected: picked }}
                   >
-                    <CardView card={card} selected={picked} noLift />
+                    <CardView card={card} selected={picked} noLift decorative />
                   </Pressable>
                 );
               })}

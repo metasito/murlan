@@ -492,7 +492,15 @@ export default function TutorialScreen() {
   const header = (
     <View style={styles.header}>
       <Pressable onPress={goBack} style={styles.headerBtn} hitSlop={Spacing.sm} accessibilityRole="button" accessibilityLabel={t("tutorial.backA11yLabel")}>
-        <Ionicons name="chevron-back" size={22} color={Colors.gold} />
+        {/* The glyph is the button's visual content, not a second control:
+            left exposed it focuses separately from the button naming it. */}
+        <Ionicons
+          name="chevron-back"
+          size={22}
+          color={Colors.gold}
+          accessibilityElementsHidden
+          importantForAccessibility="no-hide-descendants"
+        />
       </Pressable>
       <View style={styles.progressWrap}>
         <View style={styles.progressTrack}>
@@ -503,7 +511,13 @@ export default function TutorialScreen() {
         </Text>
       </View>
       <Pressable onPress={handleSkip} style={styles.headerBtn} hitSlop={Spacing.sm} accessibilityRole="button" accessibilityLabel={t("tutorial.skipA11yLabel")}>
-        <Text style={styles.skipText}>{t("tutorial.skip")}</Text>
+        <Text
+          style={styles.skipText}
+          accessibilityElementsHidden
+          importantForAccessibility="no-hide-descendants"
+        >
+          {t("tutorial.skip")}
+        </Text>
       </Pressable>
     </View>
   );
