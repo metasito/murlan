@@ -9,7 +9,7 @@ import {
   ActivityIndicator,
 } from "react-native";
 import { router, useFocusEffect } from "expo-router";
-import * as Haptics from "expo-haptics";
+import { hapticMedium, hapticSuccess } from "@/lib/haptics";
 import { Ionicons } from "@expo/vector-icons";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useSocket } from "@/context/SocketContext";
@@ -188,7 +188,7 @@ export default function FriendsScreen() {
     try {
       const res = await apiRequest("POST", "/api/friends/add", { username: searchResult.username });
       const data = await res.json();
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      hapticSuccess();
       Alert.alert(t("friends.requestSentTitle"), t("friends.requestSentBody", { username: data.username }));
       setSearchQuery("");
       setSearchResult(null);
@@ -222,7 +222,7 @@ export default function FriendsScreen() {
   );
 
   function handleJoinGameInvite(roomCode: string) {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    hapticMedium();
     dismissGameInvite(roomCode);
     joinRoom(roomCode);
   }

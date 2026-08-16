@@ -16,7 +16,7 @@ import Animated, {
   withDelay,
   cancelAnimation,
 } from "react-native-reanimated";
-import * as Haptics from "expo-haptics";
+import { hapticMedium } from "@/lib/haptics";
 import { Ionicons } from "@expo/vector-icons";
 import type { ExchangePhase, Card } from "@/lib/gameEngine";
 import { cardStrength, getValidGivebackCards } from "@/lib/gameEngine";
@@ -93,7 +93,7 @@ function SelectableCard({
   }
 
   function handlePress() {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    hapticMedium();
     onPress();
   }
 

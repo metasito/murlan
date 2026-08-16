@@ -12,7 +12,7 @@ import {
 } from "react-native";
 import { router } from "expo-router";
 import Animated, { FadeIn } from "react-native-reanimated";
-import * as Haptics from "expo-haptics";
+import { hapticMedium, hapticSelection, hapticSuccess } from "@/lib/haptics";
 import * as Clipboard from "expo-clipboard";
 import { Ionicons } from "@expo/vector-icons";
 import { useQuery } from "@tanstack/react-query";
@@ -59,7 +59,7 @@ function BotFillControls({
           value={fillWithBots}
           onValueChange={(value) => {
             onToggleFillWithBots(value);
-            Haptics.selectionAsync();
+            hapticSelection();
           }}
           trackColor={{ false: Colors.bgElevated, true: Colors.gold }}
           thumbColor={fillWithBots ? Colors.white : Colors.textMuted}
@@ -79,7 +79,7 @@ function BotFillControls({
                 key={level}
                 onPress={() => {
                   onChangeBotDifficulty(level);
-                  Haptics.selectionAsync();
+                  hapticSelection();
                 }}
                 accessibilityRole="button"
                 accessibilityLabel={t("room.botDifficultyOptionA11yLabel", { level: levelLabel })}
@@ -129,7 +129,7 @@ function MatchLengthControls({
               key={length}
               onPress={() => {
                 onChange(length);
-                Haptics.selectionAsync();
+                hapticSelection();
               }}
               style={[formatStyles.option, selected && formatStyles.optionActive]}
               accessibilityRole="radio"
@@ -361,7 +361,7 @@ export default function RoomScreen() {
 
   async function handleCopyCode() {
     await Clipboard.setStringAsync(room!.code);
-    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    hapticSuccess();
   }
 
   async function handleShare() {
@@ -392,7 +392,7 @@ export default function RoomScreen() {
 
   function handleStart() {
     if (!canStart) return;
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    hapticMedium();
     startGame({ fillWithBots, botDifficulty, matchLength });
   }
 

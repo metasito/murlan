@@ -12,7 +12,7 @@ import {
 import { router, useLocalSearchParams } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { LinearGradient } from "expo-linear-gradient";
-import * as Haptics from "expo-haptics";
+import { hapticSelection, hapticSuccess } from "@/lib/haptics";
 import { Ionicons } from "@expo/vector-icons";
 import { useGame, PlayerSetupConfig } from "@/context/GameContext";
 import { useAuth } from "@/context/AuthContext";
@@ -47,7 +47,7 @@ function PlayerRow({ index, config, onChange, isHuman, lobbyMode }: PlayerRowPro
     const current = config.difficulty ?? "medium";
     const next = levels[(levels.indexOf(current) + 1) % levels.length];
     onChange({ ...config, difficulty: next });
-    Haptics.selectionAsync();
+    hapticSelection();
   };
 
   const teamLabel = config.team ? t("lobby.team", { team: config.team }) : null;
@@ -169,7 +169,7 @@ export default function LobbyScreen() {
     const newMode = count === 4 && gameMode === "teams" ? "teams" : "free_for_all";
     setGameMode(newMode);
     setPlayers(buildDefaultPlayers(count, newMode));
-    Haptics.selectionAsync();
+    hapticSelection();
   };
 
   const handleModeChange = (gm: GameMode) => {
@@ -180,7 +180,7 @@ export default function LobbyScreen() {
         team: getTeam(i, playerCount, gm),
       }))
     );
-    Haptics.selectionAsync();
+    hapticSelection();
   };
 
   const handlePlayerChange = (index: number, config: PlayerSetupConfig) => {
@@ -192,7 +192,7 @@ export default function LobbyScreen() {
   };
 
   const handleStart = () => {
-    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    hapticSuccess();
     setupGame(players, gameMode, matchLength);
     router.replace("/game");
   };
@@ -260,7 +260,7 @@ export default function LobbyScreen() {
             return (
               <Pressable
                 key={length}
-                onPress={() => { setMatchLength(length); Haptics.selectionAsync(); }}
+                onPress={() => { setMatchLength(length); hapticSelection(); }}
                 style={[styles.formatBtn, selected && styles.countBtnActive]}
                 accessibilityRole="radio"
                 accessibilityLabel={t("lobby.formatA11yLabel", { format: title, detail })}

@@ -21,7 +21,7 @@ import Animated, {
   Easing,
 } from "react-native-reanimated";
 import { LinearGradient } from "expo-linear-gradient";
-import * as Haptics from "expo-haptics";
+import { hapticLight } from "@/lib/haptics";
 import { Ionicons, Feather } from "@expo/vector-icons";
 import { useQuery } from "@tanstack/react-query";
 import { useAuth } from "@/context/AuthContext";
@@ -74,7 +74,7 @@ function MenuButton({
       withTiming(0.96, { duration: 80 }),
       withTiming(1, { duration: 120 })
     );
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    hapticLight();
     onPress();
   };
 
@@ -207,7 +207,7 @@ function FriendsButton({ compact }: { compact?: boolean }) {
   const badgeCount = requests.length;
 
   function handlePress() {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    hapticLight();
     if (user) {
       router.push("/(online)/friends");
     } else {

@@ -21,7 +21,7 @@ import Animated, {
   Easing,
 } from "react-native-reanimated";
 import { LinearGradient } from "expo-linear-gradient";
-import * as Haptics from "expo-haptics";
+import { hapticLight, hapticMedium, hapticSelection, hapticSuccess } from "@/lib/haptics";
 import { Ionicons } from "@expo/vector-icons";
 import { useGame } from "@/context/GameContext";
 import { CardView } from "@/components/CardView";
@@ -141,7 +141,7 @@ function WinnerCelebration({
       -1,
       false
     );
-    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    hapticSuccess();
     // eslint-disable-next-line react-hooks/exhaustive-deps -- one-shot mount animation; stable shared values
   }, []);
   const containerAnim = useAnimatedStyle(() => ({
@@ -263,7 +263,7 @@ function CardExchangeOverlay({
                     key={card.id}
                     onPress={() => {
                       setSelectedId(card.id);
-                      Haptics.selectionAsync();
+                      hapticSelection();
                     }}
                     style={[
                       exStyles.pickCardWrap,
@@ -284,7 +284,7 @@ function CardExchangeOverlay({
             <Pressable
               onPress={() => {
                 if (selectedId) {
-                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+                  hapticMedium();
                   chooseExchangeCard(selectedId);
                 }
               }}
@@ -409,17 +409,17 @@ export default function ResultScreen() {
   const rightPad = Platform.OS === "web" ? 0 : insets.right;
 
   const handleNextHand = () => {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    hapticMedium();
     startNextHand();
     router.replace("/game");
   };
   const handleNewMatch = () => {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    hapticMedium();
     startNewMatch();
     router.replace("/game");
   };
   const handleHome = () => {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    hapticLight();
     resetGame();
     router.replace("/");
   };

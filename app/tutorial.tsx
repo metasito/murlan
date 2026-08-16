@@ -4,7 +4,7 @@ import { router } from "expo-router";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import Animated, { FadeIn } from "react-native-reanimated";
 import { Ionicons } from "@expo/vector-icons";
-import * as Haptics from "expo-haptics";
+import { hapticError, hapticLight, hapticSelection, hapticSuccess } from "@/lib/haptics";
 import { Colors, Spacing, Radius, FontSize, Type, Motion } from "@/lib/theme";
 import { usePrefersReducedMotion } from "@/lib/accessibility";
 import { MenuLayout } from "@/components/MenuLayout";
@@ -423,14 +423,14 @@ export default function TutorialScreen() {
   }
 
   async function handleSkip() {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    hapticLight();
     await finish();
     router.replace("/");
   }
 
   function goBack() {
     if (stepIndex > 0) {
-      Haptics.selectionAsync();
+      hapticSelection();
       setStepIndex((i) => i - 1);
     } else {
       router.back();
@@ -439,12 +439,12 @@ export default function TutorialScreen() {
 
   async function goNext() {
     if (isLast) {
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      hapticSuccess();
       await finish();
       router.replace({ pathname: "/lobby", params: { mode: "ai" } });
       return;
     }
-    Haptics.selectionAsync();
+    hapticSelection();
     setStepIndex((i) => i + 1);
   }
 
@@ -465,10 +465,10 @@ export default function TutorialScreen() {
     const result = evaluatePlay(selected, b, t);
     setFeedback({ ok: result.ok, text: result.message });
     if (result.ok) {
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      hapticSuccess();
       setBeatDone(true);
     } else {
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+      hapticError();
     }
   }
 
@@ -482,10 +482,10 @@ export default function TutorialScreen() {
     const result = evaluateExchange(selected, b, t);
     setFeedback({ ok: result.ok, text: result.message });
     if (result.ok) {
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      hapticSuccess();
       setBeatDone(true);
     } else {
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+      hapticError();
     }
   }
 

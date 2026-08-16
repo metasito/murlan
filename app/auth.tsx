@@ -10,7 +10,7 @@ import {
 } from "react-native";
 import { router } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
-import * as Haptics from "expo-haptics";
+import { hapticLight } from "@/lib/haptics";
 import { useAuth } from "@/context/AuthContext";
 import { Colors, Spacing, FontSize, Type } from "@/lib/theme";
 import { MenuLayout } from "@/components/MenuLayout";
@@ -37,7 +37,7 @@ export default function AuthScreen() {
       setError(t("auth.missingFields"));
       return;
     }
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    hapticLight();
     setLoading(true);
     try {
       if (tab === "login") {
