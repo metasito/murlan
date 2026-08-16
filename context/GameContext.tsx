@@ -20,6 +20,7 @@ import {
   processPass,
   aiChoosePlay,
   buildCombination,
+  sortHand,
   canPlay,
   deepCloneState,
 } from "@/lib/gameEngine";
@@ -265,13 +266,20 @@ export function GameProvider({ children }: { children: ReactNode }) {
       const newState = processPlay(gameState, play);
       setLastRoundWinner(null);
       setGameState(newState);
+    } else if (!isNewRound) {
+      const newState = processPass(gameState);
+      if (newState.roundWinner !== null) {
+        setLastRoundWinner(newState.roundWinner);
+      }
+      setGameState(newState);
     } else {
-      if (!isNewRound) {
-        const newState = processPass(gameState);
-        if (newState.roundWinner !== null) {
-          setLastRoundWinner(newState.roundWinner);
-        }
-        setGameState(newState);
+      // Leading a round with no play returned: the leader may not pass, so
+      // doing nothing here freezes the table. Lead the lowest card instead.
+      const [lowest] = sortHand(currentPlayer.hand);
+      const combo = lowest && buildCombination([lowest]);
+      if (combo) {
+        setLastRoundWinner(null);
+        setGameState(processPlay(gameState, combo));
       }
     }
     setSelectedCards([]);

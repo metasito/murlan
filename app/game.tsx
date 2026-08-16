@@ -9,7 +9,7 @@ import React, { useEffect, useRef } from "react";
 import { Alert } from "react-native";
 import { router } from "expo-router";
 import { useGame } from "@/context/GameContext";
-import { cardStrength } from "@/lib/gameEngine";
+import { pickGivebackCard } from "@/lib/gameEngine";
 import { GameTable } from "@/components/GameTable";
 import { useTranslation } from "@/lib/i18n";
 
@@ -81,9 +81,7 @@ export default function GameScreen() {
     if (!gameState?.exchangePhase?.active) return;
     const winner = gameState.players[gameState.exchangePhase.winnerIdx];
     if (winner?.type !== "ai") return;
-    const [weakest] = winner.hand
-      .filter((c) => EXCHANGE_VALID_RANKS.has(c.rank))
-      .sort((a, b) => cardStrength(a) - cardStrength(b));
+    const weakest = pickGivebackCard(winner.hand);
     if (!weakest) return;
     const t = setTimeout(() => chooseExchangeRef.current(weakest.id), AI_EXCHANGE_DELAY);
     return () => clearTimeout(t);

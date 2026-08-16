@@ -934,6 +934,12 @@ export function processExchangeChoice(state: GameState, cardId: string): GameSta
  * exchange — every choice was rejected behind an undismissable overlay — so in
  * that case the winner's single lowest card is the valid giveback.
  */
+/** The card an AI gives back: the weakest legal choice, or the lowest card in
+ *  hand when nothing is in the 3-10 range. Never undefined for a non-empty hand. */
+export function pickGivebackCard(hand: Card[]): Card | undefined {
+  return sortHand(getValidGivebackCards(hand))[0];
+}
+
 export function getValidGivebackCards(hand: Card[]): Card[] {
   const inRange = hand.filter((c) => EXCHANGE_VALID_RANKS.includes(c.rank));
   if (inRange.length > 0) return inRange;

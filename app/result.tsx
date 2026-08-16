@@ -25,7 +25,7 @@ import * as Haptics from "expo-haptics";
 import { Ionicons } from "@expo/vector-icons";
 import { useGame, calcRoundPoints } from "@/context/GameContext";
 import { CardView } from "@/components/CardView";
-import { sortHand } from "@/lib/gameEngine";
+import { sortHand, getValidGivebackCards, pickGivebackCard } from "@/lib/gameEngine";
 import { Colors } from '@/lib/theme';
 import { useTranslation, type TranslationKey } from "@/lib/i18n";
 
@@ -189,11 +189,7 @@ function CardExchangeOverlay({
   const autoRef = useRef(false);
   const winner = gameState.players[ep.winnerIdx];
   const loser = gameState.players[ep.loserIdx];
-  const exchangeCards = sortHand(
-    winner.hand.filter((c) =>
-      ["3", "4", "5", "6", "7", "8", "9", "10"].includes(c.rank)
-    )
-  );
+  const exchangeCards = sortHand(getValidGivebackCards(winner.hand));
 
   useEffect(() => {
     if (ep.bothJokersException) {
@@ -203,7 +199,8 @@ function CardExchangeOverlay({
     if (winner.type === "ai" && !autoRef.current) {
       autoRef.current = true;
       const t = setTimeout(() => {
-        if (exchangeCards.length > 0) chooseExchangeCard(exchangeCards[0].id);
+        const give = pickGivebackCard(winner.hand);
+        if (give) chooseExchangeCard(give.id);
       }, 900);
       return () => clearTimeout(t);
     }
