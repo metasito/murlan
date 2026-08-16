@@ -625,6 +625,8 @@ export function GameTable({
   const giocaGlowStyle = useAnimatedStyle(() => {
     const v = giocaGlowVal.value;
     if (Platform.OS === "web") {
+      // Per-frame interpolated alpha (v * 0.65) — not one of the fixed
+      // gold-alpha steps, so left as a computed literal, not a token.
       return {
         boxShadow:
           v < 0.01
@@ -694,6 +696,7 @@ export function GameTable({
 
   return (
     <Animated.View style={[styles.root, shakeStyle]}>
+      {/* #072A18: gradient-only midpoint, no exact Colors match — left inline. */}
       <LinearGradient
         colors={[Colors.bg, "#072A18", Colors.bg]}
         style={StyleSheet.absoluteFill}
@@ -751,6 +754,8 @@ export function GameTable({
           },
         ]}
       >
+        {/* #0F5A35/#0D4A2E/#061E12: felt-gradient-only stops between the
+            named felt tokens, no exact Colors match — left inline. */}
         <LinearGradient
           colors={["#0F5A35", "#0D4A2E", Colors.felt, Colors.feltDark, "#061E12"]}
           locations={[0, 0.25, 0.5, 0.75, 1]}
@@ -1022,6 +1027,9 @@ const styles = StyleSheet.create({
     zIndex: 10,
   },
   topBarRight: { flexDirection: "row", alignItems: "center", gap: Spacing.xs },
+  // rgba(0,0,0,0.35): plain black wash reused below on cardCountBadge and
+  // startCardBanner too — not gold, no Colors black-overlay entry to match
+  // (Colors.overlay is a different rgb/alpha), left inline throughout.
   quitBtn: {
     width: 32, height: 32, borderRadius: 16,
     backgroundColor: "rgba(0,0,0,0.35)",
@@ -1045,7 +1053,7 @@ const styles = StyleSheet.create({
     alignItems: "center", gap: 6,
     paddingHorizontal: Spacing.md, paddingVertical: 10, borderRadius: 14,
     backgroundColor: "rgba(0,0,0,0.35)",
-    borderWidth: 1, borderColor: "rgba(201,168,76,0.25)",
+    borderWidth: 1, borderColor: Colors.goldSoft,
   },
   startCardGlyph: { fontSize: 28, color: Colors.text },
   startCardText: {
@@ -1084,8 +1092,10 @@ const styles = StyleSheet.create({
     gap: 2, borderRadius: Radius.md, overflow: "hidden",
   },
   playBtnGradDim: {
+    // rgba(40,30,5,0.7): dark gold-brown wash, not a (201,168,76) gold alpha
+    // — no token, left inline.
     backgroundColor: "rgba(40,30,5,0.7)",
-    borderWidth: 2, borderColor: "rgba(201,168,76,0.2)", borderRadius: Radius.md,
+    borderWidth: 2, borderColor: Colors.goldSoft, borderRadius: Radius.md,
   },
   playBtnLabel: {
     fontFamily: "Rajdhani_700Bold", fontSize: FontSize.sm,

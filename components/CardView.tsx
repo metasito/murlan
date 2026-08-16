@@ -30,19 +30,20 @@ const SUIT_COLORS: Record<Suit, string> = {
   clubs: Colors.club,
 };
 
-// ponytail: theme.ts has no card-dimension or "ink" tokens yet — centralised
-// here and flagged in this task's `deferred` output rather than edited into
-// theme.ts by an agent scoped to CardView.tsx only.
+// ponytail: theme.ts has no card-dimension token yet — centralised here and
+// flagged in this task's `deferred` output rather than edited into theme.ts
+// by an agent scoped to CardView.tsx only.
 const CARD_W = 58;
 const CARD_H = 84;
 const CARD_W_SMALL = 40;
 const CARD_H_SMALL = 58;
 const FACE_FIGURE_SIZE = 32;
 // Neutral engraving ink for the black/white joker (has no suit colour of its own).
+// No Colors entry matches this dark slate — left inline.
 const INK = "#26323C";
-// Selected-card ring colour needs a fixed low-opacity gold theme.ts doesn't expose
-// (goldMuted is 0.15, this wants ~0.45); same deferral as above.
-const CARD_FACE_BORDER = "rgba(201,168,76,0.45)";
+// Face-card border ring. 0.45 is closest to the new Colors.goldStrong (0.5,
+// a 0.05 shift) — was hand-picked before that step existed.
+const CARD_FACE_BORDER = Colors.goldStrong;
 
 interface CardViewProps {
   card: Card;
@@ -414,6 +415,7 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.cardBg,
     borderRadius: 8,
     borderWidth: 1,
+    // Plain black hairline, no Colors black-alpha entry to match — left inline.
     borderColor: "rgba(0,0,0,0.1)",
     overflow: "hidden",
     ...Shadow.dark,

@@ -18,7 +18,7 @@ import Animated, {
 import { Ionicons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
 import { CardView } from "@/components/CardView";
-import { Colors, Motion, Shadow } from "@/lib/theme";
+import { Colors, FontSize, Motion, Radius, Shadow, Spacing } from "@/lib/theme";
 import { usePrefersReducedMotion } from "@/lib/accessibility";
 import { useTranslation, type TranslationKey } from "@/lib/i18n";
 import type { Card, Combination, Player, StartReason } from "@/lib/gameEngine";
@@ -69,6 +69,9 @@ const FLY_LANDING_ROTS: Record<FlyDirection, number> = {
 
 // ─── Table vignette ───────────────────────────────────────────────────────────
 
+// The four gradient stops below are a plain black wash (not gold), so the
+// gold-alpha scale doesn't apply, and Colors has no black-overlay entries to
+// match against (Colors.overlay is a different rgb and alpha) — left inline.
 export function TableVignette() {
   return (
     <View style={StyleSheet.absoluteFill} pointerEvents="none">
@@ -174,8 +177,8 @@ export function AvatarCircle({
   useEffect(() => {
     if (isActive) {
       pulse.value = withSequence(
-        withTiming(1.15, { duration: 300 }),
-        withSpring(1, { damping: 10, stiffness: 200 })
+        withTiming(1.15, { duration: Motion.duration.moderate }),
+        withSpring(1, Motion.spring.settle)
       );
     }
   }, [isActive]);
@@ -197,7 +200,7 @@ export function AvatarCircle({
         ]}
       >
         <LinearGradient
-          colors={["#0D4A2E", "#0B3B25"]}
+          colors={["#0D4A2E", Colors.felt]} // #0D4A2E: gradient-only stop between felt and feltLight, no exact token
           style={[
             sharedStyles.avatarInner,
             { width: size, height: size, borderRadius: size / 2 },
@@ -682,12 +685,14 @@ export function StartReasonBanner({
       }}
     >
       <View style={{
+        // rgba(3,16,8,0.90): near-Colors.bg wash at a one-off alpha — no
+        // Colors entry composes bg with a custom alpha, left inline.
         backgroundColor: "rgba(3,16,8,0.90)",
         borderColor: Colors.gold,
         borderWidth: 1,
-        borderRadius: 20,
+        borderRadius: Radius.lg,
         paddingHorizontal: 18,
-        paddingVertical: 8,
+        paddingVertical: Spacing.sm,
         alignItems: "center",
         maxWidth: 420,
         gap: 2,
@@ -696,7 +701,7 @@ export function StartReasonBanner({
           {mainText}
         </Text>
         {subText ? (
-          <Text style={{ fontFamily: "Inter_400Regular", fontSize: 11, color: Colors.textSecondary, textAlign: "center" }}>
+          <Text style={{ fontFamily: "Inter_400Regular", fontSize: FontSize.xs, color: Colors.textSecondary, textAlign: "center" }}>
             {subText}
           </Text>
         ) : null}
@@ -710,6 +715,8 @@ export function StartReasonBanner({
 export const portraitOverlayStyles = StyleSheet.create({
   overlay: {
     ...StyleSheet.absoluteFillObject,
+    // rgba(3,16,8,0.97): near-Colors.bg wash at a one-off alpha, same
+    // rationale as StartReasonBanner above — left inline.
     backgroundColor: "rgba(3,16,8,0.97)",
     alignItems: "center",
     justifyContent: "center",
@@ -717,7 +724,7 @@ export const portraitOverlayStyles = StyleSheet.create({
   },
   card: {
     alignItems: "center",
-    gap: 16,
+    gap: Spacing.md,
     paddingHorizontal: 40,
   },
   title: {
@@ -744,7 +751,7 @@ export const sharedTableStyles = StyleSheet.create({
     borderRadius: 22,
     overflow: "hidden",
     borderWidth: 3.5,
-    borderColor: "rgba(201,168,76,0.5)",
+    borderColor: Colors.goldStrong,
   },
   tableOverlay: {
     position: "absolute",
@@ -758,21 +765,22 @@ export const sharedTableStyles = StyleSheet.create({
     bottom: 6,
     borderRadius: 18,
     borderWidth: 1.5,
-    borderColor: "rgba(201,168,76,0.2)",
+    borderColor: Colors.goldSoft,
   },
   tableContent: { flex: 1, flexDirection: "column" },
   topSection: {
     alignItems: "center",
     justifyContent: "center",
     borderBottomWidth: 1,
-    borderBottomColor: "rgba(201,168,76,0.08)",
+    // Nearly-invisible by design (0.08) — nearest step is goldGhost (0.06).
+    borderBottomColor: Colors.goldGhost,
   },
   midSection: { flex: 1, flexDirection: "row", alignItems: "center" },
   sideSection: {
     width: SIDE_SECTION_W,
     alignItems: "center",
     justifyContent: "center",
-    paddingHorizontal: 8,
+    paddingHorizontal: Spacing.sm,
   },
   centerSection: { flex: 1, alignItems: "center", justifyContent: "center" },
   handSection: {
@@ -781,8 +789,11 @@ export const sharedTableStyles = StyleSheet.create({
     justifyContent: "center",
   },
   handSectionActive: {
-    backgroundColor: "rgba(201,168,76,0.05)",
+    backgroundColor: Colors.goldGhost,
     borderTopWidth: 1,
+    // True transparent (alpha 0), not a wash step — useTurnPulse animates this
+    // border in from here, so it must start fully invisible, not "barely
+    // visible" (goldGhost would show a static hairline while idle).
     borderTopColor: "rgba(201,168,76,0.0)",
   },
 });
@@ -819,6 +830,9 @@ export function useTurnPulse(active: boolean) {
     };
   }, [active, reduceMotion]);
 
+  // The `rgba(201,168,76,${...})` strings below are per-frame interpolated
+  // alphas (borderAlpha ranges continuously 0→0.3), not one of the five fixed
+  // gold-alpha steps — a static token can't represent an animated value.
   return useAnimatedStyle(() => {
     const v = glowV.value;
     const shadowRadius = v < 0.01 ? 0 : interpolate(v, [0.35, 0.85], [8, 22], Extrapolation.CLAMP);
@@ -881,6 +895,9 @@ export const sharedStyles = StyleSheet.create({
   oppName: {
     fontFamily: "Rajdhani_600SemiBold",
     fontSize: 10,
+    // Between Colors.textMuted (0.58) and Colors.textSecondary (0.75) —
+    // neither is an exact match, and only the gold scale is approved for
+    // fuzzy snapping, so left inline rather than shift body-text contrast.
     color: "rgba(240,234,214,0.65)",
     maxWidth: 70,
     textAlign: "center",
@@ -888,6 +905,8 @@ export const sharedStyles = StyleSheet.create({
 
   avatarOuter: {
     borderWidth: 2,
+    // No white-alpha token at this value (Colors.cardBorder is 0.08, a
+    // different role and value) — left inline.
     borderColor: "rgba(255,255,255,0.12)",
     alignItems: "center",
     justifyContent: "center",
@@ -901,7 +920,7 @@ export const sharedStyles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     borderWidth: 1,
-    borderColor: "rgba(201,168,76,0.18)",
+    borderColor: Colors.goldSoft,
   },
   avatarInitials: {
     fontFamily: "Rajdhani_700Bold",
@@ -912,6 +931,8 @@ export const sharedStyles = StyleSheet.create({
     position: "absolute",
     bottom: -3,
     right: -3,
+    // Near-black but not Colors.bg (off by 1 in the red channel) — no exact
+    // token, left inline.
     backgroundColor: "rgba(4,16,8,0.9)",
     borderRadius: 9,
     minWidth: 18,
@@ -920,7 +941,7 @@ export const sharedStyles = StyleSheet.create({
     justifyContent: "center",
     paddingHorizontal: 3,
     borderWidth: 1,
-    borderColor: "rgba(201,168,76,0.55)",
+    borderColor: Colors.goldStrong,
   },
   countBubbleFinished: {
     backgroundColor: Colors.goldMuted,
@@ -953,7 +974,7 @@ export const sharedStyles = StyleSheet.create({
   },
   winnerText: {
     fontFamily: "Rajdhani_600SemiBold",
-    fontSize: 11,
+    fontSize: FontSize.xs,
     color: Colors.gold,
   },
   pileStack: {
@@ -969,13 +990,16 @@ export const sharedStyles = StyleSheet.create({
   pileCurrentLayer: { opacity: 1 },
   comboLabel: { marginTop: 10 },
   comboChip: {
-    backgroundColor: "rgba(201,168,76,0.28)",
-    borderRadius: 8,
+    backgroundColor: Colors.goldBorder,
+    borderRadius: Radius.sm,
     paddingHorizontal: 10,
     paddingVertical: 3,
     borderWidth: 1,
-    borderColor: "rgba(201,168,76,0.45)",
+    borderColor: Colors.goldStrong,
   },
+  // Custom "power play" red (bomb/royal straight) — deliberately distinct
+  // from Colors.red/redMuted (a different rgb entirely), same rationale as
+  // GameTable.tsx's PASS_* constants. No token, left inline.
   comboChipPower: {
     backgroundColor: "rgba(255,80,80,0.22)",
     borderColor: "rgba(255,80,80,0.55)",
@@ -1104,7 +1128,7 @@ const billboardStyles = StyleSheet.create({
   },
   comboLabel: {
     fontFamily: "Rajdhani_700Bold",
-    fontSize: 13,
+    fontSize: FontSize.sm,
     color: Colors.gold,
     letterSpacing: 0.5,
     textAlign: "center",

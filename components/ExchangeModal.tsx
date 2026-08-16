@@ -21,7 +21,7 @@ import { Ionicons } from "@expo/vector-icons";
 import type { ExchangePhase, Card } from "@/lib/gameEngine";
 import { cardStrength, getValidGivebackCards } from "@/lib/gameEngine";
 import { CardView } from "@/components/CardView";
-import { Colors, Shadow } from '@/lib/theme';
+import { Colors, FontSize, Radius, Shadow, Spacing } from '@/lib/theme';
 import { usePrefersReducedMotion } from "@/lib/accessibility";
 import { useTranslation } from "@/lib/i18n";
 
@@ -166,7 +166,7 @@ export function ExchangeModal({
             </View>
           </View>
           <View style={styles.cardSlotEmpty}>
-            <Ionicons name="help-circle-outline" size={28} color="rgba(201,168,76,0.3)" />
+            <Ionicons name="help-circle-outline" size={28} color={Colors.goldBorder} />
           </View>
         </View>
 
@@ -210,10 +210,12 @@ const styles = StyleSheet.create({
     zIndex: 110,
   },
   card: {
+    // #0B2A1A: modal-only surface, no exact Colors match (bgCard/bgSurface
+    // are both different hex) — left inline.
     backgroundColor: "#0B2A1A",
-    borderRadius: 20,
+    borderRadius: Radius.lg,
     borderWidth: 2,
-    borderColor: "rgba(201,168,76,0.45)",
+    borderColor: Colors.goldStrong,
     padding: 20,
     alignItems: "center",
     gap: 10,
@@ -224,7 +226,7 @@ const styles = StyleSheet.create({
   headerRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 8,
+    gap: Spacing.sm,
   },
   title: {
     fontFamily: "Rajdhani_700Bold",
@@ -240,11 +242,13 @@ const styles = StyleSheet.create({
     alignItems: "center",
     width: "100%",
     gap: 12,
+    // rgba(255,255,255,0.03): white wash, no matching token (only the gold
+    // scale is approved for fuzzy snapping) — left inline.
     backgroundColor: "rgba(255,255,255,0.03)",
-    borderRadius: 12,
+    borderRadius: Radius.md,
     padding: 10,
     borderWidth: 1,
-    borderColor: "rgba(201,168,76,0.15)",
+    borderColor: Colors.goldMuted,
   },
   playerInfo: {
     flex: 1,
@@ -255,17 +259,17 @@ const styles = StyleSheet.create({
   },
   playerName: {
     fontFamily: "Rajdhani_600SemiBold",
-    fontSize: 13,
+    fontSize: FontSize.sm,
     color: Colors.text,
     flex: 1,
   },
   receivesTag: {
-    backgroundColor: "rgba(201,168,76,0.15)",
+    backgroundColor: Colors.goldMuted,
     borderRadius: 4,
     paddingHorizontal: 5,
     paddingVertical: 2,
     borderWidth: 1,
-    borderColor: "rgba(201,168,76,0.3)",
+    borderColor: Colors.goldBorder,
   },
   receivesTagText: {
     fontFamily: "Inter_500Medium",
@@ -274,6 +278,7 @@ const styles = StyleSheet.create({
     letterSpacing: 0.5,
   },
   givesTag: {
+    // White wash/border, no matching token (see playerRow above) — left inline.
     backgroundColor: "rgba(255,255,255,0.05)",
     borderColor: "rgba(255,255,255,0.1)",
   },
@@ -289,9 +294,9 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     width: 52,
     height: 72,
-    borderRadius: 8,
+    borderRadius: Radius.sm,
     borderWidth: 1.5,
-    borderColor: "rgba(201,168,76,0.2)",
+    borderColor: Colors.goldSoft,
     borderStyle: "dashed",
   },
   arrowRow: {
@@ -299,17 +304,17 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: 6,
     width: "100%",
-    paddingHorizontal: 8,
+    paddingHorizontal: Spacing.sm,
   },
   arrowLine: {
     flex: 1,
     height: 1,
-    backgroundColor: "rgba(201,168,76,0.2)",
+    backgroundColor: Colors.goldSoft,
   },
   divider: {
     width: "100%",
     height: 1,
-    backgroundColor: "rgba(201,168,76,0.12)",
+    backgroundColor: Colors.goldMuted,
   },
   sub: {
     fontFamily: "Inter_400Regular",
@@ -324,19 +329,19 @@ const styles = StyleSheet.create({
   },
   cardRow: {
     flexDirection: "row",
-    paddingHorizontal: 4,
+    paddingHorizontal: Spacing.xs,
     gap: 10,
     alignItems: "center",
   },
   cardItem: {
     borderRadius: 10,
     borderWidth: 2,
-    borderColor: "rgba(201,168,76,0.3)",
+    borderColor: Colors.goldBorder,
     overflow: "hidden",
   },
   hint: {
     fontFamily: "Inter_400Regular",
-    fontSize: 11,
+    fontSize: FontSize.xs,
     color: Colors.textMuted,
     textAlign: "center",
   },

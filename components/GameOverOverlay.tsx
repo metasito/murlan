@@ -25,6 +25,8 @@ import { usePrefersReducedMotion } from "@/lib/accessibility";
 import { useTranslation, type TranslationKey } from "@/lib/i18n";
 
 const POSITION_MEDALS = ["trophy", "medal", "ribbon", "remove-circle"] as const;
+// Standard silver/bronze medal colors — not part of the app's gold/status
+// palette, no Colors entry to match, left inline.
 const POSITION_COLORS = [Colors.gold, "#C0C0C0", "#CD7F32", Colors.textMuted];
 const POSITION_LABEL_KEYS: TranslationKey[] = [
   "gameOverOverlay.position1",
@@ -84,7 +86,7 @@ function RankCard({
     <Animated.View style={[styles.rankCard, isWinner && styles.rankCardWinner, animStyle]}>
       {isWinner && (
         <LinearGradient
-          colors={["rgba(201,168,76,0.15)", "transparent"]}
+          colors={[Colors.goldMuted, "transparent"]}
           style={StyleSheet.absoluteFill}
         />
       )}
@@ -289,10 +291,10 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: 10,
-    backgroundColor: "rgba(201,168,76,0.06)",
+    backgroundColor: Colors.goldGhost,
     borderRadius: 14,
     borderWidth: 1,
-    borderColor: "rgba(201,168,76,0.25)",
+    borderColor: Colors.goldSoft,
     paddingVertical: Spacing.sm,
     paddingHorizontal: 12,
     position: "relative",

@@ -161,6 +161,8 @@ const styles = StyleSheet.create({
     fontFamily: "Inter_400Regular",
     fontSize: FontSize.xs - 1,
     color: Colors.textMuted,
+    // Plain black wash behind the floating username tag — no Colors
+    // black-overlay entry at this value/role — left inline.
     backgroundColor: "rgba(0,0,0,0.6)",
     borderRadius: Radius.sm / 2,
     paddingHorizontal: Spacing.xs,
