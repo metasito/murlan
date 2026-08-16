@@ -28,6 +28,7 @@ import { CardView } from "@/components/CardView";
 import { sortHand, getValidGivebackCards, pickGivebackCard } from "@/lib/gameEngine";
 import { Colors, FontSize, Spacing, Type } from '@/lib/theme';
 import { useTranslation, type TranslationKey } from "@/lib/i18n";
+import { cardSpokenName } from "@/lib/cardNames";
 
 const POSITION_COLORS = [Colors.podiumGold, Colors.podiumSilver, Colors.podiumBronze, Colors.textMuted];
 // Shares its display text with components/GameOverOverlay.tsx's identical
@@ -270,7 +271,10 @@ function CardExchangeOverlay({
                       picked && exStyles.pickCardLifted,
                     ]}
                     accessibilityRole="radio"
-                    accessibilityLabel={`${card.rank}${card.suit ? ` ${card.suit}` : ""}`}
+                    // The CardView inside is non-interactive, so its own label
+                    // is not exposed; collapse to one node and name it here.
+                    accessible
+                    accessibilityLabel={cardSpokenName(card, t)}
                     accessibilityState={{ selected: picked }}
                   >
                     <CardView card={card} selected={picked} noLift />
