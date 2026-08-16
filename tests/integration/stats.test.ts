@@ -1,9 +1,7 @@
 import { test, before, after, describe } from "node:test";
 import assert from "node:assert/strict";
 import pg from "pg";
-import type { Socket } from "socket.io-client";
-import type { Card, GameMode } from "../../lib/gameEngine.ts";
-import { getValidGivebackCards } from "../../lib/gameEngine.ts";
+import type { GameMode } from "../../lib/gameEngine.ts";
 import type { GameResult } from "../../lib/achievements.ts";
 import {
   startTestServer,
@@ -12,6 +10,12 @@ import {
   type TestServer,
 } from "../helpers/testServer.ts";
 import { connectAs, waitFor, register } from "../helpers/client.ts";
+import {
+  driveHumansToGameOver,
+  waitForRow,
+  type RoomState,
+
+} from "../helpers/gameDriver.ts";
 
 /**
  * recordGameResult is called (fire-and-forget) from the game-over path.
@@ -21,38 +25,6 @@ import { connectAs, waitFor, register } from "../helpers/client.ts";
  */
 process.env.MURLAN_AFK_TIMEOUT_MS = "300";
 process.env.MURLAN_DISCONNECT_GRACE_MS = "500";
-
-interface ExchangePhase {
-  active: boolean;
-  winnerIdx: number;
-  loserIdx: number;
-  cardFromLoser: Card;
-  bothJokersException: boolean;
-}
-
-interface SanitizedPlayer {
-  id: string;
-  name: string;
-  hand: Card[];
-  handCount: number;
-  type: string;
-}
-
-interface SanitizedState {
-  players: SanitizedPlayer[];
-  currentTurnIndex: number;
-  lastPlayedCombination: unknown | null;
-  gameOver: boolean;
-  firstPlayMade: boolean;
-  startCard?: Card;
-  exchangePhase?: ExchangePhase;
-  viewerSeatIndex: number;
-}
-
-interface RoomState {
-  roomId: string;
-  code: string;
-}
 
 describe("stats persistence (Task 8)", { skip: hasDatabase() ? false : skipMessage() }, () => {
   let server: TestServer;
@@ -72,109 +44,6 @@ describe("stats persistence (Task 8)", { skip: hasDatabase() ? false : skipMessa
     await server.stop();
   });
 
-  /**
-   * Drives every given human client's own turns to completion: forced-
-   * minimum grouped plays on a new round, pass otherwise, and an immediate
-   * (valid) giveback the instant a seat is the exchange winner — the same
-   * strategy tests/integration/gameplay.test.ts's driveHandToExchangeOrOver
-   * uses, extended to run past any exchange phase all the way to
-   * "game:over" instead of stopping at the first one.
-   *
-   * Real clients only — a bot-filled seat is intentionally left to the
-   * server's own turn arbiter (armTurn/runBotTurn), which paces bot moves
-   * roughly 1.2s apart. Driving the *human* seats immediately, rather than
-   * also waiting on AFK timers for them, keeps the wall-clock cost of this
-   * test down to "however many bot turns the table needs", not "every
-   * turn at the human/bot pace".
-   */
-  function driveHumansToGameOver(
-    clients: Socket[],
-    kickoff: () => void
-  ): Promise<unknown> {
-    return new Promise((resolve, reject) => {
-      let settled = false;
-      const seats = new Map<Socket, number>();
-
-      const timer = setTimeout(() => {
-        if (settled) return;
-        settled = true;
-        cleanup();
-        reject(new Error("timed out driving the table to game:over"));
-      }, 60_000);
-
-      function cleanup() {
-        clearTimeout(timer);
-        for (const c of clients) {
-          c.off("game:state", handlers.get(c)!);
-          c.off("game:over", onOver);
-        }
-      }
-
-      function onOver(payload: unknown) {
-        if (settled) return;
-        settled = true;
-        cleanup();
-        resolve(payload);
-      }
-
-      const handlers = new Map<Socket, (state: SanitizedState) => void>();
-
-      for (const client of clients) {
-        const onState = (state: SanitizedState) => {
-          if (settled || state.gameOver) return;
-          if (!seats.has(client)) seats.set(client, state.viewerSeatIndex);
-          const seat = seats.get(client)!;
-
-          if (state.exchangePhase?.active) {
-            if (state.exchangePhase.winnerIdx !== seat) return;
-            const hand = state.players[seat]?.hand ?? [];
-            const [card] = getValidGivebackCards(hand);
-            if (card) client.emit("game:exchange_give_card", { cardId: card.id });
-            return;
-          }
-
-          if (state.currentTurnIndex !== seat) return;
-          const hand = state.players[seat]?.hand ?? [];
-          if (hand.length === 0) return;
-
-          if (state.lastPlayedCombination !== null) {
-            client.emit("game:pass");
-            return;
-          }
-
-          let anchor = hand[0];
-          if (!state.firstPlayMade && state.startCard) {
-            const forced = hand.find((c) => c.id === state.startCard!.id);
-            if (forced) anchor = forced;
-          }
-          const group = hand.filter((c) => c.rank === anchor.rank).map((c) => c.id);
-          client.emit("game:play", { cardIds: group });
-        };
-        handlers.set(client, onState);
-        client.on("game:state", onState);
-        client.on("game:over", onOver);
-      }
-
-      kickoff();
-    });
-  }
-
-  /** Polls until `check` returns a truthy value or the timeout elapses — the
-   * write this suite is asserting on is deliberately fire-and-forget from
-   * the game-over path, so it can land a beat after "game:over" itself. */
-  async function waitForRow<T>(
-    check: () => Promise<T | null>,
-    ms = 5_000
-  ): Promise<T> {
-    const deadline = Date.now() + ms;
-    for (;;) {
-      const row = await check();
-      if (row) return row;
-      if (Date.now() > deadline) throw new Error("timed out waiting for a DB row to appear");
-      await new Promise((r) => setTimeout(r, 100));
-    }
-  }
-
   test("a completed game records stats and history for both humans, and nothing for the bot seat", async () => {
     const alice = await connectAs(server, "stats_alice");
     const bob = await connectAs(server, "stats_bob");
@@ -188,7 +57,7 @@ describe("stats persistence (Task 8)", { skip: hasDatabase() ? false : skipMessa
       await joined;
 
       const payload = await driveHumansToGameOver([alice.socket, bob.socket], () => {
-        alice.socket.emit("room:start", { fillWithBots: true, botDifficulty: "easy" });
+        alice.socket.emit("room:start", { fillWithBots: true, botPersonality: "luan" });
       });
       assert.ok(payload, "game:over must fire");
 

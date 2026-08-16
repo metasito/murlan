@@ -6,7 +6,7 @@ blocker documented below rather than glossed over.
 
 | Layer | Command | Size | Needs |
 |---|---|---|---|
-| Unit | `npm test` | 607 pass | nothing |
+| Unit | `npm test` | 671 pass (with `DATABASE_URL`; 641 without) | nothing |
 | Integration | `npm test` | folded into the above | `DATABASE_URL` |
 | Native renderer | `npm run test:native` | 190 (95 × ios/android) | nothing |
 | Web e2e | `npm run test:e2e` | Playwright, chromium | Docker + a built web bundle |
@@ -42,8 +42,14 @@ logic lives in `components/gameTableModel.ts` apart from the `.tsx` component.
 ## 2. Integration — same command, plus a database
 
 `tests/integration/` drives a real Socket.io server against real Postgres:
-auth and the socket handshake, gameplay integrity, stats persistence, client
-crash reports, test server cleanup.
+auth and the socket handshake, gameplay integrity, stats persistence, the
+ladder and replay writes, spectating, client crash reports, test server
+cleanup.
+
+`tests/helpers/gameDriver.ts` is the shared machinery: everything
+`handleGameOver` writes — stats, history, replays, ratings — needs the same
+"get a real table to finish" driver, so it lives once rather than once per
+suite.
 
 Without `DATABASE_URL` these suites skip and report why. They are not silently
 absent; a skipped run prints `DATABASE_URL not set`, and CI fails on that

@@ -51,11 +51,15 @@ export function connect(
 /**
  * Registers a fresh user, mints a socket ticket and connects — the
  * authenticated-client path every gameplay test needs.
+ *
+ * The session cookie comes back too: a suite that asserts on both the socket
+ * and a REST route (replays, ratings) would otherwise have to register the
+ * same person twice and end up with two accounts.
  */
 export async function connectAs(
   server: TestServer,
   username: string
-): Promise<{ socket: Socket; user: RegisteredUser }> {
+): Promise<{ socket: Socket; user: RegisteredUser; cookie: string }> {
   const { user, cookie } = await register(server, username);
   const res = await fetch(`${server.url}/api/auth/socket-ticket`, {
     method: "POST",
@@ -92,7 +96,7 @@ export async function connectAs(
       resolve();
     });
   });
-  return { socket, user };
+  return { socket, user, cookie };
 }
 
 /**
