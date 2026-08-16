@@ -11,6 +11,27 @@ Four sections:
 - **§3 Analysis** — questions already answered, kept so they are not re-asked.
 - **§4 Rejected** — with reasons, so they are not re-proposed.
 
+## How this queue is worked
+
+Standing instruction from the owner, so it is not re-asked:
+
+- **This queue is never empty and never finished.** Work it unattended, one item
+  at a time, one commit per item. When §1 runs dry, run
+  `superpowers:brainstorming` and add new features and improvements to it —
+  idling is not an outcome. Closing the last item is a prompt to find the next
+  ones, not to stop.
+- **Do not ask which item, which approach, or whether to proceed.** A choice that
+  is genuinely the owner's — an account, a device, a credential, a business call
+  — goes to §2 and the next item is taken.
+- **No workarounds.** If the correct fix is bigger, do the correct fix. When the
+  best practice is not known, look it up rather than guessing.
+- **Leave no residue.** An implemented design doc, a superseded plan, a scratch
+  script or a dead-end folder is deleted, not archived, and a doc claim that no
+  longer holds is removed the moment it is found.
+
+The full agreement, including the storage rules, is in `CLAUDE.md` §"Standing
+working agreement".
+
 ---
 
 ## 1. Work queue
