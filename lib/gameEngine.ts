@@ -645,6 +645,33 @@ export function aiChoosePlay(
 
 // ─── Game state processing ────────────────────────────────────────────────────
 
+/**
+ * Fills the remaining placements when a hand ends with players still holding
+ * cards. Every seat must end up in `rankings` — it is what the scoreboard
+ * awards points from and what the stats writer records a game from, so a seat
+ * missing from it is a player who silently played no game at all.
+ *
+ * Order among the unfinished seats is not something the sources specify (they
+ * only describe the hand ending), so the closest to finishing — fewest cards
+ * left, seat order as a stable tiebreak — takes the better position. In teams
+ * mode the remaining seats are partners on the same pair, so this ordering
+ * never changes the team total; it only decides which individual placement
+ * each of them records.
+ *
+ * Mutates `state` in place — callers already hold a fresh clone.
+ */
+function assignRemainingPlacements(state: GameState): void {
+  const remaining = state.players
+    .map((p, seat) => ({ p, seat }))
+    .filter(({ p }) => p.hand.length > 0 && p.finishPosition === undefined)
+    .sort((a, b) => a.p.hand.length - b.p.hand.length || a.seat - b.seat);
+
+  for (const { p } of remaining) {
+    p.finishPosition = state.rankings.length + 1;
+    state.rankings.push(p.id);
+  }
+}
+
 export function processPlay(state: GameState, combination: Combination): GameState {
   const newState = deepCloneState(state);
   const player = newState.players[newState.currentTurnIndex];
@@ -679,16 +706,19 @@ export function processPlay(state: GameState, combination: Combination): GameSta
           (p) => p.hand.length > 0 && p.team !== winnerTeam
         ).length === 0
       ) {
+        // The hand is decided, but the losing pair is still owed its
+        // placement points (RULES.md §11/§12: both partners' finishing
+        // positions count). Leaving them out of `rankings` used to mean the
+        // losing team scored nothing and — because the stats writer skips
+        // anyone absent from rankings — never recorded a game played at all.
+        assignRemainingPlacements(newState);
         newState.gameOver = true;
         return newState;
       }
     }
 
     if (activePlayers.length <= 1) {
-      if (activePlayers.length === 1) {
-        activePlayers[0].finishPosition = newState.rankings.length + 1;
-        newState.rankings.push(activePlayers[0].id);
-      }
+      assignRemainingPlacements(newState);
       newState.gameOver = true;
       return newState;
     }
@@ -1059,5 +1089,53 @@ export function resolveMatch(
     winners: reached.filter((id) => cumulative[id] === best),
     newTarget: null,
     isDraw: true,
+  };
+}
+
+/**
+ * Sums each partner's cumulative points onto their team.
+ *
+ * `teamOfKey` maps a scoring key (a userId) to its team id. Keys absent from
+ * it are ignored entirely — that is how vacated/bot seats stay out of a team
+ * total, mirroring `excludeBotSeats` on the per-hand path.
+ */
+export function aggregateTeamScores(
+  cumulative: Record<string, number>,
+  teamOfKey: Record<string, string>
+): Record<string, number> {
+  const totals: Record<string, number> = {};
+  for (const [key, team] of Object.entries(teamOfKey)) {
+    totals[team] = (totals[team] ?? 0) + (cumulative[key] ?? 0);
+  }
+  return totals;
+}
+
+/**
+ * Teams-mode match resolution. RULES.md §11: the two partners' placement
+ * points are **summed** and the pair races to the target — the match is not
+ * decided per seat. Resolving per seat meant a pair could hold 20+20 points
+ * and still not have won, and that when one partner did cross the line alone
+ * only that one seat was reported as a winner, denying the other half of the
+ * winning team its `matchWon` credit.
+ *
+ * Escalation and the draw rule are unchanged — they just apply to team totals
+ * instead of individual ones. Winners are expanded back to every member key of
+ * each winning team, so both partners are reported.
+ */
+export function resolveTeamMatch(
+  cumulative: Record<string, number>,
+  teamOfKey: Record<string, string>,
+  target: number
+): MatchResolution | null {
+  const totals = aggregateTeamScores(cumulative, teamOfKey);
+  const resolution = resolveMatch(totals, target);
+  if (!resolution) return null;
+
+  const winningTeams = new Set(resolution.winners);
+  return {
+    ...resolution,
+    winners: Object.entries(teamOfKey)
+      .filter(([, team]) => winningTeams.has(team))
+      .map(([key]) => key),
   };
 }
