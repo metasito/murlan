@@ -46,6 +46,25 @@ describe('CardView decorative', () => {
     expect(view.queryAllByLabelText('Asso di Picche', { includeHiddenElements: false })).toHaveLength(1);
   });
 
+  // A card with no onPress is information — the pile, or the card handed over
+  // between hands. Naming it is right; calling it a button offers an action
+  // that does not exist, and puts it in the button rotation of every screen
+  // reader that has one.
+  it('is not a button when it cannot be pressed', async () => {
+    const view = await render(<CardView card={ACE} />);
+    expect(view.queryAllByRole('button')).toHaveLength(0);
+  });
+
+  it('is a button when it can be pressed', async () => {
+    const view = await render(<CardView card={ACE} onPress={() => {}} />);
+    expect(view.queryAllByRole('button')).toHaveLength(1);
+  });
+
+  it('is not a button while it is disabled', async () => {
+    const view = await render(<CardView card={ACE} onPress={() => {}} disabled />);
+    expect(view.queryAllByRole('button')).toHaveLength(0);
+  });
+
   it('is silent when it is the content of an enclosing labelled control', async () => {
     // Both card pickers wrap a CardView in their own labelled Pressable. If the
     // CardView kept its label the card would be announced twice.

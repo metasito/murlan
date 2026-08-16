@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useRef } from "react";
 import {
   View,
   Text,
@@ -21,14 +21,12 @@ import Animated, {
   Easing,
 } from "react-native-reanimated";
 import { LinearGradient } from "expo-linear-gradient";
-import { hapticLight, hapticMedium, hapticSelection, hapticSuccess } from "@/lib/haptics";
+import { hapticLight, hapticMedium, hapticSuccess } from "@/lib/haptics";
 import { Ionicons } from "@expo/vector-icons";
 import { useGame } from "@/context/GameContext";
-import { CardView } from "@/components/CardView";
-import { sortHand, getValidGivebackCards, pickGivebackCard } from "@/lib/gameEngine";
+import { ResultExchangeOverlay } from "@/components/ResultExchangeOverlay";
 import { Colors, FontSize, Spacing, Type } from '@/lib/theme';
 import { useTranslation, type TranslationKey } from "@/lib/i18n";
-import { cardSpokenName } from "@/lib/cardNames";
 
 const POSITION_COLORS = [Colors.podiumGold, Colors.podiumSilver, Colors.podiumBronze, Colors.textMuted];
 // Shares its display text with components/GameOverOverlay.tsx's identical
@@ -170,155 +168,6 @@ function WinnerCelebration({
       <Text style={[styles.winnerName, compact && styles.winnerNameCompact]} numberOfLines={1}>{name}</Text>
       <Text style={styles.winnerSub}>{subtitle ?? t("result.winnerDefault")}</Text>
     </Animated.View>
-  );
-}
-
-function CardExchangeOverlay({
-  gameState,
-  chooseExchangeCard,
-}: {
-  gameState: NonNullable<ReturnType<typeof useGame>["gameState"]>;
-  chooseExchangeCard: (cardId: string) => void;
-}) {
-  const { t } = useTranslation();
-  const ep = gameState.exchangePhase!;
-  const [selectedId, setSelectedId] = useState<string | null>(null);
-  const autoRef = useRef(false);
-  const winner = gameState.players[ep.winnerIdx];
-  const loser = gameState.players[ep.loserIdx];
-  const exchangeCards = sortHand(getValidGivebackCards(winner.hand));
-
-  useEffect(() => {
-    if (ep.bothJokersException) {
-      const t = setTimeout(() => router.replace("/game"), 2500);
-      return () => clearTimeout(t);
-    }
-    if (winner.type === "ai" && !autoRef.current) {
-      autoRef.current = true;
-      const t = setTimeout(() => {
-        const give = pickGivebackCard(winner.hand);
-        if (give) chooseExchangeCard(give.id);
-      }, 900);
-      return () => clearTimeout(t);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- one-shot per phase mount; ep/winner/exchangeCards are fixed for this phase's lifetime, chooseExchangeCard is stable
-  }, [chooseExchangeCard]);
-
-  if (ep.bothJokersException) {
-    return (
-      <View style={exStyles.overlay}>
-        <View style={exStyles.card}>
-          <Text style={exStyles.jokerEmoji}>🃏🃏</Text>
-          <Text style={exStyles.title}>{t("result.bothJokersTitle")}</Text>
-          <Text style={exStyles.subtitle}>
-            {t("result.bothJokersBody", { name: winner.name })}
-          </Text>
-          <Pressable
-            onPress={() => router.replace("/game")}
-            style={exStyles.confirmBtn}
-            accessibilityRole="button"
-            accessibilityLabel={t("result.bothJokersConfirm")}
-          >
-            <LinearGradient
-              colors={[Colors.gold, Colors.goldDark]}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 1 }}
-              style={exStyles.confirmGrad}
-            >
-              <Text style={exStyles.confirmText}>{t("result.bothJokersConfirm")}</Text>
-            </LinearGradient>
-          </Pressable>
-        </View>
-      </View>
-    );
-  }
-
-  return (
-    <View style={exStyles.overlay}>
-      <View style={exStyles.card}>
-        <Text style={exStyles.title}>{t("result.exchangeTitle")}</Text>
-        <View style={exStyles.section}>
-          <Text style={exStyles.label}>
-            {t("result.exchangeGiveLabel", { loser: loser.name, winner: winner.name })}
-          </Text>
-          <View style={exStyles.singleCard}>
-            <CardView card={ep.cardFromLoser} />
-          </View>
-        </View>
-        {winner.type === "ai" ? (
-          <Text style={exStyles.aiChoosing}>{t("result.exchangeAiChoosing", { winner: winner.name })}</Text>
-        ) : (
-          <View style={exStyles.section}>
-            <Text style={exStyles.label}>
-              {t("result.exchangeReturnLabel", { winner: winner.name })}
-            </Text>
-            <ScrollView
-              horizontal
-              showsHorizontalScrollIndicator={false}
-              style={exStyles.pickRow}
-            >
-              {exchangeCards.map((card) => {
-                const picked = selectedId === card.id;
-                return (
-                  <Pressable
-                    key={card.id}
-                    onPress={() => {
-                      setSelectedId(card.id);
-                      hapticSelection();
-                    }}
-                    style={[
-                      exStyles.pickCardWrap,
-                      picked && exStyles.pickCardLifted,
-                    ]}
-                    accessibilityRole="radio"
-                    accessibilityLabel={cardSpokenName(card, t)}
-                    accessibilityState={{ selected: picked }}
-                  >
-                    <CardView card={card} selected={picked} noLift decorative />
-                  </Pressable>
-                );
-              })}
-              {exchangeCards.length === 0 && (
-                <Text style={exStyles.noCards}>{t("result.exchangeNoCards")}</Text>
-              )}
-            </ScrollView>
-            <Pressable
-              onPress={() => {
-                if (selectedId) {
-                  hapticMedium();
-                  chooseExchangeCard(selectedId);
-                }
-              }}
-              style={[exStyles.confirmBtn, !selectedId && exStyles.confirmBtnDim]}
-              disabled={!selectedId}
-              accessibilityRole="button"
-              accessibilityLabel={t("result.exchangeConfirm")}
-              accessibilityState={{ disabled: !selectedId }}
-            >
-              <LinearGradient
-                colors={
-                  selectedId
-                    ? [Colors.gold, Colors.goldDark]
-                    : [Colors.bgSurface, Colors.bgSurface]
-                }
-                start={{ x: 0, y: 0 }}
-                end={{ x: 1, y: 1 }}
-                style={exStyles.confirmGrad}
-              >
-                <Text
-                  style={[
-                    exStyles.confirmText,
-                    !selectedId && { color: Colors.textMuted },
-                  ]}
-                >
-                  {t("result.exchangeConfirm")}
-                </Text>
-              </LinearGradient>
-            </Pressable>
-          </View>
-        )}
-      </View>
-    </View>
   );
 }
 
@@ -539,7 +388,7 @@ export default function ResultScreen() {
         </View>
 
         {showExchange && gameState.exchangePhase && (
-          <CardExchangeOverlay gameState={gameState} chooseExchangeCard={chooseExchangeCard} />
+          <ResultExchangeOverlay gameState={gameState} chooseExchangeCard={chooseExchangeCard} />
         )}
       </View>
     );
@@ -579,7 +428,7 @@ export default function ResultScreen() {
       </ScrollView>
 
       {showExchange && gameState.exchangePhase && (
-        <CardExchangeOverlay gameState={gameState} chooseExchangeCard={chooseExchangeCard} />
+        <ResultExchangeOverlay gameState={gameState} chooseExchangeCard={chooseExchangeCard} />
       )}
     </View>
   );
@@ -827,75 +676,3 @@ const styles = StyleSheet.create({
   },
 });
 
-const exStyles = StyleSheet.create({
-  overlay: {
-    position: "absolute",
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    backgroundColor: Colors.overlay,
-    alignItems: "center",
-    justifyContent: "center",
-    zIndex: 100,
-  },
-  card: {
-    backgroundColor: Colors.bgCard,
-    borderRadius: 20,
-    borderWidth: 1.5,
-    borderColor: Colors.border,
-    padding: 24,
-    width: "88%",
-    maxWidth: 420,
-    gap: 16,
-  },
-  title: {
-    fontFamily: "Rajdhani_700Bold",
-    fontSize: 15,
-    color: Colors.gold,
-    letterSpacing: 2,
-    textAlign: "center",
-  },
-  jokerEmoji: { fontSize: 32, textAlign: "center" },
-  subtitle: {
-    fontFamily: "Inter_400Regular",
-    fontSize: 13,
-    color: Colors.text,
-    textAlign: "center",
-    lineHeight: 20,
-  },
-  section: { gap: 10 },
-  label: {
-    fontFamily: "Inter_400Regular",
-    fontSize: 12,
-    color: Colors.textSecondary,
-  },
-  singleCard: { alignItems: "center" },
-  aiChoosing: {
-    fontFamily: "Inter_400Regular",
-    fontSize: 13,
-    color: Colors.textMuted,
-    textAlign: "center",
-  },
-  pickRow: { maxHeight: 110 },
-  pickCardWrap: { marginRight: 8, paddingBottom: 4 },
-  pickCardLifted: { transform: [{ translateY: -10 }] },
-  noCards: {
-    fontFamily: "Inter_400Regular",
-    fontSize: 12,
-    color: Colors.textMuted,
-    paddingTop: 8,
-  },
-  confirmBtn: { borderRadius: 12, overflow: "hidden" },
-  confirmBtnDim: { opacity: 0.5 },
-  confirmGrad: {
-    paddingVertical: 13,
-    alignItems: "center",
-  },
-  confirmText: {
-    fontFamily: "Rajdhani_700Bold",
-    fontSize: 15,
-    color: Colors.bgCard,
-    letterSpacing: 0.5,
-  },
-});
