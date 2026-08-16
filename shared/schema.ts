@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { pgTable, text, varchar, timestamp, integer, pgEnum, jsonb, boolean, index, uniqueIndex } from "drizzle-orm/pg-core";
+import { pgTable, text, varchar, timestamp, integer, pgEnum, jsonb, boolean, index, uniqueIndex, primaryKey } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
@@ -84,6 +84,34 @@ export const activeGames = pgTable("active_games", {
   updatedAt:  timestamp("updated_at").defaultNow().notNull(),
 });
 
+export const userStats = pgTable("user_stats", {
+  userId: varchar("user_id").primaryKey().references(() => users.id, { onDelete: "cascade" }),
+  gamesPlayed: integer("games_played").notNull().default(0),
+  gamesWon: integer("games_won").notNull().default(0),
+  matchesWon: integer("matches_won").notNull().default(0),
+  currentStreak: integer("current_streak").notNull().default(0),
+  bestStreak: integer("best_streak").notNull().default(0),
+  bombsPlayed: integer("bombs_played").notNull().default(0),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+export const matchHistory = pgTable("match_history", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").references(() => users.id, { onDelete: "cascade" }).notNull(),
+  finishedAt: timestamp("finished_at").defaultNow().notNull(),
+  gameMode: text("game_mode").notNull(),
+  placement: integer("placement").notNull(),
+  playerCount: integer("player_count").notNull(),
+  points: integer("points").notNull(),
+  opponents: jsonb("opponents").notNull().default([]),
+}, (t) => [index("match_history_user_idx").on(t.userId, t.finishedAt)]);
+
+export const userAchievements = pgTable("user_achievements", {
+  userId: varchar("user_id").references(() => users.id, { onDelete: "cascade" }).notNull(),
+  achievementId: text("achievement_id").notNull(),
+  unlockedAt: timestamp("unlocked_at").defaultNow().notNull(),
+}, (t) => [primaryKey({ columns: [t.userId, t.achievementId] })]);
+
 export const insertUserSchema = createInsertSchema(users).pick({
   username: true,
   password: true,
@@ -94,3 +122,6 @@ export type User = typeof users.$inferSelect;
 export type Room = typeof rooms.$inferSelect;
 export type RoomPlayer = typeof roomPlayers.$inferSelect;
 export type Friend = typeof friends.$inferSelect;
+export type UserStats = typeof userStats.$inferSelect;
+export type MatchHistory = typeof matchHistory.$inferSelect;
+export type UserAchievement = typeof userAchievements.$inferSelect;

@@ -91,6 +91,36 @@ const SCHEMA_DDL = `
     updated_at timestamp NOT NULL DEFAULT now()
   );
 
+  CREATE TABLE user_stats (
+    user_id varchar PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+    games_played integer NOT NULL DEFAULT 0,
+    games_won integer NOT NULL DEFAULT 0,
+    matches_won integer NOT NULL DEFAULT 0,
+    current_streak integer NOT NULL DEFAULT 0,
+    best_streak integer NOT NULL DEFAULT 0,
+    bombs_played integer NOT NULL DEFAULT 0,
+    updated_at timestamp NOT NULL DEFAULT now()
+  );
+
+  CREATE TABLE match_history (
+    id varchar PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id varchar NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    finished_at timestamp NOT NULL DEFAULT now(),
+    game_mode text NOT NULL,
+    placement integer NOT NULL,
+    player_count integer NOT NULL,
+    points integer NOT NULL,
+    opponents jsonb NOT NULL DEFAULT '[]'
+  );
+  CREATE INDEX match_history_user_idx ON match_history (user_id, finished_at);
+
+  CREATE TABLE user_achievements (
+    user_id varchar NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    achievement_id text NOT NULL,
+    unlocked_at timestamp NOT NULL DEFAULT now(),
+    PRIMARY KEY (user_id, achievement_id)
+  );
+
   -- connect-pg-simple, table "session", createTableIfMissing: false (see
   -- server/session.ts). The developer's real "session" table is pre-created
   -- once and deliberately never dropped/recreated by app code; the throwaway
