@@ -28,4 +28,7 @@ export { sessionMiddleware };
 
   process.on("SIGTERM", () => void shutdown("SIGTERM", { io, server }));
   process.on("SIGINT", () => void shutdown("SIGINT", { io, server }));
-})();
+})().catch((err) => {
+  logger.fatal({ err }, "Server failed to start");
+  process.exit(1);
+});

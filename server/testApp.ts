@@ -187,8 +187,6 @@ export async function createApp(): Promise<CreatedApp> {
     app.set("trust proxy", 1);
   }
 
-  installProcessGuards();
-
   app.use(
     helmet({
       contentSecurityPolicy: false,
@@ -235,6 +233,11 @@ export async function createApp(): Promise<CreatedApp> {
   const io = setupSocket(server);
 
   setupErrorHandler(app);
+
+  // Last, so that everything above — `ensureSchema` above all, which refuses
+  // to start on a schema it knows is wrong — fails the returned promise
+  // instead of being contained as an unhandled rejection.
+  installProcessGuards();
 
   return { app, server, io };
 }
