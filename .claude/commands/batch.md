@@ -75,12 +75,38 @@ conflict.
 
 ## How to execute
 
-Use the `superpowers:subagent-driven-development` skill. One task per finding, in the order
-the batch section gives, on the branch you created above.
+Use the `superpowers:subagent-driven-development` skill, in the order the batch section gives,
+on the branch you created above.
 
 **One commit per finding**, message `fix(<ID>): <what changed>`. This is not cosmetic — the
 rollback story in the plan depends on being able to revert a single finding out of a merged
 batch.
+
+### Pace — one dispatch per finding is too slow, and the commit rule does not require it
+
+A dispatch costs a full context rebuild: the agent re-reads the same files, re-derives the same
+call graph, re-runs the same suite. A batch of seven findings run as seven dispatch-plus-review
+cycles spends most of its wall-clock re-reading `server/socket.ts`.
+
+**One commit per finding is a git rule, not a dispatch rule. One agent can make three commits.**
+
+- **Group findings that share a file into one dispatch.** Give the agent all of them in a
+  single brief, in the required order, with the commit message for each stated verbatim. It
+  reads the file once and commits three times. Most batches should be two or three dispatches,
+  not one per row.
+- **Split a dispatch only where the work genuinely differs** — a server finding and a client
+  finding, or one whose approach depends on what the previous one concluded.
+- **Do not run a reviewer after every task.** Review once, over the whole branch, before you
+  open the PR. Per-task review rounds catch the same class of defect the final review catches,
+  at several times the cost. The exception is a finding the plan marks Critical or one carrying
+  an explicit ordering hazard — review that one on its own, immediately, because a later
+  finding will build on it.
+- **Never run two implementers on the same file at once.** They will clobber each other. That
+  is the real constraint on parallelism, not the commit rule.
+
+Write the brief properly and you buy the speed back: a brief that states the defect, the fix,
+the settled decisions and the acceptance criteria needs no round trip. A thin brief costs more
+in clarification than it saved in writing.
 
 ## Rules
 
