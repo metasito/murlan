@@ -29,7 +29,18 @@ import { Colors } from '@/lib/theme';
 import { useTranslation } from "@/lib/i18n";
 import { SettingsModal } from "@/components/SettingsModal";
 
-interface MenuButtonProps {
+/**
+ * A destination on the home screen: an icon, a label, and a chevron, animated
+ * in on a stagger.
+ *
+ * Deliberately not components/MenuButton.tsx, which twelve other screens use —
+ * that is a pill-shaped CTA with variants and sizes, and this is a row in a
+ * list. Named apart because it used to be called MenuButton too, and the
+ * collision is not harmless: the accent fill bug lived here for exactly as long
+ * as it did because the shared component clips its gradient and has no padding
+ * conflict, so reading that one told you nothing about this one.
+ */
+interface HomeMenuRowProps {
   label: string;
   icon: React.ComponentProps<typeof Ionicons>["name"];
   onPress: () => void;
@@ -40,7 +51,7 @@ interface MenuButtonProps {
   accessibilityLabel?: string;
 }
 
-function MenuButton({
+function HomeMenuRow({
   label,
   icon,
   onPress,
@@ -49,7 +60,7 @@ function MenuButton({
   disabled = false,
   compact = false,
   accessibilityLabel,
-}: MenuButtonProps) {
+}: HomeMenuRowProps) {
   const opacity = useSharedValue(0);
   const translateY = useSharedValue(30);
   const scale = useSharedValue(1);
@@ -290,12 +301,12 @@ export default function HomeScreen() {
 
   const menuButtons = (compact: boolean) => (
     <>
-      <MenuButton compact={compact} label={t("home.modeOffline")} icon="game-controller" accent onPress={() => router.push({ pathname: "/lobby", params: { mode: "ai" } })} delay={300} />
-      <MenuButton compact={compact} label={t("home.modePlayWithFriends")} icon="people" onPress={() => { if (user) router.push("/(online)"); else router.push("/auth"); }} delay={420} />
-      <MenuButton compact={compact} label={t("home.modeOnline")} icon="earth-outline" onPress={() => { if (user) router.push("/(online)/quickmatch"); else router.push("/auth"); }} delay={540} />
-      <MenuButton compact={compact} label={t("home.modeProfile")} icon="stats-chart-outline" onPress={() => { if (user) router.push("/(online)/profile"); else router.push("/auth"); }} delay={580} />
-      <MenuButton compact={compact} label={t("home.modeTutorial")} icon="school-outline" onPress={() => router.push("/tutorial")} delay={600} />
-      <MenuButton compact={compact} label={t("home.modeRules")} icon="book-outline" onPress={() => router.push("/rules")} delay={660} />
+      <HomeMenuRow compact={compact} label={t("home.modeOffline")} icon="game-controller" accent onPress={() => router.push({ pathname: "/lobby", params: { mode: "ai" } })} delay={300} />
+      <HomeMenuRow compact={compact} label={t("home.modePlayWithFriends")} icon="people" onPress={() => { if (user) router.push("/(online)"); else router.push("/auth"); }} delay={420} />
+      <HomeMenuRow compact={compact} label={t("home.modeOnline")} icon="earth-outline" onPress={() => { if (user) router.push("/(online)/quickmatch"); else router.push("/auth"); }} delay={540} />
+      <HomeMenuRow compact={compact} label={t("home.modeProfile")} icon="stats-chart-outline" onPress={() => { if (user) router.push("/(online)/profile"); else router.push("/auth"); }} delay={580} />
+      <HomeMenuRow compact={compact} label={t("home.modeTutorial")} icon="school-outline" onPress={() => router.push("/tutorial")} delay={600} />
+      <HomeMenuRow compact={compact} label={t("home.modeRules")} icon="book-outline" onPress={() => router.push("/rules")} delay={660} />
     </>
   );
 

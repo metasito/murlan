@@ -245,8 +245,15 @@ next manche.
   constant; a bare literal in a style object may not.
 - Gold uses the five-step alpha scale (`goldGhost` … `goldStrong`). Pick by role. If none
   fits, the design wants something new — do not add a sixth value to split the difference.
-- **All menu screens** use `MenuLayout`, `MenuCard`, `MenuButton`. `app/lobby.tsx` and
-  `app/(online)/profile.tsx` are the reference. Game tables are the only exemption.
+- **Menu screens** use `MenuLayout`, `MenuCard`, `MenuButton`. `app/lobby.tsx` and
+  `app/(online)/profile.tsx` are the reference. Two screens are exempt and both are
+  deliberate: the game tables, and `app/index.tsx` — the title screen is a full-bleed
+  brand surface with a wordmark and a staggered list of destinations, not a stack of
+  cards, so it builds its own layout and its own row component (`HomeMenuRow`).
+  **That row must not be named after a shared component.** It was called `MenuButton`
+  for a while, and the collision cost real time: the accent fill bug lived in the local
+  copy, and reading the shared one — which clips its gradient and has no padding
+  conflict — told you nothing about it.
 - **Every user-facing string** goes through `t()` with keys in all three locales.
 - **Shadows** — `Shadow.*` is platform-aware (`boxShadow` on web, native props elsewhere)
 - **Orientation:** Game screens → landscape-locked. Menu/result screens → portrait + landscape via `useWindowDimensions`
