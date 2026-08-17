@@ -324,12 +324,18 @@ contains a card that would otherwise announce itself again.
 `tests/native/a11yCollapse.test.tsx` pins both halves: an unhidden child is
 reachable, and hiding it leaves only the button.
 
-Unexplained, and separate from accessibility: on the tutorial header, tapping
-by *either* selector lands on the right element by every diagnostic available
-(`uiautomator dump` shows correct bounds and `clickable: true`) yet never
-fires the RN `onPress`; only a raw coordinate tap does. That is a Maestro/RN
-interaction, and `.maestro/smoke.yaml` keeps the point-tap workaround in place
-of it.
+That was not merely an accessibility concern on the tutorial header: while the
+label survived as a second node, a tap by *either* selector landed on the right
+element by every diagnostic available (`uiautomator dump` showed correct bounds
+and `clickable: true`) yet never fired the RN `onPress`, so both flows fell back
+to a raw coordinate tap.
+
+**Both halves of that are now resolved, and the workaround outlived its cause.**
+Collapsing the header into one accessible node (Q4) made `tapOn: "Salta il
+tutorial"` fire the real `onPress` — confirmed on the emulator, through the real
+Android accessibility tree, which is the one thing the Jest suite structurally
+cannot check. The coordinate tap meanwhile started missing the button outright
+as the header's layout shifted, and is gone from both flows.
 
 **Reanimated's continuous animations can make Maestro wait forever on a
 tap.** The game table has always-on Reanimated glow/pulse effects (the
