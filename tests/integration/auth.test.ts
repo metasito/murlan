@@ -3,11 +3,17 @@ import assert from "node:assert/strict";
 import { startTestServer, hasDatabase, skipMessage, type TestServer } from "../helpers/testServer.ts";
 import { register, connect as connectRaw } from "../helpers/client.ts";
 
-describe("socket authentication", { skip: hasDatabase() ? false : skipMessage() }, () => {
-  let server: TestServer;
-  before(async () => { server = await startTestServer(); });
-  after(async () => { await server.stop(); });
+// One server for the whole file, shared by both describe blocks below.
+// server/db.ts's pool is a module-level singleton created on first import;
+// stop() ends it, and a second full startTestServer()/stop() cycle in this
+// same process would reuse that already-ended pool and fail to boot. Guarded
+// by hasDatabase() so a checkout with no DB configured still runs `npm test`
+// (see skipMessage()) without this hook itself throwing.
+let server: TestServer;
+before(async () => { if (hasDatabase()) server = await startTestServer(); });
+after(async () => { if (server) await server.stop(); });
 
+describe("socket authentication", { skip: hasDatabase() ? false : skipMessage() }, () => {
   // Local wrapper: this suite only cares about accept/reject, not the raw
   // socket, and always closes on success so sockets never leak across cases.
   async function connect(auth: Record<string, unknown>): Promise<{ ok: boolean; err?: string }> {
@@ -49,5 +55,74 @@ describe("socket authentication", { skip: hasDatabase() ? false : skipMessage() 
   test("a forged ticket is rejected", async () => {
     const r = await connect({ ticket: "not.a.real.ticket" });
     assert.equal(r.ok, false);
+  });
+});
+
+describe("session regeneration on login and registration", { skip: hasDatabase() ? false : skipMessage() }, () => {
+  // express-session's default cookie name — server/session.ts sets no `name`.
+  function sidFromSetCookie(setCookie: string): string {
+    const match = /connect\.sid=([^;]+)/.exec(setCookie);
+    assert.ok(match, `no connect.sid in set-cookie: ${setCookie}`);
+    return match[1];
+  }
+
+  test("the session id changes on login", async () => {
+    const username = "sid_login";
+    const { cookie: cookie1 } = await register(server, username);
+
+    // Send the login on the same cookie register() already produced, the
+    // way a returning browser would.
+    const res = await fetch(`${server.url}/api/auth/login`, {
+      method: "POST",
+      headers: { "content-type": "application/json", cookie: cookie1 },
+      body: JSON.stringify({ username, password: "password123" }),
+    });
+    const text = await res.text();
+    assert.equal(res.status, 200, text);
+    const cookie2 = res.headers.get("set-cookie");
+    assert.ok(cookie2, "login response must set a session cookie");
+
+    assert.notEqual(
+      sidFromSetCookie(cookie2),
+      sidFromSetCookie(cookie1),
+      "login must regenerate the session id, not reuse the one the request carried"
+    );
+  });
+
+  test("the session id changes on registration", async () => {
+    // cookie1 stands in for a session an attacker planted on the victim's
+    // browser before the victim ever registers — the scenario SEC-04 closes.
+    const { cookie: cookie1 } = await register(server, "sid_reg_attacker");
+
+    const res = await fetch(`${server.url}/api/auth/register`, {
+      method: "POST",
+      headers: { "content-type": "application/json", cookie: cookie1 },
+      body: JSON.stringify({ username: "sid_reg_victim", password: "password123" }),
+    });
+    const text = await res.text();
+    assert.equal(res.status, 200, text);
+    const cookie2 = res.headers.get("set-cookie");
+    assert.ok(cookie2, "register response must set a session cookie");
+
+    assert.notEqual(
+      sidFromSetCookie(cookie2),
+      sidFromSetCookie(cookie1),
+      "register must regenerate the session id, not reuse the one the request carried"
+    );
+  });
+
+  test("logging in twice in the same browser still works", async () => {
+    const username = "sid_relogin";
+    const { cookie: cookie1 } = await register(server, username);
+
+    const res = await fetch(`${server.url}/api/auth/login`, {
+      method: "POST",
+      headers: { "content-type": "application/json", cookie: cookie1 },
+      body: JSON.stringify({ username, password: "password123" }),
+    });
+    const text = await res.text();
+    assert.equal(res.status, 200, text);
+    const body = JSON.parse(text) as { id: string; username: string };
+    assert.equal(body.username, username);
   });
 });

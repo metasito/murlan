@@ -105,6 +105,17 @@ function requireAuth(req: Request, res: Response, next: () => void) {
   next();
 }
 
+// Register's regenerate and save both write the new session only after the
+// user row already exists, so either one failing leaves the same orphan: the
+// account is created but unreachable, and its username is permanently taken.
+// Both failure paths call this so the rollback isn't duplicated.
+async function rollbackRegistration(userId: string, res: Response) {
+  await storage.deleteUser(userId).catch((cleanupErr) =>
+    logger.error({ cleanupErr, userId }, "Failed to roll back orphaned registration")
+  );
+  res.status(500).json({ message: "Internal server error", code: "INTERNAL_SERVER_ERROR" });
+}
+
 export async function registerRoutes(app: Express): Promise<Server> {
 
   // ── Auth ──────────────────────────────────────────────────────────────────
@@ -121,21 +132,26 @@ export async function registerRoutes(app: Express): Promise<Server> {
     const passwordHash = await bcrypt.hash(password, 10);
     const user = await storage.createUser({ username, password: passwordHash });
 
-    req.session.userId = user.id;
-    req.session.save(async (err) => {
-      if (err) {
-        // The account exists but the caller has no session and sees an error,
-        // so the username would be permanently taken by an account nobody can
-        // reach. Roll it back so they can retry.
-        logger.error({ err }, "Session save failed on register");
-        await storage.deleteUser(user.id).catch((cleanupErr) =>
-          logger.error({ cleanupErr, userId: user.id }, "Failed to roll back orphaned registration")
-        );
-        res.status(500).json({ message: "Internal server error", code: "INTERNAL_SERVER_ERROR" });
+    // Regenerating gives this login a fresh session id instead of writing
+    // into whatever session the request already carried — otherwise an
+    // attacker who planted a cookie on this origin before the victim signed
+    // in would inherit their session.
+    req.session.regenerate((regenErr) => {
+      if (regenErr) {
+        logger.error({ err: regenErr }, "Session regenerate failed on register");
+        void rollbackRegistration(user.id, res);
         return;
       }
-      logger.info({ userId: user.id, username }, "User registered");
-      res.json({ id: user.id, username: user.username });
+      req.session.userId = user.id;
+      req.session.save((err) => {
+        if (err) {
+          logger.error({ err }, "Session save failed on register");
+          void rollbackRegistration(user.id, res);
+          return;
+        }
+        logger.info({ userId: user.id, username }, "User registered");
+        res.json({ id: user.id, username: user.username });
+      });
     });
   });
 
@@ -154,15 +170,24 @@ export async function registerRoutes(app: Express): Promise<Server> {
       return;
     }
 
-    req.session.userId = user.id;
-    req.session.save((err) => {
-      if (err) {
-        logger.error({ err }, "Session save failed on login");
+    // See the register route above: regenerate first so a session id planted
+    // by an attacker before this login can never end up holding this user.
+    req.session.regenerate((regenErr) => {
+      if (regenErr) {
+        logger.error({ err: regenErr }, "Session regenerate failed on login");
         res.status(500).json({ message: "Internal server error", code: "INTERNAL_SERVER_ERROR" });
         return;
       }
-      logger.info({ userId: user.id, username }, "User logged in");
-      res.json({ id: user.id, username: user.username });
+      req.session.userId = user.id;
+      req.session.save((err) => {
+        if (err) {
+          logger.error({ err }, "Session save failed on login");
+          res.status(500).json({ message: "Internal server error", code: "INTERNAL_SERVER_ERROR" });
+          return;
+        }
+        logger.info({ userId: user.id, username }, "User logged in");
+        res.json({ id: user.id, username: user.username });
+      });
     });
   });
 
