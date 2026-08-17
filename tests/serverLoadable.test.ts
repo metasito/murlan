@@ -21,3 +21,25 @@ for (const name of MODULES) {
     assert.ok(mod, `server/${name}.ts failed to load`);
   });
 }
+
+// No database needed: this inspects how the Pool was constructed, not whether
+// it can connect.
+test("the Postgres pool is constructed with an error handler and timeouts", async () => {
+  const { pool } = await import("../server/db.ts");
+
+  assert.equal(
+    pool.listenerCount("error"),
+    1,
+    "the pool must handle its own `error` event — an idle-client error with no listener is an unhandled EventEmitter error"
+  );
+  assert.notEqual(
+    pool.options.connectionTimeoutMillis,
+    0,
+    "connectionTimeoutMillis of 0 means wait forever for a free client"
+  );
+  assert.notEqual(
+    pool.options.statement_timeout,
+    0,
+    "statement_timeout of 0 means a stuck query holds its pool slot forever"
+  );
+});
