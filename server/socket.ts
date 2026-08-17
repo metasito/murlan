@@ -1089,13 +1089,24 @@ export function setupSocket(httpServer: HttpServer) {
       { limit: 10, windowMs: 60_000 }
     );
 
-    socket.on("room:unspectate", () => {
-      const roomId = spectatorRoomMap.get(socket.id);
-      if (!roomId) return;
-      activeGames.get(roomId)?.spectators.delete(userId);
-      spectatorRoomMap.delete(socket.id);
-      socket.leave(roomId);
-    });
+    // Through onEvent like every other inbound event, not a bare socket.on.
+    // It carries no payload, so validation is moot, but the rate limit and the
+    // per-event error containment are not — and an event registered outside
+    // the wrapper is exactly the one nobody remembers to check.
+    onEvent(
+      socket,
+      "room:unspectate",
+      NoPayloadSchema,
+      () => {
+        const roomId = spectatorRoomMap.get(socket.id);
+        if (!roomId) return;
+        activeGames.get(roomId)?.spectators.delete(userId);
+        spectatorRoomMap.delete(socket.id);
+        socket.leave(roomId);
+      },
+      // Matches room:spectate: leaving cannot be cheaper to spam than joining.
+      { limit: 10, windowMs: 60_000 }
+    );
 
     onEvent(
       socket,

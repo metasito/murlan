@@ -30,7 +30,8 @@ Several suites read source or shipped assets rather than calling a function,
 because the property they protect is structural: that every `<Modal>` supports
 landscape, that no fill token is used as a text colour, that the twelve sound
 files are real non-silent PCM, that match history's prune and read share one
-bound.
+bound, that `db:push` cannot offer to rename the session table, and that no
+inbound socket event is registered outside the boundary wrapper.
 
 Node strips types natively, so these files import `.ts` specifiers directly and
 can only load modules that do not import `react-native`. That is why the table's
