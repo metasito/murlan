@@ -9,7 +9,7 @@ want speed. Then 10 → 12 → 13 → 14.
 
 | # | Batch | Findings | Effort | Model | Status | Branch | PR |
 |---|---|---|---|---|---|---|---|
-| - [ ] 1 | Restore the safety net | 6 | medium | Sonnet | PR open — 2026-08-17 | `audit/batch-1-safety-net` | [#2](https://github.com/metasito/murlan/pull/2) |
+| - [x] 1 | Restore the safety net | 6 | medium | Sonnet | merged — 2026-08-17 | `audit/batch-1-safety-net` | [#2](https://github.com/metasito/murlan/pull/2) |
 | - [ ] 2 | Server operational integrity | 7 | medium | Sonnet | not started | | |
 | - [ ] 3 | The match lifecycle | 7 | **max** | **Opus** | not started | | |
 | - [ ] 4 | Reconnect and error surfacing | 9 | high | Opus | not started | | |
