@@ -108,40 +108,20 @@ export function TableVignette() {
         style={vignetteStyles.right}
         pointerEvents="none"
       />
-      <LinearGradient
-        colors={[Scrim.medium, "transparent"]}
-        start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}
-        style={vignetteStyles.cornerTL} pointerEvents="none"
-      />
-      <LinearGradient
-        colors={[Scrim.medium, "transparent"]}
-        start={{ x: 1, y: 0 }} end={{ x: 0, y: 1 }}
-        style={vignetteStyles.cornerTR} pointerEvents="none"
-      />
-      <LinearGradient
-        colors={[Scrim.medium, "transparent"]}
-        start={{ x: 0, y: 1 }} end={{ x: 1, y: 0 }}
-        style={vignetteStyles.cornerBL} pointerEvents="none"
-      />
-      <LinearGradient
-        colors={[Scrim.medium, "transparent"]}
-        start={{ x: 1, y: 1 }} end={{ x: 0, y: 0 }}
-        style={vignetteStyles.cornerBR} pointerEvents="none"
-      />
     </View>
   );
 }
 
-const CORNER = "34%";
+// Four bands, each spanning a full edge and reaching transparent inside the
+// felt. A corner piece cannot: a diagonal gradient over a box only reaches
+// transparent at the box's opposite corner, so it still carries ink along the
+// two edges that face the middle of the table and draws them as hard lines
+// across the felt. The corners are darkened by the bands overlapping instead.
 const vignetteStyles = StyleSheet.create({
   top:    { position: "absolute", top: 0, left: 0, right: 0, height: "22%" },
   bottom: { position: "absolute", bottom: 0, left: 0, right: 0, height: "26%" },
   left:   { position: "absolute", top: 0, bottom: 0, left: 0, width: "16%" },
   right:  { position: "absolute", top: 0, bottom: 0, right: 0, width: "16%" },
-  cornerTL: { position: "absolute", top: 0, left: 0, width: CORNER, height: CORNER },
-  cornerTR: { position: "absolute", top: 0, right: 0, width: CORNER, height: CORNER },
-  cornerBL: { position: "absolute", bottom: 0, left: 0, width: CORNER, height: CORNER },
-  cornerBR: { position: "absolute", bottom: 0, right: 0, width: CORNER, height: CORNER },
 });
 
 // ─── CardFan ──────────────────────────────────────────────────────────────────
