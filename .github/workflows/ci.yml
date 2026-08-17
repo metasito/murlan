@@ -78,3 +78,26 @@ jobs:
 
       - name: Lint
         run: npm run lint
+
+      - name: Build (the chain Replit runs on deploy)
+        run: npm run expo:web:build && npm run server:build
+
+      # The bundle esbuild produces is otherwise first executed by a Replit deploy.
+      # /health answers only once the pool has reached Postgres.
+      - name: The built server boots and reaches the database
+        shell: bash
+        env:
+          PORT: "5050"
+          NODE_ENV: production
+        run: |
+          test -f dist/index.html
+          test -f server_dist/index.js
+          node server_dist/index.js &
+          server_pid=$!
+          for _ in $(seq 1 30); do
+            if curl -fsS "http://127.0.0.1:$PORT/health" -o health.json; then break; fi
+            sleep 1
+          done
+          kill "$server_pid" || true
+          cat health.json
+          grep -q '"db":"connected"' health.json
