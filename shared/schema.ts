@@ -144,6 +144,24 @@ export const userRatings = pgTable("user_ratings", {
   index("user_ratings_season_idx").on(t.season, t.rating),
 ]);
 
+/**
+ * One row per device a player has granted notification permission on.
+ *
+ * Keyed by the token itself, not a surrogate id: Expo's token is globally
+ * unique, and a device re-registering must overwrite its row rather than
+ * accumulate a second one, which an upsert on the natural key does in one
+ * statement. `userId` is a plain column so a device changing hands reassigns
+ * rather than duplicates.
+ */
+export const pushTokens = pgTable("push_tokens", {
+  token: text("token").primaryKey(),
+  userId: varchar("user_id").references(() => users.id, { onDelete: "cascade" }).notNull(),
+  platform: text("platform").notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+}, (t) => [
+  index("push_tokens_user_id_idx").on(t.userId),
+]);
+
 export const insertUserSchema = createInsertSchema(users).pick({
   username: true,
   password: true,

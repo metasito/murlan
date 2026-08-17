@@ -5,8 +5,14 @@ import rateLimit from "express-rate-limit";
 import { storage } from "./storage.ts";
 import { logger } from "./logger.ts";
 import { validate } from "./validate.ts";
-import { RegisterSchema, LoginSchema, AddFriendSchema, ClientErrorSchema } from "./schemas.ts";
-import { insertUserSchema } from "../shared/schema.ts";
+import {
+  RegisterSchema,
+  LoginSchema,
+  AddFriendSchema,
+  ClientErrorSchema,
+  PushTokenSchema,
+} from "./schemas.ts";
+import { deletePushToken, savePushToken } from "./push.ts";
 import { emitToUser, isUserOnline } from "./socket.ts";
 import { mintSocketTicket } from "./ticket.ts";
 import { getUserStats, getMatchHistory, getUserAchievements } from "./stats.ts";
@@ -149,6 +155,20 @@ export async function registerRoutes(app: Express): Promise<Server> {
     req.session.destroy(() => {
       res.json({ ok: true });
     });
+  });
+
+  // Notification registration. The DELETE is what logout calls: the next
+  // person to hold this phone must not receive the last one's invites, and
+  // the cascade on users only covers an account being deleted.
+  app.post("/api/push/token", requireAuth, validate(PushTokenSchema), async (req, res) => {
+    const { token, platform } = req.body as { token: string; platform: string };
+    await savePushToken(req.session.userId!, token, platform);
+    res.json({ ok: true });
+  });
+
+  app.delete("/api/push/token", requireAuth, validate(PushTokenSchema), async (req, res) => {
+    await deletePushToken((req.body as { token: string }).token);
+    res.json({ ok: true });
   });
 
   app.get("/api/auth/me", async (req, res) => {

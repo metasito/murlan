@@ -36,3 +36,17 @@ export const ClientErrorSchema = z.object({
   platform: z.enum(["ios", "android", "web"]).optional(),
   appVersion: z.string().max(40).optional(),
 });
+
+/**
+ * A device registering for notifications.
+ *
+ * Expo's tokens are `ExponentPushToken[…]` or `ExpoPushToken[…]`; the shape is
+ * checked here so a malformed one never reaches the push service, where it
+ * would be one rejected ticket among the real ones.
+ */
+export const PushTokenSchema = z.object({
+  token: z.string().min(1).max(200).regex(/^Expo(nent)?PushToken\[[^\]]+\]$/, {
+    message: "Token push non valido",
+  }),
+  platform: z.enum(["ios", "android"]),
+});

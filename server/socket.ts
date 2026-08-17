@@ -4,6 +4,7 @@ import type { Server as HttpServer } from "node:http";
 import { eq, lt } from "drizzle-orm";
 import { storage } from "./storage.ts";
 import { logger } from "./logger.ts";
+import { notifyUser } from "./push.ts";
 import { sessionMiddleware } from "./session.ts";
 import { db } from "./db.ts";
 import { activeGames as activeGamesTable } from "../shared/schema.ts";
@@ -1792,7 +1793,17 @@ export function setupSocket(httpServer: HttpServer) {
           return;
         }
         const friendSocket = userSocketMap.get(friendUserId);
-        if (!friendSocket) return;
+        if (!friendSocket) {
+          // Nothing about an invite expires while it waits — the room stays
+          // `waiting` until the host starts it — so this is worth delivering
+          // late. Not awaited: the invite must not be held up by a push.
+          void notifyUser(friendUserId, {
+            title: "Murlan",
+            body: `${username} ti ha invitato a giocare.`,
+            data: { roomCode },
+          });
+          return;
+        }
         io.to(friendSocket).emit("friend:invite", {
           from: username,
           roomCode,
