@@ -30,11 +30,53 @@ box is unchecked. Say which one you picked before you start.
    `Src` column, under the same ID. Read **Problem, Repro/proof, Proposed fix, Acceptance
    criteria, Fix risk** before you write any code for it.
 
+## Start from an up-to-date main. Do this before anything else.
+
+Batches merge while other batches run, so `main` moves under you. A branch cut from a stale
+`main`, or from whatever branch happened to be checked out, silently omits merged work and
+produces a PR full of phantom reverts.
+
+**Run this exactly, before your first read and before any code:**
+
+```bash
+git fetch origin --prune
+git status --porcelain            # must be empty
+```
+
+**If the working tree is not clean, stop and tell me.** Do not stash, do not commit someone
+else's work-in-progress, do not proceed — another session may be mid-batch in this checkout.
+
+Then, depending on whether your batch's branch already exists:
+
+```bash
+# NEW branch — cut it from origin/main, not from wherever HEAD is:
+git checkout -B audit/batch-$1-<slug> origin/main
+
+# RESUMING an existing branch — bring main into it:
+git checkout audit/batch-$1-<slug>
+git merge --no-edit origin/main
+```
+
+`checkout -B … origin/main` is the whole point: it pins the new branch to `origin/main`
+regardless of what was checked out, so nothing merged can be missed.
+
+**Merge `origin/main` in — never rebase.** The rules below forbid force-pushing, and a rebase
+after a push needs one. A merge commit is also safe for a branch another session may be holding.
+
+**Then, immediately before you push and open the PR, do it again:**
+
+```bash
+git fetch origin && git merge --no-edit origin/main
+```
+
+`main` may well have moved while the batch ran. If that merge conflicts, resolve it, re-run the
+batch's verification command, and say so in your report — do not open a PR on an unmerged
+conflict.
+
 ## How to execute
 
 Use the `superpowers:subagent-driven-development` skill. One task per finding, in the order
-the batch section gives. Work on a branch named as the batch section specifies, or
-`audit/batch-$1-<slug>` if it does not.
+the batch section gives, on the branch you created above.
 
 **One commit per finding**, message `fix(<ID>): <what changed>`. This is not cosmetic — the
 rollback story in the plan depends on being able to revert a single finding out of a merged
