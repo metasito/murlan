@@ -52,6 +52,7 @@ export const en: Record<keyof typeof it, string> = {
   "server.MUST_PLAY_START_CARD": "You must play the {{rank}}♠ as your first card",
   "server.INVALID_MOVE": "Invalid move",
   "server.CANNOT_PASS": "You can't pass",
+  "server.REMATCH_DECLINED": "The table chose not to play again",
   "server.UNAUTHORIZED": "Unauthorized",
   "server.GAME_NOT_FOUND": "Game not found",
   "server.GAME_NO_LONGER_VALID": "Game no longer valid",

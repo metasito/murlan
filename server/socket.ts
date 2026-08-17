@@ -238,6 +238,16 @@ export const __testables = {
    * since disposal deletes the `active_games` row without awaiting it.
    */
   hasActiveGame: (roomId: string) => activeGames.has(roomId),
+  /**
+   * A snapshot of the seat -> userId map a room's live game is routing hands
+   * by. It is the only thing that decides whose cards a viewer is sent, and
+   * which seats the turn arbiter drives with the AI, so a test asserting that
+   * a seat did not move under a player has to read it directly.
+   */
+  seatedUsers: (roomId: string) => {
+    const game = activeGames.get(roomId);
+    return game ? { ...game.playerMap } : null;
+  },
   /** The restart-orphan prune, which only a real database can exercise. */
   pruneAbandonedGames: () => pruneAbandonedGames(),
   ABANDONED_GAME_MAX_AGE_MS,
@@ -1609,35 +1619,65 @@ export function setupSocket(httpServer: HttpServer) {
         const game = activeGames.get(roomId);
         if (!game || !game.gameState.gameOver) return;
         if (seatOfUser(game, userId) === null) return;
+
+        // `total` is the seated-seat count: bots and seats whose player left
+        // hold no vote, exactly as countRematchAnswers counts them.
+        const broadcastVoteState = () =>
+          io.to(roomId).emit("game:vote_state", {
+            votes: Array.from(game.rematchVotes),
+            total: Object.keys(game.playerMap).length,
+          });
+
         // The table was asked during the closing manche and said no. Nobody
         // gets to restart it from the results screen after that.
-        if (game.matchOver && !tableWantsRematch(game)) return;
+        if (game.matchOver && !tableWantsRematch(game)) {
+          socket.emit("game:error", {
+            message: "The table chose not to play again",
+            code: "REMATCH_DECLINED",
+          });
+          return;
+        }
 
         game.rematchVotes.add(userId);
+        broadcastVoteState();
+        if (game.rematchVotes.size < Object.keys(game.playerMap).length) return;
 
-        const totalPlayers = Object.keys(game.playerMap).length;
-        io.to(roomId).emit("game:vote_state", {
-          votes: Array.from(game.rematchVotes),
-          total: totalPlayers,
-        });
+        // The database is read for the room's settings and nothing else: the
+        // next manche's seats are copied from the running game. `room_players`
+        // holds humans only, so a roster rebuilt from it drops every bot seat
+        // and renumbers whatever is left.
+        const room = await storage.getRoomById(roomId);
+        if (!room) {
+          socket.emit("game:error", { message: "Room not found", code: "ROOM_NOT_FOUND" });
+          broadcastVoteState();
+          return;
+        }
 
-        if (game.rematchVotes.size < totalPlayers) return;
+        const seats = game.gameState.players;
+        if (seats.length < 2) {
+          socket.emit("game:error", {
+            message: "At least 2 players are required",
+            code: "MIN_PLAYERS_REQUIRED",
+          });
+          broadcastVoteState();
+          return;
+        }
+
+        // Cleared only once the next manche is certain to be dealt. A vote
+        // discarded on the way out of a bail-out can never be retried: the
+        // overlay would sit below its own threshold with nothing left to press.
         game.rematchVotes.clear();
 
-        const room = await storage.getRoomById(roomId);
-        if (!room) return;
-        const players = await storage.getRoomPlayers(roomId);
-        if (players.length < 2) return;
-
         const prevRankings = game.gameState.rankings;
-        const playerSetup = players.map((p, idx) => ({
-          id: `player_${idx}`,
-          name: p.user.username,
-          type: "human" as const,
-          team:
-            room.gameMode === "teams"
-              ? ((idx % 2 === 0 ? "A" : "B") as "A" | "B")
-              : undefined,
+        // Engine ids ride across the manche, so prevRankings resolves to the
+        // same seats it named — initializeRematch never has to fall back to a
+        // guessed winner, and the exchange runs between the right two players.
+        const playerSetup = seats.map((p) => ({
+          id: p.id,
+          name: p.name,
+          type: p.type,
+          personality: p.personality,
+          team: room.gameMode === "teams" ? p.team : undefined,
         }));
 
         const newGameState =
@@ -1645,13 +1685,12 @@ export function setupSocket(httpServer: HttpServer) {
             ? initializeRematch(playerSetup, room.gameMode, prevRankings)
             : initializeGame(playerSetup, room.gameMode);
 
-        const playerMap: Record<number, string> = {};
-        players.forEach((p, idx) => {
-          playerMap[idx] = p.userId;
-        });
-
+        // `game.playerMap` is deliberately left alone: seat i of the new state
+        // is seat i of the old one, because playerSetup was built from that
+        // same array in order. playerMap is what sanitizeStateForPlayer reads
+        // to decide whose hand each viewer is sent, so renumbering it here is
+        // how a player ends up holding someone else's cards.
         game.gameState = newGameState;
-        game.playerMap = playerMap;
         game.gameMode = room.gameMode;
         game.maxPlayers = room.maxPlayers;
         // A rematch deals a brand new hand — last hand's bomb/joker plays
