@@ -856,6 +856,14 @@ extend it with the desktop width UI-06 addresses.
 > independently found three live defects hiding in one of them (A11Y-10, fixed in Batch 9).
 > This batch is not tidying.
 
+> **Carried forward from Batch 1 — this batch owns it.** Batch 1 added the production build to
+> CI but omitted `expo:static:build`, because it runs `scripts/build.js`, which starts a Metro
+> server and was too flaky on a runner. **TEST-05 and TEST-06 in this batch harden exactly that
+> script. Once they land, add `expo:static:build` back to the build step in
+> `.github/workflows/ci.yml` and delete the comment at `:85-86` explaining its absence.**
+> Do not close this batch leaving it out — it is logged in `PROGRESS.md` § Carried forward and
+> that row is yours to clear.
+
 **Findings:** TEST-02, TEST-07, TEST-08, TEST-10, TEST-05, TEST-06, TEST-15, TEST-11,
 **TEST-18, TEST-19, TEST-20, TEST-21, TEST-22**
 **Order:** TEST-02 → TEST-10 → **TEST-18 → TEST-20 → TEST-22 → TEST-19 → TEST-21** → TEST-07 →

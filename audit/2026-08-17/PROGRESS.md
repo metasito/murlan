@@ -54,6 +54,30 @@ on `main` for a human to ship it.
   rules, so the doc is a *how*, not a *whether* — but `CLAUDE.md`'s standing agreement requires
   one for anything touching storage or the socket protocol.
 
+## Carried forward
+
+**Anything a batch does not finish is written here, or it is lost.** Reporting a deferral in
+chat does not count — chat evaporates and the next session never sees it. A batch may only
+close with an open item if that item has a row here naming which batch picks it up.
+
+An entry is removed only when the work is actually done, by the batch that owns it.
+
+| From | Item | Why it was not done then | Owed by | Status |
+|---|---|---|---|---|
+| Batch 1 · TEST-04 | Add `expo:static:build` to the CI build step | It runs `scripts/build.js`, which starts a Metro server — too slow and flaky on a runner until the script is hardened. Recorded at `.github/workflows/ci.yml:85-86`. | **Batch 12**, after TEST-05 and TEST-06 | open |
+
+### Not carried forward — closed as designed
+
+Recorded so nobody re-opens them looking for missing work:
+
+- **Batch 1 · TEST-09** excluded `server/index.ts` from `tests/serverLoadable.test.ts`.
+  Importing it binds a port and installs signal handlers, so it cannot be load-tested in
+  isolation. The plan explicitly asked for a named exclusion rather than forcing it, and the
+  reason is recorded at `tests/serverLoadable.test.ts:11`. **This is the finished state of
+  TEST-09, not a deferral.**
+
+---
+
 ## Decisions
 
 **All closed.** `DECISIONS.md` D1–D6 answer every question that blocked implementation.

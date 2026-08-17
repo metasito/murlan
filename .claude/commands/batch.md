@@ -12,8 +12,10 @@ box is unchecked. Say which one you picked before you start.
 
 ## Read these first, in this order. Do not skip any.
 
-1. `audit/2026-08-17/PROGRESS.md` — confirm this batch is not already done, and that the
-   batches it depends on are.
+1. `audit/2026-08-17/PROGRESS.md` — confirm this batch is not already done, that the batches it
+   depends on are, and **check the § Carried forward table for rows owed by this batch.** Those
+   are unfinished items an earlier batch handed to you; they are part of your scope and you
+   clear the row when you do them.
 2. `audit/2026-08-17/IMPLEMENTATION-PLAN.md` — the **Global Constraints** section in full,
    then the **Batch $1** section in full. The batch section names its own findings, order,
    files, tests, verification command and rollback story. It also tells you if you must read
@@ -64,8 +66,18 @@ batch.
 
 1. Run the batch's verification command and paste its **real output**. Do not summarise it as
    "tests pass".
-2. Tick this batch's box in `audit/2026-08-17/PROGRESS.md`, and fill in the branch name, the
-   date, and the status. Commit that too.
+2. Update `audit/2026-08-17/PROGRESS.md` and commit it: fill in the branch, date and status,
+   clear any § Carried forward row you were owed, and **write a row into § Carried forward for
+   anything you did not finish.**
+
+   **A deferral that exists only in your chat report does not exist.** If you leave something
+   undone — a step omitted because a tool was flaky, a check you could not run, a fix scoped
+   down — it needs a row naming *what*, *why now*, and *which batch owes it*. If no later batch
+   is a natural owner, say so in your report and stop rather than inventing one.
+
+   If you scoped something down *deliberately and it is now finished in that form* — an
+   exclusion the plan asked for, say — record it under "Not carried forward — closed as
+   designed" with the reason, so nobody later reads it as missing work.
 3. **Push the branch.** `git push -u origin <branch>`. Never force-push, never `--no-verify`.
    If a hook fails, fix the underlying problem rather than skipping it.
 4. **Open a pull request** against `main` with `gh pr create`. Title:
@@ -89,10 +101,21 @@ batch.
    - Every finding's acceptance criteria were actually verified, not assumed.
    - Nothing you changed falls outside the batch's declared scope.
 
-6. Report back: what passed, what you verified and how, and anything you found that the audit
-   missed. If you merged, say so and give the merge SHA. If you did not, say exactly which
-   condition above stopped you.
-7. Tell me what the next batch is.
+6. **Send me a push notification with `PushNotification`** — I am usually away while a batch
+   runs, and this is how I find out it is done. Send exactly one, at the very end, whatever the
+   outcome. Keep it to a sentence or two that is useful on a lock screen:
+
+   - merged cleanly → `Batch <N> merged. <k> findings, CI green. Next: batch <N+1>.`
+   - stopped at the gate → `Batch <N> needs you: <the one condition that blocked it>.`
+   - failed → `Batch <N> failed: <what broke>.`
+
+   Do not send progress pings mid-batch, and do not skip it because the outcome was boring —
+   "merged, nothing to do" is exactly what I want to know without opening the laptop.
+
+7. Report back in chat: what passed, what you verified and how, and anything you found that the
+   audit missed. If you merged, say so and give the merge SHA. If you did not, say exactly
+   which condition stopped you.
+8. Tell me what the next batch is.
 
 Some batches must push earlier than this — Batch 1's `TEST-01` can only be verified on a
 runner, so it pushes mid-batch to confirm CI goes red. That is expected; the final push, PR and
