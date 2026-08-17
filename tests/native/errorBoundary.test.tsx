@@ -5,6 +5,8 @@
 // useSafeAreaInsets(), so every caught crash threw again with nothing above to
 // catch it and the player saw a blank screen.
 import { describe, it, expect, beforeEach, afterAll, jest } from '@jest/globals';
+import { readFileSync } from 'fs';
+import { join } from 'path';
 import React from 'react';
 import { QueryClientProvider, QueryClient } from '@tanstack/react-query';
 import { render } from '@testing-library/react-native';
@@ -51,9 +53,29 @@ afterAll(() => {
   consoleError.mockRestore();
 });
 
+// The rendering cases below build the stack themselves, which proves the
+// fallback works in that shape but not that the app is in it. The ordering is a
+// property of how app/_layout.tsx is written, so it is checked by reading it —
+// the same approach as tests/socketEvents.test.ts.
+describe('app/_layout.tsx keeps the boundary inside SafeAreaProvider', () => {
+  const layout = readFileSync(join(__dirname, '..', '..', 'app', '_layout.tsx'), 'utf8');
+  const occurrences = (tag: string) => layout.split(tag).length - 1;
+
+  it('mounts one of each', () => {
+    expect(occurrences('<SafeAreaProvider')).toBe(1);
+    expect(occurrences('<ErrorBoundary')).toBe(1);
+  });
+
+  it('opens SafeAreaProvider first and closes it last', () => {
+    expect(layout.indexOf('<SafeAreaProvider')).toBeLessThan(layout.indexOf('<ErrorBoundary'));
+    expect(layout.indexOf('</ErrorBoundary>')).toBeLessThan(
+      layout.indexOf('</SafeAreaProvider>')
+    );
+  });
+});
+
 describe('the root boundary renders its fallback', () => {
-  // The same nesting as app/_layout.tsx: the boundary lives inside
-  // SafeAreaProvider and wraps everything below it.
+  // The same nesting as app/_layout.tsx, pinned by the structural check above.
   const rootStack = (ui: React.ReactElement) => (
     <SettingsProvider>
       <QueryClientProvider client={new QueryClient()}>
