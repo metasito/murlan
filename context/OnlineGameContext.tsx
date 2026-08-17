@@ -154,11 +154,13 @@ export function OnlineGameProvider({ userId, children }: { userId: string; child
   const reactionTimersRef = useRef<Set<ReturnType<typeof setTimeout>>>(new Set());
   // Room id read back from storage — the only rejoin handle available after a cold start.
   const persistedRoomIdRef = useRef<string | null>(null);
-  // The room id a `game:rejoin` is currently in flight for. A `game:rejoin_failed`
-  // reply is only allowed to tear down state if it answers *this* attempt —
-  // it can otherwise land after the user has already created/joined a
-  // different room and wipe that one out instead.
-  const pendingRejoinRoomIdRef = useRef<string | null>(null);
+  // The room id a `game:rejoin` is currently in flight for, cleared by the
+  // live state that answers it. A `game:rejoin_failed` may only tear down
+  // state when it names *this* room: the round-trip is async, so a failure for
+  // an old room can otherwise land after the player has already moved to
+  // another one and wipe that one out instead. Null means nothing is
+  // outstanding, so no reply is allowed to act.
+  const requestedRoomIdRef = useRef<string | null>(null);
   // The server now stamps every game:state with the viewer's authoritative
   // seat index (see sanitizeStateForPlayer on the server). -1 is an explicit
   // "unknown" sentinel — it must never be confused with a real seat (0..3),
@@ -180,13 +182,13 @@ export function OnlineGameProvider({ userId, children }: { userId: string; child
     const currentRoom = roomRef.current;
     const currentGame = gameStateRef.current;
     if (currentRoom && currentGame && !currentGame.gameOver) {
-      pendingRejoinRoomIdRef.current = currentRoom.roomId;
+      requestedRoomIdRef.current = currentRoom.roomId;
       socket.emit("game:rejoin", { roomCode: currentRoom.roomId });
       return;
     }
     // Cold start / remounted provider: no in-memory room, but storage may hold one.
     if (!currentRoom && persistedRoomIdRef.current) {
-      pendingRejoinRoomIdRef.current = persistedRoomIdRef.current;
+      requestedRoomIdRef.current = persistedRoomIdRef.current;
       socket.emit("game:rejoin", { roomCode: persistedRoomIdRef.current });
     }
   }, [userId]);
@@ -216,7 +218,7 @@ export function OnlineGameProvider({ userId, children }: { userId: string; child
     const onRoomState = (data: RoomState) => {
       roomRef.current = data;
       setRoom(data);
-      pendingRejoinRoomIdRef.current = null;
+      requestedRoomIdRef.current = null;
       // Only a live game is worth surviving a restart for. Persisting a
       // waiting-room id too meant force-quitting from a lobby produced a
       // rejoin the server can never satisfy (waiting rooms never enter
@@ -232,7 +234,7 @@ export function OnlineGameProvider({ userId, children }: { userId: string; child
     };
 
     const onGameState = (state: GameState & { viewerSeatIndex?: number | null }) => {
-      pendingRejoinRoomIdRef.current = null;
+      requestedRoomIdRef.current = null;
       if (typeof state.viewerSeatIndex === "number") {
         setMySeatIndex(state.viewerSeatIndex);
       }
@@ -414,14 +416,12 @@ export function OnlineGameProvider({ userId, children }: { userId: string; child
     };
 
     const onRejoinFailed = (data: { reason?: string; roomCode?: string }) => {
-      // The rejoin round-trip is async, so a stale failure can land after
-      // the user already created or joined a different room. Only act on a
-      // reply for the attempt we're actually still waiting on — otherwise
-      // this wipes the room/game state that replaced it.
-      if (pendingRejoinRoomIdRef.current !== null && data.roomCode !== pendingRejoinRoomIdRef.current) {
-        return;
-      }
-      pendingRejoinRoomIdRef.current = null;
+      // Act only on a reply for the room still being waited on. The server
+      // echoes the requested room id verbatim at every emit site, and live
+      // state for any room clears the ref — so anything that does not match
+      // answers an attempt the player has already moved past.
+      if (data.roomCode && data.roomCode !== requestedRoomIdRef.current) return;
+      requestedRoomIdRef.current = null;
       persistActiveRoom(null);
       gameStateRef.current = null;
       setGameState(null);
@@ -486,15 +486,15 @@ export function OnlineGameProvider({ userId, children }: { userId: string; child
     setEntrySource("friends");
     // A rejoin_failed latched by an earlier, unrelated room (e.g. a
     // force-quit from a waiting lobby) must not survive into a room the
-    // player is deliberately starting fresh.
-    pendingRejoinRoomIdRef.current = null;
+    // player is deliberately starting fresh. The outstanding-rejoin ref is
+    // deliberately left alone: clearing it here is what disabled the
+    // stale-reply guard.
     setRejoinFailed(false);
     socket.emit("room:create", { gameMode, maxPlayers });
   }, [userId]);
 
   const joinRoom = useCallback((code: string) => {
     setEntrySource("friends");
-    pendingRejoinRoomIdRef.current = null;
     setRejoinFailed(false);
     socket.emit("room:join", { code });
   }, [userId]);
@@ -529,7 +529,7 @@ export function OnlineGameProvider({ userId, children }: { userId: string; child
     setDisconnectedPlayers(new Set());
     setReconnectNotice(null);
     if (reconnectNoticeTimerRef.current) clearTimeout(reconnectNoticeTimerRef.current);
-    pendingRejoinRoomIdRef.current = null;
+    requestedRoomIdRef.current = null;
     setMySeatIndex(-1);
     prevBothJokersExceptionRef.current = false;
     prevExchangeActiveRef.current = false;
@@ -537,7 +537,6 @@ export function OnlineGameProvider({ userId, children }: { userId: string; child
 
   const quickmatch = useCallback((maxPlayers: number, gameMode: "free_for_all" | "teams") => {
     setEntrySource("quickmatch");
-    pendingRejoinRoomIdRef.current = null;
     setRejoinFailed(false);
     socket.emit("room:quickmatch", { maxPlayers, gameMode });
   }, [userId]);

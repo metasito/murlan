@@ -329,4 +329,29 @@ describe("reconnect", { skip: hasDatabase() ? false : skipMessage() }, () => {
       await closeTable(table);
     }
   });
+
+  // ── Test 5 ──────────────────────────────────────────────────────────────
+
+  /**
+   * The client's stale-reply guard compares `roomCode` against the room it
+   * asked about, so a reply that renamed, normalised or omitted it would make
+   * every failure look like it answers somebody else's attempt.
+   */
+  test("a rejoin failure echoes the requested roomCode verbatim", async () => {
+    const gina = await connectAs(server, "echo_gina");
+    try {
+      const failed = waitFor<{ roomCode?: string; code?: string }>(
+        gina.socket,
+        "game:rejoin_failed",
+        5_000
+      );
+      const asked = "00000000-0000-4000-8000-00000000dead";
+      gina.socket.emit("game:rejoin", { roomCode: asked });
+      const payload = await failed;
+      assert.equal(payload.roomCode, asked);
+      assert.equal(payload.code, "GAME_NOT_FOUND");
+    } finally {
+      gina.socket.close();
+    }
+  });
 });
