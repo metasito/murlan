@@ -169,21 +169,34 @@ class DrizzleStorage implements IStorage {
     await db.update(users).set({ lastSeen: new Date() }).where(eq(users.id, userId));
   }
 
+  /**
+   * Lets the unique constraint decide the code, the same way `createUser` does
+   * for friend codes.
+   *
+   * Checking first and then inserting cannot be right: between the check and
+   * the insert another caller can take the code, and the previous loop also
+   * generated a replacement after its last failed check and inserted that one
+   * unverified. The constraint is the only thing that can settle it, so the
+   * insert asks it and retries on the answer.
+   */
   async createRoom(hostUserId: string, gameMode: "free_for_all" | "teams", maxPlayers: number): Promise<Room> {
-    let code = generateRoomCode();
-    for (let i = 0; i < 10; i++) {
-      const existing = await this.getRoomByCode(code);
-      if (!existing) break;
-      code = generateRoomCode();
+    for (let attempt = 0; attempt < 10; attempt++) {
+      try {
+        const [room] = await db.insert(rooms).values({
+          code: generateRoomCode(),
+          hostUserId,
+          status: "waiting",
+          gameMode,
+          maxPlayers,
+        }).returning();
+        return room;
+      } catch (err) {
+        const constraint = (err as { constraint?: string })?.constraint;
+        if (constraint?.includes("code") && attempt < 9) continue;
+        throw err;
+      }
     }
-    const [room] = await db.insert(rooms).values({
-      code,
-      hostUserId,
-      status: "waiting",
-      gameMode,
-      maxPlayers,
-    }).returning();
-    return room;
+    throw new Error("Failed to generate a free room code");
   }
 
   async getRoomByCode(code: string) {

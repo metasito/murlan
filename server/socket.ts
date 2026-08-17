@@ -1,13 +1,17 @@
 import { Server as SocketServer } from "socket.io";
 import type { Socket } from "socket.io";
 import type { Server as HttpServer } from "node:http";
-import { eq, lt } from "drizzle-orm";
+import { eq, inArray, lt } from "drizzle-orm";
 import { storage } from "./storage.ts";
 import { logger } from "./logger.ts";
 import { notifyUser } from "./push.ts";
 import { sessionMiddleware } from "./session.ts";
 import { db } from "./db.ts";
-import { activeGames as activeGamesTable } from "../shared/schema.ts";
+import {
+  activeGames as activeGamesTable,
+  roomPlayers as roomPlayersTable,
+  rooms as roomsTable,
+} from "../shared/schema.ts";
 import { consumeSocketTicket } from "./ticket.ts";
 import { isAllowedOrigin } from "./cors.ts";
 import { onEvent } from "./socketSafety.ts";
@@ -171,6 +175,21 @@ const SWEEP_INTERVAL_MS = 5 * 60_000;
  */
 const ABANDONED_GAME_MAX_AGE_MS = 24 * 60 * 60_000;
 
+/**
+ * How long a `rooms` row may live before the sweeper takes it.
+ *
+ * Derived from `created_at` rather than a "finished at" column, because a
+ * timestamp on `rooms` would be a new column on a table written every time
+ * anyone opens a table — the write that breaks until `db:push` runs. No game
+ * lasts a day, so age alone separates a live room from a dead one, and it
+ * covers the rooms a restart stranded in `waiting` as well as the finished
+ * ones.
+ */
+const STALE_ROOM_MAX_AGE_MS = 24 * 60 * 60_000;
+
+/** Rooms deleted per sweep. Bounds the size of one statement, not the total. */
+const STALE_ROOM_BATCH = 500;
+
 let _io: SocketServer | null = null;
 
 export function emitToUser(userId: string, event: string, data: unknown) {
@@ -214,6 +233,8 @@ export const __testables = {
   /** The restart-orphan prune, which only a real database can exercise. */
   pruneAbandonedGames: () => pruneAbandonedGames(),
   ABANDONED_GAME_MAX_AGE_MS,
+  pruneStaleRooms,
+  STALE_ROOM_MAX_AGE_MS,
 };
 
 function sanitizeStateForPlayer(
@@ -2050,6 +2071,41 @@ async function pruneAbandonedGames(): Promise<number> {
   return gone.length;
 }
 
+/**
+ * Deletes rooms nobody can still be playing in, and the seats that name them.
+ *
+ * `disposeGame` clears the `active_games` row when a table ends;
+ * `updateRoomStatus(…, "finished")` is all that ever happened to the `rooms`
+ * row, so every online game ever played left one behind, plus a
+ * `room_players` row per seat. `room_players` has no cascade, so its rows go
+ * first — the same order `storage.deleteUser` uses.
+ *
+ * A room still in the in-memory map is never a candidate, whatever its age.
+ */
+async function pruneStaleRooms(): Promise<number> {
+  const cutoff = new Date(Date.now() - STALE_ROOM_MAX_AGE_MS);
+  const candidates = await db
+    .select({ id: roomsTable.id })
+    .from(roomsTable)
+    .where(lt(roomsTable.createdAt, cutoff))
+    .limit(STALE_ROOM_BATCH);
+
+  const ids = candidates.map((r) => r.id).filter((id) => !activeGames.has(id));
+  if (ids.length === 0) return 0;
+
+  await db.delete(roomPlayersTable).where(inArray(roomPlayersTable.roomId, ids));
+  await db.delete(activeGamesTable).where(inArray(activeGamesTable.roomCode, ids));
+  const gone = await db
+    .delete(roomsTable)
+    .where(inArray(roomsTable.id, ids))
+    .returning({ id: roomsTable.id });
+
+  if (gone.length > 0) {
+    logger.info({ count: gone.length }, "Pruned rooms nobody can still be playing in");
+  }
+  return gone.length;
+}
+
 let sweeper: ReturnType<typeof setInterval> | null = null;
 
 /**
@@ -2073,6 +2129,10 @@ function startSweeper() {
       // reach: it walks memory, and a restart is what emptied memory.
       void pruneAbandonedGames().catch((err: unknown) =>
         logger.error({ err }, "Pruning abandoned games failed")
+      );
+
+      void pruneStaleRooms().catch((err: unknown) =>
+        logger.error({ err }, "Pruning stale rooms failed")
       );
 
       for (const roomId of Array.from(publicRoomIds)) {
