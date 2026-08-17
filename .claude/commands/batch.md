@@ -35,9 +35,19 @@ rebase: force-pushing is forbidden below, and rebase-after-push needs it.
 
 ## 3. Implement
 
-`superpowers:subagent-driven-development`. One task per finding, in the plan's order, **one
-commit per finding**: `fix(<ID>): <what changed>`. Reverting a single finding out of a merged
-batch depends on that.
+`superpowers:subagent-driven-development`, in the plan's order, **one commit per finding**:
+`fix(<ID>): <what changed>`. Reverting a single finding out of a merged batch depends on that.
+
+**One commit per finding is a git rule, not a dispatch rule.** One agent can make three commits.
+Every dispatch costs a full context rebuild — the agent re-reads the same files and re-runs the
+same suite — so group findings that share a file into **one** brief listing each fix in order
+with its commit message, and expect two or three dispatches per batch, not one per row. Split
+only where the work genuinely differs (server vs client), and never run two implementers on the
+same file at once — that is the real limit on parallelism. **Review once over the whole branch**
+before the PR, not after every task; the exception is a finding the plan marks Critical or one
+carrying an ordering hazard, which gets reviewed on its own immediately because later findings
+build on it. Write the brief properly — defect, fix, settled decisions, acceptance criteria —
+and it needs no round trip.
 
 - **Do not improvise.** Each finding's "Proposed fix" names files and approach. If you think one
   is wrong, stop and say so — do not substitute your own.
