@@ -122,9 +122,9 @@ describe("gameplay integrity", { skip: hasDatabase() ? false : skipMessage() }, 
    * from its own "connect" handler), so a slow DB round-trip on a real
    * reconnect could strand a player with no way back into their game.
    *
-   * connectAs() in tests/helpers/client.ts works around this by waiting for
-   * friend:online_list before returning — deliberately not used here, since
-   * that wait is exactly what would hide the bug this test exists to catch.
+   * This test builds its socket by hand rather than calling connectAs(), so
+   * that no helper can paper over a regression by waiting for some later
+   * server-sent event before handing the socket back.
    */
   test("an event emitted on the client's own connect handler is not dropped", async () => {
     const { user, cookie } = await register(server, "connect_race_user");
