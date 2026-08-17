@@ -4,6 +4,7 @@ import {
   Text,
   StyleSheet,
   Pressable,
+  ScrollView,
   Share,
   Alert,
   FlatList,
@@ -449,7 +450,15 @@ export default function RoomScreen() {
         <View style={styles.landscapeBody}>
           {/* LEFT: code card, mode pill, start button */}
           <View style={styles.landscapeLeft}>
-            <View style={{ flex: 1, gap: 8 }}>
+            {/* Scrolls rather than overflows: at phone-landscape heights the
+                code card, mode pill, format picker and bot controls together
+                exceed the column, and without this they ran underneath the
+                start button instead of being reachable. */}
+            <ScrollView
+              style={styles.landscapeLeftScroll}
+              contentContainerStyle={styles.landscapeLeftScrollContent}
+              showsVerticalScrollIndicator={false}
+            >
               <Animated.View entering={FadeIn.duration(400)} style={styles.codeSectionCompact}>
                 <Text style={styles.codeLabel}>{t("room.codeLabel")}</Text>
                 <Text style={styles.codeTextCompact}>{room.code}</Text>
@@ -485,9 +494,8 @@ export default function RoomScreen() {
               </View>
 
               {formatControls}
-              {formatControls}
-        {botFillControls}
-            </View>
+              {botFillControls}
+            </ScrollView>
 
             <View style={styles.landscapeFooter}>
               {StartButton}
@@ -611,6 +619,7 @@ export default function RoomScreen() {
           </Text>
         </View>
 
+        {formatControls}
         {botFillControls}
 
         <View style={{ gap: 6 }}>
@@ -841,6 +850,8 @@ const styles = StyleSheet.create({
     paddingLeft: 12,
     paddingRight: 12,
   },
+  landscapeLeftScroll: { flex: 1 },
+  landscapeLeftScrollContent: { gap: Spacing.sm },
   landscapeDivider: {
     width: 1,
     backgroundColor: Colors.border,
