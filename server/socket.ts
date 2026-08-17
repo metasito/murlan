@@ -107,11 +107,11 @@ interface OnlineGameState {
   /**
    * seat -> the userId who walked out on the hand being played, for seats
    * vacated while they still held cards. `playerMap` has already forgotten
-   * them by then, and a seat missing from it scores as `bot:<seat>`, which is
-   * how a player used to leave a losing hand and be recorded nowhere at all.
-   * Read at game over to record the seat as a real last-place finish, and
-   * cleared wherever a new hand deals — the forfeit is recorded once, not in
-   * every remaining manche of the match.
+   * them by then and a seat missing from it scores as `bot:<seat>`, which
+   * every stats and ladder write drops, so this is the only thing that still
+   * ties the seat to a person. Read at game over to record it as a real
+   * last-place finish, and cleared wherever a new hand deals — the forfeit is
+   * recorded once, not in every remaining manche of the match.
    *
    * In memory only: putting it in the persisted `game_state` envelope would
    * change a stored shape, and a GAME_SCHEMA_VERSION bump disposes every live
@@ -803,11 +803,11 @@ async function vacateSeat(
       message: `${username} ha lasciato la partita.`,
       params: { username },
     });
-    // The hand is still scored. The player who was left holding the table
-    // takes it — they are the only seat still being played by anyone — and
-    // whoever walked out is recorded as the last-place finish they were
-    // heading for. Disposing without this is what let a losing player close
-    // the tab and take their opponent's win with them.
+    // The hand is scored rather than discarded. The win goes to the last
+    // seat still held by a person — bot seats may well still be at the table,
+    // and none of them may take a hand a human was playing — and concedeHand
+    // places every seat still holding cards behind them, the walkout included
+    // as the last-place finish a forfeit is.
     const survivorSeat = Object.keys(game.playerMap).map(Number)[0];
     concedeHand(game, survivorSeat);
     // Sets rooms.status = "finished" and writes the row itself; the write is
@@ -1024,34 +1024,44 @@ async function handleGameOver(
       (p) => p.hand.length === 0
     ).length;
 
-    const gameResults: GameResult[] = state.rankings
-      .map((engineId, idx) => {
-        const seat = seatOfEngineId.get(engineId);
-        if (seat === undefined) return null;
-        // A seat someone walked out on is that person's result, not a bot's:
-        // keyed by the userId who left (`bot:<seat>` is filtered out of every
-        // write below) and recorded as the last-place finish a forfeit is.
-        const abandonedBy = game.abandonedSeats.get(seat);
-        const placement = abandonedBy === undefined ? idx + 1 : playerCount;
-        const key = abandonedBy ?? scoreKeyForSeat(game, seat);
-        const flags = game.handFlags[seat] ?? { bomb: false, joker: false };
-        const emptiedOwnHand = state.players[seat].hand.length === 0;
-        const result: GameResult = {
-          userId: key,
-          placement,
-          playerCount,
-          playedBomb: flags.bomb,
-          playedJoker: flags.joker,
-          matchWon: matchWinners.includes(key),
-          opponentsFinished: Math.max(
-            realFinisherCount - (emptiedOwnHand ? 1 : 0),
-            0
-          ),
-          abandoned: abandonedBy !== undefined,
-        };
-        return result;
-      })
-      .filter((r): r is GameResult => r !== null);
+    // Placements are handed out from one explicit total order, not from each
+    // seat's own index in `state.rankings`: the seats that played the hand out
+    // in ranking order, then the abandoned ones behind them, ranking order kept
+    // within each group so several walkouts fill the last slots stably. That is
+    // what makes a forfeit genuinely last (docs/BRIEF.md §3.1) while every
+    // placement stays distinct — lib/rating.ts renumbers the human seats 1..n
+    // by sorting on placement, so two seats sharing one would rate a quitter
+    // ahead of a player who stayed to the end.
+    const rankedSeats = state.rankings
+      .map((engineId) => seatOfEngineId.get(engineId))
+      .filter((seat): seat is number => seat !== undefined);
+    const orderedSeats = [
+      ...rankedSeats.filter((seat) => !game.abandonedSeats.has(seat)),
+      ...rankedSeats.filter((seat) => game.abandonedSeats.has(seat)),
+    ];
+
+    const gameResults: GameResult[] = orderedSeats.map((seat, idx) => {
+      // A seat someone walked out on is that person's result, not a bot's:
+      // keyed by the userId who left, since `bot:<seat>` is filtered out of
+      // every write below.
+      const abandonedBy = game.abandonedSeats.get(seat);
+      const key = abandonedBy ?? scoreKeyForSeat(game, seat);
+      const flags = game.handFlags[seat] ?? { bomb: false, joker: false };
+      const emptiedOwnHand = state.players[seat].hand.length === 0;
+      return {
+        userId: key,
+        placement: idx + 1,
+        playerCount,
+        playedBomb: flags.bomb,
+        playedJoker: flags.joker,
+        matchWon: matchWinners.includes(key),
+        opponentsFinished: Math.max(
+          realFinisherCount - (emptiedOwnHand ? 1 : 0),
+          0
+        ),
+        abandoned: abandonedBy !== undefined,
+      };
+    });
 
     // Bot-filled tables stay fully playable, but nothing about them is
     // recorded: a private room of one human plus bots would otherwise be
