@@ -69,6 +69,8 @@ export const sq: Record<keyof typeof it, string> = {
   "server.ALREADY_IN_ROOM": "Je tashmë në dhomë",
   "server.CANNOT_CHANGE_MODE_IN_PROGRESS": "Nuk mund të ndryshosh modalitetin kur loja ka filluar",
   "server.MIN_PLAYERS_REQUIRED": "Nevojiten të paktën 2 lojtarë",
+  "server.MATCH_IN_PROGRESS": "Një ndeshje është tashmë në vazhdim",
+  "server.NEW_MATCH_NOT_READY": "Të gjithë lojtarët duhet të jenë gati përpara se të fillojë një ndeshje e re",
   "server.EXCHANGE_PENDING": "Duhet të përfundosh shkëmbimin më parë",
   "server.INVALID_COMBINATION": "Kombinim i pavlefshëm",
   "server.MUST_PLAY_START_CARD": "Duhet të luash {{rank}}♠ si letrën e parë",

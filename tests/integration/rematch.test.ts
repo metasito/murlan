@@ -150,6 +150,87 @@ describe("rematch roster", { skip: hasDatabase() ? false : skipMessage() }, () =
     await closeTable(room.roomId, jack);
   });
 
+  /**
+   * `handleGameOver` sets `rooms.status = "finished"` after every manche, not
+   * only at the end of a match, so the room row alone cannot tell a running
+   * match from an ended one. Accepting room:start on that status is a second
+   * deal path: it deals with `initializeGame` (no exchange phase, so the
+   * loser never forfeits their strongest card) and takes `matchLength`
+   * straight from the payload while the running match's scores and target
+   * carry on.
+   */
+  test("room:start cannot deal the next manche of a running match", async () => {
+    const { __testables } = await import("../../server/socket.ts");
+    const [mira] = await makeClients(server, ["newmatch_running_mira"]);
+    const room = await setUpRoom([mira], 4);
+
+    const over = gameOverOf(
+      await driveHandToExchangeOrOver([mira], () => {
+        mira.socket.emit("room:start", { fillWithBots: true, botPersonality: "gent" });
+      })
+    );
+    const before = __testables.matchSnapshot(room.roomId);
+    assert.equal(before?.matchOver, false, "one manche of a 21-point match settles nothing");
+
+    const refused = waitFor<{ code: string }>(mira.socket, "room:error", 5_000);
+    // The payload a losing host would send: convert the match into a one-hand
+    // shootout and re-deal it without the exchange.
+    mira.socket.emit("room:start", { fillWithBots: true, matchLength: "single" });
+    assert.equal((await refused).code, "MATCH_IN_PROGRESS");
+    assert.deepEqual(
+      __testables.matchSnapshot(room.roomId),
+      before,
+      "a refused room:start must leave the format, target, scores and hand exactly as they were"
+    );
+
+    // The one path that may deal it, still dealing it properly.
+    const dealt = waitForDeal(mira.socket);
+    mira.socket.emit("game:rematch_vote");
+    const next = await dealt;
+    assert.ok(next.exchangePhase, "the next manche of a running match carries an exchange phase");
+    assert.equal(next.players[next.exchangePhase.winnerIdx].id, over.rankings[0]);
+    await closeTable(room.roomId, mira);
+  });
+
+  test("a new match after the last one needs the table, not just the host", async () => {
+    const [nadia, omar] = await makeClients(server, [
+      "newmatch_gate_nadia",
+      "newmatch_gate_omar",
+    ]);
+    const room = await setUpRoom([nadia, omar], 2);
+
+    // `matchLength: "single"` ends the match with the first manche, so what
+    // follows is a genuinely new match rather than the next hand of this one.
+    gameOverOf(
+      await driveHandToExchangeOrOver([nadia, omar], () => {
+        nadia.socket.emit("room:start", { matchLength: "single" });
+      })
+    );
+
+    const refused = waitFor<{ code: string }>(nadia.socket, "room:error", 5_000);
+    nadia.socket.emit("room:start");
+    assert.equal(
+      (await refused).code,
+      "NEW_MATCH_NOT_READY",
+      "the host alone cannot commit the other seat to another match"
+    );
+
+    // A seat nobody holds abstains rather than blocking: the gate counts the
+    // seats in playerMap, and Omar's is no longer one of them.
+    const takeover = waitFor(nadia.socket, "game:seat_bot_takeover", 5_000);
+    omar.socket.emit("room:leave");
+    await takeover;
+
+    const started = waitFor(nadia.socket, "game:started", 8_000);
+    const dealt = waitForDeal(nadia.socket);
+    nadia.socket.emit("room:start", { fillWithBots: true });
+    await started;
+    const next = await dealt;
+    assert.equal(next.players.length, 2, "the new match deals a full table");
+    assertHandSecrecy(next, "new match deal");
+    await closeTable(room.roomId, nadia);
+  });
+
   test("a rematch that cannot proceed says why and leaves the vote retryable", async () => {
     const [liam] = await makeClients(server, ["rematch_error_liam"]);
     const room = await setUpRoom([liam], 2);

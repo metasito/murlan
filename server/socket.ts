@@ -248,6 +248,23 @@ export const __testables = {
     const game = activeGames.get(roomId);
     return game ? { ...game.playerMap } : null;
   },
+  /**
+   * The match bookkeeping of a room's live game: the format, the target, the
+   * running scores and the identity of the hand on the table. A second deal
+   * path is only observable through these — the clients see an ordinary
+   * `game:started` either way.
+   */
+  matchSnapshot: (roomId: string) => {
+    const game = activeGames.get(roomId);
+    if (!game) return null;
+    return {
+      matchLength: game.matchLength,
+      matchTarget: game.matchTarget,
+      matchOver: game.matchOver,
+      cumulativeScores: { ...game.cumulativeScores },
+      rankings: [...game.gameState.rankings],
+    };
+  },
   /** The restart-orphan prune, which only a real database can exercise. */
   pruneAbandonedGames: () => pruneAbandonedGames(),
   ABANDONED_GAME_MAX_AGE_MS,
@@ -1375,12 +1392,53 @@ export function setupSocket(httpServer: HttpServer) {
         const roomId = socketRoomMap.get(socket.id);
         if (!roomId) return;
         const room = await storage.getRoomById(roomId);
-        if (
-          !room ||
-          room.hostUserId !== userId ||
-          (room.status !== "waiting" && room.status !== "finished")
-        )
+        if (!room || room.hostUserId !== userId) return;
+
+        // A live in-memory game is the authority on whether this room may
+        // deal: `rooms.status` reads "finished" between the manches of a
+        // running match as well as after the last one, and it is written a
+        // moment *after* game:over reaches the clients, so it is stale exactly
+        // when a between-hands start arrives.
+        const previous = activeGames.get(roomId);
+
+        if (previous) {
+          if (!previous.matchOver) {
+            // The next manche of a running match is game:rematch_vote's job.
+            // Dealing it here would deal without an exchange phase, and would
+            // let the payload's matchLength rewrite the format of a match
+            // that is already being scored.
+            socket.emit("room:error", {
+              message: "A match is already in progress",
+              code: "MATCH_IN_PROGRESS",
+            });
+            return;
+          }
+
+          // A finished match releases every player's commitment, so the next
+          // one is a new agreement: it needs the whole table ready, not the
+          // host alone. Same ready set as game:rematch_vote, and the same
+          // abstention — a seat with no playerMap entry (a bot, or a human
+          // who left) has nobody who can answer and is not counted.
+          if (seatOfUser(previous, userId) !== null) {
+            previous.rematchVotes.add(userId);
+          }
+          const seated = Object.values(previous.playerMap);
+          io.to(roomId).emit("game:vote_state", {
+            votes: Array.from(previous.rematchVotes),
+            total: seated.length,
+          });
+          if (!seated.every((uid) => previous.rematchVotes.has(uid))) {
+            socket.emit("room:error", {
+              message: "Every player must be ready before a new match starts",
+              code: "NEW_MATCH_NOT_READY",
+            });
+            return;
+          }
+        } else if (room.status !== "waiting" && room.status !== "finished") {
+          // No game in memory: the room row is all there is, and a room
+          // mid-game there is one a restart stranded, not one to deal into.
           return;
+        }
 
         const players = await storage.getRoomPlayers(room.id);
         // With bots filling every empty seat, one seated human is enough —
@@ -1391,7 +1449,6 @@ export function setupSocket(httpServer: HttpServer) {
         }
         if (players.length < 1) return;
 
-        const previous = activeGames.get(roomId);
         clearRoomTimers(roomId);
 
         const humans = players.map((p) => ({
