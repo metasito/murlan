@@ -67,6 +67,7 @@ export const sq: Record<keyof typeof it, string> = {
   "server.GAME_ALREADY_STARTED": "Loja ka filluar tashmë",
   "server.ROOM_FULL": "Dhoma është plot",
   "server.ALREADY_IN_ROOM": "Je tashmë në dhomë",
+  "server.NOT_IN_ROOM": "Nuk je në këtë dhomë",
   "server.CANNOT_CHANGE_MODE_IN_PROGRESS": "Nuk mund të ndryshosh modalitetin kur loja ka filluar",
   "server.MIN_PLAYERS_REQUIRED": "Nevojiten të paktën 2 lojtarë",
   "server.MATCH_IN_PROGRESS": "Një ndeshje është tashmë në vazhdim",

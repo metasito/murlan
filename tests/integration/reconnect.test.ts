@@ -488,4 +488,76 @@ describe("reconnect", { skip: hasDatabase() ? false : skipMessage() }, () => {
       jack.socket.close();
     }
   });
+
+  /**
+   * What `room:rejoin` will and will not do for the caller, on one table.
+   *
+   * The two cases share a lobby because `/api/auth/register` is rate limited
+   * to 20 per process (see tests/helpers/table.ts) and this file is close to
+   * that ceiling. They run in the order written: the refusal reads the table
+   * the `before` builds, the re-seat then takes it apart.
+   */
+  describe("room:rejoin re-seats only the people who were in the room", () => {
+    let kate: AuthedClient;
+    let liam: AuthedClient;
+    let mia: AuthedClient;
+    let nate: AuthedClient;
+    let room: RoomState;
+
+    before(async () => {
+      kate = await connectAs(server, "seat_back_kate");
+      liam = await connectAs(server, "seat_back_liam");
+      mia = await connectAs(server, "seat_back_mia");
+      nate = await connectAs(server, "seat_back_nate");
+      room = await setUpRoom([kate, liam, mia], 4);
+    });
+
+    after(async () => {
+      await closeTable([kate, liam, mia, nate]);
+    });
+
+    /**
+     * The six-character code is all it takes to reach a room, so the code
+     * cannot also be what proves membership: `room:join` is the event for a
+     * caller who was never seated, and it enforces the room's capacity and
+     * status. A `room:rejoin` that seated them would additionally have handed
+     * over the host role.
+     */
+    test("refuses a caller who was never in the room", async () => {
+      const refused = waitFor<{ code?: string }>(nate.socket, "room:error", 5_000);
+      nate.socket.emit("room:rejoin", { code: room.code });
+      assert.equal((await refused).code, "NOT_IN_ROOM");
+    });
+
+    /**
+     * Releasing a seat frees the lowest one as often as not, so "the returning
+     * player is the lowest seat" is not the same question as "the returning
+     * player was host". Only the account that lost the role gets it back.
+     */
+    test("re-seats a member who was not host without handing them the room", async () => {
+      const migrated = waitFor<RoomState>(liam.socket, "room:state", 5_000);
+      kate.socket.emit("room:leave");
+      const afterLeave = await migrated;
+      assert.equal(afterLeave.hostUserId, liam.user.id);
+      assert.deepEqual(
+        afterLeave.players.map((p) => p.userId).sort(),
+        [liam.user.id, mia.user.id].sort()
+      );
+
+      const released = waitFor<RoomState>(liam.socket, "room:state", 5_000);
+      mia.socket.disconnect();
+      assert.equal((await released).players.length, 1);
+
+      const back = await reconnect(mia);
+      mia = { ...mia, socket: back };
+      const recovered = waitFor<RoomState>(back, "room:state", 5_000);
+      back.emit("room:rejoin", { code: room.code });
+      const state = await recovered;
+
+      // Seat 0 is the one kate vacated, and taking it is what used to carry
+      // the room with it.
+      assert.equal(state.players.find((p) => p.userId === mia.user.id)?.seatIndex, 0);
+      assert.equal(state.hostUserId, liam.user.id);
+    });
+  });
 });

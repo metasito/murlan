@@ -58,6 +58,7 @@ export const it = {
   "server.GAME_ALREADY_STARTED": "Partita già iniziata",
   "server.ROOM_FULL": "Stanza piena",
   "server.ALREADY_IN_ROOM": "Sei già nella stanza",
+  "server.NOT_IN_ROOM": "Non sei in questa stanza",
   "server.CANNOT_CHANGE_MODE_IN_PROGRESS": "Non puoi cambiare modalità a partita iniziata",
   "server.MIN_PLAYERS_REQUIRED": "Servono almeno 2 giocatori",
   "server.MATCH_IN_PROGRESS": "C'è già una partita in corso",

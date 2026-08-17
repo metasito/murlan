@@ -146,6 +146,36 @@ const spectatorRoomMap = new Map<string, string>();
 const userSocketMap = new Map<string, string>();
 const publicRoomIds = new Set<string>();
 
+/**
+ * Who lost their connection to a waiting lobby, per room id: userId -> whether
+ * they held the room at the moment they dropped.
+ *
+ * A lobby disconnect deletes the `room_players` row immediately, so nothing in
+ * the database still says the caller was ever seated. This is that evidence,
+ * and `room:rejoin` is its only reader: without an entry (and without a
+ * surviving seat row) a caller holding the six-character code is arriving, not
+ * returning, and `room:join` is their event. It is also the only thing that may
+ * hand the room back — the host role returns to the account that lost it and to
+ * nobody else.
+ *
+ * In memory: a restart drops every socket anyway, so there is no reconnect left
+ * to answer.
+ */
+const lobbyDropouts = new Map<string, Map<string, boolean>>();
+
+function rememberLobbyDropout(roomId: string, userId: string, wasHost: boolean) {
+  const room = lobbyDropouts.get(roomId) ?? new Map<string, boolean>();
+  room.set(userId, wasHost);
+  lobbyDropouts.set(roomId, room);
+}
+
+function forgetLobbyDropout(roomId: string, userId: string) {
+  const room = lobbyDropouts.get(roomId);
+  if (!room) return;
+  room.delete(userId);
+  if (room.size === 0) lobbyDropouts.delete(roomId);
+}
+
 // Timers. Every entry added here has exactly one matching delete — see
 // clearAfkTimer / clearRoomTimers / clearAllTimersForUser / disposeGame.
 const afkTimers = new Map<string, ReturnType<typeof setTimeout>>();
@@ -1394,10 +1424,17 @@ export function setupSocket(httpServer: HttpServer) {
     /**
      * Coming back to a waiting lobby on a new socket. A lobby disconnect frees
      * the seat straight away (handleSeatRelease), so there is nothing to hold
-     * open and nothing to restore beyond taking the seat again — the claim is
-     * the whole check, and it answers with the same rejections room:join does.
-     * `already_joined` is the good case: the row outlived the drop and only the
-     * socket has to be re-attached.
+     * open and nothing to restore beyond taking the seat again and re-attaching
+     * the socket; the claim answers with the same rejections room:join does,
+     * and `already_joined` is the good case — the row outlived the drop.
+     *
+     * This event is only for a caller who was in the room: a seat row that
+     * survived, or a `lobbyDropouts` record of the drop. Anyone else holding
+     * the code is joining, and `room:join` is the event that seats them.
+     *
+     * The host role goes back to the account that lost it on the way out and
+     * to nobody else, so the migration handleSeatRelease made is undone rather
+     * than handed to whoever reaches the lowest seat first.
      *
      * Without this the returning socket has no socketRoomMap entry, so every
      * later room event resolves to no room and returns silently — the host's
@@ -1415,6 +1452,16 @@ export function setupSocket(httpServer: HttpServer) {
           return;
         }
 
+        const seated = await storage.getRoomPlayers(room.id);
+        const wasHost = lobbyDropouts.get(room.id)?.get(userId);
+        if (wasHost === undefined && !seated.some((p) => p.userId === userId)) {
+          socket.emit("room:error", {
+            message: "You are not in this room",
+            code: "NOT_IN_ROOM",
+          });
+          return;
+        }
+
         const claim = await storage.claimRoomSeat(room.id, userId);
         if (!claim.ok && claim.reason !== "already_joined") {
           socket.emit("room:error", {
@@ -1426,15 +1473,12 @@ export function setupSocket(httpServer: HttpServer) {
 
         socket.join(room.id);
         socketRoomMap.set(socket.id, room.id);
+        forgetLobbyDropout(room.id, userId);
 
-        // Ordered by seat. The lobby host is the lowest-seated player, which is
-        // the rule the disconnect migrated by in the first place: the returning
-        // player re-takes the seat they left, so a host who blipped is host
-        // again instead of holding a room they can no longer start.
         const players = await storage.getRoomPlayers(room.id);
         let hostUserId = room.hostUserId;
-        if (players[0] && players[0].userId !== hostUserId) {
-          hostUserId = players[0].userId;
+        if (wasHost && hostUserId !== userId) {
+          hostUserId = userId;
           await storage.updateRoomHost(room.id, hostUserId);
         }
         io.to(room.id).emit(
@@ -1680,6 +1724,9 @@ export function setupSocket(httpServer: HttpServer) {
         activeGames.set(roomId, newGame);
 
         publicRoomIds.delete(roomId);
+        // The lobby is over; a seat lost from here on is the live game's to
+        // hold open through the disconnect grace.
+        lobbyDropouts.delete(roomId);
         await storage.updateRoomStatus(roomId, "in_progress");
 
         broadcastGameState(io, newGame);
@@ -2477,6 +2524,8 @@ async function pruneStaleRooms(): Promise<number> {
 
   const ids = candidates.map((r) => r.id).filter((id) => !activeGames.has(id));
   if (ids.length === 0) return 0;
+  // A lobby nobody ever came back to keeps its dropout records until here.
+  ids.forEach((id) => lobbyDropouts.delete(id));
 
   await db.delete(roomPlayersTable).where(inArray(roomPlayersTable.roomId, ids));
   await db.delete(activeGamesTable).where(inArray(activeGamesTable.roomCode, ids));
@@ -2596,7 +2645,15 @@ async function handleSeatRelease(
           )
         );
       publicRoomIds.delete(roomId);
+      lobbyDropouts.delete(roomId);
       return;
+    }
+    // A lost connection is the only release room:rejoin may answer: a
+    // `room:leave` is the player choosing to go, and room:join is how they come
+    // back from that. Recorded before the migration below, so it holds who was
+    // host at the moment of the drop.
+    if (opts.source === "disconnect") {
+      rememberLobbyDropout(roomId, userId, room.hostUserId === userId);
     }
     let newHostId = room.hostUserId;
     if (room.hostUserId === userId) {

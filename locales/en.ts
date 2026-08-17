@@ -45,6 +45,7 @@ export const en: Record<keyof typeof it, string> = {
   "server.GAME_ALREADY_STARTED": "Game already started",
   "server.ROOM_FULL": "Room full",
   "server.ALREADY_IN_ROOM": "You're already in the room",
+  "server.NOT_IN_ROOM": "You're not in this room",
   "server.CANNOT_CHANGE_MODE_IN_PROGRESS": "You can't change mode once the game has started",
   "server.MIN_PLAYERS_REQUIRED": "At least 2 players are required",
   "server.MATCH_IN_PROGRESS": "A match is already in progress",
