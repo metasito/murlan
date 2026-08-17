@@ -116,6 +116,13 @@ interface OnlineGameContextValue {
   sendReaction: (emoji: string) => void;
   clearError: () => void;
   clearPlayerLeft: () => void;
+  /**
+   * Consumes the bounce back to the lobby. `rejoinFailed` stays true until the
+   * screen that acts on it says so, and nothing else clears it — left latched
+   * it would eject the player from the next table they open, spectated or
+   * played.
+   */
+  clearRejoinFailed: () => void;
 }
 
 const OnlineGameContext = createContext<OnlineGameContextValue | null>(null);
@@ -619,6 +626,7 @@ export function OnlineGameProvider({ userId, children }: { userId: string; child
   const spectateRoom = useCallback(
     (code: string) => {
       setIsSpectator(true);
+      setRejoinFailed(false);
       socket.emit("room:spectate", { code: code.toUpperCase() });
     },
     [socket]
@@ -721,6 +729,7 @@ export function OnlineGameProvider({ userId, children }: { userId: string; child
 
   const clearError = useCallback(() => setError(null), []);
   const clearPlayerLeft = useCallback(() => setPlayerLeft(false), []);
+  const clearRejoinFailed = useCallback(() => setRejoinFailed(false), []);
 
   const contextValue = useMemo(
     () => ({
@@ -760,8 +769,9 @@ export function OnlineGameProvider({ userId, children }: { userId: string; child
       sendReaction,
       clearError,
       clearPlayerLeft,
+      clearRejoinFailed,
     }),
-    [room, gameState, reactions, connected, error, playerLeft, rejoinFailed, disconnectedPlayers, reconnectNotice, mySeatIndex, entrySource, rematchVoteState, cumulativeScores, matchState, rematchIntents, rematchPromptOpen, exchangeAnnouncing, exchangeAnnounceData, createRoom, joinRoom, spectateRoom, isSpectator, leaveRoom, quickmatch, setRoomGameMode, startGame, requestPlayAgain, voteRematch, answerRematch, playCards, pass, giveExchangeCard, acknowledgeExchange, sendReaction, clearError, clearPlayerLeft]
+    [room, gameState, reactions, connected, error, playerLeft, rejoinFailed, disconnectedPlayers, reconnectNotice, mySeatIndex, entrySource, rematchVoteState, cumulativeScores, matchState, rematchIntents, rematchPromptOpen, exchangeAnnouncing, exchangeAnnounceData, createRoom, joinRoom, spectateRoom, isSpectator, leaveRoom, quickmatch, setRoomGameMode, startGame, requestPlayAgain, voteRematch, answerRematch, playCards, pass, giveExchangeCard, acknowledgeExchange, sendReaction, clearError, clearPlayerLeft, clearRejoinFailed]
   );
 
   return (

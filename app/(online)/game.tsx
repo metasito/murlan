@@ -72,6 +72,7 @@ export default function OnlineGameScreen() {
     exchangeAnnounceData,
     acknowledgeExchange,
     clearPlayerLeft,
+    clearRejoinFailed,
   } = useOnlineGame();
 
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
@@ -161,7 +162,8 @@ export default function OnlineGameScreen() {
   useEffect(() => {
     if (!rejoinFailed) return;
     goToLobbyRef.current();
-  }, [rejoinFailed]);
+    clearRejoinFailed();
+  }, [rejoinFailed, clearRejoinFailed]);
 
   if (!gameState) return null;
 

@@ -41,9 +41,12 @@ const ACTIVE_ROOM_KEY = '@murlan_active_room';
 const RETRY_DELAY_MS = 2000;
 const MAX_RETRIES = 3;
 
+let spectate: ((code: string) => void) | null = null;
+
 function Probe() {
-  const { room, rejoinFailed } = useOnlineGame();
+  const { room, rejoinFailed, spectateRoom } = useOnlineGame();
   const { notification } = useNotification();
+  spectate = spectateRoom;
   return (
     <>
       <Text testID="room">{room ? room.roomId : 'none'}</Text>
@@ -167,5 +170,24 @@ describe('game:rejoin_failed', () => {
     } finally {
       jest.useRealTimers();
     }
+  });
+
+  // The provider outlives the game screen, so the flag has to be cleared by
+  // every entry into a table as well as on the way out of one — a spectator
+  // arriving with it still set is bounced out of the game screen on sight.
+  it('does not survive into a spectated table', async () => {
+    const view = await mountRejoining('R1');
+
+    deliver('game:rejoin_failed', failure('R1'));
+    await waitFor(() => expect(shown(view, 'failed')).toBe('true'));
+
+    await waitFor(() => spectate?.('ABCDEF'));
+    await waitFor(() => expect(shown(view, 'failed')).toBe('false'));
+    expect(emitted).toContainEqual({
+      event: 'room:spectate',
+      payload: { code: 'ABCDEF' },
+    });
+
+    await view.unmount();
   });
 });

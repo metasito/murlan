@@ -12,6 +12,7 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 const mockReplace = jest.fn();
 const mockLeaveRoom = jest.fn();
+const mockClearRejoinFailed = jest.fn();
 
 jest.mock('expo-router', () => ({
   router: { replace: mockReplace, push: jest.fn(), back: jest.fn() },
@@ -59,6 +60,7 @@ jest.mock('@/context/OnlineGameContext', () => ({
     exchangeAnnounceData: null,
     acknowledgeExchange: jest.fn(),
     clearPlayerLeft: jest.fn(),
+    clearRejoinFailed: mockClearRejoinFailed,
   }),
 }));
 
@@ -77,6 +79,7 @@ describe('a refused rejoin', () => {
   beforeEach(() => {
     mockReplace.mockClear();
     mockLeaveRoom.mockClear();
+    mockClearRejoinFailed.mockClear();
   });
 
   it('returns to the lobby without releasing the seat', async () => {
@@ -88,6 +91,21 @@ describe('a refused rejoin', () => {
 
     await waitFor(() => expect(mockReplace).toHaveBeenCalled());
     expect(mockLeaveRoom).not.toHaveBeenCalled();
+
+    await view.unmount();
+  });
+
+  // The flag outlives the screen that reads it — the provider sits above the
+  // route group. Whatever the player opens next, a game or a spectated table,
+  // is bounced straight back out unless the bounce is consumed here.
+  it('consumes the flag on the way out', async () => {
+    const view = await render(
+      <SafeAreaProvider initialMetrics={METRICS}>
+        <OnlineGameScreen />
+      </SafeAreaProvider>
+    );
+
+    await waitFor(() => expect(mockClearRejoinFailed).toHaveBeenCalled());
 
     await view.unmount();
   });
