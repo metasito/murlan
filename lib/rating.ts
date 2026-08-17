@@ -1,5 +1,7 @@
 // The ranked ladder's arithmetic. Pure — no react-native import, no db — so
-// both the server and `node --test` load it directly.
+// both the server and `node --test` load it directly. The one type import is
+// erased at compile time and pulls nothing in.
+import type { TranslationKey } from "./i18n.ts";
 //
 // Every constant here carries its own reasoning; the two that are conventions
 // rather than measurements (SEASON_CARRY, the K tiers) say so.
@@ -39,6 +41,25 @@ export const SEASON_CARRY = 0.5;
  */
 export function seasonKey(at: Date): string {
   return `${at.getUTCFullYear()}-${String(at.getUTCMonth() + 1).padStart(2, "0")}`;
+}
+
+/**
+ * The season as a player should read it: "Agosto 2026", not "2026-08".
+ *
+ * The key stays exactly as stored — it is half the `user_ratings` primary key
+ * and it sorts lexicographically, which is what makes "the season before this
+ * one" a plain descending order. This is presentation only.
+ *
+ * A key that is not `YYYY-MM` is shown as-is rather than mangled into a wrong
+ * month: the only way to get one is a future change to `seasonKey`, and a
+ * visibly odd label is a better failure than a confidently wrong one.
+ */
+export function formatSeason(season: string, t: (key: TranslationKey) => string): string {
+  const match = /^(\d{4})-(\d{2})$/.exec(season);
+  if (!match) return season;
+  const month = Number(match[2]);
+  if (month < 1 || month > 12) return season;
+  return `${t(`month.${month}` as TranslationKey)} ${match[1]}`;
 }
 
 /** The rating a player starts a new season on, given how they ended the last one. */

@@ -10,7 +10,7 @@ import { MenuLayout } from "@/components/MenuLayout";
 import { MenuCard } from "@/components/MenuCard";
 import { MenuButton } from "@/components/MenuButton";
 import { Colors, FontSize, Radius, Spacing, Type } from "@/lib/theme";
-import { PROVISIONAL_GAMES } from "@/lib/rating";
+import { PROVISIONAL_GAMES, formatSeason } from "@/lib/rating";
 import { useTranslation } from "@/lib/i18n";
 
 interface LeaderboardEntryDto {
@@ -47,10 +47,10 @@ export default function LeaderboardScreen() {
       <MenuCard title={t("ladder.title")}>
         {me && (
           <View style={styles.selfBlock} accessible
-            accessibilityLabel={`${t("ladder.ratingLabel")}: ${me.rating}. ${t("ladder.seasonLabel", { season: me.season })}`}
+            accessibilityLabel={`${t("ladder.ratingLabel")}: ${me.rating}. ${t("ladder.seasonLabel", { season: formatSeason(me.season, t) })}`}
           >
             <Text style={styles.selfRating}>{me.rating}</Text>
-            <Text style={styles.selfSeason}>{t("ladder.seasonLabel", { season: me.season })}</Text>
+            <Text style={styles.selfSeason}>{t("ladder.seasonLabel", { season: formatSeason(me.season, t) })}</Text>
             <Text style={styles.selfGames}>
               {me.provisional
                 ? t("ladder.provisional", { n: PROVISIONAL_GAMES - me.games })

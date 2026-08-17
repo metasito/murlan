@@ -334,6 +334,22 @@ export const it = {
   "cosmetics.felt.bordeaux": "Bordeaux",
   "cosmetics.felt.notte": "Notte",
 
+  // ----------------------------------------------------------------- month.*
+  // Season labels, and anything else that has to name a month. The season
+  // key itself stays YYYY-MM — it is half the user_ratings primary key.
+  "month.1": "Gennaio",
+  "month.2": "Febbraio",
+  "month.3": "Marzo",
+  "month.4": "Aprile",
+  "month.5": "Maggio",
+  "month.6": "Giugno",
+  "month.7": "Luglio",
+  "month.8": "Agosto",
+  "month.9": "Settembre",
+  "month.10": "Ottobre",
+  "month.11": "Novembre",
+  "month.12": "Dicembre",
+
   // ---------------------------------------------------------------- ladder.*
   "ladder.title": "Classifica",
   "ladder.cardTitle": "Classifica",

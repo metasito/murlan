@@ -319,6 +319,22 @@ export const en: Record<keyof typeof it, string> = {
   "cosmetics.felt.bordeaux": "Burgundy",
   "cosmetics.felt.notte": "Night",
 
+  // ----------------------------------------------------------------- month.*
+  // Season labels, and anything else that has to name a month. The season
+  // key itself stays YYYY-MM — it is half the user_ratings primary key.
+  "month.1": "January",
+  "month.2": "February",
+  "month.3": "March",
+  "month.4": "April",
+  "month.5": "May",
+  "month.6": "June",
+  "month.7": "July",
+  "month.8": "August",
+  "month.9": "September",
+  "month.10": "October",
+  "month.11": "November",
+  "month.12": "December",
+
   // ---------------------------------------------------------------- ladder.*
   "ladder.title": "Leaderboard",
   "ladder.cardTitle": "Ranked",

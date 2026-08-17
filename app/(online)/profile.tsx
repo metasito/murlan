@@ -21,7 +21,7 @@ import { usePrefersReducedMotion } from "@/lib/accessibility";
 import type { GameMode } from "@/lib/gameEngine";
 import type { ReplaySummary } from "@/lib/replay";
 import { REPLAY_RETENTION_DAYS } from "@/lib/replay";
-import { PROVISIONAL_GAMES } from "@/lib/rating";
+import { PROVISIONAL_GAMES, formatSeason } from "@/lib/rating";
 
 type TFn = (key: TranslationKey, params?: TranslationParams) => string;
 type TnFn = (base: string, count: number, params?: TranslationParams) => string;
@@ -297,10 +297,10 @@ export default function ProfileScreen() {
               {ratingQuery.isLoading && <LoadingBlock label={t("ladder.loadingA11yLabel")} />}
               {rating && (
                 <View style={styles.ratingBlock} accessible
-                  accessibilityLabel={`${t("ladder.ratingLabel")}: ${rating.rating}. ${t("ladder.seasonLabel", { season: rating.season })}`}
+                  accessibilityLabel={`${t("ladder.ratingLabel")}: ${rating.rating}. ${t("ladder.seasonLabel", { season: formatSeason(rating.season, t) })}`}
                 >
                   <Text style={styles.ratingValue}>{rating.rating}</Text>
-                  <Text style={styles.ratingSeason}>{t("ladder.seasonLabel", { season: rating.season })}</Text>
+                  <Text style={styles.ratingSeason}>{t("ladder.seasonLabel", { season: formatSeason(rating.season, t) })}</Text>
                   <Text style={styles.ratingGames}>
                     {rating.provisional
                       ? t("ladder.provisional", { n: PROVISIONAL_GAMES - rating.games })

@@ -6,6 +6,7 @@ import {
   PROVISIONAL_GAMES,
   START_RATING,
   expectedScore,
+  formatSeason,
   kFactor,
   ratedFinishers,
   ratingDeltas,
@@ -193,4 +194,32 @@ test("renumbered placements always produce a well-formed contest", () => {
 
 test("a table of one human plus bots is not a contest", () => {
   assert.equal(ratedFinishers([{ userId: "u1", placement: 1 }, { userId: "bot:1", placement: 2 }]).length, 1);
+});
+
+// The season key is data — half the user_ratings primary key, and lexically
+// sortable, which is what makes "the season before this one" a plain ORDER BY.
+// Only its presentation changes.
+test("a season reads as a month and a year, in the reader's language", () => {
+  const it = (key: string) => ({ "month.8": "Agosto", "month.1": "Gennaio" })[key] ?? key;
+  assert.equal(formatSeason("2026-08", it as never), "Agosto 2026");
+  assert.equal(formatSeason("2026-01", it as never), "Gennaio 2026");
+});
+
+// Mangling an unexpected key into a plausible-looking month would be worse than
+// showing it raw: the only way to get one is a future change to seasonKey, and
+// an odd label is a better failure than a confidently wrong one.
+test("a key that is not YYYY-MM is shown as it is, not guessed at", () => {
+  const t = (key: string) => `T(${key})`;
+  for (const odd of ["2026", "2026-13", "2026-00", "", "next-season", "26-08"]) {
+    assert.equal(formatSeason(odd, t as never), odd, odd);
+  }
+});
+
+test("the formatter asks for the month the key names", () => {
+  const asked: string[] = [];
+  formatSeason("2026-12", ((k: string) => {
+    asked.push(k);
+    return "Dicembre";
+  }) as never);
+  assert.deepEqual(asked, ["month.12"]);
 });
