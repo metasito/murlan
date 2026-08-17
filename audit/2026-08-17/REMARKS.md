@@ -95,6 +95,38 @@ seams.
   where the reporting effect guards it (`String(error.message ?? "unknown")`). Only reachable
   under `__DEV__`, so harmless, but asymmetric.
 
+### A self-defeating safeguard the audit missed — the E2E gate can pass without building
+
+`tests/e2e/playwright.config.ts:39` sets `reuseExistingServer: !process.env.CI`. Locally that
+silently adopts **whatever server already holds port 5199**, however old, serving whatever
+`dist/` bundle happens to be on disk — and with none of the `webServer.env` block applied, so
+`MURLAN_DISCONNECT_GRACE_MS: "30000"` is dropped too and the grace falls back to a value
+shorter than socket.io's own reconnect backoff.
+
+Found the hard way while verifying Batch 4: `reconnect.spec.ts` timed out at 240s against a
+server started 21 hours before the batch's first commit, serving a bundle built 16 hours
+before it. The spec never reached any reconnect code — it died on the registration form with
+*"database murlan_dev does not exist"*. Against a correctly booted stack the same spec passes
+**3/3, deterministically, in ~4s** on the batch branch, with the server log showing the real
+path exercised (`Socket disconnected` → `Player reconnected within grace period` →
+`Player rejoined game (from memory)`).
+
+This is `CLAUDE.md`'s own rule: the gate that is supposed to prove the reconnect path works
+can pass **or fail** on a binary nobody built. `retries` is 0 (`:19`), so there is not even a
+flake signal. The fix is `reuseExistingServer: false` unconditionally, leaving
+`E2E_SKIP_BUILD=1` as the explicit opt-in fast path for local iteration. **Batch 12** owns
+test and build hardening (TEST-05, TEST-06 harden `scripts/build.js`); this belongs with them
+and has a Carried-forward row.
+
+Related harness friction, not a repo defect: `.claude/commands/batch.md` starts container
+`murlan-pg` with database `murlan_test` on port 55432, while `scripts/dev-stack.mjs` — which
+`scripts/e2e-server.mjs` invokes — requires `murlan-dev-pg` with `murlan_dev` on the *same*
+port, so whichever exists first owns it and the other cannot boot. `scripts/e2e-server.mjs`
+also overwrites `process.env.DATABASE_URL` unconditionally, so the `DATABASE_URL` the batch
+instructions tell you to export is ignored by the E2E path. Worked around on this machine by
+creating a `murlan_dev` database inside the `murlan-pg` container, which lets both suites
+share one container.
+
 ### Strengthening a row already in the binding queue
 
 `tests/integration/reconnect.test.ts` now sits at **exactly 20** `/api/auth/register` calls —
