@@ -4,7 +4,7 @@
 // docs/superpowers/specs/2026-08-17-push-notifications-design.md and comes down
 // to the two clocks in server/socket.ts: a player is auto-passed after 30s and
 // loses the seat to a bot after 60s, which no notification can beat.
-import { eq, inArray } from "drizzle-orm";
+import { and, desc, eq, inArray, notInArray } from "drizzle-orm";
 import { db } from "./db.ts";
 import { pushTokens } from "../shared/schema.ts";
 import { logger } from "./logger.ts";
@@ -23,7 +23,18 @@ export type { PushMessage };
 const EXPO_PUSH_URL =
   process.env.MURLAN_EXPO_PUSH_URL ?? "https://exp.host/--/api/v2/push/send";
 
-/** Registers, or re-registers, one device. */
+/**
+ * How many devices one account may be reachable on.
+ *
+ * A person has a handful. The cap is not about them: a token is accepted on an
+ * authenticated request and keyed on itself, so without a bound an account
+ * could register unlimited distinct well-formed tokens — rows that never
+ * expire, and that every later invite would fan out to in a single request to
+ * Expo. Five is generous for real use and bounds both.
+ */
+export const MAX_DEVICES_PER_USER = 5;
+
+/** Registers, or re-registers, one device, and forgets the account's oldest. */
 export async function savePushToken(
   userId: string,
   token: string,
@@ -36,6 +47,22 @@ export async function savePushToken(
       target: pushTokens.token,
       set: { userId, platform, updatedAt: new Date() },
     });
+
+  const keep = await db
+    .select({ token: pushTokens.token })
+    .from(pushTokens)
+    .where(eq(pushTokens.userId, userId))
+    .orderBy(desc(pushTokens.updatedAt))
+    .limit(MAX_DEVICES_PER_USER);
+
+  if (keep.length < MAX_DEVICES_PER_USER) return;
+
+  await db.delete(pushTokens).where(
+    and(
+      eq(pushTokens.userId, userId),
+      notInArray(pushTokens.token, keep.map((r) => r.token))
+    )
+  );
 }
 
 /**

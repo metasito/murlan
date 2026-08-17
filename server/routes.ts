@@ -74,6 +74,21 @@ const ticketLimiter = rateLimit({
 
 // A crashing client can crash repeatedly. This is deliberately tight: enough
 // to catch a crash loop starting, not enough for one device to flood the log.
+// Registration happens once per visit to the Friends screen and once on
+// logout. Anything beyond a handful a minute is not a phone registering.
+//
+// Keyed by account, not by address: the endpoint requires a session, so the
+// account is the thing worth limiting, and an IP key would make one player on
+// a shared network throttle everyone else behind it.
+const pushLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 10,
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: (req: Request) => req.session?.userId ?? "anonymous",
+  message: { error: "Troppe richieste, rallenta.", code: "RATE_LIMITED" },
+});
+
 const errorReportLimiter = rateLimit({
   windowMs: 60 * 1000,
   max: 5,
@@ -160,13 +175,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Notification registration. The DELETE is what logout calls: the next
   // person to hold this phone must not receive the last one's invites, and
   // the cascade on users only covers an account being deleted.
-  app.post("/api/push/token", requireAuth, validate(PushTokenSchema), async (req, res) => {
+  app.post("/api/push/token", requireAuth, pushLimiter, validate(PushTokenSchema), async (req, res) => {
     const { token, platform } = req.body as { token: string; platform: string };
     await savePushToken(req.session.userId!, token, platform);
     res.json({ ok: true });
   });
 
-  app.delete("/api/push/token", requireAuth, validate(PushTokenSchema), async (req, res) => {
+  app.delete("/api/push/token", requireAuth, pushLimiter, validate(PushTokenSchema), async (req, res) => {
     await deletePushToken((req.body as { token: string }).token);
     res.json({ ok: true });
   });

@@ -49,11 +49,17 @@ const TOKEN_B = "ExponentPushToken[bbbbbbbbbbbbbbbbbbbbbb]";
 describe("push token registry", { skip: hasDatabase() ? false : skipMessage() }, () => {
   let server: TestServer;
   let dbPool: pg.Pool;
+  let maxDevices: number;
 
   before(async () => {
     await startExpoStub();
     server = await startTestServer();
     dbPool = new pg.Pool({ connectionString: process.env.DATABASE_URL });
+    // Imported here, not at the top: server/push.ts pulls in server/db.ts,
+    // which builds its pool the moment it loads. Loading it before
+    // startTestServer has pointed connections at its throwaway schema binds
+    // the app to the default one, and every test then shares state.
+    ({ MAX_DEVICES_PER_USER: maxDevices } = await import("../../server/push.ts"));
   });
 
   after(async () => {
@@ -118,6 +124,35 @@ describe("push token registry", { skip: hasDatabase() ? false : skipMessage() },
 
       const rows = await rowsFor(ana.user.id);
       assert.deepEqual(rows.map((r) => r.token), [TOKEN_B], "the other phone keeps its rows");
+    } finally {
+      ana.socket.close();
+    }
+  });
+
+  // A token is accepted on an authenticated request and keyed on itself, so
+  // without a cap an account could register unlimited well-formed tokens: rows
+  // that never expire, and that every later invite would fan out to in one
+  // request to Expo. The rate limiter slows that down; only the cap stops it.
+  test("an account cannot be reachable on unlimited devices", async () => {
+    const ana = await connectAs(server, "push_cap");
+    try {
+      const tokens = Array.from(
+        { length: maxDevices + 3 },
+        (_, i) => `ExponentPushToken[cap${String(i).padStart(18, "0")}]`
+      );
+      for (const token of tokens) {
+        assert.equal((await post(ana.cookie, { token, platform: "ios" })).status, 200);
+      }
+
+      const rows = await rowsFor(ana.user.id);
+      assert.equal(rows.length, maxDevices, "the oldest devices are forgotten");
+
+      // The ones kept are the most recent, so the phone in the player's hand
+      // is never the one dropped.
+      const kept = (
+        await dbPool.query("SELECT token FROM push_tokens WHERE user_id = $1", [ana.user.id])
+      ).rows.map((r) => r.token as string);
+      assert.deepEqual(kept.sort(), tokens.slice(-maxDevices).sort());
     } finally {
       ana.socket.close();
     }
