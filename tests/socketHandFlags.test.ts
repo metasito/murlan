@@ -1,11 +1,15 @@
-// tests/socketHandFlags.test.ts — regression coverage for recordPlayFlags:
-// a human's AFK-forced move goes through autoMoveForSeat rather than the
-// game:play handler, and must still record bomb/joker tracking — otherwise
-// the purist / iron_will / wild_card achievements silently under-count
-// whenever a player's forced-minimum card happens to be a lone joker. No
-// socket server or database needed: server/socket.ts loads fine standalone
-// (see tests/serverLoadable.test.ts's sibling modules), and __testables
-// exposes the pure turn-resolution helpers for exactly this kind of test.
+// tests/socketHandFlags.test.ts — pure server/socket.ts logic exercised
+// through __testables, with no socket server or database needed (it loads
+// fine standalone — see tests/serverLoadable.test.ts's sibling modules).
+//
+// Covers two independent things:
+//  - recordPlayFlags: a human's AFK-forced move goes through autoMoveForSeat
+//    rather than the game:play handler, and must still record bomb/joker
+//    tracking — otherwise the purist / iron_will / wild_card achievements
+//    silently under-count whenever a player's forced-minimum card happens to
+//    be a lone joker.
+//  - countRematchAnswers/tableWantsRematch: the rematch verdict over a mix
+//    of seated and vacated/bot seats.
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import type { GameState, Card } from "../lib/gameEngine.ts";
@@ -57,6 +61,93 @@ test("an AFK-forced lone-joker play sets handFlags.joker (regression: used to be
   assert.ok(next, "the forced joker play must succeed");
   assert.equal(next!.players[0].hand.length, 0, "the joker must actually have been played");
   assert.deepEqual(handFlags[0], { bomb: false, joker: true });
+});
+
+function seatPlayers(count: number) {
+  return Array.from({ length: count }, (_, i) => ({
+    id: `seat_${i}`,
+    name: `Seat ${i}`,
+    hand: [],
+    type: "human" as const,
+  }));
+}
+
+// Minimal OnlineGameState for countRematchAnswers/tableWantsRematch: only
+// gameState.players.length, playerMap and rematchIntents are read by either
+// function, but the type isn't exported, so every other field needs a
+// structurally valid placeholder.
+function rematchGame(overrides: {
+  seats: number;
+  playerMap: Record<number, string>;
+  rematchIntents: Map<string, boolean>;
+}) {
+  return {
+    gameState: baseState({ players: seatPlayers(overrides.seats) }),
+    playerMap: overrides.playerMap,
+    roomId: "room_1",
+    rematchVotes: new Set<string>(),
+    rematchIntents: overrides.rematchIntents,
+    cumulativeScores: {},
+    gameMode: "free_for_all" as const,
+    maxPlayers: overrides.seats,
+    matchTarget: 21,
+    matchLength: "match" as const,
+    matchOver: true,
+    handFlags: {},
+    abandonedSeats: new Map<number, string>(),
+    spectators: new Set<string>(),
+    moveLog: null,
+  };
+}
+
+test("a lone seated human is a majority of 1 — the three bot seats abstain", () => {
+  const game = rematchGame({
+    seats: 4,
+    playerMap: { 0: "u1" },
+    rematchIntents: new Map([["u1", true]]),
+  });
+
+  assert.deepEqual(__testables.countRematchAnswers(game), { yes: 1, total: 1 });
+  assert.equal(__testables.tableWantsRematch(game), true);
+});
+
+test("a human-only table's denominator is unchanged: all four seats count", () => {
+  const game = rematchGame({
+    seats: 4,
+    playerMap: { 0: "u1", 1: "u2", 2: "u3", 3: "u4" },
+    rematchIntents: new Map([
+      ["u1", true],
+      ["u2", true],
+    ]),
+  });
+
+  assert.deepEqual(__testables.countRematchAnswers(game), { yes: 2, total: 4 });
+  assert.equal(__testables.tableWantsRematch(game), false, "2 of 4 is not strictly more than half");
+});
+
+test("a seat that never answered counts as a no but still counts toward total", () => {
+  const game = rematchGame({
+    seats: 3,
+    playerMap: { 0: "u1", 1: "u2", 2: "u3" },
+    rematchIntents: new Map([
+      ["u1", true],
+      ["u2", true],
+    ]),
+  });
+
+  assert.deepEqual(__testables.countRematchAnswers(game), { yes: 2, total: 3 });
+  assert.equal(__testables.tableWantsRematch(game), true);
+});
+
+test("a table with no seated humans has total 0 and does not throw", () => {
+  const game = rematchGame({
+    seats: 4,
+    playerMap: {},
+    rematchIntents: new Map(),
+  });
+
+  assert.deepEqual(__testables.countRematchAnswers(game), { yes: 0, total: 0 });
+  assert.equal(__testables.tableWantsRematch(game), false);
 });
 
 test("an AFK-forced ordinary single leaves handFlags empty for that seat", () => {

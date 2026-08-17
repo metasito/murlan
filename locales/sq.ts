@@ -69,11 +69,14 @@ export const sq: Record<keyof typeof it, string> = {
   "server.ALREADY_IN_ROOM": "Je tashmë në dhomë",
   "server.CANNOT_CHANGE_MODE_IN_PROGRESS": "Nuk mund të ndryshosh modalitetin kur loja ka filluar",
   "server.MIN_PLAYERS_REQUIRED": "Nevojiten të paktën 2 lojtarë",
+  "server.MATCH_IN_PROGRESS": "Një ndeshje është tashmë në vazhdim",
+  "server.NEW_MATCH_NOT_READY": "Të gjithë lojtarët duhet të jenë gati përpara se të fillojë një ndeshje e re",
   "server.EXCHANGE_PENDING": "Duhet të përfundosh shkëmbimin më parë",
   "server.INVALID_COMBINATION": "Kombinim i pavlefshëm",
   "server.MUST_PLAY_START_CARD": "Duhet të luash {{rank}}♠ si letrën e parë",
   "server.INVALID_MOVE": "Lëvizje e pavlefshme",
   "server.CANNOT_PASS": "Nuk mund të kalosh",
+  "server.REMATCH_DECLINED": "Tavolina zgjodhi të mos luajë përsëri",
   "server.UNAUTHORIZED": "I paautorizuar",
   "server.GAME_NOT_FOUND": "Loja nuk u gjet",
   "server.GAME_NO_LONGER_VALID": "Loja nuk është më e vlefshme",
@@ -307,6 +310,7 @@ export const sq: Record<keyof typeof it, string> = {
   "onlineGame.exchangeWaitAsOther": "{{winner}} po zgjedh letrën për {{loser}}.",
   "onlineGame.theWinner": "Fituesi",
   "onlineGame.theLoser": "humbësi",
+  "onlineGame.botSeatLabel": "Bot",
 
   // ----------------------------------------------------------------- replay.*
   "replay.title": "Replay",

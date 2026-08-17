@@ -1,7 +1,6 @@
 import { test, before, after, describe, mock } from "node:test";
 import assert from "node:assert/strict";
 import { io as ioClient, type Socket } from "socket.io-client";
-import type { Card } from "../../lib/gameEngine.ts";
 import { logger } from "../../server/logger.ts";
 import {
   startTestServer,
@@ -9,62 +8,29 @@ import {
   skipMessage,
   type TestServer,
 } from "../helpers/testServer.ts";
-import { connectAs, register, waitFor, type RegisteredUser } from "../helpers/client.ts";
+import { register, waitFor } from "../helpers/client.ts";
+import {
+  assertHandSecrecy,
+  driveHandToExchangeOrOver,
+  makeClients as makeClientsOn,
+  setUpRoom,
+  startGame,
+  type Client,
+  type RoomState,
+  type SanitizedState,
+} from "../helpers/table.ts";
 
 /**
- * Shortened well below the 60s disconnect grace / 30s AFK production
- * defaults so the exchange- and vacancy-focused tests below don't stall the
- * suite for real-world timer lengths. `server/socket.ts` reads these once at
- * module scope, so they must be set before that module is first imported —
- * this file always runs as its own process under `node --test`, so the
- * override never leaks into another test file's process.
+ * Shortened well below the 60s disconnect grace / 30s AFK / 1.2s bot-move
+ * production defaults so the exchange-, vacancy- and bot-table tests below
+ * don't stall the suite for real-world timer lengths. `server/socket.ts` reads
+ * these once at module scope, so they must be set before that module is first
+ * imported — this file always runs as its own process under `node --test`, so
+ * the override never leaks into another test file's process.
  */
 process.env.MURLAN_AFK_TIMEOUT_MS = "300";
 process.env.MURLAN_DISCONNECT_GRACE_MS = "500";
-
-interface SanitizedPlayer {
-  id: string;
-  name: string;
-  hand: Card[];
-  handCount: number;
-  type: string;
-  finishPosition?: number;
-}
-
-interface ExchangePhase {
-  active: boolean;
-  winnerIdx: number;
-  loserIdx: number;
-  cardFromLoser: Card;
-  bothJokersException: boolean;
-}
-
-interface SanitizedState {
-  players: SanitizedPlayer[];
-  currentTurnIndex: number;
-  lastPlayedCombination: unknown | null;
-  lastPlayedBy: number;
-  gameOver: boolean;
-  firstPlayMade: boolean;
-  startCard?: Card;
-  exchangePhase?: ExchangePhase;
-  viewerSeatIndex: number;
-}
-
-interface RoomState {
-  roomId: string;
-  code: string;
-  hostUserId: string | null;
-  status: string;
-  gameMode: string;
-  maxPlayers: number;
-  players: { seatIndex: number; userId: string; username: string }[];
-}
-
-interface Client {
-  socket: Socket;
-  user: RegisteredUser;
-}
+process.env.MURLAN_BOT_MOVE_DELAY_MS = "20";
 
 describe("gameplay integrity", { skip: hasDatabase() ? false : skipMessage() }, () => {
   let server: TestServer;
@@ -75,40 +41,7 @@ describe("gameplay integrity", { skip: hasDatabase() ? false : skipMessage() }, 
     await server.stop();
   });
 
-  async function makeClients(usernames: string[]): Promise<Client[]> {
-    const clients: Client[] = [];
-    for (const name of usernames) {
-      clients.push(await connectAs(server, name));
-    }
-    return clients;
-  }
-
-  /** clients[0] creates the room, everyone else joins in order. Returns the
-   * room state after the last join. */
-  async function setUpRoom(
-    clients: Client[],
-    maxPlayers: number,
-    gameMode: "free_for_all" | "teams" = "free_for_all"
-  ): Promise<RoomState> {
-    const host = clients[0];
-    const created = waitFor<RoomState>(host.socket, "room:state");
-    host.socket.emit("room:create", { gameMode, maxPlayers });
-    let state = await created;
-    for (const guest of clients.slice(1)) {
-      const joined = waitFor<RoomState>(guest.socket, "room:state");
-      guest.socket.emit("room:join", { code: state.code });
-      state = await joined;
-    }
-    return state;
-  }
-
-  /** Starts the game and returns each client's own opening game:state,
-   * captured raw (no moves are made on their behalf). */
-  async function startGame(clients: Client[]): Promise<SanitizedState[]> {
-    const waits = clients.map((c) => waitFor<SanitizedState>(c.socket, "game:state"));
-    clients[0].socket.emit("room:start");
-    return Promise.all(waits);
-  }
+  const makeClients = (usernames: string[]) => makeClientsOn(server, usernames);
 
   // ── Test 0 ──────────────────────────────────────────────────────────────
 
@@ -168,109 +101,11 @@ describe("gameplay integrity", { skip: hasDatabase() ? false : skipMessage() }, 
     const [aliceState, bobState] = await startGame([alice, bob]);
 
     for (const state of [aliceState, bobState]) {
-      state.players.forEach((p, seat) => {
-        if (seat === state.viewerSeatIndex) {
-          assert.ok(p.hand.length > 0, "own seat must carry a real hand");
-          assert.equal(p.handCount, p.hand.length);
-        } else {
-          assert.deepEqual(p.hand, [], `seat ${seat} must not leak cards to another viewer`);
-          assert.ok(p.handCount > 0, "handCount must still be reported for other seats");
-        }
-      });
+      assertHandSecrecy(state, "opening deal");
     }
   });
 
   // ── Test 2 ──────────────────────────────────────────────────────────────
-
-  type DriveResult =
-    | { stoppedOn: "gameOver"; payload: unknown }
-    | { stoppedOn: "exchange"; states: Map<Client, SanitizedState> };
-
-  /**
-   * Drives forced-minimum play for every idle client attached: whoever is
-   * leading a new round plays the largest same-rank group anchored on their
-   * lowest card (or the mandatory start card, for the very first play of the
-   * game), everyone else always passes. This mirrors the server's own
-   * AFK/bot forced-minimum path (see autoMoveForSeat in server/socket.ts),
-   * but is triggered immediately by the test instead of waiting on a timer,
-   * and sheds several cards per play to keep the per-socket event count
-   * comfortably under the rate limiter across repeated hands.
-   *
-   * Listeners are attached before `kickoff()` runs, so the very first
-   * game:state (which decides who must play the mandatory start card) is
-   * never missed. Resolves as soon as the hand ends (`game:over`) or an
-   * active exchange phase has been observed from every client's own
-   * viewpoint (so the caller can read the winner's real hand).
-   */
-  function driveHandToExchangeOrOver(
-    clients: Client[],
-    kickoff: () => void
-  ): Promise<DriveResult> {
-    return new Promise((resolve, reject) => {
-      let settled = false;
-      const exchangeStates = new Map<Client, SanitizedState>();
-      const stateHandlers: [Client, (s: SanitizedState) => void][] = [];
-      const overHandlers: [Client, (p: unknown) => void][] = [];
-
-      const timer = setTimeout(() => {
-        if (settled) return;
-        settled = true;
-        cleanup();
-        reject(new Error("timed out driving a hand toward completion or an exchange phase"));
-      }, 15_000);
-
-      function cleanup() {
-        clearTimeout(timer);
-        for (const [c, h] of stateHandlers) c.socket.off("game:state", h);
-        for (const [c, h] of overHandlers) c.socket.off("game:over", h);
-      }
-
-      function finish(result: DriveResult) {
-        if (settled) return;
-        settled = true;
-        cleanup();
-        resolve(result);
-      }
-
-      for (const client of clients) {
-        const onOver = (payload: unknown) => finish({ stoppedOn: "gameOver", payload });
-        overHandlers.push([client, onOver]);
-        client.socket.on("game:over", onOver);
-
-        const onState = (state: SanitizedState) => {
-          if (settled || state.gameOver) return;
-          if (state.exchangePhase?.active) {
-            exchangeStates.set(client, state);
-            if (exchangeStates.size === clients.length) {
-              finish({ stoppedOn: "exchange", states: exchangeStates });
-            }
-            return;
-          }
-          const seat = state.viewerSeatIndex;
-          if (state.currentTurnIndex !== seat) return;
-          const hand = state.players[seat]?.hand ?? [];
-          if (hand.length === 0) return;
-
-          if (state.lastPlayedCombination !== null) {
-            client.socket.emit("game:pass");
-            return;
-          }
-
-          let anchor = hand[0];
-          if (!state.firstPlayMade && state.startCard) {
-            const forced = hand.find((c) => c.id === state.startCard!.id);
-            if (forced) anchor = forced;
-          }
-          const group = hand.filter((c) => c.rank === anchor.rank).map((c) => c.id);
-          client.socket.emit("game:play", { cardIds: group });
-        };
-        stateHandlers.push([client, onState]);
-        client.socket.on("game:state", onState);
-      }
-
-      kickoff();
-    });
-  }
 
   test("play and pass are rejected during an active exchange phase", async () => {
     const [alice, bob] = await makeClients(["exchange_alice", "exchange_bob"]);
@@ -573,6 +408,170 @@ describe("gameplay integrity", { skip: hasDatabase() ? false : skipMessage() }, 
       leaks,
       [],
       `a hand must never be logged, at any level:\n${leaks.join("\n")}`
+    );
+  });
+
+  // ── Test 7 ──────────────────────────────────────────────────────────────
+
+  /**
+   * Records every occurrence of `event` for the life of the test, for
+   * assertions about an event that must *never* arrive. The returned array is
+   * the live one the listener pushes into: read it at assertion time. Copying
+   * it earlier (spreading two of them into one array, say) snapshots it while
+   * it is still empty, and the assertion can then never fail.
+   */
+  function collect(client: Client, event: string): unknown[] {
+    const seen: unknown[] = [];
+    client.socket.on(event, (payload: unknown) => seen.push(payload));
+    return seen;
+  }
+
+  /** Polls a server-side predicate that no socket event announces. */
+  async function waitUntil(
+    predicate: () => boolean,
+    message: string,
+    ms = 5_000
+  ): Promise<void> {
+    const deadline = Date.now() + ms;
+    while (Date.now() < deadline) {
+      if (predicate()) return;
+      await new Promise((resolve) => setTimeout(resolve, 25));
+    }
+    assert.fail(message);
+  }
+
+  /** Plays the opening hand of a fresh room out to `game:over`. */
+  async function playOpeningHand(clients: Client[]): Promise<void> {
+    const result = await driveHandToExchangeOrOver(clients, () => {
+      clients[0].socket.emit("room:start");
+    });
+    assert.equal(result.stoppedOn, "gameOver");
+  }
+
+  /**
+   * `rooms.status` is set to "finished" after every manche, not only at the end
+   * of a match, so it cannot tell a table that is waiting to deal again from
+   * one that is over. Nothing else removes a seat between hands and the
+   * unanimous ready gate counts seats, so the seat has to be freed here or one
+   * player tapping "Torna alla lobby" blocks the next manche for everyone else.
+   */
+  test("a player leaving at the results screen frees the seat and the table plays on", async () => {
+    const [alice, bob, carol] = await makeClients([
+      "results_leave_alice",
+      "results_leave_bob",
+      "results_leave_carol",
+    ]);
+    await setUpRoom([alice, bob, carol], 3);
+    await playOpeningHand([alice, bob, carol]);
+
+    // The hazard this fix has to avoid: `game:player_left` drives the client's
+    // blocking "Partita interrotta" teardown, which would eject both survivors
+    // from a table the server is about to restart.
+    const bobTeardowns = collect(bob, "game:player_left");
+    const carolTeardowns = collect(carol, "game:player_left");
+
+    const takeover = waitFor<{ userId: string; seatIndex: number }>(
+      bob.socket,
+      "game:seat_bot_takeover"
+    );
+    const voteState = waitFor<{ votes: string[]; total: number }>(
+      carol.socket,
+      "game:vote_state"
+    );
+    alice.socket.emit("room:leave");
+
+    const seatFreed = await takeover;
+    assert.equal(seatFreed.userId, alice.user.id);
+    const votes = await voteState;
+    assert.equal(votes.total, 2, "the ready gate must only count the seats still held");
+    assert.deepEqual(votes.votes, []);
+    assert.deepEqual(
+      [...bobTeardowns, ...carolTeardowns],
+      [],
+      "a between-hands leave must not fire the client's game-interrupted teardown"
+    );
+
+    const started = [bob, carol].map((c) =>
+      waitFor(c.socket, "game:started", 8_000)
+    );
+    const matchState = waitFor<{ target: number }>(
+      bob.socket,
+      "game:match_state",
+      8_000
+    );
+    bob.socket.emit("game:rematch_vote");
+    carol.socket.emit("game:rematch_vote");
+    await Promise.all(started);
+    assert.ok((await matchState).target > 0);
+  });
+
+  // ── Test 8 ──────────────────────────────────────────────────────────────
+
+  test("a hard disconnect at the results screen frees the seat with no grace period", async () => {
+    const [dave, erin, frank] = await makeClients([
+      "results_drop_dave",
+      "results_drop_erin",
+      "results_drop_frank",
+    ]);
+    await setUpRoom([dave, erin, frank], 3);
+    await playOpeningHand([dave, erin, frank]);
+
+    const erinTeardowns = collect(erin, "game:player_left");
+    const frankTeardowns = collect(frank, "game:player_left");
+    // Nobody is mid-turn between hands, so there is nothing to hold a grace
+    // period open for — the seat is freed on the disconnect itself.
+    const graceNotices = collect(erin, "game:player_disconnected");
+
+    const takeover = waitFor<{ userId: string }>(
+      erin.socket,
+      "game:seat_bot_takeover",
+      5_000
+    );
+    dave.socket.disconnect();
+    assert.equal((await takeover).userId, dave.user.id);
+    assert.deepEqual(
+      [...erinTeardowns, ...frankTeardowns],
+      [],
+      "a drop at the results screen must not fire the client's game-interrupted teardown"
+    );
+    assert.deepEqual(graceNotices, []);
+
+    const started = [erin, frank].map((c) =>
+      waitFor(c.socket, "game:started", 8_000)
+    );
+    erin.socket.emit("game:rematch_vote");
+    frank.socket.emit("game:rematch_vote");
+    await Promise.all(started);
+  });
+
+  // ── Test 9 ──────────────────────────────────────────────────────────────
+
+  test("the last player leaving the results screen disposes the room", async () => {
+    const { __testables } = await import("../../server/socket.ts");
+    const [gina, hugo] = await makeClients([
+      "results_dispose_gina",
+      "results_dispose_hugo",
+    ]);
+    const room = await setUpRoom([gina, hugo], 2);
+    await playOpeningHand([gina, hugo]);
+
+    assert.equal(__testables.hasActiveGame(room.roomId), true);
+
+    const takeover = waitFor(hugo.socket, "game:seat_bot_takeover");
+    gina.socket.emit("room:leave");
+    await takeover;
+    assert.equal(
+      __testables.hasActiveGame(room.roomId),
+      true,
+      "a table with a seat still held must survive"
+    );
+
+    // The last leaver's own socket has already left the room, so the disposal
+    // is announced to nobody — it is only observable on the server.
+    hugo.socket.emit("room:leave");
+    await waitUntil(
+      () => !__testables.hasActiveGame(room.roomId),
+      "the room kept a live game in memory after its last seat emptied"
     );
   });
 });

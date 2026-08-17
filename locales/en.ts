@@ -47,11 +47,14 @@ export const en: Record<keyof typeof it, string> = {
   "server.ALREADY_IN_ROOM": "You're already in the room",
   "server.CANNOT_CHANGE_MODE_IN_PROGRESS": "You can't change mode once the game has started",
   "server.MIN_PLAYERS_REQUIRED": "At least 2 players are required",
+  "server.MATCH_IN_PROGRESS": "A match is already in progress",
+  "server.NEW_MATCH_NOT_READY": "Every player must be ready before a new match starts",
   "server.EXCHANGE_PENDING": "You must complete the exchange first",
   "server.INVALID_COMBINATION": "Invalid combination",
   "server.MUST_PLAY_START_CARD": "You must play the {{rank}}♠ as your first card",
   "server.INVALID_MOVE": "Invalid move",
   "server.CANNOT_PASS": "You can't pass",
+  "server.REMATCH_DECLINED": "The table chose not to play again",
   "server.UNAUTHORIZED": "Unauthorized",
   "server.GAME_NOT_FOUND": "Game not found",
   "server.GAME_NO_LONGER_VALID": "Game no longer valid",
@@ -281,6 +284,7 @@ export const en: Record<keyof typeof it, string> = {
   "onlineGame.exchangeWaitAsOther": "{{winner}} is choosing the card for {{loser}}.",
   "onlineGame.theWinner": "The winner",
   "onlineGame.theLoser": "the loser",
+  "onlineGame.botSeatLabel": "Bot",
 
   // ----------------------------------------------------------------- replay.*
   "replay.title": "Replay",

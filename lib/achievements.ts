@@ -41,6 +41,11 @@ export interface GameResult {
    * except the winner and the last-place finisher.
    */
   opponentsFinished: number;
+  /**
+   * The player walked out on this hand and it was scored as a forfeit rather
+   * than played to its placement. Nothing is earned from one.
+   */
+  abandoned?: boolean;
 }
 
 export interface AchievementDef {
@@ -124,7 +129,12 @@ const RULES: readonly AchievementRule[] = [
 /** The full catalogue, for display (e.g. a locked/earned achievements list). */
 export const ACHIEVEMENTS: readonly AchievementDef[] = RULES;
 
-/** Returns the ids of every achievement `result` qualifies for. */
+/**
+ * Returns the ids of every achievement `result` qualifies for. A forfeited
+ * hand qualifies for none: the placement it carries was assigned when the
+ * player left, not earned at the table.
+ */
 export function evaluateAchievements(result: GameResult): string[] {
+  if (result.abandoned) return [];
   return RULES.filter((rule) => rule.isEarned(result)).map((rule) => rule.id);
 }

@@ -60,11 +60,14 @@ export const it = {
   "server.ALREADY_IN_ROOM": "Sei già nella stanza",
   "server.CANNOT_CHANGE_MODE_IN_PROGRESS": "Non puoi cambiare modalità a partita iniziata",
   "server.MIN_PLAYERS_REQUIRED": "Servono almeno 2 giocatori",
+  "server.MATCH_IN_PROGRESS": "C'è già una partita in corso",
+  "server.NEW_MATCH_NOT_READY": "Tutti i giocatori devono essere pronti prima di iniziare una nuova partita",
   "server.EXCHANGE_PENDING": "Devi prima completare lo scambio",
   "server.INVALID_COMBINATION": "Combinazione non valida",
   "server.MUST_PLAY_START_CARD": "Devi giocare il {{rank}}♠ come prima carta",
   "server.INVALID_MOVE": "Mossa non valida",
   "server.CANNOT_PASS": "Non puoi passare",
+  "server.REMATCH_DECLINED": "Il tavolo ha scelto di non rigiocare",
   "server.UNAUTHORIZED": "Non autorizzato",
   "server.GAME_NOT_FOUND": "Partita non trovata",
   "server.GAME_NO_LONGER_VALID": "Partita non più valida",
@@ -297,6 +300,7 @@ export const it = {
   "onlineGame.exchangeWaitAsOther": "{{winner}} sta scegliendo la carta per {{loser}}.",
   "onlineGame.theWinner": "Il vincitore",
   "onlineGame.theLoser": "il perdente",
+  "onlineGame.botSeatLabel": "Bot",
 
   // ----------------------------------------------------------------- replay.*
   "replay.title": "Replay",

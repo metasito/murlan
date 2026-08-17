@@ -33,7 +33,7 @@ merge one before opening the other's PR.
 |---|---|---|---|---|---|---|---|
 | - [x] 1 | Restore the safety net | 6 | medium | Sonnet | merged — 2026-08-17 | `audit/batch-1-safety-net` | [#2](https://github.com/metasito/murlan/pull/2) |
 | - [x] 2 | Server operational integrity | 7 | medium | Sonnet | merged — 2026-08-17 | `audit/batch-2-server-integrity` | [#3](https://github.com/metasito/murlan/pull/3) |
-| - [ ] 3 | The match lifecycle | 7 | **max** | **Opus** | not started | | |
+| - [x] 3 | The match lifecycle | 7 | **max** | **Opus** | merged — 2026-08-17 | `audit/batch-3-match-lifecycle` | [#7](https://github.com/metasito/murlan/pull/7) |
 | - [ ] 4 | Reconnect and error surfacing | 9 | high | Opus | not started | | |
 | - [ ] 5 | Robustness and session safety | 6 | high | Opus | not started | | |
 | - [ ] 6 | Bytes on the wire | 6 | medium | Sonnet | not started | | |
@@ -73,9 +73,10 @@ on `main` for a human to ship it.
   criteria. Start one and export `DATABASE_URL` before running `npm test`; the recipe is in
   `.claude/commands/batch.md`. Confirm the output reports `skipped 0` and contains no
   `DATABASE_URL not set` line — that line means the integration suites did not run.
-- **Batch 3 must not start before its design doc exists.** `DECISIONS.md` D1 and D4 give the
-  rules, so the doc is a *how*, not a *whether* — but `CLAUDE.md`'s standing agreement requires
-  one for anything touching storage or the socket protocol.
+- **Batch 3's design doc is written, implemented and deleted.** `CLAUDE.md` requires a written
+  design for anything touching storage or the socket protocol, and requires implemented design
+  docs to be deleted rather than archived. The decisions it carried live permanently in
+  `DECISIONS.md` D1–D4 and, for the two that are rule changes, in `docs/BRIEF.md` §3.1.
 
 ## Carried forward
 
@@ -88,6 +89,8 @@ An entry is removed only when the work is actually done, by the batch that owns 
 | From | Item | Why it was not done then | Owed by | Status |
 |---|---|---|---|---|
 | Batch 1 · TEST-04 | Add `expo:static:build` to the CI build step | It runs `scripts/build.js`, which starts a Metro server — too slow and flaky on a runner until the script is hardened. Recorded at `.github/workflows/ci.yml:85-86`. | **Batch 12**, after TEST-05 and TEST-06 | open |
+| Batch 3 · RULE-01 | Give the integration suites headroom on the 20-account registration cap | `/api/auth/register` rate-limits to 20 registrations per process. `tests/integration/gameplay.test.ts` sits at that ceiling, and the 21st registration returns `429 AUTH_RATE_LIMITED` with nothing explaining why. Batch 3 worked around it by opening `tests/integration/rematch.test.ts` and sharing helpers through `tests/helpers/table.ts`; the next suite to grow hits the same wall. | **Batch 12** (test coverage) | open |
+| Batch 3 · SEC-01 / RULE-01 | Have a native Italian speaker read the new server-error strings | `server.MATCH_IN_PROGRESS`, `server.NEW_MATCH_NOT_READY` and `server.REMATCH_DECLINED` were written by Claude, not by a speaker. Italian is the UI language and the source of truth for the other two locales, so a clumsy string ships to every player. | **Owner** — not a batch | open |
 
 ### Not carried forward — closed as designed
 
