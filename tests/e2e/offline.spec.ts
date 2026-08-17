@@ -13,11 +13,11 @@ import { driveGameToCompletion } from "./helpers/bot";
 const RESULT_URL = /\/result/;
 
 test.describe("offline vs AI — single hand, reaches a result", () => {
-  const configs: Array<{
+  const configs: {
     name: string;
     playerCount: 2 | 3 | 4;
     gameMode: "free_for_all" | "teams";
-  }> = [
+  }[] = [
     { name: "2 players, free-for-all", playerCount: 2, gameMode: "free_for_all" },
     { name: "3 players, free-for-all", playerCount: 3, gameMode: "free_for_all" },
     { name: "4 players, free-for-all", playerCount: 4, gameMode: "free_for_all" },
