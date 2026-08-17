@@ -2330,7 +2330,14 @@ async function rejoinSocketToTable(
   socket.join(roomId);
   socketRoomMap.set(socket.id, roomId);
 
-  await emitRoomStateTo(socket, roomId);
+  // Two DB reads, and the rejoin does not depend on either: the seat is
+  // already valid and `game:state` below is what the table is drawn from. The
+  // handler's blanket catch turns any throw into a SERVER_ERROR rejoin
+  // failure, so letting this one propagate would forfeit a live game over a
+  // roster refresh.
+  await emitRoomStateTo(socket, roomId).catch((err: unknown) =>
+    logger.warn({ err, roomId, userId }, "emitRoomStateTo failed")
+  );
   socket.emit(
     "game:state",
     sanitizeStateForPlayer(game.gameState, userId, game.playerMap)

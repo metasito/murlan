@@ -153,11 +153,15 @@ export default function OnlineGameScreen() {
     );
   }, [playerLeft, clearPlayerLeft, leaveRoom, t]);
 
+  // A rejoin the server refused is not the player choosing to leave. Emitting
+  // room:leave here reached handleLeaveRoom mid-game and vacated the seat on
+  // the spot, ahead of the 60s disconnect grace that owns it. The context has
+  // already dropped the local state and shown the reason; all that is left is
+  // getting off a table that is no longer there.
   useEffect(() => {
     if (!rejoinFailed) return;
-    leaveRoom();
     goToLobbyRef.current();
-  }, [rejoinFailed, leaveRoom]);
+  }, [rejoinFailed]);
 
   if (!gameState) return null;
 

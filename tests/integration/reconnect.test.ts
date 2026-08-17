@@ -330,6 +330,55 @@ describe("reconnect", { skip: hasDatabase() ? false : skipMessage() }, () => {
     }
   });
 
+  // ── RES-03: a cosmetic DB failure must not forfeit a live seat ──────────
+
+  /**
+   * `emitRoomStateTo` re-sends the roster, which costs two DB reads the rejoin
+   * itself does not depend on. The handler's blanket catch turns any throw
+   * into `game:rejoin_failed SERVER_ERROR`, and the client used to answer that
+   * by leaving the room — so one dropped connection during a reconnect handed
+   * a live seat to a bot.
+   */
+  test("a failed roster read does not fail a rejoin that holds a seat", async () => {
+    const { storage } = await import("../../server/storage.ts");
+    const hank = await connectAs(server, "roster_hank");
+    const ivy = await connectAs(server, "roster_ivy");
+    const room = await setUpRoom([hank, ivy], 2);
+    const table = [hank, ivy];
+    const realGetRoomPlayers = storage.getRoomPlayers;
+    try {
+      await startGame(table);
+
+      let tripped = 0;
+      storage.getRoomPlayers = async function (roomId: string) {
+        if (tripped === 0 && roomId === room.roomId) {
+          tripped += 1;
+          throw new Error("connection terminated unexpectedly");
+        }
+        return realGetRoomPlayers.call(this, roomId);
+      };
+
+      const restored = waitFor<SanitizedState>(hank.socket, "game:state", 5_000);
+      const refused = new Promise<never>((_, reject) => {
+        hank.socket.once("game:rejoin_failed", (payload: unknown) =>
+          reject(new Error(`game:rejoin_failed ${JSON.stringify(payload)}`))
+        );
+      });
+      hank.socket.emit("game:rejoin", { roomCode: room.roomId });
+      const state = await Promise.race([restored, refused]);
+
+      assert.equal(tripped, 1, "the roster read never failed — the test proved nothing");
+      // viewerSeatIndex is read straight out of the game's playerMap.
+      assert.ok(
+        state.viewerSeatIndex >= 0,
+        "the rejoining player was not recognised at their own seat"
+      );
+    } finally {
+      storage.getRoomPlayers = realGetRoomPlayers;
+      await closeTable(table);
+    }
+  });
+
   // ── Test 5 ──────────────────────────────────────────────────────────────
 
   /**
