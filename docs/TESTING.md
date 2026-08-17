@@ -9,7 +9,7 @@ blocker documented below rather than glossed over.
 | Unit | `npm test` | 672 pass (with `DATABASE_URL`; 641 without) | nothing |
 | Integration | `npm test` | folded into the above | `DATABASE_URL` |
 | Native renderer | `npm run test:native` | 208 (104 × ios/android) | nothing |
-| Web e2e | `npm run test:e2e` | Playwright, chromium | Docker + a built web bundle |
+| Web e2e | `npm run test:e2e` | Playwright, chromium — gameplay, reconnect, and a tap-target sweep | Docker + a built web bundle |
 | Android UI (Maestro) | `maestro test .maestro/*.yaml` | 2 flows | Android SDK + emulator + Maestro, see §5 |
 
 `npm run verify` runs typecheck, unit/integration and the native suite. The web
