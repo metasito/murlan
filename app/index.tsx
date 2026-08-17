@@ -25,6 +25,7 @@ import { hapticLight } from "@/lib/haptics";
 import { Ionicons, Feather } from "@expo/vector-icons";
 import { useQuery } from "@tanstack/react-query";
 import { useAuth } from "@/context/AuthContext";
+import { useGame } from "@/context/GameContext";
 import { Colors } from '@/lib/theme';
 import { useTranslation } from "@/lib/i18n";
 import { SettingsModal } from "@/components/SettingsModal";
@@ -261,6 +262,7 @@ function SettingsButton({ compact, onPress }: { compact?: boolean; onPress: () =
 export default function HomeScreen() {
   const insets = useSafeAreaInsets();
   const { user, logout } = useAuth();
+  const { hasSavedGame, resumeGame } = useGame();
   const { t } = useTranslation();
   const { width: W, height: H } = useWindowDimensions();
   const isLandscape = W > H;
@@ -299,9 +301,17 @@ export default function HomeScreen() {
   const leftPad = isLandscape ? (Platform.OS === "web" ? 0 : insets.left) : 0;
   const rightPad = isLandscape ? (Platform.OS === "web" ? 0 : insets.right) : 0;
 
+  // Resuming restores the context first; the table renders from what it finds.
+  const onResume = () => {
+    if (resumeGame()) router.push("/game");
+  };
+
   const menuButtons = (compact: boolean) => (
     <>
-      <HomeMenuRow compact={compact} label={t("home.modeOffline")} icon="game-controller" accent onPress={() => router.push({ pathname: "/lobby", params: { mode: "ai" } })} delay={300} />
+      {hasSavedGame && (
+        <HomeMenuRow compact={compact} label={t("home.resumeGame")} icon="play-circle" accent onPress={onResume} delay={240} />
+      )}
+      <HomeMenuRow compact={compact} label={t("home.modeOffline")} icon="game-controller" accent={!hasSavedGame} onPress={() => router.push({ pathname: "/lobby", params: { mode: "ai" } })} delay={300} />
       <HomeMenuRow compact={compact} label={t("home.modePlayWithFriends")} icon="people" onPress={() => { if (user) router.push("/(online)"); else router.push("/auth"); }} delay={420} />
       <HomeMenuRow compact={compact} label={t("home.modeOnline")} icon="earth-outline" onPress={() => { if (user) router.push("/(online)/quickmatch"); else router.push("/auth"); }} delay={540} />
       <HomeMenuRow compact={compact} label={t("home.modeProfile")} icon="stats-chart-outline" onPress={() => { if (user) router.push("/(online)/profile"); else router.push("/auth"); }} delay={580} />

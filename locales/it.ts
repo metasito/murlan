@@ -130,6 +130,7 @@ export const it = {
   "home.logout": "Esci",
   "home.friendsLabel": "Amici",
   "home.settingsA11yLabel": "Impostazioni",
+  "home.resumeGame": "Riprendi partita",
   "home.modeOffline": "Offline",
   "home.modePlayWithFriends": "Gioca con amici",
   "home.modeOnline": "Online",

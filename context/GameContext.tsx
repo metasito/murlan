@@ -32,6 +32,13 @@ import {
   sortHand,
   canPlay,
 } from "@/lib/gameEngine";
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import {
+  OFFLINE_SAVE_KEY,
+  decodeOfflineSave,
+  encodeOfflineSave,
+  isResumable,
+} from "@/lib/offlineSave";
 import type { ExchangeAnnounceData } from "@/lib/sharedGameFlow";
 import type { BotPersonalityId } from "@/lib/botPersonalities";
 
@@ -163,6 +170,10 @@ interface GameContextValue {
   passTurn: () => void;
   resetGame: () => void;
   runAITurn: () => void;
+  /** A match the app was killed in the middle of, waiting to be picked up. */
+  hasSavedGame: boolean;
+  /** Restores that match. False if there was nothing worth restoring. */
+  resumeGame: () => boolean;
 }
 
 const GameContext = createContext<GameContextValue | null>(null);
@@ -176,6 +187,13 @@ export function GameProvider({ children }: { children: ReactNode }) {
   const [rematchAnswers, setRematchAnswers] = useState<RematchAnswers>({});
   const [savedPlayerConfigs, setSavedPlayerConfigs] = useState<PlayerSetupConfig[]>([]);
   const [savedGameMode, setSavedGameMode] = useState<GameMode>("free_for_all");
+
+  /**
+   * Whether a match interrupted by the app going away is waiting to be picked
+   * up. Loaded once on mount; the home screen offers it, `resumeGame` takes it.
+   */
+  const [hasSavedGame, setHasSavedGame] = useState(false);
+  const savedRef = useRef<ReturnType<typeof decodeOfflineSave>>(null);
 
   const [exchangeAnnouncing, setExchangeAnnouncing] = useState(false);
   const [exchangeAnnounceData, setExchangeAnnounceData] = useState<ExchangeAnnounceData | null>(null);
@@ -393,13 +411,71 @@ export function GameProvider({ children }: { children: ReactNode }) {
     setSelectedCards([]);
   }, [gameState, commitState]);
 
+  const clearSavedGame = useCallback(() => {
+    savedRef.current = null;
+    setHasSavedGame(false);
+    AsyncStorage.removeItem(OFFLINE_SAVE_KEY).catch(() => {});
+  }, []);
+
   const resetGame = useCallback(() => {
     setGameState(null);
     setSelectedCards([]);
     setLastRoundWinner(null);
     setMatch(freshMatch("match"));
     setRematchAnswers({});
+    clearSavedGame();
+  }, [clearSavedGame]);
+
+  /** Puts an interrupted match back exactly where it was. */
+  const resumeGame = useCallback(() => {
+    const save = savedRef.current;
+    if (!isResumable(save)) return false;
+    setGameState(save.gameState);
+    setMatch(save.match);
+    setRematchAnswers(save.rematchAnswers);
+    setSavedPlayerConfigs(save.players);
+    setSavedGameMode(save.gameMode);
+    setSelectedCards([]);
+    setLastRoundWinner(null);
+    return true;
   }, []);
+
+  // Read once, before anything can overwrite it.
+  useEffect(() => {
+    AsyncStorage.getItem(OFFLINE_SAVE_KEY)
+      .then((raw) => {
+        const save = decodeOfflineSave(raw);
+        savedRef.current = save;
+        setHasSavedGame(isResumable(save));
+      })
+      .catch(() => {});
+  }, []);
+
+  /**
+   * Written on every change to anything the restore needs.
+   *
+   * Not debounced: the online path persists to Postgres on every move, and this
+   * is a few kilobytes to local storage. A write that loses a race with the
+   * next one costs a move; a debounce that loses the last write before a kill
+   * costs the hand, which is the thing this exists to prevent.
+   */
+  useEffect(() => {
+    if (!gameState) return;
+    if (match.over) {
+      clearSavedGame();
+      return;
+    }
+    AsyncStorage.setItem(
+      OFFLINE_SAVE_KEY,
+      encodeOfflineSave({
+        gameState,
+        match,
+        rematchAnswers,
+        players: savedPlayerConfigs,
+        gameMode: savedGameMode,
+      })
+    ).catch(() => {});
+  }, [gameState, match, rematchAnswers, savedPlayerConfigs, savedGameMode, clearSavedGame]);
 
   const tableWantsRematch = useMemo(() => {
     const seats = gameState?.players.length ?? 0;
@@ -429,6 +505,8 @@ export function GameProvider({ children }: { children: ReactNode }) {
       passTurn,
       resetGame,
       runAITurn,
+      hasSavedGame,
+      resumeGame,
     }),
     [
       gameState,
@@ -451,6 +529,8 @@ export function GameProvider({ children }: { children: ReactNode }) {
       passTurn,
       resetGame,
       runAITurn,
+      hasSavedGame,
+      resumeGame,
     ]
   );
 

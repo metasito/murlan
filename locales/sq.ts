@@ -140,6 +140,7 @@ export const sq: Record<keyof typeof it, string> = {
   "home.logout": "Dil",
   "home.friendsLabel": "Miqtë",
   "home.settingsA11yLabel": "Cilësimet",
+  "home.resumeGame": "Vazhdo lojën",
   "home.modeOffline": "Offline",
   "home.modePlayWithFriends": "Luaj me miq",
   "home.modeOnline": "Online",

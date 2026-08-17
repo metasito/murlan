@@ -118,6 +118,7 @@ export const en: Record<keyof typeof it, string> = {
   "home.logout": "Log Out",
   "home.friendsLabel": "Friends",
   "home.settingsA11yLabel": "Settings",
+  "home.resumeGame": "Resume game",
   "home.modeOffline": "Offline",
   "home.modePlayWithFriends": "Play with friends",
   "home.modeOnline": "Online",
