@@ -1,7 +1,7 @@
 import { Server as SocketServer } from "socket.io";
 import type { Socket } from "socket.io";
 import type { Server as HttpServer } from "node:http";
-import { eq } from "drizzle-orm";
+import { eq, lt } from "drizzle-orm";
 import { storage } from "./storage.ts";
 import { logger } from "./logger.ts";
 import { sessionMiddleware } from "./session.ts";
@@ -153,6 +153,23 @@ const DISCONNECT_GRACE_MS = timeoutFromEnv("MURLAN_DISCONNECT_GRACE_MS", 60_000)
 const BOT_MOVE_DELAY_MS = timeoutFromEnv("MURLAN_BOT_MOVE_DELAY_MS", 1_200);
 const SWEEP_INTERVAL_MS = 5 * 60_000;
 
+/**
+ * How long an `active_games` row may sit untouched before it is abandoned.
+ *
+ * The in-memory sweep cannot see these. A restart empties `activeGames`, and
+ * every path that deletes a row — a table finishing, the last human leaving,
+ * the disconnect grace expiring — walks that Map. A game that was live when the
+ * process went down, and that nobody ever rejoins, is invisible to all of them
+ * and its row stays forever. On a host that sleeps, which is where this app
+ * runs, that happens on every sleep with a game open.
+ *
+ * A day is far past any live game: `persistGameState` refreshes `updated_at` on
+ * every single move, and a table nobody is playing is disposed within the
+ * disconnect grace. The margin is there so a row a player might still
+ * legitimately rejoin is never taken out from under them.
+ */
+const ABANDONED_GAME_MAX_AGE_MS = 24 * 60 * 60_000;
+
 let _io: SocketServer | null = null;
 
 export function emitToUser(userId: string, event: string, data: unknown) {
@@ -193,6 +210,9 @@ export const __testables = {
   },
   readPersistedPlayerMap: (storedMap: unknown, storedIds: unknown) =>
     readPersistedPlayerMap(storedMap, storedIds),
+  /** The restart-orphan prune, which only a real database can exercise. */
+  pruneAbandonedGames: () => pruneAbandonedGames(),
+  ABANDONED_GAME_MAX_AGE_MS,
 };
 
 function sanitizeStateForPlayer(
@@ -2002,6 +2022,23 @@ function seatClaimCode(
   }
 }
 
+/**
+ * Deletes `active_games` rows untouched for longer than
+ * `ABANDONED_GAME_MAX_AGE_MS`. Returns how many went, so a caller can tell
+ * "nothing to do" from "did not run".
+ */
+async function pruneAbandonedGames(): Promise<number> {
+  const cutoff = new Date(Date.now() - ABANDONED_GAME_MAX_AGE_MS);
+  const gone = await db
+    .delete(activeGamesTable)
+    .where(lt(activeGamesTable.updatedAt, cutoff))
+    .returning({ roomCode: activeGamesTable.roomCode });
+  if (gone.length > 0) {
+    logger.info({ count: gone.length }, "Pruned abandoned games orphaned by a restart");
+  }
+  return gone.length;
+}
+
 let sweeper: ReturnType<typeof setInterval> | null = null;
 
 /**
@@ -2020,6 +2057,13 @@ function startSweeper() {
           disposeGame(roomId);
         }
       }
+
+      // Rows orphaned by a restart, which the loop above structurally cannot
+      // reach: it walks memory, and a restart is what emptied memory.
+      void pruneAbandonedGames().catch((err: unknown) =>
+        logger.error({ err }, "Pruning abandoned games failed")
+      );
+
       for (const roomId of Array.from(publicRoomIds)) {
         void storage
           .getRoomById(roomId)

@@ -100,6 +100,10 @@ later turns.
   (cumulative match scores), `gameMode`, `matchTarget`. `persistGameState()` runs after
   every state-mutating move and does a full `onConflictDoUpdate` — mode, seats and
   scoreboard are all refreshed, not written once at game start.
+  Rows are deleted by `disposeGame`, whose every caller walks the in-memory map — so a
+  restart, which empties that map, orphans the row of any game that was live. The
+  periodic sweeper therefore also prunes rows untouched for 24h. `updated_at` advances
+  on every move, so a game being played is never a candidate.
 - **`session`** (via `connect-pg-simple`): pre-created, `createTableIfMissing: false`. Never
   dropped or recreated by app code — see `replit.md`.
 - **`match_replays`**: one row per finished manche — `seats`, `moves` and `rankings` as
