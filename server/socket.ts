@@ -1888,8 +1888,6 @@ export function setupSocket(httpServer: HttpServer) {
               return;
             }
 
-            socket.join(roomCode);
-            socketRoomMap.set(socket.id, roomCode);
             // Idempotent — an INSERT on every reconnect would pile up
             // duplicate room_players rows and corrupt the next rematch.
             await storage
@@ -1898,27 +1896,14 @@ export function setupSocket(httpServer: HttpServer) {
                 logger.warn({ err, roomCode, userId }, "upsertRoomPlayer failed")
               );
 
-            // room:state is what the client's navigation chain
-            // (index -> room -> game) actually gates on; replying with
-            // game:state alone leaves `room` null forever.
-            await emitRoomStateTo(socket, roomCode);
-
-            socket.emit(
-              "game:state",
-              sanitizeStateForPlayer(
-                existingGame.gameState,
-                userId,
-                existingGame.playerMap
-              )
-            );
-            io.to(roomCode).emit("game:player_reconnected", {
+            await rejoinSocketToTable(
+              io,
+              socket,
               userId,
               username,
-              code: "PLAYER_RECONNECTED",
-              message: `${username} è rientrato.`,
-              params: { username },
-            });
-            armTurn(roomCode);
+              roomCode,
+              existingGame
+            );
             logger.info({ userId, roomCode }, "Player rejoined game (from memory)");
             return;
           }
@@ -1955,9 +1940,6 @@ export function setupSocket(httpServer: HttpServer) {
             socket.emit("game:rejoin_failed", { reason: "Not authorized", code: "UNAUTHORIZED", roomCode });
             return;
           }
-
-          socket.join(roomCode);
-          socketRoomMap.set(socket.id, roomCode);
 
           const restoredScores = (row.scores as Record<string, number>) ?? {};
           const restoredTarget = row.matchTarget ?? MATCH_TARGETS[0];
@@ -1999,20 +1981,7 @@ export function setupSocket(httpServer: HttpServer) {
               );
           }
 
-          await emitRoomStateTo(socket, roomCode);
-
-          socket.emit(
-            "game:state",
-            sanitizeStateForPlayer(game.gameState, userId, game.playerMap)
-          );
-          io.to(roomCode).emit("game:player_reconnected", {
-            userId,
-            username,
-            code: "PLAYER_RECONNECTED",
-            message: `${username} è rientrato.`,
-            params: { username },
-          });
-          armTurn(roomCode);
+          await rejoinSocketToTable(io, socket, userId, username, roomCode, game);
           logger.info({ userId, roomCode }, "Player rejoined game (from DB)");
         } catch (err) {
           logger.error({ err, roomCode, userId }, "game:rejoin failed");
@@ -2133,15 +2102,7 @@ export function setupSocket(httpServer: HttpServer) {
 
       for (const [roomId, game] of activeGames.entries()) {
         if (seatOfUser(game, userId) === null || game.gameState.gameOver) continue;
-        socket.join(roomId);
-        socketRoomMap.set(socket.id, roomId);
-        await emitRoomStateTo(socket, roomId);
-        socket.emit(
-          "game:state",
-          sanitizeStateForPlayer(game.gameState, userId, game.playerMap)
-        );
-        io.to(roomId).emit("game:player_reconnected", { userId, username });
-        armTurn(roomId);
+        await rejoinSocketToTable(io, socket, userId, username, roomId, game);
         logger.info(
           { userId, username, roomId },
           "Player reconnected within grace period"
@@ -2309,6 +2270,42 @@ async function emitRoomStateTo(socket: Socket, roomCode: string) {
   if (!room) return;
   const players = await storage.getRoomPlayers(roomCode);
   socket.emit("room:state", roomStatePayload(room, players));
+}
+
+/**
+ * Puts a socket back at a table it holds a seat at: room membership, the two
+ * snapshots the client's navigation chain needs to render the game, the notice
+ * the rest of the table sees, and the turn scheduler.
+ *
+ * The one emitter of `game:player_reconnected`, so its payload cannot differ
+ * between the `game:rejoin` handler and the connection handler's grace-timer
+ * block. The caller owns the seat check and the `room_players` row: the
+ * grace-timer path still holds a row, the rejoin path may not.
+ */
+async function rejoinSocketToTable(
+  io: SocketServer,
+  socket: Socket,
+  userId: string,
+  username: string,
+  roomId: string,
+  game: OnlineGameState
+) {
+  socket.join(roomId);
+  socketRoomMap.set(socket.id, roomId);
+
+  await emitRoomStateTo(socket, roomId);
+  socket.emit(
+    "game:state",
+    sanitizeStateForPlayer(game.gameState, userId, game.playerMap)
+  );
+  io.to(roomId).emit("game:player_reconnected", {
+    userId,
+    username,
+    code: "PLAYER_RECONNECTED",
+    message: `${username} è rientrato.`,
+    params: { username },
+  });
+  armTurn(roomId);
 }
 
 function seatClaimMessage(
