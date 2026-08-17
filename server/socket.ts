@@ -1353,8 +1353,19 @@ export function setupSocket(httpServer: HttpServer) {
       NoPayloadSchema,
       async () => {
         const leavingRoomId = socketRoomMap.get(socket.id);
-        await handleLeaveRoom(io, socket, userId, username);
-        if (leavingRoomId && publicRoomIds.has(leavingRoomId)) {
+        if (!leavingRoomId) return;
+        socketRoomMap.delete(socket.id);
+
+        await handleSeatRelease(
+          io,
+          leavingRoomId,
+          userId,
+          socket.data?.username ?? username,
+          { socket, source: "leave" }
+        );
+        // Needs the player count as it stands after the removal, which is why
+        // it is here rather than inside handleSeatRelease.
+        if (publicRoomIds.has(leavingRoomId)) {
           const remaining = await storage.getRoomPlayers(leavingRoomId);
           if (remaining.length === 0) publicRoomIds.delete(leavingRoomId);
         }
@@ -2175,21 +2186,16 @@ export function setupSocket(httpServer: HttpServer) {
           // Still connected elsewhere — nothing to tear down.
           if (userSocketMap.has(userId)) return;
 
-          clearAfkTimer(currentRoomId, userId);
           const game = activeGames.get(currentRoomId);
 
-          if (!game) {
-            await handleLeaveRoom_lobby(io, currentRoomId, userId, username);
-            return;
-          }
-
-          if (game.gameState.gameOver) {
-            // Dropped at the results screen. Nobody is mid-turn, so there is
-            // nothing for a grace period to protect: free the seat straight
-            // away or it keeps counting towards the rematch gate and the
-            // remaining players can never start the next manche.
-            await handleLeaveRoom_lobby(io, currentRoomId, userId, username);
-            await vacateSeat(io, currentRoomId, userId, username);
+          if (!game || game.gameState.gameOver) {
+            // In the lobby, or at the results screen: nobody is mid-turn, so
+            // there is nothing for a grace period to protect. The seat is
+            // freed straight away or it keeps counting towards the rematch
+            // gate and the remaining players can never start the next manche.
+            await handleSeatRelease(io, currentRoomId, userId, username, {
+              source: "disconnect",
+            });
             return;
           }
 
@@ -2427,28 +2433,61 @@ function startSweeper() {
   (sweeper as unknown as { unref?: () => void }).unref?.();
 }
 
-async function handleLeaveRoom(
+/**
+ * Releases a seat: the room_players row, the user's timers, and — when the
+ * room still holds a live game — the seat in it.
+ *
+ * The two ways a seat is released are a `room:leave` and a lost connection,
+ * and they differ only in what the caller can hand over: a socket to take out
+ * of the socket.io room, and whether the lobby is told a player left. The
+ * seat-side work is identical, which is why it lives in one place.
+ *
+ * Runs on the disconnect path inside a `void (async () => …)`, so every
+ * storage call is `.catch`-guarded: an unguarded throw there is a logged
+ * failure that silently strands the room.
+ */
+async function handleSeatRelease(
   io: SocketServer,
-  socket: { id: string; leave: (r: string) => void; data?: { username?: string } },
+  roomId: string,
   userId: string,
-  username: string
+  username: string,
+  opts: {
+    socket?: { id: string; leave: (r: string) => void };
+    source: "leave" | "disconnect";
+  }
 ) {
-  const roomId = socketRoomMap.get(socket.id);
-  if (!roomId) return;
-  socketRoomMap.delete(socket.id);
-
   clearAllTimersForUser(userId, roomId);
 
-  await storage.removeRoomPlayer(roomId, userId);
-  socket.leave(roomId);
+  await storage
+    .removeRoomPlayer(roomId, userId)
+    .catch((err) =>
+      logger.warn(
+        { err, roomId, userId, source: opts.source },
+        "Failed to delete the room_players row after a seat was released — the seat stays counted as taken"
+      )
+    );
+  opts.socket?.leave(roomId);
 
-  const room = await storage.getRoomById(roomId);
+  const room = await storage.getRoomById(roomId).catch((err) => {
+    logger.warn({ err, roomId, userId }, "Failed to read the rooms row while releasing a seat");
+    return null;
+  });
   if (!room) return;
 
   if (room.status === "waiting") {
-    const remaining = await storage.getRoomPlayers(roomId);
+    const remaining = await storage.getRoomPlayers(roomId).catch((err) => {
+      logger.warn({ err, roomId }, "Failed to read the remaining lobby players");
+      return [];
+    });
     if (remaining.length === 0) {
-      await storage.updateRoomStatus(roomId, "finished");
+      await storage
+        .updateRoomStatus(roomId, "finished")
+        .catch((err) =>
+          logger.warn(
+            { err, roomId },
+            "Failed to set rooms.status = finished after the last player left the lobby"
+          )
+        );
       publicRoomIds.delete(roomId);
       return;
     }
@@ -2469,65 +2508,17 @@ async function handleLeaveRoom(
       "room:state",
       roomStatePayload({ ...room, hostUserId: newHostId }, remaining)
     );
+    // Only a lost connection announces this; a `room:leave` never has.
+    if (opts.source === "disconnect") {
+      io.to(roomId).emit("room:player_left", { userId, username });
+    }
   } else if (activeGames.has(roomId)) {
     // A live game in memory is the only authority on whether the seat is still
     // held: `rooms.status` reads "finished" between manches too, so it cannot
     // tell an ended match from a table waiting to deal again. Removing the DB
     // row alone leaves the seat live in the in-memory game — auto-playing the
     // leaver's hand mid-manche, or blocking the rematch gate between them.
-    await vacateSeat(io, roomId, userId, socket.data?.username ?? username);
-  }
-}
-
-async function handleLeaveRoom_lobby(
-  io: SocketServer,
-  roomId: string,
-  userId: string,
-  username: string
-) {
-  await storage
-    .removeRoomPlayer(roomId, userId)
-    .catch((err) =>
-      logger.warn(
-        { err, roomId, userId },
-        "Failed to delete the room_players row after a lobby leave — the seat stays counted as taken"
-      )
-    );
-
-  const room = await storage.getRoomById(roomId);
-  if (!room) return;
-
-  if (room.status === "waiting") {
-    const remaining = await storage.getRoomPlayers(roomId);
-    if (remaining.length === 0) {
-      await storage.updateRoomStatus(roomId, "finished");
-      publicRoomIds.delete(roomId);
-      return;
-    }
-    let newHostId = room.hostUserId;
-    if (room.hostUserId === userId) {
-      const nextHost = remaining.sort((a, b) => a.seatIndex - b.seatIndex)[0];
-      newHostId = nextHost.userId;
-      await storage
-        .updateRoomHost(roomId, newHostId)
-        .catch((err) =>
-          logger.warn(
-            { err, roomId, userId, newHostId },
-            "Failed to update rooms.host_user_id after the host disconnected from the lobby"
-          )
-        );
-    }
-    io.to(roomId).emit(
-      "room:state",
-      roomStatePayload({ ...room, hostUserId: newHostId }, remaining)
-    );
-    io.to(roomId).emit("room:player_left", { userId, username });
-  } else if (room.status === "finished") {
-    const remaining = await storage.getRoomPlayers(roomId);
-    if (remaining.length === 0) {
-      await storage.updateRoomStatus(roomId, "finished");
-      publicRoomIds.delete(roomId);
-    }
+    await vacateSeat(io, roomId, userId, username);
   }
 }
 
