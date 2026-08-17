@@ -253,6 +253,15 @@ export const __testables = {
    */
   hasActiveGame: (roomId: string) => activeGames.has(roomId),
   /**
+   * Drops a room's live game and its timers while leaving the `active_games`
+   * row alone — exactly what a process restart leaves behind, and the only
+   * way a test can reach `game:rejoin`'s rehydration branch.
+   */
+  forgetActiveGame: (roomId: string) => {
+    clearRoomTimers(roomId);
+    return activeGames.delete(roomId);
+  },
+  /**
    * A snapshot of the seat -> userId map a room's live game is routing hands
    * by. It is the only thing that decides whose cards a viewer is sent, and
    * which seats the turn arbiter drives with the AI, so a test asserting that
@@ -602,6 +611,29 @@ function armTurn(roomId: string) {
 
   const username = game.gameState.players[seat]?.name ?? "";
   startAfkTimer(roomId, userId, username);
+}
+
+/**
+ * Arms the room's turn scheduler only if nothing is already pending for the
+ * seat that has to act. For the rejoin paths, which must not disturb a clock
+ * that is already running: `armTurn` clears the room's timers before it arms,
+ * so calling it on every rejoin hands the acting seat a fresh full AFK window
+ * each time — a seated player could then hold the table open indefinitely on
+ * their own turn by rejoining in a loop.
+ *
+ * A table with no pending timer is armed unconditionally, which is what the
+ * game rehydrated from the database after a restart needs: it has no timers at
+ * all, and nothing else would ever arm one.
+ */
+function armTurnIfIdle(roomId: string) {
+  const game = activeGames.get(roomId);
+  if (!game) return;
+
+  if (botTimers.has(roomId)) return;
+  const seatUserId = game.playerMap[actingSeat(game.gameState)];
+  if (seatUserId !== undefined && afkTimers.has(`${roomId}:${seatUserId}`)) return;
+
+  armTurn(roomId);
 }
 
 function runBotTurn(roomId: string) {
@@ -2305,7 +2337,7 @@ async function rejoinSocketToTable(
     message: `${username} è rientrato.`,
     params: { username },
   });
-  armTurn(roomId);
+  armTurnIfIdle(roomId);
 }
 
 function seatClaimMessage(
