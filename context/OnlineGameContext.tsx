@@ -144,6 +144,18 @@ const WAITING_ROOM_KEY = "@murlan_waiting_room";
 const REJOIN_RETRY_DELAY_MS = 2000;
 const MAX_REJOIN_RETRIES = 3;
 
+// The `room:rejoin` rejections that mean the seat is gone for good (see the
+// handler in server/socket.ts). `room:error` carries no room id, so the code is
+// the only thing that separates the answer to an outstanding rejoin from an
+// error about an action inside a room the player is still sitting in — and only
+// the first may take the lobby down with it.
+const TERMINAL_ROOM_REJOIN_CODES = new Set([
+  "ROOM_NOT_FOUND",
+  "NOT_IN_ROOM",
+  "GAME_ALREADY_STARTED",
+  "ROOM_FULL",
+]);
+
 export function OnlineGameProvider({ userId, children }: { userId: string; children: ReactNode }) {
   const { showNotification } = useNotification();
   const qc = useQueryClient();
@@ -303,7 +315,7 @@ export function OnlineGameProvider({ userId, children }: { userId: string; child
       // player no longer holds: the lobby on screen is a roster the server has
       // already dropped them from, so it goes with the error rather than
       // leaving them waiting on a game they are not in.
-      if (rejoiningRoomCodeRef.current) {
+      if (rejoiningRoomCodeRef.current && TERMINAL_ROOM_REJOIN_CODES.has(payload.code ?? "")) {
         rejoiningRoomCodeRef.current = null;
         persistWaitingRoom(null);
         setRoom(null);
