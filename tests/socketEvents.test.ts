@@ -50,7 +50,13 @@ test("the events that exist are registered through the wrapper", () => {
     `only ${wrapped.length} events go through onEvent, which is fewer than this server has ` +
       `ever had — either the registrations moved or this test stopped finding them`
   );
-  for (const required of ["room:spectate", "room:unspectate", "game:play", "game:pass"]) {
+  for (const required of [
+    "room:spectate",
+    "room:unspectate",
+    "room:rejoin",
+    "game:play",
+    "game:pass",
+  ]) {
     assert.ok(wrapped.includes(required), `${required} must go through onEvent`);
   }
 });

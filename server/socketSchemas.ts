@@ -36,6 +36,13 @@ export const RoomJoinSchema = z.object({
 /** Watching a table. Same shape as joining one; the difference is the seat. */
 export const RoomSpectateSchema = RoomJoinSchema;
 
+/**
+ * Taking back a seat in a lobby after a dropped connection. Same handle a
+ * player would type, so the same shape as joining — the difference is that the
+ * caller was already in the room and is not asking for a new seat.
+ */
+export const RoomRejoinSchema = RoomJoinSchema;
+
 export const RoomQuickmatchSchema = z.object({
   maxPlayers: z.number().int().min(2).max(4),
   gameMode: GameModeSchema,

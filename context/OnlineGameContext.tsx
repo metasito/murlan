@@ -124,6 +124,12 @@ const OnlineGameContext = createContext<OnlineGameContextValue | null>(null);
 // this provider — does not lock a player out of a game that is still live server-side.
 const ACTIVE_ROOM_KEY = "@murlan_active_room";
 
+// The waiting lobby's own handle, kept apart from ACTIVE_ROOM_KEY because the
+// two answer different events: a waiting room has no live game, so its id would
+// produce a `game:rejoin` the server can never satisfy. This one holds the room
+// *code*, which is what `room:rejoin` takes.
+const WAITING_ROOM_KEY = "@murlan_waiting_room";
+
 // A SERVER_ERROR rejoin failure is the server handler's blanket catch, not a
 // verdict on the table, so it is retried rather than treated as terminal. The
 // cap keeps the retries well inside the server's 20-per-60s rejoin limit,
@@ -161,6 +167,13 @@ export function OnlineGameProvider({ userId, children }: { userId: string; child
   const reactionTimersRef = useRef<Set<ReturnType<typeof setTimeout>>>(new Set());
   // Room id read back from storage — the only rejoin handle available after a cold start.
   const persistedRoomIdRef = useRef<string | null>(null);
+  // The waiting lobby's code, same purpose for `room:rejoin`.
+  const persistedWaitingCodeRef = useRef<string | null>(null);
+  // The room a `room:rejoin` is in flight for. A `room:error` that answers it
+  // means the seat is gone, and unlike every other room:error — which answers
+  // an action taken inside a room the player still holds — the stale lobby has
+  // to go with it.
+  const rejoiningRoomCodeRef = useRef<string | null>(null);
   // The room id a `game:rejoin` is currently in flight for, cleared by the
   // live state that answers it. A `game:rejoin_failed` may only tear down
   // state when it names *this* room: the round-trip is async, so a failure for
@@ -187,6 +200,15 @@ export function OnlineGameProvider({ userId, children }: { userId: string; child
     }
   }, []);
 
+  const persistWaitingRoom = useCallback((code: string | null) => {
+    persistedWaitingCodeRef.current = code;
+    if (code) {
+      AsyncStorage.setItem(WAITING_ROOM_KEY, code).catch(() => {});
+    } else {
+      AsyncStorage.removeItem(WAITING_ROOM_KEY).catch(() => {});
+    }
+  }, []);
+
   /** Nothing is outstanding: no reply may act, and no retry is pending. */
   const forgetRejoinAttempt = useCallback(() => {
     requestedRoomIdRef.current = null;
@@ -209,16 +231,36 @@ export function OnlineGameProvider({ userId, children }: { userId: string; child
     if (!currentRoom && persistedRoomIdRef.current) {
       requestedRoomIdRef.current = persistedRoomIdRef.current;
       socket.emit("game:rejoin", { roomCode: persistedRoomIdRef.current });
+      return;
+    }
+
+    // A waiting lobby has no game to rejoin, only a seat — and the seat was
+    // released the moment the old socket dropped. `room:rejoin` takes it back
+    // and re-maps the new socket to the room; without it the server resolves
+    // every later room event to nothing and answers none of them.
+    if (currentGame) return;
+    const waitingCode = currentRoom
+      ? currentRoom.status === "waiting"
+        ? currentRoom.code
+        : null
+      : persistedWaitingCodeRef.current;
+    if (waitingCode) {
+      rejoiningRoomCodeRef.current = waitingCode;
+      socket.emit("room:rejoin", { code: waitingCode });
     }
   }, [userId]);
 
-  // Load the persisted room id, then rejoin immediately if the socket is already up.
+  // Load the persisted handles, then rejoin immediately if the socket is already up.
   useEffect(() => {
     let cancelled = false;
-    AsyncStorage.getItem(ACTIVE_ROOM_KEY)
-      .then((stored) => {
-        if (cancelled || !stored) return;
-        persistedRoomIdRef.current = stored;
+    Promise.all([
+      AsyncStorage.getItem(ACTIVE_ROOM_KEY),
+      AsyncStorage.getItem(WAITING_ROOM_KEY),
+    ])
+      .then(([storedRoomId, storedWaitingCode]) => {
+        if (cancelled || (!storedRoomId && !storedWaitingCode)) return;
+        persistedRoomIdRef.current = storedRoomId;
+        persistedWaitingCodeRef.current = storedWaitingCode;
         if (socket.connected) attemptRejoin();
       })
       .catch(() => {});
@@ -238,17 +280,30 @@ export function OnlineGameProvider({ userId, children }: { userId: string; child
       roomRef.current = data;
       setRoom(data);
       forgetRejoinAttempt();
-      // Only a live game is worth surviving a restart for. Persisting a
-      // waiting-room id too meant force-quitting from a lobby produced a
-      // rejoin the server can never satisfy (waiting rooms never enter
-      // active games) — that latched rejoinFailed and, later, ejected the
-      // player from the next game they actually started.
+      rejoiningRoomCodeRef.current = null;
+      // Only a live game is worth a `game:rejoin`. Persisting a waiting-room id
+      // under the same key meant force-quitting from a lobby produced a rejoin
+      // the server can never satisfy (waiting rooms never enter active games) —
+      // that latched rejoinFailed and, later, ejected the player from the next
+      // game they actually started. A waiting lobby is recovered by its own
+      // event instead, off its own handle.
       persistActiveRoom(data.status === "in_progress" ? data.roomId : null);
+      persistWaitingRoom(data.status === "waiting" ? data.code : null);
     };
 
     // Server payloads carry { code, params, message }; render the code in the
     // player's language and fall back to the server's Italian text if unknown.
     const onRoomError = (payload: ServerPayload) => {
+      // A refused `room:rejoin` is the one room:error that answers a room the
+      // player no longer holds: the lobby on screen is a roster the server has
+      // already dropped them from, so it goes with the error rather than
+      // leaving them waiting on a game they are not in.
+      if (rejoiningRoomCodeRef.current) {
+        rejoiningRoomCodeRef.current = null;
+        persistWaitingRoom(null);
+        setRoom(null);
+        roomRef.current = null;
+      }
       setError(translateServerPayload(payload));
     };
 
@@ -302,6 +357,9 @@ export function OnlineGameProvider({ userId, children }: { userId: string; child
       } else if (roomRef.current) {
         persistActiveRoom(roomRef.current.roomId);
       }
+      // A dealt table is not a lobby any more, and `room:start` broadcasts no
+      // fresh room:state — this is the only thing that retires the handle.
+      persistWaitingRoom(null);
     };
 
     const onGameError = (payload: ServerPayload) => {
@@ -467,6 +525,7 @@ export function OnlineGameProvider({ userId, children }: { userId: string; child
       });
       forgetRejoinAttempt();
       persistActiveRoom(null);
+      persistWaitingRoom(null);
       gameStateRef.current = null;
       setGameState(null);
       setRoom(null);
@@ -530,7 +589,15 @@ export function OnlineGameProvider({ userId, children }: { userId: string; child
       reactionTimersRef.current.forEach(clearTimeout);
       reactionTimersRef.current.clear();
     };
-  }, [userId, attemptRejoin, forgetRejoinAttempt, persistActiveRoom, showNotification, qc]);
+  }, [
+    userId,
+    attemptRejoin,
+    forgetRejoinAttempt,
+    persistActiveRoom,
+    persistWaitingRoom,
+    showNotification,
+    qc,
+  ]);
 
   const createRoom = useCallback((gameMode: "free_for_all" | "teams", maxPlayers: number) => {
     setEntrySource("friends");
@@ -568,6 +635,10 @@ export function OnlineGameProvider({ userId, children }: { userId: string; child
       socket.emit("room:leave");
     }
     persistActiveRoom(null);
+    // Leaving is deliberate: neither handle may bring this room back on the
+    // next connect.
+    persistWaitingRoom(null);
+    rejoiningRoomCodeRef.current = null;
     setRoom(null);
     roomRef.current = null;
     setGameState(null);
@@ -583,7 +654,7 @@ export function OnlineGameProvider({ userId, children }: { userId: string; child
     setMySeatIndex(-1);
     prevBothJokersExceptionRef.current = false;
     prevExchangeActiveRef.current = false;
-  }, [userId, persistActiveRoom, forgetRejoinAttempt]);
+  }, [userId, persistActiveRoom, persistWaitingRoom, forgetRejoinAttempt]);
 
   const quickmatch = useCallback((maxPlayers: number, gameMode: "free_for_all" | "teams") => {
     setEntrySource("quickmatch");

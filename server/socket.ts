@@ -33,6 +33,7 @@ import {
   NoPayloadSchema,
   RoomCreateSchema,
   RoomJoinSchema,
+  RoomRejoinSchema,
   RoomSpectateSchema,
   RoomQuickmatchSchema,
   RoomSetGameModeSchema,
@@ -1388,6 +1389,60 @@ export function setupSocket(httpServer: HttpServer) {
         io.to(room.id).emit("room:state", roomStatePayload(room, updatedPlayers));
       },
       { limit: 10, windowMs: 60_000 }
+    );
+
+    /**
+     * Coming back to a waiting lobby on a new socket. A lobby disconnect frees
+     * the seat straight away (handleSeatRelease), so there is nothing to hold
+     * open and nothing to restore beyond taking the seat again — the claim is
+     * the whole check, and it answers with the same rejections room:join does.
+     * `already_joined` is the good case: the row outlived the drop and only the
+     * socket has to be re-attached.
+     *
+     * Without this the returning socket has no socketRoomMap entry, so every
+     * later room event resolves to no room and returns silently — the host's
+     * start button becomes a dead control and a guest waits on a roster the
+     * server no longer lists them in.
+     */
+    onEvent(
+      socket,
+      "room:rejoin",
+      RoomRejoinSchema,
+      async ({ code }) => {
+        const room = await storage.getRoomByCode(code.toUpperCase());
+        if (!room) {
+          socket.emit("room:error", { message: "Room not found", code: "ROOM_NOT_FOUND" });
+          return;
+        }
+
+        const claim = await storage.claimRoomSeat(room.id, userId);
+        if (!claim.ok && claim.reason !== "already_joined") {
+          socket.emit("room:error", {
+            message: seatClaimMessage(claim.reason),
+            code: seatClaimCode(claim.reason),
+          });
+          return;
+        }
+
+        socket.join(room.id);
+        socketRoomMap.set(socket.id, room.id);
+
+        // Ordered by seat. The lobby host is the lowest-seated player, which is
+        // the rule the disconnect migrated by in the first place: the returning
+        // player re-takes the seat they left, so a host who blipped is host
+        // again instead of holding a room they can no longer start.
+        const players = await storage.getRoomPlayers(room.id);
+        let hostUserId = room.hostUserId;
+        if (players[0] && players[0].userId !== hostUserId) {
+          hostUserId = players[0].userId;
+          await storage.updateRoomHost(room.id, hostUserId);
+        }
+        io.to(room.id).emit(
+          "room:state",
+          roomStatePayload({ ...room, hostUserId }, players)
+        );
+      },
+      { limit: 20, windowMs: 60_000 }
     );
 
     onEvent(

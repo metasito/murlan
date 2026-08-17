@@ -12,6 +12,7 @@ import {
   setUpRoom,
   startGame,
   type Client,
+  type RoomState,
   type SanitizedState,
 } from "../helpers/table.ts";
 
@@ -401,6 +402,90 @@ describe("reconnect", { skip: hasDatabase() ? false : skipMessage() }, () => {
       assert.equal(payload.code, "GAME_NOT_FOUND");
     } finally {
       gina.socket.close();
+    }
+  });
+
+  // ── NET-03: a lobby reconnect has to recover the room too ───────────────
+
+  /**
+   * A drop with no live game frees the seat immediately, and there was no way
+   * back: `game:rejoin` needs a game, so the returning socket held no
+   * socketRoomMap entry and every room event it sent afterwards resolved to no
+   * room and returned silently.
+   */
+  test("a guest that reconnects to a waiting lobby recovers the room", async () => {
+    const alice = await connectAs(server, "lobby_back_alice");
+    const bob = await connectAs(server, "lobby_back_bob");
+    const room = await setUpRoom([alice, bob], 2);
+    const table = [alice, bob];
+    try {
+      // The seat release is what makes this a recovery rather than a no-op,
+      // and it is also what the returning socket must not race.
+      const released = waitFor<RoomState>(alice.socket, "room:state", 5_000);
+      bob.socket.disconnect();
+      assert.equal((await released).players.length, 1);
+
+      const back = await reconnect(bob);
+      table[1] = { ...bob, socket: back };
+      const recovered = waitFor<RoomState>(back, "room:state", 5_000);
+      // The code the client already holds — no re-entry by the player.
+      back.emit("room:rejoin", { code: room.code });
+      const state = await recovered;
+
+      assert.equal(state.roomId, room.roomId);
+      assert.deepEqual(
+        state.players.map((p) => p.userId).sort(),
+        [alice.user.id, bob.user.id].sort()
+      );
+    } finally {
+      await closeTable(table);
+    }
+  });
+
+  /**
+   * The host's half of the same drop. Releasing the seat also migrates the
+   * host to the lowest remaining seat, so the returning player has to be back
+   * at their own seat *and* holding the room again — otherwise `room:start` is
+   * still the dead control the reconnect was supposed to fix.
+   */
+  test("a host that reconnects to a waiting lobby can still start the game", async () => {
+    const carol = await connectAs(server, "lobby_host_carol");
+    const dave = await connectAs(server, "lobby_host_dave");
+    const room = await setUpRoom([carol, dave], 2);
+    assert.equal(room.hostUserId, carol.user.id);
+    const table = [carol, dave];
+    try {
+      const migrated = waitFor<RoomState>(dave.socket, "room:state", 5_000);
+      carol.socket.disconnect();
+      assert.equal((await migrated).hostUserId, dave.user.id);
+
+      const back = await reconnect(carol);
+      table[0] = { ...carol, socket: back };
+      const recovered = waitFor<RoomState>(back, "room:state", 5_000);
+      back.emit("room:rejoin", { code: room.code });
+      assert.equal((await recovered).hostUserId, carol.user.id);
+
+      const dealt = waitFor<SanitizedState>(dave.socket, "game:state", 5_000);
+      back.emit("room:start");
+      const state = await dealt;
+      assert.equal(state.players.length, 2);
+    } finally {
+      await closeTable(table);
+    }
+  });
+
+  /**
+   * The rejection path: the seat is gone for good once the room is, and the
+   * client answers a room:error by dropping the lobby it is showing.
+   */
+  test("a rejoin to a room that no longer waits is refused", async () => {
+    const jack = await connectAs(server, "lobby_gone_jack");
+    try {
+      const refused = waitFor<{ code?: string }>(jack.socket, "room:error", 5_000);
+      jack.socket.emit("room:rejoin", { code: "ZZZZZZ" });
+      assert.equal((await refused).code, "ROOM_NOT_FOUND");
+    } finally {
+      jack.socket.close();
     }
   });
 });
