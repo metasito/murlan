@@ -415,12 +415,22 @@ export function OnlineGameProvider({ userId, children }: { userId: string; child
       }, 3_500);
     };
 
-    const onRejoinFailed = (data: { reason?: string; roomCode?: string }) => {
+    const onRejoinFailed = (data: ServerPayload & { roomCode?: string }) => {
       // Act only on a reply for the room still being waited on. The server
       // echoes the requested room id verbatim at every emit site, and live
       // state for any room clears the ref — so anything that does not match
       // answers an attempt the player has already moved past.
       if (data.roomCode && data.roomCode !== requestedRoomIdRef.current) return;
+      // The reason is shown before the teardown, because the teardown is what
+      // sends the player back to the lobby: the server distinguishes a
+      // vacated seat from a finished game from a deploy that invalidated it,
+      // and all three used to read as the table simply vanishing.
+      showNotification({
+        type: "game_error",
+        title: t("onlineGame.rejoinFailedTitle"),
+        message: translateServerPayload(data),
+        duration: 4500,
+      });
       requestedRoomIdRef.current = null;
       persistActiveRoom(null);
       gameStateRef.current = null;

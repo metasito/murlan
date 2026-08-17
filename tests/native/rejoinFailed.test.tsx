@@ -14,7 +14,8 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { render, waitFor } from '@testing-library/react-native';
 
 import { OnlineGameProvider, useOnlineGame } from '@/context/OnlineGameContext';
-import { NotificationProvider } from '@/context/NotificationContext';
+import { NotificationProvider, useNotification } from '@/context/NotificationContext';
+import { it as itLocale } from '@/locales/it';
 
 type Listener = (...args: unknown[]) => void;
 
@@ -39,10 +40,12 @@ const ACTIVE_ROOM_KEY = '@murlan_active_room';
 
 function Probe() {
   const { room, rejoinFailed } = useOnlineGame();
+  const { notification } = useNotification();
   return (
     <>
       <Text testID="room">{room ? room.roomId : 'none'}</Text>
       <Text testID="failed">{String(rejoinFailed)}</Text>
+      <Text testID="notice">{notification ? notification.message : 'none'}</Text>
     </>
   );
 }
@@ -62,7 +65,7 @@ function roomState(roomId: string) {
 /** Mounts the provider with `roomId` already persisted, so it rejoins on mount. */
 async function mountRejoining(roomId: string) {
   await AsyncStorage.setItem(ACTIVE_ROOM_KEY, roomId);
-  const view = render(
+  const view = await render(
     <QueryClientProvider client={new QueryClient()}>
       <NotificationProvider>
         <OnlineGameProvider userId="u1">
@@ -89,8 +92,9 @@ const failure = (roomCode: string) => ({
   message: 'Game not found',
 });
 
-const shown = (view: ReturnType<typeof render>, id: string) =>
-  view.getByTestId(id).props.children;
+type View = Awaited<ReturnType<typeof render>>;
+
+const shown = (view: View, id: string) => view.getByTestId(id).props.children;
 
 describe('game:rejoin_failed', () => {
   beforeEach(async () => {
@@ -109,8 +113,9 @@ describe('game:rejoin_failed', () => {
 
     expect(shown(view, 'room')).toBe('R2');
     expect(shown(view, 'failed')).toBe('false');
+    expect(shown(view, 'notice')).toBe('none');
 
-    view.unmount();
+    await view.unmount();
   });
 
   it('still tears down while that room is the outstanding attempt', async () => {
@@ -120,7 +125,10 @@ describe('game:rejoin_failed', () => {
 
     await waitFor(() => expect(shown(view, 'failed')).toBe('true'));
     expect(shown(view, 'room')).toBe('none');
+    // The whole point of the code: the player is told which failure this was,
+    // in their own language, rather than watching the table disappear.
+    expect(shown(view, 'notice')).toBe(itLocale['server.GAME_NOT_FOUND']);
 
-    view.unmount();
+    await view.unmount();
   });
 });

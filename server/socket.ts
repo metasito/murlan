@@ -1911,12 +1911,17 @@ export function setupSocket(httpServer: HttpServer) {
         // which the client's rejoin-failed handling never listens for —
         // leaving the player stranded on a dead screen. A failure in here
         // must always resolve as game:rejoin_failed instead.
+        //
+        // Every one of those carries the wire's error contract — { code,
+        // message } — so the client can render it in the player's language.
+        // `roomCode` stays a top-level field alongside it: the client's
+        // stale-reply guard matches on it, so it must not move into params.
         try {
           const existingGame = activeGames.get(roomCode);
           if (existingGame) {
             const seat = seatOfUser(existingGame, userId);
             if (seat === null) {
-              socket.emit("game:rejoin_failed", { reason: "Not authorized", code: "UNAUTHORIZED", roomCode });
+              socket.emit("game:rejoin_failed", { message: "Not authorized", code: "UNAUTHORIZED", roomCode });
               return;
             }
 
@@ -1944,7 +1949,7 @@ export function setupSocket(httpServer: HttpServer) {
             where: eq(activeGamesTable.roomCode, roomCode),
           });
           if (!row) {
-            socket.emit("game:rejoin_failed", { reason: "Game not found", code: "GAME_NOT_FOUND", roomCode });
+            socket.emit("game:rejoin_failed", { message: "Game not found", code: "GAME_NOT_FOUND", roomCode });
             return;
           }
 
@@ -1958,7 +1963,7 @@ export function setupSocket(httpServer: HttpServer) {
               "Discarding stale persisted game (schema mismatch)"
             );
             disposeGame(roomCode);
-            socket.emit("game:rejoin_failed", { reason: "Game no longer valid", code: "GAME_NO_LONGER_VALID", roomCode });
+            socket.emit("game:rejoin_failed", { message: "Game no longer valid", code: "GAME_NO_LONGER_VALID", roomCode });
             return;
           }
           // isStaleSchema is a plain boolean helper (kept dependency-free for
@@ -1969,7 +1974,7 @@ export function setupSocket(httpServer: HttpServer) {
 
           const playerMap = readPersistedPlayerMap(row.playerMap, row.playerIds);
           if (!Object.values(playerMap).includes(userId)) {
-            socket.emit("game:rejoin_failed", { reason: "Not authorized", code: "UNAUTHORIZED", roomCode });
+            socket.emit("game:rejoin_failed", { message: "Not authorized", code: "UNAUTHORIZED", roomCode });
             return;
           }
 
@@ -2017,7 +2022,7 @@ export function setupSocket(httpServer: HttpServer) {
           logger.info({ userId, roomCode }, "Player rejoined game (from DB)");
         } catch (err) {
           logger.error({ err, roomCode, userId }, "game:rejoin failed");
-          socket.emit("game:rejoin_failed", { reason: "Errore del server", code: "SERVER_ERROR", roomCode });
+          socket.emit("game:rejoin_failed", { message: "Errore del server", code: "SERVER_ERROR", roomCode });
         }
       },
       { limit: 20, windowMs: 60_000 }
