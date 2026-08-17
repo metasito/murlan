@@ -49,6 +49,31 @@ actually depend on — each demonstrable, not asserted.
 
 ---
 
+## Audit remediation in progress
+
+A full read-only audit ran on 2026-08-17. Its output is in `audit/2026-08-17/` and the work is
+being executed in 14 batches.
+
+**If the user says "start batch N", "next batch", or anything equivalent, run the `/batch`
+command** (`.claude/commands/batch.md`) — it carries the full standing instructions. Do not
+improvise an implementation prompt.
+
+Entry points, in the order you need them:
+
+| File | What it is |
+|---|---|
+| `audit/2026-08-17/PROGRESS.md` | Which batches are done, which is next, effort/model per batch |
+| `audit/2026-08-17/IMPLEMENTATION-PLAN.md` | Global constraints, then one section per batch |
+| `audit/2026-08-17/DECISIONS.md` | The owner's settled answers — **do not re-open these** |
+| `audit/2026-08-17/BACKLOG.md` | All 123 findings, batched and ordered |
+| `audit/2026-08-17/findings/` | The full entry for every finding |
+| `audit/2026-08-17/CONFLICTS.md` | Ordering hazards — the plan tells you when to read it |
+
+While this remediation is live, **the backlog in `audit/2026-08-17/` takes precedence over
+`docs/BACKLOG.md`** as the queue for the standing agreement below.
+
+---
+
 ## Standing working agreement
 
 **Autonomy.** Work the queue in `docs/BACKLOG.md` unattended, one item at a time, one
