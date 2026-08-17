@@ -21,3 +21,34 @@ for (const name of MODULES) {
     assert.ok(mod, `server/${name}.ts failed to load`);
   });
 }
+
+// No database needed: this inspects how the Pool was constructed, not whether
+// it can connect.
+test("the Postgres pool is constructed with an error handler and timeouts", async () => {
+  const { pool } = await import("../server/db.ts");
+
+  assert.equal(
+    pool.listenerCount("error"),
+    1,
+    "the pool must handle its own `error` event — an idle-client error with no listener is an unhandled EventEmitter error"
+  );
+  // Exact values, not "not zero": pg defaults neither of these, so an absent
+  // option reads as `undefined` and every inequality against 0 would hold.
+  assert.deepEqual(
+    {
+      max: pool.options.max,
+      connectionTimeoutMillis: pool.options.connectionTimeoutMillis,
+      idleTimeoutMillis: pool.options.idleTimeoutMillis,
+      statement_timeout: pool.options.statement_timeout,
+      query_timeout: pool.options.query_timeout,
+    },
+    {
+      max: 10,
+      connectionTimeoutMillis: 5_000,
+      idleTimeoutMillis: 30_000,
+      statement_timeout: 15_000,
+      query_timeout: 15_000,
+    },
+    "every bound the pool is meant to carry must be set — an unset one is `undefined`, which waits forever"
+  );
+});
