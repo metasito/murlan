@@ -957,12 +957,18 @@ export const sharedTableStyles = StyleSheet.create({
     borderBottomColor: Colors.goldGhost,
   },
   midSection: { flex: 1, flexDirection: "row", alignItems: "center" },
+  // A side seat's fan is wider than SIDE_SECTION_W and is meant to be: it
+  // leans in over the felt, the way a real player's hand does. Anchoring each
+  // section to the table's outer edge is what keeps that overflow pointing
+  // inward — centred, half of it lands off the side of the screen and takes
+  // the avatar with it.
   sideSection: {
     width: SIDE_SECTION_W,
-    alignItems: "center",
     justifyContent: "center",
     paddingHorizontal: Spacing.sm,
   },
+  sideSectionLeft: { alignItems: "flex-start" },
+  sideSectionRight: { alignItems: "flex-end" },
   centerSection: { flex: 1, alignItems: "center", justifyContent: "center" },
   handSection: {
     flexDirection: "row",

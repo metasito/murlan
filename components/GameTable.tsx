@@ -956,7 +956,7 @@ export function GameTable({
           </View>
 
           <View style={sharedTableStyles.midSection}>
-            <View style={sharedTableStyles.sideSection}>
+            <View style={[sharedTableStyles.sideSection, sharedTableStyles.sideSectionLeft]}>
               {opponents.left && (
                 <SideOppSlot
                   player={opponents.left.player}
@@ -990,7 +990,7 @@ export function GameTable({
               )}
             </View>
 
-            <View style={sharedTableStyles.sideSection}>
+            <View style={[sharedTableStyles.sideSection, sharedTableStyles.sideSectionRight]}>
               {opponents.right && (
                 <SideOppSlot
                   player={opponents.right.player}
