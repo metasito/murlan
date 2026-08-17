@@ -26,13 +26,22 @@ test.describe("offline vs AI — single hand, reaches a result", () => {
 
   for (const config of configs) {
     test(config.name, async ({ page, baseURL, consoleErrors }) => {
-      // EXPO_PUBLIC_E2E_FAST (scripts/e2e-server.mjs) zeroes the AI's
-      // thinking pause and the pre-/result navigation beat, and reduced-
-      // motion cuts every Reanimated transition — a full hand at any seat
-      // count now plays in well under a minute (measured: 2p ~55s, 3p ~54s,
-      // 4p ~39s). The budget below is a generous multiple of that, not a
-      // reflection of real per-move pacing.
-      const driveTimeoutMs = 2 * 60_000;
+      // How long a hand takes here is decided by the deal, not by the app.
+      // The bot never models card legality: it selects a candidate
+      // combination and reads the real GIOCA button to find out whether it
+      // was legal (helpers/bot.ts), which is the point of it — that button
+      // is what a player relies on. The cost is that a move takes as many
+      // clicks as the deal makes it take, and across runs the same test has
+      // ranged from 49s to over 4 minutes with nothing else on the machine.
+      //
+      // So the budget is deliberately far above the typical run rather than
+      // a tight multiple of it. It is not the check. A game that is actually
+      // broken is caught by `stallMs` — 15s with the table description
+      // unchanged — which is untouched, fails in seconds, and reports the
+      // state it stopped in. This only stops a runaway from hanging the
+      // suite, and a value that fits the median makes the suite fail on
+      // unlucky deals instead.
+      const driveTimeoutMs = 8 * 60_000;
       test.setTimeout(driveTimeoutMs + 30_000);
       await openApp(page, baseURL!);
       await startOfflineGame(page, {
