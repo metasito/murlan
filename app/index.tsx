@@ -574,7 +574,18 @@ const styles = StyleSheet.create({
     borderColor: Colors.border,
   },
   menuButtonCompact: { paddingVertical: 12, paddingHorizontal: 16 },
-  menuButtonAccent: { padding: 0, overflow: "hidden", borderColor: Colors.gold },
+  // Zeroed as longhands, not as `padding: 0`: the base style sets
+  // paddingVertical/paddingHorizontal, and React Native resolves the longhand
+  // over the shorthand whatever the order. The shorthand left the padding in
+  // place, so the gradient — which carries its own padding and is meant to
+  // reach the edges — sat inset inside the border with its own square corners
+  // showing against the rounded container.
+  menuButtonAccent: {
+    paddingVertical: 0,
+    paddingHorizontal: 0,
+    overflow: "hidden",
+    borderColor: Colors.gold,
+  },
   menuButtonDisabled: { borderColor: Colors.border, opacity: 0.5 },
   accentGradient: {
     flex: 1,
