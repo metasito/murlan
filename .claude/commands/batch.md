@@ -35,14 +35,32 @@ rebase: force-pushing is forbidden below, and rebase-after-push needs it.
 
 ## 3. Implement
 
-`superpowers:subagent-driven-development`. One task per finding, in the plan's order, **one
-commit per finding**: `fix(<ID>): <what changed>`. Reverting a single finding out of a merged
-batch depends on that.
+In the plan's order, **one commit per finding**: `fix(<ID>): <what changed>`. Reverting a single
+finding out of a merged batch depends on that.
+
+**Use `superpowers:subagent-driven-development` only where blast radius earns its review gate** —
+the batches the plan marks `max` effort (3, 13) and those rewriting `server/socket.ts` (4, 5).
+Everywhere else implement inline. Eleven Low/S fixes in eleven different files do not need eleven
+context rebuilds and eleven review gates.
+
+**One commit per finding is a git rule, not a dispatch rule.** One agent can make three commits.
+Every dispatch costs a full context rebuild — the agent re-reads the same files and re-runs the
+same suite — so group findings that share a file into **one** brief listing each fix in order
+with its commit message, and expect two or three dispatches per batch, not one per row. Split
+only where the work genuinely differs (server vs client), and never run two implementers on the
+same file at once — that is the real limit on parallelism. **Review once over the whole branch**
+before the PR, not after every task; the exception is a finding the plan marks Critical or one
+carrying an ordering hazard, which gets reviewed on its own immediately because later findings
+build on it. Write the brief properly — defect, fix, settled decisions, acceptance criteria —
+and it needs no round trip.
 
 - **Do not improvise.** Each finding's "Proposed fix" names files and approach. If you think one
   is wrong, stop and say so — do not substitute your own.
-- **Satisfy each finding's acceptance criteria with a real test.** Integration criteria need
-  Postgres — start one, do not report them unrunnable:
+- **Acceptance criteria are binding — but they say what must be *true*, not that a new test file
+  must exist.** Where the existing suite already proves it, name the test that does and move on.
+  Write a new test for every Critical and High finding regardless of what exists.
+- Integration criteria need Postgres — start one, do not report them unrunnable. Leave the
+  container running between batches; it costs nothing idle and the next batch reuses it:
   ```bash
   docker start murlan-pg 2>/dev/null || docker run -d --name murlan-pg \
     -e POSTGRES_USER=postgres -e POSTGRES_PASSWORD=postgres -e POSTGRES_DB=murlan_test \
@@ -83,3 +101,7 @@ Then **send one `PushNotification`**, whatever the outcome — I am usually away
 
 Finally, report in chat: what you verified and how, the merge SHA, anything the audit missed.
 Flag loudly any change to a persisted shape or to a rule in `docs/BRIEF.md` §3.1.
+
+**Do not wait for the previous batch's CI to start the next one** — different branches, no shared
+state. Batches 1–5 are serial because they rewrite the same file; after that `PROGRESS.md`
+§ Run order splits 6–11 into two independent tracks that can run at the same time.
