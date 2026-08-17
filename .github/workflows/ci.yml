@@ -76,6 +76,9 @@ jobs:
           fi
           echo "Integration suites ran against Postgres."
 
+      - name: Native tests
+        run: npm run test:native
+
       - name: Lint
         run: npm run lint
 
