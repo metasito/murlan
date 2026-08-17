@@ -1,4 +1,10 @@
 import pg from "pg";
+import type { Server as HttpServer } from "node:http";
+import type { Server as SocketIOServer } from "socket.io";
+// Pure by design: importing anything that reaches server/db.ts from module
+// scope here would build the app's Pool before startTestServer() has pointed
+// DATABASE_URL at the throwaway schema.
+import { drainPool } from "../../server/drainPool.ts";
 
 export function hasDatabase(): boolean {
   return Boolean(process.env.DATABASE_URL);
@@ -13,30 +19,13 @@ export function skipMessage(): string {
   return "DATABASE_URL not set — skipping integration tests (unit tests still run)";
 }
 
-/**
- * Waits for the app's own in-flight queries to finish before the pool closes.
- *
- * Everything `handleGameOver` writes — stats, history, achievements, replays,
- * ratings — is deliberately fire-and-forget, so a test whose assertions are
- * satisfied early can reach teardown while the tail of one of those chains is
- * still running. `pool.end()` lets the current query finish but rejects the
- * next one, which surfaces as "Cannot use a pool after calling end on the
- * pool" and, worse, silently abandons a write a test might have been about to
- * check. Waiting on the pool's own active-client count is a real condition,
- * not a sleep; the bound is there so a genuinely stuck query fails loudly
- * rather than hanging the suite.
- */
-async function drainPool(pool: { totalCount: number; idleCount: number }, ms = 5_000) {
-  const deadline = Date.now() + ms;
-  while (pool.totalCount - pool.idleCount > 0 && Date.now() < deadline) {
-    await new Promise((r) => setTimeout(r, 25));
-  }
-}
-
 export interface TestServer {
   url: string;
   port: number;
   schema: string;
+  /** The live handles, for a suite that drives shutdown itself. */
+  io: SocketIOServer;
+  httpServer: HttpServer;
   stop(): Promise<void>;
 }
 
@@ -113,10 +102,18 @@ export async function startTestServer(
       url: `http://127.0.0.1:${port}`,
       port,
       schema,
+      io,
+      httpServer: server,
       async stop() {
         try {
           io.close();
           await new Promise<void>((resolve) => server.close(() => resolve()));
+          // A suite whose assertions are satisfied early reaches teardown while
+          // the tail of a fire-and-forget chain is still writing; ending the
+          // pool under it abandons the write and fails the next one with
+          // "Cannot use a pool after calling end on the pool". A pool that is
+          // still busy after the bound is reported by the assertions that then
+          // fail, so the result is not inspected here.
           await drainPool(appPool);
           // The app's own pool (session store + storage) is a module-level
           // singleton that nothing else closes — server/index.ts only does

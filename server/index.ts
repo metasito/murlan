@@ -4,9 +4,9 @@ for (const key of REQUIRED_ENV) {
 }
 
 import { logger } from "./logger.ts";
-import { pool } from "./db.ts";
 import { sessionMiddleware } from "./session.ts";
 import { createApp } from "./testApp.ts";
+import { shutdown } from "./shutdown.ts";
 
 export { sessionMiddleware };
 
@@ -17,7 +17,7 @@ export { sessionMiddleware };
 // port against a throwaway database schema, without going through this
 // file's listen()/SIGTERM/SIGINT wiring at all.
 (async () => {
-  const { server } = await createApp();
+  const { server, io } = await createApp();
 
   const port = parseInt(process.env.PORT || "5000", 10);
   // reusePort is Linux-only; Windows and macOS reject it with ENOTSUP.
@@ -26,19 +26,6 @@ export { sessionMiddleware };
     logger.info(`express server serving on port ${port}`);
   });
 
-  const shutdown = async (signal: string) => {
-    logger.info({ signal }, "Graceful shutdown initiated");
-    server.close(async () => {
-      await pool.end();
-      logger.info("Server shut down cleanly");
-      process.exit(0);
-    });
-    setTimeout(() => {
-      logger.error("Forced shutdown after timeout");
-      process.exit(1);
-    }, 10_000);
-  };
-
-  process.on("SIGTERM", () => shutdown("SIGTERM"));
-  process.on("SIGINT", () => shutdown("SIGINT"));
+  process.on("SIGTERM", () => void shutdown("SIGTERM", { io, server }));
+  process.on("SIGINT", () => void shutdown("SIGINT", { io, server }));
 })();
