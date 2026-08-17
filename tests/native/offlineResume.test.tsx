@@ -11,7 +11,7 @@ import { Text, Pressable } from "react-native";
 import { render, act, fireEvent, waitFor } from "@testing-library/react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { GameProvider, useGame } from "@/context/GameContext";
-import { OFFLINE_SAVE_KEY, decodeOfflineSave } from "@/lib/offlineSave";
+import { OFFLINE_SAVE_KEY, OFFLINE_SAVE_VERSION, decodeOfflineSave } from "@/lib/offlineSave";
 
 const SETUP = [
   { name: "Ana", type: "human" as const },
@@ -19,9 +19,61 @@ const SETUP = [
 ];
 
 /** Reports the bits of context state the persistence is supposed to carry. */
+/**
+ * A save taken while the between-hands exchange is open.
+ *
+ * This is the moment a player is most likely to put the phone down — the hand
+ * has just ended and they owe, or are owed, a card — and the one where a bad
+ * restore strands them, which is exactly how the two-joker bug presented
+ * before it was fixed.
+ */
+const midExchangeSave = () => {
+  const card = { id: "7_hearts", rank: "7", suit: "hearts", isJoker: false };
+  return JSON.stringify({
+    version: OFFLINE_SAVE_VERSION,
+    gameState: {
+      players: [
+        { id: "player_0", name: "Ana", hand: [card], type: "human" },
+        { id: "player_1", name: "Luan", hand: [card], type: "ai" },
+      ],
+      currentTurnIndex: 0,
+      lastPlayedCombination: null,
+      lastPlayedBy: -1,
+      passCount: 0,
+      gameMode: "free_for_all",
+      roundWinner: null,
+      gameOver: false,
+      rankings: [],
+      firstPlayMade: true,
+      exchangePhase: {
+        active: true,
+        winnerIdx: 1,
+        loserIdx: 0,
+        cardFromLoser: card,
+        bothJokersException: true,
+      },
+    },
+    match: { length: "match", target: 21, scores: {}, hands: [], over: false, winners: [], isDraw: false },
+    rematchAnswers: {},
+    players: [
+      { name: "Ana", type: "human" },
+      { name: "Luan", type: "ai", personality: "luan" },
+    ],
+    gameMode: "free_for_all",
+  });
+};
+
 function Probe() {
-  const { gameState, hasSavedGame, resumeGame, setupGame, resetGame, selectCard, playSelected } =
-    useGame();
+  const {
+    gameState,
+    hasSavedGame,
+    resumeGame,
+    setupGame,
+    resetGame,
+    selectCard,
+    playSelected,
+    exchangeAnnouncing,
+  } = useGame();
   // The opening play is forced to the 3♠, so it is the one move that is always
   // legal and always available without reading the engine's rules here.
   const playOpening = () => {
@@ -32,6 +84,13 @@ function Probe() {
     <>
       <Text testID="hand">{gameState ? String(gameState.players[0].hand.length) : "none"}</Text>
       <Text testID="saved">{String(hasSavedGame)}</Text>
+      <Text testID="exchange">
+        {gameState?.exchangePhase?.active
+          ? `${gameState.exchangePhase.winnerIdx}>${gameState.exchangePhase.loserIdx}` +
+            (gameState.exchangePhase.bothJokersException ? " jokers" : "")
+          : "none"}
+      </Text>
+      <Text testID="announcing">{String(exchangeAnnouncing)}</Text>
       <Pressable testID="setup" onPress={() => setupGame(SETUP, "free_for_all")}>
         <Text>setup</Text>
       </Pressable>
@@ -119,4 +178,19 @@ test("with nothing stored, there is nothing to offer", async () => {
   await waitFor(() => expect(textOf(r, "saved")).toBe("false"));
   await press(r, "resume");
   expect(textOf(r, "hand")).toBe("none");
+});
+
+// The exchange is driven entirely by gameState.exchangePhase, which is
+// persisted. The announcement overlay beside it is not, and must not be: it is
+// a one-shot that blocks the screen until it is acknowledged, so restoring it
+// would put a player back behind a notice about a hand they already saw end.
+test("a game killed mid-exchange comes back with the exchange, and no stuck overlay", async () => {
+  await AsyncStorage.setItem(OFFLINE_SAVE_KEY, midExchangeSave());
+
+  const r = await mount();
+  await waitFor(() => expect(textOf(r, "saved")).toBe("true"));
+  await press(r, "resume");
+
+  expect(textOf(r, "exchange")).toBe("1>0 jokers");
+  expect(textOf(r, "announcing")).toBe("false");
 });
