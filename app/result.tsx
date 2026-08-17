@@ -24,6 +24,7 @@ import { LinearGradient } from "expo-linear-gradient";
 import { hapticLight, hapticMedium, hapticSuccess } from "@/lib/haptics";
 import { Ionicons } from "@expo/vector-icons";
 import { useGame } from "@/context/GameContext";
+import { usePrefersReducedMotion } from "@/lib/accessibility";
 import { ResultExchangeOverlay, shouldShowResultExchange } from "@/components/ResultExchangeOverlay";
 import { Colors, FontSize, Spacing, Type } from '@/lib/theme';
 import { useTranslation, type TranslationKey } from "@/lib/i18n";
@@ -57,9 +58,15 @@ function ScoreRow({
   team?: "A" | "B";
 }) {
   const { t } = useTranslation();
+  const reduceMotion = usePrefersReducedMotion();
   const opacity = useSharedValue(0);
   const tx = useSharedValue(30);
   useEffect(() => {
+    if (reduceMotion) {
+      opacity.value = 1;
+      tx.value = 0;
+      return;
+    }
     opacity.value = withDelay(delay, withTiming(1, { duration: 320 }));
     tx.value = withDelay(delay, withSpring(0, { damping: 14, stiffness: 200 }));
     // eslint-disable-next-line react-hooks/exhaustive-deps -- one-shot mount animation; opacity/tx are stable shared values, delay is fixed per instance
@@ -117,11 +124,20 @@ function WinnerCelebration({
   compact?: boolean;
 }) {
   const { t } = useTranslation();
+  const reduceMotion = usePrefersReducedMotion();
   const scale = useSharedValue(0);
   const opacity = useSharedValue(0);
   const glow = useSharedValue(0.5);
   const glowScale = useSharedValue(1.0);
   useEffect(() => {
+    if (reduceMotion) {
+      // The result still arrives and the haptic still fires; the entrance and
+      // the endless glow behind it are the parts with nothing to say.
+      scale.value = 1;
+      opacity.value = 1;
+      hapticSuccess();
+      return;
+    }
     scale.value = withSpring(1, { damping: 8, stiffness: 150 });
     opacity.value = withTiming(1, { duration: 600 });
     glow.value = withRepeat(

@@ -26,6 +26,7 @@ import { Ionicons, Feather } from "@expo/vector-icons";
 import { useQuery } from "@tanstack/react-query";
 import { useAuth } from "@/context/AuthContext";
 import { useGame } from "@/context/GameContext";
+import { usePrefersReducedMotion } from "@/lib/accessibility";
 import { Colors } from '@/lib/theme';
 import { useTranslation } from "@/lib/i18n";
 import { SettingsModal } from "@/components/SettingsModal";
@@ -62,11 +63,17 @@ function HomeMenuRow({
   compact = false,
   accessibilityLabel,
 }: HomeMenuRowProps) {
+  const reduceMotion = usePrefersReducedMotion();
   const opacity = useSharedValue(0);
   const translateY = useSharedValue(30);
   const scale = useSharedValue(1);
 
   useEffect(() => {
+    if (reduceMotion) {
+      opacity.value = 1;
+      translateY.value = 0;
+      return;
+    }
     opacity.value = withDelay(delay, withTiming(1, { duration: 500 }));
     translateY.value = withDelay(
       delay,
@@ -82,10 +89,12 @@ function HomeMenuRow({
 
   const handlePress = () => {
     if (disabled) return;
-    scale.value = withSequence(
-      withTiming(0.96, { duration: 80 }),
-      withTiming(1, { duration: 120 })
-    );
+    if (!reduceMotion) {
+      scale.value = withSequence(
+        withTiming(0.96, { duration: 80 }),
+        withTiming(1, { duration: 120 })
+      );
+    }
     hapticLight();
     onPress();
   };
@@ -158,10 +167,14 @@ function FloatingCard({
   size: number;
   opacity: number;
 }) {
+  const reduceMotion = usePrefersReducedMotion();
   const translateY = useSharedValue(0);
   const rotate = useSharedValue(0);
 
   useEffect(() => {
+    // Decorative drift with no end. Under reduced motion the cards simply sit
+    // where they were placed — there is nothing here to convey, only mood.
+    if (reduceMotion) return;
     translateY.value = withDelay(
       delay,
       withRepeat(
@@ -268,11 +281,18 @@ export default function HomeScreen() {
   const isLandscape = W > H;
   const [settingsVisible, setSettingsVisible] = useState(false);
 
+  const reduceMotion = usePrefersReducedMotion();
   const titleOpacity = useSharedValue(0);
   const titleScale = useSharedValue(0.85);
   const subtitleOpacity = useSharedValue(0);
 
   useEffect(() => {
+    if (reduceMotion) {
+      titleOpacity.value = 1;
+      titleScale.value = 1;
+      subtitleOpacity.value = 1;
+      return;
+    }
     titleOpacity.value = withDelay(200, withTiming(1, { duration: 700 }));
     titleScale.value = withDelay(200, withTiming(1, { duration: 700, easing: Easing.out(Easing.back(1.5)) }));
     subtitleOpacity.value = withDelay(500, withTiming(1, { duration: 600 }));

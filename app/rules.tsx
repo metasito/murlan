@@ -16,6 +16,7 @@ import { LinearGradient } from "expo-linear-gradient";
 import { Ionicons } from "@expo/vector-icons";
 import { Colors, Spacing, FontSize, Type } from "@/lib/theme";
 import { MenuLayout } from "@/components/MenuLayout";
+import { usePrefersReducedMotion } from "@/lib/accessibility";
 import { useTranslation, type TranslationKey } from "@/lib/i18n";
 
 interface FAQ {
@@ -41,15 +42,22 @@ function useFaqs(): FAQ[] {
 }
 
 function FAQItem({ item, isLast }: { item: FAQ; isLast: boolean }) {
+  const reduceMotion = usePrefersReducedMotion();
   const [open, setOpen] = useState(false);
   const height = useSharedValue(0);
   const opacity = useSharedValue(0);
 
   const toggleOpen = () => {
     const nextOpen = !open;
+    const to = nextOpen ? 1 : 0;
     setOpen(nextOpen);
-    height.value = withTiming(nextOpen ? 1 : 0, { duration: 280 });
-    opacity.value = withTiming(nextOpen ? 1 : 0, { duration: 200 });
+    if (reduceMotion) {
+      height.value = to;
+      opacity.value = to;
+      return;
+    }
+    height.value = withTiming(to, { duration: 280 });
+    opacity.value = withTiming(to, { duration: 200 });
   };
 
   const answerStyle = useAnimatedStyle(() => ({
