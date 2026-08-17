@@ -19,6 +19,7 @@ import { Colors, Spacing, FontSize, Radius, Type } from '@/lib/theme';
 import { MenuButton } from "@/components/MenuButton";
 import { MenuLayout } from "@/components/MenuLayout";
 import { useTranslation, translateServerPayload } from "@/lib/i18n";
+import { registerForPush } from "@/lib/pushRegistration";
 import type { TranslationKey, TranslationParams } from "@/lib/i18n";
 
 type TFn = (key: TranslationKey, params?: TranslationParams) => string;
@@ -220,6 +221,14 @@ export default function FriendsScreen() {
       if (socket) socket.emit("friend:get_online_list");
     }, [socket])
   );
+
+  // Asked here rather than at launch: the only notification the app sends is
+  // an invite from someone on this screen, so this is where the permission
+  // means something. Idempotent — it only prompts while the OS says the
+  // question is still open.
+  useEffect(() => {
+    void registerForPush();
+  }, []);
 
   function handleJoinGameInvite(roomCode: string) {
     hapticMedium();
