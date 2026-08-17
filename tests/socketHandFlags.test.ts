@@ -94,6 +94,7 @@ function rematchGame(overrides: {
     matchLength: "match" as const,
     matchOver: true,
     handFlags: {},
+    abandonedSeats: new Map<number, string>(),
     spectators: new Set<string>(),
     moveLog: null,
   };

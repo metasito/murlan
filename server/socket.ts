@@ -105,6 +105,20 @@ interface OnlineGameState {
    */
   handFlags: Record<number, { bomb: boolean; joker: boolean }>;
   /**
+   * seat -> the userId who walked out on the hand being played, for seats
+   * vacated while they still held cards. `playerMap` has already forgotten
+   * them by then, and a seat missing from it scores as `bot:<seat>`, which is
+   * how a player used to leave a losing hand and be recorded nowhere at all.
+   * Read at game over to record the seat as a real last-place finish, and
+   * cleared wherever a new hand deals — the forfeit is recorded once, not in
+   * every remaining manche of the match.
+   *
+   * In memory only: putting it in the persisted `game_state` envelope would
+   * change a stored shape, and a GAME_SCHEMA_VERSION bump disposes every live
+   * game on its next rejoin.
+   */
+  abandonedSeats: Map<number, string>;
+  /**
    * userIds watching without a seat. Deliberately not persisted: a spectator
    * who reconnects spectates again, and a restart dropping them costs nothing.
    */
@@ -376,7 +390,12 @@ function disposeGame(roomId: string, deleteRow = true) {
 
 // ─── Persistence ──────────────────────────────────────────────────────────────
 
-function persistGameState(roomId: string, game: OnlineGameState) {
+/**
+ * Writes the room's live state. Failures are logged, never thrown — a
+ * persistence problem must not break a table. The promise is returned so a
+ * caller that is about to delete the same row can order itself after it.
+ */
+function persistGameState(roomId: string, game: OnlineGameState): Promise<unknown> {
   const playerIds = Object.values(game.playerMap);
   const playerMap = game.playerMap as Record<string, string>;
   // Stamped so a restart can tell a current-shape row from a stale one (see
@@ -395,7 +414,8 @@ function persistGameState(roomId: string, game: OnlineGameState) {
     matchLength: game.matchLength,
     updatedAt: new Date(),
   };
-  db.insert(activeGamesTable)
+  return db
+    .insert(activeGamesTable)
     .values(values)
     .onConflictDoUpdate({
       target: activeGamesTable.roomCode,
@@ -676,6 +696,36 @@ function startAfkTimer(roomId: string, userId: string, username: string) {
 // ─── Seat vacancy ─────────────────────────────────────────────────────────────
 
 /**
+ * Ends a hand nobody is left to play: `winnerSeat` takes it, and every seat
+ * still holding cards is placed behind them — closest to finishing first, seat
+ * order as a stable tiebreak, the same ordering the engine uses when a hand
+ * ends with cards still out.
+ *
+ * Every seat must reach `rankings`: it is what the scoreboard awards from and
+ * what the stats writer reads a result from, so a seat missing from it played
+ * no game at all. Seats that already emptied their hand keep the position they
+ * earned.
+ */
+function concedeHand(game: OnlineGameState, winnerSeat: number | undefined) {
+  const state = game.gameState;
+  const place = (seat: number) => {
+    const player = state.players[seat];
+    if (!player || player.finishPosition !== undefined) return;
+    player.finishPosition = state.rankings.length + 1;
+    state.rankings.push(player.id);
+  };
+
+  if (winnerSeat !== undefined) place(winnerSeat);
+  state.players
+    .map((player, seat) => ({ player, seat }))
+    .filter(({ player }) => player.finishPosition === undefined)
+    .sort((a, b) => a.player.hand.length - b.player.hand.length || a.seat - b.seat)
+    .forEach(({ seat }) => place(seat));
+
+  state.gameOver = true;
+}
+
+/**
  * Frees a seat whose player is gone for good — grace period expired, or an
  * explicit leave, either mid-hand or at the results screen — and hands it to a
  * bot. The hand stays in play, so the table can always continue: the seat must
@@ -700,6 +750,13 @@ async function vacateSeat(
 
   const seatPlayer = game.gameState.players[seat];
   if (seatPlayer) seatPlayer.type = "ai";
+
+  // Walking out on a hand still holding cards is a forfeit, and is recorded as
+  // one at game over. A seat between hands has no hand to forfeit, and a seat
+  // that already emptied its hand has finished the one it was playing.
+  if (!game.gameState.gameOver && seatPlayer?.finishPosition === undefined) {
+    game.abandonedSeats.set(seat, userId);
+  }
 
   const remaining = Object.keys(game.playerMap).length;
 
@@ -746,14 +803,16 @@ async function vacateSeat(
       message: `${username} ha lasciato la partita.`,
       params: { username },
     });
-    await storage
-      .updateRoomStatus(roomId, "finished")
-      .catch((err) =>
-        logger.warn(
-          { err, roomId, userId, seat },
-          "Failed to set rooms.status = finished after the table was abandoned mid-hand"
-        )
-      );
+    // The hand is still scored. The player who was left holding the table
+    // takes it — they are the only seat still being played by anyone — and
+    // whoever walked out is recorded as the last-place finish they were
+    // heading for. Disposing without this is what let a losing player close
+    // the tab and take their opponent's win with them.
+    const survivorSeat = Object.keys(game.playerMap).map(Number)[0];
+    concedeHand(game, survivorSeat);
+    // Sets rooms.status = "finished" and writes the row itself; the write is
+    // awaited so the disposal below deletes a row that already exists.
+    await handleGameOver(io, roomId, game);
     disposeGame(roomId);
     return;
   }
@@ -934,8 +993,10 @@ async function handleGameOver(
       )
     );
   // The row is kept (not deleted) so a restart between hands restores the
-  // running match instead of silently resetting the scoreboard.
-  persistGameState(roomId, game);
+  // running match instead of silently resetting the scoreboard. Awaited so a
+  // caller that disposes the table straight after cannot delete the row
+  // before this write lands on it.
+  await persistGameState(roomId, game);
 
   // ── Stats / history / achievements ────────────────────────────────────────
   //
@@ -967,8 +1028,12 @@ async function handleGameOver(
       .map((engineId, idx) => {
         const seat = seatOfEngineId.get(engineId);
         if (seat === undefined) return null;
-        const placement = idx + 1;
-        const key = scoreKeyForSeat(game, seat);
+        // A seat someone walked out on is that person's result, not a bot's:
+        // keyed by the userId who left (`bot:<seat>` is filtered out of every
+        // write below) and recorded as the last-place finish a forfeit is.
+        const abandonedBy = game.abandonedSeats.get(seat);
+        const placement = abandonedBy === undefined ? idx + 1 : playerCount;
+        const key = abandonedBy ?? scoreKeyForSeat(game, seat);
         const flags = game.handFlags[seat] ?? { bomb: false, joker: false };
         const emptiedOwnHand = state.players[seat].hand.length === 0;
         const result: GameResult = {
@@ -982,6 +1047,7 @@ async function handleGameOver(
             realFinisherCount - (emptiedOwnHand ? 1 : 0),
             0
           ),
+          abandoned: abandonedBy !== undefined,
         };
         return result;
       })
@@ -991,7 +1057,11 @@ async function handleGameOver(
     // recorded: a private room of one human plus bots would otherwise be
     // guaranteed points and free achievements. See isContestedTable for
     // where the line sits.
-    const humanSeats = Object.keys(game.playerMap).length;
+    // A seat someone walked out on is out of playerMap, but it was a person's
+    // seat and its result is recorded as one — counting it as a bot would turn
+    // the table bot-majority and drop every write in exactly the case this
+    // gate has no business blocking.
+    const humanSeats = Object.keys(game.playerMap).length + game.abandonedSeats.size;
     const botSeats = Math.max(playerCount - humanSeats, 0);
     if (!isContestedTable(humanSeats, botSeats)) {
       logger.info(
@@ -1493,6 +1563,7 @@ export function setupSocket(httpServer: HttpServer) {
           matchLength: matchLength ?? previous?.matchLength ?? "match",
           matchOver: previous?.matchOver ?? false,
           handFlags: {},
+          abandonedSeats: new Map<number, string>(),
           spectators: new Set<string>(),
           moveLog: startReplayLog(),
         };
@@ -1751,10 +1822,14 @@ export function setupSocket(httpServer: HttpServer) {
         game.gameMode = room.gameMode;
         game.maxPlayers = room.maxPlayers;
         // A rematch deals a brand new hand — last hand's bomb/joker plays
-        // must not leak into this one's achievement evaluation, and its move
-        // log has already been written to its own replay.
+        // must not leak into this one's achievement evaluation, its move log
+        // has already been written to its own replay, and the seats walked out
+        // on have already been recorded as the forfeit they were. Carrying
+        // those forward would record the same departure again in every
+        // remaining manche of the match.
         game.handFlags = {};
         game.moveLog = startReplayLog();
+        game.abandonedSeats.clear();
         rollMatchForward(game);
 
         await storage.updateRoomStatus(roomId, "in_progress");
@@ -1881,6 +1956,9 @@ export function setupSocket(httpServer: HttpServer) {
                 ? (restoredState as GameState).gameOver
                 : !!restoredResolution && restoredResolution.newTarget === null,
             handFlags: restoredHandFlags,
+            // A hand restored after a restart has no record of who walked out
+            // of it: the map is memory-only and the restart emptied it.
+            abandonedSeats: new Map<number, string>(),
             spectators: new Set<string>(),
             // The log is memory-only, so a hand restored after a restart has
             // none and produces no replay. The next hand starts a fresh one.

@@ -164,6 +164,66 @@ describe("ladder and replay writes", { skip: hasDatabase() ? false : skipMessage
     }
   });
 
+  /**
+   * The cheapest exploit there was: watch your hand, and when it is clearly
+   * lost, close the tab. Nothing was written for the quitter — their seat left
+   * `playerMap` and scored as `bot:<seat>`, which every write filters out —
+   * and heads-up the survivor lost their win with it, because a two-player
+   * table was disposed without ever reaching the scoring path.
+   */
+  test("a player who drops mid-hand is rated as last, and their opponent is rated for the win", async () => {
+    const quitter = await connectAs(server, "quit_qara");
+    const survivor = await connectAs(server, "quit_sten");
+    try {
+      const created = waitFor<RoomState>(quitter.socket, "room:state");
+      quitter.socket.emit("room:create", { gameMode: "free_for_all", maxPlayers: 2 });
+      const room = await created;
+
+      const joined = waitFor<RoomState>(survivor.socket, "room:state");
+      survivor.socket.emit("room:join", { code: room.code });
+      await joined;
+
+      const dealt = [quitter, survivor].map((c) => waitFor(c.socket, "game:state"));
+      quitter.socket.emit("room:start");
+      await Promise.all(dealt);
+
+      // Mid-hand: neither seat has emptied a hand, and the match is nowhere
+      // near its target.
+      quitter.socket.disconnect();
+
+      const season = seasonKey(new Date());
+      const rows = await waitForRow<
+        { user_id: string; rating: number; games: number; season: string }[]
+      >(async () => {
+        const res = await dbPool.query(
+          "SELECT user_id, rating, games, season FROM user_ratings WHERE user_id = ANY($1)",
+          [[quitter.user.id, survivor.user.id]]
+        );
+        return res.rows.length === 2 ? res.rows : null;
+      }, 15_000);
+
+      const ratingOf = (id: string) => {
+        const row = rows.find((r) => r.user_id === id);
+        assert.ok(row, `no user_ratings row for ${id}`);
+        assert.equal(row.season, season);
+        assert.equal(Number(row.games), 1, "the abandoned hand counts as a game for both");
+        return Number(row.rating);
+      };
+
+      assert.ok(
+        ratingOf(quitter.user.id) < START_RATING,
+        "walking out of a hand has to cost rating"
+      );
+      assert.ok(
+        ratingOf(survivor.user.id) > START_RATING,
+        "the player left at the table has to be paid for the win"
+      );
+    } finally {
+      quitter.socket.close();
+      survivor.socket.close();
+    }
+  });
+
   test("a player can read their own replay back, and cannot read a stranger's", async () => {
     const { alice, bob } = await playOneHand("own");
     const stranger = await connectAs(server, "own_stranger");

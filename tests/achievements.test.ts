@@ -17,6 +17,15 @@ test("losing unlocks nothing", () => {
   assert.deepEqual(evaluateAchievements({ ...base, placement: 4 }), []);
 });
 
+test("a forfeited hand unlocks nothing, whatever it would otherwise have earned", () => {
+  // The placement on an abandoned seat is assigned when the player walks out,
+  // so nothing about it was played for. Built from a result that earns half
+  // the catalogue, so this cannot pass by accident.
+  const winning = { ...base, matchWon: true, playedBomb: true, playedJoker: true };
+  assert.ok(evaluateAchievements(winning).length > 0);
+  assert.deepEqual(evaluateAchievements({ ...winning, abandoned: true }), []);
+});
+
 test("every achievement has translation keys present in the catalogue", async () => {
   // locales/it.ts has a named export `it`, not a default export (see
   // tests/i18n.test.ts for the same import shape) — the brief's literal

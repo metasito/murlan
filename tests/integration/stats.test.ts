@@ -25,6 +25,7 @@ import {
  */
 process.env.MURLAN_AFK_TIMEOUT_MS = "300";
 process.env.MURLAN_DISCONNECT_GRACE_MS = "500";
+process.env.MURLAN_BOT_MOVE_DELAY_MS = "20";
 
 describe("stats persistence (Task 8)", { skip: hasDatabase() ? false : skipMessage() }, () => {
   let server: TestServer;
@@ -104,6 +105,69 @@ describe("stats persistence (Task 8)", { skip: hasDatabase() ? false : skipMessa
     } finally {
       alice.socket.close();
       bob.socket.close();
+    }
+  });
+
+  /**
+   * Leaving a hand in progress used to produce no record at all for the
+   * leaver: their seat drops out of `playerMap`, after which it scores as
+   * `bot:<seat>` and every write here filters it out. A losing hand cost
+   * nothing to walk away from.
+   */
+  test("a player who leaves mid-hand is recorded as a last-place finish and earns nothing", async () => {
+    const clients = [];
+    for (const name of ["quit_ada", "quit_bea", "quit_cleo", "quit_dora"]) {
+      clients.push(await connectAs(server, name));
+    }
+    const [leaver, ...stayers] = clients;
+    try {
+      const created = waitFor<RoomState>(leaver.socket, "room:state");
+      leaver.socket.emit("room:create", { gameMode: "free_for_all", maxPlayers: 4 });
+      const room = await created;
+      for (const c of stayers) {
+        const joined = waitFor<RoomState>(c.socket, "room:state");
+        c.socket.emit("room:join", { code: room.code });
+        await joined;
+      }
+
+      const dealt = clients.map((c) => waitFor(c.socket, "game:state"));
+      leaver.socket.emit("room:start");
+      await Promise.all(dealt);
+
+      // A bot takes the empty seat, so the hand reaches game over the ordinary
+      // way and the seat that was walked out on is scored inside it.
+      await driveHumansToGameOver(
+        stayers.map((c) => c.socket),
+        () => leaver.socket.emit("room:leave")
+      );
+
+      const history = await waitForRow(async () => {
+        const res = await dbPool.query(
+          "SELECT placement, player_count FROM match_history WHERE user_id = $1",
+          [leaver.user.id]
+        );
+        return res.rows[0] ?? null;
+      });
+      assert.equal(Number(history.placement), 4, "a forfeit is recorded as last of the table");
+      assert.equal(Number(history.player_count), 4);
+
+      const stats = await dbPool.query(
+        "SELECT games_played, games_won, current_streak FROM user_stats WHERE user_id = $1",
+        [leaver.user.id]
+      );
+      assert.equal(Number(stats.rows[0].games_played), 1, "the hand counts as played");
+      assert.equal(Number(stats.rows[0].games_won), 0);
+      assert.equal(Number(stats.rows[0].current_streak), 0, "and it breaks the streak");
+
+      // Written in the same transaction as the history row above, so this read
+      // is not a race: the hand's achievements have already had their chance.
+      const unlocked = await dbPool.query(
+        "SELECT achievement_id FROM user_achievements WHERE user_id = $1",
+        [leaver.user.id]
+      );
+      assert.deepEqual(unlocked.rows, [], "nothing is earned from a hand you walked out on");
+    } finally {
+      clients.forEach((c) => c.socket.close());
     }
   });
 
