@@ -74,27 +74,14 @@ export async function connectAs(
     transports: ["websocket"],
     reconnection: false,
   });
+  // "connect" is the whole readiness signal. The connection handler registers
+  // every room:*/game:* listener synchronously before its first await
+  // (server/socket.ts, the block above the reconnect notice), so a packet
+  // emitted the instant the transport is up already has a listener waiting.
+  // tests/integration/gameplay.test.ts pins that directly.
   await new Promise<void>((resolve, reject) => {
     socket.once("connect", () => resolve());
     socket.once("connect_error", (e) => reject(e));
-  });
-  // The server's connection handler does `await storage.getFriends(userId)`
-  // (to emit friend:online_list) before it registers the room:*/game:*
-  // listeners below it — a room:create fired the instant the client sees
-  // "connect" can land before those listeners exist and be silently
-  // dropped. friend:online_list is emitted right before that synchronous
-  // registration block runs (no further await in between), so waiting for
-  // it here is a reliable "the server is ready for game/room events" signal
-  // for every caller of connectAs, not just a fixed sleep.
-  await new Promise<void>((resolve, reject) => {
-    const timer = setTimeout(
-      () => reject(new Error("timed out waiting for friend:online_list after connect")),
-      5_000
-    );
-    socket.once("friend:online_list", () => {
-      clearTimeout(timer);
-      resolve();
-    });
   });
   return { socket, user, cookie };
 }
