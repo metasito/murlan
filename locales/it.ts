@@ -297,6 +297,7 @@ export const it = {
   "onlineGame.exchangeWaitAsOther": "{{winner}} sta scegliendo la carta per {{loser}}.",
   "onlineGame.theWinner": "Il vincitore",
   "onlineGame.theLoser": "il perdente",
+  "onlineGame.botSeatLabel": "Bot",
 
   // ----------------------------------------------------------------- replay.*
   "replay.title": "Replay",

@@ -280,6 +280,29 @@ export function AvatarCircle({
   );
 }
 
+// ─── BotSeatBadge ─────────────────────────────────────────────────────────────
+
+// Persistent marker for a seat currently played by the computer — a vacated
+// human seat and one dealt in as AI from the start render identically, on
+// purpose: the name already carries who the seat used to be. Unlike the
+// one-shot `game:seat_bot_takeover` banner, this renders for as long as
+// `player.type === "ai"` holds.
+function BotSeatBadge() {
+  const { t } = useTranslation();
+  return (
+    <View style={sharedStyles.botBadge}>
+      <Ionicons
+        name="hardware-chip-outline"
+        size={FontSize.xs}
+        color={Colors.gold}
+        accessibilityElementsHidden
+        importantForAccessibility="no-hide-descendants"
+      />
+      <Text style={sharedStyles.botBadgeText}>{t("onlineGame.botSeatLabel")}</Text>
+    </View>
+  );
+}
+
 // ─── TopOppSlot ───────────────────────────────────────────────────────────────
 
 export function TopOppSlot({
@@ -306,6 +329,7 @@ export function TopOppSlot({
           <Text style={sharedStyles.oppName} numberOfLines={1}>
             {player.name}
           </Text>
+          {player.type === "ai" && <BotSeatBadge />}
         </View>
         {player.finishPosition === undefined && count > 0 && (
           <CardFan count={count} maxCards={7} />
@@ -351,6 +375,7 @@ export function SideOppSlot({
         <Text style={sharedStyles.oppName} numberOfLines={1}>
           {player.name}
         </Text>
+        {player.type === "ai" && <BotSeatBadge />}
       </View>
       {isLeft && count > 0 && player.finishPosition === undefined && (
         <CardFan count={count} maxCards={5} />
@@ -1063,6 +1088,22 @@ export const sharedStyles = StyleSheet.create({
     color: Colors.textMuted,
     maxWidth: 70,
     textAlign: "center",
+  },
+
+  botBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: Spacing.xs,
+    paddingHorizontal: Spacing.xs,
+    borderRadius: Radius.sm,
+    backgroundColor: Colors.goldMuted,
+    borderWidth: 1,
+    borderColor: Colors.goldBorder,
+  },
+  botBadgeText: {
+    fontFamily: "Rajdhani_600SemiBold",
+    fontSize: FontSize.xs,
+    color: Colors.gold,
   },
 
   avatarOuter: {
