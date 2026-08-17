@@ -177,10 +177,13 @@ export const Motion = {
     entrance: { damping: 12, stiffness: 200 },
     reveal:   { damping: 8,  stiffness: 150 },
     // Direct manipulation: the object must arrive under the finger with no
-    // visible wobble, so this is stiffer and far more damped than `settle`.
-    pickup:   { damping: 16, stiffness: 340 },
-    // Something dropped onto a surface: fast approach, one small bounce.
-    land:     { damping: 14, stiffness: 260 },
+    // visible wobble, which means critical damping — damping = 2·sqrt(stiffness)
+    // at unit mass. Anything below that overshoots and rings under the finger.
+    pickup:   { damping: 37, stiffness: 340 },
+    // Something dropped onto a surface: fast approach, one small bounce. A
+    // damping ratio near 0.65 overshoots about 7% once; the second bounce is
+    // half a percent, which is to say invisible.
+    land:     { damping: 21, stiffness: 260 },
   },
   // Gap between consecutive items in a run that should read as one gesture
   // (a hand being dealt) rather than as simultaneous appearance.
