@@ -16,7 +16,7 @@
 import type { Page } from "@playwright/test";
 import { test, expect } from "./fixtures";
 import { openApp, registerNewAccount, startOfflineGame } from "./helpers/navigation";
-import { goToOnlineLobby } from "./helpers/online";
+import { createRoom, goToOnlineLobby } from "./helpers/online";
 
 interface Blocked {
   label: string;
@@ -27,13 +27,19 @@ interface Blocked {
   by: string;
 }
 
+interface Sweep {
+  blocked: Blocked[];
+  /** How many controls were actually examined. */
+  considered: number;
+}
+
 /**
  * Controls whose centre point belongs to an inert element outside themselves.
  *
  * Runs entirely in the page so it costs one round trip regardless of how many
  * controls a screen has.
  */
-async function blockedControls(page: Page): Promise<Blocked[]> {
+async function sweepControls(page: Page): Promise<Sweep> {
   return page.evaluate(() => {
     const INTERACTIVE = new Set(["button", "radio", "switch", "tab", "link", "checkbox"]);
 
@@ -73,6 +79,7 @@ async function blockedControls(page: Page): Promise<Blocked[]> {
     };
 
     const out: Blocked[] = [];
+    let considered = 0;
     const controls = Array.from(
       document.querySelectorAll<HTMLElement>('button, [role="button"], [role="radio"], [role="switch"]')
     );
@@ -88,6 +95,7 @@ async function blockedControls(page: Page): Promise<Blocked[]> {
       // A control nested inside another (an icon inside a labelled row) is
       // covered by its own ancestor by construction.
       if (el.parentElement && isInteractive(el.parentElement)) continue;
+      considered++;
 
       const cx = Math.min(Math.max(r.left + r.width / 2, 1), window.innerWidth - 1);
       const cy = Math.min(Math.max(r.top + r.height / 2, 1), window.innerHeight - 1);
@@ -113,8 +121,25 @@ async function blockedControls(page: Page): Promise<Blocked[]> {
         by: box(h),
       });
     }
-    return out;
+    return { blocked: out, considered };
   });
+}
+
+/**
+ * Asserts nothing on this screen is buried — and that there was something to
+ * check. A screen that failed to render, or whose controls stopped matching the
+ * selector, would otherwise sweep zero elements and pass for the wrong reason.
+ *
+ * The floors are measured, not guessed: the first three were set too high and
+ * this assertion is what said so. They are deliberately below the real count,
+ * since the point is "this screen rendered its controls", not "this screen has
+ * exactly N of them" — which would go red every time one is added.
+ */
+async function expectNoBuriedControls(page: Page, where: string, minControls: number) {
+  const { blocked, considered } = await sweepControls(page);
+  expect(blocked, where).toEqual([]);
+  expect(considered, `${where}: swept ${considered} controls, expected at least ${minControls}`)
+    .toBeGreaterThanOrEqual(minControls);
 }
 
 const SIZES = [
@@ -132,15 +157,15 @@ for (const size of SIZES) {
     // Past the staggered entrance animations, or every control is still at
     // opacity 0 and the probe measures nothing.
     await page.waitForTimeout(2500);
-    expect(await blockedControls(page), "home").toEqual([]);
+    await expectNoBuriedControls(page, "home", 6);
 
     await page.getByRole("button", { name: "Offline" }).click();
     await page.waitForTimeout(1500);
-    expect(await blockedControls(page), "offline lobby, 2 players").toEqual([]);
+    await expectNoBuriedControls(page, "offline lobby, 2 players", 8);
 
     await page.getByRole("radio", { name: "4 giocatori" }).click();
     await page.waitForTimeout(1200);
-    expect(await blockedControls(page), "offline lobby, 4 players").toEqual([]);
+    await expectNoBuriedControls(page, "offline lobby, 4 players", 10);
   });
 
   // The table forces landscape (components/GameTable.tsx), so in portrait the
@@ -160,7 +185,7 @@ for (const size of SIZES) {
     // that no player ever sees.
     await page.waitForTimeout(5000);
 
-    expect(await blockedControls(page), "game table, 4 players").toEqual([]);
+    await expectNoBuriedControls(page, "game table, 4 players", 10);
   });
 }
 
@@ -180,7 +205,31 @@ for (const size of SIZES) {
     );
     await goToOnlineLobby(page);
     await page.waitForTimeout(2500);
+    await expectNoBuriedControls(page, "online lobby", 6);
 
-    expect(await blockedControls(page), "online lobby").toEqual([]);
+    // The waiting room carries the most controls of any menu screen — format,
+    // bot fill, five personality pills, the code actions and the start button —
+    // and it lays them out differently in each orientation.
+    await createRoom(page, { playerCount: 4, gameMode: "free_for_all" });
+    await page.waitForTimeout(2500);
+    await expectNoBuriedControls(page, "room, waiting for players", 4);
+  });
+
+  test(`no control is buried on the profile and ladder — ${size.name}`, async ({ page, baseURL }) => {
+    test.setTimeout(2 * 60_000);
+    await page.setViewportSize({ width: size.width, height: size.height });
+
+    await openApp(page, baseURL!);
+    await registerNewAccount(
+      page,
+      `tapp${Date.now().toString(36).slice(-6)}${Math.floor(Math.random() * 900 + 100)}`
+    );
+    await page.getByRole("button", { name: "Il mio profilo" }).click();
+    await page.waitForTimeout(3000);
+    await expectNoBuriedControls(page, "profile", 2);
+
+    await page.getByRole("button", { name: /classifica/i }).first().click();
+    await page.waitForTimeout(2500);
+    await expectNoBuriedControls(page, "leaderboard", 2);
   });
 }
