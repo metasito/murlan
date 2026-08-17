@@ -1,4 +1,6 @@
 import pg from "pg";
+import type { Server as HttpServer } from "node:http";
+import type { Server as SocketIOServer } from "socket.io";
 
 export function hasDatabase(): boolean {
   return Boolean(process.env.DATABASE_URL);
@@ -37,6 +39,9 @@ export interface TestServer {
   url: string;
   port: number;
   schema: string;
+  /** The live handles, for a suite that drives shutdown itself. */
+  io: SocketIOServer;
+  httpServer: HttpServer;
   stop(): Promise<void>;
 }
 
@@ -113,6 +118,8 @@ export async function startTestServer(
       url: `http://127.0.0.1:${port}`,
       port,
       schema,
+      io,
+      httpServer: server,
       async stop() {
         try {
           io.close();
