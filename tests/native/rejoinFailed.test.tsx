@@ -2,10 +2,8 @@
 // to tear down.
 //
 // The reply is asynchronous, so a failure for the room the player *was* in can
-// land after they have already moved to another one. The guard used to engage
-// only while an attempt was outstanding, which is exactly backwards: every
-// path meaning "we are no longer waiting" cleared the ref, so the late reply
-// sailed through and ejected the player from the room that replaced it.
+// land after they have already moved to another one. Only a reply naming the
+// room still awaited may tear anything down.
 import { describe, it, expect, beforeEach, jest } from '@jest/globals';
 import React from 'react';
 import { Text } from 'react-native';

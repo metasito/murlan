@@ -1,9 +1,8 @@
 // tests/native/errorBoundary.test.tsx — the crash screen is the app's last
 // resort, so it has to render under the two conditions that matter: inside the
-// real provider stack, and with no SafeAreaProvider above it at all. The
-// boundary previously sat outside SafeAreaProvider while its fallback called
-// useSafeAreaInsets(), so every caught crash threw again with nothing above to
-// catch it and the player saw a blank screen.
+// real provider stack, and with no SafeAreaProvider above it at all. A
+// fallback that depends on a provider throws while rendering, and the throw
+// lands on the next boundary up — of which the root boundary has none.
 import { describe, it, expect, beforeEach, afterAll, jest } from '@jest/globals';
 import { readFileSync } from 'fs';
 import { join } from 'path';

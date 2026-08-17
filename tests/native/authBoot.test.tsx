@@ -1,9 +1,8 @@
 // tests/native/authBoot.test.tsx — a network failure at boot is not a logout.
 //
-// The boot check used to funnel every failure through one catch that cleared
-// the cached user and wiped AsyncStorage, so opening the app during a redeploy
-// or in a tunnel signed the player out for the whole session with a perfectly
-// valid session cookie. Only a 401 is an answer; everything else is silence.
+// Only a 401 answers the question. A network throw or a 5xx — a redeploy
+// window, a tunnel — is silence, and must leave the cached user and
+// AsyncStorage untouched rather than signing the player out of a live session.
 import { describe, it, expect, beforeEach, jest } from '@jest/globals';
 import React from 'react';
 import { Text } from 'react-native';

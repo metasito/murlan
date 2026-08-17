@@ -1,10 +1,9 @@
 // tests/native/rejoinFailedExit.test.tsx — how the online game screen leaves a
 // table the server refused to let the player back into.
 //
-// It used to answer `rejoinFailed` with leaveRoom(), which emits `room:leave`;
-// mid-game that reaches handleLeaveRoom and vacates the seat on the spot,
-// ahead of the 60s disconnect grace that owns it. The player never chose to
-// leave — a transient failure was enough to hand their seat to a bot.
+// It must navigate without emitting `room:leave`: mid-game that reaches
+// handleLeaveRoom and vacates the seat on the spot, ahead of the 60s
+// disconnect grace that owns it. A refused rejoin is not the player leaving.
 import { describe, it, expect, beforeEach, jest } from '@jest/globals';
 import React from 'react';
 import { render, waitFor } from '@testing-library/react-native';
