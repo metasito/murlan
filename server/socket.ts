@@ -859,6 +859,25 @@ async function handleGameOver(
     });
   }
 
+  // The one record of how a hand resolved. `match_replays` is not a substitute:
+  // it is written only for a table with a human seat and a live moveLog, and it
+  // stores no scores. Ids and integers only — never hand contents.
+  logger.info(
+    {
+      roomId,
+      gameMode: game.gameMode,
+      matchLength: game.matchLength,
+      rankings: state.rankings,
+      handByKey,
+      cumulative: game.cumulativeScores,
+      matchTarget: game.matchTarget,
+      matchOver: game.matchOver,
+      isDraw,
+      matchWinners,
+    },
+    "Hand over"
+  );
+
   await storage
     .updateRoomStatus(roomId, "finished")
     .catch((err) =>
@@ -1481,6 +1500,18 @@ export function setupSocket(httpServer: HttpServer) {
         const newState = processPlay(gameState, combo);
         appendReplayMove(game, currentIdx, combo, newState);
         game.gameState = newState;
+
+        // A count and a type, never card identities: enabling debug in
+        // production must not be able to expose a hand.
+        logger.debug(
+          {
+            roomId,
+            seat: currentIdx,
+            comboType: combo.type,
+            cardCount: combo.cards.length,
+          },
+          "Play accepted"
+        );
 
         broadcastGameState(io, game);
         persistGameState(roomId, game);
