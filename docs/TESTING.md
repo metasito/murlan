@@ -6,10 +6,10 @@ blocker documented below rather than glossed over.
 
 | Layer | Command | Size | Needs |
 |---|---|---|---|
-| Unit | `npm test` | 672 pass (with `DATABASE_URL`; 641 without) | nothing |
+| Unit | `npm test` | 708 pass (with `DATABASE_URL`; 664 without) | nothing |
 | Integration | `npm test` | folded into the above | `DATABASE_URL` |
-| Native renderer | `npm run test:native` | 208 (104 × ios/android) | nothing |
-| Web e2e | `npm run test:e2e` | Playwright, chromium — gameplay, reconnect, and a tap-target sweep of every screen at three sizes | Docker + a built web bundle |
+| Native renderer | `npm run test:native` | 228 (114 × ios/android) | nothing |
+| Web e2e | `npm run test:e2e` | Playwright, chromium — gameplay, reconnect, a tap-target sweep of every screen at three sizes, and a check that no part of the table renders off the side of one | Docker + a built web bundle |
 | Android UI (Maestro) | `maestro test .maestro/*.yaml` | 2 flows | Android SDK + emulator + Maestro, see §5 |
 
 `npm run verify` runs typecheck, unit/integration and the native suite. The web
@@ -23,15 +23,19 @@ see §5 for exactly what runs and what does not on this machine.
 
 `node --test` over `tests/**/*.test.ts`. Pure logic: the rules engine, card
 combinations, dealing, scoring, the exchange phase, the AI, the table layout
-model, card-face geometry, spoken card names, the daily streak, i18n key
-parity, colour contrast and suit separation under colour-vision deficiency.
+model, card-face geometry, spoken card names, the daily streak, the offline
+save, the ladder's arithmetic, the push request shape, i18n key parity, colour
+contrast and suit separation under colour-vision deficiency.
 
 Several suites read source or shipped assets rather than calling a function,
 because the property they protect is structural: that every `<Modal>` supports
 landscape, that no fill token is used as a text colour, that the twelve sound
 files are real non-silent PCM, that match history's prune and read share one
-bound, that `db:push` cannot offer to rename the session table, and that no
-inbound socket event is registered outside the boundary wrapper.
+bound, that `db:push` cannot offer to rename the session table, that no inbound
+socket event is registered outside the boundary wrapper, that every vignette
+piece spans a full edge of the felt rather than drawing its inner edges across
+it, that no component animates without consulting the reduced-motion setting,
+and that no spring is written inline instead of naming one from the tokens.
 
 Node strips types natively, so these files import `.ts` specifiers directly and
 can only load modules that do not import `react-native`. That is why the table's

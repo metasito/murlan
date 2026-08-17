@@ -42,8 +42,11 @@ lib/gameEngine.ts (offline: called directly)   server/socket.ts (online: server-
 ## 2. Data flow
 
 **Offline:** `GameContext` holds a `GameState` produced by `lib/gameEngine.ts` in memory.
-User actions call context methods that call the engine directly and set new state. Nothing
-is persisted; a lost app means a lost game.
+User actions call context methods that call the engine directly and set new state. The
+whole match — engine state, scoreboard, rematch answers, and the seat setup the next
+manche is dealt from — is written to AsyncStorage on every change (`lib/offlineSave.ts`),
+so a kill mid-hand is resumable from the home screen. A save from another version is
+discarded rather than migrated, the same call `active_games` makes.
 
 **Online:** `OnlineGameContext` holds a `GameState` it only ever receives from the server
 via socket events (`game:state`, `game:play_result`, …). User actions call context methods

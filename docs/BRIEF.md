@@ -152,50 +152,6 @@ once, and does not contradict any other. See §8.
 
 ---
 
-## 8. Documentation architecture
-
-The repo currently carries four overlapping documents that repeat and contradict each other.
-Each document gets exactly one responsibility, and cross-references instead of restating.
-
-### Ownership map
-
-| Document | Owns — and nothing else | Must not contain |
-|---|---|---|
-| `CLAUDE.md` | Agent operating instructions: invariants, how to work here, pointers to the docs below | Product description, architecture prose, rule text |
-| `docs/ARCHITECTURE.md` *(new)* | How the system is built: layers, data flow, socket lifecycle, persistence, auth | Rules, scope, decisions |
-| `docs/RULES.md` ✅ | The canonical rule specification and its sources — **the only place rules live** | Implementation detail, scope |
-| `docs/BRIEF.md` (this file) | Scope, decisions and their rationale, workstreams, definition of done | Rule text, architecture prose |
-| `docs/BACKLOG.md` | Everything outstanding, owner-blocked, already answered or rejected | Anything not actionable |
-| `replit.md` ✅ | Replit-specific run/deploy notes only — how to start it, what env vars, what not to touch | Everything that duplicates `CLAUDE.md` |
-| `docs/superpowers/specs/*` ✅ | Historical specs, each stamped with its outcome | Anything presented as pending when it has shipped |
-
-✅ = done. `docs/ARCHITECTURE.md` exists and `CLAUDE.md` states plainly that suit does not
-break ties, so both remaining items on this map are closed.
-
-### Contradictions between documents
-
-> **Resolved.** Every row below has been corrected in the document it names —
-> checked against the current files, not assumed. Kept as the record of what
-> the ownership map above was written to prevent.
-
-| Where | Said | Reality |
-|---|---|---|
-| `replit.md:11` | "Implements all official Murlan rules" | The deal is wrong, the match target is absent, and the straight enumerator misses legal plays |
-| `replit.md:15` | "12 bundled **WAV** sound effects" | They are `.mp3` files |
-| `replit.md:88` | Lists `expo-crypto` as a dependency | Not in `package.json` |
-| `replit.md:62` | "Server Authority … ensuring fair play" | The socket handshake accepts an unverified `userId`; there is no fair play until W1 lands |
-| `replit.md:53` | "Existing screens still reference `constants/colors.ts` — do not retroactively replace" | This instruction actively preserves a bug: the legacy file's suit colours are the old red/black pair, so any screen importing it silently loses the colourblind-safe palette. The file is to be deleted, not preserved. |
-| `replit.md:46` vs `constants/colors.ts:2` vs `app.json` splash | `#031008` / `#061410` / `#061410` | Three different background colours; the launch seam is visible |
-| `replit.md:21-26` "MUST NOT CHANGE" | Game rules and exchange phase are frozen | Superseded by the decisions in §3.1, which change the deal and add a match target |
-| `CLAUDE.md` ↔ `replit.md` | Both describe the tech stack, design system, disconnect handling, notification banner and friends list | Same content twice, already drifting apart |
-| `docs/superpowers/specs/2026-06-04-…-visual-upgrade-design.md` | Reads as a pending design spec | Verified **already implemented** — the ornate SVG card back, gold selected-glow ring, `-14px` spring lift, face-card gold border and MP3 web audio via `decodeAudioData` are all in the code. To be stamped as shipped. |
-| `docs/BRIEF.md` §3.1 ↔ `docs/RULES.md` | Both carry rule content | `BRIEF` keeps the *decisions*; `RULES.md` keeps the *rules*. |
-
-### Standing rule
-
-A change to behaviour is not complete until every document that describes that behaviour has
-been updated in the same change. Docs are part of the diff, not a follow-up.
-
 ---
 
 ## 5. Proposed features
@@ -203,9 +159,11 @@ been updated in the same change. Docs are part of the diff, not a follow-up.
 > This section is a record of what was proposed and why. It is **not** the work
 > queue — `docs/BACKLOG.md` is, and it carries current status for every item
 > below. Several have since shipped: the interactive tutorial, localization,
-> achievements, daily streaks, match history, rejoin-in-progress UX, and
-> colourblind-safe suit differentiation (measured: the existing palette already
-> passes). Do not read an entry here as outstanding.
+> achievements, daily streaks, match history, rejoin-in-progress UX, match
+> replay, spectator mode, bot personalities, the ranked ladder, cosmetics, push
+> notifications (respecified — see the entry below), and colourblind-safe suit
+> differentiation (measured: the existing palette already passes). Do not read
+> an entry here as outstanding.
 
 Ordered by estimated impact per unit of work.
 
@@ -216,8 +174,11 @@ Ordered by estimated impact per unit of work.
   that makes the app reviewable by someone who has never heard of it.
 - **Localization: Italian, Albanian, English.** The player base is Italian, the game is
   Albanian, and the App Store is global. Currently every string is hardcoded Italian.
-- **"Your turn" push notifications.** Transforms online play from "both must be present"
-  into asynchronous play. Single highest-impact retention feature for a turn-based game.
+- **"Your turn" push notifications.** Proposed on the assumption that online play could
+  become asynchronous. It cannot: a player who does not act within 30s is auto-passed and
+  one still absent at 60s loses the seat to a bot, so a notification cannot arrive in time
+  to matter. Shipped instead as a notification for a **friend's invite that arrived while
+  the player was away**, which nothing expires against — see `docs/BACKLOG.md` Q23.
 - **Rejoin-in-progress UX.** Right now a disconnect is a cliff. It should be a speed bump.
 
 ### Tier 2 — strong candidates
@@ -274,3 +235,50 @@ The work is complete when all of the following hold:
 Parallel specialist agents, each owning one workstream, coordinated against this brief.
 Every change is verified by running it — no claim of completion without evidence.
 Findings that alter this brief are escalated rather than absorbed silently.
+
+
+---
+
+## 8. Documentation architecture
+
+The repo currently carries four overlapping documents that repeat and contradict each other.
+Each document gets exactly one responsibility, and cross-references instead of restating.
+
+### Ownership map
+
+| Document | Owns — and nothing else | Must not contain |
+|---|---|---|
+| `CLAUDE.md` | Agent operating instructions: invariants, how to work here, pointers to the docs below | Product description, architecture prose, rule text |
+| `docs/ARCHITECTURE.md` *(new)* | How the system is built: layers, data flow, socket lifecycle, persistence, auth | Rules, scope, decisions |
+| `docs/RULES.md` ✅ | The canonical rule specification and its sources — **the only place rules live** | Implementation detail, scope |
+| `docs/BRIEF.md` (this file) | Scope, decisions and their rationale, workstreams, definition of done | Rule text, architecture prose |
+| `docs/BACKLOG.md` | Everything outstanding, owner-blocked, already answered or rejected | Anything not actionable |
+| `replit.md` ✅ | Replit-specific run/deploy notes only — how to start it, what env vars, what not to touch | Everything that duplicates `CLAUDE.md` |
+| `docs/superpowers/specs/*` ✅ | Historical specs, each stamped with its outcome | Anything presented as pending when it has shipped |
+
+✅ = done. `docs/ARCHITECTURE.md` exists and `CLAUDE.md` states plainly that suit does not
+break ties, so both remaining items on this map are closed.
+
+### Contradictions between documents
+
+> **Resolved.** Every row below has been corrected in the document it names —
+> checked against the current files, not assumed. Kept as the record of what
+> the ownership map above was written to prevent.
+
+| Where | Said | Reality |
+|---|---|---|
+| `replit.md:11` | "Implements all official Murlan rules" | The deal is wrong, the match target is absent, and the straight enumerator misses legal plays |
+| `replit.md:15` | "12 bundled **WAV** sound effects" | They are `.mp3` files |
+| `replit.md:88` | Lists `expo-crypto` as a dependency | Not in `package.json` |
+| `replit.md:62` | "Server Authority … ensuring fair play" | The socket handshake accepts an unverified `userId`; there is no fair play until W1 lands |
+| `replit.md:53` | "Existing screens still reference `constants/colors.ts` — do not retroactively replace" | This instruction actively preserves a bug: the legacy file's suit colours are the old red/black pair, so any screen importing it silently loses the colourblind-safe palette. The file is to be deleted, not preserved. |
+| `replit.md:46` vs `constants/colors.ts:2` vs `app.json` splash | `#031008` / `#061410` / `#061410` | Three different background colours; the launch seam is visible |
+| `replit.md:21-26` "MUST NOT CHANGE" | Game rules and exchange phase are frozen | Superseded by the decisions in §3.1, which change the deal and add a match target |
+| `CLAUDE.md` ↔ `replit.md` | Both describe the tech stack, design system, disconnect handling, notification banner and friends list | Same content twice, already drifting apart |
+| `docs/superpowers/specs/2026-06-04-…-visual-upgrade-design.md` | Reads as a pending design spec | Verified **already implemented** — the ornate SVG card back, gold selected-glow ring, `-14px` spring lift, face-card gold border and MP3 web audio via `decodeAudioData` are all in the code. To be stamped as shipped. |
+| `docs/BRIEF.md` §3.1 ↔ `docs/RULES.md` | Both carry rule content | `BRIEF` keeps the *decisions*; `RULES.md` keeps the *rules*. |
+
+### Standing rule
+
+A change to behaviour is not complete until every document that describes that behaviour has
+been updated in the same change. Docs are part of the diff, not a follow-up.

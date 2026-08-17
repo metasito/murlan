@@ -14,11 +14,12 @@ Do not trust this file over the commands. It ages; they do not.
 
 ## Where things stand
 
-Green: typecheck clean, `expo lint` zero, 672 unit and integration tests, 220
-native tests (jest-expo, ios+android projects), and a Playwright E2E suite
-(`npm run test:e2e`) that plays complete games through the UI, drops the
-network mid-game to check the reconnect path, and sweeps every screen for
-controls a player can see but cannot press.
+Green: typecheck clean, `expo lint` zero, 708 unit and integration tests (664
+without a database), 228 native tests (jest-expo, ios+android projects), and a
+Playwright E2E suite (`npm run test:e2e`) that plays complete games through the
+UI, drops the network mid-game to check the reconnect path, sweeps every screen
+for controls a player can see but cannot press, and measures that no part of
+the table renders off the side of the screen.
 
 Those counts age. `npm run verify` is the truth.
 
@@ -49,8 +50,9 @@ Three artefacts are build outputs. Edit the script, not the result:
 
 ## Needs the owner, not more effort
 
-`npm run db:push` on Replit — `match_replays` and `user_ratings` do not exist
-there yet, so replays and the ladder degrade to empty until it runs · EAS
+`npm run db:push` on Replit — `match_replays`, `user_ratings` and `push_tokens`
+do not exist there yet, so replays, the ladder and invite notifications degrade
+to nothing until it runs · EAS
 submit credentials · push credentials and a privacy-policy entry for Q23 · the
 432×432 monochrome icon · a native Albanian speaker for idiom · real-device
 VoiceOver. `docs/BACKLOG.md` §2 is the full list with what each one needs.
@@ -70,6 +72,12 @@ with them.
 No questions — decide and proceed. One backlog item, one commit, verified
 before moving on. Flag rather than build: game-rule changes and business
 decisions. Never claim success without pasted output.
+
+A failing test is not a regression until you have seen it pass somewhere else.
+Three E2E failures here were machine contention and a fourth was a genuine
+timeout on an unlucky deal; the way that was settled was building a worktree at
+the commit before the suspect change and watching it fail identically. Check
+the parent commit before believing your own diff caused something.
 
 A screenshot raises a suspicion; it does not settle one. Four apparent layout
 defects in the UI audit evaporated once each scroll area was actually scrolled,
