@@ -82,7 +82,9 @@ jobs:
       - name: Lint
         run: npm run lint
 
-      - name: Build (the chain Replit runs on deploy)
+      # expo:static:build is omitted: it starts a Metro server, which is too
+      # slow and flaky for a runner.
+      - name: Build the web and server bundles
         run: npm run expo:web:build && npm run server:build
 
       # The bundle esbuild produces is otherwise first executed by a Replit deploy.
