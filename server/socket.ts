@@ -59,7 +59,6 @@ import {
   deepCloneState,
   scoreHand,
   addHandScores,
-  botWantsRematch,
   isMajority,
   resolveMatch,
   resolveTeamMatch,
@@ -83,8 +82,9 @@ interface OnlineGameState {
   /**
    * Answers to the side-panel rematch question, by userId. Asked while the
    * closing manche is still in play and read once the match ends; a seat that
-   * never answered counts as a no. Bot seats are not stored — they are
-   * answered by rule at decision time (see tableWantsRematch).
+   * never answered counts as a no. Bot seats are not stored — they have no
+   * userId to key by, and abstain from the verdict entirely (see
+   * countRematchAnswers).
    */
   rematchIntents: Map<string, boolean>;
   /** userId (or `bot:<seat>`) -> cumulative match points. */
@@ -230,6 +230,8 @@ export const __testables = {
   },
   readPersistedPlayerMap: (storedMap: unknown, storedIds: unknown) =>
     readPersistedPlayerMap(storedMap, storedIds),
+  countRematchAnswers: (game: OnlineGameState) => countRematchAnswers(game),
+  tableWantsRematch: (game: OnlineGameState) => tableWantsRematch(game),
   /** The restart-orphan prune, which only a real database can exercise. */
   pruneAbandonedGames: () => pruneAbandonedGames(),
   ABANDONED_GAME_MAX_AGE_MS,
@@ -1001,23 +1003,23 @@ function rollMatchForward(game: OnlineGameState) {
 }
 
 /**
- * How many seats want another match, and how many seats there are. A human
- * who never answered counts as a no; a bot seat answers by rule, so a table
- * carried by bots still gives a meaningful verdict.
+ * How many seats want another match, and how many seats there are. A seat
+ * with no playerMap entry — a bot, or a human's seat after they left — has
+ * no one who can answer, so it abstains: it counts toward neither yes nor
+ * total. A seated human who never answered counts as a no, but still counts
+ * toward total.
  */
 function countRematchAnswers(game: OnlineGameState): { yes: number; total: number } {
   const seats = game.gameState.players.length;
-  const leader = Math.max(0, ...Object.values(game.cumulativeScores));
   let yes = 0;
+  let total = 0;
   for (let seat = 0; seat < seats; seat++) {
     const userId = game.playerMap[seat];
-    if (userId === undefined) {
-      if (botWantsRematch(game.cumulativeScores[`bot:${seat}`] ?? 0, leader)) yes++;
-    } else if (game.rematchIntents.get(userId) === true) {
-      yes++;
-    }
+    if (userId === undefined) continue;
+    total++;
+    if (game.rematchIntents.get(userId) === true) yes++;
   }
-  return { yes, total: seats };
+  return { yes, total };
 }
 
 /**
