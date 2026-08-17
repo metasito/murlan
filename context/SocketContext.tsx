@@ -119,12 +119,14 @@ export function SocketProvider({ children }: { children: ReactNode }) {
     };
 
     // A handshake rejected by server middleware (expired or already-used
-    // ticket) does not trigger socket.io's automatic reconnection, so retry
-    // manually — the auth callback mints a fresh ticket each attempt. Backs
-    // off exponentially (capped) instead of hammering the endpoint every 2s
-    // forever.
+    // ticket) destroys the socket's subscriptions, so socket.io will not retry
+    // it and `socket.active` is false. This loop owns that case alone, backing
+    // off exponentially (capped) while the auth callback mints a fresh ticket
+    // per attempt. While `active` is true the library's own reconnection is
+    // still running and owns the retry.
     const onConnectError = () => {
       setConnected(false);
+      if (socket.active) return;
       if (retryTimerRef.current) clearTimeout(retryTimerRef.current);
       const attempt = retryAttemptRef.current++;
       const delay = Math.min(RETRY_BASE_MS * 2 ** attempt, RETRY_MAX_MS);
