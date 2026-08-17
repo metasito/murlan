@@ -569,7 +569,14 @@ function runBotTurn(roomId: string) {
       code: "GAME_INTERRUPTED_EMPTY_SEAT",
       message: "Match interrupted: an empty seat cannot play.",
     });
-    void storage.updateRoomStatus(roomId, "finished").catch(() => {});
+    void storage
+      .updateRoomStatus(roomId, "finished")
+      .catch((err) =>
+        logger.warn(
+          { err, roomId, seat },
+          "Failed to set rooms.status = finished after closing a table with an unplayable empty seat"
+        )
+      );
     disposeGame(roomId);
     return;
   }
@@ -670,7 +677,14 @@ async function vacateSeat(
       total: remaining,
     });
     if (remaining === 0) {
-      await storage.updateRoomStatus(roomId, "finished").catch(() => {});
+      await storage
+        .updateRoomStatus(roomId, "finished")
+        .catch((err) =>
+          logger.warn(
+            { err, roomId, userId, seat },
+            "Failed to set rooms.status = finished after the last player left between hands"
+          )
+        );
       disposeGame(roomId);
     }
     return;
@@ -685,7 +699,14 @@ async function vacateSeat(
       message: `${username} ha lasciato la partita.`,
       params: { username },
     });
-    await storage.updateRoomStatus(roomId, "finished").catch(() => {});
+    await storage
+      .updateRoomStatus(roomId, "finished")
+      .catch((err) =>
+        logger.warn(
+          { err, roomId, userId, seat },
+          "Failed to set rooms.status = finished after the table was abandoned mid-hand"
+        )
+      );
     disposeGame(roomId);
     return;
   }
@@ -838,7 +859,14 @@ async function handleGameOver(
     });
   }
 
-  await storage.updateRoomStatus(roomId, "finished").catch(() => {});
+  await storage
+    .updateRoomStatus(roomId, "finished")
+    .catch((err) =>
+      logger.warn(
+        { err, roomId },
+        "Failed to set rooms.status = finished after the hand ended"
+      )
+    );
   // The row is kept (not deleted) so a restart between hands restores the
   // running match instead of silently resetting the scoreboard.
   persistGameState(roomId, game);
@@ -1906,7 +1934,11 @@ export function setupSocket(httpServer: HttpServer) {
           }
           logger.debug({ userId, socketId: socket.id }, "Socket disconnected");
 
-          await storage.updateLastSeen(userId).catch(() => {});
+          await storage
+            .updateLastSeen(userId)
+            .catch((err) =>
+              logger.debug({ err, userId }, "Failed to update users.last_seen on disconnect")
+            );
 
           const lastSeen = new Date().toISOString();
           void emitFriendStatusOffline(io, userId, lastSeen);
@@ -1953,7 +1985,12 @@ export function setupSocket(httpServer: HttpServer) {
 
                 await storage
                   .removeRoomPlayer(currentRoomId, userId)
-                  .catch(() => {});
+                  .catch((err) =>
+                    logger.warn(
+                      { err, roomId: currentRoomId, userId },
+                      "Failed to delete the room_players row after the disconnect grace expired — the seat stays counted as taken"
+                    )
+                  );
                 await vacateSeat(io, currentRoomId, userId, username);
                 logger.info(
                   { userId, username, roomId: currentRoomId },
@@ -2141,7 +2178,12 @@ function startSweeper() {
           .then((room) => {
             if (!room || room.status !== "waiting") publicRoomIds.delete(roomId);
           })
-          .catch(() => {});
+          .catch((err) =>
+            logger.warn(
+              { err, roomId },
+              "Failed to read the rooms row while sweeping — the public room list keeps a possibly unjoinable entry"
+            )
+          );
       }
     } catch (err) {
       logger.error({ err }, "Sweeper failed");
@@ -2179,7 +2221,14 @@ async function handleLeaveRoom(
     if (room.hostUserId === userId) {
       const nextHost = remaining.sort((a, b) => a.seatIndex - b.seatIndex)[0];
       newHostId = nextHost.userId;
-      await storage.updateRoomHost(roomId, newHostId).catch(() => {});
+      await storage
+        .updateRoomHost(roomId, newHostId)
+        .catch((err) =>
+          logger.warn(
+            { err, roomId, userId, newHostId },
+            "Failed to update rooms.host_user_id after the host left the lobby"
+          )
+        );
     }
     io.to(roomId).emit(
       "room:state",
@@ -2199,7 +2248,14 @@ async function handleLeaveRoom_lobby(
   userId: string,
   username: string
 ) {
-  await storage.removeRoomPlayer(roomId, userId).catch(() => {});
+  await storage
+    .removeRoomPlayer(roomId, userId)
+    .catch((err) =>
+      logger.warn(
+        { err, roomId, userId },
+        "Failed to delete the room_players row after a lobby leave — the seat stays counted as taken"
+      )
+    );
 
   const room = await storage.getRoomById(roomId);
   if (!room) return;
@@ -2215,7 +2271,14 @@ async function handleLeaveRoom_lobby(
     if (room.hostUserId === userId) {
       const nextHost = remaining.sort((a, b) => a.seatIndex - b.seatIndex)[0];
       newHostId = nextHost.userId;
-      await storage.updateRoomHost(roomId, newHostId).catch(() => {});
+      await storage
+        .updateRoomHost(roomId, newHostId)
+        .catch((err) =>
+          logger.warn(
+            { err, roomId, userId, newHostId },
+            "Failed to update rooms.host_user_id after the host disconnected from the lobby"
+          )
+        );
     }
     io.to(roomId).emit(
       "room:state",
