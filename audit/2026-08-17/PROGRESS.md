@@ -32,7 +32,7 @@ merge one before opening the other's PR.
 | # | Batch | Findings | Effort | Model | Status | Branch | PR |
 |---|---|---|---|---|---|---|---|
 | - [x] 1 | Restore the safety net | 6 | medium | Sonnet | merged — 2026-08-17 | `audit/batch-1-safety-net` | [#2](https://github.com/metasito/murlan/pull/2) |
-| - [ ] 2 | Server operational integrity | 7 | medium | Sonnet | PR open — 2026-08-17 | `audit/batch-2-server-integrity` | [#3](https://github.com/metasito/murlan/pull/3) |
+| - [x] 2 | Server operational integrity | 7 | medium | Sonnet | merged — 2026-08-17 | `audit/batch-2-server-integrity` | [#3](https://github.com/metasito/murlan/pull/3) |
 | - [ ] 3 | The match lifecycle | 7 | **max** | **Opus** | not started | | |
 | - [ ] 4 | Reconnect and error surfacing | 9 | high | Opus | not started | | |
 | - [ ] 5 | Robustness and session safety | 6 | high | Opus | not started | | |
@@ -70,8 +70,9 @@ on `main` for a human to ship it.
   only exists on a runner. The batch requires pushing a deliberately failing test, confirming
   CI goes red, then removing it. A green CI proves nothing — that was the bug.
 - **Batches 3, 4, 5, 10, 12, 13 need a live Postgres** for their integration acceptance
-  criteria. Set `DATABASE_URL` before running `npm test`, and confirm the output contains no
-  `DATABASE_URL not set` line.
+  criteria. Start one and export `DATABASE_URL` before running `npm test`; the recipe is in
+  `.claude/commands/batch.md`. Confirm the output reports `skipped 0` and contains no
+  `DATABASE_URL not set` line — that line means the integration suites did not run.
 - **Batch 3 must not start before its design doc exists.** `DECISIONS.md` D1 and D4 give the
   rules, so the doc is a *how*, not a *whether* — but `CLAUDE.md`'s standing agreement requires
   one for anything touching storage or the socket protocol.
