@@ -33,7 +33,7 @@ merge one before opening the other's PR.
 |---|---|---|---|---|---|---|---|
 | - [x] 1 | Restore the safety net | 6 | medium | Sonnet | merged — 2026-08-17 | `audit/batch-1-safety-net` | [#2](https://github.com/metasito/murlan/pull/2) |
 | - [x] 2 | Server operational integrity | 7 | medium | Sonnet | merged — 2026-08-17 | `audit/batch-2-server-integrity` | [#3](https://github.com/metasito/murlan/pull/3) |
-| - [x] 3 | The match lifecycle | 7 | **max** | **Opus** | merged — 2026-08-17 | `audit/batch-3-match-lifecycle` | [#6](https://github.com/metasito/murlan/pull/6) |
+| - [x] 3 | The match lifecycle | 7 | **max** | **Opus** | merged — 2026-08-17 | `audit/batch-3-match-lifecycle` | [#7](https://github.com/metasito/murlan/pull/7) |
 | - [ ] 4 | Reconnect and error surfacing | 9 | high | Opus | not started | | |
 | - [ ] 5 | Robustness and session safety | 6 | high | Opus | not started | | |
 | - [ ] 6 | Bytes on the wire | 6 | medium | Sonnet | not started | | |
