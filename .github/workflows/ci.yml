@@ -1,7 +1,11 @@
 name: CI
 
+# A branch push and its pull request are the same commit. Running on every push
+# ran the whole suite twice for every PR; `push` is now limited to main so each
+# commit is checked exactly once.
 on:
   push:
+    branches: [main]
   pull_request:
 
 concurrency:
@@ -41,6 +45,37 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+        with:
+          # The scope check below diffs against the base commit.
+          fetch-depth: 0
+
+      # Prose cannot break the game, so a commit that only touches docs skips
+      # the ~3 minutes of install, test and build below. Deliberately an
+      # allowlist: anything not recognised as prose runs the full suite, so a
+      # new directory fails safe. `.github/workflows/` is NOT prose — a change
+      # to this file must exercise this file.
+      - name: Does this change touch the app?
+        id: scope
+        shell: bash
+        run: |
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            base="${{ github.event.pull_request.base.sha }}"
+          else
+            base="${{ github.event.before }}"
+          fi
+          if [ -z "$base" ] || ! git cat-file -e "$base^{commit}" 2>/dev/null; then
+            echo "No usable base commit — running everything."
+            echo "app=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          changed=$(git diff --name-only "$base" HEAD)
+          echo "Changed files:"; echo "$changed"
+          if [ -n "$changed" ] && ! grep -qvE '^(docs/|audit/|\.claude/)|\.md$' <<< "$changed"; then
+            echo "Documentation only — skipping the app checks."
+            echo "app=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "app=true" >> "$GITHUB_OUTPUT"
+          fi
 
       # Node 22+ is required: tests run via `node --test` against .ts files
       # directly, relying on Node's native TypeScript type-stripping
@@ -48,17 +83,21 @@ jobs:
       # the current LTS-track release and what the project is developed
       # against, so pin to it to keep local and CI runs identical.
       - uses: actions/setup-node@v4
+        if: steps.scope.outputs.app == 'true'
         with:
           node-version: 24
           cache: npm
 
       - name: Install dependencies
+        if: steps.scope.outputs.app == 'true'
         run: npm ci
 
       - name: Typecheck
+        if: steps.scope.outputs.app == 'true'
         run: npm run typecheck
 
       - name: Test
+        if: steps.scope.outputs.app == 'true'
         shell: bash
         run: |
           set -o pipefail
@@ -68,6 +107,7 @@ jobs:
       # broken Postgres service would turn the socket-layer tests into a no-op
       # and CI would stay green. Fail loudly instead.
       - name: Assert the integration suites actually ran
+        if: steps.scope.outputs.app == 'true'
         run: |
           if grep -q "DATABASE_URL not set" test-output.txt; then
             echo "::error::Integration suites skipped — the Postgres service is not reachable."
@@ -77,19 +117,23 @@ jobs:
           echo "Integration suites ran against Postgres."
 
       - name: Native tests
+        if: steps.scope.outputs.app == 'true'
         run: npm run test:native
 
       - name: Lint
+        if: steps.scope.outputs.app == 'true'
         run: npm run lint
 
       # expo:static:build is omitted: it starts a Metro server, which is too
       # slow and flaky for a runner.
       - name: Build the web and server bundles
+        if: steps.scope.outputs.app == 'true'
         run: npm run expo:web:build && npm run server:build
 
       # The bundle esbuild produces is otherwise first executed by a Replit deploy.
       # /health answers only once the pool has reached Postgres.
       - name: The built server boots and reaches the database
+        if: steps.scope.outputs.app == 'true'
         shell: bash
         env:
           PORT: "5050"
