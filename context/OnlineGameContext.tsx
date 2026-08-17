@@ -288,12 +288,10 @@ export function OnlineGameProvider({ userId, children }: { userId: string; child
       setRoom(data);
       forgetRejoinAttempt();
       rejoiningRoomCodeRef.current = null;
-      // Only a live game is worth a `game:rejoin`. Persisting a waiting-room id
-      // under the same key meant force-quitting from a lobby produced a rejoin
-      // the server can never satisfy (waiting rooms never enter active games) —
-      // that latched rejoinFailed and, later, ejected the player from the next
-      // game they actually started. A waiting lobby is recovered by its own
-      // event instead, off its own handle.
+      // One handle per event, and only a live game is worth a `game:rejoin`: a
+      // waiting room has no `active_games` row, so its id under ACTIVE_ROOM_KEY
+      // asks the server a question it can only ever answer with a terminal
+      // rejoin failure. The lobby is recovered by `room:rejoin` off its own key.
       persistActiveRoom(data.status === "in_progress" ? data.roomId : null);
       persistWaitingRoom(data.status === "waiting" ? data.code : null);
     };
@@ -611,8 +609,8 @@ export function OnlineGameProvider({ userId, children }: { userId: string; child
     // A rejoin_failed latched by an earlier, unrelated room (e.g. a
     // force-quit from a waiting lobby) must not survive into a room the
     // player is deliberately starting fresh. The outstanding-rejoin ref is
-    // deliberately left alone: clearing it here is what disabled the
-    // stale-reply guard.
+    // left alone on purpose — it is cleared only by a reply that matches it,
+    // which is what makes the stale-reply guard a guard.
     setRejoinFailed(false);
     socket.emit("room:create", { gameMode, maxPlayers });
   }, [userId]);
