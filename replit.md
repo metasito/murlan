@@ -10,7 +10,7 @@
 > | How the system is built | `CLAUDE.md` |
 > | The game's rules, and their sources | `docs/RULES.md` |
 > | Scope, decisions, definition of done | `docs/BRIEF.md` |
-> | The ordered remediation plan | `docs/PLAN.md` |
+> | Everything still outstanding | `docs/BACKLOG.md` |
 
 ---
 

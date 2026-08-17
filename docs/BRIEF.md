@@ -165,7 +165,7 @@ Each document gets exactly one responsibility, and cross-references instead of r
 | `docs/ARCHITECTURE.md` *(new)* | How the system is built: layers, data flow, socket lifecycle, persistence, auth | Rules, scope, decisions |
 | `docs/RULES.md` ✅ | The canonical rule specification and its sources — **the only place rules live** | Implementation detail, scope |
 | `docs/BRIEF.md` (this file) | Scope, decisions and their rationale, workstreams, definition of done | Rule text, architecture prose |
-| `docs/PLAN.md` *(new)* | The ordered remediation plan and its current status | Anything not actionable |
+| `docs/BACKLOG.md` | Everything outstanding, owner-blocked, already answered or rejected | Anything not actionable |
 | `replit.md` ✅ | Replit-specific run/deploy notes only — how to start it, what env vars, what not to touch | Everything that duplicates `CLAUDE.md` |
 | `docs/superpowers/specs/*` ✅ | Historical specs, each stamped with its outcome | Anything presented as pending when it has shipped |
 

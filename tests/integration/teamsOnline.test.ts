@@ -5,7 +5,7 @@
 // opposite each other, that a four-human teams table plays to a finish without
 // deadlocking, and that the ranked ladder stays out of it — a teams placement
 // belongs to the pair, so rating individuals from it needs a model the ladder
-// does not have (docs/superpowers/specs/2026-08-16-murlan-ladder-design.md §2).
+// does not have (see lib/rating.ts).
 import { test, before, after, describe } from "node:test";
 import assert from "node:assert/strict";
 import pg from "pg";

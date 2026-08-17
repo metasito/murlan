@@ -3,9 +3,9 @@
 // Deliberately NOT an "achievements engine": no trigger registry, no event
 // bus, no rule DSL. Each entry in `ACHIEVEMENTS` pairs an id with a plain
 // `(result: GameResult) => boolean` predicate; `evaluateAchievements` just
-// filters the array. That is the whole design — see
-// docs/superpowers/specs/2026-08-16-murlan-depth-design.md §1, which calls
-// out a general-purpose achievements framework as YAGNI.
+// filters the array. That is the whole design: a general-purpose achievements
+// framework was considered and rejected as YAGNI, and stays rejected in
+// docs/BACKLOG.md §4 so it is not re-proposed.
 //
 // No React/React Native/expo-* imports here on purpose: this module must be
 // importable by plain `node --test` (tests/achievements.test.ts) with no

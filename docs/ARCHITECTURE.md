@@ -2,8 +2,8 @@
 
 > **Scope of this file:** how the system is built — layers, data flow, socket lifecycle,
 > auth, persistence, state management, and the presentational-table refactor. It does not
-> cover game rules (`docs/RULES.md`), scope/decisions (`docs/BRIEF.md`), remediation status
-> (`docs/PLAN.md`), or Replit run/deploy mechanics (`replit.md`).
+> cover game rules (`docs/RULES.md`), scope/decisions (`docs/BRIEF.md`), outstanding work
+> (`docs/BACKLOG.md`), or Replit run/deploy mechanics (`replit.md`).
 
 ---
 

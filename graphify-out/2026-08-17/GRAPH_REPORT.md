@@ -1,16 +1,16 @@
-# Graph Report - murlan  (2026-08-17)
+# Graph Report - murlan  (2026-08-16)
 
 ## Corpus Check
-- 433 files · ~448,538 words
+- 431 files · ~1,196,684 words
 - Verdict: corpus is large enough that graph structure adds value.
 
 ## Summary
-- 3341 nodes · 4969 edges · 506 communities (214 shown, 292 thin omitted)
+- 3469 nodes · 5020 edges · 522 communities (229 shown, 293 thin omitted)
 - Extraction: 99% EXTRACTED · 1% INFERRED · 0% AMBIGUOUS · INFERRED: 41 edges (avg confidence: 0.73)
 - Token cost: 0 input · 0 output
 
 ## Graph Freshness
-- Built from commit: `1a3bdda4`
+- Built from commit: `5184c1f5`
 - Run `git rev-parse HEAD` and compare to check if the graph is stale.
 - Run `graphify update .` after code changes (no API cost).
 
@@ -125,6 +125,7 @@
 - Calling JS from C++ and Async Patterns
 - JSI Overview
 - React Native SVG
+- Murlan Depth & Durability Implementation Plan
 - devDependencies
 - Bundling
 - Quick Reference
@@ -133,6 +134,7 @@
 - Common Issues
 - Shared Memory and Data Passing
 - RNRepo Installation
+- Murlan — Depth & Durability Design
 - SKILL.md
 - Android Platform Wiring — JNI, CMake, and FBJNI
 - Available Tools
@@ -140,6 +142,7 @@
 - 7. JavaScript Performance
 - Design Token Guardian
 - RNRepo Troubleshooting
+- W2 — Game integrity
 - MURLAN — Consolidated Canonical Rule Specification
 - Find Skills
 - Error Handling
@@ -148,10 +151,13 @@
 - Gesture Composition
 - Distributions
 - Murlan — Production & App Store Readiness Brief
+- socketSafety.ts
 - Font Optimization
 - React Composition Patterns
 - Layout Animations
 - TypeGPU Type System & Literal Handling
+- W3 — Resilience
+- W4 — Client architecture
 - i18n.test.ts
 - bundle-report.mjs
 - Async Params and SearchParams
@@ -165,6 +171,7 @@
 - Swipeable and Drawer Components
 - Casting and Serialization
 - TypeGPU Advanced
+- W1 — Trust & authority
 - React Best Practices
 - 3. Server-Side Performance
 - Required Checks
@@ -180,6 +187,8 @@
 - Security Penetration Specialist
 - Threading Safety
 - SettingsContext.tsx
+- W6 — Store readiness
+- W7 — Product & design
 - Detection Rules
 - Runtime Selection
 - C++ Memory Patterns for JSI
@@ -200,6 +209,8 @@
 - view_network_request_details
 - React Native Best Practices Skill
 - React Native Gesture Handler
+- Murlan — Remediation Plan
+- W5 — Test & CI
 - Murlan — Replit Environment Notes
 - dev-stack.mjs
 - 4. Client-Side Data Fetching
@@ -208,6 +219,8 @@
 - view_screenshot
 - On-Device AI
 - When to Use React Native SVG
+- README.md
+- 5. Proposed features — for your selection
 - Bundle size report
 - package.json
 - Animations
@@ -215,6 +228,7 @@
 - Audio
 - RNRepo
 - 8. Documentation architecture
+- Murlan — ranked ladder (Q22), design
 - dbResetGuard.test.ts
 - SKILL.md
 - Radon IDE MCP Tools
@@ -412,6 +426,7 @@
 - server/validate.ts (Validation middleware)
 - shared/schema.ts (Drizzle DB schema: users, rooms, friends)
 - computedHash
+- ticket.ts
 - sourceType
 - computedHash
 - source
@@ -425,6 +440,7 @@
 - vercel-react-best-practices
 - source
 - 2. Current state — verified assessment
+- .createUser
 - sourceType
 - version
 - Next.js Best Practices SKILL
@@ -484,13 +500,13 @@
 - historyBound.test.ts
 
 ## God Nodes (most connected - your core abstractions)
-1. `useTranslation()` - 77 edges
+1. `useTranslation()` - 76 edges
 2. `t()` - 64 edges
 3. `GameTable()` - 45 edges
 4. `setupSocket()` - 44 edges
 5. `usePrefersReducedMotion()` - 39 edges
-6. `Colors` - 37 edges
-7. `Card` - 34 edges
+6. `Colors` - 36 edges
+7. `Card` - 33 edges
 8. `DrizzleStorage` - 32 edges
 9. `IStorage` - 31 edges
 10. `Spacing` - 26 edges
@@ -504,17 +520,17 @@
   attached_assets/Pasted--Replit-Implementation-Plan-Room-Stanza-Screen-Context-_1772613884029.txt → app/(online)/room.tsx
 - `OnlineLayout()` --calls--> `useAuth()`  [EXTRACTED]
   app/(online)/_layout.tsx → context/AuthContext.tsx
-- `LobbyScreen()` --indirect_call--> `c()`  [INFERRED]
-  app/lobby.tsx → tests/helpers.ts
+- `MatchHistoryDto` --references--> `GameMode`  [EXTRACTED]
+  app/(online)/profile.tsx → lib/gameEngine.ts
 
 ## Import Cycles
 - None detected.
 
-## Communities (506 total, 292 thin omitted)
+## Communities (522 total, 293 thin omitted)
 
 ### Community 0 - "Offline Game Screen"
-Cohesion: 0.12
-Nodes (30): GameScreen(), MenuButton(), OnlineGameScreen(), POSITION_COLORS, POSITION_ICONS, POSITION_LABEL_KEYS, ResultScreen(), ScoreRow() (+22 more)
+Cohesion: 0.14
+Nodes (26): GameScreen(), MenuButton(), OnlineLobbyScreen(), styles, CardExchangeOverlay(), exStyles, POSITION_COLORS, POSITION_ICONS (+18 more)
 
 ### Community 1 - "Package Dependencies"
 Cohesion: 0.04
@@ -534,75 +550,71 @@ Nodes (22): billboardStyles, CardFan(), CardItem(), COMBO_LABEL_KEYS, FLY_LANDIN
 
 ### Community 5 - "Game Engine (Core)"
 Cohesion: 0.09
-Nodes (46): GameProvider(), aiChoosePlay(), applyPersonality(), bucketByStraightValue(), cardStrength(), dealCards(), deepCloneState(), enumerateStraightWindows() (+38 more)
+Nodes (47): evaluateExchange(), GameProvider(), aiChoosePlay(), applyPersonality(), bucketByStraightValue(), cardStrength(), createDeck(), dealCards() (+39 more)
 
 ### Community 6 - "Card View Component"
-Cohesion: 0.05
-Nodes (46): Box, boxesOverlap(), COURT_ART_BOX, COURT_RANKS, courtArtRect(), indexBox(), isWideRank(), PIP_COL (+38 more)
+Cohesion: 0.14
+Nodes (21): Box, boxesOverlap(), COURT_ART_BOX, COURT_RANKS, courtArtRect(), indexBox(), isWideRank(), PIP_COL (+13 more)
 
 ### Community 7 - "Game State Mutations"
-Cohesion: 0.06
-Nodes (61): isMajority(), actingSeat(), activeGames, AFK_TIMEOUT_MS, afkTimers, armTurn(), BOT_MOVE_DELAY_MS, botTimers (+53 more)
+Cohesion: 0.07
+Nodes (58): isMajority(), actingSeat(), activeGames, AFK_TIMEOUT_MS, afkTimers, armTurn(), BOT_MOVE_DELAY_MS, botTimers (+50 more)
 
 ### Community 8 - "Build Scripts"
-Cohesion: 0.18
-Nodes (25): GameTable(), ASSETS, ensureAudioMode(), getWebCtx(), loadSound(), play(), playBomb(), playCardPass() (+17 more)
+Cohesion: 0.16
+Nodes (23): ASSETS, ensureAudioMode(), getWebCtx(), loadSound(), play(), playBomb(), playCardPass(), playCardPlay() (+15 more)
 
 ### Community 10 - "Offline Lobby Screen"
-Cohesion: 0.10
-Nodes (30): PlayerRowProps, ExchangeBeat, GameTableProps, answerForAiSeats(), applyHandToMatch(), freshMatch(), GameContext, GameContextValue (+22 more)
+Cohesion: 0.17
+Nodes (19): answerForAiSeats(), applyHandToMatch(), freshMatch(), GameContext, HandResult, MatchState, PlayerSetupConfig, RematchAnswers (+11 more)
 
 ### Community 11 - "Sound Generation Scripts"
 Cohesion: 0.12
 Nodes (16): 1. Unit — `npm test`, 2. Integration — same command, plus a database, 3. Native renderer — `npm run test:native`, 4. Web e2e — `npm run test:e2e`, 5. Android UI automation — Maestro, iOS, Manual device checklist, One-time setup (+8 more)
 
-### Community 12 - "Server Storage Layer"
-Cohesion: 0.08
-Nodes (3): DrizzleStorage, generateRoomCode(), randomCode()
-
 ### Community 13 - "App Layout and Notifications"
-Cohesion: 0.06
-Nodes (47): RootLayoutNav(), FriendInfo, FriendRequest, SearchResult, styles, TFn, TnFn, OnlineLayout() (+39 more)
+Cohesion: 0.07
+Nodes (39): FriendInfo, FriendRequest, SearchResult, styles, TFn, TnFn, botFillStyles, formatStyles (+31 more)
 
 ### Community 15 - "Server Socket Events"
-Cohesion: 0.06
-Nodes (55): styles, Tab, NotFoundScreen(), LeaderboardEntryDto, RANK_COLORS, RatingDto, styles, AchievementStatusDto (+47 more)
+Cohesion: 0.05
+Nodes (64): AuthScreen(), styles, Tab, NotFoundScreen(), OnlineLayout(), LeaderboardEntryDto, LeaderboardScreen(), RANK_COLORS (+56 more)
 
 ### Community 17 - "Vercel Composition Patterns"
-Cohesion: 0.11
-Nodes (27): express, authLimiter, errorReportLimiter, express-session, friendLimiter, readParam(), registerRoutes(), requireAuth() (+19 more)
+Cohesion: 0.12
+Nodes (24): express, getReplayForUser(), listReplaysForUser(), ownedBy(), authLimiter, errorReportLimiter, express-session, friendLimiter (+16 more)
 
 ### Community 18 - "Server Routes and Auth"
-Cohesion: 0.12
-Nodes (17): JoinableRoom, SeatClaim, storage, activeGames, friends, friendStatusEnum, gameModeEnum, InsertUser (+9 more)
+Cohesion: 0.14
+Nodes (17): generateRoomCode(), randomCode(), SeatClaim, storage, activeGames, friends, friendStatusEnum, gameModeEnum (+9 more)
 
 ### Community 19 - "Database Schema"
-Cohesion: 0.10
-Nodes (30): MatchHistoryDto, PlayBeat, ExchangeView, handCountOf(), PileState, Combination, CombinationType, GameMode (+22 more)
+Cohesion: 0.19
+Nodes (18): GameContextValue, OnlineGameContextValue, Combination, GameMode, GameState, MatchLength, ReplayDto, ReplayMove (+10 more)
 
 ### Community 20 - "Auth Context"
-Cohesion: 0.10
-Nodes (45): AuthScreen(), FriendsButton(), HomeScreen(), MenuButtonProps, SettingsButton(), styles, FORMAT_OPTIONS, LobbyMode (+37 more)
+Cohesion: 0.11
+Nodes (34): FriendsButton(), HomeScreen(), MenuButtonProps, SettingsButton(), styles, RootLayout(), FriendsScreen(), relativeTime() (+26 more)
 
 ### Community 21 - "Socket Context"
-Cohesion: 0.27
-Nodes (10): t(), applyMatrix(), deltaE(), hexToLinear(), Lab, linearToLab(), RGB, separation() (+2 more)
+Cohesion: 0.21
+Nodes (15): FORMAT_OPTIONS, LobbyMode, LobbyScreen(), PlayerRow(), PlayerRowProps, styles, BotFillControls(), BOT_PERSONALITIES (+7 more)
 
 ### Community 23 - "Vercel React Best Practices"
-Cohesion: 0.16
-Nodes (14): FAQ, styles, catalogs, detectDeviceLocale(), getLocale(), initLocale(), isLocale(), listeners (+6 more)
+Cohesion: 0.09
+Nodes (25): MatchSummary, POSITION_COLORS, POSITION_LABEL_KEYS, POSITION_MEDALS, RankCard(), RematchVote, styles, AchievementDef (+17 more)
 
 ### Community 27 - "Room Screen"
 Cohesion: 0.11
 Nodes (32): checkMetroHealth(), clearMetroCache(), downloadAssets(), downloadBundle(), downloadBundlesAndManifests(), downloadFile(), downloadManifest(), exitWithError() (+24 more)
 
 ### Community 28 - "Result Screen"
-Cohesion: 0.25
-Nodes (7): 1. The constraint that shapes both, 7. Q23 — "Your turn" push notifications, 8. Q26 — Tournaments, 9. Why these two are still here, Constraints inherited from the repo, Murlan — remaining feature set, design, The rule for everything below
+Cohesion: 0.14
+Nodes (13): 10. What could make this wrong, 1. The constraint that shapes all seven, 2. Q18 — Spectator mode, 3. Q20 — Bot personalities, 4. Q17 — Match replay, 5. Q25 — Cosmetics: card backs and table felts, 6. Q22 — Ranked ladder, 7. Q23 — "Your turn" push notifications (+5 more)
 
 ### Community 29 - "Rules Screen"
 Cohesion: 0.08
-Nodes (45): ExchangeAnnouncementProps, ExchangeModalProps, ExchangeAnnouncementSlot, Card, ExchangePhase, ExchangeAnnounceData, connect(), connectAs() (+37 more)
+Nodes (36): connect(), connectAs(), register(), RegisteredUser, waitFor(), buildSchemaDdl(), dropSchema(), foreignKeysByColumn() (+28 more)
 
 ### Community 35 - "Drizzle Config"
 Cohesion: 0.18
@@ -617,16 +629,16 @@ Cohesion: 0.20
 Nodes (10): Online Game Screenshot: Playing Cards in Hand, Murlan Functional Requirements (Italian), UI Screenshot: Online Game End State (Carte finite), UI Screenshot: Early Murlan Game Table (2-player), UI Screenshot: Early Murlan 2-player Hand View, UI Screenshot: Online Murlan Game (3 opponents), Murlan Production Hardening Implementation Spec (Expo), Murlan UI/UX Game Logic Consistency Plan (+2 more)
 
 ### Community 41 - "Bug Reports and Fixes"
-Cohesion: 0.31
-Nodes (6): en, it, sq, LOCALE_NAMES, LocaleName, LOCALES
+Cohesion: 0.12
+Nodes (18): interpolate(), translate(), en, it, sq, t(), LOCALE_NAMES, LocaleName (+10 more)
 
 ### Community 42 - "Functional Requirements"
-Cohesion: 0.10
-Nodes (31): advancePile(), arrangeOpponents(), canPassNow(), comboKey(), computeScreenPads(), computeTableFrame(), describeTableForA11y(), EdgeInsets (+23 more)
+Cohesion: 0.09
+Nodes (36): useTurnPulse(), GameTable(), advancePile(), arrangeOpponents(), canPassNow(), comboKey(), computeScreenPads(), computeTableFrame() (+28 more)
 
 ### Community 43 - "Production Hardening Specs"
-Cohesion: 0.38
-Nodes (5): alphaOf(), fillOnlyTokens(), PALETTES, repoRoot, TEXT_TOKENS_WITH_ALPHA
+Cohesion: 0.11
+Nodes (14): PlayBeat, ExchangeModalProps, Card, CombinationType, ExchangePhase, Rank, Suit, ExchangeAnnounceData (+6 more)
 
 ### Community 46 - "Find Skills Skill"
 Cohesion: 0.67
@@ -634,11 +646,11 @@ Nodes (3): UI Screenshot: Online Game with LUAJ Button Active, Online Game Scree
 
 ### Community 48 - "Haptics Library"
 Cohesion: 0.10
-Nodes (31): ConsoleErrors, isExpectedNoise(), test, declineRematchPromptIfShown(), driveGameToCompletion(), DriveOptions, giveExchangeCandidateCount(), giveExchangeCard() (+23 more)
+Nodes (29): ConsoleErrors, isExpectedNoise(), test, declineRematchPromptIfShown(), driveGameToCompletion(), DriveOptions, giveExchangeCandidateCount(), giveExchangeCard() (+21 more)
 
 ### Community 70 - "helpers.ts"
-Cohesion: 0.15
-Nodes (19): evaluatePlay(), buildCombination(), canPlay(), canPlayerPlay(), createDeck(), getSuitSymbol(), bruteForceLegalPlays(), randomLastPlayed() (+11 more)
+Cohesion: 0.11
+Nodes (27): aggregateTeamScores(), buildCombination(), canPlay(), canPlayerPlay(), getBestCardFromHand(), loserHasBothJokers(), Player, openingCounts() (+19 more)
 
 ### Community 71 - "System Integration, Notifications, and Testing"
 Cohesion: 0.07
@@ -664,9 +676,13 @@ Nodes (26): Camera configuration, Common interface, Computer Vision, Detection o
 Cohesion: 0.08
 Nodes (23): Common errors and recovery, Custom Models (useExecutorchModule), Device Constraints, Download progress, Download with progress, Error Handling, Error handling pattern, Exporting a custom model (+15 more)
 
-### Community 78 - "IStorage"
+### Community 77 - "Murlan Visual & Audio Upgrade — Design Spec"
 Cohesion: 0.08
-Nodes (4): IStorage, Friend, RoomPlayer, User
+Nodes (23): 1. Cards (`components/CardView.tsx`), 2. Table & Atmosphere (`components/GameShared.tsx`), 3. Animations, 4. Sound System (`lib/sounds.ts`), Bomb / Royal Straight screen shake (`app/game.tsx` + `app/(online)/game.tsx`), Card back (faceDown branch), Card face, Card selection (`CardItem` in `GameShared.tsx`) (+15 more)
+
+### Community 78 - "IStorage"
+Cohesion: 0.09
+Nodes (3): IStorage, JoinableRoom, Room
 
 ### Community 79 - "Self-Hosting Next.js"
 Cohesion: 0.09
@@ -718,7 +734,7 @@ Nodes (18): Avoid Duplicate Fetches, Basic OG Image, Custom Fonts, Dynamic Metad
 
 ### Community 91 - "tutorial.tsx"
 Cohesion: 0.13
-Nodes (19): RootLayout(), Beat, buildBeats(), buildExchangeState(), CompleteBeat, exchangeDeadCard, exchangeThreeHearts, exchangeWinnerCard (+11 more)
+Nodes (18): Beat, buildBeats(), buildExchangeState(), CompleteBeat, evaluatePlay(), ExchangeBeat, exchangeDeadCard, exchangeThreeHearts (+10 more)
 
 ### Community 92 - "Canvas Animations with Skia"
 Cohesion: 0.11
@@ -741,8 +757,8 @@ Cohesion: 0.25
 Nodes (14): expectedScore(), kFactor(), ratedFinishers(), RatedSeat, ratingDeltas(), seasonKey(), seedRating(), currentRow() (+6 more)
 
 ### Community 97 - "testApp.ts"
-Cohesion: 0.09
-Nodes (30): allowedOrigins(), isAllowedOrigin(), isBehindProxy(), pool, REQUIRED_ENV, logger, PgSession, sessionMiddleware (+22 more)
+Cohesion: 0.13
+Nodes (21): allowedOrigins(), isAllowedOrigin(), isBehindProxy(), pool, REQUIRED_ENV, logger, PgSession, sessionMiddleware (+13 more)
 
 ### Community 98 - "Parallel & Intercepting Routes"
 Cohesion: 0.11
@@ -761,12 +777,12 @@ Cohesion: 0.11
 Nodes (17): Clearing, Creating textures, Depth views, Mipmap generation, Render attachment view, Sampled texture in a bind group, Sampled views, Samplers (+9 more)
 
 ### Community 102 - "stats.ts"
-Cohesion: 0.16
-Nodes (19): AchievementDef, AchievementRule, ACHIEVEMENTS, evaluateAchievements(), GameResult, RULES, dailyStreak(), dayBefore() (+11 more)
+Cohesion: 0.17
+Nodes (17): ACHIEVEMENTS, evaluateAchievements(), GameResult, RULES, dailyStreak(), dayBefore(), utcDay, AchievementStatus (+9 more)
 
 ### Community 103 - "onlineGameLogic.ts"
-Cohesion: 0.09
-Nodes (30): BOT_PERSONALITIES, BotPersonality, botSeatNames(), BY_ID, getBotPersonality(), isBotPersonalityId(), AIDifficulty, assignRemainingPlacements() (+22 more)
+Cohesion: 0.10
+Nodes (26): BotPersonalityId, assignRemainingPlacements(), buildSeatRoster(), excludeBotSeats(), findViewerSeat(), HandFlags, isContestedTable(), isStaleSchema() (+18 more)
 
 ### Community 104 - "React Composition Patterns"
 Cohesion: 0.12
@@ -812,6 +828,10 @@ Nodes (15): Blocking the JS Thread: What Goes Wrong, `drainMicrotasks`, `evaluat
 Cohesion: 0.12
 Nodes (15): Expo, FilterImage, Filters, From a remote URI, From an XML string, Importing `.svg` files directly, Inline components, Known Issues (+7 more)
 
+### Community 115 - "Murlan Depth & Durability Implementation Plan"
+Cohesion: 0.12
+Nodes (15): File Structure, Global Constraints, Murlan Depth & Durability Implementation Plan, Self-Review, Task 10: Screen-reader support for the game table, Task 11: Bundle and dependency size report, Task 1: Make server modules loadable by Node, Task 2: Test server harness (+7 more)
+
 ### Community 116 - "devDependencies"
 Cohesion: 0.10
 Nodes (20): devDependencies, @babel/core, babel-plugin-react-compiler, drizzle-kit, eslint, eslint-config-expo, @expo/ngrok, jest (+12 more)
@@ -844,9 +864,13 @@ Nodes (14): Closures in Worklets, Decision: Serializable vs Synchronizable, Diff
 Cohesion: 0.13
 Nodes (14): 1. Install build tools, 1. Install the plugin, 2. Android — edit `android/build.gradle`, 2. Register in `app.config.ts` (or `app.json` / `app.config.js`), 3. Add `.fingerprintignore` (if using Expo Fingerprint / EAS), 3. Android — edit `android/app/build.gradle`, 4. iOS — edit `ios/Podfile`, Android (+6 more)
 
+### Community 124 - "Murlan — Depth & Durability Design"
+Cohesion: 0.13
+Nodes (14): 1. Why this, and why not other things, 2. Scope, 3. Architecture, 4. Testing, 5. Error handling, 6. Order and risk, 7. Flagged — not built, requires a decision that is not mine, Explicitly rejected, with reasons (+6 more)
+
 ### Community 125 - "SKILL.md"
-Cohesion: 0.14
-Nodes (10): Directives, Next.js Directive, React Directives, `'use cache'`, `'use client'`, `'use server'`, Quick Reference, Suspense Boundaries (+2 more)
+Cohesion: 0.29
+Nodes (6): Directives, Next.js Directive, React Directives, `'use cache'`, `'use client'`, `'use server'`
 
 ### Community 126 - "Android Platform Wiring — JNI, CMake, and FBJNI"
 Cohesion: 0.14
@@ -871,6 +895,10 @@ Nodes (12): 1. Hardcoded Colors, 2. Hardcoded Spacing, 3. Hardcoded Typography, 
 ### Community 131 - "RNRepo Troubleshooting"
 Cohesion: 0.15
 Nodes (12): Always target the app module explicitly, Android, C++ debug/release mismatch (reanimated + worklets), Duplicate `.so` file conflict, Expo EAS fingerprint mismatch, Getting detailed Gradle logs, iOS, iOS: Xcode version mismatch (Xcode < 26) (+4 more)
+
+### Community 132 - "W2 — Game integrity"
+Cohesion: 0.15
+Nodes (13): W2.10 — Server-side rule enforcement gaps, W2.11 — Reconcile the rules screen and CLAUDE.md, W2.12 — Delete dead wild-joker scaffolding, W2.1 — Write `docs/RULES.md` first, W2.2 — Characterization tests before touching the engine, W2.3 — Rewrite `enumStraights` (highest-value engine fix), W2.4 — Remove the 9-card cap, W2.5 — Fix the pass threshold (+5 more)
 
 ### Community 133 - "MURLAN — Consolidated Canonical Rule Specification"
 Cohesion: 0.15
@@ -904,6 +932,10 @@ Nodes (11): Continuous, Discrete, Distributions, Dynamic cache, Geometric, Perli
 Cohesion: 0.17
 Nodes (12): 1. Product vision, 3.1 Rule decisions (taken after research — see `docs/RULES-RESEARCH.md`), 3. Decisions taken, 4. Workstreams, 5. Proposed features, 6. Definition of done, 7. Working method, Explicitly out of scope unless you say otherwise (+4 more)
 
+### Community 141 - "socketSafety.ts"
+Cohesion: 0.26
+Nodes (9): allowSocketAction(), bucketsFor(), errorEventFor(), EventOptions, onEvent(), RateWindow, __resetRateLimits(), sweepExpired() (+1 more)
+
 ### Community 142 - "Font Optimization"
 Cohesion: 0.18
 Nodes (11): Common Mistakes, Display Strategy, Don't Use Manual Font Links, Font in Specific Components, Font Optimization, Font Weights and Styles, Google Fonts, Local Fonts (+3 more)
@@ -920,6 +952,14 @@ Nodes (10): [Entering and Exiting Animations](https://docs.swmansion.com/react-n
 Cohesion: 0.18
 Nodes (10): Abstract types — plain JS literals are usually enough, CPU-side buffer types, CPU-side texture types (`TgpuTexture<TProps>`), Division always produces `f32`, Function parameters, `root.createBuffer` — full control, `root.createUniform / createMutable / createReadonly` — shorthands, Samplers and textures — three contexts, different syntax (+2 more)
 
+### Community 146 - "W3 — Resilience"
+Cohesion: 0.18
+Nodes (11): W3.10 — Client can rejoin after an app restart, W3.1 — Retire the vacated seat (the critical one), W3.2 — One turn-advance epilogue, always arming the AFK timer, W3.3 — Persist seats by seat, not by array position, W3.4 — Idempotent rejoin + non-racy seat allocation, W3.5 — Guard `userSocketMap.delete`, W3.6 — Intentional mid-game leave uses the same retirement routine, W3.7 — Clear timers at game over (+3 more)
+
+### Community 147 - "W4 — Client architecture"
+Cohesion: 0.18
+Nodes (11): W4.10 — Design token adoption (do last), W4.1 — Fix the hooks-after-early-return crash (do this first, alone), W4.2 — Trivial correctness fixes (parallel-safe, different files), W4.3 — Suit colours (parallel-safe), W4.4 — Extract `<HandBar>` and `useTurnTimer`, W4.5 — Collapse to one `<GameBoard>` behind a common view model, W4.6 — Render cost, W4.7 — Delete dead code (+3 more)
+
 ### Community 148 - "i18n.test.ts"
 Cohesion: 0.25
 Nodes (8): 3. Analysis — already answered, Android UI automation — built, partially working, Client: keep React Native / Expo, Expo specifically, Replace the tech stack, Server: Replit is a real bottleneck, and the app stays there anyway, What the app actually demands, What would actually make the game smaller
@@ -929,8 +969,8 @@ Cohesion: 0.33
 Nodes (10): buildAssetReport(), buildDependencyReport(), __dirname, dirSize(), formatBytes(), listFiles(), main(), renderMarkdown() (+2 more)
 
 ### Community 150 - "Async Params and SearchParams"
-Cohesion: 0.20
-Nodes (9): Async Cookies and Headers, Async Params and SearchParams, Async Patterns, generateMetadata, Migration Codemod, Pages and Layouts, Route Handlers, SearchParams (+1 more)
+Cohesion: 0.12
+Nodes (13): Async Cookies and Headers, Async Params and SearchParams, Async Patterns, generateMetadata, Migration Codemod, Pages and Layouts, Route Handlers, SearchParams (+5 more)
 
 ### Community 151 - "Functions"
 Cohesion: 0.20
@@ -972,6 +1012,10 @@ Nodes (9): C++ ↔ JS Type Mapping, Casting and Serialization, `folly::dynamic` 
 Cohesion: 0.20
 Nodes (9): `$addFlags` - raw usage flags, Buffer reinterpretation, Custom command encoders, `d.memoryLayoutOf` - safe offset calculation, Indirect drawing and dispatching, Packing indirect params as a vector, Required buffer contents, `root.unwrap` — raw WebGPU objects and forced initialization (+1 more)
 
+### Community 161 - "W1 — Trust & authority"
+Cohesion: 0.20
+Nodes (10): W1.1 — `trust proxy` (must land before anything else in W1), W1.2 — Runtime payload validation + process survival, W1.3 — Ticket-minting endpoint + client consumption, W1.4 — Delete the `handshake.auth.userId` fallback, W1.5 — Per-socket rate limiting + reaction allowlist, W1.6 — `friend:invite` authorization, W1.7 — REST IDOR (parallel-safe; different files), W1.8 — Rate-limiter keying (parallel-safe) (+2 more)
+
 ### Community 162 - "React Best Practices"
 Cohesion: 0.22
 Nodes (8): 8.1 Initialize App Once, Not Per Mount, 8.2 Store Event Handlers in Refs, 8.3 useEffectEvent for Stable Callback Refs, 8. Advanced Patterns, Abstract, React Best Practices, References, Table of Contents
@@ -1010,7 +1054,7 @@ Nodes (8): 2D primitives, 3D primitives, Baking SDF fields into a texture, Bound
 
 ### Community 171 - "resolveMatch"
 Cohesion: 0.09
-Nodes (30): styles, GameOverOverlay(), MatchSummary, POSITION_COLORS, POSITION_LABEL_KEYS, POSITION_MEDALS, RankCard(), RematchVote (+22 more)
+Nodes (25): CardView(), CardViewProps, COURT_ART, FigureKind, getLattice(), latticeCache, OrnateCardBack(), starPath() (+17 more)
 
 ### Community 172 - "Murlan — Architecture"
 Cohesion: 0.22
@@ -1031,6 +1075,14 @@ Nodes (7): Hot Reload / Bundle Reload Pitfall, JSI Object Destruction Order, `js
 ### Community 176 - "SettingsContext.tsx"
 Cohesion: 0.09
 Nodes (44): AvatarCircle(), MOTION_CHOICES, MOTION_LABELS, nearestVolume(), Props, Segment, Segmented(), SettingsModal() (+36 more)
+
+### Community 177 - "W6 — Store readiness"
+Cohesion: 0.25
+Nodes (8): W6.1 — Make account deletion actually work, W6.2 — Mount the deletion UI (highest store risk), W6.3 — Purge phantom permissions, W6.4 — Build pipeline, W6.5 — ATS + splash colour, W6.6 — Store content, W6.7 — Confirm offline play stays ungated, W6 — Store readiness
+
+### Community 178 - "W7 — Product & design"
+Cohesion: 0.25
+Nodes (8): W7.1 — Accessibility on the game and result flow, W7.2 — Touch targets (parallel-safe), W7.3 — Contrast on move-rejection text, W7.4 — Make the haptics and reduced-motion settings real, W7.5 — Rebrand the crash screen (parallel-safe), W7.6 — i18n layer, W7.7 — Onboarding and in-game rules access, W7 — Product & design
 
 ### Community 179 - "Detection Rules"
 Cohesion: 0.29
@@ -1057,8 +1109,8 @@ Cohesion: 0.29
 Nodes (7): Database, Documentation map, Murlan, Running it locally, Running it on Replit, Stack, Tests
 
 ### Community 185 - "GameTable.tsx"
-Cohesion: 0.13
-Nodes (18): GIOCA_GRADIENT, GIOCA_GRADIENT_PRESSED, lastPlayA11yLabel(), PASS_GRADIENT, PASS_GRADIENT_PRESSED, PLAY_A11Y_SPOKEN_KEYS, PLAY_LABEL_KEYS, RematchPromptSlot (+10 more)
+Cohesion: 0.14
+Nodes (17): ExchangeAnnouncementSlot, GameTableProps, GIOCA_GRADIENT, GIOCA_GRADIENT_PRESSED, lastPlayA11yLabel(), PASS_GRADIENT, PASS_GRADIENT_PRESSED, PLAY_A11Y_SPOKEN_KEYS (+9 more)
 
 ### Community 186 - "Expo Horizon: Migrating Expo SDK to Meta Quest"
 Cohesion: 0.33
@@ -1112,8 +1164,16 @@ Nodes (5): Adding a Sub-skill, Libraries Covered, React Native Best Practices Sk
 Cohesion: 0.33
 Nodes (5): Critical Rules, Key API Differences (v2 vs v3), React Native Gesture Handler, References, Version Decision Tree
 
+### Community 199 - "Murlan — Remediation Plan"
+Cohesion: 0.33
+Nodes (6): 0. Preconditions that gate everything, Murlan — Remediation Plan, Parallelism and conflict map, Rule ambiguities requiring a human decision, Rules research vs `lib/gameEngine.ts` — required engine changes, The single most dangerous change
+
+### Community 200 - "W5 — Test & CI"
+Cohesion: 0.33
+Nodes (6): W5.1 — Engine unit tests, W5.2 — Property tests (brief DoD item 2), W5.3 — Server integration tests over a real socket, W5.4 — CI, W5.5 — Replit regression guard, W5 — Test & CI
+
 ### Community 201 - "Murlan — Replit Environment Notes"
-Cohesion: 0.20
+Cohesion: 0.29
 Nodes (6): Database, Deployment shape, Murlan — Replit Environment Notes, Required Secrets, Running it, Things that will break Replit if you change them
 
 ### Community 202 - "dev-stack.mjs"
@@ -1144,6 +1204,14 @@ Nodes (4): Critical Rules, Decision Tree, On-Device AI, References
 Cohesion: 0.40
 Nodes (4): Alternative Comparison, Decision Guide, When to Use React Native SVG, Why prefer alternatives for static SVGs
 
+### Community 209 - "README.md"
+Cohesion: 0.17
+Nodes (11): Decisions that differ from the spec, and why, File Structure, Global Constraints, Match Replay (Q17) Implementation Plan, Self-review, Task 1: The move log's shared types and the pure reducer, Task 2: The `match_replays` table and its storage layer, Task 3: Accumulate the log and write it at game over (+3 more)
+
+### Community 210 - "5. Proposed features — for your selection"
+Cohesion: 0.19
+Nodes (3): Friend, RoomPlayer, User
+
 ### Community 211 - "Bundle size report"
 Cohesion: 0.40
 Nodes (4): Assets (`assets/`), Bundle size report, Notes, Production dependencies (installed size in `node_modules/`)
@@ -1172,6 +1240,10 @@ Nodes (3): Key facts, References, RNRepo
 Cohesion: 0.50
 Nodes (4): 8. Documentation architecture, Contradictions between documents, Ownership map, Standing rule
 
+### Community 218 - "Murlan — ranked ladder (Q22), design"
+Cohesion: 0.25
+Nodes (7): 1. The decision the old design was blocked on, 2. Rating, 3. Farming, and what actually defends against it, 4. Storage, 5. Surfaces, 6. What could make this wrong, Murlan — ranked ladder (Q22), design
+
 ### Community 421 - "envelope"
 Cohesion: 0.25
 Nodes (7): Establish reality first, before doing anything, Handoff — start here in a new session, How to work here, Needs the owner, not more effort, Read these, in order, Regenerated, not hand-authored, Where things stand
@@ -1196,16 +1268,20 @@ Nodes (5): Licence, Reproducibility, Size, Sound effects, What the build does
 Cohesion: 0.33
 Nodes (3): repoRoot, soundsDir, Wav
 
+### Community 447 - "ticket.ts"
+Cohesion: 0.48
+Nodes (6): consumedNonces, consumeSocketTicket(), mintSocketTicket(), pendingTicketNonces(), pruneConsumed(), sign()
+
 ### Community 449 - "computedHash"
-Cohesion: 0.22
-Nodes (5): ErrorBoundary, ErrorBoundaryProps, ErrorBoundaryState, ErrorFallback(), ErrorFallbackProps
+Cohesion: 0.08
+Nodes (27): RootLayoutNav(), ErrorBoundary, ErrorBoundaryProps, ErrorBoundaryState, ErrorFallback(), ErrorFallbackProps, styles, COLOR_MAP (+19 more)
 
 ### Community 450 - "source"
 Cohesion: 0.50
 Nodes (3): mockCreateAudioPlayer, mockPlayer, mockSetAudioModeAsync
 
 ### Community 451 - "sourceType"
-Cohesion: 0.33
+Cohesion: 0.20
 Nodes (5): 1. Work queue, 2. Owner-blocked, 4. Rejected, with reasons, Backlog, How this queue is worked
 
 ### Community 460 - "2. Current state — verified assessment"
@@ -1213,24 +1289,24 @@ Cohesion: 0.40
 Nodes (5): 2. Current state — verified assessment, Blocking defects (security / correctness), Correctness defects (gameplay), Store readiness gaps, Structural debt
 
 ## Knowledge Gaps
-- **1843 isolated node(s):** `name`, `slug`, `version`, `orientation`, `icon` (+1838 more)
+- **1967 isolated node(s):** `name`, `slug`, `version`, `orientation`, `icon` (+1962 more)
   These have ≤1 connection - possible missing edges or undocumented components.
-- **292 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
+- **293 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
 
 ## Suggested Questions
 _Questions this graph is uniquely positioned to answer:_
 
 - **Why does `resolve()` connect `Room Screen` to `Haptics Library`, `Rules Screen`, `Game State Mutations`?**
-  _High betweenness centrality (0.022) - this node is a cross-community bridge._
+  _High betweenness centrality (0.020) - this node is a cross-community bridge._
+- **Why does `dependencies` connect `Package Dependencies` to `Vercel Composition Patterns`, `package.json`, `Auth Context`?**
+  _High betweenness centrality (0.016) - this node is a cross-community bridge._
 - **Why does `sleep()` connect `Haptics Library` to `Room Screen`?**
-  _High betweenness centrality (0.015) - this node is a cross-community bridge._
-- **Why does `dependencies` connect `Package Dependencies` to `Vercel Composition Patterns`, `tutorial.tsx`, `package.json`?**
   _High betweenness centrality (0.014) - this node is a cross-community bridge._
 - **Are the 3 inferred relationships involving `useTranslation()` (e.g. with `getLocale()` and `setLocale()`) actually correct?**
   _`useTranslation()` has 3 INFERRED edges - model-reasoned connections that need verification._
 - **What connects `name`, `slug`, `version` to the rest of the system?**
-  _1844 weakly-connected nodes found - possible documentation gaps or missing edges._
+  _1968 weakly-connected nodes found - possible documentation gaps or missing edges._
 - **Should `Offline Game Screen` be split into smaller, more focused modules?**
-  _Cohesion score 0.11596638655462185 - nodes in this community are weakly interconnected._
+  _Cohesion score 0.13548387096774195 - nodes in this community are weakly interconnected._
 - **Should `Package Dependencies` be split into smaller, more focused modules?**
   _Cohesion score 0.044444444444444446 - nodes in this community are weakly interconnected._

@@ -1,8 +1,8 @@
 // The ranked ladder's arithmetic. Pure — no react-native import, no db — so
 // both the server and `node --test` load it directly.
 //
-// Design and the reasoning behind every constant here:
-// docs/superpowers/specs/2026-08-16-murlan-ladder-design.md
+// Every constant here carries its own reasoning; the two that are conventions
+// rather than measurements (SEASON_CARRY, the K tiers) say so.
 
 /** Where an unrated player starts, and the centre a season's soft reset pulls toward. */
 export const START_RATING = 1000;
