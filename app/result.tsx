@@ -26,7 +26,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { useGame } from "@/context/GameContext";
 import { usePrefersReducedMotion } from "@/lib/accessibility";
 import { ResultExchangeOverlay, shouldShowResultExchange } from "@/components/ResultExchangeOverlay";
-import { Colors, FontSize, Spacing, Type } from '@/lib/theme';
+import { Colors, FontSize, Motion, Spacing, Type } from '@/lib/theme';
 import { useTranslation, type TranslationKey } from "@/lib/i18n";
 
 const POSITION_COLORS = [Colors.podiumGold, Colors.podiumSilver, Colors.podiumBronze, Colors.textMuted];
@@ -68,7 +68,7 @@ function ScoreRow({
       return;
     }
     opacity.value = withDelay(delay, withTiming(1, { duration: 320 }));
-    tx.value = withDelay(delay, withSpring(0, { damping: 14, stiffness: 200 }));
+    tx.value = withDelay(delay, withSpring(0, Motion.spring.entrance));
     // eslint-disable-next-line react-hooks/exhaustive-deps -- one-shot mount animation; opacity/tx are stable shared values, delay is fixed per instance
   }, []);
   const anim = useAnimatedStyle(() => ({
@@ -138,7 +138,7 @@ function WinnerCelebration({
       hapticSuccess();
       return;
     }
-    scale.value = withSpring(1, { damping: 8, stiffness: 150 });
+    scale.value = withSpring(1, Motion.spring.reveal);
     opacity.value = withTiming(1, { duration: 600 });
     glow.value = withRepeat(
       withSequence(

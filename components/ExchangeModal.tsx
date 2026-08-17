@@ -145,7 +145,7 @@ export function ExchangeModal({
 
   useEffect(() => {
     if (reduceMotion) return;
-    arrowScale.value = withDelay(300, withSpring(1, { damping: 12, stiffness: 200 }));
+    arrowScale.value = withDelay(300, withSpring(1, Motion.spring.entrance));
     arrowOpacity.value = withDelay(300, withTiming(1, { duration: 300 }));
     // eslint-disable-next-line react-hooks/exhaustive-deps -- one-shot mount animation; stable shared values, reduceMotion checked once at mount
   }, []);

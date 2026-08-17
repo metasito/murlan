@@ -80,7 +80,7 @@ function RankCard({
       return;
     }
     opacity.value = withDelay(delay, withTiming(1, { duration: 350 }));
-    tx.value = withDelay(delay, withSpring(0, { damping: 15, stiffness: 200 }));
+    tx.value = withDelay(delay, withSpring(0, Motion.spring.entrance));
     // eslint-disable-next-line react-hooks/exhaustive-deps -- opacity/tx are stable shared values, delay is fixed per instance
   }, [reduceMotion]);
 
