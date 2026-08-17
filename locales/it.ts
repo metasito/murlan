@@ -50,6 +50,7 @@ export const it = {
   "server.FRIEND_REQUEST_ALREADY_SENT": "Richiesta di amicizia già inviata",
   "server.FRIEND_REQUEST_NOT_FOUND": "Richiesta non trovata",
   "server.GAME_INTERRUPTED_EMPTY_SEAT": "Partita interrotta: un posto vuoto non può giocare.",
+  "server.GAME_INTERRUPTED_SERVER_ERROR": "Partita interrotta: errore del server.",
   "server.PLAYER_AFK_AUTO_PASS": "{{username}} è inattivo — passato automaticamente",
   "server.PLAYER_LEFT_ABANDONED": "{{username}} ha lasciato la partita.",
   "server.PLAYER_LEFT_BOT_TAKEOVER": "{{username}} ha lasciato la partita — il computer gioca al suo posto.",

@@ -37,6 +37,7 @@ export const en: Record<keyof typeof it, string> = {
   "server.FRIEND_REQUEST_ALREADY_SENT": "Friend request already sent",
   "server.FRIEND_REQUEST_NOT_FOUND": "Request not found",
   "server.GAME_INTERRUPTED_EMPTY_SEAT": "Game interrupted: an empty seat can't play.",
+  "server.GAME_INTERRUPTED_SERVER_ERROR": "Game interrupted: a server error.",
   "server.PLAYER_AFK_AUTO_PASS": "{{username}} is inactive — passed automatically",
   "server.PLAYER_LEFT_ABANDONED": "{{username}} left the game.",
   "server.PLAYER_LEFT_BOT_TAKEOVER": "{{username}} left the game — the computer is now playing their seat.",

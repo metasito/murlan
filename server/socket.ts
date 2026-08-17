@@ -319,6 +319,13 @@ export const __testables = {
       rankings: [...game.gameState.rankings],
     };
   },
+  /**
+   * The containment every timer body runs under. Exposed because the property
+   * that matters — a throw closes the table instead of freezing it — is not
+   * reachable through a socket: it needs a body that throws on demand.
+   */
+  runTimerBody: (label: string, roomId: string, fn: () => void) =>
+    safeTimer(label, roomId, fn),
   /** The restart-orphan prune, which only a real database can exercise. */
   pruneAbandonedGames: () => pruneAbandonedGames(),
   ABANDONED_GAME_MAX_AGE_MS,
@@ -613,6 +620,39 @@ function autoMoveForSeat(
 }
 
 /**
+ * Runs a timer body under the same contract `onEvent` gives an inbound event: a
+ * throw degrades to a closed table rather than escaping the callback.
+ *
+ * The containment is load-bearing rather than tidy. `armTurn` clears the room's
+ * timers before it arms the next one, and it is only ever reached from a move, a
+ * rejoin, a disconnect or another timer — so a throw inside a timer body leaves
+ * the room with nothing pending and nothing that will ever re-arm it. The table
+ * stops on a turn that cannot be taken, and the client's clock has no `onExpire`
+ * to notice. Closing the table loudly is the recoverable outcome.
+ */
+function safeTimer(label: string, roomId: string, fn: () => void): void {
+  try {
+    fn();
+  } catch (err) {
+    logger.error({ err, roomId, label }, "Timer callback threw — closing table");
+    _io?.to(roomId).emit("game:notification", {
+      type: "abandoned",
+      code: "GAME_INTERRUPTED_SERVER_ERROR",
+      message: "Partita interrotta: errore del server.",
+    });
+    void storage
+      .updateRoomStatus(roomId, "finished")
+      .catch((statusErr) =>
+        logger.warn(
+          { err: statusErr, roomId, label },
+          "Failed to set rooms.status = finished after a timer callback threw"
+        )
+      );
+    disposeGame(roomId);
+  }
+}
+
+/**
  * Single scheduler for "whose move is it". Called after every state change, so
  * the AFK chain never breaks and a vacated seat is always resolvable:
  *   seat has a user  -> arm that user's AFK timer
@@ -634,7 +674,7 @@ function armTurn(roomId: string) {
       roomId,
       setTimeout(() => {
         botTimers.delete(roomId);
-        runBotTurn(roomId);
+        safeTimer("botTurn", roomId, () => runBotTurn(roomId));
       }, BOT_MOVE_DELAY_MS)
     );
     return;
@@ -741,17 +781,19 @@ function startAfkTimer(roomId: string, userId: string, username: string) {
     key,
     setTimeout(() => {
       afkTimers.delete(key);
-      const acted = handleAutoPass(roomId, userId);
-      // Only announce when something actually happened, not on an early
-      // return that did nothing.
-      if (acted && _io) {
-        _io.to(roomId).emit("game:notification", {
-          type: "afk",
-          code: "PLAYER_AFK_AUTO_PASS",
-          message: `${username} è inattivo — passato automaticamente`,
-          params: { username },
-        });
-      }
+      safeTimer("afkAutoPass", roomId, () => {
+        const acted = handleAutoPass(roomId, userId);
+        // Only announce when something actually happened, not on an early
+        // return that did nothing.
+        if (acted && _io) {
+          _io.to(roomId).emit("game:notification", {
+            type: "afk",
+            code: "PLAYER_AFK_AUTO_PASS",
+            message: `${username} è inattivo — passato automaticamente`,
+            params: { username },
+          });
+        }
+      });
     }, AFK_TIMEOUT_MS)
   );
 }
@@ -2551,12 +2593,14 @@ function startSweeper() {
   sweeper = setInterval(() => {
     try {
       for (const [roomId, game] of activeGames.entries()) {
-        const anyoneConnected = Object.values(game.playerMap).some((uid) =>
-          userSocketMap.has(uid)
-        );
-        if (!anyoneConnected && game.gameState.gameOver) {
-          disposeGame(roomId);
-        }
+        safeTimer("sweepFinishedTable", roomId, () => {
+          const anyoneConnected = Object.values(game.playerMap).some((uid) =>
+            userSocketMap.has(uid)
+          );
+          if (!anyoneConnected && game.gameState.gameOver) {
+            disposeGame(roomId);
+          }
+        });
       }
 
       // Rows orphaned by a restart, which the loop above structurally cannot
