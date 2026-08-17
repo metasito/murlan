@@ -367,10 +367,10 @@ export function OnlineGameProvider({ userId, children }: { userId: string; child
 
     const onPlayerLeft = () => setPlayerLeft(true);
 
-    // A vacated seat handed to a bot — the table survives. This must stay
-    // separate from game:player_left (which drives the blocking "Partita
-    // interrotta" teardown): the server used to broadcast player_left here
-    // too, ejecting every remaining human from a game it was keeping alive.
+    // A vacated seat handed to a bot — the table survives, so this is a
+    // notice and nothing more. It must stay separate from game:player_left,
+    // which drives the blocking "Partita interrotta" teardown and would eject
+    // every remaining human from a game the server is still keeping alive.
     const onSeatBotTakeover = ({ message, username: leftUsername }: { userId: string; username: string; seatIndex: number; message?: string }) => {
       showNotification({
         type: "game_info",

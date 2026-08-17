@@ -232,6 +232,12 @@ export const __testables = {
     readPersistedPlayerMap(storedMap, storedIds),
   countRematchAnswers: (game: OnlineGameState) => countRematchAnswers(game),
   tableWantsRematch: (game: OnlineGameState) => tableWantsRematch(game),
+  /**
+   * Whether a room still holds a live in-memory game. The only observable
+   * difference between a disposed table and one that merely stopped emitting,
+   * since disposal deletes the `active_games` row without awaiting it.
+   */
+  hasActiveGame: (roomId: string) => activeGames.has(roomId),
   /** The restart-orphan prune, which only a real database can exercise. */
   pruneAbandonedGames: () => pruneAbandonedGames(),
   ABANDONED_GAME_MAX_AGE_MS,
@@ -643,11 +649,11 @@ function startAfkTimer(roomId: string, userId: string, username: string) {
 // ─── Seat vacancy ─────────────────────────────────────────────────────────────
 
 /**
- * Frees a seat whose player is gone for good (grace period expired, or an
- * explicit leave mid-game) and hands it to a bot. The hand stays in play, so
- * the table can always continue: the seat must be removed from `playerMap`
- * *and* marked AI-controlled together, or the table deadlocks as soon as the
- * turn comes round to it.
+ * Frees a seat whose player is gone for good — grace period expired, or an
+ * explicit leave, either mid-hand or at the results screen — and hands it to a
+ * bot. The hand stays in play, so the table can always continue: the seat must
+ * be removed from `playerMap` *and* marked AI-controlled together, or the table
+ * deadlocks as soon as the turn comes round to it.
  */
 async function vacateSeat(
   io: SocketServer,
@@ -671,9 +677,21 @@ async function vacateSeat(
   const remaining = Object.keys(game.playerMap).length;
 
   if (game.gameState.gameOver) {
-    // Between hands: the leaver simply stops counting towards the rematch
-    // vote. The table isn't "interrupted" here — it's still the lobby.
-    io.to(roomId).emit("game:player_left", { userId, username, seatIndex: seat });
+    // Between hands the table is not interrupted — it is waiting to deal
+    // again — so the leaver simply stops counting towards the rematch vote.
+    // This must NOT be `game:player_left`: that event drives the client's
+    // "Partita interrotta" teardown, which would eject everyone still sitting
+    // at a table the server is about to restart.
+    io.to(roomId).emit("game:seat_bot_takeover", {
+      userId,
+      username,
+      seatIndex: seat,
+      code: "PLAYER_LEFT_BOT_TAKEOVER",
+      message: `${username} ha lasciato la partita — il computer gioca al suo posto.`,
+      params: { username },
+    });
+    // `total` is the seated-seat count, which is what the `game:rematch_vote`
+    // gate compares `rematchVotes.size` against.
     io.to(roomId).emit("game:vote_state", {
       votes: Array.from(game.rematchVotes),
       total: remaining,
@@ -1986,8 +2004,18 @@ export function setupSocket(httpServer: HttpServer) {
           clearAfkTimer(currentRoomId, userId);
           const game = activeGames.get(currentRoomId);
 
-          if (!game || game.gameState.gameOver) {
+          if (!game) {
             await handleLeaveRoom_lobby(io, currentRoomId, userId, username);
+            return;
+          }
+
+          if (game.gameState.gameOver) {
+            // Dropped at the results screen. Nobody is mid-turn, so there is
+            // nothing for a grace period to protect: free the seat straight
+            // away or it keeps counting towards the rematch gate and the
+            // remaining players can never start the next manche.
+            await handleLeaveRoom_lobby(io, currentRoomId, userId, username);
+            await vacateSeat(io, currentRoomId, userId, username);
             return;
           }
 
@@ -2267,10 +2295,12 @@ async function handleLeaveRoom(
       "room:state",
       roomStatePayload({ ...room, hostUserId: newHostId }, remaining)
     );
-  } else if (room.status === "in_progress") {
-    // Removing the DB row alone leaves the seat live in the in-memory game:
-    // vacateSeat must also run, or the leaver's seat keeps receiving their
-    // hand and auto-playing on their behalf.
+  } else if (activeGames.has(roomId)) {
+    // A live game in memory is the only authority on whether the seat is still
+    // held: `rooms.status` reads "finished" between manches too, so it cannot
+    // tell an ended match from a table waiting to deal again. Removing the DB
+    // row alone leaves the seat live in the in-memory game — auto-playing the
+    // leaver's hand mid-manche, or blocking the rematch gate between them.
     await vacateSeat(io, roomId, userId, socket.data?.username ?? username);
   }
 }

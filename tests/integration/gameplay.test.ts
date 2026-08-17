@@ -575,4 +575,168 @@ describe("gameplay integrity", { skip: hasDatabase() ? false : skipMessage() }, 
       `a hand must never be logged, at any level:\n${leaks.join("\n")}`
     );
   });
+
+  // ── Test 7 ──────────────────────────────────────────────────────────────
+
+  /**
+   * Records every occurrence of `event` for the life of the test, for
+   * assertions about an event that must *never* arrive. The returned array is
+   * the live one the listener pushes into: read it at assertion time. Copying
+   * it earlier (spreading two of them into one array, say) snapshots it while
+   * it is still empty, and the assertion can then never fail.
+   */
+  function collect(client: Client, event: string): unknown[] {
+    const seen: unknown[] = [];
+    client.socket.on(event, (payload: unknown) => seen.push(payload));
+    return seen;
+  }
+
+  /** Polls a server-side predicate that no socket event announces. */
+  async function waitUntil(
+    predicate: () => boolean,
+    message: string,
+    ms = 5_000
+  ): Promise<void> {
+    const deadline = Date.now() + ms;
+    while (Date.now() < deadline) {
+      if (predicate()) return;
+      await new Promise((resolve) => setTimeout(resolve, 25));
+    }
+    assert.fail(message);
+  }
+
+  /** Plays the opening hand of a fresh room out to `game:over`. */
+  async function playOpeningHand(clients: Client[]): Promise<void> {
+    const result = await driveHandToExchangeOrOver(clients, () => {
+      clients[0].socket.emit("room:start");
+    });
+    assert.equal(result.stoppedOn, "gameOver");
+  }
+
+  /**
+   * `rooms.status` is set to "finished" after every manche, not only at the end
+   * of a match, so it cannot tell a table that is waiting to deal again from
+   * one that is over. Nothing else removes a seat between hands and the
+   * unanimous ready gate counts seats, so the seat has to be freed here or one
+   * player tapping "Torna alla lobby" blocks the next manche for everyone else.
+   */
+  test("a player leaving at the results screen frees the seat and the table plays on", async () => {
+    const [alice, bob, carol] = await makeClients([
+      "results_leave_alice",
+      "results_leave_bob",
+      "results_leave_carol",
+    ]);
+    await setUpRoom([alice, bob, carol], 3);
+    await playOpeningHand([alice, bob, carol]);
+
+    // The hazard this fix has to avoid: `game:player_left` drives the client's
+    // blocking "Partita interrotta" teardown, which would eject both survivors
+    // from a table the server is about to restart.
+    const bobTeardowns = collect(bob, "game:player_left");
+    const carolTeardowns = collect(carol, "game:player_left");
+
+    const takeover = waitFor<{ userId: string; seatIndex: number }>(
+      bob.socket,
+      "game:seat_bot_takeover"
+    );
+    const voteState = waitFor<{ votes: string[]; total: number }>(
+      carol.socket,
+      "game:vote_state"
+    );
+    alice.socket.emit("room:leave");
+
+    const seatFreed = await takeover;
+    assert.equal(seatFreed.userId, alice.user.id);
+    const votes = await voteState;
+    assert.equal(votes.total, 2, "the ready gate must only count the seats still held");
+    assert.deepEqual(votes.votes, []);
+    assert.deepEqual(
+      [...bobTeardowns, ...carolTeardowns],
+      [],
+      "a between-hands leave must not fire the client's game-interrupted teardown"
+    );
+
+    const started = [bob, carol].map((c) =>
+      waitFor(c.socket, "game:started", 8_000)
+    );
+    const matchState = waitFor<{ target: number }>(
+      bob.socket,
+      "game:match_state",
+      8_000
+    );
+    bob.socket.emit("game:rematch_vote");
+    carol.socket.emit("game:rematch_vote");
+    await Promise.all(started);
+    assert.ok((await matchState).target > 0);
+  });
+
+  // ── Test 8 ──────────────────────────────────────────────────────────────
+
+  test("a hard disconnect at the results screen frees the seat with no grace period", async () => {
+    const [dave, erin, frank] = await makeClients([
+      "results_drop_dave",
+      "results_drop_erin",
+      "results_drop_frank",
+    ]);
+    await setUpRoom([dave, erin, frank], 3);
+    await playOpeningHand([dave, erin, frank]);
+
+    const erinTeardowns = collect(erin, "game:player_left");
+    const frankTeardowns = collect(frank, "game:player_left");
+    // Nobody is mid-turn between hands, so there is nothing to hold a grace
+    // period open for — the seat is freed on the disconnect itself.
+    const graceNotices = collect(erin, "game:player_disconnected");
+
+    const takeover = waitFor<{ userId: string }>(
+      erin.socket,
+      "game:seat_bot_takeover",
+      5_000
+    );
+    dave.socket.disconnect();
+    assert.equal((await takeover).userId, dave.user.id);
+    assert.deepEqual(
+      [...erinTeardowns, ...frankTeardowns],
+      [],
+      "a drop at the results screen must not fire the client's game-interrupted teardown"
+    );
+    assert.deepEqual(graceNotices, []);
+
+    const started = [erin, frank].map((c) =>
+      waitFor(c.socket, "game:started", 8_000)
+    );
+    erin.socket.emit("game:rematch_vote");
+    frank.socket.emit("game:rematch_vote");
+    await Promise.all(started);
+  });
+
+  // ── Test 9 ──────────────────────────────────────────────────────────────
+
+  test("the last player leaving the results screen disposes the room", async () => {
+    const { __testables } = await import("../../server/socket.ts");
+    const [gina, hugo] = await makeClients([
+      "results_dispose_gina",
+      "results_dispose_hugo",
+    ]);
+    const room = await setUpRoom([gina, hugo], 2);
+    await playOpeningHand([gina, hugo]);
+
+    assert.equal(__testables.hasActiveGame(room.roomId), true);
+
+    const takeover = waitFor(hugo.socket, "game:seat_bot_takeover");
+    gina.socket.emit("room:leave");
+    await takeover;
+    assert.equal(
+      __testables.hasActiveGame(room.roomId),
+      true,
+      "a table with a seat still held must survive"
+    );
+
+    // The last leaver's own socket has already left the room, so the disposal
+    // is announced to nobody — it is only observable on the server.
+    hugo.socket.emit("room:leave");
+    await waitUntil(
+      () => !__testables.hasActiveGame(room.roomId),
+      "the room kept a live game in memory after its last seat emptied"
+    );
+  });
 });
