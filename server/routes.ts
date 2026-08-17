@@ -132,10 +132,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
     const passwordHash = await bcrypt.hash(password, 10);
     const user = await storage.createUser({ username, password: passwordHash });
 
-    // Regenerating gives this login a fresh session id instead of writing
-    // into whatever session the request already carried — otherwise an
-    // attacker who planted a cookie on this origin before the victim signed
-    // in would inherit their session.
+    // Regenerating gives the new account a fresh session id instead of writing
+    // into whatever session the registration request already carried —
+    // otherwise an attacker who planted a cookie on this origin before the
+    // victim signed up would inherit their session.
     req.session.regenerate((regenErr) => {
       if (regenErr) {
         logger.error({ err: regenErr }, "Session regenerate failed on register");

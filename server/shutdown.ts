@@ -2,10 +2,28 @@ import type { Server as HttpServer } from "node:http";
 import type { Pool } from "pg";
 import type { Server as SocketIOServer } from "socket.io";
 import { logger } from "./logger.ts";
-import { pool as appPool } from "./db.ts";
+import { pool as appPool, QUERY_TIMEOUT_MS } from "./db.ts";
+import { drainPool } from "./drainPool.ts";
 
-/** How long the whole sequence gets before the process is killed anyway. */
-const FORCED_EXIT_MS = 10_000;
+/**
+ * Replit Cloud Run sends SIGTERM and SIGKILLs roughly ten seconds later. The
+ * whole sequence below has to finish inside that window; a budget longer than
+ * it buys nothing, because the platform kills the process first.
+ */
+export const PLATFORM_GRACE_MS = 10_000;
+
+/**
+ * The drain has to outlast one query's own timeout. A client stuck on a query
+ * is not returned to the pool until `QUERY_TIMEOUT_MS` aborts it, so a shorter
+ * window would report writes abandoned a moment before they land.
+ */
+export const DRAIN_TIMEOUT_MS = QUERY_TIMEOUT_MS + 1_000;
+
+/**
+ * Last resort. Strictly after the drain, so the ordinary path always reaches
+ * exit(0) first, and strictly inside PLATFORM_GRACE_MS, so it can fire at all.
+ */
+export const FORCED_EXIT_MS = DRAIN_TIMEOUT_MS + 2_000;
 
 export interface ShutdownDeps {
   io: SocketIOServer;
@@ -50,7 +68,24 @@ export async function shutdown(
     if (server.listening) {
       await new Promise<void>((resolve) => server.close(() => resolve()));
     }
-    await pool.end();
+    // Disconnecting the sockets above starts writes — updateLastSeen, the
+    // lobby teardown — and `handleGameOver` and `persistGameState` are
+    // fire-and-forget, so nothing else holds a promise for any of them.
+    // `pool.end()` makes every subsequent checkout fail, which would drop
+    // exactly the stats, ladder and replay rows this shutdown exists to save.
+    if (await drainPool(pool, { timeoutMs: DRAIN_TIMEOUT_MS })) {
+      await pool.end();
+    } else {
+      logger.error(
+        { busy: pool.totalCount - pool.idleCount, waiting: pool.waitingCount },
+        "Postgres pool still busy after the drain window — in-flight writes are being abandoned"
+      );
+      // `pool.end()` resolves only once every checked-out client is released,
+      // which a client the drain could not account for will not do inside the
+      // remaining budget. Start the close, exit on our own terms, and let the
+      // process teardown drop the sockets.
+      void pool.end().catch((err) => logger.error({ err }, "Pool close failed"));
+    }
     logger.info("Server shut down cleanly");
     exit(0);
   } catch (err) {

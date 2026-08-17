@@ -32,14 +32,22 @@ test("the Postgres pool is constructed with an error handler and timeouts", asyn
     1,
     "the pool must handle its own `error` event — an idle-client error with no listener is an unhandled EventEmitter error"
   );
-  assert.notEqual(
-    pool.options.connectionTimeoutMillis,
-    0,
-    "connectionTimeoutMillis of 0 means wait forever for a free client"
-  );
-  assert.notEqual(
-    pool.options.statement_timeout,
-    0,
-    "statement_timeout of 0 means a stuck query holds its pool slot forever"
+  // pg defaults none of these, so an absent option reads as `undefined`.
+  assert.deepEqual(
+    {
+      max: pool.options.max,
+      connectionTimeoutMillis: pool.options.connectionTimeoutMillis,
+      idleTimeoutMillis: pool.options.idleTimeoutMillis,
+      statement_timeout: pool.options.statement_timeout,
+      query_timeout: pool.options.query_timeout,
+    },
+    {
+      max: 10,
+      connectionTimeoutMillis: 5_000,
+      idleTimeoutMillis: 30_000,
+      statement_timeout: 5_000,
+      query_timeout: 5_000,
+    },
+    "every bound the pool is meant to carry must be set — an unset one is `undefined`, which waits forever"
   );
 });

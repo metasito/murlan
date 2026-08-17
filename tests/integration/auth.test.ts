@@ -1,5 +1,6 @@
 import { test, before, after, describe } from "node:test";
 import assert from "node:assert/strict";
+import pg from "pg";
 import { startTestServer, hasDatabase, skipMessage, type TestServer } from "../helpers/testServer.ts";
 import { register, connect as connectRaw } from "../helpers/client.ts";
 
@@ -109,6 +110,48 @@ describe("session regeneration on login and registration", { skip: hasDatabase()
       sidFromSetCookie(cookie1),
       "register must regenerate the session id, not reuse the one the request carried"
     );
+  });
+
+  test("a registration whose session step fails leaves no orphaned user", async () => {
+    const username = "sid_reg_rollback";
+    // The register route creates the user row before it touches the session,
+    // so a failing session step must delete that row again — otherwise the
+    // username is taken by an account nobody can log into.
+    //
+    // The failure is driven for real, with no test-only seam in the server: a
+    // NOT VALID check constraint on the `session` table that startTestServer()
+    // pins this app to makes the store's INSERT fail while leaving deletes
+    // alone. Deletes have to keep working — rollbackRegistration reaches
+    // storage.deleteUser, which clears the user's own session rows.
+    const admin = new pg.Pool({ connectionString: process.env.DATABASE_URL! });
+    try {
+      await admin.query(
+        `ALTER TABLE "${server.schema}".session ADD CONSTRAINT session_writes_fail CHECK (false) NOT VALID`
+      );
+
+      const res = await fetch(`${server.url}/api/auth/register`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ username, password: "password123" }),
+      });
+      const text = await res.text();
+      assert.notEqual(res.status, 200, `registration must fail when the session cannot be saved: ${text}`);
+    } finally {
+      await admin.query(
+        `ALTER TABLE "${server.schema}".session DROP CONSTRAINT session_writes_fail`
+      );
+      await admin.end();
+    }
+
+    // The username being free again is the user-visible proof the rollback
+    // ran, and a stronger one than reading the users table.
+    const retry = await fetch(`${server.url}/api/auth/register`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ username, password: "password123" }),
+    });
+    const retryText = await retry.text();
+    assert.equal(retry.status, 200, `the rolled-back username must be free again: ${retryText}`);
   });
 
   test("logging in twice in the same browser still works", async () => {

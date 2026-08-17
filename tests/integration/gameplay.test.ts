@@ -1,7 +1,8 @@
-import { test, before, after, describe } from "node:test";
+import { test, before, after, describe, mock } from "node:test";
 import assert from "node:assert/strict";
 import { io as ioClient, type Socket } from "socket.io-client";
 import type { Card } from "../../lib/gameEngine.ts";
+import { logger } from "../../server/logger.ts";
 import {
   startTestServer,
   hasDatabase,
@@ -456,5 +457,122 @@ describe("gameplay integrity", { skip: hasDatabase() ? false : skipMessage() }, 
     }
     assert.ok(sawBotAct, "no bot seat ever played");
     assert.ok(sawTurnPastBot, "the turn never advanced past a bot seat");
+  });
+
+  // ── Test 6 ──────────────────────────────────────────────────────────────
+
+  const LOG_LEVELS = ["info", "debug", "warn", "error"] as const;
+
+  interface LoggedLine {
+    level: (typeof LOG_LEVELS)[number];
+    args: unknown[];
+  }
+
+  /**
+   * `${rank}_${suit}`, plus the two jokers — the shape createDeck gives every
+   * card id. A log line carrying one of these is leaking a hand.
+   */
+  const CARD_ID = /^(?:[2-9]|10|[JQKA])_(?:hearts|diamonds|clubs|spades)$|^joker_(?:bw|colored)$/;
+
+  function isRecord(v: unknown): v is Record<string, unknown> {
+    return typeof v === "object" && v !== null;
+  }
+
+  /** Every `key: value` pair reachable from a logged argument. */
+  function* walk(value: unknown, key = ""): Generator<[string, unknown]> {
+    yield [key, value];
+    if (!isRecord(value)) return;
+    if (Array.isArray(value)) {
+      for (const item of value) yield* walk(item, key);
+      return;
+    }
+    for (const [k, v] of Object.entries(value)) yield* walk(v, k);
+  }
+
+  /**
+   * A disputed result has to be reconstructable from the log, and the price of
+   * that must never be a hand appearing in it. Both halves are asserted over
+   * the same run: the outcome line has to be there exactly once, and nothing
+   * logged at any level — the per-play debug line included — may name a card.
+   */
+  test("a finished hand logs its outcome once, and no log line carries a card", async () => {
+    const [alice, bob] = await makeClients(["outcome_log_alice", "outcome_log_bob"]);
+    const room = await setUpRoom([alice, bob], 2);
+
+    // pino's level setter swaps every disabled level method for `noop`, so the
+    // level has to be raised *before* the spies go on: setting it afterwards
+    // would overwrite them.
+    const previousLevel = logger.level;
+    logger.level = "debug";
+    const lines: LoggedLine[] = [];
+    for (const level of LOG_LEVELS) {
+      mock.method(logger, level, (...args: unknown[]) => {
+        lines.push({ level, args });
+      });
+    }
+
+    try {
+      const result = await driveHandToExchangeOrOver([alice, bob], () => {
+        alice.socket.emit("room:start");
+      });
+      assert.equal(result.stoppedOn, "gameOver");
+      // No wait: handleGameOver logs the outcome in the same synchronous block
+      // as the `game:over` emit, and the client's callback cannot run before
+      // that block returns.
+    } finally {
+      mock.restoreAll();
+      logger.level = previousLevel;
+    }
+
+    const ours = lines.filter(
+      (l) => isRecord(l.args[0]) && l.args[0].roomId === room.roomId
+    );
+
+    const outcomes = ours.filter((l) => {
+      const payload = l.args[0] as Record<string, unknown>;
+      return "rankings" in payload && "matchWinners" in payload;
+    });
+    assert.equal(
+      outcomes.length,
+      1,
+      `expected exactly one outcome line for room ${room.roomId}, got ${outcomes.length}`
+    );
+    const outcome = outcomes[0].args[0] as Record<string, unknown>;
+    assert.equal(outcomes[0].level, "info");
+    assert.ok(Array.isArray(outcome.rankings) && outcome.rankings.length === 2);
+    assert.ok(isRecord(outcome.cumulative), "the running scoreboard must be logged");
+    assert.equal(outcome.matchLength, "match");
+
+    const plays = ours.filter(
+      (l) => l.level === "debug" && isRecord(l.args[0]) && "comboType" in l.args[0]
+    );
+    assert.ok(
+      plays.length > 0,
+      "no per-play debug line was observed — the card-leak check below would be vacuous"
+    );
+    for (const play of plays) {
+      const payload = play.args[0] as Record<string, unknown>;
+      assert.equal(typeof payload.cardCount, "number");
+      assert.equal(typeof payload.seat, "number");
+    }
+
+    const leaks: string[] = [];
+    for (const line of lines) {
+      for (const arg of line.args) {
+        for (const [key, value] of walk(arg)) {
+          if (key === "hand" || key === "hands" || key === "cards") {
+            leaks.push(`${line.level}: key "${key}"`);
+          }
+          if (typeof value === "string" && CARD_ID.test(value)) {
+            leaks.push(`${line.level}: card id "${value}" under "${key}"`);
+          }
+        }
+      }
+    }
+    assert.deepEqual(
+      leaks,
+      [],
+      `a hand must never be logged, at any level:\n${leaks.join("\n")}`
+    );
   });
 });
