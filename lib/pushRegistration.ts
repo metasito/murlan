@@ -6,7 +6,6 @@
 // remembers the answer forever, and a launch-time prompt for a game the player
 // has not yet decided to play with anyone is the one most reliably denied.
 import { Platform } from "react-native";
-import * as Notifications from "expo-notifications";
 import Constants from "expo-constants";
 import { apiRequest } from "./query-client";
 
@@ -15,6 +14,18 @@ let currentToken: string | null = null;
 
 /** Web has no push here — the game is played in a tab that is already open. */
 const supported = () => Platform.OS === "ios" || Platform.OS === "android";
+
+/**
+ * Loaded on demand, and only on a platform that can use it.
+ *
+ * expo-notifications registers a push-token listener as it initialises and
+ * warns that the listener does nothing on web. Importing it at module scope
+ * put that warning in every web session — the platform the game is actually
+ * played on today — for a module web never calls.
+ */
+async function notifications() {
+  return import("expo-notifications");
+}
 
 /**
  * The EAS project this build belongs to. `getExpoPushTokenAsync` needs it, and
@@ -43,6 +54,7 @@ export async function registerForPush(): Promise<void> {
   if (!id) return;
 
   try {
+    const Notifications = await notifications();
     const existing = await Notifications.getPermissionsAsync();
     let granted = existing.granted;
 

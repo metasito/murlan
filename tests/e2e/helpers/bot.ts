@@ -83,6 +83,44 @@ const CARD_CLICK_TIMEOUT_MS = 4_000;
  * straight, which this bot cannot build — only a bomb can possibly answer
  * one, so it skips straight to that.
  */
+/**
+ * Card strength, weakest first, by the word the table uses for each rank
+ * (lib/cardNames.ts against locales/it.ts). Suit is absent on purpose: no
+ * source gives suits an order and `cardStrength()` ignores them, so equal
+ * ranks are equal strength.
+ */
+const RANK_ORDER = [
+  "3", "4", "5", "6", "7", "8", "9", "10",
+  "Fante", "Donna", "Re", "Asso", "2",
+  "Joker nero", "Joker colorato",
+];
+
+/** -1 for anything this does not recognise, which callers treat as "try it". */
+function rankIndex(cardLabel: string): number {
+  return RANK_ORDER.indexOf(rankKeyOf(cardLabel));
+}
+
+/**
+ * The strength of a single sitting on the table, or null when there is none to
+ * beat.
+ *
+ * Null covers three cases that all want the same exhaustive search: an empty
+ * table, a combination that is not a single (its label reads "coppia di
+ * Donna", whose rank key is "coppia" and matches nothing here), and a play the
+ * viewer made themselves — "Hai giocato" does not contain "ha giocato", so the
+ * pattern misses it, which is right: everyone passed and the viewer now leads.
+ *
+ * Leading must stay exhaustive. The opening play of a match has to contain the
+ * dealt start card specifically, so skipping any candidate there can skip the
+ * only legal move.
+ */
+function tableSingleStrength(desc: string): number | null {
+  const played = desc.match(/ha giocato (.+?)\./);
+  if (!played) return null;
+  const index = rankIndex(played[1]);
+  return index === -1 ? null : index;
+}
+
 function requiredReplySize(desc: string): number | null {
   if (/ha giocato coppia di/.test(desc)) return 2;
   if (/ha giocato tris di/.test(desc)) return 3;
@@ -180,7 +218,20 @@ async function playOrPass(page: Page, desc: string): Promise<string | null> {
   }
 
   if (replySize === null) {
-    for (const label of labels) {
+    // Following a single, every card at or below the table's rank is a wasted
+    // pair of clicks: a beating play must be *strictly* higher, so an equal
+    // rank is illegal and a lower one obviously is. This orders the search; it
+    // does not decide it. GIOCA is still the only thing that says yes, and an
+    // unrecognised rank sorts as "try it" rather than "skip it".
+    //
+    // This is where the suite's wall clock goes. Answering a Queen from a hand
+    // of eighteen used to mean selecting and deselecting fifteen losing cards
+    // first, one move at a time, all game.
+    const floor = tableSingleStrength(desc);
+    const worthTrying =
+      floor === null ? labels : labels.filter((l) => rankIndex(l) === -1 || rankIndex(l) > floor);
+
+    for (const label of worthTrying) {
       const outcome = await tryCombo([label]);
       if (outcome === "played") return `played single ${label}`;
       if (outcome === "gone") return null;

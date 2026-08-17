@@ -26,22 +26,21 @@ test.describe("offline vs AI — single hand, reaches a result", () => {
 
   for (const config of configs) {
     test(config.name, async ({ page, baseURL, consoleErrors }) => {
-      // How long a hand takes here is decided by the deal, not by the app.
-      // The bot never models card legality: it selects a candidate
-      // combination and reads the real GIOCA button to find out whether it
-      // was legal (helpers/bot.ts), which is the point of it — that button
-      // is what a player relies on. The cost is that a move takes as many
-      // clicks as the deal makes it take, and across runs the same test has
-      // ranged from 49s to over 4 minutes with nothing else on the machine.
+      // How long a hand takes here is decided by the deal, not by the app:
+      // the bot never models card legality, it selects a candidate and reads
+      // the real GIOCA button to find out (helpers/bot.ts), so a move costs
+      // as many clicks as the deal makes it cost. Measured on one run each
+      // after that search learned to skip cards that cannot win: 2p 35s,
+      // 3p 34s, 4p free-for-all 29s, 4p teams 41s.
       //
-      // So the budget is deliberately far above the typical run rather than
-      // a tight multiple of it. It is not the check. A game that is actually
-      // broken is caught by `stallMs` — 15s with the table description
-      // unchanged — which is untouched, fails in seconds, and reports the
-      // state it stopped in. This only stops a runaway from hanging the
-      // suite, and a value that fits the median makes the suite fail on
-      // unlucky deals instead.
-      const driveTimeoutMs = 8 * 60_000;
+      // The budget stays far above those rather than a tight multiple,
+      // because the spread across deals is the whole point — the same test
+      // has ranged from 49s to over 4 minutes. It is not the check either. A
+      // game that is actually broken is caught by `stallMs`, 15s with the
+      // table description unchanged, which is untouched and fails in seconds
+      // with the state it stopped in. This only stops a runaway from hanging
+      // the suite.
+      const driveTimeoutMs = 5 * 60_000;
       test.setTimeout(driveTimeoutMs + 30_000);
       await openApp(page, baseURL!);
       await startOfflineGame(page, {
