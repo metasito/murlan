@@ -803,11 +803,12 @@ async function vacateSeat(
       message: `${username} ha lasciato la partita.`,
       params: { username },
     });
-    // The hand is scored rather than discarded. The win goes to the last
-    // seat still held by a person — bot seats may well still be at the table,
-    // and none of them may take a hand a human was playing — and concedeHand
-    // places every seat still holding cards behind them, the walkout included
-    // as the last-place finish a forfeit is.
+    // The hand is scored rather than discarded. The win goes to the last seat
+    // still held by a person; concedeHand places every seat still holding
+    // cards behind them, the walkout included as the last-place finish a
+    // forfeit is. `survivorSeat` is undefined when the departing seat was the
+    // only human — the remaining bots then place among themselves, and
+    // isContestedTable drops every write for such a table anyway.
     const survivorSeat = Object.keys(game.playerMap).map(Number)[0];
     concedeHand(game, survivorSeat);
     // Sets rooms.status = "finished" and writes the row itself; the write is
