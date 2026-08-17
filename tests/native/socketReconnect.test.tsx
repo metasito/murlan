@@ -62,7 +62,7 @@ const fireConnectError = async () => {
 const RETRY_BASE_MS = 2000;
 
 describe('connect_error', () => {
-  let setTimeoutSpy: ReturnType<typeof jest.spyOn>;
+  let setTimeoutSpy: jest.Spied<typeof setTimeout>;
 
   beforeEach(() => {
     jest.useFakeTimers();
