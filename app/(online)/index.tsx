@@ -79,8 +79,15 @@ export default function OnlineLobbyScreen() {
     router.push("/(online)/game");
   }
 
+  // `flex: 1` is for the landscape row, where the two sections share the width.
+  // Stacked in the portrait ScrollView it makes them fight over the container's
+  // height instead of sizing to their content, and they end up overlapping —
+  // the "oppure" divider landed on top of the create button and swallowed its
+  // taps, so a room could not be created on a phone in portrait at all.
+  const sectionFlex = isLandscape ? styles.sectionFlex : undefined;
+
   const CreateSection = (
-    <View style={{ flex: 1 }}>
+    <View style={sectionFlex}>
       <MenuCard title={t("onlineLobby.createRoomTitle")} style={isLandscape ? styles.compactCard : undefined}>
         <View style={isLandscape ? styles.optSectionLandscape : styles.optSection}>
           <Text style={styles.optLabelSmall}>{t("onlineLobby.modeLabel")}</Text>
@@ -155,7 +162,7 @@ export default function OnlineLobbyScreen() {
   );
 
   const JoinSection = (
-    <View style={{ flex: 1 }}>
+    <View style={sectionFlex}>
       <MenuCard title={t("onlineLobby.joinRoomTitle")} style={isLandscape ? styles.compactCard : undefined}>
         <View style={{ paddingVertical: isLandscape ? 2 : 4 }}>
           <MenuButton
@@ -371,6 +378,7 @@ const styles = StyleSheet.create({
   toggleText: { fontFamily: "Rajdhani_600SemiBold", fontSize: 14, color: Colors.textSecondary },
   toggleTextActive: { color: Colors.gold },
   warn: { fontFamily: "Inter_400Regular", fontSize: 12, color: Colors.dangerDim, marginBottom: 4 },
+  sectionFlex: { flex: 1 },
   divider: { flexDirection: "row", alignItems: "center", gap: 12 },
   divLine: { flex: 1, height: 1, backgroundColor: Colors.border },
   divText: { fontFamily: "Inter_400Regular", fontSize: 12, color: Colors.textMuted },

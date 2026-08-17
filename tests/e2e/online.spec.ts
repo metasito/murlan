@@ -105,3 +105,24 @@ test("online — two real browsers play a live 2-player game against each other"
     await contextB.close();
   }
 });
+
+// A phone in portrait, which is how most people hold one, and the narrowest
+// layout the online lobby has.
+//
+// The two sections carry `flex: 1` for the landscape row where they sit side by
+// side. Stacked in the portrait ScrollView that made them fight over the
+// container's height instead of sizing to content, and they overlapped: the
+// "oppure" divider came to rest on top of the create button and swallowed its
+// taps. Nothing looked broken — the button was visible, enabled and correctly
+// labelled — it simply could not be pressed, so no room could be created on a
+// phone at all. Only a real click finds that.
+test("online — a room can be created on a phone in portrait", async ({ page, baseURL }) => {
+  test.setTimeout(2 * 60_000);
+  await page.setViewportSize({ width: 390, height: 844 });
+  await openApp(page, baseURL!);
+  await registerNewAccount(page, uniqueUsername("e2eport"));
+  await goToOnlineLobby(page);
+
+  const code = await createRoom(page, { playerCount: 4, gameMode: "free_for_all" });
+  expect(code).toMatch(/^[A-Z0-9]{6}$/);
+});
