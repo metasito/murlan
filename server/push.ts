@@ -12,8 +12,16 @@ import { buildPushRequest, deadTokens, type ExpoTicket, type PushMessage } from 
 
 export type { PushMessage };
 
-/** Expo's push service. One POST, one JSON response, no SDK. */
-const EXPO_PUSH_URL = "https://exp.host/--/api/v2/push/send";
+/**
+ * Expo's push service. One POST, one JSON response, no SDK.
+ *
+ * Overridable so a test can point it at a local stub. Without that, testing
+ * that an invite actually reaches this code would mean sending invented
+ * tokens to Expo's production service on every run. The default is the real
+ * endpoint, so an unset variable is the shipping behaviour.
+ */
+const EXPO_PUSH_URL =
+  process.env.MURLAN_EXPO_PUSH_URL ?? "https://exp.host/--/api/v2/push/send";
 
 /** Registers, or re-registers, one device. */
 export async function savePushToken(
