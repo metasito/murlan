@@ -8,19 +8,24 @@
     "scheme": "murlan",
     "userInterfaceStyle": "dark",
     "newArchEnabled": true,
-    "splash": {
-      "image": "./assets/images/splash-icon.png",
-      "resizeMode": "contain",
-      "backgroundColor": "#061410"
-    },
     "ios": {
       "supportsTablet": false,
-      "bundleIdentifier": "com.murlan.cardgame"
+      "bundleIdentifier": "com.murlan.cardgame",
+      "infoPlist": {
+        "NSAppTransportSecurity": {
+          "NSAllowsArbitraryLoads": false,
+          "NSExceptionDomains": {
+            "localhost": {
+              "NSExceptionAllowsInsecureHTTPLoads": true
+            }
+          }
+        }
+      }
     },
     "android": {
       "package": "com.murlan.cardgame",
       "adaptiveIcon": {
-        "backgroundColor": "#061410",
+        "backgroundColor": "#031008",
         "foregroundImage": "./assets/images/android-icon-foreground.png",
         "backgroundImage": "./assets/images/android-icon-background.png",
         "monochromeImage": "./assets/images/android-icon-monochrome.png"
@@ -37,7 +42,17 @@
         }
       ],
       "expo-font",
-      "expo-web-browser"
+      [
+        "expo-splash-screen",
+        {
+          "image": "./assets/images/splash-icon.png",
+          "resizeMode": "contain",
+          "backgroundColor": "#031008"
+        }
+      ],
+      "expo-audio",
+      "expo-localization",
+      "expo-notifications"
     ],
     "experiments": {
       "typedRoutes": true,

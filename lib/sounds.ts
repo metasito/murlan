@@ -1,7 +1,9 @@
-import { Audio } from "expo-av";
+import { createAudioPlayer, setAudioModeAsync, type AudioPlayer } from "expo-audio";
 import { Platform } from "react-native";
 
-// ─── Web Audio API — plays the same MP3 assets as native via fetch + decode ───
+// Effects are CC0 recordings, built by scripts/build-sounds.mjs and shipped as
+// 44.1 kHz mono 16-bit WAV. WAV rather than the sources' OGG because iOS will
+// not play OGG. Web decodes the same assets through the Web Audio API.
 
 let _webCtx: AudioContext | null = null;
 
@@ -50,33 +52,30 @@ async function playWeb(key: string, assetModule: number, volume: number): Promis
   } catch {}
 }
 
-// ─── Native sounds (expo-av) ──────────────────────────────────────────────────
 
-let soundCache: Record<string, Audio.Sound> = {};
+let soundCache: Record<string, AudioPlayer> = {};
 let _audioModeSet = false;
 
 async function ensureAudioMode(): Promise<void> {
   if (_audioModeSet) return;
   try {
-    await Audio.setAudioModeAsync({
-      playsInSilentModeIOS: true,
-      staysActiveInBackground: false,
-      shouldDuckAndroid: true,
+    await setAudioModeAsync({
+      // Card games are routinely played with the ringer off.
+      playsInSilentMode: true,
+      shouldPlayInBackground: false,
+      interruptionModeAndroid: "duckOthers",
     });
     _audioModeSet = true;
   } catch {}
 }
 
-async function loadSound(key: string, assetModule: number): Promise<Audio.Sound | null> {
-  if (soundCache[key]) return soundCache[key];
+function loadSound(key: string, assetModule: number): AudioPlayer | null {
+  const cached = soundCache[key];
+  if (cached) return cached;
   try {
-    await ensureAudioMode();
-    const { sound } = await Audio.Sound.createAsync(assetModule, {
-      shouldPlay: false,
-      volume: 1.0,
-    });
-    soundCache[key] = sound;
-    return sound;
+    const player = createAudioPlayer(assetModule);
+    soundCache[key] = player;
+    return player;
   } catch {
     return null;
   }
@@ -85,11 +84,12 @@ async function loadSound(key: string, assetModule: number): Promise<Audio.Sound 
 async function playNative(key: string, assetModule: number, volume = 1.0): Promise<void> {
   try {
     await ensureAudioMode();
-    const sound = await loadSound(key, assetModule);
-    if (!sound) return;
-    await sound.setVolumeAsync(volume);
-    await sound.setPositionAsync(0);
-    await sound.playAsync();
+    const player = loadSound(key, assetModule);
+    if (!player) return;
+    player.volume = volume;
+    // A player parked at the end of its buffer plays silence, so rewind first.
+    player.seekTo(0);
+    player.play();
   } catch {}
 }
 
@@ -97,36 +97,46 @@ async function playNative(key: string, assetModule: number, volume = 1.0): Promi
 
 // Each key maps to a function so Metro can statically analyse the require() calls.
 const ASSETS = {
-  select:      () => require("../assets/sounds/card_select.mp3") as number,
-  play:        () => require("../assets/sounds/card_play.mp3") as number,
-  pass:        () => require("../assets/sounds/card_pass.mp3") as number,
-  your_turn:   () => require("../assets/sounds/your_turn.mp3") as number,
-  round_start: () => require("../assets/sounds/round_start.mp3") as number,
-  round_win:   () => require("../assets/sounds/round_win.mp3") as number,
-  urgent:      () => require("../assets/sounds/urgent_tick.mp3") as number,
-  bomb:        () => require("../assets/sounds/bomb.mp3") as number,
-  game_win:    () => require("../assets/sounds/game_win.mp3") as number,
-  game_lose:   () => require("../assets/sounds/game_lose.mp3") as number,
-  deal:        () => require("../assets/sounds/deal.mp3") as number,
-  exchange:    () => require("../assets/sounds/exchange.mp3") as number,
+  select:      () => require("../assets/sounds/card_select.wav") as number,
+  play:        () => require("../assets/sounds/card_play.wav") as number,
+  pass:        () => require("../assets/sounds/card_pass.wav") as number,
+  your_turn:   () => require("../assets/sounds/your_turn.wav") as number,
+  round_start: () => require("../assets/sounds/round_start.wav") as number,
+  round_win:   () => require("../assets/sounds/round_win.wav") as number,
+  urgent:      () => require("../assets/sounds/urgent_tick.wav") as number,
+  bomb:        () => require("../assets/sounds/bomb.wav") as number,
+  game_win:    () => require("../assets/sounds/game_win.wav") as number,
+  game_lose:   () => require("../assets/sounds/game_lose.wav") as number,
+  deal:        () => require("../assets/sounds/deal.wav") as number,
+  exchange:    () => require("../assets/sounds/exchange.wav") as number,
 } as const;
 
 type SoundKey = keyof typeof ASSETS;
 
-// ─── Master enable/disable ────────────────────────────────────────────────────
+// ─── Master enable/volume ─────────────────────────────────────────────────────
+//
+// The per-effect volumes below are a mix, balancing the effects against each
+// other. The master multiplies that mix rather than replacing it, so turning the
+// game down keeps a card select quieter than a bomb.
 
 let _soundsEnabled = true;
 export function setSoundsMasterEnabled(v: boolean) { _soundsEnabled = v; }
 
+let _masterVolume = 1;
+export function setSoundsMasterVolume(v: number) {
+  _masterVolume = Math.max(0, Math.min(1, v));
+}
+
 // ─── Unified play ─────────────────────────────────────────────────────────────
 
 async function play(key: SoundKey, volume: number): Promise<void> {
-  if (!_soundsEnabled) return;
+  if (!_soundsEnabled || _masterVolume === 0) return;
+  const level = volume * _masterVolume;
   const asset = ASSETS[key]();
   if (Platform.OS === "web") {
-    await playWeb(key, asset, volume);
+    await playWeb(key, asset, level);
   } else {
-    await playNative(key, asset, volume);
+    await playNative(key, asset, level);
   }
 }
 
@@ -168,9 +178,7 @@ export async function preloadSounds(): Promise<void> {
   }
   try {
     await ensureAudioMode();
-    await Promise.all(
-      (Object.keys(ASSETS) as SoundKey[]).map((k) => loadSound(k, ASSETS[k]()))
-    );
+    (Object.keys(ASSETS) as SoundKey[]).forEach((k) => loadSound(k, ASSETS[k]()));
     soundsLoaded = true;
   } catch (err) {
     console.warn("[sounds] Preload failed (non-fatal):", err);
@@ -180,6 +188,11 @@ export async function preloadSounds(): Promise<void> {
 }
 
 export function unloadSounds(): void {
-  Object.values(soundCache).forEach((s) => s.unloadAsync().catch(() => {}));
+  Object.values(soundCache).forEach((p) => {
+    try {
+      p.remove();
+    } catch {}
+  });
   soundCache = {};
+  soundsLoaded = false;
 }

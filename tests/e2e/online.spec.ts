@@ -1,0 +1,128 @@
+// Plays real online games through the server-authoritative socket flow:
+// register, create/join a room, and drive the same rendered <GameTable> the
+// offline suite drives — the same bot works unmodified because both
+// screens share one component and the same accessibility contract.
+
+import type { Page } from "@playwright/test";
+import { test, expect, isExpectedNoise } from "./fixtures";
+import { openApp, registerNewAccount } from "./helpers/navigation";
+import { createRoom, fillWithBotsAndStart, goToOnlineLobby, joinRoom, startRoom } from "./helpers/online";
+import { driveGameToCompletion } from "./helpers/bot";
+
+const LEAVE_BUTTON = { role: "button" as const, name: "Esci dalla partita" };
+
+async function isOnlineGameOver(page: Page): Promise<boolean> {
+  return page.getByRole(LEAVE_BUTTON.role, { name: LEAVE_BUTTON.name }).isVisible();
+}
+
+function uniqueUsername(prefix: string): string {
+  return `${prefix}${Date.now().toString(36).slice(-6)}${Math.floor(Math.random() * 900 + 100)}`;
+}
+
+test("online — host fills the room with bots and plays a real server-authoritative game", async ({
+  page,
+  baseURL,
+  consoleErrors,
+}) => {
+  test.setTimeout(6 * 60_000);
+  await openApp(page, baseURL!);
+  await registerNewAccount(page, uniqueUsername("e2ehost"));
+  await goToOnlineLobby(page);
+  await createRoom(page, { playerCount: 2, gameMode: "free_for_all" });
+  await fillWithBotsAndStart(page);
+
+  await driveGameToCompletion(page, {
+    isFinished: isOnlineGameOver,
+    timeoutMs: 5 * 60_000,
+    log: (line) => test.info().annotations.push({ type: "move", description: line }),
+  });
+
+  await expect(page.getByRole(LEAVE_BUTTON.role, { name: LEAVE_BUTTON.name })).toBeVisible();
+  await page.getByRole(LEAVE_BUTTON.role, { name: LEAVE_BUTTON.name }).click();
+
+  expect(consoleErrors.entries, "no console errors/warnings during the online game").toEqual([]);
+});
+
+test("online — two real browsers play a live 2-player game against each other", async ({
+  browser,
+  baseURL,
+}) => {
+  test.setTimeout(7 * 60_000);
+
+  const contextA = await browser.newContext({ locale: "it-IT" });
+  const contextB = await browser.newContext({ locale: "it-IT" });
+  const pageA = await contextA.newPage();
+  const pageB = await contextB.newPage();
+  await pageA.emulateMedia({ reducedMotion: "reduce" });
+  await pageB.emulateMedia({ reducedMotion: "reduce" });
+
+  const errorsA: string[] = [];
+  const errorsB: string[] = [];
+  for (const [p, sink] of [[pageA, errorsA], [pageB, errorsB]] as const) {
+    p.on("console", (msg) => {
+      if (msg.type() !== "error" && msg.type() !== "warning") return;
+      if (isExpectedNoise(msg.text(), msg.location().url)) return;
+      sink.push(`console.${msg.type()}: ${msg.text()}`);
+    });
+    p.on("pageerror", (err) => sink.push(`pageerror: ${err.message}`));
+  }
+
+  try {
+    await openApp(pageA, baseURL!);
+    await registerNewAccount(pageA, uniqueUsername("e2ea"));
+    await openApp(pageB, baseURL!);
+    await registerNewAccount(pageB, uniqueUsername("e2eb"));
+
+    await goToOnlineLobby(pageA);
+    const code = await createRoom(pageA, { playerCount: 2, gameMode: "free_for_all" });
+
+    await goToOnlineLobby(pageB);
+    await joinRoom(pageB, code);
+
+    await startRoom(pageA);
+    await pageB.waitForURL(/\/game/);
+
+    await Promise.all([
+      driveGameToCompletion(pageA, {
+        isFinished: isOnlineGameOver,
+        timeoutMs: 6 * 60_000,
+        log: (line) => test.info().annotations.push({ type: "move-A", description: line }),
+      }),
+      driveGameToCompletion(pageB, {
+        isFinished: isOnlineGameOver,
+        timeoutMs: 6 * 60_000,
+        log: (line) => test.info().annotations.push({ type: "move-B", description: line }),
+      }),
+    ]);
+
+    await expect(pageA.getByRole(LEAVE_BUTTON.role, { name: LEAVE_BUTTON.name })).toBeVisible();
+    await expect(pageB.getByRole(LEAVE_BUTTON.role, { name: LEAVE_BUTTON.name })).toBeVisible();
+
+    expect(errorsA, "no console errors/warnings for player A").toEqual([]);
+    expect(errorsB, "no console errors/warnings for player B").toEqual([]);
+  } finally {
+    await contextA.close();
+    await contextB.close();
+  }
+});
+
+// A phone in portrait, which is how most people hold one, and the narrowest
+// layout the online lobby has.
+//
+// The two sections carry `flex: 1` for the landscape row where they sit side by
+// side. Stacked in the portrait ScrollView that made them fight over the
+// container's height instead of sizing to content, and they overlapped: the
+// "oppure" divider came to rest on top of the create button and swallowed its
+// taps. Nothing looked broken — the button was visible, enabled and correctly
+// labelled — it simply could not be pressed, so no room could be created on a
+// phone at all. Only a real click finds that.
+test("online — a room can be created on a phone in portrait", async ({ page, baseURL }) => {
+  test.setTimeout(2 * 60_000);
+  await page.setViewportSize({ width: 390, height: 844 });
+  await openApp(page, baseURL!);
+  await registerNewAccount(page, uniqueUsername("e2eport"));
+  await goToOnlineLobby(page);
+
+  const code = await createRoom(page, { playerCount: 4, gameMode: "free_for_all" });
+  expect(code).toMatch(/^[A-Z0-9]{6}$/);
+});

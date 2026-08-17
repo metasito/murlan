@@ -1,6 +1,7 @@
 import React, {
   createContext,
   useContext,
+  useEffect,
   useState,
   useCallback,
   useMemo,
@@ -12,58 +13,156 @@ import {
   Combination,
   GameMode,
   PlayerType,
-  AIDifficulty,
+  MatchLength,
+  MATCH_TARGETS,
+  addHandScores,
+  botWantsRematch,
   initializeGame,
   initializeRematch,
+  isMajority,
+  matchIsClosing,
   processExchangeChoice,
   processPlay,
   processPass,
   aiChoosePlay,
   buildCombination,
+  resolveMatch,
+  resolveTeamMatch,
+  scoreHand,
+  sortHand,
   canPlay,
-  deepCloneState,
 } from "@/lib/gameEngine";
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import {
+  OFFLINE_SAVE_KEY,
+  decodeOfflineSave,
+  encodeOfflineSave,
+  isResumable,
+} from "@/lib/offlineSave";
 import type { ExchangeAnnounceData } from "@/lib/sharedGameFlow";
+import type { BotPersonalityId } from "@/lib/botPersonalities";
 
 export interface PlayerSetupConfig {
   name: string;
   type: PlayerType;
-  difficulty?: AIDifficulty;
+  personality?: BotPersonalityId;
   team?: "A" | "B";
 }
 
-export interface RoundResult {
-  round: number;
+/** One played-out manche, keyed by engine player id (`player_0`). */
+export interface HandResult {
   rankings: string[];
   pointsAwarded: Record<string, number>;
 }
 
 /**
- * Calculate points for each player given rankings and player count.
- * Formula: max(0, numPlayers - 1 - position)
- *   1st place gets (numPlayers - 1) pts, last place gets 0.
+ * The match the manches belong to. Offline mirror of the server's
+ * `OnlineGameState` match fields — same primitives from `lib/gameEngine`,
+ * same escalation, so the two modes cannot drift apart.
  */
-export function calcRoundPoints(rankings: string[], numPlayers: number): Record<string, number> {
-  const pts: Record<string, number> = {};
-  rankings.forEach((name, pos) => {
-    pts[name] = Math.max(0, numPlayers - 1 - pos);
-  });
-  return pts;
+export interface MatchState {
+  length: MatchLength;
+  /** Current point target. Escalates 21 → 31 → 41 → 51 on a tie at the target. */
+  target: number;
+  /** Engine player id -> cumulative match points. */
+  scores: Record<string, number>;
+  hands: HandResult[];
+  over: boolean;
+  /** Engine player ids. Empty until the match ends. */
+  winners: string[];
+  isDraw: boolean;
+}
+
+/** Each seat's answer to the rematch question, by engine player id. */
+export type RematchAnswers = Record<string, boolean>;
+
+function freshMatch(length: MatchLength): MatchState {
+  return {
+    length,
+    target: MATCH_TARGETS[0],
+    scores: {},
+    hands: [],
+    over: false,
+    winners: [],
+    isDraw: false,
+  };
+}
+
+/**
+ * Folds a finished manche into the match: awards its placement points, then
+ * either escalates the target, ends the match, or leaves it running.
+ *
+ * A single-manche game ends here by definition — its winner is whoever took
+ * the manche, with no target involved.
+ */
+export function applyHandToMatch(match: MatchState, finished: GameState): MatchState {
+  const points = scoreHand(finished.rankings, finished.players.length);
+  const scores = addHandScores(match.scores, points);
+  const hands = [...match.hands, { rankings: finished.rankings, pointsAwarded: points }];
+
+  if (match.length === "single") {
+    return {
+      ...match,
+      scores,
+      hands,
+      over: true,
+      winners: finished.rankings.slice(0, 1),
+      isDraw: false,
+    };
+  }
+
+  const teamOfId: Record<string, string> = {};
+  for (const p of finished.players) {
+    if (p.team) teamOfId[p.id] = p.team;
+  }
+  const resolution =
+    finished.gameMode === "teams" && Object.keys(teamOfId).length > 0
+      ? resolveTeamMatch(scores, teamOfId, match.target)
+      : resolveMatch(scores, match.target);
+
+  if (!resolution) return { ...match, scores, hands };
+  if (resolution.newTarget !== null) {
+    return { ...match, scores, hands, target: resolution.newTarget };
+  }
+  return {
+    ...match,
+    scores,
+    hands,
+    over: true,
+    winners: resolution.winners,
+    isDraw: resolution.isDraw,
+  };
+}
+
+/**
+ * Every AI seat's answer to the rematch question, decided in one go so the
+ * tally is stable while the human is still thinking about theirs.
+ */
+function answerForAiSeats(state: GameState, scores: Record<string, number>): RematchAnswers {
+  const leader = Math.max(0, ...Object.values(scores));
+  const answers: RematchAnswers = {};
+  for (const p of state.players) {
+    if (p.type === "ai") answers[p.id] = botWantsRematch(scores[p.id] ?? 0, leader);
+  }
+  return answers;
 }
 
 interface GameContextValue {
   gameState: GameState | null;
   selectedCards: string[];
   lastRoundWinner: number | null;
-  totalRounds: number;
-  currentRound: number;
-  cumulativeScores: Record<string, number>;
-  roundHistory: RoundResult[];
+  match: MatchState;
+  rematchAnswers: RematchAnswers;
+  /** True while the table is being asked whether it wants another match. */
+  rematchPromptOpen: boolean;
+  /** True once a majority of the table has said yes to another match. */
+  tableWantsRematch: boolean;
   exchangeAnnouncing: boolean;
   exchangeAnnounceData: ExchangeAnnounceData | null;
-  setupGame: (players: PlayerSetupConfig[], mode: GameMode, rounds?: number) => void;
-  setupRematch: (players: PlayerSetupConfig[], mode: GameMode, prevRankings: string[]) => void;
-  startNextRound: () => void;
+  setupGame: (players: PlayerSetupConfig[], mode: GameMode, length?: MatchLength) => void;
+  startNextHand: () => void;
+  startNewMatch: () => void;
+  answerRematch: (wants: boolean) => void;
   chooseExchangeCard: (cardId: string) => void;
   acknowledgeExchange: () => void;
   selectCard: (cardId: string) => void;
@@ -71,6 +170,10 @@ interface GameContextValue {
   passTurn: () => void;
   resetGame: () => void;
   runAITurn: () => void;
+  /** A match the app was killed in the middle of, waiting to be picked up. */
+  hasSavedGame: boolean;
+  /** Restores that match. False if there was nothing worth restoring. */
+  resumeGame: () => boolean;
 }
 
 const GameContext = createContext<GameContextValue | null>(null);
@@ -80,80 +183,110 @@ export function GameProvider({ children }: { children: ReactNode }) {
   const [selectedCards, setSelectedCards] = useState<string[]>([]);
   const [lastRoundWinner, setLastRoundWinner] = useState<number | null>(null);
 
-  const [totalRounds, setTotalRounds] = useState(1);
-  const [currentRound, setCurrentRound] = useState(1);
-  const [cumulativeScores, setCumulativeScores] = useState<Record<string, number>>({});
-  const [roundHistory, setRoundHistory] = useState<RoundResult[]>([]);
+  const [match, setMatch] = useState<MatchState>(() => freshMatch("match"));
+  const [rematchAnswers, setRematchAnswers] = useState<RematchAnswers>({});
   const [savedPlayerConfigs, setSavedPlayerConfigs] = useState<PlayerSetupConfig[]>([]);
   const [savedGameMode, setSavedGameMode] = useState<GameMode>("free_for_all");
+
+  /**
+   * Whether a match interrupted by the app going away is waiting to be picked
+   * up. Loaded once on mount; the home screen offers it, `resumeGame` takes it.
+   */
+  const [hasSavedGame, setHasSavedGame] = useState(false);
+  const savedRef = useRef<ReturnType<typeof decodeOfflineSave>>(null);
 
   const [exchangeAnnouncing, setExchangeAnnouncing] = useState(false);
   const [exchangeAnnounceData, setExchangeAnnounceData] = useState<ExchangeAnnounceData | null>(null);
   const gameStateRef = useRef<GameState | null>(null);
   gameStateRef.current = gameState;
 
+  /**
+   * The single write path for engine output: a manche that has just ended is
+   * scored into the match here and nowhere else, so no screen has to
+   * recompute totals and none can disagree about them.
+   */
+  const commitState = useCallback((next: GameState, previous: GameState) => {
+    setGameState(next);
+    if (!next.gameOver || previous.gameOver) return;
+    setMatch((prev) => applyHandToMatch(prev, next));
+  }, []);
+
   const setupGame = useCallback(
-    (players: PlayerSetupConfig[], mode: GameMode, rounds = 1) => {
+    (players: PlayerSetupConfig[], mode: GameMode, length: MatchLength = "match") => {
       const state = initializeGame(players, mode);
       setGameState(state);
       setSelectedCards([]);
       setLastRoundWinner(null);
-      setTotalRounds(rounds);
-      setCurrentRound(1);
-      setCumulativeScores({});
-      setRoundHistory([]);
+      setMatch(freshMatch(length));
+      setRematchAnswers({});
       setSavedPlayerConfigs(players);
       setSavedGameMode(mode);
     },
     []
   );
 
-  const setupRematch = useCallback(
-    (players: PlayerSetupConfig[], mode: GameMode, prevRankings: string[]) => {
-      const playersWithId = players.map((p, i) => ({ ...p, id: `player_${i}` }));
-      const state = initializeRematch(playersWithId, mode, prevRankings);
+  /** Deals the next manche of the running match, seeded by the last one's order. */
+  const dealFrom = useCallback(
+    (prevRankings: string[]) => {
+      const playersWithId = savedPlayerConfigs.map((p, i) => ({ ...p, id: `player_${i}` }));
+      const state = initializeRematch(playersWithId, savedGameMode, prevRankings);
+
+      if (state.exchangePhase?.bothJokersException) {
+        const ep = state.exchangePhase;
+        setExchangeAnnounceData({
+          winnerName: state.players[ep.winnerIdx]?.name ?? "",
+          loserName: state.players[ep.loserIdx]?.name ?? "",
+          bothJokersException: true,
+        });
+        setExchangeAnnouncing(true);
+      }
+
       setGameState(state);
       setSelectedCards([]);
       setLastRoundWinner(null);
     },
-    []
+    [savedPlayerConfigs, savedGameMode]
   );
 
-  const startNextRound = useCallback(() => {
+  const startNextHand = useCallback(() => {
     if (!gameState) return;
-    const numPlayers = gameState.players.length;
-    const pointsThisRound = calcRoundPoints(gameState.rankings, numPlayers);
+    dealFrom(gameState.rankings);
+  }, [gameState, dealFrom]);
 
-    const newScores = { ...cumulativeScores };
-    for (const [name, pts] of Object.entries(pointsThisRound)) {
-      newScores[name] = (newScores[name] ?? 0) + pts;
-    }
-    const newHistory: RoundResult[] = [
-      ...roundHistory,
-      { round: currentRound, rankings: gameState.rankings, pointsAwarded: pointsThisRound },
-    ];
+  const startNewMatch = useCallback(() => {
+    if (!gameState) return;
+    setMatch(freshMatch(match.length));
+    setRematchAnswers({});
+    dealFrom(gameState.rankings);
+  }, [gameState, match.length, dealFrom]);
 
-    setCumulativeScores(newScores);
-    setRoundHistory(newHistory);
-    setCurrentRound((prev) => prev + 1);
+  const rematchPromptOpen = useMemo(() => {
+    if (!gameState || gameState.gameOver || match.over) return false;
+    return matchIsClosing({
+      length: match.length,
+      target: match.target,
+      cumulative: match.scores,
+      handCounts: gameState.players.map((p) => p.hand.length),
+      playerCount: gameState.players.length,
+    });
+  }, [gameState, match]);
 
-    const playersWithId = savedPlayerConfigs.map((p, i) => ({ ...p, id: `player_${i}` }));
-    const state = initializeRematch(playersWithId, savedGameMode, gameState.rankings);
+  // The AI seats answer as soon as the question is put to the table, so the
+  // human sees a live tally instead of deciding the majority on their own.
+  useEffect(() => {
+    if (!rematchPromptOpen) return;
+    const gs = gameStateRef.current;
+    if (!gs) return;
+    setRematchAnswers((prev) => ({ ...answerForAiSeats(gs, match.scores), ...prev }));
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- seeded once when the question opens; re-running on every score change would overwrite answers already given
+  }, [rematchPromptOpen]);
 
-    if (state.exchangePhase?.bothJokersException) {
-      const ep = state.exchangePhase;
-      setExchangeAnnounceData({
-        winnerName: state.players[ep.winnerIdx]?.name ?? "",
-        loserName: state.players[ep.loserIdx]?.name ?? "",
-        bothJokersException: true,
-      });
-      setExchangeAnnouncing(true);
-    }
-
-    setGameState(state);
-    setSelectedCards([]);
-    setLastRoundWinner(null);
-  }, [gameState, cumulativeScores, roundHistory, currentRound, savedPlayerConfigs, savedGameMode]);
+  const answerRematch = useCallback((wants: boolean) => {
+    const gs = gameStateRef.current;
+    const human = gs?.players.find((p) => p.type === "human");
+    if (!human) return;
+    setRematchAnswers((prev) => ({ ...prev, [human.id]: wants }));
+  }, []);
 
   const chooseExchangeCard = useCallback(
     (cardId: string) => {
@@ -218,26 +351,21 @@ export function GameProvider({ children }: { children: ReactNode }) {
       if (!hasStartCard) return false;
     }
 
-    const newState = processPlay(gameState, combo);
     setLastRoundWinner(null);
-    setGameState(newState);
+    commitState(processPlay(gameState, combo), gameState);
     setSelectedCards([]);
     return true;
-  }, [gameState, selectedCards]);
+  }, [gameState, selectedCards, commitState]);
 
   const passTurn = useCallback(() => {
     if (!gameState) return;
     if (gameState.lastPlayedCombination === null) return;
 
     const newState = processPass(gameState);
-    if (newState.roundWinner !== null) {
-      setLastRoundWinner(newState.roundWinner);
-    } else {
-      setLastRoundWinner(null);
-    }
-    setGameState(newState);
+    setLastRoundWinner(newState.roundWinner !== null ? newState.roundWinner : null);
+    commitState(newState, gameState);
     setSelectedCards([]);
-  }, [gameState]);
+  }, [gameState, commitState]);
 
   const runAITurn = useCallback(() => {
     if (!gameState) return;
@@ -262,45 +390,114 @@ export function GameProvider({ children }: { children: ReactNode }) {
     );
 
     if (play) {
-      const newState = processPlay(gameState, play);
       setLastRoundWinner(null);
-      setGameState(newState);
+      commitState(processPlay(gameState, play), gameState);
+    } else if (!isNewRound) {
+      const newState = processPass(gameState);
+      if (newState.roundWinner !== null) {
+        setLastRoundWinner(newState.roundWinner);
+      }
+      commitState(newState, gameState);
     } else {
-      if (!isNewRound) {
-        const newState = processPass(gameState);
-        if (newState.roundWinner !== null) {
-          setLastRoundWinner(newState.roundWinner);
-        }
-        setGameState(newState);
+      // Leading a round with no play returned: the leader may not pass, so
+      // doing nothing here freezes the table. Lead the lowest card instead.
+      const [lowest] = sortHand(currentPlayer.hand);
+      const combo: Combination | null = lowest ? buildCombination([lowest]) : null;
+      if (combo) {
+        setLastRoundWinner(null);
+        commitState(processPlay(gameState, combo), gameState);
       }
     }
     setSelectedCards([]);
-  }, [gameState]);
+  }, [gameState, commitState]);
+
+  const clearSavedGame = useCallback(() => {
+    savedRef.current = null;
+    setHasSavedGame(false);
+    AsyncStorage.removeItem(OFFLINE_SAVE_KEY).catch(() => {});
+  }, []);
 
   const resetGame = useCallback(() => {
     setGameState(null);
     setSelectedCards([]);
     setLastRoundWinner(null);
-    setTotalRounds(1);
-    setCurrentRound(1);
-    setCumulativeScores({});
-    setRoundHistory([]);
+    setMatch(freshMatch("match"));
+    setRematchAnswers({});
+    clearSavedGame();
+  }, [clearSavedGame]);
+
+  /** Puts an interrupted match back exactly where it was. */
+  const resumeGame = useCallback(() => {
+    const save = savedRef.current;
+    if (!isResumable(save)) return false;
+    setGameState(save.gameState);
+    setMatch(save.match);
+    setRematchAnswers(save.rematchAnswers);
+    setSavedPlayerConfigs(save.players);
+    setSavedGameMode(save.gameMode);
+    setSelectedCards([]);
+    setLastRoundWinner(null);
+    return true;
   }, []);
+
+  // Read once, before anything can overwrite it.
+  useEffect(() => {
+    AsyncStorage.getItem(OFFLINE_SAVE_KEY)
+      .then((raw) => {
+        const save = decodeOfflineSave(raw);
+        savedRef.current = save;
+        setHasSavedGame(isResumable(save));
+      })
+      .catch(() => {});
+  }, []);
+
+  /**
+   * Written on every change to anything the restore needs.
+   *
+   * Not debounced: the online path persists to Postgres on every move, and this
+   * is a few kilobytes to local storage. A write that loses a race with the
+   * next one costs a move; a debounce that loses the last write before a kill
+   * costs the hand, which is the thing this exists to prevent.
+   */
+  useEffect(() => {
+    if (!gameState) return;
+    if (match.over) {
+      clearSavedGame();
+      return;
+    }
+    AsyncStorage.setItem(
+      OFFLINE_SAVE_KEY,
+      encodeOfflineSave({
+        gameState,
+        match,
+        rematchAnswers,
+        players: savedPlayerConfigs,
+        gameMode: savedGameMode,
+      })
+    ).catch(() => {});
+  }, [gameState, match, rematchAnswers, savedPlayerConfigs, savedGameMode, clearSavedGame]);
+
+  const tableWantsRematch = useMemo(() => {
+    const seats = gameState?.players.length ?? 0;
+    const yes = Object.values(rematchAnswers).filter(Boolean).length;
+    return isMajority(yes, seats);
+  }, [gameState?.players.length, rematchAnswers]);
 
   const value = useMemo(
     () => ({
       gameState,
       selectedCards,
       lastRoundWinner,
-      totalRounds,
-      currentRound,
-      cumulativeScores,
-      roundHistory,
+      match,
+      rematchAnswers,
+      rematchPromptOpen,
+      tableWantsRematch,
       exchangeAnnouncing,
       exchangeAnnounceData,
       setupGame,
-      setupRematch,
-      startNextRound,
+      startNextHand,
+      startNewMatch,
+      answerRematch,
       chooseExchangeCard,
       acknowledgeExchange,
       selectCard,
@@ -308,20 +505,23 @@ export function GameProvider({ children }: { children: ReactNode }) {
       passTurn,
       resetGame,
       runAITurn,
+      hasSavedGame,
+      resumeGame,
     }),
     [
       gameState,
       selectedCards,
       lastRoundWinner,
-      totalRounds,
-      currentRound,
-      cumulativeScores,
-      roundHistory,
+      match,
+      rematchAnswers,
+      rematchPromptOpen,
+      tableWantsRematch,
       exchangeAnnouncing,
       exchangeAnnounceData,
       setupGame,
-      setupRematch,
-      startNextRound,
+      startNextHand,
+      startNewMatch,
+      answerRematch,
       chooseExchangeCard,
       acknowledgeExchange,
       selectCard,
@@ -329,6 +529,8 @@ export function GameProvider({ children }: { children: ReactNode }) {
       passTurn,
       resetGame,
       runAITurn,
+      hasSavedGame,
+      resumeGame,
     ]
   );
 

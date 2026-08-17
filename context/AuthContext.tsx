@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useState, useEffect, useCallback, useMemo, ReactNode } from "react";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { apiRequest } from "@/lib/query-client";
+import { unregisterForPush } from "@/lib/pushRegistration";
 
 export interface AuthUser {
   id: string;
@@ -55,6 +56,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const logout = useCallback(async () => {
+    // Before the session goes: the endpoint needs the cookie, and the next
+    // person to sign in on this phone must not inherit these invites.
+    await unregisterForPush();
     await apiRequest("POST", "/api/auth/logout");
     setUser(null);
     await AsyncStorage.removeItem(STORAGE_KEY);

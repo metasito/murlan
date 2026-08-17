@@ -1,4 +1,5 @@
-import React, { useEffect } from "react";
+import React, { useEffect, useState } from "react";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import {
   View,
   Text,
@@ -20,13 +21,28 @@ import Animated, {
   Easing,
 } from "react-native-reanimated";
 import { LinearGradient } from "expo-linear-gradient";
-import * as Haptics from "expo-haptics";
-import { Ionicons } from "@expo/vector-icons";
+import { hapticLight } from "@/lib/haptics";
+import { Ionicons, Feather } from "@expo/vector-icons";
 import { useQuery } from "@tanstack/react-query";
 import { useAuth } from "@/context/AuthContext";
+import { useGame } from "@/context/GameContext";
+import { usePrefersReducedMotion } from "@/lib/accessibility";
 import { Colors } from '@/lib/theme';
+import { useTranslation } from "@/lib/i18n";
+import { SettingsModal } from "@/components/SettingsModal";
 
-interface MenuButtonProps {
+/**
+ * A destination on the home screen: an icon, a label, and a chevron, animated
+ * in on a stagger.
+ *
+ * Deliberately not components/MenuButton.tsx, which twelve other screens use —
+ * that is a pill-shaped CTA with variants and sizes, and this is a row in a
+ * list. Named apart because it used to be called MenuButton too, and the
+ * collision is not harmless: the accent fill bug lived here for exactly as long
+ * as it did because the shared component clips its gradient and has no padding
+ * conflict, so reading that one told you nothing about this one.
+ */
+interface HomeMenuRowProps {
   label: string;
   icon: React.ComponentProps<typeof Ionicons>["name"];
   onPress: () => void;
@@ -34,9 +50,10 @@ interface MenuButtonProps {
   accent?: boolean;
   disabled?: boolean;
   compact?: boolean;
+  accessibilityLabel?: string;
 }
 
-function MenuButton({
+function HomeMenuRow({
   label,
   icon,
   onPress,
@@ -44,17 +61,25 @@ function MenuButton({
   accent = false,
   disabled = false,
   compact = false,
-}: MenuButtonProps) {
+  accessibilityLabel,
+}: HomeMenuRowProps) {
+  const reduceMotion = usePrefersReducedMotion();
   const opacity = useSharedValue(0);
   const translateY = useSharedValue(30);
   const scale = useSharedValue(1);
 
   useEffect(() => {
+    if (reduceMotion) {
+      opacity.value = 1;
+      translateY.value = 0;
+      return;
+    }
     opacity.value = withDelay(delay, withTiming(1, { duration: 500 }));
     translateY.value = withDelay(
       delay,
       withTiming(0, { duration: 500, easing: Easing.out(Easing.cubic) })
     );
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- one-shot mount animation; opacity/translateY are stable shared values, delay is fixed per instance
   }, []);
 
   const animStyle = useAnimatedStyle(() => ({
@@ -64,11 +89,13 @@ function MenuButton({
 
   const handlePress = () => {
     if (disabled) return;
-    scale.value = withSequence(
-      withTiming(0.96, { duration: 80 }),
-      withTiming(1, { duration: 120 })
-    );
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    if (!reduceMotion) {
+      scale.value = withSequence(
+        withTiming(0.96, { duration: 80 }),
+        withTiming(1, { duration: 120 })
+      );
+    }
+    hapticLight();
     onPress();
   };
 
@@ -77,6 +104,9 @@ function MenuButton({
       <Pressable
         onPress={handlePress}
         disabled={disabled}
+        accessibilityRole="button"
+        accessibilityLabel={accessibilityLabel ?? label}
+        accessibilityState={{ disabled }}
         style={({ pressed }) => [
           styles.menuButton,
           compact && styles.menuButtonCompact,
@@ -92,7 +122,7 @@ function MenuButton({
             end={{ x: 1, y: 1 }}
             style={compact ? styles.accentGradientCompact : styles.accentGradient}
           >
-            <Ionicons name={icon} size={compact ? 18 : 20} color="#0A1F18" />
+            <Ionicons name={icon} size={compact ? 18 : 20} color={Colors.bgCard} />
             <Text style={[styles.menuLabel, styles.menuLabelAccent, compact && styles.menuLabelCompact]}>
               {label}
             </Text>
@@ -137,10 +167,14 @@ function FloatingCard({
   size: number;
   opacity: number;
 }) {
+  const reduceMotion = usePrefersReducedMotion();
   const translateY = useSharedValue(0);
   const rotate = useSharedValue(0);
 
   useEffect(() => {
+    // Decorative drift with no end. Under reduced motion the cards simply sit
+    // where they were placed — there is nothing here to convey, only mood.
+    if (reduceMotion) return;
     translateY.value = withDelay(
       delay,
       withRepeat(
@@ -163,6 +197,7 @@ function FloatingCard({
         false
       )
     );
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- one-shot mount animation; rotate/translateY are stable shared values, delay is fixed per instance
   }, []);
 
   const animStyle = useAnimatedStyle(() => ({
@@ -185,6 +220,7 @@ function FloatingCard({
 
 function FriendsButton({ compact }: { compact?: boolean }) {
   const { user } = useAuth();
+  const { t } = useTranslation();
 
   const { data: requests = [] } = useQuery<{ id: string }[]>({
     queryKey: ["/api/friends/requests"],
@@ -196,7 +232,7 @@ function FriendsButton({ compact }: { compact?: boolean }) {
   const badgeCount = requests.length;
 
   function handlePress() {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    hapticLight();
     if (user) {
       router.push("/(online)/friends");
     } else {
@@ -210,8 +246,8 @@ function FriendsButton({ compact }: { compact?: boolean }) {
       style={({ pressed }) => [styles.friendsBtn, compact && styles.friendsBtnCompact, pressed && { opacity: 0.8 }]}
       hitSlop={4}
     >
-      <Ionicons name="people" size={compact ? 16 : 20} color={compact ? Colors.gold : "#0A1F18"} />
-      {!compact && <Text style={styles.friendsBtnText}>Amici</Text>}
+      <Ionicons name="people" size={compact ? 16 : 20} color={compact ? Colors.gold : Colors.bgCard} />
+      {!compact && <Text style={styles.friendsBtnText}>{t("home.friendsLabel")}</Text>}
       {badgeCount > 0 && (
         <View style={styles.badge}>
           <Text style={styles.badgeText}>{badgeCount > 9 ? "9+" : String(badgeCount)}</Text>
@@ -221,20 +257,55 @@ function FriendsButton({ compact }: { compact?: boolean }) {
   );
 }
 
+function SettingsButton({ compact, onPress }: { compact?: boolean; onPress: () => void }) {
+  const { t } = useTranslation();
+  return (
+    <Pressable
+      onPress={onPress}
+      accessibilityRole="button"
+      accessibilityLabel={t("home.settingsA11yLabel")}
+      style={({ pressed }) => [styles.settingsBtn, pressed && { opacity: 0.8 }]}
+      hitSlop={8}
+    >
+      <Feather name="settings" size={compact ? 16 : 18} color={Colors.gold} />
+    </Pressable>
+  );
+}
+
 export default function HomeScreen() {
   const insets = useSafeAreaInsets();
   const { user, logout } = useAuth();
+  const { hasSavedGame, resumeGame } = useGame();
+  const { t } = useTranslation();
   const { width: W, height: H } = useWindowDimensions();
   const isLandscape = W > H;
+  const [settingsVisible, setSettingsVisible] = useState(false);
 
+  const reduceMotion = usePrefersReducedMotion();
   const titleOpacity = useSharedValue(0);
   const titleScale = useSharedValue(0.85);
   const subtitleOpacity = useSharedValue(0);
 
   useEffect(() => {
+    if (reduceMotion) {
+      titleOpacity.value = 1;
+      titleScale.value = 1;
+      subtitleOpacity.value = 1;
+      return;
+    }
     titleOpacity.value = withDelay(200, withTiming(1, { duration: 700 }));
     titleScale.value = withDelay(200, withTiming(1, { duration: 700, easing: Easing.out(Easing.back(1.5)) }));
     subtitleOpacity.value = withDelay(500, withTiming(1, { duration: 600 }));
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- one-shot mount animation; stable shared values
+  }, []);
+
+  // First-launch onboarding: offer the interactive tutorial automatically, once.
+  // Never gates play — the player can skip or navigate away immediately, and
+  // the flag is set the moment they do either (see app/tutorial.tsx).
+  useEffect(() => {
+    AsyncStorage.getItem("@murlan_tutorial_seen").then((seen) => {
+      if (!seen) router.push("/tutorial");
+    });
   }, []);
 
   const titleStyle = useAnimatedStyle(() => ({
@@ -250,12 +321,22 @@ export default function HomeScreen() {
   const leftPad = isLandscape ? (Platform.OS === "web" ? 0 : insets.left) : 0;
   const rightPad = isLandscape ? (Platform.OS === "web" ? 0 : insets.right) : 0;
 
+  // Resuming restores the context first; the table renders from what it finds.
+  const onResume = () => {
+    if (resumeGame()) router.push("/game");
+  };
+
   const menuButtons = (compact: boolean) => (
     <>
-      <MenuButton compact={compact} label="Offline" icon="game-controller" accent onPress={() => router.push({ pathname: "/lobby", params: { mode: "ai" } })} delay={300} />
-      <MenuButton compact={compact} label="Gioca con amici" icon="people" onPress={() => { if (user) router.push("/(online)"); else router.push("/auth"); }} delay={420} />
-      <MenuButton compact={compact} label="Online" icon="earth-outline" onPress={() => { if (user) router.push("/(online)/quickmatch"); else router.push("/auth"); }} delay={540} />
-      <MenuButton compact={compact} label="Regole & FAQ" icon="book-outline" onPress={() => router.push("/rules")} delay={660} />
+      {hasSavedGame && (
+        <HomeMenuRow compact={compact} label={t("home.resumeGame")} icon="play-circle" accent onPress={onResume} delay={240} />
+      )}
+      <HomeMenuRow compact={compact} label={t("home.modeOffline")} icon="game-controller" accent={!hasSavedGame} onPress={() => router.push({ pathname: "/lobby", params: { mode: "ai" } })} delay={300} />
+      <HomeMenuRow compact={compact} label={t("home.modePlayWithFriends")} icon="people" onPress={() => { if (user) router.push("/(online)"); else router.push("/auth"); }} delay={420} />
+      <HomeMenuRow compact={compact} label={t("home.modeOnline")} icon="earth-outline" onPress={() => { if (user) router.push("/(online)/quickmatch"); else router.push("/auth"); }} delay={540} />
+      <HomeMenuRow compact={compact} label={t("home.modeProfile")} icon="stats-chart-outline" onPress={() => { if (user) router.push("/(online)/profile"); else router.push("/auth"); }} delay={580} />
+      <HomeMenuRow compact={compact} label={t("home.modeTutorial")} icon="school-outline" onPress={() => router.push("/tutorial")} delay={600} />
+      <HomeMenuRow compact={compact} label={t("home.modeRules")} icon="book-outline" onPress={() => router.push("/rules")} delay={660} />
     </>
   );
 
@@ -275,7 +356,7 @@ export default function HomeScreen() {
               </View>
             </Animated.View>
             <Animated.View style={subtitleStyle}>
-              <Text style={styles.subtitleLandscape}>Il Gioco di Carte</Text>
+              <Text style={styles.subtitleLandscape}>{t("home.subtitle")}</Text>
             </Animated.View>
             <View style={styles.cardDecorationLandscape}>
               {["♠", "♥", "♦", "♣"].map((suit, i) => (
@@ -287,10 +368,16 @@ export default function HomeScreen() {
                 <Ionicons name="person-circle-outline" size={13} color={Colors.gold} />
                 <Text style={styles.userTextSmall} numberOfLines={1}>{user.username}</Text>
                 <Pressable onPress={logout} style={styles.logoutBtn}>
-                  <Text style={styles.logoutText}>Esci</Text>
+                  <Text style={styles.logoutText}>{t("home.logout")}</Text>
                 </Pressable>
                 <FriendsButton compact />
+                <SettingsButton compact onPress={() => setSettingsVisible(true)} />
               </Animated.View>
+            )}
+            {!user && (
+              <View style={styles.userRowLandscape}>
+                <SettingsButton compact onPress={() => setSettingsVisible(true)} />
+              </View>
             )}
           </View>
 
@@ -298,11 +385,12 @@ export default function HomeScreen() {
             {menuButtons(true)}
             <Animated.View style={subtitleStyle}>
               <Text style={[styles.footerText, { textAlign: "center", marginTop: 8 }]}>
-                {"2–4 giocatori · Tutte le modalità"}
+                {t("home.footer")}
               </Text>
             </Animated.View>
           </ScrollView>
         </View>
+        <SettingsModal visible={settingsVisible} onClose={() => setSettingsVisible(false)} />
       </View>
     );
   }
@@ -331,7 +419,7 @@ export default function HomeScreen() {
           </View>
         </Animated.View>
         <Animated.View style={subtitleStyle}>
-          <Text style={styles.subtitle}>Il Gioco di Carte</Text>
+          <Text style={styles.subtitle}>{t("home.subtitle")}</Text>
         </Animated.View>
       </View>
 
@@ -340,9 +428,15 @@ export default function HomeScreen() {
           <Ionicons name="person-circle-outline" size={15} color={Colors.gold} />
           <Text style={styles.userText}>{user.username}</Text>
           <Pressable onPress={logout} style={styles.logoutBtn}>
-            <Text style={styles.logoutText}>Esci</Text>
+            <Text style={styles.logoutText}>{t("home.logout")}</Text>
           </Pressable>
           <FriendsButton />
+          <SettingsButton onPress={() => setSettingsVisible(true)} />
+        </Animated.View>
+      )}
+      {!user && (
+        <Animated.View style={[subtitleStyle, styles.userRow, { justifyContent: "center" }]}>
+          <SettingsButton onPress={() => setSettingsVisible(true)} />
         </Animated.View>
       )}
 
@@ -358,9 +452,10 @@ export default function HomeScreen() {
 
       <Animated.View style={[subtitleStyle, styles.footer]}>
         <Text style={styles.footerText}>
-          {"2–4 giocatori · Tutte le modalità"}
+          {t("home.footer")}
         </Text>
       </Animated.View>
+      <SettingsModal visible={settingsVisible} onClose={() => setSettingsVisible(false)} />
     </View>
   );
 }
@@ -421,7 +516,7 @@ const styles = StyleSheet.create({
   },
   titleUnderline: { width: 160, alignSelf: "center", marginTop: 4 },
   devBadge: {
-    backgroundColor: "#c0392b",
+    backgroundColor: Colors.danger,
     borderRadius: 6,
     paddingHorizontal: 6,
     paddingVertical: 2,
@@ -430,7 +525,7 @@ const styles = StyleSheet.create({
   devBadgeText: {
     fontFamily: "Inter_600SemiBold",
     fontSize: 10,
-    color: "#fff",
+    color: Colors.white,
     letterSpacing: 1,
   },
   subtitle: {
@@ -473,8 +568,17 @@ const styles = StyleSheet.create({
   friendsBtnText: {
     fontFamily: "Rajdhani_700Bold",
     fontSize: 14,
-    color: "#0A1F18",
+    color: Colors.bgCard,
     letterSpacing: 0.5,
+  },
+  settingsBtn: {
+    width: 32,
+    height: 32,
+    alignItems: "center",
+    justifyContent: "center",
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: Colors.border,
   },
   badge: {
     position: "absolute",
@@ -483,7 +587,7 @@ const styles = StyleSheet.create({
     minWidth: 18,
     height: 18,
     borderRadius: 9,
-    backgroundColor: "#e74c3c",
+    backgroundColor: Colors.danger,
     alignItems: "center",
     justifyContent: "center",
     paddingHorizontal: 4,
@@ -493,7 +597,7 @@ const styles = StyleSheet.create({
   badgeText: {
     fontFamily: "Inter_600SemiBold",
     fontSize: 10,
-    color: "#fff",
+    color: Colors.white,
     lineHeight: 13,
   },
   cardDecoration: { flexDirection: "row", justifyContent: "center", gap: 20, paddingVertical: 24 },
@@ -511,7 +615,18 @@ const styles = StyleSheet.create({
     borderColor: Colors.border,
   },
   menuButtonCompact: { paddingVertical: 12, paddingHorizontal: 16 },
-  menuButtonAccent: { padding: 0, overflow: "hidden", borderColor: Colors.gold },
+  // Zeroed as longhands, not as `padding: 0`: the base style sets
+  // paddingVertical/paddingHorizontal, and React Native resolves the longhand
+  // over the shorthand whatever the order. The shorthand left the padding in
+  // place, so the gradient — which carries its own padding and is meant to
+  // reach the edges — sat inset inside the border with its own square corners
+  // showing against the rounded container.
+  menuButtonAccent: {
+    paddingVertical: 0,
+    paddingHorizontal: 0,
+    overflow: "hidden",
+    borderColor: Colors.gold,
+  },
   menuButtonDisabled: { borderColor: Colors.border, opacity: 0.5 },
   accentGradient: {
     flex: 1,
@@ -537,7 +652,7 @@ const styles = StyleSheet.create({
     letterSpacing: 0.5,
   },
   menuLabelCompact: { fontSize: 15 },
-  menuLabelAccent: { color: "#0A1F18", fontFamily: "Rajdhani_700Bold" },
+  menuLabelAccent: { color: Colors.bgCard, fontFamily: "Rajdhani_700Bold" },
   floatingCard: {
     position: "absolute",
     top: "12%",
@@ -554,7 +669,7 @@ const styles = StyleSheet.create({
     bottom: 4,
     borderRadius: 5,
     borderWidth: 1,
-    borderColor: "rgba(201,168,76,0.3)",
+    borderColor: Colors.goldBorder,
   },
   footer: { alignItems: "center", paddingTop: 20 },
   footerText: { fontFamily: "Inter_400Regular", fontSize: 12, color: Colors.textMuted, letterSpacing: 1 },

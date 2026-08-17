@@ -5,25 +5,25 @@ import {
   StyleSheet,
   Pressable,
   TextInput,
-  FlatList,
-  Platform,
   Alert,
   ActivityIndicator,
-  useWindowDimensions,
-  ScrollView,
 } from "react-native";
 import { router, useFocusEffect } from "expo-router";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
-import * as Clipboard from "expo-clipboard";
-import * as Haptics from "expo-haptics";
+import { hapticMedium, hapticSuccess } from "@/lib/haptics";
 import { Ionicons } from "@expo/vector-icons";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { LinearGradient } from "expo-linear-gradient";
-import { useAuth } from "@/context/AuthContext";
 import { useSocket } from "@/context/SocketContext";
 import { useOnlineGame } from "@/context/OnlineGameContext";
 import { apiRequest } from "@/lib/query-client";
-import { Colors } from '@/lib/theme';
+import { Colors, Spacing, FontSize, Radius, Type } from '@/lib/theme';
+import { MenuButton } from "@/components/MenuButton";
+import { MenuLayout } from "@/components/MenuLayout";
+import { useTranslation, translateServerPayload } from "@/lib/i18n";
+import { registerForPush } from "@/lib/pushRegistration";
+import type { TranslationKey, TranslationParams } from "@/lib/i18n";
+
+type TFn = (key: TranslationKey, params?: TranslationParams) => string;
+type TnFn = (base: string, count: number, params?: TranslationParams) => string;
 
 interface FriendInfo {
   id: string;
@@ -33,22 +33,22 @@ interface FriendInfo {
 interface FriendRequest { id: string; username: string }
 interface SearchResult { id: string; username: string }
 
-function italianRelativeTime(isoString: string | null | undefined): string {
-  if (!isoString) return "Tempo fa";
+function relativeTime(isoString: string | null | undefined, t: TFn, tn: TnFn): string {
+  if (!isoString) return t("friends.timeUnknown");
   const diff = Date.now() - new Date(isoString).getTime();
   const mins = Math.floor(diff / 60000);
-  if (mins < 1) return "Poco fa";
-  if (mins < 60) return `${mins} min fa`;
+  if (mins < 1) return t("friends.timeJustNow");
+  if (mins < 60) return t("friends.timeMinutesAgo", { n: mins });
   const hours = Math.floor(mins / 60);
-  if (hours < 24) return `${hours} or${hours === 1 ? "a" : "e"} fa`;
+  if (hours < 24) return tn("friends.timeHoursAgo", hours);
   const days = Math.floor(hours / 24);
-  return `${days} giorn${days === 1 ? "o" : "i"} fa`;
+  return tn("friends.timeDaysAgo", days);
 }
 
 function SectionHeader({ title, count }: { title: string; count?: number }) {
   return (
     <View style={styles.sectionHeader}>
-      <Text style={styles.sectionTitle}>{title}</Text>
+      <Text style={styles.sectionTitle} accessibilityRole="header">{title}</Text>
       {count !== undefined && (
         <View style={styles.badge}>
           <Text style={styles.badgeText}>{count}</Text>
@@ -67,8 +67,7 @@ function Avatar({ name }: { name: string }) {
 }
 
 export default function FriendsScreen() {
-  const insets = useSafeAreaInsets();
-  const { user } = useAuth();
+  const { t, tn } = useTranslation();
   const { socket, onlineIds, gameInvites, dismissGameInvite } = useSocket();
   const { joinRoom, room } = useOnlineGame();
   const qc = useQueryClient();
@@ -79,12 +78,12 @@ export default function FriendsScreen() {
   const [searchError, setSearchError] = useState<string | null>(null);
   const [searchDone, setSearchDone] = useState(false);
 
-  const { width: W, height: H } = useWindowDimensions();
-  const isLandscape = W > H;
-  const topPad = Platform.OS === "web" ? 67 : insets.top;
-  const bottomPad = Platform.OS === "web" ? 34 : insets.bottom;
-
-  const { data: friends = [], isLoading: friendsLoading } = useQuery<FriendInfo[]>({
+  const {
+    data: friends = [],
+    isLoading: friendsLoading,
+    isError: friendsErrored,
+    refetch: refetchFriends,
+  } = useQuery<FriendInfo[]>({
     queryKey: ["/api/friends"],
     refetchOnWindowFocus: true,
   });
@@ -145,12 +144,12 @@ export default function FriendsScreen() {
 
   function handleRemoveFriend(friend: FriendInfo) {
     Alert.alert(
-      "Rimuovi amico",
-      `Vuoi rimuovere ${friend.username} dagli amici?`,
+      t("friends.removeConfirmTitle"),
+      t("friends.removeConfirmBody", { username: friend.username }),
       [
-        { text: "Annulla", style: "cancel" },
+        { text: t("common.cancel"), style: "cancel" },
         {
-          text: "Rimuovi",
+          text: t("friends.removeConfirmConfirm"),
           style: "destructive",
           onPress: () => removeMutation.mutate(friend.id),
         },
@@ -170,13 +169,13 @@ export default function FriendsScreen() {
       setSearchResult(data);
       setSearchDone(true);
     } catch (e: unknown) {
-      const msg = e instanceof Error ? e.message : "Errore";
+      const msg = e instanceof Error ? e.message : t("common.error");
       const match = msg.match(/\d+: (.+)/);
       try {
         const parsed = JSON.parse(match ? match[1] : msg);
-        setSearchError(parsed.message ?? "Utente non trovato");
+        setSearchError(translateServerPayload(parsed) ?? t("friends.userNotFound"));
       } catch {
-        setSearchError("Utente non trovato");
+        setSearchError(t("friends.userNotFound"));
       }
       setSearchDone(true);
     } finally {
@@ -190,57 +189,31 @@ export default function FriendsScreen() {
     try {
       const res = await apiRequest("POST", "/api/friends/add", { username: searchResult.username });
       const data = await res.json();
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      Alert.alert("Richiesta inviata", `Richiesta di amicizia inviata a ${data.username}`);
+      hapticSuccess();
+      Alert.alert(t("friends.requestSentTitle"), t("friends.requestSentBody", { username: data.username }));
       setSearchQuery("");
       setSearchResult(null);
       setSearchDone(false);
       qc.invalidateQueries({ queryKey: ["/api/friends/sent"] });
     } catch (e: unknown) {
-      const msg = e instanceof Error ? e.message : "Errore";
+      const msg = e instanceof Error ? e.message : t("common.error");
       const match = msg.match(/\d+: (.+)/);
       try {
         const parsed = JSON.parse(match ? match[1] : msg);
-        Alert.alert("Errore", parsed.message ?? msg);
+        Alert.alert(t("common.error"), translateServerPayload(parsed) ?? msg);
       } catch {
-        Alert.alert("Errore", match ? match[1] : msg);
+        Alert.alert(t("common.error"), match ? match[1] : msg);
       }
     } finally {
       setAddLoading(false);
     }
   }
 
-  const renderFriendRow = useCallback(({ item }: { item: FriendInfo }) => {
-    const isOnline = onlineIds.has(item.id);
-    return (
-      <View style={styles.row}>
-        <View style={styles.avatarWrapper}>
-          <Avatar name={item.username} />
-          <View style={[styles.statusDot, { backgroundColor: isOnline ? "Colors.success" : Colors.textMuted }]} />
-        </View>
-        <View style={styles.rowInfo}>
-          <Text style={styles.rowName}>{item.username}</Text>
-          <Text style={[styles.rowSub, isOnline && { color: "Colors.success" }]}>
-            {isOnline ? "● Online" : `Visto ${italianRelativeTime(item.lastSeen)}`}
-          </Text>
-        </View>
-        <Pressable
-          onPress={() => handleRemoveFriend(item)}
-          style={styles.iconBtn}
-          hitSlop={8}
-        >
-          <Ionicons name="person-remove-outline" size={16} color={Colors.textMuted} />
-        </Pressable>
-      </View>
-    );
-  }, [onlineIds]);
-
-  const onlineCount = friends.filter(f => onlineIds.has(f.id)).length;
-
   useEffect(() => {
     if (room) {
       router.push("/(online)/room");
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- navigate once per room id, not on every room field update
   }, [room?.roomId]);
 
   useFocusEffect(
@@ -249,99 +222,133 @@ export default function FriendsScreen() {
     }, [socket])
   );
 
+  // Asked here rather than at launch: the only notification the app sends is
+  // an invite from someone on this screen, so this is where the permission
+  // means something. Idempotent — it only prompts while the OS says the
+  // question is still open.
+  useEffect(() => {
+    void registerForPush();
+  }, []);
+
   function handleJoinGameInvite(roomCode: string) {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    hapticMedium();
     dismissGameInvite(roomCode);
     joinRoom(roomCode);
   }
 
   return (
-    <View style={[styles.container, {
-      paddingTop: topPad,
-      paddingBottom: bottomPad + 16,
-      paddingLeft: isLandscape ? insets.left : 0,
-      paddingRight: isLandscape ? insets.right : 0,
-    }]}>
-      <LinearGradient colors={[Colors.bg, Colors.bgCard]} style={StyleSheet.absoluteFill} />
-
+    <MenuLayout scrollable centered={false}>
       <View style={styles.topBar}>
-        <Pressable onPress={() => router.back()} style={styles.backBtn}>
-          <Ionicons name="chevron-back" size={22} color={Colors.textMuted} />
+        <Pressable
+          onPress={() => router.back()}
+          style={styles.backBtn}
+          accessibilityRole="button"
+          accessibilityLabel={t("common.back")}
+          hitSlop={12}
+        >
+          <Ionicons name="chevron-back" size={22} color={Colors.gold} />
         </Pressable>
-        <Text style={styles.screenTitle}>Amici</Text>
+        <Text style={styles.screenTitle}>{t("friends.title")}</Text>
         <View style={{ width: 38 }} />
       </View>
 
-      <ScrollView
-        contentContainerStyle={[styles.scrollContent, { paddingBottom: bottomPad + 24 }]}
-        showsVerticalScrollIndicator={false}
-        keyboardShouldPersistTaps="handled"
-      >
+      <View style={styles.contentWrapper}>
         {/* ── SECTION 1: Amici ── */}
         <SectionHeader
-          title="AMICI"
+          title={t("friends.sectionFriends")}
           count={friends.length > 0 ? friends.length : undefined}
         />
-        {friends.length === 0 && !friendsLoading && (
+        {friendsLoading && (
+          <ActivityIndicator
+            color={Colors.gold}
+            style={{ marginVertical: Spacing.md }}
+            accessibilityLabel={t("common.loading")}
+          />
+        )}
+        {!friendsLoading && friendsErrored && (
           <View style={styles.empty}>
-            <Ionicons name="people-outline" size={36} color={Colors.textMuted} />
-            <Text style={styles.emptyText}>Nessun amico ancora.{"\n"}Cerca un username!</Text>
+            <Ionicons name="alert-circle-outline" size={32} color={Colors.textMuted} />
+            <Text style={styles.emptyText}>{t("friends.loadErrorTitle")}</Text>
+            <MenuButton
+              label={t("common.retry")}
+              onPress={() => refetchFriends()}
+              variant="secondary"
+              size="sm"
+              fullWidth={false}
+              icon={<Ionicons name="refresh" size={16} color={Colors.gold} />}
+            />
           </View>
         )}
-        {friendsLoading && <ActivityIndicator color={Colors.gold} style={{ marginVertical: 16 }} />}
+        {!friendsLoading && !friendsErrored && friends.length === 0 && (
+          <View style={styles.empty}>
+            <Ionicons name="people-outline" size={36} color={Colors.textMuted} />
+            <Text style={styles.emptyText}>{t("friends.emptyFriends")}</Text>
+          </View>
+        )}
         {friends.length > 0 && (
           <View style={styles.listBlock}>
-            {friends.map(item => (
-              <View key={item.id} style={styles.row}>
-                <View style={styles.avatarWrapper}>
-                  <Avatar name={item.username} />
-                  <View style={[styles.statusDot, { backgroundColor: onlineIds.has(item.id) ? "Colors.success" : Colors.textMuted }]} />
+            {friends.map(item => {
+              const isOnline = onlineIds.has(item.id);
+              const statusText = isOnline ? t("friends.online") : t("friends.seenAgo", { time: relativeTime(item.lastSeen, t, tn) });
+              return (
+                <View key={item.id} style={styles.row} accessible accessibilityLabel={`${item.username}. ${statusText}`}>
+                  <View style={styles.avatarWrapper}>
+                    <Avatar name={item.username} />
+                    <View style={[styles.statusDot, { backgroundColor: isOnline ? Colors.success : Colors.textMuted }]} />
+                  </View>
+                  <View style={styles.rowInfo}>
+                    <Text style={styles.rowName}>{item.username}</Text>
+                    <Text style={[styles.rowSub, isOnline && { color: Colors.success }]}>
+                      {statusText}
+                    </Text>
+                  </View>
+                  <Pressable
+                    onPress={() => handleRemoveFriend(item)}
+                    style={styles.iconBtn}
+                    accessibilityRole="button"
+                    accessibilityLabel={t("friends.removeA11yLabel", { username: item.username })}
+                    hitSlop={12}
+                  >
+                    <Ionicons name="person-remove-outline" size={16} color={Colors.textMuted} />
+                  </Pressable>
                 </View>
-                <View style={styles.rowInfo}>
-                  <Text style={styles.rowName}>{item.username}</Text>
-                  <Text style={[styles.rowSub, onlineIds.has(item.id) && { color: "Colors.success" }]}>
-                    {onlineIds.has(item.id) ? "● Online" : `Visto ${italianRelativeTime(item.lastSeen)}`}
-                  </Text>
-                </View>
-                <Pressable
-                  onPress={() => handleRemoveFriend(item)}
-                  style={styles.iconBtn}
-                  hitSlop={8}
-                >
-                  <Ionicons name="person-remove-outline" size={16} color={Colors.textMuted} />
-                </Pressable>
-              </View>
-            ))}
+              );
+            })}
           </View>
         )}
 
         {/* ── SECTION 2: Inviti a Giocare ── */}
         {gameInvites.length > 0 && (
           <>
-            <SectionHeader title="INVITI A GIOCARE" count={gameInvites.length} />
+            <SectionHeader title={t("friends.sectionGameInvites")} count={gameInvites.length} />
             <View style={styles.listBlock}>
               {gameInvites.map((invite) => (
                 <View key={invite.roomCode} style={styles.row}>
                   <View style={styles.avatarWrapper}>
                     <Avatar name={invite.from} />
-                    <View style={[styles.statusDot, { backgroundColor: "Colors.success" }]} />
+                    <View style={[styles.statusDot, { backgroundColor: Colors.success }]} />
                   </View>
                   <View style={styles.rowInfo}>
                     <Text style={styles.rowName}>{invite.from}</Text>
-                    <Text style={styles.rowSub}>Stanza: {invite.roomCode}</Text>
+                    <Text style={styles.rowSub}>{t("friends.roomLabel", { code: invite.roomCode })}</Text>
                   </View>
                   <View style={styles.actionRow}>
                     <Pressable
                       onPress={() => dismissGameInvite(invite.roomCode)}
                       style={styles.declineBtn}
+                      accessibilityRole="button"
+                      accessibilityLabel={t("friends.dismissInviteA11yLabel", { username: invite.from })}
+                      hitSlop={8}
                     >
                       <Ionicons name="close" size={16} color={Colors.textMuted} />
                     </Pressable>
                     <Pressable
                       onPress={() => handleJoinGameInvite(invite.roomCode)}
                       style={styles.joinBtn}
+                      accessibilityRole="button"
+                      accessibilityLabel={t("friends.joinInviteA11yLabel", { username: invite.from })}
                     >
-                      <Text style={styles.joinBtnText}>Unisciti</Text>
+                      <Text style={styles.joinBtnText}>{t("friends.join")}</Text>
                     </Pressable>
                   </View>
                 </View>
@@ -353,7 +360,7 @@ export default function FriendsScreen() {
         {/* ── SECTION 3: Richieste Ricevute ── */}
         {requests.length > 0 && (
           <>
-            <SectionHeader title="RICHIESTE RICEVUTE" count={requests.length} />
+            <SectionHeader title={t("friends.sectionReceivedRequests")} count={requests.length} />
             <View style={styles.listBlock}>
               {requests.map(r => (
                 <View key={r.id} style={styles.row}>
@@ -365,14 +372,20 @@ export default function FriendsScreen() {
                     <Pressable
                       onPress={() => declineMutation.mutate(r.id)}
                       style={styles.declineBtn}
+                      accessibilityRole="button"
+                      accessibilityLabel={t("friends.declineRequestA11yLabel", { username: r.username })}
+                      hitSlop={8}
                     >
                       <Ionicons name="close" size={16} color={Colors.textMuted} />
                     </Pressable>
                     <Pressable
                       onPress={() => acceptMutation.mutate(r.id)}
                       style={styles.acceptBtn}
+                      accessibilityRole="button"
+                      accessibilityLabel={t("friends.acceptRequestA11yLabel", { username: r.username })}
+                      hitSlop={8}
                     >
-                      <Ionicons name="checkmark" size={16} color="#0A1F18" />
+                      <Ionicons name="checkmark" size={16} color={Colors.bgCard} />
                     </Pressable>
                   </View>
                 </View>
@@ -384,19 +397,21 @@ export default function FriendsScreen() {
         {/* ── SECTION 3: Richieste Inviate ── */}
         {sentRequests.length > 0 && (
           <>
-            <SectionHeader title="RICHIESTE INVIATE" count={sentRequests.length} />
+            <SectionHeader title={t("friends.sectionSentRequests")} count={sentRequests.length} />
             <View style={styles.listBlock}>
               {sentRequests.map(r => (
                 <View key={r.id} style={styles.row}>
                   <Avatar name={r.username} />
                   <View style={styles.rowInfo}>
                     <Text style={styles.rowName}>{r.username}</Text>
-                    <Text style={styles.rowSub}>In attesa di risposta...</Text>
+                    <Text style={styles.rowSub}>{t("friends.awaitingResponse")}</Text>
                   </View>
                   <Pressable
                     onPress={() => cancelMutation.mutate(r.id)}
                     style={styles.iconBtn}
-                    hitSlop={8}
+                    accessibilityRole="button"
+                    accessibilityLabel={t("friends.cancelRequestA11yLabel", { username: r.username })}
+                    hitSlop={12}
                   >
                     <Ionicons name="close-circle-outline" size={18} color={Colors.textMuted} />
                   </Pressable>
@@ -407,11 +422,11 @@ export default function FriendsScreen() {
         )}
 
         {/* ── SECTION 4: Aggiungi Amico ── */}
-        <SectionHeader title="AGGIUNGI AMICO" />
+        <SectionHeader title={t("friends.sectionAddFriend")} />
 
         {/* Username search */}
         <View style={styles.inputCard}>
-          <Text style={styles.inputCardLabel}>Cerca per username</Text>
+          <Text style={styles.inputCardLabel}>{t("friends.searchByUsername")}</Text>
           <View style={styles.inputRow}>
             <TextInput
               style={styles.input}
@@ -422,25 +437,28 @@ export default function FriendsScreen() {
                 setSearchResult(null);
                 setSearchError(null);
               }}
-              placeholder="@username"
+              placeholder={t("friends.usernamePlaceholder")}
               placeholderTextColor={Colors.textMuted}
               autoCapitalize="none"
               autoCorrect={false}
               maxLength={30}
               onSubmitEditing={handleSearchUsername}
               returnKeyType="search"
-              accessibilityLabel="Ricerca username"
-              accessibilityHint="Digita lo username di un giocatore per cercarla e aggiungere come amico"
+              accessibilityLabel={t("friends.searchA11yLabel")}
+              accessibilityHint={t("friends.searchA11yHint")}
             />
             <Pressable
               onPress={handleSearchUsername}
               disabled={searchLoading || !searchQuery.trim()}
               style={({ pressed }) => [styles.addBtn, pressed && { opacity: 0.85 }, (!searchQuery.trim()) && styles.addBtnDim]}
+              accessibilityRole="button"
+              accessibilityLabel={t("friends.searchA11yLabel")}
+              accessibilityState={{ disabled: searchLoading || !searchQuery.trim() }}
             >
               {searchLoading ? (
-                <ActivityIndicator color="#0A1F18" size="small" />
+                <ActivityIndicator color={Colors.bgCard} size="small" />
               ) : (
-                <Ionicons name="search" size={18} color={(!searchQuery.trim()) ? Colors.textMuted : "#0A1F18"} />
+                <Ionicons name="search" size={18} color={(!searchQuery.trim()) ? Colors.textMuted : Colors.bgCard} />
               )}
             </Pressable>
           </View>
@@ -455,11 +473,13 @@ export default function FriendsScreen() {
                 onPress={handleSendRequestToFound}
                 disabled={addLoading}
                 style={styles.sendBtn}
+                accessibilityRole="button"
+                accessibilityLabel={t("friends.sendRequestA11yLabel", { username: searchResult.username })}
               >
                 {addLoading ? (
-                  <ActivityIndicator color="#0A1F18" size="small" />
+                  <ActivityIndicator color={Colors.bgCard} size="small" />
                 ) : (
-                  <Ionicons name="person-add" size={16} color="#0A1F18" />
+                  <Ionicons name="person-add" size={16} color={Colors.bgCard} />
                 )}
               </Pressable>
             </View>
@@ -472,31 +492,40 @@ export default function FriendsScreen() {
             </View>
           )}
         </View>
-      </ScrollView>
-    </View>
+      </View>
+    </MenuLayout>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: Colors.bg },
   topBar: {
     flexDirection: "row",
     alignItems: "center",
-    paddingHorizontal: 8,
-    paddingBottom: 8,
+    width: "100%",
+    paddingBottom: Spacing.sm,
+    marginBottom: Spacing.xs,
     borderBottomWidth: 1,
     borderBottomColor: Colors.border,
   },
-  backBtn: { padding: 8 },
+  backBtn: {
+    width: 44,
+    height: 44,
+    alignItems: "center",
+    justifyContent: "center",
+  },
   screenTitle: {
     flex: 1,
     textAlign: "center",
-    fontFamily: "Rajdhani_700Bold",
-    fontSize: 20,
-    color: Colors.text,
+    ...Type.heading,
+    fontSize: FontSize.xl,
     letterSpacing: 3,
   },
-  scrollContent: { padding: 16, gap: 12 },
+  contentWrapper: {
+    width: "100%",
+    maxWidth: 800,
+    alignSelf: "center",
+    gap: Spacing.sm,
+  },
   sectionHeader: {
     flexDirection: "row",
     alignItems: "center",
@@ -505,14 +534,13 @@ const styles = StyleSheet.create({
     marginBottom: 4,
   },
   sectionTitle: {
-    fontFamily: "Inter_400Regular",
-    fontSize: 11,
-    color: Colors.textMuted,
+    ...Type.label,
+    fontSize: FontSize.xs,
     letterSpacing: 2,
   },
   badge: {
     backgroundColor: Colors.bgSurface,
-    borderRadius: 10,
+    borderRadius: Radius.md,
     paddingHorizontal: 7,
     paddingVertical: 2,
     borderWidth: 1,
@@ -530,11 +558,12 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     backgroundColor: Colors.bgSurface,
-    borderRadius: 12,
+    borderRadius: Radius.md,
     borderWidth: 1,
     borderColor: Colors.border,
     padding: 12,
     gap: 12,
+    minHeight: 44,
   },
   avatarWrapper: { position: "relative" },
   avatar: {
@@ -557,10 +586,10 @@ const styles = StyleSheet.create({
   },
   avatarText: { fontFamily: "Rajdhani_700Bold", fontSize: 18, color: Colors.gold },
   rowInfo: { flex: 1, gap: 2 },
-  rowName: { fontFamily: "Inter_500Medium", fontSize: 14, color: Colors.text },
-  rowSub: { fontFamily: "Inter_400Regular", fontSize: 12, color: Colors.textMuted },
+  rowName: { ...Type.bodyStrong },
+  rowSub: { ...Type.caption },
 
-  iconBtn: { padding: 6 },
+  iconBtn: { width: 32, height: 32, alignItems: "center", justifyContent: "center" },
 
   actionRow: { flexDirection: "row", gap: 8 },
   declineBtn: {
@@ -577,12 +606,12 @@ const styles = StyleSheet.create({
     width: 36,
     height: 36,
     borderRadius: 18,
-    backgroundColor: "Colors.success",
+    backgroundColor: Colors.success,
     alignItems: "center",
     justifyContent: "center",
   },
   joinBtn: {
-    height: 36,
+    minHeight: 44,
     borderRadius: 10,
     backgroundColor: Colors.gold,
     paddingHorizontal: 14,
@@ -592,7 +621,7 @@ const styles = StyleSheet.create({
   joinBtnText: {
     fontFamily: "Rajdhani_700Bold",
     fontSize: 14,
-    color: "#0A1F18",
+    color: Colors.bgCard,
   },
 
   inputCard: {
@@ -604,9 +633,7 @@ const styles = StyleSheet.create({
     gap: 10,
   },
   inputCardLabel: {
-    fontFamily: "Inter_400Regular",
-    fontSize: 11,
-    color: Colors.textMuted,
+    ...Type.caption,
     letterSpacing: 1.5,
   },
   inputRow: { flexDirection: "row", gap: 10 },
@@ -619,11 +646,13 @@ const styles = StyleSheet.create({
     color: Colors.text,
     fontFamily: "Inter_400Regular",
     fontSize: 15,
+    minHeight: 44,
     paddingVertical: 12,
     paddingHorizontal: 14,
   },
   addBtn: {
     width: 48,
+    minHeight: 44,
     alignItems: "center",
     justifyContent: "center",
     backgroundColor: Colors.gold,
@@ -648,7 +677,7 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.bgCard,
     borderRadius: 10,
     borderWidth: 1,
-    borderColor: "rgba(201,168,76,0.3)",
+    borderColor: Colors.goldBorder,
     padding: 10,
     gap: 10,
   },
@@ -658,16 +687,12 @@ const styles = StyleSheet.create({
     gap: 6,
   },
   searchErrorText: {
-    fontFamily: "Inter_400Regular",
-    fontSize: 12,
-    color: Colors.textMuted,
+    ...Type.caption,
   },
 
   empty: { alignItems: "center", paddingVertical: 28, gap: 10 },
   emptyText: {
-    fontFamily: "Inter_400Regular",
-    fontSize: 13,
-    color: Colors.textMuted,
+    ...Type.caption,
     textAlign: "center",
     lineHeight: 20,
   },

@@ -1,0 +1,81 @@
+##
+# Smoke flow: launches the app through Expo Go and asserts the home
+# screen actually rendered. This is the "is anything on fire" check —
+# offline-game.yaml exercises real gameplay.
+#
+# Requires a running Expo dev server reachable from the emulator. The
+# packager URL below must match what `npx expo start --android` printed
+# ("Opening exp://<lan-ip>:8081 on <avd-name>") — it is this machine's
+# LAN IP, not portable across machines. See docs/TESTING.md.
+# Requires a running Expo dev server the emulator can reach.
+#
+# `10.0.2.2` is the Android emulator's standard alias for the host machine's
+# loopback, so this one default works on any emulator anywhere — including a CI
+# runner — with no per-machine edit. It replaces a hardcoded LAN IP that only
+# ever resolved on the machine the flow was written on, which is what kept
+# these flows off CI.
+#
+# Override for a physical device (which has no such alias) with:
+#   maestro test -e MURLAN_PACKAGER_URL=exp://<lan-ip>:8081 .maestro/
+appId: host.exp.exponent
+env:
+  MURLAN_PACKAGER_URL: exp://10.0.2.2:8081
+---
+- launchApp
+- openLink: "${MURLAN_PACKAGER_URL}"
+# Not "Murlan" alone: Expo Go's own native splash screen shows the app
+# name under the icon while the JS bundle is still loading, so a loose
+# "Murlan" wait is satisfied by Expo Go chrome, not the app. Wait for
+# copy that only exists once our JS has actually rendered (home
+# subtitle, or the tutorial's welcome card on a first-ever launch).
+- extendedWaitUntil:
+    visible: "IL GIOCO DI CARTE|GUIDA RAPIDA"
+    timeout: 60000
+# On a fresh connection Expo Go shows a "this is the dev menu" tip
+# rendered *on top of* its real dev menu sheet (Reload / Go Home /
+# etc). Tapping the tip's own "Continue" button only dismisses the
+# tip — the sheet underneath stays open and silently swallows every
+# further tap (tapOn against it reports COMPLETED with no effect,
+# which cost real time to diagnose — see docs/TESTING.md). One
+# hardware back press dismisses both layers in a single step.
+- runFlow:
+    when:
+      visible: "Continue"
+    commands:
+      - back
+- runFlow:
+    when:
+      visible: "Reload"
+    commands:
+      - back
+- extendedWaitUntil:
+    notVisible: "Reload"
+    timeout: 10000
+# First cold launch auto-pushes the interactive tutorial
+# (app/index.tsx effect on `@murlan_tutorial_seen`). Skip it like a real
+# user would so the flag gets set and we land on the actual home screen.
+#
+# Selector note (a real app finding, not just a test inconvenience):
+# the header's "Salta" Pressable renders its label as a plain child
+# Text instead of collapsing into one accessible node (tutorial.tsx
+# ~line 505-507), so the UI tree exposes a second, non-clickable node
+# whose text is also exactly "Salta". Tapping by that text, or even by
+# the Pressable's own correct accessibilityLabel ("Salta il
+# tutorial"), reliably lands on the right element (verified via `adb
+# shell uiautomator dump`: clickable=true, bounds correct) but the tap
+# never fires the RN onPress — only a raw coordinate tap at the same
+# point does. Root cause not fully isolated; falling back to a point
+# tap here. Worth a look in the app: give the header Pressables
+# `accessible` so screen readers (and tools like this) see one node,
+# and re-test whether element-based taps then work.
+- runFlow:
+    when:
+      visible: "Salta il tutorial"
+    commands:
+      - tapOn: "Salta il tutorial"
+      - extendedWaitUntil:
+          notVisible: "GUIDA RAPIDA"
+          timeout: 10000
+- assertVisible: "Offline"
+- assertVisible: "Online"
+- assertVisible: "Il mio profilo"

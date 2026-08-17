@@ -14,31 +14,26 @@ import Animated, {
   withTiming,
   withDelay,
 } from "react-native-reanimated";
+import { Feather } from "@expo/vector-icons";
 import type { Card } from "@/lib/gameEngine";
 import { CardView } from "@/components/CardView";
-import { Colors } from '@/lib/theme';
-import { Shadow } from "@/lib/theme";
+import { Colors, Spacing, Radius, FontSize, Type, Motion, Shadow } from "@/lib/theme";
+import { usePrefersReducedMotion } from "@/lib/accessibility";
+import { useTranslation } from "@/lib/i18n";
+import { cardSpokenName } from "@/lib/cardNames";
 
+// Mirrors the private CARD_W/CARD_H in components/CardView.tsx (not exported,
+// and that file is owned elsewhere) — used only to shrink a rendered CardView
+// down for the compact inline preview below.
+const CARD_W = 58;
+const CARD_H = 84;
+
+// Domain timings, not generic UI transitions — not a lib/theme.ts Motion
+// value because nothing there represents "how long a card announcement
+// stays up" or "how long a card takes to fly across the table".
 const DISMISS_MS = 5500;
+const FLIGHT_DURATION = 750;
 
-function getItalianCardName(card: Card): string {
-  if (card.isJoker) return "Jolly";
-  const rankMap: Record<string, string> = {
-    A: "Asso",
-    J: "Fante",
-    Q: "Donna",
-    K: "Re",
-  };
-  const suitMap: Record<string, string> = {
-    hearts: "Cuori",
-    diamonds: "Quadri",
-    clubs: "Fiori",
-    spades: "Picche",
-  };
-  const r = rankMap[card.rank as string] ?? String(card.rank);
-  const s = card.suit ? suitMap[card.suit] : "";
-  return `${r} di ${s}`;
-}
 
 function FlyingCard({
   card,
@@ -58,8 +53,9 @@ function FlyingCard({
   useEffect(() => {
     tx.value = withDelay(
       delay,
-      withTiming(toRight ? screenWidth + 20 : -80, { duration: 750 })
+      withTiming(toRight ? screenWidth + 20 : -80, { duration: FLIGHT_DURATION })
     );
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- one-shot mount animation; tx is a stable shared value, other props are fixed per instance
   }, []);
 
   const animStyle = useAnimatedStyle(() => ({
@@ -94,9 +90,11 @@ export function ExchangeAnnouncement({
   cardReceived,
   onDismiss,
 }: ExchangeAnnouncementProps) {
+  const { t } = useTranslation();
   const [shown, setShown] = useState(false);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const { width: screenWidth, height: screenHeight } = useWindowDimensions();
+  const reduceMotion = usePrefersReducedMotion();
 
   useEffect(() => {
     if (visible) {
@@ -112,7 +110,7 @@ export function ExchangeAnnouncement({
     return () => {
       if (timerRef.current) clearTimeout(timerRef.current);
     };
-  }, [visible]);
+  }, [visible, onDismiss]);
 
   if (!visible || !shown) return null;
 
@@ -125,13 +123,42 @@ export function ExchangeAnnouncement({
   const midY = screenHeight / 2;
   const isMutual = !!(cardReceived && cardGiven);
 
+  const a11yLabel = bothJokersException
+    ? t("exchangeAnnouncement.a11yNoSwap", { loserName })
+    : [
+        cardReceived &&
+          t("exchangeAnnouncement.giveLine", {
+            from: loserName,
+            card: cardSpokenName(cardReceived, t),
+            to: winnerName,
+          }),
+        cardGiven &&
+          t("exchangeAnnouncement.giveLine", {
+            from: winnerName,
+            card: cardSpokenName(cardGiven, t),
+            to: loserName,
+          }),
+      ]
+        .filter(Boolean)
+        .join(". ");
+
   return (
     <Animated.View
-      entering={FadeIn.duration(300)}
-      exiting={FadeOut.duration(300)}
+      entering={reduceMotion ? undefined : FadeIn.duration(Motion.duration.moderate)}
+      exiting={reduceMotion ? undefined : FadeOut.duration(Motion.duration.moderate)}
       style={styles.overlay}
     >
-      {cardReceived && (
+      <Pressable
+        style={StyleSheet.absoluteFill}
+        onPress={handleDismiss}
+        accessibilityElementsHidden
+        importantForAccessibility="no-hide-descendants"
+      />
+
+      {/* Purely decorative flourish — the same information is announced via
+          a11yLabel and shown as text below, so skip it entirely under
+          reduced motion rather than trying to "jump" it to a resting frame. */}
+      {!reduceMotion && cardReceived && (
         <FlyingCard
           card={cardReceived}
           toRight
@@ -140,7 +167,7 @@ export function ExchangeAnnouncement({
           yOffset={isMutual ? midY - 100 : midY - 42}
         />
       )}
-      {cardGiven && (
+      {!reduceMotion && cardGiven && (
         <FlyingCard
           card={cardGiven}
           toRight={false}
@@ -150,12 +177,29 @@ export function ExchangeAnnouncement({
         />
       )}
 
-      <Pressable onPress={handleDismiss} style={styles.card}>
-        <Text style={styles.title}>Scambio</Text>
+      <Pressable
+        onPress={handleDismiss}
+        style={styles.card}
+        accessibilityViewIsModal
+        accessibilityRole="alert"
+        accessibilityLabel={a11yLabel}
+        accessibilityHint={t("exchangeAnnouncement.dismissA11yHint")}
+      >
+        <Pressable
+          onPress={handleDismiss}
+          style={({ pressed }) => [styles.closeBtn, { opacity: pressed ? 0.6 : 1 }]}
+          hitSlop={Spacing.xs}
+          accessibilityRole="button"
+          accessibilityLabel={t("exchangeAnnouncement.closeA11yLabel")}
+        >
+          <Feather name="x" size={18} color={Colors.textMuted} />
+        </Pressable>
+
+        <Text style={styles.title}>{t("exchangeAnnouncement.title")}</Text>
 
         {bothJokersException ? (
           <Text style={styles.noSwapText}>
-            Nessuno scambio — Jolly doppio 🃏
+            {t("exchangeAnnouncement.noSwapText")}
           </Text>
         ) : (
           <View style={styles.rowsContainer}>
@@ -172,9 +216,9 @@ export function ExchangeAnnouncement({
                 </View>
                 <Text style={styles.descText}>
                   <Text style={styles.descName}>{loserName}</Text>
-                  <Text style={styles.descPlain}>{" dà "}</Text>
-                  <Text style={styles.descCard}>{getItalianCardName(cardReceived)}</Text>
-                  <Text style={styles.descPlain}>{" a "}</Text>
+                  <Text style={styles.descPlain}>{t("exchangeAnnouncement.givesWord")}</Text>
+                  <Text style={styles.descCard}>{cardSpokenName(cardReceived, t)}</Text>
+                  <Text style={styles.descPlain}>{t("exchangeAnnouncement.toWord")}</Text>
                   <Text style={styles.descName}>{winnerName}</Text>
                 </Text>
               </View>
@@ -197,9 +241,9 @@ export function ExchangeAnnouncement({
                 </View>
                 <Text style={styles.descText}>
                   <Text style={styles.descName}>{winnerName}</Text>
-                  <Text style={styles.descPlain}>{" dà "}</Text>
-                  <Text style={styles.descCard}>{getItalianCardName(cardGiven)}</Text>
-                  <Text style={styles.descPlain}>{" a "}</Text>
+                  <Text style={styles.descPlain}>{t("exchangeAnnouncement.givesWord")}</Text>
+                  <Text style={styles.descCard}>{cardSpokenName(cardGiven, t)}</Text>
+                  <Text style={styles.descPlain}>{t("exchangeAnnouncement.toWord")}</Text>
                   <Text style={styles.descName}>{loserName}</Text>
                 </Text>
               </View>
@@ -220,30 +264,39 @@ const styles = StyleSheet.create({
     zIndex: 150,
   },
   card: {
-    backgroundColor: "rgba(3, 16, 8, 0.96)",
-    borderRadius: 20,
+    backgroundColor: Colors.bgCard,
+    borderRadius: Radius.lg,
     borderWidth: 1,
     borderColor: Colors.border,
-    paddingVertical: 16,
-    paddingHorizontal: 20,
+    paddingVertical: Spacing.md,
+    paddingHorizontal: Spacing.lg,
     alignItems: "center",
-    gap: 8,
+    gap: Spacing.sm,
     maxWidth: 300,
     width: "82%",
     ...Shadow.gold,
   },
+  closeBtn: {
+    position: "absolute",
+    top: Spacing.xs,
+    right: Spacing.xs,
+    width: 44,
+    height: 44,
+    alignItems: "center",
+    justifyContent: "center",
+    zIndex: 1,
+  },
   title: {
-    fontFamily: "Rajdhani_700Bold",
-    fontSize: 16,
+    ...Type.heading,
+    fontSize: FontSize.md,
     color: Colors.gold,
     textAlign: "center",
     letterSpacing: 2,
-    marginBottom: 4,
+    textTransform: "uppercase",
+    marginBottom: Spacing.xs,
   },
   noSwapText: {
-    fontFamily: "Inter_400Regular",
-    fontSize: 13,
-    color: Colors.textSecondary,
+    ...Type.body,
     textAlign: "center",
   },
   rowsContainer: {
@@ -251,57 +304,48 @@ const styles = StyleSheet.create({
     gap: 0,
   },
   exchangeBlock: {
-    gap: 6,
-    paddingVertical: 4,
+    gap: Spacing.xs + 2,
+    paddingVertical: Spacing.xs,
     alignItems: "center",
   },
   exchangeRow: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
-    gap: 6,
+    gap: Spacing.xs + 2,
   },
   playerName: {
-    fontFamily: "Rajdhani_700Bold",
-    fontSize: 15,
+    ...Type.subheading,
     color: Colors.gold,
     maxWidth: 70,
     textAlign: "center",
   },
   arrow: {
-    color: Colors.textMuted,
-    fontSize: 12,
+    ...Type.caption,
   },
   cardWrap: {
     transform: [{ scale: 0.65 }],
-    marginHorizontal: -(58 * 0.175),
-    marginVertical: -(84 * 0.175),
+    marginHorizontal: -(CARD_W * 0.175),
+    marginVertical: -(CARD_H * 0.175),
   },
   descText: {
-    fontFamily: "Inter_400Regular",
-    fontSize: 13,
     textAlign: "center",
     lineHeight: 18,
   },
   descName: {
-    fontFamily: "Inter_600SemiBold",
-    fontSize: 13,
+    ...Type.bodyStrong,
     color: Colors.gold,
   },
   descPlain: {
-    fontFamily: "Inter_400Regular",
-    fontSize: 13,
-    color: Colors.textSecondary,
+    ...Type.body,
   },
   descCard: {
-    fontFamily: "Inter_500Medium",
-    fontSize: 13,
-    color: "#F0EAD6",
+    ...Type.bodyStrong,
   },
   separator: {
     height: 1,
     backgroundColor: Colors.border,
-    marginVertical: 8,
+    marginVertical: Spacing.sm,
     width: "100%",
   },
 });

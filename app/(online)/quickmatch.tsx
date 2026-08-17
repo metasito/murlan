@@ -5,7 +5,6 @@ import {
   StyleSheet,
   Pressable,
   Animated,
-  Platform,
   BackHandler,
   useWindowDimensions,
   ActivityIndicator,
@@ -18,6 +17,7 @@ import { Colors } from '@/lib/theme';
 import { MenuLayout, CONTENT_H_PAD } from "@/components/MenuLayout";
 import { MenuCard } from "@/components/MenuCard";
 import { MenuButton } from "@/components/MenuButton";
+import { useTranslation } from "@/lib/i18n";
 
 type GameMode = "free_for_all" | "teams";
 
@@ -30,43 +30,50 @@ interface ModeOption {
   playerLabel: string;
 }
 
-const MODES: ModeOption[] = [
-  {
-    maxPlayers: 2,
-    gameMode: "free_for_all",
-    icon: "person-outline",
-    label: "1 vs 1",
-    desc: "Solo contro un avversario",
-    playerLabel: "2",
-  },
-  {
-    maxPlayers: 3,
-    gameMode: "free_for_all",
-    icon: "people-outline",
-    label: "Trio",
-    desc: "Tre giocatori liberi",
-    playerLabel: "3",
-  },
-  {
-    maxPlayers: 4,
-    gameMode: "free_for_all",
-    icon: "apps-outline",
-    label: "4 Liberi",
-    desc: "Quattro, tutti contro tutti",
-    playerLabel: "4",
-  },
-  {
-    maxPlayers: 4,
-    gameMode: "teams",
-    icon: "shield-half-outline",
-    label: "2 vs 2",
-    desc: "Due coppie in sfida",
-    playerLabel: "4",
-  },
-];
+// Built with the current `t` on every render (see useModes below) rather
+// than frozen at import time, so the mode cards follow a live language
+// change with no app restart.
+function buildModes(t: ReturnType<typeof useTranslation>["t"]): ModeOption[] {
+  return [
+    {
+      maxPlayers: 2,
+      gameMode: "free_for_all",
+      icon: "person-outline",
+      label: t("quickmatch.mode1v1Label"),
+      desc: t("quickmatch.mode1v1Desc"),
+      playerLabel: "2",
+    },
+    {
+      maxPlayers: 3,
+      gameMode: "free_for_all",
+      icon: "people-outline",
+      label: t("quickmatch.modeTrioLabel"),
+      desc: t("quickmatch.modeTrioDesc"),
+      playerLabel: "3",
+    },
+    {
+      maxPlayers: 4,
+      gameMode: "free_for_all",
+      icon: "apps-outline",
+      label: t("quickmatch.mode4FreeLabel"),
+      desc: t("quickmatch.mode4FreeDesc"),
+      playerLabel: "4",
+    },
+    {
+      maxPlayers: 4,
+      gameMode: "teams",
+      icon: "shield-half-outline",
+      label: t("quickmatch.mode2v2Label"),
+      desc: t("quickmatch.mode2v2Desc"),
+      playerLabel: "4",
+    },
+  ];
+}
 
 export default function QuickmatchScreen() {
   const insets = useSafeAreaInsets();
+  const { t } = useTranslation();
+  const MODES = React.useMemo(() => buildModes(t), [t]);
   const { width: W, height: H } = useWindowDimensions();
   const { quickmatch, leaveRoom, room, error, clearError } = useOnlineGame();
   const navigation = useNavigation();
@@ -82,7 +89,15 @@ export default function QuickmatchScreen() {
     if (room) {
       router.replace("/(online)/room");
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- navigate once per room id, not on every room field update
   }, [room?.roomId]);
+
+  const handleCancelSearch = React.useCallback(() => {
+    leaveRoom();
+    clearError();
+    setPhase("selecting");
+    setSelectedMode(null);
+  }, [leaveRoom, clearError]);
 
   useEffect(() => {
     const sub = BackHandler.addEventListener("hardwareBackPress", () => {
@@ -96,7 +111,7 @@ export default function QuickmatchScreen() {
       return true;
     });
     return () => sub.remove();
-  }, [phase]);
+  }, [phase, handleCancelSearch, navigation]);
 
   useEffect(() => {
     if (phase !== "searching") return;
@@ -108,6 +123,7 @@ export default function QuickmatchScreen() {
     );
     pulse.start();
     return () => pulse.stop();
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- pulseAnim is a stable ref value
   }, [phase]);
 
   useEffect(() => {
@@ -131,13 +147,6 @@ export default function QuickmatchScreen() {
     quickmatch(selectedMode.maxPlayers, selectedMode.gameMode);
   };
 
-  const handleCancelSearch = () => {
-    leaveRoom();
-    clearError();
-    setPhase("selecting");
-    setSelectedMode(null);
-  };
-
   const handleCancelHome = () => {
     const parent = navigation.getParent();
     if (parent) parent.goBack();
@@ -158,15 +167,15 @@ export default function QuickmatchScreen() {
         {!isLandscape && (
           <View style={styles.header}>
             <Ionicons name="earth-outline" size={28} color={Colors.gold} />
-            <Text style={styles.headerTitle}>Online</Text>
-            <Text style={styles.headerSub}>Scegli il formato di gioco</Text>
+            <Text style={styles.headerTitle}>{t("quickmatch.title")}</Text>
+            <Text style={styles.headerSub}>{t("quickmatch.subtitle")}</Text>
           </View>
         )}
 
         {isLandscape && (
           <View style={styles.landscapeHeader}>
             <Ionicons name="earth-outline" size={20} color={Colors.gold} />
-            <Text style={styles.landscapeHeaderText}>Scegli il formato</Text>
+            <Text style={styles.landscapeHeaderText}>{t("quickmatch.subtitleShort")}</Text>
           </View>
         )}
 
@@ -200,7 +209,7 @@ export default function QuickmatchScreen() {
         </View>
 
         <MenuButton
-          label="Indietro"
+          label={t("common.back")}
           onPress={handleCancelHome}
           variant="ghost"
           fullWidth={false}
@@ -234,22 +243,22 @@ export default function QuickmatchScreen() {
           {error ? (
             <>
               <Text style={styles.errorText}>{error}</Text>
-              <MenuButton label="Riprova" onPress={handleRetry} />
+              <MenuButton label={t("common.retry")} onPress={handleRetry} />
             </>
           ) : (
             <>
               <ActivityIndicator color={Colors.gold} size="small" style={{ marginBottom: 8 }} />
               <Text style={styles.searchingLabel}>
-                Cerco giocatori<Text style={styles.dots}>{dots}</Text>
+                {t("quickmatch.searching")}<Text style={styles.dots}>{dots}</Text>
               </Text>
-              <Text style={styles.subtitle}>Ti uniremo a una partita appena possibile</Text>
+              <Text style={styles.subtitle}>{t("quickmatch.searchingSubtitle")}</Text>
             </>
           )}
         </MenuCard>
       </View>
 
       <MenuButton
-        label="Annulla"
+        label={t("common.cancel")}
         onPress={handleCancelSearch}
         variant="ghost"
         fullWidth={false}
@@ -305,7 +314,7 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.felt,
     borderRadius: 16,
     borderWidth: 1.5,
-    borderColor: "rgba(201,168,76,0.25)",
+    borderColor: Colors.goldBorder,
     padding: 18,
     alignItems: "center",
     gap: 8,
@@ -317,7 +326,7 @@ const styles = StyleSheet.create({
   },
   modeCardPressed: {
     borderColor: Colors.gold,
-    backgroundColor: "#0d4a2e",
+    backgroundColor: Colors.feltLight,
   },
   modeIconRow: {
     position: "relative",
@@ -329,7 +338,7 @@ const styles = StyleSheet.create({
     width: 52,
     height: 52,
     borderRadius: 26,
-    backgroundColor: "rgba(201,168,76,0.1)",
+    backgroundColor: Colors.goldMuted,
     alignItems: "center",
     justifyContent: "center",
   },
@@ -351,7 +360,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 4,
   },
   playerBadgeText: {
-    color: "#031008",
+    color: Colors.bg,
     fontSize: 11,
     fontWeight: "800",
   },
@@ -416,12 +425,12 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: 6,
-    backgroundColor: "rgba(201,168,76,0.12)",
+    backgroundColor: Colors.goldMuted,
     borderRadius: 20,
     paddingHorizontal: 14,
     paddingVertical: 6,
     borderWidth: 1,
-    borderColor: "rgba(201,168,76,0.3)",
+    borderColor: Colors.goldBorder,
     marginBottom: 8,
   },
   selectedModeText: {
@@ -451,7 +460,7 @@ const styles = StyleSheet.create({
   errorText: {
     fontFamily: "Inter_400Regular",
     fontSize: 15,
-    color: "#e57373",
+    color: Colors.dangerDim,
     textAlign: "center",
     marginBottom: 4,
   },
