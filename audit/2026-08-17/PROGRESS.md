@@ -3,9 +3,31 @@
 Run `/batch next` to start the next unchecked batch. Run `/batch status` to print this file.
 Each batch fills in its own row as it goes and ticks its box once its PR is **merged**.
 
-**Sequencing rule:** batches 1–5 touch `server/socket.ts` and must run **in order**. After
-that, 6/7 and 8/9/11 are independent of each other and can run in parallel worktrees if you
-want speed. Then 10 → 12 → 13 → 14.
+## Run order
+
+```
+2 → 3 → 4 → 5            serial — all four rewrite server/socket.ts lifecycle code
+
+then two tracks, in parallel worktrees:
+  Track A:  6 → 10       server, build, rules
+  Track B:  7 → 8 → 9 → 11   client UI — serial within the track
+
+then serial:
+12 → 13 → 14
+```
+
+**Why Track B stays serial:** batches 7, 8, 9 and 11 all rewrite `components/GameTable.tsx`
+and `components/GameShared.tsx`. Running them concurrently guarantees conflicts in the two
+largest files in the repo.
+
+**Why 12, 13, 14 come last:** 12 needs Batch 9 landed (its `reducedMotion` scanner is what
+catches Batch 9's unguarded animations) and Batch 10 landed (the rules tests). 13 splits
+`socket.ts` *and* de-duplicates the layout constants, so it needs both tracks finished. 14
+corrects the documents describing what 13 changed.
+
+**One collision if you run the tracks in parallel:** Batch 6 edits `app/_layout.tsx` for the
+font gate and Batch 8 edits the same file for the notification banner. Different regions, but
+merge one before opening the other's PR.
 
 | # | Batch | Findings | Effort | Model | Status | Branch | PR |
 |---|---|---|---|---|---|---|---|
