@@ -7,6 +7,7 @@ import { logger } from "./logger.ts";
 import { sessionMiddleware } from "./session.ts";
 import { createApp } from "./testApp.ts";
 import { shutdown } from "./shutdown.ts";
+import { installProcessGuards } from "./socketSafety.ts";
 
 export { sessionMiddleware };
 
@@ -28,6 +29,12 @@ export { sessionMiddleware };
 
   process.on("SIGTERM", () => void shutdown("SIGTERM", { io, server }));
   process.on("SIGINT", () => void shutdown("SIGINT", { io, server }));
+
+  // After the app is up, so a failure during construction — `ensureSchema`
+  // above all, which refuses to start on a schema it knows is wrong — reaches
+  // the .catch below and exits, rather than being swallowed as an unhandled
+  // rejection by the guard meant for the running server.
+  installProcessGuards();
 })().catch((err) => {
   logger.fatal({ err }, "Server failed to start");
   process.exit(1);
