@@ -6,8 +6,9 @@
 // Keys are namespaced `<area>.<name>` by the screen or component they came
 // from. `server.*` holds the strings rendered for machine-readable codes
 // emitted by server/socket.ts and server/routes.ts (see lib/i18n.ts's
-// `translateServerPayload`) — those are not extracted from JSX, they mirror
-// the server's plain-text fallback so the two never drift silently.
+// `translateServerPayload`) — those are not extracted from JSX. The server
+// itself is written in English and ships only a code plus an English fallback;
+// every code it can emit must have a key here, which tests/i18n.test.ts pins.
 //
 // Interpolation uses `{{name}}` placeholders. Simple pluralisation uses a
 // `_one` / `_other` key pair consumed by `tn()`.
@@ -52,6 +53,7 @@ export const it = {
   "server.PLAYER_AFK_AUTO_PASS": "{{username}} è inattivo — passato automaticamente",
   "server.PLAYER_LEFT_ABANDONED": "{{username}} ha lasciato la partita.",
   "server.PLAYER_LEFT_BOT_TAKEOVER": "{{username}} ha lasciato la partita — il computer gioca al suo posto.",
+  "server.REPLAY_NOT_FOUND": "Replay non trovato",
   "server.ROOM_NOT_FOUND": "Stanza non trovata",
   "server.GAME_ALREADY_STARTED": "Partita già iniziata",
   "server.ROOM_FULL": "Stanza piena",

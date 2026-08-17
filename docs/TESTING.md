@@ -31,7 +31,9 @@ Several suites read source or shipped assets rather than calling a function,
 because the property they protect is structural: that every `<Modal>` supports
 landscape, that no fill token is used as a text colour, that the twelve sound
 files are real non-silent PCM, that match history's prune and read share one
-bound, that `db:push` cannot offer to rename the session table, that no inbound
+bound, that `db:push` cannot offer to rename the session table, that every
+statement the boot-time schema bootstrap emits is additive and idempotent and
+every error code the server can emit has a translation, that no inbound
 socket event is registered outside the boundary wrapper, that every vignette
 piece spans a full edge of the felt rather than drawing its inner edges across
 it, that no component animates without consulting the reduced-motion setting,
@@ -49,7 +51,11 @@ logic lives in `components/gameTableModel.ts` apart from the `.tsx` component.
 `tests/integration/` drives a real Socket.io server against real Postgres:
 auth and the socket handshake, gameplay integrity, stats persistence, the
 ladder and replay writes, spectating, client crash reports, test server
-cleanup.
+cleanup, and that a database the server has never seen works on the first boot.
+
+The harness creates an empty Postgres schema and nothing else — the tables
+inside it come from the app's own `ensureSchema()`, exactly as in production. So
+every suite here is also a test that boot-time schema creation works.
 
 `tests/helpers/gameDriver.ts` is the shared machinery: everything
 `handleGameOver` writes — stats, history, replays, ratings — needs the same

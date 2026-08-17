@@ -40,6 +40,7 @@ export const en: Record<keyof typeof it, string> = {
   "server.PLAYER_AFK_AUTO_PASS": "{{username}} is inactive — passed automatically",
   "server.PLAYER_LEFT_ABANDONED": "{{username}} left the game.",
   "server.PLAYER_LEFT_BOT_TAKEOVER": "{{username}} left the game — the computer is now playing their seat.",
+  "server.REPLAY_NOT_FOUND": "Replay not found",
   "server.ROOM_NOT_FOUND": "Room not found",
   "server.GAME_ALREADY_STARTED": "Game already started",
   "server.ROOM_FULL": "Room full",

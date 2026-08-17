@@ -77,12 +77,14 @@ straight to code.
 practice for something is not known, look it up on the web rather than guessing.
 
 **The database is not precious.** There are no real users. Dropping and recreating a
-table to reach a clean shape is preferred over accreting compatibility. What is *not*
-free is adding a column to a hot table before `db:push` runs on Replit — Drizzle's upsert
-is one statement, so a missing column fails writes that have nothing to do with the
-feature. Order of preference: **derive from existing rows → ride an existing jsonb
-column → a new table → a new column**. Do not add a table per feature when an existing
-one answers the question.
+table to reach a clean shape is preferred over accreting compatibility. Adding a table or
+a column needs no deploy step: `server/schemaDdl.ts` derives the DDL from
+`shared/schema.ts` and applies it on every boot. The one shape it cannot reach is a NOT
+NULL column with no default on a table that already has rows — boot fails loudly rather
+than serving a half-built schema, and that case wants a default or a backfill. Order of
+preference for *design* reasons, not deploy ones: **derive from existing rows → ride an
+existing jsonb column → a new table → a new column**. Do not add a table per feature when
+an existing one answers the question.
 
 **Leave no residue.** Design docs that have been implemented, superseded plans, scratch
 scripts, empty directories and dead-end folders get deleted, not archived. Docs describe
@@ -95,7 +97,8 @@ what the code does now; a claim that no longer holds is removed the moment it is
 - The app runs on Replit. The Express server serves both the REST API and the Expo web bundle.
 - **Port:** Use `process.env.PORT` — Replit assigns this dynamically.
 - **Database:** Replit-managed PostgreSQL, connection string at `process.env.DATABASE_URL`.
-- **Session table:** `session` — pre-created, never drop or recreate it. `createTableIfMissing: false`. `drizzle.config.ts` excludes it from push.
+- **Schema:** created at boot by `server/schemaDdl.ts`, from `shared/schema.ts`. No manual `db:push` is needed to deploy — that script exists only for destructive reconciliation (dropping or retyping), which boot deliberately will not do.
+- **Session table:** `session` — created at boot alongside everything else, because nothing else can: `drizzle.config.ts` excludes it from push and the store runs `createTableIfMissing: false`. Clear its rows, never drop it while the server is running.
 - **Env vars:** `DATABASE_URL`, `SESSION_SECRET`, `PORT` must always be set in Replit Secrets.
 - Do not add build steps that require local tooling unavailable on Replit (e.g. native compilation).
 - The app must be launchable from Replit's Run button without extra setup.
@@ -142,6 +145,7 @@ what the code does now; a claim that no longer holds is removed the moment it is
 | `server/db.ts` | Drizzle ORM + pg Pool |
 | `server/session.ts` | express-session setup |
 | `shared/schema.ts` | Drizzle schema + shared TypeScript types (Card, GameState, etc.) |
+| `server/schemaDdl.ts` | The only thing that creates database tables. Derives idempotent, additive DDL from `shared/schema.ts` (plus connect-pg-simple's `session`) and applies it at boot |
 | `context/AuthContext.tsx` | Auth state (useAuth hook — god node with 22 edges) |
 | `context/OnlineGameContext.tsx` | Online game state |
 | `context/SocketContext.tsx` | Socket lifecycle, friend events, invite handling |
@@ -189,11 +193,17 @@ Each of these is a bug that shipped. Verify against source before changing any o
 - **Socket singleton** — one socket per userId via `lib/socket.ts`; `SocketContext` owns the
   lifecycle.
 - **Friends system** — 6-character codes; the `FlatList` needs `extraData={onlineIds}`.
-- **Session table** — pre-created, `createTableIfMissing: false`. Clear its rows, never
-  drop it. It is deliberately absent from `shared/schema.ts`, which means drizzle-kit
-  sees a table it does not own: on any push that also adds one, it asks whether the new
-  table is a *rename* of `session`. `drizzle.config.ts` excludes it (`tablesFilter`) so
-  the question is never asked. Pinned by `tests/dbPush.test.ts`.
+- **One owner for schema creation** — `server/schemaDdl.ts`, run by `createApp()` before
+  the session middleware. Every statement it emits is additive and idempotent (pinned by
+  `tests/schemaDdl.test.ts`), so it is safe on every boot; the integration suite boots
+  against schemas only it created. Nothing else creates a table: not `dev-stack.mjs`, not
+  the test harness. A second creator is how the `session` table came to exist on one
+  database and nowhere else.
+- **Session table** — `createTableIfMissing: false`, and deliberately absent from
+  `shared/schema.ts`, which means drizzle-kit sees a table it does not own: on any push
+  that also adds one, it asks whether the new table is a *rename* of `session`.
+  `drizzle.config.ts` excludes it (`tablesFilter`) so the question is never asked. Pinned
+  by `tests/dbPush.test.ts`. Clear its rows, never drop it while the server is running.
 
 ---
 
@@ -207,15 +217,15 @@ Each of these is a bug that shipped. Verify against source before changing any o
 
 **AFK:** 30s auto-pass timer, cleared on every move/pass.
 
-**Session store:** `connect-pg-simple`, table `"session"`, `createTableIfMissing: false`. The table was pre-created — never recreate it.
+**Session store:** `connect-pg-simple`, table `"session"`, `createTableIfMissing: false` — `server/schemaDdl.ts` creates it at boot instead, so the store never runs DDL mid-request.
 
 **Game persistence:** `active_games` table stores live game state after every move.
 
 **Replays:** a finished manche is written once to `match_replays`. The live move log is
 memory-only (`OnlineGameState.moveLog`) — the `game_state` envelope is rewritten after
 every move, and a hand a restart interrupts has no replay either way. No hand is stored,
-only what was played. `db:push` must run before the first replay can be written; until
-then the insert fails, is logged, and nothing else notices.
+only what was played. The write is not awaited: if it fails it is logged and nothing else
+notices.
 
 **Game length:** A *manche* is one hand; a *partita* is the match those manches
 add up to. A game is either a full match (3/2/1/0 per manche, first to 21, escalating

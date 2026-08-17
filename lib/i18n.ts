@@ -11,8 +11,8 @@
 //   changes language in SettingsModal — no app restart required.
 // - `translateServerPayload` renders the `{ code, message, params }` shape
 //   emitted by server/socket.ts and server/routes.ts (see docs there): the
-//   server never ships its own translation table, only a stable code plus a
-//   plain-text Italian fallback for safety.
+//   server never ships its own translation table, only a stable code plus an
+//   English fallback for safety.
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useCallback, useSyncExternalStore } from "react";
 // Relative (not `@/`) on purpose: node's native TS loader, used by

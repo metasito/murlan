@@ -4,10 +4,8 @@ import pg from "pg";
 import { hasDatabase, skipMessage, startTestServer } from "../helpers/testServer.ts";
 
 /**
- * Proves startTestServer()'s cleanup-on-failure path actually runs. The
- * realistic trigger for a post-schema-creation failure is a stale
- * SCHEMA_DDL (e.g. after shared/schema.ts changes without a matching edit
- * in tests/helpers/testServer.ts) — simulated here directly via
+ * Proves startTestServer()'s cleanup-on-failure path actually runs. A failure
+ * between CREATE SCHEMA and boot is simulated via
  * StartTestServerOptions.ddlOverride, a test-only escape hatch.
  *
  * Needs a real database (same as every other integration test); skips
@@ -30,7 +28,7 @@ async function schemaExists(
   }
 }
 
-test("startTestServer() cleans up after a failure during schema push", async (t) => {
+test("startTestServer() cleans up after a failure during boot", async (t) => {
   if (!hasDatabase()) {
     t.skip(skipMessage());
     return;
@@ -54,11 +52,12 @@ test("startTestServer() cleans up after a failure during schema push", async (t)
     `the schema ${testSchema} must be dropped on stop()`
   );
 
-  // Then, verify the failure path: schema is created but dropped when DDL fails
+  // Then, verify the failure path: the schema is created but dropped again
+  // when boot fails afterwards
   await assert.rejects(
-    () => startTestServer({ ddlOverride: "THIS IS NOT VALID SQL AT ALL;" }),
-    /syntax error/i,
-    "expected the bad DDL to fail with a Postgres syntax error"
+    () => startTestServer({ failAfterSchemaCreate: true }),
+    /forced failure after CREATE SCHEMA/,
+    "expected the injected failure to propagate"
   );
 
   assert.equal(

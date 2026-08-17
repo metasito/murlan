@@ -50,22 +50,19 @@ Three artefacts are build outputs. Edit the script, not the result:
 
 ## Needs the owner, not more effort
 
-`npm run db:push` on Replit — `match_replays`, `user_ratings` and `push_tokens`
-do not exist there yet, so replays, the ladder and invite notifications degrade
-to nothing until it runs · EAS
-submit credentials · push credentials and a privacy-policy entry for Q23 · the
-432×432 monochrome icon · a native Albanian speaker for idiom · real-device
+EAS submit credentials · push credentials and a privacy-policy entry for Q23 ·
+the 432×432 monochrome icon · a native Albanian speaker for idiom · real-device
 VoiceOver. `docs/BACKLOG.md` §2 is the full list with what each one needs.
 
-`drizzle.config.ts` excludes the `session` table from push, because otherwise a
-push that adds a table asks whether the new one is a *rename* of `session` —
-and answering yes logs out every account.
+Nothing on this list is a database step any more. `server/schemaDdl.ts` applies
+`shared/schema.ts` on every server start, so a new table or column ships with
+the deploy that introduces it, and a database Replit has just reprovisioned
+works on the first boot. `npm run db:push` is left for destructive
+reconciliation only.
 
-Adding a *column* to a busy table is still worth avoiding: Drizzle's upsert is
-one statement, so until `db:push` runs the missing column fails writes that
-have nothing to do with the feature. A new *table* fails alone, which is why
-replays and ratings each got one and wrap their writes so a game cannot fail
-with them.
+`drizzle.config.ts` still excludes the `session` table from push, because
+otherwise a push that adds a table asks whether the new one is a *rename* of
+`session` — and answering yes logs out every account.
 
 ## How to work here
 

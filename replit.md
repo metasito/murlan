@@ -25,7 +25,7 @@ bundle. No extra setup.
 | `npm run expo:dev` | Expo dev server, proxied through the Replit domain |
 | `npm run server:build` / `server:prod` | esbuild bundle, then run it |
 | `npm run verify` | Typecheck + tests. Run this before pushing. |
-| `npm run db:push` | Apply `shared/schema.ts` to the database |
+| `npm run db:push` | Reconcile the database *destructively* — drops, retypes, renames. Not needed to deploy: the server applies additive schema changes itself at boot |
 | `npm run db:reset` | **Destructive.** Refuses on its own — needs `ALLOW_DESTRUCTIVE=1 node scripts/reset-db.mjs --yes`, and never runs under `NODE_ENV=production` |
 
 ## Required Secrets
@@ -40,12 +40,12 @@ All three must be set in Replit Secrets or the server refuses to boot
 ## Things that will break Replit if you change them
 
 - **`process.env.PORT`.** Replit assigns it dynamically.
-- **The `session` table.** Pre-created, and `connect-pg-simple` runs with
-  `createTableIfMissing: false`. Clearing its rows is fine; dropping the table stops the
-  server booting. `scripts/reset-db.mjs` deliberately preserves it for this reason, and
-  `drizzle.config.ts` excludes it from `db:push` — without that exclusion, a push that
-  adds any new table asks whether the new one is a *rename* of `session`, and answering
-  yes renames it and logs out every account.
+- **The `session` table.** `connect-pg-simple` runs with `createTableIfMissing: false`, so
+  `server/schemaDdl.ts` creates it at boot instead — nothing else can, because
+  `drizzle.config.ts` excludes it from `db:push`. Without that exclusion, a push that adds
+  any new table asks whether the new one is a *rename* of `session`, and answering yes
+  renames it and logs out every account. Clearing its rows is fine (`scripts/reset-db.mjs`
+  does exactly that); dropping it under a running server breaks every login until restart.
 - **`app.set("trust proxy", 1)`** in `server/index.ts`. Replit terminates TLS at a proxy,
   so without this Express never considers the connection secure, `Set-Cookie` is silently
   dropped in production, and `express-rate-limit` collapses every client into one bucket.
@@ -56,7 +56,13 @@ All three must be set in Replit Secrets or the server refuses to boot
 ## Database
 
 Managed PostgreSQL, accessed through Drizzle (`server/db.ts`). Schema is
-`shared/schema.ts`; `npm run db:push` applies it.
+`shared/schema.ts`, and `server/schemaDdl.ts` applies it on every server start:
+tables, columns, indexes and enum types that are missing get created, and
+nothing is ever dropped or retyped. Deploying a schema change needs no manual
+step, and a database Replit has just reprovisioned works on the first boot.
+
+`npm run db:push` is for the changes boot deliberately will not make — dropping
+a column, narrowing a type, renaming anything.
 
 There are no migration files — the project uses `drizzle-kit push` against a schema that is
 the source of truth. If a push conflicts with existing rows (for example a new unique index

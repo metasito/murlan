@@ -107,7 +107,8 @@ later turns.
   restart, which empties that map, orphans the row of any game that was live. The
   periodic sweeper therefore also prunes rows untouched for 24h. `updated_at` advances
   on every move, so a game being played is never a candidate.
-- **`session`** (via `connect-pg-simple`): pre-created, `createTableIfMissing: false`. Never
+- **`session`** (via `connect-pg-simple`): `createTableIfMissing: false`, so
+  `server/schemaDdl.ts` creates it at boot with the same DDL the library ships. Never
   dropped or recreated by app code — see `replit.md`.
 - **`match_replays`**: one row per finished manche — `seats`, `moves` and `rankings` as
   jsonb, plus `playerIds` for the containment filter both reads go through, so a player
@@ -117,8 +118,7 @@ later turns.
   is rewritten after every move and a hand a restart interrupts has no replay either way.
   Pruned by age (`REPLAY_RETENTION_DAYS`) inside the insert's transaction — a row belongs
   to up to four players, so a per-player cap could not delete one alone. The write is not
-  awaited and the table is not required to exist: until `npm run db:push` has run the
-  insert fails, is logged, and the only consequence is an empty replays list.
+  awaited: if it fails it is logged, and the only consequence is an empty replays list.
   It is also the one user-naming table with **no** cascading foreign key — a replay
   belongs to up to four players, so `deleteUser` erases the departing player from it
   by hand (id out of `player_ids`, name blanked in `seats`) and drops replays nobody

@@ -8,6 +8,9 @@
 // that no longer matches across locales — hence these tests.
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
+import path from "node:path";
 // @ts-ignore — see tests/helpers.ts for why the .ts extension is required
 import { it } from "../locales/it.ts";
 // @ts-ignore
@@ -163,12 +166,43 @@ describe("translate() produces the expected output per locale", () => {
     assert.equal(out, "this.key.does.not.exist");
   });
 
-  test("server.* keys mirror the plain-text fallback the server ships (Italian)", () => {
-    // The Italian catalogue's server.* entries are required to stay byte-
-    // identical to the server's own fallback text (see locales/it.ts's
-    // header comment and server/socket.ts / server/routes.ts) so the two
-    // never silently drift.
-    assert.equal(it["server.ROOM_NOT_FOUND"], "Stanza non trovata");
-    assert.equal(it["server.USERNAME_TAKEN"], "Username già in uso");
+  test("every error code the server can emit has a server.* key", () => {
+    // The server is written in English and ships a stable `code` plus an
+    // English fallback; the catalogues are the only place the player's
+    // language comes from. A code with no key here falls through
+    // `translateServerPayload` to that English fallback and shows an Italian
+    // player English — which is how `REPLAY_NOT_FOUND` was found.
+    const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+    const emitted = new Set<string>();
+    for (const rel of ["server/routes.ts", "server/socket.ts"]) {
+      const source = readFileSync(path.join(repoRoot, rel), "utf8");
+      for (const m of source.matchAll(/code: "([A-Z_]+)"/g)) emitted.add(m[1]);
+      // seatClaimCode() and its siblings return the code directly.
+      for (const m of source.matchAll(/return "([A-Z][A-Z_]{3,})";/g)) emitted.add(m[1]);
+    }
+    assert.ok(emitted.size > 10, `expected to find the server's codes, got ${emitted.size}`);
+
+    const missing = [...emitted].filter(
+      (code) => !Object.prototype.hasOwnProperty.call(it, `server.${code}`)
+    );
+    assert.deepEqual(
+      missing,
+      [],
+      `these codes have no server.* translation: ${missing.join(", ")}`
+    );
+  });
+
+  test("no server.* key is unused", () => {
+    // The mirror of the test above: a key nothing can emit is dead weight
+    // that three catalogues have to keep translating.
+    const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+    const sources = ["server/routes.ts", "server/socket.ts"]
+      .map((rel) => readFileSync(path.join(repoRoot, rel), "utf8"))
+      .join("\n");
+    const unused = Object.keys(it)
+      .filter((key) => key.startsWith("server."))
+      .map((key) => key.slice("server.".length))
+      .filter((code) => !sources.includes(`"${code}"`));
+    assert.deepEqual(unused, [], `unused server.* keys: ${unused.join(", ")}`);
   });
 });

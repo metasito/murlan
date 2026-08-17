@@ -1,10 +1,13 @@
 /**
- * Local end-to-end stack: Postgres in Docker, schema pushed, server running.
+ * Local end-to-end stack: an empty Postgres in Docker for the server to use.
  *
  * Usage:
- *   node scripts/dev-stack.mjs up     start Postgres and push the schema
+ *   node scripts/dev-stack.mjs up     start Postgres
  *   node scripts/dev-stack.mjs down   stop and remove the container
  *   node scripts/dev-stack.mjs env    print the env vars for the server
+ *
+ * It creates no tables. `server/schemaDdl.ts` is the single owner of that, and
+ * it runs on every server start against whatever database it is pointed at.
  *
  * The container is disposable and named distinctly so it can never be confused
  * with a real database.
@@ -65,32 +68,6 @@ if (!isRunning()) {
 
 if (!waitReady()) {
   console.error("Postgres did not become ready");
-  process.exit(1);
-}
-
-const push = run("npx", ["drizzle-kit", "push", "--force"], {
-  env: { ...process.env, DATABASE_URL: URL },
-  shell: process.platform === "win32",
-});
-process.stdout.write(push.stdout ?? "");
-if (push.status !== 0) {
-  process.stderr.write(push.stderr ?? "");
-  process.exit(1);
-}
-
-// connect-pg-simple's table, not Drizzle's, so `drizzle-kit push` never creates
-// it. On Replit it is pre-created; locally the stack has to make it.
-const sessionDdl = `
-  CREATE TABLE IF NOT EXISTS session (
-    sid varchar NOT NULL COLLATE "default" PRIMARY KEY,
-    sess json NOT NULL,
-    expire timestamp(6) NOT NULL
-  );
-  CREATE INDEX IF NOT EXISTS "IDX_session_expire" ON session (expire);
-`;
-const sess = run("docker", ["exec", "-i", NAME, "psql", "-U", "postgres", "-d", "murlan_dev", "-c", sessionDdl]);
-if (sess.status !== 0) {
-  console.error(sess.stderr);
   process.exit(1);
 }
 

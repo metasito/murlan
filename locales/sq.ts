@@ -62,6 +62,7 @@ export const sq: Record<keyof typeof it, string> = {
   "server.PLAYER_AFK_AUTO_PASS": "{{username}} është joaktiv — kaloi automatikisht",
   "server.PLAYER_LEFT_ABANDONED": "{{username}} u largua nga loja.",
   "server.PLAYER_LEFT_BOT_TAKEOVER": "{{username}} u largua nga loja — kompjuteri po luan në vendin e tij.",
+  "server.REPLAY_NOT_FOUND": "Përsëritja nuk u gjet",
   "server.ROOM_NOT_FOUND": "Dhoma nuk u gjet",
   "server.GAME_ALREADY_STARTED": "Loja ka filluar tashmë",
   "server.ROOM_FULL": "Dhoma është plot",

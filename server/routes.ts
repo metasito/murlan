@@ -42,7 +42,7 @@ const RouteParamSchema = z.string().min(1).max(64);
 function readParam(res: Response, raw: unknown): string | null {
   const parsed = RouteParamSchema.safeParse(raw);
   if (!parsed.success) {
-    res.status(400).json({ message: "Parametro non valido", code: "INVALID_PARAMETER" });
+    res.status(400).json({ message: "Invalid parameter", code: "INVALID_PARAMETER" });
     return null;
   }
   return parsed.data;
@@ -99,7 +99,7 @@ const errorReportLimiter = rateLimit({
 
 function requireAuth(req: Request, res: Response, next: () => void) {
   if (!req.session.userId) {
-    res.status(401).json({ message: "Non autenticato", code: "NOT_AUTHENTICATED" });
+    res.status(401).json({ message: "Not authenticated", code: "NOT_AUTHENTICATED" });
     return;
   }
   next();
@@ -114,7 +114,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
     const existing = await storage.searchUserByUsername(username);
     if (existing) {
-      res.status(409).json({ message: "Username già in uso", code: "USERNAME_TAKEN" });
+      res.status(409).json({ message: "Username already taken", code: "USERNAME_TAKEN" });
       return;
     }
 
@@ -131,7 +131,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         await storage.deleteUser(user.id).catch((cleanupErr) =>
           logger.error({ cleanupErr, userId: user.id }, "Failed to roll back orphaned registration")
         );
-        res.status(500).json({ message: "Errore interno del server", code: "INTERNAL_SERVER_ERROR" });
+        res.status(500).json({ message: "Internal server error", code: "INTERNAL_SERVER_ERROR" });
         return;
       }
       logger.info({ userId: user.id, username }, "User registered");
@@ -144,13 +144,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
     const user = await storage.getUserByUsername(username);
     if (!user) {
-      res.status(401).json({ message: "Username o password errati", code: "INVALID_CREDENTIALS" });
+      res.status(401).json({ message: "Wrong username or password", code: "INVALID_CREDENTIALS" });
       return;
     }
 
     const ok = await bcrypt.compare(password, user.password);
     if (!ok) {
-      res.status(401).json({ message: "Username o password errati", code: "INVALID_CREDENTIALS" });
+      res.status(401).json({ message: "Wrong username or password", code: "INVALID_CREDENTIALS" });
       return;
     }
 
@@ -158,7 +158,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     req.session.save((err) => {
       if (err) {
         logger.error({ err }, "Session save failed on login");
-        res.status(500).json({ message: "Errore interno del server", code: "INTERNAL_SERVER_ERROR" });
+        res.status(500).json({ message: "Internal server error", code: "INTERNAL_SERVER_ERROR" });
         return;
       }
       logger.info({ userId: user.id, username }, "User logged in");
@@ -188,12 +188,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.get("/api/auth/me", async (req, res) => {
     if (!req.session.userId) {
-      res.status(401).json({ message: "Non autenticato", code: "NOT_AUTHENTICATED" });
+      res.status(401).json({ message: "Not authenticated", code: "NOT_AUTHENTICATED" });
       return;
     }
     const user = await storage.getUser(req.session.userId);
     if (!user) {
-      res.status(401).json({ message: "Utente non trovato", code: "USER_NOT_FOUND" });
+      res.status(401).json({ message: "User not found", code: "USER_NOT_FOUND" });
       return;
     }
     res.json({ id: user.id, username: user.username });
@@ -214,7 +214,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       await storage.deleteUser(userId);
       req.session.destroy(() => {});
       logger.info({ userId }, "User account deleted");
-      res.json({ message: "Account eliminato con successo", code: "ACCOUNT_DELETED" });
+      res.json({ message: "Account deleted", code: "ACCOUNT_DELETED" });
     } catch (err) {
       logger.error({ err }, "Delete user failed");
       res.status(500).json({ error: "Eliminazione fallita", code: "ACCOUNT_DELETE_FAILED" });
@@ -243,12 +243,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get("/api/users/search", requireAuth, async (req, res) => {
     const username = z.string().min(1).max(30).safeParse(req.query.username);
     if (!username.success) {
-      res.status(400).json({ message: "Username non valido", code: "INVALID_USERNAME" });
+      res.status(400).json({ message: "Invalid username", code: "INVALID_USERNAME" });
       return;
     }
     const found = await storage.searchUserByUsername(username.data);
     if (!found || found.id === req.session.userId) {
-      res.status(404).json({ message: "Utente non trovato", code: "USER_NOT_FOUND" });
+      res.status(404).json({ message: "User not found", code: "USER_NOT_FOUND" });
       return;
     }
     res.json({ id: found.id, username: found.username });
@@ -267,24 +267,24 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
     const friend = await storage.searchUserByUsername(username);
     if (!friend) {
-      res.status(404).json({ message: "Utente non trovato", code: "USER_NOT_FOUND" });
+      res.status(404).json({ message: "User not found", code: "USER_NOT_FOUND" });
       return;
     }
 
     if (friend.id === req.session.userId) {
-      res.status(400).json({ message: "Non puoi aggiungere te stesso", code: "CANNOT_ADD_SELF" });
+      res.status(400).json({ message: "You cannot add yourself", code: "CANNOT_ADD_SELF" });
       return;
     }
 
     const already = await storage.areFriends(req.session.userId!, friend.id);
     if (already) {
-      res.status(409).json({ message: "Siete già amici", code: "ALREADY_FRIENDS" });
+      res.status(409).json({ message: "Already friends", code: "ALREADY_FRIENDS" });
       return;
     }
 
     const pending = await storage.hasPendingRequest(req.session.userId!, friend.id);
     if (pending) {
-      res.status(409).json({ message: "Richiesta di amicizia già inviata", code: "FRIEND_REQUEST_ALREADY_SENT" });
+      res.status(409).json({ message: "Friend request already sent", code: "FRIEND_REQUEST_ALREADY_SENT" });
       return;
     }
 
@@ -305,7 +305,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     // Only the sender can cancel — enforced inside cancelFriendRequest.
     const cancelled = await storage.cancelFriendRequest(id, req.session.userId!);
     if (!cancelled) {
-      res.status(404).json({ message: "Richiesta non trovata", code: "FRIEND_REQUEST_NOT_FOUND" });
+      res.status(404).json({ message: "Friend request not found", code: "FRIEND_REQUEST_NOT_FOUND" });
       return;
     }
     res.json({ ok: true });
@@ -319,7 +319,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     // own request by id (IDOR).
     const result = await storage.acceptFriend(id, accepterId);
     if (!result) {
-      res.status(404).json({ message: "Richiesta non trovata", code: "FRIEND_REQUEST_NOT_FOUND" });
+      res.status(404).json({ message: "Friend request not found", code: "FRIEND_REQUEST_NOT_FOUND" });
       return;
     }
     const accepter = await storage.getUser(accepterId);
@@ -346,7 +346,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     // pending request by id).
     const declined = await storage.declineFriendRequest(id, req.session.userId!);
     if (!declined) {
-      res.status(404).json({ message: "Richiesta non trovata", code: "FRIEND_REQUEST_NOT_FOUND" });
+      res.status(404).json({ message: "Friend request not found", code: "FRIEND_REQUEST_NOT_FOUND" });
       return;
     }
     res.json({ ok: true });
@@ -398,7 +398,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     if (id === null) return;
     const replay = await getReplayForUser(id, req.session.userId!);
     if (!replay) {
-      res.status(404).json({ message: "Replay non trovato", code: "REPLAY_NOT_FOUND" });
+      res.status(404).json({ message: "Replay not found", code: "REPLAY_NOT_FOUND" });
       return;
     }
     res.json(replay);

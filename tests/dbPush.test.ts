@@ -1,6 +1,7 @@
 // tests/dbPush.test.ts — the session table must survive `npm run db:push`.
 //
-// `session` is owned by connect-pg-simple and pre-created, so it is
+// `session` is owned by connect-pg-simple (server/schemaDdl.ts creates it at
+// boot, with the DDL the library ships), so it is
 // deliberately not in shared/schema.ts. That leaves drizzle-kit looking at a
 // table it does not know about: on any push that also *adds* a table, it asks
 // whether the new one is a rename of `session`. Answering yes renames the
@@ -33,7 +34,7 @@ test("the schema does not describe the session table", () => {
   assert.doesNotMatch(
     schema,
     /pgTable\(\s*"session"/,
-    "`session` is pre-created and owned by connect-pg-simple; describing it here hands drizzle-kit the right to recreate it"
+    "`session` is owned by connect-pg-simple; describing it here hands drizzle-kit the right to recreate it"
   );
 });
 

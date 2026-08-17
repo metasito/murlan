@@ -8,6 +8,7 @@ import { logger } from "./logger.ts";
 import { sessionMiddleware } from "./session.ts";
 import { pool } from "./db.ts";
 import { registerRoutes } from "./routes.ts";
+import { ensureSchema } from "./schemaDdl.ts";
 import { isAllowedOrigin, isBehindProxy } from "./cors.ts";
 import { installProcessGuards } from "./socketSafety.ts";
 import * as fs from "fs";
@@ -145,10 +146,18 @@ function setupErrorHandler(app: express.Application) {
         message?: string;
       };
       const status = error.status || error.statusCode || 500;
-      const message = error.message || "Internal Server Error";
       logger.error({ err }, "Internal Server Error");
       if (res.headersSent) return next(err);
-      return res.status(status).json({ message });
+      // A 4xx message was chosen for the caller (a body-parse failure, say);
+      // a 5xx message is whatever internal thing threw, and has leaked
+      // Postgres errors naming tables and columns straight into the UI.
+      if (status >= 500) {
+        return res.status(status).json({
+          message: "Internal server error",
+          code: "INTERNAL_SERVER_ERROR",
+        });
+      }
+      return res.status(status).json({ message: error.message || "Bad request" });
     }
   );
 }
@@ -196,6 +205,11 @@ export async function createApp(): Promise<CreatedApp> {
 
   setupCors(app);
   setupBodyParsing(app);
+
+  // Before the session middleware, which reads `session` on the very first
+  // request that carries a cookie — and before any route touches a table.
+  await ensureSchema(pool);
+
   app.use(sessionMiddleware);
 
   app.get("/health", async (_req, res) => {

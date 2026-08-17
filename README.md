@@ -44,8 +44,12 @@ npm run lint          # npx expo lint
 
 ## Database
 
+The server applies `shared/schema.ts` itself on every start (`server/schemaDdl.ts`):
+missing tables, columns, indexes and enum types are created, nothing is dropped or
+retyped. Running the app against an empty database is all the setup there is.
+
 ```sh
-npm run db:push   # apply shared/schema.ts to the database
+npm run db:push   # only for destructive changes — dropping, retyping, renaming
 npm run db:reset  # DESTRUCTIVE — refuses unless you opt in explicitly (see below)
 ```
 
