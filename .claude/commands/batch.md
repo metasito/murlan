@@ -47,8 +47,21 @@ batch.
   own judgement for an audited finding.
 - **Every finding's "Acceptance criteria" must be satisfied by a real test before you commit
   it.** If the criteria ask for an integration test, it needs `DATABASE_URL` set against a live
-  Postgres; if you cannot run it, say so plainly in your report rather than marking the finding
-  done.
+  Postgres. **Start one — do not report the integration suites as unrunnable.** A Docker
+  container is enough and the tests are the only thing that touches it:
+
+  ```bash
+  docker start murlan-pg 2>/dev/null || docker run -d --name murlan-pg \
+    -e POSTGRES_USER=postgres -e POSTGRES_PASSWORD=postgres -e POSTGRES_DB=murlan_test \
+    -p 55432:5432 postgres:16-alpine
+  export DATABASE_URL="postgres://postgres:postgres@localhost:55432/murlan_test"
+  ```
+
+  `server/schemaDdl.ts` builds the schema on the first boot, so an empty container is ready
+  as-is. **Confirm the run reports `skipped 0` and contains no `DATABASE_URL not set` line** —
+  that line means the integration suites silently did not run and the batch is unverified.
+  Only if Docker itself is unavailable do you report it, and then say so plainly rather than
+  marking the finding done.
 - **Run the batch's exact verification command before you finish**, and paste the real output.
   Do not summarise it as "tests pass".
 - **The app must stay deployable on Replit at every commit.** Port from `process.env.PORT`,
@@ -66,9 +79,14 @@ batch.
 
 1. Run the batch's verification command and paste its **real output**. Do not summarise it as
    "tests pass".
-2. Update `audit/2026-08-17/PROGRESS.md` and commit it: fill in the branch, date and status,
+2. Update `audit/2026-08-17/PROGRESS.md` and commit it **on the batch branch, before you open
+   the PR**: **tick this batch's box** (`- [ ]` → `- [x]`), fill in the branch, date and status,
    clear any § Carried forward row you were owed, and **write a row into § Carried forward for
    anything you did not finish.**
+
+   Tick the box in the same commit that opens the PR, not afterwards. The box means "this batch
+   is finished and merging"; a batch that stops at the merge gate leaves it unticked and says
+   why. **Never tick it in a separate commit on `main`** — see the push rule below.
 
    **A deferral that exists only in your chat report does not exist.** If you leave something
    undone — a step omitted because a tool was flaky, a check you could not run, a fix scoped
@@ -80,6 +98,14 @@ batch.
    designed" with the reason, so nobody later reads it as missing work.
 3. **Push the branch.** `git push -u origin <branch>`. Never force-push, never `--no-verify`.
    If a hook fails, fix the underlying problem rather than skipping it.
+
+   **Nothing ever reaches `main` except through a merged PR.** No `git push origin main`, no
+   commit made while `main` is checked out, not for a one-line docs fix and not for the
+   PROGRESS.md tick. Every commit you make belongs on the batch branch. This is not style:
+   Batch 2's findings were pushed straight to `main` *and* committed on the branch, which
+   produced two copies of the same three fixes, a conflicting PR, and a rollback story where
+   reverting one finding now takes two reverts. Check `git branch --show-current` before your
+   first commit; if it says `main`, branch first.
 4. **Open a pull request** against `main` with `gh pr create`. Title:
    `Batch <N>: <batch theme>`. Body: the finding IDs fixed, the verification output, anything
    deferred and why. If `gh` is unavailable or unauthenticated, say so and give me the compare
