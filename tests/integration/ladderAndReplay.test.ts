@@ -197,4 +197,54 @@ describe("ladder and replay writes", { skip: hasDatabase() ? false : skipMessage
       stranger.socket.close();
     }
   });
+
+  // Every other table naming a user cascades on delete. match_replays cannot —
+  // a replay belongs to up to four players, so it carries their ids and display
+  // names inside jsonb. Without this, deleting your account left your username
+  // sitting in other people's replays.
+  test("deleting an account erases that player from replays others keep", async () => {
+    const { alice, bob } = await playOneHand("del");
+    try {
+      const before = await waitForRow(async () => {
+        const res = await dbPool.query(
+          "SELECT id, player_ids, seats FROM match_replays WHERE player_ids @> $1::jsonb",
+          [JSON.stringify([alice.user.id])]
+        );
+        return res.rows[0] ?? null;
+      });
+      assert.ok(
+        (before.seats as ReplaySeat[]).some((s) => s.userId === alice.user.id),
+        "the seat starts out naming Alice"
+      );
+
+      const res = await fetch(`${server.url}/api/users/me`, {
+        method: "DELETE",
+        headers: { cookie: alice.cookie },
+      });
+      assert.equal(res.status, 200, await res.text());
+
+      const after = await dbPool.query(
+        "SELECT player_ids, seats FROM match_replays WHERE id = $1",
+        [before.id]
+      );
+      assert.equal(after.rows.length, 1, "Bob keeps the replay he played in");
+
+      const seats = after.rows[0].seats as ReplaySeat[];
+      const ids = after.rows[0].player_ids as string[];
+      assert.ok(!ids.includes(alice.user.id), "her id is out of the ownership filter");
+      assert.ok(ids.includes(bob.user.id), "his is not");
+
+      const hers = seats.find((s) => s.name === "");
+      assert.ok(hers, "her seat is blanked rather than removed, so the hand still has four");
+      assert.equal(hers.userId, null);
+      assert.equal(seats.length, 3, "the seat count is untouched");
+      assert.ok(
+        !JSON.stringify(seats).includes(alice.user.username),
+        "her username is gone from the row entirely"
+      );
+    } finally {
+      alice.socket.close();
+      bob.socket.close();
+    }
+  });
 });

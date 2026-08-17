@@ -1,8 +1,9 @@
 import { eq, and, or, sql, inArray } from "drizzle-orm";
 import { randomInt } from "node:crypto";
 import { db } from "./db.ts";
-import { users, rooms, roomPlayers, friends, activeGames } from "../shared/schema.ts";
+import { users, rooms, roomPlayers, friends, activeGames, matchReplays } from "../shared/schema.ts";
 import type { User, InsertUser, Room, RoomPlayer, Friend } from "../shared/schema.ts";
+import type { ReplaySeat } from "../lib/replay.ts";
 
 export type SeatClaim =
   | { ok: true; seatIndex: number }
@@ -94,6 +95,35 @@ class DrizzleStorage implements IStorage {
           .delete(activeGames)
           .where(inArray(activeGames.roomCode, hostedIds));
         await tx.delete(rooms).where(inArray(rooms.id, hostedIds));
+      }
+
+      // Every other table that names a user carries a cascading foreign key.
+      // match_replays cannot: a replay belongs to up to four players, so it
+      // holds their ids and display names inside jsonb instead. Deleting the
+      // rows outright would take other players' replays with it, so the
+      // departing player is erased from them instead — id out of the ownership
+      // filter, name out of the seat — and a replay nobody is left to open is
+      // then removed.
+      const theirReplays = await tx
+        .select({ id: matchReplays.id, playerIds: matchReplays.playerIds, seats: matchReplays.seats })
+        .from(matchReplays)
+        .where(sql`${matchReplays.playerIds} @> ${JSON.stringify([userId])}::jsonb`);
+
+      for (const row of theirReplays) {
+        const playerIds = (row.playerIds as string[]).filter((id) => id !== userId);
+        if (playerIds.length === 0) {
+          await tx.delete(matchReplays).where(eq(matchReplays.id, row.id));
+          continue;
+        }
+        // An empty name is the signal to the client to render its own
+        // localized "deleted player" label — the row itself keeps no wording.
+        const seats = (row.seats as ReplaySeat[]).map((seat) =>
+          seat.userId === userId ? { ...seat, userId: null, name: "" } : seat
+        );
+        await tx
+          .update(matchReplays)
+          .set({ playerIds, seats })
+          .where(eq(matchReplays.id, row.id));
       }
 
       await tx.execute(

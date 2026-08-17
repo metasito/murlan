@@ -60,9 +60,24 @@ export default function ReplayScreen() {
     hapticSelection();
   }, []);
 
+  // A player who deleted their account is erased from the stored seat, which
+  // keeps no wording of its own (server/storage.ts deleteUser). The label is
+  // supplied here so it is in the reader's language rather than the language
+  // the hand happened to be played in.
+  const named = useMemo(
+    () =>
+      replay
+        ? {
+            ...replay,
+            seats: replay.seats.map((s) => ({ ...s, name: s.name || t("replay.deletedPlayer") })),
+          }
+        : null,
+    [replay, t]
+  );
+
   const state = useMemo(
-    () => (replay ? replayStateAt(replay, index) : null),
-    [replay, index]
+    () => (named ? replayStateAt(named, index) : null),
+    [named, index]
   );
 
   if (isError) {

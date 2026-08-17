@@ -112,6 +112,11 @@ later turns.
   to up to four players, so a per-player cap could not delete one alone. The write is not
   awaited and the table is not required to exist: until `npm run db:push` has run the
   insert fails, is logged, and the only consequence is an empty replays list.
+  It is also the one user-naming table with **no** cascading foreign key — a replay
+  belongs to up to four players, so `deleteUser` erases the departing player from it
+  by hand (id out of `player_ids`, name blanked in `seats`) and drops replays nobody
+  is left to open. The blank name is deliberate: the row carries no wording, and the
+  client renders its own localized label.
 - **`user_ratings`**: one row per player per season, primary key `(user_id, season)`.
   The season is `YYYY-MM` **derived from the clock**, never written by a scheduled job:
   a reset that has to run on a host that sleeps is a reset that eventually does not.

@@ -300,6 +300,7 @@ export const en: Record<keyof typeof it, string> = {
   "replay.restartA11yLabel": "Restart",
   "replay.loadErrorTitle": "Replay unavailable",
   "replay.loadErrorBody": "This hand is no longer available.",
+  "replay.deletedPlayer": "Deleted player",
   "replay.back": "Close",
 
   // ------------------------------------------------------------- cosmetics.*

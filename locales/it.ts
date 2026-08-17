@@ -315,6 +315,7 @@ export const it = {
   "replay.restartA11yLabel": "Ricomincia",
   "replay.loadErrorTitle": "Replay non disponibile",
   "replay.loadErrorBody": "Questa mano non è più disponibile.",
+  "replay.deletedPlayer": "Giocatore eliminato",
   "replay.back": "Chiudi",
 
   // ------------------------------------------------------------- cosmetics.*

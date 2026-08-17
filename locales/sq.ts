@@ -326,6 +326,7 @@ export const sq: Record<keyof typeof it, string> = {
   "replay.restartA11yLabel": "Rifillo",
   "replay.loadErrorTitle": "Replay i padisponueshëm",
   "replay.loadErrorBody": "Kjo dorë nuk është më e disponueshme.",
+  "replay.deletedPlayer": "Lojtar i fshirë",
   "replay.back": "Mbyll",
 
   // ------------------------------------------------------------- cosmetics.*
