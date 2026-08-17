@@ -1,8 +1,5 @@
-// tests/logRedaction.test.ts — pino-http's default req/res serializers copy
-// the entire header bag onto every completed-request log line, which put the
-// live session cookie (and any bearer token) in cleartext in production logs.
-// This drives one real request through the same redact config server/logger.ts
-// applies and asserts the captured output never contains the secret values.
+// tests/logRedaction.test.ts — drives one real request through the app's own
+// logger and asserts no session cookie or bearer token reaches the output.
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import http from "node:http";
@@ -20,11 +17,8 @@ test("request logs redact the cookie, authorization, and set-cookie headers", as
     },
   });
 
-  // The exact factory server/logger.ts uses for the real `logger` export,
-  // pointed at the capturing stream instead of stdout. Reusing createLogger()
-  // — rather than retyping the redact options here — means this test fails
-  // if the real logger's redact config is ever removed, narrowed, or left
-  // unwired, not just if a hand-copied paths list drifts.
+  // The factory that builds the real `logger` export, so what is asserted here
+  // is the shipped redact config and not a copy of it.
   const logger = createLogger(capture);
   const httpLogger = pinoHttp({ logger });
 

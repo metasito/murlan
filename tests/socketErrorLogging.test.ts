@@ -6,10 +6,11 @@
 // next joiner until the 24h sweeper reaches it, with nothing in the log to say
 // why.
 //
-// This pins the half TypeScript cannot see — a handler that receives an error
-// and does nothing with it. The check is on the *shape* of the handler, not on
-// any literal spelling, so a future site written with different whitespace or an
-// `async` handler is caught too.
+// This pins the half TypeScript cannot see — a `.catch()` whose handler is
+// written inline and does nothing with the error. The check is on the shape of
+// the handler rather than any literal spelling, so whitespace, `async`, a
+// `function` expression and any parameter list are all covered. A handler
+// passed by name is out of scope: the body is not at the call site.
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
@@ -28,24 +29,31 @@ function skipWs(src: string, i: number): number {
   return i;
 }
 
-/** Index of the `}` closing the `{` at `open`, or -1. */
-function matchBrace(src: string, open: number): number {
+/** Index of the closer matching the `open`/`close` pair opened at `from`, or -1. */
+function matchPair(src: string, from: number, open: string, close: string): number {
   let depth = 0;
-  for (let i = open; i < src.length; i++) {
-    if (src[i] === "{") depth++;
-    else if (src[i] === "}" && --depth === 0) return i;
+  for (let i = from; i < src.length; i++) {
+    if (src[i] === open) depth++;
+    else if (src[i] === close && --depth === 0) return i;
   }
   return -1;
 }
 
+/** Consumes a parameter list at `i`, returning the index after `)`, or -1. */
+function skipParams(src: string, i: number): number {
+  const close = matchPair(src, i, "(", ")");
+  return close === -1 ? -1 : skipWs(src, close + 1);
+}
+
 /**
- * 1-based line numbers of every `.catch(` in `src` whose inline arrow handler
- * has an empty or comment-only block body.
+ * 1-based line numbers of every `.catch(` in `src` whose inline handler has an
+ * empty or comment-only block body — arrow or `function` expression, with any
+ * parameter list including defaults and destructuring.
  *
- * An expression-bodied handler is left alone: `.catch(() => null)` supplies a
+ * An expression-bodied arrow is left alone: `.catch(() => null)` supplies a
  * fallback the caller then acts on, which is a different thing from discarding
- * the error. Anything this cannot parse — a named handler, a function
- * expression — is skipped rather than guessed at.
+ * the error. A handler passed by name is out of reach here and is skipped: the
+ * function it names is not at this call site.
  */
 function swallowingCatches(src: string): number[] {
   const found: number[] = [];
@@ -54,21 +62,28 @@ function swallowingCatches(src: string): number[] {
     let i = skipWs(src, start + m[0].length);
     if (src.startsWith("async", i)) i = skipWs(src, i + "async".length);
 
-    if (src[i] === "(") {
-      const close = src.indexOf(")", i);
-      if (close === -1) continue;
-      i = skipWs(src, close + 1);
+    if (src.startsWith("function", i)) {
+      i = skipWs(src, i + "function".length);
+      const name = /^[A-Za-z_$][\w$]*/.exec(src.slice(i));
+      if (name) i = skipWs(src, i + name[0].length);
+      if (src[i] !== "(") continue;
+      i = skipParams(src, i);
+      if (i === -1) continue;
     } else {
-      const ident = /^[A-Za-z_$][\w$]*/.exec(src.slice(i));
-      if (!ident) continue;
-      i = skipWs(src, i + ident[0].length);
+      if (src[i] === "(") {
+        i = skipParams(src, i);
+        if (i === -1) continue;
+      } else {
+        const ident = /^[A-Za-z_$][\w$]*/.exec(src.slice(i));
+        if (!ident) continue;
+        i = skipWs(src, i + ident[0].length);
+      }
+      if (!src.startsWith("=>", i)) continue;
+      i = skipWs(src, i + 2);
     }
 
-    if (!src.startsWith("=>", i)) continue;
-    i = skipWs(src, i + 2);
     if (src[i] !== "{") continue;
-
-    const end = matchBrace(src, i);
+    const end = matchPair(src, i, "{", "}");
     if (end === -1) continue;
 
     if (stripComments(src.slice(i + 1, end)).trim() === "") {
@@ -79,7 +94,7 @@ function swallowingCatches(src: string): number[] {
 }
 
 describe("server/socket.ts logs the bookkeeping writes that fail", () => {
-  test("no promise catch discards its error", () => {
+  test("no inline promise catch discards its error", () => {
     const src = readFileSync(SOCKET_SOURCE, "utf8");
     const offenders = swallowingCatches(src);
     assert.deepEqual(
@@ -106,10 +121,14 @@ describe("server/socket.ts logs the bookkeeping writes that fail", () => {
         .catch(
           () => {}
         );
+      f().catch(function (err) {});
+      g().catch(async function onFail(err) {});
+      h().catch((err = new Error("x")) => {});
+      i().catch(({ message }) => {});
     `;
     assert.deepEqual(
       swallowingCatches(swallowing).length,
-      5,
+      9,
       "every one of these discards its error and must be flagged"
     );
   });
@@ -123,6 +142,7 @@ describe("server/socket.ts logs the bookkeeping writes that fail", () => {
       c().catch(handleWriteFailure);
       d().catch(async (err) => { await report(err); });
       e().catch(() => null);
+      f().catch(function (err) { logger.error({ err }, "write failed"); });
     `;
     assert.deepEqual(swallowingCatches(logging), []);
   });

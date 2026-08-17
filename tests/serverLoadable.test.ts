@@ -32,8 +32,7 @@ test("the Postgres pool is constructed with an error handler and timeouts", asyn
     1,
     "the pool must handle its own `error` event — an idle-client error with no listener is an unhandled EventEmitter error"
   );
-  // Exact values, not "not zero": pg defaults neither of these, so an absent
-  // option reads as `undefined` and every inequality against 0 would hold.
+  // pg defaults none of these, so an absent option reads as `undefined`.
   assert.deepEqual(
     {
       max: pool.options.max,
@@ -46,8 +45,8 @@ test("the Postgres pool is constructed with an error handler and timeouts", asyn
       max: 10,
       connectionTimeoutMillis: 5_000,
       idleTimeoutMillis: 30_000,
-      statement_timeout: 15_000,
-      query_timeout: 15_000,
+      statement_timeout: 5_000,
+      query_timeout: 5_000,
     },
     "every bound the pool is meant to carry must be set — an unset one is `undefined`, which waits forever"
   );

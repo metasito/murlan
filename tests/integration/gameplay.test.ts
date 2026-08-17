@@ -499,9 +499,9 @@ describe("gameplay integrity", { skip: hasDatabase() ? false : skipMessage() }, 
     const [alice, bob] = await makeClients(["outcome_log_alice", "outcome_log_bob"]);
     const room = await setUpRoom([alice, bob], 2);
 
-    // pino decides whether to write inside the level method, so a spy sees the
-    // call either way — but the debug line has to be genuinely enabled for the
-    // "no cards at any level" half to be checking a line that would be written.
+    // pino's level setter swaps every disabled level method for `noop`, so the
+    // level has to be raised *before* the spies go on: setting it afterwards
+    // would overwrite them.
     const previousLevel = logger.level;
     logger.level = "debug";
     const lines: LoggedLine[] = [];
@@ -516,9 +516,9 @@ describe("gameplay integrity", { skip: hasDatabase() ? false : skipMessage() }, 
         alice.socket.emit("room:start");
       });
       assert.equal(result.stoppedOn, "gameOver");
-      // game:over reaches this process over a socket; the outcome line is
-      // logged after that emit, so give it a moment to land.
-      await new Promise((r) => setTimeout(r, 250));
+      // No wait: handleGameOver logs the outcome in the same synchronous block
+      // as the `game:over` emit, and the client's callback cannot run before
+      // that block returns.
     } finally {
       mock.restoreAll();
       logger.level = previousLevel;

@@ -27,6 +27,10 @@ export interface DrainOptions {
  * to protect — the disconnect handler, `handleGameOver`, `persistGameState` —
  * are sequences of awaited queries, and the count drops to zero in the gap
  * between two of them. Quiescence has to hold for a moment to be quiescence.
+ *
+ * That makes `quietMs` a constraint on the callers: a fire-and-forget chain
+ * that pauses longer than it between two queries reads as drained and will be
+ * cut off mid-sequence at shutdown.
  */
 export async function drainPool(
   pool: PoolActivity,

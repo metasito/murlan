@@ -14,7 +14,7 @@ import { connectAs, waitFor } from "../helpers/client.ts";
  * nothing else can go in it.
  */
 
-/** The routine budgets 10s before it kills the process; anything near that is a hang. */
+/** Well under the routine's own watchdog; anything near this is a hang. */
 const PROMPT_MS = 5_000;
 
 describe("graceful shutdown", { skip: hasDatabase() ? false : skipMessage() }, () => {
@@ -32,13 +32,17 @@ describe("graceful shutdown", { skip: hasDatabase() ? false : skipMessage() }, (
     await observer.end().catch(() => {});
     // stop() ends the same pool shutdown() already ended, so it throws — but
     // its own `finally` still drops the throwaway schema and restores
-    // DATABASE_URL, which is what this hook is here for. Asserted rather than
-    // swallowed so the day it stops throwing is not a silent pass.
-    await assert.rejects(
-      () => server.stop(),
-      /Called end on pool more than once/,
-      "expected stop() to fail on the pool shutdown() already closed"
+    // DATABASE_URL, which is what this hook is here for. If the test body
+    // failed before shutdown() ran there is nothing to double-end, so the
+    // absence of that error is reported rather than asserted: a second failure
+    // here would bury the real one.
+    const stopErr = await server.stop().then(
+      () => null,
+      (err: unknown) => err
     );
+    if (!/Called end on pool more than once/.test(String(stopErr))) {
+      console.warn(`stop() did not fail on the already-closed pool: ${stopErr}`);
+    }
   });
 
   test("disconnects sockets, lets their writes land, ends the pool and exits 0", async () => {
@@ -100,7 +104,7 @@ describe("graceful shutdown", { skip: hasDatabase() ? false : skipMessage() }, (
       "finished",
       "the lobby teardown the disconnect started must have reached Postgres before the pool closed"
     );
-    assert.notEqual(
+    assert.notDeepEqual(
       after.rows[0].last_seen,
       before.rows[0].last_seen,
       "updateLastSeen must have reached Postgres before the pool closed"
