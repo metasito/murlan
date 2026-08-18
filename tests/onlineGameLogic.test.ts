@@ -9,6 +9,8 @@ import {
   isStaleSchema,
   GAME_SCHEMA_VERSION,
   buildSeatRoster,
+  teamKeyMap,
+  restoredMatchOver,
 } from "../server/onlineGameLogic.ts";
 import { teamForSeat, TEAMS_PLAYER_COUNT } from "../lib/gameEngine.ts";
 
@@ -184,5 +186,85 @@ describe("teams seating (buildSeatRoster + teamForSeat)", () => {
       roster.map((_, idx) => teamForSeat(idx, roster.length, "free_for_all")),
       new Array(TEAMS_PLAYER_COUNT).fill(undefined)
     );
+  });
+});
+
+describe("restoredMatchOver (rehydrating a match after a restart)", () => {
+  const teamed = [{ team: "A" as const }, { team: "B" as const }, { team: "A" as const }, { team: "B" as const }];
+  const seats = { 0: "a1", 1: "b1", 2: "a2", 3: "b2" };
+
+  test("a teams pair that has crossed the target restores as over", () => {
+    // Neither key reaches 21 alone; the pair holds 22, so the match is won.
+    assert.equal(
+      restoredMatchOver({
+        matchLength: "match",
+        gameMode: "teams",
+        handOver: true,
+        scores: { a1: 11, b1: 5, a2: 11, b2: 4 },
+        target: 21,
+        teamOfKey: teamKeyMap(seats, teamed),
+      }),
+      true
+    );
+  });
+
+  test("the same totals in a free-for-all are still a running match", () => {
+    assert.equal(
+      restoredMatchOver({
+        matchLength: "match",
+        gameMode: "free_for_all",
+        handOver: true,
+        scores: { a1: 11, b1: 5, a2: 11, b2: 4 },
+        target: 21,
+        teamOfKey: {},
+      }),
+      false
+    );
+  });
+
+  test("a teams pair short of the target restores as still running", () => {
+    assert.equal(
+      restoredMatchOver({
+        matchLength: "match",
+        gameMode: "teams",
+        handOver: true,
+        scores: { a1: 9, b1: 5, a2: 9, b2: 4 },
+        target: 21,
+        teamOfKey: teamKeyMap(seats, teamed),
+      }),
+      false
+    );
+  });
+
+  test("a vacated partner's seat is not counted towards the pair", () => {
+    // teamKeyMap omits the seat with no playerMap entry, so a2's 11 points
+    // are outside the team total and the pair is short of 21.
+    const withVacancy = teamKeyMap({ 0: "a1", 1: "b1", 3: "b2" }, teamed);
+    assert.deepEqual(withVacancy, { a1: "A", b1: "B", b2: "B" });
+    assert.equal(
+      restoredMatchOver({
+        matchLength: "match",
+        gameMode: "teams",
+        handOver: true,
+        scores: { a1: 11, b1: 5, a2: 11, b2: 4 },
+        target: 21,
+        teamOfKey: withVacancy,
+      }),
+      false
+    );
+  });
+
+  test("a single-manche game is over exactly when its hand is", () => {
+    const single = (handOver: boolean) =>
+      restoredMatchOver({
+        matchLength: "single",
+        gameMode: "teams",
+        handOver,
+        scores: {},
+        target: 21,
+        teamOfKey: teamKeyMap(seats, teamed),
+      });
+    assert.equal(single(true), true);
+    assert.equal(single(false), false);
   });
 });

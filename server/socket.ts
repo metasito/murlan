@@ -24,6 +24,8 @@ import {
   excludeBotSeats,
   isContestedTable,
   buildSeatRoster,
+  teamKeyMap,
+  restoredMatchOver,
   isStaleSchema,
   packPersistedState,
   unpackPersistedState,
@@ -1016,25 +1018,6 @@ async function vacateSeat(
 
 // ─── Match scoring ────────────────────────────────────────────────────────────
 
-/**
- * Scoring key -> team id, for the seated humans only. Vacated (`bot:<seat>`)
- * seats are left out on purpose: they are already excluded from
- * `cumulativeScores` (see `excludeBotSeats`), so including them here would add
- * a zero-scoring member that can never win but could be named as one.
- */
-function teamKeyMap(
-  game: OnlineGameState,
-  state: GameState
-): Record<string, string> {
-  const map: Record<string, string> = {};
-  state.players.forEach((p, seat) => {
-    const userId = game.playerMap[seat];
-    if (userId === undefined || !p.team) return;
-    map[userId] = p.team;
-  });
-  return map;
-}
-
 async function handleGameOver(
   io: SocketServer,
   roomId: string,
@@ -1081,7 +1064,7 @@ async function handleGameOver(
     if (topSeat === undefined) {
       matchWinners = [];
     } else if (game.gameMode === "teams" && winningTeam) {
-      matchWinners = Object.entries(teamKeyMap(game, state))
+      matchWinners = Object.entries(teamKeyMap(game.playerMap, state.players))
         .filter(([, team]) => team === winningTeam)
         .map(([key]) => key);
     } else {
@@ -1092,7 +1075,7 @@ async function handleGameOver(
     // partners' placement points are summed), so the match must be resolved on
     // the team total and both partners reported as winners. Free-for-all is
     // unchanged.
-    const teamOfKey = teamKeyMap(game, state);
+    const teamOfKey = teamKeyMap(game.playerMap, state.players);
     const resolution =
       game.gameMode === "teams" && Object.keys(teamOfKey).length > 0
         ? resolveTeamMatch(game.cumulativeScores, teamOfKey, game.matchTarget)
@@ -2254,7 +2237,8 @@ export function setupSocket(httpServer: HttpServer) {
 
           const restoredScores = (row.scores as Record<string, number>) ?? {};
           const restoredTarget = row.matchTarget ?? MATCH_TARGETS[0];
-          const restoredResolution = resolveMatch(restoredScores, restoredTarget);
+          const restoredMode = row.gameMode === "teams" ? "teams" : "free_for_all";
+          const restoredLength = row.matchLength === "single" ? "single" : "match";
           const game: OnlineGameState = {
             roomId: roomCode,
             gameState: restoredState as GameState,
@@ -2262,14 +2246,18 @@ export function setupSocket(httpServer: HttpServer) {
             rematchVotes: new Set(),
             rematchIntents: new Map(),
             cumulativeScores: restoredScores,
-            gameMode: row.gameMode === "teams" ? "teams" : "free_for_all",
+            gameMode: restoredMode,
             maxPlayers: row.maxPlayers,
             matchTarget: restoredTarget,
-            matchLength: row.matchLength === "single" ? "single" : "match",
-            matchOver:
-              row.matchLength === "single"
-                ? (restoredState as GameState).gameOver
-                : !!restoredResolution && restoredResolution.newTarget === null,
+            matchLength: restoredLength,
+            matchOver: restoredMatchOver({
+              matchLength: restoredLength,
+              gameMode: restoredMode,
+              handOver: (restoredState as GameState).gameOver,
+              scores: restoredScores,
+              target: restoredTarget,
+              teamOfKey: teamKeyMap(playerMap, (restoredState as GameState).players),
+            }),
             handFlags: restoredHandFlags,
             // A hand restored after a restart has no record of who walked out
             // of it: the map is memory-only and the restart emptied it.

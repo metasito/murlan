@@ -7,6 +7,8 @@
 // exercise the exact code path the server runs.
 import { botSeatNames, getBotPersonality } from "../lib/botPersonalities.ts";
 import type { BotPersonalityId } from "../lib/botPersonalities.ts";
+import { resolveMatch, resolveTeamMatch } from "../lib/gameEngine.ts";
+import type { GameMode, MatchLength } from "../lib/gameEngine.ts";
 
 /**
  * seat -> userId from the persisted map, falling back to the legacy positional
@@ -240,4 +242,47 @@ export function buildSeatRoster(
     });
   });
   return roster.sort((a, b) => a.seatIndex - b.seatIndex);
+}
+
+/**
+ * Scoring key -> team id, for the seated humans only. Vacated (`bot:<seat>`)
+ * seats are left out on purpose: they are already excluded from
+ * `cumulativeScores` (see `excludeBotSeats`), so including them here would add
+ * a zero-scoring member that can never win but could be named as one.
+ */
+export function teamKeyMap(
+  playerMap: Record<number, string>,
+  players: { team?: "A" | "B" }[]
+): Record<string, string> {
+  const map: Record<string, string> = {};
+  players.forEach((p, seat) => {
+    const userId = playerMap[seat];
+    if (userId === undefined || !p.team) return;
+    map[userId] = p.team;
+  });
+  return map;
+}
+
+/**
+ * Whether the match a stored row belongs to had already been decided when it
+ * was written. Teams races to the target as a *pair* (docs/RULES.md §11), so
+ * it must be read back through the same resolver the live path uses — no
+ * individual key in a pair on 11 + 11 reaches a target of 21, and restoring
+ * that game as still running plays on inside a match that was already won.
+ */
+export function restoredMatchOver(args: {
+  matchLength: MatchLength;
+  gameMode: GameMode;
+  handOver: boolean;
+  scores: Record<string, number>;
+  target: number;
+  teamOfKey: Record<string, string>;
+}): boolean {
+  const { matchLength, gameMode, handOver, scores, target, teamOfKey } = args;
+  if (matchLength === "single") return handOver;
+  const resolution =
+    gameMode === "teams" && Object.keys(teamOfKey).length > 0
+      ? resolveTeamMatch(scores, teamOfKey, target)
+      : resolveMatch(scores, target);
+  return !!resolution && resolution.newTarget === null;
 }
