@@ -53,7 +53,7 @@ Copied verbatim from `CLAUDE.md`. Every task's requirements implicitly include t
   `lib/theme.ts`. A component-local one-off may be a named module constant; a bare literal in
   a style object may not.
 - **Every user-facing string goes through `t()`** with keys in all three locales
-  (`locales/it.ts` is the source of truth, then `en.ts`, `sq.ts`). Pinned by
+  (**`locales/en.ts` is the source of truth**, then `it.ts`, `sq.ts`). Pinned by
   `tests/i18n.test.ts`.
 - **Comment the code as it is.** No changelogs in code — never write what the code used to be,
   what was wrong with it, or when it was fixed. Git has that.

@@ -44,7 +44,7 @@ merge one before opening the other's PR.
 | - [ ] 11 | Layout and overflow | 11 | low | Sonnet | not started | | |
 | - [ ] 12 | Test coverage where it matters | 13 | high | Opus | not started | | |
 | - [ ] 13 | Architecture seams | 9 | **max** | **Opus** | not started | | |
-| - [ ] 14 | Docs truth and housekeeping | 12 | low | Sonnet | not started | | |
+| - [ ] 14 | Docs truth and housekeeping | 13 | low | Sonnet | not started | | |
 
 A batch is done when it is **committed, pushed, opened as a PR, and merged once CI is green** —
 one commit per finding, one branch per batch, one PR per branch. Merge with `--merge`, never
@@ -60,7 +60,7 @@ than assumed; nothing changed outside the batch's declared scope.
 Merging does not deploy — Replit Cloud Run is triggered from its own UI, so merged work waits
 on `main` for a human to ship it.
 
-**124 findings total.** 3 Critical, 17 High, 62 Medium, 42 Low.
+**125 findings total.** 3 Critical, 17 High, 63 Medium, 42 Low.
 
 ---
 
@@ -123,7 +123,7 @@ An entry is removed only when the work is actually done, by the batch that owns 
 | Batch 5 · (new) | Replace every `Alert.alert` in `app/` — it shows nothing on web | `react-native-web`'s `Alert` is `static alert() {}`, so every `Alert.alert` call is invisible on the bundle Replit serves. RES-09 fixed the one site whose acceptance criterion depended on it (the online lobby's error). The two that matter and remain are in `app/(online)/game.tsx`: the quit confirmation and the "Partita interrotta" dialog. A confirmation that never appears means its destructive branch never runs — on web the quit button does nothing. No audit finding covers this. Detail in `REMARKS.md`. | **Batch 11** (it owns the client UI surfaces) | open |
 | Batch 4 · (new) | Stop the E2E suite reusing an unbuilt server — `reuseExistingServer: !process.env.CI` | `tests/e2e/playwright.config.ts:39` adopts whatever already holds port 5199, however stale, with none of the `webServer.env` block applied. Batch 4's `reconnect.spec.ts` run timed out against a server 21h older than the branch, serving a bundle 16h older, and never reached any reconnect code. `retries` is 0, so there is no flake signal either. A gate that can pass or fail on a binary nobody built is the `CLAUDE.md` self-defeating-safeguard shape. Fix: `reuseExistingServer: false`, keeping `E2E_SKIP_BUILD=1` as the explicit local fast path. **Compounded by Batch 5:** `.github/workflows/ci.yml` runs no Playwright step at all, so every acceptance criterion across the audit that names a `tests/e2e/*.spec.ts` case is verified by nothing on a runner. Both halves belong to the same fix. Detail in `REMARKS.md`. | **Batch 12** (it owns test/build hardening) | open |
 | Batch 4 · RES-03 | Give a cold-start rejoin a `room` when the roster read fails | RES-03(a) gives `emitRoomStateTo` its own `.catch` so a failed `getRoomPlayers` cannot fail a rejoin that holds a valid seat — which is the fix RES-03 asks for. A *reconnecting* client still holds the `room` it had. A **cold start** holds nothing, and the navigation chain needs `room`, so the player lands on the game screen's null state. NET-03's `room:rejoin` does not reach it; the client would have to notice "game state but no room" and re-ask, which is new logic on a different path. | **Batch 13** (it owns the `server/socket.ts` seams) | open |
-| Batch 3 · SEC-01 / RULE-01 · Batch 8 · UX-02 | Have a native Italian speaker read the new Italian strings | `server.MATCH_IN_PROGRESS`, `server.NEW_MATCH_NOT_READY` and `server.REMATCH_DECLINED` were written by Claude, not by a speaker. Italian is the UI language and the source of truth for the other two locales, so a clumsy string ships to every player. **Batch 8 adds one more, and it was a judgement call nobody ratified:** the per-seat pass marker reads **PASSO**. The obvious word, *PASSA*, is byte-identical to the PASSA button's label, which would make one word mean both "an action you can take" and "a seat's state". *PASSO* is the player's own declaration and is ungendered. UX-02's open question 4 asking for this wording was never answered in `DECISIONS.md`. | **Owner** — not a batch | open |
+| Batch 3 · SEC-01 / RULE-01 · Batch 8 · UX-02 | Have a native Italian speaker read the new Italian strings | `server.MATCH_IN_PROGRESS`, `server.NEW_MATCH_NOT_READY` and `server.REMATCH_DECLINED` were written by Claude, not by a speaker. Italian is what most of the player base reads, so a clumsy string ships to them. (English is the source of truth for copy — see ARCH-19; the code does not enforce that yet.) **Batch 8 adds one more, and it was a judgement call nobody ratified:** the per-seat pass marker reads **PASSO**. The obvious word, *PASSA*, is byte-identical to the PASSA button's label, which would make one word mean both "an action you can take" and "a seat's state". *PASSO* is the player's own declaration and is ungendered. UX-02's open question 4 asking for this wording was never answered in `DECISIONS.md`. | **Owner** — not a batch | open |
 
 ### Not carried forward — closed as designed
 

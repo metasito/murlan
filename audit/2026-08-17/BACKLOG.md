@@ -285,6 +285,7 @@ through this table. Appendix A adds 9 more. **122 tracked, 0 dropped.**
 | TEST-16 | Reconcile the Node version split, and give `server:build` a `--target` | Low | S | 10 | `.github/workflows/ci.yml:52`, `.replit:2` | TEST-03 |
 | UI-07 | The numeric half of the design-token scale is unenforced and abandoned | Low | L | 06 | `lib/tokens.ts:138-161`, `eslint.config.js:24-38` | — |
 | ARCH-18 | Cut the comment bloat the remediation itself added — 23% of every line added | Med | M | **new** | `server/socket.ts`, `components/GameTable.tsx`, `lib/gameEngine.ts`, repo-wide | after 13 |
+| ARCH-19 | Make `en.ts` the source of truth the product says it is — the code says Italian | Med | M | **new** | `locales/{en,it,sq}.ts`, `lib/i18n.ts:15,32,129,169` | — |
 
 ---
 
@@ -382,6 +383,41 @@ reachable from the results screen in the first place.
 ---
 
 ## Appendix C — found during remediation
+
+### [ARCH-19] Make `en.ts` the source of truth the product says it is
+- **Severity:** Medium · **Effort:** M · **Batch:** 14
+- **Location:** `locales/en.ts:3,5`, `locales/sq.ts:25,27`, `locales/it.ts:1-4`,
+  `lib/i18n.ts:15,32,129,169`
+- **Problem:** The owner states English is the source of truth for UI copy and the other two
+  locales are translations. The code enforces the opposite, in four places:
+  `en.ts` and `sq.ts` both `import { it }` and declare themselves
+  `Record<keyof typeof it, string>`, so the canonical key set *is* Italian and adding an
+  English string is impossible until an Italian one exists; `DEFAULT_LOCALE = "it"`; and every
+  missing key falls back to Italian at `:129` and `:169`. `lib/i18n.ts:15` already claims an
+  "English fallback for safety", which is false today — a comment asserting behaviour the code
+  does not have.
+- **Impact:** New copy has to be authored in Italian first, by whoever is writing it, which is
+  how three server strings came to be written by Claude rather than a speaker (see
+  `PROGRESS.md` § Carried forward). A missing translation shows Italian to an English or
+  Albanian player rather than English.
+- **Proposed fix:** Invert the type dependency — `en.ts` declares the key set as a plain
+  object, `it.ts` and `sq.ts` become `Record<keyof typeof en, string>` and import from it.
+  Point `DEFAULT_LOCALE` and both fallbacks at `en`. Rewrite the header comment in `it.ts` and
+  correct the false one at `lib/i18n.ts:15`. No key or string value changes — this is a
+  direction change only, so `tests/i18n.test.ts` (key parity, placeholder parity) must pass
+  untouched.
+- **Acceptance criteria:** `en.ts` imports no other locale; `it.ts` and `sq.ts` derive from it;
+  a key present in `en` and missing elsewhere renders **English**, and a test asserts that;
+  `tests/i18n.test.ts` passes unchanged; `npx tsc --noEmit` clean.
+- **Fix risk:** The type flip surfaces any key that exists in `it` but not `en` as a compile
+  error — that is the point, but it may be a non-trivial list. Fix by translating into `en`,
+  never by deleting the key.
+- **Open question for the owner:** this changes the *authoring* source. Whether `DEFAULT_LOCALE`
+  — what a player sees before choosing — should also become English is a separate product
+  call, since the player base is Italian-speaking. The fix above assumes yes; say if not.
+- **Depends on:** None
+
+---
 
 ### [ARCH-18] Cut the comment bloat the remediation itself added
 - **Severity:** Medium · **Effort:** M · **Batch:** 14 (last — after every code batch has landed)
