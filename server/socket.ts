@@ -264,6 +264,59 @@ export function isUserOnline(userId: string): boolean {
 }
 
 /**
+ * Throws an account off the server once its `users` row is gone: the seat is
+ * released to a bot exactly as a `room:leave` does, and the socket is closed.
+ *
+ * A socket authenticates once at the handshake and `socket.data.userId` is
+ * never re-checked, so without this a deleted account keeps its seat and keeps
+ * playing under an id no row answers to.
+ *
+ * Call it only after the delete has committed — releasing the seat can end the
+ * hand, and the hand's writes must not race the transaction removing the row.
+ * Never throws: the account is already gone, and the caller's response must not
+ * turn on how the teardown went.
+ */
+export async function evictUser(userId: string): Promise<void> {
+  const io = _io;
+  if (!io) return;
+  const socketId = userSocketMap.get(userId);
+  if (!socketId) return;
+  userSocketMap.delete(userId);
+  const socket = io.sockets.sockets.get(socketId);
+  if (!socket) return;
+
+  // Taken here so the disconnect below cannot release the same seat a second
+  // time. Spectator state is left to it, which drops it correctly.
+  const roomId = socketRoomMap.get(socketId);
+  socketRoomMap.delete(socketId);
+  const username = (socket.data?.username as string) ?? "";
+
+  if (roomId) {
+    try {
+      if (activeGames.has(roomId)) {
+        // Not handleSeatRelease: deleting an account also deletes the rooms
+        // rows it hosted, and that path reads the room back and returns when
+        // it is gone — leaving the seat live in a hand still being played.
+        socket.leave(roomId);
+        await vacateSeat(io, roomId, userId, username);
+      } else {
+        await handleSeatRelease(io, roomId, userId, username, {
+          socket,
+          source: "leave",
+        });
+      }
+    } catch (err) {
+      logger.error(
+        { err, userId, roomId },
+        "Failed to release the seat of a deleted account"
+      );
+    }
+  }
+
+  socket.disconnect(true);
+}
+
+/**
  * Internals exposed for tests only — the turn resolution and persistence
  * mapping are the two places where a bug deadlocks a live table, so they have
  * to be exercisable without a socket server and a database.

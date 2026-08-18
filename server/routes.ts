@@ -13,7 +13,7 @@ import {
   PushTokenSchema,
 } from "./schemas.ts";
 import { deletePushToken, savePushToken } from "./push.ts";
-import { emitToUser, isUserOnline } from "./socket.ts";
+import { emitToUser, evictUser, isUserOnline } from "./socket.ts";
 import { mintSocketTicket } from "./ticket.ts";
 import { getUserStats, getMatchHistory, getUserAchievements } from "./stats.ts";
 import { getReplayForUser, listReplaysForUser } from "./replays.ts";
@@ -238,6 +238,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const userId = req.session.userId!;
       await storage.deleteUser(userId);
       req.session.destroy(() => {});
+      // After the delete has committed, never before: the account's live
+      // socket outlives its session, and a seat still held by an id no `users`
+      // row answers to fails every write the hand's end makes for the whole
+      // table.
+      await evictUser(userId);
       logger.info({ userId }, "User account deleted");
       res.json({ message: "Account deleted", code: "ACCOUNT_DELETED" });
     } catch (err) {

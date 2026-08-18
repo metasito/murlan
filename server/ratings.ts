@@ -1,4 +1,4 @@
-import { and, desc, eq, gte, sql } from "drizzle-orm";
+import { and, desc, eq, gte, inArray, sql } from "drizzle-orm";
 import { db } from "./db.ts";
 import { userRatings, users } from "../shared/schema.ts";
 import {
@@ -72,7 +72,10 @@ async function currentRow(
  * Free-for-all only: a teams placement belongs to the pair, and an individual
  * ladder derived from team play needs a model this is not.
  *
- * One transaction, so a hand either moves every seat or none of them.
+ * One transaction, so a hand either moves every seat or none of them. Which is
+ * why the seats are checked against `users` before it opens: an account deleted
+ * mid-hand still holds a seat here, and its foreign key would abort the
+ * transaction carrying everyone else's rating.
  */
 export async function recordRatedResult(
   seatResults: { userId: string; placement: number }[],
@@ -81,7 +84,24 @@ export async function recordRatedResult(
 ): Promise<void> {
   if (gameMode !== "free_for_all") return;
 
-  const finishers = ratedFinishers(seatResults);
+  const seated = ratedFinishers(seatResults);
+  if (seated.length < 2) return;
+
+  const live = await db
+    .select({ id: users.id })
+    .from(users)
+    .where(
+      inArray(
+        users.id,
+        seated.map((f) => f.userId)
+      )
+    );
+  const liveIds = new Set(live.map((r) => r.id));
+  // Re-run rather than filter in place: the deltas read placement as a rank out
+  // of the seats present, so dropping one has to close the gap it leaves.
+  const finishers = ratedFinishers(seated.filter((f) => liveIds.has(f.userId)));
+  // An account that no longer exists cannot be rated, and one contestant is no
+  // contest.
   if (finishers.length < 2) return;
 
   const season = seasonKey(finishedAt);
