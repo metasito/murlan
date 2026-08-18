@@ -1,5 +1,5 @@
 import React, { useEffect } from "react";
-import { View, Text, StyleSheet, Pressable, Platform } from "react-native";
+import { View, Text, StyleSheet, Pressable, Platform, useWindowDimensions } from "react-native";
 import Animated, {
   useSharedValue,
   useAnimatedStyle,
@@ -9,6 +9,7 @@ import Animated, {
 } from "react-native-reanimated";
 import Ionicons from "@expo/vector-icons/Ionicons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { computeScreenPads, notificationTopOffset } from "@/components/gameTableModel";
 import { Colors, Spacing, Radius, Type, Shadow } from "@/lib/theme";
 import { usePrefersReducedMotion } from "@/lib/accessibility";
 import { useTranslation } from "@/lib/i18n";
@@ -49,15 +50,19 @@ const COLOR_MAP: Record<NotificationType, string> = {
 // generic transition duration.
 const SLIDE_DURATION = 320;
 const DEFAULT_VISIBLE_DURATION = 4500;
+// Clearance between whatever the banner sits under and the banner itself.
+const TOP_GAP = 8;
 
 export default function NotificationBanner({ notification, onDismiss }: Props) {
   const { t } = useTranslation();
   const insets = useSafeAreaInsets();
+  const { width, height } = useWindowDimensions();
   const translateY = useSharedValue(-120);
   const opacity = useSharedValue(0);
   const reduceMotion = usePrefersReducedMotion();
 
-  const topOffset = Platform.OS === "web" ? 67 : insets.top;
+  const { topPad } = computeScreenPads({ insets, isWeb: Platform.OS === "web" });
+  const topOffset = notificationTopOffset({ topPad, landscape: width > height });
   // Reduced motion: keep the exact same callback chain (still a single,
   // sequential path to onDismiss) but collapse every leg to ~0ms so nothing
   // visibly slides.
@@ -111,7 +116,8 @@ export default function NotificationBanner({ notification, onDismiss }: Props) {
 
   return (
     <Animated.View
-      style={[styles.container, { top: topOffset + 8, pointerEvents: notification ? "box-none" as const : "none" as const }, animStyle]}
+      testID="notification-banner"
+      style={[styles.container, { top: topOffset + TOP_GAP, pointerEvents: notification ? "box-none" as const : "none" as const }, animStyle]}
     >
       <Pressable
         onPress={handlePress}
@@ -129,7 +135,7 @@ export default function NotificationBanner({ notification, onDismiss }: Props) {
           <Ionicons name={icon} size={20} color={color} />
         </View>
         <View style={styles.textGroup}>
-          <Text style={styles.title}>{notification?.title ?? ""}</Text>
+          <Text style={styles.title} numberOfLines={1}>{notification?.title ?? ""}</Text>
           <Text style={styles.message} numberOfLines={2}>{notification?.message ?? ""}</Text>
         </View>
         <Pressable

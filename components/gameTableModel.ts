@@ -359,6 +359,19 @@ export function computeTableFrame(opts: {
   };
 }
 
+/**
+ * Top edge the notification banner may start at without covering the game
+ * table's top bar — which carries whose turn it is, the countdown and the hand
+ * count, exactly the things an AFK or takeover notice is explaining.
+ *
+ * Landscape is the proxy for "the table is up": it is the only orientation the
+ * table runs in, and on a menu screen in landscape the band the banner steps
+ * over is empty, so it costs nothing there.
+ */
+export function notificationTopOffset(opts: { topPad: number; landscape: boolean }): number {
+  return opts.landscape ? opts.topPad + TOP_BAR_H + TABLE_M : opts.topPad;
+}
+
 // ─── Exchange phase ───────────────────────────────────────────────────────────
 
 export interface ExchangeView {

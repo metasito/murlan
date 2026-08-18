@@ -27,6 +27,7 @@ import {
   canPassNow,
   playButtonLabel,
   turnTimerActive,
+  notificationTopOffset,
   startCardBannerText,
   computeTableFrame,
   readExchange,
@@ -428,6 +429,27 @@ describe("turnTimerActive", () => {
 });
 
 // ─── Copy ─────────────────────────────────────────────────────────────────────
+
+describe("notificationTopOffset", () => {
+  // The table's top bar occupies [topPad, topPad + TOP_BAR_H) and carries the
+  // turn billboard, the countdown and the hand count — the very things an AFK
+  // or seat-takeover notice is explaining.
+  const topPad = 47;
+
+  test("in landscape the banner starts below the table's top bar", () => {
+    const top = notificationTopOffset({ topPad, landscape: true });
+    assert.ok(top >= topPad + TOP_BAR_H, `${top} still overlaps the top bar`);
+    assert.equal(top, topPad + TOP_BAR_H + TABLE_M);
+  });
+
+  test("portrait — every menu screen — is left exactly where it was", () => {
+    assert.equal(notificationTopOffset({ topPad, landscape: false }), topPad);
+  });
+
+  test("a zero inset still clears the bar in landscape", () => {
+    assert.ok(notificationTopOffset({ topPad: 0, landscape: true }) >= TOP_BAR_H);
+  });
+});
 
 describe("startCardBannerText", () => {
   test("second person when the viewer opens", () => {
