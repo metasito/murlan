@@ -106,7 +106,7 @@ import {
   preloadSounds,
   unloadSounds,
 } from "@/lib/sounds";
-import { hapticHeavy, hapticLight, hapticMedium, hapticSelection, hapticSuccess, hapticWarn } from "@/lib/haptics";
+import { hapticError, hapticHeavy, hapticLight, hapticMedium, hapticSelection, hapticSuccess, hapticWarn } from "@/lib/haptics";
 import { usePrefersReducedMotion } from "@/lib/accessibility";
 import { Colors, FontSize, Highlight, Motion, Radius, Scrim, Shadow, Spacing, Type } from "@/lib/theme";
 import { useTableFelt } from "@/lib/cosmetics";
@@ -122,6 +122,15 @@ const URGENT_SECONDS = 5;
 // fractional offset resamples the glyphs. 2px down is the smallest offset
 // that still reads as a press.
 const BTN_PRESS_TRAVEL = 2;
+
+// The refusal shake on GIOCA: deliberately a third of the bomb's amplitude —
+// it is a "no", not an event. One leg duration for all four legs.
+const BTN_REJECT_TRAVEL = 3;
+const BTN_REJECT_LEG_MS = 40;
+// How long the refused-play reason stays on screen, and how wide it may get
+// before it wraps onto its second (and last) line.
+const REJECT_HINT_MS = 2600;
+const REJECT_HINT_MAX_W = 260;
 
 // Raked light across the gold surface — bright at the top-left corner,
 // dropping to goldDark at the bottom-right — same treatment and same rake
@@ -450,6 +459,12 @@ export function GameTable({
   const passaFlashVal = useSharedValue(0);
   const giocaGlowVal = useSharedValue(0);
   const shakeX = useSharedValue(0);
+  const giocaRejectX = useSharedValue(0);
+
+  // The reason a tap on an unavailable GIOCA was refused, spelled out. Keyed by
+  // a counter so tapping again restarts the dwell instead of being swallowed as
+  // an unchanged value.
+  const [rejectHint, setRejectHint] = useState<{ key: number; text: string } | null>(null);
 
   // Real press feedback for the two most-pressed controls in the game,
   // matching components/MenuButton.tsx: a discrete gradient swap (React
@@ -502,6 +517,26 @@ export function GameTable({
 
   const canPass = canPassNowOf({ isMyTurn, isFinished, isNewRound });
   const playBtnValid = isValidPlay && isMyTurn && !isFinished;
+
+  const pileCombo = gameState.lastPlayedCombination;
+  const dimLabel = playButtonLabel({
+    isMyTurn,
+    isFinished,
+    selectedCount: selectedIds.length,
+    selection: tentativeCombo
+      ? { type: tentativeCombo.type, length: tentativeCombo.cards.length }
+      : null,
+    pile: pileCombo ? { type: pileCombo.type, length: pileCombo.cards.length } : null,
+    requiresStartCard,
+    selectionHasStartCard,
+  });
+  // Two words fit on the button; the sentence is what the screen reader speaks
+  // and what the toast shows when the refusal is tapped. Only the start-card
+  // reason reads the rank.
+  const startCardRank = gameState.startCard?.rank ?? "";
+  const dimReasonText = t(PLAY_A11Y_SPOKEN_KEYS[dimLabel] ?? PLAY_LABEL_KEYS[dimLabel], {
+    rank: startCardRank,
+  });
 
   const opponents = React.useMemo(
     () => arrangeOpponents(players, viewerSeat),
@@ -739,6 +774,12 @@ export function GameTable({
   }, [roundWinnerTag]);
 
   useEffect(() => {
+    if (rejectHint === null) return;
+    const id = setTimeout(() => setRejectHint(null), REJECT_HINT_MS);
+    return () => clearTimeout(id);
+  }, [rejectHint]);
+
+  useEffect(() => {
     if (isMyTurn && !isFinished && !prevMyTurnRef.current) playYourTurn();
     prevMyTurnRef.current = isMyTurn;
   }, [isMyTurn, isFinished]);
@@ -838,10 +879,11 @@ export function GameTable({
       cancelAnimation(giocaFlashVal);
       cancelAnimation(passaFlashVal);
       cancelAnimation(shakeX);
+      cancelAnimation(giocaRejectX);
       cancelAnimation(giocaPressVal);
       cancelAnimation(passaPressVal);
     },
-    [giocaFlashVal, passaFlashVal, shakeX, giocaPressVal, passaPressVal]
+    [giocaFlashVal, passaFlashVal, shakeX, giocaRejectX, giocaPressVal, passaPressVal]
   );
 
   // Guarded on the enabled flag so a disabled button (already visually dim)
@@ -864,7 +906,10 @@ export function GameTable({
   const giocaFlashStyle = useAnimatedStyle(() => ({ opacity: giocaFlashVal.value }));
   const passaFlashStyle = useAnimatedStyle(() => ({ opacity: passaFlashVal.value }));
   const giocaPressStyle = useAnimatedStyle(() => ({
-    transform: [{ translateY: giocaPressVal.value * BTN_PRESS_TRAVEL }],
+    transform: [
+      { translateY: giocaPressVal.value * BTN_PRESS_TRAVEL },
+      { translateX: giocaRejectX.value },
+    ],
   }));
   const passaPressStyle = useAnimatedStyle(() => ({
     transform: [{ translateY: passaPressVal.value * BTN_PRESS_TRAVEL }],
@@ -894,8 +939,23 @@ export function GameTable({
     },
     [isFinished, spectating, onSelectCard]
   );
+  // The button stays pressable while it is unavailable so a refusal has a
+  // channel: an error haptic, a shake, and the reason in words. It keeps
+  // reporting itself as disabled to assistive tech.
   const handlePlay = useCallback(() => {
-    if (!playBtnValid) return;
+    if (!playBtnValid) {
+      hapticError();
+      setRejectHint((prev) => ({ key: (prev?.key ?? 0) + 1, text: dimReasonText }));
+      if (!reduceMotion) {
+        giocaRejectX.value = withSequence(
+          withTiming(BTN_REJECT_TRAVEL, { duration: BTN_REJECT_LEG_MS }),
+          withTiming(-BTN_REJECT_TRAVEL, { duration: BTN_REJECT_LEG_MS }),
+          withTiming(BTN_REJECT_TRAVEL, { duration: BTN_REJECT_LEG_MS }),
+          withTiming(0, { duration: BTN_REJECT_LEG_MS })
+        );
+      }
+      return;
+    }
     // Haptic only: the throw is acknowledged in the hand, and card_play sounds
     // when the card actually reaches the pile.
     hapticMedium();
@@ -903,7 +963,7 @@ export function GameTable({
     // `selectedObjs`, and the server rejects — silently — any request naming a
     // card the hand does not hold.
     onPlay(selectedObjs.map((c) => c.id));
-  }, [playBtnValid, onPlay, selectedObjs]);
+  }, [playBtnValid, onPlay, selectedObjs, dimReasonText, reduceMotion, giocaRejectX]);
   const handlePass = useCallback(() => {
     if (!canPass) return;
     hapticLight();
@@ -933,21 +993,6 @@ export function GameTable({
       : "-");
 
   const showStartCardBanner = !gameState.firstPlayMade && !!gameState.startCard;
-  const pileCombo = gameState.lastPlayedCombination;
-  const dimLabel = playButtonLabel({
-    isMyTurn,
-    isFinished,
-    selectedCount: selectedIds.length,
-    selection: tentativeCombo
-      ? { type: tentativeCombo.type, length: tentativeCombo.cards.length }
-      : null,
-    pile: pileCombo ? { type: pileCombo.type, length: pileCombo.cards.length } : null,
-    requiresStartCard,
-    selectionHasStartCard,
-  });
-  // The start-card reason names the card it wants; every other reason ignores
-  // the parameter.
-  const dimLabelParams = { rank: gameState.startCard?.rank ?? "" };
 
   return (
     <Animated.View style={[styles.root, shakeStyle]}>
@@ -1177,18 +1222,15 @@ export function GameTable({
               )}
               <Pressable
                 testID="btn-gioca"
-                onPress={playBtnValid ? handlePlay : undefined}
+                onPress={handlePlay}
                 onPressIn={() => setGiocaPress(true)}
                 onPressOut={() => setGiocaPress(false)}
-                disabled={!playBtnValid}
                 style={styles.playBtnInner}
                 accessibilityRole="button"
                 accessibilityLabel={
                   playBtnValid
                     ? t("gameTable.playA11yValid")
-                    : t("gameTable.playA11yUnavailable", {
-                        reason: t(PLAY_A11Y_SPOKEN_KEYS[dimLabel] ?? PLAY_LABEL_KEYS[dimLabel], dimLabelParams),
-                      })
+                    : t("gameTable.playA11yUnavailable", { reason: dimReasonText })
                 }
                 accessibilityState={{ disabled: !playBtnValid }}
               >
@@ -1212,7 +1254,7 @@ export function GameTable({
                 ) : (
                   <View style={[styles.playBtnGrad, styles.playBtnGradDim]}>
                     <Text style={styles.playBtnLabelDim} numberOfLines={2}>
-                      {t(PLAY_LABEL_KEYS[dimLabel], dimLabelParams)}
+                      {t(PLAY_LABEL_KEYS[dimLabel], { rank: startCardRank })}
                     </Text>
                   </View>
                 )}
@@ -1280,6 +1322,33 @@ export function GameTable({
           cardReceived={exchangeAnnouncement.data.cardReceived}
           onDismiss={exchangeAnnouncement.onDismiss}
         />
+      )}
+
+      {/* Sits just above the hand row, at the GIOCA end of it — the button
+          wears two words, this is the whole sentence, next to the control the
+          player just pressed rather than at the far side of the screen. */}
+      {rejectHint && (
+        <Animated.View
+          key={rejectHint.key}
+          entering={FadeIn.duration(Motion.duration.fast)}
+          pointerEvents="none"
+          style={[
+            styles.rejectHint,
+            {
+              bottom: frame.bottomPad + TABLE_M + HAND_SECTION_H + Spacing.xs,
+              left: frame.tableLeft,
+              right: frame.tableRight,
+            },
+          ]}
+        >
+          <Text
+            style={styles.rejectHintText}
+            numberOfLines={2}
+            accessibilityLiveRegion="polite"
+          >
+            {rejectHint.text}
+          </Text>
+        </Animated.View>
       )}
 
       {overlays}
@@ -1436,6 +1505,25 @@ const styles = StyleSheet.create({
   playBtnSub: {
     fontFamily: "Rajdhani_500Medium", fontSize: FontSize.xs,
     color: Colors.bgCard, opacity: 0.7,
+  },
+  rejectHint: {
+    position: "absolute",
+    zIndex: 30,
+    alignItems: "flex-end",
+  },
+  rejectHintText: {
+    fontFamily: "Rajdhani_600SemiBold",
+    fontSize: FontSize.xs,
+    color: Colors.text,
+    textAlign: "right",
+    maxWidth: REJECT_HINT_MAX_W,
+    backgroundColor: Scrim.heavy,
+    borderWidth: 1,
+    borderColor: Colors.goldBorder,
+    borderRadius: Radius.sm,
+    paddingHorizontal: Spacing.sm,
+    paddingVertical: Spacing.xs,
+    overflow: "hidden",
   },
   rematchPanel: {
     position: "absolute",

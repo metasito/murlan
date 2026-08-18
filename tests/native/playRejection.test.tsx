@@ -5,7 +5,7 @@
 // 3♠ — the two cases where "too low" teaches the wrong rule.
 import { describe, it, expect, beforeEach, jest } from '@jest/globals';
 import React from 'react';
-import { render, screen } from '@testing-library/react-native';
+import { act, fireEvent, render, screen } from '@testing-library/react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 jest.mock('@/lib/sounds', () => ({
@@ -35,6 +35,7 @@ jest.mock('expo-haptics', () => ({
   NotificationFeedbackType: { Success: 'success', Error: 'error', Warning: 'warning' },
 }));
 
+import * as Haptics from 'expo-haptics';
 import { GameTable } from '@/components/GameTable';
 import { t } from '@/lib/i18n';
 import type { Card, Combination, GameState, Player, Rank, Suit } from '@/lib/gameEngine';
@@ -136,6 +137,72 @@ describe('the dim GIOCA label', () => {
     );
 
     expect(screen.getByText(t('gameTable.playLabelTooLow'))).toBeTruthy();
+
+    await r.unmount();
+  });
+});
+
+describe('tapping an unavailable GIOCA', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+  });
+
+  const refusedTable = () =>
+    table(
+      state({ lastPlayedCombination: single(card('9', 'diamonds')), lastPlayedBy: 1 }),
+      [SEVEN_H.id, SEVEN_C.id]
+    );
+
+  it('answers with the error haptic and the reason in words', async () => {
+    const r = await render(refusedTable());
+
+    expect(screen.queryByText(t('gameTable.playA11ySpokenWrongType'))).toBeNull();
+
+    await act(async () => {
+      fireEvent.press(screen.getByTestId('btn-gioca'));
+    });
+
+    expect(jest.mocked(Haptics.notificationAsync)).toHaveBeenCalledWith('error');
+    expect(screen.getByText(t('gameTable.playA11ySpokenWrongType'))).toBeTruthy();
+
+    await r.unmount();
+  });
+
+  it('still reports itself unavailable to assistive tech', async () => {
+    const r = await render(refusedTable());
+
+    await act(async () => {
+      fireEvent.press(screen.getByTestId('btn-gioca'));
+    });
+
+    expect(screen.getByTestId('btn-gioca').props.accessibilityState?.disabled).toBe(true);
+
+    await r.unmount();
+  });
+
+  it('does not submit the refused selection', async () => {
+    const onPlay = jest.fn<(ids: string[]) => void>();
+    const r = await render(
+      <SafeAreaProvider initialMetrics={METRICS}>
+        <GameTable
+          gameState={state({ lastPlayedCombination: single(card('9', 'diamonds')), lastPlayedBy: 1 })}
+          viewerSeat={0}
+          selectedIds={[SEVEN_H.id, SEVEN_C.id]}
+          onSelectCard={noop}
+          onPlay={onPlay}
+          onPass={noop}
+          onQuit={noop}
+          onExchangeGive={noop}
+          roundLabel="Partita"
+        />
+      </SafeAreaProvider>
+    );
+
+    await act(async () => {
+      fireEvent.press(screen.getByTestId('btn-gioca'));
+    });
+
+    expect(onPlay).not.toHaveBeenCalled();
 
     await r.unmount();
   });
