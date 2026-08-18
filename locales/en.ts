@@ -65,6 +65,7 @@ export const en: Record<keyof typeof it, string> = {
   "server.NOT_FRIENDS": "You're not friends",
   "server.PLAYER_DISCONNECTED_GRACE": "{{username}} disconnected. They have {{seconds}} seconds to rejoin.",
   "server.PLAYER_RECONNECTED": "{{username}} is back.",
+  "server.SESSION_REPLACED": "Your account was opened somewhere else. This session has been closed.",
 
   // ---------------------------------------------------------------- auth.*
   "auth.subtitle": "Online Access",
@@ -139,6 +140,11 @@ export const en: Record<keyof typeof it, string> = {
 
   // ---------------------------------------------------------- offlineBanner.*
   "offlineBanner.text": "⚠️ No internet connection",
+
+  // -------------------------------------------------------- sessionReplaced.*
+  "sessionReplaced.title": "Session opened elsewhere",
+  "sessionReplaced.reconnect": "Reconnect here",
+  "sessionReplaced.reconnectA11yHint": "Bring your account back to this device and close the other session",
 
   // ---------------------------------------------------- notificationBanner.*
   "notificationBanner.dismissA11yHint": "Tap to dismiss the notification",

@@ -87,6 +87,7 @@ export const sq: Record<keyof typeof it, string> = {
   "server.NOT_FRIENDS": "Nuk jeni miq",
   "server.PLAYER_DISCONNECTED_GRACE": "{{username}} u shkëput. Ka {{seconds}} sekonda për t'u rikthyer.",
   "server.PLAYER_RECONNECTED": "{{username}} u kthye.",
+  "server.SESSION_REPLACED": "Llogaria jote u hap diku tjetër. Kjo seancë u mbyll.",
 
   // ---------------------------------------------------------------- auth.*
   "auth.subtitle": "Qasje Online",
@@ -161,6 +162,11 @@ export const sq: Record<keyof typeof it, string> = {
 
   // ---------------------------------------------------------- offlineBanner.*
   "offlineBanner.text": "⚠️ Nuk ka lidhje interneti",
+
+  // -------------------------------------------------------- sessionReplaced.*
+  "sessionReplaced.title": "Seanca u hap diku tjetër",
+  "sessionReplaced.reconnect": "Rilidhu këtu",
+  "sessionReplaced.reconnectA11yHint": "Kthe llogarinë tënde në këtë pajisje dhe mbyll seancën tjetër",
 
   // ---------------------------------------------------- notificationBanner.*
   "notificationBanner.dismissA11yHint": "Prek për të mbyllur njoftimin",

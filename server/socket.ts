@@ -1413,7 +1413,13 @@ export function setupSocket(httpServer: HttpServer) {
   io.on("connection", async (socket: Socket) => {
     const userId = socket.data.userId as string;
     const username = socket.data.username as string;
+    // The mapping has to name the new socket before the old one is closed —
+    // see evictReplacedSession for what reads it on the way out.
+    const replacedSocketId = userSocketMap.get(userId);
     userSocketMap.set(userId, socket.id);
+    if (replacedSocketId && replacedSocketId !== socket.id) {
+      evictReplacedSession(io, userId, replacedSocketId);
+    }
     logger.debug({ userId, username, socketId: socket.id }, "Socket connected");
 
     // Every onEvent(...)/socket.on(...) registration below is synchronous and
@@ -2812,6 +2818,40 @@ async function handleSeatRelease(
     // leaver's hand mid-manche, or blocking the rematch gate between them.
     await vacateSeat(io, roomId, userId, username);
   }
+}
+
+/**
+ * Enforces one live socket per account: the newest connection keeps the
+ * account and the socket it replaced is told why before it is closed.
+ *
+ * `userSocketMap` must already name the new socket when this is called. The
+ * replaced socket's own disconnect handler reads it, and both of its guards
+ * then decline to act — the mapping no longer matches that socket id, so it is
+ * left alone, and the account still has a socket, so no
+ * `game:player_disconnected` is announced and no grace timer is armed. The
+ * player keeps their seat; only the connection changes.
+ *
+ * The client stops reconnecting when it sees this code
+ * (`context/SocketContext.tsx`). It has to: socket.io retries a closed
+ * transport forever, so two tabs would otherwise evict each other for as long
+ * as both are open.
+ */
+function evictReplacedSession(
+  io: SocketServer,
+  userId: string,
+  replacedSocketId: string
+) {
+  const replaced = io.sockets.sockets.get(replacedSocketId);
+  if (!replaced) return;
+  replaced.emit("socket:error", {
+    code: "SESSION_REPLACED",
+    message: "Il tuo account è stato aperto altrove. Questa sessione è stata chiusa.",
+  });
+  logger.info(
+    { userId, replacedSocketId },
+    "Session replaced by a newer connection for the same account"
+  );
+  replaced.disconnect(true);
 }
 
 /**

@@ -78,6 +78,7 @@ export const it = {
   "server.NOT_FRIENDS": "Non siete amici",
   "server.PLAYER_DISCONNECTED_GRACE": "{{username}} si è disconnesso. Ha {{seconds}} secondi per rientrare.",
   "server.PLAYER_RECONNECTED": "{{username}} è rientrato.",
+  "server.SESSION_REPLACED": "Il tuo account è stato aperto altrove. Questa sessione è stata chiusa.",
 
   // ---------------------------------------------------------------- auth.*
   "auth.subtitle": "Accesso Online",
@@ -152,6 +153,12 @@ export const it = {
 
   // ---------------------------------------------------------- offlineBanner.*
   "offlineBanner.text": "⚠️ Nessuna connessione Internet",
+
+  // -------------------------------------------------------- sessionReplaced.*
+  // The body copy is server.SESSION_REPLACED — the server says why.
+  "sessionReplaced.title": "Sessione aperta altrove",
+  "sessionReplaced.reconnect": "Riconnetti qui",
+  "sessionReplaced.reconnectA11yHint": "Riporta il tuo account su questo dispositivo e chiude l'altra sessione",
 
   // ---------------------------------------------------- notificationBanner.*
   "notificationBanner.dismissA11yHint": "Tocca per chiudere la notifica",
