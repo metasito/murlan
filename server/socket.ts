@@ -2466,6 +2466,17 @@ async function rejoinSocketToTable(
     "game:state",
     sanitizeStateForPlayer(game.gameState, userId, game.playerMap, game.turnDeadlineMs)
   );
+  // The client reads this as the framing of a manche that has just begun and
+  // zeroes the match verdict and the rematch tally along with it, so it is
+  // only right while one is running — at the results screen `game:over` and
+  // `game:rematch_intents` own those.
+  if (!game.gameState.gameOver) {
+    socket.emit("game:match_state", {
+      target: game.matchTarget,
+      length: game.matchLength,
+      scores: scoresByName(game),
+    });
+  }
   io.to(roomId).emit("game:player_reconnected", {
     userId,
     username,

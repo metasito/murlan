@@ -7,10 +7,14 @@ import {
   skipMessage,
   type TestServer,
 } from "../helpers/testServer.ts";
+import { MATCH_TARGETS, targetsFor } from "../../lib/gameEngine.ts";
 import { connectAs, waitFor } from "../helpers/client.ts";
 import {
+  driveHandToExchangeOrOver,
+  gameOverOf,
   setUpRoom,
   startGame,
+  waitForDeal,
   type Client,
   type RoomState,
   type SanitizedState,
@@ -376,6 +380,78 @@ describe("reconnect", { skip: hasDatabase() ? false : skipMessage() }, () => {
       );
     } finally {
       storage.getRoomPlayers = realGetRoomPlayers;
+      await closeTable(table);
+    }
+  });
+
+  // ── The match framing a rejoin arrives with ─────────────────────────────
+
+  /**
+   * `game:match_state` used to be emitted only when a manche was dealt, so a
+   * client that came back to one already running kept its own defaults —
+   * target 21 and an empty scoreboard — until the manche ended. A two-seat
+   * table plays to 7, which is what makes the number observably wrong and not
+   * merely stale.
+   */
+  test("a rejoin is sent the running match target and scoreboard", async () => {
+    const { __testables } = await import("../../server/socket.ts");
+    const alice = await connectAs(server, "framing_alice");
+    const bob = await connectAs(server, "framing_bob");
+    const room = await setUpRoom([alice, bob], 2);
+    const table = [alice, bob];
+    try {
+      // A manche has to be banked first, or every score is zero and an empty
+      // scoreboard would pass for the real one.
+      gameOverOf(
+        await driveHandToExchangeOrOver(
+          table,
+          () => alice.socket.emit("room:start"),
+          { stopOnExchange: false }
+        )
+      );
+      const dealt = waitForDeal(alice.socket);
+      alice.socket.emit("game:rematch_vote");
+      bob.socket.emit("game:rematch_vote");
+      const manche = await dealt;
+
+      const snapshot = __testables.matchSnapshot(room.roomId);
+      assert.ok(snapshot, "the table must still be live");
+      assert.equal(snapshot.matchTarget, targetsFor(2)[0]);
+      assert.notEqual(
+        snapshot.matchTarget,
+        MATCH_TARGETS[0],
+        "a two-seat target equal to the client's default would prove nothing"
+      );
+      const banked = Object.values(snapshot.cumulativeScores).reduce((a, b) => a + b, 0);
+      assert.ok(banked > 0, "the first manche must have banked a point for somebody");
+
+      const dropped = waitFor(alice.socket, "game:player_disconnected", 5_000);
+      bob.socket.disconnect();
+      await dropped;
+
+      const back = await reconnect(bob);
+      table[1] = { ...bob, socket: back };
+      const framing = waitFor<{
+        target: number;
+        length: string;
+        scores: Record<string, number>;
+      }>(back, "game:match_state", 5_000);
+      back.emit("game:rejoin", { roomId: room.roomId });
+      const sent = await framing;
+
+      assert.equal(sent.target, snapshot.matchTarget);
+      assert.equal(sent.length, snapshot.matchLength);
+      assert.deepEqual(
+        Object.keys(sent.scores).sort(),
+        manche.players.map((p) => p.name).sort(),
+        "every seat must appear on the scoreboard the rejoining client is sent"
+      );
+      assert.equal(
+        Object.values(sent.scores).reduce((a, b) => a + b, 0),
+        banked,
+        "the scoreboard must be the running one, not a fresh match's zeroes"
+      );
+    } finally {
       await closeTable(table);
     }
   });
