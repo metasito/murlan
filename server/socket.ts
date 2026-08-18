@@ -19,6 +19,7 @@ import {
   lobbyDropouts,
   publicRoomIds,
   rememberLobbyDropout,
+  seatOfUser,
   socketRoomMap,
   spectatorRoomMap,
   userSocketMap,
@@ -34,26 +35,31 @@ import {
   clearAfkTimer,
   clearRoomTimers,
   clearAllTimersForUser,
-  clearRoomDisconnectTimers,
   secondsUntil,
 } from "./gameTimers.ts";
 import {
   broadcastGameState,
   disposeGame,
+  gameOverWriters,
   persistGameState,
   safeTimer,
   sanitizeStateForPlayer,
   startSweeper,
 } from "./gamePersistence.ts";
 import {
+  broadcastRematchIntents,
+  countRematchAnswers,
+  handleGameOver,
+  rollMatchForward,
+  scoresByName,
+  tableWantsRematch,
+} from "./gameOver.ts";
+import {
   readPersistedPlayerMap,
-  seatOfUser as seatOfUserInMap,
-  scoreKeyForSeat as scoreKeyForMapSeat,
   buildSeatRoster,
   teamKeyMap,
   restoredMatchOver,
   unpackPersistedState,
-  resolveHandEnd,
 } from "./onlineGameLogic.ts";
 import {
   NoPayloadSchema,
@@ -86,14 +92,10 @@ import {
   getValidGivebackCards,
   getStartingPlayerAfterExchange,
   deepCloneState,
-  isMajority,
   targetsFor,
 } from "../lib/gameEngine.ts";
 import type { GameState, Combination } from "../lib/gameEngine.ts";
-import { recordGameResult } from "./stats.ts";
-import { saveReplay } from "./replays.ts";
-import { recordRatedResult } from "./ratings.ts";
-import { appendReplayMove, replaySeatsOf, startReplayLog } from "./replayShape.ts";
+import { appendReplayMove, startReplayLog } from "./replayShape.ts";
 
 /**
  * Handshakes one account may complete per minute.
@@ -258,14 +260,6 @@ function actingSeat(state: GameState): number {
   return state.exchangePhase?.active
     ? state.exchangePhase.winnerIdx
     : state.currentTurnIndex;
-}
-
-function scoreKeyForSeat(game: OnlineGameState, seat: number): string {
-  return scoreKeyForMapSeat(game.playerMap, seat);
-}
-
-function seatOfUser(game: OnlineGameState, userId: string): number | null {
-  return seatOfUserInMap(game.playerMap, userId);
 }
 
 /**
@@ -486,7 +480,7 @@ function runBotTurn(roomId: string) {
   persistGameState(roomId, game);
 
   if (next.gameOver) {
-    void handleGameOver(io, roomId, game);
+    void handleGameOver(io, roomId, game, gameOverWriters);
   } else {
     armTurn(roomId);
   }
@@ -510,7 +504,7 @@ function handleAutoPass(roomId: string, userId: string): "exchange" | "move" | n
   persistGameState(roomId, game);
 
   if (next.gameOver) {
-    void handleGameOver(io, roomId, game);
+    void handleGameOver(io, roomId, game, gameOverWriters);
   } else {
     armTurn(roomId);
   }
@@ -664,7 +658,7 @@ async function vacateSeat(
     concedeHand(game, survivorSeat);
     // Sets rooms.status = "finished" and writes the row itself; the write is
     // awaited so the disposal below deletes a row that already exists.
-    await handleGameOver(io, roomId, game);
+    await handleGameOver(io, roomId, game, gameOverWriters);
     disposeGame(roomId);
     return;
   }
@@ -685,191 +679,6 @@ async function vacateSeat(
   broadcastGameState(io, game);
   persistGameState(roomId, game);
   armTurn(roomId);
-}
-
-// ─── Match scoring ────────────────────────────────────────────────────────────
-
-async function handleGameOver(
-  io: SocketServer,
-  roomId: string,
-  game: OnlineGameState
-) {
-  const state = game.gameState;
-  clearRoomTimers(roomId);
-  // A pending grace timer must not fire into a finished game and evict the
-  // survivors from the rematch screen.
-  clearRoomDisconnectTimers(game);
-
-  const result = resolveHandEnd({
-    state,
-    playerMap: game.playerMap,
-    cumulativeScores: game.cumulativeScores,
-    matchTarget: game.matchTarget,
-    matchLength: game.matchLength,
-    gameMode: game.gameMode,
-    handFlags: game.handFlags,
-    abandonedSeats: game.abandonedSeats,
-  });
-  const { handByKey, matchWinners, isDraw, detailed, byName, winnerNames } = result;
-  game.cumulativeScores = result.cumulativeScores;
-  game.matchTarget = result.matchTarget;
-  game.matchOver = result.matchOver;
-
-  const matchContinues = game.matchOver ? tableWantsRematch(game) : false;
-
-  game.rematchVotes = new Set();
-
-  io.to(roomId).emit("game:over", {
-    rankings: state.rankings,
-    cumulativeScores: byName,
-    scores: detailed,
-    matchTarget: game.matchTarget,
-    matchLength: game.matchLength,
-    matchOver: game.matchOver,
-    matchWinners: winnerNames,
-    matchContinues,
-    isDraw,
-  });
-
-  // The one record of how a hand resolved. `match_replays` is not a substitute:
-  // it is written only for a table with a human seat and a live moveLog, and it
-  // stores no scores. Ids and integers only — never hand contents.
-  logger.info(
-    {
-      roomId,
-      gameMode: game.gameMode,
-      matchLength: game.matchLength,
-      rankings: state.rankings,
-      handByKey,
-      cumulative: game.cumulativeScores,
-      matchTarget: game.matchTarget,
-      matchOver: game.matchOver,
-      isDraw,
-      matchWinners,
-    },
-    "Hand over"
-  );
-
-  await storage
-    .updateRoomStatus(roomId, "finished")
-    .catch((err) =>
-      logger.warn(
-        { err, roomId },
-        "Failed to set rooms.status = finished after the hand ended"
-      )
-    );
-  // The row is kept (not deleted) so a restart between hands restores the
-  // running match instead of silently resetting the scoreboard. Awaited so a
-  // caller that disposes the table straight after cannot delete the row
-  // before this write lands on it.
-  await persistGameState(roomId, game);
-
-  // ── Stats / history / achievements ────────────────────────────────────────
-  //
-  // Deliberately placed after every broadcast/persist above, not before: the
-  // game-over guarantee is "a stats write must never block or fail the
-  // game", and handleGameOver is itself async with two call sites that
-  // invoke it as bare `void` (see runBotTurn / the game:play handler). The
-  // shaping itself already happened, purely, in resolveHandEnd — this block
-  // is only the (fire-and-forget) writes, still guarded so a throw here
-  // cannot reject handleGameOver's own promise.
-  try {
-    const { gameResults, recordable } = result;
-    if (!recordable) {
-      logger.info(
-        { roomId },
-        "Bot-majority table — stats, history and achievements not recorded"
-      );
-    } else {
-      // Deliberately not awaited: a stats write must never be able to block
-      // or delay whatever runs after handleGameOver at any of its call sites.
-      recordGameResult(gameResults, game.gameMode).catch((err) =>
-        logger.error({ err, roomId }, "Failed to record game results")
-      );
-      // The ladder moves on the same gate as stats: a bot-majority table
-      // awards nothing, or a private room of bots would be free rating.
-      // recordRatedResult declines a teams result on its own (placement
-      // belongs to the pair, not to either partner).
-      recordRatedResult(gameResults, game.gameMode, new Date()).catch((err) =>
-        logger.error({ err, roomId }, "Failed to record rated result")
-      );
-    }
-
-    // A replay is written for any table with a human seat, bot-majority ones
-    // included: it records what happened, it awards nothing. Not awaited, and
-    // the table is not required to exist — until `db:push` has run the insert
-    // fails, is logged, and the only consequence is an empty replays list.
-    if (game.moveLog && game.moveLog.length > 0) {
-      saveReplay({
-        roomCode: roomId,
-        gameMode: game.gameMode,
-        seats: replaySeatsOf(state.players, game.playerMap),
-        moves: game.moveLog,
-        rankings: state.rankings,
-      }).catch((err) => logger.error({ err, roomId }, "Failed to save replay"));
-    }
-  } catch (err) {
-    // Belt-and-braces: even the synchronous work above must not be able to
-    // throw back into handleGameOver's own promise (see the comment above
-    // this block).
-    logger.error({ err, roomId }, "Failed to schedule stats/ratings/replay writes");
-  }
-}
-
-/** Between hands: a finished match starts over, an unfinished one carries on. */
-function rollMatchForward(game: OnlineGameState) {
-  if (game.matchOver) {
-    game.cumulativeScores = {};
-    game.matchTarget = targetsFor(game.gameState.players.length)[0];
-    game.matchOver = false;
-    game.rematchIntents.clear();
-  }
-}
-
-/**
- * How many seats want another match, and how many seats there are. A seat
- * with no playerMap entry — a bot, or a human's seat after they left — has
- * no one who can answer, so it abstains: it counts toward neither yes nor
- * total. A seated human who never answered counts as a no, but still counts
- * toward total.
- */
-function countRematchAnswers(game: OnlineGameState): { yes: number; total: number } {
-  const seats = game.gameState.players.length;
-  let yes = 0;
-  let total = 0;
-  for (let seat = 0; seat < seats; seat++) {
-    const userId = game.playerMap[seat];
-    if (userId === undefined) continue;
-    total++;
-    if (game.rematchIntents.get(userId) === true) yes++;
-  }
-  return { yes, total };
-}
-
-/**
- * Cumulative match points keyed by display name — the one wire shape clients
- * read, matching what `game:over` ships.
- */
-function scoresByName(game: OnlineGameState): Record<string, number> {
-  const byName: Record<string, number> = {};
-  game.gameState.players.forEach((p, seat) => {
-    byName[p.name] = game.cumulativeScores[scoreKeyForSeat(game, seat)] ?? 0;
-  });
-  return byName;
-}
-
-function tableWantsRematch(game: OnlineGameState): boolean {
-  const { yes, total } = countRematchAnswers(game);
-  return isMajority(yes, total);
-}
-
-function broadcastRematchIntents(io: SocketServer, game: OnlineGameState) {
-  const { yes, total } = countRematchAnswers(game);
-  io.to(game.roomId).emit("game:rematch_intents", {
-    yes,
-    total,
-    answers: Object.fromEntries(game.rematchIntents),
-  });
 }
 
 // ─── Server ───────────────────────────────────────────────────────────────────
@@ -1494,7 +1303,7 @@ export function setupSocket(httpServer: HttpServer) {
         persistGameState(roomId, game);
 
         if (newState.gameOver) {
-          await handleGameOver(io, roomId, game);
+          await handleGameOver(io, roomId, game, gameOverWriters);
         } else {
           armTurn(roomId);
         }

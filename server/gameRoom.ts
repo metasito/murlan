@@ -3,6 +3,10 @@
 // server, and everything it drags in behind it.
 import type { GameState, GameMode, MatchLength } from "../lib/gameEngine.ts";
 import type { ReplayMove } from "../lib/replay.ts";
+import {
+  scoreKeyForSeat as scoreKeyForMapSeat,
+  seatOfUser as seatOfUserInMap,
+} from "./onlineGameLogic.ts";
 
 export interface OnlineGameState {
   gameState: GameState;
@@ -119,4 +123,12 @@ export function forgetLobbyDropout(roomId: string, userId: string) {
   if (!room) return;
   room.delete(userId);
   if (room.size === 0) lobbyDropouts.delete(roomId);
+}
+
+export function scoreKeyForSeat(game: OnlineGameState, seat: number): string {
+  return scoreKeyForMapSeat(game.playerMap, seat);
+}
+
+export function seatOfUser(game: OnlineGameState, userId: string): number | null {
+  return seatOfUserInMap(game.playerMap, userId);
 }

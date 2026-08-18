@@ -3,6 +3,9 @@ import { eq, inArray, lt } from "drizzle-orm";
 import { storage } from "./storage.ts";
 import { logger } from "./logger.ts";
 import { db } from "./db.ts";
+import { recordGameResult } from "./stats.ts";
+import { recordRatedResult } from "./ratings.ts";
+import { saveReplay } from "./replays.ts";
 import {
   activeGames as activeGamesTable,
   roomPlayers as roomPlayersTable,
@@ -15,6 +18,7 @@ import {
   userSocketMap,
 } from "./gameRoom.ts";
 import type { OnlineGameState } from "./gameRoom.ts";
+import type { GameOverWriters } from "./gameOver.ts";
 import {
   SWEEP_INTERVAL_MS,
   clearRoomTimers,
@@ -300,3 +304,12 @@ export function startSweeper(io: SocketServer) {
   }, SWEEP_INTERVAL_MS);
   (sweeper as unknown as { unref?: () => void }).unref?.();
 }
+
+/** Everything server/gameOver.ts writes, wired to the real tables. */
+export const gameOverWriters: GameOverWriters = {
+  updateRoomStatus: (roomId, status) => storage.updateRoomStatus(roomId, status),
+  persistGameState,
+  recordGameResult,
+  recordRatedResult,
+  saveReplay,
+};
