@@ -236,7 +236,7 @@ export function shuffleDeck(deck: Card[]): Card[] {
  * `firstSeat`. 4 players = 14/14/13/13, 3 players = 18 each, 2 players = 27
  * each — and the two extra cards land on `firstSeat` and the seat after it,
  * so rotating it between manches is what stops the same seats holding the
- * bigger hand for the whole match (docs/RULES.md §2, the dealer's rotation).
+ * bigger hand for the whole match (docs/RULES.md §3, the dealer's rotation).
  * Nothing is excluded — the 3♠ and both Jokers are always in play.
  *
  * `excluded` is kept in the return type for backward compatibility with
