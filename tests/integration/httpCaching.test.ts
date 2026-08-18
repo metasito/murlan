@@ -1,17 +1,15 @@
 // tests/integration/httpCaching.test.ts — bytes actually saved on the wire.
 //
-// PERF-01: nothing compressed a response, so every web visitor downloaded the
-// raw bundle. PERF-09: every static asset — including the content-hashed
-// build output that can never change under its own URL — was served with
-// serve-static's default max-age=0, forcing a conditional request on every
-// repeat visit.
+// Two properties of the static-asset path in server/testApp.ts, both of which
+// live only in response headers and so need a real booted server: a
+// compressible response is gzipped for a client that accepts it, and a URL
+// under dist/ is cached for a year exactly when its filename carries a content
+// hash.
 //
-// Both live in the same file because they touch the same code path
-// (configureExpoAndLanding in server/testApp.ts) and were fixed in the same
-// edit session. dist/ is a gitignored build product that CI does not have
-// yet when this suite runs (the web bundle is built later in the workflow),
-// so a synthetic dist/ is assembled in before() and torn back down in
-// after() — restoring, not deleting, anything that was already there.
+// dist/ is a gitignored build product that CI does not have yet when this suite
+// runs (the web bundle is built later in the workflow), so before() assembles a
+// synthetic one and after() takes it back down, restoring rather than deleting
+// anything that was already there.
 import { test, before, after, describe } from "node:test";
 import assert from "node:assert/strict";
 import * as fs from "node:fs";
