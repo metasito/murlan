@@ -14,7 +14,10 @@ import { useRouter } from "expo-router";
 import Feather from "@expo/vector-icons/Feather";
 import { LinearGradient } from "expo-linear-gradient";
 import { useSettings } from "@/context/SettingsContext";
+import { useNotification } from "@/context/NotificationContext";
 import { useAuth } from "@/context/AuthContext";
+import NotificationBanner from "@/components/NotificationBanner";
+import { OfflineBanner } from "@/components/OfflineBanner";
 import { apiRequest, queryClient } from "@/lib/query-client";
 import { hapticSelection } from "@/lib/haptics";
 import { usePrefersReducedMotion } from "@/lib/accessibility";
@@ -145,6 +148,7 @@ export function SettingsModal({ visible, onClose }: Props) {
     setTableFelt,
   } = useSettings();
   const { logout } = useAuth();
+  const { notification, dismissNotification } = useNotification();
   const router = useRouter();
   const reduceMotion = usePrefersReducedMotion();
   const [deleting, setDeleting] = useState(false);
@@ -394,6 +398,10 @@ export function SettingsModal({ visible, onClose }: Props) {
             </Pressable>
           </ScrollView>
         </View>
+        {/* A Modal is its own stacking context, so the root banners cannot
+            paint over it. */}
+        <NotificationBanner notification={notification} onDismiss={dismissNotification} />
+        <OfflineBanner />
       </View>
     </Modal>
   );
