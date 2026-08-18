@@ -102,6 +102,28 @@ describe("design tokens are used in the role they were designed for", () => {
     assert.ok(!fills.has("Colors.gold"), "opaque tokens are not fills");
   });
 
+  // Colors.danger clears 4.5:1 on nothing the app draws it on — 4.07 on
+  // bgCard, 3.66 on bgSurface, 2.98 on the felt. tests/contrast.test.ts lists
+  // it as large-text-only; this is the half that checks the size.
+  test("Colors.danger is never the colour of a body-size text style", () => {
+    const BODY_SIZED = /\.\.\.Type\.(body|caption|small)|fontSize:\s*(FontSize\.(xs|sm)|\d|1[0-3])\b/;
+    const offenders: string[] = [];
+
+    for (const [file, src] of sourceFiles()) {
+      for (const block of src.matchAll(/\{[^{}]*\}/g)) {
+        if (!/(?<![A-Za-z])color:\s*Colors\.danger\b/.test(block[0])) continue;
+        if (!BODY_SIZED.test(block[0])) continue;
+        offenders.push(`${file}:${src.slice(0, block.index).split("\n").length}`);
+      }
+    }
+
+    assert.deepEqual(
+      offenders,
+      [],
+      `Colors.danger below 18pt (or 14pt bold) never reaches 4.5:1:\n${offenders.join("\n")}`
+    );
+  });
+
   test("the scanner actually matches a text colour use", () => {
     // Without this the regex could silently stop matching and the suite would
     // still be green — the exact failure mode this file exists to prevent.

@@ -193,12 +193,20 @@ const LARGE_ONLY_TEXT_COLORS: Record<string, string> = {
   goldDark: Colors.goldDark,
   red: Colors.red,
   info: Colors.info,
+  // A fill first — MenuButton's danger variant, the offline banner. Its one
+  // sanctioned text use is large: app/rules.tsx draws the coloured-joker rank
+  // at 16pt bold. At body size it was 4.07:1 on bgCard.
+  danger: Colors.danger,
 };
+
+/** Tokens never drawn as text on the felt, so that surface does not apply. */
+const NOT_ON_FELT = new Set(["danger"]);
 
 for (const [name, color] of Object.entries(LARGE_ONLY_TEXT_COLORS)) {
   test(`Colors.${name} clears large-text contrast (>=${LARGE_MIN}:1) on bg, bgCard, and felt`, () => {
     const ratios = ratioAgainstAllSurfaces(color);
     for (const [surface, ratio] of Object.entries(ratios)) {
+      if (surface === "felt" && NOT_ON_FELT.has(name)) continue;
       assert.ok(
         ratio >= LARGE_MIN,
         `Colors.${name} vs ${surface} is only ${ratio.toFixed(2)}:1, needs >=${LARGE_MIN}:1 even for large text`

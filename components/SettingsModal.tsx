@@ -495,5 +495,5 @@ const styles = StyleSheet.create({
   },
   deleteBtnPressed: { backgroundColor: Colors.dangerDim + "1A" },
   deleteBtnDisabled: { opacity: 0.5 },
-  deleteBtnText: { ...Type.body, color: Colors.danger, textAlign: "center" },
+  deleteBtnText: { ...Type.body, color: Colors.dangerDim, textAlign: "center" },
 });
