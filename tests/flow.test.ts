@@ -10,6 +10,8 @@ import {
   processPlay,
   type Card,
 } from "./helpers.ts";
+// @ts-ignore — see tests/helpers.ts
+import { seatDirection } from "../components/gameTableModel.ts";
 
 const pair = (rank: Parameters<typeof c>[0]): Card[] => [c(rank, "hearts"), c(rank, "clubs")];
 const combo = (cards: Card[]) => buildCombination(cards)!;
@@ -223,5 +225,66 @@ describe("processPass — round end threshold (defect 5)", () => {
       )
     );
     assert.equal(state.roundWinner, null);
+  });
+});
+
+describe("turn rotation", () => {
+  const single = (rank: Parameters<typeof c>[0]): Card[] => [c(rank, "hearts")];
+
+  test("the turn moves to the previous seat index", () => {
+    let state = makeState(
+      [
+        makePlayer("p0", [...single("4"), c("5", "clubs")]),
+        makePlayer("p1", [...single("6"), c("7", "clubs")]),
+        makePlayer("p2", [...single("8"), c("9", "clubs")]),
+        makePlayer("p3", [...single("10"), c("J", "clubs")]),
+      ],
+      { currentTurnIndex: 2, lastPlayedCombination: combo(single("3")), lastPlayedBy: 3 }
+    );
+
+    for (const expected of [1, 0, 3]) {
+      state = processPass(state);
+      assert.equal(state.currentTurnIndex, expected);
+    }
+  });
+
+  test("it steps over a seat that has already gone out", () => {
+    const state = processPass(
+      makeState(
+        [
+          makePlayer("p0", single("4")),
+          makePlayer("p1", [], { finishPosition: 1 }),
+          makePlayer("p2", single("8")),
+          makePlayer("p3", single("10")),
+        ],
+        {
+          currentTurnIndex: 2,
+          lastPlayedCombination: combo(single("3")),
+          lastPlayedBy: 3,
+          rankings: ["p1"],
+        }
+      )
+    );
+    assert.equal(state.currentTurnIndex, 0, "seat 1 is out, so the turn skips to seat 0");
+  });
+
+  test("a descending seat index is what renders clockwise", () => {
+    // The engine's direction and the table's layout are decided in two
+    // different modules, and the rules screen promises the player one thing
+    // ("si gioca in senso orario"). Nothing pinned the two halves against
+    // each other, so a flipped rotation would still render a coherent table.
+    const expected: Record<number, string[]> = {
+      2: ["bottom", "top"],
+      3: ["bottom", "top", "right"],
+      4: ["bottom", "left", "top", "right"],
+    };
+    for (const playerCount of [2, 3, 4]) {
+      for (const viewer of Array.from({ length: playerCount }, (_, i) => i)) {
+        const order = Array.from({ length: playerCount }, (_, step) =>
+          seatDirection(((viewer - step) % playerCount + playerCount) % playerCount, viewer, playerCount)
+        );
+        assert.deepEqual(order, expected[playerCount], `${playerCount} seats, viewer ${viewer}`);
+      }
+    }
   });
 });
