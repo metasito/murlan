@@ -70,6 +70,17 @@ describe('CardView decorative', () => {
     expect(buttons[0].props.accessibilityState?.disabled).toBe(true);
   });
 
+  // Selecting cards then pressing GIOCA is the whole interaction. An absent
+  // `selected` state reads as "not selectable", which is a different claim
+  // from "selectable, not currently selected".
+  it('reports whether it is selected', async () => {
+    const on = await render(<CardView card={ACE} onPress={() => {}} selected />);
+    expect(on.queryAllByRole('button')[0].props.accessibilityState?.selected).toBe(true);
+
+    const off = await render(<CardView card={ACE} onPress={() => {}} />);
+    expect(off.queryAllByRole('button')[0].props.accessibilityState?.selected).toBe(false);
+  });
+
   it('is silent when it is the content of an enclosing labelled control', async () => {
     // Both card pickers wrap a CardView in their own labelled Pressable. If the
     // CardView kept its label the card would be announced twice.

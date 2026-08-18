@@ -39,7 +39,7 @@ import {
   placedPips,
   rankFontSize,
 } from "@/components/cardFaceModel";
-import { A11yHintText, a11yHidden, a11yHint } from "@/lib/a11y";
+import { A11yHintText, a11yHidden, a11yHint, a11yState } from "@/lib/a11y";
 
 // Suit → colour. `Suit` is plural ("spades") while the theme tokens are singular
 // ("spade"), so the mapping has to be explicit. Typed as Record<Suit, string> so
@@ -567,7 +567,7 @@ function CardViewBase({
         // unavailable, which is what a screen reader expects of a control that
         // will come back. Dropping the role there would make the hand vanish
         // and reappear in the button rotation every turn.
-        accessibilityRole={onPress ? "button" : undefined}
+        {...a11yState({ role: onPress ? "button" : undefined, selected, disabled: !interactive })}
         {...a11yHint(decorative || !selected ? undefined : t("cardView.selectedA11yHint"))}
         style={[
           styles.card,
