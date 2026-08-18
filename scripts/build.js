@@ -533,6 +533,12 @@ async function main() {
 
   console.log("Processing assets...");
   const assets = extractAssets(timestamp);
+  if (assets.length === 0) {
+    exitWithError(
+      "Asset extraction found 0 assets — the Metro bundle format the regex at " +
+        "extractAssets() expects has changed.",
+    );
+  }
   console.log("Found", assets.length, "unique asset(s)");
 
   const assetsByHash = new Map();
@@ -543,11 +549,8 @@ async function main() {
     });
   }
 
-  const assetCount = await downloadAssets(assets, timestamp);
-
-  if (assetCount > 0) {
-    updateBundleUrls(timestamp, baseUrl);
-  }
+  await downloadAssets(assets, timestamp);
+  updateBundleUrls(timestamp, baseUrl);
 
   console.log("Updating manifests and creating landing page...");
   updateManifests(manifests, timestamp, baseUrl, assetsByHash);
