@@ -362,6 +362,7 @@ function RematchPromptPanel({
   left: number;
 }) {
   const { t } = useTranslation();
+  const reduceMotion = usePrefersReducedMotion();
   const answered = prompt.myAnswer !== null;
   const tally = t("gameTable.rematchTally", {
     yes: prompt.yesCount,
@@ -370,7 +371,7 @@ function RematchPromptPanel({
 
   return (
     <Animated.View
-      entering={FadeIn.duration(Motion.duration.moderate)}
+      entering={reduceMotion ? undefined : FadeIn.duration(Motion.duration.moderate)}
       style={[styles.rematchPanel, { top, left }]}
     >
       {answered ? (
@@ -1402,7 +1403,7 @@ export function GameTable({
       {rejectHint && (
         <Animated.View
           key={rejectHint.key}
-          entering={FadeIn.duration(Motion.duration.fast)}
+          entering={reduceMotion ? undefined : FadeIn.duration(Motion.duration.fast)}
           pointerEvents="none"
           style={[
             styles.rejectHint,

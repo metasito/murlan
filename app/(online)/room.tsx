@@ -21,7 +21,7 @@ import { useOnlineGame } from "@/context/OnlineGameContext";
 import { useAuth } from "@/context/AuthContext";
 import { useSocket } from "@/context/SocketContext";
 import { getSocket } from "@/lib/socket";
-import { Colors, Spacing, Radius, FontSize, Type } from '@/lib/theme';
+import { Colors, Spacing, Radius, FontSize, Motion, Type } from '@/lib/theme';
 import { MATCH_TARGETS } from "@/lib/gameEngine";
 import type { MatchLength } from "@/lib/gameEngine";
 import { BOT_PERSONALITIES, DEFAULT_BOT_PERSONALITY, botBlurbKey } from "@/lib/botPersonalities";
@@ -30,6 +30,7 @@ import { MenuLayout } from "@/components/MenuLayout";
 import { MenuButton } from "@/components/MenuButton";
 import { useTranslation } from "@/lib/i18n";
 import { A11yHintText, a11yHint, a11yState } from "@/lib/a11y";
+import { usePrefersReducedMotion } from "@/lib/accessibility";
 
 const TEAM_COLORS = { A: Colors.gold, B: Colors.info };
 
@@ -303,6 +304,8 @@ function InviteFriendsPanel({
 
 export default function RoomScreen() {
   const { t } = useTranslation();
+  const reduceMotion = usePrefersReducedMotion();
+  const entering = reduceMotion ? undefined : FadeIn.duration(Motion.duration.moderate);
   const { width: W, height: H } = useWindowDimensions();
   const { user } = useAuth();
   const {
@@ -458,7 +461,7 @@ export default function RoomScreen() {
               contentContainerStyle={styles.landscapeLeftScrollContent}
               showsVerticalScrollIndicator={false}
             >
-              <Animated.View entering={FadeIn.duration(400)} style={styles.codeSectionCompact}>
+              <Animated.View entering={entering} style={styles.codeSectionCompact}>
                 <Text style={styles.codeLabel}>{t("room.codeLabel")}</Text>
                 <Text style={styles.codeTextCompact}>{room.code}</Text>
                 <View style={styles.codeActions}>
@@ -596,7 +599,7 @@ export default function RoomScreen() {
       </View>
 
       <View style={{ flex: 1, paddingHorizontal: 20, paddingTop: 16, paddingBottom: 8, gap: 12 }}>
-        <Animated.View entering={FadeIn.duration(400)} style={styles.codeSection}>
+        <Animated.View entering={entering} style={styles.codeSection}>
           <Text style={styles.codeLabel}>{t("room.codeLabel")}</Text>
           <Text style={styles.codeText}>{room.code}</Text>
           <View style={styles.codeActions}>

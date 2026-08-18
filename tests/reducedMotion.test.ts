@@ -61,3 +61,54 @@ test("nothing loops forever without checking first", () => {
   }
   assert.deepEqual(offenders, [], `endless animation with no reduced-motion path: ${offenders.join(", ")}`);
 });
+
+// Reanimated's declarative layout animations are not in the regex above, and
+// a file that calls the hook once passes it however many animations ignore
+// the answer. These are per-occurrence: an `entering=` or `exiting=` either
+// reads the preference itself, or is handed a value that did.
+const LAYOUT_ANIMATION = /\b(entering|exiting)=\{([^}]*)\}/g;
+
+/** `line: attr` for every layout animation that plays whatever the player asked for. */
+export function ungatedLayoutAnimations(source: string): string[] {
+  const out: string[] = [];
+  for (const m of source.matchAll(LAYOUT_ANIMATION)) {
+    const value = m[2].trim();
+    if (value.includes("reduceMotion")) continue;
+    // `entering={entering}` is gated where that name is defined.
+    if (/^[A-Za-z_$][\w$]*$/.test(value)) {
+      const decl = new RegExp(String.raw`\b(const|let)\s+${value}\s*=([^;]*)`).exec(source);
+      if (decl && decl[2].includes("reduceMotion")) continue;
+    }
+    out.push(`${source.slice(0, m.index).split("\n").length}: ${m[0]}`);
+  }
+  return out;
+}
+
+test("no layout animation plays past the motion preference", () => {
+  const offenders: string[] = [];
+  for (const rel of [...sourcesUnder("app"), ...sourcesUnder("components")]) {
+    for (const hit of ungatedLayoutAnimations(readFileSync(path.join(repoRoot, rel), "utf8"))) {
+      offenders.push(`${rel}:${hit}`);
+    }
+  }
+  assert.deepEqual(
+    offenders,
+    [],
+    `these cross-fade regardless of what the player asked for:\n${offenders.join("\n")}`
+  );
+});
+
+test("the layout-animation scanner matches a real ungated use", () => {
+  assert.deepEqual(
+    ungatedLayoutAnimations("      entering={FadeIn.duration(400)}\n"),
+    ["1: entering={FadeIn.duration(400)}"]
+  );
+  assert.deepEqual(
+    ungatedLayoutAnimations("      entering={reduceMotion ? undefined : FadeIn.duration(400)}\n"),
+    []
+  );
+  assert.deepEqual(
+    ungatedLayoutAnimations("const entering = reduceMotion ? undefined : FadeIn;\n<X entering={entering} />\n"),
+    []
+  );
+});

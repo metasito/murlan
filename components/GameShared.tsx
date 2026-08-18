@@ -613,8 +613,8 @@ export function PlayedPile({
     <Animated.View style={[sharedStyles.pileArea, bounceStyle]} testID="pile-area">
       {roundWinner && (
         <Animated.View
-          entering={FadeIn.duration(250)}
-          exiting={FadeOut.duration(250)}
+          entering={reduceMotion ? undefined : FadeIn.duration(250)}
+          exiting={reduceMotion ? undefined : FadeOut.duration(250)}
           style={sharedStyles.winnerTag}
         >
           <Ionicons name="star" size={9} color={Colors.gold} />

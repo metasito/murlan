@@ -212,7 +212,7 @@ export function GameOverOverlay({
       onRequestClose={() => {}}
     >
       <Animated.View
-        entering={FadeIn.duration(Motion.duration.moderate + 100)}
+        entering={reduceMotion ? undefined : FadeIn.duration(Motion.duration.moderate + 100)}
         style={[styles.overlay, { paddingTop: topPad + 4, paddingBottom: bottomPad + 4 }]}
       >
         <LinearGradient
