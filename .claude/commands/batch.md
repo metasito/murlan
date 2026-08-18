@@ -56,6 +56,10 @@ and it needs no round trip.
 
 - **Do not improvise.** Each finding's "Proposed fix" names files and approach. If you think one
   is wrong, stop and say so — do not substitute your own.
+- **Run the touched tests while you work; run the full suite once, at the end.**
+  `node --test tests/thatFile.test.ts` is seconds. `npm test` is two minutes and you do not need
+  it after every finding — run the batch's full verification command once, immediately before you
+  push. Iterating on the whole suite is the single largest waste in a batch.
 - **Acceptance criteria are binding — but they say what must be *true*, not that a new test file
   must exist.** Where the existing suite already proves it, name the test that does and move on.
   Write a new test for every Critical and High finding regardless of what exists.
