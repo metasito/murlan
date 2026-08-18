@@ -328,3 +328,106 @@ that claim is now true: each effect has a pinned expected duration.
   15.44 MB, `expo-notifications` appearing — so the file's git history mixes real changes with
   `node_modules` noise. Inherent to snapshotting installed sizes; worth knowing before reading
   a diff of it as if every line were a decision.
+
+---
+
+## Batch 7 — Render hot path
+
+### A live bug the finding did not know it was describing
+
+PERF-03 is about compiler bailouts and wasted renders. Removing one suppression turned up a
+**player-visible defect**: the round-winner banner's effect listed
+`gameState.lastPlayedCombination` as a dependency, which the body never reads. The engine sets
+`roundWinner = seat` and `lastPlayedCombination = null` in one update; when the winner then
+leads the new round, `lastPlayedCombination` changes, the effect re-runs, its cleanup clears
+the 1800 ms dismissal, and the `winner === prevRoundWinnerRef.current` guard returns early —
+**so the tag stayed over the pile for the rest of the round.** Any play inside 1800 ms
+triggers it, which offline is the normal case, since `AI_DELAY` is 1100 ms.
+
+The review then found the *other* half of the same guard: `prevRoundWinnerRef` was never reset
+when `roundWinner` returns to `null`, so the same seat winning two rounds in a row — the common
+case, since the round winner leads the next round — showed **no banner at all**. That half was
+masked for as long as the banner never dismissed. Both are fixed and both are pinned.
+
+This is the argument for the finding's "fix the dependency, do not silence the rule" instruction
+in one example: the suppression was hiding a bug, not a false positive.
+
+### The rule that was supposed to catch it cannot
+
+`react-hooks/exhaustive-deps` is severity `1` in `eslint-config-expo/flat`, and `expo lint`
+exits 0 on warnings. So the repo's lint gate reports a wrong dependency array as a warning
+nobody reads and passes anyway. Batch 5's stale-`false` `useCallback` in
+`context/OnlineGameContext.tsx` went unreported by it; so did the banner bug above.
+
+PERF-03's own acceptance criterion is *"`npx expo lint` still reports 0 problems"* — which a
+lint with the bug present also satisfies. Carried forward to Batch 12. `tests/reactCompiler.test.ts`
+(new, this batch) is the check that actually fails, but it covers five files.
+
+Related, noticed while verifying: `npx expo lint` prints nothing and exits 0 while `npx eslint`
+over the same files reports four `@typescript-eslint/no-require-imports` warnings. Worth
+confirming `expo lint` is not swallowing more than the severity setting explains.
+
+### What the numbers actually did
+
+Measured by compiling with `babel-plugin-react-compiler` under babel-preset-expo's production
+options and tallying the `logEvent` stream — B1's method, reproduced:
+
+| | before | after |
+|---|---|---|
+| bailout events | 70 | **60** |
+| …caused by disabled eslint rules | 45 | **24** |
+| distinct components bailing | 39 | **29** |
+| functions memoized | 57 | **67** |
+
+`CardView.tsx`, `GameShared.tsx`, `app/game.tsx` and `app/(online)/game.tsx` now compile with
+zero bailouts. `GameTable.tsx` still bails — on its own `useMemo`s, which is what the finding
+predicts and why the cards are memoized by hand instead.
+
+**The 24 remaining eslint-caused bailouts are all outside this finding** —
+`ExchangeModal`, `ExchangeAnnouncement`, `GameOverOverlay`, `NotificationBanner`,
+`OfflineBanner`, `MenuButton`, `ReactionLayer`, `ResultExchangeOverlay`, `app/index.tsx`,
+`app/result.tsx`, `app/tutorial.tsx`, `app/(online)/{index,friends,quickmatch}.tsx`,
+`context/{GameContext,SettingsContext}.tsx`. Every one sampled is the same trivial
+"stable shared value omitted" shape. Cheap follow-up worth roughly the same again.
+
+### Two defects the review caught that the implementation reported as done
+
+- **The memo was defeated on the online table**, which is the screen PERF-03 targets.
+  `toggleCard` in `app/(online)/game.tsx` was a per-render arrow reaching `GameTable`'s
+  `handleCardPress` `useCallback` as a dependency, so `cardItemPropsEqual`'s `onPress` identity
+  check was false for every card on every `game:state`. The offline screen was already correct.
+  `tests/native/handMemo.test.tsx` missed it because its case supplied a stable `noop`; it now
+  drives the real screen.
+- **PERF-05's new glow siblings cast no shadow on native.** Both carried `Shadow.gold` on a
+  view with no `backgroundColor` — on iOS a fully transparent layer has nothing to blur, and on
+  Android `elevation` draws from the background drawable's outline. Web was fine, because
+  `Shadow.*` compiles to `boxShadow` there. PERF-05's own fix risk named this, and the comment
+  standing in for the check was factually wrong: *"the border radius is what gives it an
+  outline for Android's elevation to cast from"* — `borderRadius` produces no outline.
+
+Both are the same lesson: a claim in a comment is not a check.
+
+### Things the audit did not file, found while working
+
+- **`server/schemaDdl.ts` silently ignores three index options.** `where` (partial), `with`
+  (storage parameters) and `concurrently` are all dropped, so a partial index declared in
+  `shared/schema.ts` would emit a **full** index under the same name — quietly wrong, where
+  everywhere else that module throws on a shape it cannot express. A guard on `only` would
+  misfire, though: drizzle's `.using()` sets `only: true` for every index regardless, which is
+  why PERF-07's change reads `method` alone.
+- **`components/GameTable.tsx`'s `playBtnGradDim` writes a bare `"rgba(40,30,5,0.7)"`** into a
+  style object, with a comment saying no token matches. That is the design-system rule broken
+  with the excuse written down beside it — the same shape as UI-13, which Batch 11 owns.
+  Pre-existing; untouched here.
+- **`app/(online)/game.tsx` still declares `handlePlay`, `toggleReactionPanel` and
+  `leaveAndExit` as per-render arrows** below the null guard, and `topBarExtra` is a fresh
+  element each render. None reaches `CardItem`'s comparator, so none is PERF-03's target, but
+  they do make `GameTable`'s `handlePlay`/`handlePass` callbacks fresh every render.
+- **`components/ReactionLayer.tsx` still carries one suppression** (the one-shot mount
+  animation), which by `tests/reactCompiler.test.ts`'s own premise opts every component in that
+  file out of the compiler — including the `FloatingReactions` that PERF-06 just isolated.
+- **`GET /api/replays` has no rate limiter.** PERF-07 mentions it in passing; unchanged.
+- **A wash now doubles on the hand section**: `handSectionActive` puts a static `goldGhost`
+  behind the hand while the new `handGlow` pulses another over it, ~0.11 combined at peak.
+  Deliberate and subtle, but if the design wants only the pulse to carry the wash, the static
+  one is the one to drop.
