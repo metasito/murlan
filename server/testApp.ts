@@ -98,6 +98,26 @@ function serveLandingPage({
   res.status(200).send(html);
 }
 
+// Metro names its build output with a 32-hex content hash — `<name>.<hash>.<ext>`
+// for assets (optionally followed by an `@2x` density suffix) and
+// `<name>-<hash>.<ext>` for the JS bundles. Those URLs never change their bytes.
+const CONTENT_HASHED = /[.-][0-9a-f]{32}(@[0-9]+x)?\.[^.]+$/;
+
+/**
+ * Cache-Control for one file under `dist/`. Content-hashed files get a year;
+ * everything else — `index.html`, `favicon.ico`, `metadata.json` — keeps its
+ * URL across deploys, so caching it long pins the client to a build that no
+ * longer exists, with no recovery short of a hard refresh.
+ */
+function setDistCacheControl(res: Response, filePath: string) {
+  res.setHeader(
+    "Cache-Control",
+    CONTENT_HASHED.test(path.basename(filePath))
+      ? "public, max-age=31536000, immutable"
+      : "no-cache"
+  );
+}
+
 function configureExpoAndLanding(app: express.Application) {
   const distPath = path.resolve(process.cwd(), "dist");
   const webIndexPath = path.join(distPath, "index.html");
@@ -119,15 +139,10 @@ function configureExpoAndLanding(app: express.Application) {
   app.use(express.static(path.resolve(process.cwd(), "static-build")));
 
   if (hasWebBuild) {
-    // Every file under dist/ carries a content hash in its name (Metro's
-    // doing), so a given URL's bytes never change — safe to cache for a
-    // year. `index.html` is the one file in this tree without a hash, and
-    // it names the current hashed bundle; caching it long would pin a
-    // client to a stale build with no recovery short of a hard refresh.
-    // `index: false` stops this mount from auto-serving it for "/" so the
-    // catch-all below is the only path that ever sends it, with its own
-    // explicit no-cache header.
-    app.use(express.static(distPath, { maxAge: "1y", immutable: true, index: false }));
+    // dist/ is a mix, so the header is decided per file rather than per mount:
+    // most of it is content-hashed, three files (index.html, favicon.ico,
+    // metadata.json) are not.
+    app.use(express.static(distPath, { setHeaders: setDistCacheControl }));
     // Catch-all: any non-API path not matched by static files gets index.html (SPA routing)
     app.get("*path", (req: Request, res: Response, next: NextFunction) => {
       if (req.path.startsWith("/api")) return next();
