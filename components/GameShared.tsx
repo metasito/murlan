@@ -1128,12 +1128,19 @@ export const sharedStyles = StyleSheet.create({
   sideRight: { flexDirection: "row-reverse" },
   sideOppAvatarCol: { alignItems: "center", gap: 3, marginHorizontal: 6 },
 
+  // The same plate the count bubble already uses. On the raw felt the name
+  // measures 3.43:1 at the top of the gradient, which is where the top seat
+  // renders.
   oppName: {
     fontFamily: "Rajdhani_600SemiBold",
     fontSize: 10,
     color: Colors.textMuted,
     maxWidth: 70,
     textAlign: "center",
+    backgroundColor: Colors.overlayStrong,
+    borderRadius: Radius.sm,
+    paddingHorizontal: Spacing.xs,
+    overflow: "hidden",
   },
 
   // Wraps rather than growing, because the column it sits in has no room to
@@ -1166,7 +1173,7 @@ export const sharedStyles = StyleSheet.create({
     gap: Spacing.xs,
     paddingHorizontal: Spacing.xs,
     borderRadius: Radius.sm,
-    backgroundColor: Colors.goldMuted,
+    backgroundColor: Scrim.heavy,
     borderWidth: 1,
     borderColor: Colors.goldBorder,
   },
