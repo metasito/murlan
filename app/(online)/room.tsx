@@ -600,11 +600,23 @@ export default function RoomScreen() {
           <Text style={styles.codeLabel}>{t("room.codeLabel")}</Text>
           <Text style={styles.codeText}>{room.code}</Text>
           <View style={styles.codeActions}>
-            <Pressable onPress={handleCopyCode} style={styles.codeBtn}>
+            <Pressable
+              onPress={handleCopyCode}
+              style={styles.codeBtn}
+              accessibilityRole="button"
+              accessibilityLabel={t("common.copy")}
+              hitSlop={Spacing.sm}
+            >
               <Ionicons name="copy-outline" size={16} color={Colors.gold} />
               <Text style={styles.codeBtnText}>{t("common.copy")}</Text>
             </Pressable>
-            <Pressable onPress={handleShare} style={styles.codeBtn}>
+            <Pressable
+              onPress={handleShare}
+              style={styles.codeBtn}
+              accessibilityRole="button"
+              accessibilityLabel={t("room.share")}
+              hitSlop={Spacing.sm}
+            >
               <Ionicons name="share-outline" size={16} color={Colors.gold} />
               <Text style={styles.codeBtnText}>{t("room.share")}</Text>
             </Pressable>

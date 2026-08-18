@@ -112,7 +112,7 @@ import {
 } from "@/lib/sounds";
 import { hapticError, hapticHeavy, hapticLight, hapticMedium, hapticSelection, hapticSuccess, hapticWarn } from "@/lib/haptics";
 import { usePrefersReducedMotion } from "@/lib/accessibility";
-import { Colors, FontSize, Highlight, Motion, Radius, Scrim, Shadow, Spacing, Type } from "@/lib/theme";
+import { Colors, FontSize, Highlight, Motion, Radius, Scrim, Shadow, Spacing, TOUCH_TARGET_MIN, Type } from "@/lib/theme";
 import { useTableFelt } from "@/lib/cosmetics";
 import { A11yStatus, a11yHidden, a11yState } from "@/lib/a11y";
 
@@ -1633,7 +1633,7 @@ const styles = StyleSheet.create({
   },
   rematchButtons: { alignSelf: "stretch", gap: Spacing.xs },
   rematchChoice: {
-    minHeight: 32,
+    minHeight: TOUCH_TARGET_MIN,
     borderRadius: Radius.sm,
     alignItems: "center",
     justifyContent: "center",

@@ -10,7 +10,7 @@ import Animated, {
   useSharedValue,
   withTiming,
 } from 'react-native-reanimated';
-import { Colors, Spacing, Radius, FontSize, Highlight, Motion, Shadow } from '@/lib/theme';
+import { Colors, Spacing, Radius, FontSize, Highlight, Motion, Shadow, TOUCH_TARGET_MIN } from '@/lib/theme';
 import { usePrefersReducedMotion } from '@/lib/accessibility';
 import { A11yHintText, a11yHint, a11yState } from "@/lib/a11y";
 
@@ -154,7 +154,7 @@ const styles = StyleSheet.create({
 });
 
 const sizeStyles = StyleSheet.create({
-  sm: { minHeight: 44, paddingVertical: Spacing.sm, paddingHorizontal: Spacing.lg },
+  sm: { minHeight: TOUCH_TARGET_MIN, paddingVertical: Spacing.sm, paddingHorizontal: Spacing.lg },
   md: { minHeight: 52, paddingVertical: Spacing.md, paddingHorizontal: Spacing.xl },
   lg: { minHeight: 60, paddingVertical: Spacing.lg, paddingHorizontal: Spacing.xl },
 });

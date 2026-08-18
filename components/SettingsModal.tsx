@@ -25,7 +25,7 @@ import {
   getTableFelt,
   tableFeltNameKey,
 } from "@/lib/cosmetics";
-import { Colors, Spacing, Radius, FontSize, Type, Shadow } from "@/lib/theme";
+import { Colors, Spacing, Radius, FontSize, Type, Shadow, TOUCH_TARGET_MIN } from "@/lib/theme";
 import { useTranslation, type Locale, type TranslationKey } from "@/lib/i18n";
 import type { MotionPreference } from "@/lib/accessibility";
 import { A11yHintText, a11yHidden, a11yHint, a11yState } from "@/lib/a11y";
@@ -455,7 +455,7 @@ const styles = StyleSheet.create({
   },
   segment: {
     flex: 1,
-    minHeight: 36,
+    minHeight: TOUCH_TARGET_MIN,
     alignItems: "center",
     justifyContent: "center",
     paddingHorizontal: Spacing.xs,
@@ -468,8 +468,8 @@ const styles = StyleSheet.create({
   segmentTextActive: { color: Colors.gold, fontFamily: Type.bodyStrong.fontFamily },
   localeGroup: { flexDirection: "row", gap: Spacing.xs },
   localeBtn: {
-    minWidth: 40,
-    minHeight: 32,
+    minWidth: TOUCH_TARGET_MIN,
+    minHeight: TOUCH_TARGET_MIN,
     alignItems: "center",
     justifyContent: "center",
     paddingHorizontal: Spacing.xs,

@@ -139,6 +139,11 @@ export const Spacing = {
   xs: 4, sm: 8, md: 16, lg: 24, xl: 32, xxl: 48,
 };
 
+// iOS HIG's 44pt floor for a touch target, which also clears Material's 48dp
+// once a control's own padding is counted, and WCAG 2.2 SC 2.5.8's 24px.
+// `hitSlop` counts toward it on both platforms and on the web.
+export const TOUCH_TARGET_MIN = 44;
+
 export const Radius = {
   sm: 8, md: 12, lg: 20, xl: 32, full: 9999,
 };

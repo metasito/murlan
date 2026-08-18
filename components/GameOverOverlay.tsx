@@ -21,7 +21,7 @@ import Animated, {
 import { LinearGradient } from "expo-linear-gradient";
 import Ionicons from "@expo/vector-icons/Ionicons";
 import type { GameState } from "@/lib/gameEngine";
-import { Colors, FontSize, Motion, Radius, Spacing } from "@/lib/theme";
+import { Colors, FontSize, Motion, Radius, Spacing, TOUCH_TARGET_MIN } from "@/lib/theme";
 import { usePrefersReducedMotion } from "@/lib/accessibility";
 import { useTranslation, type TranslationKey } from "@/lib/i18n";
 import { a11yState } from "@/lib/a11y";
@@ -466,6 +466,7 @@ const styles = StyleSheet.create({
 
   actions: { flexDirection: "row", gap: Spacing.sm },
   homeBtn: {
+    minHeight: TOUCH_TARGET_MIN,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
@@ -485,6 +486,7 @@ const styles = StyleSheet.create({
   rematchBtn: { flex: 1, borderRadius: Radius.md, overflow: "hidden" },
   rematchBtnDim: { opacity: 0.6 },
   rematchGradient: {
+    minHeight: TOUCH_TARGET_MIN,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
