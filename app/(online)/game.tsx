@@ -72,6 +72,7 @@ export default function OnlineGameScreen() {
     exchangeAnnounceData,
     acknowledgeExchange,
     clearPlayerLeft,
+    clearRejoinFailed,
   } = useOnlineGame();
 
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
@@ -153,11 +154,15 @@ export default function OnlineGameScreen() {
     );
   }, [playerLeft, clearPlayerLeft, leaveRoom, t]);
 
+  // A rejoin the server refused is not the player choosing to leave, so no
+  // room:leave: the seat belongs to the 60s disconnect grace until it expires.
+  // The context has already dropped the local state and shown the reason; all
+  // that is left is getting off a table that is no longer there.
   useEffect(() => {
     if (!rejoinFailed) return;
-    leaveRoom();
     goToLobbyRef.current();
-  }, [rejoinFailed, leaveRoom]);
+    clearRejoinFailed();
+  }, [rejoinFailed, clearRejoinFailed]);
 
   if (!gameState) return null;
 

@@ -11,3 +11,8 @@ require('react-native-reanimated').setUpTests?.();
 jest.mock('@react-native-async-storage/async-storage', () =>
   require('@react-native-async-storage/async-storage/jest/async-storage-mock')
 );
+
+// Same story for gesture-handler: GestureHandlerRootView calls into the native
+// module on its first render, so mounting the app's real provider stack needs
+// the vendor's own mocks.
+require('react-native-gesture-handler/jestSetup');

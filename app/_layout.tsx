@@ -75,25 +75,28 @@ export default function RootLayout() {
 
   if ((!fontsLoaded && !fontError) || !localeReady) return null;
 
+  // ErrorBoundary sits inside SafeAreaProvider: its fallback needs insets to
+  // lay itself out. ErrorFallback also tolerates their absence, so a crash in
+  // the providers above still renders a screen rather than nothing.
   return (
-    <ErrorBoundary>
-      <SettingsProvider>
-        <QueryClientProvider client={queryClient}>
-          <SafeAreaProvider>
+    <SettingsProvider>
+      <QueryClientProvider client={queryClient}>
+        <SafeAreaProvider>
+          <ErrorBoundary>
             <GestureHandlerRootView style={{ flex: 1 }}>
-                <NotificationProvider>
-                  <AuthProvider>
-                    <SocketProvider>
-                      <GameProvider>
-                        <RootLayoutNav />
-                      </GameProvider>
-                    </SocketProvider>
-                  </AuthProvider>
-                </NotificationProvider>
+              <NotificationProvider>
+                <AuthProvider>
+                  <SocketProvider>
+                    <GameProvider>
+                      <RootLayoutNav />
+                    </GameProvider>
+                  </SocketProvider>
+                </AuthProvider>
+              </NotificationProvider>
             </GestureHandlerRootView>
-          </SafeAreaProvider>
-        </QueryClientProvider>
-      </SettingsProvider>
-    </ErrorBoundary>
+          </ErrorBoundary>
+        </SafeAreaProvider>
+      </QueryClientProvider>
+    </SettingsProvider>
   );
 }

@@ -33,6 +33,7 @@ import {
   NoPayloadSchema,
   RoomCreateSchema,
   RoomJoinSchema,
+  RoomRejoinSchema,
   RoomSpectateSchema,
   RoomQuickmatchSchema,
   RoomSetGameModeSchema,
@@ -145,6 +146,36 @@ const spectatorRoomMap = new Map<string, string>();
 const userSocketMap = new Map<string, string>();
 const publicRoomIds = new Set<string>();
 
+/**
+ * Who lost their connection to a waiting lobby, per room id: userId -> whether
+ * they held the room at the moment they dropped.
+ *
+ * A lobby disconnect deletes the `room_players` row immediately, so nothing in
+ * the database still says the caller was ever seated. This is that evidence,
+ * and `room:rejoin` is its only reader: without an entry (and without a
+ * surviving seat row) a caller holding the six-character code is arriving, not
+ * returning, and `room:join` is their event. It is also the only thing that may
+ * hand the room back — the host role returns to the account that lost it and to
+ * nobody else.
+ *
+ * In memory: a restart drops every socket anyway, so there is no reconnect left
+ * to answer.
+ */
+const lobbyDropouts = new Map<string, Map<string, boolean>>();
+
+function rememberLobbyDropout(roomId: string, userId: string, wasHost: boolean) {
+  const room = lobbyDropouts.get(roomId) ?? new Map<string, boolean>();
+  room.set(userId, wasHost);
+  lobbyDropouts.set(roomId, room);
+}
+
+function forgetLobbyDropout(roomId: string, userId: string) {
+  const room = lobbyDropouts.get(roomId);
+  if (!room) return;
+  room.delete(userId);
+  if (room.size === 0) lobbyDropouts.delete(roomId);
+}
+
 // Timers. Every entry added here has exactly one matching delete — see
 // clearAfkTimer / clearRoomTimers / clearAllTimersForUser / disposeGame.
 const afkTimers = new Map<string, ReturnType<typeof setTimeout>>();
@@ -252,6 +283,15 @@ export const __testables = {
    * since disposal deletes the `active_games` row without awaiting it.
    */
   hasActiveGame: (roomId: string) => activeGames.has(roomId),
+  /**
+   * Drops a room's live game and its timers while leaving the `active_games`
+   * row alone — exactly what a process restart leaves behind, and the only
+   * way a test can reach `game:rejoin`'s rehydration branch.
+   */
+  forgetActiveGame: (roomId: string) => {
+    clearRoomTimers(roomId);
+    return activeGames.delete(roomId);
+  },
   /**
    * A snapshot of the seat -> userId map a room's live game is routing hands
    * by. It is the only thing that decides whose cards a viewer is sent, and
@@ -602,6 +642,29 @@ function armTurn(roomId: string) {
 
   const username = game.gameState.players[seat]?.name ?? "";
   startAfkTimer(roomId, userId, username);
+}
+
+/**
+ * Arms the room's turn scheduler only if nothing is already pending for the
+ * seat that has to act. For the rejoin paths, which must not disturb a clock
+ * that is already running: `armTurn` clears the room's timers before it arms,
+ * so calling it on every rejoin hands the acting seat a fresh full AFK window
+ * each time — a seated player could then hold the table open indefinitely on
+ * their own turn by rejoining in a loop.
+ *
+ * A table with no pending timer is armed unconditionally, which is what the
+ * game rehydrated from the database after a restart needs: it has no timers at
+ * all, and nothing else would ever arm one.
+ */
+function armTurnIfIdle(roomId: string) {
+  const game = activeGames.get(roomId);
+  if (!game) return;
+
+  if (botTimers.has(roomId)) return;
+  const seatUserId = game.playerMap[actingSeat(game.gameState)];
+  if (seatUserId !== undefined && afkTimers.has(`${roomId}:${seatUserId}`)) return;
+
+  armTurn(roomId);
 }
 
 function runBotTurn(roomId: string) {
@@ -1358,6 +1421,74 @@ export function setupSocket(httpServer: HttpServer) {
       { limit: 10, windowMs: 60_000 }
     );
 
+    /**
+     * Coming back to a waiting lobby on a new socket. A lobby disconnect frees
+     * the seat straight away (handleSeatRelease), so there is nothing to hold
+     * open and nothing to restore beyond taking the seat again and re-attaching
+     * the socket; the claim answers with the same rejections room:join does,
+     * and `already_joined` is the good case — the row outlived the drop.
+     *
+     * This event is only for a caller who was in the room: a seat row that
+     * survived, or a `lobbyDropouts` record of the drop. Anyone else holding
+     * the code is joining, and `room:join` is the event that seats them.
+     *
+     * The host role goes back to the account that lost it on the way out and
+     * to nobody else, so the migration handleSeatRelease made is undone rather
+     * than handed to whoever reaches the lowest seat first.
+     *
+     * Without this the returning socket has no socketRoomMap entry, so every
+     * later room event resolves to no room and returns silently — the host's
+     * start button becomes a dead control and a guest waits on a roster the
+     * server no longer lists them in.
+     */
+    onEvent(
+      socket,
+      "room:rejoin",
+      RoomRejoinSchema,
+      async ({ code }) => {
+        const room = await storage.getRoomByCode(code.toUpperCase());
+        if (!room) {
+          socket.emit("room:error", { message: "Room not found", code: "ROOM_NOT_FOUND" });
+          return;
+        }
+
+        const seated = await storage.getRoomPlayers(room.id);
+        const wasHost = lobbyDropouts.get(room.id)?.get(userId);
+        if (wasHost === undefined && !seated.some((p) => p.userId === userId)) {
+          socket.emit("room:error", {
+            message: "You are not in this room",
+            code: "NOT_IN_ROOM",
+          });
+          return;
+        }
+
+        const claim = await storage.claimRoomSeat(room.id, userId);
+        if (!claim.ok && claim.reason !== "already_joined") {
+          socket.emit("room:error", {
+            message: seatClaimMessage(claim.reason),
+            code: seatClaimCode(claim.reason),
+          });
+          return;
+        }
+
+        socket.join(room.id);
+        socketRoomMap.set(socket.id, room.id);
+        forgetLobbyDropout(room.id, userId);
+
+        const players = await storage.getRoomPlayers(room.id);
+        let hostUserId = room.hostUserId;
+        if (wasHost && hostUserId !== userId) {
+          hostUserId = userId;
+          await storage.updateRoomHost(room.id, hostUserId);
+        }
+        io.to(room.id).emit(
+          "room:state",
+          roomStatePayload({ ...room, hostUserId }, players)
+        );
+      },
+      { limit: 20, windowMs: 60_000 }
+    );
+
     onEvent(
       socket,
       "room:leave",
@@ -1593,6 +1724,9 @@ export function setupSocket(httpServer: HttpServer) {
         activeGames.set(roomId, newGame);
 
         publicRoomIds.delete(roomId);
+        // The lobby is over; a seat lost from here on is the live game's to
+        // hold open through the disconnect grace.
+        lobbyDropouts.delete(roomId);
         await storage.updateRoomStatus(roomId, "in_progress");
 
         broadcastGameState(io, newGame);
@@ -1879,17 +2013,20 @@ export function setupSocket(httpServer: HttpServer) {
         // which the client's rejoin-failed handling never listens for —
         // leaving the player stranded on a dead screen. A failure in here
         // must always resolve as game:rejoin_failed instead.
+        //
+        // Every one of those carries the wire's error contract — { code,
+        // message } — so the client can render it in the player's language.
+        // `roomCode` stays a top-level field alongside it: the client's
+        // stale-reply guard matches on it, so it must not move into params.
         try {
           const existingGame = activeGames.get(roomCode);
           if (existingGame) {
             const seat = seatOfUser(existingGame, userId);
             if (seat === null) {
-              socket.emit("game:rejoin_failed", { reason: "Not authorized", code: "UNAUTHORIZED", roomCode });
+              socket.emit("game:rejoin_failed", { message: "Not authorized", code: "UNAUTHORIZED", roomCode });
               return;
             }
 
-            socket.join(roomCode);
-            socketRoomMap.set(socket.id, roomCode);
             // Idempotent — an INSERT on every reconnect would pile up
             // duplicate room_players rows and corrupt the next rematch.
             await storage
@@ -1898,27 +2035,14 @@ export function setupSocket(httpServer: HttpServer) {
                 logger.warn({ err, roomCode, userId }, "upsertRoomPlayer failed")
               );
 
-            // room:state is what the client's navigation chain
-            // (index -> room -> game) actually gates on; replying with
-            // game:state alone leaves `room` null forever.
-            await emitRoomStateTo(socket, roomCode);
-
-            socket.emit(
-              "game:state",
-              sanitizeStateForPlayer(
-                existingGame.gameState,
-                userId,
-                existingGame.playerMap
-              )
-            );
-            io.to(roomCode).emit("game:player_reconnected", {
+            await rejoinSocketToTable(
+              io,
+              socket,
               userId,
               username,
-              code: "PLAYER_RECONNECTED",
-              message: `${username} è rientrato.`,
-              params: { username },
-            });
-            armTurn(roomCode);
+              roomCode,
+              existingGame
+            );
             logger.info({ userId, roomCode }, "Player rejoined game (from memory)");
             return;
           }
@@ -1927,7 +2051,7 @@ export function setupSocket(httpServer: HttpServer) {
             where: eq(activeGamesTable.roomCode, roomCode),
           });
           if (!row) {
-            socket.emit("game:rejoin_failed", { reason: "Game not found", code: "GAME_NOT_FOUND", roomCode });
+            socket.emit("game:rejoin_failed", { message: "Game not found", code: "GAME_NOT_FOUND", roomCode });
             return;
           }
 
@@ -1941,7 +2065,7 @@ export function setupSocket(httpServer: HttpServer) {
               "Discarding stale persisted game (schema mismatch)"
             );
             disposeGame(roomCode);
-            socket.emit("game:rejoin_failed", { reason: "Game no longer valid", code: "GAME_NO_LONGER_VALID", roomCode });
+            socket.emit("game:rejoin_failed", { message: "Game no longer valid", code: "GAME_NO_LONGER_VALID", roomCode });
             return;
           }
           // isStaleSchema is a plain boolean helper (kept dependency-free for
@@ -1952,12 +2076,9 @@ export function setupSocket(httpServer: HttpServer) {
 
           const playerMap = readPersistedPlayerMap(row.playerMap, row.playerIds);
           if (!Object.values(playerMap).includes(userId)) {
-            socket.emit("game:rejoin_failed", { reason: "Not authorized", code: "UNAUTHORIZED", roomCode });
+            socket.emit("game:rejoin_failed", { message: "Not authorized", code: "UNAUTHORIZED", roomCode });
             return;
           }
-
-          socket.join(roomCode);
-          socketRoomMap.set(socket.id, roomCode);
 
           const restoredScores = (row.scores as Record<string, number>) ?? {};
           const restoredTarget = row.matchTarget ?? MATCH_TARGETS[0];
@@ -1999,24 +2120,11 @@ export function setupSocket(httpServer: HttpServer) {
               );
           }
 
-          await emitRoomStateTo(socket, roomCode);
-
-          socket.emit(
-            "game:state",
-            sanitizeStateForPlayer(game.gameState, userId, game.playerMap)
-          );
-          io.to(roomCode).emit("game:player_reconnected", {
-            userId,
-            username,
-            code: "PLAYER_RECONNECTED",
-            message: `${username} è rientrato.`,
-            params: { username },
-          });
-          armTurn(roomCode);
+          await rejoinSocketToTable(io, socket, userId, username, roomCode, game);
           logger.info({ userId, roomCode }, "Player rejoined game (from DB)");
         } catch (err) {
           logger.error({ err, roomCode, userId }, "game:rejoin failed");
-          socket.emit("game:rejoin_failed", { reason: "Errore del server", code: "SERVER_ERROR", roomCode });
+          socket.emit("game:rejoin_failed", { message: "Errore del server", code: "SERVER_ERROR", roomCode });
         }
       },
       { limit: 20, windowMs: 60_000 }
@@ -2133,15 +2241,7 @@ export function setupSocket(httpServer: HttpServer) {
 
       for (const [roomId, game] of activeGames.entries()) {
         if (seatOfUser(game, userId) === null || game.gameState.gameOver) continue;
-        socket.join(roomId);
-        socketRoomMap.set(socket.id, roomId);
-        await emitRoomStateTo(socket, roomId);
-        socket.emit(
-          "game:state",
-          sanitizeStateForPlayer(game.gameState, userId, game.playerMap)
-        );
-        io.to(roomId).emit("game:player_reconnected", { userId, username });
-        armTurn(roomId);
+        await rejoinSocketToTable(io, socket, userId, username, roomId, game);
         logger.info(
           { userId, username, roomId },
           "Player reconnected within grace period"
@@ -2311,6 +2411,49 @@ async function emitRoomStateTo(socket: Socket, roomCode: string) {
   socket.emit("room:state", roomStatePayload(room, players));
 }
 
+/**
+ * Puts a socket back at a table it holds a seat at: room membership, the two
+ * snapshots the client's navigation chain needs to render the game, the notice
+ * the rest of the table sees, and the turn scheduler.
+ *
+ * The one emitter of `game:player_reconnected`, so its payload cannot differ
+ * between the `game:rejoin` handler and the connection handler's grace-timer
+ * block. The caller owns the seat check and the `room_players` row: the
+ * grace-timer path still holds a row, the rejoin path may not.
+ */
+async function rejoinSocketToTable(
+  io: SocketServer,
+  socket: Socket,
+  userId: string,
+  username: string,
+  roomId: string,
+  game: OnlineGameState
+) {
+  socket.join(roomId);
+  socketRoomMap.set(socket.id, roomId);
+
+  // Two DB reads, and the rejoin does not depend on either: the seat is
+  // already valid and `game:state` below is what the table is drawn from. The
+  // handler's blanket catch turns any throw into a SERVER_ERROR rejoin
+  // failure, so letting this one propagate would forfeit a live game over a
+  // roster refresh.
+  await emitRoomStateTo(socket, roomId).catch((err: unknown) =>
+    logger.warn({ err, roomId, userId }, "emitRoomStateTo failed")
+  );
+  socket.emit(
+    "game:state",
+    sanitizeStateForPlayer(game.gameState, userId, game.playerMap)
+  );
+  io.to(roomId).emit("game:player_reconnected", {
+    userId,
+    username,
+    code: "PLAYER_RECONNECTED",
+    message: `${username} è rientrato.`,
+    params: { username },
+  });
+  armTurnIfIdle(roomId);
+}
+
 function seatClaimMessage(
   reason: "no_room" | "not_waiting" | "full" | "already_joined"
 ): string {
@@ -2381,6 +2524,8 @@ async function pruneStaleRooms(): Promise<number> {
 
   const ids = candidates.map((r) => r.id).filter((id) => !activeGames.has(id));
   if (ids.length === 0) return 0;
+  // A lobby nobody ever came back to keeps its dropout records until here.
+  ids.forEach((id) => lobbyDropouts.delete(id));
 
   await db.delete(roomPlayersTable).where(inArray(roomPlayersTable.roomId, ids));
   await db.delete(activeGamesTable).where(inArray(activeGamesTable.roomCode, ids));
@@ -2500,7 +2645,15 @@ async function handleSeatRelease(
           )
         );
       publicRoomIds.delete(roomId);
+      lobbyDropouts.delete(roomId);
       return;
+    }
+    // A lost connection is the only release room:rejoin may answer: a
+    // `room:leave` is the player choosing to go, and room:join is how they come
+    // back from that. Recorded before the migration below, so it holds who was
+    // host at the moment of the drop.
+    if (opts.source === "disconnect") {
+      rememberLobbyDropout(roomId, userId, room.hostUserId === userId);
     }
     let newHostId = room.hostUserId;
     if (room.hostUserId === userId) {

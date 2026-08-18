@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from "react";
+import React, { useContext, useEffect, useRef, useState } from "react";
 import { reloadAppAsync } from "expo";
 import {
   StyleSheet,
@@ -9,7 +9,7 @@ import {
   Modal,
   Platform,
 } from "react-native";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { SafeAreaInsetsContext } from "react-native-safe-area-context";
 import { LinearGradient } from "expo-linear-gradient";
 import { Feather } from "@expo/vector-icons";
 import { Colors, Spacing, Radius, FontSize, Shadow } from "@/lib/theme";
@@ -22,8 +22,13 @@ export type ErrorFallbackProps = {
   resetError: () => void;
 };
 
+const NO_INSETS = { top: 0, right: 0, bottom: 0, left: 0 };
+
 export function ErrorFallback({ error, resetError }: ErrorFallbackProps) {
-  const insets = useSafeAreaInsets();
+  // Read the context directly rather than through useSafeAreaInsets(), which
+  // throws when no provider is above. This is the last screen the app has; it
+  // has to render even when the crash was in SafeAreaProvider itself.
+  const insets = useContext(SafeAreaInsetsContext) ?? NO_INSETS;
   const { t } = useTranslation();
   const [isModalVisible, setIsModalVisible] = useState(false);
   const [restarting, setRestarting] = useState(false);
