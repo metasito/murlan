@@ -77,12 +77,14 @@ hundred lines should not spend most of its wall-clock re-proving work that alrea
   must exist.** Where the existing suite already proves it, name the test that does and move on.
   Write a new test for every Critical and High finding regardless of what exists.
 - Integration criteria need Postgres — start one, do not report them unrunnable. Leave the
-  container running between batches; it costs nothing idle and the next batch reuses it:
+  container running between batches; it costs nothing idle and the next batch reuses it. Bound
+  to 55433, not 55432: `scripts/dev-stack.mjs` defaults its own disposable E2E database
+  (`murlan-dev-pg`) to 55432, and running both at once needs them on different ports.
   ```bash
   docker start murlan-pg 2>/dev/null || docker run -d --name murlan-pg \
     -e POSTGRES_USER=postgres -e POSTGRES_PASSWORD=postgres -e POSTGRES_DB=murlan_test \
-    -p 55432:5432 postgres:16-alpine
-  export DATABASE_URL="postgres://postgres:postgres@localhost:55432/murlan_test"
+    -p 55433:5432 postgres:16-alpine
+  export DATABASE_URL="postgres://postgres:postgres@localhost:55433/murlan_test"
   ```
   `server/schemaDdl.ts` builds the schema on first boot. The run must report `skipped 0` and no
   `DATABASE_URL not set` — that line means the integration suites did not run.
