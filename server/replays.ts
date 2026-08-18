@@ -48,7 +48,16 @@ export async function saveReplay(input: {
 
 export async function listReplaysForUser(userId: string): Promise<ReplaySummary[]> {
   const rows = await db
-    .select()
+    .select({
+      id: matchReplays.id,
+      finishedAt: matchReplays.finishedAt,
+      gameMode: matchReplays.gameMode,
+      seats: matchReplays.seats,
+      // The list shows how long the hand was, not what was played: one manche
+      // is ~9 KB of jsonb, so twenty of them are most of this response and all
+      // of it is discarded. Postgres counts them instead.
+      moveCount: sql<number>`jsonb_array_length(${matchReplays.moves})`,
+    })
     .from(matchReplays)
     .where(ownedBy(userId))
     .orderBy(desc(matchReplays.finishedAt))
@@ -62,7 +71,7 @@ export async function listReplaysForUser(userId: string): Promise<ReplaySummary[
       gameMode: r.gameMode as GameMode,
       seats,
       playerCount: seats.length,
-      moveCount: (r.moves as ReplayMove[]).length,
+      moveCount: r.moveCount,
     };
   });
 }

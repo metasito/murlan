@@ -243,6 +243,28 @@ describe("ladder and replay writes", { skip: hasDatabase() ? false : skipMessage
       assert.equal(summaries[0].playerCount, 3);
       assert.ok(summaries[0].moveCount > 0);
 
+      // The list is a projection now, so the summary has to still carry
+      // exactly ReplaySummary — no column dropped, and none of the ones it
+      // deliberately leaves in the database (moves, rankings, player_ids,
+      // room_code) handed out with it.
+      assert.deepEqual(Object.keys(summaries[0]).sort(), [
+        "finishedAt",
+        "gameMode",
+        "id",
+        "moveCount",
+        "playerCount",
+        "seats",
+      ]);
+      const stored = await dbPool.query(
+        "SELECT moves FROM match_replays WHERE id = $1",
+        [summaries[0].id]
+      );
+      assert.equal(
+        summaries[0].moveCount,
+        (stored.rows[0].moves as ReplayMove[]).length,
+        "the counted length must be the stored length"
+      );
+
       const id = summaries[0].id;
       const mine = await fetch(`${server.url}/api/replays/${id}`, { headers: { cookie: alice.cookie } });
       assert.equal(mine.status, 200);
@@ -255,6 +277,69 @@ describe("ladder and replay writes", { skip: hasDatabase() ? false : skipMessage
       alice.socket.close();
       bob.socket.close();
       stranger.socket.close();
+    }
+  });
+
+  test("the list counts the moves in Postgres and leaves them there", async () => {
+    const { alice, bob } = await playOneHand("proj");
+    try {
+      await waitForRow(async () => {
+        const res = await dbPool.query(
+          "SELECT id FROM match_replays WHERE player_ids @> $1::jsonb",
+          [JSON.stringify([alice.user.id])]
+        );
+        return res.rows[0] ?? null;
+      });
+
+      // The listing must not pull the `moves` jsonb — ~9 KB per row, twenty
+      // rows — to report its length. The response shape cannot show that, so
+      // the SQL itself is what is read, off the app's own pool.
+      const { pool } = await import("../../server/db.ts");
+      const { listReplaysForUser } = await import("../../server/replays.ts");
+      const seen: string[] = [];
+      const realQuery = pool.query.bind(pool);
+      (pool as { query: unknown }).query = (...args: unknown[]) => {
+        const first = args[0];
+        seen.push(typeof first === "string" ? first : String((first as { text?: string })?.text));
+        return (realQuery as (...a: unknown[]) => unknown)(...args);
+      };
+      let summaries;
+      try {
+        summaries = await listReplaysForUser(alice.user.id);
+      } finally {
+        (pool as { query: unknown }).query = realQuery;
+      }
+
+      const sql = seen.join("\n");
+      assert.match(sql, /jsonb_array_length\("moves"\)/, "the count must be Postgres' job");
+      assert.equal(
+        sql.split('"moves"').length - 1,
+        1,
+        `the move log is named twice, so one of those is a fetch:\n${sql}`
+      );
+      assert.ok(summaries[0].moveCount > 0);
+
+      // And the predicate the list filters on has to reach the index.
+      // enable_seqscan is off because the planner is right to scan a table
+      // this small — the question here is whether it *could* use the index,
+      // which a btree on a containment predicate never can.
+      const client = await dbPool.connect();
+      try {
+        await client.query("BEGIN");
+        await client.query("SET LOCAL enable_seqscan = off");
+        const explained = await client.query<{ "QUERY PLAN": string }>(
+          "EXPLAIN SELECT id FROM match_replays WHERE player_ids @> $1::jsonb",
+          [JSON.stringify([alice.user.id])]
+        );
+        const plan = explained.rows.map((r) => r["QUERY PLAN"]).join("\n");
+        assert.match(plan, /match_replays_player_ids_idx/, `planned a scan instead:\n${plan}`);
+      } finally {
+        await client.query("ROLLBACK");
+        client.release();
+      }
+    } finally {
+      alice.socket.close();
+      bob.socket.close();
     }
   });
 

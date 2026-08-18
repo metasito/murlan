@@ -11,6 +11,7 @@ import { router } from "expo-router";
 import { useGame } from "@/context/GameContext";
 import { pickGivebackCard } from "@/lib/gameEngine";
 import { GameTable } from "@/components/GameTable";
+import { comboKey } from "@/components/gameTableModel";
 import { useTranslation } from "@/lib/i18n";
 
 // Read once at module scope, never per-call. EXPO_PUBLIC_ vars are inlined
@@ -51,13 +52,16 @@ export default function GameScreen() {
   } = useGame();
 
   // Timers fire outside the render that scheduled them; refs keep them from
-  // calling a stale copy of the context action.
+  // calling a stale copy of the context action. Assigned after commit, never
+  // during render — every reader is a timer, which cannot run before then.
   const runAITurnRef = useRef(runAITurn);
-  runAITurnRef.current = runAITurn;
   const passTurnRef = useRef(passTurn);
-  passTurnRef.current = passTurn;
   const chooseExchangeRef = useRef(chooseExchangeCard);
-  chooseExchangeRef.current = chooseExchangeCard;
+  useEffect(() => {
+    runAITurnRef.current = runAITurn;
+    passTurnRef.current = passTurn;
+    chooseExchangeRef.current = chooseExchangeCard;
+  });
 
   const humanIdx = gameState?.players.findIndex((p) => p.type === "human") ?? -1;
 
@@ -69,33 +73,42 @@ export default function GameScreen() {
     return () => clearTimeout(t);
   }, [gameState?.gameOver]);
 
-  // AI turn loop.
+  // AI turn loop. The key identifies one AI turn — seat, pass count and the
+  // combination on the table — and is null whenever no AI is on move, so an
+  // update that changes neither cannot restart the "thinking" timer.
+  const aiTurnKey =
+    gameState &&
+    !gameState.gameOver &&
+    !gameState.exchangePhase?.active &&
+    gameState.players[gameState.currentTurnIndex]?.type === "ai"
+      ? `${gameState.currentTurnIndex}|${gameState.passCount}|` +
+        (gameState.lastPlayedCombination
+          ? comboKey(gameState.lastPlayedCombination, gameState.lastPlayedBy)
+          : "-")
+      : null;
+
   useEffect(() => {
-    if (!gameState || gameState.gameOver) return;
-    if (gameState.exchangePhase?.active) return;
-    if (gameState.players[gameState.currentTurnIndex]?.type !== "ai") return;
+    if (aiTurnKey === null) return;
     const t = setTimeout(() => runAITurnRef.current(), AI_DELAY);
     return () => clearTimeout(t);
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- narrow on purpose: only these fields should restart the AI timer
-  }, [
-    gameState?.currentTurnIndex,
-    gameState?.gameOver,
-    gameState?.passCount,
-    gameState?.lastPlayedCombination,
-    gameState?.exchangePhase?.active,
-  ]);
+  }, [aiTurnKey]);
 
-  // An AI that wins a round owes the loser a card; it gives up its weakest legal one.
+  // An AI that wins a round owes the loser a card; it gives up its weakest legal
+  // one. A card id rather than the card, for the same reason as above: the
+  // giveback timer must not be rescheduled by an unrelated update.
+  const aiGivebackCardId = (() => {
+    const phase = gameState?.exchangePhase;
+    if (!phase?.active) return undefined;
+    const winner = gameState!.players[phase.winnerIdx];
+    if (winner?.type !== "ai") return undefined;
+    return pickGivebackCard(winner.hand)?.id;
+  })();
+
   useEffect(() => {
-    if (!gameState?.exchangePhase?.active) return;
-    const winner = gameState.players[gameState.exchangePhase.winnerIdx];
-    if (winner?.type !== "ai") return;
-    const weakest = pickGivebackCard(winner.hand);
-    if (!weakest) return;
-    const t = setTimeout(() => chooseExchangeRef.current(weakest.id), AI_EXCHANGE_DELAY);
+    if (!aiGivebackCardId) return;
+    const t = setTimeout(() => chooseExchangeRef.current(aiGivebackCardId), AI_EXCHANGE_DELAY);
     return () => clearTimeout(t);
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- narrow on purpose: winnerIdx is fixed for the duration of an active exchange phase
-  }, [gameState?.exchangePhase?.active]);
+  }, [aiGivebackCardId]);
 
   useEffect(() => {
     if (!gameState) router.replace("/");

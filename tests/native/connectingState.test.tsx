@@ -35,7 +35,6 @@ jest.mock('@/context/OnlineGameContext', () => ({
     // A spectate the server refused: no state, and no rejoin failure to bounce
     // off the screen either.
     gameState: null,
-    reactions: [],
     mySeatIndex: -1,
     isSpectator: true,
     playerLeft: false,

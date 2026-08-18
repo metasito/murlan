@@ -124,9 +124,13 @@ describe(
       const { storage } = await import("../../server/storage.ts");
       const { connectAs, waitFor } = await import("../helpers/client.ts");
       const realGetFriends = storage.getFriends;
-      let calls = 0;
+      // Keyed by caller, not a bare counter: the two tests above open 72
+      // sockets between them, and a connection handler's read is
+      // fire-and-forget, so their tails are still landing when this one
+      // installs its stub.
+      const readsFor = new Map<string, number>();
       storage.getFriends = async function (userId: string) {
-        calls += 1;
+        readsFor.set(userId, (readsFor.get(userId) ?? 0) + 1);
         return realGetFriends.call(this, userId);
       };
       try {
@@ -136,7 +140,11 @@ describe(
           // The second read was fire-and-forget, so it could still be in
           // flight when the list arrives.
           await new Promise((resolve) => setTimeout(resolve, 250));
-          assert.equal(calls, 1, "one connection must cost one getFriends");
+          assert.equal(
+            readsFor.get(client.user.id) ?? 0,
+            1,
+            "one connection must cost one getFriends"
+          );
         } finally {
           client.socket.close();
         }
