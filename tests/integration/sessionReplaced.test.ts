@@ -162,5 +162,78 @@ describe(
         for (const socket of [alice.socket, bob.socket, second]) socket?.close();
       }
     });
+
+    /**
+     * The replacement is the only socket the seat has left, so it has to be the
+     * one that releases it. Nothing else can: the replaced socket's disconnect
+     * declines to announce anything, and a replacement on a device that never
+     * held the room code emits no `game:rejoin` — the path the case above takes,
+     * and the one that hides this.
+     *
+     * Three seats, so the release is the bot takeover the surviving players keep
+     * playing against rather than the two-seat teardown.
+     */
+    test("the seat is released when a replacement that never rejoined closes", async () => {
+      const alice = await connectAs(server, "sess_repl_arta");
+      const bob = await connectAs(server, "sess_repl_besnik");
+      const carol = await connectAs(server, "sess_repl_cela");
+      let second: Socket | null = null;
+      try {
+        await setUpRoom([alice, bob, carol], 3);
+        await startGame([alice, bob, carol]);
+
+        const dropped = waitFor<{ userId: string }>(
+          bob.socket,
+          "game:player_disconnected"
+        );
+        const takenOver = waitFor<{ userId: string; seatIndex: number }>(
+          bob.socket,
+          "game:seat_bot_takeover",
+          GRACE_MS * 10
+        );
+
+        const closed = new Promise<void>((resolve, reject) => {
+          const timer = setTimeout(
+            () => reject(new Error("the replaced socket was never closed")),
+            5_000
+          );
+          alice.socket.once("disconnect", () => {
+            clearTimeout(timer);
+            resolve();
+          });
+        });
+
+        second = await openSecondSocket(alice.cookie);
+        await closed;
+
+        // The replacement's own connection has to be fully established before it
+        // is closed again: a close in the same tick as the CONNECT packet never
+        // reaches the server, and the socket is left open. `friend:online_list`
+        // is the last thing the connection handler emits, so it is the readiness
+        // signal — and a real client is never that fast anyway.
+        await waitFor(second, "friend:online_list");
+        second.close();
+
+        const drop = await dropped;
+        assert.equal(
+          drop.userId,
+          alice.user.id,
+          "closing the account's only remaining socket has to announce the drop"
+        );
+        const takeover = await takenOver;
+        assert.equal(
+          takeover.userId,
+          alice.user.id,
+          "and the grace has to expire into a bot taking the seat over"
+        );
+      } finally {
+        for (const socket of [bob.socket, carol.socket]) {
+          if (socket.connected) socket.emit("room:leave");
+        }
+        await new Promise((resolve) => setTimeout(resolve, 250));
+        for (const socket of [alice.socket, bob.socket, carol.socket, second])
+          socket?.close();
+      }
+    });
   }
 );

@@ -1418,7 +1418,7 @@ export function setupSocket(httpServer: HttpServer) {
     const replacedSocketId = userSocketMap.get(userId);
     userSocketMap.set(userId, socket.id);
     if (replacedSocketId && replacedSocketId !== socket.id) {
-      evictReplacedSession(io, userId, replacedSocketId);
+      evictReplacedSession(io, userId, replacedSocketId, socket);
     }
     logger.debug({ userId, username, socketId: socket.id }, "Socket connected");
 
@@ -2831,6 +2831,15 @@ async function handleSeatRelease(
  * `game:player_disconnected` is announced and no grace timer is armed. The
  * player keeps their seat; only the connection changes.
  *
+ * Which is why the room association has to move with the account. Those same
+ * guards mean nothing else will release the seat, and the replacement only
+ * acquires a `socketRoomMap` entry of its own if the client happens to rejoin —
+ * a device that never held the room code never does. Handing the entry over
+ * keeps the seat reachable by the room's broadcasts and leaves the ordinary
+ * disconnect path owning its release, so closing the replacement announces the
+ * drop, arms the grace and hands the seat to a bot exactly as one connection
+ * always did.
+ *
  * The client stops reconnecting when it sees this code
  * (`context/SocketContext.tsx`). It has to: socket.io retries a closed
  * transport forever, so two tabs would otherwise evict each other for as long
@@ -2839,10 +2848,19 @@ async function handleSeatRelease(
 function evictReplacedSession(
   io: SocketServer,
   userId: string,
-  replacedSocketId: string
+  replacedSocketId: string,
+  replacement: Socket
 ) {
   const replaced = io.sockets.sockets.get(replacedSocketId);
   if (!replaced) return;
+
+  const roomId = socketRoomMap.get(replacedSocketId);
+  if (roomId) {
+    socketRoomMap.delete(replacedSocketId);
+    socketRoomMap.set(replacement.id, roomId);
+    void replacement.join(roomId);
+  }
+
   replaced.emit("socket:error", {
     code: "SESSION_REPLACED",
     message: "Il tuo account è stato aperto altrove. Questa sessione è stata chiusa.",
