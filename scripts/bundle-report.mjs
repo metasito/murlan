@@ -151,9 +151,12 @@ function renderMarkdown({ assets, deps }) {
       "in 105.5 KB and splash-icon.png in 136.6 KB, both under 11% of the " +
       "current size. That headroom cannot be taken here — `@expo/image-utils`, " +
       "which Expo's own prebuild uses to generate native icon and splash " +
-      "resources from these two files, decodes through `jimp-compact` and " +
-      "throws `Unsupported MIME type: image/webp` on the file above, confirmed " +
-      "by feeding it the encoded output directly. Shrinking the pixel " +
+      "resources from these two files, decodes through `jimp-compact` unless a " +
+      "global `sharp-cli` is installed, and jimp throws `Unsupported MIME " +
+      "type: image/webp` on the file above, confirmed by feeding it the " +
+      "encoded output directly. `sharp` would read it, but it is a native " +
+      "global install, so the path that has to work is the one without it. " +
+      "Shrinking the pixel " +
       "dimensions instead is blocked per file: `icon.png` doubles as the iOS " +
       "App Store marketing icon, which Apple requires at exactly 1024x1024; " +
       "`splash-icon.png` is displayed through `expo-splash-screen`'s CONTAIN " +
