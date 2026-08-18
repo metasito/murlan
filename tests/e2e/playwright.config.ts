@@ -47,6 +47,11 @@ export default defineConfig({
       // still well under production's 60s and only ever elapses in a test that
       // deliberately stays offline.
       MURLAN_DISCONNECT_GRACE_MS: "30000",
+      // Must exceed CARD_CLICK_TIMEOUT_MS (tests/e2e/helpers/bot.ts) times the
+      // largest card combination the driver builds — selecting cards is
+      // client-side and never resets this timer, so a selection sequence that
+      // outruns it gets auto-passed mid-selection.
+      MURLAN_AFK_TIMEOUT_MS: "30000",
     },
     stdout: "pipe",
     stderr: "pipe",
