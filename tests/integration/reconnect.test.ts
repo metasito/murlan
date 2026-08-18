@@ -384,6 +384,63 @@ describe("reconnect", { skip: hasDatabase() ? false : skipMessage() }, () => {
     }
   });
 
+  /**
+   * The other half of the same failure. A reconnecting client still holds the
+   * room it had in memory, so losing the roster read costs it nothing; a cold
+   * start holds nothing, and `room` is the whole navigation chain out of the
+   * online lobby — game state alone leaves the player standing there with a
+   * live hand and no way into it.
+   */
+  test("a cold-start rejoin is given its room even when the roster read fails", async () => {
+    const { storage } = await import("../../server/storage.ts");
+    const jo = await connectAs(server, "cold_start_jo");
+    const kai = await connectAs(server, "cold_start_kai");
+    const room = await setUpRoom([jo, kai], 2);
+    const table: { socket: Socket }[] = [jo, kai];
+    const realGetRoomPlayers = storage.getRoomPlayers;
+    let tripped = 0;
+    try {
+      await startGame([jo, kai]);
+
+      const dropped = waitFor(jo.socket, "game:player_disconnected", 5_000);
+      kai.socket.disconnect();
+      await dropped;
+
+      storage.getRoomPlayers = async function (roomId: string) {
+        if (roomId === room.roomId) {
+          tripped += 1;
+          throw new Error("connection terminated unexpectedly");
+        }
+        return realGetRoomPlayers.call(this, roomId);
+      };
+
+      // A socket that has never been sent room:state: the app after a restart,
+      // rejoining on the room id it read back from storage and nothing else.
+      const back = await reconnect(kai);
+      table[1] = { socket: back };
+      const recovered = waitFor<RoomState>(back, "room:state", 5_000);
+      const restored = waitFor<SanitizedState>(back, "game:state", 5_000);
+      back.emit("game:rejoin", { roomId: room.roomId });
+      const [roomState, state] = await Promise.all([recovered, restored]);
+
+      assert.ok(tripped > 0, "the roster read never failed — the test proved nothing");
+      assert.equal(roomState.roomId, room.roomId);
+      assert.equal(roomState.code, room.code, "the join code must be the real one");
+      assert.deepEqual(
+        roomState.players.map((p) => p.userId).sort(),
+        [jo.user.id, kai.user.id].sort(),
+        "the recovered room must still seat both players"
+      );
+      assert.ok(
+        state.viewerSeatIndex >= 0,
+        "the rejoining player was not recognised at their own seat"
+      );
+    } finally {
+      storage.getRoomPlayers = realGetRoomPlayers;
+      await closeTable(table);
+    }
+  });
+
   // ── The match framing a rejoin arrives with ─────────────────────────────
 
   /**

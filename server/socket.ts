@@ -2420,16 +2420,35 @@ function roomStatePayload(
 }
 
 /**
+ * The seats of a running table in the shape `room_players` reads back. It is
+ * the same roster a rematch deals from — `room_players` holds humans only and
+ * is rebuilt from the game rather than the other way round.
+ */
+function seatedHumansOf(game: OnlineGameState) {
+  return game.gameState.players.flatMap((player, seatIndex) => {
+    const seatUserId = game.playerMap[seatIndex];
+    return seatUserId
+      ? [{ seatIndex, userId: seatUserId, user: { username: player.name } }]
+      : [];
+  });
+}
+
+/**
  * Re-sends `room:state` to a single reconnecting/rejoining socket. The
  * client's only route back into the game screen is `room` (non-null) ->
  * `/(online)/room` -> `gameState` (non-null) -> `/(online)/game`; replying to
  * a rejoin with `game:state` alone leaves `room` null and strands the player
- * on the lobby holding a live hand with no way back in.
+ * on the lobby holding a live hand with no way back in. A reconnecting client
+ * still holds the room it had; a cold start holds nothing, so the roster read
+ * failing has to cost the roster and not the reply.
  */
-async function emitRoomStateTo(socket: Socket, roomCode: string) {
+async function emitRoomStateTo(socket: Socket, roomCode: string, game: OnlineGameState) {
   const room = await storage.getRoomById(roomCode);
   if (!room) return;
-  const players = await storage.getRoomPlayers(roomCode);
+  const players = await storage.getRoomPlayers(roomCode).catch((err: unknown) => {
+    logger.warn({ err, roomId: roomCode }, "getRoomPlayers failed; answering from the live roster");
+    return seatedHumansOf(game);
+  });
   socket.emit("room:state", roomStatePayload(room, players));
 }
 
@@ -2459,7 +2478,7 @@ async function rejoinSocketToTable(
   // handler's blanket catch turns any throw into a SERVER_ERROR rejoin
   // failure, so letting this one propagate would forfeit a live game over a
   // roster refresh.
-  await emitRoomStateTo(socket, roomId).catch((err: unknown) =>
+  await emitRoomStateTo(socket, roomId, game).catch((err: unknown) =>
     logger.warn({ err, roomId, userId }, "emitRoomStateTo failed")
   );
   socket.emit(
