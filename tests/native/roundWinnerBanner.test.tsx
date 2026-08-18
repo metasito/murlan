@@ -9,6 +9,7 @@ import React from 'react';
 import { act, render, screen, within } from '@testing-library/react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
+import { GameTable } from '@/components/GameTable';
 import type { GameState, Player } from '@/lib/gameEngine';
 
 // Reached through lib/sounds; the native module has no JS implementation here.
@@ -16,9 +17,6 @@ jest.mock('expo-audio', () => ({
   createAudioPlayer: jest.fn(),
   setAudioModeAsync: jest.fn(),
 }));
-
-// eslint-disable-next-line @typescript-eslint/no-require-imports
-const { GameTable } = require('@/components/GameTable') as typeof import('@/components/GameTable');
 
 const METRICS = {
   frame: { x: 0, y: 0, width: 844, height: 390 },
