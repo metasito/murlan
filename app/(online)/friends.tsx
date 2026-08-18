@@ -15,13 +15,13 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useSocket } from "@/context/SocketContext";
 import { useOnlineGame } from "@/context/OnlineGameContext";
 import { apiRequest } from "@/lib/query-client";
-import { Colors, Spacing, FontSize, Radius, Type } from '@/lib/theme';
+import { Colors, Spacing, FontSize, Radius, TOUCH_TARGET_MIN, Type } from '@/lib/theme';
 import { MenuButton } from "@/components/MenuButton";
 import { MenuLayout } from "@/components/MenuLayout";
 import { useTranslation, translateServerPayload } from "@/lib/i18n";
 import { registerForPush } from "@/lib/pushRegistration";
 import type { TranslationKey, TranslationParams } from "@/lib/i18n";
-import { A11yHintText, a11yHint, a11yState } from "@/lib/a11y";
+import { a11yState, useA11yHint } from "@/lib/a11y";
 
 type TFn = (key: TranslationKey, params?: TranslationParams) => string;
 type TnFn = (base: string, count: number, params?: TranslationParams) => string;
@@ -69,6 +69,7 @@ function Avatar({ name }: { name: string }) {
 
 export default function FriendsScreen() {
   const { t, tn } = useTranslation();
+  const searchHint = useA11yHint(t("friends.searchA11yHint"));
   const { socket, onlineIds, gameInvites, dismissGameInvite } = useSocket();
   const { joinRoom, room } = useOnlineGame();
   const qc = useQueryClient();
@@ -446,9 +447,9 @@ export default function FriendsScreen() {
               onSubmitEditing={handleSearchUsername}
               returnKeyType="search"
               accessibilityLabel={t("friends.searchA11yLabel")}
-              {...a11yHint(t("friends.searchA11yHint"))}
+              {...searchHint.props}
             />
-            <A11yHintText hint={t("friends.searchA11yHint")} />
+            {searchHint.node}
             <Pressable
               onPress={handleSearchUsername}
               disabled={searchLoading || !searchQuery.trim()}
@@ -590,7 +591,7 @@ const styles = StyleSheet.create({
   rowName: { ...Type.bodyStrong },
   rowSub: { ...Type.caption },
 
-  iconBtn: { width: 32, height: 32, alignItems: "center", justifyContent: "center" },
+  iconBtn: { width: TOUCH_TARGET_MIN, height: TOUCH_TARGET_MIN, alignItems: "center", justifyContent: "center" },
 
   actionRow: { flexDirection: "row", gap: 8 },
   declineBtn: {

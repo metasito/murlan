@@ -40,7 +40,7 @@ import {
   placedPips,
   rankFontSize,
 } from "@/components/cardFaceModel";
-import { A11yHintText, a11yHidden, a11yHint, a11yState } from "@/lib/a11y";
+import { a11yHidden, a11yState, useA11yHint } from "@/lib/a11y";
 
 // Suit → colour. `Suit` is plural ("spades") while the theme tokens are singular
 // ("spade"), so the mapping has to be explicit. Typed as Record<Suit, string> so
@@ -472,6 +472,7 @@ function CardViewBase({
   decorative = false,
 }: CardViewProps) {
   const { t } = useTranslation();
+  const selectedHint = useA11yHint(decorative || !selected ? undefined : t("cardView.selectedA11yHint"));
   const reduceMotion = usePrefersReducedMotion();
   const back = useCardBack();
   const backField = FeltGradients[back.field];
@@ -569,14 +570,14 @@ function CardViewBase({
         // will come back. Dropping the role there would make the hand vanish
         // and reappear in the button rotation every turn.
         {...a11yState({ role: onPress ? "button" : undefined, selected, disabled: !interactive })}
-        {...a11yHint(decorative || !selected ? undefined : t("cardView.selectedA11yHint"))}
+        {...selectedHint.props}
         style={[
           styles.card,
           small ? styles.cardSmall : styles.cardNormal,
           selected && styles.cardSelected,
         ]}
       >
-        {!decorative && selected && <A11yHintText hint={t("cardView.selectedA11yHint")} />}
+        {selectedHint.node}
         <LinearGradient
           colors={CardFaceGradient}
           locations={[0, 0.55, 1]}

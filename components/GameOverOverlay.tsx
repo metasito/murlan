@@ -208,6 +208,7 @@ export function GameOverOverlay({
     <Modal
       transparent
       visible
+      accessibilityLabel={t("gameOverOverlay.rankingsTitle")}
       supportedOrientations={["portrait", "landscape"]}
       onRequestClose={() => {}}
     >

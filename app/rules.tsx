@@ -145,7 +145,7 @@ export default function RulesScreen() {
           <Text style={styles.sectionLabel}>{t("rules.strengthSectionLabel")}</Text>
           <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.strengthRow}>
             {[
-              { rank: "JKR★", color: Colors.danger, label: t("rules.strengthJokerColored") },
+              { rank: "JKR★", color: Colors.bombText, label: t("rules.strengthJokerColored") },
               { rank: "JKR☆", color: Colors.textMuted, label: t("rules.strengthJokerBlack") },
               { rank: "2", color: Colors.text, label: t("rules.strengthTwo") },
               { rank: "A", color: Colors.text, label: t("rules.strengthAce") },

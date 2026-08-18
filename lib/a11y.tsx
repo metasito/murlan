@@ -1,3 +1,4 @@
+import { useId } from "react";
 import { Platform, StyleSheet, Text } from "react-native";
 import type { AccessibilityProps, AccessibilityRole, AccessibilityState } from "react-native";
 
@@ -9,8 +10,10 @@ import type { AccessibilityProps, AccessibilityRole, AccessibilityState } from "
 // alongside the React Native prop.
 const isWeb = Platform.OS === "web";
 
-/** Roles whose selected-ness is `aria-checked`; everything else uses `aria-selected`. */
-const CHECKED_ROLES = new Set<AccessibilityRole>(["radio", "checkbox", "switch", "menuitem"]);
+/** Roles whose selectedness is `aria-selected` (ARIA 1.2 allows it nowhere else). */
+const SELECTABLE_ROLES = new Set<AccessibilityRole>(["tab", "menuitem"]);
+/** Roles whose selectedness is `aria-checked`. */
+const CHECKABLE_ROLES = new Set<AccessibilityRole>(["radio", "checkbox", "switch"]);
 
 type StateProps = AccessibilityState & { role?: AccessibilityRole };
 
@@ -20,13 +23,18 @@ export function a11yState({ role, ...state }: StateProps): AccessibilityProps {
   if (role) props.accessibilityRole = role;
   if (!isWeb) return props;
 
-  if (state.disabled !== undefined) props["aria-disabled"] = state.disabled;
-  if (state.busy !== undefined) props["aria-busy"] = state.busy;
-  if (state.expanded !== undefined) props["aria-expanded"] = state.expanded;
-  if (state.checked !== undefined) props["aria-checked"] = state.checked;
-  if (state.selected !== undefined) {
-    if (role && CHECKED_ROLES.has(role)) props["aria-checked"] = state.selected;
-    else props["aria-selected"] = state.selected;
+  const web = props as Record<string, unknown>;
+  if (state.disabled !== undefined) web["aria-disabled"] = state.disabled;
+  if (state.busy !== undefined) web["aria-busy"] = state.busy;
+  if (state.expanded !== undefined) web["aria-expanded"] = state.expanded;
+  if (state.checked !== undefined) web["aria-checked"] = state.checked;
+  // A role-less node has the implicit role `generic`, which takes no state at
+  // all; anything set on it is invalid rather than merely unheard.
+  if (state.selected !== undefined && role) {
+    if (CHECKABLE_ROLES.has(role)) web["aria-checked"] = state.selected;
+    else if (SELECTABLE_ROLES.has(role)) web["aria-selected"] = state.selected;
+    // Everything else is a toggle button, and pressed is what a button carries.
+    else web["accessibilityPressed"] = state.selected;
   }
   return props;
 }
@@ -41,39 +49,34 @@ export function a11yHidden(hidden = true): AccessibilityProps {
 }
 
 /**
- * A DOM id is the only way to carry a description on the web, so the hint text
- * itself is the id: identical hints describe identically, and the node is
- * rendered by `<A11yHintText>` next to the control.
+ * A control's hint. `props` goes on the control, `node` beside it — the DOM
+ * carries a description only by reference, so the text has to exist somewhere.
+ * react-native-web's `Switch` spreads unknown props onto its wrapper rather
+ * than the focusable input, so there the hint reaches native only.
  */
-function hintId(hint: string): string {
-  let h = 0;
-  for (let i = 0; i < hint.length; i++) h = (Math.imul(h, 31) + hint.charCodeAt(i)) | 0;
-  return `a11y-hint-${(h >>> 0).toString(36)}`;
-}
-
-/** A control's hint. Pair every call with an `<A11yHintText hint={...} />`. */
-export function a11yHint(hint: string | undefined): AccessibilityProps {
-  if (!hint) return {};
+export function useA11yHint(hint: string | undefined): {
+  props: AccessibilityProps;
+  node: React.ReactNode;
+} {
+  const id = useId();
+  if (!hint) return { props: {}, node: null };
   const props: AccessibilityProps = { accessibilityHint: hint };
-  if (isWeb) (props as Record<string, unknown>)["aria-describedby"] = hintId(hint);
-  return props;
-}
-
-/** The node `a11yHint`'s `aria-describedby` points at. Renders nothing on native. */
-export function A11yHintText({ hint }: { hint: string | undefined }) {
-  if (!isWeb || !hint) return null;
-  return (
-    <Text nativeID={hintId(hint)} style={styles.srOnly}>
-      {hint}
-    </Text>
-  );
+  if (isWeb) (props as Record<string, unknown>)["aria-describedby"] = id;
+  return {
+    props,
+    node: isWeb ? (
+      <Text nativeID={id} style={styles.srOnly}>
+        {hint}
+      </Text>
+    ) : null,
+  };
 }
 
 /**
  * A live status sentence for a container that cannot be `accessible` itself
- * without collapsing its controls into one unreachable leaf. Its *text*
- * names it, which a bare `aria-label` on a role-less `<div>` does not: that
- * role is `generic`, for which a name is prohibited.
+ * without collapsing its controls into one unreachable leaf. Its *text* names
+ * it, which a bare `aria-label` on a role-less `<div>` does not: that role is
+ * `generic`, for which a name is prohibited.
  */
 export function A11yStatus({ label }: { label: string }) {
   return (
@@ -89,10 +92,11 @@ export function A11yStatus({ label }: { label: string }) {
   );
 }
 
-// Out of flow, one pixel, invisible — but still in the accessibility tree.
-// `display: none` and `visibility: hidden` both remove it, which is the whole
-// point of not using them.
+// One pixel, out of flow, all but transparent. iOS drops a view with alpha 0
+// from the accessibility hierarchy exactly as it drops `display: none`, so the
+// opacity has to stay above zero for the node to exist at all.
 const SR_ONLY_SIZE = 1;
+const SR_ONLY_OPACITY = 0.01;
 
 const styles = StyleSheet.create({
   srOnly: {
@@ -100,8 +104,6 @@ const styles = StyleSheet.create({
     width: SR_ONLY_SIZE,
     height: SR_ONLY_SIZE,
     overflow: "hidden",
-    opacity: 0,
+    opacity: SR_ONLY_OPACITY,
   },
 });
-
-export const srOnlyStyle = styles.srOnly;

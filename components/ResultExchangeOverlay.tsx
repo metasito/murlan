@@ -94,6 +94,7 @@ export function ResultExchangeOverlay({
       <Modal
         transparent
         visible
+        accessibilityLabel={t("result.bothJokersTitle")}
         supportedOrientations={["portrait", "landscape"]}
         onRequestClose={() => {}}
       >
@@ -129,6 +130,7 @@ export function ResultExchangeOverlay({
     <Modal
       transparent
       visible
+      accessibilityLabel={t("result.exchangeTitle")}
       supportedOrientations={["portrait", "landscape"]}
       onRequestClose={() => {}}
     >

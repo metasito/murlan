@@ -21,7 +21,7 @@ import { useOnlineGame } from "@/context/OnlineGameContext";
 import { useAuth } from "@/context/AuthContext";
 import { useSocket } from "@/context/SocketContext";
 import { getSocket } from "@/lib/socket";
-import { Colors, Spacing, Radius, FontSize, Motion, Type } from '@/lib/theme';
+import { Colors, Spacing, Radius, FontSize, Motion, TOUCH_TARGET_MIN, Type } from '@/lib/theme';
 import { MATCH_TARGETS } from "@/lib/gameEngine";
 import type { MatchLength } from "@/lib/gameEngine";
 import { BOT_PERSONALITIES, DEFAULT_BOT_PERSONALITY, botBlurbKey } from "@/lib/botPersonalities";
@@ -29,7 +29,7 @@ import type { BotPersonalityId } from "@/lib/botPersonalities";
 import { MenuLayout } from "@/components/MenuLayout";
 import { MenuButton } from "@/components/MenuButton";
 import { useTranslation } from "@/lib/i18n";
-import { A11yHintText, a11yHint, a11yState } from "@/lib/a11y";
+import { a11yState, useA11yHint } from "@/lib/a11y";
 import { usePrefersReducedMotion } from "@/lib/accessibility";
 
 const TEAM_COLORS = { A: Colors.gold, B: Colors.info };
@@ -46,6 +46,7 @@ function BotFillControls({
   onChangeBotPersonality: (id: BotPersonalityId) => void;
 }) {
   const { t } = useTranslation();
+  const botFillHint = useA11yHint(t("room.fillWithBotsA11yHint"));
 
   return (
     <View style={botFillStyles.section}>
@@ -64,9 +65,9 @@ function BotFillControls({
           thumbColor={fillWithBots ? Colors.white : Colors.textMuted}
           accessibilityRole="switch"
           accessibilityLabel={t("room.fillWithBotsA11yLabel")}
-          {...a11yHint(t("room.fillWithBotsA11yHint"))}
+          {...botFillHint.props}
         />
-        <A11yHintText hint={t("room.fillWithBotsA11yHint")} />
+        {botFillHint.node}
       </View>
 
       {fillWithBots && (
@@ -924,7 +925,7 @@ const styles = StyleSheet.create({
     letterSpacing: 6,
   },
   codeActions: { flexDirection: "row", gap: 20, marginTop: 2 },
-  codeBtn: { flexDirection: "row", alignItems: "center", gap: 6, padding: 4, minHeight: 32 },
+  codeBtn: { flexDirection: "row", alignItems: "center", gap: 6, padding: 4, minHeight: TOUCH_TARGET_MIN },
   codeBtnText: { fontFamily: "Inter_500Medium", fontSize: 13, color: Colors.gold },
   modePill: {
     flexDirection: "row",

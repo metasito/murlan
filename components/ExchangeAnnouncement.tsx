@@ -22,7 +22,7 @@ import { Colors, Spacing, Radius, FontSize, Type, Motion, Shadow } from "@/lib/t
 import { usePrefersReducedMotion } from "@/lib/accessibility";
 import { useTranslation } from "@/lib/i18n";
 import { cardSpokenName } from "@/lib/cardNames";
-import { A11yHintText, a11yHidden, a11yHint } from "@/lib/a11y";
+import { a11yHidden, useA11yHint } from "@/lib/a11y";
 
 // Mirrors the private CARD_W/CARD_H in components/CardView.tsx (not exported,
 // and that file is owned elsewhere) — used only to shrink a rendered CardView
@@ -93,6 +93,7 @@ export function ExchangeAnnouncement({
   onDismiss,
 }: ExchangeAnnouncementProps) {
   const { t } = useTranslation();
+  const dismissHint = useA11yHint(t("exchangeAnnouncement.dismissA11yHint"));
   const [shown, setShown] = useState(false);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const { width: screenWidth, height: screenHeight } = useWindowDimensions();
@@ -148,6 +149,7 @@ export function ExchangeAnnouncement({
     <Modal
       transparent
       visible
+      accessibilityLabel={t("exchangeAnnouncement.title")}
       supportedOrientations={["portrait", "landscape"]}
       onRequestClose={handleDismiss}
     >
@@ -190,9 +192,9 @@ export function ExchangeAnnouncement({
           accessibilityViewIsModal
           accessibilityRole="alert"
           accessibilityLabel={a11yLabel}
-          {...a11yHint(t("exchangeAnnouncement.dismissA11yHint"))}
+          {...dismissHint.props}
         >
-          <A11yHintText hint={t("exchangeAnnouncement.dismissA11yHint")} />
+          {dismissHint.node}
           <Pressable
             onPress={handleDismiss}
             style={({ pressed }) => [styles.closeBtn, { opacity: pressed ? 0.6 : 1 }]}

@@ -1,5 +1,7 @@
-// WCAG 2.x contrast audit for lib/theme.ts text colors against the surfaces
-// they actually render on: bg, bgCard, and every stop of every felt.
+// WCAG 2.x contrast audit for lib/theme.ts text colors. Palette-wide tokens
+// are measured against bg, bgCard and the felt's middle stop; every style that
+// draws inside the table is measured against every stop of every felt, which
+// is the only place the gradient's 2x luminance range can be seen.
 //
 // This exists so a future palette edit can't silently regress accessibility —
 // see lib/theme.ts "Text colors" section.
@@ -193,9 +195,9 @@ const LARGE_ONLY_TEXT_COLORS: Record<string, string> = {
   goldDark: Colors.goldDark,
   red: Colors.red,
   info: Colors.info,
-  // A fill first — MenuButton's danger variant, the offline banner. Its one
-  // sanctioned text use is large: app/rules.tsx draws the coloured-joker rank
-  // at 16pt bold. At body size it was 4.07:1 on bgCard.
+  // A fill: MenuButton's danger variant, the offline banner, the reconnect
+  // border. It clears 4.5:1 on no surface the app has, so text may only reach
+  // for it at >=18pt, or >=14pt bold — which in these units is 19px.
   danger: Colors.danger,
 };
 

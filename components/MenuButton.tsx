@@ -12,7 +12,7 @@ import Animated, {
 } from 'react-native-reanimated';
 import { Colors, Spacing, Radius, FontSize, Highlight, Motion, Shadow, TOUCH_TARGET_MIN } from '@/lib/theme';
 import { usePrefersReducedMotion } from '@/lib/accessibility';
-import { A11yHintText, a11yHint, a11yState } from "@/lib/a11y";
+import { a11yState, useA11yHint } from "@/lib/a11y";
 
 type Variant = 'primary' | 'secondary' | 'danger' | 'ghost';
 type Size = 'sm' | 'md' | 'lg';
@@ -46,6 +46,7 @@ export function MenuButton({
   const isDisabled = !!(disabled || loading);
   const reduceMotion = usePrefersReducedMotion();
   const [pressed, setPressed] = useState(false);
+  const hintProps = useA11yHint(hint);
   const press = useSharedValue(0);
 
   useEffect(
@@ -77,7 +78,7 @@ export function MenuButton({
         disabled={isDisabled}
         hitSlop={Spacing.xs}
         accessibilityLabel={accessibilityLabel ?? label}
-        {...a11yHint(hint)}
+        {...hintProps.props}
         {...a11yState({ role: "button", disabled: isDisabled, busy: !!loading })}
         style={[
           styles.base,
@@ -89,7 +90,7 @@ export function MenuButton({
           style,
         ]}
       >
-        <A11yHintText hint={hint} />
+        {hintProps.node}
         {variant === 'primary' && (
           <LinearGradient
             colors={pressed ? PRIMARY_GRADIENT_PRESSED : PRIMARY_GRADIENT}

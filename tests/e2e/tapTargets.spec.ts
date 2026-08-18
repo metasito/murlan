@@ -145,9 +145,8 @@ async function expectNoBuriedControls(page: Page, where: string, minControls: nu
 /**
  * Controls smaller than the 44pt floor, measured rather than declared.
  *
- * `hitSlop` counts toward the target on both platforms; react-native-web
- * renders it as a transparent inset child, so the union of the control and its
- * own children is what a finger actually hits.
+ * react-native-web reads `hitSlop` on nothing but the legacy Touchable, so on
+ * this platform a control's own box is the whole target.
  */
 async function sweepSizes(page: Page, allow: string[]): Promise<string[]> {
   return page.evaluate((allowed) => {
@@ -169,15 +168,7 @@ async function sweepSizes(page: Page, allow: string[]): Promise<string[]> {
       if (r.bottom < 0 || r.top > window.innerHeight) continue;
       if (r.right < 0 || r.left > window.innerWidth) continue;
 
-      // hitSlop renders as an absolutely positioned child extending past the
-      // control's own box.
-      let { width, height } = r;
-      for (const child of Array.from(el.children)) {
-        const c = child.getBoundingClientRect();
-        width = Math.max(width, c.width);
-        height = Math.max(height, c.height);
-      }
-
+      const { width, height } = r;
       const name = nameOf(el) || "(unnamed)";
       if (allowed.some((a) => name.includes(a))) continue;
       if (width >= MIN && height >= MIN) continue;
@@ -188,10 +179,12 @@ async function sweepSizes(page: Page, allow: string[]): Promise<string[]> {
 }
 
 /**
- * The hand's cards are the one deliberate exception: the fan exposes `step`
- * pixels of each card, and reaching 44pt at 14 cards would need ~630px of hand
- * width that the table does not have (A11Y-08 raises the floor to WCAG 2.2's
- * 24px instead, and says so).
+ * The hand's cards: the fan exposes `step` pixels of each card, and 44pt at 14
+ * cards needs ~630px of hand width the table does not have. components/
+ * handLayout.ts holds them at WCAG 2.2 SC 2.5.8's 24px instead.
+ *
+ * Matched against the Italian labels the whole suite is written against and
+ * playwright.config.ts pins.
  */
 const UNDERSIZED_BY_DESIGN = ["di Fiori", "di Cuori", "di Quadri", "di Picche", "Jolly"];
 
@@ -211,6 +204,7 @@ for (const size of SIZES) {
     // opacity 0 and the probe measures nothing.
     await page.waitForTimeout(2500);
     await expectNoBuriedControls(page, "home", 6);
+    expect(await sweepSizes(page, UNDERSIZED_BY_DESIGN), "home").toEqual([]);
 
     await page.getByRole("button", { name: "Offline" }).click();
     await page.waitForTimeout(1500);

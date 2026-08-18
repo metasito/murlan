@@ -28,7 +28,7 @@ import {
 import { Colors, Spacing, Radius, FontSize, Type, Shadow, TOUCH_TARGET_MIN } from "@/lib/theme";
 import { useTranslation, type Locale, type TranslationKey } from "@/lib/i18n";
 import type { MotionPreference } from "@/lib/accessibility";
-import { A11yHintText, a11yHidden, a11yHint, a11yState } from "@/lib/a11y";
+import { a11yHidden, a11yState, useA11yHint } from "@/lib/a11y";
 
 interface Props {
   visible: boolean;
@@ -148,6 +148,9 @@ export function SettingsModal({ visible, onClose }: Props) {
   const reduceMotion = usePrefersReducedMotion();
   const [deleting, setDeleting] = useState(false);
   const { t, locale, setLocale, locales, localeLabels } = useTranslation();
+  const soundsHint = useA11yHint(t("settings.soundsA11yHint"));
+  const hapticsHint = useA11yHint(t("settings.hapticsA11yHint"));
+  const deleteHint = useA11yHint(t("settings.deleteAccountA11yHint"));
 
   async function handleDeleteAccount() {
     setDeleting(true);
@@ -236,9 +239,9 @@ export function SettingsModal({ visible, onClose }: Props) {
               thumbColor={soundsEnabled ? Colors.white : Colors.textMuted}
               accessibilityRole="switch"
               accessibilityLabel={t("settings.soundsA11yLabel")}
-              {...a11yHint(t("settings.soundsA11yHint"))}
+              {...soundsHint.props}
             />
-            <A11yHintText hint={t("settings.soundsA11yHint")} />
+            {soundsHint.node}
           </View>
 
           <View style={styles.stackRow}>
@@ -330,9 +333,9 @@ export function SettingsModal({ visible, onClose }: Props) {
                 thumbColor={hapticsEnabled ? Colors.white : Colors.textMuted}
                 accessibilityRole="switch"
                 accessibilityLabel={t("settings.hapticsA11yLabel")}
-                {...a11yHint(t("settings.hapticsA11yHint"))}
+                {...hapticsHint.props}
               />
-              <A11yHintText hint={t("settings.hapticsA11yHint")} />
+              {hapticsHint.node}
             </View>
           )}
 
@@ -374,7 +377,7 @@ export function SettingsModal({ visible, onClose }: Props) {
             onPress={confirmDelete}
             disabled={deleting}
             accessibilityLabel={t("settings.deleteAccount")}
-            {...a11yHint(t("settings.deleteAccountA11yHint"))}
+            {...deleteHint.props}
             {...a11yState({ role: "button", disabled: deleting, busy: deleting })}
             style={({ pressed }) => [
               styles.deleteBtn,
@@ -382,7 +385,7 @@ export function SettingsModal({ visible, onClose }: Props) {
               deleting && styles.deleteBtnDisabled,
             ]}
           >
-            <A11yHintText hint={t("settings.deleteAccountA11yHint")} />
+            {deleteHint.node}
             <Text style={styles.deleteBtnText}>
               {deleting ? t("settings.deleting") : t("settings.deleteAccount")}
             </Text>

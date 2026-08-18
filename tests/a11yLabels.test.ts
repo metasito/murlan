@@ -4,8 +4,7 @@
 // true; react-native-web renders a role-less View as a bare <div>, whose
 // implicit ARIA role is `generic`, for which a name is prohibited. So an
 // `accessibilityLabel` on a layout container is in the DOM and in no
-// accessibility tree — which is why the table's whole spoken state reached no
-// screen reader for as long as it existed.
+// accessibility tree.
 //
 // A container that cannot take `accessible` without collapsing its own
 // controls into one unreachable leaf must hand the sentence to an

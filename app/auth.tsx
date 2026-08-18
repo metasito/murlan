@@ -17,12 +17,14 @@ import { MenuLayout } from "@/components/MenuLayout";
 import { MenuCard } from "@/components/MenuCard";
 import { MenuButton } from "@/components/MenuButton";
 import { useTranslation, translateServerPayload } from "@/lib/i18n";
-import { A11yHintText, a11yHint, a11yState } from "@/lib/a11y";
+import { a11yState, useA11yHint } from "@/lib/a11y";
 
 type Tab = "login" | "register";
 
 export default function AuthScreen() {
   const { t } = useTranslation();
+  const usernameHint = useA11yHint(t("auth.usernameA11yHint"));
+  const passwordHint = useA11yHint(t("auth.passwordA11yHint"));
   const { login, register } = useAuth();
   const [tab, setTab] = useState<Tab>("login");
   const [username, setUsername] = useState("");
@@ -121,9 +123,9 @@ export default function AuthScreen() {
                     returnKeyType="next"
                     onSubmitEditing={() => pwdRef.current?.focus()}
                     accessibilityLabel={t("auth.usernameA11yLabel")}
-                    {...a11yHint(t("auth.usernameA11yHint"))}
+                    {...usernameHint.props}
                   />
-                  <A11yHintText hint={t("auth.usernameA11yHint")} />
+                  {usernameHint.node}
                 </View>
               </View>
 
@@ -145,9 +147,9 @@ export default function AuthScreen() {
                     returnKeyType="done"
                     onSubmitEditing={handleSubmit}
                     accessibilityLabel={t("auth.passwordA11yLabel")}
-                    {...a11yHint(t("auth.passwordA11yHint"))}
+                    {...passwordHint.props}
                   />
-                  <A11yHintText hint={t("auth.passwordA11yHint")} />
+                  {passwordHint.node}
                   <Pressable
                     onPress={() => setShowPwd((v) => !v)}
                     style={styles.eyeBtn}

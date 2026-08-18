@@ -26,7 +26,7 @@ import { Colors, FontSize, Highlight, Motion, Radius, Shadow, Spacing } from '@/
 import { usePrefersReducedMotion } from "@/lib/accessibility";
 import { useTranslation } from "@/lib/i18n";
 import { cardSpokenName } from "@/lib/cardNames";
-import { A11yHintText, a11yHint } from "@/lib/a11y";
+import { useA11yHint } from "@/lib/a11y";
 
 interface ExchangeModalProps {
   phase: ExchangePhase;
@@ -73,6 +73,7 @@ function SelectableCard({
   reduceMotion: boolean;
 }) {
   const { t } = useTranslation();
+  const giveHint = useA11yHint(t("exchangeModal.giveCardA11yHint"));
   // Lift and tip rather than scale: this wraps a CardView, whose rank
   // characters are rasterised text and go soft the moment they are resampled.
   const lift = useSharedValue(0);
@@ -116,9 +117,9 @@ function SelectableCard({
       onPressOut={() => setPress(false)}
       accessibilityRole="button"
       accessibilityLabel={cardSpokenName(card, t)}
-      {...a11yHint(t("exchangeModal.giveCardA11yHint"))}
+      {...giveHint.props}
     >
-      <A11yHintText hint={t("exchangeModal.giveCardA11yHint")} />
+      {giveHint.node}
       <Animated.View style={anim}>
         <Animated.View pointerEvents="none" style={[styles.cardGlow, glowStyle]} />
         <View style={styles.cardItem}>
@@ -164,6 +165,7 @@ export function ExchangeModal({
     <Modal
       transparent
       visible
+      accessibilityLabel={t("exchangeModal.title")}
       supportedOrientations={["portrait", "landscape"]}
       onRequestClose={() => {}}
     >

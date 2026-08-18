@@ -1,7 +1,6 @@
-// tests/fontScaling.test.ts — allowFontScaling and maxFontSizeMultiplier
-// appeared nowhere in this repo, so every fontSize on the game table was
-// multiplied by the OS text setting — up to ~3.1x on iOS's Larger
-// Accessibility Sizes — while width, height and lineHeight were not.
+// tests/fontScaling.test.ts — React Native multiplies every fontSize by the OS
+// text setting, up to ~3.1x on iOS's Larger Accessibility Sizes, and leaves
+// width, height and lineHeight alone.
 //
 // The table is built entirely from fixed boxes: CARD_W x CARD_H with
 // overflow:"hidden", TOP_BAR_H, the avatar discs. At 200% the rank glyph is a
@@ -25,13 +24,17 @@ const FIXED_GEOMETRY = [
 ];
 
 const TEXT_TAG = /<(Text|Animated\.Text)(?=[\s>])([^>]*)/g;
+const COMMENT = /\/\*[\s\S]*?\*\/|\/\/[^\n]*/g;
 
 /** `line: tag` for every Text in `source` that will grow past its box. */
 export function uncappedText(source: string): string[] {
   const out: string[] = [];
-  for (const m of source.matchAll(TEXT_TAG)) {
+  // Prose that names a <Text> is not a <Text>. Blanking comments in place
+  // keeps the line numbers the reader is given.
+  const code = source.replace(COMMENT, (c) => c.replace(/[^\n]/g, " "));
+  for (const m of code.matchAll(TEXT_TAG)) {
     if (m[2].includes("maxFontSizeMultiplier")) continue;
-    out.push(`${source.slice(0, m.index).split("\n").length}: <${m[1]}>`);
+    out.push(`${code.slice(0, m.index).split("\n").length}: <${m[1]}>`);
   }
   return out;
 }

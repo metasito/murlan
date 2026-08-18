@@ -281,7 +281,7 @@ export interface GameTableProps {
 
 // ─── Turn countdown ───────────────────────────────────────────────────────────
 //
-// Its own component so the once-a-second tick re-renders a single <Text maxFontSizeMultiplier={TABLE_FONT_SCALE_MAX}> and
+// Its own component so the once-a-second tick re-renders a single <Text> and
 // not the whole board — which, with hands of up to 27 cards, matters.
 
 function TurnTimer({
@@ -1427,12 +1427,13 @@ export function GameTable({
       {overlays}
 
       {/* A Modal, not a scrim: covering the pixels leaves every control
-          beneath it in the tab order, so a player who rotated to portrait
-          could still reach GIOCA and play a card they cannot see. Rotating
-          back is the only way out, so onRequestClose is inert. */}
+          beneath it in the tab order. Rotating back is the only way out, so
+          onRequestClose is inert. */}
+      {W < H && (
       <Modal
         transparent
-        visible={W < H}
+        visible
+        accessibilityLabel="Ruota il dispositivo"
         supportedOrientations={["portrait", "landscape"]}
         onRequestClose={() => {}}
       >
@@ -1446,6 +1447,7 @@ export function GameTable({
           </View>
         </View>
       </Modal>
+      )}
     </Animated.View>
   );
 }
@@ -1476,7 +1478,7 @@ const styles = StyleSheet.create({
   },
   topBarRight: { flexDirection: "row", alignItems: "center", gap: Spacing.xs },
   quitBtn: {
-    width: 32, height: 32, borderRadius: 16,
+    width: TOUCH_TARGET_MIN, height: TOUCH_TARGET_MIN, borderRadius: TOUCH_TARGET_MIN / 2,
     backgroundColor: Scrim.medium,
     alignItems: "center", justifyContent: "center",
   },

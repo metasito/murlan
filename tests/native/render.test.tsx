@@ -103,9 +103,7 @@ describe('NotificationBanner', () => {
     await view.unmount();
   });
 
-  // The close button used to sit inside the alert. A focusable control inside
-  // a live region is invalid, and the enclosing pressable swallowed taps meant
-  // for it.
+  // A focusable control inside a live region is invalid.
   it('keeps the close button out of the alert', async () => {
     const view = await render(
       withSafeArea(

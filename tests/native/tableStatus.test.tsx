@@ -1,9 +1,7 @@
 // tests/native/tableStatus.test.tsx — describeTableForA11y builds the whole
-// spoken state of the table, and for as long as it existed it was attached to
-// a layout container with no `accessible` and no role, which is an
-// accessibility element on no platform. A blind player could hear their own
-// cards and nothing else: not whose turn it is, not what is on the pile, not
-// how many cards anyone holds.
+// spoken state of the table: whose turn it is, what is on the pile, how many
+// cards each seat holds. It has to reach an accessibility element, which a
+// layout container with no `accessible` and no role is on no platform.
 import { describe, it, expect, jest } from '@jest/globals';
 import React from 'react';
 import { render, screen } from '@testing-library/react-native';

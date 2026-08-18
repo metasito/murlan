@@ -1128,14 +1128,13 @@ export const sharedStyles = StyleSheet.create({
   sideRight: { flexDirection: "row-reverse" },
   sideOppAvatarCol: { alignItems: "center", gap: 3, marginHorizontal: 6 },
 
-  // The same plate the count bubble already uses. On the raw felt the name
-  // measures 3.43:1 at the top of the gradient, which is where the top seat
-  // renders.
+  // The count bubble's plate. The top seat renders in the felt gradient's
+  // lightest band, where textMuted alone does not clear AA.
   oppName: {
     fontFamily: "Rajdhani_600SemiBold",
     fontSize: 10,
     color: Colors.textMuted,
-    maxWidth: 70,
+    maxWidth: 70 + Spacing.xs * 2,
     textAlign: "center",
     backgroundColor: Colors.overlayStrong,
     borderRadius: Radius.sm,
@@ -1241,9 +1240,8 @@ export const sharedStyles = StyleSheet.create({
     justifyContent: "center",
     minHeight: 80,
   },
-  // An opaque-enough dark plate, not a gold wash: gold on gold over the felt
-  // measures 2.49-4.31:1 depending on where the gradient is under it. The
-  // border is where the chip's identity lives.
+  // A dark plate, not a gold wash: gold on gold over the felt clears AA at no
+  // stop of any felt. The border is where the chip's identity lives.
   winnerTag: {
     position: "absolute",
     top: -28,

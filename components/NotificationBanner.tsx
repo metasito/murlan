@@ -1,4 +1,4 @@
-import React, { useEffect } from "react";
+import React, { useEffect, useState } from "react";
 import { View, Text, StyleSheet, Pressable, Platform, useWindowDimensions } from "react-native";
 import Animated, {
   useSharedValue,
@@ -14,7 +14,7 @@ import { Colors, Spacing, Radius, Type, Shadow } from "@/lib/theme";
 import { usePrefersReducedMotion } from "@/lib/accessibility";
 import { useTranslation } from "@/lib/i18n";
 import type { NotificationType, NotificationData } from "@/context/NotificationContext";
-import { A11yHintText, a11yHint } from "@/lib/a11y";
+import { useA11yHint } from "@/lib/a11y";
 
 export type { NotificationType, NotificationData };
 
@@ -56,6 +56,8 @@ const TOP_GAP = 8;
 
 export default function NotificationBanner({ notification, onDismiss }: Props) {
   const { t } = useTranslation();
+  const dismissHint = useA11yHint(t("notificationBanner.dismissA11yHint"));
+  const [pressed, setPressed] = useState(false);
   const insets = useSafeAreaInsets();
   const { width, height } = useWindowDimensions();
   const translateY = useSharedValue(-120);
@@ -120,19 +122,20 @@ export default function NotificationBanner({ notification, onDismiss }: Props) {
       testID="notification-banner"
       style={[styles.container, { top: topOffset + TOP_GAP, pointerEvents: notification ? "box-none" as const : "none" as const }, animStyle]}
     >
-      <View style={[styles.banner, { borderLeftColor: color }]}>
-        {/* The alert is the body, not the row: a close button nested inside a
-            live region is invalid, and the outer pressable swallowed taps
-            meant for it. */}
+      <View style={[styles.banner, { borderLeftColor: color }, pressed && styles.bannerPressed]}>
+        {/* The alert is the body, not the row: a focusable close button inside
+            a live region is invalid. */}
         <Pressable
           onPress={handlePress}
-          style={({ pressed }) => [styles.body, pressed && styles.bannerPressed]}
+          onPressIn={() => setPressed(true)}
+          onPressOut={() => setPressed(false)}
+          style={styles.body}
           accessibilityRole="alert"
           accessibilityLiveRegion={notification ? "polite" : "none"}
           accessibilityLabel={a11yLabel}
-          {...a11yHint(t("notificationBanner.dismissA11yHint"))}
+          {...dismissHint.props}
         >
-          <A11yHintText hint={t("notificationBanner.dismissA11yHint")} />
+          {dismissHint.node}
           <View style={[styles.iconCircle, { backgroundColor: color + "22" }]}>
             <Ionicons name={icon} size={20} color={color} />
           </View>

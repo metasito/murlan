@@ -21,10 +21,12 @@ import { MenuLayout } from "@/components/MenuLayout";
 import { MenuCard } from "@/components/MenuCard";
 import { MenuButton } from "@/components/MenuButton";
 import { useTranslation } from "@/lib/i18n";
-import { A11yHintText, a11yHidden, a11yHint, a11yState } from "@/lib/a11y";
+import { a11yHidden, a11yState, useA11yHint } from "@/lib/a11y";
 
 export default function OnlineLobbyScreen() {
   const { t } = useTranslation();
+  const roomCodeHint = useA11yHint(t("onlineLobby.roomCodeA11yHint"));
+  const watchHint = useA11yHint(t("onlineLobby.watchA11yHint"));
   const { width: W, height: H } = useWindowDimensions();
   const { user } = useAuth();
   const { createRoom, joinRoom, spectateRoom, room, gameState, isSpectator, connected, error, clearError } = useOnlineGame();
@@ -293,9 +295,9 @@ export default function OnlineLobbyScreen() {
                   autoFocus={true}
                   maxLength={8}
                   accessibilityLabel={t("onlineLobby.roomCodeA11yLabel")}
-                  {...a11yHint(t("onlineLobby.roomCodeA11yHint"))}
+                  {...roomCodeHint.props}
                 />
-                <A11yHintText hint={t("onlineLobby.roomCodeA11yHint")} />
+                {roomCodeHint.node}
               </MenuCard>
               <View style={styles.modalRow}>
                 <Pressable
@@ -311,10 +313,10 @@ export default function OnlineLobbyScreen() {
                   disabled={joinCode.length < 4}
                   style={({ pressed }) => [styles.modalCancelBtn, pressed && { opacity: 0.85 }]}
                   accessibilityLabel={t("onlineLobby.watch")}
-                  {...a11yHint(t("onlineLobby.watchA11yHint"))}
+                  {...watchHint.props}
                   {...a11yState({ role: "button", disabled: joinCode.length < 4 })}
                 >
-                  <A11yHintText hint={t("onlineLobby.watchA11yHint")} />
+                  {watchHint.node}
                   <Text style={styles.modalCancelText}>{t("onlineLobby.watch")}</Text>
                 </Pressable>
                 <Pressable

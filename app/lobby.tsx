@@ -18,11 +18,11 @@ import { useGame, PlayerSetupConfig } from "@/context/GameContext";
 import { useAuth } from "@/context/AuthContext";
 import { GameMode, MatchLength, MATCH_TARGETS } from "@/lib/gameEngine";
 import { BOT_PERSONALITIES, botBlurbKey, botSeatNames, getBotPersonality } from "@/lib/botPersonalities";
-import { Colors, Spacing, Radius, FontSize, Type } from '@/lib/theme';
+import { Colors, Spacing, Radius, FontSize, TOUCH_TARGET_MIN, Type } from '@/lib/theme';
 import { MenuLayout } from "@/components/MenuLayout";
 import { MenuButton } from "@/components/MenuButton";
 import { useTranslation } from "@/lib/i18n";
-import { A11yHintText, a11yHint, a11yState } from "@/lib/a11y";
+import { a11yState, useA11yHint } from "@/lib/a11y";
 
 type LobbyMode = "ai" | "local";
 
@@ -36,6 +36,7 @@ interface PlayerRowProps {
 
 function PlayerRow({ index, config, onChange, isHuman, lobbyMode }: PlayerRowProps) {
   const { t } = useTranslation();
+  const aiNameHint = useA11yHint(t("lobby.aiNameA11yHint"));
   const isAI = config.type === "ai";
   const personality = getBotPersonality(config.personality);
 
@@ -70,16 +71,16 @@ function PlayerRow({ index, config, onChange, isHuman, lobbyMode }: PlayerRowPro
       <View style={styles.playerInfo}>
         {lobbyMode === "local" && !isHuman ? (
           <>
-          <TextInput
-            value={config.name}
-            onChangeText={(newName) => onChange({ ...config, name: newName })}
-            style={styles.nameInput}
-            placeholderTextColor={Colors.textMuted}
-            maxLength={12}
-            accessibilityLabel={t("lobby.aiNameA11yLabel")}
-            {...a11yHint(t("lobby.aiNameA11yHint"))}
-          />
-          <A11yHintText hint={t("lobby.aiNameA11yHint")} />
+            <TextInput
+              value={config.name}
+              onChangeText={(newName) => onChange({ ...config, name: newName })}
+              style={styles.nameInput}
+              placeholderTextColor={Colors.textMuted}
+              maxLength={12}
+              accessibilityLabel={t("lobby.aiNameA11yLabel")}
+              {...aiNameHint.props}
+            />
+            {aiNameHint.node}
           </>
         ) : (
           <Text style={styles.playerName}>{config.name}</Text>
@@ -546,6 +547,7 @@ const styles = StyleSheet.create({
     letterSpacing: 0.5,
   },
   personalityBtn: {
+    minHeight: TOUCH_TARGET_MIN,
     flexDirection: "row",
     alignItems: "center",
     gap: 4,
