@@ -1318,8 +1318,10 @@ const styles = StyleSheet.create({
     ...Shadow.dark,
   },
   // The armed bloom, as a childless sibling behind the button: the glow is
-  // fixed and only this view's opacity is animated. The border radius is what
-  // gives it an outline for Android's elevation to cast from.
+  // fixed and only this view's opacity is animated. The fill is what the
+  // shadow is cast from — a layer with transparent contents has nothing for
+  // iOS to blur and gives Android's elevation no outline — and the button's
+  // own gradient covers it exactly, so only the spill is ever seen.
   playBtnGlow: {
     position: "absolute",
     top: 0,
@@ -1327,6 +1329,7 @@ const styles = StyleSheet.create({
     right: 0,
     bottom: 0,
     borderRadius: Radius.md,
+    backgroundColor: Colors.gold,
     ...Shadow.gold,
   },
   playBtnDim: { opacity: 0.55 },

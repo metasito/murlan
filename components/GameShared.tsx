@@ -1009,7 +1009,9 @@ export const sharedTableStyles = StyleSheet.create({
   },
   // The turn pulse, as a textless childless sibling behind the hand: the glow
   // and the hairline along the top edge are fixed, and useTurnPulse animates
-  // only this view's opacity.
+  // only this view's opacity. The wash and the hairline are what the shadow is
+  // cast from — a layer with transparent contents has nothing for iOS to blur
+  // and gives Android's elevation no outline.
   handGlow: {
     position: "absolute",
     top: 0,
@@ -1018,7 +1020,8 @@ export const sharedTableStyles = StyleSheet.create({
     bottom: 0,
     borderRadius: Radius.md,
     borderTopWidth: 1,
-    borderTopColor: Colors.goldBorder,
+    borderTopColor: Colors.goldStrong,
+    backgroundColor: Colors.goldGhost,
     ...Shadow.goldSoft,
   },
 });
