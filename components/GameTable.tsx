@@ -16,6 +16,7 @@ import {
   Text,
   StyleSheet,
   Pressable,
+  Modal,
   Platform,
   useWindowDimensions,
 } from "react-native";
@@ -1424,7 +1425,16 @@ export function GameTable({
 
       {overlays}
 
-      {W < H && (
+      {/* A Modal, not a scrim: covering the pixels leaves every control
+          beneath it in the tab order, so a player who rotated to portrait
+          could still reach GIOCA and play a card they cannot see. Rotating
+          back is the only way out, so onRequestClose is inert. */}
+      <Modal
+        transparent
+        visible={W < H}
+        supportedOrientations={["portrait", "landscape"]}
+        onRequestClose={() => {}}
+      >
         <View style={portraitOverlayStyles.overlay}>
           <View style={portraitOverlayStyles.card}>
             <Ionicons name="phone-landscape-outline" size={56} color={Colors.gold} />
@@ -1434,7 +1444,7 @@ export function GameTable({
             </Text>
           </View>
         </View>
-      )}
+      </Modal>
     </Animated.View>
   );
 }
