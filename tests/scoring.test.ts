@@ -6,6 +6,7 @@ import {
   addHandScores,
   nextMatchTarget,
   resolveMatch,
+  resolveTeamMatch,
   scoreHand,
 } from "./helpers.ts";
 
@@ -88,6 +89,22 @@ describe("resolveMatch", () => {
     assert.equal(result?.isDraw, true);
     assert.equal(result?.newTarget, null);
     assert.deepEqual(result?.winners.sort(), ["a", "b"]);
+  });
+
+  test("a clear leader at the final target is a win, not a draw", () => {
+    assert.deepEqual(resolveMatch({ a: 53, b: 51 }, 51), {
+      winners: ["a"],
+      newTarget: null,
+      isDraw: false,
+    });
+  });
+
+  test("a team ahead at the final target wins with both partners named", () => {
+    const teamOfKey = { a: "A", c: "A", b: "B", d: "B" };
+    const result = resolveTeamMatch({ a: 28, c: 25, b: 26, d: 25 }, teamOfKey, 51);
+    assert.equal(result?.isDraw, false);
+    assert.equal(result?.newTarget, null);
+    assert.deepEqual(result?.winners.sort(), ["a", "c"]);
   });
 
   test("a single player reaching 51 still wins outright", () => {

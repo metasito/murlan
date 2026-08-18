@@ -1147,7 +1147,8 @@ export function nextMatchTarget(target: number): number | null {
  * - Nobody at the target yet          → null (keep playing to the same target)
  * - Exactly one player at the target  → { winners: [id], newTarget: null }
  * - Two or more at the target         → escalate: { winners: [], newTarget }
- * - Two or more at the final target   → { winners: [tied ids], isDraw: true }
+ * - One player alone at the final target → an ordinary win
+ * - Two or more sharing the top score  → { winners: [tied ids], isDraw: true }
  */
 export function resolveMatch(
   cumulative: Record<string, number>,
@@ -1167,13 +1168,9 @@ export function resolveMatch(
     return { winners: [], newTarget: escalated, isDraw: false };
   }
 
-  // Final target reached by more than one player — the match is a draw.
   const best = Math.max(...reached.map((id) => cumulative[id]));
-  return {
-    winners: reached.filter((id) => cumulative[id] === best),
-    newTarget: null,
-    isDraw: true,
-  };
+  const winners = reached.filter((id) => cumulative[id] === best);
+  return { winners, newTarget: null, isDraw: winners.length > 1 };
 }
 
 /**
