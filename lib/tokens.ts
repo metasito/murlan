@@ -144,6 +144,13 @@ export const Spacing = {
 // `hitSlop` counts toward it on both platforms and on the web.
 export const TOUCH_TARGET_MIN = 44;
 
+// The game table is built from fixed boxes — CARD_W/CARD_H, TOP_BAR_H, the
+// avatar discs — and React Native scales `fontSize` by the OS text setting
+// (up to ~3.1x on iOS) while leaving `width`, `height` and `lineHeight` alone.
+// Capping degrades; `allowFontScaling={false}` would refuse. The menus scroll
+// and stay fully scalable.
+export const TABLE_FONT_SCALE_MAX = 1.2;
+
 export const Radius = {
   sm: 8, md: 12, lg: 20, xl: 32, full: 9999,
 };

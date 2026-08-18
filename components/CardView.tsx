@@ -17,6 +17,7 @@ import {
   Motion,
   Radius,
   Shadow,
+  TABLE_FONT_SCALE_MAX,
 } from "@/lib/theme";
 import { useCardBack } from "@/lib/cosmetics";
 import { usePrefersReducedMotion } from "@/lib/accessibility";
@@ -585,7 +586,7 @@ function CardViewBase({
         />
         <CardFaceArt card={card} color={color} w={w} h={h} compact={small} />
         {!small && COURT_RANKS.has(card.rank) && <CourtArt card={card} w={w} h={h} />}
-        <Text
+        <Text maxFontSizeMultiplier={TABLE_FONT_SCALE_MAX}
           style={[
             styles.rankText,
             small ? styles.rankTextSmall : styles.rankTextNormal,
@@ -596,7 +597,7 @@ function CardViewBase({
         >
           {rankText}
         </Text>
-        <Text
+        <Text maxFontSizeMultiplier={TABLE_FONT_SCALE_MAX}
           style={[
             styles.rankText,
             small ? styles.rankTextSmall : styles.rankTextNormal,

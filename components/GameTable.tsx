@@ -112,7 +112,7 @@ import {
 } from "@/lib/sounds";
 import { hapticError, hapticHeavy, hapticLight, hapticMedium, hapticSelection, hapticSuccess, hapticWarn } from "@/lib/haptics";
 import { usePrefersReducedMotion } from "@/lib/accessibility";
-import { Colors, FontSize, Highlight, Motion, Radius, Scrim, Shadow, Spacing, TOUCH_TARGET_MIN, Type } from "@/lib/theme";
+import { Colors, FontSize, Highlight, Motion, Radius, Scrim, Shadow, Spacing, TABLE_FONT_SCALE_MAX, TOUCH_TARGET_MIN, Type } from "@/lib/theme";
 import { useTableFelt } from "@/lib/cosmetics";
 import { A11yStatus, a11yHidden, a11yState } from "@/lib/a11y";
 
@@ -281,7 +281,7 @@ export interface GameTableProps {
 
 // ─── Turn countdown ───────────────────────────────────────────────────────────
 //
-// Its own component so the once-a-second tick re-renders a single <Text> and
+// Its own component so the once-a-second tick re-renders a single <Text maxFontSizeMultiplier={TABLE_FONT_SCALE_MAX}> and
 // not the whole board — which, with hands of up to 27 cards, matters.
 
 function TurnTimer({
@@ -335,7 +335,7 @@ function TurnTimer({
         color={urgent ? Colors.red : Colors.gold}
         {...a11yHidden()}
       />
-      <Text
+      <Text maxFontSizeMultiplier={TABLE_FONT_SCALE_MAX}
         style={[styles.timerNum, urgent && styles.timerUrgent]}
         accessibilityLiveRegion="polite"
         accessibilityLabel={tn("gameTable.a11ySecondsLeft", timeLeft)}
@@ -374,13 +374,13 @@ function RematchPromptPanel({
       style={[styles.rematchPanel, { top, left }]}
     >
       {answered ? (
-        <Text style={styles.rematchTally} accessibilityLiveRegion="polite">
+        <Text maxFontSizeMultiplier={TABLE_FONT_SCALE_MAX} style={styles.rematchTally} accessibilityLiveRegion="polite">
           {tally}
         </Text>
       ) : (
         <>
-          <Text style={styles.rematchTitle}>{t("gameTable.rematchPromptTitle")}</Text>
-          <Text style={styles.rematchSubtitle}>{t("gameTable.rematchPromptSubtitle")}</Text>
+          <Text maxFontSizeMultiplier={TABLE_FONT_SCALE_MAX} style={styles.rematchTitle}>{t("gameTable.rematchPromptTitle")}</Text>
+          <Text maxFontSizeMultiplier={TABLE_FONT_SCALE_MAX} style={styles.rematchSubtitle}>{t("gameTable.rematchPromptSubtitle")}</Text>
           <View style={styles.rematchButtons}>
             <Pressable
               testID="btn-rematch-yes"
@@ -392,7 +392,7 @@ function RematchPromptPanel({
               accessibilityRole="button"
               accessibilityLabel={t("gameTable.rematchYesA11yLabel")}
             >
-              <Text style={styles.rematchChoiceYesLabel}>{t("gameTable.rematchYes")}</Text>
+              <Text maxFontSizeMultiplier={TABLE_FONT_SCALE_MAX} style={styles.rematchChoiceYesLabel}>{t("gameTable.rematchYes")}</Text>
             </Pressable>
             <Pressable
               testID="btn-rematch-no"
@@ -404,10 +404,10 @@ function RematchPromptPanel({
               accessibilityRole="button"
               accessibilityLabel={t("gameTable.rematchNoA11yLabel")}
             >
-              <Text style={styles.rematchChoiceLabel}>{t("gameTable.rematchNo")}</Text>
+              <Text maxFontSizeMultiplier={TABLE_FONT_SCALE_MAX} style={styles.rematchChoiceLabel}>{t("gameTable.rematchNo")}</Text>
             </Pressable>
           </View>
-          <Text style={styles.rematchTally}>{tally}</Text>
+          <Text maxFontSizeMultiplier={TABLE_FONT_SCALE_MAX} style={styles.rematchTally}>{tally}</Text>
         </>
       )}
     </Animated.View>
@@ -1103,7 +1103,7 @@ export function GameTable({
 
         <View style={styles.topBarRight}>
           <View style={styles.cardCountBadge}>
-            <Text style={styles.cardCountText}>{sortedHand.length}</Text>
+            <Text maxFontSizeMultiplier={TABLE_FONT_SCALE_MAX} style={styles.cardCountText}>{sortedHand.length}</Text>
           </View>
           {topBarExtra}
         </View>
@@ -1182,8 +1182,8 @@ export function GameTable({
             <View style={sharedTableStyles.centerSection}>
               {showStartCardBanner ? (
                 <View style={styles.startCardBanner}>
-                  <Text style={styles.startCardGlyph}>♠</Text>
-                  <Text style={styles.startCardText}>
+                  <Text maxFontSizeMultiplier={TABLE_FONT_SCALE_MAX} style={styles.startCardGlyph}>♠</Text>
+                  <Text maxFontSizeMultiplier={TABLE_FONT_SCALE_MAX} style={styles.startCardText}>
                     {gameState.currentTurnIndex === viewerSeat
                       ? t("gameTable.startCardBannerSelf", { rank: gameState.startCard!.rank })
                       : t("gameTable.startCardBannerOther", {
@@ -1251,7 +1251,7 @@ export function GameTable({
                   pointerEvents="none"
                   style={[StyleSheet.absoluteFill, styles.btnFlash, passaFlashStyle]}
                 />
-                <Text
+                <Text maxFontSizeMultiplier={TABLE_FONT_SCALE_MAX}
                   style={[styles.passBtnLabel, !canPass && styles.passBtnLabelDim]}
                 >
                   {t("gameTable.passLabel")}
@@ -1263,7 +1263,7 @@ export function GameTable({
             {isFinished ? (
               <View style={styles.finishedRow}>
                 <Ionicons name="trophy" size={18} color={Colors.gold} />
-                <Text style={styles.finishedText}>{t("gameTable.waitingOthers")}</Text>
+                <Text maxFontSizeMultiplier={TABLE_FONT_SCALE_MAX} style={styles.finishedText}>{t("gameTable.waitingOthers")}</Text>
               </View>
             ) : (
               // The wrapper carries no `accessible`, which would hide the
@@ -1318,14 +1318,14 @@ export function GameTable({
                       pointerEvents="none"
                       style={[StyleSheet.absoluteFill, styles.btnFlash, giocaFlashStyle]}
                     />
-                    <Text style={styles.playBtnLabel}>{t("gameTable.playLabelGioca")}</Text>
+                    <Text maxFontSizeMultiplier={TABLE_FONT_SCALE_MAX} style={styles.playBtnLabel}>{t("gameTable.playLabelGioca")}</Text>
                     {selectedIds.length > 1 && (
-                      <Text style={styles.playBtnSub}>{t("gameTable.selectedCountSuffix", { n: selectedIds.length })}</Text>
+                      <Text maxFontSizeMultiplier={TABLE_FONT_SCALE_MAX} style={styles.playBtnSub}>{t("gameTable.selectedCountSuffix", { n: selectedIds.length })}</Text>
                     )}
                   </LinearGradient>
                 ) : (
                   <View style={[styles.playBtnGrad, styles.playBtnGradDim]}>
-                    <Text style={styles.playBtnLabelDim} numberOfLines={2}>
+                    <Text maxFontSizeMultiplier={TABLE_FONT_SCALE_MAX} style={styles.playBtnLabelDim} numberOfLines={2}>
                       {t(PLAY_LABEL_KEYS[dimLabel], { rank: startCardRank })}
                     </Text>
                   </View>
@@ -1413,7 +1413,7 @@ export function GameTable({
             },
           ]}
         >
-          <Text
+          <Text maxFontSizeMultiplier={TABLE_FONT_SCALE_MAX}
             style={styles.rejectHintText}
             numberOfLines={2}
             accessibilityLiveRegion="polite"
@@ -1438,8 +1438,8 @@ export function GameTable({
         <View style={portraitOverlayStyles.overlay}>
           <View style={portraitOverlayStyles.card}>
             <Ionicons name="phone-landscape-outline" size={56} color={Colors.gold} />
-            <Text style={portraitOverlayStyles.title}>Ruota il dispositivo</Text>
-            <Text style={portraitOverlayStyles.sub}>
+            <Text maxFontSizeMultiplier={TABLE_FONT_SCALE_MAX} style={portraitOverlayStyles.title}>Ruota il dispositivo</Text>
+            <Text maxFontSizeMultiplier={TABLE_FONT_SCALE_MAX} style={portraitOverlayStyles.sub}>
               Il gioco richiede la modalità orizzontale
             </Text>
           </View>

@@ -17,7 +17,7 @@ import Animated, {
 import Ionicons from "@expo/vector-icons/Ionicons";
 import { LinearGradient } from "expo-linear-gradient";
 import { CardView } from "@/components/CardView";
-import { Colors, FontSize, Highlight, Motion, Radius, Scrim, Shadow, Spacing } from "@/lib/theme";
+import { Colors, FontSize, Highlight, Motion, Radius, Scrim, Shadow, Spacing, TABLE_FONT_SCALE_MAX } from "@/lib/theme";
 import { useTableFelt } from "@/lib/cosmetics";
 import { usePrefersReducedMotion } from "@/lib/accessibility";
 import { useTranslation, type TranslationKey } from "@/lib/i18n";
@@ -258,7 +258,7 @@ export function AvatarCircle({
             { width: size, height: size, borderRadius: size / 2 },
           ]}
         >
-          <Text style={[sharedStyles.avatarInitials, { fontSize: size * 0.36 }]}>
+          <Text maxFontSizeMultiplier={TABLE_FONT_SCALE_MAX} style={[sharedStyles.avatarInitials, { fontSize: size * 0.36 }]}>
             {initials}
           </Text>
         </LinearGradient>
@@ -269,7 +269,7 @@ export function AvatarCircle({
           {finishPos !== undefined ? (
             <Ionicons name="trophy" size={8} color={Colors.gold} />
           ) : (
-            <Text style={sharedStyles.countBubbleText}>{cardCount}</Text>
+            <Text maxFontSizeMultiplier={TABLE_FONT_SCALE_MAX} style={sharedStyles.countBubbleText}>{cardCount}</Text>
           )}
         </View>
       </View>
@@ -294,7 +294,7 @@ function BotSeatBadge() {
         color={Colors.gold}
         {...a11yHidden()}
       />
-      <Text style={sharedStyles.botBadgeText}>{t("onlineGame.botSeatLabel")}</Text>
+      <Text maxFontSizeMultiplier={TABLE_FONT_SCALE_MAX} style={sharedStyles.botBadgeText}>{t("onlineGame.botSeatLabel")}</Text>
     </View>
   );
 }
@@ -310,7 +310,7 @@ function PassedChip() {
   const { t } = useTranslation();
   return (
     <View style={sharedStyles.passedChip}>
-      <Text style={sharedStyles.passedChipText}>{t("gameShared.passedLabel")}</Text>
+      <Text maxFontSizeMultiplier={TABLE_FONT_SCALE_MAX} style={sharedStyles.passedChipText}>{t("gameShared.passedLabel")}</Text>
     </View>
   );
 }
@@ -353,7 +353,7 @@ export function TopOppSlot({
             finishPos={player.finishPosition}
             size={42}
           />
-          <Text style={sharedStyles.oppName} numberOfLines={1}>
+          <Text maxFontSizeMultiplier={TABLE_FONT_SCALE_MAX} style={sharedStyles.oppName} numberOfLines={1}>
             {player.name}
           </Text>
           <SeatBadges passed={passed} isBot={player.type === "ai"} />
@@ -402,7 +402,7 @@ export function SideOppSlot({
           finishPos={player.finishPosition}
           size={40}
         />
-        <Text style={sharedStyles.oppName} numberOfLines={1}>
+        <Text maxFontSizeMultiplier={TABLE_FONT_SCALE_MAX} style={sharedStyles.oppName} numberOfLines={1}>
           {player.name}
         </Text>
         <SeatBadges passed={passed} isBot={player.type === "ai"} />
@@ -618,7 +618,7 @@ export function PlayedPile({
           style={sharedStyles.winnerTag}
         >
           <Ionicons name="star" size={9} color={Colors.gold} />
-          <Text style={sharedStyles.winnerText}>{roundWinner}</Text>
+          <Text maxFontSizeMultiplier={TABLE_FONT_SCALE_MAX} style={sharedStyles.winnerText}>{roundWinner}</Text>
         </Animated.View>
       )}
 
@@ -636,7 +636,7 @@ export function PlayedPile({
       {current && (
         <View style={sharedStyles.comboLabel}>
           <View style={[sharedStyles.comboChip, isPower && sharedStyles.comboChipPower]}>
-            <Text style={[sharedStyles.comboChipText, isPower && sharedStyles.comboChipTextPower]}>
+            <Text maxFontSizeMultiplier={TABLE_FONT_SCALE_MAX} style={[sharedStyles.comboChipText, isPower && sharedStyles.comboChipTextPower]}>
               {isPower ? "✦ " : ""}
               {COMBO_LABEL_KEYS[current.type] ? t(COMBO_LABEL_KEYS[current.type]) : current.type}
               {current.cards.length > 2 ? t("gameShared.comboMultiplier", { count: current.cards.length }) : ""}
@@ -831,7 +831,7 @@ export function StraightHand({
     return (
       <View style={[sharedStyles.handCenter, { width: availW }]}>
         <Ionicons name="checkmark-circle" size={24} color={Colors.gold} />
-        <Text style={sharedStyles.emptyHandText}>{t("gameShared.emptyHand")}</Text>
+        <Text maxFontSizeMultiplier={TABLE_FONT_SCALE_MAX} style={sharedStyles.emptyHandText}>{t("gameShared.emptyHand")}</Text>
       </View>
     );
   }
@@ -944,11 +944,11 @@ export function StartReasonBanner({
         maxWidth: 420,
         gap: 2,
       }}>
-        <Text style={{ fontFamily: "Rajdhani_600SemiBold", fontSize: 14, color: Colors.gold, letterSpacing: 0.5, textAlign: "center" }}>
+        <Text maxFontSizeMultiplier={TABLE_FONT_SCALE_MAX} style={{ fontFamily: "Rajdhani_600SemiBold", fontSize: 14, color: Colors.gold, letterSpacing: 0.5, textAlign: "center" }}>
           {mainText}
         </Text>
         {subText ? (
-          <Text style={{ fontFamily: "Inter_400Regular", fontSize: FontSize.xs, color: Colors.textSecondary, textAlign: "center" }}>
+          <Text maxFontSizeMultiplier={TABLE_FONT_SCALE_MAX} style={{ fontFamily: "Inter_400Regular", fontSize: FontSize.xs, color: Colors.textSecondary, textAlign: "center" }}>
             {subText}
           </Text>
         ) : null}
@@ -1383,15 +1383,15 @@ export function GameBillboard({
 
   return (
     <View style={billboardStyles.container}>
-      <Text style={billboardStyles.comboLabel} numberOfLines={1}>
+      <Text maxFontSizeMultiplier={TABLE_FONT_SCALE_MAX} style={billboardStyles.comboLabel} numberOfLines={1}>
         {currentComboLabel ?? t("gameShared.emptyTable")}
       </Text>
       <View style={billboardStyles.bottomRow}>
-        <Text style={billboardStyles.roundLabel} numberOfLines={1}>{roundLabel}</Text>
+        <Text maxFontSizeMultiplier={TABLE_FONT_SCALE_MAX} style={billboardStyles.roundLabel} numberOfLines={1}>{roundLabel}</Text>
         {isLocalPlayerTurn && (
-          <Animated.Text style={[billboardStyles.turnDot, dotStyle]}>●</Animated.Text>
+          <Animated.Text maxFontSizeMultiplier={TABLE_FONT_SCALE_MAX} style={[billboardStyles.turnDot, dotStyle]}>●</Animated.Text>
         )}
-        <Text
+        <Text maxFontSizeMultiplier={TABLE_FONT_SCALE_MAX}
           style={[
             billboardStyles.turnLabel,
             isLocalPlayerTurn && billboardStyles.turnLabelActive,
