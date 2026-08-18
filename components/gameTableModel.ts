@@ -1,23 +1,27 @@
 // Pure logic behind the one shared game table (components/GameTable.tsx).
 //
-// This file is deliberately JSX-free and free of *runtime* imports, for the
-// same reason components/handLayout.ts is: Node's built-in TypeScript loader
-// (`node --test tests/**/*.test.ts`) only type-strips plain .ts source — it
-// cannot parse a .tsx file, and it cannot resolve the `@/` bundler alias at
-// runtime. Type-only imports are erased before resolution, so they are safe;
-// a value import from "@/lib/gameEngine" would break the test suite.
+// This file is deliberately JSX-free, for the same reason components/handLayout.ts
+// is: Node's built-in TypeScript loader (`node --test tests/**/*.test.ts`) only
+// type-strips plain .ts source — it cannot parse a .tsx file, and it cannot
+// resolve the `@/` bundler alias at runtime. A runtime import must therefore be
+// relative and carry its .ts extension; `@/` is safe only in a type-only import,
+// which is erased before resolution.
 
 import type { Card, Combination, GameState, Player } from "@/lib/gameEngine";
+import { CARD_H } from "./cardFaceModel.ts";
+import { WEB_BOTTOM_PAD, WEB_TOP_PAD } from "../lib/tokens.ts";
 
 // ─── Layout constants ─────────────────────────────────────────────────────────
 //
 // CLAUDE.md marks these as MUST NOT CHANGE: both game screens are laid out
 // around them, and changing one without the other silently breaks a screen.
-// They are defined here (rather than in GameShared.tsx, which re-exports them
-// unchanged) so tests/gameTableModel.test.ts can pin their values and so the
-// frame maths below can use them directly.
+// The card dimensions belong to cardFaceModel.ts, which draws the card, and the
+// web pads to lib/tokens.ts, which the menus also read; the rest are defined
+// here (rather than in GameShared.tsx, which re-exports them unchanged) so
+// tests/gameTableModel.test.ts can pin their values and so the frame maths
+// below can use them directly.
 
-export const CARD_H = 84;
+export { CARD_H, WEB_BOTTOM_PAD, WEB_TOP_PAD };
 export const BTN_W = 84;
 export const BTN_H = 84;
 export const SIDE_BTN_W = 62;
@@ -26,10 +30,6 @@ export const TABLE_M = 4;
 export const SIDE_SECTION_W = 130;
 export const TOP_SECTION_H = 70;
 export const HAND_SECTION_H = CARD_H + 16;
-
-/** Web has no usable safe-area insets; both screens used these fixed pads. */
-export const WEB_TOP_PAD = 67;
-export const WEB_BOTTOM_PAD = 34;
 
 // ─── Seating ──────────────────────────────────────────────────────────────────
 

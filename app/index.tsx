@@ -28,7 +28,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useAuth } from "@/context/AuthContext";
 import { useGame } from "@/context/GameContext";
 import { usePrefersReducedMotion } from "@/lib/accessibility";
-import { Colors, TOUCH_TARGET_MIN } from '@/lib/theme';
+import { Colors, TOUCH_TARGET_MIN, WEB_BOTTOM_PAD, WEB_TOP_PAD } from '@/lib/theme';
 import { useTranslation } from "@/lib/i18n";
 import { SettingsModal } from "@/components/SettingsModal";
 import { a11yState } from "@/lib/a11y";
@@ -319,8 +319,8 @@ export default function HomeScreen() {
     opacity: subtitleOpacity.value,
   }));
 
-  const topPad = Platform.OS === "web" ? 67 : insets.top;
-  const bottomPad = Platform.OS === "web" ? 34 : insets.bottom;
+  const topPad = Platform.OS === "web" ? WEB_TOP_PAD : insets.top;
+  const bottomPad = Platform.OS === "web" ? WEB_BOTTOM_PAD : insets.bottom;
   const leftPad = isLandscape ? (Platform.OS === "web" ? 0 : insets.left) : 0;
   const rightPad = isLandscape ? (Platform.OS === "web" ? 0 : insets.right) : 0;
 

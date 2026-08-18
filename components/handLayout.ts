@@ -6,8 +6,9 @@
 // .tsx file's JSX ("Unknown file extension \".tsx\""). Keep this file free of
 // JSX and of any import from a .tsx file, or the test suite breaks.
 
-/** Width of a full-size card. Mirrors CardView.tsx `styles.cardNormal.width`. Re-exported from GameShared.tsx as the canonical `CARD_W`. */
-export const CARD_W = 58;
+import { CARD_W } from "./cardFaceModel.ts";
+
+export { CARD_W };
 
 // ─── Minimum overlap step ──────────────────────────────────────────────────
 //

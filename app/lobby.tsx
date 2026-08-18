@@ -18,7 +18,7 @@ import { useGame, PlayerSetupConfig } from "@/context/GameContext";
 import { useAuth } from "@/context/AuthContext";
 import { GameMode, MatchLength, targetsFor, teamForSeat } from "@/lib/gameEngine";
 import { BOT_PERSONALITIES, botBlurbKey, botSeatNames, getBotPersonality } from "@/lib/botPersonalities";
-import { Colors, Spacing, Radius, FontSize, TOUCH_TARGET_MIN, Type } from '@/lib/theme';
+import { Colors, Spacing, Radius, FontSize, TOUCH_TARGET_MIN, Type, WEB_BOTTOM_PAD } from '@/lib/theme';
 import { MenuLayout } from "@/components/MenuLayout";
 import { MenuButton } from "@/components/MenuButton";
 import { useTranslation } from "@/lib/i18n";
@@ -124,7 +124,7 @@ const FORMAT_OPTIONS: readonly MatchLength[] = ["match", "single"];
 export default function LobbyScreen() {
   const insets = useSafeAreaInsets();
   const { t } = useTranslation();
-  const bottomInset = Platform.OS === "web" ? 34 : insets.bottom;
+  const bottomInset = Platform.OS === "web" ? WEB_BOTTOM_PAD : insets.bottom;
   const { width: W, height: H } = useWindowDimensions();
   const isLandscape = W > H;
   const { mode } = useLocalSearchParams<{ mode: LobbyMode }>();

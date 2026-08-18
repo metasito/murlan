@@ -43,6 +43,11 @@ Verify against source before changing any.
 - **Hooks before the null guard** in both game screens — every hook runs before
   `if (!gameState) return null`.
 - **A card appears exactly once** in flight/`pileState` — never twice, never zero times.
+- **`CARD_W`/`CARD_H` are declared once**, in `components/cardFaceModel.ts`; `handLayout.ts`,
+  `gameTableModel.ts` and `GameShared.tsx` re-export them, and the web inset substitutes
+  `WEB_TOP_PAD`/`WEB_BOTTOM_PAD` come from `lib/tokens.ts`. `tests/gameTableModel.test.ts`
+  source-scans for a second declaration — pinning the value cannot find one, because a copy
+  holds the same number.
 - **Impact feedback is timed to the card landing**, not the throw. 312ms of flight separates
   them.
 - **Design tokens are used in the role they were named for.** A fill or border token used as
