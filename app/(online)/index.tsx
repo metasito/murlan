@@ -5,7 +5,6 @@ import {
   StyleSheet,
   Pressable,
   TextInput,
-  Alert,
   ScrollView,
   useWindowDimensions,
   KeyboardAvoidingView,
@@ -17,7 +16,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { useOnlineGame } from "@/context/OnlineGameContext";
 import { useAuth } from "@/context/AuthContext";
 import { useSocket } from "@/context/SocketContext";
-import { Colors, Spacing, FontSize, Type } from '@/lib/theme';
+import { Colors, Spacing, FontSize, Radius, Type } from '@/lib/theme';
 import { MenuLayout } from "@/components/MenuLayout";
 import { MenuCard } from "@/components/MenuCard";
 import { MenuButton } from "@/components/MenuButton";
@@ -27,7 +26,7 @@ export default function OnlineLobbyScreen() {
   const { t } = useTranslation();
   const { width: W, height: H } = useWindowDimensions();
   const { user } = useAuth();
-  const { createRoom, joinRoom, spectateRoom, room, connected, error, clearError } = useOnlineGame();
+  const { createRoom, joinRoom, spectateRoom, room, gameState, isSpectator, connected, error, clearError } = useOnlineGame();
   const { pendingInvite, clearInvite } = useSocket();
   const [joinModalVisible, setJoinModalVisible] = useState(false);
   const [joinCode, setJoinCode] = useState("");
@@ -43,11 +42,14 @@ export default function OnlineLobbyScreen() {
     // eslint-disable-next-line react-hooks/exhaustive-deps -- navigate once per room id, not on every room field update
   }, [room?.roomId]);
 
+  // The table a spectate asked for, once the server has actually sent it. Four
+  // refusals answer `room:spectate` with a `room:error` and no state at all, so
+  // the request alone is not enough to leave the lobby on — and the refusal is
+  // rendered here, where nothing on the game screen would show it.
+  const watching = isSpectator && gameState !== null;
   useEffect(() => {
-    if (error) {
-      Alert.alert(t("common.error"), error, [{ text: t("common.ok"), onPress: clearError }]);
-    }
-  }, [error, clearError, t]);
+    if (watching) router.push("/(online)/game");
+  }, [watching]);
 
   useEffect(() => {
     if (pendingInvite) {
@@ -76,7 +78,6 @@ export default function OnlineLobbyScreen() {
     spectateRoom(joinCode.trim().toUpperCase());
     setJoinModalVisible(false);
     setJoinCode("");
-    router.push("/(online)/game");
   }
 
   // `flex: 1` is for the landscape row, where the two sections share the width.
@@ -193,6 +194,30 @@ export default function OnlineLobbyScreen() {
         <Text style={styles.screenTitle}>{t("onlineLobby.title")}</Text>
         <View style={{ width: 38 }} />
       </View>
+
+      {/* In the layout flow, not over it: an absolutely positioned banner comes
+          to rest on the create button and swallows its taps. `Alert` is not an
+          option — react-native-web implements it as a no-op. */}
+      {error && (
+        <View style={styles.errorBanner} accessibilityRole="alert">
+          <Ionicons name="alert-circle" size={16} color={Colors.white} />
+          <Text style={styles.errorBannerText}>{error}</Text>
+          <Pressable
+            onPress={clearError}
+            hitSlop={12}
+            accessibilityRole="button"
+            accessibilityLabel={t("common.close")}
+          >
+            <Ionicons
+              name="close"
+              size={16}
+              color={Colors.white}
+              accessibilityElementsHidden
+              importantForAccessibility="no-hide-descendants"
+            />
+          </Pressable>
+        </View>
+      )}
 
       {isLandscape ? (
         <View style={[styles.body, styles.bodyLandscape]}>
@@ -324,6 +349,21 @@ const styles = StyleSheet.create({
     ...Type.heading,
     fontSize: FontSize.xl,
     letterSpacing: 3,
+  },
+  errorBanner: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: Spacing.sm,
+    backgroundColor: Colors.dangerScrim,
+    borderRadius: Radius.md,
+    paddingHorizontal: Spacing.md,
+    paddingVertical: Spacing.sm,
+    marginBottom: Spacing.sm,
+  },
+  errorBannerText: {
+    ...Type.body,
+    color: Colors.white,
+    flex: 1,
   },
   body: { gap: 24 },
   bodyLandscape: { gap: 16, flex: 1 },

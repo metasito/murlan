@@ -291,6 +291,7 @@ export const it = {
 
   // -------------------------------------------------------------- onlineGame.*
   "onlineGame.reconnecting": "Connessione persa — riconnessione…",
+  "onlineGame.connecting": "In attesa del tavolo…",
   "onlineGame.playerLeftTitle": "Partita interrotta",
   "onlineGame.playerLeftBody": "Un giocatore ha abbandonato la partita.",
   "onlineGame.rejoinFailedTitle": "Rientro non riuscito",

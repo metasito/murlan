@@ -301,6 +301,7 @@ export const sq: Record<keyof typeof it, string> = {
 
   // -------------------------------------------------------------- onlineGame.*
   "onlineGame.reconnecting": "Lidhja u humb — po rilidhet…",
+  "onlineGame.connecting": "Në pritje të tavolinës…",
   "onlineGame.playerLeftTitle": "Loja u ndërpre",
   "onlineGame.playerLeftBody": "Një lojtar u largua nga loja.",
   "onlineGame.rejoinFailedTitle": "Rikthimi dështoi",

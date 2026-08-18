@@ -275,6 +275,7 @@ export const en: Record<keyof typeof it, string> = {
 
   // -------------------------------------------------------------- onlineGame.*
   "onlineGame.reconnecting": "Connection lost — reconnecting…",
+  "onlineGame.connecting": "Waiting for the table…",
   "onlineGame.playerLeftTitle": "Game interrupted",
   "onlineGame.playerLeftBody": "A player has left the game.",
   "onlineGame.rejoinFailedTitle": "Could not rejoin",
