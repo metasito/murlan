@@ -36,7 +36,11 @@ export default defineConfig({
   webServer: {
     command: `node ${JSON.stringify(require("path").resolve(__dirname, "../../scripts/e2e-server.mjs"))}`,
     url: BASE_URL,
-    reuseExistingServer: !process.env.CI,
+    // A stale server on this port — even one hours old, serving an old bundle
+    // — answers the health check and gets adopted, so a run can pass having
+    // exercised nothing. `E2E_SKIP_BUILD=1` (scripts/e2e-server.mjs) is the
+    // explicit local fast path when a fresh server is genuinely not needed.
+    reuseExistingServer: false,
     timeout: 3 * 60_000,
     env: {
       E2E_PORT: PORT,
