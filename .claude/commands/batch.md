@@ -60,6 +60,10 @@ command once, then push. Do not re-review the branch because you changed it; a s
 warranted only if a fix touched code the first review never saw. A batch whose edits total a few
 hundred lines should not spend most of its wall-clock re-proving work that already passed.
 
+- **Comment discipline is a hard rule here, not a preference** — see `CLAUDE.md` § Comments.
+  The default is no comment. Do not explain the defect you just fixed: that belongs in the commit
+  message and the finding entry. 23% of everything the first seven batches added to this repo was
+  a comment; do not add to it.
 - **Do not improvise.** Each finding's "Proposed fix" names files and approach. If you think one
   is wrong, stop and say so — do not substitute your own.
 - **Check § Treatment per batch in PROGRESS.md first.** It says how many dispatches this batch
