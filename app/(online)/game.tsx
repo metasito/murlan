@@ -407,9 +407,6 @@ const styles = StyleSheet.create({
   connectingAction: { width: CONNECTING_ACTION_W, maxWidth: "100%" },
 
   reconnectBanner: {
-    position: "absolute",
-    top: 2,
-    alignSelf: "center",
     flexDirection: "row",
     alignItems: "center",
     gap: 6,
@@ -417,7 +414,6 @@ const styles = StyleSheet.create({
     borderRadius: Radius.md,
     paddingHorizontal: 12,
     paddingVertical: 5,
-    zIndex: 50,
   },
   reconnectBannerText: {
     fontFamily: "Inter_500Medium",
