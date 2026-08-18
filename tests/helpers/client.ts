@@ -26,7 +26,14 @@ export async function register(
   // as the third arg would consume the stream every time and leave nothing
   // for a later `res.json()` call.
   const text = await res.text();
-  assert.equal(res.status, 200, text);
+  assert.equal(
+    res.status,
+    200,
+    res.status === 429
+      ? `register(${username}) hit the /api/auth/register cap — raise ` +
+          `MURLAN_AUTH_RATE_LIMIT in tests/helpers/testServer.ts: ${text}`
+      : text
+  );
   const cookie = res.headers.get("set-cookie");
   assert.ok(cookie, "register() response must set a session cookie");
   return { user: JSON.parse(text), cookie };

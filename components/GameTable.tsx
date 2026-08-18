@@ -19,6 +19,7 @@ import {
   Modal,
   Platform,
   useWindowDimensions,
+  type ViewStyle,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import Animated, {
@@ -30,6 +31,8 @@ import Animated, {
   cancelAnimation,
   Easing,
   FadeIn,
+  type SharedValue,
+  type AnimatedStyle,
 } from "react-native-reanimated";
 import { LinearGradient } from "expo-linear-gradient";
 import * as ScreenOrientation from "expo-screen-orientation";
@@ -423,6 +426,164 @@ function RematchPromptPanel({
   );
 }
 
+// ─── GIOCA / PASSA ────────────────────────────────────────────────────────────
+//
+// Press feedback (a discrete gradient swap plus a whole-pixel travel) needs
+// its own React state — split into their own components so pressing either
+// button re-renders just that button, not the whole table.
+
+function GiocaButton({
+  valid,
+  reduceMotion,
+  rejectX,
+  flashStyle,
+  glowStyle,
+  onPress,
+  a11yLabel,
+  dimLabel,
+  startCardRank,
+  selectedCount,
+}: {
+  valid: boolean;
+  reduceMotion: boolean;
+  /** Owned by GameTable — driven by handlePlay's reject shake, not by press. */
+  rejectX: SharedValue<number>;
+  flashStyle: AnimatedStyle<ViewStyle>;
+  glowStyle: AnimatedStyle<ViewStyle>;
+  onPress: () => void;
+  a11yLabel: string;
+  dimLabel: PlayButtonLabel;
+  startCardRank: string;
+  selectedCount: number;
+}) {
+  const { t } = useTranslation();
+  const [pressed, setPressed] = useState(false);
+  const pressVal = useSharedValue(0);
+
+  useEffect(() => () => cancelAnimation(pressVal), [pressVal]);
+
+  const setPress = (down: boolean) => {
+    if (!valid) return;
+    setPressed(down);
+    pressVal.value = reduceMotion
+      ? down ? 1 : 0
+      : withTiming(down ? 1 : 0, { duration: Motion.duration.fast });
+  };
+
+  const pressStyle = useAnimatedStyle(() => ({
+    transform: [
+      { translateY: pressVal.value * BTN_PRESS_TRAVEL },
+      { translateX: rejectX.value },
+    ],
+  }));
+
+  return (
+    <Animated.View style={[styles.playBtn, !valid && styles.playBtnDim, pressStyle]}>
+      {valid && (
+        <Animated.View pointerEvents="none" style={[styles.playBtnGlow, glowStyle]} />
+      )}
+      <Pressable
+        testID="btn-gioca"
+        onPress={onPress}
+        onPressIn={() => setPress(true)}
+        onPressOut={() => setPress(false)}
+        style={styles.playBtnInner}
+        accessibilityLabel={a11yLabel}
+        {...a11yState({ role: "button", disabled: !valid })}
+      >
+        {valid ? (
+          <LinearGradient
+            colors={pressed ? GIOCA_GRADIENT_PRESSED : GIOCA_GRADIENT}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 0.35, y: 1 }}
+            style={styles.playBtnGrad}
+          >
+            <View pointerEvents="none" style={styles.btnTopHighlight} />
+            <Animated.View
+              pointerEvents="none"
+              style={[StyleSheet.absoluteFill, styles.btnFlash, flashStyle]}
+            />
+            <Text maxFontSizeMultiplier={TABLE_FONT_SCALE_MAX} style={styles.playBtnLabel}>{t("gameTable.playLabelGioca")}</Text>
+            {selectedCount > 1 && (
+              <Text maxFontSizeMultiplier={TABLE_FONT_SCALE_MAX} style={styles.playBtnSub}>{t("gameTable.selectedCountSuffix", { n: selectedCount })}</Text>
+            )}
+          </LinearGradient>
+        ) : (
+          <View style={[styles.playBtnGrad, styles.playBtnGradDim]}>
+            <Text maxFontSizeMultiplier={TABLE_FONT_SCALE_MAX} style={styles.playBtnLabelDim} numberOfLines={2}>
+              {t(PLAY_LABEL_KEYS[dimLabel], { rank: startCardRank })}
+            </Text>
+          </View>
+        )}
+      </Pressable>
+    </Animated.View>
+  );
+}
+
+function PassaButton({
+  canPass,
+  reduceMotion,
+  flashStyle,
+  onPress,
+  a11yLabel,
+}: {
+  canPass: boolean;
+  reduceMotion: boolean;
+  flashStyle: AnimatedStyle<ViewStyle>;
+  onPress: () => void;
+  a11yLabel: string;
+}) {
+  const { t } = useTranslation();
+  const [pressed, setPressed] = useState(false);
+  const pressVal = useSharedValue(0);
+
+  useEffect(() => () => cancelAnimation(pressVal), [pressVal]);
+
+  const setPress = (down: boolean) => {
+    if (!canPass) return;
+    setPressed(down);
+    pressVal.value = reduceMotion
+      ? down ? 1 : 0
+      : withTiming(down ? 1 : 0, { duration: Motion.duration.fast });
+  };
+
+  const pressStyle = useAnimatedStyle(() => ({
+    transform: [{ translateY: pressVal.value * BTN_PRESS_TRAVEL }],
+  }));
+
+  return (
+    <Animated.View style={[styles.passBtn, !canPass && styles.passBtnDim, pressStyle]}>
+      <Pressable
+        testID="btn-passa"
+        onPress={onPress}
+        onPressIn={() => setPress(true)}
+        onPressOut={() => setPress(false)}
+        disabled={!canPass}
+        style={styles.passBtnInner}
+        accessibilityLabel={a11yLabel}
+        {...a11yState({ role: "button", disabled: !canPass })}
+      >
+        <LinearGradient
+          colors={pressed ? PASS_GRADIENT_PRESSED : PASS_GRADIENT}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 0.35, y: 1 }}
+          style={StyleSheet.absoluteFill}
+        />
+        <View pointerEvents="none" style={styles.btnTopHighlight} />
+        <Animated.View
+          pointerEvents="none"
+          style={[StyleSheet.absoluteFill, styles.btnFlash, flashStyle]}
+        />
+        <Text maxFontSizeMultiplier={TABLE_FONT_SCALE_MAX}
+          style={[styles.passBtnLabel, !canPass && styles.passBtnLabelDim]}
+        >
+          {t("gameTable.passLabel")}
+        </Text>
+      </Pressable>
+    </Animated.View>
+  );
+}
+
 // ─── GameTable ────────────────────────────────────────────────────────────────
 
 export function GameTable({
@@ -499,15 +660,6 @@ export function GameTable({
   // a counter so tapping again restarts the dwell instead of being swallowed as
   // an unchanged value.
   const [rejectHint, setRejectHint] = useState<{ key: number; text: string } | null>(null);
-
-  // Real press feedback for the two most-pressed controls in the game,
-  // matching components/MenuButton.tsx: a discrete gradient swap (React
-  // state, since gradient `colors` arrays cannot be interpolated) plus a
-  // whole-pixel travel driven by a shared value.
-  const [giocaPressed, setGiocaPressed] = useState(false);
-  const [passaPressed, setPassaPressed] = useState(false);
-  const giocaPressVal = useSharedValue(0);
-  const passaPressVal = useSharedValue(0);
 
   // ── Derived view of the game ────────────────────────────────────────────────
 
@@ -950,46 +1102,19 @@ export function GameTable({
   }, [canPass, reduceMotion, passaFlashVal]);
 
   // Reanimated keeps driving shared values after unmount unless cancelled.
+  // GiocaButton/PassaButton own and cancel their own press values.
   useEffect(
     () => () => {
       cancelAnimation(giocaFlashVal);
       cancelAnimation(passaFlashVal);
       cancelAnimation(shakeX);
       cancelAnimation(giocaRejectX);
-      cancelAnimation(giocaPressVal);
-      cancelAnimation(passaPressVal);
     },
-    [giocaFlashVal, passaFlashVal, shakeX, giocaRejectX, giocaPressVal, passaPressVal]
+    [giocaFlashVal, passaFlashVal, shakeX, giocaRejectX]
   );
-
-  // Guarded on the enabled flag so a disabled button (already visually dim)
-  // never also animates a press it did not accept.
-  const setGiocaPress = (down: boolean) => {
-    if (!playBtnValid) return;
-    setGiocaPressed(down);
-    giocaPressVal.value = reduceMotion
-      ? down ? 1 : 0
-      : withTiming(down ? 1 : 0, { duration: Motion.duration.fast });
-  };
-  const setPassaPress = (down: boolean) => {
-    if (!canPass) return;
-    setPassaPressed(down);
-    passaPressVal.value = reduceMotion
-      ? down ? 1 : 0
-      : withTiming(down ? 1 : 0, { duration: Motion.duration.fast });
-  };
 
   const giocaFlashStyle = useAnimatedStyle(() => ({ opacity: giocaFlashVal.value }));
   const passaFlashStyle = useAnimatedStyle(() => ({ opacity: passaFlashVal.value }));
-  const giocaPressStyle = useAnimatedStyle(() => ({
-    transform: [
-      { translateY: giocaPressVal.value * BTN_PRESS_TRAVEL },
-      { translateX: giocaRejectX.value },
-    ],
-  }));
-  const passaPressStyle = useAnimatedStyle(() => ({
-    transform: [{ translateY: passaPressVal.value * BTN_PRESS_TRAVEL }],
-  }));
   const shakeStyle = useAnimatedStyle(() => ({
     transform: [{ translateX: shakeX.value }],
   }));
@@ -1243,37 +1368,13 @@ export function GameTable({
               style={[sharedTableStyles.handGlow, turnPulseStyle]}
             />
             {!spectating && (
-            <Animated.View
-              style={[styles.passBtn, !canPass && styles.passBtnDim, passaPressStyle]}
-            >
-              <Pressable
-                testID="btn-passa"
+              <PassaButton
+                canPass={canPass}
+                reduceMotion={reduceMotion}
+                flashStyle={passaFlashStyle}
                 onPress={handlePass}
-                onPressIn={() => setPassaPress(true)}
-                onPressOut={() => setPassaPress(false)}
-                disabled={!canPass}
-                style={styles.passBtnInner}
-                accessibilityLabel={t("gameTable.passA11yLabel")}
-                {...a11yState({ role: "button", disabled: !canPass })}
-              >
-                <LinearGradient
-                  colors={passaPressed ? PASS_GRADIENT_PRESSED : PASS_GRADIENT}
-                  start={{ x: 0, y: 0 }}
-                  end={{ x: 0.35, y: 1 }}
-                  style={StyleSheet.absoluteFill}
-                />
-                <View pointerEvents="none" style={styles.btnTopHighlight} />
-                <Animated.View
-                  pointerEvents="none"
-                  style={[StyleSheet.absoluteFill, styles.btnFlash, passaFlashStyle]}
-                />
-                <Text maxFontSizeMultiplier={TABLE_FONT_SCALE_MAX}
-                  style={[styles.passBtnLabel, !canPass && styles.passBtnLabelDim]}
-                >
-                  {t("gameTable.passLabel")}
-                </Text>
-              </Pressable>
-            </Animated.View>
+                a11yLabel={t("gameTable.passA11yLabel")}
+              />
             )}
 
             {isFinished ? (
@@ -1300,54 +1401,22 @@ export function GameTable({
             )}
 
             {!spectating && (
-            <Animated.View
-              style={[styles.playBtn, !playBtnValid && styles.playBtnDim, giocaPressStyle]}
-            >
-              {playBtnValid && (
-                <Animated.View
-                  pointerEvents="none"
-                  style={[styles.playBtnGlow, giocaGlowStyle]}
-                />
-              )}
-              <Pressable
-                testID="btn-gioca"
+              <GiocaButton
+                valid={playBtnValid}
+                reduceMotion={reduceMotion}
+                rejectX={giocaRejectX}
+                flashStyle={giocaFlashStyle}
+                glowStyle={giocaGlowStyle}
                 onPress={handlePlay}
-                onPressIn={() => setGiocaPress(true)}
-                onPressOut={() => setGiocaPress(false)}
-                style={styles.playBtnInner}
-                accessibilityLabel={
+                a11yLabel={
                   playBtnValid
                     ? t("gameTable.playA11yValid")
                     : t("gameTable.playA11yUnavailable", { reason: dimReasonText })
                 }
-                {...a11yState({ role: "button", disabled: !playBtnValid })}
-              >
-                {playBtnValid ? (
-                  <LinearGradient
-                    colors={giocaPressed ? GIOCA_GRADIENT_PRESSED : GIOCA_GRADIENT}
-                    start={{ x: 0, y: 0 }}
-                    end={{ x: 0.35, y: 1 }}
-                    style={styles.playBtnGrad}
-                  >
-                    <View pointerEvents="none" style={styles.btnTopHighlight} />
-                    <Animated.View
-                      pointerEvents="none"
-                      style={[StyleSheet.absoluteFill, styles.btnFlash, giocaFlashStyle]}
-                    />
-                    <Text maxFontSizeMultiplier={TABLE_FONT_SCALE_MAX} style={styles.playBtnLabel}>{t("gameTable.playLabelGioca")}</Text>
-                    {selectedIds.length > 1 && (
-                      <Text maxFontSizeMultiplier={TABLE_FONT_SCALE_MAX} style={styles.playBtnSub}>{t("gameTable.selectedCountSuffix", { n: selectedIds.length })}</Text>
-                    )}
-                  </LinearGradient>
-                ) : (
-                  <View style={[styles.playBtnGrad, styles.playBtnGradDim]}>
-                    <Text maxFontSizeMultiplier={TABLE_FONT_SCALE_MAX} style={styles.playBtnLabelDim} numberOfLines={2}>
-                      {t(PLAY_LABEL_KEYS[dimLabel], { rank: startCardRank })}
-                    </Text>
-                  </View>
-                )}
-              </Pressable>
-            </Animated.View>
+                dimLabel={dimLabel}
+                startCardRank={startCardRank}
+                selectedCount={selectedIds.length}
+              />
             )}
           </View>
         </View>

@@ -66,11 +66,11 @@ export function MenuLayout({
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
         >
-          <View style={contentStyle}>{children}</View>
+          <View testID="menu-content" style={contentStyle}>{children}</View>
         </ScrollView>
       ) : (
         <View style={styles.fill}>
-          <View style={contentStyle}>{children}</View>
+          <View testID="menu-content" style={contentStyle}>{children}</View>
         </View>
       )}
     </View>
@@ -83,6 +83,12 @@ const styles = StyleSheet.create({
   root:     { flex: 1, backgroundColor: Colors.bg },
   fill:     { flex: 1 },
   scroll:   { flexGrow: 1 },
-  bounded:  { width: '100%', alignSelf: 'center', flexGrow: 1 },
+  // flexShrink defaults to 0 in React Native's flex model (unlike the web's
+  // default of 1), so without it this container held its children's full
+  // intrinsic height even when that exceeded the viewport — on a
+  // `scrollable={false}` screen (room.tsx, lobby.tsx, quickmatch.tsx…) that
+  // pushed the fixed footer below the fold instead of letting the screen's
+  // own inner ScrollView take the overflow.
+  bounded:  { width: '100%', alignSelf: 'center', flexGrow: 1, flexShrink: 1 },
   centered: { justifyContent: 'center', alignItems: 'center' },
 });

@@ -151,4 +151,25 @@ test("online — a room can be created on a phone in portrait", async ({ page, b
 
   const code = await createRoom(page, { playerCount: 4, gameMode: "free_for_all" });
   expect(code).toMatch(/^[A-Z0-9]{6}$/);
+
+  // UI-02: the portrait waiting room is taller than the viewport with all
+  // four seats and the invite panel present — both must be reachable by
+  // scrolling, not just present in the DOM off-screen. The room screen
+  // renders both its landscape and portrait branches at once (shown/hidden
+  // by CSS), so more than one copy of each can match.
+  const lastSeat = page.getByText("In attesa…").locator("visible=true").last();
+  await lastSeat.scrollIntoViewIfNeeded();
+  await expect(lastSeat).toBeInViewport();
+
+  const invitePanel = page.getByText("INVITA AMICI").locator("visible=true").last();
+  await invitePanel.scrollIntoViewIfNeeded();
+  await expect(invitePanel).toBeInViewport();
+
+  // The start button stays pinned outside the scroll area regardless — still
+  // "waiting for players" with three empty seats, not yet "Inizia Partita".
+  // The room screen renders both its landscape and portrait branches at
+  // once (shown/hidden by CSS), so more than one copy can match.
+  await expect(
+    page.getByRole("button", { name: "In attesa di giocatori" }).locator("visible=true").last()
+  ).toBeInViewport();
 });

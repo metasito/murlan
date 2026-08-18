@@ -62,10 +62,53 @@ function sourceFiles(): [string, string][] {
   );
 }
 
-// A style property named exactly `color`, or a JSX `color=` prop (icons take
-// their glyph colour that way). `backgroundColor:` / `borderColor:` and the
-// rest carry a capital C, so they never match.
-const TEXT_COLOUR_USE = /(?<![A-Za-z])color\s*[:=]\s*\{?\s*(Colors|Scrim|Highlight)\.([A-Za-z0-9_]+)/g;
+// A style property named exactly `color`, or a JSX `color=`/`tintColor=`/
+// `placeholderTextColor=` prop (icons and placeholders take their colour that
+// way too). `backgroundColor:` / `borderColor:` and the rest carry a capital
+// C, so they never match.
+const COLOUR_PROPERTY = /(?<![A-Za-z])(color|tintColor|placeholderTextColor)\s*[:=]\s*/g;
+
+/**
+ * The text from just after a matched property's `:`/`=` up to the top-level
+ * comma, semicolon, or enclosing closer — i.e. the whole right-hand side,
+ * not just its first token. This is what lets a ternary's untaken branch, or
+ * a JSX `{…}` expression, still be scanned.
+ */
+function captureRhs(src: string, start: number): string {
+  let depth = 0;
+  let quote = "";
+  let i = start;
+  for (; i < src.length; i++) {
+    const c = src[i];
+    if (quote) {
+      if (c === "\\") { i++; continue; }
+      if (c === quote) quote = "";
+      continue;
+    }
+    if (c === '"' || c === "'" || c === "`") { quote = c; continue; }
+    if (c === "{" || c === "(" || c === "[") { depth++; continue; }
+    if (c === "}" || c === ")" || c === "]") {
+      if (depth === 0) break;
+      depth--;
+      continue;
+    }
+    if (depth === 0 && (c === "," || c === ";")) break;
+  }
+  return src.slice(start, i);
+}
+
+/** `[line, property, palette, key]` for every fill-set token reference on a colour property's right-hand side, anywhere in it. */
+function colourPropertyTokenUses(source: string): [number, string, string, string][] {
+  const out: [number, string, string, string][] = [];
+  for (const m of source.matchAll(COLOUR_PROPERTY)) {
+    const rhs = captureRhs(source, m.index + m[0].length);
+    const line = source.slice(0, m.index).split("\n").length;
+    for (const tokenMatch of rhs.matchAll(/(Colors|Scrim|Highlight)\.([A-Za-z0-9_]+)/g)) {
+      out.push([line, m[1], tokenMatch[1], tokenMatch[2]]);
+    }
+  }
+  return out;
+}
 
 /** Font sizes below WCAG's large-text bar. 19 is 14pt bold, 24 is 18pt. */
 const LARGE_ENOUGH = 19;
@@ -92,12 +135,11 @@ describe("design tokens are used in the role they were designed for", () => {
     const offenders: string[] = [];
 
     for (const [file, src] of sourceFiles()) {
-      for (const m of src.matchAll(TEXT_COLOUR_USE)) {
-        const token = `${m[1]}.${m[2]}`;
+      for (const [line, property, palette, key] of colourPropertyTokenUses(src)) {
+        const token = `${palette}.${key}`;
         if (!fills.has(token)) continue;
-        const line = src.slice(0, m.index).split("\n").length;
-        const value = PALETTES[m[1]][m[2]];
-        offenders.push(`${file}:${line} — color: ${token} (${value})`);
+        const value = PALETTES[palette][key];
+        offenders.push(`${file}:${line} — ${property}: ${token} (${value})`);
       }
     }
 
@@ -165,9 +207,28 @@ describe("design tokens are used in the role they were designed for", () => {
     // Without this the regex could silently stop matching and the suite would
     // still be green — the exact failure mode this file exists to prevent.
     const hits = sourceFiles().reduce(
-      (n, [, src]) => n + [...src.matchAll(TEXT_COLOUR_USE)].length,
+      (n, [, src]) => n + colourPropertyTokenUses(src).length,
       0
     );
     assert.ok(hits > 20, `expected many token-driven text colours, found ${hits}`);
+  });
+
+  test("the right-hand-side scanner catches a ternary's untaken branch, tintColor and placeholderTextColor", () => {
+    assert.deepEqual(
+      colourPropertyTokenUses("{ color: active ? Colors.gold : Colors.goldMuted }").map((u) => u[3]),
+      ["gold", "goldMuted"]
+    );
+    assert.deepEqual(
+      colourPropertyTokenUses('<Icon tintColor={Colors.goldMuted} />').map((u) => u[3]),
+      ["goldMuted"]
+    );
+    assert.deepEqual(
+      colourPropertyTokenUses('<TextInput placeholderTextColor={Colors.goldMuted} />').map((u) => u[3]),
+      ["goldMuted"]
+    );
+    assert.deepEqual(
+      colourPropertyTokenUses("{ backgroundColor: Colors.goldMuted }"),
+      []
+    );
   });
 });

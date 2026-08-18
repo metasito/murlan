@@ -35,7 +35,14 @@ function sleep(ms: number): Promise<void> {
 async function tableDescription(page: Page): Promise<string | null> {
   const table = page.locator(TABLE);
   if ((await table.count()) === 0) return null;
-  return table.getAttribute("aria-label");
+  try {
+    // The table can unmount between the count() above and this read — exactly
+    // when a game ends — so a short bound lets the caller's isFinished loop
+    // re-check instead of waiting out the whole test budget.
+    return await table.getAttribute("aria-label", { timeout: CARD_CLICK_TIMEOUT_MS });
+  } catch {
+    return null;
+  }
 }
 
 function rankKeyOf(cardLabel: string): string {

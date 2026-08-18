@@ -108,8 +108,10 @@ async function checkMetroHealth() {
 async function startMetro(expoPublicDomain) {
   const isRunning = await checkMetroHealth();
   if (isRunning) {
-    console.log("Metro already running");
-    return;
+    exitWithError(
+      "A Metro server is already listening on 8081. Its EXPO_PUBLIC_* values are baked " +
+        "into the bundle and this script cannot change them. Stop it and re-run.",
+    );
   }
 
   console.log("Starting Metro...");
@@ -499,6 +501,10 @@ function updateManifests(manifests, timestamp, baseUrl, assetsByHash) {
 async function main() {
   console.log("Building static Expo Go deployment...");
 
+  if (process.env.EXPO_PUBLIC_E2E_FAST) {
+    exitWithError("EXPO_PUBLIC_E2E_FAST is set — this would ship a zero-delay build.");
+  }
+
   setupSignalHandlers();
 
   const domain = getDeploymentDomain();
@@ -527,6 +533,12 @@ async function main() {
 
   console.log("Processing assets...");
   const assets = extractAssets(timestamp);
+  if (assets.length === 0) {
+    exitWithError(
+      "Asset extraction found 0 assets — the Metro bundle format the regex at " +
+        "extractAssets() expects has changed.",
+    );
+  }
   console.log("Found", assets.length, "unique asset(s)");
 
   const assetsByHash = new Map();
@@ -537,11 +549,8 @@ async function main() {
     });
   }
 
-  const assetCount = await downloadAssets(assets, timestamp);
-
-  if (assetCount > 0) {
-    updateBundleUrls(timestamp, baseUrl);
-  }
+  await downloadAssets(assets, timestamp);
+  updateBundleUrls(timestamp, baseUrl);
 
   console.log("Updating manifests and creating landing page...");
   updateManifests(manifests, timestamp, baseUrl, assetsByHash);

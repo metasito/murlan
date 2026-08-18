@@ -43,26 +43,34 @@ function FlyingCard({
   delay,
   screenWidth,
   yOffset,
+  reduceMotion,
 }: {
   card: Card;
   toRight: boolean;
   delay: number;
   screenWidth: number;
   yOffset: number;
+  reduceMotion: boolean;
 }) {
   const tx = useSharedValue(toRight ? -80 : screenWidth + 20);
 
   useEffect(() => {
+    if (reduceMotion) return;
     tx.value = withDelay(
       delay,
       withTiming(toRight ? screenWidth + 20 : -80, { duration: FLIGHT_DURATION })
     );
     // eslint-disable-next-line react-hooks/exhaustive-deps -- one-shot mount animation; tx is a stable shared value, other props are fixed per instance
-  }, []);
+  }, [reduceMotion]);
 
   const animStyle = useAnimatedStyle(() => ({
     transform: [{ translateX: tx.value }],
   }));
+
+  // Purely decorative — the same information is announced via a11yLabel and
+  // shown as text, so skip it entirely under reduced motion rather than
+  // showing it parked at a resting frame.
+  if (reduceMotion) return null;
 
   return (
     <Animated.View
@@ -164,25 +172,24 @@ export function ExchangeAnnouncement({
           {...a11yHidden()}
         />
 
-        {/* Purely decorative flourish — the same information is announced via
-            a11yLabel and shown as text below, so skip it entirely under
-            reduced motion rather than trying to "jump" it to a resting frame. */}
-        {!reduceMotion && cardReceived && (
+        {cardReceived && (
           <FlyingCard
             card={cardReceived}
             toRight
             delay={200}
             screenWidth={screenWidth}
             yOffset={isMutual ? midY - 100 : midY - 42}
+            reduceMotion={reduceMotion}
           />
         )}
-        {!reduceMotion && cardGiven && (
+        {cardGiven && (
           <FlyingCard
             card={cardGiven}
             toRight={false}
             delay={isMutual ? 1100 : 200}
             screenWidth={screenWidth}
             yOffset={isMutual ? midY + 16 : midY - 42}
+            reduceMotion={reduceMotion}
           />
         )}
 

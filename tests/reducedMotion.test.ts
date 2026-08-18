@@ -31,6 +31,10 @@ function sourcesUnder(dir: string): string[] {
 /** Reanimated's animation builders. Any of them puts a value in motion. */
 const ANIMATES = /\bwith(Timing|Spring|Repeat|Sequence|Decay)\s*\(/;
 
+// These two are a coarse outer net, kept as a whole-file check even though
+// the per-call-site scanner below is the one that actually pins the
+// property: they still catch the wholesale removal of the hook from a file,
+// and a brand-new file that animates with no trace of it anywhere.
 test("every screen and component that animates reads the motion preference", () => {
   const offenders: string[] = [];
   for (const rel of [...sourcesUnder("app"), ...sourcesUnder("components")]) {
@@ -60,6 +64,100 @@ test("nothing loops forever without checking first", () => {
     offenders.push(rel);
   }
   assert.deepEqual(offenders, [], `endless animation with no reduced-motion path: ${offenders.join(", ")}`);
+});
+
+/** Blanks out line and block comments, preserving line numbers and string contents. */
+function stripComments(source: string): string {
+  return source.replace(/\/\/.*$|\/\*[\s\S]*?\*\//gm, (m) => m.replace(/[^\n]/g, " "));
+}
+
+/**
+ * Every top-level `{ … }` block in the source — a function/component body,
+ * a hook body, a top-level `if` — brace-balanced and skipping quoted
+ * strings, so a `{` inside a string or a JSX text node cannot desync the
+ * count. Returned with each block's start offset, since the same block text
+ * can occur more than once in a file.
+ */
+export function topLevelBlocks(source: string): { start: number; text: string }[] {
+  const blocks: { start: number; text: string }[] = [];
+  let depth = 0;
+  let quote = "";
+  let blockStart = -1;
+  for (let i = 0; i < source.length; i++) {
+    const c = source[i];
+    if (quote) {
+      if (c === "\\") { i++; continue; }
+      if (c === quote) quote = "";
+      continue;
+    }
+    if (c === '"' || c === "'" || c === "`") { quote = c; continue; }
+    if (c === "{" || c === "(" || c === "[") {
+      if (c === "{" && depth === 0) blockStart = i;
+      depth++;
+      continue;
+    }
+    if (c === "}" || c === ")" || c === "]") {
+      depth--;
+      if (c === "}" && depth === 0 && blockStart !== -1) {
+        blocks.push({ start: blockStart, text: source.slice(blockStart, i + 1) });
+        blockStart = -1;
+      }
+      continue;
+    }
+  }
+  return blocks;
+}
+
+/** One `reduceMotion`-consulting expression referenced, or the hook itself. */
+const CONSULTS_PREFERENCE = /usePrefersReducedMotion|\breduceMotion\b|\breduced\b/;
+
+/** `line: preview` for every top-level block that animates without consulting the preference in that same block. */
+export function ungatedAnimationBlocks(source: string): string[] {
+  const clean = stripComments(source);
+  const out: string[] = [];
+  for (const { start, text } of topLevelBlocks(clean)) {
+    if (!ANIMATES.test(text)) continue;
+    if (CONSULTS_PREFERENCE.test(text)) continue;
+    const line = clean.slice(0, start).split("\n").length;
+    out.push(`${line}: ${text.slice(0, 60).replace(/\s+/g, " ").trim()}…`);
+  }
+  return out;
+}
+
+// Per-call-site: a file that calls usePrefersReducedMotion once (or even
+// just mentions the name in a stray comment) exempted every animation in it
+// under the two whole-file tests above — including a second, unrelated
+// function in the same file that animates and never touches the preference.
+test("every function that animates, specifically, reads the motion preference", () => {
+  const offenders: string[] = [];
+  for (const rel of [...sourcesUnder("app"), ...sourcesUnder("components")]) {
+    const source = readFileSync(path.join(repoRoot, rel), "utf8");
+    for (const hit of ungatedAnimationBlocks(source)) {
+      offenders.push(`${rel}:${hit}`);
+    }
+  }
+  assert.deepEqual(
+    offenders,
+    [],
+    `these animate without consulting the motion preference in the same function:\n${offenders.join("\n")}`
+  );
+});
+
+test("the per-function scanner matches an unguarded animation and ignores a stray comment", () => {
+  assert.deepEqual(
+    ungatedAnimationBlocks("function A() {\n  withTiming(1);\n}\n"),
+    ["1: { withTiming(1); }…"]
+  );
+  assert.deepEqual(
+    ungatedAnimationBlocks(
+      "function A() {\n  const reduceMotion = usePrefersReducedMotion();\n  withTiming(reduceMotion ? 0 : 1);\n}\n"
+    ),
+    []
+  );
+  assert.deepEqual(
+    ungatedAnimationBlocks("// usePrefersReducedMotion is used elsewhere\nfunction A() {\n  withTiming(1);\n}\n"),
+    ["2: { withTiming(1); }…"]
+  );
 });
 
 // Reanimated's declarative layout animations are not in the regex above, and

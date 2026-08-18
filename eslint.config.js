@@ -21,6 +21,14 @@ module.exports = defineConfig([
   {
     files: ["app/**/*.{ts,tsx}", "components/**/*.{ts,tsx}", "lib/**/*.{ts,tsx}"],
     rules: {
+      // A wrong dependency array is a live-bug shape here, not a style nit —
+      // it has shipped a stale closure twice (context/OnlineGameContext.tsx,
+      // a round-winner banner). At the default "warn", `expo lint` still
+      // exits 0, so the one check that would have caught either reports
+      // nothing anyone sees. Every existing case that omits a real
+      // dependency on purpose already carries its own
+      // eslint-disable-next-line with a reason, which this does not affect.
+      "react-hooks/exhaustive-deps": "error",
       "no-restricted-syntax": [
         "error",
         {

@@ -283,3 +283,72 @@ for (const size of SIZES) {
     await expectNoBuriedControls(page, "leaderboard", 2);
   });
 }
+
+// UI-01: a plain View with no ScrollView/maxHeight overflowed the backdrop on
+// any viewport shorter than ~725pt — every phone in landscape, an iPhone SE
+// in portrait, a laptop browser window. 568pt is inside that range.
+test("settings scrolls to the delete-account button at a short viewport", async ({ page, baseURL }) => {
+  test.setTimeout(60_000);
+  await page.setViewportSize({ width: 1200, height: 568 });
+  await openApp(page, baseURL!);
+  await page.getByRole("button", { name: "Impostazioni" }).click();
+
+  const deleteBtn = page.getByRole("button", { name: "Elimina account" });
+  await deleteBtn.scrollIntoViewIfNeeded();
+  await expect(deleteBtn).toBeInViewport();
+});
+
+// UI-03: the portrait home menu had no ScrollView, so `justifyContent:
+// "center"` split the overflow across both edges — on a 375x667 iPhone SE
+// three of the seven destinations, including the last, were off-screen with
+// no way to reach them.
+test("the home menu scrolls to its last row", async ({ page, baseURL }) => {
+  test.setTimeout(60_000);
+  await page.setViewportSize({ width: 375, height: 667 });
+  await openApp(page, baseURL!);
+
+  const lastRow = page.getByRole("button", { name: "Regole & FAQ" });
+  await lastRow.scrollIntoViewIfNeeded();
+  await expect(lastRow).toBeInViewport();
+});
+
+// UI-06: MenuLayout capped its content at 800pt (components/MenuLayout.tsx
+// MENU_MAX_W) so a 1920-wide desktop browser does not stretch a menu row a
+// metre wide. Swept across the three screens the finding measured directly.
+test("every menu screen stays capped at 1920 wide", async ({ page, baseURL }) => {
+  test.setTimeout(2 * 60_000);
+  await page.setViewportSize({ width: 1920, height: 1080 });
+
+  const assertCapped = async (where: string) => {
+    // expo-router keeps prior screens mounted (display:none) during a
+    // transition, so more than one menu-content node can exist at once —
+    // the visible one is the current screen's.
+    const content = page.getByTestId("menu-content").locator("visible=true").last();
+    await expect(content, where).toBeVisible();
+    const box = await content.boundingBox();
+    expect(box, where).not.toBeNull();
+    expect(box!.width, `${where}: ${box!.width}px wide`).toBeLessThanOrEqual(840);
+  };
+
+  await openApp(page, baseURL!);
+  await page.goto(`${baseURL!}/this-route-does-not-exist`);
+  await assertCapped("not-found");
+
+  await openApp(page, baseURL!);
+  await registerNewAccount(
+    page,
+    `capw${Date.now().toString(36).slice(-6)}${Math.floor(Math.random() * 900 + 100)}`
+  );
+
+  // Profile and leaderboard are reached from the home menu, before ever
+  // visiting the online lobby.
+  await page.getByRole("button", { name: "Il mio profilo" }).click();
+  await page.waitForTimeout(1500);
+  await page.getByRole("button", { name: /classifica/i }).first().click();
+  await page.waitForTimeout(1500);
+  await assertCapped("leaderboard");
+
+  await openApp(page, baseURL!);
+  await goToOnlineLobby(page);
+  await assertCapped("online lobby");
+});

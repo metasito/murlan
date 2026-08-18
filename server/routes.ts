@@ -48,9 +48,20 @@ function readParam(res: Response, raw: unknown): string | null {
   return parsed.data;
 }
 
+/**
+ * An integration suite registers one throwaway account per seat and burns the
+ * production budget in a few tables. Read once at module scope, so a test
+ * process must set it before the app is imported — see
+ * tests/helpers/testServer.ts.
+ */
+function authMaxFromEnv(): number {
+  const parsed = Number(process.env.MURLAN_AUTH_RATE_LIMIT);
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : 20;
+}
+
 const authLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  max: 20,
+  max: authMaxFromEnv(),
   standardHeaders: true,
   legacyHeaders: false,
   message: { error: "Troppi tentativi, riprova tra 15 minuti.", code: "AUTH_RATE_LIMITED" },

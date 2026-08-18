@@ -7,8 +7,9 @@
 // exercise the exact code path the server runs.
 import { botSeatNames, getBotPersonality } from "../lib/botPersonalities.ts";
 import type { BotPersonalityId } from "../lib/botPersonalities.ts";
-import { resolveMatch, resolveTeamMatch } from "../lib/gameEngine.ts";
-import type { GameMode, MatchLength } from "../lib/gameEngine.ts";
+import { scoreHand, addHandScores, resolveMatch, resolveTeamMatch } from "../lib/gameEngine.ts";
+import type { GameState, GameMode, MatchLength } from "../lib/gameEngine.ts";
+import type { GameResult } from "../lib/achievements.ts";
 
 /**
  * seat -> userId from the persisted map, falling back to the legacy positional
@@ -293,4 +294,203 @@ export function restoredMatchOver(args: {
       ? resolveTeamMatch(scores, teamOfKey, target, playerCount)
       : resolveMatch(scores, target, playerCount);
   return !!resolution && resolution.newTarget === null;
+}
+
+export interface ResolveHandEndInput {
+  state: GameState;
+  playerMap: Record<number, string>;
+  cumulativeScores: Record<string, number>;
+  matchTarget: number;
+  matchLength: MatchLength;
+  gameMode: GameMode;
+  handFlags: HandFlags;
+  /** seat -> the userId who walked out on the hand still holding cards. */
+  abandonedSeats: Map<number, string>;
+}
+
+export interface ScoreboardRow {
+  seatIndex: number;
+  userId: string | null;
+  username: string;
+  points: number;
+  total: number;
+}
+
+export interface ResolveHandEndResult {
+  handByKey: Record<string, number>;
+  cumulativeScores: Record<string, number>;
+  matchOver: boolean;
+  matchTarget: number;
+  matchWinners: string[];
+  isDraw: boolean;
+  detailed: ScoreboardRow[];
+  byName: Record<string, number>;
+  winnerNames: string[];
+  gameResults: GameResult[];
+  /** Whether the table was contested by enough real people to record. */
+  recordable: boolean;
+}
+
+/**
+ * Everything a hand's end decides: the per-hand and cumulative scoreboard,
+ * whether the match is over (or escalates to a new target), who won, and the
+ * per-seat results stats/ratings/replays read from. Pure — server/socket.ts
+ * `handleGameOver` is left owning the broadcast, persistence and the actual
+ * (fire-and-forget) stats/ratings/replay writes.
+ */
+export function resolveHandEnd(input: ResolveHandEndInput): ResolveHandEndResult {
+  const { state, playerMap, matchLength, gameMode, handFlags, abandonedSeats } = input;
+
+  // rankings hold engine player ids ("player_0"); score by seat -> user so the
+  // scoreboard is keyed by a real identity instead of an engine id wearing a
+  // username label.
+  const seatOfEngineId = new Map<string, number>();
+  state.players.forEach((p, idx) => seatOfEngineId.set(p.id, idx));
+
+  const handByEngineId = scoreHand(state.rankings, state.players.length);
+  const handByKey: Record<string, number> = {};
+  for (const [engineId, points] of Object.entries(handByEngineId)) {
+    const seat = seatOfEngineId.get(engineId);
+    if (seat === undefined) continue;
+    handByKey[scoreKeyForSeat(playerMap, seat)] = points;
+  }
+
+  // A vacated seat is scored under `bot:<seat>` (see scoreKeyForSeat) purely
+  // so the per-hand breakdown has something to key off of. It must never
+  // accumulate towards the match, or a bot can cross the match target and be
+  // announced as the winner under the departed human's username.
+  const scorableHandByKey = excludeBotSeats(handByKey);
+  const cumulativeScores = addHandScores(input.cumulativeScores, scorableHandByKey);
+
+  let matchOver = false;
+  let matchTarget = input.matchTarget;
+  let matchWinners: string[] = [];
+  let isDraw = false;
+
+  if (matchLength === "single") {
+    // A quick game is one manche: whoever took it has won the match — and in
+    // teams mode the manche is taken by a pair, not by the seat that emptied
+    // its hand first (docs/RULES.md §11).
+    matchOver = true;
+    const topSeat = seatOfEngineId.get(state.rankings[0] ?? "");
+    const winningTeam = topSeat === undefined ? undefined : state.players[topSeat]?.team;
+    if (topSeat === undefined) {
+      matchWinners = [];
+    } else if (gameMode === "teams" && winningTeam) {
+      matchWinners = Object.entries(teamKeyMap(playerMap, state.players))
+        .filter(([, team]) => team === winningTeam)
+        .map(([key]) => key);
+    } else {
+      matchWinners = [scoreKeyForSeat(playerMap, topSeat)];
+    }
+  } else {
+    // Teams mode races to the target as a *pair* (docs/RULES.md §11: the two
+    // partners' placement points are summed), so the match must be resolved on
+    // the team total and both partners reported as winners. Free-for-all is
+    // unchanged.
+    const teamOfKey = teamKeyMap(playerMap, state.players);
+    const resolution =
+      gameMode === "teams" && Object.keys(teamOfKey).length > 0
+        ? resolveTeamMatch(cumulativeScores, teamOfKey, matchTarget, state.players.length)
+        : resolveMatch(cumulativeScores, matchTarget, state.players.length);
+    if (resolution) {
+      if (resolution.newTarget !== null) {
+        matchTarget = resolution.newTarget;
+      } else {
+        matchOver = true;
+        isDraw = resolution.isDraw;
+        matchWinners = resolution.winners;
+      }
+    }
+  }
+
+  // Wire format: the clients index the scoreboard by display name.
+  const byName: Record<string, number> = {};
+  const detailed: ScoreboardRow[] = state.players.map((p, seat) => {
+    const key = scoreKeyForSeat(playerMap, seat);
+    const total = cumulativeScores[key] ?? 0;
+    byName[p.name] = total;
+    return {
+      seatIndex: seat,
+      userId: playerMap[seat] ?? null,
+      username: p.name,
+      points: handByKey[key] ?? 0,
+      total,
+    };
+  });
+
+  const winnerNames = matchWinners
+    .map((key) => detailed.find((d) => scoreKeyForSeat(playerMap, d.seatIndex) === key)?.username)
+    .filter((n): n is string => !!n);
+
+  // Every seat carries a placement by the time a hand ends — the engine fills
+  // the remaining positions for anyone still holding cards, in both modes —
+  // so every seated player is represented in `gameResults` and counted
+  // toward `gamesPlayed`, not just the ones who actually emptied their hand.
+  const playerCount = state.players.length;
+  // How many seats actually emptied their hand this hand, read straight off
+  // the final state rather than inferred from the mode: a seat that was
+  // auto-assigned its position while still holding cards never "finished",
+  // and must not be counted as one of anyone's finished opponents.
+  const realFinisherCount = state.players.filter((p) => p.hand.length === 0).length;
+
+  // Placements are handed out from one explicit total order, not from each
+  // seat's own index in `state.rankings`: the seats that played the hand out
+  // in ranking order, then the abandoned ones behind them, ranking order kept
+  // within each group so several walkouts fill the last slots stably. That is
+  // what makes a forfeit genuinely last (docs/BRIEF.md §3.1) while every
+  // placement stays distinct — lib/rating.ts renumbers the human seats 1..n
+  // by sorting on placement, so two seats sharing one would rate a quitter
+  // ahead of a player who stayed to the end.
+  const rankedSeats = state.rankings
+    .map((engineId) => seatOfEngineId.get(engineId))
+    .filter((seat): seat is number => seat !== undefined);
+  const orderedSeats = [
+    ...rankedSeats.filter((seat) => !abandonedSeats.has(seat)),
+    ...rankedSeats.filter((seat) => abandonedSeats.has(seat)),
+  ];
+
+  const gameResults: GameResult[] = orderedSeats.map((seat, idx) => {
+    // A seat someone walked out on is that person's result, not a bot's:
+    // keyed by the userId who left, since `bot:<seat>` is filtered out of
+    // every write that reads this.
+    const abandonedBy = abandonedSeats.get(seat);
+    const key = abandonedBy ?? scoreKeyForSeat(playerMap, seat);
+    const flags = handFlags[seat] ?? { bomb: false, joker: false };
+    const emptiedOwnHand = state.players[seat].hand.length === 0;
+    return {
+      userId: key,
+      placement: idx + 1,
+      playerCount,
+      playedBomb: flags.bomb,
+      playedJoker: flags.joker,
+      matchWon: matchWinners.includes(key),
+      opponentsFinished: Math.max(realFinisherCount - (emptiedOwnHand ? 1 : 0), 0),
+      abandoned: abandonedBy !== undefined,
+    };
+  });
+
+  // Bot-filled tables stay fully playable, but nothing about them is
+  // recorded: a private room of one human plus bots would otherwise be
+  // guaranteed points and free achievements. See isContestedTable for where
+  // the line sits. A seat someone walked out on is out of playerMap, but it
+  // was a person's seat and its result is recorded as one — counting it as a
+  // bot would turn the table bot-majority and drop every write in exactly
+  // the case this gate has no business blocking.
+  const humanSeats = Object.keys(playerMap).length + abandonedSeats.size;
+  const botSeats = Math.max(playerCount - humanSeats, 0);
+
+  return {
+    handByKey,
+    cumulativeScores,
+    matchOver,
+    matchTarget,
+    matchWinners,
+    isDraw,
+    detailed,
+    byName,
+    winnerNames,
+    gameResults,
+    recordable: isContestedTable(humanSeats, botSeats),
+  };
 }

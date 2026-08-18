@@ -36,7 +36,11 @@ export default defineConfig({
   webServer: {
     command: `node ${JSON.stringify(require("path").resolve(__dirname, "../../scripts/e2e-server.mjs"))}`,
     url: BASE_URL,
-    reuseExistingServer: !process.env.CI,
+    // A stale server on this port — even one hours old, serving an old bundle
+    // — answers the health check and gets adopted, so a run can pass having
+    // exercised nothing. `E2E_SKIP_BUILD=1` (scripts/e2e-server.mjs) is the
+    // explicit local fast path when a fresh server is genuinely not needed.
+    reuseExistingServer: false,
     timeout: 3 * 60_000,
     env: {
       E2E_PORT: PORT,
@@ -47,6 +51,11 @@ export default defineConfig({
       // still well under production's 60s and only ever elapses in a test that
       // deliberately stays offline.
       MURLAN_DISCONNECT_GRACE_MS: "30000",
+      // Must exceed CARD_CLICK_TIMEOUT_MS (tests/e2e/helpers/bot.ts) times the
+      // largest card combination the driver builds — selecting cards is
+      // client-side and never resets this timer, so a selection sequence that
+      // outruns it gets auto-passed mid-selection.
+      MURLAN_AFK_TIMEOUT_MS: "30000",
     },
     stdout: "pipe",
     stderr: "pipe",

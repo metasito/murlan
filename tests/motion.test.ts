@@ -63,6 +63,11 @@ test("every spring settles", () => {
 // these were verbatim copies of a token, and two more differed from each other
 // by one unit of damping — a difference nobody can see, on the same gesture.
 // The tuning that fixed `pickup` and `land` would have missed every one.
+//
+// `damping` alone matched a literal digit only, missing a spring built from a
+// const or spread elsewhere; `dampingRatio` — Reanimated's other spring
+// config shape — was never matched at all. lib/tokens.ts is where the tokens
+// themselves are declared, so it is the one exclusion.
 test("no spring is written inline", () => {
   const sources = (dir: string): string[] => {
     const out: string[] = [];
@@ -75,9 +80,10 @@ test("no spring is written inline", () => {
   };
 
   const offenders: string[] = [];
-  for (const rel of [...sources("app"), ...sources("components")]) {
+  for (const rel of [...sources("app"), ...sources("components"), ...sources("context"), ...sources("lib")]) {
+    if (rel === "lib/tokens.ts") continue;
     const source = readFileSync(path.join(repoRoot, rel), "utf8");
-    for (const m of source.matchAll(/damping:\s*\d/g)) {
+    for (const m of source.matchAll(/damping(Ratio)?\s*:\s*/g)) {
       const line = source.slice(0, m.index).split(/\r?\n/).length;
       offenders.push(`${rel}:${line}`);
     }
@@ -89,4 +95,12 @@ test("no spring is written inline", () => {
     `these declare a spring instead of naming one: ${offenders.join(", ")}. ` +
       `Use Motion.spring.* — and if none of them fits, the design wants a new one.`
   );
+});
+
+test("the spring scanner matches damping written as a const and dampingRatio", () => {
+  const matches = (source: string) =>
+    [...source.matchAll(/damping(Ratio)?\s*:\s*/g)].length;
+  assert.equal(matches("{ damping: D, stiffness: 200 }"), 1);
+  assert.equal(matches("{ dampingRatio: 0.4 }"), 1);
+  assert.equal(matches("{ stiffness: 200 }"), 0);
 });

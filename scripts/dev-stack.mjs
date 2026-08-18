@@ -15,7 +15,10 @@
 import { execFileSync, spawnSync } from "node:child_process";
 
 const NAME = "murlan-dev-pg";
-const PORT = 55432;
+// Overridable so this container's port never collides with another Postgres
+// already holding 55432 — e.g. the integration suites' own disposable
+// container — when both need to run at once.
+const PORT = Number(process.env.MURLAN_DEV_PG_PORT ?? 55432);
 const URL = `postgres://postgres:postgres@127.0.0.1:${PORT}/murlan_dev`;
 
 const run = (cmd, args, opts = {}) =>

@@ -124,11 +124,15 @@ jobs:
         if: steps.scope.outputs.app == 'true'
         run: npm run lint
 
-      # expo:static:build is omitted: it starts a Metro server, which is too
-      # slow and flaky for a runner.
       - name: Build the web and server bundles
         if: steps.scope.outputs.app == 'true'
         run: npm run expo:web:build && npm run server:build
+
+      - name: Build the static Expo Go deployment
+        if: steps.scope.outputs.app == 'true'
+        env:
+          EXPO_PUBLIC_DOMAIN: example.invalid
+        run: npm run expo:static:build
 
       # The bundle esbuild produces is otherwise first executed by a Replit deploy.
       # /health answers only once the pool has reached Postgres.
