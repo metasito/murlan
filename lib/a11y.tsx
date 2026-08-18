@@ -69,6 +69,26 @@ export function A11yHintText({ hint }: { hint: string | undefined }) {
   );
 }
 
+/**
+ * A live status sentence for a container that cannot be `accessible` itself
+ * without collapsing its controls into one unreachable leaf. Its *text*
+ * names it, which a bare `aria-label` on a role-less `<div>` does not: that
+ * role is `generic`, for which a name is prohibited.
+ */
+export function A11yStatus({ label }: { label: string }) {
+  return (
+    <Text
+      accessible
+      accessibilityRole="text"
+      accessibilityLabel={label}
+      {...(isWeb ? { "aria-live": "polite" as const } : { accessibilityLiveRegion: "polite" as const })}
+      style={styles.srOnly}
+    >
+      {label}
+    </Text>
+  );
+}
+
 // Out of flow, one pixel, invisible — but still in the accessibility tree.
 // `display: none` and `visibility: hidden` both remove it, which is the whole
 // point of not using them.

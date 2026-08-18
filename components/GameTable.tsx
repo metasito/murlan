@@ -113,7 +113,7 @@ import { hapticError, hapticHeavy, hapticLight, hapticMedium, hapticSelection, h
 import { usePrefersReducedMotion } from "@/lib/accessibility";
 import { Colors, FontSize, Highlight, Motion, Radius, Scrim, Shadow, Spacing, Type } from "@/lib/theme";
 import { useTableFelt } from "@/lib/cosmetics";
-import { a11yHidden, a11yState } from "@/lib/a11y";
+import { A11yStatus, a11yHidden, a11yState } from "@/lib/a11y";
 
 // How long the round-winner tag stays over the pile. A domain beat, not a
 // generic UI transition, so it is not a Motion token.
@@ -1063,6 +1063,7 @@ export function GameTable({
 
   return (
     <Animated.View style={[styles.root, shakeStyle]}>
+      <A11yStatus label={tableA11yLabel} />
       <LinearGradient
         colors={[Colors.bg, Colors.feltDark, Colors.bg]}
         style={StyleSheet.absoluteFill}
@@ -1131,11 +1132,12 @@ export function GameTable({
       </View>
 
       {/* Same coordinates, overflow visible so slots and buttons can extend out.
-          accessibilityLabel carries the whole-table description a sighted
-          player gets for free from the felt (whose turn, what was last
-          played, every hand size) — deliberately without `accessible`, which
-          would collapse the PASSA/GIOCA buttons and every card underneath
-          into one unreachable leaf. */}
+          accessibilityLabel is the E2E harness's hook on the table description
+          (tests/e2e/helpers/bot.ts reads the raw attribute). Players get the
+          same sentence from the A11yStatus node above — a container without
+          `accessible` reaches no screen reader on any platform, and adding it
+          would collapse the PASSA/GIOCA buttons and every card underneath into
+          one unreachable leaf. */}
       <View
         testID="game-table"
         accessibilityLabel={tableA11yLabel}
@@ -1263,11 +1265,11 @@ export function GameTable({
                 <Text style={styles.finishedText}>{t("gameTable.waitingOthers")}</Text>
               </View>
             ) : (
-              // accessibilityLabel is a summary only (hand size + selection
-              // count) — individual cards keep their own labels from
-              // CardView.tsx, so this wrapper deliberately has no
-              // `accessible`, which would hide them behind one leaf node.
+              // The wrapper carries no `accessible`, which would hide the
+              // individual cards' own labels behind one leaf node; the summary
+              // reaches a screen reader through A11yStatus instead.
               <View accessibilityLabel={handA11yLabel}>
+                <A11yStatus label={handA11yLabel} />
                 <StraightHand
                   faceDown={spectating}
                   cards={sortedHand}
