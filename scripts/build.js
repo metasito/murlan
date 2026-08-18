@@ -108,8 +108,10 @@ async function checkMetroHealth() {
 async function startMetro(expoPublicDomain) {
   const isRunning = await checkMetroHealth();
   if (isRunning) {
-    console.log("Metro already running");
-    return;
+    exitWithError(
+      "A Metro server is already listening on 8081. Its EXPO_PUBLIC_* values are baked " +
+        "into the bundle and this script cannot change them. Stop it and re-run.",
+    );
   }
 
   console.log("Starting Metro...");
@@ -498,6 +500,10 @@ function updateManifests(manifests, timestamp, baseUrl, assetsByHash) {
 
 async function main() {
   console.log("Building static Expo Go deployment...");
+
+  if (process.env.EXPO_PUBLIC_E2E_FAST) {
+    exitWithError("EXPO_PUBLIC_E2E_FAST is set — this would ship a zero-delay build.");
+  }
 
   setupSignalHandlers();
 
