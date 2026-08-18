@@ -4,6 +4,8 @@ import assert from "node:assert/strict";
 import {
   buildCombination,
   c,
+  getAllValidPlays,
+  initializeGame,
   makePlayer,
   makeState,
   processPass,
@@ -287,4 +289,74 @@ describe("turn rotation", () => {
       }
     }
   });
+});
+
+describe("a 3-player game", () => {
+  /**
+   * Three seats is the count nothing plays through: the deal is pinned in
+   * tests/deal.test.ts and stops there, and every driver elsewhere builds a
+   * 4-seat table. The round-end threshold, the rotation and the finishing
+   * order all read the seat count.
+   */
+  test("plays from the deal to game over with every card accounted for", () => {
+    for (let game = 0; game < 25; game++) playOneOut();
+  });
+
+  function playOneOut() {
+    const state0 = initializeGame(
+      ["a", "b", "c"].map((name) => ({ name, type: "human" as const })),
+      "free_for_all"
+    );
+
+    assert.deepEqual(state0.players.map((p) => p.hand.length), [18, 18, 18]);
+    assert.ok(state0.startCard, "the opening deal names a start card");
+    assert.ok(
+      state0.players[state0.currentTurnIndex].hand.some((x) => x.id === state0.startCard!.id),
+      "the seat on turn is the one holding the start card"
+    );
+
+    const dealt = new Set(state0.players.flatMap((p) => p.hand.map((x) => x.id)));
+    assert.equal(dealt.size, 54, "the whole deck is dealt, exactly once each");
+
+    let state = state0;
+    let turns = 0;
+    while (!state.gameOver && turns < 500) {
+      turns++;
+      const seat = state.currentTurnIndex;
+      assert.ok(
+        state.players[seat].hand.length > 0,
+        `turn ${turns} landed on seat ${seat}, which has already gone out`
+      );
+
+      const isNewRound = state.lastPlayedCombination === null;
+      const plays = getAllValidPlays(
+        state.players[seat].hand,
+        isNewRound ? null : state.lastPlayedCombination,
+        isNewRound,
+        state.firstPlayMade ? undefined : state.startCard
+      );
+
+      if (plays.length === 0) {
+        assert.ok(!isNewRound, `seat ${seat} had no legal lead on turn ${turns}`);
+        state = processPass(state);
+        continue;
+      }
+      state = processPlay(state, plays[0]);
+
+      const live = state.players.flatMap((p) => p.hand.map((x) => x.id));
+      assert.equal(new Set(live).size, live.length, "a card was duplicated mid-game");
+    }
+
+    assert.ok(state.gameOver, `three seats did not finish in ${turns} turns`);
+    assert.equal(state.rankings.length, 3, "every seat is placed");
+    assert.equal(new Set(state.rankings).size, 3);
+    assert.deepEqual(
+      state.players.map((p) => p.finishPosition).sort(),
+      [1, 2, 3]
+    );
+    assert.deepEqual(
+      state.rankings,
+      [...state.players].sort((x, y) => x.finishPosition! - y.finishPosition!).map((p) => p.id)
+    );
+  }
 });
