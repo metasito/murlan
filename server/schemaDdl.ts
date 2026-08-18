@@ -40,9 +40,9 @@ function formatDefaultClause(
   if (!col.hasDefault) return undefined;
   if (col.default === undefined) {
     throw new Error(
-      `generateSchemaDdl: column "${tableName}.${col.name}" has a client-side ` +
+      `schemaStatements: column "${tableName}.${col.name}" has a client-side ` +
         `default (e.g. $defaultFn) with no DB-side default, which can't be ` +
-        `expressed as DDL — update generateSchemaDdl() in server/schemaDdl.ts.`
+        `expressed as DDL — update schemaStatements() in server/schemaDdl.ts.`
     );
   }
   if (is(col.default, SQL)) {
@@ -51,9 +51,9 @@ function formatDefaultClause(
       .map((chunk) => {
         if (!is(chunk, StringChunk)) {
           throw new Error(
-            `generateSchemaDdl: column "${tableName}.${col.name}" has a ` +
+            `schemaStatements: column "${tableName}.${col.name}" has a ` +
               `parameterized SQL default, which is not supported — update ` +
-              `generateSchemaDdl() in server/schemaDdl.ts.`
+              `schemaStatements() in server/schemaDdl.ts.`
           );
         }
         return chunk.value.join("");
@@ -68,8 +68,8 @@ function formatDefaultClause(
     return `DEFAULT ${sqlStringLiteral(JSON.stringify(value))}::jsonb`;
   }
   throw new Error(
-    `generateSchemaDdl: column "${tableName}.${col.name}" has a default of an ` +
-      `unsupported type (${typeof value}) — update generateSchemaDdl() in ` +
+    `schemaStatements: column "${tableName}.${col.name}" has a default of an ` +
+      `unsupported type (${typeof value}) — update schemaStatements() in ` +
       `server/schemaDdl.ts.`
   );
 }
@@ -83,8 +83,8 @@ function foreignKeysByColumn(cfg: TableConfig): Map<string, ForeignKeyRef> {
     const ref = fk.reference();
     if (ref.columns.length !== 1) {
       throw new Error(
-        `generateSchemaDdl: table "${cfg.name}" has a composite foreign key, ` +
-          `which is not supported — update generateSchemaDdl() in server/schemaDdl.ts.`
+        `schemaStatements: table "${cfg.name}" has a composite foreign key, ` +
+          `which is not supported — update schemaStatements() in server/schemaDdl.ts.`
       );
     }
     const foreignCfg = getTableConfig(ref.foreignTable);
@@ -130,27 +130,27 @@ function assertSupported(configs: { cfg: TableConfig }[]): void {
   for (const { cfg } of configs) {
     if (cfg.checks.length > 0) {
       throw new Error(
-        `generateSchemaDdl: table "${cfg.name}" has CHECK constraints, which ` +
-          `are not supported — update generateSchemaDdl() in server/schemaDdl.ts.`
+        `schemaStatements: table "${cfg.name}" has CHECK constraints, which ` +
+          `are not supported — update schemaStatements() in server/schemaDdl.ts.`
       );
     }
     if (cfg.uniqueConstraints.length > 0) {
       throw new Error(
-        `generateSchemaDdl: table "${cfg.name}" has table-level unique ` +
-          `constraints, which are not supported — update generateSchemaDdl() ` +
+        `schemaStatements: table "${cfg.name}" has table-level unique ` +
+          `constraints, which are not supported — update schemaStatements() ` +
           `in server/schemaDdl.ts.`
       );
     }
     if (cfg.policies.length > 0 || cfg.enableRLS) {
       throw new Error(
-        `generateSchemaDdl: table "${cfg.name}" uses row-level security, ` +
-          `which is not supported — update generateSchemaDdl() in server/schemaDdl.ts.`
+        `schemaStatements: table "${cfg.name}" uses row-level security, ` +
+          `which is not supported — update schemaStatements() in server/schemaDdl.ts.`
       );
     }
     if (cfg.schema !== undefined) {
       throw new Error(
-        `generateSchemaDdl: table "${cfg.name}" declares a non-default ` +
-          `Postgres schema, which is not supported — update generateSchemaDdl() ` +
+        `schemaStatements: table "${cfg.name}" declares a non-default ` +
+          `Postgres schema, which is not supported — update schemaStatements() ` +
           `in server/schemaDdl.ts.`
       );
     }
@@ -167,14 +167,14 @@ function collectEnums(configs: { cfg: TableConfig }[]): Map<string, readonly str
       const values = col.enumValues;
       if (!values) {
         throw new Error(
-          `generateSchemaDdl: enum column "${cfg.name}.${col.name}" has no ` +
-            `enumValues — update generateSchemaDdl() in server/schemaDdl.ts.`
+          `schemaStatements: enum column "${cfg.name}.${col.name}" has no ` +
+            `enumValues — update schemaStatements() in server/schemaDdl.ts.`
         );
       }
       const existing = enums.get(enumName);
       if (existing && (existing.length !== values.length || existing.some((v, i) => v !== values[i]))) {
         throw new Error(
-          `generateSchemaDdl: enum "${enumName}" has inconsistent values across ` +
+          `schemaStatements: enum "${enumName}" has inconsistent values across ` +
             `its usages in shared/schema.ts.`
         );
       }
@@ -194,8 +194,8 @@ function inDependencyOrder<T extends { cfg: TableConfig }>(configs: T[]): T[] {
     if (done.has(entry.cfg.name)) return;
     if (stack.has(entry.cfg.name)) {
       throw new Error(
-        `generateSchemaDdl: circular foreign key dependency involving table ` +
-          `"${entry.cfg.name}" — update generateSchemaDdl() in server/schemaDdl.ts.`
+        `schemaStatements: circular foreign key dependency involving table ` +
+          `"${entry.cfg.name}" — update schemaStatements() in server/schemaDdl.ts.`
       );
     }
     stack.add(entry.cfg.name);
@@ -293,17 +293,17 @@ export function schemaStatements(): string[] {
       const indexName = idx.config.name;
       if (!indexName) {
         throw new Error(
-          `generateSchemaDdl: table "${cfg.name}" has an unnamed index — ` +
-            `update generateSchemaDdl() in server/schemaDdl.ts.`
+          `schemaStatements: table "${cfg.name}" has an unnamed index — ` +
+            `update schemaStatements() in server/schemaDdl.ts.`
         );
       }
       const cols = idx.config.columns.map((c) => {
         const colName = (c as { name?: string }).name;
         if (!colName) {
           throw new Error(
-            `generateSchemaDdl: index "${indexName}" on table "${cfg.name}" ` +
+            `schemaStatements: index "${indexName}" on table "${cfg.name}" ` +
               `indexes an expression, not a plain column — update ` +
-              `generateSchemaDdl() in server/schemaDdl.ts.`
+              `schemaStatements() in server/schemaDdl.ts.`
           );
         }
         return quoteIdent(colName);
@@ -326,11 +326,6 @@ export function schemaStatements(): string[] {
     ...indexStatements,
     ...SESSION_TABLE_STATEMENTS,
   ];
-}
-
-/** `schemaStatements()` as one script, for callers that apply DDL in bulk. */
-export function generateSchemaDdl(): string {
-  return schemaStatements().join("\n\n");
 }
 
 /**

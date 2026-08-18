@@ -102,7 +102,6 @@ interface OnlineGameContextValue {
     botPersonality?: BotPersonalityId;
     matchLength?: MatchLength;
   }) => void;
-  requestPlayAgain: () => void;
   voteRematch: () => void;
   answerRematch: (wants: boolean) => void;
   playCards: (cardIds: string[]) => void;
@@ -726,10 +725,6 @@ export function OnlineGameProvider({ userId, children }: { userId: string; child
     socket.emit("room:start", opts);
   }, [userId]);
 
-  const requestPlayAgain = useCallback(() => {
-    socket.emit("room:start");
-  }, [userId]);
-
   const voteRematch = useCallback(() => {
     socket.emit("game:rematch_vote");
   }, [userId]);
@@ -803,7 +798,6 @@ export function OnlineGameProvider({ userId, children }: { userId: string; child
       leaveRoom,
       quickmatch,
       startGame,
-      requestPlayAgain,
       voteRematch,
       answerRematch,
       playCards,
@@ -815,7 +809,7 @@ export function OnlineGameProvider({ userId, children }: { userId: string; child
       clearPlayerLeft,
       clearRejoinFailed,
     }),
-    [room, gameState, connected, error, playerLeft, rejoinFailed, disconnectedPlayers, reconnectNotice, mySeatIndex, turnDeadline, entrySource, rematchVoteState, cumulativeScores, matchState, rematchIntents, rematchPromptOpen, exchangeAnnouncing, exchangeAnnounceData, createRoom, joinRoom, spectateRoom, isSpectator, leaveRoom, quickmatch, startGame, requestPlayAgain, voteRematch, answerRematch, playCards, pass, giveExchangeCard, acknowledgeExchange, sendReaction, clearError, clearPlayerLeft, clearRejoinFailed]
+    [room, gameState, connected, error, playerLeft, rejoinFailed, disconnectedPlayers, reconnectNotice, mySeatIndex, turnDeadline, entrySource, rematchVoteState, cumulativeScores, matchState, rematchIntents, rematchPromptOpen, exchangeAnnouncing, exchangeAnnounceData, createRoom, joinRoom, spectateRoom, isSpectator, leaveRoom, quickmatch, startGame, voteRematch, answerRematch, playCards, pass, giveExchangeCard, acknowledgeExchange, sendReaction, clearError, clearPlayerLeft, clearRejoinFailed]
   );
 
   return (

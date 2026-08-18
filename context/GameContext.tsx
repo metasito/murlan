@@ -153,7 +153,6 @@ function answerForAiSeats(state: GameState, scores: Record<string, number>): Rem
 interface GameContextValue {
   gameState: GameState | null;
   selectedCards: string[];
-  lastRoundWinner: number | null;
   match: MatchState;
   rematchAnswers: RematchAnswers;
   /** True while the table is being asked whether it wants another match. */
@@ -184,7 +183,6 @@ const GameContext = createContext<GameContextValue | null>(null);
 export function GameProvider({ children }: { children: ReactNode }) {
   const [gameState, setGameState] = useState<GameState | null>(null);
   const [selectedCards, setSelectedCards] = useState<string[]>([]);
-  const [lastRoundWinner, setLastRoundWinner] = useState<number | null>(null);
 
   const [match, setMatch] = useState<MatchState>(() => freshMatch("match", 4));
   const [rematchAnswers, setRematchAnswers] = useState<RematchAnswers>({});
@@ -220,7 +218,6 @@ export function GameProvider({ children }: { children: ReactNode }) {
       const state = initializeGame(players, mode);
       setGameState(state);
       setSelectedCards([]);
-      setLastRoundWinner(null);
       setDealFirstSeat(0);
       setMatch(freshMatch(length, players.length));
       setRematchAnswers({});
@@ -250,7 +247,6 @@ export function GameProvider({ children }: { children: ReactNode }) {
 
       setGameState(state);
       setSelectedCards([]);
-      setLastRoundWinner(null);
     },
     [savedPlayerConfigs, savedGameMode, dealFirstSeat]
   );
@@ -358,7 +354,6 @@ export function GameProvider({ children }: { children: ReactNode }) {
       if (!hasStartCard) return false;
     }
 
-    setLastRoundWinner(null);
     commitState(processPlay(gameState, combo), gameState);
     setSelectedCards([]);
     return true;
@@ -369,7 +364,6 @@ export function GameProvider({ children }: { children: ReactNode }) {
     if (gameState.lastPlayedCombination === null) return;
 
     const newState = processPass(gameState);
-    setLastRoundWinner(newState.roundWinner !== null ? newState.roundWinner : null);
     commitState(newState, gameState);
     setSelectedCards([]);
   }, [gameState, commitState]);
@@ -397,13 +391,9 @@ export function GameProvider({ children }: { children: ReactNode }) {
     );
 
     if (play) {
-      setLastRoundWinner(null);
       commitState(processPlay(gameState, play), gameState);
     } else if (!isNewRound) {
       const newState = processPass(gameState);
-      if (newState.roundWinner !== null) {
-        setLastRoundWinner(newState.roundWinner);
-      }
       commitState(newState, gameState);
     }
   }, [gameState, commitState]);
@@ -417,7 +407,6 @@ export function GameProvider({ children }: { children: ReactNode }) {
   const resetGame = useCallback(() => {
     setGameState(null);
     setSelectedCards([]);
-    setLastRoundWinner(null);
     setMatch(freshMatch("match", gameState?.players.length ?? 4));
     setRematchAnswers({});
     clearSavedGame();
@@ -434,7 +423,6 @@ export function GameProvider({ children }: { children: ReactNode }) {
     setSavedGameMode(save.gameMode);
     setDealFirstSeat(save.dealFirstSeat);
     setSelectedCards([]);
-    setLastRoundWinner(null);
     return true;
   }, []);
 
@@ -486,7 +474,6 @@ export function GameProvider({ children }: { children: ReactNode }) {
     () => ({
       gameState,
       selectedCards,
-      lastRoundWinner,
       match,
       rematchAnswers,
       rematchPromptOpen,
@@ -510,7 +497,6 @@ export function GameProvider({ children }: { children: ReactNode }) {
     [
       gameState,
       selectedCards,
-      lastRoundWinner,
       match,
       rematchAnswers,
       rematchPromptOpen,

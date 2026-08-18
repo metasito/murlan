@@ -18,10 +18,6 @@ export const AddFriendSchema = z.object({
   username: z.string().min(1, "Username richiesto"),
 });
 
-export const ExchangeCardSchema = z.object({
-  cardIndex: z.number().int().min(0).max(52),
-});
-
 /**
  * A crash reported by the client's error boundary.
  *

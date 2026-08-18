@@ -895,10 +895,6 @@ export function getSuitSymbol(suit: Suit | null): string {
   return symbols[suit];
 }
 
-export function isRedSuit(suit: Suit | null): boolean {
-  return suit === "hearts" || suit === "diamonds";
-}
-
 const EXCHANGE_VALID_RANKS: Rank[] = ["3","4","5","6","7","8","9","10"];
 
 export function initializeRematch(
