@@ -678,4 +678,30 @@ describe("gameplay integrity", { skip: hasDatabase() ? false : skipMessage() }, 
       before.players.map((p) => p.handCount)
     );
   });
+
+  // ── Test 13 ─────────────────────────────────────────────────────────────
+
+  /**
+   * The verdict itself is pinned over synthetic tables in
+   * tests/socketHandFlags.test.ts ("a seat that never answered counts as a no
+   * but still counts toward total"). What only the live path can show is that
+   * the broadcast tally agrees with it — the figures the results screen reads.
+   */
+  test("a seat that never answers the rematch counts as a no", async () => {
+    const [alice, bob] = await makeClients(["silent_rematch_alice", "silent_rematch_bob"]);
+    await setUpRoom([alice, bob], 2);
+
+    const opening = await driveHandToExchangeOrOver([alice, bob], () => {
+      alice.socket.emit("room:start");
+    });
+    assert.equal(opening.stoppedOn, "gameOver");
+
+    const tally = waitFor<{ yes: number; total: number }>(
+      bob.socket,
+      "game:rematch_intents"
+    );
+    alice.socket.emit("game:rematch_intent", { wants: true });
+    const { yes, total } = await tally;
+    assert.deepEqual({ yes, total }, { yes: 1, total: 2 });
+  });
 });
