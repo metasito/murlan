@@ -184,6 +184,12 @@ export function roundClosedWithWinner(state: {
  * Empty between rounds: `processPass` clears `lastPlayedCombination` on the
  * pass that closes the round, which is exactly when the markers should go.
  *
+ * Empty when the seat on move is the seat that made the play: the span between
+ * them is a full circle, so nobody has answered. That is the state
+ * `processPlay` leaves behind when the hand ends on a play — it returns before
+ * moving the turn on — and every seat still holding cards would otherwise be
+ * marked for the whole game-over beat.
+ *
  * `outOfCards` carries the seat count, so it must have one entry per seat.
  */
 export function passedSeats(state: {
@@ -197,6 +203,7 @@ export function passedSeats(state: {
   const seatCount = outOfCards.length;
   if (state.lastPlayedCombination === null) return [];
   if (lastPlayedBy < 0 || lastPlayedBy >= seatCount) return [];
+  if (currentTurnIndex === lastPlayedBy) return [];
 
   const passed: number[] = [];
   for (let step = 1; step < seatCount; step++) {

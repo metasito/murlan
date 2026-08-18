@@ -479,6 +479,56 @@ describe("passedSeats walks the direction the engine deals turns", () => {
     assert.ok(!marked.includes(2), "seat 2 played, it did not pass");
     assert.deepEqual(marked, [1, 0]);
   });
+
+  test("the hand ending on a play marks nobody", () => {
+    // `processPlay` returns as soon as the hand is decided, so the turn never
+    // moves off the seat that went out: `currentTurnIndex === lastPlayedBy`
+    // with a combination still on the table. Seat 2 has simply not been dealt
+    // another turn — it did not pass.
+    const players = hands();
+    players[0].hand = [];
+    players[0].finishPosition = 1;
+    players[1].hand = [];
+    players[1].finishPosition = 2;
+    players[3].hand = [c("J", "diamonds")];
+    let s = makeState(players, {
+      currentTurnIndex: 3,
+      lastPlayedBy: 3,
+      firstPlayMade: true,
+      rankings: ["player_0", "player_1"],
+    });
+
+    s = processPlay(s, buildCombination([c("J", "diamonds")])!);
+    assert.equal(s.gameOver, true);
+    assert.equal(s.currentTurnIndex, s.lastPlayedBy);
+    assert.notEqual(s.lastPlayedCombination, null);
+    assert.deepEqual(passedSeats(view(s)), []);
+  });
+
+  test("teams: the losing pair is not marked when the hand ends", () => {
+    // Seat 3 goes out with its partner already home, which decides the hand
+    // (RULES.md §11) while both opponents still hold cards.
+    const players = hands();
+    players[0].team = "A";
+    players[1].team = "B";
+    players[2].team = "A";
+    players[3].team = "B";
+    players[1].hand = [];
+    players[1].finishPosition = 1;
+    players[3].hand = [c("J", "diamonds")];
+    let s = makeState(players, {
+      currentTurnIndex: 3,
+      lastPlayedBy: 3,
+      firstPlayMade: true,
+      gameMode: "teams",
+      rankings: ["player_1"],
+    });
+
+    s = processPlay(s, buildCombination([c("J", "diamonds")])!);
+    assert.equal(s.gameOver, true);
+    assert.ok(s.players[0].hand.length > 0 && s.players[2].hand.length > 0);
+    assert.deepEqual(passedSeats(view(s)), []);
+  });
 });
 
 // ─── Affordances ──────────────────────────────────────────────────────────────
