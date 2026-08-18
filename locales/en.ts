@@ -14,7 +14,6 @@ export const en: Record<keyof typeof it, string> = {
   "common.loading": "Loading…",
   "common.error": "Error",
   "common.notice": "Notice",
-  "online.autoPassTitle": "Auto-pass",
   "common.unknownError": "An unexpected error occurred.",
   "common.retry": "Retry",
   "common.copy": "Copy",
@@ -230,6 +229,10 @@ export const en: Record<keyof typeof it, string> = {
   "gameShared.yourTurn": "Your turn",
   "gameShared.turnOf": "{{name}}'s turn",
 
+  // -------------------------------------------------------------- game.*
+  "game.autoPassTitle": "Auto-pass",
+  "game.autoPassBody": "Time is up: your turn was passed.",
+
   // -------------------------------------------------------------- gameTable.*
   "gameTable.leaveA11yLabel": "Leave the game",
   "gameTable.passLabel": "PASS",
@@ -264,6 +267,8 @@ export const en: Record<keyof typeof it, string> = {
   "gameTable.a11yOpponentCards_other": "{{name}} has {{count}} cards left.",
   "gameTable.a11yYourCards_one": "You have {{count}} card in hand.",
   "gameTable.a11yYourCards_other": "You have {{count}} cards in hand.",
+  "gameTable.a11ySecondsLeft_one": "{{count}} second left to play.",
+  "gameTable.a11ySecondsLeft_other": "{{count}} seconds left to play.",
   "gameTable.a11yExchangeGive": "Exchange phase: you must give a card to {{name}}.",
   "gameTable.a11yExchangeWait": "Exchange phase: waiting for a card from {{name}}.",
   "gameTable.a11yLastPlayPair": "pair of {{rank}}",

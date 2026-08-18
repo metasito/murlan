@@ -9,9 +9,12 @@ import React, { useEffect, useRef } from "react";
 import { Alert } from "react-native";
 import { router } from "expo-router";
 import { useGame } from "@/context/GameContext";
+import { useNotification } from "@/context/NotificationContext";
 import { pickGivebackCard } from "@/lib/gameEngine";
 import { GameTable } from "@/components/GameTable";
 import { comboKey } from "@/components/gameTableModel";
+import { hapticWarn } from "@/lib/haptics";
+import { playCardPass } from "@/lib/sounds";
 import { useTranslation } from "@/lib/i18n";
 
 // Read once at module scope, never per-call. EXPO_PUBLIC_ vars are inlined
@@ -33,6 +36,7 @@ const RESULT_DELAY = E2E_FAST ? 0 : 800;
 
 export default function GameScreen() {
   const { t } = useTranslation();
+  const { showNotification } = useNotification();
   const {
     gameState,
     selectedCards,
@@ -150,7 +154,19 @@ export default function GameScreen() {
         seconds: HUMAN_TURN_SECONDS,
         // Leading a round has no deadline offline.
         includeNewRound: false,
-        onExpire: () => passTurnRef.current(),
+        // Offline nobody announces the deadline expiring — there is no server
+        // to send the banner the online screen gets — so the turn simply
+        // vanished. Same feedback as tapping PASSA, plus what happened.
+        onExpire: () => {
+          hapticWarn();
+          playCardPass();
+          showNotification({
+            type: "afk",
+            title: t("game.autoPassTitle"),
+            message: t("game.autoPassBody"),
+          });
+          passTurnRef.current();
+        },
       }}
       exchangeAnnouncement={{
         visible: exchangeAnnouncing,

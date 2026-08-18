@@ -252,6 +252,23 @@ export function playButtonLabel(opts: {
   return "tooLow";
 }
 
+/** Seconds left at which the countdown starts ticking audibly. */
+export const URGENT_TICK_SECONDS = 5;
+/** …and the share of the clock it spends visibly urgent. */
+const URGENT_FRACTION = 0.4;
+
+/**
+ * When the countdown turns red, given how long it runs for. Proportional
+ * rather than fixed because the offline clock is 20s against the server's 30s,
+ * and a warning that arrives five seconds from the end of the shorter one
+ * arrives too late to act on. The audible tick keeps its own fixed, later
+ * threshold — a warning you can see for twelve seconds is fine, one you can
+ * hear for twelve seconds is nagging.
+ */
+export function urgentThresholdSeconds(clockSeconds: number): number {
+  return Math.max(URGENT_TICK_SECONDS, Math.ceil(clockSeconds * URGENT_FRACTION));
+}
+
 /**
  * Whether the turn countdown should run. Offline it only answers a played
  * combination (leading has no deadline); online it mirrors the server's AFK

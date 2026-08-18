@@ -24,7 +24,6 @@ export const it = {
   "common.loading": "Caricamento…",
   "common.error": "Errore",
   "common.notice": "Avviso",
-  "online.autoPassTitle": "Passaggio automatico",
   "common.unknownError": "Si è verificato un errore imprevisto.",
   "common.retry": "Riprova",
   "common.copy": "Copia",
@@ -247,6 +246,12 @@ export const it = {
   "gameShared.yourTurn": "Il tuo turno",
   "gameShared.turnOf": "Turno di {{name}}",
 
+  // -------------------------------------------------------------- game.*
+  // Shared by both modes: offline the client enforces the response deadline,
+  // online the server announces its own.
+  "game.autoPassTitle": "Passaggio automatico",
+  "game.autoPassBody": "Tempo scaduto: hai passato il turno.",
+
   // -------------------------------------------------------------- gameTable.*
   "gameTable.leaveA11yLabel": "Abbandona la partita",
   "gameTable.passLabel": "PASSA",
@@ -281,6 +286,8 @@ export const it = {
   "gameTable.a11yOpponentCards_other": "{{name}} ha {{count}} carte in mano.",
   "gameTable.a11yYourCards_one": "Hai {{count}} carta in mano.",
   "gameTable.a11yYourCards_other": "Hai {{count}} carte in mano.",
+  "gameTable.a11ySecondsLeft_one": "Ti resta {{count}} secondo per giocare.",
+  "gameTable.a11ySecondsLeft_other": "Ti restano {{count}} secondi per giocare.",
   "gameTable.a11yExchangeGive": "Fase di scambio: devi dare una carta a {{name}}.",
   "gameTable.a11yExchangeWait": "Fase di scambio: aspetti una carta da {{name}}.",
   "gameTable.a11yLastPlayPair": "coppia di {{rank}}",

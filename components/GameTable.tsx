@@ -64,6 +64,8 @@ import {
   seatDirection,
   straightTopRankChar,
   turnTimerActive,
+  urgentThresholdSeconds,
+  URGENT_TICK_SECONDS,
   type FlyDirection,
   type PileState,
   type PlayButtonLabel,
@@ -114,9 +116,6 @@ import { useTableFelt } from "@/lib/cosmetics";
 // How long the round-winner tag stays over the pile. A domain beat, not a
 // generic UI transition, so it is not a Motion token.
 const ROUND_WINNER_MS = 1800;
-// Below this the countdown turns red and ticks audibly.
-const URGENT_SECONDS = 5;
-
 // Whole-pixel travel, mirroring components/MenuButton.tsx: PASSA/GIOCA hold
 // text labels, and React Native rasterises text before transforming it, so a
 // fractional offset resamples the glyphs. 2px down is the smallest offset
@@ -292,6 +291,7 @@ function TurnTimer({
   resetKey: string;
   onExpire?: () => void;
 }) {
+  const { tn } = useTranslation();
   const [timeLeft, setTimeLeft] = useState(seconds);
   // Written after commit, never during render: the only reader is the interval
   // below, which fires a second later at the earliest.
@@ -310,7 +310,7 @@ function TurnTimer({
     const id = setInterval(() => {
       remaining -= 1;
       setTimeLeft(remaining);
-      if (remaining <= URGENT_SECONDS && remaining >= 0) playUrgentTick();
+      if (remaining <= URGENT_TICK_SECONDS && remaining >= 0) playUrgentTick();
       if (remaining <= 0) {
         clearInterval(id);
         onExpireRef.current?.();
@@ -320,13 +320,26 @@ function TurnTimer({
   }, [active, resetKey, seconds]);
 
   if (!active) return null;
+  const urgent = timeLeft <= urgentThresholdSeconds(seconds);
+  // The bare number said nothing about being a deadline until it had already
+  // taken a turn; the clock face says it before the first expiry.
   return (
-    <Text
-      style={[styles.timerNum, timeLeft <= URGENT_SECONDS && styles.timerUrgent]}
-      accessibilityLiveRegion="polite"
-    >
-      {timeLeft}
-    </Text>
+    <View style={styles.timerGroup}>
+      <Ionicons
+        name="timer-outline"
+        size={FontSize.sm}
+        color={urgent ? Colors.red : Colors.gold}
+        accessibilityElementsHidden
+        importantForAccessibility="no-hide-descendants"
+      />
+      <Text
+        style={[styles.timerNum, urgent && styles.timerUrgent]}
+        accessibilityLiveRegion="polite"
+        accessibilityLabel={tn("gameTable.a11ySecondsLeft", timeLeft)}
+      >
+        {timeLeft}
+      </Text>
+    </View>
   );
 }
 
@@ -1398,6 +1411,7 @@ const styles = StyleSheet.create({
     backgroundColor: Scrim.medium,
     alignItems: "center", justifyContent: "center",
   },
+  timerGroup: { flexDirection: "row", alignItems: "center", gap: Spacing.xs },
   timerNum: {
     fontFamily: "Rajdhani_700Bold", fontSize: FontSize.sm,
     color: Colors.gold, minWidth: 20, textAlign: "right",

@@ -27,6 +27,8 @@ import {
   canPassNow,
   playButtonLabel,
   turnTimerActive,
+  urgentThresholdSeconds,
+  URGENT_TICK_SECONDS,
   notificationTopOffset,
   startCardBannerText,
   computeTableFrame,
@@ -429,6 +431,30 @@ describe("turnTimerActive", () => {
 });
 
 // ─── Copy ─────────────────────────────────────────────────────────────────────
+
+describe("urgentThresholdSeconds", () => {
+  test("the shorter offline clock turns red well before the last five seconds", () => {
+    // 20s offline: five seconds' warning on a clock that short arrives too
+    // late to choose a card with.
+    assert.equal(urgentThresholdSeconds(20), 8);
+    assert.ok(urgentThresholdSeconds(20) > URGENT_TICK_SECONDS);
+  });
+
+  test("the longer online clock warns proportionally, not identically", () => {
+    assert.equal(urgentThresholdSeconds(30), 12);
+  });
+
+  test("a very short clock never warns later than the audible tick", () => {
+    assert.equal(urgentThresholdSeconds(6), URGENT_TICK_SECONDS);
+    assert.equal(urgentThresholdSeconds(0), URGENT_TICK_SECONDS);
+  });
+
+  test("the threshold is a whole number of seconds — the countdown is integer", () => {
+    for (const clock of [7, 13, 20, 25, 30, 45]) {
+      assert.equal(urgentThresholdSeconds(clock) % 1, 0, `clock ${clock}`);
+    }
+  });
+});
 
 describe("notificationTopOffset", () => {
   // The table's top bar occupies [topPad, topPad + TOP_BAR_H) and carries the

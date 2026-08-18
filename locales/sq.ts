@@ -36,7 +36,6 @@ export const sq: Record<keyof typeof it, string> = {
   "common.loading": "Duke ngarkuar…",
   "common.error": "Gabim",
   "common.notice": "Njoftim",
-  "online.autoPassTitle": "Kalim automatik",
   "common.unknownError": "Ndodhi një gabim i papritur.",
   "common.retry": "Provo përsëri",
   "common.copy": "Kopjo",
@@ -256,6 +255,10 @@ export const sq: Record<keyof typeof it, string> = {
   "gameShared.yourTurn": "Radha jote",
   "gameShared.turnOf": "Radha e {{name}}",
 
+  // -------------------------------------------------------------- game.*
+  "game.autoPassTitle": "Kalim automatik",
+  "game.autoPassBody": "Koha mbaroi: radha jote u kalua.",
+
   // -------------------------------------------------------------- gameTable.*
   "gameTable.leaveA11yLabel": "Braktis lojën",
   "gameTable.passLabel": "KALO",
@@ -290,6 +293,8 @@ export const sq: Record<keyof typeof it, string> = {
   "gameTable.a11yOpponentCards_other": "{{name}} ka {{count}} letra në dorë.",
   "gameTable.a11yYourCards_one": "Ke {{count}} letër në dorë.",
   "gameTable.a11yYourCards_other": "Ke {{count}} letra në dorë.",
+  "gameTable.a11ySecondsLeft_one": "Të mbetet {{count}} sekondë për të luajtur.",
+  "gameTable.a11ySecondsLeft_other": "Të mbeten {{count}} sekonda për të luajtur.",
   "gameTable.a11yExchangeGive": "Faza e shkëmbimit: duhet t'i japësh një letër {{name}}.",
   "gameTable.a11yExchangeWait": "Faza e shkëmbimit: po pret një letër nga {{name}}.",
   "gameTable.a11yLastPlayPair": "çift me {{rank}}",
