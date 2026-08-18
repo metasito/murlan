@@ -30,14 +30,23 @@ function fixedRng(values: number[]): () => number {
   return () => values[i++ % values.length];
 }
 
-function botTable(personality: BotPersonalityId, seats = 4): GameState {
+interface TableShape {
+  seats?: number;
+  gameMode?: "free_for_all" | "teams";
+}
+
+function botTable(
+  personality: BotPersonalityId,
+  { seats = 4, gameMode = "free_for_all" }: TableShape = {}
+): GameState {
   return initializeGame(
     Array.from({ length: seats }, (_, i) => ({
       name: `bot${i}`,
       type: "ai" as const,
       personality,
+      team: gameMode === "teams" ? ((i % 2 === 0 ? "A" : "B") as "A" | "B") : undefined,
     })),
-    "free_for_all"
+    gameMode
   );
 }
 
@@ -45,8 +54,12 @@ function botTable(personality: BotPersonalityId, seats = 4): GameState {
  * Runs a whole hand with every seat on `personality`, asserting at each step
  * that the chosen play was one getAllValidPlays offered. Returns the turns taken.
  */
-function playOutHand(personality: BotPersonalityId, rng: () => number): number {
-  let state = botTable(personality);
+function playOutHand(
+  personality: BotPersonalityId,
+  rng: () => number,
+  shape: TableShape = {}
+): number {
+  let state = botTable(personality, shape);
   let turns = 0;
   const limit = 2000;
 
@@ -173,6 +186,51 @@ test("leading a round always produces a play, for every personality and hand siz
         );
         assert.ok(play, `${id} led nothing holding ${size} cards from offset ${offset}`);
       }
+    }
+  }
+});
+
+// Every table above is a 4-seat free-for-all. The AI reads the opponent hand
+// counts and, in teams mode, its partner's seat, so neither the shorter table
+// nor the paired one is the same problem.
+test("every personality finishes a hand at 2 and 3 seats, and in teams mode", () => {
+  const shapes: Array<[string, Parameters<typeof playOutHand>[2]]> = [
+    ["2 seats", { seats: 2 }],
+    ["3 seats", { seats: 3 }],
+    ["4 seats, teams", { seats: 4, gameMode: "teams" }],
+  ];
+  for (const p of BOT_PERSONALITIES) {
+    for (const [label, shape] of shapes) {
+      for (const rng of [fixedRng([0.99]), fixedRng([0]), fixedRng([0.1, 0.9, 0.5, 0.3])]) {
+        assert.ok(playOutHand(p.id, rng, shape) > 0, `${p.id} at ${label}`);
+      }
+    }
+  }
+});
+
+// findStartingPlayer falls back to the lowest card held when no seat has the
+// 3♠, so `requireCard` is not always the 3♠ — and a play that omits it is
+// illegal whatever it is.
+test("a requireCard that is not the 3♠ is still honoured", () => {
+  const hand = [
+    c("5", "spades"), c("5", "hearts"), c("7", "clubs"), c("9", "diamonds"),
+    c("J", "clubs"), c("K", "hearts"), c("A", "spades"), c("2", "clubs"),
+  ];
+  for (const required of [hand[0], hand[3], hand[7]]) {
+    for (const p of BOT_PERSONALITIES) {
+      const choice = aiChoosePlay(
+        makePlayer("bot", hand, { type: "ai", personality: p.id }),
+        null,
+        true,
+        [8, 8, 8],
+        required,
+        fixedRng([0.5])
+      );
+      assert.ok(choice, `${p.id} must lead when it holds ${required.id}`);
+      assert.ok(
+        choice!.cards.some((x) => x.id === required.id),
+        `${p.id} led without the required ${required.id}`
+      );
     }
   }
 });
