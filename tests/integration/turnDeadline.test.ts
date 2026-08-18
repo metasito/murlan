@@ -75,7 +75,7 @@ describe("turn deadline", { skip: hasDatabase() ? false : skipMessage() }, () =>
       await new Promise((resolve) => setTimeout(resolve, elapsedMs));
 
       const rejoined = waitFor<SanitizedState & TurnDeadline>(clients[0].socket, "game:state");
-      clients[0].socket.emit("game:rejoin", { roomCode: room.roomId });
+      clients[0].socket.emit("game:rejoin", { roomId: room.roomId });
       const state = await rejoined;
 
       const expected = AFK_SECONDS - elapsedMs / 1000;

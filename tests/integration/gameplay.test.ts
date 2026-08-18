@@ -168,7 +168,7 @@ describe("gameplay integrity", { skip: hasDatabase() ? false : skipMessage() }, 
     // state (game:rejoin is a safe, idempotent read) and confirm the
     // winner's hand and the exchange phase are byte-for-byte unchanged.
     const freshState = waitFor<SanitizedState>(winner!.socket, "game:state");
-    winner!.socket.emit("game:rejoin", { roomCode: room.roomId });
+    winner!.socket.emit("game:rejoin", { roomId: room.roomId });
     const fresh = await freshState;
     assert.equal(fresh.exchangePhase?.active, true);
     assert.deepEqual(
@@ -588,7 +588,7 @@ describe("gameplay integrity", { skip: hasDatabase() ? false : skipMessage() }, 
    */
   async function authoritativeState(client: Client, roomId: string): Promise<SanitizedState> {
     const fresh = waitFor<SanitizedState>(client.socket, "game:state");
-    client.socket.emit("game:rejoin", { roomCode: roomId });
+    client.socket.emit("game:rejoin", { roomId });
     return fresh;
   }
 

@@ -511,7 +511,7 @@ function disposeGame(roomId: string, deleteRow = true) {
   publicRoomIds.delete(roomId);
   if (deleteRow) {
     db.delete(activeGamesTable)
-      .where(eq(activeGamesTable.roomCode, roomId))
+      .where(eq(activeGamesTable.roomId, roomId))
       .catch((err: unknown) =>
         logger.error({ err, roomId }, "Failed to delete persisted game")
       );
@@ -529,7 +529,7 @@ function persistGameState(roomId: string, game: OnlineGameState): Promise<unknow
   // Stamped so a restart can tell a current-shape row from a stale one (see
   // GAME_SCHEMA_VERSION) rather than restoring a corrupt hand silently.
   const values = {
-    roomCode: roomId,
+    roomId,
     gameState: packPersistedState(game.gameState, game.handFlags, game.dealFirstSeat, {
       playerMap: game.playerMap,
       scores: game.cumulativeScores,
@@ -545,7 +545,7 @@ function persistGameState(roomId: string, game: OnlineGameState): Promise<unknow
     .insert(activeGamesTable)
     .values(values)
     .onConflictDoUpdate({
-      target: activeGamesTable.roomCode,
+      target: activeGamesTable.roomId,
       set: { gameState: values.gameState, updatedAt: values.updatedAt },
     })
     .catch((err: unknown) =>
@@ -2010,7 +2010,7 @@ export function setupSocket(httpServer: HttpServer) {
       socket,
       "game:rejoin",
       GameRejoinSchema,
-      async ({ roomCode }) => {
+      async ({ roomId }) => {
         // onEvent's own catch turns a throw into a generic `game:error`,
         // which the client's rejoin-failed handling never listens for —
         // leaving the player stranded on a dead screen. A failure in here
@@ -2018,23 +2018,23 @@ export function setupSocket(httpServer: HttpServer) {
         //
         // Every one of those carries the wire's error contract — { code,
         // message } — so the client can render it in the player's language.
-        // `roomCode` stays a top-level field alongside it: the client's
+        // `roomId` stays a top-level field alongside it: the client's
         // stale-reply guard matches on it, so it must not move into params.
         try {
-          const existingGame = activeGames.get(roomCode);
+          const existingGame = activeGames.get(roomId);
           if (existingGame) {
             const seat = seatOfUser(existingGame, userId);
             if (seat === null) {
-              socket.emit("game:rejoin_failed", { message: "Not authorized", code: "UNAUTHORIZED", roomCode });
+              socket.emit("game:rejoin_failed", { message: "Not authorized", code: "UNAUTHORIZED", roomId });
               return;
             }
 
             // Idempotent — an INSERT on every reconnect would pile up
             // duplicate room_players rows and corrupt the next rematch.
             await storage
-              .upsertRoomPlayer(roomCode, userId, seat)
+              .upsertRoomPlayer(roomId, userId, seat)
               .catch((err: unknown) =>
-                logger.warn({ err, roomCode, userId }, "upsertRoomPlayer failed")
+                logger.warn({ err, roomId, userId }, "upsertRoomPlayer failed")
               );
 
             await rejoinSocketToTable(
@@ -2042,18 +2042,18 @@ export function setupSocket(httpServer: HttpServer) {
               socket,
               userId,
               username,
-              roomCode,
+              roomId,
               existingGame
             );
-            logger.info({ userId, roomCode }, "Player rejoined game (from memory)");
+            logger.info({ userId, roomId }, "Player rejoined game (from memory)");
             return;
           }
 
           const row = await db.query.activeGames.findFirst({
-            where: eq(activeGamesTable.roomCode, roomCode),
+            where: eq(activeGamesTable.roomId, roomId),
           });
           if (!row) {
-            socket.emit("game:rejoin_failed", { message: "Game not found", code: "GAME_NOT_FOUND", roomCode });
+            socket.emit("game:rejoin_failed", { message: "Game not found", code: "GAME_NOT_FOUND", roomId });
             return;
           }
 
@@ -2064,25 +2064,25 @@ export function setupSocket(httpServer: HttpServer) {
             // deals a silently corrupt hand rather than crashing, which is
             // worse than refusing outright.
             logger.warn(
-              { roomCode, reason: restored.reason },
+              { roomId, reason: restored.reason },
               "Discarding unrestorable persisted game"
             );
-            disposeGame(roomCode);
-            socket.emit("game:rejoin_failed", { message: "Game no longer valid", code: "GAME_NO_LONGER_VALID", roomCode });
+            disposeGame(roomId);
+            socket.emit("game:rejoin_failed", { message: "Game no longer valid", code: "GAME_NO_LONGER_VALID", roomId });
             return;
           }
 
           const { playerMap, scores, gameMode, matchLength, matchTarget, maxPlayers, isPublic } =
             restored.match;
           if (!Object.values(playerMap).includes(userId)) {
-            socket.emit("game:rejoin_failed", { message: "Not authorized", code: "UNAUTHORIZED", roomCode });
+            socket.emit("game:rejoin_failed", { message: "Not authorized", code: "UNAUTHORIZED", roomId });
             return;
           }
 
           const restoredState = restored.gameState;
           const restoredPlayers = restoredState.players;
           const game: OnlineGameState = {
-            roomId: roomCode,
+            roomId,
             gameState: restoredState,
             playerMap,
             rematchVotes: new Set(),
@@ -2111,24 +2111,24 @@ export function setupSocket(httpServer: HttpServer) {
             moveLog: null,
             dealFirstSeat: restored.dealFirstSeat,
           };
-          activeGames.set(roomCode, game);
-          if (isPublic) publicRoomIds.add(roomCode);
-          logger.info({ roomCode }, "Rehydrated activeGames from DB after restart");
+          activeGames.set(roomId, game);
+          if (isPublic) publicRoomIds.add(roomId);
+          logger.info({ roomId }, "Rehydrated activeGames from DB after restart");
 
           const seat = seatOfUser(game, userId);
           if (seat !== null) {
             await storage
-              .upsertRoomPlayer(roomCode, userId, seat)
+              .upsertRoomPlayer(roomId, userId, seat)
               .catch((err: unknown) =>
-                logger.warn({ err, roomCode, userId }, "upsertRoomPlayer failed")
+                logger.warn({ err, roomId, userId }, "upsertRoomPlayer failed")
               );
           }
 
-          await rejoinSocketToTable(io, socket, userId, username, roomCode, game);
-          logger.info({ userId, roomCode }, "Player rejoined game (from DB)");
+          await rejoinSocketToTable(io, socket, userId, username, roomId, game);
+          logger.info({ userId, roomId }, "Player rejoined game (from DB)");
         } catch (err) {
-          logger.error({ err, roomCode, userId }, "game:rejoin failed");
-          socket.emit("game:rejoin_failed", { message: "Errore del server", code: "SERVER_ERROR", roomCode });
+          logger.error({ err, roomId, userId }, "game:rejoin failed");
+          socket.emit("game:rejoin_failed", { message: "Errore del server", code: "SERVER_ERROR", roomId });
         }
       },
       { limit: 20, windowMs: 60_000 }
@@ -2502,7 +2502,7 @@ async function pruneAbandonedGames(): Promise<number> {
   const gone = await db
     .delete(activeGamesTable)
     .where(lt(activeGamesTable.updatedAt, cutoff))
-    .returning({ roomCode: activeGamesTable.roomCode });
+    .returning({ roomId: activeGamesTable.roomId });
   if (gone.length > 0) {
     logger.info({ count: gone.length }, "Pruned abandoned games orphaned by a restart");
   }
@@ -2534,7 +2534,7 @@ async function pruneStaleRooms(): Promise<number> {
   ids.forEach((id) => lobbyDropouts.delete(id));
 
   await db.delete(roomPlayersTable).where(inArray(roomPlayersTable.roomId, ids));
-  await db.delete(activeGamesTable).where(inArray(activeGamesTable.roomCode, ids));
+  await db.delete(activeGamesTable).where(inArray(activeGamesTable.roomId, ids));
   const gone = await db
     .delete(roomsTable)
     .where(inArray(roomsTable.id, ids))

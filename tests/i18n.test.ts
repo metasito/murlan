@@ -207,7 +207,7 @@ describe("translate() produces the expected output per locale", () => {
     for (const site of sites) {
       assert.ok(site.includes("message:"), `not on the error contract: ${site.trim()}`);
       assert.ok(!site.includes("reason:"), `still ships reason: ${site.trim()}`);
-      assert.ok(site.includes("roomCode"), `no roomCode for the client's guard: ${site.trim()}`);
+      assert.ok(site.includes("roomId"), `no roomId for the client's guard: ${site.trim()}`);
     }
 
     const codes = new Set(

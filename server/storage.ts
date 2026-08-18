@@ -92,7 +92,7 @@ class DrizzleStorage implements IStorage {
         await tx.delete(roomPlayers).where(inArray(roomPlayers.roomId, hostedIds));
         await tx
           .delete(activeGames)
-          .where(inArray(activeGames.roomCode, hostedIds));
+          .where(inArray(activeGames.roomId, hostedIds));
         await tx.delete(rooms).where(inArray(rooms.id, hostedIds));
       }
 

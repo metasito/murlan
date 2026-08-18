@@ -139,7 +139,7 @@ describe("reconnect", { skip: hasDatabase() ? false : skipMessage() }, () => {
       // The other path, from the same socket: the app fires game:rejoin from
       // its own connect handler.
       const rejoined = waitFor(alice.socket, "game:player_reconnected", 5_000);
-      back.emit("game:rejoin", { roomCode: room.roomId });
+      back.emit("game:rejoin", { roomId: room.roomId });
       await rejoined;
 
       assert.ok(notices.length >= 2, "both reconnect paths must announce the return");
@@ -194,7 +194,7 @@ describe("reconnect", { skip: hasDatabase() ? false : skipMessage() }, () => {
   /** Re-emits `game:rejoin` several times per AFK window until stopped. */
   function rejoinOnALoop(client: Client, roomId: string): () => void {
     const handle = setInterval(() => {
-      client.socket.emit("game:rejoin", { roomCode: roomId });
+      client.socket.emit("game:rejoin", { roomId });
     }, Math.round(AFK_MS / 3));
     return () => clearInterval(handle);
   }
@@ -206,7 +206,7 @@ describe("reconnect", { skip: hasDatabase() ? false : skipMessage() }, () => {
     const { eq } = await import("drizzle-orm");
     for (let attempt = 0; attempt < 100; attempt++) {
       const row = await db.query.activeGames.findFirst({
-        where: eq(activeGames.roomCode, roomId),
+        where: eq(activeGames.roomId, roomId),
       });
       if (row) return;
       await new Promise((resolve) => setTimeout(resolve, 20));
@@ -316,7 +316,7 @@ describe("reconnect", { skip: hasDatabase() ? false : skipMessage() }, () => {
           reject(new Error(`game:rejoin_failed ${JSON.stringify(payload)}`))
         );
       });
-      erin.socket.emit("game:rejoin", { roomCode: room.roomId });
+      erin.socket.emit("game:rejoin", { roomId: room.roomId });
       const state = await Promise.race([restored, refused]);
       assert.equal(__testables.hasActiveGame(room.roomId), true);
 
@@ -365,7 +365,7 @@ describe("reconnect", { skip: hasDatabase() ? false : skipMessage() }, () => {
           reject(new Error(`game:rejoin_failed ${JSON.stringify(payload)}`))
         );
       });
-      hank.socket.emit("game:rejoin", { roomCode: room.roomId });
+      hank.socket.emit("game:rejoin", { roomId: room.roomId });
       const state = await Promise.race([restored, refused]);
 
       assert.equal(tripped, 1, "the roster read never failed — the test proved nothing");
@@ -383,22 +383,22 @@ describe("reconnect", { skip: hasDatabase() ? false : skipMessage() }, () => {
   // ── Test 5 ──────────────────────────────────────────────────────────────
 
   /**
-   * The client's stale-reply guard compares `roomCode` against the room it
+   * The client's stale-reply guard compares `roomId` against the room it
    * asked about, so a reply that renamed, normalised or omitted it would make
    * every failure look like it answers somebody else's attempt.
    */
-  test("a rejoin failure echoes the requested roomCode verbatim", async () => {
+  test("a rejoin failure echoes the requested roomId verbatim", async () => {
     const gina = await connectAs(server, "echo_gina");
     try {
-      const failed = waitFor<{ roomCode?: string; code?: string }>(
+      const failed = waitFor<{ roomId?: string; code?: string }>(
         gina.socket,
         "game:rejoin_failed",
         5_000
       );
       const asked = "00000000-0000-4000-8000-00000000dead";
-      gina.socket.emit("game:rejoin", { roomCode: asked });
+      gina.socket.emit("game:rejoin", { roomId: asked });
       const payload = await failed;
-      assert.equal(payload.roomCode, asked);
+      assert.equal(payload.roomId, asked);
       assert.equal(payload.code, "GAME_NOT_FOUND");
     } finally {
       gina.socket.close();

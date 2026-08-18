@@ -252,13 +252,13 @@ export function OnlineGameProvider({ userId, children }: { userId: string; child
     const currentGame = gameStateRef.current;
     if (currentRoom && currentGame && !currentGame.gameOver) {
       requestedRoomIdRef.current = currentRoom.roomId;
-      socket.emit("game:rejoin", { roomCode: currentRoom.roomId });
+      socket.emit("game:rejoin", { roomId: currentRoom.roomId });
       return true;
     }
     // Cold start / remounted provider: no in-memory room, but storage may hold one.
     if (!currentRoom && persistedRoomIdRef.current) {
       requestedRoomIdRef.current = persistedRoomIdRef.current;
-      socket.emit("game:rejoin", { roomCode: persistedRoomIdRef.current });
+      socket.emit("game:rejoin", { roomId: persistedRoomIdRef.current });
       return true;
     }
 
@@ -562,12 +562,12 @@ export function OnlineGameProvider({ userId, children }: { userId: string; child
       }, 3_500);
     };
 
-    const onRejoinFailed = (data: ServerPayload & { roomCode?: string }) => {
+    const onRejoinFailed = (data: ServerPayload & { roomId?: string }) => {
       // Act only on a reply for the room still being waited on. The server
       // echoes the requested room id verbatim at every emit site, and live
       // state for any room clears the ref — so anything that does not match
       // answers an attempt the player has already moved past.
-      if (data.roomCode && data.roomCode !== requestedRoomIdRef.current) return;
+      if (data.roomId && data.roomId !== requestedRoomIdRef.current) return;
 
       // SERVER_ERROR is the rejoin handler's blanket catch — a database blip
       // during the round-trip, not a table that has gone. Everything the next

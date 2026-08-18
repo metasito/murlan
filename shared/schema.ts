@@ -73,7 +73,7 @@ export const friends = pgTable(
 // bump refuses a stale row whole; `updated_at` stays a column because the
 // abandoned-game sweep filters on it in SQL.
 export const activeGames = pgTable("active_games", {
-  roomCode:   text("room_code").primaryKey(),
+  roomId:     text("room_id").primaryKey(),
   gameState:  jsonb("game_state").notNull().default({}),
   updatedAt:  timestamp("updated_at").defaultNow().notNull(),
 });

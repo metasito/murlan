@@ -43,16 +43,16 @@ describe("abandoned game rows", { skip: hasDatabase() ? false : skipMessage() },
   });
 
   /** A row as `persistGameState` writes one, stamped at a chosen age. */
-  async function seedGame(roomCode: string, ageMs: number) {
+  async function seedGame(roomId: string, ageMs: number) {
     await dbPool.query(
-      `INSERT INTO active_games (room_code, game_state, updated_at)
+      `INSERT INTO active_games (room_id, game_state, updated_at)
        VALUES ($1, '{}'::jsonb, now() - make_interval(secs => $2))`,
-      [roomCode, ageMs / 1000]
+      [roomId, ageMs / 1000]
     );
   }
 
-  const exists = async (roomCode: string) =>
-    (await dbPool.query("SELECT 1 FROM active_games WHERE room_code = $1", [roomCode]))
+  const exists = async (roomId: string) =>
+    (await dbPool.query("SELECT 1 FROM active_games WHERE room_id = $1", [roomId]))
       .rows.length > 0;
 
   test("a row older than the cutoff goes, and a fresh one stays", async () => {

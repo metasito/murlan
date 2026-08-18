@@ -329,6 +329,34 @@ export function schemaStatements(): string[] {
 }
 
 /**
+ * Columns `shared/schema.ts` renamed. Only `drizzle-kit push` can carry a
+ * rename out; until it has, the old column is still there — and for a renamed
+ * primary key that means every insert the running code makes fails on its
+ * own, logged and swallowed, one row at a time.
+ */
+const RENAMED_COLUMNS = [
+  { table: "active_games", from: "room_code", to: "room_id" },
+] as const;
+
+/** Refuses a database still holding a column the code no longer writes. */
+export async function assertRenamesApplied(pool: Pick<Pool, "query">): Promise<void> {
+  for (const { table, from, to } of RENAMED_COLUMNS) {
+    const { rows } = await pool.query(
+      `SELECT 1 FROM information_schema.columns
+        WHERE table_schema = current_schema() AND table_name = $1 AND column_name = $2`,
+      [table, from]
+    );
+    if (rows.length > 0) {
+      throw new Error(
+        `Database out of date: "${table}"."${from}" is now "${to}", and ` +
+          `ensureSchema() is additive — it cannot rename it. Run ` +
+          `\`npm run db:push\` against this database, then start the server again.`
+      );
+    }
+  }
+}
+
+/**
  * Brings the connected database up to `shared/schema.ts`. Idempotent, additive
  * only, and safe to run on every boot.
  *
@@ -339,6 +367,7 @@ export function schemaStatements(): string[] {
  * wrong.
  */
 export async function ensureSchema(pool: Pool): Promise<void> {
+  await assertRenamesApplied(pool);
   const statements = schemaStatements();
   for (const statement of statements) {
     await pool.query(statement);

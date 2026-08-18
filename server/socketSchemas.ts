@@ -81,7 +81,7 @@ export const GamePlaySchema = z.object({
 });
 
 export const GameRejoinSchema = z.object({
-  roomCode: IdSchema,
+  roomId: IdSchema,
 });
 
 export const GameReactionSchema = z.object({
