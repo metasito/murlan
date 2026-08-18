@@ -7,9 +7,10 @@
 // hash.
 //
 // dist/ is a gitignored build product that CI does not have yet when this suite
-// runs (the web bundle is built later in the workflow), so before() assembles a
-// synthetic one and after() takes it back down, restoring rather than deleting
-// anything that was already there.
+// runs (the web bundle is built later in the workflow), so before() fills in
+// whatever is missing and after() removes only what it added. Nothing already
+// on disk is written over: a killed run cannot leave a developer's real build
+// serving a stub.
 import { test, before, after, describe } from "node:test";
 import assert from "node:assert/strict";
 import * as fs from "node:fs";
@@ -30,9 +31,12 @@ const assetPath = path.join(
   "app-fixture.deadbeefcafebabe0123456789abcdef.js"
 );
 
-// Large enough to clear compression's default 1 KB threshold, so the
-// compression assertions and the caching assertions can share one fixture.
-const FIXTURE_INDEX_HTML = `<!doctype html><div id="root"></div><!-- ${"x".repeat(2000)} -->`;
+// Only needed when there is no real build: the server refuses to serve dist/ at
+// all without an index.html.
+const FIXTURE_INDEX_HTML = `<!doctype html><div id="root"></div>`;
+// Large enough to clear compression's default 1 KB threshold. The compression
+// assertions run against this rather than against the HTML, whose size depends
+// on whether a real build is present.
 const FIXTURE_JS = `// synthetic content-hashed asset\n${"x".repeat(4000)}`;
 // Only its URL matters here, not its bytes — the browser fetches /favicon.ico
 // on every visit and the header it comes back with is the whole point.
@@ -41,8 +45,7 @@ const FIXTURE_FAVICON = Buffer.from("00000100", "hex");
 describe("static asset compression and caching", { skip: hasDatabase() ? false : skipMessage() }, () => {
   let server: TestServer;
   const createdDirs: string[] = [];
-  let restoreIndex: (() => void) | null = null;
-  let removeFavicon: (() => void) | null = null;
+  const createdFiles: string[] = [];
 
   before(async () => {
     for (const dir of [
@@ -58,18 +61,15 @@ describe("static asset compression and caching", { skip: hasDatabase() ? false :
       }
     }
 
-    if (fs.existsSync(indexPath)) {
-      const original = fs.readFileSync(indexPath, "utf-8");
-      restoreIndex = () => fs.writeFileSync(indexPath, original);
-    } else {
-      restoreIndex = () => fs.rmSync(indexPath, { force: true });
-    }
-    fs.writeFileSync(indexPath, FIXTURE_INDEX_HTML);
-    fs.writeFileSync(assetPath, FIXTURE_JS);
-
-    if (!fs.existsSync(faviconPath)) {
-      fs.writeFileSync(faviconPath, FIXTURE_FAVICON);
-      removeFavicon = () => fs.rmSync(faviconPath, { force: true });
+    for (const [file, contents] of [
+      [indexPath, FIXTURE_INDEX_HTML],
+      [faviconPath, FIXTURE_FAVICON],
+      [assetPath, FIXTURE_JS],
+    ] as const) {
+      if (!fs.existsSync(file)) {
+        fs.writeFileSync(file, contents);
+        createdFiles.push(file);
+      }
     }
 
     server = await startTestServer();
@@ -77,9 +77,7 @@ describe("static asset compression and caching", { skip: hasDatabase() ? false :
 
   after(async () => {
     await server.stop();
-    fs.rmSync(assetPath, { force: true });
-    restoreIndex?.();
-    removeFavicon?.();
+    for (const file of createdFiles) fs.rmSync(file, { force: true });
     for (const dir of createdDirs.reverse()) {
       try {
         fs.rmdirSync(dir);
@@ -89,8 +87,11 @@ describe("static asset compression and caching", { skip: hasDatabase() ? false :
     }
   });
 
+  const assetUrl = () =>
+    `${server.url}/_expo/static/js/web/app-fixture.deadbeefcafebabe0123456789abcdef.js`;
+
   test("a compressible response is gzipped when the client accepts it", async () => {
-    const res = await fetch(`${server.url}/`, {
+    const res = await fetch(assetUrl(), {
       headers: { "accept-encoding": "gzip" },
     });
     assert.equal(res.status, 200);
@@ -98,7 +99,7 @@ describe("static asset compression and caching", { skip: hasDatabase() ? false :
   });
 
   test("a client that does not accept gzip gets the raw response", async () => {
-    const res = await fetch(`${server.url}/`, {
+    const res = await fetch(assetUrl(), {
       headers: { "accept-encoding": "identity" },
     });
     assert.equal(res.status, 200);
@@ -106,9 +107,7 @@ describe("static asset compression and caching", { skip: hasDatabase() ? false :
   });
 
   test("a content-hashed asset is cached long and immutably", async () => {
-    const res = await fetch(
-      `${server.url}/_expo/static/js/web/app-fixture.deadbeefcafebabe0123456789abcdef.js`
-    );
+    const res = await fetch(assetUrl());
     assert.equal(res.status, 200);
     assert.equal(
       res.headers.get("cache-control"),
