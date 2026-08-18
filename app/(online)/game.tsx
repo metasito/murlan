@@ -13,7 +13,7 @@ import Ionicons from "@expo/vector-icons/Ionicons";
 import { useOnlineGame } from "@/context/OnlineGameContext";
 import { useAuth } from "@/context/AuthContext";
 import { GameTable } from "@/components/GameTable";
-import { computeScreenPads, readExchange } from "@/components/gameTableModel";
+import { TOP_BAR_H, computeScreenPads, readExchange } from "@/components/gameTableModel";
 import {
   FloatingReactions,
   ReactionPanel,
@@ -323,6 +323,7 @@ export default function OnlineGameScreen() {
 
           {showReactions && (
             <ReactionPanel
+              top={pads.topPad + TOP_BAR_H + Spacing.sm}
               onSelect={(emoji) => {
                 hapticLight();
                 sendReaction(emoji);
