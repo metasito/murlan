@@ -254,7 +254,10 @@ function InviteFriendsPanel({
         <FlatList
           data={onlineFriendsNotInRoom.slice(0, maxVisible)}
           keyExtractor={(f) => f.id}
-          scrollEnabled={true}
+          // The data is already capped at maxVisible and the list is tall
+          // enough for it; scrolling here would only nest inside the portrait
+          // ScrollView.
+          scrollEnabled={false}
           style={{
             maxHeight: listMaxHeight,
             borderRadius: 10,
@@ -599,7 +602,11 @@ export default function RoomScreen() {
         <View style={{ width: 38 }} />
       </View>
 
-      <View style={{ flex: 1, paddingHorizontal: 20, paddingTop: 16, paddingBottom: 8, gap: 12 }}>
+      <ScrollView
+        style={{ flex: 1 }}
+        contentContainerStyle={{ paddingHorizontal: 20, paddingTop: 16, paddingBottom: 8, gap: 12 }}
+        showsVerticalScrollIndicator={false}
+      >
         <Animated.View entering={entering} style={styles.codeSection}>
           <Text style={styles.codeLabel}>{t("room.codeLabel")}</Text>
           <Text style={styles.codeText}>{room.code}</Text>
@@ -705,7 +712,7 @@ export default function RoomScreen() {
             isLandscape={isLandscape}
           />
         )}
-      </View>
+      </ScrollView>
 
       <View style={styles.footer}>{StartButton}</View>
     </MenuLayout>
