@@ -105,7 +105,7 @@ import {
   preloadSounds,
   unloadSounds,
 } from "@/lib/sounds";
-import { hapticHeavy, hapticLight, hapticMedium, hapticSelection, hapticSuccess } from "@/lib/haptics";
+import { hapticHeavy, hapticLight, hapticMedium, hapticSelection, hapticSuccess, hapticWarn } from "@/lib/haptics";
 import { usePrefersReducedMotion } from "@/lib/accessibility";
 import { Colors, FontSize, Highlight, Motion, Radius, Scrim, Shadow, Spacing, Type } from "@/lib/theme";
 import { useTableFelt } from "@/lib/cosmetics";
@@ -710,12 +710,17 @@ export function GameTable({
     }
     if (prevGameOverRef.current) return;
     prevGameOverRef.current = true;
-    hapticSuccess();
-    const myName = viewer?.name;
-    const myRank = myName ? gameState.rankings.indexOf(myName) : -1;
-    if (myRank === 0) playGameWin();
-    else if (myRank >= 0 && myRank === gameState.rankings.length - 1) playGameLose();
-  }, [gameState.gameOver, gameState.rankings, viewer?.name]);
+    // `rankings` holds engine player ids (`player_0`), never display names.
+    const myId = viewer?.id;
+    const myRank = myId ? gameState.rankings.indexOf(myId) : -1;
+    if (myRank === 0) {
+      hapticSuccess();
+      playGameWin();
+    } else if (myRank >= 0 && myRank === gameState.rankings.length - 1) {
+      hapticWarn();
+      playGameLose();
+    }
+  }, [gameState.gameOver, gameState.rankings, viewer?.id]);
 
   // ── Animation ───────────────────────────────────────────────────────────────
 
