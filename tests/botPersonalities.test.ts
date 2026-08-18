@@ -14,6 +14,7 @@ import {
 import {
   aiChoosePlay,
   buildCombination,
+  createDeck,
   getAllValidPlays,
   initializeGame,
   processPass,
@@ -152,4 +153,26 @@ test("an unknown or missing personality resolves to the default", () => {
 test("botSeatNames numbers only the repeated personalities", () => {
   assert.deepEqual(botSeatNames(["ana", "gent", "ana"]), ["Ana 1", "Gent", "Ana 2"]);
   assert.deepEqual(botSeatNames([]), []);
+});
+
+// The offline authority has no server behind it, so a lead that returns
+// nothing would freeze the table rather than be caught.
+test("leading a round always produces a play, for every personality and hand size", () => {
+  const deck = createDeck();
+  for (const { id } of BOT_PERSONALITIES) {
+    for (let size = 1; size <= 14; size++) {
+      for (let offset = 0; offset + size <= deck.length; offset += 5) {
+        const hand = deck.slice(offset, offset + size);
+        const play = aiChoosePlay(
+          makePlayer("bot", hand, { type: "ai", personality: id }),
+          null,
+          true,
+          [size, size, size],
+          undefined,
+          fixedRng([0.1, 0.5, 0.9])
+        );
+        assert.ok(play, `${id} led nothing holding ${size} cards from offset ${offset}`);
+      }
+    }
+  }
 });

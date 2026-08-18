@@ -10,7 +10,6 @@ import React, {
 } from "react";
 import {
   GameState,
-  Combination,
   GameMode,
   PlayerType,
   MatchLength,
@@ -29,7 +28,6 @@ import {
   resolveMatch,
   resolveTeamMatch,
   scoreHand,
-  sortHand,
   canPlay,
 } from "@/lib/gameEngine";
 import AsyncStorage from "@react-native-async-storage/async-storage";
@@ -398,15 +396,6 @@ export function GameProvider({ children }: { children: ReactNode }) {
         setLastRoundWinner(newState.roundWinner);
       }
       commitState(newState, gameState);
-    } else {
-      // Leading a round with no play returned: the leader may not pass, so
-      // doing nothing here freezes the table. Lead the lowest card instead.
-      const [lowest] = sortHand(currentPlayer.hand);
-      const combo: Combination | null = lowest ? buildCombination([lowest]) : null;
-      if (combo) {
-        setLastRoundWinner(null);
-        commitState(processPlay(gameState, combo), gameState);
-      }
     }
   }, [gameState, commitState]);
 
