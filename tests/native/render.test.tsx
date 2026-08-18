@@ -1,11 +1,12 @@
 import { describe, it, expect, beforeEach, afterEach, jest } from '@jest/globals';
 import React from 'react';
-import { render } from '@testing-library/react-native';
+import { render, within } from '@testing-library/react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 import { CardView } from '@/components/CardView';
 import NotificationBanner from '@/components/NotificationBanner';
 import type { Card, Rank, Suit } from '@/lib/gameEngine';
+import { it as itLocale } from '@/locales/it';
 
 // react-native-web shims Reanimated onto CSS transitions, so on web a worklet
 // never actually runs. Here the components mount under React Native's own
@@ -99,6 +100,24 @@ describe('NotificationBanner', () => {
       )
     );
     expect(view.getByText('Messaggio')).toBeTruthy();
+    await view.unmount();
+  });
+
+  // The close button used to sit inside the alert. A focusable control inside
+  // a live region is invalid, and the enclosing pressable swallowed taps meant
+  // for it.
+  it('keeps the close button out of the alert', async () => {
+    const view = await render(
+      withSafeArea(
+        <NotificationBanner
+          notification={{ type: 'game_info', title: 'Titolo', message: 'Messaggio' }}
+          onDismiss={() => {}}
+        />
+      )
+    );
+    const close = itLocale['notificationBanner.closeA11yLabel'];
+    expect(view.getByLabelText(close)).toBeTruthy();
+    expect(within(view.getByRole('alert')).queryAllByLabelText(close)).toHaveLength(0);
     await view.unmount();
   });
 });
