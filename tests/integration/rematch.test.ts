@@ -54,18 +54,18 @@ describe("rematch roster", { skip: hasDatabase() ? false : skipMessage() }, () =
    * disposes it.
    */
   async function closeTable(roomId: string, host: Client) {
-    const { __testables } = await import("../../server/socket.ts");
+    const { hasActiveGame } = await import("../helpers/liveGame.ts");
     host.socket.emit("room:leave");
     const deadline = Date.now() + 5_000;
     while (Date.now() < deadline) {
-      if (!__testables.hasActiveGame(roomId)) return;
+      if (!hasActiveGame(roomId)) return;
       await new Promise((resolve) => setTimeout(resolve, 25));
     }
     assert.fail("the table was still live after its host left");
   }
 
   test("a lone human plus bots deals a second manche with the same seats", async () => {
-    const { __testables } = await import("../../server/socket.ts");
+    const { seatedUsers, matchSnapshot } = await import("../helpers/liveGame.ts");
     const [ivan] = await makeClients(server, ["rematch_solo_ivan"]);
     const room = await setUpRoom([ivan], 4);
 
@@ -74,7 +74,7 @@ describe("rematch roster", { skip: hasDatabase() ? false : skipMessage() }, () =
         ivan.socket.emit("room:start", { fillWithBots: true, botPersonality: "gent" });
       })
     );
-    const seatedBefore = __testables.seatedUsers(room.roomId);
+    const seatedBefore = seatedUsers(room.roomId);
     assert.deepEqual(seatedBefore, { 0: ivan.user.id });
 
     const dealt = waitForDeal(ivan.socket);
@@ -85,7 +85,7 @@ describe("rematch roster", { skip: hasDatabase() ? false : skipMessage() }, () =
 
     assert.equal(next.players.length, 4, "the next manche must keep every seat");
     assert.equal(
-      __testables.matchSnapshot(room.roomId)?.dealFirstSeat,
+      matchSnapshot(room.roomId)?.dealFirstSeat,
       1,
       "the second manche deals one seat further round, so the extra cards move"
     );
@@ -95,7 +95,7 @@ describe("rematch roster", { skip: hasDatabase() ? false : skipMessage() }, () =
     // AI, so this is the assertion that the three bot seats are still bots and
     // that the human's seat did not move under him.
     assert.deepEqual(
-      __testables.seatedUsers(room.roomId),
+      seatedUsers(room.roomId),
       seatedBefore,
       "seat numbering must not change across a manche"
     );
@@ -116,7 +116,7 @@ describe("rematch roster", { skip: hasDatabase() ? false : skipMessage() }, () =
   });
 
   test("a two-human, two-bot table keeps all four seats across a rematch", async () => {
-    const { __testables } = await import("../../server/socket.ts");
+    const { seatedUsers } = await import("../helpers/liveGame.ts");
     const [jack, kira] = await makeClients(server, [
       "rematch_mixed_jack",
       "rematch_mixed_kira",
@@ -128,7 +128,7 @@ describe("rematch roster", { skip: hasDatabase() ? false : skipMessage() }, () =
         jack.socket.emit("room:start", { fillWithBots: true });
       })
     );
-    const seatedBefore = __testables.seatedUsers(room.roomId);
+    const seatedBefore = seatedUsers(room.roomId);
 
     const deals = [jack, kira].map((c) => waitForDeal(c.socket));
     jack.socket.emit("game:rematch_vote");
@@ -148,7 +148,7 @@ describe("rematch roster", { skip: hasDatabase() ? false : skipMessage() }, () =
       "two humans must not be told they hold the same seat"
     );
     assert.deepEqual(
-      __testables.seatedUsers(room.roomId),
+      seatedUsers(room.roomId),
       seatedBefore,
       "seat numbering must not change across a manche"
     );
@@ -165,7 +165,7 @@ describe("rematch roster", { skip: hasDatabase() ? false : skipMessage() }, () =
    * carry on.
    */
   test("room:start cannot deal the next manche of a running match", async () => {
-    const { __testables } = await import("../../server/socket.ts");
+    const { matchSnapshot } = await import("../helpers/liveGame.ts");
     const [mira] = await makeClients(server, ["newmatch_running_mira"]);
     const room = await setUpRoom([mira], 4);
 
@@ -174,7 +174,7 @@ describe("rematch roster", { skip: hasDatabase() ? false : skipMessage() }, () =
         mira.socket.emit("room:start", { fillWithBots: true, botPersonality: "gent" });
       })
     );
-    const before = __testables.matchSnapshot(room.roomId);
+    const before = matchSnapshot(room.roomId);
     assert.equal(before?.matchOver, false, "one manche of a 21-point match settles nothing");
 
     const refused = waitFor<{ code: string }>(mira.socket, "room:error", 5_000);
@@ -183,7 +183,7 @@ describe("rematch roster", { skip: hasDatabase() ? false : skipMessage() }, () =
     mira.socket.emit("room:start", { fillWithBots: true, matchLength: "single" });
     assert.equal((await refused).code, "MATCH_IN_PROGRESS");
     assert.deepEqual(
-      __testables.matchSnapshot(room.roomId),
+      matchSnapshot(room.roomId),
       before,
       "a refused room:start must leave the format, target, scores and hand exactly as they were"
     );

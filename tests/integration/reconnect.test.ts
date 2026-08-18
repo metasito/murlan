@@ -298,7 +298,7 @@ describe("reconnect", { skip: hasDatabase() ? false : skipMessage() }, () => {
    * table comes back frozen.
    */
   test("a rejoin that rehydrates a game from the database arms its turn timer", async () => {
-    const { __testables } = await import("../../server/socket.ts");
+    const { hasActiveGame, forgetActiveGame } = await import("../helpers/liveGame.ts");
     const erin = await connectAs(server, "rehydrate_erin");
     const frank = await connectAs(server, "rehydrate_frank");
     const room = await setUpRoom([erin, frank], 2);
@@ -310,8 +310,8 @@ describe("reconnect", { skip: hasDatabase() ? false : skipMessage() }, () => {
       await waitForPersistedGame(room.roomId);
 
       // What a restart leaves behind: the row, and nothing in memory.
-      assert.equal(__testables.forgetActiveGame(room.roomId), true);
-      assert.equal(__testables.hasActiveGame(room.roomId), false);
+      assert.equal(forgetActiveGame(room.roomId), true);
+      assert.equal(hasActiveGame(room.roomId), false);
 
       const passes = collectAfkPasses(frank.socket);
       const restored = waitFor<SanitizedState>(erin.socket, "game:state", 5_000);
@@ -322,7 +322,7 @@ describe("reconnect", { skip: hasDatabase() ? false : skipMessage() }, () => {
       });
       erin.socket.emit("game:rejoin", { roomId: room.roomId });
       const state = await Promise.race([restored, refused]);
-      assert.equal(__testables.hasActiveGame(room.roomId), true);
+      assert.equal(hasActiveGame(room.roomId), true);
 
       const onTurn = state.players[state.currentTurnIndex].name;
       await waitUntil(
@@ -451,7 +451,7 @@ describe("reconnect", { skip: hasDatabase() ? false : skipMessage() }, () => {
    * merely stale.
    */
   test("a rejoin is sent the running match target and scoreboard", async () => {
-    const { __testables } = await import("../../server/socket.ts");
+    const { matchSnapshot } = await import("../helpers/liveGame.ts");
     const alice = await connectAs(server, "framing_alice");
     const bob = await connectAs(server, "framing_bob");
     const room = await setUpRoom([alice, bob], 2);
@@ -471,7 +471,7 @@ describe("reconnect", { skip: hasDatabase() ? false : skipMessage() }, () => {
       bob.socket.emit("game:rematch_vote");
       const manche = await dealt;
 
-      const snapshot = __testables.matchSnapshot(room.roomId);
+      const snapshot = matchSnapshot(room.roomId);
       assert.ok(snapshot, "the table must still be live");
       assert.equal(snapshot.matchTarget, targetsFor(2)[0]);
       assert.notEqual(

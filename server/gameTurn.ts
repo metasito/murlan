@@ -35,7 +35,7 @@ import {
 import type { GameState, Combination } from "../lib/gameEngine.ts";
 
 /** The seat that must act right now: the exchange winner, or the turn holder. */
-export function actingSeat(state: GameState): number {
+function actingSeat(state: GameState): number {
   return state.exchangePhase?.active
     ? state.exchangePhase.winnerIdx
     : state.currentTurnIndex;

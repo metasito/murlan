@@ -42,23 +42,18 @@ import {
 } from "./gamePersistence.ts";
 import {
   broadcastRematchIntents,
-  countRematchAnswers,
   handleGameOver,
   rollMatchForward,
   scoresByName,
   tableWantsRematch,
 } from "./gameOver.ts";
 import {
-  actingSeat,
   armTurn,
   armTurnIfIdle,
-  autoMoveForSeat,
   recordPlayFlags,
   vacateSeat,
 } from "./gameTurn.ts";
-import type { AutoMovable } from "./gameTurn.ts";
 import {
-  readPersistedPlayerMap,
   buildSeatRoster,
   teamKeyMap,
   restoredMatchOver,
@@ -177,76 +172,13 @@ export async function evictUser(userId: string): Promise<void> {
 }
 
 /**
- * Internals exposed for tests only — the turn resolution and persistence
- * mapping are the two places where a bug deadlocks a live table, so they have
- * to be exercisable without a socket server and a database.
+ * The one internal a test cannot reach any other way: the containment every
+ * timer body runs under. The property that matters — a throw closes the table
+ * instead of freezing it — needs a body that throws on demand, and `_io` is
+ * private to this module. Everything else a test needs is exported by the
+ * module that owns it.
  */
 export const __testables = {
-  actingSeat: (state: GameState) => actingSeat(state),
-  autoMoveForSeat: (state: GameState, seat: number, useAi: boolean) =>
-    autoMoveForSeat({ gameState: state, handFlags: {}, moveLog: null }, seat, useAi),
-  /**
-   * Same as autoMoveForSeat, but also returns the OnlineGameState.handFlags
-   * an AFK-forced/bot move produced — regression coverage for the
-   * bomb/joker achievement bookkeeping living in recordPlayFlags, which a
-   * bare GameState result can't expose.
-   */
-  autoMoveForSeatWithFlags: (state: GameState, seat: number, useAi: boolean) => {
-    const game: AutoMovable = { gameState: state, handFlags: {}, moveLog: null };
-    const next = autoMoveForSeat(game, seat, useAi);
-    return { state: next, handFlags: game.handFlags };
-  },
-  readPersistedPlayerMap: (storedMap: unknown) => readPersistedPlayerMap(storedMap),
-  countRematchAnswers: (game: OnlineGameState) => countRematchAnswers(game),
-  tableWantsRematch: (game: OnlineGameState) => tableWantsRematch(game),
-  /**
-   * Whether a room still holds a live in-memory game. The only observable
-   * difference between a disposed table and one that merely stopped emitting,
-   * since disposal deletes the `active_games` row without awaiting it.
-   */
-  hasActiveGame: (roomId: string) => activeGames.has(roomId),
-  /**
-   * Drops a room's live game and its timers while leaving the `active_games`
-   * row alone — exactly what a process restart leaves behind, and the only
-   * way a test can reach `game:rejoin`'s rehydration branch.
-   */
-  forgetActiveGame: (roomId: string) => {
-    clearRoomTimers(roomId);
-    return activeGames.delete(roomId);
-  },
-  /**
-   * A snapshot of the seat -> userId map a room's live game is routing hands
-   * by. It is the only thing that decides whose cards a viewer is sent, and
-   * which seats the turn arbiter drives with the AI, so a test asserting that
-   * a seat did not move under a player has to read it directly.
-   */
-  seatedUsers: (roomId: string) => {
-    const game = activeGames.get(roomId);
-    return game ? { ...game.playerMap } : null;
-  },
-  /**
-   * The match bookkeeping of a room's live game: the format, the target, the
-   * running scores and the identity of the hand on the table. A second deal
-   * path is only observable through these — the clients see an ordinary
-   * `game:started` either way.
-   */
-  matchSnapshot: (roomId: string) => {
-    const game = activeGames.get(roomId);
-    if (!game) return null;
-    return {
-      matchLength: game.matchLength,
-      matchTarget: game.matchTarget,
-      matchOver: game.matchOver,
-      cumulativeScores: { ...game.cumulativeScores },
-      rankings: [...game.gameState.rankings],
-      dealFirstSeat: game.dealFirstSeat,
-    };
-  },
-  /**
-   * The containment every timer body runs under. Exposed because the property
-   * that matters — a throw closes the table instead of freezing it — is not
-   * reachable through a socket: it needs a body that throws on demand.
-   */
   runTimerBody: (label: string, roomId: string, fn: () => void) =>
     safeTimer(_io, label, roomId, fn),
 };

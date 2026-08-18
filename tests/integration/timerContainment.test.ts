@@ -48,9 +48,10 @@ describe(
       const room = await setUpRoom([alice, bob], 2);
       await startGame([alice, bob]);
 
+      const { hasActiveGame } = await import("../helpers/liveGame.ts");
       const { __testables } = await import("../../server/socket.ts");
       assert.equal(
-        __testables.hasActiveGame(room.roomId),
+        hasActiveGame(room.roomId),
         true,
         "the game must be live before the timer throws"
       );
@@ -74,7 +75,7 @@ describe(
         // The freeze is the absence of both: a room still in memory, not over,
         // with no timer that will ever fire for it.
         assert.equal(
-          __testables.hasActiveGame(room.roomId),
+          hasActiveGame(room.roomId),
           false,
           "a table whose timer threw must not survive in memory"
         );

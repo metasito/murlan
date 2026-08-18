@@ -548,7 +548,7 @@ describe("gameplay integrity", { skip: hasDatabase() ? false : skipMessage() }, 
   // ── Test 9 ──────────────────────────────────────────────────────────────
 
   test("the last player leaving the results screen disposes the room", async () => {
-    const { __testables } = await import("../../server/socket.ts");
+    const { hasActiveGame } = await import("../helpers/liveGame.ts");
     const [gina, hugo] = await makeClients([
       "results_dispose_gina",
       "results_dispose_hugo",
@@ -556,13 +556,13 @@ describe("gameplay integrity", { skip: hasDatabase() ? false : skipMessage() }, 
     const room = await setUpRoom([gina, hugo], 2);
     await playOpeningHand([gina, hugo]);
 
-    assert.equal(__testables.hasActiveGame(room.roomId), true);
+    assert.equal(hasActiveGame(room.roomId), true);
 
     const takeover = waitFor(hugo.socket, "game:seat_bot_takeover");
     gina.socket.emit("room:leave");
     await takeover;
     assert.equal(
-      __testables.hasActiveGame(room.roomId),
+      hasActiveGame(room.roomId),
       true,
       "a table with a seat still held must survive"
     );
@@ -571,7 +571,7 @@ describe("gameplay integrity", { skip: hasDatabase() ? false : skipMessage() }, 
     // is announced to nobody — it is only observable on the server.
     hugo.socket.emit("room:leave");
     await waitUntil(
-      () => !__testables.hasActiveGame(room.roomId),
+      () => !hasActiveGame(room.roomId),
       "the room kept a live game in memory after its last seat emptied"
     );
   });
