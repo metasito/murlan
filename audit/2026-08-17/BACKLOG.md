@@ -284,6 +284,7 @@ through this table. Appendix A adds 9 more. **122 tracked, 0 dropped.**
 | TEST-13 | Pin `babel-plugin-react-compiler` — a caret on a prerelease lets the compiler float | Med | S | 10 | `package.json:84`, `app.json:57-60` | TEST-04 |
 | TEST-16 | Reconcile the Node version split, and give `server:build` a `--target` | Low | S | 10 | `.github/workflows/ci.yml:52`, `.replit:2` | TEST-03 |
 | UI-07 | The numeric half of the design-token scale is unenforced and abandoned | Low | L | 06 | `lib/tokens.ts:138-161`, `eslint.config.js:24-38` | — |
+| ARCH-18 | Cut the comment bloat the remediation itself added — 23% of every line added | Med | M | **new** | `server/socket.ts`, `components/GameTable.tsx`, `lib/gameEngine.ts`, repo-wide | after 13 |
 
 ---
 
@@ -377,6 +378,44 @@ label goes through `t()` with keys in all three locales — `tests/i18n.test.ts`
 
 **Do it with NET-01, in Batch 3.** Same code path, and NET-01 is what makes the takeover
 reachable from the results screen in the first place.
+
+---
+
+## Appendix C — found during remediation
+
+### [ARCH-18] Cut the comment bloat the remediation itself added
+- **Severity:** Medium · **Effort:** M · **Batch:** 14 (last — after every code batch has landed)
+- **Location:** repo-wide; worst in `server/socket.ts`, then `components/GameTable.tsx`,
+  `lib/gameEngine.ts`, `tests/helpers/`
+- **Problem:** Fixing an audited defect pulls hard toward explaining *why the defect existed*
+  in the code, so two-line fixes shipped with twelve-line blocks. Measured across batches 1-7:
+
+  | | Added lines | Comment lines | % |
+  |---|---|---|---|
+  | `server/socket.ts` | 834 | 330 | **39%** |
+  | Repo-wide (`*.ts`, `*.tsx`) | 7,165 | 1,692 | **23%** |
+
+  Current standing density: `server/socket.ts` 22%, `tests/helpers/client.ts` 25%,
+  `lib/gameEngine.ts` 17%. Longest single block is 25 lines.
+- **Impact:** Every one of those lines is read on each pass over the file and has to be kept
+  true forever. A stale comment is worse than no comment — and the audit already found three
+  comments asserting things the code no longer did (`CLAUDE.md`'s layout-constant invariant,
+  the Friends `FlatList` invariant, `connectAs`'s readiness-wait rationale, which outlived the
+  race it described by months and caused a CI flake).
+- **Proposed fix:** Apply `CLAUDE.md` § Comments as an audit, file by file, worst density
+  first. Delete anything restating the code, narrating a refactor, or explaining a fixed
+  defect — that history is in the commit and the finding entry. Keep only the four categories
+  that earn a comment. Where a comment exists because the code is unclear, rename or extract
+  instead; that is a permanent fix and the comment is not.
+- **Acceptance criteria:** Comment density in `server/socket.ts` under 12%; no block longer
+  than 8 lines outside a file-header contract; `npm run verify` unchanged; **no behaviour
+  change in the diff at all** — this is deletion and renaming only, so review it as such.
+- **Fix risk:** Deleting a comment that documented a real invisible constraint. Cross-check
+  every deletion in a file against the Invariants list in `CLAUDE.md` and against the finding
+  entry that introduced it. When unsure whether a comment carries a constraint, keep it and
+  shorten it to the constraint alone.
+- **Depends on:** Batch 13 — do this after every code batch has merged, or it conflicts with
+  all of them.
 
 ---
 

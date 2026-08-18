@@ -44,7 +44,7 @@ merge one before opening the other's PR.
 | - [ ] 11 | Layout and overflow | 11 | low | Sonnet | not started | | |
 | - [ ] 12 | Test coverage where it matters | 13 | high | Opus | not started | | |
 | - [ ] 13 | Architecture seams | 9 | **max** | **Opus** | not started | | |
-| - [ ] 14 | Docs truth and housekeeping | 11 | low | Sonnet | not started | | |
+| - [ ] 14 | Docs truth and housekeeping | 12 | low | Sonnet | not started | | |
 
 A batch is done when it is **committed, pushed, opened as a PR, and merged once CI is green** —
 one commit per finding, one branch per batch, one PR per branch. Merge with `--merge`, never
@@ -60,7 +60,7 @@ than assumed; nothing changed outside the batch's declared scope.
 Merging does not deploy — Replit Cloud Run is triggered from its own UI, so merged work waits
 on `main` for a human to ship it.
 
-**123 findings total.** 3 Critical, 17 High, 61 Medium, 42 Low.
+**124 findings total.** 3 Critical, 17 High, 62 Medium, 42 Low.
 
 ---
 
@@ -78,7 +78,7 @@ row says so.
 | 11 Layout | **1** | no | `npm test` + `test:native` |
 | 12 Test coverage | 2 | no | full, **with Postgres** |
 | 13 Architecture seams | per risky finding | **yes** — `subagent-driven-development` | full, **with Postgres** |
-| 14 Docs | **1** | no | `npm run lint` only — CI's fast path skips the rest |
+| 14 Docs | **1**, plus ARCH-18 as its own pass | no | `npm run verify` — ARCH-18 touches source |
 
 **Scale local verification to what the batch touches; CI always runs everything.** A batch that
 never opens `server/` cannot break the integration suites, and waiting 115s locally to prove it
