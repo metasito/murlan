@@ -50,6 +50,7 @@ import {
 import {
   initializeGame,
   initializeRematch,
+  nextDealFirstSeat,
   teamForSeat,
   TEAMS_PLAYER_COUNT,
   processPlay,
@@ -130,6 +131,13 @@ interface OnlineGameState {
    * meaningless after a restart.
    */
   turnDeadlineMs?: number;
+  /**
+   * The seat the next manche deals from. The two extra cards of a 54-card
+   * deal land on it and its neighbour, so it advances every manche — seat 0 is
+   * always the host, and a fixed origin hands the host's half of the table a
+   * bigger hand for the whole match.
+   */
+  dealFirstSeat: number;
   /**
    * userIds watching without a seat. Deliberately not persisted: a spectator
    * who reconnects spectates again, and a restart dropping them costs nothing.
@@ -395,6 +403,7 @@ export const __testables = {
       matchOver: game.matchOver,
       cumulativeScores: { ...game.cumulativeScores },
       rankings: [...game.gameState.rankings],
+      dealFirstSeat: game.dealFirstSeat,
     };
   },
   /**
@@ -531,7 +540,7 @@ function persistGameState(roomId: string, game: OnlineGameState): Promise<unknow
   const playerMap = game.playerMap as Record<string, string>;
   // Stamped so a restart can tell a current-shape row from a stale one (see
   // GAME_SCHEMA_VERSION) rather than restoring a corrupt hand silently.
-  const persistedState = packPersistedState(game.gameState, game.handFlags);
+  const persistedState = packPersistedState(game.gameState, game.handFlags, game.dealFirstSeat);
   const values = {
     roomCode: roomId,
     gameState: persistedState as any,
@@ -1915,6 +1924,7 @@ export function setupSocket(httpServer: HttpServer) {
           abandonedSeats: new Map<number, string>(),
           spectators: new Set<string>(),
           moveLog: startReplayLog(),
+          dealFirstSeat: 0,
         };
         rollMatchForward(newGame);
         activeGames.set(roomId, newGame);
@@ -2160,10 +2170,12 @@ export function setupSocket(httpServer: HttpServer) {
           team: room.gameMode === "teams" ? p.team : undefined,
         }));
 
+        const nextFirstSeat = nextDealFirstSeat(game.dealFirstSeat, playerSetup.length);
         const newGameState =
           prevRankings.length >= 2
-            ? initializeRematch(playerSetup, room.gameMode, prevRankings)
-            : initializeGame(playerSetup, room.gameMode);
+            ? initializeRematch(playerSetup, room.gameMode, prevRankings, nextFirstSeat)
+            : initializeGame(playerSetup, room.gameMode, nextFirstSeat);
+        game.dealFirstSeat = nextFirstSeat;
 
         // `game.playerMap` is deliberately left alone: seat i of the new state
         // is seat i of the old one, because playerSetup was built from that
@@ -2267,8 +2279,11 @@ export function setupSocket(httpServer: HttpServer) {
           // isStaleSchema is a plain boolean helper (kept dependency-free for
           // unit testing), so TS can't narrow the null case through it —
           // the `return` above already ruled it out.
-          const { gameState: restoredState, handFlags: restoredHandFlags } =
-            unpackPersistedState(persistedState!);
+          const {
+            gameState: restoredState,
+            handFlags: restoredHandFlags,
+            dealFirstSeat: restoredDealFirstSeat,
+          } = unpackPersistedState(persistedState!);
 
           const playerMap = readPersistedPlayerMap(row.playerMap, row.playerIds);
           if (!Object.values(playerMap).includes(userId)) {
@@ -2307,6 +2322,7 @@ export function setupSocket(httpServer: HttpServer) {
             // The log is memory-only, so a hand restored after a restart has
             // none and produces no replay. The next hand starts a fresh one.
             moveLog: null,
+            dealFirstSeat: restoredDealFirstSeat,
           };
           activeGames.set(roomCode, game);
           if (row.isPublic) publicRoomIds.add(roomCode);

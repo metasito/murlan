@@ -84,6 +84,11 @@ describe("rematch roster", { skip: hasDatabase() ? false : skipMessage() }, () =
     await started;
 
     assert.equal(next.players.length, 4, "the next manche must keep every seat");
+    assert.equal(
+      __testables.matchSnapshot(room.roomId)?.dealFirstSeat,
+      1,
+      "the second manche deals one seat further round, so the extra cards move"
+    );
     assert.equal(next.players.filter((p) => p.type === "ai").length, 3);
     assertHandSecrecy(next, "solo rematch deal");
     // A seat with no playerMap entry is exactly what armTurn drives with the
@@ -273,16 +278,33 @@ describe("rematch roster", { skip: hasDatabase() ? false : skipMessage() }, () =
       })
     );
 
+    /** Votes another manche in and returns the deal both seats were sent. */
+    const dealNextManche = async () => {
+      const dealt = waitForDeal(pia.socket);
+      pia.socket.emit("game:rematch_vote");
+      quinn.socket.emit("game:rematch_vote");
+      return dealt;
+    };
+
+    // A loser holding both jokers skips the exchange entirely (docs/RULES.md
+    // §10), and in a two-handed deal that is one manche in four — play those
+    // out and deal again rather than asserting on whichever one turns up.
+    let next = await dealNextManche();
+    for (let attempt = 0; attempt < 6 && !next.exchangePhase?.active; attempt++) {
+      gameOverOf(
+        await driveHandToExchangeOrOver([pia, quinn], () => {}, { stopOnExchange: false })
+      );
+      next = await dealNextManche();
+    }
+    assert.ok(next.exchangePhase?.active, "the next manche opens on an exchange");
+
+    // Registered only now: an AFK auto-pass from any manche played above would
+    // otherwise be the first code seen and would pass this test for the wrong
+    // reason.
     const afk: string[] = [];
     pia.socket.on("game:notification", (payload: { code?: string }) => {
       if (payload?.code?.startsWith("PLAYER_AFK_AUTO_")) afk.push(payload.code);
     });
-
-    const dealt = waitForDeal(pia.socket);
-    pia.socket.emit("game:rematch_vote");
-    quinn.socket.emit("game:rematch_vote");
-    const next = await dealt;
-    assert.ok(next.exchangePhase?.active, "the next manche opens on an exchange");
 
     const deadline = Date.now() + 5_000;
     while (afk.length === 0 && Date.now() < deadline) {

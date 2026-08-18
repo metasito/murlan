@@ -232,20 +232,26 @@ export function shuffleDeck(deck: Card[]): Card[] {
 }
 
 /**
- * Deals the ENTIRE 54-card deck, one card at a time, round-robin, so the extra
- * cards land deterministically on the first seats.
- * 4 players = 14/14/13/13, 3 players = 18 each, 2 players = 27 each.
+ * Deals the ENTIRE 54-card deck, one card at a time, round-robin from
+ * `firstSeat`. 4 players = 14/14/13/13, 3 players = 18 each, 2 players = 27
+ * each — and the two extra cards land on `firstSeat` and the seat after it,
+ * so rotating it between manches is what stops the same seats holding the
+ * bigger hand for the whole match (docs/RULES.md §2, the dealer's rotation).
  * Nothing is excluded — the 3♠ and both Jokers are always in play.
  *
  * `excluded` is kept in the return type for backward compatibility with
  * existing callers and is now always empty.
  */
-export function dealCards(playerCount: number): { hands: Card[][]; excluded: Card[] } {
+export function dealCards(
+  playerCount: number,
+  firstSeat = 0
+): { hands: Card[][]; excluded: Card[] } {
   if (playerCount < 1) return { hands: [], excluded: [] };
   const deck = shuffleDeck(createDeck());
   const hands: Card[][] = Array.from({ length: playerCount }, () => []);
+  const start = ((firstSeat % playerCount) + playerCount) % playerCount;
   for (let i = 0; i < deck.length; i++) {
-    hands[i % playerCount].push(deck[i]);
+    hands[(start + i) % playerCount].push(deck[i]);
   }
   return { hands, excluded: [] };
 }
@@ -904,9 +910,10 @@ export function initializeRematch(
     id?: string;
   }>,
   gameMode: GameMode,
-  prevRankings: string[]
+  prevRankings: string[],
+  firstSeat = 0
 ): GameState {
-  const { hands } = dealCards(playerSetup.length);
+  const { hands } = dealCards(playerSetup.length, firstSeat);
 
   const players: Player[] = playerSetup.map((setup, i) => ({
     id: setup.id ?? `player_${i}`,
@@ -1067,6 +1074,12 @@ export function teamForSeat(
   return seat % 2 === 0 ? "A" : "B";
 }
 
+/** The seat the next manche deals from — one further round the table. */
+export function nextDealFirstSeat(firstSeat: number, playerCount: number): number {
+  if (playerCount < 1) return 0;
+  return (firstSeat + 1) % playerCount;
+}
+
 export function initializeGame(
   playerSetup: Array<{
     name: string;
@@ -1074,9 +1087,10 @@ export function initializeGame(
     personality?: BotPersonalityId;
     team?: "A" | "B";
   }>,
-  gameMode: GameMode
+  gameMode: GameMode,
+  firstSeat = 0
 ): GameState {
-  const { hands } = dealCards(playerSetup.length);
+  const { hands } = dealCards(playerSetup.length, firstSeat);
 
   const players: Player[] = playerSetup.map((setup, i) => ({
     id: `player_${i}`,

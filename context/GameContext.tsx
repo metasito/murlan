@@ -18,6 +18,7 @@ import {
   botWantsRematch,
   initializeGame,
   initializeRematch,
+  nextDealFirstSeat,
   isMajority,
   matchIsClosing,
   processExchangeChoice,
@@ -189,6 +190,7 @@ export function GameProvider({ children }: { children: ReactNode }) {
   const [rematchAnswers, setRematchAnswers] = useState<RematchAnswers>({});
   const [savedPlayerConfigs, setSavedPlayerConfigs] = useState<PlayerSetupConfig[]>([]);
   const [savedGameMode, setSavedGameMode] = useState<GameMode>("free_for_all");
+  const [dealFirstSeat, setDealFirstSeat] = useState(0);
 
   /**
    * Whether a match interrupted by the app going away is waiting to be picked
@@ -219,6 +221,7 @@ export function GameProvider({ children }: { children: ReactNode }) {
       setGameState(state);
       setSelectedCards([]);
       setLastRoundWinner(null);
+      setDealFirstSeat(0);
       setMatch(freshMatch(length));
       setRematchAnswers({});
       setSavedPlayerConfigs(players);
@@ -231,7 +234,9 @@ export function GameProvider({ children }: { children: ReactNode }) {
   const dealFrom = useCallback(
     (prevRankings: string[]) => {
       const playersWithId = savedPlayerConfigs.map((p, i) => ({ ...p, id: `player_${i}` }));
-      const state = initializeRematch(playersWithId, savedGameMode, prevRankings);
+      const nextFirstSeat = nextDealFirstSeat(dealFirstSeat, playersWithId.length);
+      const state = initializeRematch(playersWithId, savedGameMode, prevRankings, nextFirstSeat);
+      setDealFirstSeat(nextFirstSeat);
 
       if (state.exchangePhase?.bothJokersException) {
         const ep = state.exchangePhase;
@@ -247,7 +252,7 @@ export function GameProvider({ children }: { children: ReactNode }) {
       setSelectedCards([]);
       setLastRoundWinner(null);
     },
-    [savedPlayerConfigs, savedGameMode]
+    [savedPlayerConfigs, savedGameMode, dealFirstSeat]
   );
 
   const startNextHand = useCallback(() => {
@@ -427,6 +432,7 @@ export function GameProvider({ children }: { children: ReactNode }) {
     setRematchAnswers(save.rematchAnswers);
     setSavedPlayerConfigs(save.players);
     setSavedGameMode(save.gameMode);
+    setDealFirstSeat(save.dealFirstSeat);
     setSelectedCards([]);
     setLastRoundWinner(null);
     return true;
@@ -465,9 +471,10 @@ export function GameProvider({ children }: { children: ReactNode }) {
         rematchAnswers,
         players: savedPlayerConfigs,
         gameMode: savedGameMode,
+        dealFirstSeat,
       })
     ).catch(() => {});
-  }, [gameState, match, rematchAnswers, savedPlayerConfigs, savedGameMode, clearSavedGame]);
+  }, [gameState, match, rematchAnswers, savedPlayerConfigs, savedGameMode, dealFirstSeat, clearSavedGame]);
 
   const tableWantsRematch = useMemo(() => {
     const seats = gameState?.players.length ?? 0;
