@@ -106,10 +106,10 @@ test("online — two real browsers play a live 2-player game against each other"
   }
 });
 
-// Watch used to navigate on the emit, before the server had answered. The
-// server refuses an unknown code, so no state ever arrived and the game screen
-// had nothing to draw: a blank page with no text and no control, whose only
-// exit was the browser's back button.
+// Watch navigates on the server's answer, never on the emit. An unknown code is
+// refused, so no state ever arrives, and a game screen with nothing to draw is
+// a blank page with no text and no control whose only exit is the browser's
+// back button.
 test("online — watching a room that does not exist keeps the player in the lobby", async ({
   page,
   baseURL,

@@ -63,10 +63,10 @@ export async function recordGameResult(
   if (humanResults.length === 0) return;
 
   for (const result of humanResults) {
-    // One transaction per seat, not one for the whole hand. An account deleted
-    // mid-hand still holds its seat in `results`, and its foreign-key
-    // violation inside a shared transaction took every other player's stats,
-    // history and achievements for that hand down with it.
+    // One transaction per seat, not one for the whole hand: an account deleted
+    // mid-hand still holds its seat in `results`, and its insert violates a
+    // foreign key. Sharing a transaction would roll that failure back over
+    // every other player's stats, history and achievements for the hand.
     await db
       .transaction(async (tx) => {
         const { userId, placement, playerCount, playedBomb, matchWon } = result;

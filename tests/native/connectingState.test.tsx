@@ -2,9 +2,9 @@
 // before any state has arrived.
 //
 // Four `room:spectate` refusals, and every rejoin failure, put the player on
-// this screen with nothing to draw. Rendering nothing left them on a blank
-// page with no text and no control — the error toast that explains it is
-// rendered further down the same tree. There must always be a way back.
+// this screen with nothing to draw. It must still render: the error toast that
+// explains why is further down the same tree, and a screen with no text and no
+// control leaves the browser's back button as the only way out.
 import { describe, it, expect, beforeEach, jest } from '@jest/globals';
 import React from 'react';
 import { render, fireEvent, waitFor } from '@testing-library/react-native';

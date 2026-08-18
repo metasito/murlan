@@ -22,11 +22,9 @@ import {
  * NET-06 / decision D5: one live socket per account. A second connection takes
  * the account, and the socket it replaces is told so and closed.
  *
- * What the fix is really for is the *table*: the replaced socket's disconnect
- * must not look like the player dropping. Before this, the second tab silently
- * stole every broadcast, and closing it announced the first player as
- * disconnected and handed their seat to a bot while they sat watching a table
- * that had stopped updating.
+ * What this is really about is the *table*. Replacing a socket is not the
+ * player dropping, so it announces nothing and hands nothing to a bot; the seat
+ * simply moves onto the new socket, which is then the one that answers for it.
  *
  * Its own file: `/api/auth/register` is limited per process and the suites that
  * already seat a table sit at that ceiling.
