@@ -738,6 +738,19 @@ export function GameTable({
     prevExchangeActiveRef.current = exchange.active;
   }, [exchange.active]);
 
+  // A card can leave the hand without the player having touched it: the server
+  // moves for a seat that ran out of clock, and every manche is a fresh deal.
+  // Card ids are deterministic (`${rank}_${suit}`), so a leftover id matches a
+  // card in the *next* hand and renders it lifted and glowing. `onSelectCard`
+  // toggles, so naming an id the hand no longer holds drops it.
+  useEffect(() => {
+    if (spectating) return;
+    const handIds = new Set(sortedHand.map((c) => c.id));
+    for (const id of selectedIds) {
+      if (!handIds.has(id)) onSelectCard(id);
+    }
+  }, [sortedHand, selectedIds, onSelectCard, spectating]);
+
   useEffect(() => {
     // Reset on the way back down so a rematch — which never unmounts this
     // component — gets its own win/lose sting instead of staying silent.
@@ -872,8 +885,11 @@ export function GameTable({
     // Haptic only: the throw is acknowledged in the hand, and card_play sounds
     // when the card actually reaches the pile.
     hapticMedium();
-    onPlay(selectedIds);
-  }, [playBtnValid, onPlay, selectedIds]);
+    // The validated set, not the raw selection: `playBtnValid` is computed from
+    // `selectedObjs`, and the server rejects — silently — any request naming a
+    // card the hand does not hold.
+    onPlay(selectedObjs.map((c) => c.id));
+  }, [playBtnValid, onPlay, selectedObjs]);
   const handlePass = useCallback(() => {
     if (!canPass) return;
     hapticLight();
