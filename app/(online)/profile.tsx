@@ -296,6 +296,14 @@ export default function ProfileScreen() {
           <Animated.View entering={entering}>
             <MenuCard title={t("ladder.cardTitle")}>
               {ratingQuery.isLoading && <LoadingBlock label={t("ladder.loadingA11yLabel")} />}
+              {ratingQuery.isError && (
+                <ErrorBlock
+                  title={t("ladder.errorTitle")}
+                  retryLabel={t("common.retry")}
+                  retryA11yLabel={t("ladder.errorRetry")}
+                  onRetry={() => ratingQuery.refetch()}
+                />
+              )}
               {rating && (
                 <View style={styles.ratingBlock} accessible
                   accessibilityLabel={`${t("ladder.ratingLabel")}: ${rating.rating}. ${t("ladder.seasonLabel", { season: formatSeason(rating.season, t) })}`}
