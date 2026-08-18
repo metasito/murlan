@@ -130,19 +130,28 @@ const BTN_PRESS_TRAVEL = 2;
 const GIOCA_GRADIENT = [Colors.goldLight, Colors.gold, Colors.goldDark] as const;
 const GIOCA_GRADIENT_PRESSED = [Colors.gold, Colors.goldDark, Colors.goldDim] as const;
 
-// gameTableModel.ts's `playButtonLabel` returns one of these three literals —
-// they are pinned by tests/gameTableModel.test.ts as state identifiers, not
-// as display copy, so the model itself is not localised. This is the
-// translation boundary: map the identifier to display text (and to a
-// screen-reader-friendly spoken form) here, in the presentational layer.
+// gameTableModel.ts's `playButtonLabel` returns a rejection reason, not copy.
+// This is the translation boundary: the short two-line form the button wears,
+// and the full sentence a screen reader speaks. Both are keyed by the same
+// identifier, so a new reason cannot be added without both.
 const PLAY_LABEL_KEYS: Record<PlayButtonLabel, TranslationKey> = {
-  "GIOCA": "gameTable.playLabelGioca",
-  "NON\nVALIDA": "gameTable.playLabelInvalid",
-  "TROPPO\nBASSA": "gameTable.playLabelTooLow",
+  play: "gameTable.playLabelGioca",
+  notACombination: "gameTable.playLabelInvalid",
+  needsStartCard: "gameTable.playLabelStartCard",
+  royalUnbeatable: "gameTable.playLabelRoyalUnbeatable",
+  bombOnly: "gameTable.playLabelBombOnly",
+  wrongType: "gameTable.playLabelWrongType",
+  wrongLength: "gameTable.playLabelWrongLength",
+  tooLow: "gameTable.playLabelTooLow",
 };
 const PLAY_A11Y_SPOKEN_KEYS: Partial<Record<PlayButtonLabel, TranslationKey>> = {
-  "NON\nVALIDA": "gameTable.playA11ySpokenInvalid",
-  "TROPPO\nBASSA": "gameTable.playA11ySpokenTooLow",
+  notACombination: "gameTable.playA11ySpokenInvalid",
+  needsStartCard: "gameTable.playA11ySpokenStartCard",
+  royalUnbeatable: "gameTable.playA11ySpokenRoyalUnbeatable",
+  bombOnly: "gameTable.playA11ySpokenBombOnly",
+  wrongType: "gameTable.playA11ySpokenWrongType",
+  wrongLength: "gameTable.playA11ySpokenWrongLength",
+  tooLow: "gameTable.playA11ySpokenTooLow",
 };
 
 // ─── Screen-reader table description ───────────────────────────────────────
@@ -484,11 +493,12 @@ export function GameTable({
     [selectedObjs]
   );
   const requiresStartCard = !gameState.firstPlayMade && !!gameState.startCard;
+  const selectionHasStartCard =
+    !!gameState.startCard && selectedObjs.some((c) => c.id === gameState.startCard!.id);
   const isValidPlay =
     tentativeCombo !== null &&
     canPlay(tentativeCombo, isNewRound ? null : gameState.lastPlayedCombination) &&
-    (!requiresStartCard ||
-      tentativeCombo.cards.some((c) => c.id === gameState.startCard!.id));
+    (!requiresStartCard || selectionHasStartCard);
 
   const canPass = canPassNowOf({ isMyTurn, isFinished, isNewRound });
   const playBtnValid = isValidPlay && isMyTurn && !isFinished;
@@ -923,12 +933,21 @@ export function GameTable({
       : "-");
 
   const showStartCardBanner = !gameState.firstPlayMade && !!gameState.startCard;
+  const pileCombo = gameState.lastPlayedCombination;
   const dimLabel = playButtonLabel({
     isMyTurn,
     isFinished,
     selectedCount: selectedIds.length,
-    comboBuilt: tentativeCombo !== null,
+    selection: tentativeCombo
+      ? { type: tentativeCombo.type, length: tentativeCombo.cards.length }
+      : null,
+    pile: pileCombo ? { type: pileCombo.type, length: pileCombo.cards.length } : null,
+    requiresStartCard,
+    selectionHasStartCard,
   });
+  // The start-card reason names the card it wants; every other reason ignores
+  // the parameter.
+  const dimLabelParams = { rank: gameState.startCard?.rank ?? "" };
 
   return (
     <Animated.View style={[styles.root, shakeStyle]}>
@@ -1168,7 +1187,7 @@ export function GameTable({
                   playBtnValid
                     ? t("gameTable.playA11yValid")
                     : t("gameTable.playA11yUnavailable", {
-                        reason: PLAY_A11Y_SPOKEN_KEYS[dimLabel] ? t(PLAY_A11Y_SPOKEN_KEYS[dimLabel]!) : dimLabel,
+                        reason: t(PLAY_A11Y_SPOKEN_KEYS[dimLabel] ?? PLAY_LABEL_KEYS[dimLabel], dimLabelParams),
                       })
                 }
                 accessibilityState={{ disabled: !playBtnValid }}
@@ -1193,7 +1212,7 @@ export function GameTable({
                 ) : (
                   <View style={[styles.playBtnGrad, styles.playBtnGradDim]}>
                     <Text style={styles.playBtnLabelDim} numberOfLines={2}>
-                      {t(PLAY_LABEL_KEYS[dimLabel])}
+                      {t(PLAY_LABEL_KEYS[dimLabel], dimLabelParams)}
                     </Text>
                   </View>
                 )}

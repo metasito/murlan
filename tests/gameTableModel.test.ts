@@ -36,6 +36,7 @@ import {
   FLIGHT_MS,
   LANDING_FRACTION,
   straightTopRankChar,
+  type ComboShape,
   type TableA11yStrings,
 } from "../components/gameTableModel.ts";
 
@@ -288,27 +289,101 @@ describe("canPassNow", () => {
 });
 
 describe("playButtonLabel", () => {
-  const base = { isMyTurn: true, isFinished: false, selectedCount: 2, comboBuilt: true };
+  const shape = (type: ComboShape["type"], length: number): ComboShape => ({ type, length });
+
+  // A pair offered against a pair it cannot beat: the one case that really is
+  // "too low", and the baseline every other case varies from.
+  const base = {
+    isMyTurn: true,
+    isFinished: false,
+    selectedCount: 2,
+    selection: shape("pair", 2),
+    pile: shape("pair", 2),
+    requiresStartCard: false,
+    selectionHasStartCard: false,
+  };
 
   test("idle states read as a plain GIOCA", () => {
-    assert.equal(playButtonLabel({ ...base, isMyTurn: false }), "GIOCA");
-    assert.equal(playButtonLabel({ ...base, isFinished: true }), "GIOCA");
-    assert.equal(playButtonLabel({ ...base, selectedCount: 0 }), "GIOCA");
+    assert.equal(playButtonLabel({ ...base, isMyTurn: false }), "play");
+    assert.equal(playButtonLabel({ ...base, isFinished: true }), "play");
+    assert.equal(playButtonLabel({ ...base, selectedCount: 0 }), "play");
   });
 
   test("an unrecognised selection says so", () => {
-    assert.equal(playButtonLabel({ ...base, comboBuilt: false }), "NON\nVALIDA");
+    assert.equal(playButtonLabel({ ...base, selection: null }), "notACombination");
   });
 
-  test("a legal shape that cannot beat the pile says so", () => {
-    assert.equal(playButtonLabel(base), "TROPPO\nBASSA");
+  test("the same shape, genuinely lower, is the only case called too low", () => {
+    assert.equal(playButtonLabel(base), "tooLow");
+  });
+
+  test("a different shape is not too low — it is the wrong type", () => {
+    assert.equal(
+      playButtonLabel({ ...base, selection: shape("pair", 2), pile: shape("single", 1) }),
+      "wrongType"
+    );
+  });
+
+  test("the right type at the wrong length is neither too low nor the wrong type", () => {
+    assert.equal(
+      playButtonLabel({
+        ...base,
+        selection: shape("straight", 5),
+        pile: shape("straight", 6),
+      }),
+      "wrongLength"
+    );
+  });
+
+  test("only a higher bomb answers a bomb", () => {
+    assert.equal(
+      playButtonLabel({ ...base, selection: shape("straight", 5), pile: shape("bomb", 4) }),
+      "bombOnly"
+    );
+    // Bomb against bomb is a real strength comparison, so that one is too low.
+    assert.equal(
+      playButtonLabel({ ...base, selection: shape("bomb", 4), pile: shape("bomb", 4) }),
+      "tooLow"
+    );
+  });
+
+  test("a royal straight is unanswerable, bomb included", () => {
+    assert.equal(
+      playButtonLabel({ ...base, selection: shape("pair", 2), pile: shape("royal_straight", 5) }),
+      "royalUnbeatable"
+    );
+    assert.equal(
+      playButtonLabel({ ...base, selection: shape("bomb", 4), pile: shape("royal_straight", 5) }),
+      "royalUnbeatable"
+    );
+  });
+
+  test("a royal straight answered by a shorter one is a length problem", () => {
+    assert.equal(
+      playButtonLabel({
+        ...base,
+        selection: shape("royal_straight", 5),
+        pile: shape("royal_straight", 6),
+      }),
+      "wrongLength"
+    );
+  });
+
+  test("the opening play without the start card is told exactly that", () => {
+    // The empty table used to report "too low" here, contradicting the banner
+    // in the middle of the same screen.
+    assert.equal(
+      playButtonLabel({ ...base, pile: null, requiresStartCard: true, selectionHasStartCard: false }),
+      "needsStartCard"
+    );
+    assert.equal(
+      playButtonLabel({ ...base, pile: null, requiresStartCard: true, selectionHasStartCard: true }),
+      "play"
+    );
   });
 
   test("not-my-turn wins over an unbuildable selection (no false accusation)", () => {
-    assert.equal(
-      playButtonLabel({ ...base, isMyTurn: false, comboBuilt: false }),
-      "GIOCA"
-    );
+    assert.equal(playButtonLabel({ ...base, isMyTurn: false, selection: null }), "play");
   });
 });
 
