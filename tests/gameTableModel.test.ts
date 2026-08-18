@@ -22,6 +22,7 @@ import {
   handCountOf,
   comboKey,
   advancePile,
+  roundClosedWithWinner,
   EMPTY_PILE,
   canPassNow,
   playButtonLabel,
@@ -228,6 +229,44 @@ describe("advancePile", () => {
     advancePile(s1, combo(["b"]));
     assert.deepEqual(s1, snapshot);
     assert.deepEqual(EMPTY_PILE, { prev: null, current: null });
+  });
+});
+
+describe("roundClosedWithWinner", () => {
+  test("the closing pass — the table is empty and a seat took it", () => {
+    assert.equal(
+      roundClosedWithWinner({ lastPlayedCombination: null, roundWinner: 2 }),
+      true
+    );
+  });
+
+  test("seat 0 counts, which a truthiness check would miss", () => {
+    assert.equal(
+      roundClosedWithWinner({ lastPlayedCombination: null, roundWinner: 0 }),
+      true
+    );
+  });
+
+  test("a round in progress has not closed, whoever won the last one", () => {
+    assert.equal(
+      roundClosedWithWinner({ lastPlayedCombination: combo(["a"]), roundWinner: 1 }),
+      false
+    );
+  });
+
+  test("a pass that does not close the round leaves nobody credited", () => {
+    assert.equal(
+      roundClosedWithWinner({ lastPlayedCombination: combo(["a"]), roundWinner: null }),
+      false
+    );
+  });
+
+  test("a freshly dealt hand is empty but nothing has been won", () => {
+    assert.equal(
+      roundClosedWithWinner({ lastPlayedCombination: null, roundWinner: null }),
+      false
+    );
+    assert.equal(roundClosedWithWinner({ lastPlayedCombination: null }), false);
   });
 });
 

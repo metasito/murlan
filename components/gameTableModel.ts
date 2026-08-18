@@ -151,6 +151,24 @@ export function advancePile(state: PileState, combo: Combination): PileState {
   return { prev: state.current, current: combo };
 }
 
+/**
+ * The pass that just closed a round, seen from one state. `processPass`
+ * (lib/gameEngine.ts) clears `lastPlayedCombination` and credits `roundWinner`
+ * in the same transition, so the table gets both on a single commit — and the
+ * winning cards must stay on the felt under the tag that announces them
+ * instead of being wiped by the empty-table branch.
+ */
+export function roundClosedWithWinner(state: {
+  lastPlayedCombination: Combination | null;
+  roundWinner?: number | null;
+}): boolean {
+  return (
+    state.lastPlayedCombination === null &&
+    state.roundWinner !== null &&
+    state.roundWinner !== undefined
+  );
+}
+
 // ─── Play / pass affordances ──────────────────────────────────────────────────
 
 export interface TurnFacts {

@@ -60,6 +60,7 @@ import {
   impactDelayMs,
   playButtonLabel,
   readExchange,
+  roundClosedWithWinner,
   seatDirection,
   straightTopRankChar,
   turnTimerActive,
@@ -113,9 +114,6 @@ import { useTableFelt } from "@/lib/cosmetics";
 // How long the round-winner tag stays over the pile. A domain beat, not a
 // generic UI transition, so it is not a Motion token.
 const ROUND_WINNER_MS = 1800;
-// Breathing room between the winning card's own impact sound and the round-win
-// sting, so the two read as cause and consequence rather than as one noise.
-const ROUND_WIN_STING_GAP_MS = 220;
 // Below this the countdown turns red and ticks audibly.
 const URGENT_SECONDS = 5;
 
@@ -421,6 +419,10 @@ export function GameTable({
   // has to be cancellable: a fast next play, or leaving the table, must not
   // fire a bang for a card that is no longer in the air.
   const impactTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Non-null while the winning combination is being held on the felt under the
+  // round-winner tag. Its presence is what tells the pile effect the felt is
+  // spoken for.
+  const roundHoldTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const prevComboKeyRef = useRef<string>("");
   const prevRoundWinnerRef = useRef<number | null>(null);
   const prevMyTurnRef = useRef(false);
@@ -599,6 +601,7 @@ export function GameTable({
   useEffect(
     () => () => {
       if (impactTimerRef.current) clearTimeout(impactTimerRef.current);
+      if (roundHoldTimerRef.current) clearTimeout(roundHoldTimerRef.current);
     },
     []
   );
@@ -607,20 +610,46 @@ export function GameTable({
   // re-run for one of the other dependencies leaves the pile, the flying card
   // and the pending impact exactly as they were.
   useEffect(() => {
-    const combo = gameState.lastPlayedCombination;
-    if (combo === null) {
-      if (prevComboKeyRef.current !== "") {
-        if (impactTimerRef.current) clearTimeout(impactTimerRef.current);
-        playRoundStart();
-      }
-      prevComboKeyRef.current = "";
+    // Clearing the felt and announcing a new round are one beat, whether it
+    // happens now or after the winning cards have been held.
+    const openNewRound = () => {
+      playRoundStart();
       setPileState(EMPTY_PILE);
       setFlyInfo(null);
+    };
+
+    const combo = gameState.lastPlayedCombination;
+    if (combo === null) {
+      // The winning cards are being held for the tag; nothing may take the
+      // felt out from under them until the hold expires or a new lead arrives.
+      if (roundHoldTimerRef.current) return;
+      if (prevComboKeyRef.current === "") {
+        setPileState(EMPTY_PILE);
+        setFlyInfo(null);
+        return;
+      }
+      if (impactTimerRef.current) clearTimeout(impactTimerRef.current);
+      prevComboKeyRef.current = "";
+      if (roundClosedWithWinner({ lastPlayedCombination: combo, roundWinner: gameState.roundWinner })) {
+        roundHoldTimerRef.current = setTimeout(() => {
+          roundHoldTimerRef.current = null;
+          openNewRound();
+        }, ROUND_WINNER_MS);
+        return;
+      }
+      openNewRound();
       return;
     }
     const key = comboKey(combo, gameState.lastPlayedBy);
     if (key === prevComboKeyRef.current) return;
     if (impactTimerRef.current) clearTimeout(impactTimerRef.current);
+    // A lead inside the hold window ends it early: the new card has to fly
+    // onto a cleared pile, not onto the combination it did not beat.
+    if (roundHoldTimerRef.current) {
+      clearTimeout(roundHoldTimerRef.current);
+      roundHoldTimerRef.current = null;
+      openNewRound();
+    }
     prevComboKeyRef.current = key;
     setPileState((s) => advancePile(s, combo));
 
@@ -656,6 +685,7 @@ export function GameTable({
   }, [
     gameState.lastPlayedCombination,
     gameState.lastPlayedBy,
+    gameState.roundWinner,
     viewerSeat,
     players.length,
     reduceMotion,
@@ -678,18 +708,15 @@ export function GameTable({
     setRoundWinnerSeat(winner);
   }, [gameState.roundWinner]);
 
+  // A round closes on a pass, never on a play, so nothing is in flight here and
+  // the sting is the first sound of the beat — ahead of the round-start sting,
+  // which the pile effect has deferred for as long as this tag is up.
   useEffect(() => {
     if (roundWinnerSeat === null) return;
-    // The winning card is still in the air. Let it land, and let its own impact
-    // sound clear, before the sting — three sounds inside 300ms is a pile-up,
-    // not a flourish.
-    const sting = setTimeout(playRoundWin, impactDelayMs(reduceMotion) + ROUND_WIN_STING_GAP_MS);
+    playRoundWin();
     const dismiss = setTimeout(() => setRoundWinnerSeat(null), ROUND_WINNER_MS);
-    return () => {
-      clearTimeout(sting);
-      clearTimeout(dismiss);
-    };
-  }, [roundWinnerSeat, reduceMotion]);
+    return () => clearTimeout(dismiss);
+  }, [roundWinnerSeat]);
 
   useEffect(() => {
     if (isMyTurn && !isFinished && !prevMyTurnRef.current) playYourTurn();
