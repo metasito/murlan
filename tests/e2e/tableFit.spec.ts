@@ -7,7 +7,7 @@
 // taking the avatar and the player's name with it. Nothing in the unit suite
 // can see that: it is a property of the laid-out box, so it is measured in a
 // real browser here, next to the tap-target sweep for the same reason.
-import { test, expect } from "@playwright/test";
+import { test, expect, type Page } from "@playwright/test";
 import { openApp, startOfflineGame } from "./helpers/navigation";
 
 const VIEWPORTS = [
@@ -68,4 +68,111 @@ test.describe("the table fits the screen", () => {
       });
     }
   }
+});
+
+// ─── The banner over the table ────────────────────────────────────────────────
+//
+// The notification banner is a sibling of the whole navigator at zIndex 9999
+// and the table's top bar is at the same origin at zIndex 10, so the banner
+// used to cover the billboard, the countdown and the hand count — at exactly
+// the moments they matter, since an auto-pass is what raises it. That is a
+// property of two laid-out boxes, which only a browser can measure.
+
+/** locales/it.ts `game.autoPassTitle` — the offline clock expiring. */
+const AUTO_PASS_TITLE = "Passaggio automatico";
+/** locales/it.ts `gameTable.a11yYourTurn` / `gameTable.a11yPlayerPlayed`. */
+const YOUR_TURN = "È il tuo turno.";
+const OPPONENT_PLAYED = " ha giocato ";
+/** app/game.tsx HUMAN_TURN_SECONDS, which EXPO_PUBLIC_E2E_FAST does not shorten. */
+const OFFLINE_CLOCK_MS = 20_000;
+
+interface Box {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+/**
+ * The element's box once it has stopped moving. The banner slides in over
+ * 320ms from off the top of the screen, so a box read the moment its text
+ * appears is a box mid-flight — reading until two consecutive samples agree
+ * waits for the animation itself rather than for a guessed duration.
+ */
+async function settledBox(page: Page, selector: string): Promise<Box> {
+  const locator = page.locator(selector);
+  let previous: Box | null = null;
+  for (let attempt = 0; attempt < 60; attempt++) {
+    const box = await locator.boundingBox();
+    if (box && previous && box.y === previous.y && box.height === previous.height) return box;
+    previous = box;
+    await page.waitForTimeout(100);
+  }
+  throw new Error(`${selector} never settled into a stable position`);
+}
+
+/**
+ * Plays on until an opponent's combination is on the table and it is the
+ * viewer's turn — the only state in which the offline countdown runs
+ * (`turnTimerActive`, includeNewRound false). Leading is compulsory, so a lead
+ * has to be played rather than waited out; GIOCA is the only judge of which
+ * card is legal, exactly as in tests/e2e/helpers/bot.ts.
+ */
+async function waitForAnswerableTurn(page: Page): Promise<void> {
+  const table = page.locator('[data-testid="game-table"]');
+  const gioca = page.locator('[data-testid="btn-gioca"]');
+  const deadline = Date.now() + 120_000;
+
+  while (Date.now() < deadline) {
+    const desc = (await table.getAttribute("aria-label")) ?? "";
+    if (desc.startsWith(YOUR_TURN) && desc.includes(OPPONENT_PLAYED)) return;
+
+    if (desc.startsWith(YOUR_TURN)) {
+      const cards = page.locator('[aria-label^="La tua mano"] [role="button"]');
+      const labels = await cards.evaluateAll((els) =>
+        els.map((el) => el.getAttribute("aria-label") ?? "")
+      );
+      for (const label of labels) {
+        const card = page.locator(
+          `[aria-label^="La tua mano"] [aria-label="${label.replace(/"/g, '\\"')}"]`
+        );
+        await card.click({ timeout: 4_000 }).catch(() => {});
+        if ((await gioca.getAttribute("aria-label")) === "Gioca le carte selezionate") {
+          await gioca.click({ timeout: 4_000 }).catch(() => {});
+          break;
+        }
+        await card.click({ timeout: 4_000 }).catch(() => {});
+      }
+    }
+    await page.waitForTimeout(200);
+  }
+  throw new Error("never reached a turn with a combination to answer");
+}
+
+test.describe("the notification banner over the game table", () => {
+  test("does not cover the top bar it is explaining", async ({ page, baseURL }) => {
+    test.setTimeout(240_000);
+    await page.setViewportSize({ width: 844, height: 390 });
+    await openApp(page, baseURL!);
+    await startOfflineGame(page, { playerCount: 4, gameMode: "free_for_all" });
+    await page.locator('[data-testid="game-table"]').waitFor({ timeout: 60_000 });
+
+    await waitForAnswerableTurn(page);
+
+    // Letting the clock run out is the one notification an offline game raises.
+    const banner = page.locator('[data-testid="notification-banner"]');
+    await expect(banner).toContainText(AUTO_PASS_TITLE, {
+      timeout: OFFLINE_CLOCK_MS + 20_000,
+    });
+
+    const bannerBox = await settledBox(page, '[data-testid="notification-banner"]');
+    const topBarBox = await settledBox(page, '[data-testid="game-top-bar"]');
+
+    expect(
+      bannerBox.y,
+      `the banner (${bannerBox.y}…${bannerBox.y + bannerBox.height}) overlaps the table's top bar ` +
+        `(${topBarBox.y}…${topBarBox.y + topBarBox.height}), which carries the turn billboard, ` +
+        `the countdown and the hand count`
+    ).toBeGreaterThanOrEqual(topBarBox.y + topBarBox.height);
+  });
 });

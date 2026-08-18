@@ -1068,6 +1068,7 @@ export function GameTable({
       />
 
       <View
+        testID="game-top-bar"
         style={[
           styles.topBar,
           { top: frame.topPad, left: frame.leftPad, right: frame.rightPad },
