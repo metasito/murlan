@@ -162,6 +162,17 @@ export default function OnlineGameScreen() {
     clearRejoinFailed();
   }, [rejoinFailed, clearRejoinFailed, goToLobby]);
 
+  // Reaches every card in the hand as `onPress`, through GameTable's own
+  // handleCardPress. A fresh arrow per render would change that reference on
+  // every `game:state` and rebuild all 14-27 cards.
+  const toggleCard = useCallback(
+    (id: string) =>
+      setSelectedIds((prev) =>
+        prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]
+      ),
+    []
+  );
+
   // No state yet: the first `game:state` is either still in flight or was never
   // coming, because the request that would have produced it was refused. The
   // two are indistinguishable from here, so the screen offers what is right
@@ -193,11 +204,6 @@ export default function OnlineGameScreen() {
   // The results overlay sits above the table and needs the same safe-area pads
   // the table uses; the table computes its own full frame from the same source.
   const pads = computeScreenPads({ insets, isWeb: Platform.OS === "web" });
-
-  const toggleCard = (id: string) =>
-    setSelectedIds((prev) =>
-      prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]
-    );
 
   const handlePlay = (cardIds: string[]) => {
     // Cleared on acknowledgement, not on send — a server rejection must not
