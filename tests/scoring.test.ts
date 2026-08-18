@@ -14,6 +14,7 @@ import {
   resolveMatch,
   resolveTeamMatch,
   scoreHand,
+  tallyRematchAnswers,
 } from "./helpers.ts";
 
 describe("scoreHand", () => {
@@ -497,6 +498,30 @@ describe("the rematch decision", () => {
 
     test("a thoroughly beaten bot does not", () => {
       assert.equal(botWantsRematch(5, 12), false);
+    });
+  });
+
+  describe("tallyRematchAnswers", () => {
+    test("every seat answering counts toward both halves", () => {
+      const answers = [true, false, true, true];
+      assert.deepEqual(tallyRematchAnswers(4, (seat) => answers[seat]), { yes: 3, total: 4 });
+    });
+
+    test("a seat with nobody behind it abstains from both", () => {
+      // The server's rule: a bot seat, or a seat its human walked out of, has
+      // nobody who can answer, so it neither votes nor raises the bar.
+      const answers: (boolean | "abstain")[] = [true, "abstain", false, "abstain"];
+      assert.deepEqual(tallyRematchAnswers(4, (seat) => answers[seat]), { yes: 1, total: 2 });
+    });
+
+    test("a seated player who never answered is a no, and still counts", () => {
+      assert.deepEqual(tallyRematchAnswers(3, () => false), { yes: 0, total: 3 });
+    });
+
+    test("a table nobody can answer for decides nothing", () => {
+      const tally = tallyRematchAnswers(4, () => "abstain");
+      assert.deepEqual(tally, { yes: 0, total: 0 });
+      assert.equal(isMajority(tally.yes, tally.total), false);
     });
   });
 

@@ -26,6 +26,7 @@ import {
   processPass,
   aiChoosePlay,
   buildCombination,
+  tallyRematchAnswers,
   canPlay,
 } from "@/lib/gameEngine";
 import AsyncStorage from "@react-native-async-storage/async-storage";
@@ -444,10 +445,15 @@ export function GameProvider({ children }: { children: ReactNode }) {
   }, [gameState, match, rematchAnswers, savedPlayerConfigs, savedGameMode, dealFirstSeat, clearSavedGame]);
 
   const tableWantsRematch = useMemo(() => {
-    const seats = gameState?.players.length ?? 0;
-    const yes = Object.values(rematchAnswers).filter(Boolean).length;
-    return isMajority(yes, seats);
-  }, [gameState?.players.length, rematchAnswers]);
+    // Every offline seat answers — the AI ones are decided the moment the
+    // question opens — so none of them abstains.
+    const players = gameState?.players ?? [];
+    const { yes, total } = tallyRematchAnswers(
+      players.length,
+      (seat) => rematchAnswers[players[seat].id] === true
+    );
+    return isMajority(yes, total);
+  }, [gameState?.players, rematchAnswers]);
 
   const value = useMemo(
     () => ({

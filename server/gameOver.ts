@@ -5,7 +5,7 @@ import { scoreKeyForSeat } from "./gameRoom.ts";
 import type { OnlineGameState } from "./gameRoom.ts";
 import { resolveHandEnd } from "./onlineGameLogic.ts";
 import { replaySeatsOf } from "./replayShape.ts";
-import { isMajority, targetsFor } from "../lib/gameEngine.ts";
+import { isMajority, tallyRematchAnswers, targetsFor } from "../lib/gameEngine.ts";
 import type { GameMode } from "../lib/gameEngine.ts";
 import type { GameResult } from "../lib/achievements.ts";
 import type { ReplayMove, ReplaySeat } from "../lib/replay.ts";
@@ -184,16 +184,11 @@ export function rollMatchForward(game: OnlineGameState) {
  * toward total.
  */
 export function countRematchAnswers(game: OnlineGameState): { yes: number; total: number } {
-  const seats = game.gameState.players.length;
-  let yes = 0;
-  let total = 0;
-  for (let seat = 0; seat < seats; seat++) {
+  return tallyRematchAnswers(game.gameState.players.length, (seat) => {
     const userId = game.playerMap[seat];
-    if (userId === undefined) continue;
-    total++;
-    if (game.rematchIntents.get(userId) === true) yes++;
-  }
-  return { yes, total };
+    if (userId === undefined) return "abstain";
+    return game.rematchIntents.get(userId) === true;
+  });
 }
 
 /**

@@ -1450,3 +1450,24 @@ export function botWantsRematch(botScore: number, leaderScore: number): boolean 
 export function isMajority(yesCount: number, seatCount: number): boolean {
   return yesCount * 2 > seatCount;
 }
+
+/**
+ * The rematch verdict's two inputs: how many seats said yes, and how many
+ * seats had anyone to say it. `"abstain"` is a seat with nobody behind it —
+ * on the server a bot seat, or a seat its human walked out of — and counts
+ * toward neither.
+ */
+export function tallyRematchAnswers(
+  seatCount: number,
+  answerOf: (seat: number) => boolean | "abstain"
+): { yes: number; total: number } {
+  let yes = 0;
+  let total = 0;
+  for (let seat = 0; seat < seatCount; seat++) {
+    const answer = answerOf(seat);
+    if (answer === "abstain") continue;
+    total++;
+    if (answer) yes++;
+  }
+  return { yes, total };
+}
