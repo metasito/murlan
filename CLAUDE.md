@@ -6,17 +6,44 @@
 
 ## Comments
 
-Comment the code as it is, for someone reading it now.
+**The default is no comment.** Code is the documentation; a comment is an exception that has to
+earn its place. Every one you write is read hundreds of times and has to be kept true forever,
+and a comment that drifts out of date is worse than the silence it replaced.
 
-- Say what a function does, what its contract is, and why a non-obvious choice is
-  non-obvious. Nothing else.
-- **No changelogs in code.** Never write what the code used to be, what was wrong with it,
-  when it was fixed, or what alternative was rejected. Git has that. `// was 0.55, now 0.58`
-  is noise the moment it lands.
-- No comment restating the line below it. No banner block narrating a refactor.
-- A genuinely invisible constraint (an ordering that prevents a race, a platform quirk)
-  gets one line stating the constraint — not its history.
-- Prefer making the code self-evident over explaining it.
+**The test, applied to each one before you keep it:** would a competent reader who knows this
+codebase learn something from this line that the code next to it would not have told them in ten
+seconds? If no, delete it. Rename the variable or extract the function instead — that fixes the
+confusion permanently and costs nothing to maintain.
+
+**Four things earn a comment. Nothing else does.**
+
+1. **An invisible constraint** — an ordering that prevents a race, a platform quirk, a protocol
+   requirement. State the constraint in one line, not its history.
+2. **A non-obvious *why*** — specifically where the obvious approach is wrong and someone will
+   "fix" this back. Name what breaks.
+3. **A contract the types cannot carry** — units, ranges, caller obligations, what happens on
+   failure.
+4. **A pointer to the authority** — `docs/RULES.md` §12, the test that pins this — where the
+   code cannot carry it itself.
+
+**Never:**
+
+- Restating the line below it, or narrating what a well-named function already says.
+- Any history: what it used to be, what was wrong, when it was fixed, what was rejected. Git has
+  that. `// was 0.55, now 0.58` is noise the moment it lands.
+- **Explaining a fix.** The reason a defect existed belongs in the commit message and the
+  finding entry, never in the code. The code should read as if the bug never happened.
+- A banner block narrating a refactor.
+
+**The smell test:** a change that adds more comment lines than code lines is explaining itself
+instead of being clear. Measured across the first seven remediation batches, **23% of every line
+added to this repo was a comment, and 39% of everything added to `server/socket.ts`** — roughly
+1,700 lines of prose. That is the failure mode this section exists to prevent, and it happened
+anyway. Nobody asked for it and every line of it now has to be maintained.
+
+**Where the explanation actually belongs:** the commit message, the PR body, the finding entry
+in `audit/`, or the name of a test. All of those are versioned, none of them can go stale
+against the code, and none of them cost anything to read when you do not need them.
 
 ## No self-defeating safeguards
 
