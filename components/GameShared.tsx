@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { View, Text, StyleSheet, Platform, Pressable, ScrollView } from "react-native";
+import { View, Text, StyleSheet, Pressable, ScrollView } from "react-native";
 import Animated, {
   useAnimatedStyle,
   useSharedValue,
@@ -11,8 +11,6 @@ import Animated, {
   Easing,
   runOnJS,
   cancelAnimation,
-  interpolate,
-  Extrapolation,
   FadeIn,
   FadeOut,
 } from "react-native-reanimated";
@@ -1008,9 +1006,20 @@ export const sharedTableStyles = StyleSheet.create({
   },
   handSectionActive: {
     backgroundColor: Colors.goldGhost,
+  },
+  // The turn pulse, as a textless childless sibling behind the hand: the glow
+  // and the hairline along the top edge are fixed, and useTurnPulse animates
+  // only this view's opacity.
+  handGlow: {
+    position: "absolute",
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    borderRadius: Radius.md,
     borderTopWidth: 1,
-    // Must be fully transparent: useTurnPulse animates this border in from here.
-    borderTopColor: "rgba(201,168,76,0.0)",
+    borderTopColor: Colors.goldBorder,
+    ...Shadow.goldSoft,
   },
 });
 
@@ -1046,36 +1055,11 @@ export function useTurnPulse(active: boolean) {
     };
   }, [active, reduceMotion, glowV]);
 
-  // borderAlpha is interpolated per frame (0→0.3) — a static token can't
-  // represent an animated value.
-  return useAnimatedStyle(() => {
-    const v = glowV.value;
-    const shadowRadius = v < 0.01 ? 0 : interpolate(v, [0.35, 0.85], [6, 15], Extrapolation.CLAMP);
-    const shadowOpacity = v * 0.55;
-    const elevation = interpolate(v, [0, 0.85], [0, 12], Extrapolation.CLAMP);
-    const borderAlpha = interpolate(v, [0, 0.85], [0, 0.3], Extrapolation.CLAMP);
-
-    if (Platform.OS === "web") {
-      const blur = v < 0.01 ? 0 : interpolate(v, [0.35, 0.85], [6, 14], Extrapolation.CLAMP);
-      const alpha = v < 0.01 ? 0 : interpolate(v, [0.35, 0.85], [0.2, 0.45], Extrapolation.CLAMP);
-      return {
-        boxShadow: v < 0.01 ? "none" : `0 0 ${blur}px rgba(201,168,76,${alpha})`,
-        borderRadius: 14,
-        borderTopWidth: 1,
-        borderTopColor: `rgba(201,168,76,${borderAlpha})`,
-      } as any;
-    }
-
-    return {
-      shadowColor: Colors.gold,
-      shadowOpacity,
-      shadowRadius,
-      shadowOffset: { width: 0, height: 0 },
-      elevation,
-      borderTopWidth: 1,
-      borderTopColor: `rgba(201,168,76,${borderAlpha})`,
-    };
-  });
+  // Opacity only. The glow and the gold hairline are static, on the childless
+  // sibling the caller puts behind the hand (`sharedTableStyles.handGlow`):
+  // a shadow or a border colour written per frame is paint the browser cannot
+  // composite, and on web reanimated writes it from the main JS thread.
+  return useAnimatedStyle(() => ({ opacity: glowV.value }));
 }
 
 // ─── Shared styles ────────────────────────────────────────────────────────────

@@ -802,25 +802,9 @@ export function GameTable({
   const shakeStyle = useAnimatedStyle(() => ({
     transform: [{ translateX: shakeX.value }],
   }));
-  const giocaGlowStyle = useAnimatedStyle(() => {
-    const v = giocaGlowVal.value;
-    if (Platform.OS === "web") {
-      // Alpha is interpolated per frame — not representable as a static token.
-      return {
-        boxShadow:
-          v < 0.01
-            ? "none"
-            : `0 0 ${Math.round(22 * v)}px rgba(201,168,76,${(v * 0.65).toFixed(2)})`,
-      } as any;
-    }
-    return {
-      shadowColor: Colors.gold,
-      shadowOpacity: v * 0.7,
-      shadowRadius: 18 * v,
-      shadowOffset: { width: 0, height: 0 },
-      elevation: Math.round(14 * v),
-    };
-  });
+  // Opacity only, on the childless sibling behind the button. A shadow written
+  // per frame is main-thread paint the browser cannot composite.
+  const giocaGlowStyle = useAnimatedStyle(() => ({ opacity: giocaGlowVal.value }));
   const turnPulseStyle = useTurnPulse(isMyTurn && !isFinished && !exchange.active);
 
   // ── Handlers ────────────────────────────────────────────────────────────────
@@ -1026,14 +1010,17 @@ export function GameTable({
             </View>
           </View>
 
-          <Animated.View
+          <View
             style={[
               sharedTableStyles.handSection,
               isMyTurn && !isFinished && sharedTableStyles.handSectionActive,
               { height: HAND_SECTION_H },
-              turnPulseStyle,
             ]}
           >
+            <Animated.View
+              pointerEvents="none"
+              style={[sharedTableStyles.handGlow, turnPulseStyle]}
+            />
             {!spectating && (
             <Animated.View
               style={[styles.passBtn, !canPass && styles.passBtnDim, passaPressStyle]}
@@ -1094,13 +1081,14 @@ export function GameTable({
 
             {!spectating && (
             <Animated.View
-              style={[
-                styles.playBtn,
-                !playBtnValid && styles.playBtnDim,
-                playBtnValid && giocaGlowStyle,
-                giocaPressStyle,
-              ]}
+              style={[styles.playBtn, !playBtnValid && styles.playBtnDim, giocaPressStyle]}
             >
+              {playBtnValid && (
+                <Animated.View
+                  pointerEvents="none"
+                  style={[styles.playBtnGlow, giocaGlowStyle]}
+                />
+              )}
               <Pressable
                 testID="btn-gioca"
                 onPress={playBtnValid ? handlePlay : undefined}
@@ -1145,7 +1133,7 @@ export function GameTable({
               </Pressable>
             </Animated.View>
             )}
-          </Animated.View>
+          </View>
         </View>
       </View>
 
@@ -1328,6 +1316,18 @@ const styles = StyleSheet.create({
     width: SIDE_BTN_W + 6, height: CARD_H,
     borderRadius: Radius.md, marginHorizontal: 3,
     ...Shadow.dark,
+  },
+  // The armed bloom, as a childless sibling behind the button: the glow is
+  // fixed and only this view's opacity is animated. The border radius is what
+  // gives it an outline for Android's elevation to cast from.
+  playBtnGlow: {
+    position: "absolute",
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    borderRadius: Radius.md,
+    ...Shadow.gold,
   },
   playBtnDim: { opacity: 0.55 },
   playBtnInner: { flex: 1 },
