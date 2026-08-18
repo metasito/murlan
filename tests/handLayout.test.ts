@@ -15,15 +15,25 @@ const WIDTHS = [320, 375, 428, 500, 600, 700, 768, 900, 1024];
 const HAND_SIZES = Array.from({ length: 27 }, (_, i) => i + 1);
 
 describe("computeHandLayout", () => {
-  test("MIN_READABLE_STEP is derived, not a guess, and bigger than the old floor", () => {
-    // A hardcoded floor tuned for one hand size would not generalize to
-    // others without being checked against the actual corner geometry. The
-    // derived value must be a finite, sane pixel count, comfortably under a
-    // full card width.
-    assert.ok(Number.isFinite(MIN_READABLE_STEP));
-    assert.ok(MIN_READABLE_STEP > 0);
+  // WCAG 2.2 SC 2.5.8 Target Size (Minimum), Level AA. Adjacent card centres
+  // are exactly `step` apart, so a step under 24 fails both the 24x24 size
+  // test and the undersized-target spacing exception.
+  test("MIN_READABLE_STEP is the WCAG 2.2 AA floor", () => {
+    assert.ok(MIN_READABLE_STEP >= 24, `step floor is ${MIN_READABLE_STEP}, SC 2.5.8 needs 24`);
     assert.ok(MIN_READABLE_STEP < CARD_W);
   });
+
+  // The viewports a landscape phone actually produces, against the deal sizes
+  // that reach them: 511 is a 667x375 web viewport, 600 a 844-wide native one
+  // with notch insets, 688 a 844x390 web one. 14 is the 4-player deal, 27 the
+  // 2-player one.
+  for (const availW of [511, 600, 688]) {
+    for (const n of [13, 14, 20, 27]) {
+      test(`n=${n} availW=${availW} keeps every card its own 24px target`, () => {
+        assert.ok(computeHandLayout(n, availW).step >= 24);
+      });
+    }
+  }
 
   test("n=0 and n=1 need no overlap math", () => {
     for (const availW of WIDTHS) {

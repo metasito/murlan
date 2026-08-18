@@ -17,11 +17,14 @@ import { MenuLayout } from "@/components/MenuLayout";
 import { MenuCard } from "@/components/MenuCard";
 import { MenuButton } from "@/components/MenuButton";
 import { useTranslation, translateServerPayload } from "@/lib/i18n";
+import { a11yState, useA11yHint } from "@/lib/a11y";
 
 type Tab = "login" | "register";
 
 export default function AuthScreen() {
   const { t } = useTranslation();
+  const usernameHint = useA11yHint(t("auth.usernameA11yHint"));
+  const passwordHint = useA11yHint(t("auth.passwordA11yHint"));
   const { login, register } = useAuth();
   const [tab, setTab] = useState<Tab>("login");
   const [username, setUsername] = useState("");
@@ -92,9 +95,8 @@ export default function AuthScreen() {
                   key={tabOption}
                   onPress={() => { setTab(tabOption); setError(null); }}
                   style={[styles.tabBtn, tab === tabOption && styles.tabActive]}
-                  accessibilityRole="tab"
                   accessibilityLabel={tabOption === "login" ? t("auth.tabLogin") : t("auth.tabRegister")}
-                  accessibilityState={{ selected: tab === tabOption }}
+                  {...a11yState({ role: "tab", selected: tab === tabOption })}
                 >
                   <Text style={[styles.tabText, tab === tabOption && styles.tabTextActive]}>
                     {tabOption === "login" ? t("auth.tabLogin") : t("auth.tabRegister")}
@@ -116,11 +118,14 @@ export default function AuthScreen() {
                     placeholderTextColor={Colors.textMuted}
                     autoCapitalize="none"
                     autoCorrect={false}
+                    autoComplete="username"
+                    textContentType="username"
                     returnKeyType="next"
                     onSubmitEditing={() => pwdRef.current?.focus()}
                     accessibilityLabel={t("auth.usernameA11yLabel")}
-                    accessibilityHint={t("auth.usernameA11yHint")}
+                    {...usernameHint.props}
                   />
+                  {usernameHint.node}
                 </View>
               </View>
 
@@ -137,11 +142,14 @@ export default function AuthScreen() {
                     placeholderTextColor={Colors.textMuted}
                     secureTextEntry={!showPwd}
                     autoCapitalize="none"
+                    autoComplete={tab === "login" ? "current-password" : "new-password"}
+                    textContentType={tab === "login" ? "password" : "newPassword"}
                     returnKeyType="done"
                     onSubmitEditing={handleSubmit}
                     accessibilityLabel={t("auth.passwordA11yLabel")}
-                    accessibilityHint={t("auth.passwordA11yHint")}
+                    {...passwordHint.props}
                   />
+                  {passwordHint.node}
                   <Pressable
                     onPress={() => setShowPwd((v) => !v)}
                     style={styles.eyeBtn}

@@ -17,7 +17,7 @@ import Animated, {
 import Ionicons from "@expo/vector-icons/Ionicons";
 import { LinearGradient } from "expo-linear-gradient";
 import { CardView } from "@/components/CardView";
-import { Colors, FontSize, Highlight, Motion, Radius, Scrim, Shadow, Spacing } from "@/lib/theme";
+import { Colors, FontSize, Highlight, Motion, Radius, Scrim, Shadow, Spacing, TABLE_FONT_SCALE_MAX } from "@/lib/theme";
 import { useTableFelt } from "@/lib/cosmetics";
 import { usePrefersReducedMotion } from "@/lib/accessibility";
 import { useTranslation, type TranslationKey } from "@/lib/i18n";
@@ -30,6 +30,7 @@ import {
   SIDE_SECTION_W,
   type FlyDirection,
 } from "@/components/gameTableModel";
+import { a11yHidden } from "@/lib/a11y";
 
 // The layout constants and the seat-rotation maths now live in the JSX-free
 // gameTableModel.ts so they can be unit-tested and so the shared table can use
@@ -257,7 +258,7 @@ export function AvatarCircle({
             { width: size, height: size, borderRadius: size / 2 },
           ]}
         >
-          <Text style={[sharedStyles.avatarInitials, { fontSize: size * 0.36 }]}>
+          <Text maxFontSizeMultiplier={TABLE_FONT_SCALE_MAX} style={[sharedStyles.avatarInitials, { fontSize: size * 0.36 }]}>
             {initials}
           </Text>
         </LinearGradient>
@@ -268,7 +269,7 @@ export function AvatarCircle({
           {finishPos !== undefined ? (
             <Ionicons name="trophy" size={8} color={Colors.gold} />
           ) : (
-            <Text style={sharedStyles.countBubbleText}>{cardCount}</Text>
+            <Text maxFontSizeMultiplier={TABLE_FONT_SCALE_MAX} style={sharedStyles.countBubbleText}>{cardCount}</Text>
           )}
         </View>
       </View>
@@ -291,10 +292,9 @@ function BotSeatBadge() {
         name="hardware-chip-outline"
         size={FontSize.xs}
         color={Colors.gold}
-        accessibilityElementsHidden
-        importantForAccessibility="no-hide-descendants"
+        {...a11yHidden()}
       />
-      <Text style={sharedStyles.botBadgeText}>{t("onlineGame.botSeatLabel")}</Text>
+      <Text maxFontSizeMultiplier={TABLE_FONT_SCALE_MAX} style={sharedStyles.botBadgeText}>{t("onlineGame.botSeatLabel")}</Text>
     </View>
   );
 }
@@ -310,7 +310,7 @@ function PassedChip() {
   const { t } = useTranslation();
   return (
     <View style={sharedStyles.passedChip}>
-      <Text style={sharedStyles.passedChipText}>{t("gameShared.passedLabel")}</Text>
+      <Text maxFontSizeMultiplier={TABLE_FONT_SCALE_MAX} style={sharedStyles.passedChipText}>{t("gameShared.passedLabel")}</Text>
     </View>
   );
 }
@@ -353,7 +353,7 @@ export function TopOppSlot({
             finishPos={player.finishPosition}
             size={42}
           />
-          <Text style={sharedStyles.oppName} numberOfLines={1}>
+          <Text maxFontSizeMultiplier={TABLE_FONT_SCALE_MAX} style={sharedStyles.oppName} numberOfLines={1}>
             {player.name}
           </Text>
           <SeatBadges passed={passed} isBot={player.type === "ai"} />
@@ -402,7 +402,7 @@ export function SideOppSlot({
           finishPos={player.finishPosition}
           size={40}
         />
-        <Text style={sharedStyles.oppName} numberOfLines={1}>
+        <Text maxFontSizeMultiplier={TABLE_FONT_SCALE_MAX} style={sharedStyles.oppName} numberOfLines={1}>
           {player.name}
         </Text>
         <SeatBadges passed={passed} isBot={player.type === "ai"} />
@@ -613,12 +613,12 @@ export function PlayedPile({
     <Animated.View style={[sharedStyles.pileArea, bounceStyle]} testID="pile-area">
       {roundWinner && (
         <Animated.View
-          entering={FadeIn.duration(250)}
-          exiting={FadeOut.duration(250)}
+          entering={reduceMotion ? undefined : FadeIn.duration(250)}
+          exiting={reduceMotion ? undefined : FadeOut.duration(250)}
           style={sharedStyles.winnerTag}
         >
           <Ionicons name="star" size={9} color={Colors.gold} />
-          <Text style={sharedStyles.winnerText}>{roundWinner}</Text>
+          <Text maxFontSizeMultiplier={TABLE_FONT_SCALE_MAX} style={sharedStyles.winnerText}>{roundWinner}</Text>
         </Animated.View>
       )}
 
@@ -636,7 +636,7 @@ export function PlayedPile({
       {current && (
         <View style={sharedStyles.comboLabel}>
           <View style={[sharedStyles.comboChip, isPower && sharedStyles.comboChipPower]}>
-            <Text style={[sharedStyles.comboChipText, isPower && sharedStyles.comboChipTextPower]}>
+            <Text maxFontSizeMultiplier={TABLE_FONT_SCALE_MAX} style={[sharedStyles.comboChipText, isPower && sharedStyles.comboChipTextPower]}>
               {isPower ? "✦ " : ""}
               {COMBO_LABEL_KEYS[current.type] ? t(COMBO_LABEL_KEYS[current.type]) : current.type}
               {current.cards.length > 2 ? t("gameShared.comboMultiplier", { count: current.cards.length }) : ""}
@@ -831,7 +831,7 @@ export function StraightHand({
     return (
       <View style={[sharedStyles.handCenter, { width: availW }]}>
         <Ionicons name="checkmark-circle" size={24} color={Colors.gold} />
-        <Text style={sharedStyles.emptyHandText}>{t("gameShared.emptyHand")}</Text>
+        <Text maxFontSizeMultiplier={TABLE_FONT_SCALE_MAX} style={sharedStyles.emptyHandText}>{t("gameShared.emptyHand")}</Text>
       </View>
     );
   }
@@ -944,11 +944,11 @@ export function StartReasonBanner({
         maxWidth: 420,
         gap: 2,
       }}>
-        <Text style={{ fontFamily: "Rajdhani_600SemiBold", fontSize: 14, color: Colors.gold, letterSpacing: 0.5, textAlign: "center" }}>
+        <Text maxFontSizeMultiplier={TABLE_FONT_SCALE_MAX} style={{ fontFamily: "Rajdhani_600SemiBold", fontSize: 14, color: Colors.gold, letterSpacing: 0.5, textAlign: "center" }}>
           {mainText}
         </Text>
         {subText ? (
-          <Text style={{ fontFamily: "Inter_400Regular", fontSize: FontSize.xs, color: Colors.textSecondary, textAlign: "center" }}>
+          <Text maxFontSizeMultiplier={TABLE_FONT_SCALE_MAX} style={{ fontFamily: "Inter_400Regular", fontSize: FontSize.xs, color: Colors.textSecondary, textAlign: "center" }}>
             {subText}
           </Text>
         ) : null}
@@ -1128,12 +1128,18 @@ export const sharedStyles = StyleSheet.create({
   sideRight: { flexDirection: "row-reverse" },
   sideOppAvatarCol: { alignItems: "center", gap: 3, marginHorizontal: 6 },
 
+  // The count bubble's plate. The top seat renders in the felt gradient's
+  // lightest band, where textMuted alone does not clear AA.
   oppName: {
     fontFamily: "Rajdhani_600SemiBold",
     fontSize: 10,
     color: Colors.textMuted,
-    maxWidth: 70,
+    maxWidth: 70 + Spacing.xs * 2,
     textAlign: "center",
+    backgroundColor: Colors.overlayStrong,
+    borderRadius: Radius.sm,
+    paddingHorizontal: Spacing.xs,
+    overflow: "hidden",
   },
 
   // Wraps rather than growing, because the column it sits in has no room to
@@ -1166,7 +1172,7 @@ export const sharedStyles = StyleSheet.create({
     gap: Spacing.xs,
     paddingHorizontal: Spacing.xs,
     borderRadius: Radius.sm,
-    backgroundColor: Colors.goldMuted,
+    backgroundColor: Scrim.heavy,
     borderWidth: 1,
     borderColor: Colors.goldBorder,
   },
@@ -1234,13 +1240,15 @@ export const sharedStyles = StyleSheet.create({
     justifyContent: "center",
     minHeight: 80,
   },
+  // A dark plate, not a gold wash: gold on gold over the felt clears AA at no
+  // stop of any felt. The border is where the chip's identity lives.
   winnerTag: {
     position: "absolute",
     top: -28,
     flexDirection: "row",
     alignItems: "center",
     gap: 4,
-    backgroundColor: Colors.goldMuted,
+    backgroundColor: Scrim.heavy,
     borderRadius: 10,
     paddingHorizontal: 10,
     paddingVertical: 4,
@@ -1265,7 +1273,7 @@ export const sharedStyles = StyleSheet.create({
   },
   comboLabel: { marginTop: 10 },
   comboChip: {
-    backgroundColor: Colors.goldBorder,
+    backgroundColor: Scrim.heavy,
     borderRadius: Radius.sm,
     paddingHorizontal: 10,
     paddingVertical: 3,
@@ -1273,7 +1281,6 @@ export const sharedStyles = StyleSheet.create({
     borderColor: Colors.goldStrong,
   },
   comboChipPower: {
-    backgroundColor: Colors.bombFill,
     borderColor: Colors.bombBorder,
   },
   comboChipText: {
@@ -1374,15 +1381,15 @@ export function GameBillboard({
 
   return (
     <View style={billboardStyles.container}>
-      <Text style={billboardStyles.comboLabel} numberOfLines={1}>
+      <Text maxFontSizeMultiplier={TABLE_FONT_SCALE_MAX} style={billboardStyles.comboLabel} numberOfLines={1}>
         {currentComboLabel ?? t("gameShared.emptyTable")}
       </Text>
       <View style={billboardStyles.bottomRow}>
-        <Text style={billboardStyles.roundLabel} numberOfLines={1}>{roundLabel}</Text>
+        <Text maxFontSizeMultiplier={TABLE_FONT_SCALE_MAX} style={billboardStyles.roundLabel} numberOfLines={1}>{roundLabel}</Text>
         {isLocalPlayerTurn && (
-          <Animated.Text style={[billboardStyles.turnDot, dotStyle]}>●</Animated.Text>
+          <Animated.Text maxFontSizeMultiplier={TABLE_FONT_SCALE_MAX} style={[billboardStyles.turnDot, dotStyle]}>●</Animated.Text>
         )}
-        <Text
+        <Text maxFontSizeMultiplier={TABLE_FONT_SCALE_MAX}
           style={[
             billboardStyles.turnLabel,
             isLocalPlayerTurn && billboardStyles.turnLabelActive,

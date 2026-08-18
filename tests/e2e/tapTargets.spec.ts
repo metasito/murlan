@@ -142,6 +142,52 @@ async function expectNoBuriedControls(page: Page, where: string, minControls: nu
     .toBeGreaterThanOrEqual(minControls);
 }
 
+/**
+ * Controls smaller than the 44pt floor, measured rather than declared.
+ *
+ * react-native-web reads `hitSlop` on nothing but the legacy Touchable, so on
+ * this platform a control's own box is the whole target.
+ */
+async function sweepSizes(page: Page, allow: string[]): Promise<string[]> {
+  return page.evaluate((allowed) => {
+    const MIN = 44;
+    const out: string[] = [];
+    const nameOf = (el: Element): string =>
+      (el.getAttribute("aria-label") || el.textContent || "").trim().slice(0, 50);
+
+    const controls = Array.from(
+      document.querySelectorAll<HTMLElement>('button, [role="button"], [role="radio"], [role="switch"]')
+    );
+
+    for (const el of controls) {
+      if (el.getAttribute("aria-disabled") === "true") continue;
+      // A control nested inside another is part of that control's target.
+      if (el.parentElement?.closest('button, [role="button"]')) continue;
+      const r = el.getBoundingClientRect();
+      if (r.width < 4 || r.height < 4) continue;
+      if (r.bottom < 0 || r.top > window.innerHeight) continue;
+      if (r.right < 0 || r.left > window.innerWidth) continue;
+
+      const { width, height } = r;
+      const name = nameOf(el) || "(unnamed)";
+      if (allowed.some((a) => name.includes(a))) continue;
+      if (width >= MIN && height >= MIN) continue;
+      out.push(`${name} — ${Math.round(width)}x${Math.round(height)}`);
+    }
+    return out;
+  }, allow);
+}
+
+/**
+ * The hand's cards: the fan exposes `step` pixels of each card, and 44pt at 14
+ * cards needs ~630px of hand width the table does not have. components/
+ * handLayout.ts holds them at WCAG 2.2 SC 2.5.8's 24px instead.
+ *
+ * Matched against the Italian labels the whole suite is written against and
+ * playwright.config.ts pins.
+ */
+const UNDERSIZED_BY_DESIGN = ["di Fiori", "di Cuori", "di Quadri", "di Picche", "Jolly"];
+
 const SIZES = [
   { name: "phone portrait", width: 390, height: 844 },
   { name: "phone landscape", width: 844, height: 390 },
@@ -158,6 +204,7 @@ for (const size of SIZES) {
     // opacity 0 and the probe measures nothing.
     await page.waitForTimeout(2500);
     await expectNoBuriedControls(page, "home", 6);
+    expect(await sweepSizes(page, UNDERSIZED_BY_DESIGN), "home").toEqual([]);
 
     await page.getByRole("button", { name: "Offline" }).click();
     await page.waitForTimeout(1500);
@@ -166,6 +213,8 @@ for (const size of SIZES) {
     await page.getByRole("radio", { name: "4 giocatori" }).click();
     await page.waitForTimeout(1200);
     await expectNoBuriedControls(page, "offline lobby, 4 players", 10);
+
+    expect(await sweepSizes(page, UNDERSIZED_BY_DESIGN), "offline lobby").toEqual([]);
   });
 
   // The table forces landscape (components/GameTable.tsx), so in portrait the
@@ -186,6 +235,7 @@ for (const size of SIZES) {
     await page.waitForTimeout(5000);
 
     await expectNoBuriedControls(page, "game table, 4 players", 10);
+    expect(await sweepSizes(page, UNDERSIZED_BY_DESIGN), "game table").toEqual([]);
   });
 }
 

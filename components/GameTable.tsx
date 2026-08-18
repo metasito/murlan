@@ -16,6 +16,7 @@ import {
   Text,
   StyleSheet,
   Pressable,
+  Modal,
   Platform,
   useWindowDimensions,
 } from "react-native";
@@ -111,8 +112,9 @@ import {
 } from "@/lib/sounds";
 import { hapticError, hapticHeavy, hapticLight, hapticMedium, hapticSelection, hapticSuccess, hapticWarn } from "@/lib/haptics";
 import { usePrefersReducedMotion } from "@/lib/accessibility";
-import { Colors, FontSize, Highlight, Motion, Radius, Scrim, Shadow, Spacing, Type } from "@/lib/theme";
+import { Colors, FontSize, Highlight, Motion, Radius, Scrim, Shadow, Spacing, TABLE_FONT_SCALE_MAX, TOUCH_TARGET_MIN, Type } from "@/lib/theme";
 import { useTableFelt } from "@/lib/cosmetics";
+import { A11yStatus, a11yHidden, a11yState } from "@/lib/a11y";
 
 // How long the round-winner tag stays over the pile. A domain beat, not a
 // generic UI transition, so it is not a Motion token.
@@ -331,10 +333,9 @@ function TurnTimer({
         name="timer-outline"
         size={FontSize.sm}
         color={urgent ? Colors.red : Colors.gold}
-        accessibilityElementsHidden
-        importantForAccessibility="no-hide-descendants"
+        {...a11yHidden()}
       />
-      <Text
+      <Text maxFontSizeMultiplier={TABLE_FONT_SCALE_MAX}
         style={[styles.timerNum, urgent && styles.timerUrgent]}
         accessibilityLiveRegion="polite"
         accessibilityLabel={tn("gameTable.a11ySecondsLeft", timeLeft)}
@@ -361,6 +362,7 @@ function RematchPromptPanel({
   left: number;
 }) {
   const { t } = useTranslation();
+  const reduceMotion = usePrefersReducedMotion();
   const answered = prompt.myAnswer !== null;
   const tally = t("gameTable.rematchTally", {
     yes: prompt.yesCount,
@@ -369,17 +371,17 @@ function RematchPromptPanel({
 
   return (
     <Animated.View
-      entering={FadeIn.duration(Motion.duration.moderate)}
+      entering={reduceMotion ? undefined : FadeIn.duration(Motion.duration.moderate)}
       style={[styles.rematchPanel, { top, left }]}
     >
       {answered ? (
-        <Text style={styles.rematchTally} accessibilityLiveRegion="polite">
+        <Text maxFontSizeMultiplier={TABLE_FONT_SCALE_MAX} style={styles.rematchTally} accessibilityLiveRegion="polite">
           {tally}
         </Text>
       ) : (
         <>
-          <Text style={styles.rematchTitle}>{t("gameTable.rematchPromptTitle")}</Text>
-          <Text style={styles.rematchSubtitle}>{t("gameTable.rematchPromptSubtitle")}</Text>
+          <Text maxFontSizeMultiplier={TABLE_FONT_SCALE_MAX} style={styles.rematchTitle}>{t("gameTable.rematchPromptTitle")}</Text>
+          <Text maxFontSizeMultiplier={TABLE_FONT_SCALE_MAX} style={styles.rematchSubtitle}>{t("gameTable.rematchPromptSubtitle")}</Text>
           <View style={styles.rematchButtons}>
             <Pressable
               testID="btn-rematch-yes"
@@ -391,7 +393,7 @@ function RematchPromptPanel({
               accessibilityRole="button"
               accessibilityLabel={t("gameTable.rematchYesA11yLabel")}
             >
-              <Text style={styles.rematchChoiceYesLabel}>{t("gameTable.rematchYes")}</Text>
+              <Text maxFontSizeMultiplier={TABLE_FONT_SCALE_MAX} style={styles.rematchChoiceYesLabel}>{t("gameTable.rematchYes")}</Text>
             </Pressable>
             <Pressable
               testID="btn-rematch-no"
@@ -403,10 +405,10 @@ function RematchPromptPanel({
               accessibilityRole="button"
               accessibilityLabel={t("gameTable.rematchNoA11yLabel")}
             >
-              <Text style={styles.rematchChoiceLabel}>{t("gameTable.rematchNo")}</Text>
+              <Text maxFontSizeMultiplier={TABLE_FONT_SCALE_MAX} style={styles.rematchChoiceLabel}>{t("gameTable.rematchNo")}</Text>
             </Pressable>
           </View>
-          <Text style={styles.rematchTally}>{tally}</Text>
+          <Text maxFontSizeMultiplier={TABLE_FONT_SCALE_MAX} style={styles.rematchTally}>{tally}</Text>
         </>
       )}
     </Animated.View>
@@ -1063,6 +1065,7 @@ export function GameTable({
 
   return (
     <Animated.View style={[styles.root, shakeStyle]}>
+      <A11yStatus label={tableA11yLabel} />
       <LinearGradient
         colors={[Colors.bg, Colors.feltDark, Colors.bg]}
         style={StyleSheet.absoluteFill}
@@ -1101,7 +1104,7 @@ export function GameTable({
 
         <View style={styles.topBarRight}>
           <View style={styles.cardCountBadge}>
-            <Text style={styles.cardCountText}>{sortedHand.length}</Text>
+            <Text maxFontSizeMultiplier={TABLE_FONT_SCALE_MAX} style={styles.cardCountText}>{sortedHand.length}</Text>
           </View>
           {topBarExtra}
         </View>
@@ -1131,11 +1134,12 @@ export function GameTable({
       </View>
 
       {/* Same coordinates, overflow visible so slots and buttons can extend out.
-          accessibilityLabel carries the whole-table description a sighted
-          player gets for free from the felt (whose turn, what was last
-          played, every hand size) — deliberately without `accessible`, which
-          would collapse the PASSA/GIOCA buttons and every card underneath
-          into one unreachable leaf. */}
+          accessibilityLabel is the E2E harness's hook on the table description
+          (tests/e2e/helpers/bot.ts reads the raw attribute). Players get the
+          same sentence from the A11yStatus node above — a container without
+          `accessible` reaches no screen reader on any platform, and adding it
+          would collapse the PASSA/GIOCA buttons and every card underneath into
+          one unreachable leaf. */}
       <View
         testID="game-table"
         accessibilityLabel={tableA11yLabel}
@@ -1179,8 +1183,8 @@ export function GameTable({
             <View style={sharedTableStyles.centerSection}>
               {showStartCardBanner ? (
                 <View style={styles.startCardBanner}>
-                  <Text style={styles.startCardGlyph}>♠</Text>
-                  <Text style={styles.startCardText}>
+                  <Text maxFontSizeMultiplier={TABLE_FONT_SCALE_MAX} style={styles.startCardGlyph}>♠</Text>
+                  <Text maxFontSizeMultiplier={TABLE_FONT_SCALE_MAX} style={styles.startCardText}>
                     {gameState.currentTurnIndex === viewerSeat
                       ? t("gameTable.startCardBannerSelf", { rank: gameState.startCard!.rank })
                       : t("gameTable.startCardBannerOther", {
@@ -1234,9 +1238,8 @@ export function GameTable({
                 onPressOut={() => setPassaPress(false)}
                 disabled={!canPass}
                 style={styles.passBtnInner}
-                accessibilityRole="button"
                 accessibilityLabel={t("gameTable.passA11yLabel")}
-                accessibilityState={{ disabled: !canPass }}
+                {...a11yState({ role: "button", disabled: !canPass })}
               >
                 <LinearGradient
                   colors={passaPressed ? PASS_GRADIENT_PRESSED : PASS_GRADIENT}
@@ -1249,7 +1252,7 @@ export function GameTable({
                   pointerEvents="none"
                   style={[StyleSheet.absoluteFill, styles.btnFlash, passaFlashStyle]}
                 />
-                <Text
+                <Text maxFontSizeMultiplier={TABLE_FONT_SCALE_MAX}
                   style={[styles.passBtnLabel, !canPass && styles.passBtnLabelDim]}
                 >
                   {t("gameTable.passLabel")}
@@ -1261,14 +1264,14 @@ export function GameTable({
             {isFinished ? (
               <View style={styles.finishedRow}>
                 <Ionicons name="trophy" size={18} color={Colors.gold} />
-                <Text style={styles.finishedText}>{t("gameTable.waitingOthers")}</Text>
+                <Text maxFontSizeMultiplier={TABLE_FONT_SCALE_MAX} style={styles.finishedText}>{t("gameTable.waitingOthers")}</Text>
               </View>
             ) : (
-              // accessibilityLabel is a summary only (hand size + selection
-              // count) — individual cards keep their own labels from
-              // CardView.tsx, so this wrapper deliberately has no
-              // `accessible`, which would hide them behind one leaf node.
+              // The wrapper carries no `accessible`, which would hide the
+              // individual cards' own labels behind one leaf node; the summary
+              // reaches a screen reader through A11yStatus instead.
               <View accessibilityLabel={handA11yLabel}>
+                <A11yStatus label={handA11yLabel} />
                 <StraightHand
                   faceDown={spectating}
                   cards={sortedHand}
@@ -1297,13 +1300,12 @@ export function GameTable({
                 onPressIn={() => setGiocaPress(true)}
                 onPressOut={() => setGiocaPress(false)}
                 style={styles.playBtnInner}
-                accessibilityRole="button"
                 accessibilityLabel={
                   playBtnValid
                     ? t("gameTable.playA11yValid")
                     : t("gameTable.playA11yUnavailable", { reason: dimReasonText })
                 }
-                accessibilityState={{ disabled: !playBtnValid }}
+                {...a11yState({ role: "button", disabled: !playBtnValid })}
               >
                 {playBtnValid ? (
                   <LinearGradient
@@ -1317,14 +1319,14 @@ export function GameTable({
                       pointerEvents="none"
                       style={[StyleSheet.absoluteFill, styles.btnFlash, giocaFlashStyle]}
                     />
-                    <Text style={styles.playBtnLabel}>{t("gameTable.playLabelGioca")}</Text>
+                    <Text maxFontSizeMultiplier={TABLE_FONT_SCALE_MAX} style={styles.playBtnLabel}>{t("gameTable.playLabelGioca")}</Text>
                     {selectedIds.length > 1 && (
-                      <Text style={styles.playBtnSub}>{t("gameTable.selectedCountSuffix", { n: selectedIds.length })}</Text>
+                      <Text maxFontSizeMultiplier={TABLE_FONT_SCALE_MAX} style={styles.playBtnSub}>{t("gameTable.selectedCountSuffix", { n: selectedIds.length })}</Text>
                     )}
                   </LinearGradient>
                 ) : (
                   <View style={[styles.playBtnGrad, styles.playBtnGradDim]}>
-                    <Text style={styles.playBtnLabelDim} numberOfLines={2}>
+                    <Text maxFontSizeMultiplier={TABLE_FONT_SCALE_MAX} style={styles.playBtnLabelDim} numberOfLines={2}>
                       {t(PLAY_LABEL_KEYS[dimLabel], { rank: startCardRank })}
                     </Text>
                   </View>
@@ -1401,7 +1403,7 @@ export function GameTable({
       {rejectHint && (
         <Animated.View
           key={rejectHint.key}
-          entering={FadeIn.duration(Motion.duration.fast)}
+          entering={reduceMotion ? undefined : FadeIn.duration(Motion.duration.fast)}
           pointerEvents="none"
           style={[
             styles.rejectHint,
@@ -1412,7 +1414,7 @@ export function GameTable({
             },
           ]}
         >
-          <Text
+          <Text maxFontSizeMultiplier={TABLE_FONT_SCALE_MAX}
             style={styles.rejectHintText}
             numberOfLines={2}
             accessibilityLiveRegion="polite"
@@ -1424,16 +1426,27 @@ export function GameTable({
 
       {overlays}
 
+      {/* A Modal, not a scrim: covering the pixels leaves every control
+          beneath it in the tab order. Rotating back is the only way out, so
+          onRequestClose is inert. */}
       {W < H && (
+      <Modal
+        transparent
+        visible
+        accessibilityLabel="Ruota il dispositivo"
+        supportedOrientations={["portrait", "landscape"]}
+        onRequestClose={() => {}}
+      >
         <View style={portraitOverlayStyles.overlay}>
           <View style={portraitOverlayStyles.card}>
             <Ionicons name="phone-landscape-outline" size={56} color={Colors.gold} />
-            <Text style={portraitOverlayStyles.title}>Ruota il dispositivo</Text>
-            <Text style={portraitOverlayStyles.sub}>
+            <Text maxFontSizeMultiplier={TABLE_FONT_SCALE_MAX} style={portraitOverlayStyles.title}>Ruota il dispositivo</Text>
+            <Text maxFontSizeMultiplier={TABLE_FONT_SCALE_MAX} style={portraitOverlayStyles.sub}>
               Il gioco richiede la modalità orizzontale
             </Text>
           </View>
         </View>
+      </Modal>
       )}
     </Animated.View>
   );
@@ -1465,7 +1478,7 @@ const styles = StyleSheet.create({
   },
   topBarRight: { flexDirection: "row", alignItems: "center", gap: Spacing.xs },
   quitBtn: {
-    width: 32, height: 32, borderRadius: 16,
+    width: TOUCH_TARGET_MIN, height: TOUCH_TARGET_MIN, borderRadius: TOUCH_TARGET_MIN / 2,
     backgroundColor: Scrim.medium,
     alignItems: "center", justifyContent: "center",
   },
@@ -1623,7 +1636,7 @@ const styles = StyleSheet.create({
   },
   rematchButtons: { alignSelf: "stretch", gap: Spacing.xs },
   rematchChoice: {
-    minHeight: 32,
+    minHeight: TOUCH_TARGET_MIN,
     borderRadius: Radius.sm,
     alignItems: "center",
     justifyContent: "center",

@@ -5,6 +5,7 @@ import {
   StyleSheet,
   Pressable,
   ScrollView,
+  Modal,
 } from "react-native";
 import Animated, {
   FadeIn,
@@ -25,6 +26,7 @@ import { Colors, FontSize, Highlight, Motion, Radius, Shadow, Spacing } from '@/
 import { usePrefersReducedMotion } from "@/lib/accessibility";
 import { useTranslation } from "@/lib/i18n";
 import { cardSpokenName } from "@/lib/cardNames";
+import { useA11yHint } from "@/lib/a11y";
 
 interface ExchangeModalProps {
   phase: ExchangePhase;
@@ -71,6 +73,7 @@ function SelectableCard({
   reduceMotion: boolean;
 }) {
   const { t } = useTranslation();
+  const giveHint = useA11yHint(t("exchangeModal.giveCardA11yHint"));
   // Lift and tip rather than scale: this wraps a CardView, whose rank
   // characters are rasterised text and go soft the moment they are resampled.
   const lift = useSharedValue(0);
@@ -114,8 +117,9 @@ function SelectableCard({
       onPressOut={() => setPress(false)}
       accessibilityRole="button"
       accessibilityLabel={cardSpokenName(card, t)}
-      accessibilityHint={t("exchangeModal.giveCardA11yHint")}
+      {...giveHint.props}
     >
+      {giveHint.node}
       <Animated.View style={anim}>
         <Animated.View pointerEvents="none" style={[styles.cardGlow, glowStyle]} />
         <View style={styles.cardItem}>
@@ -156,82 +160,92 @@ export function ExchangeModal({
   }));
 
   return (
-    <Animated.View
-      entering={reduceMotion ? undefined : FadeIn.duration(280)}
-      exiting={reduceMotion ? undefined : FadeOut.duration(200)}
-      style={styles.overlay}
+    // The hand cannot continue until a card is picked, so Escape has nowhere
+    // to dismiss to and onRequestClose is deliberately inert.
+    <Modal
+      transparent
+      visible
+      accessibilityLabel={t("exchangeModal.title")}
+      supportedOrientations={["portrait", "landscape"]}
+      onRequestClose={() => {}}
     >
-      <View style={styles.card}>
-        <View style={styles.headerRow}>
-          <Ionicons name="swap-horizontal" size={22} color={Colors.gold} />
-          <Text style={styles.title}>{t("exchangeModal.title")}</Text>
-        </View>
+      <Animated.View
+        entering={reduceMotion ? undefined : FadeIn.duration(280)}
+        exiting={reduceMotion ? undefined : FadeOut.duration(200)}
+        style={styles.overlay}
+      >
+        <View style={styles.card}>
+          <View style={styles.headerRow}>
+            <Ionicons name="swap-horizontal" size={22} color={Colors.gold} />
+            <Text style={styles.title}>{t("exchangeModal.title")}</Text>
+          </View>
 
-        {/* Winner row — receives card from loser */}
-        <View style={styles.playerRow}>
-          <View style={styles.playerInfo}>
-            <Ionicons name="trophy" size={14} color={Colors.gold} />
-            <Text style={styles.playerName} numberOfLines={1}>{winnerName}</Text>
-            <View style={styles.receivesTag}>
-              <Text style={styles.receivesTagText}>{t("exchangeModal.receives")}</Text>
+          {/* Winner row — receives card from loser */}
+          <View style={styles.playerRow}>
+            <View style={styles.playerInfo}>
+              <Ionicons name="trophy" size={14} color={Colors.gold} />
+              <Text style={styles.playerName} numberOfLines={1}>{winnerName}</Text>
+              <View style={styles.receivesTag}>
+                <Text style={styles.receivesTagText}>{t("exchangeModal.receives")}</Text>
+              </View>
+            </View>
+            <View style={styles.cardSlot}>
+              <AnimatedCard card={phase.cardFromLoser} delay={100} reduceMotion={reduceMotion} />
             </View>
           </View>
-          <View style={styles.cardSlot}>
-            <AnimatedCard card={phase.cardFromLoser} delay={100} reduceMotion={reduceMotion} />
-          </View>
-        </View>
 
-        {/* Arrow */}
-        <Animated.View style={[styles.arrowRow, arrowAnim]}>
-          <View style={styles.arrowLine} />
-          <Ionicons name="arrow-down" size={18} color={Colors.gold} />
-          <Ionicons name="arrow-up" size={18} color={Colors.textSecondary} />
-          <View style={styles.arrowLine} />
-        </Animated.View>
+          {/* Arrow */}
+          <Animated.View style={[styles.arrowRow, arrowAnim]}>
+            <View style={styles.arrowLine} />
+            <Ionicons name="arrow-down" size={18} color={Colors.gold} />
+            <Ionicons name="arrow-up" size={18} color={Colors.textSecondary} />
+            <View style={styles.arrowLine} />
+          </Animated.View>
 
-        {/* Loser row — sends a card */}
-        <View style={styles.playerRow}>
-          <View style={styles.playerInfo}>
-            <Ionicons name="person" size={14} color={Colors.textSecondary} />
-            <Text style={styles.playerName} numberOfLines={1}>{loserName}</Text>
-            <View style={[styles.receivesTag, styles.givesTag]}>
-              <Text style={[styles.receivesTagText, styles.givesTagText]}>{t("exchangeModal.gives")}</Text>
+          {/* Loser row — sends a card */}
+          <View style={styles.playerRow}>
+            <View style={styles.playerInfo}>
+              <Ionicons name="person" size={14} color={Colors.textSecondary} />
+              <Text style={styles.playerName} numberOfLines={1}>{loserName}</Text>
+              <View style={[styles.receivesTag, styles.givesTag]}>
+                <Text style={[styles.receivesTagText, styles.givesTagText]}>{t("exchangeModal.gives")}</Text>
+              </View>
+            </View>
+            <View style={styles.cardSlotEmpty}>
+              <Ionicons name="help-circle-outline" size={28} color={Colors.goldDim} />
             </View>
           </View>
-          <View style={styles.cardSlotEmpty}>
-            <Ionicons name="help-circle-outline" size={28} color={Colors.goldDim} />
-          </View>
+
+          <View style={styles.divider} />
+
+          <Text style={styles.sub}>
+            {t("exchangeModal.subPrefix")}{" "}
+            <Text style={styles.accent}>{loserName}</Text> {t("exchangeModal.subSuffix")}
+          </Text>
+
+          {validCards.length === 0 ? (
+            <Text style={styles.hint}>{t("exchangeModal.noValidCards")}</Text>
+          ) : (
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.cardRow}
+            >
+              {validCards.map((card) => (
+                <SelectableCard
+                  key={card.id}
+                  card={card}
+                  reduceMotion={reduceMotion}
+                  onPress={() => onSelectCard(card.id)}
+                />
+              ))}
+            </ScrollView>
+          )}
+
+          <Text style={styles.hint}>{t("exchangeModal.hint")}</Text>
         </View>
-
-        <View style={styles.divider} />
-
-        <Text style={styles.sub}>
-          {t("exchangeModal.subPrefix")}{" "}
-          <Text style={styles.accent}>{loserName}</Text> {t("exchangeModal.subSuffix")}
-        </Text>
-
-        {validCards.length === 0 ? (
-          <Text style={styles.hint}>{t("exchangeModal.noValidCards")}</Text>
-        ) : (
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={styles.cardRow}
-          >
-            {validCards.map((card) => (
-              <SelectableCard
-                key={card.id}
-                card={card}
-                reduceMotion={reduceMotion}
-                onPress={() => onSelectCard(card.id)}
-              />
-            ))}
-          </ScrollView>
-        )}
-
-        <Text style={styles.hint}>{t("exchangeModal.hint")}</Text>
-      </View>
-    </Animated.View>
+      </Animated.View>
+    </Modal>
   );
 }
 

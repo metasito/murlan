@@ -139,6 +139,18 @@ export const Spacing = {
   xs: 4, sm: 8, md: 16, lg: 24, xl: 32, xxl: 48,
 };
 
+// iOS HIG's 44pt floor for a touch target. react-native-web reads `hitSlop`
+// on nothing but the legacy Touchable, so on the shipped platform a control's
+// own box is the whole target.
+export const TOUCH_TARGET_MIN = 44;
+
+// The game table is built from fixed boxes — CARD_W/CARD_H, TOP_BAR_H, the
+// avatar discs — and React Native scales `fontSize` by the OS text setting
+// (up to ~3.1x on iOS) while leaving `width`, `height` and `lineHeight` alone.
+// Capping degrades; `allowFontScaling={false}` would refuse. The menus scroll
+// and stay fully scalable.
+export const TABLE_FONT_SCALE_MAX = 1.2;
+
 export const Radius = {
   sm: 8, md: 12, lg: 20, xl: 32, full: 9999,
 };

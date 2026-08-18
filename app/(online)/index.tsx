@@ -21,9 +21,12 @@ import { MenuLayout } from "@/components/MenuLayout";
 import { MenuCard } from "@/components/MenuCard";
 import { MenuButton } from "@/components/MenuButton";
 import { useTranslation } from "@/lib/i18n";
+import { a11yHidden, a11yState, useA11yHint } from "@/lib/a11y";
 
 export default function OnlineLobbyScreen() {
   const { t } = useTranslation();
+  const roomCodeHint = useA11yHint(t("onlineLobby.roomCodeA11yHint"));
+  const watchHint = useA11yHint(t("onlineLobby.watchA11yHint"));
   const { width: W, height: H } = useWindowDimensions();
   const { user } = useAuth();
   const { createRoom, joinRoom, spectateRoom, room, gameState, isSpectator, connected, error, clearError } = useOnlineGame();
@@ -102,9 +105,8 @@ export default function OnlineLobbyScreen() {
                   createMode === m && styles.toggleActive,
                   isLandscape && styles.compactToggleBtn
                 ]}
-                accessibilityRole="radio"
                 accessibilityLabel={m === "free_for_all" ? t("onlineLobby.modeFreeForAll") : t("onlineLobby.modeTeams")}
-                accessibilityState={{ selected: createMode === m }}
+                {...a11yState({ role: "radio", selected: createMode === m })}
               >
                 <Ionicons 
                   name={m === "teams" ? "people" : "person"} 
@@ -131,9 +133,8 @@ export default function OnlineLobbyScreen() {
                   createPlayers === n && styles.toggleActive,
                   isLandscape && styles.compactToggleBtn
                 ]}
-                accessibilityRole="radio"
                 accessibilityLabel={t("lobby.playerCountOptionA11yLabel", { n })}
-                accessibilityState={{ selected: createPlayers === n }}
+                {...a11yState({ role: "radio", selected: createPlayers === n })}
               >
                 <Text style={[styles.toggleText, createPlayers === n && styles.toggleTextActive, { fontSize: isLandscape ? 14 : 18 }]}>
                   {n}
@@ -204,8 +205,7 @@ export default function OnlineLobbyScreen() {
             name="alert-circle"
             size={16}
             color={Colors.white}
-            accessibilityElementsHidden
-            importantForAccessibility="no-hide-descendants"
+            {...a11yHidden()}
           />
           {/* Capped rather than free to wrap: this sits above a body that has
               nowhere to scroll, so a long message would take its height out of
@@ -223,8 +223,7 @@ export default function OnlineLobbyScreen() {
               name="close"
               size={16}
               color={Colors.white}
-              accessibilityElementsHidden
-              importantForAccessibility="no-hide-descendants"
+              {...a11yHidden()}
             />
           </Pressable>
         </View>
@@ -296,8 +295,9 @@ export default function OnlineLobbyScreen() {
                   autoFocus={true}
                   maxLength={8}
                   accessibilityLabel={t("onlineLobby.roomCodeA11yLabel")}
-                  accessibilityHint={t("onlineLobby.roomCodeA11yHint")}
+                  {...roomCodeHint.props}
                 />
+                {roomCodeHint.node}
               </MenuCard>
               <View style={styles.modalRow}>
                 <Pressable
@@ -312,20 +312,19 @@ export default function OnlineLobbyScreen() {
                   onPress={handleSpectate}
                   disabled={joinCode.length < 4}
                   style={({ pressed }) => [styles.modalCancelBtn, pressed && { opacity: 0.85 }]}
-                  accessibilityRole="button"
                   accessibilityLabel={t("onlineLobby.watch")}
-                  accessibilityHint={t("onlineLobby.watchA11yHint")}
-                  accessibilityState={{ disabled: joinCode.length < 4 }}
+                  {...watchHint.props}
+                  {...a11yState({ role: "button", disabled: joinCode.length < 4 })}
                 >
+                  {watchHint.node}
                   <Text style={styles.modalCancelText}>{t("onlineLobby.watch")}</Text>
                 </Pressable>
                 <Pressable
                   onPress={handleJoin}
                   disabled={joinCode.length < 4}
                   style={({ pressed }) => [styles.modalOkBtn, pressed && { opacity: 0.85 }]}
-                  accessibilityRole="button"
                   accessibilityLabel={t("onlineLobby.enter")}
-                  accessibilityState={{ disabled: joinCode.length < 4 }}
+                  {...a11yState({ role: "button", disabled: joinCode.length < 4 })}
                 >
                   <Text style={styles.modalOkText}>{t("onlineLobby.enter")}</Text>
                 </Pressable>

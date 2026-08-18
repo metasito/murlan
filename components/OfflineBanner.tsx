@@ -9,6 +9,7 @@ import Animated, {
 import { usePrefersReducedMotion } from "@/lib/accessibility";
 import { Colors, Type, Motion, Shadow } from "@/lib/theme";
 import { useTranslation } from "@/lib/i18n";
+import { a11yHidden } from "@/lib/a11y";
 
 const BANNER_H = 44;
 
@@ -45,8 +46,7 @@ export function OfflineBanner() {
       style={[styles.banner, { pointerEvents: "none" as const }, animStyle]}
       accessibilityRole="alert"
       accessibilityLiveRegion={isOffline ? "assertive" : "none"}
-      accessibilityElementsHidden={!isOffline}
-      importantForAccessibility={isOffline ? "yes" : "no-hide-descendants"}
+      {...a11yHidden(!isOffline)}
     >
       <Text style={styles.text}>{t("offlineBanner.text")}</Text>
     </Animated.View>

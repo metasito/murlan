@@ -43,7 +43,7 @@ export function SessionReplacedNotice({
             label={t("sessionReplaced.reconnect")}
             onPress={onReconnect}
             variant="primary"
-            accessibilityHint={t("sessionReplaced.reconnectA11yHint")}
+            hint={t("sessionReplaced.reconnectA11yHint")}
           />
         </View>
       </View>

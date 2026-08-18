@@ -67,6 +67,25 @@ function sourceFiles(): [string, string][] {
 // rest carry a capital C, so they never match.
 const TEXT_COLOUR_USE = /(?<![A-Za-z])color\s*[:=]\s*\{?\s*(Colors|Scrim|Highlight)\.([A-Za-z0-9_]+)/g;
 
+/** Font sizes below WCAG's large-text bar. 19 is 14pt bold, 24 is 18pt. */
+const LARGE_ENOUGH = 19;
+
+/** `file:line` for every style object that paints small text in Colors.danger. */
+function smallDangerText(files: [string, string][]): string[] {
+  const out: string[] = [];
+  for (const [file, src] of files) {
+    for (const block of src.matchAll(/\{[^{}]*\}/g)) {
+      if (!/(?<![A-Za-z])color:\s*Colors\.danger\b/.test(block[0])) continue;
+      // Only a size the style states itself can clear the bar: one inherited,
+      // or held in a sibling style object, cannot be read from here.
+      const size = /\bfontSize:\s*(\d+)/.exec(block[0]);
+      if (size && Number(size[1]) >= LARGE_ENOUGH) continue;
+      out.push(`${file}:${src.slice(0, block.index).split("\n").length}`);
+    }
+  }
+  return out;
+}
+
 describe("design tokens are used in the role they were designed for", () => {
   test("no fill, border or scrim token is used as a text or icon colour", () => {
     const fills = fillOnlyTokens();
@@ -100,6 +119,46 @@ describe("design tokens are used in the role they were designed for", () => {
     assert.ok(fills.has("Scrim.heavy"));
     assert.ok(!fills.has("Colors.textMuted"), "textMuted is a text colour, not a fill");
     assert.ok(!fills.has("Colors.gold"), "opaque tokens are not fills");
+  });
+
+  // Colors.danger clears 4.5:1 on no surface this app has — 4.07 on bgCard,
+  // 3.66 on bgSurface, 2.98 on the felt. tests/contrast.test.ts lists it as
+  // large-text-only; this is the half that checks the size. WCAG's large bar
+  // is 18pt, or 14pt bold, which in React Native's units is 24 and 19.
+  test("Colors.danger is never the colour of a small text style", () => {
+    const offenders = smallDangerText(sourceFiles());
+    assert.deepEqual(
+      offenders,
+      [],
+      `Colors.danger below the large-text bar never reaches 4.5:1:\n${offenders.join("\n")}`
+    );
+  });
+
+  test("the danger scanner matches a real small use", () => {
+    // Without this the size regex could stop matching and the test above would
+    // pass on a screen full of small red text.
+    assert.deepEqual(
+      smallDangerText([["x.tsx", "  a: { ...Type.body, color: Colors.danger },\n"]]),
+      ["x.tsx:1"]
+    );
+    assert.deepEqual(
+      smallDangerText([["x.tsx", "  a: { fontSize: 16, color: Colors.danger },\n"]]),
+      ["x.tsx:1"]
+    );
+    assert.deepEqual(
+      smallDangerText([["x.tsx", "  a: { fontSize: 24, color: Colors.danger },\n"]]),
+      []
+    );
+    assert.deepEqual(
+      smallDangerText([["x.tsx", "  a: { backgroundColor: Colors.danger },\n"]]),
+      []
+    );
+    // The size can live in a different object from the colour, so a style
+    // that states none of its own is flagged rather than assumed large.
+    assert.deepEqual(
+      smallDangerText([["x.tsx", '  { rank: "JKR", color: Colors.danger },\n']]),
+      ["x.tsx:1"]
+    );
   });
 
   test("the scanner actually matches a text colour use", () => {

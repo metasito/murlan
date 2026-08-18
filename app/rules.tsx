@@ -18,6 +18,7 @@ import { Colors, Spacing, FontSize, Type } from "@/lib/theme";
 import { MenuLayout } from "@/components/MenuLayout";
 import { usePrefersReducedMotion } from "@/lib/accessibility";
 import { useTranslation, type TranslationKey } from "@/lib/i18n";
+import { a11yState } from "@/lib/a11y";
 
 interface FAQ {
   question: string;
@@ -71,9 +72,8 @@ function FAQItem({ item, isLast }: { item: FAQ; isLast: boolean }) {
       <Pressable
         onPress={toggleOpen}
         style={styles.faqQuestion}
-        accessibilityRole="button"
         accessibilityLabel={item.question}
-        accessibilityState={{ expanded: open }}
+        {...a11yState({ role: "button", expanded: open })}
         hitSlop={4}
       >
         <Text style={styles.faqQuestionText}>{item.question}</Text>
@@ -145,7 +145,7 @@ export default function RulesScreen() {
           <Text style={styles.sectionLabel}>{t("rules.strengthSectionLabel")}</Text>
           <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.strengthRow}>
             {[
-              { rank: "JKR★", color: Colors.danger, label: t("rules.strengthJokerColored") },
+              { rank: "JKR★", color: Colors.bombText, label: t("rules.strengthJokerColored") },
               { rank: "JKR☆", color: Colors.textMuted, label: t("rules.strengthJokerBlack") },
               { rank: "2", color: Colors.text, label: t("rules.strengthTwo") },
               { rank: "A", color: Colors.text, label: t("rules.strengthAce") },

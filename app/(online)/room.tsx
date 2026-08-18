@@ -21,7 +21,7 @@ import { useOnlineGame } from "@/context/OnlineGameContext";
 import { useAuth } from "@/context/AuthContext";
 import { useSocket } from "@/context/SocketContext";
 import { getSocket } from "@/lib/socket";
-import { Colors, Spacing, Radius, FontSize, Type } from '@/lib/theme';
+import { Colors, Spacing, Radius, FontSize, Motion, TOUCH_TARGET_MIN, Type } from '@/lib/theme';
 import { MATCH_TARGETS } from "@/lib/gameEngine";
 import type { MatchLength } from "@/lib/gameEngine";
 import { BOT_PERSONALITIES, DEFAULT_BOT_PERSONALITY, botBlurbKey } from "@/lib/botPersonalities";
@@ -29,6 +29,8 @@ import type { BotPersonalityId } from "@/lib/botPersonalities";
 import { MenuLayout } from "@/components/MenuLayout";
 import { MenuButton } from "@/components/MenuButton";
 import { useTranslation } from "@/lib/i18n";
+import { a11yState, useA11yHint } from "@/lib/a11y";
+import { usePrefersReducedMotion } from "@/lib/accessibility";
 
 const TEAM_COLORS = { A: Colors.gold, B: Colors.info };
 
@@ -44,6 +46,7 @@ function BotFillControls({
   onChangeBotPersonality: (id: BotPersonalityId) => void;
 }) {
   const { t } = useTranslation();
+  const botFillHint = useA11yHint(t("room.fillWithBotsA11yHint"));
 
   return (
     <View style={botFillStyles.section}>
@@ -62,8 +65,9 @@ function BotFillControls({
           thumbColor={fillWithBots ? Colors.white : Colors.textMuted}
           accessibilityRole="switch"
           accessibilityLabel={t("room.fillWithBotsA11yLabel")}
-          accessibilityHint={t("room.fillWithBotsA11yHint")}
+          {...botFillHint.props}
         />
+        {botFillHint.node}
       </View>
 
       {fillWithBots && (
@@ -77,12 +81,11 @@ function BotFillControls({
                   onChangeBotPersonality(p.id);
                   hapticSelection();
                 }}
-                accessibilityRole="button"
                 accessibilityLabel={t("room.botPersonalityOptionA11yLabel", {
                   name: p.name,
                   style: t(botBlurbKey(p.id)),
                 })}
-                accessibilityState={{ selected }}
+                {...a11yState({ role: "button", selected })}
                 style={[botFillStyles.personalityPill, selected && botFillStyles.personalityPillActive]}
               >
                 <Text
@@ -134,9 +137,8 @@ function MatchLengthControls({
                 hapticSelection();
               }}
               style={[formatStyles.option, selected && formatStyles.optionActive]}
-              accessibilityRole="radio"
               accessibilityLabel={t("lobby.formatA11yLabel", { format: title, detail })}
-              accessibilityState={{ selected }}
+              {...a11yState({ role: "radio", selected })}
             >
               <Text style={[formatStyles.optionTitle, selected && formatStyles.optionTitleActive]}>
                 {title}
@@ -270,9 +272,8 @@ function InviteFriendsPanel({
                   { height: ROW_H },
                   pressed && { opacity: 0.8 },
                 ]}
-                accessibilityRole="button"
                 accessibilityLabel={sent ? t("room.inviteSentA11yLabel", { username: friend.username }) : t("room.inviteA11yLabel", { username: friend.username })}
-                accessibilityState={{ disabled: sent }}
+                {...a11yState({ role: "button", disabled: sent })}
               >
                 <View style={inviteStyles.avatar}>
                   <Text style={inviteStyles.avatarInitial}>
@@ -304,6 +305,8 @@ function InviteFriendsPanel({
 
 export default function RoomScreen() {
   const { t } = useTranslation();
+  const reduceMotion = usePrefersReducedMotion();
+  const entering = reduceMotion ? undefined : FadeIn.duration(Motion.duration.moderate);
   const { width: W, height: H } = useWindowDimensions();
   const { user } = useAuth();
   const {
@@ -459,7 +462,7 @@ export default function RoomScreen() {
               contentContainerStyle={styles.landscapeLeftScrollContent}
               showsVerticalScrollIndicator={false}
             >
-              <Animated.View entering={FadeIn.duration(400)} style={styles.codeSectionCompact}>
+              <Animated.View entering={entering} style={styles.codeSectionCompact}>
                 <Text style={styles.codeLabel}>{t("room.codeLabel")}</Text>
                 <Text style={styles.codeTextCompact}>{room.code}</Text>
                 <View style={styles.codeActions}>
@@ -597,15 +600,27 @@ export default function RoomScreen() {
       </View>
 
       <View style={{ flex: 1, paddingHorizontal: 20, paddingTop: 16, paddingBottom: 8, gap: 12 }}>
-        <Animated.View entering={FadeIn.duration(400)} style={styles.codeSection}>
+        <Animated.View entering={entering} style={styles.codeSection}>
           <Text style={styles.codeLabel}>{t("room.codeLabel")}</Text>
           <Text style={styles.codeText}>{room.code}</Text>
           <View style={styles.codeActions}>
-            <Pressable onPress={handleCopyCode} style={styles.codeBtn}>
+            <Pressable
+              onPress={handleCopyCode}
+              style={styles.codeBtn}
+              accessibilityRole="button"
+              accessibilityLabel={t("common.copy")}
+              hitSlop={Spacing.sm}
+            >
               <Ionicons name="copy-outline" size={16} color={Colors.gold} />
               <Text style={styles.codeBtnText}>{t("common.copy")}</Text>
             </Pressable>
-            <Pressable onPress={handleShare} style={styles.codeBtn}>
+            <Pressable
+              onPress={handleShare}
+              style={styles.codeBtn}
+              accessibilityRole="button"
+              accessibilityLabel={t("room.share")}
+              hitSlop={Spacing.sm}
+            >
               <Ionicons name="share-outline" size={16} color={Colors.gold} />
               <Text style={styles.codeBtnText}>{t("room.share")}</Text>
             </Pressable>
@@ -910,7 +925,7 @@ const styles = StyleSheet.create({
     letterSpacing: 6,
   },
   codeActions: { flexDirection: "row", gap: 20, marginTop: 2 },
-  codeBtn: { flexDirection: "row", alignItems: "center", gap: 6, padding: 4, minHeight: 32 },
+  codeBtn: { flexDirection: "row", alignItems: "center", gap: 6, padding: 4, minHeight: TOUCH_TARGET_MIN },
   codeBtnText: { fontFamily: "Inter_500Medium", fontSize: 13, color: Colors.gold },
   modePill: {
     flexDirection: "row",

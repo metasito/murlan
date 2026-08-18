@@ -1,5 +1,7 @@
-// WCAG 2.x contrast audit for lib/theme.ts text colors against the three
-// surfaces they actually render on: bg, bgCard, felt.
+// WCAG 2.x contrast audit for lib/theme.ts text colors. Palette-wide tokens
+// are measured against bg, bgCard and the felt's middle stop; every style that
+// draws inside the table is measured against every stop of every felt, which
+// is the only place the gradient's 2x luminance range can be seen.
 //
 // This exists so a future palette edit can't silently regress accessibility —
 // see lib/theme.ts "Text colors" section.
@@ -10,9 +12,12 @@
 // react-native for its platform-aware Shadow helper and Node cannot parse RN's
 // Flow-typed entry point. tokens.ts is the same palette, no runtime RN dependency.
 // @ts-ignore
-import { Colors } from "../lib/tokens.ts";
+import { Colors, Scrim, FeltGradients } from "../lib/tokens.ts";
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
+import path from "node:path";
 
 // --- WCAG 2.x contrast math -------------------------------------------------
 
@@ -75,6 +80,77 @@ const SURFACES = {
   felt: Colors.felt,
 } as const;
 
+// --- The felt is a gradient, and Colors.felt is only its middle stop --------
+// components/GameTable.tsx paints a five-stop LinearGradient. The top of the
+// table is 1.9x the relative luminance of the stop this file used to measure,
+// so a token could pass here at 4.60 and render at 3.43 where it is actually
+// drawn.
+//
+// Both colours are read out of components/GameShared.tsx rather than repeated
+// here, so a plate that is removed from a style is a failure rather than a
+// silent pass against a fill nothing paints.
+
+const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+const SHARED = readFileSync(path.join(repoRoot, "components", "GameShared.tsx"), "utf8");
+const PALETTES: Record<string, Record<string, string>> = { Colors, Scrim };
+
+/** The body of a `name: { … }` entry in one of GameShared's StyleSheets. */
+function styleBlock(style: string): string {
+  const open = `\n  ${style}: {\n`;
+  const at = SHARED.indexOf(open);
+  assert.notEqual(at, -1, `components/GameShared.tsx has no style named ${style}`);
+  assert.equal(SHARED.indexOf(open, at + 1), -1, `${style} is defined more than once`);
+  const close = SHARED.indexOf("\n  },", at + open.length);
+  return SHARED.slice(at + open.length, close);
+}
+
+/** A style's `color` or `backgroundColor`, resolved to its token value. */
+function styleColor(style: string, prop: "color" | "backgroundColor"): string | null {
+  const m = new RegExp(String.raw`\b${prop}: ([A-Za-z]+)\.([A-Za-z]+)`).exec(styleBlock(style));
+  return m ? PALETTES[m[1]]?.[m[2]] ?? null : null;
+}
+
+/** Which gradient stops an element can sit over. locations are [0,.25,.5,.75,1]. */
+const ANY_STOP = [0, 1, 2, 3, 4];
+
+/**
+ * Every text style drawn inside the table, with the style whose fill it sits
+ * on. `plate: null` means straight onto the felt.
+ */
+const ON_FELT_TEXT: { text: string; plate: string | null; stops: number[] }[] = [
+  { text: "oppName", plate: "oppName", stops: ANY_STOP },
+  { text: "comboChipText", plate: "comboChip", stops: ANY_STOP },
+  { text: "comboChipTextPower", plate: "comboChip", stops: ANY_STOP },
+  { text: "winnerText", plate: "winnerTag", stops: ANY_STOP },
+  { text: "countBubbleText", plate: "countBubble", stops: ANY_STOP },
+  { text: "passedChipText", plate: "passedChip", stops: ANY_STOP },
+  { text: "botBadgeText", plate: "botBadge", stops: ANY_STOP },
+  // The hand row is the bottom band of the table, the darkest end of every felt.
+  { text: "emptyHandText", plate: null, stops: [3, 4] },
+  // The avatar disc is an opaque gradient from the felt's own stops 1 and 3.
+  { text: "avatarInitials", plate: null, stops: [1, 3] },
+];
+
+for (const { text, plate, stops } of ON_FELT_TEXT) {
+  test(`GameShared ${text} clears body text contrast on every felt stop`, () => {
+    const ink = styleColor(text, "color");
+    assert.ok(ink, `GameShared ${text} has no color`);
+    const fill = plate ? styleColor(plate, "backgroundColor") : null;
+    assert.ok(!plate || fill, `GameShared ${plate} no longer paints a background`);
+
+    for (const [felt, gradient] of Object.entries(FeltGradients)) {
+      for (const stop of stops) {
+        const backdrop = fill ? resolve(fill, gradient[stop]) : gradient[stop];
+        const ratio = contrastRatio(resolve(ink, backdrop), backdrop);
+        assert.ok(
+          ratio >= BODY_MIN,
+          `GameShared ${text} over ${felt} stop ${stop} is only ${ratio.toFixed(2)}:1, needs >=${BODY_MIN}:1`
+        );
+      }
+    }
+  });
+}
+
 function ratioAgainstAllSurfaces(color: string): Record<keyof typeof SURFACES, number> {
   const out = {} as Record<keyof typeof SURFACES, number>;
   for (const [name, bgHex] of Object.entries(SURFACES)) {
@@ -119,12 +195,20 @@ const LARGE_ONLY_TEXT_COLORS: Record<string, string> = {
   goldDark: Colors.goldDark,
   red: Colors.red,
   info: Colors.info,
+  // A fill: MenuButton's danger variant, the offline banner, the reconnect
+  // border. It clears 4.5:1 on no surface the app has, so text may only reach
+  // for it at >=18pt, or >=14pt bold — which in these units is 19px.
+  danger: Colors.danger,
 };
+
+/** Tokens never drawn as text on the felt, so that surface does not apply. */
+const NOT_ON_FELT = new Set(["danger"]);
 
 for (const [name, color] of Object.entries(LARGE_ONLY_TEXT_COLORS)) {
   test(`Colors.${name} clears large-text contrast (>=${LARGE_MIN}:1) on bg, bgCard, and felt`, () => {
     const ratios = ratioAgainstAllSurfaces(color);
     for (const [surface, ratio] of Object.entries(ratios)) {
+      if (surface === "felt" && NOT_ON_FELT.has(name)) continue;
       assert.ok(
         ratio >= LARGE_MIN,
         `Colors.${name} vs ${surface} is only ${ratio.toFixed(2)}:1, needs >=${LARGE_MIN}:1 even for large text`

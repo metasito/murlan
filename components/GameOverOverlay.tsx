@@ -5,7 +5,7 @@
 // <GameTable> through the `overlays` slot rather than living inside it.
 
 import React, { useEffect } from "react";
-import { View, Text, StyleSheet, Pressable, ScrollView } from "react-native";
+import { Modal, View, Text, StyleSheet, Pressable, ScrollView } from "react-native";
 import Animated, {
   useAnimatedStyle,
   useSharedValue,
@@ -21,9 +21,10 @@ import Animated, {
 import { LinearGradient } from "expo-linear-gradient";
 import Ionicons from "@expo/vector-icons/Ionicons";
 import type { GameState } from "@/lib/gameEngine";
-import { Colors, FontSize, Motion, Radius, Spacing } from "@/lib/theme";
+import { Colors, FontSize, Motion, Radius, Spacing, TOUCH_TARGET_MIN } from "@/lib/theme";
 import { usePrefersReducedMotion } from "@/lib/accessibility";
 import { useTranslation, type TranslationKey } from "@/lib/i18n";
+import { a11yState } from "@/lib/a11y";
 
 const POSITION_MEDALS = ["trophy", "medal", "ribbon", "remove-circle"] as const;
 const POSITION_COLORS = [Colors.podiumGold, Colors.podiumSilver, Colors.podiumBronze, Colors.textMuted];
@@ -202,129 +203,139 @@ export function GameOverOverlay({
   const voteTotal = voteState?.total ?? gameState.players.length;
 
   return (
-    <Animated.View
-      entering={FadeIn.duration(Motion.duration.moderate + 100)}
-      style={[styles.overlay, { paddingTop: topPad + 4, paddingBottom: bottomPad + 4 }]}
+    // The manche is over and every route onward is a control inside this
+    // overlay, so Escape has nothing to reveal behind it.
+    <Modal
+      transparent
+      visible
+      accessibilityLabel={t("gameOverOverlay.rankingsTitle")}
+      supportedOrientations={["portrait", "landscape"]}
+      onRequestClose={() => {}}
     >
-      <LinearGradient
-        colors={[Colors.bg, Colors.bgCard, Colors.bg]}
-        locations={[0, 0.5, 1]}
-        style={StyleSheet.absoluteFill}
-      />
+      <Animated.View
+        entering={reduceMotion ? undefined : FadeIn.duration(Motion.duration.moderate + 100)}
+        style={[styles.overlay, { paddingTop: topPad + 4, paddingBottom: bottomPad + 4 }]}
+      >
+        <LinearGradient
+          colors={[Colors.bg, Colors.bgCard, Colors.bg]}
+          locations={[0, 0.5, 1]}
+          style={StyleSheet.absoluteFill}
+        />
 
-      <View style={styles.innerCol}>
-        <Animated.View style={[styles.celebRow, celebStyle]}>
-          <Animated.View style={[styles.celebGlow, glowAnim]} />
-          <View style={styles.trophyCircle}>
-            <LinearGradient
-              colors={[Colors.gold, Colors.goldDark]}
-              style={styles.trophyGradient}
-            >
-              <Ionicons name="trophy" size={26} color={Colors.bgCard} />
-            </LinearGradient>
-          </View>
-          <View style={styles.celebTextBlock}>
-            <Text style={styles.winnerName} numberOfLines={1}>
-              {celebratedName}
-            </Text>
-            <Text style={styles.winnerSubtitle}>{celebrationSubtitle}</Text>
-          </View>
-          <View style={styles.statPills}>
-            <View style={styles.statPill}>
-              <Ionicons name="flag" size={11} color={Colors.gold} />
-              <Text style={styles.statPillText}>{formatLine}</Text>
-            </View>
-            <View style={styles.statPill}>
-              <Ionicons name="people" size={11} color={Colors.gold} />
-              <Text style={styles.statPillText}>{gameState.players.length}P</Text>
-            </View>
-            <View style={styles.statPill}>
-              <Ionicons
-                name={gameState.gameMode === "teams" ? "people-circle" : "person-circle"}
-                size={11}
-                color={Colors.textMuted}
-              />
-              <Text style={styles.statPillText}>
-                {gameState.gameMode === "teams" ? t("gameOverOverlay.modeTeams") : t("gameOverOverlay.modeFreeForAll")}
-              </Text>
-            </View>
-          </View>
-        </Animated.View>
-
-        <Text style={styles.sectionTitle}>{t("gameOverOverlay.rankingsTitle")}</Text>
-        <ScrollView
-          showsVerticalScrollIndicator={false}
-          style={styles.rankScroll}
-          contentContainerStyle={styles.rankList}
-        >
-          {rankedNames.map((name, i) => (
-            <RankCard
-              key={i}
-              rank={i}
-              name={name}
-              isWinner={i === 0}
-              delay={i * RANK_STAGGER_MS + RANK_LEAD_IN_MS}
-              cumPts={cumulativeScores[name]}
-            />
-          ))}
-        </ScrollView>
-
-        <View style={styles.actions}>
-          <Pressable
-            onPress={onLeave}
-            style={styles.homeBtn}
-            accessibilityRole="button"
-            accessibilityLabel={t("gameOverOverlay.leaveA11yLabel")}
-          >
-            <Ionicons name="home" size={15} color={Colors.textSecondary} />
-            <Text style={styles.homeBtnText}>{t("gameOverOverlay.leave")}</Text>
-          </Pressable>
-          {canContinue ? (
-            <Pressable
-              testID="btn-rivincita"
-              onPress={hasVoted ? undefined : onVoteRematch}
-              style={[styles.rematchBtn, hasVoted && styles.rematchBtnDim]}
-              accessibilityRole="button"
-              accessibilityLabel={
-                match.over
-                  ? t("gameOverOverlay.newMatchA11yLabel")
-                  : t("gameOverOverlay.nextHandA11yLabel")
-              }
-              accessibilityState={{ disabled: hasVoted }}
-            >
+        <View style={styles.innerCol}>
+          <Animated.View style={[styles.celebRow, celebStyle]}>
+            <Animated.View style={[styles.celebGlow, glowAnim]} />
+            <View style={styles.trophyCircle}>
               <LinearGradient
-                colors={
-                  hasVoted
-                    ? [Colors.bgSurface, Colors.bgSurface]
-                    : [Colors.gold, Colors.goldDark]
-                }
-                start={{ x: 0, y: 0 }}
-                end={{ x: 1, y: 1 }}
-                style={styles.rematchGradient}
+                colors={[Colors.gold, Colors.goldDark]}
+                style={styles.trophyGradient}
               >
-                <Ionicons
-                  name={hasVoted ? "checkmark-circle" : match.over ? "refresh" : "play-forward"}
-                  size={15}
-                  color={hasVoted ? Colors.accent : Colors.bgCard}
-                />
-                <Text
-                  style={[styles.rematchText, hasVoted && styles.rematchTextWaiting]}
-                  numberOfLines={1}
-                >
-                  {hasVoted
-                    ? t("gameOverOverlay.nextHandWaiting", { count: voteCount, total: voteTotal })
-                    : match.over
-                      ? t("gameOverOverlay.newMatch")
-                      : t("gameOverOverlay.nextHand")}
-                </Text>
+                <Ionicons name="trophy" size={26} color={Colors.bgCard} />
               </LinearGradient>
+            </View>
+            <View style={styles.celebTextBlock}>
+              <Text style={styles.winnerName} numberOfLines={1}>
+                {celebratedName}
+              </Text>
+              <Text style={styles.winnerSubtitle}>{celebrationSubtitle}</Text>
+            </View>
+            <View style={styles.statPills}>
+              <View style={styles.statPill}>
+                <Ionicons name="flag" size={11} color={Colors.gold} />
+                <Text style={styles.statPillText}>{formatLine}</Text>
+              </View>
+              <View style={styles.statPill}>
+                <Ionicons name="people" size={11} color={Colors.gold} />
+                <Text style={styles.statPillText}>{gameState.players.length}P</Text>
+              </View>
+              <View style={styles.statPill}>
+                <Ionicons
+                  name={gameState.gameMode === "teams" ? "people-circle" : "person-circle"}
+                  size={11}
+                  color={Colors.textMuted}
+                />
+                <Text style={styles.statPillText}>
+                  {gameState.gameMode === "teams" ? t("gameOverOverlay.modeTeams") : t("gameOverOverlay.modeFreeForAll")}
+                </Text>
+              </View>
+            </View>
+          </Animated.View>
+
+          <Text style={styles.sectionTitle}>{t("gameOverOverlay.rankingsTitle")}</Text>
+          <ScrollView
+            showsVerticalScrollIndicator={false}
+            style={styles.rankScroll}
+            contentContainerStyle={styles.rankList}
+          >
+            {rankedNames.map((name, i) => (
+              <RankCard
+                key={i}
+                rank={i}
+                name={name}
+                isWinner={i === 0}
+                delay={i * RANK_STAGGER_MS + RANK_LEAD_IN_MS}
+                cumPts={cumulativeScores[name]}
+              />
+            ))}
+          </ScrollView>
+
+          <View style={styles.actions}>
+            <Pressable
+              onPress={onLeave}
+              style={styles.homeBtn}
+              accessibilityRole="button"
+              accessibilityLabel={t("gameOverOverlay.leaveA11yLabel")}
+            >
+              <Ionicons name="home" size={15} color={Colors.textSecondary} />
+              <Text style={styles.homeBtnText}>{t("gameOverOverlay.leave")}</Text>
             </Pressable>
-          ) : (
-            <Text style={styles.tableStops}>{t("gameOverOverlay.tableStops")}</Text>
-          )}
+            {canContinue ? (
+              <Pressable
+                testID="btn-rivincita"
+                onPress={onVoteRematch}
+                disabled={hasVoted}
+                style={[styles.rematchBtn, hasVoted && styles.rematchBtnDim]}
+                accessibilityLabel={
+                  match.over
+                    ? t("gameOverOverlay.newMatchA11yLabel")
+                    : t("gameOverOverlay.nextHandA11yLabel")
+                }
+                {...a11yState({ role: "button", disabled: hasVoted })}
+              >
+                <LinearGradient
+                  colors={
+                    hasVoted
+                      ? [Colors.bgSurface, Colors.bgSurface]
+                      : [Colors.gold, Colors.goldDark]
+                  }
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 1 }}
+                  style={styles.rematchGradient}
+                >
+                  <Ionicons
+                    name={hasVoted ? "checkmark-circle" : match.over ? "refresh" : "play-forward"}
+                    size={15}
+                    color={hasVoted ? Colors.accent : Colors.bgCard}
+                  />
+                  <Text
+                    style={[styles.rematchText, hasVoted && styles.rematchTextWaiting]}
+                    numberOfLines={1}
+                  >
+                    {hasVoted
+                      ? t("gameOverOverlay.nextHandWaiting", { count: voteCount, total: voteTotal })
+                      : match.over
+                        ? t("gameOverOverlay.newMatch")
+                        : t("gameOverOverlay.nextHand")}
+                  </Text>
+                </LinearGradient>
+              </Pressable>
+            ) : (
+              <Text style={styles.tableStops}>{t("gameOverOverlay.tableStops")}</Text>
+            )}
+          </View>
         </View>
-      </View>
-    </Animated.View>
+      </Animated.View>
+    </Modal>
   );
 }
 
@@ -456,6 +467,7 @@ const styles = StyleSheet.create({
 
   actions: { flexDirection: "row", gap: Spacing.sm },
   homeBtn: {
+    minHeight: TOUCH_TARGET_MIN,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
@@ -475,6 +487,7 @@ const styles = StyleSheet.create({
   rematchBtn: { flex: 1, borderRadius: Radius.md, overflow: "hidden" },
   rematchBtnDim: { opacity: 0.6 },
   rematchGradient: {
+    minHeight: TOUCH_TARGET_MIN,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",

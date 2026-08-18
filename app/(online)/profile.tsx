@@ -22,6 +22,7 @@ import type { GameMode } from "@/lib/gameEngine";
 import type { ReplaySummary } from "@/lib/replay";
 import { REPLAY_RETENTION_DAYS } from "@/lib/replay";
 import { PROVISIONAL_GAMES, formatSeason } from "@/lib/rating";
+import { a11yHidden } from "@/lib/a11y";
 
 type TFn = (key: TranslationKey, params?: TranslationParams) => string;
 type TnFn = (base: string, count: number, params?: TranslationParams) => string;
@@ -360,8 +361,7 @@ export default function ProfileScreen() {
                           name="play-circle"
                           size={28}
                           color={Colors.gold}
-                          accessibilityElementsHidden
-                          importantForAccessibility="no"
+                          {...a11yHidden()}
                         />
                         <View style={styles.rowInfo}>
                           <Text style={styles.rowName}>{modeText} · {playersText}</Text>

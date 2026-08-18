@@ -70,6 +70,27 @@ describe('CardView decorative', () => {
     expect(buttons[0].props.accessibilityState?.disabled).toBe(true);
   });
 
+  // Selecting cards then pressing GIOCA is the whole interaction. An absent
+  // `selected` state reads as "not selectable", which is a different claim
+  // from "selectable, not currently selected".
+  it('reports whether it is selected', async () => {
+    const on = await render(<CardView card={ACE} onPress={() => {}} selected />);
+    expect(on.queryAllByRole('button')[0].props.accessibilityState?.selected).toBe(true);
+
+    const off = await render(<CardView card={ACE} onPress={() => {}} />);
+    expect(off.queryAllByRole('button')[0].props.accessibilityState?.selected).toBe(false);
+  });
+
+  // The rank glyph sits in a 58x84 box with overflow:"hidden" and a
+  // lineHeight pinned to its own fontSize. Scaled by the OS text setting it
+  // clips, and the rank is the card's whole identity.
+  it('caps how far the rank glyph can scale', async () => {
+    const view = await render(<CardView card={ACE} />);
+    const glyphs = view.getAllByText('A');
+    expect(glyphs.length).toBeGreaterThan(0);
+    for (const glyph of glyphs) expect(glyph.props.maxFontSizeMultiplier).toBe(1.2);
+  });
+
   it('is silent when it is the content of an enclosing labelled control', async () => {
     // Both card pickers wrap a CardView in their own labelled Pressable. If the
     // CardView kept its label the card would be announced twice.

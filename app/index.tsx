@@ -28,9 +28,10 @@ import { useQuery } from "@tanstack/react-query";
 import { useAuth } from "@/context/AuthContext";
 import { useGame } from "@/context/GameContext";
 import { usePrefersReducedMotion } from "@/lib/accessibility";
-import { Colors } from '@/lib/theme';
+import { Colors, TOUCH_TARGET_MIN } from '@/lib/theme';
 import { useTranslation } from "@/lib/i18n";
 import { SettingsModal } from "@/components/SettingsModal";
+import { a11yState } from "@/lib/a11y";
 
 /**
  * A destination on the home screen: an icon, a label, and a chevron, animated
@@ -105,9 +106,8 @@ function HomeMenuRow({
       <Pressable
         onPress={handlePress}
         disabled={disabled}
-        accessibilityRole="button"
         accessibilityLabel={accessibilityLabel ?? label}
-        accessibilityState={{ disabled }}
+        {...a11yState({ role: "button", disabled })}
         style={({ pressed }) => [
           styles.menuButton,
           compact && styles.menuButtonCompact,
@@ -575,11 +575,11 @@ const styles = StyleSheet.create({
     letterSpacing: 0.5,
   },
   settingsBtn: {
-    width: 32,
-    height: 32,
+    width: TOUCH_TARGET_MIN,
+    height: TOUCH_TARGET_MIN,
     alignItems: "center",
     justifyContent: "center",
-    borderRadius: 16,
+    borderRadius: TOUCH_TARGET_MIN / 2,
     borderWidth: 1,
     borderColor: Colors.border,
   },

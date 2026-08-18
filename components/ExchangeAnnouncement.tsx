@@ -4,6 +4,7 @@ import {
   Text,
   StyleSheet,
   Pressable,
+  Modal,
   useWindowDimensions,
 } from "react-native";
 import Animated, {
@@ -21,6 +22,7 @@ import { Colors, Spacing, Radius, FontSize, Type, Motion, Shadow } from "@/lib/t
 import { usePrefersReducedMotion } from "@/lib/accessibility";
 import { useTranslation } from "@/lib/i18n";
 import { cardSpokenName } from "@/lib/cardNames";
+import { a11yHidden, useA11yHint } from "@/lib/a11y";
 
 // Mirrors the private CARD_W/CARD_H in components/CardView.tsx (not exported,
 // and that file is owned elsewhere) — used only to shrink a rendered CardView
@@ -91,6 +93,7 @@ export function ExchangeAnnouncement({
   onDismiss,
 }: ExchangeAnnouncementProps) {
   const { t } = useTranslation();
+  const dismissHint = useA11yHint(t("exchangeAnnouncement.dismissA11yHint"));
   const [shown, setShown] = useState(false);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const { width: screenWidth, height: screenHeight } = useWindowDimensions();
@@ -143,115 +146,123 @@ export function ExchangeAnnouncement({
         .join(". ");
 
   return (
-    <Animated.View
-      entering={reduceMotion ? undefined : FadeIn.duration(Motion.duration.moderate)}
-      exiting={reduceMotion ? undefined : FadeOut.duration(Motion.duration.moderate)}
-      style={styles.overlay}
+    <Modal
+      transparent
+      visible
+      accessibilityLabel={t("exchangeAnnouncement.title")}
+      supportedOrientations={["portrait", "landscape"]}
+      onRequestClose={handleDismiss}
     >
-      <Pressable
-        style={StyleSheet.absoluteFill}
-        onPress={handleDismiss}
-        accessibilityElementsHidden
-        importantForAccessibility="no-hide-descendants"
-      />
-
-      {/* Purely decorative flourish — the same information is announced via
-          a11yLabel and shown as text below, so skip it entirely under
-          reduced motion rather than trying to "jump" it to a resting frame. */}
-      {!reduceMotion && cardReceived && (
-        <FlyingCard
-          card={cardReceived}
-          toRight
-          delay={200}
-          screenWidth={screenWidth}
-          yOffset={isMutual ? midY - 100 : midY - 42}
-        />
-      )}
-      {!reduceMotion && cardGiven && (
-        <FlyingCard
-          card={cardGiven}
-          toRight={false}
-          delay={isMutual ? 1100 : 200}
-          screenWidth={screenWidth}
-          yOffset={isMutual ? midY + 16 : midY - 42}
-        />
-      )}
-
-      <Pressable
-        onPress={handleDismiss}
-        style={styles.card}
-        accessibilityViewIsModal
-        accessibilityRole="alert"
-        accessibilityLabel={a11yLabel}
-        accessibilityHint={t("exchangeAnnouncement.dismissA11yHint")}
+      <Animated.View
+        entering={reduceMotion ? undefined : FadeIn.duration(Motion.duration.moderate)}
+        exiting={reduceMotion ? undefined : FadeOut.duration(Motion.duration.moderate)}
+        style={styles.overlay}
       >
         <Pressable
+          style={StyleSheet.absoluteFill}
           onPress={handleDismiss}
-          style={({ pressed }) => [styles.closeBtn, { opacity: pressed ? 0.6 : 1 }]}
-          hitSlop={Spacing.xs}
-          accessibilityRole="button"
-          accessibilityLabel={t("exchangeAnnouncement.closeA11yLabel")}
-        >
-          <Feather name="x" size={18} color={Colors.textMuted} />
-        </Pressable>
+          {...a11yHidden()}
+        />
 
-        <Text style={styles.title}>{t("exchangeAnnouncement.title")}</Text>
-
-        {bothJokersException ? (
-          <Text style={styles.noSwapText}>
-            {t("exchangeAnnouncement.noSwapText")}
-          </Text>
-        ) : (
-          <View style={styles.rowsContainer}>
-            {cardReceived && (
-              <View style={styles.exchangeBlock}>
-                <View style={styles.exchangeRow}>
-                  <Text style={styles.playerName}>{loserName}</Text>
-                  <Text style={styles.arrow}>→</Text>
-                  <View style={styles.cardWrap}>
-                    <CardView card={cardReceived} noLift />
-                  </View>
-                  <Text style={styles.arrow}>→</Text>
-                  <Text style={styles.playerName}>{winnerName}</Text>
-                </View>
-                <Text style={styles.descText}>
-                  <Text style={styles.descName}>{loserName}</Text>
-                  <Text style={styles.descPlain}>{t("exchangeAnnouncement.givesWord")}</Text>
-                  <Text style={styles.descCard}>{cardSpokenName(cardReceived, t)}</Text>
-                  <Text style={styles.descPlain}>{t("exchangeAnnouncement.toWord")}</Text>
-                  <Text style={styles.descName}>{winnerName}</Text>
-                </Text>
-              </View>
-            )}
-
-            {cardReceived && cardGiven && (
-              <View style={styles.separator} />
-            )}
-
-            {cardGiven && (
-              <View style={styles.exchangeBlock}>
-                <View style={styles.exchangeRow}>
-                  <Text style={styles.playerName}>{winnerName}</Text>
-                  <Text style={styles.arrow}>→</Text>
-                  <View style={styles.cardWrap}>
-                    <CardView card={cardGiven} noLift />
-                  </View>
-                  <Text style={styles.arrow}>→</Text>
-                  <Text style={styles.playerName}>{loserName}</Text>
-                </View>
-                <Text style={styles.descText}>
-                  <Text style={styles.descName}>{winnerName}</Text>
-                  <Text style={styles.descPlain}>{t("exchangeAnnouncement.givesWord")}</Text>
-                  <Text style={styles.descCard}>{cardSpokenName(cardGiven, t)}</Text>
-                  <Text style={styles.descPlain}>{t("exchangeAnnouncement.toWord")}</Text>
-                  <Text style={styles.descName}>{loserName}</Text>
-                </Text>
-              </View>
-            )}
-          </View>
+        {/* Purely decorative flourish — the same information is announced via
+            a11yLabel and shown as text below, so skip it entirely under
+            reduced motion rather than trying to "jump" it to a resting frame. */}
+        {!reduceMotion && cardReceived && (
+          <FlyingCard
+            card={cardReceived}
+            toRight
+            delay={200}
+            screenWidth={screenWidth}
+            yOffset={isMutual ? midY - 100 : midY - 42}
+          />
         )}
-      </Pressable>
-    </Animated.View>
+        {!reduceMotion && cardGiven && (
+          <FlyingCard
+            card={cardGiven}
+            toRight={false}
+            delay={isMutual ? 1100 : 200}
+            screenWidth={screenWidth}
+            yOffset={isMutual ? midY + 16 : midY - 42}
+          />
+        )}
+
+        <Pressable
+          onPress={handleDismiss}
+          style={styles.card}
+          accessibilityViewIsModal
+          accessibilityRole="alert"
+          accessibilityLabel={a11yLabel}
+          {...dismissHint.props}
+        >
+          {dismissHint.node}
+          <Pressable
+            onPress={handleDismiss}
+            style={({ pressed }) => [styles.closeBtn, { opacity: pressed ? 0.6 : 1 }]}
+            hitSlop={Spacing.xs}
+            accessibilityRole="button"
+            accessibilityLabel={t("exchangeAnnouncement.closeA11yLabel")}
+          >
+            <Feather name="x" size={18} color={Colors.textMuted} />
+          </Pressable>
+
+          <Text style={styles.title}>{t("exchangeAnnouncement.title")}</Text>
+
+          {bothJokersException ? (
+            <Text style={styles.noSwapText}>
+              {t("exchangeAnnouncement.noSwapText")}
+            </Text>
+          ) : (
+            <View style={styles.rowsContainer}>
+              {cardReceived && (
+                <View style={styles.exchangeBlock}>
+                  <View style={styles.exchangeRow}>
+                    <Text style={styles.playerName}>{loserName}</Text>
+                    <Text style={styles.arrow}>→</Text>
+                    <View style={styles.cardWrap}>
+                      <CardView card={cardReceived} noLift />
+                    </View>
+                    <Text style={styles.arrow}>→</Text>
+                    <Text style={styles.playerName}>{winnerName}</Text>
+                  </View>
+                  <Text style={styles.descText}>
+                    <Text style={styles.descName}>{loserName}</Text>
+                    <Text style={styles.descPlain}>{t("exchangeAnnouncement.givesWord")}</Text>
+                    <Text style={styles.descCard}>{cardSpokenName(cardReceived, t)}</Text>
+                    <Text style={styles.descPlain}>{t("exchangeAnnouncement.toWord")}</Text>
+                    <Text style={styles.descName}>{winnerName}</Text>
+                  </Text>
+                </View>
+              )}
+
+              {cardReceived && cardGiven && (
+                <View style={styles.separator} />
+              )}
+
+              {cardGiven && (
+                <View style={styles.exchangeBlock}>
+                  <View style={styles.exchangeRow}>
+                    <Text style={styles.playerName}>{winnerName}</Text>
+                    <Text style={styles.arrow}>→</Text>
+                    <View style={styles.cardWrap}>
+                      <CardView card={cardGiven} noLift />
+                    </View>
+                    <Text style={styles.arrow}>→</Text>
+                    <Text style={styles.playerName}>{loserName}</Text>
+                  </View>
+                  <Text style={styles.descText}>
+                    <Text style={styles.descName}>{winnerName}</Text>
+                    <Text style={styles.descPlain}>{t("exchangeAnnouncement.givesWord")}</Text>
+                    <Text style={styles.descCard}>{cardSpokenName(cardGiven, t)}</Text>
+                    <Text style={styles.descPlain}>{t("exchangeAnnouncement.toWord")}</Text>
+                    <Text style={styles.descName}>{loserName}</Text>
+                  </Text>
+                </View>
+              )}
+            </View>
+          )}
+        </Pressable>
+      </Animated.View>
+    </Modal>
   );
 }
 

@@ -1,0 +1,109 @@
+import { useId } from "react";
+import { Platform, StyleSheet, Text } from "react-native";
+import type { AccessibilityProps, AccessibilityRole, AccessibilityState } from "react-native";
+
+// react-native-web 0.21's forwarded-prop allow-list
+// (modules/forwardedProps/index.js) carries no `accessibilityState`, no
+// `accessibilityHint`, no `accessibilityElementsHidden` and no
+// `importantForAccessibility`. A control that declares any of those reaches
+// the DOM with none of it, so every helper here emits the `aria-*` twin
+// alongside the React Native prop.
+const isWeb = Platform.OS === "web";
+
+/** Roles whose selectedness is `aria-selected` (ARIA 1.2 allows it nowhere else). */
+const SELECTABLE_ROLES = new Set<AccessibilityRole>(["tab", "menuitem"]);
+/** Roles whose selectedness is `aria-checked`. */
+const CHECKABLE_ROLES = new Set<AccessibilityRole>(["radio", "checkbox", "switch"]);
+
+type StateProps = AccessibilityState & { role?: AccessibilityRole };
+
+/** Accessibility state for a control, on both React Native and the DOM. */
+export function a11yState({ role, ...state }: StateProps): AccessibilityProps {
+  const props: AccessibilityProps = { accessibilityState: state };
+  if (role) props.accessibilityRole = role;
+  if (!isWeb) return props;
+
+  const web = props as Record<string, unknown>;
+  if (state.disabled !== undefined) web["aria-disabled"] = state.disabled;
+  if (state.busy !== undefined) web["aria-busy"] = state.busy;
+  if (state.expanded !== undefined) web["aria-expanded"] = state.expanded;
+  if (state.checked !== undefined) web["aria-checked"] = state.checked;
+  // A role-less node has the implicit role `generic`, which takes no state at
+  // all; anything set on it is invalid rather than merely unheard.
+  if (state.selected !== undefined && role) {
+    if (CHECKABLE_ROLES.has(role)) web["aria-checked"] = state.selected;
+    else if (SELECTABLE_ROLES.has(role)) web["aria-selected"] = state.selected;
+    // Everything else is a toggle button, and pressed is what a button carries.
+    else web["accessibilityPressed"] = state.selected;
+  }
+  return props;
+}
+
+/** Hides a decorative subtree from assistive technology on both platforms. */
+export function a11yHidden(hidden = true): AccessibilityProps {
+  return {
+    accessibilityElementsHidden: hidden,
+    importantForAccessibility: hidden ? "no-hide-descendants" : "auto",
+    "aria-hidden": hidden || undefined,
+  };
+}
+
+/**
+ * A control's hint. `props` goes on the control, `node` beside it — the DOM
+ * carries a description only by reference, so the text has to exist somewhere.
+ * react-native-web's `Switch` spreads unknown props onto its wrapper rather
+ * than the focusable input, so there the hint reaches native only.
+ */
+export function useA11yHint(hint: string | undefined): {
+  props: AccessibilityProps;
+  node: React.ReactNode;
+} {
+  const id = useId();
+  if (!hint) return { props: {}, node: null };
+  const props: AccessibilityProps = { accessibilityHint: hint };
+  if (isWeb) (props as Record<string, unknown>)["aria-describedby"] = id;
+  return {
+    props,
+    node: isWeb ? (
+      <Text nativeID={id} style={styles.srOnly}>
+        {hint}
+      </Text>
+    ) : null,
+  };
+}
+
+/**
+ * A live status sentence for a container that cannot be `accessible` itself
+ * without collapsing its controls into one unreachable leaf. Its *text* names
+ * it, which a bare `aria-label` on a role-less `<div>` does not: that role is
+ * `generic`, for which a name is prohibited.
+ */
+export function A11yStatus({ label }: { label: string }) {
+  return (
+    <Text
+      accessible
+      accessibilityRole="text"
+      accessibilityLabel={label}
+      {...(isWeb ? { "aria-live": "polite" as const } : { accessibilityLiveRegion: "polite" as const })}
+      style={styles.srOnly}
+    >
+      {label}
+    </Text>
+  );
+}
+
+// One pixel, out of flow, all but transparent. iOS drops a view with alpha 0
+// from the accessibility hierarchy exactly as it drops `display: none`, so the
+// opacity has to stay above zero for the node to exist at all.
+const SR_ONLY_SIZE = 1;
+const SR_ONLY_OPACITY = 0.01;
+
+const styles = StyleSheet.create({
+  srOnly: {
+    position: "absolute",
+    width: SR_ONLY_SIZE,
+    height: SR_ONLY_SIZE,
+    overflow: "hidden",
+    opacity: SR_ONLY_OPACITY,
+  },
+});

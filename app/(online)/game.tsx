@@ -428,7 +428,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: Colors.danger,
   },
-  reconnectBannerTextAlert: { color: Colors.danger },
+  reconnectBannerTextAlert: { color: Colors.dangerDim },
 
   waitOverlay: {
     ...StyleSheet.absoluteFillObject,

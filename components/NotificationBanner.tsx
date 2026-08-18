@@ -1,4 +1,4 @@
-import React, { useEffect } from "react";
+import React, { useEffect, useState } from "react";
 import { View, Text, StyleSheet, Pressable, Platform, useWindowDimensions } from "react-native";
 import Animated, {
   useSharedValue,
@@ -14,6 +14,7 @@ import { Colors, Spacing, Radius, Type, Shadow } from "@/lib/theme";
 import { usePrefersReducedMotion } from "@/lib/accessibility";
 import { useTranslation } from "@/lib/i18n";
 import type { NotificationType, NotificationData } from "@/context/NotificationContext";
+import { useA11yHint } from "@/lib/a11y";
 
 export type { NotificationType, NotificationData };
 
@@ -55,6 +56,8 @@ const TOP_GAP = 8;
 
 export default function NotificationBanner({ notification, onDismiss }: Props) {
   const { t } = useTranslation();
+  const dismissHint = useA11yHint(t("notificationBanner.dismissA11yHint"));
+  const [pressed, setPressed] = useState(false);
   const insets = useSafeAreaInsets();
   const { width, height } = useWindowDimensions();
   const translateY = useSharedValue(-120);
@@ -119,25 +122,28 @@ export default function NotificationBanner({ notification, onDismiss }: Props) {
       testID="notification-banner"
       style={[styles.container, { top: topOffset + TOP_GAP, pointerEvents: notification ? "box-none" as const : "none" as const }, animStyle]}
     >
-      <Pressable
-        onPress={handlePress}
-        style={({ pressed }) => [
-          styles.banner,
-          { borderLeftColor: color },
-          pressed && styles.bannerPressed,
-        ]}
-        accessibilityRole="alert"
-        accessibilityLiveRegion={notification ? "polite" : "none"}
-        accessibilityLabel={a11yLabel}
-        accessibilityHint={t("notificationBanner.dismissA11yHint")}
-      >
-        <View style={[styles.iconCircle, { backgroundColor: color + "22" }]}>
-          <Ionicons name={icon} size={20} color={color} />
-        </View>
-        <View style={styles.textGroup}>
-          <Text style={styles.title} numberOfLines={1}>{notification?.title ?? ""}</Text>
-          <Text style={styles.message} numberOfLines={2}>{notification?.message ?? ""}</Text>
-        </View>
+      <View style={[styles.banner, { borderLeftColor: color }, pressed && styles.bannerPressed]}>
+        {/* The alert is the body, not the row: a focusable close button inside
+            a live region is invalid. */}
+        <Pressable
+          onPress={handlePress}
+          onPressIn={() => setPressed(true)}
+          onPressOut={() => setPressed(false)}
+          style={styles.body}
+          accessibilityRole="alert"
+          accessibilityLiveRegion={notification ? "polite" : "none"}
+          accessibilityLabel={a11yLabel}
+          {...dismissHint.props}
+        >
+          {dismissHint.node}
+          <View style={[styles.iconCircle, { backgroundColor: color + "22" }]}>
+            <Ionicons name={icon} size={20} color={color} />
+          </View>
+          <View style={styles.textGroup}>
+            <Text style={styles.title} numberOfLines={1}>{notification?.title ?? ""}</Text>
+            <Text style={styles.message} numberOfLines={2}>{notification?.message ?? ""}</Text>
+          </View>
+        </Pressable>
         <Pressable
           onPress={handlePress}
           hitSlop={Spacing.md}
@@ -147,7 +153,7 @@ export default function NotificationBanner({ notification, onDismiss }: Props) {
         >
           <Ionicons name="close" size={20} color={Colors.textMuted} />
         </Pressable>
-      </Pressable>
+      </View>
     </Animated.View>
   );
 }
@@ -171,6 +177,12 @@ const styles = StyleSheet.create({
     paddingHorizontal: Spacing.md - 2,
     gap: Spacing.sm + 4,
     ...Shadow.overlay,
+  },
+  body: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: Spacing.sm + 4,
   },
   bannerPressed: { backgroundColor: Colors.bgElevated },
   iconCircle: {

@@ -17,6 +17,7 @@ import {
   Motion,
   Radius,
   Shadow,
+  TABLE_FONT_SCALE_MAX,
 } from "@/lib/theme";
 import { useCardBack } from "@/lib/cosmetics";
 import { usePrefersReducedMotion } from "@/lib/accessibility";
@@ -39,6 +40,7 @@ import {
   placedPips,
   rankFontSize,
 } from "@/components/cardFaceModel";
+import { a11yHidden, a11yState, useA11yHint } from "@/lib/a11y";
 
 // Suit → colour. `Suit` is plural ("spades") while the theme tokens are singular
 // ("spade"), so the mapping has to be explicit. Typed as Record<Suit, string> so
@@ -371,8 +373,7 @@ function CourtArt({ card, w, h }: { card: Card; w: number; h: number }) {
       source={source()}
       style={[styles.courtArt, rect]}
       resizeMode="contain"
-      accessibilityElementsHidden
-      importantForAccessibility="no-hide-descendants"
+      {...a11yHidden()}
     />
   );
 }
@@ -471,6 +472,7 @@ function CardViewBase({
   decorative = false,
 }: CardViewProps) {
   const { t } = useTranslation();
+  const selectedHint = useA11yHint(decorative || !selected ? undefined : t("cardView.selectedA11yHint"));
   const reduceMotion = usePrefersReducedMotion();
   const back = useCardBack();
   const backField = FeltGradients[back.field];
@@ -555,8 +557,7 @@ function CardViewBase({
         onPressIn={handlePressIn}
         onPressOut={handlePressOut}
         disabled={!interactive}
-        accessibilityElementsHidden={decorative}
-        importantForAccessibility={decorative ? "no-hide-descendants" : "auto"}
+        {...a11yHidden(decorative)}
         accessibilityLabel={decorative ? undefined : cardSpokenName(card, t)}
         // A card with no onPress at all is information, not a control: the
         // pile, and the card the loser hands over between hands. It keeps its
@@ -568,16 +569,15 @@ function CardViewBase({
         // unavailable, which is what a screen reader expects of a control that
         // will come back. Dropping the role there would make the hand vanish
         // and reappear in the button rotation every turn.
-        accessibilityRole={onPress ? "button" : undefined}
-        accessibilityHint={
-          decorative || !selected ? undefined : t("cardView.selectedA11yHint")
-        }
+        {...a11yState({ role: onPress ? "button" : undefined, selected, disabled: !interactive })}
+        {...selectedHint.props}
         style={[
           styles.card,
           small ? styles.cardSmall : styles.cardNormal,
           selected && styles.cardSelected,
         ]}
       >
+        {selectedHint.node}
         <LinearGradient
           colors={CardFaceGradient}
           locations={[0, 0.55, 1]}
@@ -587,7 +587,7 @@ function CardViewBase({
         />
         <CardFaceArt card={card} color={color} w={w} h={h} compact={small} />
         {!small && COURT_RANKS.has(card.rank) && <CourtArt card={card} w={w} h={h} />}
-        <Text
+        <Text maxFontSizeMultiplier={TABLE_FONT_SCALE_MAX}
           style={[
             styles.rankText,
             small ? styles.rankTextSmall : styles.rankTextNormal,
@@ -598,7 +598,7 @@ function CardViewBase({
         >
           {rankText}
         </Text>
-        <Text
+        <Text maxFontSizeMultiplier={TABLE_FONT_SCALE_MAX}
           style={[
             styles.rankText,
             small ? styles.rankTextSmall : styles.rankTextNormal,

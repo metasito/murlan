@@ -25,9 +25,10 @@ import {
   getTableFelt,
   tableFeltNameKey,
 } from "@/lib/cosmetics";
-import { Colors, Spacing, Radius, FontSize, Type, Shadow } from "@/lib/theme";
+import { Colors, Spacing, Radius, FontSize, Type, Shadow, TOUCH_TARGET_MIN } from "@/lib/theme";
 import { useTranslation, type Locale, type TranslationKey } from "@/lib/i18n";
 import type { MotionPreference } from "@/lib/accessibility";
+import { a11yHidden, a11yState, useA11yHint } from "@/lib/a11y";
 
 interface Props {
   visible: boolean;
@@ -98,9 +99,8 @@ function Segmented<T extends string | number>({
               onSelect(seg.value);
             }}
             disabled={disabled}
-            accessibilityRole="radio"
             accessibilityLabel={seg.label}
-            accessibilityState={{ selected: active, disabled }}
+            {...a11yState({ role: "radio", selected: active, disabled })}
             style={({ pressed }) => [
               styles.segment,
               active && styles.segmentActive,
@@ -148,6 +148,9 @@ export function SettingsModal({ visible, onClose }: Props) {
   const reduceMotion = usePrefersReducedMotion();
   const [deleting, setDeleting] = useState(false);
   const { t, locale, setLocale, locales, localeLabels } = useTranslation();
+  const soundsHint = useA11yHint(t("settings.soundsA11yHint"));
+  const hapticsHint = useA11yHint(t("settings.hapticsA11yHint"));
+  const deleteHint = useA11yHint(t("settings.deleteAccountA11yHint"));
 
   async function handleDeleteAccount() {
     setDeleting(true);
@@ -203,8 +206,7 @@ export function SettingsModal({ visible, onClose }: Props) {
         <Pressable
           style={StyleSheet.absoluteFill}
           onPress={onClose}
-          accessibilityElementsHidden
-          importantForAccessibility="no-hide-descendants"
+          {...a11yHidden()}
         />
         <View style={styles.card} accessibilityViewIsModal accessibilityRole="none">
           <View style={styles.header}>
@@ -237,8 +239,9 @@ export function SettingsModal({ visible, onClose }: Props) {
               thumbColor={soundsEnabled ? Colors.white : Colors.textMuted}
               accessibilityRole="switch"
               accessibilityLabel={t("settings.soundsA11yLabel")}
-              accessibilityHint={t("settings.soundsA11yHint")}
+              {...soundsHint.props}
             />
+            {soundsHint.node}
           </View>
 
           <View style={styles.stackRow}>
@@ -330,8 +333,9 @@ export function SettingsModal({ visible, onClose }: Props) {
                 thumbColor={hapticsEnabled ? Colors.white : Colors.textMuted}
                 accessibilityRole="switch"
                 accessibilityLabel={t("settings.hapticsA11yLabel")}
-                accessibilityHint={t("settings.hapticsA11yHint")}
+                {...hapticsHint.props}
               />
+              {hapticsHint.node}
             </View>
           )}
 
@@ -350,9 +354,8 @@ export function SettingsModal({ visible, onClose }: Props) {
                   <Pressable
                     key={code}
                     onPress={() => handleSelectLocale(code)}
-                    accessibilityRole="button"
                     accessibilityLabel={localeLabels[code]}
-                    accessibilityState={{ selected: active }}
+                    {...a11yState({ role: "button", selected: active })}
                     style={({ pressed }) => [
                       styles.localeBtn,
                       active && styles.localeBtnActive,
@@ -373,16 +376,16 @@ export function SettingsModal({ visible, onClose }: Props) {
           <Pressable
             onPress={confirmDelete}
             disabled={deleting}
-            accessibilityRole="button"
             accessibilityLabel={t("settings.deleteAccount")}
-            accessibilityHint={t("settings.deleteAccountA11yHint")}
-            accessibilityState={{ disabled: deleting, busy: deleting }}
+            {...deleteHint.props}
+            {...a11yState({ role: "button", disabled: deleting, busy: deleting })}
             style={({ pressed }) => [
               styles.deleteBtn,
               pressed && !deleting && styles.deleteBtnPressed,
               deleting && styles.deleteBtnDisabled,
             ]}
           >
+            {deleteHint.node}
             <Text style={styles.deleteBtnText}>
               {deleting ? t("settings.deleting") : t("settings.deleteAccount")}
             </Text>
@@ -455,7 +458,7 @@ const styles = StyleSheet.create({
   },
   segment: {
     flex: 1,
-    minHeight: 36,
+    minHeight: TOUCH_TARGET_MIN,
     alignItems: "center",
     justifyContent: "center",
     paddingHorizontal: Spacing.xs,
@@ -468,8 +471,8 @@ const styles = StyleSheet.create({
   segmentTextActive: { color: Colors.gold, fontFamily: Type.bodyStrong.fontFamily },
   localeGroup: { flexDirection: "row", gap: Spacing.xs },
   localeBtn: {
-    minWidth: 40,
-    minHeight: 32,
+    minWidth: TOUCH_TARGET_MIN,
+    minHeight: TOUCH_TARGET_MIN,
     alignItems: "center",
     justifyContent: "center",
     paddingHorizontal: Spacing.xs,
@@ -495,5 +498,5 @@ const styles = StyleSheet.create({
   },
   deleteBtnPressed: { backgroundColor: Colors.dangerDim + "1A" },
   deleteBtnDisabled: { opacity: 0.5 },
-  deleteBtnText: { ...Type.body, color: Colors.danger, textAlign: "center" },
+  deleteBtnText: { ...Type.body, color: Colors.dangerDim, textAlign: "center" },
 });

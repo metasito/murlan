@@ -10,8 +10,9 @@ import Animated, {
   useSharedValue,
   withTiming,
 } from 'react-native-reanimated';
-import { Colors, Spacing, Radius, FontSize, Highlight, Motion, Shadow } from '@/lib/theme';
+import { Colors, Spacing, Radius, FontSize, Highlight, Motion, Shadow, TOUCH_TARGET_MIN } from '@/lib/theme';
 import { usePrefersReducedMotion } from '@/lib/accessibility';
+import { a11yState, useA11yHint } from "@/lib/a11y";
 
 type Variant = 'primary' | 'secondary' | 'danger' | 'ghost';
 type Size = 'sm' | 'md' | 'lg';
@@ -27,7 +28,7 @@ interface MenuButtonProps {
   style?: ViewStyle;
   fullWidth?: boolean;
   accessibilityLabel?: string;
-  accessibilityHint?: string;
+  hint?: string;
 }
 
 const PRESSED_GHOST_BG = Colors.border;
@@ -40,11 +41,12 @@ const PRESS_TRAVEL = 2;
 export function MenuButton({
   label, onPress, variant = 'primary', size = 'md',
   disabled, loading, icon, style, fullWidth = true,
-  accessibilityLabel, accessibilityHint,
+  accessibilityLabel, hint,
 }: MenuButtonProps) {
   const isDisabled = !!(disabled || loading);
   const reduceMotion = usePrefersReducedMotion();
   const [pressed, setPressed] = useState(false);
+  const hintProps = useA11yHint(hint);
   const press = useSharedValue(0);
 
   useEffect(
@@ -75,10 +77,9 @@ export function MenuButton({
         onPressOut={() => setPress(false)}
         disabled={isDisabled}
         hitSlop={Spacing.xs}
-        accessibilityRole="button"
         accessibilityLabel={accessibilityLabel ?? label}
-        accessibilityHint={accessibilityHint}
-        accessibilityState={{ disabled: isDisabled, busy: !!loading }}
+        {...hintProps.props}
+        {...a11yState({ role: "button", disabled: isDisabled, busy: !!loading })}
         style={[
           styles.base,
           styles[variant],
@@ -89,6 +90,7 @@ export function MenuButton({
           style,
         ]}
       >
+        {hintProps.node}
         {variant === 'primary' && (
           <LinearGradient
             colors={pressed ? PRIMARY_GRADIENT_PRESSED : PRIMARY_GRADIENT}
@@ -153,7 +155,7 @@ const styles = StyleSheet.create({
 });
 
 const sizeStyles = StyleSheet.create({
-  sm: { minHeight: 44, paddingVertical: Spacing.sm, paddingHorizontal: Spacing.lg },
+  sm: { minHeight: TOUCH_TARGET_MIN, paddingVertical: Spacing.sm, paddingHorizontal: Spacing.lg },
   md: { minHeight: 52, paddingVertical: Spacing.md, paddingHorizontal: Spacing.xl },
   lg: { minHeight: 60, paddingVertical: Spacing.lg, paddingHorizontal: Spacing.xl },
 });

@@ -7,7 +7,7 @@
 // hand, and a test that has to win a real hand first to reach the interactive
 // branch is a coin flip.
 import React, { useEffect, useRef, useState } from "react";
-import { View, Text, StyleSheet, Pressable, ScrollView } from "react-native";
+import { Modal, View, Text, StyleSheet, Pressable, ScrollView } from "react-native";
 import { router } from "expo-router";
 import { LinearGradient } from "expo-linear-gradient";
 import { hapticMedium, hapticSelection } from "@/lib/haptics";
@@ -17,6 +17,7 @@ import type { GameState } from "@/lib/gameEngine";
 import { Colors } from "@/lib/theme";
 import { useTranslation } from "@/lib/i18n";
 import { cardSpokenName } from "@/lib/cardNames";
+import { a11yState } from "@/lib/a11y";
 
 /**
  * Whether the result screen should be showing this overlay at all.
@@ -88,119 +89,135 @@ export function ResultExchangeOverlay({
 
   if (ep.bothJokersException) {
     return (
-      <View style={exStyles.overlay}>
-        <View style={exStyles.card}>
-          <Text style={exStyles.jokerEmoji}>🃏🃏</Text>
-          <Text style={exStyles.title}>{t("result.bothJokersTitle")}</Text>
-          <Text style={exStyles.subtitle}>
-            {t("result.bothJokersBody", { name: winner.name })}
-          </Text>
-          <Pressable
-            onPress={leaveForNextHand}
-            style={exStyles.confirmBtn}
-            accessibilityRole="button"
-            accessibilityLabel={t("result.bothJokersConfirm")}
-          >
-            <LinearGradient
-              colors={[Colors.gold, Colors.goldDark]}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 1 }}
-              style={exStyles.confirmGrad}
-            >
-              <Text style={exStyles.confirmText}>{t("result.bothJokersConfirm")}</Text>
-            </LinearGradient>
-          </Pressable>
-        </View>
-      </View>
-    );
-  }
-
-  return (
-    <View style={exStyles.overlay}>
-      <View style={exStyles.card}>
-        <Text style={exStyles.title}>{t("result.exchangeTitle")}</Text>
-        <View style={exStyles.section}>
-          <Text style={exStyles.label}>
-            {t("result.exchangeGiveLabel", { loser: loser.name, winner: winner.name })}
-          </Text>
-          <View style={exStyles.singleCard}>
-            <CardView card={ep.cardFromLoser} />
-          </View>
-        </View>
-        {winner.type === "ai" ? (
-          <Text style={exStyles.aiChoosing}>{t("result.exchangeAiChoosing", { winner: winner.name })}</Text>
-        ) : (
-          <View style={exStyles.section}>
-            <Text style={exStyles.label}>
-              {t("result.exchangeReturnLabel", { winner: winner.name })}
+      // Both branches gate the next hand, so Escape has nothing to dismiss to
+      // and onRequestClose is deliberately inert.
+      <Modal
+        transparent
+        visible
+        accessibilityLabel={t("result.bothJokersTitle")}
+        supportedOrientations={["portrait", "landscape"]}
+        onRequestClose={() => {}}
+      >
+        <View style={exStyles.overlay}>
+          <View style={exStyles.card}>
+            <Text style={exStyles.jokerEmoji}>🃏🃏</Text>
+            <Text style={exStyles.title}>{t("result.bothJokersTitle")}</Text>
+            <Text style={exStyles.subtitle}>
+              {t("result.bothJokersBody", { name: winner.name })}
             </Text>
-            <ScrollView
-              horizontal
-              showsHorizontalScrollIndicator={false}
-              style={exStyles.pickRow}
-            >
-              {exchangeCards.map((card) => {
-                const picked = selectedId === card.id;
-                return (
-                  <Pressable
-                    key={card.id}
-                    onPress={() => {
-                      setSelectedId(card.id);
-                      hapticSelection();
-                    }}
-                    style={[
-                      exStyles.pickCardWrap,
-                      picked && exStyles.pickCardLifted,
-                    ]}
-                    accessibilityRole="radio"
-                    accessibilityLabel={cardSpokenName(card, t)}
-                    accessibilityState={{ selected: picked }}
-                  >
-                    <CardView card={card} selected={picked} noLift decorative />
-                  </Pressable>
-                );
-              })}
-              {exchangeCards.length === 0 && (
-                <Text style={exStyles.noCards}>{t("result.exchangeNoCards")}</Text>
-              )}
-            </ScrollView>
             <Pressable
-              onPress={() => {
-                if (selectedId) {
-                  hapticMedium();
-                  chooseExchangeCard(selectedId);
-                }
-              }}
-              style={[exStyles.confirmBtn, !selectedId && exStyles.confirmBtnDim]}
-              disabled={!selectedId}
+              onPress={leaveForNextHand}
+              style={exStyles.confirmBtn}
               accessibilityRole="button"
-              accessibilityLabel={t("result.exchangeConfirm")}
-              accessibilityState={{ disabled: !selectedId }}
+              accessibilityLabel={t("result.bothJokersConfirm")}
             >
               <LinearGradient
-                colors={
-                  selectedId
-                    ? [Colors.gold, Colors.goldDark]
-                    : [Colors.bgSurface, Colors.bgSurface]
-                }
+                colors={[Colors.gold, Colors.goldDark]}
                 start={{ x: 0, y: 0 }}
                 end={{ x: 1, y: 1 }}
                 style={exStyles.confirmGrad}
               >
-                <Text
-                  style={[
-                    exStyles.confirmText,
-                    !selectedId && { color: Colors.textMuted },
-                  ]}
-                >
-                  {t("result.exchangeConfirm")}
-                </Text>
+                <Text style={exStyles.confirmText}>{t("result.bothJokersConfirm")}</Text>
               </LinearGradient>
             </Pressable>
           </View>
-        )}
+        </View>
+      </Modal>
+    );
+  }
+
+  return (
+    <Modal
+      transparent
+      visible
+      accessibilityLabel={t("result.exchangeTitle")}
+      supportedOrientations={["portrait", "landscape"]}
+      onRequestClose={() => {}}
+    >
+      <View style={exStyles.overlay}>
+        <View style={exStyles.card}>
+          <Text style={exStyles.title}>{t("result.exchangeTitle")}</Text>
+          <View style={exStyles.section}>
+            <Text style={exStyles.label}>
+              {t("result.exchangeGiveLabel", { loser: loser.name, winner: winner.name })}
+            </Text>
+            <View style={exStyles.singleCard}>
+              <CardView card={ep.cardFromLoser} />
+            </View>
+          </View>
+          {winner.type === "ai" ? (
+            <Text style={exStyles.aiChoosing}>{t("result.exchangeAiChoosing", { winner: winner.name })}</Text>
+          ) : (
+            <View style={exStyles.section}>
+              <Text style={exStyles.label}>
+                {t("result.exchangeReturnLabel", { winner: winner.name })}
+              </Text>
+              <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                style={exStyles.pickRow}
+              >
+                {exchangeCards.map((card) => {
+                  const picked = selectedId === card.id;
+                  return (
+                    <Pressable
+                      key={card.id}
+                      onPress={() => {
+                        setSelectedId(card.id);
+                        hapticSelection();
+                      }}
+                      style={[
+                        exStyles.pickCardWrap,
+                        picked && exStyles.pickCardLifted,
+                      ]}
+                      accessibilityLabel={cardSpokenName(card, t)}
+                      {...a11yState({ role: "radio", selected: picked })}
+                    >
+                      <CardView card={card} selected={picked} noLift decorative />
+                    </Pressable>
+                  );
+                })}
+                {exchangeCards.length === 0 && (
+                  <Text style={exStyles.noCards}>{t("result.exchangeNoCards")}</Text>
+                )}
+              </ScrollView>
+              <Pressable
+                onPress={() => {
+                  if (selectedId) {
+                    hapticMedium();
+                    chooseExchangeCard(selectedId);
+                  }
+                }}
+                style={[exStyles.confirmBtn, !selectedId && exStyles.confirmBtnDim]}
+                disabled={!selectedId}
+                accessibilityLabel={t("result.exchangeConfirm")}
+                {...a11yState({ role: "button", disabled: !selectedId })}
+              >
+                <LinearGradient
+                  colors={
+                    selectedId
+                      ? [Colors.gold, Colors.goldDark]
+                      : [Colors.bgSurface, Colors.bgSurface]
+                  }
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 1 }}
+                  style={exStyles.confirmGrad}
+                >
+                  <Text
+                    style={[
+                      exStyles.confirmText,
+                      !selectedId && { color: Colors.textMuted },
+                    ]}
+                  >
+                    {t("result.exchangeConfirm")}
+                  </Text>
+                </LinearGradient>
+              </Pressable>
+            </View>
+          )}
+        </View>
       </View>
-    </View>
+    </Modal>
   );
 }
 
