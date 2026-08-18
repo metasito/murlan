@@ -402,7 +402,9 @@ reachable from the results screen in the first place.
   Albanian player rather than English.
 - **Proposed fix:** Invert the type dependency — `en.ts` declares the key set as a plain
   object, `it.ts` and `sq.ts` become `Record<keyof typeof en, string>` and import from it.
-  Point `DEFAULT_LOCALE` and both fallbacks at `en`. Rewrite the header comment in `it.ts` and
+  Point `DEFAULT_LOCALE` and both fallbacks at `en`. Key parity is then enforced twice over:
+  the `Record<keyof typeof en, string>` annotation makes a missing key a compile error, and
+  `tests/i18n.test.ts` catches a stray one the types cannot see. Rewrite the header comment in `it.ts` and
   correct the false one at `lib/i18n.ts:15`. No key or string value changes — this is a
   direction change only, so `tests/i18n.test.ts` (key parity, placeholder parity) must pass
   untouched.
@@ -412,9 +414,11 @@ reachable from the results screen in the first place.
 - **Fix risk:** The type flip surfaces any key that exists in `it` but not `en` as a compile
   error — that is the point, but it may be a non-trivial list. Fix by translating into `en`,
   never by deleting the key.
-- **Open question for the owner:** this changes the *authoring* source. Whether `DEFAULT_LOCALE`
-  — what a player sees before choosing — should also become English is a separate product
-  call, since the player base is Italian-speaking. The fix above assumes yes; say if not.
+- **Settled (DECISIONS.md D7):** English first, everywhere. `DEFAULT_LOCALE` becomes `"en"`
+  too — this is not only the authoring source. **Every key that exists in English must exist
+  in every other locale, no exception**; after the type flip that is a compile error rather
+  than a convention, which is the strongest form available and is why the flip is the fix
+  rather than a lint rule.
 - **Depends on:** None
 
 ---

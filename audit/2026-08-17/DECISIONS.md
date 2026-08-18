@@ -211,6 +211,32 @@ the E2E specs rely on (`tests/e2e/helpers/bot.ts:340-347`).
 
 ---
 
+## D7 — English first, everywhere · settles ARCH-19
+
+**Decision: `locales/en.ts` is the source of truth for UI copy, and `DEFAULT_LOCALE` is
+`"en"`.** Not just the authoring language — what a player sees before choosing one, and what
+any missing key falls back to. Italian and Albanian are translations.
+
+**And: every key that exists in English must exist in every other locale. No exception.**
+
+The code currently enforces the reverse. `en.ts` and `sq.ts` both `import { it }` and declare
+`Record<keyof typeof it, string>`, so Italian *is* the canonical key set and an English string
+cannot be added until an Italian one exists. `DEFAULT_LOCALE` is `"it"` and both missing-key
+fallbacks (`lib/i18n.ts:129`, `:169`) resolve to Italian, while `lib/i18n.ts:15` claims an
+English fallback that does not exist.
+
+Inverting the type dependency is what makes the no-exception rule real: once `it.ts` and
+`sq.ts` are `Record<keyof typeof en, string>`, a key present in English and missing elsewhere
+is a **compile error**, not a convention someone has to remember.
+`tests/i18n.test.ts` stays as the second net — it catches a *stray* key the types cannot see,
+and it already pins placeholder parity and non-empty values. All three catalogues are at 523
+keys today, so the flip should surface nothing; if it does, translate the key rather than
+delete it.
+
+Implemented by **ARCH-19**, Batch 14.
+
+---
+
 ## Where these belong permanently
 
 This file is authoritative **for the implementation**. But `CLAUDE.md` states that game-rule

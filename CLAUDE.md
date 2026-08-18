@@ -5,8 +5,9 @@ Express + Socket.io server on Replit. **English (`locales/en.ts`) is the source 
 UI copy**; Italian and Albanian are translations of it. A *manche* is one hand; a *partita*
 is the match they add up to.
 
-> The code does not yet agree: `en.ts` and `sq.ts` are type-derived from `it.ts`, and
-> `DEFAULT_LOCALE` and every missing-key fallback point at Italian. ARCH-19 inverts it.
+> The code does not yet agree — `en.ts` is type-derived from `it.ts` and `DEFAULT_LOCALE` is
+> `"it"`. ARCH-19 inverts it. **Every key in English must exist in every locale, no
+> exception**; after the flip that is a compile error.
 
 **This file is only what you cannot get by reading the code.** Stack, file layout and game
 rules are deliberately absent — `package.json`, `ls`, and `docs/RULES.md` are authoritative
