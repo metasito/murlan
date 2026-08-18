@@ -1070,10 +1070,21 @@ async function handleGameOver(
   let isDraw = false;
 
   if (game.matchLength === "single") {
-    // A quick game is one manche: whoever took it has won the match.
+    // A quick game is one manche: whoever took it has won the match — and in
+    // teams mode the manche is taken by a pair, not by the seat that emptied
+    // its hand first (docs/RULES.md §11).
     game.matchOver = true;
     const topSeat = seatOfEngineId.get(state.rankings[0] ?? "");
-    matchWinners = topSeat === undefined ? [] : [scoreKeyForSeat(game, topSeat)];
+    const winningTeam = topSeat === undefined ? undefined : state.players[topSeat]?.team;
+    if (topSeat === undefined) {
+      matchWinners = [];
+    } else if (game.gameMode === "teams" && winningTeam) {
+      matchWinners = Object.entries(teamKeyMap(game, state))
+        .filter(([, team]) => team === winningTeam)
+        .map(([key]) => key);
+    } else {
+      matchWinners = [scoreKeyForSeat(game, topSeat)];
+    }
   } else {
     // Teams mode races to the target as a *pair* (docs/RULES.md §11: the two
     // partners' placement points are summed), so the match must be resolved on

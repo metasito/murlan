@@ -99,12 +99,16 @@ export function applyHandToMatch(match: MatchState, finished: GameState): MatchS
   const hands = [...match.hands, { rankings: finished.rankings, pointsAwarded: points }];
 
   if (match.length === "single") {
+    const champion = finished.players.find((p) => p.id === finished.rankings[0]);
     return {
       ...match,
       scores,
       hands,
       over: true,
-      winners: finished.rankings.slice(0, 1),
+      winners:
+        finished.gameMode === "teams" && champion?.team
+          ? finished.players.filter((p) => p.team === champion.team).map((p) => p.id)
+          : finished.rankings.slice(0, 1),
       isDraw: false,
     };
   }

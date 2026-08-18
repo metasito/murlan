@@ -120,4 +120,50 @@ describe("online teams mode", { skip: hasDatabase() ? false : skipMessage() }, (
       for (const c of clients) c.socket.close();
     }
   });
+  test("a one-manche teams game is won by the pair, not by the seat that went out", async () => {
+    const clients: { socket: Socket; user: { id: string }; cookie: string }[] = [];
+    for (const name of ["single_a1", "single_b1", "single_a2", "single_b2"]) {
+      clients.push(await connectAs(server, name));
+    }
+
+    try {
+      const created = waitFor<RoomState>(clients[0].socket, "room:state");
+      clients[0].socket.emit("room:create", { gameMode: "teams", maxPlayers: 4 });
+      let room = await created;
+      for (const guest of clients.slice(1)) {
+        const joined = waitFor<RoomState>(guest.socket, "room:state");
+        guest.socket.emit("room:join", { code: room.code });
+        room = await joined;
+      }
+
+      const firstState = waitFor<TeamedState>(clients[0].socket, "game:state");
+      const over = driveHumansToGameOver(
+        clients.map((c) => c.socket),
+        () => clients[0].socket.emit("room:start", { matchLength: "single" }),
+        120_000
+      );
+
+      const state = await firstState;
+      const payload = (await over) as {
+        rankings: string[];
+        matchOver: boolean;
+        matchWinners: string[];
+      };
+      assert.equal(payload.matchOver, true, "one manche settles a single-manche match");
+
+      const topSeat = state.players.findIndex((p) => p.id === payload.rankings[0]);
+      const winningTeam = state.players[topSeat].team;
+      const expected = state.players
+        .filter((p) => p.team === winningTeam)
+        .map((p) => p.name)
+        .sort();
+      assert.deepEqual(
+        [...payload.matchWinners].sort(),
+        expected,
+        "both partners take the manche, so both win the match"
+      );
+    } finally {
+      for (const c of clients) c.socket.close();
+    }
+  });
 });
