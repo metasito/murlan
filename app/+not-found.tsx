@@ -1,7 +1,7 @@
 // template
 import { router, Stack } from "expo-router";
 import { Text, View } from "react-native";
-import { Ionicons } from "@expo/vector-icons";
+import Ionicons from "@expo/vector-icons/Ionicons";
 import { useTranslation } from "@/lib/i18n";
 import { Colors, Spacing, Type } from "@/lib/theme";
 import { MenuLayout } from "@/components/MenuLayout";

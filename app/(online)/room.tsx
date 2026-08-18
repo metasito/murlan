@@ -15,7 +15,7 @@ import { router } from "expo-router";
 import Animated, { FadeIn } from "react-native-reanimated";
 import { hapticMedium, hapticSelection, hapticSuccess } from "@/lib/haptics";
 import * as Clipboard from "expo-clipboard";
-import { Ionicons } from "@expo/vector-icons";
+import Ionicons from "@expo/vector-icons/Ionicons";
 import { useQuery } from "@tanstack/react-query";
 import { useOnlineGame } from "@/context/OnlineGameContext";
 import { useAuth } from "@/context/AuthContext";

@@ -14,7 +14,7 @@ import Animated, {
   withTiming,
   withDelay,
 } from "react-native-reanimated";
-import { Feather } from "@expo/vector-icons";
+import Feather from "@expo/vector-icons/Feather";
 import type { Card } from "@/lib/gameEngine";
 import { CardView } from "@/components/CardView";
 import { Colors, Spacing, Radius, FontSize, Type, Motion, Shadow } from "@/lib/theme";

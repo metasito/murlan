@@ -1,6 +1,6 @@
 import React from "react";
 import { StyleSheet, View, Text } from "react-native";
-import { Feather } from "@expo/vector-icons";
+import Feather from "@expo/vector-icons/Feather";
 import { Colors, Spacing, Radius, FontSize, Type } from "@/lib/theme";
 import { MenuButton } from "@/components/MenuButton";
 import { useTranslation, type ServerPayload } from "@/lib/i18n";
