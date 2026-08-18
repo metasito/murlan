@@ -2442,11 +2442,11 @@ function seatedHumansOf(game: OnlineGameState) {
  * still holds the room it had; a cold start holds nothing, so the roster read
  * failing has to cost the roster and not the reply.
  */
-async function emitRoomStateTo(socket: Socket, roomCode: string, game: OnlineGameState) {
-  const room = await storage.getRoomById(roomCode);
+async function emitRoomStateTo(socket: Socket, roomId: string, game: OnlineGameState) {
+  const room = await storage.getRoomById(roomId);
   if (!room) return;
-  const players = await storage.getRoomPlayers(roomCode).catch((err: unknown) => {
-    logger.warn({ err, roomId: roomCode }, "getRoomPlayers failed; answering from the live roster");
+  const players = await storage.getRoomPlayers(roomId).catch((err: unknown) => {
+    logger.warn({ err, roomId }, "getRoomPlayers failed; answering from the live roster");
     return seatedHumansOf(game);
   });
   socket.emit("room:state", roomStatePayload(room, players));

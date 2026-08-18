@@ -95,7 +95,7 @@ later turns.
 
 ## 4. Persistence
 
-- **`active_games`** (`shared/schema.ts`): one row per room, `roomCode` primary key,
+- **`active_games`** (`shared/schema.ts`): one row per room, `roomId` primary key,
   `gameState` (jsonb, stamped with `schemaVersion` so a restart can tell a current-shape row
   from a stale pre-migration one and refuse to rehydrate it), `playerIds`, `playerMap`
   (keyed by seat, not compacted by array position — a compacted array previously
