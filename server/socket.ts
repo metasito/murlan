@@ -817,17 +817,18 @@ function runBotTurn(roomId: string) {
   }
 }
 
-/** Returns true when a move was actually made. */
-function handleAutoPass(roomId: string, userId: string): boolean {
+/** What the seat was made to do, or null when nothing was played. */
+function handleAutoPass(roomId: string, userId: string): "exchange" | "move" | null {
   const io = _io;
   const game = activeGames.get(roomId);
-  if (!io || !game || game.gameState.gameOver) return false;
+  if (!io || !game || game.gameState.gameOver) return null;
 
   const seat = actingSeat(game.gameState);
-  if (game.playerMap[seat] !== userId) return false;
+  if (game.playerMap[seat] !== userId) return null;
 
+  const wasExchange = !!game.gameState.exchangePhase?.active;
   const next = autoMoveForSeat(game, seat, false);
-  if (!next) return false;
+  if (!next) return null;
 
   game.gameState = next;
   broadcastGameState(io, game);
@@ -838,7 +839,7 @@ function handleAutoPass(roomId: string, userId: string): boolean {
   } else {
     armTurn(roomId);
   }
-  return true;
+  return wasExchange ? "exchange" : "move";
 }
 
 function startAfkTimer(roomId: string, userId: string, username: string) {
@@ -853,10 +854,13 @@ function startAfkTimer(roomId: string, userId: string, username: string) {
         // Only announce when something actually happened, not on an early
         // return that did nothing.
         if (acted && _io) {
+          const exchanged = acted === "exchange";
           _io.to(roomId).emit("game:notification", {
             type: "afk",
-            code: "PLAYER_AFK_AUTO_PASS",
-            message: `${username} è inattivo — passato automaticamente`,
+            code: exchanged ? "PLAYER_AFK_AUTO_EXCHANGE" : "PLAYER_AFK_AUTO_PASS",
+            message: exchanged
+              ? `${username} è inattivo — carta scambiata automaticamente`
+              : `${username} è inattivo — passato automaticamente`,
             params: { username },
           });
         }

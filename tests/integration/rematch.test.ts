@@ -260,4 +260,39 @@ describe("rematch roster", { skip: hasDatabase() ? false : skipMessage() }, () =
     await started;
     await closeTable(room.roomId, liam);
   });
+  test("an AFK exchange is announced as an exchange, not as a pass", async () => {
+    const [pia, quinn] = await makeClients(server, [
+      "afk_exchange_pia",
+      "afk_exchange_quinn",
+    ]);
+    const room = await setUpRoom([pia, quinn], 2);
+
+    gameOverOf(
+      await driveHandToExchangeOrOver([pia, quinn], () => {
+        pia.socket.emit("room:start");
+      })
+    );
+
+    const afk: string[] = [];
+    pia.socket.on("game:notification", (payload: { code?: string }) => {
+      if (payload?.code?.startsWith("PLAYER_AFK_AUTO_")) afk.push(payload.code);
+    });
+
+    const dealt = waitForDeal(pia.socket);
+    pia.socket.emit("game:rematch_vote");
+    quinn.socket.emit("game:rematch_vote");
+    const next = await dealt;
+    assert.ok(next.exchangePhase?.active, "the next manche opens on an exchange");
+
+    const deadline = Date.now() + 5_000;
+    while (afk.length === 0 && Date.now() < deadline) {
+      await new Promise((resolve) => setTimeout(resolve, 20));
+    }
+    assert.equal(
+      afk[0],
+      "PLAYER_AFK_AUTO_EXCHANGE",
+      "the exchange winner's timer hands over a card, so announcing a pass tells every seat the wrong thing"
+    );
+    await closeTable(room.roomId, pia);
+  });
 });

@@ -60,6 +60,7 @@ export const sq: Record<keyof typeof it, string> = {
   "server.GAME_INTERRUPTED_EMPTY_SEAT": "Loja u ndërpre: një vend bosh nuk mund të luajë.",
   "server.GAME_INTERRUPTED_SERVER_ERROR": "Loja u ndërpre: gabim i serverit.",
   "server.PLAYER_AFK_AUTO_PASS": "{{username}} është joaktiv — kaloi automatikisht",
+  "server.PLAYER_AFK_AUTO_EXCHANGE": "{{username}} është joaktiv — letra u shkëmbye automatikisht",
   "server.PLAYER_LEFT_ABANDONED": "{{username}} u largua nga loja.",
   "server.PLAYER_LEFT_BOT_TAKEOVER": "{{username}} u largua nga loja — kompjuteri po luan në vendin e tij.",
   "server.REPLAY_NOT_FOUND": "Përsëritja nuk u gjet",
