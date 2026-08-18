@@ -200,8 +200,19 @@ export default function OnlineLobbyScreen() {
           option — react-native-web implements it as a no-op. */}
       {error && (
         <View style={styles.errorBanner} accessibilityRole="alert">
-          <Ionicons name="alert-circle" size={16} color={Colors.white} />
-          <Text style={styles.errorBannerText}>{error}</Text>
+          <Ionicons
+            name="alert-circle"
+            size={16}
+            color={Colors.white}
+            accessibilityElementsHidden
+            importantForAccessibility="no-hide-descendants"
+          />
+          {/* Capped rather than free to wrap: this sits above a body that has
+              nowhere to scroll, so a long message would take its height out of
+              the cards below. */}
+          <Text style={styles.errorBannerText} numberOfLines={2}>
+            {error}
+          </Text>
           <Pressable
             onPress={clearError}
             hitSlop={12}
