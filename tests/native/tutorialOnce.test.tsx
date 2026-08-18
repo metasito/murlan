@@ -111,10 +111,20 @@ describe('the title screen offers the tutorial only while the flag is unset', ()
     });
     await opened.unmount();
 
+    // The gate is `getItem(SEEN_KEY).then(...)`, and the screen renders in full
+    // before it resolves — so a negative assertion has to wait on that promise
+    // itself. Awaiting the very promise whose `.then` would push queues this
+    // continuation behind it: once it resolves here, the push has either
+    // happened or is never going to.
+    const getItem = jest.spyOn(AsyncStorage, 'getItem');
     const home = await render(withSafeArea(<HomeScreen />));
-    // Settle whatever the gate was going to do, then assert it did nothing.
-    await waitFor(() => expect(screen.getByText(t('home.modeTutorial'))).toBeTruthy());
+    await waitFor(() => expect(getItem).toHaveBeenCalledWith(SEEN_KEY));
+    await act(async () => {
+      await Promise.all(getItem.mock.results.map((r) => r.value));
+    });
+
     expect(jest.mocked(router.push)).not.toHaveBeenCalledWith('/tutorial');
     await home.unmount();
+    getItem.mockRestore();
   });
 });
