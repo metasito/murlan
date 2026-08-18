@@ -23,7 +23,27 @@ export const QUERY_TIMEOUT_MS = 5_000;
  * `files in flight x this number` against Postgres' `max_connections`, and ten
  * overruns a stock 100 well before the suite finishes starting.
  */
-const POOL_MAX = Number(process.env.MURLAN_PG_POOL_MAX ?? 10);
+const DEFAULT_POOL_MAX = 10;
+
+/**
+ * `MURLAN_PG_POOL_MAX`, or the deployed default when it is unset.
+ *
+ * Refuses anything that is not a positive integer rather than handing `pg` the
+ * `NaN` a typo produces: a pool with no usable ceiling fails later, somewhere
+ * else, as a connection error.
+ */
+export function resolvePoolMax(raw: string | undefined): number {
+  if (raw === undefined || raw.trim() === "") return DEFAULT_POOL_MAX;
+  const parsed = Number(raw);
+  if (!Number.isInteger(parsed) || parsed < 1) {
+    throw new Error(
+      `MURLAN_PG_POOL_MAX must be a positive integer, got ${JSON.stringify(raw)}`
+    );
+  }
+  return parsed;
+}
+
+const POOL_MAX = resolvePoolMax(process.env.MURLAN_PG_POOL_MAX);
 
 export const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
