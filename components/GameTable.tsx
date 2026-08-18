@@ -131,6 +131,8 @@ const BTN_REJECT_LEG_MS = 40;
 // before it wraps onto its second (and last) line.
 const REJECT_HINT_MS = 2600;
 const REJECT_HINT_MAX_W = 260;
+/** Above the top bar and the rematch panel: the reason must not be covered. */
+const REJECT_HINT_Z = 30;
 
 // Raked light across the gold surface — bright at the top-left corner,
 // dropping to goldDark at the bottom-right — same treatment and same rake
@@ -1579,7 +1581,7 @@ const styles = StyleSheet.create({
   },
   rejectHint: {
     position: "absolute",
-    zIndex: 30,
+    zIndex: REJECT_HINT_Z,
     alignItems: "flex-end",
   },
   rejectHintText: {
