@@ -90,3 +90,33 @@ export const socketRoomMap = new Map<string, string>();
 export const spectatorRoomMap = new Map<string, string>();
 export const userSocketMap = new Map<string, string>();
 export const publicRoomIds = new Set<string>();
+
+/**
+ * Who lost their connection to a waiting lobby, per room id: userId -> whether
+ * they held the room at the moment they dropped.
+ *
+ * A lobby disconnect deletes the `room_players` row immediately, so nothing in
+ * the database still says the caller was ever seated. This is that evidence,
+ * and `room:rejoin` is its only reader: without an entry (and without a
+ * surviving seat row) a caller holding the six-character code is arriving, not
+ * returning, and `room:join` is their event. It is also the only thing that may
+ * hand the room back — the host role returns to the account that lost it and to
+ * nobody else.
+ *
+ * In memory: a restart drops every socket anyway, so there is no reconnect left
+ * to answer.
+ */
+export const lobbyDropouts = new Map<string, Map<string, boolean>>();
+
+export function rememberLobbyDropout(roomId: string, userId: string, wasHost: boolean) {
+  const room = lobbyDropouts.get(roomId) ?? new Map<string, boolean>();
+  room.set(userId, wasHost);
+  lobbyDropouts.set(roomId, room);
+}
+
+export function forgetLobbyDropout(roomId: string, userId: string) {
+  const room = lobbyDropouts.get(roomId);
+  if (!room) return;
+  room.delete(userId);
+  if (room.size === 0) lobbyDropouts.delete(roomId);
+}

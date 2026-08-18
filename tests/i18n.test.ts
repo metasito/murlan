@@ -8,7 +8,7 @@
 // that no longer matches across locales — hence these tests.
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { readFileSync, readdirSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
 // @ts-ignore — see tests/helpers.ts for why the .ts extension is required
@@ -233,8 +233,13 @@ describe("translate() produces the expected output per locale", () => {
     // The mirror of the test above: a key nothing can emit is dead weight
     // that three catalogues have to keep translating.
     const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-    const sources = ["server/routes.ts", "server/socket.ts"]
-      .map((rel) => readFileSync(path.join(repoRoot, rel), "utf8"))
+    // Derived rather than listed: the codes are spread across the server
+    // modules, and a fixed list silently stops covering one the moment a file
+    // is split.
+    const serverDir = path.join(repoRoot, "server");
+    const sources = readdirSync(serverDir, { recursive: true, encoding: "utf8" })
+      .filter((f) => f.endsWith(".ts"))
+      .map((f) => readFileSync(path.join(serverDir, f), "utf8"))
       .join("\n");
     const unused = Object.keys(it)
       .filter((key) => key.startsWith("server."))

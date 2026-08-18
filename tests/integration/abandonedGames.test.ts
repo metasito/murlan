@@ -30,11 +30,11 @@ describe("abandoned game rows", { skip: hasDatabase() ? false : skipMessage() },
   before(async () => {
     server = await startTestServer();
     dbPool = new pg.Pool({ connectionString: process.env.DATABASE_URL });
-    const { __testables } = await import("../../server/socket.ts");
-    prune = __testables.pruneAbandonedGames;
-    maxAgeMs = __testables.ABANDONED_GAME_MAX_AGE_MS;
-    pruneRooms = __testables.pruneStaleRooms;
-    roomMaxAgeMs = __testables.STALE_ROOM_MAX_AGE_MS;
+    const persistence = await import("../../server/gamePersistence.ts");
+    prune = persistence.pruneAbandonedGames;
+    maxAgeMs = persistence.ABANDONED_GAME_MAX_AGE_MS;
+    pruneRooms = persistence.pruneStaleRooms;
+    roomMaxAgeMs = persistence.STALE_ROOM_MAX_AGE_MS;
   });
 
   after(async () => {

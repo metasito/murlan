@@ -1,6 +1,6 @@
 import { test, before, after, describe } from "node:test";
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { readFileSync, readdirSync } from "node:fs";
 import {
   startTestServer,
   hasDatabase,
@@ -91,10 +91,13 @@ describe(
      * it proves.
      */
     test("every turn timer body runs under the containment", () => {
-      const source = readFileSync(
-        new URL("../../server/socket.ts", import.meta.url),
-        "utf8"
-      );
+      // Every server module, not one file: a turn timer and the containment
+      // it runs under do not have to live in the same one.
+      const serverDir = new URL("../../server/", import.meta.url);
+      const source = readdirSync(serverDir)
+        .filter((f) => f.endsWith(".ts"))
+        .map((f) => readFileSync(new URL(f, serverDir), "utf8"))
+        .join("\n");
 
       const timerBodies = [
         { label: "botTurn", call: "runBotTurn(roomId)" },
@@ -103,7 +106,7 @@ describe(
 
       for (const { label, call } of timerBodies) {
         const wrapper = new RegExp(
-          `safeTimer\\(\\s*"${label}"[\\s\\S]{0,400}?${call.replace(
+          `safeTimer\\([^"]*"${label}"[\\s\\S]{0,400}?${call.replace(
             /[.*+?^${}()|[\]\\]/g,
             "\\$&"
           )}`

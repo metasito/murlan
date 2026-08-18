@@ -3,23 +3,22 @@ import type { Socket } from "socket.io";
 import type { IncomingMessage, Server as HttpServer } from "node:http";
 import type { NextFunction, Request, Response } from "express";
 import type { Session, SessionData } from "express-session";
-import { eq, inArray, lt } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 import { storage } from "./storage.ts";
 import { logger } from "./logger.ts";
 import { notifyUser } from "./push.ts";
 import { sessionMiddleware } from "./session.ts";
 import { db } from "./db.ts";
-import {
-  activeGames as activeGamesTable,
-  roomPlayers as roomPlayersTable,
-  rooms as roomsTable,
-} from "../shared/schema.ts";
+import { activeGames as activeGamesTable } from "../shared/schema.ts";
 import { consumeSocketTicket } from "./ticket.ts";
 import { isAllowedOrigin } from "./cors.ts";
 import { allowSocketAction, onEvent } from "./socketSafety.ts";
 import {
   activeGames,
+  forgetLobbyDropout,
+  lobbyDropouts,
   publicRoomIds,
+  rememberLobbyDropout,
   socketRoomMap,
   spectatorRoomMap,
   userSocketMap,
@@ -32,22 +31,27 @@ import {
   AFK_TIMEOUT_MS,
   DISCONNECT_GRACE_MS,
   BOT_MOVE_DELAY_MS,
-  SWEEP_INTERVAL_MS,
   clearAfkTimer,
   clearRoomTimers,
   clearAllTimersForUser,
   clearRoomDisconnectTimers,
+  secondsUntil,
 } from "./gameTimers.ts";
+import {
+  broadcastGameState,
+  disposeGame,
+  persistGameState,
+  safeTimer,
+  sanitizeStateForPlayer,
+  startSweeper,
+} from "./gamePersistence.ts";
 import {
   readPersistedPlayerMap,
   seatOfUser as seatOfUserInMap,
   scoreKeyForSeat as scoreKeyForMapSeat,
-  findViewerSeat,
-  visibleExchangePhase,
   buildSeatRoster,
   teamKeyMap,
   restoredMatchOver,
-  packPersistedState,
   unpackPersistedState,
   resolveHandEnd,
 } from "./onlineGameLogic.ts";
@@ -85,73 +89,11 @@ import {
   isMajority,
   targetsFor,
 } from "../lib/gameEngine.ts";
-import type { GameState, Card, Combination } from "../lib/gameEngine.ts";
+import type { GameState, Combination } from "../lib/gameEngine.ts";
 import { recordGameResult } from "./stats.ts";
 import { saveReplay } from "./replays.ts";
 import { recordRatedResult } from "./ratings.ts";
 import { appendReplayMove, replaySeatsOf, startReplayLog } from "./replayShape.ts";
-
-/**
- * Who lost their connection to a waiting lobby, per room id: userId -> whether
- * they held the room at the moment they dropped.
- *
- * A lobby disconnect deletes the `room_players` row immediately, so nothing in
- * the database still says the caller was ever seated. This is that evidence,
- * and `room:rejoin` is its only reader: without an entry (and without a
- * surviving seat row) a caller holding the six-character code is arriving, not
- * returning, and `room:join` is their event. It is also the only thing that may
- * hand the room back — the host role returns to the account that lost it and to
- * nobody else.
- *
- * In memory: a restart drops every socket anyway, so there is no reconnect left
- * to answer.
- */
-const lobbyDropouts = new Map<string, Map<string, boolean>>();
-
-function rememberLobbyDropout(roomId: string, userId: string, wasHost: boolean) {
-  const room = lobbyDropouts.get(roomId) ?? new Map<string, boolean>();
-  room.set(userId, wasHost);
-  lobbyDropouts.set(roomId, room);
-}
-
-function forgetLobbyDropout(roomId: string, userId: string) {
-  const room = lobbyDropouts.get(roomId);
-  if (!room) return;
-  room.delete(userId);
-  if (room.size === 0) lobbyDropouts.delete(roomId);
-}
-
-/**
- * How long an `active_games` row may sit untouched before it is abandoned.
- *
- * The in-memory sweep cannot see these. A restart empties `activeGames`, and
- * every path that deletes a row — a table finishing, the last human leaving,
- * the disconnect grace expiring — walks that Map. A game that was live when the
- * process went down, and that nobody ever rejoins, is invisible to all of them
- * and its row stays forever. On a host that sleeps, which is where this app
- * runs, that happens on every sleep with a game open.
- *
- * A day is far past any live game: `persistGameState` refreshes `updated_at` on
- * every single move, and a table nobody is playing is disposed within the
- * disconnect grace. The margin is there so a row a player might still
- * legitimately rejoin is never taken out from under them.
- */
-const ABANDONED_GAME_MAX_AGE_MS = 24 * 60 * 60_000;
-
-/**
- * How long a `rooms` row may live before the sweeper takes it.
- *
- * Derived from `created_at` rather than a "finished at" column, because a
- * timestamp on `rooms` would be a new column on a table written every time
- * anyone opens a table — the write that breaks until `db:push` runs. No game
- * lasts a day, so age alone separates a live room from a dead one, and it
- * covers the rooms a restart stranded in `waiting` as well as the finished
- * ones.
- */
-const STALE_ROOM_MAX_AGE_MS = 24 * 60 * 60_000;
-
-/** Rooms deleted per sweep. Bounds the size of one statement, not the total. */
-const STALE_ROOM_BATCH = 500;
 
 /**
  * Handshakes one account may complete per minute.
@@ -306,113 +248,8 @@ export const __testables = {
    * reachable through a socket: it needs a body that throws on demand.
    */
   runTimerBody: (label: string, roomId: string, fn: () => void) =>
-    safeTimer(label, roomId, fn),
-  /** The restart-orphan prune, which only a real database can exercise. */
-  pruneAbandonedGames: () => pruneAbandonedGames(),
-  ABANDONED_GAME_MAX_AGE_MS,
-  pruneStaleRooms,
-  STALE_ROOM_MAX_AGE_MS,
+    safeTimer(_io, label, roomId, fn),
 };
-
-function sanitizeStateForPlayer(
-  state: GameState,
-  viewerUserId: string,
-  playerMap: Record<number, string>,
-  turnDeadlineMs?: number
-) {
-  // The server knows which seat the viewer occupies authoritatively; ship it
-  // with every state so the client never has to derive it (e.g. from a lobby
-  // `room` object that is null across a cold-start rejoin).
-  const viewerSeatIndex = findViewerSeat(playerMap, viewerUserId);
-  return {
-    ...state,
-    viewerSeatIndex,
-    // Seconds rather than the deadline itself: a device whose clock is off by
-    // minutes would render an absolute timestamp as a clock that is already
-    // over or never moves. The deadline rides along only as a reset key.
-    turnDeadlineMs,
-    turnSecondsRemaining: secondsUntil(turnDeadlineMs),
-    // Strips `cardFromLoser` — a named card out of a named player's hand —
-    // down to only the two seats in the exchange, and only while it is active.
-    exchangePhase: visibleExchangePhase(
-      state.exchangePhase,
-      viewerSeatIndex
-    ) as GameState["exchangePhase"],
-    players: state.players.map((p, idx) => {
-      const isViewer = playerMap[idx] === viewerUserId;
-      return {
-        ...p,
-        hand: isViewer ? p.hand : ([] as Card[]),
-        handCount: p.hand.length,
-      };
-    }),
-  };
-}
-
-/** Drops every in-memory trace of a room. */
-function disposeGame(roomId: string, deleteRow = true) {
-  const game = activeGames.get(roomId);
-  if (game) clearRoomDisconnectTimers(game);
-  clearRoomTimers(roomId);
-  activeGames.delete(roomId);
-  publicRoomIds.delete(roomId);
-  if (deleteRow) {
-    db.delete(activeGamesTable)
-      .where(eq(activeGamesTable.roomId, roomId))
-      .catch((err: unknown) =>
-        logger.error({ err, roomId }, "Failed to delete persisted game")
-      );
-  }
-}
-
-// ─── Persistence ──────────────────────────────────────────────────────────────
-
-/**
- * Writes the room's live state. Failures are logged, never thrown — a
- * persistence problem must not break a table. The promise is returned so a
- * caller that is about to delete the same row can order itself after it.
- */
-function persistGameState(roomId: string, game: OnlineGameState): Promise<unknown> {
-  // Stamped so a restart can tell a current-shape row from a stale one (see
-  // GAME_SCHEMA_VERSION) rather than restoring a corrupt hand silently.
-  const values = {
-    roomId,
-    gameState: packPersistedState(game.gameState, game.handFlags, game.dealFirstSeat, {
-      playerMap: game.playerMap,
-      scores: game.cumulativeScores,
-      gameMode: game.gameMode,
-      matchLength: game.matchLength,
-      matchTarget: game.matchTarget,
-      maxPlayers: game.maxPlayers,
-      isPublic: publicRoomIds.has(roomId),
-    }),
-    updatedAt: new Date(),
-  };
-  return db
-    .insert(activeGamesTable)
-    .values(values)
-    .onConflictDoUpdate({
-      target: activeGamesTable.roomId,
-      set: { gameState: values.gameState, updatedAt: values.updatedAt },
-    })
-    .catch((err: unknown) =>
-      logger.error({ err, roomId }, "Failed to persist game state")
-    );
-}
-
-function broadcastGameState(io: SocketServer, game: OnlineGameState) {
-  const { gameState, playerMap } = game;
-  const send = (uid: string) => {
-    const target = userSocketMap.get(uid);
-    if (!target) return;
-    io.to(target).emit("game:state", sanitizeStateForPlayer(gameState, uid, playerMap, game.turnDeadlineMs));
-  };
-  Object.values(playerMap).forEach(send);
-  // Spectators go through the same sanitiser. findViewerSeat returns null for
-  // a userId that holds no seat, and every hand is blanked on that basis, so a
-  // spectator cannot be sent a card without the seated path breaking first.
-  game.spectators.forEach(send);
-}
 
 // ─── Turn arbitration ─────────────────────────────────────────────────────────
 
@@ -536,45 +373,6 @@ function autoMoveForSeat(
 }
 
 /**
- * Runs a timer body under the same contract `onEvent` gives an inbound event: a
- * throw degrades to a closed table rather than escaping the callback.
- *
- * The containment is load-bearing rather than tidy. `armTurn` clears the room's
- * timers before it arms the next one, and it is only ever reached from a move, a
- * rejoin, a disconnect or another timer — so a throw inside a timer body leaves
- * the room with nothing pending and nothing that will ever re-arm it. The table
- * stops on a turn that cannot be taken, and the client's clock has no `onExpire`
- * to notice. Closing the table loudly is the recoverable outcome.
- */
-function safeTimer(label: string, roomId: string, fn: () => void): void {
-  try {
-    fn();
-  } catch (err) {
-    logger.error({ err, roomId, label }, "Timer callback threw — closing table");
-    _io?.to(roomId).emit("game:notification", {
-      type: "abandoned",
-      code: "GAME_INTERRUPTED_SERVER_ERROR",
-      message: "Partita interrotta: errore del server.",
-    });
-    void storage
-      .updateRoomStatus(roomId, "finished")
-      .catch((statusErr) =>
-        logger.warn(
-          { err: statusErr, roomId, label },
-          "Failed to set rooms.status = finished after a timer callback threw"
-        )
-      );
-    disposeGame(roomId);
-  }
-}
-
-/** Whole seconds left on a deadline, floored at 0. Zero when nothing is armed. */
-function secondsUntil(deadlineMs: number | undefined): number {
-  if (deadlineMs === undefined) return 0;
-  return Math.max(0, Math.ceil((deadlineMs - Date.now()) / 1000));
-}
-
-/**
  * Tells the table how long the acting seat has left. Sent on its own as well
  * as with the state, because the AFK window is re-armed on paths that change
  * no state at all — every rejoin and every disconnect — and a clock that ran
@@ -613,7 +411,7 @@ function armTurn(roomId: string) {
       roomId,
       setTimeout(() => {
         botTimers.delete(roomId);
-        safeTimer("botTurn", roomId, () => runBotTurn(roomId));
+        safeTimer(io, "botTurn", roomId, () => runBotTurn(roomId));
       }, BOT_MOVE_DELAY_MS)
     );
     emitTurnDeadline(roomId, game);
@@ -726,7 +524,7 @@ function startAfkTimer(roomId: string, userId: string, username: string) {
     key,
     setTimeout(() => {
       afkTimers.delete(key);
-      safeTimer("afkAutoPass", roomId, () => {
+      safeTimer(_io, "afkAutoPass", roomId, () => {
         const acted = handleAutoPass(roomId, userId);
         // Only announce when something actually happened, not on an early
         // return that did nothing.
@@ -2235,7 +2033,7 @@ export function setupSocket(httpServer: HttpServer) {
     });
   });
 
-  startSweeper();
+  startSweeper(io);
 
   return io;
 }
@@ -2385,111 +2183,6 @@ function seatClaimCode(
     case "already_joined":
       return "ALREADY_IN_ROOM";
   }
-}
-
-/**
- * Deletes `active_games` rows untouched for longer than
- * `ABANDONED_GAME_MAX_AGE_MS`. Returns how many went, so a caller can tell
- * "nothing to do" from "did not run".
- */
-async function pruneAbandonedGames(): Promise<number> {
-  const cutoff = new Date(Date.now() - ABANDONED_GAME_MAX_AGE_MS);
-  const gone = await db
-    .delete(activeGamesTable)
-    .where(lt(activeGamesTable.updatedAt, cutoff))
-    .returning({ roomId: activeGamesTable.roomId });
-  if (gone.length > 0) {
-    logger.info({ count: gone.length }, "Pruned abandoned games orphaned by a restart");
-  }
-  return gone.length;
-}
-
-/**
- * Deletes rooms nobody can still be playing in, and the seats that name them.
- *
- * `disposeGame` clears the `active_games` row when a table ends;
- * `updateRoomStatus(…, "finished")` is all that ever happened to the `rooms`
- * row, so every online game ever played left one behind, plus a
- * `room_players` row per seat. `room_players` has no cascade, so its rows go
- * first — the same order `storage.deleteUser` uses.
- *
- * A room still in the in-memory map is never a candidate, whatever its age.
- */
-async function pruneStaleRooms(): Promise<number> {
-  const cutoff = new Date(Date.now() - STALE_ROOM_MAX_AGE_MS);
-  const candidates = await db
-    .select({ id: roomsTable.id })
-    .from(roomsTable)
-    .where(lt(roomsTable.createdAt, cutoff))
-    .limit(STALE_ROOM_BATCH);
-
-  const ids = candidates.map((r) => r.id).filter((id) => !activeGames.has(id));
-  if (ids.length === 0) return 0;
-  // A lobby nobody ever came back to keeps its dropout records until here.
-  ids.forEach((id) => lobbyDropouts.delete(id));
-
-  await db.delete(roomPlayersTable).where(inArray(roomPlayersTable.roomId, ids));
-  await db.delete(activeGamesTable).where(inArray(activeGamesTable.roomId, ids));
-  const gone = await db
-    .delete(roomsTable)
-    .where(inArray(roomsTable.id, ids))
-    .returning({ id: roomsTable.id });
-
-  if (gone.length > 0) {
-    logger.info({ count: gone.length }, "Pruned rooms nobody can still be playing in");
-  }
-  return gone.length;
-}
-
-let sweeper: ReturnType<typeof setInterval> | null = null;
-
-/**
- * Long-running server hygiene: drop finished tables nobody is connected to and
- * forget public rooms that are no longer joinable.
- */
-function startSweeper() {
-  if (sweeper) return;
-  sweeper = setInterval(() => {
-    try {
-      for (const [roomId, game] of activeGames.entries()) {
-        safeTimer("sweepFinishedTable", roomId, () => {
-          const anyoneConnected = Object.values(game.playerMap).some((uid) =>
-            userSocketMap.has(uid)
-          );
-          if (!anyoneConnected && game.gameState.gameOver) {
-            disposeGame(roomId);
-          }
-        });
-      }
-
-      // Rows orphaned by a restart, which the loop above structurally cannot
-      // reach: it walks memory, and a restart is what emptied memory.
-      void pruneAbandonedGames().catch((err: unknown) =>
-        logger.error({ err }, "Pruning abandoned games failed")
-      );
-
-      void pruneStaleRooms().catch((err: unknown) =>
-        logger.error({ err }, "Pruning stale rooms failed")
-      );
-
-      for (const roomId of Array.from(publicRoomIds)) {
-        void storage
-          .getRoomById(roomId)
-          .then((room) => {
-            if (!room || room.status !== "waiting") publicRoomIds.delete(roomId);
-          })
-          .catch((err) =>
-            logger.warn(
-              { err, roomId },
-              "Failed to read the rooms row while sweeping — the public room list keeps a possibly unjoinable entry"
-            )
-          );
-      }
-    } catch (err) {
-      logger.error({ err }, "Sweeper failed");
-    }
-  }, SWEEP_INTERVAL_MS);
-  (sweeper as unknown as { unref?: () => void }).unref?.();
 }
 
 /**

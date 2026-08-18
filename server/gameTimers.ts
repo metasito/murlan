@@ -27,6 +27,12 @@ export const DISCONNECT_GRACE_MS = timeoutFromEnv("MURLAN_DISCONNECT_GRACE_MS", 
 export const BOT_MOVE_DELAY_MS = timeoutFromEnv("MURLAN_BOT_MOVE_DELAY_MS", 1_200);
 export const SWEEP_INTERVAL_MS = 5 * 60_000;
 
+/** Whole seconds left on a deadline, floored at 0. Zero when nothing is armed. */
+export function secondsUntil(deadlineMs: number | undefined): number {
+  if (deadlineMs === undefined) return 0;
+  return Math.max(0, Math.ceil((deadlineMs - Date.now()) / 1000));
+}
+
 export function clearAfkTimer(roomId: string, userId: string) {
   const key = `${roomId}:${userId}`;
   const t = afkTimers.get(key);
