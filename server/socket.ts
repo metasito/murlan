@@ -14,7 +14,7 @@ import {
 } from "../shared/schema.ts";
 import { consumeSocketTicket } from "./ticket.ts";
 import { isAllowedOrigin } from "./cors.ts";
-import { onEvent } from "./socketSafety.ts";
+import { allowSocketAction, onEvent } from "./socketSafety.ts";
 import {
   readPersistedPlayerMap,
   seatOfUser as seatOfUserInMap,
@@ -234,6 +234,20 @@ const STALE_ROOM_MAX_AGE_MS = 24 * 60 * 60_000;
 
 /** Rooms deleted per sweep. Bounds the size of one statement, not the total. */
 const STALE_ROOM_BATCH = 500;
+
+/**
+ * Handshakes one account may complete per minute.
+ *
+ * Socket.io answers `/socket.io/*` on the shared http.Server before Express
+ * ever sees it, so no express-rate-limit instance reaches the handshake — and
+ * an accepted connection costs several database round-trips before the client
+ * has emitted anything. Matched to the ticket limiter's 60/min
+ * (`server/routes.ts`), which mints one ticket per connection attempt: a
+ * smaller budget here would lock a phone out of its own game while its
+ * connection flaps.
+ */
+const HANDSHAKES_PER_MINUTE = 60;
+const HANDSHAKE_WINDOW_MS = 60_000;
 
 let _io: SocketServer | null = null;
 
@@ -1316,10 +1330,25 @@ export function setupSocket(httpServer: HttpServer) {
 
       if (!claimedUserId) return next(new Error("Not authenticated"));
 
+      // The session or the ticket has already proved this id, so the budget is
+      // keyed on it and spent *before* the account's first query rather than
+      // after it — the queries are what the limit exists to bound.
+      socket.data.userId = claimedUserId;
+      if (
+        !allowSocketAction(
+          socket,
+          "connection",
+          HANDSHAKES_PER_MINUTE,
+          HANDSHAKE_WINDOW_MS
+        )
+      ) {
+        logger.warn({ userId: claimedUserId }, "Handshake refused — too many connections");
+        return next(new Error("Too many connections"));
+      }
+
       const user = await storage.getUser(claimedUserId).catch(() => null);
       if (!user) return next(new Error("Not authenticated"));
 
-      socket.data.userId = user.id;
       socket.data.username = user.username;
       return next();
     } catch (err) {
@@ -2292,10 +2321,12 @@ export function setupSocket(httpServer: HttpServer) {
       }
     }
 
-    void emitFriendStatus(io, userId, true);
-
     try {
+      // One read for both halves of the connect notice: the friends who must
+      // be told this account came online, and the online list this socket is
+      // sent, are the same rows.
       const friends = await storage.getFriends(userId);
+      announceOnlineToFriends(io, userId, friends);
       const onlineIds = friends
         .map((f) => f.friend.id)
         .filter((id) => userSocketMap.has(id));
@@ -2730,18 +2761,22 @@ async function handleSeatRelease(
   }
 }
 
-async function emitFriendStatus(
+/**
+ * Tells every friend who is online that `userId` just came online. Takes the
+ * friend rows rather than reading them, so the connection handler pays for one
+ * `getFriends` and not two.
+ */
+function announceOnlineToFriends(
   io: SocketServer,
   userId: string,
-  online: boolean
+  friends: Awaited<ReturnType<typeof storage.getFriends>>
 ) {
-  const friends = await storage.getFriends(userId).catch(() => []);
-  // Abort if user disconnected while we were fetching friends
-  if (online && !userSocketMap.has(userId)) return;
+  // The read the caller did is awaited, so the socket may already be gone.
+  if (!userSocketMap.has(userId)) return;
   friends.forEach((f) => {
     const friendSocket = userSocketMap.get(f.friend.id);
     if (friendSocket) {
-      io.to(friendSocket).emit("friend:status", { userId, online });
+      io.to(friendSocket).emit("friend:status", { userId, online: true });
     }
   });
 }
