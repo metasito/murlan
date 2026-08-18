@@ -2,6 +2,7 @@ import { test, before, after, describe, mock } from "node:test";
 import assert from "node:assert/strict";
 import { io as ioClient, type Socket } from "socket.io-client";
 import { logger } from "../../server/logger.ts";
+import { createDeck } from "../../lib/gameEngine.ts";
 import {
   startTestServer,
   hasDatabase,
@@ -572,6 +573,109 @@ describe("gameplay integrity", { skip: hasDatabase() ? false : skipMessage() }, 
     await waitUntil(
       () => !__testables.hasActiveGame(room.roomId),
       "the room kept a live game in memory after its last seat emptied"
+    );
+  });
+
+  // ── Tests 10-12: the server-authority checks ────────────────────────────
+
+  /**
+   * Card ids are fully deterministic — `${rank}_${suit}` plus the two jokers
+   * — so every client already knows every id that can exist without ever
+   * seeing another hand. These three guards are the whole integrity half of
+   * the trust boundary, and each of them rejects by returning with no emit.
+   * Assert on the authoritative state instead: `game:rejoin` is an idempotent
+   * read, so a round-trip through it proves nothing moved.
+   */
+  async function authoritativeState(client: Client, roomId: string): Promise<SanitizedState> {
+    const fresh = waitFor<SanitizedState>(client.socket, "game:state");
+    client.socket.emit("game:rejoin", { roomCode: roomId });
+    return fresh;
+  }
+
+  test("a player cannot play out of turn", async () => {
+    const [alice, bob] = await makeClients(["out_of_turn_alice", "out_of_turn_bob"]);
+    const room = await setUpRoom([alice, bob], 2);
+    const states = await startGame([alice, bob]);
+
+    const idle = [alice, bob].find(
+      (_, i) => states[i].viewerSeatIndex !== states[i].currentTurnIndex
+    );
+    assert.ok(idle, "one of the two seats must not be on turn at the opening deal");
+    const before = states[[alice, bob].indexOf(idle)];
+
+    // Heads-up, the complement of your own hand *is* the opponent's, and the
+    // start card is broadcast to everyone — so the idle seat can name a card
+    // the seat on turn genuinely holds and forge a legal opening play from
+    // it. The ownership guard passes it; only the turn guard stops it.
+    const held = new Set(before.players[before.viewerSeatIndex].hand.map((c) => c.id));
+    assert.ok(before.startCard && !held.has(before.startCard.id));
+
+    idle.socket.emit("game:play", { cardIds: [before.startCard.id] });
+
+    const after = await authoritativeState(idle, room.roomId);
+    assert.equal(after.currentTurnIndex, before.currentTurnIndex);
+    assert.deepEqual(
+      after.players.map((p) => p.handCount),
+      before.players.map((p) => p.handCount)
+    );
+  });
+
+  test("a player cannot play a card they do not hold", async () => {
+    const [alice, bob] = await makeClients(["not_held_alice", "not_held_bob"]);
+    const room = await setUpRoom([alice, bob], 2);
+    const states = await startGame([alice, bob]);
+
+    const onTurn = [alice, bob].find(
+      (_, i) => states[i].viewerSeatIndex === states[i].currentTurnIndex
+    );
+    assert.ok(onTurn, "somebody must be on turn at the opening deal");
+    const before = states[[alice, bob].indexOf(onTurn)];
+    const held = new Set(before.players[before.viewerSeatIndex].hand.map((c) => c.id));
+    const foreign = createDeck().find((c) => !held.has(c.id));
+    assert.ok(foreign, "a two-handed deal cannot exhaust the deck");
+    assert.ok(before.startCard && held.has(before.startCard.id));
+
+    // The play is *refused*, not narrowed to the cards the sender does hold.
+    // `player.hand.filter(...)` would otherwise turn a forged two-card play
+    // into a legal single and let it through as if it had been asked for.
+    onTurn.socket.emit("game:play", { cardIds: [before.startCard.id, foreign.id] });
+
+    const after = await authoritativeState(onTurn, room.roomId);
+    assert.equal(after.currentTurnIndex, before.currentTurnIndex);
+    assert.equal(after.firstPlayMade, false);
+    assert.deepEqual(
+      after.players.map((p) => p.handCount),
+      before.players.map((p) => p.handCount)
+    );
+  });
+
+  test("the opening play must contain the start card", async () => {
+    const [alice, bob] = await makeClients(["start_card_alice", "start_card_bob"]);
+    const room = await setUpRoom([alice, bob], 2);
+    const states = await startGame([alice, bob]);
+
+    const onTurn = [alice, bob].find(
+      (_, i) => states[i].viewerSeatIndex === states[i].currentTurnIndex
+    );
+    assert.ok(onTurn, "somebody must be on turn at the opening deal");
+    const before = states[[alice, bob].indexOf(onTurn)];
+    assert.equal(before.firstPlayMade, false);
+    assert.ok(before.startCard, "the opening deal must name a start card");
+
+    const other = before.players[before.viewerSeatIndex].hand.find(
+      (c) => c.id !== before.startCard!.id
+    );
+    assert.ok(other, "the seat on turn holds more than the start card");
+
+    const rejected = waitFor<{ code: string }>(onTurn.socket, "game:error");
+    onTurn.socket.emit("game:play", { cardIds: [other.id] });
+    assert.equal((await rejected).code, "MUST_PLAY_START_CARD");
+
+    const after = await authoritativeState(onTurn, room.roomId);
+    assert.equal(after.firstPlayMade, false);
+    assert.deepEqual(
+      after.players.map((p) => p.handCount),
+      before.players.map((p) => p.handCount)
     );
   });
 });
