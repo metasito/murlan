@@ -26,6 +26,19 @@ import {
 } from "./gameRoom.ts";
 import type { OnlineGameState } from "./gameRoom.ts";
 import {
+  afkTimers,
+  disconnectTimers,
+  botTimers,
+  AFK_TIMEOUT_MS,
+  DISCONNECT_GRACE_MS,
+  BOT_MOVE_DELAY_MS,
+  SWEEP_INTERVAL_MS,
+  clearAfkTimer,
+  clearRoomTimers,
+  clearAllTimersForUser,
+  clearRoomDisconnectTimers,
+} from "./gameTimers.ts";
+import {
   readPersistedPlayerMap,
   seatOfUser as seatOfUserInMap,
   scoreKeyForSeat as scoreKeyForMapSeat,
@@ -107,33 +120,6 @@ function forgetLobbyDropout(roomId: string, userId: string) {
   room.delete(userId);
   if (room.size === 0) lobbyDropouts.delete(roomId);
 }
-
-// Timers. Every entry added here has exactly one matching delete — see
-// clearAfkTimer / clearRoomTimers / clearAllTimersForUser / disposeGame.
-const afkTimers = new Map<string, ReturnType<typeof setTimeout>>();
-const disconnectTimers = new Map<string, ReturnType<typeof setTimeout>>();
-const botTimers = new Map<string, ReturnType<typeof setTimeout>>();
-
-/**
- * Read once at module scope, never per-call — a test process boots this
- * module a single time (see tests/helpers/testServer.ts), so this is safe to
- * shorten via env var without touching the production defaults below, which
- * apply whenever the var is unset (always, in production).
- */
-function timeoutFromEnv(name: string, defaultMs: number): number {
-  const raw = process.env[name];
-  if (!raw) return defaultMs;
-  const parsed = Number(raw);
-  return Number.isFinite(parsed) && parsed > 0 ? parsed : defaultMs;
-}
-
-const AFK_TIMEOUT_MS = timeoutFromEnv("MURLAN_AFK_TIMEOUT_MS", 30_000);
-const DISCONNECT_GRACE_MS = timeoutFromEnv("MURLAN_DISCONNECT_GRACE_MS", 60_000);
-// Paced so a bot seat reads as thinking rather than as an instant reflex.
-// Tunable for tests, which otherwise pay it on every move of every table a
-// disconnect hands over to the AI.
-const BOT_MOVE_DELAY_MS = timeoutFromEnv("MURLAN_BOT_MOVE_DELAY_MS", 1_200);
-const SWEEP_INTERVAL_MS = 5 * 60_000;
 
 /**
  * How long an `active_games` row may sit untouched before it is abandoned.
@@ -361,63 +347,6 @@ function sanitizeStateForPlayer(
       };
     }),
   };
-}
-
-
-// ─── Timer bookkeeping ────────────────────────────────────────────────────────
-
-function clearAfkTimer(roomId: string, userId: string) {
-  const key = `${roomId}:${userId}`;
-  const t = afkTimers.get(key);
-  if (t) {
-    clearTimeout(t);
-    afkTimers.delete(key);
-  }
-}
-
-function clearRoomAfkTimers(roomId: string) {
-  const prefix = `${roomId}:`;
-  for (const [key, timer] of afkTimers) {
-    if (key.startsWith(prefix)) {
-      clearTimeout(timer);
-      afkTimers.delete(key);
-    }
-  }
-}
-
-function clearBotTimer(roomId: string) {
-  const t = botTimers.get(roomId);
-  if (t) {
-    clearTimeout(t);
-    botTimers.delete(roomId);
-  }
-}
-
-function clearRoomTimers(roomId: string) {
-  clearRoomAfkTimers(roomId);
-  clearBotTimer(roomId);
-}
-
-function clearAllTimersForUser(userId: string, roomId?: string) {
-  const dcTimer = disconnectTimers.get(userId);
-  if (dcTimer) {
-    clearTimeout(dcTimer);
-    disconnectTimers.delete(userId);
-  }
-  if (roomId) {
-    clearAfkTimer(roomId, userId);
-  }
-}
-
-/** Cancels the grace timers of everyone seated in this room. */
-function clearRoomDisconnectTimers(game: OnlineGameState) {
-  for (const uid of Object.values(game.playerMap)) {
-    const t = disconnectTimers.get(uid);
-    if (t) {
-      clearTimeout(t);
-      disconnectTimers.delete(uid);
-    }
-  }
 }
 
 /** Drops every in-memory trace of a room. */
