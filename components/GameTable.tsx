@@ -406,7 +406,11 @@ export function GameTable({
   const reduceMotion = usePrefersReducedMotion();
   const felt = useTableFelt();
 
-  const [roundWinnerSeat, setRoundWinnerSeat] = useState<number | null>(null);
+  // The seat that took the last round and a counter of how many rounds have
+  // closed. The counter is what makes an identical repeat a new announcement:
+  // the seat that wins a round leads the next one, so the same seat winning
+  // twice running is ordinary play.
+  const [roundWinnerTag, setRoundWinnerTag] = useState<{ seat: number; closure: number } | null>(null);
   const [pileState, setPileState] = useState<PileState>(EMPTY_PILE);
   const [pileBounceTrigger, setPileBounceTrigger] = useState(0);
   const [flyInfo, setFlyInfo] = useState<{
@@ -424,7 +428,7 @@ export function GameTable({
   // spoken for.
   const roundHoldTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const prevComboKeyRef = useRef<string>("");
-  const prevRoundWinnerRef = useRef<number | null>(null);
+  const roundClosedRef = useRef(false);
   const prevMyTurnRef = useRef(false);
   const prevExchangeActiveRef = useRef(false);
   const prevGameOverRef = useRef(false);
@@ -692,31 +696,37 @@ export function GameTable({
     shakeX,
   ]);
 
-  // Round-winner tag over the pile. The seat is what is stored, not the name:
-  // the name is looked up at render, so a game update that only changes the
-  // player list cannot restart the banner's own timers.
+  // Round-winner tag over the pile, keyed on the round *closing* rather than on
+  // the value of `roundWinner`: processPlay leaves that field standing through
+  // the round the winner goes on to lead, so with two players it never changes
+  // and every win after the first would go unannounced. The seat is what is
+  // stored, not the name — the name is looked up at render, so a game update
+  // that only changes the player list cannot restart the banner's own timers.
   useEffect(() => {
-    const winner = gameState.roundWinner;
-    // Cleared between rounds, so the seat that wins two in a row — the common
-    // case, since the round winner leads the next one — is announced twice.
-    if (winner === null || winner === undefined) {
-      prevRoundWinnerRef.current = null;
+    if (
+      !roundClosedWithWinner({
+        lastPlayedCombination: gameState.lastPlayedCombination,
+        roundWinner: gameState.roundWinner,
+      })
+    ) {
+      roundClosedRef.current = false;
       return;
     }
-    if (winner === prevRoundWinnerRef.current) return;
-    prevRoundWinnerRef.current = winner;
-    setRoundWinnerSeat(winner);
-  }, [gameState.roundWinner]);
+    if (roundClosedRef.current) return;
+    roundClosedRef.current = true;
+    const seat = gameState.roundWinner!;
+    setRoundWinnerTag((prev) => ({ seat, closure: (prev?.closure ?? 0) + 1 }));
+  }, [gameState.lastPlayedCombination, gameState.roundWinner]);
 
   // A round closes on a pass, never on a play, so nothing is in flight here and
   // the sting is the first sound of the beat — ahead of the round-start sting,
   // which the pile effect has deferred for as long as this tag is up.
   useEffect(() => {
-    if (roundWinnerSeat === null) return;
+    if (roundWinnerTag === null) return;
     playRoundWin();
-    const dismiss = setTimeout(() => setRoundWinnerSeat(null), ROUND_WINNER_MS);
+    const dismiss = setTimeout(() => setRoundWinnerTag(null), ROUND_WINNER_MS);
     return () => clearTimeout(dismiss);
-  }, [roundWinnerSeat]);
+  }, [roundWinnerTag]);
 
   useEffect(() => {
     if (isMyTurn && !isFinished && !prevMyTurnRef.current) playYourTurn();
@@ -1029,7 +1039,7 @@ export function GameTable({
                 <PlayedPile
                   prev={pileState.prev}
                   current={flyInfo ? null : pileState.current}
-                  roundWinner={roundWinnerSeat === null ? null : players[roundWinnerSeat]?.name ?? ""}
+                  roundWinner={roundWinnerTag === null ? null : players[roundWinnerTag.seat]?.name ?? ""}
                   bounceTrigger={pileBounceTrigger}
                 />
               )}
