@@ -183,6 +183,43 @@ describe("spectator mode", { skip: hasDatabase() ? false : skipMessage() }, () =
     assert.equal(payload.code, "ROOM_NOT_FOUND");
   });
 
+  // The premise the client's spectator flag rests on: a refused spectate
+  // registers nothing, so `room:unspectate` has nothing to release and the seat
+  // the player later takes is freed only by `room:leave`. A client that latches
+  // the flag on a refusal sends the wrong one of the two and leaves the seat
+  // occupied — dealt hands and auto-passed — while its own screen shows the
+  // lobby.
+  test("a refused spectate leaves a later seat to be released by room:leave", async () => {
+    const eve = await connectAs(server, "spec_latch_eve");
+    sockets.push(eve.socket);
+    const refused = waitFor<{ code?: string }>(eve.socket, "room:error", 4000);
+    eve.socket.emit("room:spectate", { code: "ZZZZZZ" });
+    assert.equal((await refused).code, "ROOM_NOT_FOUND");
+
+    const alice = await connectAs(server, "spec_latch_alice");
+    sockets.push(alice.socket);
+    const created = waitFor<RoomState>(alice.socket, "room:state");
+    alice.socket.emit("room:create", { gameMode: "free_for_all", maxPlayers: 4 });
+    const room = await created;
+    const joined = waitFor<RoomState>(eve.socket, "room:state");
+    eve.socket.emit("room:join", { code: room.code });
+    await joined;
+
+    const { storage } = await import("../../server/storage.ts");
+    const seated = async () =>
+      (await storage.getRoomPlayers(room.roomId)).some((p) => p.userId === eve.user.id);
+    assert.ok(await seated(), "the join must have taken a seat for the assertions below to mean anything");
+
+    eve.socket.emit("room:unspectate");
+    await new Promise((r) => setTimeout(r, 250));
+    assert.ok(await seated(), "room:unspectate must not be mistaken for releasing a seat");
+
+    const roster = waitFor<RoomState>(alice.socket, "room:state");
+    eve.socket.emit("room:leave");
+    await roster;
+    assert.equal(await seated(), false, "room:leave must free the seat");
+  });
+
   test("leaving stops the updates", async () => {
     const { room, alice, bob, aliceState, bobState } = await seatedGame("spec_leave");
     const watcher = await connectAs(server, "spec_leave_eve");
