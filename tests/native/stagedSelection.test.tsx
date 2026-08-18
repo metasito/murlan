@@ -153,6 +153,22 @@ describe('selecting a card out of turn', () => {
     await r.unmount();
   });
 
+  it('stays shut for a spectator, whose seat is on move', async () => {
+    // Opening selection outside the turn must not open it to a watcher. A
+    // spectator is sent no cards at all, so the row is face down: no press
+    // target, and neither play control is rendered.
+    const onSelectCard = jest.fn<(id: string) => void>();
+    const r = await render(
+      table({ currentTurnIndex: 0, selectedIds: [], spectating: true, onSelectCard })
+    );
+
+    expect(screen.queryByLabelText(cardSpokenName(SEVEN_H, t))).toBeNull();
+    expect(screen.queryByTestId('btn-gioca')).toBeNull();
+    expect(screen.queryByTestId('btn-passa')).toBeNull();
+    expect(onSelectCard).not.toHaveBeenCalled();
+
+    await r.unmount();
+  });
 });
 
 // ─── Offline: an AI turn must not wipe the staging ────────────────────────────
