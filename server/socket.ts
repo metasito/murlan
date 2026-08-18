@@ -1792,7 +1792,10 @@ export function setupSocket(httpServer: HttpServer) {
         if (!player) return;
         const unique = Array.from(new Set(cardIds));
         const cards = player.hand.filter((c) => unique.includes(c.id));
-        if (cards.length !== unique.length) return;
+        if (cards.length !== unique.length) {
+          socket.emit("game:error", { message: "Invalid card", code: "INVALID_CARD" });
+          return;
+        }
 
         const combo = buildCombination(cards);
         if (!combo) {

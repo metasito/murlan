@@ -582,9 +582,10 @@ describe("gameplay integrity", { skip: hasDatabase() ? false : skipMessage() }, 
    * Card ids are fully deterministic — `${rank}_${suit}` plus the two jokers
    * — so every client already knows every id that can exist without ever
    * seeing another hand. These three guards are the whole integrity half of
-   * the trust boundary, and each of them rejects by returning with no emit.
-   * Assert on the authoritative state instead: `game:rejoin` is an idempotent
-   * read, so a round-trip through it proves nothing moved.
+   * the trust boundary. A `game:error` says the move was refused; it does not
+   * say the table stayed put, so every case also asserts the authoritative
+   * state — `game:rejoin` is an idempotent read, so a round-trip through it
+   * proves nothing moved.
    */
   async function authoritativeState(client: Client, roomId: string): Promise<SanitizedState> {
     const fresh = waitFor<SanitizedState>(client.socket, "game:state");
@@ -638,7 +639,9 @@ describe("gameplay integrity", { skip: hasDatabase() ? false : skipMessage() }, 
     // The play is *refused*, not narrowed to the cards the sender does hold.
     // `player.hand.filter(...)` would otherwise turn a forged two-card play
     // into a legal single and let it through as if it had been asked for.
+    const rejected = waitFor<{ code: string }>(onTurn.socket, "game:error");
     onTurn.socket.emit("game:play", { cardIds: [before.startCard.id, foreign.id] });
+    assert.equal((await rejected).code, "INVALID_CARD");
 
     const after = await authoritativeState(onTurn, room.roomId);
     assert.equal(after.currentTurnIndex, before.currentTurnIndex);
