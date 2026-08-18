@@ -324,8 +324,7 @@ function TurnTimer({
 
   if (!active) return null;
   const urgent = timeLeft <= urgentThresholdSeconds(seconds);
-  // The clock face is what says the number is a deadline, before the first
-  // expiry has said it for them.
+  // The clock face marks the number as a deadline rather than a score.
   return (
     <View style={styles.timerGroup}>
       <Ionicons
