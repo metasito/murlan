@@ -9,29 +9,19 @@
 /** Width of a full-size card. Mirrors CardView.tsx `styles.cardNormal.width`. Re-exported from GameShared.tsx as the canonical `CARD_W`. */
 export const CARD_W = 58;
 
-// ─── Minimum readable overlap step ─────────────────────────────────────────
+// ─── Minimum overlap step ──────────────────────────────────────────────────
 //
-// Derived from CardView.tsx's corner geometry, not guessed:
-//   - `styles.cardInner` has `padding: 4` on every side.
-//   - `styles.topCorner` stacks the rank label over the suit glyph, flush
-//     against that padded top-left corner (`alignItems: "flex-start"`).
-//   - `styles.rankTextNormal` is `fontSize: 15`, `fontFamily:
-//     "Rajdhani_700Bold"` — bold, fairly condensed numerals.
-//   - `styles.suitCorner` is `fontSize: 11`, a single glyph — always
-//     narrower than the rank label above it.
-// The widest rank label is the two-character "10" (every other rank is a
-// single glyph). For the next, overlapping card to leave this corner
-// readable, the step has to clear the card's left padding plus the width of
-// "10" set in 15px bold. Condensed bold digits run close to 0.6em/character.
-const CARD_INNER_PADDING = 4;
-const RANK_FONT_SIZE = 15;
-const RANK_CHAR_WIDTH_EM = 0.6;
-const WIDEST_RANK_CHAR_COUNT = 2; // "10"
+// WCAG 2.2 SC 2.5.8 Target Size (Minimum), Level AA: 24x24 CSS px, or the
+// undersized-target exception, which requires that 24px circles centred on
+// adjacent targets not intersect. Adjacent card centres are exactly `step`
+// apart, so a step below 24 fails both the size test and the exception.
+//
+// 44pt is not reachable here: at 14 cards it needs ~630px of hand width, which
+// only a redesign — a two-row hand, or reclaiming the side buttons — provides.
+// tests/e2e/tapTargets.spec.ts names the hand as its one deliberate exception.
 
-/** Smallest overlap step (px) that keeps an overlapped card's rank/suit corner legible. */
-export const MIN_READABLE_STEP = Math.ceil(
-  CARD_INNER_PADDING + RANK_FONT_SIZE * RANK_CHAR_WIDTH_EM * WIDEST_RANK_CHAR_COUNT
-);
+/** Smallest overlap step (px) that keeps a card its own tappable target. */
+export const MIN_READABLE_STEP = 24;
 
 export interface HandLayout {
   /** Horizontal distance (px) between each card's left edge. */
