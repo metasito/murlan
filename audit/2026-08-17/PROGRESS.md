@@ -64,6 +64,30 @@ on `main` for a human to ship it.
 
 ---
 
+## Treatment per batch
+
+Decided from what the finished batches actually cost, so no session has to work it out again.
+The default is **inline, grouped, one review, one full-suite run**. Deviations only where the
+row says so.
+
+| # | Dispatches | Subagents | Local verify before push |
+|---|---|---|---|
+| 8 Game feel | 2 (client) | no | `npm test` + `test:native` — no Postgres needed |
+| 9 Accessibility | 2-3 (components / tokens / tests) | no | `npm test` + `test:native` |
+| 10 Rules | 2 (engine / server) | no | full, **with Postgres** |
+| 11 Layout | **1** | no | `npm test` + `test:native` |
+| 12 Test coverage | 2 | no | full, **with Postgres** |
+| 13 Architecture seams | per risky finding | **yes** — `subagent-driven-development` | full, **with Postgres** |
+| 14 Docs | **1** | no | `npm run lint` only — CI's fast path skips the rest |
+
+**Scale local verification to what the batch touches; CI always runs everything.** A batch that
+never opens `server/` cannot break the integration suites, and waiting 115s locally to prove it
+buys nothing that CI does not already prove. Run them locally when the batch touches `server/`,
+`shared/` or `lib/gameEngine.ts` — there, `skipped 0` still matters before you push.
+
+11 and 14 are 22 findings, almost all Low and effort S, in files that barely overlap. They are
+one dispatch each and should finish inside an hour, not a day.
+
 ## Blocking notes
 
 - **Batch 1 cannot be verified locally.** `TEST-01` fixes GitHub Actions' shell wrapper, which

@@ -62,6 +62,9 @@ hundred lines should not spend most of its wall-clock re-proving work that alrea
 
 - **Do not improvise.** Each finding's "Proposed fix" names files and approach. If you think one
   is wrong, stop and say so — do not substitute your own.
+- **Check § Treatment per batch in PROGRESS.md first.** It says how many dispatches this batch
+  takes, whether it needs subagents, and what to verify locally. It was decided from what the
+  finished batches actually cost — follow it rather than re-deriving it.
 - **Run the touched tests while you work; run the full suite once, at the end.**
   `node --test tests/thatFile.test.ts` is seconds. `npm test` is two minutes and you do not need
   it after every finding — run the batch's full verification command once, immediately before you
