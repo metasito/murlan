@@ -16,6 +16,7 @@ import { t, translateServerPayload, type ServerPayload } from "@/lib/i18n";
 import type { Socket } from "socket.io-client";
 import { MATCH_TARGETS, matchIsClosing } from "@/lib/gameEngine";
 import { handCountOf } from "@/components/gameTableModel";
+import { clearReactions, pushReaction } from "@/lib/reactions";
 import type { GameState, MatchLength } from "@/lib/gameEngine";
 import type { ExchangeAnnounceData } from "@/lib/sharedGameFlow";
 import type { BotPersonalityId } from "@/lib/botPersonalities";
@@ -28,13 +29,6 @@ export interface RoomState {
   gameMode: "free_for_all" | "teams";
   maxPlayers: number;
   players: Array<{ seatIndex: number; userId: string; username: string }>;
-}
-
-export interface Reaction {
-  emoji: string;
-  fromSeat: number;
-  username: string;
-  id: string;
 }
 
 export interface RematchVoteState {
@@ -75,7 +69,6 @@ const INITIAL_INTENTS: RematchIntentState = { yes: 0, total: 0, answers: {} };
 interface OnlineGameContextValue {
   room: RoomState | null;
   gameState: GameState | null;
-  reactions: Reaction[];
   connected: boolean;
   error: string | null;
   playerLeft: boolean;
@@ -161,7 +154,6 @@ export function OnlineGameProvider({ userId, children }: { userId: string; child
   const qc = useQueryClient();
   const [room, setRoom] = useState<RoomState | null>(null);
   const [gameState, setGameState] = useState<GameState | null>(null);
-  const [reactions, setReactions] = useState<Reaction[]>([]);
   const [connected, setConnected] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [playerLeft, setPlayerLeft] = useState(false);
@@ -183,7 +175,6 @@ export function OnlineGameProvider({ userId, children }: { userId: string; child
   const roomRef = useRef<RoomState | null>(null);
   const gameStateRef = useRef<GameState | null>(null);
   const reconnectNoticeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const reactionTimersRef = useRef<Set<ReturnType<typeof setTimeout>>>(new Set());
   // Room id read back from storage — the only rejoin handle available after a cold start.
   const persistedRoomIdRef = useRef<string | null>(null);
   // The waiting lobby's code, same purpose for `room:rejoin`.
@@ -502,15 +493,8 @@ export function OnlineGameProvider({ userId, children }: { userId: string; child
 
     const onVoteState = (vs: RematchVoteState) => setRematchVoteState(vs);
 
-    const onReaction = (r: { emoji: string; fromSeat: number; username: string }) => {
-      const id = Date.now().toString() + Math.random().toString(36).substr(2, 5);
-      setReactions((prev) => [...prev.slice(-9), { ...r, id }]);
-      const t = setTimeout(() => {
-        reactionTimersRef.current.delete(t);
-        setReactions((prev) => prev.filter((x) => x.id !== id));
-      }, 2500);
-      reactionTimersRef.current.add(t);
-    };
+    const onReaction = (r: { emoji: string; fromSeat: number; username: string }) =>
+      pushReaction(r);
 
     const onPlayerLeft = () => setPlayerLeft(true);
 
@@ -631,8 +615,9 @@ export function OnlineGameProvider({ userId, children }: { userId: string; child
       // that would otherwise fire after unmount.
       if (reconnectNoticeTimerRef.current) clearTimeout(reconnectNoticeTimerRef.current);
       if (rejoinRetryTimerRef.current) clearTimeout(rejoinRetryTimerRef.current);
-      reactionTimersRef.current.forEach(clearTimeout);
-      reactionTimersRef.current.clear();
+      // The reaction store outlives this provider, so its contents and its
+      // pending removals both have to go with the table.
+      clearReactions();
     };
   }, [
     userId,
@@ -779,7 +764,6 @@ export function OnlineGameProvider({ userId, children }: { userId: string; child
     () => ({
       room,
       gameState,
-      reactions,
       connected,
       error,
       playerLeft,
@@ -815,7 +799,7 @@ export function OnlineGameProvider({ userId, children }: { userId: string; child
       clearPlayerLeft,
       clearRejoinFailed,
     }),
-    [room, gameState, reactions, connected, error, playerLeft, rejoinFailed, disconnectedPlayers, reconnectNotice, mySeatIndex, entrySource, rematchVoteState, cumulativeScores, matchState, rematchIntents, rematchPromptOpen, exchangeAnnouncing, exchangeAnnounceData, createRoom, joinRoom, spectateRoom, isSpectator, leaveRoom, quickmatch, setRoomGameMode, startGame, requestPlayAgain, voteRematch, answerRematch, playCards, pass, giveExchangeCard, acknowledgeExchange, sendReaction, clearError, clearPlayerLeft, clearRejoinFailed]
+    [room, gameState, connected, error, playerLeft, rejoinFailed, disconnectedPlayers, reconnectNotice, mySeatIndex, entrySource, rematchVoteState, cumulativeScores, matchState, rematchIntents, rematchPromptOpen, exchangeAnnouncing, exchangeAnnounceData, createRoom, joinRoom, spectateRoom, isSpectator, leaveRoom, quickmatch, setRoomGameMode, startGame, requestPlayAgain, voteRematch, answerRematch, playCards, pass, giveExchangeCard, acknowledgeExchange, sendReaction, clearError, clearPlayerLeft, clearRejoinFailed]
   );
 
   return (

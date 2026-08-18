@@ -16,6 +16,7 @@ import Animated, {
 } from "react-native-reanimated";
 import { Colors, FontSize, Motion, Radius, Scrim, Spacing } from "@/lib/theme";
 import { usePrefersReducedMotion } from "@/lib/accessibility";
+import { useTableReactions, type TableReaction } from "@/lib/reactions";
 import { useTranslation } from "@/lib/i18n";
 
 export const EMOJIS = ["😂", "🔥", "😤", "👏", "😱", "🤡", "💣", "👑"];
@@ -23,13 +24,6 @@ export const EMOJIS = ["😂", "🔥", "😤", "👏", "😱", "🤡", "💣", "
 /** How long a reaction stays on screen as it rises. */
 const RISE_MS = 1800;
 const RISE_PX = -80;
-
-export interface TableReaction {
-  id: string;
-  emoji: string;
-  username: string;
-  fromSeat: number;
-}
 
 function FloatingReaction({ reaction }: { reaction: TableReaction }) {
   const y = useSharedValue(0);
@@ -67,7 +61,9 @@ function FloatingReaction({ reaction }: { reaction: TableReaction }) {
   );
 }
 
-export function FloatingReactions({ reactions }: { reactions: TableReaction[] }) {
+/** Reads the reaction store itself, so a reaction re-renders this and nothing else. */
+export function FloatingReactions() {
+  const reactions = useTableReactions();
   return (
     <>
       {reactions.map((r) => (

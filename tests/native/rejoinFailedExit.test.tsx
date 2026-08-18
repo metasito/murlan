@@ -33,7 +33,6 @@ jest.mock('@/context/OnlineGameContext', () => ({
     // A failed rejoin has already cleared the state, so the screen renders
     // nothing — every hook still runs, which is what this test drives.
     gameState: null,
-    reactions: [],
     mySeatIndex: -1,
     isSpectator: false,
     playerLeft: false,

@@ -47,7 +47,6 @@ export default function OnlineGameScreen() {
   const { user } = useAuth();
   const {
     gameState,
-    reactions,
     mySeatIndex,
     isSpectator,
     playerLeft,
@@ -299,7 +298,7 @@ export default function OnlineGameScreen() {
       }
       overlays={
         <>
-          <FloatingReactions reactions={reactions} />
+          <FloatingReactions />
 
           {showReactions && (
             <ReactionPanel
