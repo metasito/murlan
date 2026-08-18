@@ -86,21 +86,45 @@ async function readMp3(file: string): Promise<Decoded> {
   };
 }
 
-// A one-shot effect in a card game. Nothing here is music; anything running
-// longer than this is a bug in the build, not a design choice.
-const CEILING_SECONDS = 4;
+/**
+ * Decoded length of each shipped effect, in seconds. Decoding alone does not
+ * catch a truncated file — mpg123 reports no error on a short stream, and every
+ * other measure here (peak, RMS, trailing silence) is scale-free — so the
+ * length is pinned per file.
+ */
+const EXPECTED_SECONDS: Record<string, number> = {
+  "bomb.mp3": 1.045,
+  "card_pass.mp3": 1.097,
+  "card_play.mp3": 0.392,
+  "card_select.mp3": 0.731,
+  "deal.mp3": 3.161,
+  "exchange.mp3": 0.888,
+  "game_lose.mp3": 0.496,
+  "game_win.mp3": 0.914,
+  "round_start.mp3": 0.81,
+  "round_win.mp3": 0.392,
+  "urgent_tick.mp3": 0.131,
+  "your_turn.mp3": 0.235,
+};
+// MP3 frames are 1152 samples (~26ms at 44.1kHz), so a rebuild can only land on
+// multiples of that; the floor keeps the shortest effects clear of the framing.
+const DURATION_TOLERANCE_FRACTION = 0.1;
+const DURATION_TOLERANCE_FLOOR = 0.03;
+
+function durationTolerance(file: string): number {
+  return Math.max(EXPECTED_SECONDS[file] * DURATION_TOLERANCE_FRACTION, DURATION_TOLERANCE_FLOOR);
+}
+
 // Trailing audio quieter than this, relative to the file's own peak, is
 // inaudible under anything else the game is doing. build-sounds.mjs trims to
 // the same floor and fades over 60ms, so a correctly built file has almost none
 // of it left.
 const SILENCE_FLOOR_DB = -55;
 const WINDOW_SECONDS = 0.01;
-// MP3 frames are fixed 1152-sample blocks (~26ms at 44.1kHz) and the encoder
-// adds priming delay before the first one, so decoded silence can run a
-// frame or so past where build-sounds.mjs actually trimmed — measured up to
-// ~88ms across the current twelve files. The budget below has margin over
-// that for a future rebuild without going slack enough to hide a real bug.
-const MAX_TRAILING_SILENCE = 0.15;
+// Decoded silence runs a frame or so past where build-sounds.mjs trimmed,
+// because of MP3's fixed frames and the encoder's priming delay: measured
+// 0.060-0.088s across the twelve files.
+const MAX_TRAILING_SILENCE = 0.11;
 
 describe("sound assets", () => {
   test("lib/sounds.ts requires exactly the files that exist on disk", () => {
@@ -108,13 +132,23 @@ describe("sound assets", () => {
     const onDisk = readdirSync(soundsDir).filter((f) => f.endsWith(".mp3")).sort();
     assert.ok(required.length > 0, "no require() calls found — the scan is broken");
     assert.deepEqual(onDisk, required, "assets/sounds and lib/sounds.ts disagree");
+    assert.deepEqual(
+      Object.keys(EXPECTED_SECONDS).sort(),
+      required,
+      "EXPECTED_SECONDS does not cover exactly the shipped effects"
+    );
   });
 
   for (const file of requiredFiles()) {
     test(`${file} is playable audio, not an empty or silent file`, async () => {
       const mp3 = await readMp3(file);
       assert.equal(mp3.sampleRate, 44100, `${file} must be 44.1 kHz`);
-      assert.ok(mp3.seconds > 0.02, `${file} is ${mp3.seconds.toFixed(3)}s — effectively empty`);
+      const expected = EXPECTED_SECONDS[file];
+      const tolerance = durationTolerance(file);
+      assert.ok(
+        Math.abs(mp3.seconds - expected) <= tolerance,
+        `${file} runs ${mp3.seconds.toFixed(3)}s, expected ${expected}s ±${tolerance.toFixed(3)}s — truncated, padded or rebuilt from a different source`
+      );
       // A file of the right size full of zeroes is the failure mode a plain
       // existence check misses entirely.
       assert.ok(mp3.peak > 0.2, `${file} peaks at ${mp3.peak.toFixed(3)} — silent or near-silent`);
@@ -123,10 +157,6 @@ describe("sound assets", () => {
 
     test(`${file} carries no dead air at the end`, async () => {
       const mp3 = await readMp3(file);
-      assert.ok(
-        mp3.seconds <= CEILING_SECONDS,
-        `${file} runs ${mp3.seconds.toFixed(2)}s, ceiling ${CEILING_SECONDS}s`
-      );
       const silence = mp3.seconds - mp3.soundEndsAt;
       assert.ok(
         silence <= MAX_TRAILING_SILENCE,
@@ -136,17 +166,12 @@ describe("sound assets", () => {
   }
 
   test("the effects are levelled against each other", async () => {
-    // The source packs are mastered at different levels; build-sounds.mjs
-    // normalises every output to the same headroom before MP3 encoding.
-    // Lossy encoding then shaves a bit off the true peak (measured: a PCM
-    // peak normalised to 0.89 decodes back at roughly 0.78-0.85), so the
-    // floor here is below the encoder's target rather than at it — the
-    // point of the assertion is catching one effect startlingly louder or
-    // quieter than the rest, not pinning the exact peak MP3 reproduces.
+    // build-sounds.mjs normalises every output to 0.89 before encoding; the
+    // lossy pass shaves that down to a measured 0.778-0.846.
     for (const file of requiredFiles()) {
       const { peak } = await readMp3(file);
       assert.ok(
-        peak > 0.7 && peak <= 1.0,
+        peak > 0.75 && peak <= 1.0,
         `${file} peaks at ${peak.toFixed(3)}, expected a normalised ~0.8`
       );
     }
