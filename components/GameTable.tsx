@@ -853,11 +853,12 @@ export function GameTable({
     if (gameState.passCount > prevCount || (closed && !wasClosed)) playCardPass();
   }, [gameState.passCount, gameState.lastPlayedCombination, gameState.roundWinner]);
 
-  // A card can leave the hand without the player having touched it: the server
-  // moves for a seat that ran out of clock, and every manche is a fresh deal.
-  // Card ids are deterministic (`${rank}_${suit}`), so a leftover id matches a
-  // card in the *next* hand and renders it lifted and glowing. `onSelectCard`
-  // toggles, so naming an id the hand no longer holds drops it.
+  // A card can leave the hand without the player having touched it — the server
+  // moves for a seat that ran out of clock — and a staged id the hand no longer
+  // holds is both a lit GIOCA the server refuses and a play the viewer did not
+  // choose. `onSelectCard` toggles, so naming such an id drops it. An id the
+  // *new* hand does hold is a different problem, and the manche boundary is
+  // where it is cleared (app/(online)/game.tsx, context/GameContext.tsx).
   useEffect(() => {
     if (spectating) return;
     const handIds = new Set(sortedHand.map((c) => c.id));
