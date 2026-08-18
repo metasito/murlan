@@ -1,6 +1,8 @@
 import { Server as SocketServer } from "socket.io";
 import type { Socket } from "socket.io";
-import type { Server as HttpServer } from "node:http";
+import type { IncomingMessage, Server as HttpServer } from "node:http";
+import type { NextFunction, Request, Response } from "express";
+import type { Session, SessionData } from "express-session";
 import { eq, inArray, lt } from "drizzle-orm";
 import { storage } from "./storage.ts";
 import { logger } from "./logger.ts";
@@ -334,11 +336,7 @@ export async function evictUser(userId: string): Promise<void> {
 export const __testables = {
   actingSeat: (state: GameState) => actingSeat(state),
   autoMoveForSeat: (state: GameState, seat: number, useAi: boolean) =>
-    autoMoveForSeat(
-      { gameState: state, handFlags: {}, moveLog: null } as OnlineGameState,
-      seat,
-      useAi
-    ),
+    autoMoveForSeat({ gameState: state, handFlags: {}, moveLog: null }, seat, useAi),
   /**
    * Same as autoMoveForSeat, but also returns the OnlineGameState.handFlags
    * an AFK-forced/bot move produced — regression coverage for the
@@ -346,7 +344,7 @@ export const __testables = {
    * bare GameState result can't expose.
    */
   autoMoveForSeatWithFlags: (state: GameState, seat: number, useAi: boolean) => {
-    const game = { gameState: state, handFlags: {}, moveLog: null } as OnlineGameState;
+    const game: AutoMovable = { gameState: state, handFlags: {}, moveLog: null };
     const next = autoMoveForSeat(game, seat, useAi);
     return { state: next, handFlags: game.handFlags };
   },
@@ -606,11 +604,14 @@ function resolveStuckExchange(state: GameState): GameState {
  * commonly an AFK-forced lone joker) silently under-counts the purist /
  * iron_will / wild_card achievements.
  */
-function recordPlayFlags(game: OnlineGameState, seat: number, combo: Combination) {
+function recordPlayFlags(game: AutoMovable, seat: number, combo: Combination) {
   const flags = (game.handFlags[seat] ??= { bomb: false, joker: false });
   if (combo.type === "bomb") flags.bomb = true;
   if (combo.cards.some((c) => c.isJoker)) flags.joker = true;
 }
+
+/** Everything an automated move reads or writes on a room's live game. */
+type AutoMovable = Pick<OnlineGameState, "gameState" | "handFlags" | "moveLog">;
 
 /**
  * One automated action for a seat.
@@ -620,7 +621,7 @@ function recordPlayFlags(game: OnlineGameState, seat: number, combo: Combination
  * behalf). Returns the new state, or null when the seat cannot act at all.
  */
 function autoMoveForSeat(
-  game: OnlineGameState,
+  game: AutoMovable,
   seat: number,
   useAi: boolean
 ): GameState | null {
@@ -1226,6 +1227,16 @@ function broadcastRematchIntents(io: SocketServer, game: OnlineGameState) {
 
 // ─── Server ───────────────────────────────────────────────────────────────────
 
+/**
+ * The upgrade request once `sessionMiddleware` has run on it. express-session
+ * attaches its session to Express' `Request`, which this is not, and types the
+ * attachment as always present — the handshake reaches the auth guard whether
+ * the store answered or not.
+ */
+type HandshakeRequest = IncomingMessage & {
+  session?: Session & Partial<SessionData>;
+};
+
 export function setupSocket(httpServer: HttpServer) {
   const io = new SocketServer(httpServer, {
     cors: {
@@ -1242,9 +1253,11 @@ export function setupSocket(httpServer: HttpServer) {
   });
   _io = io;
 
-  // Inject session into socket requests
+  // Inject session into socket requests. `next` is cast because express and
+  // socket.io disagree about it, not about the session: express overloads it
+  // with `"route"`/`"router"`, which socket.io's error-only signature rejects.
   io.use((socket, next) => {
-    sessionMiddleware(socket.request as any, {} as any, next as any);
+    sessionMiddleware(socket.request as Request, {} as Response, next as NextFunction);
   });
 
   /**
@@ -1254,8 +1267,8 @@ export function setupSocket(httpServer: HttpServer) {
    */
   io.use(async (socket, next) => {
     try {
-      const req = socket.request as any;
-      const sessionUserId = req.session?.userId as string | undefined;
+      const req = socket.request as HandshakeRequest;
+      const sessionUserId = req.session?.userId;
       const claimedUserId =
         sessionUserId ?? consumeSocketTicket(socket.handshake.auth?.ticket);
 

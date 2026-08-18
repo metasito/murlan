@@ -2,6 +2,13 @@ import session from "express-session";
 import connectPgSimple from "connect-pg-simple";
 import { pool } from "./db.ts";
 
+/** What `/api/auth/*` puts on the session, and what the socket handshake reads back. */
+declare module "express-session" {
+  interface SessionData {
+    userId?: string;
+  }
+}
+
 const PgSession = connectPgSimple(session);
 
 const isProduction = process.env.NODE_ENV === "production";
