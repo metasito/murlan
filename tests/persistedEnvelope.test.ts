@@ -21,17 +21,29 @@ const flags: HandFlags = { 0: { bomb: true, joker: false }, 3: { bomb: false, jo
 
 describe("persisted game_state envelope", () => {
   test("hand flags survive a persist/restore round trip", () => {
-    const restored = unpackPersistedState(packPersistedState(gameState, flags));
+    const restored = unpackPersistedState(packPersistedState(gameState, flags, 0));
     assert.deepEqual(restored.handFlags, flags);
+  });
+
+  test("the deal rotation survives a persist/restore round trip", () => {
+    const restored = unpackPersistedState(packPersistedState(gameState, flags, 3));
+    assert.equal(restored.dealFirstSeat, 3);
+    assert.ok(!("dealFirstSeat" in restored.gameState));
+  });
+
+  test("a row written before the deal rotation existed restores from seat 0", () => {
+    const legacy = { ...gameState, schemaVersion: GAME_SCHEMA_VERSION };
+    assert.equal(unpackPersistedState(legacy).dealFirstSeat, 0);
   });
 
   test("the engine state comes back byte-for-byte, with no envelope fields on it", () => {
     // The restored state is broadcast to every client and compared against
     // engine output — a stray schemaVersion or handFlags on it is a real bug.
-    const restored = unpackPersistedState(packPersistedState(gameState, flags));
+    const restored = unpackPersistedState(packPersistedState(gameState, flags, 0));
     assert.deepEqual(restored.gameState, gameState);
     assert.ok(!("schemaVersion" in restored.gameState));
     assert.ok(!("handFlags" in restored.gameState));
+    assert.ok(!("dealFirstSeat" in restored.gameState));
   });
 
   test("a row written before hand flags existed restores as empty, not undefined", () => {
@@ -47,11 +59,11 @@ describe("persisted game_state envelope", () => {
     // so would reject every game in flight at deploy time.
     const legacy = { ...gameState, schemaVersion: GAME_SCHEMA_VERSION };
     assert.equal(isStaleSchema(legacy), false);
-    assert.equal(isStaleSchema(packPersistedState(gameState, flags)), false);
+    assert.equal(isStaleSchema(packPersistedState(gameState, flags, 0)), false);
   });
 
   test("the envelope still carries the version a stale row is detected by", () => {
-    const packed = packPersistedState(gameState, flags);
+    const packed = packPersistedState(gameState, flags, 0);
     assert.equal(packed.schemaVersion, GAME_SCHEMA_VERSION);
     assert.equal(isStaleSchema({ ...gameState, schemaVersion: GAME_SCHEMA_VERSION + 1 }), true);
     assert.equal(isStaleSchema(null), true);
@@ -59,7 +71,7 @@ describe("persisted game_state envelope", () => {
 
   test("packing does not mutate the caller's game state", () => {
     const original = { ...gameState };
-    packPersistedState(gameState, flags);
+    packPersistedState(gameState, flags, 0);
     assert.deepEqual(gameState, original);
   });
 });

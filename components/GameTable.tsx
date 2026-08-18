@@ -208,6 +208,12 @@ export interface TurnTimerConfig {
   /** Length of the countdown, in seconds. */
   seconds: number;
   /**
+   * Restarts the countdown when it changes, on top of the turn itself. Online
+   * the server re-arms its window on paths that change no state — a rejoin,
+   * a disconnect — and the clock has to follow.
+   */
+  resetKey?: string;
+  /**
    * Count down while leading a new round too. False offline (leading has no
    * deadline); true online, where the server arms its AFK timer every turn.
    */
@@ -1098,7 +1104,7 @@ export function GameTable({
         <TurnTimer
           seconds={turnTimer?.seconds ?? 0}
           active={timerActive}
-          resetKey={turnToken}
+          resetKey={`${turnToken}|${turnTimer?.resetKey ?? ""}`}
           onExpire={turnTimer?.onExpire}
         />
 

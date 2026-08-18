@@ -76,6 +76,10 @@ interface OnlineGameContextValue {
   disconnectedPlayers: Set<string>;
   reconnectNotice: string | null;
   mySeatIndex: number;
+  /** The acting seat's remaining AFK window, as the server measured it. */
+  turnSeconds: number;
+  /** Opaque: changes whenever the server re-arms, so the clock restarts. */
+  turnDeadlineMs: number | undefined;
   entrySource: "quickmatch" | "friends" | null;
   rematchVoteState: RematchVoteState | null;
   cumulativeScores: Record<string, number>;
@@ -149,6 +153,13 @@ const TERMINAL_ROOM_REJOIN_CODES = new Set([
   "ROOM_FULL",
 ]);
 
+interface TurnDeadline {
+  turnDeadlineMs?: number;
+  turnSecondsRemaining: number;
+}
+
+const NO_TURN_DEADLINE: TurnDeadline = { turnSecondsRemaining: 0 };
+
 export function OnlineGameProvider({ userId, children }: { userId: string; children: ReactNode }) {
   const { showNotification } = useNotification();
   const qc = useQueryClient();
@@ -198,6 +209,7 @@ export function OnlineGameProvider({ userId, children }: { userId: string; child
   // "unknown" sentinel — it must never be confused with a real seat (0..3),
   // which silently defaulting to 0 used to do.
   const [mySeatIndex, setMySeatIndex] = useState(-1);
+  const [turnDeadline, setTurnDeadline] = useState<TurnDeadline>(NO_TURN_DEADLINE);
 
   const socket: Socket = getSocket(userId);
 
@@ -366,8 +378,16 @@ export function OnlineGameProvider({ userId, children }: { userId: string; child
       setError(translateServerPayload(payload));
     };
 
-    const onGameState = (state: GameState & { viewerSeatIndex?: number | null }) => {
+    const onGameState = (
+      state: GameState & { viewerSeatIndex?: number | null } & Partial<TurnDeadline>
+    ) => {
       forgetRejoinAttempt();
+      if (typeof state.turnSecondsRemaining === "number") {
+        setTurnDeadline({
+          turnDeadlineMs: state.turnDeadlineMs,
+          turnSecondsRemaining: state.turnSecondsRemaining,
+        });
+      }
       if (typeof state.viewerSeatIndex === "number") {
         setMySeatIndex(state.viewerSeatIndex);
       }
@@ -576,6 +596,7 @@ export function OnlineGameProvider({ userId, children }: { userId: string; child
     socket.on("room:state", onRoomState);
     socket.on("room:error", onRoomError);
     socket.on("game:state", onGameState);
+    socket.on("game:turn_deadline", setTurnDeadline);
     socket.on("game:error", onGameError);
     socket.on("game:notification", onGameNotification);
     socket.on("game:started", () => {});
@@ -598,6 +619,7 @@ export function OnlineGameProvider({ userId, children }: { userId: string; child
       socket.off("room:state", onRoomState);
       socket.off("room:error", onRoomError);
       socket.off("game:state", onGameState);
+      socket.off("game:turn_deadline", setTurnDeadline);
       socket.off("game:error", onGameError);
       socket.off("game:notification", onGameNotification);
       socket.off("game:started");
@@ -771,6 +793,8 @@ export function OnlineGameProvider({ userId, children }: { userId: string; child
       disconnectedPlayers,
       reconnectNotice,
       mySeatIndex,
+      turnSeconds: turnDeadline.turnSecondsRemaining,
+      turnDeadlineMs: turnDeadline.turnDeadlineMs,
       entrySource,
       rematchVoteState,
       cumulativeScores,
@@ -799,7 +823,7 @@ export function OnlineGameProvider({ userId, children }: { userId: string; child
       clearPlayerLeft,
       clearRejoinFailed,
     }),
-    [room, gameState, connected, error, playerLeft, rejoinFailed, disconnectedPlayers, reconnectNotice, mySeatIndex, entrySource, rematchVoteState, cumulativeScores, matchState, rematchIntents, rematchPromptOpen, exchangeAnnouncing, exchangeAnnounceData, createRoom, joinRoom, spectateRoom, isSpectator, leaveRoom, quickmatch, setRoomGameMode, startGame, requestPlayAgain, voteRematch, answerRematch, playCards, pass, giveExchangeCard, acknowledgeExchange, sendReaction, clearError, clearPlayerLeft, clearRejoinFailed]
+    [room, gameState, connected, error, playerLeft, rejoinFailed, disconnectedPlayers, reconnectNotice, mySeatIndex, turnDeadline, entrySource, rematchVoteState, cumulativeScores, matchState, rematchIntents, rematchPromptOpen, exchangeAnnouncing, exchangeAnnounceData, createRoom, joinRoom, spectateRoom, isSpectator, leaveRoom, quickmatch, setRoomGameMode, startGame, requestPlayAgain, voteRematch, answerRematch, playCards, pass, giveExchangeCard, acknowledgeExchange, sendReaction, clearError, clearPlayerLeft, clearRejoinFailed]
   );
 
   return (

@@ -9,6 +9,7 @@ import {
   initializeGame,
   j,
   makePlayer,
+  nextDealFirstSeat,
   shuffleDeck,
   type Card,
 } from "./helpers.ts";
@@ -63,6 +64,44 @@ describe("the deal (defect 3) — the whole deck goes out", () => {
       assert.equal(new Set(ids(all)).size, 54, "no card is dealt twice");
     });
   }
+
+  test("the extra cards rotate with the first seat", () => {
+    assert.deepEqual(dealCards(4, 0).hands.map((h) => h.length), [14, 14, 13, 13]);
+    assert.deepEqual(dealCards(4, 1).hands.map((h) => h.length), [13, 14, 14, 13]);
+    assert.deepEqual(dealCards(4, 2).hands.map((h) => h.length), [13, 13, 14, 14]);
+    assert.deepEqual(dealCards(4, 3).hands.map((h) => h.length), [14, 13, 13, 14]);
+  });
+
+  test("the whole deck still goes out at every offset", () => {
+    for (const playerCount of [2, 3, 4]) {
+      for (let firstSeat = 0; firstSeat < playerCount; firstSeat++) {
+        const { hands, excluded } = dealCards(playerCount, firstSeat);
+        const all = hands.flat();
+        assert.equal(excluded.length, 0);
+        assert.equal(all.length, 54, `${playerCount}p from seat ${firstSeat}`);
+        assert.equal(new Set(ids(all)).size, 54, "no card is dealt twice");
+      }
+    }
+  });
+
+  test("four consecutive manches give every seat the bigger hand", () => {
+    const bigHands = new Set<number>();
+    let firstSeat = 0;
+    for (let manche = 0; manche < 4; manche++) {
+      dealCards(4, firstSeat).hands.forEach((h, seat) => {
+        if (h.length === 14) bigHands.add(seat);
+      });
+      firstSeat = nextDealFirstSeat(firstSeat, 4);
+    }
+    assert.deepEqual([...bigHands].sort(), [0, 1, 2, 3]);
+  });
+
+  test("the rotation wraps, and a stray offset is still a legal deal", () => {
+    assert.equal(nextDealFirstSeat(3, 4), 0);
+    assert.equal(nextDealFirstSeat(1, 2), 0);
+    assert.deepEqual(dealCards(4, 4).hands.map((h) => h.length), [14, 14, 13, 13]);
+    assert.deepEqual(dealCards(4, -1).hands.map((h) => h.length), [14, 13, 13, 14]);
+  });
 
   test("both jokers and the 3 of spades are always dealt", () => {
     for (let i = 0; i < 200; i++) {

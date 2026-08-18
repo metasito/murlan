@@ -22,7 +22,7 @@ import type {
  * shape the engine no longer expects corrupts a game silently, while losing one
  * abandoned match costs nothing.
  */
-export const OFFLINE_SAVE_VERSION = 1;
+export const OFFLINE_SAVE_VERSION = 2;
 
 export const OFFLINE_SAVE_KEY = "@murlan_offline_game";
 
@@ -34,6 +34,8 @@ export interface OfflineSave {
   /** Needed to deal the next manche — `initializeRematch` takes the setup, not the state. */
   players: PlayerSetupConfig[];
   gameMode: GameMode;
+  /** Where the next manche deals from, so the rotation survives a restart. */
+  dealFirstSeat: number;
 }
 
 export function encodeOfflineSave(save: Omit<OfflineSave, "version">): string {
@@ -65,13 +67,14 @@ export function decodeOfflineSave(raw: string | null): OfflineSave | null {
   if (!isObject(parsed)) return null;
   if (parsed.version !== OFFLINE_SAVE_VERSION) return null;
 
-  const { gameState, match, rematchAnswers, players, gameMode } = parsed;
+  const { gameState, match, rematchAnswers, players, gameMode, dealFirstSeat } = parsed;
   if (!isObject(gameState) || !Array.isArray(gameState.players)) return null;
   if (gameState.players.length === 0) return null;
   if (!isObject(match) || !isObject(match.scores) || !Array.isArray(match.hands)) return null;
   if (!isObject(rematchAnswers)) return null;
   if (!Array.isArray(players) || players.length !== gameState.players.length) return null;
   if (gameMode !== "free_for_all" && gameMode !== "teams") return null;
+  if (!Number.isInteger(dealFirstSeat)) return null;
 
   return parsed as unknown as OfflineSave;
 }

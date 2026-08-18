@@ -7,6 +7,8 @@
 // exercise the exact code path the server runs.
 import { botSeatNames, getBotPersonality } from "../lib/botPersonalities.ts";
 import type { BotPersonalityId } from "../lib/botPersonalities.ts";
+import { resolveMatch, resolveTeamMatch } from "../lib/gameEngine.ts";
+import type { GameMode, MatchLength } from "../lib/gameEngine.ts";
 
 /**
  * seat -> userId from the persisted map, falling back to the legacy positional
@@ -168,6 +170,7 @@ export type HandFlags = Record<number, { bomb: boolean; joker: boolean }>;
 export type PersistedEnvelope<S> = S & {
   schemaVersion: number;
   handFlags?: HandFlags;
+  dealFirstSeat?: number;
 };
 
 /**
@@ -177,9 +180,10 @@ export type PersistedEnvelope<S> = S & {
  */
 export function packPersistedState<S extends object>(
   gameState: S,
-  handFlags: HandFlags
+  handFlags: HandFlags,
+  dealFirstSeat: number
 ): PersistedEnvelope<S> {
-  return { ...gameState, schemaVersion: GAME_SCHEMA_VERSION, handFlags };
+  return { ...gameState, schemaVersion: GAME_SCHEMA_VERSION, handFlags, dealFirstSeat };
 }
 
 /**
@@ -189,11 +193,16 @@ export function packPersistedState<S extends object>(
  */
 export function unpackPersistedState<S extends object>(
   persisted: PersistedEnvelope<S>
-): { gameState: S; handFlags: HandFlags } {
-  const { schemaVersion: _schemaVersion, handFlags, ...gameState } = persisted;
+): { gameState: S; handFlags: HandFlags; dealFirstSeat: number } {
+  const { schemaVersion: _schemaVersion, handFlags, dealFirstSeat, ...gameState } = persisted;
   // A row written before handFlags joined the envelope has none; starting that
-  // hand's tracking over is the pre-existing behaviour, so no schema bump.
-  return { gameState: gameState as unknown as S, handFlags: handFlags ?? {} };
+  // hand's tracking over is the pre-existing behaviour, so no schema bump. The
+  // same holds for the deal rotation: a row without one resumes from seat 0.
+  return {
+    gameState: gameState as unknown as S,
+    handFlags: handFlags ?? {},
+    dealFirstSeat: dealFirstSeat ?? 0,
+  };
 }
 
 export interface SeatEntry {
@@ -240,4 +249,48 @@ export function buildSeatRoster(
     });
   });
   return roster.sort((a, b) => a.seatIndex - b.seatIndex);
+}
+
+/**
+ * Scoring key -> team id, for the seated humans only. Vacated (`bot:<seat>`)
+ * seats are left out on purpose: they are already excluded from
+ * `cumulativeScores` (see `excludeBotSeats`), so including them here would add
+ * a zero-scoring member that can never win but could be named as one.
+ */
+export function teamKeyMap(
+  playerMap: Record<number, string>,
+  players: { team?: "A" | "B" }[]
+): Record<string, string> {
+  const map: Record<string, string> = {};
+  players.forEach((p, seat) => {
+    const userId = playerMap[seat];
+    if (userId === undefined || !p.team) return;
+    map[userId] = p.team;
+  });
+  return map;
+}
+
+/**
+ * Whether the match a stored row belongs to had already been decided when it
+ * was written. Teams races to the target as a *pair* (docs/RULES.md §11), so
+ * it must be read back through the same resolver the live path uses — no
+ * individual key in a pair on 11 + 11 reaches a target of 21, and restoring
+ * that game as still running plays on inside a match that was already won.
+ */
+export function restoredMatchOver(args: {
+  matchLength: MatchLength;
+  gameMode: GameMode;
+  handOver: boolean;
+  scores: Record<string, number>;
+  target: number;
+  teamOfKey: Record<string, string>;
+  playerCount: number;
+}): boolean {
+  const { matchLength, gameMode, handOver, scores, target, teamOfKey, playerCount } = args;
+  if (matchLength === "single") return handOver;
+  const resolution =
+    gameMode === "teams" && Object.keys(teamOfKey).length > 0
+      ? resolveTeamMatch(scores, teamOfKey, target, playerCount)
+      : resolveMatch(scores, target, playerCount);
+  return !!resolution && resolution.newTarget === null;
 }

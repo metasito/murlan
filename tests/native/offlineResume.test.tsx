@@ -60,6 +60,7 @@ const midExchangeSave = () => {
       { name: "Luan", type: "ai", personality: "luan" },
     ],
     gameMode: "free_for_all",
+    dealFirstSeat: 1,
   });
 };
 

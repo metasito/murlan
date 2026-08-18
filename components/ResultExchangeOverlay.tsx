@@ -69,7 +69,7 @@ export function ResultExchangeOverlay({
   };
   const winner = gameState.players[ep.winnerIdx];
   const loser = gameState.players[ep.loserIdx];
-  const exchangeCards = sortHand(getValidGivebackCards(winner.hand));
+  const exchangeCards = sortHand(getValidGivebackCards(winner.hand, ep.cardFromLoser?.id));
 
   useEffect(() => {
     if (ep.bothJokersException) {
@@ -79,7 +79,7 @@ export function ResultExchangeOverlay({
     if (winner.type === "ai" && !autoRef.current) {
       autoRef.current = true;
       const t = setTimeout(() => {
-        const give = pickGivebackCard(winner.hand);
+        const give = pickGivebackCard(winner.hand, ep.cardFromLoser?.id);
         if (give) chooseExchangeCard(give.id);
       }, AI_PICK_DELAY_MS);
       return () => clearTimeout(t);

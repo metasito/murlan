@@ -24,6 +24,8 @@ import {
   excludeBotSeats,
   isContestedTable,
   buildSeatRoster,
+  teamKeyMap,
+  restoredMatchOver,
   isStaleSchema,
   packPersistedState,
   unpackPersistedState,
@@ -48,6 +50,9 @@ import {
 import {
   initializeGame,
   initializeRematch,
+  nextDealFirstSeat,
+  teamForSeat,
+  TEAMS_PLAYER_COUNT,
   processPlay,
   processPass,
   processExchangeChoice,
@@ -63,7 +68,7 @@ import {
   isMajority,
   resolveMatch,
   resolveTeamMatch,
-  MATCH_TARGETS,
+  targetsFor,
 } from "../lib/gameEngine.ts";
 import type { GameState, Card, GameMode, Combination, MatchLength } from "../lib/gameEngine.ts";
 import { recordGameResult } from "./stats.ts";
@@ -119,6 +124,20 @@ interface OnlineGameState {
    * game on its next rejoin.
    */
   abandonedSeats: Map<number, string>;
+  /**
+   * When the acting seat's AFK window runs out, in server time. Undefined
+   * whenever nothing is on the clock — a vacated seat waiting on a bot, or a
+   * finished hand. Memory only: it is re-armed on the next move and would be
+   * meaningless after a restart.
+   */
+  turnDeadlineMs?: number;
+  /**
+   * The seat the next manche deals from. The two extra cards of a 54-card
+   * deal land on it and its neighbour, so it advances every manche — seat 0 is
+   * always the host, and a fixed origin hands the host's half of the table a
+   * bigger hand for the whole match.
+   */
+  dealFirstSeat: number;
   /**
    * userIds watching without a seat. Deliberately not persisted: a spectator
    * who reconnects spectates again, and a restart dropping them costs nothing.
@@ -384,6 +403,7 @@ export const __testables = {
       matchOver: game.matchOver,
       cumulativeScores: { ...game.cumulativeScores },
       rankings: [...game.gameState.rankings],
+      dealFirstSeat: game.dealFirstSeat,
     };
   },
   /**
@@ -403,7 +423,8 @@ export const __testables = {
 function sanitizeStateForPlayer(
   state: GameState,
   viewerUserId: string,
-  playerMap: Record<number, string>
+  playerMap: Record<number, string>,
+  turnDeadlineMs?: number
 ) {
   // The server knows which seat the viewer occupies authoritatively; ship it
   // with every state so the client never has to derive it (e.g. from a lobby
@@ -412,6 +433,11 @@ function sanitizeStateForPlayer(
   return {
     ...state,
     viewerSeatIndex,
+    // Seconds rather than the deadline itself: a device whose clock is off by
+    // minutes would render an absolute timestamp as a clock that is already
+    // over or never moves. The deadline rides along only as a reset key.
+    turnDeadlineMs,
+    turnSecondsRemaining: secondsUntil(turnDeadlineMs),
     // Strips `cardFromLoser` — a named card out of a named player's hand —
     // down to only the two seats in the exchange, and only while it is active.
     exchangePhase: visibleExchangePhase(
@@ -514,7 +540,7 @@ function persistGameState(roomId: string, game: OnlineGameState): Promise<unknow
   const playerMap = game.playerMap as Record<string, string>;
   // Stamped so a restart can tell a current-shape row from a stale one (see
   // GAME_SCHEMA_VERSION) rather than restoring a corrupt hand silently.
-  const persistedState = packPersistedState(game.gameState, game.handFlags);
+  const persistedState = packPersistedState(game.gameState, game.handFlags, game.dealFirstSeat);
   const values = {
     roomCode: roomId,
     gameState: persistedState as any,
@@ -559,7 +585,7 @@ function broadcastGameState(io: SocketServer, game: OnlineGameState) {
   const send = (uid: string) => {
     const target = userSocketMap.get(uid);
     if (!target) return;
-    io.to(target).emit("game:state", sanitizeStateForPlayer(gameState, uid, playerMap));
+    io.to(target).emit("game:state", sanitizeStateForPlayer(gameState, uid, playerMap, game.turnDeadlineMs));
   };
   Object.values(playerMap).forEach(send);
   // Spectators go through the same sanitiser. findViewerSeat returns null for
@@ -631,7 +657,7 @@ function autoMoveForSeat(
     if (state.exchangePhase.winnerIdx !== seat) return null;
     const player = state.players[seat];
     if (!player) return null;
-    const valid = getValidGivebackCards(player.hand);
+    const valid = getValidGivebackCards(player.hand, state.exchangePhase.cardFromLoser?.id);
     if (valid.length === 0) return resolveStuckExchange(state);
     return processExchangeChoice(state, valid[0].id);
   }
@@ -719,6 +745,25 @@ function safeTimer(label: string, roomId: string, fn: () => void): void {
   }
 }
 
+/** Whole seconds left on a deadline, floored at 0. Zero when nothing is armed. */
+function secondsUntil(deadlineMs: number | undefined): number {
+  if (deadlineMs === undefined) return 0;
+  return Math.max(0, Math.ceil((deadlineMs - Date.now()) / 1000));
+}
+
+/**
+ * Tells the table how long the acting seat has left. Sent on its own as well
+ * as with the state, because the AFK window is re-armed on paths that change
+ * no state at all — every rejoin and every disconnect — and a clock that ran
+ * to zero while the server still held a full window reads as a frozen table.
+ */
+function emitTurnDeadline(roomId: string, game: OnlineGameState) {
+  _io?.to(roomId).emit("game:turn_deadline", {
+    turnDeadlineMs: game.turnDeadlineMs,
+    turnSecondsRemaining: secondsUntil(game.turnDeadlineMs),
+  });
+}
+
 /**
  * Single scheduler for "whose move is it". Called after every state change, so
  * the AFK chain never breaks and a vacated seat is always resolvable:
@@ -731,12 +776,16 @@ function armTurn(roomId: string) {
   if (!io || !game) return;
 
   clearRoomTimers(roomId);
-  if (game.gameState.gameOver) return;
+  if (game.gameState.gameOver) {
+    game.turnDeadlineMs = undefined;
+    return;
+  }
 
   const seat = actingSeat(game.gameState);
   const userId = game.playerMap[seat];
 
   if (userId === undefined) {
+    game.turnDeadlineMs = undefined;
     botTimers.set(
       roomId,
       setTimeout(() => {
@@ -744,11 +793,14 @@ function armTurn(roomId: string) {
         safeTimer("botTurn", roomId, () => runBotTurn(roomId));
       }, BOT_MOVE_DELAY_MS)
     );
+    emitTurnDeadline(roomId, game);
     return;
   }
 
   const username = game.gameState.players[seat]?.name ?? "";
+  game.turnDeadlineMs = Date.now() + AFK_TIMEOUT_MS;
   startAfkTimer(roomId, userId, username);
+  emitTurnDeadline(roomId, game);
 }
 
 /**
@@ -767,9 +819,11 @@ function armTurnIfIdle(roomId: string) {
   const game = activeGames.get(roomId);
   if (!game) return;
 
-  if (botTimers.has(roomId)) return;
+  if (botTimers.has(roomId)) return emitTurnDeadline(roomId, game);
   const seatUserId = game.playerMap[actingSeat(game.gameState)];
-  if (seatUserId !== undefined && afkTimers.has(`${roomId}:${seatUserId}`)) return;
+  if (seatUserId !== undefined && afkTimers.has(`${roomId}:${seatUserId}`)) {
+    return emitTurnDeadline(roomId, game);
+  }
 
   armTurn(roomId);
 }
@@ -817,17 +871,18 @@ function runBotTurn(roomId: string) {
   }
 }
 
-/** Returns true when a move was actually made. */
-function handleAutoPass(roomId: string, userId: string): boolean {
+/** What the seat was made to do, or null when nothing was played. */
+function handleAutoPass(roomId: string, userId: string): "exchange" | "move" | null {
   const io = _io;
   const game = activeGames.get(roomId);
-  if (!io || !game || game.gameState.gameOver) return false;
+  if (!io || !game || game.gameState.gameOver) return null;
 
   const seat = actingSeat(game.gameState);
-  if (game.playerMap[seat] !== userId) return false;
+  if (game.playerMap[seat] !== userId) return null;
 
+  const wasExchange = !!game.gameState.exchangePhase?.active;
   const next = autoMoveForSeat(game, seat, false);
-  if (!next) return false;
+  if (!next) return null;
 
   game.gameState = next;
   broadcastGameState(io, game);
@@ -838,7 +893,7 @@ function handleAutoPass(roomId: string, userId: string): boolean {
   } else {
     armTurn(roomId);
   }
-  return true;
+  return wasExchange ? "exchange" : "move";
 }
 
 function startAfkTimer(roomId: string, userId: string, username: string) {
@@ -853,10 +908,13 @@ function startAfkTimer(roomId: string, userId: string, username: string) {
         // Only announce when something actually happened, not on an early
         // return that did nothing.
         if (acted && _io) {
+          const exchanged = acted === "exchange";
           _io.to(roomId).emit("game:notification", {
             type: "afk",
-            code: "PLAYER_AFK_AUTO_PASS",
-            message: `${username} è inattivo — passato automaticamente`,
+            code: exchanged ? "PLAYER_AFK_AUTO_EXCHANGE" : "PLAYER_AFK_AUTO_PASS",
+            message: exchanged
+              ? `${username} è inattivo — carta scambiata automaticamente`
+              : `${username} è inattivo — passato automaticamente`,
             params: { username },
           });
         }
@@ -1010,25 +1068,6 @@ async function vacateSeat(
 
 // ─── Match scoring ────────────────────────────────────────────────────────────
 
-/**
- * Scoring key -> team id, for the seated humans only. Vacated (`bot:<seat>`)
- * seats are left out on purpose: they are already excluded from
- * `cumulativeScores` (see `excludeBotSeats`), so including them here would add
- * a zero-scoring member that can never win but could be named as one.
- */
-function teamKeyMap(
-  game: OnlineGameState,
-  state: GameState
-): Record<string, string> {
-  const map: Record<string, string> = {};
-  state.players.forEach((p, seat) => {
-    const userId = game.playerMap[seat];
-    if (userId === undefined || !p.team) return;
-    map[userId] = p.team;
-  });
-  return map;
-}
-
 async function handleGameOver(
   io: SocketServer,
   roomId: string,
@@ -1066,20 +1105,31 @@ async function handleGameOver(
   let isDraw = false;
 
   if (game.matchLength === "single") {
-    // A quick game is one manche: whoever took it has won the match.
+    // A quick game is one manche: whoever took it has won the match — and in
+    // teams mode the manche is taken by a pair, not by the seat that emptied
+    // its hand first (docs/RULES.md §11).
     game.matchOver = true;
     const topSeat = seatOfEngineId.get(state.rankings[0] ?? "");
-    matchWinners = topSeat === undefined ? [] : [scoreKeyForSeat(game, topSeat)];
+    const winningTeam = topSeat === undefined ? undefined : state.players[topSeat]?.team;
+    if (topSeat === undefined) {
+      matchWinners = [];
+    } else if (game.gameMode === "teams" && winningTeam) {
+      matchWinners = Object.entries(teamKeyMap(game.playerMap, state.players))
+        .filter(([, team]) => team === winningTeam)
+        .map(([key]) => key);
+    } else {
+      matchWinners = [scoreKeyForSeat(game, topSeat)];
+    }
   } else {
     // Teams mode races to the target as a *pair* (docs/RULES.md §11: the two
     // partners' placement points are summed), so the match must be resolved on
     // the team total and both partners reported as winners. Free-for-all is
     // unchanged.
-    const teamOfKey = teamKeyMap(game, state);
+    const teamOfKey = teamKeyMap(game.playerMap, state.players);
     const resolution =
       game.gameMode === "teams" && Object.keys(teamOfKey).length > 0
-        ? resolveTeamMatch(game.cumulativeScores, teamOfKey, game.matchTarget)
-        : resolveMatch(game.cumulativeScores, game.matchTarget);
+        ? resolveTeamMatch(game.cumulativeScores, teamOfKey, game.matchTarget, state.players.length)
+        : resolveMatch(game.cumulativeScores, game.matchTarget, state.players.length);
     if (resolution) {
       if (resolution.newTarget !== null) {
         game.matchTarget = resolution.newTarget;
@@ -1294,7 +1344,7 @@ async function handleGameOver(
 function rollMatchForward(game: OnlineGameState) {
   if (game.matchOver) {
     game.cumulativeScores = {};
-    game.matchTarget = MATCH_TARGETS[0];
+    game.matchTarget = targetsFor(game.gameState.players.length)[0];
     game.matchOver = false;
     game.rematchIntents.clear();
   }
@@ -1440,6 +1490,13 @@ export function setupSocket(httpServer: HttpServer) {
       "room:create",
       RoomCreateSchema,
       async ({ gameMode, maxPlayers }) => {
+        if (gameMode === "teams" && maxPlayers !== TEAMS_PLAYER_COUNT) {
+          socket.emit("room:error", {
+            message: "Teams mode needs exactly 4 players",
+            code: "TEAMS_REQUIRE_FOUR",
+          });
+          return;
+        }
         const room = await storage.createRoom(userId, gameMode, maxPlayers);
         await storage.addRoomPlayer(room.id, userId, 0);
 
@@ -1492,7 +1549,7 @@ export function setupSocket(httpServer: HttpServer) {
         socket.join(room.id);
         socket.emit(
           "game:state",
-          sanitizeStateForPlayer(game.gameState, userId, game.playerMap)
+          sanitizeStateForPlayer(game.gameState, userId, game.playerMap, game.turnDeadlineMs)
         );
         logger.info({ roomId: room.id, userId }, "Spectator joined");
       },
@@ -1650,6 +1707,13 @@ export function setupSocket(httpServer: HttpServer) {
       "room:quickmatch",
       RoomQuickmatchSchema,
       async ({ maxPlayers, gameMode }) => {
+        if (gameMode === "teams" && maxPlayers !== TEAMS_PLAYER_COUNT) {
+          socket.emit("room:error", {
+            message: "Teams mode needs exactly 4 players",
+            code: "TEAMS_REQUIRE_FOUR",
+          });
+          return;
+        }
         // One query for the whole candidate set instead of two per room.
         const waiting = await storage.getWaitingRooms(
           Array.from(publicRoomIds),
@@ -1725,6 +1789,13 @@ export function setupSocket(httpServer: HttpServer) {
           socket.emit("room:error", {
             message: "Cannot change mode once the game has started",
             code: "CANNOT_CHANGE_MODE_IN_PROGRESS",
+          });
+          return;
+        }
+        if (gameMode === "teams" && room.maxPlayers !== TEAMS_PLAYER_COUNT) {
+          socket.emit("room:error", {
+            message: "Teams mode needs exactly 4 players",
+            code: "TEAMS_REQUIRE_FOUR",
           });
           return;
         }
@@ -1816,15 +1887,19 @@ export function setupSocket(httpServer: HttpServer) {
         // autoMoveForSeat already treat a missing playerMap entry as "drive
         // this seat with the AI", exactly the path a disconnect takeover uses.
         const roster = buildSeatRoster(humans, room.maxPlayers, { fillWithBots, botPersonality });
+        if (room.gameMode === "teams" && roster.length !== TEAMS_PLAYER_COUNT) {
+          socket.emit("room:error", {
+            message: "Teams mode needs exactly 4 players",
+            code: "TEAMS_REQUIRE_FOUR",
+          });
+          return;
+        }
 
         const playerSetup = roster.map((r, idx) => ({
           name: r.username,
           type: (r.isBot ? "ai" : "human") as "human" | "ai",
           personality: r.isBot ? r.personality : undefined,
-          team:
-            room.gameMode === "teams"
-              ? ((idx % 2 === 0 ? "A" : "B") as "A" | "B")
-              : undefined,
+          team: teamForSeat(idx, roster.length, room.gameMode),
         }));
 
         const gameState = initializeGame(playerSetup, room.gameMode);
@@ -1842,13 +1917,14 @@ export function setupSocket(httpServer: HttpServer) {
           cumulativeScores: previous?.cumulativeScores ?? {},
           gameMode: room.gameMode,
           maxPlayers: room.maxPlayers,
-          matchTarget: previous?.matchTarget ?? MATCH_TARGETS[0],
+          matchTarget: previous?.matchTarget ?? targetsFor(roster.length)[0],
           matchLength: matchLength ?? previous?.matchLength ?? "match",
           matchOver: previous?.matchOver ?? false,
           handFlags: {},
           abandonedSeats: new Map<number, string>(),
           spectators: new Set<string>(),
           moveLog: startReplayLog(),
+          dealFirstSeat: 0,
         };
         rollMatchForward(newGame);
         activeGames.set(roomId, newGame);
@@ -2094,10 +2170,12 @@ export function setupSocket(httpServer: HttpServer) {
           team: room.gameMode === "teams" ? p.team : undefined,
         }));
 
+        const nextFirstSeat = nextDealFirstSeat(game.dealFirstSeat, playerSetup.length);
         const newGameState =
           prevRankings.length >= 2
-            ? initializeRematch(playerSetup, room.gameMode, prevRankings)
-            : initializeGame(playerSetup, room.gameMode);
+            ? initializeRematch(playerSetup, room.gameMode, prevRankings, nextFirstSeat)
+            : initializeGame(playerSetup, room.gameMode, nextFirstSeat);
+        game.dealFirstSeat = nextFirstSeat;
 
         // `game.playerMap` is deliberately left alone: seat i of the new state
         // is seat i of the old one, because playerSetup was built from that
@@ -2201,8 +2279,11 @@ export function setupSocket(httpServer: HttpServer) {
           // isStaleSchema is a plain boolean helper (kept dependency-free for
           // unit testing), so TS can't narrow the null case through it —
           // the `return` above already ruled it out.
-          const { gameState: restoredState, handFlags: restoredHandFlags } =
-            unpackPersistedState(persistedState!);
+          const {
+            gameState: restoredState,
+            handFlags: restoredHandFlags,
+            dealFirstSeat: restoredDealFirstSeat,
+          } = unpackPersistedState(persistedState!);
 
           const playerMap = readPersistedPlayerMap(row.playerMap, row.playerIds);
           if (!Object.values(playerMap).includes(userId)) {
@@ -2211,8 +2292,10 @@ export function setupSocket(httpServer: HttpServer) {
           }
 
           const restoredScores = (row.scores as Record<string, number>) ?? {};
-          const restoredTarget = row.matchTarget ?? MATCH_TARGETS[0];
-          const restoredResolution = resolveMatch(restoredScores, restoredTarget);
+          const restoredPlayers = (restoredState as GameState).players;
+          const restoredTarget = row.matchTarget ?? targetsFor(restoredPlayers.length)[0];
+          const restoredMode = row.gameMode === "teams" ? "teams" : "free_for_all";
+          const restoredLength = row.matchLength === "single" ? "single" : "match";
           const game: OnlineGameState = {
             roomId: roomCode,
             gameState: restoredState as GameState,
@@ -2220,14 +2303,19 @@ export function setupSocket(httpServer: HttpServer) {
             rematchVotes: new Set(),
             rematchIntents: new Map(),
             cumulativeScores: restoredScores,
-            gameMode: row.gameMode === "teams" ? "teams" : "free_for_all",
+            gameMode: restoredMode,
             maxPlayers: row.maxPlayers,
             matchTarget: restoredTarget,
-            matchLength: row.matchLength === "single" ? "single" : "match",
-            matchOver:
-              row.matchLength === "single"
-                ? (restoredState as GameState).gameOver
-                : !!restoredResolution && restoredResolution.newTarget === null,
+            matchLength: restoredLength,
+            matchOver: restoredMatchOver({
+              matchLength: restoredLength,
+              gameMode: restoredMode,
+              handOver: (restoredState as GameState).gameOver,
+              scores: restoredScores,
+              target: restoredTarget,
+              teamOfKey: teamKeyMap(playerMap, restoredPlayers),
+              playerCount: restoredPlayers.length,
+            }),
             handFlags: restoredHandFlags,
             // A hand restored after a restart has no record of who walked out
             // of it: the map is memory-only and the restart emptied it.
@@ -2236,6 +2324,7 @@ export function setupSocket(httpServer: HttpServer) {
             // The log is memory-only, so a hand restored after a restart has
             // none and produces no replay. The next hand starts a fresh one.
             moveLog: null,
+            dealFirstSeat: restoredDealFirstSeat,
           };
           activeGames.set(roomCode, game);
           if (row.isPublic) publicRoomIds.add(roomCode);
@@ -2574,7 +2663,7 @@ async function rejoinSocketToTable(
   );
   socket.emit(
     "game:state",
-    sanitizeStateForPlayer(game.gameState, userId, game.playerMap)
+    sanitizeStateForPlayer(game.gameState, userId, game.playerMap, game.turnDeadlineMs)
   );
   io.to(roomId).emit("game:player_reconnected", {
     userId,
