@@ -6,7 +6,7 @@
 // announce themselves the same way: the per-seat marker and the pass sound.
 import { describe, it, expect, beforeEach, afterEach, jest } from '@jest/globals';
 import React from 'react';
-import { act, fireEvent, render, screen } from '@testing-library/react-native';
+import { act, fireEvent, render, screen, within } from '@testing-library/react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 jest.mock('@/lib/sounds', () => ({
@@ -89,6 +89,18 @@ const state = (count: number, over: Partial<GameState>): GameState => ({
 
 const noop = () => {};
 
+/**
+ * The seats whose slot carries the chip, named. Cardinality alone would pass
+ * with the chip on the wrong opponent, which is the one thing the marker must
+ * never get wrong. Both slots lay the name and the badge row out in a single
+ * column (GameShared.tsx), so the name's parent is the seat.
+ */
+const markedSeatNames = (): string[] =>
+  NAMES.filter((name) => {
+    const column = screen.queryByText(name)?.parent;
+    return !!column && within(column).queryAllByText(PASSED).length > 0;
+  });
+
 const table = (gameState: GameState, onPass: () => void = noop) => (
   <SafeAreaProvider initialMetrics={METRICS}>
     <GameTable
@@ -127,7 +139,7 @@ describe('the per-seat pass marker', () => {
         })
       )
     );
-    expect(screen.queryAllByText(PASSED)).toHaveLength(2);
+    expect(markedSeatNames()).toEqual(['Cimi', 'Drin']);
     await r.unmount();
   });
 
@@ -158,7 +170,7 @@ describe('the per-seat pass marker', () => {
         })
       )
     );
-    expect(screen.queryAllByText(PASSED)).toHaveLength(1);
+    expect(markedSeatNames()).toEqual(['Cimi']);
     await r.unmount();
   });
 
@@ -173,7 +185,7 @@ describe('the per-seat pass marker', () => {
         })
       )
     );
-    expect(screen.queryAllByText(PASSED)).toHaveLength(2);
+    expect(markedSeatNames()).toEqual(['Cimi', 'Drin']);
 
     await act(async () => {
       r.rerender(
