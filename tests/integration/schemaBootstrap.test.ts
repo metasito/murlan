@@ -101,6 +101,34 @@ test("a fresh database is usable on the first boot", async (t) => {
       );
     });
 
+    await t.test("every index in shared/schema.ts was created, method included", async () => {
+      const schemaModule = await import("../../shared/schema.ts");
+      const { is } = await import("drizzle-orm");
+      const { getTableConfig, PgTable } = await import("drizzle-orm/pg-core");
+      const expected = Object.values(schemaModule)
+        .filter((v) => is(v, PgTable))
+        .flatMap((table) => getTableConfig(table as never).indexes)
+        .map((idx) => idx.config.name!)
+        .sort();
+
+      const { rows } = await admin.query<{ indexname: string; indexdef: string }>(
+        `SELECT indexname, indexdef FROM pg_indexes WHERE schemaname = $1`,
+        [server.schema]
+      );
+      const byName = new Map(rows.map((r) => [r.indexname, r.indexdef]));
+      assert.deepEqual(
+        expected.filter((name) => !byName.has(name)),
+        [],
+        `boot left indexes uncreated. present: ${[...byName.keys()].join(", ")}`
+      );
+
+      // The one index that is useless in the wrong access method: the replay
+      // list filters `player_ids @> '[...]'`, which btree cannot answer.
+      const ownership = byName.get("match_replays_player_ids_idx");
+      assert.ok(ownership, "no index on match_replays.player_ids");
+      assert.match(ownership, /USING gin /);
+    });
+
     await t.test("re-running the bootstrap changes nothing", async () => {
       // What every Replit restart does: the same statements against tables,
       // indexes and enum types that already exist.

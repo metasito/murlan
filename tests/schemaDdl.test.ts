@@ -70,6 +70,17 @@ test("columns are added before the indexes that may target them", () => {
   );
 });
 
+test("the replay ownership predicate has an index it can use", () => {
+  // Both readers of match_replays filter on `player_ids @> '["<uid>"]'`
+  // (server/replays.ts, server/storage.ts). Containment is not a btree
+  // predicate, so the access method has to survive into the DDL — an index
+  // created under the same name as a btree would be dead weight the planner
+  // never touches.
+  const statement = statements.find((s) => /match_replays_player_ids_idx/.test(s));
+  assert.ok(statement, "no index on match_replays.player_ids");
+  assert.match(statement, /USING "gin" \("player_ids"\)/);
+});
+
 test("a table is created before anything references it", () => {
   const createdAt = new Map<string, number>();
   statements.forEach((s, i) => {

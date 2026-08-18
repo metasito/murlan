@@ -237,8 +237,9 @@ const SESSION_TABLE_STATEMENTS = [
  * Deliberately narrow: it understands exactly the schema features
  * `shared/schema.ts` currently uses (enums, varchar/text/integer/boolean/
  * jsonb/timestamp columns, single-column foreign keys with `onDelete`, simple +
- * composite primary keys, plain-column indexes/unique indexes, `.unique()`
- * columns) and throws a descriptive error for anything else (check constraints,
+ * composite primary keys, plain-column indexes/unique indexes in any access
+ * method, `.unique()` columns) and throws a descriptive error for anything else
+ * (check constraints,
  * RLS, non-default schemas, expression indexes, parameterized SQL defaults,
  * composite foreign keys) rather than silently emitting incomplete DDL.
  */
@@ -307,8 +308,13 @@ export function schemaStatements(): string[] {
         }
         return quoteIdent(colName);
       });
+      // btree is Postgres' default and the only method the plain `.on(...)`
+      // form can mean, so it is left implicit; anything else is named.
+      const method = idx.config.method;
+      const using = !method || method === "btree" ? "" : ` USING ${quoteIdent(method)}`;
       indexStatements.push(
-        `${kind} IF NOT EXISTS ${quoteIdent(indexName)} ON ${quoteIdent(cfg.name)} (${cols.join(", ")});`
+        `${kind} IF NOT EXISTS ${quoteIdent(indexName)} ON ${quoteIdent(cfg.name)}` +
+          `${using} (${cols.join(", ")});`
       );
     }
   }

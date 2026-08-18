@@ -128,7 +128,12 @@ export const matchReplays = pgTable("match_replays", {
   seats: jsonb("seats").notNull().default([]),
   moves: jsonb("moves").notNull().default([]),
   rankings: jsonb("rankings").notNull().default([]),
-}, (t) => [index("match_replays_finished_idx").on(t.finishedAt)]);
+}, (t) => [
+  index("match_replays_finished_idx").on(t.finishedAt),
+  // Every read of this table filters on `player_ids @> '["<uid>"]'`. Containment
+  // is not a btree predicate — only a GIN index can answer it.
+  index("match_replays_player_ids_idx").using("gin", t.playerIds),
+]);
 
 // One row per player per season. `season` is part of the key rather than a
 // value that gets overwritten, so a reset is a new row and the previous
