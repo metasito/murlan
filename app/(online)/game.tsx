@@ -83,6 +83,7 @@ export default function OnlineGameScreen() {
   // Card ids sent to the server and not yet acknowledged. The selection is only
   // cleared once the server confirms the play, so a rejected move keeps it.
   const pendingPlayRef = useRef<string[] | null>(null);
+  const prevGameOverRef = useRef(false);
 
   const me = gameState?.players[mySeatIndex];
   const myHand = me?.hand;
@@ -106,6 +107,20 @@ export default function OnlineGameScreen() {
       setSelectedIds([]);
     }
   }, [myHand]);
+
+  // A new manche is a fresh deal, and card ids are deterministic
+  // (`${rank}_${suit}`), so an id staged in the hand that just ended can name a
+  // real card in the new one — which the table's prune cannot see, because the
+  // hand does hold it. The deal is the boundary, so the deal is where it goes.
+  useEffect(() => {
+    const over = !!gameState?.gameOver;
+    const wasOver = prevGameOverRef.current;
+    prevGameOverRef.current = over;
+    if (wasOver && !over) {
+      pendingPlayRef.current = null;
+      setSelectedIds([]);
+    }
+  }, [gameState?.gameOver]);
 
   // A server error means the play was rejected — stop waiting for an ack.
   useEffect(() => {

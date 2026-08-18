@@ -300,9 +300,11 @@ export default function HomeScreen() {
     // eslint-disable-next-line react-hooks/exhaustive-deps -- one-shot mount animation; stable shared values
   }, []);
 
-  // First-launch onboarding: offer the interactive tutorial automatically, once.
-  // Never gates play — the player can skip or navigate away immediately, and
-  // the flag is set the moment they do either (see app/tutorial.tsx).
+  // First-launch onboarding: offer the interactive tutorial automatically, once
+  // ever. This runs on every mount of the title screen, and every
+  // `router.replace("/")` in the app remounts it, so "once" has to come from
+  // the flag alone: app/tutorial.tsx writes it when the screen opens, not when
+  // it is completed. Never gates play — the player can leave by any route.
   useEffect(() => {
     AsyncStorage.getItem("@murlan_tutorial_seen").then((seen) => {
       if (!seen) router.push("/tutorial");

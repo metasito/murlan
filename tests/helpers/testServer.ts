@@ -6,6 +6,19 @@ import type { Server as SocketIOServer } from "socket.io";
 // DATABASE_URL at the throwaway schema.
 import { drainPool } from "../../server/drainPool.ts";
 
+/**
+ * `node --test` runs as many test files at once as there are cores, and every
+ * integration file boots its own app with its own Pool. The number that has to
+ * fit inside Postgres' `max_connections` is therefore files-in-flight times
+ * this, not this — the deployed default of 10 overruns a stock 100 on any
+ * ordinary machine and surfaces as `Connection terminated unexpectedly` from
+ * whichever suite happened to be starting.
+ *
+ * Set before anything reaches `server/db.ts`, which reads it when it builds the
+ * Pool at module scope.
+ */
+process.env.MURLAN_PG_POOL_MAX ??= "4";
+
 export function hasDatabase(): boolean {
   return Boolean(process.env.DATABASE_URL);
 }

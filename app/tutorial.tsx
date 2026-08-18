@@ -30,7 +30,13 @@ import { useTranslation, type TranslationKey, type TranslationParams } from "@/l
 type TFn = (key: TranslationKey, params?: TranslationParams) => string;
 
 // ─── Storage keys ──────────────────────────────────────────────────────────
+// SEEN_KEY answers "has the tutorial ever been offered", which is all
+// app/index.tsx asks. It is written on mount, because every way out of this
+// screen except two — the back gesture, the header chevron, the two rows on
+// the last beat — leaves no other moment to write it in.
 const SEEN_KEY = "@murlan_tutorial_seen";
+// Independent of SEEN_KEY: where to resume, cleared only when the player is
+// deliberately done (skip, or the final beat).
 const PROGRESS_KEY = "@murlan_tutorial_progress";
 
 // ─── Fixed, seeded cards ────────────────────────────────────────────────────
@@ -392,6 +398,7 @@ export default function TutorialScreen() {
   const [beatDone, setBeatDone] = useState(false);
 
   useEffect(() => {
+    AsyncStorage.setItem(SEEN_KEY, "1").catch(() => {});
     AsyncStorage.getItem(PROGRESS_KEY)
       .then((raw) => {
         const n = raw ? parseInt(raw, 10) : NaN;
@@ -417,14 +424,14 @@ export default function TutorialScreen() {
   const beat = BEATS[stepIndex];
   const isLast = stepIndex === BEATS.length - 1;
 
-  async function finish() {
-    await AsyncStorage.setItem(SEEN_KEY, "1");
+  /** Deliberately done with this run, so the next one starts from the top. */
+  async function clearProgress() {
     await AsyncStorage.removeItem(PROGRESS_KEY);
   }
 
   async function handleSkip() {
     hapticLight();
-    await finish();
+    await clearProgress();
     router.replace("/");
   }
 
@@ -440,7 +447,7 @@ export default function TutorialScreen() {
   async function goNext() {
     if (isLast) {
       hapticSuccess();
-      await finish();
+      await clearProgress();
       router.replace({ pathname: "/lobby", params: { mode: "ai" } });
       return;
     }

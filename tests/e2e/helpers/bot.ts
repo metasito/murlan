@@ -62,6 +62,14 @@ function labelSelector(label: string): string {
 
 export class StuckError extends Error {}
 
+/**
+ * What this driver believes is selected in each page's hand, across turns.
+ * Since a staged play survives an opponent's turn, the selection is no longer
+ * guaranteed to be empty when a turn begins, and an early return mid-search
+ * leaves cards lit that the next turn has to know about.
+ */
+const stagedSelection = new WeakMap<Page, string[]>();
+
 // The table's own aria-label announces "your turn" purely from
 // `currentTurnIndex === viewerSeat` (components/gameTableModel.ts
 // `describeTableForA11y`), with no notion of `gameOver` — so for one tick
@@ -191,17 +199,31 @@ async function playOrPass(page: Page, desc: string): Promise<string | null> {
   // reselecting from scratch — so a click that silently failed to toggle
   // leaves a card correctly tracked as still selected instead of being
   // assumed clear.
-  let selected: string[] = [];
+  //
+  // Carried over from the previous turn, intersected with the hand that is
+  // there now: a selection survives an opponent's turn (the app no longer
+  // wipes it), so an early return on a click timeout leaves cards lit that a
+  // fresh, empty tracker would add targets on top of — building a combination
+  // the bot never meant to offer and, when leading, one it cannot pass out of.
+  // The app itself drops a staged id the hand no longer holds, which is why the
+  // intersection is the honest starting point rather than a guess.
+  let selected = (stagedSelection.get(page) ?? []).filter((l) => labels.includes(l));
+  function setStaged(next: string[]): void {
+    selected = next;
+    stagedSelection.set(page, next);
+  }
+  setStaged(selected);
+
   async function setSelection(target: string[]): Promise<boolean> {
     for (const l of selected) {
       if (target.includes(l)) continue;
       if (!(await click(cardByLabel(l)))) return false;
-      selected = selected.filter((x) => x !== l);
+      setStaged(selected.filter((x) => x !== l));
     }
     for (const l of target) {
       if (selected.includes(l)) continue;
       if (!(await click(cardByLabel(l)))) return false;
-      selected.push(l);
+      setStaged([...selected, l]);
     }
     return true;
   }
@@ -211,7 +233,7 @@ async function playOrPass(page: Page, desc: string): Promise<string | null> {
     const label = await giocaBtn.getAttribute("aria-label").catch(() => null);
     if (label === GIOCA_VALID_LABEL) {
       if (!(await click(giocaBtn))) return "gone";
-      selected = []; // the play succeeded — the hand itself is about to change entirely
+      setStaged([]); // the play succeeded — the hand itself is about to change entirely
       return "played";
     }
     return "no"; // leave the selection as-is; the next attempt's setSelection diffs against it

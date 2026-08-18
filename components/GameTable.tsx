@@ -58,11 +58,15 @@ import {
   EMPTY_PILE,
   handCountOf,
   impactDelayMs,
+  passedSeats,
   playButtonLabel,
   readExchange,
+  roundClosedWithWinner,
   seatDirection,
   straightTopRankChar,
   turnTimerActive,
+  urgentThresholdSeconds,
+  URGENT_TICK_SECONDS,
   type FlyDirection,
   type PileState,
   type PlayButtonLabel,
@@ -105,7 +109,7 @@ import {
   preloadSounds,
   unloadSounds,
 } from "@/lib/sounds";
-import { hapticHeavy, hapticLight, hapticMedium, hapticSelection, hapticSuccess } from "@/lib/haptics";
+import { hapticError, hapticHeavy, hapticLight, hapticMedium, hapticSelection, hapticSuccess, hapticWarn } from "@/lib/haptics";
 import { usePrefersReducedMotion } from "@/lib/accessibility";
 import { Colors, FontSize, Highlight, Motion, Radius, Scrim, Shadow, Spacing, Type } from "@/lib/theme";
 import { useTableFelt } from "@/lib/cosmetics";
@@ -113,17 +117,22 @@ import { useTableFelt } from "@/lib/cosmetics";
 // How long the round-winner tag stays over the pile. A domain beat, not a
 // generic UI transition, so it is not a Motion token.
 const ROUND_WINNER_MS = 1800;
-// Breathing room between the winning card's own impact sound and the round-win
-// sting, so the two read as cause and consequence rather than as one noise.
-const ROUND_WIN_STING_GAP_MS = 220;
-// Below this the countdown turns red and ticks audibly.
-const URGENT_SECONDS = 5;
-
 // Whole-pixel travel, mirroring components/MenuButton.tsx: PASSA/GIOCA hold
 // text labels, and React Native rasterises text before transforming it, so a
 // fractional offset resamples the glyphs. 2px down is the smallest offset
 // that still reads as a press.
 const BTN_PRESS_TRAVEL = 2;
+
+// The refusal shake on GIOCA: deliberately a third of the bomb's amplitude —
+// it is a "no", not an event. One leg duration for all four legs.
+const BTN_REJECT_TRAVEL = 3;
+const BTN_REJECT_LEG_MS = 40;
+// How long the refused-play reason stays on screen, and how wide it may get
+// before it wraps onto its second (and last) line.
+const REJECT_HINT_MS = 2600;
+const REJECT_HINT_MAX_W = 260;
+/** Above the top bar and the rematch panel: the reason must not be covered. */
+const REJECT_HINT_Z = 30;
 
 // Raked light across the gold surface — bright at the top-left corner,
 // dropping to goldDark at the bottom-right — same treatment and same rake
@@ -132,19 +141,28 @@ const BTN_PRESS_TRAVEL = 2;
 const GIOCA_GRADIENT = [Colors.goldLight, Colors.gold, Colors.goldDark] as const;
 const GIOCA_GRADIENT_PRESSED = [Colors.gold, Colors.goldDark, Colors.goldDim] as const;
 
-// gameTableModel.ts's `playButtonLabel` returns one of these three literals —
-// they are pinned by tests/gameTableModel.test.ts as state identifiers, not
-// as display copy, so the model itself is not localised. This is the
-// translation boundary: map the identifier to display text (and to a
-// screen-reader-friendly spoken form) here, in the presentational layer.
+// gameTableModel.ts's `playButtonLabel` returns a rejection reason, not copy.
+// This is the translation boundary: the short two-line form the button wears,
+// and the full sentence a screen reader speaks. Both are keyed by the same
+// identifier, so a new reason cannot be added without both.
 const PLAY_LABEL_KEYS: Record<PlayButtonLabel, TranslationKey> = {
-  "GIOCA": "gameTable.playLabelGioca",
-  "NON\nVALIDA": "gameTable.playLabelInvalid",
-  "TROPPO\nBASSA": "gameTable.playLabelTooLow",
+  play: "gameTable.playLabelGioca",
+  notACombination: "gameTable.playLabelInvalid",
+  needsStartCard: "gameTable.playLabelStartCard",
+  royalUnbeatable: "gameTable.playLabelRoyalUnbeatable",
+  bombOnly: "gameTable.playLabelBombOnly",
+  wrongType: "gameTable.playLabelWrongType",
+  wrongLength: "gameTable.playLabelWrongLength",
+  tooLow: "gameTable.playLabelTooLow",
 };
 const PLAY_A11Y_SPOKEN_KEYS: Partial<Record<PlayButtonLabel, TranslationKey>> = {
-  "NON\nVALIDA": "gameTable.playA11ySpokenInvalid",
-  "TROPPO\nBASSA": "gameTable.playA11ySpokenTooLow",
+  notACombination: "gameTable.playA11ySpokenInvalid",
+  needsStartCard: "gameTable.playA11ySpokenStartCard",
+  royalUnbeatable: "gameTable.playA11ySpokenRoyalUnbeatable",
+  bombOnly: "gameTable.playA11ySpokenBombOnly",
+  wrongType: "gameTable.playA11ySpokenWrongType",
+  wrongLength: "gameTable.playA11ySpokenWrongLength",
+  tooLow: "gameTable.playA11ySpokenTooLow",
 };
 
 // ─── Screen-reader table description ───────────────────────────────────────
@@ -276,6 +294,7 @@ function TurnTimer({
   resetKey: string;
   onExpire?: () => void;
 }) {
+  const { tn } = useTranslation();
   const [timeLeft, setTimeLeft] = useState(seconds);
   // Written after commit, never during render: the only reader is the interval
   // below, which fires a second later at the earliest.
@@ -294,7 +313,7 @@ function TurnTimer({
     const id = setInterval(() => {
       remaining -= 1;
       setTimeLeft(remaining);
-      if (remaining <= URGENT_SECONDS && remaining >= 0) playUrgentTick();
+      if (remaining <= URGENT_TICK_SECONDS && remaining >= 0) playUrgentTick();
       if (remaining <= 0) {
         clearInterval(id);
         onExpireRef.current?.();
@@ -304,13 +323,25 @@ function TurnTimer({
   }, [active, resetKey, seconds]);
 
   if (!active) return null;
+  const urgent = timeLeft <= urgentThresholdSeconds(seconds);
+  // The clock face marks the number as a deadline rather than a score.
   return (
-    <Text
-      style={[styles.timerNum, timeLeft <= URGENT_SECONDS && styles.timerUrgent]}
-      accessibilityLiveRegion="polite"
-    >
-      {timeLeft}
-    </Text>
+    <View style={styles.timerGroup}>
+      <Ionicons
+        name="timer-outline"
+        size={FontSize.sm}
+        color={urgent ? Colors.red : Colors.gold}
+        accessibilityElementsHidden
+        importantForAccessibility="no-hide-descendants"
+      />
+      <Text
+        style={[styles.timerNum, urgent && styles.timerUrgent]}
+        accessibilityLiveRegion="polite"
+        accessibilityLabel={tn("gameTable.a11ySecondsLeft", timeLeft)}
+      >
+        {timeLeft}
+      </Text>
+    </View>
   );
 }
 
@@ -408,7 +439,11 @@ export function GameTable({
   const reduceMotion = usePrefersReducedMotion();
   const felt = useTableFelt();
 
-  const [roundWinnerSeat, setRoundWinnerSeat] = useState<number | null>(null);
+  // The seat that took the last round and a counter of how many rounds have
+  // closed. The counter is what makes an identical repeat a new announcement:
+  // the seat that wins a round leads the next one, so the same seat winning
+  // twice running is ordinary play.
+  const [roundWinnerTag, setRoundWinnerTag] = useState<{ seat: number; closure: number } | null>(null);
   const [pileState, setPileState] = useState<PileState>(EMPTY_PILE);
   const [pileBounceTrigger, setPileBounceTrigger] = useState(0);
   const [flyInfo, setFlyInfo] = useState<{
@@ -421,11 +456,24 @@ export function GameTable({
   // has to be cancellable: a fast next play, or leaving the table, must not
   // fire a bang for a card that is no longer in the air.
   const impactTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Non-null while the winning combination is being held on the felt under the
+  // round-winner tag. Its presence is what tells the pile effect the felt is
+  // spoken for.
+  const roundHoldTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const prevComboKeyRef = useRef<string>("");
-  const prevRoundWinnerRef = useRef<number | null>(null);
+  const roundClosedRef = useRef(false);
   const prevMyTurnRef = useRef(false);
   const prevExchangeActiveRef = useRef(false);
   const prevGameOverRef = useRef(false);
+  // Seeded from the state the table mounts on, so rejoining mid-round does not
+  // replay the passes that happened before the viewer arrived.
+  const prevPassCountRef = useRef(gameState.passCount);
+  const prevRoundClosedRef = useRef(
+    roundClosedWithWinner({
+      lastPlayedCombination: gameState.lastPlayedCombination,
+      roundWinner: gameState.roundWinner,
+    })
+  );
 
   // Nothing here scales: a fractional scale on a view containing text makes
   // React Native resample the already-rasterised glyphs, and PASSA/GIOCA read
@@ -435,6 +483,12 @@ export function GameTable({
   const passaFlashVal = useSharedValue(0);
   const giocaGlowVal = useSharedValue(0);
   const shakeX = useSharedValue(0);
+  const giocaRejectX = useSharedValue(0);
+
+  // The reason a tap on an unavailable GIOCA was refused, spelled out. Keyed by
+  // a counter so tapping again restarts the dwell instead of being swallowed as
+  // an unchanged value.
+  const [rejectHint, setRejectHint] = useState<{ key: number; text: string } | null>(null);
 
   // Real press feedback for the two most-pressed controls in the game,
   // matching components/MenuButton.tsx: a discrete gradient swap (React
@@ -477,15 +531,55 @@ export function GameTable({
     () => (selectedObjs.length > 0 ? buildCombination(selectedObjs) : null),
     [selectedObjs]
   );
+  // Which seats have already answered the round on the table. Derived rather
+  // than stored, so a new lead empties it on the same commit that lands the
+  // card and no effect has to clear it.
+  const passed = React.useMemo(
+    () =>
+      passedSeats({
+        currentTurnIndex: gameState.currentTurnIndex,
+        lastPlayedBy: gameState.lastPlayedBy,
+        lastPlayedCombination: gameState.lastPlayedCombination,
+        outOfCards: players.map((p) => handCountOf(p) === 0),
+      }),
+    [
+      gameState.currentTurnIndex,
+      gameState.lastPlayedBy,
+      gameState.lastPlayedCombination,
+      players,
+    ]
+  );
+
   const requiresStartCard = !gameState.firstPlayMade && !!gameState.startCard;
+  const selectionHasStartCard =
+    !!gameState.startCard && selectedObjs.some((c) => c.id === gameState.startCard!.id);
   const isValidPlay =
     tentativeCombo !== null &&
     canPlay(tentativeCombo, isNewRound ? null : gameState.lastPlayedCombination) &&
-    (!requiresStartCard ||
-      tentativeCombo.cards.some((c) => c.id === gameState.startCard!.id));
+    (!requiresStartCard || selectionHasStartCard);
 
   const canPass = canPassNowOf({ isMyTurn, isFinished, isNewRound });
   const playBtnValid = isValidPlay && isMyTurn && !isFinished;
+
+  const pileCombo = gameState.lastPlayedCombination;
+  const dimLabel = playButtonLabel({
+    isMyTurn,
+    isFinished,
+    selectedCount: selectedIds.length,
+    selection: tentativeCombo
+      ? { type: tentativeCombo.type, length: tentativeCombo.cards.length }
+      : null,
+    pile: pileCombo ? { type: pileCombo.type, length: pileCombo.cards.length } : null,
+    requiresStartCard,
+    selectionHasStartCard,
+  });
+  // Two words fit on the button; the sentence is what the screen reader speaks
+  // and what the toast shows when the refusal is tapped. Only the start-card
+  // reason reads the rank.
+  const startCardRank = gameState.startCard?.rank ?? "";
+  const dimReasonText = t(PLAY_A11Y_SPOKEN_KEYS[dimLabel] ?? PLAY_LABEL_KEYS[dimLabel], {
+    rank: startCardRank,
+  });
 
   const opponents = React.useMemo(
     () => arrangeOpponents(players, viewerSeat),
@@ -599,6 +693,7 @@ export function GameTable({
   useEffect(
     () => () => {
       if (impactTimerRef.current) clearTimeout(impactTimerRef.current);
+      if (roundHoldTimerRef.current) clearTimeout(roundHoldTimerRef.current);
     },
     []
   );
@@ -607,20 +702,46 @@ export function GameTable({
   // re-run for one of the other dependencies leaves the pile, the flying card
   // and the pending impact exactly as they were.
   useEffect(() => {
-    const combo = gameState.lastPlayedCombination;
-    if (combo === null) {
-      if (prevComboKeyRef.current !== "") {
-        if (impactTimerRef.current) clearTimeout(impactTimerRef.current);
-        playRoundStart();
-      }
-      prevComboKeyRef.current = "";
+    // Clearing the felt and announcing a new round are one beat, whether it
+    // happens now or after the winning cards have been held.
+    const openNewRound = () => {
+      playRoundStart();
       setPileState(EMPTY_PILE);
       setFlyInfo(null);
+    };
+
+    const combo = gameState.lastPlayedCombination;
+    if (combo === null) {
+      // The winning cards are being held for the tag; nothing may take the
+      // felt out from under them until the hold expires or a new lead arrives.
+      if (roundHoldTimerRef.current) return;
+      if (prevComboKeyRef.current === "") {
+        setPileState(EMPTY_PILE);
+        setFlyInfo(null);
+        return;
+      }
+      if (impactTimerRef.current) clearTimeout(impactTimerRef.current);
+      prevComboKeyRef.current = "";
+      if (roundClosedWithWinner({ lastPlayedCombination: combo, roundWinner: gameState.roundWinner })) {
+        roundHoldTimerRef.current = setTimeout(() => {
+          roundHoldTimerRef.current = null;
+          openNewRound();
+        }, ROUND_WINNER_MS);
+        return;
+      }
+      openNewRound();
       return;
     }
     const key = comboKey(combo, gameState.lastPlayedBy);
     if (key === prevComboKeyRef.current) return;
     if (impactTimerRef.current) clearTimeout(impactTimerRef.current);
+    // A lead inside the hold window ends it early: the new card has to fly
+    // onto a cleared pile, not onto the combination it did not beat.
+    if (roundHoldTimerRef.current) {
+      clearTimeout(roundHoldTimerRef.current);
+      roundHoldTimerRef.current = null;
+      openNewRound();
+    }
     prevComboKeyRef.current = key;
     setPileState((s) => advancePile(s, combo));
 
@@ -656,40 +777,50 @@ export function GameTable({
   }, [
     gameState.lastPlayedCombination,
     gameState.lastPlayedBy,
+    gameState.roundWinner,
     viewerSeat,
     players.length,
     reduceMotion,
     shakeX,
   ]);
 
-  // Round-winner tag over the pile. The seat is what is stored, not the name:
-  // the name is looked up at render, so a game update that only changes the
-  // player list cannot restart the banner's own timers.
+  // Round-winner tag over the pile, keyed on the round *closing* rather than on
+  // the value of `roundWinner`: processPlay leaves that field standing through
+  // the round the winner goes on to lead, so with two players it never changes
+  // and every win after the first would go unannounced. The seat is what is
+  // stored, not the name — the name is looked up at render, so a game update
+  // that only changes the player list cannot restart the banner's own timers.
   useEffect(() => {
-    const winner = gameState.roundWinner;
-    // Cleared between rounds, so the seat that wins two in a row — the common
-    // case, since the round winner leads the next one — is announced twice.
-    if (winner === null || winner === undefined) {
-      prevRoundWinnerRef.current = null;
+    if (
+      !roundClosedWithWinner({
+        lastPlayedCombination: gameState.lastPlayedCombination,
+        roundWinner: gameState.roundWinner,
+      })
+    ) {
+      roundClosedRef.current = false;
       return;
     }
-    if (winner === prevRoundWinnerRef.current) return;
-    prevRoundWinnerRef.current = winner;
-    setRoundWinnerSeat(winner);
-  }, [gameState.roundWinner]);
+    if (roundClosedRef.current) return;
+    roundClosedRef.current = true;
+    const seat = gameState.roundWinner!;
+    setRoundWinnerTag((prev) => ({ seat, closure: (prev?.closure ?? 0) + 1 }));
+  }, [gameState.lastPlayedCombination, gameState.roundWinner]);
+
+  // A round closes on a pass, never on a play, so nothing is in flight here and
+  // the sting is the first sound of the beat — ahead of the round-start sting,
+  // which the pile effect has deferred for as long as this tag is up.
+  useEffect(() => {
+    if (roundWinnerTag === null) return;
+    playRoundWin();
+    const dismiss = setTimeout(() => setRoundWinnerTag(null), ROUND_WINNER_MS);
+    return () => clearTimeout(dismiss);
+  }, [roundWinnerTag]);
 
   useEffect(() => {
-    if (roundWinnerSeat === null) return;
-    // The winning card is still in the air. Let it land, and let its own impact
-    // sound clear, before the sting — three sounds inside 300ms is a pile-up,
-    // not a flourish.
-    const sting = setTimeout(playRoundWin, impactDelayMs(reduceMotion) + ROUND_WIN_STING_GAP_MS);
-    const dismiss = setTimeout(() => setRoundWinnerSeat(null), ROUND_WINNER_MS);
-    return () => {
-      clearTimeout(sting);
-      clearTimeout(dismiss);
-    };
-  }, [roundWinnerSeat, reduceMotion]);
+    if (rejectHint === null) return;
+    const id = setTimeout(() => setRejectHint(null), REJECT_HINT_MS);
+    return () => clearTimeout(id);
+  }, [rejectHint]);
 
   useEffect(() => {
     if (isMyTurn && !isFinished && !prevMyTurnRef.current) playYourTurn();
@@ -701,6 +832,42 @@ export function GameTable({
     prevExchangeActiveRef.current = exchange.active;
   }, [exchange.active]);
 
+  // A pass moves nothing on the felt, so the sound is the whole event — and it
+  // belongs to every seat, not only the viewer's own tap. Keyed on the state
+  // the pass produced rather than on the tap, so a bot, an opponent and the
+  // server moving for a seat all announce themselves identically.
+  //
+  // `processPass` resets `passCount` to zero on the pass that closes a round,
+  // so the closing pass raises no count edge and the round closing stands in
+  // for it. A round only ever closes on a pass, and heads-up every legal pass
+  // closes one — without this the sound would never fire in a two-player game
+  // at all. It layers under the round-winner sting, which is the beat after.
+  useEffect(() => {
+    const prevCount = prevPassCountRef.current;
+    prevPassCountRef.current = gameState.passCount;
+    const closed = roundClosedWithWinner({
+      lastPlayedCombination: gameState.lastPlayedCombination,
+      roundWinner: gameState.roundWinner,
+    });
+    const wasClosed = prevRoundClosedRef.current;
+    prevRoundClosedRef.current = closed;
+    if (gameState.passCount > prevCount || (closed && !wasClosed)) playCardPass();
+  }, [gameState.passCount, gameState.lastPlayedCombination, gameState.roundWinner]);
+
+  // A card can leave the hand without the player having touched it — the server
+  // moves for a seat that ran out of clock — and a staged id the hand no longer
+  // holds is both a lit GIOCA the server refuses and a play the viewer did not
+  // choose. `onSelectCard` toggles, so naming such an id drops it. An id the
+  // *new* hand does hold is a different problem, and the manche boundary is
+  // where it is cleared (app/(online)/game.tsx, context/GameContext.tsx).
+  useEffect(() => {
+    if (spectating) return;
+    const handIds = new Set(sortedHand.map((c) => c.id));
+    for (const id of selectedIds) {
+      if (!handIds.has(id)) onSelectCard(id);
+    }
+  }, [sortedHand, selectedIds, onSelectCard, spectating]);
+
   useEffect(() => {
     // Reset on the way back down so a rematch — which never unmounts this
     // component — gets its own win/lose sting instead of staying silent.
@@ -710,12 +877,17 @@ export function GameTable({
     }
     if (prevGameOverRef.current) return;
     prevGameOverRef.current = true;
-    hapticSuccess();
-    const myName = viewer?.name;
-    const myRank = myName ? gameState.rankings.indexOf(myName) : -1;
-    if (myRank === 0) playGameWin();
-    else if (myRank >= 0 && myRank === gameState.rankings.length - 1) playGameLose();
-  }, [gameState.gameOver, gameState.rankings, viewer?.name]);
+    // `rankings` holds engine player ids (`player_0`), never display names.
+    const myId = viewer?.id;
+    const myRank = myId ? gameState.rankings.indexOf(myId) : -1;
+    if (myRank === 0) {
+      hapticSuccess();
+      playGameWin();
+    } else if (myRank >= 0 && myRank === gameState.rankings.length - 1) {
+      hapticWarn();
+      playGameLose();
+    }
+  }, [gameState.gameOver, gameState.rankings, viewer?.id]);
 
   // ── Animation ───────────────────────────────────────────────────────────────
 
@@ -773,10 +945,11 @@ export function GameTable({
       cancelAnimation(giocaFlashVal);
       cancelAnimation(passaFlashVal);
       cancelAnimation(shakeX);
+      cancelAnimation(giocaRejectX);
       cancelAnimation(giocaPressVal);
       cancelAnimation(passaPressVal);
     },
-    [giocaFlashVal, passaFlashVal, shakeX, giocaPressVal, passaPressVal]
+    [giocaFlashVal, passaFlashVal, shakeX, giocaRejectX, giocaPressVal, passaPressVal]
   );
 
   // Guarded on the enabled flag so a disabled button (already visually dim)
@@ -799,7 +972,10 @@ export function GameTable({
   const giocaFlashStyle = useAnimatedStyle(() => ({ opacity: giocaFlashVal.value }));
   const passaFlashStyle = useAnimatedStyle(() => ({ opacity: passaFlashVal.value }));
   const giocaPressStyle = useAnimatedStyle(() => ({
-    transform: [{ translateY: giocaPressVal.value * BTN_PRESS_TRAVEL }],
+    transform: [
+      { translateY: giocaPressVal.value * BTN_PRESS_TRAVEL },
+      { translateX: giocaRejectX.value },
+    ],
   }));
   const passaPressStyle = useAnimatedStyle(() => ({
     transform: [{ translateY: passaPressVal.value * BTN_PRESS_TRAVEL }],
@@ -816,26 +992,49 @@ export function GameTable({
 
   // These three reach the memoized hand as props, so they are stabilized by
   // hand: a fresh arrow per render defeats every card's memo comparator.
+  // Staging a play while an opponent thinks is how every game in this family
+  // works, and it is what stops the turn clock starting from a blank hand.
+  // Only the *submission* is gated on the turn: `playBtnValid` already requires
+  // it, so GIOCA lights on its own the moment the turn arrives.
   const handleCardPress = useCallback(
     (id: string) => {
-      if (!isMyTurn || isFinished) return;
+      if (isFinished || spectating) return;
       hapticSelection();
       playCardSelect();
       onSelectCard(id);
     },
-    [isMyTurn, isFinished, onSelectCard]
+    [isFinished, spectating, onSelectCard]
   );
+  // The button stays pressable while it is unavailable so a refusal has a
+  // channel: an error haptic, a shake, and the reason in words. It keeps
+  // reporting itself as disabled to assistive tech.
   const handlePlay = useCallback(() => {
-    if (!playBtnValid) return;
+    if (!playBtnValid) {
+      hapticError();
+      setRejectHint((prev) => ({ key: (prev?.key ?? 0) + 1, text: dimReasonText }));
+      if (!reduceMotion) {
+        giocaRejectX.value = withSequence(
+          withTiming(BTN_REJECT_TRAVEL, { duration: BTN_REJECT_LEG_MS }),
+          withTiming(-BTN_REJECT_TRAVEL, { duration: BTN_REJECT_LEG_MS }),
+          withTiming(BTN_REJECT_TRAVEL, { duration: BTN_REJECT_LEG_MS }),
+          withTiming(0, { duration: BTN_REJECT_LEG_MS })
+        );
+      }
+      return;
+    }
     // Haptic only: the throw is acknowledged in the hand, and card_play sounds
     // when the card actually reaches the pile.
     hapticMedium();
-    onPlay(selectedIds);
-  }, [playBtnValid, onPlay, selectedIds]);
+    // The validated set, not the raw selection: `playBtnValid` is computed from
+    // `selectedObjs`, and the server rejects — silently — any request naming a
+    // card the hand does not hold.
+    onPlay(selectedObjs.map((c) => c.id));
+  }, [playBtnValid, onPlay, selectedObjs, dimReasonText, reduceMotion, giocaRejectX]);
   const handlePass = useCallback(() => {
     if (!canPass) return;
+    // Haptic only: the pass sound follows the committed state, so firing it
+    // here as well would double the viewer's own pass.
     hapticLight();
-    playCardPass();
     onPass();
   }, [canPass, onPass]);
 
@@ -861,12 +1060,6 @@ export function GameTable({
       : "-");
 
   const showStartCardBanner = !gameState.firstPlayMade && !!gameState.startCard;
-  const dimLabel = playButtonLabel({
-    isMyTurn,
-    isFinished,
-    selectedCount: selectedIds.length,
-    comboBuilt: tentativeCombo !== null,
-  });
 
   return (
     <Animated.View style={[styles.root, shakeStyle]}>
@@ -876,6 +1069,7 @@ export function GameTable({
       />
 
       <View
+        testID="game-top-bar"
         style={[
           styles.topBar,
           { top: frame.topPad, left: frame.leftPad, right: frame.rightPad },
@@ -962,6 +1156,7 @@ export function GameTable({
                 player={opponents.top.player}
                 isActive={opponents.top.seat === gameState.currentTurnIndex}
                 cardCount={handCountOf(opponents.top.player)}
+                passed={passed.includes(opponents.top.seat)}
               />
             ) : (
               <View />
@@ -976,6 +1171,7 @@ export function GameTable({
                   isActive={opponents.left.seat === gameState.currentTurnIndex}
                   side="left"
                   cardCount={handCountOf(opponents.left.player)}
+                  passed={passed.includes(opponents.left.seat)}
                 />
               )}
             </View>
@@ -997,7 +1193,7 @@ export function GameTable({
                 <PlayedPile
                   prev={pileState.prev}
                   current={flyInfo ? null : pileState.current}
-                  roundWinner={roundWinnerSeat === null ? null : players[roundWinnerSeat]?.name ?? ""}
+                  roundWinner={roundWinnerTag === null ? null : players[roundWinnerTag.seat]?.name ?? ""}
                   bounceTrigger={pileBounceTrigger}
                 />
               )}
@@ -1010,6 +1206,7 @@ export function GameTable({
                   isActive={opponents.right.seat === gameState.currentTurnIndex}
                   side="right"
                   cardCount={handCountOf(opponents.right.player)}
+                  passed={passed.includes(opponents.right.seat)}
                 />
               )}
             </View>
@@ -1077,7 +1274,7 @@ export function GameTable({
                   cards={sortedHand}
                   selectedIds={selectedIds}
                   onPress={handleCardPress}
-                  disabled={!isMyTurn}
+                  disabled={isFinished || spectating}
                   availW={frame.handAvailW}
                   isMyTurn={isMyTurn && !isFinished}
                 />
@@ -1096,18 +1293,15 @@ export function GameTable({
               )}
               <Pressable
                 testID="btn-gioca"
-                onPress={playBtnValid ? handlePlay : undefined}
+                onPress={handlePlay}
                 onPressIn={() => setGiocaPress(true)}
                 onPressOut={() => setGiocaPress(false)}
-                disabled={!playBtnValid}
                 style={styles.playBtnInner}
                 accessibilityRole="button"
                 accessibilityLabel={
                   playBtnValid
                     ? t("gameTable.playA11yValid")
-                    : t("gameTable.playA11yUnavailable", {
-                        reason: PLAY_A11Y_SPOKEN_KEYS[dimLabel] ? t(PLAY_A11Y_SPOKEN_KEYS[dimLabel]!) : dimLabel,
-                      })
+                    : t("gameTable.playA11yUnavailable", { reason: dimReasonText })
                 }
                 accessibilityState={{ disabled: !playBtnValid }}
               >
@@ -1131,7 +1325,7 @@ export function GameTable({
                 ) : (
                   <View style={[styles.playBtnGrad, styles.playBtnGradDim]}>
                     <Text style={styles.playBtnLabelDim} numberOfLines={2}>
-                      {t(PLAY_LABEL_KEYS[dimLabel])}
+                      {t(PLAY_LABEL_KEYS[dimLabel], { rank: startCardRank })}
                     </Text>
                   </View>
                 )}
@@ -1201,6 +1395,33 @@ export function GameTable({
         />
       )}
 
+      {/* Sits just above the hand row, at the GIOCA end of it — the button
+          wears two words, this is the whole sentence, next to the control the
+          player just pressed rather than at the far side of the screen. */}
+      {rejectHint && (
+        <Animated.View
+          key={rejectHint.key}
+          entering={FadeIn.duration(Motion.duration.fast)}
+          pointerEvents="none"
+          style={[
+            styles.rejectHint,
+            {
+              bottom: frame.bottomPad + TABLE_M + HAND_SECTION_H + Spacing.xs,
+              left: frame.tableLeft,
+              right: frame.tableRight,
+            },
+          ]}
+        >
+          <Text
+            style={styles.rejectHintText}
+            numberOfLines={2}
+            accessibilityLiveRegion="polite"
+          >
+            {rejectHint.text}
+          </Text>
+        </Animated.View>
+      )}
+
       {overlays}
 
       {W < H && (
@@ -1248,6 +1469,7 @@ const styles = StyleSheet.create({
     backgroundColor: Scrim.medium,
     alignItems: "center", justifyContent: "center",
   },
+  timerGroup: { flexDirection: "row", alignItems: "center", gap: Spacing.xs },
   timerNum: {
     fontFamily: "Rajdhani_700Bold", fontSize: FontSize.sm,
     color: Colors.gold, minWidth: 20, textAlign: "right",
@@ -1355,6 +1577,25 @@ const styles = StyleSheet.create({
   playBtnSub: {
     fontFamily: "Rajdhani_500Medium", fontSize: FontSize.xs,
     color: Colors.bgCard, opacity: 0.7,
+  },
+  rejectHint: {
+    position: "absolute",
+    zIndex: REJECT_HINT_Z,
+    alignItems: "flex-end",
+  },
+  rejectHintText: {
+    fontFamily: "Rajdhani_600SemiBold",
+    fontSize: FontSize.xs,
+    color: Colors.text,
+    textAlign: "right",
+    maxWidth: REJECT_HINT_MAX_W,
+    backgroundColor: Scrim.heavy,
+    borderWidth: 1,
+    borderColor: Colors.goldBorder,
+    borderRadius: Radius.sm,
+    paddingHorizontal: Spacing.sm,
+    paddingVertical: Spacing.xs,
+    overflow: "hidden",
   },
   rematchPanel: {
     position: "absolute",

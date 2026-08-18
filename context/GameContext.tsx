@@ -408,7 +408,6 @@ export function GameProvider({ children }: { children: ReactNode }) {
         commitState(processPlay(gameState, combo), gameState);
       }
     }
-    setSelectedCards([]);
   }, [gameState, commitState]);
 
   const clearSavedGame = useCallback(() => {

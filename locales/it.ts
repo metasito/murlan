@@ -24,7 +24,6 @@ export const it = {
   "common.loading": "Caricamento…",
   "common.error": "Errore",
   "common.notice": "Avviso",
-  "online.autoPassTitle": "Passaggio automatico",
   "common.unknownError": "Si è verificato un errore imprevisto.",
   "common.retry": "Riprova",
   "common.copy": "Copia",
@@ -246,6 +245,16 @@ export const it = {
   "gameShared.emptyTable": "— Tavolo libero —",
   "gameShared.yourTurn": "Il tuo turno",
   "gameShared.turnOf": "Turno di {{name}}",
+  // Sul posto di un avversario: quel posto ha già risposto al giro in corso.
+  // È la dichiarazione del giocatore, non il pulsante ("PASSA") che il
+  // giocatore preme, e non concorda con il genere di chi la pronuncia.
+  "gameShared.passedLabel": "PASSO",
+
+  // -------------------------------------------------------------- game.*
+  // Shared by both modes: offline the client enforces the response deadline,
+  // online the server announces its own.
+  "game.autoPassTitle": "Passaggio automatico",
+  "game.autoPassBody": "Tempo scaduto: hai passato il turno.",
 
   // -------------------------------------------------------------- gameTable.*
   "gameTable.leaveA11yLabel": "Abbandona la partita",
@@ -254,8 +263,18 @@ export const it = {
   "gameTable.playLabelGioca": "GIOCA",
   "gameTable.playLabelInvalid": "NON\nVALIDA",
   "gameTable.playLabelTooLow": "TROPPO\nBASSA",
+  "gameTable.playLabelStartCard": "SERVE\nIL {{rank}}♠",
+  "gameTable.playLabelRoyalUnbeatable": "NON\nBATTIBILE",
+  "gameTable.playLabelBombOnly": "SOLO\nBOMBA",
+  "gameTable.playLabelWrongType": "ALTRO\nTIPO",
+  "gameTable.playLabelWrongLength": "ALTRO\nNUMERO",
   "gameTable.playA11ySpokenInvalid": "combinazione non valida",
   "gameTable.playA11ySpokenTooLow": "carta troppo bassa",
+  "gameTable.playA11ySpokenStartCard": "la prima giocata deve includere il {{rank}}♠",
+  "gameTable.playA11ySpokenRoyalUnbeatable": "la scala reale batte tutto: qui non puoi rispondere",
+  "gameTable.playA11ySpokenBombOnly": "solo una bomba più alta può battere questa",
+  "gameTable.playA11ySpokenWrongType": "devi rispondere con lo stesso tipo di combinazione, oppure passare",
+  "gameTable.playA11ySpokenWrongLength": "deve avere lo stesso numero di carte di quella sul tavolo",
   "gameTable.playA11yValid": "Gioca le carte selezionate",
   "gameTable.playA11yUnavailable": "Gioca — non disponibile: {{reason}}",
   "gameTable.selectedCountSuffix": "{{n}}c",
@@ -271,6 +290,8 @@ export const it = {
   "gameTable.a11yOpponentCards_other": "{{name}} ha {{count}} carte in mano.",
   "gameTable.a11yYourCards_one": "Hai {{count}} carta in mano.",
   "gameTable.a11yYourCards_other": "Hai {{count}} carte in mano.",
+  "gameTable.a11ySecondsLeft_one": "Ti resta {{count}} secondo per giocare.",
+  "gameTable.a11ySecondsLeft_other": "Ti restano {{count}} secondi per giocare.",
   "gameTable.a11yExchangeGive": "Fase di scambio: devi dare una carta a {{name}}.",
   "gameTable.a11yExchangeWait": "Fase di scambio: aspetti una carta da {{name}}.",
   "gameTable.a11yLastPlayPair": "coppia di {{rank}}",

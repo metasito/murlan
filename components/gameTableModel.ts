@@ -151,6 +151,70 @@ export function advancePile(state: PileState, combo: Combination): PileState {
   return { prev: state.current, current: combo };
 }
 
+/**
+ * The pass that just closed a round, seen from one state. `processPass`
+ * (lib/gameEngine.ts) clears `lastPlayedCombination` and credits `roundWinner`
+ * in the same transition, so the table gets both on a single commit — and the
+ * winning cards must stay on the felt under the tag that announces them
+ * instead of being wiped by the empty-table branch.
+ */
+export function roundClosedWithWinner(state: {
+  lastPlayedCombination: Combination | null;
+  roundWinner?: number | null;
+}): boolean {
+  return (
+    state.lastPlayedCombination === null &&
+    state.roundWinner !== null &&
+    state.roundWinner !== undefined
+  );
+}
+
+/**
+ * The seats that have passed in the round currently on the table, in the order
+ * they passed.
+ *
+ * A pass changes nothing anyone can see — the pile is untouched — so this
+ * derives it from what did change. Turns run from `lastPlayedBy` in
+ * *descending* seat order (`getNextActivePlayer`, lib/gameEngine.ts) and the
+ * pile only changes hands on a play, so every seat between the last player and
+ * whoever is on move now has answered by passing. Seats holding no cards are
+ * never dealt a turn, so they are stepped over rather than marked — a false
+ * marker is worse than none.
+ *
+ * Empty between rounds: `processPass` clears `lastPlayedCombination` on the
+ * pass that closes the round, which is exactly when the markers should go.
+ *
+ * Empty when the seat on move is the seat that made the play: the span between
+ * them is a full circle, so nobody has answered. That is the state
+ * `processPlay` leaves behind when the hand ends on a play — it returns before
+ * moving the turn on — and every seat still holding cards would otherwise be
+ * marked for the whole game-over beat.
+ *
+ * `outOfCards` carries the seat count, so it must have one entry per seat.
+ */
+export function passedSeats(state: {
+  currentTurnIndex: number;
+  lastPlayedBy: number;
+  lastPlayedCombination: Combination | null;
+  /** Indexed by seat: true once that seat holds no cards. */
+  outOfCards: readonly boolean[];
+}): number[] {
+  const { currentTurnIndex, lastPlayedBy, outOfCards } = state;
+  const seatCount = outOfCards.length;
+  if (state.lastPlayedCombination === null) return [];
+  if (lastPlayedBy < 0 || lastPlayedBy >= seatCount) return [];
+  if (currentTurnIndex === lastPlayedBy) return [];
+
+  const passed: number[] = [];
+  for (let step = 1; step < seatCount; step++) {
+    const seat = (((lastPlayedBy - step) % seatCount) + seatCount) % seatCount;
+    if (seat === currentTurnIndex) break;
+    if (outOfCards[seat]) continue;
+    passed.push(seat);
+  }
+  return passed;
+}
+
 // ─── Play / pass affordances ──────────────────────────────────────────────────
 
 export interface TurnFacts {
@@ -164,23 +228,91 @@ export function canPassNow(facts: TurnFacts): boolean {
   return !facts.isNewRound && facts.isMyTurn && !facts.isFinished;
 }
 
-export type PlayButtonLabel = "GIOCA" | "NON\nVALIDA" | "TROPPO\nBASSA";
+/**
+ * Why a selection cannot be played. Identifiers, not copy: GameTable.tsx maps
+ * each to a short button label and to the longer sentence a screen reader (and
+ * the rejection toast) speaks.
+ */
+export type PlayButtonLabel =
+  | "play"
+  | "notACombination"
+  | "needsStartCard"
+  | "royalUnbeatable"
+  | "bombOnly"
+  | "wrongType"
+  | "wrongLength"
+  | "tooLow";
+
+/** As much of a combination as the rejection ladder needs. */
+export interface ComboShape {
+  type: Combination["type"];
+  length: number;
+}
 
 /**
- * Why the GIOCA button is dim. The online screen used to show a bare dim
- * "GIOCA" for every rejection reason; both screens now explain themselves.
+ * Why the GIOCA button is dim, in the same reason order `canPlay`
+ * (lib/gameEngine.ts) refuses in — so a pair offered against a single is told
+ * it is the wrong shape, and the opening play is told it needs the 3♠, rather
+ * than both being called too low.
+ *
+ * Answers "why would this be refused"; the caller decides whether to show it,
+ * because only the caller can run `canPlay` (this file takes no runtime import
+ * from the engine).
  */
 export function playButtonLabel(opts: {
   isMyTurn: boolean;
   isFinished: boolean;
   selectedCount: number;
-  /** True when the selection forms a recognised combination at all. */
-  comboBuilt: boolean;
+  /** The selection's shape, null when it is not a recognised combination. */
+  selection: ComboShape | null;
+  /** What has to be beaten. Null while leading a new round. */
+  pile: ComboShape | null;
+  /** The opening play of a hand must contain the start card. */
+  requiresStartCard: boolean;
+  selectionHasStartCard: boolean;
 }): PlayButtonLabel {
-  if (!opts.isMyTurn || opts.isFinished) return "GIOCA";
-  if (opts.selectedCount === 0) return "GIOCA";
-  if (!opts.comboBuilt) return "NON\nVALIDA";
-  return "TROPPO\nBASSA";
+  if (!opts.isMyTurn || opts.isFinished) return "play";
+  if (opts.selectedCount === 0) return "play";
+
+  const selection = opts.selection;
+  if (selection === null) return "notACombination";
+  if (opts.requiresStartCard && !opts.selectionHasStartCard) return "needsStartCard";
+
+  const pile = opts.pile;
+  if (pile === null) return "play";
+
+  if (selection.type === "royal_straight") {
+    // A royal straight answers everything except a same-length higher one.
+    return pile.type === "royal_straight" && selection.length !== pile.length
+      ? "wrongLength"
+      : "tooLow";
+  }
+  if (selection.type === "bomb") {
+    if (pile.type === "royal_straight") return "royalUnbeatable";
+    return "tooLow";
+  }
+  if (pile.type === "royal_straight") return "royalUnbeatable";
+  if (pile.type === "bomb") return "bombOnly";
+  if (selection.type !== pile.type) return "wrongType";
+  if (selection.length !== pile.length) return "wrongLength";
+  return "tooLow";
+}
+
+/** Seconds left at which the countdown starts ticking audibly. */
+export const URGENT_TICK_SECONDS = 5;
+/** …and the share of the clock it spends visibly urgent. */
+const URGENT_FRACTION = 0.4;
+
+/**
+ * When the countdown turns red, given how long it runs for. Proportional
+ * rather than fixed because the offline clock is 20s against the server's 30s,
+ * and a warning that arrives five seconds from the end of the shorter one
+ * arrives too late to act on. The audible tick keeps its own fixed, later
+ * threshold — a warning you can see for twelve seconds is fine, one you can
+ * hear for twelve seconds is nagging.
+ */
+export function urgentThresholdSeconds(clockSeconds: number): number {
+  return Math.max(URGENT_TICK_SECONDS, Math.ceil(clockSeconds * URGENT_FRACTION));
 }
 
 /**
@@ -288,6 +420,19 @@ export function computeTableFrame(opts: {
     tableBottom,
     handAvailW: opts.width - tableLeft - tableRight - (SIDE_BTN_W + 8) * 2 - 8,
   };
+}
+
+/**
+ * Top edge the notification banner may start at without covering the game
+ * table's top bar — which carries whose turn it is, the countdown and the hand
+ * count, exactly the things an AFK or takeover notice is explaining.
+ *
+ * Landscape is the proxy for "the table is up": it is the only orientation the
+ * table runs in, and on a menu screen in landscape the band the banner steps
+ * over is empty, so it costs nothing there.
+ */
+export function notificationTopOffset(opts: { topPad: number; landscape: boolean }): number {
+  return opts.landscape ? opts.topPad + TOP_BAR_H + TABLE_M : opts.topPad;
 }
 
 // ─── Exchange phase ───────────────────────────────────────────────────────────

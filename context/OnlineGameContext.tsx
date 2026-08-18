@@ -433,7 +433,7 @@ export function OnlineGameProvider({ userId, children }: { userId: string; child
       if (payload.type === "afk") {
         showNotification({
           type: "afk",
-          title: t("online.autoPassTitle"),
+          title: t("game.autoPassTitle"),
           message: text,
           duration: 4500,
         });

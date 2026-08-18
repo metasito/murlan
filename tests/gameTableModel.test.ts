@@ -22,10 +22,14 @@ import {
   handCountOf,
   comboKey,
   advancePile,
+  roundClosedWithWinner,
   EMPTY_PILE,
   canPassNow,
   playButtonLabel,
   turnTimerActive,
+  urgentThresholdSeconds,
+  URGENT_TICK_SECONDS,
+  notificationTopOffset,
   startCardBannerText,
   computeTableFrame,
   readExchange,
@@ -34,9 +38,22 @@ import {
   impactDelayMs,
   FLIGHT_MS,
   LANDING_FRACTION,
+  passedSeats,
   straightTopRankChar,
+  type ComboShape,
   type TableA11yStrings,
 } from "../components/gameTableModel.ts";
+// @ts-ignore
+import {
+  buildCombination,
+  processPass,
+  processPlay,
+  c,
+  makePlayer,
+  makeState,
+  type GameState,
+  type Player,
+} from "./helpers.ts";
 
 // ─── Layout constants ─────────────────────────────────────────────────────────
 
@@ -231,6 +248,289 @@ describe("advancePile", () => {
   });
 });
 
+describe("roundClosedWithWinner", () => {
+  test("the closing pass — the table is empty and a seat took it", () => {
+    assert.equal(
+      roundClosedWithWinner({ lastPlayedCombination: null, roundWinner: 2 }),
+      true
+    );
+  });
+
+  test("seat 0 counts, which a truthiness check would miss", () => {
+    assert.equal(
+      roundClosedWithWinner({ lastPlayedCombination: null, roundWinner: 0 }),
+      true
+    );
+  });
+
+  test("a round in progress has not closed, whoever won the last one", () => {
+    assert.equal(
+      roundClosedWithWinner({ lastPlayedCombination: combo(["a"]), roundWinner: 1 }),
+      false
+    );
+  });
+
+  test("a pass that does not close the round leaves nobody credited", () => {
+    assert.equal(
+      roundClosedWithWinner({ lastPlayedCombination: combo(["a"]), roundWinner: null }),
+      false
+    );
+  });
+
+  test("a freshly dealt hand is empty but nothing has been won", () => {
+    assert.equal(
+      roundClosedWithWinner({ lastPlayedCombination: null, roundWinner: null }),
+      false
+    );
+    assert.equal(roundClosedWithWinner({ lastPlayedCombination: null }), false);
+  });
+});
+
+// ─── Passed seats ─────────────────────────────────────────────────────────────
+
+/** Four seats, all still holding cards. */
+const ALL_IN = [false, false, false, false];
+
+describe("passedSeats", () => {
+  test("nobody has answered yet — the turn is with the seat right after the play", () => {
+    assert.deepEqual(
+      passedSeats({
+        currentTurnIndex: 2,
+        lastPlayedBy: 3,
+        lastPlayedCombination: combo(["a"]),
+        outOfCards: ALL_IN,
+      }),
+      []
+    );
+  });
+
+  test("one seat passed", () => {
+    assert.deepEqual(
+      passedSeats({
+        currentTurnIndex: 1,
+        lastPlayedBy: 3,
+        lastPlayedCombination: combo(["a"]),
+        outOfCards: ALL_IN,
+      }),
+      [2]
+    );
+  });
+
+  test("two seats passed, in the order they passed", () => {
+    assert.deepEqual(
+      passedSeats({
+        currentTurnIndex: 0,
+        lastPlayedBy: 3,
+        lastPlayedCombination: combo(["a"]),
+        outOfCards: ALL_IN,
+      }),
+      [2, 1]
+    );
+  });
+
+  test("the walk wraps past seat 0", () => {
+    assert.deepEqual(
+      passedSeats({
+        currentTurnIndex: 2,
+        lastPlayedBy: 1,
+        lastPlayedCombination: combo(["a"]),
+        outOfCards: ALL_IN,
+      }),
+      [0, 3]
+    );
+  });
+
+  test("a seat that has gone out is stepped over, not marked", () => {
+    // Seat 2 emptied its hand in an earlier round, so the turn went 3 → 1.
+    // Marking it would claim it answered a round it is not in.
+    assert.deepEqual(
+      passedSeats({
+        currentTurnIndex: 1,
+        lastPlayedBy: 3,
+        lastPlayedCombination: combo(["a"]),
+        outOfCards: [false, false, true, false],
+      }),
+      []
+    );
+  });
+
+  test("a seat that has gone out does not stop the walk short", () => {
+    assert.deepEqual(
+      passedSeats({
+        currentTurnIndex: 0,
+        lastPlayedBy: 3,
+        lastPlayedCombination: combo(["a"]),
+        outOfCards: [false, false, true, false],
+      }),
+      [1]
+    );
+  });
+
+  test("between rounds nothing is marked", () => {
+    // `processPass` clears the combination on the pass that closes the round,
+    // which is the moment every marker must go.
+    assert.deepEqual(
+      passedSeats({
+        currentTurnIndex: 3,
+        lastPlayedBy: 3,
+        lastPlayedCombination: null,
+        outOfCards: ALL_IN,
+      }),
+      []
+    );
+  });
+
+  test("a freshly dealt hand, whose lastPlayedBy names no seat", () => {
+    assert.deepEqual(
+      passedSeats({
+        currentTurnIndex: 0,
+        lastPlayedBy: -1,
+        lastPlayedCombination: combo(["a"]),
+        outOfCards: ALL_IN,
+      }),
+      []
+    );
+    assert.deepEqual(
+      passedSeats({
+        currentTurnIndex: 0,
+        lastPlayedBy: 9,
+        lastPlayedCombination: combo(["a"]),
+        outOfCards: ALL_IN,
+      }),
+      []
+    );
+  });
+
+  test("heads-up: the only other seat is the one on move, so it has not passed", () => {
+    assert.deepEqual(
+      passedSeats({
+        currentTurnIndex: 0,
+        lastPlayedBy: 1,
+        lastPlayedCombination: combo(["a"]),
+        outOfCards: [false, false],
+      }),
+      []
+    );
+  });
+});
+
+describe("passedSeats walks the direction the engine deals turns", () => {
+  // Against real transitions, not a hand-built state: `getNextActivePlayer`
+  // moves to the *previous* seat index, and a marker on the wrong seat is
+  // worse than no marker. Everything below comes out of the engine itself.
+  const hands = (): Player[] => [
+    makePlayer("player_0", [c("5", "spades"), c("6", "spades")]),
+    makePlayer("player_1", [c("7", "hearts"), c("8", "hearts")]),
+    makePlayer("player_2", [c("9", "clubs"), c("10", "clubs")]),
+    makePlayer("player_3", [c("J", "diamonds"), c("Q", "diamonds")]),
+  ];
+
+  const view = (s: GameState) => ({
+    currentTurnIndex: s.currentTurnIndex,
+    lastPlayedBy: s.lastPlayedBy,
+    lastPlayedCombination: s.lastPlayedCombination,
+    outOfCards: s.players.map((p) => p.hand.length === 0),
+  });
+
+  test("each pass marks the seat that made it, and the round close clears them", () => {
+    let s = makeState(hands(), {
+      currentTurnIndex: 3,
+      lastPlayedBy: 3,
+      firstPlayMade: true,
+    });
+
+    s = processPlay(s, buildCombination([c("J", "diamonds")])!);
+    assert.equal(s.currentTurnIndex, 2, "the engine deals the next turn downward");
+    assert.deepEqual(passedSeats(view(s)), []);
+
+    s = processPass(s);
+    assert.equal(s.currentTurnIndex, 1);
+    assert.deepEqual(passedSeats(view(s)), [2]);
+
+    s = processPass(s);
+    assert.equal(s.currentTurnIndex, 0);
+    assert.deepEqual(passedSeats(view(s)), [2, 1]);
+
+    s = processPass(s);
+    assert.equal(s.lastPlayedCombination, null, "the third pass closes the round");
+    assert.deepEqual(passedSeats(view(s)), []);
+  });
+
+  test("a seat that goes out mid-round is never marked", () => {
+    // Seat 2 holds one card: it answers seat 3's lead by playing it and is out.
+    const players = hands();
+    players[2].hand = [c("9", "clubs")];
+    let s = makeState(players, {
+      currentTurnIndex: 3,
+      lastPlayedBy: 3,
+      firstPlayMade: true,
+    });
+
+    s = processPlay(s, buildCombination([c("J", "diamonds")])!);
+    s = processPlay(s, buildCombination([c("9", "clubs")])!);
+    assert.equal(s.players[2].hand.length, 0);
+    assert.equal(s.lastPlayedBy, 2);
+
+    s = processPass(s);
+    assert.deepEqual(passedSeats(view(s)), [1]);
+
+    s = processPass(s);
+    const marked = passedSeats(view(s));
+    assert.ok(!marked.includes(2), "seat 2 played, it did not pass");
+    assert.deepEqual(marked, [1, 0]);
+  });
+
+  test("the hand ending on a play marks nobody", () => {
+    // `processPlay` returns as soon as the hand is decided, so the turn never
+    // moves off the seat that went out: `currentTurnIndex === lastPlayedBy`
+    // with a combination still on the table. Seat 2 has simply not been dealt
+    // another turn — it did not pass.
+    const players = hands();
+    players[0].hand = [];
+    players[0].finishPosition = 1;
+    players[1].hand = [];
+    players[1].finishPosition = 2;
+    players[3].hand = [c("J", "diamonds")];
+    let s = makeState(players, {
+      currentTurnIndex: 3,
+      lastPlayedBy: 3,
+      firstPlayMade: true,
+      rankings: ["player_0", "player_1"],
+    });
+
+    s = processPlay(s, buildCombination([c("J", "diamonds")])!);
+    assert.equal(s.gameOver, true);
+    assert.equal(s.currentTurnIndex, s.lastPlayedBy);
+    assert.notEqual(s.lastPlayedCombination, null);
+    assert.deepEqual(passedSeats(view(s)), []);
+  });
+
+  test("teams: the losing pair is not marked when the hand ends", () => {
+    // Seat 3 goes out with its partner already home, which decides the hand
+    // (RULES.md §11) while both opponents still hold cards.
+    const players = hands();
+    players[0].team = "A";
+    players[1].team = "B";
+    players[2].team = "A";
+    players[3].team = "B";
+    players[1].hand = [];
+    players[1].finishPosition = 1;
+    players[3].hand = [c("J", "diamonds")];
+    let s = makeState(players, {
+      currentTurnIndex: 3,
+      lastPlayedBy: 3,
+      firstPlayMade: true,
+      gameMode: "teams",
+      rankings: ["player_1"],
+    });
+
+    s = processPlay(s, buildCombination([c("J", "diamonds")])!);
+    assert.equal(s.gameOver, true);
+    assert.ok(s.players[0].hand.length > 0 && s.players[2].hand.length > 0);
+    assert.deepEqual(passedSeats(view(s)), []);
+  });
+});
+
 // ─── Affordances ──────────────────────────────────────────────────────────────
 
 describe("canPassNow", () => {
@@ -249,27 +549,101 @@ describe("canPassNow", () => {
 });
 
 describe("playButtonLabel", () => {
-  const base = { isMyTurn: true, isFinished: false, selectedCount: 2, comboBuilt: true };
+  const shape = (type: ComboShape["type"], length: number): ComboShape => ({ type, length });
+
+  // A pair offered against a pair it cannot beat: the one case that really is
+  // "too low", and the baseline every other case varies from.
+  const base = {
+    isMyTurn: true,
+    isFinished: false,
+    selectedCount: 2,
+    selection: shape("pair", 2),
+    pile: shape("pair", 2),
+    requiresStartCard: false,
+    selectionHasStartCard: false,
+  };
 
   test("idle states read as a plain GIOCA", () => {
-    assert.equal(playButtonLabel({ ...base, isMyTurn: false }), "GIOCA");
-    assert.equal(playButtonLabel({ ...base, isFinished: true }), "GIOCA");
-    assert.equal(playButtonLabel({ ...base, selectedCount: 0 }), "GIOCA");
+    assert.equal(playButtonLabel({ ...base, isMyTurn: false }), "play");
+    assert.equal(playButtonLabel({ ...base, isFinished: true }), "play");
+    assert.equal(playButtonLabel({ ...base, selectedCount: 0 }), "play");
   });
 
   test("an unrecognised selection says so", () => {
-    assert.equal(playButtonLabel({ ...base, comboBuilt: false }), "NON\nVALIDA");
+    assert.equal(playButtonLabel({ ...base, selection: null }), "notACombination");
   });
 
-  test("a legal shape that cannot beat the pile says so", () => {
-    assert.equal(playButtonLabel(base), "TROPPO\nBASSA");
+  test("the same shape, genuinely lower, is the only case called too low", () => {
+    assert.equal(playButtonLabel(base), "tooLow");
+  });
+
+  test("a different shape is not too low — it is the wrong type", () => {
+    assert.equal(
+      playButtonLabel({ ...base, selection: shape("pair", 2), pile: shape("single", 1) }),
+      "wrongType"
+    );
+  });
+
+  test("the right type at the wrong length is neither too low nor the wrong type", () => {
+    assert.equal(
+      playButtonLabel({
+        ...base,
+        selection: shape("straight", 5),
+        pile: shape("straight", 6),
+      }),
+      "wrongLength"
+    );
+  });
+
+  test("only a higher bomb answers a bomb", () => {
+    assert.equal(
+      playButtonLabel({ ...base, selection: shape("straight", 5), pile: shape("bomb", 4) }),
+      "bombOnly"
+    );
+    // Bomb against bomb is a real strength comparison, so that one is too low.
+    assert.equal(
+      playButtonLabel({ ...base, selection: shape("bomb", 4), pile: shape("bomb", 4) }),
+      "tooLow"
+    );
+  });
+
+  test("a royal straight is unanswerable, bomb included", () => {
+    assert.equal(
+      playButtonLabel({ ...base, selection: shape("pair", 2), pile: shape("royal_straight", 5) }),
+      "royalUnbeatable"
+    );
+    assert.equal(
+      playButtonLabel({ ...base, selection: shape("bomb", 4), pile: shape("royal_straight", 5) }),
+      "royalUnbeatable"
+    );
+  });
+
+  test("a royal straight answered by a shorter one is a length problem", () => {
+    assert.equal(
+      playButtonLabel({
+        ...base,
+        selection: shape("royal_straight", 5),
+        pile: shape("royal_straight", 6),
+      }),
+      "wrongLength"
+    );
+  });
+
+  test("the opening play without the start card is told exactly that", () => {
+    // The empty table used to report "too low" here, contradicting the banner
+    // in the middle of the same screen.
+    assert.equal(
+      playButtonLabel({ ...base, pile: null, requiresStartCard: true, selectionHasStartCard: false }),
+      "needsStartCard"
+    );
+    assert.equal(
+      playButtonLabel({ ...base, pile: null, requiresStartCard: true, selectionHasStartCard: true }),
+      "play"
+    );
   });
 
   test("not-my-turn wins over an unbuildable selection (no false accusation)", () => {
-    assert.equal(
-      playButtonLabel({ ...base, isMyTurn: false, comboBuilt: false }),
-      "GIOCA"
-    );
+    assert.equal(playButtonLabel({ ...base, isMyTurn: false, selection: null }), "play");
   });
 });
 
@@ -314,6 +688,51 @@ describe("turnTimerActive", () => {
 });
 
 // ─── Copy ─────────────────────────────────────────────────────────────────────
+
+describe("urgentThresholdSeconds", () => {
+  test("the shorter offline clock turns red well before the last five seconds", () => {
+    // 20s offline: five seconds' warning on a clock that short arrives too
+    // late to choose a card with.
+    assert.equal(urgentThresholdSeconds(20), 8);
+    assert.ok(urgentThresholdSeconds(20) > URGENT_TICK_SECONDS);
+  });
+
+  test("the longer online clock warns proportionally, not identically", () => {
+    assert.equal(urgentThresholdSeconds(30), 12);
+  });
+
+  test("a very short clock never warns later than the audible tick", () => {
+    assert.equal(urgentThresholdSeconds(6), URGENT_TICK_SECONDS);
+    assert.equal(urgentThresholdSeconds(0), URGENT_TICK_SECONDS);
+  });
+
+  test("the threshold is a whole number of seconds — the countdown is integer", () => {
+    for (const clock of [7, 13, 20, 25, 30, 45]) {
+      assert.equal(urgentThresholdSeconds(clock) % 1, 0, `clock ${clock}`);
+    }
+  });
+});
+
+describe("notificationTopOffset", () => {
+  // The table's top bar occupies [topPad, topPad + TOP_BAR_H) and carries the
+  // turn billboard, the countdown and the hand count — the very things an AFK
+  // or seat-takeover notice is explaining.
+  const topPad = 47;
+
+  test("in landscape the banner starts below the table's top bar", () => {
+    const top = notificationTopOffset({ topPad, landscape: true });
+    assert.ok(top >= topPad + TOP_BAR_H, `${top} still overlaps the top bar`);
+    assert.equal(top, topPad + TOP_BAR_H + TABLE_M);
+  });
+
+  test("portrait — every menu screen — is left exactly where it was", () => {
+    assert.equal(notificationTopOffset({ topPad, landscape: false }), topPad);
+  });
+
+  test("a zero inset still clears the bar in landscape", () => {
+    assert.ok(notificationTopOffset({ topPad: 0, landscape: true }) >= TOP_BAR_H);
+  });
+});
 
 describe("startCardBannerText", () => {
   test("second person when the viewer opens", () => {
