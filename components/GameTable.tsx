@@ -1442,16 +1442,16 @@ export function GameTable({
       <Modal
         transparent
         visible
-        accessibilityLabel="Ruota il dispositivo"
+        accessibilityLabel={t("gameTable.rotateTitle")}
         supportedOrientations={["portrait", "landscape"]}
         onRequestClose={() => {}}
       >
         <View style={portraitOverlayStyles.overlay}>
           <View style={portraitOverlayStyles.card}>
             <Ionicons name="phone-landscape-outline" size={56} color={Colors.gold} />
-            <Text maxFontSizeMultiplier={TABLE_FONT_SCALE_MAX} style={portraitOverlayStyles.title}>Ruota il dispositivo</Text>
+            <Text maxFontSizeMultiplier={TABLE_FONT_SCALE_MAX} style={portraitOverlayStyles.title}>{t("gameTable.rotateTitle")}</Text>
             <Text maxFontSizeMultiplier={TABLE_FONT_SCALE_MAX} style={portraitOverlayStyles.sub}>
-              Il gioco richiede la modalità orizzontale
+              {t("gameTable.rotateBody")}
             </Text>
           </View>
         </View>

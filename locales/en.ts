@@ -148,6 +148,13 @@ export const en: Record<keyof typeof it, string> = {
   // ---------------------------------------------------- notificationBanner.*
   "notificationBanner.dismissA11yHint": "Tap to dismiss the notification",
   "notificationBanner.closeA11yLabel": "Close notification",
+  // ---------------------------------------------------------- notifications.*
+  "notifications.friendRequestTitle": "Friend request",
+  "notifications.friendRequestBody": "{{name}} wants to be your friend",
+  "notifications.friendAcceptedTitle": "Friend request accepted!",
+  "notifications.friendAcceptedBody": "{{name}} accepted your request",
+  "notifications.gameInviteTitle": "{{name}} invites you to play!",
+  "notifications.gameInviteBody": "Room: {{code}} — Tap to join",
 
   // -------------------------------------------------------- reactionLayer.*
   "reactionLayer.triggerA11yLabel": "Send a reaction",
@@ -235,6 +242,8 @@ export const en: Record<keyof typeof it, string> = {
   "game.autoPassBody": "Time is up: your turn was passed.",
 
   // -------------------------------------------------------------- gameTable.*
+  "gameTable.rotateTitle": "Rotate your device",
+  "gameTable.rotateBody": "The game needs landscape mode",
   "gameTable.leaveA11yLabel": "Leave the game",
   "gameTable.passLabel": "PASS",
   "gameTable.passA11yLabel": "Pass the turn",

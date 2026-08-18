@@ -162,6 +162,13 @@ export const it = {
   // ---------------------------------------------------- notificationBanner.*
   "notificationBanner.dismissA11yHint": "Tocca per chiudere la notifica",
   "notificationBanner.closeA11yLabel": "Chiudi notifica",
+  // ---------------------------------------------------------- notifications.*
+  "notifications.friendRequestTitle": "Richiesta di amicizia",
+  "notifications.friendRequestBody": "{{name}} vuole essere tuo amico",
+  "notifications.friendAcceptedTitle": "Amicizia accettata!",
+  "notifications.friendAcceptedBody": "{{name}} ha accettato la tua richiesta",
+  "notifications.gameInviteTitle": "{{name}} ti invita a giocare!",
+  "notifications.gameInviteBody": "Stanza: {{code}} — Tocca per unirti",
 
   // -------------------------------------------------------- reactionLayer.*
   "reactionLayer.triggerA11yLabel": "Invia una reazione",
@@ -257,6 +264,8 @@ export const it = {
   "game.autoPassBody": "Tempo scaduto: hai passato il turno.",
 
   // -------------------------------------------------------------- gameTable.*
+  "gameTable.rotateTitle": "Ruota il dispositivo",
+  "gameTable.rotateBody": "Il gioco richiede la modalità orizzontale",
   "gameTable.leaveA11yLabel": "Abbandona la partita",
   "gameTable.passLabel": "PASSA",
   "gameTable.passA11yLabel": "Passa il turno",
