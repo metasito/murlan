@@ -92,6 +92,30 @@ describe(
     });
 
     /**
+     * The other half of the limit's contract, and the half a refusal breaks
+     * loudly: the budget is there to stop a flood, not to lock a phone out of
+     * its own game. A connection that keeps dropping — a tunnel, a lift, a
+     * handover between cells — mints one ticket and one handshake per attempt,
+     * and socket.io retries by itself, so the client spends the budget without
+     * the player doing anything at all.
+     */
+    test("a client that keeps dropping and reconnecting is never refused", async () => {
+      const commuter = await register(server, "handshake_commuter");
+
+      // A bad ten minutes on a train, not a number chosen to sit under the
+      // ceiling: the limit has to have room above whatever a real connection
+      // does to itself.
+      for (let attempt = 1; attempt <= 12; attempt++) {
+        const back = await connectWithCookie(commuter.cookie);
+        assert.ok(
+          back.ok,
+          `reconnect ${attempt} of an ordinary flapping connection was refused: ${back.err}`
+        );
+        back.socket!.close();
+      }
+    });
+
+    /**
      * The friends read is the most expensive part of accepting a connection —
      * an innerJoin against `users` — and the connect notice and the online list
      * need the very same rows.
