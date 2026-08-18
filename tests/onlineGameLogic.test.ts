@@ -6,8 +6,6 @@ import {
   scoreKeyForSeat,
   findViewerSeat,
   excludeBotSeats,
-  isStaleSchema,
-  GAME_SCHEMA_VERSION,
   buildSeatRoster,
   teamKeyMap,
   restoredMatchOver,
@@ -15,37 +13,28 @@ import {
 import { teamForSeat, TEAMS_PLAYER_COUNT } from "../lib/gameEngine.ts";
 
 describe("readPersistedPlayerMap (seat resolution on rejoin)", () => {
-  test("prefers the seat -> userId map when present", () => {
-    const map = readPersistedPlayerMap({ "0": "alice", "2": "carol" }, ["alice", "bob", "carol"]);
+  test("reads the seat -> userId map", () => {
+    const map = readPersistedPlayerMap({ "0": "alice", "2": "carol" });
     assert.deepEqual(map, { 0: "alice", 2: "carol" });
   });
 
-  test("falls back to the positional array when the map is empty", () => {
-    const map = readPersistedPlayerMap({}, ["alice", "bob", "carol"]);
-    assert.deepEqual(map, { 0: "alice", 1: "bob", 2: "carol" });
-  });
-
-  test("falls back to the positional array when the map is missing", () => {
-    const map = readPersistedPlayerMap(undefined, ["alice", "bob"]);
-    assert.deepEqual(map, { 0: "alice", 1: "bob" });
-  });
-
-  test("a non-contiguous seat map is not collapsed by the array fallback", () => {
+  test("a non-contiguous seat map keeps its gaps", () => {
     // This is the exact corruption this function exists to prevent: a
     // rejoining player must land on their own seat, not a compacted index.
-    const map = readPersistedPlayerMap({ "0": "alice", "3": "dan" }, ["alice", "dan"]);
+    const map = readPersistedPlayerMap({ "0": "alice", "3": "dan" });
     assert.deepEqual(map, { 0: "alice", 3: "dan" });
     assert.equal(seatOfUser(map, "dan"), 3);
   });
 
   test("ignores non-string values and non-integer keys in the map", () => {
-    const map = readPersistedPlayerMap({ "0": "alice", "x": "bob", "1": 42 }, []);
+    const map = readPersistedPlayerMap({ "0": "alice", "x": "bob", "1": 42 });
     assert.deepEqual(map, { 0: "alice" });
   });
 
-  test("an empty map and empty array resolve to an empty seating", () => {
-    assert.deepEqual(readPersistedPlayerMap({}, []), {});
-    assert.deepEqual(readPersistedPlayerMap(null, null), {});
+  test("a missing or unreadable map resolves to an empty seating", () => {
+    assert.deepEqual(readPersistedPlayerMap({}), {});
+    assert.deepEqual(readPersistedPlayerMap(null), {});
+    assert.deepEqual(readPersistedPlayerMap(["alice", "bob"]), {});
   });
 });
 
@@ -122,25 +111,6 @@ describe("scoreKeyForSeat", () => {
       [scoreKeyForSeat(playerMap, 1)]: 0,
     };
     assert.deepEqual(excludeBotSeats(handByKey), { alice: 3 });
-  });
-});
-
-describe("isStaleSchema / GAME_SCHEMA_VERSION (rejection of pre-full-deck persisted games)", () => {
-  test("a row with no schemaVersion at all is stale", () => {
-    // Every active_games row written before this field existed — exactly
-    // the pre-full-deck-deal rows the fix targets.
-    assert.equal(isStaleSchema(null), true);
-    assert.equal(isStaleSchema(undefined), true);
-    assert.equal(isStaleSchema({}), true);
-  });
-
-  test("a row stamped with a different version is stale", () => {
-    assert.equal(isStaleSchema({ schemaVersion: GAME_SCHEMA_VERSION - 1 }), true);
-    assert.equal(isStaleSchema({ schemaVersion: GAME_SCHEMA_VERSION + 1 }), true);
-  });
-
-  test("a row stamped with the current version is current, not stale", () => {
-    assert.equal(isStaleSchema({ schemaVersion: GAME_SCHEMA_VERSION }), false);
   });
 });
 

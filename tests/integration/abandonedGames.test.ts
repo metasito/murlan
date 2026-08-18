@@ -45,8 +45,8 @@ describe("abandoned game rows", { skip: hasDatabase() ? false : skipMessage() },
   /** A row as `persistGameState` writes one, stamped at a chosen age. */
   async function seedGame(roomCode: string, ageMs: number) {
     await dbPool.query(
-      `INSERT INTO active_games (room_code, game_state, player_ids, player_map, scores, updated_at)
-       VALUES ($1, '{}'::jsonb, '[]'::jsonb, '{}'::jsonb, '{}'::jsonb, now() - make_interval(secs => $2))`,
+      `INSERT INTO active_games (room_code, game_state, updated_at)
+       VALUES ($1, '{}'::jsonb, now() - make_interval(secs => $2))`,
       [roomCode, ageMs / 1000]
     );
   }

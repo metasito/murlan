@@ -11,15 +11,8 @@ import { scoreHand, addHandScores, resolveMatch, resolveTeamMatch } from "../lib
 import type { GameState, GameMode, MatchLength } from "../lib/gameEngine.ts";
 import type { GameResult } from "../lib/achievements.ts";
 
-/**
- * seat -> userId from the persisted map, falling back to the legacy positional
- * array. The array loses the seat association as soon as a seat is vacated,
- * so relying on it can hand a rejoining player someone else's hand.
- */
-export function readPersistedPlayerMap(
-  storedMap: unknown,
-  storedIds: unknown
-): Record<number, string> {
+/** seat -> userId from the persisted map, dropping any entry that is not one. */
+export function readPersistedPlayerMap(storedMap: unknown): Record<number, string> {
   const map: Record<number, string> = {};
   if (storedMap && typeof storedMap === "object" && !Array.isArray(storedMap)) {
     for (const [key, value] of Object.entries(storedMap as Record<string, unknown>)) {
@@ -28,13 +21,6 @@ export function readPersistedPlayerMap(
         map[seat] = value;
       }
     }
-  }
-  if (Object.keys(map).length > 0) return map;
-
-  if (Array.isArray(storedIds)) {
-    storedIds.forEach((id, idx) => {
-      if (typeof id === "string") map[idx] = id;
-    });
   }
   return map;
 }
@@ -150,59 +136,118 @@ export function isContestedTable(humanSeats: number, botSeats: number): boolean 
 }
 
 /**
- * Bumped whenever the persisted shape of `gameState` stops being safe to
- * restore verbatim (e.g. a change to how many cards are dealt per player). A
- * row written under an older version can hold hands that no longer match the
+ * Bumped whenever the persisted shape of a game stops being safe to restore
+ * verbatim (e.g. a change to how many cards are dealt per player). A row
+ * written under an older version can hold hands that no longer match the
  * current rules — rehydrating it deals a silently corrupt game instead of
  * crashing, so it must be rejected, not restored.
  */
-export const GAME_SCHEMA_VERSION = 1;
-
-/** True when a persisted row's schema is missing or does not match the current one. */
-export function isStaleSchema(
-  persisted: { schemaVersion?: number } | null | undefined
-): boolean {
-  return !persisted || persisted.schemaVersion !== GAME_SCHEMA_VERSION;
-}
+export const GAME_SCHEMA_VERSION = 2;
 
 export type HandFlags = Record<number, { bomb: boolean; joker: boolean }>;
 
-/** The stored `game_state` blob: the engine's state plus the fields that ride with it. */
-export type PersistedEnvelope<S> = S & {
-  schemaVersion: number;
-  handFlags?: HandFlags;
-  dealFirstSeat?: number;
-};
-
-/**
- * Wraps engine state for storage. `handFlags` travels here rather than in its
- * own column because a new column cannot be written until someone runs
- * `db:push` on Replit, and every persist would fail silently until they did.
- */
-export function packPersistedState<S extends object>(
-  gameState: S,
-  handFlags: HandFlags,
-  dealFirstSeat: number
-): PersistedEnvelope<S> {
-  return { ...gameState, schemaVersion: GAME_SCHEMA_VERSION, handFlags, dealFirstSeat };
+/** The match bookkeeping that outlives the hand on the table. */
+export interface PersistedMatch {
+  playerMap: Record<number, string>;
+  scores: Record<string, number>;
+  gameMode: GameMode;
+  matchLength: MatchLength;
+  matchTarget: number;
+  maxPlayers: number;
+  isPublic: boolean;
 }
 
 /**
- * Splits a stored blob back into engine state and the fields that rode with
- * it. The envelope fields must not survive into the game state: it is
- * broadcast to every client and compared against engine output.
+ * The stored `game_state` blob: everything about a live table except the room
+ * id that keys it and the `updated_at` the abandoned-game sweep filters on.
+ *
+ * One versioned document rather than a column each, so a
+ * `GAME_SCHEMA_VERSION` bump refuses a stale row whole; a column outside it
+ * would be rehydrated alongside the state the bump just rejected. It also
+ * costs nothing to add a field to, where a new column cannot be written until
+ * someone runs `db:push` on Replit and every persist fails silently until they
+ * do.
+ *
+ * `gameState` is nested, not spread: `GameState` has its own `gameMode`, so a
+ * flat envelope would have the match's overwrite the hand's.
  */
-export function unpackPersistedState<S extends object>(
-  persisted: PersistedEnvelope<S>
-): { gameState: S; handFlags: HandFlags; dealFirstSeat: number } {
-  const { schemaVersion: _schemaVersion, handFlags, dealFirstSeat, ...gameState } = persisted;
-  // A row written before handFlags joined the envelope has none; starting that
-  // hand's tracking over is the pre-existing behaviour, so no schema bump. The
-  // same holds for the deal rotation: a row without one resumes from seat 0.
+export interface PersistedEnvelope<S> {
+  schemaVersion: number;
+  gameState: S;
+  handFlags: HandFlags;
+  dealFirstSeat: number;
+  match: PersistedMatch;
+}
+
+export function packPersistedState<S extends object>(
+  gameState: S,
+  handFlags: HandFlags,
+  dealFirstSeat: number,
+  match: PersistedMatch
+): PersistedEnvelope<S> {
+  return { schemaVersion: GAME_SCHEMA_VERSION, gameState, handFlags, dealFirstSeat, match };
+}
+
+export type PersistedRestore<S> =
+  | ({ ok: true } & Omit<PersistedEnvelope<S>, "schemaVersion">)
+  | { ok: false; reason: string };
+
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function isSeatCount(value: unknown): value is number {
+  return typeof value === "number" && Number.isInteger(value) && value >= 0;
+}
+
+/**
+ * Reads a stored blob back, or says why it cannot be. Every field is checked
+ * against the shape the restore path assumes: the blob is `unknown` however
+ * the column is typed, and a value that reaches `resolveMatch` malformed
+ * produces a NaN comparison instead of a refused row.
+ */
+export function unpackPersistedState<S>(persisted: unknown): PersistedRestore<S> {
+  if (!isPlainObject(persisted)) return { ok: false, reason: "not an object" };
+  if (persisted.schemaVersion !== GAME_SCHEMA_VERSION) {
+    return { ok: false, reason: `schema version ${String(persisted.schemaVersion)}` };
+  }
+  if (!isPlainObject(persisted.gameState)) return { ok: false, reason: "no game state" };
+  if (!isPlainObject(persisted.handFlags)) return { ok: false, reason: "no hand flags" };
+  if (!isSeatCount(persisted.dealFirstSeat)) return { ok: false, reason: "no deal rotation" };
+
+  const match = persisted.match;
+  if (!isPlainObject(match)) return { ok: false, reason: "no match state" };
+  if (!isPlainObject(match.scores) || !Object.values(match.scores).every(Number.isFinite)) {
+    return { ok: false, reason: "scores are not all numbers" };
+  }
+  if (match.gameMode !== "free_for_all" && match.gameMode !== "teams") {
+    return { ok: false, reason: `game mode ${String(match.gameMode)}` };
+  }
+  if (match.matchLength !== "match" && match.matchLength !== "single") {
+    return { ok: false, reason: `match length ${String(match.matchLength)}` };
+  }
+  if (!isSeatCount(match.matchTarget) || match.matchTarget < 1) {
+    return { ok: false, reason: `match target ${String(match.matchTarget)}` };
+  }
+  if (!isSeatCount(match.maxPlayers) || match.maxPlayers < 1) {
+    return { ok: false, reason: `max players ${String(match.maxPlayers)}` };
+  }
+  if (typeof match.isPublic !== "boolean") return { ok: false, reason: "no visibility" };
+
   return {
-    gameState: gameState as unknown as S,
-    handFlags: handFlags ?? {},
-    dealFirstSeat: dealFirstSeat ?? 0,
+    ok: true,
+    gameState: persisted.gameState as S,
+    handFlags: persisted.handFlags as HandFlags,
+    dealFirstSeat: persisted.dealFirstSeat,
+    match: {
+      playerMap: readPersistedPlayerMap(match.playerMap),
+      scores: match.scores as Record<string, number>,
+      gameMode: match.gameMode,
+      matchLength: match.matchLength,
+      matchTarget: match.matchTarget,
+      maxPlayers: match.maxPlayers,
+      isPublic: match.isPublic,
+    },
   };
 }
 

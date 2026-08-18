@@ -68,22 +68,13 @@ export const friends = pgTable(
   ]
 );
 
+// One live table. Everything about it rides the versioned `game_state`
+// envelope (see PersistedEnvelope in server/onlineGameLogic.ts) so a schema
+// bump refuses a stale row whole; `updated_at` stays a column because the
+// abandoned-game sweep filters on it in SQL.
 export const activeGames = pgTable("active_games", {
   roomCode:   text("room_code").primaryKey(),
   gameState:  jsonb("game_state").notNull().default({}),
-  playerIds:  jsonb("player_ids").notNull().default([]),
-  // seatIndex -> userId. Authoritative: player_ids loses the seat association
-  // as soon as a seat is vacated, so relying on it can hand a rejoining
-  // player someone else's hand.
-  playerMap:  jsonb("player_map").notNull().default({}),
-  // userId -> cumulative match points, so a restart does not reset the match.
-  scores:     jsonb("scores").notNull().default({}),
-  isPublic:   boolean("is_public").notNull().default(false),
-  maxPlayers: integer("max_players").notNull().default(4),
-  gameMode:   text("game_mode").notNull().default("free_for_all"),
-  matchTarget: integer("match_target").notNull().default(21),
-  // "match" (play to matchTarget) or "single" (one manche and done).
-  matchLength: text("match_length").notNull().default("match"),
   updatedAt:  timestamp("updated_at").defaultNow().notNull(),
 });
 

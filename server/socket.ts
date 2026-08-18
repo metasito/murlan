@@ -24,11 +24,9 @@ import {
   buildSeatRoster,
   teamKeyMap,
   restoredMatchOver,
-  isStaleSchema,
   packPersistedState,
   unpackPersistedState,
   resolveHandEnd,
-  type PersistedEnvelope,
 } from "./onlineGameLogic.ts";
 import {
   NoPayloadSchema,
@@ -352,8 +350,7 @@ export const __testables = {
     const next = autoMoveForSeat(game, seat, useAi);
     return { state: next, handFlags: game.handFlags };
   },
-  readPersistedPlayerMap: (storedMap: unknown, storedIds: unknown) =>
-    readPersistedPlayerMap(storedMap, storedIds),
+  readPersistedPlayerMap: (storedMap: unknown) => readPersistedPlayerMap(storedMap),
   countRematchAnswers: (game: OnlineGameState) => countRematchAnswers(game),
   tableWantsRematch: (game: OnlineGameState) => tableWantsRematch(game),
   /**
@@ -529,22 +526,19 @@ function disposeGame(roomId: string, deleteRow = true) {
  * caller that is about to delete the same row can order itself after it.
  */
 function persistGameState(roomId: string, game: OnlineGameState): Promise<unknown> {
-  const playerIds = Object.values(game.playerMap);
-  const playerMap = game.playerMap as Record<string, string>;
   // Stamped so a restart can tell a current-shape row from a stale one (see
   // GAME_SCHEMA_VERSION) rather than restoring a corrupt hand silently.
-  const persistedState = packPersistedState(game.gameState, game.handFlags, game.dealFirstSeat);
   const values = {
     roomCode: roomId,
-    gameState: persistedState as any,
-    playerIds: playerIds as any,
-    playerMap: playerMap as any,
-    scores: game.cumulativeScores as any,
-    isPublic: publicRoomIds.has(roomId),
-    maxPlayers: game.maxPlayers,
-    gameMode: game.gameMode,
-    matchTarget: game.matchTarget,
-    matchLength: game.matchLength,
+    gameState: packPersistedState(game.gameState, game.handFlags, game.dealFirstSeat, {
+      playerMap: game.playerMap,
+      scores: game.cumulativeScores,
+      gameMode: game.gameMode,
+      matchLength: game.matchLength,
+      matchTarget: game.matchTarget,
+      maxPlayers: game.maxPlayers,
+      isPublic: publicRoomIds.has(roomId),
+    }),
     updatedAt: new Date(),
   };
   return db
@@ -552,21 +546,7 @@ function persistGameState(roomId: string, game: OnlineGameState): Promise<unknow
     .values(values)
     .onConflictDoUpdate({
       target: activeGamesTable.roomCode,
-      // Everything mutable is refreshed on every write — seats, scores, mode
-      // and player list — so a restored game comes back with the correct
-      // seats and scoreboard instead of as a free-for-all.
-      set: {
-        gameState: values.gameState,
-        playerIds: values.playerIds,
-        playerMap: values.playerMap,
-        scores: values.scores,
-        isPublic: values.isPublic,
-        maxPlayers: values.maxPlayers,
-        gameMode: values.gameMode,
-        matchTarget: values.matchTarget,
-        matchLength: values.matchLength,
-        updatedAt: values.updatedAt,
-      },
+      set: { gameState: values.gameState, updatedAt: values.updatedAt },
     })
     .catch((err: unknown) =>
       logger.error({ err, roomId }, "Failed to persist game state")
@@ -2077,60 +2057,51 @@ export function setupSocket(httpServer: HttpServer) {
             return;
           }
 
-          const persistedState = row.gameState as PersistedEnvelope<GameState> | null;
-          if (isStaleSchema(persistedState)) {
-            // Written under an older persisted shape. Restoring it deals a
-            // silently corrupt hand rather than crashing, which is worse
-            // than refusing outright.
+          const restored = unpackPersistedState<GameState>(row.gameState);
+          if (!restored.ok) {
+            // Written under an older persisted shape, or holding a value the
+            // restore path would carry straight into the engine. Restoring it
+            // deals a silently corrupt hand rather than crashing, which is
+            // worse than refusing outright.
             logger.warn(
-              { roomCode, foundVersion: persistedState?.schemaVersion },
-              "Discarding stale persisted game (schema mismatch)"
+              { roomCode, reason: restored.reason },
+              "Discarding unrestorable persisted game"
             );
             disposeGame(roomCode);
             socket.emit("game:rejoin_failed", { message: "Game no longer valid", code: "GAME_NO_LONGER_VALID", roomCode });
             return;
           }
-          // isStaleSchema is a plain boolean helper (kept dependency-free for
-          // unit testing), so TS can't narrow the null case through it —
-          // the `return` above already ruled it out.
-          const {
-            gameState: restoredState,
-            handFlags: restoredHandFlags,
-            dealFirstSeat: restoredDealFirstSeat,
-          } = unpackPersistedState(persistedState!);
 
-          const playerMap = readPersistedPlayerMap(row.playerMap, row.playerIds);
+          const { playerMap, scores, gameMode, matchLength, matchTarget, maxPlayers, isPublic } =
+            restored.match;
           if (!Object.values(playerMap).includes(userId)) {
             socket.emit("game:rejoin_failed", { message: "Not authorized", code: "UNAUTHORIZED", roomCode });
             return;
           }
 
-          const restoredScores = (row.scores as Record<string, number>) ?? {};
-          const restoredPlayers = (restoredState as GameState).players;
-          const restoredTarget = row.matchTarget ?? targetsFor(restoredPlayers.length)[0];
-          const restoredMode = row.gameMode === "teams" ? "teams" : "free_for_all";
-          const restoredLength = row.matchLength === "single" ? "single" : "match";
+          const restoredState = restored.gameState;
+          const restoredPlayers = restoredState.players;
           const game: OnlineGameState = {
             roomId: roomCode,
-            gameState: restoredState as GameState,
+            gameState: restoredState,
             playerMap,
             rematchVotes: new Set(),
             rematchIntents: new Map(),
-            cumulativeScores: restoredScores,
-            gameMode: restoredMode,
-            maxPlayers: row.maxPlayers,
-            matchTarget: restoredTarget,
-            matchLength: restoredLength,
+            cumulativeScores: scores,
+            gameMode,
+            maxPlayers,
+            matchTarget,
+            matchLength,
             matchOver: restoredMatchOver({
-              matchLength: restoredLength,
-              gameMode: restoredMode,
-              handOver: (restoredState as GameState).gameOver,
-              scores: restoredScores,
-              target: restoredTarget,
+              matchLength,
+              gameMode,
+              handOver: restoredState.gameOver,
+              scores,
+              target: matchTarget,
               teamOfKey: teamKeyMap(playerMap, restoredPlayers),
               playerCount: restoredPlayers.length,
             }),
-            handFlags: restoredHandFlags,
+            handFlags: restored.handFlags,
             // A hand restored after a restart has no record of who walked out
             // of it: the map is memory-only and the restart emptied it.
             abandonedSeats: new Map<number, string>(),
@@ -2138,10 +2109,10 @@ export function setupSocket(httpServer: HttpServer) {
             // The log is memory-only, so a hand restored after a restart has
             // none and produces no replay. The next hand starts a fresh one.
             moveLog: null,
-            dealFirstSeat: restoredDealFirstSeat,
+            dealFirstSeat: restored.dealFirstSeat,
           };
           activeGames.set(roomCode, game);
-          if (row.isPublic) publicRoomIds.add(roomCode);
+          if (isPublic) publicRoomIds.add(roomCode);
           logger.info({ roomCode }, "Rehydrated activeGames from DB after restart");
 
           const seat = seatOfUser(game, userId);
