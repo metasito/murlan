@@ -871,14 +871,18 @@ export function GameTable({
 
   // These three reach the memoized hand as props, so they are stabilized by
   // hand: a fresh arrow per render defeats every card's memo comparator.
+  // Staging a play while an opponent thinks is how every game in this family
+  // works, and it is what stops the turn clock starting from a blank hand.
+  // Only the *submission* is gated on the turn: `playBtnValid` already requires
+  // it, so GIOCA lights on its own the moment the turn arrives.
   const handleCardPress = useCallback(
     (id: string) => {
-      if (!isMyTurn || isFinished) return;
+      if (isFinished || spectating) return;
       hapticSelection();
       playCardSelect();
       onSelectCard(id);
     },
-    [isMyTurn, isFinished, onSelectCard]
+    [isFinished, spectating, onSelectCard]
   );
   const handlePlay = useCallback(() => {
     if (!playBtnValid) return;
@@ -1135,7 +1139,7 @@ export function GameTable({
                   cards={sortedHand}
                   selectedIds={selectedIds}
                   onPress={handleCardPress}
-                  disabled={!isMyTurn}
+                  disabled={isFinished || spectating}
                   availW={frame.handAvailW}
                   isMyTurn={isMyTurn && !isFinished}
                 />
