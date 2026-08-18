@@ -16,7 +16,7 @@ import { hapticSelection, hapticSuccess } from "@/lib/haptics";
 import Ionicons from "@expo/vector-icons/Ionicons";
 import { useGame, PlayerSetupConfig } from "@/context/GameContext";
 import { useAuth } from "@/context/AuthContext";
-import { GameMode, MatchLength, MATCH_TARGETS, teamForSeat } from "@/lib/gameEngine";
+import { GameMode, MatchLength, targetsFor, teamForSeat } from "@/lib/gameEngine";
 import { BOT_PERSONALITIES, botBlurbKey, botSeatNames, getBotPersonality } from "@/lib/botPersonalities";
 import { Colors, Spacing, Radius, FontSize, TOUCH_TARGET_MIN, Type } from '@/lib/theme';
 import { MenuLayout } from "@/components/MenuLayout";
@@ -140,7 +140,7 @@ export default function LobbyScreen() {
 
   const formatCopy = (length: MatchLength) =>
     length === "match"
-      ? { title: t("lobby.formatMatch"), detail: t("lobby.formatMatchSub", { target: MATCH_TARGETS[0] }) }
+      ? { title: t("lobby.formatMatch"), detail: t("lobby.formatMatchSub", { target: targetsFor(playerCount)[0] }) }
       : { title: t("lobby.formatSingle"), detail: t("lobby.formatSingleSub") };
 
   /** An AI seat is called after its personality; humans keep the name they were given. */

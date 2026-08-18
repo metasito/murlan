@@ -1133,6 +1133,19 @@ export function initializeGame(
  */
 export const MATCH_TARGETS: readonly number[] = [21, 31, 41, 51];
 
+/**
+ * The escalation ladder for a table of `playerCount` seats.
+ *
+ * `scoreHand` pays N−1 down to 0, so a manche is worth 6 points at four seats,
+ * 3 at three and 1 at two — a flat ladder therefore made a 1-v-1 partita a
+ * 27-manche affair nobody finished. Scaling by (N−1)/3 keeps every count in
+ * the 8-12 manche band a match should land in, and leaves the four-player
+ * values docs/RULES.md §12 documents untouched.
+ */
+export function targetsFor(playerCount: number): number[] {
+  return MATCH_TARGETS.map((t) => Math.round((t * (playerCount - 1)) / 3));
+}
+
 export interface MatchResolution {
   /** Match winner(s). Empty when the target merely escalated. */
   winners: string[];
@@ -1173,8 +1186,8 @@ export function addHandScores(
 }
 
 /** The target that follows `target`, or null when `target` is the last one. */
-export function nextMatchTarget(target: number): number | null {
-  return MATCH_TARGETS.find((t) => t > target) ?? null;
+export function nextMatchTarget(target: number, playerCount = 4): number | null {
+  return targetsFor(playerCount).find((t) => t > target) ?? null;
 }
 
 /**
@@ -1188,7 +1201,8 @@ export function nextMatchTarget(target: number): number | null {
  */
 export function resolveMatch(
   cumulative: Record<string, number>,
-  target: number
+  target: number,
+  playerCount = 4
 ): MatchResolution | null {
   const reached = Object.entries(cumulative)
     .filter(([, points]) => points >= target)
@@ -1199,7 +1213,7 @@ export function resolveMatch(
     return { winners: reached, newTarget: null, isDraw: false };
   }
 
-  const escalated = nextMatchTarget(target);
+  const escalated = nextMatchTarget(target, playerCount);
   if (escalated !== null) {
     return { winners: [], newTarget: escalated, isDraw: false };
   }
@@ -1242,10 +1256,13 @@ export function aggregateTeamScores(
 export function resolveTeamMatch(
   cumulative: Record<string, number>,
   teamOfKey: Record<string, string>,
-  target: number
+  target: number,
+  playerCount = 4
 ): MatchResolution | null {
   const totals = aggregateTeamScores(cumulative, teamOfKey);
-  const resolution = resolveMatch(totals, target);
+  // The ladder is the seated table's, not the two teams' — a pair races to the
+  // four-seat target on the six points a four-seat manche pays out.
+  const resolution = resolveMatch(totals, target, playerCount);
   if (!resolution) return null;
 
   const winningTeams = new Set(resolution.winners);
@@ -1263,7 +1280,7 @@ export function resolveTeamMatch(
  * How long a game runs.
  *
  * - `match` — the canonical Murlan match (docs/RULES.md §12): first to
- *   `MATCH_TARGETS[0]`, escalating on a tie at the target.
+ *   `targetsFor(playerCount)[0]`, escalating on a tie at the target.
  * - `single` — one manche and done.
  */
 export type MatchLength = "match" | "single";

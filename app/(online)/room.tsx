@@ -22,7 +22,7 @@ import { useAuth } from "@/context/AuthContext";
 import { useSocket } from "@/context/SocketContext";
 import { getSocket } from "@/lib/socket";
 import { Colors, Spacing, Radius, FontSize, Motion, TOUCH_TARGET_MIN, Type } from '@/lib/theme';
-import { MATCH_TARGETS, TEAMS_PLAYER_COUNT } from "@/lib/gameEngine";
+import { targetsFor, TEAMS_PLAYER_COUNT } from "@/lib/gameEngine";
 import type { MatchLength } from "@/lib/gameEngine";
 import { BOT_PERSONALITIES, DEFAULT_BOT_PERSONALITY, botBlurbKey } from "@/lib/botPersonalities";
 import type { BotPersonalityId } from "@/lib/botPersonalities";
@@ -112,14 +112,16 @@ function BotFillControls({
 function MatchLengthControls({
   value,
   onChange,
+  seats,
 }: {
   value: MatchLength;
   onChange: (length: MatchLength) => void;
+  seats: number;
 }) {
   const { t } = useTranslation();
   const copy = (length: MatchLength) =>
     length === "match"
-      ? { title: t("lobby.formatMatch"), detail: t("lobby.formatMatchSub", { target: MATCH_TARGETS[0] }) }
+      ? { title: t("lobby.formatMatch"), detail: t("lobby.formatMatchSub", { target: targetsFor(seats)[0] }) }
       : { title: t("lobby.formatSingle"), detail: t("lobby.formatSingleSub") };
 
   return (
@@ -411,7 +413,7 @@ export default function RoomScreen() {
   const playerUserIds = room.players.map((p) => p.userId);
 
   const formatControls = isHost && room.status === "waiting" ? (
-    <MatchLengthControls value={matchLength} onChange={setMatchLength} />
+    <MatchLengthControls value={matchLength} onChange={setMatchLength} seats={maxSeats} />
   ) : null;
 
   const botFillControls = showBotFillControls ? (

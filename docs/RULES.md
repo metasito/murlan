@@ -121,4 +121,4 @@ The 3♠ opening requirement (§4) is **not** re-applied — it belongs to the f
 - **Per hand (4 players):** 1st = **3** points, 2nd = **2**, 3rd = **1**, last = **0**. Unanimous across catsatcards, visixplay IT/EN/AL, Murlan Pro, murlanarena, murlan.app.
 - **Match target: first to 21 points wins.**
 - **Tie escalation:** if two or more players reach 21 in the same hand, the target is raised in 10-point steps — **21 → 31 → 41 → 51**. 51 is the maximum; if players are still tied at 51+, the match is a draw. visixplay: *"La vittoria si raggiunge a 21 punti, con possibili estensioni a 31, 41 e 51."*
-- **2- and 3-player scoring is not documented anywhere.** The natural generalisation (N players ⇒ N−1 … 0) is an implementation choice, not a sourced rule.
+- **2- and 3-player scoring is not documented anywhere.** The natural generalisation (N players ⇒ N−1 … 0) is an implementation choice, not a sourced rule — and so is the target it races to. This app scales the sourced 4-player ladder by (N−1)/3, giving **7 → 10 → 14 → 17** at two seats and **14 → 21 → 27 → 34** at three; the 4-player values above are untouched. See `docs/BRIEF.md` §3.1.

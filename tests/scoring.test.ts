@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 // @ts-ignore — see tests/helpers.ts
 import {
   MATCH_TARGETS,
+  targetsFor,
   addHandScores,
   nextMatchTarget,
   resolveMatch,
@@ -47,6 +48,30 @@ describe("MATCH_TARGETS / nextMatchTarget", () => {
     assert.equal(nextMatchTarget(31), 41);
     assert.equal(nextMatchTarget(41), 51);
     assert.equal(nextMatchTarget(51), null);
+  });
+
+  test("the ladder scales with the seat count", () => {
+    assert.deepEqual(targetsFor(2), [7, 10, 14, 17]);
+    assert.deepEqual(targetsFor(3), [14, 21, 27, 34]);
+    assert.deepEqual(targetsFor(4), [21, 31, 41, 51]);
+  });
+
+  test("the four-player ladder is byte-identical to the constant", () => {
+    assert.deepEqual(targetsFor(4), [...MATCH_TARGETS]);
+  });
+
+  test("escalation still chains for every seat count", () => {
+    for (const playerCount of [2, 3, 4]) {
+      const ladder = targetsFor(playerCount);
+      for (let i = 0; i < ladder.length - 1; i++) {
+        assert.equal(
+          nextMatchTarget(ladder[i], playerCount),
+          ladder[i + 1],
+          `${playerCount}p: ${ladder[i]} → ${ladder[i + 1]}`
+        );
+      }
+      assert.equal(nextMatchTarget(ladder[ladder.length - 1], playerCount), null);
+    }
   });
 });
 
@@ -113,6 +138,37 @@ describe("resolveMatch", () => {
       newTarget: null,
       isDraw: false,
     });
+  });
+
+  test("a match at any seat count finishes in a sitting", () => {
+    // docs/BRIEF.md §3.1: the ladder exists so a match lands in roughly 8-12
+    // manches at every count. A flat 21 made a 1-v-1 take ~27.
+    for (const playerCount of [2, 3, 4]) {
+      const players = ["a", "b", "c", "d"].slice(0, playerCount);
+      let cumulative: Record<string, number> = {};
+      let target = targetsFor(playerCount)[0];
+      let manches = 0;
+      let finished = false;
+
+      while (manches < 12 && !finished) {
+        // One seat wins every manche: the shortest possible match, and the
+        // one that has to fit inside the band.
+        cumulative = addHandScores(cumulative, scoreHand(players, playerCount));
+        manches++;
+        const result = resolveMatch(cumulative, target, playerCount);
+        if (!result) continue;
+        if (result.newTarget !== null) {
+          target = result.newTarget;
+          continue;
+        }
+        finished = true;
+      }
+
+      assert.ok(
+        finished,
+        `${playerCount} players: no winner after ${manches} manches`
+      );
+    }
   });
 
   test("a full 4-player match plays out to a single winner", () => {

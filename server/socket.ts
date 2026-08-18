@@ -68,7 +68,7 @@ import {
   isMajority,
   resolveMatch,
   resolveTeamMatch,
-  MATCH_TARGETS,
+  targetsFor,
 } from "../lib/gameEngine.ts";
 import type { GameState, Card, GameMode, Combination, MatchLength } from "../lib/gameEngine.ts";
 import { recordGameResult } from "./stats.ts";
@@ -1128,8 +1128,8 @@ async function handleGameOver(
     const teamOfKey = teamKeyMap(game.playerMap, state.players);
     const resolution =
       game.gameMode === "teams" && Object.keys(teamOfKey).length > 0
-        ? resolveTeamMatch(game.cumulativeScores, teamOfKey, game.matchTarget)
-        : resolveMatch(game.cumulativeScores, game.matchTarget);
+        ? resolveTeamMatch(game.cumulativeScores, teamOfKey, game.matchTarget, state.players.length)
+        : resolveMatch(game.cumulativeScores, game.matchTarget, state.players.length);
     if (resolution) {
       if (resolution.newTarget !== null) {
         game.matchTarget = resolution.newTarget;
@@ -1344,7 +1344,7 @@ async function handleGameOver(
 function rollMatchForward(game: OnlineGameState) {
   if (game.matchOver) {
     game.cumulativeScores = {};
-    game.matchTarget = MATCH_TARGETS[0];
+    game.matchTarget = targetsFor(game.gameState.players.length)[0];
     game.matchOver = false;
     game.rematchIntents.clear();
   }
@@ -1917,7 +1917,7 @@ export function setupSocket(httpServer: HttpServer) {
           cumulativeScores: previous?.cumulativeScores ?? {},
           gameMode: room.gameMode,
           maxPlayers: room.maxPlayers,
-          matchTarget: previous?.matchTarget ?? MATCH_TARGETS[0],
+          matchTarget: previous?.matchTarget ?? targetsFor(roster.length)[0],
           matchLength: matchLength ?? previous?.matchLength ?? "match",
           matchOver: previous?.matchOver ?? false,
           handFlags: {},
@@ -2292,7 +2292,8 @@ export function setupSocket(httpServer: HttpServer) {
           }
 
           const restoredScores = (row.scores as Record<string, number>) ?? {};
-          const restoredTarget = row.matchTarget ?? MATCH_TARGETS[0];
+          const restoredPlayers = (restoredState as GameState).players;
+          const restoredTarget = row.matchTarget ?? targetsFor(restoredPlayers.length)[0];
           const restoredMode = row.gameMode === "teams" ? "teams" : "free_for_all";
           const restoredLength = row.matchLength === "single" ? "single" : "match";
           const game: OnlineGameState = {
@@ -2312,7 +2313,8 @@ export function setupSocket(httpServer: HttpServer) {
               handOver: (restoredState as GameState).gameOver,
               scores: restoredScores,
               target: restoredTarget,
-              teamOfKey: teamKeyMap(playerMap, (restoredState as GameState).players),
+              teamOfKey: teamKeyMap(playerMap, restoredPlayers),
+              playerCount: restoredPlayers.length,
             }),
             handFlags: restoredHandFlags,
             // A hand restored after a restart has no record of who walked out

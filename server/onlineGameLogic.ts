@@ -284,12 +284,13 @@ export function restoredMatchOver(args: {
   scores: Record<string, number>;
   target: number;
   teamOfKey: Record<string, string>;
+  playerCount: number;
 }): boolean {
-  const { matchLength, gameMode, handOver, scores, target, teamOfKey } = args;
+  const { matchLength, gameMode, handOver, scores, target, teamOfKey, playerCount } = args;
   if (matchLength === "single") return handOver;
   const resolution =
     gameMode === "teams" && Object.keys(teamOfKey).length > 0
-      ? resolveTeamMatch(scores, teamOfKey, target)
-      : resolveMatch(scores, target);
+      ? resolveTeamMatch(scores, teamOfKey, target, playerCount)
+      : resolveMatch(scores, target, playerCount);
   return !!resolution && resolution.newTarget === null;
 }

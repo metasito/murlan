@@ -80,12 +80,12 @@ test("offline vs AI — a match plays multiple hands and exercises the card exch
     format: "match", // the lobby's default: first to the target score, hands separated by a card exchange
   });
 
-  // A 2-player match awards the hand winner only 1 point (lib/gameEngine.ts
-  // `scoreHand`) against a target of 21+ (MATCH_TARGETS) — reaching
-  // match.over could take dozens of hands. This suite only needs to prove
-  // the between-hands exchange transition works, so it plays a small fixed
-  // number of hands and then leaves deliberately, rather than waiting for
-  // the match to conclude on its own.
+  // A 2-player match awards the hand winner 1 point (lib/gameEngine.ts
+  // `scoreHand`) against a target of 7 (`targetsFor(2)`), so reaching
+  // match.over takes at least seven hands. This suite only needs to prove the
+  // between-hands exchange transition works, so it plays a small fixed number
+  // of hands and then leaves deliberately, rather than waiting for the match
+  // to conclude on its own.
   const HANDS_TO_PLAY = 2;
   for (let hand = 1; hand <= HANDS_TO_PLAY; hand++) {
     await driveGameToCompletion(page, {

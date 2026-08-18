@@ -202,6 +202,7 @@ describe("restoredMatchOver (rehydrating a match after a restart)", () => {
         handOver: true,
         scores: { a1: 11, b1: 5, a2: 11, b2: 4 },
         target: 21,
+        playerCount: 4,
         teamOfKey: teamKeyMap(seats, teamed),
       }),
       true
@@ -216,6 +217,7 @@ describe("restoredMatchOver (rehydrating a match after a restart)", () => {
         handOver: true,
         scores: { a1: 11, b1: 5, a2: 11, b2: 4 },
         target: 21,
+        playerCount: 4,
         teamOfKey: {},
       }),
       false
@@ -230,6 +232,7 @@ describe("restoredMatchOver (rehydrating a match after a restart)", () => {
         handOver: true,
         scores: { a1: 9, b1: 5, a2: 9, b2: 4 },
         target: 21,
+        playerCount: 4,
         teamOfKey: teamKeyMap(seats, teamed),
       }),
       false
@@ -248,6 +251,7 @@ describe("restoredMatchOver (rehydrating a match after a restart)", () => {
         handOver: true,
         scores: { a1: 11, b1: 5, a2: 11, b2: 4 },
         target: 21,
+        playerCount: 4,
         teamOfKey: withVacancy,
       }),
       false
@@ -262,6 +266,7 @@ describe("restoredMatchOver (rehydrating a match after a restart)", () => {
         handOver,
         scores: {},
         target: 21,
+        playerCount: 4,
         teamOfKey: teamKeyMap(seats, teamed),
       });
     assert.equal(single(true), true);
