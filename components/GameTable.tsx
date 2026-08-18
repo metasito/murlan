@@ -667,7 +667,12 @@ export function GameTable({
   // player list cannot restart the banner's own timers.
   useEffect(() => {
     const winner = gameState.roundWinner;
-    if (winner === null || winner === undefined) return;
+    // Cleared between rounds, so the seat that wins two in a row — the common
+    // case, since the round winner leads the next one — is announced twice.
+    if (winner === null || winner === undefined) {
+      prevRoundWinnerRef.current = null;
+      return;
+    }
     if (winner === prevRoundWinnerRef.current) return;
     prevRoundWinnerRef.current = winner;
     setRoundWinnerSeat(winner);
