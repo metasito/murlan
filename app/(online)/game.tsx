@@ -31,9 +31,6 @@ import { useTranslation } from "@/lib/i18n";
 // is untouched.
 const E2E_FAST = process.env.EXPO_PUBLIC_E2E_FAST === "1";
 
-/** The server's AFK window (server/socket.ts AFK_TIMEOUT_MS). The client only
- *  displays the countdown — the server owns the timeout and the auto-pass. */
-const SERVER_TURN_SECONDS = 30;
 /** How long the emoji picker stays open before hiding itself. */
 const REACTION_PANEL_MS = 4000;
 /** Beat before the results overlay covers the final play. */
@@ -48,6 +45,8 @@ export default function OnlineGameScreen() {
   const {
     gameState,
     mySeatIndex,
+    turnSeconds,
+    turnDeadlineMs,
     isSpectator,
     playerLeft,
     rejoinFailed,
@@ -276,7 +275,8 @@ export default function OnlineGameScreen() {
         )
       }
       turnTimer={{
-        seconds: SERVER_TURN_SECONDS,
+        seconds: turnSeconds,
+        resetKey: String(turnDeadlineMs ?? ""),
         // The server arms its AFK timer on every turn, leading included.
         includeNewRound: true,
         // No onExpire: the server auto-passes, the client only shows the clock.

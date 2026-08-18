@@ -16,7 +16,7 @@ import { hapticSelection, hapticSuccess } from "@/lib/haptics";
 import Ionicons from "@expo/vector-icons/Ionicons";
 import { useGame, PlayerSetupConfig } from "@/context/GameContext";
 import { useAuth } from "@/context/AuthContext";
-import { GameMode, MatchLength, MATCH_TARGETS } from "@/lib/gameEngine";
+import { GameMode, MatchLength, targetsFor, teamForSeat } from "@/lib/gameEngine";
 import { BOT_PERSONALITIES, botBlurbKey, botSeatNames, getBotPersonality } from "@/lib/botPersonalities";
 import { Colors, Spacing, Radius, FontSize, TOUCH_TARGET_MIN, Type } from '@/lib/theme';
 import { MenuLayout } from "@/components/MenuLayout";
@@ -140,13 +140,8 @@ export default function LobbyScreen() {
 
   const formatCopy = (length: MatchLength) =>
     length === "match"
-      ? { title: t("lobby.formatMatch"), detail: t("lobby.formatMatchSub", { target: MATCH_TARGETS[0] }) }
+      ? { title: t("lobby.formatMatch"), detail: t("lobby.formatMatchSub", { target: targetsFor(playerCount)[0] }) }
       : { title: t("lobby.formatSingle"), detail: t("lobby.formatSingleSub") };
-
-  const getTeam = (i: number, count: number, gm: GameMode): "A" | "B" | undefined => {
-    if (gm !== "teams" || count !== 4) return undefined;
-    return i % 2 === 0 ? "A" : "B";
-  };
 
   /** An AI seat is called after its personality; humans keep the name they were given. */
   const withBotNames = (configs: PlayerSetupConfig[]): PlayerSetupConfig[] => {
@@ -164,7 +159,7 @@ export default function LobbyScreen() {
         type: i === 0 || !isAI ? "human" : "ai",
         // Distinct opponents by default: a full table faces four different personalities.
         personality: i > 0 && isAI ? BOT_PERSONALITIES[(i - 1) % BOT_PERSONALITIES.length].id : undefined,
-        team: getTeam(i, count, gm),
+        team: teamForSeat(i, count, gm),
       }))
     );
 
@@ -191,7 +186,7 @@ export default function LobbyScreen() {
     setPlayers((prev) =>
       prev.map((p, i) => ({
         ...p,
-        team: getTeam(i, playerCount, gm),
+        team: teamForSeat(i, playerCount, gm),
       }))
     );
     hapticSelection();

@@ -232,20 +232,26 @@ export function shuffleDeck(deck: Card[]): Card[] {
 }
 
 /**
- * Deals the ENTIRE 54-card deck, one card at a time, round-robin, so the extra
- * cards land deterministically on the first seats.
- * 4 players = 14/14/13/13, 3 players = 18 each, 2 players = 27 each.
+ * Deals the ENTIRE 54-card deck, one card at a time, round-robin from
+ * `firstSeat`. 4 players = 14/14/13/13, 3 players = 18 each, 2 players = 27
+ * each — and the two extra cards land on `firstSeat` and the seat after it,
+ * so rotating it between manches is what stops the same seats holding the
+ * bigger hand for the whole match (docs/RULES.md §3, the dealer's rotation).
  * Nothing is excluded — the 3♠ and both Jokers are always in play.
  *
  * `excluded` is kept in the return type for backward compatibility with
  * existing callers and is now always empty.
  */
-export function dealCards(playerCount: number): { hands: Card[][]; excluded: Card[] } {
+export function dealCards(
+  playerCount: number,
+  firstSeat = 0
+): { hands: Card[][]; excluded: Card[] } {
   if (playerCount < 1) return { hands: [], excluded: [] };
   const deck = shuffleDeck(createDeck());
   const hands: Card[][] = Array.from({ length: playerCount }, () => []);
+  const start = ((firstSeat % playerCount) + playerCount) % playerCount;
   for (let i = 0; i < deck.length; i++) {
-    hands[i % playerCount].push(deck[i]);
+    hands[(start + i) % playerCount].push(deck[i]);
   }
   return { hands, excluded: [] };
 }
@@ -904,9 +910,10 @@ export function initializeRematch(
     id?: string;
   }>,
   gameMode: GameMode,
-  prevRankings: string[]
+  prevRankings: string[],
+  firstSeat = 0
 ): GameState {
-  const { hands } = dealCards(playerSetup.length);
+  const { hands } = dealCards(playerSetup.length, firstSeat);
 
   const players: Player[] = playerSetup.map((setup, i) => ({
     id: setup.id ?? `player_${i}`,
@@ -992,7 +999,8 @@ export function processExchangeChoice(state: GameState, cardId: string): GameSta
   const card = winnerHand[cardIdx];
   // Validate against the same list the UI offers, so the fallback below can
   // never leave the winner with no legal choice (which froze the table).
-  if (!getValidGivebackCards(winnerHand).some((c) => c.id === card.id)) {
+  const offered = getValidGivebackCards(winnerHand, state.exchangePhase.cardFromLoser?.id);
+  if (!offered.some((c) => c.id === card.id)) {
     return state;
   }
 
@@ -1007,7 +1015,9 @@ export function processExchangeChoice(state: GameState, cardId: string): GameSta
 /**
  * Cards the round winner may hand back to the loser.
  *
- * Primary rule (canonical): any card ranked 3 through 10.
+ * Primary rule (canonical): any card ranked 3 through 10, other than the one
+ * the loser has just handed over — returning that card straight back is not an
+ * exchange (docs/RULES.md §10, and what `tutorial.errJustReceived` teaches).
  * Documented fallback: a hand can legitimately contain no card in 3-10 at all
  * (e.g. all face cards, aces, 2s and jokers). Returning [] there deadlocked the
  * exchange — every choice was rejected behind an undismissable overlay — so in
@@ -1015,15 +1025,16 @@ export function processExchangeChoice(state: GameState, cardId: string): GameSta
  */
 /** The card an AI gives back: the weakest legal choice, or the lowest card in
  *  hand when nothing is in the 3-10 range. Never undefined for a non-empty hand. */
-export function pickGivebackCard(hand: Card[]): Card | undefined {
-  return sortHand(getValidGivebackCards(hand))[0];
+export function pickGivebackCard(hand: Card[], excludeCardId?: string): Card | undefined {
+  return sortHand(getValidGivebackCards(hand, excludeCardId))[0];
 }
 
-export function getValidGivebackCards(hand: Card[]): Card[] {
-  const inRange = hand.filter((c) => EXCHANGE_VALID_RANKS.includes(c.rank));
+export function getValidGivebackCards(hand: Card[], excludeCardId?: string): Card[] {
+  const eligible = excludeCardId ? hand.filter((c) => c.id !== excludeCardId) : hand;
+  const inRange = eligible.filter((c) => EXCHANGE_VALID_RANKS.includes(c.rank));
   if (inRange.length > 0) return inRange;
-  if (hand.length === 0) return [];
-  return [sortHand(hand)[0]];
+  if (eligible.length === 0) return [];
+  return [sortHand(eligible)[0]];
 }
 
 export function loserHasBothJokers(hand: Card[]): boolean {
@@ -1045,6 +1056,30 @@ export function getStartingPlayerAfterExchange(state: GameState): number {
     : state.exchangePhase.loserIdx;
 }
 
+/** Teams is 2-v-2 and only 2-v-2 (docs/RULES.md §11). */
+export const TEAMS_PLAYER_COUNT = 4;
+
+/**
+ * The team a seat plays for. Partners sit opposite each other, so the teams
+ * alternate around the table. Undefined for every game that is not a teams
+ * game of exactly `TEAMS_PLAYER_COUNT` seats — an odd table has no 2-v-2 to
+ * split into, and `resolveTeamMatch` would race a pair against a single seat.
+ */
+export function teamForSeat(
+  seat: number,
+  playerCount: number,
+  gameMode: GameMode
+): "A" | "B" | undefined {
+  if (gameMode !== "teams" || playerCount !== TEAMS_PLAYER_COUNT) return undefined;
+  return seat % 2 === 0 ? "A" : "B";
+}
+
+/** The seat the next manche deals from — one further round the table. */
+export function nextDealFirstSeat(firstSeat: number, playerCount: number): number {
+  if (playerCount < 1) return 0;
+  return (firstSeat + 1) % playerCount;
+}
+
 export function initializeGame(
   playerSetup: Array<{
     name: string;
@@ -1052,9 +1087,10 @@ export function initializeGame(
     personality?: BotPersonalityId;
     team?: "A" | "B";
   }>,
-  gameMode: GameMode
+  gameMode: GameMode,
+  firstSeat = 0
 ): GameState {
-  const { hands } = dealCards(playerSetup.length);
+  const { hands } = dealCards(playerSetup.length, firstSeat);
 
   const players: Player[] = playerSetup.map((setup, i) => ({
     id: `player_${i}`,
@@ -1097,6 +1133,19 @@ export function initializeGame(
  */
 export const MATCH_TARGETS: readonly number[] = [21, 31, 41, 51];
 
+/**
+ * The escalation ladder for a table of `playerCount` seats.
+ *
+ * `scoreHand` pays N−1 down to 0, so a manche is worth 6 points at four seats,
+ * 3 at three and 1 at two — a flat ladder therefore made a 1-v-1 partita a
+ * 27-manche affair nobody finished. Scaling by (N−1)/3 keeps every count in
+ * the 8-12 manche band a match should land in, and leaves the four-player
+ * values docs/RULES.md §12 documents untouched.
+ */
+export function targetsFor(playerCount: number): number[] {
+  return MATCH_TARGETS.map((t) => Math.round((t * (playerCount - 1)) / 3));
+}
+
 export interface MatchResolution {
   /** Match winner(s). Empty when the target merely escalated. */
   winners: string[];
@@ -1137,8 +1186,8 @@ export function addHandScores(
 }
 
 /** The target that follows `target`, or null when `target` is the last one. */
-export function nextMatchTarget(target: number): number | null {
-  return MATCH_TARGETS.find((t) => t > target) ?? null;
+export function nextMatchTarget(target: number, playerCount = 4): number | null {
+  return targetsFor(playerCount).find((t) => t > target) ?? null;
 }
 
 /**
@@ -1147,11 +1196,13 @@ export function nextMatchTarget(target: number): number | null {
  * - Nobody at the target yet          → null (keep playing to the same target)
  * - Exactly one player at the target  → { winners: [id], newTarget: null }
  * - Two or more at the target         → escalate: { winners: [], newTarget }
- * - Two or more at the final target   → { winners: [tied ids], isDraw: true }
+ * - One player alone at the final target → an ordinary win
+ * - Two or more sharing the top score  → { winners: [tied ids], isDraw: true }
  */
 export function resolveMatch(
   cumulative: Record<string, number>,
-  target: number
+  target: number,
+  playerCount = 4
 ): MatchResolution | null {
   const reached = Object.entries(cumulative)
     .filter(([, points]) => points >= target)
@@ -1162,18 +1213,14 @@ export function resolveMatch(
     return { winners: reached, newTarget: null, isDraw: false };
   }
 
-  const escalated = nextMatchTarget(target);
+  const escalated = nextMatchTarget(target, playerCount);
   if (escalated !== null) {
     return { winners: [], newTarget: escalated, isDraw: false };
   }
 
-  // Final target reached by more than one player — the match is a draw.
   const best = Math.max(...reached.map((id) => cumulative[id]));
-  return {
-    winners: reached.filter((id) => cumulative[id] === best),
-    newTarget: null,
-    isDraw: true,
-  };
+  const winners = reached.filter((id) => cumulative[id] === best);
+  return { winners, newTarget: null, isDraw: winners.length > 1 };
 }
 
 /**
@@ -1209,10 +1256,13 @@ export function aggregateTeamScores(
 export function resolveTeamMatch(
   cumulative: Record<string, number>,
   teamOfKey: Record<string, string>,
-  target: number
+  target: number,
+  playerCount = 4
 ): MatchResolution | null {
   const totals = aggregateTeamScores(cumulative, teamOfKey);
-  const resolution = resolveMatch(totals, target);
+  // The ladder is the seated table's, not the two teams' — a pair races to the
+  // four-seat target on the six points a four-seat manche pays out.
+  const resolution = resolveMatch(totals, target, playerCount);
   if (!resolution) return null;
 
   const winningTeams = new Set(resolution.winners);
@@ -1230,7 +1280,7 @@ export function resolveTeamMatch(
  * How long a game runs.
  *
  * - `match` — the canonical Murlan match (docs/RULES.md §12): first to
- *   `MATCH_TARGETS[0]`, escalating on a tie at the target.
+ *   `targetsFor(playerCount)[0]`, escalating on a tie at the target.
  * - `single` — one manche and done.
  */
 export type MatchLength = "match" | "single";

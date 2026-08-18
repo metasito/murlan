@@ -104,7 +104,7 @@ export default function GameScreen() {
     if (!phase?.active) return undefined;
     const winner = gameState!.players[phase.winnerIdx];
     if (winner?.type !== "ai") return undefined;
-    return pickGivebackCard(winner.hand)?.id;
+    return pickGivebackCard(winner.hand, phase.cardFromLoser?.id)?.id;
   })();
 
   useEffect(() => {

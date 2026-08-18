@@ -372,7 +372,7 @@ function evaluatePlay(selected: Card[], beat: PlayBeat, t: TFn): { ok: boolean; 
 
 function evaluateExchange(selected: Card, beat: ExchangeBeat, t: TFn): { ok: boolean; message: string } {
   const winnerHand = beat.state.players[beat.state.exchangePhase!.winnerIdx].hand;
-  const valid = getValidGivebackCards(winnerHand);
+  const valid = getValidGivebackCards(winnerHand, beat.state.exchangePhase!.cardFromLoser.id);
   if (!valid.some((c) => c.id === selected.id)) {
     if (selected.id === beat.state.exchangePhase!.cardFromLoser.id) {
       return { ok: false, message: t("tutorial.errJustReceived") };

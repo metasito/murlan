@@ -94,7 +94,7 @@ export function driveHumansToGameOver(
         if (state.exchangePhase?.active) {
           if (state.exchangePhase.winnerIdx !== seat) return;
           const hand = state.players[seat]?.hand ?? [];
-          const [card] = getValidGivebackCards(hand);
+          const [card] = getValidGivebackCards(hand, state.exchangePhase.cardFromLoser?.id);
           if (card) client.emit("game:exchange_give_card", { cardId: card.id });
           return;
         }

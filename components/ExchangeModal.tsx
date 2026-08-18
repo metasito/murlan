@@ -140,7 +140,7 @@ export function ExchangeModal({
   const { t } = useTranslation();
   const reduceMotion = usePrefersReducedMotion();
 
-  const validCards = getValidGivebackCards(winnerHand).sort(
+  const validCards = getValidGivebackCards(winnerHand, phase.cardFromLoser?.id).sort(
     (a, b) => cardStrength(a) - cardStrength(b)
   );
 

@@ -97,6 +97,7 @@ function rematchGame(overrides: {
     abandonedSeats: new Map<number, string>(),
     spectators: new Set<string>(),
     moveLog: null,
+    dealFirstSeat: 0,
   };
 }
 

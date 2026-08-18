@@ -10,15 +10,15 @@ import React, {
 } from "react";
 import {
   GameState,
-  Combination,
   GameMode,
   PlayerType,
   MatchLength,
-  MATCH_TARGETS,
+  targetsFor,
   addHandScores,
   botWantsRematch,
   initializeGame,
   initializeRematch,
+  nextDealFirstSeat,
   isMajority,
   matchIsClosing,
   processExchangeChoice,
@@ -29,7 +29,6 @@ import {
   resolveMatch,
   resolveTeamMatch,
   scoreHand,
-  sortHand,
   canPlay,
 } from "@/lib/gameEngine";
 import AsyncStorage from "@react-native-async-storage/async-storage";
@@ -76,10 +75,10 @@ export interface MatchState {
 /** Each seat's answer to the rematch question, by engine player id. */
 export type RematchAnswers = Record<string, boolean>;
 
-function freshMatch(length: MatchLength): MatchState {
+function freshMatch(length: MatchLength, playerCount: number): MatchState {
   return {
     length,
-    target: MATCH_TARGETS[0],
+    target: targetsFor(playerCount)[0],
     scores: {},
     hands: [],
     over: false,
@@ -101,12 +100,16 @@ export function applyHandToMatch(match: MatchState, finished: GameState): MatchS
   const hands = [...match.hands, { rankings: finished.rankings, pointsAwarded: points }];
 
   if (match.length === "single") {
+    const champion = finished.players.find((p) => p.id === finished.rankings[0]);
     return {
       ...match,
       scores,
       hands,
       over: true,
-      winners: finished.rankings.slice(0, 1),
+      winners:
+        finished.gameMode === "teams" && champion?.team
+          ? finished.players.filter((p) => p.team === champion.team).map((p) => p.id)
+          : finished.rankings.slice(0, 1),
       isDraw: false,
     };
   }
@@ -117,8 +120,8 @@ export function applyHandToMatch(match: MatchState, finished: GameState): MatchS
   }
   const resolution =
     finished.gameMode === "teams" && Object.keys(teamOfId).length > 0
-      ? resolveTeamMatch(scores, teamOfId, match.target)
-      : resolveMatch(scores, match.target);
+      ? resolveTeamMatch(scores, teamOfId, match.target, finished.players.length)
+      : resolveMatch(scores, match.target, finished.players.length);
 
   if (!resolution) return { ...match, scores, hands };
   if (resolution.newTarget !== null) {
@@ -183,10 +186,11 @@ export function GameProvider({ children }: { children: ReactNode }) {
   const [selectedCards, setSelectedCards] = useState<string[]>([]);
   const [lastRoundWinner, setLastRoundWinner] = useState<number | null>(null);
 
-  const [match, setMatch] = useState<MatchState>(() => freshMatch("match"));
+  const [match, setMatch] = useState<MatchState>(() => freshMatch("match", 4));
   const [rematchAnswers, setRematchAnswers] = useState<RematchAnswers>({});
   const [savedPlayerConfigs, setSavedPlayerConfigs] = useState<PlayerSetupConfig[]>([]);
   const [savedGameMode, setSavedGameMode] = useState<GameMode>("free_for_all");
+  const [dealFirstSeat, setDealFirstSeat] = useState(0);
 
   /**
    * Whether a match interrupted by the app going away is waiting to be picked
@@ -217,7 +221,8 @@ export function GameProvider({ children }: { children: ReactNode }) {
       setGameState(state);
       setSelectedCards([]);
       setLastRoundWinner(null);
-      setMatch(freshMatch(length));
+      setDealFirstSeat(0);
+      setMatch(freshMatch(length, players.length));
       setRematchAnswers({});
       setSavedPlayerConfigs(players);
       setSavedGameMode(mode);
@@ -229,7 +234,9 @@ export function GameProvider({ children }: { children: ReactNode }) {
   const dealFrom = useCallback(
     (prevRankings: string[]) => {
       const playersWithId = savedPlayerConfigs.map((p, i) => ({ ...p, id: `player_${i}` }));
-      const state = initializeRematch(playersWithId, savedGameMode, prevRankings);
+      const nextFirstSeat = nextDealFirstSeat(dealFirstSeat, playersWithId.length);
+      const state = initializeRematch(playersWithId, savedGameMode, prevRankings, nextFirstSeat);
+      setDealFirstSeat(nextFirstSeat);
 
       if (state.exchangePhase?.bothJokersException) {
         const ep = state.exchangePhase;
@@ -245,7 +252,7 @@ export function GameProvider({ children }: { children: ReactNode }) {
       setSelectedCards([]);
       setLastRoundWinner(null);
     },
-    [savedPlayerConfigs, savedGameMode]
+    [savedPlayerConfigs, savedGameMode, dealFirstSeat]
   );
 
   const startNextHand = useCallback(() => {
@@ -255,7 +262,7 @@ export function GameProvider({ children }: { children: ReactNode }) {
 
   const startNewMatch = useCallback(() => {
     if (!gameState) return;
-    setMatch(freshMatch(match.length));
+    setMatch(freshMatch(match.length, gameState.players.length));
     setRematchAnswers({});
     dealFrom(gameState.rankings);
   }, [gameState, match.length, dealFrom]);
@@ -398,15 +405,6 @@ export function GameProvider({ children }: { children: ReactNode }) {
         setLastRoundWinner(newState.roundWinner);
       }
       commitState(newState, gameState);
-    } else {
-      // Leading a round with no play returned: the leader may not pass, so
-      // doing nothing here freezes the table. Lead the lowest card instead.
-      const [lowest] = sortHand(currentPlayer.hand);
-      const combo: Combination | null = lowest ? buildCombination([lowest]) : null;
-      if (combo) {
-        setLastRoundWinner(null);
-        commitState(processPlay(gameState, combo), gameState);
-      }
     }
   }, [gameState, commitState]);
 
@@ -420,7 +418,7 @@ export function GameProvider({ children }: { children: ReactNode }) {
     setGameState(null);
     setSelectedCards([]);
     setLastRoundWinner(null);
-    setMatch(freshMatch("match"));
+    setMatch(freshMatch("match", gameState?.players.length ?? 4));
     setRematchAnswers({});
     clearSavedGame();
   }, [clearSavedGame]);
@@ -434,6 +432,7 @@ export function GameProvider({ children }: { children: ReactNode }) {
     setRematchAnswers(save.rematchAnswers);
     setSavedPlayerConfigs(save.players);
     setSavedGameMode(save.gameMode);
+    setDealFirstSeat(save.dealFirstSeat);
     setSelectedCards([]);
     setLastRoundWinner(null);
     return true;
@@ -472,9 +471,10 @@ export function GameProvider({ children }: { children: ReactNode }) {
         rematchAnswers,
         players: savedPlayerConfigs,
         gameMode: savedGameMode,
+        dealFirstSeat,
       })
     ).catch(() => {});
-  }, [gameState, match, rematchAnswers, savedPlayerConfigs, savedGameMode, clearSavedGame]);
+  }, [gameState, match, rematchAnswers, savedPlayerConfigs, savedGameMode, dealFirstSeat, clearSavedGame]);
 
   const tableWantsRematch = useMemo(() => {
     const seats = gameState?.players.length ?? 0;

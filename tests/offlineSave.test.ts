@@ -32,6 +32,7 @@ const save = (over = false) => ({
     { name: "Luan", type: "ai", personality: "luan" },
   ],
   gameMode: "free_for_all",
+  dealFirstSeat: 1,
 }) as never;
 
 test("a save round-trips", () => {
@@ -41,6 +42,13 @@ test("a save round-trips", () => {
   assert.equal(decoded.gameState.players.length, 2);
   assert.equal(decoded.match.scores.player_0, 3);
   assert.equal(decoded.players[1].personality, "luan");
+  assert.equal(decoded.dealFirstSeat, 1, "the deal rotation survives a restart");
+});
+
+test("a save with no deal rotation at all is not trusted", () => {
+  const blob = JSON.parse(encodeOfflineSave(save()));
+  delete blob.dealFirstSeat;
+  assert.equal(decodeOfflineSave(JSON.stringify(blob)), null);
 });
 
 // The version is the real guard. A blob from an older build is discarded rather

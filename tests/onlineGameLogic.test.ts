@@ -8,7 +8,11 @@ import {
   excludeBotSeats,
   isStaleSchema,
   GAME_SCHEMA_VERSION,
+  buildSeatRoster,
+  teamKeyMap,
+  restoredMatchOver,
 } from "../server/onlineGameLogic.ts";
+import { teamForSeat, TEAMS_PLAYER_COUNT } from "../lib/gameEngine.ts";
 
 describe("readPersistedPlayerMap (seat resolution on rejoin)", () => {
   test("prefers the seat -> userId map when present", () => {
@@ -137,5 +141,135 @@ describe("isStaleSchema / GAME_SCHEMA_VERSION (rejection of pre-full-deck persis
 
   test("a row stamped with the current version is current, not stale", () => {
     assert.equal(isStaleSchema({ schemaVersion: GAME_SCHEMA_VERSION }), false);
+  });
+});
+
+describe("teams seating (buildSeatRoster + teamForSeat)", () => {
+  const seats = (count: number) =>
+    Array.from({ length: count }, (_, i) => ({
+      seatIndex: i,
+      userId: `u${i}`,
+      username: `p${i}`,
+    }));
+
+  const teamsOf = (roster: { seatIndex: number }[]) =>
+    roster.map((_, idx) => teamForSeat(idx, roster.length, "teams"));
+
+  test("a full teams table is two A seats and two B seats, sitting opposite", () => {
+    const roster = buildSeatRoster(seats(TEAMS_PLAYER_COUNT), TEAMS_PLAYER_COUNT, {});
+    const teams = teamsOf(roster);
+    assert.deepEqual(teams, ["A", "B", "A", "B"]);
+    assert.equal(teams.filter((t) => t === "A").length, 2);
+    assert.equal(teams.filter((t) => t === "B").length, 2);
+  });
+
+  test("a bot-filled teams table is still two and two", () => {
+    const roster = buildSeatRoster(seats(1), TEAMS_PLAYER_COUNT, { fillWithBots: true });
+    assert.equal(roster.length, TEAMS_PLAYER_COUNT);
+    assert.deepEqual(teamsOf(roster), ["A", "B", "A", "B"]);
+  });
+
+  test("an odd table has no teams to split into", () => {
+    for (const count of [2, 3]) {
+      const roster = buildSeatRoster(seats(count), count, {});
+      assert.deepEqual(
+        teamsOf(roster),
+        new Array(count).fill(undefined),
+        `${count} seats cannot be a 2-v-2`
+      );
+    }
+  });
+
+  test("free-for-all never assigns a team, however many seats", () => {
+    const roster = buildSeatRoster(seats(TEAMS_PLAYER_COUNT), TEAMS_PLAYER_COUNT, {});
+    assert.deepEqual(
+      roster.map((_, idx) => teamForSeat(idx, roster.length, "free_for_all")),
+      new Array(TEAMS_PLAYER_COUNT).fill(undefined)
+    );
+  });
+});
+
+describe("restoredMatchOver (rehydrating a match after a restart)", () => {
+  const teamed = [{ team: "A" as const }, { team: "B" as const }, { team: "A" as const }, { team: "B" as const }];
+  const seats = { 0: "a1", 1: "b1", 2: "a2", 3: "b2" };
+
+  test("a teams pair that has crossed the target restores as over", () => {
+    // Neither key reaches 21 alone; the pair holds 22, so the match is won.
+    assert.equal(
+      restoredMatchOver({
+        matchLength: "match",
+        gameMode: "teams",
+        handOver: true,
+        scores: { a1: 11, b1: 5, a2: 11, b2: 4 },
+        target: 21,
+        playerCount: 4,
+        teamOfKey: teamKeyMap(seats, teamed),
+      }),
+      true
+    );
+  });
+
+  test("the same totals in a free-for-all are still a running match", () => {
+    assert.equal(
+      restoredMatchOver({
+        matchLength: "match",
+        gameMode: "free_for_all",
+        handOver: true,
+        scores: { a1: 11, b1: 5, a2: 11, b2: 4 },
+        target: 21,
+        playerCount: 4,
+        teamOfKey: {},
+      }),
+      false
+    );
+  });
+
+  test("a teams pair short of the target restores as still running", () => {
+    assert.equal(
+      restoredMatchOver({
+        matchLength: "match",
+        gameMode: "teams",
+        handOver: true,
+        scores: { a1: 9, b1: 5, a2: 9, b2: 4 },
+        target: 21,
+        playerCount: 4,
+        teamOfKey: teamKeyMap(seats, teamed),
+      }),
+      false
+    );
+  });
+
+  test("a vacated partner's seat is not counted towards the pair", () => {
+    // teamKeyMap omits the seat with no playerMap entry, so a2's 11 points
+    // are outside the team total and the pair is short of 21.
+    const withVacancy = teamKeyMap({ 0: "a1", 1: "b1", 3: "b2" }, teamed);
+    assert.deepEqual(withVacancy, { a1: "A", b1: "B", b2: "B" });
+    assert.equal(
+      restoredMatchOver({
+        matchLength: "match",
+        gameMode: "teams",
+        handOver: true,
+        scores: { a1: 11, b1: 5, a2: 11, b2: 4 },
+        target: 21,
+        playerCount: 4,
+        teamOfKey: withVacancy,
+      }),
+      false
+    );
+  });
+
+  test("a single-manche game is over exactly when its hand is", () => {
+    const single = (handOver: boolean) =>
+      restoredMatchOver({
+        matchLength: "single",
+        gameMode: "teams",
+        handOver,
+        scores: {},
+        target: 21,
+        playerCount: 4,
+        teamOfKey: teamKeyMap(seats, teamed),
+      });
+    assert.equal(single(true), true);
+    assert.equal(single(false), false);
   });
 });
