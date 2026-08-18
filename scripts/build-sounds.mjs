@@ -9,16 +9,27 @@
 // Sources are downloaded rather than vendored, and the recipes below are the
 // only thing this repository actually asserts about the result.
 //
-// Output is 44.1 kHz 16-bit PCM WAV, mono. WAV, not OGG: the casino pack ships
-// OGG and iOS will not play it. The names must match lib/sounds.ts exactly.
+// Output is 44.1 kHz mono MP3, encoded with lamejs (pure JS — no native
+// binary, no WASM build step, so this needs nothing beyond `npm install` to
+// run). MP3, not OGG: the casino pack ships OGG and iOS will not play it.
+// MP3 decodes natively on iOS, Android and every browser, so lib/sounds.ts
+// needs no per-platform format branch. The names must match lib/sounds.ts
+// exactly.
 //
 // Mixing runs in Chromium's OfflineAudioContext (via Playwright, already a
 // devDependency) because there is no ffmpeg here and it gives decoding,
-// gain, pitch and overlap for free.
+// gain, pitch and overlap for free. Encoding to MP3 happens afterwards, in
+// plain Node, from the same normalised PCM the OfflineAudioContext produced.
 import { chromium } from "playwright";
+import lamejs from "@breezystack/lamejs";
 import { mkdirSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+
+// 96 kbps CBR mono is the standard "near-transparent" tier for short,
+// percussive effects like these (no sustained tones or music to expose a
+// low bitrate's artifacts), and cuts the twelve WAVs' 843 KB to under 130 KB.
+const MP3_BITRATE_KBPS = 96;
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const OUT = path.join(ROOT, "assets", "sounds");
@@ -164,31 +175,18 @@ const results = await page.evaluate(
       for (let i = 0; i < pcm.length; i++) peak = Math.max(peak, Math.abs(pcm[i]));
       const norm = peak > 0 ? 0.89 / peak : 1;
 
+      // Raw 16-bit PCM, no container — the MP3 encoding happens back in Node.
       const n = pcm.length;
-      const buf = new ArrayBuffer(44 + n * 2);
+      const buf = new ArrayBuffer(n * 2);
       const view = new DataView(buf);
-      const ascii = (o, s) => [...s].forEach((c, i) => view.setUint8(o + i, c.charCodeAt(0)));
-      ascii(0, "RIFF");
-      view.setUint32(4, 36 + n * 2, true);
-      ascii(8, "WAVE");
-      ascii(12, "fmt ");
-      view.setUint32(16, 16, true);
-      view.setUint16(20, 1, true);
-      view.setUint16(22, 1, true);
-      view.setUint32(24, SR, true);
-      view.setUint32(28, SR * 2, true);
-      view.setUint16(32, 2, true);
-      view.setUint16(34, 16, true);
-      ascii(36, "data");
-      view.setUint32(40, n * 2, true);
       for (let i = 0; i < n; i++) {
         const v = Math.max(-1, Math.min(1, pcm[i] * norm));
-        view.setInt16(44 + i * 2, v < 0 ? v * 0x8000 : v * 0x7fff, true);
+        view.setInt16(i * 2, v < 0 ? v * 0x8000 : v * 0x7fff, true);
       }
       let bin = "";
       const u8 = new Uint8Array(buf);
       for (let i = 0; i < u8.length; i++) bin += String.fromCharCode(u8[i]);
-      out[name] = { wav: btoa(bin), seconds: +(n / SR).toFixed(3) };
+      out[name] = { pcm: btoa(bin), seconds: +(n / SR).toFixed(3) };
     }
     return out;
   },
@@ -197,11 +195,26 @@ const results = await page.evaluate(
 
 await browser.close();
 
+const SR = 44100;
+const MP3_BLOCK = 1152; // lamejs encodes one MP3 frame per call at this size.
+
 let total = 0;
-for (const [name, { wav, seconds }] of Object.entries(results)) {
-  const buf = Buffer.from(wav, "base64");
-  writeFileSync(path.join(OUT, `${name}.wav`), buf);
-  total += buf.length;
-  console.log(`${name}.wav  ${seconds}s  ${(buf.length / 1024).toFixed(1)} KB`);
+for (const [name, { pcm, seconds }] of Object.entries(results)) {
+  const raw = Buffer.from(pcm, "base64");
+  const samples = new Int16Array(raw.buffer, raw.byteOffset, raw.length / 2);
+
+  const encoder = new lamejs.Mp3Encoder(1, SR, MP3_BITRATE_KBPS);
+  const chunks = [];
+  for (let i = 0; i < samples.length; i += MP3_BLOCK) {
+    const block = encoder.encodeBuffer(samples.subarray(i, i + MP3_BLOCK));
+    if (block.length > 0) chunks.push(Buffer.from(block));
+  }
+  const tail = encoder.flush();
+  if (tail.length > 0) chunks.push(Buffer.from(tail));
+  const mp3 = Buffer.concat(chunks);
+
+  writeFileSync(path.join(OUT, `${name}.mp3`), mp3);
+  total += mp3.length;
+  console.log(`${name}.mp3  ${seconds}s  ${(mp3.length / 1024).toFixed(1)} KB`);
 }
 console.log(`\n${Object.keys(results).length} files, ${(total / 1024).toFixed(0)} KB total`);

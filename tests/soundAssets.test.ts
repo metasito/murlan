@@ -3,13 +3,14 @@
 // lib/sounds.ts require()s twelve names. If one is missing, silent, empty, or
 // not actually the format its extension claims, nothing throws: the effect just
 // never plays, on one platform or on all of them. That is the failure this
-// guards, and it is why every file is opened and its header read rather than
-// merely checked for existence.
+// guards, and it is why every file is decoded and measured rather than merely
+// checked for existence.
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync, readdirSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
+import { MPEGDecoder } from "mpg123-decoder";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const soundsDir = path.join(repoRoot, "assets", "sounds");
@@ -20,10 +21,8 @@ function requiredFiles(): string[] {
   return [...src.matchAll(/require\("\.\.\/assets\/sounds\/([^"]+)"\)/g)].map((m) => m[1]);
 }
 
-interface Wav {
-  channels: number;
+interface Decoded {
   sampleRate: number;
-  bitsPerSample: number;
   samples: number;
   seconds: number;
   peak: number;
@@ -32,42 +31,35 @@ interface Wav {
   soundEndsAt: number;
 }
 
-function readWav(file: string): Wav {
-  const b = readFileSync(path.join(soundsDir, file));
-  assert.equal(b.toString("ascii", 0, 4), "RIFF", `${file} is not a RIFF file`);
-  assert.equal(b.toString("ascii", 8, 12), "WAVE", `${file} is not a WAVE file`);
+async function readMp3(file: string): Promise<Decoded> {
+  const buf = readFileSync(path.join(soundsDir, file));
 
-  // Walk the chunks rather than assuming a 44-byte header: an encoder that
-  // inserts LIST/fact would otherwise shift every offset silently.
-  let pos = 12;
-  let fmt: { channels: number; sampleRate: number; bits: number; format: number } | null = null;
-  let data: Buffer | null = null;
-  while (pos + 8 <= b.length) {
-    const id = b.toString("ascii", pos, pos + 4);
-    const size = b.readUInt32LE(pos + 4);
-    const body = b.subarray(pos + 8, pos + 8 + size);
-    if (id === "fmt ") {
-      fmt = {
-        format: body.readUInt16LE(0),
-        channels: body.readUInt16LE(2),
-        sampleRate: body.readUInt32LE(4),
-        bits: body.readUInt16LE(14),
-      };
-    } else if (id === "data") {
-      data = body;
-    }
-    pos += 8 + size + (size % 2);
-  }
-  assert.ok(fmt, `${file} has no fmt chunk`);
-  assert.ok(data, `${file} has no data chunk`);
-  assert.equal(fmt!.format, 1, `${file} is not uncompressed PCM`);
+  const decoder = new MPEGDecoder();
+  await decoder.ready;
+  const result = decoder.decode(buf);
+  decoder.free();
 
-  const n = Math.floor(data!.length / 2);
+  assert.equal(result.errors.length, 0, `${file}: decode errors ${JSON.stringify(result.errors)}`);
+  assert.ok(result.channelData.length > 0, `${file} decoded to no channels`);
+
+  // build-sounds.mjs encodes mono; the decoder always reports two channels,
+  // duplicating the single decoded one into both (confirmed against the
+  // MPEG frame header's channel-mode bits, which do say mono). Assert the
+  // duplicate rather than silently trusting it, so a future encoder that
+  // actually produces stereo content is caught here.
+  assert.deepEqual(
+    result.channelData[0],
+    result.channelData[1],
+    `${file} decoded to two different channels — is it still mono?`
+  );
+  const pcm = result.channelData[0];
+  const n = pcm.length;
+
   let peak = 0;
   let sumSquares = 0;
   const square = new Float64Array(n);
   for (let i = 0; i < n; i++) {
-    const v = data!.readInt16LE(i * 2) / 32768;
+    const v = pcm[i];
     peak = Math.max(peak, Math.abs(v));
     square[i] = v * v;
     sumSquares += square[i];
@@ -76,7 +68,7 @@ function readWav(file: string): Wav {
   // has already been trimmed. A proportional measure would not be: removing the
   // quiet tail shrinks the total it is a proportion of.
   const floor = peak * Math.pow(10, SILENCE_FLOOR_DB / 20);
-  const win = Math.max(1, Math.round(WINDOW_SECONDS * fmt!.sampleRate));
+  const win = Math.max(1, Math.round(WINDOW_SECONDS * result.sampleRate));
   let soundEnd = 0;
   for (let start = 0; start < n; start += win) {
     const stop = Math.min(n, start + win);
@@ -85,12 +77,10 @@ function readWav(file: string): Wav {
     if (Math.sqrt(sum / (stop - start)) > floor) soundEnd = stop;
   }
   return {
-    soundEndsAt: soundEnd / fmt!.channels / fmt!.sampleRate,
-    channels: fmt!.channels,
-    sampleRate: fmt!.sampleRate,
-    bitsPerSample: fmt!.bits,
-    samples: n / fmt!.channels,
-    seconds: n / fmt!.channels / fmt!.sampleRate,
+    soundEndsAt: soundEnd / result.sampleRate,
+    sampleRate: result.sampleRate,
+    samples: n,
+    seconds: n / result.sampleRate,
     peak,
     rms: Math.sqrt(sumSquares / Math.max(1, n)),
   };
@@ -105,36 +95,39 @@ const CEILING_SECONDS = 4;
 // of it left.
 const SILENCE_FLOOR_DB = -55;
 const WINDOW_SECONDS = 0.01;
-const MAX_TRAILING_SILENCE = 0.09;
+// MP3 frames are fixed 1152-sample blocks (~26ms at 44.1kHz) and the encoder
+// adds priming delay before the first one, so decoded silence can run a
+// frame or so past where build-sounds.mjs actually trimmed — measured up to
+// ~88ms across the current twelve files. The budget below has margin over
+// that for a future rebuild without going slack enough to hide a real bug.
+const MAX_TRAILING_SILENCE = 0.15;
 
 describe("sound assets", () => {
   test("lib/sounds.ts requires exactly the files that exist on disk", () => {
     const required = requiredFiles().sort();
-    const onDisk = readdirSync(soundsDir).filter((f) => f.endsWith(".wav")).sort();
+    const onDisk = readdirSync(soundsDir).filter((f) => f.endsWith(".mp3")).sort();
     assert.ok(required.length > 0, "no require() calls found — the scan is broken");
     assert.deepEqual(onDisk, required, "assets/sounds and lib/sounds.ts disagree");
   });
 
   for (const file of requiredFiles()) {
-    test(`${file} is playable audio, not an empty or silent file`, () => {
-      const wav = readWav(file);
-      assert.equal(wav.channels, 1, `${file} must be mono`);
-      assert.equal(wav.bitsPerSample, 16, `${file} must be 16-bit`);
-      assert.equal(wav.sampleRate, 44100, `${file} must be 44.1 kHz`);
-      assert.ok(wav.seconds > 0.02, `${file} is ${wav.seconds.toFixed(3)}s — effectively empty`);
+    test(`${file} is playable audio, not an empty or silent file`, async () => {
+      const mp3 = await readMp3(file);
+      assert.equal(mp3.sampleRate, 44100, `${file} must be 44.1 kHz`);
+      assert.ok(mp3.seconds > 0.02, `${file} is ${mp3.seconds.toFixed(3)}s — effectively empty`);
       // A file of the right size full of zeroes is the failure mode a plain
       // existence check misses entirely.
-      assert.ok(wav.peak > 0.2, `${file} peaks at ${wav.peak.toFixed(3)} — silent or near-silent`);
-      assert.ok(wav.rms > 0.005, `${file} has RMS ${wav.rms.toFixed(4)} — no audible content`);
+      assert.ok(mp3.peak > 0.2, `${file} peaks at ${mp3.peak.toFixed(3)} — silent or near-silent`);
+      assert.ok(mp3.rms > 0.005, `${file} has RMS ${mp3.rms.toFixed(4)} — no audible content`);
     });
 
-    test(`${file} carries no dead air at the end`, () => {
-      const wav = readWav(file);
+    test(`${file} carries no dead air at the end`, async () => {
+      const mp3 = await readMp3(file);
       assert.ok(
-        wav.seconds <= CEILING_SECONDS,
-        `${file} runs ${wav.seconds.toFixed(2)}s, ceiling ${CEILING_SECONDS}s`
+        mp3.seconds <= CEILING_SECONDS,
+        `${file} runs ${mp3.seconds.toFixed(2)}s, ceiling ${CEILING_SECONDS}s`
       );
-      const silence = wav.seconds - wav.soundEndsAt;
+      const silence = mp3.seconds - mp3.soundEndsAt;
       assert.ok(
         silence <= MAX_TRAILING_SILENCE,
         `${file} has ${silence.toFixed(3)}s of near-silence after the sound ends`
@@ -142,15 +135,19 @@ describe("sound assets", () => {
     });
   }
 
-  test("the effects are levelled against each other", () => {
+  test("the effects are levelled against each other", async () => {
     // The source packs are mastered at different levels; build-sounds.mjs
-    // normalises every output to the same headroom. Without this, one effect
-    // is startlingly louder than the rest.
+    // normalises every output to the same headroom before MP3 encoding.
+    // Lossy encoding then shaves a bit off the true peak (measured: a PCM
+    // peak normalised to 0.89 decodes back at roughly 0.78-0.85), so the
+    // floor here is below the encoder's target rather than at it — the
+    // point of the assertion is catching one effect startlingly louder or
+    // quieter than the rest, not pinning the exact peak MP3 reproduces.
     for (const file of requiredFiles()) {
-      const { peak } = readWav(file);
+      const { peak } = await readMp3(file);
       assert.ok(
-        peak > 0.85 && peak <= 1.0,
-        `${file} peaks at ${peak.toFixed(3)}, expected a normalised ~0.89`
+        peak > 0.7 && peak <= 1.0,
+        `${file} peaks at ${peak.toFixed(3)}, expected a normalised ~0.8`
       );
     }
   });
