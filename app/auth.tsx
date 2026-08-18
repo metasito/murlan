@@ -116,6 +116,8 @@ export default function AuthScreen() {
                     placeholderTextColor={Colors.textMuted}
                     autoCapitalize="none"
                     autoCorrect={false}
+                    autoComplete="username"
+                    textContentType="username"
                     returnKeyType="next"
                     onSubmitEditing={() => pwdRef.current?.focus()}
                     accessibilityLabel={t("auth.usernameA11yLabel")}
@@ -138,6 +140,8 @@ export default function AuthScreen() {
                     placeholderTextColor={Colors.textMuted}
                     secureTextEntry={!showPwd}
                     autoCapitalize="none"
+                    autoComplete={tab === "login" ? "current-password" : "new-password"}
+                    textContentType={tab === "login" ? "password" : "newPassword"}
                     returnKeyType="done"
                     onSubmitEditing={handleSubmit}
                     accessibilityLabel={t("auth.passwordA11yLabel")}
