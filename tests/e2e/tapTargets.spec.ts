@@ -283,3 +283,17 @@ for (const size of SIZES) {
     await expectNoBuriedControls(page, "leaderboard", 2);
   });
 }
+
+// UI-01: a plain View with no ScrollView/maxHeight overflowed the backdrop on
+// any viewport shorter than ~725pt — every phone in landscape, an iPhone SE
+// in portrait, a laptop browser window. 568pt is inside that range.
+test("settings scrolls to the delete-account button at a short viewport", async ({ page, baseURL }) => {
+  test.setTimeout(60_000);
+  await page.setViewportSize({ width: 1200, height: 568 });
+  await openApp(page, baseURL!);
+  await page.getByRole("button", { name: "Impostazioni" }).click();
+
+  const deleteBtn = page.getByRole("button", { name: "Elimina account" });
+  await deleteBtn.scrollIntoViewIfNeeded();
+  await expect(deleteBtn).toBeInViewport();
+});
