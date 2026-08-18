@@ -143,10 +143,25 @@ function renderMarkdown({ assets, deps }) {
   lines.push(
     "- `assets/images/icon.png` and `assets/images/splash-icon.png` dominate the " +
       "assets total. Both are required (referenced by `app.json`'s `icon` and " +
-      "`expo-splash-screen` plugin config) and are already DEFLATE-compressed " +
-      "close to the practical floor for their pixel content — a lossless zlib " +
-      "level-9 re-encode of the existing pixels only recovers ~2-4%, not enough " +
-      "to justify adding an image-optimization step."
+      "`expo-splash-screen` plugin config). At 1024x1024 8-bit truecolour RGB " +
+      "they DEFLATE to a ~2.3:1 ratio, typical for gradient-heavy photographic " +
+      "content; a lossless re-encode of those same pixels only recovers a few " +
+      "percent, because DEFLATE is not the limiting factor. A format built for " +
+      "that content is: canvas-encoded WebP at quality 0.9 reproduces icon.png " +
+      "in 105.5 KB and splash-icon.png in 136.6 KB, both under 11% of the " +
+      "current size. That headroom cannot be taken here — `@expo/image-utils`, " +
+      "which Expo's own prebuild uses to generate native icon and splash " +
+      "resources from these two files, decodes through `jimp-compact` and " +
+      "throws `Unsupported MIME type: image/webp` on the file above, confirmed " +
+      "by feeding it the encoded output directly. Shrinking the pixel " +
+      "dimensions instead is blocked per file: `icon.png` doubles as the iOS " +
+      "App Store marketing icon, which Apple requires at exactly 1024x1024; " +
+      "`splash-icon.png` is displayed through `expo-splash-screen`'s CONTAIN " +
+      "mode, which scales the whole image up to the device's screen size, so " +
+      "1024px is not confirmed to exceed what the widest phone screens show " +
+      "(some exceed 1290px) without a device pass. Real headroom exists; " +
+      "nothing here can take it without a pipeline change or a device " +
+      "verification pass this repo's tooling cannot run."
   );
   lines.push(
     "- `assets/images/android-icon-monochrome.png` is 432x432 while the other " +
