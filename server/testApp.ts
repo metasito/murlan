@@ -113,15 +113,25 @@ function configureExpoAndLanding(app: express.Application) {
   app.use("/manifest", expoManifestHandler);
   app.get("/", expoManifestHandler);
 
-  app.use("/assets", express.static(path.resolve(process.cwd(), "assets")));
+  // Unhashed source assets — a deploy can change what a given path serves,
+  // so this cannot be cached as long as the content-hashed build output below.
+  app.use("/assets", express.static(path.resolve(process.cwd(), "assets"), { maxAge: "1h" }));
   app.use(express.static(path.resolve(process.cwd(), "static-build")));
 
   if (hasWebBuild) {
-    // Web build present — serve SPA for browser clients
-    app.use(express.static(distPath));
+    // Every file under dist/ carries a content hash in its name (Metro's
+    // doing), so a given URL's bytes never change — safe to cache for a
+    // year. `index.html` is the one file in this tree without a hash, and
+    // it names the current hashed bundle; caching it long would pin a
+    // client to a stale build with no recovery short of a hard refresh.
+    // `index: false` stops this mount from auto-serving it for "/" so the
+    // catch-all below is the only path that ever sends it, with its own
+    // explicit no-cache header.
+    app.use(express.static(distPath, { maxAge: "1y", immutable: true, index: false }));
     // Catch-all: any non-API path not matched by static files gets index.html (SPA routing)
     app.get("*path", (req: Request, res: Response, next: NextFunction) => {
       if (req.path.startsWith("/api")) return next();
+      res.set("Cache-Control", "no-cache");
       res.sendFile(webIndexPath);
     });
     logger.info("Serving Expo web build from dist/");
