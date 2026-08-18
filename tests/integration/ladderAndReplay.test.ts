@@ -291,10 +291,9 @@ describe("ladder and replay writes", { skip: hasDatabase() ? false : skipMessage
         return res.rows[0] ?? null;
       });
 
-      // The response shape cannot show this: the old query selected every
-      // column — ~9 KB of `moves` jsonb per row, twenty rows — and used it for
-      // `.length`. What changed is the SQL, so the SQL is what is read, off
-      // the app's own pool.
+      // The listing must not pull the `moves` jsonb — ~9 KB per row, twenty
+      // rows — to report its length. The response shape cannot show that, so
+      // the SQL itself is what is read, off the app's own pool.
       const { pool } = await import("../../server/db.ts");
       const { listReplaysForUser } = await import("../../server/replays.ts");
       const seen: string[] = [];

@@ -5,10 +5,10 @@ import { act, render, screen } from '@testing-library/react-native';
 import { FloatingReactions } from '@/components/ReactionLayer';
 import { clearReactions, pushReaction } from '@/lib/reactions';
 
-// An emoji arriving used to write to OnlineGameContext, which put it in the
-// context value and so re-rendered the whole online screen — the table and
-// every card in the hand — twice per reaction. FloatingReactions now reads the
-// store itself, so the write commits there and stops.
+// A reaction lands in its own store, not in the online game context: an emoji
+// in the context value re-renders the whole online screen — the table and every
+// card in the hand — twice per reaction. FloatingReactions reads the store
+// itself, so the write commits there and stops.
 //
 // The 2.5 s expiry is the store's, and tests/reactions.test.ts pins it there.
 describe('a reaction re-renders the emoji layer and nothing above it', () => {

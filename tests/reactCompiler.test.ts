@@ -3,14 +3,14 @@
 // app.json turns on `experiments.reactCompiler`, which babel-preset-expo turns
 // into babel-plugin-react-compiler with `panicThreshold: 'NONE'` for a
 // production build: a component the compiler cannot handle is left uncompiled
-// with no error and no warning. A single `eslint-disable react-hooks` comment
-// is enough to do it — the compiler refuses to optimise any component in a file
-// that switches those rules off — and that is how the hand came to be rebuilt
-// three to five times per move with nothing to catch it.
+// with no error and no warning, and the hand is rebuilt three to five times per
+// move. A single `eslint-disable react-hooks` comment is enough to cause it —
+// the compiler refuses to optimise any component in a file that switches those
+// rules off.
 //
 // So this compiles the hot-path files the way the build does and reads the
-// plugin's own diagnostics. It is the acceptance test for the fix rather than a
-// grep, because a bailout has several possible causes (a suppressed lint rule,
+// plugin's own diagnostics. It is an acceptance test rather than a grep,
+// because a bailout has several possible causes (a suppressed lint rule,
 // a ref written during render, manual memoization the compiler cannot preserve)
 // and only the compiler knows which of them are present.
 import { test } from "node:test";

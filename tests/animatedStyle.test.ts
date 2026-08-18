@@ -5,14 +5,13 @@
 // and writes inline styles from the main JS thread on every frame. A transform
 // or an opacity written that way is still handed to the compositor. A
 // `box-shadow` string, a shadow radius or a border colour is not — each one
-// invalidates paint, every frame, for as long as the loop runs. Two of these
-// ran continuously for the whole of the player's turn, one of them on the
-// container holding all 14-27 cards of the hand.
+// invalidates paint, every frame, for as long as the loop runs. The turn pulse
+// runs continuously for the whole of the player's turn, on the container
+// holding all 14-27 cards of the hand, which is where that costs the most.
 //
-// The technique that replaces them is already in the file: a textless,
-// childless sibling carrying the glow as a static token, with only its opacity
-// animated (`sharedStyles.cardGlow`, `avatarRing`, and now `handGlow` and
-// `playBtnGlow`).
+// The technique that keeps them off the animation is a textless, childless
+// sibling carrying the glow as a static token, with only its opacity animated
+// (`sharedStyles.cardGlow`, `avatarRing`, `handGlow`, `playBtnGlow`).
 //
 // Structural, like tests/reducedMotion.test.ts: the property is about how the
 // source is written, so it is checked by reading it.
