@@ -66,11 +66,11 @@ export function MenuLayout({
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
         >
-          <View style={contentStyle}>{children}</View>
+          <View testID="menu-content" style={contentStyle}>{children}</View>
         </ScrollView>
       ) : (
         <View style={styles.fill}>
-          <View style={contentStyle}>{children}</View>
+          <View testID="menu-content" style={contentStyle}>{children}</View>
         </View>
       )}
     </View>
