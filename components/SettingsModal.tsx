@@ -28,6 +28,7 @@ import {
 import { Colors, Spacing, Radius, FontSize, Type, Shadow } from "@/lib/theme";
 import { useTranslation, type Locale, type TranslationKey } from "@/lib/i18n";
 import type { MotionPreference } from "@/lib/accessibility";
+import { A11yHintText, a11yHidden, a11yHint, a11yState } from "@/lib/a11y";
 
 interface Props {
   visible: boolean;
@@ -98,9 +99,8 @@ function Segmented<T extends string | number>({
               onSelect(seg.value);
             }}
             disabled={disabled}
-            accessibilityRole="radio"
             accessibilityLabel={seg.label}
-            accessibilityState={{ selected: active, disabled }}
+            {...a11yState({ role: "radio", selected: active, disabled })}
             style={({ pressed }) => [
               styles.segment,
               active && styles.segmentActive,
@@ -203,8 +203,7 @@ export function SettingsModal({ visible, onClose }: Props) {
         <Pressable
           style={StyleSheet.absoluteFill}
           onPress={onClose}
-          accessibilityElementsHidden
-          importantForAccessibility="no-hide-descendants"
+          {...a11yHidden()}
         />
         <View style={styles.card} accessibilityViewIsModal accessibilityRole="none">
           <View style={styles.header}>
@@ -237,8 +236,9 @@ export function SettingsModal({ visible, onClose }: Props) {
               thumbColor={soundsEnabled ? Colors.white : Colors.textMuted}
               accessibilityRole="switch"
               accessibilityLabel={t("settings.soundsA11yLabel")}
-              accessibilityHint={t("settings.soundsA11yHint")}
+              {...a11yHint(t("settings.soundsA11yHint"))}
             />
+            <A11yHintText hint={t("settings.soundsA11yHint")} />
           </View>
 
           <View style={styles.stackRow}>
@@ -330,8 +330,9 @@ export function SettingsModal({ visible, onClose }: Props) {
                 thumbColor={hapticsEnabled ? Colors.white : Colors.textMuted}
                 accessibilityRole="switch"
                 accessibilityLabel={t("settings.hapticsA11yLabel")}
-                accessibilityHint={t("settings.hapticsA11yHint")}
+                {...a11yHint(t("settings.hapticsA11yHint"))}
               />
+              <A11yHintText hint={t("settings.hapticsA11yHint")} />
             </View>
           )}
 
@@ -350,9 +351,8 @@ export function SettingsModal({ visible, onClose }: Props) {
                   <Pressable
                     key={code}
                     onPress={() => handleSelectLocale(code)}
-                    accessibilityRole="button"
                     accessibilityLabel={localeLabels[code]}
-                    accessibilityState={{ selected: active }}
+                    {...a11yState({ role: "button", selected: active })}
                     style={({ pressed }) => [
                       styles.localeBtn,
                       active && styles.localeBtnActive,
@@ -373,16 +373,16 @@ export function SettingsModal({ visible, onClose }: Props) {
           <Pressable
             onPress={confirmDelete}
             disabled={deleting}
-            accessibilityRole="button"
             accessibilityLabel={t("settings.deleteAccount")}
-            accessibilityHint={t("settings.deleteAccountA11yHint")}
-            accessibilityState={{ disabled: deleting, busy: deleting }}
+            {...a11yHint(t("settings.deleteAccountA11yHint"))}
+            {...a11yState({ role: "button", disabled: deleting, busy: deleting })}
             style={({ pressed }) => [
               styles.deleteBtn,
               pressed && !deleting && styles.deleteBtnPressed,
               deleting && styles.deleteBtnDisabled,
             ]}
           >
+            <A11yHintText hint={t("settings.deleteAccountA11yHint")} />
             <Text style={styles.deleteBtnText}>
               {deleting ? t("settings.deleting") : t("settings.deleteAccount")}
             </Text>

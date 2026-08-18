@@ -39,6 +39,7 @@ import {
   placedPips,
   rankFontSize,
 } from "@/components/cardFaceModel";
+import { A11yHintText, a11yHidden, a11yHint } from "@/lib/a11y";
 
 // Suit → colour. `Suit` is plural ("spades") while the theme tokens are singular
 // ("spade"), so the mapping has to be explicit. Typed as Record<Suit, string> so
@@ -371,8 +372,7 @@ function CourtArt({ card, w, h }: { card: Card; w: number; h: number }) {
       source={source()}
       style={[styles.courtArt, rect]}
       resizeMode="contain"
-      accessibilityElementsHidden
-      importantForAccessibility="no-hide-descendants"
+      {...a11yHidden()}
     />
   );
 }
@@ -555,8 +555,7 @@ function CardViewBase({
         onPressIn={handlePressIn}
         onPressOut={handlePressOut}
         disabled={!interactive}
-        accessibilityElementsHidden={decorative}
-        importantForAccessibility={decorative ? "no-hide-descendants" : "auto"}
+        {...a11yHidden(decorative)}
         accessibilityLabel={decorative ? undefined : cardSpokenName(card, t)}
         // A card with no onPress at all is information, not a control: the
         // pile, and the card the loser hands over between hands. It keeps its
@@ -569,15 +568,14 @@ function CardViewBase({
         // will come back. Dropping the role there would make the hand vanish
         // and reappear in the button rotation every turn.
         accessibilityRole={onPress ? "button" : undefined}
-        accessibilityHint={
-          decorative || !selected ? undefined : t("cardView.selectedA11yHint")
-        }
+        {...a11yHint(decorative || !selected ? undefined : t("cardView.selectedA11yHint"))}
         style={[
           styles.card,
           small ? styles.cardSmall : styles.cardNormal,
           selected && styles.cardSelected,
         ]}
       >
+        {!decorative && selected && <A11yHintText hint={t("cardView.selectedA11yHint")} />}
         <LinearGradient
           colors={CardFaceGradient}
           locations={[0, 0.55, 1]}

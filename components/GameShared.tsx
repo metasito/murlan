@@ -30,6 +30,7 @@ import {
   SIDE_SECTION_W,
   type FlyDirection,
 } from "@/components/gameTableModel";
+import { a11yHidden } from "@/lib/a11y";
 
 // The layout constants and the seat-rotation maths now live in the JSX-free
 // gameTableModel.ts so they can be unit-tested and so the shared table can use
@@ -291,8 +292,7 @@ function BotSeatBadge() {
         name="hardware-chip-outline"
         size={FontSize.xs}
         color={Colors.gold}
-        accessibilityElementsHidden
-        importantForAccessibility="no-hide-descendants"
+        {...a11yHidden()}
       />
       <Text style={sharedStyles.botBadgeText}>{t("onlineGame.botSeatLabel")}</Text>
     </View>

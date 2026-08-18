@@ -17,6 +17,7 @@ import type { GameState } from "@/lib/gameEngine";
 import { Colors } from "@/lib/theme";
 import { useTranslation } from "@/lib/i18n";
 import { cardSpokenName } from "@/lib/cardNames";
+import { a11yState } from "@/lib/a11y";
 
 /**
  * Whether the result screen should be showing this overlay at all.
@@ -152,9 +153,8 @@ export function ResultExchangeOverlay({
                       exStyles.pickCardWrap,
                       picked && exStyles.pickCardLifted,
                     ]}
-                    accessibilityRole="radio"
                     accessibilityLabel={cardSpokenName(card, t)}
-                    accessibilityState={{ selected: picked }}
+                    {...a11yState({ role: "radio", selected: picked })}
                   >
                     <CardView card={card} selected={picked} noLift decorative />
                   </Pressable>
@@ -173,9 +173,8 @@ export function ResultExchangeOverlay({
               }}
               style={[exStyles.confirmBtn, !selectedId && exStyles.confirmBtnDim]}
               disabled={!selectedId}
-              accessibilityRole="button"
               accessibilityLabel={t("result.exchangeConfirm")}
-              accessibilityState={{ disabled: !selectedId }}
+              {...a11yState({ role: "button", disabled: !selectedId })}
             >
               <LinearGradient
                 colors={

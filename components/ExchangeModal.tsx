@@ -25,6 +25,7 @@ import { Colors, FontSize, Highlight, Motion, Radius, Shadow, Spacing } from '@/
 import { usePrefersReducedMotion } from "@/lib/accessibility";
 import { useTranslation } from "@/lib/i18n";
 import { cardSpokenName } from "@/lib/cardNames";
+import { A11yHintText, a11yHint } from "@/lib/a11y";
 
 interface ExchangeModalProps {
   phase: ExchangePhase;
@@ -114,8 +115,9 @@ function SelectableCard({
       onPressOut={() => setPress(false)}
       accessibilityRole="button"
       accessibilityLabel={cardSpokenName(card, t)}
-      accessibilityHint={t("exchangeModal.giveCardA11yHint")}
+      {...a11yHint(t("exchangeModal.giveCardA11yHint"))}
     >
+      <A11yHintText hint={t("exchangeModal.giveCardA11yHint")} />
       <Animated.View style={anim}>
         <Animated.View pointerEvents="none" style={[styles.cardGlow, glowStyle]} />
         <View style={styles.cardItem}>

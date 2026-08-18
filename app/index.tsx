@@ -31,6 +31,7 @@ import { usePrefersReducedMotion } from "@/lib/accessibility";
 import { Colors } from '@/lib/theme';
 import { useTranslation } from "@/lib/i18n";
 import { SettingsModal } from "@/components/SettingsModal";
+import { a11yState } from "@/lib/a11y";
 
 /**
  * A destination on the home screen: an icon, a label, and a chevron, animated
@@ -105,9 +106,8 @@ function HomeMenuRow({
       <Pressable
         onPress={handlePress}
         disabled={disabled}
-        accessibilityRole="button"
         accessibilityLabel={accessibilityLabel ?? label}
-        accessibilityState={{ disabled }}
+        {...a11yState({ role: "button", disabled })}
         style={({ pressed }) => [
           styles.menuButton,
           compact && styles.menuButtonCompact,

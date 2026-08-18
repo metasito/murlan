@@ -17,6 +17,7 @@ import { MenuLayout } from "@/components/MenuLayout";
 import { MenuCard } from "@/components/MenuCard";
 import { MenuButton } from "@/components/MenuButton";
 import { useTranslation, translateServerPayload } from "@/lib/i18n";
+import { A11yHintText, a11yHint, a11yState } from "@/lib/a11y";
 
 type Tab = "login" | "register";
 
@@ -92,9 +93,8 @@ export default function AuthScreen() {
                   key={tabOption}
                   onPress={() => { setTab(tabOption); setError(null); }}
                   style={[styles.tabBtn, tab === tabOption && styles.tabActive]}
-                  accessibilityRole="tab"
                   accessibilityLabel={tabOption === "login" ? t("auth.tabLogin") : t("auth.tabRegister")}
-                  accessibilityState={{ selected: tab === tabOption }}
+                  {...a11yState({ role: "tab", selected: tab === tabOption })}
                 >
                   <Text style={[styles.tabText, tab === tabOption && styles.tabTextActive]}>
                     {tabOption === "login" ? t("auth.tabLogin") : t("auth.tabRegister")}
@@ -119,8 +119,9 @@ export default function AuthScreen() {
                     returnKeyType="next"
                     onSubmitEditing={() => pwdRef.current?.focus()}
                     accessibilityLabel={t("auth.usernameA11yLabel")}
-                    accessibilityHint={t("auth.usernameA11yHint")}
+                    {...a11yHint(t("auth.usernameA11yHint"))}
                   />
+                  <A11yHintText hint={t("auth.usernameA11yHint")} />
                 </View>
               </View>
 
@@ -140,8 +141,9 @@ export default function AuthScreen() {
                     returnKeyType="done"
                     onSubmitEditing={handleSubmit}
                     accessibilityLabel={t("auth.passwordA11yLabel")}
-                    accessibilityHint={t("auth.passwordA11yHint")}
+                    {...a11yHint(t("auth.passwordA11yHint"))}
                   />
+                  <A11yHintText hint={t("auth.passwordA11yHint")} />
                   <Pressable
                     onPress={() => setShowPwd((v) => !v)}
                     style={styles.eyeBtn}

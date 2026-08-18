@@ -14,6 +14,7 @@ import { Colors, Spacing, Radius, Type, Shadow } from "@/lib/theme";
 import { usePrefersReducedMotion } from "@/lib/accessibility";
 import { useTranslation } from "@/lib/i18n";
 import type { NotificationType, NotificationData } from "@/context/NotificationContext";
+import { A11yHintText, a11yHint } from "@/lib/a11y";
 
 export type { NotificationType, NotificationData };
 
@@ -129,8 +130,9 @@ export default function NotificationBanner({ notification, onDismiss }: Props) {
         accessibilityRole="alert"
         accessibilityLiveRegion={notification ? "polite" : "none"}
         accessibilityLabel={a11yLabel}
-        accessibilityHint={t("notificationBanner.dismissA11yHint")}
+        {...a11yHint(t("notificationBanner.dismissA11yHint"))}
       >
+        <A11yHintText hint={t("notificationBanner.dismissA11yHint")} />
         <View style={[styles.iconCircle, { backgroundColor: color + "22" }]}>
           <Ionicons name={icon} size={20} color={color} />
         </View>

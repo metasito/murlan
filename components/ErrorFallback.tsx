@@ -110,14 +110,14 @@ export function ErrorFallback({ error, resetError }: ErrorFallbackProps) {
             variant="primary"
             loading={restarting}
             icon={!restarting ? <Feather name="refresh-cw" size={18} color={Colors.bg} /> : undefined}
-            accessibilityHint={t("errorFallback.restartA11yHint")}
+            hint={t("errorFallback.restartA11yHint")}
           />
           <MenuButton
             label={t("errorFallback.continue")}
             onPress={resetError}
             variant="ghost"
             disabled={restarting}
-            accessibilityHint={t("errorFallback.continueA11yHint")}
+            hint={t("errorFallback.continueA11yHint")}
           />
         </View>
       </View>

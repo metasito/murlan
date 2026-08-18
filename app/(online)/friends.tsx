@@ -21,6 +21,7 @@ import { MenuLayout } from "@/components/MenuLayout";
 import { useTranslation, translateServerPayload } from "@/lib/i18n";
 import { registerForPush } from "@/lib/pushRegistration";
 import type { TranslationKey, TranslationParams } from "@/lib/i18n";
+import { A11yHintText, a11yHint, a11yState } from "@/lib/a11y";
 
 type TFn = (key: TranslationKey, params?: TranslationParams) => string;
 type TnFn = (base: string, count: number, params?: TranslationParams) => string;
@@ -445,15 +446,15 @@ export default function FriendsScreen() {
               onSubmitEditing={handleSearchUsername}
               returnKeyType="search"
               accessibilityLabel={t("friends.searchA11yLabel")}
-              accessibilityHint={t("friends.searchA11yHint")}
+              {...a11yHint(t("friends.searchA11yHint"))}
             />
+            <A11yHintText hint={t("friends.searchA11yHint")} />
             <Pressable
               onPress={handleSearchUsername}
               disabled={searchLoading || !searchQuery.trim()}
               style={({ pressed }) => [styles.addBtn, pressed && { opacity: 0.85 }, (!searchQuery.trim()) && styles.addBtnDim]}
-              accessibilityRole="button"
               accessibilityLabel={t("friends.searchA11yLabel")}
-              accessibilityState={{ disabled: searchLoading || !searchQuery.trim() }}
+              {...a11yState({ role: "button", disabled: searchLoading || !searchQuery.trim() })}
             >
               {searchLoading ? (
                 <ActivityIndicator color={Colors.bgCard} size="small" />

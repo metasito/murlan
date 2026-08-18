@@ -22,6 +22,7 @@ import { Colors, Spacing, Radius, FontSize, Type } from '@/lib/theme';
 import { MenuLayout } from "@/components/MenuLayout";
 import { MenuButton } from "@/components/MenuButton";
 import { useTranslation } from "@/lib/i18n";
+import { A11yHintText, a11yHint, a11yState } from "@/lib/a11y";
 
 type LobbyMode = "ai" | "local";
 
@@ -68,6 +69,7 @@ function PlayerRow({ index, config, onChange, isHuman, lobbyMode }: PlayerRowPro
 
       <View style={styles.playerInfo}>
         {lobbyMode === "local" && !isHuman ? (
+          <>
           <TextInput
             value={config.name}
             onChangeText={(newName) => onChange({ ...config, name: newName })}
@@ -75,8 +77,10 @@ function PlayerRow({ index, config, onChange, isHuman, lobbyMode }: PlayerRowPro
             placeholderTextColor={Colors.textMuted}
             maxLength={12}
             accessibilityLabel={t("lobby.aiNameA11yLabel")}
-            accessibilityHint={t("lobby.aiNameA11yHint")}
+            {...a11yHint(t("lobby.aiNameA11yHint"))}
           />
+          <A11yHintText hint={t("lobby.aiNameA11yHint")} />
+          </>
         ) : (
           <Text style={styles.playerName}>{config.name}</Text>
         )}
@@ -227,9 +231,8 @@ export default function LobbyScreen() {
               key={n}
               onPress={() => handleCountChange(n)}
               style={[styles.countBtn, playerCount === n && styles.countBtnActive]}
-              accessibilityRole="radio"
               accessibilityLabel={t("lobby.playerCountOptionA11yLabel", { n })}
-              accessibilityState={{ selected: playerCount === n }}
+              {...a11yState({ role: "radio", selected: playerCount === n })}
             >
               <Text style={[styles.countBtnText, playerCount === n && styles.countBtnTextActive]}>{n}</Text>
             </Pressable>
@@ -246,9 +249,8 @@ export default function LobbyScreen() {
                 key={gm}
                 onPress={() => handleModeChange(gm)}
                 style={[styles.modeBtn, gameMode === gm && styles.modeBtnActive]}
-                accessibilityRole="radio"
                 accessibilityLabel={gm === "teams" ? t("lobby.modeTeams") : t("lobby.modeFreeForAll")}
-                accessibilityState={{ selected: gameMode === gm }}
+                {...a11yState({ role: "radio", selected: gameMode === gm })}
               >
                 <Ionicons name={gm === "teams" ? "people" : "person"} size={16} color={gameMode === gm ? Colors.gold : Colors.textSecondary} />
                 <Text style={[styles.modeBtnText, gameMode === gm && styles.modeBtnTextActive]}>
@@ -271,9 +273,8 @@ export default function LobbyScreen() {
                 key={length}
                 onPress={() => { setMatchLength(length); hapticSelection(); }}
                 style={[styles.formatBtn, selected && styles.countBtnActive]}
-                accessibilityRole="radio"
                 accessibilityLabel={t("lobby.formatA11yLabel", { format: title, detail })}
-                accessibilityState={{ selected }}
+                {...a11yState({ role: "radio", selected })}
               >
                 <Text style={[styles.formatTitle, selected && styles.countBtnTextActive]}>{title}</Text>
                 <Text style={[styles.formatDetail, selected && styles.formatDetailActive]}>{detail}</Text>

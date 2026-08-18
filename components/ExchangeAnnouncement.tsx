@@ -21,6 +21,7 @@ import { Colors, Spacing, Radius, FontSize, Type, Motion, Shadow } from "@/lib/t
 import { usePrefersReducedMotion } from "@/lib/accessibility";
 import { useTranslation } from "@/lib/i18n";
 import { cardSpokenName } from "@/lib/cardNames";
+import { A11yHintText, a11yHidden, a11yHint } from "@/lib/a11y";
 
 // Mirrors the private CARD_W/CARD_H in components/CardView.tsx (not exported,
 // and that file is owned elsewhere) — used only to shrink a rendered CardView
@@ -151,8 +152,7 @@ export function ExchangeAnnouncement({
       <Pressable
         style={StyleSheet.absoluteFill}
         onPress={handleDismiss}
-        accessibilityElementsHidden
-        importantForAccessibility="no-hide-descendants"
+        {...a11yHidden()}
       />
 
       {/* Purely decorative flourish — the same information is announced via
@@ -183,8 +183,9 @@ export function ExchangeAnnouncement({
         accessibilityViewIsModal
         accessibilityRole="alert"
         accessibilityLabel={a11yLabel}
-        accessibilityHint={t("exchangeAnnouncement.dismissA11yHint")}
+        {...a11yHint(t("exchangeAnnouncement.dismissA11yHint"))}
       >
+        <A11yHintText hint={t("exchangeAnnouncement.dismissA11yHint")} />
         <Pressable
           onPress={handleDismiss}
           style={({ pressed }) => [styles.closeBtn, { opacity: pressed ? 0.6 : 1 }]}

@@ -113,6 +113,7 @@ import { hapticError, hapticHeavy, hapticLight, hapticMedium, hapticSelection, h
 import { usePrefersReducedMotion } from "@/lib/accessibility";
 import { Colors, FontSize, Highlight, Motion, Radius, Scrim, Shadow, Spacing, Type } from "@/lib/theme";
 import { useTableFelt } from "@/lib/cosmetics";
+import { a11yHidden, a11yState } from "@/lib/a11y";
 
 // How long the round-winner tag stays over the pile. A domain beat, not a
 // generic UI transition, so it is not a Motion token.
@@ -331,8 +332,7 @@ function TurnTimer({
         name="timer-outline"
         size={FontSize.sm}
         color={urgent ? Colors.red : Colors.gold}
-        accessibilityElementsHidden
-        importantForAccessibility="no-hide-descendants"
+        {...a11yHidden()}
       />
       <Text
         style={[styles.timerNum, urgent && styles.timerUrgent]}
@@ -1234,9 +1234,8 @@ export function GameTable({
                 onPressOut={() => setPassaPress(false)}
                 disabled={!canPass}
                 style={styles.passBtnInner}
-                accessibilityRole="button"
                 accessibilityLabel={t("gameTable.passA11yLabel")}
-                accessibilityState={{ disabled: !canPass }}
+                {...a11yState({ role: "button", disabled: !canPass })}
               >
                 <LinearGradient
                   colors={passaPressed ? PASS_GRADIENT_PRESSED : PASS_GRADIENT}
@@ -1297,13 +1296,12 @@ export function GameTable({
                 onPressIn={() => setGiocaPress(true)}
                 onPressOut={() => setGiocaPress(false)}
                 style={styles.playBtnInner}
-                accessibilityRole="button"
                 accessibilityLabel={
                   playBtnValid
                     ? t("gameTable.playA11yValid")
                     : t("gameTable.playA11yUnavailable", { reason: dimReasonText })
                 }
-                accessibilityState={{ disabled: !playBtnValid }}
+                {...a11yState({ role: "button", disabled: !playBtnValid })}
               >
                 {playBtnValid ? (
                   <LinearGradient

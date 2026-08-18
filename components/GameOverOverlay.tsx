@@ -24,6 +24,7 @@ import type { GameState } from "@/lib/gameEngine";
 import { Colors, FontSize, Motion, Radius, Spacing } from "@/lib/theme";
 import { usePrefersReducedMotion } from "@/lib/accessibility";
 import { useTranslation, type TranslationKey } from "@/lib/i18n";
+import { a11yState } from "@/lib/a11y";
 
 const POSITION_MEDALS = ["trophy", "medal", "ribbon", "remove-circle"] as const;
 const POSITION_COLORS = [Colors.podiumGold, Colors.podiumSilver, Colors.podiumBronze, Colors.textMuted];
@@ -282,15 +283,15 @@ export function GameOverOverlay({
           {canContinue ? (
             <Pressable
               testID="btn-rivincita"
-              onPress={hasVoted ? undefined : onVoteRematch}
+              onPress={onVoteRematch}
+              disabled={hasVoted}
               style={[styles.rematchBtn, hasVoted && styles.rematchBtnDim]}
-              accessibilityRole="button"
               accessibilityLabel={
                 match.over
                   ? t("gameOverOverlay.newMatchA11yLabel")
                   : t("gameOverOverlay.nextHandA11yLabel")
               }
-              accessibilityState={{ disabled: hasVoted }}
+              {...a11yState({ role: "button", disabled: hasVoted })}
             >
               <LinearGradient
                 colors={

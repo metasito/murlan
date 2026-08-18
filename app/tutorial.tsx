@@ -26,6 +26,7 @@ import {
   processExchangeChoice,
 } from "@/lib/gameEngine";
 import { useTranslation, type TranslationKey, type TranslationParams } from "@/lib/i18n";
+import { a11yHidden } from "@/lib/a11y";
 
 type TFn = (key: TranslationKey, params?: TranslationParams) => string;
 
@@ -505,8 +506,7 @@ export default function TutorialScreen() {
           name="chevron-back"
           size={22}
           color={Colors.gold}
-          accessibilityElementsHidden
-          importantForAccessibility="no-hide-descendants"
+          {...a11yHidden()}
         />
       </Pressable>
       <View style={styles.progressWrap}>
@@ -520,8 +520,7 @@ export default function TutorialScreen() {
       <Pressable onPress={handleSkip} style={styles.headerBtn} hitSlop={Spacing.sm} accessibilityRole="button" accessibilityLabel={t("tutorial.skipA11yLabel")}>
         <Text
           style={styles.skipText}
-          accessibilityElementsHidden
-          importantForAccessibility="no-hide-descendants"
+          {...a11yHidden()}
         >
           {t("tutorial.skip")}
         </Text>

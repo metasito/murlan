@@ -29,6 +29,7 @@ import type { BotPersonalityId } from "@/lib/botPersonalities";
 import { MenuLayout } from "@/components/MenuLayout";
 import { MenuButton } from "@/components/MenuButton";
 import { useTranslation } from "@/lib/i18n";
+import { A11yHintText, a11yHint, a11yState } from "@/lib/a11y";
 
 const TEAM_COLORS = { A: Colors.gold, B: Colors.info };
 
@@ -62,8 +63,9 @@ function BotFillControls({
           thumbColor={fillWithBots ? Colors.white : Colors.textMuted}
           accessibilityRole="switch"
           accessibilityLabel={t("room.fillWithBotsA11yLabel")}
-          accessibilityHint={t("room.fillWithBotsA11yHint")}
+          {...a11yHint(t("room.fillWithBotsA11yHint"))}
         />
+        <A11yHintText hint={t("room.fillWithBotsA11yHint")} />
       </View>
 
       {fillWithBots && (
@@ -77,12 +79,11 @@ function BotFillControls({
                   onChangeBotPersonality(p.id);
                   hapticSelection();
                 }}
-                accessibilityRole="button"
                 accessibilityLabel={t("room.botPersonalityOptionA11yLabel", {
                   name: p.name,
                   style: t(botBlurbKey(p.id)),
                 })}
-                accessibilityState={{ selected }}
+                {...a11yState({ role: "button", selected })}
                 style={[botFillStyles.personalityPill, selected && botFillStyles.personalityPillActive]}
               >
                 <Text
@@ -134,9 +135,8 @@ function MatchLengthControls({
                 hapticSelection();
               }}
               style={[formatStyles.option, selected && formatStyles.optionActive]}
-              accessibilityRole="radio"
               accessibilityLabel={t("lobby.formatA11yLabel", { format: title, detail })}
-              accessibilityState={{ selected }}
+              {...a11yState({ role: "radio", selected })}
             >
               <Text style={[formatStyles.optionTitle, selected && formatStyles.optionTitleActive]}>
                 {title}
@@ -270,9 +270,8 @@ function InviteFriendsPanel({
                   { height: ROW_H },
                   pressed && { opacity: 0.8 },
                 ]}
-                accessibilityRole="button"
                 accessibilityLabel={sent ? t("room.inviteSentA11yLabel", { username: friend.username }) : t("room.inviteA11yLabel", { username: friend.username })}
-                accessibilityState={{ disabled: sent }}
+                {...a11yState({ role: "button", disabled: sent })}
               >
                 <View style={inviteStyles.avatar}>
                   <Text style={inviteStyles.avatarInitial}>

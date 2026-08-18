@@ -17,6 +17,7 @@ import { replayMoveCount, replayStateAt, type ReplayDto } from "@/lib/replay";
 import { Colors, FontSize, Motion, Radius, Spacing, Type } from "@/lib/theme";
 import { hapticSelection } from "@/lib/haptics";
 import { useTranslation } from "@/lib/i18n";
+import { a11yHidden } from "@/lib/a11y";
 
 /** A replay has no actions; the table's handlers are wired to nothing. */
 const NOOP = () => {};
@@ -169,8 +170,7 @@ function TransportButton({
         name={icon}
         size={FontSize.lg}
         color={Colors.gold}
-        accessibilityElementsHidden
-        importantForAccessibility="no"
+        {...a11yHidden()}
       />
     </Pressable>
   );
