@@ -1234,13 +1234,16 @@ export const sharedStyles = StyleSheet.create({
     justifyContent: "center",
     minHeight: 80,
   },
+  // An opaque-enough dark plate, not a gold wash: gold on gold over the felt
+  // measures 2.49-4.31:1 depending on where the gradient is under it. The
+  // border is where the chip's identity lives.
   winnerTag: {
     position: "absolute",
     top: -28,
     flexDirection: "row",
     alignItems: "center",
     gap: 4,
-    backgroundColor: Colors.goldMuted,
+    backgroundColor: Scrim.heavy,
     borderRadius: 10,
     paddingHorizontal: 10,
     paddingVertical: 4,
@@ -1265,7 +1268,7 @@ export const sharedStyles = StyleSheet.create({
   },
   comboLabel: { marginTop: 10 },
   comboChip: {
-    backgroundColor: Colors.goldBorder,
+    backgroundColor: Scrim.heavy,
     borderRadius: Radius.sm,
     paddingHorizontal: 10,
     paddingVertical: 3,
@@ -1273,7 +1276,6 @@ export const sharedStyles = StyleSheet.create({
     borderColor: Colors.goldStrong,
   },
   comboChipPower: {
-    backgroundColor: Colors.bombFill,
     borderColor: Colors.bombBorder,
   },
   comboChipText: {
