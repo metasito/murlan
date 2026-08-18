@@ -523,9 +523,6 @@ const styles = StyleSheet.create({
     letterSpacing: 3,
   },
   contentWrapper: {
-    width: "100%",
-    maxWidth: 800,
-    alignSelf: "center",
     gap: Spacing.sm,
   },
   sectionHeader: {

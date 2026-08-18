@@ -438,7 +438,7 @@ export default function RoomScreen() {
 
   if (isLandscape) {
     return (
-      <MenuLayout scrollable={false} centered={false} style={{ paddingBottom: 0 }}>
+      <MenuLayout scrollable={false} centered={false} maxWidth={null} style={{ paddingBottom: 0 }}>
         <View style={styles.topBar}>
           <Pressable
             onPress={handleLeave}

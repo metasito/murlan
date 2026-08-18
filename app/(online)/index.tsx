@@ -378,15 +378,9 @@ const styles = StyleSheet.create({
   body: { gap: 24 },
   bodyLandscape: { gap: 16, flex: 1 },
   contentWrapper: {
-    width: "100%",
-    maxWidth: 800,
-    alignSelf: "center",
     gap: 16,
   },
   contentWrapperLandscape: {
-    width: "100%",
-    maxWidth: 800,
-    alignSelf: "center",
     flex: 1,
     gap: 8,
   },
