@@ -3,6 +3,7 @@ import {
   Modal,
   View,
   Text,
+  ScrollView,
   Switch,
   Pressable,
   StyleSheet,
@@ -13,7 +14,10 @@ import { useRouter } from "expo-router";
 import Feather from "@expo/vector-icons/Feather";
 import { LinearGradient } from "expo-linear-gradient";
 import { useSettings } from "@/context/SettingsContext";
+import { useNotification } from "@/context/NotificationContext";
 import { useAuth } from "@/context/AuthContext";
+import NotificationBanner from "@/components/NotificationBanner";
+import { OfflineBanner } from "@/components/OfflineBanner";
 import { apiRequest, queryClient } from "@/lib/query-client";
 import { hapticSelection } from "@/lib/haptics";
 import { usePrefersReducedMotion } from "@/lib/accessibility";
@@ -144,6 +148,7 @@ export function SettingsModal({ visible, onClose }: Props) {
     setTableFelt,
   } = useSettings();
   const { logout } = useAuth();
+  const { notification, dismissNotification } = useNotification();
   const router = useRouter();
   const reduceMotion = usePrefersReducedMotion();
   const [deleting, setDeleting] = useState(false);
@@ -224,173 +229,179 @@ export function SettingsModal({ visible, onClose }: Props) {
             </Pressable>
           </View>
 
-          <View style={styles.row}>
-            <View style={styles.rowLeft}>
-              <Text style={styles.icon}>🔊</Text>
-              <View>
-                <Text style={styles.label}>{t("settings.sounds")}</Text>
-                <Text style={styles.sublabel}>{t("settings.soundsSubtitle")}</Text>
-              </View>
-            </View>
-            <Switch
-              value={soundsEnabled}
-              onValueChange={setSoundsEnabled}
-              trackColor={{ false: Colors.bgElevated, true: Colors.gold }}
-              thumbColor={soundsEnabled ? Colors.white : Colors.textMuted}
-              accessibilityRole="switch"
-              accessibilityLabel={t("settings.soundsA11yLabel")}
-              {...soundsHint.props}
-            />
-            {soundsHint.node}
-          </View>
-
-          <View style={styles.stackRow}>
-            <View style={styles.rowLeft}>
-              <Text style={styles.icon}>🔉</Text>
-              <View style={styles.rowLabels}>
-                <Text style={styles.label}>{t("settings.volume")}</Text>
-                <Text style={styles.sublabel}>{t("settings.volumeSubtitle")}</Text>
-              </View>
-            </View>
-            <Segmented
-              segments={VOLUME_LEVELS.map((v) => ({ value: v, label: t(VOLUME_LABELS[v]) }))}
-              selected={nearestVolume(soundVolume)}
-              onSelect={setSoundVolume}
-              a11yLabel={t("settings.volumeA11yLabel")}
-              disabled={!soundsEnabled}
-            />
-          </View>
-
-          <View style={styles.stackRow}>
-            <View style={styles.rowLeft}>
-              <Text style={styles.icon}>🎬</Text>
-              <View style={styles.rowLabels}>
-                <Text style={styles.label}>{t("settings.motion")}</Text>
-                <Text style={styles.sublabel}>{t("settings.motionSubtitle")}</Text>
-              </View>
-            </View>
-            <Segmented
-              segments={MOTION_CHOICES.map((v) => ({ value: v, label: t(MOTION_LABELS[v]) }))}
-              selected={motion}
-              onSelect={setMotion}
-              a11yLabel={t("settings.motionA11yLabel")}
-            />
-          </View>
-
-          <View style={styles.stackRow}>
-            <View style={styles.rowLeft}>
-              <Text style={styles.icon}>🃏</Text>
-              <View style={styles.rowLabels}>
-                <Text style={styles.label}>{t("settings.cardBack")}</Text>
-                <Text style={styles.sublabel}>{t("settings.cardBackSubtitle")}</Text>
-              </View>
-            </View>
-            <Segmented
-              segments={CARD_BACK_IDS.map((id) => ({
-                value: id,
-                label: t(cardBackNameKey(id)),
-                swatch: [cardBackField(id)[1], cardBackField(id)[4]] as const,
-              }))}
-              selected={cardBack}
-              onSelect={setCardBack}
-              a11yLabel={t("settings.cardBackA11yLabel")}
-            />
-          </View>
-
-          <View style={styles.stackRow}>
-            <View style={styles.rowLeft}>
-              <Text style={styles.icon}>🎴</Text>
-              <View style={styles.rowLabels}>
-                <Text style={styles.label}>{t("settings.tableFelt")}</Text>
-                <Text style={styles.sublabel}>{t("settings.tableFeltSubtitle")}</Text>
-              </View>
-            </View>
-            <Segmented
-              segments={TABLE_FELT_IDS.map((id) => ({
-                value: id,
-                label: t(tableFeltNameKey(id)),
-                swatch: [getTableFelt(id)[0], getTableFelt(id)[4]] as const,
-              }))}
-              selected={tableFelt}
-              onSelect={setTableFelt}
-              a11yLabel={t("settings.tableFeltA11yLabel")}
-            />
-          </View>
-
-          {Platform.OS !== "web" && (
+          <ScrollView testID="settings-scroll" style={styles.body} showsVerticalScrollIndicator>
             <View style={styles.row}>
               <View style={styles.rowLeft}>
-                <Text style={styles.icon}>📳</Text>
+                <Text style={styles.icon}>🔊</Text>
                 <View>
-                  <Text style={styles.label}>{t("settings.haptics")}</Text>
-                  <Text style={styles.sublabel}>{t("settings.hapticsSubtitle")}</Text>
+                  <Text style={styles.label}>{t("settings.sounds")}</Text>
+                  <Text style={styles.sublabel}>{t("settings.soundsSubtitle")}</Text>
                 </View>
               </View>
               <Switch
-                value={hapticsEnabled}
-                onValueChange={toggleHaptics}
+                value={soundsEnabled}
+                onValueChange={setSoundsEnabled}
                 trackColor={{ false: Colors.bgElevated, true: Colors.gold }}
-                thumbColor={hapticsEnabled ? Colors.white : Colors.textMuted}
+                thumbColor={soundsEnabled ? Colors.white : Colors.textMuted}
                 accessibilityRole="switch"
-                accessibilityLabel={t("settings.hapticsA11yLabel")}
-                {...hapticsHint.props}
+                accessibilityLabel={t("settings.soundsA11yLabel")}
+                {...soundsHint.props}
               />
-              {hapticsHint.node}
+              {soundsHint.node}
             </View>
-          )}
 
-          <View style={styles.row}>
-            <View style={styles.rowLeft}>
-              <Text style={styles.icon}>🌐</Text>
-              <View>
-                <Text style={styles.label}>{t("settings.language")}</Text>
-                <Text style={styles.sublabel}>{t("settings.languageSubtitle")}</Text>
+            <View style={styles.stackRow}>
+              <View style={styles.rowLeft}>
+                <Text style={styles.icon}>🔉</Text>
+                <View style={styles.rowLabels}>
+                  <Text style={styles.label}>{t("settings.volume")}</Text>
+                  <Text style={styles.sublabel}>{t("settings.volumeSubtitle")}</Text>
+                </View>
+              </View>
+              <Segmented
+                segments={VOLUME_LEVELS.map((v) => ({ value: v, label: t(VOLUME_LABELS[v]) }))}
+                selected={nearestVolume(soundVolume)}
+                onSelect={setSoundVolume}
+                a11yLabel={t("settings.volumeA11yLabel")}
+                disabled={!soundsEnabled}
+              />
+            </View>
+
+            <View style={styles.stackRow}>
+              <View style={styles.rowLeft}>
+                <Text style={styles.icon}>🎬</Text>
+                <View style={styles.rowLabels}>
+                  <Text style={styles.label}>{t("settings.motion")}</Text>
+                  <Text style={styles.sublabel}>{t("settings.motionSubtitle")}</Text>
+                </View>
+              </View>
+              <Segmented
+                segments={MOTION_CHOICES.map((v) => ({ value: v, label: t(MOTION_LABELS[v]) }))}
+                selected={motion}
+                onSelect={setMotion}
+                a11yLabel={t("settings.motionA11yLabel")}
+              />
+            </View>
+
+            <View style={styles.stackRow}>
+              <View style={styles.rowLeft}>
+                <Text style={styles.icon}>🃏</Text>
+                <View style={styles.rowLabels}>
+                  <Text style={styles.label}>{t("settings.cardBack")}</Text>
+                  <Text style={styles.sublabel}>{t("settings.cardBackSubtitle")}</Text>
+                </View>
+              </View>
+              <Segmented
+                segments={CARD_BACK_IDS.map((id) => ({
+                  value: id,
+                  label: t(cardBackNameKey(id)),
+                  swatch: [cardBackField(id)[1], cardBackField(id)[4]] as const,
+                }))}
+                selected={cardBack}
+                onSelect={setCardBack}
+                a11yLabel={t("settings.cardBackA11yLabel")}
+              />
+            </View>
+
+            <View style={styles.stackRow}>
+              <View style={styles.rowLeft}>
+                <Text style={styles.icon}>🎴</Text>
+                <View style={styles.rowLabels}>
+                  <Text style={styles.label}>{t("settings.tableFelt")}</Text>
+                  <Text style={styles.sublabel}>{t("settings.tableFeltSubtitle")}</Text>
+                </View>
+              </View>
+              <Segmented
+                segments={TABLE_FELT_IDS.map((id) => ({
+                  value: id,
+                  label: t(tableFeltNameKey(id)),
+                  swatch: [getTableFelt(id)[0], getTableFelt(id)[4]] as const,
+                }))}
+                selected={tableFelt}
+                onSelect={setTableFelt}
+                a11yLabel={t("settings.tableFeltA11yLabel")}
+              />
+            </View>
+
+            {Platform.OS !== "web" && (
+              <View style={styles.row}>
+                <View style={styles.rowLeft}>
+                  <Text style={styles.icon}>📳</Text>
+                  <View>
+                    <Text style={styles.label}>{t("settings.haptics")}</Text>
+                    <Text style={styles.sublabel}>{t("settings.hapticsSubtitle")}</Text>
+                  </View>
+                </View>
+                <Switch
+                  value={hapticsEnabled}
+                  onValueChange={toggleHaptics}
+                  trackColor={{ false: Colors.bgElevated, true: Colors.gold }}
+                  thumbColor={hapticsEnabled ? Colors.white : Colors.textMuted}
+                  accessibilityRole="switch"
+                  accessibilityLabel={t("settings.hapticsA11yLabel")}
+                  {...hapticsHint.props}
+                />
+                {hapticsHint.node}
+              </View>
+            )}
+
+            <View style={styles.row}>
+              <View style={styles.rowLeft}>
+                <Text style={styles.icon}>🌐</Text>
+                <View>
+                  <Text style={styles.label}>{t("settings.language")}</Text>
+                  <Text style={styles.sublabel}>{t("settings.languageSubtitle")}</Text>
+                </View>
+              </View>
+              <View style={styles.localeGroup}>
+                {locales.map((code) => {
+                  const active = code === locale;
+                  return (
+                    <Pressable
+                      key={code}
+                      onPress={() => handleSelectLocale(code)}
+                      accessibilityLabel={localeLabels[code]}
+                      {...a11yState({ role: "button", selected: active })}
+                      style={({ pressed }) => [
+                        styles.localeBtn,
+                        active && styles.localeBtnActive,
+                        pressed && { opacity: 0.8 },
+                      ]}
+                    >
+                      <Text style={[styles.localeBtnText, active && styles.localeBtnTextActive]}>
+                        {code.toUpperCase()}
+                      </Text>
+                    </Pressable>
+                  );
+                })}
               </View>
             </View>
-            <View style={styles.localeGroup}>
-              {locales.map((code) => {
-                const active = code === locale;
-                return (
-                  <Pressable
-                    key={code}
-                    onPress={() => handleSelectLocale(code)}
-                    accessibilityLabel={localeLabels[code]}
-                    {...a11yState({ role: "button", selected: active })}
-                    style={({ pressed }) => [
-                      styles.localeBtn,
-                      active && styles.localeBtnActive,
-                      pressed && { opacity: 0.8 },
-                    ]}
-                  >
-                    <Text style={[styles.localeBtnText, active && styles.localeBtnTextActive]}>
-                      {code.toUpperCase()}
-                    </Text>
-                  </Pressable>
-                );
-              })}
-            </View>
-          </View>
 
-          <View style={styles.divider} />
+            <View style={styles.divider} />
 
-          <Pressable
-            onPress={confirmDelete}
-            disabled={deleting}
-            accessibilityLabel={t("settings.deleteAccount")}
-            {...deleteHint.props}
-            {...a11yState({ role: "button", disabled: deleting, busy: deleting })}
-            style={({ pressed }) => [
-              styles.deleteBtn,
-              pressed && !deleting && styles.deleteBtnPressed,
-              deleting && styles.deleteBtnDisabled,
-            ]}
-          >
-            {deleteHint.node}
-            <Text style={styles.deleteBtnText}>
-              {deleting ? t("settings.deleting") : t("settings.deleteAccount")}
-            </Text>
-          </Pressable>
+            <Pressable
+              onPress={confirmDelete}
+              disabled={deleting}
+              accessibilityLabel={t("settings.deleteAccount")}
+              {...deleteHint.props}
+              {...a11yState({ role: "button", disabled: deleting, busy: deleting })}
+              style={({ pressed }) => [
+                styles.deleteBtn,
+                pressed && !deleting && styles.deleteBtnPressed,
+                deleting && styles.deleteBtnDisabled,
+              ]}
+            >
+              {deleteHint.node}
+              <Text style={styles.deleteBtnText}>
+                {deleting ? t("settings.deleting") : t("settings.deleteAccount")}
+              </Text>
+            </Pressable>
+          </ScrollView>
         </View>
+        {/* A Modal is its own stacking context, so the root banners cannot
+            paint over it. */}
+        <NotificationBanner notification={notification} onDismiss={dismissNotification} />
+        <OfflineBanner />
       </View>
     </Modal>
   );
@@ -412,7 +423,11 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: Colors.border,
     padding: Spacing.lg,
+    maxHeight: "90%",
     ...Shadow.overlay,
+  },
+  body: {
+    flexShrink: 1,
   },
   header: {
     flexDirection: "row",

@@ -17,7 +17,7 @@ import Animated, {
 import Ionicons from "@expo/vector-icons/Ionicons";
 import { LinearGradient } from "expo-linear-gradient";
 import { CardView } from "@/components/CardView";
-import { Colors, FontSize, Highlight, Motion, Radius, Scrim, Shadow, Spacing, TABLE_FONT_SCALE_MAX } from "@/lib/theme";
+import { Colors, FontSize, Highlight, Motion, Radius, Scrim, Shadow, Spacing, Type, TABLE_FONT_SCALE_MAX } from "@/lib/theme";
 import { useTableFelt } from "@/lib/cosmetics";
 import { usePrefersReducedMotion } from "@/lib/accessibility";
 import { useTranslation, type TranslationKey } from "@/lib/i18n";
@@ -923,32 +923,14 @@ export function StartReasonBanner({
   return (
     <Pressable
       onPress={() => setVisible(false)}
-      style={{
-        position: "absolute",
-        top: topOffset,
-        left: 0,
-        right: 0,
-        alignItems: "center",
-        zIndex: 50,
-        pointerEvents: "box-none" as any,
-      }}
+      style={[startReasonStyles.anchor, { top: topOffset }]}
     >
-      <View style={{
-        backgroundColor: Colors.overlayStrong,
-        borderColor: Colors.gold,
-        borderWidth: 1,
-        borderRadius: Radius.lg,
-        paddingHorizontal: 18,
-        paddingVertical: Spacing.sm,
-        alignItems: "center",
-        maxWidth: 420,
-        gap: 2,
-      }}>
-        <Text maxFontSizeMultiplier={TABLE_FONT_SCALE_MAX} style={{ fontFamily: "Rajdhani_600SemiBold", fontSize: 14, color: Colors.gold, letterSpacing: 0.5, textAlign: "center" }}>
+      <View style={startReasonStyles.card}>
+        <Text maxFontSizeMultiplier={TABLE_FONT_SCALE_MAX} style={startReasonStyles.main}>
           {mainText}
         </Text>
         {subText ? (
-          <Text maxFontSizeMultiplier={TABLE_FONT_SCALE_MAX} style={{ fontFamily: "Inter_400Regular", fontSize: FontSize.xs, color: Colors.textSecondary, textAlign: "center" }}>
+          <Text maxFontSizeMultiplier={TABLE_FONT_SCALE_MAX} style={startReasonStyles.sub}>
             {subText}
           </Text>
         ) : null}
@@ -956,6 +938,43 @@ export function StartReasonBanner({
     </Pressable>
   );
 }
+
+/** Over the felt and the flying cards, under the exchange and the overlays. */
+const START_REASON_Z = 50;
+const START_REASON_MAX_W = 420;
+
+const startReasonStyles = StyleSheet.create({
+  anchor: {
+    position: "absolute",
+    left: 0,
+    right: 0,
+    alignItems: "center",
+    zIndex: START_REASON_Z,
+    pointerEvents: "box-none",
+  },
+  card: {
+    backgroundColor: Colors.overlayStrong,
+    borderColor: Colors.gold,
+    borderWidth: 1,
+    borderRadius: Radius.lg,
+    paddingHorizontal: Spacing.md,
+    paddingVertical: Spacing.sm,
+    alignItems: "center",
+    maxWidth: START_REASON_MAX_W,
+    gap: Spacing.xs,
+  },
+  main: {
+    ...Type.subheading,
+    color: Colors.gold,
+    letterSpacing: 0.5,
+    textAlign: "center",
+  },
+  sub: {
+    ...Type.caption,
+    color: Colors.textSecondary,
+    textAlign: "center",
+  },
+});
 
 // ─── Portrait overlay ─────────────────────────────────────────────────────────
 

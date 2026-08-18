@@ -47,11 +47,13 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
     setQueue((prev) => [...prev, n]);
   }, []);
 
-  const dismissNotification = useCallback(() => {
-    setQueue((prev) => prev.slice(1));
-  }, []);
-
   const notification = queue[0] ?? null;
+
+  // Keyed on the notification being dismissed, so the two banners that show the
+  // same one (root and inside a Modal) drop it once between them.
+  const dismissNotification = useCallback(() => {
+    setQueue((prev) => (prev[0] === notification ? prev.slice(1) : prev));
+  }, [notification]);
 
   const contextValue = useMemo(
     () => ({ notification, showNotification, dismissNotification }),

@@ -187,8 +187,8 @@ export function SocketProvider({ children }: { children: ReactNode }) {
       qc.invalidateQueries({ queryKey: ["/api/friends/requests"] });
       showNotification({
         type: "friend_request",
-        title: "Richiesta di amicizia",
-        message: `${from} vuole essere tuo amico`,
+        title: t("notifications.friendRequestTitle"),
+        message: t("notifications.friendRequestBody", { name: from }),
         onPress: () => router.push("/(online)/friends"),
       });
     };
@@ -200,8 +200,8 @@ export function SocketProvider({ children }: { children: ReactNode }) {
       socket.emit("friend:get_online_list");
       showNotification({
         type: "friend_accepted",
-        title: "Amicizia accettata!",
-        message: `${by} ha accettato la tua richiesta`,
+        title: t("notifications.friendAcceptedTitle"),
+        message: t("notifications.friendAcceptedBody", { name: by }),
         onPress: () => router.push("/(online)/friends"),
       });
     };
@@ -214,8 +214,8 @@ export function SocketProvider({ children }: { children: ReactNode }) {
       });
       showNotification({
         type: "game_invite",
-        title: `${from} ti invita a giocare!`,
-        message: `Stanza: ${roomCode} — Tocca per unirti`,
+        title: t("notifications.gameInviteTitle", { name: from }),
+        message: t("notifications.gameInviteBody", { code: roomCode }),
         duration: 6000,
         onPress: () => {
           router.push("/(online)");

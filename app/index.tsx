@@ -449,9 +449,13 @@ export default function HomeScreen() {
         ))}
       </View>
 
-      <View style={styles.menu}>
+      <ScrollView
+        style={styles.menuScroll}
+        contentContainerStyle={styles.menu}
+        showsVerticalScrollIndicator={false}
+      >
         {menuButtons(false)}
-      </View>
+      </ScrollView>
 
       <Animated.View style={[subtitleStyle, styles.footer]}>
         <Text style={styles.footerText}>
@@ -605,7 +609,8 @@ const styles = StyleSheet.create({
   },
   cardDecoration: { flexDirection: "row", justifyContent: "center", gap: 20, paddingVertical: 24 },
   suitDecor: { fontSize: 24, opacity: 0.7 },
-  menu: { flex: 1, paddingHorizontal: 24, justifyContent: "center", gap: 12 },
+  menuScroll: { flex: 1 },
+  menu: { flexGrow: 1, paddingHorizontal: 24, justifyContent: "center", gap: 12 },
   menuButton: {
     flexDirection: "row",
     alignItems: "center",

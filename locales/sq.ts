@@ -172,6 +172,13 @@ export const sq: Record<keyof typeof it, string> = {
   // ---------------------------------------------------- notificationBanner.*
   "notificationBanner.dismissA11yHint": "Prek për të mbyllur njoftimin",
   "notificationBanner.closeA11yLabel": "Mbyll njoftimin",
+  // ---------------------------------------------------------- notifications.*
+  "notifications.friendRequestTitle": "Kërkesë miqësie",
+  "notifications.friendRequestBody": "{{name}} dëshiron të bëhet shoku juaj",
+  "notifications.friendAcceptedTitle": "Miqësia u pranua!",
+  "notifications.friendAcceptedBody": "{{name}} pranoi kërkesën tuaj",
+  "notifications.gameInviteTitle": "{{name}} ju fton të luani!",
+  "notifications.gameInviteBody": "Dhoma: {{code}} — Prekni për t'u bashkuar",
 
   // -------------------------------------------------------- reactionLayer.*
   "reactionLayer.triggerA11yLabel": "Dërgo një reagim",
@@ -263,6 +270,8 @@ export const sq: Record<keyof typeof it, string> = {
   "game.autoPassBody": "Koha mbaroi: radha jote u kalua.",
 
   // -------------------------------------------------------------- gameTable.*
+  "gameTable.rotateTitle": "Rrotulloni pajisjen",
+  "gameTable.rotateBody": "Loja kërkon modalitetin horizontal",
   "gameTable.leaveA11yLabel": "Braktis lojën",
   "gameTable.passLabel": "KALO",
   "gameTable.passA11yLabel": "Kalo radhën",

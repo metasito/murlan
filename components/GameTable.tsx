@@ -135,6 +135,8 @@ const REJECT_HINT_MS = 2600;
 const REJECT_HINT_MAX_W = 260;
 /** Above the top bar and the rematch panel: the reason must not be covered. */
 const REJECT_HINT_Z = 30;
+/** The banner band sits over the felt, under the reject hint. */
+const BANNER_BAND_Z = 50;
 
 // Raked light across the gold surface — bright at the top-left corner,
 // dropping to goldDark at the bottom-right — same treatment and same rake
@@ -1116,7 +1118,14 @@ export function GameTable({
         </View>
       </View>
 
-      {banners}
+      <View
+        style={[
+          styles.bannerBand,
+          { top: frame.topPad + TOP_BAR_H, left: frame.leftPad, right: frame.rightPad },
+        ]}
+      >
+        {banners}
+      </View>
 
       {/* Felt — clipped to its rounded corners, decoration only */}
       <View
@@ -1439,16 +1448,16 @@ export function GameTable({
       <Modal
         transparent
         visible
-        accessibilityLabel="Ruota il dispositivo"
+        accessibilityLabel={t("gameTable.rotateTitle")}
         supportedOrientations={["portrait", "landscape"]}
         onRequestClose={() => {}}
       >
         <View style={portraitOverlayStyles.overlay}>
           <View style={portraitOverlayStyles.card}>
             <Ionicons name="phone-landscape-outline" size={56} color={Colors.gold} />
-            <Text maxFontSizeMultiplier={TABLE_FONT_SCALE_MAX} style={portraitOverlayStyles.title}>Ruota il dispositivo</Text>
+            <Text maxFontSizeMultiplier={TABLE_FONT_SCALE_MAX} style={portraitOverlayStyles.title}>{t("gameTable.rotateTitle")}</Text>
             <Text maxFontSizeMultiplier={TABLE_FONT_SCALE_MAX} style={portraitOverlayStyles.sub}>
-              Il gioco richiede la modalità orizzontale
+              {t("gameTable.rotateBody")}
             </Text>
           </View>
         </View>
@@ -1472,6 +1481,13 @@ const PASS_GRADIENT_PRESSED = [PASS_BG, "#3A0C0C"] as const;
 
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: Colors.bg },
+
+  bannerBand: {
+    position: "absolute",
+    alignItems: "center",
+    zIndex: BANNER_BAND_Z,
+    pointerEvents: "box-none",
+  },
 
   topBar: {
     position: "absolute",

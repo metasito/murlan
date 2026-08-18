@@ -9,6 +9,9 @@ import { Colors } from '@/lib/theme';
 const BACKDROP = [Colors.bg, Colors.bg, Colors.feltDark] as const;
 
 const CONTENT_H_PAD = 20;
+// The app is served as a web bundle, so a 1920-wide browser is a real viewport
+// and an uncapped menu row puts its two ends a metre apart.
+const MENU_MAX_W = 800;
 
 interface MenuLayoutProps {
   children: React.ReactNode;
@@ -16,6 +19,8 @@ interface MenuLayoutProps {
   centered?: boolean;
   style?: ViewStyle;
   contentPad?: number;
+  /** `null` opts a screen out — for the landscape bodies that size their own columns. */
+  maxWidth?: number | null;
 }
 
 export function MenuLayout({
@@ -24,6 +29,7 @@ export function MenuLayout({
   centered = true,
   style,
   contentPad = CONTENT_H_PAD,
+  maxWidth = MENU_MAX_W,
 }: MenuLayoutProps) {
   const insets = useSafeAreaInsets();
 
@@ -35,6 +41,8 @@ export function MenuLayout({
   // `style` is merged last (after `centered`) so callers can override layout
   // — e.g. justifyContent — without it being clobbered by the centered preset.
   const contentStyle = [
+    styles.bounded,
+    { maxWidth: maxWidth ?? undefined },
     { paddingTop, paddingBottom, paddingLeft, paddingRight },
     centered && styles.centered,
     style,
@@ -54,24 +62,27 @@ export function MenuLayout({
       {scrollable ? (
         <ScrollView
           style={styles.fill}
-          contentContainerStyle={[styles.scroll, contentStyle]}
+          contentContainerStyle={styles.scroll}
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
         >
-          {children}
+          <View style={contentStyle}>{children}</View>
         </ScrollView>
       ) : (
-        <View style={[styles.fill, contentStyle]}>{children}</View>
+        <View style={styles.fill}>
+          <View style={contentStyle}>{children}</View>
+        </View>
       )}
     </View>
   );
 }
 
-export { CONTENT_H_PAD };
+export { CONTENT_H_PAD, MENU_MAX_W };
 
 const styles = StyleSheet.create({
   root:     { flex: 1, backgroundColor: Colors.bg },
   fill:     { flex: 1 },
   scroll:   { flexGrow: 1 },
+  bounded:  { width: '100%', alignSelf: 'center', flexGrow: 1 },
   centered: { justifyContent: 'center', alignItems: 'center' },
 });

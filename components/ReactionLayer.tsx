@@ -91,16 +91,19 @@ export function ReactionTrigger({ onPress }: { onPress: () => void }) {
 export function ReactionPanel({
   onSelect,
   onClose,
+  top,
 }: {
   onSelect: (emoji: string) => void;
   onClose: () => void;
+  /** Below the top bar it drops from — which the host is the one that knows. */
+  top: number;
 }) {
   const { t } = useTranslation();
   const reduceMotion = usePrefersReducedMotion();
   return (
     <Animated.View
       entering={reduceMotion ? undefined : SlideInRight.duration(Motion.duration.base)}
-      style={styles.panel}
+      style={[styles.panel, { top }]}
     >
       {EMOJIS.map((e) => (
         <Pressable
@@ -134,7 +137,6 @@ const styles = StyleSheet.create({
   panel: {
     position: "absolute",
     right: 12,
-    top: 52,
     backgroundColor: Colors.bgSurface,
     borderRadius: Radius.md + 4,
     borderWidth: 1,
