@@ -54,6 +54,12 @@ carrying an ordering hazard, which gets reviewed on its own immediately because 
 build on it. Write the brief properly — defect, fix, settled decisions, acceptance criteria —
 and it needs no round trip.
 
+**The review loop is bounded: one review, one fix pass, one full-suite run, push.** Fixing review
+findings is ordinary work — touched-file tests while you fix, then the batch's verification
+command once, then push. Do not re-review the branch because you changed it; a second review is
+warranted only if a fix touched code the first review never saw. A batch whose edits total a few
+hundred lines should not spend most of its wall-clock re-proving work that already passed.
+
 - **Do not improvise.** Each finding's "Proposed fix" names files and approach. If you think one
   is wrong, stop and say so — do not substitute your own.
 - **Run the touched tests while you work; run the full suite once, at the end.**
