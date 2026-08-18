@@ -10,7 +10,7 @@
 // slot (`topBarExtra`, `banners`, `overlays`, `turnTimer`) — never an
 // `isOnline &&` branch threaded through the render.
 
-import React, { useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
   View,
   Text,
@@ -277,8 +277,12 @@ function TurnTimer({
   onExpire?: () => void;
 }) {
   const [timeLeft, setTimeLeft] = useState(seconds);
+  // Written after commit, never during render: the only reader is the interval
+  // below, which fires a second later at the earliest.
   const onExpireRef = useRef(onExpire);
-  onExpireRef.current = onExpire;
+  useEffect(() => {
+    onExpireRef.current = onExpire;
+  });
 
   useEffect(() => {
     if (!active) {
@@ -404,7 +408,7 @@ export function GameTable({
   const reduceMotion = usePrefersReducedMotion();
   const felt = useTableFelt();
 
-  const [roundWinner, setRoundWinner] = useState<string | null>(null);
+  const [roundWinnerSeat, setRoundWinnerSeat] = useState<number | null>(null);
   const [pileState, setPileState] = useState<PileState>(EMPTY_PILE);
   const [pileBounceTrigger, setPileBounceTrigger] = useState(0);
   const [flyInfo, setFlyInfo] = useState<{
@@ -599,11 +603,16 @@ export function GameTable({
     []
   );
 
+  // The dedupe on `prevComboKeyRef` comes before anything with an effect, so a
+  // re-run for one of the other dependencies leaves the pile, the flying card
+  // and the pending impact exactly as they were.
   useEffect(() => {
-    if (impactTimerRef.current) clearTimeout(impactTimerRef.current);
     const combo = gameState.lastPlayedCombination;
     if (combo === null) {
-      if (prevComboKeyRef.current !== "") playRoundStart();
+      if (prevComboKeyRef.current !== "") {
+        if (impactTimerRef.current) clearTimeout(impactTimerRef.current);
+        playRoundStart();
+      }
       prevComboKeyRef.current = "";
       setPileState(EMPTY_PILE);
       setFlyInfo(null);
@@ -611,6 +620,7 @@ export function GameTable({
     }
     const key = comboKey(combo, gameState.lastPlayedBy);
     if (key === prevComboKeyRef.current) return;
+    if (impactTimerRef.current) clearTimeout(impactTimerRef.current);
     prevComboKeyRef.current = key;
     setPileState((s) => advancePile(s, combo));
 
@@ -643,27 +653,38 @@ export function GameTable({
       dir: seatDirection(gameState.lastPlayedBy, viewerSeat, players.length),
       cards: combo.cards,
     });
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- fires only on a genuine new play (lastPlayedCombination identity change); everything else is read fresh from that same render by construction, and reacting to it separately would re-fire this load-bearing pile logic on unrelated updates
-  }, [gameState.lastPlayedCombination]);
+  }, [
+    gameState.lastPlayedCombination,
+    gameState.lastPlayedBy,
+    viewerSeat,
+    players.length,
+    reduceMotion,
+    shakeX,
+  ]);
 
-  // Round-winner tag over the pile.
+  // Round-winner tag over the pile. The seat is what is stored, not the name:
+  // the name is looked up at render, so a game update that only changes the
+  // player list cannot restart the banner's own timers.
   useEffect(() => {
     const winner = gameState.roundWinner;
     if (winner === null || winner === undefined) return;
     if (winner === prevRoundWinnerRef.current) return;
     prevRoundWinnerRef.current = winner;
-    setRoundWinner(players[winner]?.name ?? "");
+    setRoundWinnerSeat(winner);
+  }, [gameState.roundWinner]);
+
+  useEffect(() => {
+    if (roundWinnerSeat === null) return;
     // The winning card is still in the air. Let it land, and let its own impact
     // sound clear, before the sting — three sounds inside 300ms is a pile-up,
     // not a flourish.
     const sting = setTimeout(playRoundWin, impactDelayMs(reduceMotion) + ROUND_WIN_STING_GAP_MS);
-    const t = setTimeout(() => setRoundWinner(null), ROUND_WINNER_MS);
+    const dismiss = setTimeout(() => setRoundWinnerSeat(null), ROUND_WINNER_MS);
     return () => {
       clearTimeout(sting);
-      clearTimeout(t);
+      clearTimeout(dismiss);
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- players changes on nearly every game update; adding it would cancel/reschedule this dismiss timer on unrelated renders and the banner would never auto-dismiss. players[winner] is read fresh from the same render as the winner index by construction.
-  }, [gameState.roundWinner, gameState.lastPlayedCombination]);
+  }, [roundWinnerSeat, reduceMotion]);
 
   useEffect(() => {
     if (isMyTurn && !isFinished && !prevMyTurnRef.current) playYourTurn();
@@ -714,8 +735,7 @@ export function GameTable({
     return () => {
       cancelAnimation(giocaGlowVal);
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- giocaGlowVal is a stable shared value
-  }, [playBtnValid, reduceMotion]);
+  }, [playBtnValid, reduceMotion, giocaGlowVal]);
 
   // GIOCA flash as the selection grows or shrinks.
   const prevSelectedLen = useRef(0);
@@ -728,10 +748,11 @@ export function GameTable({
       );
     }
     prevSelectedLen.current = selectedIds.length;
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- giocaFlashVal is a stable shared value
-  }, [selectedIds.length, isMyTurn, isFinished, reduceMotion]);
+  }, [selectedIds.length, isMyTurn, isFinished, reduceMotion, giocaFlashVal]);
 
-  // PASSA flash the moment passing becomes possible.
+  // PASSA flash the moment passing becomes possible. `canPass` already folds in
+  // whose turn it is, whether the viewer has finished, and whether the round is
+  // new, so the transition into it is the whole trigger.
   useEffect(() => {
     if (canPass && !reduceMotion) {
       passaFlashVal.value = withSequence(
@@ -739,8 +760,7 @@ export function GameTable({
         withTiming(0, { duration: Motion.duration.moderate })
       );
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- passaFlashVal is a stable shared value
-  }, [gameState.lastPlayedCombination, isMyTurn, isFinished, canPass, reduceMotion]);
+  }, [canPass, reduceMotion, passaFlashVal]);
 
   // Reanimated keeps driving shared values after unmount unless cancelled.
   useEffect(
@@ -751,8 +771,7 @@ export function GameTable({
       cancelAnimation(giocaPressVal);
       cancelAnimation(passaPressVal);
     },
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- unmount cleanup only; all five are stable shared values
-    []
+    [giocaFlashVal, passaFlashVal, shakeX, giocaPressVal, passaPressVal]
   );
 
   // Guarded on the enabled flag so a disabled button (already visually dim)
@@ -806,25 +825,30 @@ export function GameTable({
 
   // ── Handlers ────────────────────────────────────────────────────────────────
 
-  const handleCardPress = (id: string) => {
-    if (!isMyTurn || isFinished) return;
-    hapticSelection();
-    playCardSelect();
-    onSelectCard(id);
-  };
-  const handlePlay = () => {
+  // These three reach the memoized hand as props, so they are stabilized by
+  // hand: a fresh arrow per render defeats every card's memo comparator.
+  const handleCardPress = useCallback(
+    (id: string) => {
+      if (!isMyTurn || isFinished) return;
+      hapticSelection();
+      playCardSelect();
+      onSelectCard(id);
+    },
+    [isMyTurn, isFinished, onSelectCard]
+  );
+  const handlePlay = useCallback(() => {
     if (!playBtnValid) return;
     // Haptic only: the throw is acknowledged in the hand, and card_play sounds
     // when the card actually reaches the pile.
     hapticMedium();
     onPlay(selectedIds);
-  };
-  const handlePass = () => {
+  }, [playBtnValid, onPlay, selectedIds]);
+  const handlePass = useCallback(() => {
     if (!canPass) return;
     hapticLight();
     playCardPass();
     onPass();
-  };
+  }, [canPass, onPass]);
 
   // ── Render ──────────────────────────────────────────────────────────────────
 
@@ -984,7 +1008,7 @@ export function GameTable({
                 <PlayedPile
                   prev={pileState.prev}
                   current={flyInfo ? null : pileState.current}
-                  roundWinner={roundWinner}
+                  roundWinner={roundWinnerSeat === null ? null : players[roundWinnerSeat]?.name ?? ""}
                   bounceTrigger={pileBounceTrigger}
                 />
               )}

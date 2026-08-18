@@ -459,7 +459,7 @@ interface CardViewProps {
   decorative?: boolean;
 }
 
-export function CardView({
+function CardViewBase({
   card,
   selected = false,
   onPress,
@@ -490,16 +490,14 @@ export function CardView({
     translateY.value = reduceMotion
       ? withTiming(target, { duration: Motion.duration.fast })
       : withSpring(target, Motion.spring.pickup);
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- translateY is a stable shared value
-  }, [selected, noLift, reduceMotion]);
+  }, [selected, noLift, reduceMotion, translateY]);
 
   useEffect(
     () => () => {
       cancelAnimation(translateY);
       cancelAnimation(press);
     },
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- unmount cleanup only; both are stable shared values
-    []
+    [translateY, press]
   );
 
   const animStyle = useAnimatedStyle(() => ({
@@ -616,6 +614,29 @@ export function CardView({
     </Animated.View>
   );
 }
+
+/**
+ * A card id is `rank_suit` (lib/gameEngine.ts createDeck), so equal ids mean an
+ * identical face. That is what lets this compare by id: every `game:state`
+ * arrives as fresh JSON, so the card objects are new on every server message
+ * even when nothing about the hand changed.
+ */
+function cardViewPropsEqual(a: CardViewProps, b: CardViewProps): boolean {
+  return (
+    a.card.id === b.card.id &&
+    a.selected === b.selected &&
+    a.onPress === b.onPress &&
+    a.small === b.small &&
+    a.faceDown === b.faceDown &&
+    a.disabled === b.disabled &&
+    a.noLift === b.noLift &&
+    a.decorative === b.decorative &&
+    a.style === b.style
+  );
+}
+
+export const CardView = React.memo(CardViewBase, cardViewPropsEqual);
+CardView.displayName = "CardView";
 
 const styles = StyleSheet.create({
   card: {

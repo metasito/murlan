@@ -5,7 +5,7 @@
 // play, reactions, the rematch/results overlay, and the connection-loss
 // states (reconnect notice, a player leaving, a failed rejoin).
 
-import React, { useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import { View, Text, StyleSheet, Platform, Alert, ActivityIndicator } from "react-native";
 import { router } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -86,6 +86,7 @@ export default function OnlineGameScreen() {
   const pendingPlayRef = useRef<string[] | null>(null);
 
   const me = gameState?.players[mySeatIndex];
+  const myHand = me?.hand;
 
   // Every hook must run unconditionally, before the `if (!gameState)` guard below.
 
@@ -99,14 +100,13 @@ export default function OnlineGameScreen() {
   // The played cards leaving my hand is the server's acknowledgement.
   useEffect(() => {
     const pending = pendingPlayRef.current;
-    if (!pending || !me) return;
-    const handIds = new Set(me.hand.map((c) => c.id));
+    if (!pending || !myHand) return;
+    const handIds = new Set(myHand.map((c) => c.id));
     if (pending.every((id) => !handIds.has(id))) {
       pendingPlayRef.current = null;
       setSelectedIds([]);
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- only the hand identity matters, not the whole player object
-  }, [me?.hand]);
+  }, [myHand]);
 
   // A server error means the play was rejected — stop waiting for an ack.
   useEffect(() => {
@@ -128,12 +128,10 @@ export default function OnlineGameScreen() {
     return () => clearTimeout(t);
   }, [gameState?.gameOver]);
 
-  const goToLobby = () => {
+  const goToLobby = useCallback(() => {
     if (entrySource === "quickmatch") router.replace("/(online)/quickmatch");
     else router.replace("/(online)");
-  };
-  const goToLobbyRef = useRef(goToLobby);
-  goToLobbyRef.current = goToLobby;
+  }, [entrySource]);
 
   // Another player abandoned the table — there is no game left to play.
   useEffect(() => {
@@ -147,13 +145,13 @@ export default function OnlineGameScreen() {
           onPress: () => {
             clearPlayerLeft();
             leaveRoom();
-            goToLobbyRef.current();
+            goToLobby();
           },
         },
       ],
       { cancelable: false }
     );
-  }, [playerLeft, clearPlayerLeft, leaveRoom, t]);
+  }, [playerLeft, clearPlayerLeft, leaveRoom, goToLobby, t]);
 
   // A rejoin the server refused is not the player choosing to leave, so no
   // room:leave: the seat belongs to the 60s disconnect grace until it expires.
@@ -161,9 +159,9 @@ export default function OnlineGameScreen() {
   // that is left is getting off a table that is no longer there.
   useEffect(() => {
     if (!rejoinFailed) return;
-    goToLobbyRef.current();
+    goToLobby();
     clearRejoinFailed();
-  }, [rejoinFailed, clearRejoinFailed]);
+  }, [rejoinFailed, clearRejoinFailed, goToLobby]);
 
   // No state yet: the first `game:state` is either still in flight or was never
   // coming, because the request that would have produced it was refused. The

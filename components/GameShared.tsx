@@ -204,8 +204,7 @@ export function AvatarCircle({
     pingOpacity.value = 0.9;
     pingScale.value = withTiming(1.75, { duration: Motion.duration.slow, easing: Easing.out(Easing.cubic) });
     pingOpacity.value = withTiming(0, { duration: Motion.duration.slow, easing: Easing.out(Easing.quad) });
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- ring/ping are stable shared values
-  }, [isActive, reduceMotion]);
+  }, [isActive, reduceMotion, ringOpacity, pingScale, pingOpacity]);
 
   useEffect(
     () => () => {
@@ -213,8 +212,7 @@ export function AvatarCircle({
       cancelAnimation(pingScale);
       cancelAnimation(pingOpacity);
     },
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- unmount cleanup only; all three are stable shared values
-    []
+    [ringOpacity, pingScale, pingOpacity]
   );
 
   const ringStyle = useAnimatedStyle(() => ({ opacity: ringOpacity.value }));
@@ -400,10 +398,14 @@ export function FlyingCards({
   const landingRot = FLY_LANDING_ROTS[direction];
   const reduceMotion = usePrefersReducedMotion();
 
-  // The caller passes a fresh onDone closure on every render; a ref keeps this
-  // mount-only animation effect from restarting mid-flight when that happens.
+  // The caller passes a fresh onDone closure on every render; a ref keeps the
+  // flight effect below from restarting mid-flight when that happens. The ref
+  // is written after commit, never during render — the only reader is a timer
+  // or an animation callback, both of which fire later.
   const onDoneRef = useRef(onDone);
-  onDoneRef.current = onDone;
+  useEffect(() => {
+    onDoneRef.current = onDone;
+  });
   // Defined on the JS thread so runOnJS receives a real JS-thread reference.
   const notifyDone = useCallback(() => onDoneRef.current(), []);
 
@@ -452,8 +454,9 @@ export function FlyingCards({
       cancelAnimation(arcY);
       cancelAnimation(settle);
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- one-shot mount animation (remounts via key per flight); shared values are stable, onDone read through a ref, reduceMotion fixed per flight
-  }, []);
+    // Every entry is stable for the life of one flight — the caller remounts
+    // this component via `key` for each new one — so this runs once per flight.
+  }, [reduceMotion, landingRot, notifyDone, tx, ty, rot, opacity, arcY, settle]);
 
   const aStyle = useAnimatedStyle(() => ({
     transform: [
@@ -559,15 +562,13 @@ export function PlayedPile({
       withTiming(-5, { duration: Motion.duration.flash }),
       withSpring(0, Motion.spring.land)
     );
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- settleY is a stable shared value
-  }, [bounceTrigger, reduceMotion]);
+  }, [bounceTrigger, reduceMotion, settleY]);
 
   useEffect(
     () => () => {
       cancelAnimation(settleY);
     },
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- unmount cleanup only; settleY is a stable shared value
-    []
+    [settleY]
   );
 
   const bounceStyle = useAnimatedStyle(() => ({
@@ -632,17 +633,7 @@ const SELECT_TILT = -3;
 const DEAL_RISE = -CARD_H * 2.2;
 const DEAL_TILT = 14;
 
-export function CardItem({
-  card,
-  isSelected,
-  left,
-  onPress,
-  disabled,
-  zIndex,
-  dealDelay,
-  dealFromX,
-  faceDown = false,
-}: {
+interface CardItemProps {
   card: Card;
   isSelected: boolean;
   left: number;
@@ -655,21 +646,36 @@ export function CardItem({
   dealDelay: number;
   /** Horizontal distance back to the deck, so the fan converges on one point. */
   dealFromX: number;
-}) {
+}
+
+function CardItemBase({
+  card,
+  isSelected,
+  left,
+  onPress,
+  disabled,
+  zIndex,
+  dealDelay,
+  dealFromX,
+  faceDown = false,
+}: CardItemProps) {
   const reduceMotion = usePrefersReducedMotion();
   const liftY = useSharedValue(0);
   const tilt = useSharedValue(0);
   const glow = useSharedValue(0);
   const dealing = useSharedValue(dealDelay >= 0 && !reduceMotion ? 1 : 0);
+  // The stagger is disarmed one render after the hand appears, so `dealDelay`
+  // becomes -1 while this card is still flying in. The deal owes its timing to
+  // the value the card mounted with.
+  const dealDelayRef = useRef(dealDelay);
 
   useEffect(() => {
     if (dealing.value === 0) return;
     dealing.value = withDelay(
-      dealDelay,
+      dealDelayRef.current,
       withSpring(0, Motion.spring.land)
     );
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- one-shot mount animation; dealing is a stable shared value and dealDelay is fixed per instance
-  }, []);
+  }, [dealing]);
 
   useEffect(() => {
     if (reduceMotion) {
@@ -681,8 +687,7 @@ export function CardItem({
     liftY.value = withSpring(isSelected ? SELECT_LIFT : 0, Motion.spring.pickup);
     tilt.value = withSpring(isSelected ? SELECT_TILT : 0, Motion.spring.pickup);
     glow.value = withTiming(isSelected ? 1 : 0, { duration: Motion.duration.fast });
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- liftY/tilt/glow are stable shared values
-  }, [isSelected, reduceMotion]);
+  }, [isSelected, reduceMotion, liftY, tilt, glow]);
 
   useEffect(
     () => () => {
@@ -691,8 +696,7 @@ export function CardItem({
       cancelAnimation(glow);
       cancelAnimation(dealing);
     },
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- unmount cleanup only; all four are stable shared values
-    []
+    [liftY, tilt, glow, dealing]
   );
 
   const aStyle = useAnimatedStyle(() => {
@@ -731,6 +735,28 @@ export function CardItem({
     </Animated.View>
   );
 }
+
+/**
+ * Compares the card by id for the same reason CardView does: an incoming
+ * `game:state` rebuilds every card object, and `dealDelay` is deliberately
+ * excluded because the deal reads it once at mount (`dealDelayRef`), so a
+ * later change to it must not remount the card mid-flight.
+ */
+function cardItemPropsEqual(a: CardItemProps, b: CardItemProps): boolean {
+  return (
+    a.card.id === b.card.id &&
+    a.isSelected === b.isSelected &&
+    a.left === b.left &&
+    a.onPress === b.onPress &&
+    a.disabled === b.disabled &&
+    a.zIndex === b.zIndex &&
+    a.faceDown === b.faceDown &&
+    a.dealFromX === b.dealFromX
+  );
+}
+
+export const CardItem = React.memo(CardItemBase, cardItemPropsEqual);
+CardItem.displayName = "CardItem";
 
 // ─── StraightHand ─────────────────────────────────────────────────────────────
 
@@ -1018,8 +1044,7 @@ export function useTurnPulse(active: boolean) {
     return () => {
       cancelAnimation(glowV);
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- glowV is a stable shared value
-  }, [active, reduceMotion]);
+  }, [active, reduceMotion, glowV]);
 
   // borderAlpha is interpolated per frame (0→0.3) — a static token can't
   // represent an animated value.
@@ -1298,8 +1323,7 @@ export function GameBillboard({
     return () => {
       cancelAnimation(dotOpacity);
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- dotOpacity is a stable shared value
-  }, [isLocalPlayerTurn, reduceMotion]);
+  }, [isLocalPlayerTurn, reduceMotion, dotOpacity]);
 
   const dotStyle = useAnimatedStyle(() => ({ opacity: dotOpacity.value }));
 
