@@ -32,6 +32,7 @@ const CONTROLS: [string, string][] = [
 const FIXED_SIZE: [string, string][] = [
   ["components/GameTable.tsx", "quitBtn"],
   ["app/(online)/friends.tsx", "iconBtn"],
+  ["app/index.tsx", "settingsBtn"],
 ];
 
 /** The body of a `name: { … }` entry in a StyleSheet, however it is wrapped. */
