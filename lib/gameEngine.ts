@@ -992,7 +992,8 @@ export function processExchangeChoice(state: GameState, cardId: string): GameSta
   const card = winnerHand[cardIdx];
   // Validate against the same list the UI offers, so the fallback below can
   // never leave the winner with no legal choice (which froze the table).
-  if (!getValidGivebackCards(winnerHand).some((c) => c.id === card.id)) {
+  const offered = getValidGivebackCards(winnerHand, state.exchangePhase.cardFromLoser?.id);
+  if (!offered.some((c) => c.id === card.id)) {
     return state;
   }
 
@@ -1007,7 +1008,9 @@ export function processExchangeChoice(state: GameState, cardId: string): GameSta
 /**
  * Cards the round winner may hand back to the loser.
  *
- * Primary rule (canonical): any card ranked 3 through 10.
+ * Primary rule (canonical): any card ranked 3 through 10, other than the one
+ * the loser has just handed over — returning that card straight back is not an
+ * exchange (docs/RULES.md §10, and what `tutorial.errJustReceived` teaches).
  * Documented fallback: a hand can legitimately contain no card in 3-10 at all
  * (e.g. all face cards, aces, 2s and jokers). Returning [] there deadlocked the
  * exchange — every choice was rejected behind an undismissable overlay — so in
@@ -1015,15 +1018,16 @@ export function processExchangeChoice(state: GameState, cardId: string): GameSta
  */
 /** The card an AI gives back: the weakest legal choice, or the lowest card in
  *  hand when nothing is in the 3-10 range. Never undefined for a non-empty hand. */
-export function pickGivebackCard(hand: Card[]): Card | undefined {
-  return sortHand(getValidGivebackCards(hand))[0];
+export function pickGivebackCard(hand: Card[], excludeCardId?: string): Card | undefined {
+  return sortHand(getValidGivebackCards(hand, excludeCardId))[0];
 }
 
-export function getValidGivebackCards(hand: Card[]): Card[] {
-  const inRange = hand.filter((c) => EXCHANGE_VALID_RANKS.includes(c.rank));
+export function getValidGivebackCards(hand: Card[], excludeCardId?: string): Card[] {
+  const eligible = excludeCardId ? hand.filter((c) => c.id !== excludeCardId) : hand;
+  const inRange = eligible.filter((c) => EXCHANGE_VALID_RANKS.includes(c.rank));
   if (inRange.length > 0) return inRange;
-  if (hand.length === 0) return [];
-  return [sortHand(hand)[0]];
+  if (eligible.length === 0) return [];
+  return [sortHand(eligible)[0]];
 }
 
 export function loserHasBothJokers(hand: Card[]): boolean {

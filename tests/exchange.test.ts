@@ -87,6 +87,45 @@ describe("processExchangeChoice", () => {
     assert.ok(next.players[1].hand.some((card) => card.id === offered[0].id));
   });
 
+  const withReceived = (winnerHand: Card[], received: Card) =>
+    makeState(
+      [makePlayer("winner", winnerHand), makePlayer("loser", [c("4", "clubs")])],
+      {
+        currentTurnIndex: 0,
+        lastPlayedBy: 0,
+        exchangePhase: {
+          active: true,
+          winnerIdx: 0,
+          loserIdx: 1,
+          cardFromLoser: received,
+          bothJokersException: false,
+        },
+      }
+    );
+
+  test("the card the loser just handed over cannot be handed straight back", () => {
+    const received = c("10", "hearts");
+    const winnerHand = [received, c("6", "clubs"), c("K", "spades")];
+    assert.deepEqual(
+      ids(getValidGivebackCards(winnerHand, received.id)),
+      ids([c("6", "clubs")]),
+      "only the winner's own 3-10 card is on offer"
+    );
+    const state = withReceived(winnerHand, received);
+    assert.equal(processExchangeChoice(state, received.id), state);
+  });
+
+  test("excluding the received card still leaves exactly one fallback choice", () => {
+    const received = c("10", "hearts");
+    const winnerHand = [received, c("K", "clubs"), c("A", "spades")];
+    const offered = getValidGivebackCards(winnerHand, received.id);
+    assert.equal(offered.length, 1, "the exchange must never be left with zero choices");
+    assert.equal(offered[0].id, "K_clubs");
+
+    const next = processExchangeChoice(withReceived(winnerHand, received), offered[0].id);
+    assert.equal(next.exchangePhase?.active, false);
+  });
+
   test("does nothing when the exchange phase is not active", () => {
     const state = makeState([makePlayer("a", [c("4", "hearts")]), makePlayer("b", [])]);
     assert.equal(processExchangeChoice(state, "4_hearts"), state);
