@@ -37,7 +37,6 @@ import {
   RoomRejoinSchema,
   RoomSpectateSchema,
   RoomQuickmatchSchema,
-  RoomSetGameModeSchema,
   RoomStartSchema,
   GamePlaySchema,
   GameRejoinSchema,
@@ -1104,15 +1103,6 @@ async function handleGameOver(
     isDraw,
   });
 
-  if (game.matchOver) {
-    io.to(roomId).emit("game:match_over", {
-      target: game.matchTarget,
-      isDraw,
-      winners: winnerNames,
-      continues: matchContinues,
-    });
-  }
-
   // The one record of how a hand resolved. `match_replays` is not a substitute:
   // it is written only for a table with a human seat and a live moveLog, and it
   // stores no scores. Ids and integers only — never hand contents.
@@ -1630,40 +1620,6 @@ export function setupSocket(httpServer: HttpServer) {
         }
       },
       { limit: 10, windowMs: 60_000 }
-    );
-
-    onEvent(
-      socket,
-      "room:set_game_mode",
-      RoomSetGameModeSchema,
-      async ({ gameMode }) => {
-        const roomId = socketRoomMap.get(socket.id);
-        if (!roomId) return;
-        const room = await storage.getRoomById(roomId);
-        if (!room || room.hostUserId !== userId) return;
-        // The host could otherwise flip a running game between free-for-all
-        // and teams.
-        if (room.status !== "waiting") {
-          socket.emit("room:error", {
-            message: "Cannot change mode once the game has started",
-            code: "CANNOT_CHANGE_MODE_IN_PROGRESS",
-          });
-          return;
-        }
-        if (gameMode === "teams" && room.maxPlayers !== TEAMS_PLAYER_COUNT) {
-          socket.emit("room:error", {
-            message: "Teams mode needs exactly 4 players",
-            code: "TEAMS_REQUIRE_FOUR",
-          });
-          return;
-        }
-        await storage.updateRoomGameMode(roomId, gameMode);
-        const players = await storage.getRoomPlayers(roomId);
-        const updatedRoom = await storage.getRoomById(roomId);
-        if (!updatedRoom) return;
-        io.to(roomId).emit("room:state", roomStatePayload(updatedRoom, players));
-      },
-      { limit: 20, windowMs: 60_000 }
     );
 
     onEvent(
@@ -2753,10 +2709,6 @@ async function handleSeatRelease(
       "room:state",
       roomStatePayload({ ...room, hostUserId: newHostId }, remaining)
     );
-    // Only a lost connection announces this; a `room:leave` never has.
-    if (opts.source === "disconnect") {
-      io.to(roomId).emit("room:player_left", { userId, username });
-    }
   } else if (activeGames.has(roomId)) {
     // A live game in memory is the only authority on whether the seat is still
     // held: `rooms.status` reads "finished" between manches too, so it cannot

@@ -27,7 +27,6 @@ export interface IStorage {
   getRoomByCode(code: string): Promise<Room | undefined>;
   getRoomById(id: string): Promise<Room | undefined>;
   updateRoomStatus(roomId: string, status: "waiting" | "in_progress" | "finished"): Promise<void>;
-  updateRoomGameMode(roomId: string, gameMode: "free_for_all" | "teams"): Promise<void>;
   updateRoomHost(roomId: string, hostUserId: string): Promise<void>;
 
   getRoomPlayers(roomId: string): Promise<(RoomPlayer & { user: User })[]>;
@@ -211,10 +210,6 @@ class DrizzleStorage implements IStorage {
 
   async updateRoomStatus(roomId: string, status: "waiting" | "in_progress" | "finished") {
     await db.update(rooms).set({ status }).where(eq(rooms.id, roomId));
-  }
-
-  async updateRoomGameMode(roomId: string, gameMode: "free_for_all" | "teams") {
-    await db.update(rooms).set({ gameMode }).where(eq(rooms.id, roomId));
   }
 
   async updateRoomHost(roomId: string, hostUserId: string) {

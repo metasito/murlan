@@ -48,10 +48,6 @@ export const RoomQuickmatchSchema = z.object({
   gameMode: GameModeSchema,
 });
 
-export const RoomSetGameModeSchema = z.object({
-  gameMode: GameModeSchema,
-});
-
 const BotPersonalitySchema = z.enum(
   BOT_PERSONALITIES.map((p) => p.id) as [BotPersonalityId, ...BotPersonalityId[]]
 );

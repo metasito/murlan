@@ -97,7 +97,6 @@ interface OnlineGameContextValue {
   isSpectator: boolean;
   leaveRoom: () => void;
   quickmatch: (maxPlayers: number, gameMode: "free_for_all" | "teams") => void;
-  setRoomGameMode: (mode: "free_for_all" | "teams") => void;
   startGame: (opts?: {
     fillWithBots?: boolean;
     botPersonality?: BotPersonalityId;
@@ -599,7 +598,6 @@ export function OnlineGameProvider({ userId, children }: { userId: string; child
     socket.on("game:turn_deadline", setTurnDeadline);
     socket.on("game:error", onGameError);
     socket.on("game:notification", onGameNotification);
-    socket.on("game:started", () => {});
     socket.on("game:over", onGameOver);
     socket.on("game:match_state", onMatchState);
     socket.on("game:rematch_intents", onRematchIntents);
@@ -622,7 +620,6 @@ export function OnlineGameProvider({ userId, children }: { userId: string; child
       socket.off("game:turn_deadline", setTurnDeadline);
       socket.off("game:error", onGameError);
       socket.off("game:notification", onGameNotification);
-      socket.off("game:started");
       socket.off("game:over", onGameOver);
       socket.off("game:match_state", onMatchState);
       socket.off("game:rematch_intents", onRematchIntents);
@@ -721,10 +718,6 @@ export function OnlineGameProvider({ userId, children }: { userId: string; child
     socket.emit("room:quickmatch", { maxPlayers, gameMode });
   }, [userId]);
 
-  const setRoomGameMode = useCallback((gameMode: "free_for_all" | "teams") => {
-    socket.emit("room:set_game_mode", { gameMode });
-  }, [userId]);
-
   const startGame = useCallback((opts?: {
     fillWithBots?: boolean;
     botPersonality?: BotPersonalityId;
@@ -809,7 +802,6 @@ export function OnlineGameProvider({ userId, children }: { userId: string; child
       isSpectator,
       leaveRoom,
       quickmatch,
-      setRoomGameMode,
       startGame,
       requestPlayAgain,
       voteRematch,
@@ -823,7 +815,7 @@ export function OnlineGameProvider({ userId, children }: { userId: string; child
       clearPlayerLeft,
       clearRejoinFailed,
     }),
-    [room, gameState, connected, error, playerLeft, rejoinFailed, disconnectedPlayers, reconnectNotice, mySeatIndex, turnDeadline, entrySource, rematchVoteState, cumulativeScores, matchState, rematchIntents, rematchPromptOpen, exchangeAnnouncing, exchangeAnnounceData, createRoom, joinRoom, spectateRoom, isSpectator, leaveRoom, quickmatch, setRoomGameMode, startGame, requestPlayAgain, voteRematch, answerRematch, playCards, pass, giveExchangeCard, acknowledgeExchange, sendReaction, clearError, clearPlayerLeft, clearRejoinFailed]
+    [room, gameState, connected, error, playerLeft, rejoinFailed, disconnectedPlayers, reconnectNotice, mySeatIndex, turnDeadline, entrySource, rematchVoteState, cumulativeScores, matchState, rematchIntents, rematchPromptOpen, exchangeAnnouncing, exchangeAnnounceData, createRoom, joinRoom, spectateRoom, isSpectator, leaveRoom, quickmatch, startGame, requestPlayAgain, voteRematch, answerRematch, playCards, pass, giveExchangeCard, acknowledgeExchange, sendReaction, clearError, clearPlayerLeft, clearRejoinFailed]
   );
 
   return (
