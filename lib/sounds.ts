@@ -2,8 +2,10 @@ import { createAudioPlayer, setAudioModeAsync, type AudioPlayer } from "expo-aud
 import { Platform } from "react-native";
 
 // Effects are CC0 recordings, built by scripts/build-sounds.mjs and shipped as
-// 44.1 kHz mono 16-bit WAV. WAV rather than the sources' OGG because iOS will
-// not play OGG. Web decodes the same assets through the Web Audio API.
+// 44.1 kHz mono MP3. MP3 rather than the sources' OGG because iOS will not
+// play OGG; MP3 decodes natively on iOS, Android and every browser, so no
+// per-platform format branch is needed. Web decodes the same assets through
+// the Web Audio API.
 
 let _webCtx: AudioContext | null = null;
 
@@ -97,18 +99,18 @@ async function playNative(key: string, assetModule: number, volume = 1.0): Promi
 
 // Each key maps to a function so Metro can statically analyse the require() calls.
 const ASSETS = {
-  select:      () => require("../assets/sounds/card_select.wav") as number,
-  play:        () => require("../assets/sounds/card_play.wav") as number,
-  pass:        () => require("../assets/sounds/card_pass.wav") as number,
-  your_turn:   () => require("../assets/sounds/your_turn.wav") as number,
-  round_start: () => require("../assets/sounds/round_start.wav") as number,
-  round_win:   () => require("../assets/sounds/round_win.wav") as number,
-  urgent:      () => require("../assets/sounds/urgent_tick.wav") as number,
-  bomb:        () => require("../assets/sounds/bomb.wav") as number,
-  game_win:    () => require("../assets/sounds/game_win.wav") as number,
-  game_lose:   () => require("../assets/sounds/game_lose.wav") as number,
-  deal:        () => require("../assets/sounds/deal.wav") as number,
-  exchange:    () => require("../assets/sounds/exchange.wav") as number,
+  select:      () => require("../assets/sounds/card_select.mp3") as number,
+  play:        () => require("../assets/sounds/card_play.mp3") as number,
+  pass:        () => require("../assets/sounds/card_pass.mp3") as number,
+  your_turn:   () => require("../assets/sounds/your_turn.mp3") as number,
+  round_start: () => require("../assets/sounds/round_start.mp3") as number,
+  round_win:   () => require("../assets/sounds/round_win.mp3") as number,
+  urgent:      () => require("../assets/sounds/urgent_tick.mp3") as number,
+  bomb:        () => require("../assets/sounds/bomb.mp3") as number,
+  game_win:    () => require("../assets/sounds/game_win.mp3") as number,
+  game_lose:   () => require("../assets/sounds/game_lose.mp3") as number,
+  deal:        () => require("../assets/sounds/deal.mp3") as number,
+  exchange:    () => require("../assets/sounds/exchange.mp3") as number,
 } as const;
 
 type SoundKey = keyof typeof ASSETS;

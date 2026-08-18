@@ -9,7 +9,7 @@ import React, { useEffect, useRef, useState } from "react";
 import { View, Text, StyleSheet, Platform, Alert, ActivityIndicator } from "react-native";
 import { router } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { Ionicons } from "@expo/vector-icons";
+import Ionicons from "@expo/vector-icons/Ionicons";
 import { useOnlineGame } from "@/context/OnlineGameContext";
 import { useAuth } from "@/context/AuthContext";
 import { GameTable } from "@/components/GameTable";

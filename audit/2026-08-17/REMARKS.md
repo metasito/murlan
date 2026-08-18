@@ -225,3 +225,106 @@ than a per-finding one. Folded into the Batch 12 Carried-forward row that alread
   fails under `npx tsx --test` and passes under `node --test`, which is what `npm test` uses.
   The Batch 4 entry records the same for `tests/integration/reconnect.test.ts`. Both files
   document that they must own their process; `tsx` evidently does not give them one.
+
+---
+
+## Batch 6 — Bytes on the wire
+
+### What actually moved
+
+The plan called PERF-01 the single largest user-visible win. It was not — the fonts were.
+
+| | before | after |
+|---|---|---|
+| `dist` total | 16,823,983 B | **6,122,957 B** (−64%) |
+| main JS bundle | 3,288,355 B | 2,857,616 B |
+| — over the wire, gzipped | 3,288,355 B (uncompressed) | **~712,000 B** (−78%) |
+| all `.ttf` in `dist` | 12,098,616 B across 42 files | **2,568,828 B across 8** (−79%) |
+| bytes blocking first paint on web | 2,475,596 B | **0** |
+| `assets/sounds/` | 843.7 KB WAV | 121 KB MP3 |
+
+The mechanism behind the font number is worth writing down because it is not obvious and it
+will recur: **Metro does not tree-shake assets.** `node_modules/@expo-google-fonts/inter/index.js`
+is a generated barrel that `require`s all nine weights *and* all nine italics; rajdhani's
+requires all five. A module that is reached at all contributes every asset it requires, so
+importing one weight from the barrel shipped 24 Google-font TTFs for the 6 the app styles
+actually name. Same shape for `@expo/vector-icons`, which ships one TTF per *family* —
+`MaterialCommunityIcons.ttf` alone is 1.3 MB and no glyph from it renders anywhere.
+
+Both are now imported by subpath and `tests/assetBarrels.test.ts` pins it in both directions:
+a weight loaded and never used is dead bytes, and a weight used but never loaded renders in
+the fallback face with no error anywhere. `docs/BUNDLE.md` previously asserted the opposite
+("Metro tree-shakes per-file imports, so these packages only contribute what is imported") —
+that claim is corrected in `scripts/bundle-report.mjs`, which generates the file.
+
+### Judgement calls made, with their reasoning
+
+- **The font render gate was dropped, not narrowed.** `app/_layout.tsx` returned `null` until
+  seven TTFs resolved. The gate serialises two downloads, because `useFonts` cannot request a
+  TTF until the bundle has arrived and executed — and nothing covers that wait on web, since
+  `dist/index.html` is a reset stylesheet and an empty `#root` with no splash markup and no
+  preload. So it was a blank page for the whole of it, wordmark included. A wordmark that
+  paints in the fallback face and swaps is worse for one frame; a wordmark that is not there
+  yet is worse. The half-measure — preload only the first screen's families — still buys a
+  blank screen, just a shorter one. **Native is unaffected:** the `SplashScreen.hideAsync()`
+  effect still waits on fonts and locale together, so the native splash covers the swap.
+- **`Rajdhani_400Regular` was the unreferenced font B1 predicted.** Established by enumerating
+  every `fontFamily` literal across `app/`, `components/`, `lib/` and `context/` — ten literals
+  in two quote styles resolving to six families — and confirming the only non-literal values
+  are `Type.bodyStrong.fontFamily` (a token that resolves to `Inter_500Medium`) and
+  `ErrorFallback`'s `Platform.select` mono stack. Nothing builds a family name dynamically.
+- **PERF-10 concluded "no PNG change", on measured grounds rather than the wrong test.** The
+  note it replaced claimed a lossless re-encode of the existing pixels recovers only 2–4%,
+  which is true and irrelevant — DEFLATE is not the limiting factor. The real lever is the
+  format: canvas-encoded WebP at quality 0.9 reproduces `icon.png` in 105.5 KB and
+  `splash-icon.png` in 136.6 KB, both under 11% of current size. That headroom cannot be taken
+  here, and this was proven rather than assumed: feeding the WebP output to `jimp-compact` —
+  the decoder `@expo/image-utils` falls back to when no global `sharp-cli` is installed, which
+  is the path that has to work — throws `Unsupported MIME type: image/webp`. Shrinking the
+  pixels instead is blocked per file: `icon.png` doubles as the iOS App Store marketing icon,
+  fixed at 1024×1024 by Apple, and `splash-icon.png` is scaled to screen size by CONTAIN mode.
+  `docs/BACKLOG.md` O6 carries the measurement; the generator no longer carries a conclusion.
+
+### Two guards that were loosened, and why one of them is fine
+
+PERF-08 re-encoded the sounds to MP3 and loosened two assertions in `tests/soundAssets.test.ts`
+in the same commit — the trailing-silence budget and the "levelled" peak floor. That is exactly
+the shape `CLAUDE.md` warns about, so the review re-measured all twelve decoded assets
+independently rather than accepting the justification:
+
+```
+max trailing silence   0.0882 s  (exchange.mp3)
+peak range             0.7777 – 0.8455  (min: card_play.mp3)
+```
+
+Both loosenings are **forced**, not fitted: at the old peak floor of 0.85 every one of the
+twelve fails, and the old 0.09 s silence budget clears the worst file by 1.8 ms, which is
+flaky on any rebuild. So the change was kept — but the first pass set them at 0.15 and 0.70,
+which is 1.7× the measured worst case and widens the permitted level spread from 1.4 dB to
+4.6 dB. Tightened to 0.11 and 0.75, which keeps real bite: 22 ms and 0.028 of margin.
+
+**Separately, the sound test never caught truncation** — `deal.mp3` cut to 10% of its bytes
+passed every assertion, because mpg123 does not complain about a short stream. Not a
+regression (the WAV version never compared the declared `data` chunk size against the bytes
+present either) but the commit claimed "a genuinely broken or silent file still fails", and
+that claim is now true: each effect has a pinned expected duration.
+
+### Things the audit did not file, found while working
+
+- **`scripts/bundle-report.mjs` does not measure `dist/`.** It reports `assets/` and installed
+  `node_modules/` sizes only — so the three numbers this batch is graded on are precisely the
+  ones the committed reporter cannot produce, and had to be measured with a throwaway script.
+  Teaching it a `dist/` section would make this batch's acceptance criterion reproducible by
+  anyone.
+- **`tests/soundAssets.test.ts`'s `EXPECTED_SECONDS` is a hand-maintained table.** A legitimate
+  re-cut of a source sound breaks it and whoever rebuilds has to update twelve numbers by hand.
+  The failure message names that possibility, which is the cheap half of the fix.
+- **The `static-build` mount still takes serve-static's defaults**, so Expo Go manifest assets
+  pay a conditional request per file. PERF-09 did not cover it and nothing in the deploy path
+  currently populates `static-build/`, so it is dead weight rather than a live cost.
+- **`@expo-google-fonts/inter` still installs 7.67 MB** for the three weights that ship. Only
+  the build output shrank; the dependency's disk cost on Replit is unchanged.
+- **Regenerating `docs/BUNDLE.md` picks up install-state drift** — `expo` growing 850 KB →
+  15.44 MB, `expo-notifications` appearing — so the file's git history mixes real changes with
+  `node_modules` noise. Inherent to snapshotting installed sizes; worth knowing before reading
+  a diff of it as if every line were a decision.

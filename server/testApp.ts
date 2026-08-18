@@ -1,5 +1,6 @@
 import express from "express";
 import type { Request, Response, NextFunction } from "express";
+import compression from "compression";
 import helmet from "helmet";
 import pinoHttp from "pino-http";
 import type { Server as HttpServer } from "node:http";
@@ -97,6 +98,26 @@ function serveLandingPage({
   res.status(200).send(html);
 }
 
+// Metro names its build output with a 32-hex content hash — `<name>.<hash>.<ext>`
+// for assets (optionally followed by an `@2x` density suffix) and
+// `<name>-<hash>.<ext>` for the JS bundles. Those URLs never change their bytes.
+const CONTENT_HASHED = /[.-][0-9a-f]{32}(@[0-9]+x)?\.[^.]+$/;
+
+/**
+ * Cache-Control for one file under `dist/`. Content-hashed files get a year;
+ * everything else — `index.html`, `favicon.ico`, `metadata.json` — keeps its
+ * URL across deploys, so caching it long pins the client to a build that no
+ * longer exists, with no recovery short of a hard refresh.
+ */
+function setDistCacheControl(res: Response, filePath: string) {
+  res.setHeader(
+    "Cache-Control",
+    CONTENT_HASHED.test(path.basename(filePath))
+      ? "public, max-age=31536000, immutable"
+      : "no-cache"
+  );
+}
+
 function configureExpoAndLanding(app: express.Application) {
   const distPath = path.resolve(process.cwd(), "dist");
   const webIndexPath = path.join(distPath, "index.html");
@@ -112,15 +133,20 @@ function configureExpoAndLanding(app: express.Application) {
   app.use("/manifest", expoManifestHandler);
   app.get("/", expoManifestHandler);
 
-  app.use("/assets", express.static(path.resolve(process.cwd(), "assets")));
+  // Unhashed source assets — a deploy can change what a given path serves,
+  // so this cannot be cached as long as the content-hashed build output below.
+  app.use("/assets", express.static(path.resolve(process.cwd(), "assets"), { maxAge: "1h" }));
   app.use(express.static(path.resolve(process.cwd(), "static-build")));
 
   if (hasWebBuild) {
-    // Web build present — serve SPA for browser clients
-    app.use(express.static(distPath));
+    // dist/ is a mix, so the header is decided per file rather than per mount:
+    // most of it is content-hashed, three files (index.html, favicon.ico,
+    // metadata.json) are not.
+    app.use(express.static(distPath, { setHeaders: setDistCacheControl }));
     // Catch-all: any non-API path not matched by static files gets index.html (SPA routing)
     app.get("*path", (req: Request, res: Response, next: NextFunction) => {
       if (req.path.startsWith("/api")) return next();
+      res.set("Cache-Control", "no-cache");
       res.sendFile(webIndexPath);
     });
     logger.info("Serving Expo web build from dist/");
@@ -202,6 +228,12 @@ export async function createApp(): Promise<CreatedApp> {
 
   setupCors(app);
   setupBodyParsing(app);
+
+  // Before every response-generating handler — the static asset mounts and
+  // registerRoutes' API responses both need to pass through this to be
+  // compressed. Socket.io is unaffected regardless of position here: it
+  // attaches to the raw http.Server, not the Express middleware chain.
+  app.use(compression());
 
   // Before the session middleware, which reads `session` on the very first
   // request that carries a cookie — and before any route touches a table.

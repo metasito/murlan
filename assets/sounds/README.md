@@ -46,10 +46,12 @@ Every output is then:
 2. **Normalised** to a common peak, because the two packs are mastered at
    different levels and one effect being startlingly louder than its neighbours
    is the thing people notice.
+3. **Encoded to MP3** at 96 kbps mono with `lamejs` (pure JS — no native
+   binary, so this needs nothing beyond `npm install`).
 
-`tests/soundAssets.test.ts` re-derives all of this from the shipped files: that
-each is real mono 16-bit 44.1 kHz PCM, non-silent, levelled, and free of a
-trailing silent tail.
+`tests/soundAssets.test.ts` re-derives all of this from the shipped files
+(decoding each through `mpg123-decoder`): that each is real mono 44.1 kHz
+audio, non-silent, levelled, and free of a trailing silent tail.
 
 ## Reproducibility
 
@@ -60,7 +62,7 @@ uses pitch-shifted layers. That is 0.003% of full scale on one sample out of
 
 ## Size
 
-872 KB for twelve files. Recorded audio costs more than synthesis and it is
-worth it: the effects are most of the game's sense of touch. Uncompressed WAV,
-because iOS will not play the sources' OGG and decoding twelve short PCM files
-costs nothing at load.
+~121 KB for twelve files, MP3 rather than the sources' OGG because iOS will
+not play OGG — MP3 decodes natively on iOS, Android and every browser, so no
+per-platform format branch is needed. Recorded audio costs more than synthesis
+and it is worth it: the effects are most of the game's sense of touch.

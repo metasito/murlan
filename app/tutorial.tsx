@@ -3,7 +3,7 @@ import { View, Text, StyleSheet, Pressable } from "react-native";
 import { router } from "expo-router";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import Animated, { FadeIn } from "react-native-reanimated";
-import { Ionicons } from "@expo/vector-icons";
+import Ionicons from "@expo/vector-icons/Ionicons";
 import { hapticError, hapticLight, hapticSelection, hapticSuccess } from "@/lib/haptics";
 import { Colors, Spacing, Radius, FontSize, Type, Motion } from "@/lib/theme";
 import { usePrefersReducedMotion } from "@/lib/accessibility";
