@@ -254,6 +254,7 @@ export const sq: Record<keyof typeof it, string> = {
   "gameShared.emptyTable": "— Tavolinë bosh —",
   "gameShared.yourTurn": "Radha jote",
   "gameShared.turnOf": "Radha e {{name}}",
+  "gameShared.passedLabel": "KALOI",
 
   // -------------------------------------------------------------- game.*
   "game.autoPassTitle": "Kalim automatik",

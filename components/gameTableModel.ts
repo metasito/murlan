@@ -169,6 +169,45 @@ export function roundClosedWithWinner(state: {
   );
 }
 
+/**
+ * The seats that have passed in the round currently on the table, in the order
+ * they passed.
+ *
+ * A pass changes nothing anyone can see — the pile is untouched — so this
+ * derives it from what did change. Turns run from `lastPlayedBy` in
+ * *descending* seat order (`getNextActivePlayer`, lib/gameEngine.ts) and the
+ * pile only changes hands on a play, so every seat between the last player and
+ * whoever is on move now has answered by passing. Seats holding no cards are
+ * never dealt a turn, so they are stepped over rather than marked — a false
+ * marker is worse than none.
+ *
+ * Empty between rounds: `processPass` clears `lastPlayedCombination` on the
+ * pass that closes the round, which is exactly when the markers should go.
+ *
+ * `outOfCards` carries the seat count, so it must have one entry per seat.
+ */
+export function passedSeats(state: {
+  currentTurnIndex: number;
+  lastPlayedBy: number;
+  lastPlayedCombination: Combination | null;
+  /** Indexed by seat: true once that seat holds no cards. */
+  outOfCards: readonly boolean[];
+}): number[] {
+  const { currentTurnIndex, lastPlayedBy, outOfCards } = state;
+  const seatCount = outOfCards.length;
+  if (state.lastPlayedCombination === null) return [];
+  if (lastPlayedBy < 0 || lastPlayedBy >= seatCount) return [];
+
+  const passed: number[] = [];
+  for (let step = 1; step < seatCount; step++) {
+    const seat = (((lastPlayedBy - step) % seatCount) + seatCount) % seatCount;
+    if (seat === currentTurnIndex) break;
+    if (outOfCards[seat]) continue;
+    passed.push(seat);
+  }
+  return passed;
+}
+
 // ─── Play / pass affordances ──────────────────────────────────────────────────
 
 export interface TurnFacts {

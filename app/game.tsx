@@ -14,7 +14,6 @@ import { pickGivebackCard } from "@/lib/gameEngine";
 import { GameTable } from "@/components/GameTable";
 import { comboKey } from "@/components/gameTableModel";
 import { hapticWarn } from "@/lib/haptics";
-import { playCardPass } from "@/lib/sounds";
 import { useTranslation } from "@/lib/i18n";
 
 // Read once at module scope, never per-call. EXPO_PUBLIC_ vars are inlined
@@ -156,10 +155,10 @@ export default function GameScreen() {
         includeNewRound: false,
         // Offline nobody announces the deadline expiring — there is no server
         // to send the banner the online screen gets — so the turn simply
-        // vanished. Same feedback as tapping PASSA, plus what happened.
+        // vanished. The pass sound is the table's, fired off the committed
+        // state; what is added here is the warn haptic and the reason.
         onExpire: () => {
           hapticWarn();
-          playCardPass();
           showNotification({
             type: "afk",
             title: t("game.autoPassTitle"),

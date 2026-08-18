@@ -245,6 +245,10 @@ export const it = {
   "gameShared.emptyTable": "— Tavolo libero —",
   "gameShared.yourTurn": "Il tuo turno",
   "gameShared.turnOf": "Turno di {{name}}",
+  // Sul posto di un avversario: quel posto ha già risposto al giro in corso.
+  // È la dichiarazione del giocatore, non il pulsante ("PASSA") che il
+  // giocatore preme, e non concorda con il genere di chi la pronuncia.
+  "gameShared.passedLabel": "PASSO",
 
   // -------------------------------------------------------------- game.*
   // Shared by both modes: offline the client enforces the response deadline,

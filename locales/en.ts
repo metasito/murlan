@@ -228,6 +228,7 @@ export const en: Record<keyof typeof it, string> = {
   "gameShared.emptyTable": "— Table clear —",
   "gameShared.yourTurn": "Your turn",
   "gameShared.turnOf": "{{name}}'s turn",
+  "gameShared.passedLabel": "PASSED",
 
   // -------------------------------------------------------------- game.*
   "game.autoPassTitle": "Auto-pass",

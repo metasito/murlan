@@ -299,16 +299,47 @@ function BotSeatBadge() {
   );
 }
 
+// ─── SeatBadges ───────────────────────────────────────────────────────────────
+
+// A pass leaves no trace on the felt, so this chip is the only thing that says
+// a seat is out of the current round. It stands until somebody plays, which is
+// when `passedSeats` (gameTableModel.ts) stops returning that seat. Deliberately
+// quieter than the gold bot badge and the gold turn ring: a seat that has
+// withdrawn from the round must not out-shout whose turn it is.
+function PassedChip() {
+  const { t } = useTranslation();
+  return (
+    <View style={sharedStyles.passedChip}>
+      <Text style={sharedStyles.passedChipText}>{t("gameShared.passedLabel")}</Text>
+    </View>
+  );
+}
+
+// Both markers share one wrapping row. A seat carrying both would otherwise add
+// two badge heights to a column laid out inside the fixed TOP_SECTION_H.
+function SeatBadges({ passed, isBot }: { passed: boolean; isBot: boolean }) {
+  if (!passed && !isBot) return null;
+  return (
+    <View style={sharedStyles.seatBadgeRow}>
+      {passed && <PassedChip />}
+      {isBot && <BotSeatBadge />}
+    </View>
+  );
+}
+
 // ─── TopOppSlot ───────────────────────────────────────────────────────────────
 
 export function TopOppSlot({
   player,
   isActive,
   cardCount,
+  passed = false,
 }: {
   player: Player;
   isActive: boolean;
   cardCount?: number;
+  /** This seat has passed in the round on the table. */
+  passed?: boolean;
 }) {
   const count = cardCount ?? player.hand.length;
   return (
@@ -325,7 +356,7 @@ export function TopOppSlot({
           <Text style={sharedStyles.oppName} numberOfLines={1}>
             {player.name}
           </Text>
-          {player.type === "ai" && <BotSeatBadge />}
+          <SeatBadges passed={passed} isBot={player.type === "ai"} />
         </View>
         {player.finishPosition === undefined && count > 0 && (
           <CardFan count={count} maxCards={7} />
@@ -342,11 +373,14 @@ export function SideOppSlot({
   isActive,
   side,
   cardCount,
+  passed = false,
 }: {
   player: Player;
   isActive: boolean;
   side: "left" | "right";
   cardCount?: number;
+  /** This seat has passed in the round on the table. */
+  passed?: boolean;
 }) {
   const count = cardCount ?? player.hand.length;
   const isLeft = side === "left";
@@ -371,7 +405,7 @@ export function SideOppSlot({
         <Text style={sharedStyles.oppName} numberOfLines={1}>
           {player.name}
         </Text>
-        {player.type === "ai" && <BotSeatBadge />}
+        <SeatBadges passed={passed} isBot={player.type === "ai"} />
       </View>
       {isLeft && count > 0 && player.finishPosition === undefined && (
         <CardFan count={count} maxCards={5} />
@@ -1100,6 +1134,30 @@ export const sharedStyles = StyleSheet.create({
     color: Colors.textMuted,
     maxWidth: 70,
     textAlign: "center",
+  },
+
+  // Wraps rather than growing, because the column it sits in has no room to
+  // spare below the avatar and the name.
+  seatBadgeRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    justifyContent: "center",
+    gap: Spacing.xs,
+  },
+  // Neutral, not red: red is the PASSA control and the bomb, and this is
+  // neither a control nor a dramatic play — it is a seat that has receded.
+  passedChip: {
+    paddingHorizontal: Spacing.xs,
+    borderRadius: Radius.sm,
+    backgroundColor: Scrim.medium,
+    borderWidth: 1,
+    borderColor: Colors.borderStrong,
+  },
+  passedChipText: {
+    fontFamily: "Rajdhani_700Bold",
+    fontSize: FontSize.xs,
+    color: Colors.textSecondary,
+    letterSpacing: 1,
   },
 
   botBadge: {

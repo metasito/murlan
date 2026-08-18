@@ -2,8 +2,12 @@
 // out says so.
 //
 // Offline the countdown called the context action directly, bypassing the
-// haptic and the sound that a tapped PASSA gets, and there is no server to
-// raise the banner the online screen shows. The turn just ended.
+// haptic a tapped PASSA gets, and there is no server to raise the banner the
+// online screen shows. The turn just ended.
+//
+// The pass *sound* is not the screen's to play: GameTable fires it off the
+// committed `passCount`, for every seat and every source of a pass. A second
+// caller here would double it, so its absence is asserted.
 import { describe, it, expect, beforeEach, jest } from '@jest/globals';
 import React from 'react';
 import { act, fireEvent, render, screen } from '@testing-library/react-native';
@@ -95,7 +99,7 @@ describe('the offline turn clock expiring', () => {
     jest.clearAllMocks();
   });
 
-  it('passes with the warn haptic, the pass sound and a banner naming it', async () => {
+  it('passes with the warn haptic and a banner naming it, leaving the sound to the table', async () => {
     const r = await render(<GameScreen />);
 
     await act(async () => {
@@ -103,7 +107,7 @@ describe('the offline turn clock expiring', () => {
     });
 
     expect(jest.mocked(Haptics.notificationAsync)).toHaveBeenCalledWith('warning');
-    expect(playCardPass).toHaveBeenCalledTimes(1);
+    expect(playCardPass).not.toHaveBeenCalled();
     expect(mockShowNotification).toHaveBeenCalledWith(
       expect.objectContaining({ type: 'afk', title: t('game.autoPassTitle') })
     );

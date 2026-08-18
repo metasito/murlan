@@ -58,6 +58,7 @@ import {
   EMPTY_PILE,
   handCountOf,
   impactDelayMs,
+  passedSeats,
   playButtonLabel,
   readExchange,
   roundClosedWithWinner,
@@ -463,6 +464,9 @@ export function GameTable({
   const prevMyTurnRef = useRef(false);
   const prevExchangeActiveRef = useRef(false);
   const prevGameOverRef = useRef(false);
+  // Seeded from the state the table mounts on, so rejoining mid-round does not
+  // replay the passes that happened before the viewer arrived.
+  const prevPassCountRef = useRef(gameState.passCount);
 
   // Nothing here scales: a fractional scale on a view containing text makes
   // React Native resample the already-rasterised glyphs, and PASSA/GIOCA read
@@ -520,6 +524,25 @@ export function GameTable({
     () => (selectedObjs.length > 0 ? buildCombination(selectedObjs) : null),
     [selectedObjs]
   );
+  // Which seats have already answered the round on the table. Derived rather
+  // than stored, so a new lead empties it on the same commit that lands the
+  // card and no effect has to clear it.
+  const passed = React.useMemo(
+    () =>
+      passedSeats({
+        currentTurnIndex: gameState.currentTurnIndex,
+        lastPlayedBy: gameState.lastPlayedBy,
+        lastPlayedCombination: gameState.lastPlayedCombination,
+        outOfCards: players.map((p) => handCountOf(p) === 0),
+      }),
+    [
+      gameState.currentTurnIndex,
+      gameState.lastPlayedBy,
+      gameState.lastPlayedCombination,
+      players,
+    ]
+  );
+
   const requiresStartCard = !gameState.firstPlayMade && !!gameState.startCard;
   const selectionHasStartCard =
     !!gameState.startCard && selectedObjs.some((c) => c.id === gameState.startCard!.id);
@@ -802,6 +825,19 @@ export function GameTable({
     prevExchangeActiveRef.current = exchange.active;
   }, [exchange.active]);
 
+  // A pass moves nothing on the felt, so the sound is the whole event — and it
+  // belongs to every seat, not only the viewer's own tap. Keyed on the state
+  // the pass produced rather than on the tap, so a bot, an opponent and the
+  // server moving for a seat all announce themselves identically.
+  //
+  // `processPass` resets `passCount` to zero on the pass that closes a round,
+  // so that one raises no edge here: it is announced by the round-winner sting.
+  useEffect(() => {
+    const prev = prevPassCountRef.current;
+    prevPassCountRef.current = gameState.passCount;
+    if (gameState.passCount > prev) playCardPass();
+  }, [gameState.passCount]);
+
   // A card can leave the hand without the player having touched it: the server
   // moves for a seat that ran out of clock, and every manche is a fresh deal.
   // Card ids are deterministic (`${rank}_${suit}`), so a leftover id matches a
@@ -979,8 +1015,9 @@ export function GameTable({
   }, [playBtnValid, onPlay, selectedObjs, dimReasonText, reduceMotion, giocaRejectX]);
   const handlePass = useCallback(() => {
     if (!canPass) return;
+    // Haptic only: the pass sound follows the committed state, so firing it
+    // here as well would double the viewer's own pass.
     hapticLight();
-    playCardPass();
     onPass();
   }, [canPass, onPass]);
 
@@ -1101,6 +1138,7 @@ export function GameTable({
                 player={opponents.top.player}
                 isActive={opponents.top.seat === gameState.currentTurnIndex}
                 cardCount={handCountOf(opponents.top.player)}
+                passed={passed.includes(opponents.top.seat)}
               />
             ) : (
               <View />
@@ -1115,6 +1153,7 @@ export function GameTable({
                   isActive={opponents.left.seat === gameState.currentTurnIndex}
                   side="left"
                   cardCount={handCountOf(opponents.left.player)}
+                  passed={passed.includes(opponents.left.seat)}
                 />
               )}
             </View>
@@ -1149,6 +1188,7 @@ export function GameTable({
                   isActive={opponents.right.seat === gameState.currentTurnIndex}
                   side="right"
                   cardCount={handCountOf(opponents.right.player)}
+                  passed={passed.includes(opponents.right.seat)}
                 />
               )}
             </View>
