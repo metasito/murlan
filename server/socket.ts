@@ -124,6 +124,13 @@ interface OnlineGameState {
    */
   abandonedSeats: Map<number, string>;
   /**
+   * When the acting seat's AFK window runs out, in server time. Undefined
+   * whenever nothing is on the clock — a vacated seat waiting on a bot, or a
+   * finished hand. Memory only: it is re-armed on the next move and would be
+   * meaningless after a restart.
+   */
+  turnDeadlineMs?: number;
+  /**
    * userIds watching without a seat. Deliberately not persisted: a spectator
    * who reconnects spectates again, and a restart dropping them costs nothing.
    */
@@ -407,7 +414,8 @@ export const __testables = {
 function sanitizeStateForPlayer(
   state: GameState,
   viewerUserId: string,
-  playerMap: Record<number, string>
+  playerMap: Record<number, string>,
+  turnDeadlineMs?: number
 ) {
   // The server knows which seat the viewer occupies authoritatively; ship it
   // with every state so the client never has to derive it (e.g. from a lobby
@@ -416,6 +424,11 @@ function sanitizeStateForPlayer(
   return {
     ...state,
     viewerSeatIndex,
+    // Seconds rather than the deadline itself: a device whose clock is off by
+    // minutes would render an absolute timestamp as a clock that is already
+    // over or never moves. The deadline rides along only as a reset key.
+    turnDeadlineMs,
+    turnSecondsRemaining: secondsUntil(turnDeadlineMs),
     // Strips `cardFromLoser` — a named card out of a named player's hand —
     // down to only the two seats in the exchange, and only while it is active.
     exchangePhase: visibleExchangePhase(
@@ -563,7 +576,7 @@ function broadcastGameState(io: SocketServer, game: OnlineGameState) {
   const send = (uid: string) => {
     const target = userSocketMap.get(uid);
     if (!target) return;
-    io.to(target).emit("game:state", sanitizeStateForPlayer(gameState, uid, playerMap));
+    io.to(target).emit("game:state", sanitizeStateForPlayer(gameState, uid, playerMap, game.turnDeadlineMs));
   };
   Object.values(playerMap).forEach(send);
   // Spectators go through the same sanitiser. findViewerSeat returns null for
@@ -723,6 +736,25 @@ function safeTimer(label: string, roomId: string, fn: () => void): void {
   }
 }
 
+/** Whole seconds left on a deadline, floored at 0. Zero when nothing is armed. */
+function secondsUntil(deadlineMs: number | undefined): number {
+  if (deadlineMs === undefined) return 0;
+  return Math.max(0, Math.ceil((deadlineMs - Date.now()) / 1000));
+}
+
+/**
+ * Tells the table how long the acting seat has left. Sent on its own as well
+ * as with the state, because the AFK window is re-armed on paths that change
+ * no state at all — every rejoin and every disconnect — and a clock that ran
+ * to zero while the server still held a full window reads as a frozen table.
+ */
+function emitTurnDeadline(roomId: string, game: OnlineGameState) {
+  _io?.to(roomId).emit("game:turn_deadline", {
+    turnDeadlineMs: game.turnDeadlineMs,
+    turnSecondsRemaining: secondsUntil(game.turnDeadlineMs),
+  });
+}
+
 /**
  * Single scheduler for "whose move is it". Called after every state change, so
  * the AFK chain never breaks and a vacated seat is always resolvable:
@@ -735,12 +767,16 @@ function armTurn(roomId: string) {
   if (!io || !game) return;
 
   clearRoomTimers(roomId);
-  if (game.gameState.gameOver) return;
+  if (game.gameState.gameOver) {
+    game.turnDeadlineMs = undefined;
+    return;
+  }
 
   const seat = actingSeat(game.gameState);
   const userId = game.playerMap[seat];
 
   if (userId === undefined) {
+    game.turnDeadlineMs = undefined;
     botTimers.set(
       roomId,
       setTimeout(() => {
@@ -748,11 +784,14 @@ function armTurn(roomId: string) {
         safeTimer("botTurn", roomId, () => runBotTurn(roomId));
       }, BOT_MOVE_DELAY_MS)
     );
+    emitTurnDeadline(roomId, game);
     return;
   }
 
   const username = game.gameState.players[seat]?.name ?? "";
+  game.turnDeadlineMs = Date.now() + AFK_TIMEOUT_MS;
   startAfkTimer(roomId, userId, username);
+  emitTurnDeadline(roomId, game);
 }
 
 /**
@@ -771,9 +810,11 @@ function armTurnIfIdle(roomId: string) {
   const game = activeGames.get(roomId);
   if (!game) return;
 
-  if (botTimers.has(roomId)) return;
+  if (botTimers.has(roomId)) return emitTurnDeadline(roomId, game);
   const seatUserId = game.playerMap[actingSeat(game.gameState)];
-  if (seatUserId !== undefined && afkTimers.has(`${roomId}:${seatUserId}`)) return;
+  if (seatUserId !== undefined && afkTimers.has(`${roomId}:${seatUserId}`)) {
+    return emitTurnDeadline(roomId, game);
+  }
 
   armTurn(roomId);
 }
@@ -1499,7 +1540,7 @@ export function setupSocket(httpServer: HttpServer) {
         socket.join(room.id);
         socket.emit(
           "game:state",
-          sanitizeStateForPlayer(game.gameState, userId, game.playerMap)
+          sanitizeStateForPlayer(game.gameState, userId, game.playerMap, game.turnDeadlineMs)
         );
         logger.info({ roomId: room.id, userId }, "Spectator joined");
       },
@@ -2604,7 +2645,7 @@ async function rejoinSocketToTable(
   );
   socket.emit(
     "game:state",
-    sanitizeStateForPlayer(game.gameState, userId, game.playerMap)
+    sanitizeStateForPlayer(game.gameState, userId, game.playerMap, game.turnDeadlineMs)
   );
   io.to(roomId).emit("game:player_reconnected", {
     userId,
