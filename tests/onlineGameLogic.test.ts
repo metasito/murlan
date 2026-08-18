@@ -8,7 +8,9 @@ import {
   excludeBotSeats,
   isStaleSchema,
   GAME_SCHEMA_VERSION,
+  buildSeatRoster,
 } from "../server/onlineGameLogic.ts";
+import { teamForSeat, TEAMS_PLAYER_COUNT } from "../lib/gameEngine.ts";
 
 describe("readPersistedPlayerMap (seat resolution on rejoin)", () => {
   test("prefers the seat -> userId map when present", () => {
@@ -137,5 +139,50 @@ describe("isStaleSchema / GAME_SCHEMA_VERSION (rejection of pre-full-deck persis
 
   test("a row stamped with the current version is current, not stale", () => {
     assert.equal(isStaleSchema({ schemaVersion: GAME_SCHEMA_VERSION }), false);
+  });
+});
+
+describe("teams seating (buildSeatRoster + teamForSeat)", () => {
+  const seats = (count: number) =>
+    Array.from({ length: count }, (_, i) => ({
+      seatIndex: i,
+      userId: `u${i}`,
+      username: `p${i}`,
+    }));
+
+  const teamsOf = (roster: { seatIndex: number }[]) =>
+    roster.map((_, idx) => teamForSeat(idx, roster.length, "teams"));
+
+  test("a full teams table is two A seats and two B seats, sitting opposite", () => {
+    const roster = buildSeatRoster(seats(TEAMS_PLAYER_COUNT), TEAMS_PLAYER_COUNT, {});
+    const teams = teamsOf(roster);
+    assert.deepEqual(teams, ["A", "B", "A", "B"]);
+    assert.equal(teams.filter((t) => t === "A").length, 2);
+    assert.equal(teams.filter((t) => t === "B").length, 2);
+  });
+
+  test("a bot-filled teams table is still two and two", () => {
+    const roster = buildSeatRoster(seats(1), TEAMS_PLAYER_COUNT, { fillWithBots: true });
+    assert.equal(roster.length, TEAMS_PLAYER_COUNT);
+    assert.deepEqual(teamsOf(roster), ["A", "B", "A", "B"]);
+  });
+
+  test("an odd table has no teams to split into", () => {
+    for (const count of [2, 3]) {
+      const roster = buildSeatRoster(seats(count), count, {});
+      assert.deepEqual(
+        teamsOf(roster),
+        new Array(count).fill(undefined),
+        `${count} seats cannot be a 2-v-2`
+      );
+    }
+  });
+
+  test("free-for-all never assigns a team, however many seats", () => {
+    const roster = buildSeatRoster(seats(TEAMS_PLAYER_COUNT), TEAMS_PLAYER_COUNT, {});
+    assert.deepEqual(
+      roster.map((_, idx) => teamForSeat(idx, roster.length, "free_for_all")),
+      new Array(TEAMS_PLAYER_COUNT).fill(undefined)
+    );
   });
 });

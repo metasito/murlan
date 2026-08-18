@@ -22,7 +22,7 @@ import { useAuth } from "@/context/AuthContext";
 import { useSocket } from "@/context/SocketContext";
 import { getSocket } from "@/lib/socket";
 import { Colors, Spacing, Radius, FontSize, Motion, TOUCH_TARGET_MIN, Type } from '@/lib/theme';
-import { MATCH_TARGETS } from "@/lib/gameEngine";
+import { MATCH_TARGETS, TEAMS_PLAYER_COUNT } from "@/lib/gameEngine";
 import type { MatchLength } from "@/lib/gameEngine";
 import { BOT_PERSONALITIES, DEFAULT_BOT_PERSONALITY, botBlurbKey } from "@/lib/botPersonalities";
 import type { BotPersonalityId } from "@/lib/botPersonalities";
@@ -361,7 +361,11 @@ export default function RoomScreen() {
   // Bots fill every empty seat, so a single host is enough to start —
   // otherwise at least 2 seated humans are required.
   const notEnoughPlayers = !fillWithBots && room.players.length < 2;
-  const canStart = isHost && !notEnoughPlayers && room.status === "waiting";
+  const seatsAtStart = fillWithBots ? maxSeats : room.players.length;
+  const teamsNeedFour =
+    room.gameMode === "teams" && seatsAtStart !== TEAMS_PLAYER_COUNT;
+  const canStart =
+    isHost && !notEnoughPlayers && !teamsNeedFour && room.status === "waiting";
   const showBotFillControls = isHost && room.status === "waiting" && hasEmptySeats;
 
   async function handleCopyCode() {
@@ -421,7 +425,13 @@ export default function RoomScreen() {
 
   const StartButton = isHost ? (
     <MenuButton
-      label={notEnoughPlayers ? t("room.waitingForPlayers") : t("room.startGame")}
+      label={
+        teamsNeedFour
+          ? t("room.teamsNeedFour")
+          : notEnoughPlayers
+            ? t("room.waitingForPlayers")
+            : t("room.startGame")
+      }
       onPress={handleStart}
       disabled={!canStart}
       icon={<Ionicons name="play-circle" size={22} color={canStart ? Colors.bgCard : Colors.textMuted} />}

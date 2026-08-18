@@ -48,6 +48,8 @@ import {
 import {
   initializeGame,
   initializeRematch,
+  teamForSeat,
+  TEAMS_PLAYER_COUNT,
   processPlay,
   processPass,
   processExchangeChoice,
@@ -1455,6 +1457,13 @@ export function setupSocket(httpServer: HttpServer) {
       "room:create",
       RoomCreateSchema,
       async ({ gameMode, maxPlayers }) => {
+        if (gameMode === "teams" && maxPlayers !== TEAMS_PLAYER_COUNT) {
+          socket.emit("room:error", {
+            message: "Teams mode needs exactly 4 players",
+            code: "TEAMS_REQUIRE_FOUR",
+          });
+          return;
+        }
         const room = await storage.createRoom(userId, gameMode, maxPlayers);
         await storage.addRoomPlayer(room.id, userId, 0);
 
@@ -1665,6 +1674,13 @@ export function setupSocket(httpServer: HttpServer) {
       "room:quickmatch",
       RoomQuickmatchSchema,
       async ({ maxPlayers, gameMode }) => {
+        if (gameMode === "teams" && maxPlayers !== TEAMS_PLAYER_COUNT) {
+          socket.emit("room:error", {
+            message: "Teams mode needs exactly 4 players",
+            code: "TEAMS_REQUIRE_FOUR",
+          });
+          return;
+        }
         // One query for the whole candidate set instead of two per room.
         const waiting = await storage.getWaitingRooms(
           Array.from(publicRoomIds),
@@ -1740,6 +1756,13 @@ export function setupSocket(httpServer: HttpServer) {
           socket.emit("room:error", {
             message: "Cannot change mode once the game has started",
             code: "CANNOT_CHANGE_MODE_IN_PROGRESS",
+          });
+          return;
+        }
+        if (gameMode === "teams" && room.maxPlayers !== TEAMS_PLAYER_COUNT) {
+          socket.emit("room:error", {
+            message: "Teams mode needs exactly 4 players",
+            code: "TEAMS_REQUIRE_FOUR",
           });
           return;
         }
@@ -1831,15 +1854,19 @@ export function setupSocket(httpServer: HttpServer) {
         // autoMoveForSeat already treat a missing playerMap entry as "drive
         // this seat with the AI", exactly the path a disconnect takeover uses.
         const roster = buildSeatRoster(humans, room.maxPlayers, { fillWithBots, botPersonality });
+        if (room.gameMode === "teams" && roster.length !== TEAMS_PLAYER_COUNT) {
+          socket.emit("room:error", {
+            message: "Teams mode needs exactly 4 players",
+            code: "TEAMS_REQUIRE_FOUR",
+          });
+          return;
+        }
 
         const playerSetup = roster.map((r, idx) => ({
           name: r.username,
           type: (r.isBot ? "ai" : "human") as "human" | "ai",
           personality: r.isBot ? r.personality : undefined,
-          team:
-            room.gameMode === "teams"
-              ? ((idx % 2 === 0 ? "A" : "B") as "A" | "B")
-              : undefined,
+          team: teamForSeat(idx, roster.length, room.gameMode),
         }));
 
         const gameState = initializeGame(playerSetup, room.gameMode);

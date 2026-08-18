@@ -1049,6 +1049,24 @@ export function getStartingPlayerAfterExchange(state: GameState): number {
     : state.exchangePhase.loserIdx;
 }
 
+/** Teams is 2-v-2 and only 2-v-2 (docs/RULES.md §11). */
+export const TEAMS_PLAYER_COUNT = 4;
+
+/**
+ * The team a seat plays for. Partners sit opposite each other, so the teams
+ * alternate around the table. Undefined for every game that is not a teams
+ * game of exactly `TEAMS_PLAYER_COUNT` seats — an odd table has no 2-v-2 to
+ * split into, and `resolveTeamMatch` would race a pair against a single seat.
+ */
+export function teamForSeat(
+  seat: number,
+  playerCount: number,
+  gameMode: GameMode
+): "A" | "B" | undefined {
+  if (gameMode !== "teams" || playerCount !== TEAMS_PLAYER_COUNT) return undefined;
+  return seat % 2 === 0 ? "A" : "B";
+}
+
 export function initializeGame(
   playerSetup: Array<{
     name: string;

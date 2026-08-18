@@ -166,4 +166,45 @@ describe("online teams mode", { skip: hasDatabase() ? false : skipMessage() }, (
       for (const c of clients) c.socket.close();
     }
   });
+
+  test("a teams room cannot be created with fewer than four seats", async () => {
+    const host = await connectAs(server, "teams_two_seat");
+    try {
+      const refused = waitFor<{ code?: string }>(host.socket, "room:error");
+      host.socket.emit("room:create", { gameMode: "teams", maxPlayers: 2 });
+      assert.equal((await refused).code, "TEAMS_REQUIRE_FOUR");
+    } finally {
+      host.socket.close();
+    }
+  });
+
+  test("three seated humans cannot start a teams game — 2-v-1 is not a teams game", async () => {
+    const clients: { socket: Socket }[] = [];
+    for (const name of ["teams_odd1", "teams_odd2", "teams_odd3"]) {
+      clients.push(await connectAs(server, name));
+    }
+
+    try {
+      const created = waitFor<RoomState>(clients[0].socket, "room:state");
+      clients[0].socket.emit("room:create", { gameMode: "teams", maxPlayers: 4 });
+      let room = await created;
+      for (const guest of clients.slice(1)) {
+        const joined = waitFor<RoomState>(guest.socket, "room:state");
+        guest.socket.emit("room:join", { code: room.code });
+        room = await joined;
+      }
+
+      let started = false;
+      clients[0].socket.once("game:started", () => {
+        started = true;
+      });
+
+      const refused = waitFor<{ code?: string }>(clients[0].socket, "room:error");
+      clients[0].socket.emit("room:start", { fillWithBots: false });
+      assert.equal((await refused).code, "TEAMS_REQUIRE_FOUR");
+      assert.equal(started, false, "no game is dealt into a 2-v-1");
+    } finally {
+      for (const c of clients) c.socket.close();
+    }
+  });
 });
