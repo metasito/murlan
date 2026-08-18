@@ -5,7 +5,7 @@
 // seat and no hand, so every seat draws face-down and no action button exists.
 
 import React, { useCallback, useEffect, useMemo, useState } from "react";
-import { View, Text, Pressable, StyleSheet } from "react-native";
+import { View, Text, Pressable, StyleSheet, ActivityIndicator } from "react-native";
 import { router, useLocalSearchParams } from "expo-router";
 import Ionicons from "@expo/vector-icons/Ionicons";
 import { useQuery } from "@tanstack/react-query";
@@ -28,7 +28,7 @@ export default function ReplayScreen() {
   const [index, setIndex] = useState(-1);
   const [playing, setPlaying] = useState(false);
 
-  const { data: replay, isError } = useQuery<ReplayDto>({
+  const { data: replay, isError, isLoading } = useQuery<ReplayDto>({
     queryKey: [`/api/replays/${id}`],
     enabled: !!id,
   });
@@ -80,6 +80,16 @@ export default function ReplayScreen() {
     () => (named ? replayStateAt(named, index) : null),
     [named, index]
   );
+
+  if (isLoading) {
+    return (
+      <MenuLayout>
+        <MenuCard title={t("replay.title")}>
+          <ActivityIndicator color={Colors.gold} accessibilityLabel={t("replay.loadingA11yLabel")} />
+        </MenuCard>
+      </MenuLayout>
+    );
+  }
 
   if (isError) {
     return (
