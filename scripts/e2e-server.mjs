@@ -22,7 +22,8 @@ import { fileURLToPath } from "node:url";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const PORT = process.env.E2E_PORT ?? "5199";
-const DB_URL = "postgres://postgres:postgres@127.0.0.1:55432/murlan_dev";
+const DB_PORT = process.env.MURLAN_DEV_PG_PORT ?? "55432";
+const DB_URL = `postgres://postgres:postgres@127.0.0.1:${DB_PORT}/murlan_dev`;
 
 function run(cmd, args, useShell) {
   const result = spawnSync(cmd, args, { cwd: ROOT, stdio: "inherit", shell: useShell });
