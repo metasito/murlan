@@ -143,15 +143,29 @@ export function onEvent<S extends z.ZodTypeAny>(
 }
 
 /**
- * Last line of defence. Anything that escapes `onEvent` (a stray timer, a
- * library callback) must not stop a server that is holding live games in
- * memory for other players.
+ * Process-level last resort, for anything that escapes both `onEvent` and the
+ * timer containment in `server/socket.ts`.
+ *
+ * An uncaught exception leaves the process in an undefined state, so it exits
+ * non-zero and lets the supervisor restart it. That is cheap here and it is why
+ * this is the right trade: `game:rejoin` rehydrates a live game from
+ * `active_games`, so a restart costs every player a reconnect, while a server
+ * carrying on in an unknown state can leave a table wedged with no way out.
+ *
+ * Installed by `server/index.ts`, which owns the process. `createApp()` must not
+ * install it — the integration harness boots that same factory in-process, and a
+ * guard that exits would take the test runner with it.
  */
 export function installProcessGuards(): void {
   process.on("unhandledRejection", (reason) => {
     logger.error({ err: reason }, "Unhandled promise rejection — contained");
   });
   process.on("uncaughtException", (err) => {
-    logger.error({ err }, "Uncaught exception — contained");
+    logger.fatal({ err }, "Uncaught exception — exiting");
+    // Synchronous for pino's default destination, so the fatal line is on the
+    // wire before the exit. Exiting is unconditional either way — a guard that
+    // could be skipped by a transport that never flushed would be no guard.
+    logger.flush?.();
+    process.exit(1);
   });
 }

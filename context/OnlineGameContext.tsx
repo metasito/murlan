@@ -367,6 +367,11 @@ export function OnlineGameProvider({ userId, children }: { userId: string; child
         setRoom(null);
         roomRef.current = null;
       }
+      // `spectateRoom` claims the flag before the server has answered, and a
+      // refusal is the only answer some attempts ever get. Left set it would
+      // send `room:unspectate` for the next table the player actually sits at,
+      // which releases nothing — the seat stays occupied and keeps being dealt.
+      setIsSpectator(false);
       setError(translateServerPayload(payload));
     };
 
@@ -648,12 +653,16 @@ export function OnlineGameProvider({ userId, children }: { userId: string; child
     // left alone on purpose — it is cleared only by a reply that matches it,
     // which is what makes the stale-reply guard a guard.
     setRejoinFailed(false);
+    // Taking a seat is not watching, whatever an earlier spectate attempt left
+    // behind: the flag decides whether leaving this room releases the seat.
+    setIsSpectator(false);
     socket.emit("room:create", { gameMode, maxPlayers });
   }, [userId]);
 
   const joinRoom = useCallback((code: string) => {
     setEntrySource("friends");
     setRejoinFailed(false);
+    setIsSpectator(false);
     socket.emit("room:join", { code });
   }, [userId]);
 
@@ -696,11 +705,12 @@ export function OnlineGameProvider({ userId, children }: { userId: string; child
     setMySeatIndex(-1);
     prevBothJokersExceptionRef.current = false;
     prevExchangeActiveRef.current = false;
-  }, [userId, persistActiveRoom, persistWaitingRoom, forgetRejoinAttempt]);
+  }, [userId, isSpectator, persistActiveRoom, persistWaitingRoom, forgetRejoinAttempt]);
 
   const quickmatch = useCallback((maxPlayers: number, gameMode: "free_for_all" | "teams") => {
     setEntrySource("quickmatch");
     setRejoinFailed(false);
+    setIsSpectator(false);
     socket.emit("room:quickmatch", { maxPlayers, gameMode });
   }, [userId]);
 

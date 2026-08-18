@@ -50,6 +50,7 @@ export const it = {
   "server.FRIEND_REQUEST_ALREADY_SENT": "Richiesta di amicizia già inviata",
   "server.FRIEND_REQUEST_NOT_FOUND": "Richiesta non trovata",
   "server.GAME_INTERRUPTED_EMPTY_SEAT": "Partita interrotta: un posto vuoto non può giocare.",
+  "server.GAME_INTERRUPTED_SERVER_ERROR": "Partita interrotta: errore del server.",
   "server.PLAYER_AFK_AUTO_PASS": "{{username}} è inattivo — passato automaticamente",
   "server.PLAYER_LEFT_ABANDONED": "{{username}} ha lasciato la partita.",
   "server.PLAYER_LEFT_BOT_TAKEOVER": "{{username}} ha lasciato la partita — il computer gioca al suo posto.",
@@ -77,6 +78,7 @@ export const it = {
   "server.NOT_FRIENDS": "Non siete amici",
   "server.PLAYER_DISCONNECTED_GRACE": "{{username}} si è disconnesso. Ha {{seconds}} secondi per rientrare.",
   "server.PLAYER_RECONNECTED": "{{username}} è rientrato.",
+  "server.SESSION_REPLACED": "Il tuo account è stato aperto altrove. Questa sessione è stata chiusa.",
 
   // ---------------------------------------------------------------- auth.*
   "auth.subtitle": "Accesso Online",
@@ -151,6 +153,12 @@ export const it = {
 
   // ---------------------------------------------------------- offlineBanner.*
   "offlineBanner.text": "⚠️ Nessuna connessione Internet",
+
+  // -------------------------------------------------------- sessionReplaced.*
+  // The body copy is server.SESSION_REPLACED — the server says why.
+  "sessionReplaced.title": "Sessione aperta altrove",
+  "sessionReplaced.reconnect": "Riconnetti qui",
+  "sessionReplaced.reconnectA11yHint": "Riporta il tuo account su questo dispositivo e chiude l'altra sessione",
 
   // ---------------------------------------------------- notificationBanner.*
   "notificationBanner.dismissA11yHint": "Tocca per chiudere la notifica",
@@ -290,6 +298,7 @@ export const it = {
 
   // -------------------------------------------------------------- onlineGame.*
   "onlineGame.reconnecting": "Connessione persa — riconnessione…",
+  "onlineGame.connecting": "In attesa del tavolo…",
   "onlineGame.playerLeftTitle": "Partita interrotta",
   "onlineGame.playerLeftBody": "Un giocatore ha abbandonato la partita.",
   "onlineGame.rejoinFailedTitle": "Rientro non riuscito",

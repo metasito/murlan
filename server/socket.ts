@@ -14,7 +14,7 @@ import {
 } from "../shared/schema.ts";
 import { consumeSocketTicket } from "./ticket.ts";
 import { isAllowedOrigin } from "./cors.ts";
-import { onEvent } from "./socketSafety.ts";
+import { allowSocketAction, onEvent } from "./socketSafety.ts";
 import {
   readPersistedPlayerMap,
   seatOfUser as seatOfUserInMap,
@@ -235,6 +235,20 @@ const STALE_ROOM_MAX_AGE_MS = 24 * 60 * 60_000;
 /** Rooms deleted per sweep. Bounds the size of one statement, not the total. */
 const STALE_ROOM_BATCH = 500;
 
+/**
+ * Handshakes one account may complete per minute.
+ *
+ * Socket.io answers `/socket.io/*` on the shared http.Server before Express
+ * ever sees it, so no express-rate-limit instance reaches the handshake — and
+ * an accepted connection costs several database round-trips before the client
+ * has emitted anything. Matched to the ticket limiter's 60/min
+ * (`server/routes.ts`), which mints one ticket per connection attempt: a
+ * smaller budget here would lock a phone out of its own game while its
+ * connection flaps.
+ */
+const HANDSHAKES_PER_MINUTE = 60;
+const HANDSHAKE_WINDOW_MS = 60_000;
+
 let _io: SocketServer | null = null;
 
 export function emitToUser(userId: string, event: string, data: unknown) {
@@ -247,6 +261,59 @@ export function emitToUser(userId: string, event: string, data: unknown) {
 
 export function isUserOnline(userId: string): boolean {
   return userSocketMap.has(userId);
+}
+
+/**
+ * Throws an account off the server once its `users` row is gone: the seat is
+ * released to a bot exactly as a `room:leave` does, and the socket is closed.
+ *
+ * A socket authenticates once at the handshake and `socket.data.userId` is
+ * never re-checked, so without this a deleted account keeps its seat and keeps
+ * playing under an id no row answers to.
+ *
+ * Call it only after the delete has committed — releasing the seat can end the
+ * hand, and the hand's writes must not race the transaction removing the row.
+ * Never throws: the account is already gone, and the caller's response must not
+ * turn on how the teardown went.
+ */
+export async function evictUser(userId: string): Promise<void> {
+  const io = _io;
+  if (!io) return;
+  const socketId = userSocketMap.get(userId);
+  if (!socketId) return;
+  userSocketMap.delete(userId);
+  const socket = io.sockets.sockets.get(socketId);
+  if (!socket) return;
+
+  // Taken here so the disconnect below cannot release the same seat a second
+  // time. Spectator state is left to it, which drops it correctly.
+  const roomId = socketRoomMap.get(socketId);
+  socketRoomMap.delete(socketId);
+  const username = (socket.data?.username as string) ?? "";
+
+  if (roomId) {
+    try {
+      if (activeGames.has(roomId)) {
+        // Not handleSeatRelease: deleting an account also deletes the rooms
+        // rows it hosted, and that path reads the room back and returns when
+        // it is gone — leaving the seat live in a hand still being played.
+        socket.leave(roomId);
+        await vacateSeat(io, roomId, userId, username);
+      } else {
+        await handleSeatRelease(io, roomId, userId, username, {
+          socket,
+          source: "leave",
+        });
+      }
+    } catch (err) {
+      logger.error(
+        { err, userId, roomId },
+        "Failed to release the seat of a deleted account"
+      );
+    }
+  }
+
+  socket.disconnect(true);
 }
 
 /**
@@ -319,6 +386,13 @@ export const __testables = {
       rankings: [...game.gameState.rankings],
     };
   },
+  /**
+   * The containment every timer body runs under. Exposed because the property
+   * that matters — a throw closes the table instead of freezing it — is not
+   * reachable through a socket: it needs a body that throws on demand.
+   */
+  runTimerBody: (label: string, roomId: string, fn: () => void) =>
+    safeTimer(label, roomId, fn),
   /** The restart-orphan prune, which only a real database can exercise. */
   pruneAbandonedGames: () => pruneAbandonedGames(),
   ABANDONED_GAME_MAX_AGE_MS,
@@ -613,6 +687,39 @@ function autoMoveForSeat(
 }
 
 /**
+ * Runs a timer body under the same contract `onEvent` gives an inbound event: a
+ * throw degrades to a closed table rather than escaping the callback.
+ *
+ * The containment is load-bearing rather than tidy. `armTurn` clears the room's
+ * timers before it arms the next one, and it is only ever reached from a move, a
+ * rejoin, a disconnect or another timer — so a throw inside a timer body leaves
+ * the room with nothing pending and nothing that will ever re-arm it. The table
+ * stops on a turn that cannot be taken, and the client's clock has no `onExpire`
+ * to notice. Closing the table loudly is the recoverable outcome.
+ */
+function safeTimer(label: string, roomId: string, fn: () => void): void {
+  try {
+    fn();
+  } catch (err) {
+    logger.error({ err, roomId, label }, "Timer callback threw — closing table");
+    _io?.to(roomId).emit("game:notification", {
+      type: "abandoned",
+      code: "GAME_INTERRUPTED_SERVER_ERROR",
+      message: "Partita interrotta: errore del server.",
+    });
+    void storage
+      .updateRoomStatus(roomId, "finished")
+      .catch((statusErr) =>
+        logger.warn(
+          { err: statusErr, roomId, label },
+          "Failed to set rooms.status = finished after a timer callback threw"
+        )
+      );
+    disposeGame(roomId);
+  }
+}
+
+/**
  * Single scheduler for "whose move is it". Called after every state change, so
  * the AFK chain never breaks and a vacated seat is always resolvable:
  *   seat has a user  -> arm that user's AFK timer
@@ -634,7 +741,7 @@ function armTurn(roomId: string) {
       roomId,
       setTimeout(() => {
         botTimers.delete(roomId);
-        runBotTurn(roomId);
+        safeTimer("botTurn", roomId, () => runBotTurn(roomId));
       }, BOT_MOVE_DELAY_MS)
     );
     return;
@@ -741,17 +848,19 @@ function startAfkTimer(roomId: string, userId: string, username: string) {
     key,
     setTimeout(() => {
       afkTimers.delete(key);
-      const acted = handleAutoPass(roomId, userId);
-      // Only announce when something actually happened, not on an early
-      // return that did nothing.
-      if (acted && _io) {
-        _io.to(roomId).emit("game:notification", {
-          type: "afk",
-          code: "PLAYER_AFK_AUTO_PASS",
-          message: `${username} è inattivo — passato automaticamente`,
-          params: { username },
-        });
-      }
+      safeTimer("afkAutoPass", roomId, () => {
+        const acted = handleAutoPass(roomId, userId);
+        // Only announce when something actually happened, not on an early
+        // return that did nothing.
+        if (acted && _io) {
+          _io.to(roomId).emit("game:notification", {
+            type: "afk",
+            code: "PLAYER_AFK_AUTO_PASS",
+            message: `${username} è inattivo — passato automaticamente`,
+            params: { username },
+          });
+        }
+      });
     }, AFK_TIMEOUT_MS)
   );
 }
@@ -1274,10 +1383,25 @@ export function setupSocket(httpServer: HttpServer) {
 
       if (!claimedUserId) return next(new Error("Not authenticated"));
 
+      // The session or the ticket has already proved this id, so the budget is
+      // keyed on it and spent *before* the account's first query rather than
+      // after it — the queries are what the limit exists to bound.
+      socket.data.userId = claimedUserId;
+      if (
+        !allowSocketAction(
+          socket,
+          "connection",
+          HANDSHAKES_PER_MINUTE,
+          HANDSHAKE_WINDOW_MS
+        )
+      ) {
+        logger.warn({ userId: claimedUserId }, "Handshake refused — too many connections");
+        return next(new Error("Too many connections"));
+      }
+
       const user = await storage.getUser(claimedUserId).catch(() => null);
       if (!user) return next(new Error("Not authenticated"));
 
-      socket.data.userId = user.id;
       socket.data.username = user.username;
       return next();
     } catch (err) {
@@ -1289,7 +1413,13 @@ export function setupSocket(httpServer: HttpServer) {
   io.on("connection", async (socket: Socket) => {
     const userId = socket.data.userId as string;
     const username = socket.data.username as string;
+    // The mapping has to name the new socket before the old one is closed —
+    // see evictReplacedSession for what reads it on the way out.
+    const replacedSocketId = userSocketMap.get(userId);
     userSocketMap.set(userId, socket.id);
+    if (replacedSocketId && replacedSocketId !== socket.id) {
+      evictReplacedSession(io, userId, replacedSocketId, socket);
+    }
     logger.debug({ userId, username, socketId: socket.id }, "Socket connected");
 
     // Every onEvent(...)/socket.on(...) registration below is synchronous and
@@ -2250,10 +2380,12 @@ export function setupSocket(httpServer: HttpServer) {
       }
     }
 
-    void emitFriendStatus(io, userId, true);
-
     try {
+      // One read for both halves of the connect notice: the friends who must
+      // be told this account came online, and the online list this socket is
+      // sent, are the same rows.
       const friends = await storage.getFriends(userId);
+      announceOnlineToFriends(io, userId, friends);
       const onlineIds = friends
         .map((f) => f.friend.id)
         .filter((id) => userSocketMap.has(id));
@@ -2551,12 +2683,14 @@ function startSweeper() {
   sweeper = setInterval(() => {
     try {
       for (const [roomId, game] of activeGames.entries()) {
-        const anyoneConnected = Object.values(game.playerMap).some((uid) =>
-          userSocketMap.has(uid)
-        );
-        if (!anyoneConnected && game.gameState.gameOver) {
-          disposeGame(roomId);
-        }
+        safeTimer("sweepFinishedTable", roomId, () => {
+          const anyoneConnected = Object.values(game.playerMap).some((uid) =>
+            userSocketMap.has(uid)
+          );
+          if (!anyoneConnected && game.gameState.gameOver) {
+            disposeGame(roomId);
+          }
+        });
       }
 
       // Rows orphaned by a restart, which the loop above structurally cannot
@@ -2686,18 +2820,74 @@ async function handleSeatRelease(
   }
 }
 
-async function emitFriendStatus(
+/**
+ * Enforces one live socket per account: the newest connection keeps the
+ * account and the socket it replaced is told why before it is closed.
+ *
+ * `userSocketMap` must already name the new socket when this is called. The
+ * replaced socket's own disconnect handler reads it, and both of its guards
+ * then decline to act — the mapping no longer matches that socket id, so it is
+ * left alone, and the account still has a socket, so no
+ * `game:player_disconnected` is announced and no grace timer is armed. The
+ * player keeps their seat; only the connection changes.
+ *
+ * Which is why the room association has to move with the account. Those same
+ * guards mean nothing else will release the seat, and the replacement only
+ * acquires a `socketRoomMap` entry of its own if the client happens to rejoin —
+ * a device that never held the room code never does. Handing the entry over
+ * keeps the seat reachable by the room's broadcasts and leaves the ordinary
+ * disconnect path owning its release, so closing the replacement announces the
+ * drop, arms the grace and hands the seat to a bot exactly as one connection
+ * always did.
+ *
+ * The client stops reconnecting when it sees this code
+ * (`context/SocketContext.tsx`). It has to: socket.io retries a closed
+ * transport forever, so two tabs would otherwise evict each other for as long
+ * as both are open.
+ */
+function evictReplacedSession(
   io: SocketServer,
   userId: string,
-  online: boolean
+  replacedSocketId: string,
+  replacement: Socket
 ) {
-  const friends = await storage.getFriends(userId).catch(() => []);
-  // Abort if user disconnected while we were fetching friends
-  if (online && !userSocketMap.has(userId)) return;
+  const replaced = io.sockets.sockets.get(replacedSocketId);
+  if (!replaced) return;
+
+  const roomId = socketRoomMap.get(replacedSocketId);
+  if (roomId) {
+    socketRoomMap.delete(replacedSocketId);
+    socketRoomMap.set(replacement.id, roomId);
+    void replacement.join(roomId);
+  }
+
+  replaced.emit("socket:error", {
+    code: "SESSION_REPLACED",
+    message: "Il tuo account è stato aperto altrove. Questa sessione è stata chiusa.",
+  });
+  logger.info(
+    { userId, replacedSocketId },
+    "Session replaced by a newer connection for the same account"
+  );
+  replaced.disconnect(true);
+}
+
+/**
+ * Tells every friend who is online that `userId` just came online. Takes the
+ * friend rows rather than reading them, so the connection handler pays for one
+ * `getFriends` and not two.
+ */
+function announceOnlineToFriends(
+  io: SocketServer,
+  userId: string,
+  friends: Awaited<ReturnType<typeof storage.getFriends>>
+) {
+  // The read the caller did is awaited, so the socket may already be gone.
+  if (!userSocketMap.has(userId)) return;
   friends.forEach((f) => {
     const friendSocket = userSocketMap.get(f.friend.id);
     if (friendSocket) {
-      io.to(friendSocket).emit("friend:status", { userId, online });
+      io.to(friendSocket).emit("friend:status", { userId, online: true });
     }
   });
 }

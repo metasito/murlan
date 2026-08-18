@@ -37,6 +37,7 @@ export const en: Record<keyof typeof it, string> = {
   "server.FRIEND_REQUEST_ALREADY_SENT": "Friend request already sent",
   "server.FRIEND_REQUEST_NOT_FOUND": "Request not found",
   "server.GAME_INTERRUPTED_EMPTY_SEAT": "Game interrupted: an empty seat can't play.",
+  "server.GAME_INTERRUPTED_SERVER_ERROR": "Game interrupted: a server error.",
   "server.PLAYER_AFK_AUTO_PASS": "{{username}} is inactive — passed automatically",
   "server.PLAYER_LEFT_ABANDONED": "{{username}} left the game.",
   "server.PLAYER_LEFT_BOT_TAKEOVER": "{{username}} left the game — the computer is now playing their seat.",
@@ -64,6 +65,7 @@ export const en: Record<keyof typeof it, string> = {
   "server.NOT_FRIENDS": "You're not friends",
   "server.PLAYER_DISCONNECTED_GRACE": "{{username}} disconnected. They have {{seconds}} seconds to rejoin.",
   "server.PLAYER_RECONNECTED": "{{username}} is back.",
+  "server.SESSION_REPLACED": "Your account was opened somewhere else. This session has been closed.",
 
   // ---------------------------------------------------------------- auth.*
   "auth.subtitle": "Online Access",
@@ -138,6 +140,11 @@ export const en: Record<keyof typeof it, string> = {
 
   // ---------------------------------------------------------- offlineBanner.*
   "offlineBanner.text": "⚠️ No internet connection",
+
+  // -------------------------------------------------------- sessionReplaced.*
+  "sessionReplaced.title": "Session opened elsewhere",
+  "sessionReplaced.reconnect": "Reconnect here",
+  "sessionReplaced.reconnectA11yHint": "Bring your account back to this device and close the other session",
 
   // ---------------------------------------------------- notificationBanner.*
   "notificationBanner.dismissA11yHint": "Tap to dismiss the notification",
@@ -274,6 +281,7 @@ export const en: Record<keyof typeof it, string> = {
 
   // -------------------------------------------------------------- onlineGame.*
   "onlineGame.reconnecting": "Connection lost — reconnecting…",
+  "onlineGame.connecting": "Waiting for the table…",
   "onlineGame.playerLeftTitle": "Game interrupted",
   "onlineGame.playerLeftBody": "A player has left the game.",
   "onlineGame.rejoinFailedTitle": "Could not rejoin",

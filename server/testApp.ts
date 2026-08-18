@@ -10,7 +10,6 @@ import { pool } from "./db.ts";
 import { registerRoutes } from "./routes.ts";
 import { ensureSchema } from "./schemaDdl.ts";
 import { isAllowedOrigin, isBehindProxy } from "./cors.ts";
-import { installProcessGuards } from "./socketSafety.ts";
 import * as fs from "fs";
 import * as path from "path";
 
@@ -233,11 +232,6 @@ export async function createApp(): Promise<CreatedApp> {
   const io = setupSocket(server);
 
   setupErrorHandler(app);
-
-  // Last, so that everything above — `ensureSchema` above all, which refuses
-  // to start on a schema it knows is wrong — fails the returned promise
-  // instead of being contained as an unhandled rejection.
-  installProcessGuards();
 
   return { app, server, io };
 }

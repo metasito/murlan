@@ -134,3 +134,94 @@ the per-process `authLimiter` ceiling. Its last two cases share one lobby specif
 under it. The next client added to that file returns `429 AUTH_RATE_LIMITED` with nothing
 explaining why. This is the same wall the *Batch 3 · RULE-01* Carried-forward row describes,
 now hit by a second suite; Batch 12 owns it.
+
+---
+
+## Batch 5 — Robustness and session safety
+
+### The audit's largest miss, found while implementing RES-09
+
+**`Alert.alert` is a no-op on the web bundle Replit actually serves.** `react-native-web`'s
+`Alert` is literally `static alert() {}`. Every `Alert.alert` call in `app/` therefore shows
+the player nothing on web.
+
+RES-09 hit it because its acceptance criterion — "the lobby is still shown with *a visible
+error*" — was unsatisfiable while the lobby surfaced errors through `Alert.alert`. That one
+site is fixed (an inline dismissible banner). **The rest are not**, and two of them matter:
+the quit confirmation and the "Partita interrotta" dialog in `app/(online)/game.tsx`. A
+confirmation dialog that never appears means the destructive branch never runs — on web, the
+quit button simply does nothing.
+
+No finding in the audit covers this. Filed as a **Carried forward** row owed by Batch 11.
+
+### A binding acceptance criterion that no CI job can ever satisfy
+
+Several findings across the audit name a `tests/e2e/*.spec.ts` case as their acceptance
+criterion. **`.github/workflows/ci.yml` runs no Playwright step at all** — typecheck, test,
+native, lint, build, boot-check, and nothing else. So those criteria are verified only by
+whoever happens to run the suite locally, on a harness that (see the Batch 4 entry above)
+reuses whatever server already holds its port.
+
+SEC-05's reconnect-safety half was in exactly that position and is now closed by an
+integration case instead. The general problem is not, and it is a gate-level defect rather
+than a per-finding one. Folded into the Batch 12 Carried-forward row that already owns
+`reuseExistingServer`.
+
+### Deliberate behaviour changes worth knowing about
+
+- **The integration harness no longer swallows unhandled rejections.** RES-04 moved
+  `installProcessGuards()` out of `createApp()` — which `tests/helpers/testServer.ts` boots
+  in-process — and into `server/index.ts`, which owns the process. Since Node 15 an unhandled
+  rejection with no handler throws, so a stray one inside server code that an integration
+  suite reaches now fails that suite's process instead of being logged. That is the better
+  outcome, and the full run is green at 793/0, but it is a change nothing pins.
+- **A deleted account still produces one ERROR log per hand it abandoned.** SEC-03 takes the
+  per-seat-transaction option rather than pre-filtering: the abandoned seat stays in
+  `gameResults`, its own transaction fails the foreign key, and it is logged and contained
+  while every other seat is written. A pre-filter on top would be a second mechanism for the
+  same property. If the log noise is unwanted, add it then.
+- **NET-06 uses `disconnect(true)` on the evicted socket.** A client build that predates
+  `SESSION_REPLACED` does not know to stop reconnecting, so two stale tabs would evict each
+  other indefinitely. `disconnect(false)` would make it terminal on socket.io's own terms as
+  defence in depth, at the cost of leaving the engine.io connection for the client to close.
+  Kept consistent with `evictUser`; worth a second opinion.
+
+### Narrow gaps left open on purpose
+
+- **`evictReplacedSession` hands over `socketRoomMap` but not `spectatorRoomMap`.** Evicting a
+  *spectating* socket drops the account out of `game.spectators` even though the account is
+  still connected. Benign today — no seat is held and the replacement is not watching either —
+  but it is the same asymmetry the seat handover fixes, and it will read as a bug the moment
+  spectating gains any per-account state.
+- **`tests/integration/sessionReplaced.test.ts` cannot distinguish the two orderings** of the
+  `userSocketMap` repoint versus the eviction. The disconnect handler awaits
+  `storage.updateLastSeen` between its two guards, so the connection handler's `set` always
+  wins the race either way. D5's ordering is correct by construction, not because the suite
+  proves it — do not read a green run as evidence there.
+- **The RES-09 error banner still costs ~36px** in a `MenuLayout scrollable={false}`. Capped
+  at two lines so it cannot grow further, but on a short landscape phone the base height can
+  still push the lower card off screen. Fixing it properly means touching `MenuLayout`, which
+  is Batch 11's territory.
+
+### Things the audit did not file, found while working
+
+- **`useCallback` dependency arrays in `context/OnlineGameContext.tsx` are unreliable, and lint
+  does not catch it.** NET-05 only became verifiable after adding `isSpectator` to
+  `leaveRoom`'s deps — without it the callback closed over the initial `false` and the fix
+  would have been a check that cannot fail. Roughly a dozen sibling `useCallback`s list
+  `[userId]` while closing over `socket`; those happen to be safe because `getSocket(userId)`
+  is stable. `react-hooks/exhaustive-deps` did not fire on the real miss under `expo lint`.
+  The whole file wants one pass with that rule set to error — which is adjacent to Batch 7's
+  PERF-03, whose whole subject is the `eslint-disable react-hooks` suppressions.
+- **`disconnectTimers` is keyed by userId, not by `(userId, room)`.** An account seated in one
+  room and dropping from another would have one timer overwrite the other. Not reachable today
+  because a socket holds at most one `socketRoomMap` entry, but that invariant is implicit and
+  stated nowhere.
+- **`logger.flush()` is only synchronous in production.** `server/socketSafety.ts`'s fatal
+  path flushes before exiting; in dev the `pino-pretty` transport is a worker and the flush is
+  asynchronous, so the fatal line can be lost. Harmless — the exit is unconditional either way
+  — and the comment is scoped to the production case, but it is not universally true.
+- **A second instance of the `node --test` / `tsx --test` discrepancy.** `tests/bootFailure.test.ts`
+  fails under `npx tsx --test` and passes under `node --test`, which is what `npm test` uses.
+  The Batch 4 entry records the same for `tests/integration/reconnect.test.ts`. Both files
+  document that they must own their process; `tsx` evidently does not give them one.

@@ -13,11 +13,19 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "@/context/AuthContext";
 import { connectSocket, disconnectSocket, setSocketAuthFailureHandler } from "@/lib/socket";
 import { useNotification } from "@/context/NotificationContext";
+import { SessionReplacedNotice } from "@/components/SessionReplacedNotice";
 import { t, translateServerPayload, type ServerPayload } from "@/lib/i18n";
 import type { Socket } from "socket.io-client";
 
 const RETRY_BASE_MS = 2000;
 const RETRY_MAX_MS = 30_000;
+
+/**
+ * The server closed this socket because the same account connected somewhere
+ * else. Terminal by design: reconnecting would evict that other session in
+ * turn, and the two would trade the account forever.
+ */
+const SESSION_REPLACED = "SESSION_REPLACED";
 
 interface PendingInvite {
   from: string;
@@ -56,6 +64,7 @@ export function SocketProvider({ children }: { children: ReactNode }) {
   const [onlineIds, setOnlineIds] = useState<Set<string>>(new Set());
   const [pendingInvite, setPendingInvite] = useState<PendingInvite | null>(null);
   const [gameInvites, setGameInvites] = useState<PendingInvite[]>([]);
+  const [sessionReplaced, setSessionReplaced] = useState<ServerPayload | null>(null);
   const socketRef = useRef<Socket | null>(null);
   // The socket's auth is a ticket-minting callback now, so the connected user
   // id has to be tracked here to tear the singleton down on logout.
@@ -69,6 +78,19 @@ export function SocketProvider({ children }: { children: ReactNode }) {
 
   const dismissGameInvite = useCallback((roomCode: string) => {
     setGameInvites((prev) => prev.filter((i) => i.roomCode !== roomCode));
+  }, []);
+
+  /**
+   * Claims the account back on this device. The only way out of the replaced
+   * state: nothing reconnects on its own once the server has said the session
+   * moved.
+   */
+  const reconnectHere = useCallback(() => {
+    setSessionReplaced(null);
+    const socket = socketRef.current;
+    if (!socket) return;
+    socket.io.reconnection(true);
+    socket.connect();
   }, []);
 
   useEffect(() => {
@@ -86,6 +108,7 @@ export function SocketProvider({ children }: { children: ReactNode }) {
       }
       setConnected(false);
       setOnlineIds(new Set());
+      setSessionReplaced(null);
       return;
     }
 
@@ -110,6 +133,7 @@ export function SocketProvider({ children }: { children: ReactNode }) {
 
     const onConnect = () => {
       setConnected(true);
+      setSessionReplaced(null);
       retryAttemptRef.current = 0;
       socket.emit("friend:get_online_list");
     };
@@ -215,6 +239,17 @@ export function SocketProvider({ children }: { children: ReactNode }) {
       });
     };
     const onSocketError = (payload: ServerPayload) => {
+      if (payload.code === SESSION_REPLACED) {
+        if (retryTimerRef.current) {
+          clearTimeout(retryTimerRef.current);
+          retryTimerRef.current = null;
+        }
+        retryAttemptRef.current = 0;
+        socket.io.reconnection(false);
+        socket.disconnect();
+        setSessionReplaced(payload);
+        return;
+      }
       showNotification({
         type: "game_error",
         title: t("common.error"),
@@ -274,6 +309,9 @@ export function SocketProvider({ children }: { children: ReactNode }) {
   return (
     <SocketContext.Provider value={contextValue}>
       {children}
+      {sessionReplaced ? (
+        <SessionReplacedNotice payload={sessionReplaced} onReconnect={reconnectHere} />
+      ) : null}
     </SocketContext.Provider>
   );
 }

@@ -106,6 +106,32 @@ test("online — two real browsers play a live 2-player game against each other"
   }
 });
 
+// Watch navigates on the server's answer, never on the emit. An unknown code is
+// refused, so no state ever arrives, and a game screen with nothing to draw is
+// a blank page with no text and no control whose only exit is the browser's
+// back button.
+test("online — watching a room that does not exist keeps the player in the lobby", async ({
+  page,
+  baseURL,
+}) => {
+  test.setTimeout(2 * 60_000);
+  await openApp(page, baseURL!);
+  await registerNewAccount(page, uniqueUsername("e2ewatch"));
+  await goToOnlineLobby(page);
+
+  await page.getByRole("button", { name: "Inserisci codice stanza" }).click();
+  await page.getByRole("textbox", { name: "Codice stanza" }).fill("ZZZZZZ");
+  await page.getByRole("button", { name: "Guarda" }).click();
+
+  // Announced, not just drawn — and by text, because NotificationBanner and
+  // OfflineBanner are always mounted and both carry role="alert".
+  await expect(
+    page.getByRole("alert").filter({ hasText: "Stanza non trovata" })
+  ).toBeVisible();
+  await expect(page.getByRole("button", { name: "Crea Stanza" })).toBeVisible();
+  expect(page.url()).not.toMatch(/\/game/);
+});
+
 // A phone in portrait, which is how most people hold one, and the narrowest
 // layout the online lobby has.
 //

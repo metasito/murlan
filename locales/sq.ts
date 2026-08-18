@@ -59,6 +59,7 @@ export const sq: Record<keyof typeof it, string> = {
   "server.FRIEND_REQUEST_ALREADY_SENT": "Kërkesa për miqësi është dërguar tashmë",
   "server.FRIEND_REQUEST_NOT_FOUND": "Kërkesa nuk u gjet",
   "server.GAME_INTERRUPTED_EMPTY_SEAT": "Loja u ndërpre: një vend bosh nuk mund të luajë.",
+  "server.GAME_INTERRUPTED_SERVER_ERROR": "Loja u ndërpre: gabim i serverit.",
   "server.PLAYER_AFK_AUTO_PASS": "{{username}} është joaktiv — kaloi automatikisht",
   "server.PLAYER_LEFT_ABANDONED": "{{username}} u largua nga loja.",
   "server.PLAYER_LEFT_BOT_TAKEOVER": "{{username}} u largua nga loja — kompjuteri po luan në vendin e tij.",
@@ -86,6 +87,7 @@ export const sq: Record<keyof typeof it, string> = {
   "server.NOT_FRIENDS": "Nuk jeni miq",
   "server.PLAYER_DISCONNECTED_GRACE": "{{username}} u shkëput. Ka {{seconds}} sekonda për t'u rikthyer.",
   "server.PLAYER_RECONNECTED": "{{username}} u kthye.",
+  "server.SESSION_REPLACED": "Llogaria jote u hap diku tjetër. Kjo seancë u mbyll.",
 
   // ---------------------------------------------------------------- auth.*
   "auth.subtitle": "Qasje Online",
@@ -160,6 +162,11 @@ export const sq: Record<keyof typeof it, string> = {
 
   // ---------------------------------------------------------- offlineBanner.*
   "offlineBanner.text": "⚠️ Nuk ka lidhje interneti",
+
+  // -------------------------------------------------------- sessionReplaced.*
+  "sessionReplaced.title": "Seanca u hap diku tjetër",
+  "sessionReplaced.reconnect": "Rilidhu këtu",
+  "sessionReplaced.reconnectA11yHint": "Kthe llogarinë tënde në këtë pajisje dhe mbyll seancën tjetër",
 
   // ---------------------------------------------------- notificationBanner.*
   "notificationBanner.dismissA11yHint": "Prek për të mbyllur njoftimin",
@@ -300,6 +307,7 @@ export const sq: Record<keyof typeof it, string> = {
 
   // -------------------------------------------------------------- onlineGame.*
   "onlineGame.reconnecting": "Lidhja u humb — po rilidhet…",
+  "onlineGame.connecting": "Në pritje të tavolinës…",
   "onlineGame.playerLeftTitle": "Loja u ndërpre",
   "onlineGame.playerLeftBody": "Një lojtar u largua nga loja.",
   "onlineGame.rejoinFailedTitle": "Rikthimi dështoi",

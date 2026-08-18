@@ -6,7 +6,7 @@
 // states (reconnect notice, a player leaving, a failed rejoin).
 
 import React, { useEffect, useRef, useState } from "react";
-import { View, Text, StyleSheet, Platform, Alert } from "react-native";
+import { View, Text, StyleSheet, Platform, Alert, ActivityIndicator } from "react-native";
 import { router } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
@@ -20,7 +20,8 @@ import {
   ReactionTrigger,
 } from "@/components/ReactionLayer";
 import { GameOverOverlay } from "@/components/GameOverOverlay";
-import { Colors, FontSize, Radius, Spacing } from "@/lib/theme";
+import { MenuButton } from "@/components/MenuButton";
+import { Colors, FontSize, Radius, Spacing, Type } from "@/lib/theme";
 import { hapticLight, hapticMedium } from "@/lib/haptics";
 import { useTranslation } from "@/lib/i18n";
 
@@ -86,7 +87,7 @@ export default function OnlineGameScreen() {
 
   const me = gameState?.players[mySeatIndex];
 
-  // Every hook must run unconditionally, before the `if (!gameState) return null` guard below.
+  // Every hook must run unconditionally, before the `if (!gameState)` guard below.
 
   useEffect(
     () => () => {
@@ -164,7 +165,28 @@ export default function OnlineGameScreen() {
     clearRejoinFailed();
   }, [rejoinFailed, clearRejoinFailed]);
 
-  if (!gameState) return null;
+  // No state yet: the first `game:state` is either still in flight or was never
+  // coming, because the request that would have produced it was refused. The
+  // two are indistinguishable from here, so the screen offers what is right
+  // either way — a way off it.
+  if (!gameState) {
+    return (
+      <View style={[styles.connecting, { paddingTop: insets.top, paddingBottom: insets.bottom }]}>
+        <ActivityIndicator color={Colors.gold} />
+        <Text style={styles.connectingText}>{t("onlineGame.connecting")}</Text>
+        <View style={styles.connectingAction}>
+          <MenuButton
+            label={t("onlineGame.backToLobby")}
+            variant="secondary"
+            onPress={() => {
+              leaveRoom();
+              goToLobby();
+            }}
+          />
+        </View>
+      </View>
+    );
+  }
 
   const myUserId = user?.id ?? "";
   const myRematchAnswer =
@@ -346,7 +368,26 @@ export default function OnlineGameScreen() {
   );
 }
 
+/** Keeps the lone button off the screen edges in landscape, where it is the
+ *  full width of a phone lying down. */
+const CONNECTING_ACTION_W = 280;
+
 const styles = StyleSheet.create({
+  connecting: {
+    flex: 1,
+    backgroundColor: Colors.bg,
+    alignItems: "center",
+    justifyContent: "center",
+    gap: Spacing.lg,
+  },
+  connectingText: {
+    ...Type.body,
+    fontSize: FontSize.md,
+    textAlign: "center",
+    paddingHorizontal: Spacing.xl,
+  },
+  connectingAction: { width: CONNECTING_ACTION_W, maxWidth: "100%" },
+
   reconnectBanner: {
     position: "absolute",
     top: 2,
