@@ -1,5 +1,6 @@
 import express from "express";
 import type { Request, Response, NextFunction } from "express";
+import compression from "compression";
 import helmet from "helmet";
 import pinoHttp from "pino-http";
 import type { Server as HttpServer } from "node:http";
@@ -202,6 +203,12 @@ export async function createApp(): Promise<CreatedApp> {
 
   setupCors(app);
   setupBodyParsing(app);
+
+  // Before every response-generating handler — the static asset mounts and
+  // registerRoutes' API responses both need to pass through this to be
+  // compressed. Socket.io is unaffected regardless of position here: it
+  // attaches to the raw http.Server, not the Express middleware chain.
+  app.use(compression());
 
   // Before the session middleware, which reads `session` on the very first
   // request that carries a cookie — and before any route touches a table.
