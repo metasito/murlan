@@ -467,6 +467,12 @@ export function GameTable({
   // Seeded from the state the table mounts on, so rejoining mid-round does not
   // replay the passes that happened before the viewer arrived.
   const prevPassCountRef = useRef(gameState.passCount);
+  const prevRoundClosedRef = useRef(
+    roundClosedWithWinner({
+      lastPlayedCombination: gameState.lastPlayedCombination,
+      roundWinner: gameState.roundWinner,
+    })
+  );
 
   // Nothing here scales: a fractional scale on a view containing text makes
   // React Native resample the already-rasterised glyphs, and PASSA/GIOCA read
@@ -831,12 +837,21 @@ export function GameTable({
   // server moving for a seat all announce themselves identically.
   //
   // `processPass` resets `passCount` to zero on the pass that closes a round,
-  // so that one raises no edge here: it is announced by the round-winner sting.
+  // so the closing pass raises no count edge and the round closing stands in
+  // for it. A round only ever closes on a pass, and heads-up every legal pass
+  // closes one — without this the sound would never fire in a two-player game
+  // at all. It layers under the round-winner sting, which is the beat after.
   useEffect(() => {
-    const prev = prevPassCountRef.current;
+    const prevCount = prevPassCountRef.current;
     prevPassCountRef.current = gameState.passCount;
-    if (gameState.passCount > prev) playCardPass();
-  }, [gameState.passCount]);
+    const closed = roundClosedWithWinner({
+      lastPlayedCombination: gameState.lastPlayedCombination,
+      roundWinner: gameState.roundWinner,
+    });
+    const wasClosed = prevRoundClosedRef.current;
+    prevRoundClosedRef.current = closed;
+    if (gameState.passCount > prevCount || (closed && !wasClosed)) playCardPass();
+  }, [gameState.passCount, gameState.lastPlayedCombination, gameState.roundWinner]);
 
   // A card can leave the hand without the player having touched it: the server
   // moves for a seat that ran out of clock, and every manche is a fresh deal.

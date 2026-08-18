@@ -294,9 +294,9 @@ describe('the pass sound', () => {
     await r.unmount();
   });
 
-  it('leaves the round-closing pass to the round-winner sting', async () => {
+  it('fires for the pass that closes the round, which raises no count edge', async () => {
     // `processPass` resets passCount to zero on the pass that closes a round,
-    // so there is no edge to fire on and the beat is not doubled up.
+    // so the close itself is the edge. It layers under the round-winner sting.
     const r = await render(
       table(
         state(4, {
@@ -322,7 +322,47 @@ describe('the pass sound', () => {
         )
       );
     });
+    expect(playCardPass).toHaveBeenCalledTimes(1);
+    await r.unmount();
+  });
+
+  it('heads-up: the viewer’s own pass closes the round and still sounds', async () => {
+    // Two seats means `passesNeeded` is 1, so every legal pass closes the
+    // round — this is the only pass a two-player game ever has.
+    const onPass = jest.fn();
+    const r = await render(
+      table(
+        state(2, {
+          lastPlayedCombination: single(KING),
+          lastPlayedBy: 1,
+          currentTurnIndex: 0,
+          passCount: 0,
+        }),
+        onPass
+      )
+    );
+
+    await act(async () => {
+      fireEvent.press(screen.getByTestId('btn-passa'));
+    });
+    expect(onPass).toHaveBeenCalledTimes(1);
     expect(playCardPass).not.toHaveBeenCalled();
+
+    await act(async () => {
+      r.rerender(
+        table(
+          state(2, {
+            lastPlayedCombination: null,
+            lastPlayedBy: 1,
+            currentTurnIndex: 1,
+            roundWinner: 1,
+            passCount: 0,
+          }),
+          onPass
+        )
+      );
+    });
+    expect(playCardPass).toHaveBeenCalledTimes(1);
     await r.unmount();
   });
 });
