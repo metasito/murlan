@@ -431,3 +431,102 @@ Both are the same lesson: a claim in a comment is not a check.
   behind the hand while the new `handGlow` pulses another over it, ~0.11 combined at peak.
   Deliberate and subtle, but if the design wants only the pulse to carry the wash, the static
   one is the one to drop.
+
+---
+
+## Batch 8 — Game feel
+
+### The batch's own headline, which is worse than the finding made it sound
+
+UX-03 is one line, and until it landed **the game had never once played its win or lose sound.**
+The lookup asked `gameState.rankings` for `viewer.name` — a username — where the engine fills it
+with ids (`player_0`). So `indexOf` returned `-1` on every path, `playGameWin`/`playGameLose`
+were unreachable, and `hapticSuccess()` fired unconditionally beside them, which meant **the
+player who came last got the winner's haptic.** Two assets nobody has ever heard in context now
+play, so their levels against `playRoundWin` are unaudited — someone should listen before this
+ships.
+
+### Two player-visible regressions the batch introduced and the review caught
+
+Both were reported as done and both were wrong. Worth recording because they share a shape:
+a derivation that is right for the case the author had in mind and wrong for the case the engine
+actually produces.
+
+- **The pass chip marked seats that never passed, at the end of every hand.** `passedSeats`
+  derives the passed set by walking back from `lastPlayedBy` to `currentTurnIndex`. But
+  `processPlay` returns *early* when a hand ends — before it advances the turn — so the
+  game-over state has `currentTurnIndex === lastPlayedBy` with a non-null combination, the
+  break condition is unreachable, and **every seat still holding cards** got a PASSO chip for
+  the 800 ms before the results overlay. In teams mode that is both losing partners. Exactly
+  what UX-02's fix risk names and what the helper's own doc-comment claimed it prevented. The
+  existing tests all used `currentTurnIndex !== lastPlayedBy`, and the engine-driven cases
+  stopped at a round close, never a hand end.
+- **The round-closing pass went silent.** The new sound fires on `passCount` increasing, but
+  `processPass` resets `passCount` to 0 on the pass that *closes* the round — and heads-up,
+  `passesNeeded` is 1, so **every** legal pass closes the round. In every 2-player game, which
+  is the mode the tutorial sends a first-timer to, your own PASSA would have made no sound
+  again, ever. The code comment disclosed the mechanism and presented the round-win sting as an
+  adequate substitute; it is a different event. Fixed by sounding the closing pass too.
+
+### A test whose title claimed more than its assertion
+
+`passMarker.test.tsx` asserted `queryAllByText(PASSED)).toHaveLength(n)` under titles reading
+*"marks every seat that has answered the round, **and no others**"* and *"marks the seat that
+passed, **not the seat still to answer**"*. Putting the chip on the wrong opponent slot passed
+both — on precisely the property the finding singled out as the one that must not be wrong.
+Now asserts seat identity. The lesson is cheap to restate: a count is not an identity, and the
+title is where the mismatch shows up first.
+
+### An Italian wording call nobody ratified
+
+The per-seat pass marker reads **PASSO**, not *PASSA*. The obvious word is byte-identical to
+the PASSA button's label, which would make one word mean both "an action you can take" and
+"a seat's state" on the same screen. *PASSO* is the player's own declaration and is ungendered;
+en is *PASSED*, sq *KALOI*. UX-02's open question 4 asked for this wording and was never
+answered in `DECISIONS.md`. Folded into the existing owner row about the Italian strings.
+
+### Two things the finding's proposed fix did not account for
+
+- `processPass` resets `passCount` on the round-closing pass, so "fire when `passCount`
+  increases" raises no edge there at all — see above.
+- `app/game.tsx` had become a *second* caller of `playCardPass` (the offline AFK auto-pass,
+  added by UX-07 earlier in this same batch). Firing the table's marker off committed state
+  would have doubled every offline auto-pass. Removed, and the screen now asserts it does *not*
+  play it.
+
+### Things the audit did not file, found while working
+
+- **`tests/e2e/helpers/bot.ts` had a latent dependency on a line UX-10 correctly deleted.**
+  `context/GameContext.tsx` used to wipe the selection on every AI turn, which incidentally
+  cleaned up after the driver's own `click()` timeouts. With that gone, residue from a timed-out
+  click survives into the next turn, pollutes every candidate combination, and — when the bot is
+  *leading*, where PASSA is disabled by design — ends in `StuckError`. Fixed here by carrying
+  the staged selection per page and intersecting it with the hand actually rendered.
+- **`tests/e2e/helpers/bot.ts` has a pre-existing full-timeout hang.** `tableDescription` does
+  `table.count()` then `table.getAttribute(...)` with no timeout; when the table unmounts
+  between the two — i.e. exactly when a game ends — `getAttribute` waits out the entire test
+  budget instead of letting the loop re-check `isFinished`. Carried forward to Batch 12.
+- **The E2E suite cannot boot while the integration database is up.** `scripts/dev-stack.mjs`
+  hardcodes 55432 for `murlan-dev-pg`, the port `murlan-pg` already holds. It then falls through
+  to `reuseExistingServer` — which is the Batch 4 row. Carried forward to Batch 12 with it.
+- **`describeTableForA11y` does not mention passed seats.** The chip's text is readable, but the
+  table's canonical accessibility description omits who has passed, so a screen-reader user gets
+  less than a sighted one from the batch's headline feature. A11Y-01 (Batch 9) owns that
+  function.
+- **`components/GameTable.tsx` still carries bare `zIndex: 10` and `zIndex: 20` literals.**
+  Batch 11 owns them; this batch added one more and it was caught and named before merge.
+- **Offline, the end of a hand is still silent after the sting** — `GameTable`'s unmount calls
+  `unloadSounds()` and `app/result.tsx` plays nothing, so the win/lose sting is the last thing
+  heard before a silent results screen.
+- **`app/(online)/game.tsx` never cleared the staged selection on a new deal.** UX-01's prune
+  drops ids the hand no longer holds, which is the opposite of what the manche boundary needs —
+  an id the *new* hand *does* hold is exactly the case that survives, and card ids are
+  deterministic `${rank}_${suit}`, so roughly one time in four the same card comes back and
+  renders already selected. Fixed here; the claim that the prune covered it was false.
+
+### Speed
+
+`.claude/commands/batch.md` gained one instruction this batch: run `node --test` on the touched
+file while iterating, and the batch's full verification command **once**, immediately before the
+push. `npm test` is two minutes with Postgres attached and was being run after every finding.
+Nothing merges unverified — the gate is unchanged, only the iteration loop.
