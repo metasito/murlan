@@ -111,6 +111,30 @@ describe("teams: every seat gets a placement", () => {
     assert.equal(next.gameOver, true);
     assert.deepEqual(next.rankings, ["player_0", "player_1", "player_2", "player_3"]);
   });
+
+  test("a seat finishing after the whole opposing pair is out ends the hand", () => {
+    // Seats 1 and 3 (team B) are both out and seat 0 finishes without its own
+    // partner having finished, so `teammateDone` is false — the configuration
+    // the hand-end disjunct exists for, and one nothing played through.
+    //
+    // The disjunct does not decide it on its own: at four seats a pair being
+    // wholly out leaves at most one seat holding cards, so the activePlayers
+    // check below reaches the same end. Deleting the disjunct leaves this
+    // green.
+    const state = teamsState([1, 0, 4, 0], {
+      currentTurnIndex: 0,
+      rankings: ["player_1", "player_3"],
+      firstPlayMade: true,
+    });
+    state.players[1].finishPosition = 1;
+    state.players[3].finishPosition = 2;
+
+    const next = processPlay(state, buildCombination(state.players[0].hand)!);
+
+    assert.equal(next.gameOver, true);
+    assert.deepEqual(next.rankings, ["player_1", "player_3", "player_0", "player_2"]);
+    assert.equal(next.players[2].finishPosition, 4, "the last seat is still placed");
+  });
 });
 
 describe("teams: the match resolves on the summed team total", () => {
