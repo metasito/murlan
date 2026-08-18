@@ -15,18 +15,18 @@ import { NotificationProvider, useNotification } from "@/context/NotificationCon
 import NotificationBanner from "@/components/NotificationBanner";
 import { OfflineBanner } from "@/components/OfflineBanner";
 import { initLocale } from "@/lib/i18n";
-import {
-  useFonts,
-  Rajdhani_400Regular,
-  Rajdhani_500Medium,
-  Rajdhani_600SemiBold,
-  Rajdhani_700Bold,
-} from "@expo-google-fonts/rajdhani";
-import {
-  Inter_400Regular,
-  Inter_500Medium,
-  Inter_600SemiBold,
-} from "@expo-google-fonts/inter";
+import { useFonts } from "expo-font";
+// One subpath per weight: each `@expo-google-fonts` package's root module
+// requires every weight and italic it ships, and Metro cannot drop an asset a
+// reachable module requires. These six are exactly the families named in
+// lib/tokens.ts and the handful of local styles — pinned by
+// tests/assetBarrels.test.ts.
+import { Rajdhani_500Medium } from "@expo-google-fonts/rajdhani/500Medium";
+import { Rajdhani_600SemiBold } from "@expo-google-fonts/rajdhani/600SemiBold";
+import { Rajdhani_700Bold } from "@expo-google-fonts/rajdhani/700Bold";
+import { Inter_400Regular } from "@expo-google-fonts/inter/400Regular";
+import { Inter_500Medium } from "@expo-google-fonts/inter/500Medium";
+import { Inter_600SemiBold } from "@expo-google-fonts/inter/600SemiBold";
 
 SplashScreen.preventAutoHideAsync();
 
@@ -53,7 +53,6 @@ function RootLayoutNav() {
 
 export default function RootLayout() {
   const [fontsLoaded, fontError] = useFonts({
-    Rajdhani_400Regular,
     Rajdhani_500Medium,
     Rajdhani_600SemiBold,
     Rajdhani_700Bold,
@@ -73,7 +72,12 @@ export default function RootLayout() {
     }
   }, [fontsLoaded, fontError, localeReady]);
 
-  if ((!fontsLoaded && !fontError) || !localeReady) return null;
+  // The tree renders before the fonts resolve: on web nothing covers the wait
+  // (dist/index.html is an empty #root), so blocking here is a blank page for
+  // the whole download. Text paints in the fallback face and swaps when the
+  // TTFs land. Native still waits behind the splash, which the effect above
+  // holds until fonts and locale are both settled.
+  if (!localeReady) return null;
 
   // ErrorBoundary sits inside SafeAreaProvider: its fallback needs insets to
   // lay itself out. ErrorFallback also tolerates their absence, so a crash in

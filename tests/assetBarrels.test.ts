@@ -1,12 +1,17 @@
 // tests/assetBarrels.test.ts — some packages register their assets from the
 // package root: `@expo/vector-icons`'s root module names one font file per
-// icon family. Metro cannot drop an asset a reachable module registers, so a
-// single named import from the root pulls every family's `.ttf` and every
-// family's glyph map into the bundle. The per-family subpaths
-// (`@expo/vector-icons/Ionicons`) are the documented public API and pull one.
+// icon family, and each `@expo-google-fonts` root requires every weight and
+// italic it ships. Metro cannot drop an asset a reachable module registers, so
+// one named import from the root pulls all of them. The subpaths
+// (`@expo/vector-icons/Ionicons`, `@expo-google-fonts/inter/400Regular`) are
+// the documented public API and pull one each.
 //
-// TypeScript cannot see the difference — both forms give the same component —
-// and the cost shows up only in a build, which is why this is pinned here.
+// TypeScript cannot see the difference — both forms give the same value — and
+// the cost shows up only in a build, which is why this is pinned here.
+//
+// The font half is pinned as an equality in both directions: a weight loaded
+// and never used is dead bytes, and a weight used but never loaded renders in
+// the fallback face with no error anywhere.
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
 import { readdirSync, readFileSync } from "node:fs";
@@ -30,6 +35,30 @@ function appSources(): [string, string][] {
 /** The module specifier of every `import … from "…"` in `src`. */
 function importedModules(src: string): string[] {
   return [...src.matchAll(/\bfrom\s+["']([^"']+)["']/g)].map((m) => m[1]);
+}
+
+/** Every name imported from a `@expo-google-fonts/*` subpath, across the app. */
+function loadedFontFamilies(): Set<string> {
+  const out = new Set<string>();
+  for (const [, src] of appSources()) {
+    const IMPORT = /import\s*\{([^}]*)\}\s*from\s*["']@expo-google-fonts\/[^"']+["']/g;
+    for (const m of src.matchAll(IMPORT)) {
+      for (const name of m[1].split(",")) {
+        const trimmed = name.trim();
+        if (trimmed) out.add(trimmed);
+      }
+    }
+  }
+  return out;
+}
+
+/** Every family named by a `fontFamily: "…"` literal, across the app. */
+function styledFontFamilies(): Set<string> {
+  const out = new Set<string>();
+  for (const [, src] of appSources()) {
+    for (const m of src.matchAll(/fontFamily:\s*["']([^"']+)["']/g)) out.add(m[1]);
+  }
+  return out;
 }
 
 describe("asset barrels", () => {
@@ -57,5 +86,22 @@ describe("asset barrels", () => {
       ["Feather", "Ionicons"],
       "each family adds its whole .ttf and glyph map to the bundle — update this list deliberately"
     );
+  });
+
+  test("no file imports a font weight from a @expo-google-fonts root", () => {
+    const offenders = appSources()
+      .filter(([, src]) =>
+        importedModules(src).some((m) => /^@expo-google-fonts\/[^/]+$/.test(m))
+      )
+      .map(([rel]) => rel);
+    assert.deepEqual(
+      offenders,
+      [],
+      `import from "@expo-google-fonts/<package>/<weight>" instead: ${offenders.join(", ")}`
+    );
+  });
+
+  test("the font weights loaded are exactly the ones styles name", () => {
+    assert.deepEqual([...loadedFontFamilies()].sort(), [...styledFontFamilies()].sort());
   });
 });

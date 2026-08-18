@@ -132,10 +132,13 @@ function renderMarkdown({ assets, deps }) {
   lines.push("");
   lines.push(
     "- `node_modules/` installed size is not the same as what Metro ships to the " +
-      "device. Metro tree-shakes per-file imports, so packages that bundle many " +
-      "assets internally (`@expo/vector-icons`, `@expo-google-fonts/*`) only " +
-      "contribute the specific icon families / font weights actually imported, " +
-      "not their full installed size."
+      "device, but Metro does not tree-shake assets. A module that is reached at " +
+      "all contributes every asset it requires, so the root module of " +
+      "`@expo/vector-icons` (one `.ttf` per icon family) or of an " +
+      "`@expo-google-fonts/*` package (one `.ttf` per weight and italic) ships " +
+      "the whole package. Both are therefore imported by subpath — " +
+      "`@expo/vector-icons/Ionicons`, `@expo-google-fonts/inter/400Regular` — " +
+      "which `tests/assetBarrels.test.ts` pins."
   );
   lines.push(
     "- `assets/images/icon.png` and `assets/images/splash-icon.png` dominate the " +
