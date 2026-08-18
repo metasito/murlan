@@ -14,8 +14,8 @@ import {
   PlayerType,
   MatchLength,
   targetsFor,
-  addHandScores,
   botWantsRematch,
+  foldHandIntoMatch,
   initializeGame,
   initializeRematch,
   nextDealFirstSeat,
@@ -26,9 +26,6 @@ import {
   processPass,
   aiChoosePlay,
   buildCombination,
-  resolveMatch,
-  resolveTeamMatch,
-  scoreHand,
   canPlay,
 } from "@/lib/gameEngine";
 import AsyncStorage from "@react-native-async-storage/async-storage";
@@ -56,8 +53,8 @@ export interface HandResult {
 
 /**
  * The match the manches belong to. Offline mirror of the server's
- * `OnlineGameState` match fields — same primitives from `lib/gameEngine`,
- * same escalation, so the two modes cannot drift apart.
+ * `OnlineGameState` match fields, folded forward by the same
+ * `lib/gameEngine` function, so the two modes cannot drift apart.
  */
 export interface MatchState {
   length: MatchLength;
@@ -88,52 +85,34 @@ function freshMatch(length: MatchLength, playerCount: number): MatchState {
 }
 
 /**
- * Folds a finished manche into the match: awards its placement points, then
- * either escalates the target, ends the match, or leaves it running.
- *
- * A single-manche game ends here by definition — its winner is whoever took
- * the manche, with no target involved.
+ * `foldHandIntoMatch` in the offline shape: every seat scores under its own
+ * engine player id, and none of them is a vacated seat, so no key is excluded.
  */
 export function applyHandToMatch(match: MatchState, finished: GameState): MatchState {
-  const points = scoreHand(finished.rankings, finished.players.length);
-  const scores = addHandScores(match.scores, points);
-  const hands = [...match.hands, { rankings: finished.rankings, pointsAwarded: points }];
-
-  if (match.length === "single") {
-    const champion = finished.players.find((p) => p.id === finished.rankings[0]);
-    return {
-      ...match,
-      scores,
-      hands,
-      over: true,
-      winners:
-        finished.gameMode === "teams" && champion?.team
-          ? finished.players.filter((p) => p.team === champion.team).map((p) => p.id)
-          : finished.rankings.slice(0, 1),
-      isDraw: false,
-    };
-  }
-
-  const teamOfId: Record<string, string> = {};
+  const teamOf: Record<string, string> = {};
   for (const p of finished.players) {
-    if (p.team) teamOfId[p.id] = p.team;
+    if (p.team) teamOf[p.id] = p.team;
   }
-  const resolution =
-    finished.gameMode === "teams" && Object.keys(teamOfId).length > 0
-      ? resolveTeamMatch(scores, teamOfId, match.target, finished.players.length)
-      : resolveMatch(scores, match.target, finished.players.length);
 
-  if (!resolution) return { ...match, scores, hands };
-  if (resolution.newTarget !== null) {
-    return { ...match, scores, hands, target: resolution.newTarget };
-  }
+  const folded = foldHandIntoMatch({
+    rankings: finished.rankings,
+    playerCount: finished.players.length,
+    length: match.length,
+    gameMode: finished.gameMode,
+    target: match.target,
+    cumulative: match.scores,
+    keyOf: (engineId) => engineId,
+    teamOf,
+  });
+
   return {
     ...match,
-    scores,
-    hands,
-    over: true,
-    winners: resolution.winners,
-    isDraw: resolution.isDraw,
+    scores: folded.cumulative,
+    hands: [...match.hands, { rankings: finished.rankings, pointsAwarded: folded.handByKey }],
+    target: folded.target,
+    over: folded.over,
+    winners: folded.winners,
+    isDraw: folded.isDraw,
   };
 }
 

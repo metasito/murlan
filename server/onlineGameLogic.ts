@@ -7,7 +7,7 @@
 // exercise the exact code path the server runs.
 import { botSeatNames, getBotPersonality } from "../lib/botPersonalities.ts";
 import type { BotPersonalityId } from "../lib/botPersonalities.ts";
-import { scoreHand, addHandScores, resolveMatch, resolveTeamMatch } from "../lib/gameEngine.ts";
+import { foldHandIntoMatch, resolveMatchFor } from "../lib/gameEngine.ts";
 import type { GameState, GameMode, MatchLength } from "../lib/gameEngine.ts";
 import type { GameResult } from "../lib/achievements.ts";
 
@@ -59,20 +59,13 @@ export function findViewerSeat(
 }
 
 /**
- * Strips vacated (`bot:<seat>`) entries out of a per-hand score breakdown
- * before it is merged into a match's cumulative scores. A bot-controlled
- * seat must never accumulate match points or become eligible to win the
- * match under the departed human's username.
+ * Whether a scoring key stands for a vacated seat rather than a person. Such
+ * a seat still appears in a hand's breakdown, but must never accumulate match
+ * points or become eligible to win the match under the departed human's
+ * username.
  */
-export function excludeBotSeats(
-  handByKey: Record<string, number>
-): Record<string, number> {
-  const scorable: Record<string, number> = {};
-  for (const [key, points] of Object.entries(handByKey)) {
-    if (key.startsWith("bot:")) continue;
-    scorable[key] = points;
-  }
-  return scorable;
+export function isBotSeatKey(key: string): boolean {
+  return key.startsWith("bot:");
 }
 
 /** The shape of GameState.exchangePhase, restated so this module keeps its
@@ -300,7 +293,7 @@ export function buildSeatRoster(
 /**
  * Scoring key -> team id, for the seated humans only. Vacated (`bot:<seat>`)
  * seats are left out on purpose: they are already excluded from
- * `cumulativeScores` (see `excludeBotSeats`), so including them here would add
+ * `cumulativeScores` (see `isBotSeatKey`), so including them here would add
  * a zero-scoring member that can never win but could be named as one.
  */
 export function teamKeyMap(
@@ -334,10 +327,13 @@ export function restoredMatchOver(args: {
 }): boolean {
   const { matchLength, gameMode, handOver, scores, target, teamOfKey, playerCount } = args;
   if (matchLength === "single") return handOver;
-  const resolution =
-    gameMode === "teams" && Object.keys(teamOfKey).length > 0
-      ? resolveTeamMatch(scores, teamOfKey, target, playerCount)
-      : resolveMatch(scores, target, playerCount);
+  const resolution = resolveMatchFor({
+    gameMode,
+    cumulative: scores,
+    teamOfKey,
+    target,
+    playerCount,
+  });
   return !!resolution && resolution.newTarget === null;
 }
 
@@ -392,62 +388,32 @@ export function resolveHandEnd(input: ResolveHandEndInput): ResolveHandEndResult
   const seatOfEngineId = new Map<string, number>();
   state.players.forEach((p, idx) => seatOfEngineId.set(p.id, idx));
 
-  const handByEngineId = scoreHand(state.rankings, state.players.length);
-  const handByKey: Record<string, number> = {};
-  for (const [engineId, points] of Object.entries(handByEngineId)) {
-    const seat = seatOfEngineId.get(engineId);
-    if (seat === undefined) continue;
-    handByKey[scoreKeyForSeat(playerMap, seat)] = points;
+  const teamOf: Record<string, string> = {};
+  for (const p of state.players) {
+    if (p.team) teamOf[p.id] = p.team;
   }
 
-  // A vacated seat is scored under `bot:<seat>` (see scoreKeyForSeat) purely
-  // so the per-hand breakdown has something to key off of. It must never
-  // accumulate towards the match, or a bot can cross the match target and be
-  // announced as the winner under the departed human's username.
-  const scorableHandByKey = excludeBotSeats(handByKey);
-  const cumulativeScores = addHandScores(input.cumulativeScores, scorableHandByKey);
-
-  let matchOver = false;
-  let matchTarget = input.matchTarget;
-  let matchWinners: string[] = [];
-  let isDraw = false;
-
-  if (matchLength === "single") {
-    // A quick game is one manche: whoever took it has won the match — and in
-    // teams mode the manche is taken by a pair, not by the seat that emptied
-    // its hand first (docs/RULES.md §11).
-    matchOver = true;
-    const topSeat = seatOfEngineId.get(state.rankings[0] ?? "");
-    const winningTeam = topSeat === undefined ? undefined : state.players[topSeat]?.team;
-    if (topSeat === undefined) {
-      matchWinners = [];
-    } else if (gameMode === "teams" && winningTeam) {
-      matchWinners = Object.entries(teamKeyMap(playerMap, state.players))
-        .filter(([, team]) => team === winningTeam)
-        .map(([key]) => key);
-    } else {
-      matchWinners = [scoreKeyForSeat(playerMap, topSeat)];
-    }
-  } else {
-    // Teams mode races to the target as a *pair* (docs/RULES.md §11: the two
-    // partners' placement points are summed), so the match must be resolved on
-    // the team total and both partners reported as winners. Free-for-all is
-    // unchanged.
-    const teamOfKey = teamKeyMap(playerMap, state.players);
-    const resolution =
-      gameMode === "teams" && Object.keys(teamOfKey).length > 0
-        ? resolveTeamMatch(cumulativeScores, teamOfKey, matchTarget, state.players.length)
-        : resolveMatch(cumulativeScores, matchTarget, state.players.length);
-    if (resolution) {
-      if (resolution.newTarget !== null) {
-        matchTarget = resolution.newTarget;
-      } else {
-        matchOver = true;
-        isDraw = resolution.isDraw;
-        matchWinners = resolution.winners;
-      }
-    }
-  }
+  const {
+    handByKey,
+    cumulative: cumulativeScores,
+    over: matchOver,
+    target: matchTarget,
+    winners: matchWinners,
+    isDraw,
+  } = foldHandIntoMatch({
+    rankings: state.rankings,
+    playerCount: state.players.length,
+    length: matchLength,
+    gameMode,
+    target: input.matchTarget,
+    cumulative: input.cumulativeScores,
+    keyOf: (engineId) => {
+      const seat = seatOfEngineId.get(engineId);
+      return seat === undefined ? null : scoreKeyForSeat(playerMap, seat);
+    },
+    accumulates: (key) => !isBotSeatKey(key),
+    teamOf,
+  });
 
   // Wire format: the clients index the scoreboard by display name.
   const byName: Record<string, number> = {};

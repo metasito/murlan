@@ -15,6 +15,7 @@ import assert from "node:assert/strict";
 import {
   aggregateTeamScores,
   buildCombination,
+  foldHandIntoMatch,
   processPlay,
   resolveMatch,
   resolveTeamMatch,
@@ -215,5 +216,83 @@ describe("teams: the match resolves on the summed team total", () => {
     );
     assert.ok(resolution);
     assert.deepEqual(resolution!.winners.sort(), ["u0", "u2"]);
+  });
+});
+
+// Seats 0/2 are team A, 1/3 team B. `foldHandIntoMatch` is where the pair
+// rule meets match progression: both authorities call it, so a partner
+// crossing the line alone has to name the pair on either side of the wire.
+describe("teams: folding a manche into the match", () => {
+  const teamOf = { player_0: "A", player_1: "B", player_2: "A", player_3: "B" };
+  const base = {
+    playerCount: 4,
+    gameMode: "teams" as const,
+    length: "match" as const,
+    target: 21,
+    teamOf,
+    keyOf: (engineId: string) => engineId,
+  };
+
+  test("the pair's summed total ends the match and names both partners", () => {
+    const result = foldHandIntoMatch({
+      ...base,
+      rankings: ["player_0", "player_1", "player_2", "player_3"],
+      cumulative: { player_0: 15, player_2: 2, player_1: 9, player_3: 8 },
+    });
+    assert.equal(result.over, true);
+    assert.deepEqual(result.winners.sort(), ["player_0", "player_2"]);
+    assert.equal(result.isDraw, false);
+  });
+
+  test("a single manche is taken by the pair, not the seat that emptied first", () => {
+    const result = foldHandIntoMatch({
+      ...base,
+      length: "single",
+      rankings: ["player_1", "player_0", "player_2", "player_3"],
+      cumulative: {},
+    });
+    assert.equal(result.over, true);
+    assert.deepEqual(result.winners.sort(), ["player_1", "player_3"]);
+  });
+
+  describe("with a partner who walked out", () => {
+    // The server's keys: seat 3 is vacated, so team B is one human and a
+    // `bot:3` sentinel that must stay out of the pair's total and out of its
+    // winners.
+    const seatOf: Record<string, number> = { p0: 0, p1: 1, p2: 2, p3: 3 };
+    const playerMap: Record<number, string> = { 0: "u0", 1: "u1", 2: "u2" };
+    const online = {
+      playerCount: 4,
+      gameMode: "teams" as const,
+      length: "match" as const,
+      target: 21,
+      teamOf: { p0: "A", p1: "B", p2: "A", p3: "B" },
+      keyOf: (engineId: string) => {
+        const seat = seatOf[engineId];
+        return seat === undefined ? null : (playerMap[seat] ?? `bot:${seat}`);
+      },
+      accumulates: (key: string) => !key.startsWith("bot:"),
+    };
+
+    test("the vacated seat contributes nothing to its pair's total", () => {
+      const result = foldHandIntoMatch({
+        ...online,
+        rankings: ["p3", "p1", "p0", "p2"],
+        cumulative: { u0: 9, u2: 8, u1: 12, "bot:3": 30 },
+      });
+      // Team B is u1 alone on 12 + 2 = 14; the sentinel's 30 is not theirs.
+      assert.equal(result.over, false);
+      assert.deepEqual(result.winners, []);
+    });
+
+    test("the pair wins on its human's points alone, and only they are named", () => {
+      const result = foldHandIntoMatch({
+        ...online,
+        rankings: ["p1", "p0", "p2", "p3"],
+        cumulative: { u0: 9, u2: 8, u1: 19 },
+      });
+      assert.equal(result.over, true);
+      assert.deepEqual(result.winners, ["u1"]);
+    });
   });
 });

@@ -5,7 +5,7 @@ import {
   seatOfUser,
   scoreKeyForSeat,
   findViewerSeat,
-  excludeBotSeats,
+  isBotSeatKey,
   buildSeatRoster,
   teamKeyMap,
   restoredMatchOver,
@@ -64,33 +64,16 @@ describe("seatOfUser / findViewerSeat", () => {
   });
 });
 
-describe("excludeBotSeats (bot-seat exclusion from match scoring)", () => {
-  test("drops bot: entries, keeps real userIds", () => {
-    const hand = { alice: 3, "bot:1": 2, carol: 1, "bot:3": 0 };
-    assert.deepEqual(excludeBotSeats(hand), { alice: 3, carol: 1 });
-  });
-
-  test("a fully bot-vacated hand scores nobody", () => {
-    assert.deepEqual(excludeBotSeats({ "bot:0": 3, "bot:1": 2 }), {});
-  });
-
-  test("no bot seats: passthrough unchanged", () => {
-    const hand = { alice: 3, bob: 2 };
-    assert.deepEqual(excludeBotSeats(hand), hand);
-  });
-
-  test("does not mutate the input", () => {
-    const hand = { alice: 3, "bot:0": 1 };
-    const copy = { ...hand };
-    excludeBotSeats(hand);
-    assert.deepEqual(hand, copy);
+describe("isBotSeatKey (bot-seat exclusion from match scoring)", () => {
+  test("a bot: sentinel is a vacated seat, a userId is not", () => {
+    assert.equal(isBotSeatKey("bot:1"), true);
+    assert.equal(isBotSeatKey("alice"), false);
   });
 
   test("a userId that merely contains the substring 'bot:' but doesn't start with it is kept", () => {
     // scoreKeyForSeat only ever produces `bot:<seat>` as a prefix, but this
     // pins the exact matching rule (startsWith, not includes).
-    const hand = { "robot:99": 5 };
-    assert.deepEqual(excludeBotSeats(hand), { "robot:99": 5 });
+    assert.equal(isBotSeatKey("robot:99"), false);
   });
 });
 
@@ -104,13 +87,10 @@ describe("scoreKeyForSeat", () => {
     assert.equal(scoreKeyForSeat({}, 2), "bot:2");
   });
 
-  test("bot: sentinels round-trip through excludeBotSeats", () => {
+  test("the sentinels it produces are the ones isBotSeatKey rejects", () => {
     const playerMap = { 0: "alice" }; // seat 1 vacated
-    const handByKey = {
-      [scoreKeyForSeat(playerMap, 0)]: 3,
-      [scoreKeyForSeat(playerMap, 1)]: 0,
-    };
-    assert.deepEqual(excludeBotSeats(handByKey), { alice: 3 });
+    assert.equal(isBotSeatKey(scoreKeyForSeat(playerMap, 0)), false);
+    assert.equal(isBotSeatKey(scoreKeyForSeat(playerMap, 1)), true);
   });
 });
 
