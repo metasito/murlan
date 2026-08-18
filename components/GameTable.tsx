@@ -322,8 +322,8 @@ function TurnTimer({
 
   if (!active) return null;
   const urgent = timeLeft <= urgentThresholdSeconds(seconds);
-  // The bare number said nothing about being a deadline until it had already
-  // taken a turn; the clock face says it before the first expiry.
+  // The clock face is what says the number is a deadline, before the first
+  // expiry has said it for them.
   return (
     <View style={styles.timerGroup}>
       <Ionicons
