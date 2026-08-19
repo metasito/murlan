@@ -1,5 +1,6 @@
 import { useEffect } from "react";
 import { View, Text, StyleSheet } from "react-native";
+import type { StyleProp, ViewStyle } from "react-native";
 import Animated, {
   useAnimatedStyle,
   useSharedValue,
@@ -211,10 +212,18 @@ function PassedChip() {
 
 // Both markers share one wrapping row. A seat carrying both would otherwise add
 // two badge heights to a column laid out inside the fixed TOP_SECTION_H.
-function SeatBadges({ passed, isBot }: { passed: boolean; isBot: boolean }) {
+function SeatBadges({
+  passed,
+  isBot,
+  style,
+}: {
+  passed: boolean;
+  isBot: boolean;
+  style?: StyleProp<ViewStyle>;
+}) {
   if (!passed && !isBot) return null;
   return (
-    <View style={seatStyles.seatBadgeRow}>
+    <View style={[seatStyles.seatBadgeRow, style]}>
       {passed && <PassedChip />}
       {isBot && <BotSeatBadge />}
     </View>
@@ -296,7 +305,11 @@ export function SideOppSlot({
         <Text maxFontSizeMultiplier={TABLE_FONT_SCALE_MAX} style={seatStyles.oppName} numberOfLines={1}>
           {player.name}
         </Text>
-        <SeatBadges passed={passed} isBot={player.type === "ai"} />
+        <SeatBadges
+          passed={passed}
+          isBot={player.type === "ai"}
+          style={seatStyles.seatBadgeRowSide}
+        />
       </View>
       {count > 0 && player.finishPosition === undefined && (
         <CardFan count={count} maxCards={5} />
@@ -333,15 +346,16 @@ const seatStyles = StyleSheet.create({
     overflow: "hidden",
   },
 
-  // Wraps rather than growing, because the column it sits in has no room to
-  // spare below the avatar and the name.
   seatBadgeRow: {
     flexDirection: "row",
     flexWrap: "wrap",
     justifyContent: "center",
     gap: Spacing.xs,
-    maxWidth: OPP_LABEL_MAX_W,
   },
+  // Only the side columns: they sit against the screen edge with the fan
+  // leaning inboard past them. The top column is centred with room either
+  // side, where a cap buys nothing and costs the second badge height.
+  seatBadgeRowSide: { maxWidth: OPP_LABEL_MAX_W },
   // Neutral, not red: red is the PASSA control and the bomb, and this is
   // neither a control nor a dramatic play — it is a seat that has receded.
   passedChip: {
