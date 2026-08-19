@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach, jest } from '@jest/globals';
 import React from 'react';
 import { Text, AccessibilityInfo } from 'react-native';
-import { render } from '@testing-library/react-native';
+import { act, render } from '@testing-library/react-native';
 
 import {
   usePrefersReducedMotion,
@@ -25,6 +25,17 @@ function Probe() {
   return <Text>{reduced ? 'reduced' : 'full'}</Text>;
 }
 
+/**
+ * The system setting arrives from a promise, so the mount is followed by an
+ * empty async act() to settle it. Awaiting `render` instead lets it land
+ * between two act() scopes, where React reports the update as untracked.
+ */
+async function mount() {
+  const view = await render(<Probe />);
+  await act(async () => {});
+  return view;
+}
+
 describe('motion preference overrides the system setting', () => {
   let systemAsksToReduce: jest.SpiedFunction<typeof AccessibilityInfo.isReduceMotionEnabled>;
 
@@ -38,8 +49,10 @@ describe('motion preference overrides the system setting', () => {
     } as ReturnType<typeof AccessibilityInfo.addEventListener>);
   });
 
-  afterEach(() => {
-    setMotionPreference('system');
+  afterEach(async () => {
+    // This file's hook runs before the library's auto-cleanup, so the reset
+    // still reaches a mounted tree.
+    await act(async () => setMotionPreference('system'));
     jest.restoreAllMocks();
   });
 
@@ -49,29 +62,28 @@ describe('motion preference overrides the system setting', () => {
 
   it('"on" reduces motion even when the system does not ask for it', async () => {
     setMotionPreference('on');
-    const view = await render(<Probe />);
+    const view = await mount();
     expect(view.getByText('reduced')).toBeTruthy();
   });
 
   it('"off" keeps full motion even when the system asks to reduce it', async () => {
     systemAsksToReduce.mockResolvedValue(true);
     setMotionPreference('off');
-    const view = await render(<Probe />);
+    const view = await mount();
     expect(view.getByText('full')).toBeTruthy();
   });
 
   it('"system" follows the OS', async () => {
     systemAsksToReduce.mockResolvedValue(true);
-    const view = await render(<Probe />);
-    // The OS value arrives from a promise, so let it settle.
-    expect(await view.findByText('reduced')).toBeTruthy();
+    const view = await mount();
+    expect(view.getByText('reduced')).toBeTruthy();
   });
 
   it('a change re-renders a component that is already mounted', async () => {
     setMotionPreference('off');
-    const view = await render(<Probe />);
+    const view = await mount();
     expect(view.getByText('full')).toBeTruthy();
-    setMotionPreference('on');
-    expect(await view.findByText('reduced')).toBeTruthy();
+    await act(async () => setMotionPreference('on'));
+    expect(view.getByText('reduced')).toBeTruthy();
   });
 });

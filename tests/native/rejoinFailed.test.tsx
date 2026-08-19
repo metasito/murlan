@@ -9,7 +9,7 @@ import React from 'react';
 import { Text } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { render, waitFor } from '@testing-library/react-native';
+import { act, render, waitFor } from '@testing-library/react-native';
 
 import { OnlineGameProvider, useOnlineGame } from '@/context/OnlineGameContext';
 import { NotificationProvider, useNotification } from '@/context/NotificationContext';
@@ -85,10 +85,14 @@ async function mountRejoining(roomId: string) {
   return view;
 }
 
-// Delivered straight to the handler, not inside act(): the provider's own
-// listeners are what the socket calls at runtime, and wrapping them here makes
-// react-test-renderer drop the resulting updates. `waitFor` flushes them.
-const deliver = (event: string, payload: unknown) => listeners.get(event)?.(payload);
+// The provider's own listeners are what the socket calls at runtime. Async
+// act(), not the synchronous form: several of these handlers settle a promise
+// before they set state, and a sync act() closes before that lands.
+const deliver = async (event: string, payload: unknown) => {
+  await act(async () => {
+    listeners.get(event)?.(payload);
+  });
+};
 
 const failure = (roomId: string) => ({
   roomId,
@@ -110,10 +114,10 @@ describe('game:rejoin_failed', () => {
   it('ignores a reply for a room the player has already left behind', async () => {
     const view = await mountRejoining('R1');
 
-    deliver('room:state', roomState('R2'));
+    await deliver('room:state', roomState('R2'));
     await waitFor(() => expect(shown(view, 'room')).toBe('R2'));
 
-    deliver('game:rejoin_failed', failure('R1'));
+    await deliver('game:rejoin_failed', failure('R1'));
 
     expect(shown(view, 'room')).toBe('R2');
     expect(shown(view, 'failed')).toBe('false');
@@ -125,7 +129,7 @@ describe('game:rejoin_failed', () => {
   it('still tears down while that room is the outstanding attempt', async () => {
     const view = await mountRejoining('R1');
 
-    deliver('game:rejoin_failed', failure('R1'));
+    await deliver('game:rejoin_failed', failure('R1'));
 
     await waitFor(() => expect(shown(view, 'failed')).toBe('true'));
     expect(shown(view, 'room')).toBe('none');
@@ -147,7 +151,7 @@ describe('game:rejoin_failed', () => {
       emitted.length = 0;
 
       for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
-        deliver('game:rejoin_failed', { roomId: 'R1', code: 'SERVER_ERROR' });
+        await deliver('game:rejoin_failed', { roomId: 'R1', code: 'SERVER_ERROR' });
         expect(shown(view, 'failed')).toBe('false');
         expect(await AsyncStorage.getItem(ACTIVE_ROOM_KEY)).toBe('R1');
         jest.advanceTimersByTime(RETRY_DELAY_MS);
@@ -157,7 +161,7 @@ describe('game:rejoin_failed', () => {
 
       // Past the cap it is treated as terminal, so a server that is genuinely
       // down does not leave the player retrying into the rate limiter.
-      deliver('game:rejoin_failed', { roomId: 'R1', code: 'SERVER_ERROR' });
+      await deliver('game:rejoin_failed', { roomId: 'R1', code: 'SERVER_ERROR' });
       jest.advanceTimersByTime(RETRY_DELAY_MS * 4);
       expect(emitted).toHaveLength(MAX_RETRIES);
 
@@ -176,7 +180,7 @@ describe('game:rejoin_failed', () => {
   it('does not survive into a spectated table', async () => {
     const view = await mountRejoining('R1');
 
-    deliver('game:rejoin_failed', failure('R1'));
+    await deliver('game:rejoin_failed', failure('R1'));
     await waitFor(() => expect(shown(view, 'failed')).toBe('true'));
 
     await waitFor(() => spectate?.('ABCDEF'));
