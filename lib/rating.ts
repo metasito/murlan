@@ -107,22 +107,14 @@ export interface RatedSeat {
 }
 
 /**
- * The rating change for every seat in one manche.
+ * The rating change for every seat in one manche: `n(n-1)/2` pairwise results,
+ * actual and expected share each normalised to sum to 1. At `n = 2` it reduces
+ * to textbook Elo.
  *
- * A hand with `n` seats is `n(n-1)/2` pairwise results — whoever placed higher
- * beat whoever placed lower. Both the actual and the expected share are
- * normalised to sum to 1 across the seats. At `n = 2` this reduces to textbook
- * Elo, which is the check that the generalisation is the right one.
- *
- * **Conservation:** with one K across the table the deltas sum to exactly zero,
- * and the rounding below is what keeps that exact rather than approximate. When
- * the seats carry different K — a provisional account among veterans — the sum
- * is not zero and cannot be: paying a newcomer faster than their opponents lose
- * is what a provisional period *is*. The leak per hand is bounded by the spread
- * between the fastest and slowest K, once per pairing a seat takes part in.
- * Both properties are pinned by tests/rating.test.ts.
- *
- * Fewer than two seats is not a contest and returns no deltas.
+ * **Conservation:** one K across the table makes the deltas sum to exactly
+ * zero, and the rounding below is what keeps that exact. Mixed K — a
+ * provisional account among veterans — cannot sum to zero, which is what a
+ * provisional period is. Both pinned by tests/rating.test.ts.
  */
 export function ratingDeltas(seats: RatedSeat[]): Map<string, number> {
   const out = new Map<string, number>();

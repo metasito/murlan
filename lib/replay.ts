@@ -46,14 +46,10 @@ export interface ReplaySummary {
 /**
  * How long a finished hand stays replayable.
  *
- * Age, not "each player's newest N": a replay row belongs to up to four
- * players at once, so a per-player cap could not delete a row without first
- * checking that the other three had also moved past it. Age bounds the table
- * by games-per-day in a single indexed statement, and a replay is a "look at
- * what just happened" feature, not an archive.
- *
- * Lives here rather than in server/replays.ts because the profile screen
- * tells the player the same number the server prunes on.
+ * Age, not "each player's newest N": a row belongs to up to four players, so a
+ * per-player cap could not delete one without checking the other three. Lives
+ * here rather than server/replays.ts because the profile screen shows the
+ * player the same number the server prunes on.
  */
 export const REPLAY_RETENTION_DAYS = 14;
 

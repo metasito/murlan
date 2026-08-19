@@ -41,19 +41,12 @@ function pointsForPlacement(placement: number, playerCount: number): number {
 }
 
 /**
- * Persists one hand's outcome — stats counters, a capped history row, and
- * any newly-earned achievements — for every human player in `results`. Bot
- * seats (`bot:<seat>`) are skipped entirely: they have no `users` row, so
- * writing stats for them would violate every foreign key here.
+ * Persists one hand's outcome for every human in `results`. Bot seats
+ * (`bot:<seat>`) are skipped: no `users` row, so every foreign key here would
+ * fail. `gameMode` is threaded in because GameResult has no such field and
+ * `match_history.gameMode` is NOT NULL.
  *
- * `gameMode` is one value for the whole batch (every result in a single call
- * comes from the same hand). GameResult itself has no gameMode field —
- * match_history.gameMode is NOT NULL, so the caller
- * (server/socket.ts's handleGameOver) threads the real value through as a
- * second argument rather than this module fabricating one.
- *
- * Callers must never `await` this on the game-over path — see the call site
- * in server/socket.ts for why.
+ * Callers must never `await` this on the game-over path — see handleGameOver.
  */
 export async function recordGameResult(
   results: GameResult[],

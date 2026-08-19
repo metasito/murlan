@@ -121,20 +121,15 @@ function SuitMark({
 
 // ─── Joker figures ────────────────────────────────────────────────────────────
 //
-// Only the two jokers are drawn: the source deck's joker is four suit symbols,
-// identical in its red and black variants, and Murlan's two jokers are the
-// deck's top two cards and must be told apart at a glance. J/Q/K use real
-// engraved art instead (see CourtArt).
+// Murlan's two jokers are the deck's top two cards and must be told apart at a
+// glance, which the source deck's identical red/black art does not allow.
 //
-// The joker is one half-figure printed twice, the second rotated 180° about the
-// panel centre, so it reads right way up from either end. The half is authored
-// in a fixed PANEL_BOX_W × PANEL_HALF_H box and the panel scales it.
+// One half-figure printed twice, the second rotated 180° about the panel
+// centre, authored in a fixed PANEL_BOX_W × PANEL_HALF_H box.
 //
-// Every feature is at least ~2 local units across. At the size these render
-// (a ~32pt-wide panel, so roughly 0.8px per local unit) anything finer resolves
-// to a smudge. The two differ only in what they hold:
-//   joker_colored  belled jester cap, star-tipped marotte (Red Joker)
-//   joker_bw       belled jester cap, plain marotte (Black Joker)
+// Keep every feature at least ~2 local units across: at ~0.8px per unit
+// anything finer resolves to a smudge. The two differ only in the marotte —
+// star-tipped for the red joker, plain for the black.
 type FigureKind = "joker_colored" | "joker_bw";
 
 // The robe is drawn as line work with a wash inside it, never as a solid fill:
@@ -560,16 +555,12 @@ function CardViewBase({
         disabled={!interactive}
         {...a11yHidden(decorative)}
         accessibilityLabel={decorative ? undefined : cardSpokenName(card, t)}
-        // A card with no onPress at all is information, not a control: the
-        // pile, and the card the loser hands over between hands. It keeps its
-        // name so a screen reader can read it, but claiming `button` there
-        // announces an action that does not exist.
+        // No onPress at all is information, not a control — it keeps its name
+        // but claiming `button` would announce an action that does not exist.
         //
-        // A card that *has* an onPress but is momentarily disabled — the hand
-        // while it is not your turn — stays a button and reports itself
-        // unavailable, which is what a screen reader expects of a control that
-        // will come back. Dropping the role there would make the hand vanish
-        // and reappear in the button rotation every turn.
+        // An onPress that is momentarily disabled stays a button reporting
+        // itself unavailable: dropping the role would make the hand vanish and
+        // reappear in the button rotation every turn.
         {...a11yState({ role: onPress ? "button" : undefined, selected, disabled: !interactive })}
         {...selectedHint.props}
         style={[

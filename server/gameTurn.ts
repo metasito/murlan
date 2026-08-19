@@ -196,16 +196,13 @@ export function armTurn(io: SocketServer, roomId: string) {
 }
 
 /**
- * Arms the room's turn scheduler only if nothing is already pending for the
- * seat that has to act. For the rejoin paths, which must not disturb a clock
- * that is already running: `armTurn` clears the room's timers before it arms,
- * so calling it on every rejoin hands the acting seat a fresh full AFK window
- * each time — a seated player could then hold the table open indefinitely on
- * their own turn by rejoining in a loop.
+ * Arms the turn scheduler only if nothing is pending for the acting seat.
+ * `armTurn` clears the room's timers before arming, so calling it on every
+ * rejoin would hand the acting seat a fresh AFK window each time — a player
+ * could hold the table open indefinitely by rejoining in a loop.
  *
- * A table with no pending timer is armed unconditionally, which is what the
- * game rehydrated from the database after a restart needs: it has no timers at
- * all, and nothing else would ever arm one.
+ * A table with no pending timer is armed unconditionally: that is what a game
+ * rehydrated after a restart needs, since nothing else would ever arm one.
  */
 export function armTurnIfIdle(io: SocketServer, roomId: string) {
   const game = activeGames.get(roomId);
@@ -330,10 +327,9 @@ function startAfkTimer(
  * order as a stable tiebreak, the same ordering the engine uses when a hand
  * ends with cards still out.
  *
- * Every seat must reach `rankings`: it is what the scoreboard awards from and
- * what the stats writer reads a result from, so a seat missing from it played
- * no game at all. Seats that already emptied their hand keep the position they
- * earned.
+ * Every seat must reach `rankings` — the scoreboard awards from it and the
+ * stats writer reads it. Seats that already emptied their hand keep the
+ * position they earned.
  */
 function concedeHand(game: OnlineGameState, winnerSeat: number | undefined) {
   const state = game.gameState;

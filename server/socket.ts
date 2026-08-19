@@ -91,15 +91,11 @@ import type { GameState } from "../lib/gameEngine.ts";
 import { appendReplayMove, startReplayLog } from "./replayShape.ts";
 
 /**
- * Handshakes one account may complete per minute.
- *
- * Socket.io answers `/socket.io/*` on the shared http.Server before Express
- * ever sees it, so no express-rate-limit instance reaches the handshake — and
- * an accepted connection costs several database round-trips before the client
- * has emitted anything. Matched to the ticket limiter's 60/min
- * (`server/routes.ts`), which mints one ticket per connection attempt: a
- * smaller budget here would lock a phone out of its own game while its
- * connection flaps.
+ * Handshakes one account may complete per minute. Socket.io answers
+ * `/socket.io/*` before Express sees it, so no express-rate-limit instance
+ * reaches the handshake. Matched to the ticket limiter's 60/min
+ * (`server/routes.ts`), which mints one ticket per attempt — a smaller budget
+ * locks a phone out of its own game while its connection flaps.
  */
 const HANDSHAKES_PER_MINUTE = 60;
 const HANDSHAKE_WINDOW_MS = 60_000;
@@ -119,17 +115,11 @@ export function isUserOnline(userId: string): boolean {
 }
 
 /**
- * Throws an account off the server once its `users` row is gone: the seat is
- * released to a bot exactly as a `room:leave` does, and the socket is closed.
+ * Throws an account off the server once its `users` row is gone: a socket
+ * authenticates once and `socket.data.userId` is never re-checked.
  *
- * A socket authenticates once at the handshake and `socket.data.userId` is
- * never re-checked, so without this a deleted account keeps its seat and keeps
- * playing under an id no row answers to.
- *
- * Call it only after the delete has committed — releasing the seat can end the
- * hand, and the hand's writes must not race the transaction removing the row.
- * Never throws: the account is already gone, and the caller's response must not
- * turn on how the teardown went.
+ * Call only after the delete has committed — releasing the seat can end the
+ * hand, and the hand's writes must not race the transaction. Never throws.
  */
 export async function evictUser(userId: string): Promise<void> {
   const io = _io;
@@ -172,11 +162,8 @@ export async function evictUser(userId: string): Promise<void> {
 }
 
 /**
- * The one internal a test cannot reach any other way: the containment every
- * timer body runs under. The property that matters — a throw closes the table
- * instead of freezing it — needs a body that throws on demand, and `_io` is
- * private to this module. Everything else a test needs is exported by the
- * module that owns it.
+ * The one internal a test cannot reach any other way: `_io` is private to this
+ * module, and the containment property needs a timer body that throws on demand.
  */
 export const __testables = {
   runTimerBody: (label: string, roomId: string, fn: () => void) =>
@@ -184,12 +171,9 @@ export const __testables = {
 };
 
 // ─── Server ───────────────────────────────────────────────────────────────────
-
 /**
- * The upgrade request once `sessionMiddleware` has run on it. express-session
- * attaches its session to Express' `Request`, which this is not, and types the
- * attachment as always present — the handshake reaches the auth guard whether
- * the store answered or not.
+ * express-session types its attachment as always present. The handshake reaches
+ * the auth guard whether the store answered or not.
  */
 type HandshakeRequest = IncomingMessage & {
   session?: Session & Partial<SessionData>;
@@ -271,17 +255,12 @@ export function setupSocket(httpServer: HttpServer) {
     }
     logger.debug({ userId, username, socketId: socket.id }, "Socket connected");
 
-    // Every onEvent(...)/socket.on(...) registration below is synchronous and
-    // must run before this function's first `await`. Socket.io starts
-    // delivering client packets the instant the transport is up — a client
-    // that emits on its own "connect" handler (the app's actual reconnect
-    // path: OnlineGameContext fires game:rejoin from there) can beat an
-    // `await` placed ahead of these registrations, and a packet that arrives
-    // with no listener attached is silently dropped: no error, no ack, the
-    // player just never hears back. The reconnect-notice and friends-list
-    // work below genuinely needs to await the database, so it runs after
-    // instead, once every listener already exists.
-
+    // Every registration below must run before this function's first `await`.
+    // Socket.io delivers packets the instant the transport is up, and a client
+    // that emits from its own "connect" handler — OnlineGameContext fires
+    // game:rejoin there — beats an `await` placed ahead of them. A packet with
+    // no listener is dropped silently. The work that needs the database runs
+    // after instead.
     // ── Room events ──────────────────────────────────────────────────────────
 
     onEvent(
@@ -311,11 +290,9 @@ export function setupSocket(httpServer: HttpServer) {
 
     // ── Spectating ────────────────────────────────────────────────────────
     //
-    // A spectator is a viewer with no seat. sanitizeStateForPlayer blanks the
-    // hand of every seat that is not the viewer's, so a seatless viewer sees
-    // no cards at all — there is no spectator-specific sanitiser to get wrong.
-    // For the same reason a spectator cannot act: every game handler resolves
-    // the actor by seat and returns when it does not match.
+    // A spectator is a viewer with no seat, so sanitizeStateForPlayer already
+    // blanks every hand for them and every game handler resolves the actor by
+    // seat and returns. There is no spectator-specific path to get wrong.
     onEvent(
       socket,
       "room:spectate",
@@ -408,24 +385,13 @@ export function setupSocket(httpServer: HttpServer) {
     );
 
     /**
-     * Coming back to a waiting lobby on a new socket. A lobby disconnect frees
-     * the seat straight away (handleSeatRelease), so there is nothing to hold
-     * open and nothing to restore beyond taking the seat again and re-attaching
-     * the socket; the claim answers with the same rejections room:join does,
-     * and `already_joined` is the good case — the row outlived the drop.
+     * Coming back to a waiting lobby on a new socket. Only for a caller who was
+     * already in the room — a seat row that survived, or a `lobbyDropouts`
+     * record; anyone else holding the code is joining, which is `room:join`.
      *
-     * This event is only for a caller who was in the room: a seat row that
-     * survived, or a `lobbyDropouts` record of the drop. Anyone else holding
-     * the code is joining, and `room:join` is the event that seats them.
-     *
-     * The host role goes back to the account that lost it on the way out and
-     * to nobody else, so the migration handleSeatRelease made is undone rather
-     * than handed to whoever reaches the lowest seat first.
-     *
+     * The host role goes back to the account that lost it and to nobody else.
      * Without this the returning socket has no socketRoomMap entry, so every
-     * later room event resolves to no room and returns silently — the host's
-     * start button becomes a dead control and a guest waits on a roster the
-     * server no longer lists them in.
+     * later room event resolves to no room and returns silently.
      */
     onEvent(
       socket,
@@ -513,7 +479,6 @@ export function setupSocket(httpServer: HttpServer) {
           });
           return;
         }
-        // One query for the whole candidate set instead of two per room.
         const waiting = await storage.getWaitingRooms(
           Array.from(publicRoomIds),
           userId
@@ -645,12 +610,10 @@ export function setupSocket(httpServer: HttpServer) {
           userId: p.userId,
           username: p.user.username,
         }));
-        // Engine seat index is the position in this roster, sorted by seat.
-        // playerMap is keyed the same way, so a gap in the DB seat numbering
-        // (or a bot filling that gap) can never shift a hand onto the wrong
-        // player. Bot seats are simply left out of playerMap — armTurn/
-        // autoMoveForSeat already treat a missing playerMap entry as "drive
-        // this seat with the AI", exactly the path a disconnect takeover uses.
+        // Engine seat index is the position in this roster, sorted by seat, and
+        // playerMap is keyed the same way — so a gap in the DB seat numbering
+        // cannot shift a hand onto the wrong player. Bot seats are left out of
+        // playerMap, which armTurn already reads as "drive this seat with the AI".
         const roster = buildSeatRoster(humans, room.maxPlayers, { fillWithBots, botPersonality });
         if (room.gameMode === "teams" && roster.length !== TEAMS_PLAYER_COUNT) {
           socket.emit("room:error", {
@@ -954,12 +917,8 @@ export function setupSocket(httpServer: HttpServer) {
         game.gameState = newGameState;
         game.gameMode = room.gameMode;
         game.maxPlayers = room.maxPlayers;
-        // A rematch deals a brand new hand — last hand's bomb/joker plays
-        // must not leak into this one's achievement evaluation, its move log
-        // has already been written to its own replay, and the seats walked out
-        // on have already been recorded as the forfeit they were. Carrying
-        // those forward would record the same departure again in every
-        // remaining manche of the match.
+        // A rematch deals a new hand: last hand's flags would record the same
+        // bombs, jokers and departures again in every remaining manche.
         game.handFlags = {};
         game.moveLog = startReplayLog();
         game.abandonedSeats.clear();
@@ -986,15 +945,11 @@ export function setupSocket(httpServer: HttpServer) {
       "game:rejoin",
       GameRejoinSchema,
       async ({ roomId }) => {
-        // onEvent's own catch turns a throw into a generic `game:error`,
-        // which the client's rejoin-failed handling never listens for —
-        // leaving the player stranded on a dead screen. A failure in here
-        // must always resolve as game:rejoin_failed instead.
-        //
-        // Every one of those carries the wire's error contract — { code,
-        // message } — so the client can render it in the player's language.
-        // `roomId` stays a top-level field alongside it: the client's
-        // stale-reply guard matches on it, so it must not move into params.
+        // onEvent's catch turns a throw into a generic `game:error`, which the
+        // client's rejoin-failed handling never listens for. Every failure in
+        // here must resolve as game:rejoin_failed instead, carrying { code,
+        // message } — and `roomId` stays top-level, because the client's
+        // stale-reply guard matches on it.
         try {
           const existingGame = activeGames.get(roomId);
           if (existingGame) {
@@ -1241,7 +1196,6 @@ export function setupSocket(httpServer: HttpServer) {
         .filter((id) => userSocketMap.has(id));
       socket.emit("friend:online_list", { onlineIds });
     } catch {
-      // non-critical
     }
 
     // ── Disconnect ───────────────────────────────────────────────────────────
@@ -1379,11 +1333,7 @@ function roomStatePayload(
   };
 }
 
-/**
- * The seats of a running table in the shape `room_players` reads back. It is
- * the same roster a rematch deals from — `room_players` holds humans only and
- * is rebuilt from the game rather than the other way round.
- */
+/** The seats of a running table in the shape `room_players` reads back. */
 function seatedHumansOf(game: OnlineGameState) {
   return game.gameState.players.flatMap((player, seatIndex) => {
     const seatUserId = game.playerMap[seatIndex];
@@ -1395,8 +1345,7 @@ function seatedHumansOf(game: OnlineGameState) {
 
 /**
  * The room as the live game knows it, for when the `rooms` row cannot be read.
- * Seat 0 is the host by construction, and `joinCode` is carried in the
- * persisted envelope precisely so this stays answerable after a restart.
+ * `joinCode` rides in the persisted envelope so this survives a restart.
  */
 function roomOf(game: OnlineGameState) {
   return {
@@ -1410,13 +1359,11 @@ function roomOf(game: OnlineGameState) {
 }
 
 /**
- * Re-sends `room:state` to a single reconnecting/rejoining socket. The
- * client's only route back into the game screen is `room` (non-null) ->
- * `/(online)/room` -> `gameState` (non-null) -> `/(online)/game`; replying to
- * a rejoin with `game:state` alone leaves `room` null and strands the player
- * on the lobby holding a live hand with no way back in. A reconnecting client
- * still holds the room it had; a cold start holds nothing, so the roster read
- * failing has to cost the roster and not the reply.
+ * Re-sends `room:state` to a single rejoining socket. The client's only route
+ * back into the game screen is `room` -> `/(online)/room` -> `gameState` ->
+ * `/(online)/game`, so replying with `game:state` alone strands the player on
+ * the lobby holding a live hand. A failed roster read must cost the roster and
+ * not the reply.
  */
 async function emitRoomStateTo(socket: Socket, roomId: string, game: OnlineGameState) {
   const room = await storage.getRoomById(roomId).catch((err: unknown) => {
@@ -1436,14 +1383,12 @@ async function emitRoomStateTo(socket: Socket, roomId: string, game: OnlineGameS
 }
 
 /**
- * Puts a socket back at a table it holds a seat at: room membership, the two
- * snapshots the client's navigation chain needs to render the game, the notice
- * the rest of the table sees, and the turn scheduler.
+ * Puts a socket back at a table it holds a seat at.
  *
  * The one emitter of `game:player_reconnected`, so its payload cannot differ
- * between the `game:rejoin` handler and the connection handler's grace-timer
- * block. The caller owns the seat check and the `room_players` row: the
- * grace-timer path still holds a row, the rejoin path may not.
+ * between the two paths that reach it. The caller owns the seat check and the
+ * `room_players` row — the grace-timer path still holds one, the rejoin path
+ * may not.
  */
 async function rejoinSocketToTable(
   io: SocketServer,
@@ -1456,11 +1401,8 @@ async function rejoinSocketToTable(
   socket.join(roomId);
   socketRoomMap.set(socket.id, roomId);
 
-  // Two DB reads, and the rejoin does not depend on either: the seat is
-  // already valid and `game:state` below is what the table is drawn from. The
-  // handler's blanket catch turns any throw into a SERVER_ERROR rejoin
-  // failure, so letting this one propagate would forfeit a live game over a
-  // roster refresh.
+  // Caught, not propagated: the handler's blanket catch would turn a failed
+  // roster refresh into a SERVER_ERROR that forfeits a live game.
   await emitRoomStateTo(socket, roomId, game).catch((err: unknown) =>
     logger.warn({ err, roomId, userId }, "emitRoomStateTo failed")
   );
@@ -1522,17 +1464,12 @@ function seatClaimCode(
 }
 
 /**
- * Releases a seat: the room_players row, the user's timers, and — when the
- * room still holds a live game — the seat in it.
+ * Releases a seat: the room_players row, the user's timers, and the seat in a
+ * live game. A `room:leave` and a lost connection differ only in what the
+ * caller can hand over, so the seat-side work lives in one place.
  *
- * The two ways a seat is released are a `room:leave` and a lost connection,
- * and they differ only in what the caller can hand over: a socket to take out
- * of the socket.io room, and whether the lobby is told a player left. The
- * seat-side work is identical, which is why it lives in one place.
- *
- * Runs on the disconnect path inside a `void (async () => …)`, so every
- * storage call is `.catch`-guarded: an unguarded throw there is a logged
- * failure that silently strands the room.
+ * Runs on the disconnect path inside a `void (async () => …)`, so every storage
+ * call is `.catch`-guarded: an unguarded throw there strands the room.
  */
 async function handleSeatRelease(
   io: SocketServer,
@@ -1605,39 +1542,23 @@ async function handleSeatRelease(
       roomStatePayload({ ...room, hostUserId: newHostId }, remaining)
     );
   } else if (activeGames.has(roomId)) {
-    // A live game in memory is the only authority on whether the seat is still
-    // held: `rooms.status` reads "finished" between manches too, so it cannot
-    // tell an ended match from a table waiting to deal again. Removing the DB
-    // row alone leaves the seat live in the in-memory game — auto-playing the
-    // leaver's hand mid-manche, or blocking the rematch gate between them.
+    // `rooms.status` reads "finished" between manches too, so only the
+    // in-memory game knows whether the seat is still held. Removing the DB row
+    // alone leaves it live — auto-playing the leaver's hand, or blocking the
+    // rematch gate.
     await vacateSeat(io, roomId, userId, username);
   }
 }
 
 /**
- * Enforces one live socket per account: the newest connection keeps the
- * account and the socket it replaced is told why before it is closed.
+ * Enforces one live socket per account: the newest connection keeps it.
  *
- * `userSocketMap` must already name the new socket when this is called. The
- * replaced socket's own disconnect handler reads it, and both of its guards
- * then decline to act — the mapping no longer matches that socket id, so it is
- * left alone, and the account still has a socket, so no
- * `game:player_disconnected` is announced and no grace timer is armed. The
- * player keeps their seat; only the connection changes.
+ * `userSocketMap` must already name the new socket — the replaced socket's
+ * disconnect handler reads it and then declines to act, so the room
+ * association has to move with the account or nothing releases the seat.
  *
- * Which is why the room association has to move with the account. Those same
- * guards mean nothing else will release the seat, and the replacement only
- * acquires a `socketRoomMap` entry of its own if the client happens to rejoin —
- * a device that never held the room code never does. Handing the entry over
- * keeps the seat reachable by the room's broadcasts and leaves the ordinary
- * disconnect path owning its release, so closing the replacement announces the
- * drop, arms the grace and hands the seat to a bot exactly as one connection
- * always did.
- *
- * The client stops reconnecting when it sees this code
- * (`context/SocketContext.tsx`). It has to: socket.io retries a closed
- * transport forever, so two tabs would otherwise evict each other for as long
- * as both are open.
+ * The client stops reconnecting on this code (`context/SocketContext.tsx`):
+ * socket.io retries forever, so two tabs would evict each other indefinitely.
  */
 function evictReplacedSession(
   io: SocketServer,
@@ -1666,11 +1587,8 @@ function evictReplacedSession(
   replaced.disconnect(true);
 }
 
-/**
- * Tells every friend who is online that `userId` just came online. Takes the
- * friend rows rather than reading them, so the connection handler pays for one
- * `getFriends` and not two.
- */
+/** Takes the friend rows rather than reading them: the connection handler pays
+ *  for one `getFriends`, not two. */
 function announceOnlineToFriends(
   io: SocketServer,
   userId: string,
@@ -1691,12 +1609,11 @@ async function emitFriendStatusOffline(
   userId: string,
   lastSeen: string
 ) {
-  // Short debounce: if the user reconnects within 400ms, skip the offline emit
+  // Debounced, and re-checked after every await: a reconnect inside any of
+  // these windows must cancel the offline notice rather than race it.
   await new Promise((resolve) => setTimeout(resolve, 400));
-  // Abort if user already reconnected before the delay elapsed
   if (userSocketMap.has(userId)) return;
   const friends = await storage.getFriends(userId).catch(() => []);
-  // Double-check after the DB query: reconnect might have happened during getFriends
   if (userSocketMap.has(userId)) return;
   friends.forEach((f) => {
     const friendSocket = userSocketMap.get(f.friend.id);

@@ -23,14 +23,10 @@ export interface DrainOptions {
  * Resolves once no client has been checked out of `pool` for `quietMs`, or
  * once `timeoutMs` elapses. Returns whether it drained.
  *
- * A single observation of zero would not mean anything: the chains this exists
- * to protect — the disconnect handler, `handleGameOver`, `persistGameState` —
- * are sequences of awaited queries, and the count drops to zero in the gap
- * between two of them. Quiescence has to hold for a moment to be quiescence.
- *
- * That makes `quietMs` a constraint on the callers: a fire-and-forget chain
- * that pauses longer than it between two queries reads as drained and will be
- * cut off mid-sequence at shutdown.
+ * A single observation of zero means nothing: the chains this protects are
+ * sequences of awaited queries, and the count drops to zero between two of
+ * them. That makes `quietMs` a constraint on callers — a fire-and-forget chain
+ * that pauses longer reads as drained and is cut off at shutdown.
  */
 export async function drainPool(
   pool: PoolActivity,

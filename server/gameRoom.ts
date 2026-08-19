@@ -18,11 +18,9 @@ export interface OnlineGameState {
   /** Ready gate for the next manche of the running match, by userId. */
   rematchVotes: Set<string>;
   /**
-   * Answers to the side-panel rematch question, by userId. Asked while the
-   * closing manche is still in play and read once the match ends; a seat that
-   * never answered counts as a no. Bot seats are not stored — they have no
-   * userId to key by, and abstain from the verdict entirely (see
-   * countRematchAnswers).
+   * Answers to the side-panel rematch question, by userId. A seat that never
+   * answered counts as a no. Bot seats are absent — no userId to key by — and
+   * abstain from the verdict (countRematchAnswers).
    */
   rematchIntents: Map<string, boolean>;
   /** userId (or `bot:<seat>`) -> cumulative match points. */
@@ -33,41 +31,32 @@ export interface OnlineGameState {
   matchLength: MatchLength;
   matchOver: boolean;
   /**
-   * seat -> combination flags played by that seat during the *current hand*
-   * only (reset whenever a new hand deals — game start and rematch). Feeds
-   * GameResult.playedBomb/playedJoker at game-over: the engine itself
-   * (lib/gameEngine.ts) does not track this, and GameResult has no other
-   * honest source for it. Persisted inside the game_state envelope alongside
-   * schemaVersion, so a restart mid-hand does not silently cost the seat its
-   * bomb/joker achievement eligibility.
+   * seat -> combination flags for the *current hand* only, reset whenever one
+   * deals. The engine does not track this, and GameResult has no other honest
+   * source for playedBomb/playedJoker. Persisted in the game_state envelope so
+   * a restart mid-hand does not cost the seat its achievement eligibility.
    */
   handFlags: Record<number, { bomb: boolean; joker: boolean }>;
   /**
-   * seat -> the userId who walked out on the hand being played, for seats
-   * vacated while they still held cards. `playerMap` has already forgotten
-   * them by then and a seat missing from it scores as `bot:<seat>`, which
-   * every stats and ladder write drops, so this is the only thing that still
-   * ties the seat to a person. Read at game over to record it as a real
-   * last-place finish, and cleared wherever a new hand deals — the forfeit is
-   * recorded once, not in every remaining manche of the match.
+   * seat -> the userId who walked out on the hand being played. `playerMap` has
+   * forgotten them by then and a seat missing from it scores as `bot:<seat>`,
+   * which every stats and ladder write drops — so this is the only thing still
+   * tying the seat to a person. Cleared wherever a new hand deals: the forfeit
+   * is recorded once, not in every remaining manche.
    *
-   * In memory only: putting it in the persisted `game_state` envelope would
-   * change a stored shape, and a GAME_SCHEMA_VERSION bump disposes every live
-   * game on its next rejoin.
+   * Memory only — persisting it would need a GAME_SCHEMA_VERSION bump, which
+   * disposes every live game.
    */
   abandonedSeats: Map<number, string>;
   /**
-   * When the acting seat's AFK window runs out, in server time. Undefined
-   * whenever nothing is on the clock — a vacated seat waiting on a bot, or a
-   * finished hand. Memory only: it is re-armed on the next move and would be
-   * meaningless after a restart.
+   * When the acting seat's AFK window runs out, in server time. Undefined when
+   * nothing is on the clock. Memory only — re-armed on the next move.
    */
   turnDeadlineMs?: number;
   /**
-   * The seat the next manche deals from. The two extra cards of a 54-card
-   * deal land on it and its neighbour, so it advances every manche — seat 0 is
-   * always the host, and a fixed origin hands the host's half of the table a
-   * bigger hand for the whole match.
+   * The seat the next manche deals from. The two extra cards of a 54-card deal
+   * land on it and its neighbour, so it advances every manche — seat 0 is always
+   * the host, and a fixed origin would favour the host's half all match.
    */
   dealFirstSeat: number;
   /**
@@ -78,12 +67,10 @@ export interface OnlineGameState {
   /**
    * This hand's move log, written once to `match_replays` at game over.
    *
-   * In memory only, unlike handFlags: the game_state envelope is rewritten
-   * after every move, and carrying a few hundred combinations through each of
-   * those writes would buy nothing but a replay of a hand a restart
-   * interrupted — a hand that has no replay yet either way. `null` means this
-   * hand cannot produce one (rehydrated after a restart, or past
-   * MAX_REPLAY_MOVES) and nothing will be written for it.
+   * Memory only, unlike handFlags: the envelope is rewritten after every move,
+   * and carrying a few hundred combinations through each would buy nothing.
+   * `null` means this hand cannot produce a replay — rehydrated after a
+   * restart, or past MAX_REPLAY_MOVES — and none will be written.
    */
   moveLog: ReplayMove[] | null;
 }
@@ -98,19 +85,13 @@ export const userSocketMap = new Map<string, string>();
 export const publicRoomIds = new Set<string>();
 
 /**
- * Who lost their connection to a waiting lobby, per room id: userId -> whether
- * they held the room at the moment they dropped.
+ * Who lost their connection to a waiting lobby: room id -> userId -> whether
+ * they held the room when they dropped.
  *
- * A lobby disconnect deletes the `room_players` row immediately, so nothing in
- * the database still says the caller was ever seated. This is that evidence,
- * and `room:rejoin` is its only reader: without an entry (and without a
- * surviving seat row) a caller holding the six-character code is arriving, not
- * returning, and `room:join` is their event. It is also the only thing that may
- * hand the room back — the host role returns to the account that lost it and to
- * nobody else.
- *
- * In memory: a restart drops every socket anyway, so there is no reconnect left
- * to answer.
+ * A lobby disconnect deletes the `room_players` row at once, so this is the
+ * only evidence the caller was ever seated, and `room:rejoin` its only reader:
+ * with no entry and no seat row, a caller holding the code is arriving. It is
+ * also the only thing that hands the room back to the account that lost it.
  */
 export const lobbyDropouts = new Map<string, Map<string, boolean>>();
 

@@ -201,10 +201,8 @@ export function OnlineGameProvider({ userId, children }: { userId: string; child
   const requestedRoomIdRef = useRef<string | null>(null);
   const rejoinRetriesRef = useRef(0);
   const rejoinRetryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  // The server now stamps every game:state with the viewer's authoritative
-  // seat index (see sanitizeStateForPlayer on the server). -1 is an explicit
-  // "unknown" sentinel — it must never be confused with a real seat (0..3),
-  // which silently defaulting to 0 used to do.
+  // The server stamps every game:state with the viewer's seat index
+  // (sanitizeStateForPlayer). -1 is an explicit "unknown" — never a real seat.
   const [mySeatIndex, setMySeatIndex] = useState(-1);
   const [turnDeadline, setTurnDeadline] = useState<TurnDeadline>(NO_TURN_DEADLINE);
 

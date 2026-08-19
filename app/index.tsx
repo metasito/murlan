@@ -39,10 +39,8 @@ import { a11yState } from "@/lib/a11y";
  *
  * Deliberately not components/MenuButton.tsx, which twelve other screens use —
  * that is a pill-shaped CTA with variants and sizes, and this is a row in a
- * list. Named apart because it used to be called MenuButton too, and the
- * collision is not harmless: the accent fill bug lived here for exactly as long
- * as it did because the shared component clips its gradient and has no padding
- * conflict, so reading that one told you nothing about this one.
+ * list. The names must stay apart: the shared component clips its gradient and
+ * has no padding conflict, so reading it tells you nothing about this one.
  */
 interface HomeMenuRowProps {
   label: string;

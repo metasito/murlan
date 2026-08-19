@@ -254,14 +254,9 @@ const SESSION_TABLE_STATEMENTS = [
  * columns added to tables that already existed, then indexes (which may target
  * one of those new columns), then the session table.
  *
- * Deliberately narrow: it understands exactly the schema features
- * `shared/schema.ts` currently uses (enums, varchar/text/integer/boolean/
- * jsonb/timestamp columns, single-column foreign keys with `onDelete`, simple +
- * composite primary keys, plain-column and expression indexes/unique indexes
- * in any access method, `.unique()` columns) and throws a descriptive error
- * for anything else (check constraints, RLS, non-default schemas,
- * parameterized SQL defaults, composite foreign keys) rather than silently
- * emitting incomplete DDL.
+ * Deliberately narrow: it understands only the schema features
+ * `shared/schema.ts` uses today, and throws a descriptive error naming itself
+ * for anything else rather than emitting incomplete DDL.
  */
 export function schemaStatements(): string[] {
   const tables = Object.values(schema).filter((v) => is(v, PgTable)) as PgTable[];
@@ -382,10 +377,9 @@ export async function assertRenamesApplied(pool: Pick<Pool, "query">): Promise<v
  * safe: it throws against a database that still holds a column
  * `shared/schema.ts` has renamed, which only `npm run db:push` can carry out.
  *
- * Not wrapped in a transaction: `ALTER TYPE ... ADD VALUE` is the one statement
- * here Postgres restricts inside one, and a half-applied additive schema is
- * recoverable by the next boot anyway. A failure is rethrown so the server
- * refuses to start rather than serving requests against a schema it knows is
+ * Not wrapped in a transaction: Postgres restricts `ALTER TYPE ... ADD VALUE`
+ * inside one, and a half-applied additive schema is recoverable next boot. A
+ * failure is rethrown so the server refuses to start on a schema it knows is
  * wrong.
  */
 export async function ensureSchema(pool: Pool): Promise<void> {

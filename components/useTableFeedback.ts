@@ -105,16 +105,13 @@ export function useTableFeedback({
     prevExchangeActiveRef.current = exchangeActive;
   }, [exchangeActive]);
 
-  // A pass moves nothing on the felt, so the sound is the whole event — and it
-  // belongs to every seat, not only the viewer's own tap. Keyed on the state
-  // the pass produced rather than on the tap, so a bot, an opponent and the
+  // A pass moves nothing on the felt, so the sound is the whole event. Keyed
+  // on the state the pass produced, not the tap, so a bot, an opponent and the
   // server moving for a seat all announce themselves identically.
   //
-  // `processPass` resets `passCount` to zero on the pass that closes a round,
-  // so the closing pass raises no count edge and the round closing stands in
-  // for it. A round only ever closes on a pass, and heads-up every legal pass
-  // closes one — without this the sound would never fire in a two-player game
-  // at all. It layers under the round-winner sting, which is the beat after.
+  // `processPass` zeroes `passCount` on the pass that closes a round, so the
+  // round closing stands in for that edge — heads-up, every legal pass closes
+  // one, and without this a two-player game would hear nothing.
   useEffect(() => {
     const prevCount = prevPassCountRef.current;
     prevPassCountRef.current = passCount;

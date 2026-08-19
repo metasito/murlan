@@ -100,19 +100,13 @@ export function visibleExchangePhase(
 }
 
 /**
- * True when a table was contested by enough real people for its outcome to be
- * worth recording in stats / match history / achievements.
+ * True when a table was contested by enough real people to record in stats,
+ * history and achievements. About what gets *recorded*, never what is allowed:
+ * one human plus bots stays fully playable.
  *
- * A private room of one human plus bots stays fully playable — practice
- * against the AI is a feature — but the human's wins there are guaranteed
- * points, which would trivially unlock `match_champion`, `iron_will` and
- * endless streaks. This is about what gets *recorded*, never about what is
- * allowed.
- *
- * The line is bot *majority*: 1 human + 3 bots and 1 human + 2 bots are out;
- * an even split (1 v 1, 2 v 2) still counts. Seats vacated mid-game count as
- * bots, so "invite three friends, have them all leave" is not a route back to
- * the same free points.
+ * The line is bot *majority* — an even split (1v1, 2v2) still counts. Seats
+ * vacated mid-game count as bots, so having friends leave is not a route to
+ * free points.
  */
 export function isContestedTable(humanSeats: number, botSeats: number): boolean {
   return botSeats <= humanSeats;
@@ -142,17 +136,13 @@ export interface PersistedMatch {
 
 /**
  * The stored `game_state` blob: everything about a live table except the room
- * id that keys it and the `updated_at` the abandoned-game sweep filters on.
+ * id that keys it and the `updated_at` the sweep filters on.
  *
- * One versioned document rather than a column each, so a
- * `GAME_SCHEMA_VERSION` bump refuses a stale row whole; a column outside it
- * would be rehydrated alongside the state the bump just rejected. It also
- * costs nothing to add a field to, where a new column cannot be written until
- * someone runs `db:push` on Replit and every persist fails silently until they
- * do.
+ * One versioned document rather than a column each, so a `GAME_SCHEMA_VERSION`
+ * bump refuses a stale row whole — and adding a field costs no `db:push`.
  *
- * `gameState` is nested, not spread: `GameState` has its own `gameMode`, so a
- * flat envelope would have the match's overwrite the hand's.
+ * `gameState` is nested, not spread: `GameState` has its own `gameMode`, which
+ * a flat envelope would have the match's overwrite.
  */
 export interface PersistedEnvelope<S> {
   schemaVersion: number;

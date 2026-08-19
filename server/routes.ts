@@ -20,11 +20,9 @@ import { getReplayForUser, listReplaysForUser } from "./replays.ts";
 import { getLeaderboard, getRating } from "./ratings.ts";
 import { z } from "zod";
 
-// Every JSON error body below carries a stable machine-readable `code`
-// alongside the existing Italian `message`/`error` text. The client
-// localises by `code` (see lib/i18n.ts's `translateServerPayload`) and
-// falls back to the plain-text Italian string if a code is ever unknown to
-// it — the server does not keep its own copy of the translation table.
+// Every JSON error body carries a stable machine-readable `code` alongside
+// plain-text `message`/`error`. The client localises by `code` and falls back
+// to the text: the server keeps no translation table of its own.
 /**
  * Route-parameter validation via `safeParse`, not `.parse`: `.parse` throws
  * on a bad value, which Express turns into an uncaught 500 logged as a
