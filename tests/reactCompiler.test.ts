@@ -1,18 +1,13 @@
-// tests/reactCompiler.test.ts — the game table stays under the React Compiler.
+// tests/reactCompiler.test.ts — every screen and component stays under the
+// React Compiler.
 //
 // app.json turns on `experiments.reactCompiler`, which babel-preset-expo turns
 // into babel-plugin-react-compiler with `panicThreshold: 'NONE'` for a
 // production build: a component the compiler cannot handle is left uncompiled
 // with no error and no warning, and the hand is rebuilt three to five times per
-// move. A single `eslint-disable react-hooks` comment is enough to cause it —
-// the compiler refuses to optimise any component in a file that switches those
-// rules off.
-//
-// So this compiles the hot-path files the way the build does and reads the
-// plugin's own diagnostics. It is an acceptance test rather than a grep,
-// because a bailout has several possible causes (a suppressed lint rule,
-// a ref written during render, manual memoization the compiler cannot preserve)
-// and only the compiler knows which of them are present.
+// move. So this compiles the app the way the build does and reads the plugin's
+// own diagnostics, rather than grepping for the shapes that cause a bailout —
+// there are several, and only the compiler knows which of them are present.
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { createRequire } from "node:module";
@@ -38,38 +33,22 @@ test("the compiler under test is the one babel-preset-expo builds with", () => {
   );
 });
 
-/**
- * Everything the game table is built from. GameTable.tsx itself is absent on
- * purpose: it bails on its own `useMemo`s, which is why the card components it
- * renders are wrapped in React.memo by hand instead of relying on the compiler.
- * CardView.tsx stays in this list with its one measured bailout recorded in
- * KNOWN_BAILOUTS, rather than dropped — so a new or different bailout there
- * still fails this suite.
- */
-const HOT_PATH = [
-  "components/CardView.tsx",
-  ...readdirSync(path.join(repoRoot, "components", "table"), {
-    recursive: true,
-    encoding: "utf8",
-  })
+function tsxUnder(dir: string): string[] {
+  return readdirSync(path.join(repoRoot, dir), { recursive: true, encoding: "utf8" })
     .filter((f) => f.endsWith(".tsx"))
-    .map((f) => `components/table/${f.split(path.sep).join("/")}`),
-  "app/game.tsx",
-  "app/(online)/game.tsx",
-];
+    .map((f) => `${dir}/${f.split(path.sep).join("/")}`);
+}
 
 /**
- * The shipped 1.0.0 compiler bails on `press`, a shared value mutated at
- * CardView.tsx:510/:514 after being read as an effect dependency at :498.
- * Measured from the compiler's own diagnostics, not assumed — every other
- * HOT_PATH file is expected to produce none of these.
+ * Read off the filesystem, so a screen added tomorrow is covered the day it
+ * lands. `context/SettingsContext.tsx` joins them because SettingsProvider
+ * wraps every one of them.
  */
-const KNOWN_BAILOUTS: Record<string, string[]> = {
-  "components/CardView.tsx": [
-    "components/CardView.tsx:459 — This value cannot be modified",
-    "components/CardView.tsx:459 — This value cannot be modified",
-  ],
-};
+const COMPILED = [
+  ...tsxUnder("app"),
+  ...tsxUnder("components"),
+  "context/SettingsContext.tsx",
+];
 
 /** babel-preset-expo/build/index.js, for a production client build. */
 const COMPILER_OPTIONS = {
@@ -84,10 +63,10 @@ type CompilerEvent = {
   detail?: { reason?: string; description?: string };
 };
 
-function bailouts(rel: string): CompilerEvent[] {
+function compile(rel: string, source?: string): CompilerEvent[] {
   const events: CompilerEvent[] = [];
   const filename = path.join(repoRoot, rel);
-  transformSync(readFileSync(filename, "utf8"), {
+  transformSync(source ?? readFileSync(filename, "utf8"), {
     filename,
     babelrc: false,
     configFile: false,
@@ -102,46 +81,60 @@ function bailouts(rel: string): CompilerEvent[] {
   return events.filter((e) => e.kind === "CompileError");
 }
 
-for (const rel of HOT_PATH) {
-  const expected = KNOWN_BAILOUTS[rel] ?? [];
-  test(`${rel} compiles with ${expected.length ? "its known bailout" : "no bailouts"}`, () => {
-    const failed = bailouts(rel);
-    assert.deepEqual(
-      failed.map((e) => `${rel}:${e.fnLoc?.start?.line} — ${e.detail?.reason ?? e.detail?.description}`),
-      expected,
-      expected.length
-        ? `${rel}'s bailout no longer matches KNOWN_BAILOUTS — update it, whether this fixed the ` +
-          `bailout or just changed its shape`
-        : `${rel} has components the React Compiler silently skipped. In a production build they are ` +
-          `shipped unmemoized, and every card in the hand is rebuilt on every render of the table.`
-    );
-  });
-}
+test("every screen and component compiles with no bailouts", () => {
+  const failures = COMPILED.flatMap((rel) =>
+    compile(rel).map(
+      (e) => `${rel}:${e.fnLoc?.start?.line} — ${e.detail?.reason ?? e.detail?.description}`
+    )
+  );
+  assert.deepEqual(
+    failures,
+    [],
+    "the React Compiler silently skipped these. In a production build they ship unmemoized and " +
+      "the whole subtree is rebuilt on every render. Compile the file on its own with " +
+      "`node .superpowers/sdd/2026-08-19-beta-readiness/compiler-probe.mjs <file>` to see why"
+  );
+});
+
+const HOOK_SUPPRESSION = /eslint-disable[^\n]*\breact-hooks\//;
+
+test("no react-hooks rule is switched off under app/, components/ or context/", () => {
+  const found = ["app", "components", "context"]
+    .flatMap((dir) =>
+      readdirSync(path.join(repoRoot, dir), { recursive: true, encoding: "utf8" })
+        .filter((f) => f.endsWith(".ts") || f.endsWith(".tsx"))
+        .map((f) => `${dir}/${f.split(path.sep).join("/")}`)
+    )
+    .flatMap((rel) => {
+      const lines = readFileSync(path.join(repoRoot, rel), "utf8").split("\n");
+      return lines
+        .map((line, i) => ({ rel, line: line.trim(), n: i + 1 }))
+        .filter((l) => HOOK_SUPPRESSION.test(l.line))
+        .map((l) => `${l.rel}:${l.n} — ${l.line}`);
+    });
+  assert.deepEqual(
+    found,
+    [],
+    "the compiler skips any component whose React ESLint rules were switched off, so a " +
+      "suppression is not a local decision — it silently opts the file out of the optimisation " +
+      "the build is paying for"
+  );
+});
 
 // The failure mode this exists to make impossible: proving the counterfactual,
-// so the test above cannot be satisfied by weakening the compiler options.
+// so the assertions above cannot be satisfied by weakening the compiler options.
 test("a suppressed react-hooks rule is what the compiler refuses to compile", () => {
-  const filename = path.join(repoRoot, "components/CardView.tsx");
-  const source = readFileSync(filename, "utf8").replace(
-    "  }, [selected, noLift, reduceMotion, translateY]);",
-    "  // eslint-disable-next-line react-hooks/exhaustive-deps\n  }, [selected, noLift]);"
-  );
-  const events: CompilerEvent[] = [];
-  transformSync(source, {
-    filename,
-    babelrc: false,
-    configFile: false,
-    parserOpts: { plugins: ["jsx", "typescript"] },
-    plugins: [
-      [
-        reactCompiler.default ?? reactCompiler,
-        { ...COMPILER_OPTIONS, logger: { logEvent: (_f: string, e: CompilerEvent) => events.push(e) } },
-      ],
-    ],
-  });
-  const reasons = events
-    .filter((e) => e.kind === "CompileError")
-    .map((e) => e.detail?.reason ?? e.detail?.description ?? "");
+  const rel = "components/CardView.tsx";
+  const original = readFileSync(path.join(repoRoot, rel), "utf8");
+  const anchor = "  }, [selected, noLift, reduceMotion, translateY]);";
+  assert.ok(original.includes(anchor), `${rel} no longer contains the effect this test patches`);
+  const reasons = compile(
+    rel,
+    original.replace(
+      anchor,
+      "  // eslint-disable-next-line react-hooks/exhaustive-deps\n  }, [selected, noLift]);"
+    )
+  ).map((e) => e.detail?.reason ?? e.detail?.description ?? "");
   assert.ok(
     reasons.some((r) => r.includes("ESLint")),
     "adding a react-hooks suppression back no longer costs the component its compilation — " +
