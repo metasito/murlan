@@ -18,8 +18,10 @@ and never go stale.
 - Port from `process.env.PORT`, database from `process.env.DATABASE_URL`.
 - `DATABASE_URL`, `SESSION_SECRET`, `PORT` must be set in Replit Secrets.
 - No build step needing local tooling. Must launch from the Run button with no setup.
-- **Production runs Node 22** (`.replit` `modules`), CI tests on 24. `server:build` carries
-  `--target=node22` so nothing newer than the deploy runtime is emitted.
+- **Production runs Node 22** (`.replit` `modules`). CI's `build` job — the one that boots the
+  real artefact — runs 22; the other three check dev tooling and run 24. `server:build`'s
+  `--target=node22` lowers *syntax* only and has no API database, so a Node-24-only builtin
+  compiles at exit 0 and throws on Replit. The Node 22 job is what catches that.
 - **`server/schemaDdl.ts` is the only thing that creates tables**, at boot, from
   `shared/schema.ts`. Every statement is additive and idempotent (`tests/schemaDdl.test.ts`).
   A second creator is how `session` came to exist on one database and nowhere else.

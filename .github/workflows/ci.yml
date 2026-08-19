@@ -23,7 +23,8 @@ env:
   # directly, relying on Node's native TypeScript type-stripping (stable since
   # Node 22.6, no ts-node/tsx/vitest needed). Node 24 is the current LTS-track
   # release and what the project is developed against, so pin to it to keep
-  # local and CI runs identical.
+  # local and CI runs identical. The `build` job is deliberately not on this —
+  # it runs production's Node, for the reason given there.
   NODE_VERSION: "24"
 
 jobs:
@@ -216,10 +217,31 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+      # This job boots the real artefact against a real database, which is the
+      # production path — so it runs production's Node, not the repo's. The
+      # other three jobs check dev tooling and 24 is right for them.
+      # `esbuild --target=node22` lowers syntax and knows nothing about APIs, so
+      # a Node-24-only builtin compiles at exit 0, passes a Node 24 job, and
+      # throws on Replit. Running the deploy runtime is what catches that.
       - uses: actions/setup-node@v4
         with:
-          node-version: ${{ env.NODE_VERSION }}
+          node-version: "22"
           cache: npm
+
+      # 22 above is Replit's, not a preference. If production's runtime moves
+      # and this does not, the job stops exercising production — silently, and
+      # green.
+      - name: This job's Node is the one production runs
+        shell: bash
+        run: |
+          replit=$(grep -oE 'nodejs-[0-9]+' .replit | head -1 | cut -d- -f2)
+          actual=$(node -p 'process.versions.node.split(".")[0]')
+          if [ "$replit" != "$actual" ]; then
+            echo "::error::.replit deploys on Node $replit; this job runs Node $actual."
+            exit 1
+          fi
+          echo "Both on Node $actual."
+
       - run: npm ci
 
       - name: Build the web and server bundles
