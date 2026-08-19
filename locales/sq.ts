@@ -45,7 +45,7 @@ export const sq: Record<keyof typeof en, string> = {
   // ------------------------------------------------------------- server.*
   "server.AUTH_RATE_LIMITED": "Shumë përpjekje, provo përsëri pas 15 minutash.",
   "server.RATE_LIMITED": "Shumë kërkesa, ngadalëso.",
-  "server.NOT_AUTHENTICATED": "Nuk je i kyçur",
+  "server.NOT_AUTHENTICATED": "Kërkohet kyçja",
   "server.USERNAME_TAKEN": "Emri i përdoruesit është i zënë",
   "server.INTERNAL_SERVER_ERROR": "Gabim i brendshëm i serverit",
   "server.INVALID_CREDENTIALS": "Emër përdoruesi ose fjalëkalim i pasaktë",
@@ -81,7 +81,7 @@ export const sq: Record<keyof typeof en, string> = {
   "server.INVALID_MOVE": "Lëvizje e pavlefshme",
   "server.CANNOT_PASS": "Nuk mund të kalosh",
   "server.REMATCH_DECLINED": "Tavolina zgjodhi të mos luajë përsëri",
-  "server.UNAUTHORIZED": "I paautorizuar",
+  "server.UNAUTHORIZED": "Nuk lejohet",
   "server.GAME_NOT_FOUND": "Loja nuk u gjet",
   "server.GAME_NO_LONGER_VALID": "Loja nuk është më e vlefshme",
   "server.SERVER_ERROR": "Gabim i serverit",
