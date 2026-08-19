@@ -10,7 +10,7 @@ import Animated, {
 } from "react-native-reanimated";
 import Ionicons from "@expo/vector-icons/Ionicons";
 import { CardView } from "@/components/CardView";
-import { Colors, FontSize, Motion, Radius, Shadow, TABLE_FONT_SCALE_MAX } from "@/lib/theme";
+import { Colors, FontSize, Motion, Radius, Shadow, Spacing, TABLE_FONT_SCALE_MAX } from "@/lib/theme";
 import { usePrefersReducedMotion } from "@/lib/accessibility";
 import { useTranslation } from "@/lib/i18n";
 import type { Card } from "@/lib/gameEngine";
@@ -267,9 +267,9 @@ const handStyles = StyleSheet.create({
     justifyContent: "center",
     height: CARD_H,
     flexDirection: "row",
-    gap: 6,
+    gap: Spacing.slim,
   },
-  handGlowWrap: { borderRadius: Radius.md, padding: 4 },
+  handGlowWrap: { borderRadius: Radius.md, padding: Spacing.xs },
   handGlowWrapActive: { backgroundColor: Colors.goldGhost },
   cardGlow: {
     position: "absolute",

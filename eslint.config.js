@@ -44,16 +44,14 @@ module.exports = defineConfig([
             "This is a design token written as a string, so it resolves to no colour at all. Drop the quotes and reference the token directly.",
         },
         {
-          // FontSize and Radius are the two numeric scales the app is swept
-          // onto. Neither the string-token rules above nor tests/tokenRoles
-          // can see a bare number, which is how one screen came to ship five
-          // corner radii for one role. Spacing is deliberately absent: its
-          // steps are 4/8/16/24/32/48 while the layouts nudge by 1, 2, 3 and
-          // 6, so a rule over it would only teach people to disable it.
+          // FontSize, Radius and Spacing are the numeric scales the app is
+          // swept onto. Neither the string-token rules above nor
+          // tests/tokenRoles can see a bare number, which is how one screen
+          // came to ship five corner radii for one role.
           selector:
-            "Property[key.name=/^(fontSize|borderRadius)$/] > Literal[raw=/^[0-9.]+$/]",
+            "Property[key.name=/^(fontSize|borderRadius|padding|paddingVertical|paddingHorizontal|paddingTop|paddingBottom|paddingLeft|paddingRight|margin|marginTop|marginBottom|marginLeft|marginRight|gap|rowGap|columnGap)$/] > Literal[raw=/^[1-9][0-9.]*$/]",
           message:
-            "Use a FontSize or Radius token. A one-off that fits no step may be a named module constant, but not a bare number in a style object.",
+            "Use a FontSize, Radius or Spacing token. A one-off that fits no step may be a named module constant, but not a bare number in a style object.",
         },
       ],
     },

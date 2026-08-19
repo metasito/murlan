@@ -310,14 +310,14 @@ export function SideOppSlot({
 const OPP_LABEL_MAX_W = 70 + Spacing.xs * 2;
 
 const seatStyles = StyleSheet.create({
-  topOppSlot: { alignItems: "center", justifyContent: "center", paddingVertical: 6 },
-  topOppRow: { flexDirection: "row", alignItems: "center", gap: 12 },
-  topOppAvatarCol: { alignItems: "center", gap: 3 },
+  topOppSlot: { alignItems: "center", justifyContent: "center", paddingVertical: Spacing.slim },
+  topOppRow: { flexDirection: "row", alignItems: "center", gap: Spacing.cosy },
+  topOppAvatarCol: { alignItems: "center", gap: Spacing.xxs },
 
-  sideOppSlot: { alignItems: "center", justifyContent: "center", gap: 6 },
+  sideOppSlot: { alignItems: "center", justifyContent: "center", gap: Spacing.slim },
   sideLeft: { flexDirection: "row" },
   sideRight: { flexDirection: "row-reverse" },
-  sideOppAvatarCol: { alignItems: "center", gap: 3, marginHorizontal: 6 },
+  sideOppAvatarCol: { alignItems: "center", gap: Spacing.xxs, marginHorizontal: 6 },
 
   // The count bubble's plate. The top seat renders in the felt gradient's
   // lightest band, where textMuted alone does not clear AA.
@@ -413,7 +413,7 @@ const seatStyles = StyleSheet.create({
     height: 18,
     alignItems: "center",
     justifyContent: "center",
-    paddingHorizontal: 3,
+    paddingHorizontal: Spacing.xxs,
     borderWidth: 1,
     borderColor: Colors.goldStrong,
   },

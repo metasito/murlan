@@ -711,7 +711,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
-  progressWrap: { flex: 1, alignItems: "center", gap: 2 },
+  progressWrap: { flex: 1, alignItems: "center", gap: Spacing.xxs },
   progressTrack: {
     width: "100%",
     height: 4,
@@ -760,10 +760,10 @@ const styles = StyleSheet.create({
     borderWidth: 2,
     borderColor: Colors.gold,
     borderRadius: Radius.md,
-    padding: 2,
+    padding: Spacing.xxs,
   },
 
-  exchangeCardWrap: { alignItems: "center", gap: 4 },
+  exchangeCardWrap: { alignItems: "center", gap: Spacing.xs },
   receivedLabel: { ...Type.caption, fontSize: FontSize.xs, textAlign: "center", maxWidth: 60 },
 
   feedbackBox: {

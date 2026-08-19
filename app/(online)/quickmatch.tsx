@@ -13,7 +13,7 @@ import { router, useNavigation } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import Ionicons from "@expo/vector-icons/Ionicons";
 import { useOnlineGame } from "@/context/OnlineGameContext";
-import { Colors, FontSize, Radius } from '@/lib/theme';
+import { Colors, FontSize, Radius, Spacing } from '@/lib/theme';
 import { MenuLayout, CONTENT_H_PAD } from "@/components/MenuLayout";
 import { MenuCard } from "@/components/MenuCard";
 import { MenuButton } from "@/components/MenuButton";
@@ -247,7 +247,7 @@ export default function QuickmatchScreen() {
             </>
           ) : (
             <>
-              <ActivityIndicator color={Colors.gold} size="small" style={{ marginBottom: 8 }} />
+              <ActivityIndicator color={Colors.gold} size="small" style={{ marginBottom: Spacing.sm }} />
               <Text style={styles.searchingLabel}>
                 {t("quickmatch.searching")}<Text style={styles.dots}>{dots}</Text>
               </Text>
@@ -268,11 +268,13 @@ export default function QuickmatchScreen() {
   );
 }
 
+const LANDSCAPE_GAP = 28;
+
 const styles = StyleSheet.create({
   header: {
     alignItems: "center",
-    paddingBottom: 4,
-    gap: 4,
+    paddingBottom: Spacing.xs,
+    gap: Spacing.xs,
   },
   headerTitle: {
     fontFamily: "Rajdhani_700Bold",
@@ -284,13 +286,13 @@ const styles = StyleSheet.create({
     fontFamily: "Inter_400Regular",
     fontSize: FontSize.sm,
     color: Colors.textMuted,
-    marginTop: 2,
+    marginTop: Spacing.xxs,
   },
   landscapeHeader: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 8,
-    marginBottom: 10,
+    gap: Spacing.sm,
+    marginBottom: Spacing.snug,
     alignSelf: "center",
   },
   landscapeHeaderText: {
@@ -303,25 +305,25 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     flexWrap: "wrap",
     justifyContent: "center",
-    gap: 12,
+    gap: Spacing.cosy,
     marginVertical: 16,
   },
   modeCardsRowLandscape: {
     flexWrap: "nowrap",
-    gap: 10,
+    gap: Spacing.snug,
   },
   modeCard: {
     backgroundColor: Colors.felt,
     borderRadius: Radius.md,
     borderWidth: 1.5,
     borderColor: Colors.goldBorder,
-    padding: 18,
+    padding: Spacing.md,
     alignItems: "center",
-    gap: 8,
+    gap: Spacing.sm,
   },
   modeCardLandscape: {
-    padding: 10,
-    gap: 5,
+    padding: Spacing.snug,
+    gap: Spacing.xs,
     borderRadius: Radius.md,
   },
   modeCardPressed: {
@@ -332,7 +334,7 @@ const styles = StyleSheet.create({
     position: "relative",
     alignItems: "center",
     justifyContent: "center",
-    marginBottom: 2,
+    marginBottom: Spacing.xxs,
   },
   modeIconBg: {
     width: 52,
@@ -357,7 +359,7 @@ const styles = StyleSheet.create({
     height: 20,
     alignItems: "center",
     justifyContent: "center",
-    paddingHorizontal: 4,
+    paddingHorizontal: Spacing.xs,
   },
   playerBadgeText: {
     color: Colors.bg,
@@ -381,22 +383,22 @@ const styles = StyleSheet.create({
   },
   cancelBtnStyle: {
     alignSelf: "center",
-    paddingHorizontal: 40,
+    paddingHorizontal: Spacing.xxxl,
   },
   searchContent: {
     flex: 1,
     alignItems: "center",
     justifyContent: "center",
-    gap: 20,
-    paddingHorizontal: 16,
+    gap: Spacing.roomy,
+    paddingHorizontal: Spacing.md,
     width: "100%",
   },
   searchContentLandscape: {
     flexDirection: "row",
-    gap: 28,
+    gap: LANDSCAPE_GAP,
   },
   globeWrapper: {
-    marginBottom: 8,
+    marginBottom: Spacing.sm,
   },
   globeCircle: {
     width: 120,
@@ -424,14 +426,14 @@ const styles = StyleSheet.create({
   selectedModeTag: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 6,
+    gap: Spacing.slim,
     backgroundColor: Colors.goldMuted,
     borderRadius: Radius.lg,
-    paddingHorizontal: 14,
-    paddingVertical: 6,
+    paddingHorizontal: Spacing.wide,
+    paddingVertical: Spacing.slim,
     borderWidth: 1,
     borderColor: Colors.goldBorder,
-    marginBottom: 8,
+    marginBottom: Spacing.sm,
   },
   selectedModeText: {
     fontFamily: "Rajdhani_600SemiBold",
@@ -455,13 +457,13 @@ const styles = StyleSheet.create({
     color: Colors.textMuted,
     textAlign: "center",
     lineHeight: 20,
-    marginTop: 4,
+    marginTop: Spacing.xs,
   },
   errorText: {
     fontFamily: "Inter_400Regular",
     fontSize: FontSize.md,
     color: Colors.dangerDim,
     textAlign: "center",
-    marginBottom: 4,
+    marginBottom: Spacing.xs,
   },
 });

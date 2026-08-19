@@ -390,6 +390,7 @@ export default function OnlineGameScreen() {
 /** Keeps the lone button off the screen edges in landscape, where it is the
  *  full width of a phone lying down. */
 const CONNECTING_ACTION_W = 280;
+const WAIT_CARD_PADDING = 28;
 
 const styles = StyleSheet.create({
   connecting: {
@@ -410,11 +411,11 @@ const styles = StyleSheet.create({
   reconnectBanner: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 6,
+    gap: Spacing.slim,
     backgroundColor: Colors.overlay,
     borderRadius: Radius.md,
-    paddingHorizontal: 12,
-    paddingVertical: 5,
+    paddingHorizontal: Spacing.cosy,
+    paddingVertical: Spacing.xs,
   },
   reconnectBannerText: {
     fontFamily: "Inter_500Medium",
@@ -439,9 +440,9 @@ const styles = StyleSheet.create({
     borderRadius: Radius.lg,
     borderWidth: 2,
     borderColor: Colors.goldBorder,
-    padding: 28,
+    padding: WAIT_CARD_PADDING,
     alignItems: "center",
-    gap: 12,
+    gap: Spacing.cosy,
     maxWidth: 380,
     width: "80%",
   },
@@ -467,10 +468,10 @@ const styles = StyleSheet.create({
     alignSelf: "center",
     flexDirection: "row",
     alignItems: "center",
-    gap: 6,
+    gap: Spacing.slim,
     backgroundColor: Colors.dangerScrim,
     borderRadius: Radius.md,
-    paddingHorizontal: 14,
+    paddingHorizontal: Spacing.wide,
     paddingVertical: Spacing.sm,
     zIndex: 300,
     maxWidth: 340,

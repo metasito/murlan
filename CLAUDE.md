@@ -81,10 +81,9 @@ lines is explaining itself instead of being clear.
 
 ## Design system
 
-- **No bare literals for colour, radius, font size or timing** — all from `lib/theme.ts`.
-  A component-local one-off may be a named module constant. `fontSize` and `borderRadius`
-  are enforced by `eslint.config.js`; **`Spacing` is not** — its steps are 4/8/16/24/32/48
-  and the layouts nudge by 1, 2, 3 and 6, so paddings and gaps are still bare numbers.
+- **No bare literals for colour, radius, font size, spacing or timing** — all from
+  `lib/theme.ts`, and `eslint.config.js` refuses a bare number for any of them. A
+  component-local one-off may be a named module constant. `0` is still a plain `0`.
 - Gold is a five-step alpha scale (`goldGhost` … `goldStrong`). Pick by role; don't add a
   sixth to split the difference.
 - Menu screens use `MenuLayout` / `MenuCard` / `MenuButton`; `app/lobby.tsx` is the

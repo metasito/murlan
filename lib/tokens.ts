@@ -135,8 +135,24 @@ export const CardBacks = {
   inchiostro: { field: 'notte',    ink: Colors.gold, lattice: 5, starPoints: 4 },
 } as const;
 
+// The six original steps keep their exact values: 213 sites already reference
+// them by name and renumbering would move every one silently. The additions are
+// the fine steps the dense layouts — the table chrome, the seat rows, the menu
+// lists — already use, so the sweep onto them moves nothing by more than 2px.
 export const Spacing = {
-  xs: 4, sm: 8, md: 16, lg: 24, xl: 32, xxl: 48,
+  xxs: 2,
+  xs: 4,
+  slim: 6,
+  sm: 8,
+  snug: 10,
+  cosy: 12,
+  wide: 14,
+  md: 16,
+  roomy: 20,
+  lg: 24,
+  xl: 32,
+  xxxl: 40,
+  xxl: 48,
 };
 
 /** React Native Web reports no usable safe-area insets; every screen substitutes these. */

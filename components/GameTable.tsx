@@ -1427,8 +1427,8 @@ const styles = StyleSheet.create({
   },
 
   startCardBanner: {
-    alignItems: "center", gap: 6,
-    paddingHorizontal: Spacing.md, paddingVertical: 10, borderRadius: Radius.md,
+    alignItems: "center", gap: Spacing.slim,
+    paddingHorizontal: Spacing.md, paddingVertical: Spacing.snug, borderRadius: Radius.md,
     backgroundColor: Scrim.medium,
     borderWidth: 1, borderColor: Colors.goldSoft,
   },
@@ -1505,7 +1505,7 @@ const styles = StyleSheet.create({
   playBtnInner: { flex: 1 },
   playBtnGrad: {
     flex: 1, alignItems: "center", justifyContent: "center",
-    gap: 2, borderRadius: Radius.md, overflow: "hidden",
+    gap: Spacing.xxs, borderRadius: Radius.md, overflow: "hidden",
   },
   playBtnGradDim: {
     // Dark gold-brown wash with no matching token.

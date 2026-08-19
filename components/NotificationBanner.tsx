@@ -194,7 +194,7 @@ const styles = StyleSheet.create({
   },
   textGroup: {
     flex: 1,
-    gap: 2,
+    gap: Spacing.xxs,
   },
   title: {
     ...Type.subheading,

@@ -28,7 +28,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useAuth } from "@/context/AuthContext";
 import { useGame } from "@/context/GameContext";
 import { usePrefersReducedMotion } from "@/lib/accessibility";
-import { Colors, FontSize, Radius, TOUCH_TARGET_MIN, WEB_BOTTOM_PAD, WEB_TOP_PAD } from '@/lib/theme';
+import { Colors, FontSize, Radius, Spacing, TOUCH_TARGET_MIN, WEB_BOTTOM_PAD, WEB_TOP_PAD } from '@/lib/theme';
 import { useTranslation } from "@/lib/i18n";
 import { SettingsModal } from "@/components/SettingsModal";
 import { a11yState } from "@/lib/a11y";
@@ -383,7 +383,7 @@ export default function HomeScreen() {
           <ScrollView style={styles.landscapeRight} contentContainerStyle={styles.landscapeMenuContent} showsVerticalScrollIndicator={false}>
             {menuButtons(true)}
             <Animated.View style={subtitleStyle}>
-              <Text style={[styles.footerText, { textAlign: "center", marginTop: 8 }]}>
+              <Text style={[styles.footerText, { textAlign: "center", marginTop: Spacing.sm }]}>
                 {t("home.footer")}
               </Text>
             </Animated.View>
@@ -405,7 +405,7 @@ export default function HomeScreen() {
 
       <View style={styles.header}>
         <Animated.View style={[titleStyle, { alignItems: "center" }]}>
-          <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
+          <View style={{ flexDirection: "row", alignItems: "center", gap: Spacing.snug }}>
             <Text style={styles.title}>MURLAN</Text>
             {__DEV__ && (
               <View style={styles.devBadge}>
@@ -475,15 +475,15 @@ const styles = StyleSheet.create({
     width: "38%",
     alignItems: "center",
     justifyContent: "center",
-    paddingHorizontal: 20,
-    gap: 8,
+    paddingHorizontal: Spacing.roomy,
+    gap: Spacing.sm,
     borderRightWidth: 1,
     borderRightColor: Colors.border,
   },
   landscapeRight: { flex: 1 },
   landscapeMenuContent: {
-    padding: 16,
-    gap: 10,
+    padding: Spacing.md,
+    gap: Spacing.snug,
     justifyContent: "center",
   },
   titleLandscape: {
@@ -493,7 +493,7 @@ const styles = StyleSheet.create({
     letterSpacing: 8,
     textAlign: "center",
   },
-  titleUnderlineLandscape: { width: 110, alignSelf: "center", marginTop: 2 },
+  titleUnderlineLandscape: { width: 110, alignSelf: "center", marginTop: Spacing.xxs },
   subtitleLandscape: {
     fontFamily: "Inter_400Regular",
     fontSize: FontSize.xxs,
@@ -502,18 +502,18 @@ const styles = StyleSheet.create({
     textTransform: "uppercase",
     textAlign: "center",
   },
-  cardDecorationLandscape: { flexDirection: "row", gap: 12, paddingVertical: 6 },
+  cardDecorationLandscape: { flexDirection: "row", gap: Spacing.cosy, paddingVertical: Spacing.slim },
   suitDecorSmall: { fontSize: FontSize.lg, opacity: 0.7 },
   userRowLandscape: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
-    gap: 5,
+    gap: Spacing.xs,
     flexWrap: "wrap",
   },
   userTextSmall: { fontFamily: "Inter_500Medium", fontSize: FontSize.xs, color: Colors.text, maxWidth: 100 },
 
-  header: { alignItems: "center", paddingTop: 40, paddingBottom: 12, gap: 6 },
+  header: { alignItems: "center", paddingTop: Spacing.xxxl, paddingBottom: Spacing.cosy, gap: Spacing.slim },
   title: {
     fontFamily: "Rajdhani_700Bold",
     fontSize: WORDMARK_SIZE,
@@ -521,12 +521,12 @@ const styles = StyleSheet.create({
     letterSpacing: 12,
     textAlign: "center",
   },
-  titleUnderline: { width: 160, alignSelf: "center", marginTop: 4 },
+  titleUnderline: { width: 160, alignSelf: "center", marginTop: Spacing.xs },
   devBadge: {
     backgroundColor: Colors.danger,
     borderRadius: Radius.sm,
-    paddingHorizontal: 6,
-    paddingVertical: 2,
+    paddingHorizontal: Spacing.slim,
+    paddingVertical: Spacing.xxs,
     alignSelf: "center",
   },
   devBadgeText: {
@@ -542,34 +542,34 @@ const styles = StyleSheet.create({
     letterSpacing: 4,
     textTransform: "uppercase",
     textAlign: "center",
-    marginTop: 4,
+    marginTop: Spacing.xs,
   },
   userRow: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
-    gap: 6,
-    marginTop: 4,
+    gap: Spacing.slim,
+    marginTop: Spacing.xs,
   },
   userText: { fontFamily: "Inter_500Medium", fontSize: FontSize.sm, color: Colors.text },
-  logoutBtn: { paddingHorizontal: 8, paddingVertical: 2 },
+  logoutBtn: { paddingHorizontal: Spacing.sm, paddingVertical: Spacing.xxs },
   logoutText: { fontFamily: "Inter_400Regular", fontSize: FontSize.xs, color: Colors.textMuted },
   friendsBtn: {
     position: "relative",
     flexDirection: "row",
     alignItems: "center",
-    gap: 6,
+    gap: Spacing.slim,
     backgroundColor: Colors.gold,
     borderRadius: Radius.lg,
-    paddingVertical: 7,
-    paddingHorizontal: 14,
+    paddingVertical: Spacing.slim,
+    paddingHorizontal: Spacing.wide,
   },
   friendsBtnCompact: {
     backgroundColor: "transparent",
     borderWidth: 1,
     borderColor: Colors.gold,
-    paddingVertical: 4,
-    paddingHorizontal: 10,
+    paddingVertical: Spacing.xs,
+    paddingHorizontal: Spacing.snug,
     borderRadius: Radius.md,
   },
   friendsBtnText: {
@@ -597,7 +597,7 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.danger,
     alignItems: "center",
     justifyContent: "center",
-    paddingHorizontal: 4,
+    paddingHorizontal: Spacing.xs,
     borderWidth: 1.5,
     borderColor: Colors.bg,
   },
@@ -607,22 +607,22 @@ const styles = StyleSheet.create({
     color: Colors.white,
     lineHeight: 13,
   },
-  cardDecoration: { flexDirection: "row", justifyContent: "center", gap: 20, paddingVertical: 24 },
+  cardDecoration: { flexDirection: "row", justifyContent: "center", gap: Spacing.roomy, paddingVertical: Spacing.lg },
   suitDecor: { fontSize: FontSize.xl, opacity: 0.7 },
   menuScroll: { flex: 1 },
-  menu: { flexGrow: 1, paddingHorizontal: 24, justifyContent: "center", gap: 12 },
+  menu: { flexGrow: 1, paddingHorizontal: Spacing.lg, justifyContent: "center", gap: Spacing.cosy },
   menuButton: {
     flexDirection: "row",
     alignItems: "center",
     backgroundColor: Colors.bgSurface,
     borderRadius: Radius.md,
-    paddingVertical: 18,
-    paddingHorizontal: 20,
-    gap: 14,
+    paddingVertical: Spacing.md,
+    paddingHorizontal: Spacing.roomy,
+    gap: Spacing.wide,
     borderWidth: 1,
     borderColor: Colors.border,
   },
-  menuButtonCompact: { paddingVertical: 12, paddingHorizontal: 16 },
+  menuButtonCompact: { paddingVertical: Spacing.cosy, paddingHorizontal: Spacing.md },
   // Zeroed as longhands, not as `padding: 0`: the base style sets
   // paddingVertical/paddingHorizontal, and React Native resolves the longhand
   // over the shorthand whatever the order. The shorthand left the padding in
@@ -640,17 +640,17 @@ const styles = StyleSheet.create({
     flex: 1,
     flexDirection: "row",
     alignItems: "center",
-    paddingVertical: 18,
-    paddingHorizontal: 20,
-    gap: 14,
+    paddingVertical: Spacing.md,
+    paddingHorizontal: Spacing.roomy,
+    gap: Spacing.wide,
   },
   accentGradientCompact: {
     flex: 1,
     flexDirection: "row",
     alignItems: "center",
-    paddingVertical: 12,
-    paddingHorizontal: 16,
-    gap: 12,
+    paddingVertical: Spacing.cosy,
+    paddingHorizontal: Spacing.md,
+    gap: Spacing.cosy,
   },
   menuLabel: {
     flex: 1,
@@ -679,6 +679,6 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: Colors.goldBorder,
   },
-  footer: { alignItems: "center", paddingTop: 20 },
+  footer: { alignItems: "center", paddingTop: Spacing.roomy },
   footerText: { fontFamily: "Inter_400Regular", fontSize: FontSize.xs, color: Colors.textMuted, letterSpacing: 1 },
 });
