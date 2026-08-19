@@ -38,9 +38,9 @@ Three pillars, in priority order:
 > **Resolved.** This section was a list of 21 defects headed *"verified assessment"*,
 > present tense, every one of which is now closed. It is deleted rather than rewritten:
 > git holds it, and a defect list that outlives its defects sends the next reader to
-> fix something that was fixed. The audit of 2026-08-17 replaced it —
-> `audit/2026-08-17/SUMMARY.md` is the current assessment, and `PROGRESS.md` records
-> what each batch closed. Kept as the record of why this heading is empty.
+> fix something that was fixed. A dated remediation effort replaced it, closing all 21
+> across 15 batches; `docs/BACKLOG.md` carries what is still open. Kept as the record of
+> why this heading is empty.
 
 ## 3. Decisions taken
 
@@ -80,8 +80,8 @@ existing Murlan apps.
 ## 4. Workstreams
 
 > This section is the original plan, kept as the record of how the work was cut.
-> It is **not** current status — `docs/BACKLOG.md` and `audit/2026-08-17/PROGRESS.md`
-> carry that, and most of W1–W5 has since shipped.
+> It is **not** current status — `docs/BACKLOG.md` carries that, and most of W1–W5 has
+> since shipped.
 
 **W1 — Trust & authority.** Kill the impersonation vector. Ticket-based socket auth.
 Authorize every socket event against seat ownership and phase. Fix the IDOR routes.

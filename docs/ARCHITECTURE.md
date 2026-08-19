@@ -51,6 +51,10 @@ lib/gameEngine.ts (offline: called directly)   server/socket.ts (online: server-
   `react-native`, `expo-*` or AsyncStorage and breaks `npm run server:build`.
   `tests/serverLoadable.test.ts` derives the set from the server's own imports and loads
   each under plain Node, so the rule is enforced rather than remembered.
+- **`locales/en.ts` is the source of truth for UI copy.** `it.ts` and `sq.ts` are declared
+  `Record<keyof typeof en, string>`, so a key present in English and missing from either
+  translation is a compile error, not a runtime gap — `DEFAULT_LOCALE` and every fallback
+  in `lib/i18n.ts` resolve to English.
 
 ## 2. Data flow
 
@@ -86,6 +90,18 @@ the only place that creates or tears down a socket. Nothing else is allowed to c
    `handshake.auth.userId` — that let any client connect as any user; it has been deleted.
    Rejected connections get `next(new Error("Not authenticated"))`.
 
+**Single session per account:** a second connection for the same user evicts the first
+rather than the two coexisting. The older socket receives `SESSION_REPLACED` over the
+`socket:error` path and disconnects itself — `lib/socket.ts` would otherwise retry forever
+and evict the new connection right back. The evicted tab renders a terminal "opened
+elsewhere" state with a manual reconnect action; it does not go silently dead, and it does
+not reconnect on its own.
+
+**Bot-filled matches:** `room:start` with `fillWithBots` needs only one seated human. The
+room screen already offers bot-fill and the match-length picker together, so a solo player
+against bots plays a complete match to the target, the same as a full human table — not a
+single manche.
+
 **Disconnect → grace period → bot takeover (not forfeit):**
 - On `disconnect`, if the user has no other live socket, the server emits
   `game:player_disconnected` to the room, arms a fresh turn cycle so the table doesn't
@@ -98,6 +114,12 @@ the only place that creates or tears down a socket. Nothing else is allowed to c
   game-over/abandonment so it doesn't eject the remaining humans from a game the server is
   actively keeping alive. If the vacancy leaves ≤1 human seated, the game really is
   unplayable and *that* is when `game:player_left` fires and the game is disposed.
+- The seat keeps playing rather than ending the match, because a disconnect is far more
+  often the network than a walkout and the server has no reliable way to tell the two
+  apart. The takeover is not a one-time announcement: the seat carries a persistent bot
+  marker (`SeatBadges` in `components/table/seats.tsx`) for the rest of the match, not just
+  the four-second `game:notification` banner — a player who looks away has to be able to
+  tell, on return, that the seat is no longer human.
 - `game:rejoin` failures (room gone after a restart, stale room code, etc.) reply
   `game:rejoin_failed`; the client leaves the room and returns to the lobby.
 
@@ -112,7 +134,10 @@ later turns.
   `roomId` primary key, `updatedAt` (a column because `pruneAbandonedGames` filters on it
   in SQL), and `gameState`, the versioned envelope `PersistedEnvelope`
   (`server/onlineGameLogic.ts`) specifies. Everything else rides inside that envelope: the
-  hand itself, `handFlags`, `dealFirstSeat`, and a `match` object holding `playerMap`
+  hand itself, `handFlags`, `dealFirstSeat`, the room's six-character `joinCode` (duplicated
+  from `rooms.code` so a cold-start rejoin can still draw the room screen once that row is
+  gone — a code cannot be invented, and an unjoinable one on screen is worse than none), and
+  a `match` object holding `playerMap`
   (keyed by seat, not compacted by array position — a compacted array previously
   reassigned a rejoining player to the wrong seat and the wrong hand), `scores`,
   `gameMode`, `matchTarget`, `matchLength`, `maxPlayers` and `isPublic`. One
