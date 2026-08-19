@@ -24,11 +24,70 @@ import { translate, interpolate, DEFAULT_LOCALE } from "../lib/i18n.ts";
 const LOCALES = { it, en, sq } as const;
 type LocaleName = keyof typeof LOCALES;
 const LOCALE_NAMES = Object.keys(LOCALES) as LocaleName[];
+/** en is the set every other locale is compared against, so it cannot diverge from itself. */
+const TRANSLATED = LOCALE_NAMES.filter((name) => name !== "en");
+
+const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+const SERVER_DIR = path.join(REPO_ROOT, "server");
+
+function serverSources(): { file: string; source: string }[] {
+  return readdirSync(SERVER_DIR, { recursive: true, encoding: "utf8" })
+    .filter((f) => f.endsWith(".ts"))
+    .map((file) => ({ file, source: readFileSync(path.join(SERVER_DIR, file), "utf8") }));
+}
+
+/** The property names a payload puts a sentence in. */
+const TEXT_FIELDS = new Set(["message", "error", "body", "reason"]);
+
+/**
+ * The text of every string and template literal below `node`, with `${expr}`
+ * rendered as `{{expr}}` so the server's own sentences read like the
+ * catalogues'. Stops at a nested call: its arguments are that call's payload.
+ */
+function literalsIn(node: ts.Node, sourceFile: ts.SourceFile): string[] {
+  const found: string[] = [];
+  const visit = (n: ts.Node) => {
+    if (ts.isStringLiteral(n) || ts.isNoSubstitutionTemplateLiteral(n)) {
+      found.push(n.text);
+      return;
+    }
+    if (ts.isTemplateExpression(n)) {
+      found.push(
+        n.head.text +
+          n.templateSpans
+            .map((s) => `{{${s.expression.getText(sourceFile)}}}${s.literal.text}`)
+            .join("")
+      );
+      return;
+    }
+    if (ts.isCallExpression(n)) return;
+    ts.forEachChild(n, visit);
+  };
+  visit(node);
+  return found;
+}
+
+/** Every sentence the server puts in a payload's text field. */
+function payloadSentences(sourceFile: ts.SourceFile): string[] {
+  const found: string[] = [];
+  const visit = (node: ts.Node) => {
+    if (
+      ts.isPropertyAssignment(node) &&
+      (ts.isIdentifier(node.name) || ts.isStringLiteral(node.name)) &&
+      TEXT_FIELDS.has(node.name.text)
+    ) {
+      found.push(...literalsIn(node.initializer, sourceFile));
+    }
+    ts.forEachChild(node, visit);
+  };
+  visit(sourceFile);
+  return found;
+}
 
 describe("locale key parity", () => {
   const enKeys = Object.keys(en).sort();
 
-  for (const name of LOCALE_NAMES) {
+  for (const name of TRANSLATED) {
     test(`${name} has exactly the same key set as en (the source of truth)`, () => {
       const keys = Object.keys(LOCALES[name]).sort();
       assert.deepEqual(
@@ -47,27 +106,79 @@ describe("locale key parity", () => {
     );
   });
 
-  // Shown to the whole table several times a hand, so a form that assumes the
-  // player's gender misgenders someone on most hands. Italian and Albanian both
-  // inflect these; English does not.
-  test("no server.* string assumes the player's gender", () => {
-    const GENDERED = {
-      it: /\b(inattivo|inattiva|disconnesso|disconnessa|rientrato|rientrata|connesso|connessa)\b/i,
-      sq: /\b(joaktiv|joaktive|shkëputur|kthyer)\b/i,
-    } as const;
+});
 
-    for (const [name, pattern] of Object.entries(GENDERED)) {
-      const catalogue = LOCALES[name as LocaleName] as Record<string, string>;
+describe("no server string assumes the player's gender", () => {
+  // A server.* string names one player and is shown to the whole table several
+  // times a hand, so a form that agrees with that player's gender misgenders
+  // someone on most hands. Italian and Albanian both inflect; English does not,
+  // which is why en.ts reads as the neutral original and the translations —
+  // and the server's own English fallbacks — are where the assumption creeps in.
+  //
+  // Matching is by frame, not by vocabulary. The same endings agree with an
+  // object all over both catalogues (`carta scambiata`, `questa sessione è
+  // stata chiusa`, `Lëvizje e pavlefshme`), so only a marker in a position that
+  // can refer to a person counts. Italian possessives are deliberately absent:
+  // `suo` agrees with the thing possessed, so `il suo posto` says nothing about
+  // whose seat it is — Albanian `tij`/`saj` agrees with the possessor and says
+  // everything.
+
+  /** Italian participle and adjective endings that carry gender. */
+  const AGREEING = String.raw`\w*(?:at|it|ut|st|ss|tt|nt|iv|ur|or)[oa]\b`;
+
+  const PATTERNS: Record<"it" | "sq", [string, RegExp][]> = {
+    it: [
+      ["predicated of the addressee", new RegExp(String.raw`\b(?:sei|siete)\s+(?:non\s+)?(?:stat[oa]\s+)?${AGREEING}`, "i")],
+      ["predicated of the named player", new RegExp(String.raw`\{\{username\}\}\s+(?:non\s+)?(?:si\s+)?(?:è|era|sarà)\s+(?:stat[oa]\s+)?${AGREEING}`, "i")],
+      ["a bare participle, so about the reader", new RegExp(String.raw`^Non\s+${AGREEING}`, "i")],
+      ["reflexive", /\b(?:me|te|se|sé)\s+stess[oaie]\b/i],
+      ["third-person pronoun", /\b(?:lui|lei|esso|essa)\b/i],
+    ],
+    sq: [
+      ["possessive, which agrees with the possessor", /\b(?:tij|saj)\b/i],
+      ["adjectival article after the copula", /\bje(?:ni)?\s+[ie]\b/i],
+      ["a leading adjectival article, so about the reader", /^(?:I|E)\s+\w/],
+      ["third-person pronoun", /\b(?:ai|ajo)\b/i],
+    ],
+  };
+
+  function offences(text: string, patterns: [string, RegExp][]): string[] {
+    return patterns.filter(([, re]) => re.test(text)).map(([label]) => label);
+  }
+
+  for (const name of ["it", "sq"] as const) {
+    test(`${name}'s server.* strings are neutral`, () => {
+      const catalogue = LOCALES[name] as Record<string, string>;
       const offenders = Object.entries(catalogue)
         .filter(([key]) => key.startsWith("server."))
-        .filter(([, value]) => pattern.test(value))
-        .map(([key]) => key);
-      assert.deepEqual(
-        offenders,
-        [],
-        `${name}: these assume a gender — ${offenders.join(", ")}`
-      );
+        .flatMap(([key, value]) =>
+          offences(value, PATTERNS[name]).map((label) => `${key} (${label}): ${value}`)
+        );
+      assert.deepEqual(offenders, [], `${name}: ${offenders.join(" | ")}`);
+    });
+  }
+
+  // The catalogues were de-gendered once already while the same four sentences
+  // stayed masculine in server/, where the guard could not see them — and the
+  // fallback is exactly what a client too old to know the code renders.
+  test("the server's own fallback sentences are neutral", () => {
+    const all = [...PATTERNS.it, ...PATTERNS.sq];
+    const offenders: string[] = [];
+    let sentenceCount = 0;
+    for (const { file, source } of serverSources()) {
+      const sourceFile = ts.createSourceFile(file, source, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
+      for (const text of payloadSentences(sourceFile)) {
+        sentenceCount++;
+        for (const label of offences(text, all)) {
+          offenders.push(`${file} (${label}): ${text}`);
+        }
+      }
     }
+    assert.ok(
+      sentenceCount > 100,
+      `expected server/'s payload sentences, got ${sentenceCount} (106 when this floor was set)`
+    );
+    assert.deepEqual(offenders, [], offenders.join(" | "));
   });
 });
 
@@ -113,11 +224,13 @@ describe("interpolation placeholders stay in sync across locales", () => {
     return [...template.matchAll(/\{\{(\w+)\}\}/g)].map((m) => m[1]).sort();
   }
 
+  // Both directions: a translation that drops en's placeholder renders a raw
+  // `{{username}}`, and one that invents a placeholder en does not have renders
+  // it too, because no call site passes a param nobody asked for.
   test("every locale uses the same {{placeholder}} names as en for a given key", () => {
     for (const key of Object.keys(en) as (keyof typeof en)[]) {
       const expected = placeholders(en[key]);
-      if (expected.length === 0) continue;
-      for (const name of LOCALE_NAMES) {
+      for (const name of TRANSLATED) {
         const actual = placeholders(LOCALES[name][key]);
         assert.deepEqual(
           actual,
@@ -210,7 +323,7 @@ describe("translate() produces the expected output per locale", () => {
     assert.equal(out, "Teams · 4 players");
   });
 
-  test("falls back to Italian (the default locale) for an unknown key at runtime", () => {
+  test("renders an unknown key as itself rather than blank", () => {
     // @ts-expect-error — deliberately an invalid key to exercise the fallback path
     const out = translate("en", "this.key.does.not.exist");
     assert.equal(out, "this.key.does.not.exist");
@@ -222,15 +335,16 @@ describe("translate() produces the expected output per locale", () => {
     // language comes from. A code with no key here falls through
     // `translateServerPayload` to that English fallback and shows an Italian
     // player English — which is how `REPLAY_NOT_FOUND` was found.
-    const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
     const emitted = new Set<string>();
-    for (const rel of ["server/routes.ts", "server/socket.ts"]) {
-      const source = readFileSync(path.join(repoRoot, rel), "utf8");
+    for (const { source } of serverSources()) {
       for (const m of source.matchAll(/code: "([A-Z_]+)"/g)) emitted.add(m[1]);
       // seatClaimCode() and its siblings return the code directly.
       for (const m of source.matchAll(/return "([A-Z][A-Z_]{3,})";/g)) emitted.add(m[1]);
     }
-    assert.ok(emitted.size > 10, `expected to find the server's codes, got ${emitted.size}`);
+    assert.ok(
+      emitted.size > 44,
+      `expected to find the server's codes, got ${emitted.size} (46 when this floor was set)`
+    );
 
     const missing = [...emitted].filter(
       (code) => !Object.prototype.hasOwnProperty.call(en, `server.${code}`)
@@ -248,8 +362,7 @@ describe("translate() produces the expected output per locale", () => {
     // wire's { code, message } contract — `reason` is invisible to
     // translateServerPayload — and no two of them may render the same
     // sentence, or the codes carry no information.
-    const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-    const source = readFileSync(path.join(repoRoot, "server/socket.ts"), "utf8");
+    const source = readFileSync(path.join(SERVER_DIR, "socket.ts"), "utf8");
     const sites = source
       .split("\n")
       .filter((line) => line.includes('"game:rejoin_failed"'));
@@ -282,11 +395,8 @@ describe("translate() produces the expected output per locale", () => {
   test("no server.* key is unused", () => {
     // The mirror of the test above: a key nothing can emit is dead weight
     // that three catalogues have to keep translating.
-    const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-    const serverDir = path.join(repoRoot, "server");
-    const sources = readdirSync(serverDir, { recursive: true, encoding: "utf8" })
-      .filter((f) => f.endsWith(".ts"))
-      .map((f) => readFileSync(path.join(serverDir, f), "utf8"))
+    const sources = serverSources()
+      .map(({ source }) => source)
       .join("\n");
     const unused = Object.keys(en)
       .filter((key) => key.startsWith("server."))
@@ -318,16 +428,26 @@ describe("every player-facing server response carries a code", () => {
     return i;
   }
 
-  /** Every `.json(` or `.emit(` call anywhere in `sourceFile`. */
+  /**
+   * Anything that hands a payload to a player: the response and socket
+   * primitives, and the helpers that wrap them. `notifyUser` is why the list
+   * is not just `json`/`emit` — a push body reaches a lock screen with no
+   * client in the loop, so it is the payload that can least afford to be
+   * unreadable, and it is invisible to a scan that only knows method calls.
+   */
+  const DELIVERS_TO_A_PLAYER = new Set(["json", "emit", "notifyUser", "emitToUser"]);
+
+  /** Every call that delivers a payload to a player, anywhere in `sourceFile`. */
   function responseCalls(sourceFile: ts.SourceFile): ts.CallExpression[] {
     const calls: ts.CallExpression[] = [];
     const visit = (node: ts.Node) => {
-      if (
-        ts.isCallExpression(node) &&
-        ts.isPropertyAccessExpression(node.expression) &&
-        (node.expression.name.text === "json" || node.expression.name.text === "emit")
-      ) {
-        calls.push(node);
+      if (ts.isCallExpression(node)) {
+        const callee = ts.isPropertyAccessExpression(node.expression)
+          ? node.expression.name.text
+          : ts.isIdentifier(node.expression)
+            ? node.expression.text
+            : null;
+        if (callee && DELIVERS_TO_A_PLAYER.has(callee)) calls.push(node);
       }
       ts.forEachChild(node, visit);
     };
@@ -369,7 +489,7 @@ describe("every player-facing server response carries a code", () => {
     return found;
   }
 
-  /** Every object literal reachable from a `.json(`/`.emit(` call's arguments, at any position and depth. */
+  /** Every object literal reachable from a delivering call's arguments, at any position and depth. */
   function payloadObjects(
     sourceFile: ts.SourceFile
   ): { start: number; text: string; names: Set<string> }[] {
@@ -419,32 +539,29 @@ describe("every player-facing server response carries a code", () => {
   }
 
   test("no player-facing JSON response or socket error emit omits a code", () => {
-    const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-    const serverDir = path.join(repoRoot, "server");
-    const files = readdirSync(serverDir, { recursive: true, encoding: "utf8" }).filter(
-      (f) => f.endsWith(".ts")
+    const files = serverSources();
+    assert.ok(
+      files.length >= 28,
+      `expected to find server/'s .ts files, got ${files.length} (29 when this floor was set)`
     );
-    assert.ok(files.length >= 20, `expected to find server/'s .ts files, got ${files.length}`);
 
     const violations: string[] = [];
     let objectCount = 0;
-    for (const file of files) {
-      const filePath = path.join(serverDir, file);
-      const source = readFileSync(filePath, "utf8");
-      const sourceFile = ts.createSourceFile(filePath, source, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
+    for (const { file, source } of files) {
+      const sourceFile = ts.createSourceFile(file, source, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
       const exemptSpans = headerGatedSpans(source);
       const objects = payloadObjects(sourceFile);
       objectCount += objects.length;
       for (const { start, text, names } of objects) {
-        if (!names.has("message") && !names.has("error")) continue;
+        if (![...TEXT_FIELDS].some((field) => names.has(field))) continue;
         if (names.has("code")) continue;
         if (exemptSpans.some(([s, e]) => start >= s && start < e)) continue;
         violations.push(`${file}: ${text.replace(/\s+/g, " ").trim().slice(0, 90)}`);
       }
     }
     assert.ok(
-      objectCount > 50,
-      `expected to find the server's response payload objects, got ${objectCount}`
+      objectCount > 104,
+      `expected to find the server's response payload objects, got ${objectCount} (108 when this floor was set)`
     );
     assert.deepEqual(
       violations,
