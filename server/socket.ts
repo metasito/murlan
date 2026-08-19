@@ -1267,7 +1267,7 @@ export function setupSocket(httpServer: HttpServer) {
             // The grace period is configurable, so the number has to come from
             // the same constant the timer below is armed with — a hardcoded
             // "60 seconds" in the text is a promise the server may not keep.
-            message: `${username} si è disconnesso. Ha ${graceSeconds} secondi per rientrare.`,
+            message: `${username} disconnected. They have ${graceSeconds} seconds to rejoin.`,
             params: { username, seconds: graceSeconds },
           });
 
@@ -1438,7 +1438,7 @@ async function rejoinSocketToTable(
     userId,
     username,
     code: "PLAYER_RECONNECTED",
-    message: `${username} è rientrato.`,
+    message: `${username} is back.`,
     params: { username },
   });
   armTurnIfIdle(io, roomId);

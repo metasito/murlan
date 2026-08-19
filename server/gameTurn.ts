@@ -309,8 +309,8 @@ function startAfkTimer(
             type: "afk",
             code: exchanged ? "PLAYER_AFK_AUTO_EXCHANGE" : "PLAYER_AFK_AUTO_PASS",
             message: exchanged
-              ? `${username} è inattivo — carta scambiata automaticamente`
-              : `${username} è inattivo — passato automaticamente`,
+              ? `${username} is inactive — the card was exchanged automatically`
+              : `${username} is inactive — passed automatically`,
             params: { username },
           });
         }
