@@ -17,7 +17,7 @@ import { WEB_BOTTOM_PAD, WEB_TOP_PAD } from "../lib/tokens.ts";
 // around them, and changing one without the other silently breaks a screen.
 // The card dimensions belong to cardFaceModel.ts, which draws the card, and the
 // web pads to lib/tokens.ts, which the menus also read; the rest are defined
-// here (rather than in GameShared.tsx, which re-exports them unchanged) so
+// here (rather than in the components/table/ files that read them) so
 // tests/gameTableModel.test.ts can pin their values and so the frame maths
 // below can use them directly.
 
@@ -123,7 +123,7 @@ export const EMPTY_PILE: PileState = { prev: null, current: null };
 // moment the card lands — firing them at launch puts the bang a third of a
 // second before the thing that caused it.
 //
-// FlyingCards (GameShared.tsx) owns the animation; these are the numbers both it
+// FlyingCards (components/table/pile.tsx) owns the animation; these are the numbers both it
 // and the table's feedback read, so the two cannot drift apart.
 
 export const FLIGHT_MS = 380;
@@ -346,7 +346,7 @@ export function startCardBannerText(opts: {
   viewerIsStarter: boolean;
 }): string {
   // The opening card is always the 3 of spades (docs/RULES.md §Opening), which
-  // is why the suit glyph is fixed here and in GameShared's StartReasonBanner.
+  // is why the suit glyph is fixed here and in chrome.tsx's StartReasonBanner.
   const label = `${opts.card.rank}♠`;
   return opts.viewerIsStarter
     ? `Inizi tu! Hai il ${label}`

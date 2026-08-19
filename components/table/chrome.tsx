@@ -15,25 +15,6 @@ import { useTranslation } from "@/lib/i18n";
 import type { StartReason } from "@/lib/gameEngine";
 import { SIDE_SECTION_W } from "@/components/gameTableModel";
 
-// The layout constants and the seat-rotation maths now live in the JSX-free
-// gameTableModel.ts so they can be unit-tested and so the shared table can use
-// them without importing this file. Re-exported here unchanged — every existing
-// `import { CARD_H, ... } from "@/components/GameShared"` keeps working.
-export { CARD_W } from "@/components/handLayout";
-export {
-  CARD_H,
-  BTN_W,
-  BTN_H,
-  SIDE_BTN_W,
-  TOP_BAR_H,
-  TABLE_M,
-  SIDE_SECTION_W,
-  TOP_SECTION_H,
-  HAND_SECTION_H,
-  getOpponentPosition,
-  type FlyDirection,
-} from "@/components/gameTableModel";
-
 // ─── Table vignette ───────────────────────────────────────────────────────────
 
 // Four edge washes plus four diagonal corner washes. The corners are the half

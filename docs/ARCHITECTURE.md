@@ -35,9 +35,13 @@ lib/gameEngine.ts (offline: called directly)   server/socket.ts (online: server-
 - **`server/socket.ts`** is the only place that mutates online game state. The client never
   computes an online outcome locally — it sends an intent (`game:play`, `game:pass`,
   `game:exchange_give_card`) and renders whatever the server broadcasts back.
-- **`components/GameTable.tsx`** (925 lines) + **`components/gameTableModel.ts`** (305
-  lines, pure/JSX-free) are the single presentational table. `app/game.tsx` (131 lines,
-  offline) and `app/(online)/game.tsx` (361 lines, online) are thin adapters — see §5.
+- **`components/GameTable.tsx`** + **`components/gameTableModel.ts`** (pure/JSX-free) +
+  **`components/table/`** are the single presentational table. `GameTable.tsx` assembles it
+  and owns the interaction; `components/table/` holds the pieces it draws, one file per
+  concern — `seats.tsx` (the opponent slots), `pile.tsx` (the played pile and the card
+  flight), `hand.tsx` (the viewer's card row) and `chrome.tsx` (the vignette, the billboard,
+  the banners and the shared table styles). `app/game.tsx` (offline) and
+  `app/(online)/game.tsx` (online) are thin adapters — see §5.
 
 ## 2. Data flow
 
@@ -166,8 +170,12 @@ been collapsed:
   `turnTimer`) through which the offline and online adapters inject exactly what differs
   between them (a local AI turn loop and 20s response timer offline; server acknowledgement,
   reactions, and connection-loss banners online). It contains no `isOnline &&` branching.
-- **`app/game.tsx`** (131 lines) and **`app/(online)/game.tsx`** (361 lines) are now thin
-  adapters: each maps its own state source onto `GameTableProps`.
+- **`components/table/`** — the table's own components, grouped by what they draw:
+  `seats.tsx`, `pile.tsx`, `hand.tsx` and `chrome.tsx`. Nothing outside `GameTable.tsx`
+  imports them; they were one `GameShared.tsx` back when the two game screens each had
+  their own table.
+- **`app/game.tsx`** and **`app/(online)/game.tsx`** are now thin adapters: each maps its
+  own state source onto `GameTableProps`.
 
 Both adapters call out, in a comment at the top of their component, the same guard: **every
 hook runs unconditionally before the `if (!gameState) return null` guard.** This is not

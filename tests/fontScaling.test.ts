@@ -20,7 +20,6 @@ const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), ".."
 const FIXED_GEOMETRY = [
   "components/CardView.tsx",
   "components/GameTable.tsx",
-  "components/GameShared.tsx",
   // Derived rather than listed: a component moved into components/table/ stays scanned.
   ...readdirSync(path.join(repoRoot, "components", "table"))
     .filter((f) => f.endsWith(".tsx"))

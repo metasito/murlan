@@ -82,13 +82,13 @@ import {
 import { useTranslation, type TranslationKey } from "@/lib/i18n";
 import { cardSpokenName, rankSpokenName, suitSpokenName, type TFn } from "@/lib/cardNames";
 import {
-  TableVignette,
-  sharedTableStyles,
-  portraitOverlayStyles,
-  StartReasonBanner,
-  useTurnPulse,
   GameBillboard,
-} from "@/components/GameShared";
+  portraitOverlayStyles,
+  sharedTableStyles,
+  StartReasonBanner,
+  TableVignette,
+  useTurnPulse,
+} from "@/components/table/chrome";
 import { StraightHand } from "@/components/table/hand";
 import { FlyingCards, PlayedPile, getComboLabel } from "@/components/table/pile";
 import { TopOppSlot, SideOppSlot } from "@/components/table/seats";
