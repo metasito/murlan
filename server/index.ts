@@ -4,13 +4,13 @@ for (const key of REQUIRED_ENV) {
 }
 
 import { logger } from "./logger.ts";
-import { createApp } from "./testApp.ts";
+import { createApp } from "./app.ts";
 import { shutdown } from "./shutdown.ts";
 import { installProcessGuards } from "./socketSafety.ts";
 
 // This file's sole job is binding the real PORT and installing process
 // shutdown handlers for the Replit run path. Everything else — middleware,
-// routes, sockets — lives in the `createApp()` factory in `./testApp.ts` so
+// routes, sockets — lives in the `createApp()` factory in `./app.ts` so
 // the integration test harness can boot the identical app on an ephemeral
 // port against a throwaway database schema, without going through this
 // file's listen()/SIGTERM/SIGINT wiring at all.

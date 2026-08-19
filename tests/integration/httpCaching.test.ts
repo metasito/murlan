@@ -1,6 +1,6 @@
 // tests/integration/httpCaching.test.ts — bytes actually saved on the wire.
 //
-// Two properties of the static-asset path in server/testApp.ts, both of which
+// Two properties of the static-asset path in server/app.ts, both of which
 // live only in response headers and so need a real booted server: a
 // compressible response is gzipped for a client that accepts it, and a URL
 // under dist/ is cached for a year exactly when its filename carries a content
