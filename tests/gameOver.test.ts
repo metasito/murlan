@@ -1,8 +1,6 @@
 // tests/gameOver.test.ts — what server/gameOver.ts does *around* the hand
 // resolution: the broadcast, the two awaited writes and the three
-// fire-and-forget ones. It is why the module was split out of
-// server/socket.ts at all — with the writers injected there is no database
-// and no socket server here, so `node --test` alone runs it.
+// fire-and-forget ones.
 //
 // The resolution itself is tests/handEnd.test.ts's: match at target, tie
 // escalation, draws, the teams pair total and the `bot:<seat>` exclusion are

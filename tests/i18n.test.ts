@@ -233,9 +233,6 @@ describe("translate() produces the expected output per locale", () => {
     // The mirror of the test above: a key nothing can emit is dead weight
     // that three catalogues have to keep translating.
     const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-    // Derived rather than listed: the codes are spread across the server
-    // modules, and a fixed list silently stops covering one the moment a file
-    // is split.
     const serverDir = path.join(repoRoot, "server");
     const sources = readdirSync(serverDir, { recursive: true, encoding: "utf8" })
       .filter((f) => f.endsWith(".ts"))

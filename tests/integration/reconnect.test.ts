@@ -384,13 +384,6 @@ describe("reconnect", { skip: hasDatabase() ? false : skipMessage() }, () => {
     }
   });
 
-  /**
-   * The other half of the same failure. A reconnecting client still holds the
-   * room it had in memory, so losing the roster read costs it nothing; a cold
-   * start holds nothing, and `room` is the whole navigation chain out of the
-   * online lobby — game state alone leaves the player standing there with a
-   * live hand and no way into it.
-   */
   test("a cold-start rejoin is given its room even when the roster read fails", async () => {
     const { storage } = await import("../../server/storage.ts");
     const jo = await connectAs(server, "cold_start_jo");
@@ -443,13 +436,6 @@ describe("reconnect", { skip: hasDatabase() ? false : skipMessage() }, () => {
 
   // ── The match framing a rejoin arrives with ─────────────────────────────
 
-  /**
-   * `game:match_state` used to be emitted only when a manche was dealt, so a
-   * client that came back to one already running kept its own defaults —
-   * target 21 and an empty scoreboard — until the manche ended. A two-seat
-   * table plays to 7, which is what makes the number observably wrong and not
-   * merely stale.
-   */
   test("a rejoin is sent the running match target and scoreboard", async () => {
     const { matchSnapshot } = await import("../helpers/liveGame.ts");
     const alice = await connectAs(server, "framing_alice");

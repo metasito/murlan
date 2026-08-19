@@ -92,8 +92,6 @@ describe(
      * it proves.
      */
     test("every turn timer body runs under the containment", () => {
-      // Every server module, not one file: a turn timer and the containment
-      // it runs under do not have to live in the same one.
       const serverDir = new URL("../../server/", import.meta.url);
       const source = readdirSync(serverDir)
         .filter((f) => f.endsWith(".ts"))

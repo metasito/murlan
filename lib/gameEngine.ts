@@ -1271,10 +1271,8 @@ export function resolveTeamMatch(
 }
 
 /**
- * The resolver a mode races to its target with: teams as a pair
- * (docs/RULES.md §11), free-for-all seat by seat. Both the live path and the
- * restore path go through here, so they cannot answer "is this match decided?"
- * differently.
+ * Both the live path and the restore path go through here, so they cannot
+ * answer "is this match decided?" differently.
  */
 export function resolveMatchFor(args: {
   gameMode: GameMode;

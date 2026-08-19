@@ -305,7 +305,6 @@ export function startSweeper(io: SocketServer) {
   (sweeper as unknown as { unref?: () => void }).unref?.();
 }
 
-/** Everything server/gameOver.ts writes, wired to the real tables. */
 export const gameOverWriters: GameOverWriters = {
   updateRoomStatus: (roomId, status) => storage.updateRoomStatus(roomId, status),
   persistGameState,

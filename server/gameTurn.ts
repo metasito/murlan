@@ -69,7 +69,6 @@ export function recordPlayFlags(game: AutoMovable, seat: number, combo: Combinat
   if (combo.cards.some((c) => c.isJoker)) flags.joker = true;
 }
 
-/** Everything an automated move reads or writes on a room's live game. */
 export type AutoMovable = Pick<OnlineGameState, "gameState" | "handFlags" | "moveLog">;
 
 /**

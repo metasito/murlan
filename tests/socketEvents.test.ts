@@ -11,9 +11,7 @@
 // event".
 //
 // Outbound: an event the server emits and no client listens for is dead weight
-// that reads as live protocol. `game:match_over` duplicated four fields
-// `game:over` already carried, and `room:player_left` announced a departure the
-// `room:state` two lines above had already applied.
+// that reads as live protocol.
 //
 // Structural, like tests/orientation.test.ts and tests/tokenRoles.test.ts: the
 // property is about how the code is written, so it is checked by reading it.

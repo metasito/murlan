@@ -23,8 +23,6 @@ function sourcesUnder(dir: string): string[] {
   for (const entry of readdirSync(path.join(repoRoot, dir), { withFileTypes: true })) {
     const rel = `${dir}/${entry.name}`;
     if (entry.isDirectory()) out.push(...sourcesUnder(rel));
-    // .ts as well as .tsx: a hook lifted out of a component into its own
-    // plain-TS file animates exactly as much as the component did.
     else if (entry.name.endsWith(".tsx") || entry.name.endsWith(".ts")) out.push(rel);
   }
   return out;

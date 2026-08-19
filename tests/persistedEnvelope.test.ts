@@ -1,12 +1,5 @@
 // tests/persistedEnvelope.test.ts — the stored game_state blob is the whole
 // row, and reading it back is a trust boundary.
-//
-// Everything about a live table rides this one versioned document: the engine
-// state, the hand's bomb/joker flags, the deal rotation, and the match
-// bookkeeping (seats, scores, target, length, mode, size, visibility). A field
-// kept in a column of its own would be rehydrated alongside the state a
-// GAME_SCHEMA_VERSION bump had just refused, which is the failure the version
-// exists to prevent.
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
 import {
@@ -103,16 +96,12 @@ describe("rows the restore path refuses", () => {
   });
 
   test("a non-numeric score", () => {
-    // The one that reaches resolveMatch: `?? {}` catches null and nothing
-    // else, so a bad value used to produce a NaN comparison, not a refusal.
     assert.match(refusal(pack({ scores: { alice: "7" } as never })), /scores/);
     assert.match(refusal(pack({ scores: { alice: NaN } })), /scores/);
     assert.match(refusal(pack({ scores: null as never })), /scores/);
   });
 
   test("an unexpected game mode or match length", () => {
-    // A ternary used to turn either of these into the default, so a row
-    // written by a build that knew a third value came back as a first.
     assert.match(refusal(pack({ gameMode: "solo" as never })), /game mode solo/);
     assert.match(refusal(pack({ matchLength: "best_of_3" as never })), /match length/);
   });

@@ -92,7 +92,6 @@ const SURFACES = {
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
-/** Every component source, concatenated; derived, so a style that moves stays readable. */
 const COMPONENTS = readdirSync(path.join(repoRoot, "components"), { recursive: true, encoding: "utf8" })
   .filter((f) => f.endsWith(".tsx"))
   .map((f) => readFileSync(path.join(repoRoot, "components", f), "utf8"))
