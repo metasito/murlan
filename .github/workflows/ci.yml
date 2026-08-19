@@ -166,8 +166,9 @@ jobs:
       # The only layer that exercises react-native-web's side of every
       # Platform.OS branch, and the only one that measures a laid-out box —
       # tap targets, and whether the table renders off the side of the screen.
-      # Measured 7m38s locally for eight specs; doubled for a slower shared
-      # runner.
+      # 40 tests in 8.4 minutes on a shared runner, the bundle build it does
+      # first included (run 32304169964). 20 minutes is that with room for a
+      # slow one rather than a budget anything today comes near.
       - name: Browser tests
         timeout-minutes: 20
         run: npm run test:e2e
