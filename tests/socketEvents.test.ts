@@ -205,24 +205,26 @@ test("the non-literal scanner catches a constant event name", () => {
 
 // The counterpart: the wrapper is only worth anything if the events actually
 // reach it, so a refactor that quietly stopped calling it should fail here too.
-const WRAPPED_RE = /onEvent\(\s*\n\s*socket,\s*\n\s*"([^"]+)"/g;
+const WRAPPED_RE = /onEvent\(\s*socket\s*,\s*(["'`])((?:(?!\1).)*)\1/gs;
 
 function wrappedEventsIn(source: string): string[] {
-  return [...source.matchAll(WRAPPED_RE)].map((m) => m[1]);
+  return [...source.matchAll(WRAPPED_RE)].map((m) => m[2]);
 }
+
+const WRAPPED_EVENT_COUNT = 17;
 
 test("the events that exist are registered through the wrapper", () => {
   const source = readFileSync(path.join(repoRoot, "server/socket.ts"), "utf8");
   const wrapped = wrappedEventsIn(source);
 
-  assert.ok(
-    wrapped.length >= 15,
-    `only ${wrapped.length} events go through onEvent, which is fewer than this server has ` +
-      `ever had — either the registrations moved or this test stopped finding them`
+  assert.equal(
+    wrapped.length,
+    WRAPPED_EVENT_COUNT,
+    `${wrapped.length} events go through onEvent, not ${WRAPPED_EVENT_COUNT}. Adding or ` +
+      `retiring an inbound event is a protocol change: update WRAPPED_EVENT_COUNT in the ` +
+      `same commit, deliberately — do not widen this assertion to accommodate the count.`
   );
 
-  // The split (ARCH-04) moved two thirds of this file elsewhere; a floor alone
-  // would let a registration leave with the next extraction and stay silent.
   const elsewhere = serverSources()
     .filter(([file]) => file !== "server/socket.ts")
     .flatMap(([file, src]) => wrappedEventsIn(src).map((e) => `${file}: ${e}`));
@@ -243,6 +245,18 @@ test("the events that exist are registered through the wrapper", () => {
   }
 });
 
+test("the wrapper scanner reads a registration however it is laid out", () => {
+  assert.deepEqual(
+    wrappedEventsIn('onEvent(socket, "room:x", NoPayloadSchema, () => {});'),
+    ["room:x"]
+  );
+  assert.deepEqual(
+    wrappedEventsIn("onEvent(\n      socket,\n      'room:y',\n      Schema,\n    );"),
+    ["room:y"]
+  );
+  assert.deepEqual(wrappedEventsIn("onEvent(socket, EVENT, Schema);"), []);
+});
+
 test("every event the server emits has a client listener", () => {
   const orphaned = unlistenedEmits(
     literalEmittedEvents(serverSources()),
@@ -256,6 +270,24 @@ test("every event the server emits has a client listener", () => {
       `${orphaned.join("\n")}\n` +
       `Delete the emit, or add the event to FIRE_AND_FORGET with the reason it has no listener.`
   );
+});
+
+test("every fire-and-forget entry still describes something real", () => {
+  const emitted = literalEmittedEvents(serverSources());
+  const listened = listenedEvents(clientSources());
+
+  for (const event of FIRE_AND_FORGET.keys()) {
+    assert.ok(
+      emitted.has(event),
+      `${event} is excused from needing a listener, but the server no longer emits it — ` +
+        `delete the FIRE_AND_FORGET entry`
+    );
+    assert.ok(
+      !listened.has(event),
+      `${event} now has a client listener, so it is not fire-and-forget — delete the ` +
+        `FIRE_AND_FORGET entry and let the scan above cover it`
+    );
+  }
 });
 
 test("no .emit call names its event with anything but a string literal", () => {

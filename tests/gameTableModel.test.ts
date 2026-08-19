@@ -72,17 +72,22 @@ function clientSources(): [string, string][] {
   );
 }
 
-function scan(pattern: RegExp): string[] {
+function scanSources(pattern: RegExp, sources: [string, string][]): string[] {
   const hits: string[] = [];
-  for (const [file, src] of clientSources()) {
+  for (const [file, src] of sources) {
     for (const m of src.matchAll(pattern)) hits.push(`${file}: ${m[0]}`);
   }
   return hits.sort();
 }
 
+function scan(pattern: RegExp): string[] {
+  return scanSources(pattern, clientSources());
+}
+
 // Declarations, not uses: `width: CARD_W` and `CARD_W_SMALL` do not match.
 const CARD_DIMENSION_DECL = /(?<![\w$])(?:const|let|var)\s+(?:CARD_W|CARD_H)(?![\w$])/g;
-const RETYPED_WEB_PAD = /Platform\.OS\s*===\s*['"]web['"]\s*\?\s*(?:67|34)(?![\d.])/g;
+const RETYPED_WEB_PAD =
+  /(?:Platform\.OS\s*===\s*['"]web['"]|isWeb)\s*\?\s*(?:67|34)(?![\d.])|padding(?:Top|Bottom|Vertical)\s*:\s*(?:67|34)(?![\d.])/g;
 
 describe("layout constants (CLAUDE.md: MUST NOT CHANGE)", () => {
   test("every constant still holds the value both game screens are built around", () => {
@@ -117,6 +122,26 @@ describe("layout constants (CLAUDE.md: MUST NOT CHANGE)", () => {
 
   test("no screen re-types the web safe-area pads instead of importing them", () => {
     assert.deepEqual(scan(RETYPED_WEB_PAD), []);
+  });
+
+  test("the safe-area scan fires on every shape a re-typed pad takes", () => {
+    const planted: [string, string][] = [
+      [
+        "app/example.tsx",
+        [
+          "const topPad = Platform.OS === 'web' ? 67 : insets.top;",
+          "const botPad = isWeb ? 34 : insets.bottom;",
+          "const style = { paddingTop: 67, paddingBottom: 34 };",
+          "const fine = { paddingTop: WEB_TOP_PAD, paddingBottom: WEB_BOTTOM_PAD };",
+        ].join("\n"),
+      ],
+    ];
+    assert.deepEqual(scanSources(RETYPED_WEB_PAD, planted), [
+      "app/example.tsx: Platform.OS === 'web' ? 67",
+      "app/example.tsx: isWeb ? 34",
+      "app/example.tsx: paddingBottom: 34",
+      "app/example.tsx: paddingTop: 67",
+    ]);
   });
 });
 

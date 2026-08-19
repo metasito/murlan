@@ -103,12 +103,13 @@ test("a table is created before anything references it", () => {
 
 // The other half of "additive only": the changes it refuses to make still have
 // to happen, and the database it cannot make them to must not be served.
-// `active_games.room_code` became `room_id` — on a database where `db:push`
-// has not run, the old column is still a NOT NULL primary key and every game
-// persist fails on its own, logged and swallowed, one row at a time.
 test("boot refuses a database still holding a renamed column", async () => {
+  const asked: { sql: string; params: unknown }[] = [];
   const legacy = {
-    query: async () => ({ rows: [{ "?column?": 1 }] }),
+    query: async (sql: string, params: unknown) => {
+      asked.push({ sql, params });
+      return { rows: [{ "?column?": 1 }] };
+    },
   } as unknown as Pick<Pool, "query">;
   await assert.rejects(assertRenamesApplied(legacy), (err: Error) => {
     assert.match(err.message, /room_code/);
@@ -116,6 +117,14 @@ test("boot refuses a database still holding a renamed column", async () => {
     assert.match(err.message, /db:push/, "the message has to name the fix");
     return true;
   });
+
+  assert.deepEqual(
+    asked.map((q) => q.params),
+    [["active_games", "room_code"]],
+    "the guard has to ask the database about the column that was actually renamed"
+  );
+  assert.match(asked[0].sql, /information_schema\.columns/);
+  assert.match(asked[0].sql, /table_name = \$1 AND column_name = \$2/);
 });
 
 test("boot proceeds once the rename has been applied", async () => {

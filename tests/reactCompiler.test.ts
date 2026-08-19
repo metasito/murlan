@@ -33,9 +33,12 @@ const reactCompiler = require("babel-plugin-react-compiler");
 const HOT_PATH = [
   "components/CardView.tsx",
   // Derived rather than listed: a component moved into components/table/ stays compiled here.
-  ...readdirSync(path.join(repoRoot, "components", "table"))
+  ...readdirSync(path.join(repoRoot, "components", "table"), {
+    recursive: true,
+    encoding: "utf8",
+  })
     .filter((f) => f.endsWith(".tsx"))
-    .map((f) => `components/table/${f}`),
+    .map((f) => `components/table/${f.split(path.sep).join("/")}`),
   "app/game.tsx",
   "app/(online)/game.tsx",
 ];
