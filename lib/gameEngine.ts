@@ -1363,17 +1363,30 @@ export function foldHandIntoMatch(input: FoldHandInput): FoldHandResult {
 
   if (length === "single") {
     const championId = rankings[0];
-    const championKey = championId === undefined ? null : keyOf(championId);
     const championTeam = championId === undefined ? undefined : teamOf[championId];
-    const winners =
-      championKey === null
-        ? []
-        : gameMode === "teams" && championTeam !== undefined
-          ? Object.entries(teamOfKey)
-              .filter(([, team]) => team === championTeam)
-              .map(([key]) => key)
-          : [championKey];
-    return { handByKey, cumulative, target, over: true, winners, isDraw: false };
+    if (gameMode === "teams" && championTeam !== undefined) {
+      // A manche is taken by a pair (docs/RULES.md §11), and `teamOfKey`
+      // already holds only the keys that accumulate, so a vacated seat's
+      // partner is named and the seat itself never is.
+      const winners = Object.entries(teamOfKey)
+        .filter(([, team]) => team === championTeam)
+        .map(([key]) => key);
+      return { handByKey, cumulative, target, over: true, winners, isDraw: false };
+    }
+    // The best-placed seat someone is still sitting in. The top one may have
+    // been walked out of, and `vacateSeat` keeps the departed player's name —
+    // announcing it credits the match to the person who left.
+    const championKey = rankings
+      .map(keyOf)
+      .find((key) => key !== null && accumulates(key));
+    return {
+      handByKey,
+      cumulative,
+      target,
+      over: true,
+      winners: championKey ? [championKey] : [],
+      isDraw: false,
+    };
   }
 
   const resolution = resolveMatchFor({ gameMode, cumulative, teamOfKey, target, playerCount });

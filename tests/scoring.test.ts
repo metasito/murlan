@@ -332,7 +332,7 @@ describe("foldHandIntoMatch", () => {
       assert.equal(result.cumulative["bot:1"], 20);
     });
 
-    test("a vacated seat that takes a single manche is still named — it took it", () => {
+    test("a vacated seat that takes a single manche names the best seat behind it", () => {
       const result = foldHandIntoMatch({
         ...online,
         length: "single",
@@ -340,7 +340,35 @@ describe("foldHandIntoMatch", () => {
         rankings: ["p1", "p0", "p2", "p3"],
         cumulative: {},
       });
-      assert.deepEqual(result.winners, ["bot:1"]);
+      assert.deepEqual(result.winners, ["u0"]);
+    });
+
+    test("a single manche every seat walked out of names nobody", () => {
+      const result = foldHandIntoMatch({
+        ...online,
+        length: "single",
+        target: 21,
+        keyOf: (engineId: string) => `bot:${seatOf[engineId]}`,
+        rankings: ["p1", "p0", "p2", "p3"],
+        cumulative: {},
+      });
+      assert.equal(result.over, true);
+      assert.deepEqual(result.winners, []);
+    });
+
+    test("a single manche in teams names the vacated winner's partner, not the other pair", () => {
+      // docs/RULES.md §11: the pair takes the manche, not the seat that
+      // emptied its hand — so the pair that took it still wins.
+      const result = foldHandIntoMatch({
+        ...online,
+        length: "single",
+        gameMode: "teams",
+        target: 21,
+        rankings: ["p1", "p0", "p2", "p3"],
+        teamOf: { p0: "B", p1: "A", p2: "B", p3: "A" },
+        cumulative: {},
+      });
+      assert.deepEqual(result.winners, ["u3"]);
     });
 
     test("an engine id belonging to no seat is dropped entirely", () => {
