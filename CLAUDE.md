@@ -117,10 +117,9 @@ lines is explaining itself instead of being clear.
 
 - `Cannot read property 'cards' of null` — null-check game state before `.cards`.
 - `REPLACE navigation action not handled` — the `index` route must exist before navigating.
-- React Compiler can miscompile `useEffect` references. Note the build and the test do not
-  use the same one: `babel-preset-expo` resolves its own nested
-  `babel-plugin-react-compiler@1.0.0`, while the root devDependency — what
-  `tests/reactCompiler.test.ts` loads — is the pinned 19.0.0 beta.
+- React Compiler can miscompile `useEffect` references. It comes from
+  `babel-preset-expo`'s own dependency — do not add a second copy to `package.json`;
+  `tests/reactCompiler.test.ts` pins that there is only one.
 
 ## Audit remediation in progress
 
