@@ -109,6 +109,33 @@ table to stop moving, or leave out what is mid-animation.
 
 ---
 
+## 7. The app and its own test are compiled by different React Compilers
+
+`app.json` turns on `experiments.reactCompiler`, and `babel-preset-expo@54.0.12` satisfies
+that from **its own nested `babel-plugin-react-compiler@1.0.0`** — the stable release. The
+copy named in `package.json` is the `19.0.0-beta-ebf51a3-20250411` that batch 15 pinned, and
+the only thing that loads it is `tests/reactCompiler.test.ts`, the acceptance test proving the
+game table compiles without bailing out.
+
+So that test is measuring a compiler the shipped bundle never runs. It is not a live defect —
+1.0.0 is the newer, stabler one, and the table renders fine — but the guard is pointed at the
+wrong thing.
+
+**Two ways to close it, both small.** Either have the test resolve the plugin the way
+`babel-preset-expo` does, so it measures what ships; or drop the root devDependency entirely
+and let the preset's copy be the only one, which also removes a pinned beta from the manifest.
+The second is smaller and I would take it, but it changes what the test can import, so it is
+your call rather than mine.
+
+## 8. One Playwright suite is worth watching
+
+`tests/integration/httpCaching.test.ts` failed once in three consecutive full-suite runs — all
+seven of its cases together — and passed on its own and on the two runs either side. It writes
+fixture files into `dist/` and removes them afterwards, and `node --test` runs files
+concurrently, so a sibling suite reading `dist/` inside that window is the likely shape. Filed
+because a suite that fails one run in three is worth a look before it is seen on CI and
+believed.
+
 ## Worth knowing about the audit process
 
 **Two batches merged while still owing work.** Batches 11 and 12 each closed with items that had

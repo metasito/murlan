@@ -809,7 +809,7 @@ The 2 skipped tests are `tests/integration/schemaBootstrap.test.ts:21` and
    functions reliably; it cannot find a referenced function whose branches are half-tested.
 4. **`tests/e2e/playwright-report/` and `tests/e2e/test-results/` are present in the working
    tree** from a previous local run. They are not tracked by git (the working tree is clean apart
-   from `docs/murlan-audit-prompt.md`), so this is not a finding — noted only because a naive
+   from `audit/2026-08-17/PROMPT.md`), so this is not a finding — noted only because a naive
    `grep -r tests/e2e` hits 90 KB of minified report HTML.
 5. **`scripts/bundle-report.mjs` and `docs/BUNDLE.md` were not exercised** — the report needs a
    built bundle. Bundle size is B1's territory in any case.

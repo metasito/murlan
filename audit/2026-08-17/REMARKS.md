@@ -530,3 +530,49 @@ answered in `DECISIONS.md`. Folded into the existing owner row about the Italian
 file while iterating, and the batch's full verification command **once**, immediately before the
 push. `npm test` is two minutes with Postgres attached and was being run after every finding.
 Nothing merges unverified — the gate is unchanged, only the iteration loop.
+
+---
+
+## Batch 15 — Docs truth and housekeeping
+
+### ARCH-17's commit message cannot be corrected, and no document repeats it
+
+The carried-forward row asked for the false `match_replays` claim to be cleared "in the
+commit message and anywhere the documents repeat it". `b61900d` is merged, and correcting it
+needs a force-push, which the batch rules forbid. **Searched: no document repeats it** —
+`match_replays` appears in three finding entries and in `shared/schema.ts`, and every one is
+about the `player_ids` GIN index or the retention sweep. The row is closed on that basis.
+
+### The one deliberate departure from a finding's written fix
+
+**SEC-08** merged `storage.searchUserByUsername` into `getUserByUsername` rather than leaving
+two methods. The finding only asks for `getUserByUsername` to gain the `lower(...)` predicate
+— but that makes the two functions byte-identical, and two identical lookups drifting apart
+is precisely the defect SEC-08 exists to fix. Three call sites updated; the finding's own
+worry about `searchUserByUsername` having no `ORDER BY`/`LIMIT` dissolves once the unique
+index guarantees at most one row.
+
+### drizzle-orm 0.45 changed the error shape, and nothing but a test would have caught it
+
+SEC-06's bump raises `DrizzleQueryError` wrapping the driver error, so `err.constraint` is on
+the cause. That silently broke **the pre-existing friend-code retry loop** in `createUser` as
+well as SEC-08's new 409 — both read `err?.constraint` off the wrapper and found nothing. The
+retry loop had no test; `tests/uniqueViolation.test.ts` now covers the unwrap for both.
+
+### Two tests were asserting against frozen defaults
+
+ARCH-16's move to throwing hooks turned up three native suites rendering a provider without
+its dependency: `socketReconnect` and `sessionReplaced` mounted `SocketProvider` with no
+`NotificationProvider`, and `settingsOverlay` mounted `SettingsModal` with no
+`SettingsProvider`. Every notification and every settings toggle in those suites was
+operating on the silent no-op defaults. The finding predicted this ("if any native test
+renders a component outside its provider, that is the finding, not a regression").
+
+### The outbound drift detector could not see optional chaining
+
+ARCH-11 rewrote `socket.on(` to `socket?.on(` in `OnlineGameContext`, and
+`tests/socketEvents.test.ts` scans the client for the former only — so fifteen server events
+read as having no listener. Caught by the guard, which is the point of it, but worth noting
+that the scanner matches source text and will need the same treatment for any other call
+shape.
+

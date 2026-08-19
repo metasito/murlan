@@ -169,14 +169,14 @@ export const portraitOverlayStyles = StyleSheet.create({
   },
   title: {
     fontFamily: "Rajdhani_700Bold",
-    fontSize: 26,
+    fontSize: FontSize.xl,
     color: Colors.text,
     letterSpacing: 1,
     textAlign: "center",
   },
   sub: {
     fontFamily: "Inter_400Regular",
-    fontSize: 14,
+    fontSize: FontSize.sm,
     color: Colors.textSecondary,
     textAlign: "center",
     lineHeight: 22,
@@ -188,7 +188,7 @@ export const portraitOverlayStyles = StyleSheet.create({
 export const sharedTableStyles = StyleSheet.create({
   tableBg: {
     position: "absolute",
-    borderRadius: 22,
+    borderRadius: Radius.lg,
     overflow: "hidden",
     borderWidth: 3.5,
     borderColor: Colors.goldStrong,
@@ -203,7 +203,7 @@ export const sharedTableStyles = StyleSheet.create({
     left: 6,
     right: 6,
     bottom: 6,
-    borderRadius: 18,
+    borderRadius: Radius.md,
     borderWidth: 1.5,
     borderColor: Colors.goldSoft,
   },
@@ -384,17 +384,17 @@ const billboardStyles = StyleSheet.create({
   },
   roundLabel: {
     fontFamily: "Inter_400Regular",
-    fontSize: 9,
+    fontSize: FontSize.xxs,
     color: Colors.textMuted,
   },
   turnDot: {
     fontFamily: "Inter_400Regular",
-    fontSize: 8,
+    fontSize: FontSize.xxs,
     color: Colors.gold,
   },
   turnLabel: {
     fontFamily: "Inter_400Regular",
-    fontSize: 10,
+    fontSize: FontSize.xxs,
     color: Colors.textSecondary,
   },
   turnLabelActive: {

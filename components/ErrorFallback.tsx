@@ -288,7 +288,7 @@ const styles = StyleSheet.create({
     padding: Spacing.md,
   },
   errorText: {
-    fontSize: 12,
+    fontSize: FontSize.xs,
     lineHeight: 18,
     width: "100%",
     color: Colors.text,

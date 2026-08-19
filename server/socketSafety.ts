@@ -136,25 +136,20 @@ export function onEvent<S extends z.ZodTypeAny>(
           { err, event, userId: socket.data?.userId },
           "Socket handler threw — contained"
         );
-        socket.emit(errorEventFor(event), { message: "Errore del server" });
+        socket.emit(errorEventFor(event), { message: "Server error" });
       }
     })();
   });
 }
 
 /**
- * Process-level last resort, for anything that escapes both `onEvent` and the
- * timer containment in `server/socket.ts`.
+ * Process-level last resort, for anything escaping `onEvent` and the timer
+ * containment. Exits non-zero for the supervisor to restart: `game:rejoin`
+ * rehydrates from `active_games`, so a restart costs a reconnect, while a
+ * server carrying on in an unknown state can wedge a table for good.
  *
- * An uncaught exception leaves the process in an undefined state, so it exits
- * non-zero and lets the supervisor restart it. That is cheap here and it is why
- * this is the right trade: `game:rejoin` rehydrates a live game from
- * `active_games`, so a restart costs every player a reconnect, while a server
- * carrying on in an unknown state can leave a table wedged with no way out.
- *
- * Installed by `server/index.ts`, which owns the process. `createApp()` must not
- * install it — the integration harness boots that same factory in-process, and a
- * guard that exits would take the test runner with it.
+ * Installed by `server/index.ts`, which owns the process — `createApp()` must
+ * not, since the integration harness boots it in-process.
  */
 export function installProcessGuards(): void {
   process.on("unhandledRejection", (reason) => {

@@ -14,7 +14,7 @@ import { hapticMedium, hapticSelection } from "@/lib/haptics";
 import { CardView } from "@/components/CardView";
 import { sortHand, getValidGivebackCards, pickGivebackCard } from "@/lib/gameEngine";
 import type { GameState } from "@/lib/gameEngine";
-import { Colors } from "@/lib/theme";
+import { Colors, FontSize, Radius } from "@/lib/theme";
 import { useTranslation } from "@/lib/i18n";
 import { cardSpokenName } from "@/lib/cardNames";
 import { a11yState } from "@/lib/a11y";
@@ -235,7 +235,7 @@ const exStyles = StyleSheet.create({
   },
   card: {
     backgroundColor: Colors.bgCard,
-    borderRadius: 20,
+    borderRadius: Radius.lg,
     borderWidth: 1.5,
     borderColor: Colors.border,
     padding: 24,
@@ -245,15 +245,15 @@ const exStyles = StyleSheet.create({
   },
   title: {
     fontFamily: "Rajdhani_700Bold",
-    fontSize: 15,
+    fontSize: FontSize.md,
     color: Colors.gold,
     letterSpacing: 2,
     textAlign: "center",
   },
-  jokerEmoji: { fontSize: 32, textAlign: "center" },
+  jokerEmoji: { fontSize: FontSize.xxl, textAlign: "center" },
   subtitle: {
     fontFamily: "Inter_400Regular",
-    fontSize: 13,
+    fontSize: FontSize.sm,
     color: Colors.text,
     textAlign: "center",
     lineHeight: 20,
@@ -261,13 +261,13 @@ const exStyles = StyleSheet.create({
   section: { gap: 10 },
   label: {
     fontFamily: "Inter_400Regular",
-    fontSize: 12,
+    fontSize: FontSize.xs,
     color: Colors.textSecondary,
   },
   singleCard: { alignItems: "center" },
   aiChoosing: {
     fontFamily: "Inter_400Regular",
-    fontSize: 13,
+    fontSize: FontSize.sm,
     color: Colors.textMuted,
     textAlign: "center",
   },
@@ -276,11 +276,11 @@ const exStyles = StyleSheet.create({
   pickCardLifted: { transform: [{ translateY: -10 }] },
   noCards: {
     fontFamily: "Inter_400Regular",
-    fontSize: 12,
+    fontSize: FontSize.xs,
     color: Colors.textMuted,
     paddingTop: 8,
   },
-  confirmBtn: { borderRadius: 12, overflow: "hidden" },
+  confirmBtn: { borderRadius: Radius.md, overflow: "hidden" },
   confirmBtnDim: { opacity: 0.5 },
   confirmGrad: {
     paddingVertical: 13,
@@ -288,7 +288,7 @@ const exStyles = StyleSheet.create({
   },
   confirmText: {
     fontFamily: "Rajdhani_700Bold",
-    fontSize: 15,
+    fontSize: FontSize.md,
     color: Colors.bgCard,
     letterSpacing: 0.5,
   },

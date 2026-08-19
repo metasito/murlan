@@ -3,11 +3,9 @@
 Traditional Albanian card game (Big Two family), as an Expo app served as web by an
 Express + Socket.io server on Replit. **English (`locales/en.ts`) is the source of truth for
 UI copy**; Italian and Albanian are translations of it. A *manche* is one hand; a *partita*
-is the match they add up to.
-
-> The code does not yet agree — `en.ts` is type-derived from `it.ts` and `DEFAULT_LOCALE` is
-> `"it"`. ARCH-19 inverts it. **Every key in English must exist in every locale, no
-> exception**; after the flip that is a compile error.
+is the match they add up to. **Every key in English must exist in every locale, no
+exception** — `it.ts` and `sq.ts` are `Record<keyof typeof en, string>`, so a gap is a
+compile error.
 
 **This file is only what you cannot get by reading the code.** Stack, file layout and game
 rules are deliberately absent — `package.json`, `ls`, and `docs/RULES.md` are authoritative
@@ -20,6 +18,8 @@ and never go stale.
 - Port from `process.env.PORT`, database from `process.env.DATABASE_URL`.
 - `DATABASE_URL`, `SESSION_SECRET`, `PORT` must be set in Replit Secrets.
 - No build step needing local tooling. Must launch from the Run button with no setup.
+- **Production runs Node 22** (`.replit` `modules`), CI tests on 24. `server:build` carries
+  `--target=node22` so nothing newer than the deploy runtime is emitted.
 - **`server/schemaDdl.ts` is the only thing that creates tables**, at boot, from
   `shared/schema.ts`. Every statement is additive and idempotent (`tests/schemaDdl.test.ts`).
   A second creator is how `session` came to exist on one database and nowhere else.
@@ -44,12 +44,13 @@ Verify against source before changing any.
   `if (!gameState) return null`.
 - **A card appears exactly once** in flight/`pileState` — never twice, never zero times.
 - **`CARD_W`/`CARD_H` are declared once**, in `components/cardFaceModel.ts`; `handLayout.ts`
-  and `gameTableModel.ts` re-export them, and the web inset substitutes
-  `WEB_TOP_PAD`/`WEB_BOTTOM_PAD` come from `lib/tokens.ts`. `tests/gameTableModel.test.ts`
-  source-scans for a second declaration — pinning the value cannot find one, because a copy
-  holds the same number.
-- **Impact feedback is timed to the card landing**, not the throw. 312ms of flight separates
-  them.
+  and `gameTableModel.ts` re-export them. The web substitutes for safe-area insets,
+  `WEB_TOP_PAD`/`WEB_BOTTOM_PAD`, are declared once in `lib/tokens.ts`.
+  `tests/gameTableModel.test.ts` source-scans for a second declaration — pinning the value
+  cannot find one, because a copy holds the same number.
+- **Impact feedback is timed to the card landing**, not the throw. `impactDelayMs()`
+  (`components/gameTableModel.ts`) is the one place that delay is derived, so the animation
+  and the feedback cannot drift apart.
 - **Design tokens are used in the role they were named for.** A fill or border token used as
   a text colour renders as almost nothing, silently. Pinned by `tests/tokenRoles.test.ts`.
 - **A labelled control exposes one accessible node.** `Pressable` defaults `accessible` to
@@ -80,12 +81,15 @@ lines is explaining itself instead of being clear.
 
 ## Design system
 
-- **No bare literals for colour, spacing, radius, font size or timing** — all from
-  `lib/theme.ts`. A component-local one-off may be a named module constant.
+- **No bare literals for colour, radius, font size or timing** — all from `lib/theme.ts`.
+  A component-local one-off may be a named module constant. `fontSize` and `borderRadius`
+  are enforced by `eslint.config.js`; **`Spacing` is not** — its steps are 4/8/16/24/32/48
+  and the layouts nudge by 1, 2, 3 and 6, so paddings and gaps are still bare numbers.
 - Gold is a five-step alpha scale (`goldGhost` … `goldStrong`). Pick by role; don't add a
   sixth to split the difference.
 - Menu screens use `MenuLayout` / `MenuCard` / `MenuButton`; `app/lobby.tsx` is the
-  reference. The game tables and `app/index.tsx` are deliberately exempt. **A local
+  reference. The game tables, `app/index.tsx` and `app/result.tsx` are deliberately exempt.
+  **A local
   component must not share a name with a shared one** — a duplicate `MenuButton` once hid a
   bug in plain sight.
 - **Every user-facing string goes through `t()`**, keyed in all three locales.
@@ -113,11 +117,14 @@ lines is explaining itself instead of being clear.
 
 - `Cannot read property 'cards' of null` — null-check game state before `.cards`.
 - `REPLACE navigation action not handled` — the `index` route must exist before navigating.
-- React Compiler (a dated beta) can miscompile `useEffect` references.
+- React Compiler can miscompile `useEffect` references. Note the build and the test do not
+  use the same one: `babel-preset-expo` resolves its own nested
+  `babel-plugin-react-compiler@1.0.0`, while the root devDependency — what
+  `tests/reactCompiler.test.ts` loads — is the pinned 19.0.0 beta.
 
 ## Audit remediation in progress
 
-123 findings in `audit/2026-08-17/`, executed in 14 batches. **Run `/batch <n>` — do not
+125 findings in `audit/2026-08-17/`, executed in 15 batches. **Run `/batch <n>` — do not
 improvise an implementation prompt.** `PROGRESS.md` holds the queue, per-batch treatment and
 run order; `DECISIONS.md` holds settled answers (do not re-open them). While this is live,
 that backlog outranks `docs/BACKLOG.md`.

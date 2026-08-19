@@ -102,14 +102,14 @@ export async function startTestServer(
       throw new Error("forced failure after CREATE SCHEMA");
     }
 
-    // Dynamic import of testApp.ts (not index.ts): index.ts calls listen()
+    // Dynamic import of app.ts (not index.ts): index.ts calls listen()
     // on the real PORT and installs SIGTERM/SIGINT handlers as a side
     // effect of being imported — importing it would start (and never stop)
-    // a second, unwanted server. testApp.ts only builds the app and its
+    // a second, unwanted server. app.ts only builds the app and its
     // http.Server (with Socket.io already attached via server/socket.ts's
     // setupSocket); nothing binds a port until this harness explicitly
     // listens below.
-    const { createApp } = await import("../../server/testApp.ts");
+    const { createApp } = await import("../../server/app.ts");
     // Same module identity as whatever createApp()'s import chain (session
     // store, storage) resolved — Node's ESM cache is keyed by specifier, so
     // this is the one live `pg.Pool` the running app holds open, not a new

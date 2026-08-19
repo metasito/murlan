@@ -43,7 +43,7 @@ describe('a labelled control exposes one accessible node', () => {
 describe('CardView decorative', () => {
   it('announces itself by default', async () => {
     const view = await render(<CardView card={ACE} />);
-    expect(view.queryAllByLabelText('Asso di Picche', { includeHiddenElements: false })).toHaveLength(1);
+    expect(view.queryAllByLabelText('Ace of Spades', { includeHiddenElements: false })).toHaveLength(1);
   });
 
   // A card with no onPress is information — the pile, or the card handed over
@@ -95,10 +95,10 @@ describe('CardView decorative', () => {
     // Both card pickers wrap a CardView in their own labelled Pressable. If the
     // CardView kept its label the card would be announced twice.
     const view = await render(
-      <Pressable accessibilityRole="button" accessibilityLabel="Asso di Picche">
+      <Pressable accessibilityRole="button" accessibilityLabel="Ace of Spades">
         <CardView card={ACE} decorative />
       </Pressable>
     );
-    expect(view.queryAllByLabelText('Asso di Picche', { includeHiddenElements: false })).toHaveLength(1);
+    expect(view.queryAllByLabelText('Ace of Spades', { includeHiddenElements: false })).toHaveLength(1);
   });
 });

@@ -12,7 +12,7 @@ import { router } from "expo-router";
 import Ionicons from "@expo/vector-icons/Ionicons";
 import { hapticLight } from "@/lib/haptics";
 import { useAuth } from "@/context/AuthContext";
-import { Colors, Spacing, FontSize, Type } from "@/lib/theme";
+import { Colors, FontSize, Radius, Spacing, Type } from "@/lib/theme";
 import { MenuLayout } from "@/components/MenuLayout";
 import { MenuCard } from "@/components/MenuCard";
 import { MenuButton } from "@/components/MenuButton";
@@ -214,13 +214,13 @@ const styles = StyleSheet.create({
   header: { alignItems: "center", marginBottom: Spacing.md, marginTop: Spacing.xs },
   title: {
     fontFamily: "Rajdhani_700Bold",
-    fontSize: 40,
+    fontSize: FontSize.hero,
     color: Colors.text,
     letterSpacing: 10,
   },
   subtitle: {
     fontFamily: "Inter_400Regular",
-    fontSize: 12,
+    fontSize: FontSize.xs,
     color: Colors.gold,
     letterSpacing: 3,
     textTransform: "uppercase",
@@ -231,7 +231,7 @@ const styles = StyleSheet.create({
   tabActive: { borderBottomWidth: 2, borderBottomColor: Colors.gold },
   tabText: {
     fontFamily: "Rajdhani_600SemiBold",
-    fontSize: 16,
+    fontSize: FontSize.md,
     color: Colors.textMuted,
     letterSpacing: 0.5,
   },
@@ -248,7 +248,7 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     backgroundColor: Colors.bgCard,
-    borderRadius: 12,
+    borderRadius: Radius.md,
     borderWidth: 1,
     borderColor: Colors.border,
     paddingHorizontal: 14,
@@ -260,7 +260,7 @@ const styles = StyleSheet.create({
   input: {
     flex: 1,
     fontFamily: "Inter_400Regular",
-    fontSize: 15,
+    fontSize: FontSize.md,
     color: Colors.text,
   },
   eyeBtn: { padding: 2, width: 32, height: 32, alignItems: "center", justifyContent: "center" },
@@ -269,10 +269,10 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: 8,
     backgroundColor: Colors.redMuted,
-    borderRadius: 10,
+    borderRadius: Radius.sm,
     padding: 12,
   },
-  errorText: { fontFamily: "Inter_400Regular", fontSize: 13, color: Colors.dangerDim, flex: 1 },
+  errorText: { fontFamily: "Inter_400Regular", fontSize: FontSize.sm, color: Colors.dangerDim, flex: 1 },
   hint: {
     ...Type.caption,
     textAlign: "center",

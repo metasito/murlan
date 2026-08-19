@@ -6,14 +6,18 @@ import type { GameState } from "../lib/gameEngine.ts";
 import type { PersistedEnvelope } from "../server/onlineGameLogic.ts";
 import type { ReplayMove, ReplaySeat } from "../lib/replay.ts";
 
-export const users = pgTable("users", {
-  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  username: text("username").notNull().unique(),
-  password: text("password").notNull(),
-  friendCode: varchar("friend_code", { length: 6 }).notNull().unique(),
-  createdAt: timestamp("created_at").defaultNow(),
-  lastSeen: timestamp("last_seen"),
-});
+export const users = pgTable(
+  "users",
+  {
+    id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+    username: text("username").notNull().unique(),
+    password: text("password").notNull(),
+    friendCode: varchar("friend_code", { length: 6 }).notNull().unique(),
+    createdAt: timestamp("created_at").defaultNow(),
+    lastSeen: timestamp("last_seen"),
+  },
+  (t) => [uniqueIndex("users_username_lower_uq").on(sql`lower(${t.username})`)]
+);
 
 export const roomStatusEnum = pgEnum("room_status", ["waiting", "in_progress", "finished"]);
 export const gameModeEnum = pgEnum("game_mode_type", ["free_for_all", "teams"]);

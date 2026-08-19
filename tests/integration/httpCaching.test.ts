@@ -1,6 +1,6 @@
 // tests/integration/httpCaching.test.ts — bytes actually saved on the wire.
 //
-// Two properties of the static-asset path in server/testApp.ts, both of which
+// Two properties of the static-asset path in server/app.ts, both of which
 // live only in response headers and so need a real booted server: a
 // compressible response is gzipped for a client that accepts it, and a URL
 // under dist/ is cached for a year exactly when its filename carries a content
@@ -135,6 +135,21 @@ describe("static asset compression and caching", { skip: hasDatabase() ? false :
       cacheControl && /no-cache/.test(cacheControl),
       `expected a no-cache directive on /index.html, got ${cacheControl}`
     );
+  });
+
+  // helmet is mounted before either branch of configureExpoAndLanding, so the
+  // header does not depend on which of the SPA and the landing page serves "/".
+  // Asserted on a static route and a handler route to show it is app-wide.
+  test("every response carries the CSP", async () => {
+    for (const route of ["/", "/health"]) {
+      const res = await fetch(`${server.url}${route}`);
+      const csp = res.headers.get("content-security-policy");
+      assert.ok(csp, `no Content-Security-Policy on ${route}`);
+      assert.match(csp, /default-src 'self'/);
+      assert.match(csp, /script-src [^;]*https:\/\/unpkg\.com/);
+      assert.match(csp, /object-src 'none'/);
+      assert.equal(/upgrade-insecure-requests/.test(csp), false);
+    }
   });
 
   test("an unhashed asset under dist/ is not cached — its URL outlives its bytes", async () => {

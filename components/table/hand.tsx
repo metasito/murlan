@@ -10,7 +10,7 @@ import Animated, {
 } from "react-native-reanimated";
 import Ionicons from "@expo/vector-icons/Ionicons";
 import { CardView } from "@/components/CardView";
-import { Colors, Motion, Radius, Shadow, TABLE_FONT_SCALE_MAX } from "@/lib/theme";
+import { Colors, FontSize, Motion, Radius, Shadow, TABLE_FONT_SCALE_MAX } from "@/lib/theme";
 import { usePrefersReducedMotion } from "@/lib/accessibility";
 import { useTranslation } from "@/lib/i18n";
 import type { Card } from "@/lib/gameEngine";
@@ -24,13 +24,10 @@ const HAND_LIFT_HEADROOM = HAND_SECTION_H - CARD_H;
 
 // ─── CardItem ─────────────────────────────────────────────────────────────────
 //
-// `onPress` takes the card id rather than being a bound zero-arg callback.
-// The caller (StraightHand, below) passes its own `onPress` prop straight
-// through — unchanged reference per card — instead of minting a new
-// `() => onPress(card.id)` closure per card on every render. CardItem binds
-// its own id once here via useCallback, so CardView only ever sees a new
-// `onPress` reference when this card's id or the caller's callback actually
-// changes, not whenever some other card's selection state changes.
+// `onPress` takes the card id rather than a bound zero-arg callback, so the
+// caller passes one unchanged reference for every card and CardItem binds its
+// own id once. CardView then sees a new `onPress` only when this card's id or
+// the callback changes — not when some other card's selection does.
 // How far a selected card rises out of the fan, and how far it tips as it is
 // picked up. The rotation is what stops the lift reading as a flat slide.
 const SELECT_LIFT = -16;
@@ -272,7 +269,7 @@ const handStyles = StyleSheet.create({
     flexDirection: "row",
     gap: 6,
   },
-  handGlowWrap: { borderRadius: 14, padding: 4 },
+  handGlowWrap: { borderRadius: Radius.md, padding: 4 },
   handGlowWrapActive: { backgroundColor: Colors.goldGhost },
   cardGlow: {
     position: "absolute",
@@ -289,7 +286,7 @@ const handStyles = StyleSheet.create({
   handCardWrap: { position: "absolute", bottom: 0 },
   emptyHandText: {
     fontFamily: "Rajdhani_600SemiBold",
-    fontSize: 13,
+    fontSize: FontSize.sm,
     color: Colors.gold,
   },
 });

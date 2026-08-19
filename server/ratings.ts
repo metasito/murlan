@@ -62,20 +62,13 @@ async function currentRow(
 }
 
 /**
- * Applies one manche's result to the ladder.
+ * Applies one manche's result to the ladder. Drops bots itself by the same
+ * `bot:<seat>` convention scoring uses, so no caller has to reverse-map a score
+ * key back to a seat. Free-for-all only — a teams placement belongs to the pair.
  *
- * Takes every seat and drops the bots itself, by the same `bot:<seat>`
- * convention scoring already uses (see server/onlineGameLogic.ts) — the caller
- * should not have to reverse-map a score key back to a seat to work out who was
- * real. Fewer than two humans is not a contest.
- *
- * Free-for-all only: a teams placement belongs to the pair, and an individual
- * ladder derived from team play needs a model this is not.
- *
- * One transaction, so a hand either moves every seat or none of them. Which is
- * why the seats are checked against `users` before it opens: an account deleted
- * mid-hand still holds a seat here, and its foreign key would abort the
- * transaction carrying everyone else's rating.
+ * One transaction, so a hand moves every seat or none. Which is why the seats
+ * are checked against `users` first: an account deleted mid-hand still holds a
+ * seat, and its foreign key would abort everyone else's rating with it.
  */
 export async function recordRatedResult(
   seatResults: { userId: string; placement: number }[],

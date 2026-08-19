@@ -35,17 +35,14 @@ import type { GameState, Card } from "../lib/gameEngine.ts";
 /**
  * How long an `active_games` row may sit untouched before it is abandoned.
  *
- * The in-memory sweep cannot see these. A restart empties `activeGames`, and
- * every path that deletes a row — a table finishing, the last human leaving,
- * the disconnect grace expiring — walks that Map. A game that was live when the
- * process went down, and that nobody ever rejoins, is invisible to all of them
- * and its row stays forever. On a host that sleeps, which is where this app
- * runs, that happens on every sleep with a game open.
+ * Every path that deletes a row walks the in-memory `activeGames`, which a
+ * restart empties — so a game live when the process went down, and never
+ * rejoined, is invisible to all of them. On a host that sleeps, that is every
+ * sleep with a game open.
  *
- * A day is far past any live game: `persistGameState` refreshes `updated_at` on
- * every single move, and a table nobody is playing is disposed within the
- * disconnect grace. The margin is there so a row a player might still
- * legitimately rejoin is never taken out from under them.
+ * A day is far past any live game: `persistGameState` refreshes `updated_at`
+ * on every move. The margin is so a rejoinable row is never taken from under
+ * a player.
  */
 export const ABANDONED_GAME_MAX_AGE_MS = 24 * 60 * 60_000;
 
@@ -186,7 +183,7 @@ export function safeTimer(
     io?.to(roomId).emit("game:notification", {
       type: "abandoned",
       code: "GAME_INTERRUPTED_SERVER_ERROR",
-      message: "Partita interrotta: errore del server.",
+      message: "Game interrupted: a server error.",
     });
     void storage
       .updateRoomStatus(roomId, "finished")

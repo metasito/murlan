@@ -33,62 +33,14 @@ Three pillars, in priority order:
 
 ---
 
-## 2. Current state — verified assessment
+## 2. Current state
 
-Read directly from source, not inferred.
-
-### Blocking defects (security / correctness)
-
-| # | Location | Defect | Consequence |
-|---|---|---|---|
-| B1 | `server/socket.ts:225` | Socket auth falls back to `handshake.auth.userId` with no proof of ownership | **Any client can connect as any user** — read their hand, play their cards, read their friend list. Full impersonation. |
-| B2 | `server/routes.ts:214,236` | `acceptFriend` / `declineFriendRequest` never verify the caller owns the request | IDOR — any user can accept or destroy any friend request by id |
-| B3 | `server/storage.ts:44` | `deleteUser` omits `room_players`, which has an FK to `users.id` | **Account deletion throws.** Apple Guideline 5.1.1(v) requires working in-app account deletion |
-| B4 | `server/socket.ts:942-981` | Disconnect timeout deletes the seat from `playerMap` but leaves the hand in the game | When that seat's turn arrives, no user maps to it and no AFK timer is armed → **the table deadlocks permanently** |
-| B5 | `server/socket.ts:807` | DB rehydration rebuilds seats as `[0..n]` from a positional array | After anyone leaves, seats are non-contiguous → **players are dealt each other's hands on rejoin** |
-| B6 | `server/socket.ts:579,655` | `exchangePhase.active` is never checked in `game:play` / `game:pass` | The round winner can play or pass while owing an exchange card |
-
-### Correctness defects (gameplay)
-
-| # | Location | Defect | Consequence |
-|---|---|---|---|
-| C1 | `lib/gameEngine.ts:395` | `enumStraights` takes contiguous windows of a rank-sorted array; duplicate ranks poison the window | With `3,4,5,5,6,7` the engine never finds `3-4-5-6-7`. AI plays worse than it should and "you have no valid move" is sometimes a lie |
-| C2 | `lib/gameEngine.ts:397` | Straight length silently capped at 9 cards (`hi - lo <= 8`) | Undocumented arbitrary limit |
-| C3 | `lib/gameEngine.ts:103` | `2` is assigned face value 2 for straights while ranking above Ace everywhere else | `A-2-3-4-5` is currently a legal straight. **Needs rules research to confirm or reject** |
-| C4 | `server/socket.ts:174` | `persistGameState` hardcodes `gameMode: "free_for_all"` | A teams game restored after a restart becomes free-for-all |
-| C5 | `server/socket.ts:629` | `cumulativeScores` is keyed by engine ids (`player_0`), labelled as usernames | Scoreboard shows wrong names |
-| C6 | `server/socket.ts:520,539` | `activeGames.delete()` immediately precedes the `activeGames.get()` that reads prior scores | Dead code — cumulative scores reset every game |
-| C7 | `server/socket.ts:128` | AFK auto-play hardcodes `3♠` instead of reading `gameState.startCard` | Wrong forced opening when `3♠` was not dealt |
-| C8 | `server/storage.ts:39` | Room codes from `Math.random().toString(36)` — short, predictable, collision-prone | Room-guessing; occasional sub-6-character codes |
-| C9 | `server/socket.ts:349` | Seat index assigned as `players.length` with no unique constraint | Simultaneous joins collide on the same seat |
-
-### Structural debt
-
-- **~2,400 lines duplicated** between `app/game.tsx` (946) and `app/(online)/game.tsx` (1,465).
-  `CLAUDE.md` documents this as a manual-sync hazard. It is the single largest source of
-  future divergence bugs and must be unified behind one presentational layer.
-- **Zero tests.** For a rules engine with combination hierarchies, bombs, jokers and an
-  exchange phase, this is the highest-leverage gap in the entire codebase.
-- **11 unused dependencies**, including `expo-location` and `expo-image-picker` — these
-  inject permission declarations into the binary and trigger App Store privacy review for
-  capabilities the app does not have.
-- **`expo-av` is deprecated** and removed in SDK 55; migration to `expo-audio` is pending.
-- `Math.random()` shuffle — acceptable offline, wrong for competitive online play.
-- One live TypeScript error (`server/index.ts:47`). Otherwise the type surface is clean.
-- Two parallel colour systems: `lib/theme.ts` (canonical) and `constants/colors.ts` (legacy).
-
-### Store readiness gaps
-
-- No `eas.json`; no native build pipeline.
-- No `ios.buildNumber` / `android.versionCode`; no `runtimeVersion`.
-- No privacy policy, no support URL, no App Privacy questionnaire answers.
-- No `NSUserTrackingUsageDescription` or usage strings for the linked-but-unused libraries.
-- No onboarding — a reviewer who has never played Murlan cannot evaluate the app.
-- Italian is hardcoded throughout; no localization layer.
-- **To verify:** whether offline single-player is gated behind account creation. If it is,
-  that is a direct Guideline 5.1.1(v) rejection.
-
----
+> **Resolved.** This section was a list of 21 defects headed *"verified assessment"*,
+> present tense, every one of which is now closed. It is deleted rather than rewritten:
+> git holds it, and a defect list that outlives its defects sends the next reader to
+> fix something that was fixed. The audit of 2026-08-17 replaced it —
+> `audit/2026-08-17/SUMMARY.md` is the current assessment, and `PROGRESS.md` records
+> what each batch closed. Kept as the record of why this heading is empty.
 
 ## 3. Decisions taken
 
@@ -99,7 +51,7 @@ Read directly from source, not inferred.
 | Socket auth | Short-lived single-use signed ticket, minted by an authenticated REST endpoint, consumed in the handshake. No new dependencies. |
 | Game rules | Research Murlan rules from real sources, consolidate into one documented specification, reconcile code and UI against it. Escalate genuine ambiguities rather than guessing. |
 
-### 3.1 Rule decisions (taken after research — see `docs/RULES-RESEARCH.md`)
+### 3.1 Rule decisions (taken after research — the sources are cited in `docs/RULES.md`)
 
 Research consulted 18 sources including pagat.com, catsatcards.com, visixplay.com (IT/EN/AL),
 murlanarena.com, murlan.app, and the App Store / Play Store listings of the two largest
@@ -109,8 +61,8 @@ existing Murlan apps.
 |---|---|---|
 | **The deal** | **Deal the entire 54-card deck.** 4p = 14/14/13/13, 3p = 18 each, 2p = 27 each. | Every source says the whole deck is dealt. The current 13-per-player deal discards 2 random cards, so ~7% of games contain no Joker and ~4% no 3♠. This is the root cause of the fake "lowest spade" opening fallback, which can then be deleted. |
 | **Royal straight** | **Keep as core, beating bombs. No engine change.** | Traditional Albanian sources have no flush at all, but both major modern implementations (murlanarena, murlan.app) have it and rank it above bombs — which is exactly what the engine already does. Only the documentation changes. |
-| **Royal straight comparison** | Beating royal straight must have the **same card count**, consistent with normal straights. | Matches existing engine behaviour; `app/rules.tsx:90` currently implies otherwise. |
-| **Teams win condition** | **Play the hand out and sum both partners' placement points.** | Matches current engine behaviour and the only source covering team play. `app/rules.tsx:70` is wrong and changes. |
+| **Royal straight comparison** | Beating royal straight must have the **same card count**, consistent with normal straights. | Matches existing engine behaviour; `app/rules.tsx` currently implies otherwise. |
+| **Teams win condition** | **Play the hand out and sum both partners' placement points.** | Matches current engine behaviour and the only source covering team play. `app/rules.tsx` is wrong and changes. |
 | **Match target** | **Add it: 3/2/1/0 per hand, first to 21, escalating 31 → 41 → 51 on ties.** | The most consistently attested rule across every source, and completely absent from the app today. Turns loose repeated hands into an actual match. |
 | **2 in straights** | **Keep — the engine is already correct.** `A-2-3-4-5` and `2-3-4-5-6` are legal; the 2 is low *only* inside a sequence. | Confirmed canonical by catsatcards and visixplay. No change. |
 | **Suit tiebreaks** | **None. The engine is correct; `CLAUDE.md` is wrong** and must be corrected. | No source assigns any suit order. Equal ranks are equal strength, so a same-rank answer is simply illegal. |
@@ -127,6 +79,10 @@ existing Murlan apps.
 
 ## 4. Workstreams
 
+> This section is the original plan, kept as the record of how the work was cut.
+> It is **not** current status — `docs/BACKLOG.md` and `audit/2026-08-17/PROGRESS.md`
+> carry that, and most of W1–W5 has since shipped.
+
 **W1 — Trust & authority.** Kill the impersonation vector. Ticket-based socket auth.
 Authorize every socket event against seat ownership and phase. Fix the IDOR routes.
 Rate-limit socket events. Server-side CSPRNG shuffle.
@@ -141,7 +97,7 @@ either bot takeover or forfeit — never a hang.
 
 **W4 — Client architecture.** Collapse the offline/online game screen duplication into a
 single presentational component driven by a common state interface. Delete the legacy
-colour constants. Migrate `expo-av` → `expo-audio`. Remove the 11 unused dependencies.
+colour constants, migrate off `expo-av`, and remove the unused dependencies.
 
 **W5 — Test & CI.** Engine unit tests, rules property tests, server integration tests over
 a real socket, and a CI pipeline that runs typecheck, lint, and tests on every push.
@@ -277,8 +233,8 @@ break ties, so both remaining items on this map are closed.
 | `replit.md:15` | "12 bundled **WAV** sound effects" | They are `.mp3` files |
 | `replit.md:88` | Lists `expo-crypto` as a dependency | Not in `package.json` |
 | `replit.md:62` | "Server Authority … ensuring fair play" | The socket handshake accepts an unverified `userId`; there is no fair play until W1 lands |
-| `replit.md:53` | "Existing screens still reference `constants/colors.ts` — do not retroactively replace" | This instruction actively preserves a bug: the legacy file's suit colours are the old red/black pair, so any screen importing it silently loses the colourblind-safe palette. The file is to be deleted, not preserved. |
-| `replit.md:46` vs `constants/colors.ts:2` vs `app.json` splash | `#031008` / `#061410` / `#061410` | Three different background colours; the launch seam is visible |
+| `replit.md` | "Existing screens still reference the legacy colour constants — do not retroactively replace" | That instruction preserved a bug: the legacy file's suit colours were the old red/black pair, so any screen importing it silently lost the colourblind-safe palette. The file was deleted; `lib/theme.ts` is the only palette. |
+| `replit.md` vs the legacy colour constants vs the `app.json` splash | `#031008` / `#061410` / `#061410` | Three different background colours, so the launch seam was visible. One value now, from `lib/theme.ts`. |
 | `replit.md:21-26` "MUST NOT CHANGE" | Game rules and exchange phase are frozen | Superseded by the decisions in §3.1, which change the deal and add a match target |
 | `CLAUDE.md` ↔ `replit.md` | Both describe the tech stack, design system, disconnect handling, notification banner and friends list | Same content twice, already drifting apart |
 | `docs/superpowers/specs/2026-06-04-…-visual-upgrade-design.md` | Reads as a pending design spec | Verified **already implemented** — the ornate SVG card back, gold selected-glow ring, `-14px` spring lift, face-card gold border and MP3 web audio via `decodeAudioData` are all in the code. To be stamped as shipped. |

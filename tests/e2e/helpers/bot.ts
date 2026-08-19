@@ -88,15 +88,12 @@ const stagedSelection = new WeakMap<Page, string[]>();
 const CARD_CLICK_TIMEOUT_MS = 4_000;
 
 /**
- * The table description names the last play's shape ("coppia di 8", "tris
- * di J", "bomba di 3" — components/GameTable.tsx `lastPlayA11yLabel`).
- * `canPlay` (lib/gameEngine.ts) only ever accepts a matching card count in
- * response — a single can never beat a pair — so parsing this out front
- * means a response to a pair/triple/bomb never wastes a full singles sweep
- * it was always going to fail. Null means "leading, or replying to a
- * single" (try singles first, as normal); -1 means a straight or royal
- * straight, which this bot cannot build — only a bomb can possibly answer
- * one, so it skips straight to that.
+ * The table description names the last play's shape, and `canPlay` only ever
+ * accepts a matching card count — so parsing it up front saves a singles
+ * sweep that was always going to fail.
+ *
+ * Null means leading or replying to a single; -1 means a straight, which this
+ * bot cannot build, so only a bomb can answer.
  */
 /**
  * Card strength, weakest first, by the word the table uses for each rank
@@ -154,11 +151,9 @@ function requiredReplySize(desc: string): number | null {
  * leader can play a single and every follower may always pass — so it means
  * the app itself is wrong.
  *
- * Singles are tried card by card rather than one representative per rank:
- * suit never affects a single's legality *except* the very first play of a
- * match, which must contain the specific dealt start card (docs/RULES.md —
- * whichever seat holds the 3♠ opens with it). Trying only the first "3" in
- * hand would miss that exact card whenever a lower-suited 3 sorts before it.
+ * Singles are tried card by card, not one per rank: suit never affects a
+ * single's legality except on the first play of a match, which must contain
+ * the dealt start card — one representative per rank would miss it.
  *
  * Cards are clicked by their accessibilityLabel, not by list position: the
  * hand re-renders (selection state, entrance/lift animations) between one
@@ -307,23 +302,17 @@ async function playOrPass(page: Page, desc: string): Promise<string | null> {
 const GIVEBACK_CARD_LABEL = /^(3|4|5|6|7|8|9|10) di (Fiori|Cuori|Quadri|Picche)$/;
 
 /**
- * Gives back a card during the between-hands exchange (docs/RULES.md §10,
- * "Exchange phase between hands"): the winner's hand is still rendered
- * underneath the modal, so the same card's accessibilityLabel exists twice
- * in the DOM — once as the ordinary (overlay-covered) hand card inside
- * `[data-testid="game-table"]`, once as the modal's own listing
- * (`components/ExchangeModal.tsx` `SelectableCard`), which
- * `components/GameTable.tsx` renders as a *sibling* of the table, not a
- * descendant. Excluding anything under the table testid leaves exactly the
- * modal's copy. `SelectableCard` carries no accessibilityLabel of its own
- * (an accessibility gap noted in the harness's report) — its real click
- * handler sits on the `<button>` ancestor wrapping the inner, disabled
- * `CardView` button that *does* carry the label. Chromium's accessibility
- * tree confirms that ancestry survives as a genuine one (`ancestor::button`
- * below), rather than depending on it being renderable HTML — react-native-
- * web's `accessibilityRole="button"` becomes a literal `<button>`, and two
- * of those cannot legally nest, so whether the browser's parser actually
- * preserves that nesting in the live DOM is not something to bet a click on.
+ * Gives back a card during the between-hands exchange (docs/RULES.md §10).
+ *
+ * The winner's hand renders underneath the modal, so the same
+ * accessibilityLabel exists twice: once inside `[data-testid="game-table"]`,
+ * once in the modal, which GameTable renders as a *sibling* of the table.
+ * Excluding the table testid leaves the modal's copy.
+ *
+ * The click handler sits on the `<button>` ancestor, matched through
+ * Chromium's accessibility tree rather than the DOM: react-native-web turns
+ * `accessibilityRole="button"` into a literal `<button>`, and two cannot
+ * legally nest, so the parser's treatment of that nesting is not bettable.
  */
 async function giveExchangeCandidateCount(page: Page): Promise<number> {
   const candidates = page.locator(`[aria-label]:not(${TABLE} [aria-label])`);

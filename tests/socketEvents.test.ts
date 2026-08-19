@@ -59,18 +59,18 @@ function stripComments(source: string): string {
   return source.replace(/\/\/.*$|\/\*[\s\S]*?\*\//gm, (m) => m.replace(/[^\n]/g, " "));
 }
 
-/** Every literal event name passed to a bare `socket.on(…)` call, double or single quoted or backtick-without-interpolation. */
+/** Every literal event name passed to a bare `socket.on(…)` or `socket?.on(…)` call, double or single quoted or backtick-without-interpolation. */
 function literalSocketOnEvents(source: string): string[] {
-  return [...stripComments(source).matchAll(/socket\.on\(\s*(["'`])((?:(?!\1).)*)\1/gs)]
+  return [...stripComments(source).matchAll(/socket\??\.on\(\s*(["'`])((?:(?!\1).)*)\1/gs)]
     .filter((m) => m[1] !== "`" || !m[2].includes("${"))
     .map((m) => m[2]);
 }
 
-/** `file:line` for every `socket.on(` whose first argument is not a string literal. */
+/** `file:line` for every `socket.on(` / `socket?.on(` whose first argument is not a string literal. */
 function nonLiteralSocketOnCalls(file: string, source: string): string[] {
   const out: string[] = [];
   const clean = stripComments(source);
-  for (const m of clean.matchAll(/socket\.on\(\s*/g)) {
+  for (const m of clean.matchAll(/socket\??\.on\(\s*/g)) {
     if (file === WRAPPER_FILE) continue;
     const next = clean[m.index + m[0].length];
     if (next === '"' || next === "'" || next === "`") continue;
@@ -185,6 +185,7 @@ test("no socket.on call names its event with anything but a string literal", () 
 
 test("the literal-event scanner catches single quotes, backticks and files beyond socket.ts", () => {
   assert.deepEqual(literalSocketOnEvents('socket.on("room:x", () => {});'), ["room:x"]);
+  assert.deepEqual(literalSocketOnEvents('socket?.on("room:x", () => {});'), ["room:x"]);
   assert.deepEqual(literalSocketOnEvents("socket.on('room:x', () => {});"), ["room:x"]);
   assert.deepEqual(literalSocketOnEvents("socket.on(`room:x`, () => {});"), ["room:x"]);
   assert.deepEqual(literalSocketOnEvents("socket.on(`room:${x}`, () => {});"), []);

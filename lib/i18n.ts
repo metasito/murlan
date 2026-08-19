@@ -1,10 +1,10 @@
 // Typed localisation layer.
 //
-// - `it` (Italian) is authoritative; `TranslationKey` is derived from it, so
+// - `en` (English) is authoritative; `TranslationKey` is derived from it, so
 //   a typo'd or missing key in any locale — or at any `t()` call site — is a
-//   compile error, not a blank label at runtime (locales/en.ts, locales/sq.ts
+//   compile error, not a blank label at runtime (locales/it.ts, locales/sq.ts
 //   are each typed `Record<TranslationKey, string>`).
-// - Detects the device locale via expo-localization, falls back to Italian,
+// - Detects the device locale via expo-localization, falls back to English,
 //   and persists an explicit override to AsyncStorage.
 // - `useTranslation()` subscribes to locale changes (useSyncExternalStore),
 //   so every screen calling it re-renders immediately when the player
@@ -24,12 +24,12 @@ import { it } from "../locales/it.ts";
 import { en } from "../locales/en.ts";
 import { sq } from "../locales/sq.ts";
 
-export type TranslationKey = keyof typeof it;
+export type TranslationKey = keyof typeof en;
 export type Locale = "it" | "en" | "sq";
 export type TranslationParams = Record<string, string | number>;
 
 export const SUPPORTED_LOCALES: Locale[] = ["it", "en", "sq"];
-export const DEFAULT_LOCALE: Locale = "it";
+export const DEFAULT_LOCALE: Locale = "en";
 
 export const LOCALE_LABELS: Record<Locale, string> = {
   it: "Italiano",
@@ -94,7 +94,7 @@ let initPromise: Promise<Locale> | null = null;
 
 /**
  * Restores a saved language override, or detects the device locale, falling
- * back to Italian. Call once at app startup (app/_layout.tsx). Safe to call
+ * back to English. Call once at app startup (app/_layout.tsx). Safe to call
  * more than once — subsequent calls return the same in-flight/resolved promise.
  */
 export function initLocale(): Promise<Locale> {
@@ -160,7 +160,7 @@ export interface ServerPayload {
  * player's language. `code` is looked up as `server.<code>` in the current
  * catalogue. If the code is unknown to this client build (an older client
  * talking to a newer server, or a code that was never localised) the
- * server's plain-text Italian `message` is shown instead — the plain-text
+ * server's plain-text `message` is shown instead — the plain-text
  * fallback exists precisely so nobody ever sees a blank error.
  */
 export function translateServerPayload(payload: ServerPayload): string {

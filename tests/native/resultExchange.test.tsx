@@ -147,7 +147,7 @@ describe('the result screen card exchange', () => {
     await waitFor(() => {
       const selected = view.getAllByRole('radio', { selected: true });
       expect(selected).toHaveLength(1);
-      expect(selected[0].props.accessibilityLabel).toBe('9 di Quadri');
+      expect(selected[0].props.accessibilityLabel).toBe('9 of Diamonds');
     });
     await view.unmount();
   });
@@ -180,7 +180,7 @@ describe('the result screen card exchange', () => {
     );
     const radios = view.getAllByRole('radio');
     expect(radios).toHaveLength(1);
-    expect(radios[0].props.accessibilityLabel).toBe('Asso di Picche');
+    expect(radios[0].props.accessibilityLabel).toBe('Ace of Spades');
     await view.unmount();
   });
 });

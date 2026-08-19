@@ -21,7 +21,7 @@ jest.mock('@react-native-community/netinfo', () => ({
 
 import AuthScreen from '@/app/auth';
 import { AuthProvider } from '@/context/AuthContext';
-import { it as itLocale } from '@/locales/it';
+import { en as locale } from '@/locales/en';
 
 const METRICS = {
   frame: { x: 0, y: 0, width: 390, height: 844 },
@@ -37,12 +37,12 @@ const mount = () =>
     </SafeAreaProvider>
   );
 
-const password = () => screen.getByLabelText(itLocale['auth.passwordA11yLabel']);
+const password = () => screen.getByLabelText(locale['auth.passwordA11yLabel']);
 
 describe('the login form offers itself to the password manager', () => {
   it('names the username field', async () => {
     const view = await mount();
-    const field = screen.getByLabelText(itLocale['auth.usernameA11yLabel']);
+    const field = screen.getByLabelText(locale['auth.usernameA11yLabel']);
     expect(field.props.autoComplete).toBe('username');
     expect(field.props.textContentType).toBe('username');
     await view.unmount();
@@ -54,7 +54,7 @@ describe('the login form offers itself to the password manager', () => {
     expect(password().props.textContentType).toBe('password');
 
     await act(async () => {
-      fireEvent.press(screen.getByRole('tab', { name: itLocale['auth.tabRegister'] }));
+      fireEvent.press(screen.getByRole('tab', { name: locale['auth.tabRegister'] }));
     });
 
     expect(password().props.autoComplete).toBe('new-password');

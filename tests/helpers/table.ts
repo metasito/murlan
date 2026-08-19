@@ -116,12 +116,10 @@ export type DriveResult =
  * and sheds several cards per play to keep the per-socket event count
  * comfortably under the rate limiter across repeated hands.
  *
- * Listeners are attached before `kickoff()` runs, so the very first
- * game:state (which decides who must play the mandatory start card) is
- * never missed. Resolves once the hand's end (`game:over`) or an active
- * exchange phase has been observed from every client's own viewpoint — so the
- * caller can read the winner's real hand, and so no closing broadcast is left
- * in flight to be mistaken for the start of the next hand.
+ * Listeners attach before `kickoff()`, so the first game:state — which decides
+ * who plays the mandatory start card — is never missed. Resolves once
+ * `game:over` or an active exchange has been seen from every client, so no
+ * closing broadcast is left in flight to be read as the next hand starting.
  *
  * `stopOnExchange: false` plays straight through an exchange instead: the
  * driver simply idles while it is up, and the server's own AFK/bot forced

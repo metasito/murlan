@@ -1,7 +1,7 @@
 /**
  * Boots the exact stack the E2E suite drives: the disposable Postgres dev
  * stack, a fresh Expo web build, and the real Express server serving both —
- * the same `dist/` + API split Replit runs in production (server/testApp.ts
+ * the same `dist/` + API split Replit runs in production (server/app.ts
  * `configureExpoAndLanding`). Playwright's `webServer` config invokes this
  * directly; `npm run test:e2e` does not need its own orchestration.
  *

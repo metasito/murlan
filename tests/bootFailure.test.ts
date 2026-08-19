@@ -22,7 +22,7 @@ import assert from "node:assert/strict";
 process.env.DATABASE_URL = "postgres://postgres:postgres@127.0.0.1:1/murlan_unreachable";
 process.env.SESSION_SECRET = "boot-failure-test";
 
-const { createApp } = await import("../server/testApp.ts");
+const { createApp } = await import("../server/app.ts");
 const bootOutcome: unknown = await createApp().then(
   () => "resolved",
   (err: unknown) => err

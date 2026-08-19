@@ -17,8 +17,7 @@ export function setSocketAuthFailureHandler(handler: (() => void) | null) {
 /**
  * Mints a short-lived, single-use handshake ticket from the authenticated REST
  * session. Native clients do not reliably send the session cookie on the
- * websocket upgrade, and the server no longer accepts a bare userId, so this
- * is what proves who we are.
+ * websocket upgrade, and the handshake accepts only a session or a ticket.
  *
  * Uses a raw fetch (not apiRequest) so a 401 can be told apart from a
  * transient network failure instead of being swallowed identically.
@@ -65,12 +64,8 @@ export function connectSocket(userId: string): Socket {
   return socket;
 }
 
-export function getSocket(userId: string): Socket {
-  const s = socketMap.get(userId);
-  if (!s) {
-    return connectSocket(userId);
-  }
-  return s;
+export function getSocket(userId: string): Socket | null {
+  return socketMap.get(userId) ?? null;
 }
 
 export function disconnectSocket(userId: string) {

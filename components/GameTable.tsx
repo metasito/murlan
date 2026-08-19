@@ -159,15 +159,12 @@ const PLAY_A11Y_SPOKEN_KEYS: Partial<Record<PlayButtonLabel, TranslationKey>> = 
 // ─── Screen-reader table description ───────────────────────────────────────
 //
 // describeTableForA11y (gameTableModel.ts) is pure and takes every phrase
-// pre-translated; this is the translation boundary that builds them. Card names
-// come from lib/cardNames so a card named here is named identically wherever
-// else it is spoken.
+// pre-translated; this is the translation boundary that builds them.
 /**
- * Spoken form of a played combination for describeTableForA11y — richer than
- * getComboLabel's visual chip text (which a sighted player pairs with the
- * cards they can already see): "coppia di 8", not just "Coppia". For a
- * straight/royal straight only the top card is named (the fact that decides
- * whether a reply beats it) rather than the whole run.
+ * Spoken form of a played combination — richer than getComboLabel's chip text,
+ * which a sighted player pairs with the cards they can see: "pair of 8s", not
+ * "Pair". For a straight only the top card is named, since that is what decides
+ * whether a reply beats it.
  */
 function lastPlayA11yLabel(combo: Combination, t: TFn): string {
   switch (combo.type) {
@@ -1419,7 +1416,7 @@ const styles = StyleSheet.create({
   },
   timerUrgent: { color: Colors.red },
   cardCountBadge: {
-    width: 30, height: 30, borderRadius: 15,
+    width: 30, height: 30, borderRadius: Radius.full,
     backgroundColor: Scrim.medium,
     alignItems: "center", justifyContent: "center",
   },
@@ -1429,11 +1426,11 @@ const styles = StyleSheet.create({
 
   startCardBanner: {
     alignItems: "center", gap: 6,
-    paddingHorizontal: Spacing.md, paddingVertical: 10, borderRadius: 14,
+    paddingHorizontal: Spacing.md, paddingVertical: 10, borderRadius: Radius.md,
     backgroundColor: Scrim.medium,
     borderWidth: 1, borderColor: Colors.goldSoft,
   },
-  startCardGlyph: { fontSize: 28, color: Colors.text },
+  startCardGlyph: { fontSize: FontSize.xxl, color: Colors.text },
   startCardText: {
     fontFamily: "Rajdhani_600SemiBold", fontSize: FontSize.sm,
     color: Colors.text, textAlign: "center", letterSpacing: 0.5,

@@ -34,7 +34,7 @@ jest.mock('@/lib/accessibility', () => ({
 
 import { GameTable } from '@/components/GameTable';
 import type { Card, GameState, Player } from '@/lib/gameEngine';
-import { it as itLocale } from '@/locales/it';
+import { en as locale } from '@/locales/en';
 
 const METRICS = {
   frame: { x: 0, y: 0, width: 844, height: 390 },
@@ -86,7 +86,7 @@ const table = (gameState: GameState) => (
   </SafeAreaProvider>
 );
 
-const YOUR_TURN = itLocale['gameTable.a11yYourTurn'];
+const YOUR_TURN = locale['gameTable.a11yYourTurn'];
 
 /**
  * The layout container keeps the same sentence as a raw attribute for the E2E
@@ -111,7 +111,7 @@ describe('the table description reaches a screen reader', () => {
 
   it('summarises the hand on its own node', async () => {
     const r = await render(table(state(1)));
-    expect(spokenNodes(/La tua mano/)).toHaveLength(1);
+    expect(spokenNodes(/Your hand/)).toHaveLength(1);
     await r.unmount();
   });
 });

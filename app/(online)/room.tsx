@@ -19,7 +19,6 @@ import { useOnlineGame } from "@/context/OnlineGameContext";
 import { useNotification } from "@/context/NotificationContext";
 import { useAuth } from "@/context/AuthContext";
 import { useSocket } from "@/context/SocketContext";
-import { getSocket } from "@/lib/socket";
 import { Colors, Spacing, Radius, FontSize, Motion, TOUCH_TARGET_MIN, Type } from '@/lib/theme';
 import { targetsFor, TEAMS_PLAYER_COUNT } from "@/lib/gameEngine";
 import type { MatchLength } from "@/lib/gameEngine";
@@ -223,8 +222,7 @@ function InviteFriendsPanel({
   );
 
   function handleInvite(friend: FriendInfo) {
-    const socket = getSocket(myUserId);
-    socket.emit("friend:invite", { friendUserId: friend.id, roomCode });
+    socket?.emit("friend:invite", { friendUserId: friend.id, roomCode });
     setSentIds((prev) => new Set(prev).add(friend.id));
     setTimeout(() => {
       setSentIds((prev) => {
@@ -245,7 +243,7 @@ function InviteFriendsPanel({
         {t("room.inviteFriendsTitle")}
       </Text>
       {onlineFriendsNotInRoom.length === 0 ? (
-        <View style={[inviteStyles.emptyContainer, { backgroundColor: Colors.bgCard, borderRadius: 10 }]}>
+        <View style={[inviteStyles.emptyContainer, { backgroundColor: Colors.bgCard, borderRadius: Radius.sm }]}>
           <Text style={inviteStyles.emptyText}>{t("room.noFriendsOnline")}</Text>
         </View>
       ) : (
@@ -258,7 +256,7 @@ function InviteFriendsPanel({
           scrollEnabled={false}
           style={{
             maxHeight: listMaxHeight,
-            borderRadius: 10,
+            borderRadius: Radius.sm,
             backgroundColor: Colors.bgCard,
           }}
           showsVerticalScrollIndicator={true}
@@ -536,7 +534,7 @@ export default function RoomScreen() {
                           paddingVertical: playerItemPaddingVertical,
                           paddingHorizontal: 12,
                           backgroundColor: Colors.bgCard,
-                          borderRadius: 10,
+                          borderRadius: Radius.sm,
                           flexDirection: "row",
                           alignItems: "center",
                         },
@@ -670,7 +668,7 @@ export default function RoomScreen() {
                       paddingVertical: playerItemPaddingVertical,
                       paddingHorizontal: 12,
                       backgroundColor: Colors.bgCard,
-                      borderRadius: 10,
+                      borderRadius: Radius.sm,
                       flexDirection: "row",
                       alignItems: "center",
                     },
@@ -750,12 +748,12 @@ const botFillStyles = StyleSheet.create({
   rowText: { flex: 1, gap: 2 },
   label: {
     fontFamily: "Rajdhani_600SemiBold",
-    fontSize: 15,
+    fontSize: FontSize.md,
     color: Colors.text,
   },
   sublabel: {
     fontFamily: "Inter_400Regular",
-    fontSize: 11,
+    fontSize: FontSize.xs,
     color: Colors.textMuted,
   },
   personalityRow: {
@@ -781,7 +779,7 @@ const botFillStyles = StyleSheet.create({
   },
   personalityPillText: {
     fontFamily: "Rajdhani_600SemiBold",
-    fontSize: 13,
+    fontSize: FontSize.sm,
     color: Colors.textSecondary,
   },
   personalityPillTextActive: {
@@ -796,7 +794,7 @@ const inviteStyles = StyleSheet.create({
   },
   emptyText: {
     fontFamily: "Inter_400Regular",
-    fontSize: 13,
+    fontSize: FontSize.sm,
     color: Colors.textMuted,
   },
   row: {
@@ -808,7 +806,7 @@ const inviteStyles = StyleSheet.create({
   avatar: {
     width: 30,
     height: 30,
-    borderRadius: 15,
+    borderRadius: Radius.full,
     backgroundColor: Colors.felt,
     alignItems: "center",
     justifyContent: "center",
@@ -817,7 +815,7 @@ const inviteStyles = StyleSheet.create({
   },
   avatarInitial: {
     fontFamily: "Rajdhani_700Bold",
-    fontSize: 14,
+    fontSize: FontSize.sm,
     color: Colors.gold,
   },
   onlineDot: {
@@ -826,20 +824,20 @@ const inviteStyles = StyleSheet.create({
     right: 0,
     width: 9,
     height: 9,
-    borderRadius: 4.5,
+    borderRadius: Radius.full,
     backgroundColor: Colors.success,
     borderWidth: 1.5,
     borderColor: Colors.bgSurface,
   },
   friendName: {
     fontFamily: "Inter_400Regular",
-    fontSize: 13,
+    fontSize: FontSize.sm,
     color: Colors.text,
     flex: 1,
   },
   inviteBtn: {
     backgroundColor: Colors.goldMuted,
-    borderRadius: 8,
+    borderRadius: Radius.sm,
     borderWidth: 1,
     borderColor: Colors.goldDark,
     paddingHorizontal: 8,
@@ -847,7 +845,7 @@ const inviteStyles = StyleSheet.create({
   },
   inviteBtnText: {
     fontFamily: "Inter_500Medium",
-    fontSize: 11,
+    fontSize: FontSize.xs,
     color: Colors.gold,
   },
 });
@@ -906,7 +904,7 @@ const styles = StyleSheet.create({
 
   codeSection: {
     backgroundColor: Colors.bgSurface,
-    borderRadius: 16,
+    borderRadius: Radius.md,
     borderWidth: 1,
     borderColor: Colors.goldDark,
     paddingVertical: 12,
@@ -916,7 +914,7 @@ const styles = StyleSheet.create({
   },
   codeSectionCompact: {
     backgroundColor: Colors.bgSurface,
-    borderRadius: 14,
+    borderRadius: Radius.md,
     borderWidth: 1,
     borderColor: Colors.goldDark,
     paddingVertical: 8,
@@ -926,32 +924,32 @@ const styles = StyleSheet.create({
   },
   codeLabel: {
     fontFamily: "Inter_400Regular",
-    fontSize: 11,
+    fontSize: FontSize.xs,
     color: Colors.textMuted,
     letterSpacing: 2,
   },
   codeText: {
     fontFamily: "Rajdhani_700Bold",
-    fontSize: 42,
+    fontSize: FontSize.hero,
     color: Colors.gold,
     letterSpacing: 10,
   },
   codeTextCompact: {
     fontFamily: "Rajdhani_700Bold",
-    fontSize: 26,
+    fontSize: FontSize.xl,
     color: Colors.gold,
     letterSpacing: 6,
   },
   codeActions: { flexDirection: "row", gap: 20, marginTop: 2 },
   codeBtn: { flexDirection: "row", alignItems: "center", gap: 6, padding: 4, minHeight: TOUCH_TARGET_MIN },
-  codeBtnText: { fontFamily: "Inter_500Medium", fontSize: 13, color: Colors.gold },
+  codeBtnText: { fontFamily: "Inter_500Medium", fontSize: FontSize.sm, color: Colors.gold },
   modePill: {
     flexDirection: "row",
     alignItems: "center",
     alignSelf: "flex-start",
     gap: 6,
     backgroundColor: Colors.bgCard,
-    borderRadius: 12,
+    borderRadius: Radius.md,
     paddingHorizontal: 10,
     paddingVertical: 5,
     borderWidth: 1,
@@ -959,20 +957,20 @@ const styles = StyleSheet.create({
   },
   modePillText: {
     fontFamily: "Inter_400Regular",
-    fontSize: 12,
+    fontSize: FontSize.xs,
     color: Colors.textMuted,
   },
 
   slotsSectionTitle: {
     fontFamily: "Inter_400Regular",
-    fontSize: 11,
+    fontSize: FontSize.xs,
     color: Colors.textMuted,
     letterSpacing: 2,
   },
   slotAvatar: {
     width: 36,
     height: 36,
-    borderRadius: 18,
+    borderRadius: Radius.full,
     backgroundColor: Colors.felt,
     alignItems: "center",
     justifyContent: "center",
@@ -980,24 +978,24 @@ const styles = StyleSheet.create({
   slotAvatarCompact: {
     width: 28,
     height: 28,
-    borderRadius: 14,
+    borderRadius: Radius.full,
   },
   slotAvatarEmpty: { backgroundColor: Colors.bgCard },
-  slotInitial: { fontFamily: "Rajdhani_700Bold", fontSize: 16, color: Colors.gold },
-  slotInitialCompact: { fontSize: 13 },
+  slotInitial: { fontFamily: "Rajdhani_700Bold", fontSize: FontSize.md, color: Colors.gold },
+  slotInitialCompact: { fontSize: FontSize.sm },
   slotInfo: { flex: 1, gap: 1 },
-  slotName: { fontFamily: "Inter_500Medium", fontSize: 14, color: Colors.text },
+  slotName: { fontFamily: "Inter_500Medium", fontSize: FontSize.sm, color: Colors.text },
   hostBadge: {
     fontFamily: "Inter_400Regular",
-    fontSize: 11,
+    fontSize: FontSize.xs,
     color: Colors.gold,
     letterSpacing: 0.5,
   },
   hostBadgeCompact: {
-    fontSize: 10,
+    fontSize: FontSize.xxs,
   },
-  slotWaiting: { flex: 1, fontFamily: "Inter_400Regular", fontSize: 13, color: Colors.textMuted },
-  teamBadge: { fontFamily: "Rajdhani_700Bold", fontSize: 13, letterSpacing: 1 },
+  slotWaiting: { flex: 1, fontFamily: "Inter_400Regular", fontSize: FontSize.sm, color: Colors.textMuted },
+  teamBadge: { fontFamily: "Rajdhani_700Bold", fontSize: FontSize.sm, letterSpacing: 1 },
   footer: { paddingHorizontal: 20, paddingTop: 8, paddingBottom: 4, gap: 4 },
   waitingHost: {
     flexDirection: "row",
@@ -1006,5 +1004,5 @@ const styles = StyleSheet.create({
     gap: 10,
     paddingVertical: 10,
   },
-  waitingText: { fontFamily: "Inter_400Regular", fontSize: 14, color: Colors.textMuted },
+  waitingText: { fontFamily: "Inter_400Regular", fontSize: FontSize.sm, color: Colors.textMuted },
 });

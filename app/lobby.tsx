@@ -406,7 +406,7 @@ const styles = StyleSheet.create({
   section: { gap: 12 },
   sectionLabel: {
     fontFamily: "Inter_600SemiBold",
-    fontSize: 11,
+    fontSize: FontSize.xs,
     color: Colors.textMuted,
     letterSpacing: 2,
   },
@@ -418,7 +418,7 @@ const styles = StyleSheet.create({
     flex: 1,
     minHeight: 44,
     paddingVertical: 14,
-    borderRadius: 12,
+    borderRadius: Radius.md,
     alignItems: "center",
     justifyContent: "center",
     backgroundColor: Colors.bgSurface,
@@ -431,7 +431,7 @@ const styles = StyleSheet.create({
   },
   countBtnText: {
     fontFamily: "Rajdhani_700Bold",
-    fontSize: 22,
+    fontSize: FontSize.xl,
     color: Colors.textSecondary,
   },
   countBtnTextActive: {
@@ -477,7 +477,7 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     gap: 8,
     paddingVertical: 13,
-    borderRadius: 12,
+    borderRadius: Radius.md,
     backgroundColor: Colors.bgSurface,
     borderWidth: 1,
     borderColor: Colors.border,
@@ -488,7 +488,7 @@ const styles = StyleSheet.create({
   },
   modeBtnText: {
     fontFamily: "Rajdhani_600SemiBold",
-    fontSize: 14,
+    fontSize: FontSize.sm,
     color: Colors.textSecondary,
   },
   modeBtnTextActive: {
@@ -501,7 +501,7 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     backgroundColor: Colors.bgSurface,
-    borderRadius: 12,
+    borderRadius: Radius.md,
     padding: 14,
     gap: 12,
     borderWidth: 1,
@@ -510,7 +510,7 @@ const styles = StyleSheet.create({
   playerAvatar: {
     width: 40,
     height: 40,
-    borderRadius: 20,
+    borderRadius: Radius.full,
     overflow: "hidden",
   },
   avatarGradient: {
@@ -523,12 +523,12 @@ const styles = StyleSheet.create({
   },
   playerName: {
     fontFamily: "Rajdhani_600SemiBold",
-    fontSize: 16,
+    fontSize: FontSize.md,
     color: Colors.text,
   },
   nameInput: {
     fontFamily: "Rajdhani_600SemiBold",
-    fontSize: 16,
+    fontSize: FontSize.md,
     color: Colors.text,
     padding: 0,
     borderBottomWidth: 1,
@@ -537,7 +537,7 @@ const styles = StyleSheet.create({
   },
   teamBadge: {
     fontFamily: "Inter_500Medium",
-    fontSize: 11,
+    fontSize: FontSize.xs,
     marginTop: 2,
     letterSpacing: 0.5,
   },
@@ -549,18 +549,18 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.bgElevated,
     paddingHorizontal: 10,
     paddingVertical: 6,
-    borderRadius: 8,
+    borderRadius: Radius.sm,
     borderWidth: 1,
     borderColor: Colors.border,
   },
   personalityText: {
     fontFamily: "Rajdhani_600SemiBold",
-    fontSize: 13,
+    fontSize: FontSize.sm,
     color: Colors.gold,
   },
   rulesTitle: {
     fontFamily: "Rajdhani_600SemiBold",
-    fontSize: 15,
+    fontSize: FontSize.md,
     color: Colors.textSecondary,
     marginBottom: 4,
   },
@@ -571,7 +571,7 @@ const styles = StyleSheet.create({
   },
   ruleCard: {
     backgroundColor: Colors.bgSurface,
-    borderRadius: 10,
+    borderRadius: Radius.sm,
     padding: 10,
     alignItems: "center",
     minWidth: 70,
@@ -580,12 +580,12 @@ const styles = StyleSheet.create({
   },
   ruleRank: {
     fontFamily: "Rajdhani_700Bold",
-    fontSize: 16,
+    fontSize: FontSize.md,
     color: Colors.gold,
   },
   ruleDesc: {
     fontFamily: "Inter_400Regular",
-    fontSize: 10,
+    fontSize: FontSize.xxs,
     color: Colors.textMuted,
     textAlign: "center",
     marginTop: 2,

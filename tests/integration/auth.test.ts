@@ -169,3 +169,61 @@ describe("session regeneration on login and registration", { skip: hasDatabase()
     assert.equal(body.username, username);
   });
 });
+
+describe("username case", { skip: hasDatabase() ? false : skipMessage() }, () => {
+  async function login(username: string) {
+    return fetch(`${server.url}/api/auth/login`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ username, password: "password123" }),
+    });
+  }
+
+  async function registerRaw(username: string) {
+    return fetch(`${server.url}/api/auth/register`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ username, password: "password123" }),
+    });
+  }
+
+  test("an account registered in one casing logs in under any", async () => {
+    const { user } = await register(server, "CaseAlice");
+    for (const typed of ["CaseAlice", "casealice", "CASEALICE", "cAsEaLiCe"]) {
+      const res = await login(typed);
+      const body = await res.text();
+      assert.equal(res.status, 200, `${typed}: ${body}`);
+      assert.equal(JSON.parse(body).id, user.id);
+    }
+  });
+
+  test("a differently-cased duplicate is refused", async () => {
+    await register(server, "CaseBob");
+    const res = await registerRaw("casebob");
+    assert.equal(res.status, 409);
+    assert.equal((await res.json()).code, "USERNAME_TAKEN");
+  });
+
+  // Registration is a read followed by an unserialised write, so two of them
+  // can both pass the pre-check. Only the index refuses the second, and it is
+  // reached by inserting directly — the route's own check would mask it.
+  test("the database refuses a differently-cased duplicate the pre-check let through", async () => {
+    const { storage, UsernameTakenError } = await import("../../server/storage.ts");
+    await storage.createUser({ username: "CaseCarol", password: "x" });
+    await assert.rejects(
+      () => storage.createUser({ username: "casecarol", password: "x" }),
+      UsernameTakenError
+    );
+
+    const { cookie } = await register(server, "CaseSearcher");
+    for (const typed of ["CaseCarol", "casecarol", "CASECAROL"]) {
+      const res = await fetch(
+        `${server.url}/api/users/search?username=${encodeURIComponent(typed)}`,
+        { headers: { cookie } }
+      );
+      const body = await res.text();
+      assert.equal(res.status, 200, `${typed}: ${body}`);
+      assert.equal(JSON.parse(body).username.toLowerCase(), "casecarol");
+    }
+  });
+});

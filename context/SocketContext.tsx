@@ -42,18 +42,12 @@ interface SocketContextValue {
   dismissGameInvite: (roomCode: string) => void;
 }
 
-const SocketContext = createContext<SocketContextValue>({
-  socket: null,
-  connected: false,
-  onlineIds: new Set(),
-  pendingInvite: null,
-  clearInvite: () => {},
-  gameInvites: [],
-  dismissGameInvite: () => {},
-});
+const SocketContext = createContext<SocketContextValue | null>(null);
 
 export function useSocket() {
-  return useContext(SocketContext);
+  const ctx = useContext(SocketContext);
+  if (!ctx) throw new Error("useSocket must be used within SocketProvider");
+  return ctx;
 }
 
 export function SocketProvider({ children }: { children: ReactNode }) {
@@ -223,11 +217,8 @@ export function SocketProvider({ children }: { children: ReactNode }) {
       });
     };
 
-    // The server rejects/rate-limits invites and other actions with these —
-    // previously nothing listened, so e.g. a friend:invite to a non-friend
-    // failed silently for the sender.
     // Keep the whole payload: the server emits a stable `code` (plus `params`)
-    // alongside the Italian `message`, so the client can render it in the
+    // alongside a plain-text `message`, so the client can render it in the
     // player's own language. `translateServerPayload` falls back to the
     // server's plain text if the code is unknown to this build.
     const onFriendError = (payload: ServerPayload) => {

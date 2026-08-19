@@ -453,13 +453,10 @@ export function getAllValidPlays(
   // rank in the span would poison every window containing it, hiding legal
   // straights such as 3-4-5-6-7 within 3,4,5,5,6,7.
   //
-  // Cards are bucketed by straight face value 1..14 (Ace occupies both 1 and
-  // 14; a run is capped at 13 cards so it can never use the Ace twice). For a
-  // plain straight the choice of which duplicate fills a rank is irrelevant to
-  // legality and strength, so one card per value is enough — except that an
-  // all-one-suit pick would classify as a ROYAL straight, so a mixed-suit pick
-  // is preferred when one exists. Royal straights are then enumerated
-  // explicitly, per suit, where the suit choice does matter.
+  // Bucketed by straight face value 1..14 (Ace fills both 1 and 14; a run caps
+  // at 13 so it cannot use the Ace twice). One card per value is enough for a
+  // plain straight — but an all-one-suit pick would classify as ROYAL, so a
+  // mixed-suit card is preferred. Royal straights are enumerated per suit.
   for (const groups of enumerateStraightWindows(nj)) {
     tryAdd(selectStraightCards(groups, requireCard));
   }
@@ -732,18 +729,12 @@ export function aiChoosePlay(
 
 /**
  * Fills the remaining placements when a hand ends with players still holding
- * cards. Every seat must end up in `rankings` — it is what the scoreboard
- * awards points from and what the stats writer records a game from, so a seat
- * missing from it is a player who silently played no game at all.
+ * cards. Every seat must end up in `rankings`: the scoreboard awards from it
+ * and the stats writer records from it, so a missing seat is a player who
+ * silently played no game.
  *
- * Order among the unfinished seats is not something the sources specify (they
- * only describe the hand ending), so the closest to finishing — fewest cards
- * left, seat order as a stable tiebreak — takes the better position. In teams
- * mode the remaining seats are partners on the same pair, so this ordering
- * never changes the team total; it only decides which individual placement
- * each of them records.
- *
- * Mutates `state` in place — callers already hold a fresh clone.
+ * No source specifies the order among unfinished seats, so fewest cards left
+ * wins, seat order breaking ties. Mutates `state` — callers hold a clone.
  */
 function assignRemainingPlacements(state: GameState): void {
   const remaining = state.players
@@ -1011,13 +1002,10 @@ export function processExchangeChoice(state: GameState, cardId: string): GameSta
 /**
  * Cards the round winner may hand back to the loser.
  *
- * Primary rule (canonical): any card ranked 3 through 10, other than the one
- * the loser has just handed over — returning that card straight back is not an
- * exchange (docs/RULES.md §10, and what `tutorial.errJustReceived` teaches).
- * Documented fallback: a hand can legitimately contain no card in 3-10 at all
- * (e.g. all face cards, aces, 2s and jokers). Returning [] there deadlocked the
- * exchange — every choice was rejected behind an undismissable overlay — so in
- * that case the winner's single lowest card is the valid giveback.
+ * Any card ranked 3 through 10, other than the one just handed over — giving
+ * that straight back is not an exchange (docs/RULES.md §10). A hand can hold
+ * no card in 3-10 at all, and an empty result deadlocks the exchange behind an
+ * undismissable overlay, so there the single lowest card is the giveback.
  */
 /** The card an AI gives back: the weakest legal choice, or the lowest card in
  *  hand when nothing is in the 3-10 range. Never undefined for a non-empty hand. */
@@ -1238,16 +1226,10 @@ export function aggregateTeamScores(
 }
 
 /**
- * Teams-mode match resolution. RULES.md §11: the two partners' placement
- * points are **summed** and the pair races to the target — the match is not
- * decided per seat. Resolving per seat meant a pair could hold 20+20 points
- * and still not have won, and that when one partner did cross the line alone
- * only that one seat was reported as a winner, denying the other half of the
- * winning team its `matchWon` credit.
- *
- * Escalation and the draw rule are unchanged — they just apply to team totals
- * instead of individual ones. Winners are expanded back to every member key of
- * each winning team, so both partners are reported.
+ * Teams-mode match resolution. RULES.md §11: the partners' placement points are
+ * **summed** and the pair races to the target — never decided per seat.
+ * Escalation and the draw rule apply to team totals, and winners expand back to
+ * every member key so both partners are reported.
  */
 export function resolveTeamMatch(
   cumulative: Record<string, number>,
@@ -1327,14 +1309,11 @@ export interface FoldHandResult {
  * Folds a finished manche into its match: awards the placement points, then
  * either escalates the target, ends the match, or leaves it running.
  *
- * A single-manche game ends here by definition — its winner is whoever took
- * the manche, or in teams mode the pair they belong to (docs/RULES.md §11:
- * a manche is taken by a pair, not by the seat that emptied its hand first),
- * with no target involved.
+ * A single-manche game ends here by definition, with no target involved — its
+ * winner is whoever took the manche, or in teams the pair (docs/RULES.md §11).
  *
- * Keyed by an opaque string so offline and the server run one progression
- * between them: offline scores by engine player id, the server by userId, and
- * `keyOf` / `accumulates` are the whole of the difference.
+ * Keyed by an opaque string so offline and the server share one progression:
+ * offline scores by engine player id, the server by userId.
  */
 export function foldHandIntoMatch(input: FoldHandInput): FoldHandResult {
   const { rankings, playerCount, length, gameMode, target, keyOf } = input;

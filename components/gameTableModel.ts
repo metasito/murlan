@@ -50,9 +50,8 @@ export function getOpponentPosition(steps: number, total: number): OpponentSide 
 
 /**
  * Where a seat renders from the viewer's point of view. The viewer is always
- * at the bottom; everyone else is rotated around them. This is the single
- * source of truth for both the opponent slots and the flying-card direction —
- * the two screens used to compute it in four separate places each.
+ * at the bottom; everyone else is rotated around them. The single source of
+ * truth for both the opponent slots and the flying-card direction.
  */
 export function seatDirection(
   seat: number,
@@ -170,27 +169,15 @@ export function roundClosedWithWinner(state: {
 }
 
 /**
- * The seats that have passed in the round currently on the table, in the order
- * they passed.
+ * The seats that have passed in the round on the table, in pass order.
  *
- * A pass changes nothing anyone can see — the pile is untouched — so this
- * derives it from what did change. Turns run from `lastPlayedBy` in
- * *descending* seat order (`getNextActivePlayer`, lib/gameEngine.ts) and the
- * pile only changes hands on a play, so every seat between the last player and
- * whoever is on move now has answered by passing. Seats holding no cards are
- * never dealt a turn, so they are stepped over rather than marked — a false
- * marker is worse than none.
+ * A pass changes nothing visible, so this derives it from what did: turns run
+ * from `lastPlayedBy` in *descending* seat order and the pile only moves on a
+ * play, so every seat in between has passed. Seats holding no cards are
+ * stepped over — a false marker is worse than none.
  *
- * Empty between rounds: `processPass` clears `lastPlayedCombination` on the
- * pass that closes the round, which is exactly when the markers should go.
- *
- * Empty when the seat on move is the seat that made the play: the span between
- * them is a full circle, so nobody has answered. That is the state
- * `processPlay` leaves behind when the hand ends on a play — it returns before
- * moving the turn on — and every seat still holding cards would otherwise be
- * marked for the whole game-over beat.
- *
- * `outOfCards` carries the seat count, so it must have one entry per seat.
+ * Empty between rounds, and empty when the seat on move is the one that
+ * played: that span is a full circle. `outOfCards` carries the seat count.
  */
 export function passedSeats(state: {
   currentTurnIndex: number;
@@ -469,15 +456,11 @@ export function readExchange(state: GameState, viewerSeat: number): ExchangeView
 
 // ─── Screen-reader description ─────────────────────────────────────────────────
 //
-// A blind player cannot see the fan of face-down cards, the pile, or whose
-// avatar is glowing — this is the whole table in words. Pure and
-// translation-agnostic: every phrase arrives already translated from
-// GameTable.tsx (either a literal string or a small formatter function), so
-// this stays testable under `node --test` without the i18n runtime. Ordered
-// by tactical importance for someone who cannot see the board: whose turn it
-// is, what was last played and by whom, how many cards each opponent holds
-// (the single most important signal the card fan gives a sighted player for
-// free), and finally the viewer's own hand size.
+// The whole table in words. Every phrase arrives already translated from
+// GameTable.tsx, so this stays testable under `node --test` with no i18n
+// runtime. Ordered by tactical importance to someone who cannot see the board:
+// whose turn, what was last played and by whom, each opponent's card count,
+// then the viewer's own hand size.
 
 export interface TableA11yOpponent {
   name: string;
@@ -569,15 +552,12 @@ const FACE_VALUE_RANK: Record<number, string> = {
 };
 
 /**
- * A straight's `Combination.strength` is already the correct top-of-sequence
- * face value — `getStraightStrength` in lib/gameEngine.ts knows the
- * ace-high-vs-ace-low rule (docs/RULES.md §6: the 2 is low-only, so a
- * straight containing it is unambiguously ace-low) and returns the winning
- * interpretation as a number. This just renders that number back as the rank
- * character a player recognises, for the spoken "top card" of a straight or
- * royal straight. Naively taking `cards[cards.length - 1].rank` would get
- * A-2-3-4-5 wrong (its top card is 5, not 2 or A) — this sidesteps that by
- * reusing the engine's own already-correct number instead of re-deriving it.
+ * Renders a straight's `Combination.strength` — already the correct
+ * top-of-sequence face value, ace-high-vs-ace-low resolved by
+ * `getStraightStrength` — back as a rank character, for the spoken top card.
+ *
+ * Taking `cards[cards.length - 1].rank` instead gets A-2-3-4-5 wrong: its top
+ * card is 5.
  */
 export function straightTopRankChar(strength: number): string {
   return FACE_VALUE_RANK[strength] ?? String(strength);

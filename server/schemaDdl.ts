@@ -12,7 +12,7 @@
  * connect-pg-simple with `createTableIfMissing: false`.
  */
 import type { Pool } from "pg";
-import { is, SQL, StringChunk } from "drizzle-orm";
+import { Column, is, SQL, StringChunk } from "drizzle-orm";
 import { getTableConfig, PgTable } from "drizzle-orm/pg-core";
 import * as schema from "../shared/schema.ts";
 import { logger } from "./logger.ts";
@@ -72,6 +72,26 @@ function formatDefaultClause(
       `unsupported type (${typeof value}) — update schemaStatements() in ` +
       `server/schemaDdl.ts.`
   );
+}
+
+/**
+ * Renders an expression index's term, e.g. `sql\`lower(${users.username})\`` as
+ * `(lower("username"))`. Only literal text and column references — a bound
+ * parameter cannot be indexed and throws, as it does in a default clause.
+ */
+function indexExpression(expr: SQL, indexName: string, tableName: string): string {
+  const text = expr.queryChunks
+    .map((chunk) => {
+      if (is(chunk, StringChunk)) return chunk.value.join("");
+      if (is(chunk, Column)) return quoteIdent(chunk.name);
+      throw new Error(
+        `schemaStatements: index "${indexName}" on table "${tableName}" ` +
+          `indexes a parameterized expression, which is not supported — ` +
+          `update schemaStatements() in server/schemaDdl.ts.`
+      );
+    })
+    .join("");
+  return `(${text})`;
 }
 
 type TableConfig = ReturnType<typeof getTableConfig>;
@@ -234,14 +254,9 @@ const SESSION_TABLE_STATEMENTS = [
  * columns added to tables that already existed, then indexes (which may target
  * one of those new columns), then the session table.
  *
- * Deliberately narrow: it understands exactly the schema features
- * `shared/schema.ts` currently uses (enums, varchar/text/integer/boolean/
- * jsonb/timestamp columns, single-column foreign keys with `onDelete`, simple +
- * composite primary keys, plain-column indexes/unique indexes in any access
- * method, `.unique()` columns) and throws a descriptive error for anything else
- * (check constraints,
- * RLS, non-default schemas, expression indexes, parameterized SQL defaults,
- * composite foreign keys) rather than silently emitting incomplete DDL.
+ * Deliberately narrow: it understands only the schema features
+ * `shared/schema.ts` uses today, and throws a descriptive error naming itself
+ * for anything else rather than emitting incomplete DDL.
  */
 export function schemaStatements(): string[] {
   const tables = Object.values(schema).filter((v) => is(v, PgTable)) as PgTable[];
@@ -298,11 +313,12 @@ export function schemaStatements(): string[] {
         );
       }
       const cols = idx.config.columns.map((c) => {
+        if (is(c, SQL)) return indexExpression(c, indexName, cfg.name);
         const colName = (c as { name?: string }).name;
         if (!colName) {
           throw new Error(
             `schemaStatements: index "${indexName}" on table "${cfg.name}" ` +
-              `indexes an expression, not a plain column — update ` +
+              `indexes neither a plain column nor a SQL expression — update ` +
               `schemaStatements() in server/schemaDdl.ts.`
           );
         }
@@ -361,10 +377,9 @@ export async function assertRenamesApplied(pool: Pick<Pool, "query">): Promise<v
  * safe: it throws against a database that still holds a column
  * `shared/schema.ts` has renamed, which only `npm run db:push` can carry out.
  *
- * Not wrapped in a transaction: `ALTER TYPE ... ADD VALUE` is the one statement
- * here Postgres restricts inside one, and a half-applied additive schema is
- * recoverable by the next boot anyway. A failure is rethrown so the server
- * refuses to start rather than serving requests against a schema it knows is
+ * Not wrapped in a transaction: Postgres restricts `ALTER TYPE ... ADD VALUE`
+ * inside one, and a half-applied additive schema is recoverable next boot. A
+ * failure is rethrown so the server refuses to start on a schema it knows is
  * wrong.
  */
 export async function ensureSchema(pool: Pool): Promise<void> {

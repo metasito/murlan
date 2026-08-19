@@ -6,7 +6,7 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { CardView } from '@/components/CardView';
 import NotificationBanner from '@/components/NotificationBanner';
 import type { Card, Rank, Suit } from '@/lib/gameEngine';
-import { it as itLocale } from '@/locales/it';
+import { en as locale } from '@/locales/en';
 
 // react-native-web shims Reanimated onto CSS transitions, so on web a worklet
 // never actually runs. Here the components mount under React Native's own
@@ -113,7 +113,7 @@ describe('NotificationBanner', () => {
         />
       )
     );
-    const close = itLocale['notificationBanner.closeA11yLabel'];
+    const close = locale['notificationBanner.closeA11yLabel'];
     expect(view.getByLabelText(close)).toBeTruthy();
     expect(within(view.getByRole('alert')).queryAllByLabelText(close)).toHaveLength(0);
     await view.unmount();

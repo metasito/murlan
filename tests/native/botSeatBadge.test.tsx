@@ -12,7 +12,7 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 import { TopOppSlot, SideOppSlot } from '@/components/table/seats';
 import type { Player } from '@/lib/gameEngine';
-import { it as itLocale } from '@/locales/it';
+import { en as locale } from '@/locales/en';
 
 const METRICS = {
   frame: { x: 0, y: 0, width: 390, height: 844 },
@@ -30,7 +30,7 @@ const seat = (type: Player['type']): Player => ({
   type,
 });
 
-const BOT_LABEL = itLocale['onlineGame.botSeatLabel'];
+const BOT_LABEL = locale['onlineGame.botSeatLabel'];
 
 describe('the bot-seat marker is persistent, not a notification', () => {
   it('TopOppSlot marks an ai seat', async () => {

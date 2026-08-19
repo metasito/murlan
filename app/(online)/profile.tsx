@@ -478,7 +478,7 @@ const styles = StyleSheet.create({
   avatar: {
     width: 48,
     height: 48,
-    borderRadius: 24,
+    borderRadius: Radius.full,
     backgroundColor: Colors.felt,
     borderWidth: 1,
     borderColor: Colors.gold,
@@ -528,7 +528,7 @@ const styles = StyleSheet.create({
   posBadge: {
     width: 32,
     height: 32,
-    borderRadius: 16,
+    borderRadius: Radius.full,
     borderWidth: 1.5,
     borderColor: Colors.border,
     alignItems: "center",
@@ -557,7 +557,7 @@ const styles = StyleSheet.create({
   achievementIcon: {
     width: 36,
     height: 36,
-    borderRadius: 18,
+    borderRadius: Radius.full,
     backgroundColor: Colors.bgElevated,
     alignItems: "center",
     justifyContent: "center",

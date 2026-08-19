@@ -113,7 +113,7 @@ export default function OnlineLobbyScreen() {
                   size={isLandscape ? 14 : 16} 
                   color={createMode === m ? Colors.gold : Colors.textSecondary} 
                 />
-                <Text style={[styles.toggleText, createMode === m && styles.toggleTextActive, isLandscape && { fontSize: 12 }]}>
+                <Text style={[styles.toggleText, createMode === m && styles.toggleTextActive, isLandscape && { fontSize: FontSize.xs }]}>
                   {m === "free_for_all" ? t("onlineLobby.modeFreeForAll") : t("onlineLobby.modeTeams")}
                 </Text>
               </Pressable>
@@ -387,14 +387,14 @@ const styles = StyleSheet.create({
   landscapeRow: { flexDirection: "row", gap: 20, alignItems: "stretch", flex: 1 },
   dividerV: { width: 1, backgroundColor: Colors.border, alignSelf: "stretch", marginHorizontal: 10 },
   statusRow: { flexDirection: "row", alignItems: "center", gap: 8, marginBottom: 4 },
-  dot: { width: 8, height: 8, borderRadius: 4 },
-  statusText: { fontFamily: "Inter_400Regular", fontSize: 13, color: Colors.textMuted },
+  dot: { width: 8, height: 8, borderRadius: Radius.full },
+  statusText: { fontFamily: "Inter_400Regular", fontSize: FontSize.sm, color: Colors.textMuted },
   compactCard: { marginBottom: 4, paddingHorizontal: 8, paddingVertical: 8 },
   optSection: { gap: 10, marginBottom: 16 },
   optSectionLandscape: { gap: 4, marginBottom: 8 },
   optLabelSmall: {
     fontFamily: "Inter_600SemiBold",
-    fontSize: 11,
+    fontSize: FontSize.xs,
     color: Colors.textMuted,
     letterSpacing: 2,
     marginBottom: 2,
@@ -409,7 +409,7 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     gap: 8,
     paddingVertical: 14,
-    borderRadius: 12,
+    borderRadius: Radius.md,
     borderWidth: 1,
     borderColor: Colors.border,
     backgroundColor: Colors.bgSurface,
@@ -419,13 +419,13 @@ const styles = StyleSheet.create({
     borderColor: Colors.gold,
     backgroundColor: Colors.goldMuted,
   },
-  toggleText: { fontFamily: "Rajdhani_600SemiBold", fontSize: 14, color: Colors.textSecondary },
+  toggleText: { fontFamily: "Rajdhani_600SemiBold", fontSize: FontSize.sm, color: Colors.textSecondary },
   toggleTextActive: { color: Colors.gold },
-  warn: { fontFamily: "Inter_400Regular", fontSize: 12, color: Colors.dangerDim, marginBottom: 4 },
+  warn: { fontFamily: "Inter_400Regular", fontSize: FontSize.xs, color: Colors.dangerDim, marginBottom: 4 },
   sectionFlex: { flex: 1 },
   divider: { flexDirection: "row", alignItems: "center", gap: 12 },
   divLine: { flex: 1, height: 1, backgroundColor: Colors.border },
-  divText: { fontFamily: "Inter_400Regular", fontSize: 12, color: Colors.textMuted },
+  divText: { fontFamily: "Inter_400Regular", fontSize: FontSize.xs, color: Colors.textMuted },
   modalOverlay: {
     ...StyleSheet.absoluteFillObject,
     backgroundColor: Colors.overlay,
@@ -439,7 +439,7 @@ const styles = StyleSheet.create({
   },
   modalBox: {
     backgroundColor: Colors.bgSurface,
-    borderRadius: 20,
+    borderRadius: Radius.lg,
     borderWidth: 1,
     borderColor: Colors.border,
     padding: 24,
@@ -451,39 +451,39 @@ const styles = StyleSheet.create({
     padding: 16,
     gap: 8,
   },
-  modalTitle: { fontFamily: "Rajdhani_700Bold", fontSize: 20, color: Colors.text, textAlign: "center" },
+  modalTitle: { fontFamily: "Rajdhani_700Bold", fontSize: FontSize.lg, color: Colors.text, textAlign: "center" },
   codeInput: {
     backgroundColor: Colors.bgCard,
-    borderRadius: 12,
+    borderRadius: Radius.md,
     borderWidth: 1,
     borderColor: Colors.border,
     color: Colors.text,
     fontFamily: "Rajdhani_700Bold",
-    fontSize: 28,
+    fontSize: FontSize.xxl,
     textAlign: "center",
     letterSpacing: 6,
     paddingVertical: 14,
   },
   codeInputLandscape: {
     paddingVertical: 8,
-    fontSize: 22,
+    fontSize: FontSize.xl,
   },
   modalRow: { flexDirection: "row", gap: 12 },
   modalCancelBtn: {
     flex: 1,
     paddingVertical: 12,
-    borderRadius: 10,
+    borderRadius: Radius.sm,
     borderWidth: 1,
     borderColor: Colors.border,
     alignItems: "center",
   },
-  modalCancelText: { fontFamily: "Rajdhani_600SemiBold", fontSize: 16, color: Colors.textMuted },
+  modalCancelText: { fontFamily: "Rajdhani_600SemiBold", fontSize: FontSize.md, color: Colors.textMuted },
   modalOkBtn: {
     flex: 1,
     paddingVertical: 12,
-    borderRadius: 10,
+    borderRadius: Radius.sm,
     backgroundColor: Colors.gold,
     alignItems: "center",
   },
-  modalOkText: { fontFamily: "Rajdhani_700Bold", fontSize: 16, color: Colors.bg },
+  modalOkText: { fontFamily: "Rajdhani_700Bold", fontSize: FontSize.md, color: Colors.bg },
 });
