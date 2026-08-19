@@ -137,6 +137,21 @@ describe("static asset compression and caching", { skip: hasDatabase() ? false :
     );
   });
 
+  // helmet is mounted before either branch of configureExpoAndLanding, so the
+  // header does not depend on which of the SPA and the landing page serves "/".
+  // Asserted on a static route and a handler route to show it is app-wide.
+  test("every response carries the CSP", async () => {
+    for (const route of ["/", "/health"]) {
+      const res = await fetch(`${server.url}${route}`);
+      const csp = res.headers.get("content-security-policy");
+      assert.ok(csp, `no Content-Security-Policy on ${route}`);
+      assert.match(csp, /default-src 'self'/);
+      assert.match(csp, /script-src [^;]*https:\/\/unpkg\.com/);
+      assert.match(csp, /object-src 'none'/);
+      assert.equal(/upgrade-insecure-requests/.test(csp), false);
+    }
+  });
+
   test("an unhashed asset under dist/ is not cached — its URL outlives its bytes", async () => {
     const res = await fetch(`${server.url}/favicon.ico`);
     assert.equal(res.status, 200);

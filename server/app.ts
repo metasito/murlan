@@ -20,6 +20,26 @@ declare module "http" {
   }
 }
 
+// `unsafe-inline` for both scripts and styles is forced by what Expo emits:
+// `dist/index.html` carries an inline bootstrap script and two inline <style>
+// blocks, and react-native-web injects its rules at runtime. unpkg is the QR
+// library the Expo Go landing page loads, pinned by an integrity hash.
+// `upgrade-insecure-requests` is deliberately absent — it breaks the http
+// dev server.
+const CSP_DIRECTIVES = {
+  "default-src": ["'self'"],
+  "script-src": ["'self'", "'unsafe-inline'", "https://unpkg.com"],
+  "style-src": ["'self'", "'unsafe-inline'"],
+  "img-src": ["'self'", "data:", "blob:"],
+  "font-src": ["'self'", "data:"],
+  "connect-src": ["'self'", "ws:", "wss:"],
+  "worker-src": ["'self'", "blob:"],
+  "object-src": ["'none'"],
+  "base-uri": ["'self'"],
+  "frame-ancestors": ["'none'"],
+  "form-action": ["'self'"],
+};
+
 function setupCors(app: express.Application) {
   app.use((req, res, next) => {
     const origin = req.header("origin");
@@ -74,6 +94,26 @@ function serveExpoManifest(platform: string, res: Response) {
   res.send(fs.readFileSync(manifestPath, "utf-8"));
 }
 
+const HOSTNAME = /^[A-Za-z0-9.-]+(:\d+)?$/;
+
+// The Host and X-Forwarded-Host headers are client-controlled and the value
+// lands inside a string literal in the landing page's inline script.
+function safeHost(raw: string | undefined): string {
+  if (raw && HOSTNAME.test(raw)) return raw;
+  return (
+    process.env.REPLIT_DEV_DOMAIN ||
+    process.env.REPLIT_DOMAINS?.split(",")[0]?.trim() ||
+    "localhost"
+  );
+}
+
+function renderLandingPage(template: string, host: string, appName: string): string {
+  // Function replacements: a string one expands `$&`, `` $` `` and `$'`.
+  return template
+    .replace(/EXPS_URL_PLACEHOLDER/g, () => host)
+    .replace(/APP_NAME_PLACEHOLDER/g, () => appName);
+}
+
 function serveLandingPage({
   req,
   res,
@@ -85,18 +125,12 @@ function serveLandingPage({
   landingPageTemplate: string;
   appName: string;
 }) {
-  const forwardedProto = req.header("x-forwarded-proto");
-  const protocol = forwardedProto || req.protocol || "https";
-  const host = req.header("x-forwarded-host") || req.get("host");
-  const baseUrl = `${protocol}://${host}`;
-  const expsUrl = `${host}`;
-  const html = landingPageTemplate
-    .replace(/BASE_URL_PLACEHOLDER/g, baseUrl)
-    .replace(/EXPS_URL_PLACEHOLDER/g, expsUrl)
-    .replace(/APP_NAME_PLACEHOLDER/g, appName);
+  const host = safeHost(req.header("x-forwarded-host") || req.get("host"));
   res.setHeader("Content-Type", "text/html; charset=utf-8");
-  res.status(200).send(html);
+  res.status(200).send(renderLandingPage(landingPageTemplate, host, appName));
 }
+
+export const __testables = { safeHost, renderLandingPage, CSP_DIRECTIVES };
 
 // Metro names its build output with a 32-hex content hash — `<name>.<hash>.<ext>`
 // for assets (optionally followed by an `@2x` density suffix) and
@@ -214,7 +248,10 @@ export async function createApp(): Promise<CreatedApp> {
 
   app.use(
     helmet({
-      contentSecurityPolicy: false,
+      contentSecurityPolicy: {
+        useDefaults: false,
+        directives: CSP_DIRECTIVES,
+      },
       crossOriginEmbedderPolicy: false,
     })
   );
