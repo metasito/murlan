@@ -27,8 +27,10 @@ const match: PersistedMatch = {
   isPublic: true,
 };
 
+const JOIN_CODE = "QW3RTY";
+
 const pack = (over: Partial<PersistedMatch> = {}) =>
-  packPersistedState(gameState, flags, 3, { ...match, ...over });
+  packPersistedState(gameState, flags, 3, JOIN_CODE, { ...match, ...over });
 
 /** The restored side of a round trip, or a failure naming the rejection. */
 function restore(persisted: unknown) {
@@ -49,6 +51,12 @@ describe("persisted game_state envelope", () => {
     assert.equal(restored.dealFirstSeat, 3);
   });
 
+  test("the join code survives a round trip", () => {
+    // A cold-start rejoin draws the room screen from this when the `rooms`
+    // row is gone; without it there is no six-character code to show.
+    assert.equal(restore(pack()).joinCode, JOIN_CODE);
+  });
+
   test("the engine state comes back byte-for-byte, with no envelope fields on it", () => {
     // The restored state is broadcast to every client and compared against
     // engine output — a stray schemaVersion or handFlags on it is a real bug.
@@ -66,7 +74,7 @@ describe("persisted game_state envelope", () => {
 
   test("packing does not mutate the caller's game state", () => {
     const original = { ...gameState };
-    packPersistedState(gameState, flags, 0, match);
+    packPersistedState(gameState, flags, 0, JOIN_CODE, match);
     assert.deepEqual(gameState, original);
   });
 
@@ -118,6 +126,11 @@ describe("rows the restore path refuses", () => {
     assert.match(refusal({ ...pack(), handFlags: undefined }), /hand flags/);
     assert.match(refusal({ ...pack(), dealFirstSeat: "3" }), /deal rotation/);
     assert.match(refusal({ ...pack(), match: undefined }), /match state/);
+  });
+
+  test("a missing join code", () => {
+    assert.match(refusal({ ...pack(), joinCode: undefined }), /join code/);
+    assert.match(refusal({ ...pack(), joinCode: "" }), /join code/);
   });
 
   test("a seat map entry that is not a seat is dropped, not restored", () => {

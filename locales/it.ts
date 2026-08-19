@@ -69,7 +69,7 @@ export const it = {
   "server.MUST_PLAY_START_CARD": "Devi giocare il {{rank}}♠ come prima carta",
   "server.INVALID_MOVE": "Mossa non valida",
   "server.CANNOT_PASS": "Non puoi passare",
-  "server.REMATCH_DECLINED": "Il tavolo ha scelto di non rigiocare",
+  "server.REMATCH_DECLINED": "Il tavolo ha rifiutato la rivincita",
   "server.UNAUTHORIZED": "Non autorizzato",
   "server.GAME_NOT_FOUND": "Partita non trovata",
   "server.GAME_NO_LONGER_VALID": "Partita non più valida",

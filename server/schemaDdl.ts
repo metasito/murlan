@@ -334,6 +334,7 @@ export function schemaStatements(): string[] {
  */
 const RENAMED_COLUMNS = [
   { table: "active_games", from: "room_code", to: "room_id" },
+  { table: "match_replays", from: "room_code", to: "room_id" },
 ] as const;
 
 /** Refuses a database still holding a column the code no longer writes. */

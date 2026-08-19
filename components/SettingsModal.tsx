@@ -4,11 +4,9 @@ import {
   View,
   Text,
   ScrollView,
-  Switch,
   Pressable,
   StyleSheet,
   Platform,
-  Alert,
 } from "react-native";
 import { useRouter } from "expo-router";
 import Feather from "@expo/vector-icons/Feather";
@@ -18,6 +16,8 @@ import { useNotification } from "@/context/NotificationContext";
 import { useAuth } from "@/context/AuthContext";
 import NotificationBanner from "@/components/NotificationBanner";
 import { OfflineBanner } from "@/components/OfflineBanner";
+import { Toggle } from "@/components/Toggle";
+import { ConfirmDialog, type ConfirmRequest } from "@/components/ConfirmDialog";
 import { apiRequest, queryClient } from "@/lib/query-client";
 import { hapticSelection } from "@/lib/haptics";
 import { usePrefersReducedMotion } from "@/lib/accessibility";
@@ -148,13 +148,12 @@ export function SettingsModal({ visible, onClose }: Props) {
     setTableFelt,
   } = useSettings();
   const { logout } = useAuth();
-  const { notification, dismissNotification } = useNotification();
+  const { notification, showNotification, dismissNotification } = useNotification();
+  const [confirming, setConfirming] = useState<ConfirmRequest | null>(null);
   const router = useRouter();
   const reduceMotion = usePrefersReducedMotion();
   const [deleting, setDeleting] = useState(false);
   const { t, locale, setLocale, locales, localeLabels } = useTranslation();
-  const soundsHint = useA11yHint(t("settings.soundsA11yHint"));
-  const hapticsHint = useA11yHint(t("settings.hapticsA11yHint"));
   const deleteHint = useA11yHint(t("settings.deleteAccountA11yHint"));
 
   async function handleDeleteAccount() {
@@ -169,19 +168,23 @@ export function SettingsModal({ visible, onClose }: Props) {
       router.replace("/auth");
     } catch {
       setDeleting(false);
-      Alert.alert(t("settings.deleteFailedTitle"), t("settings.deleteFailedBody"));
+      showNotification({
+        type: "game_error",
+        title: t("settings.deleteFailedTitle"),
+        message: t("settings.deleteFailedBody"),
+      });
     }
   }
 
   function confirmDelete() {
-    Alert.alert(
-      t("settings.deleteConfirmTitle"),
-      t("settings.deleteConfirmBody"),
-      [
-        { text: t("common.cancel"), style: "cancel" },
-        { text: t("settings.deleteAccount"), style: "destructive", onPress: handleDeleteAccount },
-      ]
-    );
+    setConfirming({
+      title: t("settings.deleteConfirmTitle"),
+      body: t("settings.deleteConfirmBody"),
+      cancelLabel: t("common.cancel"),
+      confirmLabel: t("settings.deleteAccount"),
+      destructive: true,
+      onConfirm: handleDeleteAccount,
+    });
   }
 
   function handleSelectLocale(next: Locale) {
@@ -238,16 +241,12 @@ export function SettingsModal({ visible, onClose }: Props) {
                   <Text style={styles.sublabel}>{t("settings.soundsSubtitle")}</Text>
                 </View>
               </View>
-              <Switch
+              <Toggle
                 value={soundsEnabled}
                 onValueChange={setSoundsEnabled}
-                trackColor={{ false: Colors.bgElevated, true: Colors.gold }}
-                thumbColor={soundsEnabled ? Colors.white : Colors.textMuted}
-                accessibilityRole="switch"
-                accessibilityLabel={t("settings.soundsA11yLabel")}
-                {...soundsHint.props}
+                a11yLabel={t("settings.soundsA11yLabel")}
+                a11yHint={t("settings.soundsA11yHint")}
               />
-              {soundsHint.node}
             </View>
 
             <View style={styles.stackRow}>
@@ -332,16 +331,12 @@ export function SettingsModal({ visible, onClose }: Props) {
                     <Text style={styles.sublabel}>{t("settings.hapticsSubtitle")}</Text>
                   </View>
                 </View>
-                <Switch
+                <Toggle
                   value={hapticsEnabled}
                   onValueChange={toggleHaptics}
-                  trackColor={{ false: Colors.bgElevated, true: Colors.gold }}
-                  thumbColor={hapticsEnabled ? Colors.white : Colors.textMuted}
-                  accessibilityRole="switch"
-                  accessibilityLabel={t("settings.hapticsA11yLabel")}
-                  {...hapticsHint.props}
+                  a11yLabel={t("settings.hapticsA11yLabel")}
+                  a11yHint={t("settings.hapticsA11yHint")}
                 />
-                {hapticsHint.node}
               </View>
             )}
 
@@ -401,6 +396,7 @@ export function SettingsModal({ visible, onClose }: Props) {
         {/* A Modal is its own stacking context, so the root banners cannot
             paint over it. */}
         <NotificationBanner notification={notification} onDismiss={dismissNotification} />
+        <ConfirmDialog request={confirming} onClose={() => setConfirming(null)} />
         <OfflineBanner />
       </View>
     </Modal>

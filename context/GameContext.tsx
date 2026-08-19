@@ -14,7 +14,6 @@ import {
   PlayerType,
   MatchLength,
   targetsFor,
-  botWantsRematch,
   foldHandIntoMatch,
   initializeGame,
   initializeRematch,
@@ -117,19 +116,6 @@ export function applyHandToMatch(match: MatchState, finished: GameState): MatchS
   };
 }
 
-/**
- * Every AI seat's answer to the rematch question, decided in one go so the
- * tally is stable while the human is still thinking about theirs.
- */
-function answerForAiSeats(state: GameState, scores: Record<string, number>): RematchAnswers {
-  const leader = Math.max(0, ...Object.values(scores));
-  const answers: RematchAnswers = {};
-  for (const p of state.players) {
-    if (p.type === "ai") answers[p.id] = botWantsRematch(scores[p.id] ?? 0, leader);
-  }
-  return answers;
-}
-
 interface GameContextValue {
   gameState: GameState | null;
   selectedCards: string[];
@@ -137,6 +123,8 @@ interface GameContextValue {
   rematchAnswers: RematchAnswers;
   /** True while the table is being asked whether it wants another match. */
   rematchPromptOpen: boolean;
+  /** How many seats said yes, out of how many had anyone to answer. */
+  rematchTally: { yes: number; total: number };
   /** True once a majority of the table has said yes to another match. */
   tableWantsRematch: boolean;
   exchangeAnnouncing: boolean;
@@ -253,16 +241,6 @@ export function GameProvider({ children }: { children: ReactNode }) {
       playerCount: gameState.players.length,
     });
   }, [gameState, match]);
-
-  // The AI seats answer as soon as the question is put to the table, so the
-  // human sees a live tally instead of deciding the majority on their own.
-  useEffect(() => {
-    if (!rematchPromptOpen) return;
-    const gs = gameStateRef.current;
-    if (!gs) return;
-    setRematchAnswers((prev) => ({ ...answerForAiSeats(gs, match.scores), ...prev }));
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- seeded once when the question opens; re-running on every score change would overwrite answers already given
-  }, [rematchPromptOpen]);
 
   const answerRematch = useCallback((wants: boolean) => {
     const gs = gameStateRef.current;
@@ -444,16 +422,17 @@ export function GameProvider({ children }: { children: ReactNode }) {
     ).catch(() => {});
   }, [gameState, match, rematchAnswers, savedPlayerConfigs, savedGameMode, dealFirstSeat, clearSavedGame]);
 
-  const tableWantsRematch = useMemo(() => {
-    // Every offline seat answers — the AI ones are decided the moment the
-    // question opens — so none of them abstains.
+  // A computer has no preference worth recording, so an AI seat abstains from
+  // the count and the total alike — the same policy the server applies to bot
+  // and vacated seats (docs/BRIEF.md §3.1).
+  const rematchTally = useMemo(() => {
     const players = gameState?.players ?? [];
-    const { yes, total } = tallyRematchAnswers(
-      players.length,
-      (seat) => rematchAnswers[players[seat].id] === true
+    return tallyRematchAnswers(players.length, (seat) =>
+      players[seat].type === "ai" ? "abstain" : rematchAnswers[players[seat].id] === true
     );
-    return isMajority(yes, total);
   }, [gameState?.players, rematchAnswers]);
+
+  const tableWantsRematch = isMajority(rematchTally.yes, rematchTally.total);
 
   const value = useMemo(
     () => ({
@@ -462,6 +441,7 @@ export function GameProvider({ children }: { children: ReactNode }) {
       match,
       rematchAnswers,
       rematchPromptOpen,
+      rematchTally,
       tableWantsRematch,
       exchangeAnnouncing,
       exchangeAnnounceData,
@@ -485,6 +465,7 @@ export function GameProvider({ children }: { children: ReactNode }) {
       match,
       rematchAnswers,
       rematchPromptOpen,
+      rematchTally,
       tableWantsRematch,
       exchangeAnnouncing,
       exchangeAnnounceData,

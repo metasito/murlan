@@ -30,7 +30,7 @@ export interface GameOverWriters {
     finishedAt: Date
   ) => Promise<void>;
   saveReplay: (input: {
-    roomCode: string;
+    roomId: string;
     gameMode: GameMode;
     seats: ReplaySeat[];
     moves: ReplayMove[];
@@ -151,7 +151,7 @@ export async function handleGameOver(
     // fails, is logged, and the only consequence is an empty replays list.
     if (game.moveLog && game.moveLog.length > 0) {
       writers.saveReplay({
-        roomCode: roomId,
+        roomId,
         gameMode: game.gameMode,
         seats: replaySeatsOf(state.players, game.playerMap),
         moves: game.moveLog,

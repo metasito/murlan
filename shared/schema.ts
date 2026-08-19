@@ -4,6 +4,7 @@ import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 import type { GameState } from "../lib/gameEngine.ts";
 import type { PersistedEnvelope } from "../server/onlineGameLogic.ts";
+import type { ReplayMove, ReplaySeat } from "../lib/replay.ts";
 
 export const users = pgTable("users", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
@@ -111,14 +112,15 @@ export const userAchievements = pgTable("user_achievements", {
 // replay belongs to the table rather than to any one player's history row.
 export const matchReplays = pgTable("match_replays", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  roomCode: text("room_code").notNull(),
+  roomId: text("room_id").notNull(),
   finishedAt: timestamp("finished_at").defaultNow().notNull(),
   gameMode: text("game_mode").notNull(),
   // The seated userIds, bots excluded — what a player's own list is read through.
-  playerIds: jsonb("player_ids").notNull().default([]),
-  seats: jsonb("seats").notNull().default([]),
-  moves: jsonb("moves").notNull().default([]),
-  rankings: jsonb("rankings").notNull().default([]),
+  playerIds: jsonb("player_ids").$type<string[]>().notNull().default([]),
+  seats: jsonb("seats").$type<ReplaySeat[]>().notNull().default([]),
+  moves: jsonb("moves").$type<ReplayMove[]>().notNull().default([]),
+  /** Engine player ids, best first. */
+  rankings: jsonb("rankings").$type<string[]>().notNull().default([]),
 }, (t) => [
   index("match_replays_finished_idx").on(t.finishedAt),
   // Every read of this table filters on `player_ids @> '["<uid>"]'`. Containment

@@ -48,8 +48,33 @@ test("a match interrupted mid-hand is offered back, with the same cards", async 
   expect(await handOf(page)).toEqual(before);
 });
 
-// The counterpart — that quitting a game clears the offer — cannot be tested
-// here yet. Quitting is behind Alert.alert, and react-native-web implements
-// that as an empty function, so on web the confirm never appears and the quit
-// never happens (docs/BACKLOG.md N10). The provider's own clearing is covered
-// in tests/native/offlineResume.test.tsx meanwhile.
+// The counterpart, and the only place the confirmation itself is exercised on
+// the platform Replit serves: `Alert.alert` is an empty function under
+// react-native-web, so this dialog and its destructive branch existed on
+// native only and the quit button did nothing at all on web.
+test("quitting asks first, and taking the offer back clears it", async ({ page, baseURL }) => {
+  test.setTimeout(120_000);
+  await openApp(page, baseURL!);
+  await startOfflineGame(page, { playerCount: 4, gameMode: "free_for_all" });
+  await page.locator(TABLE).waitFor({ timeout: 60_000 });
+
+  await page.getByRole("button", { name: "Abbandona la partita" }).click();
+
+  const dialog = page.getByRole("button", { name: "Esci" });
+  await expect(dialog, "the confirmation has to be on screen at all").toBeVisible({
+    timeout: 10_000,
+  });
+
+  // Declining leaves the game exactly where it was.
+  await page.getByRole("button", { name: "Annulla" }).click();
+  await expect(page.locator(TABLE)).toBeVisible();
+
+  await page.getByRole("button", { name: "Abbandona la partita" }).click();
+  await page.getByRole("button", { name: "Esci" }).click();
+
+  // resetGame() clears the save, so the home screen no longer offers it —
+  // which is what never ran while the confirmation could not be shown.
+  await expect(page.getByRole("button", { name: "Riprendi partita" })).toHaveCount(0, {
+    timeout: 15_000,
+  });
+});

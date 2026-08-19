@@ -14,7 +14,7 @@ const ownedBy = (userId: string) =>
   sql`${matchReplays.playerIds} @> ${JSON.stringify([userId])}::jsonb`;
 
 export async function saveReplay(input: {
-  roomCode: string;
+  roomId: string;
   gameMode: GameMode;
   seats: ReplaySeat[];
   moves: ReplayMove[];
@@ -26,7 +26,7 @@ export async function saveReplay(input: {
 
   await db.transaction(async (tx) => {
     await tx.insert(matchReplays).values({
-      roomCode: input.roomCode,
+      roomId: input.roomId,
       gameMode: input.gameMode,
       playerIds,
       seats: input.seats,
@@ -63,17 +63,14 @@ export async function listReplaysForUser(userId: string): Promise<ReplaySummary[
     .orderBy(desc(matchReplays.finishedAt))
     .limit(MAX_REPLAYS_LISTED);
 
-  return rows.map((r) => {
-    const seats = r.seats as ReplaySeat[];
-    return {
-      id: r.id,
-      finishedAt: r.finishedAt.toISOString(),
-      gameMode: r.gameMode as GameMode,
-      seats,
-      playerCount: seats.length,
-      moveCount: r.moveCount,
-    };
-  });
+  return rows.map((r) => ({
+    id: r.id,
+    finishedAt: r.finishedAt.toISOString(),
+    gameMode: r.gameMode as GameMode,
+    seats: r.seats,
+    playerCount: r.seats.length,
+    moveCount: r.moveCount,
+  }));
 }
 
 /** Only a player who sat at the table may read the log back. */
@@ -91,8 +88,8 @@ export async function getReplayForUser(
     id: row.id,
     finishedAt: row.finishedAt.toISOString(),
     gameMode: row.gameMode as GameMode,
-    seats: row.seats as ReplaySeat[],
-    moves: row.moves as ReplayMove[],
-    rankings: row.rankings as string[],
+    seats: row.seats,
+    moves: row.moves,
+    rankings: row.rankings,
   };
 }

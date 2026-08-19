@@ -121,10 +121,26 @@ test("boot refuses a database still holding a renamed column", async () => {
   assert.deepEqual(
     asked.map((q) => q.params),
     [["active_games", "room_code"]],
-    "the guard has to ask the database about the column that was actually renamed"
+    "the guard stops at the first column it finds, and asks about a real rename"
   );
   assert.match(asked[0].sql, /information_schema\.columns/);
   assert.match(asked[0].sql, /table_name = \$1 AND column_name = \$2/);
+});
+
+test("every renamed column is asked about, not just the first", async () => {
+  const asked: [string, string][] = [];
+  const current = {
+    query: async (_sql: string, params: [string, string]) => {
+      asked.push(params);
+      return { rows: [] };
+    },
+  } as unknown as Pick<Pool, "query">;
+  await assertRenamesApplied(current);
+
+  assert.deepEqual(asked, [
+    ["active_games", "room_code"],
+    ["match_replays", "room_code"],
+  ]);
 });
 
 test("boot proceeds once the rename has been applied", async () => {

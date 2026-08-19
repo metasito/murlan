@@ -3,7 +3,6 @@ import { randomInt } from "node:crypto";
 import { db } from "./db.ts";
 import { users, rooms, roomPlayers, friends, activeGames, matchReplays } from "../shared/schema.ts";
 import type { User, InsertUser, Room, RoomPlayer, Friend } from "../shared/schema.ts";
-import type { ReplaySeat } from "../lib/replay.ts";
 
 export type SeatClaim =
   | { ok: true; seatIndex: number }
@@ -109,14 +108,14 @@ class DrizzleStorage implements IStorage {
         .where(sql`${matchReplays.playerIds} @> ${JSON.stringify([userId])}::jsonb`);
 
       for (const row of theirReplays) {
-        const playerIds = (row.playerIds as string[]).filter((id) => id !== userId);
+        const playerIds = row.playerIds.filter((id) => id !== userId);
         if (playerIds.length === 0) {
           await tx.delete(matchReplays).where(eq(matchReplays.id, row.id));
           continue;
         }
         // An empty name is the signal to the client to render its own
         // localized "deleted player" label — the row itself keeps no wording.
-        const seats = (row.seats as ReplaySeat[]).map((seat) =>
+        const seats = row.seats.map((seat) =>
           seat.userId === userId ? { ...seat, userId: null, name: "" } : seat
         );
         await tx

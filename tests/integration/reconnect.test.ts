@@ -1,5 +1,6 @@
 import { test, before, after, describe } from "node:test";
 import assert from "node:assert/strict";
+import pg from "pg";
 import { io as ioClient, type Socket } from "socket.io-client";
 import {
   startTestServer,
@@ -49,10 +50,13 @@ interface ReconnectNotice {
 
 describe("reconnect", { skip: hasDatabase() ? false : skipMessage() }, () => {
   let server: TestServer;
+  let dbPool: pg.Pool;
   before(async () => {
     server = await startTestServer();
+    dbPool = new pg.Pool({ connectionString: process.env.DATABASE_URL });
   });
   after(async () => {
+    await dbPool.end();
     await server.stop();
   });
 
@@ -678,5 +682,41 @@ describe("reconnect", { skip: hasDatabase() ? false : skipMessage() }, () => {
       assert.equal(state.players.find((p) => p.userId === mia.user.id)?.seatIndex, 0);
       assert.equal(state.hostUserId, liam.user.id);
     });
+  });
+
+  // ── RES-03: the room screen still draws when the `rooms` row is gone ─────
+
+  /**
+   * The client's only route into the game screen is `room` (non-null) ->
+   * `/(online)/room` -> `gameState` (non-null) -> `/(online)/game`, so a
+   * rejoin that cannot answer with `room:state` strands a player holding a
+   * live hand. The roster half already fell back to the live game; the row
+   * itself did not, because the six-character join code lived only in
+   * `rooms.code` and inventing one would put an unjoinable code on screen.
+   */
+  test("a rejoin answers with room:state after the rooms row is deleted", async () => {
+    const alice = await connectAs(server, "res03_alice");
+    const bob = await connectAs(server, "res03_bob");
+    const room = await setUpRoom([alice, bob], 2);
+    await startGame([alice, bob]);
+
+    try {
+      await dbPool.query("DELETE FROM room_players WHERE room_id = $1", [room.roomId]);
+      await dbPool.query("DELETE FROM rooms WHERE id = $1", [room.roomId]);
+
+      const answered = waitFor<RoomState>(alice.socket, "room:state", 5_000);
+      alice.socket.emit("game:rejoin", { roomId: room.roomId });
+      const state = await answered;
+
+      assert.equal(state.roomId, room.roomId);
+      assert.equal(state.code, room.code, "the join code has to survive the row");
+      assert.equal(state.hostUserId, alice.user.id);
+      assert.deepEqual(
+        state.players.map((p) => p.userId).sort(),
+        [alice.user.id, bob.user.id].sort()
+      );
+    } finally {
+      await closeTable([alice, bob]);
+    }
   });
 });

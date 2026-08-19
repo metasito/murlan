@@ -163,6 +163,13 @@ export interface PersistedEnvelope<S> {
   gameState: S;
   handFlags: HandFlags;
   dealFirstSeat: number;
+  /**
+   * The room's six-character join code. Stored here as well as in `rooms.code`
+   * because a cold-start rejoin has to be able to draw the room screen when
+   * that row is gone, and a code cannot be invented — an unjoinable one on
+   * screen is worse than none.
+   */
+  joinCode: string;
   match: PersistedMatch;
 }
 
@@ -170,9 +177,10 @@ export function packPersistedState<S extends object>(
   gameState: S,
   handFlags: HandFlags,
   dealFirstSeat: number,
+  joinCode: string,
   match: PersistedMatch
 ): PersistedEnvelope<S> {
-  return { schemaVersion: GAME_SCHEMA_VERSION, gameState, handFlags, dealFirstSeat, match };
+  return { schemaVersion: GAME_SCHEMA_VERSION, gameState, handFlags, dealFirstSeat, joinCode, match };
 }
 
 export type PersistedRestore<S> =
@@ -204,6 +212,9 @@ export function unpackPersistedState<S>(persisted: unknown): PersistedRestore<S>
   if (!isPlainObject(persisted.gameState)) return { ok: false, reason: "no game state" };
   if (!isPlainObject(persisted.handFlags)) return { ok: false, reason: "no hand flags" };
   if (!isSeatCount(persisted.dealFirstSeat)) return { ok: false, reason: "no deal rotation" };
+  if (typeof persisted.joinCode !== "string" || persisted.joinCode.length === 0) {
+    return { ok: false, reason: "no join code" };
+  }
 
   const match = persisted.match;
   if (!isPlainObject(match)) return { ok: false, reason: "no match state" };
@@ -229,6 +240,7 @@ export function unpackPersistedState<S>(persisted: unknown): PersistedRestore<S>
     gameState: persisted.gameState as S,
     handFlags: persisted.handFlags as HandFlags,
     dealFirstSeat: persisted.dealFirstSeat,
+    joinCode: persisted.joinCode,
     match: {
       playerMap: readPersistedPlayerMap(match.playerMap),
       scores: match.scores as Record<string, number>,

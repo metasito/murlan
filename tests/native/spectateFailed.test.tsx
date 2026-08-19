@@ -11,7 +11,7 @@ import React from 'react';
 import { Text } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { render, waitFor } from '@testing-library/react-native';
+import { act, render, waitFor } from '@testing-library/react-native';
 
 import { OnlineGameProvider, useOnlineGame } from '@/context/OnlineGameContext';
 import { NotificationProvider } from '@/context/NotificationContext';
@@ -58,9 +58,14 @@ async function mountProvider() {
   );
 }
 
-// Delivered straight to the handler, as the socket does at runtime; `waitFor`
-// flushes the resulting render.
-const deliver = (event: string, payload: unknown) => listeners.get(event)?.(payload);
+// The provider's own listeners are what the socket calls at runtime. Async
+// act(), not the synchronous form: several of these handlers settle a promise
+// before they set state, and a sync act() closes before that lands.
+const deliver = async (event: string, payload: unknown) => {
+  await act(async () => {
+    listeners.get(event)?.(payload);
+  });
+};
 
 /** A sanitized seatless view — what a spectate the server accepted answers with. */
 const spectatorState = () => ({
@@ -87,7 +92,7 @@ describe('a refused spectate', () => {
     const view = await mountProvider();
 
     await waitFor(() => spectate!('ZZZZZZ'));
-    deliver('room:error', { code: 'GAME_NOT_FOUND', message: 'Game not found' });
+    await deliver('room:error', { code: 'GAME_NOT_FOUND', message: 'Game not found' });
     await waitFor(() => expect(view.getByTestId('watching').props.children).toBe('false'));
 
     emitted.length = 0;
@@ -126,7 +131,7 @@ describe('a refused spectate', () => {
     const view = await mountProvider();
 
     await waitFor(() => spectate!('ABCDEF'));
-    deliver('game:state', spectatorState());
+    await deliver('game:state', spectatorState());
     await waitFor(() => expect(view.getByTestId('watching').props.children).toBe('true'));
 
     emitted.length = 0;
