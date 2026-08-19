@@ -30,6 +30,8 @@ import path from "node:path";
 import ts from "typescript";
 
 const SOURCE_DIRS = ["app", "components", "lib", "context"];
+const FAMILIES = ["Ionicons", "Feather"];
+const ICON_PACKAGE = "@expo/vector-icons";
 
 function walk(dir, out = []) {
   for (const entry of readdirSync(dir)) {
@@ -82,6 +84,47 @@ function functionLikeDeclaredName(fnNode) {
     return fnNode.parent.name.text;
   }
   return null;
+}
+
+/**
+ * Which local identifier in this file is which icon family, read from the
+ * imports rather than from the tag's spelling: `import Ion from
+ * "@expo/vector-icons/Ionicons"` renders Ionicons glyphs under the name
+ * `Ion`, and metro.config.js swaps the subset in on the module specifier, so
+ * a name-matching scan would ship those glyphs' font without their glyphs.
+ *
+ * `unfollowable` is every other way this package can be imported — a
+ * namespace import, a family with no subset — which resolves to no binding
+ * at all and would otherwise leave the JSX using it unexamined.
+ */
+function iconBindings(sf) {
+  const byName = new Map();
+  const unfollowable = [];
+  for (const stmt of sf.statements) {
+    if (!ts.isImportDeclaration(stmt) || !ts.isStringLiteral(stmt.moduleSpecifier)) continue;
+    const spec = stmt.moduleSpecifier.text;
+    if (spec !== ICON_PACKAGE && !spec.startsWith(`${ICON_PACKAGE}/`)) continue;
+    const clause = stmt.importClause;
+    if (!clause || clause.isTypeOnly) continue;
+
+    const family = FAMILIES.find((f) => spec === `${ICON_PACKAGE}/${f}`);
+    if (clause.name) {
+      if (family) byName.set(clause.name.text, family);
+      else unfollowable.push({ node: stmt, text: stmt.getText(sf) });
+    }
+    const bindings = clause.namedBindings;
+    if (bindings && ts.isNamedImports(bindings)) {
+      for (const el of bindings.elements) {
+        if (el.isTypeOnly) continue;
+        const imported = (el.propertyName ?? el.name).text;
+        if (FAMILIES.includes(imported)) byName.set(el.name.text, imported);
+        else unfollowable.push({ node: el, text: el.getText(sf) });
+      }
+    } else if (bindings && ts.isNamespaceImport(bindings)) {
+      unfollowable.push({ node: stmt, text: stmt.getText(sf) });
+    }
+  }
+  return { byName, unfollowable };
 }
 
 function attrValueExpr(attr) {
@@ -406,26 +449,39 @@ function parseAll(repoRoot) {
 function analyzeParsed(parsed, describeFile) {
   const ctx = buildIndex(parsed);
 
-  const found = { Ionicons: new Set(), Feather: new Set() };
+  const found = Object.fromEntries(FAMILIES.map((f) => [f, new Set()]));
   const unresolved = [];
 
   for (const { file, sf } of parsed) {
+    const named = (node) => ({
+      file: describeFile ? describeFile(file) : file,
+      line: sf.getLineAndCharacterOfPosition(node.getStart(sf)).line + 1,
+    });
+    const { byName, unfollowable } = iconBindings(sf);
+    for (const { node, text } of unfollowable) {
+      unresolved.push({ ...named(node), family: null, expr: text });
+    }
+
     const visit = (node) => {
       const opening = ts.isJsxElement(node) ? node.openingElement : ts.isJsxSelfClosingElement(node) ? node : null;
-      if (opening && ts.isIdentifier(opening.tagName) && (opening.tagName.text === "Ionicons" || opening.tagName.text === "Feather")) {
-        const family = opening.tagName.text;
+      const family = opening && ts.isIdentifier(opening.tagName) ? byName.get(opening.tagName.text) : undefined;
+      if (family) {
         const nameAttr = findJsxAttribute(opening.attributes, "name");
         if (nameAttr) {
           const expr = attrValueExpr(nameAttr);
           const result = expr && resolveValues(expr, ctx, new Set());
-          const allStrings = result && result.every((n) => ts.isStringLiteral(n) || ts.isNoSubstitutionTemplateLiteral(n));
+          // An expression that resolves to nothing at all is not a resolved
+          // expression: `[].every(...)` is true, and taking it would count
+          // zero glyphs for a name the app does render.
+          const allStrings =
+            result &&
+            result.length > 0 &&
+            result.every((n) => ts.isStringLiteral(n) || ts.isNoSubstitutionTemplateLiteral(n));
           if (allStrings) {
             for (const n of result) found[family].add(n.text);
           } else {
-            const pos = sf.getLineAndCharacterOfPosition(node.getStart(sf));
             unresolved.push({
-              file: describeFile ? describeFile(file) : file,
-              line: pos.line + 1,
+              ...named(node),
               family,
               expr: expr ? expr.getText(sf) : "(none)",
             });
@@ -438,8 +494,7 @@ function analyzeParsed(parsed, describeFile) {
   }
 
   return {
-    Ionicons: [...found.Ionicons].sort(),
-    Feather: [...found.Feather].sort(),
+    ...Object.fromEntries(FAMILIES.map((f) => [f, [...found[f]].sort()])),
     unresolved,
   };
 }
@@ -460,14 +515,14 @@ export function analyzeSnippet(source) {
 }
 
 export function iconNames(repoRoot) {
-  const { Ionicons, Feather } = analyzeIcons(repoRoot);
-  return { Ionicons, Feather };
+  const analysis = analyzeIcons(repoRoot);
+  return Object.fromEntries(FAMILIES.map((f) => [f, analysis[f]]));
 }
 
 export function iconCharacters(repoRoot) {
   const names = iconNames(repoRoot);
   const out = {};
-  for (const family of ["Ionicons", "Feather"]) {
+  for (const family of FAMILIES) {
     const glyphMap = JSON.parse(
       readFileSync(
         path.join(

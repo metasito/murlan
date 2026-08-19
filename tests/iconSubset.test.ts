@@ -18,7 +18,7 @@ const glyphmapDir = path.join(
 interface Unresolved {
   file: string;
   line: number;
-  family: string;
+  family: string | null;
   expr: string;
 }
 interface Analysis {
@@ -64,25 +64,56 @@ test("no icon name is built at runtime", () => {
     unresolved,
     [],
     `icon names the resolver cannot follow:\n${unresolved
-      .map((u) => `${u.file}:${u.line}: <${u.family} name={${u.expr}}>`)
+      .map((u) =>
+        u.family === null
+          ? `${u.file}:${u.line}: ${u.expr} — an @expo/vector-icons import with no subset behind it`
+          : `${u.file}:${u.line}: <${u.family} name={${u.expr}}>`
+      )
       .join("\n")}`
   );
 });
 
-// The guard is only worth having if it can fail. A synthetic snippet, not a
-// real file: proves the rejection path is live without waiting for the next
+// The guard is only worth having if it can fail. Synthetic snippets, not real
+// files: they prove the rejection path is live without waiting for the next
 // regression to prove it by accident.
 test("the resolver rejects a ternary between two names it cannot trace", () => {
   const bad = analyzeSnippet(
-    "function X() { return <Ionicons name={cond ? a : b} />; }"
+    'import Ionicons from "@expo/vector-icons/Ionicons";\n' +
+      "function X() { return <Ionicons name={cond ? a : b} />; }"
   ) as Analysis;
   assert.equal(bad.unresolved.length, 1, "a ternary between two free identifiers must not resolve");
 
   const good = analyzeSnippet(
-    'function X() { return <Ionicons name={cond ? "home" : "star"} />; }'
+    'import Ionicons from "@expo/vector-icons/Ionicons";\n' +
+      'function X() { return <Ionicons name={cond ? "home" : "star"} />; }'
   ) as Analysis;
   assert.deepEqual(good.unresolved, []);
   assert.deepEqual(good.Ionicons, ["home", "star"]);
+});
+
+// metro.config.js swaps the subset in on the module specifier, so the glyphs an
+// aliased import draws come from the subset whether or not the subset was built
+// with them.
+test("the family is the one imported, not the one the tag is spelled", () => {
+  const aliased = analyzeSnippet(
+    'import Ion from "@expo/vector-icons/Ionicons";\n' +
+      'function X() { return <Ion name="pause" />; }'
+  ) as Analysis;
+  assert.deepEqual(aliased.Ionicons, ["pause"]);
+  assert.deepEqual(aliased.unresolved, []);
+
+  const unimported = analyzeSnippet('function X() { return <Ionicons name="pause" />; }') as Analysis;
+  assert.deepEqual(unimported.Ionicons, [], "a tag bound to nothing is not this family");
+
+  const otherFamily = analyzeSnippet(
+    'import MaterialIcons from "@expo/vector-icons/MaterialIcons";\n' +
+      'function X() { return <MaterialIcons name="home" />; }'
+  ) as Analysis;
+  assert.equal(
+    otherFamily.unresolved.length,
+    1,
+    "a family with no subset behind it must be reported, not skipped"
+  );
 });
 
 test("the characters the subsets were built from cover every name", () => {
