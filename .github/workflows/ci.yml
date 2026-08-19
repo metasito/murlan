@@ -127,6 +127,36 @@ jobs:
         if: steps.scope.outputs.app == 'true'
         run: npm run lint
 
+      # The only layer that exercises react-native-web's side of every
+      # Platform.OS branch, and the only one that measures a laid-out box —
+      # tap targets, and whether the table renders off the side of the
+      # screen. It builds its own bundle and its own disposable Postgres
+      # (scripts/e2e-server.mjs), so it runs before the build steps below
+      # rather than reusing their output, and never touches this job's own
+      # Postgres service.
+      - name: Install Playwright's browser
+        if: steps.scope.outputs.app == 'true'
+        run: npx playwright install --with-deps chromium
+
+      # Measured 7m38s locally for all 8 specs; doubled for a slower shared
+      # runner.
+      - name: Browser tests
+        if: steps.scope.outputs.app == 'true'
+        timeout-minutes: 20
+        run: npm run test:e2e
+
+      # Kept on success too, not just on failure — the only way to confirm a
+      # green run actually exercised the suite rather than silently skipping
+      # it, the same concern "Does this change touch the app?" above exists
+      # for.
+      - name: Keep the Playwright report
+        if: ${{ !cancelled() && steps.scope.outputs.app == 'true' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: playwright-report/
+          retention-days: 7
+
       - name: Build the web and server bundles
         if: steps.scope.outputs.app == 'true'
         run: npm run expo:web:build && npm run server:build
