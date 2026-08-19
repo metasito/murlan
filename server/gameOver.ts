@@ -119,7 +119,7 @@ export async function handleGameOver(
   // Deliberately placed after every broadcast/persist above, not before: the
   // game-over guarantee is "a stats write must never block or fail the
   // game", and handleGameOver is itself async with two call sites that
-  // invoke it as bare `void` (see runBotTurn / the game:play handler). The
+  // invoke it as bare `void` (runBotTurn and handleAutoPass). The
   // shaping itself already happened, purely, in resolveHandEnd — this block
   // is only the (fire-and-forget) writes, still guarded so a throw here
   // cannot reject handleGameOver's own promise.

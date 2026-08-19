@@ -1,6 +1,6 @@
 # Bundle size report
 
-Generated: 2026-08-18
+Generated: 2026-08-19
 
 Regenerate with `node scripts/bundle-report.mjs > docs/BUNDLE.md` after adding/removing assets or dependencies.
 
@@ -39,19 +39,19 @@ Total: **3.13 MB** across 32 files.
 | assets/images/android-icon-monochrome.png | 4.0 KB |
 | assets/sounds/README.md | 3.3 KB |
 | assets/sounds/your_turn.mp3 | 2.8 KB |
-| assets/images/cards/README.md | 1.8 KB |
+| assets/images/cards/README.md | 1.7 KB |
 | assets/sounds/urgent_tick.mp3 | 1.5 KB |
 | assets/images/favicon.png | 1.1 KB |
 
 ## Production dependencies (installed size in `node_modules/`)
 
-Total: **150.74 MB** across 48 declared dependencies.
+Total: **152.79 MB** across 48 declared dependencies.
 
 | Package | Installed size |
 |---|---|
 | react-native | 72.53 MB |
 | expo | 15.44 MB |
-| drizzle-orm | 7.90 MB |
+| drizzle-orm | 9.94 MB |
 | @expo-google-fonts/inter | 7.67 MB |
 | react-dom | 6.25 MB |
 | @expo/vector-icons | 5.73 MB |

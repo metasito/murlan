@@ -6,9 +6,9 @@ blocker documented below rather than glossed over.
 
 | Layer | Command | Size | Needs |
 |---|---|---|---|
-| Unit | `npm test` | 680 pass, 2 skipped of 682 (without `DATABASE_URL`; the 11 files under `tests/integration/` additionally run with it) | nothing |
+| Unit | `npm test` | everything under `tests/`; the files under `tests/integration/` self-skip without `DATABASE_URL` and report `skipped 0` with it | nothing |
 | Integration | `npm test` | folded into the above | `DATABASE_URL` |
-| Native renderer | `npm run test:native` | 230 (115 × ios/android) | nothing |
+| Native renderer | `npm run test:native` | every `tests/native/` suite, once per platform (ios, android) | nothing |
 | Web e2e | `npm run test:e2e` | Playwright, chromium — gameplay, reconnect, a tap-target sweep of every screen at three sizes, and a check that no part of the table renders off the side of one | Docker + a built web bundle |
 | Android UI (Maestro) | `maestro test .maestro/*.yaml` | 2 flows | Android SDK + emulator + Maestro, see §5 |
 

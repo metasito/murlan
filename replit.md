@@ -7,7 +7,7 @@
 >
 > | You want | Read |
 > |---|---|
-> | How the system is built | `CLAUDE.md` |
+> | How the system is built | `docs/ARCHITECTURE.md` |
 > | The game's rules, and their sources | `docs/RULES.md` |
 > | Scope, decisions, definition of done | `docs/BRIEF.md` |
 > | Everything still outstanding | `docs/BACKLOG.md` |
@@ -24,7 +24,7 @@ bundle. No extra setup.
 | `npm run server:dev` | Express + Socket.io in dev (tsx, no build step) |
 | `npm run expo:dev` | Expo dev server, proxied through the Replit domain |
 | `npm run server:build` / `server:prod` | esbuild bundle, then run it |
-| `npm run verify` | Typecheck + tests. Run this before pushing. |
+| `npm run verify` | Typecheck, unit/integration tests and the native suite. Run this before pushing. |
 | `npm run db:push` | Reconcile the database *destructively* — drops, retypes, renames. Not needed to deploy: the server applies additive schema changes itself at boot |
 | `npm run db:reset` | **Destructive.** Refuses on its own — needs `ALLOW_DESTRUCTIVE=1 node scripts/reset-db.mjs --yes`, and never runs under `NODE_ENV=production` |
 
@@ -46,7 +46,7 @@ All three must be set in Replit Secrets or the server refuses to boot
   any new table asks whether the new one is a *rename* of `session`, and answering yes
   renames it and logs out every account. Clearing its rows is fine (`scripts/reset-db.mjs`
   does exactly that); dropping it under a running server breaks every login until restart.
-- **`app.set("trust proxy", 1)`** in `server/index.ts`. Replit terminates TLS at a proxy,
+- **`app.set("trust proxy", 1)`** in `server/app.ts`. Replit terminates TLS at a proxy,
   so without this Express never considers the connection secure, `Set-Cookie` is silently
   dropped in production, and `express-rate-limit` collapses every client into one bucket.
   This was a live bug; do not remove it.

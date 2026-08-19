@@ -1,10 +1,6 @@
-// Pure, dependency-free helpers used by server/socket.ts. server/socket.ts
-// transitively imports storage/db/session/etc, whose own relative imports
-// lack the explicit `.ts` extensions Node's native TS loader requires — so it
-// cannot be imported by the plain `node --test` runner used in tests/. This
-// module imports nothing beyond an equally pure sibling, so it can be, and
-// server/socket.ts imports these rather than reimplementing them so tests
-// exercise the exact code path the server runs.
+// Pure helpers used by server/socket.ts, kept here so a test can reach them
+// without pulling storage/db/session — and the pg pool they build at import —
+// onto a path that needs none of it.
 import { botSeatNames, getBotPersonality } from "../lib/botPersonalities.ts";
 import type { BotPersonalityId } from "../lib/botPersonalities.ts";
 import { foldHandIntoMatch, resolveMatchFor } from "../lib/gameEngine.ts";

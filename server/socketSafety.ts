@@ -136,7 +136,7 @@ export function onEvent<S extends z.ZodTypeAny>(
           { err, event, userId: socket.data?.userId },
           "Socket handler threw — contained"
         );
-        socket.emit(errorEventFor(event), { message: "Errore del server" });
+        socket.emit(errorEventFor(event), { message: "Server error" });
       }
     })();
   });

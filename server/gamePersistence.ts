@@ -186,7 +186,7 @@ export function safeTimer(
     io?.to(roomId).emit("game:notification", {
       type: "abandoned",
       code: "GAME_INTERRUPTED_SERVER_ERROR",
-      message: "Partita interrotta: errore del server.",
+      message: "Game interrupted: a server error.",
     });
     void storage
       .updateRoomStatus(roomId, "finished")

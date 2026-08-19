@@ -1,5 +1,8 @@
 # Murlan — Full Repository Audit (READ-ONLY, multi-agent)
 
+> **The brief this audit was run from, on 2026-08-17.** Kept with its own output.
+> Not a live instruction — everything it asked for is in this directory.
+
 ## 0. Context
 
 - **Repo:** `metasito/murlan` — online multiplayer Murlan (Albanian card game, Big Two family)

@@ -14,14 +14,15 @@ Do not trust this file over the commands. It ages; they do not.
 
 ## Where things stand
 
-Green: typecheck clean, `expo lint` zero, 708 unit and integration tests (664
-without a database), 228 native tests (jest-expo, ios+android projects), and a
-Playwright E2E suite (`npm run test:e2e`) that plays complete games through the
-UI, drops the network mid-game to check the reconnect path, sweeps every screen
-for controls a player can see but cannot press, and measures that no part of
-the table renders off the side of the screen.
+Green: typecheck clean, `expo lint` zero, the unit and integration suites, the
+native renderer suites (jest-expo, ios+android projects), and a Playwright E2E
+suite (`npm run test:e2e`) that plays complete games through the UI, drops the
+network mid-game to check the reconnect path, sweeps every screen for controls
+a player can see but cannot press, and measures that no part of the table
+renders off the side of the screen.
 
-Those counts age. `npm run verify` is the truth.
+No counts here on purpose — they age between batches. `npm run verify` is the
+truth.
 
 Integration tests need a database. `node scripts/dev-stack.mjs up` starts a
 local Postgres in Docker and prints the `DATABASE_URL` to export; without it
@@ -32,12 +33,12 @@ Five test layers, mapped in `docs/TESTING.md`.
 
 ## Read these, in order
 
-1. `CLAUDE.md` — binding rules. Comments, Freedom to change things, and
-   No self-defeating safeguards especially.
+1. `CLAUDE.md` — binding rules. § Comments, § Working agreement and
+   § No self-defeating safeguards especially.
 2. `docs/BACKLOG.md` — the single work queue. §1 is ordered cheapest-first and
    marks what is done; §2 is owner-blocked; §3 is analysis already settled, so
    it is not re-litigated; §4 is rejected-with-reasons.
-3. `docs/RULES.md` — canonical game rules, 18 sources.
+3. `docs/RULES.md` — canonical game rules and the sources they came from.
 4. `docs/BRIEF.md` §3.1 — rule decisions already taken.
 
 ## Regenerated, not hand-authored
@@ -54,11 +55,17 @@ EAS submit credentials · push credentials and a privacy-policy entry for Q23 ·
 the 432×432 monochrome icon · a native Albanian speaker for idiom · real-device
 VoiceOver. `docs/BACKLOG.md` §2 is the full list with what each one needs.
 
-Nothing on this list is a database step any more. `server/schemaDdl.ts` applies
-`shared/schema.ts` on every server start, so a new table or column ships with
-the deploy that introduces it, and a database Replit has just reprovisioned
-works on the first boot. `npm run db:push` is left for destructive
-reconciliation only.
+`server/schemaDdl.ts` applies `shared/schema.ts` on every server start, so a new
+table or column ships with the deploy that introduces it, and a database Replit
+has just reprovisioned works on the first boot. `npm run db:push` is left for
+destructive reconciliation only.
+
+**One exception is outstanding.** Batch 13 renamed `active_games.room_code` and
+`match_replays.room_code` to `room_id`, which is destructive and boot refuses to
+carry out: `assertRenamesApplied()` throws, so the server will not start against
+a database still holding the old columns. `npm run db:push` has to run against
+production before or with that deploy. `audit/2026-08-17/OWNER-TODO.md` carries
+the detail.
 
 `drizzle.config.ts` still excludes the `session` table from push, because
 otherwise a push that adds a table asks whether the new one is a *rename* of

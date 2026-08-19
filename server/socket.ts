@@ -1104,7 +1104,7 @@ export function setupSocket(httpServer: HttpServer) {
           logger.info({ userId, roomId }, "Player rejoined game (from DB)");
         } catch (err) {
           logger.error({ err, roomId, userId }, "game:rejoin failed");
-          socket.emit("game:rejoin_failed", { message: "Errore del server", code: "SERVER_ERROR", roomId });
+          socket.emit("game:rejoin_failed", { message: "Server error", code: "SERVER_ERROR", roomId });
         }
       },
       { limit: 20, windowMs: 60_000 }
@@ -1657,7 +1657,7 @@ function evictReplacedSession(
 
   replaced.emit("socket:error", {
     code: "SESSION_REPLACED",
-    message: "Il tuo account è stato aperto altrove. Questa sessione è stata chiusa.",
+    message: "Your account was opened somewhere else. This session has been closed.",
   });
   logger.info(
     { userId, replacedSocketId },

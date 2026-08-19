@@ -1,7 +1,8 @@
 # Murlan
 
 A digital version of Murlan, a traditional Albanian shedding-type card game. The UI is
-Italian (the player base), the game itself is Albanian in origin.
+English, Italian and Albanian; English (`locales/en.ts`) is the source of truth and the
+other two are translations of it. The game itself is Albanian in origin.
 
 ## Stack
 
@@ -11,7 +12,8 @@ Italian (the player base), the game itself is Albanian in origin.
 - **Auth:** bcryptjs + express-session, 30-day httpOnly cookies stored in Postgres
 - **Real-time:** socket.io / socket.io-client
 
-See `CLAUDE.md` for the full file map and architectural conventions.
+See `docs/ARCHITECTURE.md` for how the system is built, and `CLAUDE.md` for the
+conventions an agent working here has to keep.
 
 ## Running it locally
 
@@ -36,10 +38,12 @@ table, `trust proxy`, deployment shape) are documented in `replit.md`, not here.
 ## Tests
 
 ```sh
-npm run typecheck   # tsc --noEmit
-npm test             # node --test, runs everything under tests/
-npm run verify       # both of the above
-npm run lint          # npx expo lint
+npm run typecheck    # tsc --noEmit
+npm test             # node --test, everything under tests/
+npm run test:native  # jest, the tests/native/ renderer suites
+npm run verify       # all three of the above
+npm run lint         # npx expo lint
+npm run test:e2e     # Playwright — needs Docker and a built web bundle
 ```
 
 ## Database
@@ -72,5 +76,6 @@ ALLOW_DESTRUCTIVE=1 node scripts/reset-db.mjs --yes && npm run db:push
 | [`docs/RULES.md`](./docs/RULES.md) | The canonical Murlan rule specification |
 | [`docs/BRIEF.md`](./docs/BRIEF.md) | Scope, decisions and their rationale |
 | [`docs/BACKLOG.md`](./docs/BACKLOG.md) | Everything outstanding, and what was decided against |
-- [`docs/BACKLOG.md`](docs/BACKLOG.md) — open items, owner decisions, and analysis of rejected directions
+| [`docs/ARCHITECTURE.md`](./docs/ARCHITECTURE.md) | Layers, data flow, socket lifecycle, persistence |
+| [`docs/TESTING.md`](./docs/TESTING.md) | What each test layer covers and how to run it |
 | [`replit.md`](./replit.md) | Replit-specific run/deploy notes |

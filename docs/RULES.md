@@ -4,7 +4,7 @@ Sources are weighted as follows:
 - **Tier 1 (Albanian/Italian primary, the tradition the game comes from):** visixplay.com/murlan/rules.php (IT/EN/AL — the "Visi Mobile Games" rules text, the most widely mirrored Albanian statement of the rules), catsatcards.com/Games/Murlan.htm (the most complete English write-up), pagat.com/national/albania.html (classification only, citing Franco Pratesi, *The Playing-Card* XXVI/3).
 - **Tier 2 (modern online implementations):** murlanarena.com, murlan.app, Murlan Pro (gaminations), Murlan (MWM/Nordcurrent).
 
-Where Tier 1 and Tier 2 disagree, this spec follows Tier 1 and the disagreement is recorded in `ambiguities`.
+Where Tier 1 and Tier 2 disagree, this spec follows Tier 1 and records the disagreement at the point it arises, marked **Ambiguity**.
 
 ---
 
@@ -36,7 +36,7 @@ Where Tier 1 and Tier 2 disagree, this spec follows Tier 1 and the disagreement 
 - **4 players (the canonical and only traditionally-documented format):** the **entire 54-card deck is dealt out**, one card at a time, face down. 54 / 4 does not divide evenly, so **two players receive 14 cards and two receive 13**. catsatcards: *"He deals the cards one-at-a time and face-down to each player, continuing until the entire deck has been dealt out."* visixplay: *"Si mischiano e si distribuiscono tutte ai vari giocatori"* ("they are shuffled and **all** dealt to the players"). MWM's Murlan listing likewise says *"each player being dealt 13 or 14 cards."*
 - **No cards are excluded from play in the 4-player game.** Every source that addresses dealing says the whole deck goes out.
 - Dealer shuffles, the player to the dealer's **right** cuts, and the dealer deals **clockwise starting with the player to his left**.
-- **2 players and 3 players:** *no source specifies a deal.* The traditional game is 4-handed. Tier-2 apps that offer 2-player mode do not publish the deal. See `ambiguities`.
+- **2 players and 3 players:** *no source specifies a deal.* The traditional game is 4-handed. Tier-2 apps that offer 2-player mode do not publish the deal. **Ambiguity** — resolved by the implementation choice recorded in `docs/BRIEF.md` §3.1.
 
 ## 4. Who opens the first hand
 
@@ -71,7 +71,7 @@ Where Tier 1 and Tier 2 disagree, this spec follows Tier 1 and the disagreement 
 - **The Ace is both high and low.** catsatcards: *"Aces can be used in a scale as either high or low, thus occurring after a King in a high scale … or before a 2 in a low scale."*
   - Lowest possible 5-card straight: **A-2-3-4-5** (top card = 5).
   - Highest possible 5-card straight: **10-J-Q-K-A** (top card = Ace high).
-- **Jokers can NEVER substitute inside a straight or any other multi-card combination.** catsatcards: *"Scales cannot include jokers."* (The single dissenting statement is MWM's app-store blurb — *"A straight can go from any card with face value of 3 to the red joker"* — which is not corroborated by any rules source and appears to be marketing copy; see `ambiguities`.)
+- **Jokers can NEVER substitute inside a straight or any other multi-card combination.** catsatcards: *"Scales cannot include jokers."* (The single dissenting statement is MWM's app-store blurb — *"A straight can go from any card with face value of 3 to the red joker"* — which is not corroborated by any rules source and appears to be marketing copy; **Ambiguity** — resolved by the implementation choice recorded in `docs/BRIEF.md` §3.1.)
 - **Comparing straights:** same length required, compare the **top card of the sequence**. A 6-card straight cannot be played on a 5-card straight.
 
 ## 7. What beats what
@@ -79,7 +79,7 @@ Where Tier 1 and Tier 2 disagree, this spec follows Tier 1 and the disagreement 
 1. A play may only be answered by **the same combination type with the same number of cards and strictly higher strength** — or by a **pass**.
 2. **A bomb (4 of a kind) beats any single, pair, triple or straight, of any size, at any time.** visixplay: *"4 carte uguali (qualsiasi livello) battono qualsiasi mano in tavola e possono essere battute solo da altre quadruple di valore superiore."* This includes beating a Joker played as a single.
 3. **A bomb is beaten only by a higher bomb** (Tier 1: catsatcards, visixplay IT/EN/AL, Murlan Pro).
-4. **Royal straight / flush:** Tier 2 implementations (murlanarena, murlan.app) add a "Flush" = 5+ consecutive cards of one suit, and rank it **above bombs**: *"Quadruplets beat regular combinations but only lose to higher Quadruplets or Flushes… Flush is the strongest combination type as it can beat anything."* **The Albanian/Italian Tier-1 rules do not contain this combination at all.** Treat it as an optional/house rule — see `ambiguities`.
+4. **Royal straight / flush:** Tier 2 implementations (murlanarena, murlan.app) add a "Flush" = 5+ consecutive cards of one suit, and rank it **above bombs**: *"Quadruplets beat regular combinations but only lose to higher Quadruplets or Flushes… Flush is the strongest combination type as it can beat anything."* **The Albanian/Italian Tier-1 rules do not contain this combination at all.** Treat it as an optional/house rule — **Ambiguity** — resolved by the implementation choice recorded in `docs/BRIEF.md` §3.1.
 5. **Equal strength never beats.** The answering play must be *strictly* higher.
 
 ## 8. Turn direction
@@ -114,7 +114,7 @@ The 3♠ opening requirement (§4) is **not** re-applied — it belongs to the f
 - Not part of the Tier-1 traditional description; it is a documented mode in modern implementations (murlan.app, murlanarena, Murlan Pro).
 - **Seating:** partners sit **opposite** each other, so turn order alternates opponent–partner–opponent.
 - **Scoring/win:** murlanarena states the team format is scored as a combined total — *"in team mode when a team earns combined 21 points first."* i.e. the two partners' individual placement points (3/2/1/0) are summed per hand and the pair racing to 21 wins.
-- **No source states that a team wins the instant its first member goes out.** Under the combined-points reading, both partners' finishing positions matter (a 1st+2nd finish = 5 points, 1st+3rd = 4, etc.), so play continues after the first partner goes out. See `ambiguities`.
+- **No source states that a team wins the instant its first member goes out.** Under the combined-points reading, both partners' finishing positions matter (a 1st+2nd finish = 5 points, 1st+3rd = 4, etc.), so play continues after the first partner goes out. **Ambiguity** — resolved by the implementation choice recorded in `docs/BRIEF.md` §3.1.
 
 ## 12. Scoring
 

@@ -62,7 +62,7 @@ so a kill mid-hand is resumable from the home screen. A save from another versio
 discarded rather than migrated, the same call `active_games` makes.
 
 **Online:** `OnlineGameContext` holds a `GameState` it only ever receives from the server
-via socket events (`game:state`, `game:play_result`, …). User actions call context methods
+via socket events (`game:state`, `game:over`, …). User actions call context methods
 that `emit` an intent to the server. The server is the only writer of `GameState` — it
 validates the intent against `lib/gameEngine.ts`, mutates state, persists it
 (`active_games` table), and broadcasts a sanitized copy to every seat (each player's own
@@ -84,7 +84,7 @@ the only place that creates or tears down a socket. Nothing else is allowed to c
 3. The server's connection middleware accepts **only** a valid session or a valid
    unconsumed ticket. There used to be a third branch — a bare, unproven
    `handshake.auth.userId` — that let any client connect as any user; it has been deleted.
-   Rejected connections get `next(new Error('unauthorized'))`.
+   Rejected connections get `next(new Error("Not authenticated"))`.
 
 **Disconnect → grace period → bot takeover (not forfeit):**
 - On `disconnect`, if the user has no other live socket, the server emits
@@ -103,7 +103,7 @@ the only place that creates or tears down a socket. Nothing else is allowed to c
 
 **AFK (distinct from disconnect):** a connected-but-idle player gets a 30s
 (`AFK_TIMEOUT_MS`) auto-pass/auto-play timer, re-armed on every turn transition through a
-single `advanceTurn` epilogue so it can't be armed once and then silently stop covering
+single `armTurn` epilogue so it can't be armed once and then silently stop covering
 later turns.
 
 ## 4. Persistence
@@ -170,8 +170,8 @@ it does not touch socket or game state.
 ## 6. The presentational-table refactor
 
 `app/game.tsx` (offline) and `app/(online)/game.tsx` (online) used to independently
-implement ~2,400 lines of nearly-identical table rendering, layout and animation. That has
-been collapsed:
+implement nearly-identical table rendering, layout and animation. That has been
+collapsed:
 
 - **`components/gameTableModel.ts`** — pure functions and constants with no JSX and no
   runtime imports (only type-only imports from `lib/gameEngine.ts`), so it loads under
@@ -188,10 +188,9 @@ been collapsed:
   `seats.tsx`, `pile.tsx`, `hand.tsx` and `chrome.tsx`. `GameTable.tsx` is their only
   screen-level consumer; `components/useTableFeedback.ts` also imports `useTurnPulse` from
   `chrome.tsx`, and three `tests/native/` cases mount `seats.tsx` and `hand.tsx` directly.
-  They were one `GameShared.tsx` back when the two game screens each had their own table.
 - **`components/useTableFeedback.ts`** — the shared values, the effects that answer a state
   change with a sound, a haptic or a wobble, and the animated styles they drive. `GameTable`
-  still schedules the impact itself, against the 312ms the thrown card spends in the air,
+  still schedules the impact itself, against `impactDelayMs()`,
   and calls `playImpact` when it lands: the timer has to be cancellable alongside the flight
   it belongs to.
 - **`app/game.tsx`** and **`app/(online)/game.tsx`** are now thin adapters: each maps its

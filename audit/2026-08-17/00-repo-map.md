@@ -14,7 +14,7 @@ or against command output captured in this session.
 | SHA | `b894af461550cd1a184a6a6f1694baf10d27b70c` |
 | Branch | `main` |
 | Remote | `origin https://github.com/metasito/murlan.git` |
-| Dirty | `?? docs/murlan-audit-prompt.md` (untracked, the audit brief itself) — nothing else |
+| Dirty | `?? audit/2026-08-17/PROMPT.md` (untracked, the audit brief itself) — nothing else |
 | Total commits | 291 |
 | First commit | 2026-03-01 `288d27f Initial commit` |
 | Last commit | 2026-08-17 |
@@ -727,7 +727,7 @@ push has happened; that blocker no longer applies, and Q11/Q12 are now unblocked
 |---|---|
 | `package-lock.json:16670` | inside a base64 `sha512-…XXXevb5…` integrity hash — **not a marker** |
 | `CLAUDE.md:305` | "waiting lobby with room code `XXXXXX`" — a format placeholder, not a marker |
-| `docs/murlan-audit-prompt.md:13,107` | the audit brief's own text asking for this inventory |
+| `audit/2026-08-17/PROMPT.md:13,107` | the audit brief's own text asking for this inventory |
 
 **There is not a single real `TODO`, `FIXME`, `HACK`, `XXX` or `ponytail:` marker anywhere in
 the source tree.** (Searched `*.ts *.tsx *.js *.mjs *.yml *.json` across
