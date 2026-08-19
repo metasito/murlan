@@ -27,6 +27,7 @@ bundle. No extra setup.
 | `npm run verify` | Typecheck, unit/integration tests and the native suite. Run this before pushing. |
 | `npm run db:push` | Reconcile the database *destructively* — drops, retypes, renames. Not needed to deploy: the server applies additive schema changes itself at boot |
 | `npm run db:reset` | **Destructive.** Refuses on its own — needs `ALLOW_DESTRUCTIVE=1 node scripts/reset-db.mjs --yes`, and never runs under `NODE_ENV=production` |
+| `ALLOW_RESET=1 node scripts/reset-password.mjs <username>` | Sets a new random password on one account and prints it once. The only recovery route — no email is stored. |
 
 ## Required Secrets
 
