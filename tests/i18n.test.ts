@@ -105,7 +105,6 @@ describe("locale key parity", () => {
       `key counts differ: ${LOCALE_NAMES.map((n, i) => `${n}=${counts[i]}`).join(", ")}`
     );
   });
-
 });
 
 describe("no server string assumes the player's gender", () => {
@@ -197,6 +196,9 @@ describe("no empty translations", () => {
 
 describe("pluralisation pairs", () => {
   test("every _one key has a matching _other key and vice versa, in every locale", () => {
+    const pairs = Object.keys(en).filter((k) => k.endsWith("_one")).length;
+    assert.ok(pairs >= 8, `expected en's plural keys, got ${pairs} (8 when this floor was set)`);
+
     for (const name of LOCALE_NAMES) {
       const keys = new Set(Object.keys(LOCALES[name]));
       for (const key of keys) {
