@@ -263,3 +263,53 @@ Do not delete this file when the batches are done — it is the record of *why*,
 Both have a stated default, so **no batch will stop to ask.** Q7's default is the conservative
 one: fix rather than delete, because deleting is irreversible and the page costs nothing to
 keep once escaped.
+
+---
+
+## D8 — An abandoned seat is never announced as the winner · settles the Batch 13 single-manche finding
+
+**Decision.** When a `single`-length game ends and the leading seat has been vacated, announce
+the best-placed seat **still held by a human**. If no human seat finished, announce no winner.
+
+**Why.** `vacateSeat` flips a seat's `type` to `"ai"` but keeps the departed player's `name`, so
+`game:over` credited the person who walked out — by name, to the players who stayed. Scoring
+already excluded `bot:<seat>` keys from the running total; the announcement was the one path
+that rule had never been carried through.
+
+**Scope.** Announcement only. Stats, ratings and the ladder already drop `bot:` keys and do not
+change. `docs/BRIEF.md` §3.1 carries the rule.
+
+**Owed by** Batch 14.
+
+---
+
+## D9 — Only human-held seats vote on a rematch · settles the Batch 13 rematch-policy finding
+
+**Decision.** Bot seats and vacated seats abstain from the rematch tally — from the count **and**
+the total — offline as well as online.
+
+**Why.** Online already behaved this way, and D4 already records that vacated and bot seats
+abstain when starting a new match. Offline let AI seats vote through `botWantsRematch` *and*
+counted them toward the majority, so "most players agreed" meant two different things depending
+on where the player was sitting. A computer has no preference worth recording, and a table of
+one human plus bots should restart when that human says so.
+
+**Scope.** `context/GameContext.tsx` only — the server half is already correct. ARCH-13 unified
+the *counting* into `tallyRematchAnswers`; this settles the *policy* it counts.
+
+**Owed by** Batch 14.
+
+---
+
+## D10 — `server/socket.ts` stops at 1686 lines · closes ARCH-04's line target
+
+**Decision.** Do **not** extract the 17 event-handler bodies to chase ARCH-04's "under 1000
+lines". 1686 is the finished state.
+
+**Why.** ARCH-04's structural payoff has landed: five modules, the in-memory state owned by
+`gameRoom.ts`, and `handleGameOver` callable from plain `node --test` with no database — which
+is the reason the finding exists. The residue is ~1150 lines of `onEvent` registrations that the
+finding itself requires to stay in `socket.ts`, so the target was unreachable as written. Moving
+the handler bodies is a boundary no finding specifies and buys readability only.
+
+**Closed as designed, not deferred.**
