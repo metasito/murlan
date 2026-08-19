@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { readdirSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -19,6 +19,38 @@ for (const name of MODULES) {
   test(`server/${name}.ts is loadable by plain Node`, async () => {
     const mod = await import(`../server/${name}.ts`);
     assert.ok(mod, `server/${name}.ts failed to load`);
+  });
+}
+
+// lib/ is mostly client code — react-native, expo-*, AsyncStorage — but a few
+// modules are shared with the server, and nothing marks which. Derived rather
+// than listed so a seventh is covered the day it is imported: loading one under
+// plain Node is what fails if it grows a client-only import, directly or
+// through a sibling.
+const SERVER_SAFE_LIB = [
+  ...new Set(
+    ["server", "shared"].flatMap((dir) =>
+      readdirSync(path.join(repoRoot, dir))
+        .filter((f) => f.endsWith(".ts"))
+        .flatMap((f) => [
+          ...readFileSync(path.join(repoRoot, dir, f), "utf-8").matchAll(
+            /from\s+"[^"]*\/lib\/([a-zA-Z]+)\.ts"/g
+          ),
+        ])
+        .map((m) => m[1])
+    )
+  ),
+].sort();
+
+assert.ok(
+  SERVER_SAFE_LIB.length > 0,
+  "no lib/ module is imported by server/ or shared/ — the scan found nothing"
+);
+
+for (const name of SERVER_SAFE_LIB) {
+  test(`lib/${name}.ts is loadable by plain Node — the server imports it`, async () => {
+    const mod = await import(`../lib/${name}.ts`);
+    assert.ok(mod, `lib/${name}.ts failed to load`);
   });
 }
 

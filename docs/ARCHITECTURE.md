@@ -44,6 +44,14 @@ lib/gameEngine.ts (offline: called directly)   server/socket.ts (online: server-
   change with a sound, a haptic or a wobble. `app/game.tsx` (offline) and
   `app/(online)/game.tsx` (online) are thin adapters — see §5.
 
+- **`lib/` is client code with six exceptions.** `gameEngine.ts`, `replay.ts`,
+  `botPersonalities.ts`, `achievements.ts`, `rating.ts` and `streak.ts` are imported by
+  `server/`. **A module in that set may import only other modules in it and third-party
+  packages with no React Native dependency** — everything else in `lib/` reaches
+  `react-native`, `expo-*` or AsyncStorage and breaks `npm run server:build`.
+  `tests/serverLoadable.test.ts` derives the set from the server's own imports and loads
+  each under plain Node, so the rule is enforced rather than remembered.
+
 ## 2. Data flow
 
 **Offline:** `GameContext` holds a `GameState` produced by `lib/gameEngine.ts` in memory.
