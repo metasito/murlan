@@ -88,9 +88,14 @@ try {
 
   // Chromium writes a deflate stream tuned for encoding speed; recompressing
   // recovers a third of what it emits, so the sizes below are the ones shipped.
-  spawnSync(process.execPath, [path.join(ROOT, "scripts", "optimize-images.mjs"), OUT], {
-    stdio: "inherit",
-  });
+  const { status, error } = spawnSync(
+    process.execPath,
+    [path.join(ROOT, "scripts", "optimize-images.mjs"), OUT],
+    { stdio: "inherit" }
+  );
+  if (status !== 0) {
+    throw new Error(`optimize-images.mjs did not run (${error?.message ?? `exit ${status}`})`);
+  }
 
   const total = NAMES.reduce((sum, n) => sum + statSync(path.join(OUT, `${n}.png`)).size, 0);
   console.log(`\n${NAMES.length} files, ${(total / 1024).toFixed(0)} KB total`);
