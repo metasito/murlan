@@ -40,7 +40,8 @@ lib/gameEngine.ts (offline: called directly)   server/socket.ts (online: server-
   and owns the interaction; `components/table/` holds the pieces it draws, one file per
   concern — `seats.tsx` (the opponent slots), `pile.tsx` (the played pile and the card
   flight), `hand.tsx` (the viewer's card row) and `chrome.tsx` (the vignette, the billboard,
-  the banners and the shared table styles). `app/game.tsx` (offline) and
+  the banners and the shared table styles); `components/useTableFeedback.ts` answers a state
+  change with a sound, a haptic or a wobble. `app/game.tsx` (offline) and
   `app/(online)/game.tsx` (online) are thin adapters — see §5.
 
 ## 2. Data flow
@@ -174,6 +175,11 @@ been collapsed:
   `seats.tsx`, `pile.tsx`, `hand.tsx` and `chrome.tsx`. Nothing outside `GameTable.tsx`
   imports them; they were one `GameShared.tsx` back when the two game screens each had
   their own table.
+- **`components/useTableFeedback.ts`** — the shared values, the effects that answer a state
+  change with a sound, a haptic or a wobble, and the animated styles they drive. `GameTable`
+  still schedules the impact itself, against the 312ms the thrown card spends in the air,
+  and calls `playImpact` when it lands: the timer has to be cancellable alongside the flight
+  it belongs to.
 - **`app/game.tsx`** and **`app/(online)/game.tsx`** are now thin adapters: each maps its
   own state source onto `GameTableProps`.
 

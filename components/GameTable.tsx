@@ -26,10 +26,7 @@ import Animated, {
   useAnimatedStyle,
   useSharedValue,
   withTiming,
-  withSequence,
-  withRepeat,
   cancelAnimation,
-  Easing,
   FadeIn,
   type SharedValue,
   type AnimatedStyle,
@@ -87,9 +84,9 @@ import {
   sharedTableStyles,
   StartReasonBanner,
   TableVignette,
-  useTurnPulse,
 } from "@/components/table/chrome";
 import { StraightHand } from "@/components/table/hand";
+import { useTableFeedback } from "@/components/useTableFeedback";
 import { FlyingCards, PlayedPile, getComboLabel } from "@/components/table/pile";
 import { TopOppSlot, SideOppSlot } from "@/components/table/seats";
 import { ExchangeModal } from "@/components/ExchangeModal";
@@ -97,20 +94,14 @@ import { ExchangeAnnouncement } from "@/components/ExchangeAnnouncement";
 import {
   playCardSelect,
   playCardPlay,
-  playCardPass,
-  playYourTurn,
   playRoundStart,
   playRoundWin,
   playUrgentTick,
-  playBomb,
-  playGameWin,
-  playGameLose,
   playDeal,
-  playExchange,
   preloadSounds,
   unloadSounds,
 } from "@/lib/sounds";
-import { hapticError, hapticHeavy, hapticLight, hapticMedium, hapticSelection, hapticSuccess, hapticWarn } from "@/lib/haptics";
+import { hapticError, hapticLight, hapticMedium, hapticSelection } from "@/lib/haptics";
 import { usePrefersReducedMotion } from "@/lib/accessibility";
 import { Colors, FontSize, Highlight, Motion, Radius, Scrim, Shadow, Spacing, TABLE_FONT_SCALE_MAX, TOUCH_TARGET_MIN, Type } from "@/lib/theme";
 import { useTableFelt } from "@/lib/cosmetics";
@@ -125,10 +116,6 @@ const ROUND_WINNER_MS = 1800;
 // that still reads as a press.
 const BTN_PRESS_TRAVEL = 2;
 
-// The refusal shake on GIOCA: deliberately a third of the bomb's amplitude —
-// it is a "no", not an event. One leg duration for all four legs.
-const BTN_REJECT_TRAVEL = 3;
-const BTN_REJECT_LEG_MS = 40;
 // How long the refused-play reason stays on screen, and how wide it may get
 // before it wraps onto its second (and last) line.
 const REJECT_HINT_MS = 2600;
@@ -630,28 +617,6 @@ export function GameTable({
   const roundHoldTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const prevComboKeyRef = useRef<string>("");
   const roundClosedRef = useRef(false);
-  const prevMyTurnRef = useRef(false);
-  const prevExchangeActiveRef = useRef(false);
-  const prevGameOverRef = useRef(false);
-  // Seeded from the state the table mounts on, so rejoining mid-round does not
-  // replay the passes that happened before the viewer arrived.
-  const prevPassCountRef = useRef(gameState.passCount);
-  const prevRoundClosedRef = useRef(
-    roundClosedWithWinner({
-      lastPlayedCombination: gameState.lastPlayedCombination,
-      roundWinner: gameState.roundWinner,
-    })
-  );
-
-  // Nothing here scales: a fractional scale on a view containing text makes
-  // React Native resample the already-rasterised glyphs, and PASSA/GIOCA read
-  // as blurry for as long as it is applied. Emphasis is opacity, glow and —
-  // for the press feedback below — a whole-pixel translateY only.
-  const giocaFlashVal = useSharedValue(0);
-  const passaFlashVal = useSharedValue(0);
-  const giocaGlowVal = useSharedValue(0);
-  const shakeX = useSharedValue(0);
-  const giocaRejectX = useSharedValue(0);
 
   // The reason a tap on an unavailable GIOCA was refused, spelled out. Keyed by
   // a counter so tapping again restarts the dwell instead of being swallowed as
@@ -826,6 +791,30 @@ export function GameTable({
     return selected ? `${count} ${selected}` : count;
   }, [tn, sortedHand.length, selectedIds.length]);
 
+  const {
+    giocaFlashStyle,
+    passaFlashStyle,
+    giocaGlowStyle,
+    shakeStyle,
+    turnPulseStyle,
+    giocaRejectX,
+    playImpact,
+    rejectPlay,
+  } = useTableFeedback({
+    isMyTurn,
+    isFinished,
+    exchangeActive: exchange.active,
+    canPass,
+    playBtnValid,
+    selectedCount: selectedIds.length,
+    passCount: gameState.passCount,
+    lastPlayedCombination: gameState.lastPlayedCombination,
+    roundWinner: gameState.roundWinner,
+    gameOver: gameState.gameOver,
+    rankings: gameState.rankings,
+    viewerId: viewer?.id,
+  });
+
   // ── Lifecycle ───────────────────────────────────────────────────────────────
 
   useEffect(() => {
@@ -908,25 +897,10 @@ export function GameTable({
     // reads as *impact* waits for it. Announced for every seat, not only the
     // viewer's: the sound belongs to a card landing, not to a tap.
     const heavy = combo.type === "bomb" || combo.type === "royal_straight";
-    impactTimerRef.current = setTimeout(() => {
-      if (heavy) {
-        playBomb();
-        hapticHeavy();
-        if (!reduceMotion) {
-          shakeX.value = withSequence(
-            withTiming(5, { duration: 45 }),
-            withTiming(-5, { duration: 45 }),
-            withTiming(4, { duration: 40 }),
-            withTiming(-4, { duration: 40 }),
-            withTiming(2, { duration: 35 }),
-            withTiming(-2, { duration: 35 }),
-            withTiming(0, { duration: 30 })
-          );
-        }
-      } else {
-        playCardPlay();
-      }
-    }, impactDelayMs(reduceMotion));
+    impactTimerRef.current = setTimeout(
+      () => playImpact(heavy),
+      impactDelayMs(reduceMotion)
+    );
 
     setFlyInfo({
       key,
@@ -940,7 +914,7 @@ export function GameTable({
     viewerSeat,
     players.length,
     reduceMotion,
-    shakeX,
+    playImpact,
   ]);
 
   // Round-winner tag over the pile, keyed on the round *closing* rather than on
@@ -981,38 +955,6 @@ export function GameTable({
     return () => clearTimeout(id);
   }, [rejectHint]);
 
-  useEffect(() => {
-    if (isMyTurn && !isFinished && !prevMyTurnRef.current) playYourTurn();
-    prevMyTurnRef.current = isMyTurn;
-  }, [isMyTurn, isFinished]);
-
-  useEffect(() => {
-    if (exchange.active && !prevExchangeActiveRef.current) playExchange();
-    prevExchangeActiveRef.current = exchange.active;
-  }, [exchange.active]);
-
-  // A pass moves nothing on the felt, so the sound is the whole event — and it
-  // belongs to every seat, not only the viewer's own tap. Keyed on the state
-  // the pass produced rather than on the tap, so a bot, an opponent and the
-  // server moving for a seat all announce themselves identically.
-  //
-  // `processPass` resets `passCount` to zero on the pass that closes a round,
-  // so the closing pass raises no count edge and the round closing stands in
-  // for it. A round only ever closes on a pass, and heads-up every legal pass
-  // closes one — without this the sound would never fire in a two-player game
-  // at all. It layers under the round-winner sting, which is the beat after.
-  useEffect(() => {
-    const prevCount = prevPassCountRef.current;
-    prevPassCountRef.current = gameState.passCount;
-    const closed = roundClosedWithWinner({
-      lastPlayedCombination: gameState.lastPlayedCombination,
-      roundWinner: gameState.roundWinner,
-    });
-    const wasClosed = prevRoundClosedRef.current;
-    prevRoundClosedRef.current = closed;
-    if (gameState.passCount > prevCount || (closed && !wasClosed)) playCardPass();
-  }, [gameState.passCount, gameState.lastPlayedCombination, gameState.roundWinner]);
-
   // A card can leave the hand without the player having touched it — the server
   // moves for a seat that ran out of clock — and a staged id the hand no longer
   // holds is both a lit GIOCA the server refuses and a play the viewer did not
@@ -1026,99 +968,6 @@ export function GameTable({
       if (!handIds.has(id)) onSelectCard(id);
     }
   }, [sortedHand, selectedIds, onSelectCard, spectating]);
-
-  useEffect(() => {
-    // Reset on the way back down so a rematch — which never unmounts this
-    // component — gets its own win/lose sting instead of staying silent.
-    if (!gameState.gameOver) {
-      prevGameOverRef.current = false;
-      return;
-    }
-    if (prevGameOverRef.current) return;
-    prevGameOverRef.current = true;
-    // `rankings` holds engine player ids (`player_0`), never display names.
-    const myId = viewer?.id;
-    const myRank = myId ? gameState.rankings.indexOf(myId) : -1;
-    if (myRank === 0) {
-      hapticSuccess();
-      playGameWin();
-    } else if (myRank >= 0 && myRank === gameState.rankings.length - 1) {
-      hapticWarn();
-      playGameLose();
-    }
-  }, [gameState.gameOver, gameState.rankings, viewer?.id]);
-
-  // ── Animation ───────────────────────────────────────────────────────────────
-
-  // GIOCA bloom — a slow gold pulse while the button is armed.
-  useEffect(() => {
-    if (playBtnValid && !reduceMotion) {
-      giocaGlowVal.value = withRepeat(
-        withSequence(
-          withTiming(1.0, { duration: 1000, easing: Easing.inOut(Easing.sin) }),
-          withTiming(0.35, { duration: 1000, easing: Easing.inOut(Easing.sin) })
-        ),
-        -1,
-        false
-      );
-    } else {
-      cancelAnimation(giocaGlowVal);
-      giocaGlowVal.value =
-        reduceMotion && playBtnValid
-          ? 0.6
-          : withTiming(0, { duration: Motion.duration.fast });
-    }
-    return () => {
-      cancelAnimation(giocaGlowVal);
-    };
-  }, [playBtnValid, reduceMotion, giocaGlowVal]);
-
-  // GIOCA flash as the selection grows or shrinks.
-  const prevSelectedLen = useRef(0);
-  useEffect(() => {
-    const hasSelection = selectedIds.length > 0 && isMyTurn && !isFinished;
-    if (hasSelection && prevSelectedLen.current !== selectedIds.length && !reduceMotion) {
-      giocaFlashVal.value = withSequence(
-        withTiming(1, { duration: Motion.duration.fast }),
-        withTiming(0, { duration: Motion.duration.base })
-      );
-    }
-    prevSelectedLen.current = selectedIds.length;
-  }, [selectedIds.length, isMyTurn, isFinished, reduceMotion, giocaFlashVal]);
-
-  // PASSA flash the moment passing becomes possible. `canPass` already folds in
-  // whose turn it is, whether the viewer has finished, and whether the round is
-  // new, so the transition into it is the whole trigger.
-  useEffect(() => {
-    if (canPass && !reduceMotion) {
-      passaFlashVal.value = withSequence(
-        withTiming(1, { duration: Motion.duration.base }),
-        withTiming(0, { duration: Motion.duration.moderate })
-      );
-    }
-  }, [canPass, reduceMotion, passaFlashVal]);
-
-  // Reanimated keeps driving shared values after unmount unless cancelled.
-  // GiocaButton/PassaButton own and cancel their own press values.
-  useEffect(
-    () => () => {
-      cancelAnimation(giocaFlashVal);
-      cancelAnimation(passaFlashVal);
-      cancelAnimation(shakeX);
-      cancelAnimation(giocaRejectX);
-    },
-    [giocaFlashVal, passaFlashVal, shakeX, giocaRejectX]
-  );
-
-  const giocaFlashStyle = useAnimatedStyle(() => ({ opacity: giocaFlashVal.value }));
-  const passaFlashStyle = useAnimatedStyle(() => ({ opacity: passaFlashVal.value }));
-  const shakeStyle = useAnimatedStyle(() => ({
-    transform: [{ translateX: shakeX.value }],
-  }));
-  // Opacity only, on the childless sibling behind the button. A shadow written
-  // per frame is main-thread paint the browser cannot composite.
-  const giocaGlowStyle = useAnimatedStyle(() => ({ opacity: giocaGlowVal.value }));
-  const turnPulseStyle = useTurnPulse(isMyTurn && !isFinished && !exchange.active);
 
   // ── Handlers ────────────────────────────────────────────────────────────────
 
@@ -1144,14 +993,7 @@ export function GameTable({
     if (!playBtnValid) {
       hapticError();
       setRejectHint((prev) => ({ key: (prev?.key ?? 0) + 1, text: dimReasonText }));
-      if (!reduceMotion) {
-        giocaRejectX.value = withSequence(
-          withTiming(BTN_REJECT_TRAVEL, { duration: BTN_REJECT_LEG_MS }),
-          withTiming(-BTN_REJECT_TRAVEL, { duration: BTN_REJECT_LEG_MS }),
-          withTiming(BTN_REJECT_TRAVEL, { duration: BTN_REJECT_LEG_MS }),
-          withTiming(0, { duration: BTN_REJECT_LEG_MS })
-        );
-      }
+      rejectPlay();
       return;
     }
     // Haptic only: the throw is acknowledged in the hand, and card_play sounds
@@ -1161,7 +1003,7 @@ export function GameTable({
     // `selectedObjs`, and the server rejects — silently — any request naming a
     // card the hand does not hold.
     onPlay(selectedObjs.map((c) => c.id));
-  }, [playBtnValid, onPlay, selectedObjs, dimReasonText, reduceMotion, giocaRejectX]);
+  }, [playBtnValid, onPlay, selectedObjs, dimReasonText, rejectPlay]);
   const handlePass = useCallback(() => {
     if (!canPass) return;
     // Haptic only: the pass sound follows the committed state, so firing it
