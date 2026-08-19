@@ -5,16 +5,11 @@
 // compressible response is gzipped for a client that accepts it, and a URL
 // under dist/ is cached for a year exactly when its filename carries a content
 // hash.
-//
-// dist/ is a gitignored build product that CI does not have yet when this suite
-// runs (the web bundle is built later in the workflow), so before() fills in
-// whatever is missing and after() removes only what it added. Nothing already
-// on disk is written over: a killed run cannot leave a developer's real build
-// serving a stub.
 import { test, before, after, describe } from "node:test";
 import assert from "node:assert/strict";
 import * as fs from "node:fs";
 import * as path from "node:path";
+import os from "node:os";
 import {
   startTestServer,
   hasDatabase,
@@ -22,7 +17,12 @@ import {
   type TestServer,
 } from "../helpers/testServer.ts";
 
-const distDir = path.resolve(process.cwd(), "dist");
+// This suite serves a synthetic dist/ tree. node --test runs files concurrently
+// and every other integration suite's server reads dist/ from process.cwd() too,
+// so the tree is built in a directory of this suite's own and cwd moves onto it
+// for the life of the server — writing into the real one raced them.
+const sandbox = fs.mkdtempSync(path.join(os.tmpdir(), "murlan-http-"));
+const distDir = path.join(sandbox, "dist");
 const indexPath = path.join(distDir, "index.html");
 const faviconPath = path.join(distDir, "favicon.ico");
 const assetDir = path.join(distDir, "_expo", "static", "js", "web");
@@ -31,8 +31,7 @@ const assetPath = path.join(
   "app-fixture.deadbeefcafebabe0123456789abcdef.js"
 );
 
-// Only needed when there is no real build: the server refuses to serve dist/ at
-// all without an index.html.
+// The server refuses to serve dist/ at all without an index.html.
 const FIXTURE_INDEX_HTML = `<!doctype html><div id="root"></div>`;
 // Large enough to clear compression's default 1 KB threshold. The compression
 // assertions run against this rather than against the HTML, whose size depends
@@ -44,47 +43,23 @@ const FIXTURE_FAVICON = Buffer.from("00000100", "hex");
 
 describe("static asset compression and caching", { skip: hasDatabase() ? false : skipMessage() }, () => {
   let server: TestServer;
-  const createdDirs: string[] = [];
-  const createdFiles: string[] = [];
+  let originalCwd: string;
 
   before(async () => {
-    for (const dir of [
-      distDir,
-      path.join(distDir, "_expo"),
-      path.join(distDir, "_expo", "static"),
-      path.join(distDir, "_expo", "static", "js"),
-      assetDir,
-    ]) {
-      if (!fs.existsSync(dir)) {
-        fs.mkdirSync(dir);
-        createdDirs.push(dir);
-      }
-    }
+    fs.mkdirSync(assetDir, { recursive: true });
+    fs.writeFileSync(indexPath, FIXTURE_INDEX_HTML);
+    fs.writeFileSync(faviconPath, FIXTURE_FAVICON);
+    fs.writeFileSync(assetPath, FIXTURE_JS);
 
-    for (const [file, contents] of [
-      [indexPath, FIXTURE_INDEX_HTML],
-      [faviconPath, FIXTURE_FAVICON],
-      [assetPath, FIXTURE_JS],
-    ] as const) {
-      if (!fs.existsSync(file)) {
-        fs.writeFileSync(file, contents);
-        createdFiles.push(file);
-      }
-    }
-
+    originalCwd = process.cwd();
+    process.chdir(sandbox);
     server = await startTestServer();
   });
 
   after(async () => {
-    await server.stop();
-    for (const file of createdFiles) fs.rmSync(file, { force: true });
-    for (const dir of createdDirs.reverse()) {
-      try {
-        fs.rmdirSync(dir);
-      } catch {
-        // Not empty — something else is using it, leave it alone.
-      }
-    }
+    if (server) await server.stop();
+    if (originalCwd) process.chdir(originalCwd);
+    fs.rmSync(sandbox, { recursive: true, force: true });
   });
 
   const assetUrl = () =>
