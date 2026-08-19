@@ -6,6 +6,20 @@ const expoConfig = require('eslint-config-expo/flat');
 // produce one that neither TypeScript nor a render test catches.
 const TOKEN_OBJECTS = 'Colors|Spacing|Radius|FontSize|Type|Motion|Scrim|Highlight|Shadow|FeltGradient|FeltGradients|CardBacks';
 
+// Every edge shorthand React Native accepts, built from the two prefixes and
+// the edge suffixes rather than enumerated.
+const SPACING_PROPS = '(padding|margin)(Top|Bottom|Left|Right|Start|End|Vertical|Horizontal|(Block|Inline)(Start|End)?)?|gap|rowGap|columnGap';
+const SCALED_PROPS = `fontSize|borderRadius|${SPACING_PROPS}`;
+
+// `raw`, not `value`: esquery only regex-matches an attribute that is already a
+// string, so a numeric `value` matches nothing at all and the rule reports
+// green. `-8` parses as a UnaryExpression over the literal, hence the second
+// selector — one alone leaves half the scale unguarded.
+const BARE_NUMBER = 'Literal[raw=/^[1-9][0-9.]*$/]';
+const SCALED_LITERAL =
+  `Property[key.name=/^(${SCALED_PROPS})$/] > ${BARE_NUMBER}, ` +
+  `Property[key.name=/^(${SCALED_PROPS})$/] > UnaryExpression > ${BARE_NUMBER}`;
+
 module.exports = defineConfig([
   expoConfig,
   {
@@ -25,9 +39,9 @@ module.exports = defineConfig([
       // it has shipped a stale closure twice (context/OnlineGameContext.tsx,
       // a round-winner banner). At the default "warn", `expo lint` still
       // exits 0, so the one check that would have caught either reports
-      // nothing anyone sees. Every existing case that omits a real
-      // dependency on purpose already carries its own
-      // eslint-disable-next-line with a reason, which this does not affect.
+      // nothing anyone sees. Every existing case that omits a real dependency
+      // on purpose already carries its own `eslint-disable-next-line` with a
+      // reason, which this does not affect.
       "react-hooks/exhaustive-deps": "error",
       "no-restricted-syntax": [
         "error",
@@ -48,8 +62,7 @@ module.exports = defineConfig([
           // swept onto. Neither the string-token rules above nor
           // tests/tokenRoles can see a bare number, which is how one screen
           // came to ship five corner radii for one role.
-          selector:
-            "Property[key.name=/^(fontSize|borderRadius|padding|paddingVertical|paddingHorizontal|paddingTop|paddingBottom|paddingLeft|paddingRight|margin|marginTop|marginBottom|marginLeft|marginRight|gap|rowGap|columnGap)$/] > Literal[raw=/^[1-9][0-9.]*$/]",
+          selector: SCALED_LITERAL,
           message:
             "Use a FontSize, Radius or Spacing token. A one-off that fits no step may be a named module constant, but not a bare number in a style object.",
         },

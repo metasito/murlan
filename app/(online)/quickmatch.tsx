@@ -306,7 +306,7 @@ const styles = StyleSheet.create({
     flexWrap: "wrap",
     justifyContent: "center",
     gap: Spacing.cosy,
-    marginVertical: 16,
+    marginVertical: Spacing.md,
   },
   modeCardsRowLandscape: {
     flexWrap: "nowrap",

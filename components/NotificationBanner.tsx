@@ -208,8 +208,8 @@ const styles = StyleSheet.create({
   closeBtn: {
     width: 44,
     height: 44,
-    marginVertical: -12,
-    marginRight: -8,
+    marginVertical: -Spacing.cosy,
+    marginRight: -Spacing.sm,
     alignItems: "center",
     justifyContent: "center",
   },

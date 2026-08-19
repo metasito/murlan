@@ -386,7 +386,7 @@ const styles = StyleSheet.create({
     gap: Spacing.sm,
   },
   landscapeRow: { flexDirection: "row", gap: Spacing.roomy, alignItems: "stretch", flex: 1 },
-  dividerV: { width: 1, backgroundColor: Colors.border, alignSelf: "stretch", marginHorizontal: 10 },
+  dividerV: { width: 1, backgroundColor: Colors.border, alignSelf: "stretch", marginHorizontal: Spacing.snug },
   statusRow: { flexDirection: "row", alignItems: "center", gap: Spacing.sm, marginBottom: Spacing.xs },
   dot: { width: 8, height: 8, borderRadius: Radius.full },
   statusText: { fontFamily: "Inter_400Regular", fontSize: FontSize.sm, color: Colors.textMuted },

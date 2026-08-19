@@ -317,7 +317,7 @@ const seatStyles = StyleSheet.create({
   sideOppSlot: { alignItems: "center", justifyContent: "center", gap: Spacing.slim },
   sideLeft: { flexDirection: "row" },
   sideRight: { flexDirection: "row-reverse" },
-  sideOppAvatarCol: { alignItems: "center", gap: Spacing.xxs, marginHorizontal: 6 },
+  sideOppAvatarCol: { alignItems: "center", gap: Spacing.xxs, marginHorizontal: Spacing.slim },
 
   // The count bubble's plate. The top seat renders in the felt gradient's
   // lightest band, where textMuted alone does not clear AA.
