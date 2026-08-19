@@ -26,7 +26,7 @@ import Ionicons from "@expo/vector-icons/Ionicons";
 import { useGame } from "@/context/GameContext";
 import { usePrefersReducedMotion } from "@/lib/accessibility";
 import { ResultExchangeOverlay, shouldShowResultExchange } from "@/components/ResultExchangeOverlay";
-import { Colors, FontSize, Motion, Spacing, Type, WEB_BOTTOM_PAD, WEB_TOP_PAD } from '@/lib/theme';
+import { Colors, FontSize, Motion, Radius, Spacing, Type, WEB_BOTTOM_PAD, WEB_TOP_PAD } from '@/lib/theme';
 import { useTranslation, type TranslationKey } from "@/lib/i18n";
 
 const POSITION_COLORS = [Colors.podiumGold, Colors.podiumSilver, Colors.podiumBronze, Colors.textMuted];
@@ -522,7 +522,7 @@ const styles = StyleSheet.create({
     position: "absolute",
     width: 120,
     height: 120,
-    borderRadius: 60,
+    borderRadius: Radius.full,
     backgroundColor: Colors.gold,
     top: -10,
     opacity: 0.07,
@@ -530,7 +530,7 @@ const styles = StyleSheet.create({
   celebGlowCompact: {
     width: 80,
     height: 80,
-    borderRadius: 40,
+    borderRadius: Radius.full,
     top: -5,
   },
   trophyCircle: {
@@ -541,19 +541,19 @@ const styles = StyleSheet.create({
   trophyGrad: { flex: 1, alignItems: "center", justifyContent: "center" },
   winnerName: {
     fontFamily: "Rajdhani_700Bold",
-    fontSize: 24,
+    fontSize: FontSize.xl,
     color: Colors.text,
     letterSpacing: 2,
     maxWidth: 200,
     textAlign: "center",
   },
   winnerNameCompact: {
-    fontSize: 18,
+    fontSize: FontSize.lg,
     maxWidth: 180,
   },
   winnerSub: {
     fontFamily: "Inter_500Medium",
-    fontSize: 10,
+    fontSize: FontSize.xxs,
     color: Colors.gold,
     letterSpacing: 3,
     textTransform: "uppercase",
@@ -564,7 +564,7 @@ const styles = StyleSheet.create({
   statItem: {
     flex: 1,
     backgroundColor: Colors.bgSurface,
-    borderRadius: 10,
+    borderRadius: Radius.sm,
     padding: 8,
     alignItems: "center",
     gap: 2,
@@ -573,12 +573,12 @@ const styles = StyleSheet.create({
   },
   statValue: {
     fontFamily: "Rajdhani_700Bold",
-    fontSize: 13,
+    fontSize: FontSize.sm,
     color: Colors.text,
   },
   statLabel: {
     fontFamily: "Inter_400Regular",
-    fontSize: 9,
+    fontSize: FontSize.xxs,
     color: Colors.textMuted,
   },
 
@@ -591,7 +591,7 @@ const styles = StyleSheet.create({
     gap: 6,
     paddingVertical: 14,
     paddingHorizontal: 16,
-    borderRadius: 14,
+    borderRadius: Radius.md,
     backgroundColor: Colors.bgSurface,
     borderWidth: 1,
     borderColor: Colors.border,
@@ -599,14 +599,14 @@ const styles = StyleSheet.create({
   homeBtnCompact: {
     paddingVertical: 14,
     paddingHorizontal: 14,
-    borderRadius: 14,
+    borderRadius: Radius.md,
   },
   homeBtnText: {
     fontFamily: "Rajdhani_600SemiBold",
-    fontSize: 16,
+    fontSize: FontSize.md,
     color: Colors.textSecondary,
   },
-  rematchBtn: { borderRadius: 14, overflow: "hidden" },
+  rematchBtn: { borderRadius: Radius.md, overflow: "hidden" },
   rematchBtnFlex: { flex: 1 },
   rematchGrad: {
     flexDirection: "row",
@@ -621,14 +621,14 @@ const styles = StyleSheet.create({
   },
   rematchText: {
     fontFamily: "Rajdhani_700Bold",
-    fontSize: 15,
+    fontSize: FontSize.md,
     color: Colors.bgCard,
     letterSpacing: 0.5,
   },
 
   sectionTitle: {
     fontFamily: "Inter_600SemiBold",
-    fontSize: 10,
+    fontSize: FontSize.xxs,
     color: Colors.textMuted,
     letterSpacing: 2,
   },
@@ -638,7 +638,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: 8,
     backgroundColor: Colors.bgSurface,
-    borderRadius: 10,
+    borderRadius: Radius.sm,
     paddingVertical: 7,
     paddingHorizontal: 10,
     borderWidth: 1,
@@ -649,32 +649,32 @@ const styles = StyleSheet.create({
   posBadge: {
     width: 26,
     height: 26,
-    borderRadius: 13,
+    borderRadius: Radius.full,
     borderWidth: 1.5,
     alignItems: "center",
     justifyContent: "center",
   },
-  posLabel: { fontFamily: "Rajdhani_700Bold", fontSize: 11 },
+  posLabel: { fontFamily: "Rajdhani_700Bold", fontSize: FontSize.xs },
   playerName: {
     fontFamily: "Rajdhani_600SemiBold",
-    fontSize: 14,
+    fontSize: FontSize.sm,
     color: Colors.text,
   },
-  teamLabel: { fontFamily: "Inter_500Medium", fontSize: 9, marginTop: 1 },
+  teamLabel: { fontFamily: "Inter_500Medium", fontSize: FontSize.xxs, marginTop: 1 },
   scoreBlock: {
     alignItems: "flex-end",
     gap: 0,
   },
   totalScore: {
     fontFamily: "Rajdhani_700Bold",
-    fontSize: 20,
+    fontSize: FontSize.lg,
     color: Colors.textSecondary,
     lineHeight: 22,
   },
   totalScoreWinner: { color: Colors.gold },
   scoreSub: {
     fontFamily: "Inter_400Regular",
-    fontSize: 9,
+    fontSize: FontSize.xxs,
     color: Colors.textMuted,
   },
   legend: {
@@ -685,7 +685,7 @@ const styles = StyleSheet.create({
   },
   legendText: {
     fontFamily: "Inter_400Regular",
-    fontSize: 9,
+    fontSize: FontSize.xxs,
     color: Colors.textMuted,
   },
 });

@@ -13,7 +13,7 @@ import { router, useNavigation } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import Ionicons from "@expo/vector-icons/Ionicons";
 import { useOnlineGame } from "@/context/OnlineGameContext";
-import { Colors } from '@/lib/theme';
+import { Colors, FontSize, Radius } from '@/lib/theme';
 import { MenuLayout, CONTENT_H_PAD } from "@/components/MenuLayout";
 import { MenuCard } from "@/components/MenuCard";
 import { MenuButton } from "@/components/MenuButton";
@@ -276,13 +276,13 @@ const styles = StyleSheet.create({
   },
   headerTitle: {
     fontFamily: "Rajdhani_700Bold",
-    fontSize: 26,
+    fontSize: FontSize.xl,
     color: Colors.gold,
     letterSpacing: 1,
   },
   headerSub: {
     fontFamily: "Inter_400Regular",
-    fontSize: 13,
+    fontSize: FontSize.sm,
     color: Colors.textMuted,
     marginTop: 2,
   },
@@ -295,7 +295,7 @@ const styles = StyleSheet.create({
   },
   landscapeHeaderText: {
     fontFamily: "Rajdhani_600SemiBold",
-    fontSize: 16,
+    fontSize: FontSize.md,
     color: Colors.gold,
     letterSpacing: 1,
   },
@@ -312,7 +312,7 @@ const styles = StyleSheet.create({
   },
   modeCard: {
     backgroundColor: Colors.felt,
-    borderRadius: 16,
+    borderRadius: Radius.md,
     borderWidth: 1.5,
     borderColor: Colors.goldBorder,
     padding: 18,
@@ -322,7 +322,7 @@ const styles = StyleSheet.create({
   modeCardLandscape: {
     padding: 10,
     gap: 5,
-    borderRadius: 12,
+    borderRadius: Radius.md,
   },
   modeCardPressed: {
     borderColor: Colors.gold,
@@ -337,7 +337,7 @@ const styles = StyleSheet.create({
   modeIconBg: {
     width: 52,
     height: 52,
-    borderRadius: 26,
+    borderRadius: Radius.full,
     backgroundColor: Colors.goldMuted,
     alignItems: "center",
     justifyContent: "center",
@@ -345,14 +345,14 @@ const styles = StyleSheet.create({
   modeIconBgSmall: {
     width: 38,
     height: 38,
-    borderRadius: 19,
+    borderRadius: Radius.full,
   },
   playerBadge: {
     position: "absolute",
     top: -4,
     right: -8,
     backgroundColor: Colors.gold,
-    borderRadius: 10,
+    borderRadius: Radius.full,
     minWidth: 20,
     height: 20,
     alignItems: "center",
@@ -361,20 +361,20 @@ const styles = StyleSheet.create({
   },
   playerBadgeText: {
     color: Colors.bg,
-    fontSize: 11,
+    fontSize: FontSize.xs,
     fontWeight: "800",
   },
   modeLabel: {
     fontFamily: "Rajdhani_700Bold",
-    fontSize: 18,
+    fontSize: FontSize.lg,
     color: Colors.text,
     letterSpacing: 0.3,
     textAlign: "center",
   },
-  modeLabelSmall: { fontSize: 14 },
+  modeLabelSmall: { fontSize: FontSize.sm },
   modeDesc: {
     fontFamily: "Inter_400Regular",
-    fontSize: 11,
+    fontSize: FontSize.xs,
     color: Colors.textMuted,
     textAlign: "center",
     lineHeight: 15,
@@ -401,7 +401,7 @@ const styles = StyleSheet.create({
   globeCircle: {
     width: 120,
     height: 120,
-    borderRadius: 60,
+    borderRadius: Radius.full,
     backgroundColor: Colors.felt,
     borderWidth: 2,
     borderColor: Colors.gold,
@@ -411,7 +411,7 @@ const styles = StyleSheet.create({
   globeCircleSmall: {
     width: 76,
     height: 76,
-    borderRadius: 38,
+    borderRadius: Radius.full,
   },
   searchCard: {
     minHeight: 120,
@@ -426,7 +426,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: 6,
     backgroundColor: Colors.goldMuted,
-    borderRadius: 20,
+    borderRadius: Radius.lg,
     paddingHorizontal: 14,
     paddingVertical: 6,
     borderWidth: 1,
@@ -436,11 +436,11 @@ const styles = StyleSheet.create({
   selectedModeText: {
     fontFamily: "Rajdhani_600SemiBold",
     color: Colors.gold,
-    fontSize: 13,
+    fontSize: FontSize.sm,
   },
   searchingLabel: {
     fontFamily: "Rajdhani_700Bold",
-    fontSize: 22,
+    fontSize: FontSize.xl,
     color: Colors.gold,
     letterSpacing: 0.5,
     textAlign: "center",
@@ -451,7 +451,7 @@ const styles = StyleSheet.create({
   },
   subtitle: {
     fontFamily: "Inter_400Regular",
-    fontSize: 14,
+    fontSize: FontSize.sm,
     color: Colors.textMuted,
     textAlign: "center",
     lineHeight: 20,
@@ -459,7 +459,7 @@ const styles = StyleSheet.create({
   },
   errorText: {
     fontFamily: "Inter_400Regular",
-    fontSize: 15,
+    fontSize: FontSize.md,
     color: Colors.dangerDim,
     textAlign: "center",
     marginBottom: 4,

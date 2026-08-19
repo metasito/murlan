@@ -132,7 +132,7 @@ const styles = StyleSheet.create({
     borderRadius: Radius.sm,
   },
   triggerPressed: { backgroundColor: Colors.goldMuted },
-  triggerText: { fontSize: 20 },
+  triggerText: { fontSize: FontSize.lg },
 
   panel: {
     position: "absolute",
@@ -157,7 +157,7 @@ const styles = StyleSheet.create({
   },
   // Colour, not scale: the "glyph" here is text, and scaling it resamples it.
   emojiBtnPressed: { backgroundColor: Colors.goldMuted },
-  emojiBtnText: { fontSize: 22 },
+  emojiBtnText: { fontSize: FontSize.xl },
 
   floatingEmoji: {
     position: "absolute",
@@ -165,10 +165,10 @@ const styles = StyleSheet.create({
     alignItems: "center",
     zIndex: 200,
   },
-  floatingEmojiText: { fontSize: 36 },
+  floatingEmojiText: { fontSize: FontSize.hero },
   floatingEmojiName: {
     fontFamily: "Inter_400Regular",
-    fontSize: FontSize.xs - 1,
+    fontSize: FontSize.xxs,
     color: Colors.textMuted,
     backgroundColor: Scrim.heavy,
     borderRadius: Radius.sm / 2,

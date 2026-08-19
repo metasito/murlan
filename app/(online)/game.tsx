@@ -445,7 +445,7 @@ const styles = StyleSheet.create({
     maxWidth: 380,
     width: "80%",
   },
-  waitGlyph: { fontSize: 32 },
+  waitGlyph: { fontSize: FontSize.xxl },
   waitTitle: {
     fontFamily: "Rajdhani_700Bold",
     fontSize: FontSize.lg,

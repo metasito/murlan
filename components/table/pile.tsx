@@ -325,7 +325,7 @@ const pileStyles = StyleSheet.create({
     alignItems: "center",
     gap: 4,
     backgroundColor: Scrim.heavy,
-    borderRadius: 10,
+    borderRadius: Radius.sm,
     paddingHorizontal: 10,
     paddingVertical: 4,
     borderWidth: 1,
@@ -361,7 +361,7 @@ const pileStyles = StyleSheet.create({
   },
   comboChipText: {
     fontFamily: "Rajdhani_700Bold",
-    fontSize: 10,
+    fontSize: FontSize.xxs,
     color: Colors.gold,
     letterSpacing: 1.5,
     textTransform: "uppercase",

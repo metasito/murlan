@@ -324,7 +324,7 @@ const seatStyles = StyleSheet.create({
   // lightest band, where textMuted alone does not clear AA.
   oppName: {
     fontFamily: "Rajdhani_600SemiBold",
-    fontSize: 10,
+    fontSize: FontSize.xxs,
     color: Colors.textMuted,
     maxWidth: 70 + Spacing.xs * 2,
     textAlign: "center",
@@ -408,7 +408,7 @@ const seatStyles = StyleSheet.create({
     bottom: -3,
     right: -3,
     backgroundColor: Colors.overlayStrong,
-    borderRadius: 9,
+    borderRadius: Radius.full,
     minWidth: 18,
     height: 18,
     alignItems: "center",
@@ -423,7 +423,7 @@ const seatStyles = StyleSheet.create({
   },
   countBubbleText: {
     fontFamily: "Rajdhani_700Bold",
-    fontSize: 10,
+    fontSize: FontSize.xxs,
     color: Colors.gold,
   },
 });

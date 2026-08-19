@@ -14,6 +14,7 @@ import {
   CardFaceGradient,
   Colors,
   FeltGradients,
+  FontSize,
   Motion,
   Radius,
   Shadow,
@@ -690,7 +691,7 @@ const styles = StyleSheet.create({
     width: CARD_W_SMALL * INDEX_TEXT_W,
   },
   rankTextJoker: {
-    fontSize: 11,
+    fontSize: FontSize.xs,
     lineHeight: 12,
   },
   rankTextBottom: {

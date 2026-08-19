@@ -1419,7 +1419,7 @@ const styles = StyleSheet.create({
   },
   timerUrgent: { color: Colors.red },
   cardCountBadge: {
-    width: 30, height: 30, borderRadius: 15,
+    width: 30, height: 30, borderRadius: Radius.full,
     backgroundColor: Scrim.medium,
     alignItems: "center", justifyContent: "center",
   },
@@ -1429,11 +1429,11 @@ const styles = StyleSheet.create({
 
   startCardBanner: {
     alignItems: "center", gap: 6,
-    paddingHorizontal: Spacing.md, paddingVertical: 10, borderRadius: 14,
+    paddingHorizontal: Spacing.md, paddingVertical: 10, borderRadius: Radius.md,
     backgroundColor: Scrim.medium,
     borderWidth: 1, borderColor: Colors.goldSoft,
   },
-  startCardGlyph: { fontSize: 28, color: Colors.text },
+  startCardGlyph: { fontSize: FontSize.xxl, color: Colors.text },
   startCardText: {
     fontFamily: "Rajdhani_600SemiBold", fontSize: FontSize.sm,
     color: Colors.text, textAlign: "center", letterSpacing: 0.5,

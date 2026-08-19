@@ -28,7 +28,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useAuth } from "@/context/AuthContext";
 import { useGame } from "@/context/GameContext";
 import { usePrefersReducedMotion } from "@/lib/accessibility";
-import { Colors, TOUCH_TARGET_MIN, WEB_BOTTOM_PAD, WEB_TOP_PAD } from '@/lib/theme';
+import { Colors, FontSize, Radius, TOUCH_TARGET_MIN, WEB_BOTTOM_PAD, WEB_TOP_PAD } from '@/lib/theme';
 import { useTranslation } from "@/lib/i18n";
 import { SettingsModal } from "@/components/SettingsModal";
 import { a11yState } from "@/lib/a11y";
@@ -355,7 +355,7 @@ export default function HomeScreen() {
             <Animated.View style={[titleStyle, { alignItems: "center" }]}>
               <Text style={styles.titleLandscape}>MURLAN</Text>
               <View style={styles.titleUnderlineLandscape}>
-                <LinearGradient colors={[Colors.goldDark, Colors.gold, Colors.goldDark]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={{ flex: 1, height: 2, borderRadius: 1 }} />
+                <LinearGradient colors={[Colors.goldDark, Colors.gold, Colors.goldDark]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={{ flex: 1, height: 2, borderRadius: Radius.sm }} />
               </View>
             </Animated.View>
             <Animated.View style={subtitleStyle}>
@@ -418,7 +418,7 @@ export default function HomeScreen() {
             )}
           </View>
           <View style={styles.titleUnderline}>
-            <LinearGradient colors={[Colors.goldDark, Colors.gold, Colors.goldDark]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={{ flex: 1, height: 2, borderRadius: 1 }} />
+            <LinearGradient colors={[Colors.goldDark, Colors.gold, Colors.goldDark]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={{ flex: 1, height: 2, borderRadius: Radius.sm }} />
           </View>
         </Animated.View>
         <Animated.View style={subtitleStyle}>
@@ -467,6 +467,10 @@ export default function HomeScreen() {
   );
 }
 
+// The wordmark, above every step of the type scale on purpose — it is the one
+// thing on the screen that is not text to read.
+const WORDMARK_SIZE = 56;
+
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: Colors.bg },
 
@@ -488,7 +492,7 @@ const styles = StyleSheet.create({
   },
   titleLandscape: {
     fontFamily: "Rajdhani_700Bold",
-    fontSize: 38,
+    fontSize: FontSize.hero,
     color: Colors.text,
     letterSpacing: 8,
     textAlign: "center",
@@ -496,14 +500,14 @@ const styles = StyleSheet.create({
   titleUnderlineLandscape: { width: 110, alignSelf: "center", marginTop: 2 },
   subtitleLandscape: {
     fontFamily: "Inter_400Regular",
-    fontSize: 10,
+    fontSize: FontSize.xxs,
     color: Colors.gold,
     letterSpacing: 3,
     textTransform: "uppercase",
     textAlign: "center",
   },
   cardDecorationLandscape: { flexDirection: "row", gap: 12, paddingVertical: 6 },
-  suitDecorSmall: { fontSize: 18, opacity: 0.7 },
+  suitDecorSmall: { fontSize: FontSize.lg, opacity: 0.7 },
   userRowLandscape: {
     flexDirection: "row",
     alignItems: "center",
@@ -511,12 +515,12 @@ const styles = StyleSheet.create({
     gap: 5,
     flexWrap: "wrap",
   },
-  userTextSmall: { fontFamily: "Inter_500Medium", fontSize: 11, color: Colors.text, maxWidth: 100 },
+  userTextSmall: { fontFamily: "Inter_500Medium", fontSize: FontSize.xs, color: Colors.text, maxWidth: 100 },
 
   header: { alignItems: "center", paddingTop: 40, paddingBottom: 12, gap: 6 },
   title: {
     fontFamily: "Rajdhani_700Bold",
-    fontSize: 56,
+    fontSize: WORDMARK_SIZE,
     color: Colors.text,
     letterSpacing: 12,
     textAlign: "center",
@@ -524,20 +528,20 @@ const styles = StyleSheet.create({
   titleUnderline: { width: 160, alignSelf: "center", marginTop: 4 },
   devBadge: {
     backgroundColor: Colors.danger,
-    borderRadius: 6,
+    borderRadius: Radius.sm,
     paddingHorizontal: 6,
     paddingVertical: 2,
     alignSelf: "center",
   },
   devBadgeText: {
     fontFamily: "Inter_600SemiBold",
-    fontSize: 10,
+    fontSize: FontSize.xxs,
     color: Colors.white,
     letterSpacing: 1,
   },
   subtitle: {
     fontFamily: "Inter_400Regular",
-    fontSize: 13,
+    fontSize: FontSize.sm,
     color: Colors.gold,
     letterSpacing: 4,
     textTransform: "uppercase",
@@ -551,16 +555,16 @@ const styles = StyleSheet.create({
     gap: 6,
     marginTop: 4,
   },
-  userText: { fontFamily: "Inter_500Medium", fontSize: 13, color: Colors.text },
+  userText: { fontFamily: "Inter_500Medium", fontSize: FontSize.sm, color: Colors.text },
   logoutBtn: { paddingHorizontal: 8, paddingVertical: 2 },
-  logoutText: { fontFamily: "Inter_400Regular", fontSize: 12, color: Colors.textMuted },
+  logoutText: { fontFamily: "Inter_400Regular", fontSize: FontSize.xs, color: Colors.textMuted },
   friendsBtn: {
     position: "relative",
     flexDirection: "row",
     alignItems: "center",
     gap: 6,
     backgroundColor: Colors.gold,
-    borderRadius: 20,
+    borderRadius: Radius.lg,
     paddingVertical: 7,
     paddingHorizontal: 14,
   },
@@ -570,11 +574,11 @@ const styles = StyleSheet.create({
     borderColor: Colors.gold,
     paddingVertical: 4,
     paddingHorizontal: 10,
-    borderRadius: 14,
+    borderRadius: Radius.md,
   },
   friendsBtnText: {
     fontFamily: "Rajdhani_700Bold",
-    fontSize: 14,
+    fontSize: FontSize.sm,
     color: Colors.bgCard,
     letterSpacing: 0.5,
   },
@@ -593,7 +597,7 @@ const styles = StyleSheet.create({
     right: -4,
     minWidth: 18,
     height: 18,
-    borderRadius: 9,
+    borderRadius: Radius.full,
     backgroundColor: Colors.danger,
     alignItems: "center",
     justifyContent: "center",
@@ -603,19 +607,19 @@ const styles = StyleSheet.create({
   },
   badgeText: {
     fontFamily: "Inter_600SemiBold",
-    fontSize: 10,
+    fontSize: FontSize.xxs,
     color: Colors.white,
     lineHeight: 13,
   },
   cardDecoration: { flexDirection: "row", justifyContent: "center", gap: 20, paddingVertical: 24 },
-  suitDecor: { fontSize: 24, opacity: 0.7 },
+  suitDecor: { fontSize: FontSize.xl, opacity: 0.7 },
   menuScroll: { flex: 1 },
   menu: { flexGrow: 1, paddingHorizontal: 24, justifyContent: "center", gap: 12 },
   menuButton: {
     flexDirection: "row",
     alignItems: "center",
     backgroundColor: Colors.bgSurface,
-    borderRadius: 14,
+    borderRadius: Radius.md,
     paddingVertical: 18,
     paddingHorizontal: 20,
     gap: 14,
@@ -655,16 +659,16 @@ const styles = StyleSheet.create({
   menuLabel: {
     flex: 1,
     fontFamily: "Rajdhani_600SemiBold",
-    fontSize: 18,
+    fontSize: FontSize.lg,
     color: Colors.text,
     letterSpacing: 0.5,
   },
-  menuLabelCompact: { fontSize: 15 },
+  menuLabelCompact: { fontSize: FontSize.md },
   menuLabelAccent: { color: Colors.bgCard, fontFamily: "Rajdhani_700Bold" },
   floatingCard: {
     position: "absolute",
     top: "12%",
-    borderRadius: 8,
+    borderRadius: Radius.sm,
     overflow: "hidden",
     borderWidth: 1.5,
     borderColor: Colors.goldDark,
@@ -675,10 +679,10 @@ const styles = StyleSheet.create({
     left: 4,
     right: 4,
     bottom: 4,
-    borderRadius: 5,
+    borderRadius: Radius.sm,
     borderWidth: 1,
     borderColor: Colors.goldBorder,
   },
   footer: { alignItems: "center", paddingTop: 20 },
-  footerText: { fontFamily: "Inter_400Regular", fontSize: 12, color: Colors.textMuted, letterSpacing: 1 },
+  footerText: { fontFamily: "Inter_400Regular", fontSize: FontSize.xs, color: Colors.textMuted, letterSpacing: 1 },
 });

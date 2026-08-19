@@ -14,7 +14,7 @@ import Animated, {
 } from "react-native-reanimated";
 import { LinearGradient } from "expo-linear-gradient";
 import Ionicons from "@expo/vector-icons/Ionicons";
-import { Colors, Spacing, FontSize, Type } from "@/lib/theme";
+import { Colors, FontSize, Radius, Spacing, Type } from "@/lib/theme";
 import { MenuLayout } from "@/components/MenuLayout";
 import { usePrefersReducedMotion } from "@/lib/accessibility";
 import { useTranslation, type TranslationKey } from "@/lib/i18n";
@@ -231,7 +231,7 @@ const styles = StyleSheet.create({
   },
 
   heroBanner: {
-    borderRadius: 16,
+    borderRadius: Radius.md,
     overflow: "hidden",
     padding: 24,
     alignItems: "center",
@@ -245,18 +245,18 @@ const styles = StyleSheet.create({
     marginBottom: 8,
   },
   heroSuit: {
-    fontSize: 20,
+    fontSize: FontSize.lg,
     opacity: 0.8,
   },
   heroTitle: {
     fontFamily: "Rajdhani_700Bold",
-    fontSize: 36,
+    fontSize: FontSize.hero,
     color: Colors.text,
     letterSpacing: 8,
   },
   heroSubtitle: {
     fontFamily: "Inter_400Regular",
-    fontSize: 12,
+    fontSize: FontSize.xs,
     color: Colors.gold,
     letterSpacing: 3,
     textTransform: "uppercase",
@@ -269,14 +269,14 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 8,
     minHeight: 44,
-    borderRadius: 10,
+    borderRadius: Radius.sm,
     backgroundColor: Colors.goldMuted,
     borderWidth: 1,
     borderColor: Colors.border,
   },
   tutorialLinkText: {
     fontFamily: "Inter_500Medium",
-    fontSize: 11,
+    fontSize: FontSize.xs,
     color: Colors.gold,
     textAlign: "center",
     flexShrink: 1,
@@ -287,7 +287,7 @@ const styles = StyleSheet.create({
   },
   sectionLabel: {
     fontFamily: "Inter_600SemiBold",
-    fontSize: 10,
+    fontSize: FontSize.xxs,
     color: Colors.textMuted,
     letterSpacing: 2,
     textTransform: "uppercase",
@@ -298,7 +298,7 @@ const styles = StyleSheet.create({
   },
   strengthCard: {
     backgroundColor: Colors.bgSurface,
-    borderRadius: 10,
+    borderRadius: Radius.sm,
     padding: 12,
     alignItems: "center",
     gap: 4,
@@ -308,11 +308,11 @@ const styles = StyleSheet.create({
   },
   strengthRank: {
     fontFamily: "Rajdhani_700Bold",
-    fontSize: 16,
+    fontSize: FontSize.md,
   },
   strengthLabel: {
     fontFamily: "Inter_400Regular",
-    fontSize: 9,
+    fontSize: FontSize.xxs,
     color: Colors.textMuted,
     textAlign: "center",
   },
@@ -329,7 +329,7 @@ const styles = StyleSheet.create({
     flex: 1,
     minWidth: "44%",
     backgroundColor: Colors.bgSurface,
-    borderRadius: 12,
+    borderRadius: Radius.md,
     padding: 16,
     gap: 6,
     borderWidth: 1,
@@ -338,12 +338,12 @@ const styles = StyleSheet.create({
   },
   comboName: {
     fontFamily: "Rajdhani_700Bold",
-    fontSize: 15,
+    fontSize: FontSize.md,
     color: Colors.text,
   },
   comboDesc: {
     fontFamily: "Inter_400Regular",
-    fontSize: 12,
+    fontSize: FontSize.xs,
     color: Colors.textSecondary,
     lineHeight: 16,
   },
@@ -353,7 +353,7 @@ const styles = StyleSheet.create({
   },
   faqList: {
     backgroundColor: Colors.bgSurface,
-    borderRadius: 14,
+    borderRadius: Radius.md,
     overflow: "hidden",
     borderWidth: 1,
     borderColor: Colors.border,
@@ -377,13 +377,13 @@ const styles = StyleSheet.create({
   faqQuestionText: {
     flex: 1,
     fontFamily: "Rajdhani_600SemiBold",
-    fontSize: 15,
+    fontSize: FontSize.md,
     color: Colors.text,
     lineHeight: 20,
   },
   faqAnswer: {
     fontFamily: "Inter_400Regular",
-    fontSize: 13,
+    fontSize: FontSize.sm,
     color: Colors.textSecondary,
     lineHeight: 20,
     paddingBottom: 14,

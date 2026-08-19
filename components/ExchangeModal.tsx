@@ -276,7 +276,7 @@ const styles = StyleSheet.create({
   },
   title: {
     fontFamily: "Rajdhani_700Bold",
-    fontSize: 16,
+    fontSize: FontSize.md,
     color: Colors.gold,
     letterSpacing: 2,
     textTransform: "uppercase",
@@ -307,7 +307,7 @@ const styles = StyleSheet.create({
   },
   receivesTag: {
     backgroundColor: Colors.goldMuted,
-    borderRadius: 4,
+    borderRadius: Radius.sm,
     paddingHorizontal: 5,
     paddingVertical: 2,
     borderWidth: 1,
@@ -315,7 +315,7 @@ const styles = StyleSheet.create({
   },
   receivesTagText: {
     fontFamily: "Inter_500Medium",
-    fontSize: 9,
+    fontSize: FontSize.xxs,
     color: Colors.gold,
     letterSpacing: 0.5,
   },
@@ -359,7 +359,7 @@ const styles = StyleSheet.create({
   },
   sub: {
     fontFamily: "Inter_400Regular",
-    fontSize: 12,
+    fontSize: FontSize.xs,
     color: Colors.text,
     textAlign: "center",
     lineHeight: 18,
