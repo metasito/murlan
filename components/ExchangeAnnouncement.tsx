@@ -23,12 +23,7 @@ import { usePrefersReducedMotion } from "@/lib/accessibility";
 import { useTranslation } from "@/lib/i18n";
 import { cardSpokenName } from "@/lib/cardNames";
 import { a11yHidden, useA11yHint } from "@/lib/a11y";
-
-// Mirrors the private CARD_W/CARD_H in components/CardView.tsx (not exported,
-// and that file is owned elsewhere) — used only to shrink a rendered CardView
-// down for the compact inline preview below.
-const CARD_W = 58;
-const CARD_H = 84;
+import { CARD_H, CARD_W } from "@/components/cardFaceModel";
 
 // Domain timings, not generic UI transitions — not a lib/theme.ts Motion
 // value because nothing there represents "how long a card announcement

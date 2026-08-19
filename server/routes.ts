@@ -20,12 +20,6 @@ import { getReplayForUser, listReplaysForUser } from "./replays.ts";
 import { getLeaderboard, getRating } from "./ratings.ts";
 import { z } from "zod";
 
-declare module "express-session" {
-  interface SessionData {
-    userId: string;
-  }
-}
-
 // Every JSON error body below carries a stable machine-readable `code`
 // alongside the existing Italian `message`/`error` text. The client
 // localises by `code` (see lib/i18n.ts's `translateServerPayload`) and

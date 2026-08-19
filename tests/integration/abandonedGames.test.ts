@@ -30,11 +30,11 @@ describe("abandoned game rows", { skip: hasDatabase() ? false : skipMessage() },
   before(async () => {
     server = await startTestServer();
     dbPool = new pg.Pool({ connectionString: process.env.DATABASE_URL });
-    const { __testables } = await import("../../server/socket.ts");
-    prune = __testables.pruneAbandonedGames;
-    maxAgeMs = __testables.ABANDONED_GAME_MAX_AGE_MS;
-    pruneRooms = __testables.pruneStaleRooms;
-    roomMaxAgeMs = __testables.STALE_ROOM_MAX_AGE_MS;
+    const persistence = await import("../../server/gamePersistence.ts");
+    prune = persistence.pruneAbandonedGames;
+    maxAgeMs = persistence.ABANDONED_GAME_MAX_AGE_MS;
+    pruneRooms = persistence.pruneStaleRooms;
+    roomMaxAgeMs = persistence.STALE_ROOM_MAX_AGE_MS;
   });
 
   after(async () => {
@@ -43,16 +43,16 @@ describe("abandoned game rows", { skip: hasDatabase() ? false : skipMessage() },
   });
 
   /** A row as `persistGameState` writes one, stamped at a chosen age. */
-  async function seedGame(roomCode: string, ageMs: number) {
+  async function seedGame(roomId: string, ageMs: number) {
     await dbPool.query(
-      `INSERT INTO active_games (room_code, game_state, player_ids, player_map, scores, updated_at)
-       VALUES ($1, '{}'::jsonb, '[]'::jsonb, '{}'::jsonb, '{}'::jsonb, now() - make_interval(secs => $2))`,
-      [roomCode, ageMs / 1000]
+      `INSERT INTO active_games (room_id, game_state, updated_at)
+       VALUES ($1, '{}'::jsonb, now() - make_interval(secs => $2))`,
+      [roomId, ageMs / 1000]
     );
   }
 
-  const exists = async (roomCode: string) =>
-    (await dbPool.query("SELECT 1 FROM active_games WHERE room_code = $1", [roomCode]))
+  const exists = async (roomId: string) =>
+    (await dbPool.query("SELECT 1 FROM active_games WHERE room_id = $1", [roomId]))
       .rows.length > 0;
 
   test("a row older than the cutoff goes, and a fresh one stays", async () => {

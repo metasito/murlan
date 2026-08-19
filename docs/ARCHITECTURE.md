@@ -35,9 +35,14 @@ lib/gameEngine.ts (offline: called directly)   server/socket.ts (online: server-
 - **`server/socket.ts`** is the only place that mutates online game state. The client never
   computes an online outcome locally — it sends an intent (`game:play`, `game:pass`,
   `game:exchange_give_card`) and renders whatever the server broadcasts back.
-- **`components/GameTable.tsx`** (925 lines) + **`components/gameTableModel.ts`** (305
-  lines, pure/JSX-free) are the single presentational table. `app/game.tsx` (131 lines,
-  offline) and `app/(online)/game.tsx` (361 lines, online) are thin adapters — see §5.
+- **`components/GameTable.tsx`** + **`components/gameTableModel.ts`** (pure/JSX-free) +
+  **`components/table/`** are the single presentational table. `GameTable.tsx` assembles it
+  and owns the interaction; `components/table/` holds the pieces it draws, one file per
+  concern — `seats.tsx` (the opponent slots), `pile.tsx` (the played pile and the card
+  flight), `hand.tsx` (the viewer's card row) and `chrome.tsx` (the vignette, the billboard,
+  the banners and the shared table styles); `components/useTableFeedback.ts` answers a state
+  change with a sound, a haptic or a wobble. `app/game.tsx` (offline) and
+  `app/(online)/game.tsx` (online) are thin adapters — see §5.
 
 ## 2. Data flow
 
@@ -95,14 +100,19 @@ later turns.
 
 ## 4. Persistence
 
-- **`active_games`** (`shared/schema.ts`): one row per room, `roomCode` primary key,
-  `gameState` (jsonb, stamped with `schemaVersion` so a restart can tell a current-shape row
-  from a stale pre-migration one and refuse to rehydrate it), `playerIds`, `playerMap`
+- **`active_games`** (`shared/schema.ts`): one row per room, and only three columns —
+  `roomId` primary key, `updatedAt` (a column because `pruneAbandonedGames` filters on it
+  in SQL), and `gameState`, the versioned envelope `PersistedEnvelope`
+  (`server/onlineGameLogic.ts`) specifies. Everything else rides inside that envelope: the
+  hand itself, `handFlags`, `dealFirstSeat`, and a `match` object holding `playerMap`
   (keyed by seat, not compacted by array position — a compacted array previously
-  reassigned a rejoining player to the wrong seat and the wrong hand), `scores`
-  (cumulative match scores), `gameMode`, `matchTarget`. `persistGameState()` runs after
-  every state-mutating move and does a full `onConflictDoUpdate` — mode, seats and
-  scoreboard are all refreshed, not written once at game start.
+  reassigned a rejoining player to the wrong seat and the wrong hand), `scores`,
+  `gameMode`, `matchTarget`, `matchLength`, `maxPlayers` and `isPublic`. One
+  version stamp therefore governs the whole row; it previously covered `gameState` alone,
+  so a bump refused a stale hand while happily rehydrating the stale scoreboard beside it.
+  `persistGameState()` runs after every state-mutating move and does a full
+  `onConflictDoUpdate` — mode, seats and scoreboard are all refreshed, not written once at
+  game start.
   Rows are deleted by `disposeGame`, whose every caller walks the in-memory map — so a
   restart, which empties that map, orphans the row of any game that was live. The
   periodic sweeper therefore also prunes rows untouched for 24h. `updated_at` advances
@@ -166,8 +176,18 @@ been collapsed:
   `turnTimer`) through which the offline and online adapters inject exactly what differs
   between them (a local AI turn loop and 20s response timer offline; server acknowledgement,
   reactions, and connection-loss banners online). It contains no `isOnline &&` branching.
-- **`app/game.tsx`** (131 lines) and **`app/(online)/game.tsx`** (361 lines) are now thin
-  adapters: each maps its own state source onto `GameTableProps`.
+- **`components/table/`** — the table's own components, grouped by what they draw:
+  `seats.tsx`, `pile.tsx`, `hand.tsx` and `chrome.tsx`. `GameTable.tsx` is their only
+  screen-level consumer; `components/useTableFeedback.ts` also imports `useTurnPulse` from
+  `chrome.tsx`, and three `tests/native/` cases mount `seats.tsx` and `hand.tsx` directly.
+  They were one `GameShared.tsx` back when the two game screens each had their own table.
+- **`components/useTableFeedback.ts`** — the shared values, the effects that answer a state
+  change with a sound, a haptic or a wobble, and the animated styles they drive. `GameTable`
+  still schedules the impact itself, against the 312ms the thrown card spends in the air,
+  and calls `playImpact` when it lands: the timer has to be cancellable alongside the flight
+  it belongs to.
+- **`app/game.tsx`** and **`app/(online)/game.tsx`** are now thin adapters: each maps its
+  own state source onto `GameTableProps`.
 
 Both adapters call out, in a comment at the top of their component, the same guard: **every
 hook runs unconditionally before the `if (!gameState) return null` guard.** This is not

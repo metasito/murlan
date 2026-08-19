@@ -1,7 +1,7 @@
-// Layout math for StraightHand's card row (components/GameShared.tsx),
+// Layout math for StraightHand's card row (components/table/hand.tsx),
 // extracted to components/handLayout.ts specifically so it is importable
 // here — Node's native TS loader can type-strip a plain .ts file but cannot
-// parse the JSX in GameShared.tsx.
+// parse the JSX in hand.tsx.
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
 import {

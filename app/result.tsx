@@ -26,7 +26,7 @@ import Ionicons from "@expo/vector-icons/Ionicons";
 import { useGame } from "@/context/GameContext";
 import { usePrefersReducedMotion } from "@/lib/accessibility";
 import { ResultExchangeOverlay, shouldShowResultExchange } from "@/components/ResultExchangeOverlay";
-import { Colors, FontSize, Motion, Spacing, Type } from '@/lib/theme';
+import { Colors, FontSize, Motion, Spacing, Type, WEB_BOTTOM_PAD, WEB_TOP_PAD } from '@/lib/theme';
 import { useTranslation, type TranslationKey } from "@/lib/i18n";
 
 const POSITION_COLORS = [Colors.podiumGold, Colors.podiumSilver, Colors.podiumBronze, Colors.textMuted];
@@ -267,8 +267,8 @@ export default function ResultScreen() {
       : t("result.matchWinner")
     : t("result.handWinner");
 
-  const topPad = Platform.OS === "web" ? 67 : insets.top;
-  const bottomPad = Platform.OS === "web" ? 34 : insets.bottom;
+  const topPad = Platform.OS === "web" ? WEB_TOP_PAD : insets.top;
+  const bottomPad = Platform.OS === "web" ? WEB_BOTTOM_PAD : insets.bottom;
   const leftPad = Platform.OS === "web" ? 0 : insets.left;
   const rightPad = Platform.OS === "web" ? 0 : insets.right;
 

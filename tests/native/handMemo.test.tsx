@@ -48,7 +48,7 @@ jest.mock('@/context/OnlineGameContext', () => ({
 // becomes the hand's `onPress` — and drops everything else.
 jest.mock('@/components/GameTable', () => {
   const react = require('react') as typeof import('react');
-  const shared = require('@/components/GameShared') as typeof import('@/components/GameShared');
+  const shared = require('@/components/table/hand') as typeof import('@/components/table/hand');
   return {
     GameTable: (props: {
       gameState: GameState;
@@ -66,8 +66,8 @@ jest.mock('@/components/GameTable', () => {
   };
 });
 
-// Imported after the mock so GameShared picks it up.
-const { StraightHand } = require('@/components/GameShared') as typeof import('@/components/GameShared');
+// Imported after the mock so the hand module picks it up.
+const { StraightHand } = require('@/components/table/hand') as typeof import('@/components/table/hand');
 
 const OnlineGameScreen = (require('@/app/(online)/game') as { default: React.ComponentType })
   .default;

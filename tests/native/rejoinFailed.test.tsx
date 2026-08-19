@@ -80,7 +80,7 @@ async function mountRejoining(roomId: string) {
   );
   // The persisted id is read back asynchronously; the rejoin follows it.
   await waitFor(() =>
-    expect(emitted).toContainEqual({ event: 'game:rejoin', payload: { roomCode: roomId } })
+    expect(emitted).toContainEqual({ event: 'game:rejoin', payload: { roomId } })
   );
   return view;
 }
@@ -90,8 +90,8 @@ async function mountRejoining(roomId: string) {
 // react-test-renderer drop the resulting updates. `waitFor` flushes them.
 const deliver = (event: string, payload: unknown) => listeners.get(event)?.(payload);
 
-const failure = (roomCode: string) => ({
-  roomCode,
+const failure = (roomId: string) => ({
+  roomId,
   code: 'GAME_NOT_FOUND',
   message: 'Game not found',
 });
@@ -147,7 +147,7 @@ describe('game:rejoin_failed', () => {
       emitted.length = 0;
 
       for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
-        deliver('game:rejoin_failed', { roomCode: 'R1', code: 'SERVER_ERROR' });
+        deliver('game:rejoin_failed', { roomId: 'R1', code: 'SERVER_ERROR' });
         expect(shown(view, 'failed')).toBe('false');
         expect(await AsyncStorage.getItem(ACTIVE_ROOM_KEY)).toBe('R1');
         jest.advanceTimersByTime(RETRY_DELAY_MS);
@@ -157,7 +157,7 @@ describe('game:rejoin_failed', () => {
 
       // Past the cap it is treated as terminal, so a server that is genuinely
       // down does not leave the player retrying into the rate limiter.
-      deliver('game:rejoin_failed', { roomCode: 'R1', code: 'SERVER_ERROR' });
+      deliver('game:rejoin_failed', { roomId: 'R1', code: 'SERVER_ERROR' });
       jest.advanceTimersByTime(RETRY_DELAY_MS * 4);
       expect(emitted).toHaveLength(MAX_RETRIES);
 

@@ -3,11 +3,13 @@
 // itself is .tsx and cannot be type-stripped by Node's loader.
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
+import { readdirSync, readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
+import path from "node:path";
 // @ts-ignore — see tests/helpers.ts for why the .ts extension is required
-import { CARD_W } from "../components/handLayout.ts";
+import { CARD_H, CARD_W } from "../components/cardFaceModel.ts";
 // @ts-ignore
 import {
-  CARD_H,
   BTN_W,
   BTN_H,
   SIDE_BTN_W,
@@ -57,6 +59,36 @@ import {
 
 // ─── Layout constants ─────────────────────────────────────────────────────────
 
+const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+
+function clientSources(): [string, string][] {
+  return ["app", "components", "lib"].flatMap((dir) =>
+    readdirSync(path.join(repoRoot, dir), { recursive: true, encoding: "utf8" })
+      .filter((f) => f.endsWith(".ts") || f.endsWith(".tsx"))
+      .map((f): [string, string] => [
+        path.posix.join(dir, f.split(path.sep).join("/")),
+        readFileSync(path.join(repoRoot, dir, f), "utf8"),
+      ])
+  );
+}
+
+function scanSources(pattern: RegExp, sources: [string, string][]): string[] {
+  const hits: string[] = [];
+  for (const [file, src] of sources) {
+    for (const m of src.matchAll(pattern)) hits.push(`${file}: ${m[0]}`);
+  }
+  return hits.sort();
+}
+
+function scan(pattern: RegExp): string[] {
+  return scanSources(pattern, clientSources());
+}
+
+// Declarations, not uses: `width: CARD_W` and `CARD_W_SMALL` do not match.
+const CARD_DIMENSION_DECL = /(?<![\w$])(?:const|let|var)\s+(?:CARD_W|CARD_H)(?![\w$])/g;
+const RETYPED_WEB_PAD =
+  /(?:Platform\.OS\s*===\s*['"]web['"]|isWeb)\s*\?\s*(?:67|34)(?![\d.])|padding(?:Top|Bottom|Vertical)\s*:\s*(?:67|34)(?![\d.])/g;
+
 describe("layout constants (CLAUDE.md: MUST NOT CHANGE)", () => {
   test("every constant still holds the value both game screens are built around", () => {
     // These are pinned, not documented: a silent change to any of them breaks
@@ -77,6 +109,39 @@ describe("layout constants (CLAUDE.md: MUST NOT CHANGE)", () => {
     // slack is what gives it room without clipping.
     assert.equal(HAND_SECTION_H, CARD_H + 16);
     assert.ok(HAND_SECTION_H - CARD_H >= 14);
+  });
+
+  // A copy of a constant also holds the pinned value, so the assertions above
+  // can never see one. Only the source scan can.
+  test("CARD_W and CARD_H are declared in components/cardFaceModel.ts and nowhere else", () => {
+    assert.deepEqual(scan(CARD_DIMENSION_DECL), [
+      "components/cardFaceModel.ts: const CARD_H",
+      "components/cardFaceModel.ts: const CARD_W",
+    ]);
+  });
+
+  test("no screen re-types the web safe-area pads instead of importing them", () => {
+    assert.deepEqual(scan(RETYPED_WEB_PAD), []);
+  });
+
+  test("the safe-area scan fires on every shape a re-typed pad takes", () => {
+    const planted: [string, string][] = [
+      [
+        "app/example.tsx",
+        [
+          "const topPad = Platform.OS === 'web' ? 67 : insets.top;",
+          "const botPad = isWeb ? 34 : insets.bottom;",
+          "const style = { paddingTop: 67, paddingBottom: 34 };",
+          "const fine = { paddingTop: WEB_TOP_PAD, paddingBottom: WEB_BOTTOM_PAD };",
+        ].join("\n"),
+      ],
+    ];
+    assert.deepEqual(scanSources(RETYPED_WEB_PAD, planted), [
+      "app/example.tsx: Platform.OS === 'web' ? 67",
+      "app/example.tsx: isWeb ? 34",
+      "app/example.tsx: paddingBottom: 34",
+      "app/example.tsx: paddingTop: 67",
+    ]);
   });
 });
 

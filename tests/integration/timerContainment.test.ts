@@ -1,6 +1,6 @@
 import { test, before, after, describe } from "node:test";
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { readFileSync, readdirSync } from "node:fs";
 import {
   startTestServer,
   hasDatabase,
@@ -48,9 +48,10 @@ describe(
       const room = await setUpRoom([alice, bob], 2);
       await startGame([alice, bob]);
 
+      const { hasActiveGame } = await import("../helpers/liveGame.ts");
       const { __testables } = await import("../../server/socket.ts");
       assert.equal(
-        __testables.hasActiveGame(room.roomId),
+        hasActiveGame(room.roomId),
         true,
         "the game must be live before the timer throws"
       );
@@ -74,7 +75,7 @@ describe(
         // The freeze is the absence of both: a room still in memory, not over,
         // with no timer that will ever fire for it.
         assert.equal(
-          __testables.hasActiveGame(room.roomId),
+          hasActiveGame(room.roomId),
           false,
           "a table whose timer threw must not survive in memory"
         );
@@ -91,19 +92,20 @@ describe(
      * it proves.
      */
     test("every turn timer body runs under the containment", () => {
-      const source = readFileSync(
-        new URL("../../server/socket.ts", import.meta.url),
-        "utf8"
-      );
+      const serverDir = new URL("../../server/", import.meta.url);
+      const source = readdirSync(serverDir)
+        .filter((f) => f.endsWith(".ts"))
+        .map((f) => readFileSync(new URL(f, serverDir), "utf8"))
+        .join("\n");
 
       const timerBodies = [
-        { label: "botTurn", call: "runBotTurn(roomId)" },
-        { label: "afkAutoPass", call: "handleAutoPass(roomId, userId)" },
+        { label: "botTurn", call: "runBotTurn(io, roomId)" },
+        { label: "afkAutoPass", call: "handleAutoPass(io, roomId, userId)" },
       ];
 
       for (const { label, call } of timerBodies) {
         const wrapper = new RegExp(
-          `safeTimer\\(\\s*"${label}"[\\s\\S]{0,400}?${call.replace(
+          `safeTimer\\([^"]*"${label}"[\\s\\S]{0,400}?${call.replace(
             /[.*+?^${}()|[\]\\]/g,
             "\\$&"
           )}`

@@ -16,7 +16,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { createRequire } from "node:module";
-import { readFileSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
 
@@ -32,7 +32,12 @@ const reactCompiler = require("babel-plugin-react-compiler");
  */
 const HOT_PATH = [
   "components/CardView.tsx",
-  "components/GameShared.tsx",
+  ...readdirSync(path.join(repoRoot, "components", "table"), {
+    recursive: true,
+    encoding: "utf8",
+  })
+    .filter((f) => f.endsWith(".tsx"))
+    .map((f) => `components/table/${f.split(path.sep).join("/")}`),
   "app/game.tsx",
   "app/(online)/game.tsx",
 ];

@@ -1,6 +1,5 @@
-// tests/socketHandFlags.test.ts — pure server/socket.ts logic exercised
-// through __testables, with no socket server or database needed (it loads
-// fine standalone — see tests/serverLoadable.test.ts's sibling modules).
+// tests/socketHandFlags.test.ts — pure turn and rematch logic, exercised
+// against the modules that own it with no socket server and no database.
 //
 // Covers two independent things:
 //  - recordPlayFlags: a human's AFK-forced move goes through autoMoveForSeat
@@ -13,7 +12,19 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import type { GameState, Card } from "../lib/gameEngine.ts";
-import { __testables } from "../server/socket.ts";
+import { autoMoveForSeat } from "../server/gameTurn.ts";
+import type { AutoMovable } from "../server/gameTurn.ts";
+import { countRematchAnswers, tableWantsRematch } from "../server/gameOver.ts";
+
+/**
+ * The flags an automated move leaves behind, which the returned GameState
+ * cannot carry: recordPlayFlags writes them onto the game, not the state.
+ */
+function autoMoveWithFlags(state: GameState, seat: number, useAi: boolean) {
+  const game: AutoMovable = { gameState: state, handFlags: {}, moveLog: null };
+  const next = autoMoveForSeat(game, seat, useAi);
+  return { state: next, handFlags: game.handFlags };
+}
 
 function baseState(overrides: Partial<GameState> = {}): GameState {
   return {
@@ -56,7 +67,7 @@ test("an AFK-forced lone-joker play sets handFlags.joker (regression: used to be
   // useAi = false is exactly the AFK-forced-human path (see autoMoveForSeat's
   // own doc comment): a new round with only a joker in hand forces it out as
   // the minimum legal play.
-  const { state: next, handFlags } = __testables.autoMoveForSeatWithFlags(state, 0, false);
+  const { state: next, handFlags } = autoMoveWithFlags(state, 0, false);
 
   assert.ok(next, "the forced joker play must succeed");
   assert.equal(next!.players[0].hand.length, 0, "the joker must actually have been played");
@@ -74,8 +85,8 @@ function seatPlayers(count: number) {
 
 // Minimal OnlineGameState for countRematchAnswers/tableWantsRematch: only
 // gameState.players.length, playerMap and rematchIntents are read by either
-// function, but the type isn't exported, so every other field needs a
-// structurally valid placeholder.
+// function, but every other field still needs a structurally valid
+// placeholder.
 function rematchGame(overrides: {
   seats: number;
   playerMap: Record<number, string>;
@@ -108,8 +119,8 @@ test("a lone seated human is a majority of 1 — the three bot seats abstain", (
     rematchIntents: new Map([["u1", true]]),
   });
 
-  assert.deepEqual(__testables.countRematchAnswers(game), { yes: 1, total: 1 });
-  assert.equal(__testables.tableWantsRematch(game), true);
+  assert.deepEqual(countRematchAnswers(game), { yes: 1, total: 1 });
+  assert.equal(tableWantsRematch(game), true);
 });
 
 test("a human-only table's denominator is unchanged: all four seats count", () => {
@@ -122,8 +133,8 @@ test("a human-only table's denominator is unchanged: all four seats count", () =
     ]),
   });
 
-  assert.deepEqual(__testables.countRematchAnswers(game), { yes: 2, total: 4 });
-  assert.equal(__testables.tableWantsRematch(game), false, "2 of 4 is not strictly more than half");
+  assert.deepEqual(countRematchAnswers(game), { yes: 2, total: 4 });
+  assert.equal(tableWantsRematch(game), false, "2 of 4 is not strictly more than half");
 });
 
 test("a seat that never answered counts as a no but still counts toward total", () => {
@@ -136,8 +147,8 @@ test("a seat that never answered counts as a no but still counts toward total", 
     ]),
   });
 
-  assert.deepEqual(__testables.countRematchAnswers(game), { yes: 2, total: 3 });
-  assert.equal(__testables.tableWantsRematch(game), true);
+  assert.deepEqual(countRematchAnswers(game), { yes: 2, total: 3 });
+  assert.equal(tableWantsRematch(game), true);
 });
 
 test("a table with no seated humans has total 0 and does not throw", () => {
@@ -147,8 +158,8 @@ test("a table with no seated humans has total 0 and does not throw", () => {
     rematchIntents: new Map(),
   });
 
-  assert.deepEqual(__testables.countRematchAnswers(game), { yes: 0, total: 0 });
-  assert.equal(__testables.tableWantsRematch(game), false);
+  assert.deepEqual(countRematchAnswers(game), { yes: 0, total: 0 });
+  assert.equal(tableWantsRematch(game), false);
 });
 
 test("an AFK-forced ordinary single leaves handFlags empty for that seat", () => {
@@ -169,7 +180,7 @@ test("an AFK-forced ordinary single leaves handFlags empty for that seat", () =>
     ],
   });
 
-  const { state: next, handFlags } = __testables.autoMoveForSeatWithFlags(state, 0, false);
+  const { state: next, handFlags } = autoMoveWithFlags(state, 0, false);
 
   assert.ok(next);
   assert.equal(next!.players[0].hand.length, 0);

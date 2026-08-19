@@ -17,7 +17,7 @@ import { fileURLToPath } from "node:url";
 import path from "node:path";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-const source = readFileSync(path.join(repoRoot, "components/GameShared.tsx"), "utf8");
+const source = readFileSync(path.join(repoRoot, "components/table/chrome.tsx"), "utf8");
 
 /** The `vignetteStyles` block, entry by entry. */
 function vignettePieces(): { name: string; body: string }[] {

@@ -2,6 +2,8 @@ import { sql } from "drizzle-orm";
 import { pgTable, text, varchar, timestamp, integer, pgEnum, jsonb, boolean, index, uniqueIndex, primaryKey } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
+import type { GameState } from "../lib/gameEngine.ts";
+import type { PersistedEnvelope } from "../server/onlineGameLogic.ts";
 
 export const users = pgTable("users", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
@@ -68,22 +70,11 @@ export const friends = pgTable(
   ]
 );
 
+// One live table. Everything about it rides the versioned `game_state`
+// envelope — see `PersistedEnvelope` in server/onlineGameLogic.ts.
 export const activeGames = pgTable("active_games", {
-  roomCode:   text("room_code").primaryKey(),
-  gameState:  jsonb("game_state").notNull().default({}),
-  playerIds:  jsonb("player_ids").notNull().default([]),
-  // seatIndex -> userId. Authoritative: player_ids loses the seat association
-  // as soon as a seat is vacated, so relying on it can hand a rejoining
-  // player someone else's hand.
-  playerMap:  jsonb("player_map").notNull().default({}),
-  // userId -> cumulative match points, so a restart does not reset the match.
-  scores:     jsonb("scores").notNull().default({}),
-  isPublic:   boolean("is_public").notNull().default(false),
-  maxPlayers: integer("max_players").notNull().default(4),
-  gameMode:   text("game_mode").notNull().default("free_for_all"),
-  matchTarget: integer("match_target").notNull().default(21),
-  // "match" (play to matchTarget) or "single" (one manche and done).
-  matchLength: text("match_length").notNull().default("match"),
+  roomId:     text("room_id").primaryKey(),
+  gameState:  jsonb("game_state").$type<PersistedEnvelope<GameState>>().notNull(),
   updatedAt:  timestamp("updated_at").defaultNow().notNull(),
 });
 
@@ -180,3 +171,7 @@ export type Friend = typeof friends.$inferSelect;
 export type UserStats = typeof userStats.$inferSelect;
 export type MatchHistory = typeof matchHistory.$inferSelect;
 export type UserAchievement = typeof userAchievements.$inferSelect;
+export type ActiveGame = typeof activeGames.$inferSelect;
+export type MatchReplay = typeof matchReplays.$inferSelect;
+export type UserRating = typeof userRatings.$inferSelect;
+export type PushToken = typeof pushTokens.$inferSelect;

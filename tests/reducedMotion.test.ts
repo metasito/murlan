@@ -23,7 +23,7 @@ function sourcesUnder(dir: string): string[] {
   for (const entry of readdirSync(path.join(repoRoot, dir), { withFileTypes: true })) {
     const rel = `${dir}/${entry.name}`;
     if (entry.isDirectory()) out.push(...sourcesUnder(rel));
-    else if (entry.name.endsWith(".tsx")) out.push(rel);
+    else if (entry.name.endsWith(".tsx") || entry.name.endsWith(".ts")) out.push(rel);
   }
   return out;
 }

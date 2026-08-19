@@ -7,10 +7,14 @@ import {
   skipMessage,
   type TestServer,
 } from "../helpers/testServer.ts";
+import { MATCH_TARGETS, targetsFor } from "../../lib/gameEngine.ts";
 import { connectAs, waitFor } from "../helpers/client.ts";
 import {
+  driveHandToExchangeOrOver,
+  gameOverOf,
   setUpRoom,
   startGame,
+  waitForDeal,
   type Client,
   type RoomState,
   type SanitizedState,
@@ -139,7 +143,7 @@ describe("reconnect", { skip: hasDatabase() ? false : skipMessage() }, () => {
       // The other path, from the same socket: the app fires game:rejoin from
       // its own connect handler.
       const rejoined = waitFor(alice.socket, "game:player_reconnected", 5_000);
-      back.emit("game:rejoin", { roomCode: room.roomId });
+      back.emit("game:rejoin", { roomId: room.roomId });
       await rejoined;
 
       assert.ok(notices.length >= 2, "both reconnect paths must announce the return");
@@ -194,7 +198,7 @@ describe("reconnect", { skip: hasDatabase() ? false : skipMessage() }, () => {
   /** Re-emits `game:rejoin` several times per AFK window until stopped. */
   function rejoinOnALoop(client: Client, roomId: string): () => void {
     const handle = setInterval(() => {
-      client.socket.emit("game:rejoin", { roomCode: roomId });
+      client.socket.emit("game:rejoin", { roomId });
     }, Math.round(AFK_MS / 3));
     return () => clearInterval(handle);
   }
@@ -206,7 +210,7 @@ describe("reconnect", { skip: hasDatabase() ? false : skipMessage() }, () => {
     const { eq } = await import("drizzle-orm");
     for (let attempt = 0; attempt < 100; attempt++) {
       const row = await db.query.activeGames.findFirst({
-        where: eq(activeGames.roomCode, roomId),
+        where: eq(activeGames.roomId, roomId),
       });
       if (row) return;
       await new Promise((resolve) => setTimeout(resolve, 20));
@@ -294,7 +298,7 @@ describe("reconnect", { skip: hasDatabase() ? false : skipMessage() }, () => {
    * table comes back frozen.
    */
   test("a rejoin that rehydrates a game from the database arms its turn timer", async () => {
-    const { __testables } = await import("../../server/socket.ts");
+    const { hasActiveGame, forgetActiveGame } = await import("../helpers/liveGame.ts");
     const erin = await connectAs(server, "rehydrate_erin");
     const frank = await connectAs(server, "rehydrate_frank");
     const room = await setUpRoom([erin, frank], 2);
@@ -306,8 +310,8 @@ describe("reconnect", { skip: hasDatabase() ? false : skipMessage() }, () => {
       await waitForPersistedGame(room.roomId);
 
       // What a restart leaves behind: the row, and nothing in memory.
-      assert.equal(__testables.forgetActiveGame(room.roomId), true);
-      assert.equal(__testables.hasActiveGame(room.roomId), false);
+      assert.equal(forgetActiveGame(room.roomId), true);
+      assert.equal(hasActiveGame(room.roomId), false);
 
       const passes = collectAfkPasses(frank.socket);
       const restored = waitFor<SanitizedState>(erin.socket, "game:state", 5_000);
@@ -316,9 +320,9 @@ describe("reconnect", { skip: hasDatabase() ? false : skipMessage() }, () => {
           reject(new Error(`game:rejoin_failed ${JSON.stringify(payload)}`))
         );
       });
-      erin.socket.emit("game:rejoin", { roomCode: room.roomId });
+      erin.socket.emit("game:rejoin", { roomId: room.roomId });
       const state = await Promise.race([restored, refused]);
-      assert.equal(__testables.hasActiveGame(room.roomId), true);
+      assert.equal(hasActiveGame(room.roomId), true);
 
       const onTurn = state.players[state.currentTurnIndex].name;
       await waitUntil(
@@ -365,7 +369,7 @@ describe("reconnect", { skip: hasDatabase() ? false : skipMessage() }, () => {
           reject(new Error(`game:rejoin_failed ${JSON.stringify(payload)}`))
         );
       });
-      hank.socket.emit("game:rejoin", { roomCode: room.roomId });
+      hank.socket.emit("game:rejoin", { roomId: room.roomId });
       const state = await Promise.race([restored, refused]);
 
       assert.equal(tripped, 1, "the roster read never failed — the test proved nothing");
@@ -380,25 +384,140 @@ describe("reconnect", { skip: hasDatabase() ? false : skipMessage() }, () => {
     }
   });
 
+  test("a cold-start rejoin is given its room even when the roster read fails", async () => {
+    const { storage } = await import("../../server/storage.ts");
+    const jo = await connectAs(server, "cold_start_jo");
+    const kai = await connectAs(server, "cold_start_kai");
+    const room = await setUpRoom([jo, kai], 2);
+    const table: { socket: Socket }[] = [jo, kai];
+    const realGetRoomPlayers = storage.getRoomPlayers;
+    let tripped = 0;
+    try {
+      await startGame([jo, kai]);
+
+      const dropped = waitFor(jo.socket, "game:player_disconnected", 5_000);
+      kai.socket.disconnect();
+      await dropped;
+
+      storage.getRoomPlayers = async function (roomId: string) {
+        if (roomId === room.roomId) {
+          tripped += 1;
+          throw new Error("connection terminated unexpectedly");
+        }
+        return realGetRoomPlayers.call(this, roomId);
+      };
+
+      // A socket that has never been sent room:state: the app after a restart,
+      // rejoining on the room id it read back from storage and nothing else.
+      const back = await reconnect(kai);
+      table[1] = { socket: back };
+      const recovered = waitFor<RoomState>(back, "room:state", 5_000);
+      const restored = waitFor<SanitizedState>(back, "game:state", 5_000);
+      back.emit("game:rejoin", { roomId: room.roomId });
+      const [roomState, state] = await Promise.all([recovered, restored]);
+
+      assert.ok(tripped > 0, "the roster read never failed — the test proved nothing");
+      assert.equal(roomState.roomId, room.roomId);
+      assert.equal(roomState.code, room.code, "the join code must be the real one");
+      assert.deepEqual(
+        roomState.players.map((p) => p.userId).sort(),
+        [jo.user.id, kai.user.id].sort(),
+        "the recovered room must still seat both players"
+      );
+      assert.ok(
+        state.viewerSeatIndex >= 0,
+        "the rejoining player was not recognised at their own seat"
+      );
+    } finally {
+      storage.getRoomPlayers = realGetRoomPlayers;
+      await closeTable(table);
+    }
+  });
+
+  // ── The match framing a rejoin arrives with ─────────────────────────────
+
+  test("a rejoin is sent the running match target and scoreboard", async () => {
+    const { matchSnapshot } = await import("../helpers/liveGame.ts");
+    const alice = await connectAs(server, "framing_alice");
+    const bob = await connectAs(server, "framing_bob");
+    const room = await setUpRoom([alice, bob], 2);
+    const table = [alice, bob];
+    try {
+      // A manche has to be banked first, or every score is zero and an empty
+      // scoreboard would pass for the real one.
+      gameOverOf(
+        await driveHandToExchangeOrOver(
+          table,
+          () => alice.socket.emit("room:start"),
+          { stopOnExchange: false }
+        )
+      );
+      const dealt = waitForDeal(alice.socket);
+      alice.socket.emit("game:rematch_vote");
+      bob.socket.emit("game:rematch_vote");
+      const manche = await dealt;
+
+      const snapshot = matchSnapshot(room.roomId);
+      assert.ok(snapshot, "the table must still be live");
+      assert.equal(snapshot.matchTarget, targetsFor(2)[0]);
+      assert.notEqual(
+        snapshot.matchTarget,
+        MATCH_TARGETS[0],
+        "a two-seat target equal to the client's default would prove nothing"
+      );
+      const banked = Object.values(snapshot.cumulativeScores).reduce((a, b) => a + b, 0);
+      assert.ok(banked > 0, "the first manche must have banked a point for somebody");
+
+      const dropped = waitFor(alice.socket, "game:player_disconnected", 5_000);
+      bob.socket.disconnect();
+      await dropped;
+
+      const back = await reconnect(bob);
+      table[1] = { ...bob, socket: back };
+      const framing = waitFor<{
+        target: number;
+        length: string;
+        scores: Record<string, number>;
+      }>(back, "game:match_state", 5_000);
+      back.emit("game:rejoin", { roomId: room.roomId });
+      const sent = await framing;
+
+      assert.equal(sent.target, snapshot.matchTarget);
+      assert.equal(sent.length, snapshot.matchLength);
+      assert.deepEqual(
+        Object.keys(sent.scores).sort(),
+        manche.players.map((p) => p.name).sort(),
+        "every seat must appear on the scoreboard the rejoining client is sent"
+      );
+      assert.equal(
+        Object.values(sent.scores).reduce((a, b) => a + b, 0),
+        banked,
+        "the scoreboard must be the running one, not a fresh match's zeroes"
+      );
+    } finally {
+      await closeTable(table);
+    }
+  });
+
   // ── Test 5 ──────────────────────────────────────────────────────────────
 
   /**
-   * The client's stale-reply guard compares `roomCode` against the room it
+   * The client's stale-reply guard compares `roomId` against the room it
    * asked about, so a reply that renamed, normalised or omitted it would make
    * every failure look like it answers somebody else's attempt.
    */
-  test("a rejoin failure echoes the requested roomCode verbatim", async () => {
+  test("a rejoin failure echoes the requested roomId verbatim", async () => {
     const gina = await connectAs(server, "echo_gina");
     try {
-      const failed = waitFor<{ roomCode?: string; code?: string }>(
+      const failed = waitFor<{ roomId?: string; code?: string }>(
         gina.socket,
         "game:rejoin_failed",
         5_000
       );
       const asked = "00000000-0000-4000-8000-00000000dead";
-      gina.socket.emit("game:rejoin", { roomCode: asked });
+      gina.socket.emit("game:rejoin", { roomId: asked });
       const payload = await failed;
-      assert.equal(payload.roomCode, asked);
+      assert.equal(payload.roomId, asked);
       assert.equal(payload.code, "GAME_NOT_FOUND");
     } finally {
       gina.socket.close();

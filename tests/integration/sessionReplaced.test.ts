@@ -132,7 +132,7 @@ describe(
 
         const secondClient: Client = { socket: second, user: alice.user };
         const rejoined = waitFor<SanitizedState>(second, "game:state");
-        second.emit("game:rejoin", { roomCode: room.roomId });
+        second.emit("game:rejoin", { roomId: room.roomId });
         const state = await rejoined;
         assert.equal(state.players.length, 2, "the same table, with both seats still human");
         assertHandSecrecy(state, "the surviving socket");
@@ -141,7 +141,7 @@ describe(
         // moves are accepted, and the seat is still its own.
         const result = await driveHandToExchangeOrOver([secondClient, bob], () => {
           for (const client of [secondClient, bob]) {
-            client.socket.emit("game:rejoin", { roomCode: room.roomId });
+            client.socket.emit("game:rejoin", { roomId: room.roomId });
           }
         });
         assert.ok(

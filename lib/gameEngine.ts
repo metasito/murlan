@@ -895,10 +895,6 @@ export function getSuitSymbol(suit: Suit | null): string {
   return symbols[suit];
 }
 
-export function isRedSuit(suit: Suit | null): boolean {
-  return suit === "hearts" || suit === "diamonds";
-}
-
 const EXCHANGE_VALID_RANKS: Rank[] = ["3","4","5","6","7","8","9","10"];
 
 export function initializeRematch(
@@ -1228,7 +1224,7 @@ export function resolveMatch(
  *
  * `teamOfKey` maps a scoring key (a userId) to its team id. Keys absent from
  * it are ignored entirely — that is how vacated/bot seats stay out of a team
- * total, mirroring `excludeBotSeats` on the per-hand path.
+ * total, mirroring `FoldHandInput.accumulates` on the per-hand path.
  */
 export function aggregateTeamScores(
   cumulative: Record<string, number>,
@@ -1271,6 +1267,136 @@ export function resolveTeamMatch(
     winners: Object.entries(teamOfKey)
       .filter(([, team]) => winningTeams.has(team))
       .map(([key]) => key),
+  };
+}
+
+/**
+ * Both the live path and the restore path go through here, so they cannot
+ * answer "is this match decided?" differently.
+ */
+export function resolveMatchFor(args: {
+  gameMode: GameMode;
+  cumulative: Record<string, number>;
+  teamOfKey: Record<string, string>;
+  target: number;
+  playerCount: number;
+}): MatchResolution | null {
+  const { gameMode, cumulative, teamOfKey, target, playerCount } = args;
+  return gameMode === "teams" && Object.keys(teamOfKey).length > 0
+    ? resolveTeamMatch(cumulative, teamOfKey, target, playerCount)
+    : resolveMatch(cumulative, target, playerCount);
+}
+
+export interface FoldHandInput {
+  /** The manche's finishing order, best first, in engine player ids. */
+  rankings: string[];
+  playerCount: number;
+  length: MatchLength;
+  gameMode: GameMode;
+  target: number;
+  cumulative: Record<string, number>;
+  /**
+   * The key an engine player id scores under. Offline that is the id itself;
+   * on the server it is the seated userId, or the `bot:<seat>` sentinel for a
+   * seat its human left. null drops the id — it belongs to no seat at all.
+   */
+  keyOf: (engineId: string) => string | null;
+  /**
+   * Whether a key's points join the running match total. Defaults to all of
+   * them. The server declines its `bot:<seat>` sentinels: a vacated seat has
+   * to appear on the hand's scoreboard, but must never accumulate towards
+   * winning the match under the departed human's name.
+   */
+  accumulates?: (key: string) => boolean;
+  /** Engine player id -> team id, for every seat that has one. */
+  teamOf?: Record<string, string>;
+}
+
+export interface FoldHandResult {
+  /** What the manche paid, by scoring key. Non-accumulating keys included. */
+  handByKey: Record<string, number>;
+  cumulative: Record<string, number>;
+  /** What to play to next — escalated if this manche tied at the old target. */
+  target: number;
+  over: boolean;
+  winners: string[];
+  isDraw: boolean;
+}
+
+/**
+ * Folds a finished manche into its match: awards the placement points, then
+ * either escalates the target, ends the match, or leaves it running.
+ *
+ * A single-manche game ends here by definition — its winner is whoever took
+ * the manche, or in teams mode the pair they belong to (docs/RULES.md §11:
+ * a manche is taken by a pair, not by the seat that emptied its hand first),
+ * with no target involved.
+ *
+ * Keyed by an opaque string so offline and the server run one progression
+ * between them: offline scores by engine player id, the server by userId, and
+ * `keyOf` / `accumulates` are the whole of the difference.
+ */
+export function foldHandIntoMatch(input: FoldHandInput): FoldHandResult {
+  const { rankings, playerCount, length, gameMode, target, keyOf } = input;
+  const accumulates = input.accumulates ?? (() => true);
+  const teamOf = input.teamOf ?? {};
+
+  const handByKey: Record<string, number> = {};
+  for (const [engineId, points] of Object.entries(scoreHand(rankings, playerCount))) {
+    const key = keyOf(engineId);
+    if (key === null) continue;
+    handByKey[key] = points;
+  }
+
+  const scorable: Record<string, number> = {};
+  for (const [key, points] of Object.entries(handByKey)) {
+    if (accumulates(key)) scorable[key] = points;
+  }
+  const cumulative = addHandScores(input.cumulative, scorable);
+
+  const teamOfKey: Record<string, string> = {};
+  for (const [engineId, team] of Object.entries(teamOf)) {
+    const key = keyOf(engineId);
+    if (key === null || !accumulates(key)) continue;
+    teamOfKey[key] = team;
+  }
+
+  if (length === "single") {
+    const championId = rankings[0];
+    const championKey = championId === undefined ? null : keyOf(championId);
+    const championTeam = championId === undefined ? undefined : teamOf[championId];
+    const winners =
+      championKey === null
+        ? []
+        : gameMode === "teams" && championTeam !== undefined
+          ? Object.entries(teamOfKey)
+              .filter(([, team]) => team === championTeam)
+              .map(([key]) => key)
+          : [championKey];
+    return { handByKey, cumulative, target, over: true, winners, isDraw: false };
+  }
+
+  const resolution = resolveMatchFor({ gameMode, cumulative, teamOfKey, target, playerCount });
+  if (!resolution) {
+    return { handByKey, cumulative, target, over: false, winners: [], isDraw: false };
+  }
+  if (resolution.newTarget !== null) {
+    return {
+      handByKey,
+      cumulative,
+      target: resolution.newTarget,
+      over: false,
+      winners: [],
+      isDraw: false,
+    };
+  }
+  return {
+    handByKey,
+    cumulative,
+    target,
+    over: true,
+    winners: resolution.winners,
+    isDraw: resolution.isDraw,
   };
 }
 
@@ -1321,4 +1447,25 @@ export function botWantsRematch(botScore: number, leaderScore: number): boolean 
 /** Strictly more than half. A table split down the middle stops. */
 export function isMajority(yesCount: number, seatCount: number): boolean {
   return yesCount * 2 > seatCount;
+}
+
+/**
+ * The rematch verdict's two inputs: how many seats said yes, and how many
+ * seats had anyone to say it. `"abstain"` is a seat with nobody behind it —
+ * on the server a bot seat, or a seat its human walked out of — and counts
+ * toward neither.
+ */
+export function tallyRematchAnswers(
+  seatCount: number,
+  answerOf: (seat: number) => boolean | "abstain"
+): { yes: number; total: number } {
+  let yes = 0;
+  let total = 0;
+  for (let seat = 0; seat < seatCount; seat++) {
+    const answer = answerOf(seat);
+    if (answer === "abstain") continue;
+    total++;
+    if (answer) yes++;
+  }
+  return { yes, total };
 }

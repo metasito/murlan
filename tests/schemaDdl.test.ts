@@ -6,7 +6,8 @@
 // rename anything would silently destroy a live database on the next restart.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { schemaStatements } from "../server/schemaDdl.ts";
+import type { Pool } from "pg";
+import { schemaStatements, assertRenamesApplied } from "../server/schemaDdl.ts";
 
 const statements = schemaStatements();
 
@@ -98,4 +99,35 @@ test("a table is created before anything references it", () => {
       );
     }
   });
+});
+
+// The other half of "additive only": the changes it refuses to make still have
+// to happen, and the database it cannot make them to must not be served.
+test("boot refuses a database still holding a renamed column", async () => {
+  const asked: { sql: string; params: unknown }[] = [];
+  const legacy = {
+    query: async (sql: string, params: unknown) => {
+      asked.push({ sql, params });
+      return { rows: [{ "?column?": 1 }] };
+    },
+  } as unknown as Pick<Pool, "query">;
+  await assert.rejects(assertRenamesApplied(legacy), (err: Error) => {
+    assert.match(err.message, /room_code/);
+    assert.match(err.message, /room_id/);
+    assert.match(err.message, /db:push/, "the message has to name the fix");
+    return true;
+  });
+
+  assert.deepEqual(
+    asked.map((q) => q.params),
+    [["active_games", "room_code"]],
+    "the guard has to ask the database about the column that was actually renamed"
+  );
+  assert.match(asked[0].sql, /information_schema\.columns/);
+  assert.match(asked[0].sql, /table_name = \$1 AND column_name = \$2/);
+});
+
+test("boot proceeds once the rename has been applied", async () => {
+  const current = { query: async () => ({ rows: [] }) } as unknown as Pick<Pool, "query">;
+  await assertRenamesApplied(current);
 });

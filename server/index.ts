@@ -4,12 +4,9 @@ for (const key of REQUIRED_ENV) {
 }
 
 import { logger } from "./logger.ts";
-import { sessionMiddleware } from "./session.ts";
 import { createApp } from "./testApp.ts";
 import { shutdown } from "./shutdown.ts";
 import { installProcessGuards } from "./socketSafety.ts";
-
-export { sessionMiddleware };
 
 // This file's sole job is binding the real PORT and installing process
 // shutdown handlers for the Replit run path. Everything else — middleware,

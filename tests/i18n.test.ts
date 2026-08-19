@@ -8,7 +8,7 @@
 // that no longer matches across locales — hence these tests.
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { readFileSync, readdirSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
 // @ts-ignore — see tests/helpers.ts for why the .ts extension is required
@@ -207,7 +207,7 @@ describe("translate() produces the expected output per locale", () => {
     for (const site of sites) {
       assert.ok(site.includes("message:"), `not on the error contract: ${site.trim()}`);
       assert.ok(!site.includes("reason:"), `still ships reason: ${site.trim()}`);
-      assert.ok(site.includes("roomCode"), `no roomCode for the client's guard: ${site.trim()}`);
+      assert.ok(site.includes("roomId"), `no roomId for the client's guard: ${site.trim()}`);
     }
 
     const codes = new Set(
@@ -233,8 +233,10 @@ describe("translate() produces the expected output per locale", () => {
     // The mirror of the test above: a key nothing can emit is dead weight
     // that three catalogues have to keep translating.
     const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-    const sources = ["server/routes.ts", "server/socket.ts"]
-      .map((rel) => readFileSync(path.join(repoRoot, rel), "utf8"))
+    const serverDir = path.join(repoRoot, "server");
+    const sources = readdirSync(serverDir, { recursive: true, encoding: "utf8" })
+      .filter((f) => f.endsWith(".ts"))
+      .map((f) => readFileSync(path.join(serverDir, f), "utf8"))
       .join("\n");
     const unused = Object.keys(it)
       .filter((key) => key.startsWith("server."))

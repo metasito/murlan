@@ -97,13 +97,11 @@ interface OnlineGameContextValue {
   isSpectator: boolean;
   leaveRoom: () => void;
   quickmatch: (maxPlayers: number, gameMode: "free_for_all" | "teams") => void;
-  setRoomGameMode: (mode: "free_for_all" | "teams") => void;
   startGame: (opts?: {
     fillWithBots?: boolean;
     botPersonality?: BotPersonalityId;
     matchLength?: MatchLength;
   }) => void;
-  requestPlayAgain: () => void;
   voteRematch: () => void;
   answerRematch: (wants: boolean) => void;
   playCards: (cardIds: string[]) => void;
@@ -254,13 +252,13 @@ export function OnlineGameProvider({ userId, children }: { userId: string; child
     const currentGame = gameStateRef.current;
     if (currentRoom && currentGame && !currentGame.gameOver) {
       requestedRoomIdRef.current = currentRoom.roomId;
-      socket.emit("game:rejoin", { roomCode: currentRoom.roomId });
+      socket.emit("game:rejoin", { roomId: currentRoom.roomId });
       return true;
     }
     // Cold start / remounted provider: no in-memory room, but storage may hold one.
     if (!currentRoom && persistedRoomIdRef.current) {
       requestedRoomIdRef.current = persistedRoomIdRef.current;
-      socket.emit("game:rejoin", { roomCode: persistedRoomIdRef.current });
+      socket.emit("game:rejoin", { roomId: persistedRoomIdRef.current });
       return true;
     }
 
@@ -564,12 +562,12 @@ export function OnlineGameProvider({ userId, children }: { userId: string; child
       }, 3_500);
     };
 
-    const onRejoinFailed = (data: ServerPayload & { roomCode?: string }) => {
+    const onRejoinFailed = (data: ServerPayload & { roomId?: string }) => {
       // Act only on a reply for the room still being waited on. The server
       // echoes the requested room id verbatim at every emit site, and live
       // state for any room clears the ref — so anything that does not match
       // answers an attempt the player has already moved past.
-      if (data.roomCode && data.roomCode !== requestedRoomIdRef.current) return;
+      if (data.roomId && data.roomId !== requestedRoomIdRef.current) return;
 
       // SERVER_ERROR is the rejoin handler's blanket catch — a database blip
       // during the round-trip, not a table that has gone. Everything the next
@@ -599,7 +597,6 @@ export function OnlineGameProvider({ userId, children }: { userId: string; child
     socket.on("game:turn_deadline", setTurnDeadline);
     socket.on("game:error", onGameError);
     socket.on("game:notification", onGameNotification);
-    socket.on("game:started", () => {});
     socket.on("game:over", onGameOver);
     socket.on("game:match_state", onMatchState);
     socket.on("game:rematch_intents", onRematchIntents);
@@ -622,7 +619,6 @@ export function OnlineGameProvider({ userId, children }: { userId: string; child
       socket.off("game:turn_deadline", setTurnDeadline);
       socket.off("game:error", onGameError);
       socket.off("game:notification", onGameNotification);
-      socket.off("game:started");
       socket.off("game:over", onGameOver);
       socket.off("game:match_state", onMatchState);
       socket.off("game:rematch_intents", onRematchIntents);
@@ -721,20 +717,12 @@ export function OnlineGameProvider({ userId, children }: { userId: string; child
     socket.emit("room:quickmatch", { maxPlayers, gameMode });
   }, [userId]);
 
-  const setRoomGameMode = useCallback((gameMode: "free_for_all" | "teams") => {
-    socket.emit("room:set_game_mode", { gameMode });
-  }, [userId]);
-
   const startGame = useCallback((opts?: {
     fillWithBots?: boolean;
     botPersonality?: BotPersonalityId;
     matchLength?: MatchLength;
   }) => {
     socket.emit("room:start", opts);
-  }, [userId]);
-
-  const requestPlayAgain = useCallback(() => {
-    socket.emit("room:start");
   }, [userId]);
 
   const voteRematch = useCallback(() => {
@@ -809,9 +797,7 @@ export function OnlineGameProvider({ userId, children }: { userId: string; child
       isSpectator,
       leaveRoom,
       quickmatch,
-      setRoomGameMode,
       startGame,
-      requestPlayAgain,
       voteRematch,
       answerRematch,
       playCards,
@@ -823,7 +809,7 @@ export function OnlineGameProvider({ userId, children }: { userId: string; child
       clearPlayerLeft,
       clearRejoinFailed,
     }),
-    [room, gameState, connected, error, playerLeft, rejoinFailed, disconnectedPlayers, reconnectNotice, mySeatIndex, turnDeadline, entrySource, rematchVoteState, cumulativeScores, matchState, rematchIntents, rematchPromptOpen, exchangeAnnouncing, exchangeAnnounceData, createRoom, joinRoom, spectateRoom, isSpectator, leaveRoom, quickmatch, setRoomGameMode, startGame, requestPlayAgain, voteRematch, answerRematch, playCards, pass, giveExchangeCard, acknowledgeExchange, sendReaction, clearError, clearPlayerLeft, clearRejoinFailed]
+    [room, gameState, connected, error, playerLeft, rejoinFailed, disconnectedPlayers, reconnectNotice, mySeatIndex, turnDeadline, entrySource, rematchVoteState, cumulativeScores, matchState, rematchIntents, rematchPromptOpen, exchangeAnnouncing, exchangeAnnounceData, createRoom, joinRoom, spectateRoom, isSpectator, leaveRoom, quickmatch, startGame, voteRematch, answerRematch, playCards, pass, giveExchangeCard, acknowledgeExchange, sendReaction, clearError, clearPlayerLeft, clearRejoinFailed]
   );
 
   return (

@@ -1,13 +1,14 @@
-// Pure layout math for StraightHand's card row (components/GameShared.tsx).
+// Pure layout math for StraightHand's card row (components/table/hand.tsx).
 //
-// This lives in its own JSX-free .ts file (rather than inside GameShared.tsx
+// This lives in its own JSX-free .ts file (rather than inside hand.tsx
 // directly) so it can be unit-tested with `node --test`: Node's built-in
 // TypeScript loader only type-strips plain .ts source — it cannot parse a
 // .tsx file's JSX ("Unknown file extension \".tsx\""). Keep this file free of
 // JSX and of any import from a .tsx file, or the test suite breaks.
 
-/** Width of a full-size card. Mirrors CardView.tsx `styles.cardNormal.width`. Re-exported from GameShared.tsx as the canonical `CARD_W`. */
-export const CARD_W = 58;
+import { CARD_W } from "./cardFaceModel.ts";
+
+export { CARD_W };
 
 // ─── Minimum overlap step ──────────────────────────────────────────────────
 //

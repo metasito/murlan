@@ -69,8 +69,3 @@ export function consumeSocketTicket(raw: unknown): string | null {
   return userId.length > 0 && userId.length <= 128 ? userId : null;
 }
 
-/** Test/diagnostic helper — number of nonces still held for replay protection. */
-export function pendingTicketNonces(): number {
-  pruneConsumed(Date.now());
-  return consumedNonces.size;
-}

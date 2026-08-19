@@ -37,7 +37,7 @@ jest.mock('@/lib/accessibility', () => ({
 
 import { playCardPass } from '@/lib/sounds';
 import { GameTable } from '@/components/GameTable';
-import { TopOppSlot, SideOppSlot } from '@/components/GameShared';
+import { TopOppSlot, SideOppSlot } from '@/components/table/seats';
 import type { Card, Combination, GameState, Player } from '@/lib/gameEngine';
 import { it as itLocale } from '@/locales/it';
 
@@ -93,7 +93,7 @@ const noop = () => {};
  * The seats whose slot carries the chip, named. Cardinality alone would pass
  * with the chip on the wrong opponent, which is the one thing the marker must
  * never get wrong. Both slots lay the name and the badge row out in a single
- * column (GameShared.tsx), so the name's parent is the seat.
+ * column (components/table/seats.tsx), so the name's parent is the seat.
  */
 const markedSeatNames = (): string[] =>
   NAMES.filter((name) => {

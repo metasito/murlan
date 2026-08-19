@@ -11,7 +11,7 @@
 //
 // The technique that keeps them off the animation is a textless, childless
 // sibling carrying the glow as a static token, with only its opacity animated
-// (`sharedStyles.cardGlow`, `avatarRing`, `handGlow`, `playBtnGlow`).
+// (`handStyles.cardGlow`, `avatarRing`, `handGlow`, `playBtnGlow`).
 //
 // Structural, like tests/reducedMotion.test.ts: the property is about how the
 // source is written, so it is checked by reading it.
@@ -28,7 +28,7 @@ function sourcesUnder(dir: string): string[] {
   for (const entry of readdirSync(path.join(repoRoot, dir), { withFileTypes: true })) {
     const rel = `${dir}/${entry.name}`;
     if (entry.isDirectory()) out.push(...sourcesUnder(rel));
-    else if (entry.name.endsWith(".tsx")) out.push(rel);
+    else if (entry.name.endsWith(".tsx") || entry.name.endsWith(".ts")) out.push(rel);
   }
   return out;
 }
@@ -80,7 +80,7 @@ test("no animated style drives a property the compositor cannot animate", () => 
     [],
     `these repaint on every animation frame: ${offenders.join(", ")}. Put the glow on a ` +
       `pointerEvents="none" childless sibling with a static Shadow token and animate its ` +
-      `opacity instead — components/GameShared.tsx's cardGlow is the pattern.`
+      `opacity instead — components/table/hand.tsx's cardGlow is the pattern.`
   );
 });
 
