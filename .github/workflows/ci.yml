@@ -172,15 +172,19 @@ jobs:
         timeout-minutes: 20
         run: npm run test:e2e
 
-      # Kept on success too, not just on failure — the only way to confirm a
-      # green run actually exercised the suite rather than silently skipping
-      # it, the same concern the scope job above exists for.
+      # Uploaded on success too, not just on failure: a green run with no
+      # report is a run that skipped the suite, and `if-no-files-found: error`
+      # is what turns that into a red step rather than a warning nobody reads.
+      # The path is the config file's own directory — `outputFolder` in
+      # tests/e2e/playwright.config.ts resolves relative to that, not to the
+      # working directory the run was launched from.
       - name: Keep the Playwright report
         if: ${{ !cancelled() }}
         uses: actions/upload-artifact@v4
         with:
           name: playwright-report
-          path: playwright-report/
+          path: tests/e2e/playwright-report/
+          if-no-files-found: error
           retention-days: 7
 
   build:
