@@ -14,6 +14,15 @@ export interface JoinableRoom {
   containsUser: boolean;
 }
 
+/** The constraint a 23505 names, or undefined if the error is something else. */
+function uniqueViolation(err: unknown): string | undefined {
+  for (let e = err; e; e = (e as { cause?: unknown }).cause) {
+    const { code, constraint } = e as { code?: string; constraint?: string };
+    if (code === "23505" && constraint) return constraint;
+  }
+  return undefined;
+}
+
 /** The pre-check at POST /api/auth/register cannot see a concurrent insert. */
 export class UsernameTakenError extends Error {
   constructor() {
@@ -164,11 +173,12 @@ class DrizzleStorage implements IStorage {
           .values({ ...insertUser, friendCode })
           .returning();
         return user;
-      } catch (err: any) {
-        if (err?.constraint?.includes("friend_code") && attempt < 9) continue;
-        if (err?.code === "23505" && err?.constraint?.includes("username")) {
-          throw new UsernameTakenError();
-        }
+      } catch (err) {
+        // drizzle-orm wraps the driver error in a DrizzleQueryError, so the
+        // constraint name is on the cause, not on what was thrown.
+        const violated = uniqueViolation(err);
+        if (violated?.includes("friend_code") && attempt < 9) continue;
+        if (violated?.includes("username")) throw new UsernameTakenError();
         throw err;
       }
     }
@@ -472,3 +482,5 @@ class DrizzleStorage implements IStorage {
 }
 
 export const storage = new DrizzleStorage();
+
+export const __testables = { uniqueViolation };
