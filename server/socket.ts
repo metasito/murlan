@@ -98,6 +98,19 @@ import { appendReplayMove, startReplayLog } from "./replayShape.ts";
  * locks a phone out of its own game while its connection flaps.
  */
 const HANDSHAKES_PER_MINUTE = 60;
+
+/**
+ * Read once at module scope — same shape as authMaxFromEnv in routes.ts — so
+ * a test process must set MURLAN_GAME_ACTION_RATE_LIMIT before this module
+ * is first imported. Shared by game:play and game:pass: a suite replaying
+ * several hands down one socket to reach a probabilistic phase needs
+ * headroom a live session never does.
+ */
+function gameActionLimitFromEnv(): number {
+  const parsed = Number(process.env.MURLAN_GAME_ACTION_RATE_LIMIT);
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : 60;
+}
+const GAME_ACTION_RATE_LIMIT = gameActionLimitFromEnv();
 const HANDSHAKE_WINDOW_MS = 60_000;
 
 let _io: SocketServer | null = null;
@@ -774,7 +787,7 @@ export function setupSocket(httpServer: HttpServer) {
           armTurn(io, roomId);
         }
       },
-      { limit: 60, windowMs: 60_000 }
+      { limit: GAME_ACTION_RATE_LIMIT, windowMs: 60_000 }
     );
 
     onEvent(
@@ -811,7 +824,7 @@ export function setupSocket(httpServer: HttpServer) {
         persistGameState(roomId, game);
         armTurn(io, roomId);
       },
-      { limit: 60, windowMs: 60_000 }
+      { limit: GAME_ACTION_RATE_LIMIT, windowMs: 60_000 }
     );
 
     onEvent(

@@ -23,15 +23,18 @@ import {
 
 /**
  * Shortened well below the 60s disconnect grace / 30s AFK / 1.2s bot-move
- * production defaults so the exchange-, vacancy- and bot-table tests below
- * don't stall the suite for real-world timer lengths. `server/socket.ts` reads
- * these once at module scope, so they must be set before that module is first
- * imported — this file always runs as its own process under `node --test`, so
- * the override never leaks into another test file's process.
+ * production defaults, and the per-user game-action rate limit raised well
+ * above its 60-per-60s default, so the tests below don't stall on real-world
+ * timer lengths or get throttled replaying several hands down one socket.
+ * `server/socket.ts` reads all four once at module scope, so they must be set
+ * before that module is first imported — this file always runs as its own
+ * process under `node --test`, so the override never leaks into another test
+ * file's process.
  */
 process.env.MURLAN_AFK_TIMEOUT_MS = "300";
 process.env.MURLAN_DISCONNECT_GRACE_MS = "500";
 process.env.MURLAN_BOT_MOVE_DELAY_MS = "20";
+process.env.MURLAN_GAME_ACTION_RATE_LIMIT = "1000";
 
 describe("gameplay integrity", { skip: hasDatabase() ? false : skipMessage() }, () => {
   let server: TestServer;
