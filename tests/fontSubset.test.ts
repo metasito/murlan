@@ -48,6 +48,10 @@ test("every weight the app loads is shipped and declared", () => {
       shell.includes(`font-family: "${family}"`) && shell.includes(`/fonts/${family}.woff2`),
       `public/index.html declares no @font-face for ${family}`
     );
+    assert.ok(
+      shell.includes(`"${family}",`) || shell.includes(`"${family}"]`),
+      `public/index.html never asks for ${family}, so the first layout using it is laid out in the fallback face`
+    );
 
   }
 });

@@ -60,6 +60,15 @@
         font-display: swap;
       }
     </style>
+    <!-- A bare @font-face is fetched only when text first paints in it, so
+         each screen that introduces a face paints once in the fallback and
+         reflows. `useFonts` asked for all of them at app start, which is what
+         this restores — no gate and no blocking, so PERF-02 step 2 stands. -->
+    <script>
+      ["Rajdhani_500Medium","Rajdhani_600SemiBold","Rajdhani_700Bold","Inter_400Regular","Inter_500Medium","Inter_600SemiBold"].forEach(function (family) {
+        document.fonts.load('1em "' + family + '"');
+      });
+    </script>
   </head>
 
   <body>
