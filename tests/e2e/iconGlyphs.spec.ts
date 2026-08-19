@@ -23,6 +23,7 @@ function uniqueUsername(prefix: string): string {
 test("menu screens render every icon glyph, across the states reachable with no account", async ({
   page,
   baseURL,
+  consoleErrors,
 }) => {
   test.setTimeout(60_000);
 
@@ -49,11 +50,14 @@ test("menu screens render every icon glyph, across the states reachable with no 
   await assertAllGlyphsRender(page, "auth — password hidden (eye-outline)", 6);
   await page.getByRole("button", { name: "Mostra password" }).click();
   await assertAllGlyphsRender(page, "auth — password shown (eye-off-outline)", 6);
+
+  expect(consoleErrors.entries, "no console errors/warnings across the menu screens").toEqual([]);
 });
 
 test("online screens render every icon glyph, across the states reachable once signed in", async ({
   page,
   baseURL,
+  consoleErrors,
 }) => {
   test.setTimeout(2 * 60_000);
 
@@ -84,11 +88,14 @@ test("online screens render every icon glyph, across the states reachable once s
   await page.getByRole("button", { name: "Il mio profilo" }).click();
   await page.waitForTimeout(1500);
   await assertAllGlyphsRender(page, "profile — empty state", 31);
+
+  expect(consoleErrors.entries, "no console errors/warnings across the online screens").toEqual([]);
 });
 
 test("the replay screen renders the correct transport icon in both its paused and playing states", async ({
   page,
   baseURL,
+  consoleErrors,
 }) => {
   test.setTimeout(8 * 60_000);
 
@@ -130,4 +137,6 @@ test("the replay screen renders the correct transport icon in both its paused an
   await page.getByRole("button", { name: "Riproduci" }).click();
   await expect(page.getByRole("button", { name: "Pausa" })).toBeVisible();
   await assertAllGlyphsRender(page, "replay — playing (pause)", 28);
+
+  expect(consoleErrors.entries, "no console errors/warnings across the replay screen").toEqual([]);
 });
