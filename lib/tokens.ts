@@ -135,10 +135,8 @@ export const CardBacks = {
   inchiostro: { field: 'notte',    ink: Colors.gold, lattice: 5, starPoints: 4 },
 } as const;
 
-// The six original steps keep their exact values: 213 sites already reference
-// them by name and renumbering would move every one silently. The additions are
-// the fine steps the dense layouts — the table chrome, the seat rows, the menu
-// lists — already use, so the sweep onto them moves nothing by more than 2px.
+// Ordered by value, and only the order says so: nothing in slim, snug, cosy,
+// wide or roomy tells a reader which of them is the wider step.
 export const Spacing = {
   xxs: 2,
   xs: 4,
