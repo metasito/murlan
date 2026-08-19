@@ -42,18 +42,12 @@ interface SocketContextValue {
   dismissGameInvite: (roomCode: string) => void;
 }
 
-const SocketContext = createContext<SocketContextValue>({
-  socket: null,
-  connected: false,
-  onlineIds: new Set(),
-  pendingInvite: null,
-  clearInvite: () => {},
-  gameInvites: [],
-  dismissGameInvite: () => {},
-});
+const SocketContext = createContext<SocketContextValue | null>(null);
 
 export function useSocket() {
-  return useContext(SocketContext);
+  const ctx = useContext(SocketContext);
+  if (!ctx) throw new Error("useSocket must be used within SocketProvider");
+  return ctx;
 }
 
 export function SocketProvider({ children }: { children: ReactNode }) {

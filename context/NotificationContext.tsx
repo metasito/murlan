@@ -30,14 +30,12 @@ interface NotificationContextValue {
   dismissNotification: () => void;
 }
 
-const NotificationContext = createContext<NotificationContextValue>({
-  notification: null,
-  showNotification: () => {},
-  dismissNotification: () => {},
-});
+const NotificationContext = createContext<NotificationContextValue | null>(null);
 
 export function useNotification() {
-  return useContext(NotificationContext);
+  const ctx = useContext(NotificationContext);
+  if (!ctx) throw new Error("useNotification must be used within NotificationProvider");
+  return ctx;
 }
 
 export function NotificationProvider({ children }: { children: ReactNode }) {

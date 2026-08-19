@@ -42,15 +42,7 @@ const defaults: Settings = {
   tableFelt: DEFAULT_TABLE_FELT,
 };
 
-const SettingsContext = createContext<SettingsContextValue>({
-  ...defaults,
-  setSoundsEnabled: () => {},
-  setSoundVolume: () => {},
-  setHapticsEnabled: () => {},
-  setMotion: () => {},
-  setCardBack: () => {},
-  setTableFelt: () => {},
-});
+const SettingsContext = createContext<SettingsContextValue | null>(null);
 
 /**
  * A stored value written by an older build can be any shape at all, and a bad
@@ -145,4 +137,8 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
   );
 }
 
-export const useSettings = () => useContext(SettingsContext);
+export function useSettings() {
+  const ctx = useContext(SettingsContext);
+  if (!ctx) throw new Error("useSettings must be used within SettingsProvider");
+  return ctx;
+}

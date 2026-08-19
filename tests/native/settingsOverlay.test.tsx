@@ -26,6 +26,7 @@ import {
   NotificationProvider,
   useNotification,
 } from '@/context/NotificationContext';
+import { SettingsProvider } from '@/context/SettingsContext';
 import { it as itLocale } from '@/locales/it';
 
 const METRICS = {
@@ -44,8 +45,10 @@ async function mount() {
   return render(
     <SafeAreaProvider initialMetrics={METRICS}>
       <NotificationProvider>
-        <Probe />
-        <SettingsModal visible onClose={() => {}} />
+        <SettingsProvider>
+          <Probe />
+          <SettingsModal visible onClose={() => {}} />
+        </SettingsProvider>
       </NotificationProvider>
     </SafeAreaProvider>
   );

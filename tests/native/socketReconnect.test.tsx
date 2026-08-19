@@ -41,13 +41,17 @@ jest.mock('@/context/AuthContext', () => ({
 
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const { SocketProvider } = require('@/context/SocketContext') as typeof import('@/context/SocketContext');
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+const { NotificationProvider } = require('@/context/NotificationContext') as typeof import('@/context/NotificationContext');
 
 const mount = () =>
   render(
     <QueryClientProvider client={new QueryClient()}>
-      <SocketProvider>
-        <Text>child</Text>
-      </SocketProvider>
+      <NotificationProvider>
+        <SocketProvider>
+          <Text>child</Text>
+        </SocketProvider>
+      </NotificationProvider>
     </QueryClientProvider>
   );
 
