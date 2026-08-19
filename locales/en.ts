@@ -44,6 +44,7 @@ export const en = {
   "server.ALREADY_FRIENDS": "You're already friends",
   "server.FRIEND_REQUEST_ALREADY_SENT": "Friend request already sent",
   "server.FRIEND_REQUEST_NOT_FOUND": "Request not found",
+  "server.FRIEND_INVITE": "{{username}} invited you to play.",
   "server.GAME_INTERRUPTED_EMPTY_SEAT": "Game interrupted: an empty seat can't play.",
   "server.GAME_INTERRUPTED_SERVER_ERROR": "Game interrupted: a server error.",
   "server.PLAYER_AFK_AUTO_PASS": "{{username}} is inactive — passed automatically",

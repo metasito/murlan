@@ -37,6 +37,7 @@ export const it: Record<keyof typeof en, string> = {
   "server.ALREADY_FRIENDS": "Siete già amici",
   "server.FRIEND_REQUEST_ALREADY_SENT": "Richiesta di amicizia già inviata",
   "server.FRIEND_REQUEST_NOT_FOUND": "Richiesta non trovata",
+  "server.FRIEND_INVITE": "{{username}} ti ha invitato a giocare.",
   "server.GAME_INTERRUPTED_EMPTY_SEAT": "Partita interrotta: un posto vuoto non può giocare.",
   "server.GAME_INTERRUPTED_SERVER_ERROR": "Partita interrotta: errore del server.",
   "server.PLAYER_AFK_AUTO_PASS": "{{username}} non risponde — passo automatico",

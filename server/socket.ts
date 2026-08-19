@@ -1151,7 +1151,8 @@ export function setupSocket(httpServer: HttpServer) {
           // late. Not awaited: the invite must not be held up by a push.
           void notifyUser(friendUserId, {
             title: "Murlan",
-            body: `${username} ti ha invitato a giocare.`,
+            code: "FRIEND_INVITE",
+            body: `${username} invited you to play.`,
             data: { roomCode },
           });
           return;
