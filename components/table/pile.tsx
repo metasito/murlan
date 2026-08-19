@@ -20,7 +20,12 @@ import { usePrefersReducedMotion } from "@/lib/accessibility";
 import { useTranslation, type TranslationKey } from "@/lib/i18n";
 import type { Card, Combination } from "@/lib/gameEngine";
 import { CARD_W } from "@/components/handLayout";
-import { CARD_H, FLIGHT_MS, type FlyDirection } from "@/components/gameTableModel";
+import {
+  CARD_H,
+  FLIGHT_MS,
+  LANDING_FRACTION,
+  type FlyDirection,
+} from "@/components/gameTableModel";
 
 const FLY_OFFSETS: Record<FlyDirection, { dx: number; dy: number }> = {
   bottom: { dx: 0, dy: 140 },
@@ -95,7 +100,7 @@ export function FlyingCards({
       withTiming(0, { duration: FLIGHT_MS * 0.5, easing: Easing.in(Easing.quad) })
     );
     settle.value = withDelay(
-      FLIGHT_MS * 0.82,
+      FLIGHT_MS * LANDING_FRACTION,
       withSequence(
         withTiming(1, { duration: Motion.duration.flash }),
         withSpring(0, Motion.spring.land, (finished) => {
