@@ -6,7 +6,6 @@ import {
   Pressable,
   ScrollView,
   Share,
-  Alert,
   FlatList,
   useWindowDimensions,
 } from "react-native";
@@ -17,6 +16,7 @@ import * as Clipboard from "expo-clipboard";
 import Ionicons from "@expo/vector-icons/Ionicons";
 import { useQuery } from "@tanstack/react-query";
 import { useOnlineGame } from "@/context/OnlineGameContext";
+import { useNotification } from "@/context/NotificationContext";
 import { useAuth } from "@/context/AuthContext";
 import { useSocket } from "@/context/SocketContext";
 import { getSocket } from "@/lib/socket";
@@ -28,6 +28,7 @@ import type { BotPersonalityId } from "@/lib/botPersonalities";
 import { MenuLayout } from "@/components/MenuLayout";
 import { MenuButton } from "@/components/MenuButton";
 import { Toggle } from "@/components/Toggle";
+import { ConfirmDialog, type ConfirmRequest } from "@/components/ConfirmDialog";
 import { useTranslation } from "@/lib/i18n";
 import { a11yState } from "@/lib/a11y";
 import { usePrefersReducedMotion } from "@/lib/accessibility";
@@ -318,10 +319,12 @@ export default function RoomScreen() {
     startGame,
     entrySource,
   } = useOnlineGame();
+  const { showNotification } = useNotification();
 
   const [fillWithBots, setFillWithBots] = useState(false);
   const [botPersonality, setBotPersonality] = useState<BotPersonalityId>(DEFAULT_BOT_PERSONALITY);
   const [matchLength, setMatchLength] = useState<MatchLength>("match");
+  const [confirming, setConfirming] = useState<ConfirmRequest | null>(null);
 
   const isLandscape = W > H;
 
@@ -348,9 +351,10 @@ export default function RoomScreen() {
 
   useEffect(() => {
     if (error) {
-      Alert.alert(t("common.error"), error, [{ text: t("common.ok"), onPress: clearError }]);
+      showNotification({ type: "game_error", title: t("common.error"), message: error });
+      clearError();
     }
-  }, [error, clearError, t]);
+  }, [error, clearError, showNotification, t]);
 
   if (!room) return null;
 
@@ -378,25 +382,21 @@ export default function RoomScreen() {
   }
 
   function handleLeave() {
-    Alert.alert(
-      t("room.leaveConfirmTitle"),
-      t("room.leaveConfirmBody"),
-      [
-        { text: t("common.cancel"), style: "cancel" },
-        {
-          text: t("room.leaveConfirmConfirm"),
-          style: "destructive",
-          onPress: () => {
-            leaveRoom();
-            if (entrySource === "quickmatch") {
-              router.replace("/(online)/quickmatch");
-            } else {
-              router.replace("/(online)");
-            }
-          },
-        },
-      ]
-    );
+    setConfirming({
+      title: t("room.leaveConfirmTitle"),
+      body: t("room.leaveConfirmBody"),
+      cancelLabel: t("common.cancel"),
+      confirmLabel: t("room.leaveConfirmConfirm"),
+      destructive: true,
+      onConfirm: () => {
+        leaveRoom();
+        if (entrySource === "quickmatch") {
+          router.replace("/(online)/quickmatch");
+        } else {
+          router.replace("/(online)");
+        }
+      },
+    });
   }
 
   function handleStart() {
@@ -589,6 +589,8 @@ export default function RoomScreen() {
             )}
           </View>
         </View>
+
+        <ConfirmDialog request={confirming} onClose={() => setConfirming(null)} />
       </MenuLayout>
     );
   }
@@ -722,6 +724,8 @@ export default function RoomScreen() {
       </ScrollView>
 
       <View style={styles.footer}>{StartButton}</View>
+
+      <ConfirmDialog request={confirming} onClose={() => setConfirming(null)} />
     </MenuLayout>
   );
 }

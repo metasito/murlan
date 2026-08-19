@@ -7,7 +7,6 @@ import {
   Pressable,
   StyleSheet,
   Platform,
-  Alert,
 } from "react-native";
 import { useRouter } from "expo-router";
 import Feather from "@expo/vector-icons/Feather";
@@ -18,6 +17,7 @@ import { useAuth } from "@/context/AuthContext";
 import NotificationBanner from "@/components/NotificationBanner";
 import { OfflineBanner } from "@/components/OfflineBanner";
 import { Toggle } from "@/components/Toggle";
+import { ConfirmDialog, type ConfirmRequest } from "@/components/ConfirmDialog";
 import { apiRequest, queryClient } from "@/lib/query-client";
 import { hapticSelection } from "@/lib/haptics";
 import { usePrefersReducedMotion } from "@/lib/accessibility";
@@ -148,7 +148,8 @@ export function SettingsModal({ visible, onClose }: Props) {
     setTableFelt,
   } = useSettings();
   const { logout } = useAuth();
-  const { notification, dismissNotification } = useNotification();
+  const { notification, showNotification, dismissNotification } = useNotification();
+  const [confirming, setConfirming] = useState<ConfirmRequest | null>(null);
   const router = useRouter();
   const reduceMotion = usePrefersReducedMotion();
   const [deleting, setDeleting] = useState(false);
@@ -167,19 +168,23 @@ export function SettingsModal({ visible, onClose }: Props) {
       router.replace("/auth");
     } catch {
       setDeleting(false);
-      Alert.alert(t("settings.deleteFailedTitle"), t("settings.deleteFailedBody"));
+      showNotification({
+        type: "game_error",
+        title: t("settings.deleteFailedTitle"),
+        message: t("settings.deleteFailedBody"),
+      });
     }
   }
 
   function confirmDelete() {
-    Alert.alert(
-      t("settings.deleteConfirmTitle"),
-      t("settings.deleteConfirmBody"),
-      [
-        { text: t("common.cancel"), style: "cancel" },
-        { text: t("settings.deleteAccount"), style: "destructive", onPress: handleDeleteAccount },
-      ]
-    );
+    setConfirming({
+      title: t("settings.deleteConfirmTitle"),
+      body: t("settings.deleteConfirmBody"),
+      cancelLabel: t("common.cancel"),
+      confirmLabel: t("settings.deleteAccount"),
+      destructive: true,
+      onConfirm: handleDeleteAccount,
+    });
   }
 
   function handleSelectLocale(next: Locale) {
@@ -391,6 +396,7 @@ export function SettingsModal({ visible, onClose }: Props) {
         {/* A Modal is its own stacking context, so the root banners cannot
             paint over it. */}
         <NotificationBanner notification={notification} onDismiss={dismissNotification} />
+        <ConfirmDialog request={confirming} onClose={() => setConfirming(null)} />
         <OfflineBanner />
       </View>
     </Modal>

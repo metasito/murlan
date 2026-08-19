@@ -5,11 +5,11 @@
 // side of the exchange phase, a local 20s response timer that auto-passes,
 // and navigation to the results screen.
 
-import React, { useEffect, useRef } from "react";
-import { Alert } from "react-native";
+import React, { useEffect, useRef, useState } from "react";
 import { router } from "expo-router";
 import { useGame } from "@/context/GameContext";
 import { useNotification } from "@/context/NotificationContext";
+import { ConfirmDialog, type ConfirmRequest } from "@/components/ConfirmDialog";
 import { pickGivebackCard } from "@/lib/gameEngine";
 import { GameTable } from "@/components/GameTable";
 import { comboKey } from "@/components/gameTableModel";
@@ -36,6 +36,7 @@ const RESULT_DELAY = E2E_FAST ? 0 : 800;
 export default function GameScreen() {
   const { t } = useTranslation();
   const { showNotification } = useNotification();
+  const [confirming, setConfirming] = useState<ConfirmRequest | null>(null);
   const {
     gameState,
     selectedCards,
@@ -138,17 +139,17 @@ export default function GameScreen() {
       onPass={passTurn}
       onExchangeGive={chooseExchangeCard}
       onQuit={() =>
-        Alert.alert(t("offlineGame.quitConfirmTitle"), t("offlineGame.quitConfirmBody"), [
-          { text: t("common.cancel"), style: "cancel" },
-          {
-            text: t("offlineGame.quitConfirmConfirm"),
-            style: "destructive",
-            onPress: () => {
-              resetGame();
-              router.replace("/");
-            },
+        setConfirming({
+          title: t("offlineGame.quitConfirmTitle"),
+          body: t("offlineGame.quitConfirmBody"),
+          cancelLabel: t("common.cancel"),
+          confirmLabel: t("offlineGame.quitConfirmConfirm"),
+          destructive: true,
+          onConfirm: () => {
+            resetGame();
+            router.replace("/");
           },
-        ])
+        })
       }
       turnTimer={{
         seconds: HUMAN_TURN_SECONDS,
@@ -180,6 +181,7 @@ export default function GameScreen() {
         seatCount: rematchTally.total || gameState.players.length,
         onAnswer: answerRematch,
       }}
+      overlays={<ConfirmDialog request={confirming} onClose={() => setConfirming(null)} />}
     />
   );
 }

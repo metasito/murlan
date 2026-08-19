@@ -5,7 +5,6 @@ import {
   StyleSheet,
   Pressable,
   TextInput,
-  Alert,
   ActivityIndicator,
 } from "react-native";
 import { router, useFocusEffect } from "expo-router";
@@ -14,10 +13,12 @@ import Ionicons from "@expo/vector-icons/Ionicons";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useSocket } from "@/context/SocketContext";
 import { useOnlineGame } from "@/context/OnlineGameContext";
+import { useNotification } from "@/context/NotificationContext";
 import { apiRequest } from "@/lib/query-client";
 import { Colors, Spacing, FontSize, Radius, TOUCH_TARGET_MIN, Type } from '@/lib/theme';
 import { MenuButton } from "@/components/MenuButton";
 import { MenuLayout } from "@/components/MenuLayout";
+import { ConfirmDialog, type ConfirmRequest } from "@/components/ConfirmDialog";
 import { useTranslation, translateServerPayload } from "@/lib/i18n";
 import { registerForPush } from "@/lib/pushRegistration";
 import type { TranslationKey, TranslationParams } from "@/lib/i18n";
@@ -79,6 +80,10 @@ export default function FriendsScreen() {
   const [searchResult, setSearchResult] = useState<SearchResult | null>(null);
   const [searchError, setSearchError] = useState<string | null>(null);
   const [searchDone, setSearchDone] = useState(false);
+  const [confirming, setConfirming] = useState<ConfirmRequest | null>(null);
+  const { showNotification } = useNotification();
+  const showError = (message: string) =>
+    showNotification({ type: "game_error", title: t("common.error"), message });
 
   const {
     data: friends = [],
@@ -145,18 +150,14 @@ export default function FriendsScreen() {
   });
 
   function handleRemoveFriend(friend: FriendInfo) {
-    Alert.alert(
-      t("friends.removeConfirmTitle"),
-      t("friends.removeConfirmBody", { username: friend.username }),
-      [
-        { text: t("common.cancel"), style: "cancel" },
-        {
-          text: t("friends.removeConfirmConfirm"),
-          style: "destructive",
-          onPress: () => removeMutation.mutate(friend.id),
-        },
-      ]
-    );
+    setConfirming({
+      title: t("friends.removeConfirmTitle"),
+      body: t("friends.removeConfirmBody", { username: friend.username }),
+      cancelLabel: t("common.cancel"),
+      confirmLabel: t("friends.removeConfirmConfirm"),
+      destructive: true,
+      onConfirm: () => removeMutation.mutate(friend.id),
+    });
   }
 
   async function handleSearchUsername() {
@@ -192,7 +193,11 @@ export default function FriendsScreen() {
       const res = await apiRequest("POST", "/api/friends/add", { username: searchResult.username });
       const data = await res.json();
       hapticSuccess();
-      Alert.alert(t("friends.requestSentTitle"), t("friends.requestSentBody", { username: data.username }));
+      showNotification({
+        type: "friend_request",
+        title: t("friends.requestSentTitle"),
+        message: t("friends.requestSentBody", { username: data.username }),
+      });
       setSearchQuery("");
       setSearchResult(null);
       setSearchDone(false);
@@ -202,9 +207,9 @@ export default function FriendsScreen() {
       const match = msg.match(/\d+: (.+)/);
       try {
         const parsed = JSON.parse(match ? match[1] : msg);
-        Alert.alert(t("common.error"), translateServerPayload(parsed) ?? msg);
+        showError(translateServerPayload(parsed) ?? msg);
       } catch {
-        Alert.alert(t("common.error"), match ? match[1] : msg);
+        showError(match ? match[1] : msg);
       }
     } finally {
       setAddLoading(false);
@@ -495,6 +500,8 @@ export default function FriendsScreen() {
           )}
         </View>
       </View>
+
+      <ConfirmDialog request={confirming} onClose={() => setConfirming(null)} />
     </MenuLayout>
   );
 }

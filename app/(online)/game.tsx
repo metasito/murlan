@@ -6,12 +6,13 @@
 // states (reconnect notice, a player leaving, a failed rejoin).
 
 import React, { useCallback, useEffect, useRef, useState } from "react";
-import { View, Text, StyleSheet, Platform, Alert, ActivityIndicator } from "react-native";
+import { View, Text, StyleSheet, Platform, ActivityIndicator } from "react-native";
 import { router } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import Ionicons from "@expo/vector-icons/Ionicons";
 import { useOnlineGame } from "@/context/OnlineGameContext";
 import { useAuth } from "@/context/AuthContext";
+import { ConfirmDialog, type ConfirmRequest } from "@/components/ConfirmDialog";
 import { GameTable } from "@/components/GameTable";
 import { TOP_BAR_H, computeScreenPads, readExchange } from "@/components/gameTableModel";
 import {
@@ -77,6 +78,7 @@ export default function OnlineGameScreen() {
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [showReactions, setShowReactions] = useState(false);
   const [showGameOver, setShowGameOver] = useState(false);
+  const [confirming, setConfirming] = useState<ConfirmRequest | null>(null);
 
   const reactionTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   // Card ids sent to the server and not yet acknowledged. The selection is only
@@ -146,24 +148,20 @@ export default function OnlineGameScreen() {
     else router.replace("/(online)");
   }, [entrySource]);
 
-  // Another player abandoned the table — there is no game left to play.
+  // Another player abandoned the table — there is no game left to play, so
+  // this one has no way out but the acknowledgement.
   useEffect(() => {
     if (!playerLeft) return;
-    Alert.alert(
-      t("onlineGame.playerLeftTitle"),
-      t("onlineGame.playerLeftBody"),
-      [
-        {
-          text: t("onlineGame.backToLobby"),
-          onPress: () => {
-            clearPlayerLeft();
-            leaveRoom();
-            goToLobby();
-          },
-        },
-      ],
-      { cancelable: false }
-    );
+    setConfirming({
+      title: t("onlineGame.playerLeftTitle"),
+      body: t("onlineGame.playerLeftBody"),
+      confirmLabel: t("onlineGame.backToLobby"),
+      onConfirm: () => {
+        clearPlayerLeft();
+        leaveRoom();
+        goToLobby();
+      },
+    });
   }, [playerLeft, clearPlayerLeft, leaveRoom, goToLobby, t]);
 
   // A rejoin the server refused is not the player choosing to leave, so no
@@ -265,14 +263,14 @@ export default function OnlineGameScreen() {
       }}
       onExchangeGive={giveExchangeCard}
       onQuit={() =>
-        Alert.alert(
-          t("onlineGame.quitConfirmTitle"),
-          t("onlineGame.quitConfirmBody"),
-          [
-            { text: t("common.cancel"), style: "cancel" },
-            { text: t("onlineGame.quitConfirmConfirm"), style: "destructive", onPress: leaveAndExit },
-          ]
-        )
+        setConfirming({
+          title: t("onlineGame.quitConfirmTitle"),
+          body: t("onlineGame.quitConfirmBody"),
+          cancelLabel: t("common.cancel"),
+          confirmLabel: t("onlineGame.quitConfirmConfirm"),
+          destructive: true,
+          onConfirm: leaveAndExit,
+        })
       }
       turnTimer={{
         seconds: turnSeconds,
@@ -319,6 +317,8 @@ export default function OnlineGameScreen() {
       }
       overlays={
         <>
+          <ConfirmDialog request={confirming} onClose={() => setConfirming(null)} />
+
           <FloatingReactions />
 
           {showReactions && (
