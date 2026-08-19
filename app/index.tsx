@@ -555,9 +555,11 @@ const styles = StyleSheet.create({
   logoutBtn: { paddingHorizontal: Spacing.sm, paddingVertical: Spacing.xxs },
   logoutText: { fontFamily: "Inter_400Regular", fontSize: FontSize.xs, color: Colors.textMuted },
   friendsBtn: {
+    minHeight: TOUCH_TARGET_MIN,
     position: "relative",
     flexDirection: "row",
     alignItems: "center",
+    justifyContent: "center",
     gap: Spacing.slim,
     backgroundColor: Colors.gold,
     borderRadius: Radius.lg,

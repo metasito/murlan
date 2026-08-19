@@ -14,7 +14,7 @@ import { hapticMedium, hapticSelection } from "@/lib/haptics";
 import { CardView } from "@/components/CardView";
 import { sortHand, getValidGivebackCards, pickGivebackCard } from "@/lib/gameEngine";
 import type { GameState } from "@/lib/gameEngine";
-import { Colors, FontSize, Radius, Spacing } from "@/lib/theme";
+import { Colors, FontSize, Radius, Spacing, TOUCH_TARGET_MIN } from "@/lib/theme";
 import { useTranslation } from "@/lib/i18n";
 import { cardSpokenName } from "@/lib/cardNames";
 import { a11yState } from "@/lib/a11y";
@@ -301,8 +301,10 @@ const exStyles = StyleSheet.create({
   confirmBtn: { borderRadius: Radius.md, overflow: "hidden" },
   confirmBtnDim: { opacity: 0.5 },
   confirmGrad: {
+    minHeight: TOUCH_TARGET_MIN,
     paddingVertical: Spacing.cosy,
     alignItems: "center",
+    justifyContent: "center",
   },
   confirmText: {
     fontFamily: "Rajdhani_700Bold",
