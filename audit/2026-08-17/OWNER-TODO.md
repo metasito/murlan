@@ -1,6 +1,6 @@
 # For the owner — things no batch can do
 
-Five items, three of them short reads. Everything else that used to be here was decided and
+Six items, three of them short reads. Everything else that used to be here was decided and
 is done — see `DECISIONS.md` **D8-D14**.
 
 ---
@@ -28,18 +28,17 @@ the saved-game format, all carried by that single `db:push`.
 ## 2. On a real iPhone and a real Android phone
 
 - [ ] Check all twelve sound effects play.
-- [ ] Check the fonts still look right after the font-loading change.
 
-Neither is observable from here. MP3 decoding on iOS in particular is asserted, not measured —
-the risk is low (AVFoundation has decoded MP3 for as long as it has existed) but it has never
-actually been heard on a device.
+Not observable from here. MP3 decoding on iOS in particular is asserted, not measured — the risk
+is low (AVFoundation has decoded MP3 for as long as it has existed) but it has never actually been
+heard on a device.
 
-The *large-text* check is **done** and off this list: `tests/e2e/a11yOverlays.spec.ts` grows every
-text in the table by the cap the app declares and measures the glyphs against the card that clips
-them, then runs the same measurement uncapped and requires it to find clipping — so the pass is
-not free. The font change has its own browser check (`tests/e2e/webFonts.spec.ts`), which measures
-the Albanian ë and the Italian à against the fallback face. The sound half is what no browser can
-answer.
+**The two font checks that used to be on this list are done.** `tests/e2e/webFonts.spec.ts`
+measures the Albanian ë and the Italian à against the fallback face in a real browser, so a subset
+missing a glyph fails rather than shipping tofu. `tests/e2e/a11yOverlays.spec.ts` grows every text
+in the table by the cap the app declares and measures the glyphs against the card that clips them,
+then runs the same measurement uncapped and requires it to find clipping — so the pass is not free.
+The full Playwright suite was run for the font change.
 
 ---
 
@@ -92,6 +91,21 @@ glyphs, and now 82% of the font bytes a web visitor fetches.
 Subsetting them is the same technique, with one extra step: the set has to be derived from the
 `name="…"` props across the app rather than from the strings. No finding covers it, so nothing is
 scheduled — it is a backlog item if the download size matters, and nothing at all if it does not.
+
+---
+
+## 6. One Playwright case fails about one run in seven, and always has
+
+`tests/e2e/tableFit.spec.ts` — *the table fits the screen › small phone landscape, 4 players*.
+Measured **3 failures in 20** against the code as it was before Batch 14 touched fonts, so it is
+not the font change; it was simply never noticed, because **CI runs no Playwright step at all** and
+the suite only runs when somebody runs it by hand.
+
+What escapes the screen is the right seat's fan of card backs, which is built from fixed pixel
+sizes — so the test is sampling a moment while the table is still settling rather than catching a
+real layout defect. Its whole settling logic is a two-second wait, and the bots start playing
+immediately in the E2E build. Worth fixing when the suite next gets attention: either wait for the
+table to stop moving, or leave out what is mid-animation.
 
 ---
 
