@@ -165,7 +165,7 @@ export const portraitOverlayStyles = StyleSheet.create({
   card: {
     alignItems: "center",
     gap: Spacing.md,
-    paddingHorizontal: Spacing.xxxl,
+    paddingHorizontal: Spacing.xxl,
   },
   title: {
     fontFamily: "Rajdhani_700Bold",

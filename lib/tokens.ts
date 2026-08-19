@@ -151,8 +151,8 @@ export const Spacing = {
   roomy: 20,
   lg: 24,
   xl: 32,
-  xxxl: 40,
-  xxl: 48,
+  xxl: 40,
+  xxxl: 48,
 };
 
 /** React Native Web reports no usable safe-area insets; every screen substitutes these. */

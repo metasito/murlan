@@ -513,7 +513,7 @@ const styles = StyleSheet.create({
   },
   userTextSmall: { fontFamily: "Inter_500Medium", fontSize: FontSize.xs, color: Colors.text, maxWidth: 100 },
 
-  header: { alignItems: "center", paddingTop: Spacing.xxxl, paddingBottom: Spacing.cosy, gap: Spacing.slim },
+  header: { alignItems: "center", paddingTop: Spacing.xxl, paddingBottom: Spacing.cosy, gap: Spacing.slim },
   title: {
     fontFamily: "Rajdhani_700Bold",
     fontSize: WORDMARK_SIZE,

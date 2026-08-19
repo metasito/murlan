@@ -383,7 +383,7 @@ const styles = StyleSheet.create({
   },
   cancelBtnStyle: {
     alignSelf: "center",
-    paddingHorizontal: Spacing.xxxl,
+    paddingHorizontal: Spacing.xxl,
   },
   searchContent: {
     flex: 1,

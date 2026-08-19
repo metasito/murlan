@@ -596,6 +596,6 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     padding: Spacing.roomy,
-    paddingTop: Spacing.xxxl,
+    paddingTop: Spacing.xxl,
   },
 });
