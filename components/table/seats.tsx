@@ -285,9 +285,6 @@ export function SideOppSlot({
         isLeft ? seatStyles.sideLeft : seatStyles.sideRight,
       ]}
     >
-      {!isLeft && count > 0 && player.finishPosition === undefined && (
-        <CardFan count={count} maxCards={5} />
-      )}
       <View style={seatStyles.sideOppAvatarCol}>
         <AvatarCircle
           name={player.name}
@@ -301,7 +298,7 @@ export function SideOppSlot({
         </Text>
         <SeatBadges passed={passed} isBot={player.type === "ai"} />
       </View>
-      {isLeft && count > 0 && player.finishPosition === undefined && (
+      {count > 0 && player.finishPosition === undefined && (
         <CardFan count={count} maxCards={5} />
       )}
     </View>
@@ -309,6 +306,8 @@ export function SideOppSlot({
 }
 
 // ─── Styles ───────────────────────────────────────────────────────────────────
+
+const OPP_LABEL_MAX_W = 70 + Spacing.xs * 2;
 
 const seatStyles = StyleSheet.create({
   topOppSlot: { alignItems: "center", justifyContent: "center", paddingVertical: 6 },
@@ -326,7 +325,7 @@ const seatStyles = StyleSheet.create({
     fontFamily: "Rajdhani_600SemiBold",
     fontSize: FontSize.xxs,
     color: Colors.textMuted,
-    maxWidth: 70 + Spacing.xs * 2,
+    maxWidth: OPP_LABEL_MAX_W,
     textAlign: "center",
     backgroundColor: Colors.overlayStrong,
     borderRadius: Radius.sm,
@@ -341,6 +340,7 @@ const seatStyles = StyleSheet.create({
     flexWrap: "wrap",
     justifyContent: "center",
     gap: Spacing.xs,
+    maxWidth: OPP_LABEL_MAX_W,
   },
   // Neutral, not red: red is the PASSA control and the bomb, and this is
   // neither a control nor a dramatic play — it is a seat that has receded.
