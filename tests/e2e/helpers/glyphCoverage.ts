@@ -27,13 +27,20 @@ export interface GlyphFailure {
   codepoint: string;
 }
 
+export interface GlyphSweep {
+  failures: GlyphFailure[];
+  /** Glyph-bearing nodes the sweep actually measured. */
+  examined: number;
+}
+
 /**
  * Every codepoint currently rendered through the "ionicons"/"feather"
  * font-family in the live DOM whose advance width matches the
  * definitely-missing baseline — i.e. every glyph on screen right now that is
- * not actually in the loaded font.
+ * not actually in the loaded font — alongside how many icon nodes carried a
+ * character to measure at all.
  */
-export async function findMissingGlyphs(page: Page): Promise<GlyphFailure[]> {
+export async function sweepGlyphs(page: Page): Promise<GlyphSweep> {
   return page.evaluate(
     ({ missingCp, families }) => {
       const fonts = (document as unknown as { fonts: FontFaceSet }).fonts;
@@ -49,6 +56,7 @@ export async function findMissingGlyphs(page: Page): Promise<GlyphFailure[]> {
 
       const failures: { family: string; codepoint: string }[] = [];
       const seen = new Set<string>();
+      let examined = 0;
       for (const el of Array.from(document.querySelectorAll("*"))) {
         if (el.childElementCount !== 0) continue;
         const primary = getComputedStyle(el)
@@ -58,6 +66,7 @@ export async function findMissingGlyphs(page: Page): Promise<GlyphFailure[]> {
           .toLowerCase();
         if (!families.includes(primary)) continue;
         const text = el.textContent ?? "";
+        if (text.length > 0) examined++;
         for (const ch of text) {
           const cp = ch.codePointAt(0);
           if (cp === undefined) continue;
@@ -71,7 +80,7 @@ export async function findMissingGlyphs(page: Page): Promise<GlyphFailure[]> {
         }
       }
       void fonts; // document.fonts.ready is awaited by the caller before this runs
-      return failures;
+      return { failures, examined };
     },
     { missingCp: MISSING_PROBE_CODEPOINT, families: [...ICON_FAMILIES] }
   );
@@ -83,17 +92,34 @@ export async function findMissingGlyphs(page: Page): Promise<GlyphFailure[]> {
  * into whatever state should be showing the icon — a glyph hidden behind an
  * interaction that was never triggered is exactly the gap this exists to
  * close.
+ *
+ * `minGlyphs` is what makes that true: an empty failure list on its own says
+ * either "every glyph here is in the font" or "the glyph named above never
+ * reached the DOM", and only the count separates them. Each floor is the
+ * number of icon nodes that screen renders, measured against this branch —
+ * so an icon added does not fail it, and a screen that stopped rendering its
+ * icons cannot pass it.
  */
-export async function assertAllGlyphsRender(page: Page, screenLabel: string): Promise<void> {
+export async function assertAllGlyphsRender(
+  page: Page,
+  screenLabel: string,
+  minGlyphs: number
+): Promise<void> {
   await page.evaluate(async () => {
     await (document as unknown as { fonts: FontFaceSet }).fonts.ready;
   });
-  const failures = await findMissingGlyphs(page);
+  const { failures, examined } = await sweepGlyphs(page);
   if (failures.length > 0) {
     const detail = failures.map((f) => `${f.family} U+${f.codepoint}`).join(", ");
     throw new Error(
       `${screenLabel}: rendered icon glyph(s) not in the loaded font — ${detail}. ` +
         `Run node scripts/build-icon-fonts.mjs if the name is legitimate.`
+    );
+  }
+  if (examined < minGlyphs) {
+    throw new Error(
+      `${screenLabel}: measured ${examined} icon glyph node(s), expected at least ${minGlyphs} — ` +
+        `this screen did not render the icons the check was written for, so nothing was checked.`
     );
   }
 }
