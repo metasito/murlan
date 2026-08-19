@@ -54,6 +54,7 @@ export function SocketProvider({ children }: { children: ReactNode }) {
   const { user, logout } = useAuth();
   const qc = useQueryClient();
   const { showNotification } = useNotification();
+  const [socket, setSocket] = useState<Socket | null>(null);
   const [connected, setConnected] = useState(false);
   const [onlineIds, setOnlineIds] = useState<Set<string>>(new Set());
   const [pendingInvite, setPendingInvite] = useState<PendingInvite | null>(null);
@@ -99,6 +100,7 @@ export function SocketProvider({ children }: { children: ReactNode }) {
         if (uid) disconnectSocket(uid);
         socketRef.current = null;
         connectedUserIdRef.current = null;
+        setSocket(null);
       }
       setConnected(false);
       setOnlineIds(new Set());
@@ -109,6 +111,7 @@ export function SocketProvider({ children }: { children: ReactNode }) {
     const socket = connectSocket(user.id);
     socketRef.current = socket;
     connectedUserIdRef.current = user.id;
+    setSocket(socket);
 
     // The ticket endpoint reported the session is dead (401): no amount of
     // retrying will ever succeed. Stop hammering it, log out locally and
@@ -286,7 +289,7 @@ export function SocketProvider({ children }: { children: ReactNode }) {
 
   const contextValue = useMemo(
     () => ({
-      socket: socketRef.current,
+      socket,
       connected,
       onlineIds,
       pendingInvite,
@@ -294,7 +297,7 @@ export function SocketProvider({ children }: { children: ReactNode }) {
       gameInvites,
       dismissGameInvite,
     }),
-    [connected, onlineIds, pendingInvite, gameInvites]
+    [socket, connected, onlineIds, pendingInvite, gameInvites]
   );
 
   return (
