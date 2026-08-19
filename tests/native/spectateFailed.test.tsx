@@ -32,7 +32,9 @@ const mockSocket = {
   },
 };
 
-jest.mock('@/lib/socket', () => ({ getSocket: () => mockSocket }));
+jest.mock('@/context/SocketContext', () => ({
+  useSocket: () => ({ socket: mockSocket }),
+}));
 
 let spectate: ((code: string) => void) | null = null;
 let join: ((code: string) => void) | null = null;

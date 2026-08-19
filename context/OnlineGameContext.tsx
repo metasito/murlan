@@ -10,10 +10,9 @@ import React, {
 } from "react";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useQueryClient } from "@tanstack/react-query";
-import { getSocket } from "@/lib/socket";
+import { useSocket } from "@/context/SocketContext";
 import { useNotification } from "@/context/NotificationContext";
 import { t, translateServerPayload, type ServerPayload } from "@/lib/i18n";
-import type { Socket } from "socket.io-client";
 import { MATCH_TARGETS, matchIsClosing } from "@/lib/gameEngine";
 import { handCountOf } from "@/components/gameTableModel";
 import { clearReactions, pushReaction } from "@/lib/reactions";
@@ -209,7 +208,7 @@ export function OnlineGameProvider({ userId, children }: { userId: string; child
   const [mySeatIndex, setMySeatIndex] = useState(-1);
   const [turnDeadline, setTurnDeadline] = useState<TurnDeadline>(NO_TURN_DEADLINE);
 
-  const socket: Socket = getSocket(userId);
+  const { socket } = useSocket();
 
   const persistActiveRoom = useCallback((roomId: string | null) => {
     persistedRoomIdRef.current = roomId;
@@ -252,13 +251,13 @@ export function OnlineGameProvider({ userId, children }: { userId: string; child
     const currentGame = gameStateRef.current;
     if (currentRoom && currentGame && !currentGame.gameOver) {
       requestedRoomIdRef.current = currentRoom.roomId;
-      socket.emit("game:rejoin", { roomId: currentRoom.roomId });
+      socket?.emit("game:rejoin", { roomId: currentRoom.roomId });
       return true;
     }
     // Cold start / remounted provider: no in-memory room, but storage may hold one.
     if (!currentRoom && persistedRoomIdRef.current) {
       requestedRoomIdRef.current = persistedRoomIdRef.current;
-      socket.emit("game:rejoin", { roomId: persistedRoomIdRef.current });
+      socket?.emit("game:rejoin", { roomId: persistedRoomIdRef.current });
       return true;
     }
 
@@ -274,11 +273,11 @@ export function OnlineGameProvider({ userId, children }: { userId: string; child
       : persistedWaitingCodeRef.current;
     if (waitingCode) {
       rejoiningRoomCodeRef.current = waitingCode;
-      socket.emit("room:rejoin", { code: waitingCode });
+      socket?.emit("room:rejoin", { code: waitingCode });
       return true;
     }
     return false;
-  }, [userId]);
+  }, [socket]);
 
   /**
    * Gives up on the rejoin: the player is told why, then everything holding the
@@ -327,13 +326,13 @@ export function OnlineGameProvider({ userId, children }: { userId: string; child
         if (cancelled || (!storedRoomId && !storedWaitingCode)) return;
         persistedRoomIdRef.current = storedRoomId;
         persistedWaitingCodeRef.current = storedWaitingCode;
-        if (socket.connected) attemptRejoin();
+        if (socket?.connected) attemptRejoin();
       })
       .catch(() => {});
     return () => {
       cancelled = true;
     };
-  }, [userId, attemptRejoin]);
+  }, [socket, userId, attemptRejoin]);
 
   useEffect(() => {
     const onConnect = () => {
@@ -589,46 +588,46 @@ export function OnlineGameProvider({ userId, children }: { userId: string; child
       abandonRejoin(data);
     };
 
-    socket.on("connect", onConnect);
-    socket.on("disconnect", onDisconnect);
-    socket.on("room:state", onRoomState);
-    socket.on("room:error", onRoomError);
-    socket.on("game:state", onGameState);
-    socket.on("game:turn_deadline", setTurnDeadline);
-    socket.on("game:error", onGameError);
-    socket.on("game:notification", onGameNotification);
-    socket.on("game:over", onGameOver);
-    socket.on("game:match_state", onMatchState);
-    socket.on("game:rematch_intents", onRematchIntents);
-    socket.on("game:vote_state", onVoteState);
-    socket.on("game:reaction", onReaction);
-    socket.on("game:player_left", onPlayerLeft);
-    socket.on("game:seat_bot_takeover", onSeatBotTakeover);
-    socket.on("game:player_disconnected", onPlayerDisconnected);
-    socket.on("game:player_reconnected", onPlayerReconnected);
-    socket.on("game:rejoin_failed", onRejoinFailed);
+    socket?.on("connect", onConnect);
+    socket?.on("disconnect", onDisconnect);
+    socket?.on("room:state", onRoomState);
+    socket?.on("room:error", onRoomError);
+    socket?.on("game:state", onGameState);
+    socket?.on("game:turn_deadline", setTurnDeadline);
+    socket?.on("game:error", onGameError);
+    socket?.on("game:notification", onGameNotification);
+    socket?.on("game:over", onGameOver);
+    socket?.on("game:match_state", onMatchState);
+    socket?.on("game:rematch_intents", onRematchIntents);
+    socket?.on("game:vote_state", onVoteState);
+    socket?.on("game:reaction", onReaction);
+    socket?.on("game:player_left", onPlayerLeft);
+    socket?.on("game:seat_bot_takeover", onSeatBotTakeover);
+    socket?.on("game:player_disconnected", onPlayerDisconnected);
+    socket?.on("game:player_reconnected", onPlayerReconnected);
+    socket?.on("game:rejoin_failed", onRejoinFailed);
 
-    if (socket.connected) setConnected(true);
+    if (socket?.connected) setConnected(true);
 
     return () => {
-      socket.off("connect", onConnect);
-      socket.off("disconnect", onDisconnect);
-      socket.off("room:state", onRoomState);
-      socket.off("room:error", onRoomError);
-      socket.off("game:state", onGameState);
-      socket.off("game:turn_deadline", setTurnDeadline);
-      socket.off("game:error", onGameError);
-      socket.off("game:notification", onGameNotification);
-      socket.off("game:over", onGameOver);
-      socket.off("game:match_state", onMatchState);
-      socket.off("game:rematch_intents", onRematchIntents);
-      socket.off("game:vote_state", onVoteState);
-      socket.off("game:reaction", onReaction);
-      socket.off("game:player_left", onPlayerLeft);
-      socket.off("game:seat_bot_takeover", onSeatBotTakeover);
-      socket.off("game:player_disconnected", onPlayerDisconnected);
-      socket.off("game:player_reconnected", onPlayerReconnected);
-      socket.off("game:rejoin_failed", onRejoinFailed);
+      socket?.off("connect", onConnect);
+      socket?.off("disconnect", onDisconnect);
+      socket?.off("room:state", onRoomState);
+      socket?.off("room:error", onRoomError);
+      socket?.off("game:state", onGameState);
+      socket?.off("game:turn_deadline", setTurnDeadline);
+      socket?.off("game:error", onGameError);
+      socket?.off("game:notification", onGameNotification);
+      socket?.off("game:over", onGameOver);
+      socket?.off("game:match_state", onMatchState);
+      socket?.off("game:rematch_intents", onRematchIntents);
+      socket?.off("game:vote_state", onVoteState);
+      socket?.off("game:reaction", onReaction);
+      socket?.off("game:player_left", onPlayerLeft);
+      socket?.off("game:seat_bot_takeover", onSeatBotTakeover);
+      socket?.off("game:player_disconnected", onPlayerDisconnected);
+      socket?.off("game:player_reconnected", onPlayerReconnected);
+      socket?.off("game:rejoin_failed", onRejoinFailed);
       // These timers own setState calls (and, for the rejoin retry, an emit)
       // that would otherwise fire after unmount.
       if (reconnectNoticeTimerRef.current) clearTimeout(reconnectNoticeTimerRef.current);
@@ -638,6 +637,7 @@ export function OnlineGameProvider({ userId, children }: { userId: string; child
       clearReactions();
     };
   }, [
+    socket,
     userId,
     attemptRejoin,
     abandonRejoin,
@@ -659,21 +659,21 @@ export function OnlineGameProvider({ userId, children }: { userId: string; child
     // Taking a seat is not watching, whatever an earlier spectate attempt left
     // behind: the flag decides whether leaving this room releases the seat.
     setIsSpectator(false);
-    socket.emit("room:create", { gameMode, maxPlayers });
-  }, [userId]);
+    socket?.emit("room:create", { gameMode, maxPlayers });
+  }, [socket]);
 
   const joinRoom = useCallback((code: string) => {
     setEntrySource("friends");
     setRejoinFailed(false);
     setIsSpectator(false);
-    socket.emit("room:join", { code });
-  }, [userId]);
+    socket?.emit("room:join", { code });
+  }, [socket]);
 
   const spectateRoom = useCallback(
     (code: string) => {
       setIsSpectator(true);
       setRejoinFailed(false);
-      socket.emit("room:spectate", { code: code.toUpperCase() });
+      socket?.emit("room:spectate", { code: code.toUpperCase() });
     },
     [socket]
   );
@@ -683,10 +683,10 @@ export function OnlineGameProvider({ userId, children }: { userId: string; child
     // sending it anyway would run the seated teardown for a table this socket
     // does not occupy.
     if (isSpectator) {
-      socket.emit("room:unspectate");
+      socket?.emit("room:unspectate");
       setIsSpectator(false);
     } else {
-      socket.emit("room:leave");
+      socket?.emit("room:leave");
     }
     persistActiveRoom(null);
     // Leaving is deliberate: neither handle may bring this room back on the
@@ -708,30 +708,30 @@ export function OnlineGameProvider({ userId, children }: { userId: string; child
     setMySeatIndex(-1);
     prevBothJokersExceptionRef.current = false;
     prevExchangeActiveRef.current = false;
-  }, [userId, isSpectator, persistActiveRoom, persistWaitingRoom, forgetRejoinAttempt]);
+  }, [socket, isSpectator, persistActiveRoom, persistWaitingRoom, forgetRejoinAttempt]);
 
   const quickmatch = useCallback((maxPlayers: number, gameMode: "free_for_all" | "teams") => {
     setEntrySource("quickmatch");
     setRejoinFailed(false);
     setIsSpectator(false);
-    socket.emit("room:quickmatch", { maxPlayers, gameMode });
-  }, [userId]);
+    socket?.emit("room:quickmatch", { maxPlayers, gameMode });
+  }, [socket]);
 
   const startGame = useCallback((opts?: {
     fillWithBots?: boolean;
     botPersonality?: BotPersonalityId;
     matchLength?: MatchLength;
   }) => {
-    socket.emit("room:start", opts);
-  }, [userId]);
+    socket?.emit("room:start", opts);
+  }, [socket]);
 
   const voteRematch = useCallback(() => {
-    socket.emit("game:rematch_vote");
-  }, [userId]);
+    socket?.emit("game:rematch_vote");
+  }, [socket]);
 
   const answerRematch = useCallback((wants: boolean) => {
-    socket.emit("game:rematch_intent", { wants });
-  }, [userId]);
+    socket?.emit("game:rematch_intent", { wants });
+  }, [socket]);
 
   // Same predicate as the offline table (lib/gameEngine), fed by the sanitized
   // state: opponents' hands are blanked but `handCount` is not.
@@ -747,24 +747,24 @@ export function OnlineGameProvider({ userId, children }: { userId: string; child
   }, [gameState, matchState, cumulativeScores]);
 
   const playCards = useCallback((cardIds: string[]) => {
-    socket.emit("game:play", { cardIds });
-  }, [userId]);
+    socket?.emit("game:play", { cardIds });
+  }, [socket]);
 
   const pass = useCallback(() => {
-    socket.emit("game:pass");
-  }, [userId]);
+    socket?.emit("game:pass");
+  }, [socket]);
 
   const giveExchangeCard = useCallback((cardId: string) => {
-    socket.emit("game:exchange_give_card", { cardId });
-  }, [userId]);
+    socket?.emit("game:exchange_give_card", { cardId });
+  }, [socket]);
 
   const acknowledgeExchange = useCallback(() => {
     setExchangeAnnouncing(false);
   }, []);
 
   const sendReaction = useCallback((emoji: string) => {
-    socket.emit("game:reaction", { emoji });
-  }, [userId]);
+    socket?.emit("game:reaction", { emoji });
+  }, [socket]);
 
   const clearError = useCallback(() => setError(null), []);
   const clearPlayerLeft = useCallback(() => setPlayerLeft(false), []);

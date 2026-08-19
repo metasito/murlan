@@ -65,12 +65,8 @@ export function connectSocket(userId: string): Socket {
   return socket;
 }
 
-export function getSocket(userId: string): Socket {
-  const s = socketMap.get(userId);
-  if (!s) {
-    return connectSocket(userId);
-  }
-  return s;
+export function getSocket(userId: string): Socket | null {
+  return socketMap.get(userId) ?? null;
 }
 
 export function disconnectSocket(userId: string) {

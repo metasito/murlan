@@ -31,7 +31,9 @@ const mockSocket = {
   },
 };
 
-jest.mock('@/lib/socket', () => ({ getSocket: () => mockSocket }));
+jest.mock('@/context/SocketContext', () => ({
+  useSocket: () => ({ socket: mockSocket }),
+}));
 
 // context/OnlineGameContext.tsx ACTIVE_ROOM_KEY — the cold-start rejoin handle.
 const ACTIVE_ROOM_KEY = '@murlan_active_room';

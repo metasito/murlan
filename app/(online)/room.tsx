@@ -19,7 +19,6 @@ import { useOnlineGame } from "@/context/OnlineGameContext";
 import { useNotification } from "@/context/NotificationContext";
 import { useAuth } from "@/context/AuthContext";
 import { useSocket } from "@/context/SocketContext";
-import { getSocket } from "@/lib/socket";
 import { Colors, Spacing, Radius, FontSize, Motion, TOUCH_TARGET_MIN, Type } from '@/lib/theme';
 import { targetsFor, TEAMS_PLAYER_COUNT } from "@/lib/gameEngine";
 import type { MatchLength } from "@/lib/gameEngine";
@@ -223,8 +222,7 @@ function InviteFriendsPanel({
   );
 
   function handleInvite(friend: FriendInfo) {
-    const socket = getSocket(myUserId);
-    socket.emit("friend:invite", { friendUserId: friend.id, roomCode });
+    socket?.emit("friend:invite", { friendUserId: friend.id, roomCode });
     setSentIds((prev) => new Set(prev).add(friend.id));
     setTimeout(() => {
       setSentIds((prev) => {
