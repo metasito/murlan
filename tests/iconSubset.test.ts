@@ -6,7 +6,6 @@ import assert from "node:assert/strict";
 import { existsSync, readFileSync, statSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
-// @ts-ignore -- .mjs helper shared with scripts/build-icon-fonts.mjs
 import { analyzeIcons, analyzeSnippet, iconCharacters } from "../scripts/iconSubsetChars.mjs";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");

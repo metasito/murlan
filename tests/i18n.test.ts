@@ -12,13 +12,9 @@ import { readFileSync, readdirSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
 import ts from "typescript";
-// @ts-ignore — see tests/helpers.ts for why the .ts extension is required
 import { it } from "../locales/it.ts";
-// @ts-ignore
 import { en } from "../locales/en.ts";
-// @ts-ignore
 import { sq } from "../locales/sq.ts";
-// @ts-ignore
 import { translate, interpolate, DEFAULT_LOCALE } from "../lib/i18n.ts";
 
 const LOCALES = { it, en, sq } as const;

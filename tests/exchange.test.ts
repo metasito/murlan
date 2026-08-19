@@ -1,6 +1,5 @@
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
-// @ts-ignore — see tests/helpers.ts
 import {
   c,
   getBestCardFromHand,

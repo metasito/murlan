@@ -30,6 +30,8 @@ module.exports = defineConfig([
       "server_dist/**",
       ".expo/**",
       "node_modules/**",
+      "tests/e2e/playwright-report/**",
+      "tests/e2e/test-results/**",
     ],
   },
   {
@@ -66,6 +68,21 @@ module.exports = defineConfig([
           message:
             "Use a FontSize, Radius or Spacing token. A one-off that fits no step may be a named module constant, but not a bare number in a style object.",
         },
+      ],
+    },
+  },
+  {
+    // `eslint-config-expo` registers `@typescript-eslint` only for TS files, and
+    // a flat-config block may only name a rule from a plugin registered for the
+    // same file — a wider glob here fails config resolution on tests/**/*.mjs.
+    files: ["tests/**/*.{ts,tsx}"],
+    rules: {
+      // `@ts-ignore` suppresses whatever error lands on the next line, for as
+      // long as it stays there; `@ts-expect-error` goes red the moment the
+      // error it names is gone. Only the self-cancelling form is allowed.
+      "@typescript-eslint/ban-ts-comment": [
+        "error",
+        { "ts-ignore": true, "ts-expect-error": "allow-with-description" },
       ],
     },
   },

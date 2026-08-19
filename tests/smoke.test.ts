@@ -1,6 +1,5 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-// @ts-ignore — see tests/helpers.ts for why the .ts extension is required
 import { buildCombination, canPlayerPlay, c } from "./helpers.ts";
 
 test("harness works and engine imports", () => {

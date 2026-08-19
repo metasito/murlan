@@ -5,7 +5,6 @@
 // loads under plain `node --test` (see serverLoadable.test.ts).
 import { test, describe, beforeEach } from "node:test";
 import assert from "node:assert/strict";
-// @ts-ignore — .ts extension required by Node's type-stripping loader
 import { allowSocketAction, __resetRateLimits } from "../server/socketSafety.ts";
 
 /** Minimal stand-in for the only part of Socket the limiter touches. */

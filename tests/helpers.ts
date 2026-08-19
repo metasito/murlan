@@ -1,12 +1,9 @@
 // Shared fixtures for the engine test suite.
 //
-// The `.ts` extension on the import is required by Node's ESM loader when it
-// type-strips these files (`node --test tests/**/*.test.ts`). The repo tsconfig
-// does not set `allowImportingTsExtensions`, so the import is silenced for the
-// type checker only — the imported symbols keep their real types.
-// @ts-ignore
+// The `.ts` extension on the imports across this suite is required by Node's ESM
+// loader when it type-strips them (`node --test tests/**/*.test.ts`);
+// tsconfig.json's `allowImportingTsExtensions` is what lets `tsc` accept it.
 export * from "../lib/gameEngine.ts";
-// @ts-ignore
 import type {
   Card,
   Combination,

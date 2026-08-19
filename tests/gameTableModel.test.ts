@@ -6,9 +6,7 @@ import assert from "node:assert/strict";
 import { readdirSync, readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
-// @ts-ignore — see tests/helpers.ts for why the .ts extension is required
 import { CARD_H, CARD_W } from "../components/cardFaceModel.ts";
-// @ts-ignore
 import {
   BTN_W,
   BTN_H,
@@ -45,7 +43,6 @@ import {
   type ComboShape,
   type TableA11yStrings,
 } from "../components/gameTableModel.ts";
-// @ts-ignore
 import {
   buildCombination,
   processPass,

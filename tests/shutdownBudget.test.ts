@@ -5,9 +5,7 @@
 // that have to hold for a healthy shutdown to always exit 0.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-// @ts-ignore — .ts extension required by Node's type-stripping loader
 import { pool, QUERY_TIMEOUT_MS } from "../server/db.ts";
-// @ts-ignore — .ts extension required by Node's type-stripping loader
 import { DRAIN_TIMEOUT_MS, FORCED_EXIT_MS, PLATFORM_GRACE_MS } from "../server/shutdown.ts";
 
 test("the drain outlasts a single query's own timeout", () => {
