@@ -45,6 +45,29 @@ describe("locale key parity", () => {
       `key counts differ: ${LOCALE_NAMES.map((n, i) => `${n}=${counts[i]}`).join(", ")}`
     );
   });
+
+  // Shown to the whole table several times a hand, so a form that assumes the
+  // player's gender misgenders someone on most hands. Italian and Albanian both
+  // inflect these; English does not.
+  test("no server.* string assumes the player's gender", () => {
+    const GENDERED = {
+      it: /\b(inattivo|inattiva|disconnesso|disconnessa|rientrato|rientrata|connesso|connessa)\b/i,
+      sq: /\b(joaktiv|joaktive|shkëputur|kthyer)\b/i,
+    } as const;
+
+    for (const [name, pattern] of Object.entries(GENDERED)) {
+      const catalogue = LOCALES[name as LocaleName] as Record<string, string>;
+      const offenders = Object.entries(catalogue)
+        .filter(([key]) => key.startsWith("server."))
+        .filter(([, value]) => pattern.test(value))
+        .map(([key]) => key);
+      assert.deepEqual(
+        offenders,
+        [],
+        `${name}: these assume a gender — ${offenders.join(", ")}`
+      );
+    }
+  });
 });
 
 describe("no empty translations", () => {

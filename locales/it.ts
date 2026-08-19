@@ -39,8 +39,8 @@ export const it: Record<keyof typeof en, string> = {
   "server.FRIEND_REQUEST_NOT_FOUND": "Richiesta non trovata",
   "server.GAME_INTERRUPTED_EMPTY_SEAT": "Partita interrotta: un posto vuoto non può giocare.",
   "server.GAME_INTERRUPTED_SERVER_ERROR": "Partita interrotta: errore del server.",
-  "server.PLAYER_AFK_AUTO_PASS": "{{username}} è inattivo — passato automaticamente",
-  "server.PLAYER_AFK_AUTO_EXCHANGE": "{{username}} è inattivo — carta scambiata automaticamente",
+  "server.PLAYER_AFK_AUTO_PASS": "{{username}} non risponde — passo automatico",
+  "server.PLAYER_AFK_AUTO_EXCHANGE": "{{username}} non risponde — carta scambiata automaticamente",
   "server.PLAYER_LEFT_ABANDONED": "{{username}} ha lasciato la partita.",
   "server.PLAYER_LEFT_BOT_TAKEOVER": "{{username}} ha lasciato la partita — il computer gioca al suo posto.",
   "server.REPLAY_NOT_FOUND": "Replay non trovato",
@@ -65,8 +65,8 @@ export const it: Record<keyof typeof en, string> = {
   "server.SERVER_ERROR": "Errore del server",
   "server.INVALID_CARD": "Carta non valida",
   "server.NOT_FRIENDS": "Non siete amici",
-  "server.PLAYER_DISCONNECTED_GRACE": "{{username}} si è disconnesso. Ha {{seconds}} secondi per rientrare.",
-  "server.PLAYER_RECONNECTED": "{{username}} è rientrato.",
+  "server.PLAYER_DISCONNECTED_GRACE": "{{username}} ha perso la connessione. Ha {{seconds}} secondi per rientrare.",
+  "server.PLAYER_RECONNECTED": "{{username}} è di nuovo in partita.",
   "server.SESSION_REPLACED": "Il tuo account è stato aperto altrove. Questa sessione è stata chiusa.",
 
   // ---------------------------------------------------------------- auth.*

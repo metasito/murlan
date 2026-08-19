@@ -61,8 +61,8 @@ export const sq: Record<keyof typeof en, string> = {
   "server.FRIEND_REQUEST_NOT_FOUND": "Kërkesa nuk u gjet",
   "server.GAME_INTERRUPTED_EMPTY_SEAT": "Loja u ndërpre: një vend bosh nuk mund të luajë.",
   "server.GAME_INTERRUPTED_SERVER_ERROR": "Loja u ndërpre: gabim i serverit.",
-  "server.PLAYER_AFK_AUTO_PASS": "{{username}} është joaktiv — kaloi automatikisht",
-  "server.PLAYER_AFK_AUTO_EXCHANGE": "{{username}} është joaktiv — letra u shkëmbye automatikisht",
+  "server.PLAYER_AFK_AUTO_PASS": "{{username}} nuk përgjigjet — kaloi automatikisht",
+  "server.PLAYER_AFK_AUTO_EXCHANGE": "{{username}} nuk përgjigjet — letra u shkëmbye automatikisht",
   "server.PLAYER_LEFT_ABANDONED": "{{username}} u largua nga loja.",
   "server.PLAYER_LEFT_BOT_TAKEOVER": "{{username}} u largua nga loja — kompjuteri po luan në vendin e tij.",
   "server.REPLAY_NOT_FOUND": "Përsëritja nuk u gjet",
@@ -87,8 +87,8 @@ export const sq: Record<keyof typeof en, string> = {
   "server.SERVER_ERROR": "Gabim i serverit",
   "server.INVALID_CARD": "Letër e pavlefshme",
   "server.NOT_FRIENDS": "Nuk jeni miq",
-  "server.PLAYER_DISCONNECTED_GRACE": "{{username}} u shkëput. Ka {{seconds}} sekonda për t'u rikthyer.",
-  "server.PLAYER_RECONNECTED": "{{username}} u kthye.",
+  "server.PLAYER_DISCONNECTED_GRACE": "{{username}} humbi lidhjen. Ka {{seconds}} sekonda për t'u rikthyer.",
+  "server.PLAYER_RECONNECTED": "{{username}} është sërish në lojë.",
   "server.SESSION_REPLACED": "Llogaria jote u hap diku tjetër. Kjo seancë u mbyll.",
 
   // ---------------------------------------------------------------- auth.*
