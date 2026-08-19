@@ -1,18 +1,9 @@
-// Italian is the source of truth for Murlan's UI copy: the player base is
-// Italian and this is the wording that was already shipping. Every other
-// locale file (en.ts, sq.ts) is required, at the type level, to translate
-// exactly this key set — see lib/i18n.ts and tests/i18n.test.ts.
-//
-// Keys are namespaced `<area>.<name>` by the screen or component they came
-// from. `server.*` holds the strings rendered for machine-readable codes
-// emitted by server/socket.ts and server/routes.ts (see lib/i18n.ts's
-// `translateServerPayload`) — those are not extracted from JSX. The server
-// itself is written in English and ships only a code plus an English fallback;
-// every code it can emit must have a key here, which tests/i18n.test.ts pins.
-//
-// Interpolation uses `{{name}}` placeholders. Simple pluralisation uses a
-// `_one` / `_other` key pair consumed by `tn()`.
-export const it = {
+// Italian translation. Must carry exactly the key set of locales/en.ts, which
+// is the source of truth — a missing or misspelled key here is a compile error
+// (see lib/i18n.ts).
+import { en } from "./en.ts";
+
+export const it: Record<keyof typeof en, string> = {
   // ---------------------------------------------------------------- common
   "common.cancel": "Annulla",
   "common.close": "Chiudi",
@@ -30,9 +21,6 @@ export const it = {
   "common.copied": "Copiato!",
 
   // ------------------------------------------------------------- server.*
-  // Mirrors the plain-text Italian the server keeps as a safety fallback in
-  // the same payload (server/socket.ts, server/routes.ts) — kept byte-
-  // identical to that fallback text on purpose, see lib/i18n.ts.
   "server.AUTH_RATE_LIMITED": "Troppi tentativi, riprova tra 15 minuti.",
   "server.RATE_LIMITED": "Troppe richieste, rallenta.",
   "server.NOT_AUTHENTICATED": "Non autenticato",

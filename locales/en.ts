@@ -1,8 +1,16 @@
-// English translation. Must satisfy exactly the key set of locales/it.ts —
-// a missing or misspelled key here is a compile error (see lib/i18n.ts).
-import { it } from "./it.ts";
-
-export const en: Record<keyof typeof it, string> = {
+// The source of truth for Murlan's UI copy. `TranslationKey` is derived from
+// this object, so it.ts and sq.ts are each required at the type level to carry
+// exactly these keys — a key added here is a compile error until every locale
+// translates it (see lib/i18n.ts and tests/i18n.test.ts).
+//
+// Keys are namespaced `<area>.<name>` by the screen or component they came
+// from. `server.*` holds the strings rendered for the machine-readable codes
+// server/socket.ts and server/routes.ts emit (see lib/i18n.ts's
+// `translateServerPayload`) — those are not extracted from JSX.
+//
+// Interpolation uses `{{name}}` placeholders. Simple pluralisation uses a
+// `_one` / `_other` key pair consumed by `tn()`.
+export const en = {
   // ---------------------------------------------------------------- common
   "common.cancel": "Cancel",
   "common.close": "Close",

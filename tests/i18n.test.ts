@@ -1,8 +1,8 @@
 // Localization layer tests (lib/i18n.ts, locales/{it,en,sq}.ts).
 //
 // This is what stops a future string being added to one locale only: the
-// type system already forces locales/en.ts and locales/sq.ts to declare the
-// exact key set of locales/it.ts (see the `Record<keyof typeof it, string>`
+// type system already forces locales/it.ts and locales/sq.ts to declare the
+// exact key set of locales/en.ts (see the `Record<keyof typeof en, string>`
 // annotation on each), but that only catches a *missing* key, not a stray
 // runtime mismatch, an empty translation, or an interpolation placeholder
 // that no longer matches across locales — hence these tests.
@@ -18,22 +18,22 @@ import { en } from "../locales/en.ts";
 // @ts-ignore
 import { sq } from "../locales/sq.ts";
 // @ts-ignore
-import { translate, interpolate } from "../lib/i18n.ts";
+import { translate, interpolate, DEFAULT_LOCALE } from "../lib/i18n.ts";
 
 const LOCALES = { it, en, sq } as const;
 type LocaleName = keyof typeof LOCALES;
 const LOCALE_NAMES = Object.keys(LOCALES) as LocaleName[];
 
 describe("locale key parity", () => {
-  const itKeys = Object.keys(it).sort();
+  const enKeys = Object.keys(en).sort();
 
   for (const name of LOCALE_NAMES) {
-    test(`${name} has exactly the same key set as it (the source of truth)`, () => {
+    test(`${name} has exactly the same key set as en (the source of truth)`, () => {
       const keys = Object.keys(LOCALES[name]).sort();
       assert.deepEqual(
         keys,
-        itKeys,
-        `${name} key set diverges from locales/it.ts`
+        enKeys,
+        `${name} key set diverges from locales/en.ts`
       );
     });
   }
@@ -89,16 +89,16 @@ describe("interpolation placeholders stay in sync across locales", () => {
     return [...template.matchAll(/\{\{(\w+)\}\}/g)].map((m) => m[1]).sort();
   }
 
-  test("every locale uses the same {{placeholder}} names as it for a given key", () => {
-    for (const key of Object.keys(it) as (keyof typeof it)[]) {
-      const expected = placeholders(it[key]);
+  test("every locale uses the same {{placeholder}} names as en for a given key", () => {
+    for (const key of Object.keys(en) as (keyof typeof en)[]) {
+      const expected = placeholders(en[key]);
       if (expected.length === 0) continue;
       for (const name of LOCALE_NAMES) {
         const actual = placeholders(LOCALES[name][key]);
         assert.deepEqual(
           actual,
           expected,
-          `${name}["${key}"] placeholders ${JSON.stringify(actual)} != it's ${JSON.stringify(expected)}`
+          `${name}["${key}"] placeholders ${JSON.stringify(actual)} != en's ${JSON.stringify(expected)}`
         );
       }
     }
@@ -134,6 +134,32 @@ describe("interpolate()", () => {
 });
 
 describe("translate() produces the expected output per locale", () => {
+  // The two halves of "a missing key renders English": translate() resolves a
+  // gap through DEFAULT_LOCALE, and en.ts is the catalogue the other two are
+  // typed against — so a key can only be missing from it.ts or sq.ts.
+  test("English is the fallback catalogue and the key set every locale derives from", () => {
+    assert.equal(DEFAULT_LOCALE, "en");
+
+    const localeDir = path.resolve(
+      path.dirname(fileURLToPath(import.meta.url)),
+      "..",
+      "locales"
+    );
+    for (const name of ["it", "sq"]) {
+      const src = readFileSync(path.join(localeDir, `${name}.ts`), "utf8");
+      assert.match(
+        src,
+        new RegExp(`export const ${name}: Record<keyof typeof en, string>`),
+        `locales/${name}.ts must derive its key set from en`
+      );
+    }
+    assert.equal(
+      /export const en\s*=/.test(readFileSync(path.join(localeDir, "en.ts"), "utf8")),
+      true,
+      "locales/en.ts must declare the key set itself, not derive it"
+    );
+  });
+
   test("simple key, no params, in every locale", () => {
     assert.equal(translate("it", "common.ok"), "OK");
     assert.equal(translate("en", "common.ok"), "OK");
@@ -183,7 +209,7 @@ describe("translate() produces the expected output per locale", () => {
     assert.ok(emitted.size > 10, `expected to find the server's codes, got ${emitted.size}`);
 
     const missing = [...emitted].filter(
-      (code) => !Object.prototype.hasOwnProperty.call(it, `server.${code}`)
+      (code) => !Object.prototype.hasOwnProperty.call(en, `server.${code}`)
     );
     assert.deepEqual(
       missing,
@@ -219,7 +245,7 @@ describe("translate() produces the expected output per locale", () => {
     );
     for (const locale of ["it", "en", "sq"] as const) {
       const rendered = [...codes].map((code) =>
-        translate(locale, `server.${code}` as keyof typeof it)
+        translate(locale, `server.${code}` as keyof typeof en)
       );
       assert.equal(
         new Set(rendered).size,
@@ -238,7 +264,7 @@ describe("translate() produces the expected output per locale", () => {
       .filter((f) => f.endsWith(".ts"))
       .map((f) => readFileSync(path.join(serverDir, f), "utf8"))
       .join("\n");
-    const unused = Object.keys(it)
+    const unused = Object.keys(en)
       .filter((key) => key.startsWith("server."))
       .map((key) => key.slice("server.".length))
       .filter((code) => !sources.includes(`"${code}"`));

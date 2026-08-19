@@ -1,5 +1,6 @@
-// Albanian translation. Must satisfy exactly the key set of locales/it.ts —
-// a missing or misspelled key here is a compile error (see lib/i18n.ts).
+// Albanian translation. Must carry exactly the key set of locales/en.ts, which
+// is the source of truth — a missing or misspelled key here is a compile error
+// (see lib/i18n.ts).
 //
 // SOURCED terms (from docs/RULES.md's cited Albanian-language research,
 // visixplay.com/murlan/rules.php AL text) and used verbatim below:
@@ -22,9 +23,9 @@
 // are the highest-priority subset to check first, since getting the game's
 // own vocabulary wrong is the most visible kind of mistake to a native
 // Albanian player.
-import { it } from "./it.ts";
+import { en } from "./en.ts";
 
-export const sq: Record<keyof typeof it, string> = {
+export const sq: Record<keyof typeof en, string> = {
   // ---------------------------------------------------------------- common
   "common.cancel": "Anulo",
   "common.close": "Mbyll",
