@@ -14,11 +14,17 @@ export interface JoinableRoom {
   containsUser: boolean;
 }
 
+/** The pre-check at POST /api/auth/register cannot see a concurrent insert. */
+export class UsernameTakenError extends Error {
+  constructor() {
+    super("Username already taken");
+  }
+}
+
 export interface IStorage {
   deleteUser(userId: string): Promise<void>;
   getUser(id: string): Promise<User | undefined>;
   getUserByUsername(username: string): Promise<User | undefined>;
-  searchUserByUsername(username: string): Promise<User | undefined>;
   createUser(user: InsertUser): Promise<User>;
   updateLastSeen(userId: string): Promise<void>;
 
@@ -137,8 +143,11 @@ class DrizzleStorage implements IStorage {
     return user;
   }
 
-  async getUserByUsername(username: string) {
-    const [user] = await db.select().from(users).where(eq(users.username, username));
+  async getUserByUsername(username: string): Promise<User | undefined> {
+    const [user] = await db
+      .select()
+      .from(users)
+      .where(sql`lower(${users.username}) = lower(${username})`);
     return user;
   }
 
@@ -157,6 +166,9 @@ class DrizzleStorage implements IStorage {
         return user;
       } catch (err: any) {
         if (err?.constraint?.includes("friend_code") && attempt < 9) continue;
+        if (err?.code === "23505" && err?.constraint?.includes("username")) {
+          throw new UsernameTakenError();
+        }
         throw err;
       }
     }
@@ -437,13 +449,6 @@ class DrizzleStorage implements IStorage {
     return deleted.length > 0;
   }
 
-  async searchUserByUsername(username: string): Promise<User | undefined> {
-    const [user] = await db
-      .select()
-      .from(users)
-      .where(sql`lower(${users.username}) = lower(${username})`);
-    return user;
-  }
 
   async getSentFriendRequests(userId: string): Promise<(Friend & { recipient: User })[]> {
     const rows = await db

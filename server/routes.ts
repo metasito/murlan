@@ -2,7 +2,7 @@ import type { Express, Request, Response } from "express";
 import { createServer, type Server } from "node:http";
 import bcrypt from "bcryptjs";
 import rateLimit from "express-rate-limit";
-import { storage } from "./storage.ts";
+import { storage, UsernameTakenError } from "./storage.ts";
 import { logger } from "./logger.ts";
 import { validate } from "./validate.ts";
 import {
@@ -128,14 +128,21 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post("/api/auth/register", authLimiter, validate(RegisterSchema), async (req, res) => {
     const { username, password } = req.body as { username: string; password: string };
 
-    const existing = await storage.searchUserByUsername(username);
+    const existing = await storage.getUserByUsername(username);
     if (existing) {
       res.status(409).json({ message: "Username already taken", code: "USERNAME_TAKEN" });
       return;
     }
 
     const passwordHash = await bcrypt.hash(password, 10);
-    const user = await storage.createUser({ username, password: passwordHash });
+    let user;
+    try {
+      user = await storage.createUser({ username, password: passwordHash });
+    } catch (err) {
+      if (!(err instanceof UsernameTakenError)) throw err;
+      res.status(409).json({ message: "Username already taken", code: "USERNAME_TAKEN" });
+      return;
+    }
 
     // Regenerating gives the new account a fresh session id instead of writing
     // into whatever session the registration request already carried —
@@ -281,7 +288,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.status(400).json({ message: "Invalid username", code: "INVALID_USERNAME" });
       return;
     }
-    const found = await storage.searchUserByUsername(username.data);
+    const found = await storage.getUserByUsername(username.data);
     if (!found || found.id === req.session.userId) {
       res.status(404).json({ message: "User not found", code: "USER_NOT_FOUND" });
       return;
@@ -300,7 +307,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post("/api/friends/add", requireAuth, friendLimiter, validate(AddFriendSchema), async (req, res) => {
     const { username } = req.body as { username: string };
 
-    const friend = await storage.searchUserByUsername(username);
+    const friend = await storage.getUserByUsername(username);
     if (!friend) {
       res.status(404).json({ message: "User not found", code: "USER_NOT_FOUND" });
       return;
