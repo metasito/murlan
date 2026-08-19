@@ -1,12 +1,13 @@
 // tests/iconSubset.test.ts — the shipped icon subsets carry every glyph the app
-// can render, and no icon name is built at runtime where the scan cannot see it.
+// can render, and no icon name is built at runtime where the resolver cannot
+// follow it.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
+import { existsSync, readFileSync, statSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
 // @ts-ignore -- .mjs helper shared with scripts/build-icon-fonts.mjs
-import { iconNames, iconCharacters } from "../scripts/iconSubsetChars.mjs";
+import { analyzeIcons, analyzeSnippet, iconCharacters } from "../scripts/iconSubsetChars.mjs";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const glyphmapDir = path.join(
@@ -14,8 +15,20 @@ const glyphmapDir = path.join(
   "node_modules/@expo/vector-icons/build/vendor/react-native-vector-icons/glyphmaps"
 );
 
+interface Unresolved {
+  file: string;
+  line: number;
+  family: string;
+  expr: string;
+}
+interface Analysis {
+  Ionicons: string[];
+  Feather: string[];
+  unresolved: Unresolved[];
+}
+
 test("every icon name the app uses exists in its family's glyphmap", () => {
-  const names = iconNames(repoRoot) as { Ionicons: string[]; Feather: string[] };
+  const names = analyzeIcons(repoRoot) as Analysis;
   for (const family of ["Ionicons", "Feather"] as const) {
     const glyphMap = JSON.parse(readFileSync(path.join(glyphmapDir, `${family}.json`), "utf8"));
     const unknown = names[family].filter((n) => glyphMap[n] === undefined);
@@ -37,44 +50,39 @@ test("the subsets exist and are much smaller than the originals", () => {
   }
 });
 
-// The scan reads literals — a direct `name="x"`, both branches of a `name={}`
-// ternary at any nesting depth, an `icon: "x"`/`icon="x"` table entry, and one
-// `const`/`let` hop from an icon-named binding (see scripts/iconSubsetChars.mjs).
-// A name assembled some other way — a template string, concatenation, a call,
-// a computed index written directly in the prop — is invisible to all of that
-// and would render as a blank box on the web with no error anywhere.
+// One resolver, not two. scripts/iconSubsetChars.mjs's `resolveValues` is what
+// both builds the manifest and answers this — the guard asks it "did you
+// resolve this expression", rather than judging the expression's shape on its
+// own, so the two cannot drift apart the way two independently written
+// regexes already have (twice, on this exact file). A name assembled some
+// other way — a template string, concatenation, a call the resolver cannot
+// follow, a computed index used directly in the prop — renders as a blank box
+// on the web with no error anywhere, which is what this refuses instead.
 test("no icon name is built at runtime", () => {
-  const files: string[] = [];
-  const walk = (dir: string) => {
-    for (const e of readdirSync(dir)) {
-      const p = path.join(dir, e);
-      if (statSync(p).isDirectory()) walk(p);
-      else if (/\.tsx?$/.test(e)) files.push(p);
-    }
-  };
-  for (const d of ["app", "components", "lib", "context"]) walk(path.join(repoRoot, d));
+  const { unresolved } = analyzeIcons(repoRoot) as Analysis;
+  assert.deepEqual(
+    unresolved,
+    [],
+    `icon names the resolver cannot follow:\n${unresolved
+      .map((u) => `${u.file}:${u.line}: <${u.family} name={${u.expr}}>`)
+      .join("\n")}`
+  );
+});
 
-  const offenders: string[] = [];
-  for (const file of files) {
-    const src = readFileSync(file, "utf8");
-    for (const m of src.matchAll(/<(Ionicons|Feather)\b[^>]*?\bname=\{([^}]+)\}/gs)) {
-      const expr = m[2].trim();
-      // A trailing TS `as <Type>` cast carries no runtime weight — it is
-      // stripped before judging the expression underneath it.
-      const stripped = expr.replace(/\s+as\s+[\s\S]+$/, "").trim();
-      const identifierOrMember = /^[A-Za-z_$][\w$]*(\.[A-Za-z_$][\w$]*)*$/.test(stripped);
-      // A ternary — including one nested in either branch — is resolvable as
-      // long as it contains none of the constructs a static scan cannot
-      // follow: a template literal, string concatenation, a function call, or
-      // a computed index. Whatever literal branches it has, the scan above
-      // already finds by the same `?`/`:` shape.
-      const hasDangerousConstruct = /[`+[\]]/.test(stripped) || /[A-Za-z0-9_$]\(/.test(stripped);
-      const literalTernary = !hasDangerousConstruct && stripped.includes("?") && stripped.includes(":");
-      const resolvable = identifierOrMember || literalTernary;
-      if (!resolvable) offenders.push(`${path.relative(repoRoot, file)}: name={${expr}}`);
-    }
-  }
-  assert.deepEqual(offenders, [], `icon names the subset scan cannot see:\n${offenders.join("\n")}`);
+// The guard is only worth having if it can fail. A synthetic snippet, not a
+// real file: proves the rejection path is live without waiting for the next
+// regression to prove it by accident.
+test("the resolver rejects a ternary between two names it cannot trace", () => {
+  const bad = analyzeSnippet(
+    "function X() { return <Ionicons name={cond ? a : b} />; }"
+  ) as Analysis;
+  assert.equal(bad.unresolved.length, 1, "a ternary between two free identifiers must not resolve");
+
+  const good = analyzeSnippet(
+    'function X() { return <Ionicons name={cond ? "home" : "star"} />; }'
+  ) as Analysis;
+  assert.deepEqual(good.unresolved, []);
+  assert.deepEqual(good.Ionicons, ["home", "star"]);
 });
 
 test("the characters the subsets were built from cover every name", () => {
