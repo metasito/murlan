@@ -205,14 +205,32 @@ test("the non-literal scanner catches a constant event name", () => {
 
 // The counterpart: the wrapper is only worth anything if the events actually
 // reach it, so a refactor that quietly stopped calling it should fail here too.
+const WRAPPED_RE = /onEvent\(\s*\n\s*socket,\s*\n\s*"([^"]+)"/g;
+
+function wrappedEventsIn(source: string): string[] {
+  return [...source.matchAll(WRAPPED_RE)].map((m) => m[1]);
+}
+
 test("the events that exist are registered through the wrapper", () => {
   const source = readFileSync(path.join(repoRoot, "server/socket.ts"), "utf8");
-  const wrapped = [...source.matchAll(/onEvent\(\s*\n\s*socket,\s*\n\s*"([^"]+)"/g)].map((m) => m[1]);
+  const wrapped = wrappedEventsIn(source);
 
   assert.ok(
     wrapped.length >= 15,
     `only ${wrapped.length} events go through onEvent, which is fewer than this server has ` +
       `ever had — either the registrations moved or this test stopped finding them`
+  );
+
+  // The split (ARCH-04) moved two thirds of this file elsewhere; a floor alone
+  // would let a registration leave with the next extraction and stay silent.
+  const elsewhere = serverSources()
+    .filter(([file]) => file !== "server/socket.ts")
+    .flatMap(([file, src]) => wrappedEventsIn(src).map((e) => `${file}: ${e}`));
+  assert.deepEqual(
+    elsewhere,
+    [],
+    `every onEvent registration belongs in server/socket.ts, where this file and ` +
+      `tests/serverLoadable.test.ts look for it: ${elsewhere.join(", ")}`
   );
   for (const required of [
     "room:spectate",
