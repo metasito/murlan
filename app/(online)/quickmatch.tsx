@@ -4,11 +4,18 @@ import {
   Text,
   StyleSheet,
   Pressable,
-  Animated,
   BackHandler,
   useWindowDimensions,
   ActivityIndicator,
 } from "react-native";
+import Animated, {
+  Easing,
+  useAnimatedStyle,
+  useSharedValue,
+  withRepeat,
+  withSequence,
+  withTiming,
+} from "react-native-reanimated";
 import { router, useNavigation } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import Ionicons from "@expo/vector-icons/Ionicons";
@@ -18,6 +25,7 @@ import { MenuLayout, CONTENT_H_PAD } from "@/components/MenuLayout";
 import { MenuCard } from "@/components/MenuCard";
 import { MenuButton } from "@/components/MenuButton";
 import { useTranslation } from "@/lib/i18n";
+import { usePrefersReducedMotion } from "@/lib/accessibility";
 
 type GameMode = "free_for_all" | "teams";
 
@@ -81,7 +89,8 @@ export default function QuickmatchScreen() {
   const [phase, setPhase] = useState<"selecting" | "searching">("selecting");
   const [selectedMode, setSelectedMode] = useState<ModeOption | null>(null);
   const [dotCount, setDotCount] = useState(0);
-  const [pulseAnim] = useState(() => new Animated.Value(1));
+  const pulse = useSharedValue(1);
+  const reduceMotion = usePrefersReducedMotion();
 
   const isLandscape = W > H;
 
@@ -115,16 +124,23 @@ export default function QuickmatchScreen() {
   }, [phase, handleCancelSearch, navigation]);
 
   useEffect(() => {
-    if (phase !== "searching") return;
-    const pulse = Animated.loop(
-      Animated.sequence([
-        Animated.timing(pulseAnim, { toValue: 1.15, duration: 900, useNativeDriver: true }),
-        Animated.timing(pulseAnim, { toValue: 1, duration: 900, useNativeDriver: true }),
-      ])
+    if (phase !== "searching" || reduceMotion) {
+      pulse.value = 1;
+      return;
+    }
+    pulse.value = withRepeat(
+      withSequence(
+        withTiming(1.15, { duration: 900, easing: Easing.inOut(Easing.sin) }),
+        withTiming(1, { duration: 900, easing: Easing.inOut(Easing.sin) })
+      ),
+      -1,
+      false
     );
-    pulse.start();
-    return () => pulse.stop();
-  }, [phase, pulseAnim]);
+  }, [phase, pulse, reduceMotion]);
+
+  // After the effect above, not before it: reading a shared value here freezes
+  // it for the React Compiler, and the assignment then bails the whole file.
+  const pulseAnim = useAnimatedStyle(() => ({ transform: [{ scale: pulse.value }] }));
 
   useEffect(() => {
     if (phase !== "searching") return;
@@ -224,7 +240,7 @@ export default function QuickmatchScreen() {
       <View style={[styles.searchContent, isLandscape && styles.searchContentLandscape]}>
         <Animated.View style={[
           styles.globeWrapper,
-          { transform: [{ scale: pulseAnim }] },
+          pulseAnim,
           isLandscape && { marginBottom: 0 },
         ]}>
           <View style={[styles.globeCircle, isLandscape && styles.globeCircleSmall]}>

@@ -28,8 +28,14 @@ function sourcesUnder(dir: string): string[] {
   return out;
 }
 
-/** Reanimated's animation builders. Any of them puts a value in motion. */
-const ANIMATES = /\bwith(Timing|Spring|Repeat|Sequence|Decay)\s*\(/;
+/**
+ * Every animation builder either library offers. Reanimated's are what the app
+ * uses; React Native's own `Animated` is here because a file built on it was
+ * invisible to a Reanimated-only pattern, and looped forever behind the
+ * setting's back for exactly that reason.
+ */
+const ANIMATES =
+  /\bwith(Timing|Spring|Repeat|Sequence|Decay)\s*\(|\bAnimated\.(timing|spring|decay|loop|sequence|parallel|stagger)\s*\(/;
 
 // These two are a coarse outer net, kept as a whole-file check even though
 // the per-call-site scanner below is the one that actually pins the
@@ -59,7 +65,7 @@ test("nothing loops forever without checking first", () => {
   const offenders: string[] = [];
   for (const rel of [...sourcesUnder("app"), ...sourcesUnder("components")]) {
     const source = readFileSync(path.join(repoRoot, rel), "utf8");
-    if (!/\bwithRepeat\s*\(/.test(source)) continue;
+    if (!/\bwithRepeat\s*\(|\bAnimated\.loop\s*\(/.test(source)) continue;
     if (source.includes("usePrefersReducedMotion")) continue;
     offenders.push(rel);
   }
