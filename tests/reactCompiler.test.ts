@@ -16,7 +16,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { createRequire } from "node:module";
-import { readFileSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
 
@@ -33,6 +33,10 @@ const reactCompiler = require("babel-plugin-react-compiler");
 const HOT_PATH = [
   "components/CardView.tsx",
   "components/GameShared.tsx",
+  // Derived rather than listed: a component moved into components/table/ stays compiled here.
+  ...readdirSync(path.join(repoRoot, "components", "table"))
+    .filter((f) => f.endsWith(".tsx"))
+    .map((f) => `components/table/${f}`),
   "app/game.tsx",
   "app/(online)/game.tsx",
 ];

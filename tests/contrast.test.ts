@@ -15,7 +15,7 @@
 import { Colors, Scrim, FeltGradients } from "../lib/tokens.ts";
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
 
@@ -86,22 +86,27 @@ const SURFACES = {
 // so a token could pass here at 4.60 and render at 3.43 where it is actually
 // drawn.
 //
-// Both colours are read out of components/GameShared.tsx rather than repeated
+// Both colours are read out of the table's own components rather than repeated
 // here, so a plate that is removed from a style is a failure rather than a
 // silent pass against a fill nothing paints.
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-const SHARED = readFileSync(path.join(repoRoot, "components", "GameShared.tsx"), "utf8");
+
+/** Every component source, concatenated; derived, so a style that moves stays readable. */
+const COMPONENTS = readdirSync(path.join(repoRoot, "components"), { recursive: true, encoding: "utf8" })
+  .filter((f) => f.endsWith(".tsx"))
+  .map((f) => readFileSync(path.join(repoRoot, "components", f), "utf8"))
+  .join("\n");
 const PALETTES: Record<string, Record<string, string>> = { Colors, Scrim };
 
-/** The body of a `name: { … }` entry in one of GameShared's StyleSheets. */
+/** The body of a `name: { … }` entry in one of the table's StyleSheets. */
 function styleBlock(style: string): string {
   const open = `\n  ${style}: {\n`;
-  const at = SHARED.indexOf(open);
-  assert.notEqual(at, -1, `components/GameShared.tsx has no style named ${style}`);
-  assert.equal(SHARED.indexOf(open, at + 1), -1, `${style} is defined more than once`);
-  const close = SHARED.indexOf("\n  },", at + open.length);
-  return SHARED.slice(at + open.length, close);
+  const at = COMPONENTS.indexOf(open);
+  assert.notEqual(at, -1, `no component declares a style named ${style}`);
+  assert.equal(COMPONENTS.indexOf(open, at + 1), -1, `${style} is defined more than once`);
+  const close = COMPONENTS.indexOf("\n  },", at + open.length);
+  return COMPONENTS.slice(at + open.length, close);
 }
 
 /** A style's `color` or `backgroundColor`, resolved to its token value. */
@@ -132,11 +137,11 @@ const ON_FELT_TEXT: { text: string; plate: string | null; stops: number[] }[] = 
 ];
 
 for (const { text, plate, stops } of ON_FELT_TEXT) {
-  test(`GameShared ${text} clears body text contrast on every felt stop`, () => {
+  test(`the table's ${text} clears body text contrast on every felt stop`, () => {
     const ink = styleColor(text, "color");
-    assert.ok(ink, `GameShared ${text} has no color`);
+    assert.ok(ink, `${text} has no color`);
     const fill = plate ? styleColor(plate, "backgroundColor") : null;
-    assert.ok(!plate || fill, `GameShared ${plate} no longer paints a background`);
+    assert.ok(!plate || fill, `${plate} no longer paints a background`);
 
     for (const [felt, gradient] of Object.entries(FeltGradients)) {
       for (const stop of stops) {
@@ -144,7 +149,7 @@ for (const { text, plate, stops } of ON_FELT_TEXT) {
         const ratio = contrastRatio(resolve(ink, backdrop), backdrop);
         assert.ok(
           ratio >= BODY_MIN,
-          `GameShared ${text} over ${felt} stop ${stop} is only ${ratio.toFixed(2)}:1, needs >=${BODY_MIN}:1`
+          `${text} over ${felt} stop ${stop} is only ${ratio.toFixed(2)}:1, needs >=${BODY_MIN}:1`
         );
       }
     }

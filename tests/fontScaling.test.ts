@@ -8,7 +8,7 @@
 // menus scroll and are deliberately left fully scalable.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
 // @ts-ignore
@@ -16,11 +16,15 @@ import { TABLE_FONT_SCALE_MAX } from "../lib/tokens.ts";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
-/** The three files that draw text inside the table's pinned geometry. */
+/** Every file that draws text inside the table's pinned geometry. */
 const FIXED_GEOMETRY = [
   "components/CardView.tsx",
   "components/GameTable.tsx",
   "components/GameShared.tsx",
+  // Derived rather than listed: a component moved into components/table/ stays scanned.
+  ...readdirSync(path.join(repoRoot, "components", "table"))
+    .filter((f) => f.endsWith(".tsx"))
+    .map((f) => `components/table/${f}`),
 ];
 
 const TEXT_TAG = /<(Text|Animated\.Text)(?=[\s>])([^>]*)/g;

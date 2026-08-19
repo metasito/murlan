@@ -10,7 +10,7 @@ import React from 'react';
 import { render } from '@testing-library/react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
-import { TopOppSlot, SideOppSlot } from '@/components/GameShared';
+import { TopOppSlot, SideOppSlot } from '@/components/table/seats';
 import type { Player } from '@/lib/gameEngine';
 import { it as itLocale } from '@/locales/it';
 
