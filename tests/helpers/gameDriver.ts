@@ -8,6 +8,7 @@
 import type { Socket } from "socket.io-client";
 import { getValidGivebackCards } from "../../lib/gameEngine.ts";
 import type { Card } from "../../lib/gameEngine.ts";
+import { DEADLINE_SCALE } from "./client.ts";
 
 export interface ExchangePhaseView {
   active: boolean;
@@ -68,7 +69,7 @@ export function driveHumansToGameOver(
       settled = true;
       cleanup();
       reject(new Error("timed out driving the table to game:over"));
-    }, timeoutMs);
+    }, timeoutMs * DEADLINE_SCALE);
 
     function cleanup() {
       clearTimeout(timer);
@@ -136,7 +137,7 @@ export async function waitForRow<T>(
   check: () => Promise<T | null>,
   ms = 5_000
 ): Promise<T> {
-  const deadline = Date.now() + ms;
+  const deadline = Date.now() + ms * DEADLINE_SCALE;
   for (;;) {
     const row = await check();
     if (row) return row;

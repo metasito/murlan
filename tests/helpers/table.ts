@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import type { Socket } from "socket.io-client";
 import type { Card } from "../../lib/gameEngine.ts";
-import { connectAs, waitFor, type RegisteredUser } from "./client.ts";
+import { connectAs, waitFor, DEADLINE_SCALE, type RegisteredUser } from "./client.ts";
 import type { TestServer } from "./testServer.ts";
 
 /**
@@ -145,7 +145,7 @@ export function driveHandToExchangeOrOver(
       settled = true;
       cleanup();
       reject(new Error("timed out driving a hand toward completion or an exchange phase"));
-    }, 15_000);
+    }, 15_000 * DEADLINE_SCALE);
 
     function cleanup() {
       clearTimeout(timer);
@@ -223,7 +223,7 @@ export function waitForDeal(socket: Socket, ms = 8_000): Promise<SanitizedState>
     const timer = setTimeout(() => {
       socket.off("game:state", onState);
       reject(new Error("timed out waiting for the next deal"));
-    }, ms);
+    }, ms * DEADLINE_SCALE);
     socket.on("game:state", onState);
   });
 }
