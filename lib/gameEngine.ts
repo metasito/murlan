@@ -1448,15 +1448,6 @@ export function matchIsClosing(args: {
   return leader + (playerCount - 1) >= target;
 }
 
-/**
- * How a bot answers the rematch question. Deterministic rather than random so
- * a table's answer is reproducible: a bot within reach of the leader wants
- * another game, a thoroughly beaten one does not.
- */
-export function botWantsRematch(botScore: number, leaderScore: number): boolean {
-  return leaderScore === 0 || botScore * 2 >= leaderScore;
-}
-
 /** Strictly more than half. A table split down the middle stops. */
 export function isMajority(yesCount: number, seatCount: number): boolean {
   return yesCount * 2 > seatCount;

@@ -64,6 +64,7 @@ jest.mock('@/context/GameContext', () => ({
     acknowledgeExchange: () => {},
     rematchPromptOpen: false,
     rematchAnswers: {},
+    rematchTally: { yes: 0, total: 0 },
     answerRematch: () => {},
     match: { length: 'single', target: 21 },
   }),

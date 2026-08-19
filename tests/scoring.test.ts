@@ -5,7 +5,6 @@ import {
   MATCH_TARGETS,
   targetsFor,
   addHandScores,
-  botWantsRematch,
   CLOSING_HAND_CARDS,
   foldHandIntoMatch,
   isMajority,
@@ -512,20 +511,6 @@ describe("the rematch decision", () => {
 
     test("nobody answering is never a majority", () => {
       for (const seats of [2, 3, 4]) assert.equal(isMajority(0, seats), false);
-    });
-  });
-
-  describe("botWantsRematch", () => {
-    test("a leader on nothing means the game has not started pulling apart", () => {
-      assert.equal(botWantsRematch(0, 0), true);
-    });
-
-    test("a bot at exactly half the leader still wants another", () => {
-      assert.equal(botWantsRematch(6, 12), true);
-    });
-
-    test("a thoroughly beaten bot does not", () => {
-      assert.equal(botWantsRematch(5, 12), false);
     });
   });
 

@@ -50,6 +50,7 @@ export default function GameScreen() {
     acknowledgeExchange,
     rematchPromptOpen,
     rematchAnswers,
+    rematchTally,
     answerRematch,
     match,
   } = useGame();
@@ -175,8 +176,8 @@ export default function GameScreen() {
       rematchPrompt={{
         visible: rematchPromptOpen,
         myAnswer,
-        yesCount: Object.values(rematchAnswers).filter(Boolean).length,
-        seatCount: gameState.players.length,
+        yesCount: rematchTally.yes,
+        seatCount: rematchTally.total || gameState.players.length,
         onAnswer: answerRematch,
       }}
     />
