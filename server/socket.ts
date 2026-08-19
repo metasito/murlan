@@ -677,6 +677,7 @@ export function setupSocket(httpServer: HttpServer) {
           gameState,
           playerMap,
           roomId,
+          joinCode: room.code,
           rematchVotes: new Set(),
           rematchIntents: new Map(),
           cumulativeScores: previous?.cumulativeScores ?? {},
@@ -1057,6 +1058,7 @@ export function setupSocket(httpServer: HttpServer) {
           const restoredPlayers = restoredState.players;
           const game: OnlineGameState = {
             roomId,
+            joinCode: restored.joinCode,
             gameState: restoredState,
             playerMap,
             rematchVotes: new Set(),
@@ -1392,6 +1394,22 @@ function seatedHumansOf(game: OnlineGameState) {
 }
 
 /**
+ * The room as the live game knows it, for when the `rooms` row cannot be read.
+ * Seat 0 is the host by construction, and `joinCode` is carried in the
+ * persisted envelope precisely so this stays answerable after a restart.
+ */
+function roomOf(game: OnlineGameState) {
+  return {
+    id: game.roomId,
+    code: game.joinCode,
+    hostUserId: game.playerMap[0] ?? null,
+    status: "in_progress",
+    gameMode: game.gameMode,
+    maxPlayers: game.maxPlayers,
+  };
+}
+
+/**
  * Re-sends `room:state` to a single reconnecting/rejoining socket. The
  * client's only route back into the game screen is `room` (non-null) ->
  * `/(online)/room` -> `gameState` (non-null) -> `/(online)/game`; replying to
@@ -1401,13 +1419,20 @@ function seatedHumansOf(game: OnlineGameState) {
  * failing has to cost the roster and not the reply.
  */
 async function emitRoomStateTo(socket: Socket, roomId: string, game: OnlineGameState) {
-  const room = await storage.getRoomById(roomId);
-  if (!room) return;
+  const room = await storage.getRoomById(roomId).catch((err: unknown) => {
+    logger.warn({ err, roomId }, "getRoomById failed; answering from the live game");
+    return undefined;
+  });
   const players = await storage.getRoomPlayers(roomId).catch((err: unknown) => {
     logger.warn({ err, roomId }, "getRoomPlayers failed; answering from the live roster");
-    return seatedHumansOf(game);
+    return [];
   });
-  socket.emit("room:state", roomStatePayload(room, players));
+  // A running game always seats at least one human, so an empty roster is the
+  // rows being gone rather than the table being empty.
+  socket.emit(
+    "room:state",
+    roomStatePayload(room ?? roomOf(game), players.length > 0 ? players : seatedHumansOf(game))
+  );
 }
 
 /**

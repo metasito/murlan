@@ -13,6 +13,8 @@ export interface OnlineGameState {
   /** engine seat index -> userId. A missing seat is a vacated (bot) seat. */
   playerMap: Record<number, string>;
   roomId: string;
+  /** The room's six-character join code, as `rooms.code` holds it. */
+  joinCode: string;
   /** Ready gate for the next manche of the running match, by userId. */
   rematchVotes: Set<string>;
   /**

@@ -107,6 +107,7 @@ function makeGame(overrides: Partial<OnlineGameState> = {}): OnlineGameState {
     gameState: finishedState(),
     playerMap: { 0: "u_alice", 1: "u_bob" },
     roomId: ROOM,
+    joinCode: "ABC123",
     rematchVotes: new Set(["u_alice"]),
     rematchIntents: new Map(),
     cumulativeScores: {},

@@ -125,7 +125,7 @@ export function persistGameState(roomId: string, game: OnlineGameState): Promise
   // GAME_SCHEMA_VERSION) rather than restoring a corrupt hand silently.
   const values = {
     roomId,
-    gameState: packPersistedState(game.gameState, game.handFlags, game.dealFirstSeat, {
+    gameState: packPersistedState(game.gameState, game.handFlags, game.dealFirstSeat, game.joinCode, {
       playerMap: game.playerMap,
       scores: game.cumulativeScores,
       gameMode: game.gameMode,

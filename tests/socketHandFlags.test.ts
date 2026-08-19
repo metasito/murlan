@@ -96,6 +96,7 @@ function rematchGame(overrides: {
     gameState: baseState({ players: seatPlayers(overrides.seats) }),
     playerMap: overrides.playerMap,
     roomId: "room_1",
+    joinCode: "ROOM01",
     rematchVotes: new Set<string>(),
     rematchIntents: overrides.rematchIntents,
     cumulativeScores: {},
