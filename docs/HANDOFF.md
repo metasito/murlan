@@ -47,6 +47,7 @@ Three artefacts are build outputs. Edit the script, not the result:
 
 - `assets/sounds/` — `node scripts/build-sounds.mjs`
 - `assets/images/cards/` — `node scripts/build-court-art.mjs`
+- `assets/fonts/*.subset.ttf` — `node scripts/build-icon-fonts.mjs`
 - `docs/BUNDLE.md` — `node scripts/bundle-report.mjs > docs/BUNDLE.md`
 
 ## Needs the owner, not more effort
