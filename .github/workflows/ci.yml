@@ -7,6 +7,9 @@ on:
   push:
     branches: [main]
   pull_request:
+  # A branch with no open PR yet has no other way to get a real run —
+  # `gh workflow run ci.yml --ref <branch>`.
+  workflow_dispatch:
 
 # Superseding a pull request's own push saves runner time; superseding `main`'s
 # run destroys the only evidence that merged code was ever tested — the docs
