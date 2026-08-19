@@ -313,3 +313,64 @@ finding itself requires to stay in `socket.ts`, so the target was unreachable as
 the handler bodies is a boundary no finding specifies and buys readability only.
 
 **Closed as designed, not deferred.**
+
+---
+
+## D11 — The room's join code is stored with the saved game · closes the RES-03 residual
+
+**Decision.** Store the six-character join code inside the versioned `game_state` envelope, so
+a cold-start rejoin can always render a room screen even when the `rooms` row is gone.
+
+**Why now rather than later.** Batch 13's schema v2 is merged but **not yet deployed**. Adding
+a field to the envelope before that deploy rides the same version bump and the same one-time
+disposal of live games. After the deploy it costs a second forced disposal for the same fix.
+This is the only window in which it is free.
+
+**Owed by** Batch 14, and it must land **before** the first `npm run db:push`.
+
+---
+
+## D12 — CI never cancels a run on `main` · closes the hollow-green gap
+
+**Decision.** `cancel-in-progress` applies to pull requests only:
+`cancel-in-progress: ${{ github.event_name == 'pull_request' }}`.
+
+**Why.** A merge's run was being cancelled by the documentation commit pushed seconds after it,
+and that commit skips every real step because it only touches prose — so `main` showed green
+having tested nothing. Measured: batch 11's and batch 12's post-merge runs each executed **0 of
+5** real steps. The cancellation exists to save runner time on rapid PR pushes, which is not a
+situation `main` is ever in.
+
+The prose skip itself is correct and stays: it is an allowlist that fails safe, and it is what
+makes a docs-only commit cheap.
+
+**Owed by** Batch 14. Because the merge commit carries the workflow it runs under, shipping this
+in Batch 14 protects Batch 14's own merge.
+
+---
+
+## D13 — Try the browser for the two "needs a device" checks · A11Y-13 and A11Y-02
+
+**Decision.** Attempt both in Batch 14 now the E2E stack is repaired: the large-text clipping
+check via browser base font size, and the exchange-overlay focus trap via a played-out hand.
+
+**If either cannot be proven honestly, say so and leave it manual** — a test that passes without
+demonstrating the property is the failure mode this repo has hit three times, and is worse than
+an open row.
+
+**Owed by** Batch 14.
+
+---
+
+## D14 — Claude reviews the Italian strings and escalates only the doubtful ones
+
+**Decision.** Review the server-facing Italian against how Italian card games actually phrase
+these things, correct what is clearly clumsy, and leave the owner a short list of only the
+genuinely uncertain ones — rather than asking for a full native read of everything.
+
+**Scope.** `server.MATCH_IN_PROGRESS`, `server.NEW_MATCH_NOT_READY`, `server.REMATCH_DECLINED`,
+`server.INVALID_CARD`, and the per-seat pass marker **PASSO** (chosen over *PASSA* because
+*PASSA* is byte-identical to the button label, making one word mean both an available action and
+a seat's state; *PASSO* is the player's own declaration and is ungendered).
+
+English remains the source of truth for copy (**D7**). **Owed by** Batch 14.
