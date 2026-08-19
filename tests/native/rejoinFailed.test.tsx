@@ -13,7 +13,7 @@ import { act, render, waitFor } from '@testing-library/react-native';
 
 import { OnlineGameProvider, useOnlineGame } from '@/context/OnlineGameContext';
 import { NotificationProvider, useNotification } from '@/context/NotificationContext';
-import { it as itLocale } from '@/locales/it';
+import { en as locale } from '@/locales/en';
 
 type Listener = (...args: unknown[]) => void;
 
@@ -137,7 +137,7 @@ describe('game:rejoin_failed', () => {
     expect(shown(view, 'room')).toBe('none');
     // The whole point of the code: the player is told which failure this was,
     // in their own language, rather than watching the table disappear.
-    expect(shown(view, 'notice')).toBe(itLocale['server.GAME_NOT_FOUND']);
+    expect(shown(view, 'notice')).toBe(locale['server.GAME_NOT_FOUND']);
     // The seat is the disconnect grace timer's to release, not this path's.
     expect(emitted.map((e) => e.event)).not.toContain('room:leave');
 

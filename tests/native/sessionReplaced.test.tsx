@@ -12,7 +12,7 @@ import React from 'react';
 import { Text } from 'react-native';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { render, act, fireEvent } from '@testing-library/react-native';
-import { it as itLocale } from '@/locales/it';
+import { en as locale } from '@/locales/en';
 
 type Listener = (...args: unknown[]) => void;
 
@@ -102,11 +102,11 @@ describe('SESSION_REPLACED', () => {
   it('states what happened, over whatever screen the player was on', async () => {
     const view = await mount();
 
-    expect(view.queryByText(itLocale['sessionReplaced.title'])).toBeNull();
+    expect(view.queryByText(locale['sessionReplaced.title'])).toBeNull();
 
     await fireSocketError(REPLACED);
-    expect(view.getByText(itLocale['sessionReplaced.title'])).toBeTruthy();
-    expect(view.getByText(itLocale['server.SESSION_REPLACED'])).toBeTruthy();
+    expect(view.getByText(locale['sessionReplaced.title'])).toBeTruthy();
+    expect(view.getByText(locale['server.SESSION_REPLACED'])).toBeTruthy();
 
     await act(async () => {
       view.unmount();
@@ -118,12 +118,12 @@ describe('SESSION_REPLACED', () => {
     await fireSocketError(REPLACED);
 
     await act(async () => {
-      fireEvent.press(view.getByText(itLocale['sessionReplaced.reconnect']));
+      fireEvent.press(view.getByText(locale['sessionReplaced.reconnect']));
     });
 
     expect(mockSocket.io.reconnection).toHaveBeenLastCalledWith(true);
     expect(mockSocket.connect).toHaveBeenCalledTimes(1);
-    expect(view.queryByText(itLocale['sessionReplaced.title'])).toBeNull();
+    expect(view.queryByText(locale['sessionReplaced.title'])).toBeNull();
 
     await act(async () => {
       view.unmount();
@@ -135,7 +135,7 @@ describe('SESSION_REPLACED', () => {
 
     await fireSocketError({ code: 'RATE_LIMITED', message: 'Troppe richieste, rallenta.' });
     expect(mockSocket.disconnect).not.toHaveBeenCalled();
-    expect(view.queryByText(itLocale['sessionReplaced.title'])).toBeNull();
+    expect(view.queryByText(locale['sessionReplaced.title'])).toBeNull();
 
     await act(async () => {
       view.unmount();

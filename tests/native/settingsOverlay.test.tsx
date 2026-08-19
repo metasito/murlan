@@ -27,7 +27,7 @@ import {
   useNotification,
 } from '@/context/NotificationContext';
 import { SettingsProvider } from '@/context/SettingsContext';
-import { it as itLocale } from '@/locales/it';
+import { en as locale } from '@/locales/en';
 
 const METRICS = {
   frame: { x: 0, y: 0, width: 568, height: 320 },
@@ -59,7 +59,7 @@ describe('settings modal', () => {
     const view = await mount();
     const body = screen.getByTestId('settings-scroll');
     expect(
-      within(body).getByLabelText(itLocale['settings.deleteAccount'])
+      within(body).getByLabelText(locale['settings.deleteAccount'])
     ).toBeTruthy();
     await view.unmount();
   });
@@ -78,7 +78,7 @@ describe('settings modal', () => {
     expect(
       screen.getByText('Tocca per unirti', { includeHiddenElements: true })
     ).toBeTruthy();
-    expect(screen.getByLabelText(itLocale['settings.closeA11yLabel'])).toBeTruthy();
+    expect(screen.getByLabelText(locale['settings.closeA11yLabel'])).toBeTruthy();
     await view.unmount();
   });
 

@@ -39,9 +39,9 @@ import { playCardPass } from '@/lib/sounds';
 import { GameTable } from '@/components/GameTable';
 import { TopOppSlot, SideOppSlot } from '@/components/table/seats';
 import type { Card, Combination, GameState, Player } from '@/lib/gameEngine';
-import { it as itLocale } from '@/locales/it';
+import { en as locale } from '@/locales/en';
 
-const PASSED = itLocale['gameShared.passedLabel'];
+const PASSED = locale['gameShared.passedLabel'];
 
 const METRICS = {
   frame: { x: 0, y: 0, width: 844, height: 390 },

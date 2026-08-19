@@ -10,7 +10,7 @@ import React from 'react';
 import { render, fireEvent, waitFor } from '@testing-library/react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
-import { it as itLocale } from '@/locales/it';
+import { en as locale } from '@/locales/en';
 
 const mockReplace = jest.fn();
 const mockLeaveRoom = jest.fn();
@@ -75,7 +75,7 @@ const METRICS = {
   insets: { top: 0, left: 47, right: 34, bottom: 0 },
 };
 
-const BACK_LABEL = itLocale['onlineGame.backToLobby'];
+const BACK_LABEL = locale['onlineGame.backToLobby'];
 
 describe('the online table with no state yet', () => {
   beforeEach(() => {
@@ -90,7 +90,7 @@ describe('the online table with no state yet', () => {
       </SafeAreaProvider>
     );
 
-    expect(view.getByText(itLocale['onlineGame.connecting'])).toBeTruthy();
+    expect(view.getByText(locale['onlineGame.connecting'])).toBeTruthy();
 
     await view.unmount();
   });
