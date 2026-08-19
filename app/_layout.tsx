@@ -16,17 +16,7 @@ import NotificationBanner from "@/components/NotificationBanner";
 import { OfflineBanner } from "@/components/OfflineBanner";
 import { initLocale } from "@/lib/i18n";
 import { useFonts } from "expo-font";
-// One subpath per weight: each `@expo-google-fonts` package's root module
-// requires every weight and italic it ships, and Metro cannot drop an asset a
-// reachable module requires. These six are exactly the families named in
-// lib/tokens.ts and the handful of local styles — pinned by
-// tests/assetBarrels.test.ts.
-import { Rajdhani_500Medium } from "@expo-google-fonts/rajdhani/500Medium";
-import { Rajdhani_600SemiBold } from "@expo-google-fonts/rajdhani/600SemiBold";
-import { Rajdhani_700Bold } from "@expo-google-fonts/rajdhani/700Bold";
-import { Inter_400Regular } from "@expo-google-fonts/inter/400Regular";
-import { Inter_500Medium } from "@expo-google-fonts/inter/500Medium";
-import { Inter_600SemiBold } from "@expo-google-fonts/inter/600SemiBold";
+import { APP_FONTS } from "@/lib/fonts";
 
 SplashScreen.preventAutoHideAsync();
 
@@ -52,14 +42,7 @@ function RootLayoutNav() {
 }
 
 export default function RootLayout() {
-  const [fontsLoaded, fontError] = useFonts({
-    Rajdhani_500Medium,
-    Rajdhani_600SemiBold,
-    Rajdhani_700Bold,
-    Inter_400Regular,
-    Inter_500Medium,
-    Inter_600SemiBold,
-  });
+  const [fontsLoaded, fontError] = useFonts(APP_FONTS);
   const [localeReady, setLocaleReady] = React.useState(false);
 
   useEffect(() => {
