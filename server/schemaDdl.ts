@@ -330,9 +330,7 @@ export function schemaStatements(): string[] {
 
 /**
  * Columns `shared/schema.ts` renamed. Only `drizzle-kit push` can carry a
- * rename out; until it has, the old column is still there — and for a renamed
- * primary key that means every insert the running code makes fails on its
- * own, logged and swallowed, one row at a time.
+ * rename out; until it has, the old column is still there.
  */
 const RENAMED_COLUMNS = [
   { table: "active_games", from: "room_code", to: "room_id" },
@@ -357,8 +355,10 @@ export async function assertRenamesApplied(pool: Pick<Pool, "query">): Promise<v
 }
 
 /**
- * Brings the connected database up to `shared/schema.ts`. Idempotent, additive
- * only, and safe to run on every boot.
+ * Brings the connected database up to `shared/schema.ts`. Every statement it
+ * emits is idempotent and additive, but running it is not unconditionally
+ * safe: it throws against a database that still holds a column
+ * `shared/schema.ts` has renamed, which only `npm run db:push` can carry out.
  *
  * Not wrapped in a transaction: `ALTER TYPE ... ADD VALUE` is the one statement
  * here Postgres restricts inside one, and a half-applied additive schema is

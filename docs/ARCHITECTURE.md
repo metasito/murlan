@@ -102,12 +102,12 @@ later turns.
 
 - **`active_games`** (`shared/schema.ts`): one row per room, and only three columns —
   `roomId` primary key, `updatedAt` (a column because `pruneAbandonedGames` filters on it
-  in SQL), and `gameState`, a jsonb envelope stamped with `schemaVersion` so a restart can
-  tell a current-shape row from a stale one and refuse to rehydrate it. Everything else
-  rides inside that envelope: the hand itself, `handFlags`, `dealFirstSeat`, and a `match`
-  object holding `playerMap` (keyed by seat, not compacted by array position — a compacted
-  array previously reassigned a rejoining player to the wrong seat and the wrong hand),
-  `scores`, `gameMode`, `matchTarget`, `matchLength`, `maxPlayers` and `isPublic`. One
+  in SQL), and `gameState`, the versioned envelope `PersistedEnvelope`
+  (`server/onlineGameLogic.ts`) specifies. Everything else rides inside that envelope: the
+  hand itself, `handFlags`, `dealFirstSeat`, and a `match` object holding `playerMap`
+  (keyed by seat, not compacted by array position — a compacted array previously
+  reassigned a rejoining player to the wrong seat and the wrong hand), `scores`,
+  `gameMode`, `matchTarget`, `matchLength`, `maxPlayers` and `isPublic`. One
   version stamp therefore governs the whole row; it previously covered `gameState` alone,
   so a bump refused a stale hand while happily rehydrating the stale scoreboard beside it.
   `persistGameState()` runs after every state-mutating move and does a full
@@ -177,9 +177,10 @@ been collapsed:
   between them (a local AI turn loop and 20s response timer offline; server acknowledgement,
   reactions, and connection-loss banners online). It contains no `isOnline &&` branching.
 - **`components/table/`** — the table's own components, grouped by what they draw:
-  `seats.tsx`, `pile.tsx`, `hand.tsx` and `chrome.tsx`. Nothing outside `GameTable.tsx`
-  imports them; they were one `GameShared.tsx` back when the two game screens each had
-  their own table.
+  `seats.tsx`, `pile.tsx`, `hand.tsx` and `chrome.tsx`. `GameTable.tsx` is their only
+  screen-level consumer; `components/useTableFeedback.ts` also imports `useTurnPulse` from
+  `chrome.tsx`, and three `tests/native/` cases mount `seats.tsx` and `hand.tsx` directly.
+  They were one `GameShared.tsx` back when the two game screens each had their own table.
 - **`components/useTableFeedback.ts`** — the shared values, the effects that answer a state
   change with a sound, a haptic or a wobble, and the animated styles they drive. `GameTable`
   still schedules the impact itself, against the 312ms the thrown card spends in the air,

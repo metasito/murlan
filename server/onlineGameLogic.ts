@@ -58,12 +58,6 @@ export function findViewerSeat(
   return seatOfUser(playerMap, viewerUserId);
 }
 
-/**
- * Whether a scoring key stands for a vacated seat rather than a person. Such
- * a seat still appears in a hand's breakdown, but must never accumulate match
- * points or become eligible to win the match under the departed human's
- * username.
- */
 export function isBotSeatKey(key: string): boolean {
   return key.startsWith("bot:");
 }
@@ -194,10 +188,13 @@ function isSeatCount(value: unknown): value is number {
 }
 
 /**
- * Reads a stored blob back, or says why it cannot be. Every field is checked
- * against the shape the restore path assumes: the blob is `unknown` however
- * the column is typed, and a value that reaches `resolveMatch` malformed
- * produces a NaN comparison instead of a refused row.
+ * Reads a stored blob back, or says why it cannot be. The envelope, the schema
+ * version, `dealFirstSeat` and every scalar on `match` are refused outright
+ * when they do not match the shape the restore path assumes. `gameState` and
+ * `handFlags` are only checked for being objects and then cast, and
+ * `match.playerMap` is filtered entry by entry rather than refused — a wholly
+ * malformed map reads back as an empty one, which the caller's seat check
+ * turns into UNAUTHORIZED.
  */
 export function unpackPersistedState<S>(persisted: unknown): PersistedRestore<S> {
   if (!isPlainObject(persisted)) return { ok: false, reason: "not an object" };

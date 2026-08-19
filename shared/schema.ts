@@ -71,9 +71,7 @@ export const friends = pgTable(
 );
 
 // One live table. Everything about it rides the versioned `game_state`
-// envelope (see PersistedEnvelope in server/onlineGameLogic.ts) so a schema
-// bump refuses a stale row whole; `updated_at` stays a column because the
-// abandoned-game sweep filters on it in SQL.
+// envelope — see `PersistedEnvelope` in server/onlineGameLogic.ts.
 export const activeGames = pgTable("active_games", {
   roomId:     text("room_id").primaryKey(),
   gameState:  jsonb("game_state").$type<PersistedEnvelope<GameState>>().notNull(),
