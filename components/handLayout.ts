@@ -1,6 +1,6 @@
-// Pure layout math for StraightHand's card row (components/GameShared.tsx).
+// Pure layout math for StraightHand's card row (components/table/hand.tsx).
 //
-// This lives in its own JSX-free .ts file (rather than inside GameShared.tsx
+// This lives in its own JSX-free .ts file (rather than inside hand.tsx
 // directly) so it can be unit-tested with `node --test`: Node's built-in
 // TypeScript loader only type-strips plain .ts source — it cannot parse a
 // .tsx file's JSX ("Unknown file extension \".tsx\""). Keep this file free of

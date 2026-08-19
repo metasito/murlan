@@ -82,7 +82,6 @@ import {
 import { useTranslation, type TranslationKey } from "@/lib/i18n";
 import { cardSpokenName, rankSpokenName, suitSpokenName, type TFn } from "@/lib/cardNames";
 import {
-  StraightHand,
   TableVignette,
   sharedTableStyles,
   portraitOverlayStyles,
@@ -90,6 +89,7 @@ import {
   useTurnPulse,
   GameBillboard,
 } from "@/components/GameShared";
+import { StraightHand } from "@/components/table/hand";
 import { FlyingCards, PlayedPile, getComboLabel } from "@/components/table/pile";
 import { TopOppSlot, SideOppSlot } from "@/components/table/seats";
 import { ExchangeModal } from "@/components/ExchangeModal";
