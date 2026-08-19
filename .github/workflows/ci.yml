@@ -189,6 +189,22 @@ jobs:
           if-no-files-found: error
           retention-days: 7
 
+      # The HTML reporter copies every attachment into playwright-report/data/
+      # under its own SHA-1, so for a run that reaches the end this duplicates
+      # the step above. It is here for the run that does not: the timeout above,
+      # or a crash, kills the process before the reporter writes anything, and
+      # `outputDir` is then the only place the traces and videos exist. Missing
+      # is not an error — a failure in the build or webServer leaves nothing,
+      # and the step above is what asserts the suite ran at all.
+      - name: Keep the raw Playwright output when the suite goes red
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-test-results
+          path: tests/e2e/test-results/
+          if-no-files-found: ignore
+          retention-days: 7
+
   build:
     name: Build and boot
     needs: scope
