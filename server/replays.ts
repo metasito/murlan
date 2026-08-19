@@ -14,7 +14,7 @@ const ownedBy = (userId: string) =>
   sql`${matchReplays.playerIds} @> ${JSON.stringify([userId])}::jsonb`;
 
 export async function saveReplay(input: {
-  roomCode: string;
+  roomId: string;
   gameMode: GameMode;
   seats: ReplaySeat[];
   moves: ReplayMove[];
@@ -26,7 +26,7 @@ export async function saveReplay(input: {
 
   await db.transaction(async (tx) => {
     await tx.insert(matchReplays).values({
-      roomCode: input.roomCode,
+      roomId: input.roomId,
       gameMode: input.gameMode,
       playerIds,
       seats: input.seats,

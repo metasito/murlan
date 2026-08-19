@@ -111,7 +111,7 @@ export const userAchievements = pgTable("user_achievements", {
 // replay belongs to the table rather than to any one player's history row.
 export const matchReplays = pgTable("match_replays", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  roomCode: text("room_code").notNull(),
+  roomId: text("room_id").notNull(),
   finishedAt: timestamp("finished_at").defaultNow().notNull(),
   gameMode: text("game_mode").notNull(),
   // The seated userIds, bots excluded — what a player's own list is read through.

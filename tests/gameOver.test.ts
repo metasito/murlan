@@ -225,7 +225,7 @@ describe("handleGameOver — the writes", () => {
     assert.ok(rated[2] instanceof Date);
 
     assert.deepEqual(s.of("saveReplay")[0].args[0], {
-      roomCode: ROOM,
+      roomId: ROOM,
       gameMode: "free_for_all",
       seats: [
         { seatIndex: 0, userId: "u_alice", name: "Alice" },
