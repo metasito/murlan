@@ -49,7 +49,7 @@ merge one before opening the other's PR.
 | - [x] 12 | Test coverage where it matters | 13 | high | Opus | merged — 2026-08-18 | `audit/batch-12-test-coverage` | [#16](https://github.com/metasito/murlan/pull/16) |
 | - [x] 13 | Architecture seams | 9 | **max** | **Opus** | merged — 2026-08-19 | `audit/batch-13-architecture-seams` | [#17](https://github.com/metasito/murlan/pull/17) |
 | - [x] 14 | Carried-forward cleanup | 13 | high | **Opus** | merged — 2026-08-19 | `audit/batch-14-carried-forward` | [#21](https://github.com/metasito/murlan/pull/21) |
-| - [x] 15 | Docs truth and housekeeping | 13 | low | **Opus** | merged — 2026-08-19 | `audit/batch-15-docs-truth` | PR_PLACEHOLDER |
+| - [x] 15 | Docs truth and housekeeping | 13 | low | **Opus** | merged — 2026-08-19 | `audit/batch-15-docs-truth` | [#22](https://github.com/metasito/murlan/pull/22) |
 
 A batch is done when it is **committed, pushed, opened as a PR, and merged once CI is green** —
 one commit per finding, one branch per batch, one PR per branch. Merge with `--merge`, never
