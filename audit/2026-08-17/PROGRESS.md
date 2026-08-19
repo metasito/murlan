@@ -43,7 +43,7 @@ merge one before opening the other's PR.
 | - [x] 10 | Rules correctness | 10 | high | Opus | merged — 2026-08-18 | `audit/batch-10-rules-correctness` | [#14](https://github.com/metasito/murlan/pull/14) |
 | - [x] 11 | Layout and overflow | 11 | low | Sonnet | merged — 2026-08-18 | `audit/batch-11-layout-overflow` | [#15](https://github.com/metasito/murlan/pull/15) |
 | - [x] 12 | Test coverage where it matters | 13 | high | Opus | merged — 2026-08-18 | `audit/batch-12-test-coverage` | [#16](https://github.com/metasito/murlan/pull/16) |
-| - [ ] 13 | Architecture seams | 9 | **max** | **Opus** | PR open | `audit/batch-13-architecture-seams` |  |
+| - [x] 13 | Architecture seams | 9 | **max** | **Opus** | merged — 2026-08-19 | `audit/batch-13-architecture-seams` | [#17](https://github.com/metasito/murlan/pull/17) |
 | - [ ] 14 | Docs truth and housekeeping | 13 | low | Sonnet | not started | | |
 
 A batch is done when it is **committed, pushed, opened as a PR, and merged once CI is green** —
