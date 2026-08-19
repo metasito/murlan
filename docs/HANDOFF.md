@@ -43,11 +43,16 @@ Five test layers, mapped in `docs/TESTING.md`.
 
 ## Regenerated, not hand-authored
 
-Three artefacts are build outputs. Edit the script, not the result:
+These artefacts are build outputs. Edit the script, not the result:
 
 - `assets/sounds/` — `node scripts/build-sounds.mjs`
 - `assets/images/cards/` — `node scripts/build-court-art.mjs`
+- `assets/images/**/*.png` — `node scripts/optimize-images.mjs`, a lossless
+  recompression run in place over whatever the other scripts wrote. Court art
+  is optimised by `build-court-art.mjs` itself; the icon, splash and adaptive
+  layers are hand-drawn sources that have already been through it.
 - `assets/fonts/*.subset.ttf` — `node scripts/build-icon-fonts.mjs`
+- `public/fonts/*.woff2` — `node scripts/build-fonts.mjs`
 - `docs/BUNDLE.md` — `node scripts/bundle-report.mjs > docs/BUNDLE.md`
 
 ## Needs the owner, not more effort

@@ -16,7 +16,8 @@
 // 0.690), so placing the art at the fractions it was cut from reproduces a real
 // card's proportions instead of approximating them.
 import { chromium } from "playwright";
-import { mkdtempSync, mkdirSync, readFileSync, writeFileSync, rmSync } from "node:fs";
+import { spawnSync } from "node:child_process";
+import { mkdtempSync, mkdirSync, readFileSync, statSync, writeFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -50,7 +51,6 @@ try {
 
   const browser = await chromium.launch();
   const page = await browser.newPage({ deviceScaleFactor: 1 });
-  let total = 0;
 
   for (const name of NAMES) {
     const svg = readFileSync(path.join(tmp, `${name}.svg`), "utf8");
@@ -81,11 +81,18 @@ try {
       },
     });
     writeFileSync(path.join(OUT, `${name}.png`), buf);
-    total += buf.length;
     console.log(`${name}.png  ${(buf.length / 1024).toFixed(1)} KB`);
   }
 
   await browser.close();
+
+  // Chromium writes a deflate stream tuned for encoding speed; recompressing
+  // recovers a third of what it emits, so the sizes below are the ones shipped.
+  spawnSync(process.execPath, [path.join(ROOT, "scripts", "optimize-images.mjs"), OUT], {
+    stdio: "inherit",
+  });
+
+  const total = NAMES.reduce((sum, n) => sum + statSync(path.join(OUT, `${n}.png`)).size, 0);
   console.log(`\n${NAMES.length} files, ${(total / 1024).toFixed(0)} KB total`);
 } finally {
   rmSync(tmp, { recursive: true, force: true });
