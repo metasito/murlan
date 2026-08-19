@@ -8,7 +8,6 @@ import {
   Share,
   Alert,
   FlatList,
-  Switch,
   useWindowDimensions,
 } from "react-native";
 import { router } from "expo-router";
@@ -28,8 +27,9 @@ import { BOT_PERSONALITIES, DEFAULT_BOT_PERSONALITY, botBlurbKey } from "@/lib/b
 import type { BotPersonalityId } from "@/lib/botPersonalities";
 import { MenuLayout } from "@/components/MenuLayout";
 import { MenuButton } from "@/components/MenuButton";
+import { Toggle } from "@/components/Toggle";
 import { useTranslation } from "@/lib/i18n";
-import { a11yState, useA11yHint } from "@/lib/a11y";
+import { a11yState } from "@/lib/a11y";
 import { usePrefersReducedMotion } from "@/lib/accessibility";
 
 const TEAM_COLORS = { A: Colors.gold, B: Colors.info };
@@ -46,7 +46,6 @@ function BotFillControls({
   onChangeBotPersonality: (id: BotPersonalityId) => void;
 }) {
   const { t } = useTranslation();
-  const botFillHint = useA11yHint(t("room.fillWithBotsA11yHint"));
 
   return (
     <View style={botFillStyles.section}>
@@ -55,19 +54,15 @@ function BotFillControls({
           <Text style={botFillStyles.label}>{t("room.fillWithBotsLabel")}</Text>
           <Text style={botFillStyles.sublabel}>{t("room.fillWithBotsSubtitle")}</Text>
         </View>
-        <Switch
+        <Toggle
           value={fillWithBots}
           onValueChange={(value) => {
             onToggleFillWithBots(value);
             hapticSelection();
           }}
-          trackColor={{ false: Colors.bgElevated, true: Colors.gold }}
-          thumbColor={fillWithBots ? Colors.white : Colors.textMuted}
-          accessibilityRole="switch"
-          accessibilityLabel={t("room.fillWithBotsA11yLabel")}
-          {...botFillHint.props}
+          a11yLabel={t("room.fillWithBotsA11yLabel")}
+          a11yHint={t("room.fillWithBotsA11yHint")}
         />
-        {botFillHint.node}
       </View>
 
       {fillWithBots && (

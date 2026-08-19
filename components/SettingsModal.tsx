@@ -4,7 +4,6 @@ import {
   View,
   Text,
   ScrollView,
-  Switch,
   Pressable,
   StyleSheet,
   Platform,
@@ -18,6 +17,7 @@ import { useNotification } from "@/context/NotificationContext";
 import { useAuth } from "@/context/AuthContext";
 import NotificationBanner from "@/components/NotificationBanner";
 import { OfflineBanner } from "@/components/OfflineBanner";
+import { Toggle } from "@/components/Toggle";
 import { apiRequest, queryClient } from "@/lib/query-client";
 import { hapticSelection } from "@/lib/haptics";
 import { usePrefersReducedMotion } from "@/lib/accessibility";
@@ -153,8 +153,6 @@ export function SettingsModal({ visible, onClose }: Props) {
   const reduceMotion = usePrefersReducedMotion();
   const [deleting, setDeleting] = useState(false);
   const { t, locale, setLocale, locales, localeLabels } = useTranslation();
-  const soundsHint = useA11yHint(t("settings.soundsA11yHint"));
-  const hapticsHint = useA11yHint(t("settings.hapticsA11yHint"));
   const deleteHint = useA11yHint(t("settings.deleteAccountA11yHint"));
 
   async function handleDeleteAccount() {
@@ -238,16 +236,12 @@ export function SettingsModal({ visible, onClose }: Props) {
                   <Text style={styles.sublabel}>{t("settings.soundsSubtitle")}</Text>
                 </View>
               </View>
-              <Switch
+              <Toggle
                 value={soundsEnabled}
                 onValueChange={setSoundsEnabled}
-                trackColor={{ false: Colors.bgElevated, true: Colors.gold }}
-                thumbColor={soundsEnabled ? Colors.white : Colors.textMuted}
-                accessibilityRole="switch"
-                accessibilityLabel={t("settings.soundsA11yLabel")}
-                {...soundsHint.props}
+                a11yLabel={t("settings.soundsA11yLabel")}
+                a11yHint={t("settings.soundsA11yHint")}
               />
-              {soundsHint.node}
             </View>
 
             <View style={styles.stackRow}>
@@ -332,16 +326,12 @@ export function SettingsModal({ visible, onClose }: Props) {
                     <Text style={styles.sublabel}>{t("settings.hapticsSubtitle")}</Text>
                   </View>
                 </View>
-                <Switch
+                <Toggle
                   value={hapticsEnabled}
                   onValueChange={toggleHaptics}
-                  trackColor={{ false: Colors.bgElevated, true: Colors.gold }}
-                  thumbColor={hapticsEnabled ? Colors.white : Colors.textMuted}
-                  accessibilityRole="switch"
-                  accessibilityLabel={t("settings.hapticsA11yLabel")}
-                  {...hapticsHint.props}
+                  a11yLabel={t("settings.hapticsA11yLabel")}
+                  a11yHint={t("settings.hapticsA11yHint")}
                 />
-                {hapticsHint.node}
               </View>
             )}
 
