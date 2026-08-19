@@ -38,12 +38,13 @@ export default function OnlineLobbyScreen() {
 
   const isLandscape = W > H;
 
+  // The id, not the room: every field update would otherwise push the route again.
+  const roomId = room?.roomId;
   useEffect(() => {
-    if (room) {
+    if (roomId) {
       router.push("/(online)/room");
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- navigate once per room id, not on every room field update
-  }, [room?.roomId]);
+  }, [roomId]);
 
   // The table a spectate asked for, once the server has actually sent it. Four
   // refusals answer `room:spectate` with a `room:error` and no state at all, so

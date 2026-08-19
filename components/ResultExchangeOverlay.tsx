@@ -6,7 +6,7 @@
 // rendered on its own: which branch it shows depends on who won the previous
 // hand, and a test that has to win a real hand first to reach the interactive
 // branch is a coin flip.
-import React, { useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import { Modal, View, Text, StyleSheet, Pressable, ScrollView } from "react-native";
 import { router } from "expo-router";
 import { LinearGradient } from "expo-linear-gradient";
@@ -51,6 +51,7 @@ export function ResultExchangeOverlay({
   const ep = gameState.exchangePhase!;
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const autoRef = useRef(false);
+  const aiTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const leftRef = useRef(false);
 
   /**
@@ -62,11 +63,11 @@ export function ResultExchangeOverlay({
    * this overlay before the timer fires — without the guard, the app issues a
    * second `replace` to a route it is already leaving.
    */
-  const leaveForNextHand = () => {
+  const leaveForNextHand = useCallback(() => {
     if (leftRef.current) return;
     leftRef.current = true;
     router.replace("/game");
-  };
+  }, []);
   const winner = gameState.players[ep.winnerIdx];
   const loser = gameState.players[ep.loserIdx];
   const exchangeCards = sortHand(getValidGivebackCards(winner.hand, ep.cardFromLoser?.id));
@@ -76,16 +77,33 @@ export function ResultExchangeOverlay({
       const t = setTimeout(leaveForNextHand, BOTH_JOKERS_HOLD_MS);
       return () => clearTimeout(t);
     }
+    // Armed once per mount and never cleared here: `autoRef` refuses to arm a
+    // second, so a cleanup that cancelled this one on a re-run would leave the
+    // AI holding its card and the hand stuck behind an undismissable modal.
+    // The unmount effect below is what tears it down.
     if (winner.type === "ai" && !autoRef.current) {
       autoRef.current = true;
-      const t = setTimeout(() => {
+      aiTimerRef.current = setTimeout(() => {
         const give = pickGivebackCard(winner.hand, ep.cardFromLoser?.id);
         if (give) chooseExchangeCard(give.id);
       }, AI_PICK_DELAY_MS);
-      return () => clearTimeout(t);
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- one-shot per phase mount; ep/winner/exchangeCards are fixed for this phase's lifetime, chooseExchangeCard is stable
-  }, [chooseExchangeCard]);
+  }, [
+    chooseExchangeCard,
+    ep.bothJokersException,
+    ep.cardFromLoser?.id,
+    leaveForNextHand,
+    winner.hand,
+    winner.type,
+  ]);
+
+  useEffect(
+    () => () => {
+      if (aiTimerRef.current) clearTimeout(aiTimerRef.current);
+    },
+    []
+  );
+
 
   if (ep.bothJokersException) {
     return (

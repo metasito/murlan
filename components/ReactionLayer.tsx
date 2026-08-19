@@ -41,8 +41,7 @@ function FloatingReaction({ reaction }: { reaction: TableReaction }) {
       withTiming(1, { duration: Motion.duration.base }),
       withTiming(0, { duration: RISE_MS - Motion.duration.base })
     );
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- one-shot mount animation; y/opacity are stable shared values, reduceMotion fixed per instance
-  }, []);
+  }, [opacity, reduceMotion, y]);
 
   const aStyle = useAnimatedStyle(() => ({
     transform: [{ translateY: y.value }],

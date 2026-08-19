@@ -68,25 +68,7 @@ function HomeMenuRow({
   const translateY = useSharedValue(30);
   const scale = useSharedValue(1);
 
-  useEffect(() => {
-    if (reduceMotion) {
-      opacity.value = 1;
-      translateY.value = 0;
-      return;
-    }
-    opacity.value = withDelay(delay, withTiming(1, { duration: 500 }));
-    translateY.value = withDelay(
-      delay,
-      withTiming(0, { duration: 500, easing: Easing.out(Easing.cubic) })
-    );
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- one-shot mount animation; opacity/translateY are stable shared values, delay is fixed per instance
-  }, []);
-
-  const animStyle = useAnimatedStyle(() => ({
-    opacity: opacity.value,
-    transform: [{ translateY: translateY.value }, { scale: scale.value }],
-  }));
-
+  // Must precede the hooks that read `scale` — the React Compiler skips any component that mutates a value a hook captured.
   const handlePress = () => {
     if (disabled) return;
     if (!reduceMotion) {
@@ -98,6 +80,24 @@ function HomeMenuRow({
     hapticLight();
     onPress();
   };
+
+  useEffect(() => {
+    if (reduceMotion) {
+      opacity.value = 1;
+      translateY.value = 0;
+      return;
+    }
+    opacity.value = withDelay(delay, withTiming(1, { duration: 500 }));
+    translateY.value = withDelay(
+      delay,
+      withTiming(0, { duration: 500, easing: Easing.out(Easing.cubic) })
+    );
+  }, [delay, opacity, reduceMotion, translateY]);
+
+  const animStyle = useAnimatedStyle(() => ({
+    opacity: opacity.value,
+    transform: [{ translateY: translateY.value }, { scale: scale.value }],
+  }));
 
   return (
     <Animated.View style={animStyle}>
@@ -196,8 +196,7 @@ function FloatingCard({
         false
       )
     );
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- one-shot mount animation; rotate/translateY are stable shared values, delay is fixed per instance
-  }, []);
+  }, [delay, reduceMotion, rotate, translateY]);
 
   const animStyle = useAnimatedStyle(() => ({
     transform: [{ translateY: translateY.value }, { rotate: `${rotate.value}deg` }],
@@ -295,8 +294,7 @@ export default function HomeScreen() {
     titleOpacity.value = withDelay(200, withTiming(1, { duration: 700 }));
     titleScale.value = withDelay(200, withTiming(1, { duration: 700, easing: Easing.out(Easing.back(1.5)) }));
     subtitleOpacity.value = withDelay(500, withTiming(1, { duration: 600 }));
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- one-shot mount animation; stable shared values
-  }, []);
+  }, [reduceMotion, subtitleOpacity, titleOpacity, titleScale]);
 
   // First-launch onboarding: offer the interactive tutorial automatically, once
   // ever. This runs on every mount of the title screen, and every

@@ -33,8 +33,7 @@ export function OfflineBanner() {
       });
     });
     return () => unsub();
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- translateY is a stable shared value
-  }, [reduceMotion]);
+  }, [reduceMotion, translateY]);
 
   const animStyle = useAnimatedStyle(() => ({
     transform: [{ translateY: translateY.value }],

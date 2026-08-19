@@ -158,6 +158,71 @@ describe('the result screen card exchange', () => {
     await view.unmount();
   });
 
+  it('returns the AI seat\'s card by itself', async () => {
+    const chooseExchangeCard = jest.fn();
+    jest.useFakeTimers();
+    try {
+      const view = await render(overlay(exchangeState('ai', WINNER_HAND), chooseExchangeCard));
+      expect(chooseExchangeCard).not.toHaveBeenCalled();
+      await act(async () => {
+        jest.advanceTimersByTime(5_000);
+      });
+      expect(chooseExchangeCard).toHaveBeenCalledTimes(1);
+      expect(chooseExchangeCard).toHaveBeenCalledWith('4_clubs');
+      await view.unmount();
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  // The AI's think is armed once and guarded by a ref, so any effect re-run
+  // that also cancelled the pending timer would leave the AI holding its card
+  // forever — the same deadlock behind an undismissable modal as the
+  // no-valid-giveback case below.
+  //
+  // `deepCloneState` gives every card a new reference per transition
+  // (docs/BACKLOG.md), so a re-render carrying the same hand still changes the
+  // `winner.hand` dependency. Cloning is what makes this a re-run rather than
+  // a no-op — passing WINNER_HAND itself changes no dependency and proves
+  // nothing.
+  it('still returns it after the state is rebuilt mid-think', async () => {
+    const chooseExchangeCard = jest.fn();
+    const clonedHand = () => WINNER_HAND.map((c) => ({ ...c }));
+    jest.useFakeTimers();
+    try {
+      const view = await render(overlay(exchangeState('ai', clonedHand()), chooseExchangeCard));
+      await act(async () => {
+        jest.advanceTimersByTime(400);
+      });
+      await act(async () => {
+        view.rerender(overlay(exchangeState('ai', clonedHand()), chooseExchangeCard));
+      });
+      await act(async () => {
+        jest.advanceTimersByTime(5_000);
+      });
+      expect(chooseExchangeCard).toHaveBeenCalledTimes(1);
+      expect(chooseExchangeCard).toHaveBeenCalledWith('4_clubs');
+      await view.unmount();
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  it('does not fire the AI pick after the overlay is gone', async () => {
+    const chooseExchangeCard = jest.fn();
+    jest.useFakeTimers();
+    try {
+      const view = await render(overlay(exchangeState('ai', WINNER_HAND), chooseExchangeCard));
+      await view.unmount();
+      await act(async () => {
+        jest.advanceTimersByTime(5_000);
+      });
+      expect(chooseExchangeCard).not.toHaveBeenCalled();
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
   // docs/RULES.md §10: the loser holding both Jokers skips the exchange, so
   // there is nothing to choose and only an acknowledgement to give.
   it('shows an acknowledgement, not a picker, on the two-joker exception', async () => {

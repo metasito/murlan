@@ -406,8 +406,7 @@ export default function TutorialScreen() {
         if (!Number.isNaN(n) && n >= 0 && n < BEATS.length) setStepIndex(n);
       })
       .finally(() => setLoaded(true));
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- run once on mount; BEATS.length is fixed regardless of locale
-  }, []);
+  }, [BEATS.length]);
 
   useEffect(() => {
     if (!loaded) return;

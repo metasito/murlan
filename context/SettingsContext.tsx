@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useEffect, useState, useMemo } from "react";
+import React, { createContext, useCallback, useContext, useEffect, useState, useMemo } from "react";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { setSoundsMasterEnabled, setSoundsMasterVolume } from "@/lib/sounds";
 import { setHapticsMasterEnabled } from "@/lib/haptics";
@@ -103,18 +103,18 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
     setCosmetics(settings.cardBack, settings.tableFelt);
   }, [settings.cardBack, settings.tableFelt]);
 
-  const setSoundsEnabled = (v: boolean) =>
-    setSettings((s) => ({ ...s, soundsEnabled: v }));
-  const setSoundVolume = (v: number) =>
-    setSettings((s) => ({ ...s, soundVolume: Math.max(0, Math.min(1, v)) }));
-  const setHapticsEnabled = (v: boolean) =>
-    setSettings((s) => ({ ...s, hapticsEnabled: v }));
-  const setMotion = (v: MotionPreference) =>
-    setSettings((s) => ({ ...s, motion: v }));
-  const setCardBack = (v: CardBackId) =>
-    setSettings((s) => ({ ...s, cardBack: v }));
-  const setTableFelt = (v: TableFeltId) =>
-    setSettings((s) => ({ ...s, tableFelt: v }));
+  const setSoundsEnabled = useCallback((v: boolean) =>
+    setSettings((s) => ({ ...s, soundsEnabled: v })), []);
+  const setSoundVolume = useCallback((v: number) =>
+    setSettings((s) => ({ ...s, soundVolume: Math.max(0, Math.min(1, v)) })), []);
+  const setHapticsEnabled = useCallback((v: boolean) =>
+    setSettings((s) => ({ ...s, hapticsEnabled: v })), []);
+  const setMotion = useCallback((v: MotionPreference) =>
+    setSettings((s) => ({ ...s, motion: v })), []);
+  const setCardBack = useCallback((v: CardBackId) =>
+    setSettings((s) => ({ ...s, cardBack: v })), []);
+  const setTableFelt = useCallback((v: TableFeltId) =>
+    setSettings((s) => ({ ...s, tableFelt: v })), []);
 
   const contextValue = useMemo(
     () => ({
@@ -126,8 +126,15 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
       setCardBack,
       setTableFelt,
     }),
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- the setters are stable in behaviour; only the settings object should re-publish the context
-    [settings]
+    [
+      settings,
+      setSoundsEnabled,
+      setSoundVolume,
+      setHapticsEnabled,
+      setMotion,
+      setCardBack,
+      setTableFelt,
+    ]
   );
 
   return (

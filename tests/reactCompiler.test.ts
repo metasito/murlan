@@ -1,18 +1,13 @@
-// tests/reactCompiler.test.ts — the game table stays under the React Compiler.
+// tests/reactCompiler.test.ts — every screen and component stays under the
+// React Compiler.
 //
 // app.json turns on `experiments.reactCompiler`, which babel-preset-expo turns
 // into babel-plugin-react-compiler with `panicThreshold: 'NONE'` for a
 // production build: a component the compiler cannot handle is left uncompiled
 // with no error and no warning, and the hand is rebuilt three to five times per
-// move. A single `eslint-disable react-hooks` comment is enough to cause it —
-// the compiler refuses to optimise any component in a file that switches those
-// rules off.
-//
-// So this compiles the hot-path files the way the build does and reads the
-// plugin's own diagnostics. It is an acceptance test rather than a grep,
-// because a bailout has several possible causes (a suppressed lint rule,
-// a ref written during render, manual memoization the compiler cannot preserve)
-// and only the compiler knows which of them are present.
+// move. So this compiles the app the way the build does and reads the plugin's
+// own diagnostics, rather than grepping for the shapes that cause a bailout —
+// there are several, and only the compiler knows which of them are present.
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { createRequire } from "node:module";
@@ -22,24 +17,37 @@ import path from "node:path";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const require = createRequire(path.join(repoRoot, "package.json"));
+const presetRequire = createRequire(
+  path.join(repoRoot, "node_modules", "babel-preset-expo", "package.json")
+);
 const { transformSync } = require("@babel/core");
-const reactCompiler = require("babel-plugin-react-compiler");
+const reactCompiler = presetRequire("babel-plugin-react-compiler");
+
+test("the compiler under test is the one babel-preset-expo builds with", () => {
+  const built = presetRequire("babel-plugin-react-compiler/package.json").version;
+  assert.throws(
+    () => require("babel-plugin-react-compiler/package.json"),
+    { code: "MODULE_NOT_FOUND" },
+    `a top-level babel-plugin-react-compiler resolves again; babel-preset-expo already provides ` +
+      `${built} and this suite must compile with that one copy, not a second one`
+  );
+});
+
+function tsxUnder(dir: string): string[] {
+  return readdirSync(path.join(repoRoot, dir), { recursive: true, encoding: "utf8" })
+    .filter((f) => f.endsWith(".tsx"))
+    .map((f) => `${dir}/${f.split(path.sep).join("/")}`);
+}
 
 /**
- * Everything the game table is built from. GameTable.tsx itself is absent on
- * purpose: it bails on its own `useMemo`s, which is why the card components it
- * renders are wrapped in React.memo by hand instead of relying on the compiler.
+ * Read off the filesystem, so a screen added tomorrow is covered the day it
+ * lands. `context/SettingsContext.tsx` joins them because SettingsProvider
+ * wraps every one of them.
  */
-const HOT_PATH = [
-  "components/CardView.tsx",
-  ...readdirSync(path.join(repoRoot, "components", "table"), {
-    recursive: true,
-    encoding: "utf8",
-  })
-    .filter((f) => f.endsWith(".tsx"))
-    .map((f) => `components/table/${f.split(path.sep).join("/")}`),
-  "app/game.tsx",
-  "app/(online)/game.tsx",
+const COMPILED = [
+  ...tsxUnder("app"),
+  ...tsxUnder("components"),
+  "context/SettingsContext.tsx",
 ];
 
 /** babel-preset-expo/build/index.js, for a production client build. */
@@ -55,10 +63,10 @@ type CompilerEvent = {
   detail?: { reason?: string; description?: string };
 };
 
-function bailouts(rel: string): CompilerEvent[] {
+function compile(rel: string, source?: string): CompilerEvent[] {
   const events: CompilerEvent[] = [];
   const filename = path.join(repoRoot, rel);
-  transformSync(readFileSync(filename, "utf8"), {
+  transformSync(source ?? readFileSync(filename, "utf8"), {
     filename,
     babelrc: false,
     configFile: false,
@@ -73,42 +81,83 @@ function bailouts(rel: string): CompilerEvent[] {
   return events.filter((e) => e.kind === "CompileError");
 }
 
-for (const rel of HOT_PATH) {
-  test(`${rel} compiles with no bailouts`, () => {
-    const failed = bailouts(rel);
-    assert.deepEqual(
-      failed.map((e) => `${rel}:${e.fnLoc?.start?.line} — ${e.detail?.reason ?? e.detail?.description}`),
-      [],
-      `${rel} has components the React Compiler silently skipped. In a production build they are ` +
-        `shipped unmemoized, and every card in the hand is rebuilt on every render of the table.`
-    );
-  });
+test("every screen and component compiles with no bailouts", () => {
+  const failures = COMPILED.flatMap((rel) =>
+    compile(rel).map(
+      (e) => `${rel}:${e.fnLoc?.start?.line} — ${e.detail?.reason ?? e.detail?.description}`
+    )
+  );
+  assert.deepEqual(
+    failures,
+    [],
+    "the React Compiler silently skipped these. In a production build they ship unmemoized and " +
+      "the whole subtree is rebuilt on every render. Compile the file on its own with " +
+      "`node .superpowers/sdd/2026-08-19-beta-readiness/compiler-probe.mjs <file>` to see why"
+  );
+});
+
+/**
+ * Every `eslint-disable` directive, in either comment syntax, with its rule
+ * list — which a block comment may spread over several lines.
+ */
+const DIRECTIVE =
+  /\/\*\s*(eslint-disable(?:-next-line|-line)?)(?![\w-])([\s\S]*?)\*\/|\/\/\s*(eslint-disable(?:-next-line|-line)?)(?![\w-])([^\n]*)/g;
+
+/**
+ * A directive that switches react-hooks off. Naming no rule at all switches
+ * off every rule, react-hooks among them, so a bare `/* eslint-disable *\/`
+ * counts — it costs the file its compilation exactly as a named one does.
+ */
+function disablesReactHooks(body: string): boolean {
+  const rules = body
+    .split("--")[0]
+    .split(",")
+    .map((r) => r.trim())
+    .filter(Boolean);
+  return rules.length === 0 || rules.some((r) => r.startsWith("react-hooks/"));
 }
 
-// The failure mode this exists to make impossible: proving the counterfactual,
-// so the test above cannot be satisfied by weakening the compiler options.
-test("a suppressed react-hooks rule is what the compiler refuses to compile", () => {
-  const filename = path.join(repoRoot, "components/CardView.tsx");
-  const source = readFileSync(filename, "utf8").replace(
-    "  }, [selected, noLift, reduceMotion, translateY]);",
-    "  // eslint-disable-next-line react-hooks/exhaustive-deps\n  }, [selected, noLift]);"
+test("no react-hooks rule is switched off under app/, components/ or context/", () => {
+  const found = ["app", "components", "context"]
+    .flatMap((dir) =>
+      readdirSync(path.join(repoRoot, dir), { recursive: true, encoding: "utf8" })
+        .filter((f) => f.endsWith(".ts") || f.endsWith(".tsx"))
+        .map((f) => `${dir}/${f.split(path.sep).join("/")}`)
+    )
+    .flatMap((rel) => {
+      const source = readFileSync(path.join(repoRoot, rel), "utf8");
+      return [...source.matchAll(DIRECTIVE)]
+        .map((m) => ({
+          directive: m[1] ?? m[3],
+          body: m[2] ?? m[4] ?? "",
+          line: source.slice(0, m.index).split("\n").length,
+        }))
+        .filter((d) => disablesReactHooks(d.body))
+        .map((d) => `${rel}:${d.line} — ${d.directive} ${d.body.trim()}`.trimEnd());
+    });
+  assert.deepEqual(
+    found,
+    [],
+    "the compiler skips any component whose React ESLint rules were switched off, so a " +
+      "suppression is not a local decision — it silently opts the file out of the optimisation " +
+      "the build is paying for"
   );
-  const events: CompilerEvent[] = [];
-  transformSync(source, {
-    filename,
-    babelrc: false,
-    configFile: false,
-    parserOpts: { plugins: ["jsx", "typescript"] },
-    plugins: [
-      [
-        reactCompiler.default ?? reactCompiler,
-        { ...COMPILER_OPTIONS, logger: { logEvent: (_f: string, e: CompilerEvent) => events.push(e) } },
-      ],
-    ],
-  });
-  const reasons = events
-    .filter((e) => e.kind === "CompileError")
-    .map((e) => e.detail?.reason ?? e.detail?.description ?? "");
+});
+
+// The failure mode this exists to make impossible: proving the counterfactual,
+// so the assertions above cannot be satisfied by weakening the compiler options.
+test("a suppressed react-hooks rule is what the compiler refuses to compile", () => {
+  const rel = "components/CardView.tsx";
+  const original = readFileSync(path.join(repoRoot, rel), "utf8");
+  const anchor = "  }, [selected, noLift, reduceMotion, translateY]);";
+  assert.ok(original.includes(anchor), `${rel} no longer contains the effect this test patches`);
+  const reasons = compile(
+    rel,
+    original.replace(
+      anchor,
+      "  // eslint-disable-next-line react-hooks/exhaustive-deps\n  }, [selected, noLift]);"
+    )
+  ).map((e) => e.detail?.reason ?? e.detail?.description ?? "");
   assert.ok(
     reasons.some((r) => r.includes("ESLint")),
     "adding a react-hooks suppression back no longer costs the component its compilation — " +

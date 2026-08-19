@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useState } from "react";
 import {
   View,
   Text,
@@ -81,16 +81,17 @@ export default function QuickmatchScreen() {
   const [phase, setPhase] = useState<"selecting" | "searching">("selecting");
   const [selectedMode, setSelectedMode] = useState<ModeOption | null>(null);
   const [dotCount, setDotCount] = useState(0);
-  const pulseAnim = useRef(new Animated.Value(1)).current;
+  const [pulseAnim] = useState(() => new Animated.Value(1));
 
   const isLandscape = W > H;
 
+  // The id, not the room: every field update would otherwise replace the route again.
+  const roomId = room?.roomId;
   useEffect(() => {
-    if (room) {
+    if (roomId) {
       router.replace("/(online)/room");
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- navigate once per room id, not on every room field update
-  }, [room?.roomId]);
+  }, [roomId]);
 
   const handleCancelSearch = React.useCallback(() => {
     leaveRoom();
@@ -123,8 +124,7 @@ export default function QuickmatchScreen() {
     );
     pulse.start();
     return () => pulse.stop();
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- pulseAnim is a stable ref value
-  }, [phase]);
+  }, [phase, pulseAnim]);
 
   useEffect(() => {
     if (phase !== "searching") return;

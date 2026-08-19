@@ -441,8 +441,7 @@ function GiocaButton({
   const [pressed, setPressed] = useState(false);
   const pressVal = useSharedValue(0);
 
-  useEffect(() => () => cancelAnimation(pressVal), [pressVal]);
-
+  // Must precede the effect that reads `pressVal` — the React Compiler skips any component that mutates a value an effect captured.
   const setPress = (down: boolean) => {
     if (!valid) return;
     setPressed(down);
@@ -450,6 +449,8 @@ function GiocaButton({
       ? down ? 1 : 0
       : withTiming(down ? 1 : 0, { duration: Motion.duration.fast });
   };
+
+  useEffect(() => () => cancelAnimation(pressVal), [pressVal]);
 
   const pressStyle = useAnimatedStyle(() => ({
     transform: [
@@ -518,8 +519,7 @@ function PassaButton({
   const [pressed, setPressed] = useState(false);
   const pressVal = useSharedValue(0);
 
-  useEffect(() => () => cancelAnimation(pressVal), [pressVal]);
-
+  // Must precede the effect that reads `pressVal` — the React Compiler skips any component that mutates a value an effect captured.
   const setPress = (down: boolean) => {
     if (!canPass) return;
     setPressed(down);
@@ -527,6 +527,8 @@ function PassaButton({
       ? down ? 1 : 0
       : withTiming(down ? 1 : 0, { duration: Motion.duration.fast });
   };
+
+  useEffect(() => () => cancelAnimation(pressVal), [pressVal]);
 
   const pressStyle = useAnimatedStyle(() => ({
     transform: [{ translateY: pressVal.value * BTN_PRESS_TRAVEL }],

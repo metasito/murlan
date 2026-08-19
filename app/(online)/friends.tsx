@@ -174,16 +174,15 @@ export default function FriendsScreen() {
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : t("common.error");
       const match = msg.match(/\d+: (.+)/);
+      const body = match ? match[1] : msg;
       try {
-        const parsed = JSON.parse(match ? match[1] : msg);
-        setSearchError(translateServerPayload(parsed) ?? t("friends.userNotFound"));
+        setSearchError(translateServerPayload(JSON.parse(body)));
       } catch {
         setSearchError(t("friends.userNotFound"));
       }
       setSearchDone(true);
-    } finally {
-      setSearchLoading(false);
     }
+    setSearchLoading(false);
   }
 
   async function handleSendRequestToFound() {
@@ -205,23 +204,23 @@ export default function FriendsScreen() {
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : t("common.error");
       const match = msg.match(/\d+: (.+)/);
+      const body = match ? match[1] : msg;
       try {
-        const parsed = JSON.parse(match ? match[1] : msg);
-        showError(translateServerPayload(parsed) ?? msg);
+        showError(translateServerPayload(JSON.parse(body)));
       } catch {
-        showError(match ? match[1] : msg);
+        showError(body);
       }
-    } finally {
-      setAddLoading(false);
     }
+    setAddLoading(false);
   }
 
+  // The id, not the room: every field update would otherwise push the route again.
+  const roomId = room?.roomId;
   useEffect(() => {
-    if (room) {
+    if (roomId) {
       router.push("/(online)/room");
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- navigate once per room id, not on every room field update
-  }, [room?.roomId]);
+  }, [roomId]);
 
   useFocusEffect(
     useCallback(() => {

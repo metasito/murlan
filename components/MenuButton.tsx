@@ -49,18 +49,7 @@ export function MenuButton({
   const hintProps = useA11yHint(hint);
   const press = useSharedValue(0);
 
-  useEffect(
-    () => () => {
-      cancelAnimation(press);
-    },
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- unmount cleanup only; press is a stable shared value
-    []
-  );
-
-  const animStyle = useAnimatedStyle(() => ({
-    transform: [{ translateY: press.value * PRESS_TRAVEL }],
-  }));
-
+  // Must precede the effect that reads `press` — the React Compiler skips any component that mutates a value an effect captured.
   const setPress = (down: boolean) => {
     if (isDisabled) return;
     setPressed(down);
@@ -68,6 +57,12 @@ export function MenuButton({
       ? down ? 1 : 0
       : withTiming(down ? 1 : 0, { duration: Motion.duration.fast });
   };
+
+  useEffect(() => () => cancelAnimation(press), [press]);
+
+  const animStyle = useAnimatedStyle(() => ({
+    transform: [{ translateY: press.value * PRESS_TRAVEL }],
+  }));
 
   return (
     <Animated.View style={[fullWidth && styles.fullWidth, animStyle]}>
