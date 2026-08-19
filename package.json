@@ -2,6 +2,9 @@
   "name": "expo-app",
   "main": "expo-router/entry",
   "version": "1.0.0",
+  "engines": {
+    "node": ">=22"
+  },
   "scripts": {
     "postinstall": "patch-package",
     "expo:dev": "EXPO_PACKAGER_PROXY_URL=https://$REPLIT_DEV_DOMAIN REACT_NATIVE_PACKAGER_HOSTNAME=$REPLIT_DEV_DOMAIN EXPO_PUBLIC_DOMAIN=$REPLIT_DEV_DOMAIN:5000 npx expo start --localhost",
@@ -9,7 +12,7 @@
     "expo:start:static:build": "npx expo start --no-dev --minify --localhost",
     "expo:static:build": "node scripts/build.js",
     "expo:web:build": "node scripts/assertNotE2EFast.js && npx expo export --platform web",
-    "server:build": "esbuild server/index.ts --platform=node --packages=external --bundle --format=esm --outdir=server_dist",
+    "server:build": "esbuild server/index.ts --platform=node --target=node22 --packages=external --bundle --format=esm --outdir=server_dist",
     "server:prod": "NODE_ENV=production node server_dist/index.js",
     "db:push": "drizzle-kit push",
     "db:reset": "node scripts/reset-db.mjs && drizzle-kit push",

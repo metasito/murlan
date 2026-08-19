@@ -20,6 +20,8 @@ and never go stale.
 - Port from `process.env.PORT`, database from `process.env.DATABASE_URL`.
 - `DATABASE_URL`, `SESSION_SECRET`, `PORT` must be set in Replit Secrets.
 - No build step needing local tooling. Must launch from the Run button with no setup.
+- **Production runs Node 22** (`.replit` `modules`), CI tests on 24. `server:build` carries
+  `--target=node22` so nothing newer than the deploy runtime is emitted.
 - **`server/schemaDdl.ts` is the only thing that creates tables**, at boot, from
   `shared/schema.ts`. Every statement is additive and idempotent (`tests/schemaDdl.test.ts`).
   A second creator is how `session` came to exist on one database and nowhere else.
