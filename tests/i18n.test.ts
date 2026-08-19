@@ -11,6 +11,7 @@ import assert from "node:assert/strict";
 import { readFileSync, readdirSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
+import ts from "typescript";
 // @ts-ignore — see tests/helpers.ts for why the .ts extension is required
 import { it } from "../locales/it.ts";
 // @ts-ignore
@@ -317,38 +318,52 @@ describe("every player-facing server response carries a code", () => {
     return i;
   }
 
-  /**
-   * Every object literal passed directly to a `.json(` or `.emit(` call,
-   * whatever else the call passes around it — a computed event name
-   * (`errorEventFor(event)`, this codebase's own idiom in socketSafety.ts)
-   * must not make the payload after it invisible. Finds the first `{` at the
-   * call's own argument-list depth (not one nested inside a further call
-   * within an argument, which would misread that call's own object as the
-   * payload), bounded by the call's own matching `)` — so a call with no
-   * inline object argument at all (`res.json()` awaiting a fetch, a payload
-   * built entirely by a helper call) correctly yields nothing.
-   */
-  function payloadObjects(source: string): { start: number; text: string }[] {
-    const objects: { start: number; text: string }[] = [];
-    const callSite = /\.(?:json|emit)\(/g;
-    let call: RegExpExecArray | null;
-    while ((call = callSite.exec(source))) {
-      let depth = 1;
-      let i = call.index + call[0].length;
-      let objStart = -1;
-      for (; i < source.length; i++) {
-        const c = source[i];
-        if (c === "(") depth++;
-        else if (c === ")") {
-          depth--;
-          if (depth === 0) break;
-        } else if (c === "{" && depth === 1) {
-          objStart = i;
-          break;
+  /** Every `.json(` or `.emit(` call anywhere in `sourceFile`. */
+  function responseCalls(sourceFile: ts.SourceFile): ts.CallExpression[] {
+    const calls: ts.CallExpression[] = [];
+    const visit = (node: ts.Node) => {
+      if (
+        ts.isCallExpression(node) &&
+        ts.isPropertyAccessExpression(node.expression) &&
+        (node.expression.name.text === "json" || node.expression.name.text === "emit")
+      ) {
+        calls.push(node);
+      }
+      ts.forEachChild(node, visit);
+    };
+    visit(sourceFile);
+    return calls;
+  }
+
+  /** An object literal's own top-level property names. */
+  function propertyNames(obj: ts.ObjectLiteralExpression): Set<string> {
+    const names = new Set<string>();
+    for (const prop of obj.properties) {
+      if (
+        (ts.isPropertyAssignment(prop) || ts.isShorthandPropertyAssignment(prop)) &&
+        (ts.isIdentifier(prop.name) || ts.isStringLiteral(prop.name))
+      ) {
+        names.add(prop.name.text);
+      }
+    }
+    return names;
+  }
+
+  /** Every object literal argument of a `.json(`/`.emit(` call, at any position in the argument list. */
+  function payloadObjects(
+    sourceFile: ts.SourceFile
+  ): { start: number; text: string; names: Set<string> }[] {
+    const objects: { start: number; text: string; names: Set<string> }[] = [];
+    for (const call of responseCalls(sourceFile)) {
+      for (const arg of call.arguments) {
+        if (ts.isObjectLiteralExpression(arg)) {
+          objects.push({
+            start: arg.getStart(sourceFile),
+            text: arg.getText(sourceFile),
+            names: propertyNames(arg),
+          });
         }
       }
-      if (objStart === -1) continue;
-      objects.push({ start: objStart, text: source.slice(objStart, braceSpan(source, objStart)) });
     }
     return objects;
   }
@@ -365,9 +380,7 @@ describe("every player-facing server response carries a code", () => {
   }
 
   /**
-   * Spans reached only from behind an `expo-platform` header check — keyed
-   * on that structural gate, not on the manifest 404's English text, which a
-   * copy-edit could reword with no idea it was also a test fixture.
+   * Spans reached only from behind an `expo-platform` header check.
    * `server/app.ts`'s `expoManifestHandler` gates `serveExpoManifest` on
    * that header; anything it calls inherits the same gate.
    */
@@ -394,12 +407,13 @@ describe("every player-facing server response carries a code", () => {
 
     const violations: string[] = [];
     for (const file of files) {
-      const source = readFileSync(path.join(serverDir, file), "utf8");
+      const filePath = path.join(serverDir, file);
+      const source = readFileSync(filePath, "utf8");
+      const sourceFile = ts.createSourceFile(filePath, source, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
       const exemptSpans = headerGatedSpans(source);
-      for (const { start, text } of payloadObjects(source)) {
-        const isTextPayload = /\b(message|error)\s*:/.test(text);
-        const hasCode = /\bcode\s*:/.test(text);
-        if (!isTextPayload || hasCode) continue;
+      for (const { start, text, names } of payloadObjects(sourceFile)) {
+        if (!names.has("message") && !names.has("error")) continue;
+        if (names.has("code")) continue;
         if (exemptSpans.some(([s, e]) => start >= s && start < e)) continue;
         violations.push(`${file}: ${text.replace(/\s+/g, " ").trim().slice(0, 90)}`);
       }
