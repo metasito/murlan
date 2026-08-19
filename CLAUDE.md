@@ -102,9 +102,11 @@ lines is explaining itself instead of being clear.
 - **No workarounds.** If the correct fix is bigger, do the correct fix. Look up current best
   practice rather than guessing.
 - **Design first** for anything touching storage, the socket protocol, or many files.
-- **The database is not precious.** No real users. Prefer dropping and recreating over
-  accreting compatibility. Order by design, not deploy cost: derive from existing rows →
-  ride an existing jsonb column → new table → new column.
+- **The database holds accounts now.** Beta testers have them, so dropping and recreating is
+  no longer free: `pg_dump` first, and read `db:push`'s rename-or-drop prompt rather than
+  accepting it — answering it wrong deletes the column's data (`docs/DEPLOY-RUNBOOK.md`).
+  Order a change by design, not by deploy cost: derive from existing rows → ride an existing
+  jsonb column → new table → new column.
 - **Leave no residue.** Implemented design docs, superseded plans and scratch scripts get
   deleted, not archived. A claim that no longer holds is removed the moment it's found.
 - **No self-defeating safeguards.** Never ship a guard together with the thing that gets past
@@ -119,10 +121,3 @@ lines is explaining itself instead of being clear.
 - React Compiler can miscompile `useEffect` references. It comes from
   `babel-preset-expo`'s own dependency — do not add a second copy to `package.json`;
   `tests/reactCompiler.test.ts` pins that there is only one.
-
-## Audit remediation in progress
-
-125 findings in `audit/2026-08-17/`, executed in 15 batches. **Run `/batch <n>` — do not
-improvise an implementation prompt.** `PROGRESS.md` holds the queue, per-batch treatment and
-run order; `DECISIONS.md` holds settled answers (do not re-open them). While this is live,
-that backlog outranks `docs/BACKLOG.md`.

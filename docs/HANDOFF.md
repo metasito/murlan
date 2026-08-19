@@ -66,12 +66,12 @@ table or column ships with the deploy that introduces it, and a database Replit
 has just reprovisioned works on the first boot. `npm run db:push` is left for
 destructive reconciliation only.
 
-**One exception is outstanding.** Batch 13 renamed `active_games.room_code` and
-`match_replays.room_code` to `room_id`, which is destructive and boot refuses to
-carry out: `assertRenamesApplied()` throws, so the server will not start against
-a database still holding the old columns. `npm run db:push` has to run against
-production before or with that deploy. `audit/2026-08-17/OWNER-TODO.md` carries
-the detail.
+Batch 13 renamed `active_games.room_code` and `match_replays.room_code` to
+`room_id`. That is destructive, so boot refuses to carry it out —
+`assertRenamesApplied()` throws rather than start against a database still
+holding the old columns, and `npm run db:push` has to answer *rename* for each.
+Both were applied to production on 2026-08-19; `docs/DEPLOY-RUNBOOK.md` is the
+sequence that did it.
 
 `drizzle.config.ts` still excludes the `session` table from push, because
 otherwise a push that adds a table asks whether the new one is a *rename* of
