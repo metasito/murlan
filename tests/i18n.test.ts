@@ -349,18 +349,38 @@ describe("every player-facing server response carries a code", () => {
     return names;
   }
 
-  /** Every object literal argument of a `.json(`/`.emit(` call, at any position in the argument list. */
+  /**
+   * Every `ObjectLiteralExpression` reachable from `node` without crossing
+   * into a nested call's own arguments — so `a ? {x} : {y}`, `a ?? {x}`,
+   * `{x} as T` and any other wrapper report the object literals inside them,
+   * while `helper({x})` reports none: that one belongs to `helper`.
+   */
+  function objectLiteralsIn(node: ts.Node): ts.ObjectLiteralExpression[] {
+    const found: ts.ObjectLiteralExpression[] = [];
+    const visit = (n: ts.Node) => {
+      if (ts.isObjectLiteralExpression(n)) {
+        found.push(n);
+        return;
+      }
+      if (ts.isCallExpression(n)) return;
+      ts.forEachChild(n, visit);
+    };
+    visit(node);
+    return found;
+  }
+
+  /** Every object literal reachable from a `.json(`/`.emit(` call's arguments, at any position and depth. */
   function payloadObjects(
     sourceFile: ts.SourceFile
   ): { start: number; text: string; names: Set<string> }[] {
     const objects: { start: number; text: string; names: Set<string> }[] = [];
     for (const call of responseCalls(sourceFile)) {
       for (const arg of call.arguments) {
-        if (ts.isObjectLiteralExpression(arg)) {
+        for (const obj of objectLiteralsIn(arg)) {
           objects.push({
-            start: arg.getStart(sourceFile),
-            text: arg.getText(sourceFile),
-            names: propertyNames(arg),
+            start: obj.getStart(sourceFile),
+            text: obj.getText(sourceFile),
+            names: propertyNames(obj),
           });
         }
       }
@@ -404,20 +424,28 @@ describe("every player-facing server response carries a code", () => {
     const files = readdirSync(serverDir, { recursive: true, encoding: "utf8" }).filter(
       (f) => f.endsWith(".ts")
     );
+    assert.ok(files.length >= 20, `expected to find server/'s .ts files, got ${files.length}`);
 
     const violations: string[] = [];
+    let objectCount = 0;
     for (const file of files) {
       const filePath = path.join(serverDir, file);
       const source = readFileSync(filePath, "utf8");
       const sourceFile = ts.createSourceFile(filePath, source, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
       const exemptSpans = headerGatedSpans(source);
-      for (const { start, text, names } of payloadObjects(sourceFile)) {
+      const objects = payloadObjects(sourceFile);
+      objectCount += objects.length;
+      for (const { start, text, names } of objects) {
         if (!names.has("message") && !names.has("error")) continue;
         if (names.has("code")) continue;
         if (exemptSpans.some(([s, e]) => start >= s && start < e)) continue;
         violations.push(`${file}: ${text.replace(/\s+/g, " ").trim().slice(0, 90)}`);
       }
     }
+    assert.ok(
+      objectCount > 50,
+      `expected to find the server's response payload objects, got ${objectCount}`
+    );
     assert.deepEqual(
       violations,
       [],
