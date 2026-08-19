@@ -94,14 +94,25 @@ export async function connectAs(
 }
 
 /**
+ * These deadlines exist to fail a hung test loudly rather than stall the
+ * suite; none of them asserts how fast the server is. A shared runner is
+ * several times slower than a developer machine — this suite takes 134s
+ * locally and 238s on CI — and the socket tests deliberately saturate the
+ * connect path, so a budget chosen against local latency fails on load while
+ * nothing is wrong. Every deadline scales instead of each one being retuned.
+ */
+export const DEADLINE_SCALE = process.env.CI ? 4 : 1;
+
+/**
  * Waits for a single occurrence of `event` on `socket`, timing out loudly
- * instead of letting a hung test stall the suite.
+ * instead of letting a hung test stall the suite. `ms` is the local budget;
+ * it is scaled by `DEADLINE_SCALE`.
  */
 export function waitFor<T = unknown>(socket: Socket, event: string, ms = 5000): Promise<T> {
   return new Promise((resolve, reject) => {
     const timer = setTimeout(
       () => reject(new Error(`timed out waiting for "${event}"`)),
-      ms
+      ms * DEADLINE_SCALE
     );
     socket.once(event, (payload: T) => {
       clearTimeout(timer);
