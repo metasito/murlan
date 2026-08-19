@@ -302,33 +302,87 @@ describe("every player-facing server response carries a code", () => {
   // socketSafety.ts leaked raw Italian to every locale. This scans response
   // and socket-emit payloads directly instead of known codes, so it catches
   // an absence.
-  function payloadObjects(source: string): string[] {
-    const objects: string[] = [];
+
+  /** Span (end exclusive) of the `{...}` that opens at `braceStart`. */
+  function braceSpan(source: string, braceStart: number): number {
+    let depth = 0;
+    let i = braceStart;
+    for (; i < source.length; i++) {
+      if (source[i] === "{") depth++;
+      else if (source[i] === "}" && --depth === 0) {
+        i++;
+        break;
+      }
+    }
+    return i;
+  }
+
+  /**
+   * Every object literal passed directly to a `.json(` or `.emit(` call,
+   * whatever else the call passes around it — a computed event name
+   * (`errorEventFor(event)`, this codebase's own idiom in socketSafety.ts)
+   * must not make the payload after it invisible. Finds the first `{` at the
+   * call's own argument-list depth (not one nested inside a further call
+   * within an argument, which would misread that call's own object as the
+   * payload), bounded by the call's own matching `)` — so a call with no
+   * inline object argument at all (`res.json()` awaiting a fetch, a payload
+   * built entirely by a helper call) correctly yields nothing.
+   */
+  function payloadObjects(source: string): { start: number; text: string }[] {
+    const objects: { start: number; text: string }[] = [];
     const callSite = /\.(?:json|emit)\(/g;
     let call: RegExpExecArray | null;
     while ((call = callSite.exec(source))) {
-      const afterCall = call.index + call[0].length;
-      const braceIndex = source.indexOf("{", afterCall);
-      if (braceIndex === -1) continue;
-      // Only a bare object literal, or one preceded by a single string
-      // argument (a socket event name) — anything else (`res.json()` awaiting
-      // a fetch, a payload built by a helper call) is not an inline literal
-      // this scan can read, and is skipped rather than misread.
-      const between = source.slice(afterCall, braceIndex);
-      if (!/^\s*("[^"]*"\s*,)?\s*$/.test(between)) continue;
-
-      let depth = 0;
-      let i = braceIndex;
+      let depth = 1;
+      let i = call.index + call[0].length;
+      let objStart = -1;
       for (; i < source.length; i++) {
-        if (source[i] === "{") depth++;
-        else if (source[i] === "}" && --depth === 0) {
-          i++;
+        const c = source[i];
+        if (c === "(") depth++;
+        else if (c === ")") {
+          depth--;
+          if (depth === 0) break;
+        } else if (c === "{" && depth === 1) {
+          objStart = i;
           break;
         }
       }
-      objects.push(source.slice(braceIndex, i));
+      if (objStart === -1) continue;
+      objects.push({ start: objStart, text: source.slice(objStart, braceSpan(source, objStart)) });
     }
     return objects;
+  }
+
+  /** Span of `name`'s function body, declared either way this codebase does it. */
+  function functionBodySpan(source: string, name: string): [number, number] | null {
+    const decl = new RegExp(
+      `(?:function\\s+${name}\\s*\\([^{]*\\)|(?:const|let)\\s+${name}\\s*=\\s*(?:async\\s*)?\\([^{]*\\)\\s*(?::[^{=]+)?=>)\\s*\\{`
+    );
+    const m = decl.exec(source);
+    if (!m) return null;
+    const start = m.index + m[0].length - 1;
+    return [start, braceSpan(source, start)];
+  }
+
+  /**
+   * Spans reached only from behind an `expo-platform` header check — keyed
+   * on that structural gate, not on the manifest 404's English text, which a
+   * copy-edit could reword with no idea it was also a test fixture.
+   * `server/app.ts`'s `expoManifestHandler` gates `serveExpoManifest` on
+   * that header; anything it calls inherits the same gate.
+   */
+  function headerGatedSpans(source: string): [number, number][] {
+    const handler = functionBodySpan(source, "expoManifestHandler");
+    if (!handler) return [];
+    const [hStart, hEnd] = handler;
+    const handlerBody = source.slice(hStart, hEnd);
+    if (!handlerBody.includes("expo-platform")) return [];
+    const spans: [number, number][] = [];
+    for (const m of handlerBody.matchAll(/\b([a-zA-Z_$][\w$]*)\(/g)) {
+      const callee = functionBodySpan(source, m[1]);
+      if (callee) spans.push(callee);
+    }
+    return spans;
   }
 
   test("no player-facing JSON response or socket error emit omits a code", () => {
@@ -341,17 +395,13 @@ describe("every player-facing server response carries a code", () => {
     const violations: string[] = [];
     for (const file of files) {
       const source = readFileSync(path.join(serverDir, file), "utf8");
-      for (const payload of payloadObjects(source)) {
-        const isTextPayload = /\b(message|error)\s*:/.test(payload);
-        const hasCode = /\bcode\s*:/.test(payload);
+      const exemptSpans = headerGatedSpans(source);
+      for (const { start, text } of payloadObjects(source)) {
+        const isTextPayload = /\b(message|error)\s*:/.test(text);
+        const hasCode = /\bcode\s*:/.test(text);
         if (!isTextPayload || hasCode) continue;
-        // server/app.ts's Expo Go manifest 404 answers a dev-tooling fetch
-        // keyed by an `expo-platform` header — not a response the running
-        // app ever passes through translateServerPayload. /health's 503
-        // needs no exemption: it carries no message/error field to begin
-        // with, so it never matches isTextPayload above.
-        if (file === "app.ts" && payload.includes("Manifest not found")) continue;
-        violations.push(`${file}: ${payload.replace(/\s+/g, " ").trim().slice(0, 90)}`);
+        if (exemptSpans.some(([s, e]) => start >= s && start < e)) continue;
+        violations.push(`${file}: ${text.replace(/\s+/g, " ").trim().slice(0, 90)}`);
       }
     }
     assert.deepEqual(
