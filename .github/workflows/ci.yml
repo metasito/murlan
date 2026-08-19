@@ -239,8 +239,8 @@ jobs:
           NODE_ENV: production
         run: |
           test -f dist/index.html
-          test -f server_dist/index.js
-          node server_dist/index.js &
+          test -f server_dist/index.mjs
+          node server_dist/index.mjs &
           server_pid=$!
           for _ in $(seq 1 30); do
             if curl -fsS "http://127.0.0.1:$PORT/health" -o health.json; then break; fi

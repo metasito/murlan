@@ -228,7 +228,7 @@ Still in the Replit shell:
 
 ```bash
 npm run server:build
-NODE_ENV=production PORT=5051 node server_dist/index.js &
+NODE_ENV=production PORT=5051 node server_dist/index.mjs &
 server_pid=$!
 sleep 5
 curl -fsS http://127.0.0.1:5051/health

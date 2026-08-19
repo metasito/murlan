@@ -79,7 +79,7 @@ statements on top of the push, and a `curl` that runs too early reads as a false
 
 ```bash
 npm run server:build
-NODE_ENV=production PORT=5051 node server_dist/index.js > /tmp/boot.log 2>&1 &
+NODE_ENV=production PORT=5051 node server_dist/index.mjs > /tmp/boot.log 2>&1 &
 for i in $(seq 1 60); do curl -fsS http://127.0.0.1:5051/health && break || sleep 1; done
 cat /tmp/boot.log
 kill %1
