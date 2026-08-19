@@ -69,8 +69,7 @@ function ScoreRow({
     }
     opacity.value = withDelay(delay, withTiming(1, { duration: 320 }));
     tx.value = withDelay(delay, withSpring(0, Motion.spring.entrance));
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- one-shot mount animation; opacity/tx are stable shared values, delay is fixed per instance
-  }, []);
+  }, [delay, opacity, reduceMotion, tx]);
   const anim = useAnimatedStyle(() => ({
     opacity: opacity.value,
     transform: [{ translateX: tx.value }],
@@ -157,8 +156,7 @@ function WinnerCelebration({
       false
     );
     hapticSuccess();
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- one-shot mount animation; stable shared values
-  }, []);
+  }, [glow, glowScale, opacity, reduceMotion, scale]);
   const containerAnim = useAnimatedStyle(() => ({
     transform: [{ scale: scale.value }],
     opacity: opacity.value,
@@ -203,20 +201,17 @@ export default function ResultScreen() {
   } = useGame();
   const prevExchangeActiveRef = useRef<boolean | undefined>(undefined);
 
+  const isActive = gameState?.exchangePhase?.active;
+  const bothJokers = gameState?.exchangePhase?.bothJokersException;
+
   useEffect(() => {
-    if (!gameState?.exchangePhase) return;
+    if (isActive === undefined) return;
     const wasActive = prevExchangeActiveRef.current;
-    const isActive = gameState.exchangePhase.active;
-    if (
-      wasActive === true &&
-      isActive === false &&
-      !gameState.exchangePhase.bothJokersException
-    ) {
+    if (wasActive === true && isActive === false && !bothJokers) {
       router.replace("/game");
     }
     prevExchangeActiveRef.current = isActive;
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- tracks only the active->inactive transition, not every exchangePhase field
-  }, [gameState?.exchangePhase?.active]);
+  }, [isActive, bothJokers]);
 
   useEffect(() => {
     if (!gameState) router.replace("/");

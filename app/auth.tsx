@@ -52,15 +52,14 @@ export default function AuthScreen() {
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : t("auth.unknownError");
       const match = msg.match(/\d+: (.+)/);
+      const body = match ? match[1] : msg;
       try {
-        const parsed = JSON.parse(match ? match[1] : msg);
-        setError(translateServerPayload(parsed) ?? msg);
+        setError(translateServerPayload(JSON.parse(body)));
       } catch {
-        setError(match ? match[1] : msg);
+        setError(body);
       }
-    } finally {
-      setLoading(false);
     }
+    setLoading(false);
   }
 
   return (
