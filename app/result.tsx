@@ -128,13 +128,18 @@ function WinnerCelebration({
   const opacity = useSharedValue(0);
   const glow = useSharedValue(0.5);
   const glowScale = useSharedValue(1.0);
+  // The verdict lands once. Kept off the motion effect below, which re-runs
+  // when `usePrefersReducedMotion` settles asynchronously after first paint.
+  useEffect(() => {
+    hapticSuccess();
+  }, []);
+
   useEffect(() => {
     if (reduceMotion) {
-      // The result still arrives and the haptic still fires; the entrance and
-      // the endless glow behind it are the parts with nothing to say.
+      // The entrance and the endless glow behind it are the parts with nothing
+      // to say; the result itself still arrives.
       scale.value = 1;
       opacity.value = 1;
-      hapticSuccess();
       return;
     }
     scale.value = withSpring(1, Motion.spring.reveal);
@@ -155,7 +160,6 @@ function WinnerCelebration({
       -1,
       false
     );
-    hapticSuccess();
   }, [glow, glowScale, opacity, reduceMotion, scale]);
   const containerAnim = useAnimatedStyle(() => ({
     transform: [{ scale: scale.value }],

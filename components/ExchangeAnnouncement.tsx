@@ -47,15 +47,19 @@ function FlyingCard({
   yOffset: number;
   reduceMotion: boolean;
 }) {
-  const tx = useSharedValue(toRight ? -80 : screenWidth + 20);
+  // The whole flight is planned against the width at mount: `tx` is seeded from
+  // it and a shared value's initial value is never re-seeded, so re-planning
+  // against a later width would launch the card from a start it has left.
+  const [flightWidth] = useState(screenWidth);
+  const tx = useSharedValue(toRight ? -80 : flightWidth + 20);
 
   useEffect(() => {
     if (reduceMotion) return;
     tx.value = withDelay(
       delay,
-      withTiming(toRight ? screenWidth + 20 : -80, { duration: FLIGHT_DURATION })
+      withTiming(toRight ? flightWidth + 20 : -80, { duration: FLIGHT_DURATION })
     );
-  }, [delay, reduceMotion, screenWidth, toRight, tx]);
+  }, [delay, flightWidth, reduceMotion, toRight, tx]);
 
   const animStyle = useAnimatedStyle(() => ({
     transform: [{ translateX: tx.value }],

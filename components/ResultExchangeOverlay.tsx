@@ -51,6 +51,7 @@ export function ResultExchangeOverlay({
   const ep = gameState.exchangePhase!;
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const autoRef = useRef(false);
+  const aiTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const leftRef = useRef(false);
 
   /**
@@ -76,13 +77,16 @@ export function ResultExchangeOverlay({
       const t = setTimeout(leaveForNextHand, BOTH_JOKERS_HOLD_MS);
       return () => clearTimeout(t);
     }
+    // Armed once per mount and never cleared here: `autoRef` refuses to arm a
+    // second, so a cleanup that cancelled this one on a re-run would leave the
+    // AI holding its card and the hand stuck behind an undismissable modal.
+    // The unmount effect below is what tears it down.
     if (winner.type === "ai" && !autoRef.current) {
       autoRef.current = true;
-      const t = setTimeout(() => {
+      aiTimerRef.current = setTimeout(() => {
         const give = pickGivebackCard(winner.hand, ep.cardFromLoser?.id);
         if (give) chooseExchangeCard(give.id);
       }, AI_PICK_DELAY_MS);
-      return () => clearTimeout(t);
     }
   }, [
     chooseExchangeCard,
@@ -92,6 +96,14 @@ export function ResultExchangeOverlay({
     winner.hand,
     winner.type,
   ]);
+
+  useEffect(
+    () => () => {
+      if (aiTimerRef.current) clearTimeout(aiTimerRef.current);
+    },
+    []
+  );
+
 
   if (ep.bothJokersException) {
     return (
