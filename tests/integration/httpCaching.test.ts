@@ -57,9 +57,15 @@ describe("static asset compression and caching", { skip: hasDatabase() ? false :
   });
 
   after(async () => {
-    if (server) await server.stop();
-    if (originalCwd) process.chdir(originalCwd);
-    fs.rmSync(sandbox, { recursive: true, force: true });
+    try {
+      if (server) await server.stop();
+    } finally {
+      try {
+        if (originalCwd) process.chdir(originalCwd);
+      } finally {
+        fs.rmSync(sandbox, { recursive: true, force: true });
+      }
+    }
   });
 
   const assetUrl = () =>
