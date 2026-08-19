@@ -96,7 +96,26 @@ test("every screen and component compiles with no bailouts", () => {
   );
 });
 
-const HOOK_SUPPRESSION = /eslint-disable[^\n]*\breact-hooks\//;
+/**
+ * Every `eslint-disable` directive, in either comment syntax, with its rule
+ * list — which a block comment may spread over several lines.
+ */
+const DIRECTIVE =
+  /\/\*\s*(eslint-disable(?:-next-line|-line)?)(?![\w-])([\s\S]*?)\*\/|\/\/\s*(eslint-disable(?:-next-line|-line)?)(?![\w-])([^\n]*)/g;
+
+/**
+ * A directive that switches react-hooks off. Naming no rule at all switches
+ * off every rule, react-hooks among them, so a bare `/* eslint-disable *\/`
+ * counts — it costs the file its compilation exactly as a named one does.
+ */
+function disablesReactHooks(body: string): boolean {
+  const rules = body
+    .split("--")[0]
+    .split(",")
+    .map((r) => r.trim())
+    .filter(Boolean);
+  return rules.length === 0 || rules.some((r) => r.startsWith("react-hooks/"));
+}
 
 test("no react-hooks rule is switched off under app/, components/ or context/", () => {
   const found = ["app", "components", "context"]
@@ -106,11 +125,15 @@ test("no react-hooks rule is switched off under app/, components/ or context/", 
         .map((f) => `${dir}/${f.split(path.sep).join("/")}`)
     )
     .flatMap((rel) => {
-      const lines = readFileSync(path.join(repoRoot, rel), "utf8").split("\n");
-      return lines
-        .map((line, i) => ({ rel, line: line.trim(), n: i + 1 }))
-        .filter((l) => HOOK_SUPPRESSION.test(l.line))
-        .map((l) => `${l.rel}:${l.n} — ${l.line}`);
+      const source = readFileSync(path.join(repoRoot, rel), "utf8");
+      return [...source.matchAll(DIRECTIVE)]
+        .map((m) => ({
+          directive: m[1] ?? m[3],
+          body: m[2] ?? m[4] ?? "",
+          line: source.slice(0, m.index).split("\n").length,
+        }))
+        .filter((d) => disablesReactHooks(d.body))
+        .map((d) => `${rel}:${d.line} — ${d.directive} ${d.body.trim()}`.trimEnd());
     });
   assert.deepEqual(
     found,
