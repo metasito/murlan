@@ -100,14 +100,19 @@ later turns.
 
 ## 4. Persistence
 
-- **`active_games`** (`shared/schema.ts`): one row per room, `roomId` primary key,
-  `gameState` (jsonb, stamped with `schemaVersion` so a restart can tell a current-shape row
-  from a stale pre-migration one and refuse to rehydrate it), `playerIds`, `playerMap`
-  (keyed by seat, not compacted by array position — a compacted array previously
-  reassigned a rejoining player to the wrong seat and the wrong hand), `scores`
-  (cumulative match scores), `gameMode`, `matchTarget`. `persistGameState()` runs after
-  every state-mutating move and does a full `onConflictDoUpdate` — mode, seats and
-  scoreboard are all refreshed, not written once at game start.
+- **`active_games`** (`shared/schema.ts`): one row per room, and only three columns —
+  `roomId` primary key, `updatedAt` (a column because `pruneAbandonedGames` filters on it
+  in SQL), and `gameState`, a jsonb envelope stamped with `schemaVersion` so a restart can
+  tell a current-shape row from a stale one and refuse to rehydrate it. Everything else
+  rides inside that envelope: the hand itself, `handFlags`, `dealFirstSeat`, and a `match`
+  object holding `playerMap` (keyed by seat, not compacted by array position — a compacted
+  array previously reassigned a rejoining player to the wrong seat and the wrong hand),
+  `scores`, `gameMode`, `matchTarget`, `matchLength`, `maxPlayers` and `isPublic`. One
+  version stamp therefore governs the whole row; it previously covered `gameState` alone,
+  so a bump refused a stale hand while happily rehydrating the stale scoreboard beside it.
+  `persistGameState()` runs after every state-mutating move and does a full
+  `onConflictDoUpdate` — mode, seats and scoreboard are all refreshed, not written once at
+  game start.
   Rows are deleted by `disposeGame`, whose every caller walks the in-memory map — so a
   restart, which empties that map, orphans the row of any game that was live. The
   periodic sweeper therefore also prunes rows untouched for 24h. `updated_at` advances
