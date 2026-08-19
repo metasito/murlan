@@ -249,5 +249,5 @@ whose lower sheet silently swallows taps, and Q4.
 | `React.memo` on the card components | The React Compiler already covers those files, and `deepCloneState` gives every card a new reference per transition, so a shallow comparator can never hit. An incomplete custom one causes stale renders. |
 | Replacing `deepCloneState` for performance | Measured at 0.96 ms/move. Not a bottleneck. |
 | A generic achievements framework | A flat array with predicates is enough. |
-| An `eslint-disable` sweep to clear lint | Cleared honestly instead: 13 real dependencies added or restructured, 36 suppressed with a specific per-case reason. |
+| An `eslint-disable` sweep to clear lint | Cleared honestly instead: every dependency array is real and no `react-hooks` rule is switched off anywhere under `app/`, `components/` or `context/`. A suppression there costs the whole file its React Compiler pass, which `tests/reactCompiler.test.ts` fails on. |
 | Real-money play, social feeds, cross-promotion | Out of scope per `docs/BRIEF.md` §5. |
