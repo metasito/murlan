@@ -490,6 +490,20 @@ function CardViewBase({
       : withSpring(target, Motion.spring.pickup);
   }, [selected, noLift, reduceMotion, translateY]);
 
+  // Must precede the effect that reads `press` — the React Compiler skips any component that mutates a value an effect captured.
+  const handlePressIn = () => {
+    if (!interactive) return;
+    press.value = reduceMotion ? 1 : withSpring(1, Motion.spring.pickup);
+  };
+  const handlePressOut = () => {
+    if (!interactive) return;
+    press.value = reduceMotion ? 0 : withSpring(0, Motion.spring.land);
+  };
+  const handlePress = () => {
+    if (!interactive) return;
+    onPress!();
+  };
+
   useEffect(
     () => () => {
       cancelAnimation(translateY);
@@ -504,19 +518,6 @@ function CardViewBase({
       { rotate: `${press.value * -1.5}deg` },
     ],
   }));
-
-  const handlePressIn = () => {
-    if (!interactive) return;
-    press.value = reduceMotion ? 1 : withSpring(1, Motion.spring.pickup);
-  };
-  const handlePressOut = () => {
-    if (!interactive) return;
-    press.value = reduceMotion ? 0 : withSpring(0, Motion.spring.land);
-  };
-  const handlePress = () => {
-    if (!interactive) return;
-    onPress!();
-  };
 
   const w = small ? CARD_W_SMALL : CARD_W;
   const h = small ? CARD_H_SMALL : CARD_H;

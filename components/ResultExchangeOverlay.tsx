@@ -6,7 +6,7 @@
 // rendered on its own: which branch it shows depends on who won the previous
 // hand, and a test that has to win a real hand first to reach the interactive
 // branch is a coin flip.
-import React, { useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import { Modal, View, Text, StyleSheet, Pressable, ScrollView } from "react-native";
 import { router } from "expo-router";
 import { LinearGradient } from "expo-linear-gradient";
@@ -62,11 +62,11 @@ export function ResultExchangeOverlay({
    * this overlay before the timer fires — without the guard, the app issues a
    * second `replace` to a route it is already leaving.
    */
-  const leaveForNextHand = () => {
+  const leaveForNextHand = useCallback(() => {
     if (leftRef.current) return;
     leftRef.current = true;
     router.replace("/game");
-  };
+  }, []);
   const winner = gameState.players[ep.winnerIdx];
   const loser = gameState.players[ep.loserIdx];
   const exchangeCards = sortHand(getValidGivebackCards(winner.hand, ep.cardFromLoser?.id));
@@ -84,8 +84,14 @@ export function ResultExchangeOverlay({
       }, AI_PICK_DELAY_MS);
       return () => clearTimeout(t);
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- one-shot per phase mount; ep/winner/exchangeCards are fixed for this phase's lifetime, chooseExchangeCard is stable
-  }, [chooseExchangeCard]);
+  }, [
+    chooseExchangeCard,
+    ep.bothJokersException,
+    ep.cardFromLoser?.id,
+    leaveForNextHand,
+    winner.hand,
+    winner.type,
+  ]);
 
   if (ep.bothJokersException) {
     return (

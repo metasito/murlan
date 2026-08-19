@@ -71,6 +71,15 @@ export default function NotificationBanner({ notification, onDismiss }: Props) {
   // visibly slides.
   const slideDur = reduceMotion ? 0 : SLIDE_DURATION;
 
+  // Must precede the effect that reads them — the React Compiler skips any component that mutates a value an effect captured.
+  function handlePress() {
+    translateY.value = withTiming(-120, { duration: slideDur });
+    opacity.value = withTiming(0, { duration: slideDur * 0.75 }, (finished) => {
+      if (finished) runOnJS(onDismiss)();
+    });
+    if (notification) notification.onPress?.();
+  }
+
   useEffect(() => {
     if (notification) {
       const visibleDuration = notification.duration ?? DEFAULT_VISIBLE_DURATION;
@@ -94,21 +103,12 @@ export default function NotificationBanner({ notification, onDismiss }: Props) {
       translateY.value = withTiming(-120, { duration: slideDur });
       opacity.value = withTiming(0, { duration: slideDur });
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- translateY/opacity are stable shared values
-  }, [notification, slideDur, onDismiss]);
+  }, [notification, opacity, slideDur, onDismiss, translateY]);
 
   const animStyle = useAnimatedStyle(() => ({
     transform: [{ translateY: translateY.value }],
     opacity: opacity.value,
   }));
-
-  function handlePress() {
-    translateY.value = withTiming(-120, { duration: slideDur });
-    opacity.value = withTiming(0, { duration: slideDur * 0.75 }, (finished) => {
-      if (finished) runOnJS(onDismiss)();
-    });
-    if (notification) notification.onPress?.();
-  }
 
   // Always render — animation controls visibility, never unmount
   const color = notification ? COLOR_MAP[notification.type] : Colors.gold;

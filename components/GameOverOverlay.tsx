@@ -82,8 +82,7 @@ function RankCard({
     }
     opacity.value = withDelay(delay, withTiming(1, { duration: 350 }));
     tx.value = withDelay(delay, withSpring(0, Motion.spring.entrance));
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- opacity/tx are stable shared values, delay is fixed per instance
-  }, [reduceMotion]);
+  }, [delay, opacity, reduceMotion, tx]);
 
   const animStyle = useAnimatedStyle(() => ({
     opacity: opacity.value,
@@ -189,8 +188,7 @@ export function GameOverOverlay({
     return () => {
       cancelAnimation(glow);
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- scale/opacity/glow are stable shared values
-  }, [reduceMotion]);
+  }, [glow, opacity, reduceMotion, scale]);
 
   const celebStyle = useAnimatedStyle(() => ({
     transform: [{ scale: scale.value }],

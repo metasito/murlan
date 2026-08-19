@@ -46,8 +46,7 @@ function AnimatedCard({ card, delay = 0, reduceMotion }: { card: Card; delay?: n
     ty.value = withDelay(delay, withSpring(0, Motion.spring.land));
     rot.value = withDelay(delay, withSpring(0, Motion.spring.land));
     opacity.value = withDelay(delay, withTiming(1, { duration: Motion.duration.moderate }));
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- one-shot mount animation; ty/rot/opacity are stable shared values, delay/reduceMotion are fixed per instance
-  }, []);
+  }, [delay, opacity, reduceMotion, rot, ty]);
 
   const anim = useAnimatedStyle(() => ({
     opacity: opacity.value,
@@ -79,15 +78,7 @@ function SelectableCard({
   const lift = useSharedValue(0);
   const glow = useSharedValue(0);
 
-  useEffect(
-    () => () => {
-      cancelAnimation(lift);
-      cancelAnimation(glow);
-    },
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- unmount cleanup only; both are stable shared values
-    []
-  );
-
+  // Must precede the effect that reads them — the React Compiler skips any component that mutates a value an effect captured.
   function setPress(down: boolean) {
     if (reduceMotion) {
       glow.value = down ? 1 : 0;
@@ -96,6 +87,14 @@ function SelectableCard({
     lift.value = withSpring(down ? 1 : 0, down ? Motion.spring.pickup : Motion.spring.land);
     glow.value = withTiming(down ? 1 : 0, { duration: Motion.duration.fast });
   }
+
+  useEffect(
+    () => () => {
+      cancelAnimation(lift);
+      cancelAnimation(glow);
+    },
+    [glow, lift]
+  );
 
   function handlePress() {
     hapticMedium();
@@ -151,8 +150,7 @@ export function ExchangeModal({
     if (reduceMotion) return;
     arrowScale.value = withDelay(300, withSpring(1, Motion.spring.entrance));
     arrowOpacity.value = withDelay(300, withTiming(1, { duration: 300 }));
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- one-shot mount animation; stable shared values, reduceMotion checked once at mount
-  }, []);
+  }, [arrowOpacity, arrowScale, reduceMotion]);
 
   const arrowAnim = useAnimatedStyle(() => ({
     transform: [{ scale: arrowScale.value }],
