@@ -6,7 +6,8 @@ export function validate(schema: z.ZodTypeAny) {
     const result = schema.safeParse(req.body);
     if (!result.success) {
       return res.status(400).json({
-        error: "Dati non validi",
+        error: "Invalid data",
+        code: "INVALID_PAYLOAD",
         details: result.error.flatten().fieldErrors,
       });
     }

@@ -54,6 +54,7 @@ export const sq: Record<keyof typeof en, string> = {
   "server.ACCOUNT_DELETE_FAILED": "Fshirja dështoi",
   "server.INVALID_USERNAME": "Emër përdoruesi i pavlefshëm",
   "server.INVALID_PARAMETER": "Parametër i pavlefshëm",
+  "server.INVALID_PAYLOAD": "Të dhëna të pavlefshme",
   "server.CANNOT_ADD_SELF": "Nuk mund të shtosh veten",
   "server.ALREADY_FRIENDS": "Jeni tashmë miq",
   "server.FRIEND_REQUEST_ALREADY_SENT": "Kërkesa për miqësi është dërguar tashmë",

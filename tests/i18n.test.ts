@@ -271,3 +271,70 @@ describe("translate() produces the expected output per locale", () => {
     assert.deepEqual(unused, [], `unused server.* keys: ${unused.join(", ")}`);
   });
 });
+
+describe("every player-facing server response carries a code", () => {
+  // The test above enumerates codes the server emits and checks each is
+  // translatable — it can only see a code that exists. A response with no
+  // code at all is invisible to it, which is exactly how validate.ts and
+  // socketSafety.ts leaked raw Italian to every locale. This scans response
+  // and socket-emit payloads directly instead of known codes, so it catches
+  // an absence.
+  function payloadObjects(source: string): string[] {
+    const objects: string[] = [];
+    const callSite = /\.(?:json|emit)\(/g;
+    let call: RegExpExecArray | null;
+    while ((call = callSite.exec(source))) {
+      const afterCall = call.index + call[0].length;
+      const braceIndex = source.indexOf("{", afterCall);
+      if (braceIndex === -1) continue;
+      // Only a bare object literal, or one preceded by a single string
+      // argument (a socket event name) — anything else (`res.json()` awaiting
+      // a fetch, a payload built by a helper call) is not an inline literal
+      // this scan can read, and is skipped rather than misread.
+      const between = source.slice(afterCall, braceIndex);
+      if (!/^\s*("[^"]*"\s*,)?\s*$/.test(between)) continue;
+
+      let depth = 0;
+      let i = braceIndex;
+      for (; i < source.length; i++) {
+        if (source[i] === "{") depth++;
+        else if (source[i] === "}" && --depth === 0) {
+          i++;
+          break;
+        }
+      }
+      objects.push(source.slice(braceIndex, i));
+    }
+    return objects;
+  }
+
+  test("no player-facing JSON response or socket error emit omits a code", () => {
+    const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+    const serverDir = path.join(repoRoot, "server");
+    const files = readdirSync(serverDir, { recursive: true, encoding: "utf8" }).filter(
+      (f) => f.endsWith(".ts")
+    );
+
+    const violations: string[] = [];
+    for (const file of files) {
+      const source = readFileSync(path.join(serverDir, file), "utf8");
+      for (const payload of payloadObjects(source)) {
+        const isTextPayload = /\b(message|error)\s*:/.test(payload);
+        const hasCode = /\bcode\s*:/.test(payload);
+        if (!isTextPayload || hasCode) continue;
+        // server/app.ts's Expo Go manifest 404 answers a dev-tooling fetch
+        // keyed by an `expo-platform` header — not a response the running
+        // app ever passes through translateServerPayload. /health's 503
+        // needs no exemption: it carries no message/error field to begin
+        // with, so it never matches isTextPayload above.
+        if (file === "app.ts" && payload.includes("Manifest not found")) continue;
+        violations.push(`${file}: ${payload.replace(/\s+/g, " ").trim().slice(0, 90)}`);
+      }
+    }
+    assert.deepEqual(
+      violations,
+      [],
+      `these player-facing responses carry no code: ${violations.join(" | ")}`
+    );
+  });
+});

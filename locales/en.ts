@@ -39,6 +39,7 @@ export const en = {
   "server.ACCOUNT_DELETE_FAILED": "Deletion failed",
   "server.INVALID_USERNAME": "Invalid username",
   "server.INVALID_PARAMETER": "Invalid parameter",
+  "server.INVALID_PAYLOAD": "Invalid data",
   "server.CANNOT_ADD_SELF": "You can't add yourself",
   "server.ALREADY_FRIENDS": "You're already friends",
   "server.FRIEND_REQUEST_ALREADY_SENT": "Friend request already sent",
