@@ -36,6 +36,12 @@ test("every icon name the app uses exists in its family's glyphmap", () => {
   }
 });
 
+// Measured on this branch: Ionicons is 21,420 B of 389,724 B (5.5%), Feather
+// 2,164 B of 55,596 B (3.9%). At roughly 280 B a glyph that leaves room for
+// some sixty more Ionicons names, so adding icons does not trip it — but a
+// subset that stopped subsetting, or a full face committed over one, does.
+const MAX_SUBSET_RATIO = 0.1;
+
 test("the subsets exist and are much smaller than the originals", () => {
   for (const family of ["Ionicons", "Feather"] as const) {
     const subset = path.join(repoRoot, "assets", "fonts", `${family}.subset.ttf`);
@@ -46,7 +52,11 @@ test("the subsets exist and are much smaller than the originals", () => {
       `${family}.ttf`
     );
     const ratio = statSync(subset).size / statSync(original).size;
-    assert.ok(ratio < 0.5, `${family}.subset.ttf is ${Math.round(ratio * 100)}% of the original`);
+    assert.ok(
+      ratio < MAX_SUBSET_RATIO,
+      `${family}.subset.ttf is ${(ratio * 100).toFixed(1)}% of the original, over the ` +
+        `${MAX_SUBSET_RATIO * 100}% ceiling`
+    );
   }
 });
 
@@ -116,18 +126,65 @@ test("the family is the one imported, not the one the tag is spelled", () => {
   );
 });
 
-test("the characters the subsets were built from cover every name", () => {
+/**
+ * The codepoints a TrueType file's `cmap` actually maps to a glyph.
+ *
+ * Format 4 is what subset-font emits for both faces and reaches the whole BMP,
+ * where every icon codepoint lives; any other format throws rather than
+ * returning the empty set, which would pass every caller by covering nothing.
+ */
+function cmapCodepoints(fontPath: string): Set<number> {
+  const buf = readFileSync(fontPath);
+  let cmap: number | null = null;
+  for (let i = 0; i < buf.readUInt16BE(4); i++) {
+    const entry = 12 + i * 16;
+    if (buf.toString("ascii", entry, entry + 4) === "cmap") cmap = buf.readUInt32BE(entry + 8);
+  }
+  assert.ok(cmap !== null, `${fontPath}: no cmap table`);
+
+  const covered = new Set<number>();
+  for (let i = 0; i < buf.readUInt16BE(cmap + 2); i++) {
+    const sub = cmap + buf.readUInt32BE(cmap + 4 + i * 8 + 4);
+    const format = buf.readUInt16BE(sub);
+    assert.equal(format, 4, `${fontPath}: cmap subtable format ${format} is not one this can read`);
+
+    const segCount = buf.readUInt16BE(sub + 6) / 2;
+    const endCodes = sub + 14;
+    const startCodes = endCodes + segCount * 2 + 2;
+    const idDeltas = startCodes + segCount * 2;
+    const idRangeOffsets = idDeltas + segCount * 2;
+    for (let seg = 0; seg < segCount; seg++) {
+      const end = buf.readUInt16BE(endCodes + seg * 2);
+      const start = buf.readUInt16BE(startCodes + seg * 2);
+      const delta = buf.readInt16BE(idDeltas + seg * 2);
+      const rangeOffsetAt = idRangeOffsets + seg * 2;
+      const rangeOffset = buf.readUInt16BE(rangeOffsetAt);
+      for (let cp = start; cp <= end && cp !== 0xffff; cp++) {
+        let glyph = (cp + delta) & 0xffff;
+        if (rangeOffset !== 0) {
+          glyph = buf.readUInt16BE(rangeOffsetAt + rangeOffset + (cp - start) * 2);
+          if (glyph !== 0) glyph = (glyph + delta) & 0xffff;
+        }
+        if (glyph !== 0) covered.add(cp);
+      }
+    }
+  }
+  return covered;
+}
+
+test("the shipped subsets carry a glyph for every name the app renders", () => {
   const chars = iconCharacters(repoRoot) as Record<string, string>;
-  const manifest: Record<string, string> = JSON.parse(
-    readFileSync(path.join(repoRoot, "scripts", "icon-subset.json"), "utf8")
-  );
   for (const family of ["Ionicons", "Feather"] as const) {
-    const have = new Set(manifest[family]);
-    const missing = [...chars[family]].filter((c) => !have.has(c));
+    const wanted = [...chars[family]].map((c) => c.codePointAt(0) as number);
+    assert.ok(wanted.length > 0, `${family}: the source scan found no icon characters at all`);
+
+    const covered = cmapCodepoints(path.join(repoRoot, "assets", "fonts", `${family}.subset.ttf`));
+    const missing = wanted.filter((cp) => !covered.has(cp)).map((cp) => cp.toString(16));
     assert.deepEqual(
-      missing.map((c) => c.codePointAt(0)?.toString(16)),
+      missing,
       [],
-      `${family}: the shipped subset was built without these codepoints — run node scripts/build-icon-fonts.mjs`
+      `${family}.subset.ttf carries no glyph for U+${missing.join(", U+")} — ` +
+        `run node scripts/build-icon-fonts.mjs`
     );
   }
 });
