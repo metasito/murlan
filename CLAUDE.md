@@ -114,8 +114,9 @@ lines is explaining itself instead of being clear.
 
 - **Autonomy.** Work the queue one item at a time, one commit per item. The queue is
   `gh issue list --label ready-for-agent --state open`, smallest `size:*` label first. Don't
-  ask which item or whether to proceed. An item that turns out to need an owner-level call
-  gets relabelled `ready-for-human` (not closed) and the next item is taken. When no
+  ask which item or whether to proceed. Commit, push, and close the issue yourself — don't
+  wait to be asked. An item that turns out to need an owner-level call gets relabelled
+  `ready-for-human` (not closed) and the next item is taken. When no
   `ready-for-agent` issue remains, run `superpowers:brainstorming` and file what it finds
   with `mattpocock-skills:to-tickets`.
 - **No workarounds.** If the correct fix is bigger, do the correct fix. Look up current best
