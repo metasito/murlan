@@ -515,20 +515,81 @@ describe("every player-facing server response carries a code", () => {
     return names;
   }
 
+  /** Same-file functions by name — `function f() {}` and `const f = () => {}` alike. */
+  function localFunctions(sourceFile: ts.SourceFile): Map<string, ts.Node> {
+    const functions = new Map<string, ts.Node>();
+    const visit = (node: ts.Node) => {
+      if (ts.isFunctionDeclaration(node) && node.name && node.body) {
+        functions.set(node.name.text, node.body);
+      } else if (
+        ts.isVariableDeclaration(node) &&
+        ts.isIdentifier(node.name) &&
+        node.initializer &&
+        (ts.isArrowFunction(node.initializer) || ts.isFunctionExpression(node.initializer))
+      ) {
+        functions.set(node.name.text, node.initializer.body);
+      }
+      ts.forEachChild(node, visit);
+    };
+    visit(sourceFile);
+    return functions;
+  }
+
+  /** What a body hands back: a concise arrow's expression, or every `return`. */
+  function returnedExpressions(body: ts.Node): ts.Node[] {
+    const returned: ts.Node[] = [];
+    if (!ts.isBlock(body)) return [body];
+    const visit = (node: ts.Node) => {
+      // A nested function's returns are its own, not this one's.
+      if (
+        ts.isFunctionDeclaration(node) ||
+        ts.isFunctionExpression(node) ||
+        ts.isArrowFunction(node)
+      ) {
+        return;
+      }
+      if (ts.isReturnStatement(node) && node.expression) returned.push(node.expression);
+      ts.forEachChild(node, visit);
+    };
+    visit(body);
+    return returned;
+  }
+
   /**
    * Every `ObjectLiteralExpression` reachable from `node` without crossing
    * into a nested call's own arguments — so `a ? {x} : {y}`, `a ?? {x}`,
    * `{x} as T` and any other wrapper report the object literals inside them,
-   * while `helper({x})` reports none: that one belongs to `helper`.
+   * while `helper({x})` reports none: that argument belongs to `helper`.
+   *
+   * What a same-file helper *returns* is the opposite case — that is this
+   * response's payload, wherever it was assembled. `res.json(sessionUser(user))`
+   * was invisible here until the callee was followed, which took register,
+   * login and /api/auth/me out of the scan without failing anything.
    */
-  function objectLiteralsIn(node: ts.Node): ts.ObjectLiteralExpression[] {
+  function objectLiteralsIn(
+    node: ts.Node,
+    functions: Map<string, ts.Node>,
+    following: Set<string> = new Set()
+  ): ts.ObjectLiteralExpression[] {
     const found: ts.ObjectLiteralExpression[] = [];
     const visit = (n: ts.Node) => {
       if (ts.isObjectLiteralExpression(n)) {
         found.push(n);
         return;
       }
-      if (ts.isCallExpression(n)) return;
+      if (ts.isCallExpression(n)) {
+        const callee = ts.isIdentifier(n.expression) ? n.expression.text : null;
+        const body = callee === null ? undefined : functions.get(callee);
+        // `following` is what stops a helper that calls itself recursing forever.
+        if (callee !== null && body !== undefined && !following.has(callee)) {
+          following.add(callee);
+          for (const returned of returnedExpressions(body)) {
+            found.push(...objectLiteralsIn(returned, functions, following));
+          }
+          following.delete(callee);
+        }
+        return;
+      }
       ts.forEachChild(n, visit);
     };
     visit(node);
@@ -538,9 +599,10 @@ describe("every player-facing server response carries a code", () => {
   /** Every object literal reachable from a delivering call's arguments, at any position and depth. */
   function payloadObjects(sourceFile: ts.SourceFile): { text: string; names: Set<string> }[] {
     const objects: { text: string; names: Set<string> }[] = [];
+    const functions = localFunctions(sourceFile);
     for (const call of responseCalls(sourceFile)) {
       for (const arg of call.arguments) {
-        for (const obj of objectLiteralsIn(arg)) {
+        for (const obj of objectLiteralsIn(arg, functions)) {
           objects.push({
             text: obj.getText(sourceFile),
             names: propertyNames(obj),
@@ -550,6 +612,61 @@ describe("every player-facing server response carries a code", () => {
     }
     return objects;
   }
+
+  /** The scan run against a source written to exercise one shape of it. */
+  function scan(source: string): { text: string; names: Set<string> }[] {
+    return payloadObjects(
+      ts.createSourceFile("synthetic.ts", source, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS)
+    );
+  }
+
+  test("a payload a same-file helper returns is still the response's payload", () => {
+    const objects = scan(`
+      function sessionUser(user) {
+        return { id: user.id, username: user.username, message: "welcome back" };
+      }
+      app.post("/api/login", (req, res) => res.json(sessionUser(user)));
+    `);
+
+    assert.equal(objects.length, 1, "the helper's payload was never reached");
+    assert.ok(objects[0].names.has("message"));
+    assert.ok(!objects[0].names.has("code"), "this is the payload the scan must be able to fail");
+  });
+
+  test("the same helper with a code is reached too, and has nothing to report", () => {
+    const objects = scan(`
+      function sessionUser(user) {
+        return { id: user.id, code: "OK", message: "welcome back" };
+      }
+      app.post("/api/login", (req, res) => res.json(sessionUser(user)));
+    `);
+
+    assert.equal(objects.length, 1);
+    assert.ok(objects[0].names.has("code"));
+  });
+
+  test("what a helper is passed still belongs to the helper", () => {
+    const objects = scan(`
+      function render(options) { return { code: "OK" }; }
+      app.get("/x", (req, res) => res.json(render({ message: "an argument, not a payload" })));
+    `);
+
+    assert.deepEqual(
+      objects.map((o) => [...o.names].sort()),
+      [["code"]],
+      "an argument handed to a helper was mistaken for the response"
+    );
+  });
+
+  test("a helper that calls itself does not hang the scan", () => {
+    const objects = scan(`
+      function build(n) { return n > 0 ? build(n - 1) : { message: "done" }; }
+      app.get("/x", (req, res) => res.json(build(3)));
+    `);
+
+    assert.equal(objects.length, 1);
+    assert.ok(objects[0].names.has("message"));
+  });
 
   test("no player-facing JSON response or socket error emit omits a code", () => {
     const files = serverSources();
@@ -571,8 +688,8 @@ describe("every player-facing server response carries a code", () => {
       }
     }
     assert.ok(
-      objectCount > 102,
-      `expected to find the server's response payload objects, got ${objectCount} (104 when this floor was set)`
+      objectCount > 112,
+      `expected to find the server's response payload objects, got ${objectCount} (115 when this floor was set)`
     );
     assert.deepEqual(
       violations,
