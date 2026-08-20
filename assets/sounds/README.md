@@ -66,3 +66,30 @@ uses pitch-shifted layers. That is 0.003% of full scale on one sample out of
 not play OGG — MP3 decodes natively on iOS, Android and every browser, so no
 per-platform format branch is needed. Recorded audio costs more than synthesis
 and it is worth it: the effects are most of the game's sense of touch.
+
+## Music is not built here
+
+The twelve effects are 44.1 kHz mono MP3 and stay that way. Music does not, and
+cannot: **MP3 has no seamless loop.** Encoder delay plus frame padding leave a
+gap at the join, and browsers do not honour LAME's gapless headers, so a looping
+track clicks every time round.
+
+Music is therefore **pre-encoded WebM Opus, 48 kHz stereo**, taken from the CC0
+provider already encoded rather than produced by `scripts/build-sounds.mjs`
+(#121). Safari has decoded WebM Opus since **17.0** (September 2023); Ogg Opus
+only since 18.4 (March 2025), which is why the container is WebM.
+
+Encoding it here was tried and rejected on a measurement, not a preference.
+Chromium's `MediaRecorder` can emit WebM Opus inside the same Playwright page
+the mixer already uses, with no new dependency — but it captures in real time
+and is not sample-exact. A one-second 480 Hz tone (480 whole cycles, so seamless
+by construction) came back **1,920 samples short**, with 129 samples of silence
+prepended, and a loop join stepping **0.888** where the waveform's own body step
+was **0.063**. Fourteen times the natural slope is an audible click at every
+pass — the exact defect the format change exists to prevent.
+
+A WASM Opus encoder would be a new dependency added to solve a problem that does
+not exist once the files arrive already encoded, and `npm install` and nothing
+else is what this repository's build has to stay.
+
+**Licences for the tracks themselves are recorded here when they land (#113).**
