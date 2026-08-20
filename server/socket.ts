@@ -1180,7 +1180,11 @@ export function setupSocket(httpServer: HttpServer) {
         .map((f) => f.friend.id)
         .filter((id) => userSocketMap.has(id));
       socket.emit("friend:online_list", { onlineIds });
-    } catch {
+    } catch (err) {
+      // Swallowing this silently leaves a connected account with no friends
+      // list and no way to notice: the client is waiting for a push that is
+      // never coming, and only a reconnect asks again.
+      logger.warn({ err, userId }, "friend list read failed; this socket gets no online list");
     }
 
     // ── Disconnect ───────────────────────────────────────────────────────────
