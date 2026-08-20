@@ -6,7 +6,6 @@
 export * from "../lib/gameEngine.ts";
 import type {
   Card,
-  Combination,
   GameMode,
   GameState,
   Player,
@@ -92,4 +91,3 @@ export function sample(deck: Card[], count: number, rand: () => number): Card[] 
   return pool.slice(0, count);
 }
 
-export type { Card, Combination, GameState, Player, Rank, Suit };

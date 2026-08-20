@@ -1,5 +1,6 @@
 const { defineConfig } = require('eslint/config');
 const expoConfig = require('eslint-config-expo/flat');
+const globals = require('globals');
 
 // React Native renders an invalid colour as nothing at all — no warning, no
 // fallback, just an invisible element. Every rule below targets a way to
@@ -84,6 +85,30 @@ module.exports = defineConfig([
         "error",
         { "ts-ignore": true, "ts-expect-error": "allow-with-description" },
       ],
+    },
+  },
+  {
+    // Everything here runs under Node, not in the app bundle, so it gets
+    // Node's globals instead of the browser set `eslint-config-expo` assumes
+    // for the client.
+    files: ["*.config.{js,ts}", "scripts/**", "server/**", "tests/**"],
+    languageOptions: { globals: globals.node },
+    rules: {
+      // Both rules exist because Metro inlines `process.env.X` into the client
+      // bundle at build time and cannot inline a computed key. Node reads the
+      // real environment at run time, so a computed key is correct here — it
+      // is how the server takes its port, its database and its timeouts.
+      "expo/no-dynamic-env-var": "off",
+      "expo/no-env-var-destructuring": "off",
+    },
+  },
+  {
+    files: ["tests/e2e/**"],
+    rules: {
+      // Playwright names the callback that every fixture hands its value to
+      // `use`, which this rule reads as a hook called outside a component.
+      // The browser-automation suite renders no React of its own.
+      "react-hooks/rules-of-hooks": "off",
     },
   },
 ]);

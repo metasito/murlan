@@ -7,19 +7,19 @@ cd C:/Users/roton/murlan
 git log --oneline -5
 git status --porcelain
 npm run verify        # typecheck + unit/integration + native
-npx expo lint         # must be ZERO warnings; CI enforces it
+npm run lint          # whole repo; must be ZERO errors; CI enforces it
 ```
 
 Do not trust this file over the commands. It ages; they do not.
 
 ## Where things stand
 
-Green: typecheck clean, `expo lint` zero, the unit and integration suites, the
-native renderer suites (jest-expo, ios+android projects), and a Playwright E2E
-suite (`npm run test:e2e`) that plays complete games through the UI, drops the
-network mid-game to check the reconnect path, sweeps every screen for controls
-a player can see but cannot press, and measures that no part of the table
-renders off the side of the screen.
+Green: typecheck clean, `npm run lint` free of errors, the unit and integration
+suites, the native renderer suites (jest-expo, ios+android projects), and a
+Playwright E2E suite (`npm run test:e2e`) that plays complete games through the
+UI, drops the network mid-game to check the reconnect path, sweeps every screen
+for controls a player can see but cannot press, and measures that no part of
+the table renders off the side of the screen.
 
 No counts here on purpose — they age between batches. `npm run verify` is the
 truth.

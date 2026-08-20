@@ -174,7 +174,7 @@ Real-money play, ads, social feeds, chat with free text (moderation burden), cro
 
 The work is complete when all of the following hold:
 
-1. `npx tsc --noEmit` and `npx expo lint` are clean.
+1. `npx tsc --noEmit` is clean and `npm run lint` reports no errors.
 2. The engine test suite covers every combination type, the exchange phase, joker rules,
    and the win condition — including property tests asserting that the enumerator finds
    every legal play in randomly generated hands.
