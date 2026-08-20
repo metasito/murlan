@@ -17,6 +17,7 @@ import { OfflineBanner } from "@/components/OfflineBanner";
 import { initLocale } from "@/lib/i18n";
 import { useFonts } from "expo-font";
 import { APP_FONTS } from "@/lib/fonts";
+import { bindWebAudioUnlock } from "@/lib/sounds";
 
 SplashScreen.preventAutoHideAsync();
 
@@ -48,6 +49,11 @@ export default function RootLayout() {
   useEffect(() => {
     initLocale().finally(() => setLocaleReady(true));
   }, []);
+
+  // Binds listeners only — the AudioContext is built inside the gesture they
+  // catch. Here rather than on the game screen so the tap that opens a menu
+  // already counts.
+  useEffect(bindWebAudioUnlock, []);
 
   useEffect(() => {
     if ((fontsLoaded || fontError) && localeReady) {

@@ -8,8 +8,18 @@ import { Platform } from "react-native";
 // the Web Audio API.
 
 let _webCtx: AudioContext | null = null;
+let _unlockBound = false;
 
-function getWebCtx(): AudioContext | null {
+/** Fetched bytes, which need no context, and decoded buffers, which do. */
+const webRawCache: Record<string, ArrayBuffer> = {};
+const webAudioCache: Record<string, AudioBuffer> = {};
+
+/** The context if a gesture has already built one. Never constructs one. */
+function peekWebCtx(): AudioContext | null {
+  return Platform.OS === "web" ? _webCtx : null;
+}
+
+function buildWebCtx(): AudioContext | null {
   if (Platform.OS !== "web") return null;
   try {
     if (!_webCtx) {
@@ -23,26 +33,72 @@ function getWebCtx(): AudioContext | null {
   }
 }
 
-const webAudioCache: Record<string, AudioBuffer> = {};
+/**
+ * Chrome and Safari park a context built outside a user gesture in `suspended`,
+ * and Safari only honours `resume()` when it is called synchronously inside the
+ * gesture — before any await. So the context is built here, in the handler, and
+ * nowhere else.
+ *
+ * The listeners stay bound rather than firing once: Safari's `interrupted`
+ * state is distinct from `suspended` and can arrive at any time — a phone call,
+ * another app taking the audio session — and the next tap is what recovers it.
+ */
+function unlockWebAudio(): void {
+  const ctx = buildWebCtx();
+  if (!ctx) return;
+  if (ctx.state !== "running") void ctx.resume();
+  void decodeWebAssets(ctx);
+}
 
-async function preloadWebAsset(key: string, assetModule: number): Promise<void> {
-  const ctx = getWebCtx();
-  if (!ctx || webAudioCache[key]) return;
+export function bindWebAudioUnlock(): void {
+  if (Platform.OS !== "web" || _unlockBound) return;
+  if (typeof document === "undefined") return;
+  _unlockBound = true;
+  for (const event of ["pointerdown", "touchend", "keydown"]) {
+    document.addEventListener(event, unlockWebAudio, { passive: true });
+  }
+}
+
+async function fetchWebAsset(key: string, assetModule: number): Promise<void> {
+  if (webRawCache[key] || webAudioCache[key]) return;
   try {
     const url = assetModule as unknown as string;
     const resp = await fetch(url);
-    const arrayBuf = await resp.arrayBuffer();
-    webAudioCache[key] = await ctx.decodeAudioData(arrayBuf);
+    webRawCache[key] = await resp.arrayBuffer();
+  } catch {}
+}
+
+async function decodeWebAsset(key: string, ctx: AudioContext): Promise<AudioBuffer | null> {
+  if (webAudioCache[key]) return webAudioCache[key];
+  const raw = webRawCache[key];
+  if (!raw) return null;
+  try {
+    // decodeAudioData detaches the buffer it is given, so a retry would decode
+    // zero bytes. The copy is what keeps the fetch reusable.
+    webAudioCache[key] = await ctx.decodeAudioData(raw.slice(0));
+    return webAudioCache[key];
+  } catch {
+    return null;
+  }
+}
+
+async function decodeWebAssets(ctx: AudioContext): Promise<void> {
+  try {
+    await Promise.all(Object.keys(webRawCache).map((k) => decodeWebAsset(k, ctx)));
   } catch {}
 }
 
 async function playWeb(key: string, assetModule: number, volume: number): Promise<void> {
-  const ctx = getWebCtx();
+  const ctx = peekWebCtx();
+  // No gesture yet, so there is nothing a browser would let us sound anyway.
   if (!ctx) return;
   try {
-    if (ctx.state === "suspended") await ctx.resume();
-    if (!webAudioCache[key]) await preloadWebAsset(key, assetModule);
-    const buffer = webAudioCache[key];
+    if (ctx.state !== "running") void ctx.resume();
+    let buffer: AudioBuffer | undefined = webAudioCache[key];
+    if (!buffer) {
+      await fetchWebAsset(key, assetModule);
+      buffer = (await decodeWebAsset(key, ctx)) ?? undefined;
+    }
     if (!buffer) return;
     const source = ctx.createBufferSource();
     const gain = ctx.createGain();
@@ -166,14 +222,15 @@ export async function preloadSounds(): Promise<void> {
   if (soundsLoaded || soundsLoading) return;
   soundsLoading = true;
   if (Platform.OS === "web") {
-    getWebCtx();
+    // Fetching needs no context, so it stays on mount; only building the
+    // context and resuming it are gesture-bound.
     try {
       await Promise.all(
-        (Object.keys(ASSETS) as SoundKey[]).map((k) =>
-          preloadWebAsset(k, ASSETS[k]())
-        )
+        (Object.keys(ASSETS) as SoundKey[]).map((k) => fetchWebAsset(k, ASSETS[k]()))
       );
     } catch {}
+    const ctx = peekWebCtx();
+    if (ctx) await decodeWebAssets(ctx);
     soundsLoaded = true;
     soundsLoading = false;
     return;
