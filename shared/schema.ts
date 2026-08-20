@@ -15,6 +15,7 @@ export const users = pgTable(
     friendCode: varchar("friend_code", { length: 6 }).notNull().unique(),
     createdAt: timestamp("created_at").defaultNow(),
     lastSeen: timestamp("last_seen"),
+    tutorialSeenAt: timestamp("tutorial_seen_at"),
   },
   (t) => [uniqueIndex("users_username_lower_uq").on(sql`lower(${t.username})`)]
 );

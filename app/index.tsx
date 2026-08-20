@@ -1,5 +1,4 @@
-import React, { useEffect, useState } from "react";
-import AsyncStorage from "@react-native-async-storage/async-storage";
+import React, { useEffect, useRef, useState } from "react";
 import {
   View,
   Text,
@@ -32,6 +31,7 @@ import { Colors, FontSize, Radius, Spacing, TOUCH_TARGET_MIN, WEB_BOTTOM_PAD, WE
 import { useTranslation } from "@/lib/i18n";
 import { SettingsModal } from "@/components/SettingsModal";
 import { a11yState } from "@/lib/a11y";
+import { markTutorialSeen, tutorialSeen } from "@/lib/tutorialSeen";
 
 /**
  * A destination on the home screen: an icon, a label, and a chevron, animated
@@ -272,7 +272,8 @@ function SettingsButton({ compact, onPress }: { compact?: boolean; onPress: () =
 
 export default function HomeScreen() {
   const insets = useSafeAreaInsets();
-  const { user, logout } = useAuth();
+  const { user, loading: authLoading, logout } = useAuth();
+  const tutorialDecided = useRef(false);
   const { hasSavedGame, resumeGame } = useGame();
   const { t } = useTranslation();
   const { width: W, height: H } = useWindowDimensions();
@@ -299,13 +300,29 @@ export default function HomeScreen() {
   // First-launch onboarding: offer the interactive tutorial automatically, once
   // ever. This runs on every mount of the title screen, and every
   // `router.replace("/")` in the app remounts it, so "once" has to come from
-  // the flag alone: app/tutorial.tsx writes it when the screen opens, not when
-  // it is completed. Never gates play — the player can leave by any route.
+  // the stored answer alone: app/tutorial.tsx writes it when the screen opens,
+  // not when it is completed. Never gates play — the player can leave by any
+  // route.
+  //
+  // Nothing is asked until AuthProvider has answered once — the account half of
+  // the answer arrives late and this screen renders before it. An unreachable
+  // server answers `null`, and the device is then the whole answer. The ref
+  // holds the decision to one per mount, not one per identity settled on.
   useEffect(() => {
-    AsyncStorage.getItem("@murlan_tutorial_seen").then((seen) => {
-      if (!seen) router.push("/tutorial");
+    if (authLoading || tutorialDecided.current) return;
+    tutorialDecided.current = true;
+    tutorialSeen(user).then((seen) => {
+      if (!seen) {
+        router.push("/tutorial");
+        return;
+      }
+      // The device knows and the account does not, so the write that should
+      // have told it never landed — offline, or on a session that had expired.
+      // Same call, so the account catches up on the next launch instead of
+      // re-offering the tutorial on the player's next phone.
+      if (user && !user.tutorialSeenAt) void markTutorialSeen(user.id);
     });
-  }, []);
+  }, [authLoading, user]);
 
   const titleStyle = useAnimatedStyle(() => ({
     opacity: titleOpacity.value,
