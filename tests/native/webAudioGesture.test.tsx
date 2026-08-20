@@ -74,6 +74,7 @@ afterEach(() => {
   delete (globalThis as Record<string, unknown>).window;
   delete (globalThis as Record<string, unknown>).document;
   delete (globalThis as Record<string, unknown>).fetch;
+  delete (globalThis as Record<string, unknown>).navigator;
 });
 
 describe('the web AudioContext waits for a gesture', () => {
@@ -127,6 +128,29 @@ describe('the web AudioContext waits for a gesture', () => {
     await new Promise((resolve) => setTimeout(resolve, 0));
 
     expect(decodeCalls).toBeGreaterThan(0);
+  });
+
+  it('asks for the playback session, so the ringer switch does not silence it', async () => {
+    const session = { type: 'ambient' };
+    (globalThis as Record<string, unknown>).navigator = { audioSession: session };
+    const sounds = loadSounds();
+    sounds.bindWebAudioUnlock();
+
+    handlers.get('pointerdown')!();
+
+    expect(session.type).toBe('playback');
+  });
+
+  // The floor: every browser but Safari has no audioSession at all, and the
+  // unlock still has to build and resume the context rather than throwing.
+  it('unlocks normally in a browser with no audio session to ask about', async () => {
+    (globalThis as Record<string, unknown>).navigator = {};
+    const sounds = loadSounds();
+    sounds.bindWebAudioUnlock();
+
+    expect(() => handlers.get('pointerdown')!()).not.toThrow();
+    expect(constructed).toBe(1);
+    expect(resumeCalls).toBe(1);
   });
 
   it('keeps listening, so a later interruption recovers on the next tap', async () => {

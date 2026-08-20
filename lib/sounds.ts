@@ -44,6 +44,16 @@ function buildWebCtx(): AudioContext | null {
  * another app taking the audio session — and the next tap is what recovers it.
  */
 function unlockWebAudio(): void {
+  // iOS silences Web Audio with the ringer switch, because the session
+  // defaults to "ambient" — the same reason the native path asks for
+  // playsInSilentMode. Since iOS 17 the category can simply be requested
+  // (WebKit 237322), so web and native now ask for the same thing. Safari-only
+  // so far, hence the check.
+  if (typeof navigator !== "undefined") {
+    const session = (navigator as Navigator & { audioSession?: { type: string } }).audioSession;
+    if (session) session.type = "playback";
+  }
+
   const ctx = buildWebCtx();
   if (!ctx) return;
   if (ctx.state !== "running") void ctx.resume();
