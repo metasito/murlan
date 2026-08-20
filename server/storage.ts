@@ -1,4 +1,4 @@
-import { eq, and, or, sql, inArray } from "drizzle-orm";
+import { eq, and, or, sql, inArray, isNull } from "drizzle-orm";
 import { randomInt } from "node:crypto";
 import { db } from "./db.ts";
 import { users, rooms, roomPlayers, friends, activeGames, matchReplays } from "../shared/schema.ts";
@@ -36,6 +36,7 @@ export interface IStorage {
   getUserByUsername(username: string): Promise<User | undefined>;
   createUser(user: InsertUser): Promise<User>;
   updateLastSeen(userId: string): Promise<void>;
+  markTutorialSeen(userId: string): Promise<void>;
 
   createRoom(hostUserId: string, gameMode: "free_for_all" | "teams", maxPlayers: number): Promise<Room>;
   getRoomByCode(code: string): Promise<Room | undefined>;
@@ -187,6 +188,14 @@ class DrizzleStorage implements IStorage {
 
   async updateLastSeen(userId: string): Promise<void> {
     await db.update(users).set({ lastSeen: new Date() }).where(eq(users.id, userId));
+  }
+
+  /** First time only: the answer is "has it ever been offered", so the first date is the true one. */
+  async markTutorialSeen(userId: string): Promise<void> {
+    await db
+      .update(users)
+      .set({ tutorialSeenAt: new Date() })
+      .where(and(eq(users.id, userId), isNull(users.tutorialSeenAt)));
   }
 
   /**

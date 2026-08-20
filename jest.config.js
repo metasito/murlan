@@ -8,12 +8,19 @@
 //
 // Tests are .test.tsx on purpose: `npm test` globs tests/**/*.test.ts and must
 // not pick these up, since Node's type stripper cannot load react-native.
+// Paths are interpolated rather than written as `<rootDir>/…`: substituting
+// that token puts the checkout's own separators back into the glob, and on
+// Windows micromatch reads a backslash as an escape rather than a separator. A
+// checkout under a path like .claude/worktrees then matches no test at all, and
+// jest reports a clean "no tests found" instead of a failure.
+const rootDir = __dirname.replace(/\\/g, '/');
+
 const project = (platform) => ({
   preset: `jest-expo/${platform}`,
   displayName: platform,
-  rootDir: __dirname,
-  testMatch: ['<rootDir>/tests/native/**/*.test.tsx'],
-  setupFilesAfterEnv: ['<rootDir>/tests/native/setup.ts'],
+  rootDir,
+  testMatch: [`${rootDir}/tests/native/**/*.test.tsx`],
+  setupFilesAfterEnv: [`${rootDir}/tests/native/setup.ts`],
 });
 
 module.exports = {

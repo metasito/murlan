@@ -3,6 +3,7 @@ import { createServer, type Server } from "node:http";
 import bcrypt from "bcryptjs";
 import { rateLimit } from "express-rate-limit";
 import { storage, UsernameTakenError } from "./storage.ts";
+import type { User } from "../shared/schema.ts";
 import { logger } from "./logger.ts";
 import { validate } from "./validate.ts";
 import {
@@ -101,6 +102,16 @@ const errorReportLimiter = rateLimit({
   message: { error: "Too many requests, slow down.", code: "RATE_LIMITED" },
 });
 
+// Everything a signed-in client is told about itself, from the one place, so
+// register, login and /me cannot answer the same question differently.
+function sessionUser(user: User) {
+  return {
+    id: user.id,
+    username: user.username,
+    tutorialSeenAt: user.tutorialSeenAt ? user.tutorialSeenAt.toISOString() : null,
+  };
+}
+
 function requireAuth(req: Request, res: Response, next: () => void) {
   if (!req.session.userId) {
     res.status(401).json({ message: "Not authenticated", code: "NOT_AUTHENTICATED" });
@@ -161,7 +172,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           return;
         }
         logger.info({ userId: user.id, username }, "User registered");
-        res.json({ id: user.id, username: user.username });
+        res.json(sessionUser(user));
       });
     });
   });
@@ -197,7 +208,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           return;
         }
         logger.info({ userId: user.id, username }, "User logged in");
-        res.json({ id: user.id, username: user.username });
+        res.json(sessionUser(user));
       });
     });
   });
@@ -236,7 +247,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.status(401).json({ message: "User not found", code: "USER_NOT_FOUND" });
       return;
     }
-    res.json({ id: user.id, username: user.username });
+    res.json(sessionUser(user));
   });
 
   // Mints the short-lived, single-use ticket the socket handshake accepts in
@@ -247,6 +258,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // ── User ─────────────────────────────────────────────────────────────────
+
+  app.post("/api/users/me/tutorial-seen", requireAuth, async (req, res) => {
+    await storage.markTutorialSeen(req.session.userId!);
+    res.json({ ok: true });
+  });
 
   app.delete("/api/users/me", requireAuth, async (req, res) => {
     try {

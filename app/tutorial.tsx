@@ -7,6 +7,8 @@ import Ionicons from "@expo/vector-icons/Ionicons";
 import { hapticError, hapticLight, hapticSelection, hapticSuccess } from "@/lib/haptics";
 import { Colors, Spacing, Radius, FontSize, Type, Motion } from "@/lib/theme";
 import { usePrefersReducedMotion } from "@/lib/accessibility";
+import { markTutorialSeen } from "@/lib/tutorialSeen";
+import { useAuth } from "@/context/AuthContext";
 import { MenuLayout } from "@/components/MenuLayout";
 import { MenuCard } from "@/components/MenuCard";
 import { MenuButton } from "@/components/MenuButton";
@@ -31,12 +33,12 @@ import { a11yHidden } from "@/lib/a11y";
 type TFn = (key: TranslationKey, params?: TranslationParams) => string;
 
 // ─── Storage keys ──────────────────────────────────────────────────────────
-// SEEN_KEY answers "has the tutorial ever been offered", which is all
-// app/index.tsx asks. It is written on mount, because every way out of this
-// screen except two — the back gesture, the header chevron, the two rows on
-// the last beat — leaves no other moment to write it in.
-const SEEN_KEY = "@murlan_tutorial_seen";
-// Independent of SEEN_KEY: where to resume, cleared only when the player is
+// "Has the tutorial ever been offered" is lib/tutorialSeen.ts's question, and
+// it is answered on mount, because every way out of this screen except two —
+// the back gesture, the header chevron, the two rows on the last beat —
+// leaves no other moment to write it in.
+//
+// Independent of that: where to resume, cleared only when the player is
 // deliberately done (skip, or the final beat).
 const PROGRESS_KEY = "@murlan_tutorial_progress";
 
@@ -390,6 +392,8 @@ function evaluateExchange(selected: Card, beat: ExchangeBeat, t: TFn): { ok: boo
 
 export default function TutorialScreen() {
   const { t } = useTranslation();
+  const { user, loading: authLoading } = useAuth();
+  const userId = user?.id ?? null;
   const reduceMotion = usePrefersReducedMotion();
   const BEATS = React.useMemo(() => buildBeats(t), [t]);
   const [stepIndex, setStepIndex] = useState(0);
@@ -398,8 +402,15 @@ export default function TutorialScreen() {
   const [feedback, setFeedback] = useState<{ ok: boolean; text: string } | null>(null);
   const [beatDone, setBeatDone] = useState(false);
 
+  // Not until the session has been asked: a player who opens this screen and
+  // leaves again before AuthProvider answers would otherwise be recorded on
+  // the device only, which is the whole defect on the next phone.
   useEffect(() => {
-    AsyncStorage.setItem(SEEN_KEY, "1").catch(() => {});
+    if (authLoading) return;
+    void markTutorialSeen(userId);
+  }, [authLoading, userId]);
+
+  useEffect(() => {
     AsyncStorage.getItem(PROGRESS_KEY)
       .then((raw) => {
         const n = raw ? parseInt(raw, 10) : NaN;

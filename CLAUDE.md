@@ -139,6 +139,10 @@ lines is explaining itself instead of being clear.
   `ready-for-human` (not closed) and the next item is taken. When no
   `ready-for-agent` issue remains, run `superpowers:brainstorming` and file what it finds
   with `mattpocock-skills:to-tickets`.
+- **A second session works in a worktree, and removes it after.** One checkout cannot hold two
+  agents: switching branches under a session that has uncommitted work is how both lose it. Take
+  a worktree instead, and delete it once the pull request has merged — a worktree left behind is
+  a stale second copy of the tree, and its `npm install` is a second `node_modules`.
 - **Don't rehearse CI locally.** `.github/workflows/ci.yml` runs typecheck, `npm test`, lint,
   `test:native`, `test:e2e` and a build-and-boot on every push. Running that same sweep before
   pushing doubles the time per item and tells you nothing the run won't. Push, then

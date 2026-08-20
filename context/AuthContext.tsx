@@ -7,6 +7,8 @@ import { unregisterForPush } from "@/lib/pushRegistration";
 export interface AuthUser {
   id: string;
   username: string;
+  /** When this account first opened the tutorial, on any device; null if never. */
+  tutorialSeenAt: string | null;
 }
 
 interface AuthContextValue {
