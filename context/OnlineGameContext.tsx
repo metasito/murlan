@@ -81,6 +81,8 @@ interface OnlineGameContextValue {
   entrySource: "quickmatch" | "friends" | null;
   rematchVoteState: RematchVoteState | null;
   cumulativeScores: Record<string, number>;
+  /** What the manche just played awarded, by display name. */
+  handScores: Record<string, number>;
   matchState: OnlineMatchState;
   rematchIntents: RematchIntentState;
   /** True while the table is being asked whether it wants another match. */
@@ -167,6 +169,7 @@ export function OnlineGameProvider({ userId, children }: { userId: string; child
   const [entrySource, setEntrySource] = useState<"quickmatch" | "friends" | null>(null);
   const [rematchVoteState, setRematchVoteState] = useState<RematchVoteState | null>(null);
   const [cumulativeScores, setCumulativeScores] = useState<Record<string, number>>({});
+  const [handScores, setHandScores] = useState<Record<string, number>>({});
   const [matchState, setMatchState] = useState<OnlineMatchState>(INITIAL_MATCH);
   const [rematchIntents, setRematchIntents] = useState<RematchIntentState>(INITIAL_INTENTS);
   const [exchangeAnnouncing, setExchangeAnnouncing] = useState(false);
@@ -462,6 +465,10 @@ export function OnlineGameProvider({ userId, children }: { userId: string; child
     const onMatchState = ({ target, length, scores }: { target: number; length: MatchLength; scores: Record<string, number> }) => {
       setMatchState({ ...INITIAL_MATCH, target, length });
       setCumulativeScores(scores);
+      // No manche has been played on this match yet, so nothing has been
+      // awarded — carrying the last match's deltas over would print them
+      // beside a fresh scoreboard.
+      setHandScores({});
       setRematchIntents(INITIAL_INTENTS);
     };
 
@@ -469,6 +476,7 @@ export function OnlineGameProvider({ userId, children }: { userId: string; child
 
     const onGameOver = ({
       cumulativeScores: cs,
+      scores,
       matchTarget,
       matchLength,
       matchOver,
@@ -477,6 +485,7 @@ export function OnlineGameProvider({ userId, children }: { userId: string; child
       isDraw,
     }: {
       cumulativeScores?: Record<string, number>;
+      scores?: { username: string; points: number }[];
       matchTarget?: number;
       matchLength?: MatchLength;
       matchOver?: boolean;
@@ -485,6 +494,9 @@ export function OnlineGameProvider({ userId, children }: { userId: string; child
       isDraw?: boolean;
     }) => {
       if (cs) setCumulativeScores(cs);
+      if (scores) {
+        setHandScores(Object.fromEntries(scores.map((r) => [r.username, r.points])));
+      }
       setMatchState((prev) => ({
         target: matchTarget ?? prev.target,
         length: matchLength ?? prev.length,
@@ -769,6 +781,7 @@ export function OnlineGameProvider({ userId, children }: { userId: string; child
       entrySource,
       rematchVoteState,
       cumulativeScores,
+      handScores,
       matchState,
       rematchIntents,
       rematchPromptOpen,
@@ -792,7 +805,7 @@ export function OnlineGameProvider({ userId, children }: { userId: string; child
       clearPlayerLeft,
       clearRejoinFailed,
     }),
-    [room, gameState, connected, error, playerLeft, rejoinFailed, reconnectNotice, mySeatIndex, turnDeadline, entrySource, rematchVoteState, cumulativeScores, matchState, rematchIntents, rematchPromptOpen, exchangeAnnouncing, exchangeAnnounceData, createRoom, joinRoom, spectateRoom, isSpectator, leaveRoom, quickmatch, startGame, voteRematch, answerRematch, playCards, pass, giveExchangeCard, acknowledgeExchange, sendReaction, clearError, clearPlayerLeft, clearRejoinFailed]
+    [room, gameState, connected, error, playerLeft, rejoinFailed, reconnectNotice, mySeatIndex, turnDeadline, entrySource, rematchVoteState, cumulativeScores, handScores, matchState, rematchIntents, rematchPromptOpen, exchangeAnnouncing, exchangeAnnounceData, createRoom, joinRoom, spectateRoom, isSpectator, leaveRoom, quickmatch, startGame, voteRematch, answerRematch, playCards, pass, giveExchangeCard, acknowledgeExchange, sendReaction, clearError, clearPlayerLeft, clearRejoinFailed]
   );
 
   return (
