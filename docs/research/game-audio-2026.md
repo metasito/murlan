@@ -1211,22 +1211,34 @@ introduce a second timing source.
 - **Epidemic Sound and Musicbed self-serve prices** — JS-rendered / signup-gated.
 - **Unity Asset Store EULA** (403 on both URLs) — the "Unity projects only" restriction is
   *believed* but **not verified**.
-- **Udio** terms (login wall) — including the reported UMG settlement and any resulting
-  product/terms change. Nothing about Udio is asserted.
-- **ElevenLabs "Eleven Music v1 Terms"** — the operative music document. Its page
-  (`/eleven-music-v1-terms`) returns **404** although the page linking to it loads fine. The
-  reported "Studio Games" exclusion from self-serve tiers is **unconfirmed**; so are the
-  music tier list, ownership grant and effective date. See §3d.
-- **Stable Audio** commercial terms, tiers, indemnification, survival — the fetched Stability
-  page is site terms only.
-- **US Copyright Office Part 2** conclusions — the report *dates* are verified from
-  [copyright.gov/ai](https://www.copyright.gov/ai/); the substantive holdings were not read
-  from the PDF.
 - **Google Play's AI-Generated Content policy** text and effective date — the policy exists
-  (item 10, Restricted Content) but its requirements were not readable.
+  (item 10, Restricted Content) but its requirements were not readable. In particular,
+  **whether it reaches an app that merely ships pre-generated audio, as opposed to one that
+  generates at runtime, is open.**
 - **Apple guideline last-updated date** — not shown on the fetched page. No AI-specific
-  guideline was found, which is a negative result, not a confirmation of absence.
-- **EU AI Act** duties on a downstream game developer — not researched.
+  guideline was found, which is a negative result, not a confirmation of absence. Whether App
+  Store Connect's age-rating questionnaire asks about generative AI was not checked.
+- **Suno's forthcoming terms** — the current ToS carries a "Our terms are changing soon"
+  banner. Everything quoted in §3d may be superseded imminently.
+- **Suno's post-cancellation position** — the word "surviv" appears zero times in its terms.
+  The assignment theory is sound but unwritten; given a game's shelf life this deserves a
+  lawyer's sign-off.
+- **Stable Audio's per-tier commercial terms** — no published document ties commercial rights
+  to a tier ("commercial" appears zero times in the ToS). If §12(c) supplemental terms exist,
+  they are not published.
+- **Whether ElevenLabs Enterprise offers customer-facing indemnification** — §9's "in addition
+  to… any other indemnities set forth in a written agreement" implies negotiated indemnities
+  exist, but Enterprise terms are not public. Requires sales contact.
+- **Soundraw's "Schedule"** — Article 2 makes it "an integral part of the Terms" and the
+  per-plan licence scope depends on it. **It is not published.**
+- **Soundraw and Beatoven consumer pricing**, **Udio pricing**, **AIVA monthly (non-annual)
+  prices**, and **Mubert document dates** (none of its licence documents carry one).
+- **Thaler v. Perlmutter** (D.C. Cir., Mar 2025), which affirmed the human-authorship
+  requirement — the opinion PDF could not be fetched.
+- **Udio's 3 Nov 2025 48-hour download window** and **Suno's Warner settlement terms** rest
+  partly on trade press (Billboard, Rolling Stone, MBW) rather than the filings themselves.
+- **Albania's draft AI law** — adoption status rests on convergent secondary sources; the
+  official gazette (*Fletorja Zyrtare*) was not reachable.
 - **2026 composer rate cards** — G.A.N.G. survey URL 404'd, Game Developer archive carried no
   pricing, Reddit is unfetchable. **The $1.5k–5k package figure is an estimate, not a fact.**
 - **Incompetech's paid Standard License price** — not on the FAQ page.
