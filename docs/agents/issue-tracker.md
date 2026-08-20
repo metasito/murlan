@@ -9,9 +9,35 @@ Issues and specs for this repo live as GitHub issues. Use the `gh` CLI for all o
 - **List issues**: `gh issue list --state open --json number,title,body,labels,comments --jq '[.[] | {number, title, body, labels: [.labels[].name], comments: [.comments[].body]}]'` with appropriate `--label` and `--state` filters.
 - **Comment on an issue**: `gh issue comment <number> --body "..."`
 - **Apply / remove labels**: `gh issue edit <number> --add-label "..."` / `--remove-label "..."`
+- **Labels**: `needs-triage` / `needs-info` / `ready-for-agent` / `ready-for-human` / `rejected`,
+  `size:XS`…`size:XL`, and `in-progress` (see *Claiming an item*).
 - **Close**: `gh issue close <number> --comment "..."`
 
 Infer the repo from `git remote -v`; `gh` does this automatically when run inside a clone.
+
+## Claiming an item
+
+Sessions run in parallel against one repo, and every one of them authenticates as the same
+GitHub account — so `--add-assignee @me` cannot tell two sessions apart. The branch name
+can, and that is what the claim carries.
+
+- **The free queue** — the listing every session picks from:
+  `gh issue list --label ready-for-agent --state open --search "-label:in-progress" --json number,title,labels`
+- **Claim**, as the session's first write, before the branch and before reading the code:
+  ```sh
+  gh issue edit <n> --add-label in-progress
+  gh issue comment <n> --body "Claimed by \`<branch-name>\`."
+  ```
+- **Confirm you won the race**: `gh issue view <n> --comments`. Labelling is not atomic, and
+  two sessions can list the same free queue a second apart. If a claim comment predates
+  yours, `gh issue edit <n> --remove-label in-progress`, comment that you are standing down,
+  and take the next item.
+- **Release**: `gh issue close` ends the claim with the issue. Otherwise
+  `gh issue edit <n> --remove-label in-progress` — always when relabelling `ready-for-human`,
+  and whenever you stop without landing the work. An `in-progress` label left behind is an
+  item nobody will pick up.
+- **Stale claim**: the branch named in the claim comment is in neither
+  `git ls-remote --heads origin` nor `git worktree list`. Say so on the issue, then claim it.
 
 ## Pull requests as a triage surface
 
