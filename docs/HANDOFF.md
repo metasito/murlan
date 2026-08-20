@@ -57,9 +57,7 @@ These artefacts are build outputs. Edit the script, not the result:
 
 ## Needs the owner, not more effort
 
-EAS submit credentials · push credentials and a privacy-policy entry for Q23 ·
-the 432×432 monochrome icon · a native Albanian speaker for idiom · real-device
-VoiceOver. `docs/BACKLOG.md` §2 is the full list with what each one needs.
+`docs/BACKLOG.md` §2 is the list, with what each one needs. Never copy it here.
 
 `server/schemaDdl.ts` applies `shared/schema.ts` on every server start, so a new
 table or column ships with the deploy that introduces it, and a database Replit
@@ -84,15 +82,13 @@ before moving on. Flag rather than build: game-rule changes and business
 decisions. Never claim success without pasted output.
 
 A failing test is not a regression until you have seen it pass somewhere else.
-Three E2E failures here were machine contention and a fourth was a genuine
-timeout on an unlucky deal; the way that was settled was building a worktree at
-the commit before the suspect change and watching it fail identically. Check
-the parent commit before believing your own diff caused something.
+Machine contention and unlucky deals both look exactly like a regression. Build
+a worktree at the commit before the suspect change and watch it fail there too;
+check the parent commit before believing your own diff caused something.
 
-A screenshot raises a suspicion; it does not settle one. Four apparent layout
-defects in the UI audit evaporated once each scroll area was actually scrolled,
-and two "fixes" written before testing turned out to change nothing and were
-reverted. Confirm in the code, or with a DOM probe, before calling something a
-defect — and when checking that a new test can fail, revert the fix for real:
+A screenshot raises a suspicion; it does not settle one. Apparent layout defects
+evaporate once a scroll area is actually scrolled, and a fix written before the
+defect is confirmed usually changes nothing. Confirm in the code, or with a DOM
+probe, before calling something a defect — and when checking that a new test can fail, revert the fix for real:
 `git stash` on an already-committed change stashes nothing and passes
 vacuously.

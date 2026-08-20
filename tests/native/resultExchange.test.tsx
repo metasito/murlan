@@ -253,7 +253,7 @@ describe('the result screen card exchange', () => {
 // The two-joker overlay leaves the result screen from two independent places:
 // the button, and a timer that moves the game on if the player never presses
 // it. Exactly one may ever run. A second `replace` to a route the app is
-// already leaving is a plausible cause of docs/BACKLOG.md Q10b, where the URL
+// already leaving is a plausible cause of the defect where the URL
 // changes but the result screen stays mounted and the table never appears.
 describe('the two-joker overlay leaves the result screen exactly once', () => {
   const bothJokers = () => exchangeState('human', [joker('bw'), joker('colored')], true);

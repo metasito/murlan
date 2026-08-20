@@ -140,7 +140,7 @@ Ordered by estimated impact per unit of work.
   become asynchronous. It cannot: a player who does not act within 30s is auto-passed and
   one still absent at 60s loses the seat to a bot, so a notification cannot arrive in time
   to matter. Shipped instead as a notification for a **friend's invite that arrived while
-  the player was away**, which nothing expires against — see `docs/BACKLOG.md` Q23.
+  the player was away**, which nothing expires against.
 - **Rejoin-in-progress UX.** Right now a disconnect is a cliff. It should be a speed bump.
 
 ### Tier 2 — strong candidates

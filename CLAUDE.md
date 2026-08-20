@@ -110,12 +110,14 @@ lines is explaining itself instead of being clear.
   accepting it — answering it wrong deletes the column's data (`docs/DEPLOY-RUNBOOK.md`).
   Order a change by design, not by deploy cost: derive from existing rows → ride an existing
   jsonb column → new table → new column.
+- **Outstanding work lives only in `docs/BACKLOG.md`** — never a `TODO` comment, never a
+  list in another doc. Elsewhere, point at a row; never copy one. A second copy goes stale.
 - **Leave no residue.** Implemented design docs, superseded plans and scratch scripts get
   deleted, not archived. A claim that no longer holds is removed the moment it's found.
 - **No self-defeating safeguards.** Never ship a guard together with the thing that gets past
-  it. **The tell is the justifying comment.** A check that cannot fail costs the same as a
-  real one and buys false confidence. This has recurred three times here — in CI, in an
-  accessibility label, and in a constant the test couldn't detect a second copy of.
+  it. **The tell is the justifying comment.** A guard needs a *floor* as well as a trigger:
+  prove it fails both on the defect and on the null case where it inspects nothing. It keeps
+  recurring, and every instance was verified by its author before it shipped.
 
 ## Known pitfalls
 

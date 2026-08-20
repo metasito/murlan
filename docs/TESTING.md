@@ -342,7 +342,7 @@ and `clickable: true`) yet never fired the RN `onPress`, so both flows fell back
 to a raw coordinate tap.
 
 **Both halves of that are now resolved, and the workaround outlived its cause.**
-Collapsing the header into one accessible node (Q4) made `tapOn: "Salta il
+Collapsing the header into one accessible node made `tapOn: "Salta il
 tutorial"` fire the real `onPress` — confirmed on the emulator, through the real
 Android accessibility tree, which is the one thing the Jest suite structurally
 cannot check. The coordinate tap meanwhile started missing the button outright

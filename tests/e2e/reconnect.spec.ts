@@ -61,7 +61,7 @@ test("online — a dropped connection says so, and the table comes back", async 
     networkDown = true;
     await context.setOffline(true);
 
-    // The whole point of Q16: a disconnect is a speed bump, not a cliff. The
+    // The whole point: a disconnect is a speed bump, not a cliff. The
     // player is told, and the table stays on screen rather than being replaced
     // by an error or left silently frozen.
     await expect(page.getByText(RECONNECTING)).toBeVisible({ timeout: 45_000 });
