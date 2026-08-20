@@ -27,7 +27,7 @@ export interface RoomState {
   status: "waiting" | "in_progress" | "finished";
   gameMode: "free_for_all" | "teams";
   maxPlayers: number;
-  players: Array<{ seatIndex: number; userId: string; username: string }>;
+  players: { seatIndex: number; userId: string; username: string }[];
 }
 
 export interface RematchVoteState {

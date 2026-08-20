@@ -194,7 +194,7 @@ test("leading a round always produces a play, for every personality and hand siz
 // counts and, in teams mode, its partner's seat, so neither the shorter table
 // nor the paired one is the same problem.
 test("every personality finishes a hand at 2 and 3 seats, and in teams mode", () => {
-  const shapes: Array<[string, Parameters<typeof playOutHand>[2]]> = [
+  const shapes: [string, Parameters<typeof playOutHand>[2]][] = [
     ["2 seats", { seats: 2 }],
     ["3 seats", { seats: 3 }],
     ["4 seats, teams", { seats: 4, gameMode: "teams" }],

@@ -1,7 +1,7 @@
 import type { Express, Request, Response } from "express";
 import { createServer, type Server } from "node:http";
 import bcrypt from "bcryptjs";
-import rateLimit from "express-rate-limit";
+import { rateLimit } from "express-rate-limit";
 import { storage, UsernameTakenError } from "./storage.ts";
 import { logger } from "./logger.ts";
 import { validate } from "./validate.ts";

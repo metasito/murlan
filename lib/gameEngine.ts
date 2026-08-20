@@ -888,13 +888,13 @@ export function getSuitSymbol(suit: Suit | null): string {
 const EXCHANGE_VALID_RANKS: Rank[] = ["3","4","5","6","7","8","9","10"];
 
 export function initializeRematch(
-  playerSetup: Array<{
+  playerSetup: {
     name: string;
     type: PlayerType;
     personality?: BotPersonalityId;
     team?: "A" | "B";
     id?: string;
-  }>,
+  }[],
   gameMode: GameMode,
   prevRankings: string[],
   firstSeat = 0
@@ -1064,12 +1064,12 @@ export function nextDealFirstSeat(firstSeat: number, playerCount: number): numbe
 }
 
 export function initializeGame(
-  playerSetup: Array<{
+  playerSetup: {
     name: string;
     type: PlayerType;
     personality?: BotPersonalityId;
     team?: "A" | "B";
-  }>,
+  }[],
   gameMode: GameMode,
   firstSeat = 0
 ): GameState {

@@ -35,12 +35,10 @@ jest.mock('@/context/AuthContext', () => ({
   useAuth: () => ({ user: { id: 'u1', username: 'Ana' }, logout: async () => {} }),
 }));
 
-// eslint-disable-next-line @typescript-eslint/no-require-imports
 const { SocketProvider, useSocket } = require('@/context/SocketContext') as typeof import('@/context/SocketContext');
-// eslint-disable-next-line @typescript-eslint/no-require-imports
 const { NotificationProvider } = require('@/context/NotificationContext') as typeof import('@/context/NotificationContext');
 
-let seen: Array<{ hasSocket: boolean; connected: boolean }> = [];
+let seen: { hasSocket: boolean; connected: boolean }[] = [];
 
 function Probe() {
   const { socket, connected } = useSocket();

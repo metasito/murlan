@@ -47,7 +47,7 @@ describe("deck", () => {
 });
 
 describe("the deal (defect 3) — the whole deck goes out", () => {
-  const cases: Array<[number, number[]]> = [
+  const cases: [number, number[]][] = [
     [4, [14, 14, 13, 13]],
     [3, [18, 18, 18]],
     [2, [27, 27]],

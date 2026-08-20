@@ -17,7 +17,7 @@ import { en as locale } from '@/locales/en';
 
 type Listener = (...args: unknown[]) => void;
 
-const emitted: Array<{ event: string; payload?: unknown }> = [];
+const emitted: { event: string; payload?: unknown }[] = [];
 const listeners = new Map<string, Listener>();
 
 const mockSocket = {

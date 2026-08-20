@@ -29,7 +29,6 @@ jest.mock('@/lib/query-client', () => ({
   getApiUrl: () => 'http://localhost',
 }));
 
-// eslint-disable-next-line @typescript-eslint/no-require-imports
 const apiRequest = (require('@/lib/query-client') as { apiRequest: jest.Mock })
   .apiRequest;
 
