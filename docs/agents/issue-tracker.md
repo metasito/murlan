@@ -95,6 +95,9 @@ What makes the difference in practice:
 - **State what is out of scope.** Scope creep in an autonomous queue is the failure mode,
   because nobody is watching the diff grow.
 - **Cite the source.** A research file path or the issue that surfaced it, so the next reader
+- **Point at `CLAUDE.md`, don't copy it.** It is already in the agent's context every turn, so restating an invariant in the body pays tokens to say nothing and creates a second copy that goes stale. Write only the part that is *not* discoverable: how this particular change collides with that invariant.
+- **Make the done-condition checkable and exhaustive.** "Every modified locale accounted for" forces the work; "update the locales" does not. A vague bound invites stopping early, with attention already on the next ticket.
+- **Prompt the positive.** "Bound every query" lands; "don't write unbounded queries" drags the unbounded query into context and makes it more available. Keep prohibitions for hard guardrails, and pair them with the target.
   can check the claim instead of re-deriving it.
 
 Verify the body's own claims before filing. An issue that asserts a defect at a line that
