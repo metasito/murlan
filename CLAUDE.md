@@ -113,11 +113,23 @@ lines is explaining itself instead of being clear.
 ## Working agreement
 
 - **Autonomy.** Work the queue one item at a time, one commit per item. The queue is
-  `gh issue list --label ready-for-agent --state open`, smallest `size:*` label first. Don't
+  `gh issue list --label ready-for-agent --state open --search "-label:in-progress"`,
+  smallest `size:*` label first. Don't
   ask which item or whether to proceed. Commit and push yourself — don't wait to be asked —
   then `gh run watch` the push and close the issue only once CI is green; red CI is the next
   thing you work on, not something to leave behind. Keep `Closes #NN` out of the commit
   message: it closes the issue at push time, before CI has said anything.
+- **Claim the item before working it.** Sessions run in parallel, and every one of them
+  authenticates as the same GitHub account — an assignee says who owns the repo, not who
+  owns the item, so the claim is `in-progress` plus a comment naming the branch. It is the
+  session's *first* write, before the branch and before reading the code: a claim made after
+  the work is a claim made after the collision. Then re-read the issue, because two sessions
+  can list the same free queue a second apart — if a claim older than yours is there, drop
+  yours and take the next item. Release it whenever you stop without landing it, including
+  the hand-off to `ready-for-human`; closing the issue releases it for you. A claim whose
+  branch exists in neither `git ls-remote --heads origin` nor `git worktree list` is stale,
+  and taking it over is fine once you have said so on the issue.
+  `docs/agents/issue-tracker.md` has the commands.
 - **Work on a branch, land through a pull request.** Never push an item straight to `main`.
   A change that turns out to be wrong goes red on the pull request, where it costs one run
   and nothing else; pushed to `main` it goes red on `main`, and the next person starts from
