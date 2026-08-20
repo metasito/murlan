@@ -26,7 +26,12 @@ import type { ReplayMove, ReplaySeat } from "../../lib/replay.ts";
 process.env.MURLAN_AFK_TIMEOUT_MS = "300";
 process.env.MURLAN_DISCONNECT_GRACE_MS = "500";
 
-describe("ladder and replay writes", { skip: hasDatabase() ? false : skipMessage() }, () => {
+// Each test plays its own hand under its own `playOneHand` prefix, so its own
+// accounts and its own room — and every registry the server keeps is keyed by
+// room or user. Sequentially these seven cost 126s, the longest file in the
+// suite by an order of magnitude and so the floor for `npm test`, which runs
+// files concurrently but never the tests inside one.
+describe("ladder and replay writes", { concurrency: true, skip: hasDatabase() ? false : skipMessage() }, () => {
   let server: TestServer;
   let dbPool: pg.Pool;
 
