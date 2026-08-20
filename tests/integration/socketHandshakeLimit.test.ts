@@ -7,7 +7,7 @@ import {
   skipMessage,
   type TestServer,
 } from "../helpers/testServer.ts";
-import { register } from "../helpers/client.ts";
+import { DEADLINE_SCALE, register } from "../helpers/client.ts";
 
 /**
  * SEC-05: the socket.io handshake is the one entry point no Express limiter
@@ -32,23 +32,37 @@ import { register } from "../helpers/client.ts";
  * a four-connection pool. Sampling the pool first sees an idle one and returns
  * just before the flood.
  *
- * A ceiling rather than an assertion: if it never comes to rest the test
- * proceeds and fails on its own terms, which is what it did before this
- * existed.
+ * `ceilingMs` is a local budget and scales with `DEADLINE_SCALE`, for the same
+ * reason every other deadline in the suite does: this file deliberately
+ * saturates the connect path, and a runner under load takes far longer to push
+ * the resulting reads through four connections than a laptop does.
+ *
+ * Reports whether it actually came to rest. The caller decides what to do about
+ * it — proceeding into a pool that is still draining produces a timeout further
+ * down that says nothing about why.
  */
-async function quiet(server: TestServer, ceilingMs = 10_000): Promise<void> {
+async function quiet(server: TestServer, ceilingMs = 10_000): Promise<PoolRest> {
   const { pool } = await import("../../server/db.ts");
-  const deadline = Date.now() + ceilingMs;
+  const deadline = Date.now() + ceilingMs * DEADLINE_SCALE;
   const until = async (settled: () => boolean) => {
     while (Date.now() < deadline && !settled()) {
       await new Promise((resolve) => setTimeout(resolve, 50));
     }
+    return settled();
   };
   await until(() => server.io.engine.clientsCount === 0);
   await new Promise((resolve) => setTimeout(resolve, 450));
-  await until(
+  const atRest = await until(
     () => pool.waitingCount === 0 && pool.idleCount === pool.totalCount
   );
+  return { atRest, waiting: pool.waitingCount, idle: pool.idleCount, total: pool.totalCount };
+}
+
+interface PoolRest {
+  atRest: boolean;
+  waiting: number;
+  idle: number;
+  total: number;
 }
 
 describe(
@@ -160,7 +174,16 @@ describe(
       // acquiring one after 5s, so on a shared runner those tails are still
       // draining here and this test's own read is the one that fails to get a
       // slot.
-      await quiet(server);
+      const rest = await quiet(server);
+      // Said here rather than 20s later as "timed out waiting for
+      // friend:online_list": with the pool still draining, this test's own read
+      // cannot get a slot, so nothing it goes on to measure would mean anything.
+      assert.ok(
+        rest.atRest,
+        `the pool never came to rest: ${rest.waiting} waiting, ` +
+          `${rest.idle}/${rest.total} idle. The reads left behind by the ` +
+          `connections above are still draining, so this test cannot get a slot.`
+      );
       const { connectAs, waitFor } = await import("../helpers/client.ts");
       const realGetFriends = storage.getFriends;
       // Keyed by caller, not a bare counter: the two tests above open 72
