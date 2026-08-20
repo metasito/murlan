@@ -31,7 +31,7 @@ Single-context: `CONTEXT.md` + `docs/adr/` at the repo root (created lazily by
 - `DATABASE_URL`, `SESSION_SECRET`, `PORT` must be set in Replit Secrets.
 - No build step needing local tooling. Must launch from the Run button with no setup.
 - **Production runs Node 22** (`.replit` `modules`). CI's `build` job — the one that boots the
-  real artefact — runs 22; the other three check dev tooling and run 24. `server:build`'s
+  real artefact — runs 22; the other two check dev tooling and run 24. `server:build`'s
   `--target=node22` lowers *syntax* only and has no API database, so a Node-24-only builtin
   compiles at exit 0 and throws on Replit. The Node 22 job is what catches that.
 - **`server/schemaDdl.ts` is the only thing that creates tables**, at boot, from
