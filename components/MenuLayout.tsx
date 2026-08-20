@@ -1,6 +1,6 @@
 import React from 'react';
 import {
-  View, ScrollView, StyleSheet, Platform, ViewStyle,
+  View, ScrollView, StyleSheet, Platform, ViewStyle, KeyboardAvoidingView,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -59,20 +59,33 @@ export function MenuLayout({
         style={StyleSheet.absoluteFill}
         pointerEvents="none"
       />
-      {scrollable ? (
-        <ScrollView
-          style={styles.fill}
-          contentContainerStyle={styles.scroll}
-          keyboardShouldPersistTaps="handled"
-          showsVerticalScrollIndicator={false}
-        >
-          <View testID="menu-content" style={contentStyle}>{children}</View>
-        </ScrollView>
-      ) : (
-        <View style={styles.fill}>
-          <View testID="menu-content" style={contentStyle}>{children}</View>
-        </View>
-      )}
+      {/* Every menu screen with a text field routes through here. Android's
+          edge-to-edge, unconditional since Expo SDK 54, stopped the framework
+          padding the window for the IME, so `adjustResize` alone no longer
+          reflows anything — KeyboardAvoidingView reads the keyboard events
+          itself instead. iOS is served by the ScrollView's own inset
+          adjustment, and on web both are inert: the browser scrolls the
+          focused input into view. */}
+      <KeyboardAvoidingView
+        style={styles.fill}
+        behavior={Platform.OS === 'android' ? 'padding' : undefined}
+      >
+        {scrollable ? (
+          <ScrollView
+            style={styles.fill}
+            contentContainerStyle={styles.scroll}
+            keyboardShouldPersistTaps="handled"
+            automaticallyAdjustKeyboardInsets
+            showsVerticalScrollIndicator={false}
+          >
+            <View testID="menu-content" style={contentStyle}>{children}</View>
+          </ScrollView>
+        ) : (
+          <View style={styles.fill}>
+            <View testID="menu-content" style={contentStyle}>{children}</View>
+          </View>
+        )}
+      </KeyboardAvoidingView>
     </View>
   );
 }
