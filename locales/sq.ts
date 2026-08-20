@@ -187,7 +187,7 @@ export const sq: Record<keyof typeof en, string> = {
   // ------------------------------------------------------------ exchangeModal.*
   "exchangeModal.title": "Shkëmbimi i letrave",
   "exchangeModal.receives": "merr",
-  "exchangeModal.gives": "jep",
+  "exchangeModal.willReceive": "do të marrë",
   "exchangeModal.subPrefix": "Zgjidh një letër për t'ia dhënë",
   "exchangeModal.subSuffix": "(vetëm 3–10):",
   "exchangeModal.noValidCards": "Nuk ka letër të vlefshme për ta dhënë.",

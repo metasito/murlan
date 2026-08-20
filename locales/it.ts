@@ -168,7 +168,7 @@ export const it: Record<keyof typeof en, string> = {
   // ------------------------------------------------------------ exchangeModal.*
   "exchangeModal.title": "Scambio di carte",
   "exchangeModal.receives": "riceve",
-  "exchangeModal.gives": "dà",
+  "exchangeModal.willReceive": "riceverà",
   "exchangeModal.subPrefix": "Scegli una carta da dare a",
   "exchangeModal.subSuffix": "(solo 3–10):",
   "exchangeModal.noValidCards": "Nessuna carta valida da restituire.",

@@ -200,13 +200,13 @@ export function ExchangeModal({
             <View style={styles.arrowLine} />
           </Animated.View>
 
-          {/* Loser row — sends a card */}
+          {/* Loser row — receives the card the winner is about to pick */}
           <View style={styles.playerRow}>
             <View style={styles.playerInfo}>
               <Ionicons name="person" size={14} color={Colors.textSecondary} />
               <Text style={styles.playerName} numberOfLines={1}>{loserName}</Text>
-              <View style={[styles.receivesTag, styles.givesTag]}>
-                <Text style={[styles.receivesTagText, styles.givesTagText]}>{t("exchangeModal.gives")}</Text>
+              <View style={[styles.receivesTag, styles.willReceiveTag]}>
+                <Text style={[styles.receivesTagText, styles.willReceiveTagText]}>{t("exchangeModal.willReceive")}</Text>
               </View>
             </View>
             <View style={styles.cardSlotEmpty}>
@@ -317,11 +317,11 @@ const styles = StyleSheet.create({
     color: Colors.gold,
     letterSpacing: 0.5,
   },
-  givesTag: {
+  willReceiveTag: {
     backgroundColor: Highlight.soft,
     borderColor: Highlight.clear,
   },
-  givesTagText: {
+  willReceiveTagText: {
     color: Colors.textSecondary,
   },
   cardSlot: {

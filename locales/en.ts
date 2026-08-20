@@ -174,7 +174,7 @@ export const en = {
   // ------------------------------------------------------------ exchangeModal.*
   "exchangeModal.title": "Card exchange",
   "exchangeModal.receives": "receives",
-  "exchangeModal.gives": "gives",
+  "exchangeModal.willReceive": "will get",
   "exchangeModal.subPrefix": "Choose a card to give to",
   "exchangeModal.subSuffix": "(3–10 only):",
   "exchangeModal.noValidCards": "No valid card to give back.",
