@@ -114,8 +114,11 @@ lines is explaining itself instead of being clear.
 
 - **Autonomy.** Work the queue one item at a time, one commit per item. The queue is
   `gh issue list --label ready-for-agent --state open`, smallest `size:*` label first. Don't
-  ask which item or whether to proceed. Commit, push, and close the issue yourself — don't
-  wait to be asked. An item that turns out to need an owner-level call gets relabelled
+  ask which item or whether to proceed. Commit and push yourself — don't wait to be asked —
+  then `gh run watch` the push and close the issue only once CI is green; red CI is the next
+  thing you work on, not something to leave behind. Keep `Closes #NN` out of the commit
+  message: it closes the issue at push time, before CI has said anything. An item that turns
+  out to need an owner-level call gets relabelled
   `ready-for-human` (not closed) and the next item is taken. When no
   `ready-for-agent` issue remains, run `superpowers:brainstorming` and file what it finds
   with `mattpocock-skills:to-tickets`.
