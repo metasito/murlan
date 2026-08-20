@@ -2,6 +2,11 @@
 // Reports asset sizes under assets/ and installed sizes of production
 // dependencies under node_modules/, both sorted largest-first.
 //
+// Sizes here are raw bytes, and this reports sources rather than output: the
+// built web bundle's gzipped ceiling is enforced separately, and in CI, by
+// scripts/bundle-budget.mjs. This stays a by-hand snapshot tool for
+// docs/BUNDLE.md.
+//
 // Plain Node, no dependencies. Run with: node scripts/bundle-report.mjs
 // Pipe to docs/BUNDLE.md to refresh the committed snapshot:
 //   node scripts/bundle-report.mjs > docs/BUNDLE.md
