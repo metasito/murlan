@@ -20,6 +20,37 @@ import { register } from "../helpers/client.ts";
  * accounts here need an allowance no other suite has already drawn on.
  */
 
+/**
+ * Resolves once nothing an earlier test started is still in flight, or after
+ * `ceilingMs`.
+ *
+ * The three waits are ordered because each one only becomes true after the one
+ * before it: the server still holds sockets the client has already closed; each
+ * of those disconnects leaves an offline notice that waits 400ms before it
+ * reads the database (`emitFriendStatusOffline`), so none of those reads exist
+ * yet while a socket remains; and only then does that read queue for a slot in
+ * a four-connection pool. Sampling the pool first sees an idle one and returns
+ * just before the flood.
+ *
+ * A ceiling rather than an assertion: if it never comes to rest the test
+ * proceeds and fails on its own terms, which is what it did before this
+ * existed.
+ */
+async function quiet(server: TestServer, ceilingMs = 10_000): Promise<void> {
+  const { pool } = await import("../../server/db.ts");
+  const deadline = Date.now() + ceilingMs;
+  const until = async (settled: () => boolean) => {
+    while (Date.now() < deadline && !settled()) {
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    }
+  };
+  await until(() => server.io.engine.clientsCount === 0);
+  await new Promise((resolve) => setTimeout(resolve, 450));
+  await until(
+    () => pool.waitingCount === 0 && pool.idleCount === pool.totalCount
+  );
+}
+
 describe(
   "socket handshake rate limit",
   { skip: hasDatabase() ? false : skipMessage() },
@@ -122,6 +153,14 @@ describe(
      */
     test("a connection reads the caller's friends once", async () => {
       const { storage } = await import("../../server/storage.ts");
+      // The two tests above accept 72 connections between them, and each one
+      // leaves two fire-and-forget friends reads behind — the connect handler's
+      // and the debounced offline notice its close schedules. The suite's pool
+      // is four connections wide (tests/helpers/testServer.ts) and gives up
+      // acquiring one after 5s, so on a shared runner those tails are still
+      // draining here and this test's own read is the one that fails to get a
+      // slot.
+      await quiet(server);
       const { connectAs, waitFor } = await import("../helpers/client.ts");
       const realGetFriends = storage.getFriends;
       // Keyed by caller, not a bare counter: the two tests above open 72
