@@ -8,9 +8,7 @@
 //     Albanian text directly: "Shkalla duhet të ketë të paktën 5 letra")
 //   - "letër" / "letra" — card / cards
 //   - "Fanti" — Jack, "Zonja" — Queen, "Mbreti" — King, "Asi" — Ace
-//   - "Xholi i Zi" / "Xholi i Kuq" — Black Joker / Colored (Red) Joker
-//     (rendered here as "Xholi i zi" / "Xholi me ngjyrë" to match the
-//     app's colour-neutral "colored Joker" framing elsewhere in the UI)
+//   - "Xholi i Zi" / "Xholi i Kuq" — Black Joker / Red Joker
 //
 // UNSOURCED terms: everything else — general UI chrome, combination names
 // other than "shkallë" (single/pair/triple/bomb/royal straight), suit
@@ -189,7 +187,7 @@ export const sq: Record<keyof typeof en, string> = {
   // ------------------------------------------------------------ exchangeModal.*
   "exchangeModal.title": "Shkëmbimi i letrave",
   "exchangeModal.receives": "merr",
-  "exchangeModal.gives": "jep",
+  "exchangeModal.willReceive": "do të marrë",
   "exchangeModal.subPrefix": "Zgjidh një letër për t'ia dhënë",
   "exchangeModal.subSuffix": "(vetëm 3–10):",
   "exchangeModal.noValidCards": "Nuk ka letër të vlefshme për ta dhënë.",
@@ -205,19 +203,19 @@ export const sq: Record<keyof typeof en, string> = {
   "cards.rankKing": "Mbreti",
   "cards.suitHearts": "Kupa",
   "cards.suitDiamonds": "Karo",
-  "cards.suitClubs": "Trefla",
-  "cards.suitSpades": "Pika",
+  "cards.suitClubs": "Spathi",
+  "cards.suitSpades": "Maç",
   "cards.nameFormat": "{{rank}} {{suit}}",
 
   // -------------------------------------------------------- exchangeAnnouncement.*
   "exchangeAnnouncement.a11yNoSwap": "Shkëmbim: pa shkëmbim, {{loserName}} tregoi të dy Xholat",
-  "exchangeAnnouncement.giveLine": "{{from}} i jep {{card}} {{to}}",
+  "exchangeAnnouncement.giveLine": "Nga {{from}} te {{to}}: {{card}}",
   "exchangeAnnouncement.dismissA11yHint": "Prek për të mbyllur",
   "exchangeAnnouncement.closeA11yLabel": "Mbyll njoftimin e shkëmbimit",
   "exchangeAnnouncement.title": "Shkëmbimi",
   "exchangeAnnouncement.noSwapText": "Pa shkëmbim — Xhola të dyfishtë 🃏",
-  "exchangeAnnouncement.givesWord": " i jep ",
-  "exchangeAnnouncement.toWord": " ",
+  "exchangeAnnouncement.givesWord": " → ",
+  "exchangeAnnouncement.toWord": " → ",
 
   // ------------------------------------------------------- gameOverOverlay.*
   "gameOverOverlay.position1": "1°",
@@ -243,7 +241,7 @@ export const sq: Record<keyof typeof en, string> = {
   "gameOverOverlay.pointsAbbrev": "{{n}}p",
 
   // -------------------------------------------------------------- cardView.*
-  "cardView.jokerColored": "Xholi me ngjyrë",
+  "cardView.jokerColored": "Xholi i kuq",
   "cardView.jokerBlack": "Xholi i zi",
   "cardView.selectedA11yHint": "E zgjedhur",
 
@@ -453,8 +451,8 @@ export const sq: Record<keyof typeof en, string> = {
   "lobby.titleVsAI": "Luaj kundër AI",
   "lobby.titlePassPlay": "Kalo & Luaj",
   "lobby.rulesTitle": "Forca e Letrave",
-  "lobby.rankJokerColored": "Xholi me Ngjyrë",
-  "lobby.rankJokerBlack": "Xholi B/Z",
+  "lobby.rankJokerColored": "Xholi i Kuq",
+  "lobby.rankJokerBlack": "Xholi i Zi",
   "lobby.rankStrongest": "Më i forti",
   "lobby.rankAce": "Asi",
   "lobby.rankKing": "Mbreti",
@@ -466,8 +464,8 @@ export const sq: Record<keyof typeof en, string> = {
   "rules.heroSubtitle": "Udhëzuesi i Lojës",
   "rules.tutorialLink": "Preferon të mësosh duke luajtur? Provo Tutorialin e udhëhequr",
   "rules.strengthSectionLabel": "FORCA E LETRAVE (më e forta → më e dobëta)",
-  "rules.strengthJokerColored": "Xholi me Ngjyrë",
-  "rules.strengthJokerBlack": "Xholi B/Z",
+  "rules.strengthJokerColored": "Xholi i Kuq",
+  "rules.strengthJokerBlack": "Xholi i Zi",
   "rules.strengthTwo": "Dyshi",
   "rules.strengthAce": "Asi",
   "rules.strengthKing": "Mbreti",
@@ -479,15 +477,15 @@ export const sq: Record<keyof typeof en, string> = {
   "rules.comboSingleName": "E vetme",
   "rules.comboSingleDesc": "1 letër çfarëdo",
   "rules.comboPairName": "Çift",
-  "rules.comboPairDesc": "2 letra të të njëjtit vlerë",
+  "rules.comboPairDesc": "2 letra të së njëjtës vlerë",
   "rules.comboTripleName": "Tresh",
-  "rules.comboTripleDesc": "3 letra të të njëjtit vlerë",
+  "rules.comboTripleDesc": "3 letra të së njëjtës vlerë",
   "rules.comboStraightName": "Shkallë",
   "rules.comboStraightDesc": "Min. 5 letra të njëpasnjëshme, deri në 13 (p.sh. A-2-3-4-5)",
   "rules.comboBombName": "Bombë 💣",
-  "rules.comboBombDesc": "4 letra të të njëjtit vlerë · mund gjithçka përveç Shkallës Mbretërore",
+  "rules.comboBombDesc": "4 letra të së njëjtës vlerë · mund gjithçka përveç Shkallës Mbretërore",
   "rules.comboRoyalName": "Shkallë Mbretërore ★",
-  "rules.comboRoyalDesc": "Shkallë me të njëjtin bojë · mund edhe Bombën",
+  "rules.comboRoyalDesc": "Shkallë me të njëjtën ngjyrë · mund edhe Bombën",
   "rules.faqSectionLabel": "PYETJE TË SHPESHTA",
 
   "rules.faq.q1": "Cili është qëllimi i lojës?",
@@ -495,9 +493,9 @@ export const sq: Record<keyof typeof en, string> = {
   "rules.faq.q2": "Kush fillon i pari?",
   "rules.faq.a2": "Dora e parë e ndeshjes:\nGjithmonë shpërndahet i gjithë mazhi, kështu që 3♠ është gjithmonë në dorën e dikujt. Kush e ka atë hap lojën, dhe loja e parë DUHET ta përfshijë atë letër.\n\nDuart pasuese (pas shkëmbimit të letrave):\n• Kush ka humbur dorën e mëparshme hap dorën tjetër.\n• Nëse fituesi fitoi pa u bërë shkëmbim (përjashtimi i dy Xholave), është vetë fituesi që hap dorën tjetër.\n\nRadha vazhdon gjithmonë në kahun orar.",
   "rules.faq.q3": "Cila është forca e letrave?",
-  "rules.faq.a3": "Nga më e forta te më e dobëta:\n★ Xholi me Ngjyrë > ☆ Xholi B/Z > 2 > A > K > Q > J > 10 > 9 > 8 > 7 > 6 > 5 > 4 > 3\n\n2-shi është letra e zakonshme më e fortë e mazhit!",
+  "rules.faq.a3": "Nga më e forta te më e dobëta:\n★ Xholi i Kuq > ☆ Xholi i Zi > 2 > A > K > Q > J > 10 > 9 > 8 > 7 > 6 > 5 > 4 > 3\n\n2-shi është letra e zakonshme më e fortë e mazhit!",
   "rules.faq.q4": "Cilat kombinime mund të luaj?",
-  "rules.faq.a4": "• E vetme: një letër çfarëdo\n• Çift: dy letra të të njëjtit vlerë\n• Tresh: tre letra të të njëjtit vlerë\n• Shkallë: minimumi 5 letra të njëpasnjëshme (deri në 13)\n• Bombë: katër letra të të njëjtit vlerë (mund E vetmen, Çiftin, Treshin dhe Shkallën e çfarëdo force — por jo Shkallën Mbretërore)\n• Shkallë Mbretërore: shkallë (5+) me të gjitha letrat e të njëjtit bojë — mund edhe Bombën më të fortë, është kombinimi më i fuqishëm i lojës",
+  "rules.faq.a4": "• E vetme: një letër çfarëdo\n• Çift: dy letra të së njëjtës vlerë\n• Tresh: tre letra të së njëjtës vlerë\n• Shkallë: minimumi 5 letra të njëpasnjëshme (deri në 13)\n• Bombë: katër letra të së njëjtës vlerë (mund E vetmen, Çiftin, Treshin dhe Shkallën e çfarëdo force — por jo Shkallën Mbretërore)\n• Shkallë Mbretërore: shkallë (5+) me të gjitha letrat e të njëjtës ngjyrë — mund edhe Bombën më të fortë, është kombinimi më i fuqishëm i lojës",
   "rules.faq.q5": "Si funksionojnë shkallët?",
   "rules.faq.a5": "Një shkallë është një sekuencë letrash të njëpasnjëshme sipas vlerës: minimumi 5, maksimumi 13 (i gjithë grupi i bojeve, një as mund të shërbejë si skaji i ulët ose i lartë, por jo të dyja njëherësh).\n\nBrenda një shkalle, 2-shi vlen shumë pak — është letra më e ulët nga të gjitha, edhe pse zakonisht është më e forta e mazhit! Asi mund të qëndrojë para 2-shit (shkalla më e ulët prej 5 letrash: A-2-3-4-5) ose pas Mbretit (shkalla më e lartë prej 5 letrash: 10-J-Q-K-A).\n\nDy shkallë krahasohen sipas letrës më të lartë të sekuencës, dhe duhet të kenë TË NJËJTIN numër letrash: një shkallë prej 6 letrash nuk mund të mundet nga një prej 5.",
   "rules.faq.q6": "Si funksionojnë radhët?",
@@ -509,13 +507,13 @@ export const sq: Record<keyof typeof en, string> = {
   "rules.faq.q9": "Cilat modalitete loje ekzistojnë?",
   "rules.faq.a9": "Murlani mbështet 4 formate:\n\n• 1 kundër 1 — dy lojtarë, fiton kush mbaron letrat i pari\n• Trio — tre lojtarë, të gjithë kundër të gjithëve\n• 4 të Lirë — katër lojtarë, të gjithë kundër të gjithëve\n• 2 kundër 2 — katër lojtarë të ndarë në dy çifte, ulur përballë njëri-tjetrit: Lojtari 1&3 kundër Lojtarit 2&4. Manchja luhet deri në fund: nuk mbyllet kur anëtari i parë i një çifti mbetet pa letra, por kur TË DY shokët kanë mbaruar (ose kur i gjithë çifti kundërshtar ka mbaruar). Pikët e vendosjes së dy shokëve mblidhen: fiton çifti me totalin më të lartë.\n\nNë modalitetin Online gjen të gjitha 4 formatet. Në offline zgjedh vetë sa lojtarë dhe cilin modalitet.",
   "rules.faq.q10": "Si funksionon shkëmbimi i letrave?",
-  "rules.faq.a10": "Pas çdo dore (kur të gjithë kanë mbaruar letrat), ndodh një shkëmbim:\n\n1. Humbësi (i klasifikuari i fundit) i jep automatikisht letrën e tij më të fortë fituesit (i klasifikuari i parë).\n2. Fituesi zgjedh një letër nga 3 deri në 10 për t'ia kthyer humbësit.\n3. Pastaj humbësi fillon raundin tjetër.\n\nPërjashtimi i dy Xholave: nëse humbësi ka në dorë të dy Xholat (me ngjyrë dhe B/Z), shkëmbimi NUK ndodh. Fituesi fillon vetë raundin tjetër.",
+  "rules.faq.a10": "Pas çdo dore (kur të gjithë kanë mbaruar letrat), ndodh një shkëmbim:\n\n1. Humbësi (i klasifikuari i fundit) i jep automatikisht letrën e tij më të fortë fituesit (i klasifikuari i parë).\n2. Fituesi zgjedh një letër nga 3 deri në 10 për t'ia kthyer humbësit.\n3. Pastaj humbësi fillon raundin tjetër.\n\nPërjashtimi i dy Xholave: nëse humbësi ka në dorë të dy Xholat (i kuq dhe i zi), shkëmbimi NUK ndodh. Fituesi fillon vetë raundin tjetër.",
   "rules.faq.q11": "Çfarë janë Xholat?",
-  "rules.faq.a11": "Xholat janë letrat më të forta të mazhit në kombinimet normale:\n• Xholi me Ngjyrë ★: më i forti absolutisht\n• Xholi B/Z ☆: i dyti për forcë\n\nKujdes: Xholat mund të luhen VETËM si letër e vetme — kurrë në çift, tresh ose shkallë. Një Xhol i luajtur si letër e vetme mund të mundet nga një Bombë!",
+  "rules.faq.a11": "Xholat janë letrat më të forta të mazhit në kombinimet normale:\n• Xholi i Kuq ★: më i forti absolutisht\n• Xholi i Zi ☆: i dyti për forcë\n\nKujdes: Xholat mund të luhen VETËM si letër e vetme — kurrë në çift, tresh ose shkallë. Një Xhol i luajtur si letër e vetme mund të mundet nga një Bombë!",
   "rules.faq.q12": "Çfarë është një Bombë?",
-  "rules.faq.a12": "Bomba është kur luan 4 letra të të njëjtit vlerë (p.sh. 7-7-7-7). Është një lëvizje shumë e rrallë dhe shumë e fuqishme:\n\n• Mund çdo letër të vetme, çift, tresh, shkallë e madje edhe Xholat\n• Një Bombë më e lartë (p.sh. 8-8-8-8) mund një Bombë më të ulët (7-7-7-7)\n• E vetmja gjë që mund Bombën është Shkalla Mbretërore",
+  "rules.faq.a12": "Bomba është kur luan 4 letra të së njëjtës vlerë (p.sh. 7-7-7-7). Është një lëvizje shumë e rrallë dhe shumë e fuqishme:\n\n• Mund çdo letër të vetme, çift, tresh, shkallë e madje edhe Xholat\n• Një Bombë më e lartë (p.sh. 8-8-8-8) mund një Bombë më të ulët (7-7-7-7)\n• E vetmja gjë që mund Bombën është Shkalla Mbretërore",
   "rules.faq.q13": "Çfarë është një Shkallë Mbretërore?",
-  "rules.faq.a13": "Shkalla Mbretërore është një shkallë ku të gjitha letrat kanë të njëjtin bojë (p.sh. 3♠-4♠-5♠-6♠-7♠).\n\n• Mund çdo kombinim tjetër, përfshirë Bombën më të fortë (2-2-2-2)\n• Një Shkallë Mbretërore më e lartë mund një më të ulët\n• Është kombinimi më i fuqishëm i lojës!",
+  "rules.faq.a13": "Shkalla Mbretërore është një shkallë ku të gjitha letrat kanë të njëjtën ngjyrë (p.sh. 3♠-4♠-5♠-6♠-7♠).\n\n• Mund çdo kombinim tjetër, përfshirë Bombën më të fortë (2-2-2-2)\n• Një Shkallë Mbretërore më e lartë mund një më të ulët\n• Është kombinimi më i fuqishëm i lojës!",
   "rules.faq.q14": "A mund të kaloj kur të dua?",
   "rules.faq.a14": "Mund të kalosh vetëm nëse ka një kombinim aktiv në tavolinë. Nëse je i pari që luan në raund (ose ke fituar raundin e mëparshëm), DUHET të luash një kombinim: nuk mund të kalosh.\n\nKujdes: kalimi NUK të përjashton nga pjesa tjetër e raundit. Nëse më pas dikush tjetër luan një letër më të fortë dhe radha të kthehet ty, mund të provosh ta mundësh — mbetesh jashtë vetëm kur mbaron letrat.",
   "rules.faq.q15": "Sa letra shpërndahen?",
@@ -531,7 +529,7 @@ export const sq: Record<keyof typeof en, string> = {
   "result.pointsDelta": "+{{n}}",
   "result.winnerDefault": "Fituesi",
   "result.bothJokersTitle": "HUMBËSI KA TË DY XHOLAT!",
-  "result.bothJokersBody": "{{name}} fillon i lirë.\nPa shkëmbim.",
+  "result.bothJokersBody": "Pa shkëmbim.\n{{name}} fillon raundin tjetër.",
   "result.bothJokersConfirm": "OK, fillo!",
   "result.exchangeTitle": "SHKËMBIMI I LETRAVE",
   "result.exchangeGiveLabel": "{{loser}} i jep {{winner}}:",
@@ -604,7 +602,7 @@ export const sq: Record<keyof typeof en, string> = {
   "tutorial.beat.welcome.cta": "Fillo",
 
   "tutorial.beat.open.title": "Loja e parë",
-  "tutorial.beat.open.instruction": "Dora e parë e çdo ndeshjeje fillon gjithmonë me kë ka 3-shin e Pikave (3♠), dhe kjo letër duhet të jetë pjesë e lojës. Zgjidhe dhe luaje.",
+  "tutorial.beat.open.instruction": "Dora e parë e çdo ndeshjeje fillon gjithmonë me kë ka 3 maç (3♠), dhe kjo letër duhet të jetë pjesë e lojës. Zgjidhe dhe luaje.",
   "tutorial.beat.open.successNarrative": "Perfekt! Dea nuk ka interes t'i përgjigjet kaq shpejt me një letër të fortë: kalon. Ke fituar radhën.",
 
   "tutorial.beat.respond.title": "Përgjigja ndaj një letre",
@@ -614,11 +612,11 @@ export const sq: Record<keyof typeof en, string> = {
   "tutorial.beat.respond.successNarrative": "Shkëlqyeshëm! Iu përgjigje me një letër më të fortë. Ke fituar radhën.",
 
   "tutorial.beat.pair.title": "Çiftet",
-  "tutorial.beat.pair.instruction": "Fitove radhën e fundit: tani të takon ty të vendosësh çfarë të luash, me çfarëdo kombinimi. Provo një Çift: dy letra të të njëjtit vlerë.",
+  "tutorial.beat.pair.instruction": "Fitove radhën e fundit: tani të takon ty të vendosësh çfarë të luash, me çfarëdo kombinimi. Provo një Çift: dy letra të së njëjtës vlerë.",
   "tutorial.beat.pair.successNarrative": "Çift me 8-she! Dea kalon: nuk ka një çift më të lartë gati.",
 
   "tutorial.beat.triple.title": "Treshi",
-  "tutorial.beat.triple.instruction": "Një fitore tjetër, një zgjedhje tjetër e lirë. Provo një Tresh: tre letra të të njëjtit vlerë.",
+  "tutorial.beat.triple.instruction": "Një fitore tjetër, një zgjedhje tjetër e lirë. Provo një Tresh: tre letra të së njëjtës vlerë.",
   "tutorial.beat.triple.successNarrative": "Tresh me Fantë! Dea kalon përsëri.",
 
   "tutorial.beat.straight.title": "Shkallët",
@@ -627,18 +625,18 @@ export const sq: Record<keyof typeof en, string> = {
 
   "tutorial.beat.bomb.title": "Bomba",
   "tutorial.beat.bomb.instruction": "Këtë herë hap Dea, me një Shkallë shumë të fortë. Duket e pamposhtur... por ti ke diçka të veçantë në dorë.",
-  "tutorial.beat.bomb.tip": "Një Bombë (4 letra të të njëjtit vlerë) mund çdo letër të vetme, Çift, Tresh ose Shkallë, pavarësisht sa të forta janë.",
+  "tutorial.beat.bomb.tip": "Një Bombë (4 letra të së njëjtës vlerë) mund çdo letër të vetme, Çift, Tresh ose Shkallë, pavarësisht sa të forta janë.",
   "tutorial.beat.bomb.opponentLabel": "Dea luajti: Shkallë 7-J",
   "tutorial.beat.bomb.successNarrative": "BOMBË! Katër Mbretër fshijnë shkallën e Deas. Fiton radhën në stil të madh.",
 
   "tutorial.beat.royal.title": "Shkalla Mbretërore",
   "tutorial.beat.royal.instruction": "Dea rikthehet me një Bombë 5-shesh: duket e papërmbajtshme. Ka vetëm një gjë në botë që e mund.",
-  "tutorial.beat.royal.tip": "Shkalla Mbretërore — një shkallë me të gjitha letrat e të njëjtit bojë — mund edhe Bombën më të fortë. Është kombinimi më i fuqishëm i lojës (një rregull jo tradicionale, e miratuar në këtë version).",
+  "tutorial.beat.royal.tip": "Shkalla Mbretërore — një shkallë me të gjitha letrat e të njëjtës ngjyrë — mund edhe Bombën më të fortë. Është kombinimi më i fuqishëm i lojës (një rregull jo tradicionale, e miratuar në këtë version).",
   "tutorial.beat.royal.opponentLabel": "Dea luajti: Bombë 5-shesh",
-  "tutorial.beat.royal.successNarrative": "SHKALLË MBRETËRORE Pikash! Asgjë nuk mund ta mundë. Radhë e fituar në stil të madh.",
+  "tutorial.beat.royal.successNarrative": "SHKALLË MBRETËRORE maç! Asgjë nuk mund ta mundë. Radhë e fituar në stil të madh.",
 
   "tutorial.beat.exchange.title": "Shkëmbimi i letrave",
-  "tutorial.beat.exchange.instruction": "Pas çdo dore, fituesi dhe humbësi shkëmbejnë një letër. Ke fituar dorën e fundit: humbësi tashmë ta ka dhënë automatikisht letrën e tij më të fortë, Xholin me Ngjyrë. Tani zgjidh një letër për t'ia kthyer, me vlerë nga 3 deri në 10.",
+  "tutorial.beat.exchange.instruction": "Pas çdo dore, fituesi dhe humbësi shkëmbejnë një letër. Ke fituar dorën e fundit: humbësi tashmë ta ka dhënë automatikisht letrën e tij më të fortë, Xholin e Kuq. Tani zgjidh një letër për t'ia kthyer, me vlerë nga 3 deri në 10.",
   "tutorial.beat.exchange.tip": "Përjashtimi i dy Xholave: nëse humbësi ka në dorë TË DY Xholat, shkëmbimi nuk ndodh fare — thjesht tregon të dyja letrat, dhe fituesi hap menjëherë radhën tjetër.",
   "tutorial.beat.exchange.successNarrative": "Shkëmbimi përfundoi! Kush humbi dorën e mëparshme hap radhën tjetër.",
 
@@ -650,7 +648,7 @@ export const sq: Record<keyof typeof en, string> = {
 
   // ------------------------------------------------------------ onlineLobby.*
   "onlineLobby.title": "Me Miq",
-  "onlineLobby.connectedAs": "I lidhur si {{username}}",
+  "onlineLobby.connectedAs": "Lidhur si {{username}}",
   "onlineLobby.connecting": "Duke u lidhur…",
   "onlineLobby.createRoomTitle": "KRIJO DHOMË",
   "onlineLobby.modeLabel": "MODALITETI",

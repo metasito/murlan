@@ -128,12 +128,14 @@ describe("no server string assumes the player's gender", () => {
       ["a bare participle, so about the reader", new RegExp(String.raw`^Non\s+${AGREEING}`, "i")],
       ["reflexive", /\b(?:me|te|se|sé)\s+stess[oaie]\b/i],
       ["third-person pronoun", /\b(?:lui|lei|esso|essa)\b/i],
+      ["a gendered adjective predicated of the named player", /\{\{name\}\}\s+(?!ha\b|hanno\b|hai\b|ho\b|avete\b|abbiamo\b)\w+\s+\w+[oa](?=[.!?\n]|$)/i],
     ],
     sq: [
       ["possessive, which agrees with the possessor", /\b(?:tij|saj)\b/i],
       ["adjectival article after the copula", /\bje(?:ni)?\s+[ie]\b/i],
       ["a leading adjectival article, so about the reader", /^(?:I|E)\s+\w/],
       ["third-person pronoun", /\b(?:ai|ajo)\b/i],
+      ["an adjectival article predicated of the named player", /\{\{name\}\}\s+\w+\s+[ie]\s+\w/i],
     ],
   };
 
@@ -153,6 +155,24 @@ describe("no server string assumes the player's gender", () => {
     });
   }
 
+
+  // The same frames reach the player outside server.*: a client string that
+  // interpolates a username predicates on it just as readily, and a username
+  // carries no gender for it to agree with.
+  const NAMES_A_PLAYER = /\{\{(?:name|username|from|to|winner|loser|player)\}\}/;
+
+  for (const name of ["it", "sq"] as const) {
+    test(`${name}'s client strings that name a player are neutral`, () => {
+      const named = Object.entries(LOCALES[name] as Record<string, string>).filter(
+        ([key, value]) => !key.startsWith("server.") && NAMES_A_PLAYER.test(value)
+      );
+      assert.ok(named.length > 25, `expected the client strings that name a player, got ${named.length}`);
+      const offenders = named.flatMap(([key, value]) =>
+        offences(value, PATTERNS[name]).map((label) => `${key} (${label}): ${value}`)
+      );
+      assert.deepEqual(offenders, [], `${name}: ${offenders.join(" | ")}`);
+    });
+  }
   // The catalogues were de-gendered once already while the same four sentences
   // stayed masculine in server/, where the guard could not see them — and the
   // fallback is exactly what a client too old to know the code renders.
@@ -188,6 +208,48 @@ describe("no empty translations", () => {
       );
     });
   }
+});
+
+describe("one name per card", () => {
+  /** Not a name any player reads on a card: the black joker is black, not black-and-white. */
+  const ABBREVIATIONS = ["B/W", "B/N", "B/Z"];
+  /** Every key that names a joker in the UI; each must agree with the cardView name. */
+  const JOKER_ALIASES = {
+    "cardView.jokerColored": ["lobby.rankJokerColored", "rules.strengthJokerColored"],
+    "cardView.jokerBlack": ["lobby.rankJokerBlack", "rules.strengthJokerBlack"],
+  } as const;
+
+  test("no locale abbreviates a joker's colour", () => {
+    const violations: string[] = [];
+    let scanned = 0;
+    for (const name of LOCALE_NAMES) {
+      for (const [key, value] of Object.entries(LOCALES[name] as Record<string, string>)) {
+        scanned += 1;
+        for (const abbreviation of ABBREVIATIONS) {
+          if (value.includes(abbreviation)) violations.push(`${name}:${key} — ${abbreviation}`);
+        }
+      }
+    }
+    assert.ok(scanned > 1500, `expected to scan every locale string, got ${scanned}`);
+    assert.deepEqual(violations, [], `these strings abbreviate a joker: ${violations.join(" | ")}`);
+  });
+
+  test("a joker is called the same thing on the card, in the lobby and in the rules", () => {
+    const violations: string[] = [];
+    for (const name of LOCALE_NAMES) {
+      const catalogue = LOCALES[name] as Record<string, string>;
+      for (const [canonical, aliases] of Object.entries(JOKER_ALIASES)) {
+        for (const alias of aliases) {
+          const expected = catalogue[canonical];
+          assert.ok(expected, `${name} has no key "${canonical}"`);
+          if (catalogue[alias].toLowerCase() !== expected.toLowerCase()) {
+            violations.push(`${name}:${alias} is "${catalogue[alias]}", not "${expected}"`);
+          }
+        }
+      }
+    }
+    assert.deepEqual(violations, [], `these disagree: ${violations.join(" | ")}`);
+  });
 });
 
 describe("pluralisation pairs", () => {
@@ -517,5 +579,42 @@ describe("every player-facing server response carries a code", () => {
       [],
       `these player-facing responses carry no code: ${violations.join(" | ")}`
     );
+  });
+});
+
+describe("Albanian card terminology", () => {
+  /**
+   * Attested in docs/albanian-card-terminology-research.md. `Trefla` and `Pika`
+   * were a calque of *trefoil* and a borrowing of German *Pik*, attested as card
+   * suits nowhere; docs/RULES.md's cited Albanian text opens the game with
+   * "ai lojtar që ka 3 maç".
+   */
+  const SUITS = {
+    "cards.suitHearts": "Kupa",
+    "cards.suitDiamonds": "Karo",
+    "cards.suitClubs": "Spathi",
+    "cards.suitSpades": "Maç",
+  } as const;
+
+  /** `vlerë` and `ngjyrë` are feminine; `bojë` is paint, not a card's suit. */
+  const AGREEMENT_ERRORS = ["të të njëjtit vlerë", "të njëjtit bojë", "të njëjtin bojë", "bojë"];
+
+  test("each suit carries its attested name", () => {
+    for (const [key, expected] of Object.entries(SUITS)) {
+      assert.equal((sq as Record<string, string>)[key], expected, `sq.ts ${key}`);
+    }
+  });
+
+  test("no Albanian string mis-genders vlerë or calls a suit paint", () => {
+    const violations: string[] = [];
+    let scanned = 0;
+    for (const [key, value] of Object.entries(sq as Record<string, string>)) {
+      scanned += 1;
+      for (const error of AGREEMENT_ERRORS) {
+        if (value.includes(error)) violations.push(`${key} — "${error}"`);
+      }
+    }
+    assert.ok(scanned > 500, `expected to scan all of sq.ts, got ${scanned}`);
+    assert.deepEqual(violations, [], `these disagree in gender: ${violations.join(" | ")}`);
   });
 });
