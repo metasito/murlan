@@ -20,16 +20,27 @@ import { useCallback, useSyncExternalStore } from "react";
 // aliases, only relative specifiers with an explicit extension (see
 // tsconfig.json's `allowImportingTsExtensions` and tests/helpers.ts for the
 // same convention). Metro/Expo resolves either form fine at app runtime.
-import { it } from "../locales/it.ts";
-import { en } from "../locales/en.ts";
-import { sq } from "../locales/sq.ts";
+import {
+  DEFAULT_LOCALE,
+  SUPPORTED_LOCALES,
+  catalogs,
+  interpolate,
+  isLocale,
+  translate,
+  type Locale,
+  type TranslationKey,
+  type TranslationParams,
+} from "../shared/i18n.ts";
 
-export type TranslationKey = keyof typeof en;
-export type Locale = "it" | "en" | "sq";
-export type TranslationParams = Record<string, string | number>;
-
-export const SUPPORTED_LOCALES: Locale[] = ["it", "en", "sq"];
-export const DEFAULT_LOCALE: Locale = "en";
+export {
+  DEFAULT_LOCALE,
+  SUPPORTED_LOCALES,
+  interpolate,
+  translate,
+  type Locale,
+  type TranslationKey,
+  type TranslationParams,
+};
 
 export const LOCALE_LABELS: Record<Locale, string> = {
   it: "Italiano",
@@ -38,12 +49,6 @@ export const LOCALE_LABELS: Record<Locale, string> = {
 };
 
 const STORAGE_KEY = "murlan.locale";
-
-const catalogs: Record<Locale, Record<TranslationKey, string>> = { it, en, sq };
-
-function isLocale(value: string | null | undefined): value is Locale {
-  return !!value && (SUPPORTED_LOCALES as string[]).includes(value);
-}
 
 let currentLocale: Locale = DEFAULT_LOCALE;
 const listeners = new Set<() => void>();
@@ -115,19 +120,6 @@ export function initLocale(): Promise<Locale> {
 function subscribe(listener: () => void): () => void {
   listeners.add(listener);
   return () => listeners.delete(listener);
-}
-
-/** Replaces every `{{name}}` placeholder in `template` with `params[name]`. */
-export function interpolate(template: string, params?: TranslationParams): string {
-  if (!params) return template;
-  return template.replace(/\{\{(\w+)\}\}/g, (match, name: string) =>
-    Object.prototype.hasOwnProperty.call(params, name) ? String(params[name]) : match
-  );
-}
-
-export function translate(locale: Locale, key: TranslationKey, params?: TranslationParams): string {
-  const template = catalogs[locale][key] ?? catalogs[DEFAULT_LOCALE][key] ?? key;
-  return interpolate(template, params);
 }
 
 /** Translate in the currently active locale. Prefer `useTranslation()` inside components. */

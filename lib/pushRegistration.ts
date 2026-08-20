@@ -8,9 +8,12 @@
 import { Platform } from "react-native";
 import Constants from "expo-constants";
 import { apiRequest } from "./query-client";
+import { getLocale } from "./i18n";
 
 /** The device's Expo push token, once obtained, so logout can withdraw it. */
 let currentToken: string | null = null;
+/** What the server was last told this device reads, so a language change re-registers. */
+let registeredLocale: string | null = null;
 
 /** Web has no push here — the game is played in a tab that is already open. */
 const supported = () => Platform.OS === "ios" || Platform.OS === "android";
@@ -66,13 +69,16 @@ export async function registerForPush(): Promise<void> {
     if (!granted) return;
 
     const { data: token } = await Notifications.getExpoPushTokenAsync({ projectId: id });
-    if (!token || token === currentToken) return;
+    const locale = getLocale();
+    if (!token || (token === currentToken && locale === registeredLocale)) return;
 
     await apiRequest("POST", "/api/push/token", {
       token,
       platform: Platform.OS === "ios" ? "ios" : "android",
+      locale,
     });
     currentToken = token;
+    registeredLocale = locale;
   } catch {
     // A device that cannot register simply does not get notifications.
   }
@@ -89,6 +95,7 @@ export async function unregisterForPush(): Promise<void> {
   const token = currentToken;
   if (!token) return;
   currentToken = null;
+  registeredLocale = null;
   try {
     await apiRequest("DELETE", "/api/push/token", {
       token,

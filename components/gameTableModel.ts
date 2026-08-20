@@ -8,7 +8,7 @@
 // which is erased before resolution.
 
 import type { Card, Combination, GameState, Player } from "@/lib/gameEngine";
-import { CARD_H } from "./cardFaceModel.ts";
+import { CARD_H, CARD_W, CARD_W_SMALL } from "./cardFaceModel.ts";
 import { WEB_BOTTOM_PAD, WEB_TOP_PAD } from "../lib/tokens.ts";
 
 // ─── Layout constants ─────────────────────────────────────────────────────────
@@ -21,7 +21,7 @@ import { WEB_BOTTOM_PAD, WEB_TOP_PAD } from "../lib/tokens.ts";
 // tests/gameTableModel.test.ts can pin their values and so the frame maths
 // below can use them directly.
 
-export { CARD_H, WEB_BOTTOM_PAD, WEB_TOP_PAD };
+export { CARD_H, CARD_W, WEB_BOTTOM_PAD, WEB_TOP_PAD };
 export const BTN_W = 84;
 export const BTN_H = 84;
 export const SIDE_BTN_W = 62;
@@ -30,6 +30,63 @@ export const TABLE_M = 4;
 export const SIDE_SECTION_W = 130;
 export const TOP_SECTION_H = 70;
 export const HAND_SECTION_H = CARD_H + 16;
+
+// ─── Fan geometry ─────────────────────────────────────────────────────────────
+//
+// Where each card sits inside a fan. Every fan on the table reads it from here:
+// a combination mid-throw and the same combination the frame after it lands are
+// one call, so it cannot shift as it arrives.
+
+/** A combination in the pile, thrown or landed. */
+export type FanKind = "combo" | "opponent";
+
+export interface FanOffsets {
+  /** Horizontal distance (px) between the left edges of adjacent cards. */
+  step: number;
+  /** Tilt (deg) of the card furthest from the middle. */
+  angle: number;
+  /** Full span (px): left edge of the first card to the right edge of the last. */
+  totalW: number;
+}
+
+const OPPONENT_STEP = 15;
+const OPPONENT_MAX_ANGLE = 22;
+/**
+ * Cards thrown onto a table do not land square, so a combination is jittered
+ * rather than fanned — see cardTilt. The bound stays small: past a few degrees
+ * the overlap stops reading as one combination.
+ */
+const COMBO_MAX_TILT = 4.5;
+
+export function fanOffsets(count: number, kind: FanKind): FanOffsets {
+  if (kind === "opponent") {
+    return {
+      step: OPPONENT_STEP,
+      angle: OPPONENT_MAX_ANGLE,
+      totalW: OPPONENT_STEP * (count - 1) + CARD_W_SMALL,
+    };
+  }
+  const step = count > 8 ? 9 : count > 5 ? 12 : 14;
+  return { step, angle: COMBO_MAX_TILT, totalW: step * (count - 1) + CARD_W };
+}
+
+/**
+ * A card's own tilt (deg) inside a combo fan, derived from its id so the same
+ * combination looks the same on every client and in every frame of its throw.
+ */
+export function cardTilt(id: string, maxTilt: number): number {
+  let hash = 0;
+  for (let i = 0; i < id.length; i++) hash = (hash * 31 + id.charCodeAt(i)) | 0;
+  return ((Math.abs(hash) % 200) / 100 - 1) * maxTilt;
+}
+
+/**
+ * Left offset (px) of card `i` in a fan centred on its own midpoint, rather
+ * than laid out from a left edge.
+ */
+export function fanCenterOffset(i: number, step: number, totalW: number): number {
+  return i * step - (totalW - CARD_W) / 2;
+}
 
 // ─── Seating ──────────────────────────────────────────────────────────────────
 

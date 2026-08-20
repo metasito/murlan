@@ -1,5 +1,6 @@
 import React, { useEffect } from "react";
-import { View, Text, StyleSheet, Pressable, Image } from "react-native";
+import { View, StyleSheet, Pressable, Image } from "react-native";
+import { TableText } from "@/components/table/TableText";
 import Animated, {
   useAnimatedStyle,
   useSharedValue,
@@ -18,7 +19,6 @@ import {
   Motion,
   Radius,
   Shadow,
-  TABLE_FONT_SCALE_MAX,
 } from "@/lib/theme";
 import { useCardBack } from "@/lib/cosmetics";
 import { usePrefersReducedMotion } from "@/lib/accessibility";
@@ -580,7 +580,7 @@ function CardViewBase({
         />
         <CardFaceArt card={card} color={color} w={w} h={h} compact={small} />
         {!small && COURT_RANKS.has(card.rank) && <CourtArt card={card} w={w} h={h} />}
-        <Text maxFontSizeMultiplier={TABLE_FONT_SCALE_MAX}
+        <TableText
           style={[
             styles.rankText,
             small ? styles.rankTextSmall : styles.rankTextNormal,
@@ -590,8 +590,8 @@ function CardViewBase({
           ]}
         >
           {rankText}
-        </Text>
-        <Text maxFontSizeMultiplier={TABLE_FONT_SCALE_MAX}
+        </TableText>
+        <TableText
           style={[
             styles.rankText,
             small ? styles.rankTextSmall : styles.rankTextNormal,
@@ -602,7 +602,7 @@ function CardViewBase({
           ]}
         >
           {rankText}
-        </Text>
+        </TableText>
       </Pressable>
     </Animated.View>
   );

@@ -7,8 +7,9 @@
 import { and, desc, eq, inArray, notInArray } from "drizzle-orm";
 import { db } from "./db.ts";
 import { pushTokens } from "../shared/schema.ts";
+import type { Locale } from "../shared/i18n.ts";
 import { logger } from "./logger.ts";
-import { buildPushRequest, deadTokens, type ExpoTicket, type PushMessage } from "./pushShape.ts";
+import { buildPushRequest, deadTokens, type ExpoTicket, type PushDevice, type PushMessage } from "./pushShape.ts";
 
 export type { PushMessage };
 
@@ -38,14 +39,15 @@ export const MAX_DEVICES_PER_USER = 5;
 export async function savePushToken(
   userId: string,
   token: string,
-  platform: string
+  platform: string,
+  locale: Locale
 ): Promise<void> {
   await db
     .insert(pushTokens)
-    .values({ token, userId, platform, updatedAt: new Date() })
+    .values({ token, userId, platform, locale, updatedAt: new Date() })
     .onConflictDoUpdate({
       target: pushTokens.token,
-      set: { userId, platform, updatedAt: new Date() },
+      set: { userId, platform, locale, updatedAt: new Date() },
     });
 
   const keep = await db
@@ -73,12 +75,11 @@ export async function deletePushToken(token: string): Promise<void> {
   await db.delete(pushTokens).where(eq(pushTokens.token, token));
 }
 
-export async function tokensFor(userId: string): Promise<string[]> {
-  const rows = await db
-    .select({ token: pushTokens.token })
+export async function tokensFor(userId: string): Promise<PushDevice[]> {
+  return db
+    .select({ token: pushTokens.token, locale: pushTokens.locale })
     .from(pushTokens)
     .where(eq(pushTokens.userId, userId));
-  return rows.map((r) => r.token);
 }
 
 /**
@@ -93,13 +94,13 @@ export async function tokensFor(userId: string): Promise<string[]> {
  */
 export async function notifyUser(userId: string, message: PushMessage): Promise<void> {
   try {
-    const tokens = await tokensFor(userId);
-    if (tokens.length === 0) return;
+    const devices = await tokensFor(userId);
+    if (devices.length === 0) return;
 
     const res = await fetch(EXPO_PUSH_URL, {
       method: "POST",
       headers: { "content-type": "application/json", accept: "application/json" },
-      body: JSON.stringify(buildPushRequest(tokens, message)),
+      body: JSON.stringify(buildPushRequest(devices, message)),
     });
 
     if (!res.ok) {
@@ -108,7 +109,7 @@ export async function notifyUser(userId: string, message: PushMessage): Promise<
     }
 
     const body = (await res.json()) as { data?: ExpoTicket[] };
-    const dead = deadTokens(tokens, body.data);
+    const dead = deadTokens(devices.map((d) => d.token), body.data);
 
     if (dead.length > 0) {
       await db.delete(pushTokens).where(inArray(pushTokens.token, dead));

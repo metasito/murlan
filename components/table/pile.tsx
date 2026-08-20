@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef } from "react";
-import { View, Text, StyleSheet } from "react-native";
+import { View, StyleSheet } from "react-native";
+import { TableText } from "./TableText";
 import Animated, {
   useAnimatedStyle,
   useSharedValue,
@@ -8,14 +9,14 @@ import Animated, {
   withSequence,
   withDelay,
   Easing,
-  runOnJS,
   cancelAnimation,
   FadeIn,
   FadeOut,
 } from "react-native-reanimated";
+import { scheduleOnRN } from "react-native-worklets";
 import Ionicons from "@expo/vector-icons/Ionicons";
 import { CardView } from "@/components/CardView";
-import { Colors, FontSize, Motion, Radius, Scrim, Spacing, TABLE_FONT_SCALE_MAX } from "@/lib/theme";
+import { Colors, FontSize, Motion, Radius, Scrim, Spacing } from "@/lib/theme";
 import { usePrefersReducedMotion } from "@/lib/accessibility";
 import { useTranslation, type TranslationKey } from "@/lib/i18n";
 import type { Card, Combination } from "@/lib/gameEngine";
@@ -24,6 +25,9 @@ import {
   CARD_H,
   FLIGHT_MS,
   LANDING_FRACTION,
+  cardTilt,
+  fanCenterOffset,
+  fanOffsets,
   type FlyDirection,
 } from "@/components/gameTableModel";
 
@@ -69,7 +73,7 @@ export function FlyingCards({
   useEffect(() => {
     onDoneRef.current = onDone;
   });
-  // Defined on the JS thread so runOnJS receives a real JS-thread reference.
+  // Defined on the JS thread so scheduleOnRN receives a real JS-thread reference.
   const notifyDone = useCallback(() => onDoneRef.current(), []);
 
   const tx = useSharedValue(dx);
@@ -104,7 +108,7 @@ export function FlyingCards({
       withSequence(
         withTiming(1, { duration: Motion.duration.flash }),
         withSpring(0, Motion.spring.land, (finished) => {
-          if (finished) runOnJS(notifyDone)();
+          if (finished) scheduleOnRN(notifyDone);
         })
       )
     );
@@ -131,27 +135,24 @@ export function FlyingCards({
   }));
 
   const display = cards;
+  const { step, angle, totalW } = fanOffsets(display.length, "combo");
 
   return (
     <View style={[pileStyles.flyingContainer, { pointerEvents: "none" as const }]}>
       <Animated.View style={[pileStyles.flyingInner, aStyle]}>
-        {display.map((card, i) => {
-          const angle = (i - (display.length - 1) / 2) * 10;
-          const overlap = display.length > 7 ? 8 : display.length > 4 ? 10 : 12;
-          return (
-            <View
-              key={card.id}
-              style={{
-                position: "absolute",
-                left: i * overlap - (display.length - 1) * (overlap / 2),
-                zIndex: i,
-                transform: [{ rotate: `${angle}deg` }],
-              }}
-            >
-              <CardView card={card} />
-            </View>
-          );
-        })}
+        {display.map((card, i) => (
+          <View
+            key={card.id}
+            style={{
+              position: "absolute",
+              left: fanCenterOffset(i, step, totalW),
+              zIndex: i,
+              transform: [{ rotate: `${cardTilt(card.id, angle)}deg` }],
+            }}
+          >
+            <CardView card={card} />
+          </View>
+        ))}
       </Animated.View>
     </View>
   );
@@ -170,19 +171,8 @@ const COMBO_LABEL_KEYS: Record<string, TranslationKey> = {
 
 const POWER_COMBOS = new Set(["bomb", "royal_straight"]);
 
-// Cards thrown onto a table do not land square. Each one gets a small fixed
-// tilt derived from its own id, so the pile looks handled rather than stacked
-// — and so the same combination always looks the same, on every client.
-const PILE_MAX_TILT = 4.5;
-function tiltOf(id: string): number {
-  let hash = 0;
-  for (let i = 0; i < id.length; i++) hash = (hash * 31 + id.charCodeAt(i)) | 0;
-  return ((Math.abs(hash) % 200) / 100 - 1) * PILE_MAX_TILT;
-}
-
 function PileComboCards({ cards }: { cards: Card[] }) {
-  const overlap = cards.length > 8 ? 9 : cards.length > 5 ? 12 : 14;
-  const totalW = overlap * (cards.length - 1) + CARD_W;
+  const { step, angle, totalW } = fanOffsets(cards.length, "combo");
   return (
     <View style={{ width: totalW, height: CARD_H, position: "relative" }}>
       {cards.map((card, ci) => (
@@ -190,9 +180,9 @@ function PileComboCards({ cards }: { cards: Card[] }) {
           key={card.id}
           style={{
             position: "absolute",
-            left: ci * overlap,
+            left: ci * step,
             zIndex: ci,
-            transform: [{ rotate: `${tiltOf(card.id)}deg` }],
+            transform: [{ rotate: `${cardTilt(card.id, angle)}deg` }],
           }}
         >
           <CardView card={card} />
@@ -249,7 +239,7 @@ export function PlayedPile({
           style={pileStyles.winnerTag}
         >
           <Ionicons name="star" size={9} color={Colors.gold} />
-          <Text maxFontSizeMultiplier={TABLE_FONT_SCALE_MAX} style={pileStyles.winnerText}>{roundWinner}</Text>
+          <TableText style={pileStyles.winnerText}>{roundWinner}</TableText>
         </Animated.View>
       )}
 
@@ -267,11 +257,11 @@ export function PlayedPile({
       {current && (
         <View style={pileStyles.comboLabel}>
           <View style={[pileStyles.comboChip, isPower && pileStyles.comboChipPower]}>
-            <Text maxFontSizeMultiplier={TABLE_FONT_SCALE_MAX} style={[pileStyles.comboChipText, isPower && pileStyles.comboChipTextPower]}>
+            <TableText style={[pileStyles.comboChipText, isPower && pileStyles.comboChipTextPower]}>
               {isPower ? "✦ " : ""}
               {COMBO_LABEL_KEYS[current.type] ? t(COMBO_LABEL_KEYS[current.type]) : current.type}
               {current.cards.length > 2 ? t("gameShared.comboMultiplier", { count: current.cards.length }) : ""}
-            </Text>
+            </TableText>
           </View>
         </View>
       )}

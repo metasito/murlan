@@ -1123,7 +1123,7 @@ export function setupSocket(httpServer: HttpServer) {
           void notifyUser(friendUserId, {
             title: "Murlan",
             code: "FRIEND_INVITE",
-            body: `${username} invited you to play.`,
+            params: { username },
             data: { roomCode },
           });
           return;

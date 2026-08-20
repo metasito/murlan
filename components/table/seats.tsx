@@ -1,5 +1,6 @@
 import { useEffect } from "react";
-import { View, Text, StyleSheet } from "react-native";
+import { View, StyleSheet } from "react-native";
+import { TableText } from "./TableText";
 import type { StyleProp, ViewStyle } from "react-native";
 import Animated, {
   useAnimatedStyle,
@@ -11,7 +12,8 @@ import Animated, {
 import Ionicons from "@expo/vector-icons/Ionicons";
 import { LinearGradient } from "expo-linear-gradient";
 import { CardView } from "@/components/CardView";
-import { Colors, FontSize, Highlight, Motion, Radius, Scrim, Shadow, Spacing, TABLE_FONT_SCALE_MAX } from "@/lib/theme";
+import { fanOffsets } from "@/components/gameTableModel";
+import { Colors, FontSize, Highlight, Motion, Radius, Scrim, Shadow, Spacing } from "@/lib/theme";
 import { useTableFelt } from "@/lib/cosmetics";
 import { usePrefersReducedMotion } from "@/lib/accessibility";
 import { useTranslation } from "@/lib/i18n";
@@ -19,6 +21,12 @@ import type { Player } from "@/lib/gameEngine";
 import { a11yHidden } from "@/lib/a11y";
 
 // ─── CardFan ──────────────────────────────────────────────────────────────────
+
+// The box a fanned hand of face-down cards draws into, and how far each card
+// climbs away from the middle one. Both are local to this fan; the spread
+// itself comes from fanOffsets.
+const FAN_H = 66;
+const FAN_RISE = 4;
 
 function CardFan({
   count,
@@ -29,16 +37,14 @@ function CardFan({
 }) {
   const n = Math.min(count, maxCards);
   if (n === 0) return null;
-  const step = 15;
-  const maxAngle = 22;
-  const totalW = step * (n - 1) + 40;
+  const { step, angle: maxAngle, totalW } = fanOffsets(n, "opponent");
 
   return (
-    <View style={{ width: totalW, height: 66 }}>
+    <View style={{ width: totalW, height: FAN_H }}>
       {Array.from({ length: n }, (_, i) => {
         const c = (n - 1) / 2;
         const angle = ((i - c) / Math.max(c, 1)) * maxAngle;
-        const rise = Math.abs(i - c) * 4;
+        const rise = Math.abs(i - c) * FAN_RISE;
         return (
           <View
             key={i}
@@ -153,9 +159,9 @@ function AvatarCircle({
             { width: size, height: size, borderRadius: size / 2 },
           ]}
         >
-          <Text maxFontSizeMultiplier={TABLE_FONT_SCALE_MAX} style={[seatStyles.avatarInitials, { fontSize: size * 0.36 }]}>
+          <TableText style={[seatStyles.avatarInitials, { fontSize: size * 0.36 }]}>
             {initials}
-          </Text>
+          </TableText>
         </LinearGradient>
         <View style={[
           seatStyles.countBubble,
@@ -164,7 +170,7 @@ function AvatarCircle({
           {finishPos !== undefined ? (
             <Ionicons name="trophy" size={8} color={Colors.gold} />
           ) : (
-            <Text maxFontSizeMultiplier={TABLE_FONT_SCALE_MAX} style={seatStyles.countBubbleText}>{cardCount}</Text>
+            <TableText style={seatStyles.countBubbleText}>{cardCount}</TableText>
           )}
         </View>
       </View>
@@ -189,7 +195,7 @@ function BotSeatBadge() {
         color={Colors.gold}
         {...a11yHidden()}
       />
-      <Text maxFontSizeMultiplier={TABLE_FONT_SCALE_MAX} style={seatStyles.botBadgeText}>{t("onlineGame.botSeatLabel")}</Text>
+      <TableText style={seatStyles.botBadgeText}>{t("onlineGame.botSeatLabel")}</TableText>
     </View>
   );
 }
@@ -205,7 +211,7 @@ function PassedChip() {
   const { t } = useTranslation();
   return (
     <View style={seatStyles.passedChip}>
-      <Text maxFontSizeMultiplier={TABLE_FONT_SCALE_MAX} style={seatStyles.passedChipText}>{t("gameShared.passedLabel")}</Text>
+      <TableText style={seatStyles.passedChipText}>{t("gameShared.passedLabel")}</TableText>
     </View>
   );
 }
@@ -257,9 +263,9 @@ export function TopOppSlot({
             size={42}
           />
           <View style={seatStyles.topOppLabelRow}>
-            <Text maxFontSizeMultiplier={TABLE_FONT_SCALE_MAX} style={seatStyles.oppName} numberOfLines={1}>
+            <TableText style={seatStyles.oppName} numberOfLines={1}>
               {player.name}
-            </Text>
+            </TableText>
             <SeatBadges passed={passed} isBot={player.type === "ai"} />
           </View>
         </View>
@@ -304,9 +310,9 @@ export function SideOppSlot({
           finishPos={player.finishPosition}
           size={40}
         />
-        <Text maxFontSizeMultiplier={TABLE_FONT_SCALE_MAX} style={seatStyles.oppName} numberOfLines={1}>
+        <TableText style={seatStyles.oppName} numberOfLines={1}>
           {player.name}
-        </Text>
+        </TableText>
         <SeatBadges
           passed={passed}
           isBot={player.type === "ai"}

@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { View, Text, StyleSheet, ScrollView } from "react-native";
+import { View, StyleSheet, ScrollView } from "react-native";
+import { TableText } from "./TableText";
 import Animated, {
   useAnimatedStyle,
   useSharedValue,
@@ -10,12 +11,12 @@ import Animated, {
 } from "react-native-reanimated";
 import Ionicons from "@expo/vector-icons/Ionicons";
 import { CardView } from "@/components/CardView";
-import { Colors, FontSize, Motion, Radius, Shadow, Spacing, TABLE_FONT_SCALE_MAX } from "@/lib/theme";
+import { Colors, FontSize, Motion, Radius, Shadow, Spacing } from "@/lib/theme";
 import { usePrefersReducedMotion } from "@/lib/accessibility";
 import { useTranslation } from "@/lib/i18n";
 import type { Card } from "@/lib/gameEngine";
-import { CARD_W, computeHandLayout } from "@/components/handLayout";
-import { CARD_H, HAND_SECTION_H } from "@/components/gameTableModel";
+import { computeHandLayout } from "@/components/handLayout";
+import { CARD_H, HAND_SECTION_H, fanCenterOffset } from "@/components/gameTableModel";
 
 // Extra top clearance the fixed HAND_SECTION_H already gives the CARD_H-tall
 // hand row (it's centered inside the taller section). Reused as the
@@ -202,7 +203,7 @@ export function StraightHand({
     return (
       <View style={[handStyles.handCenter, { width: availW }]}>
         <Ionicons name="checkmark-circle" size={24} color={Colors.gold} />
-        <Text maxFontSizeMultiplier={TABLE_FONT_SCALE_MAX} style={handStyles.emptyHandText}>{t("gameShared.emptyHand")}</Text>
+        <TableText style={handStyles.emptyHandText}>{t("gameShared.emptyHand")}</TableText>
       </View>
     );
   }
@@ -221,7 +222,7 @@ export function StraightHand({
           faceDown={faceDown}
           zIndex={i}
           dealDelay={dealArmed ? i * Motion.stagger.deal : -1}
-          dealFromX={totalW / 2 - i * step - CARD_W / 2}
+          dealFromX={-fanCenterOffset(i, step, totalW)}
         />
       ))}
     </View>

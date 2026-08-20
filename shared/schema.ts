@@ -159,6 +159,12 @@ export const pushTokens = pgTable("push_tokens", {
   token: text("token").primaryKey(),
   userId: varchar("user_id").references(() => users.id, { onDelete: "cascade" }).notNull(),
   platform: text("platform").notNull(),
+  /**
+   * The language this device reads. A push is rendered by the OS with no
+   * client in the loop, so it is the only chance the recipient's language has
+   * to be consulted.
+   */
+  locale: text("locale").notNull().default("en"),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 }, (t) => [
   index("push_tokens_user_id_idx").on(t.userId),
