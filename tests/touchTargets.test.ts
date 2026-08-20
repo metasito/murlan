@@ -11,7 +11,6 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
-// @ts-ignore
 import { TOUCH_TARGET_MIN } from "../lib/tokens.ts";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
@@ -26,6 +25,8 @@ const CONTROLS: [string, string][] = [
   ["components/MenuButton.tsx", "sm"],
   ["app/lobby.tsx", "personalityBtn"],
   ["app/(online)/room.tsx", "codeBtn"],
+  ["app/index.tsx", "friendsBtn"],
+  ["components/ResultExchangeOverlay.tsx", "confirmGrad"],
 ];
 
 /** Controls sized by an explicit box rather than a floor. */

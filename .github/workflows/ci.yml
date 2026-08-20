@@ -7,6 +7,9 @@ on:
   push:
     branches: [main]
   pull_request:
+  # A branch with no open PR yet has no other way to get a real run —
+  # `gh workflow run ci.yml --ref <branch>`.
+  workflow_dispatch:
 
 # Superseding a pull request's own push saves runner time; superseding `main`'s
 # run destroys the only evidence that merged code was ever tested — the docs
@@ -15,9 +18,58 @@ concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
+env:
+  # Node 22+ is required: tests run via `node --test` against .ts files
+  # directly, relying on Node's native TypeScript type-stripping (stable since
+  # Node 22.6, no ts-node/tsx/vitest needed). Node 24 is the current LTS-track
+  # release and what the project is developed against, so pin to it to keep
+  # local and CI runs identical. The `build` job is deliberately not on this —
+  # it runs production's Node, for the reason given there.
+  NODE_VERSION: "24"
+
 jobs:
+  # Prose cannot break the game, so a commit that only touches docs skips the
+  # install, test and build jobs below. Its own job because four jobs need the
+  # answer and each would otherwise re-clone the full history to work it out.
+  scope:
+    name: Does this change touch the app?
+    runs-on: ubuntu-latest
+    outputs:
+      app: ${{ steps.scope.outputs.app }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # The check diffs against the base commit.
+          fetch-depth: 0
+      # Deliberately an allowlist: anything not recognised as prose runs the
+      # full suite, so a new directory fails safe. `.github/workflows/` is NOT
+      # prose — a change to this file must exercise this file.
+      - id: scope
+        shell: bash
+        run: |
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            base="${{ github.event.pull_request.base.sha }}"
+          else
+            base="${{ github.event.before }}"
+          fi
+          if [ -z "$base" ] || ! git cat-file -e "$base^{commit}" 2>/dev/null; then
+            echo "No usable base commit — running everything."
+            echo "app=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          changed=$(git diff --name-only "$base" HEAD)
+          echo "Changed files:"; echo "$changed"
+          if [ -n "$changed" ] && ! grep -qvE '^(docs/|\.claude/)|\.md$' <<< "$changed"; then
+            echo "Documentation only — skipping the app checks."
+            echo "app=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "app=true" >> "$GITHUB_OUTPUT"
+          fi
+
   verify:
     name: Typecheck, test, lint
+    needs: scope
+    if: needs.scope.outputs.app == 'true'
     runs-on: ubuntu-latest
 
     # Without a database the integration suites skip themselves (by design, so
@@ -48,59 +100,16 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
-        with:
-          # The scope check below diffs against the base commit.
-          fetch-depth: 0
-
-      # Prose cannot break the game, so a commit that only touches docs skips
-      # the ~3 minutes of install, test and build below. Deliberately an
-      # allowlist: anything not recognised as prose runs the full suite, so a
-      # new directory fails safe. `.github/workflows/` is NOT prose — a change
-      # to this file must exercise this file.
-      - name: Does this change touch the app?
-        id: scope
-        shell: bash
-        run: |
-          if [ "${{ github.event_name }}" = "pull_request" ]; then
-            base="${{ github.event.pull_request.base.sha }}"
-          else
-            base="${{ github.event.before }}"
-          fi
-          if [ -z "$base" ] || ! git cat-file -e "$base^{commit}" 2>/dev/null; then
-            echo "No usable base commit — running everything."
-            echo "app=true" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-          changed=$(git diff --name-only "$base" HEAD)
-          echo "Changed files:"; echo "$changed"
-          if [ -n "$changed" ] && ! grep -qvE '^(docs/|audit/|\.claude/)|\.md$' <<< "$changed"; then
-            echo "Documentation only — skipping the app checks."
-            echo "app=false" >> "$GITHUB_OUTPUT"
-          else
-            echo "app=true" >> "$GITHUB_OUTPUT"
-          fi
-
-      # Node 22+ is required: tests run via `node --test` against .ts files
-      # directly, relying on Node's native TypeScript type-stripping
-      # (stable since Node 22.6, no ts-node/tsx/vitest needed). Node 24 is
-      # the current LTS-track release and what the project is developed
-      # against, so pin to it to keep local and CI runs identical.
       - uses: actions/setup-node@v4
-        if: steps.scope.outputs.app == 'true'
         with:
-          node-version: 24
+          node-version: ${{ env.NODE_VERSION }}
           cache: npm
-
-      - name: Install dependencies
-        if: steps.scope.outputs.app == 'true'
-        run: npm ci
+      - run: npm ci
 
       - name: Typecheck
-        if: steps.scope.outputs.app == 'true'
         run: npm run typecheck
 
       - name: Test
-        if: steps.scope.outputs.app == 'true'
         shell: bash
         run: |
           set -o pipefail
@@ -110,7 +119,6 @@ jobs:
       # broken Postgres service would turn the socket-layer tests into a no-op
       # and CI would stay green. Fail loudly instead.
       - name: Assert the integration suites actually ran
-        if: steps.scope.outputs.app == 'true'
         run: |
           if grep -q "DATABASE_URL not set" test-output.txt; then
             echo "::error::Integration suites skipped — the Postgres service is not reachable."
@@ -119,36 +127,158 @@ jobs:
           fi
           echo "Integration suites ran against Postgres."
 
-      - name: Native tests
-        if: steps.scope.outputs.app == 'true'
-        run: npm run test:native
-
       - name: Lint
-        if: steps.scope.outputs.app == 'true'
         run: npm run lint
 
+  native:
+    name: Native tests
+    needs: scope
+    if: needs.scope.outputs.app == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+      - run: npm ci
+      - run: npm run test:native
+
+  browser:
+    name: Browser tests
+    needs: scope
+    if: needs.scope.outputs.app == 'true'
+    runs-on: ubuntu-latest
+    # The longest job by a wide margin, and so the run's critical path. It
+    # builds its own bundle and its own disposable Postgres
+    # (scripts/e2e-server.mjs) rather than reusing another job's, which is what
+    # lets it start at the same moment as everything else instead of waiting.
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+      - run: npm ci
+
+      - name: Install Playwright's browser
+        run: npx playwright install --with-deps chromium
+
+      # The only layer that exercises react-native-web's side of every
+      # Platform.OS branch, and the only one that measures a laid-out box —
+      # tap targets, and whether the table renders off the side of the screen.
+      # 40 tests in 8.4 minutes on a shared runner, the bundle build it does
+      # first included (run 32304169964). 20 minutes is that with room for a
+      # slow one rather than a budget anything today comes near.
+      - name: Browser tests
+        timeout-minutes: 20
+        run: npm run test:e2e
+
+      # Uploaded on success too, not just on failure: a green run with no
+      # report is a run that skipped the suite, and `if-no-files-found: error`
+      # is what turns that into a red step rather than a warning nobody reads.
+      # The path is the config file's own directory — `outputFolder` in
+      # tests/e2e/playwright.config.ts resolves relative to that, not to the
+      # working directory the run was launched from.
+      - name: Keep the Playwright report
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: tests/e2e/playwright-report/
+          if-no-files-found: error
+          retention-days: 7
+
+      # The HTML reporter copies every attachment into playwright-report/data/
+      # under its own SHA-1, so for a run that reaches the end this duplicates
+      # the step above. It is here for the run that does not: the timeout above,
+      # or a crash, kills the process before the reporter writes anything, and
+      # `outputDir` is then the only place the traces and videos exist. Missing
+      # is not an error — a failure in the build or webServer leaves nothing,
+      # and the step above is what asserts the suite ran at all.
+      - name: Keep the raw Playwright output when the suite goes red
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-test-results
+          path: tests/e2e/test-results/
+          if-no-files-found: ignore
+          retention-days: 7
+
+  build:
+    name: Build and boot
+    needs: scope
+    if: needs.scope.outputs.app == 'true'
+    runs-on: ubuntu-latest
+
+    # The boot check reaches a real database, the same way a deploy does.
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: murlan_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      DATABASE_URL: postgres://postgres:postgres@localhost:5432/murlan_test
+      SESSION_SECRET: ci-test-secret-not-used-in-production
+
+    steps:
+      - uses: actions/checkout@v4
+      # This job boots the real artefact against a real database, which is the
+      # production path — so it runs production's Node, not the repo's. The
+      # other three jobs check dev tooling and 24 is right for them.
+      # `esbuild --target=node22` lowers syntax and knows nothing about APIs, so
+      # a Node-24-only builtin compiles at exit 0, passes a Node 24 job, and
+      # throws on Replit. Running the deploy runtime is what catches that.
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+
+      # 22 above is Replit's, not a preference. If production's runtime moves
+      # and this does not, the job stops exercising production — silently, and
+      # green.
+      - name: This job's Node is the one production runs
+        shell: bash
+        run: |
+          replit=$(grep -oE 'nodejs-[0-9]+' .replit | head -1 | cut -d- -f2)
+          actual=$(node -p 'process.versions.node.split(".")[0]')
+          if [ "$replit" != "$actual" ]; then
+            echo "::error::.replit deploys on Node $replit; this job runs Node $actual."
+            exit 1
+          fi
+          echo "Both on Node $actual."
+
+      - run: npm ci
+
       - name: Build the web and server bundles
-        if: steps.scope.outputs.app == 'true'
         run: npm run expo:web:build && npm run server:build
 
       - name: Build the static Expo Go deployment
-        if: steps.scope.outputs.app == 'true'
         env:
           EXPO_PUBLIC_DOMAIN: example.invalid
         run: npm run expo:static:build
 
-      # The bundle esbuild produces is otherwise first executed by a Replit deploy.
-      # /health answers only once the pool has reached Postgres.
+      # The bundle esbuild produces is otherwise first executed by a Replit
+      # deploy. /health answers only once the pool has reached Postgres.
       - name: The built server boots and reaches the database
-        if: steps.scope.outputs.app == 'true'
         shell: bash
         env:
           PORT: "5050"
           NODE_ENV: production
         run: |
           test -f dist/index.html
-          test -f server_dist/index.js
-          node server_dist/index.js &
+          test -f server_dist/index.mjs
+          node server_dist/index.mjs &
           server_pid=$!
           for _ in $(seq 1 30); do
             if curl -fsS "http://127.0.0.1:$PORT/health" -o health.json; then break; fi

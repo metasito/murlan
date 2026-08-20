@@ -4,20 +4,28 @@ import {
   Text,
   StyleSheet,
   Pressable,
-  Animated,
   BackHandler,
   useWindowDimensions,
   ActivityIndicator,
 } from "react-native";
+import Animated, {
+  Easing,
+  useAnimatedStyle,
+  useSharedValue,
+  withRepeat,
+  withSequence,
+  withTiming,
+} from "react-native-reanimated";
 import { router, useNavigation } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import Ionicons from "@expo/vector-icons/Ionicons";
 import { useOnlineGame } from "@/context/OnlineGameContext";
-import { Colors, FontSize, Radius } from '@/lib/theme';
+import { Colors, FontSize, Radius, Spacing } from '@/lib/theme';
 import { MenuLayout, CONTENT_H_PAD } from "@/components/MenuLayout";
 import { MenuCard } from "@/components/MenuCard";
 import { MenuButton } from "@/components/MenuButton";
 import { useTranslation } from "@/lib/i18n";
+import { usePrefersReducedMotion } from "@/lib/accessibility";
 
 type GameMode = "free_for_all" | "teams";
 
@@ -81,7 +89,8 @@ export default function QuickmatchScreen() {
   const [phase, setPhase] = useState<"selecting" | "searching">("selecting");
   const [selectedMode, setSelectedMode] = useState<ModeOption | null>(null);
   const [dotCount, setDotCount] = useState(0);
-  const [pulseAnim] = useState(() => new Animated.Value(1));
+  const pulse = useSharedValue(1);
+  const reduceMotion = usePrefersReducedMotion();
 
   const isLandscape = W > H;
 
@@ -115,16 +124,23 @@ export default function QuickmatchScreen() {
   }, [phase, handleCancelSearch, navigation]);
 
   useEffect(() => {
-    if (phase !== "searching") return;
-    const pulse = Animated.loop(
-      Animated.sequence([
-        Animated.timing(pulseAnim, { toValue: 1.15, duration: 900, useNativeDriver: true }),
-        Animated.timing(pulseAnim, { toValue: 1, duration: 900, useNativeDriver: true }),
-      ])
+    if (phase !== "searching" || reduceMotion) {
+      pulse.value = 1;
+      return;
+    }
+    pulse.value = withRepeat(
+      withSequence(
+        withTiming(1.15, { duration: 900, easing: Easing.inOut(Easing.sin) }),
+        withTiming(1, { duration: 900, easing: Easing.inOut(Easing.sin) })
+      ),
+      -1,
+      false
     );
-    pulse.start();
-    return () => pulse.stop();
-  }, [phase, pulseAnim]);
+  }, [phase, pulse, reduceMotion]);
+
+  // After the effect above, not before it: reading a shared value here freezes
+  // it for the React Compiler, and the assignment then bails the whole file.
+  const pulseAnim = useAnimatedStyle(() => ({ transform: [{ scale: pulse.value }] }));
 
   useEffect(() => {
     if (phase !== "searching") return;
@@ -224,7 +240,7 @@ export default function QuickmatchScreen() {
       <View style={[styles.searchContent, isLandscape && styles.searchContentLandscape]}>
         <Animated.View style={[
           styles.globeWrapper,
-          { transform: [{ scale: pulseAnim }] },
+          pulseAnim,
           isLandscape && { marginBottom: 0 },
         ]}>
           <View style={[styles.globeCircle, isLandscape && styles.globeCircleSmall]}>
@@ -247,7 +263,7 @@ export default function QuickmatchScreen() {
             </>
           ) : (
             <>
-              <ActivityIndicator color={Colors.gold} size="small" style={{ marginBottom: 8 }} />
+              <ActivityIndicator color={Colors.gold} size="small" style={{ marginBottom: Spacing.sm }} />
               <Text style={styles.searchingLabel}>
                 {t("quickmatch.searching")}<Text style={styles.dots}>{dots}</Text>
               </Text>
@@ -268,11 +284,13 @@ export default function QuickmatchScreen() {
   );
 }
 
+const LANDSCAPE_GAP = 28;
+
 const styles = StyleSheet.create({
   header: {
     alignItems: "center",
-    paddingBottom: 4,
-    gap: 4,
+    paddingBottom: Spacing.xs,
+    gap: Spacing.xs,
   },
   headerTitle: {
     fontFamily: "Rajdhani_700Bold",
@@ -284,13 +302,13 @@ const styles = StyleSheet.create({
     fontFamily: "Inter_400Regular",
     fontSize: FontSize.sm,
     color: Colors.textMuted,
-    marginTop: 2,
+    marginTop: Spacing.xxs,
   },
   landscapeHeader: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 8,
-    marginBottom: 10,
+    gap: Spacing.sm,
+    marginBottom: Spacing.snug,
     alignSelf: "center",
   },
   landscapeHeaderText: {
@@ -303,25 +321,25 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     flexWrap: "wrap",
     justifyContent: "center",
-    gap: 12,
-    marginVertical: 16,
+    gap: Spacing.cosy,
+    marginVertical: Spacing.md,
   },
   modeCardsRowLandscape: {
     flexWrap: "nowrap",
-    gap: 10,
+    gap: Spacing.snug,
   },
   modeCard: {
     backgroundColor: Colors.felt,
     borderRadius: Radius.md,
     borderWidth: 1.5,
     borderColor: Colors.goldBorder,
-    padding: 18,
+    padding: Spacing.md,
     alignItems: "center",
-    gap: 8,
+    gap: Spacing.sm,
   },
   modeCardLandscape: {
-    padding: 10,
-    gap: 5,
+    padding: Spacing.snug,
+    gap: Spacing.xs,
     borderRadius: Radius.md,
   },
   modeCardPressed: {
@@ -332,7 +350,7 @@ const styles = StyleSheet.create({
     position: "relative",
     alignItems: "center",
     justifyContent: "center",
-    marginBottom: 2,
+    marginBottom: Spacing.xxs,
   },
   modeIconBg: {
     width: 52,
@@ -357,7 +375,7 @@ const styles = StyleSheet.create({
     height: 20,
     alignItems: "center",
     justifyContent: "center",
-    paddingHorizontal: 4,
+    paddingHorizontal: Spacing.xs,
   },
   playerBadgeText: {
     color: Colors.bg,
@@ -381,22 +399,22 @@ const styles = StyleSheet.create({
   },
   cancelBtnStyle: {
     alignSelf: "center",
-    paddingHorizontal: 40,
+    paddingHorizontal: Spacing.xxl,
   },
   searchContent: {
     flex: 1,
     alignItems: "center",
     justifyContent: "center",
-    gap: 20,
-    paddingHorizontal: 16,
+    gap: Spacing.roomy,
+    paddingHorizontal: Spacing.md,
     width: "100%",
   },
   searchContentLandscape: {
     flexDirection: "row",
-    gap: 28,
+    gap: LANDSCAPE_GAP,
   },
   globeWrapper: {
-    marginBottom: 8,
+    marginBottom: Spacing.sm,
   },
   globeCircle: {
     width: 120,
@@ -424,14 +442,14 @@ const styles = StyleSheet.create({
   selectedModeTag: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 6,
+    gap: Spacing.slim,
     backgroundColor: Colors.goldMuted,
     borderRadius: Radius.lg,
-    paddingHorizontal: 14,
-    paddingVertical: 6,
+    paddingHorizontal: Spacing.wide,
+    paddingVertical: Spacing.slim,
     borderWidth: 1,
     borderColor: Colors.goldBorder,
-    marginBottom: 8,
+    marginBottom: Spacing.sm,
   },
   selectedModeText: {
     fontFamily: "Rajdhani_600SemiBold",
@@ -455,13 +473,13 @@ const styles = StyleSheet.create({
     color: Colors.textMuted,
     textAlign: "center",
     lineHeight: 20,
-    marginTop: 4,
+    marginTop: Spacing.xs,
   },
   errorText: {
     fontFamily: "Inter_400Regular",
     fontSize: FontSize.md,
     color: Colors.dangerDim,
     textAlign: "center",
-    marginBottom: 4,
+    marginBottom: Spacing.xs,
   },
 });

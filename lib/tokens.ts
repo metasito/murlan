@@ -135,8 +135,22 @@ export const CardBacks = {
   inchiostro: { field: 'notte',    ink: Colors.gold, lattice: 5, starPoints: 4 },
 } as const;
 
+// Ordered by value, and only the order says so: nothing in slim, snug, cosy,
+// wide or roomy tells a reader which of them is the wider step.
 export const Spacing = {
-  xs: 4, sm: 8, md: 16, lg: 24, xl: 32, xxl: 48,
+  xxs: 2,
+  xs: 4,
+  slim: 6,
+  sm: 8,
+  snug: 10,
+  cosy: 12,
+  wide: 14,
+  md: 16,
+  roomy: 20,
+  lg: 24,
+  xl: 32,
+  xxl: 40,
+  xxxl: 48,
 };
 
 /** React Native Web reports no usable safe-area insets; every screen substitutes these. */

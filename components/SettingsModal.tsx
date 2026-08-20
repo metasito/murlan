@@ -465,7 +465,7 @@ const styles = StyleSheet.create({
     width: 22,
     height: 14,
     borderRadius: Radius.sm / 2,
-    marginBottom: 2,
+    marginBottom: Spacing.xxs,
   },
   segment: {
     flex: 1,

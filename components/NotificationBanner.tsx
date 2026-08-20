@@ -194,7 +194,7 @@ const styles = StyleSheet.create({
   },
   textGroup: {
     flex: 1,
-    gap: 2,
+    gap: Spacing.xxs,
   },
   title: {
     ...Type.subheading,
@@ -208,8 +208,8 @@ const styles = StyleSheet.create({
   closeBtn: {
     width: 44,
     height: 44,
-    marginVertical: -12,
-    marginRight: -8,
+    marginVertical: -Spacing.cosy,
+    marginRight: -Spacing.sm,
     alignItems: "center",
     justifyContent: "center",
   },

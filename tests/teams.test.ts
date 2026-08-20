@@ -11,7 +11,6 @@
 //     skips anyone absent from `rankings`) no game recorded.
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
-// @ts-ignore — see tests/helpers.ts
 import {
   aggregateTeamScores,
   buildCombination,

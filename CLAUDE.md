@@ -18,8 +18,10 @@ and never go stale.
 - Port from `process.env.PORT`, database from `process.env.DATABASE_URL`.
 - `DATABASE_URL`, `SESSION_SECRET`, `PORT` must be set in Replit Secrets.
 - No build step needing local tooling. Must launch from the Run button with no setup.
-- **Production runs Node 22** (`.replit` `modules`), CI tests on 24. `server:build` carries
-  `--target=node22` so nothing newer than the deploy runtime is emitted.
+- **Production runs Node 22** (`.replit` `modules`). CI's `build` job — the one that boots the
+  real artefact — runs 22; the other three check dev tooling and run 24. `server:build`'s
+  `--target=node22` lowers *syntax* only and has no API database, so a Node-24-only builtin
+  compiles at exit 0 and throws on Replit. The Node 22 job is what catches that.
 - **`server/schemaDdl.ts` is the only thing that creates tables**, at boot, from
   `shared/schema.ts`. Every statement is additive and idempotent (`tests/schemaDdl.test.ts`).
   A second creator is how `session` came to exist on one database and nowhere else.
@@ -81,10 +83,10 @@ lines is explaining itself instead of being clear.
 
 ## Design system
 
-- **No bare literals for colour, radius, font size or timing** — all from `lib/theme.ts`.
-  A component-local one-off may be a named module constant. `fontSize` and `borderRadius`
-  are enforced by `eslint.config.js`; **`Spacing` is not** — its steps are 4/8/16/24/32/48
-  and the layouts nudge by 1, 2, 3 and 6, so paddings and gaps are still bare numbers.
+- **No bare literals for colour, radius, font size, spacing or timing** — all from
+  `lib/theme.ts`. `eslint.config.js` refuses a bare number for radius, font size and
+  spacing only; colour and timing are convention, caught in review or not at all. A
+  component-local one-off may be a named module constant. `0` is still a plain `0`.
 - Gold is a five-step alpha scale (`goldGhost` … `goldStrong`). Pick by role; don't add a
   sixth to split the difference.
 - Menu screens use `MenuLayout` / `MenuCard` / `MenuButton`; `app/lobby.tsx` is the
@@ -103,9 +105,11 @@ lines is explaining itself instead of being clear.
 - **No workarounds.** If the correct fix is bigger, do the correct fix. Look up current best
   practice rather than guessing.
 - **Design first** for anything touching storage, the socket protocol, or many files.
-- **The database is not precious.** No real users. Prefer dropping and recreating over
-  accreting compatibility. Order by design, not deploy cost: derive from existing rows →
-  ride an existing jsonb column → new table → new column.
+- **The database holds accounts now.** Beta testers have them, so dropping and recreating is
+  no longer free: `pg_dump` first, and read `db:push`'s rename-or-drop prompt rather than
+  accepting it — answering it wrong deletes the column's data (`docs/DEPLOY-RUNBOOK.md`).
+  Order a change by design, not by deploy cost: derive from existing rows → ride an existing
+  jsonb column → new table → new column.
 - **Leave no residue.** Implemented design docs, superseded plans and scratch scripts get
   deleted, not archived. A claim that no longer holds is removed the moment it's found.
 - **No self-defeating safeguards.** Never ship a guard together with the thing that gets past
@@ -120,10 +124,3 @@ lines is explaining itself instead of being clear.
 - React Compiler can miscompile `useEffect` references. It comes from
   `babel-preset-expo`'s own dependency — do not add a second copy to `package.json`;
   `tests/reactCompiler.test.ts` pins that there is only one.
-
-## Audit remediation in progress
-
-125 findings in `audit/2026-08-17/`, executed in 15 batches. **Run `/batch <n>` — do not
-improvise an implementation prompt.** `PROGRESS.md` holds the queue, per-batch treatment and
-run order; `DECISIONS.md` holds settled answers (do not re-open them). While this is live,
-that backlog outranks `docs/BACKLOG.md`.

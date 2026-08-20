@@ -11,23 +11,79 @@ import assert from "node:assert/strict";
 import { readFileSync, readdirSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
-// @ts-ignore — see tests/helpers.ts for why the .ts extension is required
+import ts from "typescript";
 import { it } from "../locales/it.ts";
-// @ts-ignore
 import { en } from "../locales/en.ts";
-// @ts-ignore
 import { sq } from "../locales/sq.ts";
-// @ts-ignore
 import { translate, interpolate, DEFAULT_LOCALE } from "../lib/i18n.ts";
 
 const LOCALES = { it, en, sq } as const;
 type LocaleName = keyof typeof LOCALES;
 const LOCALE_NAMES = Object.keys(LOCALES) as LocaleName[];
+/** en is the set every other locale is compared against, so it cannot diverge from itself. */
+const TRANSLATED = LOCALE_NAMES.filter((name) => name !== "en");
+
+const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+const SERVER_DIR = path.join(REPO_ROOT, "server");
+
+function serverSources(): { file: string; source: string }[] {
+  return readdirSync(SERVER_DIR, { recursive: true, encoding: "utf8" })
+    .filter((f) => f.endsWith(".ts"))
+    .map((file) => ({ file, source: readFileSync(path.join(SERVER_DIR, file), "utf8") }));
+}
+
+/** The property names a payload puts a sentence in. */
+const TEXT_FIELDS = new Set(["message", "error", "body", "reason"]);
+
+/**
+ * The text of every string and template literal below `node`, with `${expr}`
+ * rendered as `{{expr}}` so the server's own sentences read like the
+ * catalogues'. Stops at a nested call: its arguments are that call's payload.
+ */
+function literalsIn(node: ts.Node, sourceFile: ts.SourceFile): string[] {
+  const found: string[] = [];
+  const visit = (n: ts.Node) => {
+    if (ts.isStringLiteral(n) || ts.isNoSubstitutionTemplateLiteral(n)) {
+      found.push(n.text);
+      return;
+    }
+    if (ts.isTemplateExpression(n)) {
+      found.push(
+        n.head.text +
+          n.templateSpans
+            .map((s) => `{{${s.expression.getText(sourceFile)}}}${s.literal.text}`)
+            .join("")
+      );
+      return;
+    }
+    if (ts.isCallExpression(n)) return;
+    ts.forEachChild(n, visit);
+  };
+  visit(node);
+  return found;
+}
+
+/** Every sentence the server puts in a payload's text field. */
+function payloadSentences(sourceFile: ts.SourceFile): string[] {
+  const found: string[] = [];
+  const visit = (node: ts.Node) => {
+    if (
+      ts.isPropertyAssignment(node) &&
+      (ts.isIdentifier(node.name) || ts.isStringLiteral(node.name)) &&
+      TEXT_FIELDS.has(node.name.text)
+    ) {
+      found.push(...literalsIn(node.initializer, sourceFile));
+    }
+    ts.forEachChild(node, visit);
+  };
+  visit(sourceFile);
+  return found;
+}
 
 describe("locale key parity", () => {
   const enKeys = Object.keys(en).sort();
 
-  for (const name of LOCALE_NAMES) {
+  for (const name of TRANSLATED) {
     test(`${name} has exactly the same key set as en (the source of truth)`, () => {
       const keys = Object.keys(LOCALES[name]).sort();
       assert.deepEqual(
@@ -47,6 +103,80 @@ describe("locale key parity", () => {
   });
 });
 
+describe("no server string assumes the player's gender", () => {
+  // A server.* string names one player and is shown to the whole table several
+  // times a hand, so a form that agrees with that player's gender misgenders
+  // someone on most hands. Italian and Albanian both inflect; English does not,
+  // which is why en.ts reads as the neutral original and the translations —
+  // and the server's own English fallbacks — are where the assumption creeps in.
+  //
+  // Matching is by frame, not by vocabulary. The same endings agree with an
+  // object all over both catalogues (`carta scambiata`, `questa sessione è
+  // stata chiusa`, `Lëvizje e pavlefshme`), so only a marker in a position that
+  // can refer to a person counts. Italian possessives are deliberately absent:
+  // `suo` agrees with the thing possessed, so `il suo posto` says nothing about
+  // whose seat it is — Albanian `tij`/`saj` agrees with the possessor and says
+  // everything.
+
+  /** Italian participle and adjective endings that carry gender. */
+  const AGREEING = String.raw`\w*(?:at|it|ut|st|ss|tt|nt|iv|ur|or)[oa]\b`;
+
+  const PATTERNS: Record<"it" | "sq", [string, RegExp][]> = {
+    it: [
+      ["predicated of the addressee", new RegExp(String.raw`\b(?:sei|siete)\s+(?:non\s+)?(?:stat[oa]\s+)?${AGREEING}`, "i")],
+      ["predicated of the named player", new RegExp(String.raw`\{\{username\}\}\s+(?:non\s+)?(?:si\s+)?(?:è|era|sarà)\s+(?:stat[oa]\s+)?${AGREEING}`, "i")],
+      ["a bare participle, so about the reader", new RegExp(String.raw`^Non\s+${AGREEING}`, "i")],
+      ["reflexive", /\b(?:me|te|se|sé)\s+stess[oaie]\b/i],
+      ["third-person pronoun", /\b(?:lui|lei|esso|essa)\b/i],
+    ],
+    sq: [
+      ["possessive, which agrees with the possessor", /\b(?:tij|saj)\b/i],
+      ["adjectival article after the copula", /\bje(?:ni)?\s+[ie]\b/i],
+      ["a leading adjectival article, so about the reader", /^(?:I|E)\s+\w/],
+      ["third-person pronoun", /\b(?:ai|ajo)\b/i],
+    ],
+  };
+
+  function offences(text: string, patterns: [string, RegExp][]): string[] {
+    return patterns.filter(([, re]) => re.test(text)).map(([label]) => label);
+  }
+
+  for (const name of ["it", "sq"] as const) {
+    test(`${name}'s server.* strings are neutral`, () => {
+      const catalogue = LOCALES[name] as Record<string, string>;
+      const offenders = Object.entries(catalogue)
+        .filter(([key]) => key.startsWith("server."))
+        .flatMap(([key, value]) =>
+          offences(value, PATTERNS[name]).map((label) => `${key} (${label}): ${value}`)
+        );
+      assert.deepEqual(offenders, [], `${name}: ${offenders.join(" | ")}`);
+    });
+  }
+
+  // The catalogues were de-gendered once already while the same four sentences
+  // stayed masculine in server/, where the guard could not see them — and the
+  // fallback is exactly what a client too old to know the code renders.
+  test("the server's own fallback sentences are neutral", () => {
+    const all = [...PATTERNS.it, ...PATTERNS.sq];
+    const offenders: string[] = [];
+    let sentenceCount = 0;
+    for (const { file, source } of serverSources()) {
+      const sourceFile = ts.createSourceFile(file, source, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
+      for (const text of payloadSentences(sourceFile)) {
+        sentenceCount++;
+        for (const label of offences(text, all)) {
+          offenders.push(`${file} (${label}): ${text}`);
+        }
+      }
+    }
+    assert.ok(
+      sentenceCount > 100,
+      `expected server/'s payload sentences, got ${sentenceCount} (106 when this floor was set)`
+    );
+    assert.deepEqual(offenders, [], offenders.join(" | "));
+  });
+});
+
 describe("no empty translations", () => {
   for (const name of LOCALE_NAMES) {
     test(`${name} has no key with an empty string value`, () => {
@@ -62,6 +192,9 @@ describe("no empty translations", () => {
 
 describe("pluralisation pairs", () => {
   test("every _one key has a matching _other key and vice versa, in every locale", () => {
+    const pairs = Object.keys(en).filter((k) => k.endsWith("_one")).length;
+    assert.ok(pairs >= 8, `expected en's plural keys, got ${pairs} (8 when this floor was set)`);
+
     for (const name of LOCALE_NAMES) {
       const keys = new Set(Object.keys(LOCALES[name]));
       for (const key of keys) {
@@ -89,11 +222,13 @@ describe("interpolation placeholders stay in sync across locales", () => {
     return [...template.matchAll(/\{\{(\w+)\}\}/g)].map((m) => m[1]).sort();
   }
 
+  // Both directions: a translation that drops en's placeholder renders a raw
+  // `{{username}}`, and one that invents a placeholder en does not have renders
+  // it too, because no call site passes a param nobody asked for.
   test("every locale uses the same {{placeholder}} names as en for a given key", () => {
     for (const key of Object.keys(en) as (keyof typeof en)[]) {
       const expected = placeholders(en[key]);
-      if (expected.length === 0) continue;
-      for (const name of LOCALE_NAMES) {
+      for (const name of TRANSLATED) {
         const actual = placeholders(LOCALES[name][key]);
         assert.deepEqual(
           actual,
@@ -186,7 +321,7 @@ describe("translate() produces the expected output per locale", () => {
     assert.equal(out, "Teams · 4 players");
   });
 
-  test("falls back to Italian (the default locale) for an unknown key at runtime", () => {
+  test("renders an unknown key as itself rather than blank", () => {
     // @ts-expect-error — deliberately an invalid key to exercise the fallback path
     const out = translate("en", "this.key.does.not.exist");
     assert.equal(out, "this.key.does.not.exist");
@@ -198,15 +333,16 @@ describe("translate() produces the expected output per locale", () => {
     // language comes from. A code with no key here falls through
     // `translateServerPayload` to that English fallback and shows an Italian
     // player English — which is how `REPLAY_NOT_FOUND` was found.
-    const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
     const emitted = new Set<string>();
-    for (const rel of ["server/routes.ts", "server/socket.ts"]) {
-      const source = readFileSync(path.join(repoRoot, rel), "utf8");
+    for (const { source } of serverSources()) {
       for (const m of source.matchAll(/code: "([A-Z_]+)"/g)) emitted.add(m[1]);
       // seatClaimCode() and its siblings return the code directly.
       for (const m of source.matchAll(/return "([A-Z][A-Z_]{3,})";/g)) emitted.add(m[1]);
     }
-    assert.ok(emitted.size > 10, `expected to find the server's codes, got ${emitted.size}`);
+    assert.ok(
+      emitted.size > 44,
+      `expected to find the server's codes, got ${emitted.size} (46 when this floor was set)`
+    );
 
     const missing = [...emitted].filter(
       (code) => !Object.prototype.hasOwnProperty.call(en, `server.${code}`)
@@ -224,8 +360,7 @@ describe("translate() produces the expected output per locale", () => {
     // wire's { code, message } contract — `reason` is invisible to
     // translateServerPayload — and no two of them may render the same
     // sentence, or the codes carry no information.
-    const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-    const source = readFileSync(path.join(repoRoot, "server/socket.ts"), "utf8");
+    const source = readFileSync(path.join(SERVER_DIR, "socket.ts"), "utf8");
     const sites = source
       .split("\n")
       .filter((line) => line.includes('"game:rejoin_failed"'));
@@ -258,16 +393,178 @@ describe("translate() produces the expected output per locale", () => {
   test("no server.* key is unused", () => {
     // The mirror of the test above: a key nothing can emit is dead weight
     // that three catalogues have to keep translating.
-    const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-    const serverDir = path.join(repoRoot, "server");
-    const sources = readdirSync(serverDir, { recursive: true, encoding: "utf8" })
-      .filter((f) => f.endsWith(".ts"))
-      .map((f) => readFileSync(path.join(serverDir, f), "utf8"))
+    const sources = serverSources()
+      .map(({ source }) => source)
       .join("\n");
     const unused = Object.keys(en)
       .filter((key) => key.startsWith("server."))
       .map((key) => key.slice("server.".length))
       .filter((code) => !sources.includes(`"${code}"`));
     assert.deepEqual(unused, [], `unused server.* keys: ${unused.join(", ")}`);
+  });
+});
+
+describe("every player-facing server response carries a code", () => {
+  // The test above enumerates codes the server emits and checks each is
+  // translatable — it can only see a code that exists. A response with no
+  // code at all is invisible to it, which is exactly how validate.ts and
+  // socketSafety.ts leaked raw Italian to every locale. This scans response
+  // and socket-emit payloads directly instead of known codes, so it catches
+  // an absence.
+
+  /** Span (end exclusive) of the `{...}` that opens at `braceStart`. */
+  function braceSpan(source: string, braceStart: number): number {
+    let depth = 0;
+    let i = braceStart;
+    for (; i < source.length; i++) {
+      if (source[i] === "{") depth++;
+      else if (source[i] === "}" && --depth === 0) {
+        i++;
+        break;
+      }
+    }
+    return i;
+  }
+
+  /**
+   * Anything that hands a payload to a player: the response and socket
+   * primitives, and the helpers that wrap them. `notifyUser` is why the list
+   * is not just `json`/`emit` — a push body reaches a lock screen with no
+   * client in the loop, so it is the payload that can least afford to be
+   * unreadable, and it is invisible to a scan that only knows method calls.
+   */
+  const DELIVERS_TO_A_PLAYER = new Set(["json", "emit", "notifyUser", "emitToUser"]);
+
+  /** Every call that delivers a payload to a player, anywhere in `sourceFile`. */
+  function responseCalls(sourceFile: ts.SourceFile): ts.CallExpression[] {
+    const calls: ts.CallExpression[] = [];
+    const visit = (node: ts.Node) => {
+      if (ts.isCallExpression(node)) {
+        const callee = ts.isPropertyAccessExpression(node.expression)
+          ? node.expression.name.text
+          : ts.isIdentifier(node.expression)
+            ? node.expression.text
+            : null;
+        if (callee && DELIVERS_TO_A_PLAYER.has(callee)) calls.push(node);
+      }
+      ts.forEachChild(node, visit);
+    };
+    visit(sourceFile);
+    return calls;
+  }
+
+  /** An object literal's own top-level property names. */
+  function propertyNames(obj: ts.ObjectLiteralExpression): Set<string> {
+    const names = new Set<string>();
+    for (const prop of obj.properties) {
+      if (
+        (ts.isPropertyAssignment(prop) || ts.isShorthandPropertyAssignment(prop)) &&
+        (ts.isIdentifier(prop.name) || ts.isStringLiteral(prop.name))
+      ) {
+        names.add(prop.name.text);
+      }
+    }
+    return names;
+  }
+
+  /**
+   * Every `ObjectLiteralExpression` reachable from `node` without crossing
+   * into a nested call's own arguments — so `a ? {x} : {y}`, `a ?? {x}`,
+   * `{x} as T` and any other wrapper report the object literals inside them,
+   * while `helper({x})` reports none: that one belongs to `helper`.
+   */
+  function objectLiteralsIn(node: ts.Node): ts.ObjectLiteralExpression[] {
+    const found: ts.ObjectLiteralExpression[] = [];
+    const visit = (n: ts.Node) => {
+      if (ts.isObjectLiteralExpression(n)) {
+        found.push(n);
+        return;
+      }
+      if (ts.isCallExpression(n)) return;
+      ts.forEachChild(n, visit);
+    };
+    visit(node);
+    return found;
+  }
+
+  /** Every object literal reachable from a delivering call's arguments, at any position and depth. */
+  function payloadObjects(
+    sourceFile: ts.SourceFile
+  ): { start: number; text: string; names: Set<string> }[] {
+    const objects: { start: number; text: string; names: Set<string> }[] = [];
+    for (const call of responseCalls(sourceFile)) {
+      for (const arg of call.arguments) {
+        for (const obj of objectLiteralsIn(arg)) {
+          objects.push({
+            start: obj.getStart(sourceFile),
+            text: obj.getText(sourceFile),
+            names: propertyNames(obj),
+          });
+        }
+      }
+    }
+    return objects;
+  }
+
+  /** Span of `name`'s function body, declared either way this codebase does it. */
+  function functionBodySpan(source: string, name: string): [number, number] | null {
+    const decl = new RegExp(
+      `(?:function\\s+${name}\\s*\\([^{]*\\)|(?:const|let)\\s+${name}\\s*=\\s*(?:async\\s*)?\\([^{]*\\)\\s*(?::[^{=]+)?=>)\\s*\\{`
+    );
+    const m = decl.exec(source);
+    if (!m) return null;
+    const start = m.index + m[0].length - 1;
+    return [start, braceSpan(source, start)];
+  }
+
+  /**
+   * Spans reached only from behind an `expo-platform` header check.
+   * `server/app.ts`'s `expoManifestHandler` gates `serveExpoManifest` on
+   * that header; anything it calls inherits the same gate.
+   */
+  function headerGatedSpans(source: string): [number, number][] {
+    const handler = functionBodySpan(source, "expoManifestHandler");
+    if (!handler) return [];
+    const [hStart, hEnd] = handler;
+    const handlerBody = source.slice(hStart, hEnd);
+    if (!handlerBody.includes("expo-platform")) return [];
+    const spans: [number, number][] = [];
+    for (const m of handlerBody.matchAll(/\b([a-zA-Z_$][\w$]*)\(/g)) {
+      const callee = functionBodySpan(source, m[1]);
+      if (callee) spans.push(callee);
+    }
+    return spans;
+  }
+
+  test("no player-facing JSON response or socket error emit omits a code", () => {
+    const files = serverSources();
+    assert.ok(
+      files.length >= 28,
+      `expected to find server/'s .ts files, got ${files.length} (29 when this floor was set)`
+    );
+
+    const violations: string[] = [];
+    let objectCount = 0;
+    for (const { file, source } of files) {
+      const sourceFile = ts.createSourceFile(file, source, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
+      const exemptSpans = headerGatedSpans(source);
+      const objects = payloadObjects(sourceFile);
+      objectCount += objects.length;
+      for (const { start, text, names } of objects) {
+        if (![...TEXT_FIELDS].some((field) => names.has(field))) continue;
+        if (names.has("code")) continue;
+        if (exemptSpans.some(([s, e]) => start >= s && start < e)) continue;
+        violations.push(`${file}: ${text.replace(/\s+/g, " ").trim().slice(0, 90)}`);
+      }
+    }
+    assert.ok(
+      objectCount > 104,
+      `expected to find the server's response payload objects, got ${objectCount} (108 when this floor was set)`
+    );
+    assert.deepEqual(
+      violations,
+      [],
+      `these player-facing responses carry no code: ${violations.join(" | ")}`
+    );
   });
 });

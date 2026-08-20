@@ -11,7 +11,6 @@
 // Imports lib/tokens (pure values) rather than lib/theme, because theme pulls in
 // react-native for its platform-aware Shadow helper and Node cannot parse RN's
 // Flow-typed entry point. tokens.ts is the same palette, no runtime RN dependency.
-// @ts-ignore
 import { Colors, Scrim, FeltGradients } from "../lib/tokens.ts";
 import { test } from "node:test";
 import assert from "node:assert/strict";

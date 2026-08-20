@@ -98,6 +98,19 @@ import { appendReplayMove, startReplayLog } from "./replayShape.ts";
  * locks a phone out of its own game while its connection flaps.
  */
 const HANDSHAKES_PER_MINUTE = 60;
+
+/**
+ * Read once at module scope — same shape as authMaxFromEnv in routes.ts — so
+ * a test process must set MURLAN_GAME_ACTION_RATE_LIMIT before this module
+ * is first imported. Shared by game:play and game:pass: a suite replaying
+ * several hands down one socket to reach a probabilistic phase needs
+ * headroom a live session never does.
+ */
+function gameActionLimitFromEnv(): number {
+  const parsed = Number(process.env.MURLAN_GAME_ACTION_RATE_LIMIT);
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : 60;
+}
+const GAME_ACTION_RATE_LIMIT = gameActionLimitFromEnv();
 const HANDSHAKE_WINDOW_MS = 60_000;
 
 let _io: SocketServer | null = null;
@@ -774,7 +787,7 @@ export function setupSocket(httpServer: HttpServer) {
           armTurn(io, roomId);
         }
       },
-      { limit: 60, windowMs: 60_000 }
+      { limit: GAME_ACTION_RATE_LIMIT, windowMs: 60_000 }
     );
 
     onEvent(
@@ -811,7 +824,7 @@ export function setupSocket(httpServer: HttpServer) {
         persistGameState(roomId, game);
         armTurn(io, roomId);
       },
-      { limit: 60, windowMs: 60_000 }
+      { limit: GAME_ACTION_RATE_LIMIT, windowMs: 60_000 }
     );
 
     onEvent(
@@ -1138,7 +1151,8 @@ export function setupSocket(httpServer: HttpServer) {
           // late. Not awaited: the invite must not be held up by a push.
           void notifyUser(friendUserId, {
             title: "Murlan",
-            body: `${username} ti ha invitato a giocare.`,
+            code: "FRIEND_INVITE",
+            body: `${username} invited you to play.`,
             data: { roomCode },
           });
           return;
@@ -1254,7 +1268,7 @@ export function setupSocket(httpServer: HttpServer) {
             // The grace period is configurable, so the number has to come from
             // the same constant the timer below is armed with — a hardcoded
             // "60 seconds" in the text is a promise the server may not keep.
-            message: `${username} si è disconnesso. Ha ${graceSeconds} secondi per rientrare.`,
+            message: `${username} disconnected. They have ${graceSeconds} seconds to rejoin.`,
             params: { username, seconds: graceSeconds },
           });
 
@@ -1425,7 +1439,7 @@ async function rejoinSocketToTable(
     userId,
     username,
     code: "PLAYER_RECONNECTED",
-    message: `${username} è rientrato.`,
+    message: `${username} is back.`,
     params: { username },
   });
   armTurnIfIdle(io, roomId);

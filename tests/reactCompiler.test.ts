@@ -92,7 +92,7 @@ test("every screen and component compiles with no bailouts", () => {
     [],
     "the React Compiler silently skipped these. In a production build they ship unmemoized and " +
       "the whole subtree is rebuilt on every render. Compile the file on its own with " +
-      "`node .superpowers/sdd/2026-08-19-beta-readiness/compiler-probe.mjs <file>` to see why"
+      "`node scripts/react-compiler-probe.mjs <file>` to see why"
   );
 });
 

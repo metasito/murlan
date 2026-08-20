@@ -1,5 +1,6 @@
 import { useEffect } from "react";
 import { View, Text, StyleSheet } from "react-native";
+import type { StyleProp, ViewStyle } from "react-native";
 import Animated, {
   useAnimatedStyle,
   useSharedValue,
@@ -211,10 +212,18 @@ function PassedChip() {
 
 // Both markers share one wrapping row. A seat carrying both would otherwise add
 // two badge heights to a column laid out inside the fixed TOP_SECTION_H.
-function SeatBadges({ passed, isBot }: { passed: boolean; isBot: boolean }) {
+function SeatBadges({
+  passed,
+  isBot,
+  style,
+}: {
+  passed: boolean;
+  isBot: boolean;
+  style?: StyleProp<ViewStyle>;
+}) {
   if (!passed && !isBot) return null;
   return (
-    <View style={seatStyles.seatBadgeRow}>
+    <View style={[seatStyles.seatBadgeRow, style]}>
       {passed && <PassedChip />}
       {isBot && <BotSeatBadge />}
     </View>
@@ -285,9 +294,6 @@ export function SideOppSlot({
         isLeft ? seatStyles.sideLeft : seatStyles.sideRight,
       ]}
     >
-      {!isLeft && count > 0 && player.finishPosition === undefined && (
-        <CardFan count={count} maxCards={5} />
-      )}
       <View style={seatStyles.sideOppAvatarCol}>
         <AvatarCircle
           name={player.name}
@@ -299,9 +305,13 @@ export function SideOppSlot({
         <Text maxFontSizeMultiplier={TABLE_FONT_SCALE_MAX} style={seatStyles.oppName} numberOfLines={1}>
           {player.name}
         </Text>
-        <SeatBadges passed={passed} isBot={player.type === "ai"} />
+        <SeatBadges
+          passed={passed}
+          isBot={player.type === "ai"}
+          style={seatStyles.seatBadgeRowSide}
+        />
       </View>
-      {isLeft && count > 0 && player.finishPosition === undefined && (
+      {count > 0 && player.finishPosition === undefined && (
         <CardFan count={count} maxCards={5} />
       )}
     </View>
@@ -310,15 +320,17 @@ export function SideOppSlot({
 
 // ─── Styles ───────────────────────────────────────────────────────────────────
 
-const seatStyles = StyleSheet.create({
-  topOppSlot: { alignItems: "center", justifyContent: "center", paddingVertical: 6 },
-  topOppRow: { flexDirection: "row", alignItems: "center", gap: 12 },
-  topOppAvatarCol: { alignItems: "center", gap: 3 },
+const OPP_LABEL_MAX_W = 70 + Spacing.xs * 2;
 
-  sideOppSlot: { alignItems: "center", justifyContent: "center", gap: 6 },
+const seatStyles = StyleSheet.create({
+  topOppSlot: { alignItems: "center", justifyContent: "center", paddingVertical: Spacing.slim },
+  topOppRow: { flexDirection: "row", alignItems: "center", gap: Spacing.cosy },
+  topOppAvatarCol: { alignItems: "center", gap: Spacing.xxs },
+
+  sideOppSlot: { alignItems: "center", justifyContent: "center", gap: Spacing.slim },
   sideLeft: { flexDirection: "row" },
   sideRight: { flexDirection: "row-reverse" },
-  sideOppAvatarCol: { alignItems: "center", gap: 3, marginHorizontal: 6 },
+  sideOppAvatarCol: { alignItems: "center", gap: Spacing.xxs, marginHorizontal: Spacing.slim },
 
   // The count bubble's plate. The top seat renders in the felt gradient's
   // lightest band, where textMuted alone does not clear AA.
@@ -326,7 +338,7 @@ const seatStyles = StyleSheet.create({
     fontFamily: "Rajdhani_600SemiBold",
     fontSize: FontSize.xxs,
     color: Colors.textMuted,
-    maxWidth: 70 + Spacing.xs * 2,
+    maxWidth: OPP_LABEL_MAX_W,
     textAlign: "center",
     backgroundColor: Colors.overlayStrong,
     borderRadius: Radius.sm,
@@ -334,14 +346,16 @@ const seatStyles = StyleSheet.create({
     overflow: "hidden",
   },
 
-  // Wraps rather than growing, because the column it sits in has no room to
-  // spare below the avatar and the name.
   seatBadgeRow: {
     flexDirection: "row",
     flexWrap: "wrap",
     justifyContent: "center",
     gap: Spacing.xs,
   },
+  // Only the side columns: they sit against the screen edge with the fan
+  // leaning inboard past them. The top column is centred with room either
+  // side, where a cap buys nothing and costs the second badge height.
+  seatBadgeRowSide: { maxWidth: OPP_LABEL_MAX_W },
   // Neutral, not red: red is the PASSA control and the bomb, and this is
   // neither a control nor a dramatic play — it is a seat that has receded.
   passedChip: {
@@ -413,7 +427,7 @@ const seatStyles = StyleSheet.create({
     height: 18,
     alignItems: "center",
     justifyContent: "center",
-    paddingHorizontal: 3,
+    paddingHorizontal: Spacing.xxs,
     borderWidth: 1,
     borderColor: Colors.goldStrong,
   },

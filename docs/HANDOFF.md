@@ -7,19 +7,19 @@ cd C:/Users/roton/murlan
 git log --oneline -5
 git status --porcelain
 npm run verify        # typecheck + unit/integration + native
-npx expo lint         # must be ZERO warnings; CI enforces it
+npm run lint          # whole repo; must be ZERO errors; CI enforces it
 ```
 
 Do not trust this file over the commands. It ages; they do not.
 
 ## Where things stand
 
-Green: typecheck clean, `expo lint` zero, the unit and integration suites, the
-native renderer suites (jest-expo, ios+android projects), and a Playwright E2E
-suite (`npm run test:e2e`) that plays complete games through the UI, drops the
-network mid-game to check the reconnect path, sweeps every screen for controls
-a player can see but cannot press, and measures that no part of the table
-renders off the side of the screen.
+Green: typecheck clean, `npm run lint` free of errors, the unit and integration
+suites, the native renderer suites (jest-expo, ios+android projects), and a
+Playwright E2E suite (`npm run test:e2e`) that plays complete games through the
+UI, drops the network mid-game to check the reconnect path, sweeps every screen
+for controls a player can see but cannot press, and measures that no part of
+the table renders off the side of the screen.
 
 No counts here on purpose — they age between batches. `npm run verify` is the
 truth.
@@ -43,10 +43,16 @@ Five test layers, mapped in `docs/TESTING.md`.
 
 ## Regenerated, not hand-authored
 
-Three artefacts are build outputs. Edit the script, not the result:
+These artefacts are build outputs. Edit the script, not the result:
 
 - `assets/sounds/` — `node scripts/build-sounds.mjs`
 - `assets/images/cards/` — `node scripts/build-court-art.mjs`
+- `assets/images/**/*.png` — `node scripts/optimize-images.mjs`, a lossless
+  recompression run in place over whatever the other scripts wrote. Court art
+  is optimised by `build-court-art.mjs` itself; the icon, splash and adaptive
+  layers are hand-drawn sources that have already been through it.
+- `assets/fonts/*.subset.ttf` — `node scripts/build-icon-fonts.mjs`
+- `public/fonts/*.woff2` — `node scripts/build-fonts.mjs`
 - `docs/BUNDLE.md` — `node scripts/bundle-report.mjs > docs/BUNDLE.md`
 
 ## Needs the owner, not more effort
@@ -60,12 +66,12 @@ table or column ships with the deploy that introduces it, and a database Replit
 has just reprovisioned works on the first boot. `npm run db:push` is left for
 destructive reconciliation only.
 
-**One exception is outstanding.** Batch 13 renamed `active_games.room_code` and
-`match_replays.room_code` to `room_id`, which is destructive and boot refuses to
-carry out: `assertRenamesApplied()` throws, so the server will not start against
-a database still holding the old columns. `npm run db:push` has to run against
-production before or with that deploy. `audit/2026-08-17/OWNER-TODO.md` carries
-the detail.
+Batch 13 renamed `active_games.room_code` and `match_replays.room_code` to
+`room_id`. That is destructive, so boot refuses to carry it out —
+`assertRenamesApplied()` throws rather than start against a database still
+holding the old columns, and `npm run db:push` has to answer *rename* for each.
+Both were applied to production on 2026-08-19; `docs/DEPLOY-RUNBOOK.md` is the
+sequence that did it.
 
 `drizzle.config.ts` still excludes the `session` table from push, because
 otherwise a push that adds a table asks whether the new one is a *rename* of

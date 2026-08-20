@@ -5,16 +5,11 @@
 // compressible response is gzipped for a client that accepts it, and a URL
 // under dist/ is cached for a year exactly when its filename carries a content
 // hash.
-//
-// dist/ is a gitignored build product that CI does not have yet when this suite
-// runs (the web bundle is built later in the workflow), so before() fills in
-// whatever is missing and after() removes only what it added. Nothing already
-// on disk is written over: a killed run cannot leave a developer's real build
-// serving a stub.
 import { test, before, after, describe } from "node:test";
 import assert from "node:assert/strict";
 import * as fs from "node:fs";
 import * as path from "node:path";
+import os from "node:os";
 import {
   startTestServer,
   hasDatabase,
@@ -22,21 +17,16 @@ import {
   type TestServer,
 } from "../helpers/testServer.ts";
 
-const distDir = path.resolve(process.cwd(), "dist");
-const indexPath = path.join(distDir, "index.html");
-const faviconPath = path.join(distDir, "favicon.ico");
-const assetDir = path.join(distDir, "_expo", "static", "js", "web");
-const assetPath = path.join(
-  assetDir,
-  "app-fixture.deadbeefcafebabe0123456789abcdef.js"
-);
+// This suite serves a synthetic dist/ tree. node --test runs files concurrently
+// and every other integration suite's server reads dist/ from process.cwd() too,
+// so the tree is built in a directory of this suite's own and cwd moves onto it
+// for the life of the server — writing into the real one raced them.
+const ASSET_DIR = path.join("_expo", "static", "js", "web");
+const ASSET_NAME = "app-fixture.deadbeefcafebabe0123456789abcdef.js";
 
-// Only needed when there is no real build: the server refuses to serve dist/ at
-// all without an index.html.
+// The server refuses to serve dist/ at all without an index.html.
 const FIXTURE_INDEX_HTML = `<!doctype html><div id="root"></div>`;
-// Large enough to clear compression's default 1 KB threshold. The compression
-// assertions run against this rather than against the HTML, whose size depends
-// on whether a real build is present.
+// Large enough to clear compression's default 1 KB threshold.
 const FIXTURE_JS = `// synthetic content-hashed asset\n${"x".repeat(4000)}`;
 // Only its URL matters here, not its bytes — the browser fetches /favicon.ico
 // on every visit and the header it comes back with is the whole point.
@@ -44,51 +34,38 @@ const FIXTURE_FAVICON = Buffer.from("00000100", "hex");
 
 describe("static asset compression and caching", { skip: hasDatabase() ? false : skipMessage() }, () => {
   let server: TestServer;
-  const createdDirs: string[] = [];
-  const createdFiles: string[] = [];
+  let originalCwd: string;
+  let sandbox: string;
 
   before(async () => {
-    for (const dir of [
-      distDir,
-      path.join(distDir, "_expo"),
-      path.join(distDir, "_expo", "static"),
-      path.join(distDir, "_expo", "static", "js"),
-      assetDir,
-    ]) {
-      if (!fs.existsSync(dir)) {
-        fs.mkdirSync(dir);
-        createdDirs.push(dir);
-      }
-    }
+    // Inside before(), not at module scope: a skipped describe still evaluates
+    // the module, and after() — which is what removes this — does not run.
+    sandbox = fs.mkdtempSync(path.join(os.tmpdir(), "murlan-http-"));
+    const distDir = path.join(sandbox, "dist");
+    const assetDir = path.join(distDir, ASSET_DIR);
+    fs.mkdirSync(assetDir, { recursive: true });
+    fs.writeFileSync(path.join(distDir, "index.html"), FIXTURE_INDEX_HTML);
+    fs.writeFileSync(path.join(distDir, "favicon.ico"), FIXTURE_FAVICON);
+    fs.writeFileSync(path.join(assetDir, ASSET_NAME), FIXTURE_JS);
 
-    for (const [file, contents] of [
-      [indexPath, FIXTURE_INDEX_HTML],
-      [faviconPath, FIXTURE_FAVICON],
-      [assetPath, FIXTURE_JS],
-    ] as const) {
-      if (!fs.existsSync(file)) {
-        fs.writeFileSync(file, contents);
-        createdFiles.push(file);
-      }
-    }
-
+    originalCwd = process.cwd();
+    process.chdir(sandbox);
     server = await startTestServer();
   });
 
   after(async () => {
-    await server.stop();
-    for (const file of createdFiles) fs.rmSync(file, { force: true });
-    for (const dir of createdDirs.reverse()) {
+    try {
+      if (server) await server.stop();
+    } finally {
       try {
-        fs.rmdirSync(dir);
-      } catch {
-        // Not empty — something else is using it, leave it alone.
+        if (originalCwd) process.chdir(originalCwd);
+      } finally {
+        if (sandbox) fs.rmSync(sandbox, { recursive: true, force: true });
       }
     }
   });
 
-  const assetUrl = () =>
-    `${server.url}/_expo/static/js/web/app-fixture.deadbeefcafebabe0123456789abcdef.js`;
+  const assetUrl = () => `${server.url}/_expo/static/js/web/${ASSET_NAME}`;
 
   test("a compressible response is gzipped when the client accepts it", async () => {
     const res = await fetch(assetUrl(), {

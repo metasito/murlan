@@ -11,7 +11,6 @@ import assert from "node:assert/strict";
 import { existsSync, readFileSync, statSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
-// @ts-ignore -- .mjs helper shared with scripts/build-fonts.mjs; see tests/helpers.ts
 import { subsetCharacters, WEB_FONTS } from "../scripts/fontSubsetChars.mjs";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");

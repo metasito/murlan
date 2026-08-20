@@ -4,7 +4,6 @@
 // the winner and the loser have any use for it.
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
-// @ts-ignore — .ts extension required by Node's type-stripping loader
 import { visibleExchangePhase } from "../server/onlineGameLogic.ts";
 
 const CARD = { id: "2_spades", suit: "spades", rank: "2", isJoker: false };

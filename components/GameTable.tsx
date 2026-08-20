@@ -115,6 +115,7 @@ const ROUND_WINNER_MS = 1800;
 // fractional offset resamples the glyphs. 2px down is the smallest offset
 // that still reads as a press.
 const BTN_PRESS_TRAVEL = 2;
+const SIDE_BTN_MARGIN_H = 3;
 
 // How long the refused-play reason stays on screen, and how wide it may get
 // before it wraps onto its second (and last) line.
@@ -1427,8 +1428,8 @@ const styles = StyleSheet.create({
   },
 
   startCardBanner: {
-    alignItems: "center", gap: 6,
-    paddingHorizontal: Spacing.md, paddingVertical: 10, borderRadius: Radius.md,
+    alignItems: "center", gap: Spacing.slim,
+    paddingHorizontal: Spacing.md, paddingVertical: Spacing.snug, borderRadius: Radius.md,
     backgroundColor: Scrim.medium,
     borderWidth: 1, borderColor: Colors.goldSoft,
   },
@@ -1450,7 +1451,7 @@ const styles = StyleSheet.create({
   passBtn: {
     width: SIDE_BTN_W, height: CARD_H, borderRadius: Radius.md,
     borderWidth: 2, borderColor: PASS_BORDER,
-    marginHorizontal: 3,
+    marginHorizontal: SIDE_BTN_MARGIN_H,
     ...Shadow.dark,
   },
   // Matches playBtnDim's technique: fade the whole surface (gradient, border,
@@ -1483,7 +1484,7 @@ const styles = StyleSheet.create({
 
   playBtn: {
     width: SIDE_BTN_W + 6, height: CARD_H,
-    borderRadius: Radius.md, marginHorizontal: 3,
+    borderRadius: Radius.md, marginHorizontal: SIDE_BTN_MARGIN_H,
     ...Shadow.dark,
   },
   // The armed bloom, as a childless sibling behind the button: the glow is
@@ -1505,7 +1506,7 @@ const styles = StyleSheet.create({
   playBtnInner: { flex: 1 },
   playBtnGrad: {
     flex: 1, alignItems: "center", justifyContent: "center",
-    gap: 2, borderRadius: Radius.md, overflow: "hidden",
+    gap: Spacing.xxs, borderRadius: Radius.md, overflow: "hidden",
   },
   playBtnGradDim: {
     // Dark gold-brown wash with no matching token.

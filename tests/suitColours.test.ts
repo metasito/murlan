@@ -10,7 +10,6 @@
 // applied in linear RGB. Distance is CIE76 ΔE in Lab: crude next to CIEDE2000,
 // but these colours are far apart or not at all, and the margins below are wide
 // enough that the difference between the two metrics cannot change an answer.
-// @ts-ignore
 import { Colors } from "../lib/tokens.ts";
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";

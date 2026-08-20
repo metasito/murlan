@@ -505,6 +505,8 @@ export default function FriendsScreen() {
   );
 }
 
+const EMPTY_STATE_PADDING_V = 28;
+
 const styles = StyleSheet.create({
   topBar: {
     flexDirection: "row",
@@ -534,9 +536,9 @@ const styles = StyleSheet.create({
   sectionHeader: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 8,
-    marginTop: 8,
-    marginBottom: 4,
+    gap: Spacing.sm,
+    marginTop: Spacing.sm,
+    marginBottom: Spacing.xs,
   },
   sectionTitle: {
     ...Type.label,
@@ -546,8 +548,8 @@ const styles = StyleSheet.create({
   badge: {
     backgroundColor: Colors.bgSurface,
     borderRadius: Radius.md,
-    paddingHorizontal: 7,
-    paddingVertical: 2,
+    paddingHorizontal: Spacing.slim,
+    paddingVertical: Spacing.xxs,
     borderWidth: 1,
     borderColor: Colors.border,
   },
@@ -557,7 +559,7 @@ const styles = StyleSheet.create({
     color: Colors.textSecondary,
   },
 
-  listBlock: { gap: 8 },
+  listBlock: { gap: Spacing.sm },
 
   row: {
     flexDirection: "row",
@@ -566,8 +568,8 @@ const styles = StyleSheet.create({
     borderRadius: Radius.md,
     borderWidth: 1,
     borderColor: Colors.border,
-    padding: 12,
-    gap: 12,
+    padding: Spacing.cosy,
+    gap: Spacing.cosy,
     minHeight: 44,
   },
   avatarWrapper: { position: "relative" },
@@ -590,13 +592,13 @@ const styles = StyleSheet.create({
     borderColor: Colors.bgSurface,
   },
   avatarText: { fontFamily: "Rajdhani_700Bold", fontSize: FontSize.lg, color: Colors.gold },
-  rowInfo: { flex: 1, gap: 2 },
+  rowInfo: { flex: 1, gap: Spacing.xxs },
   rowName: { ...Type.bodyStrong },
   rowSub: { ...Type.caption },
 
   iconBtn: { width: TOUCH_TARGET_MIN, height: TOUCH_TARGET_MIN, alignItems: "center", justifyContent: "center" },
 
-  actionRow: { flexDirection: "row", gap: 8 },
+  actionRow: { flexDirection: "row", gap: Spacing.sm },
   declineBtn: {
     width: 36,
     height: 36,
@@ -619,7 +621,7 @@ const styles = StyleSheet.create({
     minHeight: 44,
     borderRadius: Radius.sm,
     backgroundColor: Colors.gold,
-    paddingHorizontal: 14,
+    paddingHorizontal: Spacing.wide,
     alignItems: "center",
     justifyContent: "center",
   },
@@ -634,14 +636,14 @@ const styles = StyleSheet.create({
     borderRadius: Radius.md,
     borderWidth: 1,
     borderColor: Colors.border,
-    padding: 16,
-    gap: 10,
+    padding: Spacing.md,
+    gap: Spacing.snug,
   },
   inputCardLabel: {
     ...Type.caption,
     letterSpacing: 1.5,
   },
-  inputRow: { flexDirection: "row", gap: 10 },
+  inputRow: { flexDirection: "row", gap: Spacing.snug },
   input: {
     flex: 1,
     backgroundColor: Colors.bgCard,
@@ -652,8 +654,8 @@ const styles = StyleSheet.create({
     fontFamily: "Inter_400Regular",
     fontSize: FontSize.md,
     minHeight: 44,
-    paddingVertical: 12,
-    paddingHorizontal: 14,
+    paddingVertical: Spacing.cosy,
+    paddingHorizontal: Spacing.wide,
   },
   addBtn: {
     width: 48,
@@ -683,19 +685,19 @@ const styles = StyleSheet.create({
     borderRadius: Radius.sm,
     borderWidth: 1,
     borderColor: Colors.goldBorder,
-    padding: 10,
-    gap: 10,
+    padding: Spacing.snug,
+    gap: Spacing.snug,
   },
   searchErrorRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 6,
+    gap: Spacing.slim,
   },
   searchErrorText: {
     ...Type.caption,
   },
 
-  empty: { alignItems: "center", paddingVertical: 28, gap: 10 },
+  empty: { alignItems: "center", paddingVertical: EMPTY_STATE_PADDING_V, gap: Spacing.snug },
   emptyText: {
     ...Type.caption,
     textAlign: "center",

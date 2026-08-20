@@ -517,8 +517,8 @@ export default function RoomScreen() {
 
           {/* RIGHT: giocatori + invita amici */}
           <View style={styles.landscapeRight}>
-            <View style={{ gap: 4, marginBottom: 8 }}>
-              <Text style={[styles.slotsSectionTitle, { marginBottom: 2 }]}>
+            <View style={{ gap: Spacing.xs, marginBottom: Spacing.sm }}>
+              <Text style={[styles.slotsSectionTitle, { marginBottom: Spacing.xxs }]}>
                 {t("room.playersCount", { current: room.players.length, max: maxSeats })}
               </Text>
               <View style={{ gap: playerListGap }}>
@@ -532,7 +532,7 @@ export default function RoomScreen() {
                         {
                           height: playerItemHeight,
                           paddingVertical: playerItemPaddingVertical,
-                          paddingHorizontal: 12,
+                          paddingHorizontal: Spacing.cosy,
                           backgroundColor: Colors.bgCard,
                           borderRadius: Radius.sm,
                           flexDirection: "row",
@@ -548,7 +548,7 @@ export default function RoomScreen() {
                               {player.username.charAt(0).toUpperCase()}
                             </Text>
                           </View>
-                          <View style={[styles.slotInfo, { marginLeft: 8 }]}>
+                          <View style={[styles.slotInfo, { marginLeft: Spacing.sm }]}>
                             <Text style={styles.slotName} numberOfLines={1}>
                               {player.username}
                               {player.userId === user?.id ? t("room.youSuffix") : ""}
@@ -568,7 +568,7 @@ export default function RoomScreen() {
                           <View style={[styles.slotAvatar, styles.slotAvatarEmpty, styles.slotAvatarCompact]}>
                             <Ionicons name="person-add-outline" size={14} color={Colors.textMuted} />
                           </View>
-                          <Text style={[styles.slotWaiting, { marginLeft: 8 }]}>{t("room.waitingSeat")}</Text>
+                          <Text style={[styles.slotWaiting, { marginLeft: Spacing.sm }]}>{t("room.waitingSeat")}</Text>
                         </>
                       )}
                     </View>
@@ -611,7 +611,7 @@ export default function RoomScreen() {
 
       <ScrollView
         style={{ flex: 1 }}
-        contentContainerStyle={{ paddingHorizontal: 20, paddingTop: 16, paddingBottom: 8, gap: 12 }}
+        contentContainerStyle={{ paddingHorizontal: Spacing.roomy, paddingTop: Spacing.md, paddingBottom: Spacing.sm, gap: Spacing.cosy }}
         showsVerticalScrollIndicator={false}
       >
         <Animated.View entering={entering} style={styles.codeSection}>
@@ -651,8 +651,8 @@ export default function RoomScreen() {
         {formatControls}
         {botFillControls}
 
-        <View style={{ gap: 6 }}>
-          <Text style={[styles.slotsSectionTitle, { marginBottom: 2 }]}>
+        <View style={{ gap: Spacing.slim }}>
+          <Text style={[styles.slotsSectionTitle, { marginBottom: Spacing.xxs }]}>
             {t("room.playersCount", { current: room.players.length, max: maxSeats })}
           </Text>
           <View style={{ gap: playerListGap }}>
@@ -666,7 +666,7 @@ export default function RoomScreen() {
                     {
                       height: playerItemHeight,
                       paddingVertical: playerItemPaddingVertical,
-                      paddingHorizontal: 12,
+                      paddingHorizontal: Spacing.cosy,
                       backgroundColor: Colors.bgCard,
                       borderRadius: Radius.sm,
                       flexDirection: "row",
@@ -682,7 +682,7 @@ export default function RoomScreen() {
                           {player.username.charAt(0).toUpperCase()}
                         </Text>
                       </View>
-                      <View style={[styles.slotInfo, { marginLeft: 12 }]}>
+                      <View style={[styles.slotInfo, { marginLeft: Spacing.cosy }]}>
                         <Text style={styles.slotName} numberOfLines={1}>
                           {player.username}
                           {player.userId === user?.id ? t("room.youSuffix") : ""}
@@ -702,7 +702,7 @@ export default function RoomScreen() {
                       <View style={[styles.slotAvatar, styles.slotAvatarEmpty]}>
                         <Ionicons name="person-add-outline" size={18} color={Colors.textMuted} />
                       </View>
-                      <Text style={[styles.slotWaiting, { marginLeft: 12 }]}>{t("room.waitingSeat")}</Text>
+                      <Text style={[styles.slotWaiting, { marginLeft: Spacing.cosy }]}>{t("room.waitingSeat")}</Text>
                     </>
                   )}
                 </View>
@@ -745,7 +745,7 @@ const botFillStyles = StyleSheet.create({
     minHeight: 44,
     gap: Spacing.sm,
   },
-  rowText: { flex: 1, gap: 2 },
+  rowText: { flex: 1, gap: Spacing.xxs },
   label: {
     fontFamily: "Rajdhani_600SemiBold",
     fontSize: FontSize.md,
@@ -789,8 +789,8 @@ const botFillStyles = StyleSheet.create({
 
 const inviteStyles = StyleSheet.create({
   emptyContainer: {
-    paddingHorizontal: 12,
-    paddingVertical: 10,
+    paddingHorizontal: Spacing.cosy,
+    paddingVertical: Spacing.snug,
   },
   emptyText: {
     fontFamily: "Inter_400Regular",
@@ -800,8 +800,8 @@ const inviteStyles = StyleSheet.create({
   row: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 10,
-    paddingHorizontal: 12,
+    gap: Spacing.snug,
+    paddingHorizontal: Spacing.cosy,
   },
   avatar: {
     width: 30,
@@ -840,8 +840,8 @@ const inviteStyles = StyleSheet.create({
     borderRadius: Radius.sm,
     borderWidth: 1,
     borderColor: Colors.goldDark,
-    paddingHorizontal: 8,
-    paddingVertical: 3,
+    paddingHorizontal: Spacing.sm,
+    paddingVertical: Spacing.xxs,
   },
   inviteBtnText: {
     fontFamily: "Inter_500Medium",
@@ -872,32 +872,32 @@ const styles = StyleSheet.create({
   landscapeBody: {
     flex: 1,
     flexDirection: "row",
-    paddingTop: 8,
+    paddingTop: Spacing.sm,
     gap: 0,
   },
   landscapeLeft: {
     width: 240,
     flexDirection: "column",
-    paddingLeft: 12,
-    paddingRight: 12,
+    paddingLeft: Spacing.cosy,
+    paddingRight: Spacing.cosy,
   },
   landscapeLeftScroll: { flex: 1 },
   landscapeLeftScrollContent: { gap: Spacing.sm },
   landscapeDivider: {
     width: 1,
     backgroundColor: Colors.border,
-    marginRight: 12,
+    marginRight: Spacing.cosy,
   },
   landscapeRight: {
     flex: 1,
-    paddingRight: 8,
-    paddingTop: 4,
+    paddingRight: Spacing.sm,
+    paddingTop: Spacing.xs,
     gap: 0,
   },
   landscapeFooter: {
-    gap: 6,
-    paddingTop: 8,
-    paddingBottom: 4,
+    gap: Spacing.slim,
+    paddingTop: Spacing.sm,
+    paddingBottom: Spacing.xs,
     borderTopWidth: 1,
     borderTopColor: Colors.border,
   },
@@ -907,20 +907,20 @@ const styles = StyleSheet.create({
     borderRadius: Radius.md,
     borderWidth: 1,
     borderColor: Colors.goldDark,
-    paddingVertical: 12,
-    paddingHorizontal: 20,
+    paddingVertical: Spacing.cosy,
+    paddingHorizontal: Spacing.roomy,
     alignItems: "center",
-    gap: 8,
+    gap: Spacing.sm,
   },
   codeSectionCompact: {
     backgroundColor: Colors.bgSurface,
     borderRadius: Radius.md,
     borderWidth: 1,
     borderColor: Colors.goldDark,
-    paddingVertical: 8,
-    paddingHorizontal: 12,
+    paddingVertical: Spacing.sm,
+    paddingHorizontal: Spacing.cosy,
     alignItems: "center",
-    gap: 4,
+    gap: Spacing.xs,
   },
   codeLabel: {
     fontFamily: "Inter_400Regular",
@@ -940,18 +940,18 @@ const styles = StyleSheet.create({
     color: Colors.gold,
     letterSpacing: 6,
   },
-  codeActions: { flexDirection: "row", gap: 20, marginTop: 2 },
-  codeBtn: { flexDirection: "row", alignItems: "center", gap: 6, padding: 4, minHeight: TOUCH_TARGET_MIN },
+  codeActions: { flexDirection: "row", gap: Spacing.roomy, marginTop: Spacing.xxs },
+  codeBtn: { flexDirection: "row", alignItems: "center", gap: Spacing.slim, padding: Spacing.xs, minHeight: TOUCH_TARGET_MIN },
   codeBtnText: { fontFamily: "Inter_500Medium", fontSize: FontSize.sm, color: Colors.gold },
   modePill: {
     flexDirection: "row",
     alignItems: "center",
     alignSelf: "flex-start",
-    gap: 6,
+    gap: Spacing.slim,
     backgroundColor: Colors.bgCard,
     borderRadius: Radius.md,
-    paddingHorizontal: 10,
-    paddingVertical: 5,
+    paddingHorizontal: Spacing.snug,
+    paddingVertical: Spacing.xs,
     borderWidth: 1,
     borderColor: Colors.border,
   },
@@ -983,7 +983,7 @@ const styles = StyleSheet.create({
   slotAvatarEmpty: { backgroundColor: Colors.bgCard },
   slotInitial: { fontFamily: "Rajdhani_700Bold", fontSize: FontSize.md, color: Colors.gold },
   slotInitialCompact: { fontSize: FontSize.sm },
-  slotInfo: { flex: 1, gap: 1 },
+  slotInfo: { flex: 1, gap: Spacing.xxs },
   slotName: { fontFamily: "Inter_500Medium", fontSize: FontSize.sm, color: Colors.text },
   hostBadge: {
     fontFamily: "Inter_400Regular",
@@ -996,13 +996,13 @@ const styles = StyleSheet.create({
   },
   slotWaiting: { flex: 1, fontFamily: "Inter_400Regular", fontSize: FontSize.sm, color: Colors.textMuted },
   teamBadge: { fontFamily: "Rajdhani_700Bold", fontSize: FontSize.sm, letterSpacing: 1 },
-  footer: { paddingHorizontal: 20, paddingTop: 8, paddingBottom: 4, gap: 4 },
+  footer: { paddingHorizontal: Spacing.roomy, paddingTop: Spacing.sm, paddingBottom: Spacing.xs, gap: Spacing.xs },
   waitingHost: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
-    gap: 10,
-    paddingVertical: 10,
+    gap: Spacing.snug,
+    paddingVertical: Spacing.snug,
   },
   waitingText: { fontFamily: "Inter_400Regular", fontSize: FontSize.sm, color: Colors.textMuted },
 });

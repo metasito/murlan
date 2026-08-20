@@ -6,7 +6,6 @@
 // surfaces much later as a connection failure with nothing pointing back here.
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
-// @ts-ignore — .ts extension required by Node's type-stripping loader
 import { resolvePoolMax } from "../server/db.ts";
 
 describe("resolvePoolMax", () => {

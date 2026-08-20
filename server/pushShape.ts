@@ -6,7 +6,13 @@
 
 export interface PushMessage {
   title: string;
+  /**
+   * English, and the fallback half of the `{ code, message }` contract in
+   * lib/i18n.ts: the OS renders this text with no client in the loop, so a
+   * translated `body` would be one language for everybody.
+   */
   body: string;
+  code?: string;
   /** Delivered to the app as `notification.request.content.data`. */
   data?: Record<string, string>;
 }
@@ -38,7 +44,7 @@ export function buildPushRequest(
     to,
     title: message.title,
     body: message.body,
-    data: message.data,
+    data: message.code ? { ...message.data, code: message.code } : message.data,
     sound: "default",
   }));
 }

@@ -165,7 +165,7 @@ export const portraitOverlayStyles = StyleSheet.create({
   card: {
     alignItems: "center",
     gap: Spacing.md,
-    paddingHorizontal: 40,
+    paddingHorizontal: Spacing.xxl,
   },
   title: {
     fontFamily: "Rajdhani_700Bold",
@@ -367,8 +367,8 @@ const billboardStyles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     backgroundColor: "transparent",
-    paddingHorizontal: 4,
-    gap: 1,
+    paddingHorizontal: Spacing.xs,
+    gap: Spacing.xxs,
   },
   comboLabel: {
     fontFamily: "Rajdhani_700Bold",
@@ -380,7 +380,7 @@ const billboardStyles = StyleSheet.create({
   bottomRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 5,
+    gap: Spacing.xs,
   },
   roundLabel: {
     fontFamily: "Inter_400Regular",

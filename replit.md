@@ -11,6 +11,7 @@
 > | The game's rules, and their sources | `docs/RULES.md` |
 > | Scope, decisions, definition of done | `docs/BRIEF.md` |
 > | Everything still outstanding | `docs/BACKLOG.md` |
+> | The exact deploy sequence, step by step | `docs/DEPLOY-RUNBOOK.md` |
 
 ---
 
@@ -75,3 +76,32 @@ over data that already contains duplicates), the intended recovery is
 Express serves the API and, when `dist/` exists, the exported Expo web build as an SPA.
 With no web build present it serves the Expo Go QR landing page instead
 (`server/templates/landing-page.html`). Both paths are in `configureExpoAndLanding()`.
+
+## Rolling back a deploy
+
+There are two independent rollbacks and they are not interchangeable.
+
+**The code** — Replit keeps previous deployments; redeploying an earlier one is the fast path.
+To undo a batch of commits in git instead: `git revert -m 1 <merge-sha>` for a whole merge, or
+`git revert <commit-sha>` for one commit, then redeploy.
+
+**The database** — a rename applied by `npm run db:push` (see `docs/DEPLOY-RUNBOOK.md`) is
+*not* undone by reverting the code. A reverted server expects the old column and will not find
+it, because the code that wrote it has been rolled back but the schema it left behind has not.
+Restore the pre-deploy dump instead:
+
+```bash
+psql "$DATABASE_URL" -c "DROP SCHEMA public CASCADE; CREATE SCHEMA public;"
+psql "$DATABASE_URL" -f ~/murlan-predeploy-<timestamp>.sql
+```
+
+Take that dump before every deploy that runs `db:push`:
+
+```bash
+pg_dump "$DATABASE_URL" --no-owner --no-privileges \
+  -f ~/murlan-predeploy-$(date +%Y%m%d-%H%M%S).sql
+```
+
+Restoring the dump undoes every write since it was taken, not just the schema change — any
+game played, account created, or match finished in that window is gone with it. That is the
+trade the dump exists to make available, not one to reach for by default.

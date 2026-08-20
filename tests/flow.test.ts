@@ -1,6 +1,5 @@
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
-// @ts-ignore — see tests/helpers.ts
 import {
   buildCombination,
   c,
@@ -12,7 +11,6 @@ import {
   processPlay,
   type Card,
 } from "./helpers.ts";
-// @ts-ignore — see tests/helpers.ts
 import { seatDirection } from "../components/gameTableModel.ts";
 
 const pair = (rank: Parameters<typeof c>[0]): Card[] => [c(rank, "hearts"), c(rank, "clubs")];

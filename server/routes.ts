@@ -56,13 +56,13 @@ const authLimiter = rateLimit({
   max: authMaxFromEnv(),
   standardHeaders: true,
   legacyHeaders: false,
-  message: { error: "Troppi tentativi, riprova tra 15 minuti.", code: "AUTH_RATE_LIMITED" },
+  message: { error: "Too many attempts, try again in 15 minutes.", code: "AUTH_RATE_LIMITED" },
 });
 
 const friendLimiter = rateLimit({
   windowMs: 60 * 1000,
   max: 10,
-  message: { error: "Troppe richieste, rallenta.", code: "RATE_LIMITED" },
+  message: { error: "Too many requests, slow down.", code: "RATE_LIMITED" },
 });
 
 // One ticket per socket connection attempt, including every reconnect, so this
@@ -72,7 +72,7 @@ const ticketLimiter = rateLimit({
   max: 60,
   standardHeaders: true,
   legacyHeaders: false,
-  message: { error: "Troppe richieste, rallenta.", code: "RATE_LIMITED" },
+  message: { error: "Too many requests, slow down.", code: "RATE_LIMITED" },
 });
 
 // A crashing client can crash repeatedly. This is deliberately tight: enough
@@ -89,7 +89,7 @@ const pushLimiter = rateLimit({
   standardHeaders: true,
   legacyHeaders: false,
   keyGenerator: (req: Request) => req.session?.userId ?? "anonymous",
-  message: { error: "Troppe richieste, rallenta.", code: "RATE_LIMITED" },
+  message: { error: "Too many requests, slow down.", code: "RATE_LIMITED" },
 });
 
 const errorReportLimiter = rateLimit({
@@ -97,7 +97,7 @@ const errorReportLimiter = rateLimit({
   max: 5,
   standardHeaders: true,
   legacyHeaders: false,
-  message: { error: "Troppe richieste, rallenta.", code: "RATE_LIMITED" },
+  message: { error: "Too many requests, slow down.", code: "RATE_LIMITED" },
 });
 
 function requireAuth(req: Request, res: Response, next: () => void) {

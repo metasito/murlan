@@ -1,7 +1,6 @@
 {
   "extends": "expo/tsconfig.base",
   "compilerOptions": {
-    "baseUrl": ".",
     "strict": true,
     // Tests import .ts specifiers directly (Node strips types natively).
     "allowImportingTsExtensions": true,

@@ -15,7 +15,7 @@ import Animated, {
 } from "react-native-reanimated";
 import Ionicons from "@expo/vector-icons/Ionicons";
 import { CardView } from "@/components/CardView";
-import { Colors, FontSize, Motion, Radius, Scrim, TABLE_FONT_SCALE_MAX } from "@/lib/theme";
+import { Colors, FontSize, Motion, Radius, Scrim, Spacing, TABLE_FONT_SCALE_MAX } from "@/lib/theme";
 import { usePrefersReducedMotion } from "@/lib/accessibility";
 import { useTranslation, type TranslationKey } from "@/lib/i18n";
 import type { Card, Combination } from "@/lib/gameEngine";
@@ -323,11 +323,11 @@ const pileStyles = StyleSheet.create({
     top: -28,
     flexDirection: "row",
     alignItems: "center",
-    gap: 4,
+    gap: Spacing.xs,
     backgroundColor: Scrim.heavy,
     borderRadius: Radius.sm,
-    paddingHorizontal: 10,
-    paddingVertical: 4,
+    paddingHorizontal: Spacing.snug,
+    paddingVertical: Spacing.xs,
     borderWidth: 1,
     borderColor: Colors.goldDark,
     zIndex: 20,
@@ -347,12 +347,12 @@ const pileStyles = StyleSheet.create({
     opacity: 0.3,
     transform: [{ rotate: "-7deg" }, { translateY: 9 }],
   },
-  comboLabel: { marginTop: 10 },
+  comboLabel: { marginTop: Spacing.snug },
   comboChip: {
     backgroundColor: Scrim.heavy,
     borderRadius: Radius.sm,
-    paddingHorizontal: 10,
-    paddingVertical: 3,
+    paddingHorizontal: Spacing.snug,
+    paddingVertical: Spacing.xxs,
     borderWidth: 1,
     borderColor: Colors.goldStrong,
   },

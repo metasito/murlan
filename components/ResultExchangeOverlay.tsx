@@ -14,7 +14,7 @@ import { hapticMedium, hapticSelection } from "@/lib/haptics";
 import { CardView } from "@/components/CardView";
 import { sortHand, getValidGivebackCards, pickGivebackCard } from "@/lib/gameEngine";
 import type { GameState } from "@/lib/gameEngine";
-import { Colors, FontSize, Radius } from "@/lib/theme";
+import { Colors, FontSize, Radius, Spacing, TOUCH_TARGET_MIN } from "@/lib/theme";
 import { useTranslation } from "@/lib/i18n";
 import { cardSpokenName } from "@/lib/cardNames";
 import { a11yState } from "@/lib/a11y";
@@ -256,10 +256,10 @@ const exStyles = StyleSheet.create({
     borderRadius: Radius.lg,
     borderWidth: 1.5,
     borderColor: Colors.border,
-    padding: 24,
+    padding: Spacing.lg,
     width: "88%",
     maxWidth: 420,
-    gap: 16,
+    gap: Spacing.md,
   },
   title: {
     fontFamily: "Rajdhani_700Bold",
@@ -276,7 +276,7 @@ const exStyles = StyleSheet.create({
     textAlign: "center",
     lineHeight: 20,
   },
-  section: { gap: 10 },
+  section: { gap: Spacing.snug },
   label: {
     fontFamily: "Inter_400Regular",
     fontSize: FontSize.xs,
@@ -290,19 +290,21 @@ const exStyles = StyleSheet.create({
     textAlign: "center",
   },
   pickRow: { maxHeight: 110 },
-  pickCardWrap: { marginRight: 8, paddingBottom: 4 },
+  pickCardWrap: { marginRight: Spacing.sm, paddingBottom: Spacing.xs },
   pickCardLifted: { transform: [{ translateY: -10 }] },
   noCards: {
     fontFamily: "Inter_400Regular",
     fontSize: FontSize.xs,
     color: Colors.textMuted,
-    paddingTop: 8,
+    paddingTop: Spacing.sm,
   },
   confirmBtn: { borderRadius: Radius.md, overflow: "hidden" },
   confirmBtnDim: { opacity: 0.5 },
   confirmGrad: {
-    paddingVertical: 13,
+    minHeight: TOUCH_TARGET_MIN,
+    paddingVertical: Spacing.cosy,
     alignItems: "center",
+    justifyContent: "center",
   },
   confirmText: {
     fontFamily: "Rajdhani_700Bold",

@@ -172,6 +172,6 @@ const styles = StyleSheet.create({
     backgroundColor: Scrim.heavy,
     borderRadius: Radius.sm / 2,
     paddingHorizontal: Spacing.xs,
-    paddingVertical: 1,
+    paddingVertical: Spacing.xxs,
   },
 });

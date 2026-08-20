@@ -23,15 +23,30 @@ import {
 
 /**
  * Shortened well below the 60s disconnect grace / 30s AFK / 1.2s bot-move
- * production defaults so the exchange-, vacancy- and bot-table tests below
- * don't stall the suite for real-world timer lengths. `server/socket.ts` reads
- * these once at module scope, so they must be set before that module is first
- * imported — this file always runs as its own process under `node --test`, so
- * the override never leaks into another test file's process.
+ * production defaults, and the per-user game-action rate limit raised past
+ * anything this file can spend, so the tests below don't stall on real-world
+ * timer lengths or get throttled replaying several hands down one socket.
+ * `server/socket.ts` reads all four once at module scope, so they must be set
+ * before that module is first imported — this file always runs as its own
+ * process under `node --test`, so the override never leaks into another test
+ * file's process.
+ *
+ * The rate limit is derived rather than raised until the flake stopped. The
+ * exchange test below drives at most 21 hands down one socket (its opening
+ * hand plus the loop's own 20 attempts), a heads-up hand deals 27 cards a
+ * side, and a client emits at most one game action a turn — so 1,134 is the
+ * most this file can reach inside one 60s window, against a measured 12–15 a
+ * hand. The alternatives lose: resetting the bucket between hands means a
+ * test-only export from server/socket.ts, which is a bypass shipped next to
+ * the guard it bypasses; replaying fewer hands trades this for the spurious
+ * failure the loop's bound exists to make negligible. Nothing here asserts
+ * the limiter — tests/socketRateLimit.test.ts does, per account, in its own
+ * process.
  */
 process.env.MURLAN_AFK_TIMEOUT_MS = "300";
 process.env.MURLAN_DISCONNECT_GRACE_MS = "500";
 process.env.MURLAN_BOT_MOVE_DELAY_MS = "20";
+process.env.MURLAN_GAME_ACTION_RATE_LIMIT = "1200";
 
 describe("gameplay integrity", { skip: hasDatabase() ? false : skipMessage() }, () => {
   let server: TestServer;

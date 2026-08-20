@@ -216,7 +216,9 @@ function setupErrorHandler(app: express.Application) {
           code: "INTERNAL_SERVER_ERROR",
         });
       }
-      return res.status(status).json({ message: error.message || "Bad request" });
+      return res
+        .status(status)
+        .json({ message: error.message || "Bad request", code: "INVALID_PAYLOAD" });
     }
   );
 }

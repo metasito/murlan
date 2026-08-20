@@ -3,7 +3,6 @@
 // drive their live session. The dev loop needs it; production must not have it.
 import { test, describe, beforeEach, afterEach } from "node:test";
 import assert from "node:assert/strict";
-// @ts-ignore — .ts extension required by Node's type-stripping loader
 import { isAllowedOrigin } from "../server/cors.ts";
 
 // @types/node declares NODE_ENV readonly, so it needs the index signature.

@@ -233,16 +233,16 @@ const styles = StyleSheet.create({
   heroBanner: {
     borderRadius: Radius.md,
     overflow: "hidden",
-    padding: 24,
+    padding: Spacing.lg,
     alignItems: "center",
-    gap: 6,
+    gap: Spacing.slim,
     borderWidth: 1,
     borderColor: Colors.border,
   },
   heroSuits: {
     flexDirection: "row",
-    gap: 12,
-    marginBottom: 8,
+    gap: Spacing.cosy,
+    marginBottom: Spacing.sm,
   },
   heroSuit: {
     fontSize: FontSize.lg,
@@ -264,10 +264,10 @@ const styles = StyleSheet.create({
   tutorialLink: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 6,
-    marginTop: 12,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
+    gap: Spacing.slim,
+    marginTop: Spacing.cosy,
+    paddingHorizontal: Spacing.cosy,
+    paddingVertical: Spacing.sm,
     minHeight: 44,
     borderRadius: Radius.sm,
     backgroundColor: Colors.goldMuted,
@@ -283,7 +283,7 @@ const styles = StyleSheet.create({
   },
 
   quickRef: {
-    gap: 12,
+    gap: Spacing.cosy,
   },
   sectionLabel: {
     fontFamily: "Inter_600SemiBold",
@@ -293,15 +293,15 @@ const styles = StyleSheet.create({
     textTransform: "uppercase",
   },
   strengthRow: {
-    gap: 8,
-    paddingVertical: 4,
+    gap: Spacing.sm,
+    paddingVertical: Spacing.xs,
   },
   strengthCard: {
     backgroundColor: Colors.bgSurface,
     borderRadius: Radius.sm,
-    padding: 12,
+    padding: Spacing.cosy,
     alignItems: "center",
-    gap: 4,
+    gap: Spacing.xs,
     minWidth: 58,
     borderWidth: 1,
     borderColor: Colors.border,
@@ -318,20 +318,20 @@ const styles = StyleSheet.create({
   },
 
   combosSection: {
-    gap: 12,
+    gap: Spacing.cosy,
   },
   comboGrid: {
     flexDirection: "row",
     flexWrap: "wrap",
-    gap: 10,
+    gap: Spacing.snug,
   },
   comboCard: {
     flex: 1,
     minWidth: "44%",
     backgroundColor: Colors.bgSurface,
     borderRadius: Radius.md,
-    padding: 16,
-    gap: 6,
+    padding: Spacing.md,
+    gap: Spacing.slim,
     borderWidth: 1,
     borderColor: Colors.border,
     alignItems: "flex-start",
@@ -349,7 +349,7 @@ const styles = StyleSheet.create({
   },
 
   faqSection: {
-    gap: 12,
+    gap: Spacing.cosy,
   },
   faqList: {
     backgroundColor: Colors.bgSurface,
@@ -361,7 +361,7 @@ const styles = StyleSheet.create({
   faqItem: {
     borderBottomWidth: 1,
     borderBottomColor: Colors.border,
-    paddingHorizontal: 16,
+    paddingHorizontal: Spacing.md,
   },
   faqItemLast: {
     borderBottomWidth: 0,
@@ -370,9 +370,9 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    paddingVertical: 14,
+    paddingVertical: Spacing.wide,
     minHeight: 44,
-    gap: 12,
+    gap: Spacing.cosy,
   },
   faqQuestionText: {
     flex: 1,
@@ -386,6 +386,6 @@ const styles = StyleSheet.create({
     fontSize: FontSize.sm,
     color: Colors.textSecondary,
     lineHeight: 20,
-    paddingBottom: 14,
+    paddingBottom: Spacing.wide,
   },
 });

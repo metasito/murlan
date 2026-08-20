@@ -115,7 +115,8 @@ export function onEvent<S extends z.ZodTypeAny>(
           !allowSocketAction(socket, event, options.limit, options.windowMs ?? 10_000)
         ) {
           socket.emit(errorEventFor(event), {
-            message: "Troppe richieste, rallenta.",
+            code: "RATE_LIMITED",
+            message: "Too many requests, slow down.",
           });
           return;
         }
@@ -126,7 +127,7 @@ export function onEvent<S extends z.ZodTypeAny>(
             { event, userId: socket.data?.userId },
             "Rejected malformed socket payload"
           );
-          socket.emit(errorEventFor(event), { message: "Dati non validi" });
+          socket.emit(errorEventFor(event), { code: "INVALID_PAYLOAD", message: "Invalid data" });
           return;
         }
 
@@ -136,7 +137,7 @@ export function onEvent<S extends z.ZodTypeAny>(
           { err, event, userId: socket.data?.userId },
           "Socket handler threw — contained"
         );
-        socket.emit(errorEventFor(event), { message: "Server error" });
+        socket.emit(errorEventFor(event), { code: "SERVER_ERROR", message: "Server error" });
       }
     })();
   });

@@ -5,7 +5,6 @@ import assert from "node:assert/strict";
 import http from "node:http";
 import { Writable } from "node:stream";
 import pinoHttp from "pino-http";
-// @ts-ignore — .ts extension required by Node's type-stripping loader
 import { createLogger } from "../server/logger.ts";
 
 test("request logs redact the cookie, authorization, and set-cookie headers", async () => {
