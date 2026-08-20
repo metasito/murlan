@@ -72,7 +72,6 @@ interface OnlineGameContextValue {
   error: string | null;
   playerLeft: boolean;
   rejoinFailed: boolean;
-  disconnectedPlayers: Set<string>;
   reconnectNotice: string | null;
   mySeatIndex: number;
   /** The acting seat's remaining AFK window, as the server measured it. */
@@ -173,7 +172,6 @@ export function OnlineGameProvider({ userId, children }: { userId: string; child
   const [exchangeAnnouncing, setExchangeAnnouncing] = useState(false);
   const [exchangeAnnounceData, setExchangeAnnounceData] = useState<ExchangeAnnounceData | null>(null);
   const [rejoinFailed, setRejoinFailed] = useState(false);
-  const [disconnectedPlayers, setDisconnectedPlayers] = useState<Set<string>>(new Set());
   const [reconnectNotice, setReconnectNotice] = useState<string | null>(null);
   const [isSpectator, setIsSpectator] = useState(false);
 
@@ -305,7 +303,6 @@ export function OnlineGameProvider({ userId, children }: { userId: string; child
       setCumulativeScores({});
       prevExchangeActiveRef.current = false;
       prevBothJokersExceptionRef.current = false;
-      setDisconnectedPlayers(new Set());
       setReconnectNotice(null);
       if (reconnectNoticeTimerRef.current) clearTimeout(reconnectNoticeTimerRef.current);
       setRejoinFailed(true);
@@ -529,11 +526,6 @@ export function OnlineGameProvider({ userId, children }: { userId: string; child
     };
 
     const onPlayerDisconnected = (payload: ServerPayload & { userId: string }) => {
-      setDisconnectedPlayers((prev) => {
-        const next = new Set(prev);
-        next.add(payload.userId);
-        return next;
-      });
       // The server sends { code, params, message }; rendering it here rather
       // than rebuilding the sentence keeps this in the player's language and
       // keeps the grace period truthful — it is configurable server-side.
@@ -546,11 +538,6 @@ export function OnlineGameProvider({ userId, children }: { userId: string; child
     };
 
     const onPlayerReconnected = (payload: ServerPayload & { userId: string }) => {
-      setDisconnectedPlayers((prev) => {
-        const next = new Set(prev);
-        next.delete(payload.userId);
-        return next;
-      });
       const msg = translateServerPayload(payload);
       setReconnectNotice(msg);
       if (reconnectNoticeTimerRef.current) clearTimeout(reconnectNoticeTimerRef.current);
@@ -699,7 +686,6 @@ export function OnlineGameProvider({ userId, children }: { userId: string; child
     setCumulativeScores({});
     setPlayerLeft(false);
     setRejoinFailed(false);
-    setDisconnectedPlayers(new Set());
     setReconnectNotice(null);
     if (reconnectNoticeTimerRef.current) clearTimeout(reconnectNoticeTimerRef.current);
     forgetRejoinAttempt();
@@ -776,7 +762,6 @@ export function OnlineGameProvider({ userId, children }: { userId: string; child
       error,
       playerLeft,
       rejoinFailed,
-      disconnectedPlayers,
       reconnectNotice,
       mySeatIndex,
       turnSeconds: turnDeadline.turnSecondsRemaining,
@@ -807,7 +792,7 @@ export function OnlineGameProvider({ userId, children }: { userId: string; child
       clearPlayerLeft,
       clearRejoinFailed,
     }),
-    [room, gameState, connected, error, playerLeft, rejoinFailed, disconnectedPlayers, reconnectNotice, mySeatIndex, turnDeadline, entrySource, rematchVoteState, cumulativeScores, matchState, rematchIntents, rematchPromptOpen, exchangeAnnouncing, exchangeAnnounceData, createRoom, joinRoom, spectateRoom, isSpectator, leaveRoom, quickmatch, startGame, voteRematch, answerRematch, playCards, pass, giveExchangeCard, acknowledgeExchange, sendReaction, clearError, clearPlayerLeft, clearRejoinFailed]
+    [room, gameState, connected, error, playerLeft, rejoinFailed, reconnectNotice, mySeatIndex, turnDeadline, entrySource, rematchVoteState, cumulativeScores, matchState, rematchIntents, rematchPromptOpen, exchangeAnnouncing, exchangeAnnounceData, createRoom, joinRoom, spectateRoom, isSpectator, leaveRoom, quickmatch, startGame, voteRematch, answerRematch, playCards, pass, giveExchangeCard, acknowledgeExchange, sendReaction, clearError, clearPlayerLeft, clearRejoinFailed]
   );
 
   return (
