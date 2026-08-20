@@ -8,11 +8,11 @@ import Animated, {
   withSequence,
   withDelay,
   Easing,
-  runOnJS,
   cancelAnimation,
   FadeIn,
   FadeOut,
 } from "react-native-reanimated";
+import { scheduleOnRN } from "react-native-worklets";
 import Ionicons from "@expo/vector-icons/Ionicons";
 import { CardView } from "@/components/CardView";
 import { Colors, FontSize, Motion, Radius, Scrim, Spacing, TABLE_FONT_SCALE_MAX } from "@/lib/theme";
@@ -69,7 +69,7 @@ export function FlyingCards({
   useEffect(() => {
     onDoneRef.current = onDone;
   });
-  // Defined on the JS thread so runOnJS receives a real JS-thread reference.
+  // Defined on the JS thread so scheduleOnRN receives a real JS-thread reference.
   const notifyDone = useCallback(() => onDoneRef.current(), []);
 
   const tx = useSharedValue(dx);
@@ -104,7 +104,7 @@ export function FlyingCards({
       withSequence(
         withTiming(1, { duration: Motion.duration.flash }),
         withSpring(0, Motion.spring.land, (finished) => {
-          if (finished) runOnJS(notifyDone)();
+          if (finished) scheduleOnRN(notifyDone);
         })
       )
     );

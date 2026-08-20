@@ -5,8 +5,8 @@ import Animated, {
   useAnimatedStyle,
   withTiming,
   withDelay,
-  runOnJS,
 } from "react-native-reanimated";
+import { scheduleOnRN } from "react-native-worklets";
 import Ionicons from "@expo/vector-icons/Ionicons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { computeScreenPads, notificationTopOffset } from "@/components/gameTableModel";
@@ -75,7 +75,7 @@ export default function NotificationBanner({ notification, onDismiss }: Props) {
   function handlePress() {
     translateY.value = withTiming(-120, { duration: slideDur });
     opacity.value = withTiming(0, { duration: slideDur * 0.75 }, (finished) => {
-      if (finished) runOnJS(onDismiss)();
+      if (finished) scheduleOnRN(onDismiss);
     });
     if (notification) notification.onPress?.();
   }
@@ -88,7 +88,7 @@ export default function NotificationBanner({ notification, onDismiss }: Props) {
         translateY.value = withDelay(
           visibleDuration,
           withTiming(-120, { duration: slideDur }, (finished) => {
-            if (finished) runOnJS(onDismiss)();
+            if (finished) scheduleOnRN(onDismiss);
           })
         );
       });
