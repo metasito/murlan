@@ -561,3 +561,40 @@ describe("every player-facing server response carries a code", () => {
     );
   });
 });
+
+describe("Albanian card terminology", () => {
+  /**
+   * Attested in docs/albanian-card-terminology-research.md. `Trefla` and `Pika`
+   * were a calque of *trefoil* and a borrowing of German *Pik*, attested as card
+   * suits nowhere; docs/RULES.md's cited Albanian text opens the game with
+   * "ai lojtar që ka 3 maç".
+   */
+  const SUITS = {
+    "cards.suitHearts": "Kupa",
+    "cards.suitDiamonds": "Karo",
+    "cards.suitClubs": "Spathi",
+    "cards.suitSpades": "Maç",
+  } as const;
+
+  /** `vlerë` and `ngjyrë` are feminine; `bojë` is paint, not a card's suit. */
+  const AGREEMENT_ERRORS = ["të të njëjtit vlerë", "të njëjtit bojë", "të njëjtin bojë", "bojë"];
+
+  test("each suit carries its attested name", () => {
+    for (const [key, expected] of Object.entries(SUITS)) {
+      assert.equal((sq as Record<string, string>)[key], expected, `sq.ts ${key}`);
+    }
+  });
+
+  test("no Albanian string mis-genders vlerë or calls a suit paint", () => {
+    const violations: string[] = [];
+    let scanned = 0;
+    for (const [key, value] of Object.entries(sq as Record<string, string>)) {
+      scanned += 1;
+      for (const error of AGREEMENT_ERRORS) {
+        if (value.includes(error)) violations.push(`${key} — "${error}"`);
+      }
+    }
+    assert.ok(scanned > 500, `expected to scan all of sq.ts, got ${scanned}`);
+    assert.deepEqual(violations, [], `these disagree in gender: ${violations.join(" | ")}`);
+  });
+});
