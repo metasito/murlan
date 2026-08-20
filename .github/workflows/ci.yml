@@ -294,6 +294,11 @@ jobs:
       - name: Build the web and server bundles
         run: npm run expo:web:build && npm run server:build
 
+      # Reuses the bundle the step above just built — #95 chose a visual
+      # direction on this ceiling and nothing enforced it.
+      - name: The web bundle is within its size budget
+        run: npm run bundle:budget
+
       - name: Build the static Expo Go deployment
         env:
           EXPO_PUBLIC_DOMAIN: example.invalid
