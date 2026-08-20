@@ -1,4 +1,4 @@
-import React, { useEffect } from "react";
+import React, { useEffect, useId } from "react";
 import { View, StyleSheet, Pressable, Image } from "react-native";
 import { TableText } from "@/components/table/TableText";
 import Animated, {
@@ -9,7 +9,7 @@ import Animated, {
   cancelAnimation,
 } from "react-native-reanimated";
 import { LinearGradient } from "expo-linear-gradient";
-import Svg, { Path, Circle, G, Rect } from "react-native-svg";
+import Svg, { Path, Circle, G, Rect, Defs, Use } from "react-native-svg";
 import { Card, Suit, getCardDisplayRank } from "@/lib/gameEngine";
 import {
   CardFaceGradient,
@@ -85,26 +85,16 @@ const SUIT_PATHS: Record<Exclude<Suit, "clubs">, string> = {
     "C4.6,-0.6 0.6,-3.6 0,-4.9 Z",
 };
 
-function SuitMark({
-  suit,
-  x,
-  y,
-  size,
-  color,
-  flipped = false,
-}: {
-  suit: Suit;
-  x: number;
-  y: number;
-  size: number;
-  color: string;
-  flipped?: boolean;
-}) {
-  const k = size / 10;
-  const transform = `translate(${x},${y}) scale(${k})${flipped ? " rotate(180)" : ""}`;
+/**
+ * The suit shape itself, declared once per card face and referenced by every
+ * pip and index mark on it. A card carries one suit in one colour, so the fill
+ * is baked into the definition — nothing has to inherit through <Use>, which is
+ * where this kind of hoist usually changes rendering silently.
+ */
+function SuitDef({ id, suit, color }: { id: string; suit: Suit; color: string }) {
   if (suit === "clubs") {
     return (
-      <G transform={transform}>
+      <G id={id}>
         <Circle cx={0} cy={-2.5} r={2.3} fill={color} />
         <Circle cx={-2.7} cy={1.2} r={2.3} fill={color} />
         <Circle cx={2.7} cy={1.2} r={2.3} fill={color} />
@@ -112,11 +102,25 @@ function SuitMark({
       </G>
     );
   }
-  return (
-    <G transform={transform}>
-      <Path d={SUIT_PATHS[suit]} fill={color} />
-    </G>
-  );
+  return <Path id={id} d={SUIT_PATHS[suit]} fill={color} />;
+}
+
+function SuitMark({
+  href,
+  x,
+  y,
+  size,
+  flipped = false,
+}: {
+  href: string;
+  x: number;
+  y: number;
+  size: number;
+  flipped?: boolean;
+}) {
+  const k = size / 10;
+  const transform = `translate(${x},${y}) scale(${k})${flipped ? " rotate(180)" : ""}`;
+  return <Use href={href} transform={transform} />;
 }
 
 // ─── Joker figures ────────────────────────────────────────────────────────────
@@ -255,6 +259,10 @@ function CardFaceArt({
   compact: boolean;
 }) {
   const suit = card.suit;
+  // <Defs> ids are document-global on web, where a full table renders 54 cards
+  // into one DOM — a shared id would point every card at the first card's suit.
+  const pipId = `pip-${useId().replace(/:/g, "")}`;
+  const pipHref = `#${pipId}`;
   const indexSuitSize = h * INDEX_SUIT_SIZE;
   const indexX = w * INDEX_X;
   const indexY = h * INDEX_SUIT_Y;
@@ -271,21 +279,20 @@ function CardFaceArt({
     );
   } else if (suit) {
     if (compact) {
-      centre = <SuitMark suit={suit} x={w * 0.58} y={h * 0.62} size={h * 0.24} color={color} />;
+      centre = <SuitMark href={pipHref} x={w * 0.58} y={h * 0.62} size={h * 0.24} />;
     } else if (COURT_RANKS.has(card.rank)) {
       // Drawn as a bitmap sibling of this Svg (see CourtArt), not here.
       centre = null;
     } else if (card.rank === "A") {
-      centre = <SuitMark suit={suit} x={w * 0.5} y={h * 0.5} size={h * ACE_PIP_SIZE} color={color} />;
+      centre = <SuitMark href={pipHref} x={w * 0.5} y={h * 0.5} size={h * ACE_PIP_SIZE} />;
     } else {
       centre = placedPips(card.rank, w, h).map((pip, i) => (
         <SuitMark
           key={i}
-          suit={suit}
+          href={pipHref}
           x={pip.x}
           y={pip.y}
           size={pip.size}
-          color={color}
           flipped={pip.flipped}
         />
       ));
@@ -294,11 +301,16 @@ function CardFaceArt({
 
   return (
     <Svg width={w} height={h} style={StyleSheet.absoluteFill} pointerEvents="none">
+      {suit && (
+        <Defs>
+          <SuitDef id={pipId} suit={suit} color={color} />
+        </Defs>
+      )}
       {centre}
       {suit && (
         <>
-          <SuitMark suit={suit} x={indexX} y={indexY} size={indexSuitSize} color={color} />
-          <SuitMark suit={suit} x={w - indexX} y={h - indexY} size={indexSuitSize} color={color} flipped />
+          <SuitMark href={pipHref} x={indexX} y={indexY} size={indexSuitSize} />
+          <SuitMark href={pipHref} x={w - indexX} y={h - indexY} size={indexSuitSize} flipped />
         </>
       )}
       {card.isJoker && (
