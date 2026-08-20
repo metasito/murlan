@@ -75,7 +75,7 @@ ALLOW_DESTRUCTIVE=1 node scripts/reset-db.mjs --yes && npm run db:push
 | [`CLAUDE.md`](./CLAUDE.md) | Agent operating instructions, conventions, file map |
 | [`docs/RULES.md`](./docs/RULES.md) | The canonical Murlan rule specification |
 | [`docs/BRIEF.md`](./docs/BRIEF.md) | Scope, decisions and their rationale |
-| [`docs/BACKLOG.md`](./docs/BACKLOG.md) | Everything outstanding, and what was decided against |
+| [GitHub Issues](https://github.com/metasito/murlan/issues) | Everything outstanding, and what was decided against (`rejected` label) |
 | [`docs/ARCHITECTURE.md`](./docs/ARCHITECTURE.md) | Layers, data flow, socket lifecycle, persistence |
 | [`docs/TESTING.md`](./docs/TESTING.md) | What each test layer covers and how to run it |
 | [`replit.md`](./replit.md) | Replit-specific run/deploy notes |

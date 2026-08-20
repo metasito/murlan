@@ -39,7 +39,7 @@ Three pillars, in priority order:
 > present tense, every one of which is now closed. It is deleted rather than rewritten:
 > git holds it, and a defect list that outlives its defects sends the next reader to
 > fix something that was fixed. A dated remediation effort replaced it, closing all 21
-> across 15 batches; `docs/BACKLOG.md` carries what is still open. Kept as the record of
+> across 15 batches; GitHub Issues carries what is still open. Kept as the record of
 > why this heading is empty.
 
 ## 3. Decisions taken
@@ -80,7 +80,7 @@ existing Murlan apps.
 ## 4. Workstreams
 
 > This section is the original plan, kept as the record of how the work was cut.
-> It is **not** current status — `docs/BACKLOG.md` carries that, and most of W1–W5 has
+> It is **not** current status — GitHub Issues carries that, and most of W1–W5 has
 > since shipped.
 
 **W1 — Trust & authority.** Kill the impersonation vector. Ticket-based socket auth.
@@ -119,7 +119,7 @@ once, and does not contradict any other. See §8.
 ## 5. Proposed features
 
 > This section is a record of what was proposed and why. It is **not** the work
-> queue — `docs/BACKLOG.md` is, and it carries current status for every item
+> queue — GitHub Issues is, and it carries current status for every item
 > below. Several have since shipped: the interactive tutorial, localization,
 > achievements, daily streaks, match history, rejoin-in-progress UX, match
 > replay, spectator mode, bot personalities, the ranked ladder, cosmetics, push
@@ -214,7 +214,7 @@ Each document gets exactly one responsibility, and cross-references instead of r
 | `docs/ARCHITECTURE.md` *(new)* | How the system is built: layers, data flow, socket lifecycle, persistence, auth | Rules, scope, decisions |
 | `docs/RULES.md` ✅ | The canonical rule specification and its sources — **the only place rules live** | Implementation detail, scope |
 | `docs/BRIEF.md` (this file) | Scope, decisions and their rationale, workstreams, definition of done | Rule text, architecture prose |
-| `docs/BACKLOG.md` | Everything outstanding, owner-blocked, already answered or rejected | Anything not actionable |
+| GitHub Issues (`metasito/murlan`) | Everything outstanding and owner-blocked; rejected items stay open, labelled `rejected` | Anything not actionable |
 | `replit.md` ✅ | Replit-specific run/deploy notes only — how to start it, what env vars, what not to touch | Everything that duplicates `CLAUDE.md` |
 | `docs/superpowers/specs/*` ✅ | Historical specs, each stamped with its outcome | Anything presented as pending when it has shipped |
 

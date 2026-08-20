@@ -144,7 +144,7 @@ function renderMarkdown({ assets, deps }) {
     "- `assets/images/icon.png` and `assets/images/splash-icon.png` dominate the " +
       "assets total. Both are required, referenced by `app.json`'s `icon` and the " +
       "`expo-splash-screen` plugin config. What can and cannot be recovered from " +
-      "them is measured in `docs/BACKLOG.md` O6 — this report states sizes, not " +
+      "them is measured in issue #31 — this report states sizes, not " +
       "conclusions about them."
   );
   lines.push(

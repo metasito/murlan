@@ -88,7 +88,7 @@ export async function tokensFor(userId: string): Promise<string[]> {
  * triggered it: the invite still reaches a connected friend, and the game is
  * unaffected either way.
  *
- * Until FCM and APNs credentials are uploaded to EAS (docs/BACKLOG.md O7) Expo
+ * Until FCM and APNs credentials are uploaded to EAS (issue #32) Expo
  * accepts the request and cannot deliver it. Everything here still runs.
  */
 export async function notifyUser(userId: string, message: PushMessage): Promise<void> {

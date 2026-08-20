@@ -35,9 +35,10 @@ Five test layers, mapped in `docs/TESTING.md`.
 
 1. `CLAUDE.md` — binding rules. § Comments, § Working agreement and
    § No self-defeating safeguards especially.
-2. `docs/BACKLOG.md` — the single work queue. §1 is ordered cheapest-first and
-   marks what is done; §2 is owner-blocked; §3 is analysis already settled, so
-   it is not re-litigated; §4 is rejected-with-reasons.
+2. GitHub Issues (`metasito/murlan`) — the single work queue. `ready-for-agent`,
+   smallest `size:*` first; `ready-for-human` is owner-blocked; `rejected` is
+   rejected-with-reasons, kept open so it is not re-litigated. See
+   `docs/agents/issue-tracker.md`. Settled analysis lives in `docs/adr/`.
 3. `docs/RULES.md` — canonical game rules and the sources they came from.
 4. `docs/BRIEF.md` §3.1 — rule decisions already taken.
 
@@ -57,7 +58,7 @@ These artefacts are build outputs. Edit the script, not the result:
 
 ## Needs the owner, not more effort
 
-`docs/BACKLOG.md` §2 is the list, with what each one needs. Never copy it here.
+GitHub Issues labelled `ready-for-human` is the list, with what each one needs. Never copy it here.
 
 `server/schemaDdl.ts` applies `shared/schema.ts` on every server start, so a new
 table or column ships with the deploy that introduces it, and a database Replit

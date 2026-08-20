@@ -412,7 +412,7 @@ restored the known-stable baseline that `smoke.yaml` passes on.
    correlate with sustained high-frequency `uiautomator` dumps against a
    screen that never stops re-rendering.
 3. Running the same flow on GitHub Actions' Android emulator action instead
-   of this machine, per `docs/BACKLOG.md` B2's original plan — CI runners
+   of this machine, per issue #55's original plan — CI runners
    provide a different (often better-behaved) virtualization stack, and this
    is exactly the kind of host-specific flakiness that's worth confirming
    isn't universal before spending more time on it locally.

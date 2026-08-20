@@ -10,9 +10,9 @@ name: Android UI (Maestro)
 #
 # `workflow_dispatch` is not a disabled check: run it and it passes or fails on
 # its own merits. What it does not yet do is catch regressions automatically.
-# Promoting it to `push` is one line — `on: push` — and is tracked in
-# docs/BACKLOG.md Q11 as the step that closes this out, once one manual run has
-# proven the setup end to end.
+# Promoting it to `push` is one line — `on: push` — and is tracked in issue #35
+# as the step that closes this out, once one manual run has proven the setup
+# end to end.
 on:
   workflow_dispatch:
 

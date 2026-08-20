@@ -10,7 +10,7 @@
 > | How the system is built | `docs/ARCHITECTURE.md` |
 > | The game's rules, and their sources | `docs/RULES.md` |
 > | Scope, decisions, definition of done | `docs/BRIEF.md` |
-> | Everything still outstanding | `docs/BACKLOG.md` |
+> | Everything still outstanding | GitHub Issues (`metasito/murlan`) |
 > | The exact deploy sequence, step by step | `docs/DEPLOY-RUNBOOK.md` |
 
 ---

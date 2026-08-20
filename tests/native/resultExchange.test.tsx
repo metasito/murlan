@@ -181,7 +181,7 @@ describe('the result screen card exchange', () => {
   // no-valid-giveback case below.
   //
   // `deepCloneState` gives every card a new reference per transition
-  // (docs/BACKLOG.md), so a re-render carrying the same hand still changes the
+  // (issue #62), so a re-render carrying the same hand still changes the
   // `winner.hand` dependency. Cloning is what makes this a re-run rather than
   // a no-op — passing WINNER_HAND itself changes no dependency and proves
   // nothing.

@@ -11,6 +11,18 @@ compile error.
 rules are deliberately absent — `package.json`, `ls`, and `docs/RULES.md` are authoritative
 and never go stale.
 
+## Agent skills
+
+### Issue tracker
+
+Issues live in GitHub Issues (`metasito/murlan`), via the `gh` CLI. See
+`docs/agents/issue-tracker.md`.
+
+### Domain docs
+
+Single-context: `CONTEXT.md` + `docs/adr/` at the repo root (created lazily by
+`/domain-modeling`). See `docs/agents/domain.md`.
+
 ---
 
 ## Replit — breaking any of these takes production down
@@ -100,8 +112,12 @@ lines is explaining itself instead of being clear.
 
 ## Working agreement
 
-- **Autonomy.** Work the queue one item at a time, one commit per item. Don't ask which item
-  or whether to proceed. Record genuinely owner-level choices and take the next item.
+- **Autonomy.** Work the queue one item at a time, one commit per item. The queue is
+  `gh issue list --label ready-for-agent --state open`, smallest `size:*` label first. Don't
+  ask which item or whether to proceed. An item that turns out to need an owner-level call
+  gets relabelled `ready-for-human` (not closed) and the next item is taken. When no
+  `ready-for-agent` issue remains, run `superpowers:brainstorming` and file what it finds
+  with `mattpocock-skills:to-tickets`.
 - **No workarounds.** If the correct fix is bigger, do the correct fix. Look up current best
   practice rather than guessing.
 - **Design first** for anything touching storage, the socket protocol, or many files.
@@ -110,8 +126,11 @@ lines is explaining itself instead of being clear.
   accepting it — answering it wrong deletes the column's data (`docs/DEPLOY-RUNBOOK.md`).
   Order a change by design, not by deploy cost: derive from existing rows → ride an existing
   jsonb column → new table → new column.
-- **Outstanding work lives only in `docs/BACKLOG.md`** — never a `TODO` comment, never a
-  list in another doc. Elsewhere, point at a row; never copy one. A second copy goes stale.
+- **Outstanding work lives only in GitHub Issues** (`metasito/murlan`) — never a `TODO`
+  comment, never a markdown backlog. Elsewhere, point at an issue number (`#45`); never copy
+  its content. A second copy goes stale. Labels: `needs-triage` / `needs-info` /
+  `ready-for-agent` / `ready-for-human` / `rejected`, plus `size:XS`…`size:XL`. See
+  `docs/agents/issue-tracker.md`.
 - **Leave no residue.** Implemented design docs, superseded plans and scratch scripts get
   deleted, not archived. A claim that no longer holds is removed the moment it's found.
 - **No self-defeating safeguards.** Never ship a guard together with the thing that gets past
@@ -126,3 +145,7 @@ lines is explaining itself instead of being clear.
 - React Compiler can miscompile `useEffect` references. It comes from
   `babel-preset-expo`'s own dependency — do not add a second copy to `package.json`;
   `tests/reactCompiler.test.ts` pins that there is only one.
+- **No unit test can see a layout bug.** `@testing-library/react-native` runs on
+  `react-test-renderer`, which never runs flexbox, so no native test can assert which side of
+  a seat a card fan renders on. Only `tests/e2e/` (Playwright) catches this class — a card fan
+  rendered off-screen for months against a green native suite.

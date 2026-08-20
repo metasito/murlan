@@ -1,7 +1,7 @@
 # Tournaments — design
 
 **Date:** 2026-08-16
-**Covers:** `docs/BACKLOG.md` Q26, the last of the original seven still unbuilt.
+**Covers:** issue #58, the last of the original seven still unbuilt.
 
 **Verdict: not now. Recorded so the shape is known when the precondition
 clears.**
@@ -28,8 +28,9 @@ is the first feature whose correctness depends on the process not going away.
 Move the server somewhere with no cold starts, or accept that a sleeping Repl
 ends a tournament partway through and strands everyone in it.
 
-That decision is `docs/BACKLOG.md` §2 (the hosting question, O-series), and it
-is the owner's. Tournaments stay deferred with it. Building the scheduler first
+That decision is `docs/adr/0001-keep-react-native-expo-client-and-replit-host.md`
+(the hosting question), and it is the owner's. Tournaments stay deferred with it.
+Building the scheduler first
 would mean writing the one feature that cannot tolerate a sleep, onto a host
 that sleeps.
 

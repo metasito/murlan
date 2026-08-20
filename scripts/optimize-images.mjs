@@ -9,7 +9,7 @@
  * with every decoded pixel unchanged, colour type and alpha included.
  *
  * WebP or AVIF would recover far more and are closed: Expo's prebuild pipeline
- * (`@expo/image-utils` -> `jimp-compact`) cannot decode either — docs/BACKLOG.md O6.
+ * (`@expo/image-utils` -> `jimp-compact`) cannot decode either — issue #31.
  *
  * The output is committed, as assets/sounds/ is, so a Replit deploy needs no
  * extra tooling; oxipng is fetched by npx at a pinned version rather than

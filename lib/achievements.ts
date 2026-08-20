@@ -4,8 +4,8 @@
 // bus, no rule DSL. Each entry in `ACHIEVEMENTS` pairs an id with a plain
 // `(result: GameResult) => boolean` predicate; `evaluateAchievements` just
 // filters the array. That is the whole design: a general-purpose achievements
-// framework was considered and rejected as YAGNI, and stays rejected in
-// docs/BACKLOG.md §4 so it is not re-proposed.
+// framework was considered and rejected as YAGNI — issue #63, kept open and
+// labelled `rejected` so it is not re-proposed.
 //
 // No React/React Native/expo-* imports here on purpose: this module must be
 // importable by plain `node --test` (tests/achievements.test.ts) with no
