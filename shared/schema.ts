@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { pgTable, text, varchar, timestamp, integer, pgEnum, jsonb, index, uniqueIndex, primaryKey } from "drizzle-orm/pg-core";
+import { pgTable, text, varchar, timestamp, integer, boolean, pgEnum, jsonb, index, uniqueIndex, primaryKey } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 import type { GameState } from "../lib/gameEngine.ts";
@@ -16,6 +16,9 @@ export const users = pgTable(
     createdAt: timestamp("created_at").defaultNow(),
     lastSeen: timestamp("last_seen"),
     tutorialSeenAt: timestamp("tutorial_seen_at"),
+    // One boolean, not a roles table. If a second admin ever exists, that is
+    // when a role earns a column.
+    isAdmin: boolean("is_admin").notNull().default(false),
   },
   (t) => [uniqueIndex("users_username_lower_uq").on(sql`lower(${t.username})`)]
 );
@@ -105,6 +108,25 @@ export const matchHistory = pgTable("match_history", {
   points: integer("points").notNull(),
   opponents: jsonb("opponents").notNull().default([]),
 }, (t) => [index("match_history_user_idx").on(t.userId, t.finishedAt)]);
+
+/**
+ * What a client crash looked like, kept for CLIENT_ERROR_RETENTION_DAYS so the
+ * owner can read it on /admin rather than only in the server's log stream.
+ *
+ * `userId` is nullable: a crash early enough in a session may not have one, and
+ * losing the report would be worse than losing the attribution.
+ */
+export const clientErrors = pgTable("client_errors", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").references(() => users.id, { onDelete: "cascade" }),
+  occurredAt: timestamp("occurred_at").defaultNow().notNull(),
+  appVersion: text("app_version"),
+  platform: text("platform"),
+  screen: text("screen"),
+  message: text("message").notNull(),
+  stack: text("stack"),
+  context: jsonb("context").notNull().default({}),
+}, (t) => [index("client_errors_occurred_idx").on(t.occurredAt)]);
 
 export const userAchievements = pgTable("user_achievements", {
   userId: varchar("user_id").references(() => users.id, { onDelete: "cascade" }).notNull(),

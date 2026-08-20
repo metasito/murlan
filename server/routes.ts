@@ -19,7 +19,10 @@ import { emitToUser, evictUser, isUserOnline } from "./socket.ts";
 import { mintSocketTicket } from "./ticket.ts";
 import { getUserStats, getMatchHistory, getUserAchievements } from "./stats.ts";
 import { getReplayForUser, listReplaysForUser } from "./replays.ts";
-import { getLeaderboard, getRating } from "./ratings.ts";
+import { getLeaderboard, getRating, PROVISIONAL_GAMES } from "./ratings.ts";
+import { recordClientError } from "./clientErrors.ts";
+import { adminSnapshot } from "./admin.ts";
+import { renderAdminPage } from "./adminPage.ts";
 import { z } from "zod";
 
 // Every JSON error body carries a stable machine-readable `code` alongside
@@ -110,6 +113,28 @@ function sessionUser(user: User) {
     username: user.username,
     tutorialSeenAt: user.tutorialSeenAt ? user.tutorialSeenAt.toISOString() : null,
   };
+}
+
+/**
+ * The owner, and nobody else. `requireAuth` alone is not enough here: this is
+ * a new authenticated surface over everyone's data, not another player route.
+ *
+ * 404 rather than 403 for both the signed-out and the signed-in-but-not-owner
+ * case, so the page's existence is not something an ordinary account can
+ * confirm. It is not linked from the app bundle either.
+ */
+async function requireAdmin(req: Request, res: Response, next: () => void) {
+  const userId = req.session.userId;
+  if (!userId) {
+    res.status(404).type("text/plain").send("Not found");
+    return;
+  }
+  const user = await storage.getUser(userId);
+  if (!user?.isAdmin) {
+    res.status(404).type("text/plain").send("Not found");
+    return;
+  }
+  next();
 }
 
 function requireAuth(req: Request, res: Response, next: () => void) {
@@ -441,6 +466,20 @@ export async function registerRoutes(app: Express): Promise<Server> {
     res.json(await getRating(req.session.userId!, new Date()));
   });
 
+  // ── Admin ─────────────────────────────────────────────────────────────────
+  //
+  // Server-rendered on purpose. This is never part of the app bundle, so no
+  // admin code reaches a player's browser (#103).
+  app.get("/admin", requireAdmin, async (_req, res) => {
+    try {
+      const snapshot = await adminSnapshot(PROVISIONAL_GAMES);
+      res.type("html").send(renderAdminPage(snapshot));
+    } catch (err) {
+      logger.error({ err }, "Failed to build the admin snapshot");
+      res.status(500).type("text/plain").send("Snapshot failed");
+    }
+  });
+
   app.get("/api/ratings/leaderboard", requireAuth, async (_req, res) => {
     res.json(await getLeaderboard(new Date()));
   });
@@ -492,6 +531,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
         { userId: req.session.userId, clientError: report },
         "Client reported an unhandled error"
       );
+      // Also kept as a row, so the owner can read it on /admin later rather
+      // than only in the log stream. Fire-and-forget: a crash report failing
+      // to store must not turn into a second failure for a client that is
+      // already showing its error screen.
+      void recordClientError({
+        userId: req.session.userId ?? null,
+        message: report.message,
+        stack: report.stack,
+        screen: report.componentStack,
+        platform: report.platform,
+        appVersion: report.appVersion,
+      }).catch((err) => logger.error({ err }, "Failed to store a client error report"));
       // Nothing to say back. The client is already showing its error screen and
       // must not depend on this having worked.
       res.status(204).end();
