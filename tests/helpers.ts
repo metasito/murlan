@@ -3,7 +3,6 @@
 // The `.ts` extension on the imports across this suite is required by Node's ESM
 // loader when it type-strips them (`node --test tests/**/*.test.ts`);
 // tsconfig.json's `allowImportingTsExtensions` is what lets `tsc` accept it.
-export * from "../lib/gameEngine.ts";
 import type {
   Card,
   GameMode,
@@ -12,6 +11,8 @@ import type {
   Rank,
   Suit,
 } from "../lib/gameEngine.ts";
+
+export * from "../lib/gameEngine.ts";
 
 /** A normal card. Id is rank_suit, matching createDeck(). */
 export const c = (rank: Rank, suit: Suit): Card => ({

@@ -60,6 +60,7 @@ export function detectDeviceLocale(): Locale {
     // pulling in expo-localization's native binding, which only resolves
     // inside the Expo/RN runtime — and doubles as the try/catch's coverage
     // for "expo-localization unavailable" on top of the lookup itself.
+    // eslint-disable-next-line @typescript-eslint/no-require-imports -- deferred on purpose, see above.
     const Localization = require("expo-localization") as typeof import("expo-localization");
     const deviceLocales = Localization.getLocales?.() ?? [];
     for (const entry of deviceLocales) {

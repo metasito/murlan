@@ -18,7 +18,7 @@ import { NotificationProvider } from '@/context/NotificationContext';
 
 type Listener = (...args: unknown[]) => void;
 
-const emitted: Array<{ event: string; payload?: unknown }> = [];
+const emitted: { event: string; payload?: unknown }[] = [];
 const listeners = new Map<string, Listener>();
 
 const mockSocket = {

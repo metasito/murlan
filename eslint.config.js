@@ -36,7 +36,7 @@ module.exports = defineConfig([
     ],
   },
   {
-    files: ["app/**/*.{ts,tsx}", "components/**/*.{ts,tsx}", "lib/**/*.{ts,tsx}"],
+    files: ["app/**/*.{ts,tsx}", "components/**/*.{ts,tsx}", "context/**/*.{ts,tsx}", "lib/**/*.{ts,tsx}"],
     rules: {
       // A wrong dependency array is a live-bug shape here, not a style nit —
       // it has shipped a stale closure twice (context/OnlineGameContext.tsx,
@@ -100,6 +100,19 @@ module.exports = defineConfig([
       // is how the server takes its port, its database and its timeouts.
       "expo/no-dynamic-env-var": "off",
       "expo/no-env-var-destructuring": "off",
+    },
+  },
+  {
+    // Jest's own two idioms, both of which these rules read as mistakes.
+    // `jest.mock()` is hoisted above the imports by babel-plugin-jest-hoist
+    // whatever order it is written in, so the imports below it run second
+    // either way and `import/first` is enforcing an order that does not
+    // exist. `require()` after `jest.resetModules()` is the only way to get a
+    // second, freshly-mocked copy of a module — a static import is bound once.
+    files: ["tests/native/**/*.{ts,tsx}"],
+    rules: {
+      "import/first": "off",
+      "@typescript-eslint/no-require-imports": "off",
     },
   },
   {

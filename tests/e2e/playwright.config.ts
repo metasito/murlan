@@ -1,4 +1,5 @@
 import { defineConfig, devices } from "@playwright/test";
+import { resolve } from "node:path";
 
 const PORT = process.env.E2E_PORT ?? "5199";
 const BASE_URL = `http://127.0.0.1:${PORT}`;
@@ -40,7 +41,7 @@ export default defineConfig({
     { name: "chromium", use: { ...devices["Desktop Chrome"] } },
   ],
   webServer: {
-    command: `node ${JSON.stringify(require("path").resolve(__dirname, "../../scripts/e2e-server.mjs"))}`,
+    command: `node ${JSON.stringify(resolve(__dirname, "../../scripts/e2e-server.mjs"))}`,
     url: BASE_URL,
     // A stale server on this port — even one hours old, serving an old bundle
     // — answers the health check and gets adopted, so a run can pass having

@@ -39,9 +39,7 @@ jest.mock('@/context/AuthContext', () => ({
   useAuth: () => ({ user: { id: 'u1', username: 'Ana' }, logout: async () => {} }),
 }));
 
-// eslint-disable-next-line @typescript-eslint/no-require-imports
 const { SocketProvider } = require('@/context/SocketContext') as typeof import('@/context/SocketContext');
-// eslint-disable-next-line @typescript-eslint/no-require-imports
 const { NotificationProvider } = require('@/context/NotificationContext') as typeof import('@/context/NotificationContext');
 
 const mount = () =>

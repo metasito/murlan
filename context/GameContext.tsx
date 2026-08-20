@@ -368,7 +368,7 @@ export function GameProvider({ children }: { children: ReactNode }) {
     setMatch(freshMatch("match", gameState?.players.length ?? 4));
     setRematchAnswers({});
     clearSavedGame();
-  }, [clearSavedGame]);
+  }, [clearSavedGame, gameState?.players.length]);
 
   /** Puts an interrupted match back exactly where it was. */
   const resumeGame = useCallback(() => {

@@ -21,7 +21,7 @@
 // gain, pitch and overlap for free. Encoding to MP3 happens afterwards, in
 // plain Node, from the same normalised PCM the OfflineAudioContext produced.
 import { chromium } from "playwright";
-import lamejs from "@breezystack/lamejs";
+import { Mp3Encoder } from "@breezystack/lamejs";
 import { mkdirSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -203,7 +203,7 @@ for (const [name, { pcm, seconds }] of Object.entries(results)) {
   const raw = Buffer.from(pcm, "base64");
   const samples = new Int16Array(raw.buffer, raw.byteOffset, raw.length / 2);
 
-  const encoder = new lamejs.Mp3Encoder(1, SR, MP3_BITRATE_KBPS);
+  const encoder = new Mp3Encoder(1, SR, MP3_BITRATE_KBPS);
   const chunks = [];
   for (let i = 0; i < samples.length; i += MP3_BLOCK) {
     const block = encoder.encodeBuffer(samples.subarray(i, i + MP3_BLOCK));

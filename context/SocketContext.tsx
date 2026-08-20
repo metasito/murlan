@@ -52,6 +52,9 @@ export function useSocket() {
 
 export function SocketProvider({ children }: { children: ReactNode }) {
   const { user, logout } = useAuth();
+  // The id, not the object: this is what the socket effect below keys on, and
+  // `user` gets a new identity on every refetch of the same account.
+  const userId = user?.id;
   const qc = useQueryClient();
   const { showNotification } = useNotification();
   const [socket, setSocket] = useState<Socket | null>(null);
@@ -89,7 +92,7 @@ export function SocketProvider({ children }: { children: ReactNode }) {
   }, []);
 
   useEffect(() => {
-    if (!user) {
+    if (!userId) {
       if (retryTimerRef.current) {
         clearTimeout(retryTimerRef.current);
         retryTimerRef.current = null;
@@ -108,9 +111,9 @@ export function SocketProvider({ children }: { children: ReactNode }) {
       return;
     }
 
-    const socket = connectSocket(user.id);
+    const socket = connectSocket(userId);
     socketRef.current = socket;
-    connectedUserIdRef.current = user.id;
+    connectedUserIdRef.current = userId;
     setSocket(socket);
 
     // The ticket endpoint reported the session is dead (401): no amount of
@@ -162,7 +165,7 @@ export function SocketProvider({ children }: { children: ReactNode }) {
     };
 
     const onFriendStatus = ({
-      userId,
+      userId: friendId,
       online,
     }: {
       userId: string;
@@ -172,9 +175,9 @@ export function SocketProvider({ children }: { children: ReactNode }) {
       setOnlineIds((prev) => {
         const next = new Set(prev);
         if (online) {
-          next.add(userId);
+          next.add(friendId);
         } else {
-          next.delete(userId);
+          next.delete(friendId);
         }
         return next;
       });
@@ -285,7 +288,7 @@ export function SocketProvider({ children }: { children: ReactNode }) {
       socket.off("friend:error", onFriendError);
       socket.off("socket:error", onSocketError);
     };
-  }, [user?.id]);
+  }, [userId, logout, qc, showNotification]);
 
   const contextValue = useMemo(
     () => ({
@@ -297,7 +300,7 @@ export function SocketProvider({ children }: { children: ReactNode }) {
       gameInvites,
       dismissGameInvite,
     }),
-    [socket, connected, onlineIds, pendingInvite, gameInvites]
+    [socket, connected, onlineIds, pendingInvite, gameInvites, clearInvite, dismissGameInvite]
   );
 
   return (

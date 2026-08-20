@@ -17,7 +17,7 @@
     "db:push": "drizzle-kit push",
     "db:reset": "node scripts/reset-db.mjs && drizzle-kit push",
     "start": "npx expo start",
-    "lint": "npx expo lint .",
+    "lint": "npx expo lint . -- --max-warnings 0",
     "lint:fix": "npx expo lint . --fix",
     "test": "node --test \"tests/**/*.test.ts\"",
     "test:native": "jest",

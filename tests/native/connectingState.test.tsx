@@ -66,7 +66,6 @@ jest.mock('@/context/OnlineGameContext', () => ({
 
 // Required, not imported: an import is hoisted above the mock functions the
 // factories above close over, and expo-router's would capture an undefined one.
-// eslint-disable-next-line @typescript-eslint/no-require-imports
 const OnlineGameScreen = (require('@/app/(online)/game') as { default: React.ComponentType })
   .default;
 

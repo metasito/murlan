@@ -1,12 +1,15 @@
-const REQUIRED_ENV = ["SESSION_SECRET", "DATABASE_URL"];
-for (const key of REQUIRED_ENV) {
-  if (!process.env[key]) throw new Error(`Missing required secret: ${key}`);
-}
-
 import { logger } from "./logger.ts";
 import { createApp } from "./app.ts";
 import { shutdown } from "./shutdown.ts";
 import { installProcessGuards } from "./socketSafety.ts";
+
+// Below the imports because that is where it runs: ESM evaluates every import
+// above before any statement here, so hoisting this to the top of the file
+// would buy nothing and only read as a guarantee it cannot give.
+const REQUIRED_ENV = ["SESSION_SECRET", "DATABASE_URL"];
+for (const key of REQUIRED_ENV) {
+  if (!process.env[key]) throw new Error(`Missing required secret: ${key}`);
+}
 
 // This file's sole job is binding the real PORT and installing process
 // shutdown handlers for the Replit run path. Everything else — middleware,
