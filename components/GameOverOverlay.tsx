@@ -21,6 +21,7 @@ import Animated, {
 import { LinearGradient } from "expo-linear-gradient";
 import Ionicons from "@expo/vector-icons/Ionicons";
 import type { GameState } from "@/lib/gameEngine";
+import { standings } from "@/lib/standings";
 import { Colors, FontSize, Motion, Radius, Spacing, TOUCH_TARGET_MIN } from "@/lib/theme";
 import { usePrefersReducedMotion } from "@/lib/accessibility";
 import { useTranslation, type TranslationKey } from "@/lib/i18n";
@@ -62,12 +63,14 @@ function RankCard({
   isWinner,
   delay,
   cumPts,
+  handPts,
 }: {
   rank: number;
   name: string;
   isWinner: boolean;
   delay: number;
-  cumPts?: number;
+  cumPts: number;
+  handPts: number;
 }) {
   const { t } = useTranslation();
   const reduceMotion = usePrefersReducedMotion();
@@ -113,11 +116,10 @@ function RankCard({
       <Text style={styles.playerName} numberOfLines={1}>
         {name}
       </Text>
-      {cumPts !== undefined && cumPts > 0 && (
-        <View style={styles.cumScore}>
-          <Text style={styles.cumScoreText}>{t("gameOverOverlay.pointsAbbrev", { n: cumPts })}</Text>
-        </View>
-      )}
+      <Text style={styles.handDelta}>{t("result.pointsDelta", { n: handPts })}</Text>
+      <View style={styles.cumScore}>
+        <Text style={styles.cumScoreText}>{t("gameOverOverlay.pointsAbbrev", { n: cumPts })}</Text>
+      </View>
     </Animated.View>
   );
 }
@@ -131,6 +133,7 @@ export function GameOverOverlay({
   voteState,
   myUserId,
   cumulativeScores,
+  handScores,
   match,
 }: {
   gameState: GameState;
@@ -141,6 +144,8 @@ export function GameOverOverlay({
   voteState: RematchVote | null;
   myUserId: string;
   cumulativeScores: Record<string, number>;
+  /** What the manche just played awarded, by display name. */
+  handScores: Record<string, number>;
   match: MatchSummary;
 }) {
   const { t } = useTranslation();
@@ -149,6 +154,14 @@ export function GameOverOverlay({
   const nameOf = (playerId: string) =>
     gameState.players.find((p) => p.id === playerId)?.name ?? playerId;
   const rankedNames = gameState.rankings.map(nameOf);
+  const rows = standings(
+    rankedNames.map((name, finishedAt) => ({
+      name,
+      finishedAt,
+      total: cumulativeScores[name] ?? 0,
+      points: handScores[name] ?? 0,
+    }))
+  );
   const celebratedName = match.over
     ? (match.winners[0] ?? rankedNames[0] ?? "")
     : (rankedNames[0] ?? "");
@@ -265,14 +278,15 @@ export function GameOverOverlay({
             style={styles.rankScroll}
             contentContainerStyle={styles.rankList}
           >
-            {rankedNames.map((name, i) => (
+            {rows.map((row, i) => (
               <RankCard
-                key={i}
+                key={row.name}
                 rank={i}
-                name={name}
+                name={row.name}
                 isWinner={i === 0}
                 delay={i * RANK_STAGGER_MS + RANK_LEAD_IN_MS}
-                cumPts={cumulativeScores[name]}
+                cumPts={row.total}
+                handPts={row.points}
               />
             ))}
           </ScrollView>
@@ -447,6 +461,12 @@ const styles = StyleSheet.create({
     fontSize: FontSize.sm,
     color: Colors.text,
     flex: 1,
+  },
+  handDelta: {
+    fontFamily: "Inter_400Regular",
+    fontSize: FontSize.xxs,
+    color: Colors.textMuted,
+    flexShrink: 0,
   },
   cumScore: {
     backgroundColor: Colors.goldMuted,

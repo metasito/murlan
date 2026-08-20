@@ -59,24 +59,29 @@ export function isBotSeatKey(key: string): boolean {
 }
 
 /** The shape of GameState.exchangePhase, restated so this module keeps its
- * "no imports at all" property (see the header). `cardFromLoser` is `unknown`
- * here on purpose: this helper only decides whether to forward it. */
+ * "no imports at all" property (see the header). The two cards are `unknown`
+ * here on purpose: this helper only decides whether to forward them. */
 export interface VisibleExchangePhaseInput {
   active: boolean;
   winnerIdx: number;
   loserIdx: number;
   bothJokersException: boolean;
   cardFromLoser: unknown;
+  cardToLoser?: unknown;
 }
 
 /**
  * The part of an exchange phase a given seat is allowed to see.
  *
- * Only the two people in the exchange have any use for `cardFromLoser`: the
- * winner's ExchangeModal shows the card they were handed, and the loser is
- * entitled to see the card taken off them. Every other seat needs the two seat
- * indices and the both-jokers flag — all the announcement banner reads — and
- * once the phase has closed nobody needs the card at all.
+ * Only the two people in the exchange have any use for either card: each is a
+ * named card out of a named player's hand. The winner's ExchangeModal shows
+ * what they were handed, the loser is entitled to see what was taken off them,
+ * and both are entitled to see what came back. Every other seat gets the two
+ * seat indices and the both-jokers flag — all the announcement banner reads
+ * from them.
+ *
+ * `cardFromLoser` is withheld once the phase closes; `cardToLoser` only exists
+ * from that moment, since it is what closes it.
  */
 export function visibleExchangePhase(
   phase: VisibleExchangePhaseInput | undefined,
@@ -96,6 +101,9 @@ export function visibleExchangePhase(
     (viewerSeatIndex === phase.winnerIdx || viewerSeatIndex === phase.loserIdx);
 
   if (phase.active && isParticipant) visible.cardFromLoser = phase.cardFromLoser;
+  if (isParticipant && phase.cardToLoser !== undefined) {
+    visible.cardToLoser = phase.cardToLoser;
+  }
   return visible;
 }
 

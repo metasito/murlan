@@ -26,6 +26,7 @@ import Ionicons from "@expo/vector-icons/Ionicons";
 import { useGame } from "@/context/GameContext";
 import { usePrefersReducedMotion } from "@/lib/accessibility";
 import { ResultExchangeOverlay, shouldShowResultExchange } from "@/components/ResultExchangeOverlay";
+import { standings } from "@/lib/standings";
 import { Colors, FontSize, Motion, Radius, Spacing, Type, WEB_BOTTOM_PAD, WEB_TOP_PAD } from '@/lib/theme';
 import { useTranslation, type TranslationKey } from "@/lib/i18n";
 
@@ -232,8 +233,18 @@ export default function ResultScreen() {
   // ends, so this screen only reads them.
   const lastHand = match.hands[match.hands.length - 1];
   const handPoints = lastHand?.pointsAwarded ?? {};
-  const sortedPlayers = [...gameState.players].sort(
-    (a, b) => (match.scores[b.id] ?? 0) - (match.scores[a.id] ?? 0)
+  const finishOrder = lastHand?.rankings ?? [];
+  const rows = standings(
+    gameState.players.map((player) => {
+      const at = finishOrder.indexOf(player.id);
+      return {
+        player,
+        total: match.scores[player.id] ?? 0,
+        points: handPoints[player.id] ?? 0,
+        // A seat absent from the manche's order sorts last among equals.
+        finishedAt: at === -1 ? finishOrder.length : at,
+      };
+    })
   );
 
   const nameOf = (playerId: string) =>
@@ -243,7 +254,7 @@ export default function ResultScreen() {
 
   const handWinnerId = lastHand?.rankings[0];
   const matchWinnerId = match.winners[0];
-  const celebratedId = (match.over ? matchWinnerId : handWinnerId) ?? sortedPlayers[0]?.id;
+  const celebratedId = (match.over ? matchWinnerId : handWinnerId) ?? rows[0]?.player.id;
   const celebratedTeam = celebratedId ? teamOf(celebratedId) : undefined;
   const celebratedName =
     isTeamMode && celebratedTeam
@@ -336,16 +347,16 @@ export default function ResultScreen() {
     </View>
   );
 
-  const rankRows = sortedPlayers.map((player, idx) => (
+  const rankRows = rows.map((row, idx) => (
     <ScoreRow
-      key={player.id}
+      key={row.player.id}
       rank={idx}
-      name={player.name}
-      totalScore={match.scores[player.id] ?? 0}
-      pointsEarned={handPoints[player.id] ?? 0}
+      name={row.player.name}
+      totalScore={row.total}
+      pointsEarned={row.points}
       isWinner={idx === 0}
       delay={idx * 70 + 150}
-      team={isTeamMode ? player.team : undefined}
+      team={isTeamMode ? row.player.team : undefined}
     />
   ));
 
