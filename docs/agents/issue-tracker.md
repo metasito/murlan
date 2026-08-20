@@ -59,6 +59,46 @@ Create a GitHub issue.
 
 Run `gh issue view <number> --comments`.
 
+
+## Writing an issue body an agent can execute
+
+An agent working the queue gets the issue body and nothing else. It cannot ask a follow-up
+question. So the body is the whole specification, and the test of a good one is that a
+competent stranger could land the change without guessing.
+
+Six sections, in this order. Drop any that would be empty — an empty heading is noise.
+
+```markdown
+## Question            ← or "The defect" / "The opportunity". One sentence: what is being decided or fixed.
+## Why this exists     ← 2-4 lines. Quote the reporter verbatim where their words exist.
+## Ground truth        ← a table of `file.ts:line` pointers and prior issues. "Read before anything else."
+## What to settle      ← `- [ ]` checkboxes, one per sub-decision. Empty tables to fill in beat prose.
+## Constraints         ← `> [!IMPORTANT]` — the invariants this change can break, and how.
+## Definition of done  ← `- [ ]` per artefact. What must exist for this to close.
+## Not this ticket     ← the adjacent work it will be tempting to absorb, with issue numbers.
+```
+
+What makes the difference in practice:
+
+- **Point at code, not at concepts.** `components/GameTable.tsx:827` costs the agent one
+  `sed`; "the sound preloading" costs it a search and a guess.
+- **Name the invariant *and* its enforcement.** "`CARD_W` is declared once, and
+  `tests/gameTableModel.test.ts` source-scans for a second declaration" tells an agent both
+  what not to do and what will catch it.
+- **Checkboxes over prose.** They render as progress on the issue, and an agent can report
+  against them. A wall of paragraphs makes partial completion invisible.
+- **An empty table is an instruction.** Giving the columns of a decision to be made
+  (`Event | Visual | Sound | Haptic | Fallback`) specifies the shape of the answer far more
+  cheaply than describing it.
+- **`> [!IMPORTANT]` and `> [!WARNING]` are load-bearing**, not decoration — they survive
+  skimming, and constraints are what get skimmed past.
+- **State what is out of scope.** Scope creep in an autonomous queue is the failure mode,
+  because nobody is watching the diff grow.
+- **Cite the source.** A research file path or the issue that surfaced it, so the next reader
+  can check the claim instead of re-deriving it.
+
+Verify the body's own claims before filing. An issue that asserts a defect at a line that
+does not contain it sends an agent down a hole with no way out.
 ## Wayfinding operations
 
 Used by `/wayfinder`. The **map** is a single issue with **child** issues as tickets.
@@ -67,5 +107,5 @@ Used by `/wayfinder`. The **map** is a single issue with **child** issues as tic
 - **Child ticket**: an issue linked to the map as a GitHub sub-issue (`gh api` on the sub-issues endpoint). Where sub-issues aren't enabled, add the child to a task list in the map body and put `Part of #<map>` at the top of the child body. Labels: `wayfinder:<type>` (`research`/`prototype`/`grilling`/`task`). Once claimed, the ticket is assigned to the driving dev.
 - **Blocking**: GitHub's **native issue dependencies**, the canonical, UI-visible representation. Add an edge with `gh api --method POST repos/<owner>/<repo>/issues/<child>/dependencies/blocked_by -F issue_id=<blocker-db-id>`, where `<blocker-db-id>` is the blocker's numeric **database id** (`gh api repos/<owner>/<repo>/issues/<n> --jq .id`, _not_ the `#number` or `node_id`). GitHub reports `issue_dependencies_summary.blocked_by` (open blockers only, the live gate). Where dependencies aren't available, fall back to a `Blocked by: #<n>, #<n>` line at the top of the child body. A ticket is unblocked when every blocker is closed.
 - **Frontier query**: list the map's open children (`gh issue list --state open`, scoped to the map's sub-issues / task list), drop any with an open blocker (`issue_dependencies_summary.blocked_by > 0`, or an open issue in the `Blocked by` line) or an assignee; first in map order wins.
-- **Claim**: `gh issue edit <n> --add-assignee @me`, the session's first write.
+- **Claim**: as in *Claiming an item* above — `--add-label in-progress` plus a claim comment naming the branch. Assignee cannot disambiguate two sessions, because every session authenticates as the same account.
 - **Resolve**: `gh issue comment <n> --body "<answer>"`, then `gh issue close <n>`, then append a context pointer (gist + link) to the map's Decisions-so-far.
