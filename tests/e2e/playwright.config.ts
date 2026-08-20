@@ -14,9 +14,18 @@ export default defineConfig({
   // (larger player counts and multi-hand matches need more), since a real
   // played-to-completion game is genuinely slower with more seats.
   timeout: 10 * 60_000,
+  // Whole files are the unit of distribution, which is what makes parallelism
+  // safe against the single server this suite drives: every registry the server
+  // keeps is keyed by room, socket or user (server/gameRoom.ts,
+  // server/gameTimers.ts), the specs already register unique accounts, and the
+  // one piece of cross-room state — publicRoomIds, which feeds quickmatch — is
+  // only ever touched by iconGlyphs.spec.ts, so no two quickmatch clients can
+  // exist at once. A second spec entering quickmatch would break that.
   fullyParallel: false,
+  // A retry here would hide the flake that parallelism is most likely to cause,
+  // which is the one thing worth knowing about it.
   retries: 0,
-  workers: 1,
+  workers: 3,
   reporter: [["list"], ["html", { open: "never", outputFolder: "playwright-report" }]],
   use: {
     baseURL: BASE_URL,
