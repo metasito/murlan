@@ -28,12 +28,18 @@ env:
   NODE_VERSION: "24"
 
 jobs:
-  # Prose cannot break the game, so a commit that only touches docs skips the
-  # install, test and build jobs below. Its own job because four jobs need the
-  # answer and each would otherwise re-clone the full history to work it out.
+  # Two reasons the suite below can be skipped, both settled here: the commit is
+  # prose, or this exact tree already went green on the pull request it came
+  # from. Its own job because four jobs need the answer and each would otherwise
+  # re-clone the full history to work it out.
   scope:
-    name: Does this change touch the app?
+    name: Does this change need the suite?
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      # Which pull request a main commit came from, and whether its head passed.
+      pull-requests: read
+      actions: read
     outputs:
       app: ${{ steps.scope.outputs.app }}
     steps:
@@ -46,7 +52,30 @@ jobs:
       # prose — a change to this file must exercise this file.
       - id: scope
         shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
+          # Merging a pull request runs the whole suite a second time on a tree
+          # CI has already passed. Skipping needs all four of these to hold —
+          # a push, from a pull request, whose head has the identical tree, and
+          # whose head has a green run of this workflow. Any of them failing to
+          # answer leaves the suite running, which is the direction to fail in.
+          if [ "${{ github.event_name }}" = "push" ]; then
+            pr=$(gh api "repos/$GITHUB_REPOSITORY/commits/$GITHUB_SHA/pulls" \
+              --jq '.[0] // empty | "\(.number) \(.head.sha)"' 2>/dev/null || true)
+            num=${pr%% *}
+            head=${pr##* }
+            runs="repos/$GITHUB_REPOSITORY/actions/workflows/ci.yml/runs?head_sha=$head&status=success"
+            if [ -n "$num" ] && [ -n "$head" ] \
+              && git fetch --no-tags --depth=1 origin "refs/pull/$num/head:refs/ci/pr" 2>/dev/null \
+              && [ "$(git rev-parse 'HEAD^{tree}')" = "$(git rev-parse 'refs/ci/pr^{tree}')" ] \
+              && [ "$(gh api "$runs" --jq '.total_count' 2>/dev/null || echo 0)" -gt 0 ]; then
+              echo "Identical tree to #$num at $head, which this workflow already passed."
+              echo "app=false" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+            echo "No green pull-request run covers this tree — running everything."
+          fi
           if [ "${{ github.event_name }}" = "pull_request" ]; then
             base="${{ github.event.pull_request.base.sha }}"
           else
