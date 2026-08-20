@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef } from "react";
-import { View, Text, StyleSheet } from "react-native";
+import { View, StyleSheet } from "react-native";
+import { TableText } from "./TableText";
 import Animated, {
   useAnimatedStyle,
   useSharedValue,
@@ -15,7 +16,7 @@ import Animated, {
 import { scheduleOnRN } from "react-native-worklets";
 import Ionicons from "@expo/vector-icons/Ionicons";
 import { CardView } from "@/components/CardView";
-import { Colors, FontSize, Motion, Radius, Scrim, Spacing, TABLE_FONT_SCALE_MAX } from "@/lib/theme";
+import { Colors, FontSize, Motion, Radius, Scrim, Spacing } from "@/lib/theme";
 import { usePrefersReducedMotion } from "@/lib/accessibility";
 import { useTranslation, type TranslationKey } from "@/lib/i18n";
 import type { Card, Combination } from "@/lib/gameEngine";
@@ -238,7 +239,7 @@ export function PlayedPile({
           style={pileStyles.winnerTag}
         >
           <Ionicons name="star" size={9} color={Colors.gold} />
-          <Text maxFontSizeMultiplier={TABLE_FONT_SCALE_MAX} style={pileStyles.winnerText}>{roundWinner}</Text>
+          <TableText style={pileStyles.winnerText}>{roundWinner}</TableText>
         </Animated.View>
       )}
 
@@ -256,11 +257,11 @@ export function PlayedPile({
       {current && (
         <View style={pileStyles.comboLabel}>
           <View style={[pileStyles.comboChip, isPower && pileStyles.comboChipPower]}>
-            <Text maxFontSizeMultiplier={TABLE_FONT_SCALE_MAX} style={[pileStyles.comboChipText, isPower && pileStyles.comboChipTextPower]}>
+            <TableText style={[pileStyles.comboChipText, isPower && pileStyles.comboChipTextPower]}>
               {isPower ? "✦ " : ""}
               {COMBO_LABEL_KEYS[current.type] ? t(COMBO_LABEL_KEYS[current.type]) : current.type}
               {current.cards.length > 2 ? t("gameShared.comboMultiplier", { count: current.cards.length }) : ""}
-            </Text>
+            </TableText>
           </View>
         </View>
       )}

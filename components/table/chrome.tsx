@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
-import { View, Text, StyleSheet, Pressable } from "react-native";
-import Animated, {
+import { View, StyleSheet, Pressable } from "react-native";
+import { AnimatedTableText, TableText } from "./TableText";
+import {
   useAnimatedStyle,
   useSharedValue,
   withTiming,
@@ -9,7 +10,7 @@ import Animated, {
   cancelAnimation,
 } from "react-native-reanimated";
 import { LinearGradient } from "expo-linear-gradient";
-import { Colors, FontSize, Motion, Radius, Scrim, Shadow, Spacing, Type, TABLE_FONT_SCALE_MAX } from "@/lib/theme";
+import { Colors, FontSize, Motion, Radius, Scrim, Shadow, Spacing, Type } from "@/lib/theme";
 import { usePrefersReducedMotion } from "@/lib/accessibility";
 import { useTranslation } from "@/lib/i18n";
 import type { StartReason } from "@/lib/gameEngine";
@@ -102,13 +103,13 @@ export function StartReasonBanner({
       style={[startReasonStyles.anchor, { top: topOffset }]}
     >
       <View style={startReasonStyles.card}>
-        <Text maxFontSizeMultiplier={TABLE_FONT_SCALE_MAX} style={startReasonStyles.main}>
+        <TableText style={startReasonStyles.main}>
           {mainText}
-        </Text>
+        </TableText>
         {subText ? (
-          <Text maxFontSizeMultiplier={TABLE_FONT_SCALE_MAX} style={startReasonStyles.sub}>
+          <TableText style={startReasonStyles.sub}>
             {subText}
-          </Text>
+          </TableText>
         ) : null}
       </View>
     </Pressable>
@@ -339,15 +340,15 @@ export function GameBillboard({
 
   return (
     <View style={billboardStyles.container}>
-      <Text maxFontSizeMultiplier={TABLE_FONT_SCALE_MAX} style={billboardStyles.comboLabel} numberOfLines={1}>
+      <TableText style={billboardStyles.comboLabel} numberOfLines={1}>
         {currentComboLabel ?? t("gameShared.emptyTable")}
-      </Text>
+      </TableText>
       <View style={billboardStyles.bottomRow}>
-        <Text maxFontSizeMultiplier={TABLE_FONT_SCALE_MAX} style={billboardStyles.roundLabel} numberOfLines={1}>{roundLabel}</Text>
+        <TableText style={billboardStyles.roundLabel} numberOfLines={1}>{roundLabel}</TableText>
         {isLocalPlayerTurn && (
-          <Animated.Text maxFontSizeMultiplier={TABLE_FONT_SCALE_MAX} style={[billboardStyles.turnDot, dotStyle]}>●</Animated.Text>
+          <AnimatedTableText style={[billboardStyles.turnDot, dotStyle]}>●</AnimatedTableText>
         )}
-        <Text maxFontSizeMultiplier={TABLE_FONT_SCALE_MAX}
+        <TableText
           style={[
             billboardStyles.turnLabel,
             isLocalPlayerTurn && billboardStyles.turnLabelActive,
@@ -355,7 +356,7 @@ export function GameBillboard({
           numberOfLines={1}
         >
           {isLocalPlayerTurn ? t("gameShared.yourTurn") : t("gameShared.turnOf", { name: currentTurnName })}
-        </Text>
+        </TableText>
       </View>
     </View>
   );
