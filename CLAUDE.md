@@ -116,9 +116,11 @@ lines is explaining itself instead of being clear.
   `gh issue list --label ready-for-agent --state open --search "-label:in-progress"`,
   smallest `size:*` label first. Don't
   ask which item or whether to proceed. Commit and push yourself — don't wait to be asked —
-  then `gh run watch` the push and close the issue only once CI is green; red CI is the next
-  thing you work on, not something to leave behind. Keep `Closes #NN` out of the commit
-  message: it closes the issue at push time, before CI has said anything.
+  then `gh run watch` **the pull request's run** and close the issue only once it is green;
+  red CI is the next thing you work on, not something to leave behind. Never watch `main`'s
+  run: it is either the same tree skipped, or a duplicate of a result you have already read,
+  and watching it blocks for the whole suite to say nothing new. Keep `Closes #NN` out of the
+  commit message: it closes the issue at push time, before CI has said anything.
 - **Claim the item before working it.** Sessions run in parallel, and every one of them
   authenticates as the same GitHub account — an assignee says who owns the repo, not who
   owns the item, so the claim is `in-progress` plus a comment naming the branch. It is the
@@ -133,8 +135,13 @@ lines is explaining itself instead of being clear.
 - **Work on a branch, land through a pull request.** Never push an item straight to `main`.
   A change that turns out to be wrong goes red on the pull request, where it costs one run
   and nothing else; pushed to `main` it goes red on `main`, and the next person starts from
-  a broken tree. The merge no longer costs a second run — `ci.yml`'s `scope` job skips a
-  `main` push whose tree the pull request already passed. An item that turns
+  a broken tree. **The merge costs a second run only if you let it.** `ci.yml`'s `scope` job
+  skips a `main` push whose tree the pull request already passed — it compares the merge
+  commit's tree against the pull request head's, so they match only while `main` has not
+  moved underneath. Once it has, the merge builds a tree nothing has tested and the whole
+  suite runs again, billed. So before merging, bring the branch up to date
+  (`gh pr update-branch`) and let the pull request go green on *that* tree: one run either
+  way, instead of one on the branch and a second on `main`. An item that turns
   out to need an owner-level call gets relabelled
   `ready-for-human` (not closed) and the next item is taken. When no
   `ready-for-agent` issue remains, run `superpowers:brainstorming` and file what it finds
@@ -146,7 +153,8 @@ lines is explaining itself instead of being clear.
 - **Don't rehearse CI locally.** `.github/workflows/ci.yml` runs typecheck, `npm test`, lint,
   `test:native`, `test:e2e` and a build-and-boot on every push. Running that same sweep before
   pushing doubles the time per item and tells you nothing the run won't. Push, then
-  `gh run watch`. What *is* worth running locally is the narrow thing CI can't give you:
+  `gh run watch` the pull request. What *is* worth running locally is the narrow thing CI
+  can't give you:
   a single test file while you iterate on it, proving a new test fails before the fix, or any
   check CI does not cover. If CI does not run it, run it yourself.
 - **No workarounds.** If the correct fix is bigger, do the correct fix. Look up current best
