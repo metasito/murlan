@@ -115,6 +115,20 @@ describe('the web AudioContext waits for a gesture', () => {
     expect(resumeCalls).toBe(1);
   });
 
+  it('decodes what the preload fetched only once there is a context to decode with', async () => {
+    const sounds = loadSounds();
+    await sounds.preloadSounds();
+    sounds.bindWebAudioUnlock();
+
+    // Bytes are fetched on mount, but nothing can decode them yet.
+    expect(decodeCalls).toBe(0);
+
+    handlers.get('pointerdown')!();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(decodeCalls).toBeGreaterThan(0);
+  });
+
   it('keeps listening, so a later interruption recovers on the next tap', async () => {
     const sounds = loadSounds();
     await sounds.preloadSounds();
