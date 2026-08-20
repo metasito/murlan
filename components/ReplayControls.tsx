@@ -118,16 +118,14 @@ function ScrubBar({
   );
 }
 
-function ControlButton({
-  icon,
+function Button({
   label,
   onPress,
-  text,
+  children,
 }: {
-  icon?: React.ComponentProps<typeof Ionicons>["name"];
   label: string;
   onPress: () => void;
-  text?: string;
+  children: React.ReactNode;
 }) {
   return (
     <Pressable
@@ -137,16 +135,44 @@ function ControlButton({
       accessibilityRole="button"
       accessibilityLabel={label}
     >
+      {children}
+    </Pressable>
+  );
+}
+
+/**
+ * Split from the text button rather than taking an optional `icon`. The icon
+ * font is subset to the names the app can be shown to use, and the resolver
+ * that builds that subset follows a prop back to its call sites; an optional
+ * icon has a call site passing none, which it cannot resolve. An unresolved
+ * name is a glyph missing from the shipped font — a blank box on the web, with
+ * no error anywhere.
+ */
+function IconButton({
+  icon,
+  label,
+  onPress,
+}: {
+  icon: React.ComponentProps<typeof Ionicons>["name"];
+  label: string;
+  onPress: () => void;
+}) {
+  return (
+    <Button label={label} onPress={onPress}>
       {/* Decorative: the Pressable carries the label, and a labelled control
           must expose exactly one accessible node. */}
-      {icon ? (
-        <Ionicons name={icon} size={FontSize.lg} color={Colors.gold} {...a11yHidden()} />
-      ) : (
-        <Text style={styles.buttonText} {...a11yHidden()}>
-          {text}
-        </Text>
-      )}
-    </Pressable>
+      <Ionicons name={icon} size={FontSize.lg} color={Colors.gold} {...a11yHidden()} />
+    </Button>
+  );
+}
+
+function TextButton({ text, label, onPress }: { text: string; label: string; onPress: () => void }) {
+  return (
+    <Button label={label} onPress={onPress}>
+      <Text style={styles.buttonText} {...a11yHidden()}>
+        {text}
+      </Text>
+    </Button>
   );
 }
 
@@ -184,23 +210,23 @@ export function ReplayTransport({
   return (
     <View style={styles.transport}>
       <View style={styles.row}>
-        <ControlButton icon="play-skip-back" label={t("replay.restartA11yLabel")} onPress={onRestart} />
-        <ControlButton icon="chevron-back" label={t("replay.prevA11yLabel")} onPress={() => onStep(-1)} />
-        <ControlButton
+        <IconButton icon="play-skip-back" label={t("replay.restartA11yLabel")} onPress={onRestart} />
+        <IconButton icon="chevron-back" label={t("replay.prevA11yLabel")} onPress={() => onStep(-1)} />
+        <IconButton
           icon={playing ? "pause" : "play"}
           label={playing ? t("replay.pauseA11yLabel") : t("replay.playA11yLabel")}
           onPress={onTogglePlay}
         />
-        <ControlButton icon="chevron-forward" label={t("replay.nextA11yLabel")} onPress={() => onStep(1)} />
-        <ControlButton
+        <IconButton icon="chevron-forward" label={t("replay.nextA11yLabel")} onPress={() => onStep(1)} />
+        <TextButton
           label={t("replay.speedA11yLabel")}
           text={t("replay.speedValue", { n: speed })}
           onPress={onCycleSpeed}
         />
         {moments.length > 0 && (
-          <ControlButton icon="flash" label={t("replay.jumpA11yLabel")} onPress={onJump} />
+          <IconButton icon="flash" label={t("replay.jumpA11yLabel")} onPress={onJump} />
         )}
-        <ControlButton
+        <IconButton
           icon={movesOpen ? "list-circle" : "list"}
           label={movesOpen ? t("replay.moveListCloseA11yLabel") : t("replay.movesToggleA11yLabel")}
           onPress={onToggleMoves}
@@ -243,7 +269,7 @@ export function ReplayMoveList({
     <View style={styles.movePanel}>
       <View style={styles.movePanelHead}>
         <Text style={styles.movePanelTitle}>{t("replay.moveListTitle")}</Text>
-        <ControlButton icon="close" label={t("replay.moveListCloseA11yLabel")} onPress={onClose} />
+        <IconButton icon="close" label={t("replay.moveListCloseA11yLabel")} onPress={onClose} />
       </View>
       {rows.length === 0 ? (
         <Text style={styles.moveEmpty}>{t("replay.moveListEmpty")}</Text>

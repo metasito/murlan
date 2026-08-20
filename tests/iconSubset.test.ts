@@ -35,7 +35,7 @@ test("every icon name the app uses exists in its family's glyphmap", () => {
   }
 });
 
-// Measured on this branch: Ionicons is 21,420 B of 389,724 B (5.5%), Feather
+// Measured on this branch: Ionicons is 22,056 B of 389,724 B (5.7%), Feather
 // 2,164 B of 55,596 B (3.9%). At roughly 280 B a glyph that leaves room for
 // some sixty more Ionicons names, so adding icons does not trip it — but a
 // subset that stopped subsetting, or a full face committed over one, does.
