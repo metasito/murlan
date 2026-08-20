@@ -153,10 +153,20 @@ lines is explaining itself instead of being clear.
 - **Don't rehearse CI locally.** `.github/workflows/ci.yml` runs typecheck, `npm test`, lint,
   `test:native`, `test:e2e` and a build-and-boot on every push. Running that same sweep before
   pushing doubles the time per item and tells you nothing the run won't. Push, then
-  `gh run watch` the pull request. What *is* worth running locally is the narrow thing CI
+  `gh run watch` the pull request — and take the verdict from `gh run view --json conclusion`,
+  never from the watcher's own exit status. Piped into anything, that status belongs to the
+  pipe's last command, so `--exit-status` is discarded and a failed run reads as a pass. That
+  is how a red branch reached `main`. What *is* worth running locally is the narrow thing CI
   can't give you:
   a single test file while you iterate on it, proving a new test fails before the fix, or any
-  check CI does not cover. If CI does not run it, run it yourself.
+  check CI does not cover. If CI does not run it, run it yourself. Lint is worth the 25
+  seconds: it fails on a single unused variable, and it is the last job to run.
+- **Merge the moment the run is green.** `ci.yml`'s `scope` job skips a `main` push whose tree
+  a pull request already passed, and that holds only while `main` has not moved. A run takes
+  about seven minutes, and every minute a green pull request waits is a minute another session
+  can land — after which the merged tree is one no run has tested, so the whole suite runs
+  again. Rebasing onto current `main` first does not avoid that: it buys a second
+  pull-request run instead, which costs the same. The window is the only lever there is.
 - **No workarounds.** If the correct fix is bigger, do the correct fix. Look up current best
   practice rather than guessing.
 - **Design first** for anything touching storage, the socket protocol, or many files.
