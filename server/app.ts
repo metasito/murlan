@@ -84,9 +84,11 @@ function serveExpoManifest(platform: string, res: Response) {
     "manifest.json"
   );
   if (!fs.existsSync(manifestPath)) {
+    // Expo Go, not a player, reads this: plain text, no code, nothing to translate.
     return res
       .status(404)
-      .json({ error: `Manifest not found for platform: ${platform}` });
+      .type("text/plain")
+      .send(`Manifest not found for platform: ${platform}`);
   }
   res.setHeader("expo-protocol-version", "1");
   res.setHeader("expo-sfv-version", "0");

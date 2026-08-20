@@ -412,20 +412,6 @@ describe("every player-facing server response carries a code", () => {
   // and socket-emit payloads directly instead of known codes, so it catches
   // an absence.
 
-  /** Span (end exclusive) of the `{...}` that opens at `braceStart`. */
-  function braceSpan(source: string, braceStart: number): number {
-    let depth = 0;
-    let i = braceStart;
-    for (; i < source.length; i++) {
-      if (source[i] === "{") depth++;
-      else if (source[i] === "}" && --depth === 0) {
-        i++;
-        break;
-      }
-    }
-    return i;
-  }
-
   /**
    * Anything that hands a payload to a player: the response and socket
    * primitives, and the helpers that wrap them. `notifyUser` is why the list
@@ -488,15 +474,12 @@ describe("every player-facing server response carries a code", () => {
   }
 
   /** Every object literal reachable from a delivering call's arguments, at any position and depth. */
-  function payloadObjects(
-    sourceFile: ts.SourceFile
-  ): { start: number; text: string; names: Set<string> }[] {
-    const objects: { start: number; text: string; names: Set<string> }[] = [];
+  function payloadObjects(sourceFile: ts.SourceFile): { text: string; names: Set<string> }[] {
+    const objects: { text: string; names: Set<string> }[] = [];
     for (const call of responseCalls(sourceFile)) {
       for (const arg of call.arguments) {
         for (const obj of objectLiteralsIn(arg)) {
           objects.push({
-            start: obj.getStart(sourceFile),
             text: obj.getText(sourceFile),
             names: propertyNames(obj),
           });
@@ -504,36 +487,6 @@ describe("every player-facing server response carries a code", () => {
       }
     }
     return objects;
-  }
-
-  /** Span of `name`'s function body, declared either way this codebase does it. */
-  function functionBodySpan(source: string, name: string): [number, number] | null {
-    const decl = new RegExp(
-      `(?:function\\s+${name}\\s*\\([^{]*\\)|(?:const|let)\\s+${name}\\s*=\\s*(?:async\\s*)?\\([^{]*\\)\\s*(?::[^{=]+)?=>)\\s*\\{`
-    );
-    const m = decl.exec(source);
-    if (!m) return null;
-    const start = m.index + m[0].length - 1;
-    return [start, braceSpan(source, start)];
-  }
-
-  /**
-   * Spans reached only from behind an `expo-platform` header check.
-   * `server/app.ts`'s `expoManifestHandler` gates `serveExpoManifest` on
-   * that header; anything it calls inherits the same gate.
-   */
-  function headerGatedSpans(source: string): [number, number][] {
-    const handler = functionBodySpan(source, "expoManifestHandler");
-    if (!handler) return [];
-    const [hStart, hEnd] = handler;
-    const handlerBody = source.slice(hStart, hEnd);
-    if (!handlerBody.includes("expo-platform")) return [];
-    const spans: [number, number][] = [];
-    for (const m of handlerBody.matchAll(/\b([a-zA-Z_$][\w$]*)\(/g)) {
-      const callee = functionBodySpan(source, m[1]);
-      if (callee) spans.push(callee);
-    }
-    return spans;
   }
 
   test("no player-facing JSON response or socket error emit omits a code", () => {
@@ -547,19 +500,17 @@ describe("every player-facing server response carries a code", () => {
     let objectCount = 0;
     for (const { file, source } of files) {
       const sourceFile = ts.createSourceFile(file, source, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
-      const exemptSpans = headerGatedSpans(source);
       const objects = payloadObjects(sourceFile);
       objectCount += objects.length;
-      for (const { start, text, names } of objects) {
+      for (const { text, names } of objects) {
         if (![...TEXT_FIELDS].some((field) => names.has(field))) continue;
         if (names.has("code")) continue;
-        if (exemptSpans.some(([s, e]) => start >= s && start < e)) continue;
         violations.push(`${file}: ${text.replace(/\s+/g, " ").trim().slice(0, 90)}`);
       }
     }
     assert.ok(
       objectCount > 104,
-      `expected to find the server's response payload objects, got ${objectCount} (108 when this floor was set)`
+      `expected to find the server's response payload objects, got ${objectCount} (106 when this floor was set)`
     );
     assert.deepEqual(
       violations,
