@@ -17,6 +17,7 @@ import type { Page } from "@playwright/test";
 import { test, expect } from "./fixtures";
 import { openApp, registerNewAccount, startOfflineGame } from "./helpers/navigation";
 import { createRoom, goToOnlineLobby } from "./helpers/online";
+import { settled } from "./helpers/settle";
 
 interface Blocked {
   label: string;
@@ -200,18 +201,16 @@ for (const size of SIZES) {
     await page.setViewportSize({ width: size.width, height: size.height });
 
     await openApp(page, baseURL!);
-    // Past the staggered entrance animations, or every control is still at
-    // opacity 0 and the probe measures nothing.
-    await page.waitForTimeout(2500);
+    await settled(page, 2500);
     await expectNoBuriedControls(page, "home", 6);
     expect(await sweepSizes(page, UNDERSIZED_BY_DESIGN), "home").toEqual([]);
 
     await page.getByRole("button", { name: "Offline" }).click();
-    await page.waitForTimeout(1500);
+    await settled(page, 1500);
     await expectNoBuriedControls(page, "offline lobby, 2 players", 8);
 
     await page.getByRole("radio", { name: "4 giocatori" }).click();
-    await page.waitForTimeout(1200);
+    await settled(page, 1200);
     await expectNoBuriedControls(page, "offline lobby, 4 players", 10);
 
     expect(await sweepSizes(page, UNDERSIZED_BY_DESIGN), "offline lobby").toEqual([]);
@@ -230,9 +229,7 @@ for (const size of SIZES) {
     await openApp(page, baseURL!);
     await startOfflineGame(page, { playerCount: 4, gameMode: "free_for_all", format: "single" });
     await expect(page.locator('[data-testid="game-table"]')).toBeVisible();
-    // The deal animates every card in; probing mid-flight measures positions
-    // that no player ever sees.
-    await page.waitForTimeout(5000);
+    await settled(page, 5000);
 
     await expectNoBuriedControls(page, "game table, 4 players", 10);
     expect(await sweepSizes(page, UNDERSIZED_BY_DESIGN), "game table").toEqual([]);
@@ -254,14 +251,14 @@ for (const size of SIZES) {
       `tap${Date.now().toString(36).slice(-6)}${Math.floor(Math.random() * 900 + 100)}`
     );
     await goToOnlineLobby(page);
-    await page.waitForTimeout(2500);
+    await settled(page, 2500);
     await expectNoBuriedControls(page, "online lobby", 6);
 
     // The waiting room carries the most controls of any menu screen — format,
     // bot fill, five personality pills, the code actions and the start button —
     // and it lays them out differently in each orientation.
     await createRoom(page, { playerCount: 4, gameMode: "free_for_all" });
-    await page.waitForTimeout(2500);
+    await settled(page, 2500);
     await expectNoBuriedControls(page, "room, waiting for players", 4);
   });
 
@@ -275,11 +272,11 @@ for (const size of SIZES) {
       `tapp${Date.now().toString(36).slice(-6)}${Math.floor(Math.random() * 900 + 100)}`
     );
     await page.getByRole("button", { name: "Il mio profilo" }).click();
-    await page.waitForTimeout(3000);
+    await settled(page, 3000);
     await expectNoBuriedControls(page, "profile", 2);
 
     await page.getByRole("button", { name: /classifica/i }).first().click();
-    await page.waitForTimeout(2500);
+    await settled(page, 2500);
     await expectNoBuriedControls(page, "leaderboard", 2);
   });
 }
@@ -343,9 +340,9 @@ test("every menu screen stays capped at 1920 wide", async ({ page, baseURL }) =>
   // Profile and leaderboard are reached from the home menu, before ever
   // visiting the online lobby.
   await page.getByRole("button", { name: "Il mio profilo" }).click();
-  await page.waitForTimeout(1500);
+  await settled(page, 1500);
   await page.getByRole("button", { name: /classifica/i }).first().click();
-  await page.waitForTimeout(1500);
+  await settled(page, 1500);
   await assertCapped("leaderboard");
 
   await openApp(page, baseURL!);
