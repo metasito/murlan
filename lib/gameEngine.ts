@@ -415,7 +415,6 @@ export function getAllValidPlays(
     if (combo && canPlay(combo, isNewRound ? null : lastPlayed)) plays.push(combo);
   }
 
-  const jokers = hand.filter((c) => c.isJoker);
   const nj = hand.filter((c) => !c.isJoker);
 
   const byRank = new Map<string, Card[]>();
