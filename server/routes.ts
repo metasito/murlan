@@ -13,6 +13,7 @@ import {
   PushTokenSchema,
 } from "./schemas.ts";
 import { deletePushToken, savePushToken } from "./push.ts";
+import { DEFAULT_LOCALE, type Locale } from "../shared/i18n.ts";
 import { emitToUser, evictUser, isUserOnline } from "./socket.ts";
 import { mintSocketTicket } from "./ticket.ts";
 import { getUserStats, getMatchHistory, getUserAchievements } from "./stats.ts";
@@ -211,8 +212,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // person to hold this phone must not receive the last one's invites, and
   // the cascade on users only covers an account being deleted.
   app.post("/api/push/token", requireAuth, pushLimiter, validate(PushTokenSchema), async (req, res) => {
-    const { token, platform } = req.body as { token: string; platform: string };
-    await savePushToken(req.session.userId!, token, platform);
+    const { token, platform, locale } = req.body as {
+      token: string;
+      platform: string;
+      locale?: Locale;
+    };
+    await savePushToken(req.session.userId!, token, platform, locale ?? DEFAULT_LOCALE);
     res.json({ ok: true });
   });
 

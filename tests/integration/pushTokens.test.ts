@@ -16,6 +16,7 @@ import {
   type TestServer,
 } from "../helpers/testServer.ts";
 import { connectAs, waitFor } from "../helpers/client.ts";
+import { translate } from "../../shared/i18n.ts";
 import { createServer, type Server } from "node:http";
 
 /**
@@ -273,6 +274,52 @@ describe("push token registry", { skip: hasDatabase() ? false : skipMessage() },
         // Tapping it has to be able to reach the table that is waiting.
         assert.equal(message.data?.roomCode, "ZZZ999");
       }
+    } finally {
+      ana.socket.close();
+      ben.socket.close();
+    }
+  });
+
+  // Nothing on the client can fix this after the fact: the OS draws the
+  // notification from what the server sent.
+  test("each device is written in the language that device registered", async () => {
+    const ana = await connectAs(server, "push_loc_a");
+    const ben = await connectAs(server, "push_loc_b");
+    try {
+      await fetch(`${server.url}/api/friends/add`, {
+        method: "POST",
+        headers: { cookie: ana.cookie, "content-type": "application/json" },
+        body: JSON.stringify({ username: ben.user.username }),
+      });
+      const requests = (await (
+        await fetch(`${server.url}/api/friends/requests`, { headers: { cookie: ben.cookie } })
+      ).json()) as { id: string }[];
+      await fetch(`${server.url}/api/friends/accept/${requests[0].id}`, {
+        method: "POST",
+        headers: { cookie: ben.cookie },
+      });
+
+      await post(ben.cookie, { token: TOKEN_A, platform: "ios", locale: "it" });
+      await post(ben.cookie, { token: TOKEN_B, platform: "android", locale: "sq" });
+
+      ben.socket.close();
+      await new Promise((r) => setTimeout(r, 300));
+
+      ana.socket.emit("friend:invite", { friendUserId: ben.user.id, roomCode: "LOC001" });
+      const sent = (await waitForPush()) as { to: string; body: string }[];
+
+      const bodyOf = (token: string) => sent.find((m) => m.to === token)?.body;
+      assert.equal(
+        bodyOf(TOKEN_A),
+        translate("it", "server.FRIEND_INVITE", { username: ana.user.username })
+      );
+      assert.equal(
+        bodyOf(TOKEN_B),
+        translate("sq", "server.FRIEND_INVITE", { username: ana.user.username })
+      );
+      // The floor: two identical bodies would satisfy nothing above if the
+      // catalogues ever converged, and would mean the locale was never read.
+      assert.notEqual(bodyOf(TOKEN_A), bodyOf(TOKEN_B));
     } finally {
       ana.socket.close();
       ben.socket.close();

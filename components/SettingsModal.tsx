@@ -31,6 +31,7 @@ import {
 } from "@/lib/cosmetics";
 import { Colors, Spacing, Radius, FontSize, Type, Shadow, TOUCH_TARGET_MIN } from "@/lib/theme";
 import { useTranslation, type Locale, type TranslationKey } from "@/lib/i18n";
+import { registerForPush } from "@/lib/pushRegistration";
 import type { MotionPreference } from "@/lib/accessibility";
 import { a11yHidden, a11yState, useA11yHint } from "@/lib/a11y";
 
@@ -190,6 +191,10 @@ export function SettingsModal({ visible, onClose }: Props) {
   function handleSelectLocale(next: Locale) {
     hapticSelection();
     void setLocale(next);
+    // The server renders a push with no client in the loop, so this device's
+    // language has to be re-registered here or the next invite arrives in the
+    // old one. A no-op on every platform that cannot receive a push.
+    void registerForPush();
   }
 
   function toggleHaptics(v: boolean) {

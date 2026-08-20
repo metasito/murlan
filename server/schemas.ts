@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { SUPPORTED_LOCALES, type Locale } from "../shared/i18n.ts";
 
 export const RegisterSchema = z.object({
   username: z
@@ -45,4 +46,7 @@ export const PushTokenSchema = z.object({
     message: "Token push non valido",
   }),
   platform: z.enum(["ios", "android"]),
+  // Optional: the DELETE sends no locale, and neither does a client older than
+  // this field. Absent means English (server/routes.ts).
+  locale: z.enum(SUPPORTED_LOCALES as [Locale, ...Locale[]]).optional(),
 });

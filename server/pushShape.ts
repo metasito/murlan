@@ -3,18 +3,31 @@
 // Split out for the same reason server/replayShape.ts is — this half has no
 // database and no network, so `node --test` can load it directly and the
 // request shape is checked without a live Postgres.
+import { DEFAULT_LOCALE, isLocale, translate, type TranslationKey, type TranslationParams } from "../shared/i18n.ts";
+
+/** A device to deliver to, and the language it reads. */
+export interface PushDevice {
+  token: string;
+  locale: string;
+}
 
 export interface PushMessage {
   title: string;
   /**
-   * English, and the fallback half of the `{ code, message }` contract in
-   * lib/i18n.ts: the OS renders this text with no client in the loop, so a
-   * translated `body` would be one language for everybody.
+   * The `code` half of the `{ code, message }` contract in lib/i18n.ts, looked
+   * up as `server.<code>`. Rendered here rather than sent as a code, because
+   * the OS draws a notification with no client in the loop to translate it.
    */
-  body: string;
-  code?: string;
+  code: string;
+  params?: TranslationParams;
   /** Delivered to the app as `notification.request.content.data`. */
   data?: Record<string, string>;
+}
+
+/** A message's body in one device's language, falling back to English. */
+export function renderBody(message: PushMessage, locale: string): string {
+  const key = `server.${message.code}` as TranslationKey;
+  return translate(isLocale(locale) ? locale : DEFAULT_LOCALE, key, message.params);
 }
 
 /** One entry of Expo's `/push/send` request array. */
@@ -35,16 +48,16 @@ export interface ExpoTicket {
 /** The error Expo returns for a token whose app is no longer installed. */
 export const DEVICE_NOT_REGISTERED = "DeviceNotRegistered";
 
-/** One message per device. Expo accepts the array in a single POST. */
+/** One message per device, each in that device's language. Expo accepts the array in a single POST. */
 export function buildPushRequest(
-  tokens: string[],
+  devices: PushDevice[],
   message: PushMessage
 ): ExpoPushRequest[] {
-  return tokens.map((to) => ({
-    to,
+  return devices.map(({ token, locale }) => ({
+    to: token,
     title: message.title,
-    body: message.body,
-    data: message.code ? { ...message.data, code: message.code } : message.data,
+    body: renderBody(message, locale),
+    data: { ...message.data, code: message.code },
     sound: "default",
   }));
 }
