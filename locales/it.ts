@@ -514,7 +514,7 @@ export const it: Record<keyof typeof en, string> = {
   "result.pointsDelta": "+{{n}}",
   "result.winnerDefault": "Vincitore",
   "result.bothJokersTitle": "IL PERDENTE HA ENTRAMBI I JOLLY!",
-  "result.bothJokersBody": "{{name}} inizia libero.\nNessuno scambio.",
+  "result.bothJokersBody": "Nessuno scambio.\n{{name}} inizia il round seguente.",
   "result.bothJokersConfirm": "OK, inizia!",
   "result.exchangeTitle": "SCAMBIO CARTE",
   "result.exchangeGiveLabel": "{{loser}} cede a {{winner}}:",

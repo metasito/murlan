@@ -128,12 +128,14 @@ describe("no server string assumes the player's gender", () => {
       ["a bare participle, so about the reader", new RegExp(String.raw`^Non\s+${AGREEING}`, "i")],
       ["reflexive", /\b(?:me|te|se|sé)\s+stess[oaie]\b/i],
       ["third-person pronoun", /\b(?:lui|lei|esso|essa)\b/i],
+      ["a gendered adjective predicated of the named player", /\{\{name\}\}\s+(?!ha\b|hanno\b|hai\b|ho\b|avete\b|abbiamo\b)\w+\s+\w+[oa](?=[.!?\n]|$)/i],
     ],
     sq: [
       ["possessive, which agrees with the possessor", /\b(?:tij|saj)\b/i],
       ["adjectival article after the copula", /\bje(?:ni)?\s+[ie]\b/i],
       ["a leading adjectival article, so about the reader", /^(?:I|E)\s+\w/],
       ["third-person pronoun", /\b(?:ai|ajo)\b/i],
+      ["an adjectival article predicated of the named player", /\{\{name\}\}\s+\w+\s+[ie]\s+\w/i],
     ],
   };
 
@@ -153,6 +155,24 @@ describe("no server string assumes the player's gender", () => {
     });
   }
 
+
+  // The same frames reach the player outside server.*: a client string that
+  // interpolates a username predicates on it just as readily, and a username
+  // carries no gender for it to agree with.
+  const NAMES_A_PLAYER = /\{\{(?:name|username|from|to|winner|loser|player)\}\}/;
+
+  for (const name of ["it", "sq"] as const) {
+    test(`${name}'s client strings that name a player are neutral`, () => {
+      const named = Object.entries(LOCALES[name] as Record<string, string>).filter(
+        ([key, value]) => !key.startsWith("server.") && NAMES_A_PLAYER.test(value)
+      );
+      assert.ok(named.length > 25, `expected the client strings that name a player, got ${named.length}`);
+      const offenders = named.flatMap(([key, value]) =>
+        offences(value, PATTERNS[name]).map((label) => `${key} (${label}): ${value}`)
+      );
+      assert.deepEqual(offenders, [], `${name}: ${offenders.join(" | ")}`);
+    });
+  }
   // The catalogues were de-gendered once already while the same four sentences
   // stayed masculine in server/, where the guard could not see them — and the
   // fallback is exactly what a client too old to know the code renders.

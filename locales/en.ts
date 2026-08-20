@@ -512,7 +512,7 @@ export const en = {
   "result.pointsDelta": "+{{n}}",
   "result.winnerDefault": "Winner",
   "result.bothJokersTitle": "THE LOSER HAS BOTH JOKERS!",
-  "result.bothJokersBody": "{{name}} starts free.\nNo exchange.",
+  "result.bothJokersBody": "No exchange.\n{{name}} opens the next round.",
   "result.bothJokersConfirm": "OK, start!",
   "result.exchangeTitle": "CARD EXCHANGE",
   "result.exchangeGiveLabel": "{{loser}} hands over to {{winner}}:",

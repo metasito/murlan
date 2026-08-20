@@ -209,13 +209,13 @@ export const sq: Record<keyof typeof en, string> = {
 
   // -------------------------------------------------------- exchangeAnnouncement.*
   "exchangeAnnouncement.a11yNoSwap": "Shkëmbim: pa shkëmbim, {{loserName}} tregoi të dy Xholat",
-  "exchangeAnnouncement.giveLine": "{{from}} i jep {{card}} {{to}}",
+  "exchangeAnnouncement.giveLine": "Nga {{from}} te {{to}}: {{card}}",
   "exchangeAnnouncement.dismissA11yHint": "Prek për të mbyllur",
   "exchangeAnnouncement.closeA11yLabel": "Mbyll njoftimin e shkëmbimit",
   "exchangeAnnouncement.title": "Shkëmbimi",
   "exchangeAnnouncement.noSwapText": "Pa shkëmbim — Xhola të dyfishtë 🃏",
-  "exchangeAnnouncement.givesWord": " i jep ",
-  "exchangeAnnouncement.toWord": " ",
+  "exchangeAnnouncement.givesWord": " → ",
+  "exchangeAnnouncement.toWord": " → ",
 
   // ------------------------------------------------------- gameOverOverlay.*
   "gameOverOverlay.position1": "1°",
@@ -529,7 +529,7 @@ export const sq: Record<keyof typeof en, string> = {
   "result.pointsDelta": "+{{n}}",
   "result.winnerDefault": "Fituesi",
   "result.bothJokersTitle": "HUMBËSI KA TË DY XHOLAT!",
-  "result.bothJokersBody": "{{name}} fillon i lirë.\nPa shkëmbim.",
+  "result.bothJokersBody": "Pa shkëmbim.\n{{name}} fillon raundin tjetër.",
   "result.bothJokersConfirm": "OK, fillo!",
   "result.exchangeTitle": "SHKËMBIMI I LETRAVE",
   "result.exchangeGiveLabel": "{{loser}} i jep {{winner}}:",
@@ -648,7 +648,7 @@ export const sq: Record<keyof typeof en, string> = {
 
   // ------------------------------------------------------------ onlineLobby.*
   "onlineLobby.title": "Me Miq",
-  "onlineLobby.connectedAs": "I lidhur si {{username}}",
+  "onlineLobby.connectedAs": "Lidhur si {{username}}",
   "onlineLobby.connecting": "Duke u lidhur…",
   "onlineLobby.createRoomTitle": "KRIJO DHOMË",
   "onlineLobby.modeLabel": "MODALITETI",
