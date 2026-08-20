@@ -356,6 +356,17 @@ export const it: Record<keyof typeof en, string> = {
   "replay.loadErrorBody": "Questa mano non è più disponibile.",
   "replay.deletedPlayer": "Giocatore eliminato",
   "replay.back": "Chiudi",
+  "replay.scrubA11yLabel": "Posizione nella manche",
+  "replay.speedA11yLabel": "Velocità di riproduzione",
+  "replay.speedValue": "{{n}}×",
+  "replay.jumpA11yLabel": "Vai alla prossima Bomba o alla fine",
+  "replay.movesToggleA11yLabel": "Mostra l'elenco delle mosse",
+  "replay.moveListTitle": "Mosse",
+  "replay.moveListCloseA11yLabel": "Nascondi l'elenco delle mosse",
+  "replay.moveListEmpty": "Questa manche non ha mosse.",
+  "replay.movePassed": "passa",
+  "replay.movePlayed": "{{combo}} · {{cards}}",
+  "replay.moveRowA11yLabel": "Mossa {{n}}: {{name}}, {{action}}",
 
   // ------------------------------------------------------------- cosmetics.*
   "settings.cardBack": "Dorso delle carte",

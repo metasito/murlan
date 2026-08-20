@@ -5,19 +5,28 @@
 // seat and no hand, so every seat draws face-down and no action button exists.
 
 import React, { useCallback, useEffect, useMemo, useState } from "react";
-import { View, Text, Pressable, StyleSheet, ActivityIndicator } from "react-native";
+import { Text, StyleSheet, ActivityIndicator } from "react-native";
 import { router, useLocalSearchParams } from "expo-router";
-import Ionicons from "@expo/vector-icons/Ionicons";
 import { useQuery } from "@tanstack/react-query";
 import { GameTable } from "@/components/GameTable";
 import { MenuLayout } from "@/components/MenuLayout";
 import { MenuCard } from "@/components/MenuCard";
 import { MenuButton } from "@/components/MenuButton";
-import { replayMoveCount, replayStateAt, type ReplayDto } from "@/lib/replay";
-import { Colors, FontSize, Motion, Radius, Spacing, Type } from "@/lib/theme";
+import {
+  ReplayTransport,
+  ReplayMoveList,
+  REPLAY_SPEEDS,
+} from "@/components/ReplayControls";
+import {
+  replayMoveCount,
+  replayStateAt,
+  replayMoments,
+  nextMoment,
+  type ReplayDto,
+} from "@/lib/replay";
+import { Colors, Motion, Spacing, Type } from "@/lib/theme";
 import { hapticSelection } from "@/lib/haptics";
 import { useTranslation } from "@/lib/i18n";
-import { a11yHidden } from "@/lib/a11y";
 
 /** A replay has no actions; the table's handlers are wired to nothing. */
 const NOOP = () => {};
@@ -27,6 +36,8 @@ export default function ReplayScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const [index, setIndex] = useState(-1);
   const [playing, setPlaying] = useState(false);
+  const [speedIndex, setSpeedIndex] = useState(0);
+  const [movesOpen, setMovesOpen] = useState(false);
 
   const { data: replay, isError, isLoading } = useQuery<ReplayDto>({
     queryKey: [`/api/replays/${id}`],
@@ -35,31 +46,50 @@ export default function ReplayScreen() {
 
   const total = replay ? replayMoveCount(replay) : 0;
   const atEnd = index >= total - 1;
+  const speed = REPLAY_SPEEDS[speedIndex];
 
   useEffect(() => {
     if (!playing || atEnd) return;
-    const timer = setTimeout(() => setIndex((i) => i + 1), Motion.replayStep);
+    const timer = setTimeout(() => setIndex((i) => i + 1), Motion.replayStep / speed);
     return () => clearTimeout(timer);
-  }, [playing, atEnd, index]);
+  }, [playing, atEnd, index, speed]);
 
   useEffect(() => {
     if (atEnd) setPlaying(false);
   }, [atEnd]);
 
+  const clamp = useCallback((next: number) => Math.max(-1, Math.min(next, total - 1)), [total]);
+
+  /**
+   * A drag reports continuously, so this is the one mover with no haptic —
+   * one tick per frame across the bar is a buzz, not feedback.
+   */
+  const scrubTo = useCallback(
+    (next: number) => {
+      setPlaying(false);
+      setIndex(clamp(next));
+    },
+    [clamp]
+  );
+
+  const goTo = useCallback(
+    (next: number) => {
+      scrubTo(next);
+      hapticSelection();
+    },
+    [scrubTo]
+  );
+
   const step = useCallback(
     (delta: number) => {
       setPlaying(false);
-      setIndex((i) => Math.max(-1, Math.min(i + delta, total - 1)));
+      setIndex((i) => clamp(i + delta));
       hapticSelection();
     },
-    [total]
+    [clamp]
   );
 
-  const restart = useCallback(() => {
-    setPlaying(false);
-    setIndex(-1);
-    hapticSelection();
-  }, []);
+  const restart = useCallback(() => goTo(-1), [goTo]);
 
   // A player who deleted their account is erased from the stored seat, which
   // keeps no wording of its own (server/storage.ts deleteUser). The label is
@@ -75,6 +105,8 @@ export default function ReplayScreen() {
         : null,
     [replay, t]
   );
+
+  const moments = useMemo(() => (named ? replayMoments(named) : []), [named]);
 
   const state = useMemo(
     () => (named ? replayStateAt(named, index) : null),
@@ -109,7 +141,7 @@ export default function ReplayScreen() {
     );
   }
 
-  if (!state) return null;
+  if (!state || !named) return null;
 
   return (
     <GameTable
@@ -124,90 +156,51 @@ export default function ReplayScreen() {
       onExchangeGive={NOOP}
       roundLabel={t("replay.title")}
       banners={
-        <View style={styles.transport}>
-          <TransportButton
-            icon="play-skip-back"
-            label={t("replay.restartA11yLabel")}
-            onPress={restart}
+        <ReplayTransport
+          index={index}
+          total={total}
+          moments={moments}
+          playing={playing}
+          speed={speed}
+          movesOpen={movesOpen}
+          onScrub={scrubTo}
+          onStep={step}
+          onRestart={restart}
+          onTogglePlay={() => {
+            setPlaying((p) => !p);
+            hapticSelection();
+          }}
+          onCycleSpeed={() => {
+            setSpeedIndex((i) => (i + 1) % REPLAY_SPEEDS.length);
+            hapticSelection();
+          }}
+          onJump={() => {
+            const moment = nextMoment(moments, index);
+            if (moment) goTo(moment.index);
+          }}
+          onToggleMoves={() => {
+            setMovesOpen((open) => !open);
+            hapticSelection();
+          }}
+          t={t}
+        />
+      }
+      overlays={
+        movesOpen ? (
+          <ReplayMoveList
+            replay={named}
+            index={index}
+            onJumpTo={goTo}
+            onClose={() => setMovesOpen(false)}
+            t={t}
           />
-          <TransportButton
-            icon="chevron-back"
-            label={t("replay.prevA11yLabel")}
-            onPress={() => step(-1)}
-          />
-          <TransportButton
-            icon={playing ? "pause" : "play"}
-            label={playing ? t("replay.pauseA11yLabel") : t("replay.playA11yLabel")}
-            onPress={() => {
-              setPlaying((p) => !p);
-              hapticSelection();
-            }}
-          />
-          <TransportButton
-            icon="chevron-forward"
-            label={t("replay.nextA11yLabel")}
-            onPress={() => step(1)}
-          />
-          <Text style={styles.counter}>
-            {index < 0 ? t("replay.start") : t("replay.moveOf", { n: index + 1, total })}
-          </Text>
-        </View>
+        ) : null
       }
     />
   );
 }
 
-function TransportButton({
-  icon,
-  label,
-  onPress,
-}: {
-  icon: React.ComponentProps<typeof Ionicons>["name"];
-  label: string;
-  onPress: () => void;
-}) {
-  return (
-    <Pressable
-      onPress={onPress}
-      style={styles.button}
-      hitSlop={8}
-      accessibilityRole="button"
-      accessibilityLabel={label}
-    >
-      {/* Decorative: the Pressable carries the label, and a labelled control
-          must expose exactly one accessible node. */}
-      <Ionicons
-        name={icon}
-        size={FontSize.lg}
-        color={Colors.gold}
-        {...a11yHidden()}
-      />
-    </Pressable>
-  );
-}
-
 const styles = StyleSheet.create({
-  transport: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: Spacing.sm,
-    paddingHorizontal: Spacing.md,
-    paddingVertical: Spacing.xs,
-  },
-  button: {
-    minWidth: 44,
-    minHeight: 44,
-    alignItems: "center",
-    justifyContent: "center",
-    borderRadius: Radius.sm,
-    backgroundColor: Colors.bgSurface,
-    borderWidth: 1,
-    borderColor: Colors.goldMuted,
-  },
-  counter: {
-    ...Type.caption,
-    marginLeft: Spacing.xs,
-  },
   errorTitle: {
     ...Type.heading,
     textAlign: "center",
