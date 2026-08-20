@@ -1133,7 +1133,10 @@ export function GameTable({
         ]}
       >
         <View style={sharedTableStyles.tableContent}>
-          <View style={[sharedTableStyles.topSection, { height: TOP_SECTION_H }]}>
+          <View
+            testID="table-top-section"
+            style={[sharedTableStyles.topSection, { height: TOP_SECTION_H }]}
+          >
             {opponents.top ? (
               <TopOppSlot
                 player={opponents.top.player}

@@ -246,7 +246,7 @@ export function TopOppSlot({
 }) {
   const count = cardCount ?? player.hand.length;
   return (
-    <View style={seatStyles.topOppSlot}>
+    <View style={seatStyles.topOppSlot} testID="top-seat">
       <View style={seatStyles.topOppRow}>
         <View style={seatStyles.topOppAvatarCol}>
           <AvatarCircle
@@ -256,10 +256,12 @@ export function TopOppSlot({
             finishPos={player.finishPosition}
             size={42}
           />
-          <Text maxFontSizeMultiplier={TABLE_FONT_SCALE_MAX} style={seatStyles.oppName} numberOfLines={1}>
-            {player.name}
-          </Text>
-          <SeatBadges passed={passed} isBot={player.type === "ai"} />
+          <View style={seatStyles.topOppLabelRow}>
+            <Text maxFontSizeMultiplier={TABLE_FONT_SCALE_MAX} style={seatStyles.oppName} numberOfLines={1}>
+              {player.name}
+            </Text>
+            <SeatBadges passed={passed} isBot={player.type === "ai"} />
+          </View>
         </View>
         {player.finishPosition === undefined && count > 0 && (
           <CardFan count={count} maxCards={7} />
@@ -323,9 +325,14 @@ export function SideOppSlot({
 const OPP_LABEL_MAX_W = 70 + Spacing.xs * 2;
 
 const seatStyles = StyleSheet.create({
-  topOppSlot: { alignItems: "center", justifyContent: "center", paddingVertical: Spacing.slim },
+  // The whole column has TOP_SECTION_H and nothing more, so it spends none of it
+  // on padding and the name shares its line with the badges. Anything left over
+  // is the section's own, which centres what it holds. Pinned by
+  // tests/e2e/tableFit.spec.ts — a browser is the only thing that can measure it.
+  topOppSlot: { alignItems: "center", justifyContent: "center" },
   topOppRow: { flexDirection: "row", alignItems: "center", gap: Spacing.cosy },
   topOppAvatarCol: { alignItems: "center", gap: Spacing.xxs },
+  topOppLabelRow: { flexDirection: "row", alignItems: "center", gap: Spacing.xs },
 
   sideOppSlot: { alignItems: "center", justifyContent: "center", gap: Spacing.slim },
   sideLeft: { flexDirection: "row" },

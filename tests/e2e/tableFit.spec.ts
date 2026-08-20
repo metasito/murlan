@@ -70,6 +70,41 @@ test.describe("the table fits the screen", () => {
   }
 });
 
+// ─── The top seat's band ──────────────────────────────────────────────────────
+//
+// TOP_SECTION_H (components/gameTableModel.ts) is a hard height, and everything
+// around it is positioned on the promise that the top opponent fits inside it —
+// StartReasonBanner's topOffset clears exactly that band so it never covers the
+// card count. The seat's own column is free to grow: a padded vertical stack of
+// avatar, name and badge stood 91px in the 70px band, and the overflow left the
+// felt entirely, hanging the avatar and the card fan over the table's top edge.
+// A fixed box and its content are two laid-out boxes, so only a browser can tell
+// you they disagree.
+//
+// Four seats with bots is the worst case: the top seat carries a name and a bot
+// badge at once, which is the tallest the column ever gets short of also having
+// passed.
+
+test.describe("the top seat's column", () => {
+  test("fits the band the table reserves for it", async ({ page, baseURL }) => {
+    test.setTimeout(120_000);
+    await page.setViewportSize({ width: 844, height: 390 });
+    await openApp(page, baseURL!);
+    await startOfflineGame(page, { playerCount: 4, gameMode: "free_for_all" });
+    await page.locator('[data-testid="game-table"]').waitFor({ timeout: 60_000 });
+
+    const band = await page.locator('[data-testid="table-top-section"]').boundingBox();
+    const seat = await page.locator('[data-testid="top-seat"]').boundingBox();
+    if (!band || !seat) throw new Error("the top seat never rendered");
+
+    const overflow =
+      `the top seat (${Math.round(seat.y)}…${Math.round(seat.y + seat.height)}) leaves the ` +
+      `band reserved for it (${Math.round(band.y)}…${Math.round(band.y + band.height)})`;
+    expect(seat.y, overflow).toBeGreaterThanOrEqual(band.y - 0.5);
+    expect(seat.y + seat.height, overflow).toBeLessThanOrEqual(band.y + band.height + 0.5);
+  });
+});
+
 // ─── The banner over the table ────────────────────────────────────────────────
 //
 // The notification banner is a sibling of the whole navigator at zIndex 9999
