@@ -104,7 +104,7 @@ const CARD_CLICK_TIMEOUT_MS = 4_000;
 const RANK_ORDER = [
   "3", "4", "5", "6", "7", "8", "9", "10",
   "Fante", "Donna", "Re", "Asso", "2",
-  "Joker nero", "Joker colorato",
+  "Joker nero", "Joker rosso",
 ];
 
 /** -1 for anything this does not recognise, which callers treat as "try it". */

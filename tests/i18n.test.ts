@@ -190,6 +190,48 @@ describe("no empty translations", () => {
   }
 });
 
+describe("one name per card", () => {
+  /** Not a name any player reads on a card: the black joker is black, not black-and-white. */
+  const ABBREVIATIONS = ["B/W", "B/N", "B/Z"];
+  /** Every key that names a joker in the UI; each must agree with the cardView name. */
+  const JOKER_ALIASES = {
+    "cardView.jokerColored": ["lobby.rankJokerColored", "rules.strengthJokerColored"],
+    "cardView.jokerBlack": ["lobby.rankJokerBlack", "rules.strengthJokerBlack"],
+  } as const;
+
+  test("no locale abbreviates a joker's colour", () => {
+    const violations: string[] = [];
+    let scanned = 0;
+    for (const name of LOCALE_NAMES) {
+      for (const [key, value] of Object.entries(LOCALES[name] as Record<string, string>)) {
+        scanned += 1;
+        for (const abbreviation of ABBREVIATIONS) {
+          if (value.includes(abbreviation)) violations.push(`${name}:${key} — ${abbreviation}`);
+        }
+      }
+    }
+    assert.ok(scanned > 1500, `expected to scan every locale string, got ${scanned}`);
+    assert.deepEqual(violations, [], `these strings abbreviate a joker: ${violations.join(" | ")}`);
+  });
+
+  test("a joker is called the same thing on the card, in the lobby and in the rules", () => {
+    const violations: string[] = [];
+    for (const name of LOCALE_NAMES) {
+      const catalogue = LOCALES[name] as Record<string, string>;
+      for (const [canonical, aliases] of Object.entries(JOKER_ALIASES)) {
+        for (const alias of aliases) {
+          const expected = catalogue[canonical];
+          assert.ok(expected, `${name} has no key "${canonical}"`);
+          if (catalogue[alias].toLowerCase() !== expected.toLowerCase()) {
+            violations.push(`${name}:${alias} is "${catalogue[alias]}", not "${expected}"`);
+          }
+        }
+      }
+    }
+    assert.deepEqual(violations, [], `these disagree: ${violations.join(" | ")}`);
+  });
+});
+
 describe("pluralisation pairs", () => {
   test("every _one key has a matching _other key and vice versa, in every locale", () => {
     const pairs = Object.keys(en).filter((k) => k.endsWith("_one")).length;
