@@ -14,6 +14,12 @@ import { useAuth } from "@/context/AuthContext";
 import { Colors, Spacing, Radius, FontSize, Type, Motion } from "@/lib/theme";
 import { MenuLayout } from "@/components/MenuLayout";
 import { MenuCard } from "@/components/MenuCard";
+import {
+  recentForm,
+  placementDistribution,
+  byPlayerCount,
+  RECENT_FORM_LIMIT,
+} from "@/lib/profileStats";
 import { MenuButton } from "@/components/MenuButton";
 import { useTranslation } from "@/lib/i18n";
 import type { TranslationKey, TranslationParams } from "@/lib/i18n";
@@ -68,6 +74,17 @@ interface AchievementStatusDto {
   unlocked: boolean;
   unlockedAt: string | null;
 }
+
+/** The podium reads the same here as on the result screen. */
+const PLACEMENT_COLORS = [
+  Colors.podiumGold,
+  Colors.podiumSilver,
+  Colors.podiumBronze,
+  Colors.textMuted,
+];
+const FORM_KEY_W = 34;
+const FORM_VALUE_W = 28;
+const placementColor = (placement: number) => PLACEMENT_COLORS[placement - 1] ?? Colors.textMuted;
 
 // Shared with app/result.tsx / components/GameOverOverlay.tsx — same "1°"/
 // "2°"/"3°"/"4°" badge text, one source of truth.
@@ -237,6 +254,90 @@ export default function ProfileScreen() {
               )}
             </MenuCard>
           </Animated.View>
+
+          {/* ── Andamento ── */}
+          {history.length > 0 && (
+            <Animated.View entering={entering}>
+              <MenuCard title={t("profile.formTitle")}>
+                <Text style={styles.formNote}>
+                  {t("profile.formSampleNote", { n: Math.min(history.length, RECENT_FORM_LIMIT) })}
+                </Text>
+
+                <Text style={styles.formLabel}>{t("profile.formRecentLabel")}</Text>
+                <View
+                  style={styles.formStrip}
+                  accessible
+                  accessibilityLabel={t("profile.formRecentA11yLabel", {
+                    results: recentForm(history)
+                      .map((p) => t(POSITION_LABEL_KEYS[p - 1] ?? "gameOverOverlay.position4"))
+                      .join(", "),
+                  })}
+                >
+                  {recentForm(history).map((placement, i) => (
+                    <View
+                      key={i}
+                      style={[styles.formPip, { backgroundColor: placementColor(placement) }]}
+                    />
+                  ))}
+                </View>
+
+                <Text style={styles.formLabel}>{t("profile.formDistributionLabel")}</Text>
+                {placementDistribution(history).map((slice) => {
+                  const posText = t(
+                    POSITION_LABEL_KEYS[slice.placement - 1] ?? "gameOverOverlay.position4"
+                  );
+                  return (
+                    <View
+                      key={slice.placement}
+                      style={styles.formBarRow}
+                      accessible
+                      accessibilityLabel={t("profile.formPlacementRowA11yLabel", {
+                        position: posText,
+                        n: slice.played,
+                        total: history.length,
+                      })}
+                    >
+                      <Text style={styles.formBarKey}>{posText}</Text>
+                      <View style={styles.formBarTrack}>
+                        <View
+                          style={[
+                            styles.formBarFill,
+                            {
+                              width: `${Math.round(slice.share * 100)}%`,
+                              backgroundColor: placementColor(slice.placement),
+                            },
+                          ]}
+                        />
+                      </View>
+                      <Text style={styles.formBarValue}>{slice.played}</Text>
+                    </View>
+                  );
+                })}
+
+                <Text style={styles.formLabel}>{t("profile.formByPlayersLabel")}</Text>
+                {byPlayerCount(history).map((slice) => (
+                  <View
+                    key={slice.playerCount}
+                    style={styles.formCountRow}
+                    accessible
+                    accessibilityLabel={t("profile.formByPlayersRowA11yLabel", {
+                      players: tn("profile.historyPlayers", slice.playerCount),
+                      played: slice.played,
+                      won: slice.won,
+                      avg: slice.averagePlacement,
+                    })}
+                  >
+                    <Text style={styles.formCountKey}>
+                      {tn("profile.historyPlayers", slice.playerCount)}
+                    </Text>
+                    <Text style={styles.formCountValue}>
+                      {t("profile.formAveragePlacement", { n: slice.averagePlacement })}
+                    </Text>
+                  </View>
+                ))}
+              </MenuCard>
+            </Animated.View>
+          )}
 
           {/* ── Partite recenti ── */}
           <Animated.View entering={entering}>
@@ -507,6 +608,65 @@ const styles = StyleSheet.create({
   statValue: { fontFamily: "Rajdhani_700Bold", fontSize: FontSize.lg, color: Colors.text },
   statLabel: { ...Type.caption, textAlign: "center" },
 
+  formNote: {
+    ...Type.caption,
+    color: Colors.textMuted,
+  },
+  formLabel: {
+    ...Type.caption,
+    color: Colors.gold,
+    marginTop: Spacing.sm,
+    marginBottom: Spacing.xs,
+  },
+  formStrip: {
+    flexDirection: "row",
+    gap: Spacing.xs,
+    alignItems: "center",
+  },
+  formPip: {
+    width: Spacing.sm,
+    height: Spacing.md,
+    borderRadius: Radius.sm,
+  },
+  formBarRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: Spacing.sm,
+    marginBottom: Spacing.xs,
+  },
+  formBarKey: {
+    ...Type.caption,
+    width: FORM_KEY_W,
+  },
+  formBarTrack: {
+    flex: 1,
+    height: Spacing.sm,
+    borderRadius: Radius.sm,
+    backgroundColor: Colors.bgSurface,
+  },
+  formBarFill: {
+    height: Spacing.sm,
+    borderRadius: Radius.sm,
+  },
+  formBarValue: {
+    ...Type.caption,
+    color: Colors.textMuted,
+    width: FORM_VALUE_W,
+    textAlign: "right",
+  },
+  formCountRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginBottom: Spacing.xs,
+  },
+  formCountKey: {
+    ...Type.caption,
+  },
+  formCountValue: {
+    ...Type.caption,
+    color: Colors.textMuted,
+  },
   listBlock: { gap: Spacing.sm },
 
   ratingBlock: { alignItems: "center", gap: Spacing.xs / 2, paddingBottom: Spacing.md },
