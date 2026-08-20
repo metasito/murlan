@@ -43,7 +43,6 @@ import {
 import {
   broadcastRematchIntents,
   handleGameOver,
-  rollMatchForward,
   scoresByName,
   tableWantsRematch,
 } from "./gameOver.ts";
@@ -89,6 +88,7 @@ import {
 } from "../lib/gameEngine.ts";
 import type { GameState } from "../lib/gameEngine.ts";
 import { appendReplayMove, startReplayLog } from "./replayShape.ts";
+import { dealManche } from "./dealManche.ts";
 
 /**
  * Handshakes one account may complete per minute. Socket.io answers
@@ -668,25 +668,14 @@ export function setupSocket(httpServer: HttpServer) {
           moveLog: startReplayLog(),
           dealFirstSeat: 0,
         };
-        rollMatchForward(newGame);
         activeGames.set(roomId, newGame);
 
         publicRoomIds.delete(roomId);
         // The lobby is over; a seat lost from here on is the live game's to
         // hold open through the disconnect grace.
         lobbyDropouts.delete(roomId);
-        await storage.updateRoomStatus(roomId, "in_progress");
 
-        broadcastGameState(io, newGame);
-        io.to(roomId).emit("game:started");
-        io.to(roomId).emit("game:match_state", {
-          target: newGame.matchTarget,
-          length: newGame.matchLength,
-          scores: scoresByName(newGame),
-        });
-
-        persistGameState(roomId, newGame);
-        armTurn(io, roomId);
+        await dealManche(io, newGame, gameState);
         logger.info(
           { roomId, playerCount: players.length, botCount: roster.length - players.length },
           "Game started"
@@ -927,28 +916,10 @@ export function setupSocket(httpServer: HttpServer) {
         // same array in order. playerMap is what sanitizeStateForPlayer reads
         // to decide whose hand each viewer is sent, so renumbering it here is
         // how a player ends up holding someone else's cards.
-        game.gameState = newGameState;
         game.gameMode = room.gameMode;
         game.maxPlayers = room.maxPlayers;
-        // A rematch deals a new hand: last hand's flags would record the same
-        // bombs, jokers and departures again in every remaining manche.
-        game.handFlags = {};
-        game.moveLog = startReplayLog();
-        game.abandonedSeats.clear();
-        rollMatchForward(game);
 
-        await storage.updateRoomStatus(roomId, "in_progress");
-
-        broadcastGameState(io, game);
-        io.to(roomId).emit("game:started");
-        io.to(roomId).emit("game:match_state", {
-          target: game.matchTarget,
-          length: game.matchLength,
-          scores: scoresByName(game),
-        });
-
-        persistGameState(roomId, game);
-        armTurn(io, roomId);
+        await dealManche(io, game, newGameState);
       },
       { limit: 20, windowMs: 60_000 }
     );
