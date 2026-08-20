@@ -24,6 +24,9 @@ import {
   CARD_H,
   FLIGHT_MS,
   LANDING_FRACTION,
+  cardTilt,
+  fanCenterOffset,
+  fanOffsets,
   type FlyDirection,
 } from "@/components/gameTableModel";
 
@@ -131,27 +134,24 @@ export function FlyingCards({
   }));
 
   const display = cards;
+  const { step, angle, totalW } = fanOffsets(display.length, "combo");
 
   return (
     <View style={[pileStyles.flyingContainer, { pointerEvents: "none" as const }]}>
       <Animated.View style={[pileStyles.flyingInner, aStyle]}>
-        {display.map((card, i) => {
-          const angle = (i - (display.length - 1) / 2) * 10;
-          const overlap = display.length > 7 ? 8 : display.length > 4 ? 10 : 12;
-          return (
-            <View
-              key={card.id}
-              style={{
-                position: "absolute",
-                left: i * overlap - (display.length - 1) * (overlap / 2),
-                zIndex: i,
-                transform: [{ rotate: `${angle}deg` }],
-              }}
-            >
-              <CardView card={card} />
-            </View>
-          );
-        })}
+        {display.map((card, i) => (
+          <View
+            key={card.id}
+            style={{
+              position: "absolute",
+              left: fanCenterOffset(i, step, totalW),
+              zIndex: i,
+              transform: [{ rotate: `${cardTilt(card.id, angle)}deg` }],
+            }}
+          >
+            <CardView card={card} />
+          </View>
+        ))}
       </Animated.View>
     </View>
   );
@@ -170,19 +170,8 @@ const COMBO_LABEL_KEYS: Record<string, TranslationKey> = {
 
 const POWER_COMBOS = new Set(["bomb", "royal_straight"]);
 
-// Cards thrown onto a table do not land square. Each one gets a small fixed
-// tilt derived from its own id, so the pile looks handled rather than stacked
-// — and so the same combination always looks the same, on every client.
-const PILE_MAX_TILT = 4.5;
-function tiltOf(id: string): number {
-  let hash = 0;
-  for (let i = 0; i < id.length; i++) hash = (hash * 31 + id.charCodeAt(i)) | 0;
-  return ((Math.abs(hash) % 200) / 100 - 1) * PILE_MAX_TILT;
-}
-
 function PileComboCards({ cards }: { cards: Card[] }) {
-  const overlap = cards.length > 8 ? 9 : cards.length > 5 ? 12 : 14;
-  const totalW = overlap * (cards.length - 1) + CARD_W;
+  const { step, angle, totalW } = fanOffsets(cards.length, "combo");
   return (
     <View style={{ width: totalW, height: CARD_H, position: "relative" }}>
       {cards.map((card, ci) => (
@@ -190,9 +179,9 @@ function PileComboCards({ cards }: { cards: Card[] }) {
           key={card.id}
           style={{
             position: "absolute",
-            left: ci * overlap,
+            left: ci * step,
             zIndex: ci,
-            transform: [{ rotate: `${tiltOf(card.id)}deg` }],
+            transform: [{ rotate: `${cardTilt(card.id, angle)}deg` }],
           }}
         >
           <CardView card={card} />

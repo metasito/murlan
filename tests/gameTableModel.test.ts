@@ -16,6 +16,9 @@ import {
   SIDE_SECTION_W,
   TOP_SECTION_H,
   HAND_SECTION_H,
+  cardTilt,
+  fanCenterOffset,
+  fanOffsets,
   getOpponentPosition,
   seatDirection,
   arrangeOpponents,
@@ -83,6 +86,16 @@ function scan(pattern: RegExp): string[] {
 
 // Declarations, not uses: `width: CARD_W` and `CARD_W_SMALL` do not match.
 const CARD_DIMENSION_DECL = /(?<![\w$])(?:const|let|var)\s+(?:CARD_W|CARD_H)(?![\w$])/g;
+// A fan's spread, written out instead of asked for: an `overlap`/`maxAngle`/
+// `maxTilt` binding, or the step ternary itself. The ternary is matched on any
+// operand name — spelling `cards.length` as `count` is the same copy, and was
+// enough to walk past a pattern that only knew the first spelling.
+const FAN_CONSTANT_DECL =
+  /(?<![\w$])(?:const|let|var)\s+(?:overlap|maxAngle|maxTilt)(?![\w$])|[\w.]+\s*>\s*\d+\s*\?\s*\d+\s*:/g;
+
+/** The one file allowed to write a fan's spread out. */
+const FAN_SOURCE = "components/gameTableModel.ts";
+
 const RETYPED_WEB_PAD =
   /(?:Platform\.OS\s*===\s*['"]web['"]|isWeb)\s*\?\s*(?:67|34)(?![\d.])|padding(?:Top|Bottom|Vertical)\s*:\s*(?:67|34)(?![\d.])/g;
 
@@ -117,6 +130,39 @@ describe("layout constants (CLAUDE.md: MUST NOT CHANGE)", () => {
     ]);
   });
 
+  test("only gameTableModel.ts writes out a fan's spread; everywhere else calls fanOffsets", () => {
+    const hits = scan(FAN_CONSTANT_DECL);
+    assert.deepEqual(hits.filter((h) => !h.startsWith(`${FAN_SOURCE}: `)), []);
+    // The floor: a pattern that stopped matching would empty the list above and
+    // pass. The declaration it exists to find has to still be in it.
+    assert.deepEqual(hits, [
+      `${FAN_SOURCE}: count > 5 ? 12 :`,
+      `${FAN_SOURCE}: count > 8 ? 9 :`,
+    ]);
+  });
+
+  test("the fan scan fires on every shape a written-out spread takes", () => {
+    const planted: [string, string][] = [
+      [
+        "components/table/example.tsx",
+        [
+          "const overlap = cards.length > 8 ? 9 : cards.length > 5 ? 12 : 14;",
+          "const step = n > 8 ? 9 : n > 5 ? 12 : 14;",
+          "const maxAngle = 22;",
+          "const { step, angle, totalW } = fanOffsets(n, 'combo');",
+        ].join("\n"),
+      ],
+    ];
+    assert.deepEqual(scanSources(FAN_CONSTANT_DECL, planted), [
+      "components/table/example.tsx: cards.length > 5 ? 12 :",
+      "components/table/example.tsx: cards.length > 8 ? 9 :",
+      "components/table/example.tsx: const maxAngle",
+      "components/table/example.tsx: const overlap",
+      "components/table/example.tsx: n > 5 ? 12 :",
+      "components/table/example.tsx: n > 8 ? 9 :",
+    ]);
+  });
+
   test("no screen re-types the web safe-area pads instead of importing them", () => {
     assert.deepEqual(scan(RETYPED_WEB_PAD), []);
   });
@@ -139,6 +185,80 @@ describe("layout constants (CLAUDE.md: MUST NOT CHANGE)", () => {
       "app/example.tsx: paddingBottom: 34",
       "app/example.tsx: paddingTop: 67",
     ]);
+  });
+});
+
+// ─── Fan geometry ─────────────────────────────────────────────────────────────
+
+describe("fanOffsets", () => {
+  // Both pile fans asking for the same geometry is a property of the source,
+  // not of any value this file can compute: two calls to fanOffsets agree by
+  // construction, so asserting that they do asserts nothing. What can be
+  // checked is that the flight and the landing are the two calls.
+  test("the flight and the landing are the same call, and the only two", () => {
+    const pile = readFileSync(path.join(repoRoot, "components/table/pile.tsx"), "utf8");
+    const calls = [...pile.matchAll(/fanOffsets\([^)]*\)/g)].map((m) => m[0]);
+
+    assert.equal(calls.length, 2, `pile.tsx should ask for its fan twice, got: ${calls}`);
+    assert.deepEqual(
+      calls.map((c) => c.replace(/\((\w+)\.length/, "(N")),
+      ['fanOffsets(N, "combo")', 'fanOffsets(N, "combo")']
+    );
+  });
+
+  test("the step tightens as a combination grows, so a big one still fits the pile", () => {
+    assert.equal(fanOffsets(3, "combo").step, 14);
+    assert.equal(fanOffsets(6, "combo").step, 12);
+    assert.equal(fanOffsets(9, "combo").step, 9);
+    assert.ok(fanOffsets(13, "combo").totalW < 13 * CARD_W);
+  });
+
+  test("totalW spans the first card's left edge to the last card's right edge", () => {
+    for (const kind of ["combo", "opponent"] as const) {
+      const cardW = kind === "combo" ? CARD_W : 40;
+      for (const count of [1, 4, 7]) {
+        const { step, totalW } = fanOffsets(count, kind);
+        assert.equal(totalW, step * (count - 1) + cardW);
+      }
+    }
+    assert.equal(fanOffsets(1, "combo").totalW, CARD_W);
+  });
+});
+
+describe("cardTilt", () => {
+  test("the same card always tilts the same way, on every client and every frame", () => {
+    assert.equal(cardTilt("7H", 4.5), cardTilt("7H", 4.5));
+    assert.notEqual(cardTilt("7H", 4.5), cardTilt("8H", 4.5));
+  });
+
+  test("no card tilts past the bound it was given", () => {
+    for (const id of ["3S", "QD", "joker-1", "10C", "AH"]) {
+      assert.ok(Math.abs(cardTilt(id, 4.5)) <= 4.5);
+      assert.ok(Math.abs(cardTilt(id, 0)) === 0);
+    }
+  });
+});
+
+describe("fanCenterOffset", () => {
+  test("the outer cards sit the same distance either side of the centre", () => {
+    const { step, totalW } = fanOffsets(5, "combo");
+    assert.equal(fanCenterOffset(0, step, totalW) + fanCenterOffset(4, step, totalW), 0);
+    assert.equal(fanCenterOffset(2, step, totalW), 0);
+  });
+
+  test("a single card sits on the centre itself", () => {
+    const { step, totalW } = fanOffsets(1, "combo");
+    assert.equal(fanCenterOffset(0, step, totalW), 0);
+  });
+
+  test("the hand's deal origin is the mirror of a card's own offset", () => {
+    // hand.tsx flies each card in from the middle of the row, which is the
+    // negation of where the card ends up relative to that middle.
+    const { step, totalW } = fanOffsets(7, "combo");
+    for (let i = 0; i < 7; i++) {
+      const dealFromX = totalW / 2 - i * step - CARD_W / 2;
+      assert.equal(fanCenterOffset(i, step, totalW) + dealFromX, 0);
+    }
   });
 });
 

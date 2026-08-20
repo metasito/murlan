@@ -11,6 +11,7 @@ import Animated, {
 import Ionicons from "@expo/vector-icons/Ionicons";
 import { LinearGradient } from "expo-linear-gradient";
 import { CardView } from "@/components/CardView";
+import { fanOffsets } from "@/components/gameTableModel";
 import { Colors, FontSize, Highlight, Motion, Radius, Scrim, Shadow, Spacing, TABLE_FONT_SCALE_MAX } from "@/lib/theme";
 import { useTableFelt } from "@/lib/cosmetics";
 import { usePrefersReducedMotion } from "@/lib/accessibility";
@@ -19,6 +20,12 @@ import type { Player } from "@/lib/gameEngine";
 import { a11yHidden } from "@/lib/a11y";
 
 // ─── CardFan ──────────────────────────────────────────────────────────────────
+
+// The box a fanned hand of face-down cards draws into, and how far each card
+// climbs away from the middle one. Both are local to this fan; the spread
+// itself comes from fanOffsets.
+const FAN_H = 66;
+const FAN_RISE = 4;
 
 function CardFan({
   count,
@@ -29,16 +36,14 @@ function CardFan({
 }) {
   const n = Math.min(count, maxCards);
   if (n === 0) return null;
-  const step = 15;
-  const maxAngle = 22;
-  const totalW = step * (n - 1) + 40;
+  const { step, angle: maxAngle, totalW } = fanOffsets(n, "opponent");
 
   return (
-    <View style={{ width: totalW, height: 66 }}>
+    <View style={{ width: totalW, height: FAN_H }}>
       {Array.from({ length: n }, (_, i) => {
         const c = (n - 1) / 2;
         const angle = ((i - c) / Math.max(c, 1)) * maxAngle;
-        const rise = Math.abs(i - c) * 4;
+        const rise = Math.abs(i - c) * FAN_RISE;
         return (
           <View
             key={i}

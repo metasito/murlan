@@ -14,8 +14,8 @@ import { Colors, FontSize, Motion, Radius, Shadow, Spacing, TABLE_FONT_SCALE_MAX
 import { usePrefersReducedMotion } from "@/lib/accessibility";
 import { useTranslation } from "@/lib/i18n";
 import type { Card } from "@/lib/gameEngine";
-import { CARD_W, computeHandLayout } from "@/components/handLayout";
-import { CARD_H, HAND_SECTION_H } from "@/components/gameTableModel";
+import { computeHandLayout } from "@/components/handLayout";
+import { CARD_H, HAND_SECTION_H, fanCenterOffset } from "@/components/gameTableModel";
 
 // Extra top clearance the fixed HAND_SECTION_H already gives the CARD_H-tall
 // hand row (it's centered inside the taller section). Reused as the
@@ -221,7 +221,7 @@ export function StraightHand({
           faceDown={faceDown}
           zIndex={i}
           dealDelay={dealArmed ? i * Motion.stagger.deal : -1}
-          dealFromX={totalW / 2 - i * step - CARD_W / 2}
+          dealFromX={-fanCenterOffset(i, step, totalW)}
         />
       ))}
     </View>
