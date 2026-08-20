@@ -122,6 +122,12 @@ lines is explaining itself instead of being clear.
   `ready-for-human` (not closed) and the next item is taken. When no
   `ready-for-agent` issue remains, run `superpowers:brainstorming` and file what it finds
   with `mattpocock-skills:to-tickets`.
+- **Don't rehearse CI locally.** `.github/workflows/ci.yml` runs typecheck, `npm test`, lint,
+  `test:native`, `test:e2e` and a build-and-boot on every push. Running that same sweep before
+  pushing doubles the time per item and tells you nothing the run won't. Push, then
+  `gh run watch`. What *is* worth running locally is the narrow thing CI can't give you:
+  a single test file while you iterate on it, proving a new test fails before the fix, or any
+  check CI does not cover. If CI does not run it, run it yourself.
 - **No workarounds.** If the correct fix is bigger, do the correct fix. Look up current best
   practice rather than guessing.
 - **Design first** for anything touching storage, the socket protocol, or many files.
