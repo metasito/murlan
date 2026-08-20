@@ -10,7 +10,7 @@ all. No file other than this one was changed.
 `package.json`, `ls tests/e2e/`):
 
 - The `browser` job's setup is: `actions/checkout@v4` → `actions/setup-node@v4` (already
-  `cache: npm`) → `npm ci` → `npx playwright install --with-deps chromium` → the suite's own
+  `cache: npm`) → `npm ci` → `npx playwright install chromium` (`--with-deps` until #74) → the suite's own
   `expo export --platform web` (triggered inside `scripts/e2e-server.mjs`, which Playwright's
   `webServer` invokes). Total ≈ 210s; the browser job overall is 9m34s (574s) per the
   comment in `ci.yml` citing run 32304169964.
@@ -55,8 +55,8 @@ Corrections to what #51 assumed:
   Playwright asks for reported `already the newest version`; the step's apt cost is an
   `apt-get update` fetching 11.4 MB of index (~12s), followed by zero installs. This
   contradicts the inference in §2.5 drawn from the runner-images manifest — the log is
-  direct evidence and wins. The Playwright Docker image is therefore worth ~26s of 572s,
-  not the standout lever §3 ranks it as.
+  direct evidence and wins. The flag is gone as of #74, which leaves the Playwright
+  Docker image nothing to win — see §2.5.
 - **The specs already isolate themselves in the database.** `tests/e2e/online.spec.ts` and
   `iconGlyphs.spec.ts` build account names from a `uniq()` helper (`Date.now()` +
   `Math.random()`), so the Postgres-collision half of §2.6's open question is largely
@@ -157,7 +157,7 @@ existing `build` job's bundle **cannot** be reused here — `assertNotE2EFast.js
 the two are built differently on purpose.
 
 **Wall-clock:** Only removes the bundle-build slice of the 210s setup from each shard;
-`npm ci` and `playwright install --with-deps` must still run per shard (see 2.3, 2.4). Adds
+`npm ci` and `playwright install` must still run per shard (see 2.3, 2.4). Adds
 a new serialization point: shards can't start until the build job's upload finishes —
 confirmed by GitHub Docs on `needs:`: *"identify any jobs that must complete successfully
 before this job will run."*
@@ -231,8 +231,8 @@ silently ship an old bundle against new source, passing tests against the wrong 
 |---|---|---|
 | `npm ci --prefer-offline --no-audit --fund=false` | `prefer-offline` only skips a staleness *check* on already-cached packages (still downloads anything missing); `--no-audit` skips one extra network call; `fund` is purely cosmetic. None touch `npm ci`'s dominant cost (disk I/O writing `node_modules`). | Negligible, but free — fine to add, don't expect it to move the number. |
 | `actions/checkout` `fetch-depth` tuning | Already defaults to a single-commit shallow clone (`fetch-depth: 1`) — <https://github.com/actions/checkout> confirms this is the out-of-the-box behavior. `filter: blob:none` / sparse-checkout exist for large monorepos. | No further win for a repo this size. Skip. |
-| Skip `--with-deps` because `ubuntu-latest` already has the libs | Checked `actions/runner-images`' Ubuntu 24.04 manifest — it lists Chromium/Chrome/ChromeDriver as standalone browser installs, **not** Playwright's own headless-runtime dependency set (`libatk`, `libgbm`, `libasound2`, etc.). `--with-deps`'s apt work is real, non-redundant work on this image. | Cannot be skipped safely. |
-| **Playwright's own Docker image as the job's `container:`** | `mcr.microsoft.com/playwright:v<version>-noble` ships browsers *and* their OS dependencies pre-installed. Playwright's CI docs give a working GitHub Actions example using it via `container: image:`. This is the one documented way to eliminate the `--with-deps` apt-get step outright, though Playwright frames it for environment consistency rather than speed — no time-savings number is given. | **Worth ~26s of 572s, not a standout lever** — see §0: the apt half installs nothing on this image. Low complexity (pin the image tag to the installed `@playwright/test` version — `package.json` currently has `^1.62.1`), removes real, confirmed-non-preinstalled work. Payoff size is unmeasured but structurally sound. |
+| Skip `--with-deps` because `ubuntu-latest` already has the libs | The Ubuntu 24.04 manifest lists Chromium/Chrome/ChromeDriver as standalone browser installs and not Playwright's headless-runtime set, but the run log outranks that inference: every package is `already the newest version` (§0). Playwright re-checks the libraries itself at browser launch (`validateDependenciesLinux`, `playwright-core`) and throws "Host system is missing dependencies to run browsers", naming each one. | **Done** — dropped in #74. Saves the ~12s index fetch; a runner image that ever drops a library turns the first test red rather than staying green. |
+| Playwright's own Docker image as the job's `container:` | `mcr.microsoft.com/playwright:v<version>-noble` ships browsers *and* their OS dependencies pre-installed, and Playwright's CI docs give a GitHub Actions example using it via `container: image:`. | **Ruled out** — this job starts its own Postgres with `docker run` (`scripts/dev-stack.mjs`, via `scripts/e2e-server.mjs`), and a job inside a `container:` has neither the docker client nor a route to a port published on the host. It would also override the pinned `NODE_VERSION` with the image's own Node. What was left to win — the apt step — is gone anyway. |
 
 Sources: <https://docs.npmjs.com/cli/v10/commands/npm-ci>,
 <https://docs.npmjs.com/cli/v10/using-npm/config#prefer-offline>,

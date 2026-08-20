@@ -190,8 +190,12 @@ jobs:
           cache: npm
       - run: npm ci
 
+      # No `--with-deps`: every package it asks for is already the newest
+      # version on this image, and it spends an 11.4 MB apt index fetch to say
+      # so. Playwright re-checks the libraries at browser launch anyway, so a
+      # runner image that drops one turns the first test red, not silently green.
       - name: Install Playwright's browser
-        run: npx playwright install --with-deps chromium
+        run: npx playwright install chromium
 
       # The only layer that exercises react-native-web's side of every
       # Platform.OS branch, and the only one that measures a laid-out box —
