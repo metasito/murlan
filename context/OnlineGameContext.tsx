@@ -392,16 +392,24 @@ export function OnlineGameProvider({ userId, children }: { userId: string; child
       prevExchangeActiveRef.current = isActive;
 
       if (wasActive && !isActive && state.exchangePhase) {
+        // `cardFromLoser` is withheld the moment the phase closes, so the leg
+        // into the winner's hand is read from the state before this one.
+        // `cardToLoser` only exists from this state onward.
         const prevPhase = prevGameStateRef.current?.exchangePhase;
-        const winnerName = state.players[state.exchangePhase.winnerIdx]?.name ?? "";
-        const loserName = state.players[state.exchangePhase.loserIdx]?.name ?? "";
-        setExchangeAnnounceData({
-          winnerName,
-          loserName,
-          bothJokersException: state.exchangePhase.bothJokersException,
-          cardReceived: prevPhase?.cardFromLoser,
-        });
-        setExchangeAnnouncing(true);
+        const cardReceived = prevPhase?.cardFromLoser;
+        const cardGiven = state.exchangePhase.cardToLoser;
+        // Neither card reaches a seat outside the exchange. Announcing it to
+        // them anyway puts up a banner with nothing in it.
+        if (cardReceived || cardGiven) {
+          setExchangeAnnounceData({
+            winnerName: state.players[state.exchangePhase.winnerIdx]?.name ?? "",
+            loserName: state.players[state.exchangePhase.loserIdx]?.name ?? "",
+            bothJokersException: state.exchangePhase.bothJokersException,
+            cardReceived,
+            cardGiven,
+          });
+          setExchangeAnnouncing(true);
+        }
       }
 
       const prevBothJolly = prevBothJokersExceptionRef.current;

@@ -62,6 +62,12 @@ export interface ExchangePhase {
   winnerIdx: number;
   loserIdx: number;
   cardFromLoser: Card;
+  /**
+   * What the winner handed back. Absent until they choose, so it arrives in
+   * the same state that closes the phase. Online this is the only record of
+   * the return leg — every other seat's hand is sanitized out of the view.
+   */
+  cardToLoser?: Card;
   bothJokersException: boolean;
 }
 
@@ -994,6 +1000,7 @@ export function processExchangeChoice(state: GameState, cardId: string): GameSta
   newState.players[loserIdx].hand = sortHand([...newState.players[loserIdx].hand, card]);
   newState.currentTurnIndex = loserIdx;
   newState.lastPlayedBy = loserIdx;
+  newState.exchangePhase!.cardToLoser = card;
   newState.exchangePhase!.active = false;
   return newState;
 }

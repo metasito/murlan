@@ -63,6 +63,47 @@ describe("visibleExchangePhase", () => {
     assert.equal(visibleExchangePhase(undefined, 0), undefined);
   });
 
+  // `cardToLoser` is the other half of the same secret: a named card out of a
+  // named player's hand. It exists only once the winner has chosen, which is
+  // the same moment the phase closes — so unlike `cardFromLoser` it cannot be
+  // gated on `active`, and its own presence is what gates it.
+  describe("the card handed back", () => {
+    const RETURNED = { id: "6_clubs", suit: "clubs", rank: "6", isJoker: false };
+    const settled = { ...activePhase, active: false, cardToLoser: RETURNED };
+
+    test("the winner sees what they handed back", () => {
+      assert.deepEqual(visibleExchangePhase(settled, 1)?.cardToLoser, RETURNED);
+    });
+
+    test("the loser sees what they were handed", () => {
+      assert.deepEqual(visibleExchangePhase(settled, 3)?.cardToLoser, RETURNED);
+    });
+
+    test("uninvolved seats never receive it", () => {
+      for (const seat of [0, 2]) {
+        const visible = visibleExchangePhase(settled, seat);
+        assert.equal("cardToLoser" in visible!, false, `seat ${seat} was told the card`);
+      }
+    });
+
+    test("a viewer with no seat receives nothing", () => {
+      assert.equal("cardToLoser" in visibleExchangePhase(settled, null)!, false);
+    });
+
+    // The floor: with nothing chosen there is nothing to reveal, so the key is
+    // absent rather than present and undefined — including for the two people
+    // who are entitled to it.
+    test("is absent from every view before the winner chooses", () => {
+      for (const seat of [0, 1, 2, 3, null]) {
+        assert.equal(
+          "cardToLoser" in visibleExchangePhase(activePhase, seat)!,
+          false,
+          `seat ${seat} was told a card that had not been chosen`
+        );
+      }
+    });
+  });
+
   test("the two-joker exception is visible to the table", () => {
     const both = { ...activePhase, active: false, bothJokersException: true };
     assert.equal(visibleExchangePhase(both, 0)?.bothJokersException, true);

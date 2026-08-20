@@ -64,6 +64,28 @@ describe("processExchangeChoice", () => {
     assert.equal(next.lastPlayedBy, 1);
   });
 
+  // Online the loser's hand is sanitized out of every other view, so the phase
+  // itself is the only place the return leg is written down.
+  test("records the card it handed back", () => {
+    const state = buildState([c("4", "hearts"), c("K", "spades")], [c("9", "clubs")]);
+    const next = processExchangeChoice(state, "4_hearts");
+    assert.equal(next.exchangePhase?.cardToLoser?.id, "4_hearts");
+  });
+
+  test("records nothing while the winner has not chosen", () => {
+    const state = buildState([c("4", "hearts")], [c("9", "clubs")]);
+    assert.equal(state.exchangePhase?.cardToLoser, undefined);
+  });
+
+  // The floor: a rejected choice moves no card, so it must leave no record of
+  // one — a phase naming a card that never changed hands is worse than a phase
+  // naming nothing.
+  test("records nothing when the choice is rejected", () => {
+    const state = buildState([c("4", "hearts"), c("K", "spades")], [c("9", "clubs")]);
+    const next = processExchangeChoice(state, "K_spades");
+    assert.equal(next.exchangePhase?.cardToLoser, undefined);
+  });
+
   test("rejects a card outside 3-10 while a legal one exists", () => {
     const state = buildState([c("4", "hearts"), c("K", "spades")], [c("9", "clubs")]);
     assert.equal(processExchangeChoice(state, "K_spades"), state);
