@@ -117,7 +117,12 @@ lines is explaining itself instead of being clear.
   ask which item or whether to proceed. Commit and push yourself — don't wait to be asked —
   then `gh run watch` the push and close the issue only once CI is green; red CI is the next
   thing you work on, not something to leave behind. Keep `Closes #NN` out of the commit
-  message: it closes the issue at push time, before CI has said anything. An item that turns
+  message: it closes the issue at push time, before CI has said anything.
+- **Work on a branch, land through a pull request.** Never push an item straight to `main`.
+  A change that turns out to be wrong goes red on the pull request, where it costs one run
+  and nothing else; pushed to `main` it goes red on `main`, and the next person starts from
+  a broken tree. The merge no longer costs a second run — `ci.yml`'s `scope` job skips a
+  `main` push whose tree the pull request already passed. An item that turns
   out to need an owner-level call gets relabelled
   `ready-for-human` (not closed) and the next item is taken. When no
   `ready-for-agent` issue remains, run `superpowers:brainstorming` and file what it finds
