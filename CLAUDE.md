@@ -31,7 +31,7 @@ Single-context: `CONTEXT.md` + `docs/adr/` at the repo root (created lazily by
 - `DATABASE_URL`, `SESSION_SECRET`, `PORT` must be set in Replit Secrets.
 - No build step needing local tooling. Must launch from the Run button with no setup.
 - **Production runs Node 22** (`.replit` `modules`). CI's `build` job — the one that boots the
-  real artefact — runs 22; the other three check dev tooling and run 24. `server:build`'s
+  real artefact — runs 22; the other two check dev tooling and run 24. `server:build`'s
   `--target=node22` lowers *syntax* only and has no API database, so a Node-24-only builtin
   compiles at exit 0 and throws on Replit. The Node 22 job is what catches that.
 - **`server/schemaDdl.ts` is the only thing that creates tables**, at boot, from
@@ -117,7 +117,12 @@ lines is explaining itself instead of being clear.
   ask which item or whether to proceed. Commit and push yourself — don't wait to be asked —
   then `gh run watch` the push and close the issue only once CI is green; red CI is the next
   thing you work on, not something to leave behind. Keep `Closes #NN` out of the commit
-  message: it closes the issue at push time, before CI has said anything. An item that turns
+  message: it closes the issue at push time, before CI has said anything.
+- **Work on a branch, land through a pull request.** Never push an item straight to `main`.
+  A change that turns out to be wrong goes red on the pull request, where it costs one run
+  and nothing else; pushed to `main` it goes red on `main`, and the next person starts from
+  a broken tree. The merge no longer costs a second run — `ci.yml`'s `scope` job skips a
+  `main` push whose tree the pull request already passed. An item that turns
   out to need an owner-level call gets relabelled
   `ready-for-human` (not closed) and the next item is taken. When no
   `ready-for-agent` issue remains, run `superpowers:brainstorming` and file what it finds

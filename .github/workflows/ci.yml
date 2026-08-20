@@ -30,7 +30,7 @@ env:
 jobs:
   # Two reasons the suite below can be skipped, both settled here: the commit is
   # prose, or this exact tree already went green on the pull request it came
-  # from. Its own job because four jobs need the answer and each would otherwise
+  # from. Its own job because three jobs need the answer and each would otherwise
   # re-clone the full history to work it out.
   scope:
     name: Does this change need the suite?
@@ -96,7 +96,7 @@ jobs:
           fi
 
   verify:
-    name: Typecheck, test, lint
+    name: Typecheck, tests, lint
     needs: scope
     if: needs.scope.outputs.app == 'true'
     runs-on: ubuntu-latest
@@ -156,22 +156,20 @@ jobs:
           fi
           echo "Integration suites ran against Postgres."
 
-      - name: Lint
-        run: npm run lint
+      # React Native's own renderer, with Platform.OS set to ios and android —
+      # the one thing the Playwright suite structurally cannot do. It needs no
+      # database and nothing else this job has not already installed, so it
+      # rides here rather than starting a second runner to repeat `npm ci`.
+      # Runs even when the step above went red: parallel jobs used to show a
+      # failure in each on the same run, and folding must not cost a round trip
+      # to learn the second one.
+      - name: Native tests
+        if: ${{ !cancelled() }}
+        run: npm run test:native
 
-  native:
-    name: Native tests
-    needs: scope
-    if: needs.scope.outputs.app == 'true'
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: ${{ env.NODE_VERSION }}
-          cache: npm
-      - run: npm ci
-      - run: npm run test:native
+      - name: Lint
+        if: ${{ !cancelled() }}
+        run: npm run lint
 
   browser:
     name: Browser tests
@@ -268,7 +266,7 @@ jobs:
       - uses: actions/checkout@v4
       # This job boots the real artefact against a real database, which is the
       # production path — so it runs production's Node, not the repo's. The
-      # other three jobs check dev tooling and 24 is right for them.
+      # other two jobs check dev tooling and 24 is right for them.
       # `esbuild --target=node22` lowers syntax and knows nothing about APIs, so
       # a Node-24-only builtin compiles at exit 0, passes a Node 24 job, and
       # throws on Replit. Running the deploy runtime is what catches that.
