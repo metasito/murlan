@@ -55,7 +55,15 @@ jobs:
         run: |
           # nohup + disowned: a plain `cmd &` can be reaped when the step's own
           # shell exits, and the next step would then find nothing listening.
-          nohup npx expo start --port 8081 > "$RUNNER_TEMP/metro.log" 2>&1 &
+          # --offline because app.json carries an EAS projectId: Expo Go asks a
+          # linked project for a *signed* manifest, signing wants an
+          # authenticated account, and a runner has none - so the request 500s
+          # with "Input is required, but 'npx expo' is in non-interactive mode"
+          # and the device shows only "Something went wrong". Offline serves the
+          # same manifest unsigned, which Expo Go accepts. The alternative is an
+          # EXPO_TOKEN secret, which buys nothing here: none of this needs an
+          # account.
+          nohup npx expo start --offline --port 8081 > "$RUNNER_TEMP/metro.log" 2>&1 &
           disown
           for i in $(seq 1 60); do
             if curl -sf http://127.0.0.1:8081/status | grep -q "packager-status:running"; then
@@ -67,6 +75,33 @@ jobs:
           echo "::error::Metro never came up on 8081."
           cat "$RUNNER_TEMP/metro.log"
           exit 1
+
+      # The flows drive Expo Go (`appId: host.exp.exponent`), which a stock
+      # google_apis system image does not carry. Locally `expo start --android`
+      # installs it on first connect (docs/TESTING.md §5); nothing on a runner
+      # does, so the emulator boots fine and every flow fails on "Package
+      # host.exp.exponent is not installed".
+      #
+      # Resolved from the SDK this project pins rather than hardcoded: Expo Go
+      # carries one SDK at a time, so the newest client is the wrong one the
+      # moment it moves ahead of us.
+      - name: Fetch the Expo Go client for this project's SDK
+        run: |
+          url=$(curl -sf https://api.expo.dev/v2/versions/latest | node -e '
+            let s = "";
+            process.stdin.on("data", (d) => (s += d)).on("end", () => {
+              const major = require("./package.json").dependencies.expo.replace(/^\D*/, "").split(".")[0];
+              const sdk = `${major}.0.0`;
+              const url = JSON.parse(s).data.sdkVersions?.[sdk]?.androidClientUrl;
+              if (!url) {
+                console.error(`::error::No Expo Go Android client published for SDK ${sdk}.`);
+                process.exit(1);
+              }
+              process.stdout.write(url);
+            });
+          ')
+          echo "Expo Go client: $url"
+          curl -Lsf -o "$RUNNER_TEMP/expo-go.apk" "$url"
 
       - name: Install Maestro
         run: |
@@ -89,10 +124,38 @@ jobs:
           # try if the runner turns out to have the same trouble holding the
           # animated table that the local emulator does.
           disable-animations: false
-          script: maestro test .maestro/
+          script: |
+            adb install -r "$RUNNER_TEMP/expo-go.apk"
+            # Expo Go reports a failed manifest fetch as nothing but "Something
+            # went wrong" on the device, which cannot tell a dead dev server
+            # from one answering with an error. Asking the same question from
+            # the host turns that into a status code.
+            curl -sf -o /dev/null -w 'metro /status: %{http_code}' http://127.0.0.1:8081/status || echo "::warning::Metro is no longer answering on 8081."
+            echo
+            curl -s -o "$RUNNER_TEMP/manifest.out" -w 'manifest: %{http_code}' -H 'expo-platform: android' -H 'expo-runtime-version: exposdk:54.0.0' -H 'accept: multipart/mixed,application/expo+json,application/json' http://127.0.0.1:8081/
+            echo
+            head -c 1200 "$RUNNER_TEMP/manifest.out"
+            echo
+            # 10.0.2.2, the flows' own default, does not reach the dev server
+            # from this emulator: over that address Metro's log records no
+            # request at all, and the same run's device log has Expo Go failing
+            # the fetch. Forwarding the device's own loopback gets there, and
+            # the same log then shows the request arriving. The address reaches
+            # the flows through the override they already document for devices
+            # with no host alias, so neither flow changes.
+            adb reverse tcp:8081 tcp:8081
+            maestro test -e MURLAN_PACKAGER_URL=exp://127.0.0.1:8081 .maestro/
 
       # Recordings, logs and screenshots from a failed flow are the only way to
-      # tell a real regression from an emulator that fell over.
+      # tell a real regression from an emulator that fell over. Metro's own log
+      # goes with them: a flow that dies loading the app failed on a request
+      # this is the only record of.
+      - name: Collect Metro's log alongside them
+        if: failure()
+        run: |
+          mkdir -p "$HOME/.maestro/tests"
+          cp "$RUNNER_TEMP/metro.log" "$HOME/.maestro/tests/metro.log" || true
+
       - name: Upload Maestro debug output
         if: failure()
         uses: actions/upload-artifact@v4
