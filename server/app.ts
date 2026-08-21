@@ -181,7 +181,10 @@ function configureExpoAndLanding(app: express.Application) {
     app.use(express.static(distPath, { setHeaders: setDistCacheControl }));
     // Catch-all: any non-API path not matched by static files gets index.html (SPA routing)
     app.get("*path", (req: Request, res: Response, next: NextFunction) => {
-      if (req.path.startsWith("/api")) return next();
+      // /admin is server-rendered and owner-only, and registerRoutes runs
+      // after this mount — without the exclusion the SPA shell answers it, so
+      // every visitor gets a 200 and the owner never sees the dashboard.
+      if (req.path.startsWith("/api") || req.path === "/admin") return next();
       res.set("Cache-Control", "no-cache");
       res.sendFile(webIndexPath);
     });
