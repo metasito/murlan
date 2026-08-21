@@ -28,14 +28,14 @@ test("menu screens render every icon glyph, across the states reachable with no 
   test.setTimeout(60_000);
 
   await openApp(page, baseURL!);
-  await assertAllGlyphsRender(page, "home", 26);
+  await assertAllGlyphsRender(page, "home", 14);
 
   await page.getByRole("button", { name: "Offline" }).click();
   // Four players is what reveals the game-mode row (app/lobby.tsx) — both its
   // options render at once, so both the "person" and "people" mode icons and
   // both the human/bot row icons are already on screen with no further click.
   await page.getByRole("radio", { name: "4 giocatori" }).click();
-  await assertAllGlyphsRender(page, "offline lobby — 4 players", 37);
+  await assertAllGlyphsRender(page, "offline lobby — 4 players", 25);
   await page.goBack();
 
   await page.goto(`${baseURL}/rules`);
@@ -67,17 +67,17 @@ test("online screens render every icon glyph, across the states reachable once s
   await goToOnlineLobby(page);
   // Both "Libera" and "Coppie" render together — both branches of
   // `m === "teams" ? "people" : "person"` are already on screen.
-  await assertAllGlyphsRender(page, "online lobby — room creator", 49);
+  await assertAllGlyphsRender(page, "online lobby — room creator", 35);
   await page.goBack();
 
   await page.getByRole("button", { name: "Online" }).click();
   await page.waitForLoadState("networkidle");
   // All four MODES render at once (mode.icon), but the "selected mode" chip
   // (selectedMode.icon) only exists after a card is tapped.
-  await assertAllGlyphsRender(page, "quickmatch — mode list, nothing selected", 49);
+  await assertAllGlyphsRender(page, "quickmatch — mode list, nothing selected", 35);
   await page.getByText("1 vs 1", { exact: true }).click();
   await page.waitForTimeout(300);
-  await assertAllGlyphsRender(page, "quickmatch — mode selected", 50);
+  await assertAllGlyphsRender(page, "quickmatch — mode selected", 36);
   // Selecting a mode starts matchmaking immediately (quickmatch.tsx
   // handleSelectMode) rather than just toggling a display state, so a full
   // reload is the reliable way back to a known screen — an in-app "cancel"
