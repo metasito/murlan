@@ -9,19 +9,27 @@
 # LAN IP, not portable across machines. See docs/TESTING.md.
 # Requires a running Expo dev server the emulator can reach.
 #
-# `10.0.2.2` is the Android emulator's standard alias for the host machine's
-# loopback, so this one default works on any emulator anywhere — including a CI
-# runner — with no per-machine edit. It replaces a hardcoded LAN IP that only
-# ever resolved on the machine the flow was written on, which is what kept
-# these flows off CI.
+# Reached over `adb reverse tcp:8081 tcp:8081`, which forwards the device's own
+# loopback to the host and works on any emulator anywhere, including a CI
+# runner. `10.0.2.2` — the emulator's alias for the host loopback — was the
+# default before, and it is not universal: on a GitHub runner's emulator a
+# request to it never reaches the dev server at all.
 #
-# Override for a physical device (which has no such alias) with:
-#   maestro test -e MURLAN_PACKAGER_URL=exp://<lan-ip>:8081 .maestro/
+# This value cannot be overridden from the command line. `-e` is applied
+# *before* this block, so an `env:` key here wins over the flag rather than
+# yielding to it — which is why the address has to be one that works
+# everywhere. Change it here, or drop the reverse and put a reachable host in.
 appId: host.exp.exponent
 env:
-  MURLAN_PACKAGER_URL: exp://10.0.2.2:8081
+  MURLAN_PACKAGER_URL: exp://127.0.0.1:8081
 ---
-- launchApp
+- launchApp:
+    # Each flow has to start from the same place: run second and this one
+    # inherits whatever the first left behind - a saved game on the home
+    # screen, or Expo Go sitting on its own launcher with the deep link
+    # never taken - and asserts against a screen the app never rendered.
+    # Which flow runs first is not fixed, so both orders have to work.
+    clearState: true
 - openLink: "${MURLAN_PACKAGER_URL}"
 # Not "Murlan" alone: Expo Go's own native splash screen shows the app
 # name under the icon while the JS bundle is still loading, so a loose
@@ -30,19 +38,26 @@ env:
 # subtitle, or the tutorial's welcome card on a first-ever launch).
 - extendedWaitUntil:
     visible: "IL GIOCO DI CARTE|GUIDA RAPIDA"
-    timeout: 60000
+    # A minute is what a developer's machine needs. A CI emulator is slower
+    # than that on a cold start, and running out of budget here reads
+    # identically to the app never loading at all.
+    timeout: 180000
 # On a fresh connection Expo Go shows a "this is the dev menu" tip
 # rendered *on top of* its real dev menu sheet (Reload / Go Home /
-# etc). Tapping the tip's own "Continue" button only dismisses the
-# tip — the sheet underneath stays open and silently swallows every
-# further tap (tapOn against it reports COMPLETED with no effect,
-# which cost real time to diagnose — see docs/TESTING.md). One
-# hardware back press dismisses both layers in a single step.
+# etc). Both layers have to go, and only in this order: "Continue"
+# dismisses the tip and *reveals* the sheet, then one back press closes
+# the sheet.
+#
+# A back press against the tip does not dismiss either layer — it
+# leaves the experience altogether and lands on Expo Go's own home
+# screen, where none of the app's copy exists and every assertion below
+# fails against a screen the app never rendered. A runner meets this on
+# every single run, because it installs Expo Go fresh each time.
 - runFlow:
     when:
       visible: "Continue"
     commands:
-      - back
+      - tapOn: "Continue"
 - runFlow:
     when:
       visible: "Reload"
