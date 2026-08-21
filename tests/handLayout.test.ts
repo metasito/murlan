@@ -14,6 +14,9 @@ import {
 // parameter now that CARD_W itself is scale-derived; these tests exercise the
 // math at one fixed width, same as before scale existed.
 const CW = CARD_W(1);
+// computeHandLayout's own overlap floor at this card width — past half the
+// card, so a card's own centre stays inside its exposed strip.
+const READABLE_STEP_AT_CW = Math.max(MIN_READABLE_STEP, CW * 0.6);
 
 const WIDTHS = [320, 375, 428, 500, 600, 700, 768, 900, 1024];
 // Deal sizes per docs/BRIEF.md §3.1: 4p up to 14, 3p up to 18, 2p up to 21.
@@ -76,7 +79,7 @@ describe("computeHandLayout", () => {
           // clip: nothing here silently drops below MIN_READABLE_STEP to
           // force a fit.
           assert.ok(totalW > availW, "scrollable must only trigger when the row truly cannot fit");
-          assert.equal(step, MIN_READABLE_STEP, "scrollable rows hold the step at the readable minimum");
+          assert.equal(step, READABLE_STEP_AT_CW, "scrollable rows hold the step at the readable minimum");
         } else {
           // The common case: the whole hand fits, unclipped, inside availW.
           // Tolerate floating-point noise from the division in computeHandLayout
@@ -126,5 +129,25 @@ describe("computeHandLayout", () => {
     const { totalW, scrollable } = computeHandLayout(13, 700, CW);
     assert.equal(scrollable, false);
     assert.ok(totalW <= 700);
+  });
+
+  // A card's own hit-test centre — where a click or tap actually resolves —
+  // is cardW/2 from its left edge. The next card, stacked on top in the
+  // overlap, covers everything right of its own left edge (step away). Once
+  // step < cardW/2 that centre is under the neighbour, not this card, and no
+  // click can ever land it: this is what silently froze two offline e2e
+  // games (bot could not click a single card) once hand cards stopped being
+  // one small fixed width and started scaling with the table.
+  test("a card's own centre is never covered by its neighbour, at desktop card sizes too", () => {
+    // 21 cards on a 1280-wide desktop viewport, at the card width a
+    // maximized-window table scale actually produces (~1.85x base).
+    const bigCardW = CARD_W(1.85);
+    for (const availW of [900, 1024, 1280]) {
+      const { step } = computeHandLayout(21, availW, bigCardW);
+      assert.ok(
+        step > bigCardW / 2,
+        `step ${step} leaves card centre (${bigCardW / 2}) under its neighbour at availW=${availW}`
+      );
+    }
   });
 });

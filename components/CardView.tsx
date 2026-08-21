@@ -37,6 +37,7 @@ import {
   INDEX_X,
   placedPips,
   rankFontSize,
+  rankInset,
 } from "@/components/cardFaceModel";
 import { a11yHidden, a11yState, useA11yHint } from "@/lib/a11y";
 
@@ -556,7 +557,8 @@ function CardViewBase({
   // than the index column and collides with the left pip column; the wide
   // ratio in cardFaceModel is the one that fits.
   const rankFont = rankFontSize(rankText, h);
-  const rankBox = { fontSize: rankFont, lineHeight: rankFont, width: w * INDEX_TEXT_W };
+  const inset = rankInset(h);
+  const rankBox = { fontSize: rankFont, lineHeight: rankFont, width: w * INDEX_TEXT_W, top: inset };
   const color = card.isJoker
     ? card.rank === "joker_colored" ? Colors.heart : Colors.cardInk
     : card.suit ? SUIT_COLORS[card.suit] : Colors.spade;
@@ -610,7 +612,7 @@ function CardViewBase({
             rankBox,
             card.isJoker && styles.rankTextJoker,
             styles.rankTextBottom,
-            { color },
+            { top: undefined, bottom: inset, color },
           ]}
         >
           {rankText}
@@ -672,7 +674,6 @@ const styles = StyleSheet.create({
     fontFamily: "Rajdhani_700Bold",
     letterSpacing: -0.5,
     textAlign: "center",
-    top: 3,
     left: 0,
   },
   rankTextJoker: {
@@ -682,7 +683,6 @@ const styles = StyleSheet.create({
   rankTextBottom: {
     top: undefined,
     left: undefined,
-    bottom: 3,
     right: 0,
     transform: [{ rotate: "180deg" }],
   },

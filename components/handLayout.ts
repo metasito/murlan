@@ -12,6 +12,25 @@
 /** Smallest overlap step (px) that keeps a card its own tappable target. */
 export const MIN_READABLE_STEP = 24;
 
+/**
+ * A card's own hit-test centre sits `cardW / 2` from its left edge; the next
+ * card (drawn after it, so stacked on top in the overlap — hand.tsx gives
+ * CardItem a rising `zIndex={i}`) covers everything right of its own left
+ * edge, at `step` from this card's. Once `step <= cardW / 2`, that centre
+ * point — where a click or tap actually resolves — is under the neighbour
+ * instead of this card, and nothing can select it. The margin past half keeps
+ * the centre inside the exposed strip rather than on its boundary.
+ *
+ * `MIN_READABLE_STEP` alone held this while every hand card shared one small
+ * fixed width; now that the width is the table's own continuous scale, the
+ * floor has to scale with it.
+ */
+const EXPOSED_STRIP_RATIO = 0.6;
+
+function readableStep(cardW: number): number {
+  return Math.max(MIN_READABLE_STEP, cardW * EXPOSED_STRIP_RATIO);
+}
+
 export interface HandLayout {
   /** Horizontal distance (px) between each card's left edge. */
   step: number;
@@ -26,19 +45,19 @@ export interface HandLayout {
 
 /**
  * The overlap step shrinks as `n` grows or `availW` shrinks, down to
- * `MIN_READABLE_STEP`. Below that it holds and reports `scrollable`, so a big
- * hand on a narrow device overflows rather than losing a card to a clip.
+ * `readableStep(cardW)`. Below that it holds and reports `scrollable`, so a
+ * big hand overflows rather than losing a card to a clip or to occlusion.
  * `cardW` is the caller's own already-scaled hand card width.
  */
 export function computeHandLayout(n: number, availW: number, cardW: number): HandLayout {
   if (n <= 1) {
     return { step: 0, totalW: cardW, scrollable: false };
   }
+  const floor = readableStep(cardW);
   const idealStep = (availW - cardW) / (n - 1);
-  if (idealStep >= MIN_READABLE_STEP) {
+  if (idealStep >= floor) {
     const step = Math.min(cardW, idealStep);
     return { step, totalW: step * (n - 1) + cardW, scrollable: false };
   }
-  const step = MIN_READABLE_STEP;
-  return { step, totalW: step * (n - 1) + cardW, scrollable: true };
+  return { step: floor, totalW: floor * (n - 1) + cardW, scrollable: true };
 }
