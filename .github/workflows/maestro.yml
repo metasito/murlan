@@ -128,7 +128,19 @@ jobs:
             echo
             head -c 1200 "$RUNNER_TEMP/manifest.out"
             echo
-            maestro test .maestro/
+            # The device cannot reach the dev server on 10.0.2.2, the flows'
+            # own default: the same manifest request that answers 200 to the
+            # host above comes back non-2xx to Expo Go, which shows it only as
+            # "Something went wrong". This image brings its Wi-Fi up through
+            # netsim, and 10.0.2.2 is an alias of the legacy user-mode network,
+            # not of whatever the guest is actually routing over.
+            #
+            # `adb reverse` does not depend on which network that is - the
+            # device's own loopback is forwarded to the runner's - and the URL
+            # goes through the override the flows already document for devices
+            # with no host alias, so neither flow changes.
+            adb reverse tcp:8081 tcp:8081
+            maestro test -e MURLAN_PACKAGER_URL=exp://127.0.0.1:8081 .maestro/
 
       # Recordings, logs and screenshots from a failed flow are the only way to
       # tell a real regression from an emulator that fell over. Metro's own log
