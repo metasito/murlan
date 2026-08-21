@@ -145,14 +145,14 @@ jobs:
           arch: x86_64
           profile: pixel_6
           emulator-options: -no-window -no-audio -no-boot-anim -gpu swiftshader_indirect -camera-back none
-          # Turned off, which is the knob #35 names as the first to try, and the
-          # runner did turn out to have exactly the trouble it anticipated:
-          # System UI ANRs while the app is loading and the app never draws.
-          # This costs the flows nothing they were testing - the comment that
-          # kept it on says so itself, because the system animation scales do
-          # not drive Reanimated worklets, and those still run on a real UI
-          # thread here.
-          disable-animations: true
+          # Left on. #35 names this as the first knob to try for a struggling
+          # emulator and it was tried, but it is the wrong one: Reanimated reads
+          # the system scales as a reduced-motion signal and disables animations
+          # of its own accord - it says so in Metro's log - and the game table
+          # then never arrives. What the ANRs actually needed was
+          # hide_error_dialogs, below. Driving real worklets on a real UI thread
+          # is the reason this layer exists.
+          disable-animations: false
           # The image warns it wants four and the runner gives it two by
           # default, which is the same strain from the other side.
           cores: 3
