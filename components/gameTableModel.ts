@@ -9,7 +9,7 @@
 
 import type { Card, Combination, GameState, Player } from "@/lib/gameEngine";
 import { getCardDisplayRank, getSuitSymbol } from "../lib/gameEngine.ts";
-import { CARD_H, CARD_W, CARD_W_SMALL } from "./cardFaceModel.ts";
+import { CARD_H, CARD_W, cardScale } from "./cardFaceModel.ts";
 
 // ─── Layout constants ─────────────────────────────────────────────────────────
 //
@@ -20,7 +20,7 @@ import { CARD_H, CARD_W, CARD_W_SMALL } from "./cardFaceModel.ts";
 // them) so tests/gameTableModel.test.ts can pin their values and so the frame
 // maths below can use them directly.
 
-export { CARD_H, CARD_W };
+export { CARD_H, CARD_W, cardScale };
 export const BTN_W = 84;
 export const BTN_H = 84;
 export const SIDE_BTN_W = 62;
@@ -28,7 +28,18 @@ export const TOP_BAR_H = 40;
 export const TABLE_M = 4;
 export const SIDE_SECTION_W = 130;
 export const TOP_SECTION_H = 70;
-export const HAND_SECTION_H = CARD_H + 16;
+/**
+ * Headroom above the hand row's own cards — enough to clear a selected card's
+ * lift (SELECT_LIFT, components/table/hand.tsx) without the row above it
+ * shifting. hand.tsx reuses this same number as its scrollable fallback's own
+ * top clearance, so the two cannot drift apart.
+ */
+export const HAND_ROW_HEADROOM = 16;
+
+/** The hand row's own height — headroom above its (already-scaled) cards. */
+export function HAND_SECTION_H(cardH: number): number {
+  return cardH + HAND_ROW_HEADROOM;
+}
 
 // ─── Fan geometry ─────────────────────────────────────────────────────────────
 //
@@ -57,16 +68,17 @@ const OPPONENT_MAX_ANGLE = 22;
  */
 const COMBO_MAX_TILT = 4.5;
 
-export function fanOffsets(count: number, kind: FanKind): FanOffsets {
+/** `cardW` is the caller's own already-scaled card width for this fan's kind. */
+export function fanOffsets(count: number, kind: FanKind, cardW: number): FanOffsets {
   if (kind === "opponent") {
     return {
       step: OPPONENT_STEP,
       angle: OPPONENT_MAX_ANGLE,
-      totalW: OPPONENT_STEP * (count - 1) + CARD_W_SMALL,
+      totalW: OPPONENT_STEP * (count - 1) + cardW,
     };
   }
   const step = count > 8 ? 9 : count > 5 ? 12 : 14;
-  return { step, angle: COMBO_MAX_TILT, totalW: step * (count - 1) + CARD_W };
+  return { step, angle: COMBO_MAX_TILT, totalW: step * (count - 1) + cardW };
 }
 
 /**
@@ -81,10 +93,11 @@ export function cardTilt(id: string, maxTilt: number): number {
 
 /**
  * Left offset (px) of card `i` in a fan centred on its own midpoint, rather
- * than laid out from a left edge.
+ * than laid out from a left edge. `cardW` must be the same width `fanOffsets`
+ * or `computeHandLayout` produced `totalW` from.
  */
-export function fanCenterOffset(i: number, step: number, totalW: number): number {
-  return i * step - (totalW - CARD_W) / 2;
+export function fanCenterOffset(i: number, step: number, totalW: number, cardW: number): number {
+  return i * step - (totalW - cardW) / 2;
 }
 
 // ─── Seating ──────────────────────────────────────────────────────────────────

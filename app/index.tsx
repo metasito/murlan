@@ -331,8 +331,11 @@ export default function HomeScreen() {
     opacity: subtitleOpacity.value,
   }));
 
-  const topPad = insets.top;
-  const bottomPad = insets.bottom;
+  // A floor, not just the real inset: on a notchless device (most desktop
+  // browsers) env(safe-area-inset-*) is genuinely 0, and content flush
+  // against the browser's raw edge is not a safe area, it's a missing margin.
+  const topPad = Math.max(insets.top, Spacing.roomy);
+  const bottomPad = Math.max(insets.bottom, Spacing.roomy);
   const leftPad = isLandscape ? insets.left : 0;
   const rightPad = isLandscape ? insets.right : 0;
 

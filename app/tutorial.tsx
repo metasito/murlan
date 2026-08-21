@@ -569,7 +569,7 @@ export default function TutorialScreen() {
             <MenuCard title={beat.opponentLabel ?? t("tutorial.onTable")}>
               <View style={styles.cardRow}>
                 {beat.lastPlayed.cards.map((c) => (
-                  <CardView key={c.id} card={c} small noLift />
+                  <CardView key={c.id} card={c} scale={0.625} compact noLift />
                 ))}
               </View>
             </MenuCard>

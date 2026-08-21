@@ -25,17 +25,15 @@ import { useTranslation } from "@/lib/i18n";
 import { cardSpokenName } from "@/lib/cardNames";
 import {
   ACE_PIP_SIZE,
+  CARD_BACK_H,
+  CARD_BACK_W,
   CARD_H,
-  CARD_H_SMALL,
   CARD_W,
-  CARD_W_SMALL,
   COURT_RANKS,
   courtArtRect,
   INDEX_SUIT_SIZE,
   INDEX_SUIT_Y,
   INDEX_TEXT_W,
-  RANK_FONT,
-  RANK_FONT_SMALL,
   INDEX_X,
   placedPips,
   rankFontSize,
@@ -454,7 +452,10 @@ interface CardViewProps {
   card: Card;
   selected?: boolean;
   onPress?: () => void;
-  small?: boolean;
+  /** Multiplies the base card size (face 64×90, back 27×48 at scale 1). */
+  scale?: number;
+  /** Too small for a pip field — one centred mark instead, no court bitmap. */
+  compact?: boolean;
   faceDown?: boolean;
   disabled?: boolean;
   style?: object;
@@ -471,7 +472,8 @@ function CardViewBase({
   card,
   selected = false,
   onPress,
-  small = false,
+  scale = 1,
+  compact = false,
   faceDown = false,
   disabled = false,
   style,
@@ -530,13 +532,13 @@ function CardViewBase({
     ],
   }));
 
-  const w = small ? CARD_W_SMALL : CARD_W;
-  const h = small ? CARD_H_SMALL : CARD_H;
+  const w = faceDown ? CARD_BACK_W(scale) : CARD_W(scale);
+  const h = faceDown ? CARD_BACK_H(scale) : CARD_H(scale);
 
   if (faceDown) {
     return (
       <Animated.View style={[animStyle, style]}>
-        <View style={[styles.card, small ? styles.cardSmall : styles.cardNormal, styles.cardBack]}>
+        <View style={[styles.card, { width: w, height: h }, styles.cardBack]}>
           <LinearGradient
             colors={[backField[1], backField[2], backField[4]]}
             start={{ x: 0.15, y: 0 }}
@@ -551,9 +553,10 @@ function CardViewBase({
 
   const rankText = card.isJoker ? "JK" : getCardDisplayRank(card.rank);
   // "10" is the only two-glyph rank. At the single-glyph size it renders wider
-  // than the index column and collides with the left pip column; the pinned
-  // size in cardFaceModel is the one that fits.
-  const rankSize = { fontSize: rankFontSize(rankText, small) };
+  // than the index column and collides with the left pip column; the wide
+  // ratio in cardFaceModel is the one that fits.
+  const rankFont = rankFontSize(rankText, h);
+  const rankBox = { fontSize: rankFont, lineHeight: rankFont, width: w * INDEX_TEXT_W };
   const color = card.isJoker
     ? card.rank === "joker_colored" ? Colors.heart : Colors.cardInk
     : card.suit ? SUIT_COLORS[card.suit] : Colors.spade;
@@ -577,7 +580,7 @@ function CardViewBase({
         {...selectedHint.props}
         style={[
           styles.card,
-          small ? styles.cardSmall : styles.cardNormal,
+          { width: w, height: h },
           selected && styles.cardSelected,
         ]}
       >
@@ -589,13 +592,12 @@ function CardViewBase({
           end={{ x: 0.9, y: 1 }}
           style={StyleSheet.absoluteFill}
         />
-        <CardFaceArt card={card} color={color} w={w} h={h} compact={small} />
-        {!small && COURT_RANKS.has(card.rank) && <CourtArt card={card} w={w} h={h} />}
+        <CardFaceArt card={card} color={color} w={w} h={h} compact={compact} />
+        {!compact && COURT_RANKS.has(card.rank) && <CourtArt card={card} w={w} h={h} />}
         <TableText
           style={[
             styles.rankText,
-            small ? styles.rankTextSmall : styles.rankTextNormal,
-            rankSize,
+            rankBox,
             card.isJoker && styles.rankTextJoker,
             { color },
           ]}
@@ -605,10 +607,9 @@ function CardViewBase({
         <TableText
           style={[
             styles.rankText,
-            small ? styles.rankTextSmall : styles.rankTextNormal,
-            rankSize,
+            rankBox,
             card.isJoker && styles.rankTextJoker,
-            small ? styles.rankTextBottomSmall : styles.rankTextBottom,
+            styles.rankTextBottom,
             { color },
           ]}
         >
@@ -630,7 +631,8 @@ function cardViewPropsEqual(a: CardViewProps, b: CardViewProps): boolean {
     a.card.id === b.card.id &&
     a.selected === b.selected &&
     a.onPress === b.onPress &&
-    a.small === b.small &&
+    a.scale === b.scale &&
+    a.compact === b.compact &&
     a.faceDown === b.faceDown &&
     a.disabled === b.disabled &&
     a.noLift === b.noLift &&
@@ -651,14 +653,6 @@ const styles = StyleSheet.create({
     overflow: "hidden",
     ...Shadow.card,
   },
-  cardNormal: {
-    width: CARD_W,
-    height: CARD_H,
-  },
-  cardSmall: {
-    width: CARD_W_SMALL,
-    height: CARD_H_SMALL,
-  },
   cardSelected: {
     borderColor: Colors.gold,
     borderWidth: 2,
@@ -678,20 +672,8 @@ const styles = StyleSheet.create({
     fontFamily: "Rajdhani_700Bold",
     letterSpacing: -0.5,
     textAlign: "center",
-  },
-  rankTextNormal: {
-    fontSize: RANK_FONT,
-    lineHeight: 15,
     top: 3,
     left: 0,
-    width: CARD_W * INDEX_TEXT_W,
-  },
-  rankTextSmall: {
-    fontSize: RANK_FONT_SMALL,
-    lineHeight: 11,
-    top: 2,
-    left: 0,
-    width: CARD_W_SMALL * INDEX_TEXT_W,
   },
   rankTextJoker: {
     fontSize: FontSize.xs,
@@ -701,13 +683,6 @@ const styles = StyleSheet.create({
     top: undefined,
     left: undefined,
     bottom: 3,
-    right: 0,
-    transform: [{ rotate: "180deg" }],
-  },
-  rankTextBottomSmall: {
-    top: undefined,
-    left: undefined,
-    bottom: 2,
     right: 0,
     transform: [{ rotate: "180deg" }],
   },

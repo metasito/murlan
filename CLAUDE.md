@@ -57,11 +57,10 @@ Verify against source before changing any.
 - **Hooks before the null guard** in both game screens — every hook runs before
   `if (!gameState) return null`.
 - **A card appears exactly once** in flight/`pileState` — never twice, never zero times.
-- **`CARD_W`/`CARD_H` are declared once**, in `components/cardFaceModel.ts`; `handLayout.ts`
-  and `gameTableModel.ts` re-export them. The web substitutes for safe-area insets,
-  `WEB_TOP_PAD`/`WEB_BOTTOM_PAD`, are declared once in `lib/tokens.ts`.
-  `tests/gameTableModel.test.ts` source-scans for a second declaration — pinning the value
-  cannot find one, because a copy holds the same number.
+- **`CARD_W`/`CARD_H` are declared once**, in `components/cardFaceModel.ts`; `gameTableModel.ts`
+  re-exports them, and `handLayout.ts` takes a card width in as a parameter rather than
+  importing the constant itself. `tests/gameTableModel.test.ts` source-scans for a second
+  declaration — pinning the value cannot find one, because a copy holds the same number.
 - **Impact feedback is timed to the card landing**, not the throw. `impactDelayMs()`
   (`components/gameTableModel.ts`) is the one place that delay is derived, so the animation
   and the feedback cannot drift apart.

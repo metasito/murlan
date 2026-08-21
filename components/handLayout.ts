@@ -3,10 +3,6 @@
 // Keep this file free of JSX and of any import from a .tsx file: Node's TS
 // loader type-strips plain .ts only, and `node --test` is what covers it.
 
-import { CARD_W } from "./cardFaceModel.ts";
-
-export { CARD_W };
-
 // WCAG 2.2 SC 2.5.8 Level AA: 24x24 CSS px, or the undersized-target
 // exception, which needs 24px circles on adjacent targets not to intersect.
 // Adjacent card centres are exactly `step` apart, so below 24 fails both.
@@ -32,16 +28,17 @@ export interface HandLayout {
  * The overlap step shrinks as `n` grows or `availW` shrinks, down to
  * `MIN_READABLE_STEP`. Below that it holds and reports `scrollable`, so a big
  * hand on a narrow device overflows rather than losing a card to a clip.
+ * `cardW` is the caller's own already-scaled hand card width.
  */
-export function computeHandLayout(n: number, availW: number): HandLayout {
+export function computeHandLayout(n: number, availW: number, cardW: number): HandLayout {
   if (n <= 1) {
-    return { step: 0, totalW: CARD_W, scrollable: false };
+    return { step: 0, totalW: cardW, scrollable: false };
   }
-  const idealStep = (availW - CARD_W) / (n - 1);
+  const idealStep = (availW - cardW) / (n - 1);
   if (idealStep >= MIN_READABLE_STEP) {
-    const step = Math.min(CARD_W, idealStep);
-    return { step, totalW: step * (n - 1) + CARD_W, scrollable: false };
+    const step = Math.min(cardW, idealStep);
+    return { step, totalW: step * (n - 1) + cardW, scrollable: false };
   }
   const step = MIN_READABLE_STEP;
-  return { step, totalW: step * (n - 1) + CARD_W, scrollable: true };
+  return { step, totalW: step * (n - 1) + cardW, scrollable: true };
 }

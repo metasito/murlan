@@ -59,6 +59,11 @@ import {
 
 // ─── Layout constants ─────────────────────────────────────────────────────────
 
+// A representative resolved card width/height at scale 1, for tests that need
+// a concrete number rather than the function CARD_W/CARD_H now are.
+const CW = CARD_W(1);
+const CH = CARD_H(1);
+
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
 function clientSources(): [string, string][] {
@@ -100,8 +105,8 @@ describe("layout constants (CLAUDE.md: MUST NOT CHANGE)", () => {
   test("every constant still holds the value both game screens are built around", () => {
     // These are pinned, not documented: a silent change to any of them breaks
     // the table on one screen or the other with no error signal.
-    assert.equal(CARD_W, 58);
-    assert.equal(CARD_H, 84);
+    assert.equal(CARD_W(1), 64);
+    assert.equal(CARD_H(1), 90);
     assert.equal(BTN_W, 84);
     assert.equal(BTN_H, 84);
     assert.equal(SIDE_BTN_W, 62);
@@ -111,11 +116,18 @@ describe("layout constants (CLAUDE.md: MUST NOT CHANGE)", () => {
     assert.equal(TOP_SECTION_H, 70);
   });
 
-  test("HAND_SECTION_H keeps its CARD_H + 16 headroom for the selection lift", () => {
+  test("CARD_W/CARD_H scale linearly with the short edge, no breakpoints", () => {
+    assert.equal(CARD_W(0.5), CARD_W(1) * 0.5);
+    assert.equal(CARD_H(2), CARD_H(1) * 2);
+  });
+
+  test("HAND_SECTION_H keeps its +16 headroom for the selection lift, at any card height", () => {
     // The -14px selection lift has to fit inside the section; the 16px of
     // slack is what gives it room without clipping.
-    assert.equal(HAND_SECTION_H, CARD_H + 16);
-    assert.ok(HAND_SECTION_H - CARD_H >= 14);
+    for (const h of [CH * 0.7, CH, CH * 1.2]) {
+      assert.equal(HAND_SECTION_H(h), h + 16);
+      assert.ok(HAND_SECTION_H(h) - h >= 14);
+    }
   });
 
   // A copy of a constant also holds the pinned value, so the assertions above
@@ -176,26 +188,26 @@ describe("fanOffsets", () => {
     assert.equal(calls.length, 2, `pile.tsx should ask for its fan twice, got: ${calls}`);
     assert.deepEqual(
       calls.map((c) => c.replace(/\((\w+)\.length/, "(N")),
-      ['fanOffsets(N, "combo")', 'fanOffsets(N, "combo")']
+      ['fanOffsets(N, "combo", cardW)', 'fanOffsets(N, "combo", cardW)']
     );
   });
 
   test("the step tightens as a combination grows, so a big one still fits the pile", () => {
-    assert.equal(fanOffsets(3, "combo").step, 14);
-    assert.equal(fanOffsets(6, "combo").step, 12);
-    assert.equal(fanOffsets(9, "combo").step, 9);
-    assert.ok(fanOffsets(13, "combo").totalW < 13 * CARD_W);
+    assert.equal(fanOffsets(3, "combo", CW).step, 14);
+    assert.equal(fanOffsets(6, "combo", CW).step, 12);
+    assert.equal(fanOffsets(9, "combo", CW).step, 9);
+    assert.ok(fanOffsets(13, "combo", CW).totalW < 13 * CW);
   });
 
   test("totalW spans the first card's left edge to the last card's right edge", () => {
     for (const kind of ["combo", "opponent"] as const) {
-      const cardW = kind === "combo" ? CARD_W : 40;
+      const cardW = kind === "combo" ? CW : 40;
       for (const count of [1, 4, 7]) {
-        const { step, totalW } = fanOffsets(count, kind);
+        const { step, totalW } = fanOffsets(count, kind, cardW);
         assert.equal(totalW, step * (count - 1) + cardW);
       }
     }
-    assert.equal(fanOffsets(1, "combo").totalW, CARD_W);
+    assert.equal(fanOffsets(1, "combo", CW).totalW, CW);
   });
 });
 
@@ -215,23 +227,23 @@ describe("cardTilt", () => {
 
 describe("fanCenterOffset", () => {
   test("the outer cards sit the same distance either side of the centre", () => {
-    const { step, totalW } = fanOffsets(5, "combo");
-    assert.equal(fanCenterOffset(0, step, totalW) + fanCenterOffset(4, step, totalW), 0);
-    assert.equal(fanCenterOffset(2, step, totalW), 0);
+    const { step, totalW } = fanOffsets(5, "combo", CW);
+    assert.equal(fanCenterOffset(0, step, totalW, CW) + fanCenterOffset(4, step, totalW, CW), 0);
+    assert.equal(fanCenterOffset(2, step, totalW, CW), 0);
   });
 
   test("a single card sits on the centre itself", () => {
-    const { step, totalW } = fanOffsets(1, "combo");
-    assert.equal(fanCenterOffset(0, step, totalW), 0);
+    const { step, totalW } = fanOffsets(1, "combo", CW);
+    assert.equal(fanCenterOffset(0, step, totalW, CW), 0);
   });
 
   test("the hand's deal origin is the mirror of a card's own offset", () => {
     // hand.tsx flies each card in from the middle of the row, which is the
     // negation of where the card ends up relative to that middle.
-    const { step, totalW } = fanOffsets(7, "combo");
+    const { step, totalW } = fanOffsets(7, "combo", CW);
     for (let i = 0; i < 7; i++) {
-      const dealFromX = totalW / 2 - i * step - CARD_W / 2;
-      assert.equal(fanCenterOffset(i, step, totalW) + dealFromX, 0);
+      const dealFromX = totalW / 2 - i * step - CW / 2;
+      assert.equal(fanCenterOffset(i, step, totalW, CW) + dealFromX, 0);
     }
   });
 });

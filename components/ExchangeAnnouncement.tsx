@@ -341,8 +341,8 @@ const styles = StyleSheet.create({
   },
   cardWrap: {
     transform: [{ scale: 0.65 }],
-    marginHorizontal: -(CARD_W * 0.175),
-    marginVertical: -(CARD_H * 0.175),
+    marginHorizontal: -(CARD_W(1) * 0.175),
+    marginVertical: -(CARD_H(1) * 0.175),
   },
   descText: {
     textAlign: "center",

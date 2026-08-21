@@ -70,8 +70,8 @@ test("every card back has its own five-stop field", () => {
   }
 });
 
-// The bug this pins: a back's field used to be a lookup key into FeltGradients
-// ('verde', 'bordeaux', ...), so repainting a felt silently repainted a back too.
+// A back's own field must stay its own literal gradient — sharing one with a
+// felt would mean repainting the felt silently repaints the back too.
 test("a card back's field is never a reference to a felt's gradient", () => {
   for (const id of CARD_BACK_IDS) {
     const field = CardBacks[id].field;

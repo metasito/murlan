@@ -123,7 +123,10 @@ const FORMAT_OPTIONS: readonly MatchLength[] = ["match", "single"];
 export default function LobbyScreen() {
   const insets = useSafeAreaInsets();
   const { t } = useTranslation();
-  const bottomInset = insets.bottom;
+  // A floor, not just the real inset: on a notchless device (most desktop
+  // browsers) env(safe-area-inset-*) is genuinely 0, and content flush
+  // against the browser's raw edge is not a safe area, it's a missing margin.
+  const bottomInset = Math.max(insets.bottom, Spacing.roomy);
   const { width: W, height: H } = useWindowDimensions();
   const isLandscape = W > H;
   const { mode } = useLocalSearchParams<{ mode: LobbyMode }>();

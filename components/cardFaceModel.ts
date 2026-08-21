@@ -7,11 +7,52 @@
 // one set of numbers serves both card sizes.
 
 import type { Rank } from "@/lib/gameEngine";
+import { TOUCH_TARGET_MIN } from "../lib/tokens.ts";
 
-export const CARD_W = 58;
-export const CARD_H = 84;
-export const CARD_W_SMALL = 40;
-export const CARD_H_SMALL = 58;
+// ─── Scale ──────────────────────────────────────────────────────────────────
+//
+// One scale factor for every card and touch target on the table, derived from
+// the device's short edge — no breakpoints, no tablet branch. 390 is the
+// short edge the base sizes below are authored at (an iPhone-standard
+// viewport); an SE runs ~0.82, a 17 Pro Max ~1.13.
+const BASE_SHORT_EDGE = 390;
+// Caps scale on a maximized desktop browser, where the short edge keeps
+// growing with the window — a real device's short edge tops out well below
+// this (tableFit.spec.ts's own tablet-landscape fixture is 834).
+const MAX_SHORT_EDGE = 900;
+
+export function cardScale(shortEdge: number): number {
+  return Math.min(shortEdge, MAX_SHORT_EDGE) / BASE_SHORT_EDGE;
+}
+
+// A card face (lying on the felt or standing in a hand) at scale 1.
+const FACE_W = 64;
+const FACE_H = 90;
+// A card back (an opponent's hand) at scale 1 — its own aspect, not the face
+// scaled down: a card standing in a hand is not a card lying on cloth.
+const BACK_W = 27;
+const BACK_H = 48;
+
+export const CARD_W = (s: number) => FACE_W * s;
+export const CARD_H = (s: number) => FACE_H * s;
+export const CARD_BACK_W = (s: number) => BACK_W * s;
+export const CARD_BACK_H = (s: number) => BACK_H * s;
+
+/** Multipliers on the table's own scale, by where the card is drawn. */
+export const FIELD_SCALE = 1.0;
+export const HAND_SCALE = 0.95;
+export const BACK_SCALE = 0.88;
+
+/**
+ * A touch target's floor is physical size — never `TOUCH_TARGET_MIN * s`.
+ * No control in this table scales its own width/height by `s` yet (the
+ * PASSA/GIOCA row's height is already floored statically via `minHeight:
+ * TOUCH_TARGET_MIN`), so nothing calls this today — it exists for #191's
+ * control rail, the first control whose own size is derived from `s`.
+ */
+export function physicalTouchTarget(s: number): number {
+  return Math.max(TOUCH_TARGET_MIN, TOUCH_TARGET_MIN * s);
+}
 
 // ─── Index column ─────────────────────────────────────────────────────────────
 //
@@ -27,11 +68,11 @@ export const INDEX_TEXT_W = INDEX_X * 2;
 
 // Rajdhani Bold advances roughly 0.55em per digit. "10" is the only two-glyph
 // rank, and at the single-glyph size it renders wider than the index box and
-// spills into the pip field. It gets its own size so it fits instead.
-export const RANK_FONT = 15;
-export const RANK_FONT_SMALL = 11;
-export const RANK_FONT_WIDE = 12;
-export const RANK_FONT_WIDE_SMALL = 8.5;
+// spills into the pip field. It gets its own, narrower ratio so it fits
+// instead. Both ratios are of card height, continuous rather than a fixed
+// pair of sizes — there is no longer a discrete "small card" to pin them to.
+const RANK_FONT_RATIO = 15 / FACE_H;
+const RANK_FONT_WIDE_RATIO = 12 / FACE_H;
 const GLYPH_ADVANCE_EM = 0.55;
 const LETTER_SPACING = -0.5;
 
@@ -39,14 +80,13 @@ export function isWideRank(rank: string): boolean {
   return rank.length > 1 && rank !== "JK";
 }
 
-export function rankFontSize(rank: string, small: boolean): number {
-  if (isWideRank(rank)) return small ? RANK_FONT_WIDE_SMALL : RANK_FONT_WIDE;
-  return small ? RANK_FONT_SMALL : RANK_FONT;
+export function rankFontSize(rank: string, h: number): number {
+  return h * (isWideRank(rank) ? RANK_FONT_WIDE_RATIO : RANK_FONT_RATIO);
 }
 
 /** Rendered width of a rank's glyphs at the size it is drawn. */
-export function rankTextWidth(rank: string, small: boolean): number {
-  const size = rankFontSize(rank, small);
+export function rankTextWidth(rank: string, h: number): number {
+  const size = rankFontSize(rank, h);
   const glyphs = rank.length;
   return glyphs * GLYPH_ADVANCE_EM * size + (glyphs - 1) * LETTER_SPACING;
 }
@@ -59,9 +99,9 @@ export interface Box {
 }
 
 /** Pixel box the top-left index occupies — rank glyphs and suit mark together. */
-export function indexBox(rank: string, w: number, h: number, small: boolean): Box {
+export function indexBox(rank: string, w: number, h: number): Box {
   const centreX = w * INDEX_X;
-  const textHalf = rankTextWidth(rank, small) / 2;
+  const textHalf = rankTextWidth(rank, h) / 2;
   const suitHalf = (h * INDEX_SUIT_SIZE) / 2;
   const half = Math.max(textHalf, suitHalf);
   return {

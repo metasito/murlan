@@ -8,8 +8,6 @@ import assert from "node:assert/strict";
 import {
   CARD_W,
   CARD_H,
-  CARD_W_SMALL,
-  CARD_H_SMALL,
   PIP_LAYOUTS,
   PIP_RANKS,
   COURT_RANKS,
@@ -20,16 +18,19 @@ import {
   rankTextWidth,
   INDEX_TEXT_W,
   isWideRank,
+  cardScale,
 } from "../components/cardFaceModel.ts";
 
-// The index (rank glyphs + suit mark) is drawn at both sizes. The pip field is
-// not: a small card is too narrow for one and draws a single centred mark
-// instead, so pip geometry is only checked at the size that renders it.
+// Every face card draws the full pip field and the index at whatever size the
+// table's own scale resolves to — checked across the realistic range, from a
+// small hand card on an iPhone SE to a field card on a large tablet, since
+// there is no longer a discrete "small card" the geometry only has to fit at.
 const SIZES = [
-  { name: "normal", w: CARD_W, h: CARD_H, small: false },
-  { name: "small", w: CARD_W_SMALL, h: CARD_H_SMALL, small: true },
+  { name: "smallest (SE hand)", w: CARD_W(0.7), h: CARD_H(0.7) },
+  { name: "base (scale 1)", w: CARD_W(1), h: CARD_H(1) },
+  { name: "largest (tablet field)", w: CARD_W(1.3), h: CARD_H(1.3) },
 ];
-const PIP_SIZES = SIZES.filter((s) => !s.small);
+const PIP_SIZES = SIZES;
 
 describe("pip counts", () => {
   test("every pip rank draws exactly as many pips as its rank", () => {
@@ -40,7 +41,7 @@ describe("pip counts", () => {
         expected,
         `rank ${rank} lays out ${PIP_LAYOUTS[rank].length} pips`
       );
-      assert.equal(placedPips(rank, CARD_W, CARD_H).length, expected);
+      assert.equal(placedPips(rank, CARD_W(1), CARD_H(1)).length, expected);
     }
   });
 
@@ -54,11 +55,11 @@ describe("pip counts", () => {
 });
 
 describe("nothing collides with the corner index", () => {
-  for (const { name, w, h, small } of PIP_SIZES) {
+  for (const { name, w, h } of PIP_SIZES) {
     test(`no pip overlaps the index column on a ${name} card`, () => {
       const offenders: string[] = [];
       for (const rank of PIP_RANKS) {
-        const index = indexBox(rank, w, h, small);
+        const index = indexBox(rank, w, h);
         for (const [i, pip] of placedPips(rank, w, h).entries()) {
           if (boxesOverlap(pipBox(pip), index)) {
             offenders.push(
@@ -71,14 +72,14 @@ describe("nothing collides with the corner index", () => {
     });
   }
 
-  // The index is drawn at both sizes, so its glyphs must fit at both.
-  for (const { name, w, small } of SIZES) {
+  // The index is drawn at every size, so its glyphs must fit at all of them.
+  for (const { name, w, h } of SIZES) {
     test(`the rank glyphs fit inside the index box on a ${name} card`, () => {
-      // "10" is the only two-glyph rank and needs its own size; at the
-      // single-glyph size it is wider than the box and reaches the pip field.
+      // "10" is the only two-glyph rank and needs its own ratio; at the
+      // single-glyph ratio it is wider than the box and reaches the pip field.
       const box = w * INDEX_TEXT_W;
       for (const rank of [...PIP_RANKS, "A", "J", "Q", "K"]) {
-        const width = rankTextWidth(rank, small);
+        const width = rankTextWidth(rank, h);
         assert.ok(
           width <= box,
           `${rank} renders ${width.toFixed(2)}px wide in a ${box.toFixed(2)}px index box`
@@ -124,4 +125,18 @@ describe("the pip field stays inside the card", () => {
       }
     });
   }
+});
+
+describe("cardScale", () => {
+  test("is linear in the short edge, no breakpoints, below the cap", () => {
+    assert.equal(cardScale(390), 1);
+    assert.ok(Math.abs(cardScale(320) - 320 / 390) < 1e-9);
+    assert.ok(Math.abs(cardScale(700) - 700 / 390) < 1e-9);
+  });
+
+  test("stops growing past a maximized desktop window's short edge", () => {
+    const atCap = cardScale(900);
+    assert.equal(cardScale(1200), atCap);
+    assert.equal(cardScale(4000), atCap);
+  });
 });

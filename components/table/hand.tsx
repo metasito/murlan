@@ -16,12 +16,8 @@ import { usePrefersReducedMotion } from "@/lib/accessibility";
 import { useTranslation } from "@/lib/i18n";
 import type { Card } from "@/lib/gameEngine";
 import { computeHandLayout } from "@/components/handLayout";
-import { CARD_H, HAND_SECTION_H, fanCenterOffset } from "@/components/gameTableModel";
-
-// Extra top clearance the fixed HAND_SECTION_H already gives the CARD_H-tall
-// hand row (it's centered inside the taller section). Reused as the
-// ScrollView headroom in StraightHand's scrollable fallback — see there.
-const HAND_LIFT_HEADROOM = HAND_SECTION_H - CARD_H;
+import { fanCenterOffset, HAND_ROW_HEADROOM } from "@/components/gameTableModel";
+import { CARD_W, CARD_H, CARD_BACK_W, CARD_BACK_H, HAND_SCALE } from "@/components/cardFaceModel";
 
 // ─── CardItem ─────────────────────────────────────────────────────────────────
 //
@@ -33,9 +29,9 @@ const HAND_LIFT_HEADROOM = HAND_SECTION_H - CARD_H;
 // picked up. The rotation is what stops the lift reading as a flat slide.
 const SELECT_LIFT = -16;
 const SELECT_TILT = -3;
-// Where a dealt card comes from: up and in, i.e. the middle of the table.
-const DEAL_RISE = -CARD_H * 2.2;
 const DEAL_TILT = 14;
+// Where a dealt card comes from: up and in, i.e. the middle of the table.
+const DEAL_RISE_FACTOR = -2.2;
 
 interface CardItemProps {
   card: Card;
@@ -50,6 +46,10 @@ interface CardItemProps {
   dealDelay: number;
   /** Horizontal distance back to the deck, so the fan converges on one point. */
   dealFromX: number;
+  /** The table's own scale, times HAND_SCALE — this hand's card size. */
+  cardScale: number;
+  /** Vertical distance a dealt card rises from, derived from that same size. */
+  dealRise: number;
 }
 
 function CardItemBase({
@@ -61,6 +61,8 @@ function CardItemBase({
   zIndex,
   dealDelay,
   dealFromX,
+  cardScale,
+  dealRise,
   faceDown = false,
 }: CardItemProps) {
   const reduceMotion = usePrefersReducedMotion();
@@ -109,7 +111,7 @@ function CardItemBase({
       opacity: 1 - d,
       transform: [
         { translateX: dealFromX * d },
-        { translateY: liftY.value + DEAL_RISE * d },
+        { translateY: liftY.value + dealRise * d },
         { rotate: `${tilt.value + DEAL_TILT * d}deg` },
       ],
     };
@@ -134,6 +136,7 @@ function CardItemBase({
         onPress={handlePress}
         disabled={disabled}
         faceDown={faceDown}
+        scale={cardScale}
         noLift
       />
     </Animated.View>
@@ -155,7 +158,9 @@ function cardItemPropsEqual(a: CardItemProps, b: CardItemProps): boolean {
     a.disabled === b.disabled &&
     a.zIndex === b.zIndex &&
     a.faceDown === b.faceDown &&
-    a.dealFromX === b.dealFromX
+    a.dealFromX === b.dealFromX &&
+    a.cardScale === b.cardScale &&
+    a.dealRise === b.dealRise
   );
 }
 
@@ -172,6 +177,7 @@ export function StraightHand({
   availW,
   isMyTurn,
   faceDown = false,
+  scale = 1,
 }: {
   cards: Card[];
   selectedIds: string[];
@@ -181,9 +187,18 @@ export function StraightHand({
   isMyTurn?: boolean;
   /** Draw backs instead of faces — the hand belongs to someone else. */
   faceDown?: boolean;
+  /** The table's own scale — this hand draws its cards at `scale * HAND_SCALE`. */
+  scale?: number;
 }) {
   const { t } = useTranslation();
   const n = cards.length;
+  const cardScale = scale * HAND_SCALE;
+  // A spectated hand draws backs (CardItem passes faceDown straight to
+  // CardView), which are their own narrower aspect — the row's own layout
+  // math has to size against the same dimensions CardView actually draws.
+  const cardW = faceDown ? CARD_BACK_W(cardScale) : CARD_W(cardScale);
+  const cardH = faceDown ? CARD_BACK_H(cardScale) : CARD_H(cardScale);
+  const dealRise = cardH * DEAL_RISE_FACTOR;
   // O(1) membership check per card instead of `selectedIds.includes(card.id)`
   // (an O(k) scan repeated for every one of the up to 21 cards in a hand).
   // Computed before the early return below — Rules of Hooks requires every
@@ -201,16 +216,21 @@ export function StraightHand({
 
   if (n === 0) {
     return (
-      <View style={[handStyles.handCenter, { width: availW }]}>
+      <View style={[handStyles.handCenter, { width: availW, height: cardH }]}>
         <Ionicons name="checkmark-circle" size={24} color={Colors.gold} />
         <TableText style={handStyles.emptyHandText}>{t("gameShared.emptyHand")}</TableText>
       </View>
     );
   }
-  const { step, totalW, scrollable } = computeHandLayout(n, availW);
+  const { step, totalW, scrollable } = computeHandLayout(n, availW, cardW);
 
   const row = (
-    <View style={[handStyles.handRow, { width: scrollable ? totalW : Math.min(totalW, availW) }]}>
+    <View
+      style={[
+        handStyles.handRow,
+        { width: scrollable ? totalW : Math.min(totalW, availW), height: cardH },
+      ]}
+    >
       {cards.map((card, i) => (
         <CardItem
           key={card.id}
@@ -222,14 +242,16 @@ export function StraightHand({
           faceDown={faceDown}
           zIndex={i}
           dealDelay={dealArmed ? i * Motion.stagger.deal : -1}
-          dealFromX={-fanCenterOffset(i, step, totalW)}
+          dealFromX={-fanCenterOffset(i, step, totalW, cardW)}
+          cardScale={cardScale}
+          dealRise={dealRise}
         />
       ))}
     </View>
   );
 
   return (
-    <View style={[handStyles.handCenter, { width: availW }]}>
+    <View style={[handStyles.handCenter, { width: availW, height: cardH }]}>
       <View
         style={[
           handStyles.handGlowWrap,
@@ -239,16 +261,17 @@ export function StraightHand({
         {scrollable ? (
           // Too many cards to keep the readable minimum step inside availW
           // (e.g. a 21-card hand on a narrow device). Scroll instead of
-          // clipping or shrinking the step past legibility. HAND_LIFT_HEADROOM
+          // clipping or shrinking the step past legibility. HAND_ROW_HEADROOM
           // reproduces the same top clearance the fixed-height, non-scrolling
-          // path gets for free from HAND_SECTION_H (CARD_H + 16) being taller
-          // than the CARD_H row it centers — without it, the ScrollView's own
-          // clipping bounds would cut off the -14px selection lift.
+          // path gets for free from HAND_SECTION_H (its card's height + 16)
+          // being taller than the card row it centers — without it, the
+          // ScrollView's own clipping bounds would cut off the -14px
+          // selection lift.
           <ScrollView
             horizontal
             showsHorizontalScrollIndicator={false}
-            style={{ width: availW, height: CARD_H + HAND_LIFT_HEADROOM }}
-            contentContainerStyle={{ paddingTop: HAND_LIFT_HEADROOM, width: totalW }}
+            style={{ width: availW, height: cardH + HAND_ROW_HEADROOM }}
+            contentContainerStyle={{ paddingTop: HAND_ROW_HEADROOM, width: totalW }}
           >
             {row}
           </ScrollView>
@@ -266,7 +289,6 @@ const handStyles = StyleSheet.create({
   handCenter: {
     alignItems: "center",
     justifyContent: "center",
-    height: CARD_H,
     flexDirection: "row",
     gap: Spacing.slim,
   },
@@ -281,7 +303,6 @@ const handStyles = StyleSheet.create({
   },
   handRow: {
     position: "relative",
-    height: CARD_H,
     alignSelf: "center",
   },
   handCardWrap: { position: "absolute", bottom: 0 },
