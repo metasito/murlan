@@ -25,6 +25,7 @@ import {
   playYourTurn,
 } from "@/lib/sounds";
 import { hapticHeavy, hapticSuccess, hapticWarn } from "@/lib/haptics";
+import { cancelMusicDuck, duckMusicFor } from "@/lib/music";
 import { Motion } from "@/lib/theme";
 
 // The refusal shake on GIOCA: deliberately a third of the bomb's amplitude —
@@ -135,11 +136,18 @@ export function useTableFeedback({
     if (myRank === 0) {
       hapticSuccess();
       playGameWin();
+      duckMusicFor(2200);
     } else if (myRank >= 0 && myRank === rankings.length - 1) {
       hapticWarn();
       playGameLose();
+      duckMusicFor(2200);
     }
   }, [gameOver, rankings, viewerId]);
+
+  // A duck outlives the play that started it by a second or two, so leaving
+  // the table mid-bomb would otherwise leave the music down until something
+  // else moved it.
+  useEffect(() => cancelMusicDuck, []);
 
   // GIOCA bloom — a slow gold pulse while the button is armed.
   useEffect(() => {
@@ -216,6 +224,8 @@ export function useTableFeedback({
       if (heavy) {
         playBomb();
         hapticHeavy();
+        // The biggest play in the game should not have to share the mix.
+        duckMusicFor(1100);
         if (!reduceMotion) {
           shakeX.value = withSequence(
             withTiming(5, { duration: 45 }),

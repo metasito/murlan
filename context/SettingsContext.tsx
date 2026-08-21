@@ -1,6 +1,7 @@
 import React, { createContext, useCallback, useContext, useEffect, useState, useMemo } from "react";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { setSoundsMasterEnabled, setSoundsMasterVolume } from "@/lib/sounds";
+import { setMusicMasterEnabled, setMusicMasterVolume } from "@/lib/music";
 import { setHapticsMasterEnabled } from "@/lib/haptics";
 import { setMotionPreference, type MotionPreference } from "@/lib/accessibility";
 import {
@@ -17,6 +18,10 @@ interface Settings {
   soundsEnabled: boolean;
   /** 0–1, multiplied into every effect's own level. */
   soundVolume: number;
+  /** Music is its own switch: effects are feedback, music is furniture. */
+  musicEnabled: boolean;
+  /** 0–1. Defaults below the effects so the bed never competes with them. */
+  musicVolume: number;
   hapticsEnabled: boolean;
   motion: MotionPreference;
   cardBack: CardBackId;
@@ -26,6 +31,8 @@ interface Settings {
 interface SettingsContextValue extends Settings {
   setSoundsEnabled: (v: boolean) => void;
   setSoundVolume: (v: number) => void;
+  setMusicEnabled: (v: boolean) => void;
+  setMusicVolume: (v: number) => void;
   setHapticsEnabled: (v: boolean) => void;
   setMotion: (v: MotionPreference) => void;
   setCardBack: (v: CardBackId) => void;
@@ -36,6 +43,8 @@ const STORAGE_KEY = "@murlan_settings";
 const defaults: Settings = {
   soundsEnabled: true,
   soundVolume: 1,
+  musicEnabled: true,
+  musicVolume: 0.5,
   hapticsEnabled: true,
   motion: "system",
   cardBack: DEFAULT_CARD_BACK,
@@ -55,6 +64,10 @@ function parseStored(raw: string): Partial<Settings> {
   const v = parsed as Record<string, unknown>;
   const out: Partial<Settings> = {};
   if (typeof v.soundsEnabled === "boolean") out.soundsEnabled = v.soundsEnabled;
+  if (typeof v.musicEnabled === "boolean") out.musicEnabled = v.musicEnabled;
+  if (typeof v.musicVolume === "number" && Number.isFinite(v.musicVolume)) {
+    out.musicVolume = Math.max(0, Math.min(1, v.musicVolume));
+  }
   if (typeof v.hapticsEnabled === "boolean") out.hapticsEnabled = v.hapticsEnabled;
   if (typeof v.soundVolume === "number" && Number.isFinite(v.soundVolume)) {
     out.soundVolume = Math.max(0, Math.min(1, v.soundVolume));
@@ -92,6 +105,14 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
   }, [settings.soundVolume]);
 
   useEffect(() => {
+    setMusicMasterEnabled(settings.musicEnabled);
+  }, [settings.musicEnabled]);
+
+  useEffect(() => {
+    setMusicMasterVolume(settings.musicVolume);
+  }, [settings.musicVolume]);
+
+  useEffect(() => {
     setHapticsMasterEnabled(settings.hapticsEnabled);
   }, [settings.hapticsEnabled]);
 
@@ -107,6 +128,10 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
     setSettings((s) => ({ ...s, soundsEnabled: v })), []);
   const setSoundVolume = useCallback((v: number) =>
     setSettings((s) => ({ ...s, soundVolume: Math.max(0, Math.min(1, v)) })), []);
+  const setMusicEnabled = useCallback((v: boolean) =>
+    setSettings((s) => ({ ...s, musicEnabled: v })), []);
+  const setMusicVolume = useCallback((v: number) =>
+    setSettings((s) => ({ ...s, musicVolume: Math.max(0, Math.min(1, v)) })), []);
   const setHapticsEnabled = useCallback((v: boolean) =>
     setSettings((s) => ({ ...s, hapticsEnabled: v })), []);
   const setMotion = useCallback((v: MotionPreference) =>
@@ -121,6 +146,8 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
       ...settings,
       setSoundsEnabled,
       setSoundVolume,
+      setMusicEnabled,
+      setMusicVolume,
       setHapticsEnabled,
       setMotion,
       setCardBack,
@@ -130,6 +157,8 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
       settings,
       setSoundsEnabled,
       setSoundVolume,
+      setMusicEnabled,
+      setMusicVolume,
       setHapticsEnabled,
       setMotion,
       setCardBack,
