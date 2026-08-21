@@ -2,6 +2,7 @@
   "expo": {
     "name": "Murlan",
     "slug": "murlan",
+    "owner": "rotonmeta",
     "version": "1.0.0",
     "orientation": "default",
     "icon": "./assets/images/icon.png",
@@ -57,6 +58,11 @@
     "experiments": {
       "typedRoutes": true,
       "reactCompiler": true
+    },
+    "extra": {
+      "eas": {
+        "projectId": "ff2d6d27-8f50-4048-8f19-32c6bceb52d2"
+      }
     }
   }
 }
