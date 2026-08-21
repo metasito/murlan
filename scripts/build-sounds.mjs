@@ -16,6 +16,21 @@
 // needs no per-platform format branch. The names must match lib/sounds.ts
 // exactly.
 //
+// That reasoning is about *effects*, and does not carry to music. MP3 cannot
+// loop seamlessly — encoder delay plus frame padding, and browsers do not
+// honour LAME's gapless headers — so a music loop encoded here would click at
+// every join. Music therefore arrives as pre-encoded WebM Opus rather than
+// being built by this script (#121), and this script stays about the twelve
+// effects.
+//
+// The alternative was measured, not assumed. Chromium's MediaRecorder can emit
+// WebM Opus in this same Playwright page with no new dependency, but it is a
+// real-time capture and not sample-exact: a one-second 480 Hz tone — 480 whole
+// cycles, so seamless by construction — came back 1,920 samples short with 129
+// samples of silence prepended, and its loop join stepped 0.888 against a body
+// step of 0.063. Fourteen times the waveform's own slope is an audible click,
+// which is the whole thing the format change exists to avoid.
+//
 // Mixing runs in Chromium's OfflineAudioContext (via Playwright, already a
 // devDependency) because there is no ffmpeg here and it gives decoding,
 // gain, pitch and overlap for free. Encoding to MP3 happens afterwards, in
