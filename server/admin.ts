@@ -193,7 +193,10 @@ function forDisplay(groups: ClientErrorGroup[]): AdminSnapshot["crashGroups"] {
   return groups.map((g) => ({
     message: g.message,
     count: g.count,
-    lastSeen: g.lastSeen.toISOString(),
+    // db.execute() is untyped raw SQL — node-postgres hands back a Date for
+    // a timestamp column, but nothing here guarantees drizzle won't; going
+    // through the constructor handles either.
+    lastSeen: new Date(g.lastSeen).toISOString(),
   }));
 }
 
