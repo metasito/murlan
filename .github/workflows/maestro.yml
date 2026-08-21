@@ -165,16 +165,19 @@ jobs:
             # Every line here runs as its own `sh -c`: no construct may span
             # lines, and no variable survives to the next one.
             #
-            # sys.boot_completed comes back before the package manager does, and
-            # the install below then fails on "Can't find service: package", so
-            # the wait is for the service that is actually needed next.
+            # sys.boot_completed comes back long before the framework is serving:
+            # the install below failed first on "Can't find service: package" and
+            # then on "Cannot access system provider: 'settings'". Waiting on the
+            # providers themselves, plus a stopped boot animation, waits for the
+            # thing those errors are really about instead of naming them one at a
+            # time.
             adb root
             adb wait-for-device
             adb shell setprop persist.sys.locale it-IT
             adb shell "stop; start"
             adb wait-for-device
             until [ "$(adb shell getprop sys.boot_completed | tr -d '\r')" = "1" ]; do sleep 2; done
-            until adb shell pm path android > /dev/null 2>&1; do sleep 2; done
+            until adb shell "getprop init.svc.bootanim | grep -q stopped && cmd package list packages > /dev/null 2>&1 && cmd settings list system > /dev/null 2>&1"; do sleep 2; done
             adb unroot
             adb wait-for-device
             adb shell getprop persist.sys.locale | tr -d '\r' | grep -qx it-IT || { echo "::error::Device locale is not it-IT; the flows select on Italian copy."; exit 1; }
