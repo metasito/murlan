@@ -1,6 +1,8 @@
 # Deploy runbook
 
-> **Scope of this file:** the exact sequence for a Replit deploy that changes the database
+> **Scope of this file:** two deploy targets that share only the word. Everything up to
+> § If something goes wrong is the Replit web deploy; § Store build numbers is the app
+> stores. The sequence below is the exact ordering for a Replit deploy that changes the database
 > schema destructively (a `db:push`, not just `ensureSchema`'s additive boot-time DDL). Ran
 > and verified end to end on 2026-08-19. If a deploy needs no destructive schema change,
 > Steps 2–6 are no-ops — verify rather than skip them, since the current column shape is
@@ -112,3 +114,29 @@ landing page.
 `replit.md` § Rolling back a deploy — the code half and the database half are separate, and
 the database half is not optional once Step 5 has run: reverting the server does not undo the
 column renames.
+
+## Store build numbers
+
+`app.json` carries `version` and no `ios.buildNumber` or `android.versionCode`, and that is
+deliberate. `eas.json` sets `appVersionSource: "remote"`, which moves both to EAS's servers:
+[Expo's reference](https://docs.expo.dev/build-reference/app-versions/) is explicit that
+under it "the build version values stored in app config are ignored and not updated when the
+version is incremented remotely". Putting them back would leave a number in the tree that
+reads as authoritative, is never consulted, and drifts from the counter the stores enforce.
+
+Nothing to bump per submission. The `production` profile sets `autoIncrement: true`, so each
+`eas build --profile production` raises both by one. Because there is no local value to seed
+from, the first such build initialises the remote counter at `1`.
+
+Reading or correcting them — a submission made outside EAS is the case that needs it:
+
+```bash
+eas build:version:set     # overwrite the remote counter
+eas build:version:sync    # copy the remote values down into app.json
+```
+
+`sync` is for looking, not a step: it writes the two fields into `app.json`, which is the
+state this section exists to avoid. Revert it once you have read the numbers.
+
+`version` is unrelated and stays local. It is what the product calls itself, and it moves
+when the product does — not when a build does.
