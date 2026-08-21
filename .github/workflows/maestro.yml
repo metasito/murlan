@@ -188,6 +188,12 @@ jobs:
             until [ "$(adb shell getprop sys.boot_completed | tr -d '\r')" = "1" ]; do sleep 2; done
             until adb shell "getprop init.svc.bootanim | grep -q stopped && cmd package list packages > /dev/null 2>&1 && cmd settings list system > /dev/null 2>&1"; do sleep 2; done
             adb shell getprop persist.sys.locale | tr -d '\r' | grep -qx it-IT || { echo "::error::Device locale is not it-IT; the flows select on Italian copy."; exit 1; }
+            # System UI ANRs on this runner while the app is loading, and its
+            # dialog then sits over everything: the app is running fine behind it
+            # - its own Reanimated warnings reach Metro - but the hierarchy holds
+            # the dialog and nothing else, so every assertion fails. This hides
+            # the system dialog only; an app that genuinely hangs still fails.
+            adb shell settings put global hide_error_dialogs 1
             adb install -r "$RUNNER_TEMP/expo-go.apk"
             # Expo Go reports a failed manifest fetch as nothing but "Something
             # went wrong" on the device, which cannot tell a dead dev server
