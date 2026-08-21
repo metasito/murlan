@@ -154,13 +154,21 @@ describe("the admin dashboard", { skip: hasDatabase() ? false : skipMessage() },
       });
     }
 
-    let body = "";
-    for (let attempt = 0; attempt < 20; attempt++) {
-      body = await (await get(ownerCookie)).text();
-      if (body.includes(message)) break;
-      await new Promise((r) => setTimeout(r, 50));
+    // Both writes are fire-and-forget, so wait for both rows before reading
+    // the page — the page can otherwise be read between the two landing,
+    // showing a real but momentary count of 1.
+    let rows: { message: string }[] = [];
+    for (let attempt = 0; attempt < 20 && rows.length < 2; attempt++) {
+      const result = await dbPool.query<{ message: string }>(
+        `SELECT message FROM "${server.schema}".client_errors WHERE message = $1`,
+        [message]
+      );
+      rows = result.rows;
+      if (rows.length < 2) await new Promise((r) => setTimeout(r, 50));
     }
+    assert.equal(rows.length, 2, "both crash reports were never stored");
 
+    const body = await (await get(ownerCookie)).text();
     assert.equal(
       body.split(message).length - 1,
       1,
