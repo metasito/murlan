@@ -109,6 +109,13 @@ export async function openSeededGame(
     { key: "@murlan_offline_game", save: offlineGameSave(playerCount) }
   );
   await openApp(page, baseURL);
-  await page.getByRole("button", { name: "Riprendi partita" }).click({ timeout: 30_000 });
+  // Waited for, not clicked at. `openApp` returns on networkidle, which is the
+  // bundle arriving rather than the app becoming interactive — on a loaded
+  // runner those are far apart, and a click with a short cap fails while the
+  // home screen is still mounting. #152 is the record of it: every failure has
+  // been a click on this screen, before this helper existed and after.
+  const resume = page.getByRole("button", { name: "Riprendi partita" });
+  await resume.waitFor({ state: "visible", timeout: 60_000 });
+  await resume.click();
   await page.locator('[data-testid="game-table"]').waitFor({ timeout: 30_000 });
 }
