@@ -141,4 +141,100 @@ describe("the admin dashboard", { skip: hasDatabase() ? false : skipMessage() },
 
     assert.equal(remaining, 0, "a report past the retention window survived");
   });
+
+  // #166: the whole point is one row per crash, not one per event.
+  test("two crashes with the same fingerprint show as one row with a count", async () => {
+    const { cookie: crasher } = await register(server, "crash_admin_group");
+    const message = "grouped crash for the admin panel";
+    for (let i = 0; i < 2; i++) {
+      await fetch(`${server.url}/api/client-errors`, {
+        method: "POST",
+        headers: { "content-type": "application/json", cookie: crasher },
+        body: JSON.stringify({ message, stack: "at renderCard (Card.tsx:1:1)" }),
+      });
+    }
+
+    // Both writes are fire-and-forget, so wait for both rows before reading
+    // the page — the page can otherwise be read between the two landing,
+    // showing a real but momentary count of 1.
+    let rows: { message: string }[] = [];
+    for (let attempt = 0; attempt < 20 && rows.length < 2; attempt++) {
+      const result = await dbPool.query<{ message: string }>(
+        `SELECT message FROM "${server.schema}".client_errors WHERE message = $1`,
+        [message]
+      );
+      rows = result.rows;
+      if (rows.length < 2) await new Promise((r) => setTimeout(r, 50));
+    }
+    assert.equal(rows.length, 2, "both crash reports were never stored");
+
+    const body = await (await get(ownerCookie)).text();
+    assert.equal(
+      body.split(message).length - 1,
+      1,
+      "the two crashes rendered as more than one row"
+    );
+    assert.match(body, new RegExp(`<td>${message}</td><td>2</td>`));
+  });
+
+  // The floor under grouping: a real crash from before this column existed
+  // must not vanish into some other row just because both have no fingerprint.
+  test("rows with no fingerprint are never merged into each other", async () => {
+    const message = "a legacy crash with no fingerprint";
+    await dbPool.query(
+      `INSERT INTO "${server.schema}".client_errors (message, occurred_at) VALUES ($1, now()), ($1, now())`,
+      [message]
+    );
+
+    const body = await (await get(ownerCookie)).text();
+    assert.equal(body.split(message).length - 1, 2, "two legacy rows collapsed into one group");
+  });
+
+  // #167: a crash's top frame renders next to it, resolved against a build
+  // map when server/sourceMaps.ts has one — and this test process has none,
+  // so this is exactly the fallback path: raw and unresolved, not blank and
+  // not a 500.
+  test("a crash's frame shows on the page, unresolved when no build map covers it", async () => {
+    const message = "a crash worth locating";
+    await fetch(`${server.url}/api/client-errors`, {
+      method: "POST",
+      headers: { "content-type": "application/json", cookie: playerCookie },
+      body: JSON.stringify({
+        message,
+        stack: "at renderCard (https://murlan.example/_expo/static/js/web/entry-none.js:1:1)",
+        platform: "web",
+      }),
+    });
+
+    let rows: { message: string }[] = [];
+    for (let attempt = 0; attempt < 20 && rows.length === 0; attempt++) {
+      const result = await dbPool.query<{ message: string }>(
+        `SELECT message FROM "${server.schema}".client_errors WHERE message = $1`,
+        [message]
+      );
+      rows = result.rows;
+      if (rows.length === 0) await new Promise((r) => setTimeout(r, 50));
+    }
+    assert.equal(rows.length, 1, "the crash report was never stored");
+
+    const body = await (await get(ownerCookie)).text();
+    assert.ok(body.includes("Location"), "the crash panel never grew a Location column");
+    assert.ok(
+      body.includes("entry-none.js:1:1"),
+      "no build map exists for this frame in tests, so its raw text must still reach the page"
+    );
+  });
+
+  // #167: a .map carries the original unminified source (sourcesContent) —
+  // the whole point of symbolicating in-house rather than through a third
+  // party is that nothing under it ever leaves the server.
+  test("a .map path is never served, with or without a session", async () => {
+    for (const cookie of [undefined, playerCookie, ownerCookie]) {
+      const res = await fetch(
+        `${server.url}/_expo/static/js/web/entry-anything.js.map`,
+        { headers: cookie ? { cookie } : {} }
+      );
+      assert.equal(res.status, 404);
+    }
+  });
 });

@@ -11,13 +11,13 @@
     "server:dev": "NODE_ENV=development tsx server/index.ts",
     "expo:start:static:build": "npx expo start --no-dev --minify --localhost",
     "expo:static:build": "node scripts/build.js",
-    "expo:web:build": "node scripts/assertNotE2EFast.js && npx expo export --platform web",
+    "expo:web:build": "node scripts/assertNotE2EFast.js && npx expo export --platform web --source-maps && node scripts/moveSourceMaps.mjs",
     "bundle:budget": "node scripts/bundle-budget.mjs",
     "server:build": "esbuild server/index.ts --platform=node --target=node22 --packages=external --bundle --format=esm --outdir=server_dist --out-extension:.js=.mjs",
     "server:prod": "NODE_ENV=production node server_dist/index.mjs",
     "db:push": "drizzle-kit push",
     "db:backup": "node scripts/backup-db.mjs",
-  "db:reset": "node scripts/reset-db.mjs && drizzle-kit push",
+    "db:reset": "node scripts/reset-db.mjs && drizzle-kit push",
     "start": "npx expo start",
     "lint": "npx expo lint . -- --max-warnings 0",
     "lint:fix": "npx expo lint . --fix",
@@ -75,6 +75,7 @@
     "react-native-worklets": "0.5.1",
     "socket.io": "^4.8.3",
     "socket.io-client": "^4.8.3",
+    "source-map": "^0.8.0",
     "zod": "^3.24.2"
   },
   "devDependencies": {

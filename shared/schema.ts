@@ -126,7 +126,14 @@ export const clientErrors = pgTable("client_errors", {
   message: text("message").notNull(),
   stack: text("stack"),
   context: jsonb("context").notNull().default({}),
-}, (t) => [index("client_errors_occurred_idx").on(t.occurredAt)]);
+  // Computed server-side in recordClientError, never accepted from the
+  // client. Null on rows written before this column existed — never
+  // backfilled, so they age out on their own via CLIENT_ERROR_RETENTION_DAYS.
+  fingerprint: text("fingerprint"),
+}, (t) => [
+  index("client_errors_occurred_idx").on(t.occurredAt),
+  index("client_errors_fingerprint_idx").on(t.fingerprint),
+]);
 
 /**
  * Funnel steps, written by the server on the server's clock. Kept for

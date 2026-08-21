@@ -20,12 +20,22 @@ import { drainPool } from "../../server/drainPool.ts";
 process.env.MURLAN_PG_POOL_MAX ??= "4";
 
 /**
- * `/api/auth/register` allows 20 per process in production, which is roughly
- * seven tables — a suite reaches it and every later registration comes back
- * 429 with nothing tying it to the cap. Set here for the same reason as the
- * pool size: before anything imports server/routes.ts, which reads it once.
+ * `/api/auth/register` allows 100 per process in production, which is still
+ * only about thirty-five tables — a suite reaches it and every later
+ * registration comes back 429 with nothing tying it to the cap. Set here for
+ * the same reason as the pool size: before anything imports
+ * server/routes.ts, which reads it once.
  */
 process.env.MURLAN_AUTH_RATE_LIMIT ??= "200";
+
+/**
+ * The per-username login limiter (#41) defaults to 10 in production. A test
+ * proving it trips has to make that many failed attempts against one
+ * account first; lowered here so that loop stays short. Safe to lower: it's
+ * keyed per-username and skips successful logins, so no other test in the
+ * suite — each using its own throwaway account — comes anywhere near it.
+ */
+process.env.MURLAN_LOGIN_USERNAME_RATE_LIMIT ??= "5";
 
 export function hasDatabase(): boolean {
   return Boolean(process.env.DATABASE_URL);

@@ -169,6 +169,16 @@ function configureExpoAndLanding(app: express.Application) {
   app.use("/manifest", expoManifestHandler);
   app.get("/", expoManifestHandler);
 
+  // scripts/moveSourceMaps.mjs already moves every .map out of dist/ after
+  // export, so this never matches a real file — it exists so that guarantee
+  // does not depend only on that script having run. A .map carries
+  // sourcesContent, the original unminified source; server/sourceMaps.ts is
+  // the only reader, from sourcemaps/, never over HTTP.
+  app.use((req: Request, res: Response, next: NextFunction) => {
+    if (req.path.endsWith(".map")) return res.status(404).end();
+    next();
+  });
+
   // Unhashed source assets — a deploy can change what a given path serves,
   // so this cannot be cached as long as the content-hashed build output below.
   app.use("/assets", express.static(path.resolve(process.cwd(), "assets"), { maxAge: "1h" }));
