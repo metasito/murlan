@@ -11,6 +11,7 @@
 import { sql } from "drizzle-orm";
 import { db } from "./db.ts";
 import { funnel, type FunnelStep } from "./events.ts";
+import { recentClientErrorGroups, type ClientErrorGroup } from "./clientErrors.ts";
 
 /** How far back the time series look. One screen, not an analytics product. */
 export const WINDOW_DAYS = 30;
@@ -37,6 +38,7 @@ export interface AdminSnapshot {
   unfinished: { status: string; n: number }[];
   staleGames: number;
   crashesThisWeek: number;
+  crashGroups: { message: string; count: number; lastSeen: string }[];
   funnel: FunnelStep[];
 }
 
@@ -187,6 +189,14 @@ async function crashesThisWeek(): Promise<number> {
   return rows.rows[0]?.n ?? 0;
 }
 
+function forDisplay(groups: ClientErrorGroup[]): AdminSnapshot["crashGroups"] {
+  return groups.map((g) => ({
+    message: g.message,
+    count: g.count,
+    lastSeen: g.lastSeen.toISOString(),
+  }));
+}
+
 /** Every panel on the page, gathered concurrently. */
 export async function adminSnapshot(provisionalGames: number): Promise<AdminSnapshot> {
   const [
@@ -203,6 +213,7 @@ export async function adminSnapshot(provisionalGames: number): Promise<AdminSnap
     unfinishedRows,
     stale,
     crashes,
+    crashGroupRows,
     funnelRows,
   ] = await Promise.all([
     signups(),
@@ -218,6 +229,7 @@ export async function adminSnapshot(provisionalGames: number): Promise<AdminSnap
     unfinished(),
     staleGames(),
     crashesThisWeek(),
+    recentClientErrorGroups(ROW_LIMIT),
     funnel(WINDOW_DAYS),
   ]);
 
@@ -236,6 +248,7 @@ export async function adminSnapshot(provisionalGames: number): Promise<AdminSnap
     unfinished: unfinishedRows,
     staleGames: stale,
     crashesThisWeek: crashes,
+    crashGroups: forDisplay(crashGroupRows),
     funnel: funnelRows,
   };
 }
