@@ -160,9 +160,15 @@ jobs:
           # is the reason this layer exists.
           disable-animations: false
           # Deliberately stock. Raising cores and memory was aimed at
-          # offline-game, which is not run here (#185), and did not save it
-          # anyway - what it did do was time out "waiting for emulator to boot"
-          # on two runs. The defaults have booted every time.
+          # offline-game, which is not run here (#185), and did not save it.
+          #
+          # The boot itself is intermittently slow on a runner - three runs have
+          # ended on "Timeout waiting for emulator to boot", including one on
+          # these very defaults, so it is the runner rather than anything
+          # configured here. The action's own cap is 600s and each of those runs
+          # spent all of it; this gives it half as long again. Unverified: it
+          # cannot be proven except by hitting the flake again. #186.
+          emulator-boot-timeout: 900
           script: |
             # The flows select on Italian copy, the same way
             # tests/e2e/playwright.config.ts pins locale: "it-IT" and for the
