@@ -441,7 +441,31 @@ export function computeScreenPads(opts: { insets: EdgeInsets }): ScreenPads {
   };
 }
 
+// ─── Control rail ─────────────────────────────────────────────────────────────
+//
+// A cutout can never sit on a card, but it sits happily between two controls.
+// The column the cutout occupies is the rail: menu knob at the top, reactions
+// knob at the bottom, cutout in the gap between them.
+
+/** Air on both sides of a 44pt knob — the width the rail holds with no cutout. */
+const RAIL_FLOOR = 58;
+/** …and what it grows to on a large screen, before any cutout is considered. */
+const RAIL_SCALED = 52;
+/** Clearance between the cutout's own edge and the knobs either side of it. */
+const RAIL_CUTOUT_CLEARANCE = 12;
+
+/**
+ * The rail's width. The floor is what keeps a notchless phone laid out exactly
+ * like a notched one: below `RAIL_FLOOR - RAIL_CUTOUT_CLEARANCE` of inset the
+ * rail is already wider than the cutout, so the cutout appearing moves nothing.
+ */
+export function railWidth(insetLeft: number, scale: number): number {
+  return Math.max(RAIL_FLOOR, RAIL_SCALED * scale, insetLeft + RAIL_CUTOUT_CLEARANCE);
+}
+
 export interface TableFrame extends ScreenPads {
+  /** Width of the control rail, which is also the play area's left edge. */
+  rail: number;
   tableLeft: number;
   tableTop: number;
   tableRight: number;
@@ -459,10 +483,17 @@ export interface TableFrame extends ScreenPads {
 export function computeTableFrame(opts: {
   width: number;
   insets: EdgeInsets;
+  /** The table's own scale — the rail widens with it. */
+  scale: number;
 }): TableFrame {
   const { topPad, bottomPad, leftPad, rightPad } = computeScreenPads(opts);
 
-  const tableLeft = leftPad + TABLE_M;
+  // The rail eats the left edge, so the play area starts at its outer edge and
+  // everything centred on the table centres on that box rather than on the
+  // screen — centring on 50% puts the pile and the top seat ~17px off on an
+  // 844pt phone.
+  const rail = railWidth(leftPad, opts.scale);
+  const tableLeft = rail;
   const tableTop = topPad + TOP_BAR_H + TABLE_M;
   const tableRight = rightPad + TABLE_M;
   const tableBottom = bottomPad + TABLE_M;
@@ -472,6 +503,7 @@ export function computeTableFrame(opts: {
     bottomPad,
     leftPad,
     rightPad,
+    rail,
     tableLeft,
     tableTop,
     tableRight,

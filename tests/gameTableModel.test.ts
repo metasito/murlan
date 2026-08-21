@@ -7,6 +7,7 @@ import { readdirSync, readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
 import { CARD_H, CARD_W } from "../components/cardFaceModel.ts";
+import { TOUCH_TARGET_MIN } from "../lib/tokens.ts";
 import {
   BTN_W,
   BTN_H,
@@ -35,6 +36,7 @@ import {
   notificationTopOffset,
   startCardBannerText,
   computeTableFrame,
+  railWidth,
   readExchange,
   INACTIVE_EXCHANGE,
   describeTableForA11y,
@@ -939,19 +941,55 @@ describe("startCardBannerText", () => {
 
 // ─── Frame ────────────────────────────────────────────────────────────────────
 
+describe("railWidth", () => {
+  test("holds a 44pt knob with air on both sides when there is no cutout at all", () => {
+    assert.ok(railWidth(0, 1) >= TOUCH_TARGET_MIN + 12);
+  });
+
+  test("a cutout narrower than the floor moves nothing", () => {
+    // An iPhone X..14's 44pt landscape inset still fits under the floor, so a
+    // notched phone and a notchless one lay out identically.
+    assert.equal(railWidth(44, 1), railWidth(0, 1));
+  });
+
+  test("a Dynamic Island's inset widens the rail past its floor, plus clearance", () => {
+    assert.equal(railWidth(59, 1), 59 + 12);
+    assert.ok(railWidth(59, 1) > railWidth(0, 1));
+  });
+
+  test("grows with the table's scale, so it is never a fixed column on a tablet", () => {
+    assert.ok(railWidth(0, 2) > railWidth(0, 1));
+  });
+});
+
 describe("computeTableFrame", () => {
   const insets = { top: 20, bottom: 10, left: 44, right: 44 };
+  const frameOf = (over: Partial<{ width: number; insets: typeof insets; scale: number }> = {}) =>
+    computeTableFrame({ width: 800, insets, scale: 1, ...over });
 
   test("the felt is inset by TABLE_M inside the safe area, below the top bar", () => {
-    const f = computeTableFrame({ width: 800, insets });
-    assert.equal(f.tableLeft, 44 + TABLE_M);
+    const f = frameOf();
     assert.equal(f.tableTop, 20 + TOP_BAR_H + TABLE_M);
     assert.equal(f.tableRight, 44 + TABLE_M);
     assert.equal(f.tableBottom, 10 + TABLE_M);
   });
 
+  test("the play area starts at the rail's outer edge, not at the safe-area inset", () => {
+    const f = frameOf();
+    assert.equal(f.rail, railWidth(insets.left, 1));
+    assert.equal(f.tableLeft, f.rail);
+  });
+
+  test("the play area's centre is the box's own centre, so flex centring is honest", () => {
+    // (rail + width - safeRight) / 2 — centring on 50% of the screen would put
+    // the pile and the top seat ~17px off on an 844pt phone.
+    const f = frameOf({ width: 844 });
+    const boxCentre = f.tableLeft + (844 - f.tableLeft - f.tableRight) / 2;
+    assert.equal(boxCentre, (f.rail + 844 - f.tableRight) / 2);
+  });
+
   test("web reads the same real insets as native — no fixed fallback pads", () => {
-    const f = computeTableFrame({ width: 800, insets });
+    const f = frameOf();
     assert.equal(f.topPad, insets.top);
     assert.equal(f.bottomPad, insets.bottom);
     assert.equal(f.leftPad, insets.left);
@@ -961,13 +999,13 @@ describe("computeTableFrame", () => {
   test("handAvailW matches the pre-refactor formula on both screens", () => {
     // Offline computed it via an intermediate `tableW`; online inlined it.
     // Both reduce to this, and the two must not drift again.
-    const f = computeTableFrame({ width: 800, insets });
+    const f = frameOf();
     const tableW = 800 - f.tableLeft - f.tableRight;
     assert.equal(f.handAvailW, tableW - (SIDE_BTN_W + 8) * 2 - 8);
   });
 
   test("the hand row leaves room for both side buttons", () => {
-    const f = computeTableFrame({ width: 800, insets });
+    const f = frameOf();
     assert.ok(f.handAvailW > 0);
     assert.ok(f.handAvailW < 800 - SIDE_BTN_W * 2);
   });

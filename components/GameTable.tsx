@@ -79,8 +79,10 @@ import {
 import { useTranslation, type TranslationKey } from "@/lib/i18n";
 import { cardSpokenName, rankSpokenName, suitSpokenName, type TFn } from "@/lib/cardNames";
 import {
+  ControlRail,
   GameBillboard,
   portraitOverlayStyles,
+  RailKnob,
   sharedTableStyles,
   StartReasonBanner,
   TableVignette,
@@ -91,7 +93,7 @@ import { FlyingCards, PlayedPile, getComboLabel } from "@/components/table/pile"
 import { TopOppSlot, SideOppSlot } from "@/components/table/seats";
 import { ExchangeModal } from "@/components/ExchangeModal";
 import { ExchangeAnnouncement } from "@/components/ExchangeAnnouncement";
-import { HAND_SCALE } from "@/components/cardFaceModel";
+import { HAND_SCALE, physicalTouchTarget } from "@/components/cardFaceModel";
 import {
   playCardSelect,
   playCardPlay,
@@ -268,8 +270,8 @@ export interface GameTableProps {
   exchangeAnnouncement?: ExchangeAnnouncementSlot;
   rematchPrompt?: RematchPromptSlot;
 
-  /** Extra controls at the right end of the top bar (online: reactions). */
-  topBarExtra?: React.ReactNode;
+  /** The rail's lower knob (online: the reactions trigger). */
+  railExtra?: React.ReactNode;
   /** Transient strips under the top bar (online: reconnect notice). */
   banners?: React.ReactNode;
   /** Full-screen layers above the table (game over, error toasts, waiting states). */
@@ -594,7 +596,7 @@ export function GameTable({
   turnTimer,
   exchangeAnnouncement,
   rematchPrompt,
-  topBarExtra,
+  railExtra,
   banners,
   overlays,
 }: GameTableProps) {
@@ -605,6 +607,7 @@ export function GameTable({
   // robust read regardless of how a platform reports it mid-rotation.
   const scale = cardScale(Math.min(W, H));
   const handCardH = CARD_H(scale * HAND_SCALE);
+  const knobSize = physicalTouchTarget(scale);
   const reduceMotion = usePrefersReducedMotion();
   const felt = useTableFelt();
 
@@ -724,7 +727,7 @@ export function GameTable({
     [players, viewerSeat]
   );
 
-  const frame = computeTableFrame({ width: W, insets });
+  const frame = computeTableFrame({ width: W, insets, scale });
 
   // ── Screen-reader table description ─────────────────────────────────────────
   //
@@ -1067,19 +1070,9 @@ export function GameTable({
         testID="game-top-bar"
         style={[
           styles.topBar,
-          { top: frame.topPad, left: frame.leftPad, right: frame.rightPad },
+          { top: frame.topPad, left: frame.tableLeft, right: frame.rightPad },
         ]}
       >
-        <Pressable
-          onPress={onQuit}
-          style={styles.quitBtn}
-          hitSlop={10}
-          accessibilityRole="button"
-          accessibilityLabel={t("gameTable.leaveA11yLabel")}
-        >
-          <Ionicons name="close" size={18} color={Colors.textMuted} />
-        </Pressable>
-
         <GameBillboard
           roundLabel={roundLabel}
           currentComboLabel={getComboLabel(pileState.current, t)}
@@ -1098,14 +1091,32 @@ export function GameTable({
           <View style={styles.cardCountBadge}>
             <TableText style={styles.cardCountText}>{sortedHand.length}</TableText>
           </View>
-          {topBarExtra}
         </View>
       </View>
+
+      {/* The cutout's own column. A cutout can never sit on a card, but it sits
+          happily between two controls — so the menu knob takes the head of the
+          column, the reactions knob its foot, and the cutout the gap between. */}
+      <ControlRail
+        width={frame.rail}
+        topPad={frame.topPad}
+        bottomPad={frame.bottomPad}
+        top={
+          <RailKnob
+            onPress={onQuit}
+            a11yLabel={t("gameTable.leaveA11yLabel")}
+            size={knobSize}
+          >
+            <Ionicons name="close" size={knobSize * 0.4} color={Colors.textMuted} />
+          </RailKnob>
+        }
+        bottom={railExtra}
+      />
 
       <View
         style={[
           styles.bannerBand,
-          { top: frame.topPad + TOP_BAR_H, left: frame.leftPad, right: frame.rightPad },
+          { top: frame.topPad + TOP_BAR_H, left: frame.tableLeft, right: frame.rightPad },
         ]}
       >
         {banners}
@@ -1335,7 +1346,7 @@ export function GameTable({
         <RematchPromptPanel
           prompt={rematchPrompt}
           top={frame.topPad + TOP_BAR_H + TABLE_M + Spacing.sm}
-          left={frame.leftPad + Spacing.sm}
+          left={frame.tableLeft + Spacing.sm}
         />
       )}
 
@@ -1438,11 +1449,6 @@ const styles = StyleSheet.create({
     zIndex: 10,
   },
   topBarRight: { flexDirection: "row", alignItems: "center", gap: Spacing.xs },
-  quitBtn: {
-    width: TOUCH_TARGET_MIN, height: TOUCH_TARGET_MIN, borderRadius: TOUCH_TARGET_MIN / 2,
-    backgroundColor: Scrim.medium,
-    alignItems: "center", justifyContent: "center",
-  },
   timerGroup: { flexDirection: "row", alignItems: "center", gap: Spacing.xs },
   timerNum: {
     fontFamily: "Rajdhani_700Bold", fontSize: FontSize.sm,

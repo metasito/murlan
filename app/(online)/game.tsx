@@ -6,7 +6,7 @@
 // states (reconnect notice, a player leaving, a failed rejoin).
 
 import React, { useCallback, useEffect, useRef, useState } from "react";
-import { View, Text, StyleSheet, ActivityIndicator } from "react-native";
+import { View, Text, StyleSheet, ActivityIndicator, useWindowDimensions } from "react-native";
 import { router } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import Ionicons from "@expo/vector-icons/Ionicons";
@@ -14,7 +14,7 @@ import { useOnlineGame } from "@/context/OnlineGameContext";
 import { useAuth } from "@/context/AuthContext";
 import { ConfirmDialog, type ConfirmRequest } from "@/components/ConfirmDialog";
 import { GameTable } from "@/components/GameTable";
-import { TOP_BAR_H, computeScreenPads, readExchange } from "@/components/gameTableModel";
+import { cardScale, computeScreenPads, railWidth, readExchange } from "@/components/gameTableModel";
 import {
   FloatingReactions,
   ReactionPanel,
@@ -41,6 +41,7 @@ const ERROR_TOAST_MS = 3000;
 
 export default function OnlineGameScreen() {
   const insets = useSafeAreaInsets();
+  const { width, height } = useWindowDimensions();
   const { t } = useTranslation();
   const { user } = useAuth();
   const {
@@ -217,6 +218,9 @@ export default function OnlineGameScreen() {
   // The results overlay sits above the table and needs the same safe-area pads
   // the table uses; the table computes its own full frame from the same source.
   const pads = computeScreenPads({ insets });
+  // The tray opens beside the rail's own lower knob, which is where the
+  // trigger it belongs to lives.
+  const rail = railWidth(pads.leftPad, cardScale(Math.min(width, height)));
 
   const handlePlay = (cardIds: string[]) => {
     // Cleared on acknowledgement, not on send — a server rejection must not
@@ -292,7 +296,7 @@ export default function OnlineGameScreen() {
         seatCount: rematchIntents.total || gameState.players.length,
         onAnswer: answerRematch,
       }}
-      topBarExtra={<ReactionTrigger onPress={toggleReactionPanel} />}
+      railExtra={<ReactionTrigger onPress={toggleReactionPanel} />}
       banners={
         // The viewer's own connection outranks another player's notice: a
         // table that has stopped updating is otherwise indistinguishable from
@@ -324,7 +328,8 @@ export default function OnlineGameScreen() {
 
           {showReactions && (
             <ReactionPanel
-              top={pads.topPad + TOP_BAR_H + Spacing.sm}
+              left={rail + Spacing.sm}
+              bottom={pads.bottomPad + Spacing.sm}
               onSelect={(emoji) => {
                 hapticLight();
                 sendReaction(emoji);

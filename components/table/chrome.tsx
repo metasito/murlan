@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { View, StyleSheet, Pressable } from "react-native";
 import { AnimatedTableText, TableText } from "./TableText";
 import {
@@ -157,6 +157,95 @@ const startReasonStyles = StyleSheet.create({
     color: Colors.textSecondary,
     textAlign: "center",
   },
+});
+
+// ─── Control rail ─────────────────────────────────────────────────────────────
+
+/**
+ * The column the device cutout occupies, turned into the table's control
+ * column: `top` at the head, `bottom` at the foot, and the cutout in the gap
+ * between them. Its width comes from `railWidth` (components/gameTableModel.ts),
+ * which floors it well above a 44pt knob so a phone with no cutout lays out
+ * exactly like one with a Dynamic Island.
+ */
+export function ControlRail({
+  width,
+  topPad,
+  bottomPad,
+  top,
+  bottom,
+}: {
+  width: number;
+  topPad: number;
+  bottomPad: number;
+  top?: ReactNode;
+  bottom?: ReactNode;
+}) {
+  return (
+    <View
+      testID="control-rail"
+      style={[railStyles.rail, { width, paddingTop: topPad, paddingBottom: bottomPad }]}
+    >
+      <View>{top}</View>
+      <View>{bottom}</View>
+    </View>
+  );
+}
+
+/**
+ * One knob on the rail. `size` is `physicalTouchTarget(scale)`
+ * (components/cardFaceModel.ts) — a touch target's floor is physical size, so
+ * it grows with the table's scale but never shrinks below 44pt.
+ */
+export function RailKnob({
+  onPress,
+  a11yLabel,
+  size,
+  children,
+}: {
+  onPress: () => void;
+  a11yLabel: string;
+  size: number;
+  children: ReactNode;
+}) {
+  return (
+    <Pressable
+      onPress={onPress}
+      accessibilityRole="button"
+      accessibilityLabel={a11yLabel}
+      style={({ pressed }) => [
+        railStyles.knob,
+        { width: size, height: size, borderRadius: size / 2 },
+        pressed && railStyles.knobPressed,
+      ]}
+    >
+      {children}
+    </Pressable>
+  );
+}
+
+/** Over the felt and the seats, under the banners and the overlays. */
+const RAIL_Z = 20;
+
+const railStyles = StyleSheet.create({
+  rail: {
+    position: "absolute",
+    left: 0,
+    top: 0,
+    bottom: 0,
+    alignItems: "center",
+    justifyContent: "space-between",
+    zIndex: RAIL_Z,
+    pointerEvents: "box-none",
+  },
+  knob: {
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: Scrim.heavy,
+    borderWidth: 1,
+    borderColor: Colors.goldBorder,
+  },
+  knobPressed: { borderColor: Colors.goldStrong, backgroundColor: Colors.goldMuted },
 });
 
 // ─── Portrait overlay ─────────────────────────────────────────────────────────

@@ -12,6 +12,7 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
 import { TOUCH_TARGET_MIN } from "../lib/tokens.ts";
+import { physicalTouchTarget } from "../components/cardFaceModel.ts";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
@@ -31,10 +32,18 @@ const CONTROLS: [string, string][] = [
 
 /** Controls sized by an explicit box rather than a floor. */
 const FIXED_SIZE: [string, string][] = [
-  ["components/GameTable.tsx", "quitBtn"],
+  ["components/ReactionLayer.tsx", "trigger"],
   ["app/(online)/friends.tsx", "iconBtn"],
   ["app/index.tsx", "settingsBtn"],
 ];
+
+/**
+ * The control rail's knobs are the one pair whose box is a runtime number
+ * rather than a declared style, so there is nothing here to read: their size
+ * is `physicalTouchTarget(scale)`, which grows with the table and floors at
+ * the HIG minimum. Both halves of that are asserted below.
+ */
+const RAIL_KNOB_SIZE = /size=\{knobSize\}/;
 
 /** The body of a `name: { … }` entry in a StyleSheet, however it is wrapped. */
 function styleBlock(file: string, style: string): string {
@@ -76,6 +85,18 @@ for (const [file, style] of FIXED_SIZE) {
     }
   });
 }
+
+test("the rail's knobs are sized by physicalTouchTarget, at the HIG floor", () => {
+  const source = readFileSync(path.join(repoRoot, "components/GameTable.tsx"), "utf8");
+  assert.match(source, /const knobSize = physicalTouchTarget\(scale\)/);
+  assert.match(source, RAIL_KNOB_SIZE);
+  // A touch target's floor is physical size, never `TOUCH_TARGET_MIN * s`: on
+  // an iPhone SE the table's scale is 0.82, which would put a scaled knob at
+  // 36pt.
+  assert.equal(physicalTouchTarget(0.82), TOUCH_TARGET_MIN);
+  assert.equal(physicalTouchTarget(1), TOUCH_TARGET_MIN);
+  assert.ok(physicalTouchTarget(1.13) > TOUCH_TARGET_MIN);
+});
 
 test("the reader finds a real declaration", () => {
   // MenuButton is the in-repo reference for what this project considers a
