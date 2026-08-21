@@ -164,12 +164,17 @@ jobs:
             #
             # Every line here runs as its own `sh -c`: no construct may span
             # lines, and no variable survives to the next one.
+            #
+            # sys.boot_completed comes back before the package manager does, and
+            # the install below then fails on "Can't find service: package", so
+            # the wait is for the service that is actually needed next.
             adb root
             adb wait-for-device
             adb shell setprop persist.sys.locale it-IT
             adb shell "stop; start"
             adb wait-for-device
             until [ "$(adb shell getprop sys.boot_completed | tr -d '\r')" = "1" ]; do sleep 2; done
+            until adb shell pm path android > /dev/null 2>&1; do sleep 2; done
             adb unroot
             adb wait-for-device
             adb shell getprop persist.sys.locale | tr -d '\r' | grep -qx it-IT || { echo "::error::Device locale is not it-IT; the flows select on Italian copy."; exit 1; }
