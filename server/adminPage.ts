@@ -117,8 +117,8 @@ export function renderAdminPage(snapshot: AdminSnapshot): string {
       "Client crashes",
       `<p>${snapshot.crashesThisWeek} reported in the last 7 days.</p>` +
         table(
-          ["Crash", "Count", "Last seen"],
-          snapshot.crashGroups.map((g) => [g.message, g.count, g.lastSeen])
+          ["Crash", "Count", "Last seen", "Location"],
+          snapshot.crashGroups.map((g) => [g.message, g.count, g.lastSeen, g.location])
         ) +
         `<p class="meta">One row per distinct crash. Count and last-seen are ` +
         `over the ${CLIENT_ERROR_RETENTION_DAYS}-day retention window, not all-time.</p>`
