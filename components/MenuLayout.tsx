@@ -4,7 +4,7 @@ import {
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Colors, WEB_BOTTOM_PAD, WEB_TOP_PAD } from '@/lib/theme';
+import { Colors } from '@/lib/theme';
 
 const BACKDROP = [Colors.bg, Colors.bg, Colors.feltDark] as const;
 
@@ -33,8 +33,8 @@ export function MenuLayout({
 }: MenuLayoutProps) {
   const insets = useSafeAreaInsets();
 
-  const paddingTop    = Platform.OS === 'web' ? WEB_TOP_PAD    : Math.max(insets.top, contentPad);
-  const paddingBottom = Platform.OS === 'web' ? WEB_BOTTOM_PAD : Math.max(insets.bottom, contentPad);
+  const paddingTop    = Math.max(insets.top, contentPad);
+  const paddingBottom = Math.max(insets.bottom, contentPad);
   const paddingLeft   = insets.left  + contentPad;
   const paddingRight  = insets.right + contentPad;
 

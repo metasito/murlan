@@ -10,19 +10,17 @@
 import type { Card, Combination, GameState, Player } from "@/lib/gameEngine";
 import { getCardDisplayRank, getSuitSymbol } from "../lib/gameEngine.ts";
 import { CARD_H, CARD_W, CARD_W_SMALL } from "./cardFaceModel.ts";
-import { WEB_BOTTOM_PAD, WEB_TOP_PAD } from "../lib/tokens.ts";
 
 // ─── Layout constants ─────────────────────────────────────────────────────────
 //
 // CLAUDE.md marks these as MUST NOT CHANGE: both game screens are laid out
 // around them, and changing one without the other silently breaks a screen.
-// The card dimensions belong to cardFaceModel.ts, which draws the card, and the
-// web pads to lib/tokens.ts, which the menus also read; the rest are defined
-// here (rather than in the components/table/ files that read them) so
-// tests/gameTableModel.test.ts can pin their values and so the frame maths
-// below can use them directly.
+// The card dimensions belong to cardFaceModel.ts, which draws the card; the
+// rest are defined here (rather than in the components/table/ files that read
+// them) so tests/gameTableModel.test.ts can pin their values and so the frame
+// maths below can use them directly.
 
-export { CARD_H, CARD_W, WEB_BOTTOM_PAD, WEB_TOP_PAD };
+export { CARD_H, CARD_W };
 export const BTN_W = 84;
 export const BTN_H = 84;
 export const SIDE_BTN_W = 62;
@@ -416,15 +414,17 @@ export interface ScreenPads {
 }
 
 /**
- * Usable screen edges. React Native Web reports no useful safe-area insets, so
- * both screens have always substituted these fixed pads there.
+ * Usable screen edges, straight from `useSafeAreaInsets()`. On web that reads
+ * the real `env(safe-area-inset-*)` values (react-native-safe-area-context's
+ * web polyfill), which requires `viewport-fit=cover` on the viewport meta —
+ * see public/index.html — or every side reads 0 regardless of device.
  */
-export function computeScreenPads(opts: { insets: EdgeInsets; isWeb: boolean }): ScreenPads {
+export function computeScreenPads(opts: { insets: EdgeInsets }): ScreenPads {
   return {
-    topPad: opts.isWeb ? WEB_TOP_PAD : opts.insets.top,
-    bottomPad: opts.isWeb ? WEB_BOTTOM_PAD : opts.insets.bottom,
-    leftPad: opts.isWeb ? 0 : opts.insets.left,
-    rightPad: opts.isWeb ? 0 : opts.insets.right,
+    topPad: opts.insets.top,
+    bottomPad: opts.insets.bottom,
+    leftPad: opts.insets.left,
+    rightPad: opts.insets.right,
   };
 }
 
@@ -446,7 +446,6 @@ export interface TableFrame extends ScreenPads {
 export function computeTableFrame(opts: {
   width: number;
   insets: EdgeInsets;
-  isWeb: boolean;
 }): TableFrame {
   const { topPad, bottomPad, leftPad, rightPad } = computeScreenPads(opts);
 

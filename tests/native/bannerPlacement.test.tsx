@@ -27,7 +27,7 @@ import { TOP_BAR_H, computeScreenPads } from '@/components/gameTableModel';
 
 const INSETS = { top: 24, left: 47, right: 34, bottom: 0 };
 const METRICS = { frame: { x: 0, y: 0, width: 844, height: 390 }, insets: INSETS };
-const { topPad } = computeScreenPads({ insets: INSETS, isWeb: false });
+const { topPad } = computeScreenPads({ insets: INSETS });
 
 const noop = () => {};
 

@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import { View, Text, StyleSheet, Pressable, Platform, useWindowDimensions } from "react-native";
+import { View, Text, StyleSheet, Pressable, useWindowDimensions } from "react-native";
 import Animated, {
   useSharedValue,
   useAnimatedStyle,
@@ -64,7 +64,7 @@ export default function NotificationBanner({ notification, onDismiss }: Props) {
   const opacity = useSharedValue(0);
   const reduceMotion = usePrefersReducedMotion();
 
-  const { topPad } = computeScreenPads({ insets, isWeb: Platform.OS === "web" });
+  const { topPad } = computeScreenPads({ insets });
   const topOffset = notificationTopOffset({ topPad, landscape: width > height });
   // Reduced motion: keep the exact same callback chain (still a single,
   // sequential path to onDismiss) but collapse every leg to ~0ms so nothing

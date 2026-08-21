@@ -6,7 +6,7 @@
 // states (reconnect notice, a player leaving, a failed rejoin).
 
 import React, { useCallback, useEffect, useRef, useState } from "react";
-import { View, Text, StyleSheet, Platform, ActivityIndicator } from "react-native";
+import { View, Text, StyleSheet, ActivityIndicator } from "react-native";
 import { router } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import Ionicons from "@expo/vector-icons/Ionicons";
@@ -216,7 +216,7 @@ export default function OnlineGameScreen() {
   const exchange = readExchange(gameState, mySeatIndex);
   // The results overlay sits above the table and needs the same safe-area pads
   // the table uses; the table computes its own full frame from the same source.
-  const pads = computeScreenPads({ insets, isWeb: Platform.OS === "web" });
+  const pads = computeScreenPads({ insets });
 
   const handlePlay = (cardIds: string[]) => {
     // Cleared on acknowledgement, not on send — a server rejection must not

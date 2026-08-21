@@ -16,7 +16,6 @@ import {
   StyleSheet,
   Pressable,
   Modal,
-  Platform,
   useWindowDimensions,
   type ViewStyle,
 } from "react-native";
@@ -713,11 +712,7 @@ export function GameTable({
     [players, viewerSeat]
   );
 
-  const frame = computeTableFrame({
-    width: W,
-    insets,
-    isWeb: Platform.OS === "web",
-  });
+  const frame = computeTableFrame({ width: W, insets });
 
   // ── Screen-reader table description ─────────────────────────────────────────
   //

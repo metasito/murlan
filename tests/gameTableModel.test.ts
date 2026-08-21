@@ -96,9 +96,6 @@ const FAN_CONSTANT_DECL =
 /** The one file allowed to write a fan's spread out. */
 const FAN_SOURCE = "components/gameTableModel.ts";
 
-const RETYPED_WEB_PAD =
-  /(?:Platform\.OS\s*===\s*['"]web['"]|isWeb)\s*\?\s*(?:67|34)(?![\d.])|padding(?:Top|Bottom|Vertical)\s*:\s*(?:67|34)(?![\d.])/g;
-
 describe("layout constants (CLAUDE.md: MUST NOT CHANGE)", () => {
   test("every constant still holds the value both game screens are built around", () => {
     // These are pinned, not documented: a silent change to any of them breaks
@@ -163,29 +160,6 @@ describe("layout constants (CLAUDE.md: MUST NOT CHANGE)", () => {
     ]);
   });
 
-  test("no screen re-types the web safe-area pads instead of importing them", () => {
-    assert.deepEqual(scan(RETYPED_WEB_PAD), []);
-  });
-
-  test("the safe-area scan fires on every shape a re-typed pad takes", () => {
-    const planted: [string, string][] = [
-      [
-        "app/example.tsx",
-        [
-          "const topPad = Platform.OS === 'web' ? 67 : insets.top;",
-          "const botPad = isWeb ? 34 : insets.bottom;",
-          "const style = { paddingTop: 67, paddingBottom: 34 };",
-          "const fine = { paddingTop: WEB_TOP_PAD, paddingBottom: WEB_BOTTOM_PAD };",
-        ].join("\n"),
-      ],
-    ];
-    assert.deepEqual(scanSources(RETYPED_WEB_PAD, planted), [
-      "app/example.tsx: Platform.OS === 'web' ? 67",
-      "app/example.tsx: isWeb ? 34",
-      "app/example.tsx: paddingBottom: 34",
-      "app/example.tsx: paddingTop: 67",
-    ]);
-  });
 });
 
 // ─── Fan geometry ─────────────────────────────────────────────────────────────
@@ -956,33 +930,32 @@ describe("startCardBannerText", () => {
 describe("computeTableFrame", () => {
   const insets = { top: 20, bottom: 10, left: 44, right: 44 };
 
-  test("native: the felt is inset by TABLE_M inside the safe area, below the top bar", () => {
-    const f = computeTableFrame({ width: 800, insets, isWeb: false });
+  test("the felt is inset by TABLE_M inside the safe area, below the top bar", () => {
+    const f = computeTableFrame({ width: 800, insets });
     assert.equal(f.tableLeft, 44 + TABLE_M);
     assert.equal(f.tableTop, 20 + TOP_BAR_H + TABLE_M);
     assert.equal(f.tableRight, 44 + TABLE_M);
     assert.equal(f.tableBottom, 10 + TABLE_M);
   });
 
-  test("web ignores insets and uses the fixed pads both screens used", () => {
-    const f = computeTableFrame({ width: 800, insets, isWeb: true });
-    assert.equal(f.topPad, 67);
-    assert.equal(f.bottomPad, 34);
-    assert.equal(f.leftPad, 0);
-    assert.equal(f.rightPad, 0);
-    assert.equal(f.tableLeft, TABLE_M);
+  test("web reads the same real insets as native — no fixed fallback pads", () => {
+    const f = computeTableFrame({ width: 800, insets });
+    assert.equal(f.topPad, insets.top);
+    assert.equal(f.bottomPad, insets.bottom);
+    assert.equal(f.leftPad, insets.left);
+    assert.equal(f.rightPad, insets.right);
   });
 
   test("handAvailW matches the pre-refactor formula on both screens", () => {
     // Offline computed it via an intermediate `tableW`; online inlined it.
     // Both reduce to this, and the two must not drift again.
-    const f = computeTableFrame({ width: 800, insets, isWeb: false });
+    const f = computeTableFrame({ width: 800, insets });
     const tableW = 800 - f.tableLeft - f.tableRight;
     assert.equal(f.handAvailW, tableW - (SIDE_BTN_W + 8) * 2 - 8);
   });
 
   test("the hand row leaves room for both side buttons", () => {
-    const f = computeTableFrame({ width: 800, insets, isWeb: false });
+    const f = computeTableFrame({ width: 800, insets });
     assert.ok(f.handAvailW > 0);
     assert.ok(f.handAvailW < 800 - SIDE_BTN_W * 2);
   });

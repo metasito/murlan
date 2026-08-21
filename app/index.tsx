@@ -4,7 +4,6 @@ import {
   Text,
   StyleSheet,
   Pressable,
-  Platform,
   useWindowDimensions,
   ScrollView,
 } from "react-native";
@@ -27,7 +26,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useAuth } from "@/context/AuthContext";
 import { useGame } from "@/context/GameContext";
 import { usePrefersReducedMotion } from "@/lib/accessibility";
-import { Colors, FontSize, Radius, Spacing, TOUCH_TARGET_MIN, WEB_BOTTOM_PAD, WEB_TOP_PAD } from '@/lib/theme';
+import { Colors, FontSize, Radius, Spacing, TOUCH_TARGET_MIN } from '@/lib/theme';
 import { useTranslation } from "@/lib/i18n";
 import { SettingsModal } from "@/components/SettingsModal";
 import { a11yState } from "@/lib/a11y";
@@ -332,10 +331,10 @@ export default function HomeScreen() {
     opacity: subtitleOpacity.value,
   }));
 
-  const topPad = Platform.OS === "web" ? WEB_TOP_PAD : insets.top;
-  const bottomPad = Platform.OS === "web" ? WEB_BOTTOM_PAD : insets.bottom;
-  const leftPad = isLandscape ? (Platform.OS === "web" ? 0 : insets.left) : 0;
-  const rightPad = isLandscape ? (Platform.OS === "web" ? 0 : insets.right) : 0;
+  const topPad = insets.top;
+  const bottomPad = insets.bottom;
+  const leftPad = isLandscape ? insets.left : 0;
+  const rightPad = isLandscape ? insets.right : 0;
 
   // Resuming restores the context first; the table renders from what it finds.
   const onResume = () => {

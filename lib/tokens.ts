@@ -154,10 +154,6 @@ export const Spacing = {
   xxxl: 48,
 };
 
-/** React Native Web reports no usable safe-area insets; every screen substitutes these. */
-export const WEB_TOP_PAD = 67;
-export const WEB_BOTTOM_PAD = 34;
-
 // iOS HIG's 44pt floor for a touch target. react-native-web reads `hitSlop`
 // on nothing but the legacy Touchable, so on the shipped platform a control's
 // own box is the whole target.
