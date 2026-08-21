@@ -158,9 +158,11 @@ jobs:
             # renders "QUICK GUIDE" where the flow waits for "GUIDA RAPIDA" -
             # on screen, correct, and failing every assertion.
             #
-            # This runs first because `stop; start` leaves System UI coming
-            # back up, and an app launched into that window ANRs instead of
-            # rendering. The Expo Go install below is the settle time.
+            # The property needs root to set and a restart to take effect, and
+            # it has to be a real reboot: `stop; start` brings the framework
+            # back with System UI wedged on a two-core runner, and the app then
+            # ANRs instead of rendering - the hierarchy at the point of failure
+            # held the ANR dialog and nothing else. A reboot comes up clean.
             #
             # Every line here runs as its own `sh -c`: no construct may span
             # lines, and no variable survives to the next one.
@@ -174,12 +176,12 @@ jobs:
             adb root
             adb wait-for-device
             adb shell setprop persist.sys.locale it-IT
-            adb shell "stop; start"
+            adb unroot
+            adb wait-for-device
+            adb reboot
             adb wait-for-device
             until [ "$(adb shell getprop sys.boot_completed | tr -d '\r')" = "1" ]; do sleep 2; done
             until adb shell "getprop init.svc.bootanim | grep -q stopped && cmd package list packages > /dev/null 2>&1 && cmd settings list system > /dev/null 2>&1"; do sleep 2; done
-            adb unroot
-            adb wait-for-device
             adb shell getprop persist.sys.locale | tr -d '\r' | grep -qx it-IT || { echo "::error::Device locale is not it-IT; the flows select on Italian copy."; exit 1; }
             adb install -r "$RUNNER_TEMP/expo-go.apk"
             # Expo Go reports a failed manifest fetch as nothing but "Something
