@@ -35,68 +35,67 @@ export const SIDE_SECTION_W = 130;
  */
 export const HAND_ROW_HEADROOM = 16;
 
-/** The hand row's own height — headroom above its (already-scaled) cards. */
-export function HAND_SECTION_H(cardH: number): number {
-  return cardH + HAND_ROW_HEADROOM;
-}
-
-// ─── Fan geometry ─────────────────────────────────────────────────────────────
+// ─── The hand's own band ──────────────────────────────────────────────────────
 //
-// Where each card sits inside a fan. Every fan on the table reads it from here:
-// a combination mid-throw and the same combination the frame after it lands are
-// one call, so it cannot shift as it arrives.
+// The hand meets the device's bottom edge and is cropped by it, which buys the
+// table height while making the cards bigger rather than smaller. The crop
+// costs nothing: a card's index is at its top-left, and only the redundant
+// upside-down copy at the foot is lost.
 
-/** A combination in the pile, thrown or landed. */
-export type FanKind = "combo" | "opponent";
+/** How much of a hand card falls past the bottom edge. */
+export const HAND_CROP = 0.25;
 
-export interface FanOffsets {
-  /** Horizontal distance (px) between the left edges of adjacent cards. */
-  step: number;
-  /** Tilt (deg) of the card furthest from the middle. */
-  angle: number;
-  /** Full span (px): left edge of the first card to the right edge of the last. */
-  totalW: number;
-}
-
-const OPPONENT_STEP = 15;
-const OPPONENT_MAX_ANGLE = 22;
 /**
- * Cards thrown onto a table do not land square, so a combination is jittered
- * rather than fanned — see cardTilt. The bound stays small: past a few degrees
- * the overlap stops reading as one combination.
+ * The part of a hand card the player actually sees — which is also how tall
+ * PASSA and GIOCA are, so the row still reads as one band. They are never
+ * cropped themselves: they sit on the safe line, clear of the home indicator.
  */
-const COMBO_MAX_TILT = 4.5;
-
-/** `cardW` is the caller's own already-scaled card width for this fan's kind. */
-export function fanOffsets(count: number, kind: FanKind, cardW: number): FanOffsets {
-  if (kind === "opponent") {
-    return {
-      step: OPPONENT_STEP,
-      angle: OPPONENT_MAX_ANGLE,
-      totalW: OPPONENT_STEP * (count - 1) + cardW,
-    };
-  }
-  const step = count > 8 ? 9 : count > 5 ? 12 : 14;
-  return { step, angle: COMBO_MAX_TILT, totalW: step * (count - 1) + cardW };
+export function handVisibleH(cardH: number): number {
+  return cardH * (1 - HAND_CROP);
 }
 
 /**
- * A card's own tilt (deg) inside a combo fan, derived from its id so the same
- * combination looks the same on every client and in every frame of its throw.
+ * The hand zone's own height. It runs to the device bottom rather than
+ * stopping at the felt, so it carries the bottom safe pad itself: the buttons
+ * sit above that line and the cards run past it.
+ */
+export function HAND_ZONE_H(cardH: number, bottomPad: number): number {
+  return handVisibleH(cardH) + bottomPad + HAND_ROW_HEADROOM;
+}
+
+// ─── Width budgets ────────────────────────────────────────────────────────────
+//
+// Every arc takes a share of the table, never all the room it can reach. A
+// hand of three does not stretch across the felt to fill it, and a thirteen-
+// card run compresses and stops rather than pushing the seats off the edge.
+
+/**
+ * The hand's share. A target rather than a hard cap: the overlap floor
+ * (components/handLayout.ts) may hold a full hand wider than this, because a
+ * card that cannot be tapped is worse than a hand that reaches further. What
+ * is hard is `handAvailW` — past that the row scrolls.
+ */
+export const HAND_WIDTH_SHARE = 0.54;
+/** The field's share of the same width, bounded by what the seats leave it. */
+export const FIELD_WIDTH_SHARE = 0.55;
+
+// ─── Card jitter ──────────────────────────────────────────────────────────────
+
+/**
+ * Cards thrown onto a table do not land square, so a combination keeps a small
+ * jitter on top of the arc it lands on. The bound stays small: past a few
+ * degrees the overlap stops reading as one combination.
+ */
+export const COMBO_MAX_TILT = 4.5;
+
+/**
+ * A card's own jitter (deg), derived from its id so the same combination looks
+ * the same on every client and in every frame of its throw.
  */
 export function cardTilt(id: string, maxTilt: number): number {
   let hash = 0;
   for (let i = 0; i < id.length; i++) hash = (hash * 31 + id.charCodeAt(i)) | 0;
   return ((Math.abs(hash) % 200) / 100 - 1) * maxTilt;
-}
-
-/**
- * Left offset (px) of card `i` in a fan centred on its own midpoint, rather
- * than laid out from a left edge. `cardW` must be the same width `fanOffsets`
- * or `computeHandLayout` produced `totalW` from.
- */
-export function fanCenterOffset(i: number, step: number, totalW: number, cardW: number): number {
-  return i * step - (totalW - cardW) / 2;
 }
 
 // ─── Seating ──────────────────────────────────────────────────────────────────
@@ -471,6 +470,10 @@ export interface TableFrame extends ScreenPads {
   tableBottom: number;
   /** Width available to the hand row between the PASSA and GIOCA buttons. */
   handAvailW: number;
+  /** …and the share of it the hand aims at — see HAND_WIDTH_SHARE. */
+  handRoomW: number;
+  /** Width the field's arc may take, bounded by what the side seats leave. */
+  fieldRoomW: number;
 }
 
 /**
@@ -496,6 +499,8 @@ export function computeTableFrame(opts: {
   const tableTop = topPad + TOP_BAR_H + TABLE_M;
   const tableRight = rightPad + TABLE_M;
   const tableBottom = bottomPad + TABLE_M;
+  const tableW = opts.width - tableLeft - tableRight;
+  const handAvailW = tableW - (SIDE_BTN_W + 8) * 2 - 8;
 
   return {
     topPad,
@@ -507,7 +512,9 @@ export function computeTableFrame(opts: {
     tableTop,
     tableRight,
     tableBottom,
-    handAvailW: opts.width - tableLeft - tableRight - (SIDE_BTN_W + 8) * 2 - 8,
+    handAvailW,
+    handRoomW: Math.min(handAvailW, opts.width * HAND_WIDTH_SHARE),
+    fieldRoomW: Math.min(tableW - SIDE_SECTION_W * 2, opts.width * FIELD_WIDTH_SHARE),
   };
 }
 

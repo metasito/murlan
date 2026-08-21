@@ -11,7 +11,7 @@ import Animated, {
 import Ionicons from "@expo/vector-icons/Ionicons";
 import { LinearGradient } from "expo-linear-gradient";
 import { CardView } from "@/components/CardView";
-import { arcBounds, arcCards, fitSpread } from "@/components/tableArc";
+import { arcBounds, SEAT_ARC, solveArc } from "@/components/tableArc";
 import type { OpponentSide } from "@/components/gameTableModel";
 import { CARD_BACK_H, CARD_BACK_W, BACK_SCALE } from "@/components/cardFaceModel";
 import { Colors, FontSize, Highlight, Motion, Radius, Scrim, Shadow, Spacing } from "@/lib/theme";
@@ -29,11 +29,6 @@ import { a11yHidden } from "@/lib/a11y";
 // arc deliberately overflows its box and rotating the box would leave half of
 // it empty and open a phantom gap between the avatar and the cards.
 
-/** The circle a fan's backs ride, and how far the outermost may climb. */
-const FAN_RADIUS = 150;
-const FAN_RISE = 16;
-/** Ideal distance between adjacent backs, before the rise budget bites. */
-const FAN_STEP = 9;
 /**
  * How far the fan leans away from the viewer, in its own frame — so a side
  * player leans sideways from the same line of code as the top player leaning
@@ -59,22 +54,14 @@ function CardFan({
   const backScale = scale * BACK_SCALE;
   const backW = CARD_BACK_W(backScale);
   const backH = CARD_BACK_H(backScale);
-  const radius = FAN_RADIUS * backScale;
-
-  const spread = fitSpread(count, {
-    radius,
-    cardW: backW,
-    // A fan is never width-budgeted: it is the seat's own column that bounds
-    // it, and the rise below is what actually binds.
-    room: Infinity,
-    step: FAN_STEP * backScale,
-    rise: FAN_RISE * backScale,
-  });
-  const { cards, box } = arcCards(count, {
-    radius,
-    spread,
+  // A fan is never width-budgeted: the seat's own column bounds it, and it is
+  // the rise that actually binds.
+  const { cards, box } = solveArc(count, {
+    budget: SEAT_ARC,
     cardW: backW,
     cardH: backH,
+    scale: backScale,
+    room: Infinity,
     flip: true,
   });
   const bounds = arcBounds(cards, box, backW, backH);

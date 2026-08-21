@@ -137,3 +137,54 @@ export function arcBounds(
   }
   return { w: x1 - x0, h: y1 - y0, cx: (x0 + x1) / 2, cy: (y0 + y1) / 2 };
 }
+
+// ─── Budgets ──────────────────────────────────────────────────────────────────
+//
+// One place per arc for the shape it wants, so no caller writes a spread out
+// for itself. `radius` and `rise` are at scale 1 and are multiplied by the
+// card's own scale; `stepRatio` is a fraction of that card's width, so the
+// ideal overlap tracks the card rather than the device.
+
+export interface ArcBudget {
+  radius: number;
+  stepRatio: number;
+  rise: number;
+}
+
+/** The viewer's own hand: nearly flat, so the width budget is what binds. */
+export const HAND_ARC: ArcBudget = { radius: 2200, stepRatio: 0.68, rise: 15 };
+/** A combination lying on the felt — flatter still than a held hand. */
+export const FIELD_ARC: ArcBudget = { radius: 1100, stepRatio: 0.52, rise: 13 };
+/** An opponent's backs: a tight bowl, bound by its rise rather than its width. */
+export const SEAT_ARC: ArcBudget = { radius: 150, stepRatio: 1 / 3, rise: 16 };
+
+/**
+ * One arc, solved against its budget. `room` is the width share this arc is
+ * allowed; pass Infinity for an arc nothing bounds horizontally. `step`
+ * overrides the budget's ideal — the hand passes its own overlap floor, which
+ * is set by the thumb rather than by looks.
+ */
+export function solveArc(
+  n: number,
+  opts: {
+    budget: ArcBudget;
+    cardW: number;
+    cardH: number;
+    /** The card's own scale, which the radius and the rise are quoted against. */
+    scale: number;
+    room: number;
+    step?: number;
+    flip?: boolean;
+  }
+): { cards: ArcCard[]; box: ArcBox } {
+  const { budget, cardW, cardH, scale, room, step, flip } = opts;
+  const radius = budget.radius * scale;
+  const spread = fitSpread(n, {
+    radius,
+    cardW,
+    room,
+    step: step ?? cardW * budget.stepRatio,
+    rise: budget.rise * scale,
+  });
+  return arcCards(n, { radius, spread, cardW, cardH, flip });
+}

@@ -15,10 +15,11 @@ import {
   TOP_BAR_H,
   TABLE_M,
   SIDE_SECTION_W,
-  HAND_SECTION_H,
+  HAND_CROP,
+  HAND_WIDTH_SHARE,
+  HAND_ZONE_H,
+  handVisibleH,
   cardTilt,
-  fanCenterOffset,
-  fanOffsets,
   getOpponentPosition,
   seatDirection,
   arrangeOpponents,
@@ -60,9 +61,8 @@ import {
 
 // ─── Layout constants ─────────────────────────────────────────────────────────
 
-// A representative resolved card width/height at scale 1, for tests that need
-// a concrete number rather than the function CARD_W/CARD_H now are.
-const CW = CARD_W(1);
+// A representative resolved card height at scale 1, for tests that need a
+// concrete number rather than the function CARD_H now is.
 const CH = CARD_H(1);
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
@@ -98,9 +98,11 @@ const CARD_DIMENSION_DECL = /(?<![\w$])(?:const|let|var)\s+(?:CARD_W|CARD_H)(?![
 // enough to walk past a pattern that only knew the first spelling.
 const FAN_CONSTANT_DECL =
   /(?<![\w$])(?:const|let|var)\s+(?:overlap|maxAngle|maxTilt)(?![\w$])|[\w.]+\s*>\s*\d+\s*\?\s*\d+\s*:/g;
+// An arc's budget — the radius, ideal step and rise it is solved against.
+const ARC_BUDGET_DECL = /(?<![\w$])(?:const|let|var)\s+\w+\s*:\s*ArcBudget(?![\w$])/g;
 
-/** The one file allowed to write a fan's spread out. */
-const FAN_SOURCE = "components/gameTableModel.ts";
+/** The one file allowed to hold an arc's own shape. */
+const ARC_SOURCE = "components/tableArc.ts";
 
 describe("layout constants (CLAUDE.md: MUST NOT CHANGE)", () => {
   test("every constant still holds the value both game screens are built around", () => {
@@ -121,13 +123,26 @@ describe("layout constants (CLAUDE.md: MUST NOT CHANGE)", () => {
     assert.equal(CARD_H(2), CARD_H(1) * 2);
   });
 
-  test("HAND_SECTION_H keeps its +16 headroom for the selection lift, at any card height", () => {
-    // The -14px selection lift has to fit inside the section; the 16px of
-    // slack is what gives it room without clipping.
+  test("the hand zone keeps its +16 headroom for the selection lift, at any card height", () => {
+    // The -16px selection lift has to fit inside the zone above the cards; the
+    // 16px of slack is what gives it room without clipping.
     for (const h of [CH * 0.7, CH, CH * 1.2]) {
-      assert.equal(HAND_SECTION_H(h), h + 16);
-      assert.ok(HAND_SECTION_H(h) - h >= 14);
+      assert.equal(HAND_ZONE_H(h, 0), handVisibleH(h) + 16);
+      assert.ok(HAND_ZONE_H(h, 0) - handVisibleH(h) >= 16);
     }
+  });
+
+  test("the hand zone carries the bottom safe pad itself — it runs to the device edge", () => {
+    // PASSA and GIOCA sit on the safe line inside it and are never cropped;
+    // only the cards run past it.
+    assert.equal(HAND_ZONE_H(CH, 21) - HAND_ZONE_H(CH, 0), 21);
+  });
+
+  test("only the redundant upside-down index is cropped, never the rank corner", () => {
+    // The rank a player reads is at the card's top-left, so a quarter off the
+    // foot costs nothing. Half of it would start eating the pip field.
+    assert.ok(HAND_CROP > 0 && HAND_CROP <= 0.3);
+    assert.equal(handVisibleH(CH), CH * (1 - HAND_CROP));
   });
 
   // A copy of a constant also holds the pinned value, so the assertions above
@@ -139,14 +154,29 @@ describe("layout constants (CLAUDE.md: MUST NOT CHANGE)", () => {
     ]);
   });
 
-  test("only gameTableModel.ts writes out a fan's spread; everywhere else calls fanOffsets", () => {
-    const hits = scan(FAN_CONSTANT_DECL);
-    assert.deepEqual(hits.filter((h) => !h.startsWith(`${FAN_SOURCE}: `)), []);
-    // The floor: a pattern that stopped matching would empty the list above and
-    // pass. The declaration it exists to find has to still be in it.
-    assert.deepEqual(hits, [
-      `${FAN_SOURCE}: count > 5 ? 12 :`,
-      `${FAN_SOURCE}: count > 8 ? 9 :`,
+  test("nothing writes a fan's spread out any more; every arc asks for a budget", () => {
+    assert.deepEqual(scan(FAN_CONSTANT_DECL), []);
+  });
+
+  test("only tableArc.ts declares an arc's budget, and it declares exactly three", () => {
+    // The hand, the field and a seat's backs. A fourth would be a fourth arc
+    // nobody asked for; one declared anywhere else is a copy that goes stale.
+    assert.deepEqual(scan(ARC_BUDGET_DECL), [
+      `${ARC_SOURCE}: const FIELD_ARC: ArcBudget`,
+      `${ARC_SOURCE}: const HAND_ARC: ArcBudget`,
+      `${ARC_SOURCE}: const SEAT_ARC: ArcBudget`,
+    ]);
+  });
+
+  test("the budget scan fires on a budget declared anywhere else", () => {
+    // The floor for the two scans above: both now expect a list this file's
+    // own sources cannot grow, so a pattern that quietly stopped matching
+    // would pass them both.
+    const planted: [string, string][] = [
+      ["components/table/example.tsx", "const MY_ARC: ArcBudget = { radius: 1, stepRatio: 1, rise: 1 };"],
+    ];
+    assert.deepEqual(scanSources(ARC_BUDGET_DECL, planted), [
+      "components/table/example.tsx: const MY_ARC: ArcBudget",
     ]);
   });
 
@@ -174,42 +204,7 @@ describe("layout constants (CLAUDE.md: MUST NOT CHANGE)", () => {
 
 });
 
-// ─── Fan geometry ─────────────────────────────────────────────────────────────
-
-describe("fanOffsets", () => {
-  // Both pile fans asking for the same geometry is a property of the source,
-  // not of any value this file can compute: two calls to fanOffsets agree by
-  // construction, so asserting that they do asserts nothing. What can be
-  // checked is that the flight and the landing are the two calls.
-  test("the flight and the landing are the same call, and the only two", () => {
-    const pile = readFileSync(path.join(repoRoot, "components/table/pile.tsx"), "utf8");
-    const calls = [...pile.matchAll(/fanOffsets\([^)]*\)/g)].map((m) => m[0]);
-
-    assert.equal(calls.length, 2, `pile.tsx should ask for its fan twice, got: ${calls}`);
-    assert.deepEqual(
-      calls.map((c) => c.replace(/\((\w+)\.length/, "(N")),
-      ['fanOffsets(N, "combo", cardW)', 'fanOffsets(N, "combo", cardW)']
-    );
-  });
-
-  test("the step tightens as a combination grows, so a big one still fits the pile", () => {
-    assert.equal(fanOffsets(3, "combo", CW).step, 14);
-    assert.equal(fanOffsets(6, "combo", CW).step, 12);
-    assert.equal(fanOffsets(9, "combo", CW).step, 9);
-    assert.ok(fanOffsets(13, "combo", CW).totalW < 13 * CW);
-  });
-
-  test("totalW spans the first card's left edge to the last card's right edge", () => {
-    for (const kind of ["combo", "opponent"] as const) {
-      const cardW = kind === "combo" ? CW : 40;
-      for (const count of [1, 4, 7]) {
-        const { step, totalW } = fanOffsets(count, kind, cardW);
-        assert.equal(totalW, step * (count - 1) + cardW);
-      }
-    }
-    assert.equal(fanOffsets(1, "combo", CW).totalW, CW);
-  });
-});
+// ─── Card jitter ──────────────────────────────────────────────────────────────
 
 describe("cardTilt", () => {
   test("the same card always tilts the same way, on every client and every frame", () => {
@@ -221,29 +216,6 @@ describe("cardTilt", () => {
     for (const id of ["3S", "QD", "joker-1", "10C", "AH"]) {
       assert.ok(Math.abs(cardTilt(id, 4.5)) <= 4.5);
       assert.ok(Math.abs(cardTilt(id, 0)) === 0);
-    }
-  });
-});
-
-describe("fanCenterOffset", () => {
-  test("the outer cards sit the same distance either side of the centre", () => {
-    const { step, totalW } = fanOffsets(5, "combo", CW);
-    assert.equal(fanCenterOffset(0, step, totalW, CW) + fanCenterOffset(4, step, totalW, CW), 0);
-    assert.equal(fanCenterOffset(2, step, totalW, CW), 0);
-  });
-
-  test("a single card sits on the centre itself", () => {
-    const { step, totalW } = fanOffsets(1, "combo", CW);
-    assert.equal(fanCenterOffset(0, step, totalW, CW), 0);
-  });
-
-  test("the hand's deal origin is the mirror of a card's own offset", () => {
-    // hand.tsx flies each card in from the middle of the row, which is the
-    // negation of where the card ends up relative to that middle.
-    const { step, totalW } = fanOffsets(7, "combo", CW);
-    for (let i = 0; i < 7; i++) {
-      const dealFromX = totalW / 2 - i * step - CW / 2;
-      assert.equal(fanCenterOffset(i, step, totalW, CW) + dealFromX, 0);
     }
   });
 });
@@ -1006,6 +978,33 @@ describe("computeTableFrame", () => {
     const f = frameOf();
     assert.ok(f.handAvailW > 0);
     assert.ok(f.handAvailW < 800 - SIDE_BTN_W * 2);
+  });
+
+  test("the hand aims at its share of the width and never stretches past it", () => {
+    const f = frameOf({ width: 844 });
+    assert.equal(f.handRoomW, 844 * HAND_WIDTH_SHARE);
+    // The floor: on this device the share is the tighter of the two, which is
+    // the whole point — otherwise the hand would spread across the felt.
+    assert.ok(f.handRoomW < f.handAvailW);
+  });
+
+  test("a narrow screen falls back to what the row actually has", () => {
+    // On a small phone the buttons leave less than the share asks for, and
+    // the row cannot be given width that is not there.
+    const f = frameOf({ width: 480 });
+    assert.equal(f.handRoomW, Math.min(f.handAvailW, 480 * HAND_WIDTH_SHARE));
+    assert.ok(f.handRoomW <= f.handAvailW);
+  });
+
+  test("the field takes what the seats leave it, capped by its own share", () => {
+    const f = frameOf({ width: 844 });
+    const tableW = 844 - f.tableLeft - f.tableRight;
+    assert.equal(f.fieldRoomW, Math.min(tableW - SIDE_SECTION_W * 2, 844 * 0.55));
+    assert.ok(f.fieldRoomW > 0);
+    // Neither arc may take the whole table: together they still leave the
+    // seats their columns.
+    assert.ok(f.fieldRoomW < tableW);
+    assert.ok(f.handRoomW < 844);
   });
 });
 

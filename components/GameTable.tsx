@@ -44,7 +44,8 @@ import {
 import type { ExchangeAnnounceData } from "@/lib/sharedGameFlow";
 import {
   TOP_BAR_H,
-  HAND_SECTION_H,
+  HAND_ZONE_H,
+  handVisibleH,
   CARD_H,
   cardScale,
   SIDE_BTN_W,
@@ -606,6 +607,9 @@ export function GameTable({
   // robust read regardless of how a platform reports it mid-rotation.
   const scale = cardScale(Math.min(W, H));
   const handCardH = CARD_H(scale * HAND_SCALE);
+  // What the player sees of a hand card, and how tall PASSA and GIOCA are —
+  // the row reads as one band even though only the cards are cropped.
+  const handBandH = handVisibleH(handCardH);
   const knobSize = physicalTouchTarget(scale);
   const reduceMotion = usePrefersReducedMotion();
   const felt = useTableFelt();
@@ -1158,7 +1162,9 @@ export function GameTable({
             left: frame.tableLeft,
             top: frame.tableTop,
             right: frame.tableRight,
-            bottom: frame.tableBottom,
+            // The device's own bottom edge, not the felt's: the hand runs to
+            // it and past it, which is what buys the table the height above.
+            bottom: 0,
           },
         ]}
       >
@@ -1226,6 +1232,7 @@ export function GameTable({
                   current={flyInfo ? null : pileState.current}
                   roundWinner={roundWinnerTag === null ? null : players[roundWinnerTag.seat]?.name ?? ""}
                   bounceTrigger={pileBounceTrigger}
+                  roomW={frame.fieldRoomW}
                   scale={scale}
                 />
               )}
@@ -1249,7 +1256,10 @@ export function GameTable({
             style={[
               sharedTableStyles.handSection,
               isMyTurn && !isFinished && sharedTableStyles.handSectionActive,
-              { height: HAND_SECTION_H(handCardH) },
+              {
+                height: HAND_ZONE_H(handCardH, frame.bottomPad),
+                paddingBottom: frame.bottomPad,
+              },
             ]}
           >
             <Animated.View
@@ -1263,7 +1273,7 @@ export function GameTable({
                 flashStyle={passaFlashStyle}
                 onPress={handlePass}
                 a11yLabel={t("gameTable.passA11yLabel")}
-                cardH={handCardH}
+                cardH={handBandH}
               />
             )}
 
@@ -1285,6 +1295,7 @@ export function GameTable({
                   onPress={handleCardPress}
                   disabled={isFinished || spectating}
                   availW={frame.handAvailW}
+                  roomW={frame.handRoomW}
                   isMyTurn={isMyTurn && !isFinished}
                   scale={scale}
                 />
@@ -1307,7 +1318,7 @@ export function GameTable({
                 dimLabel={dimLabel}
                 startCardRank={startCardRank}
                 selectedCount={selectedIds.length}
-                cardH={handCardH}
+                cardH={handBandH}
               />
             )}
           </View>
@@ -1323,6 +1334,7 @@ export function GameTable({
             setFlyInfo(null);
             setPileBounceTrigger((t) => t + 1);
           }}
+          roomW={frame.fieldRoomW}
           scale={scale}
         />
       )}
@@ -1371,7 +1383,7 @@ export function GameTable({
           style={[
             styles.rejectHint,
             {
-              bottom: frame.bottomPad + TABLE_M + HAND_SECTION_H(handCardH) + Spacing.xs,
+              bottom: HAND_ZONE_H(handCardH, frame.bottomPad) + Spacing.xs,
               left: frame.tableLeft,
               right: frame.tableRight,
             },

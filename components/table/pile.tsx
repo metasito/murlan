@@ -22,13 +22,13 @@ import { useTranslation, type TranslationKey } from "@/lib/i18n";
 import type { Card, Combination } from "@/lib/gameEngine";
 import { CARD_W, CARD_H, FIELD_SCALE } from "@/components/cardFaceModel";
 import {
+  COMBO_MAX_TILT,
   FLIGHT_MS,
   LANDING_FRACTION,
   cardTilt,
-  fanCenterOffset,
-  fanOffsets,
   type FlyDirection,
 } from "@/components/gameTableModel";
+import { FIELD_ARC, solveArc } from "@/components/tableArc";
 
 const FLY_OFFSETS: Record<FlyDirection, { dx: number; dy: number }> = {
   bottom: { dx: 0, dy: 140 },
@@ -48,17 +48,38 @@ const FLY_LANDING_ROTS: Record<FlyDirection, number> = {
 const ARC_PEAK = 22;
 const LAND_DIP = 5;
 
+/**
+ * Where a combination's cards sit on the felt. A combination mid-throw and the
+ * same combination the frame after it lands are one call, so it cannot shift
+ * as it arrives.
+ */
+function fieldArc(cards: Card[], cardScale: number, roomW: number) {
+  const cardW = CARD_W(cardScale);
+  const cardH = CARD_H(cardScale);
+  const { cards: arc, box } = solveArc(cards.length, {
+    budget: FIELD_ARC,
+    cardW,
+    cardH,
+    scale: cardScale,
+    room: roomW,
+  });
+  return { arc, box, cardH };
+}
+
 // ─── FlyingCards ──────────────────────────────────────────────────────────────
 
 export function FlyingCards({
   cards,
   direction,
   onDone,
+  roomW,
   scale = 1,
 }: {
   cards: Card[];
   direction: FlyDirection;
   onDone: () => void;
+  /** The width share the field's arc may take — see FIELD_WIDTH_SHARE. */
+  roomW: number;
   /** The table's own scale — the pile draws its cards at `scale * FIELD_SCALE`. */
   scale?: number;
 }) {
@@ -136,26 +157,26 @@ export function FlyingCards({
     opacity: opacity.value,
   }));
 
-  const display = cards;
   const cardScale = scale * FIELD_SCALE;
-  const cardW = CARD_W(cardScale);
-  const cardH = CARD_H(cardScale);
-  const { step, angle, totalW } = fanOffsets(display.length, "combo", cardW);
+  const { arc, box, cardH } = fieldArc(cards, cardScale, roomW);
 
   return (
     <View style={[pileStyles.flyingContainer, { pointerEvents: "none" as const }]}>
-      <Animated.View style={[pileStyles.flyingInner, { width: cardW * 5, height: cardH }, aStyle]}>
-        {display.map((card, i) => (
+      <Animated.View style={[pileStyles.flyingInner, { width: box.w, height: box.h }, aStyle]}>
+        {arc.map((place, i) => (
           <View
-            key={card.id}
+            key={cards[i].id}
             style={{
               position: "absolute",
-              left: fanCenterOffset(i, step, totalW, cardW),
+              left: box.w / 2 + place.x,
+              top: place.y + (box.h - cardH),
               zIndex: i,
-              transform: [{ rotate: `${cardTilt(card.id, angle)}deg` }],
+              transform: [
+                { rotate: `${place.rot + cardTilt(cards[i].id, COMBO_MAX_TILT)}deg` },
+              ],
             }}
           >
-            <CardView card={card} scale={cardScale} />
+            <CardView card={cards[i]} scale={cardScale} />
           </View>
         ))}
       </Animated.View>
@@ -176,23 +197,32 @@ const COMBO_LABEL_KEYS: Record<string, TranslationKey> = {
 
 const POWER_COMBOS = new Set(["bomb", "royal_straight"]);
 
-function PileComboCards({ cards, scale }: { cards: Card[]; scale: number }) {
-  const cardW = CARD_W(scale);
-  const cardH = CARD_H(scale);
-  const { step, angle, totalW } = fanOffsets(cards.length, "combo", cardW);
+function PileComboCards({
+  cards,
+  scale,
+  roomW,
+}: {
+  cards: Card[];
+  scale: number;
+  roomW: number;
+}) {
+  const { arc, box, cardH } = fieldArc(cards, scale, roomW);
   return (
-    <View style={{ width: totalW, height: cardH, position: "relative" }}>
-      {cards.map((card, ci) => (
+    <View style={{ width: box.w, height: box.h, position: "relative" }}>
+      {arc.map((place, i) => (
         <View
-          key={card.id}
+          key={cards[i].id}
           style={{
             position: "absolute",
-            left: ci * step,
-            zIndex: ci,
-            transform: [{ rotate: `${cardTilt(card.id, angle)}deg` }],
+            left: box.w / 2 + place.x,
+            top: place.y + (box.h - cardH),
+            zIndex: i,
+            transform: [
+              { rotate: `${place.rot + cardTilt(cards[i].id, COMBO_MAX_TILT)}deg` },
+            ],
           }}
         >
-          <CardView card={card} scale={scale} />
+          <CardView card={cards[i]} scale={scale} />
         </View>
       ))}
     </View>
@@ -204,12 +234,15 @@ export function PlayedPile({
   current,
   roundWinner,
   bounceTrigger,
+  roomW,
   scale = 1,
 }: {
   prev: Combination | null;
   current: Combination | null;
   roundWinner: string | null;
   bounceTrigger?: number;
+  /** The width share the field's arc may take — see FIELD_WIDTH_SHARE. */
+  roomW: number;
   /** The table's own scale — the pile draws its cards at `scale * FIELD_SCALE`. */
   scale?: number;
 }) {
@@ -259,10 +292,10 @@ export function PlayedPile({
             the way the previous trick sits under the one that took it. */}
         {prev && (
           <View style={pileStyles.pilePrevLayer} pointerEvents="none">
-            <PileComboCards cards={prev.cards} scale={cardScale} />
+            <PileComboCards cards={prev.cards} scale={cardScale} roomW={roomW} />
           </View>
         )}
-        {current && <PileComboCards cards={current.cards} scale={cardScale} />}
+        {current && <PileComboCards cards={current.cards} scale={cardScale} roomW={roomW} />}
       </View>
 
       {current && (
