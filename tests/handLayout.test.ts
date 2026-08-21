@@ -11,8 +11,8 @@ import {
 } from "../components/handLayout.ts";
 
 const WIDTHS = [320, 375, 428, 500, 600, 700, 768, 900, 1024];
-// Deal sizes per docs/BRIEF.md §3.1: 4p up to 14, 3p up to 18, 2p up to 27.
-const HAND_SIZES = Array.from({ length: 27 }, (_, i) => i + 1);
+// Deal sizes per docs/BRIEF.md §3.1: 4p up to 14, 3p up to 18, 2p up to 21.
+const HAND_SIZES = Array.from({ length: 21 }, (_, i) => i + 1);
 
 describe("computeHandLayout", () => {
   // WCAG 2.2 SC 2.5.8 Target Size (Minimum), Level AA. Adjacent card centres
@@ -25,10 +25,10 @@ describe("computeHandLayout", () => {
 
   // The viewports a landscape phone actually produces, against the deal sizes
   // that reach them: 511 is a 667x375 web viewport, 600 a 844-wide native one
-  // with notch insets, 688 a 844x390 web one. 14 is the 4-player deal, 27 the
+  // with notch insets, 688 a 844x390 web one. 14 is the 4-player deal, 21 the
   // 2-player one.
   for (const availW of [511, 600, 688]) {
-    for (const n of [13, 14, 20, 27]) {
+    for (const n of [13, 14, 18, 21]) {
       test(`n=${n} availW=${availW} keeps every card its own 24px target`, () => {
         assert.ok(computeHandLayout(n, availW).step >= 24);
       });
@@ -110,8 +110,8 @@ describe("computeHandLayout", () => {
     }
   });
 
-  test("27-card 2-player hand on a small device scrolls instead of clipping", () => {
-    const { step, totalW, scrollable } = computeHandLayout(27, 320);
+  test("21-card 2-player hand on a small device scrolls instead of clipping", () => {
+    const { step, totalW, scrollable } = computeHandLayout(21, 320);
     assert.equal(scrollable, true);
     assert.ok(step >= MIN_READABLE_STEP);
     assert.ok(totalW > 320);

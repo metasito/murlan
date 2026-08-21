@@ -8,6 +8,7 @@
 // which is erased before resolution.
 
 import type { Card, Combination, GameState, Player } from "@/lib/gameEngine";
+import { getCardDisplayRank, getSuitSymbol } from "../lib/gameEngine.ts";
 import { CARD_H, CARD_W, CARD_W_SMALL } from "./cardFaceModel.ts";
 import { WEB_BOTTOM_PAD, WEB_TOP_PAD } from "../lib/tokens.ts";
 
@@ -389,9 +390,10 @@ export function startCardBannerText(opts: {
   starterName: string;
   viewerIsStarter: boolean;
 }): string {
-  // The opening card is always the 3 of spades (docs/RULES.md §Opening), which
-  // is why the suit glyph is fixed here and in chrome.tsx's StartReasonBanner.
-  const label = `${opts.card.rank}♠`;
+  // At 2 players the opening card can be the fallback "lowest dealt card"
+  // rather than the 3♠ (docs/RULES.md §4), so the suit is read off the card
+  // rather than assumed.
+  const label = `${getCardDisplayRank(opts.card.rank)}${getSuitSymbol(opts.card.suit)}`;
   return opts.viewerIsStarter
     ? `Inizi tu! Hai il ${label}`
     : `${opts.starterName} inizia con il ${label}`;

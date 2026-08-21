@@ -21,8 +21,8 @@ import {
  */
 const EXHAUSTIVE_RUNS: Record<number, number> = { 10: 200, 13: 80, 14: 30 };
 
-/** Every hand size the deal actually produces: 4p → 14/13, 3p → 18, 2p → 27. */
-const REAL_SIZES = [13, 14, 18, 27];
+/** Every hand size the deal actually produces: 4p → 14/13, 3p → 18, 2p → 21. */
+const REAL_SIZES = [13, 14, 18, 21];
 
 /**
  * The largest play the bounded oracle enumerates for hands too big for 2^n.
@@ -31,8 +31,8 @@ const REAL_SIZES = [13, 14, 18, 27];
  */
 const BOUNDED_LEN = 6;
 
-/** Runs per hand size for the bounded oracle — 27 cards costs ~150ms a hand. */
-const BOUNDED_RUNS: Record<number, number> = { 18: 40, 27: 15 };
+/** Runs per hand size for the bounded oracle — 21 cards costs ~150ms a hand. */
+const BOUNDED_RUNS: Record<number, number> = { 18: 40, 21: 15 };
 
 /**
  * Every legal play in `hand`, found by brute force over all 2^n subsets.
@@ -120,13 +120,13 @@ describe("enumerator property tests", () => {
   });
 
   /**
-   * 18 and 27 are past what 2^n can answer for, and they are the sizes a
+   * 18 and 21 are past what 2^n can answer for, and they are the sizes a
    * three- and a two-player deal produce — so the enumerator's completeness
    * on a real hand was never measured at all. This asks the same question of
    * every play up to BOUNDED_LEN cards; longer straights are out of its
    * reach, and stay covered by the exhaustive sizes above.
    */
-  test("finds every short play in a genuine 18- and 27-card hand", () => {
+  test("finds every short play in a genuine 18- and 21-card hand", () => {
     assert.ok(BOUNDED_LEN < STRAIGHT_MAX_LEN, "the bound must be a real bound");
     const deck = createDeck();
     const rand = mulberry32(0xfa11);

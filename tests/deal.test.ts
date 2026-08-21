@@ -2,6 +2,7 @@ import { test, describe } from "node:test";
 import assert from "node:assert/strict";
 import {
   c,
+  cardStrength,
   createDeck,
   dealCards,
   findStartingPlayer,
@@ -46,11 +47,10 @@ describe("deck", () => {
   });
 });
 
-describe("the deal (defect 3) — the whole deck goes out", () => {
+describe("the deal (defect 3) — the whole deck goes out at 3 and 4 players", () => {
   const cases: [number, number[]][] = [
     [4, [14, 14, 13, 13]],
     [3, [18, 18, 18]],
-    [2, [27, 27]],
   ];
 
   for (const [playerCount, expected] of cases) {
@@ -72,7 +72,7 @@ describe("the deal (defect 3) — the whole deck goes out", () => {
   });
 
   test("the whole deck still goes out at every offset", () => {
-    for (const playerCount of [2, 3, 4]) {
+    for (const playerCount of [3, 4]) {
       for (let firstSeat = 0; firstSeat < playerCount; firstSeat++) {
         const { hands, excluded } = dealCards(playerCount, firstSeat);
         const all = hands.flat();
@@ -104,7 +104,7 @@ describe("the deal (defect 3) — the whole deck goes out", () => {
 
   test("both jokers and the 3 of spades are always dealt", () => {
     for (let i = 0; i < 200; i++) {
-      for (const playerCount of [2, 3, 4]) {
+      for (const playerCount of [3, 4]) {
         const all = dealCards(playerCount).hands.flat();
         assert.ok(all.some((card) => card.rank === "joker_bw"));
         assert.ok(all.some((card) => card.rank === "joker_colored"));
@@ -115,6 +115,62 @@ describe("the deal (defect 3) — the whole deck goes out", () => {
 
   test("a degenerate player count cannot crash", () => {
     assert.deepEqual(dealCards(0), { hands: [], excluded: [] });
+  });
+});
+
+describe("the deal at 2 players — 21 each, 12 undealt", () => {
+  test("each hand has 21 cards and 12 stay undealt", () => {
+    const { hands, excluded } = dealCards(2);
+    assert.deepEqual(hands.map((h) => h.length), [21, 21]);
+    assert.equal(excluded.length, 12);
+  });
+
+  test("every card is accounted for exactly once, dealt or excluded", () => {
+    const { hands, excluded } = dealCards(2);
+    const all = [...hands.flat(), ...excluded];
+    assert.equal(all.length, 54);
+    assert.equal(new Set(ids(all)).size, 54, "no card is dealt twice or dropped");
+  });
+
+  test("21 each holds at every first-seat offset", () => {
+    for (const firstSeat of [0, 1, -1, 5]) {
+      const { hands, excluded } = dealCards(2, firstSeat);
+      assert.deepEqual(hands.map((h) => h.length), [21, 21]);
+      assert.equal(excluded.length, 12);
+    }
+  });
+
+  test("the 3 of spades and both jokers are not always dealt — the undealt pile can hold them", () => {
+    let sawAThreeSpadesExcluded = false;
+    let sawAJokerExcluded = false;
+    for (let i = 0; i < 200; i++) {
+      const { excluded } = dealCards(2);
+      if (excluded.some((c) => c.rank === "3" && c.suit === "spades")) sawAThreeSpadesExcluded = true;
+      if (excluded.some((c) => c.isJoker)) sawAJokerExcluded = true;
+    }
+    assert.ok(sawAThreeSpadesExcluded, "200 deals never left the 3♠ undealt — the deal is not actually stripping 12 cards");
+    assert.ok(sawAJokerExcluded, "200 deals never left a Joker undealt");
+  });
+
+  test("when the 3 of spades lands in the undealt pile, the opening fallback resolves to the lowest dealt card", () => {
+    let ran = false;
+    for (let i = 0; i < 200; i++) {
+      const { hands, excluded } = dealCards(2);
+      if (!excluded.some((c) => c.rank === "3" && c.suit === "spades")) continue;
+      ran = true;
+
+      const players = hands.map((hand, idx) => makePlayer(`p${idx}`, hand));
+      const { playerIdx, startCard } = findStartingPlayer(players);
+
+      assert.notEqual(startCard.id, "3_spades", "the 3♠ was undealt — it cannot be the start card");
+      const allDealt = hands.flat();
+      const lowestDealt = allDealt.reduce((lowest, card) =>
+        cardStrength(card) < cardStrength(lowest) ? card : lowest
+      );
+      assert.equal(startCard.id, lowestDealt.id);
+      assert.ok(players[playerIdx].hand.some((c) => c.id === startCard.id));
+    }
+    assert.ok(ran, "200 deals never gave a case where the 3♠ was undealt");
   });
 });
 
