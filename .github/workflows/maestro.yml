@@ -159,15 +159,10 @@ jobs:
           # hide_error_dialogs, below. Driving real worklets on a real UI thread
           # is the reason this layer exists.
           disable-animations: false
-          # The image warns it wants four cores and the runner gives it two.
-          # The memory is the one that actually decides whether the animated
-          # table survives: on this machine the same emulator died part-way
-          # through offline-game at the default and completed the whole
-          # sixteen-minute hand at 4096. A plain number - "4096M" reaches
-          # config.ini as hw.ramSize=4096M, which is not a value, and the
-          # emulator then never boots at all.
-          cores: 3
-          ram-size: 4096
+          # Deliberately stock. Raising cores and memory was aimed at
+          # offline-game, which is not run here (#185), and did not save it
+          # anyway - what it did do was time out "waiting for emulator to boot"
+          # on two runs. The defaults have booted every time.
           script: |
             # The flows select on Italian copy, the same way
             # tests/e2e/playwright.config.ts pins locale: "it-IT" and for the
