@@ -126,13 +126,14 @@ export const FeltGradient = FeltGradients.verde;
 
 // Card backs. Only three things survive at card size — the ink, the field
 // colour and how dense the lattice is — so a back is those plus a star count,
-// not a bespoke drawing. The field reuses a felt palette rather than
-// introducing a fifth set of greens, blues and reds.
+// not a bespoke drawing. The field is card stock, not cloth: its own five-stop
+// gradient, dark enough to hold the ink lattice against any felt, so repainting
+// FeltGradients can never repaint a back.
 export const CardBacks = {
-  oro:        { field: 'verde',    ink: Colors.gold, lattice: 7, starPoints: 8 },
-  rubino:     { field: 'bordeaux', ink: Colors.gold, lattice: 7, starPoints: 8 },
-  zaffiro:    { field: 'blu',      ink: SILVER,      lattice: 9, starPoints: 6 },
-  inchiostro: { field: 'notte',    ink: Colors.gold, lattice: 5, starPoints: 4 },
+  oro:        { field: ['#3A2C13', '#2E2210', '#241A0B', '#180F06', '#0D0803'], ink: Colors.gold, lattice: 7, starPoints: 8 },
+  rubino:     { field: ['#4A1622', '#3A111A', '#2C0C13', '#1E080D', '#120507'], ink: Colors.gold, lattice: 7, starPoints: 8 },
+  zaffiro:    { field: ['#12294A', '#0E2038', '#0A182A', '#07101D', '#040A10'], ink: SILVER,      lattice: 9, starPoints: 6 },
+  inchiostro: { field: ['#2A2A2E', '#212124', '#191919', '#111112', '#0A0A0B'], ink: Colors.gold, lattice: 5, starPoints: 4 },
 } as const;
 
 // Ordered by value, and only the order says so: nothing in slim, snug, cosy,
@@ -152,10 +153,6 @@ export const Spacing = {
   xxl: 40,
   xxxl: 48,
 };
-
-/** React Native Web reports no usable safe-area insets; every screen substitutes these. */
-export const WEB_TOP_PAD = 67;
-export const WEB_BOTTOM_PAD = 34;
 
 // iOS HIG's 44pt floor for a touch target. react-native-web reads `hitSlop`
 // on nothing but the legacy Touchable, so on the shipped platform a control's

@@ -20,9 +20,8 @@ import { Colors, FontSize, Motion, Radius, Scrim, Spacing } from "@/lib/theme";
 import { usePrefersReducedMotion } from "@/lib/accessibility";
 import { useTranslation, type TranslationKey } from "@/lib/i18n";
 import type { Card, Combination } from "@/lib/gameEngine";
-import { CARD_W } from "@/components/handLayout";
+import { CARD_W, CARD_H, FIELD_SCALE } from "@/components/cardFaceModel";
 import {
-  CARD_H,
   FLIGHT_MS,
   LANDING_FRACTION,
   cardTilt,
@@ -55,10 +54,13 @@ export function FlyingCards({
   cards,
   direction,
   onDone,
+  scale = 1,
 }: {
   cards: Card[];
   direction: FlyDirection;
   onDone: () => void;
+  /** The table's own scale — the pile draws its cards at `scale * FIELD_SCALE`. */
+  scale?: number;
 }) {
   const { dx, dy } = FLY_OFFSETS[direction];
   const startRot = FLY_ROTS[direction];
@@ -135,22 +137,25 @@ export function FlyingCards({
   }));
 
   const display = cards;
-  const { step, angle, totalW } = fanOffsets(display.length, "combo");
+  const cardScale = scale * FIELD_SCALE;
+  const cardW = CARD_W(cardScale);
+  const cardH = CARD_H(cardScale);
+  const { step, angle, totalW } = fanOffsets(display.length, "combo", cardW);
 
   return (
     <View style={[pileStyles.flyingContainer, { pointerEvents: "none" as const }]}>
-      <Animated.View style={[pileStyles.flyingInner, aStyle]}>
+      <Animated.View style={[pileStyles.flyingInner, { width: cardW * 5, height: cardH }, aStyle]}>
         {display.map((card, i) => (
           <View
             key={card.id}
             style={{
               position: "absolute",
-              left: fanCenterOffset(i, step, totalW),
+              left: fanCenterOffset(i, step, totalW, cardW),
               zIndex: i,
               transform: [{ rotate: `${cardTilt(card.id, angle)}deg` }],
             }}
           >
-            <CardView card={card} />
+            <CardView card={card} scale={cardScale} />
           </View>
         ))}
       </Animated.View>
@@ -171,10 +176,12 @@ const COMBO_LABEL_KEYS: Record<string, TranslationKey> = {
 
 const POWER_COMBOS = new Set(["bomb", "royal_straight"]);
 
-function PileComboCards({ cards }: { cards: Card[] }) {
-  const { step, angle, totalW } = fanOffsets(cards.length, "combo");
+function PileComboCards({ cards, scale }: { cards: Card[]; scale: number }) {
+  const cardW = CARD_W(scale);
+  const cardH = CARD_H(scale);
+  const { step, angle, totalW } = fanOffsets(cards.length, "combo", cardW);
   return (
-    <View style={{ width: totalW, height: CARD_H, position: "relative" }}>
+    <View style={{ width: totalW, height: cardH, position: "relative" }}>
       {cards.map((card, ci) => (
         <View
           key={card.id}
@@ -185,7 +192,7 @@ function PileComboCards({ cards }: { cards: Card[] }) {
             transform: [{ rotate: `${cardTilt(card.id, angle)}deg` }],
           }}
         >
-          <CardView card={card} />
+          <CardView card={card} scale={scale} />
         </View>
       ))}
     </View>
@@ -197,13 +204,17 @@ export function PlayedPile({
   current,
   roundWinner,
   bounceTrigger,
+  scale = 1,
 }: {
   prev: Combination | null;
   current: Combination | null;
   roundWinner: string | null;
   bounceTrigger?: number;
+  /** The table's own scale — the pile draws its cards at `scale * FIELD_SCALE`. */
+  scale?: number;
 }) {
   const { t } = useTranslation();
+  const cardScale = scale * FIELD_SCALE;
   const reduceMotion = usePrefersReducedMotion();
   // The pile settles downward rather than scaling up: it holds card faces and
   // a label, and scaling rasterised text is what makes it look cheap.
@@ -248,10 +259,10 @@ export function PlayedPile({
             the way the previous trick sits under the one that took it. */}
         {prev && (
           <View style={pileStyles.pilePrevLayer} pointerEvents="none">
-            <PileComboCards cards={prev.cards} />
+            <PileComboCards cards={prev.cards} scale={cardScale} />
           </View>
         )}
-        {current && <PileComboCards cards={current.cards} />}
+        {current && <PileComboCards cards={current.cards} scale={cardScale} />}
       </View>
 
       {current && (
@@ -296,8 +307,6 @@ const pileStyles = StyleSheet.create({
     zIndex: 60,
   },
   flyingInner: {
-    width: CARD_W * 5,
-    height: CARD_H,
     alignItems: "center",
     justifyContent: "center",
   },

@@ -13,6 +13,7 @@ import Ionicons from "@expo/vector-icons/Ionicons";
 import { LinearGradient } from "expo-linear-gradient";
 import { CardView } from "@/components/CardView";
 import { fanOffsets } from "@/components/gameTableModel";
+import { CARD_BACK_H, CARD_BACK_W, BACK_SCALE } from "@/components/cardFaceModel";
 import { Colors, FontSize, Highlight, Motion, Radius, Scrim, Shadow, Spacing } from "@/lib/theme";
 import { useTableFelt } from "@/lib/cosmetics";
 import { usePrefersReducedMotion } from "@/lib/accessibility";
@@ -22,25 +23,31 @@ import { a11yHidden } from "@/lib/a11y";
 
 // ─── CardFan ──────────────────────────────────────────────────────────────────
 
-// The box a fanned hand of face-down cards draws into, and how far each card
-// climbs away from the middle one. Both are local to this fan; the spread
-// itself comes from fanOffsets.
-const FAN_H = 66;
+// How far each card climbs away from the middle one, and the fan box's own
+// headroom above a back's height for that climb. Both are local to this fan;
+// the spread itself comes from fanOffsets.
 const FAN_RISE = 4;
+const FAN_HEADROOM = 8;
 
 function CardFan({
   count,
   maxCards = 7,
+  scale = 1,
 }: {
   count: number;
   maxCards?: number;
+  /** The table's own scale — the fan draws its backs at `scale * BACK_SCALE`. */
+  scale?: number;
 }) {
   const n = Math.min(count, maxCards);
   if (n === 0) return null;
-  const { step, angle: maxAngle, totalW } = fanOffsets(n, "opponent");
+  const backScale = scale * BACK_SCALE;
+  const backW = CARD_BACK_W(backScale);
+  const backH = CARD_BACK_H(backScale);
+  const { step, angle: maxAngle, totalW } = fanOffsets(n, "opponent", backW);
 
   return (
-    <View style={{ width: totalW, height: FAN_H }}>
+    <View style={{ width: totalW, height: backH + FAN_HEADROOM }}>
       {Array.from({ length: n }, (_, i) => {
         const c = (n - 1) / 2;
         const angle = ((i - c) / Math.max(c, 1)) * maxAngle;
@@ -59,7 +66,7 @@ function CardFan({
             <CardView
               card={{ id: `bk${i}`, suit: null, rank: "3", isJoker: false }}
               faceDown
-              small
+              scale={backScale}
             />
           </View>
         );
@@ -243,12 +250,15 @@ export function TopOppSlot({
   isActive,
   cardCount,
   passed = false,
+  scale = 1,
 }: {
   player: Player;
   isActive: boolean;
   cardCount?: number;
   /** This seat has passed in the round on the table. */
   passed?: boolean;
+  /** The table's own scale — the seat's fan draws its backs at `scale * BACK_SCALE`. */
+  scale?: number;
 }) {
   const count = cardCount ?? player.hand.length;
   return (
@@ -270,7 +280,7 @@ export function TopOppSlot({
           </View>
         </View>
         {player.finishPosition === undefined && count > 0 && (
-          <CardFan count={count} maxCards={7} />
+          <CardFan count={count} maxCards={7} scale={scale} />
         )}
       </View>
     </View>
@@ -285,6 +295,7 @@ export function SideOppSlot({
   side,
   cardCount,
   passed = false,
+  scale = 1,
 }: {
   player: Player;
   isActive: boolean;
@@ -292,6 +303,8 @@ export function SideOppSlot({
   cardCount?: number;
   /** This seat has passed in the round on the table. */
   passed?: boolean;
+  /** The table's own scale — the seat's fan draws its backs at `scale * BACK_SCALE`. */
+  scale?: number;
 }) {
   const count = cardCount ?? player.hand.length;
   const isLeft = side === "left";
@@ -320,7 +333,7 @@ export function SideOppSlot({
         />
       </View>
       {count > 0 && player.finishPosition === undefined && (
-        <CardFan count={count} maxCards={5} />
+        <CardFan count={count} maxCards={5} scale={scale} />
       )}
     </View>
   );

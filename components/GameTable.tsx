@@ -16,7 +16,6 @@ import {
   StyleSheet,
   Pressable,
   Modal,
-  Platform,
   useWindowDimensions,
   type ViewStyle,
 } from "react-native";
@@ -48,6 +47,7 @@ import {
   TOP_SECTION_H,
   HAND_SECTION_H,
   CARD_H,
+  cardScale,
   SIDE_BTN_W,
   TABLE_M,
   advancePile,
@@ -91,6 +91,7 @@ import { FlyingCards, PlayedPile, getComboLabel } from "@/components/table/pile"
 import { TopOppSlot, SideOppSlot } from "@/components/table/seats";
 import { ExchangeModal } from "@/components/ExchangeModal";
 import { ExchangeAnnouncement } from "@/components/ExchangeAnnouncement";
+import { HAND_SCALE } from "@/components/cardFaceModel";
 import {
   playCardSelect,
   playCardPlay,
@@ -428,6 +429,7 @@ function GiocaButton({
   dimLabel,
   startCardRank,
   selectedCount,
+  cardH,
 }: {
   valid: boolean;
   reduceMotion: boolean;
@@ -440,6 +442,8 @@ function GiocaButton({
   dimLabel: PlayButtonLabel;
   startCardRank: string;
   selectedCount: number;
+  /** Matches the hand row's own card height. */
+  cardH: number;
 }) {
   const { t } = useTranslation();
   const [pressed, setPressed] = useState(false);
@@ -464,7 +468,7 @@ function GiocaButton({
   }));
 
   return (
-    <Animated.View style={[styles.playBtn, !valid && styles.playBtnDim, pressStyle]}>
+    <Animated.View style={[styles.playBtn, { height: cardH }, !valid && styles.playBtnDim, pressStyle]}>
       {valid && (
         <Animated.View pointerEvents="none" style={[styles.playBtnGlow, glowStyle]} />
       )}
@@ -512,12 +516,15 @@ function PassaButton({
   flashStyle,
   onPress,
   a11yLabel,
+  cardH,
 }: {
   canPass: boolean;
   reduceMotion: boolean;
   flashStyle: AnimatedStyle<ViewStyle>;
   onPress: () => void;
   a11yLabel: string;
+  /** Matches the hand row's own card height. */
+  cardH: number;
 }) {
   const { t } = useTranslation();
   const [pressed, setPressed] = useState(false);
@@ -539,7 +546,7 @@ function PassaButton({
   }));
 
   return (
-    <Animated.View style={[styles.passBtn, !canPass && styles.passBtnDim, pressStyle]}>
+    <Animated.View style={[styles.passBtn, { height: cardH }, !canPass && styles.passBtnDim, pressStyle]}>
       <Pressable
         testID="btn-passa"
         onPress={onPress}
@@ -594,6 +601,10 @@ export function GameTable({
   const { t, tn } = useTranslation();
   const insets = useSafeAreaInsets();
   const { width: W, height: H } = useWindowDimensions();
+  // Landscape-locked, so the short edge is normally H — Math.min is the
+  // robust read regardless of how a platform reports it mid-rotation.
+  const scale = cardScale(Math.min(W, H));
+  const handCardH = CARD_H(scale * HAND_SCALE);
   const reduceMotion = usePrefersReducedMotion();
   const felt = useTableFelt();
 
@@ -713,11 +724,7 @@ export function GameTable({
     [players, viewerSeat]
   );
 
-  const frame = computeTableFrame({
-    width: W,
-    insets,
-    isWeb: Platform.OS === "web",
-  });
+  const frame = computeTableFrame({ width: W, insets });
 
   // ── Screen-reader table description ─────────────────────────────────────────
   //
@@ -1156,6 +1163,7 @@ export function GameTable({
                 isActive={opponents.top.seat === gameState.currentTurnIndex}
                 cardCount={handCountOf(opponents.top.player)}
                 passed={passed.includes(opponents.top.seat)}
+                scale={scale}
               />
             ) : (
               <View />
@@ -1171,6 +1179,7 @@ export function GameTable({
                   side="left"
                   cardCount={handCountOf(opponents.left.player)}
                   passed={passed.includes(opponents.left.seat)}
+                  scale={scale}
                 />
               )}
             </View>
@@ -1194,6 +1203,7 @@ export function GameTable({
                   current={flyInfo ? null : pileState.current}
                   roundWinner={roundWinnerTag === null ? null : players[roundWinnerTag.seat]?.name ?? ""}
                   bounceTrigger={pileBounceTrigger}
+                  scale={scale}
                 />
               )}
             </View>
@@ -1206,6 +1216,7 @@ export function GameTable({
                   side="right"
                   cardCount={handCountOf(opponents.right.player)}
                   passed={passed.includes(opponents.right.seat)}
+                  scale={scale}
                 />
               )}
             </View>
@@ -1215,7 +1226,7 @@ export function GameTable({
             style={[
               sharedTableStyles.handSection,
               isMyTurn && !isFinished && sharedTableStyles.handSectionActive,
-              { height: HAND_SECTION_H },
+              { height: HAND_SECTION_H(handCardH) },
             ]}
           >
             <Animated.View
@@ -1229,6 +1240,7 @@ export function GameTable({
                 flashStyle={passaFlashStyle}
                 onPress={handlePass}
                 a11yLabel={t("gameTable.passA11yLabel")}
+                cardH={handCardH}
               />
             )}
 
@@ -1251,6 +1263,7 @@ export function GameTable({
                   disabled={isFinished || spectating}
                   availW={frame.handAvailW}
                   isMyTurn={isMyTurn && !isFinished}
+                  scale={scale}
                 />
               </View>
             )}
@@ -1271,6 +1284,7 @@ export function GameTable({
                 dimLabel={dimLabel}
                 startCardRank={startCardRank}
                 selectedCount={selectedIds.length}
+                cardH={handCardH}
               />
             )}
           </View>
@@ -1286,6 +1300,7 @@ export function GameTable({
             setFlyInfo(null);
             setPileBounceTrigger((t) => t + 1);
           }}
+          scale={scale}
         />
       )}
 
@@ -1347,7 +1362,7 @@ export function GameTable({
           style={[
             styles.rejectHint,
             {
-              bottom: frame.bottomPad + TABLE_M + HAND_SECTION_H + Spacing.xs,
+              bottom: frame.bottomPad + TABLE_M + HAND_SECTION_H(handCardH) + Spacing.xs,
               left: frame.tableLeft,
               right: frame.tableRight,
             },
@@ -1465,7 +1480,7 @@ const styles = StyleSheet.create({
   // gradient happens one level in, on passBtnInner, same split as
   // playBtn/playBtnGrad below.
   passBtn: {
-    width: SIDE_BTN_W, height: CARD_H, borderRadius: Radius.md,
+    width: SIDE_BTN_W, borderRadius: Radius.md,
     borderWidth: 2, borderColor: PASS_BORDER,
     marginHorizontal: SIDE_BTN_MARGIN_H,
     ...Shadow.dark,
@@ -1499,7 +1514,7 @@ const styles = StyleSheet.create({
   passBtnLabelDim: { opacity: 0.6 },
 
   playBtn: {
-    width: SIDE_BTN_W + 6, height: CARD_H,
+    width: SIDE_BTN_W + 6,
     borderRadius: Radius.md, marginHorizontal: SIDE_BTN_MARGIN_H,
     ...Shadow.dark,
   },

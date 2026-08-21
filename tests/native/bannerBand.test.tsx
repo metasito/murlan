@@ -25,7 +25,7 @@ import type { Card, GameState, Player } from '@/lib/gameEngine';
 
 const INSETS = { top: 0, left: 47, right: 34, bottom: 0 };
 const METRICS = { frame: { x: 0, y: 0, width: 568, height: 320 }, insets: INSETS };
-const { topPad } = computeScreenPads({ insets: INSETS, isWeb: false });
+const { topPad } = computeScreenPads({ insets: INSETS });
 
 const card = (id: string): Card => ({ id, rank: '3', suit: 'spades', isJoker: false });
 const seat = (i: number): Player => ({

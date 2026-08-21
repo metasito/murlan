@@ -35,8 +35,8 @@ export function getCardBack(id: string | undefined) {
   return CardBacks[isCardBackId(id) ? id : DEFAULT_CARD_BACK];
 }
 
-/** The five gradient stops of a felt, light centre to dark rim. */
-export type FeltStops = (typeof FeltGradients)[TableFeltId];
+/** Five gradient stops, light centre to dark rim — a felt's or a card back's own field. */
+export type FeltStops = readonly [string, string, string, string, string];
 
 /** Always resolves: an unknown or absent id falls back to the default. */
 export function getTableFelt(id: string | undefined): FeltStops {
@@ -45,7 +45,7 @@ export function getTableFelt(id: string | undefined): FeltStops {
 
 /** The field a card back is printed on — its own gradient, not the table's. */
 export function cardBackField(id: string | undefined): FeltStops {
-  return FeltGradients[getCardBack(id).field];
+  return getCardBack(id).field;
 }
 
 export function cardBackNameKey(id: CardBackId): TranslationKey {

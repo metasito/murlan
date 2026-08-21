@@ -9,20 +9,18 @@
 
 import type { Card, Combination, GameState, Player } from "@/lib/gameEngine";
 import { getCardDisplayRank, getSuitSymbol } from "../lib/gameEngine.ts";
-import { CARD_H, CARD_W, CARD_W_SMALL } from "./cardFaceModel.ts";
-import { WEB_BOTTOM_PAD, WEB_TOP_PAD } from "../lib/tokens.ts";
+import { CARD_H, CARD_W, cardScale } from "./cardFaceModel.ts";
 
 // ─── Layout constants ─────────────────────────────────────────────────────────
 //
 // CLAUDE.md marks these as MUST NOT CHANGE: both game screens are laid out
 // around them, and changing one without the other silently breaks a screen.
-// The card dimensions belong to cardFaceModel.ts, which draws the card, and the
-// web pads to lib/tokens.ts, which the menus also read; the rest are defined
-// here (rather than in the components/table/ files that read them) so
-// tests/gameTableModel.test.ts can pin their values and so the frame maths
-// below can use them directly.
+// The card dimensions belong to cardFaceModel.ts, which draws the card; the
+// rest are defined here (rather than in the components/table/ files that read
+// them) so tests/gameTableModel.test.ts can pin their values and so the frame
+// maths below can use them directly.
 
-export { CARD_H, CARD_W, WEB_BOTTOM_PAD, WEB_TOP_PAD };
+export { CARD_H, CARD_W, cardScale };
 export const BTN_W = 84;
 export const BTN_H = 84;
 export const SIDE_BTN_W = 62;
@@ -30,7 +28,18 @@ export const TOP_BAR_H = 40;
 export const TABLE_M = 4;
 export const SIDE_SECTION_W = 130;
 export const TOP_SECTION_H = 70;
-export const HAND_SECTION_H = CARD_H + 16;
+/**
+ * Headroom above the hand row's own cards — enough to clear a selected card's
+ * lift (SELECT_LIFT, components/table/hand.tsx) without the row above it
+ * shifting. hand.tsx reuses this same number as its scrollable fallback's own
+ * top clearance, so the two cannot drift apart.
+ */
+export const HAND_ROW_HEADROOM = 16;
+
+/** The hand row's own height — headroom above its (already-scaled) cards. */
+export function HAND_SECTION_H(cardH: number): number {
+  return cardH + HAND_ROW_HEADROOM;
+}
 
 // ─── Fan geometry ─────────────────────────────────────────────────────────────
 //
@@ -59,16 +68,17 @@ const OPPONENT_MAX_ANGLE = 22;
  */
 const COMBO_MAX_TILT = 4.5;
 
-export function fanOffsets(count: number, kind: FanKind): FanOffsets {
+/** `cardW` is the caller's own already-scaled card width for this fan's kind. */
+export function fanOffsets(count: number, kind: FanKind, cardW: number): FanOffsets {
   if (kind === "opponent") {
     return {
       step: OPPONENT_STEP,
       angle: OPPONENT_MAX_ANGLE,
-      totalW: OPPONENT_STEP * (count - 1) + CARD_W_SMALL,
+      totalW: OPPONENT_STEP * (count - 1) + cardW,
     };
   }
   const step = count > 8 ? 9 : count > 5 ? 12 : 14;
-  return { step, angle: COMBO_MAX_TILT, totalW: step * (count - 1) + CARD_W };
+  return { step, angle: COMBO_MAX_TILT, totalW: step * (count - 1) + cardW };
 }
 
 /**
@@ -83,10 +93,11 @@ export function cardTilt(id: string, maxTilt: number): number {
 
 /**
  * Left offset (px) of card `i` in a fan centred on its own midpoint, rather
- * than laid out from a left edge.
+ * than laid out from a left edge. `cardW` must be the same width `fanOffsets`
+ * or `computeHandLayout` produced `totalW` from.
  */
-export function fanCenterOffset(i: number, step: number, totalW: number): number {
-  return i * step - (totalW - CARD_W) / 2;
+export function fanCenterOffset(i: number, step: number, totalW: number, cardW: number): number {
+  return i * step - (totalW - cardW) / 2;
 }
 
 // ─── Seating ──────────────────────────────────────────────────────────────────
@@ -416,15 +427,17 @@ export interface ScreenPads {
 }
 
 /**
- * Usable screen edges. React Native Web reports no useful safe-area insets, so
- * both screens have always substituted these fixed pads there.
+ * Usable screen edges, straight from `useSafeAreaInsets()`. On web that reads
+ * the real `env(safe-area-inset-*)` values (react-native-safe-area-context's
+ * web polyfill), which requires `viewport-fit=cover` on the viewport meta —
+ * see public/index.html — or every side reads 0 regardless of device.
  */
-export function computeScreenPads(opts: { insets: EdgeInsets; isWeb: boolean }): ScreenPads {
+export function computeScreenPads(opts: { insets: EdgeInsets }): ScreenPads {
   return {
-    topPad: opts.isWeb ? WEB_TOP_PAD : opts.insets.top,
-    bottomPad: opts.isWeb ? WEB_BOTTOM_PAD : opts.insets.bottom,
-    leftPad: opts.isWeb ? 0 : opts.insets.left,
-    rightPad: opts.isWeb ? 0 : opts.insets.right,
+    topPad: opts.insets.top,
+    bottomPad: opts.insets.bottom,
+    leftPad: opts.insets.left,
+    rightPad: opts.insets.right,
   };
 }
 
@@ -446,7 +459,6 @@ export interface TableFrame extends ScreenPads {
 export function computeTableFrame(opts: {
   width: number;
   insets: EdgeInsets;
-  isWeb: boolean;
 }): TableFrame {
   const { topPad, bottomPad, leftPad, rightPad } = computeScreenPads(opts);
 

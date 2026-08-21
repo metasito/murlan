@@ -62,10 +62,22 @@ test("card backs are visually distinct, not just differently named", () => {
   assert.equal(new Set(looks).size, looks.length);
 });
 
-test("every card back prints on a real felt palette", () => {
+test("every card back has its own five-stop field", () => {
   for (const id of CARD_BACK_IDS) {
-    assert.equal(cardBackField(id).length, 5);
-    assert.ok(isTableFeltId(CardBacks[id].field));
+    const field = cardBackField(id);
+    assert.equal(field.length, 5);
+    field.forEach((stop) => assert.match(stop, /^#[0-9A-Fa-f]{6}$/));
+  }
+});
+
+// A back's own field must stay its own literal gradient — sharing one with a
+// felt would mean repainting the felt silently repaints the back too.
+test("a card back's field is never a reference to a felt's gradient", () => {
+  for (const id of CARD_BACK_IDS) {
+    const field = CardBacks[id].field;
+    for (const feltId of TABLE_FELT_IDS) {
+      assert.notEqual(field, FeltGradients[feltId], `${id}'s field is felt "${feltId}"`);
+    }
   }
 });
 

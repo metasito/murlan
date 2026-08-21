@@ -6,7 +6,6 @@ import {
   Pressable,
   ScrollView,
   TextInput,
-  Platform,
   useWindowDimensions,
 } from "react-native";
 import { router, useLocalSearchParams } from "expo-router";
@@ -18,7 +17,7 @@ import { useGame, PlayerSetupConfig } from "@/context/GameContext";
 import { useAuth } from "@/context/AuthContext";
 import { GameMode, MatchLength, targetsFor, teamForSeat } from "@/lib/gameEngine";
 import { BOT_PERSONALITIES, botBlurbKey, botSeatNames, getBotPersonality } from "@/lib/botPersonalities";
-import { Colors, Spacing, Radius, FontSize, TOUCH_TARGET_MIN, Type, WEB_BOTTOM_PAD } from '@/lib/theme';
+import { Colors, Spacing, Radius, FontSize, TOUCH_TARGET_MIN, Type } from '@/lib/theme';
 import { MenuLayout } from "@/components/MenuLayout";
 import { MenuButton } from "@/components/MenuButton";
 import { useTranslation } from "@/lib/i18n";
@@ -124,7 +123,10 @@ const FORMAT_OPTIONS: readonly MatchLength[] = ["match", "single"];
 export default function LobbyScreen() {
   const insets = useSafeAreaInsets();
   const { t } = useTranslation();
-  const bottomInset = Platform.OS === "web" ? WEB_BOTTOM_PAD : insets.bottom;
+  // A floor, not just the real inset: on a notchless device (most desktop
+  // browsers) env(safe-area-inset-*) is genuinely 0, and content flush
+  // against the browser's raw edge is not a safe area, it's a missing margin.
+  const bottomInset = Math.max(insets.bottom, Spacing.roomy);
   const { width: W, height: H } = useWindowDimensions();
   const isLandscape = W > H;
   const { mode } = useLocalSearchParams<{ mode: LobbyMode }>();
