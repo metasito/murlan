@@ -21,10 +21,19 @@ import { CARD_H, CARD_W, cardScale } from "./cardFaceModel.ts";
 // maths below can use them directly.
 
 export { CARD_H, CARD_W, cardScale };
-export const BTN_W = 84;
-export const BTN_H = 84;
-export const SIDE_BTN_W = 62;
 export const SIDE_SECTION_W = 130;
+
+// PASSA and GIOCA are square: they read as two keys either side of the hand
+// rather than as two columns of it, which is what a card-height button was.
+const ACTION_BTN = 56;
+/** A comfortable thumb, in physical points — the same floor a card gets. */
+const ACTION_BTN_FLOOR = 48;
+/** Hand to button, and button to the edge of the play area. */
+export const HAND_ZONE_GAP = 26;
+
+export function actionBtnSize(scale: number): number {
+  return Math.max(ACTION_BTN_FLOOR, ACTION_BTN * scale);
+}
 
 // ─── The table's own pads ─────────────────────────────────────────────────────
 //
@@ -541,7 +550,7 @@ export function computeTableFrame(opts: {
   const tableRight = Math.max(PAD_RIGHT * opts.scale, rightPad);
   const tableBottom = Math.max(PAD_BOTTOM * opts.scale, bottomPad);
   const tableW = opts.width - tableLeft - tableRight;
-  const handAvailW = tableW - (SIDE_BTN_W + 8) * 2 - 8;
+  const handAvailW = tableW - (actionBtnSize(opts.scale) + HAND_ZONE_GAP * opts.scale) * 2;
 
   return {
     topPad,

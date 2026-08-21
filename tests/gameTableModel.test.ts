@@ -9,9 +9,8 @@ import path from "node:path";
 import { CARD_H, CARD_W } from "../components/cardFaceModel.ts";
 import { TOUCH_TARGET_MIN } from "../lib/tokens.ts";
 import {
-  BTN_W,
-  BTN_H,
-  SIDE_BTN_W,
+  actionBtnSize,
+  HAND_ZONE_GAP,
   CHIP_H,
   SIDE_SECTION_W,
   HAND_CROP,
@@ -109,9 +108,8 @@ describe("layout constants (CLAUDE.md: MUST NOT CHANGE)", () => {
     // the table on one screen or the other with no error signal.
     assert.equal(CARD_W(1), 64);
     assert.equal(CARD_H(1), 90);
-    assert.equal(BTN_W, 84);
-    assert.equal(BTN_H, 84);
-    assert.equal(SIDE_BTN_W, 62);
+    assert.equal(actionBtnSize(1), 56);
+    assert.equal(HAND_ZONE_GAP, 26);
     assert.equal(CHIP_H(1), 23);
     assert.equal(SIDE_SECTION_W, 130);
   });
@@ -981,18 +979,23 @@ describe("computeTableFrame", () => {
     assert.equal(f.rightPad, insets.right);
   });
 
-  test("handAvailW matches the pre-refactor formula on both screens", () => {
-    // Offline computed it via an intermediate `tableW`; online inlined it.
-    // Both reduce to this, and the two must not drift again.
+  test("the hand gets what the two buttons and their gaps leave", () => {
     const f = frameOf();
     const tableW = 800 - f.tableLeft - f.tableRight;
-    assert.equal(f.handAvailW, tableW - (SIDE_BTN_W + 8) * 2 - 8);
+    assert.equal(f.handAvailW, tableW - (actionBtnSize(1) + HAND_ZONE_GAP) * 2);
   });
 
   test("the hand row leaves room for both side buttons", () => {
     const f = frameOf();
     assert.ok(f.handAvailW > 0);
-    assert.ok(f.handAvailW < 800 - SIDE_BTN_W * 2);
+    assert.ok(f.handAvailW < 800 - actionBtnSize(1) * 2);
+  });
+
+  // A button that shrinks below a thumb on a small phone is a button that gets
+  // mis-tapped; a button frozen at 56 on a tablet is a button that shrinks.
+  test("the buttons scale up with the table but never below a thumb", () => {
+    assert.ok(actionBtnSize(2) > actionBtnSize(1));
+    assert.equal(actionBtnSize(0.1), 48);
   });
 
   test("the hand aims at its share of the width and never stretches past it", () => {
