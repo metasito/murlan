@@ -22,6 +22,9 @@ export const Colors = {
   // Gold/yellow
   gold:         '#C9A84C',
   goldLight:    '#E2C06A',
+  // The lit end of the gold: what the lamp leaves on a gold surface that is
+  // currently the table's own subject — the seat on move, the turn chip, GIOCA.
+  goldLit:      '#F3E0A6',
   goldDark:     '#A8832B',
   goldDim:      '#A07830',
   // Gold alpha scale. Pick by role, not by eye.
@@ -72,6 +75,10 @@ export const Colors = {
   // Borders & overlays
   border:       'rgba(240,234,214,0.1)',
   borderStrong: 'rgba(240,234,214,0.2)',
+  // The chips over the felt. Dark enough to hold their own text against the
+  // cloth directly under the lamp, sheer enough to read as glass on it.
+  chipFill:     'rgba(3,14,9,0.72)',
+  chipFillSolid:'rgba(2,12,8,0.85)',
   overlay:      'rgba(6,20,16,0.85)',
   overlayStrong:'rgba(3,16,8,0.90)',
   overlayOpaque:'rgba(3,16,8,0.97)',

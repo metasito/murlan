@@ -1,6 +1,6 @@
 import { useEffect, useState, type ReactNode } from "react";
-import { View, StyleSheet, Pressable } from "react-native";
-import { AnimatedTableText, TableText } from "./TableText";
+import { View, StyleSheet, Pressable, type TextProps } from "react-native";
+import { TableText } from "./TableText";
 import {
   useAnimatedStyle,
   useSharedValue,
@@ -14,7 +14,7 @@ import { usePrefersReducedMotion } from "@/lib/accessibility";
 import { useTranslation } from "@/lib/i18n";
 import type { StartReason } from "@/lib/gameEngine";
 import { getCardDisplayRank, getSuitSymbol } from "@/lib/gameEngine";
-import { SIDE_SECTION_W } from "@/components/gameTableModel";
+import { CHIP_H, SIDE_SECTION_W } from "@/components/gameTableModel";
 
 // ─── StartReasonBanner ────────────────────────────────────────────────────────
 
@@ -105,6 +105,136 @@ const startReasonStyles = StyleSheet.create({
     ...Type.caption,
     color: Colors.textSecondary,
     textAlign: "center",
+  },
+});
+
+// ─── HUD chips ────────────────────────────────────────────────────────────────
+//
+// The table's chrome is two chips over the felt, not a bar across the top: the
+// combination on the felt at the head of the play area, and whose turn it is at
+// the far corner. Nothing is ever drawn over the middle of the felt, which is
+// where cards land.
+
+/**
+ * One chip. `lit` is the turn chip on the viewer's own turn — the only piece of
+ * chrome the lamp reaches, and the reason it can be read at a glance.
+ */
+export function TableChip({
+  scale,
+  lit = false,
+  children,
+}: {
+  scale: number;
+  lit?: boolean;
+  children: ReactNode;
+}) {
+  return (
+    <View
+      style={[
+        chipStyles.chip,
+        {
+          height: CHIP_H(scale),
+          paddingHorizontal: CHIP_PAD_H * scale,
+          gap: CHIP_GAP * scale,
+        },
+        lit && chipStyles.chipLit,
+        lit && { shadowRadius: CHIP_GLOW * scale },
+      ]}
+    >
+      {children}
+    </View>
+  );
+}
+
+/** A chip's own text: uppercase, letterspaced, dim. `strong` is the gold half. */
+export function ChipText({
+  scale,
+  strong = false,
+  lit = false,
+  urgent = false,
+  children,
+  ...a11y
+}: {
+  scale: number;
+  strong?: boolean;
+  lit?: boolean;
+  urgent?: boolean;
+  children: ReactNode;
+} & Partial<Pick<TextProps, "accessibilityLabel" | "accessibilityLiveRegion">>) {
+  return (
+    <TableText
+      numberOfLines={1}
+      {...a11y}
+      style={[
+        chipStyles.chipLabel,
+        { fontSize: FontSize.xxs * scale },
+        strong && chipStyles.chipLabelStrong,
+        lit && chipStyles.chipLabelLit,
+        urgent && chipStyles.chipLabelUrgent,
+      ]}
+    >
+      {children}
+    </TableText>
+  );
+}
+
+/** The lit dot beside the turn chip's label. */
+export function ChipDot({ scale, lit }: { scale: number; lit: boolean }) {
+  const size = CHIP_DOT * scale;
+  return (
+    <View
+      style={[
+        chipStyles.chipDot,
+        { width: size, height: size, borderRadius: size / 2 },
+        lit && chipStyles.chipDotLit,
+        lit && { shadowRadius: CHIP_DOT_GLOW * scale },
+      ]}
+    />
+  );
+}
+
+const CHIP_PAD_H = 11;
+const CHIP_GAP = 7;
+const CHIP_DOT = 6;
+const CHIP_GLOW = 20;
+const CHIP_DOT_GLOW = 9;
+const CHIP_TRACKING = 1.5;
+
+const chipStyles = StyleSheet.create({
+  chip: {
+    flexDirection: "row",
+    alignItems: "center",
+    borderRadius: Radius.full,
+    borderWidth: 1,
+    borderColor: Colors.goldBorder,
+    backgroundColor: Colors.chipFill,
+  },
+  chipLit: {
+    borderColor: Colors.goldStrong,
+    shadowColor: Colors.goldLit,
+    shadowOpacity: 1,
+    shadowOffset: { width: 0, height: 0 },
+    elevation: 0,
+  },
+  chipLabel: {
+    fontFamily: "Rajdhani_600SemiBold",
+    color: Colors.textMuted,
+    letterSpacing: CHIP_TRACKING,
+    textTransform: "uppercase",
+  },
+  chipLabelStrong: {
+    fontFamily: "Rajdhani_700Bold",
+    color: Colors.gold,
+    letterSpacing: 0,
+  },
+  chipLabelLit: { color: Colors.goldLit },
+  chipLabelUrgent: { color: Colors.red },
+  chipDot: { backgroundColor: Colors.textMuted },
+  chipDotLit: {
+    backgroundColor: Colors.goldLit,
+    shadowColor: Colors.goldLit,
+    shadowOpacity: 1,
+    shadowOffset: { width: 0, height: 0 },
   },
 });
 
@@ -231,26 +361,9 @@ export const portraitOverlayStyles = StyleSheet.create({
 // ─── Shared table styles ──────────────────────────────────────────────────────
 
 export const sharedTableStyles = StyleSheet.create({
-  tableBg: {
-    position: "absolute",
-    borderRadius: Radius.lg,
-    overflow: "hidden",
-    borderWidth: 3.5,
-    borderColor: Colors.goldStrong,
-  },
   tableOverlay: {
     position: "absolute",
     overflow: "visible",
-  },
-  tableInnerBorder: {
-    position: "absolute",
-    top: 6,
-    left: 6,
-    right: 6,
-    bottom: 6,
-    borderRadius: Radius.md,
-    borderWidth: 1.5,
-    borderColor: Colors.goldSoft,
   },
   tableContent: { flex: 1, flexDirection: "column" },
   // No fixed height: the top seat is the tallest thing on the table after the
@@ -259,11 +372,6 @@ export const sharedTableStyles = StyleSheet.create({
   topSection: {
     alignItems: "center",
     justifyContent: "flex-start",
-    // Clears the felt's own inner frame (tableInnerBorder, 6px in), which the
-    // top seat's floating name otherwise renders under.
-    paddingTop: Spacing.sm,
-    borderBottomWidth: 1,
-    borderBottomColor: Colors.goldGhost,
   },
   midSection: { flex: 1, flexDirection: "row", alignItems: "center" },
   // A side seat's fan is wider than SIDE_SECTION_W and is meant to be: it
@@ -345,111 +453,3 @@ export function useTurnPulse(active: boolean) {
   return useAnimatedStyle(() => ({ opacity: glowV.value }));
 }
 
-// ─── GameBillboard ────────────────────────────────────────────────────────────
-
-export function GameBillboard({
-  roundLabel,
-  currentComboLabel,
-  currentTurnName,
-  isLocalPlayerTurn,
-}: {
-  roundLabel: string;
-  currentComboLabel: string | null;
-  currentTurnName: string;
-  isLocalPlayerTurn: boolean;
-}) {
-  const { t } = useTranslation();
-  const dotOpacity = useSharedValue(0.3);
-  const reduceMotion = usePrefersReducedMotion();
-
-  useEffect(() => {
-    if (isLocalPlayerTurn && reduceMotion) {
-      cancelAnimation(dotOpacity);
-      dotOpacity.value = 1;
-      return;
-    }
-    if (isLocalPlayerTurn) {
-      dotOpacity.value = withRepeat(
-        withSequence(
-          withTiming(1.0, { duration: Motion.duration.slow }),
-          withTiming(0.3, { duration: Motion.duration.slow })
-        ),
-        -1,
-        false
-      );
-    } else {
-      cancelAnimation(dotOpacity);
-      dotOpacity.value = withTiming(0, { duration: Motion.duration.base });
-    }
-    return () => {
-      cancelAnimation(dotOpacity);
-    };
-  }, [isLocalPlayerTurn, reduceMotion, dotOpacity]);
-
-  const dotStyle = useAnimatedStyle(() => ({ opacity: dotOpacity.value }));
-
-  return (
-    <View style={billboardStyles.container}>
-      <TableText style={billboardStyles.comboLabel} numberOfLines={1}>
-        {currentComboLabel ?? t("gameShared.emptyTable")}
-      </TableText>
-      <View style={billboardStyles.bottomRow}>
-        <TableText style={billboardStyles.roundLabel} numberOfLines={1}>{roundLabel}</TableText>
-        {isLocalPlayerTurn && (
-          <AnimatedTableText style={[billboardStyles.turnDot, dotStyle]}>●</AnimatedTableText>
-        )}
-        <TableText
-          style={[
-            billboardStyles.turnLabel,
-            isLocalPlayerTurn && billboardStyles.turnLabelActive,
-          ]}
-          numberOfLines={1}
-        >
-          {isLocalPlayerTurn ? t("gameShared.yourTurn") : t("gameShared.turnOf", { name: currentTurnName })}
-        </TableText>
-      </View>
-    </View>
-  );
-}
-
-const billboardStyles = StyleSheet.create({
-  container: {
-    flex: 1,
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: "transparent",
-    paddingHorizontal: Spacing.xs,
-    gap: Spacing.xxs,
-  },
-  comboLabel: {
-    fontFamily: "Rajdhani_700Bold",
-    fontSize: FontSize.sm,
-    color: Colors.gold,
-    letterSpacing: 0.5,
-    textAlign: "center",
-  },
-  bottomRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: Spacing.xs,
-  },
-  roundLabel: {
-    fontFamily: "Inter_400Regular",
-    fontSize: FontSize.xxs,
-    color: Colors.textMuted,
-  },
-  turnDot: {
-    fontFamily: "Inter_400Regular",
-    fontSize: FontSize.xxs,
-    color: Colors.gold,
-  },
-  turnLabel: {
-    fontFamily: "Inter_400Regular",
-    fontSize: FontSize.xxs,
-    color: Colors.textSecondary,
-  },
-  turnLabelActive: {
-    color: Colors.gold,
-    fontFamily: "Rajdhani_600SemiBold",
-  },
-});

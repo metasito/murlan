@@ -43,13 +43,12 @@ import {
 } from "@/lib/gameEngine";
 import type { ExchangeAnnounceData } from "@/lib/sharedGameFlow";
 import {
-  TOP_BAR_H,
+  CHIP_H,
   HAND_ZONE_H,
   handVisibleH,
   CARD_H,
   cardScale,
   SIDE_BTN_W,
-  TABLE_M,
   advancePile,
   arrangeOpponents,
   canPassNow as canPassNowOf,
@@ -80,12 +79,14 @@ import {
 import { useTranslation, type TranslationKey } from "@/lib/i18n";
 import { cardSpokenName, rankSpokenName, suitSpokenName, type TFn } from "@/lib/cardNames";
 import {
+  ChipDot,
+  ChipText,
   ControlRail,
-  GameBillboard,
   portraitOverlayStyles,
   RailKnob,
   sharedTableStyles,
   StartReasonBanner,
+  TableChip,
 } from "@/components/table/chrome";
 import { FeltPool } from "@/components/table/felt";
 import { StraightHand } from "@/components/table/hand";
@@ -110,7 +111,7 @@ import { usePrefersReducedMotion } from "@/lib/accessibility";
 import { Colors, FontSize, Garnet, Highlight, Motion, Radius, Scrim, Shadow, Spacing, TOUCH_TARGET_MIN, Type } from "@/lib/theme";
 import { useTableFelt } from "@/lib/cosmetics";
 import { playMusic } from "@/lib/music";
-import { A11yStatus, a11yHidden, a11yState } from "@/lib/a11y";
+import { A11yStatus, a11yState } from "@/lib/a11y";
 
 // How long the round-winner tag stays over the pile. A domain beat, not a
 // generic UI transition, so it is not a Motion token.
@@ -289,12 +290,14 @@ function TurnTimer({
   active,
   resetKey,
   onExpire,
+  scale,
 }: {
   seconds: number;
   active: boolean;
   /** Restarts the countdown whenever it changes — one full clock per turn. */
   resetKey: string;
   onExpire?: () => void;
+  scale: number;
 }) {
   const { tn } = useTranslation();
   const [timeLeft, setTimeLeft] = useState(seconds);
@@ -326,23 +329,16 @@ function TurnTimer({
 
   if (!active) return null;
   const urgent = timeLeft <= urgentThresholdSeconds(seconds);
-  // The clock face marks the number as a deadline rather than a score.
   return (
-    <View style={styles.timerGroup}>
-      <Ionicons
-        name="timer-outline"
-        size={FontSize.sm}
-        color={urgent ? Colors.red : Colors.gold}
-        {...a11yHidden()}
-      />
-      <TableText
-        style={[styles.timerNum, urgent && styles.timerUrgent]}
-        accessibilityLiveRegion="polite"
-        accessibilityLabel={tn("gameTable.a11ySecondsLeft", timeLeft)}
-      >
-        {timeLeft}
-      </TableText>
-    </View>
+    <ChipText
+      scale={scale}
+      strong
+      urgent={urgent}
+      accessibilityLiveRegion="polite"
+      accessibilityLabel={tn("gameTable.a11ySecondsLeft", timeLeft)}
+    >
+      {timeLeft}
+    </ChipText>
   );
 }
 
@@ -733,8 +729,8 @@ export function GameTable({
   const frame = computeTableFrame({ width: W, insets, scale });
   // The felt box the lamp lives in. The pool is drawn oversized and slid under
   // this box's own clipping, so it needs the box rather than the screen.
-  const feltW = W - frame.tableLeft - frame.tableRight;
-  const feltH = H - frame.tableTop - frame.tableBottom;
+  const feltW = W;
+  const feltH = H;
   const light = lightPosition(
     seatDirection(gameState.currentTurnIndex, viewerSeat, players.length)
   );
@@ -1066,42 +1062,65 @@ export function GameTable({
       ? comboKey(gameState.lastPlayedCombination, gameState.lastPlayedBy)
       : "-");
 
+  const comboLabel = getComboLabel(pileState.current, t);
+
   const showStartCardBanner = !gameState.firstPlayMade && !!gameState.startCard;
 
   return (
     <Animated.View style={[styles.root, shakeStyle]}>
       <A11yStatus label={tableA11yLabel} />
-      <LinearGradient
-        colors={[Colors.bg, Colors.feltDark, Colors.bg]}
-        style={StyleSheet.absoluteFill}
-      />
-
+      {/* Two chips over the felt, at the corners the cards never reach — the
+          combination in play at the head of the field, whose turn it is at the
+          far side. Anything wider would be chrome drawn where a card lands. */}
       <View
         testID="game-top-bar"
+        style={[styles.hudLeft, { left: frame.tableLeft + frame.pad, top: frame.tableTop }]}
+      >
+        <TableChip scale={scale}>
+          {comboLabel === null ? (
+            <ChipText scale={scale}>{t("gameShared.emptyTable")}</ChipText>
+          ) : (
+            <>
+              <ChipText scale={scale}>{t("gameShared.onTable")}</ChipText>
+              <ChipText scale={scale} strong>
+                {comboLabel}
+              </ChipText>
+            </>
+          )}
+        </TableChip>
+      </View>
+
+      <View
+        testID="game-hud-stack"
         style={[
-          styles.topBar,
-          { top: frame.topPad, left: frame.tableLeft, right: frame.rightPad },
+          styles.hudRight,
+          { right: frame.tableRight + frame.pad, top: frame.tableTop, gap: frame.pad },
         ]}
       >
-        <GameBillboard
-          roundLabel={roundLabel}
-          currentComboLabel={getComboLabel(pileState.current, t)}
-          currentTurnName={players[gameState.currentTurnIndex]?.name ?? ""}
-          isLocalPlayerTurn={isMyTurn && !isFinished}
-        />
+        <TableChip scale={scale} lit={isMyTurn && !isFinished}>
+          <ChipDot scale={scale} lit={isMyTurn && !isFinished} />
+          <ChipText scale={scale} lit={isMyTurn && !isFinished}>
+            {isMyTurn && !isFinished
+              ? t("gameShared.yourTurn")
+              : t("gameShared.turnOf", {
+                  name: players[gameState.currentTurnIndex]?.name ?? "",
+                })}
+          </ChipText>
+          <TurnTimer
+            seconds={turnTimer?.seconds ?? 0}
+            active={timerActive}
+            resetKey={`${turnToken}|${turnTimer?.resetKey ?? ""}`}
+            onExpire={turnTimer?.onExpire}
+            scale={scale}
+          />
+        </TableChip>
 
-        <TurnTimer
-          seconds={turnTimer?.seconds ?? 0}
-          active={timerActive}
-          resetKey={`${turnToken}|${turnTimer?.resetKey ?? ""}`}
-          onExpire={turnTimer?.onExpire}
-        />
-
-        <View style={styles.topBarRight}>
-          <View style={styles.cardCountBadge}>
-            <TableText style={styles.cardCountText}>{sortedHand.length}</TableText>
-          </View>
-        </View>
+        <TableChip scale={scale}>
+          <ChipText scale={scale}>{roundLabel}</ChipText>
+          <ChipText scale={scale} strong>
+            {sortedHand.length}
+          </ChipText>
+        </TableChip>
       </View>
 
       {/* The cutout's own column. A cutout can never sit on a card, but it sits
@@ -1126,26 +1145,21 @@ export function GameTable({
       <View
         style={[
           styles.bannerBand,
-          { top: frame.topPad + TOP_BAR_H, left: frame.tableLeft, right: frame.rightPad },
+          {
+            top: frame.tableTop + CHIP_H(scale) + frame.pad,
+            left: frame.tableLeft + frame.pad,
+            right: frame.tableRight + frame.pad,
+          },
         ]}
       >
         {banners}
       </View>
 
-      {/* Felt — clipped to its rounded corners, decoration only. One lantern
-          over a dark room: the pool tracks whose turn it is, so half the table
-          falls into shadow when it is not yours. */}
-      <View
-        style={[
-          sharedTableStyles.tableBg,
-          {
-            left: frame.tableLeft,
-            top: frame.tableTop,
-            right: frame.tableRight,
-            bottom: frame.tableBottom,
-          },
-        ]}
-      >
+      {/* Felt — decoration only, and edge to edge: a framed table draws a lit
+          rectangle in a dark room, which is the one thing a single overhead
+          lamp cannot produce. The pool tracks whose turn it is, so half the
+          cloth falls into shadow when it is not yours. */}
+      <View style={StyleSheet.absoluteFill} pointerEvents="none">
         <FeltPool
           width={feltW}
           height={feltH}
@@ -1153,7 +1167,6 @@ export function GameTable({
           lightX={light.x}
           lightY={light.y}
         />
-        <View style={sharedTableStyles.tableInnerBorder} />
       </View>
 
       {/* Same coordinates, overflow visible so slots and buttons can extend out.
@@ -1365,7 +1378,7 @@ export function GameTable({
       {rematchPrompt?.visible && (
         <RematchPromptPanel
           prompt={rematchPrompt}
-          top={frame.topPad + TOP_BAR_H + TABLE_M + Spacing.sm}
+          top={frame.tableTop + CHIP_H(scale) + frame.pad}
           left={frame.tableLeft + Spacing.sm}
         />
       )}
@@ -1455,30 +1468,8 @@ const styles = StyleSheet.create({
     pointerEvents: "box-none",
   },
 
-  topBar: {
-    position: "absolute",
-    height: TOP_BAR_H,
-    flexDirection: "row",
-    alignItems: "center",
-    paddingHorizontal: Spacing.sm,
-    gap: Spacing.sm,
-    zIndex: 10,
-  },
-  topBarRight: { flexDirection: "row", alignItems: "center", gap: Spacing.xs },
-  timerGroup: { flexDirection: "row", alignItems: "center", gap: Spacing.xs },
-  timerNum: {
-    fontFamily: "Rajdhani_700Bold", fontSize: FontSize.sm,
-    color: Colors.gold, minWidth: 20, textAlign: "right",
-  },
-  timerUrgent: { color: Colors.red },
-  cardCountBadge: {
-    width: 30, height: 30, borderRadius: Radius.full,
-    backgroundColor: Scrim.medium,
-    alignItems: "center", justifyContent: "center",
-  },
-  cardCountText: {
-    fontFamily: "Rajdhani_700Bold", fontSize: FontSize.md, color: Colors.gold,
-  },
+  hudLeft: { position: "absolute", zIndex: 10 },
+  hudRight: { position: "absolute", alignItems: "flex-end", zIndex: 10 },
 
   startCardBanner: {
     alignItems: "center", gap: Spacing.slim,

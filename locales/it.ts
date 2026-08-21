@@ -247,6 +247,7 @@ export const it: Record<keyof typeof en, string> = {
   "gameShared.startReasonCardSub": "(il 3♠ non è stato distribuito)",
   "gameShared.startReasonLostRound": "{{name}} inizia — ha perso il round",
   "gameShared.startReasonWonNoSwap": "{{name}} inizia — ha vinto (nessuno scambio)",
+  "gameShared.onTable": "Sul tavolo",
   "gameShared.emptyTable": "— Tavolo libero —",
   "gameShared.yourTurn": "Il tuo turno",
   "gameShared.turnOf": "Turno di {{name}}",

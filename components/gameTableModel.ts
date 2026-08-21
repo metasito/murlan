@@ -24,9 +24,24 @@ export { CARD_H, CARD_W, cardScale };
 export const BTN_W = 84;
 export const BTN_H = 84;
 export const SIDE_BTN_W = 62;
-export const TOP_BAR_H = 40;
-export const TABLE_M = 4;
 export const SIDE_SECTION_W = 130;
+
+// ─── The table's own pads ─────────────────────────────────────────────────────
+//
+// The felt runs edge to edge: there is no frame, and the lamp is what shapes
+// it. What the table does keep are its own pads, which scale with it and are
+// floored by whatever safe area the device actually reports.
+
+const PAD_TOP = 13;
+const PAD_BOTTOM = 13;
+const PAD_RIGHT = 17;
+/** From the rail, or the safe edge, to the first thing drawn over the felt. */
+const PAD_INNER = 10;
+
+/** A HUD chip's own height. The chrome over the felt is two of these. */
+export function CHIP_H(scale: number): number {
+  return 23 * scale;
+}
 /**
  * Headroom above the hand row's own cards — enough to clear a selected card's
  * lift (SELECT_LIFT, components/table/hand.tsx) without the row above it
@@ -487,6 +502,8 @@ export function railWidth(insetLeft: number, scale: number): number {
 export interface TableFrame extends ScreenPads {
   /** Width of the control rail, which is also the play area's left edge. */
   rail: number;
+  /** From an edge to the first thing drawn over the felt. */
+  pad: number;
   tableLeft: number;
   tableTop: number;
   tableRight: number;
@@ -500,10 +517,11 @@ export interface TableFrame extends ScreenPads {
 }
 
 /**
- * Absolute coordinates of the felt and the hand row. Both screens computed
- * this identically apart from an intermediate variable; `tableRight` and
- * `tableBottom` are distances from the right/bottom edge, matching the
- * absolutely-positioned `right` / `bottom` style props they feed.
+ * The box the table's contents lay out in. Not the felt — the felt is the
+ * whole screen — but everything drawn over it: the rail eats the left edge,
+ * the chips and the seats sit inside the pads, and the hand runs past the
+ * bottom. `tableRight` and `tableBottom` are distances from the right and
+ * bottom edges, matching the absolutely-positioned style props they feed.
  */
 export function computeTableFrame(opts: {
   width: number;
@@ -519,9 +537,9 @@ export function computeTableFrame(opts: {
   // 844pt phone.
   const rail = railWidth(leftPad, opts.scale);
   const tableLeft = rail;
-  const tableTop = topPad + TOP_BAR_H + TABLE_M;
-  const tableRight = rightPad + TABLE_M;
-  const tableBottom = bottomPad + TABLE_M;
+  const tableTop = Math.max(PAD_TOP * opts.scale, topPad);
+  const tableRight = Math.max(PAD_RIGHT * opts.scale, rightPad);
+  const tableBottom = Math.max(PAD_BOTTOM * opts.scale, bottomPad);
   const tableW = opts.width - tableLeft - tableRight;
   const handAvailW = tableW - (SIDE_BTN_W + 8) * 2 - 8;
 
@@ -531,6 +549,7 @@ export function computeTableFrame(opts: {
     leftPad,
     rightPad,
     rail,
+    pad: PAD_INNER * opts.scale,
     tableLeft,
     tableTop,
     tableRight,
@@ -542,16 +561,23 @@ export function computeTableFrame(opts: {
 }
 
 /**
- * Top edge the notification banner may start at without covering the game
- * table's top bar — which carries whose turn it is, the countdown and the hand
- * count, exactly the things an AFK or takeover notice is explaining.
+ * Top edge the notification banner may start at without covering the table's
+ * own chips — which carry the combination on the felt and whose turn it is,
+ * exactly the things an AFK or takeover notice is explaining.
  *
  * Landscape is the proxy for "the table is up": it is the only orientation the
  * table runs in, and on a menu screen in landscape the band the banner steps
  * over is empty, so it costs nothing there.
  */
-export function notificationTopOffset(opts: { topPad: number; landscape: boolean }): number {
-  return opts.landscape ? opts.topPad + TOP_BAR_H + TABLE_M : opts.topPad;
+export function notificationTopOffset(opts: {
+  topPad: number;
+  landscape: boolean;
+  /** The table's own scale — the chips are sized from it. */
+  scale: number;
+}): number {
+  if (!opts.landscape) return opts.topPad;
+  const chipTop = Math.max(PAD_TOP * opts.scale, opts.topPad);
+  return chipTop + CHIP_H(opts.scale) + PAD_INNER * opts.scale;
 }
 
 // ─── Exchange phase ───────────────────────────────────────────────────────────

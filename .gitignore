@@ -75,3 +75,6 @@ graphify-out/
 # Database dumps — real account data, never committed
 backups/
 *.sql
+
+# Superdesign scratch
+.superdesign/

@@ -267,6 +267,7 @@ export const sq: Record<keyof typeof en, string> = {
   "gameShared.startReasonCardSub": "(3♠ nuk u nda)",
   "gameShared.startReasonLostRound": "{{name}} fillon — humbi raundin",
   "gameShared.startReasonWonNoSwap": "{{name}} fillon — fitoi (pa shkëmbim)",
+  "gameShared.onTable": "Në tavolinë",
   "gameShared.emptyTable": "— Tavolinë bosh —",
   "gameShared.yourTurn": "Radha jote",
   "gameShared.turnOf": "Radha e {{name}}",

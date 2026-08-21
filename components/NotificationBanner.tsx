@@ -9,7 +9,11 @@ import Animated, {
 import { scheduleOnRN } from "react-native-worklets";
 import Ionicons from "@expo/vector-icons/Ionicons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { computeScreenPads, notificationTopOffset } from "@/components/gameTableModel";
+import {
+  cardScale,
+  computeScreenPads,
+  notificationTopOffset,
+} from "@/components/gameTableModel";
 import { Colors, Spacing, Radius, Type, Shadow } from "@/lib/theme";
 import { usePrefersReducedMotion } from "@/lib/accessibility";
 import { useTranslation } from "@/lib/i18n";
@@ -65,7 +69,11 @@ export default function NotificationBanner({ notification, onDismiss }: Props) {
   const reduceMotion = usePrefersReducedMotion();
 
   const { topPad } = computeScreenPads({ insets });
-  const topOffset = notificationTopOffset({ topPad, landscape: width > height });
+  const topOffset = notificationTopOffset({
+    topPad,
+    landscape: width > height,
+    scale: cardScale(Math.min(width, height)),
+  });
   // Reduced motion: keep the exact same callback chain (still a single,
   // sequential path to onDismiss) but collapse every leg to ~0ms so nothing
   // visibly slides.

@@ -122,6 +122,10 @@ const ANY_STOP = [0, 1, 2, 3, 4];
  */
 const ON_FELT_TEXT: { text: string; plate: string | null; stops: number[] }[] = [
   { text: "oppName", plate: "oppName", stops: ANY_STOP },
+  // The HUD chips are the only chrome left over the felt, and they sit at the
+  // corners — which the lamp reaches at one seat and abandons at the next.
+  { text: "chipLabel", plate: "chip", stops: ANY_STOP },
+  { text: "chipLabelStrong", plate: "chip", stops: ANY_STOP },
   { text: "comboChipText", plate: "comboChip", stops: ANY_STOP },
   { text: "comboChipTextPower", plate: "comboChip", stops: ANY_STOP },
   { text: "winnerText", plate: "winnerTag", stops: ANY_STOP },
@@ -175,6 +179,7 @@ const BODY_TEXT_COLORS: Record<string, string> = {
   textMuted: Colors.textMuted,
   gold: Colors.gold,
   goldLight: Colors.goldLight,
+  goldLit: Colors.goldLit,
   accent: Colors.accent,
 };
 

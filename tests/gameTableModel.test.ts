@@ -12,8 +12,7 @@ import {
   BTN_W,
   BTN_H,
   SIDE_BTN_W,
-  TOP_BAR_H,
-  TABLE_M,
+  CHIP_H,
   SIDE_SECTION_W,
   HAND_CROP,
   HAND_WIDTH_SHARE,
@@ -113,8 +112,7 @@ describe("layout constants (CLAUDE.md: MUST NOT CHANGE)", () => {
     assert.equal(BTN_W, 84);
     assert.equal(BTN_H, 84);
     assert.equal(SIDE_BTN_W, 62);
-    assert.equal(TOP_BAR_H, 40);
-    assert.equal(TABLE_M, 4);
+    assert.equal(CHIP_H(1), 23);
     assert.equal(SIDE_SECTION_W, 130);
   });
 
@@ -854,23 +852,29 @@ describe("urgentThresholdSeconds", () => {
 });
 
 describe("notificationTopOffset", () => {
-  // The table's top bar occupies [topPad, topPad + TOP_BAR_H) and carries the
-  // turn billboard, the countdown and the hand count — the very things an AFK
-  // or seat-takeover notice is explaining.
+  // The HUD chips sit at the head of the felt and carry whose turn it is, the
+  // countdown and the hand count — the very things an AFK or seat-takeover
+  // notice is explaining, so the banner starts below them.
   const topPad = 47;
 
-  test("in landscape the banner starts below the table's top bar", () => {
-    const top = notificationTopOffset({ topPad, landscape: true });
-    assert.ok(top >= topPad + TOP_BAR_H, `${top} still overlaps the top bar`);
-    assert.equal(top, topPad + TOP_BAR_H + TABLE_M);
+  test("in landscape the banner starts below the HUD chips", () => {
+    const top = notificationTopOffset({ topPad, landscape: true, scale: 1 });
+    assert.ok(top >= topPad + CHIP_H(1), `${top} still overlaps the chips`);
   });
 
   test("portrait — every menu screen — is left exactly where it was", () => {
-    assert.equal(notificationTopOffset({ topPad, landscape: false }), topPad);
+    assert.equal(notificationTopOffset({ topPad, landscape: false, scale: 1 }), topPad);
   });
 
-  test("a zero inset still clears the bar in landscape", () => {
-    assert.ok(notificationTopOffset({ topPad: 0, landscape: true }) >= TOP_BAR_H);
+  test("a zero inset still clears the chips in landscape", () => {
+    assert.ok(notificationTopOffset({ topPad: 0, landscape: true, scale: 1 }) >= CHIP_H(1));
+  });
+
+  test("scales with the table, so a tablet's banner clears a tablet's chips", () => {
+    const one = notificationTopOffset({ topPad, landscape: true, scale: 1 });
+    const two = notificationTopOffset({ topPad, landscape: true, scale: 2 });
+    assert.ok(two > one, `${two} is no lower than ${one}`);
+    assert.ok(two >= topPad + CHIP_H(2), `${two} still overlaps a tablet's chips`);
   });
 });
 
@@ -937,11 +941,22 @@ describe("computeTableFrame", () => {
   const frameOf = (over: Partial<{ width: number; insets: typeof insets; scale: number }> = {}) =>
     computeTableFrame({ width: 800, insets, scale: 1, ...over });
 
-  test("the felt is inset by TABLE_M inside the safe area, below the top bar", () => {
+  // The felt itself is edge to edge; the frame is where things are *drawn* on
+  // it. Each edge is the safe-area inset or the table's own padding, whichever
+  // is further in — a device with no cutout still keeps the chrome off the rim.
+  test("each edge clears both the safe area and the table's own padding", () => {
     const f = frameOf();
-    assert.equal(f.tableTop, 20 + TOP_BAR_H + TABLE_M);
-    assert.equal(f.tableRight, 44 + TABLE_M);
-    assert.equal(f.tableBottom, 10 + TABLE_M);
+    assert.equal(f.tableTop, 20);
+    assert.equal(f.tableRight, 44);
+    assert.equal(f.tableBottom, 13);
+    assert.ok(f.pad > 0, "nothing separates the chrome from the table's edge");
+  });
+
+  test("a screen with no insets at all still keeps the chrome off the rim", () => {
+    const f = frameOf({ insets: { top: 0, bottom: 0, left: 0, right: 0 } });
+    assert.ok(f.tableTop > 0, "the chrome starts at the very top of the screen");
+    assert.ok(f.tableRight > 0, "the chrome runs to the very right of the screen");
+    assert.ok(f.tableBottom > 0, "the hand sits on the bottom edge of the screen");
   });
 
   test("the play area starts at the rail's outer edge, not at the safe-area inset", () => {
