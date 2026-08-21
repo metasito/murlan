@@ -16,7 +16,9 @@ function hexToRgb(hex: string): { r: number; g: number; b: number } {
 }
 
 // RN Web needs boxShadow; native needs the shadow props. Neither accepts the other.
-function makeShadow(
+// Exported because the table's shadows scale with the card, so they cannot be
+// frozen into the `Shadow` map below.
+export function makeShadow(
   color: string,
   offsetX: number,
   offsetY: number,

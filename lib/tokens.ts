@@ -78,6 +78,9 @@ export const Colors = {
   // The chips over the felt. Dark enough to hold their own text against the
   // cloth directly under the lamp, sheer enough to read as glass on it.
   chipFill:     'rgba(3,14,9,0.72)',
+  // The seat's own count badge: darker than any felt, so the digit reads the
+  // same wherever the lamp happens to be standing.
+  seatBadge:    '#03110A',
   chipFillSolid:'rgba(2,12,8,0.85)',
   overlay:      'rgba(6,20,16,0.85)',
   overlayStrong:'rgba(3,16,8,0.90)',

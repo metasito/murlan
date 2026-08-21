@@ -2,19 +2,21 @@ import { useEffect } from "react";
 import { View, StyleSheet } from "react-native";
 import { TableText } from "./TableText";
 import Animated, {
+  useAnimatedProps,
   useAnimatedStyle,
   useSharedValue,
   withTiming,
   Easing,
   cancelAnimation,
 } from "react-native-reanimated";
+import Svg, { Circle } from "react-native-svg";
 import Ionicons from "@expo/vector-icons/Ionicons";
 import { LinearGradient } from "expo-linear-gradient";
 import { CardView } from "@/components/CardView";
 import { arcBounds, SEAT_ARC, solveArc } from "@/components/tableArc";
 import type { OpponentSide } from "@/components/gameTableModel";
 import { CARD_BACK_H, CARD_BACK_W, BACK_SCALE } from "@/components/cardFaceModel";
-import { Colors, FontSize, Highlight, Motion, Radius, Scrim, Shadow, Spacing } from "@/lib/theme";
+import { Colors, FontSize, makeShadow, Motion, Radius, Scrim, Spacing } from "@/lib/theme";
 import { useTableFelt } from "@/lib/cosmetics";
 import { usePrefersReducedMotion } from "@/lib/accessibility";
 import { useTranslation } from "@/lib/i18n";
@@ -117,56 +119,129 @@ function CardFan({
   );
 }
 
-// ─── AvatarCircle ─────────────────────────────────────────────────────────────
+// ─── SeatRing ─────────────────────────────────────────────────────────────────
+//
+// A seat is one dark disc with a gold rule around it: a chip on the cloth, not
+// a photo. Everything the seat has to say rides on it — the initials in the
+// middle, the cards left in a badge at its foot, and, while the seat is on
+// move, the turn's own clock sweeping the rim.
 
-function AvatarCircle({
+/** The disc's diameter at scale 1. Everything else on the seat derives from it. */
+const SEAT_DISC = 33;
+/** How far the countdown ring stands off the disc, and how thick it is drawn. */
+const RING_GAP = 4;
+const RING_STROKE = 2;
+const RING_PING_SCALE = 1.45;
+
+const AnimatedCircle = Animated.createAnimatedComponent(Circle);
+
+/**
+ * The turn clock, drawn as an arc around the seat on move. It is a display of
+ * the same window the viewer's own chip counts down, so it is armed by the
+ * turn changing rather than by a deadline of its own — there is no per-seat
+ * deadline to read, online or off.
+ */
+function CountdownRing({
+  size,
+  seconds,
+  resetKey,
+  scale,
+}: {
+  size: number;
+  seconds: number;
+  resetKey: string;
+  scale: number;
+}) {
+  const stroke = RING_STROKE * scale;
+  const box = size + RING_GAP * 2 * scale;
+  const r = (box - stroke) / 2;
+  const circumference = 2 * Math.PI * r;
+  const swept = useSharedValue(0);
+  const reduceMotion = usePrefersReducedMotion();
+
+  useEffect(() => {
+    swept.value = 0;
+    if (reduceMotion) return;
+    swept.value = withTiming(1, { duration: seconds * 1000, easing: Easing.linear });
+    return () => cancelAnimation(swept);
+  }, [resetKey, seconds, reduceMotion, swept]);
+
+  const arc = useAnimatedProps(() => ({
+    strokeDashoffset: circumference * swept.value,
+  }));
+
+  return (
+    <Svg
+      pointerEvents="none"
+      width={box}
+      height={box}
+      style={[seatStyles.ringSvg, { top: -RING_GAP * scale, left: -RING_GAP * scale }]}
+    >
+      <AnimatedCircle
+        cx={box / 2}
+        cy={box / 2}
+        r={r}
+        stroke={Colors.goldLit}
+        strokeWidth={stroke}
+        strokeLinecap="round"
+        fill="none"
+        strokeDasharray={circumference}
+        animatedProps={arc}
+        // Twelve o'clock, clockwise — a clock face, not an arbitrary sweep.
+        transform={`rotate(-90 ${box / 2} ${box / 2})`}
+      />
+    </Svg>
+  );
+}
+
+function SeatRing({
   name,
   isActive,
   cardCount,
   finishPos,
-  size = 44,
+  scale,
+  countdown,
 }: {
   name: string;
   isActive: boolean;
   cardCount: number;
   finishPos?: number;
-  size?: number;
+  scale: number;
+  /** The turn window, on the seat that is on move. Absent on every other seat. */
+  countdown?: { seconds: number; resetKey: string };
 }) {
-  // The avatar itself never scales: it contains the initials, and React Native
-  // rasterises text before transforming it, so a scaled avatar is a blurred
-  // avatar. The turn signal is carried entirely by two textless sibling rings —
-  // a steady one that fades in, and a one-shot ping that expands and vanishes.
-  const ringOpacity = useSharedValue(0);
+  // One shot when the seat takes the turn: the ring itself says who is on move
+  // for as long as it lasts, so this only has to catch the eye at the handover.
   const pingScale = useSharedValue(1);
   const pingOpacity = useSharedValue(0);
   const reduceMotion = usePrefersReducedMotion();
-  // The avatar sits on the felt, so it takes the felt's colour: a green bubble
-  // on a bordeaux table reads as an oversight rather than a choice. Its own
-  // two darkest stops, not the lit end — the initials are drawn straight onto
-  // this disc with no plate under them.
+  // The disc sits on the felt, so it takes the felt's colour: a green chip on a
+  // bordeaux table reads as an oversight rather than a choice. Its own two
+  // darkest stops — the initials are drawn straight onto it with no plate.
   const felt = useTableFelt();
 
   useEffect(() => {
-    ringOpacity.value = withTiming(isActive ? 1 : 0, {
-      duration: reduceMotion ? 0 : Motion.duration.base,
-    });
     if (!isActive || reduceMotion) return;
     pingScale.value = 1;
     pingOpacity.value = 0.9;
-    pingScale.value = withTiming(1.75, { duration: Motion.duration.slow, easing: Easing.out(Easing.cubic) });
-    pingOpacity.value = withTiming(0, { duration: Motion.duration.slow, easing: Easing.out(Easing.quad) });
-  }, [isActive, reduceMotion, ringOpacity, pingScale, pingOpacity]);
+    pingScale.value = withTiming(RING_PING_SCALE, {
+      duration: Motion.duration.slow,
+      easing: Easing.out(Easing.cubic),
+    });
+    pingOpacity.value = withTiming(0, {
+      duration: Motion.duration.slow,
+      easing: Easing.out(Easing.quad),
+    });
+  }, [isActive, reduceMotion, pingScale, pingOpacity]);
 
   useEffect(
     () => () => {
-      cancelAnimation(ringOpacity);
       cancelAnimation(pingScale);
       cancelAnimation(pingOpacity);
     },
-    [ringOpacity, pingScale, pingOpacity]
+    [pingScale, pingOpacity]
   );
 
-  const ringStyle = useAnimatedStyle(() => ({ opacity: ringOpacity.value }));
   const pingStyle = useAnimatedStyle(() => ({
     opacity: pingOpacity.value,
     transform: [{ scale: pingScale.value }],
@@ -178,52 +253,64 @@ function AvatarCircle({
     .join("")
     .toUpperCase();
 
-  const outerSize = size + 6;
+  const size = SEAT_DISC * scale;
+  const badge = SEAT_BADGE * scale;
   return (
-    <View>
+    <View style={{ width: size, height: size }}>
       <Animated.View
         pointerEvents="none"
         style={[
-          seatStyles.avatarPing,
-          { width: outerSize, height: outerSize, borderRadius: outerSize / 2 },
+          seatStyles.ringPing,
+          { width: size, height: size, borderRadius: size / 2, borderWidth: RING_STROKE * scale },
           pingStyle,
         ]}
       />
-      <Animated.View
-        pointerEvents="none"
+      <LinearGradient
+        // The lamp is overhead and to the left of everything on this table.
+        start={{ x: 0.3, y: 0.25 }}
+        end={{ x: 1, y: 1 }}
+        colors={[felt[3], felt[4]]}
         style={[
-          seatStyles.avatarRing,
-          { width: outerSize, height: outerSize, borderRadius: outerSize / 2 },
-          ringStyle,
-        ]}
-      />
-      <View
-        style={[
-          seatStyles.avatarOuter,
-          { width: outerSize, height: outerSize, borderRadius: outerSize / 2 },
+          seatStyles.disc,
+          isActive && seatStyles.discActive,
+          { width: size, height: size, borderRadius: size / 2 },
+          isActive
+            ? makeShadow(Colors.goldLit, 0, 0, 0.38, SEAT_GLOW * scale, 0)
+            : makeShadow(SEAT_SHADOW_COLOR, 0, SEAT_SHADOW_Y * scale, 0.62, SEAT_SHADOW * scale, 0),
         ]}
       >
-        <LinearGradient
-          colors={[felt[3], felt[4]]}
-          style={[
-            seatStyles.avatarInner,
-            { width: size, height: size, borderRadius: size / 2 },
-          ]}
-        >
-          <TableText style={[seatStyles.avatarInitials, { fontSize: size * 0.36 }]}>
-            {initials}
-          </TableText>
-        </LinearGradient>
-        <View style={[
+        <TableText style={[seatStyles.discInitials, { fontSize: size * 0.36 }]}>
+          {initials}
+        </TableText>
+      </LinearGradient>
+      {countdown && isActive && (
+        <CountdownRing
+          size={size}
+          seconds={countdown.seconds}
+          resetKey={countdown.resetKey}
+          scale={scale}
+        />
+      )}
+      <View
+        style={[
           seatStyles.countBubble,
           finishPos !== undefined && seatStyles.countBubbleFinished,
-        ]}>
-          {finishPos !== undefined ? (
-            <Ionicons name="trophy" size={8} color={Colors.gold} />
-          ) : (
-            <TableText style={seatStyles.countBubbleText}>{cardCount}</TableText>
-          )}
-        </View>
+          {
+            minWidth: badge,
+            height: badge,
+            borderRadius: badge / 2,
+            bottom: -RING_GAP * scale,
+            right: -RING_GAP * scale,
+          },
+        ]}
+      >
+        {finishPos !== undefined ? (
+          <Ionicons name="trophy" size={badge * 0.5} color={Colors.gold} />
+        ) : (
+          <TableText style={[seatStyles.countBubbleText, { fontSize: SEAT_BADGE_FS * scale }]}>
+            {cardCount}
+          </TableText>
+        )}
       </View>
     </View>
   );
@@ -287,6 +374,7 @@ export function TopOppSlot({
   cardCount,
   passed = false,
   scale = 1,
+  countdown,
 }: {
   player: Player;
   isActive: boolean;
@@ -295,6 +383,8 @@ export function TopOppSlot({
   passed?: boolean;
   /** The table's own scale — the seat's fan draws its backs at `scale * BACK_SCALE`. */
   scale?: number;
+  /** The turn window, so the seat on move can sweep its own rim. */
+  countdown?: { seconds: number; resetKey: string };
 }) {
   const count = cardCount ?? player.hand.length;
   return (
@@ -309,7 +399,8 @@ export function TopOppSlot({
         finishPos={player.finishPosition}
         passed={passed}
         isBot={player.type === "ai"}
-        size={42}
+        scale={scale}
+        countdown={countdown}
       />
       {player.finishPosition === undefined && count > 0 && (
         <CardFan count={count} side="top" isActive={isActive} scale={scale} />
@@ -334,7 +425,8 @@ function SeatWho({
   finishPos,
   passed,
   isBot,
-  size,
+  scale,
+  countdown,
 }: {
   name: string;
   isActive: boolean;
@@ -342,22 +434,31 @@ function SeatWho({
   finishPos?: number;
   passed: boolean;
   isBot: boolean;
-  size: number;
+  scale: number;
+  countdown?: { seconds: number; resetKey: string };
 }) {
   return (
     <View style={seatStyles.who}>
       <View style={seatStyles.whoLabel} pointerEvents="none">
-        <TableText style={seatStyles.oppName} numberOfLines={1}>
+        <TableText
+          style={[
+            seatStyles.oppName,
+            { fontSize: SEAT_NAME_FS * scale },
+            isActive && seatStyles.oppNameActive,
+          ]}
+          numberOfLines={1}
+        >
           {name}
         </TableText>
         <SeatBadges passed={passed} isBot={isBot} />
       </View>
-      <AvatarCircle
+      <SeatRing
         name={name}
         isActive={isActive}
         cardCount={count}
         finishPos={finishPos}
-        size={size}
+        scale={scale}
+        countdown={countdown}
       />
     </View>
   );
@@ -372,6 +473,7 @@ export function SideOppSlot({
   cardCount,
   passed = false,
   scale = 1,
+  countdown,
 }: {
   player: Player;
   isActive: boolean;
@@ -381,6 +483,8 @@ export function SideOppSlot({
   passed?: boolean;
   /** The table's own scale — the seat's fan draws its backs at `scale * BACK_SCALE`. */
   scale?: number;
+  /** The turn window, so the seat on move can sweep its own rim. */
+  countdown?: { seconds: number; resetKey: string };
 }) {
   const count = cardCount ?? player.hand.length;
   const isLeft = side === "left";
@@ -400,7 +504,8 @@ export function SideOppSlot({
         finishPos={player.finishPosition}
         passed={passed}
         isBot={player.type === "ai"}
-        size={40}
+        scale={scale}
+        countdown={countdown}
       />
       {count > 0 && player.finishPosition === undefined && (
         <CardFan count={count} side={side} isActive={isActive} scale={scale} />
@@ -424,6 +529,15 @@ const SEAT_DIM_OPACITY = 0.62;
  * mercy of whether this seat happens to carry a bot badge.
  */
 const SEAT_LABEL_H = 32;
+/** The count badge's own diameter, and the digit inside it, at scale 1. */
+const SEAT_BADGE = 18;
+const SEAT_BADGE_FS = 10;
+const SEAT_NAME_FS = 11;
+/** The disc's seated shadow, and the glow that replaces it on the seat on move. */
+const SEAT_SHADOW = 9;
+const SEAT_SHADOW_Y = 3;
+const SEAT_GLOW = 22;
+const SEAT_SHADOW_COLOR = "#000000";
 
 const seatStyles = StyleSheet.create({
   // The fan sits between the player and the table, never above them: the top
@@ -453,19 +567,21 @@ const seatStyles = StyleSheet.create({
     paddingBottom: Spacing.xs,
   },
 
-  // The count bubble's plate. The top seat renders in the felt gradient's
-  // lightest band, where textMuted alone does not clear AA.
+  // The same glass as the HUD chips. The lamp can stand directly over any seat,
+  // and on the felt's lit band the label alone does not clear AA.
   oppName: {
     fontFamily: "Rajdhani_600SemiBold",
-    fontSize: FontSize.xxs,
     color: Colors.textMuted,
+    letterSpacing: 1.5,
+    textTransform: "uppercase",
     maxWidth: OPP_LABEL_MAX_W,
     textAlign: "center",
-    backgroundColor: Colors.overlayStrong,
+    backgroundColor: Colors.chipFill,
     borderRadius: Radius.sm,
     paddingHorizontal: Spacing.xs,
     overflow: "hidden",
   },
+  oppNameActive: { color: Colors.goldLit },
 
   seatBadgeRow: {
     flexDirection: "row",
@@ -506,43 +622,26 @@ const seatStyles = StyleSheet.create({
     color: Colors.gold,
   },
 
-  avatarOuter: {
-    borderWidth: 2,
-    borderColor: Highlight.clear,
-    alignItems: "center",
-    justifyContent: "center",
-    position: "relative",
-  },
-  avatarRing: {
-    position: "absolute",
-    borderWidth: 2,
-    borderColor: Colors.gold,
-    ...Shadow.gold,
-  },
-  avatarPing: {
-    position: "absolute",
-    borderWidth: 1.5,
-    borderColor: Colors.goldStrong,
-  },
-  avatarInner: {
+  disc: {
     alignItems: "center",
     justifyContent: "center",
     borderWidth: 1,
     borderColor: Colors.goldSoft,
   },
-  avatarInitials: {
+  discActive: { borderColor: Colors.goldLit },
+  discInitials: {
     fontFamily: "Rajdhani_700Bold",
     color: Colors.text,
     letterSpacing: 0.5,
   },
+  ringSvg: { position: "absolute" },
+  ringPing: {
+    position: "absolute",
+    borderColor: Colors.goldStrong,
+  },
   countBubble: {
     position: "absolute",
-    bottom: -3,
-    right: -3,
-    backgroundColor: Colors.overlayStrong,
-    borderRadius: Radius.full,
-    minWidth: 18,
-    height: 18,
+    backgroundColor: Colors.seatBadge,
     alignItems: "center",
     justifyContent: "center",
     paddingHorizontal: Spacing.xxs,
@@ -555,7 +654,7 @@ const seatStyles = StyleSheet.create({
   },
   countBubbleText: {
     fontFamily: "Rajdhani_700Bold",
-    fontSize: FontSize.xxs,
     color: Colors.gold,
+    fontVariant: ["tabular-nums"],
   },
 });

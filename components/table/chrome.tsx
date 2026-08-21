@@ -9,7 +9,7 @@ import {
   withRepeat,
   cancelAnimation,
 } from "react-native-reanimated";
-import { Colors, FontSize, Motion, Radius, Scrim, Shadow, Spacing, Type } from "@/lib/theme";
+import { Colors, FontSize, makeShadow, Motion, Radius, Scrim, Shadow, Spacing, Type } from "@/lib/theme";
 import { usePrefersReducedMotion } from "@/lib/accessibility";
 import { useTranslation } from "@/lib/i18n";
 import type { StartReason } from "@/lib/gameEngine";
@@ -138,7 +138,7 @@ export function TableChip({
           gap: CHIP_GAP * scale,
         },
         lit && chipStyles.chipLit,
-        lit && { shadowRadius: CHIP_GLOW * scale },
+        lit && makeShadow(Colors.goldLit, 0, 0, 0.32, CHIP_GLOW * scale, 0),
       ]}
     >
       {children}
@@ -187,7 +187,7 @@ export function ChipDot({ scale, lit }: { scale: number; lit: boolean }) {
         chipStyles.chipDot,
         { width: size, height: size, borderRadius: size / 2 },
         lit && chipStyles.chipDotLit,
-        lit && { shadowRadius: CHIP_DOT_GLOW * scale },
+        lit && makeShadow(Colors.goldLit, 0, 0, 0.7, CHIP_DOT_GLOW * scale, 0),
       ]}
     />
   );
@@ -209,13 +209,7 @@ const chipStyles = StyleSheet.create({
     borderColor: Colors.goldBorder,
     backgroundColor: Colors.chipFill,
   },
-  chipLit: {
-    borderColor: Colors.goldStrong,
-    shadowColor: Colors.goldLit,
-    shadowOpacity: 1,
-    shadowOffset: { width: 0, height: 0 },
-    elevation: 0,
-  },
+  chipLit: { borderColor: Colors.goldStrong },
   chipLabel: {
     fontFamily: "Rajdhani_600SemiBold",
     color: Colors.textMuted,
@@ -230,12 +224,7 @@ const chipStyles = StyleSheet.create({
   chipLabelLit: { color: Colors.goldLit },
   chipLabelUrgent: { color: Colors.red },
   chipDot: { backgroundColor: Colors.textMuted },
-  chipDotLit: {
-    backgroundColor: Colors.goldLit,
-    shadowColor: Colors.goldLit,
-    shadowOpacity: 1,
-    shadowOffset: { width: 0, height: 0 },
-  },
+  chipDotLit: { backgroundColor: Colors.goldLit },
 });
 
 // ─── Control rail ─────────────────────────────────────────────────────────────

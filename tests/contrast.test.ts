@@ -129,14 +129,14 @@ const ON_FELT_TEXT: { text: string; plate: string | null; stops: number[] }[] = 
   { text: "comboChipText", plate: "comboChip", stops: ANY_STOP },
   { text: "comboChipTextPower", plate: "comboChip", stops: ANY_STOP },
   { text: "winnerText", plate: "winnerTag", stops: ANY_STOP },
-  { text: "countBubbleText", plate: "countBubble", stops: ANY_STOP },
   { text: "passedChipText", plate: "passedChip", stops: ANY_STOP },
   { text: "botBadgeText", plate: "botBadge", stops: ANY_STOP },
   // Under a lamp that moves, no text sits on bare cloth: the brightest felt on
   // the table is wherever the light is, so every stop is in play for all of it.
   { text: "emptyHandText", plate: "emptyHandText", stops: ANY_STOP },
-  // The avatar disc is an opaque gradient from the felt's own two darkest stops.
-  { text: "avatarInitials", plate: null, stops: [3, 4] },
+  // The seat's disc is an opaque gradient from the felt's own two darkest stops.
+  { text: "discInitials", plate: null, stops: [3, 4] },
+  { text: "countBubbleText", plate: "countBubble", stops: ANY_STOP },
 ];
 
 for (const { text, plate, stops } of ON_FELT_TEXT) {

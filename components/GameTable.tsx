@@ -1064,6 +1064,15 @@ export function GameTable({
 
   const comboLabel = getComboLabel(pileState.current, t);
 
+  // The seat on move sweeps its own rim over the same window the viewer's chip
+  // counts down. There is no per-seat deadline to read — online the server arms
+  // one window per turn, offline there is none at all — so the turn changing is
+  // what arms it, exactly as it arms the chip.
+  const seatCountdown =
+    turnTimer && !isFinished && !gameState.gameOver
+      ? { seconds: turnTimer.seconds, resetKey: `${turnToken}|${turnTimer.resetKey ?? ""}` }
+      : undefined;
+
   const showStartCardBanner = !gameState.firstPlayMade && !!gameState.startCard;
 
   return (
@@ -1200,6 +1209,7 @@ export function GameTable({
                 cardCount={handCountOf(opponents.top.player)}
                 passed={passed.includes(opponents.top.seat)}
                 scale={scale}
+                countdown={seatCountdown}
               />
             ) : (
               <View />
@@ -1232,6 +1242,7 @@ export function GameTable({
                   cardCount={handCountOf(opponents.left.player)}
                   passed={passed.includes(opponents.left.seat)}
                   scale={scale}
+                  countdown={seatCountdown}
                 />
               )}
             </View>
@@ -1270,6 +1281,7 @@ export function GameTable({
                   cardCount={handCountOf(opponents.right.player)}
                   passed={passed.includes(opponents.right.seat)}
                   scale={scale}
+                  countdown={seatCountdown}
                 />
               )}
             </View>
