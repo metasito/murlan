@@ -177,6 +177,8 @@ jobs:
             # on screen, correct, and failing every assertion. Root is needed
             # to set the property, and Maestro cannot attach through a root
             # adbd, so this drops back down before the flows run.
+            # Every line here runs as its own `sh -c`: no construct may span
+            # lines, and no variable survives to the next one.
             adb root
             adb wait-for-device
             adb shell setprop persist.sys.locale it-IT
@@ -185,11 +187,7 @@ jobs:
             until [ "$(adb shell getprop sys.boot_completed | tr -d '\r')" = "1" ]; do sleep 2; done
             adb unroot
             adb wait-for-device
-            locale=$(adb shell getprop persist.sys.locale | tr -d '\r')
-            if [ "$locale" != "it-IT" ]; then
-              echo "::error::Device locale is '$locale', not it-IT; the flows select on Italian copy."
-              exit 1
-            fi
+            adb shell getprop persist.sys.locale | tr -d '\r' | grep -qx it-IT || { echo "::error::Device locale is not it-IT; the flows select on Italian copy."; exit 1; }
 
             # adbd restarted twice above, dropping any forward it was holding.
             adb reverse tcp:8081 tcp:8081
