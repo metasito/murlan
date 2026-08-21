@@ -1,7 +1,7 @@
 // tests/replay.test.ts — the fold from a stored move log back into a table state.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { replayStateAt, replayMoveCount } from "../lib/replay.ts";
+import { replayStateAt, replayMoveCount, replayMoments, nextMoment } from "../lib/replay.ts";
 import { buildCombination } from "../lib/gameEngine.ts";
 import { c } from "./helpers.ts";
 import { handCountOf } from "../components/gameTableModel.ts";
@@ -75,4 +75,59 @@ test("an empty log still renders an opening position", () => {
   assert.equal(state.players.length, 2);
   assert.equal(state.gameOver, false);
   assert.equal(replayMoveCount(empty), 0);
+});
+
+// ─── Jumping ─────────────────────────────────────────────────────────────────
+//
+// Stepping to move 40 of 60 means pressing next forty times. These are the
+// moves a reader wants to reach directly, and they are derived from the log
+// rather than stored.
+
+const bomb = (rank: Parameters<typeof c>[0]) =>
+  buildCombination([c(rank, "hearts"), c(rank, "diamonds"), c(rank, "clubs"), c(rank, "spades")])!;
+
+const withMoves = (moves: ReplayDto["moves"]): ReplayDto => ({ ...REPLAY, moves });
+
+test("every bomb is a moment, and so is the last move", () => {
+  const replay = withMoves([
+    { seat: 0, combo: single("3", "spades"), handCounts: [2, 3] },
+    { seat: 1, combo: bomb("7"), handCounts: [2, 2] },
+    { seat: 0, combo: null, handCounts: [2, 2] },
+    { seat: 1, combo: bomb("9"), handCounts: [2, 1] },
+    { seat: 0, combo: single("4", "hearts"), handCounts: [1, 1] },
+  ]);
+
+  assert.deepEqual(replayMoments(replay), [
+    { index: 1, kind: "bomb" },
+    { index: 3, kind: "bomb" },
+    { index: 4, kind: "end" },
+  ]);
+});
+
+test("a bomb that ends the manche is one moment, not two", () => {
+  const replay = withMoves([
+    { seat: 0, combo: single("3", "spades"), handCounts: [2, 3] },
+    { seat: 1, combo: bomb("7"), handCounts: [2, 0] },
+  ]);
+
+  assert.deepEqual(replayMoments(replay), [{ index: 1, kind: "bomb" }]);
+});
+
+test("a replay with no moves has nothing to jump to", () => {
+  assert.deepEqual(replayMoments(withMoves([])), []);
+});
+
+test("the next moment is the first one after here, and wraps at the end", () => {
+  const moments = replayMoments(
+    withMoves([
+      { seat: 0, combo: bomb("7"), handCounts: [2, 3] },
+      { seat: 1, combo: single("5", "hearts"), handCounts: [2, 2] },
+      { seat: 0, combo: bomb("9"), handCounts: [1, 2] },
+    ])
+  );
+
+  assert.equal(nextMoment(moments, -1)?.index, 0, "from the opening position");
+  assert.equal(nextMoment(moments, 0)?.index, 2, "past the bomb it is already on");
+  assert.equal(nextMoment(moments, 2)?.index, 0, "wraps rather than dead-ending");
+  assert.equal(nextMoment([], 0), null);
 });

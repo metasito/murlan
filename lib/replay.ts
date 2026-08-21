@@ -120,3 +120,37 @@ export function replayStateAt(replay: ReplayDto, index: number): GameState {
     firstPlayMade: at >= 0,
   };
 }
+
+/** A move worth reaching directly rather than stepping to. */
+export interface ReplayMoment {
+  index: number;
+  kind: "bomb" | "royal" | "end";
+}
+
+/**
+ * The moves a reader is likely to want to jump to: every bomb, every royal
+ * straight, and the last move of the manche. Derived from `moves` — a replay
+ * stores nothing extra for this.
+ *
+ * Ordered by index, so "the next one after here" is a scan forward.
+ */
+export function replayMoments(replay: ReplayDto): ReplayMoment[] {
+  const moments: ReplayMoment[] = [];
+  replay.moves.forEach((move, index) => {
+    if (move.combo?.type === "bomb") moments.push({ index, kind: "bomb" });
+    else if (move.combo?.type === "royal_straight") moments.push({ index, kind: "royal" });
+  });
+  const last = replay.moves.length - 1;
+  // The end is a moment too, and it may already be a bomb — the later entry
+  // wins a tie when jumping forward, so both stay and the sort keeps order.
+  if (last >= 0 && !moments.some((m) => m.index === last)) {
+    moments.push({ index: last, kind: "end" });
+  }
+  return moments.sort((a, b) => a.index - b.index);
+}
+
+/** The first moment strictly after `index`, wrapping to the first. */
+export function nextMoment(moments: ReplayMoment[], index: number): ReplayMoment | null {
+  if (moments.length === 0) return null;
+  return moments.find((m) => m.index > index) ?? moments[0];
+}

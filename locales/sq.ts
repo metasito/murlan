@@ -371,6 +371,17 @@ export const sq: Record<keyof typeof en, string> = {
   "replay.loadErrorBody": "Kjo dorë nuk është më e disponueshme.",
   "replay.deletedPlayer": "Lojtar i fshirë",
   "replay.back": "Mbyll",
+  "replay.scrubA11yLabel": "Pozicioni në dorë",
+  "replay.speedA11yLabel": "Shpejtësia e riprodhimit",
+  "replay.speedValue": "{{n}}×",
+  "replay.jumpA11yLabel": "Shko te Bomba tjetër ose te fundi",
+  "replay.movesToggleA11yLabel": "Shfaq listën e lëvizjeve",
+  "replay.moveListTitle": "Lëvizjet",
+  "replay.moveListCloseA11yLabel": "Fshih listën e lëvizjeve",
+  "replay.moveListEmpty": "Kjo dorë nuk ka lëvizje.",
+  "replay.movePassed": "pasoi",
+  "replay.movePlayed": "{{combo}} · {{cards}}",
+  "replay.moveRowA11yLabel": "Lëvizja {{n}}: {{name}}, {{action}}",
 
   // ------------------------------------------------------------- cosmetics.*
   "settings.cardBack": "Pjesa e pasme e letrave",

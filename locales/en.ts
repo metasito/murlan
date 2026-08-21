@@ -354,6 +354,17 @@ export const en = {
   "replay.loadErrorBody": "This hand is no longer available.",
   "replay.deletedPlayer": "Deleted player",
   "replay.back": "Close",
+  "replay.scrubA11yLabel": "Move position",
+  "replay.speedA11yLabel": "Playback speed",
+  "replay.speedValue": "{{n}}×",
+  "replay.jumpA11yLabel": "Jump to the next bomb or the end",
+  "replay.movesToggleA11yLabel": "Show the move list",
+  "replay.moveListTitle": "Moves",
+  "replay.moveListCloseA11yLabel": "Hide the move list",
+  "replay.moveListEmpty": "This hand has no moves.",
+  "replay.movePassed": "passed",
+  "replay.movePlayed": "{{combo}} · {{cards}}",
+  "replay.moveRowA11yLabel": "Move {{n}}: {{name}}, {{action}}",
 
   // ------------------------------------------------------------- cosmetics.*
   "settings.cardBack": "Card back",
