@@ -14,7 +14,6 @@ import { Card, Suit, getCardDisplayRank } from "@/lib/gameEngine";
 import {
   CardFaceGradient,
   Colors,
-  FeltGradients,
   FontSize,
   Motion,
   Radius,
@@ -433,7 +432,7 @@ function OrnateCardBack({
   const cy = h / 2;
   const r = Math.min(w, h) * 0.19;
   const ink = back.ink;
-  const field = FeltGradients[back.field];
+  const field = back.field;
 
   return (
     <Svg width={w} height={h} style={StyleSheet.absoluteFill} pointerEvents="none">
@@ -483,7 +482,7 @@ function CardViewBase({
   const selectedHint = useA11yHint(decorative || !selected ? undefined : t("cardView.selectedA11yHint"));
   const reduceMotion = usePrefersReducedMotion();
   const back = useCardBack();
-  const backField = FeltGradients[back.field];
+  const backField = back.field;
   const translateY = useSharedValue(0);
   // Finger-down acknowledgement. Separate from the selection lift so a press
   // reads instantly even when the resulting selection is rejected.
