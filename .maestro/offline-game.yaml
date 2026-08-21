@@ -96,7 +96,10 @@ env:
 - extendedWaitUntil:
     visible:
       id: "game-table"
-    timeout: 20000
+    # Twenty seconds is a developer machine entering this screen. A CI
+    # emulator rotates and mounts the table a good deal slower than that, and
+    # running out here reads as the table never arriving.
+    timeout: 90000
 
 # --- Opening move, only if this seat was dealt the 3 of Spades ---
 # All 3s sort to the front of the hand regardless of shuffle (3 is the
