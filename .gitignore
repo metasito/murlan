@@ -67,3 +67,7 @@ playwright-report/
 
 # graphify build output — regenerable from source by `graphify update .`
 graphify-out/
+
+# Database dumps — real account data, never committed
+backups/
+*.sql

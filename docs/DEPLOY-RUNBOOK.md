@@ -40,9 +40,13 @@ Step 7 and verify rather than assume.
 choice you did not intend:
 
 ```bash
-pg_dump "$DATABASE_URL" --no-owner --no-privileges \
-  -f ~/murlan-predeploy-$(date +%Y%m%d-%H%M%S).sql
+npm run db:backup
 ```
+
+`scripts/backup-db.mjs` shells out to `pg_dump` and refuses non-zero if it is missing, if the
+dump fails, or if it exits 0 having written an empty file — the last being the one a runbook
+step would otherwise trust. It writes a timestamped file under `backups/`, which is gitignored
+because a dump holds every account; pass a path to put it elsewhere.
 
 4 — Check for case-colliding usernames. Boot creates a unique index on `lower(username)`,
 and it throws — refusing to start — if two existing rows collide under it:

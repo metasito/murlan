@@ -92,14 +92,13 @@ Restore the pre-deploy dump instead:
 
 ```bash
 psql "$DATABASE_URL" -c "DROP SCHEMA public CASCADE; CREATE SCHEMA public;"
-psql "$DATABASE_URL" -f ~/murlan-predeploy-<timestamp>.sql
+psql "$DATABASE_URL" -f backups/murlan-<timestamp>.sql
 ```
 
 Take that dump before every deploy that runs `db:push`:
 
 ```bash
-pg_dump "$DATABASE_URL" --no-owner --no-privileges \
-  -f ~/murlan-predeploy-$(date +%Y%m%d-%H%M%S).sql
+npm run db:backup
 ```
 
 Restoring the dump undoes every write since it was taken, not just the schema change — any
