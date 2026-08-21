@@ -39,6 +39,7 @@ export interface ClientErrorGroup {
   message: string;
   count: number;
   lastSeen: Date;
+  stack: string | null;
 }
 
 /**
@@ -46,7 +47,7 @@ export interface ClientErrorGroup {
  * that looks like a stack entry (V8's `at fn (file:line:col)`, or Hermes'
  * `fn@file:line:col`), skipping a leading "Error: <message>" echo line.
  */
-function topFrame(stack: string | undefined): string {
+export function topFrame(stack: string | undefined): string {
   if (!stack) return "";
   const lines = stack.split("\n").map((l) => l.trim()).filter(Boolean);
   return lines.find((l) => /^at\s/.test(l) || /@.*:\d+:\d+/.test(l)) ?? lines[1] ?? lines[0] ?? "";
@@ -121,12 +122,19 @@ export async function recentClientErrors(limit = CLIENT_ERROR_PAGE): Promise<Cli
  * as each of those rows' own group instead, so none are hidden.
  */
 export async function recentClientErrorGroups(limit = CLIENT_ERROR_PAGE): Promise<ClientErrorGroup[]> {
-  const rows = await db.execute<{ fingerprint: string | null; message: string; count: number; lastSeen: Date }>(sql`
+  const rows = await db.execute<{
+    fingerprint: string | null;
+    message: string;
+    count: number;
+    lastSeen: Date;
+    stack: string | null;
+  }>(sql`
     SELECT
       min(fingerprint) AS fingerprint,
       (array_agg(message ORDER BY occurred_at DESC))[1] AS message,
       count(*)::int AS count,
-      max(occurred_at) AS "lastSeen"
+      max(occurred_at) AS "lastSeen",
+      (array_agg(stack ORDER BY occurred_at DESC))[1] AS stack
     FROM client_errors
     GROUP BY coalesce(fingerprint, id::text)
     ORDER BY "lastSeen" DESC
