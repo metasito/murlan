@@ -282,7 +282,13 @@ maestro test .maestro/offline-game.yaml
 
 `npx expo start` must already be running. Both flows reach it at
 `exp://10.0.2.2:8081` — the Android emulator's standard alias for the host's
-loopback — so they need no per-machine edit and work unchanged on a CI runner.
+loopback — so they need no per-machine edit locally.
+
+That alias does *not* hold everywhere: on the GitHub runner's emulator a
+request to it never reaches the dev server at all (Metro logs no request,
+while the same request to `127.0.0.1` from the host answers `200`), so
+`.github/workflows/maestro.yml` forwards the device's own loopback with
+`adb reverse` and passes the address in through the override below.
 
 That address is the flow's `MURLAN_PACKAGER_URL` default. A **physical device**
 has no such alias and needs the host's real LAN address:
@@ -296,6 +302,27 @@ so they could not run even on the machine they were written on, let alone
 anywhere else. Verified both ways after the change: a cold start against the
 default passes, and the same flow against a wrong port fails.
 
+### What CI supplies that a developer's machine supplies by hand
+
+The first time this job ran, each of these was missing in turn (#35), and each
+one stops the flows before they reach a single screen the app renders:
+
+- **Expo Go is not on a stock system image.** Locally `expo start --android`
+  installs it on first connect. The job downloads the client for the SDK
+  `package.json` pins — Expo Go carries one SDK at a time, so the newest
+  published client is the wrong one as soon as it moves ahead of this project.
+- **The dev server must be reachable from the guest** — see `adb reverse` above.
+- **`expo start --offline`.** `app.json` carries an EAS `projectId`, so Expo Go
+  asks the linked project for a *signed* manifest; signing wants an
+  authenticated Expo account, and a runner has none. Without it the request
+  fails with `Input is required, but 'npx expo' is in non-interactive mode`,
+  and the device reports only "Something went wrong". Offline serves the same
+  manifest unsigned, which Expo Go accepts.
+
+Metro also bundles on demand, so without warming it the first request for the
+bundle is the device's — a cold build of the whole app inside the 60s the flows
+allow for it to appear, on cores the emulator is competing for.
+
 ### Real findings from actually running this, not just writing YAML
 
 **Expo Go's own dev-menu is two stacked layers, and the top one lies about
@@ -305,8 +332,20 @@ Home / Show Element Inspector / etc). Tapping the explainer's own "Continue"
 button dismisses only the explainer — the sheet underneath stays open and
 silently swallows every further tap. `tapOn` against it reports `COMPLETED`
 with no observable effect, which is a bad failure mode: no error, just a
-flow that quietly does nothing from that point on. One hardware **back**
-press dismisses both layers together; that is what both flows use.
+flow that quietly does nothing from that point on.
+
+So both layers have to go, and only in this order: tap **Continue** to clear
+the explainer and reveal the sheet, then one hardware **back** press to close
+the sheet. That is what both flows do. A back press against the *explainer*
+dismisses neither — it leaves the experience for Expo Go's own launcher, and
+every assertion after it then fails against a screen the app never rendered.
+A developer meets the explainer once; a runner installs Expo Go fresh on every
+job, so it meets it every time.
+
+**The flows are not independent unless they are made to be.** Both drive the
+same Expo Go install one after the other, and the order is not fixed — CI ran
+them the opposite way round from this machine. Whichever runs second inherits
+the first's state, which is why each `launchApp` sets `clearState`.
 
 **A center-tap on a fanned/overlapping hand card can select the wrong card.**
 The hand renders each card overlapping the next one drawn on top of it. Maestro
