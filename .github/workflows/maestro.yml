@@ -118,10 +118,28 @@ jobs:
           disable-animations: false
           script: |
             adb install -r "$RUNNER_TEMP/expo-go.apk"
+            # Expo Go reports a failed manifest fetch as nothing but "Something
+            # went wrong" on the device, which cannot tell a dead dev server
+            # from one answering with an error. Asking the same question from
+            # the host turns that into a status code.
+            curl -sf -o /dev/null -w 'metro /status: %{http_code}' http://127.0.0.1:8081/status || echo "::warning::Metro is no longer answering on 8081."
+            echo
+            curl -s -o "$RUNNER_TEMP/manifest.out" -w 'manifest: %{http_code}' -H 'expo-platform: android' -H 'expo-runtime-version: exposdk:54.0.0' -H 'accept: multipart/mixed,application/expo+json,application/json' http://127.0.0.1:8081/
+            echo
+            head -c 1200 "$RUNNER_TEMP/manifest.out"
+            echo
             maestro test .maestro/
 
       # Recordings, logs and screenshots from a failed flow are the only way to
-      # tell a real regression from an emulator that fell over.
+      # tell a real regression from an emulator that fell over. Metro's own log
+      # goes with them: a flow that dies loading the app failed on a request
+      # this is the only record of.
+      - name: Collect Metro's log alongside them
+        if: failure()
+        run: |
+          mkdir -p "$HOME/.maestro/tests"
+          cp "$RUNNER_TEMP/metro.log" "$HOME/.maestro/tests/metro.log" || true
+
       - name: Upload Maestro debug output
         if: failure()
         uses: actions/upload-artifact@v4
