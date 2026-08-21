@@ -1161,12 +1161,24 @@ on `main`, it calls `navigator.vibrate()` with per-style patterns (`Light: [40]`
 Evan Bacon) — falls back on iOS Safari to creating a hidden `<input type="checkbox" switch>`
 and clicking it programmatically, exploiting iOS's native switch-toggle haptic.
 
-**This app is on the SDK 54 line, which predates that fix.** Two consequences:
-1. On iOS Safari today it would do nothing regardless — but
-2. `lib/haptics.ts` guards every call with `const isNative = Platform.OS === "ios" || "android"`,
-   so **web haptics are switched off in this codebase by construction.** Upgrading
-   `expo-haptics` past 55.0.12 *and* relaxing that guard would give iPhone web players real
-   haptic feedback. Given most users play on the web build, that is a cheap, real win.
+**That fallback is now dead, and the upgrade would not revive it — #158.** Apple removed the
+switch-toggle haptic in **iOS 26.5**, about six weeks after PR #44261 merged, so the technique
+worked only on iOS 17.4–26.4. `expo-haptics@57.0.1` still ships exactly that implementation, so
+on a current iPhone it does nothing.
+
+Three consequences, in the order they bind:
+1. This app pins `expo-haptics@~15.0.8`, which is
+   [what SDK 54 bundles](https://api.expo.dev/v2/sdks/54.0.0/native-modules) and predates the
+   fallback entirely — bisecting the published tarballs puts it at 55.0.12 (6 Apr 2026), where
+   55.0.11 (2 Apr 2026) is still `navigator.vibrate` only. Reaching it means the SDK upgrade, #119.
+2. Even after that upgrade, iOS Safari gets nothing, because of the 26.5 patch.
+3. `lib/haptics.ts` guards every call with `const isNative = Platform.OS === "ios" || "android"`,
+   so **web haptics are switched off in this codebase by construction** — which costs nothing on
+   iOS and costs Android web players real vibration.
+
+The technique that still works on iOS needs the user's finger to land on an invisible native
+control, so it cannot be fired from a game event at all. Android web is the only web haptics
+that works. #128 owns what to do about that.
 
 **Vibration API status, 2026.** [MDN](https://developer.mozilla.org/en-US/docs/Web/API/Navigator/vibrate)
 flags it "Limited availability — not Baseline". Per
