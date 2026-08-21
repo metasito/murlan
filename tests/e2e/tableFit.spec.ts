@@ -72,36 +72,53 @@ test.describe("the table fits the screen", () => {
   }
 });
 
-// ─── The top seat's band ──────────────────────────────────────────────────────
+// ─── The bands the table is built from ───────────────────────────────────────
 //
-// TOP_SECTION_H (components/gameTableModel.ts) is a hard height, and everything
-// around it is positioned on the promise that the top opponent fits inside it —
-// StartReasonBanner's topOffset clears exactly that band so it never covers the
-// card count. The seat's own column is free to grow: a padded vertical stack of
-// avatar, name and badge stood 91px in the 70px band, and the overflow left the
-// felt entirely, hanging the avatar and the card fan over the table's top edge.
-// A fixed box and its content are two laid-out boxes, so only a browser can tell
-// you they disagree.
+// The top seat is the tallest thing on the table after the hand, and it sizes
+// itself: its name floats above the avatar and its fan hangs below, so the
+// column's height is a property of the laid-out boxes rather than a number
+// anyone wrote down. What is left between it and the hand is the field's, by
+// construction — which only holds if the three never overlap and none of them
+// leaves the felt. A fixed box and its content are two laid-out boxes, so only
+// a browser can tell you they disagree.
 //
-// Four seats with bots is the worst case: the top seat carries a name and a bot
-// badge at once, which is the tallest the column ever gets short of also having
-// passed.
+// Four seats with bots is the worst case: the top seat carries a name and a
+// bot badge at once, which is the tallest the column ever gets short of also
+// having passed.
 
-test.describe("the top seat's column", () => {
-  test("fits the band the table reserves for it", async ({ page, baseURL }) => {
+test.describe("the table's bands", () => {
+  test("the top seat, the field and the hand share the felt without overlapping", async ({
+    page,
+    baseURL,
+  }) => {
     test.setTimeout(120_000);
     await page.setViewportSize({ width: 844, height: 390 });
     await openSeededGame(page, baseURL!, 4);
+    await page.waitForTimeout(1_000);
 
-    const band = await page.locator('[data-testid="table-top-section"]').boundingBox();
+    const table = await page.locator('[data-testid="game-table"]').boundingBox();
     const seat = await page.locator('[data-testid="top-seat"]').boundingBox();
-    if (!band || !seat) throw new Error("the top seat never rendered");
+    const hand = await page.locator('[data-testid="btn-gioca"]').boundingBox();
+    if (!table || !seat || !hand) throw new Error("the table never rendered");
 
-    const overflow =
-      `the top seat (${Math.round(seat.y)}…${Math.round(seat.y + seat.height)}) leaves the ` +
-      `band reserved for it (${Math.round(band.y)}…${Math.round(band.y + band.height)})`;
-    expect(seat.y, overflow).toBeGreaterThanOrEqual(band.y - 0.5);
-    expect(seat.y + seat.height, overflow).toBeLessThanOrEqual(band.y + band.height + 0.5);
+    expect(
+      seat.y,
+      `the top seat (${Math.round(seat.y)}) starts above the felt (${Math.round(table.y)})`
+    ).toBeGreaterThanOrEqual(table.y - 0.5);
+
+    expect(
+      seat.y + seat.height,
+      `the top seat (${Math.round(seat.y)}…${Math.round(seat.y + seat.height)}) runs into ` +
+        `the hand row (${Math.round(hand.y)}…), leaving the field nothing`
+    ).toBeLessThanOrEqual(hand.y + 0.5);
+
+    // The floor: a top seat that rendered as an empty box would satisfy both
+    // bounds above having reserved nothing.
+    expect(seat.height, "the top seat has no height at all").toBeGreaterThan(40);
+    expect(
+      hand.y - (seat.y + seat.height),
+      "no band is left between the top seat and the hand for the field"
+    ).toBeGreaterThan(0);
   });
 });
 

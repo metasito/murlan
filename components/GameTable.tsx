@@ -44,7 +44,6 @@ import {
 import type { ExchangeAnnounceData } from "@/lib/sharedGameFlow";
 import {
   TOP_BAR_H,
-  TOP_SECTION_H,
   HAND_SECTION_H,
   CARD_H,
   cardScale,
@@ -1164,10 +1163,7 @@ export function GameTable({
         ]}
       >
         <View style={sharedTableStyles.tableContent}>
-          <View
-            testID="table-top-section"
-            style={[sharedTableStyles.topSection, { height: TOP_SECTION_H }]}
-          >
+          <View testID="table-top-section" style={sharedTableStyles.topSection}>
             {opponents.top ? (
               <TopOppSlot
                 player={opponents.top.player}
@@ -1181,7 +1177,23 @@ export function GameTable({
             )}
           </View>
 
+          {/* The band left over between the top seat and the hand. The seats
+              and the field centre in what is actually there rather than at a
+              guessed percentage, so a taller top seat takes it from the field
+              instead of overlapping it. */}
           <View style={sharedTableStyles.midSection}>
+            {/* Gated on the exchange announcement so the two banners sequence
+                rather than stack. Inside the mid band, not at a computed
+                offset: the top opponent's avatar, name and card fan sit above
+                it, and card count is the single most important tactical signal
+                on the table. */}
+            {gameState.startReason && !exchangeAnnouncement?.visible && (
+              <StartReasonBanner
+                key={`reason-${gameState.startReason.type}-${gameState.startReason.playerIdx}`}
+                reason={gameState.startReason}
+                players={players}
+              />
+            )}
             <View style={[sharedTableStyles.sideSection, sharedTableStyles.sideSectionLeft]}>
               {opponents.left && (
                 <SideOppSlot
@@ -1312,20 +1324,6 @@ export function GameTable({
             setPileBounceTrigger((t) => t + 1);
           }}
           scale={scale}
-        />
-      )}
-
-      {/* Gated on the exchange announcement so the two banners sequence rather
-          than stack on top of each other. topOffset clears TOP_SECTION_H —
-          the top opponent's avatar, name and card fan live in that band, and
-          card count is the single most important tactical signal on the
-          table, so the banner must never sit over it. */}
-      {gameState.startReason && !exchangeAnnouncement?.visible && (
-        <StartReasonBanner
-          key={`reason-${gameState.startReason.type}-${gameState.startReason.playerIdx}`}
-          reason={gameState.startReason}
-          players={players}
-          topOffset={frame.topPad + TOP_BAR_H + TABLE_M + TOP_SECTION_H + 8}
         />
       )}
 

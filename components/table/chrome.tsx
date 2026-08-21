@@ -71,11 +71,9 @@ const vignetteStyles = StyleSheet.create({
 export function StartReasonBanner({
   reason,
   players,
-  topOffset,
 }: {
   reason: StartReason;
   players: { name: string; type: string }[];
-  topOffset: number;
 }) {
   const { t } = useTranslation();
   const [visible, setVisible] = useState(true);
@@ -106,7 +104,7 @@ export function StartReasonBanner({
   return (
     <Pressable
       onPress={() => setVisible(false)}
-      style={[startReasonStyles.anchor, { top: topOffset }]}
+      style={startReasonStyles.anchor}
     >
       <View style={startReasonStyles.card}>
         <TableText style={startReasonStyles.main}>
@@ -129,6 +127,7 @@ const START_REASON_MAX_W = 420;
 const startReasonStyles = StyleSheet.create({
   anchor: {
     position: "absolute",
+    top: 0,
     left: 0,
     right: 0,
     alignItems: "center",
@@ -304,9 +303,15 @@ export const sharedTableStyles = StyleSheet.create({
     borderColor: Colors.goldSoft,
   },
   tableContent: { flex: 1, flexDirection: "column" },
+  // No fixed height: the top seat is the tallest thing on the table after the
+  // hand, and a band guessed for it either clips the fan or spends felt the
+  // field needed. What is left over is the mid band's, by construction.
   topSection: {
     alignItems: "center",
-    justifyContent: "center",
+    justifyContent: "flex-start",
+    // Clears the felt's own inner frame (tableInnerBorder, 6px in), which the
+    // top seat's floating name otherwise renders under.
+    paddingTop: Spacing.sm,
     borderBottomWidth: 1,
     borderBottomColor: Colors.goldGhost,
   },

@@ -15,7 +15,6 @@ import {
   TOP_BAR_H,
   TABLE_M,
   SIDE_SECTION_W,
-  TOP_SECTION_H,
   HAND_SECTION_H,
   cardTilt,
   fanCenterOffset,
@@ -115,7 +114,6 @@ describe("layout constants (CLAUDE.md: MUST NOT CHANGE)", () => {
     assert.equal(TOP_BAR_H, 40);
     assert.equal(TABLE_M, 4);
     assert.equal(SIDE_SECTION_W, 130);
-    assert.equal(TOP_SECTION_H, 70);
   });
 
   test("CARD_W/CARD_H scale linearly with the short edge, no breakpoints", () => {

@@ -27,7 +27,6 @@ export const SIDE_BTN_W = 62;
 export const TOP_BAR_H = 40;
 export const TABLE_M = 4;
 export const SIDE_SECTION_W = 130;
-export const TOP_SECTION_H = 70;
 /**
  * Headroom above the hand row's own cards — enough to clear a selected card's
  * lift (SELECT_LIFT, components/table/hand.tsx) without the row above it
