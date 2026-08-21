@@ -22,6 +22,7 @@ import { getReplayForUser, listReplaysForUser } from "./replays.ts";
 import { getLeaderboard, getRating, PROVISIONAL_GAMES } from "./ratings.ts";
 import { recordClientError } from "./clientErrors.ts";
 import { adminSnapshot } from "./admin.ts";
+import { trackEvent } from "./events.ts";
 import { renderAdminPage } from "./adminPage.ts";
 import { z } from "zod";
 
@@ -285,7 +286,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // ── User ─────────────────────────────────────────────────────────────────
 
   app.post("/api/users/me/tutorial-seen", requireAuth, async (req, res) => {
-    await storage.markTutorialSeen(req.session.userId!);
+    const userId = req.session.userId!;
+    // Only the first transition is a funnel step. This endpoint is also the
+    // catch-up write app/index.tsx makes when the device knows and the account
+    // does not, and counting that would report one player opening the tutorial
+    // once per phone they own.
+    const before = await storage.getUser(userId);
+    await storage.markTutorialSeen(userId);
+    if (before && !before.tutorialSeenAt) trackEvent("tutorial.started", userId);
     res.json({ ok: true });
   });
 

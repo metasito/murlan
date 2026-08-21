@@ -128,6 +128,22 @@ export const clientErrors = pgTable("client_errors", {
   context: jsonb("context").notNull().default({}),
 }, (t) => [index("client_errors_occurred_idx").on(t.occurredAt)]);
 
+/**
+ * Funnel steps, written by the server on the server's clock. Kept for
+ * EVENT_RETENTION_DAYS, matching client_errors.
+ *
+ * `name` is a plain text column rather than a pgEnum: the closed set lives in
+ * shared/events.ts, where adding one is a type error at every call site, and an
+ * enum would additionally need a migration this schema module cannot write.
+ */
+export const events = pgTable("events", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").references(() => users.id, { onDelete: "cascade" }),
+  occurredAt: timestamp("occurred_at").defaultNow().notNull(),
+  name: text("name").notNull(),
+  context: jsonb("context").notNull().default({}),
+}, (t) => [index("events_name_occurred_idx").on(t.name, t.occurredAt)]);
+
 export const userAchievements = pgTable("user_achievements", {
   userId: varchar("user_id").references(() => users.id, { onDelete: "cascade" }).notNull(),
   achievementId: text("achievement_id").notNull(),
