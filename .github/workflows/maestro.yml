@@ -55,7 +55,15 @@ jobs:
         run: |
           # nohup + disowned: a plain `cmd &` can be reaped when the step's own
           # shell exits, and the next step would then find nothing listening.
-          nohup npx expo start --port 8081 > "$RUNNER_TEMP/metro.log" 2>&1 &
+          # --offline because app.json carries an EAS projectId: Expo Go asks a
+          # linked project for a *signed* manifest, signing wants an
+          # authenticated account, and a runner has none - so the request 500s
+          # with "Input is required, but 'npx expo' is in non-interactive mode"
+          # and the device shows only "Something went wrong". Offline serves the
+          # same manifest unsigned, which Expo Go accepts. The alternative is an
+          # EXPO_TOKEN secret, which buys nothing here: none of this needs an
+          # account.
+          nohup npx expo start --offline --port 8081 > "$RUNNER_TEMP/metro.log" 2>&1 &
           disown
           for i in $(seq 1 60); do
             if curl -sf http://127.0.0.1:8081/status | grep -q "packager-status:running"; then
@@ -128,16 +136,12 @@ jobs:
             echo
             head -c 1200 "$RUNNER_TEMP/manifest.out"
             echo
-            # The device cannot reach the dev server on 10.0.2.2, the flows'
-            # own default: the same manifest request that answers 200 to the
-            # host above comes back non-2xx to Expo Go, which shows it only as
-            # "Something went wrong". This image brings its Wi-Fi up through
-            # netsim, and 10.0.2.2 is an alias of the legacy user-mode network,
-            # not of whatever the guest is actually routing over.
-            #
-            # `adb reverse` does not depend on which network that is - the
-            # device's own loopback is forwarded to the runner's - and the URL
-            # goes through the override the flows already document for devices
+            # 10.0.2.2, the flows' own default, does not reach the dev server
+            # from this emulator: over that address Metro's log records no
+            # request at all, and the same run's device log has Expo Go failing
+            # the fetch. Forwarding the device's own loopback gets there, and
+            # the same log then shows the request arriving. The address reaches
+            # the flows through the override they already document for devices
             # with no host alias, so neither flow changes.
             adb reverse tcp:8081 tcp:8081
             maestro test -e MURLAN_PACKAGER_URL=exp://127.0.0.1:8081 .maestro/
