@@ -227,3 +227,90 @@ describe("username case", { skip: hasDatabase() ? false : skipMessage() }, () =>
     }
   });
 });
+
+// #41: the pre-existing authLimiter is per-IP and was login's only defense,
+// so one shared home or office NAT shared a single small budget across every
+// account behind it. These prove the fix: a per-username limiter that
+// actually bounds one account's guesses, without one account's bad luck (or
+// an attacker) locking out its neighbors on the same network.
+describe("login rate limiting", { skip: hasDatabase() ? false : skipMessage() }, () => {
+  async function login(username: string, password: string) {
+    return fetch(`${server.url}/api/auth/login`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ username, password }),
+    });
+  }
+
+  test("a shared IP does not lock a second account out of login", async () => {
+    const attacked = "ratelimit_victim_a";
+    await register(server, attacked);
+    // MURLAN_LOGIN_USERNAME_RATE_LIMIT is 5 in tests (testServer.ts) — one
+    // past it is what used to also spend the single shared authLimiter
+    // budget every account on this IP drew from.
+    for (let i = 0; i < 6; i++) await login(attacked, "definitely-wrong");
+
+    const bystander = "ratelimit_bystander";
+    await register(server, bystander);
+    const res = await login(bystander, "password123");
+    const body = await res.text();
+    assert.equal(res.status, 200, `a second account on the same IP was blocked: ${body}`);
+  });
+
+  test("one account still gets limited, even with its own right password", async () => {
+    const username = "ratelimit_target";
+    await register(server, username);
+    for (let i = 0; i < 5; i++) {
+      const res = await login(username, "definitely-wrong");
+      assert.equal(res.status, 401, `attempt ${i} should still reach the real check`);
+    }
+
+    // Over budget now — even the correct password must not get through,
+    // because the limiter runs before the credential check, not after it.
+    const res = await login(username, "password123");
+    const body = await res.text();
+    assert.equal(res.status, 401, `a limited account logged in anyway: ${body}`);
+    assert.deepEqual(JSON.parse(body), {
+      message: "Wrong username or password",
+      code: "INVALID_CREDENTIALS",
+    });
+  });
+
+  test("a limited response does not time like a fast rejection — it pays bcrypt's cost like a real one", async () => {
+    const limited = "ratelimit_timing_acct";
+    await register(server, limited);
+    for (let i = 0; i < 5; i++) await login(limited, "definitely-wrong");
+
+    const SAMPLES = 6;
+    const limitedMs: number[] = [];
+    const genuineMs: number[] = [];
+
+    for (let i = 0; i < SAMPLES; i++) {
+      let t0 = performance.now();
+      const limitedRes = await login(limited, "definitely-wrong");
+      limitedMs.push(performance.now() - t0);
+      assert.equal(limitedRes.status, 401);
+
+      const genuine = `ratelimit_timing_fresh_${i}`;
+      await register(server, genuine);
+      t0 = performance.now();
+      const genuineRes = await login(genuine, "definitely-wrong");
+      genuineMs.push(performance.now() - t0);
+      assert.equal(genuineRes.status, 401);
+    }
+
+    const avg = (values: number[]) => values.reduce((a, b) => a + b, 0) / values.length;
+    const limitedAvg = avg(limitedMs);
+    const genuineAvg = avg(genuineMs);
+
+    // Not asserting near-equality — CI timing is noisy. What the regression
+    // this guards against looks like is a limiter that answers without ever
+    // reaching bcrypt: a large, consistent gap, not sampling noise. A loose
+    // floor catches that without making the suite flaky.
+    assert.ok(
+      limitedAvg > genuineAvg * 0.5,
+      `limited responses averaged ${limitedAvg.toFixed(1)}ms vs ${genuineAvg.toFixed(1)}ms ` +
+        `for a genuine wrong password — the decoy bcrypt.compare may not be running`
+    );
+  });
+});

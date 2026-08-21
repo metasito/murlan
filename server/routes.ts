@@ -51,10 +51,16 @@ function readParam(res: Response, raw: unknown): string | null {
  * production budget in a few tables. Read once at module scope, so a test
  * process must set it before the app is imported — see
  * tests/helpers/testServer.ts.
+ *
+ * Raised from the old 20: this is now a broad per-IP backstop shared by
+ * register and login (#41) rather than login's only defense, so it has to
+ * clear a whole office or carrier NAT's worth of normal traffic in a window
+ * without tripping. What actually bounds one account's login attempts is
+ * loginUsernameMaxFromEnv() below.
  */
 function authMaxFromEnv(): number {
   const parsed = Number(process.env.MURLAN_AUTH_RATE_LIMIT);
-  return Number.isInteger(parsed) && parsed > 0 ? parsed : 20;
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : 100;
 }
 
 const authLimiter = rateLimit({
@@ -63,6 +69,50 @@ const authLimiter = rateLimit({
   standardHeaders: true,
   legacyHeaders: false,
   message: { error: "Too many attempts, try again in 15 minutes.", code: "AUTH_RATE_LIMITED" },
+});
+
+/** Same pattern as authMaxFromEnv() above. */
+function loginUsernameMaxFromEnv(): number {
+  const parsed = Number(process.env.MURLAN_LOGIN_USERNAME_RATE_LIMIT);
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : 10;
+}
+
+// Never a real user's hash — exists only so the limiter below can spend
+// bcrypt.compare's cost without a real password to check. Sync and at
+// module scope: it runs once, at startup, not on any request path.
+const LOGIN_LIMIT_DECOY_HASH = bcrypt.hashSync("murlan-rate-limit-timing-decoy", 10);
+
+/**
+ * Per-account login attempts (#41) — express-rate-limit's own `authLimiter`
+ * above is a per-IP ceiling shared with register and sized for a whole
+ * office; this is the thing that actually makes one account's password hard
+ * to guess. Keyed on the same normalized username storage.getUserByUsername
+ * looks up by, so case doesn't fork one account into two budgets.
+ *
+ * skipSuccessfulRequests: a correct login must never spend down the budget a
+ * wrong one does — otherwise a user who logs in from several devices a day
+ * could lock themselves out with no failed attempt in sight.
+ *
+ * The response on trip is deliberately not express-rate-limit's default: it
+ * has to be byte-for-byte the wrong-password response below, including its
+ * timing. Skipping straight to a 401 would return faster than a real
+ * bcrypt.compare does, and that gap is itself an oracle — a request that
+ * comes back suspiciously fast is one this account's password was never
+ * checked against, which tells an attacker they've already exhausted the
+ * account's real guesses. Paying a decoy bcrypt.compare closes that gap; see
+ * #41's PR description for the measurement.
+ */
+const loginUsernameLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: loginUsernameMaxFromEnv(),
+  standardHeaders: true,
+  legacyHeaders: false,
+  skipSuccessfulRequests: true,
+  keyGenerator: (req: Request) => (req.body as { username: string }).username.toLowerCase(),
+  handler: async (_req, res) => {
+    await bcrypt.compare("x", LOGIN_LIMIT_DECOY_HASH);
+    res.status(401).json({ message: "Wrong username or password", code: "INVALID_CREDENTIALS" });
+  },
 });
 
 const friendLimiter = rateLimit({
@@ -209,7 +259,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     });
   });
 
-  app.post("/api/auth/login", authLimiter, validate(LoginSchema), async (req, res) => {
+  app.post("/api/auth/login", authLimiter, validate(LoginSchema), loginUsernameLimiter, async (req, res) => {
     const { username, password } = req.body as { username: string; password: string };
 
     const user = await storage.getUserByUsername(username);
