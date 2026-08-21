@@ -102,6 +102,17 @@ export function renderAdminPage(snapshot: AdminSnapshot): string {
     ),
     panel(
       8,
+      "Where people drop out",
+      table(
+        ["Step", "Events", "Players"],
+        snapshot.funnel.map((step) => [step.name, step.events, step.players])
+      ) +
+        `<p class="meta">A step that is not a finished game is recorded nowhere else. ` +
+        `Account creation and finished games are deliberately absent — both are ` +
+        `already derivable, and a second source of truth drifts from the first.</p>`
+    ),
+    panel(
+      9,
       "Client crashes",
       `<p>${snapshot.crashesThisWeek} reported in the last 7 days.</p>`
     ),

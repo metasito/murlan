@@ -6,6 +6,7 @@ import type { Session, SessionData } from "express-session";
 import { eq } from "drizzle-orm";
 import { storage } from "./storage.ts";
 import { logger } from "./logger.ts";
+import { trackEvent } from "./events.ts";
 import { notifyUser } from "./push.ts";
 import { sessionMiddleware } from "./session.ts";
 import { db } from "./db.ts";
@@ -263,6 +264,9 @@ export function setupSocket(httpServer: HttpServer) {
     // see evictReplacedSession for what reads it on the way out.
     const replacedSocketId = userSocketMap.get(userId);
     userSocketMap.set(userId, socket.id);
+    // Opening a socket is what reaching the online area does, so this is the
+    // server's only sight of "got past the menu".
+    trackEvent("lobby.entered", userId);
     if (replacedSocketId && replacedSocketId !== socket.id) {
       evictReplacedSession(io, userId, replacedSocketId, socket);
     }
@@ -392,6 +396,10 @@ export function setupSocket(httpServer: HttpServer) {
         socketRoomMap.set(socket.id, room.id);
 
         const updatedPlayers = await storage.getRoomPlayers(room.id);
+        trackEvent("room.joined", userId, {
+          playerCount: updatedPlayers.length,
+          gameMode: room.gameMode,
+        });
         io.to(room.id).emit("room:state", roomStatePayload(room, updatedPlayers));
       },
       { limit: 10, windowMs: 60_000 }
@@ -728,6 +736,9 @@ export function setupSocket(httpServer: HttpServer) {
         }
 
         const isNewRound = gameState.lastPlayedCombination === null;
+        // Read before the engine sets it, so the transition is observable once
+        // rather than on every play after it.
+        const wasFirstPlay = !gameState.firstPlayMade;
 
         if (!gameState.firstPlayMade && gameState.startCard) {
           const startCardId = gameState.startCard.id;
@@ -769,6 +780,13 @@ export function setupSocket(httpServer: HttpServer) {
 
         broadcastGameState(io, game);
         persistGameState(roomId, game);
+
+        if (wasFirstPlay && newState.firstPlayMade) {
+          trackEvent("game.firstMoveMade", userId, {
+            playerCount: newState.players.length,
+            gameMode: newState.gameMode,
+          });
+        }
 
         if (newState.gameOver) {
           await handleGameOver(io, roomId, game, gameOverWriters);
@@ -1234,6 +1252,12 @@ export function setupSocket(httpServer: HttpServer) {
             });
             return;
           }
+
+          // Distinct from losing: the hand was still running when they went.
+          trackEvent("game.abandoned", userId, {
+            playerCount: game.gameState.players.length,
+            gameMode: game.gameState.gameMode,
+          });
 
           const graceSeconds = Math.round(DISCONNECT_GRACE_MS / 1000);
           io.to(currentRoomId).emit("game:player_disconnected", {

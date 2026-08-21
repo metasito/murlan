@@ -10,6 +10,7 @@
 // gets slower the more the game is used is a dashboard that stops being opened.
 import { sql } from "drizzle-orm";
 import { db } from "./db.ts";
+import { funnel, type FunnelStep } from "./events.ts";
 
 /** How far back the time series look. One screen, not an analytics product. */
 export const WINDOW_DAYS = 30;
@@ -36,6 +37,7 @@ export interface AdminSnapshot {
   unfinished: { status: string; n: number }[];
   staleGames: number;
   crashesThisWeek: number;
+  funnel: FunnelStep[];
 }
 
 /** 1. Signups over time — users.created_at, one row per day in the window. */
@@ -201,6 +203,7 @@ export async function adminSnapshot(provisionalGames: number): Promise<AdminSnap
     unfinishedRows,
     stale,
     crashes,
+    funnelRows,
   ] = await Promise.all([
     signups(),
     totalUsers(),
@@ -215,6 +218,7 @@ export async function adminSnapshot(provisionalGames: number): Promise<AdminSnap
     unfinished(),
     staleGames(),
     crashesThisWeek(),
+    funnel(WINDOW_DAYS),
   ]);
 
   return {
@@ -232,5 +236,6 @@ export async function adminSnapshot(provisionalGames: number): Promise<AdminSnap
     unfinished: unfinishedRows,
     staleGames: stale,
     crashesThisWeek: crashes,
+    funnel: funnelRows,
   };
 }
