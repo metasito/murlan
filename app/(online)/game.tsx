@@ -177,7 +177,7 @@ export default function OnlineGameScreen() {
 
   // Reaches every card in the hand as `onPress`, through GameTable's own
   // handleCardPress. A fresh arrow per render would change that reference on
-  // every `game:state` and rebuild all 14-27 cards.
+  // every `game:state` and rebuild all 14-21 cards.
   const toggleCard = useCallback(
     (id: string) =>
       setSelectedIds((prev) =>

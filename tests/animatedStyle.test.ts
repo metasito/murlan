@@ -7,7 +7,7 @@
 // `box-shadow` string, a shadow radius or a border colour is not — each one
 // invalidates paint, every frame, for as long as the loop runs. The turn pulse
 // runs continuously for the whole of the player's turn, on the container
-// holding all 14-27 cards of the hand, which is where that costs the most.
+// holding all 14-21 cards of the hand, which is where that costs the most.
 //
 // The technique that keeps them off the animation is a textless, childless
 // sibling carrying the glow as a static token, with only its opacity animated

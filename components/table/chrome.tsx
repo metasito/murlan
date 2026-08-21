@@ -14,6 +14,7 @@ import { Colors, FontSize, Motion, Radius, Scrim, Shadow, Spacing, Type } from "
 import { usePrefersReducedMotion } from "@/lib/accessibility";
 import { useTranslation } from "@/lib/i18n";
 import type { StartReason } from "@/lib/gameEngine";
+import { getCardDisplayRank, getSuitSymbol } from "@/lib/gameEngine";
 import { SIDE_SECTION_W } from "@/components/gameTableModel";
 
 // ─── Table vignette ───────────────────────────────────────────────────────────
@@ -89,8 +90,13 @@ export function StartReasonBanner({
   let subText = "";
 
   if (reason.type === "start_card" && reason.card) {
-    mainText = t("gameShared.startReasonCard", { name: playerName, rank: reason.card.rank });
-    if (reason.card.rank !== "3") subText = t("gameShared.startReasonCardSub");
+    mainText = t("gameShared.startReasonCard", {
+      name: playerName,
+      rank: getCardDisplayRank(reason.card.rank),
+      suit: getSuitSymbol(reason.card.suit),
+    });
+    const isThreeOfSpades = reason.card.rank === "3" && reason.card.suit === "spades";
+    if (!isThreeOfSpades) subText = t("gameShared.startReasonCardSub");
   } else if (reason.type === "lost_round") {
     mainText = t("gameShared.startReasonLostRound", { name: playerName });
   } else if (reason.type === "won_no_swap") {

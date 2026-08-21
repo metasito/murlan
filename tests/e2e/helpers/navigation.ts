@@ -1,19 +1,36 @@
 // Navigation through the menu chrome that every scenario has to cross before
-// a game exists: the first-launch tutorial prompt, the home screen, the
-// offline lobby, and (for online scenarios) registration.
+// a game exists: the home screen, the offline lobby, and (for online
+// scenarios) registration.
 
 import type { Page } from "@playwright/test";
 
-async function dismissTutorialPromptIfShown(page: Page): Promise<void> {
-  const skip = page.getByRole("button", { name: "Salta" });
-  if (await skip.count()) await skip.click();
-}
+// `lib/tutorialSeen.ts`'s SEEN_KEY. AsyncStorage on web writes straight to
+// localStorage with the key unprefixed, so seeding it here is the same write
+// the app itself makes. tests/tutorialSeenKey.test.ts pins the two together.
+const TUTORIAL_SEEN_KEY = "@murlan_tutorial_seen";
 
-/** Loads the app fresh and clears the one-time tutorial prompt. */
+/**
+ * Loads the app on a device that has already been offered the tutorial, and
+ * returns once the home screen is interactive.
+ *
+ * The title screen decides whether to push `/tutorial` asynchronously: auth
+ * has to settle, then a storage read resolves, then `router.push` runs. That
+ * decision can land *after* the home screen has rendered, so a caller that
+ * clicks straight away has the screen navigated out from under it and then
+ * waits out its whole timeout on a button that no longer exists — which is why
+ * every recorded failure was a home-screen click, and why they burned the full
+ * timeout rather than arriving late. Seeding the answer the decision reads
+ * removes the race instead of racing it faster.
+ */
 export async function openApp(page: Page, baseURL: string): Promise<void> {
+  await page.addInitScript((key: string) => {
+    window.localStorage.setItem(key, "1");
+  }, TUTORIAL_SEEN_KEY);
   await page.goto(baseURL);
-  await page.waitForLoadState("networkidle");
-  await dismissTutorialPromptIfShown(page);
+  // `networkidle` is the bundle arriving, not the app being interactive. The
+  // offline row is the one home entry rendered unconditionally — the resume
+  // row above it appears only with a saved game.
+  await page.getByRole("button", { name: "Offline" }).waitFor({ state: "visible" });
 }
 
 export type LobbyMode = "ai" | "local";

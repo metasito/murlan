@@ -19,6 +19,26 @@ function peekWebCtx(): AudioContext | null {
   return Platform.OS === "web" ? _webCtx : null;
 }
 
+/**
+ * The one AudioContext, for lib/music.ts. A second one would be a second output
+ * device as far as iOS is concerned, and only the one built inside the gesture
+ * is allowed to make sound.
+ */
+export function sharedWebCtx(): AudioContext | null {
+  return peekWebCtx();
+}
+
+/**
+ * Music asked for before the first gesture cannot start until there is one.
+ * These fire on every unlock, not just the first: Safari's `interrupted` state
+ * arrives at any time and the next tap is what recovers it.
+ */
+const unlockListeners = new Set<() => void>();
+export function onWebAudioUnlocked(fn: () => void): () => void {
+  unlockListeners.add(fn);
+  return () => unlockListeners.delete(fn);
+}
+
 function buildWebCtx(): AudioContext | null {
   if (Platform.OS !== "web") return null;
   try {
@@ -58,6 +78,11 @@ function unlockWebAudio(): void {
   if (!ctx) return;
   if (ctx.state !== "running") void ctx.resume();
   void decodeWebAssets(ctx);
+  for (const fn of unlockListeners) {
+    try {
+      fn();
+    } catch {}
+  }
 }
 
 export function bindWebAudioUnlock(): void {
