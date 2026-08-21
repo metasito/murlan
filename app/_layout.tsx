@@ -1,5 +1,5 @@
 import { QueryClientProvider } from "@tanstack/react-query";
-import { Stack } from "expo-router";
+import { Stack, usePathname } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
 import React, { useEffect } from "react";
 import { View } from "react-native";
@@ -18,11 +18,17 @@ import { initLocale } from "@/lib/i18n";
 import { useFonts } from "expo-font";
 import { APP_FONTS } from "@/lib/fonts";
 import { bindWebAudioUnlock } from "@/lib/sounds";
+import { installGlobalErrorHandlers, setCurrentScreen } from "@/lib/errorReporting";
 
 SplashScreen.preventAutoHideAsync();
 
 function RootLayoutNav() {
   const { notification, dismissNotification } = useNotification();
+  const pathname = usePathname();
+
+  // The reporter is a plain module, so the route reaches it by being pushed
+  // rather than read — a crash in a timer has no hook to call.
+  useEffect(() => setCurrentScreen(pathname), [pathname]);
 
   return (
     <View style={{ flex: 1 }}>
@@ -54,6 +60,10 @@ export default function RootLayout() {
   // catch. Here rather than on the game screen so the tap that opens a menu
   // already counts.
   useEffect(bindWebAudioUnlock, []);
+
+  // A React error boundary sees render, lifecycle and commit errors and nothing
+  // else. Rejected promises, socket callbacks and timers throw past it.
+  useEffect(installGlobalErrorHandlers, []);
 
   useEffect(() => {
     if ((fontsLoaded || fontError) && localeReady) {

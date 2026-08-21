@@ -16,6 +16,7 @@ import { ErrorBoundary } from '@/components/ErrorBoundary';
 import { ErrorFallback } from '@/components/ErrorFallback';
 import { SettingsProvider } from '@/context/SettingsContext';
 import { t } from '@/lib/i18n';
+import { resetErrorReportingForTests } from '@/lib/errorReporting';
 
 // SettingsProvider reaches expo-audio through lib/sounds; the native module has
 // no JS fallback under Jest.
@@ -44,8 +45,12 @@ function Thrower(): React.ReactElement {
 // A caught render error is reported through console.error by React and by
 // ErrorBoundary itself. Silencing it keeps a passing run readable.
 const consoleError = jest.spyOn(console, 'error').mockImplementation(() => {});
+// The reporter deduplicates for ten seconds, and both cases below throw the
+// same message from the same line — so without this the second render is
+// correctly suppressed and reads as a broken test.
 beforeEach(() => {
   apiRequest.mockClear();
+  resetErrorReportingForTests();
 });
 afterAll(() => {
   consoleError.mockRestore();
@@ -102,7 +107,12 @@ describe('the root boundary renders its fallback', () => {
     expect(apiRequest).toHaveBeenCalledWith(
       'POST',
       '/api/client-errors',
-      expect.objectContaining({ message: 'boom' })
+      expect.objectContaining({
+        message: 'boom',
+        // The boundary is the only caller that has one, and #165's point is
+        // that it now travels with the report.
+        componentStack: expect.any(String),
+      })
     );
 
     await view.unmount();

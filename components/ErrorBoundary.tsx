@@ -1,5 +1,6 @@
 import React, { Component, ComponentType, PropsWithChildren } from "react";
 import { ErrorFallback, ErrorFallbackProps } from "@/components/ErrorFallback";
+import { reportError } from "@/lib/errorReporting";
 
 export type ErrorBoundaryProps = PropsWithChildren<{
   FallbackComponent?: ComponentType<ErrorFallbackProps>;
@@ -41,6 +42,10 @@ export class ErrorBoundary extends Component<
       "\nComponent stack:",
       info.componentStack
     );
+    // Reported from here rather than the fallback because this is the only
+    // place that has the component stack. Deduplicated against the global
+    // handlers, which see the same Error object first.
+    reportError(error, info.componentStack);
     if (typeof this.props.onError === "function") {
       this.props.onError(error, info.componentStack);
     }

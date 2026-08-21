@@ -1,4 +1,4 @@
-import React, { useContext, useEffect, useRef, useState } from "react";
+import React, { useContext, useState } from "react";
 import { reloadAppAsync } from "expo";
 import {
   StyleSheet,
@@ -15,7 +15,6 @@ import Feather from "@expo/vector-icons/Feather";
 import { Colors, Spacing, Radius, FontSize, Shadow } from "@/lib/theme";
 import { MenuButton } from "@/components/MenuButton";
 import { useTranslation } from "@/lib/i18n";
-import { apiRequest } from "@/lib/query-client";
 
 export type ErrorFallbackProps = {
   error: Error;
@@ -32,22 +31,6 @@ export function ErrorFallback({ error, resetError }: ErrorFallbackProps) {
   const { t } = useTranslation();
   const [isModalVisible, setIsModalVisible] = useState(false);
   const [restarting, setRestarting] = useState(false);
-  const reportedRef = useRef<Error | null>(null);
-
-  // Report the crash to the server's own log. Fire-and-forget by design: the
-  // player is already looking at the error screen, and a failed report — no
-  // session, no network, the very outage that caused the crash — must not
-  // produce a second error on top of the first.
-  useEffect(() => {
-    if (reportedRef.current === error) return;
-    reportedRef.current = error;
-    apiRequest("POST", "/api/client-errors", {
-      message: String(error.message ?? "unknown").slice(0, 500),
-      stack: error.stack?.slice(0, 4000),
-      platform: Platform.OS,
-    }).catch(() => {});
-  }, [error]);
-
   const handleRestart = async () => {
     setRestarting(true);
     try {
