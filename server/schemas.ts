@@ -30,6 +30,7 @@ export const ClientErrorSchema = z.object({
   message: z.string().min(1).max(500),
   stack: z.string().max(4000).optional(),
   componentStack: z.string().max(4000).optional(),
+  screen: z.string().max(120).optional(),
   platform: z.enum(["ios", "android", "web"]).optional(),
   appVersion: z.string().max(40).optional(),
 });

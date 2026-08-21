@@ -103,6 +103,12 @@ const errorReportLimiter = rateLimit({
   max: 5,
   standardHeaders: true,
   legacyHeaders: false,
+  // Keyed by account, like the limiter above. The default key is the IP, and
+  // a whole shared network — an office, a carrier NAT — then shares five
+  // reports a minute: during the crash wave that makes reports worth having,
+  // one device silences every other. The route is requireAuth, so there is
+  // always a userId to key on. Compare #41, where login has no such option.
+  keyGenerator: (req: Request) => req.session?.userId ?? "anonymous",
   message: { error: "Too many requests, slow down.", code: "RATE_LIMITED" },
 });
 
@@ -534,6 +540,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         componentStack?: string;
         platform?: string;
         appVersion?: string;
+        screen?: string;
       };
       logger.error(
         { userId: req.session.userId, clientError: report },
@@ -547,9 +554,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
         userId: req.session.userId ?? null,
         message: report.message,
         stack: report.stack,
-        screen: report.componentStack,
+        // The route, not the component stack. That stack is a render-only
+        // detail and now rides in `context`, so `screen` means what it says
+        // for a rejected promise as much as for a caught render.
+        screen: report.screen,
         platform: report.platform,
         appVersion: report.appVersion,
+        context: report.componentStack ? { componentStack: report.componentStack } : {},
       }).catch((err) => logger.error({ err }, "Failed to store a client error report"));
       // Nothing to say back. The client is already showing its error screen and
       // must not depend on this having worked.
