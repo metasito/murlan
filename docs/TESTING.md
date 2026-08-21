@@ -280,22 +280,25 @@ maestro test .maestro/smoke.yaml
 maestro test .maestro/offline-game.yaml
 ```
 
-`npx expo start` must already be running. Both flows reach it at
-`exp://10.0.2.2:8081` — the Android emulator's standard alias for the host's
-loopback — so they need no per-machine edit locally.
-
-That alias does *not* hold everywhere: on the GitHub runner's emulator a
-request to it never reaches the dev server at all (Metro logs no request,
-while the same request to `127.0.0.1` from the host answers `200`), so
-`.github/workflows/maestro.yml` forwards the device's own loopback with
-`adb reverse` and passes the address in through the override below.
-
-That address is the flow's `MURLAN_PACKAGER_URL` default. A **physical device**
-has no such alias and needs the host's real LAN address:
+`npx expo start` must already be running, and the device needs a route to it:
 
 ```
-maestro test -e MURLAN_PACKAGER_URL=exp://<lan-ip>:8081 .maestro/smoke.yaml
+adb reverse tcp:8081 tcp:8081
 ```
+
+Both flows reach the dev server at `exp://127.0.0.1:8081` over that forward,
+which works on any emulator including a CI runner. `10.0.2.2`, the emulator's
+alias for the host loopback, was the default before and is not universal: on
+the GitHub runner's emulator a request to it never reaches the dev server at
+all — Metro logs no request over it, while the same request to `127.0.0.1`
+from the host answers `200`.
+
+**That address cannot be overridden from the command line.** `-e` is applied
+*before* a flow's own `env:` block, so the block wins and the flag is ignored
+without a word. A `maestro test -e MURLAN_PACKAGER_URL=...` invocation looks
+like it works and does not; check `commands.json` in the debug output, which
+records both assignments in the order they were applied. For a physical
+device, edit the `env:` key in the flow.
 
 Both flows previously hardcoded one machine's LAN IP, which had since changed —
 so they could not run even on the machine they were written on, let alone

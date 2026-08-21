@@ -199,13 +199,12 @@ jobs:
             echo
             head -c 1200 "$RUNNER_TEMP/manifest.out"
             echo
-            # 10.0.2.2, the flows' own default, does not reach the dev server
-            # from this emulator: over that address Metro's log records no
-            # request at all, and the same run's device log has Expo Go failing
-            # the fetch. Forwarding the device's own loopback gets there, and
-            # the same log then shows the request arriving. The address reaches
-            # the flows through the override they already document for devices
-            # with no host alias, so neither flow changes.
+            # The flows reach the dev server over this forward, on 127.0.0.1.
+            # They do not take an address from the command line: `-e` is applied
+            # before a flow's own `env:` block, so the flag loses to it silently
+            # and every run went to 10.0.2.2 regardless of what was passed here.
+            # That address does not reach the dev server from this emulator -
+            # Metro's log records no request at all over it.
             # The flows select on Italian copy, the same way
             # tests/e2e/playwright.config.ts pins locale: "it-IT" and for the
             # same reason. A runner's emulator comes up en-US, so the app
@@ -214,7 +213,7 @@ jobs:
             # to set the property, and Maestro cannot attach through a root
             # adbd, so this drops back down before the flows run.
             adb reverse tcp:8081 tcp:8081
-            maestro test -e MURLAN_PACKAGER_URL=exp://127.0.0.1:8081 .maestro/
+            maestro test .maestro/
 
       # Recordings, logs and screenshots from a failed flow are the only way to
       # tell a real regression from an emulator that fell over. Metro's own log
