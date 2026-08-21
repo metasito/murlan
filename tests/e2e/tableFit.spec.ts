@@ -9,6 +9,7 @@
 // real browser here, next to the tap-target sweep for the same reason.
 import { test, expect, type Page } from "@playwright/test";
 import { openApp, startOfflineGame } from "./helpers/navigation";
+import { openSeededGame } from "./helpers/offlineSeed";
 
 const VIEWPORTS = [
   { name: "small phone landscape", width: 667, height: 375 },
@@ -26,9 +27,10 @@ test.describe("the table fits the screen", () => {
       test(`${vp.name}, ${playerCount} players`, async ({ page, baseURL }) => {
         test.setTimeout(90_000);
         await page.setViewportSize({ width: vp.width, height: vp.height });
-        await openApp(page, baseURL!);
-        await startOfflineGame(page, { playerCount, gameMode: "free_for_all" });
-        await page.locator('[data-testid="game-table"]').waitFor({ timeout: 60_000 });
+        // Seeded rather than played through the lobby: this measures a laid-out
+        // table, and four clicks and a deal animation are not part of that. On
+        // a loaded runner they were the whole test budget (#152).
+        await openSeededGame(page, baseURL!, playerCount);
         await page.waitForTimeout(2_000);
 
         // Laid-out boxes only, and only ones nothing clips. An SVG's bounding
@@ -89,9 +91,7 @@ test.describe("the top seat's column", () => {
   test("fits the band the table reserves for it", async ({ page, baseURL }) => {
     test.setTimeout(120_000);
     await page.setViewportSize({ width: 844, height: 390 });
-    await openApp(page, baseURL!);
-    await startOfflineGame(page, { playerCount: 4, gameMode: "free_for_all" });
-    await page.locator('[data-testid="game-table"]').waitFor({ timeout: 60_000 });
+    await openSeededGame(page, baseURL!, 4);
 
     const band = await page.locator('[data-testid="table-top-section"]').boundingBox();
     const seat = await page.locator('[data-testid="top-seat"]').boundingBox();
