@@ -19,8 +19,23 @@ import { useFonts } from "expo-font";
 import { APP_FONTS } from "@/lib/fonts";
 import { bindWebAudioUnlock } from "@/lib/sounds";
 import { installGlobalErrorHandlers, setCurrentScreen } from "@/lib/errorReporting";
+import { playMusic, type MusicTrack } from "@/lib/music";
 
 SplashScreen.preventAutoHideAsync();
+
+/**
+ * Which loop belongs to a screen. All four are the same composition, so a
+ * change of screen is a change of arrangement rather than a change of music —
+ * which is the whole reason one composition was chosen over four (#163).
+ *
+ * The two game screens both resolve to /game: the `(online)` group is not part
+ * of the path, and an online hand should sound like an offline one anyway.
+ */
+function trackForRoute(pathname: string): MusicTrack {
+  if (pathname.startsWith("/result")) return "cue";
+  if (pathname.startsWith("/game")) return "hand";
+  return "menu";
+}
 
 function RootLayoutNav() {
   const { notification, dismissNotification } = useNotification();
@@ -29,6 +44,13 @@ function RootLayoutNav() {
   // The reporter is a plain module, so the route reaches it by being pushed
   // rather than read — a crash in a timer has no hook to call.
   useEffect(() => setCurrentScreen(pathname), [pathname]);
+
+  // Requested on every route, started whenever a gesture has unlocked audio.
+  // playMusic is a no-op when the track is already the one playing, so this
+  // does not restart the loop on an unrelated re-render.
+  useEffect(() => {
+    void playMusic(trackForRoute(pathname));
+  }, [pathname]);
 
   return (
     <View style={{ flex: 1 }}>

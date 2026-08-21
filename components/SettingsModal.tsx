@@ -137,12 +137,16 @@ export function SettingsModal({ visible, onClose }: Props) {
   const {
     soundsEnabled,
     soundVolume,
+    musicEnabled,
+    musicVolume,
     hapticsEnabled,
     motion,
     cardBack,
     tableFelt,
     setSoundsEnabled,
     setSoundVolume,
+    setMusicEnabled,
+    setMusicVolume,
     setHapticsEnabled,
     setMotion,
     setCardBack,
@@ -268,6 +272,39 @@ export function SettingsModal({ visible, onClose }: Props) {
                 onSelect={setSoundVolume}
                 a11yLabel={t("settings.volumeA11yLabel")}
                 disabled={!soundsEnabled}
+              />
+            </View>
+
+            <View style={styles.row}>
+              <View style={styles.rowLeft}>
+                <Text style={styles.icon}>🎵</Text>
+                <View>
+                  <Text style={styles.label}>{t("settings.music")}</Text>
+                  <Text style={styles.sublabel}>{t("settings.musicSubtitle")}</Text>
+                </View>
+              </View>
+              <Toggle
+                value={musicEnabled}
+                onValueChange={setMusicEnabled}
+                a11yLabel={t("settings.musicA11yLabel")}
+                a11yHint={t("settings.musicA11yHint")}
+              />
+            </View>
+
+            <View style={styles.stackRow}>
+              <View style={styles.rowLeft}>
+                <Text style={styles.icon}>🎚️</Text>
+                <View style={styles.rowLabels}>
+                  <Text style={styles.label}>{t("settings.musicVolume")}</Text>
+                  <Text style={styles.sublabel}>{t("settings.musicVolumeSubtitle")}</Text>
+                </View>
+              </View>
+              <Segmented
+                segments={VOLUME_LEVELS.map((v) => ({ value: v, label: t(VOLUME_LABELS[v]) }))}
+                selected={nearestVolume(musicVolume)}
+                onSelect={setMusicVolume}
+                a11yLabel={t("settings.musicVolumeA11yLabel")}
+                disabled={!musicEnabled}
               />
             </View>
 
