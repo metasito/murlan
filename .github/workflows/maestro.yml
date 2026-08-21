@@ -68,6 +68,33 @@ jobs:
           cat "$RUNNER_TEMP/metro.log"
           exit 1
 
+      # The flows drive Expo Go (`appId: host.exp.exponent`), which a stock
+      # google_apis system image does not carry. Locally `expo start --android`
+      # installs it on first connect (docs/TESTING.md §5); nothing on a runner
+      # does, so the emulator boots fine and every flow fails on "Package
+      # host.exp.exponent is not installed".
+      #
+      # Resolved from the SDK this project pins rather than hardcoded: Expo Go
+      # carries one SDK at a time, so the newest client is the wrong one the
+      # moment it moves ahead of us.
+      - name: Fetch the Expo Go client for this project's SDK
+        run: |
+          url=$(curl -sf https://api.expo.dev/v2/versions/latest | node -e '
+            let s = "";
+            process.stdin.on("data", (d) => (s += d)).on("end", () => {
+              const major = require("./package.json").dependencies.expo.replace(/^\D*/, "").split(".")[0];
+              const sdk = `${major}.0.0`;
+              const url = JSON.parse(s).data.sdkVersions?.[sdk]?.androidClientUrl;
+              if (!url) {
+                console.error(`::error::No Expo Go Android client published for SDK ${sdk}.`);
+                process.exit(1);
+              }
+              process.stdout.write(url);
+            });
+          ')
+          echo "Expo Go client: $url"
+          curl -Lsf -o "$RUNNER_TEMP/expo-go.apk" "$url"
+
       - name: Install Maestro
         run: |
           curl -Ls "https://get.maestro.mobile.dev" | bash
@@ -89,7 +116,9 @@ jobs:
           # try if the runner turns out to have the same trouble holding the
           # animated table that the local emulator does.
           disable-animations: false
-          script: maestro test .maestro/
+          script: |
+            adb install -r "$RUNNER_TEMP/expo-go.apk"
+            maestro test .maestro/
 
       # Recordings, logs and screenshots from a failed flow are the only way to
       # tell a real regression from an emulator that fell over.
