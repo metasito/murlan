@@ -185,7 +185,7 @@ export function StraightHand({
   const { t } = useTranslation();
   const n = cards.length;
   // O(1) membership check per card instead of `selectedIds.includes(card.id)`
-  // (an O(k) scan repeated for every one of the up to 27 cards in a hand).
+  // (an O(k) scan repeated for every one of the up to 21 cards in a hand).
   // Computed before the early return below — Rules of Hooks requires every
   // hook to run unconditionally on every render of this component.
   const selectedSet = useMemo(() => new Set(selectedIds), [selectedIds]);
@@ -238,7 +238,7 @@ export function StraightHand({
       >
         {scrollable ? (
           // Too many cards to keep the readable minimum step inside availW
-          // (e.g. a 27-card hand on a narrow device). Scroll instead of
+          // (e.g. a 21-card hand on a narrow device). Scroll instead of
           // clipping or shrinking the step past legibility. HAND_LIFT_HEADROOM
           // reproduces the same top clearance the fixed-height, non-scrolling
           // path gets for free from HAND_SECTION_H (CARD_H + 16) being taller

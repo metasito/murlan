@@ -238,15 +238,18 @@ export function shuffleDeck(deck: Card[]): Card[] {
 }
 
 /**
- * Deals the ENTIRE 54-card deck, one card at a time, round-robin from
- * `firstSeat`. 4 players = 14/14/13/13, 3 players = 18 each, 2 players = 27
- * each — and the two extra cards land on `firstSeat` and the seat after it,
- * so rotating it between manches is what stops the same seats holding the
- * bigger hand for the whole match (docs/RULES.md §3, the dealer's rotation).
- * Nothing is excluded — the 3♠ and both Jokers are always in play.
+ * Deals cards one at a time, round-robin from `firstSeat`. 4 players =
+ * 14/14/13/13, 3 players = 18 each — the whole deck, so the 3♠ and both
+ * Jokers are always in play. The two extra cards at 4 players land on
+ * `firstSeat` and the seat after it, so rotating it between manches is what
+ * stops the same seats holding the bigger hand for the whole match
+ * (docs/RULES.md §3, the dealer's rotation).
  *
- * `excluded` is kept in the return type for backward compatibility with
- * existing callers and is now always empty.
+ * 2 players is the one seat count that does NOT deal the whole deck: dealing
+ * everything leaves each player able to deduce the other's exact hand by
+ * elimination, so 21 cards go to each (42 of 54) and the remaining 12 are
+ * left face down and unused for the manche (docs/RULES.md §3, decided in
+ * `docs/BRIEF.md` §3.1 after docs/research/card-dealing-variable-player-count.md).
  */
 export function dealCards(
   playerCount: number,
@@ -256,10 +259,13 @@ export function dealCards(
   const deck = shuffleDeck(createDeck());
   const hands: Card[][] = Array.from({ length: playerCount }, () => []);
   const start = ((firstSeat % playerCount) + playerCount) % playerCount;
-  for (let i = 0; i < deck.length; i++) {
+
+  const handSize = playerCount === 2 ? 21 : Math.ceil(deck.length / playerCount);
+  const dealt = Math.min(deck.length, handSize * playerCount);
+  for (let i = 0; i < dealt; i++) {
     hands[(start + i) % playerCount].push(deck[i]);
   }
-  return { hands, excluded: [] };
+  return { hands, excluded: deck.slice(dealt) };
 }
 
 export function sortHand(hand: Card[]): Card[] {
@@ -273,10 +279,13 @@ export function sortHand(hand: Card[]): Card[] {
 
 /**
  * The holder of the 3♠ opens the first hand and must include it in the play.
- * The whole deck is dealt, so the 3♠ is always in somebody's hand.
+ * At 3 and 4 players the whole deck is dealt, so the 3♠ is always in
+ * somebody's hand. At 2 players it can land in the undealt pile (§ dealCards)
+ * — the "lowest card held by anyone" fallback below is what actually opens
+ * those hands, not just a defensive backstop.
  *
- * The fallbacks below exist only so that a malformed/partial deal can never
- * crash: lowest card held by anyone, then a synthesised 3♠.
+ * The synthesised-3♠ fallback below it exists only so a fully empty deal can
+ * never crash.
  */
 export function findStartingPlayer(
   players: Player[]
@@ -505,7 +514,7 @@ function bucketByStraightValue(cards: Card[]): Map<number, Card[]> {
  * fill, yielded as the list of candidate cards per position.
  *
  * At most 14 starts x 9 lengths = 126 windows, so this stays far below a
- * millisecond even for a 27-card two-player hand.
+ * millisecond even for a 21-card two-player hand.
  */
 function* enumerateStraightWindows(cards: Card[]): Generator<Card[][]> {
   const byValue = bucketByStraightValue(cards);

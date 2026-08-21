@@ -36,14 +36,16 @@ Where Tier 1 and Tier 2 disagree, this spec follows Tier 1 and records the disag
 - **4 players (the canonical and only traditionally-documented format):** the **entire 54-card deck is dealt out**, one card at a time, face down. 54 / 4 does not divide evenly, so **two players receive 14 cards and two receive 13**. catsatcards: *"He deals the cards one-at-a time and face-down to each player, continuing until the entire deck has been dealt out."* visixplay: *"Si mischiano e si distribuiscono tutte ai vari giocatori"* ("they are shuffled and **all** dealt to the players"). MWM's Murlan listing likewise says *"each player being dealt 13 or 14 cards."*
 - **No cards are excluded from play in the 4-player game.** Every source that addresses dealing says the whole deck goes out.
 - Dealer shuffles, the player to the dealer's **right** cuts, and the dealer deals **clockwise starting with the player to his left**.
-- **2 players and 3 players:** *no source specifies a deal.* The traditional game is 4-handed. Tier-2 apps that offer 2-player mode do not publish the deal. **Ambiguity** — resolved by the implementation choice recorded in `docs/BRIEF.md` §3.1.
+- **3 players:** *no source specifies a deal.* The traditional game is 4-handed. **Ambiguity** — resolved by the implementation choice recorded in `docs/BRIEF.md` §3.1: the whole 54-card deck is dealt, 18 each, matching the 4-player precedent of nothing excluded.
+- **2 players:** *no source specifies a deal either*, but dealing the whole deck lets each player deduce the other's exact hand by elimination — the family's own diagnosis of this exact problem (Tien Len, on pagat.com: *"if all the cards were dealt the players would be able to work out each other's hands, which would spoil the game"*). **Ambiguity** — resolved by the implementation choice recorded in `docs/BRIEF.md` §3.1: **21 cards are dealt to each player (42 of 54), and the remaining 12 are left face down and unused for the manche.** Unlike every other seat count, the 3♠ is therefore not guaranteed to be dealt — see §4.
 
 ## 4. Who opens the first hand
 
 - **The holder of the 3♠ (three of spades) leads the very first hand of a session**, and **the opening play must contain the 3♠**. It may be the 3♠ alone or any legal combination that includes it (pair of 3s including 3♠, a straight starting 3♠-4-5-6-7, etc.).
 - visixplay (EN): *"The game starts (first hand) by who has the 3 of spades (forced to throw the 3 of spades also combined)."*
 - catsatcards: *"the player who has the three of spades in hand plays first, and must include this card in the play."*
-- Because the full deck is dealt, **the 3♠ is always in somebody's hand** — no "lowest spade" fallback exists in the traditional rules. (MWM's app adds *"If that does not exist then a random player starts"*, which only arises in implementations that do not deal the whole deck.)
+- At **3 and 4 players** the full deck is dealt, so **the 3♠ is always in somebody's hand** — no fallback is needed there.
+- At **2 players** the 3♠ can end up in the 12 undealt cards (§3). When that happens, **the holder of the lowest dealt card opens instead** — the same fix Big Two and Tien Len use for their own stripped two-player deals. (MWM's app adds *"If that does not exist then a random player starts"*, a weaker version of the same idea.)
 - **This rule applies only to the first hand of a session.** Subsequent hands are opened per §10.
 
 ## 5. Valid combinations

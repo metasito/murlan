@@ -275,7 +275,7 @@ export interface GameTableProps {
 // ─── Turn countdown ───────────────────────────────────────────────────────────
 //
 // Its own component so the once-a-second tick re-renders a single <TableText> and
-// not the whole board — which, with hands of up to 27 cards, matters.
+// not the whole board — which, with hands of up to 21 cards, matters.
 
 function TurnTimer({
   seconds,

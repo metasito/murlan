@@ -201,13 +201,13 @@ describe("enumeration completeness", () => {
     );
   });
 
-  test("enumeration of a full 27-card two-player hand is fast", () => {
+  test("enumeration of a full 21-card two-player hand is fast", () => {
     const suits = ["hearts", "clubs", "spades", "diamonds"] as const;
     const ranks = ["3", "4", "5", "6", "7", "8", "9", "10", "J", "Q", "K", "A", "2"] as const;
     const hand: Card[] = [];
     for (const rank of ranks) {
       for (const suit of suits) {
-        if (hand.length < 27) hand.push(c(rank, suit));
+        if (hand.length < 21) hand.push(c(rank, suit));
       }
     }
     const started = process.hrtime.bigint();
