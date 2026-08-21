@@ -10,6 +10,10 @@ const BASE_URL = `http://127.0.0.1:${PORT}`;
 // database. Run explicitly via `npm run test:e2e`.
 export default defineConfig({
   testDir: __dirname,
+  // Recorded by `npm run perf:web` through playwright.perf.config.ts, never
+  // here: frame timing on a shared runner is noisy, and a perf check that
+  // goes red at random gets disabled and then lies (#118).
+  testIgnore: /webPerf\.spec\.ts$/,
   outputDir: "test-results",
   // A default backstop only — every test sets its own budget explicitly
   // (larger player counts and multi-hand matches need more), since a real
