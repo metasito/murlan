@@ -2,24 +2,15 @@ const { defineConfig } = require('eslint/config');
 const expoConfig = require('eslint-config-expo/flat');
 const globals = require('globals');
 
-// React Native renders an invalid colour as nothing at all — no warning, no
-// fallback, just an invisible element. Every rule below targets a way to
-// produce one that neither TypeScript nor a render test catches.
-const TOKEN_OBJECTS = 'Colors|Spacing|Radius|FontSize|Type|Motion|Scrim|Highlight|Shadow|FeltGradient|FeltGradients|CardBacks';
-
-// Every edge shorthand React Native accepts, built from the two prefixes and
-// the edge suffixes rather than enumerated.
-const SPACING_PROPS = '(padding|margin)(Top|Bottom|Left|Right|Start|End|Vertical|Horizontal|(Block|Inline)(Start|End)?)?|gap|rowGap|columnGap';
-const SCALED_PROPS = `fontSize|borderRadius|${SPACING_PROPS}`;
-
-// `raw`, not `value`: esquery only regex-matches an attribute that is already a
-// string, so a numeric `value` matches nothing at all and the rule reports
-// green. `-8` parses as a UnaryExpression over the literal, hence the second
-// selector — one alone leaves half the scale unguarded.
-const BARE_NUMBER = 'Literal[raw=/^[1-9][0-9.]*$/]';
-const SCALED_LITERAL =
-  `Property[key.name=/^(${SCALED_PROPS})$/] > ${BARE_NUMBER}, ` +
-  `Property[key.name=/^(${SCALED_PROPS})$/] > UnaryExpression > ${BARE_NUMBER}`;
+// The selectors live in eslint.selectors.cjs so tests/spacingLint can assert
+// against the string this actually runs, rather than a copy of it.
+const {
+  SCALED_LITERAL,
+  TOKEN_AS_STRING,
+  TOKEN_AS_TEMPLATE,
+  STRING_TOKEN_MESSAGE,
+  SCALED_LITERAL_MESSAGE,
+} = require('./eslint.selectors.cjs');
 
 module.exports = defineConfig([
   expoConfig,
@@ -51,14 +42,12 @@ module.exports = defineConfig([
         {
           // `color: "Colors.success"` type-checks (any string is a valid
           // colour) and renders as nothing. The quotes are the whole bug.
-          selector: `Literal[value=/^(${TOKEN_OBJECTS})\\.[A-Za-z0-9_]+$/]`,
-          message:
-            "This is a design token written as a string, so it resolves to no colour at all. Drop the quotes and reference the token directly.",
+          selector: TOKEN_AS_STRING,
+          message: STRING_TOKEN_MESSAGE,
         },
         {
-          selector: `TemplateElement[value.raw=/^(${TOKEN_OBJECTS})\\.[A-Za-z0-9_]+$/]`,
-          message:
-            "This is a design token written as a string, so it resolves to no colour at all. Drop the quotes and reference the token directly.",
+          selector: TOKEN_AS_TEMPLATE,
+          message: STRING_TOKEN_MESSAGE,
         },
         {
           // FontSize, Radius and Spacing are the numeric scales the app is
@@ -66,8 +55,7 @@ module.exports = defineConfig([
           // tests/tokenRoles can see a bare number, which is how one screen
           // came to ship five corner radii for one role.
           selector: SCALED_LITERAL,
-          message:
-            "Use a FontSize, Radius or Spacing token. A one-off that fits no step may be a named module constant, but not a bare number in a style object.",
+          message: SCALED_LITERAL_MESSAGE,
         },
       ],
     },
