@@ -1,12 +1,15 @@
 name: Android UI (Maestro)
 
-# Runs on main, and on demand.
+# On demand only.
 #
-# `push` is limited to main the same way ci.yml limits its own, and for a
-# blunter reason: offline-game.yaml plays a real hand through the engine and
-# takes about a quarter of an hour on a runner. Billing that to every branch
-# push would cost several times what it catches, so a regression is caught
-# where it lands rather than where it is written.
+# Not because the job does not work - it does, and smoke.yaml passes on a
+# runner - but because the emulator underneath it does not boot reliably
+# (#186). Three runs ended on "Timeout waiting for emulator to boot", one of
+# them on stock settings, on a commit that had passed minutes earlier. On a
+# `push` trigger each of those is a red main for a reason nobody can act on,
+# which is the exact thing this trigger has always existed to prevent.
+#
+# Turn it back on by restoring `push: branches: [main]` once #186 is settled.
 #
 # Everything a developer's own machine supplies by hand, this supplies
 # explicitly, because the first runs of this job found each one missing in
@@ -14,16 +17,13 @@ name: Android UI (Maestro)
 # the dev server on 10.0.2.2, and a dev server serving an EAS-linked project
 # will not hand out a signed manifest without an Expo account.
 on:
-  push:
-    branches: [main]
   workflow_dispatch:
 
 concurrency:
   group: maestro-${{ github.ref }}
-  # Superseding a branch run saves runner time; superseding main's destroys the
-  # only evidence that merged code was ever driven on a device, and the docs
-  # commit that follows a merge would do exactly that. Same reasoning as
-  # ci.yml's own concurrency block.
+  # Kept off main: superseding a main run would destroy the only evidence that
+  # merged code was ever driven on a device. Matters again the moment the push
+  # trigger comes back.
   cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 jobs:
