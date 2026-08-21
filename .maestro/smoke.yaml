@@ -36,7 +36,10 @@ env:
 # subtitle, or the tutorial's welcome card on a first-ever launch).
 - extendedWaitUntil:
     visible: "IL GIOCO DI CARTE|GUIDA RAPIDA"
-    timeout: 60000
+    # A minute is what a developer's machine needs. A CI emulator is slower
+    # than that on a cold start, and running out of budget here reads
+    # identically to the app never loading at all.
+    timeout: 180000
 # On a fresh connection Expo Go shows a "this is the dev menu" tip
 # rendered *on top of* its real dev menu sheet (Reload / Go Home /
 # etc). Both layers have to go, and only in this order: "Continue"

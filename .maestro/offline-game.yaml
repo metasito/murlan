@@ -52,7 +52,10 @@ env:
 - openLink: "${MURLAN_PACKAGER_URL}"
 - extendedWaitUntil:
     visible: "IL GIOCO DI CARTE|GUIDA RAPIDA"
-    timeout: 60000
+    # A minute is what a developer's machine needs. A CI emulator is slower
+    # than that on a cold start, and running out of budget here reads
+    # identically to the app never loading at all.
+    timeout: 180000
 # Dev-menu / first-launch-tutorial dismissal — see smoke.yaml for why
 # the tip is tapped and only the sheet under it is dismissed with back.
 - runFlow:
