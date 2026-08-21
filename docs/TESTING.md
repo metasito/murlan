@@ -305,6 +305,15 @@ so they could not run even on the machine they were written on, let alone
 anywhere else. Verified both ways after the change: a cold start against the
 default passes, and the same flow against a wrong port fails.
 
+### What CI runs, and what it does not
+
+`.github/workflows/maestro.yml` runs **`smoke.yaml` only**, on pushes to `main`
+and on demand. `offline-game.yaml` reaches the game table on a runner and then
+dies there with no assertion message - the emulator going down, not the app
+being wrong, and the thing this section predicted before the job had ever run.
+More memory, more cores and a longer wait changed nothing. It still passes
+locally, a real hand to the result screen in about sixteen minutes. See #185.
+
 ### What CI supplies that a developer's machine supplies by hand
 
 The first time this job ran, each of these was missing in turn (#35), and each
