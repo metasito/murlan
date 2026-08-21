@@ -21,7 +21,13 @@ appId: host.exp.exponent
 env:
   MURLAN_PACKAGER_URL: exp://10.0.2.2:8081
 ---
-- launchApp
+- launchApp:
+    # Each flow has to start from the same place: run second and this one
+    # inherits whatever the first left behind - a saved game on the home
+    # screen, or Expo Go sitting on its own launcher with the deep link
+    # never taken - and asserts against a screen the app never rendered.
+    # Which flow runs first is not fixed, so both orders have to work.
+    clearState: true
 - openLink: "${MURLAN_PACKAGER_URL}"
 # Not "Murlan" alone: Expo Go's own native splash screen shows the app
 # name under the icon while the JS bundle is still loading, so a loose
@@ -33,16 +39,20 @@ env:
     timeout: 60000
 # On a fresh connection Expo Go shows a "this is the dev menu" tip
 # rendered *on top of* its real dev menu sheet (Reload / Go Home /
-# etc). Tapping the tip's own "Continue" button only dismisses the
-# tip — the sheet underneath stays open and silently swallows every
-# further tap (tapOn against it reports COMPLETED with no effect,
-# which cost real time to diagnose — see docs/TESTING.md). One
-# hardware back press dismisses both layers in a single step.
+# etc). Both layers have to go, and only in this order: "Continue"
+# dismisses the tip and *reveals* the sheet, then one back press closes
+# the sheet.
+#
+# A back press against the tip does not dismiss either layer — it
+# leaves the experience altogether and lands on Expo Go's own home
+# screen, where none of the app's copy exists and every assertion below
+# fails against a screen the app never rendered. A runner meets this on
+# every single run, because it installs Expo Go fresh each time.
 - runFlow:
     when:
       visible: "Continue"
     commands:
-      - back
+      - tapOn: "Continue"
 - runFlow:
     when:
       visible: "Reload"

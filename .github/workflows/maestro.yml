@@ -76,6 +76,33 @@ jobs:
           cat "$RUNNER_TEMP/metro.log"
           exit 1
 
+      # Metro bundles this app on demand, and the first request for it is the
+      # device's. That put a cold bundle of the whole app on a two-core runner
+      # inside the 60s the flows allow for the app to appear, with an emulator
+      # competing for the same cores. Asking for it here builds it while
+      # nothing else is running, so the device is served a cache hit.
+      - name: Build the bundle before the emulator competes for the CPU
+        run: |
+          curl -s -o "$RUNNER_TEMP/manifest.json" -H 'expo-platform: android' -H 'accept: multipart/mixed,application/expo+json,application/json' http://127.0.0.1:8081/
+          bundle=$(node -e '
+            const body = require("fs").readFileSync(process.env.RUNNER_TEMP + "/manifest.json", "utf8");
+            const json = body.slice(body.indexOf("{"), body.lastIndexOf("}") + 1);
+            let url;
+            try {
+              url = JSON.parse(json).launchAsset?.url;
+            } catch {
+              url = null;
+            }
+            if (!url) {
+              console.error("::error::No launchAsset in the dev server manifest.");
+              process.exit(1);
+            }
+            process.stdout.write(url);
+          ')
+          echo "Warming $bundle"
+          curl -sf -o /dev/null -w 'bundle: %{http_code} in %{time_total}s' "$bundle"
+          echo
+
       # The flows drive Expo Go (`appId: host.exp.exponent`), which a stock
       # google_apis system image does not carry. Locally `expo start --android`
       # installs it on first connect (docs/TESTING.md §5); nothing on a runner
@@ -117,6 +144,11 @@ jobs:
           target: google_apis
           arch: x86_64
           profile: pixel_6
+          # The defaults left the emulator throwing "System UI isn't
+          # responding" while Metro and the flows ran alongside it, and a run
+          # spent twenty minutes in ANR dialogs rather than in the app.
+          ram-size: 4096M
+          cores: 3
           emulator-options: -no-window -no-audio -no-boot-anim -gpu swiftshader_indirect -camera-back none
           # Left on: this layer exists precisely to drive real Reanimated
           # worklets on a real UI thread, and disabling the system animation
