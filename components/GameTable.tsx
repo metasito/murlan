@@ -59,6 +59,7 @@ import {
   EMPTY_PILE,
   handCountOf,
   impactDelayMs,
+  lightPosition,
   passedSeats,
   playButtonLabel,
   readExchange,
@@ -85,8 +86,8 @@ import {
   RailKnob,
   sharedTableStyles,
   StartReasonBanner,
-  TableVignette,
 } from "@/components/table/chrome";
+import { FeltPool } from "@/components/table/felt";
 import { StraightHand } from "@/components/table/hand";
 import { useTableFeedback } from "@/components/useTableFeedback";
 import { FlyingCards, PlayedPile, getComboLabel } from "@/components/table/pile";
@@ -106,7 +107,7 @@ import {
 } from "@/lib/sounds";
 import { hapticError, hapticLight, hapticMedium, hapticSelection } from "@/lib/haptics";
 import { usePrefersReducedMotion } from "@/lib/accessibility";
-import { Colors, FontSize, Highlight, Motion, Radius, Scrim, Shadow, Spacing, TOUCH_TARGET_MIN, Type } from "@/lib/theme";
+import { Colors, FontSize, Garnet, Highlight, Motion, Radius, Scrim, Shadow, Spacing, TOUCH_TARGET_MIN, Type } from "@/lib/theme";
 import { useTableFelt } from "@/lib/cosmetics";
 import { playMusic } from "@/lib/music";
 import { A11yStatus, a11yHidden, a11yState } from "@/lib/a11y";
@@ -561,8 +562,7 @@ function PassaButton({
       >
         <LinearGradient
           colors={pressed ? PASS_GRADIENT_PRESSED : PASS_GRADIENT}
-          start={{ x: 0, y: 0 }}
-          end={{ x: 0.35, y: 1 }}
+          locations={PASS_GRADIENT_LOCATIONS}
           style={StyleSheet.absoluteFill}
         />
         <View pointerEvents="none" style={styles.btnTopHighlight} />
@@ -731,6 +731,13 @@ export function GameTable({
   );
 
   const frame = computeTableFrame({ width: W, insets, scale });
+  // The felt box the lamp lives in. The pool is drawn oversized and slid under
+  // this box's own clipping, so it needs the box rather than the screen.
+  const feltW = W - frame.tableLeft - frame.tableRight;
+  const feltH = H - frame.tableTop - frame.tableBottom;
+  const light = lightPosition(
+    seatDirection(gameState.currentTurnIndex, viewerSeat, players.length)
+  );
 
   // ── Screen-reader table description ─────────────────────────────────────────
   //
@@ -1125,7 +1132,9 @@ export function GameTable({
         {banners}
       </View>
 
-      {/* Felt — clipped to its rounded corners, decoration only */}
+      {/* Felt — clipped to its rounded corners, decoration only. One lantern
+          over a dark room: the pool tracks whose turn it is, so half the table
+          falls into shadow when it is not yours. */}
       <View
         style={[
           sharedTableStyles.tableBg,
@@ -1137,12 +1146,13 @@ export function GameTable({
           },
         ]}
       >
-        <LinearGradient
-          colors={felt}
-          locations={[0, 0.25, 0.5, 0.75, 1]}
-          style={StyleSheet.absoluteFill}
+        <FeltPool
+          width={feltW}
+          height={feltH}
+          stops={felt}
+          lightX={light.x}
+          lightY={light.y}
         />
-        <TableVignette />
         <View style={sharedTableStyles.tableInnerBorder} />
       </View>
 
@@ -1427,17 +1437,13 @@ export function GameTable({
   );
 }
 
-// PASS_BG/PASS_BORDER are deliberate table furniture — a muted danger that
-// reads against the felt without competing with the gold — with no matching
-// token. PASS_LABEL's red coincides with Colors.bombText.
-const PASS_BG = "#5C1212";
-const PASS_BORDER = "#8B1A1A";
-const PASS_LABEL = Colors.bombText;
-// Same raked-light technique as GIOCA_GRADIENT, tuned to PASSA's own red
-// rather than gold — the button gets the table's standard depth treatment
-// without adopting gold's colour identity.
-const PASS_GRADIENT = [PASS_BORDER, PASS_BG] as const;
-const PASS_GRADIENT_PRESSED = [PASS_BG, "#3A0C0C"] as const;
+// PASSA takes GIOCA's own construction — a lit top lip, a face darkening
+// downward, a seated shadow — at lower luminance with the hue pulled to
+// garnet, and no glow. Glow is reserved for the primary action, which is the
+// whole reason red can sit here without shouting.
+const PASS_GRADIENT = [Garnet.lip, Garnet.face, Garnet.deep, Garnet.base] as const;
+const PASS_GRADIENT_PRESSED = [Garnet.face, Garnet.deep, Garnet.base, Garnet.base] as const;
+const PASS_GRADIENT_LOCATIONS = [0, 0.22, 0.6, 1] as const;
 
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: Colors.bg },
@@ -1497,7 +1503,6 @@ const styles = StyleSheet.create({
   // playBtn/playBtnGrad below.
   passBtn: {
     width: SIDE_BTN_W, borderRadius: Radius.md,
-    borderWidth: 2, borderColor: PASS_BORDER,
     marginHorizontal: SIDE_BTN_MARGIN_H,
     ...Shadow.dark,
   },
@@ -1522,7 +1527,7 @@ const styles = StyleSheet.create({
   btnFlash: { backgroundColor: Highlight.clear },
   passBtnLabel: {
     fontFamily: "Rajdhani_700Bold", fontSize: FontSize.sm,
-    color: PASS_LABEL, letterSpacing: 0.5,
+    color: Garnet.label, letterSpacing: 0.5,
   },
   // Fades the same label colour rather than swapping to an unrelated token —
   // Colors.bombFill is a translucent fill meant for backgrounds, not text,

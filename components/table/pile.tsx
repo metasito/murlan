@@ -176,7 +176,7 @@ export function FlyingCards({
               ],
             }}
           >
-            <CardView card={cards[i]} scale={cardScale} />
+            <CardView card={cards[i]} scale={cardScale} light="flat" />
           </View>
         ))}
       </Animated.View>
@@ -222,7 +222,7 @@ function PileComboCards({
             ],
           }}
         >
-          <CardView card={cards[i]} scale={scale} />
+          <CardView card={cards[i]} scale={scale} light="flat" />
         </View>
       ))}
     </View>

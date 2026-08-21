@@ -43,10 +43,13 @@ const FAN_TURN: Record<OpponentSide, number> = { top: 0, left: -90, right: 90 };
 function CardFan({
   count,
   side,
+  isActive,
   scale = 1,
 }: {
   count: number;
   side: OpponentSide;
+  /** This seat is on move, so the lamp is over it and its backs are lit. */
+  isActive: boolean;
   /** The table's own scale — the fan draws its backs at `scale * BACK_SCALE`. */
   scale?: number;
 }) {
@@ -105,6 +108,7 @@ function CardFan({
               card={{ id: `bk${i}`, suit: null, rank: "3", isJoker: false }}
               faceDown
               scale={backScale}
+              light={isActive ? "standingLit" : "standing"}
             />
           </View>
         ))}
@@ -137,7 +141,9 @@ function AvatarCircle({
   const pingOpacity = useSharedValue(0);
   const reduceMotion = usePrefersReducedMotion();
   // The avatar sits on the felt, so it takes the felt's colour: a green bubble
-  // on a bordeaux table reads as an oversight rather than a choice.
+  // on a bordeaux table reads as an oversight rather than a choice. Its own
+  // two darkest stops, not the lit end — the initials are drawn straight onto
+  // this disc with no plate under them.
   const felt = useTableFelt();
 
   useEffect(() => {
@@ -198,7 +204,7 @@ function AvatarCircle({
         ]}
       >
         <LinearGradient
-          colors={[felt[1], felt[3]]}
+          colors={[felt[3], felt[4]]}
           style={[
             seatStyles.avatarInner,
             { width: size, height: size, borderRadius: size / 2 },
@@ -292,7 +298,10 @@ export function TopOppSlot({
 }) {
   const count = cardCount ?? player.hand.length;
   return (
-    <View style={seatStyles.topOppSlot} testID="top-seat">
+    <View
+      testID="top-seat"
+      style={[seatStyles.topOppSlot, !isActive && seatStyles.seatDim]}
+    >
       <SeatWho
         name={player.name}
         isActive={isActive}
@@ -303,7 +312,7 @@ export function TopOppSlot({
         size={42}
       />
       {player.finishPosition === undefined && count > 0 && (
-        <CardFan count={count} side="top" scale={scale} />
+        <CardFan count={count} side="top" isActive={isActive} scale={scale} />
       )}
     </View>
   );
@@ -381,6 +390,7 @@ export function SideOppSlot({
       style={[
         seatStyles.sideOppSlot,
         isLeft ? seatStyles.sideLeft : seatStyles.sideRight,
+        !isActive && seatStyles.seatDim,
       ]}
     >
       <SeatWho
@@ -393,7 +403,7 @@ export function SideOppSlot({
         size={40}
       />
       {count > 0 && player.finishPosition === undefined && (
-        <CardFan count={count} side={side} scale={scale} />
+        <CardFan count={count} side={side} isActive={isActive} scale={scale} />
       )}
     </View>
   );
@@ -404,6 +414,8 @@ export function SideOppSlot({
 const OPP_LABEL_MAX_W = 70 + Spacing.xs * 2;
 /** Ring to fan, the same on every seat — see SeatWho. */
 const SEAT_GAP = Spacing.slim;
+/** How far a seat recedes while another one is on move. */
+const SEAT_DIM_OPACITY = 0.62;
 /**
  * The band the floating label needs above the avatar. The top seat sits
  * against the felt's own top edge, so without it the name and the badges are
@@ -426,6 +438,10 @@ const seatStyles = StyleSheet.create({
   sideOppSlot: { alignItems: "center", justifyContent: "center", gap: SEAT_GAP },
   sideLeft: { flexDirection: "row" },
   sideRight: { flexDirection: "row-reverse" },
+  // A seat that is not on move recedes, which is one of the four signals the
+  // table gives about whose turn it is. Not far enough to cost the card count
+  // its legibility — that is the most important thing on the seat.
+  seatDim: { opacity: SEAT_DIM_OPACITY },
 
   who: { alignItems: "center", justifyContent: "center" },
   // Out of flow, so a bot badge cannot lengthen the column and move the fan.
@@ -463,7 +479,7 @@ const seatStyles = StyleSheet.create({
   passedChip: {
     paddingHorizontal: Spacing.xs,
     borderRadius: Radius.sm,
-    backgroundColor: Scrim.medium,
+    backgroundColor: Scrim.heavy,
     borderWidth: 1,
     borderColor: Colors.borderStrong,
   },

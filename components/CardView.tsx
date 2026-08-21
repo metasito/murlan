@@ -15,6 +15,7 @@ import {
   CardFaceGradient,
   Colors,
   FontSize,
+  Lantern,
   Motion,
   Radius,
   Shadow,
@@ -467,6 +468,13 @@ interface CardViewProps {
    * card twice, once for the wrapper and once for this.
    */
   decorative?: boolean;
+  /**
+   * How the table's lamp falls on this card. A card standing in a hand has its
+   * head nearer a hanging lamp than its foot; one lying flat on the felt
+   * catches far less of the same lamp. Omit for the viewer's own hand, which
+   * is between the player and the lamp rather than under it.
+   */
+  light?: "standing" | "standingLit" | "flat";
 }
 
 function CardViewBase({
@@ -480,6 +488,7 @@ function CardViewBase({
   style,
   noLift = false,
   decorative = false,
+  light,
 }: CardViewProps) {
   const { t } = useTranslation();
   const selectedHint = useA11yHint(decorative || !selected ? undefined : t("cardView.selectedA11yHint"));
@@ -547,6 +556,7 @@ function CardViewBase({
             style={StyleSheet.absoluteFill}
           />
           <OrnateCardBack width={w} height={h} back={back} />
+          <TopLight light={light} />
         </View>
       </Animated.View>
     );
@@ -617,8 +627,50 @@ function CardViewBase({
         >
           {rankText}
         </TableText>
+        <TopLight light={light} />
       </Pressable>
     </Animated.View>
+  );
+}
+
+// ─── TopLight ─────────────────────────────────────────────────────────────────
+
+/**
+ * What the table's lamp leaves on a card. Four stops rather than two: the
+ * warm head has to fall away before the shadow starts, or the card reads as a
+ * gradient swatch instead of as a lit object.
+ */
+const STANDING_STOPS = [
+  Lantern.headLit,
+  Lantern.headFade,
+  Lantern.midShade,
+  Lantern.footShade,
+] as const;
+const STANDING_LIT_STOPS = [
+  Lantern.headLitOn,
+  Lantern.headFadeOn,
+  Lantern.midShadeOn,
+  Lantern.footShadeOn,
+] as const;
+const FLAT_STOPS = [
+  Lantern.flatHead,
+  Lantern.flatFade,
+  Lantern.flatMid,
+  Lantern.flatFoot,
+] as const;
+const STANDING_LOCATIONS = [0, 0.3, 0.64, 1] as const;
+const FLAT_LOCATIONS = [0, 0.34, 0.74, 1] as const;
+
+function TopLight({ light }: { light?: CardViewProps["light"] }) {
+  if (light === undefined) return null;
+  const flat = light === "flat";
+  return (
+    <LinearGradient
+      colors={flat ? FLAT_STOPS : light === "standingLit" ? STANDING_LIT_STOPS : STANDING_STOPS}
+      locations={flat ? FLAT_LOCATIONS : STANDING_LOCATIONS}
+      style={StyleSheet.absoluteFill}
+      pointerEvents="none"
+    />
   );
 }
 
@@ -639,6 +691,7 @@ function cardViewPropsEqual(a: CardViewProps, b: CardViewProps): boolean {
     a.disabled === b.disabled &&
     a.noLift === b.noLift &&
     a.decorative === b.decorative &&
+    a.light === b.light &&
     a.style === b.style
   );
 }

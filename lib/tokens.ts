@@ -109,16 +109,66 @@ export const CardFaceGradient = [
   Colors.cardPaperEdge,
 ] as const;
 
-// Table felts, light centre to dark rim. Order is the gradient order.
+// The lamp over the table, and what it falls on. A light, not a cloth: the
+// felt's own five stops still carry which felt the player chose, and these are
+// what lands on them. Every entry is translucent for that reason — a lit
+// surface is the surface plus the light, never a colour of its own.
+export const Lantern = {
+  // The pool itself: a warm core, then nothing.
+  core:     'rgba(255,242,208,0.26)',
+  coreMid:  'rgba(255,226,172,0.09)',
+  bloom:    'rgba(255,236,190,0.12)',
+  clear:    'rgba(255,242,208,0)',
+  // The cloth's own weave, one bright thread and one dark, crossing at 45.
+  weaveLight: 'rgba(255,255,255,0.02)',
+  weaveDark:  'rgba(0,0,0,0.055)',
+  // Real darkness past the falloff, and the vignette over all of it.
+  vignette:      'rgba(0,0,0,0.5)',
+  vignetteClear: 'rgba(0,0,0,0)',
+  // A card standing in a hand has its head nearer a hanging lamp than its
+  // foot. The `-on` pair is the same card in the seat that is on move.
+  headLit:     'rgba(255,240,205,0.26)',
+  headLitOn:   'rgba(255,244,214,0.40)',
+  headFade:    'rgba(255,240,205,0.08)',
+  headFadeOn:  'rgba(255,240,205,0.13)',
+  midShade:    'rgba(0,0,0,0.12)',
+  midShadeOn:  'rgba(0,0,0,0.08)',
+  footShade:   'rgba(0,0,0,0.34)',
+  footShadeOn: 'rgba(0,0,0,0.26)',
+  // A card lying flat on the felt catches far less of the same lamp.
+  flatHead:  'rgba(255,246,222,0.22)',
+  flatFade:  'rgba(255,246,222,0.04)',
+  flatMid:   'rgba(24,20,12,0.05)',
+  flatFoot:  'rgba(24,20,12,0.13)',
+} as const;
+
+// PASSA is garnet, not alarm red: GIOCA's construction — a lit top lip, a face
+// darkening downward, a seated shadow — at lower luminance with the hue pulled
+// across, and no glow. The only lit object on the table is GIOCA, and only on
+// the player's own turn, which is the whole reason red can sit beside it
+// without shouting.
+export const Garnet = {
+  lip:   '#A03B41',
+  face:  '#7C2029',
+  deep:  '#5A141C',
+  base:  '#370A11',
+  label: '#F4D5D0',
+} as const;
+
+// Table felts, from the cloth directly under the lamp out to the cloth at the
+// edge of its reach. Order is the falloff order, and it is a falloff rather
+// than a wash: `FeltPool` (components/table/felt.tsx) lays these along a radial
+// that ends in the room's own darkness, so the first stop is the cloth lit and
+// the last is the cloth barely lit — not two shades of the same flat green.
 //
 // Every alternate is at or below the green's luminance at every stop, so the
 // contrast ratios tests/contrast.test.ts pins against `Colors.felt` are a
 // floor for all four — pinned by tests/cosmetics.test.ts.
 export const FeltGradients = {
-  verde:    ['#0F5A35', '#0D4A2E', '#0B3B25', '#082B1A', '#061E12'],
-  blu:      ['#144C7A', '#113F66', '#0E3253', '#0A2540', '#071A2E'],
-  bordeaux: ['#6B2230', '#5A1C29', '#491722', '#38111A', '#280C12'],
-  notte:    ['#2E3338', '#272B2F', '#1F2226', '#171A1D', '#101214'],
+  verde:    ['#2E9F62', '#23854F', '#186B41', '#0F4E31', '#093320'],
+  blu:      ['#2288C4', '#1C6FA2', '#155780', '#0F3F5E', '#092A3E'],
+  bordeaux: ['#B03D4C', '#94323F', '#782833', '#5A1E27', '#3D141B'],
+  notte:    ['#5D6874', '#4E5862', '#3F4750', '#31373E', '#23272C'],
 } as const;
 
 /** The default felt. Anything not themed by the player's choice uses this. */

@@ -40,9 +40,31 @@ test("no alternate felt is lighter than the default at any stop", () => {
   }
 });
 
-test("the darkest stop of every felt stays at or below Colors.felt", () => {
+// A felt's five stops are laid along the lamp's falloff, not across a flat
+// cloth: the first is the cloth directly under the light and the last is the
+// cloth at the edge of its reach, handing over to the room. A ramp that does
+// not fall is a wash, which is what the pool replaced.
+test("every felt falls away from the lamp, stop by stop", () => {
   for (const id of TABLE_FELT_IDS) {
-    assert.ok(luminance(getTableFelt(id)[2]) <= luminance(Colors.felt) + 1e-9, id);
+    const stops = getTableFelt(id);
+    for (let i = 1; i < stops.length; i++) {
+      assert.ok(
+        luminance(stops[i]) < luminance(stops[i - 1]),
+        `felt "${id}" stop ${i} (${stops[i]}) is no darker than stop ${i - 1} (${stops[i - 1]})`
+      );
+    }
+  }
+});
+
+test("every felt ends dark enough to hand over to the room", () => {
+  // Past the falloff the pool paints Colors.bg. A last stop far above it would
+  // draw a visible ring where the cloth stops and the room starts.
+  for (const id of TABLE_FELT_IDS) {
+    const last = luminance(getTableFelt(id)[4]);
+    assert.ok(
+      last < luminance(Colors.felt),
+      `felt "${id}" ends at ${last.toFixed(4)}, no darker than Colors.felt`
+    );
   }
 });
 

@@ -80,10 +80,10 @@ const SURFACES = {
 } as const;
 
 // --- The felt is a gradient, and Colors.felt is only its middle stop --------
-// components/GameTable.tsx paints a five-stop LinearGradient. The top of the
-// table is 1.9x the relative luminance of the stop this file used to measure,
-// so a token could pass here at 4.60 and render at 3.43 where it is actually
-// drawn.
+// components/table/felt.tsx lays the five stops along the lamp's own falloff.
+// The cloth directly under the lamp is several times the relative luminance of
+// the stop this file used to measure, so a token could pass here at 4.60 and
+// render at 3.43 where it is actually drawn.
 //
 // Both colours are read out of the table's own components rather than repeated
 // here, so a plate that is removed from a style is a failure rather than a
@@ -113,7 +113,7 @@ function styleColor(style: string, prop: "color" | "backgroundColor"): string | 
   return m ? PALETTES[m[1]]?.[m[2]] ?? null : null;
 }
 
-/** Which gradient stops an element can sit over. locations are [0,.25,.5,.75,1]. */
+/** Which falloff stops an element can sit over. */
 const ANY_STOP = [0, 1, 2, 3, 4];
 
 /**
@@ -128,10 +128,11 @@ const ON_FELT_TEXT: { text: string; plate: string | null; stops: number[] }[] = 
   { text: "countBubbleText", plate: "countBubble", stops: ANY_STOP },
   { text: "passedChipText", plate: "passedChip", stops: ANY_STOP },
   { text: "botBadgeText", plate: "botBadge", stops: ANY_STOP },
-  // The hand row is the bottom band of the table, the darkest end of every felt.
-  { text: "emptyHandText", plate: null, stops: [3, 4] },
-  // The avatar disc is an opaque gradient from the felt's own stops 1 and 3.
-  { text: "avatarInitials", plate: null, stops: [1, 3] },
+  // Under a lamp that moves, no text sits on bare cloth: the brightest felt on
+  // the table is wherever the light is, so every stop is in play for all of it.
+  { text: "emptyHandText", plate: "emptyHandText", stops: ANY_STOP },
+  // The avatar disc is an opaque gradient from the felt's own two darkest stops.
+  { text: "avatarInitials", plate: null, stops: [3, 4] },
 ];
 
 for (const { text, plate, stops } of ON_FELT_TEXT) {

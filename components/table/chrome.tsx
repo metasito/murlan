@@ -9,62 +9,12 @@ import {
   withRepeat,
   cancelAnimation,
 } from "react-native-reanimated";
-import { LinearGradient } from "expo-linear-gradient";
 import { Colors, FontSize, Motion, Radius, Scrim, Shadow, Spacing, Type } from "@/lib/theme";
 import { usePrefersReducedMotion } from "@/lib/accessibility";
 import { useTranslation } from "@/lib/i18n";
 import type { StartReason } from "@/lib/gameEngine";
 import { getCardDisplayRank, getSuitSymbol } from "@/lib/gameEngine";
 import { SIDE_SECTION_W } from "@/components/gameTableModel";
-
-// ─── Table vignette ───────────────────────────────────────────────────────────
-
-// Four edge washes plus four diagonal corner washes. The corners are the half
-// that makes it read as a lit table rather than as four dark stripes: without
-// them the corner is only as dark as one edge, so the darkest region of the
-// felt ends up on the edge midpoints instead of the extremities.
-export function TableVignette() {
-  return (
-    <View style={StyleSheet.absoluteFill} pointerEvents="none">
-      <LinearGradient
-        colors={[Scrim.medium, "transparent"]}
-        style={vignetteStyles.top}
-        pointerEvents="none"
-      />
-      <LinearGradient
-        colors={["transparent", Scrim.heavy]}
-        style={vignetteStyles.bottom}
-        pointerEvents="none"
-      />
-      <LinearGradient
-        colors={[Scrim.medium, "transparent"]}
-        start={{ x: 0, y: 0.5 }}
-        end={{ x: 1, y: 0.5 }}
-        style={vignetteStyles.left}
-        pointerEvents="none"
-      />
-      <LinearGradient
-        colors={["transparent", Scrim.medium]}
-        start={{ x: 0, y: 0.5 }}
-        end={{ x: 1, y: 0.5 }}
-        style={vignetteStyles.right}
-        pointerEvents="none"
-      />
-    </View>
-  );
-}
-
-// Four bands, each spanning a full edge and reaching transparent inside the
-// felt. A corner piece cannot: a diagonal gradient over a box only reaches
-// transparent at the box's opposite corner, so it still carries ink along the
-// two edges that face the middle of the table and draws them as hard lines
-// across the felt. The corners are darkened by the bands overlapping instead.
-const vignetteStyles = StyleSheet.create({
-  top:    { position: "absolute", top: 0, left: 0, right: 0, height: "22%" },
-  bottom: { position: "absolute", bottom: 0, left: 0, right: 0, height: "26%" },
-  left:   { position: "absolute", top: 0, bottom: 0, left: 0, width: "16%" },
-  right:  { position: "absolute", top: 0, bottom: 0, right: 0, width: "16%" },
-});
 
 // ─── StartReasonBanner ────────────────────────────────────────────────────────
 

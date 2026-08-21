@@ -4,7 +4,7 @@ import { Platform } from "react-native";
 
 import { Colors } from "./tokens";
 
-export { Colors, Spacing, Radius, FontSize, Type, Motion, Scrim, Highlight, FeltGradient, FeltGradients, CardBacks, CardFaceGradient, TOUCH_TARGET_MIN, TABLE_FONT_SCALE_MAX } from "./tokens";
+export { Colors, Spacing, Radius, FontSize, Type, Motion, Scrim, Highlight, Lantern, Garnet, FeltGradient, FeltGradients, CardBacks, CardFaceGradient, TOUCH_TARGET_MIN, TABLE_FONT_SCALE_MAX } from "./tokens";
 
 function hexToRgb(hex: string): { r: number; g: number; b: number } {
   const h = hex.replace("#", "");

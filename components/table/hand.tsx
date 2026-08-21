@@ -11,7 +11,7 @@ import Animated, {
 } from "react-native-reanimated";
 import Ionicons from "@expo/vector-icons/Ionicons";
 import { CardView } from "@/components/CardView";
-import { Colors, FontSize, Motion, Radius, Shadow, Spacing } from "@/lib/theme";
+import { Colors, FontSize, Motion, Radius, Scrim, Shadow, Spacing } from "@/lib/theme";
 import { usePrefersReducedMotion } from "@/lib/accessibility";
 import { useTranslation } from "@/lib/i18n";
 import type { Card } from "@/lib/gameEngine";
@@ -346,9 +346,16 @@ const handStyles = StyleSheet.create({
     alignSelf: "center",
   },
   handCardWrap: { position: "absolute" },
+  // Its own plate. Under a lamp that moves, the felt has no reliably dark end
+  // to sit on: the brightest cloth on the table is wherever the light is.
   emptyHandText: {
     fontFamily: "Rajdhani_600SemiBold",
     fontSize: FontSize.sm,
     color: Colors.gold,
+    backgroundColor: Scrim.heavy,
+    borderRadius: Radius.sm,
+    paddingHorizontal: Spacing.sm,
+    paddingVertical: Spacing.xxs,
+    overflow: "hidden",
   },
 });
