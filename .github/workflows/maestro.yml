@@ -144,11 +144,6 @@ jobs:
           target: google_apis
           arch: x86_64
           profile: pixel_6
-          # The defaults left the emulator throwing "System UI isn't
-          # responding" while Metro and the flows ran alongside it, and a run
-          # spent twenty minutes in ANR dialogs rather than in the app.
-          ram-size: 4096M
-          cores: 3
           emulator-options: -no-window -no-audio -no-boot-anim -gpu swiftshader_indirect -camera-back none
           # Left on: this layer exists precisely to drive real Reanimated
           # worklets on a real UI thread, and disabling the system animation
