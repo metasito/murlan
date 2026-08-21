@@ -145,6 +145,74 @@ describe("client crash reports", { skip: hasDatabase() ? false : skipMessage() }
     assert.equal(rows[0].app_version, null);
   });
 
+  // #166: grouping on /admin is a hash and a GROUP BY, and this is the hash
+  // half — two crashes group only if they compute the same fingerprint.
+  test("two structurally identical crashes from different sessions get the same fingerprint", async () => {
+    const { cookie: sessionA } = await register(server, "crash_fp_a");
+    const { cookie: sessionB } = await register(server, "crash_fp_b");
+    const message = "Cannot read property 'suit' of undefined";
+    const stack = "at renderCard (components/Card.tsx:42:7)";
+
+    await postAs(sessionA, { message, stack });
+    await postAs(sessionB, { message, stack });
+
+    let rows: { fingerprint: string | null }[] = [];
+    for (let attempt = 0; attempt < 20 && rows.length < 2; attempt++) {
+      const result = await dbPool.query<{ fingerprint: string | null }>(
+        `SELECT fingerprint FROM "${server.schema}".client_errors WHERE message = $1`,
+        [message]
+      );
+      rows = result.rows;
+      if (rows.length < 2) await new Promise((r) => setTimeout(r, 50));
+    }
+
+    assert.equal(rows.length, 2, "both reports were never stored");
+    assert.ok(rows[0].fingerprint, "no fingerprint was computed");
+    assert.equal(rows[0].fingerprint, rows[1].fingerprint);
+  });
+
+  test("a content-hash change in the bundle filename does not split the fingerprint", async () => {
+    const { cookie: own } = await register(server, "crash_fp_hash");
+    const message = "same crash, two deploys apart";
+
+    await postAs(own, { message, stack: "at renderCard (bundle.a1b2c3d4.js:100:5)" });
+    await postAs(own, { message, stack: "at renderCard (bundle.e5f6a7b8.js:112:9)" });
+
+    let rows: { fingerprint: string | null }[] = [];
+    for (let attempt = 0; attempt < 20 && rows.length < 2; attempt++) {
+      const result = await dbPool.query<{ fingerprint: string | null }>(
+        `SELECT fingerprint FROM "${server.schema}".client_errors WHERE message = $1`,
+        [message]
+      );
+      rows = result.rows;
+      if (rows.length < 2) await new Promise((r) => setTimeout(r, 50));
+    }
+
+    assert.equal(rows.length, 2, "both reports were never stored");
+    assert.ok(rows[0].fingerprint, "no fingerprint was computed");
+    assert.equal(rows[0].fingerprint, rows[1].fingerprint);
+  });
+
+  test("a different crash gets a different fingerprint", async () => {
+    const { cookie: own } = await register(server, "crash_fp_distinct");
+
+    await postAs(own, { message: "first distinct crash", stack: "at a (x.ts:1:1)" });
+    await postAs(own, { message: "second distinct crash", stack: "at b (y.ts:2:2)" });
+
+    let rows: { message: string; fingerprint: string | null }[] = [];
+    for (let attempt = 0; attempt < 20 && rows.length < 2; attempt++) {
+      const result = await dbPool.query<{ message: string; fingerprint: string | null }>(
+        `SELECT message, fingerprint FROM "${server.schema}".client_errors WHERE message IN ($1, $2)`,
+        ["first distinct crash", "second distinct crash"]
+      );
+      rows = result.rows;
+      if (rows.length < 2) await new Promise((r) => setTimeout(r, 50));
+    }
+
+    assert.equal(rows.length, 2, "both reports were never stored");
+    assert.notEqual(rows[0].fingerprint, rows[1].fingerprint);
+  });
+
   test("an oversized screen is refused", async () => {
     const { cookie: own } = await register(server, "crash_longscreen");
     const res = await postAs(own, { message: "boom", screen: "/" + "x".repeat(120) });

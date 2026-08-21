@@ -6,6 +6,7 @@
 // #103 — which is the reason this renders a string rather than being a screen.
 import type { AdminSnapshot } from "./admin.ts";
 import { WINDOW_DAYS } from "./admin.ts";
+import { CLIENT_ERROR_RETENTION_DAYS } from "./clientErrors.ts";
 
 /**
  * Everything interpolated below goes through this. Nothing here is written by
@@ -114,7 +115,13 @@ export function renderAdminPage(snapshot: AdminSnapshot): string {
     panel(
       9,
       "Client crashes",
-      `<p>${snapshot.crashesThisWeek} reported in the last 7 days.</p>`
+      `<p>${snapshot.crashesThisWeek} reported in the last 7 days.</p>` +
+        table(
+          ["Crash", "Count", "Last seen"],
+          snapshot.crashGroups.map((g) => [g.message, g.count, g.lastSeen])
+        ) +
+        `<p class="meta">One row per distinct crash. Count and last-seen are ` +
+        `over the ${CLIENT_ERROR_RETENTION_DAYS}-day retention window, not all-time.</p>`
     ),
   ].join("");
 
