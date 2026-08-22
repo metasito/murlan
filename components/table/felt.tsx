@@ -36,11 +36,23 @@ import type { FeltStops } from "@/lib/cosmetics";
 //                pushes through a *user-space* matrix, where the unit-space
 //                `translate(0.5, …)` that centres it means nothing.
 //
-// `r="50%"` in objectBoundingBox units is the ellipse inscribed in the painted
-// box, on both. So each radial keeps its default circle and the rect it fills
-// carries the radii: a rect `2*rx` by `2*ry`, centred where the light is.
-// Nothing outside a rect is left undrawn — the field's last stop and the room
-// behind it are the same colour, and the core and bloom end transparent.
+//   `r="50%"` alone — a browser resolves that against the painted box and draws
+//                the ellipse inscribed in it. The native path resolves it to a
+//                single scalar (`rx: rx || r`, `ry: ry || r`) and draws a
+//                *circle*, so a lamp anywhere but the middle of the bottom edge
+//                lit a disc around the seat on move and left the rest of the
+//                table as unlit room.
+//
+// So no radial here is ever asked to be an ellipse. Each is a circle, drawn
+// into a square, and the square is stretched into the ellipse by a `transform`
+// on the view that holds it — which is layout, and identical on both. Nothing
+// outside a square is left undrawn: the field's last stop and the room behind
+// it are the same colour, and the core and the bloom end transparent.
+//
+// The square is a fixed raster the ellipse is scaled up from, rather than a
+// surface as big as the ellipse: the pool is twice the felt on its long axis,
+// and rasterising that on a phone is tens of megabytes per layer.
+const POOL_PX = 512;
 const FIELD_RX = 0.76;
 const FIELD_RY = 1.0;
 const CORE_RX = 0.44;
@@ -164,16 +176,19 @@ export function FeltPool({
     transform: [{ translateX: x.value }, { translateY: y.value }],
   }));
 
-  // Each radial's own box, `2*rx` by `2*ry`. The pool is the field's, and the
-  // core and the bloom sit centred inside it.
-  const poolW = width * FIELD_RX * 2;
-  const poolH = height * FIELD_RY * 2;
-  const coreW = width * CORE_RX * 2;
-  const coreH = height * CORE_RY * 2;
-  const bloomW = width * BLOOM_RX * 2;
-  const bloomH = height * BLOOM_RY * 2;
-  const vignetteW = width * VIGNETTE_RX * 2;
-  const vignetteH = height * VIGNETTE_RY * 2;
+  // Each radial's own ellipse, `rx` by `ry` of the felt — carried as the scale
+  // its square is stretched by, never as a shape on the gradient itself.
+  const squash = (rx: number, ry: number) => ({
+    position: "absolute" as const,
+    left: -POOL_PX / 2,
+    top: -POOL_PX / 2,
+    width: POOL_PX,
+    height: POOL_PX,
+    transform: [
+      { scaleX: (width * rx * 2) / POOL_PX },
+      { scaleY: (height * ry * 2) / POOL_PX },
+    ],
+  });
 
   return (
     <View style={[StyleSheet.absoluteFill, feltStyles.clip]} pointerEvents="none">
@@ -183,22 +198,18 @@ export function FeltPool({
           unlit cloth rather than a black rectangle over the whole table. */}
       <View style={[StyleSheet.absoluteFill, { backgroundColor: mix(stops[4], Colors.bg, RIM_MIX) }]} />
 
+      {/* A point at the lamp. Its children hang off it centred, so each one is
+          scaled about the light rather than about a corner — and the swing is
+          this one translate, not a transform per layer. */}
       <Animated.View
         style={[
-          // Centred on the origin, so the translate below lands its centre on
-          // the lamp.
-          {
-            position: "absolute",
-            left: -poolW / 2,
-            top: -poolH / 2,
-            width: poolW,
-            height: poolH,
-          },
+          { position: "absolute", left: 0, top: 0, width: 0, height: 0 },
           POOL_LAYER,
           poolStyle,
         ]}
       >
-        <Svg width={poolW} height={poolH}>
+        <View style={squash(FIELD_RX, FIELD_RY)}>
+        <Svg width={POOL_PX} height={POOL_PX}>
           <Defs>
             <RadialGradient id={FIELD_ID}>
               <Stop offset={FIELD_OFFSETS[0]} {...stop(stops[0])} />
@@ -210,32 +221,36 @@ export function FeltPool({
               <Stop offset={TAIL_OFFSETS[1]} {...stop(mix(stops[4], Colors.bg, TAIL_MIX[1]))} />
               <Stop offset={DARK_OFFSET} {...stop(mix(stops[4], Colors.bg, RIM_MIX))} />
             </RadialGradient>
-            <RadialGradient id={CORE_ID}>
-              <Stop offset={0} {...stop(Lantern.core)} />
-              <Stop offset={0.46} {...stop(Lantern.coreMid)} />
-              <Stop offset={0.78} {...stop(Lantern.clear)} />
-            </RadialGradient>
-            <RadialGradient id={BLOOM_ID}>
-              <Stop offset={0} {...stop(Lantern.bloom)} />
-              <Stop offset={0.76} {...stop(Lantern.clear)} />
-            </RadialGradient>
           </Defs>
-          <Rect width={poolW} height={poolH} fill={`url(#${FIELD_ID})`} />
-          <Rect
-            x={(poolW - coreW) / 2}
-            y={(poolH - coreH) / 2}
-            width={coreW}
-            height={coreH}
-            fill={`url(#${CORE_ID})`}
-          />
-          <Rect
-            x={(poolW - bloomW) / 2}
-            y={(poolH - bloomH) / 2}
-            width={bloomW}
-            height={bloomH}
-            fill={`url(#${BLOOM_ID})`}
-          />
+          <Rect width={POOL_PX} height={POOL_PX} fill={`url(#${FIELD_ID})`} />
         </Svg>
+        </View>
+        {/* The lamp itself, and its bloom. Each is its own square on its own
+            scale, so the three keep the ratios they were drawn at instead of
+            all inheriting the field's. */}
+        <View style={squash(CORE_RX, CORE_RY)}>
+          <Svg width={POOL_PX} height={POOL_PX}>
+            <Defs>
+              <RadialGradient id={CORE_ID}>
+                <Stop offset={0} {...stop(Lantern.core)} />
+                <Stop offset={0.46} {...stop(Lantern.coreMid)} />
+                <Stop offset={0.78} {...stop(Lantern.clear)} />
+              </RadialGradient>
+            </Defs>
+            <Rect width={POOL_PX} height={POOL_PX} fill={`url(#${CORE_ID})`} />
+          </Svg>
+        </View>
+        <View style={squash(BLOOM_RX, BLOOM_RY)}>
+          <Svg width={POOL_PX} height={POOL_PX}>
+            <Defs>
+              <RadialGradient id={BLOOM_ID}>
+                <Stop offset={0} {...stop(Lantern.bloom)} />
+                <Stop offset={0.76} {...stop(Lantern.clear)} />
+              </RadialGradient>
+            </Defs>
+            <Rect width={POOL_PX} height={POOL_PX} fill={`url(#${BLOOM_ID})`} />
+          </Svg>
+        </View>
       </Animated.View>
 
       {/* The cloth itself. It does not move with the lamp — a weave that
@@ -282,23 +297,23 @@ export function FeltPool({
       {/* Its own layer, and radial: a vignette assembled from straight-edged
           pieces carries ink along the edges facing the middle of the table and
           draws them as lines across the felt. */}
-      <Svg
-        width={vignetteW}
-        height={vignetteH}
-        style={{
-          position: "absolute",
-          left: (width - vignetteW) / 2,
-          top: (height - vignetteH) / 2,
-        }}
+      <View
+        style={[
+          { position: "absolute", left: width / 2, top: height / 2, width: 0, height: 0 },
+        ]}
       >
-        <Defs>
-          <RadialGradient id={VIGNETTE_ID}>
-            <Stop offset={0.4} {...stop(Lantern.vignetteClear)} />
-            <Stop offset={1} {...stop(Lantern.vignette)} />
-          </RadialGradient>
-        </Defs>
-        <Rect width={vignetteW} height={vignetteH} fill={`url(#${VIGNETTE_ID})`} />
-      </Svg>
+        <View style={squash(VIGNETTE_RX, VIGNETTE_RY)}>
+          <Svg width={POOL_PX} height={POOL_PX}>
+            <Defs>
+              <RadialGradient id={VIGNETTE_ID}>
+                <Stop offset={0.4} {...stop(Lantern.vignetteClear)} />
+                <Stop offset={1} {...stop(Lantern.vignette)} />
+              </RadialGradient>
+            </Defs>
+            <Rect width={POOL_PX} height={POOL_PX} fill={`url(#${VIGNETTE_ID})`} />
+          </Svg>
+        </View>
+      </View>
     </View>
   );
 }

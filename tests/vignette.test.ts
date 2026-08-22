@@ -54,6 +54,57 @@ function selfShapedRadials(text: string): string[] {
     .map((r) => /id=\{(\w+)\}/.exec(r)?.[1] ?? r);
 }
 
+/**
+ * Every rect a *radial* is painted into, as `WxH` expressions. Keyed off the
+ * ids actually declared as RadialGradient in the same source, so the weave's
+ * pattern fills — which are tiled and have no shape of their own — are not
+ * mistaken for one. A radial is a circle on the native path whatever the box
+ * says, so any box that is not square is a shape the platforms disagree about.
+ */
+function radialRects(text: string): string[] {
+  const ids = new Set(
+    [...text.matchAll(/<RadialGradient\s+id=\{(\w+)\}/g)].map((m) => m[1])
+  );
+  return [
+    ...text.matchAll(
+      /<Rect\s+width=\{([^}]+)\}\s+height=\{([^}]+)\}\s+fill=\{`url\(#\$\{(\w+)\}\)`\}/g
+    ),
+  ]
+    .filter((m) => ids.has(m[3]))
+    .map((m) => `${m[1]}x${m[2]}`);
+}
+
+/** …and the ones that are not square, which is the failing state. */
+const oblong = (rects: string[]) => rects.filter((r) => r.split("x")[0] !== r.split("x")[1]);
+
+test("no radial is asked for an ellipse — the view it sits in is stretched", () => {
+  const rects = radialRects(source);
+  assert.ok(rects.length >= 4, `only ${rects.length} radial-filled rects found in the felt`);
+  assert.deepEqual(
+    oblong(rects),
+    [],
+    "a radial is painted into an oblong box. A browser draws the ellipse inscribed " +
+      "in it; react-native-svg reads `r` as one scalar and draws a circle, so the " +
+      "lamp lit a disc round the seat on move and left the rest of the felt dark."
+  );
+  // …and the ellipse is arrived at some other way, rather than lost.
+  assert.match(source, /scaleX:/, "nothing stretches the squares into ellipses");
+  assert.match(source, /scaleY:/);
+});
+
+// The floor. The scan reads the file, so a pattern that had drifted off the
+// markup would report "no oblong rects" for a felt made entirely of them.
+test("the scan can see an oblong radial box", () => {
+  const decl = '<RadialGradient id={FIELD_ID}>';
+  const planted = `${decl}<Rect width={poolW} height={poolH} fill={\`url(#\${FIELD_ID})\`} />`;
+  assert.deepEqual(oblong(radialRects(planted)), ["poolWxpoolH"]);
+  const square = `${decl}<Rect width={POOL_PX} height={POOL_PX} fill={\`url(#\${FIELD_ID})\`} />`;
+  assert.deepEqual(oblong(radialRects(square)), []);
+  // A pattern fill is not a radial, and must not be counted as one.
+  assert.deepEqual(radialRects('<Rect width={w} height={h} fill={\`url(#\${WEAVE_LIGHT_ID})\`} />'), []);
+  assert.deepEqual(radialRects("nothing here"), []);
+});
+
 test("no radial states its own shape — the rect it fills does", () => {
   const radials = source.match(/<RadialGradient[\s\S]*?>/g) ?? [];
   assert.ok(radials.length >= 4, `only ${radials.length} radials found in the felt`);

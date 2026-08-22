@@ -19,7 +19,9 @@ async function handCards(page: Page) {
   return page.evaluate(() => {
     const hand = document.querySelector('[aria-label^="La tua mano"]');
     if (!hand) throw new Error("the hand never rendered");
-    return [...hand.querySelectorAll('[role="button"]')]
+    // `card-box`, not the pressable: in a hand the pressable is only the strip
+    // the card exposes, and what is drawn is what this measures.
+    return [...hand.querySelectorAll('[data-testid="card-box"]')]
       .map((el) => el.getBoundingClientRect())
       .map((r) => ({ left: r.left, right: r.right, top: r.top, bottom: r.bottom }))
       .sort((a, b) => a.left - b.left);
@@ -77,16 +79,37 @@ test.describe("the hand's own budget", () => {
       `a thirteen-card hand spans ${Math.round(span)}px of a ${VIEWPORT.width}px screen`
     ).toBeLessThan(0.7);
 
-    // ── …and it does not stretch to fill what it is given. Playing cards away
-    //    has to shrink the hand, not respread it over the same width.
+    // ── …and it never reaches further for having fewer cards in it. Up to the
+    //    point where the whole hand fits at the widest step it is allowed, a
+    //    card played leaves the span where it was and the overlap loosens
+    //    instead — which is the prototype's own behaviour, and why this is a
+    //    ceiling rather than a strict shrink.
     await playOneCombination(page);
     const shorter = await handCards(page);
     expect(shorter.length, "no card was played, so nothing shrank").toBeLessThan(cards.length);
     const shorterSpan = shorter[shorter.length - 1].right - shorter[0].left;
     expect(
       shorterSpan,
-      `a shorter hand stretched back out to ${Math.round(shorterSpan)}px from ${Math.round(span)}px`
-    ).toBeLessThan(span);
+      `a shorter hand stretched out to ${Math.round(shorterSpan)}px from ${Math.round(span)}px`
+    ).toBeLessThan(span + 1);
+  });
+
+  // The other end of the same rule: below the point where the widest allowed
+  // step still fits, the hand really is narrower — a hand of four is not four
+  // cards spread across the share a hand of thirteen fills.
+  test("a short hand takes only the room it needs", async ({ page, baseURL }) => {
+    test.setTimeout(120_000);
+    await page.setViewportSize(VIEWPORT);
+    await openSeededGame(page, baseURL!, 4, 4);
+    await page.waitForTimeout(2_000);
+
+    const cards = await handCards(page);
+    expect(cards.length, "the seeded hand is four cards").toBe(4);
+    const span = cards[cards.length - 1].right - cards[0].left;
+    expect(
+      span / VIEWPORT.width,
+      `a four-card hand spans ${Math.round(span)}px of a ${VIEWPORT.width}px screen`
+    ).toBeLessThan(0.35);
   });
 });
 

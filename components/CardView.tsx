@@ -603,7 +603,13 @@ function CardViewBase({
         // corners, and a strip narrower than the card would clip the art with it.
         style={{ width: hitWidth ?? w, height: h }}
       >
-        <View style={[styles.card, { width: w, height: h }, selected && styles.cardSelected]}>
+        {/* Named because it is not the same box as the pressable around it: in
+            a hand, that one is only the strip this card exposes. Anything
+            measuring what the player *sees* has to measure this. */}
+        <View
+          testID="card-box"
+          style={[styles.card, { width: w, height: h }, selected && styles.cardSelected]}
+        >
           {selectedHint.node}
           <LinearGradient
             colors={CardFaceGradient}

@@ -12,15 +12,17 @@ import { openSeededGame } from "./helpers/offlineSeed";
 const SMALL = { width: 667, height: 375 };
 const LARGE = { width: 1112, height: 834 };
 
-/** The first hand card's rendered width — PASSA/GIOCA carry their own testID. */
+/**
+ * The first hand card's rendered width. `card-box` rather than the pressable
+ * around it: in a hand the pressable is only the strip the card exposes, which
+ * is set by how many cards are held, not by the scale this measures.
+ */
 async function firstHandCardWidth(page: import("@playwright/test").Page): Promise<number> {
   const width = await page.evaluate(() => {
-    const table = document.querySelector('[data-testid="game-table"]');
-    if (!table) throw new Error("the table never rendered");
-    const card = [...table.querySelectorAll('[role="button"]')].find(
-      (el) => !(el.getAttribute("data-testid") ?? "").startsWith("btn-")
-    );
-    return card ? card.getBoundingClientRect().width : null;
+    const hand = document.querySelector('[aria-label^="La tua mano"]');
+    if (!hand) throw new Error("the hand never rendered");
+    const box = hand.querySelector('[data-testid="card-box"]');
+    return box ? box.getBoundingClientRect().width : null;
   });
   if (width === null) throw new Error("no hand card rendered");
   return width;
