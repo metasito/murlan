@@ -244,6 +244,26 @@ export function StraightHand({
     setDealArmed(n === 0);
   }, [n]);
 
+  // The overlap step is solved against the share, not against everything the
+  // row could reach — a hand of three does not stretch across the felt, and a
+  // hand of twenty-one compresses inside the same span rather than reaching
+  // past it. Only `availW` is hard: past that the row scrolls. Solved above
+  // the empty-hand return so the scroll effect below it can be a hook.
+  const { step, totalW, scrollable } = computeHandLayout(n, roomW, cardW, availW);
+  const rowW = Math.min(totalW, availW);
+  /** How much of a scrolling row lies outside the window, both ends together. */
+  const overhang = Math.max(0, totalW - availW);
+
+  // The row opens on its own middle rather than its left edge. `contentOffset`
+  // is honoured on the first frame on iOS and ignored outright on web, so the
+  // position has to be set once the view exists — and again whenever the hand
+  // changes size, or playing a card leaves the row scrolled off to one side.
+  const scroller = useRef<ScrollView>(null);
+  useEffect(() => {
+    if (overhang === 0) return;
+    scroller.current?.scrollTo({ x: overhang / 2, animated: false });
+  }, [overhang]);
+
   if (n === 0) {
     return (
       <View style={[handStyles.handCenter, { width: availW, height: visibleH }]}>
@@ -252,13 +272,6 @@ export function StraightHand({
       </View>
     );
   }
-
-  // The overlap step is solved against the share, not against everything the
-  // row could reach — a hand of three does not stretch across the felt, and a
-  // hand of twenty-one compresses inside the same span rather than reaching
-  // past it. Only `availW` is hard: past that the row scrolls.
-  const { step, totalW, scrollable } = computeHandLayout(n, roomW, cardW, availW);
-  const rowW = Math.min(totalW, availW);
 
   // Solved for the span the step produced, so the arc and the overlap floor
   // cannot disagree about how wide the hand is.
@@ -319,14 +332,17 @@ export function StraightHand({
           // ScrollView's own clipping bounds would cut off the -14px
           // selection lift.
           <ScrollView
+            ref={scroller}
             horizontal
             showsHorizontalScrollIndicator={false}
             style={{ width: availW, height: visibleH + arcRise + HAND_ROW_HEADROOM }}
             contentContainerStyle={{ paddingTop: HAND_ROW_HEADROOM, width: totalW }}
             // Opens on the middle of the hand. At offset 0 the row is against
             // the left edge of a box the buttons centre on, which reads as the
-            // whole hand having slid sideways.
-            contentOffset={{ x: (totalW - availW) / 2, y: 0 }}
+            // whole hand having slid sideways. `contentOffset` alone is the
+            // first frame on iOS and nothing at all on web — the effect below
+            // is what actually holds it there.
+            contentOffset={{ x: overhang / 2, y: 0 }}
           >
             {row}
           </ScrollView>

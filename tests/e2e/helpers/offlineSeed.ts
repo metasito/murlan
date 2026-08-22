@@ -30,21 +30,29 @@ const card = (rank: string, suit: string) => ({
 });
 
 /**
- * Thirteen cards a seat, dealt round-robin from a full deck so no two seats
+ * The real deal per seat count — docs/RULES.md §deal: the whole deck goes out,
+ * so two players hold 21 each and four hold 13. The size is the whole question
+ * for the hand's own layout, and it is the largest hand that reaches the seats
+ * the side fans overflow from.
+ */
+export const DEAL_SIZE = { 2: 21, 3: 17, 4: 13 } as const;
+
+/**
+ * `handSize` cards a seat, dealt round-robin from a full deck so no two seats
  * share one. A full hand matters: the side fans are deliberately wider than
  * their column, and a short hand would not reproduce the overflow this exists
  * to measure.
  */
-function hands(playerCount: number) {
+function hands(playerCount: number, handSize: number) {
   const deck = SUITS.flatMap((suit) => RANKS.map((rank) => card(rank, suit)));
   return Array.from({ length: playerCount }, (_, seat) =>
-    deck.filter((_c, i) => i % playerCount === seat).slice(0, 13)
+    deck.filter((_c, i) => i % playerCount === seat).slice(0, handSize)
   );
 }
 
 /** A mid-hand offline save for `playerCount` seats, viewer at seat 0. */
-export function offlineGameSave(playerCount: 2 | 3 | 4) {
-  const dealt = hands(playerCount);
+export function offlineGameSave(playerCount: 2 | 3 | 4, handSize: number = 13) {
+  const dealt = hands(playerCount, handSize);
   const players = Array.from({ length: playerCount }, (_, i) => ({
     id: `player_${i}`,
     name: i === 0 ? "Ana" : BOTS[i - 1].name,
@@ -102,11 +110,12 @@ export function offlineGameSave(playerCount: 2 | 3 | 4) {
 export async function openSeededGame(
   page: Page,
   baseURL: string,
-  playerCount: 2 | 3 | 4
+  playerCount: 2 | 3 | 4,
+  handSize?: number
 ): Promise<void> {
   await page.addInitScript(
     ({ key, save }) => window.localStorage.setItem(key, JSON.stringify(save)),
-    { key: "@murlan_offline_game", save: offlineGameSave(playerCount) }
+    { key: "@murlan_offline_game", save: offlineGameSave(playerCount, handSize) }
   );
   await openApp(page, baseURL);
   // Waited for, not clicked at. `openApp` returns on networkidle, which is the
