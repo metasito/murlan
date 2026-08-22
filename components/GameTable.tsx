@@ -441,6 +441,7 @@ function RematchPromptPanel({
 // button re-renders just that button, not the whole table.
 
 function GiocaButton({
+  lit,
   valid,
   reduceMotion,
   rejectX,
@@ -448,12 +449,13 @@ function GiocaButton({
   glowStyle,
   onPress,
   a11yLabel,
-  dimLabel,
-  startCardRank,
   selectedCount,
   size,
   scale,
 }: {
+  /** The turn is the viewer's — the key is brass whether or not a play is staged. */
+  lit: boolean;
+  /** …and a legal combination is staged, so a press will be accepted. */
   valid: boolean;
   reduceMotion: boolean;
   /** Owned by GameTable — driven by handlePlay's reject shake, not by press. */
@@ -462,8 +464,6 @@ function GiocaButton({
   glowStyle: AnimatedStyle<ViewStyle>;
   onPress: () => void;
   a11yLabel: string;
-  dimLabel: PlayButtonLabel;
-  startCardRank: string;
   selectedCount: number;
   /** The button is square, and never smaller than a comfortable thumb. */
   size: number;
@@ -475,7 +475,10 @@ function GiocaButton({
 
   // Must precede the effect that reads `pressVal` — the React Compiler skips any component that mutates a value an effect captured.
   const setPress = (down: boolean) => {
-    if (!valid) return;
+    // Gated on the turn, not on the staged play: a press with nothing legal
+    // selected is answered by the reject shake and the hint, so it has to feel
+    // like a press first.
+    if (!lit) return;
     setPressed(down);
     pressVal.value = reduceMotion
       ? down ? 1 : 0
@@ -496,11 +499,10 @@ function GiocaButton({
       style={[
         styles.actionBtn,
         { width: size, height: size, borderRadius: BTN_RADIUS * scale },
-        !valid && styles.actionBtnDim,
         pressStyle,
       ]}
     >
-      {valid && (
+      {lit && (
         <Animated.View
           pointerEvents="none"
           style={[
@@ -520,7 +522,7 @@ function GiocaButton({
         accessibilityLabel={a11yLabel}
         {...a11yState({ role: "button", disabled: !valid })}
       >
-        {valid ? (
+        {lit ? (
           <LinearGradient
             colors={pressed ? GIOCA_GRADIENT_PRESSED : GIOCA_GRADIENT}
             locations={GIOCA_GRADIENT_LOCATIONS}
@@ -552,15 +554,18 @@ function GiocaButton({
           <View
             style={[
               styles.actionBtnFace,
-              styles.playBtnGradDim,
+              styles.btnDimFace,
               { borderRadius: BTN_RADIUS * scale },
             ]}
           >
             <TableText
-              style={[styles.playBtnLabelDim, { fontSize: BTN_LABEL_FS * scale }]}
-              numberOfLines={2}
+              style={[
+                styles.actionBtnLabel,
+                styles.btnDimLabel,
+                { fontSize: BTN_LABEL_FS * scale, letterSpacing: BTN_TRACKING * scale },
+              ]}
             >
-              {t(PLAY_LABEL_KEYS[dimLabel], { rank: startCardRank })}
+              {t("gameTable.playLabelGioca")}
             </TableText>
           </View>
         )}
@@ -611,7 +616,6 @@ function PassaButton({
       style={[
         styles.actionBtn,
         { width: size, height: size, borderRadius: BTN_RADIUS * scale },
-        !canPass && styles.actionBtnDim,
         pressStyle,
       ]}
     >
@@ -625,23 +629,28 @@ function PassaButton({
         accessibilityLabel={a11yLabel}
         {...a11yState({ role: "button", disabled: !canPass })}
       >
-        <LinearGradient
-          colors={pressed ? PASS_GRADIENT_PRESSED : PASS_GRADIENT}
-          locations={PASS_GRADIENT_LOCATIONS}
-          style={StyleSheet.absoluteFill}
-        />
-        <View pointerEvents="none" style={styles.btnTopHighlight} />
-        <Animated.View
-          pointerEvents="none"
-          style={[StyleSheet.absoluteFill, styles.btnFlash, flashStyle]}
-        />
+        {canPass ? (
+          <>
+            <LinearGradient
+              colors={pressed ? PASS_GRADIENT_PRESSED : PASS_GRADIENT}
+              locations={PASS_GRADIENT_LOCATIONS}
+              style={StyleSheet.absoluteFill}
+            />
+            <View pointerEvents="none" style={styles.btnTopHighlight} />
+            <Animated.View
+              pointerEvents="none"
+              style={[StyleSheet.absoluteFill, styles.btnFlash, flashStyle]}
+            />
+          </>
+        ) : (
+          <View pointerEvents="none" style={[StyleSheet.absoluteFill, styles.btnDimFace]} />
+        )}
         <View style={styles.actionBtnFace}>
           <TableText
             style={[
               styles.actionBtnLabel,
-              styles.passBtnLabel,
+              canPass ? styles.passBtnLabel : styles.btnDimLabel,
               { fontSize: BTN_LABEL_FS * scale, letterSpacing: BTN_TRACKING * scale },
-              !canPass && styles.passBtnLabelDim,
             ]}
           >
             {t("gameTable.passLabel")}
@@ -1411,6 +1420,7 @@ export function GameTable({
 
             {!spectating && (
               <GiocaButton
+                lit={isMyTurn && !isFinished}
                 valid={playBtnValid}
                 reduceMotion={reduceMotion}
                 rejectX={giocaRejectX}
@@ -1422,8 +1432,6 @@ export function GameTable({
                     ? t("gameTable.playA11yValid")
                     : t("gameTable.playA11yUnavailable", { reason: dimReasonText })
                 }
-                dimLabel={dimLabel}
-                startCardRank={startCardRank}
                 selectedCount={selectedIds.length}
                 size={actionBtn}
                 scale={scale}
@@ -1577,9 +1585,11 @@ const styles = StyleSheet.create({
   // native shadow is clipped by its own view's bounds. Corner-clipping the
   // gradient happens one level in, on the face.
   actionBtn: { ...Shadow.dark },
-  // Fade the whole surface (gradient, border, label) uniformly rather than
-  // swapping in flat colours that fight the gradient now underneath them.
-  actionBtnDim: { opacity: 0.55 },
+  // Off the viewer's turn a key is dark rather than a faded version of its lit
+  // self: the prototype's resting `.btn` (#199) is its own ink at a third over
+  // a third of black, with no gradient and no border behind it to fight.
+  btnDimFace: { backgroundColor: "rgba(0,0,0,0.3)" },
+  btnDimLabel: { color: "rgba(239,234,219,0.3)" },
   actionBtnInner: { flex: 1 },
   actionBtnFace: {
     flex: 1,
@@ -1606,10 +1616,6 @@ const styles = StyleSheet.create({
   // very contrast the flash is meant to draw attention to.
   btnFlash: { backgroundColor: Highlight.clear },
   passBtnLabel: { color: Garnet.label },
-  // Fades the same label colour rather than swapping to an unrelated token —
-  // Colors.bombFill is a translucent fill meant for backgrounds, not text,
-  // and rendered as near-invisible red-on-red here.
-  passBtnLabelDim: { opacity: 0.6 },
 
   // The armed bloom, as a childless sibling behind the button: the glow is
   // fixed and only this view's opacity is animated. The fill is what the
@@ -1626,11 +1632,6 @@ const styles = StyleSheet.create({
   },
   // The one lit object on the table, and only on the player's own turn.
   playBtnFace: { borderWidth: 1, borderColor: Colors.goldLit },
-  playBtnGradDim: {
-    // Dark gold-brown wash with no matching token.
-    backgroundColor: "rgba(40,30,5,0.7)",
-    borderWidth: 2, borderColor: Colors.goldSoft,
-  },
   playBtnLabel: { color: Colors.bgCard },
   playBtnSub: {
     fontFamily: "Rajdhani_500Medium",
@@ -1710,10 +1711,4 @@ const styles = StyleSheet.create({
     fontSize: FontSize.xs - 2,
   },
 
-  // Solid color: this is the only text explaining why a move was refused,
-  // and must clear 4.5:1 contrast.
-  playBtnLabelDim: {
-    fontFamily: "Rajdhani_600SemiBold",
-    color: Colors.goldLight, letterSpacing: 0.5, textAlign: "center",
-  },
 });
