@@ -55,6 +55,8 @@ interface CardItemProps {
   cardScale: number;
   /** Vertical distance a dealt card rises from, derived from that same size. */
   dealRise: number;
+  /** The strip of this card a tap can reach — the rest is under its neighbour. */
+  hitW: number;
 }
 
 function CardItemBase({
@@ -70,6 +72,7 @@ function CardItemBase({
   dealFromX,
   cardScale,
   dealRise,
+  hitW,
   faceDown = false,
 }: CardItemProps) {
   const reduceMotion = usePrefersReducedMotion();
@@ -134,7 +137,15 @@ function CardItemBase({
 
   return (
     <Animated.View
-      style={[handStyles.handCardWrap, { left, bottom, zIndex }, aStyle]}
+      style={[
+        handStyles.handCardWrap,
+        // The card's own box, stated rather than taken from the child: the
+        // child is only as wide as this card's tap strip, and a wrapper that
+        // narrowed with it would rotate the card about a point left of its
+        // centre and bend the fan.
+        { left, bottom, zIndex, width: CARD_W(cardScale), height: CARD_H(cardScale) },
+        aStyle,
+      ]}
     >
       <Animated.View pointerEvents="none" style={[handStyles.cardGlow, glowStyle]} />
       <CardView
@@ -144,6 +155,7 @@ function CardItemBase({
         disabled={disabled}
         faceDown={faceDown}
         scale={cardScale}
+        hitWidth={hitW}
         noLift
       />
     </Animated.View>
@@ -169,7 +181,8 @@ function cardItemPropsEqual(a: CardItemProps, b: CardItemProps): boolean {
     a.faceDown === b.faceDown &&
     a.dealFromX === b.dealFromX &&
     a.cardScale === b.cardScale &&
-    a.dealRise === b.dealRise
+    a.dealRise === b.dealRise &&
+    a.hitW === b.hitW
   );
 }
 
@@ -241,12 +254,11 @@ export function StraightHand({
   }
 
   // The overlap step is solved against the share, not against everything the
-  // row could reach — a hand of three does not stretch across the felt. Its
-  // own floor (computeHandLayout) can hold a full hand wider than the share,
-  // and only `availW` is hard: past that the row scrolls.
-  const { step, totalW } = computeHandLayout(n, roomW, cardW);
+  // row could reach — a hand of three does not stretch across the felt, and a
+  // hand of twenty-one compresses inside the same span rather than reaching
+  // past it. Only `availW` is hard: past that the row scrolls.
+  const { step, totalW, scrollable } = computeHandLayout(n, roomW, cardW, availW);
   const rowW = Math.min(totalW, availW);
-  const scrollable = totalW > availW;
 
   // Solved for the span the step produced, so the arc and the overlap floor
   // cannot disagree about how wide the hand is.
@@ -285,6 +297,9 @@ export function StraightHand({
           dealFromX={-place.x - cardW / 2}
           cardScale={cardScale}
           dealRise={dealRise}
+          // Every card but the last is covered from `step` on by the one drawn
+          // over it, so that strip is all of it a tap can reach.
+          hitW={i === arc.length - 1 ? cardW : step}
         />
       ))}
     </View>
@@ -292,16 +307,12 @@ export function StraightHand({
 
   return (
     <View style={[handStyles.handCenter, { width: availW, height: visibleH + arcRise }]}>
-      <View
-        style={[
-          handStyles.handGlowWrap,
-          isMyTurn && handStyles.handGlowWrapActive,
-        ]}
-      >
+      <View style={handStyles.handGlowWrap}>
         {scrollable ? (
-          // Too many cards to keep the readable minimum step inside availW
-          // (e.g. a 21-card hand on a narrow device). Scroll instead of
-          // clipping or shrinking the step past legibility. HAND_ROW_HEADROOM
+          // The hand compresses inside its share, so this is reached only when
+          // even the finger floor cannot fit the row in availW — a full hand on
+          // a small phone. Scroll instead of clipping or of stepping below what
+          // a thumb can separate. HAND_ROW_HEADROOM
           // reproduces the same top clearance the fixed-height, non-scrolling
           // path gets for free from HAND_SECTION_H (its card's height + 16)
           // being taller than the card row it centers — without it, the
@@ -312,6 +323,10 @@ export function StraightHand({
             showsHorizontalScrollIndicator={false}
             style={{ width: availW, height: visibleH + arcRise + HAND_ROW_HEADROOM }}
             contentContainerStyle={{ paddingTop: HAND_ROW_HEADROOM, width: totalW }}
+            // Opens on the middle of the hand. At offset 0 the row is against
+            // the left edge of a box the buttons centre on, which reads as the
+            // whole hand having slid sideways.
+            contentOffset={{ x: (totalW - availW) / 2, y: 0 }}
           >
             {row}
           </ScrollView>
@@ -333,7 +348,6 @@ const handStyles = StyleSheet.create({
     gap: Spacing.slim,
   },
   handGlowWrap: { borderRadius: Radius.md, padding: Spacing.xs },
-  handGlowWrapActive: { backgroundColor: Colors.goldGhost },
   cardGlow: {
     position: "absolute",
     top: 2, left: 2, right: 2, bottom: 2,

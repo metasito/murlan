@@ -100,12 +100,12 @@ export function HAND_ZONE_H(cardH: number, bottomPad: number): number {
 // card run compresses and stops rather than pushing the seats off the edge.
 
 /**
- * The hand's share. A target rather than a hard cap: the overlap floor
- * (components/handLayout.ts) may hold a full hand wider than this, because a
- * card that cannot be tapped is worse than a hand that reaches further. What
- * is hard is `handAvailW` — past that the row scrolls.
+ * The hand's share. The span the hand fills and then compresses inside, so it
+ * is the same width whether the player holds five cards or twenty-one. Only
+ * the finger floor (`MIN_READABLE_STEP`, components/handLayout.ts) can push a
+ * hand past it, and past `handAvailW` the row scrolls.
  */
-export const HAND_WIDTH_SHARE = 0.54;
+export const HAND_WIDTH_SHARE = 0.56;
 /** The field's share of the same width, bounded by what the seats leave it. */
 export const FIELD_WIDTH_SHARE = 0.55;
 

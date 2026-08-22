@@ -463,6 +463,13 @@ interface CardViewProps {
   style?: object;
   noLift?: boolean;
   /**
+   * The width this card can be tapped on, when a neighbour is drawn over the
+   * rest of it. A hand overlaps its cards, so all but the last expose a strip
+   * narrower than they are, and a tap resolved at the card's own centre — where
+   * a pointer driver aims — lands on the neighbour. Defaults to the full width.
+   */
+  hitWidth?: number;
+  /**
    * The card is the visual content of an enclosing labelled control, so it
    * must not also announce itself — otherwise a screen reader reads the same
    * card twice, once for the wrapper and once for this.
@@ -489,6 +496,7 @@ function CardViewBase({
   noLift = false,
   decorative = false,
   light,
+  hitWidth,
 }: CardViewProps) {
   const { t } = useTranslation();
   const selectedHint = useA11yHint(decorative || !selected ? undefined : t("cardView.selectedA11yHint"));
@@ -590,44 +598,45 @@ function CardViewBase({
         // reappear in the button rotation every turn.
         {...a11yState({ role: onPress ? "button" : undefined, selected, disabled: !interactive })}
         {...selectedHint.props}
-        style={[
-          styles.card,
-          { width: w, height: h },
-          selected && styles.cardSelected,
-        ]}
+        // The pressable is the tap strip; the view inside it is the card. Two
+        // boxes rather than one because `styles.card` clips to its own rounded
+        // corners, and a strip narrower than the card would clip the art with it.
+        style={{ width: hitWidth ?? w, height: h }}
       >
-        {selectedHint.node}
-        <LinearGradient
-          colors={CardFaceGradient}
-          locations={[0, 0.55, 1]}
-          start={{ x: 0.1, y: 0 }}
-          end={{ x: 0.9, y: 1 }}
-          style={StyleSheet.absoluteFill}
-        />
-        <CardFaceArt card={card} color={color} w={w} h={h} compact={compact} />
-        {!compact && COURT_RANKS.has(card.rank) && <CourtArt card={card} w={w} h={h} />}
-        <TableText
-          style={[
-            styles.rankText,
-            rankBox,
-            card.isJoker && styles.rankTextJoker,
-            { color },
-          ]}
-        >
-          {rankText}
-        </TableText>
-        <TableText
-          style={[
-            styles.rankText,
-            rankBox,
-            card.isJoker && styles.rankTextJoker,
-            styles.rankTextBottom,
-            { top: undefined, bottom: inset, color },
-          ]}
-        >
-          {rankText}
-        </TableText>
-        <TopLight light={light} />
+        <View style={[styles.card, { width: w, height: h }, selected && styles.cardSelected]}>
+          {selectedHint.node}
+          <LinearGradient
+            colors={CardFaceGradient}
+            locations={[0, 0.55, 1]}
+            start={{ x: 0.1, y: 0 }}
+            end={{ x: 0.9, y: 1 }}
+            style={StyleSheet.absoluteFill}
+          />
+          <CardFaceArt card={card} color={color} w={w} h={h} compact={compact} />
+          {!compact && COURT_RANKS.has(card.rank) && <CourtArt card={card} w={w} h={h} />}
+          <TableText
+            style={[
+              styles.rankText,
+              rankBox,
+              card.isJoker && styles.rankTextJoker,
+              { color },
+            ]}
+          >
+            {rankText}
+          </TableText>
+          <TableText
+            style={[
+              styles.rankText,
+              rankBox,
+              card.isJoker && styles.rankTextJoker,
+              styles.rankTextBottom,
+              { top: undefined, bottom: inset, color },
+            ]}
+          >
+            {rankText}
+          </TableText>
+          <TopLight light={light} />
+        </View>
       </Pressable>
     </Animated.View>
   );
