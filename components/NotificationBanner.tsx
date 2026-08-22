@@ -55,6 +55,13 @@ const COLOR_MAP: Record<NotificationType, string> = {
 // generic transition duration.
 const SLIDE_DURATION = 320;
 const DEFAULT_VISIBLE_DURATION = 4500;
+/**
+ * Slack on the floor that ends a banner whose animation chain never reported
+ * back. Under reduced motion every leg collapses to 0ms, so without it the
+ * floor would land on the visible duration exactly — and it must never be the
+ * thing that dismisses a banner that is behaving.
+ */
+const FLOOR_GRACE_MS = 1000;
 // Clearance between whatever the banner sits under and the banner itself.
 const TOP_GAP = 8;
 
@@ -106,6 +113,12 @@ export default function NotificationBanner({ notification, onDismiss }: Props) {
           withTiming(0, { duration: slideDur })
         );
       });
+      // The floor under that chain. Every leg hands on through a `finished`
+      // callback, and `finished` is false for any interruption — so a chain
+      // broken anywhere leaves the banner standing over the table for the rest
+      // of the session. Late enough that it never cuts a healthy one short.
+      const floor = setTimeout(onDismiss, visibleDuration + slideDur * 4 + FLOOR_GRACE_MS);
+      return () => clearTimeout(floor);
     } else {
       // Instantly reset when dismissed programmatically
       translateY.value = withTiming(-120, { duration: slideDur });

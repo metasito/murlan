@@ -47,6 +47,12 @@ const FLY_LANDING_ROTS: Record<FlyDirection, number> = {
 // its impact sound and shake against it.
 const ARC_PEAK = 22;
 const LAND_DIP = 5;
+/**
+ * The longest a flight may hold the felt. The throw is `FLIGHT_MS` and the
+ * landing settles for a spring after it; this is well past both, so it never
+ * cuts a flight that is running — it only ends one that has stopped reporting.
+ */
+const FLIGHT_LIMIT_MS = FLIGHT_MS * 3;
 
 /**
  * Where a combination's cards sit on the felt. A combination mid-throw and the
@@ -136,7 +142,16 @@ export function FlyingCards({
       )
     );
 
+    // The floor under that callback. While a flight is up the pile draws
+    // nothing — the cards in the air are the cards on the felt — so a flight
+    // that never reports itself finished leaves the middle of the table empty
+    // for the rest of the round. `finished` is false for any interruption, and
+    // a spring that is cancelled or never scheduled reports nothing at all, so
+    // the landing cannot be the only way out.
+    const floor = setTimeout(() => onDoneRef.current(), FLIGHT_LIMIT_MS);
+
     return () => {
+      clearTimeout(floor);
       cancelAnimation(tx);
       cancelAnimation(ty);
       cancelAnimation(rot);
