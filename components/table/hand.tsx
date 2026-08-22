@@ -57,6 +57,13 @@ interface CardItemProps {
   dealRise: number;
   /** The strip of this card a tap can reach — the rest is under its neighbour. */
   hitW: number;
+  /**
+   * The card's own box. Passed in rather than derived from `cardScale`: a
+   * spectated hand draws backs, which are their own aspect, and the row's arc
+   * is solved against whichever of the two CardView will actually draw.
+   */
+  cardW: number;
+  cardH: number;
 }
 
 function CardItemBase({
@@ -73,6 +80,8 @@ function CardItemBase({
   cardScale,
   dealRise,
   hitW,
+  cardW,
+  cardH,
   faceDown = false,
 }: CardItemProps) {
   const reduceMotion = usePrefersReducedMotion();
@@ -143,7 +152,7 @@ function CardItemBase({
         // child is only as wide as this card's tap strip, and a wrapper that
         // narrowed with it would rotate the card about a point left of its
         // centre and bend the fan.
-        { left, bottom, zIndex, width: CARD_W(cardScale), height: CARD_H(cardScale) },
+        { left, bottom, zIndex, width: cardW, height: cardH },
         aStyle,
       ]}
     >
@@ -182,7 +191,9 @@ function cardItemPropsEqual(a: CardItemProps, b: CardItemProps): boolean {
     a.dealFromX === b.dealFromX &&
     a.cardScale === b.cardScale &&
     a.dealRise === b.dealRise &&
-    a.hitW === b.hitW
+    a.hitW === b.hitW &&
+    a.cardW === b.cardW &&
+    a.cardH === b.cardH
   );
 }
 
@@ -313,6 +324,8 @@ export function StraightHand({
           // Every card but the last is covered from `step` on by the one drawn
           // over it, so that strip is all of it a tap can reach.
           hitW={i === arc.length - 1 ? cardW : step}
+          cardW={cardW}
+          cardH={cardH}
         />
       ))}
     </View>

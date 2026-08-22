@@ -11,9 +11,7 @@
 // shape; this is it, generalised over the seat count.
 import type { Page } from "@playwright/test";
 import { openApp } from "./navigation";
-
-const RANKS = ["3", "4", "5", "6", "7", "8", "9", "10", "J", "Q", "K", "A", "2"] as const;
-const SUITS = ["hearts", "diamonds", "clubs", "spades"] as const;
+import { createDeck, dealCards } from "../../../lib/gameEngine";
 
 /** Bot names and personalities as app/lobby.tsx fills empty seats. */
 const BOTS = [
@@ -22,20 +20,17 @@ const BOTS = [
   { name: "Besnik", personality: "besnik" },
 ] as const;
 
-const card = (rank: string, suit: string) => ({
-  id: `${rank}_${suit}`,
-  rank,
-  suit,
-  isJoker: false,
-});
-
 /**
- * The real deal per seat count — docs/RULES.md §deal: the whole deck goes out,
- * so two players hold 21 each and four hold 13. The size is the whole question
- * for the hand's own layout, and it is the largest hand that reaches the seats
- * the side fans overflow from.
+ * The biggest hand each seat count actually deals, taken from the engine
+ * rather than restated: 54 does not divide by four, so two of the seats hold
+ * one card more than the others, and a layout measured against the smaller of
+ * the two is measured against a hand that never has to fit.
  */
-export const DEAL_SIZE = { 2: 21, 3: 17, 4: 13 } as const;
+export const DEAL_SIZE: Record<2 | 3 | 4, number> = {
+  2: Math.max(...dealCards(2).hands.map((h) => h.length)),
+  3: Math.max(...dealCards(3).hands.map((h) => h.length)),
+  4: Math.max(...dealCards(4).hands.map((h) => h.length)),
+};
 
 /**
  * `handSize` cards a seat, dealt round-robin from a full deck so no two seats
@@ -44,7 +39,9 @@ export const DEAL_SIZE = { 2: 21, 3: 17, 4: 13 } as const;
  * to measure.
  */
 function hands(playerCount: number, handSize: number) {
-  const deck = SUITS.flatMap((suit) => RANKS.map((rank) => card(rank, suit)));
+  // The engine's own deck, unshuffled. Rebuilding a 52-card copy here left the
+  // two jokers out, and 54 is what makes a four-player seat hold fourteen.
+  const deck = createDeck();
   return Array.from({ length: playerCount }, (_, seat) =>
     deck.filter((_c, i) => i % playerCount === seat).slice(0, handSize)
   );

@@ -2,7 +2,7 @@ import { useEffect } from "react";
 import { View, StyleSheet } from "react-native";
 import { TableText } from "./TableText";
 import { ChipText, TableChip } from "./chrome";
-import { CHIP_H } from "@/components/gameTableModel";
+import { CHIP_H, SIDE_SECTION_W } from "@/components/gameTableModel";
 import Animated, {
   useAnimatedProps,
   useAnimatedStyle,
@@ -329,10 +329,10 @@ function PassedChip({ scale }: { scale: number }) {
 
 // Both markers share one wrapping row. A seat carrying both would otherwise
 // stand two badge heights taller than one carrying neither.
-function SeatBadges({ passed, scale }: { passed: boolean; scale: number }) {
+function SeatBadges({ passed, scale, maxW }: { passed: boolean; scale: number; maxW: number }) {
   if (!passed) return null;
   return (
-    <View style={[seatStyles.seatBadgeRow, { maxWidth: OPP_LABEL_MAX_W * scale }]}>
+    <View style={[seatStyles.seatBadgeRow, { maxWidth: maxW }]}>
       <PassedChip scale={scale} />
     </View>
   );
@@ -401,6 +401,7 @@ function SeatWho({
   passed,
   scale,
   countdown,
+  anchor = "centre",
 }: {
   name: string;
   isActive: boolean;
@@ -409,17 +410,25 @@ function SeatWho({
   passed: boolean;
   scale: number;
   countdown?: { seconds: number; resetKey: string };
+  /**
+   * Which of the label's edges is pinned to the disc. The top seat has the
+   * whole table to spread into and centres; a side seat sits flush against its
+   * own column, so a label centred there hangs off the screen.
+   */
+  anchor?: "centre" | "left" | "right";
 }) {
+  const disc = SEAT_DISC * scale;
+  const labelW = anchor === "centre" ? OPP_LABEL_MAX_W * scale : SIDE_LABEL_MAX_W;
+  const labelLeft =
+    anchor === "centre" ? (disc - labelW) / 2 : anchor === "left" ? 0 : disc - labelW;
   return (
     <View style={seatStyles.who}>
       <View
         style={[
           seatStyles.whoLabel,
-          {
-            width: OPP_LABEL_MAX_W * scale,
-            left: ((SEAT_DISC - OPP_LABEL_MAX_W) * scale) / 2,
-            bottom: SEAT_DISC * scale,
-          },
+          { width: labelW, left: labelLeft, bottom: disc },
+          anchor === "left" && seatStyles.whoLabelLeft,
+          anchor === "right" && seatStyles.whoLabelRight,
         ]}
         pointerEvents="none"
       >
@@ -428,14 +437,14 @@ function SeatWho({
             seatStyles.oppName,
             // The cap rides the scale the glyphs do; fixed, it ellipsises
             // every name above a phone's own scale.
-            { fontSize: SEAT_NAME_FS * scale, maxWidth: OPP_LABEL_MAX_W * scale },
+            { fontSize: SEAT_NAME_FS * scale, maxWidth: labelW },
             isActive && seatStyles.oppNameActive,
           ]}
           numberOfLines={1}
         >
           {name}
         </TableText>
-        <SeatBadges passed={passed} scale={scale} />
+        <SeatBadges passed={passed} scale={scale} maxW={labelW} />
       </View>
       <SeatRing
         name={name}
@@ -490,6 +499,7 @@ export function SideOppSlot({
         passed={passed}
         scale={scale}
         countdown={countdown}
+        anchor={isLeft ? "left" : "right"}
       />
       {count > 0 && player.finishPosition === undefined && (
         <CardFan count={count} side={side} isActive={isActive} scale={scale} />
@@ -507,6 +517,13 @@ export function SideOppSlot({
  * than as a long name being trimmed.
  */
 const OPP_LABEL_MAX_W = 104 + Spacing.xs * 2;
+/**
+ * …and what a side seat gets, in points rather than a multiple of the scale.
+ * Its column is `SIDE_SECTION_W` wide whatever the table's scale, so a label
+ * measured in scaled points outgrows the column on a big screen and is drawn
+ * off the edge of it — which is what tests/e2e/tableFit.spec.ts caught.
+ */
+const SIDE_LABEL_MAX_W = SIDE_SECTION_W - Spacing.sm * 2;
 /** Ring to fan, the same on every seat — see SeatWho. */
 const SEAT_GAP = Spacing.slim;
 /** How far a seat recedes while another one is on move. */
@@ -568,6 +585,10 @@ const seatStyles = StyleSheet.create({
     gap: Spacing.xxs,
     paddingBottom: Spacing.xs,
   },
+  // A side seat's label runs inwards from the disc, into the felt, rather than
+  // outwards past the edge its own column is flush against.
+  whoLabelLeft: { alignItems: "flex-start" },
+  whoLabelRight: { alignItems: "flex-end" },
 
   // The same glass as the HUD chips. The lamp can stand directly over any seat,
   // and on the felt's lit band the label alone does not clear AA.

@@ -57,12 +57,16 @@ async function handGeometry(page: import("@playwright/test").Page): Promise<Hand
       el,
       r: el.getBoundingClientRect(),
     }));
+    // A card is taller than it is wide; PASSA and GIOCA are square keys of
+    // very nearly the same height, and on the shortest phone the two heights
+    // are three points apart — the shape is what separates them, not the size.
     const cards = boxes.filter(
       ({ el, r }) =>
         el.getAttribute("role") === "button" &&
         r.top > vh * 0.5 &&
         r.height > vh * 0.15 &&
-        r.height < vh * 0.45
+        r.height < vh * 0.45 &&
+        r.width < r.height * 0.85
     );
     const rects = cards.map((c) => c.r);
     const left = Math.min(...rects.map((r) => r.left));
