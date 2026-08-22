@@ -26,8 +26,8 @@ export const SIDE_SECTION_W = 130;
 // PASSA and GIOCA are square: they read as two keys either side of the hand
 // rather than as two columns of it, which is what a card-height button was.
 const ACTION_BTN = 56;
-/** A comfortable thumb, in physical points — the same floor a card gets. */
-const ACTION_BTN_FLOOR = 48;
+/** A comfortable thumb, in physical points — never `48 * scale`. */
+export const ACTION_BTN_FLOOR = 48;
 /** Hand to button, and button to the edge of the play area. */
 export const HAND_ZONE_GAP = 26;
 

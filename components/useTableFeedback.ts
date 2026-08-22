@@ -86,8 +86,11 @@ export function useTableFeedback({
 
   // Nothing here scales: a fractional scale on a view containing text makes
   // React Native resample the already-rasterised glyphs, and PASSA/GIOCA read
-  // as blurry for as long as it is applied. Emphasis is opacity, glow and —
-  // for the press feedback in GiocaButton — a whole-pixel translateY only.
+  // as blurry for as long as it is applied. Emphasis is opacity and glow.
+  //
+  // The one scale on the table is the buttons' own press (BTN_PRESS_SCALE,
+  // GameTable.tsx), which lasts as long as a finger is down and is never a
+  // state anything is read in.
   const giocaFlashVal = useSharedValue(0);
   const passaFlashVal = useSharedValue(0);
   const giocaGlowVal = useSharedValue(0);

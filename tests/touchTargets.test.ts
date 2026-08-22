@@ -13,6 +13,7 @@ import { fileURLToPath } from "node:url";
 import path from "node:path";
 import { TOUCH_TARGET_MIN } from "../lib/tokens.ts";
 import { physicalTouchTarget } from "../components/cardFaceModel.ts";
+import { ACTION_BTN_FLOOR, actionBtnSize } from "../components/gameTableModel.ts";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
@@ -96,6 +97,22 @@ test("the rail's knobs are sized by physicalTouchTarget, at the HIG floor", () =
   assert.equal(physicalTouchTarget(0.82), TOUCH_TARGET_MIN);
   assert.equal(physicalTouchTarget(1), TOUCH_TARGET_MIN);
   assert.ok(physicalTouchTarget(1.13) > TOUCH_TARGET_MIN);
+});
+
+// PASSA and GIOCA are the two most-pressed controls in the app, and the only
+// ones whose box is a square that scales: `56 * s`, floored at 48pt physical.
+// The floor is the part that matters — on an iPhone SE the table's scale is
+// 0.82, which would put a scaled key at 46pt.
+test("the action buttons are square, scale up, and never fall below a thumb", () => {
+  const source = readFileSync(path.join(repoRoot, "components/GameTable.tsx"), "utf8");
+  assert.match(source, /const actionBtn = actionBtnSize\(scale\)/);
+  // Both buttons take the same box, and take it as a square.
+  assert.equal((source.match(/size=\{actionBtn\}/g) ?? []).length, 2);
+  assert.match(source, /width: size, height: size/);
+
+  assert.equal(actionBtnSize(0.82), ACTION_BTN_FLOOR);
+  assert.equal(actionBtnSize(1), 56);
+  assert.ok(actionBtnSize(2) > actionBtnSize(1), "the key does not grow with the table");
 });
 
 test("the reader finds a real declaration", () => {

@@ -166,7 +166,12 @@ export function ChipText({
       {...a11y}
       style={[
         chipStyles.chipLabel,
-        { fontSize: FontSize.xxs * scale },
+        {
+          fontSize: FontSize.xxs * scale,
+          // Tracking is `em` in the prototype, so it grows with the type it is
+          // set in — a fixed px value is a different letterspacing per handset.
+          letterSpacing: (strong ? CHIP_TRACKING_STRONG : CHIP_TRACKING) * scale,
+        },
         strong && chipStyles.chipLabelStrong,
         lit && chipStyles.chipLabelLit,
         urgent && chipStyles.chipLabelUrgent,
@@ -197,7 +202,9 @@ const CHIP_GAP = 7;
 const CHIP_DOT = 6;
 const CHIP_GLOW = 20;
 const CHIP_DOT_GLOW = 9;
+// `.15em` and `.06em` of the chip's own `10 * s` type.
 const CHIP_TRACKING = 1.5;
+const CHIP_TRACKING_STRONG = 0.6;
 
 const chipStyles = StyleSheet.create({
   chip: {
@@ -212,13 +219,12 @@ const chipStyles = StyleSheet.create({
   chipLabel: {
     fontFamily: "Rajdhani_600SemiBold",
     color: Colors.textMuted,
-    letterSpacing: CHIP_TRACKING,
     textTransform: "uppercase",
   },
   chipLabelStrong: {
     fontFamily: "Rajdhani_700Bold",
     color: Colors.gold,
-    letterSpacing: 0,
+    fontVariant: ["tabular-nums"],
   },
   chipLabelLit: { color: Colors.goldLit },
   chipLabelUrgent: { color: Colors.red },

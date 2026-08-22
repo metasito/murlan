@@ -1,6 +1,7 @@
 import { useEffect } from "react";
 import { View, StyleSheet } from "react-native";
 import { TableText } from "./TableText";
+import { ChipText, TableChip } from "./chrome";
 import Animated, {
   useAnimatedProps,
   useAnimatedStyle,
@@ -16,8 +17,7 @@ import { CardView } from "@/components/CardView";
 import { arcBounds, SEAT_ARC, solveArc } from "@/components/tableArc";
 import type { OpponentSide } from "@/components/gameTableModel";
 import { CARD_BACK_H, CARD_BACK_W, BACK_SCALE } from "@/components/cardFaceModel";
-import { Colors, FontSize, makeShadow, Motion, Radius, Scrim, Spacing } from "@/lib/theme";
-import { useTableFelt } from "@/lib/cosmetics";
+import { Colors, FontSize, makeShadow, Motion, Radius, Spacing } from "@/lib/theme";
 import { usePrefersReducedMotion } from "@/lib/accessibility";
 import { useTranslation } from "@/lib/i18n";
 import type { Player } from "@/lib/gameEngine";
@@ -215,11 +215,6 @@ function SeatRing({
   const pingScale = useSharedValue(1);
   const pingOpacity = useSharedValue(0);
   const reduceMotion = usePrefersReducedMotion();
-  // The disc sits on the felt, so it takes the felt's colour: a green chip on a
-  // bordeaux table reads as an oversight rather than a choice. Its own two
-  // darkest stops — the initials are drawn straight onto it with no plate.
-  const felt = useTableFelt();
-
   useEffect(() => {
     if (!isActive || reduceMotion) return;
     pingScale.value = 1;
@@ -269,17 +264,17 @@ function SeatRing({
         // The lamp is overhead and to the left of everything on this table.
         start={{ x: 0.3, y: 0.25 }}
         end={{ x: 1, y: 1 }}
-        colors={[felt[3], felt[4]]}
+        colors={SEAT_DISC_FILL}
         style={[
           seatStyles.disc,
           isActive && seatStyles.discActive,
           { width: size, height: size, borderRadius: size / 2 },
           isActive
             ? makeShadow(Colors.goldLit, 0, 0, 0.38, SEAT_GLOW * scale, 0)
-            : makeShadow(SEAT_SHADOW_COLOR, 0, SEAT_SHADOW_Y * scale, 0.62, SEAT_SHADOW * scale, 0),
+            : makeShadow(Colors.shadow, 0, SEAT_SHADOW_Y * scale, 0.62, SEAT_SHADOW * scale, 0),
         ]}
       >
-        <TableText style={[seatStyles.discInitials, { fontSize: size * 0.36 }]}>
+        <TableText style={[seatStyles.discInitials, { fontSize: SEAT_INITIAL_FS * scale }]}>
           {initials}
         </TableText>
       </LinearGradient>
@@ -323,18 +318,20 @@ function SeatRing({
 // purpose: the name already carries who the seat used to be. Unlike the
 // one-shot `game:seat_bot_takeover` banner, this renders for as long as
 // `player.type === "ai"` holds.
-function BotSeatBadge() {
+function BotSeatBadge({ scale }: { scale: number }) {
   const { t } = useTranslation();
   return (
-    <View style={seatStyles.botBadge}>
+    <TableChip scale={scale}>
       <Ionicons
         name="hardware-chip-outline"
-        size={FontSize.xs}
+        size={FontSize.xxs * scale}
         color={Colors.gold}
         {...a11yHidden()}
       />
-      <TableText style={seatStyles.botBadgeText}>{t("onlineGame.botSeatLabel")}</TableText>
-    </View>
+      <ChipText scale={scale} strong>
+        {t("onlineGame.botSeatLabel")}
+      </ChipText>
+    </TableChip>
   );
 }
 
@@ -345,23 +342,31 @@ function BotSeatBadge() {
 // when `passedSeats` (gameTableModel.ts) stops returning that seat. Deliberately
 // quieter than the gold bot badge and the gold turn ring: a seat that has
 // withdrawn from the round must not out-shout whose turn it is.
-function PassedChip() {
+function PassedChip({ scale }: { scale: number }) {
   const { t } = useTranslation();
   return (
-    <View style={seatStyles.passedChip}>
-      <TableText style={seatStyles.passedChipText}>{t("gameShared.passedLabel")}</TableText>
-    </View>
+    <TableChip scale={scale}>
+      <ChipText scale={scale}>{t("gameShared.passedLabel")}</ChipText>
+    </TableChip>
   );
 }
 
 // Both markers share one wrapping row. A seat carrying both would otherwise
 // stand two badge heights taller than one carrying neither.
-function SeatBadges({ passed, isBot }: { passed: boolean; isBot: boolean }) {
+function SeatBadges({
+  passed,
+  isBot,
+  scale,
+}: {
+  passed: boolean;
+  isBot: boolean;
+  scale: number;
+}) {
   if (!passed && !isBot) return null;
   return (
     <View style={seatStyles.seatBadgeRow}>
-      {passed && <PassedChip />}
-      {isBot && <BotSeatBadge />}
+      {passed && <PassedChip scale={scale} />}
+      {isBot && <BotSeatBadge scale={scale} />}
     </View>
   );
 }
@@ -450,7 +455,7 @@ function SeatWho({
         >
           {name}
         </TableText>
-        <SeatBadges passed={passed} isBot={isBot} />
+        <SeatBadges passed={passed} isBot={isBot} scale={scale} />
       </View>
       <SeatRing
         name={name}
@@ -537,7 +542,9 @@ const SEAT_NAME_FS = 11;
 const SEAT_SHADOW = 9;
 const SEAT_SHADOW_Y = 3;
 const SEAT_GLOW = 22;
-const SEAT_SHADOW_COLOR = "#000000";
+/** The initial in the middle of the disc. */
+const SEAT_INITIAL_FS = 13;
+const SEAT_DISC_FILL = [Colors.seatDisc, Colors.seatDiscDeep] as const;
 
 const seatStyles = StyleSheet.create({
   // The fan sits between the player and the table, never above them: the top
@@ -589,37 +596,6 @@ const seatStyles = StyleSheet.create({
     justifyContent: "center",
     maxWidth: OPP_LABEL_MAX_W,
     gap: Spacing.xs,
-  },
-  // Neutral, not red: red is the PASSA control and the bomb, and this is
-  // neither a control nor a dramatic play — it is a seat that has receded.
-  passedChip: {
-    paddingHorizontal: Spacing.xs,
-    borderRadius: Radius.sm,
-    backgroundColor: Scrim.heavy,
-    borderWidth: 1,
-    borderColor: Colors.borderStrong,
-  },
-  passedChipText: {
-    fontFamily: "Rajdhani_700Bold",
-    fontSize: FontSize.xs,
-    color: Colors.textSecondary,
-    letterSpacing: 1,
-  },
-
-  botBadge: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: Spacing.xs,
-    paddingHorizontal: Spacing.xs,
-    borderRadius: Radius.sm,
-    backgroundColor: Scrim.heavy,
-    borderWidth: 1,
-    borderColor: Colors.goldBorder,
-  },
-  botBadgeText: {
-    fontFamily: "Rajdhani_600SemiBold",
-    fontSize: FontSize.xs,
-    color: Colors.gold,
   },
 
   disc: {

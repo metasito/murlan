@@ -122,15 +122,14 @@ const ANY_STOP = [0, 1, 2, 3, 4];
  */
 const ON_FELT_TEXT: { text: string; plate: string | null; stops: number[] }[] = [
   { text: "oppName", plate: "oppName", stops: ANY_STOP },
-  // The HUD chips are the only chrome left over the felt, and they sit at the
-  // corners — which the lamp reaches at one seat and abandons at the next.
+  // One chip construction now carries the HUD, the bot badge and the passed
+  // marker, so measuring `chip` measures all three. They sit wherever the lamp
+  // is not, and on the seat it is standing directly over.
   { text: "chipLabel", plate: "chip", stops: ANY_STOP },
   { text: "chipLabelStrong", plate: "chip", stops: ANY_STOP },
   { text: "comboChipText", plate: "comboChip", stops: ANY_STOP },
   { text: "comboChipTextPower", plate: "comboChip", stops: ANY_STOP },
   { text: "winnerText", plate: "winnerTag", stops: ANY_STOP },
-  { text: "passedChipText", plate: "passedChip", stops: ANY_STOP },
-  { text: "botBadgeText", plate: "botBadge", stops: ANY_STOP },
   // Under a lamp that moves, no text sits on bare cloth: the brightest felt on
   // the table is wherever the light is, so every stop is in play for all of it.
   { text: "emptyHandText", plate: "emptyHandText", stops: ANY_STOP },

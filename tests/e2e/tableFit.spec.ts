@@ -72,6 +72,61 @@ test.describe("the table fits the screen", () => {
   }
 });
 
+// ─── The felt has no frame ────────────────────────────────────────────────────
+//
+// The cloth runs edge to edge and the lamp is what shapes it. A framed table —
+// a rounded box inset from the screen with a gold border round it — draws a lit
+// rectangle in a dark room, which is the one thing a single overhead lamp
+// cannot produce. Whether the paint reaches the device's own corners is a
+// property of the composited page, so only a browser can answer it.
+
+test.describe("the felt", () => {
+  test("reaches all four screen edges, with no frame drawn round it", async ({
+    page,
+    baseURL,
+  }) => {
+    test.setTimeout(90_000);
+    const vp = { width: 844, height: 390 };
+    await page.setViewportSize(vp);
+    await openSeededGame(page, baseURL!, 4);
+    await page.waitForTimeout(2_000);
+
+    // One pixel in from each edge, at the midpoint of that edge: the corners
+    // themselves are the device's own rounding, which the app never paints.
+    const probes = [
+      { name: "top", x: Math.round(vp.width / 2), y: 1 },
+      { name: "bottom", x: Math.round(vp.width / 2), y: vp.height - 2 },
+      { name: "left", x: 1, y: Math.round(vp.height / 2) },
+      { name: "right", x: vp.width - 2, y: Math.round(vp.height / 2) },
+    ];
+
+    const bare = await page.evaluate(
+      (points) =>
+        points
+          .filter(({ x, y }) => {
+            const el = document.elementFromPoint(x, y);
+            return !el || !el.closest('[data-testid="game-table"], svg, canvas');
+          })
+          .map((p) => p.name),
+      probes
+    );
+
+    // The floor: `elementFromPoint` returning `<html>` for every probe would
+    // satisfy a check that only looked for the absence of a border.
+    const painted = await page.evaluate(
+      (points) =>
+        points.filter(({ x, y }) => document.elementFromPoint(x, y) !== null).length,
+      probes
+    );
+    expect(painted, "nothing at all is laid out at the screen edges").toBe(probes.length);
+
+    expect(
+      bare,
+      `these edges are not the felt — something is inset from them: ${bare.join(", ")}`
+    ).toEqual([]);
+  });
+});
+
 // ─── The bands the table is built from ───────────────────────────────────────
 //
 // The top seat is the tallest thing on the table after the hand, and it sizes

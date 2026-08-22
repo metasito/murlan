@@ -1,16 +1,11 @@
 // tests/vignette.test.ts — the felt's vignette has no hard edges in it.
 //
 // A linear gradient over a box reaches "transparent" only at the end of its
-// own axis. A piece inset on both axes — a corner square — therefore still
-// carries ink along the two edges that face the middle of the table, and draws
-// them as straight lines across the felt. Four such pieces drew a visible grid
-// on any screen large enough to spread them out; four full-edge bands fixed
-// that, and the lantern's own radial vignette replaced them.
-//
-// A radial cannot reproduce the defect, so what is worth pinning now is that
-// the vignette is still one radial over the whole felt, and still its own
-// layer: folded into the pool it would travel with the lamp, and a vignette
-// that moves is a moving frame rather than a dark rim.
+// own axis, so a piece inset on both axes still carries ink along the two
+// edges facing the middle of the table and draws them as lines across the
+// felt. One radial over the whole felt cannot do that — and it has to stay its
+// own layer, because folded into the pool it would travel with the lamp, and a
+// vignette that moves is a moving frame rather than a dark rim.
 //
 // Structural, like tests/orientation.test.ts — the property is about how the
 // styles are written, so it is checked by reading them.
@@ -49,22 +44,35 @@ test("the vignette is a radial, not an assembly of straight-edged pieces", () =>
 // renders on native, and on web silently falls back to `r="50%"` — a pool a
 // third wider than written, washing the lit stop across the whole felt.
 // Nothing else in the suite can see it: the shape is the browser's.
+/** Every `rx`/`ry`-shaped radial in a file, by id. Empty is the passing state. */
+function radialsShapedByRxRy(text: string): string[] {
+  const radials = text.match(/<RadialGradient[\s\S]*?>/g) ?? [];
+  return radials
+    .filter((r) => /\brx=/.test(r) || /\bry=/.test(r) || !/gradientTransform=/.test(r))
+    .map((r) => /id=\{(\w+)\}/.exec(r)?.[1] ?? r);
+}
+
 test("every radial states its shape as a transform, never as rx/ry", () => {
   const radials = source.match(/<RadialGradient[\s\S]*?>/g) ?? [];
   assert.ok(radials.length >= 4, `only ${radials.length} radials found in the felt`);
-  for (const radial of radials) {
-    const id = /id=\{(\w+)\}/.exec(radial)?.[1] ?? radial;
-    assert.ok(!/\brx=/.test(radial) && !/\bry=/.test(radial), `${id} sizes itself with rx/ry`);
-    assert.match(radial, /gradientTransform=/, `${id} has no shape at all`);
-  }
+  assert.deepEqual(
+    radialsShapedByRxRy(source),
+    [],
+    "these radials size themselves with rx/ry, which every browser ignores"
+  );
 });
 
-// The floor: the scan above must fail on the shape it exists to find. Pinning
-// the count alone would pass against a file that had gone back to rx/ry.
+// The floor. The scan is run against a planted copy of the defect rather than
+// re-tested by hand: a scan whose own pattern has drifted still passes a
+// hand-written check of what the pattern used to be, which is how a guard
+// comes to inspect nothing.
 test("the scan finds an rx/ry radial when one is there", () => {
-  const planted = '<RadialGradient id={FIELD_ID} cx="50%" rx="38%" ry="50%">';
-  assert.ok(/\brx=/.test(planted) && /\bry=/.test(planted));
-  assert.ok(!/gradientTransform=/.test(planted));
+  const planted = source.replace(
+    /<RadialGradient(\s+id=\{FIELD_ID\}[\s\S]*?)gradientTransform=\{[^}]*\}/,
+    '<RadialGradient$1rx="38%" ry="50%"'
+  );
+  assert.notEqual(planted, source, "the planted defect did not replace anything");
+  assert.deepEqual(radialsShapedByRxRy(planted), ["FIELD_ID"]);
 });
 
 test("the vignette is drawn outside the pool, so the lamp can move under it", () => {

@@ -44,8 +44,7 @@ const VIGNETTE_RY = 1.04 / 2;
  *
  * SVG has no `rx`/`ry` on `radialGradient`: react-native-svg accepts them and
  * passes them straight through, and every browser ignores them and falls back
- * to `r="50%"`. So a pool authored as `rx=38% ry=50%` rendered a third wider
- * than it was written, and washed the whole felt in the lit stop.
+ * to `r="50%"` — silently, and only on web.
  *
  * `r="50%"` in objectBoundingBox units is already the ellipse inscribed in the
  * box; scaling about the centre by each radius over that 50% gives the shape

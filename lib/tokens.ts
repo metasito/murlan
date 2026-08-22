@@ -73,15 +73,26 @@ export const Colors = {
   club:         '#1A1A1A',
 
   // Borders & overlays
+  // What a shadow is cast in. `Shadow.*` (lib/theme.ts) is the same colour
+  // pre-applied; this is for the shadows whose radius scales with the card.
+  shadow:       '#000000',
   border:       'rgba(240,234,214,0.1)',
   borderStrong: 'rgba(240,234,214,0.2)',
-  // The chips over the felt. Dark enough to hold their own text against the
-  // cloth directly under the lamp, sheer enough to read as glass on it.
+  // The chips over the felt. The prototype gets away with rgba(3,14,9,.55)
+  // because it also carries `backdrop-filter: blur(6px)`, which React Native
+  // has no equivalent for on any platform — without the blur behind it the
+  // sheerer fill drops the chip's own label under 4.5:1 on the felt's lit
+  // stop (tests/contrast.test.ts). The extra opacity buys back what the blur
+  // was doing.
   chipFill:     'rgba(3,14,9,0.72)',
-  // The seat's own count badge: darker than any felt, so the digit reads the
-  // same wherever the lamp happens to be standing.
+  // A seat is a chip on the cloth, and its own dark disc rather than a patch of
+  // the felt behind it — a seat that took the felt's colour disappeared into it
+  // wherever the lamp happened to be standing. Lit corner first.
+  seatDisc:     '#12402A',
+  seatDiscDeep: '#061C12',
+  // The count badge on the disc's foot: darker than any felt, so the digit
+  // reads the same wherever the lamp is.
   seatBadge:    '#03110A',
-  chipFillSolid:'rgba(2,12,8,0.85)',
   overlay:      'rgba(6,20,16,0.85)',
   overlayStrong:'rgba(3,16,8,0.90)',
   overlayOpaque:'rgba(3,16,8,0.97)',
@@ -169,7 +180,7 @@ export const Garnet = {
 // edge of its reach. Order is the falloff order, and it is a falloff rather
 // than a wash: `FeltPool` (components/table/felt.tsx) lays these along a radial
 // that ends in the room's own darkness, so the first stop is the cloth lit and
-// the last is the cloth barely lit — not two shades of the same flat green.
+// the last is the cloth barely lit.
 //
 // Every alternate is at or below the green's luminance at every stop, so the
 // contrast ratios tests/contrast.test.ts pins against `Colors.felt` are a

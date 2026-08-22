@@ -123,9 +123,11 @@ const ROUND_WINNER_MS = 1800;
 // text labels, and React Native rasterises text before transforming it, so a
 // fractional offset resamples the glyphs. 2px down is the smallest offset
 // that still reads as a press.
-const BTN_PRESS_TRAVEL = 2;
 // The bevelled key: a lit top edge, a face darkening downward, and a corner
-// radius that grows with the table.
+// radius that grows with the table. Pressing it shrinks the whole key rather
+// than dropping it a pixel or two — at 56pt square a travel that small reads
+// as a jitter, and the shrink is what the prototype does.
+const BTN_PRESS_SCALE = 0.94;
 const BTN_RADIUS = 14;
 const BTN_LABEL_FS = 12;
 const BTN_SUB_FS = 10;
@@ -473,8 +475,8 @@ function GiocaButton({
 
   const pressStyle = useAnimatedStyle(() => ({
     transform: [
-      { translateY: pressVal.value * BTN_PRESS_TRAVEL },
       { translateX: rejectX.value },
+      { scale: 1 - pressVal.value * (1 - BTN_PRESS_SCALE) },
     ],
   }));
 
@@ -584,7 +586,7 @@ function PassaButton({
   useEffect(() => () => cancelAnimation(pressVal), [pressVal]);
 
   const pressStyle = useAnimatedStyle(() => ({
-    transform: [{ translateY: pressVal.value * BTN_PRESS_TRAVEL }],
+    transform: [{ scale: 1 - pressVal.value * (1 - BTN_PRESS_SCALE) }],
   }));
 
   return (
@@ -1178,13 +1180,6 @@ export function GameTable({
             onExpire={turnTimer?.onExpire}
             scale={scale}
           />
-        </TableChip>
-
-        <TableChip scale={scale}>
-          <ChipText scale={scale}>{roundLabel}</ChipText>
-          <ChipText scale={scale} strong>
-            {sortedHand.length}
-          </ChipText>
         </TableChip>
       </View>
 
