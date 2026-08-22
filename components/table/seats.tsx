@@ -2,6 +2,7 @@ import { useEffect } from "react";
 import { View, StyleSheet } from "react-native";
 import { TableText } from "./TableText";
 import { ChipText, TableChip } from "./chrome";
+import { CHIP_H } from "@/components/gameTableModel";
 import Animated, {
   useAnimatedProps,
   useAnimatedStyle,
@@ -395,7 +396,11 @@ export function TopOppSlot({
   return (
     <View
       testID="top-seat"
-      style={[seatStyles.topOppSlot, !isActive && seatStyles.seatDim]}
+      style={[
+        seatStyles.topOppSlot,
+        { paddingTop: seatLabelH(scale) },
+        !isActive && seatStyles.seatDim,
+      ]}
     >
       <SeatWho
         name={player.name}
@@ -533,7 +538,16 @@ const SEAT_DIM_OPACITY = 0.62;
  * height: reserving what it actually measures would put the fan back at the
  * mercy of whether this seat happens to carry a bot badge.
  */
-const SEAT_LABEL_H = 32;
+/**
+ * The band the floating label needs above the disc: the name's own line, plus
+ * the badge row, which is a chip and therefore scales with the table. A fixed
+ * number here is the top seat's name drawn off the top of the screen — the
+ * column reserves this, and only the top seat has a screen edge above it.
+ */
+function seatLabelH(scale: number): number {
+  return SEAT_NAME_LINE * scale + CHIP_H(scale) + Spacing.xs;
+}
+const SEAT_NAME_LINE = 17;
 /** The count badge's own diameter, and the digit inside it, at scale 1. */
 const SEAT_BADGE = 18;
 const SEAT_BADGE_FS = 10;
@@ -553,7 +567,6 @@ const seatStyles = StyleSheet.create({
   topOppSlot: {
     alignItems: "center",
     justifyContent: "flex-start",
-    paddingTop: SEAT_LABEL_H,
     gap: SEAT_GAP,
   },
   sideOppSlot: { alignItems: "center", justifyContent: "center", gap: SEAT_GAP },
@@ -566,9 +579,15 @@ const seatStyles = StyleSheet.create({
 
   who: { alignItems: "center", justifyContent: "center" },
   // Out of flow, so a bot badge cannot lengthen the column and move the fan.
+  // Centred on the disc rather than starting at its left edge: the label is
+  // wider than the 33pt disc it hangs over, so out of flow and unanchored it
+  // grows to the right only, and at the accessibility font cap it leaves the
+  // seat entirely.
   whoLabel: {
     position: "absolute",
     bottom: "100%",
+    left: "50%",
+    transform: [{ translateX: "-50%" }],
     alignItems: "center",
     gap: Spacing.xxs,
     paddingBottom: Spacing.xs,
@@ -586,7 +605,10 @@ const seatStyles = StyleSheet.create({
     backgroundColor: Colors.chipFill,
     borderRadius: Radius.sm,
     paddingHorizontal: Spacing.xs,
-    overflow: "hidden",
+    // No `overflow: hidden`. The plate is this element's own background and
+    // has no children to clip, so the only thing it ever cut off was the
+    // label's own glyphs once the OS text setting grew them past the line box
+    // this element was sized for.
   },
   oppNameActive: { color: Colors.goldLit },
 
