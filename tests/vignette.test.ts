@@ -39,40 +39,45 @@ test("the vignette is a radial, not an assembly of straight-edged pieces", () =>
   );
 });
 
-// SVG has no `rx`/`ry` on `radialGradient`. react-native-svg accepts them and
-// passes them through, so an elliptical pool authored that way type-checks,
-// renders on native, and on web silently falls back to `r="50%"` — a pool a
-// third wider than written, washing the lit stop across the whole felt.
-// Nothing else in the suite can see it: the shape is the browser's.
-/** Every `rx`/`ry`-shaped radial in a file, by id. Empty is the passing state. */
-function radialsShapedByRxRy(text: string): string[] {
+// Neither way of stating an ellipse *on* a radialGradient survives both
+// platforms. `rx`/`ry` is what react-native-svg's native path reads and what
+// SVG has no such attribute for, so every browser ignores it and draws a
+// circle. `gradientTransform` is what a browser honours and what the native
+// path pushes through a user-space matrix, where the unit-space translate that
+// centres it means nothing — which is how the felt came to render as one black
+// rectangle on iOS while every web check passed. The shape lives on the rect.
+/** Every radial in a file that shapes itself, by id. Empty is the passing state. */
+function selfShapedRadials(text: string): string[] {
   const radials = text.match(/<RadialGradient[\s\S]*?>/g) ?? [];
   return radials
-    .filter((r) => /\brx=/.test(r) || /\bry=/.test(r) || !/gradientTransform=/.test(r))
+    .filter((r) => /\s(rx|ry|gradientTransform)=/.test(r))
     .map((r) => /id=\{(\w+)\}/.exec(r)?.[1] ?? r);
 }
 
-test("every radial states its shape as a transform, never as rx/ry", () => {
+test("no radial states its own shape — the rect it fills does", () => {
   const radials = source.match(/<RadialGradient[\s\S]*?>/g) ?? [];
   assert.ok(radials.length >= 4, `only ${radials.length} radials found in the felt`);
   assert.deepEqual(
-    radialsShapedByRxRy(source),
+    selfShapedRadials(source),
     [],
-    "these radials size themselves with rx/ry, which every browser ignores"
+    "these radials size themselves, and no way of doing so renders the same on web and native"
   );
 });
 
-// The floor. The scan is run against a planted copy of the defect rather than
+// The floor. The scan is run against a planted copy of each defect rather than
 // re-tested by hand: a scan whose own pattern has drifted still passes a
 // hand-written check of what the pattern used to be, which is how a guard
 // comes to inspect nothing.
-test("the scan finds an rx/ry radial when one is there", () => {
-  const planted = source.replace(
-    /<RadialGradient(\s+id=\{FIELD_ID\}[\s\S]*?)gradientTransform=\{[^}]*\}/,
-    '<RadialGradient$1rx="38%" ry="50%"'
-  );
-  assert.notEqual(planted, source, "the planted defect did not replace anything");
-  assert.deepEqual(radialsShapedByRxRy(planted), ["FIELD_ID"]);
+test("the scan finds a self-shaped radial of either kind", () => {
+  for (const planted of [
+    '<RadialGradient id={FIELD_ID} rx="38%" ry="50%">',
+    '<RadialGradient id={FIELD_ID} gradientTransform="scale(1.5)">',
+  ]) {
+    assert.deepEqual(selfShapedRadials(planted), ["FIELD_ID"]);
+  }
+  // …and the felt is written in the form those fixtures model, so a scan that
+  // only ever passes because the file stopped looking like this cannot.
+  assert.match(source, /<RadialGradient id=\{FIELD_ID\}>/);
 });
 
 test("the vignette is drawn outside the pool, so the lamp can move under it", () => {

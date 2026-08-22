@@ -383,6 +383,7 @@ export const it: Record<keyof typeof en, string> = {
   "settings.tableFelt": "Panno del tavolo",
   "settings.tableFeltSubtitle": "Il colore del tavolo da gioco",
   "settings.tableFeltA11yLabel": "Panno del tavolo",
+  "cosmetics.back.smeraldo": "Smeraldo",
   "cosmetics.back.oro": "Oro",
   "cosmetics.back.rubino": "Rubino",
   "cosmetics.back.zaffiro": "Zaffiro",

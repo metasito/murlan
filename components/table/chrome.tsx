@@ -380,7 +380,10 @@ export const sharedTableStyles = StyleSheet.create({
   },
   sideSectionLeft: { alignItems: "flex-start" },
   sideSectionRight: { alignItems: "flex-end" },
-  centerSection: { flex: 1, alignItems: "center", justifyContent: "center" },
+  // Above both side seats: a combination thrown from a side seat crosses that
+  // seat's own column on its way in, and the flight is drawn in here so that it
+  // lands on the pile's centre rather than the screen's.
+  centerSection: { flex: 1, alignItems: "center", justifyContent: "center", zIndex: 1 },
   // Bottom-aligned, not centred: the row's headroom is there for a selected
   // card's lift, which is above it. Centred, half that headroom sits *under*
   // the row and lifts the hand off the safe line, so the crop the cards are

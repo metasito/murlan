@@ -25,41 +25,30 @@ import { Colors, Lantern } from "@/lib/theme";
 import { usePrefersReducedMotion } from "@/lib/accessibility";
 import type { FeltStops } from "@/lib/cosmetics";
 
-// Radii as a fraction of the felt box, straight from the pool's own shape: a
-// warm core at 44%, a falloff to 76%, darkness past it. The pool is drawn into
-// a box twice the felt's size so it still covers the felt from any light
-// position, which halves every fraction below.
-const FIELD_RX = 0.76 / 2;
-const FIELD_RY = 1.0 / 2;
-const CORE_RX = 0.44 / 2;
-const CORE_RY = 0.6 / 2;
-const BLOOM_RX = 0.34 / 2;
-const BLOOM_RY = 0.46 / 2;
-/**
- * The vignette is drawn over the felt itself, not into the doubled pool box, so
- * its fractions are the prototype's own and are *not* halved. Halved, the rim
- * closes to within a third of the table's height and lays a fifth of black over
- * everything the lamp is lighting.
- */
+// Every radial here is an ellipse, and the box it is painted into is what
+// states its shape. Neither of the two ways of saying so on the gradient itself
+// survives both platforms:
+//
+//   `rx`/`ry`  — what react-native-svg's native path actually reads, and what
+//                SVG has no such attribute for, so every browser ignores them
+//                and falls back to a circle.
+//   `gradientTransform` — what a browser honours, and what the native path
+//                pushes through a *user-space* matrix, where the unit-space
+//                `translate(0.5, …)` that centres it means nothing.
+//
+// `r="50%"` in objectBoundingBox units is the ellipse inscribed in the painted
+// box, on both. So each radial keeps its default circle and the rect it fills
+// carries the radii: a rect `2*rx` by `2*ry`, centred where the light is.
+// Nothing outside a rect is left undrawn — the field's last stop and the room
+// behind it are the same colour, and the core and bloom end transparent.
+const FIELD_RX = 0.76;
+const FIELD_RY = 1.0;
+const CORE_RX = 0.44;
+const CORE_RY = 0.6;
+const BLOOM_RX = 0.34;
+const BLOOM_RY = 0.46;
 const VIGNETTE_RX = 1.28;
 const VIGNETTE_RY = 1.04;
-
-/**
- * An elliptical radial, as `gradientTransform` rather than as `rx`/`ry`.
- *
- * SVG has no `rx`/`ry` on `radialGradient`: react-native-svg accepts them and
- * passes them straight through, and every browser ignores them and falls back
- * to `r="50%"` — silently, and only on web.
- *
- * `r="50%"` in objectBoundingBox units is already the ellipse inscribed in the
- * box; scaling about the centre by each radius over that 50% gives the shape
- * the numbers above describe, on web and native alike.
- */
-function ellipse(rx: number, ry: number): string {
-  const sx = rx / 0.5;
-  const sy = ry / 0.5;
-  return `translate(0.5, 0.5) scale(${sx}, ${sy}) translate(-0.5, -0.5)`;
-}
 
 /** Where the felt's own five stops sit along the falloff, before the dark. */
 const FIELD_OFFSETS = [0, 0.14, 0.3, 0.46, 0.62] as const;
@@ -154,8 +143,16 @@ export function FeltPool({
     transform: [{ translateX: x.value }, { translateY: y.value }],
   }));
 
-  const poolW = width * 2;
-  const poolH = height * 2;
+  // Each radial's own box, `2*rx` by `2*ry`. The pool is the field's, and the
+  // core and the bloom sit centred inside it.
+  const poolW = width * FIELD_RX * 2;
+  const poolH = height * FIELD_RY * 2;
+  const coreW = width * CORE_RX * 2;
+  const coreH = height * CORE_RY * 2;
+  const bloomW = width * BLOOM_RX * 2;
+  const bloomH = height * BLOOM_RY * 2;
+  const vignetteW = width * VIGNETTE_RX * 2;
+  const vignetteH = height * VIGNETTE_RY * 2;
 
   return (
     <View style={[StyleSheet.absoluteFill, feltStyles.clip]} pointerEvents="none">
@@ -167,20 +164,22 @@ export function FeltPool({
 
       <Animated.View
         style={[
-          { position: "absolute", left: -width, top: -height, width: poolW, height: poolH },
+          // Centred on the origin, so the translate below lands its centre on
+          // the lamp.
+          {
+            position: "absolute",
+            left: -poolW / 2,
+            top: -poolH / 2,
+            width: poolW,
+            height: poolH,
+          },
           POOL_LAYER,
           poolStyle,
         ]}
       >
         <Svg width={poolW} height={poolH}>
           <Defs>
-            <RadialGradient
-              id={FIELD_ID}
-              cx="50%"
-              cy="50%"
-              r="50%"
-              gradientTransform={ellipse(FIELD_RX, FIELD_RY)}
-            >
+            <RadialGradient id={FIELD_ID}>
               <Stop offset={FIELD_OFFSETS[0]} stopColor={stops[0]} />
               <Stop offset={FIELD_OFFSETS[1]} stopColor={stops[1]} />
               <Stop offset={FIELD_OFFSETS[2]} stopColor={stops[2]} />
@@ -190,31 +189,31 @@ export function FeltPool({
               <Stop offset={TAIL_OFFSETS[1]} stopColor={mix(stops[4], Colors.bg, TAIL_MIX[1])} />
               <Stop offset={DARK_OFFSET} stopColor={mix(stops[4], Colors.bg, RIM_MIX)} />
             </RadialGradient>
-            <RadialGradient
-              id={CORE_ID}
-              cx="50%"
-              cy="50%"
-              r="50%"
-              gradientTransform={ellipse(CORE_RX, CORE_RY)}
-            >
+            <RadialGradient id={CORE_ID}>
               <Stop offset={0} stopColor={Lantern.core} />
               <Stop offset={0.46} stopColor={Lantern.coreMid} />
               <Stop offset={0.78} stopColor={Lantern.clear} />
             </RadialGradient>
-            <RadialGradient
-              id={BLOOM_ID}
-              cx="50%"
-              cy="50%"
-              r="50%"
-              gradientTransform={ellipse(BLOOM_RX, BLOOM_RY)}
-            >
+            <RadialGradient id={BLOOM_ID}>
               <Stop offset={0} stopColor={Lantern.bloom} />
               <Stop offset={0.76} stopColor={Lantern.clear} />
             </RadialGradient>
           </Defs>
           <Rect width={poolW} height={poolH} fill={`url(#${FIELD_ID})`} />
-          <Rect width={poolW} height={poolH} fill={`url(#${CORE_ID})`} />
-          <Rect width={poolW} height={poolH} fill={`url(#${BLOOM_ID})`} />
+          <Rect
+            x={(poolW - coreW) / 2}
+            y={(poolH - coreH) / 2}
+            width={coreW}
+            height={coreH}
+            fill={`url(#${CORE_ID})`}
+          />
+          <Rect
+            x={(poolW - bloomW) / 2}
+            y={(poolH - bloomH) / 2}
+            width={bloomW}
+            height={bloomH}
+            fill={`url(#${BLOOM_ID})`}
+          />
         </Svg>
       </Animated.View>
 
@@ -262,28 +261,30 @@ export function FeltPool({
       {/* Its own layer, and radial: a vignette assembled from straight-edged
           pieces carries ink along the edges facing the middle of the table and
           draws them as lines across the felt. */}
-      <Svg width={width} height={height} style={StyleSheet.absoluteFill}>
+      <Svg
+        width={vignetteW}
+        height={vignetteH}
+        style={{
+          position: "absolute",
+          left: (width - vignetteW) / 2,
+          top: (height - vignetteH) / 2,
+        }}
+      >
         <Defs>
-          <RadialGradient
-            id={VIGNETTE_ID}
-            cx="50%"
-            cy="50%"
-            r="50%"
-            gradientTransform={ellipse(VIGNETTE_RX, VIGNETTE_RY)}
-          >
+          <RadialGradient id={VIGNETTE_ID}>
             <Stop offset={0.4} stopColor={Lantern.vignetteClear} />
             <Stop offset={1} stopColor={Lantern.vignette} />
           </RadialGradient>
         </Defs>
-        <Rect width={width} height={height} fill={`url(#${VIGNETTE_ID})`} />
+        <Rect width={vignetteW} height={vignetteH} fill={`url(#${VIGNETTE_ID})`} />
       </Svg>
     </View>
   );
 }
 
 const feltStyles = StyleSheet.create({
-  // The pool is drawn at twice the felt's size and slid under this box. Without
-  // the clip it is the document that grows on web, and the first control to take
-  // focus scrolls the whole table off the screen.
+  // Every radial is painted into a box bigger than the felt and slid under this
+  // one. Without the clip it is the document that grows on web, and the first
+  // control to take focus scrolls the whole table off the screen.
   clip: { overflow: "hidden" },
 });

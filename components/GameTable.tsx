@@ -1349,6 +1349,24 @@ export function GameTable({
                   scale={scale}
                 />
               )}
+
+              {/* Beside the pile, not beside the table: the flight has to
+                  settle exactly where PlayedPile then redraws the same cards,
+                  and the rail makes the table box asymmetric — centred on the
+                  screen instead, the combination lands and then jumps. */}
+              {flyInfo && (
+                <FlyingCards
+                  key={flyInfo.key}
+                  cards={flyInfo.cards}
+                  direction={flyInfo.dir}
+                  onDone={() => {
+                    setFlyInfo(null);
+                    setPileBounceTrigger((t) => t + 1);
+                  }}
+                  roomW={frame.fieldRoomW}
+                  scale={scale}
+                />
+              )}
             </View>
 
             <View style={[sharedTableStyles.sideSection, sharedTableStyles.sideSectionRight]}>
@@ -1440,20 +1458,6 @@ export function GameTable({
           </Animated.View>
         </View>
       </View>
-
-      {flyInfo && (
-        <FlyingCards
-          key={flyInfo.key}
-          cards={flyInfo.cards}
-          direction={flyInfo.dir}
-          onDone={() => {
-            setFlyInfo(null);
-            setPileBounceTrigger((t) => t + 1);
-          }}
-          roomW={frame.fieldRoomW}
-          scale={scale}
-        />
-      )}
 
       {exchange.active && exchange.viewerIsWinner && exchange.loser && exchange.winner && (
         <ExchangeModal

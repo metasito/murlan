@@ -201,6 +201,10 @@ export const FeltGradient = FeltGradients.verde;
 // gradient, dark enough to hold the ink lattice against any felt, so repainting
 // FeltGradients can never repaint a back.
 export const CardBacks = {
+  // The prototype's own back, and the default: a green field, so an opponent's
+  // fan still reads as cards on the far side of the table. Every other back is
+  // dark enough to vanish into the felt once the lamp is standing elsewhere.
+  smeraldo:   { field: ['#1E6544', '#19583B', '#144B32', '#0F3E29', '#0A3120'], ink: Colors.gold, lattice: 7, starPoints: 8 },
   oro:        { field: ['#3A2C13', '#2E2210', '#241A0B', '#180F06', '#0D0803'], ink: Colors.gold, lattice: 7, starPoints: 8 },
   rubino:     { field: ['#4A1622', '#3A111A', '#2C0C13', '#1E080D', '#120507'], ink: Colors.gold, lattice: 7, starPoints: 8 },
   zaffiro:    { field: ['#12294A', '#0E2038', '#0A182A', '#07101D', '#040A10'], ink: SILVER,      lattice: 9, starPoints: 6 },

@@ -93,10 +93,17 @@ const table = (gameState: GameState, selectedIds: string[]) => (
   </SafeAreaProvider>
 );
 
-describe('the dim GIOCA label', () => {
+// The refusal reason is no longer the button's own label — a 56pt square
+// cannot hold a sentence, so GIOCA says GIOCA and the reason reaches the player
+// through the accessibility label and, on the press it refuses, through the
+// hint beside the button (#199). Which reason is chosen is still the thing
+// worth pinning, and this is where it is now readable.
+describe('the refused GIOCA names the right reason', () => {
   beforeEach(() => {
     jest.clearAllMocks();
   });
+
+  const reasonOf = () => screen.getByTestId('btn-gioca').props.accessibilityLabel as string;
 
   it('calls a pair against a single the wrong type, not too low', async () => {
     const r = await render(
@@ -106,11 +113,8 @@ describe('the dim GIOCA label', () => {
       )
     );
 
-    expect(screen.getByText(t('gameTable.playLabelWrongType'))).toBeTruthy();
-    expect(screen.queryByText(t('gameTable.playLabelTooLow'))).toBeNull();
-    expect(screen.getByTestId('btn-gioca').props.accessibilityLabel).toContain(
-      t('gameTable.playA11ySpokenWrongType')
-    );
+    expect(reasonOf()).toContain(t('gameTable.playA11ySpokenWrongType'));
+    expect(reasonOf()).not.toContain(t('gameTable.playA11ySpokenTooLow'));
 
     await r.unmount();
   });
@@ -120,10 +124,10 @@ describe('the dim GIOCA label', () => {
       table(state({ firstPlayMade: false, startCard: THREE_S }), [SEVEN_H.id, SEVEN_C.id])
     );
 
-    expect(
-      screen.getByText(t('gameTable.playLabelStartCard', { rank: THREE_S.rank }))
-    ).toBeTruthy();
-    expect(screen.queryByText(t('gameTable.playLabelTooLow'))).toBeNull();
+    expect(reasonOf()).toContain(
+      t('gameTable.playA11ySpokenStartCard', { rank: THREE_S.rank })
+    );
+    expect(reasonOf()).not.toContain(t('gameTable.playA11ySpokenTooLow'));
 
     await r.unmount();
   });
@@ -136,7 +140,21 @@ describe('the dim GIOCA label', () => {
       )
     );
 
-    expect(screen.getByText(t('gameTable.playLabelTooLow'))).toBeTruthy();
+    expect(reasonOf()).toContain(t('gameTable.playA11ySpokenTooLow'));
+
+    await r.unmount();
+  });
+
+  it('says GIOCA on the button whatever the reason is', async () => {
+    const r = await render(
+      table(
+        state({ lastPlayedCombination: single(card('9', 'diamonds')), lastPlayedBy: 1 }),
+        [SEVEN_H.id]
+      )
+    );
+
+    expect(screen.getByText(t('gameTable.playLabelGioca'))).toBeTruthy();
+    expect(screen.queryByText(t('gameTable.playLabelTooLow'))).toBeNull();
 
     await r.unmount();
   });

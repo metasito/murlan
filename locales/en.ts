@@ -381,6 +381,7 @@ export const en = {
   "settings.tableFelt": "Table felt",
   "settings.tableFeltSubtitle": "The colour of the playing surface",
   "settings.tableFeltA11yLabel": "Table felt",
+  "cosmetics.back.smeraldo": "Emerald",
   "cosmetics.back.oro": "Gold",
   "cosmetics.back.rubino": "Ruby",
   "cosmetics.back.zaffiro": "Sapphire",

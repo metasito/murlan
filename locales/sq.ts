@@ -398,6 +398,7 @@ export const sq: Record<keyof typeof en, string> = {
   "settings.tableFelt": "Cohja e tavolinës",
   "settings.tableFeltSubtitle": "Ngjyra e siperfaqes së lojës",
   "settings.tableFeltA11yLabel": "Cohja e tavolinës",
+  "cosmetics.back.smeraldo": "Smerald",
   "cosmetics.back.oro": "Ar",
   "cosmetics.back.rubino": "Rubin",
   "cosmetics.back.zaffiro": "Safir",

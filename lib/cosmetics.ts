@@ -19,7 +19,7 @@ export type TableFeltId = keyof typeof FeltGradients;
 export const CARD_BACK_IDS = Object.keys(CardBacks) as CardBackId[];
 export const TABLE_FELT_IDS = Object.keys(FeltGradients) as TableFeltId[];
 
-export const DEFAULT_CARD_BACK: CardBackId = "oro";
+export const DEFAULT_CARD_BACK: CardBackId = "smeraldo";
 export const DEFAULT_TABLE_FELT: TableFeltId = "verde";
 
 export function isCardBackId(value: unknown): value is CardBackId {
