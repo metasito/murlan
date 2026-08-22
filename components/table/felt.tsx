@@ -66,8 +66,13 @@ const FIELD_OFFSETS = [0, 0.14, 0.3, 0.46, 0.62] as const;
  */
 const TAIL_OFFSETS = [0.78, 0.92] as const;
 /** How far each tail stop has already become the room. */
-const TAIL_MIX = [0.68, 0.93] as const;
-/** …and where it is the room entirely. */
+const TAIL_MIX = [0.58, 0.74] as const;
+/**
+ * …and how far the rim gets. Not all the way: the lamp says whose turn it is,
+ * it does not take the other players off the table. A seat on the far side of
+ * the felt still sits on cloth, and its name, count and fan stay readable.
+ */
+const RIM_MIX = 0.86;
 const DARK_OFFSET = 1;
 
 /** `a` blended `t` of the way to `b`, both opaque hex. */
@@ -140,7 +145,7 @@ export function FeltPool({
   const poolH = height * 2;
 
   return (
-    <View style={StyleSheet.absoluteFill} pointerEvents="none">
+    <View style={[StyleSheet.absoluteFill, feltStyles.clip]} pointerEvents="none">
       {/* Past the falloff there is no felt, only the room. */}
       <View style={[StyleSheet.absoluteFill, feltStyles.room]} />
 
@@ -166,7 +171,7 @@ export function FeltPool({
               <Stop offset={FIELD_OFFSETS[4]} stopColor={stops[4]} />
               <Stop offset={TAIL_OFFSETS[0]} stopColor={mix(stops[4], Colors.bg, TAIL_MIX[0])} />
               <Stop offset={TAIL_OFFSETS[1]} stopColor={mix(stops[4], Colors.bg, TAIL_MIX[1])} />
-              <Stop offset={DARK_OFFSET} stopColor={Colors.bg} />
+              <Stop offset={DARK_OFFSET} stopColor={mix(stops[4], Colors.bg, RIM_MIX)} />
             </RadialGradient>
             <RadialGradient
               id={CORE_ID}
@@ -260,5 +265,9 @@ export function FeltPool({
 }
 
 const feltStyles = StyleSheet.create({
+  // The pool is drawn at twice the felt's size and slid under this box. Without
+  // the clip it is the document that grows on web, and the first control to take
+  // focus scrolls the whole table off the screen.
+  clip: { overflow: "hidden" },
   room: { backgroundColor: Colors.bg },
 });

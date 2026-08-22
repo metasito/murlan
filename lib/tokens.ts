@@ -144,7 +144,7 @@ export const Lantern = {
   weaveLight: 'rgba(255,255,255,0.02)',
   weaveDark:  'rgba(0,0,0,0.055)',
   // Real darkness past the falloff, and the vignette over all of it.
-  vignette:      'rgba(0,0,0,0.5)',
+  vignette:      'rgba(0,0,0,0.38)',
   vignetteClear: 'rgba(0,0,0,0)',
   // A card standing in a hand has its head nearer a hanging lamp than its
   // foot. The `-on` pair is the same card in the seat that is on move.

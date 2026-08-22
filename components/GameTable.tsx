@@ -14,6 +14,7 @@ import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
   View,
   StyleSheet,
+  Platform,
   Pressable,
   Modal,
   useWindowDimensions,
@@ -135,6 +136,16 @@ const BTN_TRACKING = 1.9;
 const BTN_GLOW = 26;
 /** The rematch question's own column down the side of the table. */
 const REMATCH_PANEL_W = 86;
+
+/**
+ * The hand runs past the bottom edge on purpose, and the side fans lean out
+ * past their columns. `overflow: hidden` hides all of that but still leaves a
+ * scrollable box, and the browser scrolls a tapped card into view — sliding
+ * the whole table off the screen. `overflow: clip` clips without creating one.
+ * Native has no such box to begin with, and does not know the value.
+ */
+const WEB_CLIP =
+  Platform.OS === "web" ? ({ overflow: "clip" } as unknown as ViewStyle) : null;
 
 // How long the refused-play reason stays on screen, and how wide it may get
 // before it wraps onto its second (and last) line.
@@ -522,7 +533,13 @@ function GiocaButton({
               pointerEvents="none"
               style={[StyleSheet.absoluteFill, styles.btnFlash, flashStyle]}
             />
-            <TableText style={[styles.actionBtnLabel, styles.playBtnLabel, { fontSize: BTN_LABEL_FS * scale }]}>
+            <TableText
+              style={[
+                styles.actionBtnLabel,
+                styles.playBtnLabel,
+                { fontSize: BTN_LABEL_FS * scale, letterSpacing: BTN_TRACKING * scale },
+              ]}
+            >
               {t("gameTable.playLabelGioca")}
             </TableText>
             {selectedCount > 1 && (
@@ -618,16 +635,18 @@ function PassaButton({
           pointerEvents="none"
           style={[StyleSheet.absoluteFill, styles.btnFlash, flashStyle]}
         />
-        <TableText
-          style={[
-            styles.actionBtnLabel,
-            styles.passBtnLabel,
-            { fontSize: BTN_LABEL_FS * scale },
-            !canPass && styles.passBtnLabelDim,
-          ]}
-        >
-          {t("gameTable.passLabel")}
-        </TableText>
+        <View style={styles.actionBtnFace}>
+          <TableText
+            style={[
+              styles.actionBtnLabel,
+              styles.passBtnLabel,
+              { fontSize: BTN_LABEL_FS * scale, letterSpacing: BTN_TRACKING * scale },
+              !canPass && styles.passBtnLabelDim,
+            ]}
+          >
+            {t("gameTable.passLabel")}
+          </TableText>
+        </View>
       </Pressable>
     </Animated.View>
   );
@@ -1134,7 +1153,7 @@ export function GameTable({
   const showStartCardBanner = !gameState.firstPlayMade && !!gameState.startCard;
 
   return (
-    <Animated.View style={[styles.root, shakeStyle]}>
+    <Animated.View style={[styles.root, WEB_CLIP, shakeStyle]}>
       <A11yStatus label={tableA11yLabel} />
       {/* Two chips over the felt, at the corners the cards never reach — the
           combination in play at the head of the field, whose turn it is at the
@@ -1525,7 +1544,7 @@ const PASS_GRADIENT_PRESSED = [Garnet.face, Garnet.deep, Garnet.base, Garnet.bas
 const PASS_GRADIENT_LOCATIONS = [0, 0.22, 0.6, 1] as const;
 
 const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: Colors.bg },
+  root: { flex: 1, backgroundColor: Colors.bg, overflow: "hidden" },
 
   bannerBand: {
     position: "absolute",
@@ -1569,9 +1588,10 @@ const styles = StyleSheet.create({
     gap: Spacing.xxs,
     overflow: "hidden",
   },
+  // Tracking is `.16em` in the prototype, so it rides the font size and every
+  // caller sets it beside `fontSize`.
   actionBtnLabel: {
     fontFamily: "Rajdhani_700Bold",
-    letterSpacing: BTN_TRACKING,
     textTransform: "uppercase",
   },
   // One hairline of light along the top edge — the cue that the surface has a

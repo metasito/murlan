@@ -365,7 +365,7 @@ function SeatBadges({
 }) {
   if (!passed && !isBot) return null;
   return (
-    <View style={seatStyles.seatBadgeRow}>
+    <View style={[seatStyles.seatBadgeRow, { maxWidth: OPP_LABEL_MAX_W * scale }]}>
       {passed && <PassedChip scale={scale} />}
       {isBot && <BotSeatBadge scale={scale} />}
     </View>
@@ -453,7 +453,9 @@ function SeatWho({
         <TableText
           style={[
             seatStyles.oppName,
-            { fontSize: SEAT_NAME_FS * scale },
+            // The cap rides the scale the glyphs do; fixed, it ellipsises
+            // every name above a phone's own scale.
+            { fontSize: SEAT_NAME_FS * scale, maxWidth: OPP_LABEL_MAX_W * scale },
             isActive && seatStyles.oppNameActive,
           ]}
           numberOfLines={1}
