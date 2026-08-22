@@ -412,7 +412,11 @@ export function useHandLift(active: boolean, scale: number) {
   const reduceMotion = usePrefersReducedMotion();
 
   useEffect(() => {
-    const resting = active ? -HAND_LIFT * scale : 0;
+    // Anchored at the lifted state, not the settled one: the hand's designed
+    // position — cards cropped by the bottom edge, buttons on the safe line —
+    // is the one it holds while the player is using it. Lifting *from* that
+    // position instead would spend the crop it is measured by.
+    const resting = active ? 0 : HAND_LIFT * scale;
     if (!mounted.current || reduceMotion) {
       mounted.current = true;
       cancelAnimation(lift);

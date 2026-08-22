@@ -54,12 +54,11 @@ async function seatGeometry(page: Page): Promise<SeatGeometry[]> {
         bottom: Math.max(...backs.map((r) => r.bottom)),
       };
 
-      // The ring is the avatar's own bordered disc: the initials' box.
-      const initials = [...seat.querySelectorAll("div")].find((el) => {
-        const s = getComputedStyle(el);
-        return s.borderRadius.startsWith("50%") || parseFloat(s.borderRadius) >= 20;
-      });
-      const ringRect = (initials ?? seat).getBoundingClientRect();
+      // Asked for by name. Found by shape, the seat's own bot and passed
+      // markers answer first — they are chips, and a chip is round too.
+      const ring = seat.querySelector('[data-testid="seat-ring"]');
+      if (!ring) throw new Error(`the ${side} seat has no ring`);
+      const ringRect = ring.getBoundingClientRect();
 
       out.push({
         side,

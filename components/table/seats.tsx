@@ -251,7 +251,7 @@ function SeatRing({
   const size = SEAT_DISC * scale;
   const badge = SEAT_BADGE * scale;
   return (
-    <View style={{ width: size, height: size }}>
+    <View testID="seat-ring" style={{ width: size, height: size }}>
       <Animated.View
         pointerEvents="none"
         style={[

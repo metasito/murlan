@@ -91,39 +91,46 @@ test.describe("the felt", () => {
     await openSeededGame(page, baseURL!, 4);
     await page.waitForTimeout(2_000);
 
-    // One pixel in from each edge, at the midpoint of that edge: the corners
-    // themselves are the device's own rounding, which the app never paints.
-    const probes = [
-      { name: "top", x: Math.round(vp.width / 2), y: 1 },
-      { name: "bottom", x: Math.round(vp.width / 2), y: vp.height - 2 },
-      { name: "left", x: 1, y: Math.round(vp.height / 2) },
-      { name: "right", x: vp.width - 2, y: Math.round(vp.height / 2) },
-    ];
+    const felt = await page.locator('[data-testid="table-felt"]').boundingBox();
+    if (!felt) throw new Error("the felt never rendered");
 
-    const bare = await page.evaluate(
-      (points) =>
-        points
-          .filter(({ x, y }) => {
-            const el = document.elementFromPoint(x, y);
-            return !el || !el.closest('[data-testid="game-table"], svg, canvas');
-          })
-          .map((p) => p.name),
-      probes
-    );
+    // The floor: a felt that laid out as an empty box would sit at 0,0 and
+    // satisfy any check that only looked at its origin.
+    expect(felt.width, "the felt has no width").toBeGreaterThan(0);
+    expect(felt.height, "the felt has no height").toBeGreaterThan(0);
 
-    // The floor: `elementFromPoint` returning `<html>` for every probe would
-    // satisfy a check that only looked for the absence of a border.
-    const painted = await page.evaluate(
-      (points) =>
-        points.filter(({ x, y }) => document.elementFromPoint(x, y) !== null).length,
-      probes
-    );
-    expect(painted, "nothing at all is laid out at the screen edges").toBe(probes.length);
+    for (const [edge, actual, want] of [
+      ["left", felt.x, 0],
+      ["top", felt.y, 0],
+      ["right", felt.x + felt.width, vp.width],
+      ["bottom", felt.y + felt.height, vp.height],
+    ] as const) {
+      expect(
+        Math.round(actual),
+        `the felt's ${edge} edge is at ${Math.round(actual)}, not the screen's ${want}`
+      ).toBe(want);
+    }
 
-    expect(
-      bare,
-      `these edges are not the felt — something is inset from them: ${bare.join(", ")}`
-    ).toEqual([]);
+    // …and nothing over it draws a frame. A border on the play area is the
+    // boxed-diagram look the full-bleed felt replaced, and it would pass every
+    // measurement above while still being visible.
+    const framed = await page.evaluate(() => {
+      const table = document.querySelector('[data-testid="game-table"]');
+      if (!table) throw new Error("the table never rendered");
+      const out: string[] = [];
+      for (const el of [table, ...table.querySelectorAll("div")]) {
+        const s = getComputedStyle(el);
+        const box = el.getBoundingClientRect();
+        // Only the big surfaces: a chip, a card and a seat all carry a rule of
+        // their own, and are meant to.
+        if (box.width < innerWidth * 0.8 || box.height < innerHeight * 0.8) continue;
+        if (parseFloat(s.borderTopWidth) > 0 || parseFloat(s.borderLeftWidth) > 0) {
+          out.push(`${el.className || "div"} (${s.borderTopWidth} ${s.borderTopColor})`);
+        }
+      }
+      return out;
+    });
+    expect(framed, `these full-table surfaces draw a border: ${framed.join("; ")}`).toEqual([]);
   });
 });
 

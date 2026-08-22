@@ -1219,7 +1219,7 @@ export function GameTable({
           rectangle in a dark room, which is the one thing a single overhead
           lamp cannot produce. The pool tracks whose turn it is, so half the
           cloth falls into shadow when it is not yours. */}
-      <View style={StyleSheet.absoluteFill} pointerEvents="none">
+      <View testID="table-felt" style={StyleSheet.absoluteFill} pointerEvents="none">
         <FeltPool
           width={feltW}
           height={feltH}
