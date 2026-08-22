@@ -1,15 +1,14 @@
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { View, StyleSheet, Pressable, type TextProps } from "react-native";
 import { TableText } from "./TableText";
 import {
+  Easing,
   useAnimatedStyle,
   useSharedValue,
   withTiming,
-  withSequence,
-  withRepeat,
   cancelAnimation,
 } from "react-native-reanimated";
-import { Colors, FontSize, makeShadow, Motion, Radius, Scrim, Shadow, Spacing, Type } from "@/lib/theme";
+import { Colors, FontSize, makeShadow, Radius, Scrim, Spacing, Type } from "@/lib/theme";
 import { usePrefersReducedMotion } from "@/lib/accessibility";
 import { useTranslation } from "@/lib/i18n";
 import type { StartReason } from "@/lib/gameEngine";
@@ -381,64 +380,46 @@ export const sharedTableStyles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
-  handSectionActive: {
-    backgroundColor: Colors.goldGhost,
-  },
-  // The turn pulse, as a textless childless sibling behind the hand: the glow
-  // and the hairline along the top edge are fixed, and useTurnPulse animates
-  // only this view's opacity. The wash and the hairline are what the shadow is
-  // cast from — a layer with transparent contents has nothing for iOS to blur
-  // and gives Android's elevation no outline.
-  handGlow: {
-    position: "absolute",
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    borderRadius: Radius.md,
-    borderTopWidth: 1,
-    borderTopColor: Colors.goldStrong,
-    backgroundColor: Colors.goldGhost,
-    ...Shadow.goldSoft,
-  },
 });
 
-// ─── useTurnPulse ─────────────────────────────────────────────────────────────
+// ─── useHandLift ──────────────────────────────────────────────────────────────
 
-export function useTurnPulse(active: boolean) {
-  const glowV = useSharedValue(0);
+/** How far the hand rises when the turn comes to the viewer, at scale 1. */
+const HAND_LIFT = 4;
+const HAND_LIFT_MS = 500;
+
+/**
+ * The hand rises off the bottom edge on the viewer's own turn — the fourth of
+ * the table's signals about whose turn it is, after the lamp, the seat's ring
+ * and the other seats dimming.
+ *
+ * A lift, not a wash: a lit band behind the hand is a gold hairline drawn the
+ * full width of the table, which reads as chrome across the felt rather than
+ * as the hand coming up. `translateY` alone, so the browser composites it.
+ */
+export function useHandLift(active: boolean, scale: number) {
+  const lift = useSharedValue(0);
+  // A CSS transition does not fire on the value an element mounts with, and
+  // neither does this: a table rejoined mid-turn should open with the hand
+  // already up, not raise it over half a second nobody asked for.
+  const mounted = useRef(false);
   const reduceMotion = usePrefersReducedMotion();
 
   useEffect(() => {
-    if (active && reduceMotion) {
-      // Same affordance, no breathing: hold the glow at its midpoint.
-      cancelAnimation(glowV);
-      glowV.value = 0.6;
+    const resting = active ? -HAND_LIFT * scale : 0;
+    if (!mounted.current || reduceMotion) {
+      mounted.current = true;
+      cancelAnimation(lift);
+      lift.value = resting;
       return;
     }
-    if (active) {
-      glowV.value = 0.35;
-      glowV.value = withRepeat(
-        withSequence(
-          withTiming(0.85, { duration: 900 }),
-          withTiming(0.35, { duration: 900 })
-        ),
-        -1,
-        false
-      );
-    } else {
-      cancelAnimation(glowV);
-      glowV.value = withTiming(0, { duration: Motion.duration.moderate });
-    }
-    return () => {
-      cancelAnimation(glowV);
-    };
-  }, [active, reduceMotion, glowV]);
+    lift.value = withTiming(resting, {
+      duration: HAND_LIFT_MS,
+      easing: Easing.bezier(0.2, 0.8, 0.3, 1),
+    });
+    return () => cancelAnimation(lift);
+  }, [active, scale, reduceMotion, lift]);
 
-  // Opacity only. The glow and the gold hairline are static, on the childless
-  // sibling the caller puts behind the hand (`sharedTableStyles.handGlow`):
-  // a shadow or a border colour written per frame is paint the browser cannot
-  // composite, and on web reanimated writes it from the main JS thread.
-  return useAnimatedStyle(() => ({ opacity: glowV.value }));
+  return useAnimatedStyle(() => ({ transform: [{ translateY: lift.value }] }));
 }
 

@@ -59,8 +59,29 @@ function ellipse(rx: number, ry: number): string {
 
 /** Where the felt's own five stops sit along the falloff, before the dark. */
 const FIELD_OFFSETS = [0, 0.14, 0.3, 0.46, 0.62] as const;
-/** …and where it has become the room again. */
-const DARK_OFFSET = 0.82;
+/**
+ * Past the felt's own five stops the cloth is still cloth, just barely lit —
+ * two more stops carrying its last colour down into the room. Handing straight
+ * from the fifth stop to `Colors.bg` crashes the falloff in a fifth of its
+ * length and draws the lit middle as a column rather than a pool.
+ */
+const TAIL_OFFSETS = [0.78, 0.92] as const;
+/** How far each tail stop has already become the room. */
+const TAIL_MIX = [0.68, 0.93] as const;
+/** …and where it is the room entirely. */
+const DARK_OFFSET = 1;
+
+/** `a` blended `t` of the way to `b`, both opaque hex. */
+function mix(a: string, b: string, t: number): string {
+  const channels = [1, 3, 5].map((i) => {
+    const from = parseInt(a.slice(i, i + 2), 16);
+    const to = parseInt(b.slice(i, i + 2), 16);
+    return Math.round(from + (to - from) * t)
+      .toString(16)
+      .padStart(2, "0");
+  });
+  return `#${channels.join("")}`;
+}
 
 // One table renders at a time, so these need only be unique within this file.
 const FIELD_ID = "feltField";
@@ -144,8 +165,9 @@ export function FeltPool({
               <Stop offset={FIELD_OFFSETS[2]} stopColor={stops[2]} />
               <Stop offset={FIELD_OFFSETS[3]} stopColor={stops[3]} />
               <Stop offset={FIELD_OFFSETS[4]} stopColor={stops[4]} />
+              <Stop offset={TAIL_OFFSETS[0]} stopColor={mix(stops[4], Colors.bg, TAIL_MIX[0])} />
+              <Stop offset={TAIL_OFFSETS[1]} stopColor={mix(stops[4], Colors.bg, TAIL_MIX[1])} />
               <Stop offset={DARK_OFFSET} stopColor={Colors.bg} />
-              <Stop offset={1} stopColor={Colors.bg} />
             </RadialGradient>
             <RadialGradient
               id={CORE_ID}

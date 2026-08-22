@@ -82,6 +82,7 @@ import {
   ChipDot,
   ChipText,
   ControlRail,
+  useHandLift,
   portraitOverlayStyles,
   RailKnob,
   sharedTableStyles,
@@ -869,7 +870,6 @@ export function GameTable({
     passaFlashStyle,
     giocaGlowStyle,
     shakeStyle,
-    turnPulseStyle,
     giocaRejectX,
     playImpact,
     rejectPlay,
@@ -887,6 +887,8 @@ export function GameTable({
     rankings: gameState.rankings,
     viewerId: viewer?.id,
   });
+
+  const handLiftStyle = useHandLift(isMyTurn && !isFinished && !exchange.active, scale);
 
   // The last few cards get the same composition, pitched down — one piece of
   // music with two intensities rather than a second piece (#113). Only while a
@@ -1341,21 +1343,21 @@ export function GameTable({
             </View>
           </View>
 
-          <View
+          {/* The hand rises off the bottom edge on the viewer's own turn. A
+              lift rather than a lit band: a wash behind the hand draws a gold
+              hairline the full width of the table, which reads as chrome over
+              the felt instead of as the hand coming up. */}
+          <Animated.View
             style={[
               sharedTableStyles.handSection,
-              isMyTurn && !isFinished && sharedTableStyles.handSectionActive,
               {
                 height: HAND_ZONE_H(handCardH, frame.bottomPad),
                 paddingBottom: frame.bottomPad,
                 gap: HAND_ZONE_GAP * scale,
               },
+              handLiftStyle,
             ]}
           >
-            <Animated.View
-              pointerEvents="none"
-              style={[sharedTableStyles.handGlow, turnPulseStyle]}
-            />
             {!spectating && (
               <PassaButton
                 canPass={canPass}
@@ -1413,7 +1415,7 @@ export function GameTable({
                 scale={scale}
               />
             )}
-          </View>
+          </Animated.View>
         </View>
       </View>
 

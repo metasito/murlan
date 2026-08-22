@@ -14,7 +14,6 @@ import {
 import type { Combination } from "@/lib/gameEngine";
 import { usePrefersReducedMotion } from "@/lib/accessibility";
 import { roundClosedWithWinner } from "@/components/gameTableModel";
-import { useTurnPulse } from "@/components/table/chrome";
 import {
   playBomb,
   playCardPass,
@@ -53,7 +52,6 @@ interface TableFeedback {
   passaFlashStyle: AnimatedStyle<ViewStyle>;
   giocaGlowStyle: AnimatedStyle<ViewStyle>;
   shakeStyle: AnimatedStyle<ViewStyle>;
-  turnPulseStyle: AnimatedStyle<ViewStyle>;
   /** Driven by `rejectPlay`; GiocaButton folds it into its own press style. */
   giocaRejectX: SharedValue<number>;
   /** The thrown card has landed. Timing it against the flight is the caller's. */
@@ -217,7 +215,6 @@ export function useTableFeedback({
   // Opacity only, on the childless sibling behind the button. A shadow written
   // per frame is main-thread paint the browser cannot composite.
   const giocaGlowStyle = useAnimatedStyle(() => ({ opacity: giocaGlowVal.value }));
-  const turnPulseStyle = useTurnPulse(isMyTurn && !isFinished && !exchangeActive);
 
   const playImpact = useCallback(
     (heavy: boolean) => {
@@ -259,7 +256,6 @@ export function useTableFeedback({
     passaFlashStyle,
     giocaGlowStyle,
     shakeStyle,
-    turnPulseStyle,
     giocaRejectX,
     playImpact,
     rejectPlay,
