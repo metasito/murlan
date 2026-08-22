@@ -65,6 +65,27 @@ const TAIL_MIX = [0.68, 0.93] as const;
 const RIM_MIX = 1;
 const DARK_OFFSET = 1;
 
+/**
+ * A gradient stop's colour and its alpha, stated separately.
+ *
+ * react-native-svg's native path throws a stop colour's own alpha away —
+ * `extractGradient.ts` builds each stop as `(color & 0x00ffffff) | (alpha << 24)`
+ * where `alpha` comes from `stopOpacity`, which defaults to 1. So an
+ * `rgba(0,0,0,0)` stop is opaque black on iOS and Android while a browser draws
+ * it transparent, and the felt's vignette painted a solid black rectangle over
+ * the whole table on device while every web check passed.
+ */
+function stop(color: string): { stopColor: string; stopOpacity: number } {
+  const rgba = /^rgba?\(\s*([\d.]+)\s*,\s*([\d.]+)\s*,\s*([\d.]+)\s*(?:,\s*([\d.]+)\s*)?\)$/.exec(
+    color
+  );
+  if (!rgba) return { stopColor: color, stopOpacity: 1 };
+  return {
+    stopColor: `rgb(${rgba[1]}, ${rgba[2]}, ${rgba[3]})`,
+    stopOpacity: rgba[4] === undefined ? 1 : Number(rgba[4]),
+  };
+}
+
 /** `a` blended `t` of the way to `b`, both opaque hex. */
 function mix(a: string, b: string, t: number): string {
   const channels = [1, 3, 5].map((i) => {
@@ -180,23 +201,23 @@ export function FeltPool({
         <Svg width={poolW} height={poolH}>
           <Defs>
             <RadialGradient id={FIELD_ID}>
-              <Stop offset={FIELD_OFFSETS[0]} stopColor={stops[0]} />
-              <Stop offset={FIELD_OFFSETS[1]} stopColor={stops[1]} />
-              <Stop offset={FIELD_OFFSETS[2]} stopColor={stops[2]} />
-              <Stop offset={FIELD_OFFSETS[3]} stopColor={stops[3]} />
-              <Stop offset={FIELD_OFFSETS[4]} stopColor={stops[4]} />
-              <Stop offset={TAIL_OFFSETS[0]} stopColor={mix(stops[4], Colors.bg, TAIL_MIX[0])} />
-              <Stop offset={TAIL_OFFSETS[1]} stopColor={mix(stops[4], Colors.bg, TAIL_MIX[1])} />
-              <Stop offset={DARK_OFFSET} stopColor={mix(stops[4], Colors.bg, RIM_MIX)} />
+              <Stop offset={FIELD_OFFSETS[0]} {...stop(stops[0])} />
+              <Stop offset={FIELD_OFFSETS[1]} {...stop(stops[1])} />
+              <Stop offset={FIELD_OFFSETS[2]} {...stop(stops[2])} />
+              <Stop offset={FIELD_OFFSETS[3]} {...stop(stops[3])} />
+              <Stop offset={FIELD_OFFSETS[4]} {...stop(stops[4])} />
+              <Stop offset={TAIL_OFFSETS[0]} {...stop(mix(stops[4], Colors.bg, TAIL_MIX[0]))} />
+              <Stop offset={TAIL_OFFSETS[1]} {...stop(mix(stops[4], Colors.bg, TAIL_MIX[1]))} />
+              <Stop offset={DARK_OFFSET} {...stop(mix(stops[4], Colors.bg, RIM_MIX))} />
             </RadialGradient>
             <RadialGradient id={CORE_ID}>
-              <Stop offset={0} stopColor={Lantern.core} />
-              <Stop offset={0.46} stopColor={Lantern.coreMid} />
-              <Stop offset={0.78} stopColor={Lantern.clear} />
+              <Stop offset={0} {...stop(Lantern.core)} />
+              <Stop offset={0.46} {...stop(Lantern.coreMid)} />
+              <Stop offset={0.78} {...stop(Lantern.clear)} />
             </RadialGradient>
             <RadialGradient id={BLOOM_ID}>
-              <Stop offset={0} stopColor={Lantern.bloom} />
-              <Stop offset={0.76} stopColor={Lantern.clear} />
+              <Stop offset={0} {...stop(Lantern.bloom)} />
+              <Stop offset={0.76} {...stop(Lantern.clear)} />
             </RadialGradient>
           </Defs>
           <Rect width={poolW} height={poolH} fill={`url(#${FIELD_ID})`} />
@@ -272,8 +293,8 @@ export function FeltPool({
       >
         <Defs>
           <RadialGradient id={VIGNETTE_ID}>
-            <Stop offset={0.4} stopColor={Lantern.vignetteClear} />
-            <Stop offset={1} stopColor={Lantern.vignette} />
+            <Stop offset={0.4} {...stop(Lantern.vignetteClear)} />
+            <Stop offset={1} {...stop(Lantern.vignette)} />
           </RadialGradient>
         </Defs>
         <Rect width={vignetteW} height={vignetteH} fill={`url(#${VIGNETTE_ID})`} />

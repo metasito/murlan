@@ -23,12 +23,12 @@ test("the vignette is a radial, not an assembly of straight-edged pieces", () =>
   assert.ok(vignette, "the vignette is no longer a RadialGradient over the felt");
   assert.match(
     vignette[0],
-    /stopColor=\{Lantern\.vignetteClear\}/,
+    /stop\(Lantern\.vignetteClear\)/,
     "the vignette does not start transparent, so it darkens the middle of the felt"
   );
   assert.match(
     vignette[0],
-    /offset=\{1\}\s+stopColor=\{Lantern\.vignette\}/,
+    /offset=\{1\}\s+\{\.\.\.stop\(Lantern\.vignette\)\}/,
     "the vignette does not reach its full darkness at the rim"
   );
   assert.equal(

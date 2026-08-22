@@ -18,11 +18,10 @@ import { CardView } from "@/components/CardView";
 import { arcBounds, SEAT_ARC, solveArc } from "@/components/tableArc";
 import type { OpponentSide } from "@/components/gameTableModel";
 import { CARD_BACK_H, CARD_BACK_W, BACK_SCALE } from "@/components/cardFaceModel";
-import { Colors, FontSize, makeShadow, Motion, Radius, Spacing } from "@/lib/theme";
+import { Colors, makeShadow, Motion, Radius, Spacing } from "@/lib/theme";
 import { usePrefersReducedMotion } from "@/lib/accessibility";
 import { useTranslation } from "@/lib/i18n";
 import type { Player } from "@/lib/gameEngine";
-import { a11yHidden } from "@/lib/a11y";
 
 // ─── CardFan ──────────────────────────────────────────────────────────────────
 //
@@ -312,30 +311,6 @@ function SeatRing({
   );
 }
 
-// ─── BotSeatBadge ─────────────────────────────────────────────────────────────
-
-// Persistent marker for a seat currently played by the computer — a vacated
-// human seat and one dealt in as AI from the start render identically, on
-// purpose: the name already carries who the seat used to be. Unlike the
-// one-shot `game:seat_bot_takeover` banner, this renders for as long as
-// `player.type === "ai"` holds.
-function BotSeatBadge({ scale }: { scale: number }) {
-  const { t } = useTranslation();
-  return (
-    <TableChip scale={scale}>
-      <Ionicons
-        name="hardware-chip-outline"
-        size={FontSize.xxs * scale}
-        color={Colors.gold}
-        {...a11yHidden()}
-      />
-      <ChipText scale={scale} strong>
-        {t("onlineGame.botSeatLabel")}
-      </ChipText>
-    </TableChip>
-  );
-}
-
 // ─── SeatBadges ───────────────────────────────────────────────────────────────
 
 // A pass leaves no trace on the felt, so this chip is the only thing that says
@@ -354,20 +329,11 @@ function PassedChip({ scale }: { scale: number }) {
 
 // Both markers share one wrapping row. A seat carrying both would otherwise
 // stand two badge heights taller than one carrying neither.
-function SeatBadges({
-  passed,
-  isBot,
-  scale,
-}: {
-  passed: boolean;
-  isBot: boolean;
-  scale: number;
-}) {
-  if (!passed && !isBot) return null;
+function SeatBadges({ passed, scale }: { passed: boolean; scale: number }) {
+  if (!passed) return null;
   return (
     <View style={[seatStyles.seatBadgeRow, { maxWidth: OPP_LABEL_MAX_W * scale }]}>
-      {passed && <PassedChip scale={scale} />}
-      {isBot && <BotSeatBadge scale={scale} />}
+      <PassedChip scale={scale} />
     </View>
   );
 }
@@ -408,7 +374,6 @@ export function TopOppSlot({
         count={count}
         finishPos={player.finishPosition}
         passed={passed}
-        isBot={player.type === "ai"}
         scale={scale}
         countdown={countdown}
       />
@@ -434,7 +399,6 @@ function SeatWho({
   count,
   finishPos,
   passed,
-  isBot,
   scale,
   countdown,
 }: {
@@ -443,13 +407,22 @@ function SeatWho({
   count: number;
   finishPos?: number;
   passed: boolean;
-  isBot: boolean;
   scale: number;
   countdown?: { seconds: number; resetKey: string };
 }) {
   return (
     <View style={seatStyles.who}>
-      <View style={seatStyles.whoLabel} pointerEvents="none">
+      <View
+        style={[
+          seatStyles.whoLabel,
+          {
+            width: OPP_LABEL_MAX_W * scale,
+            left: ((SEAT_DISC - OPP_LABEL_MAX_W) * scale) / 2,
+            bottom: SEAT_DISC * scale,
+          },
+        ]}
+        pointerEvents="none"
+      >
         <TableText
           style={[
             seatStyles.oppName,
@@ -462,7 +435,7 @@ function SeatWho({
         >
           {name}
         </TableText>
-        <SeatBadges passed={passed} isBot={isBot} scale={scale} />
+        <SeatBadges passed={passed} scale={scale} />
       </View>
       <SeatRing
         name={name}
@@ -515,7 +488,6 @@ export function SideOppSlot({
         count={count}
         finishPos={player.finishPosition}
         passed={passed}
-        isBot={player.type === "ai"}
         scale={scale}
         countdown={countdown}
       />
@@ -528,7 +500,13 @@ export function SideOppSlot({
 
 // ─── Styles ───────────────────────────────────────────────────────────────────
 
-const OPP_LABEL_MAX_W = 70 + Spacing.xs * 2;
+/**
+ * Wide enough for a name the length of the longest the lobby deals in, at
+ * `SEAT_NAME_FS` with its own tracking and the plate's padding either side.
+ * At 70 the plate ellipsised "Besnik" to "BE…", which reads as a bug rather
+ * than as a long name being trimmed.
+ */
+const OPP_LABEL_MAX_W = 104 + Spacing.xs * 2;
 /** Ring to fan, the same on every seat — see SeatWho. */
 const SEAT_GAP = Spacing.slim;
 /** How far a seat recedes while another one is on move. */
@@ -580,16 +558,12 @@ const seatStyles = StyleSheet.create({
   seatDim: { opacity: SEAT_DIM_OPACITY },
 
   who: { alignItems: "center", justifyContent: "center" },
-  // Out of flow, so a bot badge cannot lengthen the column and move the fan.
-  // Centred on the disc rather than starting at its left edge: the label is
-  // wider than the 33pt disc it hangs over, so out of flow and unanchored it
-  // grows to the right only, and at the accessibility font cap it leaves the
-  // seat entirely.
+  // Out of flow, so a badge cannot lengthen the column and move the fan. The
+  // caller supplies width and both insets in points, worked out from the disc
+  // it hangs over — centring it on a percentage translate instead leaves the
+  // label beside the disc on any renderer that does not resolve one.
   whoLabel: {
     position: "absolute",
-    bottom: "100%",
-    left: "50%",
-    transform: [{ translateX: "-50%" }],
     alignItems: "center",
     gap: Spacing.xxs,
     paddingBottom: Spacing.xs,

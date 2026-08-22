@@ -355,7 +355,6 @@ export const sq: Record<keyof typeof en, string> = {
   "onlineGame.exchangeWaitAsOther": "{{winner}} po zgjedh letrën për {{loser}}.",
   "onlineGame.theWinner": "Fituesi",
   "onlineGame.theLoser": "humbësi",
-  "onlineGame.botSeatLabel": "Bot",
 
   // ----------------------------------------------------------------- replay.*
   "replay.title": "Replay",
