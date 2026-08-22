@@ -66,8 +66,14 @@ export const HAND_ROW_HEADROOM = 16;
 // costs nothing: a card's index is at its top-left, and only the redundant
 // upside-down copy at the foot is lost.
 
-/** How much of a hand card falls past the bottom edge. */
-export const HAND_CROP = 0.25;
+/**
+ * How much of a hand card falls past the bottom edge. The prototype pushes the
+ * hand `26 * s` below the safe line against a `90 * s` card, and that is what
+ * takes the upside-down index at the card's foot out of the picture — a
+ * shallower crop leaves it legible and the hand reads as floating rather than
+ * as held.
+ */
+export const HAND_CROP = 26 / 90;
 
 /**
  * The part of a hand card the player actually sees — which is also how tall

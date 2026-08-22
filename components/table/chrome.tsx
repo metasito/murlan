@@ -381,9 +381,14 @@ export const sharedTableStyles = StyleSheet.create({
   sideSectionLeft: { alignItems: "flex-start" },
   sideSectionRight: { alignItems: "flex-end" },
   centerSection: { flex: 1, alignItems: "center", justifyContent: "center" },
+  // Bottom-aligned, not centred: the row's headroom is there for a selected
+  // card's lift, which is above it. Centred, half that headroom sits *under*
+  // the row and lifts the hand off the safe line, so the crop the cards are
+  // laid out against is a third shallower than the one they were solved for —
+  // and the buttons stop sitting on the line the prototype puts them on.
   handSection: {
     flexDirection: "row",
-    alignItems: "center",
+    alignItems: "flex-end",
     justifyContent: "center",
   },
 });

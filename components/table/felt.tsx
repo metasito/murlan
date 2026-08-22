@@ -12,7 +12,7 @@
 // clipping box.
 
 import { useEffect } from "react";
-import { View, StyleSheet } from "react-native";
+import { Platform, View, StyleSheet, type ViewStyle } from "react-native";
 import Animated, {
   useAnimatedStyle,
   useSharedValue,
@@ -35,9 +35,14 @@ const CORE_RX = 0.44 / 2;
 const CORE_RY = 0.6 / 2;
 const BLOOM_RX = 0.34 / 2;
 const BLOOM_RY = 0.46 / 2;
-/** The vignette is drawn over the felt itself, so its fractions are not halved. */
-const VIGNETTE_RX = 1.28 / 2;
-const VIGNETTE_RY = 1.04 / 2;
+/**
+ * The vignette is drawn over the felt itself, not into the doubled pool box, so
+ * its fractions are the prototype's own and are *not* halved. Halved, the rim
+ * closes to within a third of the table's height and lays a fifth of black over
+ * everything the lamp is lighting.
+ */
+const VIGNETTE_RX = 1.28;
+const VIGNETTE_RY = 1.04;
 
 /**
  * An elliptical radial, as `gradientTransform` rather than as `rx`/`ry`.
@@ -66,13 +71,9 @@ const FIELD_OFFSETS = [0, 0.14, 0.3, 0.46, 0.62] as const;
  */
 const TAIL_OFFSETS = [0.78, 0.92] as const;
 /** How far each tail stop has already become the room. */
-const TAIL_MIX = [0.58, 0.74] as const;
-/**
- * …and how far the rim gets. Not all the way: the lamp says whose turn it is,
- * it does not take the other players off the table. A seat on the far side of
- * the felt still sits on cloth, and its name, count and fan stay readable.
- */
-const RIM_MIX = 0.86;
+const TAIL_MIX = [0.68, 0.93] as const;
+/** …and where it is the room entirely. */
+const RIM_MIX = 1;
 const DARK_OFFSET = 1;
 
 /** `a` blended `t` of the way to `b`, both opaque hex. */
@@ -101,6 +102,18 @@ const WEAVE_THREAD = 1;
 
 /** How long the lamp takes to swing to the seat that just came on move. */
 const LAMP_MS = 800;
+
+/**
+ * The pool is twice the felt on each side — a 2560x1440 surface on a laptop —
+ * and the swing moves it. Without its own compositor layer the browser
+ * re-rasterises all of that on every frame of the swing, which is the whole
+ * table stuttering every time the turn passes. Declared once rather than
+ * toggled around the swing: the frame that creates the layer is the expensive
+ * one, and creating it on the first frame of every swing is the cost this is
+ * meant to remove.
+ */
+const POOL_LAYER =
+  Platform.OS === "web" ? ({ willChange: "transform" } as unknown as ViewStyle) : null;
 
 export function FeltPool({
   width,
@@ -146,12 +159,16 @@ export function FeltPool({
 
   return (
     <View style={[StyleSheet.absoluteFill, feltStyles.clip]} pointerEvents="none">
-      {/* Past the falloff there is no felt, only the room. */}
-      <View style={[StyleSheet.absoluteFill, feltStyles.room]} />
+      {/* Whatever the pool is not covering this frame — including a frame the
+          browser has not finished painting it into, mid-swing on a slow
+          machine. It is the colour the falloff ends at, so a missed paint is
+          unlit cloth rather than a black rectangle over the whole table. */}
+      <View style={[StyleSheet.absoluteFill, { backgroundColor: mix(stops[4], Colors.bg, RIM_MIX) }]} />
 
       <Animated.View
         style={[
           { position: "absolute", left: -width, top: -height, width: poolW, height: poolH },
+          POOL_LAYER,
           poolStyle,
         ]}
       >
@@ -269,5 +286,4 @@ const feltStyles = StyleSheet.create({
   // the clip it is the document that grows on web, and the first control to take
   // focus scrolls the whole table off the screen.
   clip: { overflow: "hidden" },
-  room: { backgroundColor: Colors.bg },
 });
