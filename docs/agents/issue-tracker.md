@@ -102,6 +102,26 @@ What makes the difference in practice:
 
 Verify the body's own claims before filing. An issue that asserts a defect at a line that
 does not contain it sends an agent down a hole with no way out.
+
+### Write it for cheap consumption
+
+The body is read by an agent that pays for every token and cannot ask a follow-up. Two
+failure modes cost the same: too little, and it explores; too much, and it skims past the
+part that mattered. Both are avoidable.
+
+- **Give the values, not a description of them.** `radius 14*s, no border, label Rajdhani 700
+  12*s .16em uppercase` is one line an agent implements from. "Rounded, bevelled, with a
+  letterspaced label" is three lines it has to go and resolve. Numbers, tokens and selectors
+  are the cheapest thing you can write.
+- **Front-load the pointers.** Ground truth first, prose second. An agent that has
+  `file.ts:line` in the first ten lines never runs the search.
+- **Link the primary source; never paraphrase it.** A prototype URL, an ADR, a spec. A
+  paraphrase is a second copy that goes stale, and the agent still has to open the original.
+  Say which part of it to read.
+- **40–80 lines.** Longer is a spec, not a ticket — split it and let the blocking edges carry
+  the order.
+- **One `size:*` label is a promise about the diff**, not about the reading. A ticket whose
+  body needs a research detour is not `size:S`, however small the edit turns out to be.
 ## Wayfinding operations
 
 Used by `/wayfinder`. The **map** is a single issue with **child** issues as tickets.

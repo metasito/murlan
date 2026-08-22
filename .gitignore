@@ -78,3 +78,7 @@ backups/
 
 # Superdesign scratch
 .superdesign/
+
+# Agent scratch: throwaway harnesses that need repo-relative imports.
+# tests/e2e/ is the suite's contract — scratch specs go here instead.
+.scratch/

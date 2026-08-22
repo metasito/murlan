@@ -18,6 +18,11 @@ and never go stale.
 Issues live in GitHub Issues (`metasito/murlan`), via the `gh` CLI. See
 `docs/agents/issue-tracker.md`.
 
+### Working loops
+
+Which check to run for which change, what each costs, and the React Native Web traps that
+pass every test and render nothing. See `docs/agents/loops.md`.
+
 ### Domain docs
 
 Single-context: `CONTEXT.md` + `docs/adr/` at the repo root (created lazily by

@@ -44,6 +44,29 @@ test("the vignette is a radial, not an assembly of straight-edged pieces", () =>
   );
 });
 
+// SVG has no `rx`/`ry` on `radialGradient`. react-native-svg accepts them and
+// passes them through, so an elliptical pool authored that way type-checks,
+// renders on native, and on web silently falls back to `r="50%"` — a pool a
+// third wider than written, washing the lit stop across the whole felt.
+// Nothing else in the suite can see it: the shape is the browser's.
+test("every radial states its shape as a transform, never as rx/ry", () => {
+  const radials = source.match(/<RadialGradient[\s\S]*?>/g) ?? [];
+  assert.ok(radials.length >= 4, `only ${radials.length} radials found in the felt`);
+  for (const radial of radials) {
+    const id = /id=\{(\w+)\}/.exec(radial)?.[1] ?? radial;
+    assert.ok(!/\brx=/.test(radial) && !/\bry=/.test(radial), `${id} sizes itself with rx/ry`);
+    assert.match(radial, /gradientTransform=/, `${id} has no shape at all`);
+  }
+});
+
+// The floor: the scan above must fail on the shape it exists to find. Pinning
+// the count alone would pass against a file that had gone back to rx/ry.
+test("the scan finds an rx/ry radial when one is there", () => {
+  const planted = '<RadialGradient id={FIELD_ID} cx="50%" rx="38%" ry="50%">';
+  assert.ok(/\brx=/.test(planted) && /\bry=/.test(planted));
+  assert.ok(!/gradientTransform=/.test(planted));
+});
+
 test("the vignette is drawn outside the pool, so the lamp can move under it", () => {
   // The pool sits inside the Animated.View that carries the lamp's position;
   // the vignette must not, or the dark rim swings with the light.

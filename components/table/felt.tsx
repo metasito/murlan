@@ -39,6 +39,24 @@ const BLOOM_RY = 0.46 / 2;
 const VIGNETTE_RX = 1.28 / 2;
 const VIGNETTE_RY = 1.04 / 2;
 
+/**
+ * An elliptical radial, as `gradientTransform` rather than as `rx`/`ry`.
+ *
+ * SVG has no `rx`/`ry` on `radialGradient`: react-native-svg accepts them and
+ * passes them straight through, and every browser ignores them and falls back
+ * to `r="50%"`. So a pool authored as `rx=38% ry=50%` rendered a third wider
+ * than it was written, and washed the whole felt in the lit stop.
+ *
+ * `r="50%"` in objectBoundingBox units is already the ellipse inscribed in the
+ * box; scaling about the centre by each radius over that 50% gives the shape
+ * the numbers above describe, on web and native alike.
+ */
+function ellipse(rx: number, ry: number): string {
+  const sx = rx / 0.5;
+  const sy = ry / 0.5;
+  return `translate(0.5, 0.5) scale(${sx}, ${sy}) translate(-0.5, -0.5)`;
+}
+
 /** Where the felt's own five stops sit along the falloff, before the dark. */
 const FIELD_OFFSETS = [0, 0.14, 0.3, 0.46, 0.62] as const;
 /** …and where it has become the room again. */
@@ -114,7 +132,13 @@ export function FeltPool({
       >
         <Svg width={poolW} height={poolH}>
           <Defs>
-            <RadialGradient id={FIELD_ID} cx="50%" cy="50%" rx={pct(FIELD_RX)} ry={pct(FIELD_RY)}>
+            <RadialGradient
+              id={FIELD_ID}
+              cx="50%"
+              cy="50%"
+              r="50%"
+              gradientTransform={ellipse(FIELD_RX, FIELD_RY)}
+            >
               <Stop offset={FIELD_OFFSETS[0]} stopColor={stops[0]} />
               <Stop offset={FIELD_OFFSETS[1]} stopColor={stops[1]} />
               <Stop offset={FIELD_OFFSETS[2]} stopColor={stops[2]} />
@@ -123,12 +147,24 @@ export function FeltPool({
               <Stop offset={DARK_OFFSET} stopColor={Colors.bg} />
               <Stop offset={1} stopColor={Colors.bg} />
             </RadialGradient>
-            <RadialGradient id={CORE_ID} cx="50%" cy="50%" rx={pct(CORE_RX)} ry={pct(CORE_RY)}>
+            <RadialGradient
+              id={CORE_ID}
+              cx="50%"
+              cy="50%"
+              r="50%"
+              gradientTransform={ellipse(CORE_RX, CORE_RY)}
+            >
               <Stop offset={0} stopColor={Lantern.core} />
               <Stop offset={0.46} stopColor={Lantern.coreMid} />
               <Stop offset={0.78} stopColor={Lantern.clear} />
             </RadialGradient>
-            <RadialGradient id={BLOOM_ID} cx="50%" cy="50%" rx={pct(BLOOM_RX)} ry={pct(BLOOM_RY)}>
+            <RadialGradient
+              id={BLOOM_ID}
+              cx="50%"
+              cy="50%"
+              r="50%"
+              gradientTransform={ellipse(BLOOM_RX, BLOOM_RY)}
+            >
               <Stop offset={0} stopColor={Lantern.bloom} />
               <Stop offset={0.76} stopColor={Lantern.clear} />
             </RadialGradient>
@@ -189,8 +225,8 @@ export function FeltPool({
             id={VIGNETTE_ID}
             cx="50%"
             cy="50%"
-            rx={pct(VIGNETTE_RX)}
-            ry={pct(VIGNETTE_RY)}
+            r="50%"
+            gradientTransform={ellipse(VIGNETTE_RX, VIGNETTE_RY)}
           >
             <Stop offset={0.4} stopColor={Lantern.vignetteClear} />
             <Stop offset={1} stopColor={Lantern.vignette} />
@@ -200,10 +236,6 @@ export function FeltPool({
       </Svg>
     </View>
   );
-}
-
-function pct(fraction: number): string {
-  return `${fraction * 100}%`;
 }
 
 const feltStyles = StyleSheet.create({
