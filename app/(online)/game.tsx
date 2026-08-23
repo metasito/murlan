@@ -254,11 +254,6 @@ export default function OnlineGameScreen() {
       // than as an empty hand.
       viewerSeat={isSpectator ? 0 : mySeatIndex}
       spectating={isSpectator}
-      roundLabel={
-        matchState.length === "single"
-          ? t("result.singleHandFormat")
-          : t("gameTable.formatMatch", { target: matchState.target })
-      }
       selectedIds={selectedIds}
       onSelectCard={toggleCard}
       onPlay={handlePlay}

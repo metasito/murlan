@@ -529,13 +529,6 @@ const SEAT_GAP = Spacing.slim;
 /** How far a seat recedes while another one is on move. */
 const SEAT_DIM_OPACITY = 0.62;
 /**
- * The band the floating label needs above the avatar. The top seat sits
- * against the felt's own top edge, so without it the name and the badges are
- * drawn off the felt and behind the top bar. A constant, not the label's own
- * height: reserving what it actually measures would put the fan back at the
- * mercy of whether this seat happens to carry a bot badge.
- */
-/**
  * The band the floating label needs above the disc: the name's own line, plus
  * the badge row, which is a chip and therefore scales with the table. A fixed
  * number here is the top seat's name drawn off the top of the screen — the

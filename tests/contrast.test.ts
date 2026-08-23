@@ -133,7 +133,10 @@ const ON_FELT_TEXT: { text: string; plate: string | null; stops: number[] }[] = 
   // Under a lamp that moves, no text sits on bare cloth: the brightest felt on
   // the table is wherever the light is, so every stop is in play for all of it.
   { text: "emptyHandText", plate: "emptyHandText", stops: ANY_STOP },
-  // The seat's disc is an opaque gradient from the felt's own two darkest stops.
+  // The initials sit on the disc's own gradient (SEAT_DISC_FILL — its own
+  // tokens, not any felt), so the darkest two stops are a stand-in; each is
+  // lighter than the disc colour it stands in for, which keeps this
+  // conservative.
   { text: "discInitials", plate: null, stops: [3, 4] },
   { text: "countBubbleText", plate: "countBubble", stops: ANY_STOP },
 ];

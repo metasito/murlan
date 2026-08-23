@@ -289,8 +289,6 @@ export interface GameTableProps {
   onQuit: () => void;
   onExchangeGive: (cardId: string) => void;
 
-  /** Small mode label under the combination in the billboard. */
-  roundLabel: string;
   turnTimer?: TurnTimerConfig;
   exchangeAnnouncement?: ExchangeAnnouncementSlot;
   rematchPrompt?: RematchPromptSlot;
@@ -673,7 +671,6 @@ export function GameTable({
   onPass,
   onQuit,
   onExchangeGive,
-  roundLabel,
   turnTimer,
   exchangeAnnouncement,
   rematchPrompt,

@@ -45,10 +45,8 @@ export const BACK_SCALE = 0.88;
 
 /**
  * A touch target's floor is physical size — never `TOUCH_TARGET_MIN * s`.
- * No control in this table scales its own width/height by `s` yet (the
- * PASSA/GIOCA row's height is already floored statically via `minHeight:
- * TOUCH_TARGET_MIN`), so nothing calls this today — it exists for #191's
- * control rail, the first control whose own size is derived from `s`.
+ * The control rail's knobs are sized by it (`knobSize`, components/
+ * GameTable.tsx), pinned by tests/touchTargets.test.ts.
  */
 export function physicalTouchTarget(s: number): number {
   return Math.max(TOUCH_TARGET_MIN, TOUCH_TARGET_MIN * s);

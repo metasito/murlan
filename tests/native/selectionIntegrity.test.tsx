@@ -93,7 +93,6 @@ const table = (selectedIds: string[], handlers: {
       onPass={noop}
       onQuit={noop}
       onExchangeGive={noop}
-      roundLabel="Partita"
     />
   </SafeAreaProvider>
 );

@@ -76,7 +76,6 @@ const table = (rankings: string[], viewerSeat: number) => (
       onPass={noop}
       onQuit={noop}
       onExchangeGive={noop}
-      roundLabel="Partita"
     />
   </SafeAreaProvider>
 );
