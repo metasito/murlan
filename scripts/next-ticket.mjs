@@ -1,6 +1,7 @@
 import { execFileSync } from "node:child_process";
 
 const SIZE_ORDER = ["size:XS", "size:S", "size:M", "size:L", "size:XL"];
+const OWNER_LABELS = new Set(["ready-for-human", "needs-info", "rejected"]);
 
 function ghJson(args) {
   return JSON.parse(execFileSync("gh", args, { encoding: "utf8" }));
@@ -35,16 +36,49 @@ function classify(openIssues) {
   return buckets;
 }
 
+function claimBranch(comments) {
+  for (let i = comments.length - 1; i >= 0; i--) {
+    const m = comments[i].body.match(/^Claim(?:ed by|ing)[^`\n]*`([^`]+)`/m);
+    if (m) return m[1];
+  }
+  return null;
+}
+
+function branchAlive(branch) {
+  // Fail open: an unreachable origin must not empty the whole queue. The
+  // post-claim race check remains the backstop for whatever slips through.
+  const out = execFileSync("git", ["ls-remote", "--heads", "origin", branch], {
+    encoding: "utf8",
+    stdio: ["ignore", "pipe", "ignore"],
+  });
+  return out.trim().length > 0;
+}
+
+function openBlockers(number) {
+  const edges = ghJson([
+    "api", `repos/{owner}/{repo}/issues/${number}/dependencies/blocked_by?per_page=100`,
+  ]);
+  return edges.filter((e) => e.state === "open");
+}
+
+// The gate order per candidate: native blockers, then claims. A claim counts
+// even when its in-progress label write was lost - a claim comment naming a
+// branch that still lives on origin takes the ticket off the frontier.
 function takeable(frontier, limit) {
   // No list endpoint carries the dependencies summary, so each candidate costs
   // one call; stop as soon as enough are in hand.
   const out = [];
   for (const issue of frontier) {
     const { blocked_by } = ghJson(["api", `repos/{owner}/{repo}/issues/${issue.number}`]).issue_dependencies_summary;
-    if (blocked_by === 0) {
-      out.push(issue);
-      if (out.length >= limit) break;
+    if (blocked_by !== 0) continue;
+    const comments = ghJson(["api", `repos/{owner}/{repo}/issues/${issue.number}/comments?per_page=100`]);
+    const claim = claimBranch(comments);
+    if (claim && branchAlive(claim)) {
+      process.stderr.write(`SKIP\t${issue.number}\tclaimed on \`${claim}\` (branch alive)\n`);
+      continue;
     }
+    out.push({ ...issue, _comments: comments });
+    if (out.length >= limit) break;
   }
   return out;
 }
@@ -59,28 +93,58 @@ function pickRoute(buckets) {
   return { skill: "handoff", ticket: null };
 }
 
-function printDetail(ticket) {
+function printDetail(ticket, comments) {
   const issue = ghJson(["api", `repos/{owner}/{repo}/issues/${ticket.number}`]);
-  const comments = ghJson(["api", `repos/{owner}/{repo}/issues/${ticket.number}/comments`]);
+  const ls = labelNames({ labels: issue.labels });
+  const blockers = issue.issue_dependencies_summary?.blocked_by ?? 0;
   console.log(`\n===== TICKET #${issue.number} - ${issue.title} =====`);
-  console.log(`Labels: ${labelNames({ labels: issue.labels }).join(", ")}`);
-  console.log(`Open blockers: ${issue.issue_dependencies_summary?.blocked_by ?? 0}`);
+  console.log(`Labels: ${ls.join(", ")}`);
+  console.log(`Open blockers: ${blockers}`);
+  if (blockers > 0) {
+    for (const b of openBlockers(issue.number)) {
+      console.log(`  blocked by #${b.number} ${b.title}`);
+    }
+  }
+  const reasons = [];
+  if (blockers > 0) reasons.push("has open blockers");
+  if (ls.includes("in-progress")) reasons.push("labelled in-progress");
+  if (ls.some((l) => OWNER_LABELS.has(l))) reasons.push(`owner-gated (${ls.filter((l) => OWNER_LABELS.has(l)).join(", ")})`);
+  console.log(reasons.length === 0 ? `Takeable: yes` : `Takeable: no - ${reasons.join("; ")}`);
   console.log("----- BODY -----");
   console.log(issue.body ?? "(empty)");
   console.log(`----- COMMENTS (${comments.length}) -----`);
   for (const c of comments) {
-    console.log(`\n[${c.user.login} · ${c.created_at}]`);
+    console.log(`\n[${c.user.login} | ${c.created_at}]`);
     console.log(c.body);
   }
-  const n = issue.number;
-  console.log("\n----- NEXT -----");
-  console.log("Claim (first write; then confirm you won the race):");
-  console.log(`  gh issue edit ${n} --add-label in-progress`);
-  console.log(`  gh issue comment ${n} --body "Claimed by \\\`<branch-name>\\\`."`);
-  console.log(`  gh issue view ${n} --comments`);
+  if (reasons.length === 0) {
+    const n = issue.number;
+    console.log("\n----- NEXT -----");
+    console.log("Claim (first write; then confirm you won the race):");
+    console.log(`  gh issue edit ${n} --add-label in-progress`);
+    console.log(`  gh issue comment ${n} --body "Claimed by \\\`<branch-name>\\\`."`);
+    console.log(`  gh issue view ${n} --comments`);
+  }
 }
 
-const wantAll = process.argv.includes("--all");
+const args = process.argv.slice(2);
+const wantAll = args.includes("--all");
+const explicit = args.map(Number).find((n) => Number.isInteger(n) && n > 0);
+
+if (explicit) {
+  let issue, comments;
+  try {
+    issue = ghJson(["api", `repos/{owner}/{repo}/issues/${explicit}`]);
+    comments = ghJson(["api", `repos/{owner}/{repo}/issues/${explicit}/comments?per_page=100`]);
+  } catch {
+    console.error(`#${explicit} not found (is it a pull request?)`);
+    process.exit(1);
+  }
+  console.log(`ROUTE\tshow\t${explicit}\t${issue.title}`);
+  printDetail(issue, comments);
+  process.exit(0);
+}
+
 const openIssues = ghJson([
   "issue", "list",
   "--state", "open",
@@ -104,4 +168,6 @@ console.log(
   `\towner:${buckets.owner.length}`,
 );
 
-if (chosen.ticket) printDetail(chosen.ticket);
+if (chosen.ticket) {
+  printDetail(chosen.ticket, chosen.ticket._comments ?? []);
+}

@@ -21,13 +21,16 @@ Sessions run in parallel against one repo, and every one of them authenticates a
 GitHub account — so `--add-assignee @me` cannot tell two sessions apart. The branch name
 can, and that is what the claim carries.
 
-- **Pick** — `node scripts/next-ticket.mjs` (`--all` lists the frontier in pick order).
+- **Pick** — `node scripts/next-ticket.mjs` (`--all` lists the frontier in pick
+  order; a bare issue number inspects that ticket without picking it).
   The script encodes the precedence itself — implement the unblocked `ready-for-agent`
   frontier (native blockers applied, smallest `size:*` first) → triage → wayfinder →
-  handoff — and prints the routed ticket's body, comments and blocker count along with
-  its claim commands, so one call hands a session everything it needs. It is the single
-  picker; do not re-derive a queue per session, and do not encode blocking anywhere but
-  GitHub's dependency graph.
+  handoff — and prints the routed ticket's body, comments, blocker identities and its
+  claim commands, so one call hands a session everything it needs. The claim is the
+  `in-progress` label; a claim comment naming a branch that still lives on origin also
+  removes a ticket from the frontier (the lost-label backstop). It is the single
+  picker; do not re-derive a queue per session, and do not encode blocking anywhere
+  but GitHub's dependency graph.
 - **Execute the route through the mattpocock skills** — `implement`: read the issue
   body as the spec; TDD at pre-agreed seams, typecheck and single test files while
   iterating, the full suite once, `/code-review` before committing (the skill cascades
