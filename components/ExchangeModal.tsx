@@ -22,11 +22,11 @@ import Ionicons from "@expo/vector-icons/Ionicons";
 import type { ExchangePhase, Card } from "@/lib/gameEngine";
 import { cardStrength, getValidGivebackCards } from "@/lib/gameEngine";
 import { CardView } from "@/components/CardView";
-import { Colors, FontSize, Highlight, Motion, Radius, Shadow, Spacing } from '@/lib/theme';
+import { Colors, FontSize, Highlight, Motion, Radius, Shadow, Spacing, TOUCH_TARGET_MIN } from '@/lib/theme';
 import { usePrefersReducedMotion } from "@/lib/accessibility";
 import { useTranslation } from "@/lib/i18n";
 import { cardSpokenName } from "@/lib/cardNames";
-import { useA11yHint } from "@/lib/a11y";
+import { a11yHidden, useA11yHint } from "@/lib/a11y";
 
 interface ExchangeModalProps {
   phase: ExchangePhase;
@@ -61,14 +61,17 @@ function AnimatedCard({ card, delay = 0, reduceMotion }: { card: Card; delay?: n
 }
 
 const PICK_LIFT = -10;
+const PRESSED_OPACITY = 0.7;
 
 function SelectableCard({
   card,
   onPress,
+  selected,
   reduceMotion,
 }: {
   card: Card;
   onPress: () => void;
+  selected: boolean;
   reduceMotion: boolean;
 }) {
   const { t } = useTranslation();
@@ -116,12 +119,13 @@ function SelectableCard({
       onPressOut={() => setPress(false)}
       accessibilityRole="button"
       accessibilityLabel={cardSpokenName(card, t)}
+      accessibilityState={{ selected }}
       {...giveHint.props}
     >
       {giveHint.node}
       <Animated.View style={anim}>
         <Animated.View pointerEvents="none" style={[styles.cardGlow, glowStyle]} />
-        <View style={styles.cardItem}>
+        <View style={[styles.cardItem, selected && styles.cardItemSelected]}>
           <CardView card={card} decorative />
         </View>
       </Animated.View>
@@ -138,10 +142,12 @@ export function ExchangeModal({
 }: ExchangeModalProps) {
   const { t } = useTranslation();
   const reduceMotion = usePrefersReducedMotion();
+  const [selectedId, setSelectedId] = React.useState<string | null>(null);
 
   const validCards = getValidGivebackCards(winnerHand, phase.cardFromLoser?.id).sort(
     (a, b) => cardStrength(a) - cardStrength(b)
   );
+  const selectedCard = validCards.find((c) => c.id === selectedId) ?? null;
 
   const arrowScale = useSharedValue(reduceMotion ? 1 : 0.6);
   const arrowOpacity = useSharedValue(reduceMotion ? 1 : 0);
@@ -209,9 +215,16 @@ export function ExchangeModal({
                 <Text style={[styles.receivesTagText, styles.willReceiveTagText]}>{t("exchangeModal.willReceive")}</Text>
               </View>
             </View>
-            <View style={styles.cardSlotEmpty}>
-              <Ionicons name="help-circle-outline" size={28} color={Colors.goldDim} />
-            </View>
+            {selectedCard ? (
+              <View style={styles.cardSlot}>
+                {/* Keyed on the card so each new pick replays the drop. */}
+                <AnimatedCard key={selectedCard.id} card={selectedCard} reduceMotion={reduceMotion} />
+              </View>
+            ) : (
+              <View style={styles.cardSlotEmpty}>
+                <Ionicons name="help-circle-outline" size={28} color={Colors.goldDim} />
+              </View>
+            )}
           </View>
 
           <View style={styles.divider} />
@@ -233,14 +246,44 @@ export function ExchangeModal({
                 <SelectableCard
                   key={card.id}
                   card={card}
+                  selected={card.id === selectedId}
                   reduceMotion={reduceMotion}
-                  onPress={() => onSelectCard(card.id)}
+                  onPress={() => setSelectedId(card.id)}
                 />
               ))}
             </ScrollView>
           )}
 
-          <Text style={styles.hint}>{t("exchangeModal.hint")}</Text>
+          {validCards.length > 0 && (
+            <Pressable
+              testID="exchange-confirm"
+              onPress={() => {
+                if (!selectedCard) return;
+                hapticMedium();
+                onSelectCard(selectedCard.id);
+              }}
+              disabled={!selectedCard}
+              accessibilityRole="button"
+              accessibilityState={{ disabled: !selectedCard }}
+              accessibilityLabel={t("exchangeModal.confirm")}
+              style={({ pressed }) => [
+                styles.confirm,
+                !selectedCard && styles.confirmDisabled,
+                pressed && selectedCard && styles.confirmPressed,
+              ]}
+            >
+              <Text
+                style={[styles.confirmLabel, !selectedCard && styles.confirmLabelDisabled]}
+                {...a11yHidden()}
+              >
+                {t("exchangeModal.confirm")}
+              </Text>
+            </Pressable>
+          )}
+
+          <Text style={styles.hint}>
+            {t(selectedCard ? "exchangeModal.hintConfirm" : "exchangeModal.hint")}
+          </Text>
         </View>
       </Animated.View>
     </Modal>
@@ -377,6 +420,35 @@ const styles = StyleSheet.create({
     borderWidth: 2,
     borderColor: Colors.goldBorder,
     overflow: "hidden",
+  },
+  cardItemSelected: {
+    borderColor: Colors.gold,
+    ...Shadow.gold,
+  },
+  confirm: {
+    minHeight: TOUCH_TARGET_MIN,
+    minWidth: TOUCH_TARGET_MIN,
+    paddingHorizontal: Spacing.lg,
+    alignItems: "center",
+    justifyContent: "center",
+    borderRadius: Radius.sm,
+    backgroundColor: Colors.gold,
+  },
+  confirmPressed: {
+    opacity: PRESSED_OPACITY,
+  },
+  confirmDisabled: {
+    backgroundColor: Colors.goldMuted,
+  },
+  confirmLabel: {
+    fontFamily: "Rajdhani_700Bold",
+    fontSize: FontSize.md,
+    color: Colors.bg,
+    letterSpacing: 1,
+    textTransform: "uppercase",
+  },
+  confirmLabelDisabled: {
+    color: Colors.textMuted,
   },
   cardGlow: {
     position: "absolute",

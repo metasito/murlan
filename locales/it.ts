@@ -190,8 +190,10 @@ export const it: Record<keyof typeof en, string> = {
   "exchangeModal.subPrefix": "Scegli una carta da dare a",
   "exchangeModal.subSuffix": "(solo 3–10):",
   "exchangeModal.noValidCards": "Nessuna carta valida da restituire.",
-  "exchangeModal.hint": "Tocca una carta per darla al perdente",
-  "exchangeModal.giveCardA11yHint": "Dà questa carta al perdente",
+  "exchangeModal.hint": "Tocca una carta per sceglierla",
+  "exchangeModal.hintConfirm": "Tocca un'altra carta per cambiare idea, o conferma per darla",
+  "exchangeModal.confirm": "Dai la carta",
+  "exchangeModal.giveCardA11yHint": "Sceglie questa carta da dare al perdente",
 
   // ----------------------------------------------------------------- cards.*
   // Card names as read aloud/announced (ExchangeAnnouncement) — card ranks

@@ -205,8 +205,10 @@ export const sq: Record<keyof typeof en, string> = {
   "exchangeModal.subPrefix": "Zgjidh një letër për t'ia dhënë",
   "exchangeModal.subSuffix": "(vetëm 3–10):",
   "exchangeModal.noValidCards": "Nuk ka letër të vlefshme për ta dhënë.",
-  "exchangeModal.hint": "Prek një letër për t'ia dhënë humbësit",
-  "exchangeModal.giveCardA11yHint": "Ia jep këtë letër humbësit",
+  "exchangeModal.hint": "Prek një letër për ta zgjedhur",
+  "exchangeModal.hintConfirm": "Prek një letër tjetër për të ndërruar mendje, ose konfirmo për ta dhënë",
+  "exchangeModal.confirm": "Jep letrën",
+  "exchangeModal.giveCardA11yHint": "Zgjedh këtë letër për t'ia dhënë humbësit",
 
   // ----------------------------------------------------------------- cards.*
   "cards.rankAce": "Asi",
