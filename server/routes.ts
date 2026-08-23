@@ -315,7 +315,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   app.delete("/api/push/token", requireAuth, pushLimiter, validate(PushTokenSchema), async (req, res) => {
-    await deletePushToken((req.body as { token: string }).token);
+    await deletePushToken(req.session.userId!, (req.body as { token: string }).token);
     res.json({ ok: true });
   });
 
