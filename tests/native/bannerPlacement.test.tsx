@@ -2,9 +2,9 @@
 // on top of the game table's HUD.
 //
 // The banner is a sibling of the whole navigator at zIndex 9999; the table's
-// top bar is at the same origin, 40px tall, at zIndex 10. In landscape — the
-// only orientation the table runs in — the banner now starts below that bar,
-// and portrait, where every menu screen lives, is untouched.
+// HUD chips are at the same origin at zIndex 10. In landscape — the only
+// orientation the table runs in — the banner now starts below them, and
+// portrait, where every menu screen lives, is untouched.
 import { describe, it, expect, jest } from '@jest/globals';
 import React from 'react';
 import { StyleSheet } from 'react-native';
@@ -23,11 +23,12 @@ jest.mock('react-native/Libraries/Utilities/useWindowDimensions', () => ({
 }));
 
 import NotificationBanner from '@/components/NotificationBanner';
-import { TOP_BAR_H, computeScreenPads } from '@/components/gameTableModel';
+import { CHIP_H, cardScale, computeScreenPads } from '@/components/gameTableModel';
 
 const INSETS = { top: 24, left: 47, right: 34, bottom: 0 };
 const METRICS = { frame: { x: 0, y: 0, width: 844, height: 390 }, insets: INSETS };
 const { topPad } = computeScreenPads({ insets: INSETS });
+const SCALE = cardScale(Math.min(LANDSCAPE.width, LANDSCAPE.height));
 
 const noop = () => {};
 
@@ -43,11 +44,11 @@ const bannerTop = () =>
   StyleSheet.flatten(screen.getByTestId('notification-banner').props.style).top as number;
 
 describe('the notification banner', () => {
-  it('starts below the top bar the game table draws, in landscape', async () => {
+  it('starts below the HUD chips the game table draws, in landscape', async () => {
     mockWindow = LANDSCAPE;
     const r = await render(banner);
 
-    expect(bannerTop()).toBeGreaterThanOrEqual(topPad + TOP_BAR_H);
+    expect(bannerTop()).toBeGreaterThanOrEqual(topPad + CHIP_H(SCALE));
 
     await r.unmount();
   });
@@ -56,7 +57,7 @@ describe('the notification banner', () => {
     mockWindow = PORTRAIT;
     const r = await render(banner);
 
-    expect(bannerTop()).toBeLessThan(topPad + TOP_BAR_H);
+    expect(bannerTop()).toBeLessThan(topPad + CHIP_H(SCALE));
 
     await r.unmount();
   });

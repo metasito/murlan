@@ -15,6 +15,7 @@ import {
   CardFaceGradient,
   Colors,
   FontSize,
+  Lantern,
   Motion,
   Radius,
   Shadow,
@@ -462,11 +463,25 @@ interface CardViewProps {
   style?: object;
   noLift?: boolean;
   /**
+   * The width this card can be tapped on, when a neighbour is drawn over the
+   * rest of it. A hand overlaps its cards, so all but the last expose a strip
+   * narrower than they are, and a tap resolved at the card's own centre — where
+   * a pointer driver aims — lands on the neighbour. Defaults to the full width.
+   */
+  hitWidth?: number;
+  /**
    * The card is the visual content of an enclosing labelled control, so it
    * must not also announce itself — otherwise a screen reader reads the same
    * card twice, once for the wrapper and once for this.
    */
   decorative?: boolean;
+  /**
+   * How the table's lamp falls on this card. A card standing in a hand has its
+   * head nearer a hanging lamp than its foot; one lying flat on the felt
+   * catches far less of the same lamp. Omit for the viewer's own hand, which
+   * is between the player and the lamp rather than under it.
+   */
+  light?: "standing" | "standingLit" | "flat";
 }
 
 function CardViewBase({
@@ -480,6 +495,8 @@ function CardViewBase({
   style,
   noLift = false,
   decorative = false,
+  light,
+  hitWidth,
 }: CardViewProps) {
   const { t } = useTranslation();
   const selectedHint = useA11yHint(decorative || !selected ? undefined : t("cardView.selectedA11yHint"));
@@ -547,6 +564,7 @@ function CardViewBase({
             style={StyleSheet.absoluteFill}
           />
           <OrnateCardBack width={w} height={h} back={back} />
+          <TopLight light={light} />
         </View>
       </Animated.View>
     );
@@ -580,45 +598,94 @@ function CardViewBase({
         // reappear in the button rotation every turn.
         {...a11yState({ role: onPress ? "button" : undefined, selected, disabled: !interactive })}
         {...selectedHint.props}
-        style={[
-          styles.card,
-          { width: w, height: h },
-          selected && styles.cardSelected,
-        ]}
+        // The pressable is the tap strip; the view inside it is the card. Two
+        // boxes rather than one because `styles.card` clips to its own rounded
+        // corners, and a strip narrower than the card would clip the art with it.
+        style={{ width: hitWidth ?? w, height: h }}
       >
-        {selectedHint.node}
-        <LinearGradient
-          colors={CardFaceGradient}
-          locations={[0, 0.55, 1]}
-          start={{ x: 0.1, y: 0 }}
-          end={{ x: 0.9, y: 1 }}
-          style={StyleSheet.absoluteFill}
-        />
-        <CardFaceArt card={card} color={color} w={w} h={h} compact={compact} />
-        {!compact && COURT_RANKS.has(card.rank) && <CourtArt card={card} w={w} h={h} />}
-        <TableText
-          style={[
-            styles.rankText,
-            rankBox,
-            card.isJoker && styles.rankTextJoker,
-            { color },
-          ]}
+        {/* Named because it is not the same box as the pressable around it: in
+            a hand, that one is only the strip this card exposes. Anything
+            measuring what the player *sees* has to measure this. */}
+        <View
+          testID="card-box"
+          style={[styles.card, { width: w, height: h }, selected && styles.cardSelected]}
         >
-          {rankText}
-        </TableText>
-        <TableText
-          style={[
-            styles.rankText,
-            rankBox,
-            card.isJoker && styles.rankTextJoker,
-            styles.rankTextBottom,
-            { top: undefined, bottom: inset, color },
-          ]}
-        >
-          {rankText}
-        </TableText>
+          {selectedHint.node}
+          <LinearGradient
+            colors={CardFaceGradient}
+            locations={[0, 0.55, 1]}
+            start={{ x: 0.1, y: 0 }}
+            end={{ x: 0.9, y: 1 }}
+            style={StyleSheet.absoluteFill}
+          />
+          <CardFaceArt card={card} color={color} w={w} h={h} compact={compact} />
+          {!compact && COURT_RANKS.has(card.rank) && <CourtArt card={card} w={w} h={h} />}
+          <TableText
+            style={[
+              styles.rankText,
+              rankBox,
+              card.isJoker && styles.rankTextJoker,
+              { color },
+            ]}
+          >
+            {rankText}
+          </TableText>
+          <TableText
+            style={[
+              styles.rankText,
+              rankBox,
+              card.isJoker && styles.rankTextJoker,
+              styles.rankTextBottom,
+              { top: undefined, bottom: inset, color },
+            ]}
+          >
+            {rankText}
+          </TableText>
+          <TopLight light={light} />
+        </View>
       </Pressable>
     </Animated.View>
+  );
+}
+
+// ─── TopLight ─────────────────────────────────────────────────────────────────
+
+/**
+ * What the table's lamp leaves on a card. Four stops rather than two: the
+ * warm head has to fall away before the shadow starts, or the card reads as a
+ * gradient swatch instead of as a lit object.
+ */
+const STANDING_STOPS = [
+  Lantern.headLit,
+  Lantern.headFade,
+  Lantern.midShade,
+  Lantern.footShade,
+] as const;
+const STANDING_LIT_STOPS = [
+  Lantern.headLitOn,
+  Lantern.headFadeOn,
+  Lantern.midShadeOn,
+  Lantern.footShadeOn,
+] as const;
+const FLAT_STOPS = [
+  Lantern.flatHead,
+  Lantern.flatFade,
+  Lantern.flatMid,
+  Lantern.flatFoot,
+] as const;
+const STANDING_LOCATIONS = [0, 0.3, 0.64, 1] as const;
+const FLAT_LOCATIONS = [0, 0.34, 0.74, 1] as const;
+
+function TopLight({ light }: { light?: CardViewProps["light"] }) {
+  if (light === undefined) return null;
+  const flat = light === "flat";
+  return (
+    <LinearGradient
+      colors={flat ? FLAT_STOPS : light === "standingLit" ? STANDING_LIT_STOPS : STANDING_STOPS}
+      locations={flat ? FLAT_LOCATIONS : STANDING_LOCATIONS}
+      style={StyleSheet.absoluteFill}
+      pointerEvents="none"
+    />
   );
 }
 
@@ -639,6 +706,7 @@ function cardViewPropsEqual(a: CardViewProps, b: CardViewProps): boolean {
     a.disabled === b.disabled &&
     a.noLift === b.noLift &&
     a.decorative === b.decorative &&
+    a.light === b.light &&
     a.style === b.style
   );
 }

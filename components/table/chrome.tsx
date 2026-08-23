@@ -1,81 +1,28 @@
-import { useEffect, useState } from "react";
-import { View, StyleSheet, Pressable } from "react-native";
-import { AnimatedTableText, TableText } from "./TableText";
+import { useEffect, useRef, useState, type ReactNode } from "react";
+import { View, StyleSheet, Pressable, type TextProps } from "react-native";
+import { TableText } from "./TableText";
 import {
+  Easing,
   useAnimatedStyle,
   useSharedValue,
   withTiming,
-  withSequence,
-  withRepeat,
   cancelAnimation,
 } from "react-native-reanimated";
-import { LinearGradient } from "expo-linear-gradient";
-import { Colors, FontSize, Motion, Radius, Scrim, Shadow, Spacing, Type } from "@/lib/theme";
+import { Colors, FontSize, makeShadow, Radius, Scrim, Spacing, Type } from "@/lib/theme";
 import { usePrefersReducedMotion } from "@/lib/accessibility";
 import { useTranslation } from "@/lib/i18n";
 import type { StartReason } from "@/lib/gameEngine";
 import { getCardDisplayRank, getSuitSymbol } from "@/lib/gameEngine";
-import { SIDE_SECTION_W } from "@/components/gameTableModel";
-
-// ─── Table vignette ───────────────────────────────────────────────────────────
-
-// Four edge washes plus four diagonal corner washes. The corners are the half
-// that makes it read as a lit table rather than as four dark stripes: without
-// them the corner is only as dark as one edge, so the darkest region of the
-// felt ends up on the edge midpoints instead of the extremities.
-export function TableVignette() {
-  return (
-    <View style={StyleSheet.absoluteFill} pointerEvents="none">
-      <LinearGradient
-        colors={[Scrim.medium, "transparent"]}
-        style={vignetteStyles.top}
-        pointerEvents="none"
-      />
-      <LinearGradient
-        colors={["transparent", Scrim.heavy]}
-        style={vignetteStyles.bottom}
-        pointerEvents="none"
-      />
-      <LinearGradient
-        colors={[Scrim.medium, "transparent"]}
-        start={{ x: 0, y: 0.5 }}
-        end={{ x: 1, y: 0.5 }}
-        style={vignetteStyles.left}
-        pointerEvents="none"
-      />
-      <LinearGradient
-        colors={["transparent", Scrim.medium]}
-        start={{ x: 0, y: 0.5 }}
-        end={{ x: 1, y: 0.5 }}
-        style={vignetteStyles.right}
-        pointerEvents="none"
-      />
-    </View>
-  );
-}
-
-// Four bands, each spanning a full edge and reaching transparent inside the
-// felt. A corner piece cannot: a diagonal gradient over a box only reaches
-// transparent at the box's opposite corner, so it still carries ink along the
-// two edges that face the middle of the table and draws them as hard lines
-// across the felt. The corners are darkened by the bands overlapping instead.
-const vignetteStyles = StyleSheet.create({
-  top:    { position: "absolute", top: 0, left: 0, right: 0, height: "22%" },
-  bottom: { position: "absolute", bottom: 0, left: 0, right: 0, height: "26%" },
-  left:   { position: "absolute", top: 0, bottom: 0, left: 0, width: "16%" },
-  right:  { position: "absolute", top: 0, bottom: 0, right: 0, width: "16%" },
-});
+import { CHIP_H, SIDE_SECTION_W } from "@/components/gameTableModel";
 
 // ─── StartReasonBanner ────────────────────────────────────────────────────────
 
 export function StartReasonBanner({
   reason,
   players,
-  topOffset,
 }: {
   reason: StartReason;
   players: { name: string; type: string }[];
-  topOffset: number;
 }) {
   const { t } = useTranslation();
   const [visible, setVisible] = useState(true);
@@ -106,7 +53,7 @@ export function StartReasonBanner({
   return (
     <Pressable
       onPress={() => setVisible(false)}
-      style={[startReasonStyles.anchor, { top: topOffset }]}
+      style={startReasonStyles.anchor}
     >
       <View style={startReasonStyles.card}>
         <TableText style={startReasonStyles.main}>
@@ -129,6 +76,7 @@ const START_REASON_MAX_W = 420;
 const startReasonStyles = StyleSheet.create({
   anchor: {
     position: "absolute",
+    top: 0,
     left: 0,
     right: 0,
     alignItems: "center",
@@ -157,6 +105,220 @@ const startReasonStyles = StyleSheet.create({
     color: Colors.textSecondary,
     textAlign: "center",
   },
+});
+
+// ─── HUD chips ────────────────────────────────────────────────────────────────
+//
+// The table's chrome is two chips over the felt, not a bar across the top: the
+// combination on the felt at the head of the play area, and whose turn it is at
+// the far corner. Nothing is ever drawn over the middle of the felt, which is
+// where cards land.
+
+/**
+ * One chip. `lit` is the turn chip on the viewer's own turn — the only piece of
+ * chrome the lamp reaches, and the reason it can be read at a glance.
+ */
+export function TableChip({
+  scale,
+  lit = false,
+  children,
+}: {
+  scale: number;
+  lit?: boolean;
+  children: ReactNode;
+}) {
+  return (
+    <View
+      style={[
+        chipStyles.chip,
+        {
+          height: CHIP_H(scale),
+          paddingHorizontal: CHIP_PAD_H * scale,
+          gap: CHIP_GAP * scale,
+        },
+        lit && chipStyles.chipLit,
+        lit && makeShadow(Colors.goldLit, 0, 0, 0.32, CHIP_GLOW * scale, 0),
+      ]}
+    >
+      {children}
+    </View>
+  );
+}
+
+/** A chip's own text: uppercase, letterspaced, dim. `strong` is the gold half. */
+export function ChipText({
+  scale,
+  strong = false,
+  lit = false,
+  urgent = false,
+  children,
+  ...a11y
+}: {
+  scale: number;
+  strong?: boolean;
+  lit?: boolean;
+  urgent?: boolean;
+  children: ReactNode;
+} & Partial<Pick<TextProps, "accessibilityLabel" | "accessibilityLiveRegion">>) {
+  return (
+    <TableText
+      numberOfLines={1}
+      {...a11y}
+      style={[
+        chipStyles.chipLabel,
+        {
+          fontSize: FontSize.xxs * scale,
+          // Tracking is `em` in the prototype, so it grows with the type it is
+          // set in — a fixed px value is a different letterspacing per handset.
+          letterSpacing: (strong ? CHIP_TRACKING_STRONG : CHIP_TRACKING) * scale,
+        },
+        strong && chipStyles.chipLabelStrong,
+        lit && chipStyles.chipLabelLit,
+        urgent && chipStyles.chipLabelUrgent,
+      ]}
+    >
+      {children}
+    </TableText>
+  );
+}
+
+/** The lit dot beside the turn chip's label. */
+export function ChipDot({ scale, lit }: { scale: number; lit: boolean }) {
+  const size = CHIP_DOT * scale;
+  return (
+    <View
+      style={[
+        chipStyles.chipDot,
+        { width: size, height: size, borderRadius: size / 2 },
+        lit && chipStyles.chipDotLit,
+        lit && makeShadow(Colors.goldLit, 0, 0, 0.7, CHIP_DOT_GLOW * scale, 0),
+      ]}
+    />
+  );
+}
+
+const CHIP_PAD_H = 11;
+const CHIP_GAP = 7;
+const CHIP_DOT = 6;
+const CHIP_GLOW = 20;
+const CHIP_DOT_GLOW = 9;
+// `.15em` and `.06em` of the chip's own `10 * s` type.
+const CHIP_TRACKING = 1.5;
+const CHIP_TRACKING_STRONG = 0.6;
+
+const chipStyles = StyleSheet.create({
+  chip: {
+    flexDirection: "row",
+    alignItems: "center",
+    borderRadius: Radius.full,
+    borderWidth: 1,
+    borderColor: Colors.goldBorder,
+    backgroundColor: Colors.chipFill,
+  },
+  chipLit: { borderColor: Colors.goldStrong },
+  chipLabel: {
+    fontFamily: "Rajdhani_600SemiBold",
+    color: Colors.textMuted,
+    textTransform: "uppercase",
+  },
+  chipLabelStrong: {
+    fontFamily: "Rajdhani_700Bold",
+    color: Colors.gold,
+    fontVariant: ["tabular-nums"],
+  },
+  chipLabelLit: { color: Colors.goldLit },
+  chipLabelUrgent: { color: Colors.red },
+  chipDot: { backgroundColor: Colors.textMuted },
+  chipDotLit: { backgroundColor: Colors.goldLit },
+});
+
+// ─── Control rail ─────────────────────────────────────────────────────────────
+
+/**
+ * The column the device cutout occupies, turned into the table's control
+ * column: `top` at the head, `bottom` at the foot, and the cutout in the gap
+ * between them. Its width comes from `railWidth` (components/gameTableModel.ts),
+ * which floors it well above a 44pt knob so a phone with no cutout lays out
+ * exactly like one with a Dynamic Island.
+ */
+export function ControlRail({
+  width,
+  topPad,
+  bottomPad,
+  top,
+  bottom,
+}: {
+  width: number;
+  topPad: number;
+  bottomPad: number;
+  top?: ReactNode;
+  bottom?: ReactNode;
+}) {
+  return (
+    <View
+      testID="control-rail"
+      style={[railStyles.rail, { width, paddingTop: topPad, paddingBottom: bottomPad }]}
+    >
+      <View>{top}</View>
+      <View>{bottom}</View>
+    </View>
+  );
+}
+
+/**
+ * One knob on the rail. `size` is `physicalTouchTarget(scale)`
+ * (components/cardFaceModel.ts) — a touch target's floor is physical size, so
+ * it grows with the table's scale but never shrinks below 44pt.
+ */
+export function RailKnob({
+  onPress,
+  a11yLabel,
+  size,
+  children,
+}: {
+  onPress: () => void;
+  a11yLabel: string;
+  size: number;
+  children: ReactNode;
+}) {
+  return (
+    <Pressable
+      onPress={onPress}
+      accessibilityRole="button"
+      accessibilityLabel={a11yLabel}
+      style={({ pressed }) => [
+        railStyles.knob,
+        { width: size, height: size, borderRadius: size / 2 },
+        pressed && railStyles.knobPressed,
+      ]}
+    >
+      {children}
+    </Pressable>
+  );
+}
+
+/** Over the felt and the seats, under the banners and the overlays. */
+const RAIL_Z = 20;
+
+const railStyles = StyleSheet.create({
+  rail: {
+    position: "absolute",
+    left: 0,
+    top: 0,
+    bottom: 0,
+    alignItems: "center",
+    justifyContent: "space-between",
+    zIndex: RAIL_Z,
+    pointerEvents: "box-none",
+  },
+  knob: {
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: Scrim.heavy,
+    borderWidth: 1,
+    borderColor: Colors.goldBorder,
+  },
+  knobPressed: { borderColor: Colors.goldStrong, backgroundColor: Colors.goldMuted },
 });
 
 // ─── Portrait overlay ─────────────────────────────────────────────────────────
@@ -193,33 +355,17 @@ export const portraitOverlayStyles = StyleSheet.create({
 // ─── Shared table styles ──────────────────────────────────────────────────────
 
 export const sharedTableStyles = StyleSheet.create({
-  tableBg: {
-    position: "absolute",
-    borderRadius: Radius.lg,
-    overflow: "hidden",
-    borderWidth: 3.5,
-    borderColor: Colors.goldStrong,
-  },
   tableOverlay: {
     position: "absolute",
     overflow: "visible",
   },
-  tableInnerBorder: {
-    position: "absolute",
-    top: 6,
-    left: 6,
-    right: 6,
-    bottom: 6,
-    borderRadius: Radius.md,
-    borderWidth: 1.5,
-    borderColor: Colors.goldSoft,
-  },
   tableContent: { flex: 1, flexDirection: "column" },
+  // No fixed height: the top seat is the tallest thing on the table after the
+  // hand, and a band guessed for it either clips the fan or spends felt the
+  // field needed. What is left over is the mid band's, by construction.
   topSection: {
     alignItems: "center",
-    justifyContent: "center",
-    borderBottomWidth: 1,
-    borderBottomColor: Colors.goldGhost,
+    justifyContent: "flex-start",
   },
   midSection: { flex: 1, flexDirection: "row", alignItems: "center" },
   // A side seat's fan is wider than SIDE_SECTION_W and is meant to be: it
@@ -234,178 +380,64 @@ export const sharedTableStyles = StyleSheet.create({
   },
   sideSectionLeft: { alignItems: "flex-start" },
   sideSectionRight: { alignItems: "flex-end" },
-  centerSection: { flex: 1, alignItems: "center", justifyContent: "center" },
+  // Above both side seats: a combination thrown from a side seat crosses that
+  // seat's own column on its way in, and the flight is drawn in here so that it
+  // lands on the pile's centre rather than the screen's.
+  centerSection: { flex: 1, alignItems: "center", justifyContent: "center", zIndex: 1 },
+  // Bottom-aligned, not centred: the row's headroom is there for a selected
+  // card's lift, which is above it. Centred, half that headroom sits *under*
+  // the row and lifts the hand off the safe line, so the crop the cards are
+  // laid out against is a third shallower than the one they were solved for —
+  // and the buttons stop sitting on the line the prototype puts them on.
   handSection: {
     flexDirection: "row",
-    alignItems: "center",
+    alignItems: "flex-end",
     justifyContent: "center",
-  },
-  handSectionActive: {
-    backgroundColor: Colors.goldGhost,
-  },
-  // The turn pulse, as a textless childless sibling behind the hand: the glow
-  // and the hairline along the top edge are fixed, and useTurnPulse animates
-  // only this view's opacity. The wash and the hairline are what the shadow is
-  // cast from — a layer with transparent contents has nothing for iOS to blur
-  // and gives Android's elevation no outline.
-  handGlow: {
-    position: "absolute",
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    borderRadius: Radius.md,
-    borderTopWidth: 1,
-    borderTopColor: Colors.goldStrong,
-    backgroundColor: Colors.goldGhost,
-    ...Shadow.goldSoft,
   },
 });
 
-// ─── useTurnPulse ─────────────────────────────────────────────────────────────
+// ─── useHandLift ──────────────────────────────────────────────────────────────
 
-export function useTurnPulse(active: boolean) {
-  const glowV = useSharedValue(0);
+/** How far the hand rises when the turn comes to the viewer, at scale 1. */
+const HAND_LIFT = 4;
+const HAND_LIFT_MS = 500;
+
+/**
+ * The hand rises off the bottom edge on the viewer's own turn — the fourth of
+ * the table's signals about whose turn it is, after the lamp, the seat's ring
+ * and the other seats dimming.
+ *
+ * A lift, not a wash: a lit band behind the hand is a gold hairline drawn the
+ * full width of the table, which reads as chrome across the felt rather than
+ * as the hand coming up. `translateY` alone, so the browser composites it.
+ */
+export function useHandLift(active: boolean, scale: number) {
+  const lift = useSharedValue(0);
+  // A CSS transition does not fire on the value an element mounts with, and
+  // neither does this: a table rejoined mid-turn should open with the hand
+  // already up, not raise it over half a second nobody asked for.
+  const mounted = useRef(false);
   const reduceMotion = usePrefersReducedMotion();
 
   useEffect(() => {
-    if (active && reduceMotion) {
-      // Same affordance, no breathing: hold the glow at its midpoint.
-      cancelAnimation(glowV);
-      glowV.value = 0.6;
+    // Anchored at the lifted state, not the settled one: the hand's designed
+    // position — cards cropped by the bottom edge, buttons on the safe line —
+    // is the one it holds while the player is using it. Lifting *from* that
+    // position instead would spend the crop it is measured by.
+    const resting = active ? 0 : HAND_LIFT * scale;
+    if (!mounted.current || reduceMotion) {
+      mounted.current = true;
+      cancelAnimation(lift);
+      lift.value = resting;
       return;
     }
-    if (active) {
-      glowV.value = 0.35;
-      glowV.value = withRepeat(
-        withSequence(
-          withTiming(0.85, { duration: 900 }),
-          withTiming(0.35, { duration: 900 })
-        ),
-        -1,
-        false
-      );
-    } else {
-      cancelAnimation(glowV);
-      glowV.value = withTiming(0, { duration: Motion.duration.moderate });
-    }
-    return () => {
-      cancelAnimation(glowV);
-    };
-  }, [active, reduceMotion, glowV]);
+    lift.value = withTiming(resting, {
+      duration: HAND_LIFT_MS,
+      easing: Easing.bezier(0.2, 0.8, 0.3, 1),
+    });
+    return () => cancelAnimation(lift);
+  }, [active, scale, reduceMotion, lift]);
 
-  // Opacity only. The glow and the gold hairline are static, on the childless
-  // sibling the caller puts behind the hand (`sharedTableStyles.handGlow`):
-  // a shadow or a border colour written per frame is paint the browser cannot
-  // composite, and on web reanimated writes it from the main JS thread.
-  return useAnimatedStyle(() => ({ opacity: glowV.value }));
+  return useAnimatedStyle(() => ({ transform: [{ translateY: lift.value }] }));
 }
 
-// ─── GameBillboard ────────────────────────────────────────────────────────────
-
-export function GameBillboard({
-  roundLabel,
-  currentComboLabel,
-  currentTurnName,
-  isLocalPlayerTurn,
-}: {
-  roundLabel: string;
-  currentComboLabel: string | null;
-  currentTurnName: string;
-  isLocalPlayerTurn: boolean;
-}) {
-  const { t } = useTranslation();
-  const dotOpacity = useSharedValue(0.3);
-  const reduceMotion = usePrefersReducedMotion();
-
-  useEffect(() => {
-    if (isLocalPlayerTurn && reduceMotion) {
-      cancelAnimation(dotOpacity);
-      dotOpacity.value = 1;
-      return;
-    }
-    if (isLocalPlayerTurn) {
-      dotOpacity.value = withRepeat(
-        withSequence(
-          withTiming(1.0, { duration: Motion.duration.slow }),
-          withTiming(0.3, { duration: Motion.duration.slow })
-        ),
-        -1,
-        false
-      );
-    } else {
-      cancelAnimation(dotOpacity);
-      dotOpacity.value = withTiming(0, { duration: Motion.duration.base });
-    }
-    return () => {
-      cancelAnimation(dotOpacity);
-    };
-  }, [isLocalPlayerTurn, reduceMotion, dotOpacity]);
-
-  const dotStyle = useAnimatedStyle(() => ({ opacity: dotOpacity.value }));
-
-  return (
-    <View style={billboardStyles.container}>
-      <TableText style={billboardStyles.comboLabel} numberOfLines={1}>
-        {currentComboLabel ?? t("gameShared.emptyTable")}
-      </TableText>
-      <View style={billboardStyles.bottomRow}>
-        <TableText style={billboardStyles.roundLabel} numberOfLines={1}>{roundLabel}</TableText>
-        {isLocalPlayerTurn && (
-          <AnimatedTableText style={[billboardStyles.turnDot, dotStyle]}>●</AnimatedTableText>
-        )}
-        <TableText
-          style={[
-            billboardStyles.turnLabel,
-            isLocalPlayerTurn && billboardStyles.turnLabelActive,
-          ]}
-          numberOfLines={1}
-        >
-          {isLocalPlayerTurn ? t("gameShared.yourTurn") : t("gameShared.turnOf", { name: currentTurnName })}
-        </TableText>
-      </View>
-    </View>
-  );
-}
-
-const billboardStyles = StyleSheet.create({
-  container: {
-    flex: 1,
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: "transparent",
-    paddingHorizontal: Spacing.xs,
-    gap: Spacing.xxs,
-  },
-  comboLabel: {
-    fontFamily: "Rajdhani_700Bold",
-    fontSize: FontSize.sm,
-    color: Colors.gold,
-    letterSpacing: 0.5,
-    textAlign: "center",
-  },
-  bottomRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: Spacing.xs,
-  },
-  roundLabel: {
-    fontFamily: "Inter_400Regular",
-    fontSize: FontSize.xxs,
-    color: Colors.textMuted,
-  },
-  turnDot: {
-    fontFamily: "Inter_400Regular",
-    fontSize: FontSize.xxs,
-    color: Colors.gold,
-  },
-  turnLabel: {
-    fontFamily: "Inter_400Regular",
-    fontSize: FontSize.xxs,
-    color: Colors.textSecondary,
-  },
-  turnLabelActive: {
-    color: Colors.gold,
-    fontFamily: "Rajdhani_600SemiBold",
-  },
-});

@@ -1,9 +1,9 @@
 // Emoji reactions for the online table.
 //
 // Split into three pieces because they render in three different places: the
-// trigger belongs in the top bar, the picker floats under it, and the emojis
-// themselves rise from the felt. The <GameTable> slots (`topBarExtra`,
-// `overlays`) keep each one where it was.
+// trigger is the control rail's lower knob, the tray opens beside it, and the
+// emojis themselves rise from the felt. The <GameTable> slots (`railExtra`,
+// `overlays`) keep each one where it belongs.
 
 import React, { useEffect } from "react";
 import { Text, StyleSheet, Pressable } from "react-native";
@@ -12,9 +12,9 @@ import Animated, {
   useSharedValue,
   withTiming,
   withSequence,
-  SlideInRight,
+  SlideInLeft,
 } from "react-native-reanimated";
-import { Colors, FontSize, Motion, Radius, Scrim, Spacing } from "@/lib/theme";
+import { Colors, FontSize, Motion, Radius, Scrim, Spacing, TOUCH_TARGET_MIN } from "@/lib/theme";
 import { usePrefersReducedMotion } from "@/lib/accessibility";
 import { useTableReactions, type TableReaction } from "@/lib/reactions";
 import { useTranslation } from "@/lib/i18n";
@@ -90,19 +90,21 @@ export function ReactionTrigger({ onPress }: { onPress: () => void }) {
 export function ReactionPanel({
   onSelect,
   onClose,
-  top,
+  left,
+  bottom,
 }: {
   onSelect: (emoji: string) => void;
   onClose: () => void;
-  /** Below the top bar it drops from — which the host is the one that knows. */
-  top: number;
+  /** Beside the rail's lower knob — the trigger this tray belongs to. */
+  left: number;
+  bottom: number;
 }) {
   const { t } = useTranslation();
   const reduceMotion = usePrefersReducedMotion();
   return (
     <Animated.View
-      entering={reduceMotion ? undefined : SlideInRight.duration(Motion.duration.base)}
-      style={[styles.panel, { top }]}
+      entering={reduceMotion ? undefined : SlideInLeft.duration(Motion.duration.base)}
+      style={[styles.panel, { left, bottom }]}
     >
       {EMOJIS.map((e) => (
         <Pressable
@@ -124,18 +126,20 @@ export function ReactionPanel({
 
 const styles = StyleSheet.create({
   trigger: {
-    width: 44,
-    height: 44,
+    width: TOUCH_TARGET_MIN,
+    height: TOUCH_TARGET_MIN,
     alignItems: "center",
     justifyContent: "center",
-    borderRadius: Radius.sm,
+    borderRadius: TOUCH_TARGET_MIN / 2,
+    backgroundColor: Scrim.heavy,
+    borderWidth: 1,
+    borderColor: Colors.goldBorder,
   },
-  triggerPressed: { backgroundColor: Colors.goldMuted },
+  triggerPressed: { backgroundColor: Colors.goldMuted, borderColor: Colors.goldStrong },
   triggerText: { fontSize: FontSize.lg },
 
   panel: {
     position: "absolute",
-    right: 12,
     backgroundColor: Colors.bgSurface,
     borderRadius: Radius.md + 4,
     borderWidth: 1,
@@ -148,8 +152,8 @@ const styles = StyleSheet.create({
     zIndex: 100,
   },
   emojiBtn: {
-    width: 44,
-    height: 44,
+    width: TOUCH_TARGET_MIN,
+    height: TOUCH_TARGET_MIN,
     alignItems: "center",
     justifyContent: "center",
     borderRadius: Radius.sm,

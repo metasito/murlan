@@ -11,9 +11,7 @@
 // shape; this is it, generalised over the seat count.
 import type { Page } from "@playwright/test";
 import { openApp } from "./navigation";
-
-const RANKS = ["3", "4", "5", "6", "7", "8", "9", "10", "J", "Q", "K", "A", "2"] as const;
-const SUITS = ["hearts", "diamonds", "clubs", "spades"] as const;
+import { createDeck, dealCards } from "../../../lib/gameEngine";
 
 /** Bot names and personalities as app/lobby.tsx fills empty seats. */
 const BOTS = [
@@ -22,29 +20,43 @@ const BOTS = [
   { name: "Besnik", personality: "besnik" },
 ] as const;
 
-const card = (rank: string, suit: string) => ({
-  id: `${rank}_${suit}`,
-  rank,
-  suit,
-  isJoker: false,
-});
+/**
+ * The biggest hand each seat count actually deals, taken from the engine
+ * rather than restated: 54 does not divide by four, so two of the seats hold
+ * one card more than the others, and a layout measured against the smaller of
+ * the two is measured against a hand that never has to fit.
+ */
+export const DEAL_SIZE: Record<2 | 3 | 4, number> = {
+  2: Math.max(...dealCards(2).hands.map((h) => h.length)),
+  3: Math.max(...dealCards(3).hands.map((h) => h.length)),
+  4: Math.max(...dealCards(4).hands.map((h) => h.length)),
+};
 
 /**
- * Thirteen cards a seat, dealt round-robin from a full deck so no two seats
+ * `handSize` cards a seat, dealt round-robin from a full deck so no two seats
  * share one. A full hand matters: the side fans are deliberately wider than
  * their column, and a short hand would not reproduce the overflow this exists
  * to measure.
  */
-function hands(playerCount: number) {
-  const deck = SUITS.flatMap((suit) => RANKS.map((rank) => card(rank, suit)));
+function hands(playerCount: number, handSize: number) {
+  // The engine's own deck, unshuffled. Rebuilding a 52-card copy here left the
+  // two jokers out, and 54 is what makes a four-player seat hold fourteen.
+  const deck = createDeck();
   return Array.from({ length: playerCount }, (_, seat) =>
-    deck.filter((_c, i) => i % playerCount === seat).slice(0, 13)
+    deck.filter((_c, i) => i % playerCount === seat).slice(0, handSize)
   );
 }
 
-/** A mid-hand offline save for `playerCount` seats, viewer at seat 0. */
-export function offlineGameSave(playerCount: 2 | 3 | 4) {
-  const dealt = hands(playerCount);
+/**
+ * A mid-hand offline save for `playerCount` seats, viewer at seat 0.
+ *
+ * `turn` is the seat on move. It defaults to the viewer's, and every capture
+ * this suite ever took used that default — which is why the lamp was only ever
+ * photographed at the bottom edge. The felt, the seats and the action buttons
+ * all key off whose turn it is, so a seat count is only half a state.
+ */
+export function offlineGameSave(playerCount: 2 | 3 | 4, handSize: number = 13, turn: number = 0) {
+  const dealt = hands(playerCount, handSize);
   const players = Array.from({ length: playerCount }, (_, i) => ({
     id: `player_${i}`,
     name: i === 0 ? "Ana" : BOTS[i - 1].name,
@@ -56,7 +68,7 @@ export function offlineGameSave(playerCount: 2 | 3 | 4) {
     version: 2,
     gameState: {
       players,
-      currentTurnIndex: 0,
+      currentTurnIndex: turn,
       lastPlayedCombination: null,
       lastPlayedBy: -1,
       passCount: 0,
@@ -102,11 +114,13 @@ export function offlineGameSave(playerCount: 2 | 3 | 4) {
 export async function openSeededGame(
   page: Page,
   baseURL: string,
-  playerCount: 2 | 3 | 4
+  playerCount: 2 | 3 | 4,
+  handSize?: number,
+  turn?: number
 ): Promise<void> {
   await page.addInitScript(
     ({ key, save }) => window.localStorage.setItem(key, JSON.stringify(save)),
-    { key: "@murlan_offline_game", save: offlineGameSave(playerCount) }
+    { key: "@murlan_offline_game", save: offlineGameSave(playerCount, handSize, turn) }
   );
   await openApp(page, baseURL);
   // Waited for, not clicked at. `openApp` returns on networkidle, which is the

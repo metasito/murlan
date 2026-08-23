@@ -15,7 +15,7 @@ import assert from "node:assert/strict";
 import { readdirSync, readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
-import { Colors, Scrim, Highlight } from "../lib/tokens.ts";
+import { Colors, Scrim, Highlight, Lantern } from "../lib/tokens.ts";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
@@ -31,6 +31,7 @@ const PALETTES: Record<string, Record<string, string>> = {
   Colors,
   Scrim,
   Highlight,
+  Lantern,
 };
 
 function alphaOf(value: string): number {

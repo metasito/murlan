@@ -21,4 +21,18 @@ config.resolver.resolveRequest = (context, moduleName, platform) => {
   return (defaultResolve ?? context.resolveRequest)(context, moduleName, platform);
 };
 
+// Replit writes its own run logs under `.local/state/workflow-logs`, and rotates
+// them while the packager is running. Metro's fallback watcher opens a handle on
+// every directory it walks, so a log file that disappears between the walk and
+// the watch throws ENOENT out of an fs callback — which nothing catches, and the
+// packager exits. Nothing here is source, so keep the watcher out of it.
+config.resolver.blockList = [
+  ...(Array.isArray(config.resolver.blockList)
+    ? config.resolver.blockList
+    : config.resolver.blockList
+      ? [config.resolver.blockList]
+      : []),
+  /[\\/]\.local[\\/]state[\\/].*/,
+];
+
 module.exports = config;

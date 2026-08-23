@@ -247,6 +247,7 @@ export const it: Record<keyof typeof en, string> = {
   "gameShared.startReasonCardSub": "(il 3♠ non è stato distribuito)",
   "gameShared.startReasonLostRound": "{{name}} inizia — ha perso il round",
   "gameShared.startReasonWonNoSwap": "{{name}} inizia — ha vinto (nessuno scambio)",
+  "gameShared.onTable": "Sul tavolo",
   "gameShared.emptyTable": "— Tavolo libero —",
   "gameShared.yourTurn": "Il tuo turno",
   "gameShared.turnOf": "Turno di {{name}}",
@@ -339,7 +340,6 @@ export const it: Record<keyof typeof en, string> = {
   "onlineGame.exchangeWaitAsOther": "{{winner}} sta scegliendo la carta per {{loser}}.",
   "onlineGame.theWinner": "Il vincitore",
   "onlineGame.theLoser": "il perdente",
-  "onlineGame.botSeatLabel": "Bot",
 
   // ----------------------------------------------------------------- replay.*
   "replay.title": "Replay",
@@ -382,6 +382,7 @@ export const it: Record<keyof typeof en, string> = {
   "settings.tableFelt": "Panno del tavolo",
   "settings.tableFeltSubtitle": "Il colore del tavolo da gioco",
   "settings.tableFeltA11yLabel": "Panno del tavolo",
+  "cosmetics.back.smeraldo": "Smeraldo",
   "cosmetics.back.oro": "Oro",
   "cosmetics.back.rubino": "Rubino",
   "cosmetics.back.zaffiro": "Zaffiro",

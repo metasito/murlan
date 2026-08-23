@@ -14,6 +14,7 @@ import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
   View,
   StyleSheet,
+  Platform,
   Pressable,
   Modal,
   useWindowDimensions,
@@ -43,13 +44,12 @@ import {
 } from "@/lib/gameEngine";
 import type { ExchangeAnnounceData } from "@/lib/sharedGameFlow";
 import {
-  TOP_BAR_H,
-  TOP_SECTION_H,
-  HAND_SECTION_H,
+  CHIP_H,
+  HAND_ZONE_H,
   CARD_H,
   cardScale,
-  SIDE_BTN_W,
-  TABLE_M,
+  actionBtnSize,
+  HAND_ZONE_GAP,
   advancePile,
   arrangeOpponents,
   canPassNow as canPassNowOf,
@@ -59,6 +59,7 @@ import {
   EMPTY_PILE,
   handCountOf,
   impactDelayMs,
+  lightPosition,
   passedSeats,
   playButtonLabel,
   readExchange,
@@ -79,19 +80,24 @@ import {
 import { useTranslation, type TranslationKey } from "@/lib/i18n";
 import { cardSpokenName, rankSpokenName, suitSpokenName, type TFn } from "@/lib/cardNames";
 import {
-  GameBillboard,
+  ChipDot,
+  ChipText,
+  ControlRail,
+  useHandLift,
   portraitOverlayStyles,
+  RailKnob,
   sharedTableStyles,
   StartReasonBanner,
-  TableVignette,
+  TableChip,
 } from "@/components/table/chrome";
+import { FeltPool } from "@/components/table/felt";
 import { StraightHand } from "@/components/table/hand";
 import { useTableFeedback } from "@/components/useTableFeedback";
 import { FlyingCards, PlayedPile, getComboLabel } from "@/components/table/pile";
 import { TopOppSlot, SideOppSlot } from "@/components/table/seats";
 import { ExchangeModal } from "@/components/ExchangeModal";
 import { ExchangeAnnouncement } from "@/components/ExchangeAnnouncement";
-import { HAND_SCALE } from "@/components/cardFaceModel";
+import { HAND_SCALE, physicalTouchTarget } from "@/components/cardFaceModel";
 import {
   playCardSelect,
   playCardPlay,
@@ -104,10 +110,10 @@ import {
 } from "@/lib/sounds";
 import { hapticError, hapticLight, hapticMedium, hapticSelection } from "@/lib/haptics";
 import { usePrefersReducedMotion } from "@/lib/accessibility";
-import { Colors, FontSize, Highlight, Motion, Radius, Scrim, Shadow, Spacing, TOUCH_TARGET_MIN, Type } from "@/lib/theme";
+import { Colors, FontSize, Garnet, Highlight, makeShadow, Motion, Radius, Scrim, Shadow, Spacing, TOUCH_TARGET_MIN, Type } from "@/lib/theme";
 import { useTableFelt } from "@/lib/cosmetics";
 import { playMusic } from "@/lib/music";
-import { A11yStatus, a11yHidden, a11yState } from "@/lib/a11y";
+import { A11yStatus, a11yState } from "@/lib/a11y";
 
 // How long the round-winner tag stays over the pile. A domain beat, not a
 // generic UI transition, so it is not a Motion token.
@@ -118,8 +124,28 @@ const ROUND_WINNER_MS = 1800;
 // text labels, and React Native rasterises text before transforming it, so a
 // fractional offset resamples the glyphs. 2px down is the smallest offset
 // that still reads as a press.
-const BTN_PRESS_TRAVEL = 2;
-const SIDE_BTN_MARGIN_H = 3;
+// The bevelled key: a lit top edge, a face darkening downward, and a corner
+// radius that grows with the table. Pressing it shrinks the whole key rather
+// than dropping it a pixel or two — at 56pt square a travel that small reads
+// as a jitter, and the shrink is what the prototype does.
+const BTN_PRESS_SCALE = 0.94;
+const BTN_RADIUS = 14;
+const BTN_LABEL_FS = 12;
+const BTN_SUB_FS = 10;
+const BTN_TRACKING = 1.9;
+const BTN_GLOW = 26;
+/** The rematch question's own column down the side of the table. */
+const REMATCH_PANEL_W = 86;
+
+/**
+ * The hand runs past the bottom edge on purpose, and the side fans lean out
+ * past their columns. `overflow: hidden` hides all of that but still leaves a
+ * scrollable box, and the browser scrolls a tapped card into view — sliding
+ * the whole table off the screen. `overflow: clip` clips without creating one.
+ * Native has no such box to begin with, and does not know the value.
+ */
+const WEB_CLIP =
+  Platform.OS === "web" ? ({ overflow: "clip" } as unknown as ViewStyle) : null;
 
 // How long the refused-play reason stays on screen, and how wide it may get
 // before it wraps onto its second (and last) line.
@@ -134,8 +160,9 @@ const BANNER_BAND_Z = 50;
 // dropping to goldDark at the bottom-right — same treatment and same rake
 // angle as components/MenuButton.tsx's primary variant, so the table's most-
 // pressed control reads as struck metal like every other primary action.
-const GIOCA_GRADIENT = [Colors.goldLight, Colors.gold, Colors.goldDark] as const;
+const GIOCA_GRADIENT = [Colors.goldLit, Colors.gold, Colors.goldDark] as const;
 const GIOCA_GRADIENT_PRESSED = [Colors.gold, Colors.goldDark, Colors.goldDim] as const;
+const GIOCA_GRADIENT_LOCATIONS = [0, 0.48, 1] as const;
 
 // gameTableModel.ts's `playButtonLabel` returns a rejection reason, not copy.
 // This is the translation boundary: the short two-line form the button wears,
@@ -268,8 +295,8 @@ export interface GameTableProps {
   exchangeAnnouncement?: ExchangeAnnouncementSlot;
   rematchPrompt?: RematchPromptSlot;
 
-  /** Extra controls at the right end of the top bar (online: reactions). */
-  topBarExtra?: React.ReactNode;
+  /** The rail's lower knob (online: the reactions trigger). */
+  railExtra?: React.ReactNode;
   /** Transient strips under the top bar (online: reconnect notice). */
   banners?: React.ReactNode;
   /** Full-screen layers above the table (game over, error toasts, waiting states). */
@@ -286,12 +313,14 @@ function TurnTimer({
   active,
   resetKey,
   onExpire,
+  scale,
 }: {
   seconds: number;
   active: boolean;
   /** Restarts the countdown whenever it changes — one full clock per turn. */
   resetKey: string;
   onExpire?: () => void;
+  scale: number;
 }) {
   const { tn } = useTranslation();
   const [timeLeft, setTimeLeft] = useState(seconds);
@@ -323,23 +352,16 @@ function TurnTimer({
 
   if (!active) return null;
   const urgent = timeLeft <= urgentThresholdSeconds(seconds);
-  // The clock face marks the number as a deadline rather than a score.
   return (
-    <View style={styles.timerGroup}>
-      <Ionicons
-        name="timer-outline"
-        size={FontSize.sm}
-        color={urgent ? Colors.red : Colors.gold}
-        {...a11yHidden()}
-      />
-      <TableText
-        style={[styles.timerNum, urgent && styles.timerUrgent]}
-        accessibilityLiveRegion="polite"
-        accessibilityLabel={tn("gameTable.a11ySecondsLeft", timeLeft)}
-      >
-        {timeLeft}
-      </TableText>
-    </View>
+    <ChipText
+      scale={scale}
+      strong
+      urgent={urgent}
+      accessibilityLiveRegion="polite"
+      accessibilityLabel={tn("gameTable.a11ySecondsLeft", timeLeft)}
+    >
+      {timeLeft}
+    </ChipText>
   );
 }
 
@@ -419,6 +441,7 @@ function RematchPromptPanel({
 // button re-renders just that button, not the whole table.
 
 function GiocaButton({
+  lit,
   valid,
   reduceMotion,
   rejectX,
@@ -426,11 +449,13 @@ function GiocaButton({
   glowStyle,
   onPress,
   a11yLabel,
-  dimLabel,
-  startCardRank,
   selectedCount,
-  cardH,
+  size,
+  scale,
 }: {
+  /** The turn is the viewer's — the key is brass whether or not a play is staged. */
+  lit: boolean;
+  /** …and a legal combination is staged, so a press will be accepted. */
   valid: boolean;
   reduceMotion: boolean;
   /** Owned by GameTable — driven by handlePlay's reject shake, not by press. */
@@ -439,11 +464,10 @@ function GiocaButton({
   glowStyle: AnimatedStyle<ViewStyle>;
   onPress: () => void;
   a11yLabel: string;
-  dimLabel: PlayButtonLabel;
-  startCardRank: string;
   selectedCount: number;
-  /** Matches the hand row's own card height. */
-  cardH: number;
+  /** The button is square, and never smaller than a comfortable thumb. */
+  size: number;
+  scale: number;
 }) {
   const { t } = useTranslation();
   const [pressed, setPressed] = useState(false);
@@ -451,7 +475,10 @@ function GiocaButton({
 
   // Must precede the effect that reads `pressVal` — the React Compiler skips any component that mutates a value an effect captured.
   const setPress = (down: boolean) => {
-    if (!valid) return;
+    // Gated on the turn, not on the staged play: a press with nothing legal
+    // selected is answered by the reject shake and the hint, so it has to feel
+    // like a press first.
+    if (!lit) return;
     setPressed(down);
     pressVal.value = reduceMotion
       ? down ? 1 : 0
@@ -462,46 +489,83 @@ function GiocaButton({
 
   const pressStyle = useAnimatedStyle(() => ({
     transform: [
-      { translateY: pressVal.value * BTN_PRESS_TRAVEL },
       { translateX: rejectX.value },
+      { scale: 1 - pressVal.value * (1 - BTN_PRESS_SCALE) },
     ],
   }));
 
   return (
-    <Animated.View style={[styles.playBtn, { height: cardH }, !valid && styles.playBtnDim, pressStyle]}>
-      {valid && (
-        <Animated.View pointerEvents="none" style={[styles.playBtnGlow, glowStyle]} />
+    <Animated.View
+      style={[
+        styles.actionBtn,
+        { width: size, height: size, borderRadius: BTN_RADIUS * scale },
+        pressStyle,
+      ]}
+    >
+      {lit && (
+        <Animated.View
+          pointerEvents="none"
+          style={[
+            styles.playBtnGlow,
+            { borderRadius: BTN_RADIUS * scale },
+            makeShadow(Colors.goldLit, 0, 0, 0.55, BTN_GLOW * scale, 0),
+            glowStyle,
+          ]}
+        />
       )}
       <Pressable
         testID="btn-gioca"
         onPress={onPress}
         onPressIn={() => setPress(true)}
         onPressOut={() => setPress(false)}
-        style={styles.playBtnInner}
+        style={styles.actionBtnInner}
         accessibilityLabel={a11yLabel}
         {...a11yState({ role: "button", disabled: !valid })}
       >
-        {valid ? (
+        {lit ? (
           <LinearGradient
             colors={pressed ? GIOCA_GRADIENT_PRESSED : GIOCA_GRADIENT}
+            locations={GIOCA_GRADIENT_LOCATIONS}
             start={{ x: 0, y: 0 }}
             end={{ x: 0.35, y: 1 }}
-            style={styles.playBtnGrad}
+            style={[styles.actionBtnFace, styles.playBtnFace, { borderRadius: BTN_RADIUS * scale }]}
           >
             <View pointerEvents="none" style={styles.btnTopHighlight} />
             <Animated.View
               pointerEvents="none"
               style={[StyleSheet.absoluteFill, styles.btnFlash, flashStyle]}
             />
-            <TableText style={styles.playBtnLabel}>{t("gameTable.playLabelGioca")}</TableText>
+            <TableText
+              style={[
+                styles.actionBtnLabel,
+                styles.playBtnLabel,
+                { fontSize: BTN_LABEL_FS * scale, letterSpacing: BTN_TRACKING * scale },
+              ]}
+            >
+              {t("gameTable.playLabelGioca")}
+            </TableText>
             {selectedCount > 1 && (
-              <TableText style={styles.playBtnSub}>{t("gameTable.selectedCountSuffix", { n: selectedCount })}</TableText>
+              <TableText style={[styles.playBtnSub, { fontSize: BTN_SUB_FS * scale }]}>
+                {t("gameTable.selectedCountSuffix", { n: selectedCount })}
+              </TableText>
             )}
           </LinearGradient>
         ) : (
-          <View style={[styles.playBtnGrad, styles.playBtnGradDim]}>
-            <TableText style={styles.playBtnLabelDim} numberOfLines={2}>
-              {t(PLAY_LABEL_KEYS[dimLabel], { rank: startCardRank })}
+          <View
+            style={[
+              styles.actionBtnFace,
+              styles.btnDimFace,
+              { borderRadius: BTN_RADIUS * scale },
+            ]}
+          >
+            <TableText
+              style={[
+                styles.actionBtnLabel,
+                styles.btnDimLabel,
+                { fontSize: BTN_LABEL_FS * scale, letterSpacing: BTN_TRACKING * scale },
+              ]}
+            >
+              {t("gameTable.playLabelGioca")}
             </TableText>
           </View>
         )}
@@ -516,15 +580,17 @@ function PassaButton({
   flashStyle,
   onPress,
   a11yLabel,
-  cardH,
+  size,
+  scale,
 }: {
   canPass: boolean;
   reduceMotion: boolean;
   flashStyle: AnimatedStyle<ViewStyle>;
   onPress: () => void;
   a11yLabel: string;
-  /** Matches the hand row's own card height. */
-  cardH: number;
+  /** The button is square, and never smaller than a comfortable thumb. */
+  size: number;
+  scale: number;
 }) {
   const { t } = useTranslation();
   const [pressed, setPressed] = useState(false);
@@ -542,37 +608,54 @@ function PassaButton({
   useEffect(() => () => cancelAnimation(pressVal), [pressVal]);
 
   const pressStyle = useAnimatedStyle(() => ({
-    transform: [{ translateY: pressVal.value * BTN_PRESS_TRAVEL }],
+    transform: [{ scale: 1 - pressVal.value * (1 - BTN_PRESS_SCALE) }],
   }));
 
   return (
-    <Animated.View style={[styles.passBtn, { height: cardH }, !canPass && styles.passBtnDim, pressStyle]}>
+    <Animated.View
+      style={[
+        styles.actionBtn,
+        { width: size, height: size, borderRadius: BTN_RADIUS * scale },
+        pressStyle,
+      ]}
+    >
       <Pressable
         testID="btn-passa"
         onPress={onPress}
         onPressIn={() => setPress(true)}
         onPressOut={() => setPress(false)}
         disabled={!canPass}
-        style={styles.passBtnInner}
+        style={[styles.actionBtnInner, { borderRadius: BTN_RADIUS * scale, overflow: "hidden" }]}
         accessibilityLabel={a11yLabel}
         {...a11yState({ role: "button", disabled: !canPass })}
       >
-        <LinearGradient
-          colors={pressed ? PASS_GRADIENT_PRESSED : PASS_GRADIENT}
-          start={{ x: 0, y: 0 }}
-          end={{ x: 0.35, y: 1 }}
-          style={StyleSheet.absoluteFill}
-        />
-        <View pointerEvents="none" style={styles.btnTopHighlight} />
-        <Animated.View
-          pointerEvents="none"
-          style={[StyleSheet.absoluteFill, styles.btnFlash, flashStyle]}
-        />
-        <TableText
-          style={[styles.passBtnLabel, !canPass && styles.passBtnLabelDim]}
-        >
-          {t("gameTable.passLabel")}
-        </TableText>
+        {canPass ? (
+          <>
+            <LinearGradient
+              colors={pressed ? PASS_GRADIENT_PRESSED : PASS_GRADIENT}
+              locations={PASS_GRADIENT_LOCATIONS}
+              style={StyleSheet.absoluteFill}
+            />
+            <View pointerEvents="none" style={styles.btnTopHighlight} />
+            <Animated.View
+              pointerEvents="none"
+              style={[StyleSheet.absoluteFill, styles.btnFlash, flashStyle]}
+            />
+          </>
+        ) : (
+          <View pointerEvents="none" style={[StyleSheet.absoluteFill, styles.btnDimFace]} />
+        )}
+        <View style={styles.actionBtnFace}>
+          <TableText
+            style={[
+              styles.actionBtnLabel,
+              canPass ? styles.passBtnLabel : styles.btnDimLabel,
+              { fontSize: BTN_LABEL_FS * scale, letterSpacing: BTN_TRACKING * scale },
+            ]}
+          >
+            {t("gameTable.passLabel")}
+          </TableText>
+        </View>
       </Pressable>
     </Animated.View>
   );
@@ -594,7 +677,7 @@ export function GameTable({
   turnTimer,
   exchangeAnnouncement,
   rematchPrompt,
-  topBarExtra,
+  railExtra,
   banners,
   overlays,
 }: GameTableProps) {
@@ -605,6 +688,10 @@ export function GameTable({
   // robust read regardless of how a platform reports it mid-rotation.
   const scale = cardScale(Math.min(W, H));
   const handCardH = CARD_H(scale * HAND_SCALE);
+  // What the player sees of a hand card, and how tall PASSA and GIOCA are —
+  // the row reads as one band even though only the cards are cropped.
+  const actionBtn = actionBtnSize(scale);
+  const knobSize = physicalTouchTarget(scale);
   const reduceMotion = usePrefersReducedMotion();
   const felt = useTableFelt();
 
@@ -724,7 +811,14 @@ export function GameTable({
     [players, viewerSeat]
   );
 
-  const frame = computeTableFrame({ width: W, insets });
+  const frame = computeTableFrame({ width: W, insets, scale });
+  // The felt box the lamp lives in. The pool is drawn oversized and slid under
+  // this box's own clipping, so it needs the box rather than the screen.
+  const feltW = W;
+  const feltH = H;
+  const light = lightPosition(
+    seatDirection(gameState.currentTurnIndex, viewerSeat, players.length)
+  );
 
   // ── Screen-reader table description ─────────────────────────────────────────
   //
@@ -806,7 +900,6 @@ export function GameTable({
     passaFlashStyle,
     giocaGlowStyle,
     shakeStyle,
-    turnPulseStyle,
     giocaRejectX,
     playImpact,
     rejectPlay,
@@ -824,6 +917,8 @@ export function GameTable({
     rankings: gameState.rankings,
     viewerId: viewer?.id,
   });
+
+  const handLiftStyle = useHandLift(isMyTurn && !isFinished && !exchange.active, scale);
 
   // The last few cards get the same composition, pitched down — one piece of
   // music with two intensities rather than a second piece (#113). Only while a
@@ -1053,83 +1148,113 @@ export function GameTable({
       ? comboKey(gameState.lastPlayedCombination, gameState.lastPlayedBy)
       : "-");
 
+  const comboLabel = getComboLabel(pileState.current, t);
+
+  // The seat on move sweeps its own rim over the same window the viewer's chip
+  // counts down. There is no per-seat deadline to read — online the server arms
+  // one window per turn, offline there is none at all — so the turn changing is
+  // what arms it, exactly as it arms the chip.
+  const seatCountdown =
+    turnTimer && !isFinished && !gameState.gameOver
+      ? { seconds: turnTimer.seconds, resetKey: `${turnToken}|${turnTimer.resetKey ?? ""}` }
+      : undefined;
+
   const showStartCardBanner = !gameState.firstPlayMade && !!gameState.startCard;
 
   return (
-    <Animated.View style={[styles.root, shakeStyle]}>
+    <Animated.View style={[styles.root, WEB_CLIP, shakeStyle]}>
       <A11yStatus label={tableA11yLabel} />
-      <LinearGradient
-        colors={[Colors.bg, Colors.feltDark, Colors.bg]}
-        style={StyleSheet.absoluteFill}
-      />
-
+      {/* Two chips over the felt, at the corners the cards never reach — the
+          combination in play at the head of the field, whose turn it is at the
+          far side. Anything wider would be chrome drawn where a card lands. */}
       <View
         testID="game-top-bar"
+        style={[styles.hudLeft, { left: frame.tableLeft + frame.pad, top: frame.tableTop }]}
+      >
+        <TableChip scale={scale}>
+          {comboLabel === null ? (
+            <ChipText scale={scale}>{t("gameShared.emptyTable")}</ChipText>
+          ) : (
+            <>
+              <ChipText scale={scale}>{t("gameShared.onTable")}</ChipText>
+              <ChipText scale={scale} strong>
+                {comboLabel}
+              </ChipText>
+            </>
+          )}
+        </TableChip>
+      </View>
+
+      <View
+        testID="game-hud-stack"
         style={[
-          styles.topBar,
-          { top: frame.topPad, left: frame.leftPad, right: frame.rightPad },
+          styles.hudRight,
+          { right: frame.tableRight + frame.pad, top: frame.tableTop, gap: frame.pad },
         ]}
       >
-        <Pressable
-          onPress={onQuit}
-          style={styles.quitBtn}
-          hitSlop={10}
-          accessibilityRole="button"
-          accessibilityLabel={t("gameTable.leaveA11yLabel")}
-        >
-          <Ionicons name="close" size={18} color={Colors.textMuted} />
-        </Pressable>
-
-        <GameBillboard
-          roundLabel={roundLabel}
-          currentComboLabel={getComboLabel(pileState.current, t)}
-          currentTurnName={players[gameState.currentTurnIndex]?.name ?? ""}
-          isLocalPlayerTurn={isMyTurn && !isFinished}
-        />
-
-        <TurnTimer
-          seconds={turnTimer?.seconds ?? 0}
-          active={timerActive}
-          resetKey={`${turnToken}|${turnTimer?.resetKey ?? ""}`}
-          onExpire={turnTimer?.onExpire}
-        />
-
-        <View style={styles.topBarRight}>
-          <View style={styles.cardCountBadge}>
-            <TableText style={styles.cardCountText}>{sortedHand.length}</TableText>
-          </View>
-          {topBarExtra}
-        </View>
+        <TableChip scale={scale} lit={isMyTurn && !isFinished}>
+          <ChipDot scale={scale} lit={isMyTurn && !isFinished} />
+          <ChipText scale={scale} lit={isMyTurn && !isFinished}>
+            {isMyTurn && !isFinished
+              ? t("gameShared.yourTurn")
+              : t("gameShared.turnOf", {
+                  name: players[gameState.currentTurnIndex]?.name ?? "",
+                })}
+          </ChipText>
+          <TurnTimer
+            seconds={turnTimer?.seconds ?? 0}
+            active={timerActive}
+            resetKey={`${turnToken}|${turnTimer?.resetKey ?? ""}`}
+            onExpire={turnTimer?.onExpire}
+            scale={scale}
+          />
+        </TableChip>
       </View>
+
+      {/* The cutout's own column. A cutout can never sit on a card, but it sits
+          happily between two controls — so the menu knob takes the head of the
+          column, the reactions knob its foot, and the cutout the gap between. */}
+      <ControlRail
+        width={frame.rail}
+        topPad={frame.topPad}
+        bottomPad={frame.bottomPad}
+        top={
+          <RailKnob
+            onPress={onQuit}
+            a11yLabel={t("gameTable.leaveA11yLabel")}
+            size={knobSize}
+          >
+            <Ionicons name="close" size={knobSize * 0.4} color={Colors.textMuted} />
+          </RailKnob>
+        }
+        bottom={railExtra}
+      />
 
       <View
         style={[
           styles.bannerBand,
-          { top: frame.topPad + TOP_BAR_H, left: frame.leftPad, right: frame.rightPad },
+          {
+            top: frame.tableTop + CHIP_H(scale) + frame.pad,
+            left: frame.tableLeft + frame.pad,
+            right: frame.tableRight + frame.pad,
+          },
         ]}
       >
         {banners}
       </View>
 
-      {/* Felt — clipped to its rounded corners, decoration only */}
-      <View
-        style={[
-          sharedTableStyles.tableBg,
-          {
-            left: frame.tableLeft,
-            top: frame.tableTop,
-            right: frame.tableRight,
-            bottom: frame.tableBottom,
-          },
-        ]}
-      >
-        <LinearGradient
-          colors={felt}
-          locations={[0, 0.25, 0.5, 0.75, 1]}
-          style={StyleSheet.absoluteFill}
+      {/* Felt — decoration only, and edge to edge: a framed table draws a lit
+          rectangle in a dark room, which is the one thing a single overhead
+          lamp cannot produce. The pool tracks whose turn it is, so half the
+          cloth falls into shadow when it is not yours. */}
+      <View testID="table-felt" style={StyleSheet.absoluteFill} pointerEvents="none">
+        <FeltPool
+          width={feltW}
+          height={feltH}
+          stops={felt}
+          lightX={light.x}
+          lightY={light.y}
         />
-        <TableVignette />
-        <View style={sharedTableStyles.tableInnerBorder} />
       </View>
 
       {/* Same coordinates, overflow visible so slots and buttons can extend out.
@@ -1148,15 +1273,14 @@ export function GameTable({
             left: frame.tableLeft,
             top: frame.tableTop,
             right: frame.tableRight,
-            bottom: frame.tableBottom,
+            // The device's own bottom edge, not the felt's: the hand runs to
+            // it and past it, which is what buys the table the height above.
+            bottom: 0,
           },
         ]}
       >
         <View style={sharedTableStyles.tableContent}>
-          <View
-            testID="table-top-section"
-            style={[sharedTableStyles.topSection, { height: TOP_SECTION_H }]}
-          >
+          <View testID="table-top-section" style={sharedTableStyles.topSection}>
             {opponents.top ? (
               <TopOppSlot
                 player={opponents.top.player}
@@ -1164,13 +1288,30 @@ export function GameTable({
                 cardCount={handCountOf(opponents.top.player)}
                 passed={passed.includes(opponents.top.seat)}
                 scale={scale}
+                countdown={seatCountdown}
               />
             ) : (
               <View />
             )}
           </View>
 
+          {/* The band left over between the top seat and the hand. The seats
+              and the field centre in what is actually there rather than at a
+              guessed percentage, so a taller top seat takes it from the field
+              instead of overlapping it. */}
           <View style={sharedTableStyles.midSection}>
+            {/* Gated on the exchange announcement so the two banners sequence
+                rather than stack. Inside the mid band, not at a computed
+                offset: the top opponent's avatar, name and card fan sit above
+                it, and card count is the single most important tactical signal
+                on the table. */}
+            {gameState.startReason && !exchangeAnnouncement?.visible && (
+              <StartReasonBanner
+                key={`reason-${gameState.startReason.type}-${gameState.startReason.playerIdx}`}
+                reason={gameState.startReason}
+                players={players}
+              />
+            )}
             <View style={[sharedTableStyles.sideSection, sharedTableStyles.sideSectionLeft]}>
               {opponents.left && (
                 <SideOppSlot
@@ -1180,6 +1321,7 @@ export function GameTable({
                   cardCount={handCountOf(opponents.left.player)}
                   passed={passed.includes(opponents.left.seat)}
                   scale={scale}
+                  countdown={seatCountdown}
                 />
               )}
             </View>
@@ -1203,6 +1345,25 @@ export function GameTable({
                   current={flyInfo ? null : pileState.current}
                   roundWinner={roundWinnerTag === null ? null : players[roundWinnerTag.seat]?.name ?? ""}
                   bounceTrigger={pileBounceTrigger}
+                  roomW={frame.fieldRoomW}
+                  scale={scale}
+                />
+              )}
+
+              {/* Beside the pile, not beside the table: the flight has to
+                  settle exactly where PlayedPile then redraws the same cards,
+                  and the rail makes the table box asymmetric — centred on the
+                  screen instead, the combination lands and then jumps. */}
+              {flyInfo && (
+                <FlyingCards
+                  key={flyInfo.key}
+                  cards={flyInfo.cards}
+                  direction={flyInfo.dir}
+                  onDone={() => {
+                    setFlyInfo(null);
+                    setPileBounceTrigger((t) => t + 1);
+                  }}
+                  roomW={frame.fieldRoomW}
                   scale={scale}
                 />
               )}
@@ -1217,22 +1378,27 @@ export function GameTable({
                   cardCount={handCountOf(opponents.right.player)}
                   passed={passed.includes(opponents.right.seat)}
                   scale={scale}
+                  countdown={seatCountdown}
                 />
               )}
             </View>
           </View>
 
-          <View
+          {/* The hand rises off the bottom edge on the viewer's own turn. A
+              lift rather than a lit band: a wash behind the hand draws a gold
+              hairline the full width of the table, which reads as chrome over
+              the felt instead of as the hand coming up. */}
+          <Animated.View
             style={[
               sharedTableStyles.handSection,
-              isMyTurn && !isFinished && sharedTableStyles.handSectionActive,
-              { height: HAND_SECTION_H(handCardH) },
+              {
+                height: HAND_ZONE_H(handCardH, frame.bottomPad),
+                paddingBottom: frame.bottomPad,
+                gap: HAND_ZONE_GAP * scale,
+              },
+              handLiftStyle,
             ]}
           >
-            <Animated.View
-              pointerEvents="none"
-              style={[sharedTableStyles.handGlow, turnPulseStyle]}
-            />
             {!spectating && (
               <PassaButton
                 canPass={canPass}
@@ -1240,7 +1406,8 @@ export function GameTable({
                 flashStyle={passaFlashStyle}
                 onPress={handlePass}
                 a11yLabel={t("gameTable.passA11yLabel")}
-                cardH={handCardH}
+                size={actionBtn}
+                scale={scale}
               />
             )}
 
@@ -1262,6 +1429,7 @@ export function GameTable({
                   onPress={handleCardPress}
                   disabled={isFinished || spectating}
                   availW={frame.handAvailW}
+                  roomW={frame.handRoomW}
                   isMyTurn={isMyTurn && !isFinished}
                   scale={scale}
                 />
@@ -1270,6 +1438,7 @@ export function GameTable({
 
             {!spectating && (
               <GiocaButton
+                lit={isMyTurn && !isFinished}
                 valid={playBtnValid}
                 reduceMotion={reduceMotion}
                 rejectX={giocaRejectX}
@@ -1281,42 +1450,14 @@ export function GameTable({
                     ? t("gameTable.playA11yValid")
                     : t("gameTable.playA11yUnavailable", { reason: dimReasonText })
                 }
-                dimLabel={dimLabel}
-                startCardRank={startCardRank}
                 selectedCount={selectedIds.length}
-                cardH={handCardH}
+                size={actionBtn}
+                scale={scale}
               />
             )}
-          </View>
+          </Animated.View>
         </View>
       </View>
-
-      {flyInfo && (
-        <FlyingCards
-          key={flyInfo.key}
-          cards={flyInfo.cards}
-          direction={flyInfo.dir}
-          onDone={() => {
-            setFlyInfo(null);
-            setPileBounceTrigger((t) => t + 1);
-          }}
-          scale={scale}
-        />
-      )}
-
-      {/* Gated on the exchange announcement so the two banners sequence rather
-          than stack on top of each other. topOffset clears TOP_SECTION_H —
-          the top opponent's avatar, name and card fan live in that band, and
-          card count is the single most important tactical signal on the
-          table, so the banner must never sit over it. */}
-      {gameState.startReason && !exchangeAnnouncement?.visible && (
-        <StartReasonBanner
-          key={`reason-${gameState.startReason.type}-${gameState.startReason.playerIdx}`}
-          reason={gameState.startReason}
-          players={players}
-          topOffset={frame.topPad + TOP_BAR_H + TABLE_M + TOP_SECTION_H + 8}
-        />
-      )}
 
       {exchange.active && exchange.viewerIsWinner && exchange.loser && exchange.winner && (
         <ExchangeModal
@@ -1334,8 +1475,8 @@ export function GameTable({
       {rematchPrompt?.visible && (
         <RematchPromptPanel
           prompt={rematchPrompt}
-          top={frame.topPad + TOP_BAR_H + TABLE_M + Spacing.sm}
-          left={frame.leftPad + Spacing.sm}
+          top={frame.tableTop + CHIP_H(scale) + frame.pad}
+          left={frame.tableLeft + Spacing.sm}
         />
       )}
 
@@ -1362,7 +1503,7 @@ export function GameTable({
           style={[
             styles.rejectHint,
             {
-              bottom: frame.bottomPad + TABLE_M + HAND_SECTION_H(handCardH) + Spacing.xs,
+              bottom: HAND_ZONE_H(handCardH, frame.bottomPad) + Spacing.xs,
               left: frame.tableLeft,
               right: frame.tableRight,
             },
@@ -1406,20 +1547,16 @@ export function GameTable({
   );
 }
 
-// PASS_BG/PASS_BORDER are deliberate table furniture — a muted danger that
-// reads against the felt without competing with the gold — with no matching
-// token. PASS_LABEL's red coincides with Colors.bombText.
-const PASS_BG = "#5C1212";
-const PASS_BORDER = "#8B1A1A";
-const PASS_LABEL = Colors.bombText;
-// Same raked-light technique as GIOCA_GRADIENT, tuned to PASSA's own red
-// rather than gold — the button gets the table's standard depth treatment
-// without adopting gold's colour identity.
-const PASS_GRADIENT = [PASS_BORDER, PASS_BG] as const;
-const PASS_GRADIENT_PRESSED = [PASS_BG, "#3A0C0C"] as const;
+// PASSA takes GIOCA's own construction — a lit top lip, a face darkening
+// downward, a seated shadow — at lower luminance with the hue pulled to
+// garnet, and no glow. Glow is reserved for the primary action, which is the
+// whole reason red can sit here without shouting.
+const PASS_GRADIENT = [Garnet.lip, Garnet.face, Garnet.deep, Garnet.base] as const;
+const PASS_GRADIENT_PRESSED = [Garnet.face, Garnet.deep, Garnet.base, Garnet.base] as const;
+const PASS_GRADIENT_LOCATIONS = [0, 0.22, 0.6, 1] as const;
 
 const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: Colors.bg },
+  root: { flex: 1, backgroundColor: Colors.bg, overflow: "hidden" },
 
   bannerBand: {
     position: "absolute",
@@ -1428,35 +1565,8 @@ const styles = StyleSheet.create({
     pointerEvents: "box-none",
   },
 
-  topBar: {
-    position: "absolute",
-    height: TOP_BAR_H,
-    flexDirection: "row",
-    alignItems: "center",
-    paddingHorizontal: Spacing.sm,
-    gap: Spacing.sm,
-    zIndex: 10,
-  },
-  topBarRight: { flexDirection: "row", alignItems: "center", gap: Spacing.xs },
-  quitBtn: {
-    width: TOUCH_TARGET_MIN, height: TOUCH_TARGET_MIN, borderRadius: TOUCH_TARGET_MIN / 2,
-    backgroundColor: Scrim.medium,
-    alignItems: "center", justifyContent: "center",
-  },
-  timerGroup: { flexDirection: "row", alignItems: "center", gap: Spacing.xs },
-  timerNum: {
-    fontFamily: "Rajdhani_700Bold", fontSize: FontSize.sm,
-    color: Colors.gold, minWidth: 20, textAlign: "right",
-  },
-  timerUrgent: { color: Colors.red },
-  cardCountBadge: {
-    width: 30, height: 30, borderRadius: Radius.full,
-    backgroundColor: Scrim.medium,
-    alignItems: "center", justifyContent: "center",
-  },
-  cardCountText: {
-    fontFamily: "Rajdhani_700Bold", fontSize: FontSize.md, color: Colors.gold,
-  },
+  hudLeft: { position: "absolute", zIndex: 10 },
+  hudRight: { position: "absolute", alignItems: "flex-end", zIndex: 10 },
 
   startCardBanner: {
     alignItems: "center", gap: Spacing.slim,
@@ -1475,23 +1585,28 @@ const styles = StyleSheet.create({
     fontFamily: "Rajdhani_600SemiBold", fontSize: FontSize.sm, color: Colors.gold,
   },
 
-  // overflow stays visible here — Shadow.dark lives on this view, and a
+  // overflow stays visible here — the seated shadow lives on this view, and a
   // native shadow is clipped by its own view's bounds. Corner-clipping the
-  // gradient happens one level in, on passBtnInner, same split as
-  // playBtn/playBtnGrad below.
-  passBtn: {
-    width: SIDE_BTN_W, borderRadius: Radius.md,
-    borderWidth: 2, borderColor: PASS_BORDER,
-    marginHorizontal: SIDE_BTN_MARGIN_H,
-    ...Shadow.dark,
+  // gradient happens one level in, on the face.
+  actionBtn: { ...Shadow.dark },
+  // Off the viewer's turn a key is dark rather than a faded version of its lit
+  // self: the prototype's resting `.btn` (#199) is its own ink at a third over
+  // a third of black, with no gradient and no border behind it to fight.
+  btnDimFace: { backgroundColor: "rgba(0,0,0,0.3)" },
+  btnDimLabel: { color: "rgba(239,234,219,0.3)" },
+  actionBtnInner: { flex: 1 },
+  actionBtnFace: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    gap: Spacing.xxs,
+    overflow: "hidden",
   },
-  // Matches playBtnDim's technique: fade the whole surface (gradient, border,
-  // label) uniformly rather than swapping in flat colours that fight the
-  // gradient now underneath them.
-  passBtnDim: { opacity: 0.55 },
-  passBtnInner: {
-    flex: 1, alignItems: "center", justifyContent: "center",
-    borderRadius: Radius.md - 2, overflow: "hidden",
+  // Tracking is `.16em` in the prototype, so it rides the font size and every
+  // caller sets it beside `fontSize`.
+  actionBtnLabel: {
+    fontFamily: "Rajdhani_700Bold",
+    textTransform: "uppercase",
   },
   // One hairline of light along the top edge — the cue that the surface has a
   // thickness and is facing up. Same treatment as MenuButton's topHighlight.
@@ -1504,20 +1619,8 @@ const styles = StyleSheet.create({
   // Sits behind the label, never over it: a wash on top of text would eat the
   // very contrast the flash is meant to draw attention to.
   btnFlash: { backgroundColor: Highlight.clear },
-  passBtnLabel: {
-    fontFamily: "Rajdhani_700Bold", fontSize: FontSize.sm,
-    color: PASS_LABEL, letterSpacing: 0.5,
-  },
-  // Fades the same label colour rather than swapping to an unrelated token —
-  // Colors.bombFill is a translucent fill meant for backgrounds, not text,
-  // and rendered as near-invisible red-on-red here.
-  passBtnLabelDim: { opacity: 0.6 },
+  passBtnLabel: { color: Garnet.label },
 
-  playBtn: {
-    width: SIDE_BTN_W + 6,
-    borderRadius: Radius.md, marginHorizontal: SIDE_BTN_MARGIN_H,
-    ...Shadow.dark,
-  },
   // The armed bloom, as a childless sibling behind the button: the glow is
   // fixed and only this view's opacity is animated. The fill is what the
   // shadow is cast from — a layer with transparent contents has nothing for
@@ -1529,27 +1632,13 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     bottom: 0,
-    borderRadius: Radius.md,
     backgroundColor: Colors.gold,
-    ...Shadow.gold,
   },
-  playBtnDim: { opacity: 0.55 },
-  playBtnInner: { flex: 1 },
-  playBtnGrad: {
-    flex: 1, alignItems: "center", justifyContent: "center",
-    gap: Spacing.xxs, borderRadius: Radius.md, overflow: "hidden",
-  },
-  playBtnGradDim: {
-    // Dark gold-brown wash with no matching token.
-    backgroundColor: "rgba(40,30,5,0.7)",
-    borderWidth: 2, borderColor: Colors.goldSoft, borderRadius: Radius.md,
-  },
-  playBtnLabel: {
-    fontFamily: "Rajdhani_700Bold", fontSize: FontSize.sm,
-    color: Colors.bgCard, letterSpacing: 0.5,
-  },
+  // The one lit object on the table, and only on the player's own turn.
+  playBtnFace: { borderWidth: 1, borderColor: Colors.goldLit },
+  playBtnLabel: { color: Colors.bgCard },
   playBtnSub: {
-    fontFamily: "Rajdhani_500Medium", fontSize: FontSize.xs,
+    fontFamily: "Rajdhani_500Medium",
     color: Colors.bgCard, opacity: 0.7,
   },
   rejectHint: {
@@ -1573,7 +1662,7 @@ const styles = StyleSheet.create({
   },
   rematchPanel: {
     position: "absolute",
-    width: SIDE_BTN_W + Spacing.lg,
+    width: REMATCH_PANEL_W,
     zIndex: 20,
     gap: Spacing.xs,
     paddingVertical: Spacing.sm,
@@ -1626,10 +1715,4 @@ const styles = StyleSheet.create({
     fontSize: FontSize.xs - 2,
   },
 
-  // Solid color: this is the only text explaining why a move was refused,
-  // and must clear 4.5:1 contrast.
-  playBtnLabelDim: {
-    fontFamily: "Rajdhani_600SemiBold", fontSize: FontSize.sm,
-    color: Colors.goldLight, letterSpacing: 0.5, textAlign: "center",
-  },
 });

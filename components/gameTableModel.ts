@@ -21,13 +21,36 @@ import { CARD_H, CARD_W, cardScale } from "./cardFaceModel.ts";
 // maths below can use them directly.
 
 export { CARD_H, CARD_W, cardScale };
-export const BTN_W = 84;
-export const BTN_H = 84;
-export const SIDE_BTN_W = 62;
-export const TOP_BAR_H = 40;
-export const TABLE_M = 4;
 export const SIDE_SECTION_W = 130;
-export const TOP_SECTION_H = 70;
+
+// PASSA and GIOCA are square: they read as two keys either side of the hand
+// rather than as two columns of it, which is what a card-height button was.
+const ACTION_BTN = 56;
+/** A comfortable thumb, in physical points — never `48 * scale`. */
+export const ACTION_BTN_FLOOR = 48;
+/** Hand to button, and button to the edge of the play area. */
+export const HAND_ZONE_GAP = 26;
+
+export function actionBtnSize(scale: number): number {
+  return Math.max(ACTION_BTN_FLOOR, ACTION_BTN * scale);
+}
+
+// ─── The table's own pads ─────────────────────────────────────────────────────
+//
+// The felt runs edge to edge: there is no frame, and the lamp is what shapes
+// it. What the table does keep are its own pads, which scale with it and are
+// floored by whatever safe area the device actually reports.
+
+const PAD_TOP = 13;
+const PAD_BOTTOM = 13;
+const PAD_RIGHT = 17;
+/** From the rail, or the safe edge, to the first thing drawn over the felt. */
+const PAD_INNER = 10;
+
+/** A HUD chip's own height. The chrome over the felt is two of these. */
+export function CHIP_H(scale: number): number {
+  return 23 * scale;
+}
 /**
  * Headroom above the hand row's own cards — enough to clear a selected card's
  * lift (SELECT_LIFT, components/table/hand.tsx) without the row above it
@@ -36,68 +59,73 @@ export const TOP_SECTION_H = 70;
  */
 export const HAND_ROW_HEADROOM = 16;
 
-/** The hand row's own height — headroom above its (already-scaled) cards. */
-export function HAND_SECTION_H(cardH: number): number {
-  return cardH + HAND_ROW_HEADROOM;
-}
-
-// ─── Fan geometry ─────────────────────────────────────────────────────────────
+// ─── The hand's own band ──────────────────────────────────────────────────────
 //
-// Where each card sits inside a fan. Every fan on the table reads it from here:
-// a combination mid-throw and the same combination the frame after it lands are
-// one call, so it cannot shift as it arrives.
+// The hand meets the device's bottom edge and is cropped by it, which buys the
+// table height while making the cards bigger rather than smaller. The crop
+// costs nothing: a card's index is at its top-left, and only the redundant
+// upside-down copy at the foot is lost.
 
-/** A combination in the pile, thrown or landed. */
-export type FanKind = "combo" | "opponent";
-
-export interface FanOffsets {
-  /** Horizontal distance (px) between the left edges of adjacent cards. */
-  step: number;
-  /** Tilt (deg) of the card furthest from the middle. */
-  angle: number;
-  /** Full span (px): left edge of the first card to the right edge of the last. */
-  totalW: number;
-}
-
-const OPPONENT_STEP = 15;
-const OPPONENT_MAX_ANGLE = 22;
 /**
- * Cards thrown onto a table do not land square, so a combination is jittered
- * rather than fanned — see cardTilt. The bound stays small: past a few degrees
- * the overlap stops reading as one combination.
+ * How much of a hand card falls past the bottom edge. The prototype pushes the
+ * hand `26 * s` below the safe line against a `90 * s` card, and that is what
+ * takes the upside-down index at the card's foot out of the picture — a
+ * shallower crop leaves it legible and the hand reads as floating rather than
+ * as held.
  */
-const COMBO_MAX_TILT = 4.5;
+export const HAND_CROP = 26 / 90;
 
-/** `cardW` is the caller's own already-scaled card width for this fan's kind. */
-export function fanOffsets(count: number, kind: FanKind, cardW: number): FanOffsets {
-  if (kind === "opponent") {
-    return {
-      step: OPPONENT_STEP,
-      angle: OPPONENT_MAX_ANGLE,
-      totalW: OPPONENT_STEP * (count - 1) + cardW,
-    };
-  }
-  const step = count > 8 ? 9 : count > 5 ? 12 : 14;
-  return { step, angle: COMBO_MAX_TILT, totalW: step * (count - 1) + cardW };
+/**
+ * The part of a hand card the player actually sees — which is also how tall
+ * PASSA and GIOCA are, so the row still reads as one band. They are never
+ * cropped themselves: they sit on the safe line, clear of the home indicator.
+ */
+export function handVisibleH(cardH: number): number {
+  return cardH * (1 - HAND_CROP);
 }
 
 /**
- * A card's own tilt (deg) inside a combo fan, derived from its id so the same
- * combination looks the same on every client and in every frame of its throw.
+ * The hand zone's own height. It runs to the device bottom rather than
+ * stopping at the felt, so it carries the bottom safe pad itself: the buttons
+ * sit above that line and the cards run past it.
+ */
+export function HAND_ZONE_H(cardH: number, bottomPad: number): number {
+  return handVisibleH(cardH) + bottomPad + HAND_ROW_HEADROOM;
+}
+
+// ─── Width budgets ────────────────────────────────────────────────────────────
+//
+// Every arc takes a share of the table, never all the room it can reach. A
+// hand of three does not stretch across the felt to fill it, and a thirteen-
+// card run compresses and stops rather than pushing the seats off the edge.
+
+/**
+ * The hand's share. The span the hand fills and then compresses inside, so it
+ * is the same width whether the player holds five cards or twenty-one. Only
+ * the finger floor (`MIN_READABLE_STEP`, components/handLayout.ts) can push a
+ * hand past it, and past `handAvailW` the row scrolls.
+ */
+export const HAND_WIDTH_SHARE = 0.56;
+/** The field's share of the same width, bounded by what the seats leave it. */
+export const FIELD_WIDTH_SHARE = 0.55;
+
+// ─── Card jitter ──────────────────────────────────────────────────────────────
+
+/**
+ * Cards thrown onto a table do not land square, so a combination keeps a small
+ * jitter on top of the arc it lands on. The bound stays small: past a few
+ * degrees the overlap stops reading as one combination.
+ */
+export const COMBO_MAX_TILT = 4.5;
+
+/**
+ * A card's own jitter (deg), derived from its id so the same combination looks
+ * the same on every client and in every frame of its throw.
  */
 export function cardTilt(id: string, maxTilt: number): number {
   let hash = 0;
   for (let i = 0; i < id.length; i++) hash = (hash * 31 + id.charCodeAt(i)) | 0;
   return ((Math.abs(hash) % 200) / 100 - 1) * maxTilt;
-}
-
-/**
- * Left offset (px) of card `i` in a fan centred on its own midpoint, rather
- * than laid out from a left edge. `cardW` must be the same width `fanOffsets`
- * or `computeHandLayout` produced `totalW` from.
- */
-export function fanCenterOffset(i: number, step: number, totalW: number, cardW: number): number {
-  return i * step - (totalW - cardW) / 2;
 }
 
 // ─── Seating ──────────────────────────────────────────────────────────────────
@@ -131,6 +159,29 @@ export function seatDirection(
   if (seat === viewerSeat) return "bottom";
   const steps = (((seat - viewerSeat) % playerCount) + playerCount) % playerCount;
   return getOpponentPosition(steps, playerCount - 1);
+}
+
+// ─── The lamp ─────────────────────────────────────────────────────────────────
+
+export interface LightPosition {
+  /** Fractions of the felt box, not pixels. */
+  x: number;
+  y: number;
+}
+
+/**
+ * Where the lamp hangs when a given seat is on move, so half the table falls
+ * into shadow when it is not your turn. Just off the edge on that seat's own
+ * side: a lamp centred on a seat lights the seat rather than the table it is
+ * leaning over.
+ */
+export function lightPosition(dir: FlyDirection): LightPosition {
+  switch (dir) {
+    case "bottom": return { x: 0.5, y: 0.98 };
+    case "top":    return { x: 0.5, y: 0.02 };
+    case "left":   return { x: 0.02, y: 0.48 };
+    case "right":  return { x: 0.98, y: 0.48 };
+  }
 }
 
 export interface SeatedPlayer<T> {
@@ -441,56 +492,107 @@ export function computeScreenPads(opts: { insets: EdgeInsets }): ScreenPads {
   };
 }
 
+// ─── Control rail ─────────────────────────────────────────────────────────────
+//
+// A cutout can never sit on a card, but it sits happily between two controls.
+// The column the cutout occupies is the rail: menu knob at the top, reactions
+// knob at the bottom, cutout in the gap between them.
+
+/** Air on both sides of a 44pt knob — the width the rail holds with no cutout. */
+const RAIL_FLOOR = 58;
+/** …and what it grows to on a large screen, before any cutout is considered. */
+const RAIL_SCALED = 52;
+/** Clearance between the cutout's own edge and the knobs either side of it. */
+const RAIL_CUTOUT_CLEARANCE = 12;
+
+/**
+ * The rail's width. The floor is what keeps a notchless phone laid out exactly
+ * like a notched one: below `RAIL_FLOOR - RAIL_CUTOUT_CLEARANCE` of inset the
+ * rail is already wider than the cutout, so the cutout appearing moves nothing.
+ */
+export function railWidth(insetLeft: number, scale: number): number {
+  return Math.max(RAIL_FLOOR, RAIL_SCALED * scale, insetLeft + RAIL_CUTOUT_CLEARANCE);
+}
+
 export interface TableFrame extends ScreenPads {
+  /** Width of the control rail, which is also the play area's left edge. */
+  rail: number;
+  /** From an edge to the first thing drawn over the felt. */
+  pad: number;
   tableLeft: number;
   tableTop: number;
   tableRight: number;
   tableBottom: number;
   /** Width available to the hand row between the PASSA and GIOCA buttons. */
   handAvailW: number;
+  /** …and the share of it the hand aims at — see HAND_WIDTH_SHARE. */
+  handRoomW: number;
+  /** Width the field's arc may take, bounded by what the side seats leave. */
+  fieldRoomW: number;
 }
 
 /**
- * Absolute coordinates of the felt and the hand row. Both screens computed
- * this identically apart from an intermediate variable; `tableRight` and
- * `tableBottom` are distances from the right/bottom edge, matching the
- * absolutely-positioned `right` / `bottom` style props they feed.
+ * The box the table's contents lay out in. Not the felt — the felt is the
+ * whole screen — but everything drawn over it: the rail eats the left edge,
+ * the chips and the seats sit inside the pads, and the hand runs past the
+ * bottom. `tableRight` and `tableBottom` are distances from the right and
+ * bottom edges, matching the absolutely-positioned style props they feed.
  */
 export function computeTableFrame(opts: {
   width: number;
   insets: EdgeInsets;
+  /** The table's own scale — the rail widens with it. */
+  scale: number;
 }): TableFrame {
   const { topPad, bottomPad, leftPad, rightPad } = computeScreenPads(opts);
 
-  const tableLeft = leftPad + TABLE_M;
-  const tableTop = topPad + TOP_BAR_H + TABLE_M;
-  const tableRight = rightPad + TABLE_M;
-  const tableBottom = bottomPad + TABLE_M;
+  // The rail eats the left edge, so the play area starts at its outer edge and
+  // everything centred on the table centres on that box rather than on the
+  // screen — centring on 50% puts the pile and the top seat ~17px off on an
+  // 844pt phone.
+  const rail = railWidth(leftPad, opts.scale);
+  const tableLeft = rail;
+  const tableTop = Math.max(PAD_TOP * opts.scale, topPad);
+  const tableRight = Math.max(PAD_RIGHT * opts.scale, rightPad);
+  const tableBottom = Math.max(PAD_BOTTOM * opts.scale, bottomPad);
+  const tableW = opts.width - tableLeft - tableRight;
+  const handAvailW = tableW - (actionBtnSize(opts.scale) + HAND_ZONE_GAP * opts.scale) * 2;
 
   return {
     topPad,
     bottomPad,
     leftPad,
     rightPad,
+    rail,
+    pad: PAD_INNER * opts.scale,
     tableLeft,
     tableTop,
     tableRight,
     tableBottom,
-    handAvailW: opts.width - tableLeft - tableRight - (SIDE_BTN_W + 8) * 2 - 8,
+    handAvailW,
+    handRoomW: Math.min(handAvailW, opts.width * HAND_WIDTH_SHARE),
+    fieldRoomW: Math.min(tableW - SIDE_SECTION_W * 2, opts.width * FIELD_WIDTH_SHARE),
   };
 }
 
 /**
- * Top edge the notification banner may start at without covering the game
- * table's top bar — which carries whose turn it is, the countdown and the hand
- * count, exactly the things an AFK or takeover notice is explaining.
+ * Top edge the notification banner may start at without covering the table's
+ * own chips — which carry the combination on the felt and whose turn it is,
+ * exactly the things an AFK or takeover notice is explaining.
  *
  * Landscape is the proxy for "the table is up": it is the only orientation the
  * table runs in, and on a menu screen in landscape the band the banner steps
  * over is empty, so it costs nothing there.
  */
-export function notificationTopOffset(opts: { topPad: number; landscape: boolean }): number {
-  return opts.landscape ? opts.topPad + TOP_BAR_H + TABLE_M : opts.topPad;
+export function notificationTopOffset(opts: {
+  topPad: number;
+  landscape: boolean;
+  /** The table's own scale — the chips are sized from it. */
+  scale: number;
+}): number {
+  if (!opts.landscape) return opts.topPad;
+  const chipTop = Math.max(PAD_TOP * opts.scale, opts.topPad);
+  return chipTop + CHIP_H(opts.scale) + PAD_INNER * opts.scale;
 }
 
 // ─── Exchange phase ───────────────────────────────────────────────────────────

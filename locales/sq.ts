@@ -267,6 +267,7 @@ export const sq: Record<keyof typeof en, string> = {
   "gameShared.startReasonCardSub": "(3♠ nuk u nda)",
   "gameShared.startReasonLostRound": "{{name}} fillon — humbi raundin",
   "gameShared.startReasonWonNoSwap": "{{name}} fillon — fitoi (pa shkëmbim)",
+  "gameShared.onTable": "Në tavolinë",
   "gameShared.emptyTable": "— Tavolinë bosh —",
   "gameShared.yourTurn": "Radha jote",
   "gameShared.turnOf": "Radha e {{name}}",
@@ -354,7 +355,6 @@ export const sq: Record<keyof typeof en, string> = {
   "onlineGame.exchangeWaitAsOther": "{{winner}} po zgjedh letrën për {{loser}}.",
   "onlineGame.theWinner": "Fituesi",
   "onlineGame.theLoser": "humbësi",
-  "onlineGame.botSeatLabel": "Bot",
 
   // ----------------------------------------------------------------- replay.*
   "replay.title": "Replay",
@@ -397,6 +397,7 @@ export const sq: Record<keyof typeof en, string> = {
   "settings.tableFelt": "Cohja e tavolinës",
   "settings.tableFeltSubtitle": "Ngjyra e siperfaqes së lojës",
   "settings.tableFeltA11yLabel": "Cohja e tavolinës",
+  "cosmetics.back.smeraldo": "Smerald",
   "cosmetics.back.oro": "Ar",
   "cosmetics.back.rubino": "Rubin",
   "cosmetics.back.zaffiro": "Safir",

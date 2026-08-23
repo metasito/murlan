@@ -2,6 +2,7 @@
 //
 // Keep this file free of JSX and of any import from a .tsx file: Node's TS
 // loader type-strips plain .ts only, and `node --test` is what covers it.
+import { HAND_ARC } from "./tableArc.ts";
 
 // WCAG 2.2 SC 2.5.8 Level AA: 24x24 CSS px, or the undersized-target
 // exception, which needs 24px circles on adjacent targets not to intersect.
@@ -13,23 +14,12 @@
 export const MIN_READABLE_STEP = 24;
 
 /**
- * A card's own hit-test centre sits `cardW / 2` from its left edge; the next
- * card (drawn after it, so stacked on top in the overlap — hand.tsx gives
- * CardItem a rising `zIndex={i}`) covers everything right of its own left
- * edge, at `step` from this card's. Once `step <= cardW / 2`, that centre
- * point — where a click or tap actually resolves — is under the neighbour
- * instead of this card, and nothing can select it. The margin past half keeps
- * the centre inside the exposed strip rather than on its boundary.
- *
- * `MIN_READABLE_STEP` alone held this while every hand card shared one small
- * fixed width; now that the width is the table's own continuous scale, the
- * floor has to scale with it.
+ * The widest a hand ever steps, as a share of a card: past it the cards stop
+ * overlapping enough to read as one held hand. It is the arc's own ratio,
+ * taken from the arc rather than restated — the step and the curve it is laid
+ * on have to agree about how wide the hand is.
  */
-const EXPOSED_STRIP_RATIO = 0.6;
-
-function readableStep(cardW: number): number {
-  return Math.max(MIN_READABLE_STEP, cardW * EXPOSED_STRIP_RATIO);
-}
+export const MAX_STEP_RATIO = HAND_ARC.stepRatio;
 
 export interface HandLayout {
   /** Horizontal distance (px) between each card's left edge. */
@@ -44,20 +34,29 @@ export interface HandLayout {
 }
 
 /**
- * The overlap step shrinks as `n` grows or `availW` shrinks, down to
- * `readableStep(cardW)`. Below that it holds and reports `scrollable`, so a
- * big hand overflows rather than losing a card to a clip or to occlusion.
- * `cardW` is the caller's own already-scaled hand card width.
+ * The hand fills `room` and then compresses inside it: more cards overlap
+ * further, they do not reach wider. That is the whole shape of the thing — a
+ * hand of five is not a hand of twenty-one spread thin, and a full hand does
+ * not push the seats off the edge of the felt.
+ *
+ * Two bounds, both on the step rather than on the span. `MAX_STEP_RATIO` stops
+ * a short hand from fanning out into a row of separate cards, and
+ * `MIN_READABLE_STEP` is the finger: below it two adjacent cards cannot be
+ * told apart by touch, whatever the arc would prefer. `cardW` is the caller's
+ * own already-scaled hand card width; `availW` is the hard edge past which the
+ * caller must scroll rather than clip.
  */
-export function computeHandLayout(n: number, availW: number, cardW: number): HandLayout {
+export function computeHandLayout(
+  n: number,
+  room: number,
+  cardW: number,
+  availW: number = room
+): HandLayout {
   if (n <= 1) {
     return { step: 0, totalW: cardW, scrollable: false };
   }
-  const floor = readableStep(cardW);
-  const idealStep = (availW - cardW) / (n - 1);
-  if (idealStep >= floor) {
-    const step = Math.min(cardW, idealStep);
-    return { step, totalW: step * (n - 1) + cardW, scrollable: false };
-  }
-  return { step: floor, totalW: floor * (n - 1) + cardW, scrollable: true };
+  const ideal = (room - cardW) / (n - 1);
+  const step = Math.min(Math.max(ideal, MIN_READABLE_STEP), cardW * MAX_STEP_RATIO);
+  const totalW = step * (n - 1) + cardW;
+  return { step, totalW, scrollable: totalW > availW };
 }

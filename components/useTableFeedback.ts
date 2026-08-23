@@ -14,7 +14,6 @@ import {
 import type { Combination } from "@/lib/gameEngine";
 import { usePrefersReducedMotion } from "@/lib/accessibility";
 import { roundClosedWithWinner } from "@/components/gameTableModel";
-import { useTurnPulse } from "@/components/table/chrome";
 import {
   playBomb,
   playCardPass,
@@ -53,7 +52,6 @@ interface TableFeedback {
   passaFlashStyle: AnimatedStyle<ViewStyle>;
   giocaGlowStyle: AnimatedStyle<ViewStyle>;
   shakeStyle: AnimatedStyle<ViewStyle>;
-  turnPulseStyle: AnimatedStyle<ViewStyle>;
   /** Driven by `rejectPlay`; GiocaButton folds it into its own press style. */
   giocaRejectX: SharedValue<number>;
   /** The thrown card has landed. Timing it against the flight is the caller's. */
@@ -88,8 +86,11 @@ export function useTableFeedback({
 
   // Nothing here scales: a fractional scale on a view containing text makes
   // React Native resample the already-rasterised glyphs, and PASSA/GIOCA read
-  // as blurry for as long as it is applied. Emphasis is opacity, glow and —
-  // for the press feedback in GiocaButton — a whole-pixel translateY only.
+  // as blurry for as long as it is applied. Emphasis is opacity and glow.
+  //
+  // The one scale on the table is the buttons' own press (BTN_PRESS_SCALE,
+  // GameTable.tsx), which lasts as long as a finger is down and is never a
+  // state anything is read in.
   const giocaFlashVal = useSharedValue(0);
   const passaFlashVal = useSharedValue(0);
   const giocaGlowVal = useSharedValue(0);
@@ -217,7 +218,6 @@ export function useTableFeedback({
   // Opacity only, on the childless sibling behind the button. A shadow written
   // per frame is main-thread paint the browser cannot composite.
   const giocaGlowStyle = useAnimatedStyle(() => ({ opacity: giocaGlowVal.value }));
-  const turnPulseStyle = useTurnPulse(isMyTurn && !isFinished && !exchangeActive);
 
   const playImpact = useCallback(
     (heavy: boolean) => {
@@ -259,7 +259,6 @@ export function useTableFeedback({
     passaFlashStyle,
     giocaGlowStyle,
     shakeStyle,
-    turnPulseStyle,
     giocaRejectX,
     playImpact,
     rejectPlay,

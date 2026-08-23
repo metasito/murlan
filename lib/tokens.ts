@@ -22,6 +22,9 @@ export const Colors = {
   // Gold/yellow
   gold:         '#C9A84C',
   goldLight:    '#E2C06A',
+  // The lit end of the gold: what the lamp leaves on a gold surface that is
+  // currently the table's own subject — the seat on move, the turn chip, GIOCA.
+  goldLit:      '#F3E0A6',
   goldDark:     '#A8832B',
   goldDim:      '#A07830',
   // Gold alpha scale. Pick by role, not by eye.
@@ -70,8 +73,26 @@ export const Colors = {
   club:         '#1A1A1A',
 
   // Borders & overlays
+  // What a shadow is cast in. `Shadow.*` (lib/theme.ts) is the same colour
+  // pre-applied; this is for the shadows whose radius scales with the card.
+  shadow:       '#000000',
   border:       'rgba(240,234,214,0.1)',
   borderStrong: 'rgba(240,234,214,0.2)',
+  // The chips over the felt. The prototype gets away with rgba(3,14,9,.55)
+  // because it also carries `backdrop-filter: blur(6px)`, which React Native
+  // has no equivalent for on any platform — without the blur behind it the
+  // sheerer fill drops the chip's own label under 4.5:1 on the felt's lit
+  // stop (tests/contrast.test.ts). The extra opacity buys back what the blur
+  // was doing.
+  chipFill:     'rgba(3,14,9,0.72)',
+  // A seat is a chip on the cloth, and its own dark disc rather than a patch of
+  // the felt behind it — a seat that took the felt's colour disappeared into it
+  // wherever the lamp happened to be standing. Lit corner first.
+  seatDisc:     '#12402A',
+  seatDiscDeep: '#061C12',
+  // The count badge on the disc's foot: darker than any felt, so the digit
+  // reads the same wherever the lamp is.
+  seatBadge:    '#03110A',
   overlay:      'rgba(6,20,16,0.85)',
   overlayStrong:'rgba(3,16,8,0.90)',
   overlayOpaque:'rgba(3,16,8,0.97)',
@@ -109,16 +130,66 @@ export const CardFaceGradient = [
   Colors.cardPaperEdge,
 ] as const;
 
-// Table felts, light centre to dark rim. Order is the gradient order.
+// The lamp over the table, and what it falls on. A light, not a cloth: the
+// felt's own five stops still carry which felt the player chose, and these are
+// what lands on them. Every entry is translucent for that reason — a lit
+// surface is the surface plus the light, never a colour of its own.
+export const Lantern = {
+  // The pool itself: a warm core, then nothing.
+  core:     'rgba(255,242,208,0.26)',
+  coreMid:  'rgba(255,226,172,0.09)',
+  bloom:    'rgba(255,236,190,0.12)',
+  clear:    'rgba(255,242,208,0)',
+  // The cloth's own weave, one bright thread and one dark, crossing at 45.
+  weaveLight: 'rgba(255,255,255,0.02)',
+  weaveDark:  'rgba(0,0,0,0.055)',
+  // Real darkness past the falloff, and the vignette over all of it.
+  vignette:      'rgba(0,0,0,0.5)',
+  vignetteClear: 'rgba(0,0,0,0)',
+  // A card standing in a hand has its head nearer a hanging lamp than its
+  // foot. The `-on` pair is the same card in the seat that is on move.
+  headLit:     'rgba(255,240,205,0.26)',
+  headLitOn:   'rgba(255,244,214,0.40)',
+  headFade:    'rgba(255,240,205,0.08)',
+  headFadeOn:  'rgba(255,240,205,0.13)',
+  midShade:    'rgba(0,0,0,0.12)',
+  midShadeOn:  'rgba(0,0,0,0.08)',
+  footShade:   'rgba(0,0,0,0.34)',
+  footShadeOn: 'rgba(0,0,0,0.26)',
+  // A card lying flat on the felt catches far less of the same lamp.
+  flatHead:  'rgba(255,246,222,0.22)',
+  flatFade:  'rgba(255,246,222,0.04)',
+  flatMid:   'rgba(24,20,12,0.05)',
+  flatFoot:  'rgba(24,20,12,0.13)',
+} as const;
+
+// PASSA is garnet, not alarm red: GIOCA's construction — a lit top lip, a face
+// darkening downward, a seated shadow — at lower luminance with the hue pulled
+// across, and no glow. The only lit object on the table is GIOCA, and only on
+// the player's own turn, which is the whole reason red can sit beside it
+// without shouting.
+export const Garnet = {
+  lip:   '#A03B41',
+  face:  '#7C2029',
+  deep:  '#5A141C',
+  base:  '#370A11',
+  label: '#F4D5D0',
+} as const;
+
+// Table felts, from the cloth directly under the lamp out to the cloth at the
+// edge of its reach. Order is the falloff order, and it is a falloff rather
+// than a wash: `FeltPool` (components/table/felt.tsx) lays these along a radial
+// that ends in the room's own darkness, so the first stop is the cloth lit and
+// the last is the cloth barely lit.
 //
 // Every alternate is at or below the green's luminance at every stop, so the
 // contrast ratios tests/contrast.test.ts pins against `Colors.felt` are a
 // floor for all four — pinned by tests/cosmetics.test.ts.
 export const FeltGradients = {
-  verde:    ['#0F5A35', '#0D4A2E', '#0B3B25', '#082B1A', '#061E12'],
-  blu:      ['#144C7A', '#113F66', '#0E3253', '#0A2540', '#071A2E'],
-  bordeaux: ['#6B2230', '#5A1C29', '#491722', '#38111A', '#280C12'],
-  notte:    ['#2E3338', '#272B2F', '#1F2226', '#171A1D', '#101214'],
+  verde:    ['#2E9F62', '#23854F', '#186B41', '#0F4E31', '#093320'],
+  blu:      ['#2288C4', '#1C6FA2', '#155780', '#0F3F5E', '#092A3E'],
+  bordeaux: ['#B03D4C', '#94323F', '#782833', '#5A1E27', '#3D141B'],
+  notte:    ['#5D6874', '#4E5862', '#3F4750', '#31373E', '#23272C'],
 } as const;
 
 /** The default felt. Anything not themed by the player's choice uses this. */
@@ -130,6 +201,10 @@ export const FeltGradient = FeltGradients.verde;
 // gradient, dark enough to hold the ink lattice against any felt, so repainting
 // FeltGradients can never repaint a back.
 export const CardBacks = {
+  // The prototype's own back, and the default: a green field, so an opponent's
+  // fan still reads as cards on the far side of the table. Every other back is
+  // dark enough to vanish into the felt once the lamp is standing elsewhere.
+  smeraldo:   { field: ['#1E6544', '#19583B', '#144B32', '#0F3E29', '#0A3120'], ink: Colors.gold, lattice: 7, starPoints: 8 },
   oro:        { field: ['#3A2C13', '#2E2210', '#241A0B', '#180F06', '#0D0803'], ink: Colors.gold, lattice: 7, starPoints: 8 },
   rubino:     { field: ['#4A1622', '#3A111A', '#2C0C13', '#1E080D', '#120507'], ink: Colors.gold, lattice: 7, starPoints: 8 },
   zaffiro:    { field: ['#12294A', '#0E2038', '#0A182A', '#07101D', '#040A10'], ink: SILVER,      lattice: 9, starPoints: 6 },

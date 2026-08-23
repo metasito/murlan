@@ -250,6 +250,7 @@ export const en = {
   "gameShared.startReasonCardSub": "(the 3♠ was not dealt)",
   "gameShared.startReasonLostRound": "{{name}} starts — lost the round",
   "gameShared.startReasonWonNoSwap": "{{name}} starts — won (no exchange)",
+  "gameShared.onTable": "On table",
   "gameShared.emptyTable": "— Table clear —",
   "gameShared.yourTurn": "Your turn",
   "gameShared.turnOf": "{{name}}'s turn",
@@ -337,7 +338,6 @@ export const en = {
   "onlineGame.exchangeWaitAsOther": "{{winner}} is choosing the card for {{loser}}.",
   "onlineGame.theWinner": "The winner",
   "onlineGame.theLoser": "the loser",
-  "onlineGame.botSeatLabel": "Bot",
 
   // ----------------------------------------------------------------- replay.*
   "replay.title": "Replay",
@@ -380,6 +380,7 @@ export const en = {
   "settings.tableFelt": "Table felt",
   "settings.tableFeltSubtitle": "The colour of the playing surface",
   "settings.tableFeltA11yLabel": "Table felt",
+  "cosmetics.back.smeraldo": "Emerald",
   "cosmetics.back.oro": "Gold",
   "cosmetics.back.rubino": "Ruby",
   "cosmetics.back.zaffiro": "Sapphire",

@@ -11,12 +11,13 @@ import Animated, {
 } from "react-native-reanimated";
 import Ionicons from "@expo/vector-icons/Ionicons";
 import { CardView } from "@/components/CardView";
-import { Colors, FontSize, Motion, Radius, Shadow, Spacing } from "@/lib/theme";
+import { Colors, FontSize, Motion, Radius, Scrim, Shadow, Spacing } from "@/lib/theme";
 import { usePrefersReducedMotion } from "@/lib/accessibility";
 import { useTranslation } from "@/lib/i18n";
 import type { Card } from "@/lib/gameEngine";
 import { computeHandLayout } from "@/components/handLayout";
-import { fanCenterOffset, HAND_ROW_HEADROOM } from "@/components/gameTableModel";
+import { HAND_ARC, solveArc } from "@/components/tableArc";
+import { HAND_CROP, HAND_ROW_HEADROOM } from "@/components/gameTableModel";
 import { CARD_W, CARD_H, CARD_BACK_W, CARD_BACK_H, HAND_SCALE } from "@/components/cardFaceModel";
 
 // ─── CardItem ─────────────────────────────────────────────────────────────────
@@ -37,6 +38,10 @@ interface CardItemProps {
   card: Card;
   isSelected: boolean;
   left: number;
+  /** How far the card's own bottom sits below the row's, from the arc. */
+  bottom: number;
+  /** The card's own tilt on the arc, in degrees. */
+  arcRot: number;
   onPress: (id: string) => void;
   disabled: boolean;
   zIndex: number;
@@ -50,12 +55,23 @@ interface CardItemProps {
   cardScale: number;
   /** Vertical distance a dealt card rises from, derived from that same size. */
   dealRise: number;
+  /** The strip of this card a tap can reach — the rest is under its neighbour. */
+  hitW: number;
+  /**
+   * The card's own box. Passed in rather than derived from `cardScale`: a
+   * spectated hand draws backs, which are their own aspect, and the row's arc
+   * is solved against whichever of the two CardView will actually draw.
+   */
+  cardW: number;
+  cardH: number;
 }
 
 function CardItemBase({
   card,
   isSelected,
   left,
+  bottom,
+  arcRot,
   onPress,
   disabled,
   zIndex,
@@ -63,6 +79,9 @@ function CardItemBase({
   dealFromX,
   cardScale,
   dealRise,
+  hitW,
+  cardW,
+  cardH,
   faceDown = false,
 }: CardItemProps) {
   const reduceMotion = usePrefersReducedMotion();
@@ -112,7 +131,7 @@ function CardItemBase({
       transform: [
         { translateX: dealFromX * d },
         { translateY: liftY.value + dealRise * d },
-        { rotate: `${tilt.value + DEAL_TILT * d}deg` },
+        { rotate: `${arcRot + tilt.value + DEAL_TILT * d}deg` },
       ],
     };
   });
@@ -127,7 +146,15 @@ function CardItemBase({
 
   return (
     <Animated.View
-      style={[handStyles.handCardWrap, { left, zIndex }, aStyle]}
+      style={[
+        handStyles.handCardWrap,
+        // The card's own box, stated rather than taken from the child: the
+        // child is only as wide as this card's tap strip, and a wrapper that
+        // narrowed with it would rotate the card about a point left of its
+        // centre and bend the fan.
+        { left, bottom, zIndex, width: cardW, height: cardH },
+        aStyle,
+      ]}
     >
       <Animated.View pointerEvents="none" style={[handStyles.cardGlow, glowStyle]} />
       <CardView
@@ -137,6 +164,7 @@ function CardItemBase({
         disabled={disabled}
         faceDown={faceDown}
         scale={cardScale}
+        hitWidth={hitW}
         noLift
       />
     </Animated.View>
@@ -154,13 +182,18 @@ function cardItemPropsEqual(a: CardItemProps, b: CardItemProps): boolean {
     a.card.id === b.card.id &&
     a.isSelected === b.isSelected &&
     a.left === b.left &&
+    a.bottom === b.bottom &&
+    a.arcRot === b.arcRot &&
     a.onPress === b.onPress &&
     a.disabled === b.disabled &&
     a.zIndex === b.zIndex &&
     a.faceDown === b.faceDown &&
     a.dealFromX === b.dealFromX &&
     a.cardScale === b.cardScale &&
-    a.dealRise === b.dealRise
+    a.dealRise === b.dealRise &&
+    a.hitW === b.hitW &&
+    a.cardW === b.cardW &&
+    a.cardH === b.cardH
   );
 }
 
@@ -175,6 +208,7 @@ export function StraightHand({
   onPress,
   disabled,
   availW,
+  roomW,
   isMyTurn,
   faceDown = false,
   scale = 1,
@@ -183,7 +217,10 @@ export function StraightHand({
   selectedIds: string[];
   onPress: (id: string) => void;
   disabled: boolean;
+  /** The hard width: past it the row scrolls rather than clip or bury a card. */
   availW: number;
+  /** The share of the table the hand aims at — see HAND_WIDTH_SHARE. */
+  roomW: number;
   isMyTurn?: boolean;
   /** Draw backs instead of faces — the hand belongs to someone else. */
   faceDown?: boolean;
@@ -198,6 +235,10 @@ export function StraightHand({
   // math has to size against the same dimensions CardView actually draws.
   const cardW = faceDown ? CARD_BACK_W(cardScale) : CARD_W(cardScale);
   const cardH = faceDown ? CARD_BACK_H(cardScale) : CARD_H(cardScale);
+  // The bottom edge crops the card; only the redundant upside-down index at
+  // its foot is lost, and the row keeps the height that buys for the table.
+  const crop = cardH * HAND_CROP;
+  const visibleH = cardH - crop;
   const dealRise = cardH * DEAL_RISE_FACTOR;
   // O(1) membership check per card instead of `selectedIds.includes(card.id)`
   // (an O(k) scan repeated for every one of the up to 21 cards in a hand).
@@ -214,64 +255,107 @@ export function StraightHand({
     setDealArmed(n === 0);
   }, [n]);
 
+  // The overlap step is solved against the share, not against everything the
+  // row could reach — a hand of three does not stretch across the felt, and a
+  // hand of twenty-one compresses inside the same span rather than reaching
+  // past it. Only `availW` is hard: past that the row scrolls. Solved above
+  // the empty-hand return so the scroll effect below it can be a hook.
+  const { step, totalW, scrollable } = computeHandLayout(n, roomW, cardW, availW);
+  const rowW = Math.min(totalW, availW);
+  /** How much of a scrolling row lies outside the window, both ends together. */
+  const overhang = Math.max(0, totalW - availW);
+
+  // The row opens on its own middle rather than its left edge. `contentOffset`
+  // is honoured on the first frame on iOS and ignored outright on web, so the
+  // position has to be set once the view exists — and again whenever the hand
+  // changes size, or playing a card leaves the row scrolled off to one side.
+  const scroller = useRef<ScrollView>(null);
+  useEffect(() => {
+    if (overhang === 0) return;
+    scroller.current?.scrollTo({ x: overhang / 2, animated: false });
+  }, [overhang]);
+
   if (n === 0) {
     return (
-      <View style={[handStyles.handCenter, { width: availW, height: cardH }]}>
+      <View style={[handStyles.handCenter, { width: availW, height: visibleH }]}>
         <Ionicons name="checkmark-circle" size={24} color={Colors.gold} />
         <TableText style={handStyles.emptyHandText}>{t("gameShared.emptyHand")}</TableText>
       </View>
     );
   }
-  const { step, totalW, scrollable } = computeHandLayout(n, availW, cardW);
+
+  // Solved for the span the step produced, so the arc and the overlap floor
+  // cannot disagree about how wide the hand is.
+  const { cards: arc, box } = solveArc(n, {
+    budget: HAND_ARC,
+    cardW,
+    cardH,
+    scale: cardScale,
+    room: totalW,
+    step,
+  });
+  // The middle card rides highest, so the row is as tall as the card plus the
+  // climb; the whole arc is then pushed past the bottom edge by the crop.
+  const arcRise = box.h - cardH;
 
   const row = (
     <View
       style={[
         handStyles.handRow,
-        { width: scrollable ? totalW : Math.min(totalW, availW), height: cardH },
+        { width: scrollable ? totalW : rowW, height: visibleH },
       ]}
     >
-      {cards.map((card, i) => (
+      {arc.map((place, i) => (
         <CardItem
-          key={card.id}
-          card={card}
-          isSelected={selectedSet.has(card.id)}
-          left={i * step}
+          key={cards[i].id}
+          card={cards[i]}
+          isSelected={selectedSet.has(cards[i].id)}
+          left={(scrollable ? totalW : rowW) / 2 + place.x}
+          bottom={-crop - place.y}
+          arcRot={place.rot}
           onPress={onPress}
           disabled={disabled}
           faceDown={faceDown}
           zIndex={i}
           dealDelay={dealArmed ? i * Motion.stagger.deal : -1}
-          dealFromX={-fanCenterOffset(i, step, totalW, cardW)}
+          dealFromX={-place.x - cardW / 2}
           cardScale={cardScale}
           dealRise={dealRise}
+          // Every card but the last is covered from `step` on by the one drawn
+          // over it, so that strip is all of it a tap can reach.
+          hitW={i === arc.length - 1 ? cardW : step}
+          cardW={cardW}
+          cardH={cardH}
         />
       ))}
     </View>
   );
 
   return (
-    <View style={[handStyles.handCenter, { width: availW, height: cardH }]}>
-      <View
-        style={[
-          handStyles.handGlowWrap,
-          isMyTurn && handStyles.handGlowWrapActive,
-        ]}
-      >
+    <View style={[handStyles.handCenter, { width: availW, height: visibleH + arcRise }]}>
+      <View style={handStyles.handGlowWrap}>
         {scrollable ? (
-          // Too many cards to keep the readable minimum step inside availW
-          // (e.g. a 21-card hand on a narrow device). Scroll instead of
-          // clipping or shrinking the step past legibility. HAND_ROW_HEADROOM
+          // The hand compresses inside its share, so this is reached only when
+          // even the finger floor cannot fit the row in availW — a full hand on
+          // a small phone. Scroll instead of clipping or of stepping below what
+          // a thumb can separate. HAND_ROW_HEADROOM
           // reproduces the same top clearance the fixed-height, non-scrolling
           // path gets for free from HAND_SECTION_H (its card's height + 16)
           // being taller than the card row it centers — without it, the
           // ScrollView's own clipping bounds would cut off the -14px
           // selection lift.
           <ScrollView
+            ref={scroller}
             horizontal
             showsHorizontalScrollIndicator={false}
-            style={{ width: availW, height: cardH + HAND_ROW_HEADROOM }}
+            style={{ width: availW, height: visibleH + arcRise + HAND_ROW_HEADROOM }}
             contentContainerStyle={{ paddingTop: HAND_ROW_HEADROOM, width: totalW }}
+            // Opens on the middle of the hand. At offset 0 the row is against
+            // the left edge of a box the buttons centre on, which reads as the
+            // whole hand having slid sideways. `contentOffset` alone is the
+            // first frame on iOS and nothing at all on web — the effect below
+            // is what actually holds it there.
+            contentOffset={{ x: overhang / 2, y: 0 }}
           >
             {row}
           </ScrollView>
@@ -293,7 +377,6 @@ const handStyles = StyleSheet.create({
     gap: Spacing.slim,
   },
   handGlowWrap: { borderRadius: Radius.md, padding: Spacing.xs },
-  handGlowWrapActive: { backgroundColor: Colors.goldGhost },
   cardGlow: {
     position: "absolute",
     top: 2, left: 2, right: 2, bottom: 2,
@@ -305,10 +388,17 @@ const handStyles = StyleSheet.create({
     position: "relative",
     alignSelf: "center",
   },
-  handCardWrap: { position: "absolute", bottom: 0 },
+  handCardWrap: { position: "absolute" },
+  // Its own plate. Under a lamp that moves, the felt has no reliably dark end
+  // to sit on: the brightest cloth on the table is wherever the light is.
   emptyHandText: {
     fontFamily: "Rajdhani_600SemiBold",
     fontSize: FontSize.sm,
     color: Colors.gold,
+    backgroundColor: Scrim.heavy,
+    borderRadius: Radius.sm,
+    paddingHorizontal: Spacing.sm,
+    paddingVertical: Spacing.xxs,
+    overflow: "hidden",
   },
 });

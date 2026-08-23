@@ -6,17 +6,18 @@ import { test, describe } from "node:test";
 import assert from "node:assert/strict";
 import { CARD_W } from "../components/cardFaceModel.ts";
 import {
+  MAX_STEP_RATIO,
   MIN_READABLE_STEP,
   computeHandLayout,
 } from "../components/handLayout.ts";
+import { HAND_ARC } from "../components/tableArc.ts";
 
 // A representative resolved card width — the pure layout math takes it as a
 // parameter now that CARD_W itself is scale-derived; these tests exercise the
 // math at one fixed width, same as before scale existed.
 const CW = CARD_W(1);
-// computeHandLayout's own overlap floor at this card width — past half the
-// card, so a card's own centre stays inside its exposed strip.
-const READABLE_STEP_AT_CW = Math.max(MIN_READABLE_STEP, CW * 0.6);
+/** The widest this card ever steps — see MAX_STEP_RATIO. */
+const MAX_STEP_AT_CW = CW * MAX_STEP_RATIO;
 
 const WIDTHS = [320, 375, 428, 500, 600, 700, 768, 900, 1024];
 // Deal sizes per docs/BRIEF.md §3.1: 4p up to 14, 3p up to 18, 2p up to 21.
@@ -29,6 +30,13 @@ describe("computeHandLayout", () => {
   test("MIN_READABLE_STEP is the WCAG 2.2 AA floor", () => {
     assert.ok(MIN_READABLE_STEP >= 24, `step floor is ${MIN_READABLE_STEP}, SC 2.5.8 needs 24`);
     assert.ok(MIN_READABLE_STEP < CW);
+  });
+
+  // The step and the curve the cards are laid on have to agree about how wide
+  // the hand is, so the cap is the arc's own ratio rather than a second number.
+  test("MAX_STEP_RATIO is the hand arc's own step ratio", () => {
+    assert.equal(MAX_STEP_RATIO, HAND_ARC.stepRatio);
+    assert.ok(MAX_STEP_RATIO * CW > MIN_READABLE_STEP);
   });
 
   // The viewports a landscape phone actually produces, against the deal sizes
@@ -72,14 +80,21 @@ describe("computeHandLayout", () => {
         // totalW is internally consistent with step.
         assert.equal(totalW, step * (n - 1) + CW);
 
+        // A hand fans out only so far, however much room it is given: past
+        // this the cards stop overlapping and read as a row, not a hand.
+        assert.ok(
+          step <= MAX_STEP_AT_CW + 1e-9,
+          `step ${step} exceeds the arc's own ${MAX_STEP_AT_CW} at n=${n} availW=${availW}`
+        );
+
         if (scrollable) {
           // Only the fallback for a hand that genuinely cannot fit at the
-          // readable step is allowed to exceed availW — and when it does,
+          // finger floor is allowed to exceed availW — and when it does,
           // the row must scroll (the caller wraps it in a ScrollView), never
           // clip: nothing here silently drops below MIN_READABLE_STEP to
           // force a fit.
           assert.ok(totalW > availW, "scrollable must only trigger when the row truly cannot fit");
-          assert.equal(step, READABLE_STEP_AT_CW, "scrollable rows hold the step at the readable minimum");
+          assert.equal(step, MIN_READABLE_STEP, "scrollable rows hold the step at the finger floor");
         } else {
           // The common case: the whole hand fits, unclipped, inside availW.
           // Tolerate floating-point noise from the division in computeHandLayout
@@ -131,23 +146,36 @@ describe("computeHandLayout", () => {
     assert.ok(totalW <= 700);
   });
 
-  // A card's own hit-test centre — where a click or tap actually resolves —
-  // is cardW/2 from its left edge. The next card, stacked on top in the
-  // overlap, covers everything right of its own left edge (step away). Once
-  // step < cardW/2 that centre is under the neighbour, not this card, and no
-  // click can ever land it: this is what silently froze two offline e2e
-  // games (bot could not click a single card) once hand cards stopped being
-  // one small fixed width and started scaling with the table.
-  test("a card's own centre is never covered by its neighbour, at desktop card sizes too", () => {
-    // 21 cards on a 1280-wide desktop viewport, at the card width a
-    // maximized-window table scale actually produces (~1.85x base).
-    const bigCardW = CARD_W(1.85);
-    for (const availW of [900, 1024, 1280]) {
-      const { step } = computeHandLayout(21, availW, bigCardW);
-      assert.ok(
-        step > bigCardW / 2,
-        `step ${step} leaves card centre (${bigCardW / 2}) under its neighbour at availW=${availW}`
-      );
+  // A hand overlaps far past half a card, so a card's geometric centre is
+  // under its neighbour — which is where a click or tap resolves, and is what
+  // silently froze two offline e2e games once hand cards started scaling with
+  // the table. The fix is the tap strip (`hitWidth`, components/CardView.tsx),
+  // not a wider step: what this file has to guarantee is that the strip a card
+  // exposes is a target in the first place.
+  test("the strip a card exposes is never smaller than a finger", () => {
+    for (const cardW of [CARD_W(0.82), CARD_W(1), CARD_W(1.85)]) {
+      for (const availW of [320, 511, 900, 1280]) {
+        for (const n of [13, 14, 18, 21]) {
+          const { step } = computeHandLayout(n, availW, cardW);
+          assert.ok(
+            step >= MIN_READABLE_STEP,
+            `exposed strip ${step} under ${MIN_READABLE_STEP} at n=${n} cardW=${cardW} availW=${availW}`
+          );
+        }
+      }
+    }
+  });
+
+  // The hand is the same width whether it holds five cards or twenty-one —
+  // it compresses inside its share rather than reaching further for each card
+  // added. Only the finger floor may push it past that share.
+  test("a full hand takes no more room than the share it is given", () => {
+    const room = 500;
+    for (let n = 2; n <= 21; n++) {
+      const { step, totalW } = computeHandLayout(n, room, CW);
+      if (step > MIN_READABLE_STEP) {
+        assert.ok(totalW <= room + 1e-9, `n=${n} spans ${totalW} of a ${room} share`);
+      }
     }
   });
 });

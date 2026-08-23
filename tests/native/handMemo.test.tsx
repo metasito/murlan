@@ -62,6 +62,7 @@ jest.mock('@/components/GameTable', () => {
         onPress: props.onSelectCard,
         disabled: false,
         availW: 600,
+        roomW: 456,
       }),
   };
 });
@@ -91,6 +92,7 @@ const view = (cards: Card[], selectedIds: string[], onPress: (id: string) => voi
     onPress={onPress}
     disabled={false}
     availW={600}
+    roomW={456}
   />
 );
 
