@@ -2,7 +2,7 @@ import { useEffect } from "react";
 import { View, StyleSheet } from "react-native";
 import { TableText } from "./TableText";
 import { ChipText, TableChip } from "./chrome";
-import { CHIP_H, SIDE_SECTION_W } from "@/components/gameTableModel";
+import { CHIP_H, FAN_DRAWN_CARDS, SIDE_SECTION_W } from "@/components/gameTableModel";
 import Animated, {
   useAnimatedProps,
   useAnimatedStyle,
@@ -56,12 +56,13 @@ function CardFan({
   scale?: number;
 }) {
   if (count === 0) return null;
+  const drawn = Math.min(count, FAN_DRAWN_CARDS[side]);
   const backScale = scale * BACK_SCALE;
   const backW = CARD_BACK_W(backScale);
   const backH = CARD_BACK_H(backScale);
   // A fan is never width-budgeted: the seat's own column bounds it, and it is
   // the rise that actually binds.
-  const { cards, box } = solveArc(count, {
+  const { cards, box } = solveArc(drawn, {
     budget: SEAT_ARC,
     cardW: backW,
     cardH: backH,
@@ -98,6 +99,7 @@ function CardFan({
         {cards.map((card, i) => (
           <View
             key={i}
+            testID="seat-back"
             style={{
               position: "absolute",
               left: box.w / 2 + card.x,
@@ -291,6 +293,7 @@ function SeatRing({
         />
       )}
       <View
+        testID="seat-card-count"
         style={[
           seatStyles.countBubble,
           finishPos !== undefined && seatStyles.countBubbleFinished,

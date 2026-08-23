@@ -13,8 +13,16 @@
 // a relayout in between, is what catches it.
 import { test, expect, type Page } from "@playwright/test";
 import { openSeededGame } from "./helpers/offlineSeed";
+import { FAN_DRAWN_CARDS } from "../../components/gameTableModel";
 
 const VIEWPORT = { width: 844, height: 390 };
+
+/**
+ * A two-seat deal hands out twenty-seven, so this is a hand the game really
+ * reaches — and well past every seat's cap, which a thirteen-card four-hand
+ * deal is not for the top seat.
+ */
+const LONG_HAND = 21;
 
 interface SeatGeometry {
   side: string;
@@ -76,7 +84,66 @@ async function seatGeometry(page: Page): Promise<SeatGeometry[]> {
   });
 }
 
+/** How many backs each opponent's fan drew, and what its badge says it holds. */
+async function fanCounts(page: Page): Promise<{ side: string; drawn: number; badge: string }[]> {
+  return page.evaluate(() => {
+    const out: { side: string; drawn: number; badge: string }[] = [];
+    for (const side of ["top", "left", "right"]) {
+      const seat = document.querySelector(
+        side === "top" ? '[data-testid="top-seat"]' : `[data-testid="side-seat-${side}"]`
+      );
+      if (!seat) continue;
+      const drawn = seat.querySelectorAll('[data-testid="seat-back"]').length;
+      if (drawn === 0) continue;
+      out.push({
+        side,
+        drawn,
+        badge: seat.querySelector('[data-testid="seat-card-count"]')?.textContent?.trim() ?? "",
+      });
+    }
+    return out;
+  });
+}
+
 test.describe("the opponents' fans", () => {
+  // The fan is a picture of a hand, not an inventory of it: past a few backs
+  // the extra ones are a wider block of the same third-of-a-card slivers, and
+  // each is its own SVG re-rendered on every `game:state`. The badge is what
+  // carries the number, so the two must not be able to agree by accident —
+  // this one seeds a hand longer than any cap and reads both.
+  test("draw a capped fan while the badge keeps the real count", async ({ page, baseURL }) => {
+    test.setTimeout(120_000);
+    await page.setViewportSize(VIEWPORT);
+    // Two seats, because a four-hand deal cannot give anyone twenty-one.
+    await openSeededGame(page, baseURL!, 2, LONG_HAND);
+    await page.waitForTimeout(1_500);
+
+    // The floor under the check itself. Every assertion below reads the cap it
+    // is testing, so a cap raised past a real hand would leave them all true
+    // and nothing capped.
+    expect(
+      Math.max(...Object.values(FAN_DRAWN_CARDS)),
+      "no cap is under a hand this table can deal, so nothing below is being checked"
+    ).toBeLessThan(LONG_HAND);
+
+    const fans = await fanCounts(page);
+    expect(
+      fans.map((f) => f.side),
+      "a two-seat table did not produce an opponent whose fan drew anything"
+    ).toEqual(["top"]);
+
+    for (const fan of fans) {
+      expect(
+        fan.drawn,
+        `the ${fan.side} seat drew ${fan.drawn} backs for a hand of ${LONG_HAND}`
+      ).toBeLessThanOrEqual(FAN_DRAWN_CARDS[fan.side as keyof typeof FAN_DRAWN_CARDS]);
+      expect(
+        fan.badge,
+        `the ${fan.side} seat's badge was capped along with its fan`
+      ).toBe(String(LONG_HAND));
+    }
+  });
+
   test("centre on their own ring, keep one gap, and do not creep", async ({ page, baseURL }) => {
     test.setTimeout(120_000);
     await page.setViewportSize(VIEWPORT);
