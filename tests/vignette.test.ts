@@ -87,9 +87,21 @@ test("no radial is asked for an ellipse — the view it sits in is stretched", (
       "in it; react-native-svg reads `r` as one scalar and draws a circle, so the " +
       "lamp lit a disc round the seat on move and left the rest of the felt dark."
   );
-  // …and the ellipse is arrived at some other way, rather than lost.
-  assert.match(source, /scaleX:/, "nothing stretches the squares into ellipses");
-  assert.match(source, /scaleY:/);
+  // …and the ellipse is arrived at some other way, rather than lost. The
+  // viewport is the only mechanism both platforms honour — a scale on the view
+  // around the SVG never reaches the native paint. tests/native/feltEllipse
+  // checks the props that reach the renderer; this checks it is still written
+  // that way at all.
+  assert.match(
+    source,
+    /preserveAspectRatio: PRESERVE_NONE/,
+    "nothing stretches the squares into ellipses"
+  );
+  assert.equal(
+    (source.match(/scaleX:/g) ?? []).length,
+    0,
+    "the ellipse is back on a view transform, which the native renderer ignores"
+  );
 });
 
 // The floor. The scan reads the file, so a pattern that had drifted off the
@@ -98,7 +110,7 @@ test("the scan can see an oblong radial box", () => {
   const decl = '<RadialGradient id={FIELD_ID}>';
   const planted = `${decl}<Rect width={poolW} height={poolH} fill={\`url(#\${FIELD_ID})\`} />`;
   assert.deepEqual(oblong(radialRects(planted)), ["poolWxpoolH"]);
-  const square = `${decl}<Rect width={POOL_PX} height={POOL_PX} fill={\`url(#\${FIELD_ID})\`} />`;
+  const square = `${decl}<Rect width={POOL_UNITS} height={POOL_UNITS} fill={\`url(#\${FIELD_ID})\`} />`;
   assert.deepEqual(oblong(radialRects(square)), []);
   // A pattern fill is not a radial, and must not be counted as one.
   assert.deepEqual(radialRects('<Rect width={w} height={h} fill={\`url(#\${WEAVE_LIGHT_ID})\`} />'), []);

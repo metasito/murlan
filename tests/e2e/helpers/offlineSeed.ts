@@ -47,8 +47,15 @@ function hands(playerCount: number, handSize: number) {
   );
 }
 
-/** A mid-hand offline save for `playerCount` seats, viewer at seat 0. */
-export function offlineGameSave(playerCount: 2 | 3 | 4, handSize: number = 13) {
+/**
+ * A mid-hand offline save for `playerCount` seats, viewer at seat 0.
+ *
+ * `turn` is the seat on move. It defaults to the viewer's, and every capture
+ * this suite ever took used that default — which is why the lamp was only ever
+ * photographed at the bottom edge. The felt, the seats and the action buttons
+ * all key off whose turn it is, so a seat count is only half a state.
+ */
+export function offlineGameSave(playerCount: 2 | 3 | 4, handSize: number = 13, turn: number = 0) {
   const dealt = hands(playerCount, handSize);
   const players = Array.from({ length: playerCount }, (_, i) => ({
     id: `player_${i}`,
@@ -61,7 +68,7 @@ export function offlineGameSave(playerCount: 2 | 3 | 4, handSize: number = 13) {
     version: 2,
     gameState: {
       players,
-      currentTurnIndex: 0,
+      currentTurnIndex: turn,
       lastPlayedCombination: null,
       lastPlayedBy: -1,
       passCount: 0,
@@ -108,11 +115,12 @@ export async function openSeededGame(
   page: Page,
   baseURL: string,
   playerCount: 2 | 3 | 4,
-  handSize?: number
+  handSize?: number,
+  turn?: number
 ): Promise<void> {
   await page.addInitScript(
     ({ key, save }) => window.localStorage.setItem(key, JSON.stringify(save)),
-    { key: "@murlan_offline_game", save: offlineGameSave(playerCount, handSize) }
+    { key: "@murlan_offline_game", save: offlineGameSave(playerCount, handSize, turn) }
   );
   await openApp(page, baseURL);
   // Waited for, not clicked at. `openApp` returns on networkidle, which is the

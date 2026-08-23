@@ -17,7 +17,6 @@ import {
   Platform,
   Pressable,
   Modal,
-  Dimensions,
   useWindowDimensions,
   type ViewStyle,
 } from "react-native";
@@ -695,20 +694,6 @@ export function GameTable({
   const knobSize = physicalTouchTarget(scale);
   const reduceMotion = usePrefersReducedMotion();
   const felt = useTableFelt();
-
-  // What the table thinks it has to draw into. A layout report from a handset
-  // is otherwise a screenshot to be squinted at, and every number the table
-  // derives comes from these four — so one line in the packager's log settles
-  // what a whole round of guessing cannot. Development only.
-  useEffect(() => {
-    if (!__DEV__) return;
-    const screen = Dimensions.get("screen");
-    console.log(
-      `[table] window ${W}x${H} screen ${screen.width}x${screen.height} ` +
-        `insets t${insets.top} r${insets.right} b${insets.bottom} l${insets.left} ` +
-        `scale ${scale.toFixed(3)}`
-    );
-  }, [W, H, insets, scale]);
 
   // The seat that took the last round and a counter of how many rounds have
   // closed. The counter is what makes an identical repeat a new announcement:
