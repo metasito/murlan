@@ -960,6 +960,8 @@ export function initializeRematch(
     };
   }
 
+  // The hand was just dealt, so it is never empty — the only case the helper
+  // has no card to return.
   const cardFromLoser = getBestCardFromHand(loserHand)!;
 
   players[safeLoserIdx].hand = players[safeLoserIdx].hand.filter((c) => c.id !== cardFromLoser.id);
