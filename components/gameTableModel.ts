@@ -106,7 +106,11 @@ export function HAND_ZONE_H(cardH: number, bottomPad: number): number {
  * hand past it, and past `handAvailW` the row scrolls.
  */
 export const HAND_WIDTH_SHARE = 0.56;
-/** The field's share of the same width, bounded by what the seats leave it. */
+/**
+ * The field's share of the same width, bounded by what the seats leave it.
+ * The prototype's own `layout()` is the authority for it and computes
+ * `tb.width * .55`; #193's "45%" is a misquote of that line, not a target.
+ */
 export const FIELD_WIDTH_SHARE = 0.55;
 
 // ─── Card jitter ──────────────────────────────────────────────────────────────

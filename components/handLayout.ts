@@ -8,7 +8,9 @@ import { HAND_ARC } from "./tableArc.ts";
 // exception, which needs 24px circles on adjacent targets not to intersect.
 // Adjacent card centres are exactly `step` apart, so below 24 fails both.
 // 44pt needs ~630px of hand width at 14 cards — tests/e2e/tapTargets.spec.ts
-// names the hand as its one deliberate exception.
+// names the hand as its one deliberate exception. #193 asks for 34, which is
+// the prototype's own step: 24 is the correction to it, not a shortfall to
+// raise back.
 
 /** Smallest overlap step (px) that keeps a card its own tappable target. */
 export const MIN_READABLE_STEP = 24;

@@ -131,6 +131,10 @@ const SEAT_DISC = 33;
 /** How far the countdown ring stands off the disc, and how thick it is drawn. */
 const RING_GAP = 4;
 const RING_STROKE = 2;
+/**
+ * A fifth turn signal, past the four #194 budgets, and one the prototype has
+ * no equivalent for — deliberate, not an unswept leftover of the port.
+ */
 const RING_PING_SCALE = 1.45;
 
 const AnimatedCircle = Animated.createAnimatedComponent(Circle);
