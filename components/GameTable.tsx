@@ -1148,11 +1148,27 @@ export function GameTable({
   const comboLabel = getComboLabel(pileState.current, t);
 
   // The seat on move sweeps its own rim over the same window the viewer's chip
-  // counts down. There is no per-seat deadline to read — online the server arms
-  // one window per turn, offline there is none at all — so the turn changing is
-  // what arms it, exactly as it arms the chip.
+  // counts down, so both are armed by one gate. There is no per-seat deadline
+  // to read — online the server arms one window per turn, offline there is none
+  // at all — so the turn changing is what arms it, exactly as it arms the chip.
+  //
+  // Asked about the seat the ring is drawn on, never about the viewer: a seat
+  // that is not the viewer's still has a server deadline online once the viewer
+  // is out.
   const seatCountdown =
-    turnTimer && !isFinished && !gameState.gameOver
+    turnTimer &&
+    turnTimerActive({
+      // SeatRing draws this only on the seat that is on move, so the subject of
+      // the question is always a seat whose turn it is — and never one that has
+      // gone out, because `getNextActivePlayer` (lib/gameEngine.ts) steps over
+      // an empty hand rather than landing on it.
+      isMyTurn: true,
+      isFinished: false,
+      isNewRound,
+      gameOver: gameState.gameOver,
+      exchangeActive: exchange.active,
+      includeNewRound: turnTimer.includeNewRound ?? false,
+    })
       ? { seconds: turnTimer.seconds, resetKey: `${turnToken}|${turnTimer.resetKey ?? ""}` }
       : undefined;
 
