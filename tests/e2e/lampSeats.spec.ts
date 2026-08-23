@@ -5,21 +5,27 @@
 // that. Every capture this suite took before this spec seeded the turn on the
 // viewer's own seat, so the lamp was only ever photographed at the bottom edge
 // and the three states where it is anywhere else went unchecked.
+//
+// The states come from `lib/captureStates.ts` rather than from a list here, so
+// this run and the iOS capture `app/capture.tsx` takes are of the same states
+// rather than of two similar ones. Chromium is the only renderer this spec
+// reaches; `docs/agents/loops.md` has what that does and does not prove.
 import { test, expect } from "@playwright/test";
-import { openSeededGame, DEAL_SIZE } from "./helpers/offlineSeed";
+import { openCaptureState } from "./helpers/offlineSeed";
+import { CAPTURE_STATES, CAPTURE_VIEWER_SEAT } from "../../lib/captureStates";
 
 // The device the game is played on, at its landscape logical size.
 const VIEWPORT = { width: 874, height: 402 };
 
-/** Seat 0 is the viewer; 1..3 are the top and the two side seats. */
-for (const turn of [1, 2, 3]) {
-  test(`every seat and the hand stay on screen with the lamp on seat ${turn}`, async ({
-    page,
-    baseURL,
-  }) => {
+// The viewer's own turn is the state every capture already took; what went
+// unchecked is the lamp anywhere else.
+const AWAY = CAPTURE_STATES.filter((s) => s.turn !== CAPTURE_VIEWER_SEAT);
+
+for (const state of AWAY) {
+  test(`every seat and the hand stay on screen: ${state.id}`, async ({ page, baseURL }) => {
     test.setTimeout(120_000);
     await page.setViewportSize(VIEWPORT);
-    await openSeededGame(page, baseURL!, 4, DEAL_SIZE[4], turn);
+    await openCaptureState(page, baseURL!, state);
 
     // Past the deal stagger: every card is at opacity 0 until its own leg of
     // it runs, so a frame taken during the deal shows an empty table and
