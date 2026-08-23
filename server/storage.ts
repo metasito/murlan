@@ -50,7 +50,6 @@ export interface IStorage {
   claimRoomSeat(roomId: string, userId: string): Promise<SeatClaim>;
   getWaitingRooms(roomIds: string[], userId: string): Promise<JoinableRoom[]>;
   removeRoomPlayer(roomId: string, userId: string): Promise<void>;
-  clearRoomPlayers(roomId: string): Promise<void>;
 
   getFriends(userId: string): Promise<(Friend & { friend: User })[]>;
   getPendingFriendRequests(userId: string): Promise<(Friend & { requester: User })[]>;
@@ -351,10 +350,6 @@ class DrizzleStorage implements IStorage {
     await db.delete(roomPlayers).where(
       and(eq(roomPlayers.roomId, roomId), eq(roomPlayers.userId, userId))
     );
-  }
-
-  async clearRoomPlayers(roomId: string) {
-    await db.delete(roomPlayers).where(eq(roomPlayers.roomId, roomId));
   }
 
   async getFriends(userId: string): Promise<(Friend & { friend: User })[]> {

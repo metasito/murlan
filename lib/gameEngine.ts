@@ -935,9 +935,7 @@ export function initializeRematch(
   const safeLoserIdx = loserIdx >= 0 ? loserIdx : players.length - 1;
 
   const loserHand = players[safeLoserIdx].hand;
-  const hasColoredJoker = loserHand.some((c) => c.rank === "joker_colored");
-  const hasBwJoker = loserHand.some((c) => c.rank === "joker_bw");
-  const bothJokersException = hasColoredJoker && hasBwJoker;
+  const bothJokersException = loserHasBothJokers(loserHand);
 
   if (bothJokersException) {
     return {
@@ -962,8 +960,7 @@ export function initializeRematch(
     };
   }
 
-  const sortedLoserHand = [...loserHand].sort((a, b) => cardStrength(b) - cardStrength(a));
-  const cardFromLoser = sortedLoserHand[0];
+  const cardFromLoser = getBestCardFromHand(loserHand)!;
 
   players[safeLoserIdx].hand = players[safeLoserIdx].hand.filter((c) => c.id !== cardFromLoser.id);
   players[safeWinnerIdx].hand = sortHand([...players[safeWinnerIdx].hand, cardFromLoser]);
