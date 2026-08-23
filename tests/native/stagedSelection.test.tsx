@@ -102,7 +102,6 @@ const table = (opts: {
       onPass={noop}
       onQuit={noop}
       onExchangeGive={noop}
-      roundLabel="Partita"
     />
   </SafeAreaProvider>
 );

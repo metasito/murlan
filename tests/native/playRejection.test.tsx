@@ -88,7 +88,6 @@ const table = (gameState: GameState, selectedIds: string[]) => (
       onPass={noop}
       onQuit={noop}
       onExchangeGive={noop}
-      roundLabel="Partita"
     />
   </SafeAreaProvider>
 );
@@ -211,7 +210,6 @@ describe('tapping an unavailable GIOCA', () => {
           onPass={noop}
           onQuit={noop}
           onExchangeGive={noop}
-          roundLabel="Partita"
         />
       </SafeAreaProvider>
     );

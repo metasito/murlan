@@ -76,9 +76,6 @@ export default function CaptureScreen() {
     <GameTable
       gameState={gameState}
       viewerSeat={CAPTURE_VIEWER_SEAT}
-      // `roundLabel` reaches nothing on the table today (#208); it is required,
-      // so it carries the state id rather than a placeholder.
-      roundLabel={picked.id}
       selectedIds={selectedIds}
       onSelectCard={(cardId) =>
         setSelectedIds((ids) =>

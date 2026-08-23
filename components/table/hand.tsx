@@ -338,12 +338,9 @@ export function StraightHand({
           // The hand compresses inside its share, so this is reached only when
           // even the finger floor cannot fit the row in availW — a full hand on
           // a small phone. Scroll instead of clipping or of stepping below what
-          // a thumb can separate. HAND_ROW_HEADROOM
-          // reproduces the same top clearance the fixed-height, non-scrolling
-          // path gets for free from HAND_SECTION_H (its card's height + 16)
-          // being taller than the card row it centers — without it, the
-          // ScrollView's own clipping bounds would cut off the -14px
-          // selection lift.
+          // a thumb can separate. A ScrollView clips at its own bounds, so the
+          // row keeps HAND_ROW_HEADROOM as top padding inside it — without it,
+          // a selected card's lift (SELECT_LIFT) is cut off at the top edge.
           <ScrollView
             ref={scroller}
             horizontal

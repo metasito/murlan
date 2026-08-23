@@ -154,7 +154,6 @@ export default function ReplayScreen() {
       onPass={NOOP}
       onQuit={() => router.back()}
       onExchangeGive={NOOP}
-      roundLabel={t("replay.title")}
       banners={
         <ReplayTransport
           index={index}

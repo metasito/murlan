@@ -72,7 +72,6 @@ describe('the banners slot', () => {
           onPass={noop}
           onQuit={noop}
           onExchangeGive={noop}
-          roundLabel="Partita"
           banners={<View testID="banner-content" />}
         />
       </SafeAreaProvider>

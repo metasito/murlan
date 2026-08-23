@@ -90,7 +90,6 @@ const table = (gameState: GameState) => (
       onPass={noop}
       onQuit={noop}
       onExchangeGive={noop}
-      roundLabel="Partita"
     />
   </SafeAreaProvider>
 );

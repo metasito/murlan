@@ -53,7 +53,6 @@ export default function GameScreen() {
     rematchAnswers,
     rematchTally,
     answerRematch,
-    match,
   } = useGame();
 
   // Timers fire outside the render that scheduled them; refs keep them from
@@ -128,11 +127,6 @@ export default function GameScreen() {
     <GameTable
       gameState={gameState}
       viewerSeat={humanIdx}
-      roundLabel={
-        match.length === "single"
-          ? t("result.singleHandFormat")
-          : t("gameTable.formatMatch", { target: match.target })
-      }
       selectedIds={selectedCards}
       onSelectCard={selectCard}
       onPlay={playSelected}
