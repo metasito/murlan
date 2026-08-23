@@ -71,9 +71,8 @@ export async function savePushToken(
  * Forgets one device. Called on logout: the next person to hold this phone
  * must not receive the last one's invites.
  *
- * Scoped to the caller's own row. A token is a handle on someone's phone, and
- * knowing one must not be enough to unregister it — logout deletes exactly the
- * row this account registered, which is all logout ever wanted.
+ * Scoped to the caller's own row: knowing a token is not authority over the
+ * phone it points at.
  */
 export async function deletePushToken(userId: string, token: string): Promise<void> {
   await db

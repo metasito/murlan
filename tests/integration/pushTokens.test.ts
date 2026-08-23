@@ -130,9 +130,8 @@ describe("push token registry", { skip: hasDatabase() ? false : skipMessage() },
     }
   });
 
-  // A token is keyed on itself, so before the owner predicate the DELETE took
-  // whatever value arrived: anyone who learned another player's token could
-  // unregister that player's phone.
+  // A token is keyed on itself, so the value alone cannot be what authorises
+  // the delete: anyone who learns it would be able to unregister that phone.
   test("a token the caller does not own survives the delete", async () => {
     const ana = await connectAs(server, "push_idor_a");
     const ben = await connectAs(server, "push_idor_b");
