@@ -6,6 +6,7 @@ import type { Session, SessionData } from "express-session";
 import { eq } from "drizzle-orm";
 import { storage } from "./storage.ts";
 import { logger } from "./logger.ts";
+import { DEFAULT_LOCALE, translate } from "../shared/i18n.ts";
 import { trackEvent } from "./events.ts";
 import { notifyUser } from "./push.ts";
 import { sessionMiddleware } from "./session.ts";
@@ -745,7 +746,7 @@ export function setupSocket(httpServer: HttpServer) {
           if (!combo.cards.some((c) => c.id === startCardId)) {
             const sc = gameState.startCard;
             socket.emit("game:error", {
-              message: `Devi giocare il ${sc.rank}♠ come prima carta`,
+              message: translate(DEFAULT_LOCALE, "server.MUST_PLAY_START_CARD", { rank: sc.rank }),
               code: "MUST_PLAY_START_CARD",
               params: { rank: sc.rank },
             });

@@ -30,7 +30,7 @@ export const RoomJoinSchema = z.object({
     .trim()
     .min(4)
     .max(10)
-    .regex(/^[A-Za-z0-9]+$/, "Codice non valido"),
+    .regex(/^[A-Za-z0-9]+$/, "Invalid room code"),
 });
 
 /** Watching a table. Same shape as joining one; the difference is the seat. */
