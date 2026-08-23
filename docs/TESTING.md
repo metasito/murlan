@@ -84,7 +84,7 @@ unexercised by anything.
 
 | Suite | What it pins |
 |---|---|
-| `theme.test.tsx` | `Shadow.*` yields native shadow props, never the web `boxShadow` |
+| `theme.test.tsx` | `Shadow.*` yields native shadow props — except the card pair, which needs two shadows at once and so rides `boxShadow`; and that a card's contact and cast shadows move apart on a lift |
 | `haptics.test.tsx` | the settings toggle actually silences `expo-haptics` |
 | `hapticsBypass.test.tsx` | no module reaches `expo-haptics` except `lib/haptics.ts` |
 | `sounds.test.tsx` | the `expo-audio` path: rewind-before-play, volume, caching, one-time audio mode |
