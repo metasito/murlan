@@ -11,8 +11,9 @@ prototype, and shipping nothing the reporter could see — because the defect wa
 and no loop here could reach it.
 
 So before touching a rendering bug, answer in one line: *which renderer produced the
-screenshot I am fixing?* Then pick the loop that runs on it. If none does — and for iOS
-none here does — say so in the reply rather than reporting a green web run as a fix.
+screenshot I am fixing?* Then pick the loop that runs on it. No loop here *runs* iOS; the
+next section is how you get an iOS answer anyway. Reporting a green web run as a fix for a
+native defect is not one of the options.
 
 **What differs between the two renderers is not cosmetic.** `react-native-svg` on native is
 a different implementation, not a polyfill:
@@ -27,6 +28,38 @@ a different implementation, not a polyfill:
 The portable way to shape a radial is neither: give the **rect** the radii (`2*rx` by
 `2*ry`) and let the gradient keep its default `r="50%"`, which is the inscribed ellipse on
 both. `tests/vignette.test.ts` pins that no radial shapes itself.
+
+## The iOS loop: ask for a capture
+
+There is no runner here that renders iOS, and #205 leaves whether to buy one — EAS Build plus
+Maestro Cloud, or a simulator on a macOS runner — as an owner's call. What exists today is the
+cheaper half: a named list of states, a screen that reaches each of them on the device, and the
+rule that a native rendering fix is not claimed until the captures come back.
+
+**The states are `lib/captureStates.ts`.** That list is the contract. `app/capture.tsx` walks it
+on the device and `tests/e2e/lampSeats.spec.ts` walks it in Chromium, so a photograph and a web
+run are of the same state rather than of two similar ones. Add a state there, not in a spec.
+
+**Reaching one on the device**, in a development build (Expo Go, or any `npx expo start`):
+navigate to `/capture`, pick a state, hold the device in landscape. The table is built in
+memory and the turn is pinned — `/game` runs the AI turn loop, so a seeded save with the turn
+on a bot is a bot's turn for about a second, long enough to navigate to and not to photograph.
+The rail's lower knob swings the lamp to the next seat, which is the one state that needs an
+input rather than a route.
+
+**What to ask for**, verbatim, so the reply is comparable to the last one:
+
+> On iOS, open `/capture` and send one landscape screenshot of each state in the list:
+> `lamp-bottom`, `lamp-right`, `lamp-top`, `lamp-left`, `pile-right`. Name each file after
+> the state it is of.
+
+**Reading them.** Sample pixels, do not describe them. #209 is the worked example: measuring
+its three captures put the boundary at 117 pt from the lamp on both axes and killed the
+hypothesis the ticket had been written around. "The felt looks like it is covering the table"
+and "the felt is continuous across the cut, so it is not the occluder" are the same image.
+
+**Until a capture comes back, say so.** A green Playwright run on a native-only defect is not
+evidence, and reporting one as a fix is the failure this loop exists to end.
 
 ## What a green loop does not mean
 

@@ -12,6 +12,7 @@
 import type { Page } from "@playwright/test";
 import { openApp } from "./navigation";
 import { createDeck, dealCards } from "../../../lib/gameEngine";
+import { captureGameState, type CaptureState } from "../../../lib/captureStates";
 
 /** Bot names and personalities as app/lobby.tsx fills empty seats. */
 const BOTS = [
@@ -102,15 +103,7 @@ export function offlineGameSave(playerCount: 2 | 3 | 4, handSize: number = 13, t
   };
 }
 
-/**
- * Opens the app with a game already saved, and resumes it — leaving a rendered
- * table after **one** page load.
- *
- * The save is injected with `addInitScript`, before the first document runs,
- * rather than written afterwards and reloaded. That distinction is the whole
- * point: a write-then-reload costs a second load of the bundle, which is about
- * what the lobby clicks cost, and saves nothing.
- */
+/** Opens the app with a game already saved, and resumes it. */
 export async function openSeededGame(
   page: Page,
   baseURL: string,
@@ -118,9 +111,39 @@ export async function openSeededGame(
   handSize?: number,
   turn?: number
 ): Promise<void> {
+  await resumeSaved(page, baseURL, offlineGameSave(playerCount, handSize, turn));
+}
+
+/**
+ * The same table `app/capture.tsx` puts on an iOS device, in Chromium.
+ *
+ * `lib/captureStates.ts` is the list both walk. Seeding from it rather than
+ * from a seat count and a turn is what keeps a Playwright run and a photograph
+ * comparable: a state that carries a pile carries it on both, instead of the
+ * web run quietly checking an empty felt under the same name.
+ */
+export async function openCaptureState(
+  page: Page,
+  baseURL: string,
+  state: CaptureState
+): Promise<void> {
+  const save = offlineGameSave(state.playerCount, DEAL_SIZE[state.playerCount], state.turn);
+  await resumeSaved(page, baseURL, { ...save, gameState: captureGameState(state) });
+}
+
+/**
+ * Writes `save` and resumes it, leaving a rendered table after **one** page
+ * load.
+ *
+ * The save is injected with `addInitScript`, before the first document runs,
+ * rather than written afterwards and reloaded. That distinction is the whole
+ * point: a write-then-reload costs a second load of the bundle, which is about
+ * what the lobby clicks cost, and saves nothing.
+ */
+async function resumeSaved(page: Page, baseURL: string, save: object): Promise<void> {
   await page.addInitScript(
-    ({ key, save }) => window.localStorage.setItem(key, JSON.stringify(save)),
-    { key: "@murlan_offline_game", save: offlineGameSave(playerCount, handSize, turn) }
+    ({ key, value }) => window.localStorage.setItem(key, value),
+    { key: "@murlan_offline_game", value: JSON.stringify(save) }
   );
   await openApp(page, baseURL);
   // Waited for, not clicked at. `openApp` returns on networkidle, which is the

@@ -63,6 +63,11 @@ function RootLayoutNav() {
         <Stack.Screen name="(online)" />
         <Stack.Screen name="game" options={{ animation: "slide_from_bottom" }} />
         <Stack.Screen name="result" options={{ animation: "fade" }} />
+        {/* The iOS capture harness (app/capture.tsx). Registered only in a
+            development build: the screen refuses to render in a production one
+            either way, and a route a player can reach and be shown nothing on
+            is worse than no route. */}
+        {__DEV__ && <Stack.Screen name="capture" />}
       </Stack>
       <NotificationBanner notification={notification} onDismiss={dismissNotification} />
       <OfflineBanner />
