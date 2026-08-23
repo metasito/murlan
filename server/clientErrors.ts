@@ -4,7 +4,7 @@
 // This is the other reader: the owner, later, asking whether anyone got stuck
 // — a question a log stream answers badly.
 import { createHash } from "node:crypto";
-import { desc, gte, lt, sql } from "drizzle-orm";
+import { lt, sql } from "drizzle-orm";
 import { db } from "./db.ts";
 import { clientErrors } from "../shared/schema.ts";
 
@@ -22,16 +22,6 @@ export interface ClientErrorInput {
   platform?: string;
   appVersion?: string;
   context?: Record<string, unknown>;
-}
-
-export interface ClientErrorRow {
-  id: string;
-  userId: string | null;
-  occurredAt: Date;
-  message: string;
-  screen: string | null;
-  platform: string | null;
-  appVersion: string | null;
 }
 
 export interface ClientErrorGroup {
@@ -97,23 +87,6 @@ export async function recordClientError(input: ClientErrorInput): Promise<void> 
   });
 }
 
-/** The most recent reports, newest first. Bounded, and indexed on occurredAt. */
-export async function recentClientErrors(limit = CLIENT_ERROR_PAGE): Promise<ClientErrorRow[]> {
-  return db
-    .select({
-      id: clientErrors.id,
-      userId: clientErrors.userId,
-      occurredAt: clientErrors.occurredAt,
-      message: clientErrors.message,
-      screen: clientErrors.screen,
-      platform: clientErrors.platform,
-      appVersion: clientErrors.appVersion,
-    })
-    .from(clientErrors)
-    .orderBy(desc(clientErrors.occurredAt))
-    .limit(limit);
-}
-
 /**
  * One row per distinct crash instead of one per event, newest activity
  * first. Grouped by fingerprint — except rows with none (written before this
@@ -141,13 +114,4 @@ export async function recentClientErrorGroups(limit = CLIENT_ERROR_PAGE): Promis
     LIMIT ${limit}
   `);
   return rows.rows;
-}
-
-/** How many arrived in the last `days`, for the dashboard's one-line summary. */
-export async function clientErrorCount(days: number): Promise<number> {
-  const [row] = await db
-    .select({ n: sql<number>`count(*)::int` })
-    .from(clientErrors)
-    .where(gte(clientErrors.occurredAt, sql`now() - make_interval(days => ${days})`));
-  return row?.n ?? 0;
 }
