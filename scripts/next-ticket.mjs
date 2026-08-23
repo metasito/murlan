@@ -159,7 +159,11 @@ const openIssues = ghJson([
 const buckets = classify(openIssues);
 
 if (wantAll) {
-  for (const i of buckets.frontier) console.log(`${i.number}\t${i.title}`);
+  // The listing is a gate, not a menu: blocked tickets stay off it even here.
+  for (const issue of buckets.frontier) {
+    const { blocked_by } = ghJson(["api", `repos/{owner}/{repo}/issues/${issue.number}`]).issue_dependencies_summary;
+    if (blocked_by === 0) console.log(`${issue.number}\t${issue.title}`);
+  }
   process.exit(0);
 }
 
