@@ -169,6 +169,21 @@ lines is explaining itself instead of being clear.
   a single test file while you iterate on it, proving a new test fails before the fix, or any
   check CI does not cover. If CI does not run it, run it yourself. Lint is worth the 25
   seconds: it fails on a single unused variable, and it is the last job to run.
+- **When Actions cannot start, run the one job that covers the change.** A run whose `scope`
+  job dies in three seconds with no steps is saying nothing about the diff — check
+  `gh api repos/metasito/murlan/check-runs/<job-id>/annotations` before reading it as a
+  verdict, because a billing or runner failure looks exactly like a red suite from the
+  outside. Then substitute locally for that item only: a throwaway Postgres
+  (`docker run -d -e POSTGRES_USER=postgres … -p 55433:5432 postgres:16-alpine`, `DATABASE_URL`
+  and `SESSION_SECRET` set) and the suites the change touches, plus the floor — revert the fix
+  and watch the new test go red. That is not the local rehearsal the rule above forbids; it is
+  the only evidence available.
+- **Review depth follows the size label.** An `size:XS`/`size:S` item gets one pass; the two-axis
+  `mattpocock-skills:code-review` is the fit, because standards and spec are what a small diff
+  gets wrong. Reserve a second correctness pass (`/code-review`) for `size:M` and up, or any
+  diff touching the engine, the socket protocol or auth. Sub-agents doing the reading run on
+  Sonnet — the reviews that found real defects here were all Sonnet, and the cost of a wrong
+  model is paid on every item.
 - **Merge the moment the run is green.** `ci.yml`'s `scope` job skips a `main` push whose tree
   a pull request already passed, and that holds only while `main` has not moved. A run takes
   about seven minutes, and every minute a green pull request waits is a minute another session
