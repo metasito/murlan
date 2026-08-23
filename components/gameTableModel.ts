@@ -138,6 +138,21 @@ export type FlyDirection = "top" | "bottom" | "left" | "right";
 export type OpponentSide = "top" | "left" | "right";
 
 /**
+ * Backs drawn in an opponent's fan. Not legibility: the step barely moves with
+ * the count, because `fitSpread` takes the smaller of its width and rise
+ * bounds and the width one keeps growing until about nineteen backs. What each
+ * extra back past this many is, is another third-of-a-card sliver of the same
+ * block carrying its own SVG subtree, re-rendered on every `game:state` — and
+ * the seat's count badge is what carries the number.
+ *
+ * Here rather than beside the fan that draws it: `tests/e2e/seatFans.spec.ts`
+ * is what proves the cap, and it cannot import the fan, which pulls in
+ * react-native. A second copy in the spec would hold the same number and never
+ * disagree with it.
+ */
+export const FAN_DRAWN_CARDS: Record<OpponentSide, number> = { top: 7, left: 5, right: 5 };
+
+/**
  * Which side of the table an opponent sits on, given how many seats clockwise
  * they are from the viewer and how many opponents there are in total.
  */
