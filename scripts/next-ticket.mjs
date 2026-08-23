@@ -25,6 +25,9 @@ function classify(openIssues) {
   for (const issue of openIssues) {
     const ls = labelNames(issue);
     if (ls.includes("in-progress")) continue;
+    // `blocked` keeps `ready-for-agent`: the label carries a decision already
+    // made, and taking it off to un-jam the queue is how that decision is lost.
+    if (ls.includes("blocked")) continue;
     if (ls.includes("ready-for-agent")) buckets.frontier.push(issue);
     else if (ls.includes("needs-triage")) buckets.triage.push(issue);
     else if (ls.some((l) => l.startsWith("wayfinder:") && l !== "wayfinder:map")) buckets.wayfinder.push(issue);
@@ -108,6 +111,7 @@ function printDetail(ticket, comments) {
   const reasons = [];
   if (blockers > 0) reasons.push("has open blockers");
   if (ls.includes("in-progress")) reasons.push("labelled in-progress");
+  if (ls.includes("blocked")) reasons.push("labelled blocked");
   if (ls.some((l) => OWNER_LABELS.has(l))) reasons.push(`owner-gated (${ls.filter((l) => OWNER_LABELS.has(l)).join(", ")})`);
   console.log(reasons.length === 0 ? `Takeable: yes` : `Takeable: no - ${reasons.join("; ")}`);
   console.log("----- BODY -----");

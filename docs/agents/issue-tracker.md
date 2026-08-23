@@ -10,7 +10,13 @@ Issues and specs for this repo live as GitHub issues. Use the `gh` CLI for all o
 - **Comment on an issue**: `gh issue comment <number> --body "..."`
 - **Apply / remove labels**: `gh issue edit <number> --add-label "..."` / `--remove-label "..."`
 - **Labels**: `needs-triage` / `needs-info` / `ready-for-agent` / `ready-for-human` / `rejected`,
-  `size:XS`…`size:XL`, and `in-progress` (see *Claiming an item*).
+  `size:XS`…`size:XL`, `in-progress` (see *Claiming an item*), and `blocked`.
+- **`blocked`** is for an item that is ready and approved but cannot be verified or landed
+  until something external returns — a dead CI, an unreleased dependency. It sits *alongside*
+  `ready-for-agent`, never instead of it: that label often carries a decision the owner has
+  already made, and removing it to stop the picker routing there throws the decision away.
+  `scripts/next-ticket.mjs` skips a `blocked` item the same way it skips `in-progress`. Take
+  the label off when the dependency returns, and say so on the issue.
 - **Close**: `gh issue close <number> --comment "..."`
 
 Infer the repo from `git remote -v`; `gh` does this automatically when run inside a clone.
