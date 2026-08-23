@@ -66,8 +66,15 @@ function RootLayoutNav() {
         {/* The iOS capture harness (app/capture.tsx). Registered only in a
             development build: the screen refuses to render in a production one
             either way, and a route a player can reach and be shown nothing on
-            is worse than no route. */}
-        {__DEV__ && <Stack.Screen name="capture" />}
+            is worse than no route.
+
+            `Protected` rather than `{__DEV__ && …}`: expo-router walks these
+            with `Children.forEach`, which does not skip a falsy child, so a
+            `false` — or a `null` — arrives here as a child that is not a
+            Screen and every production render warns about it. */}
+        <Stack.Protected guard={__DEV__}>
+          <Stack.Screen name="capture" />
+        </Stack.Protected>
       </Stack>
       <NotificationBanner notification={notification} onDismiss={dismissNotification} />
       <OfflineBanner />
