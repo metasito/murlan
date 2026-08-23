@@ -117,8 +117,12 @@ lines is explaining itself instead of being clear.
 ## Working agreement
 
 - **Autonomy.** Work the queue one item at a time, one commit per item. The queue is
-  `gh issue list --label ready-for-agent --state open --search "-label:in-progress"`,
-  smallest `size:*` label first. Don't
+  `node scripts/next-ticket.mjs`, which prints the route as well as the ticket:
+  implement a frontier ticket (`ready-for-agent`, unclaimed, no open native blocker,
+  smallest `size:*` first) through the mattpocock `implement` skill; if no frontier
+  work is takeable it routes triage, then wayfinder, then hands off to you
+  (`docs/agents/issue-tracker.md`).
+  Don't
   ask which item or whether to proceed. Commit and push yourself — don't wait to be asked —
   then `gh run watch` **the pull request's run** and close the issue only once it is green;
   red CI is the next thing you work on, not something to leave behind. Never watch `main`'s

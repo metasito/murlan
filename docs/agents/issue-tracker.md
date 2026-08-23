@@ -21,8 +21,20 @@ Sessions run in parallel against one repo, and every one of them authenticates a
 GitHub account — so `--add-assignee @me` cannot tell two sessions apart. The branch name
 can, and that is what the claim carries.
 
-- **The free queue** — the listing every session picks from:
-  `gh issue list --label ready-for-agent --state open --search "-label:in-progress" --json number,title,labels`
+- **Pick** — `node scripts/next-ticket.mjs` (`--all` lists the frontier in pick order).
+  The script encodes the precedence itself — implement the unblocked `ready-for-agent`
+  frontier (native blockers applied, smallest `size:*` first) → triage → wayfinder →
+  handoff — and prints the routed ticket's body, comments and blocker count along with
+  its claim commands, so one call hands a session everything it needs. It is the single
+  picker; do not re-derive a queue per session, and do not encode blocking anywhere but
+  GitHub's dependency graph.
+- **Execute the route through the mattpocock skills** — `implement`: read the issue
+  body as the spec; TDD at pre-agreed seams, typecheck and single test files while
+  iterating, the full suite once, `/code-review` before committing (the skill cascades
+  `/tdd` and `/code-review` itself — do not run them by hand instead). `triage`:
+  verify claims against the codebase, write agent briefs for `ready-for-agent`, keep
+  the AI-generated-content disclaimer on everything posted. `wayfinder`: work through
+  the map, one decision per ticket; record the resolution, graduate the fog it clears.
 - **Claim**, as the session's first write, before the branch and before reading the code:
   ```sh
   gh issue edit <n> --add-label in-progress
