@@ -190,8 +190,8 @@ describe("no server string assumes the player's gender", () => {
       }
     }
     assert.ok(
-      sentenceCount > 100,
-      `expected server/'s payload sentences, got ${sentenceCount} (106 when this floor was set)`
+      sentenceCount > 95,
+      `expected server/'s payload sentences, got ${sentenceCount} (97 when this floor was reset after the dead-export sweep)`
     );
     assert.deepEqual(offenders, [], offenders.join(" | "));
   });
