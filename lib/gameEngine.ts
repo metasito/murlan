@@ -762,7 +762,41 @@ function assignRemainingPlacements(state: GameState): void {
   }
 }
 
+/**
+ * The engine's own floor under a play. Every caller gates as well — the server
+ * by seat, the offline context before it commits, and an AI play is legal by
+ * construction — but a caller that forgot would otherwise strip cards a hand
+ * never held and leave the state quietly wrong rather than loudly refused.
+ *
+ * Turn ownership is not here on purpose: which seat is acting is resolved by
+ * the transport, so the engine has nothing independent to check a claim of it
+ * against. What it can check is that the seat on move holds what it is playing,
+ * and that the play beats the table. Leading a fresh round passes — there is
+ * nothing to beat, and `canPlay` says so.
+ */
+function assertPlayable(state: GameState, combination: Combination): void {
+  const player = state.players[state.currentTurnIndex];
+  if (!player) {
+    throw new Error(`no player on seat ${state.currentTurnIndex}`);
+  }
+  if (combination.cards.length === 0) {
+    throw new Error(`${player.name} played nothing`);
+  }
+  const held = new Set(player.hand.map((c) => c.id));
+  const missing = combination.cards.filter((c) => !held.has(c.id)).map((c) => c.id);
+  if (missing.length > 0) {
+    throw new Error(`${player.name} does not hold ${missing.join(", ")}`);
+  }
+  if (!canPlay(combination, state.lastPlayedCombination)) {
+    throw new Error(
+      `${combination.type} of ${combination.cards.length} does not beat the table`
+    );
+  }
+}
+
 export function processPlay(state: GameState, combination: Combination): GameState {
+  assertPlayable(state, combination);
+
   const newState = deepCloneState(state);
   const player = newState.players[newState.currentTurnIndex];
 
