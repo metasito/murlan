@@ -32,8 +32,20 @@ function serverSources(): { file: string; source: string }[] {
     .map((file) => ({ file, source: readFileSync(path.join(SERVER_DIR, file), "utf8") }));
 }
 
-/** The property names a payload puts a sentence in. */
-const TEXT_FIELDS = new Set(["message", "error", "body", "reason"]);
+/**
+ * The property names a payload puts a sentence in. The last two are zod's: a
+ * schema states its own refusal text there, and `unpackPersistedState`
+ * (server/onlineGameLogic.ts) hands the first complaint back as a `reason`, so
+ * a schema is a payload's wording however far it sits from the payload.
+ */
+const TEXT_FIELDS = new Set([
+  "message",
+  "error",
+  "body",
+  "reason",
+  "required_error",
+  "invalid_type_error",
+]);
 
 /**
  * The text of every string and template literal below `node`, with `${expr}`
@@ -63,7 +75,28 @@ function literalsIn(node: ts.Node, sourceFile: ts.SourceFile): string[] {
   return found;
 }
 
-/** Every sentence the server puts in a payload's text field. */
+/**
+ * Whether an expression is rooted at the zod namespace, so `z.string()` and
+ * `z.number().int()` both answer yes and a same-named method on anything else
+ * answers no.
+ */
+function isZodChain(node: ts.Expression): boolean {
+  let current: ts.Expression = node;
+  for (;;) {
+    if (ts.isCallExpression(current)) current = current.expression;
+    else if (ts.isPropertyAccessExpression(current)) current = current.expression;
+    else return ts.isIdentifier(current) && current.text === "z";
+  }
+}
+
+/**
+ * Every sentence the server puts in a payload's text field.
+ *
+ * A zod validator takes its refusal text as a trailing argument rather than a
+ * named property — `.int("no deal rotation")`, `.min(1, "no join code")` — so
+ * the field names above cannot reach it and `literalsIn` stops at the call.
+ * Scoping it to a `z.` chain is what keeps `t("some.key")` out.
+ */
 function payloadSentences(sourceFile: ts.SourceFile): string[] {
   const found: string[] = [];
   const visit = (node: ts.Node) => {
@@ -73,6 +106,12 @@ function payloadSentences(sourceFile: ts.SourceFile): string[] {
       TEXT_FIELDS.has(node.name.text)
     ) {
       found.push(...literalsIn(node.initializer, sourceFile));
+    }
+    if (ts.isCallExpression(node) && isZodChain(node.expression)) {
+      const last = node.arguments[node.arguments.length - 1];
+      if (last && (ts.isStringLiteral(last) || ts.isNoSubstitutionTemplateLiteral(last))) {
+        found.push(last.text);
+      }
     }
     ts.forEachChild(node, visit);
   };
@@ -179,19 +218,28 @@ describe("no server string assumes the player's gender", () => {
   test("the server's own fallback sentences are neutral", () => {
     const all = [...PATTERNS.it, ...PATTERNS.sq];
     const offenders: string[] = [];
-    let sentenceCount = 0;
+    const sentences: string[] = [];
     for (const { file, source } of serverSources()) {
       const sourceFile = ts.createSourceFile(file, source, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
       for (const text of payloadSentences(sourceFile)) {
-        sentenceCount++;
+        sentences.push(text);
         for (const label of offences(text, all)) {
           offenders.push(`${file} (${label}): ${text}`);
         }
       }
     }
+    // The scan's own floor, and why it is a sentence and not only a number:
+    // this one exists nowhere but a schema's option key, so a scan that stops
+    // descending schemas fails here outright instead of merely counting lower,
+    // which is a thing that can be answered by lowering the count.
     assert.ok(
-      sentenceCount > 95,
-      `expected server/'s payload sentences, got ${sentenceCount} (97 when this floor was reset after the dead-export sweep)`
+      sentences.includes("no join code"),
+      "the scan no longer reaches a schema's own refusal text (server/onlineGameLogic.ts) — " +
+        "if that sentence was reworded, name the new one here rather than dropping the check"
+    );
+    assert.ok(
+      sentences.length > 120,
+      `expected server/'s payload sentences, got ${sentences.length} (127 when this floor was set)`
     );
     assert.deepEqual(offenders, [], offenders.join(" | "));
   });
