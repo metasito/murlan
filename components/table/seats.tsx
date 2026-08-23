@@ -178,6 +178,7 @@ function CountdownRing({
 
   return (
     <Svg
+      testID="seat-turn-clock"
       pointerEvents="none"
       width={box}
       height={box}
