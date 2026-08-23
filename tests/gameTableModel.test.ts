@@ -594,8 +594,9 @@ describe("passedSeats walks the direction the engine deals turns", () => {
 
   test("a seat that goes out mid-round is never marked", () => {
     // Seat 2 holds one card: it answers seat 3's lead by playing it and is out.
+    // A king, because the answer has to actually beat the jack led below.
     const players = hands();
-    players[2].hand = [c("9", "clubs")];
+    players[2].hand = [c("K", "clubs")];
     let s = makeState(players, {
       currentTurnIndex: 3,
       lastPlayedBy: 3,
@@ -603,7 +604,7 @@ describe("passedSeats walks the direction the engine deals turns", () => {
     });
 
     s = processPlay(s, buildCombination([c("J", "diamonds")])!);
-    s = processPlay(s, buildCombination([c("9", "clubs")])!);
+    s = processPlay(s, buildCombination([c("K", "clubs")])!);
     assert.equal(s.players[2].hand.length, 0);
     assert.equal(s.lastPlayedBy, 2);
 
