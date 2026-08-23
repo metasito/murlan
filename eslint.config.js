@@ -24,6 +24,7 @@ module.exports = defineConfig([
       "node_modules/**",
       "tests/e2e/playwright-report/**",
       "tests/e2e/test-results/**",
+      ".scratch/**",
     ],
   },
   {
