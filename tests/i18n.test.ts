@@ -245,6 +245,43 @@ describe("no server string assumes the player's gender", () => {
   });
 });
 
+// `locales/en.ts` is the source of truth, and a payload's own sentence is the
+// fallback a client too old to know the code renders. Three of them shipped
+// Italian prose, so an English or Albanian player read Italian for want of a
+// key that already existed — the code and the params were being sent all
+// along, only the fallback was written out by hand in the wrong language.
+describe("the server writes its fallbacks in the source language", () => {
+  // Words that cannot be an English sentence and are not a proper noun. Short
+  // ones like `la` and `non` are deliberately absent: `non-null` and `a la`
+  // would answer for them. That narrowness is the trade: this catches the
+  // vocabulary that shipped, not Italian in general, so a fresh sentence
+  // reaching for different words is past it.
+  const ITALIAN = /\b(?:devi|deve|giocare|lasciato|partita|valido|valida|eliminazione|codice|carta|prima|della|dello|questa|posto)\b/i;
+
+  test("the marker list can see an Italian sentence", () => {
+    // Without this the assertion below would also hold on a list that matches
+    // nothing at all.
+    assert.ok(ITALIAN.test("Devi giocare il 3♠ come prima carta"));
+    assert.ok(ITALIAN.test("{{username}} ha lasciato la partita."));
+    assert.ok(!ITALIAN.test("You must play the {{rank}}♠ as your first card"));
+    assert.ok(!ITALIAN.test("Deletion failed"));
+  });
+
+  test("no payload sentence under server/ is written in Italian", () => {
+    const offenders: string[] = [];
+    let scanned = 0;
+    for (const { file, source } of serverSources()) {
+      const sourceFile = ts.createSourceFile(file, source, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
+      for (const text of payloadSentences(sourceFile)) {
+        scanned++;
+        if (ITALIAN.test(text)) offenders.push(`${file}: ${text}`);
+      }
+    }
+    assert.ok(scanned > 120, `expected server/'s payload sentences, got ${scanned}`);
+    assert.deepEqual(offenders, [], `these ship Italian to every locale: ${offenders.join(" | ")}`);
+  });
+});
+
 describe("no empty translations", () => {
   for (const name of LOCALE_NAMES) {
     test(`${name} has no key with an empty string value`, () => {

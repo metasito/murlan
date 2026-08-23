@@ -14,7 +14,7 @@ import {
   PushTokenSchema,
 } from "./schemas.ts";
 import { deletePushToken, savePushToken } from "./push.ts";
-import { DEFAULT_LOCALE, type Locale } from "../shared/i18n.ts";
+import { DEFAULT_LOCALE, translate, type Locale } from "../shared/i18n.ts";
 import { emitToUser, evictUser, isUserOnline } from "./socket.ts";
 import { mintSocketTicket } from "./ticket.ts";
 import { getUserStats, getMatchHistory, getUserAchievements } from "./stats.ts";
@@ -367,7 +367,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.json({ message: "Account deleted", code: "ACCOUNT_DELETED" });
     } catch (err) {
       logger.error({ err }, "Delete user failed");
-      res.status(500).json({ error: "Eliminazione fallita", code: "ACCOUNT_DELETE_FAILED" });
+      res.status(500).json({
+        error: translate(DEFAULT_LOCALE, "server.ACCOUNT_DELETE_FAILED"),
+        code: "ACCOUNT_DELETE_FAILED",
+      });
     }
   });
 

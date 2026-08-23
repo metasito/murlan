@@ -1,6 +1,7 @@
 import type { Server as SocketServer } from "socket.io";
 import { storage } from "./storage.ts";
 import { logger } from "./logger.ts";
+import { DEFAULT_LOCALE, translate } from "../shared/i18n.ts";
 import { activeGames, seatOfUser } from "./gameRoom.ts";
 import type { OnlineGameState } from "./gameRoom.ts";
 import {
@@ -396,7 +397,7 @@ export async function vacateSeat(
       username,
       seatIndex: seat,
       code: "PLAYER_LEFT_BOT_TAKEOVER",
-      message: `${username} ha lasciato la partita — il computer gioca al suo posto.`,
+      message: translate(DEFAULT_LOCALE, "server.PLAYER_LEFT_BOT_TAKEOVER", { username }),
       params: { username },
     });
     // `total` is the seated-seat count, which is what the `game:rematch_vote`
@@ -425,7 +426,7 @@ export async function vacateSeat(
     io.to(roomId).emit("game:notification", {
       type: "abandoned",
       code: "PLAYER_LEFT_ABANDONED",
-      message: `${username} ha lasciato la partita.`,
+      message: translate(DEFAULT_LOCALE, "server.PLAYER_LEFT_ABANDONED", { username }),
       params: { username },
     });
     // The hand is scored rather than discarded. The win goes to the last seat
@@ -452,7 +453,7 @@ export async function vacateSeat(
     username,
     seatIndex: seat,
     code: "PLAYER_LEFT_BOT_TAKEOVER",
-    message: `${username} ha lasciato la partita — il computer gioca al suo posto.`,
+    message: translate(DEFAULT_LOCALE, "server.PLAYER_LEFT_BOT_TAKEOVER", { username }),
     params: { username },
   });
 

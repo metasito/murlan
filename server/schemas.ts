@@ -44,7 +44,7 @@ export const ClientErrorSchema = z.object({
  */
 export const PushTokenSchema = z.object({
   token: z.string().min(1).max(200).regex(/^Expo(nent)?PushToken\[[^\]]+\]$/, {
-    message: "Token push non valido",
+    message: "Invalid push token",
   }),
   platform: z.enum(["ios", "android"]),
   // Optional: the DELETE sends no locale, and neither does a client older than
