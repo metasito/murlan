@@ -70,9 +70,14 @@ export async function savePushToken(
 /**
  * Forgets one device. Called on logout: the next person to hold this phone
  * must not receive the last one's invites.
+ *
+ * Scoped to the caller's own row: knowing a token is not authority over the
+ * phone it points at.
  */
-export async function deletePushToken(token: string): Promise<void> {
-  await db.delete(pushTokens).where(eq(pushTokens.token, token));
+export async function deletePushToken(userId: string, token: string): Promise<void> {
+  await db
+    .delete(pushTokens)
+    .where(and(eq(pushTokens.userId, userId), eq(pushTokens.token, token)));
 }
 
 export async function tokensFor(userId: string): Promise<PushDevice[]> {

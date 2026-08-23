@@ -130,6 +130,32 @@ describe("push token registry", { skip: hasDatabase() ? false : skipMessage() },
     }
   });
 
+  // A token is keyed on itself, so the value alone cannot be what authorises
+  // the delete: anyone who learns it would be able to unregister that phone.
+  test("a token the caller does not own survives the delete", async () => {
+    const ana = await connectAs(server, "push_idor_a");
+    const ben = await connectAs(server, "push_idor_b");
+    try {
+      await post(ben.cookie, { token: TOKEN_A, platform: "ios" });
+
+      const res = await post(ana.cookie, { token: TOKEN_A, platform: "ios" }, "DELETE");
+      assert.equal(res.status, 200);
+      assert.deepEqual(
+        (await rowsFor(ben.user.id)).map((r) => r.token),
+        [TOKEN_A],
+        "Ana unregistered Ben's phone"
+      );
+
+      // The floor: a delete that reaches nothing would pass the line above even
+      // if the route stopped deleting entirely.
+      await post(ben.cookie, { token: TOKEN_A, platform: "ios" }, "DELETE");
+      assert.equal((await rowsFor(ben.user.id)).length, 0);
+    } finally {
+      ana.socket.close();
+      ben.socket.close();
+    }
+  });
+
   // A token is accepted on an authenticated request and keyed on itself, so
   // without a cap an account could register unlimited well-formed tokens: rows
   // that never expire, and that every later invite would fan out to in one
