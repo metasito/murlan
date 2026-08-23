@@ -5,6 +5,8 @@ import assert from "node:assert/strict";
 import {
   GAME_SCHEMA_VERSION,
   packPersistedState,
+  persistedEnvelopeSchema,
+  persistedMatchSchema,
   unpackPersistedState,
   type HandFlags,
   type PersistedMatch,
@@ -80,6 +82,17 @@ describe("persisted game_state envelope", () => {
 
   test("the envelope carries the version a stale row is detected by", () => {
     assert.equal(pack().schemaVersion, GAME_SCHEMA_VERSION);
+  });
+
+  test("the schemas are the envelope's only field declaration", () => {
+    // The write side is held to the same shape the read side parses: a field
+    // added to one and not the other breaks here, at test time, instead of at
+    // cold-start restore.
+    assert.deepEqual(
+      ["schemaVersion", ...Object.keys(persistedEnvelopeSchema.shape)],
+      Object.keys(pack()),
+    );
+    assert.deepEqual(Object.keys(persistedMatchSchema.shape), Object.keys(match));
   });
 });
 

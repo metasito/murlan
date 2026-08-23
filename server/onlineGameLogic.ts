@@ -6,6 +6,7 @@ import type { BotPersonalityId } from "../lib/botPersonalities.ts";
 import { foldHandIntoMatch, resolveMatchFor } from "../lib/gameEngine.ts";
 import type { GameState, GameMode, MatchLength } from "../lib/gameEngine.ts";
 import type { GameResult } from "../lib/achievements.ts";
+import { z } from "zod";
 
 /** seat -> userId from the persisted map, dropping any entry that is not one. */
 export function readPersistedPlayerMap(storedMap: unknown): Record<number, string> {
@@ -131,16 +132,44 @@ export const GAME_SCHEMA_VERSION = 2;
 
 export type HandFlags = Record<number, { bomb: boolean; joker: boolean }>;
 
-/** The match bookkeeping that outlives the hand on the table. */
-export interface PersistedMatch {
-  playerMap: Record<number, string>;
-  scores: Record<string, number>;
-  gameMode: GameMode;
-  matchLength: MatchLength;
-  matchTarget: number;
-  maxPlayers: number;
-  isPublic: boolean;
-}
+/**
+ * The match bookkeeping that outlives the hand on the table, declared once:
+ * this schema is what a stored row is parsed with on restore, and
+ * `PersistedMatch` is the shape the write side is held to. A new field is
+ * added here and nowhere else.
+ */
+export const persistedMatchSchema = z.object({
+  playerMap: z.unknown().transform(readPersistedPlayerMap),
+  scores: z.record(
+    z
+      .number({
+        required_error: "scores are missing",
+        invalid_type_error: "scores are not all numbers",
+      })
+      .finite("scores are not all numbers"),
+    { required_error: "scores are not all numbers", invalid_type_error: "scores are not all numbers" },
+  ),
+  gameMode: z.enum(["free_for_all", "teams"], {
+    errorMap: (_iss, ctx) => ({ message: `game mode ${String(ctx.data)}` }),
+  }),
+  matchLength: z.enum(["match", "single"], {
+    errorMap: (_iss, ctx) => ({ message: `match length ${String(ctx.data)}` }),
+  }),
+  matchTarget: z
+    .number({ required_error: "match target missing", invalid_type_error: "match target missing" })
+    .int("match target missing")
+    .min(1, "match target missing"),
+  maxPlayers: z
+    .number({ required_error: "max players missing", invalid_type_error: "max players missing" })
+    .int("max players missing")
+    .min(1, "max players missing"),
+  isPublic: z.boolean({
+    required_error: "no visibility",
+    invalid_type_error: "no visibility",
+  }),
+}, { required_error: "no match state", invalid_type_error: "no match state" });
+
+export type PersistedMatch = z.infer<typeof persistedMatchSchema>;
 
 /**
  * The stored `game_state` blob: everything about a live table except the room
@@ -185,65 +214,62 @@ function isPlainObject(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-function isSeatCount(value: unknown): value is number {
-  return typeof value === "number" && Number.isInteger(value) && value >= 0;
-}
+/**
+ * The envelope a stored row must parse into. Declared here and nowhere else:
+ * `packPersistedState` writes this shape (a parity test pins its keys to the
+ * schema's), `unpackPersistedState` refuses anything that does not satisfy it.
+ */
+export const persistedEnvelopeSchema = z.object({
+  gameState: z.record(z.unknown(), {
+    required_error: "no game state",
+    invalid_type_error: "no game state",
+  }),
+  handFlags: z.record(z.unknown(), {
+    required_error: "no hand flags",
+    invalid_type_error: "no hand flags",
+  }),
+  dealFirstSeat: z
+    .number({ required_error: "no deal rotation", invalid_type_error: "no deal rotation" })
+    .int("no deal rotation")
+    .nonnegative("no deal rotation"),
+  joinCode: z
+    .string({ required_error: "no join code", invalid_type_error: "no join code" })
+    .min(1, "no join code"),
+  match: persistedMatchSchema,
+});
 
 /**
- * Reads a stored blob back, or says why it cannot be. The envelope, the schema
- * version, `dealFirstSeat` and every scalar on `match` are refused outright
- * when they do not match the shape the restore path assumes. `gameState` and
- * `handFlags` are only checked for being objects and then cast, and
- * `match.playerMap` is filtered entry by entry rather than refused — a wholly
- * malformed map reads back as an empty one, which the caller's seat check
- * turns into UNAUTHORIZED.
+ * Reads a stored blob back, or says why it cannot be. The version stamp is
+ * checked before the parse — it answers "may this row be restored at all",
+ * which a field schema cannot — and the schema's first complaint becomes the
+ * reason. `gameState` and `handFlags` are only checked for being objects and
+ * then cast, and `match.playerMap` is filtered entry by entry rather than
+ * refused: a wholly malformed map reads back as an empty one, which the
+ * caller's seat check turns into UNAUTHORIZED.
  */
 export function unpackPersistedState<S>(persisted: unknown): PersistedRestore<S> {
   if (!isPlainObject(persisted)) return { ok: false, reason: "not an object" };
   if (persisted.schemaVersion !== GAME_SCHEMA_VERSION) {
     return { ok: false, reason: `schema version ${String(persisted.schemaVersion)}` };
   }
-  if (!isPlainObject(persisted.gameState)) return { ok: false, reason: "no game state" };
-  if (!isPlainObject(persisted.handFlags)) return { ok: false, reason: "no hand flags" };
-  if (!isSeatCount(persisted.dealFirstSeat)) return { ok: false, reason: "no deal rotation" };
-  if (typeof persisted.joinCode !== "string" || persisted.joinCode.length === 0) {
-    return { ok: false, reason: "no join code" };
+  const parsed = persistedEnvelopeSchema.safeParse(persisted);
+  if (!parsed.success) {
+    return { ok: false, reason: parsed.error.issues[0]?.message ?? "malformed envelope" };
   }
-
-  const match = persisted.match;
-  if (!isPlainObject(match)) return { ok: false, reason: "no match state" };
-  if (!isPlainObject(match.scores) || !Object.values(match.scores).every(Number.isFinite)) {
-    return { ok: false, reason: "scores are not all numbers" };
-  }
-  if (match.gameMode !== "free_for_all" && match.gameMode !== "teams") {
-    return { ok: false, reason: `game mode ${String(match.gameMode)}` };
-  }
-  if (match.matchLength !== "match" && match.matchLength !== "single") {
-    return { ok: false, reason: `match length ${String(match.matchLength)}` };
-  }
-  if (!isSeatCount(match.matchTarget) || match.matchTarget < 1) {
-    return { ok: false, reason: `match target ${String(match.matchTarget)}` };
-  }
-  if (!isSeatCount(match.maxPlayers) || match.maxPlayers < 1) {
-    return { ok: false, reason: `max players ${String(match.maxPlayers)}` };
-  }
-  if (typeof match.isPublic !== "boolean") return { ok: false, reason: "no visibility" };
-
+  const d = parsed.data as {
+    gameState: S;
+    handFlags: HandFlags;
+    dealFirstSeat: number;
+    joinCode: string;
+    match: PersistedMatch;
+  };
   return {
     ok: true,
-    gameState: persisted.gameState as S,
-    handFlags: persisted.handFlags as HandFlags,
-    dealFirstSeat: persisted.dealFirstSeat,
-    joinCode: persisted.joinCode,
-    match: {
-      playerMap: readPersistedPlayerMap(match.playerMap),
-      scores: match.scores as Record<string, number>,
-      gameMode: match.gameMode,
-      matchLength: match.matchLength,
-      matchTarget: match.matchTarget,
-      maxPlayers: match.maxPlayers,
-      isPublic: match.isPublic,
-    },
+    gameState: d.gameState,
+    handFlags: d.handFlags,
+    dealFirstSeat: d.dealFirstSeat,
+    joinCode: d.joinCode,
+    match: d.match,
   };
 }
 
