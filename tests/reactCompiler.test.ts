@@ -48,6 +48,7 @@ const COMPILED = [
   ...tsxUnder("app"),
   ...tsxUnder("components"),
   "context/SettingsContext.tsx",
+  "context/GameContext.tsx",
 ];
 
 /** babel-preset-expo/build/index.js, for a production client build. */
@@ -93,6 +94,29 @@ test("every screen and component compiles with no bailouts", () => {
     "the React Compiler silently skipped these. In a production build they ship unmemoized and " +
       "the whole subtree is rebuilt on every render. Compile the file on its own with " +
       "`node scripts/react-compiler-probe.mjs <file>` to see why"
+  );
+});
+
+// The floor for context/GameContext.tsx joining the assertion above: proving
+// the counterfactual, so a directory cannot satisfy it by happening to
+// compile clean today for a reason unrelated to the ref write this issue
+// removed.
+test("a render-time ref write is what the compiler refuses to compile in context/GameContext.tsx", () => {
+  const rel = "context/GameContext.tsx";
+  const original = readFileSync(path.join(repoRoot, rel), "utf8");
+  const anchor = "  const [exchangeAnnouncing, setExchangeAnnouncing] = useState(false);";
+  assert.ok(original.includes(anchor), `${rel} no longer contains the line this test patches`);
+  const reasons = compile(
+    rel,
+    original.replace(
+      anchor,
+      `${anchor}\n  const gameStateRef = useRef<GameState | null>(null);\n  gameStateRef.current = gameState;`
+    )
+  ).map((e) => e.detail?.reason ?? e.detail?.description ?? "");
+  assert.ok(
+    reasons.some((r) => r.includes("Cannot access refs during render")),
+    "writing a ref during render no longer costs GameProvider its compilation — either the ref " +
+      "write moved somewhere the compiler tolerates, or the plugin changed"
   );
 });
 
