@@ -157,7 +157,6 @@ export const bugReports = pgTable("bug_reports", {
   appVersion: text("app_version"),
   platform: text("platform"),
   locale: text("locale"),
-  context: jsonb("context").notNull().default({}),
   resolved: boolean("resolved").notNull().default(false),
 }, (t) => [index("bug_reports_created_idx").on(t.createdAt)]);
 
