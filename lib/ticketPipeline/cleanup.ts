@@ -9,6 +9,23 @@ export interface RunState {
   merged: boolean;
 }
 
+function shellQuote(value: string): string {
+  return `'${value.replace(/'/g, "'\\''")}'`;
+}
+
+// Whether the branch still holds work is live git state, so the decision has to reach the agent
+// as a command rather than a boolean this function could compute. `rev-list --count` is what
+// makes it fail closed: any error — origin/main unfetched, branch never created — prints nothing
+// to stdout, and "" is not "0", so the delete arm is never taken on a check that could not run.
+function deleteBranchUnlessItHoldsWork(branch: string): string {
+  const b = shellQuote(branch);
+  return (
+    `if test "$(git rev-list --count origin/main..${b} 2>/dev/null)" = "0"; ` +
+    `then git branch -D ${b}; ` +
+    `else echo "kept ${b}: it holds commits origin/main does not, or the comparison could not run"; fi`
+  );
+}
+
 export function buildCleanupCommands(state: RunState): string[] {
   const commands: string[] = [];
   if (state.worktreePath) {
@@ -18,7 +35,7 @@ export function buildCleanupCommands(state: RunState): string[] {
     commands.push("docker rm -f murlan-verify-pg");
   }
   if (state.localBranch && !state.merged) {
-    commands.push(`git branch -D ${state.localBranch}`);
+    commands.push(deleteBranchUnlessItHoldsWork(state.localBranch));
   }
   commands.push("git status --short");
   return commands;
