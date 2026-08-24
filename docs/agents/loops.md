@@ -111,13 +111,12 @@ Every port this repo's local tooling binds — including the local-substitute pa
 
 | Port | For | Owner |
 | --- | --- | --- |
-| `5199` | Playwright's e2e webServer (`E2E_PORT`) | `tests/e2e/playwright.config.ts` |
-| `55432` | The dev-stack's disposable Postgres | `murlan-dev-pg` container, `scripts/dev-stack.mjs` |
-| `55433` | The verify-only Postgres substituted for CI's database | `murlan-verify-pg` container — CLAUDE.md's "When Actions cannot start" |
-| `5050` | The ticket-pipeline's boot-check server | `BOOT_PORT`, `.claude/workflows/ticket-pipeline.mjs` |
-
-Keep this table and CLAUDE.md's "When Actions cannot start" bullet in sync — a port that
-moves in one and not the other is the next version of this ticket.
+| `5000` | The Express server (`PORT`) | `server/index.ts` |
+| `8081` | Metro (`npx expo start` / `npm start`) | `scripts/build.js`, `.replit` |
+| `5199` | Playwright's e2e webServer (`E2E_PORT`) | `tests/e2e/playwright.config.ts`, `scripts/e2e-server.mjs`, `.claude/workflows/ticket-pipeline.mjs` |
+| `55432` | The dev-stack's disposable Postgres (`MURLAN_DEV_PG_PORT`) | `murlan-dev-pg` container — `scripts/dev-stack.mjs`, `scripts/e2e-server.mjs` |
+| `55433` | The verify-only Postgres substituted for CI's database | `murlan-verify-pg` container — `.claude/workflows/ticket-pipeline.mjs`, `lib/ticketPipeline/cleanup.ts`; also bound manually by CLAUDE.md's "When Actions cannot start" |
+| `5050` | The ticket-pipeline's boot-check server (`BOOT_PORT`) | `.claude/workflows/ticket-pipeline.mjs` |
 
 ## Playwright, locally
 
