@@ -62,6 +62,7 @@ Verify against source before changing any.
 - **Hooks before the null guard** in both game screens — every hook runs before
   `if (!gameState) return null`.
 - **A card appears exactly once** in flight/`pileState` — never twice, never zero times.
+  Enforced by `tests/gameTableModel.test.ts`'s `advancePile` suite.
 - **`CARD_W`/`CARD_H` are declared once**, in `components/cardFaceModel.ts`; `gameTableModel.ts`
   re-exports them, and `handLayout.ts` takes a card width in as a parameter rather than
   importing the constant itself. `tests/gameTableModel.test.ts` source-scans for a second
@@ -71,8 +72,9 @@ Verify against source before changing any.
   and the feedback cannot drift apart.
 - **Design tokens are used in the role they were named for.** A fill or border token used as
   a text colour renders as almost nothing, silently. Pinned by `tests/tokenRoles.test.ts`.
-- **A labelled control exposes one accessible node.** `Pressable` defaults `accessible` to
-  true, which does *not* remove children from the tree — hide decorative ones explicitly.
+- **A labelled control exposes one accessible node** — hide decorative children explicitly;
+  `Pressable`'s `accessible` default does not do it for you. Pinned by
+  `tests/native/a11yCollapse.test.tsx`.
 - **Every `<Modal>` declares `supportedOrientations` including landscape**, or iOS rotates
   the app to portrait behind it. Pinned by `tests/orientation.test.ts`.
 - **`NotificationBanner`** never returns null, and animates by callback chain — parallel
