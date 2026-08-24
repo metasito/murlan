@@ -104,6 +104,21 @@ Use `Edit`. Never a batched Python/sed rewrite of a `.tsx`: one bad match aborts
 mid-run and silently discards every edit that preceded it, and you cannot tell from the exit
 code which of ten hunks landed. `Edit` fails one hunk at a time, loudly.
 
+## Local ports
+
+Every port this repo's local tooling binds — including the local-substitute path CLAUDE.md's
+"When Actions cannot start" describes when CI can't run:
+
+| Port | For | Owner |
+| --- | --- | --- |
+| `5199` | Playwright's e2e webServer (`E2E_PORT`) | `tests/e2e/playwright.config.ts` |
+| `55432` | The dev-stack's disposable Postgres | `murlan-dev-pg` container, `scripts/dev-stack.mjs` |
+| `55433` | The verify-only Postgres substituted for CI's database | `murlan-verify-pg` container — CLAUDE.md's "When Actions cannot start" |
+| `5050` | The ticket-pipeline's boot-check server | `BOOT_PORT`, `.claude/workflows/ticket-pipeline.mjs` |
+
+Keep this table and CLAUDE.md's "When Actions cannot start" bullet in sync — a port that
+moves in one and not the other is the next version of this ticket.
+
 ## Playwright, locally
 
 ```sh

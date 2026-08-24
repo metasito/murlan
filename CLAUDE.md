@@ -185,7 +185,8 @@ lines is explaining itself instead of being clear.
   (`docker run -d -e POSTGRES_USER=postgres … -p 55433:5432 postgres:16-alpine`, `DATABASE_URL`
   and `SESSION_SECRET` set) and the suites the change touches, plus the floor — revert the fix
   and watch the new test go red. That is not the local rehearsal the rule above forbids; it is
-  the only evidence available.
+  the only evidence available. `docs/agents/loops.md`'s "Local ports" table has every port this
+  local-substitute path and the rest of this repo's tooling bind.
 - **Review depth follows the size label, outside the pipeline.** The pipeline reviews every
   ticket through all three lenses regardless of size, so this is the rule for work it doesn't
   cover. An `size:XS`/`size:S` item gets one pass; the two-axis
