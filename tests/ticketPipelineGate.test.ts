@@ -13,6 +13,22 @@ describe("the design-first gate", () => {
     assert.match(result.reason, /shared\/schema\.ts/);
   });
 
+  test("escalates a schema change reported as an absolute path", () => {
+    const result = needsDesignFirstGate({
+      filesTouched: ["C:/Users/roton/murlan/shared/schema.ts"],
+      body: "Add a new column to track streaks.",
+    });
+    assert.equal(result.escalate, true);
+  });
+
+  test("does not escalate a file that merely ends in schema.ts", () => {
+    const result = needsDesignFirstGate({
+      filesTouched: ["server/schemaDdl.ts", "lib/otherSchema.ts"],
+      body: "Reorder two statements.",
+    });
+    assert.equal(result.escalate, false);
+  });
+
   test("does not escalate a schema change with a recorded decision", () => {
     const result = needsDesignFirstGate({
       filesTouched: ["shared/schema.ts"],

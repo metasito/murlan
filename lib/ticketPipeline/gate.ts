@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { pathToFileURL } from "node:url";
 
-const SCHEMA_FILE = "shared/schema.ts";
+const SCHEMA_PATTERN = /(^|\/)shared\/schema\.ts$/;
 const SOCKET_PATTERN = /server\/socket|shared\/events\.ts/;
 const FILE_COUNT_THRESHOLD = 6;
 const DECISION_POINTER = /docs\/BRIEF\.md\s*§|docs\/adr\/|Design decision:/;
@@ -20,8 +20,8 @@ export function needsDesignFirstGate(ticket: TicketFacts): GateVerdict {
   const hasDecision = DECISION_POINTER.test(ticket.body);
   if (hasDecision) return { escalate: false, reason: "" };
 
-  if (ticket.filesTouched.includes(SCHEMA_FILE)) {
-    return { escalate: true, reason: `touches ${SCHEMA_FILE} with no recorded decision` };
+  if (ticket.filesTouched.some((f) => SCHEMA_PATTERN.test(f))) {
+    return { escalate: true, reason: "touches shared/schema.ts with no recorded decision" };
   }
   if (ticket.filesTouched.some((f) => SOCKET_PATTERN.test(f))) {
     return { escalate: true, reason: "touches the socket protocol with no recorded decision" };
