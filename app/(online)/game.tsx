@@ -66,6 +66,7 @@ export default function OnlineGameScreen() {
     rematchVoteState,
     cumulativeScores,
     handScores,
+    ratingDeltas,
     matchState,
     rematchIntents,
     rematchPromptOpen,
@@ -373,6 +374,7 @@ export default function OnlineGameScreen() {
               myUserId={user?.id ?? ""}
               cumulativeScores={cumulativeScores}
               handScores={handScores}
+              ratingDelta={ratingDeltas[user?.id ?? ""] ?? null}
               match={{
                 target: matchState.target,
                 length: matchState.length,

@@ -107,6 +107,19 @@ export const matchHistory = pgTable("match_history", {
   playerCount: integer("player_count").notNull(),
   points: integer("points").notNull(),
   opponents: jsonb("opponents").notNull().default([]),
+  /**
+   * How this match moved the seat's ladder rating, or null where it moved
+   * nothing: an offline match, a teams match, a table that earned no rating,
+   * and every row written before this column existed. Null rather than 0 on
+   * purpose — 0 is a rated match that happened to move nobody, and a reader
+   * cannot tell the two apart if they share a value.
+   *
+   * Kept here rather than derived later because it cannot be: `user_ratings`
+   * holds only the current rating, and `ratingDeltas()` needs every seat's
+   * rating and game count as they were *before* the match. Once the match is
+   * written those inputs are gone.
+   */
+  ratingDelta: integer("rating_delta"),
 }, (t) => [index("match_history_user_idx").on(t.userId, t.finishedAt)]);
 
 /**

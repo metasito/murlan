@@ -1,7 +1,13 @@
 // tests/replay.test.ts — the fold from a stored move log back into a table state.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { replayStateAt, replayMoveCount, replayMoments, nextMoment } from "../lib/replay.ts";
+import {
+  replayStateAt,
+  replayMoveCount,
+  replayMoments,
+  nextMoment,
+  bombsPlayedBy,
+} from "../lib/replay.ts";
 import { buildCombination } from "../lib/gameEngine.ts";
 import { c } from "./helpers.ts";
 import { handCountOf } from "../components/gameTableModel.ts";
@@ -130,4 +136,31 @@ test("the next moment is the first one after here, and wraps at the end", () => 
   assert.equal(nextMoment(moments, 0)?.index, 2, "past the bomb it is already on");
   assert.equal(nextMoment(moments, 2)?.index, 0, "wraps rather than dead-ending");
   assert.equal(nextMoment([], 0), null);
+});
+
+test("bombs are counted for the seat that threw them, not the table", () => {
+  const replay = withMoves([
+    { seat: 0, combo: bomb("7"), handCounts: [2, 3] },
+    { seat: 1, combo: bomb("9"), handCounts: [2, 2] },
+    { seat: 0, combo: bomb("K"), handCounts: [1, 2] },
+    { seat: 0, combo: single("4", "hearts"), handCounts: [0, 2] },
+  ]);
+
+  assert.equal(bombsPlayedBy(replay, "u1"), 2);
+});
+
+test("a player who did not sit at this table threw nothing", () => {
+  // A bot seat carries no userId, so its bombs are nobody's — and neither the
+  // stranger nor the bot may be credited with the seated player's two.
+  const replay = withMoves([
+    { seat: 0, combo: bomb("7"), handCounts: [2, 3] },
+    { seat: 1, combo: bomb("9"), handCounts: [2, 2] },
+  ]);
+
+  assert.equal(bombsPlayedBy(replay, "someone-else"), 0);
+  assert.equal(bombsPlayedBy(replay, ""), 0);
+});
+
+test("a manche with no bombs counts none", () => {
+  assert.equal(bombsPlayedBy(REPLAY, "u1"), 0);
 });

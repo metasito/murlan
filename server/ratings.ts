@@ -62,25 +62,22 @@ async function currentRow(
 }
 
 /**
- * Applies one manche's result to the ladder. Drops bots itself by the same
- * `bot:<seat>` convention scoring uses, so no caller has to reverse-map a score
- * key back to a seat. Free-for-all only — a teams placement belongs to the pair.
- *
- * One transaction, so a hand moves every seat or none. Which is why the seats
- * are checked against `users` first: an account deleted mid-hand still holds a
- * seat, and its foreign key would abort everyone else's rating with it.
+ * Which seats this hand actually rates, re-ranked so a dropped account closes
+ * the gap it leaves. Shared by the preview and the write so the two cannot
+ * disagree about who is in the table.
  */
-export async function recordRatedResult(
+async function ratedSeatsOf(
   seatResults: { userId: string; placement: number }[],
   gameMode: string,
-  finishedAt: Date
-): Promise<void> {
-  if (gameMode !== "free_for_all") return;
+  season: string,
+  reader: Reader
+): Promise<RatedSeat[]> {
+  if (gameMode !== "free_for_all") return [];
 
   const seated = ratedFinishers(seatResults);
-  if (seated.length < 2) return;
+  if (seated.length < 2) return [];
 
-  const live = await db
+  const live = await reader
     .select({ id: users.id })
     .from(users)
     .where(
@@ -95,16 +92,60 @@ export async function recordRatedResult(
   const finishers = ratedFinishers(seated.filter((f) => liveIds.has(f.userId)));
   // An account that no longer exists cannot be rated, and one contestant is no
   // contest.
-  if (finishers.length < 2) return;
+  if (finishers.length < 2) return [];
 
+  const seats: RatedSeat[] = [];
+  for (const f of finishers) {
+    const row = await currentRow(reader, f.userId, season);
+    seats.push({ userId: f.userId, placement: f.placement, ...row });
+  }
+  return seats;
+}
+
+/**
+ * What this hand is about to do to each seat's rating, read before the write
+ * and before `game:over` goes out.
+ *
+ * The delta cannot be recovered afterwards: `user_ratings` keeps only the
+ * current rating, while `ratingDeltas()` needs every seat's rating and game
+ * count as they were *before* the hand. This is the only moment it exists, so
+ * it is read here and carried — one query, on a path that already awaits
+ * several, and no client waits on the write that follows.
+ *
+ * A table that earns no rating returns an empty map, which is the panel's
+ * empty state rather than a row of zeroes.
+ */
+export async function previewRatedDeltas(
+  seatResults: { userId: string; placement: number }[],
+  gameMode: string,
+  finishedAt: Date
+): Promise<Map<string, number>> {
+  const seats = await ratedSeatsOf(seatResults, gameMode, seasonKey(finishedAt), db);
+  return seats.length < 2 ? new Map() : ratingDeltas(seats);
+}
+
+/**
+ * Applies one manche's result to the ladder. Drops bots itself by the same
+ * `bot:<seat>` convention scoring uses, so no caller has to reverse-map a score
+ * key back to a seat. Free-for-all only — a teams placement belongs to the pair.
+ *
+ * One transaction, so a hand moves every seat or none. Which is why the seats
+ * are checked against `users` first: an account deleted mid-hand still holds a
+ * seat, and its foreign key would abort everyone else's rating with it.
+ */
+export async function recordRatedResult(
+  seatResults: { userId: string; placement: number }[],
+  gameMode: string,
+  finishedAt: Date
+): Promise<void> {
   const season = seasonKey(finishedAt);
 
   await db.transaction(async (tx) => {
-    const seats: RatedSeat[] = [];
-    for (const f of finishers) {
-      const row = await currentRow(tx, f.userId, season);
-      seats.push({ userId: f.userId, placement: f.placement, ...row });
-    }
+    // Resolved inside the transaction, not taken from the preview: the write
+    // is what the ladder answers to, so it reads the rows it is about to
+    // update rather than trusting a number read before it.
+    const seats = await ratedSeatsOf(seatResults, gameMode, season, tx);
+    if (seats.length < 2) return;
 
     const deltas = ratingDeltas(seats);
     for (const seat of seats) {

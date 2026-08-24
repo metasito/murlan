@@ -154,3 +154,18 @@ export function nextMoment(moments: ReplayMoment[], index: number): ReplayMoment
   if (moments.length === 0) return null;
   return moments.find((m) => m.index > index) ?? moments[0];
 }
+
+/**
+ * How many bombs one player threw in this manche. Attributed by the same
+ * `combo.type === "bomb"` test the server's own flag uses
+ * (server/gameTurn.ts `recordPlayFlags`), so the count agrees with the
+ * lifetime figure on `user_stats`.
+ *
+ * A bot seat carries no user id and can never match, so a bot's bombs are not
+ * anyone's.
+ */
+export function bombsPlayedBy(replay: ReplayDto, userId: string): number {
+  const seat = replay.seats.find((s) => s.userId === userId)?.seatIndex;
+  if (seat === undefined) return 0;
+  return replay.moves.filter((m) => m.seat === seat && m.combo?.type === "bomb").length;
+}
