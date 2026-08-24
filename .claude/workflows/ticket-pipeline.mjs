@@ -3,8 +3,8 @@ export const meta = {
   description: 'Claim, gate, implement, verify, independently review, and land one murlan queue ticket end to end',
   phases: [
     { title: 'Claim', detail: 'claim the routed ticket and run the design-first gate', model: 'haiku' },
-    { title: 'Implement', model: 'sonnet' },
-    { title: 'Verify', detail: "ci.yml's sweep, locally", model: 'sonnet' },
+    { title: 'Implement', detail: 'implement, commit, push, open the pull request', model: 'sonnet' },
+    { title: 'Verify', detail: "ci.yml's verdict on the pushed branch", model: 'sonnet' },
     { title: 'Review', detail: 'three independent lenses', model: 'opus' },
     { title: 'Fix', model: 'sonnet' },
     { title: 'Land', model: 'sonnet' },
@@ -20,7 +20,7 @@ const MODELS = {
   implement: 'sonnet',
   verify: 'sonnet', // long, scripted, and has to read failures back accurately
   fix: 'sonnet',
-  review: 'opus', // the only gate between a defect and an --admin merge with CI dead
+  review: 'opus', // CI proves the suite still passes; only this asks whether the change is right
   land: 'sonnet',
   cleanup: 'sonnet', // deletes branches and kills processes on a judgement call
 }
@@ -31,8 +31,6 @@ const forcedTicket = typeof args === 'number' ? args : args?.ticket
 
 const MAX_FIX_ROUNDS = 2
 const REPO = 'metasito/murlan'
-const E2E_PORT = 5199
-const BOOT_PORT = 5050
 
 const BASH_NOTE = [
   'Use the Bash tool (POSIX sh), not PowerShell.',
@@ -82,6 +80,7 @@ const IMPLEMENT_SCHEMA = {
   properties: {
     committed: { type: 'boolean' },
     commitSha: { type: 'string' },
+    prNumber: { type: 'number' },
     summary: { type: 'string' },
     filesTouched: { type: 'array', items: { type: 'string' } },
     prose: { type: 'boolean' },
@@ -89,18 +88,18 @@ const IMPLEMENT_SCHEMA = {
   required: ['committed'],
 }
 
-const VERIFY_SCHEMA = {
+const CI_SCHEMA = {
   type: 'object',
   properties: {
     pass: { type: 'boolean' },
-    dockerStarted: { type: 'boolean' },
+    runId: { type: 'number' },
     failedStep: { type: 'string' },
     output: { type: 'string' },
-    prose: { type: 'boolean' },
-    skippedJobs: { type: 'string' },
-    preExistingFailures: { type: 'array', items: { type: 'string' } },
+    // A run that never started says nothing about the diff, and a fix agent sent after one is
+    // hunting a defect nothing reported.
+    infrastructure: { type: 'boolean' },
   },
-  required: ['pass', 'dockerStarted'],
+  required: ['pass'],
 }
 
 const FINDING_SCHEMA = {
@@ -129,15 +128,14 @@ const LAND_SCHEMA = {
   required: ['merged'],
 }
 
-// The ports travel with the state so cleanup.ts frees the same two this file binds. A copy of the
-// numbers over there is the thing that would go stale; which command frees them is that module's
-// call, since it runs under `npx tsx` on the machine that owns them.
+// No ports and no containers: the suites run on GitHub's runners now, so the worktree and the
+// branch are all this run leaves behind. cleanup.ts still takes `dockerStarted`, and false is the
+// honest answer rather than a field dropped from the payload it validates.
 const state = {
   worktreePath: null,
   dockerStarted: false,
   localBranch: null,
   merged: false,
-  ports: [E2E_PORT, BOOT_PORT],
 }
 
 // The progress view shows a label per agent, and falls back to the head of the prompt when there
@@ -159,170 +157,42 @@ If that does not print ${claim.branch}, stop and report failure — you are in a
 belongs to another session, and nothing you measure there is about this ticket.`
 }
 
-async function runVerify(claim, sinceRef) {
-  // Teardown is owed from the moment the container can exist, not from the agent's report:
-  // a verify agent that dies after `docker run` never reports, and the container leaks.
-  state.dockerStarted = true
-  // A fix round only needs to re-check what it itself touched: the rest of the branch already
-  // passed the jobs it needed against a diff that hasn't changed since. `sinceRef` is the commit
-  // the previous verify call already covered, so a re-verify diffs from there, not from
-  // origin/main again.
-  const diffRef = sinceRef ? `${sinceRef}..HEAD` : 'origin/main...HEAD'
-  const roundNote = sinceRef
-    ? `\n  This diff range is this round's fix only, not the whole PR — the rest of the branch\n  already passed the jobs it needed in an earlier round and hasn't changed since.\n`
-    : ''
+// GitHub Actions runs ci.yml against the pushed branch — typecheck, tests, lint, native,
+// browser and the build-and-boot, in parallel on runners that are free and unlimited for a
+// public repo. This stage reads that verdict. It used to reproduce the whole sweep locally,
+// which is what the pipeline did while Actions was billing-blocked, and it cost about twenty
+// minutes a round to learn what the run reports anyway.
+async function runVerify(claim, prNumber, round) {
   return agent(
     `${BASH_NOTE}
 ${cwdNote(claim)}
-GitHub Actions is not running at all right now, so this local sweep is the only thing standing
-between a defect and main. Run ci.yml's jobs locally. Within a job, do not stop at the first red
-step — in CI these are independent parallel jobs and one run is expected to report every failure.
+Pull request #${prNumber} is open on this branch, so ci.yml is already running against this exact
+tree. Your job is to read its verdict, not to reproduce it: do not run the suites, the build or a
+database locally. ci.yml's own \`scope\` job decides which jobs a prose-only diff can skip, so
+there is no plan to compute here either.
 
-STEP 0 — which jobs does this diff need? A module decides, not you:
-  git fetch origin main -q
-  git diff --name-only ${diffRef} > /tmp/verify-changed.txt
-  An empty list is a failure, not a pass: this stage exists to sweep a diff, and no diff means
-  you are looking at the wrong tree. Report pass: false with the range and HEAD you saw. Only a
-  documentation-only diff (below) may pass without running a job — never an absent one.
-  Print that list, then turn it into a JSON array of repo-relative paths and:
-    npx tsx lib/ticketPipeline/verifyPlan.ts <<< '["path/one.ts","path/two.ts"]'
-  It prints {"verify":..,"native":..,"browser":..,"build":..,"prose":..}. Run only the jobs it
-  marks true — STEP 3's first three commands are the "verify" job, "native" gates STEP 3's
-  test:native line, "browser" gates STEP 4, "build" gates STEP 5. Anything it marks false is
-  skipped, and say so in your output. Its allowlist fails safe: an unrecognised path marks
-  everything true.
-${roundNote}
-  If every changed path is under docs/, .claude/ or ends in .md, the change is documentation only
-  and ci.yml skips even the verify job — report pass: true with output "documentation only" and
-  stop here. (.github/workflows/ is NOT prose: a change there must exercise itself.)
+  gh pr checks ${prNumber} --repo ${REPO} --watch --interval 20 > /tmp/ci-${round}.txt ; \
+  gh run list --repo ${REPO} --branch ${claim.branch} --limit 1 --json databaseId,conclusion,status
 
-STEP 0b — the baseline. If any check below fails, it is only this ticket's failure if it does not
-already fail on origin/main. Before reporting a red check, re-run that one check against a clean
-origin/main in a scratch worktree, which cannot disturb this branch:
-    git worktree add /tmp/verify-baseline origin/main && cd /tmp/verify-baseline
-    (run the single failing command there, with the same env)
-    cd - && git worktree remove /tmp/verify-baseline --force
-  If it fails there too, the failure is pre-existing: do NOT count it against this ticket. Report
-  it in preExistingFailures, open an issue for it with gh (label needs-triage) if no open issue
-  already names that check, and judge pass on the remaining checks alone. Fixing it is not this
-  ticket's job, and letting it drive the fix loop burns a full round per attempt on a defect the
-  diff did not cause.
+Take the verdict from that JSON's "conclusion", never from the watcher's exit status: piped into
+anything, that status belongs to the pipe's last command, so a red run reads as a pass. That is
+how a broken branch once reached main.
 
-STEP 1 — dependencies, only if this change moved them.
-  If package.json or package-lock.json is in the changed list, run "npm ci" once. Otherwise
-  skip it: ci.yml runs npm ci per job because each job is a fresh runner, but this is one
-  working tree and node_modules is already installed.
+If the conclusion is "success", report pass: true with the runId, and stop.
 
-STEP 2 — one throwaway Postgres, started once and reused by everything below.
-  docker run -d --name murlan-verify-pg -e POSTGRES_USER=postgres -e POSTGRES_PASSWORD=postgres \
-    -e POSTGRES_DB=murlan_test -p 55433:5432 postgres:16-alpine
-  If a container with that name already exists, reuse it instead of starting a second one.
-  Wait until "docker exec murlan-verify-pg pg_isready -U postgres" succeeds, then export for
-  STEP 3 and STEP 5:
-    DATABASE_URL=postgres://postgres:postgres@localhost:55433/murlan_test
-    SESSION_SECRET=verify-local
-  STEP 4 does NOT use this container: scripts/e2e-server.mjs overwrites DATABASE_URL and
-  SESSION_SECRET and brings up its own disposable Postgres (murlan-dev-pg, port 55432).
+Otherwise, establish whether the run said anything about the diff at all before calling it a
+failure. A job that dies in seconds with no steps is infrastructure, not a red suite:
+  gh run view <runId> --repo ${REPO} --json jobs --jq '.jobs[] | {name, conclusion, steps: (.steps | length)}'
+  gh api repos/${REPO}/check-runs/<jobId>/annotations
+An annotation naming billing, a quota or a runner failure means the suite never ran. Report
+pass: false with infrastructure: true and the job's name — the pipeline stops there rather than
+sending a fix agent after a defect nothing reported.
 
-STEP 3 — ci.yml's "verify" job. Run all four; ci.yml marks the last two if:!cancelled() so that
-one run reports every failure, so do not stop at the first red one.
-  npm run typecheck
-  set -o pipefail; npm test | tee test-output.txt
-  npm run test:native -- --maxWorkers=2
-  npm run lint
-  The --maxWorkers=2 is not optional and is not a way of hiding a slow test: jest defaults to
-  one worker per core, and on a many-core developer machine that saturation pushes ordinary
-  suites past their 5s per-test timeout, so a clean tree reports 13 failures that all pass when
-  rerun alone. Two workers matches ci.yml's runner, goes green, and is FASTER in wall clock.
-  If a suite still fails, rerun that one file alone before believing it — but a suite that
-  fails alone is a real failure, never a flake.
-
-  Then the floor ci.yml puts under "npm test" — a skipped integration suite still exits 0:
-    grep -q "DATABASE_URL not set" test-output.txt
-  If that MATCHES, the integration suites silently skipped because Postgres was unreachable.
-  Treat it as a FAILURE (failedStep "verify: integration suites skipped"), never as a pass.
-
-STEP 4 — ci.yml's "browser" job.
-  npx playwright install chromium   — only if chromium is not already installed; check first,
-  the download is slow and is needed once per machine, not once per run.
-  npm run test:e2e
-
-STEP 5 — ci.yml's "build" job, in this exact order. Each step consumes the previous one's
-output, so here you DO stop at the first failure.
-  This job runs AFTER the browser job and that order is load-bearing, not incidental: the e2e
-  harness exports its own web bundle with EXPO_PUBLIC_E2E_FAST=1 (a zero-delay build) into
-  dist/. Building here afterwards is what leaves dist/ holding the real production bundle for
-  the budget check and the boot check below. Do not reorder these two, and do not try to save
-  the duplicated export with E2E_SKIP_BUILD=1 — the two bundles are different artefacts, and
-  scripts/assertNotE2EFast.js exists to stop the production one being built in fast mode.
-  The build commands themselves run on whatever Node this machine has — esbuild's
-  --target=node22 is a cross-compiler and does not need to run under 22 to lower syntax.
-
-  npm run expo:web:build && npm run server:build
-  npm run bundle:budget
-  EXPO_PUBLIC_DOMAIN=example.invalid npm run expo:static:build
-
-  Then boot the built server and check it reaches the database. This is ci.yml's "This job's
-  Node is the one production runs" check, and it is the ONLY part that must run under
-  production's Node: --target=node22 lowers syntax and knows nothing about APIs, so a
-  Node-24-only runtime builtin compiles at exit 0 and only throws when the bundle is actually
-  executed under 22. So execute it under 22, in a container, rather than on this machine's Node:
-
-    replit=$(grep -oE 'nodejs-[0-9]+' .replit | head -1 | cut -d- -f2)
-    test -f dist/index.html
-    test -f server_dist/index.mjs
-    docker rm -f murlan-verify-boot   (ignore "no such container")
-    MSYS_NO_PATHCONV=1 docker run --rm -d --name murlan-verify-boot \\
-      -p ${BOOT_PORT}:${BOOT_PORT} -e PORT=${BOOT_PORT} -e NODE_ENV=production \\
-      -e DATABASE_URL="postgres://postgres:postgres@host.docker.internal:55433/murlan_test" \\
-      -e SESSION_SECRET=verify-local \\
-      -v "$PWD/server_dist:/app/server_dist:ro" -v "$PWD/dist:/app/dist:ro" \\
-      -v "$PWD/assets:/app/assets:ro" -v "$PWD/static-build:/app/static-build:ro" \\
-      -v "$PWD/node_modules:/app/node_modules:ro" \\
-      -w /app "node:$replit-alpine" node server_dist/index.mjs
-
-    Four things here are load-bearing, each one verified rather than assumed:
-      MSYS_NO_PATHCONV=1 — without it Git Bash rewrites -w /app to C:/Program Files/Git/app and
-        docker exits 125 before starting anything.
-      host.docker.internal — the database is a separate container, so localhost inside this one
-        is itself; the host's published 55433 is reached through that name.
-      node_modules is mounted — server:build uses --packages=external, so the bundle imports its
-        dependencies at runtime instead of containing them. Without this mount it cannot start.
-      assets/ and static-build/ are mounted — server/app.ts serves both from process.cwd().
-      Every mount source is under $PWD. Do not stage files in /tmp and mount those: /tmp is a
-        Git Bash path, Docker Desktop resolves it inside the VM, and the mount silently comes up
-        empty — which looks exactly like the server failing to start.
-      The image tag comes from .replit, so if production's Node moves and nothing else changes,
-        this check moves with it instead of silently testing the wrong runtime.
-
-    Confirm the container really is on production's Node:
-      docker exec murlan-verify-boot node -p "process.versions.node"
-    Then poll "curl -fsS http://127.0.0.1:${BOOT_PORT}/health -o health.json" up to 30 times,
-    1s apart, stopping as soon as it succeeds.
-    Always "docker rm -f murlan-verify-boot" afterwards, including when the poll timed out, so
-    port ${BOOT_PORT} is free for the next run.
-    grep -q '"db":"connected"' health.json — if that does not match, the build boots but never
-      reaches Postgres, which is a FAILURE.
-    If docker run itself fails — image pull, mount, port — that is a real FAILURE of this check,
-    not something to excuse. Docker is already a hard requirement of this pipeline.
-
-Report:
-  pass — true ONLY if every command that ran exited 0, the integration-suite grep did NOT match,
-    and (when the build job ran) /health reported "db":"connected". A failure you confirmed is
-    pre-existing on origin/main does not make this false. Anything else does.
-  skippedJobs — the jobs verifyPlan marked false, and the paths that decision was made from.
-  prose — verifyPlan's "prose" field, verbatim. Informational only: Implement or Fix already
-    computed this over the whole diff for the review stage, before this call started.
-  preExistingFailures — each check that failed here AND on origin/main, with the issue number you
-    opened or found for it. Empty when there were none.
-  failedStep — the first command that failed, prefixed with its job, e.g.
-    "verify: npm run lint" or "build: npm run bundle:budget". Empty when pass is true.
-  output — for each failing job, its name and at most the last 40 lines of its output: enough
-    that another agent can fix it without running the sweep again, and no more. Name every job
-    that failed, not just the first. Empty when pass is true — a passing sweep's log is read by
-    nobody and costs every later stage that carries it.
-  dockerStarted — whether you started the container.`,
-    { model: MODELS.verify, phase: 'Verify', label: label('verify'), schema: VERIFY_SCHEMA }
+A run that failed with real steps is a real failure. Take what a fix agent needs and no more:
+  gh run view <runId> --repo ${REPO} --log-failed | tail -60
+Report: pass, runId, failedStep (the job and the step that failed), output (that tail),
+infrastructure false.`,
+    { model: MODELS.verify, phase: 'Verify', label: label(`ci round ${round}`), schema: CI_SCHEMA }
   )
 }
 
@@ -484,31 +354,51 @@ Read each file you are going to change ONCE, whole, with the Read tool. Do not r
 picture of a file from repeated sed/grep windows — each window costs a turn, and a file read in
 twenty pieces costs far more than the file. Re-read only what you have edited.
 
-Commit your work (do not push yet).
+Commit your work, then push it and open the pull request — that is what starts ci.yml against
+this tree, and the verify stage reads its verdict rather than repeating the suite locally. The
+body needs a file since it is multi-line, and ends with "Closes #${claim.number}" (which closes
+the issue on merge; never put that in a commit message, where it closes at push time):
+
+  cat > /tmp/pipeline-pr-body.md <<'EOF'
+<a short PR body saying what shipped and how it was checked>
+
+Closes #${claim.number}
+EOF
+  git push -u origin ${claim.branch} && \\
+  gh pr create --repo ${REPO} --title "<a short title>" --body-file /tmp/pipeline-pr-body.md
+
+Report that pull request's number as prNumber; if the push or the create fails, report
+committed: true with prNumber omitted and say so in summary.
 ${PROSE_CAPTURE_NOTE}
-Report: committed, commitSha, summary, filesTouched, prose.`,
+Report: committed, commitSha, prNumber, summary, filesTouched, prose.`,
     { model: MODELS.implement, phase: 'Implement', label: label('implement'), schema: IMPLEMENT_SCHEMA }
   )
   if (!impl.committed) {
     releaseReason = `implementation didn't complete: ${impl.summary || 'no reason given'}`
     return { landed: false, ticket: claim.number, reason: 'implement failed' }
   }
+  if (!impl.prNumber) {
+    releaseReason = `the branch never reached a pull request, so nothing ran against it: ${
+      impl.summary || 'no reason given'
+    }`
+    return { landed: false, ticket: claim.number, reason: 'no pull request' }
+  }
 
-  // Verify and Review both read the same committed branch and neither writes to it, so they run
-  // concurrently rather than paying for each other's wall clock. A failing verify does not waste
-  // the concurrent review: the fix agent below gets both together and fixes them in one round.
+  // CI runs on the push while the lenses read the same commit, so the run's ~9 minutes overlap
+  // the review instead of following it. A red run does not waste the concurrent review either:
+  // the fix agent gets both together and answers them in one round.
   let [verify, review] = await parallel([
-    () => runVerify(claim),
+    () => runVerify(claim, impl.prNumber, 1),
     () => runReview(claim, null, null, impl.prose, null),
   ])
-  // Only a commit whose sweep actually PASSED can narrow the next round's diff range. Advancing
-  // this after a failed sweep lets the next round skip the job that was red: a fix touching only
-  // docs would scope the re-verify to docs, skip the browser job, and report a pass over a
-  // browser failure nothing had re-run.
-  let verifiedSha = verify.pass ? impl.commitSha : null
-  // Unlike verifiedSha, this advances whatever the lenses said: they have read that commit, so
-  // re-reading it is what produced a fresh crop of prose objections every round.
+  // The lenses advance whatever they said — they have read that commit, and re-reading it is what
+  // produced a fresh crop of prose objections every round. CI needs no such marker: every push
+  // runs the whole workflow, and ci.yml's own scope job decides what the diff can skip.
   let reviewedSha = impl.commitSha
+  if (verify.infrastructure) {
+    releaseReason = `CI could not run: ${verify.failedStep || 'no job reported steps'}`
+    return { landed: false, ticket: claim.number, reason: 'ci unavailable' }
+  }
   let round = 0
   while (actionable(verify, review) && round < MAX_FIX_ROUNDS) {
     round++
@@ -520,15 +410,15 @@ Report: committed, commitSha, summary, filesTouched, prose.`,
       .join('\n')
     const verifyNote = verify.pass
       ? ''
-      : `\nThe local CI sweep is also failing — make it pass. First failing step: ${
+      : `\nCI is red on this branch — make it green. Failing step: ${
           verify.failedStep || '(not reported)'
         }\nOutput:\n${verify.output || '(none reported)'}`
     const fix = await agent(
       `${cwdNote(claim)}
-Fix exactly these findings and nothing else, then commit. A
-failure the verify stage reported as pre-existing on origin/main is not yours to fix — leave it.
+Fix exactly these findings and nothing else, then commit and push. The push is what re-runs
+ci.yml on the pull request, which is the next stage's evidence.
 Findings:\n${
-        findingList || '- (no review findings; the failing verification below is the whole job)'
+        findingList || '- (no review findings; the red run below is the whole job)'
       }${verifyNote}
 ${PROSE_CAPTURE_NOTE}
 Report: committed, commitSha, summary, filesTouched, prose.`,
@@ -536,11 +426,16 @@ Report: committed, commitSha, summary, filesTouched, prose.`,
     )
     if (!fix.committed) break
     ;[verify, review] = await parallel([
-      () => runVerify(claim, verifiedSha),
+      () => runVerify(claim, impl.prNumber, round + 1),
       () => runReview(claim, confirmed.map((f) => f.summary).join('; '), lensesThatFound, fix.prose, reviewedSha),
     ])
-    verifiedSha = verify.pass ? fix.commitSha || verifiedSha : null
     reviewedSha = fix.commitSha || reviewedSha
+    // A run that never started is not a defect to chase: the fix loop would spend its rounds on
+    // a failure nothing reported, and the branch would be handed back as though it were red.
+    if (verify.infrastructure) {
+      releaseReason = `CI could not run: ${verify.failedStep || 'no job reported steps'}`
+      return { landed: false, ticket: claim.number, reason: 'ci unavailable' }
+    }
   }
 
   if (!isClean(verify, review)) {
@@ -556,27 +451,27 @@ Report: committed, commitSha, summary, filesTouched, prose.`,
   const land = await agent(
     `${BASH_NOTE}
 ${cwdNote(claim)}
-Branch ${claim.branch} is clean (local verify passed, independent review clean). Push and open the
-PR in one chained call — the body needs a file since it's multi-line and must end with
-"Closes #${claim.number}" (never in the commit message):
+Pull request #${impl.prNumber} is green on ci.yml and clean through three independent review
+lenses. Land it.
 
-  cat > /tmp/pipeline-pr-body.md <<'EOF'
-<a short PR body summarizing what shipped>
+ci.yml's scope job skips a main push whose tree the pull request already passed, and that holds
+only while main has not moved underneath. So check whether it has, first:
 
-Closes #${claim.number}
-EOF
-  git push -u origin ${claim.branch} && \\
-  gh pr create --repo ${REPO} --title "<a short title>" --body-file /tmp/pipeline-pr-body.md
+  gh pr view ${impl.prNumber} --repo ${REPO} --json mergeStateStatus,mergeable
 
-CI is billing-blocked today — that is the one genuinely conditional step here, so judge it on its
-own rather than folding it into the chain above: check the run once; if the scope job dies with no
-steps (the known billing failure, confirm via
-gh api repos/${REPO}/check-runs/<id>/annotations), don't wait on it further; otherwise take its
-real result. Once you've decided the PR is mergeable, with <N> the PR number gh pr create printed,
-chain the rest into one call:
+BEHIND means main moved: run "gh pr update-branch ${impl.prNumber} --repo ${REPO}", then wait for
+the run on that new tree the way the verify stage did (gh pr checks --watch, verdict from
+gh run view --json conclusion) and merge only if it is green. One run either way — merging a stale
+branch buys a full billed suite on main instead.
 
-  gh pr merge --merge --admin --delete-branch <N> && \\
-  gh issue close ${claim.number} --repo ${REPO} --comment "<one line summarizing what shipped>"
+CLEAN, and with the merge body already carrying "Closes #${claim.number}", one chained call:
+
+  gh pr merge --merge --delete-branch ${impl.prNumber} --repo ${REPO} && \\
+  gh issue view ${claim.number} --repo ${REPO} --json state --jq .state
+
+No --admin: the branch has a real green run, so let the merge take the ordinary path. The issue
+closes itself from the pull request body — that last command is the confirmation, and if it does
+not read CLOSED, close it yourself with a one-line comment saying what shipped.
 
 Report: merged, prNumber, reason.`,
     { model: MODELS.land, phase: 'Land', label: label('land'), schema: LAND_SCHEMA }
@@ -614,8 +509,8 @@ pieces are joined with ";" instead of "&&":
   bash /tmp/ticket-pipeline-cleanup.sh ; \\
   ${branchDeleteCommand}git status --short
 
-That teardown list frees ports ${E2E_PORT} and ${BOOT_PORT}, removes both pipeline containers, and
-(when this run did not merge) deletes the local branch only if it holds no commits origin/main
+That teardown list removes this run's worktree and, when the run did not merge, deletes the local
+branch only if it holds no commits origin/main
 lacks — "gh pr merge --delete-branch" only removes the remote copy on a merge, which is why
 ${
   branchDeleteCommand ? 'this run also deletes it directly, since it did merge.' : 'that direct delete is skipped here.'
