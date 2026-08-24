@@ -11,6 +11,7 @@ import { useGame } from "@/context/GameContext";
 import { useNotification } from "@/context/NotificationContext";
 import { ConfirmDialog, type ConfirmRequest } from "@/components/ConfirmDialog";
 import { pickGivebackCard } from "@/lib/gameEngine";
+import { suspendAI } from "@/lib/e2eAiSuspend";
 import { GameTable } from "@/components/GameTable";
 import { comboKey } from "@/components/gameTableModel";
 import { hapticWarn } from "@/lib/haptics";
@@ -30,6 +31,8 @@ const AI_EXCHANGE_DELAY = E2E_FAST ? 0 : 600;
 const HUMAN_TURN_SECONDS = 20;
 /** Beat before the results screen takes over, so the last play is seen. */
 const RESULT_DELAY = E2E_FAST ? 0 : 800;
+/** Whether a capture state has asked the loop to hold (`lib/e2eAiSuspend.ts`). */
+const AI_SUSPENDED = suspendAI(E2E_FAST);
 
 /** Ranks the exchange phase accepts as a giveback (docs/RULES.md §Exchange). */
 
@@ -80,11 +83,12 @@ export default function GameScreen() {
   // AI turn loop. The key identifies one AI turn — seat, pass count and the
   // combination on the table — and is null whenever no AI is on move, so an
   // update that changes neither cannot restart the "thinking" timer.
-  const aiTurnKey =
-    gameState &&
-    !gameState.gameOver &&
-    !gameState.exchangePhase?.active &&
-    gameState.players[gameState.currentTurnIndex]?.type === "ai"
+  const aiTurnKey = AI_SUSPENDED
+    ? null
+    : gameState &&
+        !gameState.gameOver &&
+        !gameState.exchangePhase?.active &&
+        gameState.players[gameState.currentTurnIndex]?.type === "ai"
       ? `${gameState.currentTurnIndex}|${gameState.passCount}|` +
         (gameState.lastPlayedCombination
           ? comboKey(gameState.lastPlayedCombination, gameState.lastPlayedBy)

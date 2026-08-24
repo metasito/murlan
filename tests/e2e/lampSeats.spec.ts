@@ -12,7 +12,7 @@
 // reaches; `docs/agents/loops.md` has what that does and does not prove.
 import { test, expect } from "@playwright/test";
 import { openCaptureState } from "./helpers/offlineSeed";
-import { CAPTURE_STATES, CAPTURE_VIEWER_SEAT } from "../../lib/captureStates";
+import { CAPTURE_STATES, CAPTURE_VIEWER_SEAT, captureGameState } from "../../lib/captureStates";
 
 // The device the game is played on, at its landscape logical size.
 const VIEWPORT = { width: 874, height: 402 };
@@ -21,8 +21,14 @@ const VIEWPORT = { width: 874, height: 402 };
 // unchecked is the lamp anywhere else.
 const AWAY = CAPTURE_STATES.filter((s) => s.turn !== CAPTURE_VIEWER_SEAT);
 
+/** locales/it.ts `gameShared.turnOf` — the chip the lamp's own seat writes. */
+const turnOf = (name: string) => `Turno di ${name}`;
+
 for (const state of AWAY) {
-  test(`every seat and the hand stay on screen: ${state.id}`, async ({ page, baseURL }) => {
+  test(`the lamp holds the seeded seat, and every seat and hand stay on screen: ${state.id}`, async ({
+    page,
+    baseURL,
+  }) => {
     test.setTimeout(120_000);
     await page.setViewportSize(VIEWPORT);
     await openCaptureState(page, baseURL!, state);
@@ -31,6 +37,11 @@ for (const state of AWAY) {
     // it runs, so a frame taken during the deal shows an empty table and
     // proves nothing about the felt.
     await page.waitForTimeout(2_000);
+
+    // The chip is the one thing on screen that moves with the lamp; the
+    // geometry below it does not.
+    const seededName = captureGameState(state).players[state.turn].name;
+    await expect(page.getByTestId("game-hud-stack")).toContainText(turnOf(seededName));
 
     const boxes = await page.evaluate(() => {
       const rects = (sel: string) =>

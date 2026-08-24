@@ -13,6 +13,7 @@ import type { Page } from "@playwright/test";
 import { openApp } from "./navigation";
 import { createDeck, dealCards } from "../../../lib/gameEngine";
 import { captureGameState, type CaptureState } from "../../../lib/captureStates";
+import { E2E_SUSPEND_AI_KEY } from "../../../lib/e2eAiSuspend";
 
 /** Bot names and personalities as app/lobby.tsx fills empty seats. */
 const BOTS = [
@@ -121,6 +122,8 @@ export async function openSeededGame(
  * from a seat count and a turn is what keeps a Playwright run and a photograph
  * comparable: a state that carries a pile carries it on both, instead of the
  * web run quietly checking an empty felt under the same name.
+ *
+ * It also holds the seeded turn still (`lib/e2eAiSuspend.ts`).
  */
 export async function openCaptureState(
   page: Page,
@@ -128,6 +131,10 @@ export async function openCaptureState(
   state: CaptureState
 ): Promise<void> {
   const save = offlineGameSave(state.playerCount, DEAL_SIZE[state.playerCount], state.turn);
+  await page.addInitScript(
+    ({ key }) => window.localStorage.setItem(key, "1"),
+    { key: E2E_SUSPEND_AI_KEY }
+  );
   await resumeSaved(page, baseURL, { ...save, gameState: captureGameState(state) });
 }
 

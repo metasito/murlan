@@ -69,7 +69,9 @@ Each of these produced a confident, wrong "fixed" in one session:
   `PARITY_REAL_DELAYS=1`, by `.scratch/parity/static-server.mjs`) sets every AI delay to
   `0`. The bots move instantly, so **no screenshot is ever taken on a bot's turn** — the
   state where the lamp is over someone else and the table is at its darkest. Turn it off to
-  look at turn-handover.
+  look at turn-handover. The one exception is a capture state: `openCaptureState` writes the
+  suspend flag (`lib/e2eAiSuspend.ts`), which holds the seeded turn for as long as the page
+  lives, and reads as nothing at all in any build that flag did not come from.
 - **Metro caches the transform that inlines `process.env.EXPO_PUBLIC_*`.** Flipping that env
   var and rebuilding gives you the *previous* value. `expo export --clear` is what actually
   rebuilds it.
