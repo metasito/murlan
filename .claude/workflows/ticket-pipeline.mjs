@@ -174,37 +174,56 @@ output, so here you DO stop at the first failure.
   the budget check and the boot check below. Do not reorder these two, and do not try to save
   the duplicated export with E2E_SKIP_BUILD=1 — the two bundles are different artefacts, and
   scripts/assertNotE2EFast.js exists to stop the production one being built in fast mode.
-  First, ci.yml's "This job's Node is the one production runs" check. That job pins Node 22
-  because esbuild's --target=node22 lowers syntax and knows nothing about APIs, so a
-  Node-24-only builtin compiles at exit 0 and throws on Replit:
-    replit=$(grep -oE 'nodejs-[0-9]+' .replit | head -1 | cut -d- -f2)
-    actual=$(node -p 'process.versions.node.split(".")[0]')
-  If those differ and no Node "$replit" is available on this machine, DO run the rest of this
-  step, but start your reported output with the line
-    "PRODUCTION-RUNTIME CHECK NOT EXERCISED: built and booted on Node $actual, Replit deploys
-    on Node $replit"
-  and include it even when pass is true. Do not fail the ticket for it — it is this machine's
-  limitation, not a defect in the diff — but never let a run imply that check happened.
-  If a Node "$replit" is available (nvm/fnm/volta), use it for the rest of STEP 5 instead.
+  The build commands themselves run on whatever Node this machine has — esbuild's
+  --target=node22 is a cross-compiler and does not need to run under 22 to lower syntax.
 
   npm run expo:web:build && npm run server:build
   npm run bundle:budget
   EXPO_PUBLIC_DOMAIN=example.invalid npm run expo:static:build
-    On Windows this step cannot run: scripts/build.js spawns "npm" without shell:true, so it
-    dies with "Error: spawn npm ENOENT" before building anything. That is this machine, not the
-    diff. If and ONLY if the failure is that exact ENOENT-spawning-npm signature, treat the step
-    as not exercised rather than failed, and say so in output. Any other failure from this step
-    is a real failure. (See the report for the one-line fix that would close this.)
-  Then boot the built server and check it reaches the database:
+
+  Then boot the built server and check it reaches the database. This is ci.yml's "This job's
+  Node is the one production runs" check, and it is the ONLY part that must run under
+  production's Node: --target=node22 lowers syntax and knows nothing about APIs, so a
+  Node-24-only runtime builtin compiles at exit 0 and only throws when the bundle is actually
+  executed under 22. So execute it under 22, in a container, rather than on this machine's Node:
+
+    replit=$(grep -oE 'nodejs-[0-9]+' .replit | head -1 | cut -d- -f2)
     test -f dist/index.html
     test -f server_dist/index.mjs
-    PORT=${BOOT_PORT} NODE_ENV=production node server_dist/index.mjs &   (keep its PID)
-    poll "curl -fsS http://127.0.0.1:${BOOT_PORT}/health -o health.json" up to 30 times, 1s
-      apart, stopping as soon as it succeeds
-    kill that PID — always, including when the poll timed out, so port ${BOOT_PORT} is free for
-      the next run
+    docker rm -f murlan-verify-boot   (ignore "no such container")
+    MSYS_NO_PATHCONV=1 docker run --rm -d --name murlan-verify-boot \\
+      -p ${BOOT_PORT}:${BOOT_PORT} -e PORT=${BOOT_PORT} -e NODE_ENV=production \\
+      -e DATABASE_URL="postgres://postgres:postgres@host.docker.internal:55433/murlan_test" \\
+      -e SESSION_SECRET=verify-local \\
+      -v "$PWD/server_dist:/app/server_dist:ro" -v "$PWD/dist:/app/dist:ro" \\
+      -v "$PWD/assets:/app/assets:ro" -v "$PWD/static-build:/app/static-build:ro" \\
+      -v "$PWD/node_modules:/app/node_modules:ro" \\
+      -w /app "node:$replit-alpine" node server_dist/index.mjs
+
+    Four things here are load-bearing, each one verified rather than assumed:
+      MSYS_NO_PATHCONV=1 — without it Git Bash rewrites -w /app to C:/Program Files/Git/app and
+        docker exits 125 before starting anything.
+      host.docker.internal — the database is a separate container, so localhost inside this one
+        is itself; the host's published 55433 is reached through that name.
+      node_modules is mounted — server:build uses --packages=external, so the bundle imports its
+        dependencies at runtime instead of containing them. Without this mount it cannot start.
+      assets/ and static-build/ are mounted — server/app.ts serves both from process.cwd().
+      Every mount source is under $PWD. Do not stage files in /tmp and mount those: /tmp is a
+        Git Bash path, Docker Desktop resolves it inside the VM, and the mount silently comes up
+        empty — which looks exactly like the server failing to start.
+      The image tag comes from .replit, so if production's Node moves and nothing else changes,
+        this check moves with it instead of silently testing the wrong runtime.
+
+    Confirm the container really is on production's Node:
+      docker exec murlan-verify-boot node -p "process.versions.node"
+    Then poll "curl -fsS http://127.0.0.1:${BOOT_PORT}/health -o health.json" up to 30 times,
+    1s apart, stopping as soon as it succeeds.
+    Always "docker rm -f murlan-verify-boot" afterwards, including when the poll timed out, so
+    port ${BOOT_PORT} is free for the next run.
     grep -q '"db":"connected"' health.json — if that does not match, the build boots but never
       reaches Postgres, which is a FAILURE.
+    If docker run itself fails — image pull, mount, port — that is a real FAILURE of this check,
+    not something to excuse. Docker is already a hard requirement of this pipeline.
 
 Report:
   pass — true ONLY if every command above exited 0, the integration-suite grep did NOT match,
@@ -419,10 +438,13 @@ This run's branch is ${state.localBranch || '(none)'} and merged=${state.merged}
    ${E2E_PORT} is Playwright's webServer, ${BOOT_PORT} is the built server the sweep boots:
    netstat -ano | findstr :${E2E_PORT}   then, for any PID listed: taskkill /PID <pid> /F
    netstat -ano | findstr :${BOOT_PORT}  then, for any PID listed: taskkill /PID <pid> /F
-   Also tear down the container the e2e harness brings up for itself, which the teardown list
-   below does not know about, using the project's own command: node scripts/dev-stack.mjs down
-   (safe because scripts/e2e-server.mjs recreates it from scratch on every run, so nothing
-   durable lives there — but skip it if the user is known to be mid dev-session on it.)
+   Also remove the two containers the teardown list below does not know about — it only knows
+   murlan-verify-pg:
+     docker rm -f murlan-verify-boot          the Node 22 container the boot check runs in;
+       normally --rm removes itself, but a run that died mid-poll leaves it holding port ${BOOT_PORT}
+     node scripts/dev-stack.mjs down          the Postgres the e2e harness brings up for itself
+       (safe because scripts/e2e-server.mjs recreates it from scratch on every run, so nothing
+       durable lives there — but skip it if the user is known to be mid dev-session on it)
 3. Build the teardown list and run it:
 
 ${writeJsonCommand('/tmp/ticket-pipeline-cleanup.json', state)}
