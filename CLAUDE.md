@@ -191,9 +191,16 @@ lines is explaining itself instead of being clear.
   cover. An `size:XS`/`size:S` item gets one pass; the two-axis
   `mattpocock-skills:code-review` is the fit, because standards and spec are what a small diff
   gets wrong. Reserve a second correctness pass (`/code-review`) for `size:M` and up, or any
-  diff touching the engine, the socket protocol or auth. Sub-agents doing the reading run on
-  Sonnet — the reviews that found real defects here were all Sonnet, and the cost of a wrong
-  model is paid on every item.
+  diff touching the engine, the socket protocol or auth.
+- **Every sub-agent names its model, and stages merge before they multiply.** An omitted model
+  inherits the session's, so editing a label costs what reviewing a diff costs, on every item.
+  Mechanical work that follows a written procedure — labels, comments, a CLI whose failure mode
+  is fail-safe — is Haiku; implementing, verifying, fixing, landing and tearing down are Sonnet;
+  independent review is Opus, because with CI billing-blocked it is the only thing between a
+  defect and an `--admin` merge. Two steps that need the same context and the same judgement are
+  one agent, not two: a second `agent()` call re-reads everything the first already had. The
+  pipeline's map is `MODELS` in `.claude/workflows/ticket-pipeline.mjs`; hand work follows the
+  same shape.
 - **Merge the moment the run is green.** `ci.yml`'s `scope` job skips a `main` push whose tree
   a pull request already passed, and that holds only while `main` has not moved. A run takes
   about seven minutes, and every minute a green pull request waits is a minute another session
