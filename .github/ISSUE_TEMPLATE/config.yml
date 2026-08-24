@@ -1,0 +1,9 @@
+# A bug report is the only shape triage is set up to size, so the blank
+# issue option is off — a report is steered into the form above instead.
+# Anything that isn't a bug (a rules question, a "how do I…") goes to the
+# rules doc rather than falling into the tracker unlabelled.
+blank_issues_enabled: false
+contact_links:
+  - name: Question about how the game is played
+    url: https://github.com/metasito/murlan/blob/main/docs/RULES.md
+    about: Not a bug — the rules are documented here already.

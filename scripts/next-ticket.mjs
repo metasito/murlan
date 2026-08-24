@@ -1,4 +1,6 @@
 import { execFileSync } from "node:child_process";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 
 const SIZE_ORDER = ["size:XS", "size:S", "size:M", "size:L", "size:XL"];
 const OWNER_LABELS = new Set(["ready-for-human", "needs-info", "rejected"]);
@@ -20,7 +22,17 @@ function sizeRank(issue) {
 // converts unspecified input (triage), then resolves decisions (wayfinder),
 // and otherwise hands off to the owner. Each stage manufactures work for the
 // stages above it, which is why they run bottom-up here, top-down in value.
-function classify(openIssues) {
+//
+// `owner` means labelled, with the label saying a human decides. A public
+// repo's drive-by issue arrives with no labels at all, which is unspecified
+// input same as an explicit `needs-triage` — so it lands in the same bucket,
+// ahead of wayfinder, not behind everything in `owner`. That keeps triage's
+// existing precedence over wayfinder rather than adding a second one: a
+// flood of unlabelled issues can still starve wayfinder, exactly as a flood
+// of `needs-triage` ones already could, and the fix for that (if it's ever
+// needed) is the issue template applying `needs-triage` itself so triage
+// stays the safety net rather than the primary path.
+export function classify(openIssues) {
   const buckets = { frontier: [], triage: [], wayfinder: [], owner: [] };
   for (const issue of openIssues) {
     const ls = labelNames(issue);
@@ -29,7 +41,7 @@ function classify(openIssues) {
     // made, and taking it off to un-jam the queue is how that decision is lost.
     if (ls.includes("blocked")) continue;
     if (ls.includes("ready-for-agent")) buckets.frontier.push(issue);
-    else if (ls.includes("needs-triage")) buckets.triage.push(issue);
+    else if (ls.includes("needs-triage") || ls.length === 0) buckets.triage.push(issue);
     else if (ls.some((l) => l.startsWith("wayfinder:") && l !== "wayfinder:map")) buckets.wayfinder.push(issue);
     else buckets.owner.push(issue);
   }
@@ -131,51 +143,58 @@ function printDetail(ticket, comments) {
   }
 }
 
-const args = process.argv.slice(2);
-const wantAll = args.includes("--all");
-const explicit = args.map(Number).find((n) => Number.isInteger(n) && n > 0);
+// Guarded so a test can import `classify` (and the other pure functions
+// above) without shelling out to `gh` as a side effect of the import.
+const invokedDirectly =
+  process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url);
 
-if (explicit) {
-  let issue, comments;
-  try {
-    issue = ghJson(["api", `repos/{owner}/{repo}/issues/${explicit}`]);
-    comments = ghJson(["api", `repos/{owner}/{repo}/issues/${explicit}/comments?per_page=100`]);
-  } catch {
-    console.error(`#${explicit} not found (is it a pull request?)`);
-    process.exit(1);
+if (invokedDirectly) {
+  const args = process.argv.slice(2);
+  const wantAll = args.includes("--all");
+  const explicit = args.map(Number).find((n) => Number.isInteger(n) && n > 0);
+
+  if (explicit) {
+    let issue, comments;
+    try {
+      issue = ghJson(["api", `repos/{owner}/{repo}/issues/${explicit}`]);
+      comments = ghJson(["api", `repos/{owner}/{repo}/issues/${explicit}/comments?per_page=100`]);
+    } catch {
+      console.error(`#${explicit} not found (is it a pull request?)`);
+      process.exit(1);
+    }
+    console.log(`ROUTE\tshow\t${explicit}\t${issue.title}`);
+    printDetail(issue, comments);
+    process.exit(0);
   }
-  console.log(`ROUTE\tshow\t${explicit}\t${issue.title}`);
-  printDetail(issue, comments);
-  process.exit(0);
-}
 
-const openIssues = ghJson([
-  "issue", "list",
-  "--state", "open",
-  "--limit", "200",
-  "--json", "number,title,labels",
-]);
+  const openIssues = ghJson([
+    "issue", "list",
+    "--state", "open",
+    "--limit", "200",
+    "--json", "number,title,labels",
+  ]);
 
-const buckets = classify(openIssues);
+  const buckets = classify(openIssues);
 
-if (wantAll) {
-  // The listing is a gate, not a menu: blocked tickets stay off it even here.
-  for (const issue of buckets.frontier) {
-    const { blocked_by } = ghJson(["api", `repos/{owner}/{repo}/issues/${issue.number}`]).issue_dependencies_summary;
-    if (blocked_by === 0) console.log(`${issue.number}\t${issue.title}`);
+  if (wantAll) {
+    // The listing is a gate, not a menu: blocked tickets stay off it even here.
+    for (const issue of buckets.frontier) {
+      const { blocked_by } = ghJson(["api", `repos/{owner}/{repo}/issues/${issue.number}`]).issue_dependencies_summary;
+      if (blocked_by === 0) console.log(`${issue.number}\t${issue.title}`);
+    }
+    process.exit(0);
   }
-  process.exit(0);
-}
 
-const chosen = pickRoute(buckets);
-console.log(`ROUTE\t${chosen.skill}\t${chosen.ticket?.number ?? 0}\t${chosen.ticket?.title ?? "nothing agent-takeable"}`);
-console.log(
-  `STATUS\timplement:${buckets.frontier.length}` +
-  `\ttriage:${buckets.triage.length}` +
-  `\twayfinder:${buckets.wayfinder.length}` +
-  `\towner:${buckets.owner.length}`,
-);
+  const chosen = pickRoute(buckets);
+  console.log(`ROUTE\t${chosen.skill}\t${chosen.ticket?.number ?? 0}\t${chosen.ticket?.title ?? "nothing agent-takeable"}`);
+  console.log(
+    `STATUS\timplement:${buckets.frontier.length}` +
+    `\ttriage:${buckets.triage.length}` +
+    `\twayfinder:${buckets.wayfinder.length}` +
+    `\towner:${buckets.owner.length}`,
+  );
 
-if (chosen.ticket) {
-  printDetail(chosen.ticket, chosen.ticket._comments ?? []);
+  if (chosen.ticket) {
+    printDetail(chosen.ticket, chosen.ticket._comments ?? []);
+  }
 }
