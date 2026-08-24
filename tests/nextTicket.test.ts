@@ -1,11 +1,13 @@
-// tests/next-ticket.test.ts — #293: the repo went public and a drive-by
+// tests/nextTicket.test.ts — #293: the repo went public and a drive-by
 // issue arrives with no labels at all. `classify` fell through every branch
 // into `owner`, the bucket that means "stop, a human decides" — a stranger's
 // bug report was never triaged, and sat behind everything else while quietly
 // counting against the "no takeable work" check.
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
-import { classify } from "../scripts/next-ticket.mjs";
+import path from "node:path";
+import { pathToFileURL } from "node:url";
+import { classify, pickRoute, isInvokedDirectly } from "../scripts/next-ticket.mjs";
 
 function issue(number: number, labelNames: string[]) {
   return { number, title: `issue ${number}`, labels: labelNames.map((name) => ({ name })) };
@@ -28,15 +30,13 @@ describe("classify's bucketing", () => {
   });
 
   test("triage still precedes wayfinder when both have work", () => {
-    // Precedence is deliberate, not incidental: unspecified input (triage)
-    // converts before existing decisions (wayfinder) get resolved, per the
-    // ordering comment above `classify`. A flood of unlabelled drive-by
-    // issues does not change that order, it just means triage empties into
-    // the same queue that `needs-triage` already fed.
+    // Precedence is deliberate, not incidental — per the ordering comment
+    // above `classify`.
     const buckets = classify([issue(3, []), issue(4, ["wayfinder:research"])]);
 
-    assert.equal(buckets.triage.length, 1);
-    assert.equal(buckets.wayfinder.length, 1);
+    const route = pickRoute(buckets);
+    assert.equal(route.skill, "triage");
+    assert.equal(route.ticket.number, 3);
   });
 
   test("an owner-gated label still routes to owner", () => {
@@ -65,5 +65,16 @@ describe("classify's bucketing", () => {
     assert.equal(buckets.triage.length, 0);
     assert.equal(buckets.wayfinder.length, 0);
     assert.equal(buckets.owner.length, 0);
+  });
+});
+
+describe("isInvokedDirectly", () => {
+  test("is true only when argv1 resolves to the module's own path", () => {
+    const self = path.resolve("scripts/next-ticket.mjs");
+    const moduleUrl = pathToFileURL(self).href;
+
+    assert.equal(isInvokedDirectly(self, moduleUrl), true);
+    assert.equal(isInvokedDirectly(path.resolve("scripts/other.mjs"), moduleUrl), false);
+    assert.equal(isInvokedDirectly(undefined, moduleUrl), false);
   });
 });

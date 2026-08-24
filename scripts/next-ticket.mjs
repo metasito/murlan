@@ -2,6 +2,12 @@ import { execFileSync } from "node:child_process";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
+// Extracted so a test can prove the guard actually gates on identity — a
+// different path, or no path at all, must not read as "invoked directly".
+export function isInvokedDirectly(argv1, moduleUrl) {
+  return Boolean(argv1) && path.resolve(argv1) === fileURLToPath(moduleUrl);
+}
+
 const SIZE_ORDER = ["size:XS", "size:S", "size:M", "size:L", "size:XL"];
 const OWNER_LABELS = new Set(["ready-for-human", "needs-info", "rejected"]);
 
@@ -23,15 +29,12 @@ function sizeRank(issue) {
 // and otherwise hands off to the owner. Each stage manufactures work for the
 // stages above it, which is why they run bottom-up here, top-down in value.
 //
-// `owner` means labelled, with the label saying a human decides. A public
-// repo's drive-by issue arrives with no labels at all, which is unspecified
-// input same as an explicit `needs-triage` — so it lands in the same bucket,
-// ahead of wayfinder, not behind everything in `owner`. That keeps triage's
-// existing precedence over wayfinder rather than adding a second one: a
-// flood of unlabelled issues can still starve wayfinder, exactly as a flood
-// of `needs-triage` ones already could, and the fix for that (if it's ever
-// needed) is the issue template applying `needs-triage` itself so triage
-// stays the safety net rather than the primary path.
+// `owner` means labelled, with the label saying a human decides.
+/**
+ * @typedef {{ number: number, title: string, labels: { name: string }[] }} Issue
+ * @param {Issue[]} openIssues
+ * @returns {{ frontier: Issue[], triage: Issue[], wayfinder: Issue[], owner: Issue[] }}
+ */
 export function classify(openIssues) {
   const buckets = { frontier: [], triage: [], wayfinder: [], owner: [] };
   for (const issue of openIssues) {
@@ -98,7 +101,7 @@ function takeable(frontier, limit) {
   return out;
 }
 
-function pickRoute(buckets) {
+export function pickRoute(buckets) {
   if (buckets.frontier.length > 0) {
     const head = takeable(buckets.frontier, 3);
     if (head.length > 0) return { skill: "implement", ticket: head[0] };
@@ -145,8 +148,7 @@ function printDetail(ticket, comments) {
 
 // Guarded so a test can import `classify` (and the other pure functions
 // above) without shelling out to `gh` as a side effect of the import.
-const invokedDirectly =
-  process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url);
+const invokedDirectly = isInvokedDirectly(process.argv[1], import.meta.url);
 
 if (invokedDirectly) {
   const args = process.argv.slice(2);
