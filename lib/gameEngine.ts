@@ -727,7 +727,7 @@ export function aiChoosePlay(
     return withPersonality(bombs.sort((a, b) => a.strength - b.strength)[0]);
   }
 
-  // Pass — let the low-strength combo win this round, unless aggression contests it
+  // Pass — let the low-strength combo win this round.
   return withPersonality(null);
 }
 

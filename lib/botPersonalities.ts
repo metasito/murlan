@@ -14,7 +14,12 @@ export interface BotPersonality {
   name: string;
   /** Which of the engine's strategy tiers this personality plays on. */
   difficulty: AIDifficulty;
-  /** 0–1. How readily it commits a 2, a joker or a bomb instead of swapping in a plain play when one is available. */
+  /**
+   * 0–1. How readily it commits a 2, a joker or a bomb instead of swapping
+   * in a plain play when one is available. Inert on the hard tier: a
+   * hard-tier choice is only ever premium when no plain play is legal, so
+   * the swap this knob makes never has anything to swap to.
+   */
   aggression: number;
   /** 0–1. How often it takes a same-shape play that is legal but not the best one. */
   unpredictability: number;

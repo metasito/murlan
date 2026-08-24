@@ -20,7 +20,7 @@ import {
   processPass,
   processPlay,
 } from "../lib/gameEngine.ts";
-import { c, j, makePlayer } from "./helpers.ts";
+import { c, makePlayer } from "./helpers.ts";
 import type { GameState } from "../lib/gameEngine.ts";
 import type { BotPersonalityId } from "../lib/botPersonalities.ts";
 
@@ -161,7 +161,7 @@ test("aggression decides whether a lead spends premium cards", () => {
 
 // The hard tier's near-finish shortcut only ever dumps the same conservative
 // plays the rest of the lead path hoards for — never a royal straight or a
-// bomb, however long.
+// bomb, however long, and never a combo holding a 2 or a joker either.
 test("hard lead near-finish shortcut does not dump a royal straight", () => {
   const hand = [
     c("5", "clubs"), c("6", "clubs"), c("7", "clubs"), c("8", "clubs"), c("9", "clubs"),
@@ -182,23 +182,23 @@ test("hard lead near-finish shortcut does not dump a royal straight", () => {
   );
 });
 
-// Once no plain response remains, aggression never falls back to spending a
-// 2 or a joker to contest the round — it passes and keeps them for defence.
-test("aggression floor does not spend a 2 or joker once no plain response remains", () => {
+test("hard lead near-finish shortcut does not dump a triple of 2s", () => {
   const hand = [
-    j("bw"), j("colored"), c("2", "hearts"),
-    c("3", "clubs"), c("4", "clubs"), c("5", "clubs"), c("6", "clubs"), c("7", "clubs"),
+    c("2", "hearts"), c("2", "diamonds"), c("2", "clubs"), c("3", "hearts"), c("5", "spades"),
   ];
-  const lastPlayed = buildCombination([c("J", "spades")])!;
   const choice = aiChoosePlay(
     makePlayer("bot", hand, { type: "ai", personality: "gent" }),
-    lastPlayed,
-    false,
-    [8, 8, 8],
+    null,
+    true,
+    [5, 5, 5],
     undefined,
     fixedRng([0.5])
   );
-  assert.equal(choice, null, "an aggressive hard bot passes rather than spend its last 2/joker");
+  assert.deepEqual(
+    choice?.cards.map((x) => x.id),
+    ["3_hearts"],
+    "a hard lead near the end keeps the 2s and plays the low single"
+  );
 });
 
 test("an unknown or missing personality resolves to the default", () => {

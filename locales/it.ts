@@ -440,7 +440,7 @@ export const it: Record<keyof typeof en, string> = {
   "bot.luanBlurb": "Impulsivo e imprevedibile",
   "bot.dritaBlurb": "Prudente, si tiene le carte alte",
   "bot.besnikBlurb": "Contende ogni mano",
-  "bot.gentBlurb": "Spietato, non lascia passare nulla",
+  "bot.gentBlurb": "Spietato, preferisce le giocate audaci",
   "bot.anaBlurb": "Paziente e calcolatrice",
 
   // ------------------------------------------------------------------ lobby.*
@@ -536,7 +536,7 @@ export const it: Record<keyof typeof en, string> = {
   "rules.faq.q16": "Come funziona la Rivincita online?",
   "rules.faq.a16": "Nella modalità Online, la rivincita è democratica:\n\n• Tutti i giocatori vedono il pulsante \"Rivincita\" nella schermata di fine partita\n• Una nuova partita inizia SOLO quando TUTTI i giocatori hanno cliccato Rivincita\n• Il contatore mostra in tempo reale quanti hanno già votato (es. 2/4 vogliono giocare)\n• Se non tutti votano, si può sempre uscire premendo il tasto Esci\n\nI punteggi si accumulano tra una rivincita e l'altra — chi ha il totale più alto vince la sessione!",
   "rules.faq.q17": "Come funziona l'AI?",
-  "rules.faq.a17": "Ogni avversario controllato dal computer ha una personalità con un suo stile di gioco:\n• Luan: impulsivo e imprevedibile\n• Drita: prudente, si tiene le carte alte\n• Besnik: contende ogni mano\n• Gent: spietato, non lascia passare nulla\n• Ana: paziente e calcolatrice\nLo stile decide quando giocare un 2, un Joker o una Bomba, e quando passare — mai quali combinazioni sono valide.",
+  "rules.faq.a17": "Ogni avversario controllato dal computer ha una personalità con un suo stile di gioco:\n• Luan: impulsivo e imprevedibile\n• Drita: prudente, si tiene le carte alte\n• Besnik: contende ogni mano\n• Gent: spietato, preferisce le giocate audaci\n• Ana: paziente e calcolatrice\nLo stile decide quando giocare un 2, un Joker o una Bomba — mai quali combinazioni sono valide.",
   "rules.faq.q18": "Il gioco finisce subito quando termino le mie carte?",
   "rules.faq.a18": "No! Se ci sono altri giocatori, il gioco continua tra di loro. Tu aspetti semplicemente che finiscano. Puoi vedere le posizioni finali nella schermata dei risultati (1°, 2°, 3°, 4°).",
 
