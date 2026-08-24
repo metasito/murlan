@@ -15,7 +15,7 @@ const {
 module.exports = defineConfig([
   expoConfig,
   {
-    // Generated output — never hand-written, never worth linting.
+    // Generated output and agent tooling — never app code, never worth linting.
     ignores: [
       "dist/**",
       "static-build/**",
@@ -25,6 +25,9 @@ module.exports = defineConfig([
       "tests/e2e/playwright-report/**",
       "tests/e2e/test-results/**",
       ".scratch/**",
+      // A Workflow script body is wrapped in an async function by its harness, so on its
+      // own it is not a parseable module — it top-level `return`s the workflow's result.
+      ".claude/**",
     ],
   },
   {
