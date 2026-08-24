@@ -332,6 +332,8 @@ Expected: fails on the import — `lib/ticketPipeline/gate.ts` doesn't exist yet
 
 ```typescript
 // lib/ticketPipeline/gate.ts
+import { pathToFileURL } from "node:url";
+
 const SCHEMA_FILE = "shared/schema.ts";
 const SOCKET_PATTERN = /server\/socket|shared\/events\.ts/;
 const FILE_COUNT_THRESHOLD = 6;
@@ -366,7 +368,7 @@ export function needsDesignFirstGate(ticket: TicketFacts): GateVerdict {
   return { escalate: false, reason: "" };
 }
 
-if (process.argv[1] && import.meta.url === `file://${process.argv[1].replace(/\\/g, "/")}`) {
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   const input = JSON.parse(process.argv[2] ?? "{}");
   process.stdout.write(JSON.stringify(needsDesignFirstGate(input)));
 }
@@ -465,6 +467,8 @@ Expected: fails — module doesn't exist.
 
 ```typescript
 // lib/ticketPipeline/verifyPlan.ts
+import { pathToFileURL } from "node:url";
+
 const BASELINE = `node --test "tests/**/*.test.ts"`;
 
 const RULES: { pattern: RegExp; command: string }[] = [
@@ -488,7 +492,7 @@ export function pickVerifyChecks(filesTouched: string[]): string[] {
   return Array.from(checks);
 }
 
-if (process.argv[1] && import.meta.url === `file://${process.argv[1].replace(/\\/g, "/")}`) {
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   const input = JSON.parse(process.argv[2] ?? "[]");
   process.stdout.write(JSON.stringify(pickVerifyChecks(input)));
 }
@@ -578,6 +582,8 @@ node --test tests/ticketPipelineCleanup.test.ts
 
 ```typescript
 // lib/ticketPipeline/cleanup.ts
+import { pathToFileURL } from "node:url";
+
 export interface RunState {
   worktreePath: string | null;
   dockerStarted: boolean;
@@ -600,7 +606,7 @@ export function buildCleanupCommands(state: RunState): string[] {
   return commands;
 }
 
-if (process.argv[1] && import.meta.url === `file://${process.argv[1].replace(/\\/g, "/")}`) {
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   const input = JSON.parse(process.argv[2] ?? "{}");
   process.stdout.write(JSON.stringify(buildCleanupCommands(input)));
 }
