@@ -124,6 +124,7 @@ async function startMetro(expoPublicDomain) {
     stdio: ["ignore", "pipe", "pipe"],
     detached: false,
     env,
+    shell: process.platform === "win32",
   });
 
   if (metroProcess.stdout) {
