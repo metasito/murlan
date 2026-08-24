@@ -12,18 +12,42 @@ import path from "node:path";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
-test("assets/music holds exactly the tracks lib/music.ts requires", () => {
-  const source = readFileSync(path.join(repoRoot, "lib", "music.ts"), "utf8");
-  const required = [...source.matchAll(/assets\/music\/([a-z]+)\.webm/g)].map((m) => m[1]).sort();
-  const onDisk = readdirSync(path.join(repoRoot, "assets", "music"))
-    .filter((f) => f.endsWith(".webm"))
-    .map((f) => f.replace(/\.webm$/, ""))
-    .sort();
+function tracksFor(source: string, ext: "webm" | "m4a"): string[] {
+  const pattern = new RegExp(`assets/music/([a-z]+)\\.${ext}`, "g");
+  return [...source.matchAll(pattern)].map((m) => m[1]).sort();
+}
 
-  assert.ok(required.length > 0, "lib/music.ts requires no music at all");
+function onDiskFor(ext: "webm" | "m4a"): string[] {
+  return readdirSync(path.join(repoRoot, "assets", "music"))
+    .filter((f) => f.endsWith(`.${ext}`))
+    .map((f) => f.replace(new RegExp(`\\.${ext}$`), ""))
+    .sort();
+}
+
+test("assets/music holds exactly the tracks lib/music.ts requires, in both containers", () => {
+  const source = readFileSync(path.join(repoRoot, "lib", "music.ts"), "utf8");
+  const requiredWebm = tracksFor(source, "webm");
+  const requiredM4a = tracksFor(source, "m4a");
+
+  assert.ok(requiredWebm.length > 0, "lib/music.ts requires no WebM music at all");
   assert.deepEqual(
-    onDisk,
-    required,
-    "a music file was added or removed without lib/music.ts following it"
+    onDiskFor("webm"),
+    requiredWebm,
+    "a .webm music file was added or removed without lib/music.ts following it"
+  );
+
+  // The iOS encode (#178): AVFoundation cannot demux WebM, so every track also
+  // ships as a lossless ALAC re-encode in M4A. A track missing this half is
+  // silent music on iOS only — the one platform this suite cannot render code
+  // for.
+  assert.deepEqual(
+    requiredM4a,
+    requiredWebm,
+    "lib/music.ts requires a different track list for iOS than for web/Android"
+  );
+  assert.deepEqual(
+    onDiskFor("m4a"),
+    requiredM4a,
+    "a .m4a music file was added or removed without lib/music.ts following it"
   );
 });

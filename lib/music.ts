@@ -1,26 +1,37 @@
 import { Platform } from "react-native";
 import type { AudioPlayer } from "expo-audio";
-import { onWebAudioUnlocked, sharedWebCtx } from "@/lib/sounds";
+import { ensureAudioMode, onWebAudioUnlocked, sharedWebCtx } from "@/lib/sounds";
 
 /**
  * Four loops, all one composition — Abstraction's *Retro Lounge*, CC0 (#113).
- * WebM Opus at 48 kHz: MP3 cannot loop seamlessly, and Safari has decoded WebM
- * Opus since 17.0 against Ogg Opus's 18.4 (#121). Each source loop was closed
- * with a 20 ms equal-power crossfade before encoding, so the join is continuous
- * by construction rather than by luck.
+ * WebM Opus at 48 kHz for web and Android: MP3 cannot loop seamlessly, and
+ * Safari has decoded WebM Opus since 17.0 against Ogg Opus's 18.4 (#121).
+ * AVFoundation cannot demux WebM at all, so iOS gets the same audio losslessly
+ * re-encoded to ALAC in an M4A container instead (#178) — every other iOS-
+ * playable option that was tried lost the loop's gaplessness somewhere in the
+ * container (see assets/music/README.md), where ALAC cannot by construction.
  *
  * Requires are behind functions so Metro can see them statically while the
  * bytes stay out of the initial payload — the web bundle's ceiling is ~1 MB
  * gzip and these are 1.5 MB on their own.
  */
-const TRACKS = {
+const TRACKS_WEBM = {
   menu: () => require("../assets/music/menu.webm") as number,
   hand: () => require("../assets/music/hand.webm") as number,
   cue: () => require("../assets/music/cue.webm") as number,
   final: () => require("../assets/music/final.webm") as number,
 } as const;
 
-export type MusicTrack = keyof typeof TRACKS;
+const TRACKS_IOS = {
+  menu: () => require("../assets/music/menu.m4a") as number,
+  hand: () => require("../assets/music/hand.m4a") as number,
+  cue: () => require("../assets/music/cue.m4a") as number,
+  final: () => require("../assets/music/final.m4a") as number,
+} as const;
+
+const TRACKS = Platform.OS === "ios" ? TRACKS_IOS : TRACKS_WEBM;
+
+export type MusicTrack = keyof typeof TRACKS_WEBM;
 
 /** Long enough not to click, short enough not to feel like a transition. */
 const FADE_S = 0.6;
@@ -158,23 +169,7 @@ const nativePlayers: Partial<Record<MusicTrack, AudioPlayer>> = {};
 let nativePlaying: MusicTrack | null = null;
 let nativeFade: ReturnType<typeof setInterval> | null = null;
 
-/**
- * Native iOS has no music, deliberately.
- *
- * expo-audio plays through AVFoundation, and AVPlayer does not demux WebM at
- * all — Opus reaches it only in an MP4 container, and only from iOS 17. Android
- * has decoded Opus in WebM since 5.0, so it is the one native platform this
- * format serves. Web is unaffected: Safari 17 decodes WebM Opus, which is why
- * #121 chose this container over Ogg in the first place.
- *
- * Failing here rather than inside AVPlayer keeps it one documented branch
- * instead of a silent nothing on a device. Tracked as its own issue; the fix is
- * a second encode, not a format change, because changing it costs web Safari.
- */
-const NATIVE_MUSIC_SUPPORTED = Platform.OS !== "ios";
-
 function nativePlayer(track: MusicTrack): AudioPlayer | null {
-  if (!NATIVE_MUSIC_SUPPORTED) return null;
   const cached = nativePlayers[track];
   if (cached) return cached;
   try {
@@ -239,8 +234,16 @@ function playNativeMusic(track: MusicTrack): void {
 export async function playMusic(track: MusicTrack): Promise<void> {
   _wanted = track;
   if (!_enabled) return;
-  if (Platform.OS === "web") await playWebMusic(track);
-  else playNativeMusic(track);
+  if (Platform.OS === "web") {
+    await playWebMusic(track);
+    return;
+  }
+  // Shared with lib/sounds.ts, so effects and music never settle on two
+  // different session categories — see the comment on ensureAudioMode.
+  try {
+    await ensureAudioMode();
+  } catch {}
+  playNativeMusic(track);
 }
 
 export function stopMusic(): void {
