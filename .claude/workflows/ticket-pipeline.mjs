@@ -2,14 +2,27 @@ export const meta = {
   name: 'ticket-pipeline',
   description: 'Claim, gate, implement, verify, independently review, and land one murlan queue ticket end to end',
   phases: [
-    { title: 'Claim' },
-    { title: 'Implement' },
-    { title: 'Verify' },
-    { title: 'Review' },
-    { title: 'Fix' },
-    { title: 'Land' },
-    { title: 'Cleanup' },
+    { title: 'Claim', detail: 'claim the routed ticket and run the design-first gate', model: 'haiku' },
+    { title: 'Implement', model: 'sonnet' },
+    { title: 'Verify', detail: "ci.yml's sweep, locally", model: 'sonnet' },
+    { title: 'Review', detail: 'three independent lenses', model: 'opus' },
+    { title: 'Fix', model: 'sonnet' },
+    { title: 'Land', model: 'sonnet' },
+    { title: 'Cleanup', model: 'sonnet' },
   ],
+}
+
+// Every agent() call names its model. An omitted one inherits the session's, which is how
+// editing a label ends up costing what reviewing a diff costs. Judgement that cannot be redone
+// cheaply gets the big model; everything that follows a written procedure does not.
+const MODELS = {
+  claim: 'haiku', // next-ticket.mjs, two gh writes, one CLI whose failure mode is fail-safe
+  implement: 'sonnet',
+  verify: 'sonnet', // long, scripted, and has to read failures back accurately
+  fix: 'sonnet',
+  review: 'opus', // the only gate between a defect and an --admin merge with CI dead
+  land: 'sonnet',
+  cleanup: 'sonnet', // deletes branches and kills processes on a judgement call
 }
 
 const MAX_FIX_ROUNDS = 2
@@ -27,12 +40,6 @@ function sq(text) {
   return `'${String(text).replace(/'/g, "'\\''")}'`
 }
 
-// gate.ts matches paths with forward-slash patterns, so a Windows-style path an agent reports
-// would match nothing and silently skip the escalation it should have triggered.
-function normalizePaths(files) {
-  return (files || []).map((f) => String(f).replace(/\\/g, '/'))
-}
-
 function writeJsonCommand(path, value) {
   return `printf '%s' ${sq(JSON.stringify(value))} > ${path}`
 }
@@ -45,15 +52,11 @@ const CLAIM_SCHEMA = {
     branch: { type: 'string' },
     title: { type: 'string' },
     filesTouched: { type: 'array', items: { type: 'string' } },
+    escalate: { type: 'boolean' },
+    gateReason: { type: 'string' },
     reason: { type: 'string' },
   },
   required: ['claimed'],
-}
-
-const GATE_SCHEMA = {
-  type: 'object',
-  properties: { escalate: { type: 'boolean' }, reason: { type: 'string' } },
-  required: ['escalate', 'reason'],
 }
 
 const IMPLEMENT_SCHEMA = {
@@ -230,10 +233,12 @@ Report:
     and /health reported "db":"connected". Anything else is false.
   failedStep — the first command that failed, prefixed with its job, e.g.
     "verify: npm run lint" or "build: npm run bundle:budget". Empty when pass is true.
-  output — the tail of every failing command's output, enough that another agent can fix it
-    without running the sweep again. Name every job that failed, not just the first.
+  output — for each failing job, its name and at most the last 40 lines of its output: enough
+    that another agent can fix it without running the sweep again, and no more. Name every job
+    that failed, not just the first. Empty when pass is true — a passing sweep's log is read by
+    nobody and costs every later stage that carries it.
   dockerStarted — whether you started the container.`,
-    { phase: 'Verify', schema: VERIFY_SCHEMA }
+    { model: MODELS.verify, phase: 'Verify', schema: VERIFY_SCHEMA }
   )
 }
 
@@ -244,8 +249,10 @@ async function runReview(claim, scopeNote) {
       key: 'standards',
       prompt: `Review ${diffScope} on branch ${claim.branch} (git diff origin/main...HEAD) using
 mattpocock-skills:code-review's standards axis: documented repo conventions (CLAUDE.md) plus the
-Fowler smell baseline. You did not write this code — read it cold. Report findings: file, line,
-summary, verdict (CONFIRMED/PLAUSIBLE/REJECTED).`,
+Fowler smell baseline. You did not write this code — read it cold. CLAUDE.md's comment policy is
+one of those conventions and the one most often broken: flag as CONFIRMED any new or changed
+comment that narrates history, restates the code below it, or explains a defect the diff just
+fixed. Report findings: file, line, summary, verdict (CONFIRMED/PLAUSIBLE/REJECTED).`,
     },
     {
       key: 'spec',
@@ -261,17 +268,9 @@ implemented but wrong. Report findings: file, line, summary, verdict (CONFIRMED/
 claims to protect, rerun it, confirm whether it would actually catch the break. Any test/guard that
 still passes on broken code is a CONFIRMED finding. Report: file, line, summary, verdict.`,
     },
-    {
-      key: 'comments',
-      prompt: `Every new or changed comment in ${diffScope} on branch ${claim.branch}
-(git diff origin/main...HEAD), checked against CLAUDE.md's comment policy: a comment only earns its
-place by naming an invisible constraint, a non-obvious why, a contract types can't carry, or a
-pointer to authority. Flag as CONFIRMED anything that narrates history, restates the code below it,
-or explains an already-fixed defect. Report: file, line, summary, verdict.`,
-    },
   ]
   const results = await parallel(
-    lenses.map((l) => () => agent(l.prompt, { phase: 'Review', label: `review:${l.key}`, schema: FINDING_SCHEMA }))
+    lenses.map((l) => () => agent(l.prompt, { model: MODELS.review, phase: 'Review', label: `review:${l.key}`, schema: FINDING_SCHEMA }))
   )
   const failedLenses = lenses.filter((l, i) => !results[i]).map((l) => l.key)
   if (failedLenses.length) {
@@ -294,54 +293,48 @@ function isClean(verify, review) {
 
 let claimOpen = false
 let claimedNumber = null
+// Every path that abandons a claim sets this instead of spawning its own agent to say so: the
+// cleanup agent has to run anyway, and it is in the finally, so it cannot be skipped.
+let releaseReason = 'the run ended early'
 
 try {
   phase('Claim')
   const claim = await agent(
-    `Run: node scripts/next-ticket.mjs
+    `${BASH_NOTE}
+Run: node scripts/next-ticket.mjs
 Take the routed ticket only if it's frontier implement work (ready-for-agent). If it routes to
 triage/wayfinder/handoff instead, report claimed: false with why. Otherwise claim it per
 docs/agents/issue-tracker.md: add the in-progress label, comment naming the branch you'll use
 (agent/<number>-<slug>), then re-view the issue to confirm you won the race (stand down if an
-older claim is already there). Report: claimed, number, branch, title, filesTouched (best-effort
-list from the issue's Ground truth pointers, as repo-relative paths like lib/foo.ts — never
-absolute), reason. Do not report the issue body — every later
-stage reads it from GitHub itself.`,
-    { phase: 'Claim', schema: CLAIM_SCHEMA }
+older claim is already there).
+
+Then run the design-first gate yourself, with <NUM> the number you just claimed and the array
+literal the issue's Ground truth pointers as repo-relative paths (lib/foo.ts — an absolute
+Windows path breaks this quoting, which is the point). The body reaches the module through a
+file, never a shell argument:
+
+gh issue view <NUM> --repo ${REPO} --json body --jq '{filesTouched:["lib/foo.ts","tests/foo.test.ts"],body:.body}' > /tmp/ticket-pipeline-gate.json
+npx tsx lib/ticketPipeline/gate.ts < /tmp/ticket-pipeline-gate.json
+
+Report: claimed, number, branch, title, filesTouched (that same repo-relative list), escalate and
+gateReason taken verbatim from the gate's JSON stdout, reason. If either gate command fails, or
+its stdout is not the JSON object the module prints, report escalate: true with the failure as
+gateReason — this is the pipeline's only escalation valve, so a gate that could not run must never
+answer "no escalation needed". If it does escalate, hand the ticket back before you report: remove
+in-progress, add ready-for-human, comment the gate's reason. Do not report the issue body; every
+later stage reads it from GitHub itself.`,
+    { model: MODELS.claim, phase: 'Claim', schema: CLAIM_SCHEMA }
   )
   if (!claim.claimed) {
     log(`Nothing claimed: ${claim.reason}`)
     return { landed: false, reason: claim.reason }
   }
+  if (claim.escalate) {
+    return { landed: false, ticket: claim.number, reason: `escalated: ${claim.gateReason}` }
+  }
   claimOpen = true
   claimedNumber = claim.number
   state.localBranch = claim.branch
-
-  const gateFiles = normalizePaths(claim.filesTouched)
-  const gate = await agent(
-    `${BASH_NOTE}
-Build the gate input straight from the issue, so its body never passes through a shell argument:
-
-gh issue view ${claim.number} --repo ${REPO} --json body --jq ${sq(
-      `{filesTouched:${JSON.stringify(gateFiles)},body:.body}`
-    )} > /tmp/ticket-pipeline-gate.json
-npx tsx lib/ticketPipeline/gate.ts < /tmp/ticket-pipeline-gate.json
-
-Report its JSON stdout verbatim as escalate and reason. If either command fails, or stdout is not
-the JSON object the module prints, report escalate: true with the failure as the reason — this is
-the pipeline's only escalation valve, so a gate that could not run must never answer "no
-escalation needed".`,
-    { phase: 'Claim', schema: GATE_SCHEMA }
-  )
-  if (gate.escalate) {
-    await agent(
-      `Issue #${claim.number}: remove the in-progress label, add ready-for-human, comment explaining
-this needs an owner decision: ${gate.reason}`,
-      { phase: 'Claim' }
-    )
-    claimOpen = false
-    return { landed: false, ticket: claim.number, reason: `escalated: ${gate.reason}` }
-  }
 
   phase('Implement')
   const impl = await agent(
@@ -350,15 +343,10 @@ Implement issue #${claim.number} via the mattpocock-skills:implement workflow �
 seams, typecheck and single test files while iterating. Read the issue yourself with:
 gh issue view ${claim.number} --repo ${REPO}
 Commit your work (do not push yet). Report: committed, commitSha, summary, filesTouched.`,
-    { phase: 'Implement', schema: IMPLEMENT_SCHEMA }
+    { model: MODELS.implement, phase: 'Implement', schema: IMPLEMENT_SCHEMA }
   )
   if (!impl.committed) {
-    await agent(
-      `Issue #${claim.number}: remove the in-progress label, add ready-for-human, comment that
-implementation didn't complete: ${impl.summary || 'no reason given'}`,
-      { phase: 'Implement' }
-    )
-    claimOpen = false
+    releaseReason = `implementation didn't complete: ${impl.summary || 'no reason given'}`
     return { landed: false, ticket: claim.number, reason: 'implement failed' }
   }
 
@@ -384,7 +372,7 @@ implementation didn't complete: ${impl.summary || 'no reason given'}`,
       `On branch ${claim.branch}, fix exactly these findings and nothing else, then commit:\n${
         findingList || '- (no review findings; the failing verification below is the whole job)'
       }${verifyNote}`,
-      { phase: 'Fix', schema: IMPLEMENT_SCHEMA }
+      { model: MODELS.fix, phase: 'Fix', schema: IMPLEMENT_SCHEMA }
     )
     if (!fix.committed) break
     verify = await runVerify()
@@ -392,16 +380,11 @@ implementation didn't complete: ${impl.summary || 'no reason given'}`,
   }
 
   if (!isClean(verify, review)) {
-    await agent(
-      `Issue #${claim.number}: remove the in-progress label, add ready-for-human, comment that
-${round} fix round(s) didn't reach a clean state. Remaining: ${JSON.stringify(
-        confirmedIn(review)
-      )}. Verify pass: ${verify.pass}. Review lenses that reported nothing: ${
-        review.failedLenses.join(', ') || 'none'
-      }.`,
-      { phase: 'Land' }
-    )
-    claimOpen = false
+    releaseReason = `${round} fix round(s) didn't reach a clean state. Remaining: ${JSON.stringify(
+      confirmedIn(review)
+    )}. Verify pass: ${verify.pass}. Review lenses that reported nothing: ${
+      review.failedLenses.join(', ') || 'none'
+    }.`
     return { landed: false, ticket: claim.number, reason: `not clean after ${round} fix round(s)` }
   }
 
@@ -413,7 +396,7 @@ message). CI is billing-blocked today — check the run once; if the scope job d
 known billing failure, confirm via gh api repos/${REPO}/check-runs/<id>/annotations), don't
 wait on it further. Merge with gh pr merge --merge --admin --delete-branch, then close #${claim.number}
 with a comment summarizing what shipped. Report: merged, prNumber, reason.`,
-    { phase: 'Land', schema: LAND_SCHEMA }
+    { model: MODELS.land, phase: 'Land', schema: LAND_SCHEMA }
   )
   state.merged = land.merged
   if (land.merged) claimOpen = false
@@ -422,16 +405,16 @@ with a comment summarizing what shipped. Report: merged, prNumber, reason.`,
   // A throw in here would replace whatever the try block returned or threw, so nothing escapes.
   try {
     phase('Cleanup')
-    if (claimOpen && claimedNumber) {
-      await agent(
-        `Issue #${claimedNumber}: the pipeline run stopped before landing it. Remove the in-progress
-label, add ready-for-human, and comment that the run ended early so the claim is released.`,
-        { phase: 'Cleanup' }
-      )
-    }
+    const releaseStep =
+      claimOpen && claimedNumber
+        ? `0. Issue #${claimedNumber} was claimed and never landed. Remove its in-progress label, add
+   ready-for-human, and comment this reason so the claim is released: ${releaseReason}\n`
+        : ''
     const cleaned = await agent(
       `${BASH_NOTE}
 This run's branch is ${state.localBranch || '(none)'} and merged=${state.merged}.
+
+${releaseStep}
 
 1. Put the checkout back on main first, so no branch is pinned by being the current one:
    git checkout main || git checkout -B main origin/main
@@ -461,7 +444,7 @@ npx tsx lib/ticketPipeline/cleanup.ts < /tmp/ticket-pipeline-cleanup.json
    The module deliberately omits that command, and "gh pr merge --delete-branch" only removes the
    remote copy, so without this the local branch survives every merged run.
 5. Report the final "git status --short" output and the current branch verbatim.`,
-      { phase: 'Cleanup' }
+      { model: MODELS.cleanup, phase: 'Cleanup' }
     )
     log(`Cleanup finished: ${typeof cleaned === 'string' ? cleaned : JSON.stringify(cleaned)}`)
   } catch (error) {
