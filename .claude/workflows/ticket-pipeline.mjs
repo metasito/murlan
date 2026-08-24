@@ -34,7 +34,25 @@ const BASH_NOTE = [
   'Use the Bash tool (POSIX sh), not PowerShell.',
   'Never pass JSON as a command-line argument: the shell layer collapses the doubled backslash',
   'JSON uses for a literal backslash, which corrupts the payload. Each module below reads stdin.',
+  'Search with the Grep tool, not a shelled-out grep or find. If you must shell out to search,',
+  'exclude node_modules explicitly — `rg` does this by default, but a raw `grep -r` still walks',
+  'every package even when `--include` only narrows what gets reported, turning a sub-second',
+  'search into several minutes.',
 ].join(' ')
+
+// Verify and Fix both commit, then need the same three facts about the diff they just produced —
+// computed once here so Review never re-fetches them per lens.
+const DIFF_CAPTURE_NOTE = `Before you report, capture what Verify and Review need from this diff
+so neither has to re-fetch it — one throwaway file pair, three commands:
+  git diff origin/main...HEAD > /tmp/pipeline-diff.txt
+  git diff --name-only origin/main...HEAD > /tmp/pipeline-diff-files.txt
+Turn the second file's lines into a JSON array of repo-relative paths and run:
+  npx tsx lib/ticketPipeline/verifyPlan.ts <<< '["path/one.ts","path/two.ts"]'
+  npx tsx lib/ticketPipeline/diffScope.ts < /tmp/pipeline-diff.txt
+Report prose from the first command's JSON, verbatim, and diffInline/diffLineCount from the
+second's. If diffInline is true, report diffText as /tmp/pipeline-diff.txt's full contents;
+otherwise report diffText as an empty string — past the size cut, a diff pasted into three review
+prompts costs more than three \`git diff\` calls.`
 
 function sq(text) {
   return `'${String(text).replace(/'/g, "'\\''")}'`
@@ -66,6 +84,10 @@ const IMPLEMENT_SCHEMA = {
     commitSha: { type: 'string' },
     summary: { type: 'string' },
     filesTouched: { type: 'array', items: { type: 'string' } },
+    prose: { type: 'boolean' },
+    diffInline: { type: 'boolean' },
+    diffLineCount: { type: 'number' },
+    diffText: { type: 'string' },
   },
   required: ['committed'],
 }
@@ -129,10 +151,18 @@ function label(stage) {
   return `${stage} ${run.ticket}`
 }
 
-async function runVerify() {
+async function runVerify(sinceRef) {
   // Teardown is owed from the moment the container can exist, not from the agent's report:
   // a verify agent that dies after `docker run` never reports, and the container leaks.
   state.dockerStarted = true
+  // A fix round only needs to re-check what it itself touched: the rest of the branch already
+  // passed the jobs it needed against a diff that hasn't changed since. `sinceRef` is the commit
+  // the previous verify call already covered, so a re-verify diffs from there, not from
+  // origin/main again.
+  const diffRef = sinceRef ? `${sinceRef}..HEAD` : 'origin/main...HEAD'
+  const roundNote = sinceRef
+    ? `\n  This diff range is this round's fix only, not the whole PR — the rest of the branch\n  already passed the jobs it needed in an earlier round and hasn't changed since.\n`
+    : ''
   return agent(
     `${BASH_NOTE}
 GitHub Actions is not running at all right now, so this local sweep is the only thing standing
@@ -141,14 +171,15 @@ step — in CI these are independent parallel jobs and one run is expected to re
 
 STEP 0 — which jobs does this diff need? A module decides, not you:
   git fetch origin main -q
-  git diff --name-only origin/main...HEAD > /tmp/verify-changed.txt
+  git diff --name-only ${diffRef} > /tmp/verify-changed.txt
   Print that list, then turn it into a JSON array of repo-relative paths and:
     npx tsx lib/ticketPipeline/verifyPlan.ts <<< '["path/one.ts","path/two.ts"]'
-  It prints {"verify":..,"native":..,"browser":..,"build":..}. Run only the jobs it marks true —
-  STEP 3's first three commands are the "verify" job, "native" gates STEP 3's test:native line,
-  "browser" gates STEP 4, "build" gates STEP 5. Anything it marks false is skipped, and say so in
-  your output. Its allowlist fails safe: an unrecognised path marks everything true.
-
+  It prints {"verify":..,"native":..,"browser":..,"build":..,"prose":..}. Run only the jobs it
+  marks true — STEP 3's first three commands are the "verify" job, "native" gates STEP 3's
+  test:native line, "browser" gates STEP 4, "build" gates STEP 5. Anything it marks false is
+  skipped, and say so in your output. Its allowlist fails safe: an unrecognised path marks
+  everything true.
+${roundNote}
   If every changed path is under docs/, .claude/ or ends in .md, the change is documentation only
   and ci.yml skips even the verify job — report pass: true with output "documentation only" and
   stop here. (.github/workflows/ is NOT prose: a change there must exercise itself.)
@@ -268,8 +299,8 @@ Report:
     and (when the build job ran) /health reported "db":"connected". A failure you confirmed is
     pre-existing on origin/main does not make this false. Anything else does.
   skippedJobs — the jobs verifyPlan marked false, and the paths that decision was made from.
-  prose — verifyPlan's "prose" field, verbatim. It decides whether the review stage runs a lens
-    that has no executable line to look at, so report what the module said, not your own reading.
+  prose — verifyPlan's "prose" field, verbatim. Informational only: Implement or Fix already
+    computed this over the whole diff for the review stage, before this call started.
   preExistingFailures — each check that failed here AND on origin/main, with the issue number you
     opened or found for it. Empty when there were none.
   failedStep — the first command that failed, prefixed with its job, e.g.
@@ -283,12 +314,26 @@ Report:
   )
 }
 
-async function runReview(claim, scopeNote, onlyKeys, prose) {
+// Nine agents re-fetching the same `git diff` cost ~10-15s apiece. Implement/Fix already fetched
+// it once for this same purpose (DIFF_CAPTURE_NOTE) — reuse that instead of paying for it again,
+// but only up to diffScope.ts's size cut, past which pasting it three times costs more than it saves.
+function diffContext(diffInfo) {
+  if (diffInfo && diffInfo.inline && diffInfo.text) {
+    return {
+      note: `The diff is inlined below (${diffInfo.lineCount} lines) — do not re-run git diff:\n\n\`\`\`diff\n${diffInfo.text}\n\`\`\`\n\n`,
+      ref: 'the diff above',
+    }
+  }
+  return { note: '', ref: '(git diff origin/main...HEAD)' }
+}
+
+async function runReview(claim, scopeNote, onlyKeys, prose, diffInfo) {
   const diffScope = scopeNote ? `only the fix for: ${scopeNote}` : 'the whole diff'
+  const { note: diffNote, ref: diffRef } = diffContext(diffInfo)
   const allLenses = [
     {
       key: 'standards',
-      prompt: `Review ${diffScope} on branch ${claim.branch} (git diff origin/main...HEAD) using
+      prompt: `${diffNote}Review ${diffScope} on branch ${claim.branch} ${diffRef} using
 mattpocock-skills:code-review's standards axis: documented repo conventions (CLAUDE.md) plus the
 Fowler smell baseline. You did not write this code — read it cold. CLAUDE.md's comment policy is
 one of those conventions and the one most often broken: flag as CONFIRMED any new or changed
@@ -297,7 +342,7 @@ fixed. Report findings: file, line, summary, verdict (CONFIRMED/PLAUSIBLE/REJECT
     },
     {
       key: 'spec',
-      prompt: `Review ${diffScope} on branch ${claim.branch} (git diff origin/main...HEAD) against
+      prompt: `${diffNote}Review ${diffScope} on branch ${claim.branch} ${diffRef} against
 issue #${claim.number}, which you should read yourself with: gh issue view ${claim.number} --repo ${REPO}
 Using mattpocock-skills:code-review's spec axis: missing requirements, scope creep, anything
 implemented but wrong. Report findings: file, line, summary, verdict (CONFIRMED/PLAUSIBLE/REJECTED).`,
@@ -305,8 +350,8 @@ implemented but wrong. Report findings: file, line, summary, verdict (CONFIRMED/
     {
       key: 'adversarial',
       needsCode: true,
-      prompt: `For every new or changed test or runtime guard in ${diffScope} on branch ${claim.branch}
-(git diff origin/main...HEAD): try to prove it passes on broken code — invert or delete the logic it
+      prompt: `${diffNote}For every new or changed test or runtime guard in ${diffScope} on branch ${claim.branch}
+${diffRef}: try to prove it passes on broken code — invert or delete the logic it
 claims to protect, rerun it, confirm whether it would actually catch the break. Any test/guard that
 still passes on broken code is a CONFIRMED finding. Report: file, line, summary, verdict.`,
     },
@@ -412,7 +457,9 @@ Read each file you are going to change ONCE, whole, with the Read tool. Do not r
 picture of a file from repeated sed/grep windows — each window costs a turn, and a file read in
 twenty pieces costs far more than the file. Re-read only what you have edited.
 
-Commit your work (do not push yet). Report: committed, commitSha, summary, filesTouched.`,
+Commit your work (do not push yet).
+${DIFF_CAPTURE_NOTE}
+Report: committed, commitSha, summary, filesTouched, prose, diffInline, diffLineCount, diffText.`,
     { model: MODELS.implement, phase: 'Implement', label: label('implement'), schema: IMPLEMENT_SCHEMA }
   )
   if (!impl.committed) {
@@ -420,11 +467,18 @@ Commit your work (do not push yet). Report: committed, commitSha, summary, files
     return { landed: false, ticket: claim.number, reason: 'implement failed' }
   }
 
+  // Verify and Review both read the same committed branch and neither writes to it, so they run
+  // concurrently rather than paying for each other's wall clock. A failing verify does not waste
+  // the concurrent review: the fix agent below gets both together and fixes them in one round.
   phase('Verify')
-  let verify = await runVerify()
-
   phase('Review')
-  let review = await runReview(claim, null, null, verify.prose)
+  let [verify, review] = await parallel([
+    () => runVerify(),
+    () => runReview(claim, null, null, impl.prose, { inline: impl.diffInline, text: impl.diffText, lineCount: impl.diffLineCount }),
+  ])
+  // The commit each round's re-verify has already covered — a fix round only needs to re-check
+  // what it itself touched, not the whole branch again.
+  let verifiedSha = impl.commitSha
   let round = 0
   while (actionable(verify, review) && round < MAX_FIX_ROUNDS) {
     round++
@@ -444,12 +498,24 @@ Commit your work (do not push yet). Report: committed, commitSha, summary, files
 failure the verify stage reported as pre-existing on origin/main is not yours to fix — leave it.
 Findings:\n${
         findingList || '- (no review findings; the failing verification below is the whole job)'
-      }${verifyNote}`,
+      }${verifyNote}
+${DIFF_CAPTURE_NOTE}
+Report: committed, commitSha, summary, filesTouched, prose, diffInline, diffLineCount, diffText.`,
       { model: MODELS.fix, phase: 'Fix', label: label(`fix round ${round}`), schema: IMPLEMENT_SCHEMA }
     )
     if (!fix.committed) break
-    verify = await runVerify()
-    review = await runReview(claim, confirmed.map((f) => f.summary).join('; '), lensesThatFound, verify.prose)
+    phase('Verify')
+    phase('Review')
+    ;[verify, review] = await parallel([
+      () => runVerify(verifiedSha),
+      () =>
+        runReview(claim, confirmed.map((f) => f.summary).join('; '), lensesThatFound, fix.prose, {
+          inline: fix.diffInline,
+          text: fix.diffText,
+          lineCount: fix.diffLineCount,
+        }),
+    ])
+    verifiedSha = fix.commitSha || verifiedSha
   }
 
   if (!isClean(verify, review)) {
@@ -463,12 +529,30 @@ Findings:\n${
 
   phase('Land')
   const land = await agent(
-    `Branch ${claim.branch} is clean (local verify passed, independent review clean). Push it, open a
-PR that closes #${claim.number} (put "Closes #${claim.number}" in the PR body only, never the commit
-message). CI is billing-blocked today — check the run once; if the scope job dies with no steps (the
-known billing failure, confirm via gh api repos/${REPO}/check-runs/<id>/annotations), don't
-wait on it further. Merge with gh pr merge --merge --admin --delete-branch, then close #${claim.number}
-with a comment summarizing what shipped. Report: merged, prNumber, reason.`,
+    `${BASH_NOTE}
+Branch ${claim.branch} is clean (local verify passed, independent review clean). Push and open the
+PR in one chained call — the body needs a file since it's multi-line and must end with
+"Closes #${claim.number}" (never in the commit message):
+
+  cat > /tmp/pipeline-pr-body.md <<'EOF'
+<a short PR body summarizing what shipped>
+
+Closes #${claim.number}
+EOF
+  git push -u origin ${claim.branch} && \\
+  gh pr create --repo ${REPO} --title "<a short title>" --body-file /tmp/pipeline-pr-body.md
+
+CI is billing-blocked today — that is the one genuinely conditional step here, so judge it on its
+own rather than folding it into the chain above: check the run once; if the scope job dies with no
+steps (the known billing failure, confirm via
+gh api repos/${REPO}/check-runs/<id>/annotations), don't wait on it further; otherwise take its
+real result. Once you've decided the PR is mergeable, with <N> the PR number gh pr create printed,
+chain the rest into one call:
+
+  gh pr merge --merge --admin --delete-branch <N> && \\
+  gh issue close ${claim.number} --repo ${REPO} --comment "<one line summarizing what shipped>"
+
+Report: merged, prNumber, reason.`,
     { model: MODELS.land, phase: 'Land', label: label('land'), schema: LAND_SCHEMA }
   )
   state.merged = land.merged
@@ -478,33 +562,37 @@ with a comment summarizing what shipped. Report: merged, prNumber, reason.`,
   // A throw in here would replace whatever the try block returned or threw, so nothing escapes.
   try {
     phase('Cleanup')
-    const releaseStep =
+    // Whether a claim needs releasing and whether the local branch survived a merge are both
+    // already known here — nothing about either is the cleanup agent's judgement call, so the
+    // commands for them are assembled now rather than left for it to decide at runtime.
+    const releaseCommand =
       claimOpen && claimedNumber
-        ? `0. Issue #${claimedNumber} was claimed and never landed. Remove its in-progress label, add
-   ready-for-human, and comment this reason so the claim is released: ${releaseReason}\n`
+        ? `gh issue edit ${claimedNumber} --repo ${REPO} --remove-label in-progress --add-label ready-for-human && ` +
+          `gh issue comment ${claimedNumber} --repo ${REPO} --body ${sq(releaseReason)} ; `
         : ''
+    const branchDeleteCommand =
+      state.merged && state.localBranch ? `git branch -D ${sq(state.localBranch)} 2>/dev/null ; ` : ''
     const cleaned = await agent(
       `${BASH_NOTE}
-This run's branch is ${state.localBranch || '(none)'} and merged=${state.merged}.
+This run's branch is ${state.localBranch || '(none)'} and merged=${state.merged}. Everything below
+is already decided, so run it as one chained call rather than as separate steps — idempotent
+teardown tolerates a container, worktree or branch that's already gone, which is why the pieces
+after the checkout are joined with ";" instead of "&&":
 
-${releaseStep}
+  ${releaseCommand}(git checkout main || git checkout -B main origin/main) && \\
+  ${writeJsonCommand('/tmp/ticket-pipeline-cleanup.json', state)} && \\
+  npx tsx lib/ticketPipeline/cleanup.ts < /tmp/ticket-pipeline-cleanup.json | \\
+    jq -r 'join(" ; ")' > /tmp/ticket-pipeline-cleanup.sh && \\
+  bash /tmp/ticket-pipeline-cleanup.sh ; \\
+  ${branchDeleteCommand}git status --short
 
-1. Put the checkout back on main first, so no branch is pinned by being the current one:
-   git checkout main || git checkout -B main origin/main
-2. Build the teardown list and run it. It frees ports ${E2E_PORT} and ${BOOT_PORT} and removes both
-   pipeline containers itself, so do not issue those by hand — run exactly what it prints:
-
-${writeJsonCommand('/tmp/ticket-pipeline-cleanup.json', state)}
-npx tsx lib/ticketPipeline/cleanup.ts < /tmp/ticket-pipeline-cleanup.json
-
-   That prints a JSON array of shell commands. Run each one in order, tolerating "not found"-type
-   errors (idempotent teardown — a container or worktree that's already gone is not a failure).
-   The branch delete arrives already wrapped in its own guard, so run it as given rather than
-   deciding anything about it yourself; if it prints "kept <branch>", report that.
-3. If merged=true and the local branch still exists, delete it now with "git branch -D <branch>".
-   The module deliberately omits that command, and "gh pr merge --delete-branch" only removes the
-   remote copy, so without this the local branch survives every merged run.
-4. Report the final "git status --short" output and the current branch verbatim.`,
+That teardown list frees ports ${E2E_PORT} and ${BOOT_PORT}, removes both pipeline containers, and
+(when this run did not merge) deletes the local branch only if it holds no commits origin/main
+lacks — "gh pr merge --delete-branch" only removes the remote copy on a merge, which is why
+${
+  branchDeleteCommand ? 'this run also deletes it directly, since it did merge.' : 'that direct delete is skipped here.'
+}
+Report the final "git status --short" output and the current branch verbatim.`,
       { model: MODELS.cleanup, phase: 'Cleanup', label: label('clean up after') }
     )
     log(`Cleanup finished: ${typeof cleaned === 'string' ? cleaned : JSON.stringify(cleaned)}`)
