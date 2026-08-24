@@ -27,7 +27,15 @@ const MODELS = {
 
 // `args` names a ticket when the queue's own ordering is not the one wanted — a blocker that has
 // to land before the item that needs it. Unset, the router picks as before.
-const forcedTicket = typeof args === 'number' ? args : args?.ticket
+//
+// `args: 290` can arrive as the string "290", so a bare `typeof === 'number'` test left the pin
+// undefined and the router picked a different ticket — a caller who names one and silently gets
+// another. An unusable pin now stops the run instead of routing around it.
+const rawTicket = args !== null && typeof args === 'object' ? args.ticket : args
+const forcedTicket = rawTicket === undefined || rawTicket === null ? undefined : Number(rawTicket)
+if (forcedTicket !== undefined && !Number.isInteger(forcedTicket)) {
+  throw new Error(`ticket-pipeline: args named a ticket that is not a number: ${JSON.stringify(args)}`)
+}
 
 const MAX_FIX_ROUNDS = 2
 const REPO = 'metasito/murlan'
