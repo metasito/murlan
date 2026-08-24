@@ -48,7 +48,7 @@
 
 **Interfaces:** None — this is a documentation audit, no code.
 
-- [ ] **Step 1: Verify each Invariants bullet against source**
+- [x] **Step 1: Verify each Invariants bullet against source**
 
 Run each check; record PASS (still true, keep as worded), REDUNDANT (true but a test/lint already enforces it mechanically — cut the prose, keep a one-line pointer to what enforces it), or STALE (no longer true — cut or rewrite):
 
@@ -100,7 +100,7 @@ grep -n "pendingInvite" context/*.tsx components/*.tsx
 test -f docs/RULES.md && grep -c "^##" docs/RULES.md
 ```
 
-- [ ] **Step 2: Verify each Known Pitfalls bullet against source**
+- [x] **Step 2: Verify each Known Pitfalls bullet against source**
 
 ```bash
 # React Compiler / babel-preset-expo dependency
@@ -111,18 +111,18 @@ grep -n "react-compiler" package.json
 grep -rn "react-test-renderer\|flexbox" package.json
 ```
 
-- [ ] **Step 3: Apply the audit**
+- [x] **Step 3: Apply the audit**
 
 For every bullet marked REDUNDANT: keep one sentence stating the invariant, cut the elaboration, add "(enforced by `<test file>`)" if a test pins it. For every bullet marked STALE: rewrite to match current source, citing the corrected file/line. Do not touch bullets marked PASS. Do not add anything not found by an actual grep in Step 1/2 — this task only tightens what's there.
 
-- [ ] **Step 4: Confirm the doc still reads correctly**
+- [x] **Step 4: Confirm the doc still reads correctly**
 
 ```bash
 npx markdownlint CLAUDE.md 2>&1 || true   # informational only, repo has no markdownlint config to fail on
 wc -l CLAUDE.md   # record before/after line count for the success criterion
 ```
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add CLAUDE.md
@@ -139,7 +139,7 @@ git commit -m "Audit CLAUDE.md's invariants and pitfalls against source"
 
 **Interfaces:** None.
 
-- [ ] **Step 1: For each candidate, check whether anything still references it**
+- [x] **Step 1: For each candidate, check whether anything still references it**
 
 ```bash
 for f in docs/HANDOFF.md docs/BUNDLE.md docs/BETA-PLAYTEST.md docs/ci-cost-research.md \
@@ -154,17 +154,17 @@ done
 
 A candidate with zero external references is a strong delete signal. A candidate referenced only by another doc on the *same* delete list doesn't count as a keep.
 
-- [ ] **Step 2: For each candidate with zero references, read it fully and judge against the repo's current state**
+- [x] **Step 2: For each candidate with zero references, read it fully and judge against the repo's current state**
 
 A research doc (`docs/research/*.md`, `docs/ci-cost-research.md`, `docs/keyboard-avoidance-research.md`) earns its keep only if a still-relevant decision cites it (checked in Step 1) — otherwise the decision it fed into either shipped (so the research is history, not reference) or didn't (so it's speculative). `docs/HANDOFF.md` and `docs/BETA-PLAYTEST.md` are time-boxed by nature — read them and confirm whether the events/dates they describe are past.
 
-- [ ] **Step 3: Delete what's dead, per `CLAUDE.md`'s own "leave no residue" rule (line 206)**
+- [x] **Step 3: Delete what's dead, per `CLAUDE.md`'s own "leave no residue" rule (line 206)**
 
 ```bash
 git rm docs/<dead-file-1>.md docs/<dead-file-2>.md ...
 ```
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git commit -m "Remove superseded and dead docs, verified against current source"
@@ -180,7 +180,7 @@ git commit -m "Remove superseded and dead docs, verified against current source"
 
 **Interfaces:** None.
 
-- [ ] **Step 1: Confirm what's actually residue**
+- [x] **Step 1: Confirm what's actually residue** — not present in this worktree (untracked, never propagated from the original checkout); see ledger ruling.
 
 ```bash
 git status --porcelain --ignored .scratch/
@@ -193,7 +193,7 @@ find . -maxdepth 3 -iname "*.bak" -not -path "*/node_modules/*"
 grep -rn "felt.fixed.bak" --include="*.ts" --include="*.tsx" --include="*.mjs" --include="*.json" .
 ```
 
-- [ ] **Step 2: Remove it**
+- [x] **Step 2: Remove it** — n/a, nothing present to remove.
 
 ```bash
 rm .scratch/felt.fixed.bak
@@ -201,7 +201,7 @@ rm .scratch/felt.fixed.bak
 
 (Untracked files don't need `git rm`; confirm `git status --short` shows nothing new for it.)
 
-- [ ] **Step 3: Commit if anything tracked changed** (likely nothing — this was untracked)
+- [x] **Step 3: Commit if anything tracked changed** (likely nothing — this was untracked) — confirmed nothing tracked changed.
 
 ```bash
 git status --short
