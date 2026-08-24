@@ -40,7 +40,7 @@ export const CARD_BACK_H = (s: number) => BACK_H * s;
 
 /** Multipliers on the table's own scale, by where the card is drawn. */
 export const FIELD_SCALE = 1.0;
-export const HAND_SCALE = 0.95;
+export const HAND_SCALE = 1.08;
 export const BACK_SCALE = 0.88;
 
 /**

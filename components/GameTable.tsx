@@ -55,7 +55,6 @@ import {
   canPassNow as canPassNowOf,
   comboKey,
   computeTableFrame,
-  tableShortEdge,
   describeTableForA11y,
   EMPTY_PILE,
   handCountOf,
@@ -690,7 +689,11 @@ export function GameTable({
   const { t, tn } = useTranslation();
   const insets = useSafeAreaInsets();
   const { width: W, height: H } = useWindowDimensions();
-  const scale = cardScale(tableShortEdge({ width: W, height: H, insets }));
+  // The window's own short edge, so a phone and a browser at the same size draw the same
+  // table. The safe area is the layout's job — the rail absorbs the cutout and the hand zone
+  // carries the home indicator — and taking it off here instead shrinks the cards on device
+  // only, which is the divergence from the web design, not a fit for it.
+  const scale = cardScale(Math.min(W, H));
   const handCardH = CARD_H(scale * HAND_SCALE);
   // What the player sees of a hand card, and how tall PASSA and GIOCA are —
   // the row reads as one band even though only the cards are cropped.

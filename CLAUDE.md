@@ -81,11 +81,11 @@ Verify against source before changing any.
   which rules out anything black covering the table and leaves only the felt's own paint
   landing on top. Sample pixels first (`docs/agents/loops.md`); a fix argued from the code
   alone gets one thing right and two things wrong, on the owner's phone, each round.
-- **Every card and touch target is sized from `tableShortEdge()`**, not from
-  `useWindowDimensions()` — the window minus what the device keeps for a cutout, a home
-  indicator or a status bar. Measuring the raw window sizes the table for room it does not
-  have (21pt of height and 118pt of width on a notched phone in landscape) and reads as a
-  zoomed-in table on device while every browser check passes.
+- **The table's scale comes from the window's own short edge**, never from the short edge
+  minus the safe-area insets. A phone and a browser at the same window size must draw the same
+  table; taking the insets off here shrank the cards on device only, which is a divergence
+  from the web design rather than a fit for it. The safe area is the layout's job — the rail
+  absorbs the cutout (`railWidth`), the hand zone carries the home indicator (`HAND_ZONE_H`).
 - **Design tokens are used in the role they were named for.** A fill or border token used as
   a text colour renders as almost nothing, silently. Pinned by `tests/tokenRoles.test.ts`.
 - **A labelled control exposes one accessible node** — hide decorative children explicitly;
