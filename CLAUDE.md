@@ -145,7 +145,8 @@ lines is explaining itself instead of being clear.
   not resolve, because that registry does not read the project's `.claude/workflows/`. It claims
   the ticket, gates it, implements it, verifies it, reviews it through three independent lenses
   and lands it. Everything below still holds — the pipeline does it for you rather than
-  replacing it.
+  replacing it. The other two routes have their own entry points, `/triage` and `/wayfinder`,
+  each taking `loop` the same way; neither writes code, so neither calls the pipeline.
 - **Working an item by hand**, when the pipeline doesn't apply (a `ready-for-human` item, a
   triage or wayfinder route, hygiene work with no ticket): commit and push yourself — don't
   wait to be asked — then `gh run watch` **the pull request's run** and close the issue only

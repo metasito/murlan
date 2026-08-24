@@ -35,11 +35,12 @@ Two lines, plain language, no file lists:
 
 ## When the pipeline does not apply
 
-It implements code. Three routes it cannot take — do these by hand, then continue:
+It implements code. Three routes it cannot take:
 
-- `triage` or `wayfinder` (no code to write)
-- a `question` / owner-call ticket
-- a route that hands off to the owner (`ready-for-human`)
+- `triage` → `/triage`
+- `wayfinder` → `/wayfinder`
+- a `question` / owner-call ticket, or a route that hands off to the owner — work it by hand,
+  then continue.
 
 ## Loop mode only
 
