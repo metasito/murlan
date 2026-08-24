@@ -37,6 +37,8 @@ import Ionicons from "@expo/vector-icons/Ionicons";
 import {
   buildCombination,
   canPlay,
+  getCardDisplayRank,
+  getSuitSymbol,
   sortHand,
   type Card,
   type Combination,
@@ -807,10 +809,16 @@ export function GameTable({
   });
   // Two words fit on the button; the sentence is what the screen reader speaks
   // and what the toast shows when the refusal is tapped. Only the start-card
-  // reason reads the rank.
-  const startCardRank = gameState.startCard?.rank ?? "";
+  // reason reads the card. At 2 players the opening card can be the fallback
+  // "lowest dealt card" rather than the 3♠ (docs/RULES.md §4), so the suit is
+  // read off the card rather than assumed.
+  const startCardDisplayRank = gameState.startCard ? getCardDisplayRank(gameState.startCard.rank) : "";
+  const startCardSuitSymbol = gameState.startCard ? getSuitSymbol(gameState.startCard.suit) : "";
+  const startCardSpokenName = gameState.startCard ? cardSpokenName(gameState.startCard, t) : "";
   const dimReasonText = t(PLAY_A11Y_SPOKEN_KEYS[dimLabel] ?? PLAY_LABEL_KEYS[dimLabel], {
-    rank: startCardRank,
+    rank: startCardDisplayRank,
+    suit: startCardSuitSymbol,
+    card: startCardSpokenName,
   });
 
   const opponents = React.useMemo(
@@ -1353,13 +1361,19 @@ export function GameTable({
             <View style={sharedTableStyles.centerSection}>
               {showStartCardBanner ? (
                 <View style={styles.startCardBanner}>
-                  <TableText style={styles.startCardGlyph}>♠</TableText>
+                  <TableText style={styles.startCardGlyph}>
+                    {getSuitSymbol(gameState.startCard!.suit)}
+                  </TableText>
                   <TableText style={styles.startCardText}>
                     {gameState.currentTurnIndex === viewerSeat
-                      ? t("gameTable.startCardBannerSelf", { rank: gameState.startCard!.rank })
+                      ? t("gameTable.startCardBannerSelf", {
+                          rank: getCardDisplayRank(gameState.startCard!.rank),
+                          suit: getSuitSymbol(gameState.startCard!.suit),
+                        })
                       : t("gameTable.startCardBannerOther", {
                           name: players[gameState.currentTurnIndex]?.name ?? "",
-                          rank: gameState.startCard!.rank,
+                          rank: getCardDisplayRank(gameState.startCard!.rank),
+                          suit: getSuitSymbol(gameState.startCard!.suit),
                         })}
                   </TableText>
                 </View>

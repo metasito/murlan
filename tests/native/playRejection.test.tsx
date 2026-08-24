@@ -38,6 +38,7 @@ jest.mock('expo-haptics', () => ({
 import * as Haptics from 'expo-haptics';
 import { GameTable } from '@/components/GameTable';
 import { t } from '@/lib/i18n';
+import { cardSpokenName } from '@/lib/cardNames';
 import type { Card, Combination, GameState, Player, Rank, Suit } from '@/lib/gameEngine';
 
 const METRICS = {
@@ -124,9 +125,23 @@ describe('the refused GIOCA names the right reason', () => {
     );
 
     expect(reasonOf()).toContain(
-      t('gameTable.playA11ySpokenStartCard', { rank: THREE_S.rank })
+      t('gameTable.playA11ySpokenStartCard', { card: cardSpokenName(THREE_S, t) })
     );
     expect(reasonOf()).not.toContain(t('gameTable.playA11ySpokenTooLow'));
+
+    await r.unmount();
+  });
+
+  it('names the actual 2-player fallback card, not the 3♠, when it opens instead', async () => {
+    const FIVE_H = card('5', 'hearts');
+    const r = await render(
+      table(state({ firstPlayMade: false, startCard: FIVE_H }), [SEVEN_H.id, SEVEN_C.id])
+    );
+
+    expect(reasonOf()).toContain(
+      t('gameTable.playA11ySpokenStartCard', { card: cardSpokenName(FIVE_H, t) })
+    );
+    expect(reasonOf()).not.toContain('♠');
 
     await r.unmount();
   });
