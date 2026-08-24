@@ -1,16 +1,31 @@
 const fs = require("fs");
 const path = require("path");
-const { spawn } = require("child_process");
+const { spawn, execSync } = require("child_process");
 const { Readable } = require("stream");
 const { pipeline } = require("stream/promises");
 
 let metroProcess = null;
 
-function exitWithError(message) {
-  console.error(message);
-  if (metroProcess) {
+// On Windows, metroProcess is a shell wrapper (spawn ... shell: true): killing
+// it does not touch the npm/npx/expo descendants underneath, so Metro's real
+// node.exe survives and keeps port 8081 held for the next run. taskkill /t
+// kills the whole process tree; elsewhere .kill() already does that.
+function killMetroProcess() {
+  if (!metroProcess) return;
+  if (process.platform === "win32") {
+    try {
+      execSync(`taskkill /pid ${metroProcess.pid} /t /f`, { stdio: "ignore" });
+    } catch {
+      // Already exited.
+    }
+  } else {
     metroProcess.kill();
   }
+}
+
+function exitWithError(message) {
+  console.error(message);
+  killMetroProcess();
   process.exit(1);
 }
 
@@ -18,7 +33,7 @@ function setupSignalHandlers() {
   const cleanup = () => {
     if (metroProcess) {
       console.log("Cleaning up Metro process...");
-      metroProcess.kill();
+      killMetroProcess();
     }
     process.exit(0);
   };
@@ -124,6 +139,7 @@ async function startMetro(expoPublicDomain) {
     stdio: ["ignore", "pipe", "pipe"],
     detached: false,
     env,
+    shell: process.platform === "win32",
   });
 
   if (metroProcess.stdout) {
@@ -557,16 +573,12 @@ async function main() {
 
   console.log("Build complete! Deploy to:", baseUrl);
 
-  if (metroProcess) {
-    metroProcess.kill();
-  }
+  killMetroProcess();
   process.exit(0);
 }
 
 main().catch((error) => {
   console.error("Build failed:", error.message);
-  if (metroProcess) {
-    metroProcess.kill();
-  }
+  killMetroProcess();
   process.exit(1);
 });

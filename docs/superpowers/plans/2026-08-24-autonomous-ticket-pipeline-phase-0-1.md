@@ -216,7 +216,7 @@ git status --short
 
 **Interfaces:** None.
 
-- [ ] **Step 1: Push the branch and open the PR**
+- [x] **Step 1: Push the branch and open the PR**
 
 ```bash
 git push -u origin <branch-name>
@@ -231,11 +231,11 @@ EOF
 )
 ```
 
-- [ ] **Step 2: Run the manual two-axis review** (Phase 1's automated gate doesn't exist yet)
+- [x] **Step 2: Run the manual two-axis review** (Phase 1's automated gate doesn't exist yet)
 
 Invoke `mattpocock-skills:code-review` against this branch's diff (fixed point: `origin/main`). Fix anything it finds, push, re-review only what changed.
 
-- [ ] **Step 3: Merge**
+- [x] **Step 3: Merge**
 
 ```bash
 gh pr merge --merge --admin --delete-branch
@@ -258,7 +258,7 @@ gh api repos/metasito/murlan/check-runs/<job-id>/annotations
 **Interfaces:**
 - Produces: `needsDesignFirstGate(ticket: { filesTouched: string[]; body: string }): { escalate: boolean; reason: string }` — imported by nothing in-repo (the `Workflow` script can't import files), but called via its CLI entry from `.claude/workflows/ticket-pipeline.mjs` (Task 8).
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 ```typescript
 // tests/ticketPipelineGate.test.ts
@@ -320,7 +320,7 @@ describe("the design-first gate", () => {
 });
 ```
 
-- [ ] **Step 2: Run it and confirm it fails**
+- [x] **Step 2: Run it and confirm it fails**
 
 ```bash
 node --test tests/ticketPipelineGate.test.ts
@@ -328,10 +328,12 @@ node --test tests/ticketPipelineGate.test.ts
 
 Expected: fails on the import — `lib/ticketPipeline/gate.ts` doesn't exist yet.
 
-- [ ] **Step 3: Implement**
+- [x] **Step 3: Implement**
 
 ```typescript
 // lib/ticketPipeline/gate.ts
+import { pathToFileURL } from "node:url";
+
 const SCHEMA_FILE = "shared/schema.ts";
 const SOCKET_PATTERN = /server\/socket|shared\/events\.ts/;
 const FILE_COUNT_THRESHOLD = 6;
@@ -366,13 +368,13 @@ export function needsDesignFirstGate(ticket: TicketFacts): GateVerdict {
   return { escalate: false, reason: "" };
 }
 
-if (process.argv[1] && import.meta.url === `file://${process.argv[1].replace(/\\/g, "/")}`) {
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   const input = JSON.parse(process.argv[2] ?? "{}");
   process.stdout.write(JSON.stringify(needsDesignFirstGate(input)));
 }
 ```
 
-- [ ] **Step 4: Run the tests and confirm they pass**
+- [x] **Step 4: Run the tests and confirm they pass**
 
 ```bash
 node --test tests/ticketPipelineGate.test.ts
@@ -380,7 +382,7 @@ node --test tests/ticketPipelineGate.test.ts
 
 Expected: 6/6 pass.
 
-- [ ] **Step 5: Confirm the CLI entry works** (this is how the `Workflow` script will actually invoke it)
+- [x] **Step 5: Confirm the CLI entry works** (this is how the `Workflow` script will actually invoke it)
 
 ```bash
 npx tsx lib/ticketPipeline/gate.ts '{"filesTouched":["shared/schema.ts"],"body":"no decision here"}'
@@ -388,7 +390,7 @@ npx tsx lib/ticketPipeline/gate.ts '{"filesTouched":["shared/schema.ts"],"body":
 
 Expected stdout: `{"escalate":true,"reason":"touches shared/schema.ts with no recorded decision"}`
 
-- [ ] **Step 6: Typecheck and commit**
+- [x] **Step 6: Typecheck and commit**
 
 ```bash
 npx tsc --noEmit
@@ -407,7 +409,7 @@ git commit -m "Add the design-first gate as a pure, tested function"
 **Interfaces:**
 - Produces: `pickVerifyChecks(filesTouched: string[]): string[]` — an ordered list of shell commands, per `docs/agents/loops.md`'s "Pick the loop by what you changed" table. Called via CLI entry from Task 8's script.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 ```typescript
 // tests/ticketPipelineVerifyPlan.test.ts
@@ -453,7 +455,7 @@ describe("picking verify checks by files touched", () => {
 });
 ```
 
-- [ ] **Step 2: Run it and confirm it fails**
+- [x] **Step 2: Run it and confirm it fails**
 
 ```bash
 node --test tests/ticketPipelineVerifyPlan.test.ts
@@ -461,10 +463,12 @@ node --test tests/ticketPipelineVerifyPlan.test.ts
 
 Expected: fails — module doesn't exist.
 
-- [ ] **Step 3: Implement**
+- [x] **Step 3: Implement**
 
 ```typescript
 // lib/ticketPipeline/verifyPlan.ts
+import { pathToFileURL } from "node:url";
+
 const BASELINE = `node --test "tests/**/*.test.ts"`;
 
 const RULES: { pattern: RegExp; command: string }[] = [
@@ -488,13 +492,13 @@ export function pickVerifyChecks(filesTouched: string[]): string[] {
   return Array.from(checks);
 }
 
-if (process.argv[1] && import.meta.url === `file://${process.argv[1].replace(/\\/g, "/")}`) {
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   const input = JSON.parse(process.argv[2] ?? "[]");
   process.stdout.write(JSON.stringify(pickVerifyChecks(input)));
 }
 ```
 
-- [ ] **Step 4: Run tests, confirm pass**
+- [x] **Step 4: Run tests, confirm pass**
 
 ```bash
 node --test tests/ticketPipelineVerifyPlan.test.ts
@@ -502,13 +506,13 @@ node --test tests/ticketPipelineVerifyPlan.test.ts
 
 Expected: 7/7 pass.
 
-- [ ] **Step 5: Confirm the CLI entry**
+- [x] **Step 5: Confirm the CLI entry**
 
 ```bash
 npx tsx lib/ticketPipeline/verifyPlan.ts '["components/GameTable.tsx"]'
 ```
 
-- [ ] **Step 6: Typecheck and commit**
+- [x] **Step 6: Typecheck and commit**
 
 ```bash
 npx tsc --noEmit
@@ -527,7 +531,7 @@ git commit -m "Add verify-check selection as a pure, tested function"
 **Interfaces:**
 - Produces: `buildCleanupCommands(state: RunState): string[]` where `RunState = { worktreePath: string | null; dockerStarted: boolean; localBranch: string | null; merged: boolean }`. Called via CLI entry from Task 8's `finally` block.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 ```typescript
 // tests/ticketPipelineCleanup.test.ts
@@ -568,16 +572,18 @@ describe("building the cleanup command list", () => {
 });
 ```
 
-- [ ] **Step 2: Run it and confirm it fails**
+- [x] **Step 2: Run it and confirm it fails**
 
 ```bash
 node --test tests/ticketPipelineCleanup.test.ts
 ```
 
-- [ ] **Step 3: Implement**
+- [x] **Step 3: Implement**
 
 ```typescript
 // lib/ticketPipeline/cleanup.ts
+import { pathToFileURL } from "node:url";
+
 export interface RunState {
   worktreePath: string | null;
   dockerStarted: boolean;
@@ -600,13 +606,13 @@ export function buildCleanupCommands(state: RunState): string[] {
   return commands;
 }
 
-if (process.argv[1] && import.meta.url === `file://${process.argv[1].replace(/\\/g, "/")}`) {
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   const input = JSON.parse(process.argv[2] ?? "{}");
   process.stdout.write(JSON.stringify(buildCleanupCommands(input)));
 }
 ```
 
-- [ ] **Step 4: Run tests, confirm pass**
+- [x] **Step 4: Run tests, confirm pass**
 
 ```bash
 node --test tests/ticketPipelineCleanup.test.ts
@@ -614,13 +620,13 @@ node --test tests/ticketPipelineCleanup.test.ts
 
 Expected: 6/6 pass.
 
-- [ ] **Step 5: Confirm the CLI entry**
+- [x] **Step 5: Confirm the CLI entry**
 
 ```bash
 npx tsx lib/ticketPipeline/cleanup.ts '{"worktreePath":null,"dockerStarted":true,"localBranch":"agent/1-x","merged":false}'
 ```
 
-- [ ] **Step 6: Typecheck and commit**
+- [x] **Step 6: Typecheck and commit**
 
 ```bash
 npx tsc --noEmit
@@ -641,7 +647,7 @@ git commit -m "Add cleanup command list as a pure, tested function"
 
 This task has no isolated unit test — a `Workflow` script's correctness is in how its `agent()` calls are orchestrated, which only proves out by running real agents (costly) or by the supervised live trial (Task 9). Build it once, correctly, self-reviewed against the spec's stage list, then prove it in Task 9.
 
-- [ ] **Step 1: Write the script**
+- [x] **Step 1: Write the script**
 
 ```javascript
 export const meta = {
@@ -892,11 +898,11 @@ the final "git status --short" output verbatim.`,
 }
 ```
 
-- [ ] **Step 2: Self-review the script against the spec's stage diagram**
+- [x] **Step 2: Self-review the script against the spec's stage diagram**
 
 Re-read `docs/superpowers/specs/2026-08-24-autonomous-ticket-pipeline-design.md`'s Phase 1 "Shape" block line by line against the script above — confirm every arrow in the diagram has a corresponding stage, the fix-loop cap is 2, the four lenses match the spec's four bullets, and the `finally` block runs regardless of which `return` was hit.
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 mkdir -p .claude/workflows

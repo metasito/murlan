@@ -176,6 +176,20 @@ real tickets to know its actual per-ticket cost and failure rate.
   watch CI" — that's what actually runs today. A "CI restored" path (revert
   to push + `gh run watch`) is a small follow-up once billing is fixed, not
   designed into this phase.
+- **Verify runs `ci.yml`'s full sweep, not a scoped subset, while CI stays
+  down.** With Actions not running at all, nothing else catches what a
+  scoped-by-files-touched check misses — so every Verify call (the initial
+  pass and every fix-round re-verify) runs all four of `ci.yml`'s jobs
+  locally: `npm run typecheck`, `npm test`, `npm run test:native`,
+  `npm run lint` (the `verify` job); `npm run test:e2e` (the `browser` job);
+  and the `build` job's sequence (`npm run expo:web:build && npm run
+  server:build`, `npm run bundle:budget`, `npm run expo:static:build`, then
+  booting `server_dist/index.mjs` and confirming `/health` reports
+  `"db":"connected"` — needs the same throwaway Postgres as everything
+  else). `pickVerifyChecks`'s scoped-by-file selection stays as the CI-
+  restored design (a fast local check while real CI is the backstop) but is
+  not what runs today. Costs real wall-clock per verify call; that cost is
+  accepted because there is currently no other net.
 - **Phase 0 delivery.** The invariant/doc audit is applied on a branch and
   opened as a PR for review — not a chat list requiring line-by-line
   pre-approval, not silent auto-merge. Reviewed like any other change.
