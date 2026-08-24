@@ -27,8 +27,8 @@ function sq(text) {
   return `'${String(text).replace(/'/g, "'\\''")}'`
 }
 
-// Every RULES pattern in verifyPlan.ts is forward-slash anchored, so a Windows-style path an
-// agent reports would match no rule and silently skip its suite.
+// gate.ts matches paths with forward-slash patterns, so a Windows-style path an agent reports
+// would match nothing and silently skip the escalation it should have triggered.
 function normalizePaths(files) {
   return (files || []).map((f) => String(f).replace(/\\/g, '/'))
 }
@@ -304,7 +304,8 @@ triage/wayfinder/handoff instead, report claimed: false with why. Otherwise clai
 docs/agents/issue-tracker.md: add the in-progress label, comment naming the branch you'll use
 (agent/<number>-<slug>), then re-view the issue to confirm you won the race (stand down if an
 older claim is already there). Report: claimed, number, branch, title, filesTouched (best-effort
-list from the issue's Ground truth pointers), reason. Do not report the issue body — every later
+list from the issue's Ground truth pointers, as repo-relative paths like lib/foo.ts — never
+absolute), reason. Do not report the issue body — every later
 stage reads it from GitHub itself.`,
     { phase: 'Claim', schema: CLAIM_SCHEMA }
   )
