@@ -123,8 +123,10 @@ lines is explaining itself instead of being clear.
   route as well as the ticket: implement a frontier ticket (`ready-for-agent`, unclaimed, no
   open native blocker, smallest `size:*` first); if no frontier work is takeable it routes
   triage, then wayfinder, then hands off to you (`docs/agents/issue-tracker.md`).
-  **A routed implement ticket goes through `Workflow({ name: 'ticket-pipeline' })`**
-  (`.claude/workflows/ticket-pipeline.mjs`), which claims it, gates it, implements it,
+  **A routed implement ticket goes through
+  `Workflow({ scriptPath: '.claude/workflows/ticket-pipeline.mjs' })`** — the `name` form does
+  not resolve, because that registry does not read the project's `.claude/workflows/`. It
+  claims the ticket, gates it, implements it,
   verifies it, reviews it through four independent lenses and lands it. Everything below
   still holds — the pipeline does it for you rather than replacing it.
 - **Working an item by hand**, when the pipeline doesn't apply (a `ready-for-human` item, a

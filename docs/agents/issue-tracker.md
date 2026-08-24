@@ -24,7 +24,8 @@ Infer the repo from `git remote -v`; `gh` does this automatically when run insid
 ## Claiming an item
 
 The standard way to work a ticket the picker routes to implement is
-`Workflow({ name: 'ticket-pipeline' })` (`.claude/workflows/ticket-pipeline.mjs`): it claims,
+`Workflow({ scriptPath: '.claude/workflows/ticket-pipeline.mjs' })` — the `name` form does not
+resolve, because that registry does not read the project's `.claude/workflows/`. It claims,
 gates, implements, verifies, reviews through four independent lenses, lands and tears down,
 per `docs/superpowers/specs/2026-08-24-autonomous-ticket-pipeline-design.md`. Everything
 below describes what it does, and stays the instruction for anything worked by hand.
