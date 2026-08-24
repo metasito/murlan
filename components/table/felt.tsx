@@ -235,16 +235,7 @@ export function FeltPool({
               <Stop offset={FIELD_OFFSETS[4]} {...stop(stops[4])} />
               <Stop offset={TAIL_OFFSETS[0]} {...stop(mix(stops[4], Colors.bg, TAIL_MIX[0]))} />
               <Stop offset={TAIL_OFFSETS[1]} {...stop(mix(stops[4], Colors.bg, TAIL_MIX[1]))} />
-              {/* Transparent, not the room's colour: the backdrop below already
-                  paints the room, and a `<Rect>` fills the SVG's whole square
-                  box — so an opaque last stop is an opaque rectangle around the
-                  lamp, wider than the felt, that hides anything it is ever
-                  drawn over. */}
-              <Stop
-                offset={DARK_OFFSET}
-                stopColor={mix(stops[4], Colors.bg, RIM_MIX)}
-                stopOpacity={0}
-              />
+              <Stop offset={DARK_OFFSET} {...stop(mix(stops[4], Colors.bg, RIM_MIX))} />
             </RadialGradient>
           </Defs>
           <Rect width={POOL_UNITS} height={POOL_UNITS} fill={`url(#${FIELD_ID})`} />
