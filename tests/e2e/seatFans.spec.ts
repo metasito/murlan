@@ -144,6 +144,43 @@ test.describe("the opponents' fans", () => {
     }
   });
 
+  // The test above only ever proves the top seat: a two-seat table has no
+  // left or right opponent to draw a fan for. A four-seat table's default
+  // thirteen-card deal is past every cap — left/right's 5 as well as top's 7
+  // — so this is what actually exercises FAN_DRAWN_CARDS.left/.right, which
+  // otherwise ship with no coverage at all.
+  test("caps every side, not only the top seat", async ({ page, baseURL }) => {
+    test.setTimeout(120_000);
+    await page.setViewportSize(VIEWPORT);
+    const FULL_HAND = 13;
+    await openSeededGame(page, baseURL!, 4, FULL_HAND);
+    await page.waitForTimeout(1_500);
+
+    // The same floor as the test above, for the sides it actually reaches:
+    // every cap must be under the hand size or nothing here is being tested.
+    expect(
+      Math.max(...Object.values(FAN_DRAWN_CARDS)),
+      "no cap is under a hand this table can deal, so nothing below is being checked"
+    ).toBeLessThan(FULL_HAND);
+
+    const fans = await fanCounts(page);
+    expect(
+      fans.map((f) => f.side).sort(),
+      "a four-seat table did not produce a top, a left and a right opponent"
+    ).toEqual(["left", "right", "top"]);
+
+    for (const fan of fans) {
+      expect(
+        fan.drawn,
+        `the ${fan.side} seat drew ${fan.drawn} backs for a hand of ${FULL_HAND}`
+      ).toBeLessThanOrEqual(FAN_DRAWN_CARDS[fan.side as keyof typeof FAN_DRAWN_CARDS]);
+      expect(
+        fan.badge,
+        `the ${fan.side} seat's badge was capped along with its fan`
+      ).toBe(String(FULL_HAND));
+    }
+  });
+
   test("centre on their own ring, keep one gap, and do not creep", async ({ page, baseURL }) => {
     test.setTimeout(120_000);
     await page.setViewportSize(VIEWPORT);
