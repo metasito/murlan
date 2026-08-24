@@ -263,6 +263,10 @@ export async function adminSnapshot(provisionalGames: number): Promise<AdminSnap
     funnel: funnelRows,
     bugReports: bugReportRows.map((r) => ({
       at: r.createdAt.toISOString(),
+      // The LEFT JOIN types this nullable, but `bug_reports.user_id` is
+      // NOT NULL with ON DELETE CASCADE (shared/schema.ts) — a row whose user
+      // was deleted no longer exists to be read, so this never actually
+      // renders. Kept for the type, not for a real state.
       who: r.username ?? "(deleted)",
       description: r.description,
       where: r.screen ?? "",

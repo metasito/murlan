@@ -2,11 +2,9 @@
 // is really armed.
 //
 // The ring is a display of the viewer's own chip, so the two have to answer one
-// gate (`turnTimerActive`). They did not: the ring was built from the viewer's
-// finish state and the game being over, which arms it through the exchange and
-// through an offline lead where no deadline exists, and disarms every other
-// seat the moment the viewer goes out — online, those seats still have server
-// deadlines.
+// gate (`turnTimerActive`): asked about the seat the ring is drawn on, not the
+// viewer, since a seat that is not the viewer's can still have a server
+// deadline once the viewer is out.
 //
 // This is a tree question, not a layout one, so it belongs here rather than in
 // tests/e2e/: whether the clock is rendered at all is visible to
