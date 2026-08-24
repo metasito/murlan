@@ -7,9 +7,19 @@
 //
 // The pool tracks whose turn it is, which is the first of the four signals the
 // table gives about that (the others are the active seat's ring, the other
-// seats dimming, and the action buttons going dark). It moves by `transform`
-// alone: the gradient is drawn once, oversized, and slid under the felt's own
-// clipping box.
+// seats dimming, and the action buttons going dark). It moves by `left`/`top`
+// on its own anchor: the gradient is drawn once, oversized, and slid under the
+// felt's own clipping box.
+//
+// Not `transform`. The anchor's frame moving is not the same thing as its
+// paint moving — react-native-svg's native path paints at the anchor's own
+// laid-out bounds and never reads a transform applied to it (see the shape
+// comment below, which lost this exact fight once already for scale). A
+// `translateX`/`translateY` here reached the *view*, which nothing else in
+// this component depends on, while the gradients inside kept painting at
+// (0, 0): a dark, motionless pool pinned in the corner, on iOS only, with the
+// rest of the table hidden under its unlit tail (#209). `left`/`top` change
+// the bounds themselves, which is what the native path actually reads.
 
 import { useEffect } from "react";
 import { Platform, View, StyleSheet, type ViewStyle } from "react-native";
@@ -133,15 +143,14 @@ const LAMP_MS = 800;
 
 /**
  * The pool is twice the felt on each side — a 2560x1440 surface on a laptop —
- * and the swing moves it. Without its own compositor layer the browser
- * re-rasterises all of that on every frame of the swing, which is the whole
- * table stuttering every time the turn passes. Declared once rather than
- * toggled around the swing: the frame that creates the layer is the expensive
- * one, and creating it on the first frame of every swing is the cost this is
- * meant to remove.
+ * and the swing moves it by `left`/`top`, so the browser lays the anchor's
+ * subtree out again on every frame of the swing rather than only recompositing
+ * it. This hint is what is left to ask for: not a compositor layer (`left`/
+ * `top` never get one), but that the browser isolate the relayout to this
+ * subtree rather than walking back up toward the document.
  */
 const POOL_LAYER =
-  Platform.OS === "web" ? ({ willChange: "transform" } as unknown as ViewStyle) : null;
+  Platform.OS === "web" ? ({ willChange: "left, top" } as unknown as ViewStyle) : null;
 
 export function FeltPool({
   width,
@@ -178,8 +187,11 @@ export function FeltPool({
     [x, y]
   );
 
+  // `left`/`top`, not `transform` — see the header comment on why a transform
+  // here would move the anchor's frame without moving what it paints.
   const poolStyle = useAnimatedStyle(() => ({
-    transform: [{ translateX: x.value }, { translateY: y.value }],
+    left: x.value,
+    top: y.value,
   }));
 
   // Each radial's own ellipse, `rx` by `ry` of the felt, centred on the point
@@ -207,10 +219,11 @@ export function FeltPool({
 
       {/* A point at the lamp. Its children hang off it centred, so each one is
           scaled about the light rather than about a corner — and the swing is
-          this one translate, not a transform per layer. */}
+          this one anchor's position, not a transform per layer. */}
       <Animated.View
+        testID="felt-lamp-anchor"
         style={[
-          { position: "absolute", left: 0, top: 0, width: 0, height: 0 },
+          { position: "absolute", width: 0, height: 0 },
           POOL_LAYER,
           poolStyle,
         ]}
