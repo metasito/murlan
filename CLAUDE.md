@@ -201,7 +201,9 @@ lines is explaining itself instead of being clear.
   defect and an `--admin` merge. Two steps that need the same context and the same judgement are
   one agent, not two: a second `agent()` call re-reads everything the first already had. The
   pipeline's map is `MODELS` in `.claude/workflows/ticket-pipeline.mjs`; hand work follows the
-  same shape.
+  same shape. **Every dispatch also names its subject** — a `label` on `agent()`, a `description`
+  on the Agent tool — because the progress view falls back to the head of the prompt, and a fleet
+  of agents all showing their first instruction line is unreadable at a glance.
 - **Merge the moment the run is green.** `ci.yml`'s `scope` job skips a `main` push whose tree
   a pull request already passed, and that holds only while `main` has not moved. A run takes
   about seven minutes, and every minute a green pull request waits is a minute another session
