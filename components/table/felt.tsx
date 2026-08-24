@@ -7,21 +7,16 @@
 //
 // The pool tracks whose turn it is, which is the first of the four signals the
 // table gives about that (the others are the active seat's ring, the other
-// seats dimming, and the action buttons going dark). It moves by `transform`,
-// except on iOS, where the anchor swings by `left`/`top` instead: the
-// gradient is drawn once, oversized, and slid under the felt's own clipping
-// box.
+// seats dimming, and the action buttons going dark). The gradient is drawn
+// once, oversized, and slid under the felt's own clipping box.
 //
-// iOS only, because that is the one platform where the anchor's frame moving
-// is not the same thing as its paint moving (the shape comment below made the
-// same case once already, for the pool's scale). iOS's `<Svg>` renders into
-// its own Core Graphics context, sized and positioned from the node's own
-// laid-out frame, and never reads a transform an ancestor view carries.
-// Android's `<Svg>` paints through the platform's ordinary view-draw pass,
-// which already carries whatever matrix an ancestor applied before handing
-// off to it, and a browser composites an ancestor's transform before
-// painting — both read the move where iOS's self-contained paint does not.
-// `left`/`top` change the anchor's own bounds, which the iOS path does read.
+// It swings by the anchor's own `left`/`top` on native, and by `transform` on
+// web. `react-native-svg`'s native path paints each `<Svg>` at its own
+// laid-out bounds, so a transform on the view around it moves the frame and
+// not the paint — the same split the shape comment below describes for scale.
+// A browser composites that transform before painting, and a compositor
+// transform is what keeps a 2560x1440 subtree off the layout path for the
+// whole swing.
 
 import { useEffect } from "react";
 import { Platform, View, StyleSheet, type ViewStyle } from "react-native";
@@ -190,14 +185,11 @@ export function FeltPool({
     [x, y]
   );
 
-  // iOS alone swings by bounds rather than by a compositor transform — see
-  // the header comment for why the two platforms need different math here.
-  const poolStyle = useAnimatedStyle(() => {
-    if (Platform.OS === "ios") {
-      return { left: x.value, top: y.value };
-    }
-    return { transform: [{ translateX: x.value }, { translateY: y.value }] };
-  });
+  const poolStyle = useAnimatedStyle(() =>
+    Platform.OS === "web"
+      ? { transform: [{ translateX: x.value }, { translateY: y.value }] }
+      : { left: x.value, top: y.value }
+  );
 
   // Each radial's own ellipse, `rx` by `ry` of the felt, centred on the point
   // it hangs from. The box is the SVG's own size, so the viewport is what
@@ -224,11 +216,11 @@ export function FeltPool({
 
       {/* A point at the lamp. Its children hang off it centred, so each one is
           scaled about the light rather than about a corner — and the swing is
-          this one anchor moving, not a transform per layer. */}
+          this one anchor's position, not a transform per layer. */}
       <Animated.View
         testID="felt-lamp-anchor"
         style={[
-          { position: "absolute", left: 0, top: 0, width: 0, height: 0 },
+          { position: "absolute", width: 0, height: 0 },
           POOL_LAYER,
           poolStyle,
         ]}
