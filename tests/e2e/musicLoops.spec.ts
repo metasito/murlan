@@ -25,7 +25,8 @@ import path from "node:path";
 
 const musicDir = path.resolve(__dirname, "..", "..", "assets", "music");
 
-/** What lib/music.ts requires; tests/musicAssets.test.ts pins that it still does. */
+/** The four tracks; tests/musicAssets.test.ts pins these against what
+ * lib/musicTracks.ts and lib/musicTracks.ios.ts actually require. */
 const TRACKS = ["menu", "hand", "cue", "final"] as const;
 
 // ─── WebM: decode and measure the waveform ─────────────────────────────────────
@@ -120,11 +121,15 @@ test("the measurement would notice a bad join", () => {
 
 // ─── M4A (ALAC): no decoder available, so read the container header instead ───
 //
-// Losslessness is what makes this sufficient: with no encoder delay and no
-// quantization noise near the seam, the only way this file could fail to loop
-// as cleanly as the WebM source is to hold a different number of samples than
-// it — trimmed differently, or padded. That's exactly what a header read can
-// catch without decoding a single one of them.
+// This proves less than the WebM check above, and stays honest about the
+// difference: the header can confirm the file is the right shape — right
+// codec, right rate, right channel count, the same sample count as the
+// matching WebM source, and not a silent stub of that length — but it never
+// looks at a single decoded sample. A file that is the right length and the
+// right average loudness but wrong in between (a faded-out seam, say) still
+// passes every check here. Closing that gap means decoding ALAC, which
+// nothing available to this suite can do — see assets/music/README.md,
+// "What 'verified' means here, and what it does not".
 
 interface Mp4Box {
   type: string;

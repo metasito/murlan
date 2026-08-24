@@ -1,11 +1,12 @@
 /**
- * ALAC-in-M4A tracks — iOS only, losslessly re-encoded from musicTracks.ts's
- * WebM set because AVFoundation cannot demux WebM at all (#178,
- * assets/music/README.md). Metro resolves this file in place of
- * musicTracks.ts on iOS, so the ~7.5 MB these four files cost
- * (assets/music/README.md, "Cost") is paid once in the iOS bundle and never
+ * ALAC-in-M4A tracks — iOS only. Why iOS needs its own container, and why
+ * ALAC specifically: assets/music/README.md, "The iOS encode". Metro
+ * resolves this file in place of musicTracks.ts on iOS, so the ~7.5 MB these
+ * four files cost (README, "Cost") is paid once in the iOS bundle and never
  * reaches Android or web.
  */
+
+/** See musicTracks.ts's CONTAINER for why this export exists. */
 export const CONTAINER = "m4a" as const;
 
 export const TRACKS = {

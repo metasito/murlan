@@ -7,6 +7,14 @@
  * bytes stay out of the initial payload — the web bundle's ceiling is ~1 MB
  * gzip and these are 1.5 MB on their own.
  */
+
+/**
+ * Not read by the app at all — this and the matching export in
+ * musicTracks.ios.ts are what tests/native/musicPlatform.test.tsx asserts
+ * against `Platform.OS`, the only thing in the suite that pins Metro
+ * resolving the right container per platform (#178). A dead-code sweep that
+ * doesn't check the test first will delete the one assertion covering it.
+ */
 export const CONTAINER = "webm" as const;
 
 export const TRACKS = {

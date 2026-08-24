@@ -1,15 +1,16 @@
 // tests/native/musicPlatform.test.tsx — music on native, Android and iOS.
 //
-// expo-audio plays through AVFoundation on iOS, and AVFoundation cannot demux
-// WebM at all: Opus reaches it only in an MP4 container, and only from iOS 17.
-// Android has decoded Opus in WebM since 5.0. lib/music.ts resolves
-// lib/musicTracks.ios.ts on iOS and lib/musicTracks.ts everywhere else (#178).
+// Why iOS needs its own container: assets/music/README.md, "The iOS encode".
+// lib/music.ts resolves lib/musicTracks.ios.ts on iOS and lib/musicTracks.ts
+// everywhere else (#178).
 //
 // This suite runs once per platform, which is the only way to see Metro
 // actually resolve the two differently: react-native-web takes neither side
 // of it.
 import { describe, it, expect, afterAll, beforeEach, jest } from '@jest/globals';
 import { Platform } from 'react-native';
+import { readFileSync } from 'fs';
+import { join } from 'path';
 
 jest.mock('expo-audio', () => ({
   createAudioPlayer: jest.fn(() => ({
@@ -48,6 +49,16 @@ afterAll(() => {
 describe(`music on ${Platform.OS}`, () => {
   it('resolves the container this platform can decode', () => {
     expect(CONTAINER).toBe(Platform.OS === 'ios' ? 'm4a' : 'webm');
+  });
+
+  // The test above pins that Metro resolves the right file per platform, but
+  // that alone doesn't prove lib/music.ts hands what Metro resolved to the
+  // player rather than a hardcoded table of its own — a mock can't see that
+  // difference, only lib/music.ts's own source can.
+  it('creates the player from the platform-resolved TRACKS import, not a copy', () => {
+    const source = readFileSync(join(__dirname, '..', '..', 'lib', 'music.ts'), 'utf8');
+    expect(source).toMatch(/import\s*\{\s*TRACKS\s*\}\s*from\s*["']@\/lib\/musicTracks["']/);
+    expect(source).toMatch(/createAudioPlayer\(\s*TRACKS\[track\]\(\)\s*\)/);
   });
 
   it('creates one player when a track starts', async () => {

@@ -138,15 +138,5 @@ of these files on a real device after all, `nativePlayer`'s `catch` swallows
 the error and the result is silent music with nothing telling anyone why,
 which is the exact failure mode that branch was written to prevent.
 
-## The audio session category
-
-Music shares one `AVAudioSession` with the sound effects — `expo-audio` has no
-per-player session, so whichever plays first decides it for both.
-`lib/sounds.ts`'s `ensureAudioMode()` sets `playsInSilentMode: true`, and
-`lib/music.ts` calls that same function (rather than setting its own mode)
-before starting a native player, so the two cannot settle on different
-answers. The deliberate call: music does **not** respect the hardware mute
-switch, matching the effects — a bomb going silent under the ringer switch
-while the music kept playing would read as broken, and giving the two
-different answers is a worse trade than a card game's music failing to be
-politely muteable.
+Why music and the sound effects share one `AVAudioSession` category rather
+than each setting their own: `lib/sounds.ts`'s `ensureAudioMode()` docblock.
