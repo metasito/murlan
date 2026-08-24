@@ -23,6 +23,12 @@ Infer the repo from `git remote -v`; `gh` does this automatically when run insid
 
 ## Claiming an item
 
+The standard way to work a ticket the picker routes to implement is
+`Workflow({ name: 'ticket-pipeline' })` (`.claude/workflows/ticket-pipeline.mjs`): it claims,
+gates, implements, verifies, reviews through four independent lenses, lands and tears down,
+per `docs/superpowers/specs/2026-08-24-autonomous-ticket-pipeline-design.md`. Everything
+below describes what it does, and stays the instruction for anything worked by hand.
+
 Sessions run in parallel against one repo, and every one of them authenticates as the same
 GitHub account — so `--add-assignee @me` cannot tell two sessions apart. The branch name
 can, and that is what the claim carries.

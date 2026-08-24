@@ -952,25 +952,28 @@ If the fix is in a `lib/ticketPipeline/*.ts` module, add a test case reproducing
 
 ## Task 11: Make the pipeline the standard path
 
+> Adopted ahead of Tasks 9 and 10 at the owner's direction: the trials run against a pipeline
+> the working agreement already points at.
+
 **Files:**
 - Modify: `CLAUDE.md:117-131` (the Autonomy bullet), `CLAUDE.md:181-186` (Review-depth bullet — superseded by the always-on gate)
 - Modify: `docs/agents/issue-tracker.md` (one paragraph pointing at the pipeline)
 
 **Interfaces:** None.
 
-- [ ] **Step 1: Rewrite the Autonomy bullet**
+- [x] **Step 1: Rewrite the Autonomy bullet**
 
 Replace `CLAUDE.md:119-131` (starting "**Autonomy.** Work the queue...") with a version that names `Workflow({ name: 'ticket-pipeline' })` as the standard way to work a queue item, keeping everything the current bullet still says correctly (one item at a time, `scripts/next-ticket.mjs` for the route, `docs/agents/issue-tracker.md` for claim mechanics) and removing what the pipeline now does mechanically (the `gh run watch` / `--json conclusion` instruction moves into the pipeline's Land stage, not something to repeat by hand for a pipeline-run ticket — keep it worded for the case where the pipeline can't be used, e.g. a `ready-for-human` item worked by hand).
 
-- [ ] **Step 2: Remove or fold the size-gated review-depth bullet (`CLAUDE.md:181-186`)**
+- [x] **Step 2: Remove or fold the size-gated review-depth bullet (`CLAUDE.md:181-186`)**
 
 The pipeline's review gate applies to every ticket regardless of size (per this plan's Global Constraints) — this makes the existing "review depth follows the size label" bullet stale for anything run through the pipeline. Rewrite it to describe the *actual* remaining case: manual work outside the pipeline (e.g. a `ready-for-human` item, or Phase 0-style hygiene work) still uses `mattpocock-skills:code-review` scaled by size, since the pipeline's four-lens gate isn't available there.
 
-- [ ] **Step 3: Add the pointer in `docs/agents/issue-tracker.md`**
+- [x] **Step 3: Add the pointer in `docs/agents/issue-tracker.md`**
 
 One paragraph near the top of the "Claiming an item" section: the standard way to work a routed ticket is `Workflow({ name: 'ticket-pipeline' })` (`.claude/workflows/ticket-pipeline.mjs`), which handles claim/gate/implement/verify/review/land/cleanup per `docs/superpowers/specs/2026-08-24-autonomous-ticket-pipeline-design.md`; the manual steps below remain accurate for anything worked outside the pipeline.
 
-- [ ] **Step 4: Commit, push, open a PR, get it reviewed and merged**
+- [x] **Step 4: Commit, push, open a PR, get it reviewed and merged**
 
 ```bash
 git add CLAUDE.md docs/agents/issue-tracker.md
