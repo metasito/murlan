@@ -110,7 +110,16 @@ const LAND_SCHEMA = {
   required: ['merged'],
 }
 
-const state = { worktreePath: null, dockerStarted: false, localBranch: null, merged: false }
+// The ports travel with the state so cleanup.ts frees the same two this file binds. A copy of the
+// numbers over there is the thing that would go stale; which command frees them is that module's
+// call, since it runs under `npx tsx` on the machine that owns them.
+const state = {
+  worktreePath: null,
+  dockerStarted: false,
+  localBranch: null,
+  merged: false,
+  ports: [E2E_PORT, BOOT_PORT],
+}
 
 // The progress view shows a label per agent, and falls back to the head of the prompt when there
 // is none — which is why an unlabelled run reads as seven walls of instructions with no ticket
@@ -482,18 +491,8 @@ ${releaseStep}
 
 1. Put the checkout back on main first, so no branch is pinned by being the current one:
    git checkout main || git checkout -B main origin/main
-2. Free the local verification ports if anything is still bound to them, tolerating no match.
-   ${E2E_PORT} is Playwright's webServer, ${BOOT_PORT} is the built server the sweep boots:
-   netstat -ano | findstr :${E2E_PORT}   then, for any PID listed: taskkill /PID <pid> /F
-   netstat -ano | findstr :${BOOT_PORT}  then, for any PID listed: taskkill /PID <pid> /F
-   Also remove the two containers the teardown list below does not know about — it only knows
-   murlan-verify-pg:
-     docker rm -f murlan-verify-boot          the Node 22 container the boot check runs in;
-       normally --rm removes itself, but a run that died mid-poll leaves it holding port ${BOOT_PORT}
-     node scripts/dev-stack.mjs down          the Postgres the e2e harness brings up for itself
-       (safe because scripts/e2e-server.mjs recreates it from scratch on every run, so nothing
-       durable lives there — but skip it if the user is known to be mid dev-session on it)
-3. Build the teardown list and run it:
+2. Build the teardown list and run it. It frees ports ${E2E_PORT} and ${BOOT_PORT} and removes both
+   pipeline containers itself, so do not issue those by hand — run exactly what it prints:
 
 ${writeJsonCommand('/tmp/ticket-pipeline-cleanup.json', state)}
 npx tsx lib/ticketPipeline/cleanup.ts < /tmp/ticket-pipeline-cleanup.json
@@ -502,10 +501,10 @@ npx tsx lib/ticketPipeline/cleanup.ts < /tmp/ticket-pipeline-cleanup.json
    errors (idempotent teardown — a container or worktree that's already gone is not a failure).
    The branch delete arrives already wrapped in its own guard, so run it as given rather than
    deciding anything about it yourself; if it prints "kept <branch>", report that.
-4. If merged=true and the local branch still exists, delete it now with "git branch -D <branch>".
+3. If merged=true and the local branch still exists, delete it now with "git branch -D <branch>".
    The module deliberately omits that command, and "gh pr merge --delete-branch" only removes the
    remote copy, so without this the local branch survives every merged run.
-5. Report the final "git status --short" output and the current branch verbatim.`,
+4. Report the final "git status --short" output and the current branch verbatim.`,
       { model: MODELS.cleanup, phase: 'Cleanup', label: label('clean up after') }
     )
     log(`Cleanup finished: ${typeof cleaned === 'string' ? cleaned : JSON.stringify(cleaned)}`)
