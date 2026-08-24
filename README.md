@@ -41,8 +41,8 @@ table, `trust proxy`, deployment shape) are documented in `replit.md`, not here.
 npm run typecheck    # tsc --noEmit
 npm test             # node --test, everything under tests/
 npm run test:native  # jest, the tests/native/ renderer suites
-npm run verify       # all three of the above
 npm run lint         # npx expo lint
+npm run verify       # all four of the above, lint last
 npm run test:e2e     # Playwright — needs Docker and a built web bundle
 ```
 
