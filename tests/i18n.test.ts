@@ -237,6 +237,18 @@ describe("no server string assumes the player's gender", () => {
       "the scan no longer reaches a schema's own refusal text (server/onlineGameLogic.ts) — " +
         "if that sentence was reworded, name the new one here rather than dropping the check"
     );
+    // A floor of its own for the trailing-argument half of the scan
+    // (isZodChain): "no join code" above exists as a required_error /
+    // invalid_type_error property too, so it stayed true even with the whole
+    // isZodChain branch deleted — it was never really testing this half.
+    // "Invalid room code" (server/socketSchemas.ts) has no options object on
+    // that field at all, so it is reachable only through the trailing-argument
+    // path.
+    assert.ok(
+      sentences.includes("Invalid room code"),
+      "the scan no longer reaches a validator's own trailing message " +
+        "(server/socketSchemas.ts) — if that sentence was reworded, name the new one here"
+    );
     assert.ok(
       sentences.length > 120,
       `expected server/'s payload sentences, got ${sentences.length} (127 when this floor was set)`
