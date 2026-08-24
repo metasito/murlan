@@ -77,7 +77,7 @@ describe("isInvokedDirectly", () => {
     assert.equal(isInvokedDirectly(undefined, moduleUrl), false);
   });
 
-  test("importing the module (not running it) never shells out to `gh`", () => {
+  test("importing the module (not running it) never shells out to `gh`", (t) => {
     // PATH shimming can't be trusted here: a bare `execFileSync("gh", …)`
     // with no shell resolves through OS-level search rules that don't
     // reliably prefer a shadowing PATH entry (confirmed against the real
@@ -86,6 +86,7 @@ describe("isInvokedDirectly", () => {
     // guard lets through is caught at the source, deterministically and
     // without ever touching the network.
     const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "gh-guard-"));
+    t.after(() => fs.rmSync(tmpDir, { recursive: true, force: true }));
     const marker = path.join(tmpDir, "called.txt");
     const preload = path.join(tmpDir, "preload.cjs");
     fs.writeFileSync(
