@@ -168,6 +168,25 @@ pending PR, forcing the full-suite rerun `CLAUDE.md`'s own merge-timing rule
 warns about. Not built in Phase 1; revisit once Phase 1 has run on enough
 real tickets to know its actual per-ticket cost and failure rate.
 
+## Decisions
+
+- **CI reality.** CI is currently billing-blocked (Actions never start).
+  Phase 1's local-verify stage defaults to the local-substitute path (fixed-
+  name throwaway Postgres, run the suites locally) rather than "push and
+  watch CI" — that's what actually runs today. A "CI restored" path (revert
+  to push + `gh run watch`) is a small follow-up once billing is fixed, not
+  designed into this phase.
+- **Phase 0 delivery.** The invariant/doc audit is applied on a branch and
+  opened as a PR for review — not a chat list requiring line-by-line
+  pre-approval, not silent auto-merge. Reviewed like any other change.
+- **Adoption.** Once Phase 1 is built and passes its supervised trial (next
+  bullet), `CLAUDE.md`'s "Autonomy" section is rewritten to mandate it as
+  the standard way to work a queue item — no parallel undocumented process
+  for the two to drift out of sync.
+- **First run.** The first one or two live runs against real queue tickets
+  are supervised (user watching, able to interrupt) before the pipeline is
+  trusted fully unattended.
+
 ## Open items surfaced, not solved here
 
 - `murlan bug/` at the repo root (4 images, untracked) — looks like
