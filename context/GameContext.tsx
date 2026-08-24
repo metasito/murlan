@@ -167,8 +167,6 @@ export function GameProvider({ children }: { children: ReactNode }) {
 
   const [exchangeAnnouncing, setExchangeAnnouncing] = useState(false);
   const [exchangeAnnounceData, setExchangeAnnounceData] = useState<ExchangeAnnounceData | null>(null);
-  const gameStateRef = useRef<GameState | null>(null);
-  gameStateRef.current = gameState;
 
   /**
    * The single write path for engine output: a manche that has just ended is
@@ -243,21 +241,19 @@ export function GameProvider({ children }: { children: ReactNode }) {
   }, [gameState, match]);
 
   const answerRematch = useCallback((wants: boolean) => {
-    const gs = gameStateRef.current;
-    const human = gs?.players.find((p) => p.type === "human");
+    const human = gameState?.players.find((p) => p.type === "human");
     if (!human) return;
     setRematchAnswers((prev) => ({ ...prev, [human.id]: wants }));
-  }, []);
+  }, [gameState]);
 
   const chooseExchangeCard = useCallback(
     (cardId: string) => {
-      const gs = gameStateRef.current;
-      if (gs?.exchangePhase?.active) {
-        const ep = gs.exchangePhase;
-        const winnerName = gs.players[ep.winnerIdx]?.name ?? "";
-        const loserName = gs.players[ep.loserIdx]?.name ?? "";
+      if (gameState?.exchangePhase?.active) {
+        const ep = gameState.exchangePhase;
+        const winnerName = gameState.players[ep.winnerIdx]?.name ?? "";
+        const loserName = gameState.players[ep.loserIdx]?.name ?? "";
         const cardReceived = ep.cardFromLoser;
-        const cardGiven = gs.players[ep.winnerIdx].hand.find((c) => c.id === cardId);
+        const cardGiven = gameState.players[ep.winnerIdx].hand.find((c) => c.id === cardId);
         setExchangeAnnounceData({
           winnerName,
           loserName,
@@ -273,7 +269,7 @@ export function GameProvider({ children }: { children: ReactNode }) {
       });
       setSelectedCards([]);
     },
-    []
+    [gameState]
   );
 
   const acknowledgeExchange = useCallback(() => {
