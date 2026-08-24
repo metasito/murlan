@@ -408,7 +408,16 @@ Report: committed, commitSha, prNumber, summary, filesTouched, prose.`,
     return { landed: false, ticket: claim.number, reason: 'ci unavailable' }
   }
   let round = 0
-  while (actionable(verify, review) && round < MAX_FIX_ROUNDS) {
+  // A fix round can make things worse, and twice it has: #291 went 11 -> 18 -> 14 confirmed
+  // findings on a two-file prose diff, and #294's fix rounds turned a green run red and then
+  // red again while findings climbed 6 -> 7 -> 14. Neither run was converging, and both spent
+  // every round they had finding that out. `stalled` ends the loop the moment a round fails to
+  // improve on the one before it, so the rounds are a budget for progress rather than for
+  // attempts.
+  let prevConfirmed = confirmedIn(review).length
+  let prevPass = verify.pass
+  let stalled = null
+  while (actionable(verify, review) && round < MAX_FIX_ROUNDS && !stalled) {
     round++
     phase('Fix')
     const confirmed = confirmedIn(review)
@@ -433,6 +442,10 @@ Report: committed, commitSha, summary, filesTouched, prose.`,
       { model: MODELS.fix, phase: 'Fix', label: label(`fix round ${round}`), schema: IMPLEMENT_SCHEMA }
     )
     if (!fix.committed) break
+    // A fix that edits a file the implement commit never touched is answering something other
+    // than the ticket. #291's third round rewrote scripts/next-ticket.mjs, which that issue's
+    // Definition of done had named as out of scope.
+    const widened = (fix.filesTouched || []).filter((f) => !(impl.filesTouched || []).includes(f))
     ;[verify, review] = await parallel([
       () => runVerify(claim, impl.prNumber, round + 1),
       () => runReview(claim, confirmed.map((f) => f.summary).join('; '), lensesThatFound, fix.prose, reviewedSha),
@@ -444,15 +457,32 @@ Report: committed, commitSha, summary, filesTouched, prose.`,
       releaseReason = `CI could not run: ${verify.failedStep || 'no job reported steps'}`
       return { landed: false, ticket: claim.number, reason: 'ci unavailable' }
     }
+    const nowConfirmed = confirmedIn(review).length
+    if (prevPass && verify.pass === false) {
+      stalled = `fix round ${round} turned a green run red: the commit under review passed ci.yml and the fix did not`
+    } else if (widened.length > 0 && nowConfirmed >= prevConfirmed) {
+      stalled = `fix round ${round} edited ${widened.join(', ')}, which the implement commit never touched, and did not reduce findings (${prevConfirmed} -> ${nowConfirmed})`
+    } else if (nowConfirmed >= prevConfirmed && verify.pass === prevPass) {
+      stalled = `fix round ${round} did not converge: ${prevConfirmed} confirmed finding(s) before, ${nowConfirmed} after`
+    }
+    prevConfirmed = nowConfirmed
+    prevPass = verify.pass
   }
+  if (stalled) log(`Stopping the fix loop — ${stalled}`)
 
   if (!isClean(verify, review)) {
-    releaseReason = `${round} fix round(s) didn't reach a clean state. Remaining: ${JSON.stringify(
+    releaseReason = `${
+      stalled ? `Stopped early — ${stalled}. ` : ''
+    }${round} fix round(s) didn't reach a clean state. Remaining: ${JSON.stringify(
       confirmedIn(review)
     )}. Verify pass: ${verify.pass}. Review lenses that reported nothing: ${
       review.failedLenses.join(', ') || 'none'
     }.`
-    return { landed: false, ticket: claim.number, reason: `not clean after ${round} fix round(s)` }
+    return {
+      landed: false,
+      ticket: claim.number,
+      reason: stalled || `not clean after ${round} fix round(s)`,
+    }
   }
 
   phase('Land')
