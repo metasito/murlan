@@ -7,19 +7,21 @@
 //
 // The pool tracks whose turn it is, which is the first of the four signals the
 // table gives about that (the others are the active seat's ring, the other
-// seats dimming, and the action buttons going dark). It moves by `left`/`top`
-// on its own anchor: the gradient is drawn once, oversized, and slid under the
-// felt's own clipping box.
+// seats dimming, and the action buttons going dark). It moves by `transform`,
+// except on iOS, where the anchor swings by `left`/`top` instead: the
+// gradient is drawn once, oversized, and slid under the felt's own clipping
+// box.
 //
-// Not `transform`. The anchor's frame moving is not the same thing as its
-// paint moving — react-native-svg's native path paints at the anchor's own
-// laid-out bounds and never reads a transform applied to it (see the shape
-// comment below, which lost this exact fight once already for scale). A
-// `translateX`/`translateY` here reached the *view*, which nothing else in
-// this component depends on, while the gradients inside kept painting at
-// (0, 0): a dark, motionless pool pinned in the corner, on iOS only, with the
-// rest of the table hidden under its unlit tail (#209). `left`/`top` change
-// the bounds themselves, which is what the native path actually reads.
+// iOS only, because that is the one platform where the anchor's frame moving
+// is not the same thing as its paint moving (the shape comment below made the
+// same case once already, for the pool's scale). iOS's `<Svg>` renders into
+// its own Core Graphics context, sized and positioned from the node's own
+// laid-out frame, and never reads a transform an ancestor view carries.
+// Android's `<Svg>` paints through the platform's ordinary view-draw pass,
+// which already carries whatever matrix an ancestor applied before handing
+// off to it, and a browser composites an ancestor's transform before
+// painting — both read the move where iOS's self-contained paint does not.
+// `left`/`top` change the anchor's own bounds, which the iOS path does read.
 
 import { useEffect } from "react";
 import { Platform, View, StyleSheet, type ViewStyle } from "react-native";
@@ -143,14 +145,15 @@ const LAMP_MS = 800;
 
 /**
  * The pool is twice the felt on each side — a 2560x1440 surface on a laptop —
- * and the swing moves it by `left`/`top`, so the browser lays the anchor's
- * subtree out again on every frame of the swing rather than only recompositing
- * it. This hint is what is left to ask for: not a compositor layer (`left`/
- * `top` never get one), but that the browser isolate the relayout to this
- * subtree rather than walking back up toward the document.
+ * and the swing moves it. Without its own compositor layer the browser
+ * re-rasterises all of that on every frame of the swing, which is the whole
+ * table stuttering every time the turn passes. Declared once rather than
+ * toggled around the swing: the frame that creates the layer is the expensive
+ * one, and creating it on the first frame of every swing is the cost this is
+ * meant to remove.
  */
 const POOL_LAYER =
-  Platform.OS === "web" ? ({ willChange: "left, top" } as unknown as ViewStyle) : null;
+  Platform.OS === "web" ? ({ willChange: "transform" } as unknown as ViewStyle) : null;
 
 export function FeltPool({
   width,
@@ -187,12 +190,14 @@ export function FeltPool({
     [x, y]
   );
 
-  // `left`/`top`, not `transform` — see the header comment on why a transform
-  // here would move the anchor's frame without moving what it paints.
-  const poolStyle = useAnimatedStyle(() => ({
-    left: x.value,
-    top: y.value,
-  }));
+  // iOS alone swings by bounds rather than by a compositor transform — see
+  // the header comment for why the two platforms need different math here.
+  const poolStyle = useAnimatedStyle(() => {
+    if (Platform.OS === "ios") {
+      return { left: x.value, top: y.value };
+    }
+    return { transform: [{ translateX: x.value }, { translateY: y.value }] };
+  });
 
   // Each radial's own ellipse, `rx` by `ry` of the felt, centred on the point
   // it hangs from. The box is the SVG's own size, so the viewport is what
@@ -219,11 +224,11 @@ export function FeltPool({
 
       {/* A point at the lamp. Its children hang off it centred, so each one is
           scaled about the light rather than about a corner — and the swing is
-          this one anchor's position, not a transform per layer. */}
+          this one anchor moving, not a transform per layer. */}
       <Animated.View
         testID="felt-lamp-anchor"
         style={[
-          { position: "absolute", width: 0, height: 0 },
+          { position: "absolute", left: 0, top: 0, width: 0, height: 0 },
           POOL_LAYER,
           poolStyle,
         ]}

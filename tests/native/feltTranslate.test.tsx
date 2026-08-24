@@ -1,33 +1,54 @@
-// tests/native/feltTranslate.test.tsx — the lamp's pool moves by its own
-// layout, not by a transform on the view the SVGs sit in.
-//
-// felt.tsx already lost this exact fight once, for scale (feltEllipse.test.tsx):
-// a `transform` on a view wrapping an `<Svg>` never reaches react-native-svg's
-// native paint, which reads the view's own laid-out bounds instead. The pool's
-// translate sat on that same ancestor, unfixed by that repair — so on iOS the
-// anchor's frame moved to the seat on move while the gradients it carries kept
-// painting at the origin, leaving a dark, stationary pool pinned in the corner
-// over the rest of the table (#209).
+// tests/native/feltTranslate.test.tsx — the lamp's anchor moves to a new
+// lamp point on rerender, not just at mount, using whichever construction
+// felt.tsx picks for the running platform. See felt.tsx's header for why iOS
+// alone swings by `left`/`top` rather than `transform`.
 import { describe, it, expect, jest, beforeEach, afterEach } from '@jest/globals';
 import React from 'react';
-import { StyleSheet } from 'react-native';
-import Animated, { useAnimatedStyle, useSharedValue } from 'react-native-reanimated';
+import { Platform } from 'react-native';
 import { act, render, screen } from '@testing-library/react-native';
 import { FeltPool } from '@/components/table/felt';
 import { FeltGradients } from '@/lib/tokens';
 
 const W = 874;
 const H = 402;
-// BESNIK — the left seat, one of lightPosition()'s (components/gameTableModel.ts)
-// off-viewer fractions.
-const LIGHT_X = 0.02;
-const LIGHT_Y = 0.48;
+// BESNIK and LUAN — two of lightPosition()'s (components/gameTableModel.ts)
+// off-viewer fractions, on opposite sides of the table.
+const BESNIK = { x: 0.02, y: 0.48 };
+const LUAN = { x: 0.98, y: 0.48 };
 /** Comfortably past felt.tsx's own LAMP_MS swing, so withTiming has settled. */
 const SETTLE_MS = 900;
 
-const anchorStyle = () => StyleSheet.flatten(screen.getByTestId('felt-lamp-anchor').props.style);
+/**
+ * `props.style` only reflects the worklet's first run under Reanimated's jest
+ * shim — a later mutation of the shared value lands in `jestAnimatedStyle`
+ * instead, which only this reads back. Reanimated ships `getAnimatedStyle`
+ * for exactly this, but it throws on a `null` entry in the style array
+ * (`POOL_LAYER` on this anchor outside web) — the same merge, tolerant of it.
+ */
+function anchorStyle() {
+  const { props } = screen.getByTestId('felt-lamp-anchor');
+  const inline = props.jestInlineStyle;
+  let merged: Record<string, unknown> = {};
+  for (const entry of Array.isArray(inline) ? inline : [inline]) {
+    if (!entry || 'jestAnimatedValues' in entry) continue;
+    merged = { ...merged, ...entry };
+  }
+  return { ...merged, ...(props.jestAnimatedStyle?.value ?? {}) };
+}
 
-describe('the lamp pool moves by layout, not by a transform on the SVGs’ ancestor', () => {
+/** Reads the anchor's position back out, whichever construction produced it. */
+function anchorPoint(style: ReturnType<typeof anchorStyle>) {
+  if (Platform.OS === 'ios') {
+    return { x: style.left, y: style.top };
+  }
+  const translate = (style.transform ?? []) as Record<string, number>[];
+  return {
+    x: translate.find((t) => 'translateX' in t)?.translateX,
+    y: translate.find((t) => 'translateY' in t)?.translateY,
+  };
+}
+
+describe('the lamp pool moves by whichever construction the platform reads', () => {
   beforeEach(() => {
     jest.useFakeTimers();
   });
@@ -35,49 +56,36 @@ describe('the lamp pool moves by layout, not by a transform on the SVGs’ ances
     jest.useRealTimers();
   });
 
-  it('lands the anchor at the lamp’s own point, off the corner', async () => {
+  it('lands the anchor at the lamp’s own point, and moves it again on rerender', async () => {
     const r = await render(
-      <FeltPool width={W} height={H} stops={FeltGradients.verde} lightX={LIGHT_X} lightY={LIGHT_Y} />
+      <FeltPool width={W} height={H} stops={FeltGradients.verde} lightX={BESNIK.x} lightY={BESNIK.y} />
     );
     await act(async () => {
       jest.advanceTimersByTime(SETTLE_MS);
     });
 
-    const style = anchorStyle();
-    expect(style.left).toBeCloseTo(LIGHT_X * W, 0);
-    expect(style.top).toBeCloseTo(LIGHT_Y * H, 0);
-    expect(style.transform).toBeUndefined();
-
-    await r.unmount();
-  });
-
-  // The floor. The construction this replaces — a translate on the ancestor,
-  // left/top left pinned at the corner — has to fail the same assertions, or
-  // they are not looking at anything.
-  it('rejects the pool positioned by a transform on its own ancestor', async () => {
-    function TransformAnchor() {
-      const x = useSharedValue(LIGHT_X * W);
-      const y = useSharedValue(LIGHT_Y * H);
-      const style = useAnimatedStyle(() => ({
-        transform: [{ translateX: x.value }, { translateY: y.value }],
-      }));
-      return (
-        <Animated.View
-          testID="felt-lamp-anchor"
-          style={[{ position: 'absolute', left: 0, top: 0, width: 0, height: 0 }, style]}
-        />
-      );
+    let point = anchorPoint(anchorStyle());
+    expect(point.x).toBeCloseTo(BESNIK.x * W, 0);
+    expect(point.y).toBeCloseTo(BESNIK.y * H, 0);
+    if (Platform.OS === 'ios') {
+      expect(anchorStyle().transform).toBeUndefined();
     }
 
-    const r = await render(<TransformAnchor />);
+    // The turn passes to the seat opposite. If the value driving the anchor
+    // stopped updating — the frozen-lamp failure this ticket also reported —
+    // this is the assertion that catches it: a mount-only snapshot cannot.
+    await act(async () => {
+      r.rerender(
+        <FeltPool width={W} height={H} stops={FeltGradients.verde} lightX={LUAN.x} lightY={LUAN.y} />
+      );
+    });
     await act(async () => {
       jest.advanceTimersByTime(SETTLE_MS);
     });
 
-    const style = anchorStyle();
-    expect(style.left).toBe(0);
-    expect(style.top).toBe(0);
-    expect(style.transform).toBeDefined();
+    point = anchorPoint(anchorStyle());
+    expect(point.x).toBeCloseTo(LUAN.x * W, 0);
+    expect(point.y).toBeCloseTo(LUAN.y * H, 0);
 
     await r.unmount();
   });
