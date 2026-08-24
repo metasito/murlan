@@ -38,10 +38,8 @@ for (const state of AWAY) {
     // proves nothing about the felt.
     await page.waitForTimeout(2_000);
 
-    // The floor this suite was missing: everything below is geometry that
-    // does not move with the lamp, so it stayed green while every away state
-    // was measured on the viewer's own turn instead of the one it was named
-    // for. The chip's text is what the lamp itself drives.
+    // The chip is the one thing on screen that moves with the lamp; the
+    // geometry below it does not.
     const seededName = captureGameState(state).players[state.turn].name;
     await expect(page.getByTestId("game-hud-stack")).toContainText(turnOf(seededName));
 

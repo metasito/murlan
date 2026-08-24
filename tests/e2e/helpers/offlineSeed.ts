@@ -123,10 +123,7 @@ export async function openSeededGame(
  * comparable: a state that carries a pile carries it on both, instead of the
  * web run quietly checking an empty felt under the same name.
  *
- * `app/game.tsx` runs the AI turn loop regardless of how a save was reached,
- * so this also asks it to hold (`lib/e2eAiSuspend.ts`) — otherwise a state
- * seeded on a bot is a bot's turn for about a second, long enough to navigate
- * to and not to measure.
+ * It also holds the seeded turn still (`lib/e2eAiSuspend.ts`).
  */
 export async function openCaptureState(
   page: Page,
