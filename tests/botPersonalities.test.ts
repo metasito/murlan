@@ -20,7 +20,7 @@ import {
   processPass,
   processPlay,
 } from "../lib/gameEngine.ts";
-import { c, makePlayer } from "./helpers.ts";
+import { c, j, makePlayer } from "./helpers.ts";
 import type { GameState } from "../lib/gameEngine.ts";
 import type { BotPersonalityId } from "../lib/botPersonalities.ts";
 
@@ -126,9 +126,14 @@ test("personalities are distinguishable, not just named", () => {
 // below are ones the strategy tier resolves identically for every personality,
 // so any difference in the answer comes from the personality alone.
 
-test("aggression decides whether a round is contested or conceded", () => {
+// #223: this used to be a distinguishing case — a ruthless personality spent
+// a 2 to take the round while a patient one let it go. That was the defect:
+// a bot has nothing to gain from winning a round by spending a card it will
+// want on defence later, so no personality — however aggressive — reaches
+// for a 2 or a joker once no plain answer remains legal.
+test("no personality contests a round when only premium cards are legal", () => {
   // Eight cards, the only legal answers to a 10 are the two 2s, and no opponent
-  // is close to finishing — the hard tier concedes the round here.
+  // is close to finishing — every tier concedes the round here.
   const hand = [c("2", "hearts"), c("2", "diamonds"), c("3", "clubs"), c("4", "clubs"),
     c("5", "clubs"), c("6", "clubs"), c("7", "clubs"), c("9", "clubs")];
   const lastPlayed = buildCombination([c("10", "spades")])!;
@@ -137,7 +142,7 @@ test("aggression decides whether a round is contested or conceded", () => {
       [7, 7, 7], undefined, fixedRng([0.5]));
 
   assert.equal(ask("ana"), null, "a patient personality lets the round go");
-  assert.deepEqual(ask("gent")?.cards.map((x) => x.rank), ["2"], "a ruthless one spends a 2 to take it");
+  assert.equal(ask("gent"), null, "a ruthless one keeps its 2s for defence too");
 });
 
 test("aggression decides whether a lead spends premium cards", () => {
@@ -154,6 +159,49 @@ test("aggression decides whether a lead spends premium cards", () => {
     !ask("drita")!.cards.some((x) => x.rank === "2"),
     "a cautious lead keeps them"
   );
+});
+
+// #223: the hard tier's near-finish shortcut dumped whatever combo was
+// longest, royal straights and bombs included, rather than restricting itself
+// to the same conservative plays the rest of the lead path hoards for.
+test("hard lead near-finish shortcut does not dump a royal straight", () => {
+  const hand = [
+    c("5", "clubs"), c("6", "clubs"), c("7", "clubs"), c("8", "clubs"), c("9", "clubs"),
+    c("3", "hearts"),
+  ];
+  const choice = aiChoosePlay(
+    makePlayer("bot", hand, { type: "ai", personality: "gent" }),
+    null,
+    true,
+    [6, 6, 6],
+    undefined,
+    fixedRng([0.5])
+  );
+  assert.deepEqual(
+    choice?.cards.map((x) => x.id),
+    ["3_hearts"],
+    "a hard lead near the end keeps the royal straight and plays the low single"
+  );
+});
+
+// #223: once no plain response remained, the aggression knob fell back to
+// spending a 2 or joker to contest anyway, instead of passing and keeping
+// them for defence.
+test("aggression floor does not spend a 2 or joker once no plain response remains", () => {
+  const hand = [
+    j("bw"), j("colored"), c("2", "hearts"),
+    c("3", "clubs"), c("4", "clubs"), c("5", "clubs"), c("6", "clubs"), c("7", "clubs"),
+  ];
+  const lastPlayed = buildCombination([c("J", "spades")])!;
+  const choice = aiChoosePlay(
+    makePlayer("bot", hand, { type: "ai", personality: "gent" }),
+    lastPlayed,
+    false,
+    [8, 8, 8],
+    undefined,
+    fixedRng([0.5])
+  );
+  assert.equal(choice, null, "an aggressive hard bot passes rather than spend its last 2/joker");
 });
 
 test("an unknown or missing personality resolves to the default", () => {

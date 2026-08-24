@@ -601,7 +601,11 @@ function applyPersonality(
       const inKind = plays.filter((p) => p.type !== "bomb" && p.type !== "royal_straight");
       const pool = inKind.length > 0 ? inKind : plays;
       const plain = pool.filter((p) => !isPremiumPlay(p));
-      result = [...(plain.length > 0 ? plain : pool)].sort((a, b) => a.strength - b.strength)[0] ?? null;
+      // Nothing cheap left to contest with: stay passing rather than spend a
+      // 2, a joker or a bomb to win a round nobody is forcing us to answer.
+      if (plain.length > 0) {
+        result = [...plain].sort((a, b) => a.strength - b.strength)[0];
+      }
     }
   } else if (isPremiumPlay(result) && rng() >= traits.aggression) {
     // A cautious personality keeps its 2s, jokers and bombs while a plain play
@@ -701,8 +705,11 @@ export function aiChoosePlay(
   }
 
   if (isNewRound) {
-    // We control the round: dump as many weak cards as efficiently as possible
-    const near3 = plays.filter((p) => p.cards.length >= myCards - 2);
+    // We control the round: dump as many weak cards as efficiently as possible.
+    // Restricted to conservative plays — the same hoarding rule as the rest of
+    // this lead path — or a long royal straight/bomb outscores a low single on
+    // card count alone and gets dumped for nothing.
+    const near3 = conservative.filter((p) => p.cards.length >= myCards - 2);
     if (near3.length > 0)
       return withPersonality(near3.sort((a, b) => b.cards.length - a.cards.length)[0]);
 
