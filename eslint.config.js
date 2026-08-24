@@ -28,6 +28,9 @@ module.exports = defineConfig([
       // A Workflow script body is wrapped in an async function by its harness, so on its
       // own it is not a parseable module — it top-level `return`s the workflow's result.
       ".claude/workflows/**",
+      // An agent's worktree is a second checkout living inside this one, build output and all.
+      // Without this, one agent running anywhere turns everyone else's lint red.
+      ".claude/worktrees/**",
     ],
   },
   {

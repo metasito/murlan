@@ -77,6 +77,8 @@ const VERIFY_SCHEMA = {
     dockerStarted: { type: 'boolean' },
     failedStep: { type: 'string' },
     output: { type: 'string' },
+    skippedJobs: { type: 'string' },
+    preExistingFailures: { type: 'array', items: { type: 'string' } },
   },
   required: ['pass', 'dockerStarted'],
 }
@@ -116,19 +118,34 @@ async function runVerify() {
   return agent(
     `${BASH_NOTE}
 GitHub Actions is not running at all right now, so this local sweep is the only thing standing
-between a defect and main. Run ci.yml's jobs locally. Do not scope the app checks down by which
-files changed, and do not skip a job because an earlier one failed — in CI these are independent
-parallel jobs, and one run is expected to report every failure.
+between a defect and main. Run ci.yml's jobs locally. Within a job, do not stop at the first red
+step — in CI these are independent parallel jobs and one run is expected to report every failure.
 
-STEP 0 — ci.yml's "scope" job: is this change prose only?
-  changed=$(git diff --name-only origin/main...HEAD)
-  Print that list. Then apply ci.yml's own allowlist, which is deliberately an allowlist so an
-  unrecognised path fails safe towards running everything:
-    grep -qvE '^(docs/|\\.claude/)|\\.md$' <<< "$changed"
-  If that finds NO file outside docs/, .claude/ or *.md, the change is documentation only.
-  ci.yml skips every app check in that case, so skip STEPS 2-5 too and report pass: true with
-  output "documentation only — app checks skipped, matching ci.yml's scope job". Otherwise
-  continue. (.github/workflows/ is NOT prose: a change there must exercise itself.)
+STEP 0 — which jobs does this diff need? A module decides, not you:
+  git fetch origin main -q
+  git diff --name-only origin/main...HEAD > /tmp/verify-changed.txt
+  Print that list, then turn it into a JSON array of repo-relative paths and:
+    npx tsx lib/ticketPipeline/verifyPlan.ts <<< '["path/one.ts","path/two.ts"]'
+  It prints {"verify":..,"native":..,"browser":..,"build":..}. Run only the jobs it marks true —
+  STEP 3's first three commands are the "verify" job, "native" gates STEP 3's test:native line,
+  "browser" gates STEP 4, "build" gates STEP 5. Anything it marks false is skipped, and say so in
+  your output. Its allowlist fails safe: an unrecognised path marks everything true.
+
+  If every changed path is under docs/, .claude/ or ends in .md, the change is documentation only
+  and ci.yml skips even the verify job — report pass: true with output "documentation only" and
+  stop here. (.github/workflows/ is NOT prose: a change there must exercise itself.)
+
+STEP 0b — the baseline. If any check below fails, it is only this ticket's failure if it does not
+already fail on origin/main. Before reporting a red check, re-run that one check against a clean
+origin/main in a scratch worktree, which cannot disturb this branch:
+    git worktree add /tmp/verify-baseline origin/main && cd /tmp/verify-baseline
+    (run the single failing command there, with the same env)
+    cd - && git worktree remove /tmp/verify-baseline --force
+  If it fails there too, the failure is pre-existing: do NOT count it against this ticket. Report
+  it in preExistingFailures, open an issue for it with gh (label needs-triage) if no open issue
+  already names that check, and judge pass on the remaining checks alone. Fixing it is not this
+  ticket's job, and letting it drive the fix loop burns a full round per attempt on a defect the
+  diff did not cause.
 
 STEP 1 — dependencies, only if this change moved them.
   If package.json or package-lock.json is in the changed list, run "npm ci" once. Otherwise
@@ -229,8 +246,12 @@ output, so here you DO stop at the first failure.
     not something to excuse. Docker is already a hard requirement of this pipeline.
 
 Report:
-  pass — true ONLY if every command above exited 0, the integration-suite grep did NOT match,
-    and /health reported "db":"connected". Anything else is false.
+  pass — true ONLY if every command that ran exited 0, the integration-suite grep did NOT match,
+    and (when the build job ran) /health reported "db":"connected". A failure you confirmed is
+    pre-existing on origin/main does not make this false. Anything else does.
+  skippedJobs — the jobs verifyPlan marked false, and the paths that decision was made from.
+  preExistingFailures — each check that failed here AND on origin/main, with the issue number you
+    opened or found for it. Empty when there were none.
   failedStep — the first command that failed, prefixed with its job, e.g.
     "verify: npm run lint" or "build: npm run bundle:budget". Empty when pass is true.
   output — for each failing job, its name and at most the last 40 lines of its output: enough
@@ -242,9 +263,9 @@ Report:
   )
 }
 
-async function runReview(claim, scopeNote) {
+async function runReview(claim, scopeNote, onlyKeys) {
   const diffScope = scopeNote ? `only the fix for: ${scopeNote}` : 'the whole diff'
-  const lenses = [
+  const allLenses = [
     {
       key: 'standards',
       prompt: `Review ${diffScope} on branch ${claim.branch} (git diff origin/main...HEAD) using
@@ -269,6 +290,9 @@ claims to protect, rerun it, confirm whether it would actually catch the break. 
 still passes on broken code is a CONFIRMED finding. Report: file, line, summary, verdict.`,
     },
   ]
+  // A re-review after a fix only has to re-ask the lens that raised the finding: the other
+  // lenses read a diff that has not moved since they cleared it.
+  const lenses = onlyKeys ? allLenses.filter((l) => onlyKeys.includes(l.key)) : allLenses
   const results = await parallel(
     lenses.map((l) => () => agent(l.prompt, { model: MODELS.review, phase: 'Review', label: `review:${l.key}`, schema: FINDING_SCHEMA }))
   )
@@ -276,7 +300,10 @@ still passes on broken code is a CONFIRMED finding. Report: file, line, summary,
   if (failedLenses.length) {
     log(`Review lenses reported nothing: ${failedLenses.join(', ')} — counted as unreviewed, not as clean.`)
   }
-  return { findings: results.filter(Boolean).flatMap((r) => r.findings || []), failedLenses }
+  return {
+    findings: results.filter(Boolean).flatMap((r, i) => (r.findings || []).map((f) => ({ ...f, lens: lenses[i].key }))),
+    failedLenses,
+  }
 }
 
 function confirmedIn(review) {
@@ -301,12 +328,22 @@ try {
   phase('Claim')
   const claim = await agent(
     `${BASH_NOTE}
-Run: node scripts/next-ticket.mjs
+Work in as few Bash calls as you can — each one costs a full turn, and this whole stage is six
+commands. Start with:
+
+  node scripts/next-ticket.mjs
+
 Take the routed ticket only if it's frontier implement work (ready-for-agent). If it routes to
 triage/wayfinder/handoff instead, report claimed: false with why. Otherwise claim it per
-docs/agents/issue-tracker.md: add the in-progress label, comment naming the branch you'll use
-(agent/<number>-<slug>), then re-view the issue to confirm you won the race (stand down if an
-older claim is already there).
+docs/agents/issue-tracker.md in ONE chained call, with <NUM> the number and <BRANCH> the
+agent/<number>-<slug> branch you will use:
+
+  gh issue edit <NUM> --repo ${REPO} --add-label in-progress && \\
+  gh issue comment <NUM> --repo ${REPO} --body 'Claimed by \`<BRANCH>\`.' && \\
+  gh issue view <NUM> --repo ${REPO} --comments
+
+Read that last output to confirm you won the race — stand down if a claim older than yours is
+already there.
 
 Then run the design-first gate yourself, with <NUM> the number you just claimed and the array
 literal the issue's Ground truth pointers as repo-relative paths (lib/foo.ts — an absolute
@@ -342,6 +379,12 @@ later stage reads it from GitHub itself.`,
 Implement issue #${claim.number} via the mattpocock-skills:implement workflow — TDD at pre-agreed
 seams, typecheck and single test files while iterating. Read the issue yourself with:
 gh issue view ${claim.number} --repo ${REPO}
+The claim stage read it as touching: ${(claim.filesTouched || []).join(', ') || '(nothing listed)'}
+
+Read each file you are going to change ONCE, whole, with the Read tool. Do not rebuild your
+picture of a file from repeated sed/grep windows — each window costs a turn, and a file read in
+twenty pieces costs far more than the file. Re-read only what you have edited.
+
 Commit your work (do not push yet). Report: committed, commitSha, summary, filesTouched.`,
     { model: MODELS.implement, phase: 'Implement', schema: IMPLEMENT_SCHEMA }
   )
@@ -360,6 +403,7 @@ Commit your work (do not push yet). Report: committed, commitSha, summary, files
     round++
     phase('Fix')
     const confirmed = confirmedIn(review)
+    const lensesThatFound = [...new Set(confirmed.map((f) => f.lens).filter(Boolean))]
     const findingList = confirmed
       .map((f) => `- ${f.file}${f.line ? ':' + f.line : ''} — ${f.summary}`)
       .join('\n')
@@ -369,14 +413,16 @@ Commit your work (do not push yet). Report: committed, commitSha, summary, files
           verify.failedStep || '(not reported)'
         }\nOutput:\n${verify.output || '(none reported)'}`
     const fix = await agent(
-      `On branch ${claim.branch}, fix exactly these findings and nothing else, then commit:\n${
+      `On branch ${claim.branch}, fix exactly these findings and nothing else, then commit. A
+failure the verify stage reported as pre-existing on origin/main is not yours to fix — leave it.
+Findings:\n${
         findingList || '- (no review findings; the failing verification below is the whole job)'
       }${verifyNote}`,
       { model: MODELS.fix, phase: 'Fix', schema: IMPLEMENT_SCHEMA }
     )
     if (!fix.committed) break
     verify = await runVerify()
-    review = await runReview(claim, confirmed.map((f) => f.summary).join('; '))
+    review = await runReview(claim, confirmed.map((f) => f.summary).join('; '), lensesThatFound)
   }
 
   if (!isClean(verify, review)) {
