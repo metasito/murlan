@@ -111,7 +111,7 @@ Every port this repo's local tooling binds — including the local-substitute pa
 
 | Port | For | Owner |
 | --- | --- | --- |
-| `5000` | The Express server (`PORT`) | `server/index.ts` |
+| `5000` | The Express server (`PORT`) | `server/index.ts`, `.replit` (`[[ports]]` localPort/externalPort, `[env] PORT`, `waitForPort`), `package.json` (`expo:dev`, `expo:dev:clean`) |
 | `8081` | Metro (`npx expo start` / `npm start`) | `scripts/build.js`, `.replit` |
 | `5199` | Playwright's e2e webServer (`E2E_PORT`) | `tests/e2e/playwright.config.ts`, `scripts/e2e-server.mjs`, `.claude/workflows/ticket-pipeline.mjs` |
 | `55432` | The dev-stack's disposable Postgres (`MURLAN_DEV_PG_PORT`) | `murlan-dev-pg` container — `scripts/dev-stack.mjs`, `scripts/e2e-server.mjs` |
