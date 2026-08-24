@@ -27,7 +27,7 @@ module.exports = defineConfig([
       ".scratch/**",
       // A Workflow script body is wrapped in an async function by its harness, so on its
       // own it is not a parseable module — it top-level `return`s the workflow's result.
-      ".claude/**",
+      ".claude/workflows/**",
     ],
   },
   {

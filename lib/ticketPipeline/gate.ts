@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { pathToFileURL } from "node:url";
 
 const SCHEMA_FILE = "shared/schema.ts";
@@ -34,7 +35,9 @@ export function needsDesignFirstGate(ticket: TicketFacts): GateVerdict {
   return { escalate: false, reason: "" };
 }
 
+// Input arrives on stdin, never as an argv token: a caller's shell layer collapses the `\\`
+// that JSON.stringify emits for a literal backslash, which makes the payload unparseable.
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
-  const input = JSON.parse(process.argv[2] ?? "{}");
+  const input = JSON.parse(readFileSync(0, "utf8").trim() || "{}");
   process.stdout.write(JSON.stringify(needsDesignFirstGate(input)));
 }
