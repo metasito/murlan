@@ -11,6 +11,7 @@ import { useGame } from "@/context/GameContext";
 import { useNotification } from "@/context/NotificationContext";
 import { ConfirmDialog, type ConfirmRequest } from "@/components/ConfirmDialog";
 import { pickGivebackCard } from "@/lib/gameEngine";
+import { E2E_SUSPEND_AI_KEY, shouldSuspendAI } from "@/lib/e2eAiSuspend";
 import { GameTable } from "@/components/GameTable";
 import { comboKey } from "@/components/gameTableModel";
 import { hapticWarn } from "@/lib/haptics";
@@ -80,11 +81,22 @@ export default function GameScreen() {
   // AI turn loop. The key identifies one AI turn — seat, pass count and the
   // combination on the table — and is null whenever no AI is on move, so an
   // update that changes neither cannot restart the "thinking" timer.
-  const aiTurnKey =
-    gameState &&
-    !gameState.gameOver &&
-    !gameState.exchangePhase?.active &&
-    gameState.players[gameState.currentTurnIndex]?.type === "ai"
+  //
+  // A capture-state save asks the loop to hold rather than schedule the next
+  // move (lib/e2eAiSuspend.ts) — read here, at the loop's one scheduling
+  // entry point, rather than at every caller of it.
+  const aiSuspended = shouldSuspendAI(
+    E2E_FAST,
+    typeof window === "undefined" || !window.localStorage
+      ? null
+      : window.localStorage.getItem(E2E_SUSPEND_AI_KEY)
+  );
+  const aiTurnKey = aiSuspended
+    ? null
+    : gameState &&
+        !gameState.gameOver &&
+        !gameState.exchangePhase?.active &&
+        gameState.players[gameState.currentTurnIndex]?.type === "ai"
       ? `${gameState.currentTurnIndex}|${gameState.passCount}|` +
         (gameState.lastPlayedCombination
           ? comboKey(gameState.lastPlayedCombination, gameState.lastPlayedBy)
