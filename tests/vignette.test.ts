@@ -155,15 +155,19 @@ test("the vignette is drawn outside the pool, so the lamp can move under it", ()
   assert.match(pool[0], /FIELD_ID/, "the field itself is not in the layer that moves");
 });
 
-test("the lamp moves by transform alone", () => {
-  // Gradients only, transform and opacity only: a gradient rewritten per frame
-  // is paint the browser cannot composite, and on web reanimated writes it
-  // from the main JS thread.
-  const animated = source.match(/useAnimatedStyle\(\(\) => \(\{[\s\S]*?\}\)\);/);
+test("the lamp moves by position on native and by transform on web", () => {
+  // Native reads the anchor's bounds and never an ancestor's transform
+  // (felt.tsx's header); web composites the transform and keeps a 2560x1440
+  // subtree off the layout path. Either way it is position or transform — a
+  // gradient rewritten per frame is paint no platform can composite.
+  const animated = source.match(/const poolStyle = useAnimatedStyle\([\s\S]*?\);\n/);
   assert.ok(animated, "the pool no longer animates through useAnimatedStyle");
-  assert.match(animated[0], /transform:\s*\[/);
+  assert.match(animated[0], /Platform\.OS === "web"/, "web still swings the anchor's frame");
+  assert.match(animated[0], /translateX: x\.value/);
+  assert.match(animated[0], /left: x\.value/);
+  assert.match(animated[0], /top: y\.value/);
   assert.ok(
     !/(cx|cy|rx|ry|stopColor|backgroundColor):/.test(animated[0]),
-    `the lamp animates something other than a transform: ${animated[0]}`
+    `the lamp animates something the compositor cannot take: ${animated[0]}`
   );
 });

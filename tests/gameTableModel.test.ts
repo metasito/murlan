@@ -34,6 +34,7 @@ import {
   notificationTopOffset,
   startCardBannerText,
   computeTableFrame,
+  tableShortEdge,
   railWidth,
   readExchange,
   INACTIVE_EXCHANGE,
@@ -1300,5 +1301,28 @@ describe("impact feedback is timed to the card landing, not to the throw", () =>
     // setTimeout truncates, and a fractional delay would drift against the
     // animation it is supposed to match.
     assert.equal(impactDelayMs(false) % 1, 0);
+  });
+});
+
+describe("tableShortEdge", () => {
+  const NONE = { top: 0, bottom: 0, left: 0, right: 0 };
+  // An iPhone 16 Pro held in landscape: the cutout on one side, its mirror on
+  // the other, and the home indicator along the bottom.
+  const NOTCHED = { top: 0, bottom: 21, left: 59, right: 59 };
+
+  test("is the window's own short edge where the device keeps nothing", () => {
+    assert.equal(tableShortEdge({ width: 874, height: 402, insets: NONE }), 402);
+  });
+
+  test("gives back what the device keeps, so cards are sized for the room they have", () => {
+    assert.equal(tableShortEdge({ width: 874, height: 402, insets: NOTCHED }), 381);
+  });
+
+  test("reads whichever side is narrower once the insets are taken off", () => {
+    // Landscape leaves the height the short edge on a phone, but the read is
+    // of the box, not of the orientation: enough taken off the sides and the
+    // width is what the table is squeezed by.
+    const wide = { top: 0, bottom: 21, left: 260, right: 260 };
+    assert.equal(tableShortEdge({ width: 874, height: 402, insets: wide }), 354);
   });
 });

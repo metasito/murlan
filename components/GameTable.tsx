@@ -55,6 +55,7 @@ import {
   canPassNow as canPassNowOf,
   comboKey,
   computeTableFrame,
+  tableShortEdge,
   describeTableForA11y,
   EMPTY_PILE,
   handCountOf,
@@ -155,6 +156,14 @@ const REJECT_HINT_MAX_W = 260;
 const REJECT_HINT_Z = 30;
 /** The banner band sits over the felt, under the reject hint. */
 const BANNER_BAND_Z = 50;
+/**
+ * The felt is decoration and everything else is the game, so the game is
+ * always on top. Stated rather than left to sibling order: the pool paints
+ * over the seats, the pile and the hand on the iOS renderer, which draws that
+ * subtree above them however the tree is written (#209).
+ */
+const FELT_Z = { zIndex: 0 } as const;
+const TABLE_Z = { zIndex: 1 } as const;
 
 // Raked light across the gold surface — bright at the top-left corner,
 // dropping to goldDark at the bottom-right — same treatment and same rake
@@ -681,9 +690,7 @@ export function GameTable({
   const { t, tn } = useTranslation();
   const insets = useSafeAreaInsets();
   const { width: W, height: H } = useWindowDimensions();
-  // Landscape-locked, so the short edge is normally H — Math.min is the
-  // robust read regardless of how a platform reports it mid-rotation.
-  const scale = cardScale(Math.min(W, H));
+  const scale = cardScale(tableShortEdge({ width: W, height: H, insets }));
   const handCardH = CARD_H(scale * HAND_SCALE);
   // What the player sees of a hand card, and how tall PASSA and GIOCA are —
   // the row reads as one band even though only the cards are cropped.
@@ -1260,7 +1267,7 @@ export function GameTable({
           rectangle in a dark room, which is the one thing a single overhead
           lamp cannot produce. The pool tracks whose turn it is, so half the
           cloth falls into shadow when it is not yours. */}
-      <View testID="table-felt" style={StyleSheet.absoluteFill} pointerEvents="none">
+      <View testID="table-felt" style={[StyleSheet.absoluteFill, FELT_Z]} pointerEvents="none">
         <FeltPool
           width={feltW}
           height={feltH}
@@ -1282,6 +1289,7 @@ export function GameTable({
         accessibilityLabel={tableA11yLabel}
         style={[
           sharedTableStyles.tableOverlay,
+          TABLE_Z,
           {
             left: frame.tableLeft,
             top: frame.tableTop,

@@ -70,6 +70,22 @@ Verify against source before changing any.
 - **Impact feedback is timed to the card landing**, not the throw. `impactDelayMs()`
   (`components/gameTableModel.ts`) is the one place that delay is derived, so the animation
   and the feedback cannot drift apart.
+- **Which view covers which is stated, never left to sibling order.** The felt carries
+  `zIndex: 0` and the game table `zIndex: 1` (`components/GameTable.tsx`). Web and Android
+  paint siblings in tree order; the iOS renderer put the felt's pool *above* the seats, the
+  pile, the hand and the buttons, and the game vanished behind a region with hard straight
+  edges that moved with the lamp (#209). It cost three sessions, and every hypothesis that
+  read the symptom as a missing render, a clip or an opaque overlay was wrong.
+- **A native-only visual defect is diagnosed from device pixels, not from reasoning.** #209's
+  own captures held the answer for days: felt colour was visible on *both* sides of the cut,
+  which rules out anything black covering the table and leaves only the felt's own paint
+  landing on top. Sample pixels first (`docs/agents/loops.md`); a fix argued from the code
+  alone gets one thing right and two things wrong, on the owner's phone, each round.
+- **Every card and touch target is sized from `tableShortEdge()`**, not from
+  `useWindowDimensions()` — the window minus what the device keeps for a cutout, a home
+  indicator or a status bar. Measuring the raw window sizes the table for room it does not
+  have (21pt of height and 118pt of width on a notched phone in landscape) and reads as a
+  zoomed-in table on device while every browser check passes.
 - **Design tokens are used in the role they were named for.** A fill or border token used as
   a text colour renders as almost nothing, silently. Pinned by `tests/tokenRoles.test.ts`.
 - **A labelled control exposes one accessible node** — hide decorative children explicitly;
