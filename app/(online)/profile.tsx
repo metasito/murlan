@@ -221,6 +221,44 @@ export default function ProfileScreen() {
           </View>
         )}
 
+        {/* ── Classifica ── */}
+        {/* Ahead of Statistiche: it's the one card whose control (open the
+            ladder) is useful before a player has any stats to show. */}
+          <Animated.View entering={entering}>
+            <MenuCard title={t("ladder.cardTitle")}>
+              {ratingQuery.isLoading && <LoadingBlock label={t("ladder.loadingA11yLabel")} />}
+              {ratingQuery.isError && (
+                <ErrorBlock
+                  title={t("ladder.errorTitle")}
+                  retryLabel={t("common.retry")}
+                  retryA11yLabel={t("ladder.errorRetry")}
+                  onRetry={() => ratingQuery.refetch()}
+                />
+              )}
+              {rating && (
+                <View style={styles.ratingBlock} accessible
+                  accessibilityLabel={`${t("ladder.ratingLabel")}: ${rating.rating}. ${t("ladder.seasonLabel", { season: formatSeason(rating.season, t) })}`}
+                >
+                  <Text style={styles.ratingValue}>{rating.rating}</Text>
+                  <Text style={styles.ratingSeason}>{t("ladder.seasonLabel", { season: formatSeason(rating.season, t) })}</Text>
+                  <Text style={styles.ratingGames}>
+                    {rating.provisional
+                      ? t("ladder.provisional", { n: PROVISIONAL_GAMES - rating.games })
+                      : t("ladder.gamesLabel", { n: rating.games })}
+                  </Text>
+                </View>
+              )}
+              <MenuButton
+                label={t("ladder.open")}
+                onPress={() => router.push("/(online)/leaderboard")}
+                variant="secondary"
+                size="sm"
+                accessibilityLabel={t("ladder.open")}
+                icon={<Ionicons name="trophy-outline" size={16} color={Colors.gold} />}
+              />
+            </MenuCard>
+          </Animated.View>
+
         {/* ── Statistiche ── */}
           <Animated.View entering={entering}>
             <MenuCard title={t("profile.statsTitle")}>
@@ -390,42 +428,6 @@ export default function ProfileScreen() {
                   })}
                 </View>
               )}
-            </MenuCard>
-          </Animated.View>
-
-          {/* ── Classifica ── */}
-          <Animated.View entering={entering}>
-            <MenuCard title={t("ladder.cardTitle")}>
-              {ratingQuery.isLoading && <LoadingBlock label={t("ladder.loadingA11yLabel")} />}
-              {ratingQuery.isError && (
-                <ErrorBlock
-                  title={t("ladder.errorTitle")}
-                  retryLabel={t("common.retry")}
-                  retryA11yLabel={t("ladder.errorRetry")}
-                  onRetry={() => ratingQuery.refetch()}
-                />
-              )}
-              {rating && (
-                <View style={styles.ratingBlock} accessible
-                  accessibilityLabel={`${t("ladder.ratingLabel")}: ${rating.rating}. ${t("ladder.seasonLabel", { season: formatSeason(rating.season, t) })}`}
-                >
-                  <Text style={styles.ratingValue}>{rating.rating}</Text>
-                  <Text style={styles.ratingSeason}>{t("ladder.seasonLabel", { season: formatSeason(rating.season, t) })}</Text>
-                  <Text style={styles.ratingGames}>
-                    {rating.provisional
-                      ? t("ladder.provisional", { n: PROVISIONAL_GAMES - rating.games })
-                      : t("ladder.gamesLabel", { n: rating.games })}
-                  </Text>
-                </View>
-              )}
-              <MenuButton
-                label={t("ladder.open")}
-                onPress={() => router.push("/(online)/leaderboard")}
-                variant="secondary"
-                size="sm"
-                accessibilityLabel={t("ladder.open")}
-                icon={<Ionicons name="trophy-outline" size={16} color={Colors.gold} />}
-              />
             </MenuCard>
           </Animated.View>
 
