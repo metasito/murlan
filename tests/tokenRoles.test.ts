@@ -76,9 +76,13 @@ const COLOUR_PROPERTY = /(?<![A-Za-z])(color|tintColor|placeholderTextColor)\s*[
  * a JSX `{…}` expression, still be scanned.
  */
 function captureRhs(src: string, start: number): string {
+  let i = start;
+  while (i < src.length && /\s/.test(src[i])) i++;
+  // A JSX expression container closes itself. Without this the capture treats the attribute's own
+  // `}` as nesting, runs past the element, and reports tokens from lines the property never named.
+  const container = src[i] === "{";
   let depth = 0;
   let quote = "";
-  let i = start;
   for (; i < src.length; i++) {
     const c = src[i];
     if (quote) {
@@ -91,6 +95,7 @@ function captureRhs(src: string, start: number): string {
     if (c === "}" || c === ")" || c === "]") {
       if (depth === 0) break;
       depth--;
+      if (container && depth === 0) { i++; break; }
       continue;
     }
     if (depth === 0 && (c === "," || c === ";")) break;
@@ -214,6 +219,14 @@ describe("design tokens are used in the role they were designed for", () => {
     assert.ok(hits > 20, `expected many token-driven text colours, found ${hits}`);
   });
 
+  test("a JSX colour prop's capture stops at its own closing brace", () => {
+    const element = `<Ionicons color={Colors.gold} />
+      <View style={styles.rule} />
+    </View>
+    const styles = { rule: { borderColor: Colors.border }, edge: { borderColor: Colors.goldBorder } }`;
+    assert.deepEqual(colourPropertyTokenUses(element).map((u) => u[3]), ["gold"]);
+  });
+
   test("the right-hand-side scanner catches a ternary's untaken branch, tintColor and placeholderTextColor", () => {
     assert.deepEqual(
       colourPropertyTokenUses("{ color: active ? Colors.gold : Colors.goldMuted }").map((u) => u[3]),
@@ -226,6 +239,10 @@ describe("design tokens are used in the role they were designed for", () => {
     assert.deepEqual(
       colourPropertyTokenUses('<TextInput placeholderTextColor={Colors.goldMuted} />').map((u) => u[3]),
       ["goldMuted"]
+    );
+    assert.deepEqual(
+      colourPropertyTokenUses("<Icon color={on ? Colors.gold : Colors.border} />").map((u) => u[3]),
+      ["gold", "border"]
     );
     assert.deepEqual(
       colourPropertyTokenUses("{ backgroundColor: Colors.goldMuted }"),
