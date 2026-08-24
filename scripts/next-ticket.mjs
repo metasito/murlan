@@ -2,8 +2,6 @@ import { execFileSync } from "node:child_process";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-// Extracted so a test can prove the guard actually gates on identity — a
-// different path, or no path at all, must not read as "invoked directly".
 export function isInvokedDirectly(argv1, moduleUrl) {
   return Boolean(argv1) && path.resolve(argv1) === fileURLToPath(moduleUrl);
 }
