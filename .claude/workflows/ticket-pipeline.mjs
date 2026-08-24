@@ -5,7 +5,7 @@ export const meta = {
     { title: 'Claim', detail: 'claim the routed ticket and run the design-first gate', model: 'haiku' },
     { title: 'Implement', model: 'sonnet' },
     { title: 'Verify', detail: "ci.yml's sweep, locally", model: 'sonnet' },
-    { title: 'Review', detail: 'four independent lenses', model: 'opus' },
+    { title: 'Review', detail: 'three independent lenses', model: 'opus' },
     { title: 'Fix', model: 'sonnet' },
     { title: 'Land', model: 'sonnet' },
     { title: 'Cleanup', model: 'sonnet' },
@@ -17,7 +17,6 @@ export const meta = {
 // cheaply gets the big model; everything that follows a written procedure does not.
 const MODELS = {
   claim: 'haiku', // next-ticket.mjs, two gh writes, one CLI whose failure mode is fail-safe
-  notify: 'haiku', // a label swap and a comment
   implement: 'sonnet',
   verify: 'sonnet', // long, scripted, and has to read failures back accurately
   fix: 'sonnet',
@@ -250,8 +249,10 @@ async function runReview(claim, scopeNote) {
       key: 'standards',
       prompt: `Review ${diffScope} on branch ${claim.branch} (git diff origin/main...HEAD) using
 mattpocock-skills:code-review's standards axis: documented repo conventions (CLAUDE.md) plus the
-Fowler smell baseline. You did not write this code — read it cold. Report findings: file, line,
-summary, verdict (CONFIRMED/PLAUSIBLE/REJECTED).`,
+Fowler smell baseline. You did not write this code — read it cold. CLAUDE.md's comment policy is
+one of those conventions and the one most often broken: flag as CONFIRMED any new or changed
+comment that narrates history, restates the code below it, or explains a defect the diff just
+fixed. Report findings: file, line, summary, verdict (CONFIRMED/PLAUSIBLE/REJECTED).`,
     },
     {
       key: 'spec',
@@ -266,14 +267,6 @@ implemented but wrong. Report findings: file, line, summary, verdict (CONFIRMED/
 (git diff origin/main...HEAD): try to prove it passes on broken code — invert or delete the logic it
 claims to protect, rerun it, confirm whether it would actually catch the break. Any test/guard that
 still passes on broken code is a CONFIRMED finding. Report: file, line, summary, verdict.`,
-    },
-    {
-      key: 'comments',
-      prompt: `Every new or changed comment in ${diffScope} on branch ${claim.branch}
-(git diff origin/main...HEAD), checked against CLAUDE.md's comment policy: a comment only earns its
-place by naming an invisible constraint, a non-obvious why, a contract types can't carry, or a
-pointer to authority. Flag as CONFIRMED anything that narrates history, restates the code below it,
-or explains an already-fixed defect. Report: file, line, summary, verdict.`,
     },
   ]
   const results = await parallel(
@@ -300,6 +293,9 @@ function isClean(verify, review) {
 
 let claimOpen = false
 let claimedNumber = null
+// Every path that abandons a claim sets this instead of spawning its own agent to say so: the
+// cleanup agent has to run anyway, and it is in the finally, so it cannot be skipped.
+let releaseReason = 'the run ended early'
 
 try {
   phase('Claim')
@@ -324,27 +320,21 @@ Report: claimed, number, branch, title, filesTouched (that same repo-relative li
 gateReason taken verbatim from the gate's JSON stdout, reason. If either gate command fails, or
 its stdout is not the JSON object the module prints, report escalate: true with the failure as
 gateReason — this is the pipeline's only escalation valve, so a gate that could not run must never
-answer "no escalation needed". Do not report the issue body; every later stage reads it from
-GitHub itself.`,
+answer "no escalation needed". If it does escalate, hand the ticket back before you report: remove
+in-progress, add ready-for-human, comment the gate's reason. Do not report the issue body; every
+later stage reads it from GitHub itself.`,
     { model: MODELS.claim, phase: 'Claim', schema: CLAIM_SCHEMA }
   )
   if (!claim.claimed) {
     log(`Nothing claimed: ${claim.reason}`)
     return { landed: false, reason: claim.reason }
   }
+  if (claim.escalate) {
+    return { landed: false, ticket: claim.number, reason: `escalated: ${claim.gateReason}` }
+  }
   claimOpen = true
   claimedNumber = claim.number
   state.localBranch = claim.branch
-
-  if (claim.escalate) {
-    await agent(
-      `Issue #${claim.number}: remove the in-progress label, add ready-for-human, comment explaining
-this needs an owner decision: ${claim.gateReason}`,
-      { model: MODELS.notify, phase: 'Claim' }
-    )
-    claimOpen = false
-    return { landed: false, ticket: claim.number, reason: `escalated: ${claim.gateReason}` }
-  }
 
   phase('Implement')
   const impl = await agent(
@@ -356,12 +346,7 @@ Commit your work (do not push yet). Report: committed, commitSha, summary, files
     { model: MODELS.implement, phase: 'Implement', schema: IMPLEMENT_SCHEMA }
   )
   if (!impl.committed) {
-    await agent(
-      `Issue #${claim.number}: remove the in-progress label, add ready-for-human, comment that
-implementation didn't complete: ${impl.summary || 'no reason given'}`,
-      { model: MODELS.notify, phase: 'Implement' }
-    )
-    claimOpen = false
+    releaseReason = `implementation didn't complete: ${impl.summary || 'no reason given'}`
     return { landed: false, ticket: claim.number, reason: 'implement failed' }
   }
 
@@ -395,16 +380,11 @@ implementation didn't complete: ${impl.summary || 'no reason given'}`,
   }
 
   if (!isClean(verify, review)) {
-    await agent(
-      `Issue #${claim.number}: remove the in-progress label, add ready-for-human, comment that
-${round} fix round(s) didn't reach a clean state. Remaining: ${JSON.stringify(
-        confirmedIn(review)
-      )}. Verify pass: ${verify.pass}. Review lenses that reported nothing: ${
-        review.failedLenses.join(', ') || 'none'
-      }.`,
-      { model: MODELS.notify, phase: 'Land' }
-    )
-    claimOpen = false
+    releaseReason = `${round} fix round(s) didn't reach a clean state. Remaining: ${JSON.stringify(
+      confirmedIn(review)
+    )}. Verify pass: ${verify.pass}. Review lenses that reported nothing: ${
+      review.failedLenses.join(', ') || 'none'
+    }.`
     return { landed: false, ticket: claim.number, reason: `not clean after ${round} fix round(s)` }
   }
 
@@ -427,8 +407,8 @@ with a comment summarizing what shipped. Report: merged, prNumber, reason.`,
     phase('Cleanup')
     const releaseStep =
       claimOpen && claimedNumber
-        ? `0. The run stopped before landing issue #${claimedNumber}. Remove its in-progress label, add
-   ready-for-human, and comment that the run ended early so the claim is released.\n`
+        ? `0. Issue #${claimedNumber} was claimed and never landed. Remove its in-progress label, add
+   ready-for-human, and comment this reason so the claim is released: ${releaseReason}\n`
         : ''
     const cleaned = await agent(
       `${BASH_NOTE}
