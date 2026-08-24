@@ -25,6 +25,10 @@ const MODELS = {
   cleanup: 'sonnet', // deletes branches and kills processes on a judgement call
 }
 
+// `args` names a ticket when the queue's own ordering is not the one wanted — a blocker that has
+// to land before the item that needs it. Unset, the router picks as before.
+const forcedTicket = typeof args === 'number' ? args : args?.ticket
+
 const MAX_FIX_ROUNDS = 2
 const REPO = 'metasito/murlan'
 const E2E_PORT = 5199
@@ -65,6 +69,7 @@ const CLAIM_SCHEMA = {
     branch: { type: 'string' },
     title: { type: 'string' },
     filesTouched: { type: 'array', items: { type: 'string' } },
+    worktreePath: { type: 'string' },
     escalate: { type: 'boolean' },
     gateReason: { type: 'string' },
     reason: { type: 'string' },
@@ -143,7 +148,18 @@ function label(stage) {
   return `${stage} ${run.ticket}`
 }
 
-async function runVerify(sinceRef) {
+// Every stage after Claim starts in the directory the workflow was launched from, which is the
+// shared main checkout — another session moves its HEAD whenever it merges. Two verify rounds
+// once swept a different ticket's merged diff and reported a pass on it. So each stage is told
+// where to stand and made to prove it got there before it does anything else.
+function cwdNote(claim) {
+  return `Work in ${claim.worktreePath}. Before anything else:
+  cd ${claim.worktreePath} && git rev-parse --abbrev-ref HEAD
+If that does not print ${claim.branch}, stop and report failure — you are in a checkout that
+belongs to another session, and nothing you measure there is about this ticket.`
+}
+
+async function runVerify(claim, sinceRef) {
   // Teardown is owed from the moment the container can exist, not from the agent's report:
   // a verify agent that dies after `docker run` never reports, and the container leaks.
   state.dockerStarted = true
@@ -157,6 +173,7 @@ async function runVerify(sinceRef) {
     : ''
   return agent(
     `${BASH_NOTE}
+${cwdNote(claim)}
 GitHub Actions is not running at all right now, so this local sweep is the only thing standing
 between a defect and main. Run ci.yml's jobs locally. Within a job, do not stop at the first red
 step — in CI these are independent parallel jobs and one run is expected to report every failure.
@@ -164,6 +181,9 @@ step — in CI these are independent parallel jobs and one run is expected to re
 STEP 0 — which jobs does this diff need? A module decides, not you:
   git fetch origin main -q
   git diff --name-only ${diffRef} > /tmp/verify-changed.txt
+  An empty list is a failure, not a pass: this stage exists to sweep a diff, and no diff means
+  you are looking at the wrong tree. Report pass: false with the range and HEAD you saw. Only a
+  documentation-only diff (below) may pass without running a job — never an absent one.
   Print that list, then turn it into a JSON array of repo-relative paths and:
     npx tsx lib/ticketPipeline/verifyPlan.ts <<< '["path/one.ts","path/two.ts"]'
   It prints {"verify":..,"native":..,"browser":..,"build":..,"prose":..}. Run only the jobs it
@@ -306,12 +326,19 @@ Report:
   )
 }
 
-async function runReview(claim, scopeNote, onlyKeys, prose) {
-  const diffScope = scopeNote ? `only the fix for: ${scopeNote}` : 'the whole diff'
+async function runReview(claim, scopeNote, onlyKeys, prose, sinceRef) {
+  // The scope has to be the git command, not a sentence above it. Told "review only the fix" and
+  // handed `origin/main...HEAD` anyway, three fresh lenses re-read the whole branch every round
+  // and each round found new prose to object to — 23 findings, then 31, on a diff that was
+  // converging. A round reviews what that round changed.
+  const range = sinceRef ? `${sinceRef}..HEAD` : 'origin/main...HEAD'
+  const diffScope = scopeNote
+    ? `only this round's fix for: ${scopeNote}`
+    : 'the whole diff'
   const allLenses = [
     {
       key: 'standards',
-      prompt: `Review ${diffScope} on branch ${claim.branch} (git diff origin/main...HEAD) using
+      prompt: `Review ${diffScope} on branch ${claim.branch} (git diff ${range}) using
 mattpocock-skills:code-review's standards axis: documented repo conventions (CLAUDE.md) plus the
 Fowler smell baseline. You did not write this code — read it cold. CLAUDE.md's comment policy is
 one of those conventions and the one most often broken: flag as CONFIRMED any new or changed
@@ -320,7 +347,7 @@ fixed. Report findings: file, line, summary, verdict (CONFIRMED/PLAUSIBLE/REJECT
     },
     {
       key: 'spec',
-      prompt: `Review ${diffScope} on branch ${claim.branch} (git diff origin/main...HEAD) against
+      prompt: `Review ${diffScope} on branch ${claim.branch} (git diff ${range}) against
 issue #${claim.number}, which you should read yourself with: gh issue view ${claim.number} --repo ${REPO}
 Using mattpocock-skills:code-review's spec axis: missing requirements, scope creep, anything
 implemented but wrong. Report findings: file, line, summary, verdict (CONFIRMED/PLAUSIBLE/REJECTED).`,
@@ -329,7 +356,7 @@ implemented but wrong. Report findings: file, line, summary, verdict (CONFIRMED/
       key: 'adversarial',
       needsCode: true,
       prompt: `For every new or changed test or runtime guard in ${diffScope} on branch ${claim.branch}
-(git diff origin/main...HEAD): try to prove it passes on broken code — invert or delete the logic it
+(git diff ${range}): try to prove it passes on broken code — invert or delete the logic it
 claims to protect, rerun it, confirm whether it would actually catch the break. Any test/guard that
 still passes on broken code is a CONFIRMED finding. Report: file, line, summary, verdict.`,
     },
@@ -348,7 +375,10 @@ still passes on broken code is a CONFIRMED finding. Report: file, line, summary,
     log(`Review lenses reported nothing: ${failedLenses.join(', ')} — counted as unreviewed, not as clean.`)
   }
   return {
-    findings: results.filter(Boolean).flatMap((r, i) => (r.findings || []).map((f) => ({ ...f, lens: lenses[i].key }))),
+    // Index against `lenses`, not against the filtered array — a lens that returned nothing
+    // shifts every later result onto the wrong name, and the next round then re-runs whichever
+    // lens the mislabelling happened to point at.
+    findings: results.flatMap((r, i) => (r?.findings || []).map((f) => ({ ...f, lens: lenses[i].key }))),
     failedLenses,
   }
 }
@@ -376,12 +406,19 @@ try {
   const claim = await agent(
     `${BASH_NOTE}
 Work in as few Bash calls as you can — each one costs a full turn, and this whole stage is six
-commands. Start with:
+commands. ${
+      forcedTicket
+        ? `The ticket is already chosen: #${forcedTicket}. Read it with
+  gh issue view ${forcedTicket} --repo ${REPO} --comments
+and take it only if it is open, ready-for-agent and unclaimed; report claimed: false with why
+otherwise. Then claim it per`
+        : `Start with:
 
   node scripts/next-ticket.mjs
 
 Take the routed ticket only if it's frontier implement work (ready-for-agent). If it routes to
-triage/wayfinder/handoff instead, report claimed: false with why. Otherwise claim it per
+triage/wayfinder/handoff instead, report claimed: false with why. Otherwise claim it per`
+    }
 docs/agents/issue-tracker.md in ONE chained call, with <NUM> the number and <BRANCH> the
 agent/<number>-<slug> branch you will use:
 
@@ -392,6 +429,13 @@ agent/<number>-<slug> branch you will use:
 Read that last output to confirm you won the race — stand down if a claim older than yours is
 already there.
 
+Then take a worktree, so no later stage shares a checkout whose HEAD another session moves:
+
+  git worktree add -b <BRANCH> ../murlan-wt-<NUM> origin/main && cd ../murlan-wt-<NUM> && pwd
+
+Report that absolute path as worktreePath; if the command fails, report claimed: false. Run the
+gate below from there too.
+
 Then run the design-first gate yourself, with <NUM> the number you just claimed and the array
 literal the issue's Ground truth pointers as repo-relative paths (lib/foo.ts — an absolute
 Windows path breaks this quoting, which is the point). The body reaches the module through a
@@ -400,7 +444,7 @@ file, never a shell argument:
 gh issue view <NUM> --repo ${REPO} --json body --jq '{filesTouched:["lib/foo.ts","tests/foo.test.ts"],body:.body}' > /tmp/ticket-pipeline-gate.json
 npx tsx lib/ticketPipeline/gate.ts < /tmp/ticket-pipeline-gate.json
 
-Report: claimed, number, branch, title, filesTouched (that same repo-relative list), escalate and
+Report: claimed, number, branch, title, worktreePath, filesTouched (that same repo-relative list), escalate and
 gateReason taken verbatim from the gate's JSON stdout, reason. If either gate command fails, or
 its stdout is not the JSON object the module prints, report escalate: true with the failure as
 gateReason — this is the pipeline's only escalation valve, so a gate that could not run must never
@@ -419,13 +463,18 @@ later stage reads it from GitHub itself.`,
     log(`#${claim.number} handed back: ${claim.gateReason}`)
     return { landed: false, ticket: claim.number, reason: `escalated: ${claim.gateReason}` }
   }
+  if (!claim.worktreePath) {
+    releaseReason = 'the claim stage reported no worktree, so no later stage has a checkout it owns'
+    return { landed: false, ticket: claim.number, reason: 'no worktree' }
+  }
   claimOpen = true
   claimedNumber = claim.number
   state.localBranch = claim.branch
+  state.worktreePath = claim.worktreePath
 
   phase('Implement')
   const impl = await agent(
-    `Create branch ${claim.branch} from origin/main if it doesn't exist locally, check it out.
+    `${cwdNote(claim)}
 Implement issue #${claim.number} via the mattpocock-skills:implement workflow — TDD at pre-agreed
 seams, typecheck and single test files while iterating. Read the issue yourself with:
 gh issue view ${claim.number} --repo ${REPO}
@@ -449,14 +498,17 @@ Report: committed, commitSha, summary, filesTouched, prose.`,
   // concurrently rather than paying for each other's wall clock. A failing verify does not waste
   // the concurrent review: the fix agent below gets both together and fixes them in one round.
   let [verify, review] = await parallel([
-    () => runVerify(),
-    () => runReview(claim, null, null, impl.prose),
+    () => runVerify(claim),
+    () => runReview(claim, null, null, impl.prose, null),
   ])
   // Only a commit whose sweep actually PASSED can narrow the next round's diff range. Advancing
   // this after a failed sweep lets the next round skip the job that was red: a fix touching only
   // docs would scope the re-verify to docs, skip the browser job, and report a pass over a
   // browser failure nothing had re-run.
   let verifiedSha = verify.pass ? impl.commitSha : null
+  // Unlike verifiedSha, this advances whatever the lenses said: they have read that commit, so
+  // re-reading it is what produced a fresh crop of prose objections every round.
+  let reviewedSha = impl.commitSha
   let round = 0
   while (actionable(verify, review) && round < MAX_FIX_ROUNDS) {
     round++
@@ -472,7 +524,8 @@ Report: committed, commitSha, summary, filesTouched, prose.`,
           verify.failedStep || '(not reported)'
         }\nOutput:\n${verify.output || '(none reported)'}`
     const fix = await agent(
-      `On branch ${claim.branch}, fix exactly these findings and nothing else, then commit. A
+      `${cwdNote(claim)}
+Fix exactly these findings and nothing else, then commit. A
 failure the verify stage reported as pre-existing on origin/main is not yours to fix — leave it.
 Findings:\n${
         findingList || '- (no review findings; the failing verification below is the whole job)'
@@ -483,10 +536,11 @@ Report: committed, commitSha, summary, filesTouched, prose.`,
     )
     if (!fix.committed) break
     ;[verify, review] = await parallel([
-      () => runVerify(verifiedSha),
-      () => runReview(claim, confirmed.map((f) => f.summary).join('; '), lensesThatFound, fix.prose),
+      () => runVerify(claim, verifiedSha),
+      () => runReview(claim, confirmed.map((f) => f.summary).join('; '), lensesThatFound, fix.prose, reviewedSha),
     ])
     verifiedSha = verify.pass ? fix.commitSha || verifiedSha : null
+    reviewedSha = fix.commitSha || reviewedSha
   }
 
   if (!isClean(verify, review)) {
@@ -501,6 +555,7 @@ Report: committed, commitSha, summary, filesTouched, prose.`,
   phase('Land')
   const land = await agent(
     `${BASH_NOTE}
+${cwdNote(claim)}
 Branch ${claim.branch} is clean (local verify passed, independent review clean). Push and open the
 PR in one chained call — the body needs a file since it's multi-line and must end with
 "Closes #${claim.number}" (never in the commit message):
