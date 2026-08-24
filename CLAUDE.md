@@ -118,19 +118,23 @@ lines is explaining itself instead of being clear.
 
 ## Working agreement
 
-- **Autonomy.** Work the queue one item at a time, one commit per item. The queue is
-  `node scripts/next-ticket.mjs`, which prints the route as well as the ticket:
-  implement a frontier ticket (`ready-for-agent`, unclaimed, no open native blocker,
-  smallest `size:*` first) through the mattpocock `implement` skill; if no frontier
-  work is takeable it routes triage, then wayfinder, then hands off to you
-  (`docs/agents/issue-tracker.md`).
-  Don't
-  ask which item or whether to proceed. Commit and push yourself — don't wait to be asked —
-  then `gh run watch` **the pull request's run** and close the issue only once it is green;
-  red CI is the next thing you work on, not something to leave behind. Never watch `main`'s
-  run: it is either the same tree skipped, or a duplicate of a result you have already read,
-  and watching it blocks for the whole suite to say nothing new. Keep `Closes #NN` out of the
-  commit message: it closes the issue at push time, before CI has said anything.
+- **Autonomy.** Work the queue one item at a time, one commit per item, and don't ask which
+  item or whether to proceed. The queue is `node scripts/next-ticket.mjs`, which prints the
+  route as well as the ticket: implement a frontier ticket (`ready-for-agent`, unclaimed, no
+  open native blocker, smallest `size:*` first); if no frontier work is takeable it routes
+  triage, then wayfinder, then hands off to you (`docs/agents/issue-tracker.md`).
+  **A routed implement ticket goes through `Workflow({ name: 'ticket-pipeline' })`**
+  (`.claude/workflows/ticket-pipeline.mjs`), which claims it, gates it, implements it,
+  verifies it, reviews it through four independent lenses and lands it. Everything below
+  still holds — the pipeline does it for you rather than replacing it.
+- **Working an item by hand**, when the pipeline doesn't apply (a `ready-for-human` item, a
+  triage or wayfinder route, hygiene work with no ticket): commit and push yourself — don't
+  wait to be asked — then `gh run watch` **the pull request's run** and close the issue only
+  once it is green; red CI is the next thing you work on, not something to leave behind.
+  Never watch `main`'s run: it is either the same tree skipped, or a duplicate of a result
+  you have already read, and watching it blocks for the whole suite to say nothing new. Keep
+  `Closes #NN` out of the commit message: it closes the issue at push time, before CI has
+  said anything.
 - **Claim the item before working it.** Sessions run in parallel, and every one of them
   authenticates as the same GitHub account — an assignee says who owns the repo, not who
   owns the item, so the claim is `in-progress` plus a comment naming the branch. It is the
@@ -180,7 +184,9 @@ lines is explaining itself instead of being clear.
   and `SESSION_SECRET` set) and the suites the change touches, plus the floor — revert the fix
   and watch the new test go red. That is not the local rehearsal the rule above forbids; it is
   the only evidence available.
-- **Review depth follows the size label.** An `size:XS`/`size:S` item gets one pass; the two-axis
+- **Review depth follows the size label, outside the pipeline.** The pipeline reviews every
+  ticket through all four lenses regardless of size, so this is the rule for work it doesn't
+  cover. An `size:XS`/`size:S` item gets one pass; the two-axis
   `mattpocock-skills:code-review` is the fit, because standards and spec are what a small diff
   gets wrong. Reserve a second correctness pass (`/code-review`) for `size:M` and up, or any
   diff touching the engine, the socket protocol or auth. Sub-agents doing the reading run on
