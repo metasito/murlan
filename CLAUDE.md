@@ -139,8 +139,9 @@ lines is explaining itself instead of being clear.
   route as well as the ticket: implement a frontier ticket (`ready-for-agent`, unclaimed, no
   open native blocker, smallest `size:*` first); if no frontier work is takeable it routes
   triage, then wayfinder, then hands off to you (`docs/agents/issue-tracker.md`).
-  **A routed implement ticket goes through
-  `Workflow({ scriptPath: '.claude/workflows/ticket-pipeline.mjs' })`** — the `name` form does
+  **A routed implement ticket goes through `/ticket`** — bare for one item, `/ticket loop` to
+  keep taking them until told to stop (`.claude/commands/ticket.md`). It calls
+  `Workflow({ scriptPath: '.claude/workflows/ticket-pipeline.mjs' })`; the `name` form does
   not resolve, because that registry does not read the project's `.claude/workflows/`. It claims
   the ticket, gates it, implements it, verifies it, reviews it through three independent lenses
   and lands it. Everything below still holds — the pipeline does it for you rather than
