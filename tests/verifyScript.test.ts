@@ -1,9 +1,5 @@
-// tests/verifyScript.test.ts — `verify` cannot quietly drop lint again.
-//
-// #296: `verify` ran typecheck, test and test:native but not lint — the check
-// CLAUDE.md documents as the one most likely to fail late in CI, and, being
-// last there, the most expensive place to discover it. This pins that
-// `verify` runs lint, last, so the cheap checks still fail fast first.
+// tests/verifyScript.test.ts — verify's chain ends with lint, so an agent
+// that runs one command cannot push a lint failure.
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
@@ -16,7 +12,6 @@ function chainOf(script: string): string[] {
   return script.split("&&").map((s) => s.trim());
 }
 
-/** The invariant this file pins: `verify` runs lint, and runs it last. */
 function checkChain(chain: string[]): string | null {
   if (!chain.includes("npm run lint")) return "verify does not run lint at all";
   if (chain.at(-1) !== "npm run lint") return "lint does not run last";
