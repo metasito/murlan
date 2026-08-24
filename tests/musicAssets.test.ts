@@ -1,4 +1,5 @@
-// tests/musicAssets.test.ts — assets/music and lib/music.ts still agree.
+// tests/musicAssets.test.ts — assets/music and lib/musicTracks{,.ios}.ts
+// still agree.
 //
 // Metro bundles what a `require` names, so a file added here without one is
 // dead weight and a require without a file is a runtime failure on the screen
@@ -12,7 +13,8 @@ import path from "node:path";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
-function tracksFor(source: string, ext: "webm" | "m4a"): string[] {
+function tracksFor(file: string, ext: "webm" | "m4a"): string[] {
+  const source = readFileSync(path.join(repoRoot, "lib", file), "utf8");
   const pattern = new RegExp(`assets/music/([a-z]+)\\.${ext}`, "g");
   return [...source.matchAll(pattern)].map((m) => m[1]).sort();
 }
@@ -24,30 +26,26 @@ function onDiskFor(ext: "webm" | "m4a"): string[] {
     .sort();
 }
 
-test("assets/music holds exactly the tracks lib/music.ts requires, in both containers", () => {
-  const source = readFileSync(path.join(repoRoot, "lib", "music.ts"), "utf8");
-  const requiredWebm = tracksFor(source, "webm");
-  const requiredM4a = tracksFor(source, "m4a");
+test("assets/music holds exactly the tracks lib/musicTracks.ts and lib/musicTracks.ios.ts require", () => {
+  const requiredWebm = tracksFor("musicTracks.ts", "webm");
+  const requiredM4a = tracksFor("musicTracks.ios.ts", "m4a");
 
-  assert.ok(requiredWebm.length > 0, "lib/music.ts requires no WebM music at all");
+  assert.ok(requiredWebm.length > 0, "lib/musicTracks.ts requires no WebM music at all");
   assert.deepEqual(
     onDiskFor("webm"),
     requiredWebm,
-    "a .webm music file was added or removed without lib/music.ts following it"
+    "a .webm music file was added or removed without lib/musicTracks.ts following it"
   );
 
-  // The iOS encode (#178): AVFoundation cannot demux WebM, so every track also
-  // ships as a lossless ALAC re-encode in M4A. A track missing this half is
-  // silent music on iOS only — the one platform this suite cannot render code
-  // for.
+  // Why iOS needs its own encode at all: assets/music/README.md, "The iOS encode".
   assert.deepEqual(
     requiredM4a,
     requiredWebm,
-    "lib/music.ts requires a different track list for iOS than for web/Android"
+    "lib/musicTracks.ios.ts requires a different track list than lib/musicTracks.ts"
   );
   assert.deepEqual(
     onDiskFor("m4a"),
     requiredM4a,
-    "a .m4a music file was added or removed without lib/music.ts following it"
+    "a .m4a music file was added or removed without lib/musicTracks.ios.ts following it"
   );
 });

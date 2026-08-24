@@ -28,6 +28,7 @@ jest.mock('@/lib/sounds', () => ({
   unloadSounds: jest.fn(() => {}),
   setSoundsMasterEnabled: jest.fn(() => {}),
   setSoundsMasterVolume: jest.fn(() => {}),
+  ensureAudioMode: jest.fn(async () => {}),
 }));
 
 jest.mock('expo-haptics', () => ({

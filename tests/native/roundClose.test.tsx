@@ -27,6 +27,7 @@ jest.mock('@/lib/sounds', () => ({
   unloadSounds: jest.fn(() => {}),
   setSoundsMasterEnabled: jest.fn(() => {}),
   setSoundsMasterVolume: jest.fn(() => {}),
+  ensureAudioMode: jest.fn(async () => {}),
 }));
 
 // Reduced motion collapses the card's flight to a single timer, so the pile

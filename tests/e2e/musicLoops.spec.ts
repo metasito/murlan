@@ -28,7 +28,7 @@ const musicDir = path.resolve(__dirname, "..", "..", "assets", "music");
 /** What lib/music.ts requires; tests/musicAssets.test.ts pins that it still does. */
 const TRACKS = ["menu", "hand", "cue", "final"] as const;
 
-// ─── WebM: decode and measure the waveform, same as before #178 ───────────────
+// ─── WebM: decode and measure the waveform ─────────────────────────────────────
 
 interface Measured {
   channels: number;
@@ -218,15 +218,31 @@ test("the M4A (ALAC) files match the WebM files sample-for-sample", () => {
     expect(info.sampleRate, `${track}.m4a is not 48 kHz`).toBe(48000);
     expect(info.channelCount, `${track}.m4a is not stereo`).toBe(2);
 
-    // The load-bearing check: same sample count as the WebM decode of the same
-    // track. ALAC has no encoder delay to trim and nothing lossy to shift a
-    // boundary, so a mismatch here means the file was cut wrong, not that a
-    // decoder trimmed it — see assets/music/README.md for the two encodes that
-    // failed this exact way.
+    // The load-bearing check — see assets/music/README.md, "Why ALAC", for why
+    // a mismatch here means the file was cut wrong rather than trimmed.
     expect(
       info.samples,
       `${track}.m4a holds ${info.samples} samples against ${webm.samples} in ${track}.webm — ` +
         `not the same audio, or trimmed differently`
     ).toBe(webm.samples);
+  }
+});
+
+// The floor for the check above. A header-only read cannot tell real audio
+// from a silent stub of the same declared sample count, so it needs its own
+// signal: near-silent ALAC compresses close to nothing, while every real
+// track here runs at least 1.2 bytes/sample (measured on the committed
+// files). 0.3 sits well below the real floor and two orders of magnitude
+// above a 12 KB silent stub at this sample count.
+test("the M4A files are not a silent stub of the right length", () => {
+  for (const track of TRACKS) {
+    const path4a = path.join(musicDir, `${track}.m4a`);
+    const bytes = readFileSync(path4a);
+    const bytesPerSample = bytes.length / readMp4AudioInfo(bytes).samples;
+    expect(
+      bytesPerSample,
+      `${track}.m4a compresses to ${bytesPerSample.toFixed(3)} bytes/sample — ` +
+        `that is what near-silence looks like under ALAC, not music`
+    ).toBeGreaterThan(0.3);
   }
 });

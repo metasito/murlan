@@ -1,37 +1,22 @@
 import { Platform } from "react-native";
 import type { AudioPlayer } from "expo-audio";
 import { ensureAudioMode, onWebAudioUnlocked, sharedWebCtx } from "@/lib/sounds";
+import { TRACKS } from "@/lib/musicTracks";
 
 /**
  * Four loops, all one composition — Abstraction's *Retro Lounge*, CC0 (#113).
  * WebM Opus at 48 kHz for web and Android: MP3 cannot loop seamlessly, and
  * Safari has decoded WebM Opus since 17.0 against Ogg Opus's 18.4 (#121).
- * AVFoundation cannot demux WebM at all, so iOS gets the same audio losslessly
- * re-encoded to ALAC in an M4A container instead (#178) — every other iOS-
- * playable option that was tried lost the loop's gaplessness somewhere in the
- * container (see assets/music/README.md), where ALAC cannot by construction.
- *
- * Requires are behind functions so Metro can see them statically while the
- * bytes stay out of the initial payload — the web bundle's ceiling is ~1 MB
- * gzip and these are 1.5 MB on their own.
+ * AVFoundation cannot demux WebM at all, so iOS resolves lib/musicTracks.ios.ts
+ * instead of lib/musicTracks.ts — the same audio losslessly re-encoded to ALAC
+ * in an M4A container (#178); every other iOS-playable option that was tried
+ * lost the loop's gaplessness somewhere in the container (see
+ * assets/music/README.md), where ALAC cannot by construction. Metro's
+ * platform-specific module resolution keeps the container the current
+ * platform doesn't use out of its bundle entirely; tests/musicAssets.test.ts
+ * pins both files against the tracks on disk.
  */
-const TRACKS_WEBM = {
-  menu: () => require("../assets/music/menu.webm") as number,
-  hand: () => require("../assets/music/hand.webm") as number,
-  cue: () => require("../assets/music/cue.webm") as number,
-  final: () => require("../assets/music/final.webm") as number,
-} as const;
-
-const TRACKS_IOS = {
-  menu: () => require("../assets/music/menu.m4a") as number,
-  hand: () => require("../assets/music/hand.m4a") as number,
-  cue: () => require("../assets/music/cue.m4a") as number,
-  final: () => require("../assets/music/final.m4a") as number,
-} as const;
-
-const TRACKS = Platform.OS === "ios" ? TRACKS_IOS : TRACKS_WEBM;
-
-export type MusicTrack = keyof typeof TRACKS_WEBM;
+export type MusicTrack = keyof typeof TRACKS;
 
 /** Long enough not to click, short enough not to feel like a transition. */
 const FADE_S = 0.6;
@@ -238,11 +223,7 @@ export async function playMusic(track: MusicTrack): Promise<void> {
     await playWebMusic(track);
     return;
   }
-  // Shared with lib/sounds.ts, so effects and music never settle on two
-  // different session categories — see the comment on ensureAudioMode.
-  try {
-    await ensureAudioMode();
-  } catch {}
+  await ensureAudioMode();
   playNativeMusic(track);
 }
 

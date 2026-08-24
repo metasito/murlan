@@ -102,6 +102,17 @@ order #178 laid out — both were tried and measured, not assumed:
   since it is spread evenly across the whole file rather than concentrated
   at the seam.
 
+**The gap this doesn't close.** All three measurements above ran through
+Chromium, the only decoder this repo can invoke without a device — not
+AVFoundation, the decoder iOS actually plays through. That matters most for
+AAC: Chromium's failure was quantization noise at the seam, but whether the
+playback path iOS actually uses honours the `iTunSMPB` priming-trim atom is a
+question about AVFoundation specifically, which a Chromium measurement cannot
+answer either way. #178 named this the thing to verify first, not assume, and
+it remains unverified here — ALAC was picked because it needs no such trim to
+go right by construction, not because either rejected candidate was confirmed
+to fail on-device.
+
 **Cost.** Lossless does not compress like Opus does — the four ALAC files run
 roughly 5× the WebM set's size (about 7.5 MB against 1.5 MB). Paid once in the
 iOS bundle, not over the wire to web players.
@@ -118,6 +129,14 @@ by CI on every run. **Genuine on-device confirmation is still outstanding** —
 AVFoundation decoding ALAC is long-documented Apple behaviour on every iOS
 version, which is why it was picked over the other two, but nothing here has
 run on a physical device or simulator. See #178.
+
+The branch this replaced, `NATIVE_MUSIC_SUPPORTED`, existed precisely to avoid
+a silent failure on a decoder path nobody had confirmed — it refused to create
+a native player on iOS at all rather than hand AVPlayer a container it
+couldn't demux. Nothing takes its place for ALAC: if AVFoundation rejects one
+of these files on a real device after all, `nativePlayer`'s `catch` swallows
+the error and the result is silent music with nothing telling anyone why,
+which is the exact failure mode that branch was written to prevent.
 
 ## The audio session category
 
