@@ -71,4 +71,55 @@ describe("the engine's floor under a play", () => {
     assert.equal(next.lastPlayedBy, 0);
     assert.equal(next.lastPlayedCombination?.cards[0].id, "K_hearts");
   });
+
+  // A caller can hold every card claimed and still lie about what shape they
+  // form — three unrelated singles claimed as a bomb, holding the table's
+  // real bomb comparison hostage to a made-up strength. `canPlay` compares
+  // only what it is told; nothing upstream of it re-derives the shape from
+  // the cards unless this does.
+  test("refuses a combination whose claimed shape its own cards do not form", () => {
+    const state = table({
+      lastPlayedCombination: {
+        type: "bomb",
+        cards: [c("2", "spades"), c("2", "hearts"), c("2", "clubs"), c("2", "diamonds")],
+        strength: 99,
+      },
+      lastPlayedBy: 1,
+    });
+    const fabricated = {
+      type: "bomb" as const,
+      cards: [c("5", "spades"), c("6", "spades"), c("K", "hearts")],
+      strength: 999,
+    };
+    assert.throws(() => processPlay(state, fabricated), /is not a bomb/);
+  });
+
+  test("refuses an opening play that skips the mandatory 3♠", () => {
+    const opening = table({
+      firstPlayMade: false,
+      startCard: c("3", "spades"),
+      players: [
+        makePlayer("p0", [c("3", "spades"), c("5", "spades"), c("K", "hearts")]),
+        makePlayer("p1", [c("9", "clubs"), c("10", "clubs")]),
+      ],
+    });
+    assert.throws(
+      () => processPlay(opening, combo([c("5", "spades")])),
+      /must open with 3_spades/
+    );
+  });
+
+  test("lets the opening play through once it includes the start card", () => {
+    const opening = table({
+      firstPlayMade: false,
+      startCard: c("3", "spades"),
+      players: [
+        makePlayer("p0", [c("3", "spades"), c("5", "spades"), c("K", "hearts")]),
+        makePlayer("p1", [c("9", "clubs"), c("10", "clubs")]),
+      ],
+    });
+    const next = processPlay(opening, combo([c("3", "spades")]));
+    assert.equal(next.firstPlayMade, true);
+    assert.equal(next.lastPlayedCombination?.cards[0].id, "3_spades");
+  });
 });
