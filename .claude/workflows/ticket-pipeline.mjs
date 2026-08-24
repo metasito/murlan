@@ -436,10 +436,8 @@ npx tsx lib/ticketPipeline/cleanup.ts < /tmp/ticket-pipeline-cleanup.json
 
    That prints a JSON array of shell commands. Run each one in order, tolerating "not found"-type
    errors (idempotent teardown — a container or worktree that's already gone is not a failure).
-   One exception: before running a "git branch -D <branch>" command, run
-   "git log --oneline origin/main..<branch>". If that errors the branch was never created, so skip
-   the delete; if it lists any commits the branch holds work that was never pushed, so skip the
-   delete and say which branch you kept.
+   The branch delete arrives already wrapped in its own guard, so run it as given rather than
+   deciding anything about it yourself; if it prints "kept <branch>", report that.
 4. If merged=true and the local branch still exists, delete it now with "git branch -D <branch>".
    The module deliberately omits that command, and "gh pr merge --delete-branch" only removes the
    remote copy, so without this the local branch survives every merged run.
