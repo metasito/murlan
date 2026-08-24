@@ -122,13 +122,7 @@ test("personalities are distinguishable, not just named", () => {
   assert.equal(new Set(traits).size, traits.length);
 });
 
-// The two knobs have to change the play, not just the label. Both positions
-// below are ones the strategy tier resolves identically for every personality,
-// so any difference in the answer comes from the personality alone.
-
-// #223: this used to be a distinguishing case — a ruthless personality spent
-// a 2 to take the round while a patient one let it go. That was the defect:
-// a bot has nothing to gain from winning a round by spending a card it will
+// A bot has nothing to gain from winning a round by spending a card it will
 // want on defence later, so no personality — however aggressive — reaches
 // for a 2 or a joker once no plain answer remains legal.
 test("no personality contests a round when only premium cards are legal", () => {
@@ -145,6 +139,10 @@ test("no personality contests a round when only premium cards are legal", () => 
   assert.equal(ask("gent"), null, "a ruthless one keeps its 2s for defence too");
 });
 
+// The aggression knob has to change the play, not just the label: this lead
+// position is one the strategy tier resolves identically for every
+// personality, so the difference between besnik's and drita's answers here
+// comes from aggression alone.
 test("aggression decides whether a lead spends premium cards", () => {
   // Leading with nine cards: the medium tier's longest multi-card play is the
   // triple of 2s, and a plain pair is available instead.
@@ -161,9 +159,9 @@ test("aggression decides whether a lead spends premium cards", () => {
   );
 });
 
-// #223: the hard tier's near-finish shortcut dumped whatever combo was
-// longest, royal straights and bombs included, rather than restricting itself
-// to the same conservative plays the rest of the lead path hoards for.
+// The hard tier's near-finish shortcut only ever dumps the same conservative
+// plays the rest of the lead path hoards for — never a royal straight or a
+// bomb, however long.
 test("hard lead near-finish shortcut does not dump a royal straight", () => {
   const hand = [
     c("5", "clubs"), c("6", "clubs"), c("7", "clubs"), c("8", "clubs"), c("9", "clubs"),
@@ -184,9 +182,8 @@ test("hard lead near-finish shortcut does not dump a royal straight", () => {
   );
 });
 
-// #223: once no plain response remained, the aggression knob fell back to
-// spending a 2 or joker to contest anyway, instead of passing and keeping
-// them for defence.
+// Once no plain response remains, aggression never falls back to spending a
+// 2 or a joker to contest the round — it passes and keeps them for defence.
 test("aggression floor does not spend a 2 or joker once no plain response remains", () => {
   const hand = [
     j("bw"), j("colored"), c("2", "hearts"),

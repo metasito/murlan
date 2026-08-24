@@ -14,7 +14,7 @@ export interface BotPersonality {
   name: string;
   /** Which of the engine's strategy tiers this personality plays on. */
   difficulty: AIDifficulty;
-  /** 0–1. How readily it spends a 2, a joker or a bomb, and how rarely it passes. */
+  /** 0–1. How readily it commits a 2, a joker or a bomb instead of swapping in a plain play when one is available. */
   aggression: number;
   /** 0–1. How often it takes a same-shape play that is legal but not the best one. */
   unpredictability: number;

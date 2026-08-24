@@ -592,22 +592,7 @@ function applyPersonality(
 ): Combination | null {
   let result = choice;
 
-  if (result === null) {
-    // The tier would pass. An aggressive personality contests the round instead.
-    // Leading a round is never a pass, so this only ever runs when responding.
-    if (!isNewRound && rng() < traits.aggression) {
-      // Strength only compares within a shape, so answer in kind before
-      // reaching for a bomb — the tier's emergency branch owns those.
-      const inKind = plays.filter((p) => p.type !== "bomb" && p.type !== "royal_straight");
-      const pool = inKind.length > 0 ? inKind : plays;
-      const plain = pool.filter((p) => !isPremiumPlay(p));
-      // Nothing cheap left to contest with: stay passing rather than spend a
-      // 2, a joker or a bomb to win a round nobody is forcing us to answer.
-      if (plain.length > 0) {
-        result = [...plain].sort((a, b) => a.strength - b.strength)[0];
-      }
-    }
-  } else if (isPremiumPlay(result) && rng() >= traits.aggression) {
+  if (result !== null && isPremiumPlay(result) && rng() >= traits.aggression) {
     // A cautious personality keeps its 2s, jokers and bombs while a plain play
     // exists — shedding as many cards as it can when leading, answering as
     // cheaply as it can when not.
