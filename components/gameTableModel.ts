@@ -511,6 +511,19 @@ export function computeScreenPads(opts: { insets: EdgeInsets }): ScreenPads {
   };
 }
 
+/**
+ * The short edge the table is laid out in: the window's, minus what the device
+ * keeps for a cutout, a home indicator or a status bar. `cardScale` sizes every
+ * card and touch target from it, so measuring the raw window sizes them for
+ * room the table does not have — on a notched phone in landscape that is 21pt
+ * of height and 118pt of width, while a browser reporting no insets is
+ * unaffected.
+ */
+export function tableShortEdge(opts: { width: number; height: number; insets: EdgeInsets }): number {
+  const { insets } = opts;
+  return Math.min(opts.width - insets.left - insets.right, opts.height - insets.top - insets.bottom);
+}
+
 // ─── Control rail ─────────────────────────────────────────────────────────────
 //
 // A cutout can never sit on a card, but it sits happily between two controls.

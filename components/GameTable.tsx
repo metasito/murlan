@@ -55,6 +55,7 @@ import {
   canPassNow as canPassNowOf,
   comboKey,
   computeTableFrame,
+  tableShortEdge,
   describeTableForA11y,
   EMPTY_PILE,
   handCountOf,
@@ -689,9 +690,7 @@ export function GameTable({
   const { t, tn } = useTranslation();
   const insets = useSafeAreaInsets();
   const { width: W, height: H } = useWindowDimensions();
-  // Landscape-locked, so the short edge is normally H — Math.min is the
-  // robust read regardless of how a platform reports it mid-rotation.
-  const scale = cardScale(Math.min(W, H));
+  const scale = cardScale(tableShortEdge({ width: W, height: H, insets }));
   const handCardH = CARD_H(scale * HAND_SCALE);
   // What the player sees of a hand card, and how tall PASSA and GIOCA are —
   // the row reads as one band even though only the cards are cropped.
