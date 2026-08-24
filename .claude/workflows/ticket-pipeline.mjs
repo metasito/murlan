@@ -37,7 +37,12 @@ if (forcedTicket !== undefined && !Number.isInteger(forcedTicket)) {
   throw new Error(`ticket-pipeline: args named a ticket that is not a number: ${JSON.stringify(args)}`)
 }
 
-const MAX_FIX_ROUNDS = 2
+// A ceiling, not a budget. `stalled` below ends the loop the moment a round stops improving on
+// the one before it, so a run that is going nowhere costs one round and this number never
+// applies to it. What the number decides is how far a run that *is* converging may go: #293 came
+// down 7 -> 5 -> 1 confirmed findings with CI going red -> green, and was cut off one round short
+// of clean by a limit that was counting attempts.
+const MAX_FIX_ROUNDS = 4
 const REPO = 'metasito/murlan'
 
 const BASH_NOTE = [
