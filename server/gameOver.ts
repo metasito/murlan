@@ -23,7 +23,21 @@ export interface GameOverWriters {
     status: "waiting" | "in_progress" | "finished"
   ) => Promise<void>;
   persistGameState: (roomId: string, game: OnlineGameState) => Promise<unknown>;
-  recordGameResult: (results: GameResult[], gameMode: GameMode) => Promise<void>;
+  recordGameResult: (
+    results: GameResult[],
+    gameMode: GameMode,
+    ratingDeltas?: Map<string, number>
+  ) => Promise<void>;
+  /**
+   * What the hand is about to do to each seat's rating. Read before
+   * `game:over` goes out, because the inputs stop existing once the rated
+   * write lands — see server/ratings.ts.
+   */
+  previewRatedDeltas: (
+    seatResults: { userId: string; placement: number }[],
+    gameMode: string,
+    finishedAt: Date
+  ) => Promise<Map<string, number>>;
   recordRatedResult: (
     seatResults: { userId: string; placement: number }[],
     gameMode: string,
@@ -69,6 +83,25 @@ export async function handleGameOver(
 
   game.rematchVotes = new Set();
 
+  // One clock for the preview, the emit and the rated write below: two calls
+  // to `new Date()` can straddle a month boundary, and the season key is
+  // derived from it — the delta shown would then belong to a different season
+  // from the one written.
+  const finishedAt = new Date();
+  // Awaited, unlike the writes below, and deliberately: this is a read, and
+  // it is the only moment the delta exists. `user_ratings` keeps only the
+  // current rating, so once the rated write lands nothing can reconstruct what
+  // the hand changed. A failure here costs the panel its number, never the
+  // hand — hence the empty map rather than a throw.
+  const ratingDeltasByUser = result.recordable
+    ? await writers
+        .previewRatedDeltas(result.gameResults, game.gameMode, finishedAt)
+        .catch((err) => {
+          logger.warn({ err, roomId }, "Could not read the hand's rating deltas");
+          return new Map<string, number>();
+        })
+    : new Map<string, number>();
+
   io.to(roomId).emit("game:over", {
     rankings: state.rankings,
     cumulativeScores: byName,
@@ -79,6 +112,11 @@ export async function handleGameOver(
     matchWinners: winnerNames,
     matchContinues,
     isDraw,
+    // Keyed by user id, and absent for a table that earns no rating — an
+    // offline or teams hand, or one without two rated finishers. The client
+    // shows its empty state on absence rather than on a zero, which is a real
+    // outcome.
+    ratingDeltas: Object.fromEntries(ratingDeltasByUser),
   });
 
   // The one record of how a hand resolved. `match_replays` is not a substitute:
@@ -133,14 +171,14 @@ export async function handleGameOver(
     } else {
       // Deliberately not awaited: a stats write must never be able to block
       // or delay whatever runs after handleGameOver at any of its call sites.
-      writers.recordGameResult(gameResults, game.gameMode).catch((err) =>
+      writers.recordGameResult(gameResults, game.gameMode, ratingDeltasByUser).catch((err) =>
         logger.error({ err, roomId }, "Failed to record game results")
       );
       // The ladder moves on the same gate as stats: a bot-majority table
       // awards nothing, or a private room of bots would be free rating.
       // recordRatedResult declines a teams result on its own (placement
       // belongs to the pair, not to either partner).
-      writers.recordRatedResult(gameResults, game.gameMode, new Date()).catch((err) =>
+      writers.recordRatedResult(gameResults, game.gameMode, finishedAt).catch((err) =>
         logger.error({ err, roomId }, "Failed to record rated result")
       );
     }

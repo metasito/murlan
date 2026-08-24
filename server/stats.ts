@@ -50,7 +50,14 @@ function pointsForPlacement(placement: number, playerCount: number): number {
  */
 export async function recordGameResult(
   results: GameResult[],
-  gameMode: GameMode
+  gameMode: GameMode,
+  /**
+   * What this hand did to each seat's ladder rating, read before the hand was
+   * written (server/ratings.ts `previewRatedDeltas`). Absent for every seat a
+   * table did not rate, which is what leaves `rating_delta` null rather than
+   * claiming a rated match that moved nobody.
+   */
+  ratingDeltas: Map<string, number> = new Map()
 ): Promise<void> {
   const humanResults = results.filter((r) => !isBotId(r.userId));
   if (humanResults.length === 0) return;
@@ -110,6 +117,7 @@ export async function recordGameResult(
           playerCount,
           points: pointsForPlacement(placement, playerCount),
           opponents,
+          ratingDelta: ratingDeltas.get(userId) ?? null,
         });
 
         // Prune in the same transaction as the insert above, so the table

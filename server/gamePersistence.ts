@@ -4,7 +4,7 @@ import { storage } from "./storage.ts";
 import { logger } from "./logger.ts";
 import { db } from "./db.ts";
 import { recordGameResult } from "./stats.ts";
-import { recordRatedResult } from "./ratings.ts";
+import { previewRatedDeltas, recordRatedResult } from "./ratings.ts";
 import { saveReplay } from "./replays.ts";
 import {
   activeGames as activeGamesTable,
@@ -307,5 +307,6 @@ export const gameOverWriters: GameOverWriters = {
   persistGameState,
   recordGameResult,
   recordRatedResult,
+  previewRatedDeltas,
   saveReplay,
 };
