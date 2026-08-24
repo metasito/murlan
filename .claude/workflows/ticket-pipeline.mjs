@@ -15,6 +15,7 @@ export const meta = {
 const MAX_FIX_ROUNDS = 2
 const REPO = 'metasito/murlan'
 const E2E_PORT = 5199
+const BOOT_PORT = 5050
 
 const BASH_NOTE = [
   'Use the Bash tool (POSIX sh), not PowerShell.',
@@ -71,6 +72,7 @@ const VERIFY_SCHEMA = {
   properties: {
     pass: { type: 'boolean' },
     dockerStarted: { type: 'boolean' },
+    failedStep: { type: 'string' },
     output: { type: 'string' },
   },
   required: ['pass', 'dockerStarted'],
@@ -104,26 +106,114 @@ const LAND_SCHEMA = {
 
 const state = { worktreePath: null, dockerStarted: false, localBranch: null, merged: false }
 
-async function runVerify(filesTouched) {
+async function runVerify() {
   // Teardown is owed from the moment the container can exist, not from the agent's report:
   // a verify agent that dies after `docker run` never reports, and the container leaks.
   state.dockerStarted = true
   return agent(
     `${BASH_NOTE}
-Get the check list for the files this change touched:
+GitHub Actions is not running at all right now, so this local sweep is the only thing standing
+between a defect and main. Run ci.yml's jobs locally. Do not scope the app checks down by which
+files changed, and do not skip a job because an earlier one failed — in CI these are independent
+parallel jobs, and one run is expected to report every failure.
 
-${writeJsonCommand('/tmp/ticket-pipeline-verify.json', normalizePaths(filesTouched))}
-npx tsx lib/ticketPipeline/verifyPlan.ts < /tmp/ticket-pipeline-verify.json
+STEP 0 — ci.yml's "scope" job: is this change prose only?
+  changed=$(git diff --name-only origin/main...HEAD)
+  Print that list. Then apply ci.yml's own allowlist, which is deliberately an allowlist so an
+  unrecognised path fails safe towards running everything:
+    grep -qvE '^(docs/|\\.claude/)|\\.md$' <<< "$changed"
+  If that finds NO file outside docs/, .claude/ or *.md, the change is documentation only.
+  ci.yml skips every app check in that case, so skip STEPS 2-5 too and report pass: true with
+  output "documentation only — app checks skipped, matching ci.yml's scope job". Otherwise
+  continue. (.github/workflows/ is NOT prose: a change there must exercise itself.)
 
-That prints a JSON array of shell commands to run, in order. If any command needs a
-database, start a throwaway Postgres first with a FIXED name so cleanup can find it:
-docker run -d --name murlan-verify-pg -e POSTGRES_USER=postgres -e POSTGRES_PASSWORD=postgres \
--e POSTGRES_DB=murlan_test -p 55433:5432 postgres:16-alpine
-then wait for pg_isready, then set DATABASE_URL=postgres://postgres:postgres@localhost:55433/murlan_test
-and SESSION_SECRET=verify-local for every command in the plan. Run every command from the plan in order.
-Report pass (true only if every command exited 0), dockerStarted (whether you started the container),
-output (tail of any failing command's output). If the plan itself could not be produced, report
-pass: false with the error as output.`,
+STEP 1 — dependencies, only if this change moved them.
+  If package.json or package-lock.json is in the changed list, run "npm ci" once. Otherwise
+  skip it: ci.yml runs npm ci per job because each job is a fresh runner, but this is one
+  working tree and node_modules is already installed.
+
+STEP 2 — one throwaway Postgres, started once and reused by everything below.
+  docker run -d --name murlan-verify-pg -e POSTGRES_USER=postgres -e POSTGRES_PASSWORD=postgres \
+    -e POSTGRES_DB=murlan_test -p 55433:5432 postgres:16-alpine
+  If a container with that name already exists, reuse it instead of starting a second one.
+  Wait until "docker exec murlan-verify-pg pg_isready -U postgres" succeeds, then export for
+  STEP 3 and STEP 5:
+    DATABASE_URL=postgres://postgres:postgres@localhost:55433/murlan_test
+    SESSION_SECRET=verify-local
+  STEP 4 does NOT use this container: scripts/e2e-server.mjs overwrites DATABASE_URL and
+  SESSION_SECRET and brings up its own disposable Postgres (murlan-dev-pg, port 55432).
+
+STEP 3 — ci.yml's "verify" job. Run all four; ci.yml marks the last two if:!cancelled() so that
+one run reports every failure, so do not stop at the first red one.
+  npm run typecheck
+  set -o pipefail; npm test | tee test-output.txt
+  npm run test:native -- --maxWorkers=2
+  npm run lint
+  The --maxWorkers=2 is not optional and is not a way of hiding a slow test: jest defaults to
+  one worker per core, and on a many-core developer machine that saturation pushes ordinary
+  suites past their 5s per-test timeout, so a clean tree reports 13 failures that all pass when
+  rerun alone. Two workers matches ci.yml's runner, goes green, and is FASTER in wall clock.
+  If a suite still fails, rerun that one file alone before believing it — but a suite that
+  fails alone is a real failure, never a flake.
+
+  Then the floor ci.yml puts under "npm test" — a skipped integration suite still exits 0:
+    grep -q "DATABASE_URL not set" test-output.txt
+  If that MATCHES, the integration suites silently skipped because Postgres was unreachable.
+  Treat it as a FAILURE (failedStep "verify: integration suites skipped"), never as a pass.
+
+STEP 4 — ci.yml's "browser" job.
+  npx playwright install chromium   — only if chromium is not already installed; check first,
+  the download is slow and is needed once per machine, not once per run.
+  npm run test:e2e
+
+STEP 5 — ci.yml's "build" job, in this exact order. Each step consumes the previous one's
+output, so here you DO stop at the first failure.
+  This job runs AFTER the browser job and that order is load-bearing, not incidental: the e2e
+  harness exports its own web bundle with EXPO_PUBLIC_E2E_FAST=1 (a zero-delay build) into
+  dist/. Building here afterwards is what leaves dist/ holding the real production bundle for
+  the budget check and the boot check below. Do not reorder these two, and do not try to save
+  the duplicated export with E2E_SKIP_BUILD=1 — the two bundles are different artefacts, and
+  scripts/assertNotE2EFast.js exists to stop the production one being built in fast mode.
+  First, ci.yml's "This job's Node is the one production runs" check. That job pins Node 22
+  because esbuild's --target=node22 lowers syntax and knows nothing about APIs, so a
+  Node-24-only builtin compiles at exit 0 and throws on Replit:
+    replit=$(grep -oE 'nodejs-[0-9]+' .replit | head -1 | cut -d- -f2)
+    actual=$(node -p 'process.versions.node.split(".")[0]')
+  If those differ and no Node "$replit" is available on this machine, DO run the rest of this
+  step, but start your reported output with the line
+    "PRODUCTION-RUNTIME CHECK NOT EXERCISED: built and booted on Node $actual, Replit deploys
+    on Node $replit"
+  and include it even when pass is true. Do not fail the ticket for it — it is this machine's
+  limitation, not a defect in the diff — but never let a run imply that check happened.
+  If a Node "$replit" is available (nvm/fnm/volta), use it for the rest of STEP 5 instead.
+
+  npm run expo:web:build && npm run server:build
+  npm run bundle:budget
+  EXPO_PUBLIC_DOMAIN=example.invalid npm run expo:static:build
+    On Windows this step cannot run: scripts/build.js spawns "npm" without shell:true, so it
+    dies with "Error: spawn npm ENOENT" before building anything. That is this machine, not the
+    diff. If and ONLY if the failure is that exact ENOENT-spawning-npm signature, treat the step
+    as not exercised rather than failed, and say so in output. Any other failure from this step
+    is a real failure. (See the report for the one-line fix that would close this.)
+  Then boot the built server and check it reaches the database:
+    test -f dist/index.html
+    test -f server_dist/index.mjs
+    PORT=${BOOT_PORT} NODE_ENV=production node server_dist/index.mjs &   (keep its PID)
+    poll "curl -fsS http://127.0.0.1:${BOOT_PORT}/health -o health.json" up to 30 times, 1s
+      apart, stopping as soon as it succeeds
+    kill that PID — always, including when the poll timed out, so port ${BOOT_PORT} is free for
+      the next run
+    grep -q '"db":"connected"' health.json — if that does not match, the build boots but never
+      reaches Postgres, which is a FAILURE.
+
+Report:
+  pass — true ONLY if every command above exited 0, the integration-suite grep did NOT match,
+    and /health reported "db":"connected". Anything else is false.
+  failedStep — the first command that failed, prefixed with its job, e.g.
+    "verify: npm run lint" or "build: npm run bundle:budget". Empty when pass is true.
+  output — the tail of every failing command's output, enough that another agent can fix it
+    without running the sweep again. Name every job that failed, not just the first.
+  dockerStarted — whether you started the container.`,
     { phase: 'Verify', schema: VERIFY_SCHEMA }
   )
 }
@@ -253,7 +343,7 @@ implementation didn't complete: ${impl.summary || 'no reason given'}`,
   }
 
   phase('Verify')
-  let verify = await runVerify(impl.filesTouched)
+  let verify = await runVerify()
 
   phase('Review')
   let review = await runReview(claim, null)
@@ -267,9 +357,9 @@ implementation didn't complete: ${impl.summary || 'no reason given'}`,
       .join('\n')
     const verifyNote = verify.pass
       ? ''
-      : `\nLocal verification is also failing — make it pass. Tail of the failing command:\n${
-          verify.output || '(none reported)'
-        }`
+      : `\nThe local CI sweep is also failing — make it pass. First failing step: ${
+          verify.failedStep || '(not reported)'
+        }\nOutput:\n${verify.output || '(none reported)'}`
     const fix = await agent(
       `On branch ${claim.branch}, fix exactly these findings and nothing else, then commit:\n${
         findingList || '- (no review findings; the failing verification below is the whole job)'
@@ -277,7 +367,7 @@ implementation didn't complete: ${impl.summary || 'no reason given'}`,
       { phase: 'Fix', schema: IMPLEMENT_SCHEMA }
     )
     if (!fix.committed) break
-    verify = await runVerify(fix.filesTouched)
+    verify = await runVerify()
     review = await runReview(claim, confirmed.map((f) => f.summary).join('; '))
   }
 
@@ -325,8 +415,14 @@ This run's branch is ${state.localBranch || '(none)'} and merged=${state.merged}
 
 1. Put the checkout back on main first, so no branch is pinned by being the current one:
    git checkout main || git checkout -B main origin/main
-2. Free the local verification port if anything is still bound to it, tolerating no match:
+2. Free the local verification ports if anything is still bound to them, tolerating no match.
+   ${E2E_PORT} is Playwright's webServer, ${BOOT_PORT} is the built server the sweep boots:
    netstat -ano | findstr :${E2E_PORT}   then, for any PID listed: taskkill /PID <pid> /F
+   netstat -ano | findstr :${BOOT_PORT}  then, for any PID listed: taskkill /PID <pid> /F
+   Also tear down the container the e2e harness brings up for itself, which the teardown list
+   below does not know about, using the project's own command: node scripts/dev-stack.mjs down
+   (safe because scripts/e2e-server.mjs recreates it from scratch on every run, so nothing
+   durable lives there — but skip it if the user is known to be mid dev-session on it.)
 3. Build the teardown list and run it:
 
 ${writeJsonCommand('/tmp/ticket-pipeline-cleanup.json', state)}
