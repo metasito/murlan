@@ -111,6 +111,14 @@ const LAND_SCHEMA = {
 
 const state = { worktreePath: null, dockerStarted: false, localBranch: null, merged: false }
 
+// The progress view shows a label per agent, and falls back to the head of the prompt when there
+// is none — which is why an unlabelled run reads as seven walls of instructions with no ticket
+// number anywhere. `ticket` is filled in once the claim stage knows what it took.
+const run = { ticket: 'no ticket yet' }
+function label(stage) {
+  return `${stage} ${run.ticket}`
+}
+
 async function runVerify() {
   // Teardown is owed from the moment the container can exist, not from the agent's report:
   // a verify agent that dies after `docker run` never reports, and the container leaks.
@@ -259,7 +267,7 @@ Report:
     that failed, not just the first. Empty when pass is true — a passing sweep's log is read by
     nobody and costs every later stage that carries it.
   dockerStarted — whether you started the container.`,
-    { model: MODELS.verify, phase: 'Verify', schema: VERIFY_SCHEMA }
+    { model: MODELS.verify, phase: 'Verify', label: label('verify'), schema: VERIFY_SCHEMA }
   )
 }
 
@@ -294,7 +302,7 @@ still passes on broken code is a CONFIRMED finding. Report: file, line, summary,
   // lenses read a diff that has not moved since they cleared it.
   const lenses = onlyKeys ? allLenses.filter((l) => onlyKeys.includes(l.key)) : allLenses
   const results = await parallel(
-    lenses.map((l) => () => agent(l.prompt, { model: MODELS.review, phase: 'Review', label: `review:${l.key}`, schema: FINDING_SCHEMA }))
+    lenses.map((l) => () => agent(l.prompt, { model: MODELS.review, phase: 'Review', label: label(`review:${l.key}`), schema: FINDING_SCHEMA }))
   )
   const failedLenses = lenses.filter((l, i) => !results[i]).map((l) => l.key)
   if (failedLenses.length) {
@@ -360,13 +368,16 @@ gateReason — this is the pipeline's only escalation valve, so a gate that coul
 answer "no escalation needed". If it does escalate, hand the ticket back before you report: remove
 in-progress, add ready-for-human, comment the gate's reason. Do not report the issue body; every
 later stage reads it from GitHub itself.`,
-    { model: MODELS.claim, phase: 'Claim', schema: CLAIM_SCHEMA }
+    { model: MODELS.claim, phase: 'Claim', label: 'claim the next queue ticket', schema: CLAIM_SCHEMA }
   )
   if (!claim.claimed) {
     log(`Nothing claimed: ${claim.reason}`)
     return { landed: false, reason: claim.reason }
   }
+  run.ticket = `#${claim.number}`
+  log(`#${claim.number} ${claim.title || ''} — on ${claim.branch}`)
   if (claim.escalate) {
+    log(`#${claim.number} handed back: ${claim.gateReason}`)
     return { landed: false, ticket: claim.number, reason: `escalated: ${claim.gateReason}` }
   }
   claimOpen = true
@@ -386,7 +397,7 @@ picture of a file from repeated sed/grep windows — each window costs a turn, a
 twenty pieces costs far more than the file. Re-read only what you have edited.
 
 Commit your work (do not push yet). Report: committed, commitSha, summary, filesTouched.`,
-    { model: MODELS.implement, phase: 'Implement', schema: IMPLEMENT_SCHEMA }
+    { model: MODELS.implement, phase: 'Implement', label: label('implement'), schema: IMPLEMENT_SCHEMA }
   )
   if (!impl.committed) {
     releaseReason = `implementation didn't complete: ${impl.summary || 'no reason given'}`
@@ -418,7 +429,7 @@ failure the verify stage reported as pre-existing on origin/main is not yours to
 Findings:\n${
         findingList || '- (no review findings; the failing verification below is the whole job)'
       }${verifyNote}`,
-      { model: MODELS.fix, phase: 'Fix', schema: IMPLEMENT_SCHEMA }
+      { model: MODELS.fix, phase: 'Fix', label: label(`fix round ${round}`), schema: IMPLEMENT_SCHEMA }
     )
     if (!fix.committed) break
     verify = await runVerify()
@@ -442,7 +453,7 @@ message). CI is billing-blocked today — check the run once; if the scope job d
 known billing failure, confirm via gh api repos/${REPO}/check-runs/<id>/annotations), don't
 wait on it further. Merge with gh pr merge --merge --admin --delete-branch, then close #${claim.number}
 with a comment summarizing what shipped. Report: merged, prNumber, reason.`,
-    { model: MODELS.land, phase: 'Land', schema: LAND_SCHEMA }
+    { model: MODELS.land, phase: 'Land', label: label('land'), schema: LAND_SCHEMA }
   )
   state.merged = land.merged
   if (land.merged) claimOpen = false
@@ -488,7 +499,7 @@ npx tsx lib/ticketPipeline/cleanup.ts < /tmp/ticket-pipeline-cleanup.json
    The module deliberately omits that command, and "gh pr merge --delete-branch" only removes the
    remote copy, so without this the local branch survives every merged run.
 5. Report the final "git status --short" output and the current branch verbatim.`,
-      { model: MODELS.cleanup, phase: 'Cleanup' }
+      { model: MODELS.cleanup, phase: 'Cleanup', label: label('clean up after') }
     )
     log(`Cleanup finished: ${typeof cleaned === 'string' ? cleaned : JSON.stringify(cleaned)}`)
   } catch (error) {
