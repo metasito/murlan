@@ -1,8 +1,4 @@
-# Extends gitleaks' built-in rules. Every finding below is one of the seven
-# hits #277's full-history scan turned up, verified harmless; each allowlist
-# is scoped to that rule and that exact file, and further narrowed to the
-# literal string found so a *different* secret landing in the same file is
-# still caught.
+# See #277 for how these findings were located and verified harmless.
 [extend]
 useDefault = true
 

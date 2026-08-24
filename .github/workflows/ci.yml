@@ -42,10 +42,38 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
+      # Run via `docker run` rather than the `docker://` action syntax: the
+      # container runs as root against a checkout owned by the runner user,
+      # and git's dubious-ownership check can refuse the repo for that
+      # mismatch alone. `GIT_CONFIG_COUNT`/`_KEY_0`/`_VALUE_0` reach git
+      # directly as env vars, unlike the action form which gives us no way to
+      # land a `safe.directory` entry inside the container's git config.
       - name: gitleaks
-        uses: docker://zricethezav/gitleaks:v8.30.1
-        with:
-          args: detect --source=/github/workspace --redact -v
+        shell: bash
+        run: |
+          set -o pipefail
+          docker run --rm \
+            -v "${{ github.workspace }}:/repo" \
+            -e GIT_CONFIG_COUNT=1 \
+            -e GIT_CONFIG_KEY_0=safe.directory \
+            -e GIT_CONFIG_VALUE_0=/repo \
+            zricethezav/gitleaks:v8.30.1 \
+            detect --source=/repo --redact -v --no-color \
+          | tee gitleaks-output.txt
+
+      # A checkout git refuses (dubious ownership, a missing .git, a failed
+      # clone) still scans "0 commits" and exits 0 — a scan indistinguishable
+      # from a real pass over clean history. Fail the job instead of shipping
+      # a guard that can inspect nothing and stay green.
+      - name: The scan actually inspected commit history
+        run: |
+          scanned=$(grep -oE '[0-9]+ commits scanned\.' gitleaks-output.txt | grep -oE '^[0-9]+' || true)
+          if [ -z "$scanned" ] || [ "$scanned" -eq 0 ]; then
+            echo "::error::gitleaks scanned ${scanned:-no} commits — the scan inspected nothing."
+            cat gitleaks-output.txt
+            exit 1
+          fi
+          echo "Confirmed: $scanned commits scanned."
 
   # Two reasons the suite below can be skipped, both settled here: the commit is
   # prose, or this exact tree already went green on the pull request it came
