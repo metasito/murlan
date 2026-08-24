@@ -1,7 +1,9 @@
-// The current season's ladder. Read-only, and deliberately plain: the rating
-// itself is the content, so the screen is a list and nothing else.
+// The current season's ladder. Read-only: the rating itself is the content.
+// A season can carry up to 50 rows (server/ratings.ts), so — like every other
+// screen with a back action — the exit sits in a fixed top bar rather than
+// only past however much of the board is on screen.
 import React from "react";
-import { View, Text, StyleSheet, ActivityIndicator } from "react-native";
+import { View, Text, StyleSheet, Pressable, ActivityIndicator } from "react-native";
 import { router } from "expo-router";
 import Ionicons from "@expo/vector-icons/Ionicons";
 import { useQuery } from "@tanstack/react-query";
@@ -43,8 +45,22 @@ export default function LeaderboardScreen() {
   const me = meQuery.data;
 
   return (
-    <MenuLayout>
-      <MenuCard title={t("ladder.title")}>
+    <MenuLayout scrollable centered={false}>
+      <View style={styles.topBar}>
+        <Pressable
+          onPress={() => router.back()}
+          style={styles.backBtn}
+          accessibilityRole="button"
+          accessibilityLabel={t("common.back")}
+          hitSlop={12}
+        >
+          <Ionicons name="chevron-back" size={22} color={Colors.gold} />
+        </Pressable>
+        <Text style={styles.screenTitle}>{t("ladder.title")}</Text>
+        <View style={{ width: 38 }} />
+      </View>
+
+      <MenuCard>
         {me && (
           <View style={styles.selfBlock} accessible
             accessibilityLabel={`${t("ladder.ratingLabel")}: ${me.rating}. ${t("ladder.seasonLabel", { season: formatSeason(me.season, t) })}`}
@@ -132,6 +148,29 @@ export default function LeaderboardScreen() {
 }
 
 const styles = StyleSheet.create({
+  topBar: {
+    flexDirection: "row",
+    alignItems: "center",
+    width: "100%",
+    paddingBottom: Spacing.sm,
+    marginBottom: Spacing.xs,
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.border,
+  },
+  backBtn: {
+    width: 44,
+    height: 44,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  screenTitle: {
+    flex: 1,
+    textAlign: "center",
+    ...Type.heading,
+    fontSize: FontSize.xl,
+    letterSpacing: 3,
+  },
+
   selfBlock: {
     alignItems: "center",
     gap: Spacing.xs / 2,
