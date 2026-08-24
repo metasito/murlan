@@ -187,7 +187,7 @@ async function sweepSizes(page: Page, allow: string[]): Promise<string[]> {
  * Matched against the Italian labels the whole suite is written against and
  * playwright.config.ts pins.
  */
-const UNDERSIZED_BY_DESIGN = ["di Fiori", "di Cuori", "di Quadri", "di Picche", "Jolly"];
+const UNDERSIZED_BY_DESIGN = ["di Fiori", "di Cuori", "di Quadri", "di Picche", "Joker"];
 
 const SIZES = [
   { name: "phone portrait", width: 390, height: 844 },

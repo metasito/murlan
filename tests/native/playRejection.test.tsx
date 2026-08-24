@@ -39,7 +39,16 @@ import * as Haptics from 'expo-haptics';
 import { GameTable } from '@/components/GameTable';
 import { t } from '@/lib/i18n';
 import { cardSpokenName } from '@/lib/cardNames';
-import type { Card, Combination, GameState, Player, Rank, Suit } from '@/lib/gameEngine';
+import {
+  getCardDisplayRank,
+  getSuitSymbol,
+  type Card,
+  type Combination,
+  type GameState,
+  type Player,
+  type Rank,
+  type Suit,
+} from '@/lib/gameEngine';
 
 const METRICS = {
   frame: { x: 0, y: 0, width: 844, height: 390 },
@@ -169,6 +178,40 @@ describe('the refused GIOCA names the right reason', () => {
 
     expect(screen.getByText(t('gameTable.playLabelGioca'))).toBeTruthy();
     expect(screen.queryByText(t('gameTable.playLabelTooLow'))).toBeNull();
+
+    await r.unmount();
+  });
+});
+
+describe('the start-card banner names the real fallback card', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+  });
+
+  const FIVE_H = card('5', 'hearts');
+  const rank = getCardDisplayRank(FIVE_H.rank);
+  const suit = getSuitSymbol(FIVE_H.suit);
+
+  it('the viewer opens: banner names the actual card, not the 3♠', async () => {
+    const r = await render(
+      table(state({ firstPlayMade: false, startCard: FIVE_H, currentTurnIndex: 0 }), [])
+    );
+
+    expect(screen.getByText(t('gameTable.startCardBannerSelf', { rank, suit }))).toBeTruthy();
+    expect(screen.queryByText('♠')).toBeNull();
+
+    await r.unmount();
+  });
+
+  it('another seat opens: banner names the actual card, not the 3♠', async () => {
+    const r = await render(
+      table(state({ firstPlayMade: false, startCard: FIVE_H, currentTurnIndex: 1 }), [])
+    );
+
+    expect(
+      screen.getByText(t('gameTable.startCardBannerOther', { name: 'Besi', rank, suit }))
+    ).toBeTruthy();
+    expect(screen.queryByText('♠')).toBeNull();
 
     await r.unmount();
   });

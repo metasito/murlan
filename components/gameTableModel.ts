@@ -7,8 +7,7 @@
 // relative and carry its .ts extension; `@/` is safe only in a type-only import,
 // which is erased before resolution.
 
-import type { Card, Combination, GameState, Player } from "@/lib/gameEngine";
-import { getCardDisplayRank, getSuitSymbol } from "../lib/gameEngine.ts";
+import type { Combination, GameState, Player } from "@/lib/gameEngine";
 import { CARD_H, CARD_W, cardScale } from "./cardFaceModel.ts";
 
 // ─── Layout constants ─────────────────────────────────────────────────────────
@@ -458,26 +457,6 @@ export function turnTimerActive(opts: {
   if (opts.gameOver || opts.exchangeActive) return false;
   if (opts.isNewRound && !opts.includeNewRound) return false;
   return true;
-}
-
-// ─── Start-card banner ────────────────────────────────────────────────────────
-
-/**
- * Italian copy for the pre-first-play banner. Existed offline only; the online
- * screen showed an empty pile instead.
- */
-export function startCardBannerText(opts: {
-  card: Card;
-  starterName: string;
-  viewerIsStarter: boolean;
-}): string {
-  // At 2 players the opening card can be the fallback "lowest dealt card"
-  // rather than the 3♠ (docs/RULES.md §4), so the suit is read off the card
-  // rather than assumed.
-  const label = `${getCardDisplayRank(opts.card.rank)}${getSuitSymbol(opts.card.suit)}`;
-  return opts.viewerIsStarter
-    ? `Inizi tu! Hai il ${label}`
-    : `${opts.starterName} inizia con il ${label}`;
 }
 
 // ─── Table frame ──────────────────────────────────────────────────────────────

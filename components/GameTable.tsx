@@ -669,6 +669,40 @@ function PassaButton({
   );
 }
 
+/**
+ * The pre-first-play banner naming who opens and with what card. A component
+ * of its own rather than inline JSX: `card` is only read here, so `rank` and
+ * `suit` derive once instead of once per interpolation, and GameTable's own
+ * `dimReasonText` (which also reads the start card, for the button's refusal
+ * reason) never shares a live range with this — extending that range once
+ * broke React Compiler's memoization of `handlePlay` (its `useCallback`
+ * depends on `dimReasonText`).
+ */
+function StartCardBanner({
+  card,
+  starterIsViewer,
+  starterName,
+  t,
+}: {
+  card: Card;
+  starterIsViewer: boolean;
+  starterName: string;
+  t: TFn;
+}) {
+  const rank = getCardDisplayRank(card.rank);
+  const suit = getSuitSymbol(card.suit);
+  return (
+    <View style={styles.startCardBanner}>
+      <TableText style={styles.startCardGlyph}>{suit}</TableText>
+      <TableText style={styles.startCardText}>
+        {starterIsViewer
+          ? t("gameTable.startCardBannerSelf", { rank, suit })
+          : t("gameTable.startCardBannerOther", { name: starterName, rank, suit })}
+      </TableText>
+    </View>
+  );
+}
+
 // ─── GameTable ────────────────────────────────────────────────────────────────
 
 export function GameTable({
@@ -810,8 +844,7 @@ export function GameTable({
   // Two words fit on the button; the sentence is what the screen reader speaks
   // and what the toast shows when the refusal is tapped. Only the start-card
   // reason reads the card. At 2 players the opening card can be the fallback
-  // "lowest dealt card" rather than the 3♠ (docs/RULES.md §4), so the suit is
-  // read off the card rather than assumed.
+  // "lowest dealt card" rather than the 3♠ (docs/RULES.md §4).
   const startCardDisplayRank = gameState.startCard ? getCardDisplayRank(gameState.startCard.rank) : "";
   const startCardSuitSymbol = gameState.startCard ? getSuitSymbol(gameState.startCard.suit) : "";
   const startCardSpokenName = gameState.startCard ? cardSpokenName(gameState.startCard, t) : "";
@@ -1360,23 +1393,12 @@ export function GameTable({
 
             <View style={sharedTableStyles.centerSection}>
               {showStartCardBanner ? (
-                <View style={styles.startCardBanner}>
-                  <TableText style={styles.startCardGlyph}>
-                    {getSuitSymbol(gameState.startCard!.suit)}
-                  </TableText>
-                  <TableText style={styles.startCardText}>
-                    {gameState.currentTurnIndex === viewerSeat
-                      ? t("gameTable.startCardBannerSelf", {
-                          rank: getCardDisplayRank(gameState.startCard!.rank),
-                          suit: getSuitSymbol(gameState.startCard!.suit),
-                        })
-                      : t("gameTable.startCardBannerOther", {
-                          name: players[gameState.currentTurnIndex]?.name ?? "",
-                          rank: getCardDisplayRank(gameState.startCard!.rank),
-                          suit: getSuitSymbol(gameState.startCard!.suit),
-                        })}
-                  </TableText>
-                </View>
+                <StartCardBanner
+                  card={gameState.startCard!}
+                  starterIsViewer={gameState.currentTurnIndex === viewerSeat}
+                  starterName={players[gameState.currentTurnIndex]?.name ?? ""}
+                  t={t}
+                />
               ) : (
                 <PlayedPile
                   prev={pileState.prev}

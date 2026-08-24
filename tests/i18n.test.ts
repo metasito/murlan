@@ -402,6 +402,21 @@ describe("interpolation placeholders stay in sync across locales", () => {
   });
 });
 
+describe("gameTable.playLabelStartCard and gameTable.startCardBannerSelf name the actual card", () => {
+  const KEYS = ["gameTable.playLabelStartCard", "gameTable.startCardBannerSelf"] as const;
+
+  test("no locale hardcodes ♠ — the 2-player fallback opener can hold any suit", () => {
+    for (const key of KEYS) {
+      for (const name of LOCALE_NAMES) {
+        assert.ok(
+          !LOCALES[name][key].includes("♠"),
+          `${name}["${key}"] hardcodes ♠ instead of interpolating {{suit}}`
+        );
+      }
+    }
+  });
+});
+
 describe("interpolate()", () => {
   test("replaces a single placeholder", () => {
     assert.equal(interpolate("Hello {{name}}", { name: "Ana" }), "Hello Ana");

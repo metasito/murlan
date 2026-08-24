@@ -6,8 +6,6 @@ import {
   createDeck,
   dealCards,
   findStartingPlayer,
-  getCardDisplayRank,
-  getSuitSymbol,
   initializeGame,
   j,
   makePlayer,
@@ -15,7 +13,6 @@ import {
   shuffleDeck,
   type Card,
 } from "./helpers.ts";
-import { translate, DEFAULT_LOCALE } from "../shared/i18n.ts";
 
 const ids = (cards: Card[]) => cards.map((card) => card.id);
 
@@ -174,37 +171,6 @@ describe("the deal at 2 players — 21 each, 12 undealt", () => {
       assert.ok(players[playerIdx].hand.some((c) => c.id === startCard.id));
     }
     assert.ok(ran, "200 deals never gave a case where the 3♠ was undealt");
-  });
-
-  test("the start-card banner names the fallback opener's actual card, not a hardcoded spade", () => {
-    let ran = false;
-    for (let i = 0; i < 500 && !ran; i++) {
-      const { hands, excluded } = dealCards(2);
-      if (!excluded.some((card) => card.rank === "3" && card.suit === "spades")) continue;
-
-      const players = hands.map((hand, idx) => makePlayer(`p${idx}`, hand));
-      const { startCard } = findStartingPlayer(players);
-      if (startCard.suit === "spades") continue; // this run's fallback still happened to be a spade
-
-      ran = true;
-      const rank = getCardDisplayRank(startCard.rank);
-      const suit = getSuitSymbol(startCard.suit);
-      const banner = translate(DEFAULT_LOCALE, "gameTable.startCardBannerOther", {
-        name: "Ana",
-        rank,
-        suit,
-      });
-
-      assert.ok(
-        banner.includes(`${rank}${suit}`),
-        `banner "${banner}" does not name the ${rank}${suit} the opener actually holds`
-      );
-      assert.ok(
-        !banner.includes("♠"),
-        `banner "${banner}" still shows a hardcoded spade for a ${suit} card`
-      );
-    }
-    assert.ok(ran, "500 deals never gave a non-spade fallback opener to check the banner against");
   });
 });
 
