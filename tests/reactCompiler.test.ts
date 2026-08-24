@@ -40,15 +40,13 @@ function tsxUnder(dir: string): string[] {
 }
 
 /**
- * Read off the filesystem, so a screen added tomorrow is covered the day it
- * lands. `context/SettingsContext.tsx` joins them because SettingsProvider
- * wraps every one of them.
+ * Read off the filesystem, so a screen or provider added tomorrow is covered
+ * the day it lands.
  */
 const COMPILED = [
   ...tsxUnder("app"),
   ...tsxUnder("components"),
-  "context/SettingsContext.tsx",
-  "context/GameContext.tsx",
+  ...tsxUnder("context"),
 ];
 
 /** babel-preset-expo/build/index.js, for a production client build. */
@@ -99,8 +97,7 @@ test("every screen and component compiles with no bailouts", () => {
 
 // The floor for context/GameContext.tsx joining the assertion above: proving
 // the counterfactual, so a directory cannot satisfy it by happening to
-// compile clean today for a reason unrelated to the ref write this issue
-// removed.
+// compile clean today for a reason unrelated to a render-time ref write.
 test("a render-time ref write is what the compiler refuses to compile in context/GameContext.tsx", () => {
   const rel = "context/GameContext.tsx";
   const original = readFileSync(path.join(repoRoot, rel), "utf8");
