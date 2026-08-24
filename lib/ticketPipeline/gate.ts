@@ -1,3 +1,5 @@
+import { pathToFileURL } from "node:url";
+
 const SCHEMA_FILE = "shared/schema.ts";
 const SOCKET_PATTERN = /server\/socket|shared\/events\.ts/;
 const FILE_COUNT_THRESHOLD = 6;
@@ -32,7 +34,7 @@ export function needsDesignFirstGate(ticket: TicketFacts): GateVerdict {
   return { escalate: false, reason: "" };
 }
 
-if (process.argv[1] && import.meta.url === `file://${process.argv[1].replace(/\\/g, "/")}`) {
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   const input = JSON.parse(process.argv[2] ?? "{}");
   process.stdout.write(JSON.stringify(needsDesignFirstGate(input)));
 }
