@@ -912,29 +912,39 @@ git commit -m "Add the ticket-pipeline Workflow script"
 
 ---
 
-## Task 9: Supervised trial run #1
+## Task 9: Supervised trial run #1 — DONE
 
 **Files:** None created — this is a live run, watched.
 
-- [ ] **Step 1: Pick a real, small frontier ticket**
+- [x] **Step 1: Pick a real, small frontier ticket** — #253, then #254 (both `size:XS`).
+- [x] **Step 2: Run the workflow, watching** — three runs. The #253 run was stopped twice by the
+  watcher (once to codify per-stage models, once because its outcome was already determined); the
+  #254 run went claim to merged unattended and is the one clean run on record.
+- [x] **Step 3: Record what actually happened vs. what the script intended**
+- [x] **Step 4: Fix any divergence found, with its own commit**
 
-```bash
-node scripts/next-ticket.mjs
-```
+Divergences found and fixed, each with its own PR:
 
-Prefer a `size:XS`/`size:S` ticket for the first trial — smaller blast radius if something in the orchestration is wrong.
+| What diverged | Fixed by |
+|---|---|
+| `Workflow({ name })` does not resolve — the registry never reads the project's `.claude/workflows/` | #259 (docs now give the `scriptPath` form) |
+| Claim reported `filesTouched` as absolute Windows paths, and the gate matched `shared/schema.ts` by exact string — a schema ticket would have skipped the design-first escalation | #258 |
+| Every agent inherited the session's model, so claiming a ticket cost what reviewing a diff costs; and four stages were one command each over a context another stage already held | #260, #264 |
+| Verify ran ci.yml's whole sweep on every ticket — 957s, of which 745s could not have been broken by the diff | #263 (`pickVerifyJobs`) |
+| No baseline: a test already red on `main` drove the fix loop for a defect the diff never caused, ~23 min per round, ending in an unrelated escalation | #263 |
+| The behaviour lens ran on prose diffs and reported, three times, that it had nothing to invert | #266 |
+| Cleanup's port teardown was Windows-only prose in the prompt, untested | #268 |
+| Raw `grep -r` walks `node_modules`: 4m55s against 0.26s for the Grep tool, 20 occurrences across the runs | #272 |
+| Verify and Review ran sequentially despite being independent | #272 |
+| A re-verify narrowed from a commit whose sweep had failed, so a docs-only fix could report a pass over a browser failure nothing re-ran | #272 |
 
-- [ ] **Step 2: Run the workflow, watching**
+Two findings were filed rather than fixed here, being outside the pipeline: #261 (a `tapTargets`
+e2e failure on `main`, since fixed) and #271 (SPA-fallback dotfile 404; six files that hand-build
+`node_modules` paths and break under a worktree).
 
-Invoke `Workflow({ name: 'ticket-pipeline' })` and stay present — check in at each phase transition (`/workflows` shows live progress per the tool's own description). Do not let it merge unattended on this first run: pause it before the Land stage's `gh pr merge` if anything looks off.
-
-- [ ] **Step 3: Record what actually happened vs. what the script intended**
-
-For each stage: did the claim race-check work, did the gate correctly not escalate an ordinary ticket, did verify actually spin up and tear down Postgres, did all four review lenses return real findings (not empty schemas from a confused agent), did the land stage correctly handle the billing-blocked CI. Note every divergence.
-
-- [ ] **Step 4: Fix any divergence found, in `.claude/workflows/ticket-pipeline.mjs` or the `lib/ticketPipeline/*.ts` modules, with its own commit**
-
-If the fix is in a `lib/ticketPipeline/*.ts` module, add a test case reproducing the gap before fixing it (same TDD discipline as Tasks 5–7).
+Measured effect on an XS ticket: 35 min and 4.0M cache-read tokens on the first run, 25.7 min on
+the second with verify down from 957s to 13s. The remaining cost is the review lenses, which is
+where it should be.
 
 ---
 
@@ -942,7 +952,7 @@ If the fix is in a `lib/ticketPipeline/*.ts` module, add a test case reproducing
 
 **Files:** None created.
 
-- [ ] **Step 1: Pick a second real frontier ticket, ideally a different shape than trial #1** (e.g., if #1 was a pure-logic fix, pick one touching a component this time, to exercise a different `pickVerifyChecks` branch)
+- [ ] **Step 1: Pick a second real frontier ticket, of a different shape than trial #1.** Both clean runs so far were tooling and prose, so `pickVerifyJobs`'s full-sweep branch — browser, native and build — has never actually run end to end. Trial #2 must touch app code.
 
 - [ ] **Step 2: Run the workflow, watching, same as Task 9**
 
