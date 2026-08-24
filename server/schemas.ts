@@ -1,12 +1,13 @@
 import { z } from "zod";
 import { SUPPORTED_LOCALES, type Locale } from "../shared/i18n.ts";
+import { BUG_REPORT_LIMITS } from "./bugReports.ts";
 
 export const RegisterSchema = z.object({
   username: z
     .string()
     .min(3)
     .max(30)
-    .regex(/^[a-zA-Z0-9_]+$/, { message: "Solo lettere, numeri e underscore" }),
+    .regex(/^[a-zA-Z0-9_]+$/, { message: "Letters, numbers and underscores only" }),
   password: z.string().min(6).max(100),
 });
 
@@ -33,6 +34,22 @@ export const ClientErrorSchema = z.object({
   screen: z.string().max(120).optional(),
   platform: z.enum(["ios", "android", "web"]).optional(),
   appVersion: z.string().max(40).optional(),
+});
+
+/**
+ * A player saying something is wrong, in their own words.
+ *
+ * Bounded here rather than by the field's own `maxLength`: a client is not the
+ * thing to trust with the size of what it sends, and this is an authenticated
+ * endpoint accepting arbitrary text. `BUG_REPORT_LIMITS` is the one place the
+ * numbers live, so the route, the column and the test cannot disagree.
+ */
+export const BugReportSchema = z.object({
+  description: z.string().trim().min(1).max(BUG_REPORT_LIMITS.description),
+  screen: z.string().max(BUG_REPORT_LIMITS.screen).optional(),
+  appVersion: z.string().max(BUG_REPORT_LIMITS.appVersion).optional(),
+  platform: z.enum(["ios", "android", "web"]).optional(),
+  locale: z.enum(SUPPORTED_LOCALES as [Locale, ...Locale[]]).optional(),
 });
 
 /**

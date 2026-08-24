@@ -7,8 +7,10 @@ import {
   Pressable,
   StyleSheet,
   Platform,
+  TextInput,
+  KeyboardAvoidingView,
 } from "react-native";
-import { useRouter } from "expo-router";
+import { useRouter, usePathname } from "expo-router";
 import Feather from "@expo/vector-icons/Feather";
 import { LinearGradient } from "expo-linear-gradient";
 import { useSettings } from "@/context/SettingsContext";
@@ -34,6 +36,7 @@ import { useTranslation, type Locale, type TranslationKey } from "@/lib/i18n";
 import { registerForPush } from "@/lib/pushRegistration";
 import type { MotionPreference } from "@/lib/accessibility";
 import { a11yHidden, a11yState, useA11yHint } from "@/lib/a11y";
+import Constants from "expo-constants";
 
 interface Props {
   visible: boolean;
@@ -55,6 +58,9 @@ function nearestVolume(v: number): number {
     Math.abs(level - v) < Math.abs(best - v) ? level : best
   );
 }
+
+/** Room for a couple of sentences without the send button leaving the screen. */
+const BUG_INPUT_MIN_H = 96;
 
 const MOTION_CHOICES: MotionPreference[] = ["system", "on", "off"];
 const MOTION_LABELS: Record<MotionPreference, TranslationKey> = {
@@ -160,6 +166,49 @@ export function SettingsModal({ visible, onClose }: Props) {
   const [deleting, setDeleting] = useState(false);
   const { t, locale, setLocale, locales, localeLabels } = useTranslation();
   const deleteHint = useA11yHint(t("settings.deleteAccountA11yHint"));
+  const bugHint = useA11yHint(t("settings.reportBugA11yHint"));
+  const [bugOpen, setBugOpen] = useState(false);
+  const [bugText, setBugText] = useState("");
+  const [sendingBug, setSendingBug] = useState(false);
+  const pathname = usePathname();
+
+  async function handleSendBugReport() {
+    // Read before the try. The React Compiler cannot lower a value block —
+    // optional chaining included — inside a try statement, and bails the whole
+    // component out of memoization when it meets one.
+    const appVersion = Constants.expoConfig?.version ?? undefined;
+    setSendingBug(true);
+    try {
+      // The route it was reported from, the build and the locale — all of it
+      // about the reporter, none of it about the table. Deliberately no game
+      // state: that carries other players' names (#116).
+      await apiRequest("POST", "/api/bug-reports", {
+        description: bugText.trim(),
+        screen: pathname,
+        appVersion,
+        platform: Platform.OS,
+        locale,
+      });
+      setBugOpen(false);
+      setBugText("");
+      setSendingBug(false);
+      showNotification({
+        type: "game_info",
+        title: t("settings.reportBugSentTitle"),
+        message: t("settings.reportBugSentBody"),
+      });
+    } catch {
+      // Cleared in both branches rather than in a `finally`: the React
+      // Compiler cannot lower a try statement with one, and bails the whole
+      // component out of memoization if it meets it (tests/reactCompiler).
+      setSendingBug(false);
+      showNotification({
+        type: "game_error",
+        title: t("settings.reportBugFailedTitle"),
+        message: t("settings.reportBugFailedBody"),
+      });
+    }
+  }
 
   async function handleDeleteAccount() {
     setDeleting(true);
@@ -416,6 +465,64 @@ export function SettingsModal({ visible, onClose }: Props) {
 
             <View style={styles.divider} />
 
+            {/* Opened in place rather than in a Modal of its own: this screen
+                is already a Modal, and a second one over it is unreliable on
+                iOS. One tap either way. */}
+            <Pressable
+              onPress={() => {
+                hapticSelection();
+                setBugOpen((open) => !open);
+              }}
+              accessibilityLabel={t("settings.reportBug")}
+              {...bugHint.props}
+              {...a11yState({ role: "button", expanded: bugOpen })}
+              style={({ pressed }) => [styles.bugBtn, pressed && { opacity: 0.8 }]}
+            >
+              {bugHint.node}
+              <Feather name="alert-circle" size={16} color={Colors.gold} {...a11yHidden} />
+              <Text style={styles.bugBtnText}>{t("settings.reportBug")}</Text>
+            </Pressable>
+
+            {bugOpen && (
+              <KeyboardAvoidingView
+                behavior={Platform.OS === "ios" ? "padding" : "height"}
+                style={styles.bugForm}
+              >
+                <Text style={styles.bugHint}>{t("settings.reportBugPrompt")}</Text>
+                <TextInput
+                  value={bugText}
+                  onChangeText={setBugText}
+                  multiline
+                  editable={!sendingBug}
+                  placeholder={t("settings.reportBugPlaceholder")}
+                  placeholderTextColor={Colors.textMuted}
+                  accessibilityLabel={t("settings.reportBugFieldA11yLabel")}
+                  style={styles.bugInput}
+                />
+                <Pressable
+                  onPress={handleSendBugReport}
+                  disabled={sendingBug || bugText.trim().length === 0}
+                  accessibilityLabel={t("settings.reportBugSend")}
+                  {...a11yState({
+                    role: "button",
+                    disabled: sendingBug || bugText.trim().length === 0,
+                    busy: sendingBug,
+                  })}
+                  style={({ pressed }) => [
+                    styles.bugSend,
+                    (sendingBug || bugText.trim().length === 0) && styles.bugSendDisabled,
+                    pressed && !sendingBug && { opacity: 0.85 },
+                  ]}
+                >
+                  <Text style={styles.bugSendText}>
+                    {sendingBug ? t("settings.reportBugSending") : t("settings.reportBugSend")}
+                  </Text>
+                </Pressable>
+              </KeyboardAvoidingView>
+            )}
+
+            <View style={styles.divider} />
+
             <Pressable
               onPress={confirmDelete}
               disabled={deleting}
@@ -542,6 +649,39 @@ const styles = StyleSheet.create({
     marginTop: Spacing.md,
     marginBottom: Spacing.sm,
   },
+  bugBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: Spacing.sm,
+    minHeight: TOUCH_TARGET_MIN,
+    paddingHorizontal: Spacing.md,
+    borderRadius: Radius.md,
+    borderWidth: 1,
+    borderColor: Colors.goldBorder,
+  },
+  bugBtnText: { ...Type.body, fontSize: FontSize.md, color: Colors.text },
+  bugForm: { gap: Spacing.sm, marginTop: Spacing.sm },
+  bugHint: { ...Type.body, fontSize: FontSize.sm, color: Colors.textMuted },
+  bugInput: {
+    ...Type.body,
+    fontSize: FontSize.md,
+    color: Colors.text,
+    minHeight: BUG_INPUT_MIN_H,
+    padding: Spacing.md,
+    borderRadius: Radius.md,
+    borderWidth: 1,
+    borderColor: Colors.goldBorder,
+    textAlignVertical: "top",
+  },
+  bugSend: {
+    minHeight: TOUCH_TARGET_MIN,
+    alignItems: "center",
+    justifyContent: "center",
+    borderRadius: Radius.md,
+    backgroundColor: Colors.goldMuted,
+  },
+  bugSendDisabled: { opacity: 0.5 },
+  bugSendText: { ...Type.body, fontSize: FontSize.md, color: Colors.goldLit },
   deleteBtn: {
     minHeight: 44,
     alignItems: "center",

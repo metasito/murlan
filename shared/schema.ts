@@ -136,6 +136,32 @@ export const clientErrors = pgTable("client_errors", {
 ]);
 
 /**
+ * What a player says is wrong, in their own words, plus the context they would
+ * otherwise have to be asked for. Kept for BUG_REPORT_RETENTION_DAYS.
+ *
+ * `userId` is not nullable, unlike `client_errors`: the endpoint is
+ * authenticated, so a report always has an author, and an anonymous one would
+ * be an abuse surface rather than a lost attribution.
+ *
+ * There is deliberately no game state and no attached crash here. Both were
+ * specified and both wait on a privacy policy, because a table's game state
+ * carries other players' usernames — everything this table holds is the
+ * reporter's own.
+ */
+export const bugReports = pgTable("bug_reports", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").references(() => users.id, { onDelete: "cascade" }).notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  description: text("description").notNull(),
+  screen: text("screen"),
+  appVersion: text("app_version"),
+  platform: text("platform"),
+  locale: text("locale"),
+  context: jsonb("context").notNull().default({}),
+  resolved: boolean("resolved").notNull().default(false),
+}, (t) => [index("bug_reports_created_idx").on(t.createdAt)]);
+
+/**
  * Funnel steps, written by the server on the server's clock. Kept for
  * EVENT_RETENTION_DAYS, matching client_errors.
  *

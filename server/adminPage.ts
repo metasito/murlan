@@ -7,6 +7,7 @@
 import type { AdminSnapshot } from "./admin.ts";
 import { WINDOW_DAYS } from "./admin.ts";
 import { CLIENT_ERROR_RETENTION_DAYS } from "./clientErrors.ts";
+import { BUG_REPORT_RETENTION_DAYS } from "./bugReports.ts";
 
 /**
  * Everything interpolated below goes through this. Nothing here is written by
@@ -122,6 +123,16 @@ export function renderAdminPage(snapshot: AdminSnapshot): string {
         ) +
         `<p class="meta">One row per distinct crash. Count and last-seen are ` +
         `over the ${CLIENT_ERROR_RETENTION_DAYS}-day retention window, not all-time.</p>`
+    ),
+    panel(
+      10,
+      "Bug reports",
+      table(
+        ["When", "Who", "What they said", "Where", "Build"],
+        snapshot.bugReports.map((r) => [r.at, r.who, r.description, r.where, r.build])
+      ) +
+        `<p class="meta">A player's own words, newest first, kept for ` +
+        `${BUG_REPORT_RETENTION_DAYS} days. No game state is collected.</p>`
     ),
   ].join("");
 

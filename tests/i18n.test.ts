@@ -256,13 +256,16 @@ describe("the server writes its fallbacks in the source language", () => {
   // would answer for them. That narrowness is the trade: this catches the
   // vocabulary that shipped, not Italian in general, so a fresh sentence
   // reaching for different words is past it.
-  const ITALIAN = /\b(?:devi|deve|giocare|lasciato|partita|valido|valida|eliminazione|codice|carta|prima|della|dello|questa|posto)\b/i;
+  const ITALIAN =
+    /\b(?:devi|deve|giocare|lasciato|partita|valido|valida|eliminazione|codice|carta|prima|della|dello|questa|questo|posto|solo|lettere|numeri|utente|nome|scegli|inserisci|riprova|errore|impossibile|almeno|troppo|essere|sono|hanno|degli|delle)\b/i;
 
   test("the marker list can see an Italian sentence", () => {
     // Without this the assertion below would also hold on a list that matches
     // nothing at all.
     assert.ok(ITALIAN.test("Devi giocare il 3♠ come prima carta"));
     assert.ok(ITALIAN.test("{{username}} ha lasciato la partita."));
+    // The one the first sweep's shorter list walked straight past.
+    assert.ok(ITALIAN.test("Solo lettere, numeri e underscore"));
     assert.ok(!ITALIAN.test("You must play the {{rank}}♠ as your first card"));
     assert.ok(!ITALIAN.test("Deletion failed"));
   });
