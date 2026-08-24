@@ -1,0 +1,28 @@
+# Extends gitleaks' built-in rules. Every finding below is one of the seven
+# hits #277's full-history scan turned up, verified harmless; each allowlist
+# is scoped to that rule and that exact file, and further narrowed to the
+# literal string found so a *different* secret landing in the same file is
+# still caught.
+[extend]
+useDefault = true
+
+[[rules]]
+id = "generic-api-key"
+
+  [[rules.allowlists]]
+  description = "fabricated example key in a snippet demonstrating the wrong way to hold a credential (#277)"
+  condition = "AND"
+  paths = ['''^\.claude/agents/tier-2-power/security-specialist\.md$''']
+  regexes = ['''sk_live_abc123xyz''']
+
+[[rules]]
+id = "aws-access-token"
+
+  [[rules.allowlists]]
+  description = "Perplexity's own presigned-upload STS token, expired 2026-03-04; both files are absent from HEAD (#277)"
+  condition = "AND"
+  paths = [
+    '''^attached_assets/Pasted-Here-are-clear-copy-paste-ready-requirements-for-your-R_1772612416299\.txt$''',
+    '''^attached_assets/Pasted-Here-are-clear-copy-paste-ready-requirements-for-your-R_1772612429827\.txt$''',
+  ]
+  regexes = ['''ASIA2F3EMEYEYTWUKMG2''']

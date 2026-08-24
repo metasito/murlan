@@ -28,6 +28,25 @@ env:
   NODE_VERSION: "24"
 
 jobs:
+  # Independent of `scope` below: the false positives #277 found were pasted
+  # .txt files, so a "docs-only" change is exactly the kind that can carry a
+  # secret. Scans the whole history every run (`fetch-depth: 0`, no
+  # `--log-opts` range) rather than just this push's new commits — that is
+  # the noise .gitleaks.toml's allowlist is scoped against, and why the
+  # official gitleaks-action (which scans only the new commits, and carries
+  # its own EULA) is not used here.
+  secrets:
+    name: Secret scan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: gitleaks
+        uses: docker://zricethezav/gitleaks:v8.30.1
+        with:
+          args: detect --source=/github/workspace --redact -v
+
   # Two reasons the suite below can be skipped, both settled here: the commit is
   # prose, or this exact tree already went green on the pull request it came
   # from. Its own job because three jobs need the answer and each would otherwise
