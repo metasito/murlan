@@ -28,13 +28,10 @@ env:
   NODE_VERSION: "24"
 
 jobs:
-  # Independent of `scope` below: the false positives #277 found were pasted
-  # .txt files, so a "docs-only" change is exactly the kind that can carry a
-  # secret. Scans the whole history every run (`fetch-depth: 0`, no
-  # `--log-opts` range) rather than just this push's new commits — that is
-  # the noise .gitleaks.toml's allowlist is scoped against, and why the
-  # official gitleaks-action (which scans only the new commits, and carries
-  # its own EULA) is not used here.
+  # See #277: a "docs-only" change can still carry a secret, which is why this
+  # job runs independently of `scope` below. Docker rather than the official
+  # gitleaks-action — that action scans only new commits and carries its own
+  # EULA.
   secrets:
     name: Secret scan
     runs-on: ubuntu-latest
@@ -48,6 +45,9 @@ jobs:
       # mismatch alone. `GIT_CONFIG_COUNT`/`_KEY_0`/`_VALUE_0` reach git
       # directly as env vars, unlike the action form which gives us no way to
       # land a `safe.directory` entry inside the container's git config.
+      # gitleaks logs every line — including the summary "N commits scanned."
+      # — to stderr, not stdout; `2>&1` folds it into the pipe before `tee`,
+      # or the floor below reads an empty file on every clean run.
       - name: gitleaks
         shell: bash
         run: |
@@ -59,21 +59,61 @@ jobs:
             -e GIT_CONFIG_VALUE_0=/repo \
             zricethezav/gitleaks:v8.30.1 \
             detect --source=/repo --redact -v --no-color \
-          | tee gitleaks-output.txt
+          2>&1 | tee gitleaks-output.txt
+
+      # Proves the detector's trigger, not just its floor: a scratch repo with
+      # a planted fake credential, scanned the same way as the real one. If
+      # this doesn't fail, the scan isn't actually looking at content (the
+      # stdout/stderr split above is exactly the kind of defect this catches
+      # that the commit-count floor below cannot).
+      - name: Self-test — gitleaks fires on a planted secret
+        shell: bash
+        run: |
+          set -o pipefail
+          scratch=$(mktemp -d)
+          git -C "$scratch" init -q
+          git -C "$scratch" config user.email "ci@example.invalid"
+          git -C "$scratch" config user.name "CI"
+          echo 'AWS_KEY = "AKIAZ3MLQV7XKPWNRTUD"' > "$scratch/planted.txt"
+          git -C "$scratch" add planted.txt
+          git -C "$scratch" commit -q -m "planted secret"
+          set +e
+          docker run --rm \
+            -v "$scratch:/repo" \
+            -e GIT_CONFIG_COUNT=1 \
+            -e GIT_CONFIG_KEY_0=safe.directory \
+            -e GIT_CONFIG_VALUE_0=/repo \
+            zricethezav/gitleaks:v8.30.1 \
+            detect --source=/repo --redact -v --no-color \
+          2>&1 | tee gitleaks-selftest.txt
+          status=${PIPESTATUS[0]}
+          set -e
+          if [ "$status" -eq 0 ]; then
+            echo "::error::gitleaks exited 0 on a repo with a planted secret — the detector's trigger is broken."
+            cat gitleaks-selftest.txt
+            exit 1
+          fi
+          echo "Confirmed: gitleaks exits nonzero (status $status) on a planted secret."
 
       # A checkout git refuses (dubious ownership, a missing .git, a failed
-      # clone) still scans "0 commits" and exits 0 — a scan indistinguishable
-      # from a real pass over clean history. Fail the job instead of shipping
-      # a guard that can inspect nothing and stay green.
+      # clone), or one that's shallow because `fetch-depth: 0` above was ever
+      # dropped, still scans a low-but-nonzero commit count and exits 0 — a
+      # scan indistinguishable from a real pass over full history unless
+      # checked against the runner's own count, not just `> 0`.
       - name: The scan actually inspected commit history
         run: |
           scanned=$(grep -oE '[0-9]+ commits scanned\.' gitleaks-output.txt | grep -oE '^[0-9]+' || true)
-          if [ -z "$scanned" ] || [ "$scanned" -eq 0 ]; then
-            echo "::error::gitleaks scanned ${scanned:-no} commits — the scan inspected nothing."
+          if [ "$(git rev-parse --is-shallow-repository)" = "true" ]; then
+            echo "::error::checkout is shallow — fetch-depth: 0 was dropped, so gitleaks cannot see full history."
+            exit 1
+          fi
+          expected=$(git rev-list --count HEAD)
+          if [ -z "$scanned" ] || [ "$scanned" -ne "$expected" ]; then
+            echo "::error::gitleaks scanned ${scanned:-no} of $expected commits — the scan did not cover full history."
             cat gitleaks-output.txt
             exit 1
           fi
-          echo "Confirmed: $scanned commits scanned."
+          echo "Confirmed: $scanned of $expected commits scanned (full history)."
 
   # Two reasons the suite below can be skipped, both settled here: the commit is
   # prose, or this exact tree already went green on the pull request it came
