@@ -1,9 +1,10 @@
 // tests/native/settingsOverlay.test.tsx — the settings modal is the only real
 // <Modal> in the normal flow, so it is where a scrollable body (UI-01) and a
 // banner that can paint over it (UI-12) both have to be proved.
-import { describe, it, expect, jest } from '@jest/globals';
+import { describe, it, expect, jest, beforeEach } from '@jest/globals';
 import React from 'react';
-import { act, render, screen, within } from '@testing-library/react-native';
+import { act, fireEvent, render, screen, within } from '@testing-library/react-native';
+import { Platform } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 jest.mock('@/lib/query-client', () => ({
@@ -37,6 +38,8 @@ const METRICS = {
   frame: { x: 0, y: 0, width: 568, height: 320 },
   insets: { top: 0, left: 0, right: 0, bottom: 0 },
 };
+
+const apiRequest = (require('@/lib/query-client') as { apiRequest: jest.Mock }).apiRequest;
 
 let notify: ReturnType<typeof useNotification>;
 
@@ -99,5 +102,93 @@ describe('settings modal', () => {
     });
     expect(notify.notification?.message).toBe('secondo');
     await view.unmount();
+  });
+
+  // The control's own round trip: open, type, send, and both outcomes of
+  // what apiRequest does with it. Everything the mock at the top of this
+  // file exists for and nothing here used before.
+  describe('reporting a bug', () => {
+    beforeEach(() => {
+      apiRequest.mockReset();
+    });
+
+    it('sends the reporter\'s own context and nothing about the table', async () => {
+      apiRequest.mockImplementationOnce(() => Promise.resolve({ ok: true }));
+      const view = await mount();
+
+      await act(async () => {
+        fireEvent.press(screen.getByLabelText(locale['settings.reportBug']));
+      });
+      await act(async () => {
+        fireEvent.changeText(
+          screen.getByLabelText(locale['settings.reportBugFieldA11yLabel']),
+          'the cards went weird'
+        );
+      });
+      await act(async () => {
+        fireEvent.press(screen.getByLabelText(locale['settings.reportBugSend']));
+      });
+
+      // appVersion is read from Constants.expoConfig?.version, which the
+      // jest-expo preset's own mock does not populate — undefined here, not
+      // a value this test controls or should pin beyond that.
+      expect(apiRequest).toHaveBeenCalledWith('POST', '/api/bug-reports', {
+        description: 'the cards went weird',
+        screen: '/lobby',
+        appVersion: undefined,
+        platform: Platform.OS,
+        locale: 'en',
+      });
+      expect(
+        screen.getByText(locale['settings.reportBugSentBody'], { includeHiddenElements: true })
+      ).toBeTruthy();
+      // The form closes on success — the toggle is back to its closed a11y state.
+      expect(
+        screen.queryByLabelText(locale['settings.reportBugFieldA11yLabel'])
+      ).toBeNull();
+      await view.unmount();
+    });
+
+    it('leaves the form open and the text intact when the send fails', async () => {
+      apiRequest.mockImplementationOnce(() => Promise.reject(new Error('network')));
+      const view = await mount();
+
+      await act(async () => {
+        fireEvent.press(screen.getByLabelText(locale['settings.reportBug']));
+      });
+      await act(async () => {
+        fireEvent.changeText(
+          screen.getByLabelText(locale['settings.reportBugFieldA11yLabel']),
+          'stuck on the exchange screen'
+        );
+      });
+      await act(async () => {
+        fireEvent.press(screen.getByLabelText(locale['settings.reportBugSend']));
+      });
+
+      expect(
+        screen.getByText(locale['settings.reportBugFailedBody'], { includeHiddenElements: true })
+      ).toBeTruthy();
+      // Not cleared: a player who lost their draft to a failed send has no
+      // reason to trust send again.
+      expect(
+        screen.getByLabelText(locale['settings.reportBugFieldA11yLabel']).props.value
+      ).toBe('stuck on the exchange screen');
+      // And re-enabled, not left stuck on "Sending…" forever.
+      expect(screen.getByLabelText(locale['settings.reportBugSend'])).toBeEnabled();
+      await view.unmount();
+    });
+
+    it('refuses to send an empty report', async () => {
+      const view = await mount();
+
+      await act(async () => {
+        fireEvent.press(screen.getByLabelText(locale['settings.reportBug']));
+      });
+
+      expect(screen.getByLabelText(locale['settings.reportBugSend'])).toBeDisabled();
+      expect(apiRequest).not.toHaveBeenCalled();
+      await view.unmount();
+    });
   });
 });
