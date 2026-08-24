@@ -11,7 +11,7 @@ describe("picking which ci.yml jobs a diff needs", () => {
       ".claude/workflows/ticket-pipeline.mjs",
       "docs/agents/loops.md",
     ]);
-    assert.deepEqual(jobs, { verify: true, native: false, browser: false, build: false });
+    assert.deepEqual(jobs, { verify: true, native: false, browser: false, build: false, prose: false });
   });
 
   test("the verify job runs for every diff, so nothing lands untypechecked", () => {
@@ -21,12 +21,12 @@ describe("picking which ci.yml jobs a diff needs", () => {
 
   test("a component change pulls the whole sweep", () => {
     const jobs = pickVerifyJobs(["components/CardFace.tsx"]);
-    assert.deepEqual(jobs, { verify: true, native: true, browser: true, build: true });
+    assert.deepEqual(jobs, { verify: true, native: true, browser: true, build: true, prose: false });
   });
 
   test("an unrecognised path fails safe towards running everything", () => {
     const jobs = pickVerifyJobs(["some/new/toplevel/thing.ts"]);
-    assert.deepEqual(jobs, { verify: true, native: true, browser: true, build: true });
+    assert.deepEqual(jobs, { verify: true, native: true, browser: true, build: true, prose: false });
   });
 
   test("an e2e spec pulls the browser job without pulling the build", () => {
@@ -49,5 +49,17 @@ describe("picking which ci.yml jobs a diff needs", () => {
     const jobs = pickVerifyJobs([".claude/workflows/x.mjs", "server/socket.ts"]);
     assert.equal(jobs.build, true);
     assert.equal(jobs.browser, true);
+  });
+  test("a diff of only docs and markdown is prose, so a behaviour lens has nothing to review", () => {
+    assert.equal(pickVerifyJobs(["docs/agents/loops.md", "CLAUDE.md"]).prose, true);
+  });
+
+  test("one executable file among the prose is enough to stop it counting as prose", () => {
+    assert.equal(pickVerifyJobs(["docs/agents/loops.md", "lib/ticketPipeline/gate.ts"]).prose, false);
+    assert.equal(pickVerifyJobs([".claude/workflows/ticket-pipeline.mjs"]).prose, false);
+  });
+
+  test("an empty file list is not prose, so an unknown diff never skips a lens", () => {
+    assert.equal(pickVerifyJobs([]).prose, false);
   });
 });

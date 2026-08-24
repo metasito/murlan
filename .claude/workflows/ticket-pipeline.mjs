@@ -77,6 +77,7 @@ const VERIFY_SCHEMA = {
     dockerStarted: { type: 'boolean' },
     failedStep: { type: 'string' },
     output: { type: 'string' },
+    prose: { type: 'boolean' },
     skippedJobs: { type: 'string' },
     preExistingFailures: { type: 'array', items: { type: 'string' } },
   },
@@ -258,6 +259,8 @@ Report:
     and (when the build job ran) /health reported "db":"connected". A failure you confirmed is
     pre-existing on origin/main does not make this false. Anything else does.
   skippedJobs — the jobs verifyPlan marked false, and the paths that decision was made from.
+  prose — verifyPlan's "prose" field, verbatim. It decides whether the review stage runs a lens
+    that has no executable line to look at, so report what the module said, not your own reading.
   preExistingFailures — each check that failed here AND on origin/main, with the issue number you
     opened or found for it. Empty when there were none.
   failedStep — the first command that failed, prefixed with its job, e.g.
@@ -271,7 +274,7 @@ Report:
   )
 }
 
-async function runReview(claim, scopeNote, onlyKeys) {
+async function runReview(claim, scopeNote, onlyKeys, prose) {
   const diffScope = scopeNote ? `only the fix for: ${scopeNote}` : 'the whole diff'
   const allLenses = [
     {
@@ -292,6 +295,7 @@ implemented but wrong. Report findings: file, line, summary, verdict (CONFIRMED/
     },
     {
       key: 'adversarial',
+      needsCode: true,
       prompt: `For every new or changed test or runtime guard in ${diffScope} on branch ${claim.branch}
 (git diff origin/main...HEAD): try to prove it passes on broken code — invert or delete the logic it
 claims to protect, rerun it, confirm whether it would actually catch the break. Any test/guard that
@@ -299,8 +303,11 @@ still passes on broken code is a CONFIRMED finding. Report: file, line, summary,
     },
   ]
   // A re-review after a fix only has to re-ask the lens that raised the finding: the other
-  // lenses read a diff that has not moved since they cleared it.
-  const lenses = onlyKeys ? allLenses.filter((l) => onlyKeys.includes(l.key)) : allLenses
+  // lenses read a diff that has not moved since they cleared it. And a lens that reviews
+  // behaviour has none to review in a prose diff — on the last docs ticket the adversarial lens
+  // ran three times and reported, each time, that there was nothing to invert.
+  const applicable = allLenses.filter((l) => !(l.needsCode && prose))
+  const lenses = onlyKeys ? applicable.filter((l) => onlyKeys.includes(l.key)) : applicable
   const results = await parallel(
     lenses.map((l) => () => agent(l.prompt, { model: MODELS.review, phase: 'Review', label: label(`review:${l.key}`), schema: FINDING_SCHEMA }))
   )
@@ -408,7 +415,7 @@ Commit your work (do not push yet). Report: committed, commitSha, summary, files
   let verify = await runVerify()
 
   phase('Review')
-  let review = await runReview(claim, null)
+  let review = await runReview(claim, null, null, verify.prose)
   let round = 0
   while (actionable(verify, review) && round < MAX_FIX_ROUNDS) {
     round++
@@ -433,7 +440,7 @@ Findings:\n${
     )
     if (!fix.committed) break
     verify = await runVerify()
-    review = await runReview(claim, confirmed.map((f) => f.summary).join('; '), lensesThatFound)
+    review = await runReview(claim, confirmed.map((f) => f.summary).join('; '), lensesThatFound, verify.prose)
   }
 
   if (!isClean(verify, review)) {

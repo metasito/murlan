@@ -7,6 +7,8 @@ export interface VerifyJobs {
   native: boolean;
   browser: boolean;
   build: boolean;
+  // No executable line changed, so a lens that reviews behaviour has nothing to review.
+  prose: boolean;
 }
 
 // Paths that cannot reach the app bundle, the server, or a browser. This is an allowlist, the
@@ -20,6 +22,7 @@ const CANNOT_REACH_THE_APP = [
   /\.md$/,
 ];
 
+const IS_PROSE = /^docs\/|\.md$/;
 const NEEDS_BROWSER = /^tests\/e2e\//;
 const NEEDS_NATIVE = /^tests\/native\//;
 
@@ -31,6 +34,7 @@ export function pickVerifyJobs(filesTouched: string[]): VerifyJobs {
     native: touchesApp || files.some((f) => NEEDS_NATIVE.test(f)),
     browser: touchesApp || files.some((f) => NEEDS_BROWSER.test(f)),
     build: touchesApp,
+    prose: files.length > 0 && files.every((f) => IS_PROSE.test(f)),
   };
 }
 
