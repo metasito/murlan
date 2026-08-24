@@ -1,8 +1,9 @@
 # Deploy runbook
 
 > **Scope of this file:** two deploy targets that share only the word. Everything up to
-> § If something goes wrong is the Replit web deploy; § Store build numbers is the app
-> stores. The sequence below is the exact ordering for a Replit deploy that changes the database
+> § If something goes wrong is the Replit web deploy; § Backups is the schedule that runs
+> independently of any deploy; § Store build numbers is the app stores. The sequence below
+> is the exact ordering for a Replit deploy that changes the database
 > schema destructively (a `db:push`, not just `ensureSchema`'s additive boot-time DDL). Ran
 > and verified end to end on 2026-08-19. If a deploy needs no destructive schema change,
 > Steps 2–6 are no-ops — verify rather than skip them, since the current column shape is
@@ -118,6 +119,27 @@ landing page.
 `replit.md` § Rolling back a deploy — the code half and the database half are separate, and
 the database half is not optional once Step 5 has run: reverting the server does not undo the
 column renames.
+
+## Backups
+
+`npm run db:backup` (Step 3 above) also runs on a schedule, independent of any deploy, so
+nobody has to remember it. Set up a **Replit Scheduled Deployment** (dashboard: *Publishing →
+Scheduled*) with:
+
+- **Run command:** `npm run db:backup && npm run db:backup:prune`
+- **Schedule:** once daily; the exact hour doesn't matter, only that it runs.
+- **Storage:** a Replit Volume mounted so `backups/` persists between runs — a Scheduled
+  Deployment's filesystem is otherwise ephemeral, and a dump nobody can find tomorrow is not
+  a backup. This is the destination the owner chose (2026-08-24): it survives a bad migration
+  or a mis-answered `db:push` prompt, not the loss of the Replit instance itself. Moving
+  dumps off-box is a separate decision, not made here.
+
+`scripts/prune-backups.mjs` deletes dumps older than `BACKUP_RETENTION_DAYS` (default 14),
+read from the timestamp already in each dump's filename. It never deletes the most recent
+dump regardless of age — a lapsed schedule must not leave zero backups behind.
+
+Restoring a dump — including what the `session` table means for it — is `replit.md` §
+Rolling back a deploy, not duplicated here.
 
 ## Store build numbers
 

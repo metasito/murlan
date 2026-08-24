@@ -135,6 +135,13 @@ jobs:
           cache: npm
       - run: npm ci
 
+      # tests/backupDb.test.ts restores a real dump — needs the same client
+      # tools scripts/backup-db.mjs itself depends on, matched to the service
+      # container's major version so the dump a pg_dump writes is one its own
+      # psql can read back.
+      - name: Install postgresql-client
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends postgresql-client-16
+
       - name: Typecheck
         run: npm run typecheck
 

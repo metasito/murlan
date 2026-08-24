@@ -18,6 +18,7 @@
     "server:prod": "NODE_ENV=production node server_dist/index.mjs",
     "db:push": "drizzle-kit push",
     "db:backup": "node scripts/backup-db.mjs",
+    "db:backup:prune": "node scripts/prune-backups.mjs",
     "db:reset": "node scripts/reset-db.mjs && drizzle-kit push",
     "start": "npx expo start",
     "lint": "npx expo lint . -- --max-warnings 0",
