@@ -600,13 +600,15 @@ Report: merged, prNumber, reason.`,
       state.merged && state.localBranch ? `git branch -D ${sq(state.localBranch)} 2>/dev/null ; ` : ''
     const cleaned = await agent(
       `${BASH_NOTE}
-This run's branch is ${state.localBranch || '(none)'} and merged=${state.merged}. Everything below
-is already decided, so run it as one chained call rather than as separate steps — idempotent
-teardown tolerates a container, worktree or branch that's already gone, which is why the pieces
-after the checkout are joined with ";" instead of "&&":
+This run's branch is ${state.localBranch || '(none)'} and merged=${state.merged}. Run this from the
+directory you are already in, and do NOT change its branch: this checkout is shared, and another
+session was once pulled off its own branch mid-sweep by a teardown tidying up after itself. The
+branch this run used lives in the worktree, so removing the worktree is what frees it. Everything
+below is already decided, so run it as one chained call rather than as separate steps — idempotent
+teardown tolerates a container, worktree or branch that's already gone, which is why the later
+pieces are joined with ";" instead of "&&":
 
-  ${releaseCommand}(git checkout main || git checkout -B main origin/main) && \\
-  ${writeJsonCommand('/tmp/ticket-pipeline-cleanup.json', state)} && \\
+  ${releaseCommand}${writeJsonCommand('/tmp/ticket-pipeline-cleanup.json', state)} && \\
   npx tsx lib/ticketPipeline/cleanup.ts < /tmp/ticket-pipeline-cleanup.json | \\
     jq -r 'join(" ; ")' > /tmp/ticket-pipeline-cleanup.sh && \\
   bash /tmp/ticket-pipeline-cleanup.sh ; \\
