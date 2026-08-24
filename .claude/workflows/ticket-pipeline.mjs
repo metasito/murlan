@@ -40,19 +40,14 @@ const BASH_NOTE = [
   'search into several minutes.',
 ].join(' ')
 
-// Verify and Fix both commit, then need the same three facts about the diff they just produced —
-// computed once here so Review never re-fetches them per lens.
-const DIFF_CAPTURE_NOTE = `Before you report, capture what Verify and Review need from this diff
-so neither has to re-fetch it — one throwaway file pair, three commands:
-  git diff origin/main...HEAD > /tmp/pipeline-diff.txt
-  git diff --name-only origin/main...HEAD > /tmp/pipeline-diff-files.txt
-Turn the second file's lines into a JSON array of repo-relative paths and run:
+// Review needs to know whether the diff is prose before it can drop the behaviour lens, and it
+// now starts at the same moment as Verify — so whoever commits works it out, not Verify.
+const PROSE_CAPTURE_NOTE = `Before you report, classify the diff you just committed so the review
+stage does not have to wait on Verify to learn it — two commands:
+  git diff --name-only origin/main...HEAD
+Turn those lines into a JSON array of repo-relative paths and run:
   npx tsx lib/ticketPipeline/verifyPlan.ts <<< '["path/one.ts","path/two.ts"]'
-  npx tsx lib/ticketPipeline/diffScope.ts < /tmp/pipeline-diff.txt
-Report prose from the first command's JSON, verbatim, and diffInline/diffLineCount from the
-second's. If diffInline is true, report diffText as /tmp/pipeline-diff.txt's full contents;
-otherwise report diffText as an empty string — past the size cut, a diff pasted into three review
-prompts costs more than three \`git diff\` calls.`
+Report its "prose" field verbatim.`
 
 function sq(text) {
   return `'${String(text).replace(/'/g, "'\\''")}'`
@@ -85,9 +80,6 @@ const IMPLEMENT_SCHEMA = {
     summary: { type: 'string' },
     filesTouched: { type: 'array', items: { type: 'string' } },
     prose: { type: 'boolean' },
-    diffInline: { type: 'boolean' },
-    diffLineCount: { type: 'number' },
-    diffText: { type: 'string' },
   },
   required: ['committed'],
 }
@@ -314,26 +306,12 @@ Report:
   )
 }
 
-// Nine agents re-fetching the same `git diff` cost ~10-15s apiece. Implement/Fix already fetched
-// it once for this same purpose (DIFF_CAPTURE_NOTE) — reuse that instead of paying for it again,
-// but only up to diffScope.ts's size cut, past which pasting it three times costs more than it saves.
-function diffContext(diffInfo) {
-  if (diffInfo && diffInfo.inline && diffInfo.text) {
-    return {
-      note: `The diff is inlined below (${diffInfo.lineCount} lines) — do not re-run git diff:\n\n\`\`\`diff\n${diffInfo.text}\n\`\`\`\n\n`,
-      ref: 'the diff above',
-    }
-  }
-  return { note: '', ref: '(git diff origin/main...HEAD)' }
-}
-
-async function runReview(claim, scopeNote, onlyKeys, prose, diffInfo) {
+async function runReview(claim, scopeNote, onlyKeys, prose) {
   const diffScope = scopeNote ? `only the fix for: ${scopeNote}` : 'the whole diff'
-  const { note: diffNote, ref: diffRef } = diffContext(diffInfo)
   const allLenses = [
     {
       key: 'standards',
-      prompt: `${diffNote}Review ${diffScope} on branch ${claim.branch} ${diffRef} using
+      prompt: `Review ${diffScope} on branch ${claim.branch} (git diff origin/main...HEAD) using
 mattpocock-skills:code-review's standards axis: documented repo conventions (CLAUDE.md) plus the
 Fowler smell baseline. You did not write this code — read it cold. CLAUDE.md's comment policy is
 one of those conventions and the one most often broken: flag as CONFIRMED any new or changed
@@ -342,7 +320,7 @@ fixed. Report findings: file, line, summary, verdict (CONFIRMED/PLAUSIBLE/REJECT
     },
     {
       key: 'spec',
-      prompt: `${diffNote}Review ${diffScope} on branch ${claim.branch} ${diffRef} against
+      prompt: `Review ${diffScope} on branch ${claim.branch} (git diff origin/main...HEAD) against
 issue #${claim.number}, which you should read yourself with: gh issue view ${claim.number} --repo ${REPO}
 Using mattpocock-skills:code-review's spec axis: missing requirements, scope creep, anything
 implemented but wrong. Report findings: file, line, summary, verdict (CONFIRMED/PLAUSIBLE/REJECTED).`,
@@ -350,8 +328,8 @@ implemented but wrong. Report findings: file, line, summary, verdict (CONFIRMED/
     {
       key: 'adversarial',
       needsCode: true,
-      prompt: `${diffNote}For every new or changed test or runtime guard in ${diffScope} on branch ${claim.branch}
-${diffRef}: try to prove it passes on broken code — invert or delete the logic it
+      prompt: `For every new or changed test or runtime guard in ${diffScope} on branch ${claim.branch}
+(git diff origin/main...HEAD): try to prove it passes on broken code — invert or delete the logic it
 claims to protect, rerun it, confirm whether it would actually catch the break. Any test/guard that
 still passes on broken code is a CONFIRMED finding. Report: file, line, summary, verdict.`,
     },
@@ -458,8 +436,8 @@ picture of a file from repeated sed/grep windows — each window costs a turn, a
 twenty pieces costs far more than the file. Re-read only what you have edited.
 
 Commit your work (do not push yet).
-${DIFF_CAPTURE_NOTE}
-Report: committed, commitSha, summary, filesTouched, prose, diffInline, diffLineCount, diffText.`,
+${PROSE_CAPTURE_NOTE}
+Report: committed, commitSha, summary, filesTouched, prose.`,
     { model: MODELS.implement, phase: 'Implement', label: label('implement'), schema: IMPLEMENT_SCHEMA }
   )
   if (!impl.committed) {
@@ -470,15 +448,15 @@ Report: committed, commitSha, summary, filesTouched, prose, diffInline, diffLine
   // Verify and Review both read the same committed branch and neither writes to it, so they run
   // concurrently rather than paying for each other's wall clock. A failing verify does not waste
   // the concurrent review: the fix agent below gets both together and fixes them in one round.
-  phase('Verify')
-  phase('Review')
   let [verify, review] = await parallel([
     () => runVerify(),
-    () => runReview(claim, null, null, impl.prose, { inline: impl.diffInline, text: impl.diffText, lineCount: impl.diffLineCount }),
+    () => runReview(claim, null, null, impl.prose),
   ])
-  // The commit each round's re-verify has already covered — a fix round only needs to re-check
-  // what it itself touched, not the whole branch again.
-  let verifiedSha = impl.commitSha
+  // Only a commit whose sweep actually PASSED can narrow the next round's diff range. Advancing
+  // this after a failed sweep lets the next round skip the job that was red: a fix touching only
+  // docs would scope the re-verify to docs, skip the browser job, and report a pass over a
+  // browser failure nothing had re-run.
+  let verifiedSha = verify.pass ? impl.commitSha : null
   let round = 0
   while (actionable(verify, review) && round < MAX_FIX_ROUNDS) {
     round++
@@ -499,23 +477,16 @@ failure the verify stage reported as pre-existing on origin/main is not yours to
 Findings:\n${
         findingList || '- (no review findings; the failing verification below is the whole job)'
       }${verifyNote}
-${DIFF_CAPTURE_NOTE}
-Report: committed, commitSha, summary, filesTouched, prose, diffInline, diffLineCount, diffText.`,
+${PROSE_CAPTURE_NOTE}
+Report: committed, commitSha, summary, filesTouched, prose.`,
       { model: MODELS.fix, phase: 'Fix', label: label(`fix round ${round}`), schema: IMPLEMENT_SCHEMA }
     )
     if (!fix.committed) break
-    phase('Verify')
-    phase('Review')
     ;[verify, review] = await parallel([
       () => runVerify(verifiedSha),
-      () =>
-        runReview(claim, confirmed.map((f) => f.summary).join('; '), lensesThatFound, fix.prose, {
-          inline: fix.diffInline,
-          text: fix.diffText,
-          lineCount: fix.diffLineCount,
-        }),
+      () => runReview(claim, confirmed.map((f) => f.summary).join('; '), lensesThatFound, fix.prose),
     ])
-    verifiedSha = fix.commitSha || verifiedSha
+    verifiedSha = verify.pass ? fix.commitSha || verifiedSha : null
   }
 
   if (!isClean(verify, review)) {
