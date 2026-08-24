@@ -770,9 +770,16 @@ function assignRemainingPlacements(state: GameState): void {
  *
  * Turn ownership is not here on purpose: which seat is acting is resolved by
  * the transport, so the engine has nothing independent to check a claim of it
- * against. What it can check is that the seat on move holds what it is playing,
- * and that the play beats the table. Leading a fresh round passes — there is
- * nothing to beat, and `canPlay` says so.
+ * against. What it can check is that the seat on move holds what it is
+ * playing, that the shape it claims is the shape its own cards actually form,
+ * that the play beats the table, and — on the very first play of the match —
+ * that it is the 3♠ (docs/RULES.md §4). Leading a fresh round otherwise
+ * passes — there is nothing to beat, and `canPlay` says so.
+ *
+ * `combination.type`/`.strength` are re-derived from `.cards` rather than
+ * trusted as given: a caller could otherwise claim any shape for any cards,
+ * and `canPlay` compares only the claim. `buildCombination` is the one place
+ * that derivation happens, so this calls it rather than repeating it.
  */
 function assertPlayable(state: GameState, combination: Combination): void {
   const player = state.players[state.currentTurnIndex];
@@ -787,10 +794,22 @@ function assertPlayable(state: GameState, combination: Combination): void {
   if (missing.length > 0) {
     throw new Error(`${player.name} does not hold ${missing.join(", ")}`);
   }
+  const actual = buildCombination(combination.cards);
+  if (!actual || actual.type !== combination.type || actual.strength !== combination.strength) {
+    throw new Error(
+      `${combination.cards.map((c) => c.id).join(", ")} is not a ${combination.type}`
+    );
+  }
   if (!canPlay(combination, state.lastPlayedCombination)) {
     throw new Error(
       `${combination.type} of ${combination.cards.length} does not beat the table`
     );
+  }
+  if (!state.firstPlayMade && state.startCard) {
+    const hasStartCard = combination.cards.some((c) => c.id === state.startCard!.id);
+    if (!hasStartCard) {
+      throw new Error(`${player.name} must open with ${state.startCard.id}`);
+    }
   }
 }
 
