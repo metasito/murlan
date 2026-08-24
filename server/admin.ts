@@ -12,6 +12,7 @@ import { sql } from "drizzle-orm";
 import { db } from "./db.ts";
 import { funnel, type FunnelStep } from "./events.ts";
 import { recentClientErrorGroups, topFrame, type ClientErrorGroup } from "./clientErrors.ts";
+import { recentBugReports } from "./bugReports.ts";
 import { symbolicate } from "./sourceMaps.ts";
 
 /** How far back the time series look. One screen, not an analytics product. */
@@ -40,6 +41,7 @@ export interface AdminSnapshot {
   staleGames: number;
   crashesThisWeek: number;
   crashGroups: { message: string; count: number; lastSeen: string; location: string }[];
+  bugReports: { at: string; who: string; description: string; where: string; build: string }[];
   funnel: FunnelStep[];
 }
 
@@ -222,6 +224,7 @@ export async function adminSnapshot(provisionalGames: number): Promise<AdminSnap
     crashes,
     crashGroupRows,
     funnelRows,
+    bugReportRows,
   ] = await Promise.all([
     signups(),
     totalUsers(),
@@ -238,6 +241,7 @@ export async function adminSnapshot(provisionalGames: number): Promise<AdminSnap
     crashesThisWeek(),
     recentClientErrorGroups(ROW_LIMIT),
     funnel(WINDOW_DAYS),
+    recentBugReports(ROW_LIMIT),
   ]);
 
   return {
@@ -257,5 +261,12 @@ export async function adminSnapshot(provisionalGames: number): Promise<AdminSnap
     crashesThisWeek: crashes,
     crashGroups: await forDisplay(crashGroupRows),
     funnel: funnelRows,
+    bugReports: bugReportRows.map((r) => ({
+      at: r.createdAt.toISOString(),
+      who: r.username ?? "(deleted)",
+      description: r.description,
+      where: r.screen ?? "",
+      build: [r.appVersion, r.platform, r.locale].filter(Boolean).join(" · "),
+    })),
   };
 }

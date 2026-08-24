@@ -12,6 +12,7 @@ import {
   AddFriendSchema,
   ClientErrorSchema,
   PushTokenSchema,
+  BugReportSchema,
 } from "./schemas.ts";
 import { deletePushToken, savePushToken } from "./push.ts";
 import { DEFAULT_LOCALE, translate, type Locale } from "../shared/i18n.ts";
@@ -21,6 +22,7 @@ import { getUserStats, getMatchHistory, getUserAchievements } from "./stats.ts";
 import { getReplayForUser, listReplaysForUser } from "./replays.ts";
 import { getLeaderboard, getRating, PROVISIONAL_GAMES } from "./ratings.ts";
 import { recordClientError } from "./clientErrors.ts";
+import { recordBugReport } from "./bugReports.ts";
 import { adminSnapshot } from "./admin.ts";
 import { trackEvent } from "./events.ts";
 import { renderAdminPage } from "./adminPage.ts";
@@ -618,6 +620,39 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Nothing to say back. The client is already showing its error screen and
       // must not depend on this having worked.
       res.status(204).end();
+    }
+  );
+
+  // Authenticated and rate-limited for the same reasons as the route above:
+  // an open endpoint taking arbitrary text is a log-injection and abuse
+  // surface, and a report worth reading is one a real account sent.
+  //
+  // Unlike a crash report this one is awaited and answered. The player pressed
+  // send and is owed an outcome — a banner saying it arrived is the whole
+  // feedback loop, and a fire-and-forget write would make that banner a lie.
+  app.post(
+    "/api/bug-reports",
+    requireAuth,
+    errorReportLimiter,
+    validate(BugReportSchema),
+    async (req, res) => {
+      const report = req.body as {
+        description: string;
+        screen?: string;
+        appVersion?: string;
+        platform?: string;
+        locale?: string;
+      };
+      try {
+        await recordBugReport({ userId: req.session.userId!, ...report });
+        res.status(201).json({ ok: true });
+      } catch (err) {
+        logger.error({ err, userId: req.session.userId }, "Failed to store a bug report");
+        res.status(500).json({
+          error: translate(DEFAULT_LOCALE, "server.INTERNAL_SERVER_ERROR"),
+          code: "INTERNAL_SERVER_ERROR",
+        });
+      }
     }
   );
 

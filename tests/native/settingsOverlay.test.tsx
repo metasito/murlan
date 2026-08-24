@@ -18,7 +18,11 @@ jest.mock('expo-audio', () => ({
   createAudioPlayer: () => ({ play: () => {}, remove: () => {}, seekTo: async () => {}, volume: 1 }),
   setAudioModeAsync: async () => {},
 }));
-jest.mock('expo-router', () => ({ useRouter: () => ({ replace: jest.fn() }) }));
+jest.mock('expo-router', () => ({
+  useRouter: () => ({ replace: jest.fn() }),
+  // The bug-report control sends the route it was opened from.
+  usePathname: () => '/lobby',
+}));
 jest.mock('@/context/AuthContext', () => ({ useAuth: () => ({ logout: jest.fn() }) }));
 
 import { SettingsModal } from '@/components/SettingsModal';
