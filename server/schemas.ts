@@ -17,7 +17,7 @@ export const LoginSchema = z.object({
 });
 
 export const AddFriendSchema = z.object({
-  username: z.string().min(1, "Username richiesto"),
+  username: z.string().min(1, "Username is required"),
 });
 
 /**

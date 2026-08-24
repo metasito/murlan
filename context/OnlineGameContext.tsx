@@ -83,6 +83,8 @@ interface OnlineGameContextValue {
   cumulativeScores: Record<string, number>;
   /** What the manche just played awarded, by display name. */
   handScores: Record<string, number>;
+  /** What the hand just played did to each seat's rating, by user id. Empty when the hand rated nobody. */
+  ratingDeltas: Record<string, number>;
   matchState: OnlineMatchState;
   rematchIntents: RematchIntentState;
   /** True while the table is being asked whether it wants another match. */
@@ -170,6 +172,8 @@ export function OnlineGameProvider({ userId, children }: { userId: string; child
   const [rematchVoteState, setRematchVoteState] = useState<RematchVoteState | null>(null);
   const [cumulativeScores, setCumulativeScores] = useState<Record<string, number>>({});
   const [handScores, setHandScores] = useState<Record<string, number>>({});
+  /** What the hand just played did to each seat's ladder rating, by user id. */
+  const [ratingDeltas, setRatingDeltas] = useState<Record<string, number>>({});
   const [matchState, setMatchState] = useState<OnlineMatchState>(INITIAL_MATCH);
   const [rematchIntents, setRematchIntents] = useState<RematchIntentState>(INITIAL_INTENTS);
   const [exchangeAnnouncing, setExchangeAnnouncing] = useState(false);
@@ -353,7 +357,8 @@ export function OnlineGameProvider({ userId, children }: { userId: string; child
     };
 
     // Server payloads carry { code, params, message }; render the code in the
-    // player's language and fall back to the server's Italian text if unknown.
+    // player's language and fall back to the server's own English text if
+    // the code is not one we recognize.
     const onRoomError = (payload: ServerPayload) => {
       // A refused `room:rejoin` is the one room:error that answers a room the
       // player no longer holds: the lobby on screen is a roster the server has
@@ -477,6 +482,7 @@ export function OnlineGameProvider({ userId, children }: { userId: string; child
       // awarded — carrying the last match's deltas over would print them
       // beside a fresh scoreboard.
       setHandScores({});
+      setRatingDeltas({});
       setRematchIntents(INITIAL_INTENTS);
     };
 
@@ -491,6 +497,7 @@ export function OnlineGameProvider({ userId, children }: { userId: string; child
       matchWinners,
       matchContinues,
       isDraw,
+      ratingDeltas,
     }: {
       cumulativeScores?: Record<string, number>;
       scores?: { username: string; points: number }[];
@@ -500,8 +507,18 @@ export function OnlineGameProvider({ userId, children }: { userId: string; child
       matchWinners?: string[];
       matchContinues?: boolean;
       isDraw?: boolean;
+      /**
+       * By user id, and absent for a hand that earns no rating. The server
+       * reads this before it writes the ladder, because the inputs stop
+       * existing once that write lands (server/ratings.ts).
+       */
+      ratingDeltas?: Record<string, number>;
     }) => {
       if (cs) setCumulativeScores(cs);
+      // Kept whole and keyed by user id: this context has no identity of its
+      // own, and the overlay that shows the number already knows whose it is.
+      // Undefined and empty are the same answer — the hand rated nobody.
+      setRatingDeltas(ratingDeltas ?? {});
       if (scores) {
         setHandScores(Object.fromEntries(scores.map((r) => [r.username, r.points])));
       }
@@ -790,6 +807,7 @@ export function OnlineGameProvider({ userId, children }: { userId: string; child
       rematchVoteState,
       cumulativeScores,
       handScores,
+      ratingDeltas,
       matchState,
       rematchIntents,
       rematchPromptOpen,
@@ -813,7 +831,7 @@ export function OnlineGameProvider({ userId, children }: { userId: string; child
       clearPlayerLeft,
       clearRejoinFailed,
     }),
-    [room, gameState, connected, error, playerLeft, rejoinFailed, reconnectNotice, mySeatIndex, turnDeadline, entrySource, rematchVoteState, cumulativeScores, handScores, matchState, rematchIntents, rematchPromptOpen, exchangeAnnouncing, exchangeAnnounceData, createRoom, joinRoom, spectateRoom, isSpectator, leaveRoom, quickmatch, startGame, voteRematch, answerRematch, playCards, pass, giveExchangeCard, acknowledgeExchange, sendReaction, clearError, clearPlayerLeft, clearRejoinFailed]
+    [room, gameState, connected, error, playerLeft, rejoinFailed, reconnectNotice, mySeatIndex, turnDeadline, entrySource, rematchVoteState, cumulativeScores, handScores, ratingDeltas, matchState, rematchIntents, rematchPromptOpen, exchangeAnnouncing, exchangeAnnounceData, createRoom, joinRoom, spectateRoom, isSpectator, leaveRoom, quickmatch, startGame, voteRematch, answerRematch, playCards, pass, giveExchangeCard, acknowledgeExchange, sendReaction, clearError, clearPlayerLeft, clearRejoinFailed]
   );
 
   return (
