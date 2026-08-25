@@ -26,7 +26,7 @@ import { Colors, FontSize, Highlight, Motion, Radius, Shadow, Spacing, TOUCH_TAR
 import { usePrefersReducedMotion } from "@/lib/accessibility";
 import { useTranslation } from "@/lib/i18n";
 import { cardSpokenName } from "@/lib/cardNames";
-import { a11yHidden, useA11yHint } from "@/lib/a11y";
+import { a11yHidden, a11yState, useA11yHint } from "@/lib/a11y";
 
 interface ExchangeModalProps {
   phase: ExchangePhase;
@@ -125,9 +125,8 @@ function SelectableCard({
       onPress={handlePress}
       onPressIn={() => setPress(true)}
       onPressOut={() => setPress(false)}
-      accessibilityRole="button"
       accessibilityLabel={cardSpokenName(card, t)}
-      accessibilityState={{ selected }}
+      {...a11yState({ role: "button", selected })}
       {...giveHint.props}
     >
       {giveHint.node}
@@ -271,8 +270,7 @@ export function ExchangeModal({
                 onSelectCard(selectedCard.id);
               }}
               disabled={!selectedCard}
-              accessibilityRole="button"
-              accessibilityState={{ disabled: !selectedCard }}
+              {...a11yState({ role: "button", disabled: !selectedCard })}
               accessibilityLabel={t("exchangeModal.confirm")}
               style={({ pressed }) => [
                 styles.confirm,
