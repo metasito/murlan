@@ -1,0 +1,29 @@
+title = "murlan gitleaks config"
+
+[extend]
+useDefault = true
+
+# #277's full-history audit found these seven, all verified harmless. Each
+# override is scoped to one rule so a real secret matching a different rule
+# at the same path, or a real one matching the same rule elsewhere, still
+# fires.
+
+[[rules]]
+id = "generic-api-key"
+
+[rules.allowlist]
+# A fabricated example in a snippet demonstrating the wrong way to hold a key.
+regexes = ['''sk_live_abc123xyz''']
+paths = ['''\.claude/agents/tier-2-power/security-specialist\.md''']
+
+[[rules]]
+id = "aws-access-token"
+
+[rules.allowlist]
+# Perplexity's own presigned-upload STS token, expired 2026-03-04; both files
+# are absent from HEAD.
+regexes = ['''ASIA2F3EMEYEYTWUKMG2''']
+paths = [
+  '''attached_assets/Pasted-Here-are-clear-copy-paste-ready-requirements-for-your-R_1772612416299\.txt''',
+  '''attached_assets/Pasted-Here-are-clear-copy-paste-ready-requirements-for-your-R_1772612429827\.txt''',
+]
