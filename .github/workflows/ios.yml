@@ -22,7 +22,12 @@ jobs:
   ios:
     name: Drive the app on a real iOS simulator
     runs-on: macos-latest
-    timeout-minutes: 45
+    # More than maestro.yml's 45: this job runs offline-game.yaml as well as
+    # smoke.yaml, and offline-game is a full hand — 16 minutes on a developer
+    # machine. Hitting the cap cancels the job, and a cancelled job skips
+    # every `if: failure()` step below, so an overrun costs the artefacts that
+    # would say what happened.
+    timeout-minutes: 75
 
     steps:
       - uses: actions/checkout@v4
@@ -80,34 +85,48 @@ jobs:
       # `macos-latest` ships a fixed set of pre-created simulators rather
       # than a fresh AVD per run, so the device to drive has to be found
       # rather than declared. Picks the highest-versioned iOS runtime the
-      # image has, and the first iPhone in it — the same "don't hardcode a
-      # model" reasoning maestro.yml applies to the Expo Go SDK below.
+      # image has — the same "don't hardcode a model" reasoning maestro.yml
+      # applies to the Expo Go SDK below.
+      #
+      # The iPhone within it is chosen by name rather than taken as simctl
+      # happens to order them, and the SE is excluded: offline-game.yaml taps
+      # the hand fan by percentage of the screen ("17%,81%", +2.5% per slot),
+      # calibrated against a 19.5:9 landscape. The SE is 16:9, so the same
+      # percentages land on a different card, or on none — a red run that
+      # reads as an app regression and is really the runner image having
+      # reordered its device list.
       - name: Find and boot an iPhone simulator
         run: |
           udid=$(xcrun simctl list devices available -j | node -e '
             let s = "";
             process.stdin.on("data", (d) => (s += d)).on("end", () => {
               const { devices } = JSON.parse(s);
+              const usable = (d) => /^iPhone/.test(d.name) && !/\bSE\b/.test(d.name);
               const version = (r) => (r.match(/iOS-(\d+)-(\d+)/) || []).slice(1).map(Number);
               const runtimes = Object.keys(devices)
-                .filter((r) => /iOS/i.test(r) && devices[r].some((d) => /^iPhone/.test(d.name)))
+                .filter((r) => /iOS/i.test(r) && devices[r].some(usable))
                 .sort((a, b) => {
                   const [aMaj, aMin] = version(a);
                   const [bMaj, bMin] = version(b);
                   return aMaj - bMaj || aMin - bMin;
                 });
               if (runtimes.length === 0) {
-                console.error("::error::No iOS runtime with an iPhone device on this runner.");
+                console.error("::error::No iOS runtime with a full-screen iPhone on this runner.");
                 process.exit(1);
               }
               const runtime = runtimes[runtimes.length - 1];
-              const iphone = devices[runtime].find((d) => /^iPhone/.test(d.name));
+              const iphones = devices[runtime]
+                .filter(usable)
+                .sort((a, b) => a.name.localeCompare(b.name, "en", { numeric: true }));
+              const iphone = iphones[iphones.length - 1];
               console.error(`Using ${iphone.name} on ${runtime}`);
               process.stdout.write(iphone.udid);
             });
           ')
           echo "SIMULATOR_UDID=$udid" >> "$GITHUB_ENV"
-          xcrun simctl boot "$udid"
+          # `bootstatus -b` boots the device if it is not already booted and
+          # then waits. A bare `simctl boot` on a device the image left booted
+          # exits non-zero instead, taking the step with it.
           xcrun simctl bootstatus "$udid" -b
 
       # The flows select on Italian copy (see maestro.yml) for the same
@@ -120,9 +139,21 @@ jobs:
           xcrun simctl spawn "$SIMULATOR_UDID" defaults write "Apple Global Domain" AppleLanguages -array "it-IT"
           xcrun simctl spawn "$SIMULATOR_UDID" defaults write "Apple Global Domain" AppleLocale -string "it_IT"
           xcrun simctl shutdown "$SIMULATOR_UDID"
-          xcrun simctl boot "$SIMULATOR_UDID"
+          # `shutdown` returns while the device can still be "Shutting Down",
+          # and a boot in that state fails outright rather than queueing.
+          for i in $(seq 1 30); do
+            xcrun simctl list devices | grep -q "$SIMULATOR_UDID) (Shutdown)" && break
+            sleep 2
+          done
           xcrun simctl bootstatus "$SIMULATOR_UDID" -b
-          locale=$(xcrun simctl spawn "$SIMULATOR_UDID" defaults read "Apple Global Domain" AppleLocale)
+          # AppleLanguages, not AppleLocale, is what the app reads: lib/i18n.ts
+          # picks the locale from expo-localization's `getLocales()`, which on
+          # iOS is `Locale.preferredLanguages`. AppleLocale only carries the
+          # region formats, so checking it alone passes on a device still
+          # rendering English.
+          languages=$(xcrun simctl spawn "$SIMULATOR_UDID" defaults read "Apple Global Domain" AppleLanguages || echo unset)
+          echo "$languages" | tr -d '\n ' | grep -q '^("\{0,1\}it' || { echo "::error::Simulator's preferred language is $languages, not Italian; the flows select on Italian copy."; exit 1; }
+          locale=$(xcrun simctl spawn "$SIMULATOR_UDID" defaults read "Apple Global Domain" AppleLocale || echo unset)
           [ "$locale" = "it_IT" ] || { echo "::error::Simulator locale is '$locale', not it_IT; the flows select on Italian copy."; exit 1; }
 
       # Resolved from the SDK this project pins, same as maestro.yml's
@@ -173,7 +204,11 @@ jobs:
         run: |
           curl -sf -o /dev/null -w 'metro /status: %{http_code}' http://127.0.0.1:8081/status || echo "::warning::Metro is no longer answering on 8081."
           echo
-          curl -s -o "$RUNNER_TEMP/manifest.out" -w 'manifest: %{http_code}' -H 'expo-platform: ios' -H 'expo-runtime-version: exposdk:54.0.0' -H 'accept: multipart/mixed,application/expo+json,application/json' http://127.0.0.1:8081/
+          # Derived, not hardcoded, for the reason the client fetch above is:
+          # asking for an SDK the project no longer pins makes this diagnostic
+          # report a mismatch that is its own doing.
+          sdk=$(node -p 'require("./package.json").dependencies.expo.replace(/^\D*/, "").split(".")[0] + ".0.0"')
+          curl -s -o "$RUNNER_TEMP/manifest.out" -w 'manifest: %{http_code}' -H 'expo-platform: ios' -H "expo-runtime-version: exposdk:$sdk" -H 'accept: multipart/mixed,application/expo+json,application/json' http://127.0.0.1:8081/
           echo
           head -c 1200 "$RUNNER_TEMP/manifest.out"
           echo

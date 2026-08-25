@@ -11,9 +11,10 @@ prototype, and shipping nothing the reporter could see — because the defect wa
 and no loop here could reach it.
 
 So before touching a rendering bug, answer in one line: *which renderer produced the
-screenshot I am fixing?* Then pick the loop that runs on it. No loop here *runs* iOS; the
-next section is how you get an iOS answer anyway. Reporting a green web run as a fix for a
-native defect is not one of the options.
+screenshot I am fixing?* Then pick the loop that runs on it. One loop does reach iOS — a
+Maestro job on a CI simulator — but it *drives* the app rather than looking at it, so a pixel
+still comes back from a capture. The next section is both. Reporting a green web run as a fix
+for a native defect is not one of the options.
 
 **What differs between the two renderers is not cosmetic.** `react-native-svg` on native is
 a different implementation, not a polyfill:
@@ -99,6 +100,7 @@ Each of these produced a confident, wrong "fixed" in one session:
 | Anything with a **layout** (flex, absolute, transform) | Playwright | which side of the screen it is on | ~35s |
 | Anything **visual** (colour, gradient, shadow, size) | the parity harness below | pixels vs the prototype | ~40s |
 | Tokens, contrast, roles | `node --test tests/contrast.test.ts tests/tokenRoles.test.ts tests/cosmetics.test.ts` | AA floors | ~1s |
+| Anything the app must **boot and stay drivable through on iOS** | `.github/workflows/ios.yml`, dispatched by hand | a crash, a screen that never renders, a control the flows tap going missing — on a real simulator | unmeasured; the job's own ceiling is 75 min |
 
 Full sweeps, for the end of an item only: `npx tsc --noEmit` (~5s) → `npm test` (~12s, 1066) →
 `npx jest` (~50s, 527) → `npx eslint components lib tests app` (~25s).
