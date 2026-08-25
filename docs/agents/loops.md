@@ -29,12 +29,19 @@ The portable way to shape a radial is neither: give the **rect** the radii (`2*r
 `2*ry`) and let the gradient keep its default `r="50%"`, which is the inscribed ellipse on
 both. `tests/vignette.test.ts` pins that no radial shapes itself.
 
-## The iOS loop: ask for a capture
+## The iOS loop: a CI simulator, or ask for a capture
 
-There is no runner here that renders iOS, and #205 leaves whether to buy one — EAS Build plus
-Maestro Cloud, or a simulator on a macOS runner — as an owner's call. What exists today is the
-cheaper half: a named list of states, a screen that reaches each of them on the device, and the
-rule that a native rendering fix is not claimed until the captures come back.
+`.github/workflows/ios.yml` drives `.maestro/smoke.yaml` and `.maestro/offline-game.yaml`
+through Expo Go on a real iOS Simulator, on a free `macos-latest` GitHub runner (#205) — the
+same flows `maestro.yml` already runs on Android, with the emulator-only failure classes
+(#185, #186) gone because a Simulator is a process on the host rather than a virtualised
+device. It is `workflow_dispatch` only until it has been run green twice; read its own header
+before assuming it fires on every push or pull request.
+
+That job proves the flows still run and the app still renders *something* on device — it does
+not replace looking at the device. A rendering defect like #209 needs a screenshot regardless:
+a named list of states, a screen that reaches each of them on the device, and the rule that a
+native rendering fix is not claimed until the captures come back.
 
 **The states are `lib/captureStates.ts`.** That list is the contract. `app/capture.tsx` walks it
 on the device and `tests/e2e/lampSeats.spec.ts` walks it in Chromium, so a photograph and a web
