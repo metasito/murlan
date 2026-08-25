@@ -258,9 +258,20 @@ agent/<number>-<slug> branch you will use:
 Read that last output to confirm you won the race — stand down if a claim older than yours is
 already there.
 
-Then take a worktree, so no later stage shares a checkout whose HEAD another session moves:
+Then take a worktree, so no later stage shares a checkout whose HEAD another session moves — and
+give it the install, or nothing in it runs:
 
-  git worktree add -b <BRANCH> ../murlan-wt-<NUM> origin/main && cd ../murlan-wt-<NUM> && pwd
+  git worktree add -b <BRANCH> ../murlan-wt-<NUM> origin/main && cd ../murlan-wt-<NUM> && \\
+  cmd //c mklink /J node_modules "$(cygpath -w "$(git rev-parse --path-format=absolute --git-common-dir)/../node_modules")" && \\
+  node -e "require.resolve('typescript')" && pwd
+
+The worktree is a *sibling* of the checkout, so it has no \`node_modules\` and none in any ancestor
+directory either. Node resolves both a bare \`import\` and \`require.resolve\` by walking ancestors
+only, so without that junction every script and every test in the worktree dies on its first
+import — which no amount of resolving packages differently in the source can fix. The \`node -e\`
+is the proof it took; treat a failure there as the worktree not being usable and report
+claimed: false rather than working in a checkout where nothing runs. (On a POSIX host the same
+step is \`ln -s "$(git rev-parse --path-format=absolute --git-common-dir)/../node_modules" node_modules\`.)
 
 Report that absolute path as worktreePath; if the command fails, report claimed: false. Run the
 gate below from there too.
