@@ -98,7 +98,6 @@ import {
 import { FeltPool } from "@/components/table/felt";
 import { StraightHand } from "@/components/table/hand";
 import { GameSettingsSheet } from "@/components/table/settingsSheet";
-import { useSettings } from "@/context/SettingsContext";
 import { useTableFeedback } from "@/components/useTableFeedback";
 import { FlyingCards, PlayedPile, getComboLabel } from "@/components/table/pile";
 import { TopOppSlot, SideOppSlot } from "@/components/table/seats";
@@ -738,13 +737,11 @@ export function GameTable({
   const knobSize = physicalTouchTarget(scale);
   const reduceMotion = usePrefersReducedMotion();
   const felt = useTableFelt();
-  const { soundsEnabled, setSoundsEnabled, musicEnabled, setMusicEnabled, hapticsEnabled, setHapticsEnabled } =
-    useSettings();
 
   // Whether the rail's settings sheet is open, and the two toggles it owns
   // that live nowhere else: focus mode and the left-handed swap are a
   // session's own choice, not a stored preference — sound, music and
-  // vibration are the persisted ones, read straight from SettingsContext.
+  // vibration are the persisted ones, which the sheet reads for itself.
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [focusMode, setFocusMode] = useState(false);
   const [playOnLeft, setPlayOnLeft] = useState(false);
@@ -1413,12 +1410,6 @@ export function GameTable({
           onToggleFocusMode={() => setFocusMode((v) => !v)}
           playOnLeft={playOnLeft}
           onTogglePlayOnLeft={() => setPlayOnLeft((v) => !v)}
-          soundsEnabled={soundsEnabled}
-          onToggleSounds={() => setSoundsEnabled(!soundsEnabled)}
-          musicEnabled={musicEnabled}
-          onToggleMusic={() => setMusicEnabled(!musicEnabled)}
-          hapticsEnabled={hapticsEnabled}
-          onToggleHaptics={() => setHapticsEnabled(!hapticsEnabled)}
           onExit={() => {
             closeSettings();
             onQuit();
@@ -1710,10 +1701,11 @@ export function GameTable({
               left: frame.tableLeft,
               right: frame.tableRight,
             },
+            playOnLeft && styles.rejectHintMirrored,
           ]}
         >
           <TableText
-            style={styles.rejectHintText}
+            style={[styles.rejectHintText, playOnLeft && styles.rejectHintTextMirrored]}
             numberOfLines={2}
             accessibilityLiveRegion="polite"
           >
@@ -1850,6 +1842,10 @@ const styles = StyleSheet.create({
     zIndex: REJECT_HINT_Z,
     alignItems: "flex-end",
   },
+  // The hint belongs beside the button that raised it, so it follows GIOCA
+  // across when the hand row is mirrored.
+  rejectHintMirrored: { alignItems: "flex-start" },
+  rejectHintTextMirrored: { textAlign: "left" },
   rejectHintText: {
     fontFamily: "Rajdhani_600SemiBold",
     fontSize: FontSize.xs,

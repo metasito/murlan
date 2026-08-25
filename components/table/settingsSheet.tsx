@@ -12,6 +12,7 @@ import { LinearGradient } from "expo-linear-gradient";
 import { Colors, FontSize, Garnet, Highlight, makeShadow, Motion, Spacing, TOUCH_TARGET_MIN } from "@/lib/theme";
 import { usePrefersReducedMotion } from "@/lib/accessibility";
 import { useTranslation } from "@/lib/i18n";
+import { useSettings } from "@/context/SettingsContext";
 import { a11yHidden, a11yState, useA11yHint } from "@/lib/a11y";
 
 /**
@@ -173,12 +174,6 @@ export interface GameSettingsSheetProps {
   onToggleFocusMode: () => void;
   playOnLeft: boolean;
   onTogglePlayOnLeft: () => void;
-  soundsEnabled: boolean;
-  onToggleSounds: () => void;
-  musicEnabled: boolean;
-  onToggleMusic: () => void;
-  hapticsEnabled: boolean;
-  onToggleHaptics: () => void;
   onExit: () => void;
 }
 
@@ -195,16 +190,22 @@ export function GameSettingsSheet({
   onToggleFocusMode,
   playOnLeft,
   onTogglePlayOnLeft,
-  soundsEnabled,
-  onToggleSounds,
-  musicEnabled,
-  onToggleMusic,
-  hapticsEnabled,
-  onToggleHaptics,
   onExit,
 }: GameSettingsSheetProps) {
   const { t } = useTranslation();
   const reduceMotion = usePrefersReducedMotion();
+  // The persisted three come from the same context `SettingsModal` reads, and
+  // they are read here rather than in `GameTable` so that only the sheet — a
+  // subtree that exists solely while the player has it open — depends on the
+  // provider being mounted above it.
+  const {
+    soundsEnabled,
+    setSoundsEnabled,
+    musicEnabled,
+    setMusicEnabled,
+    hapticsEnabled,
+    setHapticsEnabled,
+  } = useSettings();
   useEscapeToClose(onClose);
 
   return (
@@ -263,14 +264,14 @@ export function GameSettingsSheet({
                 label={t("settings.sounds")}
                 a11yHint={t("settings.soundsA11yHint")}
                 on={soundsEnabled}
-                onToggle={onToggleSounds}
+                onToggle={() => setSoundsEnabled(!soundsEnabled)}
                 scale={scale}
               />
               <SheetRow
                 label={t("settings.music")}
                 a11yHint={t("settings.musicA11yHint")}
                 on={musicEnabled}
-                onToggle={onToggleMusic}
+                onToggle={() => setMusicEnabled(!musicEnabled)}
                 scale={scale}
               />
               {Platform.OS !== "web" && (
@@ -278,7 +279,7 @@ export function GameSettingsSheet({
                   label={t("settings.haptics")}
                   a11yHint={t("settings.hapticsA11yHint")}
                   on={hapticsEnabled}
-                  onToggle={onToggleHaptics}
+                  onToggle={() => setHapticsEnabled(!hapticsEnabled)}
                   scale={scale}
                 />
               )}
