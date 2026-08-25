@@ -1,12 +1,11 @@
 export const meta = {
   name: 'ticket-pipeline',
-  description: 'Claim, gate, implement, verify, independently review, and land one murlan queue ticket end to end',
+  description: 'Claim, gate, implement, land one murlan queue ticket — ci.yml is the gate',
   phases: [
     { title: 'Claim', detail: 'claim the routed ticket and run the design-first gate', model: 'haiku' },
     { title: 'Implement', detail: 'implement, commit, push, open the pull request', model: 'sonnet' },
     { title: 'Verify', detail: "ci.yml's verdict on the pushed branch", model: 'sonnet' },
-    { title: 'Review', detail: 'three independent lenses', model: 'opus' },
-    { title: 'Fix', model: 'sonnet' },
+    { title: 'Fix', detail: 'make a red run green', model: 'sonnet' },
     { title: 'Land', model: 'sonnet' },
     { title: 'Cleanup', model: 'sonnet' },
   ],
@@ -20,12 +19,6 @@ const MODELS = {
   implement: 'sonnet',
   verify: 'sonnet', // long, scripted, and has to read failures back accurately
   fix: 'sonnet',
-  review: 'opus', // CI proves the suite still passes; only this asks whether the change is right
-  // The two-axis pass on a small diff reads conventions and the spec, which is not the judgement
-  // Opus is kept for. CLAUDE.md's "independent review is Opus" was written while CI was
-  // billing-blocked and review was the only thing between a defect and an --admin merge; the
-  // suite runs free and green again, so that reason has expired for the small lane.
-  reviewSmall: 'sonnet',
   land: 'sonnet',
   cleanup: 'sonnet', // deletes branches and kills processes on a judgement call
 }
@@ -42,11 +35,8 @@ if (forcedTicket !== undefined && !Number.isInteger(forcedTicket)) {
   throw new Error(`ticket-pipeline: args named a ticket that is not a number: ${JSON.stringify(args)}`)
 }
 
-// A ceiling, not a budget. `stalled` below ends the loop the moment a round stops improving on
-// the one before it, so a run that is going nowhere costs one round and this number never
-// applies to it. What the number decides is how far a run that *is* converging may go: #293 came
-// down 7 -> 5 -> 1 confirmed findings with CI going red -> green, and was cut off one round short
-// of clean by a limit that was counting attempts.
+// Each round is a push and a full ci.yml run, about nine minutes. Four is where a red run stops
+// being worth another attempt and becomes something to look at.
 const MAX_FIX_ROUNDS = 4
 const REPO = 'metasito/murlan'
 
@@ -81,26 +71,6 @@ the spec file: dist/ is a *build* of app/, components/ and lib/, so with that fl
 any of those is not in the bundle under test and the run can pass having exercised nothing. After
 every change to app code, run once without the flag before you trust a green.`
 
-// Review needs to know whether the diff is prose before it can drop the behaviour lens, and it
-// now starts at the same moment as Verify — so whoever commits works it out, not Verify.
-const PROSE_CAPTURE_NOTE = `Before you report, classify the diff you just committed so the review
-stage does not have to wait on Verify to learn it — two commands:
-  git diff --name-only origin/main...HEAD
-Turn those lines into a JSON array of repo-relative paths and run:
-  npx tsx lib/ticketPipeline/verifyPlan.ts <<< '["path/one.ts","path/two.ts"]'
-Report its "prose" field verbatim.`
-
-// Stages report the files they touched in whatever form their tools handed back: implement once
-// reported `C:\Users\roton\murlan-wt-294\.github\workflows\ci.yml` while fix reported
-// `.github/workflows/ci.yml`. Compared raw, nothing ever matches and every fix round reads as
-// having widened the diff — a guard firing on every run is worse than no guard.
-function repoRelative(file) {
-  return String(file)
-    .replace(/\\/g, '/')
-    .replace(/^.*?\/murlan(?:-wt-[^/]*)?\//, '')
-    .replace(/^\.\//, '')
-}
-
 function sq(text) {
   return `'${String(text).replace(/'/g, "'\\''")}'`
 }
@@ -116,9 +86,6 @@ const CLAIM_SCHEMA = {
     number: { type: 'number' },
     branch: { type: 'string' },
     title: { type: 'string' },
-    // Drives how deeply the diff is reviewed and on which model, so an absent or wrong value
-    // costs real money either way. Unset reads as large, which is the safe direction.
-    size: { type: 'string', enum: ['XS', 'S', 'M', 'L', 'XL'] },
     filesTouched: { type: 'array', items: { type: 'string' } },
     worktreePath: { type: 'string' },
     escalate: { type: 'boolean' },
@@ -136,7 +103,6 @@ const IMPLEMENT_SCHEMA = {
     prNumber: { type: 'number' },
     summary: { type: 'string' },
     filesTouched: { type: 'array', items: { type: 'string' } },
-    prose: { type: 'boolean' },
   },
   required: ['committed'],
 }
@@ -153,34 +119,6 @@ const CI_SCHEMA = {
     infrastructure: { type: 'boolean' },
   },
   required: ['pass'],
-}
-
-const FINDING_SCHEMA = {
-  type: 'object',
-  properties: {
-    findings: {
-      type: 'array',
-      items: {
-        type: 'object',
-        properties: {
-          file: { type: 'string' },
-          line: { type: 'number' },
-          summary: { type: 'string' },
-          verdict: { type: 'string', enum: ['CONFIRMED', 'PLAUSIBLE', 'REJECTED'] },
-          // What a reader or a caller gets wrong because of this, in one sentence. A finding
-          // that cannot name one is an opinion about the code rather than a defect in it.
-          consequence: { type: 'string' },
-          // The command that was run and what it printed, for any finding asserting a fact about
-          // behaviour. A review agent once reported "0 divergences in 20,510 decisions" for two
-          // bot personalities that in fact diverge on ~6.9% of decisions, and a fix round rewrote
-          // user-facing copy on the strength of it.
-          evidence: { type: 'string' },
-        },
-        required: ['file', 'summary', 'verdict'],
-      },
-    },
-  },
-  required: ['findings'],
 }
 
 const LAND_SCHEMA = {
@@ -262,129 +200,14 @@ infrastructure false.`,
 // workflow threw and the ticket kept its `in-progress` label with nobody left to release it.
 // A stage that never reported is not a verdict — it is the same "nothing was learned" case as a
 // CI run that never started, which the caller already knows how to end cleanly.
-function reported(verify, review) {
-  return [
+function reported(verify) {
+  return (
     verify ?? {
       pass: false,
       infrastructure: true,
       failedStep: 'the verify agent died before reporting',
-    },
-    review ?? { findings: [], failedLenses: ['every lens — the review agent died before reporting'] },
-  ]
-}
-
-// CLAUDE.md sizes review and the pipeline did not: "An `size:XS`/`size:S` item gets one pass; the
-// two-axis code-review is the fit, because standards and spec are what a small diff gets wrong.
-// Reserve a second correctness pass for `size:M` and up, or any diff touching the engine, the
-// socket protocol or auth." Three Opus lenses ran on everything instead, and every review spiral
-// it produced — #291 (two markdown files, 11 -> 18 -> 14 findings), #294, #223 — was an XS/S
-// ticket. Adversarial is that second pass: it is the one that runs the guard against broken code.
-const DEEP_SURFACE = /lib\/gameEngine|server\/socket|shared\/events|server\/auth|server\/session/
-function reviewPlan(claim) {
-  const small = claim.size === 'XS' || claim.size === 'S'
-  const deepFile = (claim.filesTouched || []).find((f) => DEEP_SURFACE.test(f))
-  if (!small) return { keys: ['standards', 'spec', 'adversarial'], model: MODELS.review, why: `size:${claim.size || '?'}` }
-  if (deepFile) return { keys: ['standards', 'spec', 'adversarial'], model: MODELS.review, why: `touches ${deepFile}` }
-  return { keys: ['standards', 'spec'], model: MODELS.reviewSmall, why: `size:${claim.size}, no deep surface` }
-}
-
-async function runReview(claim, scopeNote, onlyKeys, prose, sinceRef) {
-  // The scope has to be the git command, not a sentence above it. Told "review only the fix" and
-  // handed `origin/main...HEAD` anyway, three fresh lenses re-read the whole branch every round
-  // and each round found new prose to object to — 23 findings, then 31, on a diff that was
-  // converging. A round reviews what that round changed.
-  const range = sinceRef ? `${sinceRef}..HEAD` : 'origin/main...HEAD'
-  const diffScope = scopeNote
-    ? `only this round's fix for: ${scopeNote}`
-    : 'the whole diff'
-  const allLenses = [
-    {
-      key: 'standards',
-      prompt: `Review ${diffScope} on branch ${claim.branch} (git diff ${range}) using
-mattpocock-skills:code-review's standards axis: documented repo conventions (CLAUDE.md) plus the
-Fowler smell baseline. You did not write this code — read it cold. CLAUDE.md's comment policy is
-one of those conventions and the one most often broken: flag as CONFIRMED any new or changed
-comment that narrates history, restates the code below it, or explains a defect the diff just
-fixed. Report findings: file, line, summary, verdict (CONFIRMED/PLAUSIBLE/REJECTED), consequence, evidence.
-CONFIRMED means you can name the consequence: what a reader, a caller or a player actually gets
-wrong because of this. A rule citation with no such reader is PLAUSIBLE, not CONFIRMED — only a
-finding with a consequence can start a fix round, and each round costs a nine-minute CI run.
-Any claim about behaviour carries its evidence: the command you ran and what it printed. Do not
-state a measurement you did not take.`,
-    },
-    {
-      key: 'spec',
-      prompt: `Review ${diffScope} on branch ${claim.branch} (git diff ${range}) against
-issue #${claim.number}, which you should read yourself with: gh issue view ${claim.number} --repo ${REPO} --comments
-The comments are part of the spec — an owner ruling there overrides the body, which is often
-the state of the question before it was settled. Judge the diff against the whole issue.
-Using mattpocock-skills:code-review's spec axis: missing requirements, scope creep, anything
-implemented but wrong. Report findings: file, line, summary, verdict (CONFIRMED/PLAUSIBLE/REJECTED), consequence, evidence.
-CONFIRMED means you can name the consequence: what a reader, a caller or a player actually gets
-wrong because of this. A rule citation with no such reader is PLAUSIBLE, not CONFIRMED — only a
-finding with a consequence can start a fix round, and each round costs a nine-minute CI run.
-Any claim about behaviour carries its evidence: the command you ran and what it printed. Do not
-state a measurement you did not take.`,
-    },
-    {
-      key: 'adversarial',
-      needsCode: true,
-      prompt: `For every new or changed test or runtime guard in ${diffScope} on branch ${claim.branch}
-(git diff ${range}): try to prove it passes on broken code — invert or delete the logic it
-claims to protect, rerun it, confirm whether it would actually catch the break. Any test/guard that
-still passes on broken code is a CONFIRMED finding. Report: file, line, summary, verdict,
-consequence, evidence. This lens is the grounded one: evidence is the break you made and the
-command output showing the guard still passed. Report nothing you did not actually run.`,
-    },
-  ]
-  // A re-review after a fix only has to re-ask the lens that raised the finding: the other
-  // lenses read a diff that has not moved since they cleared it. And a lens that reviews
-  // behaviour has none to review in a prose diff — on the last docs ticket the adversarial lens
-  // ran three times and reported, each time, that there was nothing to invert.
-  const plan = reviewPlan(claim)
-  const applicable = allLenses
-    .filter((l) => !(l.needsCode && prose))
-    .filter((l) => plan.keys.includes(l.key))
-  const lenses = onlyKeys ? applicable.filter((l) => onlyKeys.includes(l.key)) : applicable
-  if (!onlyKeys) {
-    log(`Review: ${lenses.map((l) => l.key).join(' + ') || 'none'} on ${plan.model} (${plan.why}).`)
-  }
-  const results = await parallel(
-    lenses.map((l) => () => agent(l.prompt, { model: plan.model, phase: 'Review', label: label(`review:${l.key}`), schema: FINDING_SCHEMA }))
+    }
   )
-  const failedLenses = lenses.filter((l, i) => !results[i]).map((l) => l.key)
-  if (failedLenses.length) {
-    log(`Review lenses reported nothing: ${failedLenses.join(', ')} — counted as unreviewed, not as clean.`)
-  }
-  return {
-    // Index against `lenses`, not against the filtered array — a lens that returned nothing
-    // shifts every later result onto the wrong name, and the next round then re-runs whichever
-    // lens the mislabelling happened to point at.
-    findings: results.flatMap((r, i) => (r?.findings || []).map((f) => ({ ...f, lens: lenses[i].key }))),
-    failedLenses,
-  }
-}
-
-// Blocking a run costs a fix round and a nine-minute CI round, so a finding has to say what
-// actually goes wrong. Scaffold research is blunt about this: multi-agent debate that is not
-// grounded in code execution underperforms a single agent, and that is exactly what three lenses
-// arguing over a two-file prose diff were doing — #291 went 11 -> 18 -> 14 confirmed findings,
-// most of them citing a rule rather than naming a reader who ends up wrong.
-// A finding with no consequence is still reported; it just cannot start a round.
-function confirmedIn(review) {
-  return review.findings.filter((f) => f.verdict === 'CONFIRMED' && (f.consequence || '').trim())
-}
-
-function advisoryIn(review) {
-  return review.findings.filter((f) => f.verdict === 'CONFIRMED' && !(f.consequence || '').trim())
-}
-
-function actionable(verify, review) {
-  return !verify.pass || confirmedIn(review).length > 0
-}
-
-function isClean(verify, review) {
-  return !actionable(verify, review) && review.failedLenses.length === 0
 }
 
 let claimOpen = false
@@ -444,9 +267,7 @@ gh issue view <NUM> --repo ${REPO} --json body,comments --jq '{filesTouched:["li
 npx tsx lib/ticketPipeline/gate.ts < /tmp/ticket-pipeline-gate.json
 
 Report: claimed, number, branch, title, worktreePath, filesTouched (that same repo-relative list),
-size (the ticket's own \`size:*\` label as XS/S/M/L/XL — omit it if the ticket carries none rather
-than guessing; the review stage reads it to decide how deeply to review, and an absent one is
-treated as large), escalate and gateReason taken verbatim from the gate's JSON stdout, reason. If either gate command fails, or
+escalate and gateReason taken verbatim from the gate's JSON stdout, reason. If either gate command fails, or
 its stdout is not the JSON object the module prints, report escalate: true with the failure as
 gateReason — this is the pipeline's only escalation valve, so a gate that could not run must never
 answer "no escalation needed". If it does escalate, hand the ticket back before you report: remove
@@ -515,8 +336,7 @@ EOF
 
 Report that pull request's number as prNumber; if the push or the create fails, report
 committed: true with prNumber omitted and say so in summary.
-${PROSE_CAPTURE_NOTE}
-Report: committed, commitSha, prNumber, summary, filesTouched, prose.`,
+Report: committed, commitSha, prNumber, summary, filesTouched.`,
     { model: MODELS.implement, phase: 'Implement', label: label('implement'), schema: IMPLEMENT_SCHEMA }
   )
   // Same absence as `reported()` handles below, one stage earlier: a session limit killed the
@@ -533,120 +353,61 @@ Report: committed, commitSha, prNumber, summary, filesTouched, prose.`,
     return { landed: false, ticket: claim.number, reason: 'no pull request' }
   }
 
-  // CI runs on the push while the lenses read the same commit, so the run's ~9 minutes overlap
-  // the review instead of following it. A red run does not waste the concurrent review either:
-  // the fix agent gets both together and answers them in one round.
-  let [verify, review] = await parallel([
-    () => runVerify(claim, impl.prNumber, 1),
-    () => runReview(claim, null, null, impl.prose, null),
-  ])
-  ;[verify, review] = reported(verify, review)
-  const advisory = advisoryIn(review)
-  if (advisory.length) {
-    log(
-      `${advisory.length} finding(s) named no consequence, so they are advisory and start no round: ` +
-        advisory.map((f) => `${f.file}${f.line ? ':' + f.line : ''}`).join(', ')
-    )
-  }
-  // The lenses advance whatever they said — they have read that commit, and re-reading it is what
-  // produced a fresh crop of prose objections every round. CI needs no such marker: every push
-  // runs the whole workflow, and ci.yml's own scope job decides what the diff can skip.
-  let reviewedSha = impl.commitSha
+  // CI is the gate, and the only one. It runs the real suite against the real tree, it is free on
+  // this repo, and it cannot be argued out of a verdict. Model reviewers can: every spiral this
+  // pipeline produced came from lenses debating a diff, never from the suite.
+  let verify = reported(await runVerify(claim, impl.prNumber, 1))
   if (verify.infrastructure) {
     releaseReason = `CI could not run: ${verify.failedStep || 'no job reported steps'}`
     return { landed: false, ticket: claim.number, reason: 'ci unavailable' }
   }
+  // The loop is only ever entered on a red run, so there is no "it was green and got worse" case
+  // to guard against and no finding count to watch converge. That whole apparatus existed to
+  // contain model reviewers arguing with each other; with the suite as the only judge, the round
+  // cap is the entire termination condition.
   let round = 0
-  // A fix round can make things worse, and twice it has: #291 went 11 -> 18 -> 14 confirmed
-  // findings on a two-file prose diff, and #294's fix rounds turned a green run red and then
-  // red again while findings climbed 6 -> 7 -> 14. Neither run was converging, and both spent
-  // every round they had finding that out. `stalled` ends the loop the moment a round fails to
-  // improve on the one before it, so the rounds are a budget for progress rather than for
-  // attempts.
-  let prevConfirmed = confirmedIn(review).length
-  let prevPass = verify.pass
-  let stalled = null
-  while (actionable(verify, review) && round < MAX_FIX_ROUNDS && !stalled) {
+  while (!verify.pass && round < MAX_FIX_ROUNDS) {
     round++
     phase('Fix')
-    const confirmed = confirmedIn(review)
-    const lensesThatFound = [...new Set(confirmed.map((f) => f.lens).filter(Boolean))]
-    const findingList = confirmed
-      .map((f) => `- ${f.file}${f.line ? ':' + f.line : ''} — ${f.summary}`)
-      .join('\n')
-    const verifyNote = verify.pass
-      ? ''
-      : `\nCI is red on this branch — make it green. Failing step: ${
-          verify.failedStep || '(not reported)'
-        }\nOutput:\n${verify.output || '(none reported)'}`
     const fix = await agent(
       `${cwdNote(claim)}
-Fix exactly these findings and nothing else, then commit and push. The push is what re-runs
-ci.yml on the pull request, which is the next stage's evidence.
+ci.yml is red on this branch. Make it green, and change nothing the failure does not require.
+
+Failing step: ${verify.failedStep || '(not reported)'}
+Output:
+${verify.output || '(none reported)'}
 
 ${LOCAL_TEST_NOTE}
 
-A fix round has turned a green run red more than once, so if CI is red below, run the one failing
-test here and see it pass before you push — that is the round's whole job.
-Findings:\n${
-        findingList || '- (no review findings; the red run below is the whole job)'
-      }${verifyNote}
-${PROSE_CAPTURE_NOTE}
-Report: committed, commitSha, summary, filesTouched, prose.`,
+Run the failing test here and watch it pass before you push. Pushing a guess costs a nine-minute
+round to find out, and a fix round has turned a working branch broken more than once.
+
+The push re-runs ci.yml, which is the next round's evidence.
+Report: committed, commitSha, summary, filesTouched.`,
       { model: MODELS.fix, phase: 'Fix', label: label(`fix round ${round}`), schema: IMPLEMENT_SCHEMA }
     )
     if (!fix?.committed) break
-    // A fix that edits a file the implement commit never touched is answering something other
-    // than the ticket. #291's third round rewrote scripts/next-ticket.mjs, which that issue's
-    // Definition of done had named as out of scope.
-    const before = new Set((impl.filesTouched || []).map(repoRelative))
-    const widened = (fix.filesTouched || []).map(repoRelative).filter((f) => !before.has(f))
-    ;[verify, review] = await parallel([
-      () => runVerify(claim, impl.prNumber, round + 1),
-      () => runReview(claim, confirmed.map((f) => f.summary).join('; '), lensesThatFound, fix.prose, reviewedSha),
-    ])
-    ;[verify, review] = reported(verify, review)
-    reviewedSha = fix.commitSha || reviewedSha
-    // A run that never started is not a defect to chase: the fix loop would spend its rounds on
-    // a failure nothing reported, and the branch would be handed back as though it were red.
+    verify = reported(await runVerify(claim, impl.prNumber, round + 1))
+    // A run that never started is not a defect to chase: the loop would spend its rounds on a
+    // failure nothing reported, and the branch would be handed back as though it were red.
     if (verify.infrastructure) {
       releaseReason = `CI could not run: ${verify.failedStep || 'no job reported steps'}`
       return { landed: false, ticket: claim.number, reason: 'ci unavailable' }
     }
-    const nowConfirmed = confirmedIn(review).length
-    if (prevPass && verify.pass === false) {
-      stalled = `fix round ${round} turned a green run red: the commit under review passed ci.yml and the fix did not`
-    } else if (widened.length > 0 && nowConfirmed >= prevConfirmed) {
-      stalled = `fix round ${round} edited ${widened.join(', ')}, which the implement commit never touched, and did not reduce findings (${prevConfirmed} -> ${nowConfirmed})`
-    } else if (nowConfirmed >= prevConfirmed && verify.pass === prevPass) {
-      stalled = `fix round ${round} did not converge: ${prevConfirmed} confirmed finding(s) before, ${nowConfirmed} after`
-    }
-    prevConfirmed = nowConfirmed
-    prevPass = verify.pass
   }
-  if (stalled) log(`Stopping the fix loop — ${stalled}`)
 
-  if (!isClean(verify, review)) {
-    releaseReason = `${
-      stalled ? `Stopped early — ${stalled}. ` : ''
-    }${round} fix round(s) didn't reach a clean state. Remaining: ${JSON.stringify(
-      confirmedIn(review)
-    )}. Verify pass: ${verify.pass}. Review lenses that reported nothing: ${
-      review.failedLenses.join(', ') || 'none'
-    }.`
-    return {
-      landed: false,
-      ticket: claim.number,
-      reason: stalled || `not clean after ${round} fix round(s)`,
-    }
+  if (!verify.pass) {
+    releaseReason = `ci.yml is still red after ${round} fix round(s). Failing step: ${
+      verify.failedStep || '(not reported)'
+    }. The branch and its pull request are left in place to pick up from.`
+    return { landed: false, ticket: claim.number, reason: `ci red after ${round} fix round(s)` }
   }
 
   phase('Land')
   const land = await agent(
     `${BASH_NOTE}
 ${cwdNote(claim)}
-Pull request #${impl.prNumber} is green on ci.yml and clean through three independent review
-lenses. Land it.
+Pull request #${impl.prNumber} is green on ci.yml. Land it.
 
 ci.yml's scope job skips a main push whose tree the pull request already passed, and that holds
 only while main has not moved underneath. So check whether it has, first:
