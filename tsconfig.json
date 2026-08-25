@@ -14,6 +14,10 @@
       ]
     }
   },
+  "exclude": [
+    ".worktrees",
+    ".claude/worktrees"
+  ],
   "include": [
     "**/*.ts",
     "**/*.tsx",

@@ -22,6 +22,7 @@ module.exports = defineConfig([
       "server_dist/**",
       ".expo/**",
       "node_modules/**",
+      ".worktrees/**",
       "tests/e2e/playwright-report/**",
       "tests/e2e/test-results/**",
       ".scratch/**",
