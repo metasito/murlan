@@ -12,8 +12,10 @@ Every rule an agent must follow, in one place. No rationale here — the *why* l
    minutes) and CI runs both. Run one when your change could break what only it can see — a
    native render, a browser interaction, an accessibility label a spec clicks by name. Skip it
    otherwise.
-4. **While iterating, run one file:** `node --test tests/x.test.ts`, or
-   `npx playwright test --config tests/e2e/playwright.config.ts one.spec.ts`.
+4. **While iterating, run one file:** `node --test tests/x.test.ts`. One Playwright spec
+   (`npx playwright test --config tests/e2e/playwright.config.ts one.spec.ts`) is that loop only
+   under rule 5. Otherwise every run rebuilds: prove the spec red once and green once, push, and
+   let CI carry the rest.
 5. **Add `E2E_SKIP_BUILD=1` only when your edit is confined to a spec file.** Any change under
    `app/`, `components/` or `lib/` needs a rebuild, or the run tests a stale bundle.
 6. **A new test must fail before your fix.** Prove it, then fix it.
