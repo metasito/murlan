@@ -93,9 +93,15 @@ Run `gh issue view <number> --comments`.
 
 ## Writing an issue body an agent can execute
 
-An agent working the queue gets the issue body and nothing else. It cannot ask a follow-up
-question. So the body is the whole specification, and the test of a good one is that a
-competent stranger could land the change without guessing.
+An agent working the queue cannot ask a follow-up question, so the issue is the whole
+specification and the test of a good one is that a competent stranger could land the change
+without guessing.
+
+**The comments are part of it.** An owner's ruling, a decision a triage pass settled, a trap
+found later — all of those arrive as comments, and the body is often the state of the question
+before any of them. Read with `--comments` and treat a later ruling as overriding the body;
+the design gate concatenates both for the same reason. Write the body so it stands alone
+anyway: a decision that changes the work is worth folding back into it.
 
 Six sections, in this order. Drop any that would be empty — an empty heading is noise.
 

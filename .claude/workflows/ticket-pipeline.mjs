@@ -247,7 +247,9 @@ fixed. Report findings: file, line, summary, verdict (CONFIRMED/PLAUSIBLE/REJECT
     {
       key: 'spec',
       prompt: `Review ${diffScope} on branch ${claim.branch} (git diff ${range}) against
-issue #${claim.number}, which you should read yourself with: gh issue view ${claim.number} --repo ${REPO}
+issue #${claim.number}, which you should read yourself with: gh issue view ${claim.number} --repo ${REPO} --comments
+The comments are part of the spec — an owner ruling there overrides the body, which is often
+the state of the question before it was settled. Judge the diff against the whole issue.
 Using mattpocock-skills:code-review's spec axis: missing requirements, scope creep, anything
 implemented but wrong. Report findings: file, line, summary, verdict (CONFIRMED/PLAUSIBLE/REJECTED).`,
     },
@@ -347,7 +349,7 @@ literal the issue's Ground truth pointers as repo-relative paths (lib/foo.ts —
 Windows path breaks this quoting, which is the point). The body reaches the module through a
 file, never a shell argument:
 
-gh issue view <NUM> --repo ${REPO} --json body --jq '{filesTouched:["lib/foo.ts","tests/foo.test.ts"],body:.body}' > /tmp/ticket-pipeline-gate.json
+gh issue view <NUM> --repo ${REPO} --json body,comments --jq '{filesTouched:["lib/foo.ts","tests/foo.test.ts"],body:([.body]+[.comments[].body]|join("\\n\\n"))}' > /tmp/ticket-pipeline-gate.json
 npx tsx lib/ticketPipeline/gate.ts < /tmp/ticket-pipeline-gate.json
 
 Report: claimed, number, branch, title, worktreePath, filesTouched (that same repo-relative list), escalate and
@@ -390,7 +392,11 @@ later stage reads it from GitHub itself.`,
     `${cwdNote(claim)}
 Implement issue #${claim.number} via the mattpocock-skills:implement workflow — TDD at pre-agreed
 seams, typecheck and single test files while iterating. Read the issue yourself with:
-gh issue view ${claim.number} --repo ${REPO}
+gh issue view ${claim.number} --repo ${REPO} --comments
+The comments are part of the specification, not commentary on it: the owner's rulings, the
+decisions a triage pass settled and the traps found later all arrive there, and the body is
+often the state of the question before any of them. Read the whole issue before deciding
+anything.
 The claim stage read it as touching: ${(claim.filesTouched || []).join(', ') || '(nothing listed)'}
 
 Read each file you are going to change ONCE, whole, with the Read tool. Do not rebuild your
