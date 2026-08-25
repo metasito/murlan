@@ -556,7 +556,11 @@ Report: merged, prNumber, reason.`,
     // commands for them are assembled now rather than left for it to decide at runtime.
     const releaseCommand =
       claimOpen && claimedNumber
-        ? `gh issue edit ${claimedNumber} --repo ${REPO} --remove-label in-progress --add-label ready-for-human && ` +
+        ? // `ready-for-agent` comes off with it. Left on, the ticket carries both labels, and the
+          // router's frontier took it back the next run — the same ticket claimed and escalated
+          // every round, ahead of work that could actually be done.
+          `gh issue edit ${claimedNumber} --repo ${REPO} --remove-label in-progress ` +
+          `--remove-label ready-for-agent --add-label ready-for-human && ` +
           `gh issue comment ${claimedNumber} --repo ${REPO} --body ${sq(releaseReason)} ; `
         : ''
     const branchDeleteCommand =

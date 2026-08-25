@@ -41,7 +41,12 @@ export function classify(openIssues) {
     // `blocked` keeps `ready-for-agent`: the label carries a decision already
     // made, and taking it off to un-jam the queue is how that decision is lost.
     if (ls.includes("blocked")) continue;
-    if (ls.includes("ready-for-agent")) buckets.frontier.push(issue);
+    // An owner label wins over `ready-for-agent`, and a ticket carrying both is the normal case:
+    // releasing one to the owner adds `ready-for-human` beside the label that is already there.
+    // Without this the frontier takes it, the pipeline claims it and the gate escalates it again —
+    // and because it sorts to the same place every time, the queue serves it forever.
+    if (ls.some((l) => OWNER_LABELS.has(l))) buckets.owner.push(issue);
+    else if (ls.includes("ready-for-agent")) buckets.frontier.push(issue);
     else if (ls.includes("needs-triage") || ls.length === 0) buckets.triage.push(issue);
     else if (ls.some((l) => l.startsWith("wayfinder:") && l !== "wayfinder:map")) buckets.wayfinder.push(issue);
     else buckets.owner.push(issue);
