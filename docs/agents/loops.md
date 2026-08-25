@@ -85,6 +85,9 @@ Each of these produced a confident, wrong "fixed" in one session:
 - **One frame is not a state.** Screenshotting a seeded table at the viewer's turn proves
   that one frame. Play real hands (`tests/e2e/helpers/bot.ts` drives one), and sample
   *through* a turn handover, not after it.
+- **`playwright.config.ts` declares its own `webServer`.** It starts and stops the e2e server
+  itself, on `E2E_PORT`. Starting one by hand races it for the port, and the run that then fails
+  looks like a broken spec.
 - **A piped Playwright run reports the pipe's exit code.** `playwright test … | grep` returns
   grep's status; a red run reads as green. Read the `N passed / N failed` line.
 - **Compare pixels, not impressions.** "Looks darker" cost hours; sampling the same relative

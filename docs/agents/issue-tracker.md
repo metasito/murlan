@@ -120,7 +120,7 @@ Eight sections, in this order. Drop any that would be empty — an empty heading
 ## What to settle      ← `- [ ]` checkboxes, one per sub-decision. Empty tables to fill in beat prose.
 ## Constraints         ← `> [!IMPORTANT]` — the invariants this change can break, and how.
 ## Definition of done  ← `- [ ]` per artefact. What must exist for this to close.
-## Checks              ← the exact commands that prove it. See below.
+## Checks              ← what to run while iterating, and what to run once before pushing.
 ## Not this ticket     ← the adjacent work it will be tempting to absorb, with issue numbers.
 ```
 
@@ -131,13 +131,23 @@ What makes the difference in practice:
 - **Name the invariant *and* its enforcement.** "`CARD_W` is declared once, and
   `tests/gameTableModel.test.ts` source-scans for a second declaration" tells an agent both
   what not to do and what will catch it.
-- **Name the checks, and their bound.** `docs/agents/RULES.md` rule 3 leaves the slow suites to
-  the agent's judgement, and an agent judging in the dark reads `docs/agents/loops.md`, hunts
+- **Name the checks in two slots: the loop, and the gate.** `docs/agents/RULES.md` rules 3 to 5
+  leave the slow suites to the agent, and an agent judging in the dark reads `loops.md`, hunts
   for a spec, probes for Docker, and then runs the two-minute native suite against a two-line
-  diff. You have read the change coming; it has not. Write the commands out
-  (`node --test tests/gameTableModel.test.ts`, then `npm run agent:check`) and say what is
-  *not* needed and why — "no e2e: nothing here renders". A `## Checks` section is the one
-  place in the body that saves an agent minutes rather than tokens.
+  diff. You have read the change coming; it has not. So write:
+
+  ```markdown
+  ## Checks
+
+  While iterating: `node --test tests/gameTableModel.test.ts`
+  Once before pushing: `npm run agent:check`
+  Not `npm run test:native`: react-test-renderer never runs flexbox, so it cannot see this.
+  ```
+
+  **Never put a rebuilding command in the loop slot.** A Playwright spec is nine minutes and a
+  full Metro rebuild for any change outside `tests/e2e/` — named as the loop, it becomes the
+  loop: #349 ran one seven times, which was two thirds of that ticket's wall clock. A browser
+  check belongs in the gate slot, bounded to red-once and green-once, with CI carrying the rest.
 - **Checkboxes over prose.** They render as progress on the issue, and an agent can report
   against them. A wall of paragraphs makes partial completion invisible.
 - **An open box under `## What to settle` means the ticket is not `ready-for-agent`.** That
