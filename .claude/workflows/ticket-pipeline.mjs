@@ -3,7 +3,8 @@ export const meta = {
   description: 'Claim, gate, implement, land one murlan queue ticket — ci.yml is the gate',
   phases: [
     { title: 'Claim', detail: 'claim the routed ticket and run the design-first gate', model: 'haiku' },
-    { title: 'Implement', detail: 'mattpocock-skills:implement, then /code-review --fix, push, open the PR', model: 'sonnet' },
+    { title: 'Implement', detail: 'mattpocock-skills:implement, commit only', model: 'sonnet' },
+    { title: 'Review', detail: '/code-review --fix in the worktree, then push and open the PR', model: 'opus' },
     { title: 'Verify', detail: "ci.yml's verdict on the pushed branch", model: 'sonnet' },
     { title: 'Fix', detail: 'make a red run green', model: 'sonnet' },
     { title: 'Land', model: 'sonnet' },
@@ -16,6 +17,7 @@ export const meta = {
 const MODELS = {
   claim: 'haiku', // next-ticket.mjs, two gh writes, one CLI whose failure mode is fail-safe
   implement: 'sonnet',
+  review: 'opus', // independent review is the only thing between a defect and an --admin merge
   verify: 'sonnet', // long, scripted, and has to read failures back accurately
   fix: 'sonnet',
   land: 'sonnet',
@@ -100,11 +102,21 @@ const IMPLEMENT_SCHEMA = {
   properties: {
     committed: { type: 'boolean' },
     commitSha: { type: 'string' },
-    prNumber: { type: 'number' },
     summary: { type: 'string' },
     filesTouched: { type: 'array', items: { type: 'string' } },
   },
   required: ['committed'],
+}
+
+const REVIEW_SCHEMA = {
+  type: 'object',
+  properties: {
+    pushed: { type: 'boolean' },
+    prNumber: { type: 'number' },
+    findingsFixed: { type: 'number' },
+    summary: { type: 'string' },
+  },
+  required: ['pushed'],
 }
 
 const CI_SCHEMA = {
@@ -258,23 +270,19 @@ agent/<number>-<slug> branch you will use:
 Read that last output to confirm you won the race — stand down if a claim older than yours is
 already there.
 
-Then take a worktree, so no later stage shares a checkout whose HEAD another session moves — and
-give it the install, or nothing in it runs:
+Then take a worktree, so no later stage shares a checkout whose HEAD another session moves. The
+commands are generated, not composed here — run exactly what this prints, in order, joined with
+"&&", with <NUM> the number and <BRANCH> the agent/<number>-<slug> branch:
 
-  git worktree add -b <BRANCH> ../murlan-wt-<NUM> origin/main && cd ../murlan-wt-<NUM> && \\
-  cmd //c mklink /J node_modules "$(cygpath -w "$(git rev-parse --path-format=absolute --git-common-dir)/../node_modules")" && \\
-  node -e "require.resolve('typescript')" && pwd
+  ${writeJsonCommand('/tmp/ticket-pipeline-worktree.json', { number: '<NUM>', branch: '<BRANCH>' })}
+  npx tsx lib/ticketPipeline/worktree.ts < /tmp/ticket-pipeline-worktree.json | \\
+    jq -r 'join(" && ")' > /tmp/ticket-pipeline-worktree.sh && \\
+  bash /tmp/ticket-pipeline-worktree.sh
 
-The worktree is a *sibling* of the checkout, so it has no \`node_modules\` and none in any ancestor
-directory either. Node resolves both a bare \`import\` and \`require.resolve\` by walking ancestors
-only, so without that junction every script and every test in the worktree dies on its first
-import — which no amount of resolving packages differently in the source can fix. The \`node -e\`
-is the proof it took; treat a failure there as the worktree not being usable and report
-claimed: false rather than working in a checkout where nothing runs. (On a POSIX host the same
-step is \`ln -s "$(git rev-parse --path-format=absolute --git-common-dir)/../node_modules" node_modules\`.)
-
-Report that absolute path as worktreePath; if the command fails, report claimed: false. Run the
-gate below from there too.
+The last command prints the worktree's absolute path — report that as worktreePath. The one before
+it resolves a package: it fails if the checkout cannot see the install, and a failure anywhere in
+the chain means report claimed: false rather than handing later stages somewhere nothing runs.
+Run the gate below from that worktree.
 
 Then run the design-first gate yourself, with <NUM> the number you just claimed and the array
 literal the issue's Ground truth pointers as repo-relative paths (lib/foo.ts — an absolute
@@ -354,7 +362,7 @@ something you could have finished in the time it takes to plan.
 ## 3. Build it
 
 Run \`mattpocock-skills:implement\` and follow it — TDD at pre-agreed seams via \`/tdd\`, typecheck
-and single test files as you go, then \`/code-review\` over the result before committing.
+and single test files as you go.
 
 **Two overrides, and only two.**
 
@@ -364,11 +372,11 @@ its way:
 
 ${LOCAL_TEST_NOTE}
 
-And run its review as \`/code-review --fix ${claim.worktreePath}\` — with the path, or it reviews
-the main checkout and reports nothing — so the findings are applied rather than only listed.
-Read what it changed — you own the result, it does not. Then re-run the narrow tests, because a
-fix that improves the code can still make a test wrong. If it reports something it could not fix,
-fix it yourself or say in your summary why it stands. Do not push past a correctness finding.
+And do **not** run \`/code-review\` yourself, or dispatch any sub-agent to review the diff. The
+Review phase below this one does it, in this same worktree, and its findings come back to you as
+data. A review dispatched from inside this stage starts in whatever directory this workflow was
+launched from — the shared main checkout, where this branch's diff does not exist — and reports a
+clean bill against an empty diff.
 
 One habit the skill does not cover: read each file you are going to change ONCE, whole, with the
 Read tool. A file rebuilt from twenty sed/grep windows costs far more than the file.
@@ -378,27 +386,16 @@ Read tool. A file rebuilt from twenty sed/grep windows costs far more than the f
 Walk the Definition of done checklist one box at a time and confirm each against the code you
 actually wrote — not against what you intended.
 
-## 5. Ship it
+## 5. Commit, and stop there
 
-Commit your work, then push it and open the pull request — that is what starts ci.yml against
-this tree, and the verify stage reads its verdict rather than repeating the suite locally. The
-body needs a file since it is multi-line, and ends with "Closes #${claim.number}" (which closes
-the issue on merge; never put that in a commit message, where it closes at push time):
-
-  cat > /tmp/pipeline-pr-body.md <<'EOF'
-<a short PR body saying what shipped and how it was checked>
-
-Closes #${claim.number}
-EOF
-  git push -u origin ${claim.branch} && \\
-  gh pr create --repo ${REPO} --title "<a short title>" --body-file /tmp/pipeline-pr-body.md
-
-Report that pull request's number as prNumber; if the push or the create fails, report
-committed: true with prNumber omitted and say so in summary.
+Commit your work on ${claim.branch}. **Do not push, and do not open a pull request** — the Review
+phase after this one does both, once it has reviewed what you committed. Pushing here would start
+ci.yml against a tree the review has not seen yet, and pay for a second run when it changes
+anything.
 
 In summary, say which Definition of done boxes you closed and name any you did not, with why.
 An honest gap is worth more than a green report — it is the thing a human can act on.
-Report: committed, commitSha, prNumber, summary, filesTouched.`,
+Report: committed, commitSha, summary, filesTouched.`,
     { model: MODELS.implement, phase: 'Implement', label: label('implement'), schema: IMPLEMENT_SCHEMA }
   )
   // Same absence as `reported()` handles below, one stage earlier: a session limit killed the
@@ -408,12 +405,54 @@ Report: committed, commitSha, prNumber, summary, filesTouched.`,
     releaseReason = `implementation didn't complete: ${impl.summary || 'no reason given'}`
     return { landed: false, ticket: claim.number, reason: 'implement failed' }
   }
-  if (!impl.prNumber) {
+
+  // Review is a phase, not something the implement agent dispatches. A sub-agent it spawns starts
+  // in the directory this workflow was launched from — the shared main checkout, where this
+  // branch's diff does not exist — and three separate runs had one report a clean bill against an
+  // empty diff. Here the worktree comes from the script, so the reviewer cannot be anywhere else.
+  phase('Review')
+  const review = await agent(
+    `${BASH_NOTE}
+${cwdNote(claim)}
+Issue #${claim.number} is committed on ${claim.branch} but not pushed. Review it, then ship it.
+
+## 1. Review what is committed
+
+  git diff origin/main...HEAD --stat
+
+That diff is non-empty. **If it is empty you are in the wrong checkout** — stop and report
+pushed: false rather than reviewing nothing.
+
+Run \`/code-review --fix\` over it, from here. Read what it changed; you own the result, it does
+not. Then re-run the narrow tests it touched, because a fix that improves the code can still make
+a test wrong. Anything it could not fix, fix yourself or say why it stands in your summary. Do not
+push past a correctness finding. Commit whatever the review changed.
+
+## 2. Push and open the pull request
+
+That is what starts ci.yml against this tree; the verify stage reads its verdict rather than
+repeating the suite locally. The body needs a file since it is multi-line, and ends with
+"Closes #${claim.number}" — which closes the issue on merge. Never put that in a commit message,
+where it closes at push time, before CI has said anything:
+
+  cat > /tmp/pipeline-pr-body.md <<'EOF'
+<a short PR body saying what shipped and how it was checked>
+
+Closes #${claim.number}
+EOF
+  git push -u origin ${sq(claim.branch)} && \\
+  gh pr create --repo ${REPO} --title "<a short title>" --body-file /tmp/pipeline-pr-body.md
+
+Report: pushed, prNumber, findingsFixed (how many the review applied), summary.`,
+    { model: MODELS.review, phase: 'Review', label: label('review'), schema: REVIEW_SCHEMA }
+  )
+  if (!review?.prNumber) {
     releaseReason = `the branch never reached a pull request, so nothing ran against it: ${
-      impl.summary || 'no reason given'
+      review?.summary || impl.summary || 'no reason given'
     }`
     return { landed: false, ticket: claim.number, reason: 'no pull request' }
   }
+  impl.prNumber = review.prNumber
 
   // CI is the gate, and the only one. It runs the real suite against the real tree, it is free on
   // this repo, and it cannot be argued out of a verdict. Model reviewers can: every spiral this

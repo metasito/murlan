@@ -15,6 +15,17 @@ function shellQuote(value: string): string {
   return `'${value.replace(/'/g, "'\\''")}'`;
 }
 
+// A worktree path arrives from an agent in whichever form it happened to print — `C:\x\y` from
+// cmd, `/c/x/y` from Git Bash. Every command below is bash, so the Windows form is converted once,
+// here, rather than each call site hoping for the other one. A path that reaches a command
+// unconverted and unquoted is how the directory `murlan-wt-294;C` came to exist on disk.
+export function toPosixPath(value: string): string {
+  const drive = /^([A-Za-z]):[\\/]/.exec(value);
+  const body = drive ? value.slice(3) : value;
+  const normalized = body.replace(/\\/g, "/");
+  return drive ? `/${drive[1].toLowerCase()}/${normalized}` : normalized;
+}
+
 // Whether the branch still holds work is live git state, so the decision has to reach the agent
 // as a command rather than a boolean this function could compute. `rev-list --count` is what
 // makes it fail closed: any error — origin/main unfetched, branch never created — prints nothing
@@ -49,7 +60,10 @@ function tcpPorts(ports: number[] | undefined): number[] {
 export function buildCleanupCommands(state: RunState): string[] {
   const commands: string[] = [];
   if (state.worktreePath) {
-    commands.push(`git worktree remove ${state.worktreePath} --force`);
+    commands.push(`git worktree remove ${shellQuote(toPosixPath(state.worktreePath))} --force`);
+    // `remove` leaves the administrative registration behind whenever the directory was already
+    // gone, and a registration git still believes in keeps its branch checked out and undeletable.
+    commands.push("git worktree prune");
   }
   if (state.dockerStarted) {
     commands.push("docker rm -f murlan-verify-pg");

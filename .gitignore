@@ -3,6 +3,12 @@
 # dependencies
 node_modules/
 
+# Agent worktrees. Nested so Node's ancestor lookup finds the install above them;
+# named here, in tsconfig.json and in eslint.config.js so no tool walks a second
+# copy of the tree. lib/ticketPipeline/worktree.ts creates them.
+.worktrees/
+.claude/worktrees/
+
 # Expo
 .expo/
 dist/

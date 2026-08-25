@@ -21,7 +21,35 @@ describe("building the cleanup command list", () => {
 
   test("a run in a worktree gets it force-removed", () => {
     const cmds = buildCleanupCommands({ worktreePath: ".worktrees/agent-1", dockerStarted: false, localBranch: null, merged: true });
-    assert.ok(cmds.includes("git worktree remove .worktrees/agent-1 --force"));
+    assert.ok(cmds.includes("git worktree remove '.worktrees/agent-1' --force"));
+  });
+
+  test("a Windows worktree path is converted and quoted before it reaches a command", () => {
+    const cmds = buildCleanupCommands({
+      worktreePath: "C:\\Users\\dev\\murlan-wt-42",
+      dockerStarted: false,
+      localBranch: null,
+      merged: true,
+      platform: "win32",
+    });
+    assert.ok(cmds.includes("git worktree remove '/c/Users/dev/murlan-wt-42' --force"));
+    assert.ok(
+      !cmds.some((c) => c.includes("C:\\")),
+      "a backslash path reaching a bash command is what created the murlan-wt-294;C directory"
+    );
+  });
+
+  test("the administrative registration is pruned after the removal", () => {
+    const cmds = buildCleanupCommands({ worktreePath: "../murlan-wt-42", dockerStarted: false, localBranch: null, merged: true });
+    const remove = cmds.findIndex((c) => c.startsWith("git worktree remove"));
+    const prune = cmds.indexOf("git worktree prune");
+    assert.ok(prune !== -1, "expected git worktree prune");
+    assert.ok(remove < prune, "prune has to follow the removal it is cleaning up after");
+  });
+
+  test("no worktree means no teardown commands for one", () => {
+    const cmds = buildCleanupCommands({ worktreePath: null, dockerStarted: false, localBranch: null, merged: true });
+    assert.ok(!cmds.some((c) => c.includes("node_modules") || c.includes("git worktree")));
   });
 
   test("an abandoned (not merged) run guards the branch delete instead of issuing it bare", () => {
