@@ -55,28 +55,11 @@ const BASH_NOTE = [
   'search into several minutes.',
 ].join(' ')
 
-// ci.yml runs the whole sweep on the push — typecheck+tests+lint 223s, build-and-boot 162s,
-// browser 526s. Anything a stage repeats locally is those minutes paid twice.
-const LOCAL_TEST_NOTE = `Before you push, once:
-
-  npm run agent:check
-
-That is typecheck, tests and lint together. It records its verdict against the tree, so calling it
-again after no edit replays instead of re-running — checking twice costs nothing, and there is no
-reason to run the three separately.
-
-While iterating, run only what you are iterating on: \`node --test <the one file>\`, or
-\`npx playwright test --config tests/e2e/playwright.config.ts <one-spec.ts>\`.
-
-\`E2E_SKIP_BUILD=1\` reuses the existing dist/ instead of rebuilding it, which is the difference
-between a usable browser loop and an unusable one. It is safe only while your edit is confined to
-the spec file: dist/ is a *build* of app/, components/ and lib/, so with that flag set a change to
-any of those is not in the bundle under test and the run can pass having exercised nothing.
-
-\`npm run test:native\` (2 min) and \`npm run test:e2e\` (9 min) are yours to judge. ci.yml runs
-both, so do not run them by habit — but run one when your change could break what only it can see:
-a native render, a browser interaction, a label a spec clicks by name. Never run
-\`npm run verify\`, which is the whole sweep.`
+// Checking is RULES.md's job, not this prompt's: stating it in both is how the two drift and an
+// agent follows whichever it read last. `tests/rulesAreSingleSourced.test.ts` fails if it returns.
+const LOCAL_TEST_NOTE =
+  'Follow `docs/agents/RULES.md` § "Checking your work" — rules 1 to 6. It says what to run ' +
+  'while iterating, what to run once before pushing, and which suites are your judgement call.'
 
 function sq(text) {
   return `'${String(text).replace(/'/g, "'\\''")}'`
@@ -394,8 +377,6 @@ data. A review dispatched from inside this stage starts in whatever directory th
 launched from — the shared main checkout, where this branch's diff does not exist — and reports a
 clean bill against an empty diff.
 
-One habit the skill does not cover: read each file you are going to change ONCE, whole, with the
-Read tool. A file rebuilt from twenty sed/grep windows costs far more than the file.
 
 ## 4. Check yourself against the contract
 

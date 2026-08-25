@@ -3,6 +3,8 @@ description: Work one wayfinder child against its map — resolve the question, 
 argument-hint: "[loop]"
 allowed-tools: Read, Grep, Glob, Write, Edit, Skill, WebSearch, WebFetch, Bash(node scripts/next-ticket.mjs), Bash(gh issue:*), Bash(gh api:*)
 ---
+Every rule you follow while doing this is in `docs/agents/RULES.md` — read it first.
+
 
 Work the routed wayfinder child. Mode comes from `$ARGUMENTS`: empty means **one child then
 stop**; `loop` means **child after child until the user says stop**.

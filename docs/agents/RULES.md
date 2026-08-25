@@ -48,6 +48,20 @@ Every rule an agent must follow, in one place. No rationale here — the *why* l
 20. **Every user-facing string goes through `t()`, keyed in `en`, `it` and `sq`.**
 21. **Default to no comment.** Never explain the bug you just fixed; that is the commit message.
 
+## Taking work
+
+22. **Take one item at a time. Don't ask which, or whether to proceed.** `node scripts/next-ticket.mjs`
+    picks it and prints the route.
+23. **Claim it before you touch anything**: add `in-progress`, comment naming your branch, then
+    re-read the issue and stand down if an older claim is there.
+24. **Release the claim whenever you stop without landing** — remove `in-progress`, say why.
+25. **A routed `implement` goes through `/ticket`**; `triage` through `/triage`; `wayfinder`
+    through `/wayfinder`.
+26. **An item needing an owner decision gets `ready-for-human`, not closed** — and
+    `ready-for-agent` comes off at the same time.
+27. **Name a model on every sub-agent.** Mechanical work: haiku. Implementing, verifying, landing:
+    sonnet. Independent review: opus. Give every dispatch a label.
+
 ## Finishing
 
 22. **Report what you actually did.** A gap named is worth more than a green report.

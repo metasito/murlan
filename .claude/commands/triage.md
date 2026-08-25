@@ -3,6 +3,8 @@ description: Convert one unspecified issue into a ticket an agent can execute â€
 argument-hint: "[loop]"
 allowed-tools: Read, Grep, Glob, Skill, Bash(node scripts/next-ticket.mjs), Bash(gh issue:*), Bash(gh pr:*), Bash(gh api:*)
 ---
+Every rule you follow while doing this is in `docs/agents/RULES.md` â€” read it first.
+
 
 Triage the routed issue. Mode comes from `$ARGUMENTS`: empty means **one issue then stop**;
 `loop` means **issue after issue until the user says stop**.
