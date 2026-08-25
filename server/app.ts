@@ -196,7 +196,11 @@ function configureExpoAndLanding(app: express.Application) {
       // every visitor gets a 200 and the owner never sees the dashboard.
       if (req.path.startsWith("/api") || req.path === "/admin") return next();
       res.set("Cache-Control", "no-cache");
-      res.sendFile(webIndexPath);
+      // `root` here, rather than folding it into an absolute path: without
+      // it `send` dotfile-checks every segment of the *filesystem* path, so
+      // a checkout under a dot directory (a worktree under `.claude/`, say)
+      // 404s every client-side route instead of serving the SPA shell.
+      res.sendFile("index.html", { root: distPath });
     });
     logger.info("Serving Expo web build from dist/");
   } else {

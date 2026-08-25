@@ -138,4 +138,14 @@ describe("static asset compression and caching", { skip: hasDatabase() ? false :
       `expected a no-cache directive on /favicon.ico, got ${cacheControl}`
     );
   });
+
+  // #274 fixed a dot-prefixed *checkout path* 404ing every client-side route;
+  // this sandbox's path has no dot segment, so it pins that the fix left the
+  // ordinary case byte-for-byte alone.
+  test("the SPA catch-all still serves the app shell for a client-side route under a plain checkout", async () => {
+    const res = await fetch(`${server.url}/some/client/route`);
+    const body = await res.text();
+    assert.equal(res.status, 200, body);
+    assert.equal(body, FIXTURE_INDEX_HTML);
+  });
 });
