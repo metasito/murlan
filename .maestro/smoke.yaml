@@ -37,11 +37,16 @@ env:
 - openLink: "${MURLAN_PACKAGER_URL}"
 # iOS asks before handing a custom-scheme link to another app, and the link
 # is not followed until it is answered. The simulator runs it-IT, so the
-# button reads "Apri". Android never shows it, which is what `optional`
-# is for.
-- tapOn:
-    text: "Apri"
-    optional: true
+# button reads "Apri". Android never shows the prompt at all, so this is
+# conditioned on the platform rather than on the button appearing in time.
+- runFlow:
+    when:
+      platform: iOS
+    commands:
+      - extendedWaitUntil:
+          visible: "Apri"
+          timeout: 20000
+      - tapOn: "Apri"
 # Not "Murlan" alone: Expo Go's own native splash screen shows the app
 # name under the icon while the JS bundle is still loading, so a loose
 # "Murlan" wait is satisfied by Expo Go chrome, not the app. Wait for
