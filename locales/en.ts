@@ -276,7 +276,7 @@ export const en = {
   // -------------------------------------------------------------- gameTable.*
   "gameTable.rotateTitle": "Rotate your device",
   "gameTable.rotateBody": "The game needs landscape mode",
-  "gameTable.leaveA11yLabel": "Leave the game",
+  "gameTable.settingsA11yLabel": "Settings",
   "gameTable.passLabel": "PASS",
   "gameTable.passA11yLabel": "Pass the turn",
   "gameTable.playLabelGioca": "PLAY",
@@ -330,6 +330,17 @@ export const en = {
   "gameTable.rematchTally": "{{yes}}/{{total}} yes",
   "gameTable.a11yHandSelected_one": "{{count}} selected.",
   "gameTable.a11yHandSelected_other": "{{count}} selected.",
+
+  // ----------------------------------------------------- gameSettingsSheet.*
+  "gameSettingsSheet.title": "Settings",
+  "gameSettingsSheet.focusMode": "Focus mode",
+  "gameSettingsSheet.focusModeHint": "Cards only",
+  "gameSettingsSheet.focusModeA11yHint": "Hide names, counts and chips; keep the cards and the seat ring",
+  "gameSettingsSheet.playOnLeft": "Play on the left",
+  "gameSettingsSheet.playOnLeftHint": "For left-handers",
+  "gameSettingsSheet.playOnLeftA11yHint": "Swap PASS and PLAY so PLAY falls under your left thumb",
+  "gameSettingsSheet.exit": "Leave the match",
+  "gameSettingsSheet.footnote": "Cards and table: main menu.",
 
   // ------------------------------------------------------------- offlineGame.*
   "offlineGame.quitConfirmTitle": "Quit",

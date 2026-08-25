@@ -97,6 +97,7 @@ import {
 } from "@/components/table/chrome";
 import { FeltPool } from "@/components/table/felt";
 import { StraightHand } from "@/components/table/hand";
+import { GameSettingsSheet } from "@/components/table/settingsSheet";
 import { useTableFeedback } from "@/components/useTableFeedback";
 import { FlyingCards, PlayedPile, getComboLabel } from "@/components/table/pile";
 import { TopOppSlot, SideOppSlot } from "@/components/table/seats";
@@ -737,6 +738,33 @@ export function GameTable({
   const reduceMotion = usePrefersReducedMotion();
   const felt = useTableFelt();
 
+  // Whether the rail's settings sheet is open, and the two toggles it owns
+  // that live nowhere else: focus mode and the left-handed swap are a
+  // session's own choice, not a stored preference — sound, music and
+  // vibration are the persisted ones, which the sheet reads for itself.
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [focusMode, setFocusMode] = useState(false);
+  const [playOnLeft, setPlayOnLeft] = useState(false);
+  const closeSettings = useCallback(() => setSettingsOpen(false), [setSettingsOpen]);
+
+  // The HUD chips and the reactions trigger fade rather than vanish under
+  // focus mode — kept mounted throughout, so a timer or an in-flight
+  // animation living inside them (the turn countdown included) is never torn
+  // down and restarted by a toggle that is about decluttering the felt, not
+  // about the turn itself.
+  const focusFade = useSharedValue(1);
+  useEffect(() => {
+    const target = focusMode ? 0 : 1;
+    if (reduceMotion) {
+      cancelAnimation(focusFade);
+      focusFade.value = target;
+      return;
+    }
+    focusFade.value = withTiming(target, { duration: Motion.duration.moderate });
+    return () => cancelAnimation(focusFade);
+  }, [focusMode, reduceMotion, focusFade]);
+  const focusFadeStyle = useAnimatedStyle(() => ({ opacity: focusFade.value }));
+
   // The seat that took the last round and a counter of how many rounds have
   // closed. The counter is what makes an identical repeat a new announcement:
   // the seat that wins a round leads the next one, so the same seat winning
@@ -1300,9 +1328,10 @@ export function GameTable({
       {/* Two chips over the felt, at the corners the cards never reach — the
           combination in play at the head of the field, whose turn it is at the
           far side. Anything wider would be chrome drawn where a card lands. */}
-      <View
+      <Animated.View
         testID="game-top-bar"
-        style={[styles.hudLeft, { left: frame.tableLeft + frame.pad, top: frame.tableTop }]}
+        pointerEvents={focusMode ? "none" : undefined}
+        style={[styles.hudLeft, { left: frame.tableLeft + frame.pad, top: frame.tableTop }, focusFadeStyle]}
       >
         <TableChip scale={scale}>
           {comboLabel === null ? (
@@ -1316,13 +1345,15 @@ export function GameTable({
             </>
           )}
         </TableChip>
-      </View>
+      </Animated.View>
 
-      <View
+      <Animated.View
         testID="game-hud-stack"
+        pointerEvents={focusMode ? "none" : undefined}
         style={[
           styles.hudRight,
           { right: frame.tableRight + frame.pad, top: frame.tableTop, gap: frame.pad },
+          focusFadeStyle,
         ]}
       >
         <TableChip scale={scale} lit={isMyTurn && !isFinished}>
@@ -1342,7 +1373,7 @@ export function GameTable({
             scale={scale}
           />
         </TableChip>
-      </View>
+      </Animated.View>
 
       {/* The cutout's own column. A cutout can never sit on a card, but it sits
           happily between two controls — so the menu knob takes the head of the
@@ -1353,15 +1384,38 @@ export function GameTable({
         bottomPad={frame.bottomPad}
         top={
           <RailKnob
-            onPress={onQuit}
-            a11yLabel={t("gameTable.leaveA11yLabel")}
+            onPress={() => setSettingsOpen((open) => !open)}
+            a11yLabel={t("gameTable.settingsA11yLabel")}
             size={knobSize}
+            expanded={settingsOpen}
           >
-            <Ionicons name="close" size={knobSize * 0.4} color={Colors.textMuted} />
+            <Ionicons name={settingsOpen ? "close" : "menu"} size={knobSize * 0.4} color={Colors.textMuted} />
           </RailKnob>
         }
-        bottom={railExtra}
+        bottom={
+          <Animated.View pointerEvents={focusMode ? "none" : undefined} style={focusFadeStyle}>
+            {railExtra}
+          </Animated.View>
+        }
       />
+
+      {settingsOpen && (
+        <GameSettingsSheet
+          rail={frame.rail}
+          topPad={frame.topPad}
+          bottomPad={frame.bottomPad}
+          scale={scale}
+          onClose={closeSettings}
+          focusMode={focusMode}
+          onToggleFocusMode={() => setFocusMode((v) => !v)}
+          playOnLeft={playOnLeft}
+          onTogglePlayOnLeft={() => setPlayOnLeft((v) => !v)}
+          onExit={() => {
+            closeSettings();
+            onQuit();
+          }}
+        />
+      )}
 
       <View
         style={[
@@ -1424,6 +1478,7 @@ export function GameTable({
                 passed={passed.includes(opponents.top.seat)}
                 scale={scale}
                 countdown={seatCountdown}
+                focusMode={focusMode}
               />
             ) : (
               <View />
@@ -1458,6 +1513,7 @@ export function GameTable({
                   passed={passed.includes(opponents.left.seat)}
                   scale={scale}
                   countdown={seatCountdown}
+                  focusMode={focusMode}
                 />
               )}
             </View>
@@ -1512,6 +1568,7 @@ export function GameTable({
                   passed={passed.includes(opponents.right.seat)}
                   scale={scale}
                   countdown={seatCountdown}
+                  focusMode={focusMode}
                 />
               )}
             </View>
@@ -1529,6 +1586,10 @@ export function GameTable({
                 paddingBottom: frame.bottomPad,
                 gap: HAND_ZONE_GAP * scale,
               },
+              // Play on the left mirrors the row rather than moving the rail,
+              // which stays put at the physical cutout: only GIOCA changes
+              // which thumb it falls under.
+              playOnLeft && styles.handSectionReversed,
               handLiftStyle,
             ]}
           >
@@ -1640,10 +1701,11 @@ export function GameTable({
               left: frame.tableLeft,
               right: frame.tableRight,
             },
+            playOnLeft && styles.rejectHintMirrored,
           ]}
         >
           <TableText
-            style={styles.rejectHintText}
+            style={[styles.rejectHintText, playOnLeft && styles.rejectHintTextMirrored]}
             numberOfLines={2}
             accessibilityLiveRegion="polite"
           >
@@ -1700,6 +1762,7 @@ const styles = StyleSheet.create({
 
   hudLeft: { position: "absolute", zIndex: 10 },
   hudRight: { position: "absolute", alignItems: "flex-end", zIndex: 10 },
+  handSectionReversed: { flexDirection: "row-reverse" },
 
   startCardBanner: {
     alignItems: "center", gap: Spacing.slim,
@@ -1779,6 +1842,9 @@ const styles = StyleSheet.create({
     zIndex: REJECT_HINT_Z,
     alignItems: "flex-end",
   },
+  // The hint belongs beside the button that raised it, so it follows GIOCA
+  // across when the hand row is mirrored.
+  rejectHintMirrored: { alignItems: "flex-start" },
   rejectHintText: {
     fontFamily: "Rajdhani_600SemiBold",
     fontSize: FontSize.xs,
@@ -1793,6 +1859,7 @@ const styles = StyleSheet.create({
     paddingVertical: Spacing.xs,
     overflow: "hidden",
   },
+  rejectHintTextMirrored: { textAlign: "left" },
   rematchPanel: {
     position: "absolute",
     width: REMATCH_PANEL_W,

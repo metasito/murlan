@@ -278,7 +278,7 @@ export const it: Record<keyof typeof en, string> = {
   // -------------------------------------------------------------- gameTable.*
   "gameTable.rotateTitle": "Ruota il dispositivo",
   "gameTable.rotateBody": "Il gioco richiede la modalità orizzontale",
-  "gameTable.leaveA11yLabel": "Abbandona la partita",
+  "gameTable.settingsA11yLabel": "Impostazioni",
   "gameTable.passLabel": "PASSA",
   "gameTable.passA11yLabel": "Passa il turno",
   "gameTable.playLabelGioca": "GIOCA",
@@ -332,6 +332,17 @@ export const it: Record<keyof typeof en, string> = {
   "gameTable.rematchTally": "{{yes}}/{{total}} sì",
   "gameTable.a11yHandSelected_one": "{{count}} selezionata.",
   "gameTable.a11yHandSelected_other": "{{count}} selezionate.",
+
+  // ----------------------------------------------------- gameSettingsSheet.*
+  "gameSettingsSheet.title": "Impostazioni",
+  "gameSettingsSheet.focusMode": "Modalità focus",
+  "gameSettingsSheet.focusModeHint": "Solo le carte",
+  "gameSettingsSheet.focusModeA11yHint": "Nascondi nomi, conteggi e chip; lascia le carte e l'anello del turno",
+  "gameSettingsSheet.playOnLeft": "Gioca a sinistra",
+  "gameSettingsSheet.playOnLeftHint": "Per mancini",
+  "gameSettingsSheet.playOnLeftA11yHint": "Scambia PASSA e GIOCA in modo che GIOCA sia sotto il pollice sinistro",
+  "gameSettingsSheet.exit": "Esci dalla partita",
+  "gameSettingsSheet.footnote": "Carte e tavolo: menu principale.",
 
   // ------------------------------------------------------------- offlineGame.*
   "offlineGame.quitConfirmTitle": "Abbandona",
