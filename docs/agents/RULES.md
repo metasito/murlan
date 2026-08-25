@@ -64,7 +64,9 @@ Every rule an agent must follow, in one place. No rationale here — the *why* l
 
 ## Finishing
 
-22. **Report what you actually did.** A gap named is worth more than a green report.
-23. **Leave no residue** — no stray branches, worktrees, scratch files or uncommitted edits in the
+28. **Report what you actually did.** A gap named is worth more than a green report.
+29. **Never leave an edit uncommitted in the shared checkout.** Commit it on a branch before you
+    stop. `node scripts/preflight.mjs` blocks a run that would start on top of one.
+30. **Leave no residue** — no stray branches, worktrees, scratch files or uncommitted edits in the
     shared checkout.
-24. **Outstanding work goes in a GitHub issue**, never a `TODO` or a markdown backlog.
+31. **Outstanding work goes in a GitHub issue**, never a `TODO` or a markdown backlog.

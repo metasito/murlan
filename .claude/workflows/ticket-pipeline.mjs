@@ -231,6 +231,14 @@ try {
   phase('Claim')
   const claim = await agent(
     `${BASH_NOTE}
+First command, before the queue and before anything else:
+
+  node scripts/preflight.mjs
+
+It fails when the shared checkout holds uncommitted work. That work belongs to a session that did
+not finish, and building on top of it is how an edit ends up inside an unrelated commit. On a
+failure, report claimed: false with the files it named — do not stash, discard or commit them.
+
 Work in as few Bash calls as you can — each one costs a full turn, and this whole stage is six
 commands. ${
       forcedTicket
