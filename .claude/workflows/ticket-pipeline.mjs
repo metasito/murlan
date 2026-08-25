@@ -3,7 +3,7 @@ export const meta = {
   description: 'Claim, gate, implement, land one murlan queue ticket — ci.yml is the gate',
   phases: [
     { title: 'Claim', detail: 'claim the routed ticket and run the design-first gate', model: 'haiku' },
-    { title: 'Implement', detail: 'implement, commit, push, open the pull request', model: 'sonnet' },
+    { title: 'Implement', detail: 'build it, self-review with /code-review --fix, push, open the PR', model: 'sonnet' },
     { title: 'Verify', detail: "ci.yml's verdict on the pushed branch", model: 'sonnet' },
     { title: 'Fix', detail: 'make a red run green', model: 'sonnet' },
     { title: 'Land', model: 'sonnet' },
@@ -304,22 +304,56 @@ later stage reads it from GitHub itself.`,
   phase('Implement')
   const impl = await agent(
     `${cwdNote(claim)}
-Implement issue #${claim.number} via the mattpocock-skills:implement workflow — TDD at pre-agreed
-seams.
+Take issue #${claim.number} to a finished state. You are the only stage that writes code, and
+nothing downstream will improve the change — ci.yml can only tell you whether it broke something.
+So finish it here: no stubs, no "left as a follow-up" for something the ticket asked for, no
+tests that assert around the part that was hard. Take the time it takes.
 
-${LOCAL_TEST_NOTE}
+## 1. Read the whole issue
 
-Read the issue yourself with:
 gh issue view ${claim.number} --repo ${REPO} --comments
+
 The comments are part of the specification, not commentary on it: the owner's rulings, the
-decisions a triage pass settled and the traps found later all arrive there, and the body is
-often the state of the question before any of them. Read the whole issue before deciding
-anything.
+decisions a triage pass settled and the traps found later all arrive there, and the body is often
+the state of the question before any of them.
+
+**Write down its Definition of done as a checklist before you start**, and treat those boxes as
+the contract. If the ticket names a floor — a test that must fail before the fix — that is one of
+the boxes, not a suggestion. If a box turns out to be impossible or wrong, say so in your summary
+rather than quietly dropping it.
+
 The claim stage read it as touching: ${(claim.filesTouched || []).join(', ') || '(nothing listed)'}
+
+## 2. Build it
+
+Test-first at the seams the ticket names: write the test, watch it fail for the reason you expect,
+then make it pass. A test that has never been seen red proves nothing.
 
 Read each file you are going to change ONCE, whole, with the Read tool. Do not rebuild your
 picture of a file from repeated sed/grep windows — each window costs a turn, and a file read in
 twenty pieces costs far more than the file. Re-read only what you have edited.
+
+${LOCAL_TEST_NOTE}
+
+## 3. Review your own work before anyone else sees it
+
+When the change is complete, run:
+
+  /code-review --fix
+
+It hunts correctness bugs and reuse/simplification cleanups across your diff and applies what it
+finds. Read what it changed — you own the result, not it. Then re-run the narrow tests from step 2,
+because a fix applied to make the code better can still make a test wrong.
+
+If it reports something it could not fix, fix it yourself or say in your summary why it stands.
+Do not push past a correctness finding.
+
+## 4. Check yourself against the contract
+
+Walk the Definition of done checklist one box at a time and confirm each against the code you
+actually wrote — not against what you intended.
+
+## 5. Ship it
 
 Commit your work, then push it and open the pull request — that is what starts ci.yml against
 this tree, and the verify stage reads its verdict rather than repeating the suite locally. The
@@ -336,6 +370,9 @@ EOF
 
 Report that pull request's number as prNumber; if the push or the create fails, report
 committed: true with prNumber omitted and say so in summary.
+
+In summary, say which Definition of done boxes you closed and name any you did not, with why.
+An honest gap is worth more than a green report — it is the thing a human can act on.
 Report: committed, commitSha, prNumber, summary, filesTouched.`,
     { model: MODELS.implement, phase: 'Implement', label: label('implement'), schema: IMPLEMENT_SCHEMA }
   )
