@@ -1,9 +1,8 @@
 name: iOS UI (Maestro)
 
-# On demand only, until this has run green twice (#205). Once it has,
-# switch this to `pull_request: branches: [main]` — not `push`, and not a
-# schedule: `maestro.yml`'s own header explains why a flaky device job on
-# every push is worse than no job.
+# Runs on pull requests targeting `main`, and on demand — not on `push`
+# and not on a schedule: `maestro.yml`'s own header explains why a flaky
+# device job on every push is worse than no job.
 #
 # `macos-latest` is free on this repo's standard runners (the repo went
 # public in #277), ships Xcode and iOS simulators preinstalled, and an iOS
@@ -13,6 +12,8 @@ name: iOS UI (Maestro)
 # `maestro.yml` instead of just fixing the Android one.
 on:
   workflow_dispatch:
+  pull_request:
+    branches: [main]
 
 concurrency:
   group: ios-${{ github.ref }}
@@ -184,6 +185,13 @@ jobs:
           mkdir -p "$RUNNER_TEMP/Expo Go.app"
           tar -xzf "$RUNNER_TEMP/expo-go.tar.gz" -C "$RUNNER_TEMP/Expo Go.app"
           xcrun simctl install "$SIMULATOR_UDID" "$RUNNER_TEMP/Expo Go.app"
+          # Both flows open with `clearState: true`, which makes Maestro ask
+          # simctl for the app's containers. An app that has been installed
+          # but never launched has none, and the lookup fails with ENOENT
+          # before the first command of the flow runs. One launch creates
+          # them.
+          xcrun simctl launch "$SIMULATOR_UDID" host.exp.exponent
+          xcrun simctl terminate "$SIMULATOR_UDID" host.exp.exponent || true
 
       - name: Install Maestro
         run: |
