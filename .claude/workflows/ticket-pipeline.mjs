@@ -168,7 +168,19 @@ belongs to another session, and nothing you measure there is about this ticket.
 A sub-agent you dispatch does NOT inherit that cd: it starts in the shared main checkout, where
 this branch's diff does not exist. So name ${claim.worktreePath} in the prompt of every one you
 send, and read "no diff to review" from any of them as proof it stood in the wrong checkout —
-never as a clean result. Re-dispatch it with the path before believing it.`
+never as a clean result. Re-dispatch it with the path before believing it.
+
+The worktree is nested inside the checkout and has **no \`node_modules\` directory of its own** —
+Node finds the real one by walking up, so imports and \`require.resolve\` work, but a path like
+\`node_modules/some-package\` does not exist here. To read an installed package's source, path it
+from the repo root instead:
+
+  ls "$(git rev-parse --show-toplevel)/node_modules/<package>"
+
+One run answered a missing \`node_modules/\` by falling back to \`find / -maxdepth 6\`, which cost
+two minutes and found nothing. Never search the filesystem for a package — resolve it:
+
+  node -e "console.log(require.resolve('<package>'))"`
 }
 
 // ci.yml runs typecheck, tests, lint, native, browser and build-and-boot against the pushed
