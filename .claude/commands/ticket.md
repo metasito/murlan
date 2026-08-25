@@ -3,6 +3,8 @@ description: Work the murlan queue through the ticket pipeline — one item, or 
 argument-hint: "[loop]"
 allowed-tools: Workflow, ScheduleWakeup, Bash(node scripts/next-ticket.mjs), Bash(gh issue:*), Bash(gh pr:*), Bash(gh run:*)
 ---
+Every rule you follow while doing this is in `docs/agents/RULES.md` — read it first.
+
 
 Work the queue. Mode comes from `$ARGUMENTS`: empty means **one item then stop**; `loop` means
 **item after item until the user says stop**.
