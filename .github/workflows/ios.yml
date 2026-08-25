@@ -185,21 +185,6 @@ jobs:
           mkdir -p "$RUNNER_TEMP/Expo Go.app"
           tar -xzf "$RUNNER_TEMP/expo-go.tar.gz" -C "$RUNNER_TEMP/Expo Go.app"
           xcrun simctl install "$SIMULATOR_UDID" "$RUNNER_TEMP/Expo Go.app"
-          # Both flows open with `clearState: true`, which makes Maestro ask
-          # simctl for the app's containers, and that lookup is what failed
-          # first (ENOENT on the app's binary directory). A warm-up launch
-          # should create them — but `simctl launch` answers
-          # `FBSOpenApplicationServiceErrorDomain code 4` every time, so what
-          # the device thinks it has installed is printed here rather than
-          # guessed at. Nothing below is allowed to fail the step: the flows
-          # are the verdict, not this.
-          xcrun simctl listapps "$SIMULATOR_UDID" | grep -i -A4 'host\.exp\.exponent' || echo "listapps: bundle not registered"
-          xcrun simctl get_app_container "$SIMULATOR_UDID" host.exp.exponent app || echo "no app container"
-          xcrun simctl get_app_container "$SIMULATOR_UDID" host.exp.exponent data || echo "no data container"
-          xcrun simctl launch "$SIMULATOR_UDID" host.exp.exponent || true
-          xcrun simctl spawn "$SIMULATOR_UDID" log show --last 2m --style compact             --predicate 'eventMessage CONTAINS "exponent"' | tail -40 || true
-          xcrun simctl terminate "$SIMULATOR_UDID" host.exp.exponent || true
-
       - name: Install Maestro
         run: |
           curl -Ls "https://get.maestro.mobile.dev" | bash
@@ -227,7 +212,21 @@ jobs:
           echo
           head -c 1200 "$RUNNER_TEMP/manifest.out"
           echo
-          maestro test .maestro/smoke.yaml .maestro/offline-game.yaml
+          # iOS registers Expo Go as `host.exp.Exponent`. The Android package
+          # is `host.exp.exponent`, which is the spelling both flows carry, and
+          # a simulator answers NotFound to every request made with it — the
+          # bundle it holds is a different identifier. Run the flows from
+          # copies that say Exponent rather than forking them per platform.
+          mkdir -p "$RUNNER_TEMP/flows"
+          for f in .maestro/smoke.yaml .maestro/offline-game.yaml; do
+            out="$RUNNER_TEMP/flows/$(basename "$f")"
+            sed 's/^appId: host\.exp\.exponent$/appId: host.exp.Exponent/' "$f" > "$out"
+            grep -q '^appId: host\.exp\.Exponent$' "$out" || {
+              echo "::error::$f no longer declares the Expo Go appId this job rewrites."
+              exit 1
+            }
+          done
+          maestro test "$RUNNER_TEMP/flows/smoke.yaml" "$RUNNER_TEMP/flows/offline-game.yaml"
 
       - name: Collect Metro's log alongside Maestro's debug output
         if: failure()
