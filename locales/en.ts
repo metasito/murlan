@@ -196,8 +196,10 @@ export const en = {
   "exchangeModal.subPrefix": "Choose a card to give to",
   "exchangeModal.subSuffix": "(3–10 only):",
   "exchangeModal.noValidCards": "No valid card to give back.",
-  "exchangeModal.hint": "Tap a card to give it to the loser",
-  "exchangeModal.giveCardA11yHint": "Gives this card to the loser",
+  "exchangeModal.hint": "Tap a card to choose it",
+  "exchangeModal.hintConfirm": "Tap another card to change your mind, or confirm to give it",
+  "exchangeModal.confirm": "Give card",
+  "exchangeModal.giveCardA11yHint": "Chooses this card to give to the loser",
 
   // ----------------------------------------------------------------- cards.*
   "cards.rankAce": "Ace",
