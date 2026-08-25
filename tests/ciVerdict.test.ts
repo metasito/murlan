@@ -1,7 +1,7 @@
 // tests/ciVerdict.test.ts
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
-import { decideVerdict } from "../lib/ticketPipeline/ciVerdict.ts";
+import { decideVerdict, runListArgs } from "../lib/ticketPipeline/ciVerdict.ts";
 
 const done = (conclusion: string | null) => ({ databaseId: 7, conclusion, status: "completed" });
 
@@ -48,6 +48,22 @@ describe("reading ci.yml's verdict", () => {
     const v = decideVerdict(undefined);
     assert.equal(v.pass, false);
     assert.match(v.reason, /no run/);
+  });
+
+  // Failing closed is not enough on its own: without the flag the caller reads this as a red
+  // suite and spends its fix rounds on a failure no run ever reported. A GitHub API outage
+  // returned exactly this and the branch underneath it was green.
+  test("no run at all is infrastructure, not a defect", () => {
+    assert.equal(decideVerdict(undefined).infrastructure, true);
+  });
+
+  // Maestro and EAS run on the same branch, and `--limit 1` with no filter returns whichever of
+  // them finished last: a green Maestro over a red ci.yml is a red branch reading as green.
+  test("the run query asks for ci.yml and nothing else", () => {
+    const args = runListArgs("metasito/murlan", "agent/1-x");
+    assert.ok(args.includes("--workflow"), "the query does not name a workflow");
+    assert.equal(args[args.indexOf("--workflow") + 1], "ci.yml");
+    assert.ok(args.includes("agent/1-x"));
   });
 
   test("cancelled and timed_out are not passes", () => {

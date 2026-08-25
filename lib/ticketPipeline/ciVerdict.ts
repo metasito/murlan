@@ -32,10 +32,13 @@ export interface Verdict {
  * A job that finished with no steps ran nothing, so it says nothing about the diff: billing, a
  * quota or a runner failure looks identical to a red suite from outside. That is reported as
  * infrastructure rather than as a defect, because sending a fix agent after it hunts a bug no
- * suite ever reported.
+ * suite ever reported. A run that cannot be found at all is the same case: an outage between
+ * here and the API is indistinguishable from a branch nothing ever ran.
  */
 export function decideVerdict(run: RunRow | undefined, jobs: JobRow[] = []): Verdict {
-  if (!run) return { pass: false, reason: "no run found for this branch" };
+  if (!run) {
+    return { pass: false, infrastructure: true, reason: "no run found for this branch" };
+  }
   if (run.status !== "completed") {
     return { pass: false, runId: run.databaseId, reason: `run is still ${run.status}` };
   }
@@ -63,6 +66,30 @@ export function decideVerdict(run: RunRow | undefined, jobs: JobRow[] = []): Ver
   };
 }
 
+/**
+ * ci.yml is the gate, and the branch carries other workflows — the Maestro suites, EAS — that
+ * finish on their own schedule. Unfiltered, `--limit 1` answers with whichever of them ran last,
+ * so a green Maestro over a red ci.yml reads as a green branch.
+ */
+export function runListArgs(repo: string, branch: string): string[] {
+  // prettier-ignore
+  return [
+    "run", "list", "--repo", repo, "--branch", branch,
+    "--workflow", "ci.yml", "--limit", "1",
+    "--json", "databaseId,conclusion,status",
+  ];
+}
+
+// The API is reachable across a whole ci.yml run and then not for the second it is asked for the
+// verdict. Without this the answer is "no run found", the branch under it green.
+const RUN_LIST_ATTEMPTS = 3;
+const RUN_LIST_BACKOFF_MS = 5_000;
+
+/** Blocking on purpose: this module is a one-shot CLI whose caller is waiting on stdout. */
+function pause(ms: number): void {
+  Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
+}
+
 function gh(args: string[]): string {
   return execFileSync("gh", args, { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] });
 }
@@ -85,11 +112,12 @@ export function readVerdict(repo: string, branch: string, prNumber: number): Ver
     // A non-zero exit here means "checks failed", which the run row below states properly.
   }
 
-  const runs = ghJson<RunRow[]>(
-    ["run", "list", "--repo", repo, "--branch", branch, "--limit", "1", "--json", "databaseId,conclusion,status"],
-    []
-  );
-  const run = runs[0];
+  let run: RunRow | undefined;
+  for (let attempt = 1; attempt <= RUN_LIST_ATTEMPTS; attempt++) {
+    run = ghJson<RunRow[]>(runListArgs(repo, branch), [])[0];
+    if (run) break;
+    if (attempt < RUN_LIST_ATTEMPTS) pause(RUN_LIST_BACKOFF_MS * attempt);
+  }
   if (!run || run.conclusion === "success") return decideVerdict(run, []);
 
   const jobs = ghJson<JobRow[]>(
