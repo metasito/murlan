@@ -156,6 +156,14 @@ const FINDING_SCHEMA = {
           line: { type: 'number' },
           summary: { type: 'string' },
           verdict: { type: 'string', enum: ['CONFIRMED', 'PLAUSIBLE', 'REJECTED'] },
+          // What a reader or a caller gets wrong because of this, in one sentence. A finding
+          // that cannot name one is an opinion about the code rather than a defect in it.
+          consequence: { type: 'string' },
+          // The command that was run and what it printed, for any finding asserting a fact about
+          // behaviour. A review agent once reported "0 divergences in 20,510 decisions" for two
+          // bot personalities that in fact diverge on ~6.9% of decisions, and a fix round rewrote
+          // user-facing copy on the strength of it.
+          evidence: { type: 'string' },
         },
         required: ['file', 'summary', 'verdict'],
       },
@@ -286,7 +294,12 @@ mattpocock-skills:code-review's standards axis: documented repo conventions (CLA
 Fowler smell baseline. You did not write this code — read it cold. CLAUDE.md's comment policy is
 one of those conventions and the one most often broken: flag as CONFIRMED any new or changed
 comment that narrates history, restates the code below it, or explains a defect the diff just
-fixed. Report findings: file, line, summary, verdict (CONFIRMED/PLAUSIBLE/REJECTED).`,
+fixed. Report findings: file, line, summary, verdict (CONFIRMED/PLAUSIBLE/REJECTED), consequence, evidence.
+CONFIRMED means you can name the consequence: what a reader, a caller or a player actually gets
+wrong because of this. A rule citation with no such reader is PLAUSIBLE, not CONFIRMED — only a
+finding with a consequence can start a fix round, and each round costs a nine-minute CI run.
+Any claim about behaviour carries its evidence: the command you ran and what it printed. Do not
+state a measurement you did not take.`,
     },
     {
       key: 'spec',
@@ -295,7 +308,12 @@ issue #${claim.number}, which you should read yourself with: gh issue view ${cla
 The comments are part of the spec — an owner ruling there overrides the body, which is often
 the state of the question before it was settled. Judge the diff against the whole issue.
 Using mattpocock-skills:code-review's spec axis: missing requirements, scope creep, anything
-implemented but wrong. Report findings: file, line, summary, verdict (CONFIRMED/PLAUSIBLE/REJECTED).`,
+implemented but wrong. Report findings: file, line, summary, verdict (CONFIRMED/PLAUSIBLE/REJECTED), consequence, evidence.
+CONFIRMED means you can name the consequence: what a reader, a caller or a player actually gets
+wrong because of this. A rule citation with no such reader is PLAUSIBLE, not CONFIRMED — only a
+finding with a consequence can start a fix round, and each round costs a nine-minute CI run.
+Any claim about behaviour carries its evidence: the command you ran and what it printed. Do not
+state a measurement you did not take.`,
     },
     {
       key: 'adversarial',
@@ -303,7 +321,9 @@ implemented but wrong. Report findings: file, line, summary, verdict (CONFIRMED/
       prompt: `For every new or changed test or runtime guard in ${diffScope} on branch ${claim.branch}
 (git diff ${range}): try to prove it passes on broken code — invert or delete the logic it
 claims to protect, rerun it, confirm whether it would actually catch the break. Any test/guard that
-still passes on broken code is a CONFIRMED finding. Report: file, line, summary, verdict.`,
+still passes on broken code is a CONFIRMED finding. Report: file, line, summary, verdict,
+consequence, evidence. This lens is the grounded one: evidence is the break you made and the
+command output showing the guard still passed. Report nothing you did not actually run.`,
     },
   ]
   // A re-review after a fix only has to re-ask the lens that raised the finding: the other
@@ -334,8 +354,18 @@ still passes on broken code is a CONFIRMED finding. Report: file, line, summary,
   }
 }
 
+// Blocking a run costs a fix round and a nine-minute CI round, so a finding has to say what
+// actually goes wrong. Scaffold research is blunt about this: multi-agent debate that is not
+// grounded in code execution underperforms a single agent, and that is exactly what three lenses
+// arguing over a two-file prose diff were doing — #291 went 11 -> 18 -> 14 confirmed findings,
+// most of them citing a rule rather than naming a reader who ends up wrong.
+// A finding with no consequence is still reported; it just cannot start a round.
 function confirmedIn(review) {
-  return review.findings.filter((f) => f.verdict === 'CONFIRMED')
+  return review.findings.filter((f) => f.verdict === 'CONFIRMED' && (f.consequence || '').trim())
+}
+
+function advisoryIn(review) {
+  return review.findings.filter((f) => f.verdict === 'CONFIRMED' && !(f.consequence || '').trim())
 }
 
 function actionable(verify, review) {
@@ -500,6 +530,13 @@ Report: committed, commitSha, prNumber, summary, filesTouched, prose.`,
     () => runReview(claim, null, null, impl.prose, null),
   ])
   ;[verify, review] = reported(verify, review)
+  const advisory = advisoryIn(review)
+  if (advisory.length) {
+    log(
+      `${advisory.length} finding(s) named no consequence, so they are advisory and start no round: ` +
+        advisory.map((f) => `${f.file}${f.line ? ':' + f.line : ''}`).join(', ')
+    )
+  }
   // The lenses advance whatever they said — they have read that commit, and re-reading it is what
   // produced a fresh crop of prose objections every round. CI needs no such marker: every push
   // runs the whole workflow, and ci.yml's own scope job decides what the diff can skip.
