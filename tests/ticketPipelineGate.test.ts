@@ -72,6 +72,81 @@ describe("the design-first gate", () => {
     assert.equal(result.escalate, false);
   });
 
+  // Every user-facing string is keyed in all three locales, and `it.ts`/`sq.ts` are
+  // `Record<keyof typeof en, string>`, so a gap is a compile error rather than a decision. Counted
+  // separately they spend three of the six the threshold allows, and #349 — a chip label, four
+  // real files — escalated at seven.
+  test("the three locale files count as the one edit the compiler forces", () => {
+    const result = needsDesignFirstGate({
+      filesTouched: [
+        "components/GameTable.tsx",
+        "components/table/pile.tsx",
+        "components/gameTableModel.ts",
+        "lib/gameEngine.ts",
+        "locales/en.ts",
+        "locales/it.ts",
+        "locales/sq.ts",
+      ],
+      body: "Name the player who made the play now on the felt.",
+    });
+    assert.equal(result.escalate, false, result.reason);
+  });
+
+  test("collapsing the locales does not hide a genuinely broad change", () => {
+    const result = needsDesignFirstGate({
+      filesTouched: [
+        ...Array.from({ length: 6 }, (_, i) => `components/File${i}.tsx`),
+        "locales/en.ts",
+        "locales/it.ts",
+        "locales/sq.ts",
+      ],
+      body: "Rename a prop across the codebase.",
+    });
+    assert.equal(result.escalate, true);
+    assert.match(result.reason, /7 files/);
+  });
+
+  // `ready-for-agent` is a promise that the decisions are made; unchecked boxes under "What to
+  // settle" say they are not. An agent that meets both picks one reading and builds on a guess,
+  // or spends a claim discovering the contradiction — which is what #349 cost.
+  test("escalates a ticket still carrying unsettled decisions", () => {
+    const result = needsDesignFirstGate({
+      filesTouched: ["components/GameTable.tsx"],
+      body: [
+        "## What to settle",
+        "",
+        "- [ ] Does the name replace the label or join it?",
+        "- [ ] What it reads when the viewer made the play.",
+        "",
+        "## Constraints",
+        "- [ ] not a decision, a different section",
+      ].join("\n"),
+    });
+    assert.equal(result.escalate, true);
+    assert.match(result.reason, /2 unsettled/);
+  });
+
+  test("a settled section is not an escalation", () => {
+    const result = needsDesignFirstGate({
+      filesTouched: ["components/GameTable.tsx"],
+      body: ["## What to settle", "", "- [x] Replace the label.", "- [x] Own name."].join("\n"),
+    });
+    assert.equal(result.escalate, false);
+  });
+
+  // The early return for a recorded decision must not reach past these: an ADR about one part of
+  // a ticket says nothing about the boxes still open in another.
+  test("a recorded decision elsewhere does not settle open boxes", () => {
+    const result = needsDesignFirstGate({
+      filesTouched: ["shared/schema.ts"],
+      body: ["Design decision: docs/BRIEF.md §4.2.", "", "## What to settle", "", "- [ ] The column name."].join(
+        "\n"
+      ),
+    });
+    assert.equal(result.escalate, true);
+    assert.match(result.reason, /unsettled/);
+  });
+
   test("does not escalate a small, ordinary ticket", () => {
     const result = needsDesignFirstGate({
       filesTouched: ["components/SettingsModal.tsx", "locales/en.ts"],

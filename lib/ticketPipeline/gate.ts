@@ -17,7 +17,40 @@ export interface GateVerdict {
   reason: string;
 }
 
+const LOCALE_PATTERN = /(^|\/)locales\/[a-z]{2}\.ts$/;
+
+/**
+ * How many decisions a file list really represents. Every user-facing string is keyed in all
+ * three locales, and `it.ts`/`sq.ts` are `Record<keyof typeof en, string>` — a gap is a compile
+ * error, not a design question. Counted one each they spend half the threshold before the change
+ * itself has a file, and a four-file chip label escalated at seven.
+ */
+export function countSurfaces(filesTouched: string[]): number {
+  const locales = filesTouched.filter((f) => LOCALE_PATTERN.test(f)).length;
+  return filesTouched.length - Math.max(0, locales - 1);
+}
+
+/**
+ * Decisions the ticket still names as open. `ready-for-agent` promises they are made, so a body
+ * that still asks reaches an agent with two readings and no way to choose between them.
+ * Deliberately not suppressed by a recorded decision elsewhere: an ADR about one part of a
+ * ticket says nothing about the boxes open in another.
+ */
+export function unsettledDecisions(body: string): number {
+  const heading = /^##\s+What to settle\s*$/im.exec(body);
+  if (!heading) return 0;
+  const rest = body.slice(heading.index + heading[0].length);
+  const next = /^##\s+/m.exec(rest);
+  const section = next ? rest.slice(0, next.index) : rest;
+  return (section.match(/^\s*-\s*\[ \]/gm) ?? []).length;
+}
+
 export function needsDesignFirstGate(ticket: TicketFacts): GateVerdict {
+  const open = unsettledDecisions(ticket.body);
+  if (open > 0) {
+    return { escalate: true, reason: `carries ${open} unsettled decision(s) under "What to settle"` };
+  }
+
   const hasDecision = DECISION_POINTER.test(ticket.body);
   if (hasDecision) return { escalate: false, reason: "" };
 
@@ -34,11 +67,9 @@ export function needsDesignFirstGate(ticket: TicketFacts): GateVerdict {
   if (ticket.filesTouched.some((f) => MANIFEST_PATTERN.test(f))) {
     return { escalate: true, reason: "changes a dependency with no recorded decision" };
   }
-  if (ticket.filesTouched.length > FILE_COUNT_THRESHOLD) {
-    return {
-      escalate: true,
-      reason: `touches ${ticket.filesTouched.length} files with no recorded decision`,
-    };
+  const surfaces = countSurfaces(ticket.filesTouched);
+  if (surfaces > FILE_COUNT_THRESHOLD) {
+    return { escalate: true, reason: `touches ${surfaces} files with no recorded decision` };
   }
   return { escalate: false, reason: "" };
 }

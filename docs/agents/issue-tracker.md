@@ -140,6 +140,11 @@ What makes the difference in practice:
   place in the body that saves an agent minutes rather than tokens.
 - **Checkboxes over prose.** They render as progress on the issue, and an agent can report
   against them. A wall of paragraphs makes partial completion invisible.
+- **An open box under `## What to settle` means the ticket is not `ready-for-agent`.** That
+  label promises the decisions are made; an unchecked box says they are not, and an agent that
+  meets both builds on whichever reading it picked. Settle them and write the answers down, or
+  label it `ready-for-human` and leave them open. The design gate escalates a ticket carrying
+  both, so the contradiction costs a claim rather than a diff.
 - **An empty table is an instruction.** Giving the columns of a decision to be made
   (`Event | Visual | Sound | Haptic | Fallback`) specifies the shape of the answer far more
   cheaply than describing it.
