@@ -55,6 +55,27 @@ const BASH_NOTE = [
   'search into several minutes.',
 ].join(' ')
 
+// ci.yml runs the whole sweep on the push — typecheck+tests+lint 223s, build-and-boot 162s,
+// browser 526s — so a stage that reruns any of it locally pays those minutes twice for an answer
+// already coming. #204's implement stage ran `npm test` three times while iterating on one spec.
+const LOCAL_TEST_NOTE = `What to run here, and what not to.
+
+While iterating, run only what you are iterating on: \`npm run typecheck\`, \`node --test <the one
+file>\`, and for a browser test \`npx playwright test --config tests/e2e/playwright.config.ts
+<one-spec.ts>\` or the same with \`-g "<one test name>"\`.
+
+Once, before you push: \`npm run typecheck && npm run lint\`. About a minute together, and they are
+what ci.yml fails on most often — worth it to not spend a nine-minute round learning it.
+
+Never run \`npm test\`, \`npm run test:e2e\`, \`npm run test:native\` or \`npm run verify\`. That is the
+sweep, and the run on your push is already doing it against a clean build.
+
+\`E2E_SKIP_BUILD=1\` reuses the existing dist/ instead of rebuilding it, which is the difference
+between a usable browser loop and an unusable one. It is safe only while your edit is confined to
+the spec file: dist/ is a *build* of app/, components/ and lib/, so with that flag set a change to
+any of those is not in the bundle under test and the run can pass having exercised nothing. After
+every change to app code, run once without the flag before you trust a green.`
+
 // Review needs to know whether the diff is prose before it can drop the behaviour lens, and it
 // now starts at the same moment as Verify — so whoever commits works it out, not Verify.
 const PROSE_CAPTURE_NOTE = `Before you report, classify the diff you just committed so the review
@@ -391,7 +412,11 @@ later stage reads it from GitHub itself.`,
   const impl = await agent(
     `${cwdNote(claim)}
 Implement issue #${claim.number} via the mattpocock-skills:implement workflow — TDD at pre-agreed
-seams, typecheck and single test files while iterating. Read the issue yourself with:
+seams.
+
+${LOCAL_TEST_NOTE}
+
+Read the issue yourself with:
 gh issue view ${claim.number} --repo ${REPO} --comments
 The comments are part of the specification, not commentary on it: the owner's rulings, the
 decisions a triage pass settled and the traps found later all arrive there, and the body is
@@ -479,6 +504,11 @@ Report: committed, commitSha, prNumber, summary, filesTouched, prose.`,
       `${cwdNote(claim)}
 Fix exactly these findings and nothing else, then commit and push. The push is what re-runs
 ci.yml on the pull request, which is the next stage's evidence.
+
+${LOCAL_TEST_NOTE}
+
+A fix round has turned a green run red more than once, so if CI is red below, run the one failing
+test here and see it pass before you push — that is the round's whole job.
 Findings:\n${
         findingList || '- (no review findings; the red run below is the whole job)'
       }${verifyNote}
