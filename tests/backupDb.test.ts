@@ -13,6 +13,7 @@ import { mkdtempSync, writeFileSync, readdirSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import pg from "pg";
 import { hasDatabase, skipMessage, startTestServer } from "./helpers/testServer.ts";
+import { DUMP_NAME, dumpName } from "../scripts/backupNaming.mjs";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const script = path.join(repoRoot, "scripts", "backup-db.mjs");
@@ -52,12 +53,6 @@ test("that refusal is conditional on DATABASE_URL being absent", () => {
 // full of empty files named the way scripts/backup-db.mjs names real dumps.
 // Age comes from the filename, not the filesystem, so these need no clock
 // tricks: a fake "30 days ago" name is exactly as old as a real one.
-function stamp(d: Date): string {
-  return d.toISOString().replace(/[-:]/g, "").replace(/\..+/, "").replace("T", "-");
-}
-function dumpName(d: Date): string {
-  return `murlan-${stamp(d)}.sql`;
-}
 function daysAgo(n: number): Date {
   return new Date(Date.now() - n * 24 * 60 * 60 * 1000);
 }
@@ -88,9 +83,7 @@ test("prune deletes dumps past the retention window and keeps the rest", () => {
   }
 });
 
-// The floor named in the ticket: a pruner that empties the directory when
-// every dump is old is worse than none, because a restore then has nothing
-// to restore from and nobody notices until it's needed.
+// The floor named in #39.
 test("prune never deletes the most recent dump, however old it is", () => {
   const dir = mkdtempSync(path.join(tmpdir(), "murlan-prune-"));
   try {
@@ -130,12 +123,37 @@ test("prune refuses a nonsensical retention window rather than silently pruning 
   }
 });
 
-// The restore proof the ticket asks for: a dump this script takes has to
-// actually restore, into a database that never saw the source data, with the
-// account and rating tables coming back with the same row counts. Needs a
-// real Postgres plus pg_dump/psql on PATH — both required by the script
-// itself, so their absence here would mean the environment could never take
-// or restore a real backup either.
+// docs/DEPLOY-RUNBOOK.md's scheduled run command sets no BACKUP_RETENTION_DAYS,
+// so the default is the retention production actually gets. A default with no
+// test on it can drift to a value that never deletes anything (e.g. beyond
+// any real dump's age) and stay green.
+test("prune's default retention (BACKUP_RETENTION_DAYS unset) deletes past 14 days and keeps within it", () => {
+  const dir = mkdtempSync(path.join(tmpdir(), "murlan-prune-"));
+  try {
+    const old = dumpName(daysAgo(20));
+    const withinWindow = dumpName(daysAgo(5));
+    const newest = dumpName(daysAgo(0));
+    for (const name of [old, withinWindow, newest]) {
+      writeFileSync(path.join(dir, name), "x");
+    }
+
+    const { BACKUP_RETENTION_DAYS: _unused, ...envWithoutRetention } = process.env;
+    const { status } = spawnSync(process.execPath, [pruneScript, dir], {
+      env: envWithoutRetention,
+      encoding: "utf8",
+    });
+    assert.equal(status, 0);
+
+    const remaining = readdirSync(dir).sort();
+    assert.deepEqual(remaining, [withinWindow, newest].sort());
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+// #39. Needs a real Postgres plus pg_dump/psql on PATH — both required by
+// the script itself, so their absence here would mean the environment could
+// never take or restore a real backup either.
 test("a dump restores into an empty database with matching account and rating row counts", async (t) => {
   if (!hasDatabase()) {
     t.skip(skipMessage());
@@ -146,7 +164,6 @@ test("a dump restores into an empty database with matching account and rating ro
   const server = await startTestServer();
   const admin = new pg.Pool({ connectionString: baseUrl });
   const dumpDir = mkdtempSync(path.join(tmpdir(), "murlan-dump-"));
-  const dumpFile = path.join(dumpDir, "test.sql");
   let restoreDb: string | null = null;
 
   try {
@@ -162,6 +179,17 @@ test("a dump restores into an empty database with matching account and rating ro
       `INSERT INTO "${server.schema}".user_ratings (user_id, season, rating)
        SELECT id, 'test-season', 1200 FROM "${server.schema}".users`
     );
+    // connect-pg-simple's own table (server/session.ts) — the reason
+    // backup-db.mjs dumps the whole database instead of a schema-driven table
+    // list. A restore proof that never looks at it would stay green against a
+    // dump that silently excludes it. The two registrations above already
+    // seeded it via express-session's own writes; this row is on top of
+    // those, so the count asserted below is whatever that total is, not a
+    // literal this test invents.
+    await admin.query(
+      `INSERT INTO "${server.schema}".session (sid, sess, expire)
+       VALUES ('backup-test-sid', '{}', now() + interval '1 day')`
+    );
 
     const before = {
       users: (await admin.query(`SELECT count(*)::int AS n FROM "${server.schema}".users`)).rows[0]
@@ -169,13 +197,21 @@ test("a dump restores into an empty database with matching account and rating ro
       ratings: (
         await admin.query(`SELECT count(*)::int AS n FROM "${server.schema}".user_ratings`)
       ).rows[0].n,
+      sessions: (
+        await admin.query(`SELECT count(*)::int AS n FROM "${server.schema}".session`)
+      ).rows[0].n,
     };
     assert.equal(before.users, 2);
     assert.equal(before.ratings, 2);
+    assert.ok(before.sessions >= 1, "the session row this test inserted must be present");
 
-    const dump = spawnSync(process.execPath, [script, dumpFile], {
+    // No explicit outfile: this is what proves the pruner's DUMP_NAME regex
+    // actually matches what backup-db.mjs writes by default, not just what
+    // this test's own fixtures are named.
+    const dump = spawnSync(process.execPath, [script], {
       env: { ...process.env, DATABASE_URL: baseUrl },
       encoding: "utf8",
+      cwd: dumpDir,
     });
     // The child here is node running backup-db.mjs, which itself spawns
     // pg_dump — so a missing pg_dump surfaces as backup-db.mjs's own exit 1
@@ -185,6 +221,15 @@ test("a dump restores into an empty database with matching account and rating ro
       return;
     }
     assert.equal(dump.status, 0, dump.stderr);
+
+    const written = readdirSync(path.join(dumpDir, "backups"));
+    assert.equal(written.length, 1, "backup-db.mjs must write exactly one dump per run");
+    assert.match(
+      written[0],
+      DUMP_NAME,
+      "backup-db.mjs's default filename must match what prune-backups.mjs recognizes"
+    );
+    const dumpFile = path.join(dumpDir, "backups", written[0]);
 
     const maintenanceUrl = new URL(baseUrl);
     maintenanceUrl.pathname = "/postgres";
@@ -215,6 +260,9 @@ test("a dump restores into an empty database with matching account and rating ro
         ).rows[0].n,
         ratings: (
           await restored.query(`SELECT count(*)::int AS n FROM "${server.schema}".user_ratings`)
+        ).rows[0].n,
+        sessions: (
+          await restored.query(`SELECT count(*)::int AS n FROM "${server.schema}".session`)
         ).rows[0].n,
       };
       assert.deepEqual(after, before, "restored row counts must match the source exactly");

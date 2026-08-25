@@ -1,7 +1,7 @@
 /**
  * Deletes dumps `scripts/backup-db.mjs` wrote once they are older than a
- * retention window — the schedule this pairs with never runs it, so nothing
- * else prunes the directory. See `docs/DEPLOY-RUNBOOK.md` § Backups.
+ * retention window — `backup-db.mjs` itself never prunes, so nothing else
+ * does either. See `docs/DEPLOY-RUNBOOK.md` § Backups.
  *
  * Never deletes the most recent dump, however old it is: a paused schedule
  * or a retention window shorter than the gap since the last successful
@@ -17,6 +17,7 @@
  */
 import { readdirSync, unlinkSync } from "node:fs";
 import path from "node:path";
+import { DUMP_NAME } from "./backupNaming.mjs";
 
 const dir = path.resolve(process.argv[2] ?? "backups");
 
@@ -30,12 +31,8 @@ if (!Number.isFinite(retentionDays) || retentionDays <= 0) {
   process.exit(1);
 }
 
-// The name scripts/backup-db.mjs writes: murlan-YYYYMMDD-HHMMSS.sql. That
-// naming sorts chronologically as plain text, so listing "the most recent
-// dump" needs no parsing — parsing the embedded stamp is only for computing
-// each dump's age below.
-const DUMP_NAME = /^murlan-(\d{4})(\d{2})(\d{2})-(\d{2})(\d{2})(\d{2})\.sql$/;
-
+// This naming sorts chronologically as plain text, so listing "the most
+// recent dump" below needs no parsing.
 function dumpTimestamp(name) {
   const m = DUMP_NAME.exec(name);
   if (!m) return null;
