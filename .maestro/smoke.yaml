@@ -38,6 +38,10 @@ env:
     # never taken - and asserts against a screen the app never rendered.
     # Which flow runs first is not fixed, so both orders have to work.
     clearState: true
+# Cleared, then stopped: Expo Go takes the link as a cold start and opens the
+# project with it. Delivered to the copy `launchApp` just brought to the
+# front, it is ignored and the flow asserts against Expo Go's own home.
+- stopApp
 - openLink: "${MURLAN_PACKAGER_URL}"
 # iOS asks before handing a custom-scheme link to another app, and the link
 # is not followed until it is answered. The simulator runs it-IT, so the
