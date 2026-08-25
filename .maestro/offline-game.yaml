@@ -46,7 +46,11 @@
 # machine included, gets Android's.
 appId: "${typeof MAESTRO_EXPO_GO_APP_ID === 'string' ? MAESTRO_EXPO_GO_APP_ID : 'host.exp.exponent'}"
 env:
-  MURLAN_PACKAGER_URL: exp://127.0.0.1:8081
+  # `disableOnboarding=1` is expo-dev-menu's own switch (expo/expo#19024): it
+  # sets isOnboardingFinished before the app launches, so Expo Go never raises
+  # the "this is the developer menu" tip that otherwise covers the screen every
+  # run — `clearState` wipes the flag that would have remembered it.
+  MURLAN_PACKAGER_URL: exp://127.0.0.1:8081?disableOnboarding=1
 ---
 - launchApp:
     # Each flow has to start from the same place: run second and this one
@@ -68,18 +72,12 @@ env:
       - tapOn:
           text: "Apri"
           optional: true
-- runFlow:
-    file: dev-menu.yaml
 - extendedWaitUntil:
     visible: "IL GIOCO DI CARTE|GUIDA RAPIDA"
     # A minute is what a developer's machine needs. A CI emulator is slower
     # than that on a cold start, and running out of budget here reads
     # identically to the app never loading at all.
     timeout: 180000
-# iOS does not raise the tip until the bundle has drawn, so it is answered
-# again here; on Android it went at connection time and this is a no-op.
-- runFlow:
-    file: dev-menu.yaml
 - runFlow:
     when:
       visible: "Salta il tutorial"
