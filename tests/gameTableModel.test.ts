@@ -934,6 +934,13 @@ describe("the rail's vertical pad", () => {
   test("the control rail and its settings sheet take the floored pad, not the raw inset", () => {
     assert.deepEqual(scan(/(?:top|bottom)Pad=\{frame\.(?:topPad|bottomPad)\}/g), []);
   });
+
+  // Banning the raw spelling is half the pin: it also passes when the props are
+  // gone entirely, or spelled some third way. Both ends of both must be found.
+  test("both ends of both are pinned to the floored pad", () => {
+    assert.equal(scan(/topPad=\{frame\.tableTop\}/g).length, 2);
+    assert.equal(scan(/bottomPad=\{frame\.tableBottom\}/g).length, 2);
+  });
 });
 
 describe("computeTableFrame", () => {
