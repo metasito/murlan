@@ -30,12 +30,6 @@ import {
 } from "@/components/gameTableModel";
 import { FIELD_ARC, solveArc } from "@/components/tableArc";
 
-const FLY_OFFSETS: Record<FlyDirection, { dx: number; dy: number }> = {
-  bottom: { dx: 0, dy: 140 },
-  top:    { dx: 0, dy: -100 },
-  left:   { dx: -180, dy: 0 },
-  right:  { dx: 180, dy: 0 },
-};
 const FLY_ROTS: Record<FlyDirection, number> = {
   bottom: -12, top: 12, left: -18, right: 18,
 };
@@ -77,19 +71,22 @@ function fieldArc(cards: Card[], cardScale: number, roomW: number) {
 export function FlyingCards({
   cards,
   direction,
+  origin,
   onDone,
   roomW,
   scale = 1,
 }: {
   cards: Card[];
   direction: FlyDirection;
+  /** Where the throw starts — components/gameTableModel.ts `flightOrigin`. */
+  origin: { dx: number; dy: number };
   onDone: () => void;
   /** The width share the field's arc may take — see FIELD_WIDTH_SHARE. */
   roomW: number;
   /** The table's own scale — the pile draws its cards at `scale * FIELD_SCALE`. */
   scale?: number;
 }) {
-  const { dx, dy } = FLY_OFFSETS[direction];
+  const { dx, dy } = origin;
   const startRot = FLY_ROTS[direction];
   const landingRot = FLY_LANDING_ROTS[direction];
   const reduceMotion = usePrefersReducedMotion();
@@ -177,7 +174,10 @@ export function FlyingCards({
 
   return (
     <View style={[pileStyles.flyingContainer, { pointerEvents: "none" as const }]}>
-      <Animated.View style={[pileStyles.flyingInner, { width: box.w, height: box.h }, aStyle]}>
+      <Animated.View
+        testID="flying-cards"
+        style={[pileStyles.flyingInner, { width: box.w, height: box.h }, aStyle]}
+      >
         {arc.map((place, i) => (
           <View
             key={cards[i].id}

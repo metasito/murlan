@@ -6,7 +6,7 @@ import assert from "node:assert/strict";
 import { readdirSync, readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
-import { CARD_H, CARD_W } from "../components/cardFaceModel.ts";
+import { CARD_H, CARD_W, BACK_SCALE } from "../components/cardFaceModel.ts";
 import { TOUCH_TARGET_MIN } from "../lib/tokens.ts";
 import {
   actionBtnSize,
@@ -22,6 +22,14 @@ import {
   seatDirection,
   arrangeOpponents,
   handCountOf,
+  displayedHandCount,
+  fanCounts,
+  flightOrigin,
+  seatFanArc,
+  SEAT_DISC,
+  SEAT_GAP,
+  seatLabelH,
+  FAN_DRAWN_CARDS,
   comboKey,
   advancePile,
   roundClosedWithWinner,
@@ -322,6 +330,24 @@ describe("handCountOf", () => {
 
   test("a handCount of zero is honoured, not treated as missing", () => {
     assert.equal(handCountOf({ hand: [{}, {}], handCount: 0 } as any), 0);
+  });
+});
+
+describe("displayedHandCount", () => {
+  test("no flight: the display is exactly the authoritative count", () => {
+    assert.equal(displayedHandCount(14, 0), 14);
+  });
+
+  test("mid-flight: the cards in the air are added back, reproducing the pre-play count", () => {
+    // The engine already dropped the seat to 11 for a 3-card play; the fan
+    // and the badge should still read the 14 the player saw before throwing.
+    assert.equal(displayedHandCount(11, 3), 14);
+  });
+
+  test("once the flight lands, cardsInFlight is 0 and the sum already is handCount", () => {
+    // No step-down to schedule: the same seat that read 14 during the flight
+    // reads 11 the instant cardsInFlight returns to 0, with nothing else changing.
+    assert.equal(displayedHandCount(11, 0), 11);
   });
 });
 
@@ -1264,6 +1290,140 @@ describe("impact feedback is timed to the card landing, not to the throw", () =>
     // setTimeout truncates, and a fractional delay would drift against the
     // animation it is supposed to match.
     assert.equal(impactDelayMs(false) % 1, 0);
+  });
+});
+
+// ─── Flight origin ────────────────────────────────────────────────────────────
+
+describe("flightOrigin", () => {
+  // Deliberately asymmetric left/right pads, so a test that happens to pass
+  // only because the table is centred cannot hide here.
+  const base = {
+    scale: 1,
+    windowWidth: 800,
+    windowHeight: 600,
+    tableLeft: 40,
+    tableRight: 20,
+    tableTop: 10,
+    handZoneH: 100,
+    topDisplayedCount: 0,
+  };
+
+  test("bottom: the throw starts at the hand row's own vertical centre", () => {
+    // handRowCenterY = windowHeight - handZoneH/2 = 600-50 = 550;
+    // topSectionH (no fan) = 77, pileCenterY = 293.5 (worked in the `top`
+    // test below, which shares this same pile centre); dy = 550-293.5 = 256.5.
+    assert.deepEqual(flightOrigin({ ...base, dir: "bottom" }), { dx: 0, dy: 256.5 });
+  });
+
+  test("bottom: the pile's own centre, not a fixed constant, is what scale moves through", () => {
+    // seatLabelH(2)=84, ringSize(2)=66, topSectionH=150; midH=590-150-100=340;
+    // pileCenterY=10+150+170=330; handRowCenterY is unchanged at 550 (handZoneH
+    // is a caller-measured input here, not itself a function of scale); dy=220.
+    assert.equal(flightOrigin({ ...base, dir: "bottom", scale: 2 }).dy, 220);
+  });
+
+  test("top: dx is 0 — the top seat and the pile share the same horizontal centre", () => {
+    assert.equal(flightOrigin({ ...base, dir: "top" }).dx, 0);
+  });
+
+  test("top: the throw starts above the pile, at the ring's own line", () => {
+    // Worked by hand from seatLabelH/SEAT_DISC/CHIP_H/Spacing — see the ADR.
+    // seatLabelH(1) = 17 + CHIP_H(1)=23 + Spacing.xs=4 = 44; ringSize = 33.
+    // topSectionH (no fan) = 44 + 33 = 77; contentH = 600-10 = 590;
+    // midH = 590-77-100 = 413; pileCenterY = 10+77+413/2 = 293.5;
+    // ringCenterY = 10+44+33/2 = 70.5; dy = 70.5-293.5 = -223.
+    assert.equal(flightOrigin({ ...base, dir: "top" }).dy, -223);
+  });
+
+  test("top: a bigger held fan pushes the pile down, lengthening the throw", () => {
+    const noFan = flightOrigin({ ...base, dir: "top", topDisplayedCount: 0 }).dy;
+    const withFan = flightOrigin({ ...base, dir: "top", topDisplayedCount: 5 }).dy;
+    // The ring never moves; only the pile does, so the gap between them grows.
+    assert.ok(withFan < noFan, `expected the throw to lengthen: ${withFan} was not < ${noFan}`);
+  });
+
+  test("top: the fan's own cap means a held count past it changes nothing further", () => {
+    const atCap = flightOrigin({ ...base, dir: "top", topDisplayedCount: FAN_DRAWN_CARDS.top });
+    const wayPastCap = flightOrigin({ ...base, dir: "top", topDisplayedCount: 21 });
+    assert.deepEqual(wayPastCap, atCap);
+  });
+
+  test("top: a held fan's own height is folded into the pile's offset, not just its sign", () => {
+    // Same solve `topFanHeight` performs internally (`seatFanArc`), so this
+    // pins the arithmetic that combines it with `seatLabelH`/`SEAT_DISC`/
+    // `SEAT_GAP`, not the geometry of the solve itself.
+    const topDisplayedCount = 3;
+    const fanH = seatFanArc(topDisplayedCount, BACK_SCALE).bounds.h;
+    const topSectionH = seatLabelH(1) + SEAT_DISC + SEAT_GAP + fanH;
+    const contentH = base.windowHeight - base.tableTop;
+    const midH = contentH - topSectionH - base.handZoneH;
+    const pileCenterY = base.tableTop + topSectionH + midH / 2;
+    const ringCenterY = base.tableTop + seatLabelH(1) + SEAT_DISC / 2;
+    assert.equal(
+      flightOrigin({ ...base, dir: "top", topDisplayedCount }).dy,
+      ringCenterY - pileCenterY
+    );
+  });
+
+  test("left/right: dy is 0 — a side seat's ring sits on the same line as the pile", () => {
+    assert.equal(flightOrigin({ ...base, dir: "left" }).dy, 0);
+    assert.equal(flightOrigin({ ...base, dir: "right" }).dy, 0);
+  });
+
+  test("left: the throw starts at the ring flush against the rail", () => {
+    // tableW = 800-40-20 = 740; pileCenterX = 40+370 = 410;
+    // ringCenterX = 40 + Spacing.sm(8) + SEAT_DISC/2(16.5) = 64.5; dx = -345.5.
+    assert.equal(flightOrigin({ ...base, dir: "left" }).dx, -345.5);
+  });
+
+  test("right: the throw starts at the ring flush against the opposite edge", () => {
+    assert.equal(flightOrigin({ ...base, dir: "right" }).dx, 345.5);
+  });
+
+  test("left and right are mirror images of the same pile centre, however asymmetric the rail is", () => {
+    const left = flightOrigin({ ...base, dir: "left" }).dx;
+    const right = flightOrigin({ ...base, dir: "right" }).dx;
+    assert.equal(left + right, 0);
+  });
+
+  test("SEAT_DISC and FAN_DRAWN_CARDS.top are the numbers a throw's origin is measured against", () => {
+    // Pinned so a change to either is a deliberate edit here too, not a
+    // silent drift between the seat's own rendering and the throw's origin.
+    assert.equal(SEAT_DISC, 33);
+    assert.equal(FAN_DRAWN_CARDS.top, 7);
+  });
+
+  // A copy of SEAT_DISC also holds the pinned value above, so that assertion
+  // alone can never see one — only the source scan can (same reasoning as the
+  // CARD_W/CARD_H scan further up this file).
+  test("SEAT_DISC is declared in gameTableModel.ts and nowhere else", () => {
+    const SEAT_DISC_DECL = /(?<![\w$])(?:const|let|var)\s+SEAT_DISC(?![\w$])/g;
+    assert.deepEqual(scan(SEAT_DISC_DECL), ["components/gameTableModel.ts: const SEAT_DISC"]);
+  });
+});
+
+describe("fanCounts", () => {
+  test("under cap: identical to subtracting departing from the capped total", () => {
+    assert.deepEqual(fanCounts(4, 2, 5), { remaining: 2, departing: 2 });
+  });
+
+  test("no flight: everything held is drawn, nothing departs", () => {
+    assert.deepEqual(fanCounts(4, 0, 5), { remaining: 4, departing: 0 });
+  });
+
+  test("at cap: the fan stays at cap through the flight instead of dipping and popping back", () => {
+    // A left seat holding 10 that plays 3: the post-play hand is 7, still past
+    // the cap of 5, so the fan never had fewer than 5 to show and nothing
+    // should visibly depart.
+    assert.deepEqual(fanCounts(10, 3, 5), { remaining: 5, departing: 0 });
+  });
+
+  test("crossing the cap: only the room the play actually freed up departs", () => {
+    // Pre-play 6 (1 over cap of 5) playing 3 drops the hand to 3, under cap —
+    // the fan does shrink, but the seat only ever drew 5 backs to begin with,
+    // so only 2 of the 3 played cards were ever drawn as one.
+    assert.deepEqual(fanCounts(6, 3, 5), { remaining: 3, departing: 2 });
   });
 });
 
