@@ -209,6 +209,22 @@ infrastructure false.`,
   )
 }
 
+// `agent()` returns null when a subagent dies on a terminal API error after its retries. A DNS
+// outage killed five of them mid-run and the next line read `.infrastructure` off null, so the
+// workflow threw and the ticket kept its `in-progress` label with nobody left to release it.
+// A stage that never reported is not a verdict — it is the same "nothing was learned" case as a
+// CI run that never started, which the caller already knows how to end cleanly.
+function reported(verify, review) {
+  return [
+    verify ?? {
+      pass: false,
+      infrastructure: true,
+      failedStep: 'the verify agent died before reporting',
+    },
+    review ?? { findings: [], failedLenses: ['every lens — the review agent died before reporting'] },
+  ]
+}
+
 async function runReview(claim, scopeNote, onlyKeys, prose, sinceRef) {
   // The scope has to be the git command, not a sentence above it. Told "review only the fix" and
   // handed `origin/main...HEAD` anyway, three fresh lenses re-read the whole branch every round
@@ -404,6 +420,7 @@ Report: committed, commitSha, prNumber, summary, filesTouched, prose.`,
     () => runVerify(claim, impl.prNumber, 1),
     () => runReview(claim, null, null, impl.prose, null),
   ])
+  ;[verify, review] = reported(verify, review)
   // The lenses advance whatever they said — they have read that commit, and re-reading it is what
   // produced a fresh crop of prose objections every round. CI needs no such marker: every push
   // runs the whole workflow, and ci.yml's own scope job decides what the diff can skip.
@@ -455,6 +472,7 @@ Report: committed, commitSha, summary, filesTouched, prose.`,
       () => runVerify(claim, impl.prNumber, round + 1),
       () => runReview(claim, confirmed.map((f) => f.summary).join('; '), lensesThatFound, fix.prose, reviewedSha),
     ])
+    ;[verify, review] = reported(verify, review)
     reviewedSha = fix.commitSha || reviewedSha
     // A run that never started is not a defect to chase: the fix loop would spend its rounds on
     // a failure nothing reported, and the branch would be handed back as though it were red.
