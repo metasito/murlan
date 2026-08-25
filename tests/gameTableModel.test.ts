@@ -925,6 +925,17 @@ describe("railWidth", () => {
   });
 });
 
+describe("the rail's vertical pad", () => {
+  // railWidth already floors the horizontal axis against a raw inset; the
+  // knobs at the rail's own top and bottom need the same floor every other
+  // element pinned to an edge gets (tableTop/tableBottom), or a device with
+  // insets.top === 0 (an iPhone in landscape) flushes a knob against the
+  // screen edge.
+  test("the control rail and its settings sheet take the floored pad, not the raw inset", () => {
+    assert.deepEqual(scan(/(?:top|bottom)Pad=\{frame\.(?:topPad|bottomPad)\}/g), []);
+  });
+});
+
 describe("computeTableFrame", () => {
   const insets = { top: 20, bottom: 10, left: 44, right: 44 };
   const frameOf = (over: Partial<{ width: number; insets: typeof insets; scale: number }> = {}) =>

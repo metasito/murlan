@@ -1380,8 +1380,8 @@ export function GameTable({
           column, the reactions knob its foot, and the cutout the gap between. */}
       <ControlRail
         width={frame.rail}
-        topPad={frame.topPad}
-        bottomPad={frame.bottomPad}
+        topPad={frame.tableTop}
+        bottomPad={frame.tableBottom}
         top={
           <RailKnob
             onPress={() => setSettingsOpen((open) => !open)}
@@ -1402,8 +1402,8 @@ export function GameTable({
       {settingsOpen && (
         <GameSettingsSheet
           rail={frame.rail}
-          topPad={frame.topPad}
-          bottomPad={frame.bottomPad}
+          topPad={frame.tableTop}
+          bottomPad={frame.tableBottom}
           scale={scale}
           onClose={closeSettings}
           focusMode={focusMode}
