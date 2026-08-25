@@ -21,6 +21,11 @@ const MODELS = {
   verify: 'sonnet', // long, scripted, and has to read failures back accurately
   fix: 'sonnet',
   review: 'opus', // CI proves the suite still passes; only this asks whether the change is right
+  // The two-axis pass on a small diff reads conventions and the spec, which is not the judgement
+  // Opus is kept for. CLAUDE.md's "independent review is Opus" was written while CI was
+  // billing-blocked and review was the only thing between a defect and an --admin merge; the
+  // suite runs free and green again, so that reason has expired for the small lane.
+  reviewSmall: 'sonnet',
   land: 'sonnet',
   cleanup: 'sonnet', // deletes branches and kills processes on a judgement call
 }
@@ -100,6 +105,9 @@ const CLAIM_SCHEMA = {
     number: { type: 'number' },
     branch: { type: 'string' },
     title: { type: 'string' },
+    // Drives how deeply the diff is reviewed and on which model, so an absent or wrong value
+    // costs real money either way. Unset reads as large, which is the safe direction.
+    size: { type: 'string', enum: ['XS', 'S', 'M', 'L', 'XL'] },
     filesTouched: { type: 'array', items: { type: 'string' } },
     worktreePath: { type: 'string' },
     escalate: { type: 'boolean' },
@@ -246,6 +254,21 @@ function reported(verify, review) {
   ]
 }
 
+// CLAUDE.md sizes review and the pipeline did not: "An `size:XS`/`size:S` item gets one pass; the
+// two-axis code-review is the fit, because standards and spec are what a small diff gets wrong.
+// Reserve a second correctness pass for `size:M` and up, or any diff touching the engine, the
+// socket protocol or auth." Three Opus lenses ran on everything instead, and every review spiral
+// it produced — #291 (two markdown files, 11 -> 18 -> 14 findings), #294, #223 — was an XS/S
+// ticket. Adversarial is that second pass: it is the one that runs the guard against broken code.
+const DEEP_SURFACE = /lib\/gameEngine|server\/socket|shared\/events|server\/auth|server\/session/
+function reviewPlan(claim) {
+  const small = claim.size === 'XS' || claim.size === 'S'
+  const deepFile = (claim.filesTouched || []).find((f) => DEEP_SURFACE.test(f))
+  if (!small) return { keys: ['standards', 'spec', 'adversarial'], model: MODELS.review, why: `size:${claim.size || '?'}` }
+  if (deepFile) return { keys: ['standards', 'spec', 'adversarial'], model: MODELS.review, why: `touches ${deepFile}` }
+  return { keys: ['standards', 'spec'], model: MODELS.reviewSmall, why: `size:${claim.size}, no deep surface` }
+}
+
 async function runReview(claim, scopeNote, onlyKeys, prose, sinceRef) {
   // The scope has to be the git command, not a sentence above it. Told "review only the fix" and
   // handed `origin/main...HEAD` anyway, three fresh lenses re-read the whole branch every round
@@ -287,10 +310,16 @@ still passes on broken code is a CONFIRMED finding. Report: file, line, summary,
   // lenses read a diff that has not moved since they cleared it. And a lens that reviews
   // behaviour has none to review in a prose diff — on the last docs ticket the adversarial lens
   // ran three times and reported, each time, that there was nothing to invert.
-  const applicable = allLenses.filter((l) => !(l.needsCode && prose))
+  const plan = reviewPlan(claim)
+  const applicable = allLenses
+    .filter((l) => !(l.needsCode && prose))
+    .filter((l) => plan.keys.includes(l.key))
   const lenses = onlyKeys ? applicable.filter((l) => onlyKeys.includes(l.key)) : applicable
+  if (!onlyKeys) {
+    log(`Review: ${lenses.map((l) => l.key).join(' + ') || 'none'} on ${plan.model} (${plan.why}).`)
+  }
   const results = await parallel(
-    lenses.map((l) => () => agent(l.prompt, { model: MODELS.review, phase: 'Review', label: label(`review:${l.key}`), schema: FINDING_SCHEMA }))
+    lenses.map((l) => () => agent(l.prompt, { model: plan.model, phase: 'Review', label: label(`review:${l.key}`), schema: FINDING_SCHEMA }))
   )
   const failedLenses = lenses.filter((l, i) => !results[i]).map((l) => l.key)
   if (failedLenses.length) {
@@ -373,8 +402,10 @@ file, never a shell argument:
 gh issue view <NUM> --repo ${REPO} --json body,comments --jq '{filesTouched:["lib/foo.ts","tests/foo.test.ts"],body:([.body]+[.comments[].body]|join("\\n\\n"))}' > /tmp/ticket-pipeline-gate.json
 npx tsx lib/ticketPipeline/gate.ts < /tmp/ticket-pipeline-gate.json
 
-Report: claimed, number, branch, title, worktreePath, filesTouched (that same repo-relative list), escalate and
-gateReason taken verbatim from the gate's JSON stdout, reason. If either gate command fails, or
+Report: claimed, number, branch, title, worktreePath, filesTouched (that same repo-relative list),
+size (the ticket's own \`size:*\` label as XS/S/M/L/XL — omit it if the ticket carries none rather
+than guessing; the review stage reads it to decide how deeply to review, and an absent one is
+treated as large), escalate and gateReason taken verbatim from the gate's JSON stdout, reason. If either gate command fails, or
 its stdout is not the JSON object the module prints, report escalate: true with the failure as
 gateReason — this is the pipeline's only escalation valve, so a gate that could not run must never
 answer "no escalation needed". If it does escalate, hand the ticket back before you report: remove
