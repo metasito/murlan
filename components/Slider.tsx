@@ -18,6 +18,17 @@ const TRACK_H = 4;
 const THUMB = physicalTouchTarget(1);
 /** One VoiceOver/keyboard press worth of adjustment. */
 const STEP = 0.05;
+/** A slider's keys are both axes, not just the horizontal pair. */
+const KEY_DELTA: Record<string, number> = {
+  ArrowRight: STEP,
+  ArrowUp: STEP,
+  ArrowLeft: -STEP,
+  ArrowDown: -STEP,
+};
+/** Horizontal travel before the pan claims the touch from the sheet's scroll. */
+const ACTIVATE_DX = 10;
+/** The drag emits one value per whole percent, which is all the label shows. */
+const EMIT_STEPS = 100;
 const DISABLED_OPACITY = 0.4;
 
 function clamp(v: number): number {
@@ -50,7 +61,9 @@ export function Slider({
   // (tests/reactCompiler.test.ts).
   const isDragging = useSharedValue(false);
   const dragStart = useSharedValue(value);
+  const dragStartX = useSharedValue(0);
   const dragProgress = useSharedValue(value);
+  const emitted = useSharedValue(value);
 
   function onLayout(e: LayoutChangeEvent) {
     travel.value = Math.max(0, e.nativeEvent.layout.width - THUMB);
@@ -66,14 +79,27 @@ export function Slider({
 
   const pan = Gesture.Pan()
     .enabled(!disabled)
-    .onStart(() => {
+    // Horizontal only: the settings sheet scrolls vertically under this row, and
+    // a pan that claims every direction is a row you cannot scroll the sheet by.
+    .activeOffsetX([-ACTIVATE_DX, ACTIVATE_DX])
+    .onStart((e) => {
       isDragging.value = true;
       dragStart.value = value;
+      // Activation has already cost ACTIVATE_DX of travel; counting it jumps.
+      dragStartX.value = e.translationX;
+      emitted.value = value;
     })
     .onUpdate((e) => {
       if (travel.value <= 0) return;
-      dragProgress.value = clamp(dragStart.value + e.translationX / travel.value);
-      scheduleOnRN(onValueChange, dragProgress.value);
+      const next = clamp(dragStart.value + (e.translationX - dragStartX.value) / travel.value);
+      dragProgress.value = next;
+      // Every settled value is written to storage (context/SettingsContext.tsx),
+      // so the drag emits per visible step rather than per frame.
+      const stepped = Math.round(next * EMIT_STEPS) / EMIT_STEPS;
+      if (stepped !== emitted.value) {
+        emitted.value = stepped;
+        scheduleOnRN(onValueChange, stepped);
+      }
     })
     .onEnd(() => {
       isDragging.value = false;
@@ -87,9 +113,13 @@ export function Slider({
   const thumbStyle = useAnimatedStyle(() => ({
     transform: [{ translateX: displayProgress.value * travel.value }],
   }));
-  const fillStyle = useAnimatedStyle(() => ({
-    transform: [{ scaleX: Math.max(displayProgress.value, 0.001) }],
-  }));
+  // The fill ends under the thumb's centre, and the thumb's travel is the
+  // container's width short of its own diameter.
+  const fillStyle = useAnimatedStyle(() => {
+    const width = travel.value + THUMB;
+    const filled = displayProgress.value * travel.value + THUMB / 2;
+    return { transform: [{ scaleX: Math.max(filled / width, 0.001) }] };
+  });
 
   // react-native-web forwards this straight to the DOM; native reaches
   // "adjustable" through VoiceOver/TalkBack's own swipe gesture instead.
@@ -98,13 +128,10 @@ export function Slider({
       ? {
           tabIndex: (disabled ? -1 : 0) as 0 | -1,
           onKeyDown: (e: { key: string; preventDefault?: () => void }) => {
-            if (e.key === "ArrowRight") {
-              e.preventDefault?.();
-              step(STEP);
-            } else if (e.key === "ArrowLeft") {
-              e.preventDefault?.();
-              step(-STEP);
-            }
+            const delta = KEY_DELTA[e.key];
+            if (delta === undefined) return;
+            e.preventDefault?.();
+            step(delta);
           },
         }
       : {};
@@ -114,6 +141,9 @@ export function Slider({
       <View
         onLayout={onLayout}
         style={[styles.container, disabled && styles.disabled]}
+        // The children are hidden, so without this iOS has no element here at
+        // all: `accessible` is what sets `isAccessibilityElement` on a View.
+        accessible
         accessibilityLabel={a11yLabel}
         {...a11yState({ role: "adjustable", disabled })}
         {...a11yValue({ min: 0, max: 1, now: value, text: valueText })}

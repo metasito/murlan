@@ -10,6 +10,7 @@ import {
   TextInput,
   KeyboardAvoidingView,
 } from "react-native";
+import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { useRouter, usePathname } from "expo-router";
 import Feather from "@expo/vector-icons/Feather";
 import { LinearGradient } from "expo-linear-gradient";
@@ -253,7 +254,9 @@ export function SettingsModal({ visible, onClose }: Props) {
       // modal opens in landscape and leaves the screen behind it mis-laid-out.
       supportedOrientations={["portrait", "landscape"]}
     >
-      <View style={styles.backdrop}>
+      {/* A Modal renders in its own native window, outside the root view the
+          gesture handler attaches to, so the volume sliders need their own. */}
+      <GestureHandlerRootView style={styles.backdrop}>
         <Pressable
           style={StyleSheet.absoluteFill}
           onPress={onClose}
@@ -532,7 +535,7 @@ export function SettingsModal({ visible, onClose }: Props) {
         <NotificationBanner notification={notification} onDismiss={dismissNotification} />
         <ConfirmDialog request={confirming} onClose={() => setConfirming(null)} />
         <OfflineBanner />
-      </View>
+      </GestureHandlerRootView>
     </Modal>
   );
 }

@@ -48,6 +48,9 @@ describe('Slider', () => {
   it('is reachable as an adjustable control with a live value', async () => {
     await render(<Slider value={0.65} onValueChange={() => {}} a11yLabel="Music volume" valueText="65%" />);
     const control = screen.getByLabelText('Music volume');
+    // Without `accessible` a View is no element at all on iOS, and the
+    // children carrying the label are hidden.
+    expect(control.props.accessible).toBe(true);
     expect(control.props.accessibilityRole).toBe('adjustable');
     expect(control.props.accessibilityValue).toEqual({ min: 0, max: 1, now: 0.65, text: '65%' });
   });
