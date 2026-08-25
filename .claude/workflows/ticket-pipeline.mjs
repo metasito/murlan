@@ -40,7 +40,12 @@ if (forcedTicket !== undefined && !Number.isInteger(forcedTicket)) {
 const MAX_FIX_ROUNDS = 4
 const REPO = 'metasito/murlan'
 
+const RULES_NOTE =
+  'Read docs/agents/RULES.md before you start and follow it — it is the whole ruleset, ' +
+  'numbered, and shorter than this prompt. Where it and this prompt disagree, it wins.'
+
 const BASH_NOTE = [
+  RULES_NOTE,
   'Use the Bash tool (POSIX sh), not PowerShell.',
   'Never pass JSON as a command-line argument: the shell layer collapses the doubled backslash',
   'JSON uses for a literal backslash, which corrupts the payload. Each module below reads stdin.',
@@ -52,26 +57,26 @@ const BASH_NOTE = [
 
 // ci.yml runs the whole sweep on the push — typecheck+tests+lint 223s, build-and-boot 162s,
 // browser 526s. Anything a stage repeats locally is those minutes paid twice.
-const LOCAL_TEST_NOTE = `What to run here, and what not to.
+const LOCAL_TEST_NOTE = `Before you push, once:
 
-While iterating, run only what you are iterating on: \`npm run typecheck\`, \`node --test <the one
-file>\`, and for a browser test \`npx playwright test --config tests/e2e/playwright.config.ts
-<one-spec.ts>\` or the same with \`-g "<one test name>"\`.
+  npm run agent:check
 
-Once, before you push: \`npm run typecheck && npm run lint && npm test\`. Around ninety seconds
-together — \`npm test\` alone is 17s for 1164 tests — against a nine-minute round to learn the same
-thing. Several of those tests are structural source-scans that no amount of running your own file
-will reach: a11y props the web build drops, tokens used in the wrong role, a second declaration of
-a shared constant. They fail on code that works.
+That is typecheck, tests and lint together. It records its verdict against the tree, so calling it
+again after no edit replays instead of re-running — checking twice costs nothing, and there is no
+reason to run the three separately.
 
-Never run \`npm run test:e2e\` (526s), \`npm run test:native\`, or \`npm run verify\` (which is all of
-them). Those are the sweep, and the run on your push is already doing it against a clean build.
+While iterating, run only what you are iterating on: \`node --test <the one file>\`, or
+\`npx playwright test --config tests/e2e/playwright.config.ts <one-spec.ts>\`.
 
 \`E2E_SKIP_BUILD=1\` reuses the existing dist/ instead of rebuilding it, which is the difference
 between a usable browser loop and an unusable one. It is safe only while your edit is confined to
 the spec file: dist/ is a *build* of app/, components/ and lib/, so with that flag set a change to
-any of those is not in the bundle under test and the run can pass having exercised nothing. After
-every change to app code, run once without the flag before you trust a green.`
+any of those is not in the bundle under test and the run can pass having exercised nothing.
+
+\`npm run test:native\` (2 min) and \`npm run test:e2e\` (9 min) are yours to judge. ci.yml runs
+both, so do not run them by habit — but run one when your change could break what only it can see:
+a native render, a browser interaction, a label a spec clicks by name. Never run
+\`npm run verify\`, which is the whole sweep.`
 
 function sq(text) {
   return `'${String(text).replace(/'/g, "'\\''")}'`
@@ -170,17 +175,16 @@ this branch's diff does not exist. So name ${claim.worktreePath} in the prompt o
 send, and read "no diff to review" from any of them as proof it stood in the wrong checkout —
 never as a clean result. Re-dispatch it with the path before believing it.
 
-The worktree is nested inside the checkout and has **no \`node_modules\` directory of its own** —
-Node finds the real one by walking up, so imports and \`require.resolve\` work, but a path like
-\`node_modules/some-package\` does not exist here. To read an installed package's source, path it
-from the repo root instead:
+The worktree has **no \`node_modules\` directory of its own** — Node finds the real one by walking
+up, so imports and \`require.resolve\` work, but the path \`node_modules/<package>\` does not exist
+here. Never search the filesystem for a package. Ask Node where it is:
 
-  ls "$(git rev-parse --show-toplevel)/node_modules/<package>"
+  node -e "console.log(require.resolve('<package>'))"
 
-One run answered a missing \`node_modules/\` by falling back to \`find / -maxdepth 6\`, which cost
-two minutes and found nothing. Never search the filesystem for a package — resolve it:
+\`git rev-parse --show-toplevel\` does NOT help: inside a worktree it returns the worktree's own
+root, the one directory guaranteed to be empty. The install's directory is:
 
-  node -e "console.log(require.resolve('<package>'))"`
+  dirname "$(git rev-parse --path-format=absolute --git-common-dir)"`
 }
 
 // ci.yml runs typecheck, tests, lint, native, browser and build-and-boot against the pushed
