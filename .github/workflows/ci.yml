@@ -26,6 +26,11 @@ env:
   # local and CI runs identical. The `build` job is deliberately not on this —
   # it runs production's Node, for the reason given there.
   NODE_VERSION: "24"
+  # Single source of truth for the secret-scan image: the scan step and the
+  # self-test must run the exact same binary, or a version bump to one and not
+  # the other leaves the self-test attesting to a scanner that isn't the one
+  # guarding the repo.
+  GITLEAKS_IMAGE: "zricethezav/gitleaks:v8.30.1"
 
 jobs:
   # Two reasons the suite below can be skipped, both settled here: the commit is
@@ -95,10 +100,10 @@ jobs:
             echo "app=true" >> "$GITHUB_OUTPUT"
           fi
 
-  # #277's audit was a one-off, run by hand from a session that has since
-  # ended. This is the ongoing replacement, and it runs unconditionally rather
-  # than depending on `scope`: #277's false positives were in `attached_assets/`
-  # and `.claude/`, exactly the paths `scope` treats as non-app.
+  # Runs unconditionally rather than depending on `scope`: `scope` exempts
+  # doc-only changes (docs/, .claude/, *.md), but a secret can land in exactly
+  # those paths — #277 found one under `.claude/` — so gating this job on
+  # `scope` would let it through unscanned.
   secrets:
     name: Secret scan
     runs-on: ubuntu-latest
@@ -116,13 +121,12 @@ jobs:
 
       # The pinned image, not the official gitleaks-action: that action scans
       # only the commits a push or PR adds, and this needs the whole history
-      # every run.
+      # every run. Runs through the shared script (see there) rather than a
+      # docker command written out here, so the self-test below exercises the
+      # identical invocation.
       - name: gitleaks
         shell: bash
-        run: |
-          set -o pipefail
-          docker run --rm -v "$PWD:/repo" -w /repo zricethezav/gitleaks:v8.30.1 \
-            detect --source=/repo --redact --no-color -v 2>&1 | tee gitleaks-output.txt
+        run: bash .github/scripts/gitleaks-scan.sh "$PWD" gitleaks-output.txt
 
       # gitleaks logs "N commits scanned" to stderr, not stdout — the step
       # above must fold both into gitleaks-output.txt or this reads an empty
@@ -138,7 +142,12 @@ jobs:
       # A scanner nobody has seen fail is a scanner nobody knows is running.
       # The planted credential is assembled at runtime so no committed line
       # ever matches the rule it exists to prove fires — including in the
-      # history of this very step.
+      # history of this very step. It carries no key/api/token/secret keyword,
+      # so generic-api-key cannot substitute for the rule under test; its
+      # charset is restricted to aws-access-token's own `[A-Z2-7]` (no
+      # 0/1/8/9), which the regex requires character-for-character, and drawn
+      # without repeats so its Shannon entropy always clears the rule's
+      # threshold — an unfiltered A-Z0-9 draw fails both, unpredictably.
       - name: Self-test — a planted credential still fires the gate
         shell: bash
         run: |
@@ -147,17 +156,15 @@ jobs:
           git -C "$scratch" config user.email "ci@murlan.invalid"
           git -C "$scratch" config user.name "CI"
           cp .gitleaks.toml "$scratch/.gitleaks.toml"
-          suffix=$(head -c 64 /dev/urandom | base64 | tr -dc 'A-Z0-9' | head -c 16)
-          printf 'AWS_KEY = "AKIA%s"\n' "$suffix" > "$scratch/planted.txt"
+          suffix=$(head -c 8192 /dev/urandom | LC_ALL=C tr -dc 'A-Z2-7' | fold -w1 | awk '!seen[$0]++' | head -16 | tr -d '\n')
+          printf 'AKIA%s\n' "$suffix" > "$scratch/planted.txt"
           git -C "$scratch" add -A
           git -C "$scratch" commit -q -m "planted"
 
           # bash runs this script with -e, and the leak-found exit below is
           # the expected outcome, not a script error — `|| status=$?` reads
           # it without that exit code aborting the step before it is checked.
-          set -o pipefail
-          docker run --rm -v "$scratch:/repo" -w /repo zricethezav/gitleaks:v8.30.1 \
-            detect --source=/repo --redact --no-color -v 2>&1 | tee gitleaks-selftest.txt || status=$?
+          bash .github/scripts/gitleaks-scan.sh "$scratch" gitleaks-selftest.txt || status=$?
           status=${status:-0}
           rm -rf "$scratch"
 
@@ -167,6 +174,10 @@ jobs:
           fi
           if ! grep -q "leaks found: 1" gitleaks-selftest.txt; then
             echo "::error::gitleaks exited 1 but did not report the planted finding."
+            exit 1
+          fi
+          if ! grep -qE 'RuleID:[[:space:]]+aws-access-token' gitleaks-selftest.txt; then
+            echo "::error::the planted credential fired a different rule than aws-access-token — the self-test no longer proves what it claims."
             exit 1
           fi
 

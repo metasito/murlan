@@ -12,6 +12,11 @@ useDefault = true
 id = "generic-api-key"
 
 [rules.allowlist]
+# `paths` and `regexes` match with OR by default, so `paths` alone would
+# blind this rule to every finding at that path, not just the one below.
+# `condition = "AND"` requires both, so a different generic-api-key finding
+# landing at the same path still fires.
+condition = "AND"
 # A fabricated example in a snippet demonstrating the wrong way to hold a key.
 regexes = ['''sk_live_abc123xyz''']
 paths = ['''\.claude/agents/tier-2-power/security-specialist\.md''']
@@ -20,6 +25,8 @@ paths = ['''\.claude/agents/tier-2-power/security-specialist\.md''']
 id = "aws-access-token"
 
 [rules.allowlist]
+# See the AND note above — same reasoning, same rule id.
+condition = "AND"
 # Perplexity's own presigned-upload STS token, expired 2026-03-04; both files
 # are absent from HEAD.
 regexes = ['''ASIA2F3EMEYEYTWUKMG2''']
