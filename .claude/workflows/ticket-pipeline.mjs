@@ -4,7 +4,7 @@ export const meta = {
   phases: [
     { title: 'Claim', detail: 'claim the routed ticket and run the design-first gate', model: 'haiku' },
     { title: 'Implement', detail: 'mattpocock-skills:implement, commit only', model: 'sonnet' },
-    { title: 'Review', detail: '/code-review --fix in the worktree, then push and open the PR', model: 'opus' },
+    { title: 'Review', detail: 'read the diff cold in the worktree, then push and open the PR', model: 'opus' },
     { title: 'Verify', detail: "ci.yml's verdict on the pushed branch", model: 'sonnet' },
     { title: 'Fix', detail: 'make a red run green', model: 'sonnet' },
     { title: 'Land', model: 'sonnet' },
@@ -17,7 +17,7 @@ export const meta = {
 const MODELS = {
   claim: 'haiku', // next-ticket.mjs, two gh writes, one CLI whose failure mode is fail-safe
   implement: 'sonnet',
-  review: 'opus', // independent review is the only thing between a defect and an --admin merge
+  review: 'opus', // reads a diff cold and has to disagree with it; the one stage that is judgement
   verify: 'sonnet', // long, scripted, and has to read failures back accurately
   fix: 'sonnet',
   land: 'sonnet',
@@ -57,9 +57,14 @@ const BASH_NOTE = [
 
 // Checking is RULES.md's job, not this prompt's: stating it in both is how the two drift and an
 // agent follows whichever it read last. `tests/rulesAreSingleSourced.test.ts` fails if it returns.
-const LOCAL_TEST_NOTE =
-  'Follow `docs/agents/RULES.md` § "Checking your work" — rules 1 to 6. It says what to run ' +
-  'while iterating, what to run once before pushing, and which suites are your judgement call.'
+const LOCAL_TEST_NOTE = [
+  'Follow `docs/agents/RULES.md` § "Checking your work" — rules 1 to 6. It says what to run',
+  'while iterating, what to run once before pushing, and which suites are your judgement call.',
+  "When the issue carries a `## Checks` section, that section is this ticket's list: run what it",
+  'names and nothing further. It was written by someone who had read the diff coming, so it',
+  'settles the judgement call rule 3 leaves you — reaching past it costs minutes CI is already',
+  'spending. With no such section, judge it yourself from the files you touched.',
+].join(' ')
 
 function sq(text) {
   return `'${String(text).replace(/'/g, "'\\''")}'`
@@ -307,7 +312,11 @@ later stage reads it from GitHub itself.`,
   claimOpen = true
   claimedNumber = claim.number
   state.localBranch = claim.branch
-  state.worktreePath = claim.worktreePath ?? null
+  // Forward slashes, always. The path travels to the cleanup stage inside a JSON payload that
+  // becomes a tool-call argument, and a doubled backslash collapses on the way — the shape
+  // BASH_NOTE warns about, which this line stops the pipeline handing itself. Node, git and
+  // `toPosixPath` all read the forward-slash form on Windows.
+  state.worktreePath = claim.worktreePath ? claim.worktreePath.split('\\').join('/') : null
 
   if (claim.escalate) {
     log(`#${claim.number} handed back: ${claim.gateReason}`)
@@ -414,10 +423,24 @@ Issue #${claim.number} is committed on ${claim.branch} but not pushed. Review it
 That diff is non-empty. **If it is empty you are in the wrong checkout** — stop and report
 pushed: false rather than reviewing nothing.
 
-Run \`/code-review --fix\` over it, from here. Read what it changed; you own the result, it does
-not. Then re-run the narrow tests it touched, because a fix that improves the code can still make
-a test wrong. Anything it could not fix, fix yourself or say why it stands in your summary. Do not
-push past a correctness finding. Commit whatever the review changed.
+Read that diff yourself, cold, against the issue it claims to close — you are the first reader
+who did not write it. **Do not dispatch a sub-agent to review it, and do not reach for a review
+skill.** Anything you spawn from here runs beyond this workflow's reach: it cannot be awaited, so
+the only way to learn it finished is to sleep and poll for its edits, which is minutes of the most
+expensive model in this pipeline spent watching a directory. You are the review.
+
+Two axes, and only two:
+
+- **Correctness** — does it do what the issue asked, and is there an input for which it does not?
+- **Standards** — \`CLAUDE.md\`'s invariants and this repo's conventions, in the code you can see.
+
+Fix what you find. A finding you cannot fix stands in your summary with why; a correctness finding
+is never pushed past. Then re-run only the checks the change you just made could break — a fix that
+improves the code can still make a test wrong. ${LOCAL_TEST_NOTE}
+
+The implement stage already ran the ticket's checks against this tree and ci.yml is about to run
+the whole sweep against it again, so anything you re-run here is being paid for a third time.
+Commit whatever you changed.
 
 ## 2. Push and open the pull request
 

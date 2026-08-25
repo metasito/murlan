@@ -5,6 +5,8 @@ export interface RunRow {
   databaseId: number;
   conclusion: string | null;
   status: string;
+  /** Optional so a caller reasoning about a single run need not invent one. */
+  headSha?: string;
 }
 
 export interface JobRow {
@@ -32,10 +34,13 @@ export interface Verdict {
  * A job that finished with no steps ran nothing, so it says nothing about the diff: billing, a
  * quota or a runner failure looks identical to a red suite from outside. That is reported as
  * infrastructure rather than as a defect, because sending a fix agent after it hunts a bug no
- * suite ever reported.
+ * suite ever reported. A run that cannot be found at all is the same case: an outage between
+ * here and the API is indistinguishable from a branch nothing ever ran.
  */
 export function decideVerdict(run: RunRow | undefined, jobs: JobRow[] = []): Verdict {
-  if (!run) return { pass: false, reason: "no run found for this branch" };
+  if (!run) {
+    return { pass: false, infrastructure: true, reason: "no run found for this branch" };
+  }
   if (run.status !== "completed") {
     return { pass: false, runId: run.databaseId, reason: `run is still ${run.status}` };
   }
@@ -63,6 +68,41 @@ export function decideVerdict(run: RunRow | undefined, jobs: JobRow[] = []): Ver
   };
 }
 
+/**
+ * ci.yml is the gate, and the branch carries other workflows — the Maestro suites, EAS — that
+ * finish on their own schedule. Unfiltered, `--limit 1` answers with whichever of them ran last,
+ * so a green Maestro over a red ci.yml reads as a green branch.
+ */
+export function runListArgs(repo: string, branch: string): string[] {
+  // prettier-ignore
+  return [
+    "run", "list", "--repo", repo, "--branch", branch,
+    "--workflow", "ci.yml", "--limit", "5",
+    "--json", "databaseId,conclusion,status,headSha",
+  ];
+}
+
+/**
+ * A fix round pushes and asks immediately. For the seconds before the new run registers, the
+ * newest row on the branch belongs to the previous push — completed, and red, which is why the
+ * round ran at all. Answering from it sends another fix agent after a failure already fixed.
+ */
+export function runForHead(runs: RunRow[], headSha: string | undefined): RunRow | undefined {
+  if (!headSha) return runs[0];
+  return runs.find((r) => r.headSha === headSha);
+}
+
+// A push and the run it starts are not the same instant, and the API is reachable across a whole
+// ci.yml run and then not for the second it is asked for the verdict. Both read as "no run
+// found" with the branch underneath green — which is how #342 was handed back as red.
+const RUN_APPEAR_ATTEMPTS = 12;
+const RUN_APPEAR_INTERVAL_MS = 10_000;
+
+/** Blocking on purpose: this module is a one-shot CLI whose caller is waiting on stdout. */
+function pause(ms: number): void {
+  Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
+}
+
 function gh(args: string[]): string {
   return execFileSync("gh", args, { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] });
 }
@@ -76,20 +116,30 @@ function ghJson<T>(args: string[], fallback: T): T {
 }
 
 export function readVerdict(repo: string, branch: string, prNumber: number): Verdict {
-  try {
-    // Blocks until the checks settle. Its exit status is deliberately ignored.
-    execFileSync("gh", ["pr", "checks", String(prNumber), "--repo", repo, "--watch", "--interval", "20"], {
-      stdio: ["ignore", "pipe", "pipe"],
-    });
-  } catch {
-    // A non-zero exit here means "checks failed", which the run row below states properly.
-  }
+  // The pull request carries other checks — the Maestro suites — that settle on their own
+  // schedule and are not the gate. Waiting on all of them cost eleven minutes a run for a job
+  // that is red on main anyway, so only ci.yml's own run is watched.
+  const headSha = ghJson<{ headRefOid?: string }>(
+    ["pr", "view", String(prNumber), "--repo", repo, "--json", "headRefOid"],
+    {}
+  ).headRefOid;
 
-  const runs = ghJson<RunRow[]>(
-    ["run", "list", "--repo", repo, "--branch", branch, "--limit", "1", "--json", "databaseId,conclusion,status"],
-    []
-  );
-  const run = runs[0];
+  let run: RunRow | undefined;
+  for (let attempt = 1; attempt <= RUN_APPEAR_ATTEMPTS; attempt++) {
+    run = runForHead(ghJson<RunRow[]>(runListArgs(repo, branch), []), headSha);
+    if (run) break;
+    pause(RUN_APPEAR_INTERVAL_MS);
+  }
+  if (run && run.status !== "completed") {
+    try {
+      // Blocks until that one run settles. Its exit status is deliberately ignored: piped, the
+      // status belongs to the pipe, which is how a red branch once read as green.
+      gh(["run", "watch", String(run.databaseId), "--repo", repo, "--interval", "20"]);
+    } catch {
+      // A non-zero exit means the run failed, which the row re-read below states properly.
+    }
+    run = runForHead(ghJson<RunRow[]>(runListArgs(repo, branch), []), headSha) ?? run;
+  }
   if (!run || run.conclusion === "success") return decideVerdict(run, []);
 
   const jobs = ghJson<JobRow[]>(

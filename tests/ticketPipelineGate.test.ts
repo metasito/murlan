@@ -55,6 +55,23 @@ describe("the design-first gate", () => {
     assert.match(result.reason, /7 files/);
   });
 
+  test("escalates a ticket touching package.json with no recorded decision", () => {
+    const result = needsDesignFirstGate({
+      filesTouched: ["components/SettingsModal.tsx", "package.json"],
+      body: "Replace the volume presets with a slider.",
+    });
+    assert.equal(result.escalate, true);
+    assert.match(result.reason, /dependenc/);
+  });
+
+  test("does not escalate a dependency change with a recorded decision", () => {
+    const result = needsDesignFirstGate({
+      filesTouched: ["package.json"],
+      body: "Design decision: docs/BRIEF.md §2.4 chose the slider package.",
+    });
+    assert.equal(result.escalate, false);
+  });
+
   test("does not escalate a small, ordinary ticket", () => {
     const result = needsDesignFirstGate({
       filesTouched: ["components/SettingsModal.tsx", "locales/en.ts"],

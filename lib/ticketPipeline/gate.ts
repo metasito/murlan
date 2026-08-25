@@ -3,6 +3,7 @@ import { pathToFileURL } from "node:url";
 
 const SCHEMA_PATTERN = /(^|\/)shared\/schema\.ts$/;
 const SOCKET_PATTERN = /server\/socket|shared\/events\.ts/;
+const MANIFEST_PATTERN = /(^|\/)package\.json$/;
 const FILE_COUNT_THRESHOLD = 6;
 const DECISION_POINTER = /docs\/BRIEF\.md\s*§|docs\/adr\/|Design decision:/;
 
@@ -25,6 +26,13 @@ export function needsDesignFirstGate(ticket: TicketFacts): GateVerdict {
   }
   if (ticket.filesTouched.some((f) => SOCKET_PATTERN.test(f))) {
     return { escalate: true, reason: "touches the socket protocol with no recorded decision" };
+  }
+  // A dependency is production's problem, not the diff's: Replit runs Node 22 from the Run
+  // button with no build step, so the wrong package is discovered there rather than in CI. Left
+  // undecided it is also the most expensive thing an implement agent can meet — #342 spent a
+  // fifth of its run reading a package's source to work out whether to add one at all.
+  if (ticket.filesTouched.some((f) => MANIFEST_PATTERN.test(f))) {
+    return { escalate: true, reason: "changes a dependency with no recorded decision" };
   }
   if (ticket.filesTouched.length > FILE_COUNT_THRESHOLD) {
     return {
