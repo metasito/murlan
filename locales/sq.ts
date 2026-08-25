@@ -285,7 +285,7 @@ export const sq: Record<keyof typeof en, string> = {
   // -------------------------------------------------------------- gameTable.*
   "gameTable.rotateTitle": "Rrotulloni pajisjen",
   "gameTable.rotateBody": "Loja kërkon modalitetin horizontal",
-  "gameTable.leaveA11yLabel": "Braktis lojën",
+  "gameTable.settingsA11yLabel": "Cilësimet",
   "gameTable.passLabel": "KALO",
   "gameTable.passA11yLabel": "Kalo radhën",
   "gameTable.playLabelGioca": "LUAJ",
@@ -339,6 +339,17 @@ export const sq: Record<keyof typeof en, string> = {
   "gameTable.rematchTally": "{{yes}}/{{total}} po",
   "gameTable.a11yHandSelected_one": "{{count}} e zgjedhur.",
   "gameTable.a11yHandSelected_other": "{{count}} të zgjedhura.",
+
+  // ----------------------------------------------------- gameSettingsSheet.*
+  "gameSettingsSheet.title": "Cilësimet",
+  "gameSettingsSheet.focusMode": "Modaliteti fokus",
+  "gameSettingsSheet.focusModeHint": "Vetëm kartat",
+  "gameSettingsSheet.focusModeA11yHint": "Fshih emrat, numërimet dhe çipet; lër kartat dhe unazën e radhës",
+  "gameSettingsSheet.playOnLeft": "Luaj majtas",
+  "gameSettingsSheet.playOnLeftHint": "Për mëngjarashët",
+  "gameSettingsSheet.playOnLeftA11yHint": "Këmbe KALO dhe LUAJ që LUAJ të bjerë nën gishtin e madh të majtë",
+  "gameSettingsSheet.exit": "Braktis lojën",
+  "gameSettingsSheet.footnote": "Kartat dhe tavolina: menyja kryesore.",
 
   // ------------------------------------------------------------- offlineGame.*
   "offlineGame.quitConfirmTitle": "Braktis",

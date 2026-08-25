@@ -11,6 +11,7 @@ import {
 import { Colors, FontSize, makeShadow, Radius, Scrim, Spacing, Type } from "@/lib/theme";
 import { usePrefersReducedMotion } from "@/lib/accessibility";
 import { useTranslation } from "@/lib/i18n";
+import { a11yState } from "@/lib/a11y";
 import type { StartReason } from "@/lib/gameEngine";
 import { getCardDisplayRank, getSuitSymbol } from "@/lib/gameEngine";
 import { CHIP_H, SIDE_SECTION_W } from "@/components/gameTableModel";
@@ -274,18 +275,21 @@ export function RailKnob({
   onPress,
   a11yLabel,
   size,
+  expanded,
   children,
 }: {
   onPress: () => void;
   a11yLabel: string;
   size: number;
+  /** Set on a knob that opens something beside it — the settings sheet. */
+  expanded?: boolean;
   children: ReactNode;
 }) {
   return (
     <Pressable
       onPress={onPress}
-      accessibilityRole="button"
       accessibilityLabel={a11yLabel}
+      {...a11yState({ role: "button", expanded })}
       style={({ pressed }) => [
         railStyles.knob,
         { width: size, height: size, borderRadius: size / 2 },

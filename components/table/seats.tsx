@@ -18,6 +18,8 @@ import Animated, {
   useAnimatedStyle,
   useSharedValue,
   withTiming,
+  withRepeat,
+  interpolate,
   Easing,
   cancelAnimation,
   type SharedValue,
@@ -302,6 +304,10 @@ function CountdownRing({
   );
 }
 
+/** One full brighten-and-fade cycle of the focus-mode breathing ring. */
+const BREATHE_MS = 3400;
+const BREATHE_GLOW = 30;
+
 function SeatRing({
   name,
   isActive,
@@ -309,6 +315,7 @@ function SeatRing({
   finishPos,
   scale,
   countdown,
+  focusMode = false,
 }: {
   name: string;
   isActive: boolean;
@@ -317,6 +324,8 @@ function SeatRing({
   scale: number;
   /** The turn window, on the seat that is on move. Absent on every other seat. */
   countdown?: { seconds: number; resetKey: string };
+  /** The felt and this ring are what carry the turn — everything else on the seat is quiet. */
+  focusMode?: boolean;
 }) {
   // One shot when the seat takes the turn: the ring itself says who is on move
   // for as long as it lasts, so this only has to catch the eye at the handover.
@@ -349,6 +358,29 @@ function SeatRing({
     opacity: pingOpacity.value,
     transform: [{ scale: pingScale.value }],
   }));
+
+  // Focus mode strips every other turn signal off the felt, so the ring on
+  // move has to carry that on its own — a slow breathe, on a loop for as
+  // long as the turn lasts, not a one-shot like the ping above.
+  const breathe = useSharedValue(0);
+  const breathing = isActive && focusMode && !reduceMotion;
+  useEffect(() => {
+    if (!breathing) {
+      cancelAnimation(breathe);
+      breathe.value = 0;
+      return;
+    }
+    breathe.value = withRepeat(
+      withTiming(1, { duration: BREATHE_MS / 2, easing: Easing.inOut(Easing.sin) }),
+      -1,
+      true
+    );
+    return () => cancelAnimation(breathe);
+  }, [breathing, breathe]);
+  const breatheStyle = useAnimatedStyle(() => ({
+    opacity: isActive && focusMode ? interpolate(breathe.value, [0, 1], [0.35, 1]) : 0,
+  }));
+
   const initials = name
     .split(" ")
     .map((w) => w[0])
@@ -358,6 +390,7 @@ function SeatRing({
 
   const size = SEAT_DISC * scale;
   const badge = SEAT_BADGE * scale;
+  const showCount = finishPos !== undefined || !focusMode;
   return (
     <View testID="seat-ring" style={{ width: size, height: size }}>
       <Animated.View
@@ -366,6 +399,15 @@ function SeatRing({
           seatStyles.ringPing,
           { width: size, height: size, borderRadius: size / 2, borderWidth: RING_STROKE * scale },
           pingStyle,
+        ]}
+      />
+      <Animated.View
+        testID="seat-ring-breathe"
+        pointerEvents="none"
+        style={[
+          { position: "absolute", width: size, height: size, borderRadius: size / 2 },
+          makeShadow(Colors.goldLit, 0, 0, 0.6, BREATHE_GLOW * scale, 0),
+          breatheStyle,
         ]}
       />
       <LinearGradient
@@ -394,28 +436,30 @@ function SeatRing({
           scale={scale}
         />
       )}
-      <View
-        testID="seat-card-count"
-        style={[
-          seatStyles.countBubble,
-          finishPos !== undefined && seatStyles.countBubbleFinished,
-          {
-            minWidth: badge,
-            height: badge,
-            borderRadius: badge / 2,
-            bottom: -RING_GAP * scale,
-            right: -RING_GAP * scale,
-          },
-        ]}
-      >
-        {finishPos !== undefined ? (
-          <Ionicons name="trophy" size={badge * 0.5} color={Colors.gold} />
-        ) : (
-          <TableText style={[seatStyles.countBubbleText, { fontSize: SEAT_BADGE_FS * scale }]}>
-            {cardCount}
-          </TableText>
-        )}
-      </View>
+      {showCount && (
+        <View
+          testID="seat-card-count"
+          style={[
+            seatStyles.countBubble,
+            finishPos !== undefined && seatStyles.countBubbleFinished,
+            {
+              minWidth: badge,
+              height: badge,
+              borderRadius: badge / 2,
+              bottom: -RING_GAP * scale,
+              right: -RING_GAP * scale,
+            },
+          ]}
+        >
+          {finishPos !== undefined ? (
+            <Ionicons name="trophy" size={badge * 0.5} color={Colors.gold} />
+          ) : (
+            <TableText style={[seatStyles.countBubbleText, { fontSize: SEAT_BADGE_FS * scale }]}>
+              {cardCount}
+            </TableText>
+          )}
+        </View>
+      )}
     </View>
   );
 }
@@ -457,6 +501,7 @@ export function TopOppSlot({
   passed = false,
   scale = 1,
   countdown,
+  focusMode = false,
 }: {
   player: Player;
   isActive: boolean;
@@ -469,6 +514,8 @@ export function TopOppSlot({
   scale?: number;
   /** The turn window, so the seat on move can sweep its own rim. */
   countdown?: { seconds: number; resetKey: string };
+  /** Solo le carte: the name, the badges and the card count fall away. */
+  focusMode?: boolean;
 }) {
   // The fan and the badge read one number, held at its pre-play value for as
   // long as the flight is up — see displayedHandCount.
@@ -490,6 +537,7 @@ export function TopOppSlot({
         passed={passed}
         scale={scale}
         countdown={countdown}
+        focusMode={focusMode}
       />
       {player.finishPosition === undefined && displayed > 0 && (
         <CardFan count={displayed} departing={departing} side="top" isActive={isActive} scale={scale} />
@@ -516,6 +564,7 @@ function SeatWho({
   scale,
   countdown,
   anchor = "centre",
+  focusMode = false,
 }: {
   name: string;
   isActive: boolean;
@@ -530,6 +579,7 @@ function SeatWho({
    * own column, so a label centred there hangs off the screen.
    */
   anchor?: "centre" | "left" | "right";
+  focusMode?: boolean;
 }) {
   const disc = SEAT_DISC * scale;
   const labelW = anchor === "centre" ? OPP_LABEL_MAX_W * scale : SIDE_LABEL_MAX_W;
@@ -537,29 +587,32 @@ function SeatWho({
     anchor === "centre" ? (disc - labelW) / 2 : anchor === "left" ? 0 : disc - labelW;
   return (
     <View style={seatStyles.who}>
-      <View
-        style={[
-          seatStyles.whoLabel,
-          { width: labelW, left: labelLeft, bottom: disc },
-          anchor === "left" && seatStyles.whoLabelLeft,
-          anchor === "right" && seatStyles.whoLabelRight,
-        ]}
-        pointerEvents="none"
-      >
-        <TableText
+      {!focusMode && (
+        <View
           style={[
-            seatStyles.oppName,
-            // The cap rides the scale the glyphs do; fixed, it ellipsises
-            // every name above a phone's own scale.
-            { fontSize: SEAT_NAME_FS * scale, maxWidth: labelW },
-            isActive && seatStyles.oppNameActive,
+            seatStyles.whoLabel,
+            { width: labelW, left: labelLeft, bottom: disc },
+            anchor === "left" && seatStyles.whoLabelLeft,
+            anchor === "right" && seatStyles.whoLabelRight,
           ]}
-          numberOfLines={1}
+          pointerEvents="none"
         >
-          {name}
-        </TableText>
-        <SeatBadges passed={passed} scale={scale} maxW={labelW} />
-      </View>
+          <TableText
+            testID="seat-name"
+            style={[
+              seatStyles.oppName,
+              // The cap rides the scale the glyphs do; fixed, it ellipsises
+              // every name above a phone's own scale.
+              { fontSize: SEAT_NAME_FS * scale, maxWidth: labelW },
+              isActive && seatStyles.oppNameActive,
+            ]}
+            numberOfLines={1}
+          >
+            {name}
+          </TableText>
+          <SeatBadges passed={passed} scale={scale} maxW={labelW} />
+        </View>
+      )}
       <SeatRing
         name={name}
         isActive={isActive}
@@ -567,6 +620,7 @@ function SeatWho({
         finishPos={finishPos}
         scale={scale}
         countdown={countdown}
+        focusMode={focusMode}
       />
     </View>
   );
@@ -583,6 +637,7 @@ export function SideOppSlot({
   passed = false,
   scale = 1,
   countdown,
+  focusMode = false,
 }: {
   player: Player;
   isActive: boolean;
@@ -596,6 +651,8 @@ export function SideOppSlot({
   scale?: number;
   /** The turn window, so the seat on move can sweep its own rim. */
   countdown?: { seconds: number; resetKey: string };
+  /** Solo le carte: the name, the badges and the card count fall away. */
+  focusMode?: boolean;
 }) {
   const displayed = displayedHandCount(cardCount ?? player.hand.length, departing);
   const isLeft = side === "left";
@@ -617,6 +674,7 @@ export function SideOppSlot({
         scale={scale}
         countdown={countdown}
         anchor={isLeft ? "left" : "right"}
+        focusMode={focusMode}
       />
       {displayed > 0 && player.finishPosition === undefined && (
         <CardFan count={displayed} departing={departing} side={side} isActive={isActive} scale={scale} />
