@@ -309,8 +309,15 @@ commands. ${
       forcedTicket
         ? `The ticket is already chosen: #${forcedTicket}. Read it with
   gh issue view ${forcedTicket} --repo ${REPO} --comments
-and take it only if it is open, ready-for-agent and unclaimed; report claimed: false with why
-otherwise. Then claim it per`
+and take it only if it is open and ready-for-agent; report claimed: false with why otherwise.
+
+A "Claimed by \`<branch>\`" comment does not by itself mean somebody is working on it. Apply the
+test in CLAUDE.md rather than judging by eye, and do not assert either answer without running it:
+
+  git ls-remote --heads origin <that-branch> ; git worktree list
+
+A branch in neither is a stale claim — say so on the issue, then take it. A branch in either is
+live: stand down. Then claim it per`
         : `Start with:
 
   node scripts/next-ticket.mjs
@@ -358,25 +365,25 @@ later stage reads it from GitHub itself.`,
   }
   run.ticket = `#${claim.number}`
   log(`#${claim.number} ${claim.title || ''} — on ${claim.branch}`)
+  // The claim comment, the worktree and the branch all exist by the time the gate runs, so every
+  // way out from here has to hand back all three. Registering them before the first exit is what
+  // makes that true by construction: #204's escalated run left its worktree standing, so
+  // `git worktree list` still named the branch, and the staleness test in CLAUDE.md read the
+  // claim as live — the ticket then refused every later run that tried to take it.
+  claimOpen = true
+  claimedNumber = claim.number
+  state.localBranch = claim.branch
+  state.worktreePath = claim.worktreePath ?? null
+
   if (claim.escalate) {
     log(`#${claim.number} handed back: ${claim.gateReason}`)
-    // The claim comment is posted before the gate runs, so escalating leaves one naming a branch
-    // that was never pushed. `in-progress` comes off, but the comment stays and the next run reads
-    // it as somebody else's work — #204 escalated at the gate and then refused itself. Releasing
-    // here makes cleanup retract the comment as well as the label.
-    claimOpen = true
-    claimedNumber = claim.number
-    releaseReason = `the design gate handed this back: ${claim.gateReason}. No branch was pushed, so this claim is withdrawn.`
+    releaseReason = `the design gate handed this back: ${claim.gateReason}`
     return { landed: false, ticket: claim.number, reason: `escalated: ${claim.gateReason}` }
   }
   if (!claim.worktreePath) {
     releaseReason = 'the claim stage reported no worktree, so no later stage has a checkout it owns'
     return { landed: false, ticket: claim.number, reason: 'no worktree' }
   }
-  claimOpen = true
-  claimedNumber = claim.number
-  state.localBranch = claim.branch
-  state.worktreePath = claim.worktreePath
 
   phase('Implement')
   const impl = await agent(
