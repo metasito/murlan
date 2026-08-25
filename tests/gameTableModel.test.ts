@@ -925,6 +925,24 @@ describe("railWidth", () => {
   });
 });
 
+describe("the rail's vertical pad", () => {
+  // railWidth already floors the horizontal axis against a raw inset; the
+  // knobs at the rail's own top and bottom need the same floor every other
+  // element pinned to an edge gets (tableTop/tableBottom), or a device with
+  // insets.top === 0 (an iPhone in landscape) flushes a knob against the
+  // screen edge.
+  test("the control rail and its settings sheet take the floored pad, not the raw inset", () => {
+    assert.deepEqual(scan(/(?:top|bottom)Pad=\{frame\.(?:topPad|bottomPad)\}/g), []);
+  });
+
+  // Banning the raw spelling is half the pin: it also passes when the props are
+  // gone entirely, or spelled some third way. Both ends of both must be found.
+  test("both ends of both are pinned to the floored pad", () => {
+    assert.equal(scan(/topPad=\{frame\.tableTop\}/g).length, 2);
+    assert.equal(scan(/bottomPad=\{frame\.tableBottom\}/g).length, 2);
+  });
+});
+
 describe("computeTableFrame", () => {
   const insets = { top: 20, bottom: 10, left: 44, right: 44 };
   const frameOf = (over: Partial<{ width: number; insets: typeof insets; scale: number }> = {}) =>
