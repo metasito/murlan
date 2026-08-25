@@ -9,7 +9,8 @@
 // real browser here, next to the tap-target sweep for the same reason.
 import { test, expect, type Page } from "@playwright/test";
 import { openApp, startOfflineGame } from "./helpers/navigation";
-import { openSeededGame } from "./helpers/offlineSeed";
+import { openSeededGame, offlineGameSave, resumeSaved, DEAL_SIZE } from "./helpers/offlineSeed";
+import { buildCombination } from "../../lib/gameEngine";
 
 const VIEWPORTS = [
   { name: "small phone landscape", width: 667, height: 375 },
@@ -69,6 +70,85 @@ test.describe("the table fits the screen", () => {
         ).toEqual([]);
       });
     }
+  }
+});
+
+// ─── The top-left chip's player name ──────────────────────────────────────────
+//
+// The chip is a fixed-width band by design — anything wider is chrome drawn
+// where a card lands. `numberOfLines={1}` alone truncates nothing unless the
+// name's own run is width-capped, so an unbounded username either widens the
+// band or overflows it — neither is visible to react-test-renderer, which
+// never runs flexbox. Only a browser sees whether the band held its width and
+// the overrun name actually clips.
+test.describe("the top-left chip's player name", () => {
+  // Both well past any reasonable cap, and of deliberately different lengths —
+  // a band that is actually capped renders both at the same width; a band that
+  // merely grows to fit its content renders the longer of the two wider.
+  const LONG_NAME_A = "Konstantinopolitanosovicka Maximilliana Alexandreea";
+  const LONG_NAME_B = LONG_NAME_A + " " + LONG_NAME_A;
+
+  /** A 2-seat offline save with `name`'s play already on the felt. */
+  function nameSave(name: string): object {
+    const save: any = offlineGameSave(2, DEAL_SIZE[2], 0);
+    const pileCard = save.gameState.players[1].hand.shift();
+    save.gameState.players[1].name = name;
+    save.players[1].name = name;
+    save.gameState.lastPlayedCombination = buildCombination([pileCard]);
+    save.gameState.lastPlayedBy = 1;
+    return save;
+  }
+
+  async function topBar(page: Page, baseURL: string, name: string) {
+    await resumeSaved(page, baseURL, nameSave(name));
+    await page.waitForTimeout(1_000);
+    return page.locator('[data-testid="game-top-bar"]');
+  }
+
+  for (const vp of VIEWPORTS) {
+    test(`a long username truncates within the band, not the band — ${vp.name}`, async ({
+      page,
+      baseURL,
+    }) => {
+      test.setTimeout(90_000);
+      await page.setViewportSize({ width: vp.width, height: vp.height });
+
+      const boxA = await (await topBar(page, baseURL!, LONG_NAME_A)).boundingBox();
+      const chipB = await topBar(page, baseURL!, LONG_NAME_B);
+      const boxB = await chipB.boundingBox();
+      if (!boxA || !boxB) throw new Error("the top bar never rendered");
+
+      // The floor: a chip that laid out as an empty box would satisfy the
+      // equality below having drawn nothing on both runs.
+      expect(boxA.width, "the top bar has no width at all").toBeGreaterThan(0);
+      expect(
+        boxB.width,
+        `the chip is ${Math.round(boxA.width)}px wide for one long username and ` +
+          `${Math.round(boxB.width)}px for a longer one — the band grew to fit the content ` +
+          `instead of clipping it`
+      ).toBeLessThan(boxA.width + 2);
+
+      // The band held its width; now confirm the name itself is what gave —
+      // an element inside the chip whose content overflows its own box, with
+      // the ellipsis CSS this depends on actually applied.
+      const clipped = await chipB.evaluate((el) => {
+        const search = (node: Element): Element | null => {
+          if (node.scrollWidth > node.clientWidth + 1) return node;
+          for (const child of Array.from(node.children)) {
+            const found = search(child);
+            if (found) return found;
+          }
+          return null;
+        };
+        const hit = search(el);
+        return hit ? getComputedStyle(hit).textOverflow : null;
+      });
+
+      expect(
+        clipped,
+        "nothing inside the chip clips its content — the long name rendered in full"
+      ).toBe("ellipsis");
+    });
   }
 });
 

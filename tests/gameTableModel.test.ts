@@ -372,7 +372,7 @@ describe("comboKey", () => {
 describe("advancePile", () => {
   test("the first play sits alone on the table", () => {
     const first = combo(["a"]);
-    const next = advancePile(EMPTY_PILE, first);
+    const next = advancePile(EMPTY_PILE, first, 0);
     assert.equal(next.current, first);
     assert.equal(next.prev, null);
   });
@@ -381,11 +381,11 @@ describe("advancePile", () => {
     const a = combo(["a"]);
     const b = combo(["b"]);
     const c = combo(["c"]);
-    const s1 = advancePile(EMPTY_PILE, a);
-    const s2 = advancePile(s1, b);
+    const s1 = advancePile(EMPTY_PILE, a, 0);
+    const s2 = advancePile(s1, b, 1);
     assert.equal(s2.prev, a);
     assert.equal(s2.current, b);
-    const s3 = advancePile(s2, c);
+    const s3 = advancePile(s2, c, 2);
     // `a` is gone entirely — never rendered twice, never stuck behind.
     assert.equal(s3.prev, b);
     assert.equal(s3.current, c);
@@ -394,18 +394,27 @@ describe("advancePile", () => {
 
   test("a card is never in both layers at once", () => {
     const a = combo(["a"]);
-    const s = advancePile(advancePile(EMPTY_PILE, a), combo(["b"]));
+    const s = advancePile(advancePile(EMPTY_PILE, a, 0), combo(["b"]), 1);
     const prevIds = (s.prev?.cards ?? []).map((c: any) => c.id);
     const curIds = (s.current?.cards ?? []).map((c: any) => c.id);
     assert.deepEqual(prevIds.filter((id: string) => curIds.includes(id)), []);
   });
 
   test("the input state is not mutated", () => {
-    const s1 = advancePile(EMPTY_PILE, combo(["a"]));
+    const s1 = advancePile(EMPTY_PILE, combo(["a"]), 0);
     const snapshot = { ...s1 };
-    advancePile(s1, combo(["b"]));
+    advancePile(s1, combo(["b"]), 1);
     assert.deepEqual(s1, snapshot);
-    assert.deepEqual(EMPTY_PILE, { prev: null, current: null });
+    assert.deepEqual(EMPTY_PILE, { prev: null, current: null, playedBy: null });
+  });
+
+  test("current's seat is carried alongside it, so the name and the shape can never name different plays", () => {
+    const s1 = advancePile(EMPTY_PILE, combo(["a"]), 2);
+    assert.equal(s1.playedBy, 2);
+    const s2 = advancePile(s1, combo(["b"]), 0);
+    // The new play's seat replaces the old one — `prev`'s owner is never
+    // asked for, since only `current` is ever named.
+    assert.equal(s2.playedBy, 0);
   });
 });
 

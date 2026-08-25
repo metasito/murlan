@@ -281,9 +281,11 @@ export function fanCounts(count: number, departing: number, cap: number): FanCou
 export interface PileState {
   prev: Combination | null;
   current: Combination | null;
+  /** Seat `current` came from — carried alongside it so a name and its combination can never name different plays. */
+  playedBy: number | null;
 }
 
-export const EMPTY_PILE: PileState = { prev: null, current: null };
+export const EMPTY_PILE: PileState = { prev: null, current: null, playedBy: null };
 
 // ─── Flight and impact timing ─────────────────────────────────────────────────
 //
@@ -429,8 +431,8 @@ export function comboKey(combo: Combination, playedBy: number): string {
 }
 
 /** The old current becomes the faded layer; the new combination takes the top. */
-export function advancePile(state: PileState, combo: Combination): PileState {
-  return { prev: state.current, current: combo };
+export function advancePile(state: PileState, combo: Combination, playedBy: number): PileState {
+  return { prev: state.current, current: combo, playedBy };
 }
 
 /**

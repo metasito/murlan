@@ -152,6 +152,7 @@ export function ChipText({
   strong = false,
   lit = false,
   urgent = false,
+  maxWidth,
   children,
   ...a11y
 }: {
@@ -159,6 +160,8 @@ export function ChipText({
   strong?: boolean;
   lit?: boolean;
   urgent?: boolean;
+  /** Caps this run so an unbounded value (a username) ellipsizes instead of widening the chip. */
+  maxWidth?: number;
   children: ReactNode;
 } & Partial<Pick<TextProps, "accessibilityLabel" | "accessibilityLiveRegion">>) {
   return (
@@ -176,6 +179,7 @@ export function ChipText({
         strong && chipStyles.chipLabelStrong,
         lit && chipStyles.chipLabelLit,
         urgent && chipStyles.chipLabelUrgent,
+        maxWidth !== undefined && { maxWidth: maxWidth * scale },
       ]}
     >
       {children}
@@ -206,6 +210,12 @@ const CHIP_DOT_GLOW = 9;
 // `.15em` and `.06em` of the chip's own `10 * s` type.
 const CHIP_TRACKING = 1.5;
 const CHIP_TRACKING_STRONG = 0.6;
+
+/**
+ * The top-left chip's name run, capped so a long username ellipsizes rather
+ * than pushing the band wider than the felt has room for.
+ */
+export const CHIP_NAME_MAX_W = 88;
 
 const chipStyles = StyleSheet.create({
   chip: {
