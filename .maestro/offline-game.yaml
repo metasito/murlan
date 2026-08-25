@@ -40,9 +40,17 @@
 # *before* this block, so an `env:` key here wins over the flag rather than
 # yielding to it — which is why the address has to be one that works
 # everywhere. Change it here, or drop the reverse and put a reachable host in.
-appId: host.exp.exponent
+# Expo Go's iOS bundle identifier capitalises Exponent; the Android package
+# does not, and a simulator answers NotFound to every request made with the
+# Android spelling. `ios.yml` passes the iOS one in; everything else, this
+# machine included, gets Android's.
+appId: "${typeof MAESTRO_EXPO_GO_APP_ID === 'string' ? MAESTRO_EXPO_GO_APP_ID : 'host.exp.exponent'}"
 env:
-  MURLAN_PACKAGER_URL: exp://127.0.0.1:8081
+  # `disableOnboarding=1` is expo-dev-menu's own switch (expo/expo#19024): it
+  # sets isOnboardingFinished before the app launches, so Expo Go never raises
+  # the "this is the developer menu" tip that otherwise covers the screen every
+  # run — `clearState` wipes the flag that would have remembered it.
+  MURLAN_PACKAGER_URL: exp://127.0.0.1:8081?disableOnboarding=1
 ---
 - launchApp:
     # Each flow has to start from the same place: run second and this one
@@ -51,28 +59,29 @@ env:
     # never taken - and asserts against a screen the app never rendered.
     # Which flow runs first is not fixed, so both orders have to work.
     clearState: true
+# Cleared, then stopped: Expo Go takes the link as a cold start and opens the
+# project with it. Delivered to the copy `launchApp` just brought to the
+# front, it is ignored and the flow asserts against Expo Go's own home.
+- stopApp
 - openLink: "${MURLAN_PACKAGER_URL}"
+# iOS asks before handing a custom-scheme link to another app, and the link
+# is not followed until it is answered. The simulator runs it-IT, so the
+# button reads "Apri". Android is never asked, and iOS only asks the first
+# time in a session — so this is optional inside the platform it belongs to,
+# rather than awaited.
+- runFlow:
+    when:
+      platform: iOS
+    commands:
+      - tapOn:
+          text: "Apri"
+          optional: true
 - extendedWaitUntil:
     visible: "IL GIOCO DI CARTE|GUIDA RAPIDA"
     # A minute is what a developer's machine needs. A CI emulator is slower
     # than that on a cold start, and running out of budget here reads
     # identically to the app never loading at all.
     timeout: 180000
-# Dev-menu / first-launch-tutorial dismissal — see smoke.yaml for why
-# the tip is tapped and only the sheet under it is dismissed with back.
-- runFlow:
-    when:
-      visible: "Continue"
-    commands:
-      - tapOn: "Continue"
-- runFlow:
-    when:
-      visible: "Reload"
-    commands:
-      - back
-- extendedWaitUntil:
-    notVisible: "Reload"
-    timeout: 10000
 - runFlow:
     when:
       visible: "Salta il tutorial"

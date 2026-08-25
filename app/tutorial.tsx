@@ -443,6 +443,11 @@ export default function TutorialScreen() {
   async function handleSkip() {
     hapticLight();
     await clearProgress();
+    // The mount effect above waits for the session before recording this, so a
+    // player who skips while it is still being asked would land on a home
+    // screen that offers the tutorial again. The device half answers now; the
+    // account half still follows from the effect.
+    await markTutorialSeen(userId);
     router.replace("/");
   }
 
