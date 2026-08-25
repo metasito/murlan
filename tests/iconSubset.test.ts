@@ -6,13 +6,11 @@ import assert from "node:assert/strict";
 import { existsSync, readFileSync, statSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
-import { analyzeIcons, analyzeSnippet, iconCharacters } from "../scripts/iconSubsetChars.mjs";
+import { analyzeIcons, analyzeSnippet, iconCharacters, vectorIconsVendorDir } from "../scripts/iconSubsetChars.mjs";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-const glyphmapDir = path.join(
-  repoRoot,
-  "node_modules/@expo/vector-icons/build/vendor/react-native-vector-icons/glyphmaps"
-);
+const glyphmapDir = vectorIconsVendorDir("glyphmaps");
+const fontsDir = vectorIconsVendorDir("Fonts");
 
 interface Unresolved {
   file: string;
@@ -45,11 +43,7 @@ test("the subsets exist and are much smaller than the originals", () => {
   for (const family of ["Ionicons", "Feather"] as const) {
     const subset = path.join(repoRoot, "assets", "fonts", `${family}.subset.ttf`);
     assert.ok(existsSync(subset), `${subset} is missing — run node scripts/build-icon-fonts.mjs`);
-    const original = path.join(
-      repoRoot,
-      "node_modules/@expo/vector-icons/build/vendor/react-native-vector-icons/Fonts",
-      `${family}.ttf`
-    );
+    const original = path.join(fontsDir, `${family}.ttf`);
     const ratio = statSync(subset).size / statSync(original).size;
     assert.ok(
       ratio < MAX_SUBSET_RATIO,
