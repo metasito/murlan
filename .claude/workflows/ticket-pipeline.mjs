@@ -11,9 +11,8 @@ export const meta = {
   ],
 }
 
-// Every agent() call names its model. An omitted one inherits the session's, which is how
-// editing a label ends up costing what reviewing a diff costs. Judgement that cannot be redone
-// cheaply gets the big model; everything that follows a written procedure does not.
+// Every agent() call names its model: an omitted one inherits the session's, which can be far
+// larger than the stage needs. Anything following a written procedure takes the cheapest tier.
 const MODELS = {
   claim: 'haiku', // next-ticket.mjs, two gh writes, one CLI whose failure mode is fail-safe
   implement: 'sonnet',
@@ -24,11 +23,10 @@ const MODELS = {
 }
 
 // `args` names a ticket when the queue's own ordering is not the one wanted — a blocker that has
-// to land before the item that needs it. Unset, the router picks as before.
+// to land before the item that needs it. Unset, the router picks.
 //
-// `args: 290` can arrive as the string "290", so a bare `typeof === 'number'` test left the pin
-// undefined and the router picked a different ticket — a caller who names one and silently gets
-// another. An unusable pin now stops the run instead of routing around it.
+// Watch for: the value can arrive as a string, so it is coerced. A pin that cannot be read stops
+// the run rather than falling back to the router, which would silently work a different ticket.
 const rawTicket = args !== null && typeof args === 'object' ? args.ticket : args
 const forcedTicket = rawTicket === undefined || rawTicket === null ? undefined : Number(rawTicket)
 if (forcedTicket !== undefined && !Number.isInteger(forcedTicket)) {
@@ -51,19 +49,21 @@ const BASH_NOTE = [
 ].join(' ')
 
 // ci.yml runs the whole sweep on the push — typecheck+tests+lint 223s, build-and-boot 162s,
-// browser 526s — so a stage that reruns any of it locally pays those minutes twice for an answer
-// already coming. #204's implement stage ran `npm test` three times while iterating on one spec.
+// browser 526s. Anything a stage repeats locally is those minutes paid twice.
 const LOCAL_TEST_NOTE = `What to run here, and what not to.
 
 While iterating, run only what you are iterating on: \`npm run typecheck\`, \`node --test <the one
 file>\`, and for a browser test \`npx playwright test --config tests/e2e/playwright.config.ts
 <one-spec.ts>\` or the same with \`-g "<one test name>"\`.
 
-Once, before you push: \`npm run typecheck && npm run lint\`. About a minute together, and they are
-what ci.yml fails on most often — worth it to not spend a nine-minute round learning it.
+Once, before you push: \`npm run typecheck && npm run lint && npm test\`. Around ninety seconds
+together — \`npm test\` alone is 17s for 1164 tests — against a nine-minute round to learn the same
+thing. Several of those tests are structural source-scans that no amount of running your own file
+will reach: a11y props the web build drops, tokens used in the wrong role, a second declaration of
+a shared constant. They fail on code that works.
 
-Never run \`npm test\`, \`npm run test:e2e\`, \`npm run test:native\` or \`npm run verify\`. That is the
-sweep, and the run on your push is already doing it against a clean build.
+Never run \`npm run test:e2e\` (526s), \`npm run test:native\`, or \`npm run verify\` (which is all of
+them). Those are the sweep, and the run on your push is already doing it against a clean build.
 
 \`E2E_SKIP_BUILD=1\` reuses the existing dist/ instead of rebuilding it, which is the difference
 between a usable browser loop and an unusable one. It is safe only while your edit is confined to
@@ -127,9 +127,9 @@ const LAND_SCHEMA = {
   required: ['merged'],
 }
 
-// No ports and no containers: the suites run on GitHub's runners now, so the worktree and the
-// branch are all this run leaves behind. cleanup.ts still takes `dockerStarted`, and false is the
-// honest answer rather than a field dropped from the payload it validates.
+// The worktree and the branch are all a run leaves behind: the suites run on GitHub's runners, so
+// there are no local ports or containers. `dockerStarted` stays in the payload cleanup.ts
+// validates, answered honestly rather than dropped.
 const state = {
   worktreePath: null,
   dockerStarted: false,
@@ -137,18 +137,16 @@ const state = {
   merged: false,
 }
 
-// The progress view shows a label per agent, and falls back to the head of the prompt when there
-// is none — which is why an unlabelled run reads as seven walls of instructions with no ticket
-// number anywhere. `ticket` is filled in once the claim stage knows what it took.
+// The progress view labels each agent, falling back to the head of its prompt when none is given.
+// `ticket` is filled in by the claim stage so every later label carries the number.
 const run = { ticket: 'no ticket yet' }
 function label(stage) {
   return `${stage} ${run.ticket}`
 }
 
-// Every stage after Claim starts in the directory the workflow was launched from, which is the
-// shared main checkout — another session moves its HEAD whenever it merges. Two verify rounds
-// once swept a different ticket's merged diff and reported a pass on it. So each stage is told
-// where to stand and made to prove it got there before it does anything else.
+// Every stage starts in the directory the workflow was launched from: the shared main checkout,
+// whose HEAD any other session can move. Each stage is told where to stand and made to prove it
+// got there, so nothing it measures belongs to another ticket.
 function cwdNote(claim) {
   return `Work in ${claim.worktreePath}. Before anything else:
   cd ${claim.worktreePath} && git rev-parse --abbrev-ref HEAD
@@ -156,11 +154,9 @@ If that does not print ${claim.branch}, stop and report failure — you are in a
 belongs to another session, and nothing you measure there is about this ticket.`
 }
 
-// GitHub Actions runs ci.yml against the pushed branch — typecheck, tests, lint, native,
-// browser and the build-and-boot, in parallel on runners that are free and unlimited for a
-// public repo. This stage reads that verdict. It used to reproduce the whole sweep locally,
-// which is what the pipeline did while Actions was billing-blocked, and it cost about twenty
-// minutes a round to learn what the run reports anyway.
+// ci.yml runs typecheck, tests, lint, native, browser and build-and-boot against the pushed
+// branch, in parallel, on runners that are free for a public repo. This stage reads that verdict
+// and never reproduces it.
 async function runVerify(claim, prNumber, round) {
   return agent(
     `${BASH_NOTE}
@@ -173,9 +169,8 @@ there is no plan to compute here either.
   gh pr checks ${prNumber} --repo ${REPO} --watch --interval 20 > /tmp/ci-${round}.txt ; \
   gh run list --repo ${REPO} --branch ${claim.branch} --limit 1 --json databaseId,conclusion,status
 
-Take the verdict from that JSON's "conclusion", never from the watcher's exit status: piped into
-anything, that status belongs to the pipe's last command, so a red run reads as a pass. That is
-how a broken branch once reached main.
+Take the verdict from that JSON's "conclusion", never from the watcher's exit status. Piped into
+anything, that status belongs to the pipe's last command, so a red run reads as a pass.
 
 If the conclusion is "success", report pass: true with the runId, and stop.
 
@@ -289,10 +284,9 @@ later stage reads it from GitHub itself.`,
   run.ticket = `#${claim.number}`
   log(`#${claim.number} ${claim.title || ''} — on ${claim.branch}`)
   // The claim comment, the worktree and the branch all exist by the time the gate runs, so every
-  // way out from here has to hand back all three. Registering them before the first exit is what
-  // makes that true by construction: #204's escalated run left its worktree standing, so
-  // `git worktree list` still named the branch, and the staleness test in CLAUDE.md read the
-  // claim as live — the ticket then refused every later run that tried to take it.
+  // exit from here has to hand back all three. Registering them before the first `return` makes
+  // that true by construction. Watch for: a worktree left standing keeps the branch in
+  // `git worktree list`, where the staleness test reads it as a live claim forever.
   claimOpen = true
   claimedNumber = claim.number
   state.localBranch = claim.branch
@@ -486,8 +480,8 @@ not read CLOSED, close it yourself with a one-line comment saying what shipped.
 Report: merged, prNumber, reason.`,
     { model: MODELS.land, phase: 'Land', label: label('land'), schema: LAND_SCHEMA }
   )
-  // Last stage that can die and take the claim with it: a null here once meant the pull request
-  // was merged and nothing recorded it, or the run threw on the way out of a green branch.
+  // The last stage that can die and take the claim with it: without this, a merged pull request
+  // can go unrecorded, or a green branch can throw on its way out.
   if (!land?.merged) {
     releaseReason = `ci.yml was green but the branch did not merge: ${
       land?.reason || 'the land agent died before reporting'
@@ -514,12 +508,11 @@ Report: merged, prNumber, reason.`,
     const cleaned = await agent(
       `${BASH_NOTE}
 This run's branch is ${state.localBranch || '(none)'} and merged=${state.merged}. Run this from the
-directory you are already in, and do NOT change its branch: this checkout is shared, and another
-session was once pulled off its own branch mid-sweep by a teardown tidying up after itself. The
-branch this run used lives in the worktree, so removing the worktree is what frees it. Everything
-below is already decided, so run it as one chained call rather than as separate steps — idempotent
-teardown tolerates a container, worktree or branch that's already gone, which is why the later
-pieces are joined with ";" instead of "&&":
+directory you are already in, and do NOT change its branch: this checkout is shared, and moving its
+HEAD pulls whatever session owns it off its own work. The branch this run used lives in the
+worktree, so removing the worktree is what frees it. Everything below is already decided — run it
+as one chained call. The later pieces are joined with ";" rather than "&&" because teardown is
+idempotent and tolerates a worktree or branch that is already gone:
 
   ${releaseCommand}${writeJsonCommand('/tmp/ticket-pipeline-cleanup.json', state)} && \\
   npx tsx lib/ticketPipeline/cleanup.ts < /tmp/ticket-pipeline-cleanup.json | \\

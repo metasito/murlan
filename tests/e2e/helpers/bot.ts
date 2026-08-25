@@ -323,12 +323,18 @@ async function giveExchangeCandidateCount(page: Page): Promise<number> {
   return labels.filter((l) => GIVEBACK_CARD_LABEL.test(l)).length;
 }
 
+const EXCHANGE_CONFIRM = '[data-testid="exchange-confirm"]';
+
+/**
+ * The modal is select-then-confirm: clicking a card only picks it, and the
+ * give happens on the confirm control. Both clicks are needed, in that order.
+ *
+ * Watch for: the confirm is disabled until a card is picked, so a confirm that
+ * does nothing means the card click missed. The candidate count dropping is
+ * what proves the give landed — a click that silently missed the gesture
+ * responder throws nothing.
+ */
 async function giveExchangeCard(page: Page): Promise<boolean> {
-  // A successful pick collapses the whole modal (or at least removes this
-  // card from the offered list), so the giveback-shaped count dropping is
-  // real, independent proof the press worked — not just "no exception was
-  // thrown", which a press that silently missed the gesture responder would
-  // also produce.
   const before = await giveExchangeCandidateCount(page);
   if (before === 0) return false;
 
@@ -339,13 +345,16 @@ async function giveExchangeCard(page: Page): Promise<boolean> {
 
   for (let i = labels.length - 1; i >= 0; i--) {
     if (!GIVEBACK_CARD_LABEL.test(labels[i])) continue;
-    // The label now sits on SelectableCard's own Pressable rather than on the
-    // disabled CardView inside it, so the matched element is the control —
-    // a real click lands on it directly, with no ancestor climb and no
-    // hand-dispatched pointer sequence to stand in for one.
+    // The label sits on SelectableCard's own Pressable, so the matched element
+    // is the control itself and a real click lands on it directly.
     for (let attempt = 0; attempt < 3; attempt++) {
       await candidates
         .nth(i)
+        .click({ timeout: CARD_CLICK_TIMEOUT_MS })
+        .catch(() => {});
+      await sleep(250);
+      await page
+        .locator(EXCHANGE_CONFIRM)
         .click({ timeout: CARD_CLICK_TIMEOUT_MS })
         .catch(() => {});
       await sleep(250);
