@@ -16,6 +16,7 @@
 import { spawnSync } from "node:child_process";
 import { mkdirSync, statSync } from "node:fs";
 import path from "node:path";
+import { dumpName } from "./backupNaming.mjs";
 
 if (!process.env.DATABASE_URL) {
   console.error(
@@ -25,8 +26,7 @@ if (!process.env.DATABASE_URL) {
   process.exit(1);
 }
 
-const stamp = new Date().toISOString().replace(/[-:]/g, "").replace(/\..+/, "").replace("T", "-");
-const outfile = path.resolve(process.argv[2] ?? `backups/murlan-${stamp}.sql`);
+const outfile = path.resolve(process.argv[2] ?? path.join("backups", dumpName(new Date())));
 
 mkdirSync(path.dirname(outfile), { recursive: true });
 

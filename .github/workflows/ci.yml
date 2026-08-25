@@ -135,6 +135,13 @@ jobs:
           cache: npm
       - run: npm ci
 
+      # tests/backupDb.test.ts restores a real dump — needs the same client
+      # tools scripts/backup-db.mjs itself depends on, matched to the service
+      # container's major version so the dump a pg_dump writes is one its own
+      # psql can read back.
+      - name: Install postgresql-client
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends postgresql-client-16
+
       - name: Typecheck
         run: npm run typecheck
 
@@ -152,6 +159,11 @@ jobs:
           if grep -q "DATABASE_URL not set" test-output.txt; then
             echo "::error::Integration suites skipped — the Postgres service is not reachable."
             echo "These cover socket auth, hand secrecy, the exchange bypass and seat vacancy."
+            exit 1
+          fi
+          if grep -qE "pg_dump not on PATH|psql not on PATH" test-output.txt; then
+            echo "::error::The backup restore test skipped — postgresql-client-16 did not provide pg_dump/psql."
+            echo "This is the only test proving a dump actually restores; see the 'Install postgresql-client' step above."
             exit 1
           fi
           echo "Integration suites ran against Postgres."
