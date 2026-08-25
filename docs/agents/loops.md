@@ -32,7 +32,7 @@ both. `tests/vignette.test.ts` pins that no radial shapes itself.
 
 ## The iOS loop: a CI simulator, or ask for a capture
 
-`.github/workflows/ios.yml` drives `.maestro/smoke.yaml` and `.maestro/offline-game.yaml`
+`.github/workflows/ios.yml` drives `.maestro/smoke.yaml` (offline-game.yaml is #353)
 through Expo Go on a real iOS Simulator, on a free `macos-latest` GitHub runner (#205) — the
 same flows `maestro.yml` already runs on Android, with the emulator-only failure classes
 (#185, #186) gone because a Simulator is a process on the host rather than a virtualised

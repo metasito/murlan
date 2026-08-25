@@ -195,11 +195,9 @@ jobs:
       # 127.0.0.1 in the flows' MURLAN_PACKAGER_URL already reaches Metro
       # directly.
       #
-      # Both flows run here, not just smoke.yaml: offline-game.yaml is
-      # skipped in maestro.yml because the Android *emulator* falls over
-      # rendering the animated game table (#185), and that failure class is
-      # specific to a virtualised device — it does not transfer to a
-      # simulator process on real hardware.
+      # smoke.yaml only, as on Android. offline-game.yaml fails here at the
+      # tutorial skip when it runs second, and its card taps are point taps
+      # derived from an Android emulator's layout — #353 has both.
       - name: Run the flows
         run: |
           curl -sf -o /dev/null -w 'metro /status: %{http_code}' http://127.0.0.1:8081/status || echo "::warning::Metro is no longer answering on 8081."
@@ -214,7 +212,7 @@ jobs:
           echo
           # The flows default to the Android package; iOS registers Expo Go as
           # `host.exp.Exponent`, and a simulator answers NotFound to anything else.
-          maestro test -e MAESTRO_EXPO_GO_APP_ID=host.exp.Exponent .maestro/smoke.yaml .maestro/offline-game.yaml
+          maestro test -e MAESTRO_EXPO_GO_APP_ID=host.exp.Exponent .maestro/smoke.yaml
 
       - name: Collect Metro's log alongside Maestro's debug output
         if: failure()
