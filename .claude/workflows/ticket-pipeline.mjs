@@ -352,9 +352,9 @@ in-progress, add ready-for-human, comment the gate's reason. Do not report the i
 later stage reads it from GitHub itself.`,
     { model: MODELS.claim, phase: 'Claim', label: 'claim the next queue ticket', schema: CLAIM_SCHEMA }
   )
-  if (!claim.claimed) {
-    log(`Nothing claimed: ${claim.reason}`)
-    return { landed: false, reason: claim.reason }
+  if (!claim?.claimed) {
+    log(`Nothing claimed: ${claim?.reason ?? 'the claim agent died before reporting'}`)
+    return { landed: false, reason: claim?.reason ?? 'claim agent died' }
   }
   run.ticket = `#${claim.number}`
   log(`#${claim.number} ${claim.title || ''} — on ${claim.branch}`)
@@ -409,7 +409,10 @@ ${PROSE_CAPTURE_NOTE}
 Report: committed, commitSha, prNumber, summary, filesTouched, prose.`,
     { model: MODELS.implement, phase: 'Implement', label: label('implement'), schema: IMPLEMENT_SCHEMA }
   )
-  if (!impl.committed) {
+  // Same absence as `reported()` handles below, one stage earlier: a session limit killed the
+  // implement agent, `agent()` returned null, and reading `.committed` off it threw before the
+  // claim could be released. Every stage that can die has to read as "it did not get there".
+  if (!impl?.committed) {
     releaseReason = `implementation didn't complete: ${impl.summary || 'no reason given'}`
     return { landed: false, ticket: claim.number, reason: 'implement failed' }
   }
@@ -470,7 +473,7 @@ ${PROSE_CAPTURE_NOTE}
 Report: committed, commitSha, summary, filesTouched, prose.`,
       { model: MODELS.fix, phase: 'Fix', label: label(`fix round ${round}`), schema: IMPLEMENT_SCHEMA }
     )
-    if (!fix.committed) break
+    if (!fix?.committed) break
     // A fix that edits a file the implement commit never touched is answering something other
     // than the ticket. #291's third round rewrote scripts/next-ticket.mjs, which that issue's
     // Definition of done had named as out of scope.
