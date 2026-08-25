@@ -827,10 +827,11 @@ describe("Albanian card terminology", () => {
    * Attested in docs/albanian-card-terminology-research.md. `Trefla` and `Pika`
    * were a calque of *trefoil* and a borrowing of German *Pik*, attested as card
    * suits nowhere; docs/RULES.md's cited Albanian text opens the game with
-   * "ai lojtar që ka 3 maç".
+   * "ai lojtar që ka 3 maç". `Kupë`, not `Kupa`, is the bare singular the
+   * `{{rank}} {{suit}}` slot wants — `Kupa` is the noun's plural, per #29.
    */
   const SUITS = {
-    "cards.suitHearts": "Kupa",
+    "cards.suitHearts": "Kupë",
     "cards.suitDiamonds": "Karo",
     "cards.suitClubs": "Spathi",
     "cards.suitSpades": "Maç",
