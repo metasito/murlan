@@ -46,6 +46,14 @@ function AnimatedCard({ card, delay = 0, reduceMotion }: { card: Card; delay?: n
     ty.value = withDelay(delay, withSpring(0, Motion.spring.land));
     rot.value = withDelay(delay, withSpring(0, Motion.spring.land));
     opacity.value = withDelay(delay, withTiming(1, { duration: Motion.duration.moderate }));
+    // A delayed spring outlives the view that started it. This card is remounted
+    // whenever the pick changes, so without this each pick leaves a timeline
+    // animating a shared value nothing reads any more.
+    return () => {
+      cancelAnimation(ty);
+      cancelAnimation(rot);
+      cancelAnimation(opacity);
+    };
   }, [delay, opacity, reduceMotion, rot, ty]);
 
   const anim = useAnimatedStyle(() => ({

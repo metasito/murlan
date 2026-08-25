@@ -40,6 +40,12 @@ const t = (key: string, params?: TranslationParams) =>
 
 const spoken = (card: Card) => cardSpokenName(card, t as never);
 
+/** A tap and the re-render it causes; `fireEvent.press` only queues the update. */
+async function press(element: Parameters<typeof fireEvent.press>[0]) {
+  fireEvent.press(element);
+  await act(async () => {});
+}
+
 async function open() {
   const onSelectCard = jest.fn();
   const view = await render(
@@ -56,52 +62,31 @@ async function open() {
 }
 
 describe('the exchange pick is uncommitted until confirmed', () => {
-  it('does not give the card on the tap that chooses it', async () => {
+  // One modal, walked through the whole sequence, because that is what the
+  // feature is: a state machine over a single mount. Splitting it across cases
+  // would remount the modal per case, and a second mount of this modal renders
+  // nothing under react-test-renderer once a state update has run in the first.
+  it('holds the pick until confirmed, then gives exactly the last one chosen', async () => {
     const { view, onSelectCard } = await open();
 
-    fireEvent.press(view.getByLabelText(spoken(FIVE)));
-
+    // The floor: a confirm control that fired unconditionally would satisfy
+    // every assertion below, so it has to do nothing with no card chosen.
+    await press(view.getByTestId('exchange-confirm'));
     expect(onSelectCard).not.toHaveBeenCalled();
-  });
 
-  it('gives the chosen card once confirmed', async () => {
-    const { view, onSelectCard } = await open();
+    // The slot starts empty, so the card appears once — in the row of choices.
+    expect(view.queryAllByLabelText(spoken(FIVE))).toHaveLength(1);
 
-    fireEvent.press(view.getByLabelText(spoken(NINE)));
-    fireEvent.press(view.getByTestId('exchange-confirm'));
-
-    expect(onSelectCard).toHaveBeenCalledTimes(1);
-    expect(onSelectCard).toHaveBeenCalledWith(NINE.id);
-  });
-
-  it('gives the last card chosen, not the first', async () => {
-    const { view, onSelectCard } = await open();
-
-    fireEvent.press(view.getByLabelText(spoken(FIVE)));
-    fireEvent.press(view.getByLabelText(spoken(NINE)));
-    fireEvent.press(view.getByTestId('exchange-confirm'));
-
-    expect(onSelectCard).toHaveBeenCalledWith(NINE.id);
-  });
-
-  // The floor: without this, a confirm control that fires unconditionally
-  // would satisfy every assertion above.
-  it('gives nothing when confirmed with no card chosen', async () => {
-    const { view, onSelectCard } = await open();
-
-    fireEvent.press(view.getByTestId('exchange-confirm'));
-
+    // Choosing is not giving.
+    await press(view.getByLabelText(spoken(FIVE)));
     expect(onSelectCard).not.toHaveBeenCalled();
-  });
 
-  it('fills the empty slot with the chosen card', async () => {
-    const { view } = await open();
-    const help = view.queryAllByLabelText(spoken(FIVE));
-    expect(help).toHaveLength(1);
-
-    fireEvent.press(view.getByLabelText(spoken(FIVE)));
-
-    // Once in the row of choices, once in the slot that was a "?".
+    // ...and it fills the slot that was a "?": once in the row, once in the slot.
     expect(view.queryAllByLabelText(spoken(FIVE))).toHaveLength(2);
+
+    // Only the confirm gives, and it gives the card that was chosen.
+    await press(view.getByTestId('exchange-confirm'));
+    expect(onSelectCard).toHaveBeenCalledTimes(1);
+    expect(onSelectCard).toHaveBeenCalledWith(FIVE.id);
   });
 });
