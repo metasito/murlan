@@ -212,21 +212,9 @@ jobs:
           echo
           head -c 1200 "$RUNNER_TEMP/manifest.out"
           echo
-          # iOS registers Expo Go as `host.exp.Exponent`. The Android package
-          # is `host.exp.exponent`, which is the spelling both flows carry, and
-          # a simulator answers NotFound to every request made with it — the
-          # bundle it holds is a different identifier. Run the flows from
-          # copies that say Exponent rather than forking them per platform.
-          mkdir -p "$RUNNER_TEMP/flows"
-          for f in .maestro/smoke.yaml .maestro/offline-game.yaml; do
-            out="$RUNNER_TEMP/flows/$(basename "$f")"
-            sed 's/^appId: host\.exp\.exponent$/appId: host.exp.Exponent/' "$f" > "$out"
-            grep -q '^appId: host\.exp\.Exponent$' "$out" || {
-              echo "::error::$f no longer declares the Expo Go appId this job rewrites."
-              exit 1
-            }
-          done
-          maestro test "$RUNNER_TEMP/flows/smoke.yaml" "$RUNNER_TEMP/flows/offline-game.yaml"
+          # The flows default to the Android package; iOS registers Expo Go as
+          # `host.exp.Exponent`, and a simulator answers NotFound to anything else.
+          maestro test -e MAESTRO_EXPO_GO_APP_ID=host.exp.Exponent .maestro/smoke.yaml .maestro/offline-game.yaml
 
       - name: Collect Metro's log alongside Maestro's debug output
         if: failure()

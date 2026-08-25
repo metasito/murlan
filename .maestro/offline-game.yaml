@@ -40,7 +40,11 @@
 # *before* this block, so an `env:` key here wins over the flag rather than
 # yielding to it — which is why the address has to be one that works
 # everywhere. Change it here, or drop the reverse and put a reachable host in.
-appId: host.exp.exponent
+# Expo Go's iOS bundle identifier capitalises Exponent; the Android package
+# does not, and a simulator answers NotFound to every request made with the
+# Android spelling. `ios.yml` passes the iOS one in; everything else, this
+# machine included, gets Android's.
+appId: "${typeof MAESTRO_EXPO_GO_APP_ID === 'string' ? MAESTRO_EXPO_GO_APP_ID : 'host.exp.exponent'}"
 env:
   MURLAN_PACKAGER_URL: exp://127.0.0.1:8081
 ---
@@ -52,6 +56,13 @@ env:
     # Which flow runs first is not fixed, so both orders have to work.
     clearState: true
 - openLink: "${MURLAN_PACKAGER_URL}"
+# iOS asks before handing a custom-scheme link to another app, and the link
+# is not followed until it is answered. The simulator runs it-IT, so the
+# button reads "Apri". Android never shows it, which is what `optional`
+# is for.
+- tapOn:
+    text: "Apri"
+    optional: true
 - extendedWaitUntil:
     visible: "IL GIOCO DI CARTE|GUIDA RAPIDA"
     # A minute is what a developer's machine needs. A CI emulator is slower

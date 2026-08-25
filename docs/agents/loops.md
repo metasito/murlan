@@ -36,8 +36,7 @@ both. `tests/vignette.test.ts` pins that no radial shapes itself.
 through Expo Go on a real iOS Simulator, on a free `macos-latest` GitHub runner (#205) — the
 same flows `maestro.yml` already runs on Android, with the emulator-only failure classes
 (#185, #186) gone because a Simulator is a process on the host rather than a virtualised
-device. It is `workflow_dispatch` only until it has been run green twice; read its own header
-before assuming it fires on every push or pull request.
+device. It runs on every pull request targeting `main`, and on demand.
 
 That job proves the flows still run and the app still renders *something* on device — it does
 not replace looking at the device. A rendering defect like #209 needs a screenshot regardless:
