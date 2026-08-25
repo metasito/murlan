@@ -672,11 +672,7 @@ function PassaButton({
 /**
  * The pre-first-play banner naming who opens and with what card. A component
  * of its own rather than inline JSX: `card` is only read here, so `rank` and
- * `suit` derive once instead of once per interpolation, and GameTable's own
- * `dimReasonText` (which also reads the start card, for the button's refusal
- * reason) never shares a live range with this — extending that range once
- * broke React Compiler's memoization of `handlePlay` (its `useCallback`
- * depends on `dimReasonText`).
+ * `suit` derive once instead of once per interpolation.
  */
 function StartCardBanner({
   card,

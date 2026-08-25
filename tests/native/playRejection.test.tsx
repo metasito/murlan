@@ -40,8 +40,6 @@ import { GameTable } from '@/components/GameTable';
 import { t } from '@/lib/i18n';
 import { cardSpokenName } from '@/lib/cardNames';
 import {
-  getCardDisplayRank,
-  getSuitSymbol,
   type Card,
   type Combination,
   type GameState,
@@ -189,15 +187,13 @@ describe('the start-card banner names the real fallback card', () => {
   });
 
   const FIVE_H = card('5', 'hearts');
-  const rank = getCardDisplayRank(FIVE_H.rank);
-  const suit = getSuitSymbol(FIVE_H.suit);
 
   it('the viewer opens: banner names the actual card, not the 3♠', async () => {
     const r = await render(
       table(state({ firstPlayMade: false, startCard: FIVE_H, currentTurnIndex: 0 }), [])
     );
 
-    expect(screen.getByText(t('gameTable.startCardBannerSelf', { rank, suit }))).toBeTruthy();
+    expect(screen.getByText('You start! You hold the 5♥')).toBeTruthy();
     expect(screen.queryByText('♠')).toBeNull();
 
     await r.unmount();
@@ -208,9 +204,7 @@ describe('the start-card banner names the real fallback card', () => {
       table(state({ firstPlayMade: false, startCard: FIVE_H, currentTurnIndex: 1 }), [])
     );
 
-    expect(
-      screen.getByText(t('gameTable.startCardBannerOther', { name: 'Besi', rank, suit }))
-    ).toBeTruthy();
+    expect(screen.getByText('Besi starts with the 5♥')).toBeTruthy();
     expect(screen.queryByText('♠')).toBeNull();
 
     await r.unmount();

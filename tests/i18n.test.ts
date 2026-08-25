@@ -402,8 +402,12 @@ describe("interpolation placeholders stay in sync across locales", () => {
   });
 });
 
-describe("gameTable.playLabelStartCard and gameTable.startCardBannerSelf name the actual card", () => {
-  const KEYS = ["gameTable.playLabelStartCard", "gameTable.startCardBannerSelf"] as const;
+describe("gameTable.playLabelStartCard, gameTable.startCardBannerSelf and gameTable.startCardBannerOther name the actual card", () => {
+  const KEYS = [
+    "gameTable.playLabelStartCard",
+    "gameTable.startCardBannerSelf",
+    "gameTable.startCardBannerOther",
+  ] as const;
 
   test("no locale hardcodes ♠ — the 2-player fallback opener can hold any suit", () => {
     for (const key of KEYS) {
@@ -411,6 +415,10 @@ describe("gameTable.playLabelStartCard and gameTable.startCardBannerSelf name th
         assert.ok(
           !LOCALES[name][key].includes("♠"),
           `${name}["${key}"] hardcodes ♠ instead of interpolating {{suit}}`
+        );
+        assert.ok(
+          LOCALES[name][key].includes("{{suit}}"),
+          `${name}["${key}"] is missing the {{suit}} placeholder entirely`
         );
       }
     }
