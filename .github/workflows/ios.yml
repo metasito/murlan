@@ -190,7 +190,21 @@ jobs:
           # but never launched has none, and the lookup fails with ENOENT
           # before the first command of the flow runs. One launch creates
           # them.
-          xcrun simctl launch "$SIMULATOR_UDID" host.exp.exponent
+          #
+          # The first attempt loses a race with the install: SpringBoard
+          # answers `FBSOpenApplicationServiceErrorDomain code 4` while it is
+          # still registering the bundle. Retry rather than sleep a fixed
+          # amount, and if it never opens print the device's own reason —
+          # `simctl` only ever says "the request failed".
+          for _ in 1 2 3 4 5 6; do
+            xcrun simctl launch "$SIMULATOR_UDID" host.exp.exponent && launched=1 && break
+            sleep 5
+          done
+          if [ -z "${launched:-}" ]; then
+            echo "::error::Expo Go would not open on the simulator."
+            xcrun simctl spawn "$SIMULATOR_UDID" log show --last 3m --style compact               --predicate 'process == "SpringBoard" OR process == "installd" OR process == "runningboardd"' | tail -120
+            exit 1
+          fi
           xcrun simctl terminate "$SIMULATOR_UDID" host.exp.exponent || true
 
       - name: Install Maestro
