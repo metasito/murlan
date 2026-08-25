@@ -5,11 +5,11 @@
 // the tap away from it along with everything else.
 
 import { useEffect } from "react";
-import { Platform, Pressable, ScrollView, StyleSheet, View } from "react-native";
+import { BackHandler, Platform, Pressable, ScrollView, StyleSheet, View } from "react-native";
 import Animated, { SlideInLeft } from "react-native-reanimated";
 import { TableText } from "./TableText";
 import { LinearGradient } from "expo-linear-gradient";
-import { Colors, FontSize, Garnet, Highlight, makeShadow, Motion, Spacing, TOUCH_TARGET_MIN } from "@/lib/theme";
+import { Colors, FontSize, Garnet, Highlight, makeShadow, Motion, Scrim, Spacing, TOUCH_TARGET_MIN } from "@/lib/theme";
 import { usePrefersReducedMotion } from "@/lib/accessibility";
 import { useTranslation } from "@/lib/i18n";
 import { useSettings } from "@/context/SettingsContext";
@@ -33,6 +33,23 @@ function useEscapeToClose(onEscape: () => void) {
     document.addEventListener("keyup", handler);
     return () => document.removeEventListener("keyup", handler);
   }, [onEscape]);
+}
+
+/**
+ * Android's back gesture is the system's own "dismiss what is on top", which a
+ * React Native Modal answers for free. This sheet is not one, so unanswered the
+ * gesture reaches the router and pops the whole game screen out from behind a
+ * sheet the player only meant to close.
+ */
+function useBackToClose(onBack: () => void) {
+  useEffect(() => {
+    if (Platform.OS !== "android") return;
+    const sub = BackHandler.addEventListener("hardwareBackPress", () => {
+      onBack();
+      return true;
+    });
+    return () => sub.remove();
+  }, [onBack]);
 }
 
 const SWITCH_W = 34;
@@ -207,6 +224,7 @@ export function GameSettingsSheet({
     setHapticsEnabled,
   } = useSettings();
   useEscapeToClose(onClose);
+  useBackToClose(onClose);
 
   return (
     <>
@@ -340,7 +358,7 @@ const sheetStyles = StyleSheet.create({
     top: 0,
     bottom: 0,
     right: 0,
-    backgroundColor: "rgba(0,0,0,0.42)",
+    backgroundColor: Scrim.medium,
   },
   sheetPos: { position: "absolute" },
   sheet: {

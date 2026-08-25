@@ -514,7 +514,7 @@ export function TopOppSlot({
   scale?: number;
   /** The turn window, so the seat on move can sweep its own rim. */
   countdown?: { seconds: number; resetKey: string };
-  /** Solo le carte: the name, the badges and the card count fall away. */
+  /** Cards only: the name, the badges and the card count fall away. */
   focusMode?: boolean;
 }) {
   // The fan and the badge read one number, held at its pre-play value for as
@@ -651,7 +651,7 @@ export function SideOppSlot({
   scale?: number;
   /** The turn window, so the seat on move can sweep its own rim. */
   countdown?: { seconds: number; resetKey: string };
-  /** Solo le carte: the name, the badges and the card count fall away. */
+  /** Cards only: the name, the badges and the card count fall away. */
   focusMode?: boolean;
 }) {
   const displayed = displayedHandCount(cardCount ?? player.hand.length, departing);

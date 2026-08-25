@@ -1845,7 +1845,6 @@ const styles = StyleSheet.create({
   // The hint belongs beside the button that raised it, so it follows GIOCA
   // across when the hand row is mirrored.
   rejectHintMirrored: { alignItems: "flex-start" },
-  rejectHintTextMirrored: { textAlign: "left" },
   rejectHintText: {
     fontFamily: "Rajdhani_600SemiBold",
     fontSize: FontSize.xs,
@@ -1860,6 +1859,7 @@ const styles = StyleSheet.create({
     paddingVertical: Spacing.xs,
     overflow: "hidden",
   },
+  rejectHintTextMirrored: { textAlign: "left" },
   rematchPanel: {
     position: "absolute",
     width: REMATCH_PANEL_W,
