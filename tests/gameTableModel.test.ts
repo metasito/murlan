@@ -32,7 +32,6 @@ import {
   urgentThresholdSeconds,
   URGENT_TICK_SECONDS,
   notificationTopOffset,
-  startCardBannerText,
   computeTableFrame,
   railWidth,
   readExchange,
@@ -874,41 +873,6 @@ describe("notificationTopOffset", () => {
     const two = notificationTopOffset({ topPad, landscape: true, scale: 2 });
     assert.ok(two > one, `${two} is no lower than ${one}`);
     assert.ok(two >= topPad + CHIP_H(2), `${two} still overlaps a tablet's chips`);
-  });
-});
-
-describe("startCardBannerText", () => {
-  test("second person when the viewer opens", () => {
-    assert.equal(
-      startCardBannerText({
-        card: { rank: "3", suit: "spades" } as any,
-        starterName: "Ana",
-        viewerIsStarter: true,
-      }),
-      "Inizi tu! Hai il 3♠"
-    );
-  });
-
-  test("names the opener otherwise", () => {
-    assert.equal(
-      startCardBannerText({
-        card: { rank: "3", suit: "spades" } as any,
-        starterName: "Ana",
-        viewerIsStarter: false,
-      }),
-      "Ana inizia con il 3♠"
-    );
-  });
-
-  test("2-player fallback opener: a non-spade card reads its real suit, not a hardcoded ♠", () => {
-    assert.equal(
-      startCardBannerText({
-        card: { rank: "5", suit: "hearts" } as any,
-        starterName: "Ana",
-        viewerIsStarter: false,
-      }),
-      "Ana inizia con il 5♥"
-    );
   });
 });
 

@@ -37,6 +37,8 @@ import Ionicons from "@expo/vector-icons/Ionicons";
 import {
   buildCombination,
   canPlay,
+  getCardDisplayRank,
+  getSuitSymbol,
   sortHand,
   type Card,
   type Combination,
@@ -667,6 +669,36 @@ function PassaButton({
   );
 }
 
+/**
+ * The pre-first-play banner naming who opens and with what card. A component
+ * of its own rather than inline JSX: `card` is only read here, so `rank` and
+ * `suit` derive once instead of once per interpolation.
+ */
+function StartCardBanner({
+  card,
+  starterIsViewer,
+  starterName,
+  t,
+}: {
+  card: Card;
+  starterIsViewer: boolean;
+  starterName: string;
+  t: TFn;
+}) {
+  const rank = getCardDisplayRank(card.rank);
+  const suit = getSuitSymbol(card.suit);
+  return (
+    <View style={styles.startCardBanner}>
+      <TableText style={styles.startCardGlyph}>{suit}</TableText>
+      <TableText style={styles.startCardText}>
+        {starterIsViewer
+          ? t("gameTable.startCardBannerSelf", { rank, suit })
+          : t("gameTable.startCardBannerOther", { name: starterName, rank, suit })}
+      </TableText>
+    </View>
+  );
+}
+
 // ─── GameTable ────────────────────────────────────────────────────────────────
 
 export function GameTable({
@@ -807,10 +839,15 @@ export function GameTable({
   });
   // Two words fit on the button; the sentence is what the screen reader speaks
   // and what the toast shows when the refusal is tapped. Only the start-card
-  // reason reads the rank.
-  const startCardRank = gameState.startCard?.rank ?? "";
+  // reason reads the card. At 2 players the opening card can be the fallback
+  // "lowest dealt card" rather than the 3♠ (docs/RULES.md §4).
+  const startCardDisplayRank = gameState.startCard ? getCardDisplayRank(gameState.startCard.rank) : "";
+  const startCardSuitSymbol = gameState.startCard ? getSuitSymbol(gameState.startCard.suit) : "";
+  const startCardSpokenName = gameState.startCard ? cardSpokenName(gameState.startCard, t) : "";
   const dimReasonText = t(PLAY_A11Y_SPOKEN_KEYS[dimLabel] ?? PLAY_LABEL_KEYS[dimLabel], {
-    rank: startCardRank,
+    rank: startCardDisplayRank,
+    suit: startCardSuitSymbol,
+    card: startCardSpokenName,
   });
 
   const opponents = React.useMemo(
@@ -1352,17 +1389,12 @@ export function GameTable({
 
             <View style={sharedTableStyles.centerSection}>
               {showStartCardBanner ? (
-                <View style={styles.startCardBanner}>
-                  <TableText style={styles.startCardGlyph}>♠</TableText>
-                  <TableText style={styles.startCardText}>
-                    {gameState.currentTurnIndex === viewerSeat
-                      ? t("gameTable.startCardBannerSelf", { rank: gameState.startCard!.rank })
-                      : t("gameTable.startCardBannerOther", {
-                          name: players[gameState.currentTurnIndex]?.name ?? "",
-                          rank: gameState.startCard!.rank,
-                        })}
-                  </TableText>
-                </View>
+                <StartCardBanner
+                  card={gameState.startCard!}
+                  starterIsViewer={gameState.currentTurnIndex === viewerSeat}
+                  starterName={players[gameState.currentTurnIndex]?.name ?? ""}
+                  t={t}
+                />
               ) : (
                 <PlayedPile
                   prev={pileState.prev}
