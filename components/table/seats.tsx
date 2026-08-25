@@ -8,7 +8,9 @@ import {
   SEAT_GAP,
   SIDE_SECTION_W,
   displayedHandCount,
+  fanCounts,
   impactDelayMs,
+  seatFanArc,
   seatLabelH,
 } from "@/components/gameTableModel";
 import Animated, {
@@ -24,9 +26,9 @@ import Svg, { Circle } from "react-native-svg";
 import Ionicons from "@expo/vector-icons/Ionicons";
 import { LinearGradient } from "expo-linear-gradient";
 import { CardView } from "@/components/CardView";
-import { arcBounds, SEAT_ARC, solveArc, type ArcCard } from "@/components/tableArc";
+import type { ArcCard } from "@/components/tableArc";
 import type { OpponentSide } from "@/components/gameTableModel";
-import { CARD_BACK_H, CARD_BACK_W, BACK_SCALE } from "@/components/cardFaceModel";
+import { BACK_SCALE } from "@/components/cardFaceModel";
 import { Colors, makeShadow, Motion, Radius, Spacing } from "@/lib/theme";
 import { usePrefersReducedMotion } from "@/lib/accessibility";
 import { useTranslation } from "@/lib/i18n";
@@ -57,18 +59,18 @@ const FAN_TURN: Record<OpponentSide, number> = { top: 0, left: -90, right: 90 };
  */
 const FAN_EXIT_LIFT = 14;
 
+/** A remaining back eases toward `to`; a departing one lifts and fades in place. */
+type FanDest = { departing: true } | { departing: false; to: ArcCard };
+
 /**
  * One back, positioned as a `transform` throughout — including the static
  * case — so an exit or a re-solve is never anything but a change to a shared
  * value already being read every frame. `from` is where every back in this
- * fan sits until a departure begins; a remaining back then eases toward `to`
- * (the arc solved for what stays), and a departing one lifts and fades in
- * place instead.
+ * fan sits until a departure begins.
  */
 function FanBack({
   from,
-  to,
-  isDeparting,
+  dest,
   progress,
   boxW,
   backScale,
@@ -77,9 +79,7 @@ function FanBack({
   zIndex,
 }: {
   from: ArcCard;
-  /** Null only when `isDeparting` — a departing back never re-solves. */
-  to: ArcCard | null;
-  isDeparting: boolean;
+  dest: FanDest;
   /** 0 at the throw's first frame, 1 once it has landed. */
   progress: SharedValue<number>;
   boxW: number;
@@ -90,7 +90,7 @@ function FanBack({
 }) {
   const aStyle = useAnimatedStyle(() => {
     const t = progress.value;
-    if (isDeparting) {
+    if (dest.departing) {
       return {
         opacity: 1 - t,
         transform: [
@@ -100,20 +100,20 @@ function FanBack({
         ],
       };
     }
-    const dest = to as ArcCard;
+    const { to } = dest;
     return {
       opacity: 1,
       transform: [
-        { translateX: boxW / 2 + from.x + (dest.x - from.x) * t },
-        { translateY: from.y + (dest.y - from.y) * t },
-        { rotate: `${from.rot + (dest.rot - from.rot) * t}deg` },
+        { translateX: boxW / 2 + from.x + (to.x - from.x) * t },
+        { translateY: from.y + (to.y - from.y) * t },
+        { rotate: `${from.rot + (to.rot - from.rot) * t}deg` },
       ],
     };
   });
 
   return (
     <Animated.View
-      testID={isDeparting ? "seat-back-departing" : "seat-back"}
+      testID={dest.departing ? "seat-back-departing" : "seat-back"}
       style={[{ position: "absolute", zIndex }, aStyle]}
     >
       <CardView
@@ -148,65 +148,38 @@ function CardFan({
   /** The table's own scale — the fan draws its backs at `scale * BACK_SCALE`. */
   scale?: number;
 }) {
-  const reduceMotion = usePrefersReducedMotion();
   // Every hook above and below runs unconditionally, before the early return
   // past them: count can go from a real hand to 0 (a player going out) on any
   // render, and a hook called only on some of those renders is exactly the
   // "changed order" React refuses to tolerate.
-  const cap = FAN_DRAWN_CARDS[side];
-  const cappedTotal = Math.min(count, cap);
-  const cappedDeparting = Math.min(departing, cappedTotal);
-  const remaining = cappedTotal - cappedDeparting;
+  const reduceMotion = usePrefersReducedMotion();
+  const { remaining, departing: cappedDeparting } = fanCounts(count, departing, FAN_DRAWN_CARDS[side]);
+  const cappedTotal = remaining + cappedDeparting;
   const hasDeparture = cappedDeparting !== 0;
 
-  const depart = useSharedValue(hasDeparture ? 0 : 1);
-  const settle = useSharedValue(hasDeparture ? 0 : 1);
+  const progress = useSharedValue(hasDeparture ? 0 : 1);
   useEffect(() => {
     if (!hasDeparture) {
-      depart.value = 1;
-      settle.value = 1;
+      progress.value = 1;
       return;
     }
-    // A guard needs a floor: cappedDeparting is only ever > 0 when the caller
-    // has already zeroed it under reduced motion (GameTable.tsx), but this is
-    // what keeps a future caller's mistake from animating anyway.
-    if (reduceMotion) {
-      depart.value = 1;
-      settle.value = 1;
-      return;
-    }
-    const duration = impactDelayMs(false);
-    depart.value = 0;
-    settle.value = 0;
-    depart.value = withTiming(1, { duration });
-    settle.value = withTiming(1, { duration });
-    return () => {
-      cancelAnimation(depart);
-      cancelAnimation(settle);
-    };
-  }, [hasDeparture, reduceMotion, depart, settle]);
+    progress.value = 0;
+    progress.value = withTiming(1, { duration: impactDelayMs(reduceMotion) });
+    return () => cancelAnimation(progress);
+  }, [hasDeparture, reduceMotion, progress]);
 
   if (count === 0) return null;
 
   const backScale = scale * BACK_SCALE;
-  const backW = CARD_BACK_W(backScale);
-  const backH = CARD_BACK_H(backScale);
   // A fan is never width-budgeted: the seat's own column bounds it, and it is
   // the rise that actually binds. `full` is where every back — remaining and
   // departing alike — sits until a departure resolves; `settled` is only
   // where the *remaining* ones are headed, one solve for a smaller count
   // rather than a hand-picked subset of the larger one, which is what keeps
   // the step between them from reading as a jump.
-  const full = solveArc(cappedTotal, {
-    budget: SEAT_ARC, cardW: backW, cardH: backH, scale: backScale, room: Infinity, flip: true,
-  });
-  const settled =
-    cappedDeparting === 0
-      ? full
-      : solveArc(remaining, {
-          budget: SEAT_ARC, cardW: backW, cardH: backH, scale: backScale, room: Infinity, flip: true,
-        });
-  const bounds = arcBounds(full.cards, full.box, backW, backH);
+  const full = seatFanArc(cappedTotal, backScale);
+  const settled = cappedDeparting === 0 ? full : seatFanArc(remaining, backScale);
+  const bounds = full.bounds;
 
   // The wrapper is what the cards occupy once turned, so the seat's own row or
   // column reserves exactly that and the ring-to-fan gap is one number on all
@@ -237,9 +210,8 @@ function CardFan({
           <FanBack
             key={i}
             from={card}
-            to={i < remaining ? settled.cards[i] : null}
-            isDeparting={i >= remaining}
-            progress={i < remaining ? settle : depart}
+            dest={i < remaining ? { departing: false, to: settled.cards[i] } : { departing: true }}
+            progress={progress}
             boxW={full.box.w}
             backScale={backScale}
             liftPx={liftPx}
@@ -259,8 +231,6 @@ function CardFan({
 // middle, the cards left in a badge at its foot, and, while the seat is on
 // move, the turn's own clock sweeping the rim.
 
-// SEAT_DISC lives in gameTableModel.ts — `flightOrigin` needs the same number
-// a throw's origin is measured against, so a second copy here could disagree.
 /** How far the countdown ring stands off the disc, and how thick it is drawn. */
 const RING_GAP = 4;
 const RING_STROKE = 2;
@@ -671,8 +641,6 @@ const OPP_LABEL_MAX_W = 104 + Spacing.xs * 2;
  * off the edge of it — which is what tests/e2e/tableFit.spec.ts caught.
  */
 const SIDE_LABEL_MAX_W = SIDE_SECTION_W - Spacing.sm * 2;
-// SEAT_GAP and seatLabelH live in gameTableModel.ts, for the same reason
-// SEAT_DISC does — `flightOrigin` stacks the same column they describe.
 /** How far a seat recedes while another one is on move. */
 const SEAT_DIM_OPACITY = 0.62;
 /** The count badge's own diameter, and the digit inside it, at scale 1. */

@@ -318,9 +318,12 @@ test.describe("a throw's origin", () => {
       ).toBeLessThan(distToPile);
       // The floor under the comparison above: a flight that starts equally far
       // from everything (a stray fixed offset, say) could still read as
-      // "closer to the ring" by coincidence at one viewport. This is the same
-      // ring-to-fan gap seatFans.spec.ts itself accepts as "on the seat".
-      expect(distToRing).toBeLessThan(80);
+      // "closer to the ring" by coincidence at one viewport. Measured at this
+      // exact VIEWPORT: the pre-#204 FLY_OFFSETS put a `top` throw 50.25px
+      // from its ring; `flightOrigin`'s measured origin puts it 0.016px away.
+      // 3px rejects that regression with room to spare while still tolerating
+      // ordinary subpixel/DPI rounding.
+      expect(distToRing).toBeLessThan(3);
     });
   }
 });

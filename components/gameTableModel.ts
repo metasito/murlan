@@ -244,17 +244,32 @@ export function handCountOf(player: Player | (Player & { handCount?: number })):
 
 /**
  * The number a seat's fan and count badge both show — derived, never stored.
- * The obvious shape, holding the pre-play count in state and stepping it down
- * on a timer, puts a second source of truth next to `handCountOf`, free to
- * disagree whenever a timer is missed or a flight is interrupted. This is a
- * pure sum instead: during a flight the authoritative count has already
- * dropped by the cards it is carrying, and adding them back reproduces the
- * pre-play value with nothing to schedule — when the flight ends,
- * `cardsInFlight` is 0 and the sum already *is* `handCount`.
  * docs/adr/0002-a-play-leaves-the-seat-it-was-thrown-from.md §2.
  */
 export function displayedHandCount(handCount: number, cardsInFlight: number): number {
   return handCount + cardsInFlight;
+}
+
+/** How many of a `CardFan`'s backs stay put versus lift and fade, at `cap`. */
+export interface FanCounts {
+  /** Backs re-solving into the smaller arc — `i < remaining` in the map. */
+  remaining: number;
+  /** Backs lifting and fading in place — drawn, never re-solved. */
+  departing: number;
+}
+
+/**
+ * `count` is the pre-play total (`displayedHandCount`); `departing` of it are
+ * mid-flight. A fan never draws more than `cap` backs, so `remaining` re-caps
+ * the *post-play* total rather than subtracting `departing` from an already
+ * capped one — the difference only shows once a hand sits at `cap`, where
+ * subtracting first left the fan visibly short for the length of the flight
+ * and then popping back to `cap` the instant it landed.
+ */
+export function fanCounts(count: number, departing: number, cap: number): FanCounts {
+  const cappedTotal = Math.min(count, cap);
+  const remaining = Math.min(count - departing, cap);
+  return { remaining, departing: cappedTotal - remaining };
 }
 
 // ─── Pile state ───────────────────────────────────────────────────────────────
@@ -293,14 +308,7 @@ export function impactDelayMs(reduceMotion: boolean): number {
 
 // ─── Flight origin ─────────────────────────────────────────────────────────────
 //
-// Where a throw starts, replacing FLY_OFFSETS' four fixed, unscaled numbers
-// (components/table/pile.tsx). Measured, not guessed: `flightOrigin` derives
-// the delta from the same layout vocabulary components/table/seats.tsx and
-// GameTable.tsx already render from — seatLabelH, SEAT_DISC, the seat arc's
-// own solve — so it cannot disagree with what is actually on screen the way a
-// second, independent set of numbers could. `tests/e2e/seatFans.spec.ts` is
-// what proves the two agree; a unit test can only check the arithmetic.
-// docs/adr/0002-a-play-leaves-the-seat-it-was-thrown-from.md §1.
+// Where a throw starts. docs/adr/0002-a-play-leaves-the-seat-it-was-thrown-from.md §1.
 
 /** The seat disc's diameter at scale 1 (components/table/seats.tsx `SeatRing`). */
 export const SEAT_DISC = 33;
@@ -319,17 +327,15 @@ export function seatLabelH(scale: number): number {
 }
 
 /**
- * The top seat's own fan height for `displayedCount` backs — the same solve
- * `CardFan` (components/table/seats.tsx) performs for its wrapper box, so this
- * cannot disagree with what the fan actually draws.
+ * A seat's own fan of `count` backs at `backScale` — the one solve `CardFan`
+ * (components/table/seats.tsx) performs for its wrapper box, `topFanHeight`
+ * and `flightOrigin` below, so none of the three can disagree with what the
+ * fan actually draws.
  */
-function topFanHeight(scale: number, displayedCount: number): number {
-  const drawn = Math.min(displayedCount, FAN_DRAWN_CARDS.top);
-  if (drawn <= 0) return 0;
-  const backScale = scale * BACK_SCALE;
+export function seatFanArc(count: number, backScale: number) {
   const backW = CARD_BACK_W(backScale);
   const backH = CARD_BACK_H(backScale);
-  const { cards, box } = solveArc(drawn, {
+  const { cards, box } = solveArc(count, {
     budget: SEAT_ARC,
     cardW: backW,
     cardH: backH,
@@ -337,15 +343,15 @@ function topFanHeight(scale: number, displayedCount: number): number {
     room: Infinity,
     flip: true,
   });
-  return arcBounds(cards, box, backW, backH).h;
+  return { cards, box, bounds: arcBounds(cards, box, backW, backH) };
 }
 
-/**
- * The viewer's own throw is not measured — the hand row is already the
- * viewer's real geometry, just scaled with the table like every other table
- * distance FLY_OFFSETS used to leave unscaled.
- */
-const BOTTOM_FLY_OFFSET = { dx: 0, dy: 140 };
+/** The top seat's own fan height for `displayedCount` backs. */
+function topFanHeight(scale: number, displayedCount: number): number {
+  const drawn = Math.min(displayedCount, FAN_DRAWN_CARDS.top);
+  if (drawn <= 0) return 0;
+  return seatFanArc(drawn, scale * BACK_SCALE).bounds.h;
+}
 
 export interface FlightOriginInput {
   dir: FlyDirection;
@@ -373,7 +379,6 @@ export interface FlightOriginInput {
  */
 export function flightOrigin(input: FlightOriginInput): { dx: number; dy: number } {
   const { dir, scale } = input;
-  if (dir === "bottom") return { dx: 0, dy: BOTTOM_FLY_OFFSET.dy * scale };
 
   const ringSize = SEAT_DISC * scale;
   // The column the top seat's label, ring and fan stack in — see
@@ -386,6 +391,14 @@ export function flightOrigin(input: FlightOriginInput): { dx: number; dy: number
   const contentH = input.windowHeight - input.tableTop;
   const midH = contentH - topSectionH - input.handZoneH;
   const pileCenterY = input.tableTop + topSectionH + midH / 2;
+
+  if (dir === "bottom") {
+    // The hand zone runs flush to the window's bottom edge (GameTable.tsx
+    // `handSection`, a flex sibling of the pile's own midSection), so its
+    // vertical centre sits `handZoneH / 2` above that edge.
+    const handCenterY = input.windowHeight - input.handZoneH / 2;
+    return { dx: 0, dy: handCenterY - pileCenterY };
+  }
 
   if (dir === "top") {
     const ringCenterY = input.tableTop + seatLabelH(scale) + ringSize / 2;

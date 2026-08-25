@@ -30,10 +30,6 @@ import {
 } from "@/components/gameTableModel";
 import { FIELD_ARC, solveArc } from "@/components/tableArc";
 
-// The starting offset itself is `origin` (components/gameTableModel.ts
-// `flightOrigin`) — a delta measured against the throwing seat, not a fixed
-// number per direction. Rotation is a styling choice the origin decision
-// never touched, so it stays per-direction here.
 const FLY_ROTS: Record<FlyDirection, number> = {
   bottom: -12, top: 12, left: -18, right: 18,
 };
