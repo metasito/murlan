@@ -106,6 +106,14 @@ Use `Edit`. Never a batched Python/sed rewrite of a `.tsx`: one bad match aborts
 mid-run and silently discards every edit that preceded it, and you cannot tell from the exit
 code which of ten hunks landed. `Edit` fails one hunk at a time, loudly.
 
+## Worktrees
+
+A worktree left behind by a killed, crashed or context-cleared session is not cleaned up by
+anything else — `npm run worktrees:prune` (`-- --dry-run` to only see the classification)
+after any session that ends without landing, or as a periodic sweep, removes what it can
+prove is merged or gone and leaves anything uncommitted or still under an open pull request
+alone.
+
 ## Local ports
 
 Every port this repo's local tooling binds — including the local-substitute path CLAUDE.md's
