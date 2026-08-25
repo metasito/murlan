@@ -37,16 +37,18 @@ env:
 - openLink: "${MURLAN_PACKAGER_URL}"
 # iOS asks before handing a custom-scheme link to another app, and the link
 # is not followed until it is answered. The simulator runs it-IT, so the
-# button reads "Apri". Android never shows the prompt at all, so this is
-# conditioned on the platform rather than on the button appearing in time.
+# button reads "Apri". Android is never asked, and iOS only asks the first
+# time in a session — so this is optional inside the platform it belongs to,
+# rather than awaited.
 - runFlow:
     when:
       platform: iOS
     commands:
-      - extendedWaitUntil:
-          visible: "Apri"
-          timeout: 20000
-      - tapOn: "Apri"
+      - tapOn:
+          text: "Apri"
+          optional: true
+- runFlow:
+    file: dev-menu.yaml
 # Not "Murlan" alone: Expo Go's own native splash screen shows the app
 # name under the icon while the JS bundle is still loading, so a loose
 # "Murlan" wait is satisfied by Expo Go chrome, not the app. Wait for
@@ -58,47 +60,17 @@ env:
     # than that on a cold start, and running out of budget here reads
     # identically to the app never loading at all.
     timeout: 180000
-# On a fresh connection Expo Go shows a "this is the dev menu" tip
-# rendered *on top of* its real dev menu sheet (Reload / Go Home /
-# etc). Both layers have to go, and only in this order: "Continue"
-# dismisses the tip and *reveals* the sheet, then one back press closes
-# the sheet.
-#
-# A back press against the tip does not dismiss either layer — it
-# leaves the experience altogether and lands on Expo Go's own home
-# screen, where none of the app's copy exists and every assertion below
-# fails against a screen the app never rendered. A runner meets this on
-# every single run, because it installs Expo Go fresh each time.
+# iOS does not raise the tip until the bundle has drawn, so it is answered
+# again here; on Android it went at connection time and this is a no-op.
 - runFlow:
-    when:
-      visible: "Continue"
-    commands:
-      - tapOn: "Continue"
-- runFlow:
-    when:
-      visible: "Reload"
-    commands:
-      - back
-- extendedWaitUntil:
-    notVisible: "Reload"
-    timeout: 10000
+    file: dev-menu.yaml
 # First cold launch auto-pushes the interactive tutorial
 # (app/index.tsx effect on `@murlan_tutorial_seen`). Skip it like a real
 # user would so the flag gets set and we land on the actual home screen.
 #
-# Selector note (a real app finding, not just a test inconvenience):
-# the header's "Salta" Pressable renders its label as a plain child
-# Text instead of collapsing into one accessible node (tutorial.tsx
-# ~line 505-507), so the UI tree exposes a second, non-clickable node
-# whose text is also exactly "Salta". Tapping by that text, or even by
-# the Pressable's own correct accessibilityLabel ("Salta il
-# tutorial"), reliably lands on the right element (verified via `adb
-# shell uiautomator dump`: clickable=true, bounds correct) but the tap
-# never fires the RN onPress — only a raw coordinate tap at the same
-# point does. Root cause not fully isolated; falling back to a point
-# tap here. Worth a look in the app: give the header Pressables
-# `accessible` so screen readers (and tools like this) see one node,
-# and re-test whether element-based taps then work.
+# Tapped by the button's accessibilityLabel rather than its visible "Salta":
+# the label is the one node the control exposes, its Text child being hidden
+# from the tree on purpose.
 - runFlow:
     when:
       visible: "Salta il tutorial"

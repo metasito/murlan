@@ -58,37 +58,28 @@ env:
 - openLink: "${MURLAN_PACKAGER_URL}"
 # iOS asks before handing a custom-scheme link to another app, and the link
 # is not followed until it is answered. The simulator runs it-IT, so the
-# button reads "Apri". Android never shows the prompt at all, so this is
-# conditioned on the platform rather than on the button appearing in time.
+# button reads "Apri". Android is never asked, and iOS only asks the first
+# time in a session — so this is optional inside the platform it belongs to,
+# rather than awaited.
 - runFlow:
     when:
       platform: iOS
     commands:
-      - extendedWaitUntil:
-          visible: "Apri"
-          timeout: 20000
-      - tapOn: "Apri"
+      - tapOn:
+          text: "Apri"
+          optional: true
+- runFlow:
+    file: dev-menu.yaml
 - extendedWaitUntil:
     visible: "IL GIOCO DI CARTE|GUIDA RAPIDA"
     # A minute is what a developer's machine needs. A CI emulator is slower
     # than that on a cold start, and running out of budget here reads
     # identically to the app never loading at all.
     timeout: 180000
-# Dev-menu / first-launch-tutorial dismissal — see smoke.yaml for why
-# the tip is tapped and only the sheet under it is dismissed with back.
+# iOS does not raise the tip until the bundle has drawn, so it is answered
+# again here; on Android it went at connection time and this is a no-op.
 - runFlow:
-    when:
-      visible: "Continue"
-    commands:
-      - tapOn: "Continue"
-- runFlow:
-    when:
-      visible: "Reload"
-    commands:
-      - back
-- extendedWaitUntil:
-    notVisible: "Reload"
-    timeout: 10000
+    file: dev-menu.yaml
 - runFlow:
     when:
       visible: "Salta il tutorial"
