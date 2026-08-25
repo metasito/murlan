@@ -90,6 +90,17 @@ Turn those lines into a JSON array of repo-relative paths and run:
   npx tsx lib/ticketPipeline/verifyPlan.ts <<< '["path/one.ts","path/two.ts"]'
 Report its "prose" field verbatim.`
 
+// Stages report the files they touched in whatever form their tools handed back: implement once
+// reported `C:\Users\roton\murlan-wt-294\.github\workflows\ci.yml` while fix reported
+// `.github/workflows/ci.yml`. Compared raw, nothing ever matches and every fix round reads as
+// having widened the diff — a guard firing on every run is worse than no guard.
+function repoRelative(file) {
+  return String(file)
+    .replace(/\\/g, '/')
+    .replace(/^.*?\/murlan(?:-wt-[^/]*)?\//, '')
+    .replace(/^\.\//, '')
+}
+
 function sq(text) {
   return `'${String(text).replace(/'/g, "'\\''")}'`
 }
@@ -588,7 +599,8 @@ Report: committed, commitSha, summary, filesTouched, prose.`,
     // A fix that edits a file the implement commit never touched is answering something other
     // than the ticket. #291's third round rewrote scripts/next-ticket.mjs, which that issue's
     // Definition of done had named as out of scope.
-    const widened = (fix.filesTouched || []).filter((f) => !(impl.filesTouched || []).includes(f))
+    const before = new Set((impl.filesTouched || []).map(repoRelative))
+    const widened = (fix.filesTouched || []).map(repoRelative).filter((f) => !before.has(f))
     ;[verify, review] = await parallel([
       () => runVerify(claim, impl.prNumber, round + 1),
       () => runReview(claim, confirmed.map((f) => f.summary).join('; '), lensesThatFound, fix.prose, reviewedSha),
