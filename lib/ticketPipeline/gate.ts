@@ -30,7 +30,27 @@ export function countSurfaces(filesTouched: string[]): number {
   return filesTouched.length - Math.max(0, locales - 1);
 }
 
+/**
+ * Decisions the ticket still names as open. `ready-for-agent` promises they are made, so a body
+ * that still asks reaches an agent with two readings and no way to choose between them.
+ * Deliberately not suppressed by a recorded decision elsewhere: an ADR about one part of a
+ * ticket says nothing about the boxes open in another.
+ */
+export function unsettledDecisions(body: string): number {
+  const heading = /^##\s+What to settle\s*$/im.exec(body);
+  if (!heading) return 0;
+  const rest = body.slice(heading.index + heading[0].length);
+  const next = /^##\s+/m.exec(rest);
+  const section = next ? rest.slice(0, next.index) : rest;
+  return (section.match(/^\s*-\s*\[ \]/gm) ?? []).length;
+}
+
 export function needsDesignFirstGate(ticket: TicketFacts): GateVerdict {
+  const open = unsettledDecisions(ticket.body);
+  if (open > 0) {
+    return { escalate: true, reason: `carries ${open} unsettled decision(s) under "What to settle"` };
+  }
+
   const hasDecision = DECISION_POINTER.test(ticket.body);
   if (hasDecision) return { escalate: false, reason: "" };
 
