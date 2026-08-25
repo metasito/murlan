@@ -4,7 +4,7 @@
 // layout container with no `accessible` and no role is on no platform.
 import { describe, it, expect, jest } from '@jest/globals';
 import React from 'react';
-import { render, screen } from '@testing-library/react-native';
+import { render, screen, within } from '@testing-library/react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 jest.mock('@/lib/sounds', () => ({
@@ -33,7 +33,7 @@ jest.mock('@/lib/accessibility', () => ({
 }));
 
 import { GameTable } from '@/components/GameTable';
-import type { Card, GameState, Player } from '@/lib/gameEngine';
+import { buildCombination, type Card, type GameState, type Player } from '@/lib/gameEngine';
 import { en as locale } from '@/locales/en';
 
 const METRICS = {
@@ -70,11 +70,12 @@ const state = (currentTurnIndex: number): GameState => ({
 
 const noop = () => {};
 
-const table = (gameState: GameState) => (
+const table = (gameState: GameState, spectating = false) => (
   <SafeAreaProvider initialMetrics={METRICS}>
     <GameTable
       gameState={gameState}
       viewerSeat={0}
+      spectating={spectating}
       selectedIds={[]}
       onSelectCard={noop}
       onPlay={noop}
@@ -84,6 +85,13 @@ const table = (gameState: GameState) => (
     />
   </SafeAreaProvider>
 );
+
+/** Seat `by` has just led, so the next seat is on move. */
+const led = (by: number): GameState => ({
+  ...state((by + 1) % 4),
+  lastPlayedCombination: buildCombination([card('5_hearts', '5', 'hearts')]),
+  lastPlayedBy: by,
+});
 
 const YOUR_TURN = locale['gameTable.a11yYourTurn'];
 
@@ -111,6 +119,26 @@ describe('the table description reaches a screen reader', () => {
   it('summarises the hand on its own node', async () => {
     const r = await render(table(state(1)));
     expect(spokenNodes(/Your hand/)).toHaveLength(1);
+    await r.unmount();
+  });
+});
+
+// The bottom seat belongs to someone else while spectating, so the seat the
+// table is drawn from is nobody's own — a self form there names a play the
+// watcher did not make.
+describe('the top-left chip names who played', () => {
+  it('uses the self form for the viewer', async () => {
+    const r = await render(table(led(0)));
+    const chip = within(screen.getByTestId('game-top-bar'));
+    expect(chip.queryByText(locale['gameShared.you'])).not.toBeNull();
+    await r.unmount();
+  });
+
+  it('names the seat rather than the watcher while spectating', async () => {
+    const r = await render(table(led(0), true));
+    const chip = within(screen.getByTestId('game-top-bar'));
+    expect(chip.queryByText(locale['gameShared.you'])).toBeNull();
+    expect(chip.queryByText('Ana')).not.toBeNull();
     await r.unmount();
   });
 });

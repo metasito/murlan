@@ -1299,18 +1299,20 @@ export function GameTable({
   // Named off `pileState`, not `gameState.lastPlayedBy` — the pile lags the
   // game state by the flight animation, and reading the seat straight off the
   // game state would name the *new* player over the *old* combination for the
-  // length of one throw.
+  // length of one throw. Spectating, the bottom seat is someone else's, so no
+  // play on the felt is the watcher's own.
+  const playedByViewer = !spectating && pileState.playedBy === viewerSeat;
   const lastPlayName =
     pileState.playedBy === null
       ? ""
-      : pileState.playedBy === viewerSeat
+      : playedByViewer
         ? t("gameShared.you")
         : (players[pileState.playedBy]?.name ?? "");
 
   const topBarA11yLabel =
     pileState.current === null
       ? t("gameTable.a11yEmptyTable")
-      : pileState.playedBy === viewerSeat
+      : playedByViewer
         ? t("gameTable.a11yYouPlayed", { label: lastPlayA11yLabel(pileState.current, t) })
         : t("gameTable.a11yPlayerPlayed", {
             name: lastPlayName,
