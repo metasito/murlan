@@ -360,6 +360,13 @@ later stage reads it from GitHub itself.`,
   log(`#${claim.number} ${claim.title || ''} — on ${claim.branch}`)
   if (claim.escalate) {
     log(`#${claim.number} handed back: ${claim.gateReason}`)
+    // The claim comment is posted before the gate runs, so escalating leaves one naming a branch
+    // that was never pushed. `in-progress` comes off, but the comment stays and the next run reads
+    // it as somebody else's work — #204 escalated at the gate and then refused itself. Releasing
+    // here makes cleanup retract the comment as well as the label.
+    claimOpen = true
+    claimedNumber = claim.number
+    releaseReason = `the design gate handed this back: ${claim.gateReason}. No branch was pushed, so this claim is withdrawn.`
     return { landed: false, ticket: claim.number, reason: `escalated: ${claim.gateReason}` }
   }
   if (!claim.worktreePath) {
