@@ -151,7 +151,12 @@ function cwdNote(claim) {
   return `Work in ${claim.worktreePath}. Before anything else:
   cd ${claim.worktreePath} && git rev-parse --abbrev-ref HEAD
 If that does not print ${claim.branch}, stop and report failure — you are in a checkout that
-belongs to another session, and nothing you measure there is about this ticket.`
+belongs to another session, and nothing you measure there is about this ticket.
+
+A sub-agent you dispatch does NOT inherit that cd: it starts in the shared main checkout, where
+this branch's diff does not exist. So name ${claim.worktreePath} in the prompt of every one you
+send, and read "no diff to review" from any of them as proof it stood in the wrong checkout —
+never as a clean result. Re-dispatch it with the path before believing it.`
 }
 
 // ci.yml runs typecheck, tests, lint, native, browser and build-and-boot against the pushed
@@ -348,7 +353,8 @@ its way:
 
 ${LOCAL_TEST_NOTE}
 
-And run its review as \`/code-review --fix\` so the findings are applied rather than only listed.
+And run its review as \`/code-review --fix ${claim.worktreePath}\` — with the path, or it reviews
+the main checkout and reports nothing — so the findings are applied rather than only listed.
 Read what it changed — you own the result, it does not. Then re-run the narrow tests, because a
 fix that improves the code can still make a test wrong. If it reports something it could not fix,
 fix it yourself or say in your summary why it stands. Do not push past a correctness finding.

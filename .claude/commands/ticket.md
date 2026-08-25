@@ -25,6 +25,18 @@ Never have two runs in flight. A second pipeline claims a ticket the first may a
 holding, and both push to the same git index. If a run is still going, wait for its completion
 notification and do nothing else meanwhile.
 
+## The notifications during a run are the run's own
+
+A pipeline stage dispatches sub-agents (`/code-review --fix`, plan and verify helpers), and each
+one that stops fires its own task-notification at you — `/code-review --fix …` finishing, an agent
+"(resumed)" being killed. **These are not another session's.** They share this session's task
+directory; only the workflow's own task-id carries the Opened/Closed result. Do not report them,
+do not act on them, and never call them strays — wait for the workflow's completion notification.
+
+The one thing worth reading in them: a review sub-agent reporting **"no diff to review"** means it
+stood in the main checkout instead of the ticket's worktree. That is a defect in the run, not a
+clean bill — if the run lands on the back of it, say so in the report.
+
 ## Report after each item
 
 Two lines, plain language, no file lists:
