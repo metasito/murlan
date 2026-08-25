@@ -17,9 +17,10 @@ import path from "node:path";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const require = createRequire(path.join(repoRoot, "package.json"));
-const presetRequire = createRequire(
-  path.join(repoRoot, "node_modules", "babel-preset-expo", "package.json")
-);
+// Resolved through Node, not `repoRoot + "node_modules/…"`: a git worktree
+// has no `node_modules` of its own and depends on the ancestor lookup
+// finding the real one.
+const presetRequire = createRequire(require.resolve("babel-preset-expo/package.json"));
 const { transformSync } = require("@babel/core");
 const reactCompiler = presetRequire("babel-plugin-react-compiler");
 

@@ -17,6 +17,7 @@
  * harfbuzzjs via subset-font — WASM, no native build step.
  */
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { createRequire } from "node:module";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import subsetFont from "subset-font";
@@ -24,6 +25,10 @@ import { subsetCharacters, WEB_FONTS } from "./fontSubsetChars.mjs";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const OUT_DIR = path.join(ROOT, "public", "fonts");
+// Resolved through Node, not `ROOT + "node_modules/…"`: a git worktree has
+// no `node_modules` of its own and depends on the ancestor lookup finding
+// the real one.
+const require = createRequire(import.meta.url);
 
 const chars = subsetCharacters(ROOT);
 mkdirSync(OUT_DIR, { recursive: true });
@@ -32,7 +37,7 @@ let before = 0;
 let after = 0;
 
 for (const font of WEB_FONTS) {
-  const source = path.join(ROOT, "node_modules", font.pkg, font.weight, `${font.family}.ttf`);
+  const source = require.resolve(`${font.pkg}/${font.weight}/${font.family}.ttf`);
   const ttf = readFileSync(source);
   const woff2 = await subsetFont(ttf, chars, { targetFormat: "woff2" });
   writeFileSync(path.join(OUT_DIR, `${font.family}.woff2`), woff2);

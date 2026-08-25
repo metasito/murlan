@@ -26,12 +26,31 @@
  * rather than silently under-counting.
  */
 import { readdirSync, readFileSync, statSync } from "node:fs";
+import { createRequire } from "node:module";
 import path from "node:path";
 import ts from "typescript";
 
 const SOURCE_DIRS = ["app", "components", "lib", "context"];
 const FAMILIES = ["Ionicons", "Feather"];
 const ICON_PACKAGE = "@expo/vector-icons";
+const VENDOR_SUBPATH = "build/vendor/react-native-vector-icons";
+
+const require = createRequire(import.meta.url);
+
+/**
+ * Directory holding @expo/vector-icons' vendored react-native-vector-icons
+ * assets (`"glyphmaps"` or `"Fonts"`) — resolved through Node rather than
+ * joined onto a repo root, so a git worktree (no `node_modules` of its own)
+ * finds the same package a plain checkout does. Shared by
+ * scripts/build-icon-fonts.mjs and tests/iconSubset.test.ts so the vendor
+ * path is written once, not three times.
+ */
+export function vectorIconsVendorDir(kind) {
+  const ext = kind === "glyphmaps" ? "json" : "ttf";
+  return path.dirname(
+    require.resolve(`${ICON_PACKAGE}/${VENDOR_SUBPATH}/${kind}/Ionicons.${ext}`)
+  );
+}
 
 function walk(dir, out = []) {
   for (const entry of readdirSync(dir)) {
@@ -521,18 +540,10 @@ export function iconNames(repoRoot) {
 
 export function iconCharacters(repoRoot) {
   const names = iconNames(repoRoot);
+  const glyphmapDir = vectorIconsVendorDir("glyphmaps");
   const out = {};
   for (const family of FAMILIES) {
-    const glyphMap = JSON.parse(
-      readFileSync(
-        path.join(
-          repoRoot,
-          "node_modules/@expo/vector-icons/build/vendor/react-native-vector-icons/glyphmaps",
-          `${family}.json`
-        ),
-        "utf8"
-      )
-    );
+    const glyphMap = JSON.parse(readFileSync(path.join(glyphmapDir, `${family}.json`), "utf8"));
     const chars = names[family]
       .filter((n) => glyphMap[n] !== undefined)
       .map((n) => String.fromCodePoint(glyphMap[n]));

@@ -17,13 +17,10 @@ import { mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import subsetFont from "subset-font";
-import { iconCharacters } from "./iconSubsetChars.mjs";
+import { iconCharacters, vectorIconsVendorDir } from "./iconSubsetChars.mjs";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-const VENDOR = path.join(
-  ROOT,
-  "node_modules/@expo/vector-icons/build/vendor/react-native-vector-icons/Fonts"
-);
+const VENDOR = vectorIconsVendorDir("Fonts");
 const OUT_DIR = path.join(ROOT, "assets", "fonts");
 
 const chars = iconCharacters(ROOT);
