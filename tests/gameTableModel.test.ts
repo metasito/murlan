@@ -22,6 +22,10 @@ import {
   seatDirection,
   arrangeOpponents,
   handCountOf,
+  displayedHandCount,
+  flightOrigin,
+  SEAT_DISC,
+  FAN_DRAWN_CARDS,
   comboKey,
   advancePile,
   roundClosedWithWinner,
@@ -322,6 +326,24 @@ describe("handCountOf", () => {
 
   test("a handCount of zero is honoured, not treated as missing", () => {
     assert.equal(handCountOf({ hand: [{}, {}], handCount: 0 } as any), 0);
+  });
+});
+
+describe("displayedHandCount", () => {
+  test("no flight: the display is exactly the authoritative count", () => {
+    assert.equal(displayedHandCount(14, 0), 14);
+  });
+
+  test("mid-flight: the cards in the air are added back, reproducing the pre-play count", () => {
+    // The engine already dropped the seat to 11 for a 3-card play; the fan
+    // and the badge should still read the 14 the player saw before throwing.
+    assert.equal(displayedHandCount(11, 3), 14);
+  });
+
+  test("once the flight lands, cardsInFlight is 0 and the sum already is handCount", () => {
+    // No step-down to schedule: the same seat that read 14 during the flight
+    // reads 11 the instant cardsInFlight returns to 0, with nothing else changing.
+    assert.equal(displayedHandCount(11, 0), 11);
   });
 });
 
@@ -1264,6 +1286,82 @@ describe("impact feedback is timed to the card landing, not to the throw", () =>
     // setTimeout truncates, and a fractional delay would drift against the
     // animation it is supposed to match.
     assert.equal(impactDelayMs(false) % 1, 0);
+  });
+});
+
+// ─── Flight origin ────────────────────────────────────────────────────────────
+
+describe("flightOrigin", () => {
+  // Deliberately asymmetric left/right pads, so a test that happens to pass
+  // only because the table is centred cannot hide here.
+  const base = {
+    scale: 1,
+    windowWidth: 800,
+    windowHeight: 600,
+    tableLeft: 40,
+    tableRight: 20,
+    tableTop: 10,
+    handZoneH: 100,
+    topDisplayedCount: 0,
+  };
+
+  test("the viewer's own throw is not measured — scaled, not fixed", () => {
+    assert.deepEqual(flightOrigin({ ...base, dir: "bottom" }), { dx: 0, dy: 140 });
+    assert.deepEqual(flightOrigin({ ...base, dir: "bottom", scale: 2 }), { dx: 0, dy: 280 });
+  });
+
+  test("top: dx is 0 — the top seat and the pile share the same horizontal centre", () => {
+    assert.equal(flightOrigin({ ...base, dir: "top" }).dx, 0);
+  });
+
+  test("top: the throw starts above the pile, at the ring's own line", () => {
+    // Worked by hand from seatLabelH/SEAT_DISC/CHIP_H/Spacing — see the ADR.
+    // seatLabelH(1) = 17 + CHIP_H(1)=23 + Spacing.xs=4 = 44; ringSize = 33.
+    // topSectionH (no fan) = 44 + 33 = 77; contentH = 600-10 = 590;
+    // midH = 590-77-100 = 413; pileCenterY = 10+77+413/2 = 293.5;
+    // ringCenterY = 10+44+33/2 = 70.5; dy = 70.5-293.5 = -223.
+    assert.equal(flightOrigin({ ...base, dir: "top" }).dy, -223);
+  });
+
+  test("top: a bigger held fan pushes the pile down, lengthening the throw", () => {
+    const noFan = flightOrigin({ ...base, dir: "top", topDisplayedCount: 0 }).dy;
+    const withFan = flightOrigin({ ...base, dir: "top", topDisplayedCount: 5 }).dy;
+    // The ring never moves; only the pile does, so the gap between them grows.
+    assert.ok(withFan < noFan, `expected the throw to lengthen: ${withFan} was not < ${noFan}`);
+  });
+
+  test("top: the fan's own cap means a held count past it changes nothing further", () => {
+    const atCap = flightOrigin({ ...base, dir: "top", topDisplayedCount: FAN_DRAWN_CARDS.top });
+    const wayPastCap = flightOrigin({ ...base, dir: "top", topDisplayedCount: 21 });
+    assert.deepEqual(wayPastCap, atCap);
+  });
+
+  test("left/right: dy is 0 — a side seat's ring sits on the same line as the pile", () => {
+    assert.equal(flightOrigin({ ...base, dir: "left" }).dy, 0);
+    assert.equal(flightOrigin({ ...base, dir: "right" }).dy, 0);
+  });
+
+  test("left: the throw starts at the ring flush against the rail", () => {
+    // tableW = 800-40-20 = 740; pileCenterX = 40+370 = 410;
+    // ringCenterX = 40 + Spacing.sm(8) + SEAT_DISC/2(16.5) = 64.5; dx = -345.5.
+    assert.equal(flightOrigin({ ...base, dir: "left" }).dx, -345.5);
+  });
+
+  test("right: the throw starts at the ring flush against the opposite edge", () => {
+    assert.equal(flightOrigin({ ...base, dir: "right" }).dx, 345.5);
+  });
+
+  test("left and right are mirror images of the same pile centre, however asymmetric the rail is", () => {
+    const left = flightOrigin({ ...base, dir: "left" }).dx;
+    const right = flightOrigin({ ...base, dir: "right" }).dx;
+    assert.equal(left + right, 0);
+  });
+
+  test("SEAT_DISC and FAN_DRAWN_CARDS.top are the numbers a throw's origin is measured against", () => {
+    // Pinned so a change to either is a deliberate edit here too, not a
+    // silent drift between the seat's own rendering and the throw's origin.
+    assert.equal(SEAT_DISC, 33);
+    assert.equal(FAN_DRAWN_CARDS.top, 7);
   });
 });
 

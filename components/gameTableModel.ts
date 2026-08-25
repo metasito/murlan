@@ -8,7 +8,9 @@
 // which is erased before resolution.
 
 import type { Combination, GameState, Player } from "@/lib/gameEngine";
-import { CARD_H, CARD_W, cardScale } from "./cardFaceModel.ts";
+import { CARD_H, CARD_W, cardScale, CARD_BACK_H, CARD_BACK_W, BACK_SCALE } from "./cardFaceModel.ts";
+import { arcBounds, solveArc, SEAT_ARC } from "./tableArc.ts";
+import { Spacing } from "../lib/tokens.ts";
 
 // ─── Layout constants ─────────────────────────────────────────────────────────
 //
@@ -240,6 +242,21 @@ export function handCountOf(player: Player | (Player & { handCount?: number })):
   return typeof count === "number" ? count : player.hand.length;
 }
 
+/**
+ * The number a seat's fan and count badge both show — derived, never stored.
+ * The obvious shape, holding the pre-play count in state and stepping it down
+ * on a timer, puts a second source of truth next to `handCountOf`, free to
+ * disagree whenever a timer is missed or a flight is interrupted. This is a
+ * pure sum instead: during a flight the authoritative count has already
+ * dropped by the cards it is carrying, and adding them back reproduces the
+ * pre-play value with nothing to schedule — when the flight ends,
+ * `cardsInFlight` is 0 and the sum already *is* `handCount`.
+ * docs/adr/0002-a-play-leaves-the-seat-it-was-thrown-from.md §2.
+ */
+export function displayedHandCount(handCount: number, cardsInFlight: number): number {
+  return handCount + cardsInFlight;
+}
+
 // ─── Pile state ───────────────────────────────────────────────────────────────
 //
 // The pile shows at most two layers: the combination currently on the table and
@@ -272,6 +289,121 @@ export function impactDelayMs(reduceMotion: boolean): number {
   // Under reduced motion FlyingCards skips the flight, so there is nothing to
   // wait for and the feedback fires immediately.
   return reduceMotion ? 0 : Math.round(FLIGHT_MS * LANDING_FRACTION);
+}
+
+// ─── Flight origin ─────────────────────────────────────────────────────────────
+//
+// Where a throw starts, replacing FLY_OFFSETS' four fixed, unscaled numbers
+// (components/table/pile.tsx). Measured, not guessed: `flightOrigin` derives
+// the delta from the same layout vocabulary components/table/seats.tsx and
+// GameTable.tsx already render from — seatLabelH, SEAT_DISC, the seat arc's
+// own solve — so it cannot disagree with what is actually on screen the way a
+// second, independent set of numbers could. `tests/e2e/seatFans.spec.ts` is
+// what proves the two agree; a unit test can only check the arithmetic.
+// docs/adr/0002-a-play-leaves-the-seat-it-was-thrown-from.md §1.
+
+/** The seat disc's diameter at scale 1 (components/table/seats.tsx `SeatRing`). */
+export const SEAT_DISC = 33;
+/** Ring to fan, the same on every seat (components/table/seats.tsx `SeatWho`). */
+export const SEAT_GAP = Spacing.slim;
+const SEAT_NAME_LINE = 17;
+
+/**
+ * The band a seat's floating label needs above its ring: the name's own line,
+ * plus the badge row, which is a chip and therefore scales with the table. A
+ * side seat's label runs inward rather than upward and does not need this,
+ * but the top seat's does — drawn off the top of the screen otherwise.
+ */
+export function seatLabelH(scale: number): number {
+  return SEAT_NAME_LINE * scale + CHIP_H(scale) + Spacing.xs;
+}
+
+/**
+ * The top seat's own fan height for `displayedCount` backs — the same solve
+ * `CardFan` (components/table/seats.tsx) performs for its wrapper box, so this
+ * cannot disagree with what the fan actually draws.
+ */
+function topFanHeight(scale: number, displayedCount: number): number {
+  const drawn = Math.min(displayedCount, FAN_DRAWN_CARDS.top);
+  if (drawn <= 0) return 0;
+  const backScale = scale * BACK_SCALE;
+  const backW = CARD_BACK_W(backScale);
+  const backH = CARD_BACK_H(backScale);
+  const { cards, box } = solveArc(drawn, {
+    budget: SEAT_ARC,
+    cardW: backW,
+    cardH: backH,
+    scale: backScale,
+    room: Infinity,
+    flip: true,
+  });
+  return arcBounds(cards, box, backW, backH).h;
+}
+
+/**
+ * The viewer's own throw is not measured — the hand row is already the
+ * viewer's real geometry, just scaled with the table like every other table
+ * distance FLY_OFFSETS used to leave unscaled.
+ */
+const BOTTOM_FLY_OFFSET = { dx: 0, dy: 140 };
+
+export interface FlightOriginInput {
+  dir: FlyDirection;
+  scale: number;
+  windowWidth: number;
+  windowHeight: number;
+  tableLeft: number;
+  tableRight: number;
+  tableTop: number;
+  /** HAND_ZONE_H(handCardH, bottomPad) — the hand row's own height. */
+  handZoneH: number;
+  /**
+   * The top seat's displayed hand count (`displayedHandCount`) — needed
+   * because the pile sits in the space *below* the top seat, whichever seat
+   * is actually throwing. Ignored when `dir` is not "top".
+   */
+  topDisplayedCount: number;
+}
+
+/**
+ * The delta a throw starts at: from the throwing seat's own point to the
+ * pile's. `FlyingCards` (components/table/pile.tsx) animates this toward
+ * zero, so the throw lands exactly where `PlayedPile` then redraws the same
+ * cards.
+ */
+export function flightOrigin(input: FlightOriginInput): { dx: number; dy: number } {
+  const { dir, scale } = input;
+  if (dir === "bottom") return { dx: 0, dy: BOTTOM_FLY_OFFSET.dy * scale };
+
+  const ringSize = SEAT_DISC * scale;
+  // The column the top seat's label, ring and fan stack in — see
+  // components/table/seats.tsx `topOppSlot`. The pile sits in whatever
+  // vertical space that column leaves, whichever seat is actually throwing.
+  const topSectionH =
+    seatLabelH(scale) +
+    ringSize +
+    (input.topDisplayedCount > 0 ? SEAT_GAP + topFanHeight(scale, input.topDisplayedCount) : 0);
+  const contentH = input.windowHeight - input.tableTop;
+  const midH = contentH - topSectionH - input.handZoneH;
+  const pileCenterY = input.tableTop + topSectionH + midH / 2;
+
+  if (dir === "top") {
+    const ringCenterY = input.tableTop + seatLabelH(scale) + ringSize / 2;
+    return { dx: 0, dy: ringCenterY - pileCenterY };
+  }
+
+  // A side seat's ring sits flush against the rail (or the opposite edge),
+  // and is vertically centred on the same row the pile is — see
+  // components/table/seats.tsx `sideOppSlot`/`sideSection` and
+  // components/GameTable.tsx `midSection`, whose `alignItems: "center"`
+  // centres every row-child, pile included, on the same line.
+  const tableW = input.windowWidth - input.tableLeft - input.tableRight;
+  const pileCenterX = input.tableLeft + tableW / 2;
+  const ringCenterX =
+    dir === "left"
+      ? input.tableLeft + Spacing.sm + ringSize / 2
+      : input.windowWidth - input.tableRight - Spacing.sm - ringSize / 2;
+  return { dx: ringCenterX - pileCenterX, dy: 0 };
 }
 
 /**

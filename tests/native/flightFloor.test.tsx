@@ -40,7 +40,7 @@ describe('a flight always hands the felt back', () => {
   it('ends even when the landing callback never fires', async () => {
     const onDone = jest.fn();
     const r = await render(
-      <FlyingCards cards={CARDS} direction="top" onDone={onDone} roomW={400} scale={1} />
+      <FlyingCards cards={CARDS} direction="top" origin={{ dx: 0, dy: -100 }} onDone={onDone} roomW={400} scale={1} />
     );
 
     // Past the throw and its landing, and still nothing has reported.
@@ -62,7 +62,7 @@ describe('a flight always hands the felt back', () => {
   it('does not report a flight that was unmounted', async () => {
     const onDone = jest.fn();
     const r = await render(
-      <FlyingCards cards={CARDS} direction="left" onDone={onDone} roomW={400} scale={1} />
+      <FlyingCards cards={CARDS} direction="left" origin={{ dx: -180, dy: 0 }} onDone={onDone} roomW={400} scale={1} />
     );
     await r.unmount();
     await act(async () => {

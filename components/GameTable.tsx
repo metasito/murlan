@@ -58,7 +58,9 @@ import {
   comboKey,
   computeTableFrame,
   describeTableForA11y,
+  displayedHandCount,
   EMPTY_PILE,
+  flightOrigin,
   handCountOf,
   impactDelayMs,
   lightPosition,
@@ -72,6 +74,7 @@ import {
   urgentThresholdSeconds,
   URGENT_TICK_SECONDS,
   type FlyDirection,
+  type OpponentSide,
   type PileState,
   type PlayButtonLabel,
   type TableA11yExchange,
@@ -745,6 +748,8 @@ export function GameTable({
     key: string;
     dir: FlyDirection;
     cards: Card[];
+    /** Where the throw starts — components/gameTableModel.ts `flightOrigin`. */
+    origin: { dx: number; dy: number };
   } | null>(null);
 
   // Impact feedback is scheduled for the moment the thrown card lands, so it
@@ -1061,10 +1066,31 @@ export function GameTable({
       impactDelayMs(reduceMotion)
     );
 
+    const dir = seatDirection(gameState.lastPlayedBy, viewerSeat, players.length);
+    // The pile sits in whatever vertical room the top seat's own column
+    // leaves, whichever seat is actually throwing — so its origin needs the
+    // top seat's *displayed* count, held at its pre-play value for the length
+    // of a flight from that seat specifically.
+    const topPlayer = opponents.top?.player;
+    const topDisplayedCount = topPlayer
+      ? displayedHandCount(handCountOf(topPlayer), dir === "top" ? combo.cards.length : 0)
+      : 0;
+
     setFlyInfo({
       key,
-      dir: seatDirection(gameState.lastPlayedBy, viewerSeat, players.length),
+      dir,
       cards: combo.cards,
+      origin: flightOrigin({
+        dir,
+        scale,
+        windowWidth: W,
+        windowHeight: H,
+        tableLeft: frame.tableLeft,
+        tableRight: frame.tableRight,
+        tableTop: frame.tableTop,
+        handZoneH: HAND_ZONE_H(handCardH, frame.bottomPad),
+        topDisplayedCount,
+      }),
     });
   }, [
     gameState.lastPlayedCombination,
@@ -1074,6 +1100,15 @@ export function GameTable({
     players.length,
     reduceMotion,
     playImpact,
+    opponents,
+    scale,
+    W,
+    H,
+    frame.tableLeft,
+    frame.tableRight,
+    frame.tableTop,
+    frame.bottomPad,
+    handCardH,
   ]);
 
   // Round-winner tag over the pile, keyed on the round *closing* rather than on
@@ -1162,7 +1197,7 @@ export function GameTable({
     // `selectedObjs`, and the server rejects — silently — any request naming a
     // card the hand does not hold.
     onPlay(selectedObjs.map((c) => c.id));
-  }, [playBtnValid, onPlay, selectedObjs, dimReasonText, rejectPlay]);
+  }, [playBtnValid, onPlay, selectedObjs, dimReasonText, rejectPlay, setRejectHint]);
   const handlePass = useCallback(() => {
     if (!canPass) return;
     // Haptic only: the pass sound follows the committed state, so firing it
@@ -1172,6 +1207,14 @@ export function GameTable({
   }, [canPass, onPass]);
 
   // ── Render ──────────────────────────────────────────────────────────────────
+
+  // Cards the throwing seat's own fan holds back until the flight lands —
+  // displayedHandCount's other term. Zeroed under reduced motion: the fan
+  // and the badge should already read the post-play count, the same beat
+  // FlyingCards skips its own flight, not a beat later.
+  const departingSide: OpponentSide | null =
+    flyInfo && !reduceMotion && flyInfo.dir !== "bottom" ? flyInfo.dir : null;
+  const departingCount = departingSide ? flyInfo!.cards.length : 0;
 
   const timerActive =
     !!turnTimer &&
@@ -1347,6 +1390,7 @@ export function GameTable({
                 player={opponents.top.player}
                 isActive={opponents.top.seat === gameState.currentTurnIndex}
                 cardCount={handCountOf(opponents.top.player)}
+                departing={departingSide === "top" ? departingCount : 0}
                 passed={passed.includes(opponents.top.seat)}
                 scale={scale}
                 countdown={seatCountdown}
@@ -1380,6 +1424,7 @@ export function GameTable({
                   isActive={opponents.left.seat === gameState.currentTurnIndex}
                   side="left"
                   cardCount={handCountOf(opponents.left.player)}
+                  departing={departingSide === "left" ? departingCount : 0}
                   passed={passed.includes(opponents.left.seat)}
                   scale={scale}
                   countdown={seatCountdown}
@@ -1415,6 +1460,7 @@ export function GameTable({
                   key={flyInfo.key}
                   cards={flyInfo.cards}
                   direction={flyInfo.dir}
+                  origin={flyInfo.origin}
                   onDone={() => {
                     setFlyInfo(null);
                     setPileBounceTrigger((t) => t + 1);
@@ -1432,6 +1478,7 @@ export function GameTable({
                   isActive={opponents.right.seat === gameState.currentTurnIndex}
                   side="right"
                   cardCount={handCountOf(opponents.right.player)}
+                  departing={departingSide === "right" ? departingCount : 0}
                   passed={passed.includes(opponents.right.seat)}
                   scale={scale}
                   countdown={seatCountdown}

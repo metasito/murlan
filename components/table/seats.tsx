@@ -2,7 +2,15 @@ import { useEffect } from "react";
 import { View, StyleSheet } from "react-native";
 import { TableText } from "./TableText";
 import { ChipText, TableChip } from "./chrome";
-import { CHIP_H, FAN_DRAWN_CARDS, SIDE_SECTION_W } from "@/components/gameTableModel";
+import {
+  FAN_DRAWN_CARDS,
+  SEAT_DISC,
+  SEAT_GAP,
+  SIDE_SECTION_W,
+  displayedHandCount,
+  impactDelayMs,
+  seatLabelH,
+} from "@/components/gameTableModel";
 import Animated, {
   useAnimatedProps,
   useAnimatedStyle,
@@ -10,12 +18,13 @@ import Animated, {
   withTiming,
   Easing,
   cancelAnimation,
+  type SharedValue,
 } from "react-native-reanimated";
 import Svg, { Circle } from "react-native-svg";
 import Ionicons from "@expo/vector-icons/Ionicons";
 import { LinearGradient } from "expo-linear-gradient";
 import { CardView } from "@/components/CardView";
-import { arcBounds, SEAT_ARC, solveArc } from "@/components/tableArc";
+import { arcBounds, SEAT_ARC, solveArc, type ArcCard } from "@/components/tableArc";
 import type { OpponentSide } from "@/components/gameTableModel";
 import { CARD_BACK_H, CARD_BACK_W, BACK_SCALE } from "@/components/cardFaceModel";
 import { Colors, makeShadow, Motion, Radius, Spacing } from "@/lib/theme";
@@ -42,35 +51,162 @@ const FAN_PERSPECTIVE = 560;
 /** A quarter turn per side, so one construction serves all three seats. */
 const FAN_TURN: Record<OpponentSide, number> = { top: 0, left: -90, right: 90 };
 
+/**
+ * How far a departing back lifts (deg 1, points at scale 1) while it fades,
+ * so the exit reads as a card leaving rather than a count ticking down.
+ */
+const FAN_EXIT_LIFT = 14;
+
+/**
+ * One back, positioned as a `transform` throughout — including the static
+ * case — so an exit or a re-solve is never anything but a change to a shared
+ * value already being read every frame. `from` is where every back in this
+ * fan sits until a departure begins; a remaining back then eases toward `to`
+ * (the arc solved for what stays), and a departing one lifts and fades in
+ * place instead.
+ */
+function FanBack({
+  from,
+  to,
+  isDeparting,
+  progress,
+  boxW,
+  backScale,
+  liftPx,
+  isActive,
+  zIndex,
+}: {
+  from: ArcCard;
+  /** Null only when `isDeparting` — a departing back never re-solves. */
+  to: ArcCard | null;
+  isDeparting: boolean;
+  /** 0 at the throw's first frame, 1 once it has landed. */
+  progress: SharedValue<number>;
+  boxW: number;
+  backScale: number;
+  liftPx: number;
+  isActive: boolean;
+  zIndex: number;
+}) {
+  const aStyle = useAnimatedStyle(() => {
+    const t = progress.value;
+    if (isDeparting) {
+      return {
+        opacity: 1 - t,
+        transform: [
+          { translateX: boxW / 2 + from.x },
+          { translateY: from.y - liftPx * t },
+          { rotate: `${from.rot}deg` },
+        ],
+      };
+    }
+    const dest = to as ArcCard;
+    return {
+      opacity: 1,
+      transform: [
+        { translateX: boxW / 2 + from.x + (dest.x - from.x) * t },
+        { translateY: from.y + (dest.y - from.y) * t },
+        { rotate: `${from.rot + (dest.rot - from.rot) * t}deg` },
+      ],
+    };
+  });
+
+  return (
+    <Animated.View
+      testID={isDeparting ? "seat-back-departing" : "seat-back"}
+      style={[{ position: "absolute", zIndex }, aStyle]}
+    >
+      <CardView
+        card={{ id: "bk", suit: null, rank: "3", isJoker: false }}
+        faceDown
+        scale={backScale}
+        light={isActive ? "standingLit" : "standing"}
+      />
+    </Animated.View>
+  );
+}
+
 function CardFan({
   count,
+  departing = 0,
   side,
   isActive,
   scale = 1,
 }: {
+  /** The seat's displayed count — `handCountOf` plus whatever is in flight. */
   count: number;
+  /**
+   * How many of `count` are mid-flight and should lift and fade out of the
+   * fan rather than sit in it. `displayedHandCount`'s own two-term sum is
+   * what this and `count` come from, so the fan can never draw more backs
+   * than the badge claims or fewer than the flight is actually carrying.
+   */
+  departing?: number;
   side: OpponentSide;
   /** This seat is on move, so the lamp is over it and its backs are lit. */
   isActive: boolean;
   /** The table's own scale — the fan draws its backs at `scale * BACK_SCALE`. */
   scale?: number;
 }) {
+  const reduceMotion = usePrefersReducedMotion();
+  // Every hook above and below runs unconditionally, before the early return
+  // past them: count can go from a real hand to 0 (a player going out) on any
+  // render, and a hook called only on some of those renders is exactly the
+  // "changed order" React refuses to tolerate.
+  const cap = FAN_DRAWN_CARDS[side];
+  const cappedTotal = Math.min(count, cap);
+  const cappedDeparting = Math.min(departing, cappedTotal);
+  const remaining = cappedTotal - cappedDeparting;
+  const hasDeparture = cappedDeparting !== 0;
+
+  const depart = useSharedValue(hasDeparture ? 0 : 1);
+  const settle = useSharedValue(hasDeparture ? 0 : 1);
+  useEffect(() => {
+    if (!hasDeparture) {
+      depart.value = 1;
+      settle.value = 1;
+      return;
+    }
+    // A guard needs a floor: cappedDeparting is only ever > 0 when the caller
+    // has already zeroed it under reduced motion (GameTable.tsx), but this is
+    // what keeps a future caller's mistake from animating anyway.
+    if (reduceMotion) {
+      depart.value = 1;
+      settle.value = 1;
+      return;
+    }
+    const duration = impactDelayMs(false);
+    depart.value = 0;
+    settle.value = 0;
+    depart.value = withTiming(1, { duration });
+    settle.value = withTiming(1, { duration });
+    return () => {
+      cancelAnimation(depart);
+      cancelAnimation(settle);
+    };
+  }, [hasDeparture, reduceMotion, depart, settle]);
+
   if (count === 0) return null;
-  const drawn = Math.min(count, FAN_DRAWN_CARDS[side]);
+
   const backScale = scale * BACK_SCALE;
   const backW = CARD_BACK_W(backScale);
   const backH = CARD_BACK_H(backScale);
   // A fan is never width-budgeted: the seat's own column bounds it, and it is
-  // the rise that actually binds.
-  const { cards, box } = solveArc(drawn, {
-    budget: SEAT_ARC,
-    cardW: backW,
-    cardH: backH,
-    scale: backScale,
-    room: Infinity,
-    flip: true,
+  // the rise that actually binds. `full` is where every back — remaining and
+  // departing alike — sits until a departure resolves; `settled` is only
+  // where the *remaining* ones are headed, one solve for a smaller count
+  // rather than a hand-picked subset of the larger one, which is what keeps
+  // the step between them from reading as a jump.
+  const full = solveArc(cappedTotal, {
+    budget: SEAT_ARC, cardW: backW, cardH: backH, scale: backScale, room: Infinity, flip: true,
   });
-  const bounds = arcBounds(cards, box, backW, backH);
+  const settled =
+    cappedDeparting === 0
+      ? full
+      : solveArc(remaining, {
+          budget: SEAT_ARC, cardW: backW, cardH: backH, scale: backScale, room: Infinity, flip: true,
+        });
+  const bounds = arcBounds(full.cards, full.box, backW, backH);
 
   // The wrapper is what the cards occupy once turned, so the seat's own row or
   // column reserves exactly that and the ring-to-fan gap is one number on all
@@ -78,14 +214,15 @@ function CardFan({
   const turn = FAN_TURN[side];
   const wrapW = turn === 0 ? bounds.w : bounds.h;
   const wrapH = turn === 0 ? bounds.h : bounds.w;
+  const liftPx = FAN_EXIT_LIFT * backScale;
 
   return (
     <View style={{ width: wrapW, height: wrapH }}>
       <View
         style={{
           position: "absolute",
-          width: box.w,
-          height: box.h,
+          width: full.box.w,
+          height: full.box.h,
           left: wrapW / 2 - bounds.cx,
           top: wrapH / 2 - bounds.cy,
           transformOrigin: [bounds.cx, bounds.cy, 0],
@@ -96,25 +233,19 @@ function CardFan({
           ],
         }}
       >
-        {cards.map((card, i) => (
-          <View
+        {full.cards.map((card, i) => (
+          <FanBack
             key={i}
-            testID="seat-back"
-            style={{
-              position: "absolute",
-              left: box.w / 2 + card.x,
-              top: card.y,
-              transform: [{ rotate: `${card.rot}deg` }],
-              zIndex: i,
-            }}
-          >
-            <CardView
-              card={{ id: `bk${i}`, suit: null, rank: "3", isJoker: false }}
-              faceDown
-              scale={backScale}
-              light={isActive ? "standingLit" : "standing"}
-            />
-          </View>
+            from={card}
+            to={i < remaining ? settled.cards[i] : null}
+            isDeparting={i >= remaining}
+            progress={i < remaining ? settle : depart}
+            boxW={full.box.w}
+            backScale={backScale}
+            liftPx={liftPx}
+            isActive={isActive}
+            zIndex={i}
+          />
         ))}
       </View>
     </View>
@@ -128,8 +259,8 @@ function CardFan({
 // middle, the cards left in a badge at its foot, and, while the seat is on
 // move, the turn's own clock sweeping the rim.
 
-/** The disc's diameter at scale 1. Everything else on the seat derives from it. */
-const SEAT_DISC = 33;
+// SEAT_DISC lives in gameTableModel.ts — `flightOrigin` needs the same number
+// a throw's origin is measured against, so a second copy here could disagree.
 /** How far the countdown ring stands off the disc, and how thick it is drawn. */
 const RING_GAP = 4;
 const RING_STROKE = 2;
@@ -352,6 +483,7 @@ export function TopOppSlot({
   player,
   isActive,
   cardCount,
+  departing = 0,
   passed = false,
   scale = 1,
   countdown,
@@ -359,6 +491,8 @@ export function TopOppSlot({
   player: Player;
   isActive: boolean;
   cardCount?: number;
+  /** Cards this seat just threw that are still mid-flight — see displayedHandCount. */
+  departing?: number;
   /** This seat has passed in the round on the table. */
   passed?: boolean;
   /** The table's own scale — the seat's fan draws its backs at `scale * BACK_SCALE`. */
@@ -366,7 +500,9 @@ export function TopOppSlot({
   /** The turn window, so the seat on move can sweep its own rim. */
   countdown?: { seconds: number; resetKey: string };
 }) {
-  const count = cardCount ?? player.hand.length;
+  // The fan and the badge read one number, held at its pre-play value for as
+  // long as the flight is up — see displayedHandCount.
+  const displayed = displayedHandCount(cardCount ?? player.hand.length, departing);
   return (
     <View
       testID="top-seat"
@@ -379,14 +515,14 @@ export function TopOppSlot({
       <SeatWho
         name={player.name}
         isActive={isActive}
-        count={count}
+        count={displayed}
         finishPos={player.finishPosition}
         passed={passed}
         scale={scale}
         countdown={countdown}
       />
-      {player.finishPosition === undefined && count > 0 && (
-        <CardFan count={count} side="top" isActive={isActive} scale={scale} />
+      {player.finishPosition === undefined && displayed > 0 && (
+        <CardFan count={displayed} departing={departing} side="top" isActive={isActive} scale={scale} />
       )}
     </View>
   );
@@ -473,6 +609,7 @@ export function SideOppSlot({
   isActive,
   side,
   cardCount,
+  departing = 0,
   passed = false,
   scale = 1,
   countdown,
@@ -481,6 +618,8 @@ export function SideOppSlot({
   isActive: boolean;
   side: "left" | "right";
   cardCount?: number;
+  /** Cards this seat just threw that are still mid-flight — see displayedHandCount. */
+  departing?: number;
   /** This seat has passed in the round on the table. */
   passed?: boolean;
   /** The table's own scale — the seat's fan draws its backs at `scale * BACK_SCALE`. */
@@ -488,7 +627,7 @@ export function SideOppSlot({
   /** The turn window, so the seat on move can sweep its own rim. */
   countdown?: { seconds: number; resetKey: string };
 }) {
-  const count = cardCount ?? player.hand.length;
+  const displayed = displayedHandCount(cardCount ?? player.hand.length, departing);
   const isLeft = side === "left";
   return (
     <View
@@ -502,15 +641,15 @@ export function SideOppSlot({
       <SeatWho
         name={player.name}
         isActive={isActive}
-        count={count}
+        count={displayed}
         finishPos={player.finishPosition}
         passed={passed}
         scale={scale}
         countdown={countdown}
         anchor={isLeft ? "left" : "right"}
       />
-      {count > 0 && player.finishPosition === undefined && (
-        <CardFan count={count} side={side} isActive={isActive} scale={scale} />
+      {displayed > 0 && player.finishPosition === undefined && (
+        <CardFan count={displayed} departing={departing} side={side} isActive={isActive} scale={scale} />
       )}
     </View>
   );
@@ -532,20 +671,10 @@ const OPP_LABEL_MAX_W = 104 + Spacing.xs * 2;
  * off the edge of it — which is what tests/e2e/tableFit.spec.ts caught.
  */
 const SIDE_LABEL_MAX_W = SIDE_SECTION_W - Spacing.sm * 2;
-/** Ring to fan, the same on every seat — see SeatWho. */
-const SEAT_GAP = Spacing.slim;
+// SEAT_GAP and seatLabelH live in gameTableModel.ts, for the same reason
+// SEAT_DISC does — `flightOrigin` stacks the same column they describe.
 /** How far a seat recedes while another one is on move. */
 const SEAT_DIM_OPACITY = 0.62;
-/**
- * The band the floating label needs above the disc: the name's own line, plus
- * the badge row, which is a chip and therefore scales with the table. A fixed
- * number here is the top seat's name drawn off the top of the screen — the
- * column reserves this, and only the top seat has a screen edge above it.
- */
-function seatLabelH(scale: number): number {
-  return SEAT_NAME_LINE * scale + CHIP_H(scale) + Spacing.xs;
-}
-const SEAT_NAME_LINE = 17;
 /** The count badge's own diameter, and the digit inside it, at scale 1. */
 const SEAT_BADGE = 18;
 const SEAT_BADGE_FS = 10;

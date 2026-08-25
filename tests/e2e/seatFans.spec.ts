@@ -230,3 +230,97 @@ test.describe("the opponents' fans", () => {
     }
   });
 });
+
+// ─── A throw's origin ──────────────────────────────────────────────────────
+//
+// components/gameTableModel.ts `flightOrigin` predicts where a throw starts
+// from the same layout vocabulary the seats themselves render from
+// (seatLabelH, SEAT_DISC, the seat arc's own solve). This is what proves the
+// prediction and the real, laid-out page agree — a unit test can only check
+// the arithmetic, never the render (react-test-renderer never runs flexbox).
+//
+// Reduced motion is forced so the check is deterministic rather than a race
+// against a 380ms animation: under it, `FlyingCards` (components/table/pile.tsx)
+// still mounts at its computed origin and holds there, un-animated, for
+// `Motion.duration.fast` (120ms) before calling `onDone` — invisible (opacity
+// stays 0) but still laid out, which is all `getBoundingClientRect` needs. A
+// `MutationObserver` installed before the app even boots (`addInitScript`) is
+// what catches that node the instant it appears, however fast the AI seat
+// throws under `EXPO_PUBLIC_E2E_FAST` — polling from the test process, across
+// the browser boundary, would risk missing a window that short.
+test.describe("a throw's origin", () => {
+  // Viewer is always seat 0 (offlineSeed.ts); with four seats this is the
+  // turn that hands the very first move to the opponent on that side —
+  // seatDirection's own mapping (components/gameTableModel.ts).
+  const FIRST_MOVE_TURN: Record<"top" | "left" | "right", number> = {
+    top: 2,
+    left: 3,
+    right: 1,
+  };
+
+  for (const side of ["top", "left", "right"] as const) {
+    test(`a ${side} seat's throw starts at that seat's own ring, not off-frame`, async ({
+      page,
+      baseURL,
+    }) => {
+      test.setTimeout(60_000);
+      await page.setViewportSize(VIEWPORT);
+      await page.emulateMedia({ reducedMotion: "reduce" });
+
+      // Installed before openSeededGame navigates, so it is already watching
+      // when the seeded AI seat throws — however soon after boot that is.
+      // Targets `document` itself, not `document.documentElement`: this runs
+      // before the parser has created the latter, and observing a non-Node
+      // throws (silently, inside the injected script) rather than watching
+      // nothing.
+      await page.addInitScript(() => {
+        (window as any).__flightRects = [];
+        const observer = new MutationObserver(() => {
+          if ((window as any).__flightRects.length > 0) return;
+          const el = document.querySelector('[data-testid="flying-cards"]');
+          if (!el) return;
+          const r = el.getBoundingClientRect();
+          (window as any).__flightRects.push({ x: r.left + r.width / 2, y: r.top + r.height / 2 });
+        });
+        observer.observe(document, { childList: true, subtree: true });
+      });
+
+      await openSeededGame(page, baseURL!, 4, 8, FIRST_MOVE_TURN[side]);
+
+      await page.waitForFunction(() => (window as any).__flightRects?.length > 0, undefined, {
+        timeout: 20_000,
+      });
+
+      const { flight, ring, pile } = await page.evaluate((side) => {
+        const seatSelector = side === "top" ? '[data-testid="top-seat"]' : `[data-testid="side-seat-${side}"]`;
+        const ringEl = document.querySelector(`${seatSelector} [data-testid="seat-ring"]`);
+        const pileEl = document.querySelector('[data-testid="pile-area"]');
+        const centre = (r: DOMRect) => ({ x: r.left + r.width / 2, y: r.top + r.height / 2 });
+        return {
+          flight: (window as any).__flightRects[0],
+          ring: ringEl ? centre(ringEl.getBoundingClientRect()) : null,
+          pile: pileEl ? centre(pileEl.getBoundingClientRect()) : null,
+        };
+      }, side);
+
+      if (!ring) throw new Error(`the ${side} seat has no ring — did the seeded AI throw from a different seat?`);
+      if (!pile) throw new Error("the pile itself never rendered");
+
+      const dist = (a: { x: number; y: number }, b: { x: number; y: number }) =>
+        Math.hypot(a.x - b.x, a.y - b.y);
+      const distToRing = dist(flight, ring);
+      const distToPile = dist(flight, pile);
+
+      expect(
+        distToRing,
+        `the ${side} throw started ${distToRing.toFixed(1)}px from its own seat's ring but ` +
+          `${distToPile.toFixed(1)}px from the pile — the origin is not tracking the seat`
+      ).toBeLessThan(distToPile);
+      // The floor under the comparison above: a flight that starts equally far
+      // from everything (a stray fixed offset, say) could still read as
+      // "closer to the ring" by coincidence at one viewport. This is the same
+      // ring-to-fan gap seatFans.spec.ts itself accepts as "on the seat".
+      expect(distToRing).toBeLessThan(80);
+    });
+  }
+});
