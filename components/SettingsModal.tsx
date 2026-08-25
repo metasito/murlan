@@ -18,6 +18,7 @@ import { useNotification } from "@/context/NotificationContext";
 import { useAuth } from "@/context/AuthContext";
 import NotificationBanner from "@/components/NotificationBanner";
 import { OfflineBanner } from "@/components/OfflineBanner";
+import { Slider } from "@/components/Slider";
 import { Toggle } from "@/components/Toggle";
 import { ConfirmDialog, type ConfirmRequest } from "@/components/ConfirmDialog";
 import { apiRequest, queryClient } from "@/lib/query-client";
@@ -41,22 +42,6 @@ import Constants from "expo-constants";
 interface Props {
   visible: boolean;
   onClose: () => void;
-}
-
-// Presets rather than a continuous slider: no slider ships with the app, and
-// three named steps are easier to hit on a phone than a 4pt-tall track.
-const VOLUME_LEVELS = [0.35, 0.65, 1] as const;
-const VOLUME_LABELS: Record<number, TranslationKey> = {
-  0.35: "settings.volumeLow",
-  0.65: "settings.volumeMedium",
-  1: "settings.volumeHigh",
-};
-
-/** A stored volume from another build need not be one of the presets. */
-function nearestVolume(v: number): number {
-  return VOLUME_LEVELS.reduce((best, level) =>
-    Math.abs(level - v) < Math.abs(best - v) ? level : best
-  );
 }
 
 /** Room for a couple of sentences without the send button leaving the screen. */
@@ -315,11 +300,11 @@ export function SettingsModal({ visible, onClose }: Props) {
                   <Text style={styles.sublabel}>{t("settings.volumeSubtitle")}</Text>
                 </View>
               </View>
-              <Segmented
-                segments={VOLUME_LEVELS.map((v) => ({ value: v, label: t(VOLUME_LABELS[v]) }))}
-                selected={nearestVolume(soundVolume)}
-                onSelect={setSoundVolume}
+              <Slider
+                value={soundVolume}
+                onValueChange={setSoundVolume}
                 a11yLabel={t("settings.volumeA11yLabel")}
+                valueText={t("settings.volumePercent", { percent: Math.round(soundVolume * 100) })}
                 disabled={!soundsEnabled}
               />
             </View>
@@ -348,11 +333,11 @@ export function SettingsModal({ visible, onClose }: Props) {
                   <Text style={styles.sublabel}>{t("settings.musicVolumeSubtitle")}</Text>
                 </View>
               </View>
-              <Segmented
-                segments={VOLUME_LEVELS.map((v) => ({ value: v, label: t(VOLUME_LABELS[v]) }))}
-                selected={nearestVolume(musicVolume)}
-                onSelect={setMusicVolume}
+              <Slider
+                value={musicVolume}
+                onValueChange={setMusicVolume}
                 a11yLabel={t("settings.musicVolumeA11yLabel")}
+                valueText={t("settings.volumePercent", { percent: Math.round(musicVolume * 100) })}
                 disabled={!musicEnabled}
               />
             </View>

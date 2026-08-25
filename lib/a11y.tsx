@@ -39,6 +39,24 @@ export function a11yState({ role, ...state }: StateProps): AccessibilityProps {
   return props;
 }
 
+/** A continuous control's current position, on both React Native and the DOM. */
+export function a11yValue(v: {
+  min: number;
+  max: number;
+  now: number;
+  text: string;
+}): AccessibilityProps {
+  const props: AccessibilityProps = { accessibilityValue: v };
+  if (!isWeb) return props;
+
+  const web = props as Record<string, unknown>;
+  web["aria-valuemin"] = v.min;
+  web["aria-valuemax"] = v.max;
+  web["aria-valuenow"] = v.now;
+  web["aria-valuetext"] = v.text;
+  return props;
+}
+
 /** Hides a decorative subtree from assistive technology on both platforms. */
 export function a11yHidden(hidden = true): AccessibilityProps {
   return {
