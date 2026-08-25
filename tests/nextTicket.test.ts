@@ -45,6 +45,25 @@ describe("classify's bucketing", () => {
     assert.equal(buckets.owner[0].number, 5);
   });
 
+  // The shape a release creates: `ready-for-human` is added beside the `ready-for-agent` that is
+  // already there. Routed as frontier work, #38 was claimed and escalated on two runs in a row and
+  // would have been on every run after, because it sorts to the same place each time.
+  test("an owner label beats ready-for-agent when a ticket carries both", () => {
+    const buckets = classify([issue(38, ["ready-for-agent", "ready-for-human", "size:M"])]);
+
+    assert.equal(buckets.frontier.length, 0, "an owner-gated ticket must never reach the frontier");
+    assert.equal(buckets.owner.length, 1);
+    assert.equal(buckets.owner[0].number, 38);
+  });
+
+  test("needs-info and rejected gate a ready-for-agent ticket the same way", () => {
+    for (const label of ["needs-info", "rejected"]) {
+      const buckets = classify([issue(39, ["ready-for-agent", label])]);
+      assert.equal(buckets.frontier.length, 0, `${label} must keep a ticket off the frontier`);
+      assert.equal(buckets.owner.length, 1, `${label} must land in owner`);
+    }
+  });
+
   test("ready-for-agent still wins over an unlabelled issue", () => {
     const buckets = classify([issue(6, ["ready-for-agent", "size:S"]), issue(7, [])]);
 
