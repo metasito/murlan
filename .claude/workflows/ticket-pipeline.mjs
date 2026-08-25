@@ -3,7 +3,7 @@ export const meta = {
   description: 'Claim, gate, implement, land one murlan queue ticket — ci.yml is the gate',
   phases: [
     { title: 'Claim', detail: 'claim the routed ticket and run the design-first gate', model: 'haiku' },
-    { title: 'Implement', detail: 'build it, self-review with /code-review --fix, push, open the PR', model: 'sonnet' },
+    { title: 'Implement', detail: 'mattpocock-skills:implement, then /code-review --fix, push, open the PR', model: 'sonnet' },
     { title: 'Verify', detail: "ci.yml's verdict on the pushed branch", model: 'sonnet' },
     { title: 'Fix', detail: 'make a red run green', model: 'sonnet' },
     { title: 'Land', model: 'sonnet' },
@@ -227,13 +227,20 @@ commands. ${
   gh issue view ${forcedTicket} --repo ${REPO} --comments
 and take it only if it is open and ready-for-agent; report claimed: false with why otherwise.
 
-A "Claimed by \`<branch>\`" comment does not by itself mean somebody is working on it. Apply the
-test in CLAUDE.md rather than judging by eye, and do not assert either answer without running it:
+A "Claimed by \`<branch>\`" comment does not by itself mean somebody is working on it. Run the
+test rather than judging by eye, and do not assert either answer without running it:
 
-  git ls-remote --heads origin <that-branch> ; git worktree list
+  git ls-remote --heads origin <that-branch> ; git worktree list ; \\
+  gh pr list --repo ${REPO} --head <that-branch> --state open --json number
 
-A branch in neither is a stale claim — say so on the issue, then take it. A branch in either is
-live: stand down. Then claim it per`
+- In no worktree, and no branch on origin → stale. Say so on the issue, then take it.
+- In a worktree, or a branch with an **open pull request** → live. Stand down.
+- A branch on origin with **no open pull request** → abandoned residue, not a claim: a run that
+  ended without landing leaves one behind. Say so, delete it
+  (\`git push origin --delete <that-branch>\`), then take the ticket. Left alone it reads as a
+  live claim forever and the ticket can never be run again.
+
+Then claim it per`
         : `Start with:
 
   node scripts/next-ticket.mjs
@@ -324,29 +331,36 @@ rather than quietly dropping it.
 
 The claim stage read it as touching: ${(claim.filesTouched || []).join(', ') || '(nothing listed)'}
 
-## 2. Build it
+## 2. Pick your approach to the size of the job
 
-Test-first at the seams the ticket names: write the test, watch it fail for the reason you expect,
-then make it pass. A test that has never been seen red proves nothing.
+A small, decided ticket — one behaviour, files you can hold in your head — is written directly.
 
-Read each file you are going to change ONCE, whole, with the Read tool. Do not rebuild your
-picture of a file from repeated sed/grep windows — each window costs a turn, and a file read in
-twenty pieces costs far more than the file. Re-read only what you have edited.
+For a big one — several subsystems, an order that matters, or a change you cannot hold in one
+pass — spend the time up front: \`superpowers:writing-plans\` turns the ticket into a staged plan,
+and \`superpowers:executing-plans\` walks it with checkpoints. That is cheap next to discovering
+halfway through that step three needed step one to have gone differently. Do not reach for it on
+something you could have finished in the time it takes to plan.
+
+## 3. Build it
+
+Run \`mattpocock-skills:implement\` and follow it — TDD at pre-agreed seams via \`/tdd\`, typecheck
+and single test files as you go, then \`/code-review\` over the result before committing.
+
+**Two overrides, and only two.**
+
+That skill says to run the full test suite once at the end. **Do not.** \`ci.yml\` runs it against
+a clean build on the push, and running it here pays those minutes twice for an answer already on
+its way:
 
 ${LOCAL_TEST_NOTE}
 
-## 3. Review your own work before anyone else sees it
+And run its review as \`/code-review --fix\` so the findings are applied rather than only listed.
+Read what it changed — you own the result, it does not. Then re-run the narrow tests, because a
+fix that improves the code can still make a test wrong. If it reports something it could not fix,
+fix it yourself or say in your summary why it stands. Do not push past a correctness finding.
 
-When the change is complete, run:
-
-  /code-review --fix
-
-It hunts correctness bugs and reuse/simplification cleanups across your diff and applies what it
-finds. Read what it changed — you own the result, not it. Then re-run the narrow tests from step 2,
-because a fix applied to make the code better can still make a test wrong.
-
-If it reports something it could not fix, fix it yourself or say in your summary why it stands.
-Do not push past a correctness finding.
+One habit the skill does not cover: read each file you are going to change ONCE, whole, with the
+Read tool. A file rebuilt from twenty sed/grep windows costs far more than the file.
 
 ## 4. Check yourself against the contract
 
@@ -419,6 +433,10 @@ ${LOCAL_TEST_NOTE}
 Run the failing test here and watch it pass before you push. Pushing a guess costs a nine-minute
 round to find out, and a fix round has turned a working branch broken more than once.
 
+If the failure is not obvious from the output above, \`mattpocock-skills:diagnosing-bugs\` drives
+the diagnosis loop rather than leaving you to guess at it — reach for it before a second round,
+not after the fourth.
+
 The push re-runs ci.yml, which is the next round's evidence.
 Report: committed, commitSha, summary, filesTouched.`,
       { model: MODELS.fix, phase: 'Fix', label: label(`fix round ${round}`), schema: IMPLEMENT_SCHEMA }
@@ -468,9 +486,17 @@ not read CLOSED, close it yourself with a one-line comment saying what shipped.
 Report: merged, prNumber, reason.`,
     { model: MODELS.land, phase: 'Land', label: label('land'), schema: LAND_SCHEMA }
   )
-  state.merged = land.merged
-  if (land.merged) claimOpen = false
-  return { landed: land.merged, prNumber: land.prNumber, ticket: claim.number, reason: land.reason }
+  // Last stage that can die and take the claim with it: a null here once meant the pull request
+  // was merged and nothing recorded it, or the run threw on the way out of a green branch.
+  if (!land?.merged) {
+    releaseReason = `ci.yml was green but the branch did not merge: ${
+      land?.reason || 'the land agent died before reporting'
+    }. Pull request #${impl.prNumber} is green and ready to merge by hand.`
+    return { landed: false, ticket: claim.number, prNumber: impl.prNumber, reason: 'land failed' }
+  }
+  state.merged = true
+  claimOpen = false
+  return { landed: true, prNumber: land.prNumber ?? impl.prNumber, ticket: claim.number, reason: land.reason }
 } finally {
   // A throw in here would replace whatever the try block returned or threw, so nothing escapes.
   try {

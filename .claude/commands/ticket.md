@@ -14,7 +14,7 @@ Workflow({ scriptPath: ".claude/workflows/ticket-pipeline.mjs" })
 ```
 
 The pipeline picks the ticket itself (`scripts/next-ticket.mjs`), claims it, gates it, implements,
-verifies, reviews through three lenses and lands it. Pass nothing — no ticket number, no prompt.
+reads ci.yml's verdict, fixes a red run and lands it. Pass nothing — no ticket number, no prompt.
 
 `Workflow({name: "ticket-pipeline"})` does **not** resolve: that registry does not read this
 project's `.claude/workflows/`. Always `scriptPath`.

@@ -143,9 +143,9 @@ lines is explaining itself instead of being clear.
   keep taking them until told to stop (`.claude/commands/ticket.md`). It calls
   `Workflow({ scriptPath: '.claude/workflows/ticket-pipeline.mjs' })`; the `name` form does
   not resolve, because that registry does not read the project's `.claude/workflows/`. It claims
-  the ticket, gates it, implements it, verifies it, reviews it through three independent lenses
-  and lands it. Everything below still holds — the pipeline does it for you rather than
-  replacing it. The other two routes have their own entry points, `/triage` and `/wayfinder`,
+  the ticket, gates it, implements it (reviewing its own diff with `/code-review --fix` before
+  pushing), reads `ci.yml`'s verdict, fixes a red run, and lands it. Everything below still holds
+  — the pipeline does it for you rather than replacing it. The other two routes have their own entry points, `/triage` and `/wayfinder`,
   each taking `loop` the same way; neither writes code, so neither calls the pipeline.
 - **Working an item by hand**, when the pipeline doesn't apply (a `ready-for-human` item, a
   triage or wayfinder route, hygiene work with no ticket): commit and push yourself — don't
@@ -163,9 +163,10 @@ lines is explaining itself instead of being clear.
   can list the same free queue a second apart — if a claim older than yours is there, drop
   yours and take the next item. Release it whenever you stop without landing it, including
   the hand-off to `ready-for-human`; closing the issue releases it for you. A claim whose
-  branch exists in neither `git ls-remote --heads origin` nor `git worktree list` is stale,
-  and taking it over is fine once you have said so on the issue.
-  `docs/agents/issue-tracker.md` has the commands.
+  branch exists in neither `git ls-remote --heads origin` nor `git worktree list` is stale, and
+  so is one whose branch is on origin with no open pull request — residue from a run that never
+  landed, which left alone blocks its own ticket forever. Either way, say so on the issue and
+  take it. `docs/agents/issue-tracker.md` has the commands.
 - **Work on a branch, land through a pull request.** Never push an item straight to `main`.
   A change that turns out to be wrong goes red on the pull request, where it costs one run
   and nothing else; pushed to `main` it goes red on `main`, and the next person starts from
@@ -205,12 +206,14 @@ lines is explaining itself instead of being clear.
   and watch the new test go red. That is not the local rehearsal the rule above forbids; it is
   the only evidence available. `docs/agents/loops.md`'s "Local ports" table lists this and the
   repo's other local ports.
-- **Review depth follows the size label, outside the pipeline.** The pipeline reviews every
-  ticket through all three lenses regardless of size, so this is the rule for work it doesn't
-  cover. An `size:XS`/`size:S` item gets one pass; the two-axis
-  `mattpocock-skills:code-review` is the fit, because standards and spec are what a small diff
-  gets wrong. Reserve a second correctness pass (`/code-review`) for `size:M` and up, or any
-  diff touching the engine, the socket protocol or auth.
+- **Review is the author's job, before the push.** The pipeline's implement stage runs
+  `/code-review --fix` over its own diff and re-runs the narrow tests after, because a fix that
+  improves the code can still make a test wrong. Do the same by hand: it hunts correctness and
+  applies what it finds. `mattpocock-skills:code-review` is the other axis — standards and spec,
+  reported rather than fixed — and is worth a second pass on a `size:M`+ diff or anything
+  touching the engine, the socket protocol or auth. There is no separate review stage to fall
+  back on: `ci.yml` is the only gate after the push, and it cannot tell you a change is the
+  wrong change.
 - **Every sub-agent names its model, and stages merge before they multiply.** An omitted model
   inherits the session's, so editing a label costs what reviewing a diff costs, on every item.
   Mechanical work that follows a written procedure — `gh` label and comment writes, a CLI whose

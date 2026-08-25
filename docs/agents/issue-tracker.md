@@ -29,9 +29,9 @@ item, `/ticket loop` to keep taking them until told to stop. It calls
 resolve, because that registry does not read the project's `.claude/workflows/`. The picker's
 other two routes have entry points of their own — `/triage` and `/wayfinder` — which work the
 procedures below rather than replacing them. It claims,
-gates, implements, verifies, reviews through three independent lenses, lands and tears down,
-per `docs/superpowers/specs/2026-08-24-autonomous-ticket-pipeline-design.md`. Everything
-below describes what it does, and stays the instruction for anything worked by hand.
+gates, implements — reviewing its own diff with `/code-review --fix` before pushing — reads
+`ci.yml`'s verdict, fixes a red run, lands and tears down. Everything below describes what it
+does, and stays the instruction for anything worked by hand.
 
 Sessions run in parallel against one repo, and every one of them authenticates as the same
 GitHub account — so `--add-assignee @me` cannot tell two sessions apart. The branch name
@@ -47,13 +47,16 @@ can, and that is what the claim carries.
   removes a ticket from the frontier (the lost-label backstop). It is the single
   picker; do not re-derive a queue per session, and do not encode blocking anywhere
   but GitHub's dependency graph.
-- **Execute the route through the mattpocock skills** — `implement`: read the issue
-  body as the spec; TDD at pre-agreed seams, typecheck and single test files while
-  iterating, the full suite once, `/code-review` before committing (the skill cascades
-  `/tdd` and `/code-review` itself — do not run them by hand instead). `triage`:
-  verify claims against the codebase, write agent briefs for `ready-for-agent`, keep
-  the AI-generated-content disclaimer on everything posted. `wayfinder`: work through
-  the map, one decision per ticket; record the resolution, graduate the fog it clears.
+- **Execute the route through its command** — `/ticket`, `/triage` or `/wayfinder`, each
+  taking `loop`. `/triage` and `/wayfinder` run `mattpocock-skills:triage` and
+  `mattpocock-skills:wayfinder`, which own their procedures; the command files carry
+  only what is specific to this repo.
+  `mattpocock-skills:implement` is **not** among them: it is marked
+  `disable-model-invocation`, so no agent can call it, and its "run the full test suite
+  once at the end" contradicts this repo's rule that `ci.yml` owns the sweep. The
+  implement stage spells its own workflow out instead — read the whole issue, write its
+  Definition of done out as a checklist, build test-first, `/code-review --fix` the diff,
+  then check the boxes against the code actually written.
 - **Claim**, as the session's first write, before the branch and before reading the code:
   ```sh
   gh issue edit <n> --add-label in-progress
@@ -69,6 +72,11 @@ can, and that is what the claim carries.
   item nobody will pick up.
 - **Stale claim**: the branch named in the claim comment is in neither
   `git ls-remote --heads origin` nor `git worktree list`. Say so on the issue, then claim it.
+- **Abandoned branch**: on origin, in no worktree, with **no open pull request**. A run that
+  ended without landing leaves one, and it is residue rather than a claim — say so, delete it
+  (`git push origin --delete <branch>`), then take the ticket. Left alone it satisfies the
+  staleness test above and the ticket can never be picked up again; #294 refused every run for
+  exactly this reason.
 
 ## Pull requests as a triage surface
 
