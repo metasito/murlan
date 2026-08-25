@@ -41,8 +41,8 @@ describe("cardSpokenName", () => {
   test("the two jokers are named apart — they differ in strength", () => {
     const red = cardSpokenName(card("joker_colored" as Rank, null, true), t);
     const black = cardSpokenName(card("joker_bw" as Rank, null, true), t);
-    assert.equal(red, "Joker rosso");
-    assert.equal(black, "Joker nero");
+    assert.equal(red, "Jolly rosso");
+    assert.equal(black, "Jolly nero");
     assert.notEqual(red, black);
   });
 
