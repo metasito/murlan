@@ -64,8 +64,12 @@ async function open() {
 describe('the exchange pick is uncommitted until confirmed', () => {
   // One modal, walked through the whole sequence, because that is what the
   // feature is: a state machine over a single mount. Splitting it across cases
-  // would remount the modal per case, and a second mount of this modal renders
-  // nothing under react-test-renderer once a state update has run in the first.
+  // would remount the modal per case, and a second mount renders nothing under
+  // react-test-renderer once a state update has run in the first.
+  //
+  // Changing the pick before confirming is implemented and not asserted here:
+  // it needs two sequential presses on one mount, and the renderer does not
+  // re-render for the second. It belongs in tests/e2e/ — #328.
   it('holds the pick until confirmed, then gives exactly the last one chosen', async () => {
     const { view, onSelectCard } = await open();
 
