@@ -11,9 +11,10 @@ prototype, and shipping nothing the reporter could see — because the defect wa
 and no loop here could reach it.
 
 So before touching a rendering bug, answer in one line: *which renderer produced the
-screenshot I am fixing?* Then pick the loop that runs on it. No loop here *runs* iOS; the
-next section is how you get an iOS answer anyway. Reporting a green web run as a fix for a
-native defect is not one of the options.
+screenshot I am fixing?* Then pick the loop that runs on it. One loop does reach iOS — a
+Maestro job on a CI simulator — but it *drives* the app rather than looking at it, so a pixel
+still comes back from a capture. The next section is both. Reporting a green web run as a fix
+for a native defect is not one of the options.
 
 **What differs between the two renderers is not cosmetic.** `react-native-svg` on native is
 a different implementation, not a polyfill:
@@ -29,12 +30,19 @@ The portable way to shape a radial is neither: give the **rect** the radii (`2*r
 `2*ry`) and let the gradient keep its default `r="50%"`, which is the inscribed ellipse on
 both. `tests/vignette.test.ts` pins that no radial shapes itself.
 
-## The iOS loop: ask for a capture
+## The iOS loop: a CI simulator, or ask for a capture
 
-There is no runner here that renders iOS, and #205 leaves whether to buy one — EAS Build plus
-Maestro Cloud, or a simulator on a macOS runner — as an owner's call. What exists today is the
-cheaper half: a named list of states, a screen that reaches each of them on the device, and the
-rule that a native rendering fix is not claimed until the captures come back.
+`.github/workflows/ios.yml` drives `.maestro/smoke.yaml` and `.maestro/offline-game.yaml`
+through Expo Go on a real iOS Simulator, on a free `macos-latest` GitHub runner (#205) — the
+same flows `maestro.yml` already runs on Android, with the emulator-only failure classes
+(#185, #186) gone because a Simulator is a process on the host rather than a virtualised
+device. It is `workflow_dispatch` only until it has been run green twice; read its own header
+before assuming it fires on every push or pull request.
+
+That job proves the flows still run and the app still renders *something* on device — it does
+not replace looking at the device. A rendering defect like #209 needs a screenshot regardless:
+a named list of states, a screen that reaches each of them on the device, and the rule that a
+native rendering fix is not claimed until the captures come back.
 
 **The states are `lib/captureStates.ts`.** That list is the contract. `app/capture.tsx` walks it
 on the device and `tests/e2e/lampSeats.spec.ts` walks it in Chromium, so a photograph and a web
@@ -92,6 +100,7 @@ Each of these produced a confident, wrong "fixed" in one session:
 | Anything with a **layout** (flex, absolute, transform) | Playwright | which side of the screen it is on | ~35s |
 | Anything **visual** (colour, gradient, shadow, size) | the parity harness below | pixels vs the prototype | ~40s |
 | Tokens, contrast, roles | `node --test tests/contrast.test.ts tests/tokenRoles.test.ts tests/cosmetics.test.ts` | AA floors | ~1s |
+| Anything the app must **boot and stay drivable through on iOS** | `.github/workflows/ios.yml`, dispatched by hand | a crash, a screen that never renders, a control the flows tap going missing — on a real simulator | unmeasured; the job's own ceiling is 75 min |
 
 Full sweeps, for the end of an item only: `npx tsc --noEmit` (~5s) → `npm test` (~12s, 1066) →
 `npx jest` (~50s, 527) → `npx eslint components lib tests app` (~25s).
