@@ -97,14 +97,15 @@ const CARD_CLICK_TIMEOUT_MS = 4_000;
  */
 /**
  * Card strength, weakest first, by the word the table uses for each rank
- * (lib/cardNames.ts against locales/it.ts). Suit is absent on purpose: no
- * source gives suits an order and `cardStrength()` ignores them, so equal
- * ranks are equal strength.
+ * (lib/cardNames.ts against locales/it.ts) — "Jolly nero"/"Jolly rosso" for
+ * the jokers, since cardView.jokerBlack/jokerColored render "Jolly", not
+ * "Joker". Suit is absent on purpose: no source gives suits an order and
+ * `cardStrength()` ignores them, so equal ranks are equal strength.
  */
 const RANK_ORDER = [
   "3", "4", "5", "6", "7", "8", "9", "10",
   "Fante", "Donna", "Re", "Asso", "2",
-  "Joker nero", "Joker rosso",
+  "Jolly nero", "Jolly rosso",
 ];
 
 /** -1 for anything this does not recognise, which callers treat as "try it". */

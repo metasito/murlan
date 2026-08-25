@@ -2,13 +2,8 @@
 // is the source of truth — a missing or misspelled key here is a compile error
 // (see lib/i18n.ts).
 //
-// The card and combination terminology is sourced and owner-settled: 26 keys
-// were checked against the Tirana dictionary and the Albanian rules text in
-// docs/albanian-card-terminology-research.md, the sourced corrections landed
-// as #122, #123 and #91, and the remaining register calls — Çupa over Zonja
-// for the Queen, the attested combination names, the "mund" clitic fix, and
-// "Asi kupë" for the ace of hearts — were settled by the owner in #29. Used
-// verbatim below:
+// The card and combination terminology is sourced and owner-settled, per
+// docs/albanian-card-terminology-research.md and #29. Used verbatim below:
 //   - "shkallë" / "Shkalla" — straight (§5, §6 of docs/RULES.md quotes the
 //     Albanian text directly: "Shkalla duhet të ketë të paktën 5 letra")
 //   - "letër" / "letra" — card / cards
@@ -296,14 +291,14 @@ export const sq: Record<keyof typeof en, string> = {
   "gameTable.playLabelTooLow": "SHUMË\nE ULËT",
   "gameTable.playLabelStartCard": "DUHET\n{{rank}}{{suit}}",
   "gameTable.playLabelRoyalUnbeatable": "E\nPAMUNDUR",
-  "gameTable.playLabelBombOnly": "VETËM\nBOMBË",
+  "gameTable.playLabelBombOnly": "VETËM\nKATËRSHE",
   "gameTable.playLabelWrongType": "LLOJ\nTJETËR",
   "gameTable.playLabelWrongLength": "NUMËR\nTJETËR",
   "gameTable.playA11ySpokenInvalid": "kombinim i pavlefshëm",
   "gameTable.playA11ySpokenTooLow": "letër shumë e ulët",
   "gameTable.playA11ySpokenStartCard": "loja e parë duhet të përfshijë {{card}}",
   "gameTable.playA11ySpokenRoyalUnbeatable": "shkalla mbretërore i mund të gjitha: kësaj nuk mund t'i përgjigjesh",
-  "gameTable.playA11ySpokenBombOnly": "vetëm një bombë më e lartë mund ta mundë këtë",
+  "gameTable.playA11ySpokenBombOnly": "vetëm një katërshe më e lartë mund ta mundë këtë",
   "gameTable.playA11ySpokenWrongType": "duhet të përgjigjesh me të njëjtin lloj kombinimi, ose të kalosh",
   "gameTable.playA11ySpokenWrongLength": "duhet të ketë të njëjtin numër letrash si ajo në tavolinë",
   "gameTable.playA11yValid": "Luaj letrat e zgjedhura",
@@ -325,9 +320,9 @@ export const sq: Record<keyof typeof en, string> = {
   "gameTable.a11ySecondsLeft_other": "Të mbeten {{count}} sekonda për të luajtur.",
   "gameTable.a11yExchangeGive": "Faza e shkëmbimit: duhet t'i japësh një letër {{name}}.",
   "gameTable.a11yExchangeWait": "Faza e shkëmbimit: po pret një letër nga {{name}}.",
-  "gameTable.a11yLastPlayPair": "çift me {{rank}}",
-  "gameTable.a11yLastPlayTriple": "tresh me {{rank}}",
-  "gameTable.a11yLastPlayBomb": "bombë me {{rank}}",
+  "gameTable.a11yLastPlayPair": "dyshe me {{rank}}",
+  "gameTable.a11yLastPlayTriple": "treshe me {{rank}}",
+  "gameTable.a11yLastPlayBomb": "katërshe me {{rank}}",
   "gameTable.a11yLastPlayStraight": "shkallë me {{count}} letra, më e larta {{rank}}",
   "gameTable.a11yLastPlayRoyalStraight": "shkallë mbretërore me {{count}} letra {{suit}}, më e larta {{rank}}",
   "gameTable.a11yHandCount_one": "Dora jote: {{count}} letër.",
@@ -595,8 +590,8 @@ export const sq: Record<keyof typeof en, string> = {
   "tutorial.errSelectAtLeastOne": "Zgjidh të paktën një letër nga dora jote.",
   "tutorial.errNotAValidCombo": "Këto letra nuk formojnë një kombinim të vlefshëm.",
   "tutorial.errMustIncludeCard": "Loja e parë duhet të përfshijë {{rank}}{{suit}}.",
-  "tutorial.errRoyalBeatsAll": "Shkalla Mbretërore mund gjithçka: këtu nuk mund të përgjigjesh.",
-  "tutorial.errOnlyHigherBomb": "Vetëm një Bombë më e lartë mund ta mundë këtë.",
+  "tutorial.errRoyalBeatsAll": "Shkalla Mbretërore i mund të gjitha: kësaj nuk mund t'i përgjigjesh.",
+  "tutorial.errOnlyHigherBomb": "Vetëm një Katërshe më e lartë mund ta mundë këtë.",
   "tutorial.errSameType": "Duhet të përgjigjesh me të njëjtin lloj kombinimi, ose të kalosh.",
   "tutorial.errSameLength": "Duhet të ketë të njëjtin numër letrash si ajo në tavolinë.",
   "tutorial.errTooWeak": "Ky kombinim nuk është mjaftueshëm i fortë: nevojitet një letër më e lartë.",
@@ -797,9 +792,6 @@ export const sq: Record<keyof typeof en, string> = {
   "errorFallback.stackTraceLabel": "Stack trace:\n{{stack}}",
 
   // ----------------------------------------------------------- achievements.*
-  // Machine-translated, reusing this file's already-established terms for
-  // card vocabulary (Bombë, Xholi, letra, dorë, ndeshje — see header and
-  // rules.*/result.* above); not checked by a native speaker.
   "achievements.firstWin.name": "Fitorja e Parë",
   "achievements.firstWin.desc": "Fito dorën tënde të parë.",
   "achievements.runnerUp.name": "Vendi i Dytë",
