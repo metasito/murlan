@@ -85,6 +85,7 @@ import {
 import { useTranslation, type TranslationKey } from "@/lib/i18n";
 import { cardSpokenName, rankSpokenName, suitSpokenName, type TFn } from "@/lib/cardNames";
 import {
+  CHIP_NAME_MAX_W,
   ChipDot,
   ChipText,
   ControlRail,
@@ -1102,7 +1103,7 @@ export function GameTable({
       openNewRound();
     }
     prevComboKeyRef.current = key;
-    setPileState((s) => advancePile(s, combo));
+    setPileState((s) => advancePile(s, combo, gameState.lastPlayedBy));
 
     // The card is thrown here and arrives ~312ms later, so everything that
     // reads as *impact* waits for it. Announced for every seat, not only the
@@ -1295,6 +1296,27 @@ export function GameTable({
 
   const comboLabel = getComboLabel(pileState.current, t);
 
+  // Named off `pileState`, not `gameState.lastPlayedBy` — the pile lags the
+  // game state by the flight animation, and reading the seat straight off the
+  // game state would name the *new* player over the *old* combination for the
+  // length of one throw.
+  const lastPlayName =
+    pileState.playedBy === null
+      ? ""
+      : pileState.playedBy === viewerSeat
+        ? t("gameShared.you")
+        : (players[pileState.playedBy]?.name ?? "");
+
+  const topBarA11yLabel =
+    pileState.current === null
+      ? t("gameTable.a11yEmptyTable")
+      : pileState.playedBy === viewerSeat
+        ? t("gameTable.a11yYouPlayed", { label: lastPlayA11yLabel(pileState.current, t) })
+        : t("gameTable.a11yPlayerPlayed", {
+            name: lastPlayName,
+            label: lastPlayA11yLabel(pileState.current, t),
+          });
+
   // The seat on move sweeps its own rim over the same window the viewer's chip
   // counts down, so both are armed by one gate. There is no per-seat deadline
   // to read — online the server arms one window per turn, offline there is none
@@ -1330,6 +1352,8 @@ export function GameTable({
           far side. Anything wider would be chrome drawn where a card lands. */}
       <Animated.View
         testID="game-top-bar"
+        accessible
+        accessibilityLabel={topBarA11yLabel}
         pointerEvents={focusMode ? "none" : undefined}
         style={[styles.hudLeft, { left: frame.tableLeft + frame.pad, top: frame.tableTop }, focusFadeStyle]}
       >
@@ -1338,7 +1362,9 @@ export function GameTable({
             <ChipText scale={scale}>{t("gameShared.emptyTable")}</ChipText>
           ) : (
             <>
-              <ChipText scale={scale}>{t("gameShared.onTable")}</ChipText>
+              <ChipText scale={scale} maxWidth={CHIP_NAME_MAX_W}>
+                {lastPlayName}
+              </ChipText>
               <ChipText scale={scale} strong>
                 {comboLabel}
               </ChipText>
