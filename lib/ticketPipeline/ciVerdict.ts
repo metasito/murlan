@@ -5,6 +5,8 @@ export interface RunRow {
   databaseId: number;
   conclusion: string | null;
   status: string;
+  /** Optional so a caller reasoning about a single run need not invent one. */
+  headSha?: string;
 }
 
 export interface JobRow {
@@ -75,15 +77,26 @@ export function runListArgs(repo: string, branch: string): string[] {
   // prettier-ignore
   return [
     "run", "list", "--repo", repo, "--branch", branch,
-    "--workflow", "ci.yml", "--limit", "1",
-    "--json", "databaseId,conclusion,status",
+    "--workflow", "ci.yml", "--limit", "5",
+    "--json", "databaseId,conclusion,status,headSha",
   ];
 }
 
-// The API is reachable across a whole ci.yml run and then not for the second it is asked for the
-// verdict. Without this the answer is "no run found", the branch under it green.
-const RUN_LIST_ATTEMPTS = 3;
-const RUN_LIST_BACKOFF_MS = 5_000;
+/**
+ * A fix round pushes and asks immediately. For the seconds before the new run registers, the
+ * newest row on the branch belongs to the previous push — completed, and red, which is why the
+ * round ran at all. Answering from it sends another fix agent after a failure already fixed.
+ */
+export function runForHead(runs: RunRow[], headSha: string | undefined): RunRow | undefined {
+  if (!headSha) return runs[0];
+  return runs.find((r) => r.headSha === headSha);
+}
+
+// A push and the run it starts are not the same instant, and the API is reachable across a whole
+// ci.yml run and then not for the second it is asked for the verdict. Both read as "no run
+// found" with the branch underneath green — which is how #342 was handed back as red.
+const RUN_APPEAR_ATTEMPTS = 12;
+const RUN_APPEAR_INTERVAL_MS = 10_000;
 
 /** Blocking on purpose: this module is a one-shot CLI whose caller is waiting on stdout. */
 function pause(ms: number): void {
@@ -103,20 +116,29 @@ function ghJson<T>(args: string[], fallback: T): T {
 }
 
 export function readVerdict(repo: string, branch: string, prNumber: number): Verdict {
-  try {
-    // Blocks until the checks settle. Its exit status is deliberately ignored.
-    execFileSync("gh", ["pr", "checks", String(prNumber), "--repo", repo, "--watch", "--interval", "20"], {
-      stdio: ["ignore", "pipe", "pipe"],
-    });
-  } catch {
-    // A non-zero exit here means "checks failed", which the run row below states properly.
-  }
+  // The pull request carries other checks — the Maestro suites — that settle on their own
+  // schedule and are not the gate. Waiting on all of them cost eleven minutes a run for a job
+  // that is red on main anyway, so only ci.yml's own run is watched.
+  const headSha = ghJson<{ headRefOid?: string }>(
+    ["pr", "view", String(prNumber), "--repo", repo, "--json", "headRefOid"],
+    {}
+  ).headRefOid;
 
   let run: RunRow | undefined;
-  for (let attempt = 1; attempt <= RUN_LIST_ATTEMPTS; attempt++) {
-    run = ghJson<RunRow[]>(runListArgs(repo, branch), [])[0];
+  for (let attempt = 1; attempt <= RUN_APPEAR_ATTEMPTS; attempt++) {
+    run = runForHead(ghJson<RunRow[]>(runListArgs(repo, branch), []), headSha);
     if (run) break;
-    if (attempt < RUN_LIST_ATTEMPTS) pause(RUN_LIST_BACKOFF_MS * attempt);
+    pause(RUN_APPEAR_INTERVAL_MS);
+  }
+  if (run && run.status !== "completed") {
+    try {
+      // Blocks until that one run settles. Its exit status is deliberately ignored: piped, the
+      // status belongs to the pipe, which is how a red branch once read as green.
+      gh(["run", "watch", String(run.databaseId), "--repo", repo, "--interval", "20"]);
+    } catch {
+      // A non-zero exit means the run failed, which the row re-read below states properly.
+    }
+    run = runForHead(ghJson<RunRow[]>(runListArgs(repo, branch), []), headSha) ?? run;
   }
   if (!run || run.conclusion === "success") return decideVerdict(run, []);
 

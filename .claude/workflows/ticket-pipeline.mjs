@@ -312,7 +312,11 @@ later stage reads it from GitHub itself.`,
   claimOpen = true
   claimedNumber = claim.number
   state.localBranch = claim.branch
-  state.worktreePath = claim.worktreePath ?? null
+  // Forward slashes, always. The path travels to the cleanup stage inside a JSON payload that
+  // becomes a tool-call argument, and a doubled backslash collapses on the way — the shape
+  // BASH_NOTE warns about, which this line stops the pipeline handing itself. Node, git and
+  // `toPosixPath` all read the forward-slash form on Windows.
+  state.worktreePath = claim.worktreePath ? claim.worktreePath.split('\\').join('/') : null
 
   if (claim.escalate) {
     log(`#${claim.number} handed back: ${claim.gateReason}`)

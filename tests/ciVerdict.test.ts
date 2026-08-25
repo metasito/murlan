@@ -1,7 +1,7 @@
 // tests/ciVerdict.test.ts
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
-import { decideVerdict, runListArgs } from "../lib/ticketPipeline/ciVerdict.ts";
+import { decideVerdict, runForHead, runListArgs } from "../lib/ticketPipeline/ciVerdict.ts";
 
 const done = (conclusion: string | null) => ({ databaseId: 7, conclusion, status: "completed" });
 
@@ -64,6 +64,38 @@ describe("reading ci.yml's verdict", () => {
     assert.ok(args.includes("--workflow"), "the query does not name a workflow");
     assert.equal(args[args.indexOf("--workflow") + 1], "ci.yml");
     assert.ok(args.includes("agent/1-x"));
+  });
+
+  // A fix round pushes and asks straight away. For the seconds before the new run registers,
+  // the newest row on the branch is the previous push's — completed, and red, which is why the
+  // round was run at all. Reading it sends another fix agent after a failure already fixed.
+  describe("choosing which run answers for this push", () => {
+    const row = (headSha: string, conclusion: string) => ({
+      databaseId: headSha.length,
+      conclusion,
+      status: "completed",
+      headSha,
+    });
+
+    test("takes the run for this head, not the newest one", () => {
+      const chosen = runForHead([row("aaa", "failure"), row("bbbb", "success")], "bbbb");
+      assert.equal(chosen?.conclusion, "success");
+    });
+
+    test("finds nothing when only the previous push has a run", () => {
+      assert.equal(runForHead([row("aaa", "failure")], "bbbb"), undefined);
+    });
+
+    // Without a head to match on there is nothing better than the newest row, and answering
+    // "no run" there would fail a branch whose suite is green.
+    test("falls back to the newest run when the head is unknown", () => {
+      assert.equal(runForHead([row("aaa", "failure")], undefined)?.headSha, "aaa");
+    });
+  });
+
+  test("the run query reports each run's head, so a stale one can be told apart", () => {
+    const args = runListArgs("metasito/murlan", "agent/1-x");
+    assert.match(args[args.indexOf("--json") + 1], /headSha/);
   });
 
   test("cancelled and timed_out are not passes", () => {
