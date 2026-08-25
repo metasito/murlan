@@ -178,30 +178,17 @@ async function runVerify(claim, prNumber, round) {
     `${BASH_NOTE}
 ${cwdNote(claim)}
 Pull request #${prNumber} is open on this branch, so ci.yml is already running against this exact
-tree. Your job is to read its verdict, not to reproduce it: do not run the suites, the build or a
-database locally. ci.yml's own \`scope\` job decides which jobs a prose-only diff can skip, so
-there is no plan to compute here either.
+tree. Read its verdict; do not reproduce it. One command, which blocks until the checks settle:
 
-  gh pr checks ${prNumber} --repo ${REPO} --watch --interval 20 > /tmp/ci-${round}.txt ; \
-  gh run list --repo ${REPO} --branch ${claim.branch} --limit 1 --json databaseId,conclusion,status
+  npx tsx lib/ticketPipeline/ciVerdict.ts ${REPO} ${sq(claim.branch)} ${prNumber}
 
-Take the verdict from that JSON's "conclusion", never from the watcher's exit status. Piped into
-anything, that status belongs to the pipe's last command, so a red run reads as a pass.
+It prints JSON: pass, runId, failedStep, output, infrastructure, reason. Report those fields as
+they are. Do not re-derive the verdict from anything else you ran — the exit status of a watcher
+in a pipe belongs to the pipe, not to the run, which is how a red branch once read as green.
 
-If the conclusion is "success", report pass: true with the runId, and stop.
-
-Otherwise, establish whether the run said anything about the diff at all before calling it a
-failure. A job that dies in seconds with no steps is infrastructure, not a red suite:
-  gh run view <runId> --repo ${REPO} --json jobs --jq '.jobs[] | {name, conclusion, steps: (.steps | length)}'
-  gh api repos/${REPO}/check-runs/<jobId>/annotations
-An annotation naming billing, a quota or a runner failure means the suite never ran. Report
-pass: false with infrastructure: true and the job's name — the pipeline stops there rather than
-sending a fix agent after a defect nothing reported.
-
-A run that failed with real steps is a real failure. Take what a fix agent needs and no more:
-  gh run view <runId> --repo ${REPO} --log-failed | tail -60
-Report: pass, runId, failedStep (the job and the step that failed), output (that tail),
-infrastructure false.`,
+infrastructure: true means a job finished having run no steps, so the run says nothing about the
+diff. Report it as-is; the pipeline stops rather than sending a fix agent after a defect nothing
+reported.`,
     { model: MODELS.verify, phase: 'Verify', label: label(`ci round ${round}`), schema: CI_SCHEMA }
   )
 }
@@ -267,15 +254,14 @@ Then claim it per`
 Take the routed ticket only if it's frontier implement work (ready-for-agent). If it routes to
 triage/wayfinder/handoff instead, report claimed: false with why. Otherwise claim it per`
     }
-docs/agents/issue-tracker.md in ONE chained call, with <NUM> the number and <BRANCH> the
-agent/<number>-<slug> branch you will use:
+with <NUM> the number and <BRANCH> the agent/<number>-<slug> branch you will use:
 
-  gh issue edit <NUM> --repo ${REPO} --add-label in-progress && \\
-  gh issue comment <NUM> --repo ${REPO} --body 'Claimed by \`<BRANCH>\`.' && \\
-  gh issue view <NUM> --repo ${REPO} --comments
+  npx tsx lib/ticketPipeline/claim.ts claim ${REPO} <NUM> <BRANCH>
 
-Read that last output to confirm you won the race — stand down if a claim older than yours is
-already there.
+It writes the label and the claim comment, reads the issue back, and prints JSON: claimed, number,
+branch, reason. Two sessions can list the same free queue a second apart, so writing a claim is not
+winning one — claimed: false means an older claim is there. Report claimed: false with its reason
+and take nothing.
 
 Then take a worktree, so no later stage shares a checkout whose HEAD another session moves. The
 commands are generated, not composed here — run exactly what this prints, in order, joined with
@@ -522,16 +508,14 @@ Pull request #${impl.prNumber} is green on ci.yml. Land it.
 ci.yml's scope job skips a main push whose tree the pull request already passed, and that holds
 only while main has not moved underneath. So check whether it has, first:
 
-  gh pr view ${impl.prNumber} --repo ${REPO} --json mergeStateStatus,mergeable
+  npx tsx lib/ticketPipeline/land.ts ${REPO} ${impl.prNumber}
 
-BEHIND means main moved: run "gh pr update-branch ${impl.prNumber} --repo ${REPO}", then wait for
-the run on that new tree the way the verify stage did (gh pr checks --watch, verdict from
-gh run view --json conclusion) and merge only if it is green. One run either way — merging a stale
-branch buys a full billed suite on main instead.
+It prints JSON: merged, prNumber, next, reason. "next": "update-branch" means main moved — run
+\`gh pr update-branch ${impl.prNumber} --repo ${REPO}\`, wait for that tree to go green, then run
+the same command again. "next": "stop" means it needs a human; report merged: false with the
+reason. Never reach for --admin.
 
-CLEAN, and with the merge body already carrying "Closes #${claim.number}", one chained call:
-
-  gh pr merge --merge --delete-branch ${impl.prNumber} --repo ${REPO} && \\
+Then confirm the issue closed:
   gh issue view ${claim.number} --repo ${REPO} --json state --jq .state
 
 No --admin: the branch has a real green run, so let the merge take the ordinary path. The issue
