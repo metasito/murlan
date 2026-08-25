@@ -67,9 +67,9 @@ describe('the exchange pick is uncommitted until confirmed', () => {
   // would remount the modal per case, and a second mount renders nothing under
   // react-test-renderer once a state update has run in the first.
   //
-  // Changing the pick before confirming is implemented and not asserted here:
-  // it needs two sequential presses on one mount, and the renderer does not
-  // re-render for the second. It belongs in tests/e2e/ — #328.
+  // Changing the pick before confirming needs two sequential presses on one
+  // mount, which the renderer cannot re-render for — that case lives in
+  // tests/e2e/exchangePickChange.spec.ts instead.
   it('holds the pick until confirmed, then gives exactly the last one chosen', async () => {
     const { view, onSelectCard } = await open();
 

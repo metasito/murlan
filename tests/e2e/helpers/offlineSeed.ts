@@ -147,7 +147,7 @@ export async function openCaptureState(
  * point: a write-then-reload costs a second load of the bundle, which is about
  * what the lobby clicks cost, and saves nothing.
  */
-async function resumeSaved(page: Page, baseURL: string, save: object): Promise<void> {
+export async function resumeSaved(page: Page, baseURL: string, save: object): Promise<void> {
   await page.addInitScript(
     ({ key, value }) => window.localStorage.setItem(key, value),
     { key: "@murlan_offline_game", value: JSON.stringify(save) }
