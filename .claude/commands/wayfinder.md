@@ -11,38 +11,32 @@ stop**; `loop` means **child after child until the user says stop**.
 
 `node scripts/next-ticket.mjs`. Take the child it prints only if the route is `wayfinder` — the
 picker reaches this route when nothing in the frontier is *takeable* and nothing needs triage.
-If the route is something else, stop and say so.
 
-The wayfinder bucket is not gated the way the frontier is: the picker does not check a child's
-blockers or assignee before printing it. **Read them yourself** before starting — if the child
-is blocked or already assigned, say so, leave it, and take the next.
+**Read the child's blockers and assignee yourself before starting.** The wayfinder bucket is not
+gated the way the frontier is: `pickRoute()` returns `buckets.wayfinder[0]` with no `takeable()`
+check, so the route can hand over a child that should not be worked. If it is blocked or already
+assigned, say so, leave it, and take the next.
 
-## Do
+## Work it
 
-Claim and release per `docs/agents/issue-tracker.md` → *Claiming an item*; the map, the child
-types and what each produces are in that file's *Wayfinding operations*.
+Run **`mattpocock-skills:wayfinder`** and follow it. It owns the map, the child types, the
+Decisions-so-far / Fog structure and the refer-by-name rule. Where it asks for tracker specifics,
+they are in `docs/agents/issue-tracker.md` → *Wayfinding operations*.
 
-1. Read the child, its comments, and the `wayfinder:map` issue it belongs to.
-2. Work it according to its `wayfinder:<type>` label. A `research` child answers from sources; a
-   `prototype` child answers by building something throwaway; a `grilling` child answers by
-   being argued with; a `task` child answers by doing the thing.
-3. Write the answer onto the child, then update the map: move what is now settled into
-   Decisions-so-far, and redraw the Fog around what the answer opened up.
-4. Close the child, which releases the claim with it.
+What this repo adds:
 
-## Prototype children
-
-A `wayfinder:prototype` child exists to answer a question, so its code is evidence, not a
-deliverable: build it in a scratch directory outside the repo, and **delete it once the answer
-is on the issue**. It gets no branch and no pull request. If the answer turns out to be worth
-shipping, that is a new ticket for the queue, not this one.
+- **Claim before the first write, release before you stop** — `docs/agents/issue-tracker.md` →
+  *Claiming an item*. Closing the child releases it.
+- **A `wayfinder:prototype` child's code is evidence, not a deliverable.** Build it in a scratch
+  directory outside the repo and delete it once the answer is on the issue. No branch, no pull
+  request. If the answer turns out to be worth shipping, that is a new ticket for the queue.
 
 ## What this must not do
 
 - Land code on `main`, or open a pull request.
-- Answer a question the map already settled — check Decisions-so-far first.
-- Decide something only the owner can decide. Put the option space on the child, label it
-  `ready-for-human`, and take the next.
+- Leave a decision open-ended. If it is genuinely the owner's call, put the **option space** on
+  the child — what each option costs and what it forecloses — label it `ready-for-human`, and
+  take the next. A bare question is not a finished ticket.
 
 ## Report
 
