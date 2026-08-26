@@ -23,7 +23,7 @@ import { runAgent, type Effort } from "../lib/ticketPipeline/agent.ts";
 import { claimTicket, releaseTicket } from "../lib/ticketPipeline/claim.ts";
 import { readVerdict, ghExecOptions, type Verdict } from "../lib/ticketPipeline/ciVerdict.ts";
 import { buildCleanupCommands } from "../lib/ticketPipeline/cleanup.ts";
-import { needsDesignFirstGate, unsettledDecisions } from "../lib/ticketPipeline/gate.ts";
+import { filesNamedIn, needsDesignFirstGate, outgrewItsTicket } from "../lib/ticketPipeline/gate.ts";
 import { decideLanding, mergeArgs } from "../lib/ticketPipeline/land.ts";
 import { buildWorktreeCommands, worktreePathFor } from "../lib/ticketPipeline/worktree.ts";
 
@@ -351,15 +351,12 @@ function work(ticket: Ticket, branch: string, state: RunState): void {
   commitLeftovers(worktree, `Implement #${ticket.number}`);
   if (commitsAhead(worktree) === 0) throw new Stop("the implement agent committed nothing");
 
-  // On the real diff, not on paths guessed out of the ticket's prose: a well-written ticket names
-  // every file worth reading, which is a much larger set than the files a fix touches. The work is
+  // The same rules again, now on the real diff rather than on the paths the ticket named, plus the
+  // one only a finished diff can answer: whether the change outgrew what was asked for. The work is
   // published either way — an escalation is a question for the owner, not a reason to bin a diff.
-  const gate = needsDesignFirstGate({
-    filesTouched: changedFiles(worktree),
-    body: ticket.body,
-    comments: ticket.comments,
-  });
-  if (gate.escalate) {
+  const facts = { filesTouched: changedFiles(worktree), body: ticket.body, comments: ticket.comments };
+  const gate = [needsDesignFirstGate(facts), outgrewItsTicket(facts)].find((v) => v.escalate);
+  if (gate) {
     publish(ticket, branch, worktree, state, evidence);
     throw new Stop(`design-first gate: ${gate.reason}. The diff is on #${state.prNumber}.`);
   }
@@ -448,12 +445,20 @@ function main(): number {
   if (!ticket) return 0;
   say(`#${ticket.number} — ${ticket.title}`);
 
-  // The one gate that reads the specification alone. `ready-for-agent` promises the decisions are
-  // made; an open box under "What to settle" means it is not, and no worktree should be spent.
-  const open = unsettledDecisions(ticket.body);
-  if (open > 0) {
-    releaseTicket(REPO, ticket.number, `Not taken: ${open} unsettled decision(s) under "What to settle".`);
-    say(`escalated #${ticket.number}: ${open} unsettled decision(s)`);
+  // Before a worktree exists, because these are the questions that stop being askable once code is
+  // written: an open box under "What to settle" means an agent would guess and build on the guess,
+  // and a schema, socket or dependency change decided after the fact is a human anchoring on the
+  // shape in front of them rather than asking whether it should exist. The database holds real
+  // accounts and Replit runs the result with no build step; both are cheap to ask now and expensive
+  // to ask later.
+  const before = needsDesignFirstGate({
+    filesTouched: filesNamedIn(ticket.body),
+    body: ticket.body,
+    comments: ticket.comments,
+  });
+  if (before.escalate) {
+    releaseTicket(REPO, ticket.number, `Not taken: ${before.reason}.`);
+    say(`escalated #${ticket.number}: ${before.reason}`);
     return 0;
   }
 

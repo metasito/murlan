@@ -83,11 +83,35 @@ export function needsDesignFirstGate(ticket: TicketFacts): GateVerdict {
   if (weighsADependency) {
     return { escalate: true, reason: "changes a dependency with no recorded decision" };
   }
+  return { escalate: false, reason: "" };
+}
+
+/**
+ * Scope creep, which only the finished diff can show: an agent asked for three files that changed
+ * twenty. Deliberately not part of the gate above, because that one runs before any code exists
+ * and would have to guess the file list from the ticket's prose — where a Ground truth table names
+ * every file worth *reading*, a far larger set than the files a fix *changes*. Counted there, a
+ * well-specified four-file ticket escalates on its own bibliography.
+ */
+export function outgrewItsTicket(ticket: TicketFacts): GateVerdict {
+  if (DECISION_POINTER.test(`${ticket.body}\n${ticket.comments ?? ""}`)) {
+    return { escalate: false, reason: "" };
+  }
   const surfaces = countSurfaces(ticket.filesTouched);
   if (surfaces > FILE_COUNT_THRESHOLD) {
     return { escalate: true, reason: `touches ${surfaces} files with no recorded decision` };
   }
   return { escalate: false, reason: "" };
+}
+
+// Paths a ticket names, so the rules above can run before an agent has written anything. A file
+// named in a ticket is not proof it will be edited, but the rules that read this list are path
+// patterns over a handful of files — `shared/schema.ts`, the socket protocol, the manifest — and a
+// ticket that names one of those almost always means to change it.
+const PATH_IN_PROSE = /(?:[\w.-]+\/)*[\w.-]+\.(?:tsx?|jsx?|mjs|json|ya?ml)\b/g;
+
+export function filesNamedIn(body: string): string[] {
+  return [...new Set(body.match(PATH_IN_PROSE) ?? [])];
 }
 
 // Input arrives on stdin, never as an argv token: a caller's shell layer collapses the `\\`
