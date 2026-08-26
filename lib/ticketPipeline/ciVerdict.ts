@@ -1,5 +1,5 @@
 // lib/ticketPipeline/ciVerdict.ts
-import { execFileSync } from "node:child_process";
+import { execFileSync, type ExecFileSyncOptionsWithStringEncoding } from "node:child_process";
 
 export interface RunRow {
   databaseId: number;
@@ -103,8 +103,36 @@ function pause(ms: number): void {
   Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
 }
 
+/**
+ * `gh run view --log-failed` for a browser-test job runs to several megabytes, and
+ * `execFileSync`'s default 1MB buffer turns that into an ENOBUFS throw rather than a short read.
+ * Caught, it reached the fix agent as "(could not read the failed log)", so every fix round on a
+ * job with a large log reproduced from nothing a failure CI had already described.
+ */
+const GH_MAX_BUFFER = 64 * 1024 * 1024;
+
+/**
+ * How much of it reaches the fix agent. A Playwright failure ends with a run summary, and the
+ * `Error:` line that names the defect sits above it — 135 lines up, in the run that prompted this.
+ * Sixty was the old budget and reached none of it.
+ */
+const FAILED_LOG_LINES = 400;
+
+/**
+ * Every line of a `gh` job log is prefixed with its job, its step and an ISO timestamp — around
+ * fifty-five characters of the same text on each. Dropping it is what makes a tail this wide
+ * affordable in a prompt. Lines that do not carry the prefix are left exactly as they are.
+ */
+export function stripLogPrefix(line: string): string {
+  return line.replace(/^[^\t]*\t[^\t]*\t\d{4}-\d\d-\d\dT[\d:.]+Z ?/, "");
+}
+
+export function ghExecOptions(): ExecFileSyncOptionsWithStringEncoding {
+  return { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"], maxBuffer: GH_MAX_BUFFER };
+}
+
 function gh(args: string[]): string {
-  return execFileSync("gh", args, { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] });
+  return execFileSync("gh", args, ghExecOptions());
 }
 
 function ghJson<T>(args: string[], fallback: T): T {
@@ -161,10 +189,13 @@ export function readVerdict(repo: string, branch: string, prNumber: number): Ver
     try {
       verdict.output = gh(["run", "view", String(run.databaseId), "--repo", repo, "--log-failed"])
         .split("\n")
-        .slice(-60)
+        .slice(-FAILED_LOG_LINES)
+        .map(stripLogPrefix)
         .join("\n");
-    } catch {
-      verdict.output = "(could not read the failed log)";
+    } catch (error) {
+      // Naming the reason: a fix agent told only that the log is unreadable cannot tell a tooling
+      // failure from a job that logged nothing, and reproduces the run either way.
+      verdict.output = `(the failed log could not be read: ${(error as Error)?.message ?? error})`;
     }
   }
   return verdict;
