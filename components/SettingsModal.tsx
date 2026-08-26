@@ -200,15 +200,16 @@ export function SettingsModal({ visible, onClose }: Props) {
   async function handleLogout() {
     setLoggingOut(true);
     try {
-      // The cache goes after the session, not before: the next person to sign
-      // in on this phone must not inherit this one's friends or invites.
+      // Cleared after the session dies, not before: a query still in flight
+      // would refetch against a live cookie and repopulate what was cleared.
       await logout();
       queryClient.clear();
       onClose();
       router.replace("/auth");
     } catch {
-      // Cleared here rather than in a `finally`, for the same reason
-      // `handleSendBugReport` above avoids one.
+      // Cleared in both branches rather than in a `finally`: the React
+      // Compiler cannot lower a try statement with one, and bails the whole
+      // component out of memoization if it meets it (tests/reactCompiler).
       setLoggingOut(false);
       showNotification({
         type: "game_error",
@@ -550,11 +551,11 @@ export function SettingsModal({ visible, onClose }: Props) {
               {...a11yState({ role: "button", disabled: loggingOut, busy: loggingOut })}
               style={({ pressed }) => [
                 styles.accountBtn,
-                pressed && !loggingOut && styles.logoutBtnPressed,
+                pressed && !loggingOut && styles.logoutPressed,
                 loggingOut && styles.accountBtnDisabled,
               ]}
             >
-              <Text style={styles.logoutBtnText} {...a11yHidden()}>
+              <Text style={styles.logoutLabel} {...a11yHidden()}>
                 {t("settings.logout")}
               </Text>
             </Pressable>
@@ -567,12 +568,12 @@ export function SettingsModal({ visible, onClose }: Props) {
               {...a11yState({ role: "button", disabled: deleting, busy: deleting })}
               style={({ pressed }) => [
                 styles.accountBtn,
-                pressed && !deleting && styles.deleteBtnPressed,
+                pressed && !deleting && styles.deletePressed,
                 deleting && styles.accountBtnDisabled,
               ]}
             >
               {deleteHint.node}
-              <Text style={styles.deleteBtnText} {...a11yHidden()}>
+              <Text style={styles.deleteLabel} {...a11yHidden()}>
                 {deleting ? t("settings.deleting") : t("settings.deleteAccount")}
               </Text>
             </Pressable>
@@ -726,10 +727,10 @@ const styles = StyleSheet.create({
     paddingVertical: Spacing.sm,
   },
   accountBtnDisabled: { opacity: 0.5 },
-  logoutBtnPressed: { backgroundColor: Colors.goldGhost },
+  logoutPressed: { backgroundColor: Colors.goldGhost },
   // Leaving is reversible and deleting is not, so only one of the two is
   // allowed to read as an alarm.
-  logoutBtnText: { ...Type.body, color: Colors.text, textAlign: "center" },
-  deleteBtnPressed: { backgroundColor: Colors.dangerDim + "1A" },
-  deleteBtnText: { ...Type.body, color: Colors.dangerDim, textAlign: "center" },
+  logoutLabel: { ...Type.body, color: Colors.text, textAlign: "center" },
+  deletePressed: { backgroundColor: Colors.dangerDim + "1A" },
+  deleteLabel: { ...Type.body, color: Colors.dangerDim, textAlign: "center" },
 });
