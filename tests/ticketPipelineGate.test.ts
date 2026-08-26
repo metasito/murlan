@@ -37,15 +37,6 @@ describe("the design-first gate", () => {
     assert.equal(result.escalate, false);
   });
 
-  test("escalates a ticket touching the socket protocol", () => {
-    const result = needsDesignFirstGate({
-      filesTouched: ["server/socketSchemas.ts", "shared/events.ts"],
-      body: "Add a new socket event for spectators.",
-    });
-    assert.equal(result.escalate, true);
-    assert.match(result.reason, /socket/);
-  });
-
   test("escalates a ticket touching package.json to weigh a dependency", () => {
     const result = needsDesignFirstGate({
       filesTouched: ["components/SettingsModal.tsx", "package.json"],

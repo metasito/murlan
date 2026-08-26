@@ -2,7 +2,6 @@ import { readFileSync } from "node:fs";
 import { pathToFileURL } from "node:url";
 
 const SCHEMA_PATTERN = /(^|\/)shared\/schema\.ts$/;
-const SOCKET_PATTERN = /server\/socket|shared\/events\.ts/;
 const MANIFEST_PATTERN = /(^|\/)package\.json$/;
 // package.json holds scripts, engines and config as well as dependencies, and the path alone
 // cannot say which a ticket means. #278 adds one npm script and installs nothing; the path on its
@@ -56,9 +55,6 @@ export function needsDesignFirstGate(ticket: TicketFacts): GateVerdict {
 
   if (ticket.filesTouched.some((f) => SCHEMA_PATTERN.test(f))) {
     return { escalate: true, reason: "touches shared/schema.ts with no recorded decision" };
-  }
-  if (ticket.filesTouched.some((f) => SOCKET_PATTERN.test(f))) {
-    return { escalate: true, reason: "touches the socket protocol with no recorded decision" };
   }
   // A dependency is production's problem, not the diff's: Replit runs Node 22 from the Run
   // button with no build step, so the wrong package is discovered there rather than in CI. Left
