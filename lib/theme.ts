@@ -37,8 +37,7 @@ export function makeShadow(
   elevation: number
 ): Record<string, any> {
   if (Platform.OS === "web") {
-    const { r, g, b } = hexToRgb(color);
-    return { boxShadow: `${offsetX}px ${offsetY}px ${radius}px rgba(${r},${g},${b},${opacity})` };
+    return { boxShadow: `${offsetX}px ${offsetY}px ${radius}px ${withAlpha(color, opacity)}` };
   }
   return {
     shadowColor: color,
@@ -82,10 +81,7 @@ export function makeLayeredShadow(layers: ShadowLayer[], elevation: number): Rec
   }
   return {
     boxShadow: layers
-      .map(({ color, offsetY, opacity, radius }) => {
-        const { r, g, b } = hexToRgb(color);
-        return `0px ${offsetY}px ${radius}px rgba(${r},${g},${b},${opacity})`;
-      })
+      .map(({ color, offsetY, opacity, radius }) => `0px ${offsetY}px ${radius}px ${withAlpha(color, opacity)}`)
       .join(", "),
   };
 }
@@ -111,8 +107,7 @@ export const Shadow = {
    * A card held above the cloth — selected, or in a hand on your turn. No
    * component switches to this on selection yet: `CardView`'s `selected` prop
    * lifts the card with a `translateY` animation but still spreads
-   * `Shadow.card`, so the shadow does not yet travel with it. #211/#212 are
-   * where a component picks this up; the values are ready.
+   * `Shadow.card`, so the shadow does not yet travel with it.
    */
   cardLifted: makeLayeredShadow(
     [
