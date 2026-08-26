@@ -43,6 +43,25 @@ describe("the ticket pipeline's stage prompts", () => {
     );
   });
 
+  // A verify agent that dies on a transport error learned nothing about the branch, and twice now
+  // the branch underneath one has been green — #342 and #368 both produced a correct pull request
+  // the pipeline then abandoned. A stepless CI job is the other case and must stay terminal.
+  test("a dead verify agent is asked again before the run gives up", () => {
+    const body = source();
+    assert.match(body, /async function verifyWithRetry/, "no retry wrapper exists for the verify stage");
+    // Exactly one: the wrapper's own second ask. A second occurrence is a call site that skipped
+    // the wrapper and would abandon a green branch on a dropped connection.
+    const finalReads = body.match(/reported\(await runVerify\(/g) ?? [];
+    assert.equal(
+      finalReads.length,
+      1,
+      `${finalReads.length} place(s) take a verify agent's death as final; only the retry itself may.`
+    );
+    // The floor: the main flow and the fix loop both have to route through it.
+    const throughWrapper = body.match(/await verifyWithRetry\(/g) ?? [];
+    assert.equal(throughWrapper.length, 2, "the first verify and the fix loop's must both retry");
+  });
+
   // Review cannot know what Implement already proved, so it re-proves it: the two-minute native
   // suite ran three times per ticket across #211 and #212, and `agent:check` three times. The
   // list travels between the stages instead of each one deciding alone.

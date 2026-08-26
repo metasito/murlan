@@ -206,6 +206,21 @@ reported.`,
 // workflow threw and the ticket kept its `in-progress` label with nobody left to release it.
 // A stage that never reported is not a verdict — it is the same "nothing was learned" case as a
 // CI run that never started, which the caller already knows how to end cleanly.
+/**
+ * A verify agent that dies mid-call learned nothing about the branch, and the branch underneath it
+ * is usually fine: #342 and #368 each produced a correct, green pull request that the run then
+ * abandoned, and both were merged by hand afterwards. A transport failure is worth one more ask.
+ *
+ * A CI job that ran no steps is deliberately not retried here. That is CI itself failing, the
+ * second ask costs another agent, and `decideVerdict` already reports it as infrastructure.
+ */
+async function verifyWithRetry(claim, prNumber, round) {
+  const first = await runVerify(claim, prNumber, round)
+  if (first) return first
+  log('the verify agent died before reporting — asking once more before giving up on the branch')
+  return reported(await runVerify(claim, prNumber, round))
+}
+
 function reported(verify) {
   return (
     verify ?? {
@@ -482,7 +497,7 @@ Report: pushed, prNumber, findingsFixed (how many the review applied), summary.`
   // CI is the gate, and the only one. It runs the real suite against the real tree, it is free on
   // this repo, and it cannot be argued out of a verdict. Model reviewers can: every spiral this
   // pipeline produced came from lenses debating a diff, never from the suite.
-  let verify = reported(await runVerify(claim, impl.prNumber, 1))
+  let verify = await verifyWithRetry(claim, impl.prNumber, 1)
   if (verify.infrastructure) {
     releaseReason = `CI could not run: ${verify.failedStep || 'no job reported steps'}`
     return { landed: false, ticket: claim.number, reason: 'ci unavailable' }
@@ -517,7 +532,7 @@ Report: committed, commitSha, summary, filesTouched.`,
       { model: MODELS.fix, phase: 'Fix', label: label(`fix round ${round}`), schema: IMPLEMENT_SCHEMA }
     )
     if (!fix?.committed) break
-    verify = reported(await runVerify(claim, impl.prNumber, round + 1))
+    verify = await verifyWithRetry(claim, impl.prNumber, round + 1)
     // A run that never started is not a defect to chase: the loop would spend its rounds on a
     // failure nothing reported, and the branch would be handed back as though it were red.
     if (verify.infrastructure) {
