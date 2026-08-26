@@ -43,3 +43,29 @@ describe("deciding who won a claim", () => {
     assert.equal(wonTheClaim(chatter, "agent/5-a").won, true);
   });
 });
+
+describe("a claim whose branch never reached origin", () => {
+  const CRASHED = [
+    { body: "Claimed by `agent/278-first`.", createdAt: "2026-08-26T04:38:04Z" },
+    { body: "Claimed by `agent/278-second`.", createdAt: "2026-08-26T05:40:07Z" },
+    { body: "Claimed by `agent/278-ours`.", createdAt: "2026-08-26T08:43:29Z" },
+  ];
+
+  // #278 carried three, from three runs that died before pushing. Read as claims they took the
+  // ticket out of the queue for good: the router offered it, and the claimer refused it, for ever.
+  test("is residue, not a claim", () => {
+    const result = wonTheClaim(CRASHED, "agent/278-ours", () => false);
+    assert.equal(result.won, true, result.reason);
+  });
+
+  test("but a live branch still wins the race", () => {
+    const result = wonTheClaim(CRASHED, "agent/278-ours", (b) => b === "agent/278-first");
+    assert.equal(result.won, false);
+    assert.match(result.reason, /agent\/278-first/);
+  });
+
+  // Standing down costs a run; two sessions on one branch costs more. Silence means stand down.
+  test("a branch nobody can ask about counts as live", () => {
+    assert.equal(wonTheClaim(CRASHED, "agent/278-ours").won, false);
+  });
+});
