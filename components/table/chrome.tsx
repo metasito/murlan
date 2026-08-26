@@ -238,9 +238,7 @@ const chipStyles = StyleSheet.create({
     fontVariant: ["tabular-nums"],
   },
   chipLabelLit: { color: Colors.goldLit },
-  // The urgent label is FontSize.xxs — Colors.danger clears contrast only at
-  // large-text size (tests/tokenRoles.test.ts), so this alarm reaches for
-  // dangerDim, the same family's small-text member.
+  // FontSize.xxs, so tests/tokenRoles.test.ts bars Colors.danger here.
   chipLabelUrgent: { color: Colors.dangerDim },
   chipDot: { backgroundColor: Colors.textMuted },
   chipDotLit: { backgroundColor: Colors.goldLit },

@@ -47,12 +47,11 @@ export const Colors = {
   accentMuted:  'rgba(34,197,94,0.15)',
   success:      '#4CAF50',
   info:         '#6b8ef5',
-  // Alarm background wash: the feedback box behind an error message.
-  redMuted:     'rgba(239,68,68,0.15)',
-  // Alarm: error state and destructive action.
-  danger:       '#E53935',
-  dangerDim:    '#C9655E',
+  // Alarm: error state and destructive action. Pick by role, not by eye.
+  danger:       '#E53935',              // fills, borders, icons, text at the large-text bar
+  dangerDim:    '#C9655E',              // the same alarm below that bar
   dangerScrim:  'rgba(229,57,53,0.92)', // error toast over the felt
+  redMuted:     'rgba(239,68,68,0.15)', // the error box's wash, bordered by dangerDim
 
   // Card specific
   cardBg:       '#FAFAF8',
