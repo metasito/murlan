@@ -305,7 +305,7 @@ literal the issue's Ground truth pointers as repo-relative paths (lib/foo.ts —
 Windows path breaks this quoting, which is the point). The body reaches the module through a
 file, never a shell argument:
 
-gh issue view <NUM> --repo ${REPO} --json body,comments --jq '{filesTouched:["lib/foo.ts","tests/foo.test.ts"],body:([.body]+[.comments[].body]|join("\\n\\n"))}' > /tmp/ticket-pipeline-gate.json
+gh issue view <NUM> --repo ${REPO} --json body,comments --jq '{filesTouched:["lib/foo.ts","tests/foo.test.ts"],body:.body,comments:([.comments[].body]|join("\\n\\n"))}' > /tmp/ticket-pipeline-gate.json
 npx tsx lib/ticketPipeline/gate.ts < /tmp/ticket-pipeline-gate.json
 
 Report: claimed, number, branch, title, worktreePath, filesTouched (that same repo-relative list),

@@ -166,6 +166,46 @@ describe("the design-first gate", () => {
     assert.match(result.reason, /unsettled/);
   });
 
+  // The gate reads the issue, and the gate also writes to the issue. Its escalation comment says
+  // "changes a dependency with no recorded decision", so once the body and the comments were
+  // concatenated the gate re-read its own output and escalated again — #278 escalated twice, on
+  // five dependency-language hits of which none came from the ticket's own specification.
+  describe("the gate does not read its own output", () => {
+    const PIPELINE_NOISE = [
+      "Design gate escalated: changes a dependency with no recorded decision.",
+      "The dependency rule triggered on `package.json` appearing in Ground truth.",
+    ].join("\n\n");
+
+    test("its own escalation comment cannot re-trigger it", () => {
+      const result = needsDesignFirstGate({
+        filesTouched: ["tsconfig.strictIndexed.json", "package.json"],
+        body: "An npm script that runs it, and a CI step invoking that script.",
+        comments: PIPELINE_NOISE,
+      });
+      assert.equal(result.escalate, false, result.reason);
+    });
+
+    test("an open box quoted in a comment is not an open decision", () => {
+      const result = needsDesignFirstGate({
+        filesTouched: ["components/GameTable.tsx"],
+        body: ["## Decided", "", "- [x] Settled in the body."].join("\n"),
+        comments: ["## What to settle", "", "- [ ] quoted back from an older revision"].join("\n"),
+      });
+      assert.equal(result.escalate, false, result.reason);
+    });
+
+    // The other direction, and the reason comments are read at all: an owner's ruling arrives as
+    // a comment, and it has to be able to clear a gate the body alone would trip.
+    test("a decision recorded in a comment still clears the gate", () => {
+      const result = needsDesignFirstGate({
+        filesTouched: ["shared/schema.ts"],
+        body: "Add a column for streaks.",
+        comments: "Design decision: docs/BRIEF.md §4.2 settled the column shape.",
+      });
+      assert.equal(result.escalate, false, result.reason);
+    });
+  });
+
   test("does not escalate a small, ordinary ticket", () => {
     const result = needsDesignFirstGate({
       filesTouched: ["components/SettingsModal.tsx", "locales/en.ts"],

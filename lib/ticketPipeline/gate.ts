@@ -11,9 +11,17 @@ const DEPENDENCY_LANGUAGE = /\b(dependenc(y|ies)|devDependenc|npm (i|install|add
 const FILE_COUNT_THRESHOLD = 6;
 const DECISION_POINTER = /docs\/BRIEF\.md\s*§|docs\/adr\/|Design decision:/;
 
+/**
+ * `body` is the ticket's own specification. `comments` are everything said about it afterwards —
+ * including this gate's own escalation notices, which name the very words some rules match on.
+ * Concatenated, the gate re-read its output as input and escalated #278 twice on five
+ * dependency-language hits, none of which came from the specification. Each rule below states
+ * which of the two it reads, and why.
+ */
 export interface TicketFacts {
   filesTouched: string[];
   body: string;
+  comments?: string;
 }
 
 export interface GateVerdict {
@@ -55,7 +63,9 @@ export function needsDesignFirstGate(ticket: TicketFacts): GateVerdict {
     return { escalate: true, reason: `carries ${open} unsettled decision(s) under "What to settle"` };
   }
 
-  const hasDecision = DECISION_POINTER.test(ticket.body);
+  // Comments too: an owner's ruling arrives as one, and it has to be able to clear a gate the
+  // body alone would trip. This is the one rule that gains from reading them.
+  const hasDecision = DECISION_POINTER.test(`${ticket.body}\n${ticket.comments ?? ""}`);
   if (hasDecision) return { escalate: false, reason: "" };
 
   if (ticket.filesTouched.some((f) => SCHEMA_PATTERN.test(f))) {
