@@ -273,7 +273,8 @@ export const en = {
 
   // -------------------------------------------------------------- gameTable.*
   "gameTable.rotateTitle": "Turn your device sideways",
-  "gameTable.rotateBody": "The table is dealt across the long edge, where every seat has room.",
+  "gameTable.rotateBody": "The table needs the long edge.",
+  "gameTable.rotateA11yLabel": "Turn your device sideways. The table needs the long edge.",
   "gameTable.settingsA11yLabel": "Settings",
   "gameTable.passLabel": "PASS",
   "gameTable.passA11yLabel": "Pass the turn",

@@ -282,7 +282,8 @@ export const sq: Record<keyof typeof en, string> = {
 
   // -------------------------------------------------------------- gameTable.*
   "gameTable.rotateTitle": "Kthejeni pajisjen anash",
-  "gameTable.rotateBody": "Tavolina zë anën e gjatë, ku çdo vend gjen hapësirë.",
+  "gameTable.rotateBody": "Tavolina ka nevojë për anën e gjatë.",
+  "gameTable.rotateA11yLabel": "Kthejeni pajisjen anash. Tavolina ka nevojë për anën e gjatë.",
   "gameTable.settingsA11yLabel": "Cilësimet",
   "gameTable.passLabel": "KALO",
   "gameTable.passA11yLabel": "Kalo radhën",

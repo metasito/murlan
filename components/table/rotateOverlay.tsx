@@ -7,6 +7,7 @@ import { Modal, View } from "react-native";
 import Ionicons from "@expo/vector-icons/Ionicons";
 import Animated, {
   Easing,
+  cancelAnimation,
   useAnimatedStyle,
   useSharedValue,
   withDelay,
@@ -23,7 +24,7 @@ import { useTranslation } from "@/lib/i18n";
 import { Colors, Motion } from "@/lib/theme";
 
 const GLYPH_SIZE = 56;
-const TURN = Motion.duration.slow;
+const TURN_MS = Motion.duration.slow;
 /** Long enough to read as an instruction rather than as a spinner. */
 const HOLD_SETTLED = Motion.duration.pulse;
 const HOLD_UPRIGHT = Motion.duration.moderate;
@@ -32,6 +33,8 @@ const EASE = Easing.inOut(Easing.sin);
 export function RotateOverlay() {
   const { t } = useTranslation();
   const reduceMotion = usePrefersReducedMotion();
+  // Seeded in the pose being asked for, so a preference that resolves after
+  // the first frame parks on it rather than snapping to it.
   const turn = useSharedValue(ROTATE_SETTLED);
 
   useEffect(() => {
@@ -39,16 +42,19 @@ export function RotateOverlay() {
       turn.value = ROTATE_SETTLED;
       return;
     }
-    // Each loop leaves from the pose the player is holding.
-    turn.value = ROTATE_UPRIGHT;
-    turn.value = withRepeat(
-      withSequence(
-        withDelay(HOLD_UPRIGHT, withTiming(ROTATE_SETTLED, { duration: TURN, easing: EASE })),
-        withDelay(HOLD_SETTLED, withTiming(ROTATE_UPRIGHT, { duration: TURN, easing: EASE }))
-      ),
-      -1,
-      false
+    const leg = (to: number) => withTiming(to, { duration: TURN_MS, easing: EASE });
+    turn.value = withSequence(
+      leg(ROTATE_UPRIGHT),
+      withRepeat(
+        withSequence(
+          withDelay(HOLD_UPRIGHT, leg(ROTATE_SETTLED)),
+          withDelay(HOLD_SETTLED, leg(ROTATE_UPRIGHT))
+        ),
+        -1,
+        false
+      )
     );
+    return () => cancelAnimation(turn);
   }, [reduceMotion, turn]);
 
   const glyphStyle = useAnimatedStyle(() => ({
@@ -59,19 +65,27 @@ export function RotateOverlay() {
     <Modal
       transparent
       visible
-      // Both lines, because the card below is hidden: what the cover says has
-      // to arrive as one announcement rather than as three nodes.
-      accessibilityLabel={`${t("gameTable.rotateTitle")}. ${t("gameTable.rotateBody")}`}
       supportedOrientations={["portrait", "landscape"]}
       onRequestClose={() => {}}
     >
       <View style={portraitOverlayStyles.overlay}>
-        <View style={portraitOverlayStyles.card} {...a11yHidden()}>
-          <Animated.View style={glyphStyle}>
+        {/* The label lives here rather than on the Modal: a Modal's own host
+            view is not an accessibility element on iOS, so a label on it is
+            read by nothing. */}
+        <View
+          style={portraitOverlayStyles.card}
+          accessible
+          accessibilityLabel={t("gameTable.rotateA11yLabel")}
+        >
+          <Animated.View style={glyphStyle} {...a11yHidden()}>
             <Ionicons name="phone-landscape-outline" size={GLYPH_SIZE} color={Colors.gold} />
           </Animated.View>
-          <TableText style={portraitOverlayStyles.title}>{t("gameTable.rotateTitle")}</TableText>
-          <TableText style={portraitOverlayStyles.sub}>{t("gameTable.rotateBody")}</TableText>
+          <TableText style={portraitOverlayStyles.title} {...a11yHidden()}>
+            {t("gameTable.rotateTitle")}
+          </TableText>
+          <TableText style={portraitOverlayStyles.sub} {...a11yHidden()}>
+            {t("gameTable.rotateBody")}
+          </TableText>
         </View>
       </View>
     </Modal>

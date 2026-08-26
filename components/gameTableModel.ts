@@ -941,11 +941,7 @@ export const ROTATE_UPRIGHT = 0;
 export const ROTATE_SETTLED = 1;
 const UPRIGHT_DEGREES = 90;
 
-/**
- * The glyph's angle at `turn`. Reduced motion parks it at `ROTATE_SETTLED`
- * rather than at the start — a still picture has to carry the instruction on
- * its own, and a phone drawn upright is the position the player is already in.
- */
+/** The glyph's angle at `turn`, upright at `ROTATE_UPRIGHT` and flat at `ROTATE_SETTLED`. */
 export function rotateGlyphAngle(turn: number): number {
   "worklet";
   return (ROTATE_SETTLED - turn) * UPRIGHT_DEGREES;

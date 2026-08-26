@@ -1,8 +1,7 @@
 // tests/native/rotateOverlay.test.tsx — the portrait cover is the one screen a
 // player meets while holding the device the wrong way, so what it announces is
 // all a screen reader has. It carries a picture and two lines of text, which is
-// three nodes unless the card beneath the label is hidden — and then the same
-// sentence is read three times over a screen the player cannot act on.
+// three nodes unless each is hidden behind the one label that names the cover.
 import { describe, it, expect } from '@jest/globals';
 import React from 'react';
 import { render } from '@testing-library/react-native';
@@ -10,7 +9,7 @@ import { render } from '@testing-library/react-native';
 import { RotateOverlay } from '@/components/table/rotateOverlay';
 import { en as locale } from '@/locales/en';
 
-const ANNOUNCEMENT = `${locale['gameTable.rotateTitle']}. ${locale['gameTable.rotateBody']}`;
+const ANNOUNCEMENT = locale['gameTable.rotateA11yLabel'];
 
 describe('the portrait cover', () => {
   it('announces itself as one node', async () => {
