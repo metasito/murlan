@@ -54,8 +54,11 @@ export interface RematchIntentState {
   answers: Record<string, boolean>;
 }
 
+const initialTarget = MATCH_TARGETS[0];
+if (initialTarget === undefined) throw new Error("MATCH_TARGETS must not be empty");
+
 const INITIAL_MATCH: OnlineMatchState = {
-  target: MATCH_TARGETS[0],
+  target: initialTarget,
   length: "match",
   over: false,
   winners: [],

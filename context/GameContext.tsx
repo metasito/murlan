@@ -73,9 +73,11 @@ export interface MatchState {
 export type RematchAnswers = Record<string, boolean>;
 
 function freshMatch(length: MatchLength, playerCount: number): MatchState {
+  const [target] = targetsFor(playerCount);
+  if (target === undefined) throw new Error(`targetsFor(${playerCount}) returned no targets`);
   return {
     length,
-    target: targetsFor(playerCount)[0],
+    target,
     scores: {},
     hands: [],
     over: false,
@@ -253,7 +255,7 @@ export function GameProvider({ children }: { children: ReactNode }) {
         const winnerName = gameState.players[ep.winnerIdx]?.name ?? "";
         const loserName = gameState.players[ep.loserIdx]?.name ?? "";
         const cardReceived = ep.cardFromLoser;
-        const cardGiven = gameState.players[ep.winnerIdx].hand.find((c) => c.id === cardId);
+        const cardGiven = gameState.players[ep.winnerIdx]?.hand.find((c) => c.id === cardId);
         setExchangeAnnounceData({
           winnerName,
           loserName,
@@ -291,6 +293,7 @@ export function GameProvider({ children }: { children: ReactNode }) {
   const playSelected = useCallback((): boolean => {
     if (!gameState) return false;
     const player = gameState.players[gameState.currentTurnIndex];
+    if (!player) return false;
     const cards = player.hand.filter((c) => selectedCards.includes(c.id));
     if (cards.length === 0) return false;
 
@@ -325,7 +328,7 @@ export function GameProvider({ children }: { children: ReactNode }) {
   const runAITurn = useCallback(() => {
     if (!gameState) return;
     const currentPlayer = gameState.players[gameState.currentTurnIndex];
-    if (currentPlayer.type !== "ai") return;
+    if (!currentPlayer || currentPlayer.type !== "ai") return;
 
     const isNewRound = gameState.lastPlayedCombination === null;
     const otherCounts = gameState.players
@@ -423,9 +426,10 @@ export function GameProvider({ children }: { children: ReactNode }) {
   // and vacated seats (docs/BRIEF.md §3.1).
   const rematchTally = useMemo(() => {
     const players = gameState?.players ?? [];
-    return tallyRematchAnswers(players.length, (seat) =>
-      players[seat].type === "ai" ? "abstain" : rematchAnswers[players[seat].id] === true
-    );
+    return tallyRematchAnswers(players.length, (seat) => {
+      const p = players[seat];
+      return !p || p.type === "ai" ? "abstain" : rematchAnswers[p.id] === true;
+    });
   }, [gameState?.players, rematchAnswers]);
 
   const tableWantsRematch = isMajority(rematchTally.yes, rematchTally.total);
