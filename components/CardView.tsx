@@ -30,6 +30,7 @@ import {
   CARD_BACK_W,
   CARD_H,
   CARD_W,
+  cardRadius,
   COURT_RANKS,
   courtArtRect,
   INDEX_SUIT_SIZE,
@@ -37,8 +38,11 @@ import {
   INDEX_TEXT_W,
   INDEX_X,
   placedPips,
+  printBorderInset,
+  printBorderRadius,
   rankFontSize,
   rankInset,
+  stockLipHeight,
 } from "@/components/cardFaceModel";
 import { a11yHidden, a11yState, useA11yHint } from "@/lib/a11y";
 
@@ -570,6 +574,11 @@ function CardViewBase({
     );
   }
 
+  const stockStyle = {
+    borderRadius: cardRadius(w),
+    ...cardStockShadow(stockLipHeight(h)),
+  };
+
   const rankText = card.isJoker ? "JK" : getCardDisplayRank(card.rank);
   // "10" is the only two-glyph rank. At the single-glyph size it renders wider
   // than the index column and collides with the left pip column; the wide
@@ -608,7 +617,7 @@ function CardViewBase({
             measuring what the player *sees* has to measure this. */}
         <View
           testID="card-box"
-          style={[styles.card, { width: w, height: h }, selected && styles.cardSelected]}
+          style={[styles.card, { width: w, height: h }, stockStyle, selected && styles.cardSelected]}
         >
           {selectedHint.node}
           <LinearGradient
@@ -618,6 +627,7 @@ function CardViewBase({
             end={{ x: 0.9, y: 1 }}
             style={StyleSheet.absoluteFill}
           />
+          <PrintBorder inset={printBorderInset(h)} radius={printBorderRadius(h)} />
           <CardFaceArt card={card} color={color} w={w} h={h} compact={compact} />
           {!compact && COURT_RANKS.has(card.rank) && <CourtArt card={card} w={w} h={h} />}
           <TableText
@@ -645,6 +655,41 @@ function CardViewBase({
         </View>
       </Pressable>
     </Animated.View>
+  );
+}
+
+// ─── Card stock ───────────────────────────────────────────────────────────────
+//
+// Local one-offs rather than design tokens (lib/tokens.ts): the printed border
+// is `Colors.cardEdge`'s hue printed rather than cut, and the lip is the paper
+// ramp's own shade seen edge-on. Neither has a second use to name a token for.
+const PRINT_BORDER_COLOR = "rgba(90,78,52,0.2)";
+const STOCK_LIP_COLOR = "#D6D0BC";
+
+/**
+ * `Shadow.card`'s contact+cast pair (lib/theme.ts) plus a solid, unblurred
+ * lip along the bottom edge. Recombined here, not folded into `Shadow.card`
+ * itself, because the lip scales with the card and `Shadow.card` does not.
+ *
+ * The lip goes first: a shadow list paints front to back, and the contact
+ * layer sits at the same offset in near-opaque black, so a lip listed after it
+ * is drawn under it and never appears.
+ *
+ * Old Android's (<28) shadow fallback carries no `boxShadow` to prepend to —
+ * it keeps the cast shadow alone, same policy `makeLayeredShadow` uses.
+ */
+function cardStockShadow(lipHeight: number): Record<string, any> {
+  const base = Shadow.card as Record<string, any>;
+  if (typeof base.boxShadow !== "string") return base;
+  return { ...base, boxShadow: `0px ${lipHeight}px 0px ${STOCK_LIP_COLOR}, ${base.boxShadow}` };
+}
+
+function PrintBorder({ inset, radius }: { inset: number; radius: number }) {
+  return (
+    <View
+      pointerEvents="none"
+      style={[styles.printBorder, { left: inset, right: inset, top: inset, bottom: inset, borderRadius: radius }]}
+    />
   );
 }
 
@@ -717,11 +762,14 @@ CardView.displayName = "CardView";
 const styles = StyleSheet.create({
   card: {
     backgroundColor: Colors.cardPaper,
-    borderRadius: Radius.sm,
     borderWidth: 1,
     borderColor: Colors.cardEdge,
     overflow: "hidden",
-    ...Shadow.card,
+  },
+  printBorder: {
+    position: "absolute",
+    borderWidth: 1,
+    borderColor: PRINT_BORDER_COLOR,
   },
   cardSelected: {
     borderColor: Colors.gold,
@@ -731,6 +779,8 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.felt,
     borderColor: Colors.goldDark,
     borderWidth: 1,
+    borderRadius: Radius.sm,
+    ...Shadow.card,
   },
   // The index characters sit in the drawn index column: the suit mark below
   // them comes from the SVG layer, so the two must agree on INDEX_X.

@@ -43,6 +43,40 @@ export const FIELD_SCALE = 1.0;
 export const HAND_SCALE = 1.08;
 export const BACK_SCALE = 0.88;
 
+// ─── Card stock ─────────────────────────────────────────────────────────────
+//
+// A card is a physical object, not a flat swatch: a corner cut, a printed
+// border just inside the edge, and a lit lip where the stock meets the felt.
+// Values below are authored at 2x table scale, like the rest of the card, and
+// halved here to land at scale 1.
+
+// Real poker stock has a 1/8in radius on a 2.5in card — 5% of card width. A
+// fixed step of `Radius` (lib/tokens.ts) can't express that, since it has to
+// scale with the card rather than sit on the app's five-step scale.
+const CARD_RADIUS_RATIO = 0.05;
+export function cardRadius(w: number): number {
+  return w * CARD_RADIUS_RATIO;
+}
+
+const PRINT_BORDER_INSET_RATIO = 2.5 / FACE_H;
+const PRINT_BORDER_RADIUS_RATIO = 2 / FACE_H;
+const STOCK_LIP_RATIO = 1 / FACE_H;
+
+/** How far the printed border sits inside the card's own cut edge. */
+export function printBorderInset(h: number): number {
+  return h * PRINT_BORDER_INSET_RATIO;
+}
+
+/** Corner radius of the printed border — tighter than the cut edge's own. */
+export function printBorderRadius(h: number): number {
+  return h * PRINT_BORDER_RADIUS_RATIO;
+}
+
+/** Height of the lit lip along the stock's bottom edge. */
+export function stockLipHeight(h: number): number {
+  return h * STOCK_LIP_RATIO;
+}
+
 /**
  * A touch target's floor is physical size — never `TOUCH_TARGET_MIN * s`.
  * The control rail's knobs are sized by it (`knobSize`, components/
