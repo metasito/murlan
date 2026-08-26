@@ -23,7 +23,7 @@ import { runAgent, type Effort } from "../lib/ticketPipeline/agent.ts";
 import { claimTicket, releaseTicket } from "../lib/ticketPipeline/claim.ts";
 import { readVerdict, ghExecOptions, type Verdict } from "../lib/ticketPipeline/ciVerdict.ts";
 import { buildCleanupCommands } from "../lib/ticketPipeline/cleanup.ts";
-import { filesNamedIn, needsDesignFirstGate, outgrewItsTicket } from "../lib/ticketPipeline/gate.ts";
+import { filesNamedIn, needsDesignFirstGate } from "../lib/ticketPipeline/gate.ts";
 import { decideLanding, mergeArgs } from "../lib/ticketPipeline/land.ts";
 import { buildWorktreeCommands, worktreePathFor } from "../lib/ticketPipeline/worktree.ts";
 
@@ -370,12 +370,11 @@ function work(ticket: Ticket, branch: string, state: RunState): void {
   commitLeftovers(worktree, `Implement #${ticket.number}`);
   if (commitsAhead(worktree) === 0) throw new Stop("the implement agent committed nothing");
 
-  // The same rules again, now on the real diff rather than on the paths the ticket named, plus the
-  // one only a finished diff can answer: whether the change outgrew what was asked for. The work is
-  // published either way — an escalation is a question for the owner, not a reason to bin a diff.
+  // The same rules again, now on the real diff rather than on the paths the ticket named. The work
+  // is published either way — an escalation is a question for the owner, not a reason to bin a diff.
   const facts = { filesTouched: changedFiles(worktree), body: ticket.body, comments: ticket.comments };
-  const gate = [needsDesignFirstGate(facts), outgrewItsTicket(facts)].find((v) => v.escalate);
-  if (gate) {
+  const gate = needsDesignFirstGate(facts);
+  if (gate.escalate) {
     publish(ticket, branch, worktree, state, evidence);
     throw new Stop(`design-first gate: ${gate.reason}. The diff is on #${state.prNumber}.`);
   }
