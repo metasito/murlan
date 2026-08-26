@@ -301,6 +301,15 @@ async function downloadBundlesAndManifests(timestamp) {
   }
 }
 
+// A junctioned node_modules (this repo's parallel-worktree convention) makes Metro
+// resolve node_modules assets to a path outside the project root, so decodedPath
+// shows up here as "../<junction-target-dir>/node_modules/...". Flatten the escape
+// the same way @expo/metro-config's own static-export path already does for the
+// analogous monorepo case, so the asset lands inside static-build instead of outside it.
+function sanitizeAssetPath(decodedPath) {
+  return decodedPath.replace(/\.\.\//g, "_");
+}
+
 function extractAssets(timestamp) {
   const bundles = {
     ios: fs.readFileSync(
@@ -346,14 +355,14 @@ function extractAssets(timestamp) {
       }
 
       const decodedPath = decodeURIComponent(unstablePath);
-      const key = path.posix.join(decodedPath, filename);
+      const relativePath = sanitizeAssetPath(decodedPath);
+      const key = path.posix.join(relativePath, filename);
 
       if (!assetsMap.has(key)) {
         const asset = {
-          url: path.posix.join("/", decodedPath, filename),
           originalPath: originalPath,
           filename: filename,
-          relativePath: decodedPath,
+          relativePath: relativePath,
           hash: match[2],
           platforms: new Set(),
         };
@@ -390,8 +399,14 @@ async function downloadAssets(assets, timestamp) {
     }
 
     const decodedPath = decodeURIComponent(unstablePath);
-    const metroUrl = new URL(
-      `http://localhost:8081${path.posix.join("/assets", decodedPath, asset.filename)}`,
+    // Metro has to get the path as its own `unstable_path` query param, not as a
+    // URL path: a junctioned node_modules escapes the project root with "../", and
+    // path.posix.join collapses "/assets/.." away, so the request never reaches
+    // Metro's asset handler at all.
+    const metroUrl = new URL("http://localhost:8081/assets/");
+    metroUrl.searchParams.set(
+      "unstable_path",
+      path.posix.join(decodedPath, asset.filename),
     );
     metroUrl.searchParams.set("platform", platform);
     metroUrl.searchParams.set("hash", asset.hash);
@@ -459,7 +474,7 @@ function updateBundleUrls(timestamp, baseUrl) {
           );
         }
 
-        const decodedPath = decodeURIComponent(unstablePath);
+        const decodedPath = sanitizeAssetPath(decodeURIComponent(unstablePath));
         return `httpServerLocation:"${baseUrl}/${timestamp}/_expo/static/js/${decodedPath}"`;
       },
     );
