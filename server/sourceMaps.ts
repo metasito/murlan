@@ -27,7 +27,9 @@ interface ParsedFrame {
 function parseFrame(raw: string): ParsedFrame | null {
   const m = FRAME.exec(raw.trim());
   if (!m) return null;
-  return { url: m[1], line: Number(m[2]), column: Number(m[3]) };
+  const [, url, line, column] = m;
+  if (url === undefined || line === undefined || column === undefined) return null;
+  return { url, line: Number(line), column: Number(column) };
 }
 
 /**

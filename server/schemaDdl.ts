@@ -101,16 +101,18 @@ function foreignKeysByColumn(cfg: TableConfig): Map<string, ForeignKeyRef> {
   const map = new Map<string, ForeignKeyRef>();
   for (const fk of cfg.foreignKeys) {
     const ref = fk.reference();
-    if (ref.columns.length !== 1) {
+    const [column] = ref.columns;
+    const [foreignColumn] = ref.foreignColumns;
+    if (ref.columns.length !== 1 || !column || !foreignColumn) {
       throw new Error(
         `schemaStatements: table "${cfg.name}" has a composite foreign key, ` +
           `which is not supported — update schemaStatements() in server/schemaDdl.ts.`
       );
     }
     const foreignCfg = getTableConfig(ref.foreignTable);
-    map.set(ref.columns[0].name, {
+    map.set(column.name, {
       table: foreignCfg.name,
-      column: ref.foreignColumns[0].name,
+      column: foreignColumn.name,
       onDelete: fk.onDelete,
     });
   }

@@ -658,6 +658,11 @@ export function setupSocket(httpServer: HttpServer) {
           if (!r.isBot) playerMap[idx] = r.userId;
         });
 
+        const [firstTarget] = targetsFor(roster.length);
+        if (firstTarget === undefined) {
+          throw new Error(`targetsFor(${roster.length}) returned no targets`);
+        }
+
         const newGame: OnlineGameState = {
           gameState,
           playerMap,
@@ -668,7 +673,7 @@ export function setupSocket(httpServer: HttpServer) {
           cumulativeScores: previous?.cumulativeScores ?? {},
           gameMode: room.gameMode,
           maxPlayers: room.maxPlayers,
-          matchTarget: previous?.matchTarget ?? targetsFor(roster.length)[0],
+          matchTarget: previous?.matchTarget ?? firstTarget,
           matchLength: matchLength ?? previous?.matchLength ?? "match",
           matchOver: previous?.matchOver ?? false,
           handFlags: {},
@@ -1540,7 +1545,8 @@ async function handleSeatRelease(
     }
     let newHostId = room.hostUserId;
     if (room.hostUserId === userId) {
-      const nextHost = remaining.sort((a, b) => a.seatIndex - b.seatIndex)[0];
+      const [nextHost] = remaining.sort((a, b) => a.seatIndex - b.seatIndex);
+      if (!nextHost) throw new Error(`releaseSeat: room ${roomId} has no remaining players to host`);
       newHostId = nextHost.userId;
       await storage
         .updateRoomHost(roomId, newHostId)
