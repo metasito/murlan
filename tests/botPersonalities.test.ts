@@ -4,6 +4,9 @@
 // outside it and never stall a hand.
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 import {
   BOT_PERSONALITIES,
   DEFAULT_BOT_PERSONALITY,
@@ -154,6 +157,65 @@ test("aggression decides whether a lead spends premium cards", () => {
     !ask("drita")!.cards.some((x) => x.rank === "2"),
     "a cautious lead keeps them"
   );
+});
+
+// applyPersonality's unpredictability knob indexes a filtered slice of `plays`,
+// so that array's order decides which alt it lands on. Every tier has to hand it
+// getAllValidPlays' own order, or one personality and one rng sequence answer
+// differently depending on which difficulty tier ran.
+test("aiChoosePlay never sorts the array getAllValidPlays returned in place", () => {
+  const src = readFileSync(
+    path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../lib/gameEngine.ts"),
+    "utf8"
+  );
+  const start = src.indexOf("export function aiChoosePlay");
+  const end = src.indexOf("// ─── Game state processing", start);
+  assert.ok(start > 0 && end > start, "could not locate aiChoosePlay's body to scan");
+  assert.doesNotMatch(src.slice(start, end), /\bplays\.sort\(/);
+});
+
+test("easy tier leads its lowest-strength play when no knob fires", () => {
+  const hand = [
+    c("9", "clubs"), c("9", "hearts"), c("5", "diamonds"), c("5", "clubs"),
+    c("K", "spades"), c("7", "hearts"), c("3", "clubs"), c("J", "diamonds"),
+  ];
+  const choice = aiChoosePlay(
+    makePlayer("bot", hand, { type: "ai", personality: "luan" }),
+    null,
+    true,
+    [8, 8, 8],
+    undefined,
+    // Above every knob's threshold, so neither knob fires and the tier's own
+    // preference is the whole answer.
+    fixedRng([0.99])
+  );
+  assert.deepEqual(choice?.cards.map((x) => x.id), ["3_clubs"]);
+});
+
+test("easy tier's unpredictability alt follows getAllValidPlays' own order", () => {
+  const hand = [
+    c("9", "clubs"), c("9", "hearts"), c("5", "diamonds"), c("5", "clubs"),
+    c("K", "spades"), c("7", "hearts"), c("3", "clubs"), c("J", "diamonds"),
+  ];
+  const legal = getAllValidPlays(hand, null, true, undefined);
+  const primary = [...legal].sort((a, b) => a.strength - b.strength)[0];
+  const alts = legal.filter(
+    (p) => p !== primary && p.type === primary.type && p.cards.length === primary.cards.length
+  );
+  assert.ok(alts.length > 1, "fixture needs more than one alt to prove ordering");
+
+  const altRng = 0.3;
+  const expected = alts[Math.min(alts.length - 1, Math.floor(altRng * alts.length))];
+
+  const choice = aiChoosePlay(
+    makePlayer("bot", hand, { type: "ai", personality: "luan" }),
+    null,
+    true,
+    [8, 8, 8],
+    undefined,
+    fixedRng([0.1, altRng]) // 0.1 < luan's 0.45 unpredictability: the knob fires
+  );
+  assert.deepEqual(choice?.cards.map((x) => x.id), expected.cards.map((x) => x.id));
 });
 
 test("an unknown or missing personality resolves to the default", () => {

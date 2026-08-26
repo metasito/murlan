@@ -655,14 +655,14 @@ export function aiChoosePlay(
   // declines to win, so this returns before the knobs are applied.
   const finishingPlays = plays.filter((p) => p.cards.length === myCards);
   if (finishingPlays.length > 0) {
-    return finishingPlays.sort((a, b) => b.cards.length - a.cards.length)[0];
+    return finishingPlays[0];
   }
 
   const withPersonality = (choice: Combination | null) =>
     applyPersonality(choice, plays, isNewRound, personality, rng);
 
   if (diff === "easy") {
-    return withPersonality(plays.sort((a, b) => a.strength - b.strength)[0]);
+    return withPersonality([...plays].sort((a, b) => a.strength - b.strength)[0]);
   }
 
   const bombs = plays.filter(
@@ -711,7 +711,7 @@ export function aiChoosePlay(
     if (candidates.length > 0)
       return withPersonality(candidates.sort((a, b) => scorePlayForDump(b) - scorePlayForDump(a))[0]);
 
-    return withPersonality(plays.sort((a, b) => scorePlayForDump(b) - scorePlayForDump(a))[0]);
+    return withPersonality([...plays].sort((a, b) => scorePlayForDump(b) - scorePlayForDump(a))[0]);
   }
 
   // Responding to opponent's combo
