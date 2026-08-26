@@ -47,8 +47,9 @@ export const Colors = {
   accentMuted:  'rgba(34,197,94,0.15)',
   success:      '#4CAF50',
   info:         '#6b8ef5',
-  red:          '#EF4444',
+  // Alarm background wash: the feedback box behind an error message.
   redMuted:     'rgba(239,68,68,0.15)',
+  // Alarm: error state and destructive action.
   danger:       '#E53935',
   dangerDim:    '#C9655E',
   dangerScrim:  'rgba(229,57,53,0.92)', // error toast over the felt
@@ -66,7 +67,8 @@ export const Colors = {
   cardEdge:     'rgba(90,78,52,0.45)',
 
   // Traditional red/black. Suit identity is carried by the pip glyph, so colour
-  // is not the only channel.
+  // is not the only channel. Role: card suit ink, on the card face or anywhere
+  // else a suit glyph is drawn.
   spade:        '#1A1A1A',
   heart:        '#C8102E',
   diamond:      '#C8102E',

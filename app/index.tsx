@@ -377,8 +377,8 @@ export default function HomeScreen() {
               <Text style={styles.subtitleLandscape}>{t("home.subtitle")}</Text>
             </Animated.View>
             <View style={styles.cardDecorationLandscape}>
-              {["♠", "♥", "♦", "♣"].map((suit, i) => (
-                <Text key={suit} style={[styles.suitDecorSmall, { color: i % 2 === 1 ? Colors.red : Colors.textMuted }]}>{suit}</Text>
+              {["♠", "♥", "♦", "♣"].map((suit) => (
+                <Text key={suit} style={[styles.suitDecorSmall, { color: suit === "♥" ? Colors.heart : suit === "♦" ? Colors.diamond : Colors.textMuted }]}>{suit}</Text>
               ))}
             </View>
             {user && (
@@ -459,8 +459,8 @@ export default function HomeScreen() {
       )}
 
       <View style={styles.cardDecoration}>
-        {["♠", "♥", "♦", "♣"].map((suit, i) => (
-          <Text key={suit} style={[styles.suitDecor, { color: i % 2 === 1 ? Colors.red : Colors.textMuted }]}>{suit}</Text>
+        {["♠", "♥", "♦", "♣"].map((suit) => (
+          <Text key={suit} style={[styles.suitDecor, { color: suit === "♥" ? Colors.heart : suit === "♦" ? Colors.diamond : Colors.textMuted }]}>{suit}</Text>
         ))}
       </View>
 

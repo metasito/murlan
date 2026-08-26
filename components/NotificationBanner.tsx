@@ -42,7 +42,7 @@ const COLOR_MAP: Record<NotificationType, string> = {
   friend_accepted: Colors.success,
   game_invite: Colors.info,
   game_info: Colors.textSecondary,
-  game_error: Colors.red,
+  game_error: Colors.danger,
   afk: Colors.gold,
   connection: Colors.success,
 };
