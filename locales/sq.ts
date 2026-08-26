@@ -281,8 +281,9 @@ export const sq: Record<keyof typeof en, string> = {
   "game.autoPassBody": "Koha mbaroi: radha jote u kalua.",
 
   // -------------------------------------------------------------- gameTable.*
-  "gameTable.rotateTitle": "Rrotulloni pajisjen",
-  "gameTable.rotateBody": "Loja kërkon modalitetin horizontal",
+  "gameTable.rotateTitle": "Kthejeni pajisjen anash",
+  "gameTable.rotateBody": "Tavolina ka nevojë për anën e gjatë.",
+  "gameTable.rotateA11yLabel": "Kthejeni pajisjen anash. Tavolina ka nevojë për anën e gjatë.",
   "gameTable.settingsA11yLabel": "Cilësimet",
   "gameTable.passLabel": "KALO",
   "gameTable.passA11yLabel": "Kalo radhën",

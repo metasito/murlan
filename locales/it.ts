@@ -274,8 +274,9 @@ export const it: Record<keyof typeof en, string> = {
   "game.autoPassBody": "Tempo scaduto: hai passato il turno.",
 
   // -------------------------------------------------------------- gameTable.*
-  "gameTable.rotateTitle": "Ruota il dispositivo",
-  "gameTable.rotateBody": "Il gioco richiede la modalità orizzontale",
+  "gameTable.rotateTitle": "Gira il dispositivo di lato",
+  "gameTable.rotateBody": "Il tavolo ha bisogno del lato lungo.",
+  "gameTable.rotateA11yLabel": "Gira il dispositivo di lato. Il tavolo ha bisogno del lato lungo.",
   "gameTable.settingsA11yLabel": "Impostazioni",
   "gameTable.passLabel": "PASSA",
   "gameTable.passA11yLabel": "Passa il turno",

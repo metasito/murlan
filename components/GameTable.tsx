@@ -16,7 +16,6 @@ import {
   StyleSheet,
   Platform,
   Pressable,
-  Modal,
   useWindowDimensions,
   type ViewStyle,
 } from "react-native";
@@ -90,7 +89,6 @@ import {
   ChipText,
   ControlRail,
   useHandLift,
-  portraitOverlayStyles,
   RailKnob,
   sharedTableStyles,
   StartReasonBanner,
@@ -98,6 +96,7 @@ import {
 } from "@/components/table/chrome";
 import { FeltPool } from "@/components/table/felt";
 import { StraightHand } from "@/components/table/hand";
+import { RotateOverlay } from "@/components/table/rotateOverlay";
 import { GameSettingsSheet } from "@/components/table/settingsSheet";
 import { useTableFeedback } from "@/components/useTableFeedback";
 import { FlyingCards, PlayedPile, getComboLabel } from "@/components/table/pile";
@@ -1775,28 +1774,7 @@ export function GameTable({
 
       {overlays}
 
-      {/* A Modal, not a scrim: covering the pixels leaves every control
-          beneath it in the tab order. Rotating back is the only way out, so
-          onRequestClose is inert. */}
-      {W < H && (
-      <Modal
-        transparent
-        visible
-        accessibilityLabel={t("gameTable.rotateTitle")}
-        supportedOrientations={["portrait", "landscape"]}
-        onRequestClose={() => {}}
-      >
-        <View style={portraitOverlayStyles.overlay}>
-          <View style={portraitOverlayStyles.card}>
-            <Ionicons name="phone-landscape-outline" size={56} color={Colors.gold} />
-            <TableText style={portraitOverlayStyles.title}>{t("gameTable.rotateTitle")}</TableText>
-            <TableText style={portraitOverlayStyles.sub}>
-              {t("gameTable.rotateBody")}
-            </TableText>
-          </View>
-        </View>
-      </Modal>
-      )}
+      {W < H && <RotateOverlay />}
     </Animated.View>
   );
 }

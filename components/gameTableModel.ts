@@ -932,3 +932,17 @@ const FACE_VALUE_RANK: Record<number, string> = {
 export function straightTopRankChar(strength: number): string {
   return FACE_VALUE_RANK[strength] ?? String(strength);
 }
+
+// ─── The portrait cover's glyph ───────────────────────────────────────────────
+
+/** A landscape phone glyph stood on its end, which is how the player holds it. */
+export const ROTATE_UPRIGHT = 0;
+/** Lying down: the pose the prompt is asking for, and where it comes to rest. */
+export const ROTATE_SETTLED = 1;
+const UPRIGHT_DEGREES = 90;
+
+/** The glyph's angle at `turn`, upright at `ROTATE_UPRIGHT` and flat at `ROTATE_SETTLED`. */
+export function rotateGlyphAngle(turn: number): number {
+  "worklet";
+  return (ROTATE_SETTLED - turn) * UPRIGHT_DEGREES;
+}
