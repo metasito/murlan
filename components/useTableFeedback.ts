@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { ViewStyle } from "react-native";
 import {
   useAnimatedStyle,
@@ -32,6 +32,31 @@ import { Motion } from "@/lib/theme";
 const BTN_REJECT_TRAVEL = 3;
 const BTN_REJECT_LEG_MS = 40;
 
+// The bomb's "kick": the whole table jolting off the impact, verbatim off the
+// prototype's own `kick` keyframe — a punch-in scale held briefly, then a
+// decaying series of jolts back to rest. `x`/`y` are `* scale`; `ms` never is.
+const KICK_MS = 1600;
+const KICK_EASING = Easing.bezier(0.33, 0.09, 0.2, 0.98);
+const KICK_PUNCH_MS = 144;
+const KICK_SETTLE_MS = 112;
+const KICK_SCALE_PEAK = 1.012;
+const KICK_SCALE_SETTLE = 1.006;
+/**
+ * Each jolt's stop and how long the table takes to reach it — the gaps between
+ * the keyframe's own percents (0, 9, 16, 26, 36, 48, 60, 74, 100 of KICK_MS).
+ * The first covers two of them: the table holds square through the punch-in,
+ * so the jolt only starts once the scale has settled.
+ */
+const KICK_JOLTS = [
+  { x: -9, y: 5, ms: KICK_PUNCH_MS + KICK_SETTLE_MS },
+  { x: 9, y: -5, ms: 160 },
+  { x: -6, y: -3, ms: 160 },
+  { x: 5, y: 3, ms: 192 },
+  { x: -3, y: -1, ms: 192 },
+  { x: 2, y: 1, ms: 224 },
+  { x: 0, y: 0, ms: 416 },
+] as const;
+
 interface TableFeedbackState {
   isMyTurn: boolean;
   isFinished: boolean;
@@ -45,18 +70,30 @@ interface TableFeedbackState {
   gameOver: boolean;
   rankings: string[];
   viewerId: string | undefined;
+  /** The table's own scale — the kick's travel and the burst's size read off it. */
+  scale: number;
 }
 
 interface TableFeedback {
   giocaFlashStyle: AnimatedStyle<ViewStyle>;
   passaFlashStyle: AnimatedStyle<ViewStyle>;
   giocaGlowStyle: AnimatedStyle<ViewStyle>;
-  shakeStyle: AnimatedStyle<ViewStyle>;
+  kickStyle: AnimatedStyle<ViewStyle>;
   /** Driven by `rejectPlay`; GiocaButton folds it into its own press style. */
   giocaRejectX: SharedValue<number>;
   /** The thrown card has landed. Timing it against the flight is the caller's. */
   playImpact: (heavy: boolean) => void;
   rejectPlay: () => void;
+  /**
+   * Increments on every bomb impact — BombBurst (components/table/moments.tsx)
+   * re-fires its flare/wave/spark off the change, the same trigger-counter
+   * pattern PlayedPile's own `bounceTrigger` already uses.
+   */
+  boomTrigger: number;
+  /** Increments when a play empties a hand — Sweep and PlayedPile's `catchTrigger` read it the same way. */
+  flushTrigger: number;
+  /** Call once, at the same landing moment as `playImpact`, when that play emptied a hand. */
+  celebrateFlush: () => void;
 }
 
 export function useTableFeedback({
@@ -72,6 +109,7 @@ export function useTableFeedback({
   gameOver,
   rankings,
   viewerId,
+  scale,
 }: TableFeedbackState): TableFeedback {
   const reduceMotion = usePrefersReducedMotion();
   const prevMyTurnRef = useRef(false);
@@ -83,19 +121,33 @@ export function useTableFeedback({
   const prevRoundClosedRef = useRef(
     roundClosedWithWinner({ lastPlayedCombination, roundWinner })
   );
+  // Read fresh inside playImpact without putting `scale` in its own deps —
+  // GameTable's play effect lists playImpact as a dependency, and a table
+  // rotation/resize must not re-run it.
+  const scaleRef = useRef(scale);
+  useEffect(() => {
+    scaleRef.current = scale;
+  }, [scale]);
 
-  // Nothing here scales: a fractional scale on a view containing text makes
-  // React Native resample the already-rasterised glyphs, and PASSA/GIOCA read
-  // as blurry for as long as it is applied. Emphasis is opacity and glow.
+  // Steady-state emphasis is opacity and glow, never scale: a fractional scale
+  // on a view containing text makes React Native resample the already-rasterised
+  // glyphs, and PASSA/GIOCA read as blurry for as long as it is applied.
   //
-  // The one scale on the table is the buttons' own press (BTN_PRESS_SCALE,
-  // GameTable.tsx), which lasts as long as a finger is down and is never a
-  // state anything is read in.
+  // The two scales on the table are both moments no one reads through — the
+  // buttons' own press (BTN_PRESS_SCALE, GameTable.tsx), which lasts as long as
+  // a finger is down, and the bomb's punch-in below, which peaks at 1.012 and
+  // decays back to 1 within the one beat.
   const giocaFlashVal = useSharedValue(0);
   const passaFlashVal = useSharedValue(0);
   const giocaGlowVal = useSharedValue(0);
-  const shakeX = useSharedValue(0);
+  const kickX = useSharedValue(0);
+  const kickY = useSharedValue(0);
+  const kickScale = useSharedValue(1);
   const giocaRejectX = useSharedValue(0);
+  // BombBurst and Sweep own their animations; these just say "again" —
+  // PlayedPile's `bounceTrigger` is the same pattern.
+  const [boomTrigger, setBoomTrigger] = useState(0);
+  const [flushTrigger, setFlushTrigger] = useState(0);
 
   useEffect(() => {
     if (isMyTurn && !isFinished && !prevMyTurnRef.current) playYourTurn();
@@ -204,16 +256,22 @@ export function useTableFeedback({
     () => () => {
       cancelAnimation(giocaFlashVal);
       cancelAnimation(passaFlashVal);
-      cancelAnimation(shakeX);
+      cancelAnimation(kickX);
+      cancelAnimation(kickY);
+      cancelAnimation(kickScale);
       cancelAnimation(giocaRejectX);
     },
-    [giocaFlashVal, passaFlashVal, shakeX, giocaRejectX]
+    [giocaFlashVal, passaFlashVal, kickX, kickY, kickScale, giocaRejectX]
   );
 
   const giocaFlashStyle = useAnimatedStyle(() => ({ opacity: giocaFlashVal.value }));
   const passaFlashStyle = useAnimatedStyle(() => ({ opacity: passaFlashVal.value }));
-  const shakeStyle = useAnimatedStyle(() => ({
-    transform: [{ translateX: shakeX.value }],
+  const kickStyle = useAnimatedStyle(() => ({
+    transform: [
+      { translateX: kickX.value },
+      { translateY: kickY.value },
+      { scale: kickScale.value },
+    ],
   }));
   // Opacity only, on the childless sibling behind the button. A shadow written
   // per frame is main-thread paint the browser cannot composite.
@@ -227,22 +285,32 @@ export function useTableFeedback({
         // The biggest play in the game should not have to share the mix.
         duckMusicFor(1100);
         if (!reduceMotion) {
-          shakeX.value = withSequence(
-            withTiming(5, { duration: 45 }),
-            withTiming(-5, { duration: 45 }),
-            withTiming(4, { duration: 40 }),
-            withTiming(-4, { duration: 40 }),
-            withTiming(2, { duration: 35 }),
-            withTiming(-2, { duration: 35 }),
-            withTiming(0, { duration: 30 })
+          const s = scaleRef.current;
+          const e = KICK_EASING;
+          const jolt = (axis: "x" | "y") =>
+            withSequence(
+              ...KICK_JOLTS.map((j) => withTiming(j[axis] * s, { duration: j.ms, easing: e }))
+            );
+          kickScale.value = withSequence(
+            withTiming(KICK_SCALE_PEAK, { duration: KICK_PUNCH_MS, easing: e }),
+            withTiming(KICK_SCALE_SETTLE, { duration: KICK_SETTLE_MS, easing: e }),
+            withTiming(1, { duration: KICK_MS - KICK_PUNCH_MS - KICK_SETTLE_MS, easing: e })
           );
+          kickX.value = jolt("x");
+          kickY.value = jolt("y");
+          setBoomTrigger((t) => t + 1);
         }
       } else {
         playCardPlay();
       }
     },
-    [reduceMotion, shakeX]
+    [reduceMotion, kickX, kickY, kickScale]
   );
+
+  const celebrateFlush = useCallback(() => {
+    if (reduceMotion) return;
+    setFlushTrigger((t) => t + 1);
+  }, [reduceMotion]);
 
   const rejectPlay = useCallback(() => {
     if (reduceMotion) return;
@@ -258,9 +326,12 @@ export function useTableFeedback({
     giocaFlashStyle,
     passaFlashStyle,
     giocaGlowStyle,
-    shakeStyle,
+    kickStyle,
     giocaRejectX,
     playImpact,
     rejectPlay,
+    boomTrigger,
+    flushTrigger,
+    celebrateFlush,
   };
 }

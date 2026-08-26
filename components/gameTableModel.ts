@@ -308,6 +308,38 @@ export function impactDelayMs(reduceMotion: boolean): number {
   return reduceMotion ? 0 : Math.round(FLIGHT_MS * LANDING_FRACTION);
 }
 
+// ─── Bomb burst ────────────────────────────────────────────────────────────────
+
+/** Spark dots ringing the bomb's impact point. */
+export const SPARK_COUNT = 16;
+
+export interface SparkOffset {
+  /** Where the spark ends up, relative to the impact point. */
+  dx: number;
+  dy: number;
+  /** ms before this spark's own animation starts. */
+  delay: number;
+}
+
+/**
+ * Where the i-th of `SPARK_COUNT` sparks flies to, and when it starts —
+ * derived from its index so every client draws the same burst. `dy` is
+ * squashed to .62 of the unsquashed distance: sparks land in a shallow
+ * ellipse, not a circle, the way debris does on a table seen from above
+ * rather than face-on. The distance steps every 4th spark and the delay
+ * every 5th, so the two cycles fall out of phase across the ring instead of
+ * both resetting at the same spark.
+ */
+export function sparkOffset(i: number, scale: number): SparkOffset {
+  const angle = (i / SPARK_COUNT) * Math.PI * 2;
+  const dist = (110 + (i % 4) * 34) * scale;
+  return {
+    dx: Math.cos(angle) * dist,
+    dy: Math.sin(angle) * dist * 0.62,
+    delay: 60 + (i % 5) * 22,
+  };
+}
+
 // ─── Flight origin ─────────────────────────────────────────────────────────────
 //
 // Where a throw starts. docs/adr/0002-a-play-leaves-the-seat-it-was-thrown-from.md §1.

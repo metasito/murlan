@@ -100,7 +100,7 @@ const DARK_OFFSET = 1;
  * it transparent, and the felt's vignette painted a solid black rectangle over
  * the whole table on device while every web check passed.
  */
-function stop(color: string): { stopColor: string; stopOpacity: number } {
+export function stop(color: string): { stopColor: string; stopOpacity: number } {
   const rgba = /^rgba?\(\s*([\d.]+)\s*,\s*([\d.]+)\s*,\s*([\d.]+)\s*(?:,\s*([\d.]+)\s*)?\)$/.exec(
     color
   );
