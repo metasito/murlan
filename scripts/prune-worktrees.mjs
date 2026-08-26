@@ -266,6 +266,11 @@ if (invokedDirectly) {
 
   console.log(`Primary: ${primary?.path ?? "(none found)"}`);
 
+  // Resolved against the primary worktree, never the cwd: this script is run from inside a
+  // linked worktree as often as from the checkout root, and there `.worktrees/` sits above
+  // the cwd rather than under it - a cwd-relative read finds nothing and reports no orphans.
+  const worktreesDir = path.join(primary?.path ?? process.cwd(), WORKTREE_DIR);
+
   let removed = 0;
   let kept = 0;
 
@@ -313,21 +318,24 @@ if (invokedDirectly) {
   }
 
   // A directory `git worktree list` has no registration for at all - never a `candidates`
-  // entry, so it needs its own pass regardless of whether any were found above.
-  const orphanNames = findOrphanedWorktreeDirs(
-    listWorktreeDirNames(WORKTREE_DIR),
-    entries.map((e) => e.path),
-  );
+  // entry, so it needs its own pass regardless of whether any were found above. The list is
+  // re-read rather than reused: a `git worktree remove` above that unregistered and then lost
+  // the delete is the very thing that mints an orphan (#377), and the snapshot taken before
+  // the loop still shows it registered.
+  const registeredPaths = parseWorktreeList(
+    execFileSync("git", ["worktree", "list", "--porcelain"], { encoding: "utf8" }),
+  ).map((e) => e.path);
+  const orphanNames = findOrphanedWorktreeDirs(listWorktreeDirNames(worktreesDir), registeredPaths);
   let orphansRemoved = 0;
   for (const name of orphanNames) {
-    const dirPath = path.join(WORKTREE_DIR, name);
+    const dirPath = path.join(worktreesDir, name);
     console.log(`ORPHAN\t${dirPath}\tno registration in git worktree list`);
     if (dryRun) {
       console.log(`  (dry run - would remove ${dirPath})`);
       continue;
     }
     try {
-      fs.rmSync(dirPath, { recursive: true, force: true });
+      fs.rmSync(dirPath, { recursive: true, force: true, maxRetries: 3, retryDelay: 100 });
       console.log(`  removed ${dirPath}`);
       orphansRemoved++;
     } catch (err) {
