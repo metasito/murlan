@@ -84,7 +84,7 @@ export interface FloatingCardSpec {
   tiltPhase: number;
 }
 
-/** Six, spread across the bands and across the width. */
+/** Spread across the bands and across the width. */
 export const PORTRAIT_CARDS: FloatingCardSpec[] = [
   { depth: "near", x: 0.04, driftPhase: 0.12, tiltPhase: 0.55 },
   { depth: "far", x: 0.21, driftPhase: 0.68, tiltPhase: 0.21 },
@@ -109,15 +109,12 @@ export function cardBox(depth: Depth): { width: number; height: number } {
   return { width: CARD_W(scale), height: CARD_H(scale) };
 }
 
-/** A card's tilt as a fraction of its band's peak, from -1 through +1. */
-export function restingSwing(spec: FloatingCardSpec): number {
-  return spec.tiltPhase * 2 - 1;
-}
-
 /**
- * Where a parked card rests under reduced motion. Its own tilt phase, so the
- * stilled field still reads as scattered rather than as a grid.
+ * Where a card stands at its own phase — along its rise from 0 to 1, and
+ * across its swing from -1 to 1. It enters its loop here, and it is where
+ * reduced motion parks it: off upright, so a stilled field still reads as
+ * scattered rather than as a grid.
  */
-export function restingTilt(spec: FloatingCardSpec): number {
-  return DEPTH_BANDS[spec.depth].tilt * restingSwing(spec);
+export function restingPose(spec: FloatingCardSpec): { rise: number; swing: number } {
+  return { rise: spec.driftPhase, swing: spec.tiltPhase * 2 - 1 };
 }

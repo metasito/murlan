@@ -21,13 +21,14 @@ import Animated, {
 import { LinearGradient } from "expo-linear-gradient";
 import Svg, { Path } from "react-native-svg";
 import { getLattice } from "@/components/cardFaceModel";
-import { getCardBack } from "@/lib/cosmetics";
+import { DEFAULT_CARD_BACK } from "@/lib/cosmetics";
+import { CardBacks } from "@/lib/tokens";
 import {
   DEPTH_BANDS,
   LANDSCAPE_CARDS,
   PORTRAIT_CARDS,
   cardBox,
-  restingSwing,
+  restingPose,
   type FloatingCardSpec,
 } from "@/components/homeCardField";
 import { hapticLight } from "@/lib/haptics";
@@ -165,24 +166,42 @@ function HomeMenuRow({
   );
 }
 
-/** The card back the field borrows its lattice from — the same one a fresh
- * install deals with. */
-const LATTICE_SPACING = getCardBack(undefined).lattice;
+/** The field borrows the lattice of the back a fresh install deals with. */
+const LATTICE_SPACING = CardBacks[DEFAULT_CARD_BACK].lattice;
 const LATTICE_INK = 0.16;
 const LATTICE_STROKE = 0.6;
 
 /**
- * A there-and-back loop with no end, already `phase` of the way into its first
- * leg — a field of them is scattered on first paint instead of leaving rest
- * together. Under reduced motion it is the resting position instead: there is
- * nothing here to convey, only mood.
+ * The tail of a leg already `t0` of its *duration* through it.
+ * `Easing.inOut(Easing.sin)` is exactly (1 - cos(pi t)) / 2, so a leg resumed
+ * by restarting that ease leaves from a standstill — which is the tell that
+ * the drift is a keyframe rather than motion that was already under way.
  */
-function phased(from: number, to: number, halfMs: number, phase: number, reduceMotion: boolean) {
-  if (reduceMotion) return from + (to - from) * phase;
+function resumeSine(t0: number) {
+  const covered = (1 - Math.cos(Math.PI * t0)) / 2;
+  return (t: number) => {
+    "worklet";
+    return ((1 - Math.cos(Math.PI * (t0 + t * (1 - t0)))) / 2 - covered) / (1 - covered);
+  };
+}
+
+/**
+ * A there-and-back loop with no end, entered at `at` rather than at rest, so a
+ * field of them is scattered and already moving on first paint. Under reduced
+ * motion it is that position and nothing more: there is nothing here to
+ * convey, only mood.
+ *
+ * How far along its *value* a card starts is not how far along its *time* it
+ * starts — an ease is the difference between the two — so the entry point goes
+ * back through the ease rather than standing in for a fraction of the leg.
+ */
+function phased(at: number, from: number, to: number, halfMs: number, reduceMotion: boolean) {
+  if (reduceMotion) return at;
+  const t0 = Math.acos(1 - 2 * ((at - from) / (to - from))) / Math.PI;
   const leg = (target: number, ms: number) =>
     withTiming(target, { duration: ms, easing: Easing.inOut(Easing.sin) });
   return withSequence(
-    leg(to, halfMs * (1 - phase)),
+    withTiming(to, { duration: halfMs * (1 - t0), easing: resumeSine(t0) }),
     withRepeat(withSequence(leg(from, halfMs), leg(to, halfMs)), -1, false)
   );
 }
@@ -197,17 +216,18 @@ function FloatingCard({ spec }: { spec: FloatingCardSpec }) {
   const reduceMotion = usePrefersReducedMotion();
   const band = DEPTH_BANDS[spec.depth];
   const { width, height } = cardBox(spec.depth);
-  const rise = useSharedValue(spec.driftPhase);
-  const swing = useSharedValue(restingSwing(spec));
+  const { rise: restLift, swing: restSwing } = restingPose(spec);
+  const lift = useSharedValue(restLift);
+  const swing = useSharedValue(restSwing);
 
   useEffect(() => {
-    rise.value = phased(0, 1, band.driftMs / 2, spec.driftPhase, reduceMotion);
-    swing.value = phased(-1, 1, band.tiltMs / 2, spec.tiltPhase, reduceMotion);
-  }, [band, reduceMotion, rise, spec, swing]);
+    lift.value = phased(restLift, 0, 1, band.driftMs / 2, reduceMotion);
+    swing.value = phased(restSwing, -1, 1, band.tiltMs / 2, reduceMotion);
+  }, [band, lift, reduceMotion, restLift, restSwing, swing]);
 
   const animStyle = useAnimatedStyle(() => ({
     transform: [
-      { translateY: -rise.value * band.rise },
+      { translateY: -lift.value * band.rise },
       { translateX: swing.value * band.sway },
       { rotate: `${swing.value * band.tilt}deg` },
     ],
@@ -223,17 +243,21 @@ function FloatingCard({ spec }: { spec: FloatingCardSpec }) {
         animStyle,
       ]}
     >
-      <LinearGradient colors={[Colors.feltLight, Colors.felt]} style={StyleSheet.absoluteFill} />
-      <Svg width={width} height={height} style={StyleSheet.absoluteFill} pointerEvents="none">
-        <Path
-          d={getLattice(width, height, LATTICE_SPACING)}
-          stroke={Colors.gold}
-          strokeOpacity={LATTICE_INK}
-          strokeWidth={LATTICE_STROKE}
-          fill="none"
-        />
-      </Svg>
-      <View style={styles.floatingCardPattern} />
+      {/* The shadow is cast by the view above, which does not clip: iOS reads
+          `overflow: hidden` as masksToBounds, and a masked layer casts none. */}
+      <View style={styles.floatingCardFace}>
+        <LinearGradient colors={[Colors.feltLight, Colors.felt]} style={StyleSheet.absoluteFill} />
+        <Svg width={width} height={height} style={StyleSheet.absoluteFill} pointerEvents="none">
+          <Path
+            d={getLattice(width, height, LATTICE_SPACING)}
+            stroke={Colors.gold}
+            strokeOpacity={LATTICE_INK}
+            strokeWidth={LATTICE_STROKE}
+            fill="none"
+          />
+        </Svg>
+        <View style={styles.floatingCardPattern} />
+      </View>
     </Animated.View>
   );
 }
@@ -716,6 +740,11 @@ const styles = StyleSheet.create({
   floatingCard: {
     position: "absolute",
     top: "12%",
+    borderRadius: Radius.sm,
+    backgroundColor: Colors.felt,
+  },
+  floatingCardFace: {
+    ...StyleSheet.absoluteFillObject,
     borderRadius: Radius.sm,
     overflow: "hidden",
     borderWidth: 1.5,

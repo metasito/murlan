@@ -13,7 +13,7 @@ import {
   LANDSCAPE_CARDS,
   PORTRAIT_CARDS,
   cardBox,
-  restingTilt,
+  restingPose,
   type Depth,
   type FloatingCardSpec,
 } from "../components/homeCardField.ts";
@@ -87,18 +87,17 @@ test("every card starts mid-flight, and no two from the same pose", () => {
   }
 });
 
-test("a parked card still rests off upright, within its band's own tilt", () => {
-  const angles = PORTRAIT_CARDS.map(restingTilt);
+test("a parked card rests off upright, and inside its own travel", () => {
+  const angles = PORTRAIT_CARDS.map((c) => restingPose(c).swing);
   assert.equal(new Set(angles).size, angles.length, "two parked cards rest at the same angle");
   for (const card of ALL) {
-    const angle = restingTilt(card);
-    assert.notEqual(angle, 0, "a parked card rests upright, so the field reads as a grid");
-    assert.ok(Math.abs(angle) <= DEPTH_BANDS[card.depth].tilt, "a parked card rests past its own tilt");
+    const { rise, swing } = restingPose(card);
+    assert.notEqual(swing, 0, "a parked card rests upright, so the field reads as a grid");
+    assert.ok(Math.abs(swing) < 1, "a parked card rests at the far end of its own tilt");
+    assert.ok(rise > 0 && rise < 1, "a parked card rests at the far end of its own rise");
   }
 });
 
-// The field used to draw its own durations, which meant the composition
-// differed on every mount — see the header above.
 test("the home screen draws no part of the field at random", () => {
   const source = readFileSync(path.join(repoRoot, "app/index.tsx"), "utf8");
   assert.ok(!/Math\.random\(/.test(source), "app/index.tsx still calls Math.random()");
