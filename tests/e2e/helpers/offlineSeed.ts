@@ -104,14 +104,26 @@ export function offlineGameSave(playerCount: 2 | 3 | 4, handSize: number = 13, t
   };
 }
 
-/** Opens the app with a game already saved, and resumes it. */
+/**
+ * Opens the app with a game already saved, and resumes it.
+ *
+ * A seeded turn that is not the viewer's holds still: `EXPO_PUBLIC_E2E_FAST`
+ * takes the bot's own delay to zero, so without this the seat moves on before
+ * the first measurement (`lib/e2eAiSuspend.ts`).
+ */
 export async function openSeededGame(
   page: Page,
   baseURL: string,
   playerCount: 2 | 3 | 4,
   handSize?: number,
-  turn?: number
+  turn: number = 0
 ): Promise<void> {
+  if (turn !== 0) {
+    await page.addInitScript(
+      ({ key }) => window.localStorage.setItem(key, "1"),
+      { key: E2E_SUSPEND_AI_KEY }
+    );
+  }
   await resumeSaved(page, baseURL, offlineGameSave(playerCount, handSize, turn));
 }
 

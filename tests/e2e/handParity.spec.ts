@@ -16,6 +16,7 @@
 // height and takes the upside-down index at the card's foot out of the picture.
 import { test, expect } from "@playwright/test";
 import { DEAL_SIZE, openSeededGame } from "./helpers/offlineSeed";
+import { HAND_SCALE, HAND_SCALE_ON_TURN } from "../../components/cardFaceModel";
 
 /** Landscape logical sizes, smallest and largest phone the app supports. */
 const PHONES = [
@@ -27,11 +28,26 @@ const PHONES = [
 
 const SEATS = [2, 3, 4] as const;
 
+/**
+ * The hand is a different size depending on whose turn it is (#344), and every
+ * budget below has to hold in both. Seat 1 is a bot, so seeding it holds the
+ * table off the viewer's turn — `openSeededGame` suspends the AI for it.
+ */
+const TURNS = [
+  { what: "on turn", seat: 0 },
+  { what: "off turn", seat: 1 },
+] as const;
+
+/** How much nearer the hand comes on the viewer's own turn — components/cardFaceModel.ts. */
+const NEAR = HAND_SCALE_ON_TURN / HAND_SCALE;
+
 /** How far the hand's own centre may sit from the middle of the screen. */
 const CENTRE_TOLERANCE = 45;
 
 interface HandGeometry {
   cards: number;
+  /** The widest card box drawn — the hand's own size, whoever is on move. */
+  cardW: number;
   left: number;
   right: number;
   centre: number;
@@ -73,6 +89,7 @@ async function handGeometry(page: import("@playwright/test").Page): Promise<Hand
     const right = Math.max(...rects.map((r) => r.right));
     return {
       cards: cards.length,
+      cardW: Math.max(...rects.map((r) => r.width)),
       left,
       right,
       centre: (left + right) / 2,
@@ -89,10 +106,11 @@ test.describe("the hand a player holds", () => {
   for (const phone of PHONES) {
     for (const seats of SEATS) {
       const dealt = DEAL_SIZE[seats];
-      test(`${phone.name}, ${seats} seats, ${dealt} cards`, async ({ page, baseURL }) => {
+      for (const turn of TURNS) {
+      test(`${phone.name}, ${seats} seats, ${dealt} cards, ${turn.what}`, async ({ page, baseURL }) => {
         test.setTimeout(90_000);
         await page.setViewportSize({ width: phone.width, height: phone.height });
-        await openSeededGame(page, baseURL!, seats, dealt);
+        await openSeededGame(page, baseURL!, seats, dealt, turn.seat);
         // Past the deal: every card flies in from the middle of the table, so
         // until the stagger has run the row is a pack rather than a hand.
         await page.waitForTimeout(2_500);
@@ -120,6 +138,33 @@ test.describe("the hand a player holds", () => {
         expect(hand.offscreen, "nothing is laid out off the screen").toBe(0);
         expect(hand.docScrollW, "the document does not scroll sideways").toBe(phone.width);
       });
+      }
     }
   }
+
+  // The point of the two states, and the one thing the budgets above cannot
+  // say: the hand is actually nearer on the viewer's own turn. Measured on the
+  // card rather than on the row, so a fan that happened to lay out differently
+  // cannot be mistaken for the hand coming closer.
+  test("the hand comes closer when the turn is the viewer's own", async ({ page, baseURL }) => {
+    test.setTimeout(120_000);
+    const phone = PHONES[2];
+    await page.setViewportSize({ width: phone.width, height: phone.height });
+
+    await openSeededGame(page, baseURL!, 4, DEAL_SIZE[4], 1);
+    await page.waitForTimeout(2_500);
+    const away = await handGeometry(page);
+
+    await openSeededGame(page, baseURL!, 4, DEAL_SIZE[4], 0);
+    await page.waitForTimeout(2_500);
+    const near = await handGeometry(page);
+
+    const grew = near.cardW / away.cardW;
+    expect(
+      grew,
+      `a hand card is ${away.cardW.toFixed(1)}px off turn and ${near.cardW.toFixed(1)}px on it ` +
+        `— ${((grew - 1) * 100).toFixed(1)}% nearer, not the ${((NEAR - 1) * 100).toFixed(1)}% ` +
+        `components/cardFaceModel.ts asks for`
+    ).toBeCloseTo(NEAR, 2);
+  });
 });
