@@ -107,9 +107,14 @@ without guessing.
 
 **The comments are part of it.** An owner's ruling, a decision a triage pass settled, a trap
 found later — all of those arrive as comments, and the body is often the state of the question
-before any of them. Read with `--comments` and treat a later ruling as overriding the body;
-the design gate concatenates both for the same reason. Write the body so it stands alone
-anyway: a decision that changes the work is worth folding back into it.
+before any of them. Read with `--comments` and treat a later ruling as overriding the body.
+
+The design gate reads them apart, and the difference matters when you write one. A recorded
+decision counts from either. Everything else — an open box under "What to settle", whether the
+ticket weighs a dependency — is read from the **body only**, because the gate comments on the
+issues it escalates, and reading its own notice back turned #278 into a loop that escalated on
+its own words. So write the body to stand alone: a decision that changes the work is worth
+folding back into it, and a decision left only in a comment will not move any gate but that one.
 
 Eight sections, in this order. Drop any that would be empty — an empty heading is noise.
 
