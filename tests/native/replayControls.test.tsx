@@ -166,9 +166,8 @@ describe('the replay move list', () => {
   });
 });
 
-// The replay's only way out used to be the table's own rail knob — settings
-// sheet, then Exit — and that knob is clipped off the top edge (#347). A
-// spectator needs a way out that owes the table nothing (#348).
+// A spectator needs a way out that owes the table nothing: the rail's own
+// knob is the table's, and #347 has it clipped off the top edge.
 describe('leaving a replay', () => {
   it('carries an exit of its own, not one buried in the table rail', async () => {
     const onExit = jest.fn();

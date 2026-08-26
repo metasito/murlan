@@ -113,35 +113,42 @@ export default function ReplayScreen() {
     [named, index]
   );
 
+  // Every state carries the way out, including the ones that draw nothing:
+  // this screen is opened from a table, and a spectator with no control has
+  // only the rail's knob left, which is the table's rather than the replay's.
+  const back = (
+    <MenuButton
+      label={t("replay.back")}
+      onPress={() => router.back()}
+      variant="secondary"
+      size="sm"
+      accessibilityLabel={t("replay.back")}
+    />
+  );
+
   if (isLoading) {
     return (
       <MenuLayout>
         <MenuCard title={t("replay.title")}>
           <ActivityIndicator color={Colors.gold} accessibilityLabel={t("replay.loadingA11yLabel")} />
+          {back}
         </MenuCard>
       </MenuLayout>
     );
   }
 
-  if (isError) {
+  // A replay that arrived unreadable is a replay that is unavailable.
+  if (isError || !state || !named) {
     return (
       <MenuLayout>
         <MenuCard title={t("replay.title")}>
           <Text style={styles.errorTitle}>{t("replay.loadErrorTitle")}</Text>
           <Text style={styles.errorBody}>{t("replay.loadErrorBody")}</Text>
-          <MenuButton
-            label={t("replay.back")}
-            onPress={() => router.back()}
-            variant="secondary"
-            size="sm"
-            accessibilityLabel={t("replay.back")}
-          />
+          {back}
         </MenuCard>
       </MenuLayout>
     );
   }
-
-  if (!state || !named) return null;
 
   return (
     <GameTable
@@ -169,7 +176,10 @@ export default function ReplayScreen() {
             setPlaying((p) => !p);
             hapticSelection();
           }}
-          onExit={() => router.back()}
+          onExit={() => {
+            hapticSelection();
+            router.back();
+          }}
           onCycleSpeed={() => {
             setSpeedIndex((i) => (i + 1) % REPLAY_SPEEDS.length);
             hapticSelection();

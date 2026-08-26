@@ -98,16 +98,17 @@ function Row({
 export function HandBreakdown({
   myUserId,
   ratingDelta,
-  seatIsLive,
+  mancheCanFollow,
 }: {
   myUserId: string;
   ratingDelta: number | null;
   /**
-   * The viewer still holds a seat the server will auto-pass for them
-   * (server/gameTimers.ts AFK_TIMEOUT_MS). A replay pushed over a live table
-   * keeps the seat and hides it, so there is no replay to open from here.
+   * Another manche can still be dealt at this table. Nothing passes for the
+   * viewer while the overlay is up — `handleGameOver` clears the room's timers
+   * — but the manche that follows arms a turn (server/gameTimers.ts
+   * AFK_TIMEOUT_MS) whether or not they are still looking at the table.
    */
-  seatIsLive: boolean;
+  mancheCanFollow: boolean;
 }) {
   const { t } = useTranslation();
 
@@ -268,9 +269,11 @@ export function HandBreakdown({
         </View>
       )}
 
-      {seatIsLive ? (
+      {!newestReplayId ? (
+        <Text style={styles.stateBody}>{t("handBreakdown.noReplay")}</Text>
+      ) : mancheCanFollow ? (
         <Text style={styles.stateBody}>{t("handBreakdown.replayAfterMatch")}</Text>
-      ) : newestReplayId ? (
+      ) : (
         <Pressable
           onPress={() => router.push({ pathname: "/(online)/replay", params: { id: newestReplayId } })}
           style={styles.replayBtn}
@@ -282,8 +285,6 @@ export function HandBreakdown({
             {t("handBreakdown.openReplay")}
           </Text>
         </Pressable>
-      ) : (
-        <Text style={styles.stateBody}>{t("handBreakdown.noReplay")}</Text>
       )}
     </View>
   );

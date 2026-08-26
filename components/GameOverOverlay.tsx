@@ -322,7 +322,7 @@ export function GameOverOverlay({
               <HandBreakdown
                 myUserId={myUserId}
                 ratingDelta={ratingDelta}
-                seatIsLive={canContinue}
+                mancheCanFollow={canContinue}
               />
             )}
           </ScrollView>
