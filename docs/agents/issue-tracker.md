@@ -23,15 +23,12 @@ Infer the repo from `git remote -v`; `gh` does this automatically when run insid
 
 ## Claiming an item
 
-The standard way to work a ticket the picker routes to implement is **`/ticket`** — bare for one
-item, `/ticket loop` to keep taking them until told to stop. It calls
-`Workflow({ scriptPath: '.claude/workflows/ticket-pipeline.mjs' })`; the `name` form does not
-resolve, because that registry does not read the project's `.claude/workflows/`. The picker's
-other two routes have entry points of their own — `/triage` and `/wayfinder` — which work the
-procedures below rather than replacing them. It claims,
-gates, implements — reviewing its own diff with `/code-review --fix` before pushing — reads
-`ci.yml`'s verdict, fixes a red run, lands and tears down. Everything below describes what it
-does, and stays the instruction for anything worked by hand.
+The standard way to work a ticket the picker routes to implement is **`npm run ticket`**
+(`scripts/ticket-pipeline.ts`), or **`/ticket`** which runs it. It claims, implements, reviews its
+own diff with `/code-review --fix` before pushing, reads `ci.yml`'s verdict, fixes a red run,
+lands and tears down. The picker's other two routes have entry points of their own — `/triage`
+and `/wayfinder`. Everything below describes what the runner does, and stays the instruction for
+anything worked by hand.
 
 Sessions run in parallel against one repo, and every one of them authenticates as the same
 GitHub account — so `--add-assignee @me` cannot tell two sessions apart. The branch name

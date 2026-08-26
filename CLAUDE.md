@@ -142,8 +142,8 @@ The *why* behind a rule, and the commands it refers to, live in the reference do
 
 - `docs/agents/issue-tracker.md` — the queue, labels, claiming, the `gh` invocations.
 - `docs/agents/loops.md` — which check catches what, what each costs, the local ports.
-- `.claude/workflows/ticket-pipeline.mjs` — what each pipeline stage does and why it is shaped
-  that way.
+- `scripts/ticket-pipeline.ts` — the whole queue runner, top to bottom. Node does everything
+  deterministic; a model runs at three points, each prompted with one line naming a skill.
 
 Two things that are this project's shape rather than a rule, and so are stated only here:
 

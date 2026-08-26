@@ -11,7 +11,8 @@ const INSTRUCTION_FILES = [
   ".claude/commands/ticket.md",
   ".claude/commands/triage.md",
   ".claude/commands/wayfinder.md",
-  ".claude/workflows/ticket-pipeline.mjs",
+  "scripts/ticket-pipeline.ts",
+  "docs/agents/issue-tracker.md",
 ];
 
 /**
