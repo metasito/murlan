@@ -51,23 +51,44 @@ for (const vp of VIEWPORTS) {
     const dialog = page.getByRole("dialog", { name: "Scambio di carte" });
     await expect(dialog, "the exchange modal has to open").toBeVisible({ timeout: 15_000 });
 
+    // Soft, so one run reports every way the modal does not fit rather than
+    // stopping at the first — the panel and CONFIRM go off different edges.
+    const panel = await page.getByTestId("exchange-panel").boundingBox();
+    if (!panel) throw new Error("the modal panel never rendered");
+
+    // The floor: the panel is the bordered card, never the full-bleed overlay.
+    // `role=dialog` is react-native-web's own full-screen ModalContent, so a
+    // box read off that measures the viewport and agrees with anything.
+    expect.soft(panel.height, "the modal panel has no height at all").toBeGreaterThan(100);
+    expect.soft(
+      panel.height,
+      "the box measured is the full-screen overlay, not the card"
+    ).toBeLessThan(vp.height);
+
+    expect.soft(
+      Math.round(panel.y),
+      `the modal runs from ${Math.round(panel.y)} to ${Math.round(panel.y + panel.height)} on a ` +
+        `${vp.height}px-tall screen, so its header and the winner's row are off the top`
+    ).toBeGreaterThanOrEqual(0);
+    expect.soft(Math.round(panel.y + panel.height)).toBeLessThanOrEqual(vp.height);
+    expect.soft(Math.round(panel.x)).toBeGreaterThanOrEqual(0);
+    expect.soft(Math.round(panel.x + panel.width)).toBeLessThanOrEqual(vp.width);
+
     const confirm = page.getByTestId("exchange-confirm");
     const box = await confirm.boundingBox();
     if (!box) throw new Error("the confirm button never rendered");
 
-    // Also the floor: a button that laid out as an empty box would sit inside
-    // any viewport bound below having drawn nothing.
-    expect(
+    expect.soft(
       Math.round(box.height),
       `CONFIRM is ${Math.round(box.height)}pt tall, under the ${TOUCH_TARGET_MIN}pt floor`
     ).toBeGreaterThanOrEqual(TOUCH_TARGET_MIN);
 
-    expect(
+    expect.soft(
       Math.round(box.y + box.height),
       `CONFIRM ends at ${Math.round(box.y + box.height)} on a ${vp.height}px-tall screen — ` +
         `it is off the bottom edge, and the hand cannot proceed without it`
     ).toBeLessThanOrEqual(vp.height);
-    expect(Math.round(box.y), "CONFIRM starts above the top edge").toBeGreaterThanOrEqual(0);
+    expect.soft(Math.round(box.y), "CONFIRM starts above the top edge").toBeGreaterThanOrEqual(0);
 
     // Off-screen is not the only way to lose it: something drawn over it takes
     // the tap just as completely.
@@ -76,29 +97,6 @@ for (const vp of VIEWPORTS) {
       const top = document.elementFromPoint(r.x + r.width / 2, r.y + r.height / 2);
       return top ? el.contains(top) || top.contains(el) : false;
     });
-    expect(hit, "the point at CONFIRM's centre does not resolve to CONFIRM").toBe(true);
-
-    // The rest of the modal, which the same overflow splits off the top: the
-    // title, both player rows and the picker. The panel carries its own testID
-    // because `role=dialog` is react-native-web's full-screen ModalContent —
-    // measuring that, or its wrapper, measures the viewport and passes always.
-    const panel = await page.getByTestId("exchange-panel").boundingBox();
-    if (!panel) throw new Error("the modal panel never rendered");
-
-    // The floor: the panel is the bordered card, never the full-bleed overlay.
-    expect(panel.height, "the modal panel has no height at all").toBeGreaterThan(100);
-    expect(
-      panel.height,
-      "the panel measured is the full-screen overlay, not the card"
-    ).toBeLessThan(vp.height);
-
-    expect(
-      Math.round(panel.y),
-      `the modal runs from ${Math.round(panel.y)} to ${Math.round(panel.y + panel.height)} on a ` +
-        `${vp.height}px-tall screen, so its header and the winner's row are off the top`
-    ).toBeGreaterThanOrEqual(0);
-    expect(Math.round(panel.y + panel.height)).toBeLessThanOrEqual(vp.height);
-    expect(Math.round(panel.x)).toBeGreaterThanOrEqual(0);
-    expect(Math.round(panel.x + panel.width)).toBeLessThanOrEqual(vp.width);
+    expect.soft(hit, "the point at CONFIRM's centre does not resolve to CONFIRM").toBe(true);
   });
 }
