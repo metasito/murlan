@@ -207,8 +207,12 @@ export async function handleGameOver(
 /** Between hands: a finished match starts over, an unfinished one carries on. */
 export function rollMatchForward(game: OnlineGameState) {
   if (game.matchOver) {
+    const [target] = targetsFor(game.gameState.players.length);
+    if (target === undefined) {
+      throw new Error(`targetsFor(${game.gameState.players.length}) returned no targets`);
+    }
     game.cumulativeScores = {};
-    game.matchTarget = targetsFor(game.gameState.players.length)[0];
+    game.matchTarget = target;
     game.matchOver = false;
     game.rematchIntents.clear();
   }

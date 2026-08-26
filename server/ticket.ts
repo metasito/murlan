@@ -51,6 +51,14 @@ export function consumeSocketTicket(raw: unknown): string | null {
   if (parts.length !== 4) return null;
 
   const [encodedUserId, nonce, expiresAtRaw, signature] = parts;
+  if (
+    encodedUserId === undefined ||
+    nonce === undefined ||
+    expiresAtRaw === undefined ||
+    signature === undefined
+  ) {
+    return null;
+  }
   const expiresAt = Number(expiresAtRaw);
   const now = Date.now();
   if (!Number.isFinite(expiresAt) || expiresAt <= now) return null;

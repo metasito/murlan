@@ -172,6 +172,7 @@ class DrizzleStorage implements IStorage {
           .insert(users)
           .values({ ...insertUser, friendCode })
           .returning();
+        if (!user) throw new Error("createUser: insert returned no row");
         return user;
       } catch (err) {
         // drizzle-orm wraps the driver error in a DrizzleQueryError, so the
@@ -217,6 +218,7 @@ class DrizzleStorage implements IStorage {
           gameMode,
           maxPlayers,
         }).returning();
+        if (!room) throw new Error("createRoom: insert returned no row");
         return room;
       } catch (err) {
         const constraint = (err as { constraint?: string })?.constraint;

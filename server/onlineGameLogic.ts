@@ -306,12 +306,16 @@ export function buildSeatRoster(
   const names = botSeatNames(emptySeats.map(() => personality));
 
   emptySeats.forEach((seat, i) => {
+    const username = names[i];
+    if (username === undefined) {
+      throw new Error(`botSeatNames returned ${names.length} names for ${emptySeats.length} seats`);
+    }
     roster.push({
       seatIndex: seat,
       // Synthetic id: bot seats must never collide with a real user id, and the
       // scoring path already excludes ids with this prefix.
       userId: `bot:${seat}`,
-      username: names[i],
+      username,
       isBot: true,
       personality,
     });
@@ -497,7 +501,9 @@ export function resolveHandEnd(input: ResolveHandEndInput): ResolveHandEndResult
     const abandonedBy = abandonedSeats.get(seat);
     const key = abandonedBy ?? scoreKeyForSeat(playerMap, seat);
     const flags = handFlags[seat] ?? { bomb: false, joker: false };
-    const emptiedOwnHand = state.players[seat].hand.length === 0;
+    const seatPlayer = state.players[seat];
+    if (!seatPlayer) throw new Error(`onlineGameLogic: no player at seat ${seat}`);
+    const emptiedOwnHand = seatPlayer.hand.length === 0;
     return {
       userId: key,
       placement: idx + 1,
