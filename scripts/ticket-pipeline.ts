@@ -418,19 +418,30 @@ function removeOrphanedDirectory(worktreePath: string): void {
 }
 
 function teardown(ticket: Ticket, state: RunState, why: string): void {
-  if (!state.merged) {
-    try {
+  try {
+    if (state.merged) {
+      // The merge closes the issue through `Closes #NN`, but nothing takes the claim's label off,
+      // and a closed ticket wearing `in-progress` reads as a run still going.
+      gh(["issue", "edit", String(ticket.number), "--repo", REPO, "--remove-label", "in-progress"]);
+    } else {
       releaseTicket(REPO, ticket.number, why);
       say(`released #${ticket.number}: ${why}`);
-    } catch (error) {
-      say(`could not release #${ticket.number}: ${(error as Error).message}`);
     }
+  } catch (error) {
+    say(`could not hand #${ticket.number} back: ${(error as Error).message}`);
   }
+
+  // `gh pr merge --delete-branch` removes origin's copy and leaves the local one, which then
+  // stands as the branch a later run's staleness check reads as a live claim. The delete below
+  // asks `origin/main..branch` first and keeps anything ahead of it, so it needs a current
+  // `origin/main` to compare against — without the fetch, a just-merged branch reads as unmerged
+  // and survives.
+  bash("git fetch origin main --quiet", { fatal: false });
   for (const command of buildCleanupCommands({
     worktreePath: state.worktreePath,
     dockerStarted: false,
     localBranch: state.localBranch,
-    merged: state.merged,
+    merged: false,
   })) {
     bash(command, { fatal: false });
   }
