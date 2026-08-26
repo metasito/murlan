@@ -159,10 +159,10 @@ test("aggression decides whether a lead spends premium cards", () => {
   );
 });
 
-// #368: the easy tier used to sort `getAllValidPlays`'s own return value in
-// place before applyPersonality read it, so the unpredictability knob saw a
-// strength-sorted array instead of the array's natural order — the same rng
-// landed on a different alt purely because of which difficulty tier ran.
+// applyPersonality's unpredictability knob indexes a filtered slice of `plays`,
+// so that array's order decides which alt it lands on. Every tier has to hand it
+// getAllValidPlays' own order, or one personality and one rng sequence answer
+// differently depending on which difficulty tier ran.
 test("aiChoosePlay never sorts the array getAllValidPlays returned in place", () => {
   const src = readFileSync(
     path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../lib/gameEngine.ts"),
@@ -174,7 +174,7 @@ test("aiChoosePlay never sorts the array getAllValidPlays returned in place", ()
   assert.doesNotMatch(src.slice(start, end), /\bplays\.sort\(/);
 });
 
-test("easy tier's ordinary pick (no knob firing) is unchanged by the fix", () => {
+test("easy tier leads its lowest-strength play when no knob fires", () => {
   const hand = [
     c("9", "clubs"), c("9", "hearts"), c("5", "diamonds"), c("5", "clubs"),
     c("K", "spades"), c("7", "hearts"), c("3", "clubs"), c("J", "diamonds"),
@@ -185,8 +185,8 @@ test("easy tier's ordinary pick (no knob firing) is unchanged by the fix", () =>
     true,
     [8, 8, 8],
     undefined,
-    // Above every knob's threshold: neither aggression nor unpredictability fires,
-    // so the pick is just the lowest-strength play — the same before and after.
+    // Above every knob's threshold, so neither knob fires and the tier's own
+    // preference is the whole answer.
     fixedRng([0.99])
   );
   assert.deepEqual(choice?.cards.map((x) => x.id), ["3_clubs"]);
