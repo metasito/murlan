@@ -274,8 +274,8 @@ export function branchNameFor(ticket: { number: number; title: string }): string
 /**
  * Idempotent: an escalation publishes, and so does the path that carries on to CI.
  *
- * `Closes #NN` goes in the body and never in a commit message, where it would close the issue at
- * push time — before ci.yml has said anything about the branch.
+ * The closing reference lives here rather than in a commit message (RULES.md rule 13) because a
+ * commit closes the issue at push time, before ci.yml has said anything about the branch.
  */
 function publish(ticket: Ticket, branch: string, worktree: string, state: RunState, summary = ""): number {
   if (state.prNumber) return state.prNumber;
@@ -420,8 +420,8 @@ function removeOrphanedDirectory(worktreePath: string): void {
 function teardown(ticket: Ticket, state: RunState, why: string): void {
   try {
     if (state.merged) {
-      // The merge closes the issue through `Closes #NN`, but nothing takes the claim's label off,
-      // and a closed ticket wearing `in-progress` reads as a run still going.
+      // The merge closes the issue through the pull request body, but nothing takes the claim's
+      // label off, and a closed ticket wearing `in-progress` reads as a run still going.
       gh(["issue", "edit", String(ticket.number), "--repo", REPO, "--remove-label", "in-progress"]);
     } else {
       releaseTicket(REPO, ticket.number, why);
