@@ -10,7 +10,6 @@
  * Nothing an agent says about what it did is believed. Git is asked instead.
  */
 import { execFileSync } from "node:child_process";
-import { mkdirSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 
@@ -96,12 +95,23 @@ function commitLeftovers(cwd: string, message: string): void {
 
 // ---------------------------------------------------------------- the three prompts
 
-function implementPrompt(): string {
+/**
+ * The whole ticket: the body, and the comments where the owner's rulings and the answers to its
+ * questions live. Labelled separately, because the specification and what was said about it
+ * afterwards are different things — the previous gate concatenated them and read its own
+ * escalation notices back as the specification.
+ *
+ * `execFileSync` hands argv straight to the process with no shell in between, so none of this
+ * needs quoting or a scratch file to carry it.
+ */
+function implementPrompt(ticket: Ticket): string {
   return (
     "/mattpocock-skills:implement\n\n" +
-    "The work is specified in `.pipeline/ticket.md` at the root of this worktree. Read it first " +
-    "and do what it asks. Commit your work. Do not push and do not open a pull request.\n\n" +
-    "`docs/agents/RULES.md` is the ruleset — read it, and follow it over anything here."
+    `Implement issue #${ticket.number} of ${REPO}, given below in full. Commit your work; ` +
+    "do not push and do not open a pull request.\n\n" +
+    "`docs/agents/RULES.md` is the ruleset — read it, and follow it over anything here.\n\n" +
+    `---\n\n# #${ticket.number} — ${ticket.title}\n\n${ticket.body}\n\n` +
+    `---\n\n## Comments on #${ticket.number}\n\n${ticket.comments || "(none)"}\n`
   );
 }
 
@@ -137,33 +147,22 @@ function pickTicket(): Ticket | null {
     say(`nothing to implement: the queue routes to \`${route.skill}\``);
     return null;
   }
-  const detail = ghJson<{ body: string | null; comments: { body: string }[] }>([
+  const detail = ghJson<{ body: string | null; comments: { author: { login: string }; body: string; createdAt: string }[] }>([
     "issue", "view", String(route.ticket.number), "--repo", REPO, "--json", "body,comments",
   ]);
   return {
     number: route.ticket.number,
     title: route.ticket.title,
     body: detail.body ?? "",
-    comments: detail.comments.map((c) => c.body).join("\n\n"),
+    comments: detail.comments
+      .map((c) => `### ${c.author.login} — ${c.createdAt}\n\n${c.body}`)
+      .join("\n\n"),
   };
 }
 
 export function branchNameFor(ticket: { number: number; title: string }): string {
   const slug = ticket.title.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 40);
   return `agent/${ticket.number}-${slug || "ticket"}`;
-}
-
-/**
- * The ticket, and only the ticket. Comments are kept out: the previous gate concatenated them and
- * read its own escalation notices back as the specification.
- */
-function writeTicketFile(worktree: string, ticket: Ticket): void {
-  mkdirSync(path.join(worktree, ".pipeline"), { recursive: true });
-  writeFileSync(
-    path.join(worktree, ".pipeline", "ticket.md"),
-    `# #${ticket.number} — ${ticket.title}\n\n${ticket.body}\n`,
-    "utf8"
-  );
 }
 
 function openPullRequest(ticket: Ticket, branch: string): number {
@@ -232,9 +231,7 @@ function work(ticket: Ticket, branch: string, state: RunState): void {
   state.worktreePath = relative;
   const worktree = path.resolve(relative);
 
-  writeTicketFile(worktree, ticket);
-
-  stage("implement", implementPrompt(), "sonnet", "high", worktree);
+  stage("implement", implementPrompt(ticket), "sonnet", "high", worktree);
   commitLeftovers(worktree, `Implement #${ticket.number}`);
   if (commitsAhead(worktree) === 0) throw new Stop("the implement agent committed nothing");
 

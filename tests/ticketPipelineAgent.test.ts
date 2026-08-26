@@ -34,11 +34,11 @@ describe("the argv a stage is spawned with", () => {
     assert.equal(flag(buildAgentArgs(SPEC), "--setting-sources"), "user,project");
   });
 
-  // A stage's prompt names one skill as a starting point. Without these it could reach no other
-  // — no brainstorming before an ambiguous change, no fan-out inside a review.
-  test("lets a stage invoke skills and spawn its own agents", () => {
-    const tools = (flag(buildAgentArgs(SPEC), "--tools") ?? "").split(",");
-    for (const tool of ["Skill", "Task", "Bash", "Edit", "Read"]) assert.ok(tools.includes(tool), tool);
+  // A stage's prompt names one skill as a starting point, not a boundary. Narrowing the tool set
+  // saves about 10k tokens a turn and buys a stage that cannot reach a skill, an agent of its own
+  // or the web when the work turns out to need one.
+  test("takes no tool away", () => {
+    assert.ok(!buildAgentArgs(SPEC).includes("--tools"));
   });
 });
 

@@ -21,11 +21,13 @@ export interface AgentResult {
 }
 
 /**
- * `Skill` and `Task` are what let a stage reach past the one skill its prompt names — a review
- * that fans out, an implementation that stops to brainstorm. Available, never required: the
- * prompt names a starting point and the agent judges the rest.
+ * Every built-in tool, so a stage can reach whatever the work turns out to need — a skill it was
+ * not told to use, an agent of its own, the web. A narrower list saves about 10k tokens a turn
+ * and buys a stage that cannot finish; the prompt names a starting point, not a boundary.
+ *
+ * MCP is the one exception, and not to save the 2.6k it costs: this runs unattended, and the
+ * Chrome server's tools block on a browser extension nobody is there to answer.
  */
-const TOOLS = ["Read", "Write", "Edit", "Grep", "Glob", "Bash", "TodoWrite", "Skill", "Task"];
 
 /** 45 minutes. Longer than any stage has ever needed; short enough that a wedged one still ends. */
 export const AGENT_TIMEOUT_MS = 45 * 60_000;
@@ -46,7 +48,6 @@ export function buildAgentArgs(spec: AgentSpec): string[] {
     "--output-format", "json",
     "--strict-mcp-config",
     "--setting-sources", "user,project",
-    "--tools", TOOLS.join(","),
     "--permission-mode", "bypassPermissions",
     "--no-session-persistence",
   ];
