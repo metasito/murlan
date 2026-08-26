@@ -389,8 +389,7 @@ export const sharedTableStyles = StyleSheet.create({
   // inward — centred, half of it lands off the side of the screen and takes
   // the avatar with it.
   // `alignSelf`, not `justifyContent`: the mid band is a row, so up-and-down is
-  // its cross axis. High in the band rather than level with the pile — a ring
-  // beside the cards flanks the one part of the felt the table has least of.
+  // its cross axis and only `alignSelf` moves a seat along it.
   sideSection: {
     width: SIDE_SECTION_W,
     alignSelf: "flex-start",

@@ -20,8 +20,8 @@ const PHONES = [
   { name: "iPhone 17 Pro Max", width: 956, height: 440 },
 ];
 
-/** Sub-pixel: a box laid out at 57.72 reports 57.7. */
-const TOLERANCE = 1;
+/** `toBeCloseTo` precision: 0 admits half a point, which is sub-pixel rounding. */
+const SUB_PIXEL = 0;
 
 interface Box { x: number; y: number; w: number; h: number }
 
@@ -83,32 +83,47 @@ for (const phone of PHONES) {
 
     for (const [what, box] of [["GIOCA", b.gioca], ["PASSA", b.passa]] as const) {
       expect(box.w, `${what} is ${box.w.toFixed(1)} wide, not ${actionBtnSize(s).toFixed(1)}`)
-        .toBeCloseTo(actionBtnSize(s), -Math.log10(TOLERANCE));
-      expect(box.h, `${what} is ${box.h.toFixed(1)} tall, not square`).toBeCloseTo(box.w, -Math.log10(TOLERANCE));
+        .toBeCloseTo(actionBtnSize(s), SUB_PIXEL);
+      expect(box.h, `${what} is ${box.h.toFixed(1)} tall, not square`).toBeCloseTo(box.w, SUB_PIXEL);
     }
 
     expect(
       b.topBar.h,
       `the HUD chip is ${b.topBar.h.toFixed(1)} tall, not ${CHIP_H(s).toFixed(1)}`
-    ).toBeCloseTo(CHIP_H(s), -Math.log10(TOLERANCE));
+    ).toBeCloseTo(CHIP_H(s), SUB_PIXEL);
+
+    const clipped = await page.evaluate(() =>
+      Array.from(document.querySelectorAll('[data-testid="seat-name"]'))
+        .filter((el) => el.scrollWidth > el.clientWidth + 1)
+        .map((el) => el.textContent ?? "")
+    );
+    expect(
+      clipped,
+      `these seat names are ellipsised at their own plate's width: ${clipped.join(", ")}`
+    ).toEqual([]);
 
     for (const ring of b.rings) {
       expect(
         ring.w,
         `a seat ring is ${ring.w.toFixed(1)} across, not ${(SEAT_DISC * s).toFixed(1)}`
-      ).toBeCloseTo(SEAT_DISC * s, -Math.log10(TOLERANCE));
+      ).toBeCloseTo(SEAT_DISC * s, SUB_PIXEL);
     }
   });
 
-  test(`the seats keep clear of the cards — ${phone.name}`, async ({ page, baseURL }) => {
+  for (const seats of [4, 3, 2] as const) {
+  test(`the seats keep clear of the cards — ${phone.name}, ${seats} players`, async ({ page, baseURL }) => {
     test.setTimeout(120_000);
     await page.setViewportSize({ width: phone.width, height: phone.height });
-    await openSeededGame(page, baseURL!, 4);
+    await openSeededGame(page, baseURL!, seats);
     await page.waitForTimeout(2_500);
 
     const b = await boxes(page);
     if (!b.pile || !b.hand) throw new Error("the table never rendered");
-    expect(b.sideSeats.length, "neither side seat rendered").toBe(2);
+    // Four seats fill both side columns; two fill neither. Between them every
+    // side slot is exercised — tests/e2e/tableFit.spec.ts's own reasoning.
+    expect(b.sideSeats.length, "the wrong number of side seats rendered").toBe(
+      seats === 4 ? 2 : seats === 3 ? 1 : 0
+    );
 
     // High in the mid band, not level with the cards: a side seat that spans
     // the pile's own centre line is a ring drawn beside the played cards.
@@ -135,4 +150,5 @@ for (const phone of PHONES) {
     expect(hits(b.pile), `these are drawn over the played cards: ${hits(b.pile).join(", ")}`).toEqual([]);
     expect(hits(b.hand), `these are drawn over the viewer's hand: ${hits(b.hand).join(", ")}`).toEqual([]);
   });
+  }
 }
