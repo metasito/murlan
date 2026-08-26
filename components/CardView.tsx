@@ -17,7 +17,6 @@ import {
   FontSize,
   Lantern,
   Motion,
-  Radius,
   Shadow,
 } from "@/lib/theme";
 import { useCardBack } from "@/lib/cosmetics";
@@ -30,6 +29,7 @@ import {
   CARD_BACK_W,
   CARD_H,
   CARD_W,
+  cardRadius,
   COURT_RANKS,
   courtArtRect,
   INDEX_SUIT_SIZE,
@@ -37,8 +37,11 @@ import {
   INDEX_TEXT_W,
   INDEX_X,
   placedPips,
+  printBorderInset,
+  printBorderRadius,
   rankFontSize,
   rankInset,
+  stockLipHeight,
 } from "@/components/cardFaceModel";
 import { a11yHidden, a11yState, useA11yHint } from "@/lib/a11y";
 
@@ -552,11 +555,17 @@ function CardViewBase({
 
   const w = faceDown ? CARD_BACK_W(scale) : CARD_W(scale);
   const h = faceDown ? CARD_BACK_H(scale) : CARD_H(scale);
+  const stockStyle = {
+    borderRadius: cardRadius(w),
+    ...cardStockShadow(stockLipHeight(h)),
+  };
+  const printInset = printBorderInset(h);
+  const printRadius = printBorderRadius(h);
 
   if (faceDown) {
     return (
       <Animated.View style={[animStyle, style]}>
-        <View style={[styles.card, { width: w, height: h }, styles.cardBack]}>
+        <View style={[styles.card, { width: w, height: h }, stockStyle, styles.cardBack]}>
           <LinearGradient
             colors={[backField[1], backField[2], backField[4]]}
             start={{ x: 0.15, y: 0 }}
@@ -564,6 +573,7 @@ function CardViewBase({
             style={StyleSheet.absoluteFill}
           />
           <OrnateCardBack width={w} height={h} back={back} />
+          <PrintBorder inset={printInset} radius={printRadius} />
           <TopLight light={light} />
         </View>
       </Animated.View>
@@ -608,7 +618,7 @@ function CardViewBase({
             measuring what the player *sees* has to measure this. */}
         <View
           testID="card-box"
-          style={[styles.card, { width: w, height: h }, selected && styles.cardSelected]}
+          style={[styles.card, { width: w, height: h }, stockStyle, selected && styles.cardSelected]}
         >
           {selectedHint.node}
           <LinearGradient
@@ -618,6 +628,7 @@ function CardViewBase({
             end={{ x: 0.9, y: 1 }}
             style={StyleSheet.absoluteFill}
           />
+          <PrintBorder inset={printInset} radius={printRadius} />
           <CardFaceArt card={card} color={color} w={w} h={h} compact={compact} />
           {!compact && COURT_RANKS.has(card.rank) && <CourtArt card={card} w={w} h={h} />}
           <TableText
@@ -645,6 +656,37 @@ function CardViewBase({
         </View>
       </Pressable>
     </Animated.View>
+  );
+}
+
+// ─── Card stock ───────────────────────────────────────────────────────────────
+//
+// A card is a physical object with an edge, not a flat swatch: a printed
+// border just inside the cut edge, and the stock's own thickness lit along
+// its bottom. Local one-offs rather than design tokens (lib/tokens.ts) — same
+// hue as `Colors.cardEdge`, printed rather than cut.
+const PRINT_BORDER_COLOR = "rgba(90,78,52,0.2)";
+const STOCK_LIP_COLOR = "#D6D0BC";
+
+/**
+ * `Shadow.card`'s contact+cast pair (lib/theme.ts) plus a solid, unblurred
+ * lip along the bottom edge. Recombined here, not folded into `Shadow.card`
+ * itself, because the lip scales with the card and `Shadow.card` does not.
+ * Old Android's (<28) shadow fallback carries no `boxShadow` to append to —
+ * it keeps the cast shadow alone, same policy `makeLayeredShadow` uses.
+ */
+function cardStockShadow(lipHeight: number): Record<string, any> {
+  const base = Shadow.card as Record<string, any>;
+  if (typeof base.boxShadow !== "string") return base;
+  return { ...base, boxShadow: `${base.boxShadow}, 0px ${lipHeight}px 0px ${STOCK_LIP_COLOR}` };
+}
+
+function PrintBorder({ inset, radius }: { inset: number; radius: number }) {
+  return (
+    <View
+      pointerEvents="none"
+      style={[styles.printBorder, { left: inset, right: inset, top: inset, bottom: inset, borderRadius: radius }]}
+    />
   );
 }
 
@@ -717,11 +759,14 @@ CardView.displayName = "CardView";
 const styles = StyleSheet.create({
   card: {
     backgroundColor: Colors.cardPaper,
-    borderRadius: Radius.sm,
     borderWidth: 1,
     borderColor: Colors.cardEdge,
     overflow: "hidden",
-    ...Shadow.card,
+  },
+  printBorder: {
+    position: "absolute",
+    borderWidth: 1,
+    borderColor: PRINT_BORDER_COLOR,
   },
   cardSelected: {
     borderColor: Colors.gold,
