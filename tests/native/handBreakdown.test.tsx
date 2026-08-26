@@ -52,10 +52,14 @@ const FULL: Responses = {
   '/api/replays': [],
 };
 
-async function renderBreakdown(responses: Responses, ratingDelta: number | null) {
+async function renderBreakdown(
+  responses: Responses,
+  ratingDelta: number | null,
+  mancheCanFollow = false
+) {
   const view = await render(
     <QueryClientProvider client={clientWith(responses)}>
-      <HandBreakdown myUserId="u1" ratingDelta={ratingDelta} />
+      <HandBreakdown myUserId="u1" ratingDelta={ratingDelta} mancheCanFollow={mancheCanFollow} />
     </QueryClientProvider>
   );
   // Every query resolves on a microtask; findBy* waits for the first paint
@@ -138,10 +142,47 @@ describe('when an endpoint is down', () => {
     delete down['/api/stats/me'];
     const view = await render(
       <QueryClientProvider client={clientWith(down)}>
-        <HandBreakdown myUserId="u1" ratingDelta={12} />
+        <HandBreakdown myUserId="u1" ratingDelta={12} mancheCanFollow={false} />
       </QueryClientProvider>
     );
     expect(await view.findByLabelText('Retry loading the hand breakdown')).toBeTruthy();
     expect(view.queryByLabelText(/Ranked rating/)).toBeNull();
+  });
+});
+
+// The overlay is up between manches too: the next one starts on a rematch
+// vote, and until it is settled the seat is still the server's to auto-pass
+// every 30s (server/gameTimers.ts AFK_TIMEOUT_MS).
+describe('the replay button while another manche can still follow', () => {
+  const WITH_REPLAY: Responses = {
+    ...FULL,
+    '/api/replays': [{ id: 'r1', finishedAt: '2026-08-24T10:00:00.000Z', gameMode: 'free_for_all', playerCount: 4 }],
+    '/api/replays/r1': { id: 'r1', seats: [], moves: [], rankings: [] },
+  };
+
+  it('is not offered at all', async () => {
+    const view = await renderBreakdown(WITH_REPLAY, 12, true);
+    expect(view.queryByLabelText('Open the replay of this hand')).toBeNull();
+    expect(view.queryByText('Watch the replay')).toBeNull();
+  });
+
+  it('says where the replay went instead of going silent', async () => {
+    const view = await renderBreakdown(WITH_REPLAY, 12, true);
+    expect(view.getByText('Watch it from your profile once the match is over')).toBeTruthy();
+  });
+
+  // A hand nothing recorded says so, whatever the room is doing: the deferral
+  // names a replay that will never exist.
+  it('does not promise a replay of a hand that was never recorded', async () => {
+    const view = await renderBreakdown(FULL, 12, true);
+    expect(view.getByText('No replay for this hand')).toBeTruthy();
+    expect(view.queryByText('Watch it from your profile once the match is over')).toBeNull();
+  });
+
+  // The floor: the same breakdown with the seat released still offers it, so
+  // the two assertions above cannot pass by never rendering a button at all.
+  it('is offered once the seat is no longer live', async () => {
+    const view = await renderBreakdown(WITH_REPLAY, 12, false);
+    expect(view.getByLabelText('Open the replay of this hand')).toBeTruthy();
   });
 });

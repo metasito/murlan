@@ -881,6 +881,7 @@ export const en = {
   "handBreakdown.formA11yLabel": "Your last finishes, newest first: {{placements}}",
   "handBreakdown.notRecorded": "This hand was not recorded — too many bots at the table.",
   "handBreakdown.noReplay": "No replay for this hand",
+  "handBreakdown.replayAfterMatch": "Watch it from your profile once the match is over",
   "handBreakdown.openReplay": "Watch the replay",
   "handBreakdown.openReplayA11yLabel": "Open the replay of this hand",
 };

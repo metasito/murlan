@@ -318,7 +318,13 @@ export function GameOverOverlay({
                 {t("handBreakdown.toggle")}
               </Text>
             </Pressable>
-            {breakdownOpen && <HandBreakdown myUserId={myUserId} ratingDelta={ratingDelta} />}
+            {breakdownOpen && (
+              <HandBreakdown
+                myUserId={myUserId}
+                ratingDelta={ratingDelta}
+                mancheCanFollow={canContinue}
+              />
+            )}
           </ScrollView>
 
           <View style={styles.actions}>
