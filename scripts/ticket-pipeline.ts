@@ -2,10 +2,14 @@
  * One queue ticket, start to finish: claim it, implement it, review it, let ci.yml judge it, land
  * it. `npm run ticket`.
  *
- * A model runs at exactly three points, each of them a judgement call, each prompted with a single
- * line that names a skill. Everything else — picking, claiming, branching, pushing, reading the
- * verdict, merging, tearing down — is a function call, because it is deterministic and a model
- * asked in prose to run a command is how the previous pipeline shipped sixteen defects.
+ * A model runs at exactly three points, each of them a judgement call: implement, review, fix.
+ * Everything else — picking, claiming, branching, pushing, reading the verdict, merging, tearing
+ * down — is a function call, because it is deterministic, and a model asked in prose to run a
+ * command is how the previous pipeline shipped sixteen defects.
+ *
+ * Each of the three is prompted with a skill and the findings that skill cannot know: which
+ * suites this repo makes an agent judge, what the previous stage already proved. Nothing in a
+ * prompt decides control flow.
  *
  * Nothing an agent says about what it did is believed. Git is asked instead.
  */
@@ -95,47 +99,120 @@ function commitLeftovers(cwd: string, message: string): void {
 
 // ---------------------------------------------------------------- the three prompts
 
+/** Git Bash is the shell every command in this repo is written for; the agent has both. */
+const SHELL_NOTE = "Use the Bash tool, not PowerShell.";
+
 /**
- * The whole ticket: the body, and the comments where the owner's rulings and the answers to its
- * questions live. Labelled separately, because the specification and what was said about it
- * afterwards are different things — the previous gate concatenated them and read its own
- * escalation notices back as the specification.
+ * Which suites to run locally. Two findings, both expensive: #349 spent 58 of its 85 minutes on
+ * seven Playwright runs, and a ticket carrying a `## Checks` section was written by someone who
+ * had read the diff coming, so reaching past it pays for minutes ci.yml is already spending.
+ */
+const CHECKS_NOTE =
+  "Follow `docs/agents/RULES.md` rules 1-6 for what to run while iterating and what to run once " +
+  "before you stop. When the issue has a `## Checks` section, that section is this ticket's list: " +
+  "run what it names and nothing further. With no such section, judge it from the files you touched.";
+
+/**
+ * The whole ticket, body and comments both. The comments are where the owner's rulings and the
+ * answers to the body's own questions arrive, and an agent that never sees them implements the
+ * question instead of the answer. They are labelled apart rather than concatenated: the previous
+ * gate ran them together and read its own escalation notices back as the specification.
  *
  * `execFileSync` hands argv straight to the process with no shell in between, so none of this
  * needs quoting or a scratch file to carry it.
  */
 function implementPrompt(ticket: Ticket): string {
-  return (
-    "/mattpocock-skills:implement\n\n" +
-    `Implement issue #${ticket.number} of ${REPO}, given below in full. Commit your work; ` +
-    "do not push and do not open a pull request.\n\n" +
-    "`docs/agents/RULES.md` is the ruleset — read it, and follow it over anything here.\n\n" +
-    `---\n\n# #${ticket.number} — ${ticket.title}\n\n${ticket.body}\n\n` +
-    `---\n\n## Comments on #${ticket.number}\n\n${ticket.comments || "(none)"}\n`
-  );
+  return [
+    "/mattpocock-skills:implement",
+    "",
+    `Implement issue #${ticket.number} of ${REPO}, given below in full — the comments as much as`,
+    "the body. Take it to a finished state: you are the only stage that writes code, and ci.yml can",
+    "only tell you whether you broke something. No stubs, no deferring a part the ticket asked for,",
+    "no test that asserts around the part that was hard.",
+    "",
+    "Write down the ticket's Definition of done as a checklist first and treat it as the contract.",
+    "Say in your summary which boxes you closed and name any you did not, with why — an honest gap",
+    "is worth more than a green report.",
+    "",
+    "Two overrides on that skill:",
+    "",
+    `- **Do not run the full test suite at the end.** ci.yml runs it against a clean build on the`,
+    `  push. ${CHECKS_NOTE}`,
+    "- **Do not review your own diff or dispatch a reviewer.** The next stage does that, in this",
+    "  same worktree, and hands your evidence to it.",
+    "",
+    "Commit on this branch. Do not push and do not open a pull request.",
+    "",
+    "End your reply with the exact commands you ran and watched pass, one per line. The reviewer is",
+    "given that list as evidence, so what you leave out of it is what gets run a second time.",
+    "",
+    `${SHELL_NOTE} \`docs/agents/RULES.md\` is the ruleset — follow it over anything here.`,
+    "",
+    `---`,
+    "",
+    `# #${ticket.number} — ${ticket.title}`,
+    "",
+    ticket.body,
+    "",
+    `---`,
+    "",
+    `## Comments on #${ticket.number}`,
+    "",
+    ticket.comments || "(none)",
+  ].join("\n");
 }
 
-function reviewPrompt(): string {
-  return "/code-review high --fix main";
+/**
+ * What the implement stage proved travels to the reviewer as evidence, not as a fact the runner
+ * acts on. Without it the reviewer re-ran the two-minute native suite three times a ticket,
+ * because it had no way to know what had already passed against the tree it was reading.
+ */
+function reviewPrompt(ticket: Ticket, evidence: string): string {
+  return [
+    "/code-review high --fix main",
+    "",
+    `The diff on this branch closes issue #${ticket.number}: ${ticket.title}`,
+    "",
+    "Commit whatever you fix. Do not push and do not open a pull request.",
+    "",
+    "These already passed against the tree you are reading. They are evidence, not something to",
+    `repeat — re-run one only where your own edit could have broken it. ${CHECKS_NOTE}`,
+    "",
+    evidence.slice(-2000) || "(the implement stage reported none)",
+  ].join("\n");
 }
 
-function fixPrompt(verdict: Verdict): string {
-  return (
-    `ci.yml failed on this branch. The failing job is \`${verdict.failedStep ?? "unknown"}\`.\n\n` +
-    `Its log ends:\n\n${verdict.output ?? "(no log)"}\n\n` +
-    "Find the cause, fix it, and commit. Do not push."
-  );
+function fixPrompt(verdict: Verdict, round: number): string {
+  return [
+    "ci.yml is red on this branch. Make it green, and change nothing the failure does not require.",
+    "",
+    `Failing job: \`${verdict.failedStep ?? "not reported"}\``,
+    "",
+    "Its log ends:",
+    "",
+    verdict.output ?? "(none reported)",
+    "",
+    // A pushed guess costs a full CI round to disprove, and a fix round has turned a working
+    // branch broken more than once.
+    "Run the failing check here and watch it pass before you stop. Commit; do not push.",
+    round > 1
+      ? "\nThe previous round did not fix it. Use `/mattpocock-skills:diagnosing-bugs` to drive the\ndiagnosis rather than guessing again."
+      : "",
+    "",
+    `${SHELL_NOTE} ${CHECKS_NOTE}`,
+  ].join("\n");
 }
 
 // ---------------------------------------------------------------- stages
 
-function stage(name: string, prompt: string, model: "sonnet" | "opus", effort: Effort, cwd: string): void {
+function stage(name: string, prompt: string, model: "sonnet" | "opus", effort: Effort, cwd: string): string {
   const started = Date.now();
   say(`\n--- ${name} (${model}, effort ${effort}) ---`);
   const result = runAgent({ prompt, model, effort, cwd });
   const minutes = ((Date.now() - started) / 60_000).toFixed(1);
   say(`--- ${name} done in ${minutes}m, ${result.turns} turns, $${result.costUsd.toFixed(2)} ---`);
   if (!result.ok) say(`(the ${name} agent exited non-zero; git decides whether it did the work)`);
+  return result.text;
 }
 
 function pickTicket(): Ticket | null {
@@ -165,16 +242,26 @@ export function branchNameFor(ticket: { number: number; title: string }): string
   return `agent/${ticket.number}-${slug || "ticket"}`;
 }
 
-function openPullRequest(ticket: Ticket, branch: string): number {
+/**
+ * Idempotent: an escalation publishes, and so does the path that carries on to CI.
+ *
+ * `Closes #NN` goes in the body and never in a commit message, where it would close the issue at
+ * push time — before ci.yml has said anything about the branch.
+ */
+function publish(ticket: Ticket, branch: string, worktree: string, state: RunState, summary = ""): number {
+  if (state.prNumber) return state.prNumber;
+  git(worktree, ["push", "-u", "origin", branch]);
   gh([
     "pr", "create", "--repo", REPO, "--base", "main", "--head", branch,
     "--title", ticket.title,
-    "--body", `Closes #${ticket.number}\n`,
+    "--body", `${summary.slice(-4000)}\n\nCloses #${ticket.number}\n`,
   ]);
   const [pr] = ghJson<{ number: number }[]>([
     "pr", "list", "--repo", REPO, "--head", branch, "--json", "number",
   ]);
   if (!pr) throw new Stop("the pull request was created but cannot be found");
+  state.prNumber = pr.number;
+  say(`opened #${pr.number}`);
   return pr.number;
 }
 
@@ -198,7 +285,7 @@ function driveToGreen(branch: string, prNumber: number, worktree: string): void 
     if (fixRounds++ >= MAX_FIX_ROUNDS) {
       throw new Stop(`still red after ${MAX_FIX_ROUNDS} fix rounds: ${verdict.reason}`);
     }
-    stage(`fix ${fixRounds}`, fixPrompt(verdict), "sonnet", "high", worktree);
+    stage(`fix ${fixRounds}`, fixPrompt(verdict, fixRounds), "sonnet", "high", worktree);
     commitLeftovers(worktree, `Fix ${verdict.failedStep ?? "ci.yml"}`);
     git(worktree, ["push"]);
   }
@@ -231,28 +318,30 @@ function work(ticket: Ticket, branch: string, state: RunState): void {
   state.worktreePath = relative;
   const worktree = path.resolve(relative);
 
-  stage("implement", implementPrompt(ticket), "sonnet", "high", worktree);
+  const evidence = stage("implement", implementPrompt(ticket), "sonnet", "high", worktree);
   commitLeftovers(worktree, `Implement #${ticket.number}`);
   if (commitsAhead(worktree) === 0) throw new Stop("the implement agent committed nothing");
 
-  // On the real diff, not on a guess made from the ticket's prose. A well-written ticket names
-  // every file worth reading, which is not the same set as the files a fix touches.
+  // On the real diff, not on paths guessed out of the ticket's prose: a well-written ticket names
+  // every file worth reading, which is a much larger set than the files a fix touches. The work is
+  // published either way — an escalation is a question for the owner, not a reason to bin a diff.
   const gate = needsDesignFirstGate({
     filesTouched: changedFiles(worktree),
     body: ticket.body,
     comments: ticket.comments,
   });
-  if (gate.escalate) throw new Stop(`design-first gate: ${gate.reason}`);
+  if (gate.escalate) {
+    publish(ticket, branch, worktree, state, evidence);
+    throw new Stop(`design-first gate: ${gate.reason}. The diff is on #${state.prNumber}.`);
+  }
 
-  stage("review", reviewPrompt(), "opus", "max", worktree);
+  stage("review", reviewPrompt(ticket, evidence), "opus", "max", worktree);
   commitLeftovers(worktree, "Apply review findings");
 
-  git(worktree, ["push", "-u", "origin", branch]);
-  state.prNumber = openPullRequest(ticket, branch);
-  say(`opened #${state.prNumber}`);
+  const prNumber = publish(ticket, branch, worktree, state, evidence);
 
-  driveToGreen(branch, state.prNumber, worktree);
-  land(branch, state.prNumber, worktree, state);
+  driveToGreen(branch, prNumber, worktree);
+  land(branch, prNumber, worktree, state);
 }
 
 function teardown(ticket: Ticket, state: RunState, why: string): void {
