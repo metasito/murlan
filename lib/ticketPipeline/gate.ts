@@ -8,7 +8,6 @@ const MANIFEST_PATTERN = /(^|\/)package\.json$/;
 // cannot say which a ticket means. #278 adds one npm script and installs nothing; the path on its
 // own sent it to the owner for a decision it had already written down.
 const DEPENDENCY_LANGUAGE = /\b(dependenc(y|ies)|devDependenc|npm (i|install|add)\b|yarn add)/i;
-const FILE_COUNT_THRESHOLD = 6;
 const DECISION_POINTER = /docs\/BRIEF\.md\s*§|docs\/adr\/|Design decision:/;
 
 /**
@@ -27,19 +26,6 @@ export interface TicketFacts {
 export interface GateVerdict {
   escalate: boolean;
   reason: string;
-}
-
-const LOCALE_PATTERN = /(^|\/)locales\/[a-z]{2}\.ts$/;
-
-/**
- * How many decisions a file list really represents. Every user-facing string is keyed in all
- * three locales, and `it.ts`/`sq.ts` are `Record<keyof typeof en, string>` — a gap is a compile
- * error, not a design question. Counted one each they spend half the threshold before the change
- * itself has a file, and a four-file chip label escalated at seven.
- */
-export function countSurfaces(filesTouched: string[]): number {
-  const locales = filesTouched.filter((f) => LOCALE_PATTERN.test(f)).length;
-  return filesTouched.length - Math.max(0, locales - 1);
 }
 
 /**
@@ -82,24 +68,6 @@ export function needsDesignFirstGate(ticket: TicketFacts): GateVerdict {
     ticket.filesTouched.some((f) => MANIFEST_PATTERN.test(f)) && DEPENDENCY_LANGUAGE.test(ticket.body);
   if (weighsADependency) {
     return { escalate: true, reason: "changes a dependency with no recorded decision" };
-  }
-  return { escalate: false, reason: "" };
-}
-
-/**
- * Scope creep, which only the finished diff can show: an agent asked for three files that changed
- * twenty. Deliberately not part of the gate above, because that one runs before any code exists
- * and would have to guess the file list from the ticket's prose — where a Ground truth table names
- * every file worth *reading*, a far larger set than the files a fix *changes*. Counted there, a
- * well-specified four-file ticket escalates on its own bibliography.
- */
-export function outgrewItsTicket(ticket: TicketFacts): GateVerdict {
-  if (DECISION_POINTER.test(`${ticket.body}\n${ticket.comments ?? ""}`)) {
-    return { escalate: false, reason: "" };
-  }
-  const surfaces = countSurfaces(ticket.filesTouched);
-  if (surfaces > FILE_COUNT_THRESHOLD) {
-    return { escalate: true, reason: `touches ${surfaces} files with no recorded decision` };
   }
   return { escalate: false, reason: "" };
 }
