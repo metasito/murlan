@@ -187,8 +187,6 @@ test.describe("the rail's settings sheet", () => {
   });
 });
 
-// ── #337 ─────────────────────────────────────────────────────────────────────
-
 /**
  * Where focus lands after `presses` tabs, as `<in|OUT>|<label>`. The sheet is
  * not a Modal, so what counts as "inside" is the sheet plus the rail the knob
@@ -199,16 +197,13 @@ async function tabTour(page: Page, presses: number): Promise<string[]> {
   for (let i = 0; i < presses; i++) {
     await page.keyboard.press("Tab");
     seen.push(
-      await page.evaluate(() => {
+      await page.evaluate((within) => {
         const el = document.activeElement;
         if (!el || el === document.body) return "OUT|body";
-        const inside = el.closest(
-          '[data-testid="settings-sheet"],[data-testid="control-rail"]'
-        ) !== null;
         const name =
           el.getAttribute("aria-label") ?? el.textContent?.trim().slice(0, 24) ?? el.tagName;
-        return `${inside ? "in" : "OUT"}|${name}`;
-      })
+        return `${el.closest(within) ? "in" : "OUT"}|${name}`;
+      }, `${SHEET},${RAIL}`)
     );
   }
   return seen;
@@ -231,16 +226,16 @@ test("the open sheet keeps Tab off the table behind its veil", async ({ page, ba
   // More presses than the sheet and the rail have controls between them, so
   // the tour wraps: an untrapped order escapes into the hand well before the
   // last one.
-  const tour = await tabTour(page, 24);
+  const TOUR = 24;
+  const tour = await tabTour(page, TOUR);
   expect(tour.filter((stop) => stop.startsWith("OUT"))).toEqual([]);
 
   // The knob is the sheet's own close control and sits outside its box, so it
   // has to be one of the stops — by keyboard, not only by tap.
-  expect(tour.some((stop) => stop === "in|Impostazioni")).toBe(true);
-  while (
-    (await page.evaluate(() => document.activeElement?.getAttribute("aria-label"))) !==
-    "Impostazioni"
-  ) {
+  expect(tour, "the knob is not in the tab order").toContain("in|Impostazioni");
+  const focused = () => page.evaluate(() => document.activeElement?.getAttribute("aria-label"));
+  for (let i = 0; (await focused()) !== "Impostazioni"; i++) {
+    expect(i, "the knob never took focus").toBeLessThan(TOUR);
     await page.keyboard.press("Tab");
   }
   await page.keyboard.press("Enter");

@@ -7,18 +7,16 @@
 import { useEffect } from "react";
 import { BackHandler, Platform, Pressable, ScrollView, StyleSheet, View } from "react-native";
 import Animated, { SlideInLeft } from "react-native-reanimated";
+import { RAIL_TESTID } from "./chrome";
 import { TableText } from "./TableText";
 import { LinearGradient } from "expo-linear-gradient";
 import { Colors, FontSize, Garnet, Highlight, makeShadow, Motion, Scrim, Spacing, TOUCH_TARGET_MIN } from "@/lib/theme";
 import { usePrefersReducedMotion } from "@/lib/accessibility";
 import { useTranslation } from "@/lib/i18n";
 import { useSettings } from "@/context/SettingsContext";
-import { a11yHidden, a11yState, useA11yHint, useFocusTrap } from "@/lib/a11y";
+import { a11yDialog, a11yHidden, a11yState, useA11yHint, useFocusTrap } from "@/lib/a11y";
 
 const SHEET_TESTID = "settings-sheet";
-/** The rail carries the knob that opened the sheet, and so stays reachable. */
-const RAIL_TESTID = "control-rail";
-const DIALOG_ABOVE = `[role="dialog"][aria-modal="true"]:not([data-testid="${SHEET_TESTID}"])`;
 
 /**
  * Closes on Escape, but only when nothing sits above the sheet already — a
@@ -32,8 +30,7 @@ function useEscapeToClose(onEscape: () => void) {
     if (typeof document === "undefined") return;
     const handler = (e: KeyboardEvent) => {
       if (e.key !== "Escape") return;
-      // Excluding the sheet, which answers that selector itself.
-      if (document.querySelector(DIALOG_ABOVE)) return;
+      if (document.querySelector('[role="dialog"][aria-modal="true"]')) return;
       onEscape();
     };
     document.addEventListener("keyup", handler);
@@ -247,16 +244,7 @@ export function GameSettingsSheet({
       />
       <Animated.View
         testID={SHEET_TESTID}
-        // A named dialog on web only: on iOS `aria-modal` becomes
-        // `accessibilityViewIsModal`, which hides the rail knob — the sheet's
-        // own close control — from VoiceOver along with the table.
-        {...(Platform.OS === "web"
-          ? {
-              role: "dialog" as const,
-              "aria-modal": true,
-              "aria-label": t("gameSettingsSheet.title"),
-            }
-          : {})}
+        {...a11yDialog(t("gameSettingsSheet.title"))}
         entering={reduceMotion ? undefined : SlideInLeft.duration(Motion.duration.base)}
         style={[
           sheetStyles.sheetPos,

@@ -83,8 +83,7 @@ const NON_MODAL_PROPERTIES: [string, RegExp][] = [
   ["traps focus", /useFocusTrap\(/],
   ["answers Escape", /useEscapeToClose\(/],
   ["answers the Android back gesture", /useBackToClose\(/],
-  ["is announced as a modal dialog", /aria-modal/],
-  ["names itself", /"aria-label":/],
+  ["is announced as a dialog", /a11yDialog\(/],
 ];
 
 test("the settings sheet covers the table on a non-modal layer's own terms", () => {
