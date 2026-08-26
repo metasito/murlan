@@ -169,19 +169,33 @@ than forced.
 
 ---
 
-## 6. Open decisions
+## 6. Decisions taken
 
-- **`/ticket` and RULES.md rule 25.** Both name the Workflow path. Update together, or the rule and
-  the tool disagree — which `tests/rulesAreSingleSourced.test.ts` exists to prevent.
-- **How `claude -p` reports back.** The old design used a JSON schema via `StructuredOutput`.
-  Options: `--output-format json`, or have the agent write a result file the runner reads. The
-  second is simpler to test.
-- **Delete `.claude/workflows/ticket-pipeline.mjs`** once the replacement lands a ticket. The owner
-  approved deletion; do not leave two runners.
-- **#320's remaining proposals** — review depth by size label, and the floor below which a ticket
-  skips the pipeline entirely — are still owner calls. Do not decide them here.
+The owner settled these. Build to them; do not reopen them.
 
----
+| Question | Decision |
+|---|---|
+| Does a size floor skip the pipeline? | **No floor. Every size uses it.** Once orchestration is two agents and scripts do claim, label, comment, push, verify, merge and cleanup, the overhead over working by hand is about ten seconds of Node. Implement and review are costs you pay whenever a model does the work at all. |
+| Review model tier | **Opus for `size:M` and up; Sonnet for `size:XS`/`size:S`.** Anything touching the engine, the socket protocol or auth takes Opus regardless of label. This is what `CLAUDE.md`'s review-depth wording already said and the old pipeline ignored. |
+| The red iOS Maestro job | **Disabled on pull requests** (#374), `workflow_dispatch` only, until #354 turns both device loops green. It had been red on `main` since `0d2f355` and gated nothing. Do not build the runner to wait on it. |
+| The bots | Owner: *“idk which bot, they are all bad in general.”* Root cause found and #350 reframed — **the game records no play history at all**, so no bot at any tier can count cards. #216 and #223 are downstream of it. Not pipeline work, but do not let a rebuild agent “fix” bot tuning on the way past. |
+
+### Still open, and yours to decide while building
+
+- **How `claude -p` reports back.** Options: `--output-format json`, or have the agent write a
+  result file the runner reads. The second is simpler to test. Technical call, not an owner one.
+- **Whether `buildCleanupCommands` / `buildWorktreeCommands` keep returning command strings.**
+  They do so because a prompt had to run them. Strings stay testable and pure; a Node runner could
+  equally call `execFileSync` itself. Either is defensible now that it is not forced.
+
+### Must move together
+
+- **`.claude/commands/ticket.md` and `docs/agents/RULES.md` rule 25** both name the Workflow path.
+  Update both in the same change, or the rule and the tool disagree — which
+  `tests/rulesAreSingleSourced.test.ts` exists to catch.
+- **Delete `.claude/workflows/ticket-pipeline.mjs`** once the replacement lands one ticket. Approved.
+  Do not leave two runners.
+- **`tests/ticketPipelinePrompts.test.ts`** pins properties of the old file. It goes with it.
 
 ## 7. Traps, learned the expensive way
 
