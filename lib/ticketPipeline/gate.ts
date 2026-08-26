@@ -4,6 +4,10 @@ import { pathToFileURL } from "node:url";
 const SCHEMA_PATTERN = /(^|\/)shared\/schema\.ts$/;
 const SOCKET_PATTERN = /server\/socket|shared\/events\.ts/;
 const MANIFEST_PATTERN = /(^|\/)package\.json$/;
+// package.json holds scripts, engines and config as well as dependencies, and the path alone
+// cannot say which a ticket means. #278 adds one npm script and installs nothing; the path on its
+// own sent it to the owner for a decision it had already written down.
+const DEPENDENCY_LANGUAGE = /\b(dependenc(y|ies)|devDependenc|npm (i|install|add)\b|yarn add)/i;
 const FILE_COUNT_THRESHOLD = 6;
 const DECISION_POINTER = /docs\/BRIEF\.md\s*§|docs\/adr\/|Design decision:/;
 
@@ -64,7 +68,9 @@ export function needsDesignFirstGate(ticket: TicketFacts): GateVerdict {
   // button with no build step, so the wrong package is discovered there rather than in CI. Left
   // undecided it is also the most expensive thing an implement agent can meet — #342 spent a
   // fifth of its run reading a package's source to work out whether to add one at all.
-  if (ticket.filesTouched.some((f) => MANIFEST_PATTERN.test(f))) {
+  const weighsADependency =
+    ticket.filesTouched.some((f) => MANIFEST_PATTERN.test(f)) && DEPENDENCY_LANGUAGE.test(ticket.body);
+  if (weighsADependency) {
     return { escalate: true, reason: "changes a dependency with no recorded decision" };
   }
   const surfaces = countSurfaces(ticket.filesTouched);
