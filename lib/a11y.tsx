@@ -39,32 +39,30 @@ export function a11yState({ role, ...state }: StateProps): AccessibilityProps {
   return props;
 }
 
-/** The range a fraction is reported over, since the fraction itself cannot be. */
-const A11Y_VALUE_MAX = 100;
-
 /**
  * A continuous control's current position, on both React Native and the DOM.
  *
- * Taken as a 0..1 fraction and reported as whole percent. Fabric declares
- * `accessibilityValue`'s three numbers as `int`
- * (ReactCommon/react/renderer/components/view/AccessibilityPrimitives.h) and
- * converts them in C++ while mounting the view — before it exists, so before
- * anything can catch it. A fraction there throws "Loss of precision during
- * arithmetic conversion" and takes the whole screen down with it. The scaling
- * lives here rather than at the call site because no renderer in the test
- * suites performs that conversion, so a caller cannot find out it got it wrong.
+ * `min`, `max` and `now` must be whole numbers. That is Fabric's constraint
+ * rather than any control's: it declares them `int`
+ * (ReactCommon/react/renderer/components/view/AccessibilityPrimitives.h:127)
+ * and converts them in C++ while mounting the view. A control whose position
+ * is a fraction reports it over a wider range — percent, say — rather than
+ * rounding against a narrow one, which would collapse it to three values.
+ * `tests/native/setup.ts` is what enforces this.
  */
-export function a11yValue(v: { fraction: number; text: string }): AccessibilityProps {
-  const now = Math.round(v.fraction * A11Y_VALUE_MAX);
-  const props: AccessibilityProps = {
-    accessibilityValue: { min: 0, max: A11Y_VALUE_MAX, now, text: v.text },
-  };
+export function a11yValue(v: {
+  min: number;
+  max: number;
+  now: number;
+  text: string;
+}): AccessibilityProps {
+  const props: AccessibilityProps = { accessibilityValue: v };
   if (!isWeb) return props;
 
   const web = props as Record<string, unknown>;
-  web["aria-valuemin"] = 0;
-  web["aria-valuemax"] = A11Y_VALUE_MAX;
-  web["aria-valuenow"] = now;
+  web["aria-valuemin"] = v.min;
+  web["aria-valuemax"] = v.max;
+  web["aria-valuenow"] = v.now;
   web["aria-valuetext"] = v.text;
   return props;
 }

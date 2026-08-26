@@ -3,11 +3,6 @@
 // suite can see is the a11y contract #342 is built around: VoiceOver/TalkBack
 // reach the control as "adjustable" with a live value, and the same
 // increment/decrement path a screen reader uses is exercised directly.
-//
-// `accessibilityValue`'s three numbers are `int` in Fabric
-// (ReactCommon/react/renderer/components/view/AccessibilityPrimitives.h), and
-// the conversion that enforces that runs in C++ while mounting the view — so
-// no renderer here ever performs it. `everyNumberIsWhole` stands in for it.
 import { describe, it, expect, jest } from '@jest/globals';
 import React from 'react';
 import { act, fireEvent, render, screen } from '@testing-library/react-native';
@@ -41,16 +36,6 @@ async function increment() {
   });
 }
 
-/** What Fabric will accept: `min`, `max` and `now` are `int` on the other side. */
-function everyNumberIsWhole(value: Record<string, unknown>) {
-  const fractional = Object.entries(value)
-    .filter(([, held]) => typeof held === 'number' && !Number.isInteger(held))
-    .map(([field, held]) => `${field}=${String(held)}`);
-  // Named rather than counted: the field is what says which end of the range
-  // was left as a fraction.
-  expect(fractional).toEqual([]);
-}
-
 async function decrement() {
   await act(async () => {
     fireEvent(screen.getByLabelText('Sound effect volume'), 'accessibilityAction', {
@@ -68,30 +53,10 @@ describe('Slider', () => {
     expect(control.props.accessible).toBe(true);
     expect(control.props.accessibilityRole).toBe('adjustable');
     expect(control.props.accessibilityValue).toEqual({ min: 0, max: 100, now: 65, text: '65%' });
-    everyNumberIsWhole(control.props.accessibilityValue);
   });
 
-  // The crash in #389: `musicVolume` defaults to 0.5, so the music slider took
-  // a fraction into a field Fabric converts to `int` before the view exists.
-  // It never reached layout, a gesture or a worklet — it died in createNode,
-  // which is why the whole modal went with it.
-  it('carries no fraction into a field the native side reads as a whole number', async () => {
-    for (const value of [0.5, 0.42, 0.07, 1 / 3, 0.999]) {
-      const view = await render(
-        <Slider
-          value={value}
-          onValueChange={() => {}}
-          a11yLabel="Music volume"
-          valueText={`${Math.round(value * 100)}%`}
-        />
-      );
-      everyNumberIsWhole(screen.getByLabelText('Music volume').props.accessibilityValue);
-      await view.unmount();
-    }
-  });
-
-  // The spoken value is the label, not the number, so scaling the range must
-  // not change a word of what a screen reader says.
+  // The spoken value is the label, not the number, so the range it is reported
+  // over must not change a word of what a screen reader says.
   it('still speaks the percentage it always did', async () => {
     await render(
       <Slider value={0.42} onValueChange={() => {}} a11yLabel="Music volume" valueText="42%" />

@@ -83,16 +83,6 @@ describe('the replay scrubber', () => {
     const scrubber = view.getByLabelText(t('replay.scrubA11yLabel'));
     expect(scrubber.props.accessibilityRole).toBe('adjustable');
     expect(scrubber.props.accessibilityValue).toEqual({ min: 0, max: 3, now: 2 });
-    // Fabric converts these three to `int` in C++ while mounting the view, so
-    // a fraction here throws before the view exists and takes the screen with
-    // it. This scrubber counts moves and sets the prop directly rather than
-    // through `a11yValue`, so it carries its own proof (#389).
-    const fractional = Object.entries(
-      scrubber.props.accessibilityValue as Record<string, unknown>
-    )
-      .filter(([, held]) => typeof held === 'number' && !Number.isInteger(held))
-      .map(([field, held]) => `${field}=${String(held)}`);
-    expect(fractional).toEqual([]);
   });
 
   it('moves without a drag, which is the whole point of the adjustable role', async () => {
