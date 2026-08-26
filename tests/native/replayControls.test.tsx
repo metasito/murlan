@@ -69,6 +69,7 @@ function transport(overrides: Partial<React.ComponentProps<typeof ReplayTranspor
       onCycleSpeed={NOOP}
       onJump={NOOP}
       onToggleMoves={NOOP}
+      onExit={NOOP}
       t={t}
       {...overrides}
     />
@@ -162,5 +163,18 @@ describe('the replay move list', () => {
     );
 
     expect(view.getByText(t('replay.moveListEmpty'))).toBeTruthy();
+  });
+});
+
+// The replay's only way out used to be the table's own rail knob — settings
+// sheet, then Exit — and that knob is clipped off the top edge (#347). A
+// spectator needs a way out that owes the table nothing (#348).
+describe('leaving a replay', () => {
+  it('carries an exit of its own, not one buried in the table rail', async () => {
+    const onExit = jest.fn();
+    const view = await transport({ onExit });
+
+    fireEvent.press(view.getByLabelText(t('replay.back')));
+    expect(onExit).toHaveBeenCalledTimes(1);
   });
 });

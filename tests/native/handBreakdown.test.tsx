@@ -52,10 +52,14 @@ const FULL: Responses = {
   '/api/replays': [],
 };
 
-async function renderBreakdown(responses: Responses, ratingDelta: number | null) {
+async function renderBreakdown(
+  responses: Responses,
+  ratingDelta: number | null,
+  seatIsLive = false
+) {
   const view = await render(
     <QueryClientProvider client={clientWith(responses)}>
-      <HandBreakdown myUserId="u1" ratingDelta={ratingDelta} />
+      <HandBreakdown myUserId="u1" ratingDelta={ratingDelta} seatIsLive={seatIsLive} />
     </QueryClientProvider>
   );
   // Every query resolves on a microtask; findBy* waits for the first paint
@@ -138,10 +142,40 @@ describe('when an endpoint is down', () => {
     delete down['/api/stats/me'];
     const view = await render(
       <QueryClientProvider client={clientWith(down)}>
-        <HandBreakdown myUserId="u1" ratingDelta={12} />
+        <HandBreakdown myUserId="u1" ratingDelta={12} seatIsLive={false} />
       </QueryClientProvider>
     );
     expect(await view.findByLabelText('Retry loading the hand breakdown')).toBeTruthy();
     expect(view.queryByLabelText(/Ranked rating/)).toBeNull();
+  });
+});
+
+// A manche ends with the room still live: the overlay is up, the next manche
+// starts on a rematch vote, and the seat is still the server's to auto-pass
+// every 30s (server/gameTimers.ts AFK_TIMEOUT_MS). Pushing the replay screen
+// on top of that leaves the player passing hands they cannot see (#348).
+describe('the replay button while the seat is still live', () => {
+  const WITH_REPLAY: Responses = {
+    ...FULL,
+    '/api/replays': [{ id: 'r1', finishedAt: '2026-08-24T10:00:00.000Z', gameMode: 'free_for_all', playerCount: 4 }],
+    '/api/replays/r1': { id: 'r1', seats: [], moves: [], rankings: [] },
+  };
+
+  it('is not offered at all', async () => {
+    const view = await renderBreakdown(WITH_REPLAY, 12, true);
+    expect(view.queryByLabelText('Open the replay of this hand')).toBeNull();
+    expect(view.queryByText('Watch the replay')).toBeNull();
+  });
+
+  it('says where the replay went instead of going silent', async () => {
+    const view = await renderBreakdown(WITH_REPLAY, 12, true);
+    expect(view.getByText('Watch it from your profile once the match is over')).toBeTruthy();
+  });
+
+  // The floor: the same breakdown with the seat released still offers it, so
+  // the two assertions above cannot pass by never rendering a button at all.
+  it('is offered once the seat is no longer live', async () => {
+    const view = await renderBreakdown(WITH_REPLAY, 12, false);
+    expect(view.getByLabelText('Open the replay of this hand')).toBeTruthy();
   });
 });
