@@ -146,7 +146,7 @@ export function Slider({
         accessible
         accessibilityLabel={a11yLabel}
         {...a11yState({ role: "adjustable", disabled })}
-        {...a11yValue({ min: 0, max: 1, now: value, text: valueText })}
+        {...a11yValue({ fraction: value, text: valueText })}
         accessibilityActions={[{ name: "increment" }, { name: "decrement" }]}
         onAccessibilityAction={(e) => {
           if (e.nativeEvent.actionName === "increment") step(STEP);
