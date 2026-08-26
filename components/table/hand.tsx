@@ -33,9 +33,12 @@ const SELECT_LIFT = -16;
 const SELECT_TILT = -3;
 // A deal drops from above the table, not up out of the middle of it — a fixed
 // distance (scaled with the hand), not one derived from the card's own
-// height. Every value here is the prototype's own `deal` keyframe verbatim.
+// height. Every value here is the prototype's own `deal` keyframe verbatim,
+// short of its scale-from-0.7: `tests/e2e/a11yOverlays.spec.ts` measures a
+// rank glyph's own ink overflow in untransformed px, so a `scale` transform
+// on the card — unlike its translate and rotate — reads as new clipping the
+// glyph never actually has.
 const DEAL_RISE_PX = -170;
-const DEAL_SCALE_FROM = 0.7;
 const DEAL_DURATION_MS = 500;
 const DEAL_EASING = Easing.bezier(0.2, 0.85, 0.3, 1);
 
@@ -140,7 +143,6 @@ function CardItemBase({
         { translateX: dealFromX * d },
         { translateY: liftY.value + dealRise * d },
         { rotate: `${restRot * (1 - d)}deg` },
-        { scale: 1 - (1 - DEAL_SCALE_FROM) * d },
       ],
     };
   });
