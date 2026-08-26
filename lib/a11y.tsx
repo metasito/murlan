@@ -1,4 +1,4 @@
-import { useId } from "react";
+import { useEffect, useId } from "react";
 import { Platform, StyleSheet, Text } from "react-native";
 import type { AccessibilityProps, AccessibilityRole, AccessibilityState } from "react-native";
 
@@ -57,6 +57,16 @@ export function a11yValue(v: {
   return props;
 }
 
+/**
+ * Names a layer as a dialog. Web only, and deliberately without `aria-modal`:
+ * that marks everything outside the dialog inert to assistive technology, and
+ * a layer whose own close control sits outside its box would go with it.
+ */
+export function a11yDialog(label: string): AccessibilityProps {
+  if (!isWeb) return {};
+  return { role: "dialog", "aria-label": label } as AccessibilityProps;
+}
+
 /** Hides a decorative subtree from assistive technology on both platforms. */
 export function a11yHidden(hidden = true): AccessibilityProps {
   return {
@@ -88,6 +98,48 @@ export function useA11yHint(hint: string | undefined): {
       </Text>
     ) : null,
   };
+}
+
+/** What a keyboard can land on, as react-native-web renders this app. */
+const FOCUSABLE = 'a[href],button,input,select,textarea,[tabindex]:not([tabindex="-1"])';
+/** A react-native-web `Modal`, which brings a focus trap of its own. */
+const MODAL_DIALOG = '[role="dialog"][aria-modal="true"]';
+
+/**
+ * Keeps Tab inside the subtrees carrying `testIDs` for as long as the caller
+ * is mounted. React Native's `Modal` buys this on web for free
+ * (exports/Modal/ModalFocusTrap.js); a layer that deliberately is not one has
+ * to carry it itself. A phone has no Tab key, so there is nothing to trap.
+ */
+export function useFocusTrap(testIDs: string[]) {
+  const within = testIDs.map((id) => `[data-testid="${id}"]`).join(",");
+  useEffect(() => {
+    if (typeof document === "undefined") return;
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key !== "Tab") return;
+      // A Modal that opened over the trapped layer traps focus itself, and two
+      // traps on one keypress drag focus back under the dialog on top.
+      const above = Array.from(document.querySelectorAll(MODAL_DIALOG));
+      if (above.some((el) => el.closest(within) === null)) return;
+      const stops = Array.from(document.querySelectorAll<HTMLElement>(FOCUSABLE)).filter(
+        (el) => el.closest(within) !== null && !el.hasAttribute("disabled")
+      );
+      if (stops.length === 0) return;
+      const at = stops.indexOf(document.activeElement as HTMLElement);
+      // Focus outside the trap stands before the first stop, so Tab enters at
+      // the top of the order and Shift+Tab at the bottom.
+      const next =
+        at === -1
+          ? e.shiftKey
+            ? stops.length - 1
+            : 0
+          : (at + (e.shiftKey ? -1 : 1) + stops.length) % stops.length;
+      e.preventDefault();
+      stops[next]?.focus();
+    };
+    document.addEventListener("keydown", onKeyDown);
+    return () => document.removeEventListener("keydown", onKeyDown);
+  }, [within]);
 }
 
 /**

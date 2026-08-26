@@ -7,13 +7,16 @@
 import { useEffect } from "react";
 import { BackHandler, Platform, Pressable, ScrollView, StyleSheet, View } from "react-native";
 import Animated, { SlideInLeft } from "react-native-reanimated";
+import { RAIL_TESTID } from "./chrome";
 import { TableText } from "./TableText";
 import { LinearGradient } from "expo-linear-gradient";
 import { Colors, FontSize, Garnet, Highlight, makeShadow, Motion, Scrim, Spacing, TOUCH_TARGET_MIN } from "@/lib/theme";
 import { usePrefersReducedMotion } from "@/lib/accessibility";
 import { useTranslation } from "@/lib/i18n";
 import { useSettings } from "@/context/SettingsContext";
-import { a11yHidden, a11yState, useA11yHint } from "@/lib/a11y";
+import { a11yDialog, a11yHidden, a11yState, useA11yHint, useFocusTrap } from "@/lib/a11y";
+
+const SHEET_TESTID = "settings-sheet";
 
 /**
  * Closes on Escape, but only when nothing sits above the sheet already — a
@@ -225,6 +228,9 @@ export function GameSettingsSheet({
   } = useSettings();
   useEscapeToClose(onClose);
   useBackToClose(onClose);
+  // The veil covers pixels and nothing else, so without this the hand, PASSA
+  // and GIOCA all stay in the tab order behind it.
+  useFocusTrap([SHEET_TESTID, RAIL_TESTID]);
 
   return (
     <>
@@ -237,7 +243,8 @@ export function GameSettingsSheet({
         style={[sheetStyles.veil, { left: rail, zIndex: SHEET_Z }]}
       />
       <Animated.View
-        testID="settings-sheet"
+        testID={SHEET_TESTID}
+        {...a11yDialog(t("gameSettingsSheet.title"))}
         entering={reduceMotion ? undefined : SlideInLeft.duration(Motion.duration.base)}
         style={[
           sheetStyles.sheetPos,

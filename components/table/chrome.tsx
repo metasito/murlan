@@ -253,6 +253,9 @@ const chipStyles = StyleSheet.create({
  * which floors it well above a 44pt knob so a phone with no cutout lays out
  * exactly like one with a Dynamic Island.
  */
+/** The rail stays reachable behind a layer that traps focus (lib/a11y.tsx). */
+export const RAIL_TESTID = "control-rail";
+
 export function ControlRail({
   width,
   topPad,
@@ -268,7 +271,7 @@ export function ControlRail({
 }) {
   return (
     <View
-      testID="control-rail"
+      testID={RAIL_TESTID}
       style={[railStyles.rail, { width, paddingTop: topPad, paddingBottom: bottomPad }]}
     >
       <View>{top}</View>
