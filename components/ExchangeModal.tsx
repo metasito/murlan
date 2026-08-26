@@ -6,6 +6,7 @@ import {
   Pressable,
   ScrollView,
   Modal,
+  useWindowDimensions,
 } from "react-native";
 import Animated, {
   FadeIn,
@@ -22,6 +23,7 @@ import Ionicons from "@expo/vector-icons/Ionicons";
 import type { ExchangePhase, Card } from "@/lib/gameEngine";
 import { cardStrength, getValidGivebackCards } from "@/lib/gameEngine";
 import { CardView } from "@/components/CardView";
+import { CARD_H, CARD_W, cardScale } from "@/components/cardFaceModel";
 import { Colors, FontSize, Highlight, Motion, Radius, Shadow, Spacing, TOUCH_TARGET_MIN } from '@/lib/theme';
 import { usePrefersReducedMotion } from "@/lib/accessibility";
 import { useTranslation } from "@/lib/i18n";
@@ -36,7 +38,17 @@ interface ExchangeModalProps {
   onSelectCard: (cardId: string) => void;
 }
 
-function AnimatedCard({ card, delay = 0, reduceMotion }: { card: Card; delay?: number; reduceMotion: boolean }) {
+function AnimatedCard({
+  card,
+  delay = 0,
+  reduceMotion,
+  scale,
+}: {
+  card: Card;
+  delay?: number;
+  reduceMotion: boolean;
+  scale: number;
+}) {
   const ty = useSharedValue(reduceMotion ? 0 : -30);
   const rot = useSharedValue(reduceMotion ? 0 : -8);
   const opacity = useSharedValue(reduceMotion ? 1 : 0);
@@ -63,24 +75,32 @@ function AnimatedCard({ card, delay = 0, reduceMotion }: { card: Card; delay?: n
 
   return (
     <Animated.View style={anim}>
-      <CardView card={card} />
+      <CardView card={card} scale={scale} />
     </Animated.View>
   );
 }
 
 const PICK_LIFT = -10;
 const PRESSED_OPACITY = 0.7;
+// 90% of the widest phone the table ships to lying down (844pt). Past that the
+// window is a desktop browser, where a wider panel buys the two columns nothing.
+const LANDSCAPE_MAX_W = 760;
+
+/** The slot is the card's own box, so the row does not resize around a pick. */
+const emptySlotSize = (scale: number) => ({ width: CARD_W(scale), height: CARD_H(scale) });
 
 function SelectableCard({
   card,
   onPress,
   selected,
   reduceMotion,
+  scale,
 }: {
   card: Card;
   onPress: () => void;
   selected: boolean;
   reduceMotion: boolean;
+  scale: number;
 }) {
   const { t } = useTranslation();
   const giveHint = useA11yHint(t("exchangeModal.giveCardA11yHint"));
@@ -133,7 +153,7 @@ function SelectableCard({
       <Animated.View style={anim}>
         <Animated.View pointerEvents="none" style={[styles.cardGlow, glowStyle]} />
         <View style={[styles.cardItem, selected && styles.cardItemSelected]}>
-          <CardView card={card} decorative />
+          <CardView card={card} scale={scale} decorative />
         </View>
       </Animated.View>
     </Pressable>
@@ -150,6 +170,10 @@ export function ExchangeModal({
   const { t } = useTranslation();
   const reduceMotion = usePrefersReducedMotion();
   const [selectedId, setSelectedId] = React.useState<string | null>(null);
+  const { width, height } = useWindowDimensions();
+  // The table is landscape-locked, so this is the shape the modal is seen in.
+  const landscape = width > height;
+  const scale = cardScale(Math.min(width, height));
 
   const validCards = getValidGivebackCards(winnerHand, phase.cardFromLoser?.id).sort(
     (a, b) => cardStrength(a) - cardStrength(b)
@@ -185,111 +209,129 @@ export function ExchangeModal({
         exiting={reduceMotion ? undefined : FadeOut.duration(200)}
         style={styles.overlay}
       >
-        <View style={styles.card}>
-          <View style={styles.headerRow}>
-            <Ionicons name="swap-horizontal" size={22} color={Colors.gold} />
-            <Text style={styles.title}>{t("exchangeModal.title")}</Text>
-          </View>
+        <View
+          testID="exchange-panel"
+          style={[styles.card, landscape ? styles.cardLandscape : styles.cardPortrait]}
+        >
+          <View style={[styles.column, landscape && styles.columnLandscape]}>
+            <View style={styles.headerRow}>
+              <Ionicons name="swap-horizontal" size={22} color={Colors.gold} />
+              <Text style={styles.title}>{t("exchangeModal.title")}</Text>
+            </View>
 
-          {/* Winner row — receives card from loser */}
-          <View style={styles.playerRow}>
-            <View style={styles.playerInfo}>
-              <Ionicons name="trophy" size={14} color={Colors.gold} />
-              <Text style={styles.playerName} numberOfLines={1}>{winnerName}</Text>
-              <View style={styles.receivesTag}>
-                <Text style={styles.receivesTagText}>{t("exchangeModal.receives")}</Text>
+            {/* Winner row — receives card from loser */}
+            <View style={styles.playerRow}>
+              <View style={styles.playerInfo}>
+                <Ionicons name="trophy" size={14} color={Colors.gold} />
+                <Text style={styles.playerName} numberOfLines={1}>{winnerName}</Text>
+                <View style={styles.receivesTag}>
+                  <Text style={styles.receivesTagText}>{t("exchangeModal.receives")}</Text>
+                </View>
               </View>
-            </View>
-            <View style={styles.cardSlot}>
-              <AnimatedCard card={phase.cardFromLoser} delay={100} reduceMotion={reduceMotion} />
-            </View>
-          </View>
-
-          {/* Arrow */}
-          <Animated.View style={[styles.arrowRow, arrowAnim]}>
-            <View style={styles.arrowLine} />
-            <Ionicons name="arrow-down" size={18} color={Colors.gold} />
-            <Ionicons name="arrow-up" size={18} color={Colors.textSecondary} />
-            <View style={styles.arrowLine} />
-          </Animated.View>
-
-          {/* Loser row — receives the card the winner is about to pick */}
-          <View style={styles.playerRow}>
-            <View style={styles.playerInfo}>
-              <Ionicons name="person" size={14} color={Colors.textSecondary} />
-              <Text style={styles.playerName} numberOfLines={1}>{loserName}</Text>
-              <View style={[styles.receivesTag, styles.willReceiveTag]}>
-                <Text style={[styles.receivesTagText, styles.willReceiveTagText]}>{t("exchangeModal.willReceive")}</Text>
-              </View>
-            </View>
-            {selectedCard ? (
               <View style={styles.cardSlot}>
-                {/* Keyed on the card so each new pick replays the drop. */}
-                <AnimatedCard key={selectedCard.id} card={selectedCard} reduceMotion={reduceMotion} />
+                <AnimatedCard
+                  card={phase.cardFromLoser}
+                  delay={100}
+                  reduceMotion={reduceMotion}
+                  scale={scale}
+                />
               </View>
-            ) : (
-              <View style={styles.cardSlotEmpty}>
-                <Ionicons name="help-circle-outline" size={28} color={Colors.goldDim} />
+            </View>
+
+            {/* Arrow */}
+            <Animated.View style={[styles.arrowRow, arrowAnim]}>
+              <View style={styles.arrowLine} />
+              <Ionicons name="arrow-down" size={18} color={Colors.gold} />
+              <Ionicons name="arrow-up" size={18} color={Colors.textSecondary} />
+              <View style={styles.arrowLine} />
+            </Animated.View>
+
+            {/* Loser row — receives the card the winner is about to pick */}
+            <View style={styles.playerRow}>
+              <View style={styles.playerInfo}>
+                <Ionicons name="person" size={14} color={Colors.textSecondary} />
+                <Text style={styles.playerName} numberOfLines={1}>{loserName}</Text>
+                <View style={[styles.receivesTag, styles.willReceiveTag]}>
+                  <Text style={[styles.receivesTagText, styles.willReceiveTagText]}>{t("exchangeModal.willReceive")}</Text>
+                </View>
               </View>
-            )}
+              {selectedCard ? (
+                <View style={styles.cardSlot}>
+                  {/* Keyed on the card so each new pick replays the drop. */}
+                  <AnimatedCard
+                    key={selectedCard.id}
+                    card={selectedCard}
+                    reduceMotion={reduceMotion}
+                    scale={scale}
+                  />
+                </View>
+              ) : (
+                <View style={[styles.cardSlotEmpty, emptySlotSize(scale)]}>
+                  <Ionicons name="help-circle-outline" size={28} color={Colors.goldDim} />
+                </View>
+              )}
+            </View>
           </View>
 
-          <View style={styles.divider} />
+          <View style={[styles.divider, landscape && styles.dividerUpright]} />
 
-          <Text style={styles.sub}>
-            {t("exchangeModal.subPrefix")}{" "}
-            <Text style={styles.accent}>{loserName}</Text> {t("exchangeModal.subSuffix")}
-          </Text>
+          <View style={[styles.column, landscape && styles.columnLandscape]}>
+            <Text style={styles.sub}>
+              {t("exchangeModal.subPrefix")}{" "}
+              <Text style={styles.accent}>{loserName}</Text> {t("exchangeModal.subSuffix")}
+            </Text>
 
-          {validCards.length === 0 ? (
-            <Text style={styles.hint}>{t("exchangeModal.noValidCards")}</Text>
-          ) : (
-            <ScrollView
-              horizontal
-              showsHorizontalScrollIndicator={false}
-              contentContainerStyle={styles.cardRow}
-            >
-              {validCards.map((card) => (
-                <SelectableCard
-                  key={card.id}
-                  card={card}
-                  selected={card.id === selectedId}
-                  reduceMotion={reduceMotion}
-                  onPress={() => setSelectedId(card.id)}
-                />
-              ))}
-            </ScrollView>
-          )}
-
-          {validCards.length > 0 && (
-            <Pressable
-              testID="exchange-confirm"
-              onPress={() => {
-                if (!selectedCard) return;
-                hapticMedium();
-                onSelectCard(selectedCard.id);
-              }}
-              disabled={!selectedCard}
-              {...a11yState({ role: "button", disabled: !selectedCard })}
-              accessibilityLabel={t("exchangeModal.confirm")}
-              style={({ pressed }) => [
-                styles.confirm,
-                !selectedCard && styles.confirmDisabled,
-                pressed && selectedCard && styles.confirmPressed,
-              ]}
-            >
-              <Text
-                style={[styles.confirmLabel, !selectedCard && styles.confirmLabelDisabled]}
-                {...a11yHidden()}
+            {validCards.length === 0 ? (
+              <Text style={styles.hint}>{t("exchangeModal.noValidCards")}</Text>
+            ) : (
+              <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                contentContainerStyle={styles.cardRow}
               >
-                {t("exchangeModal.confirm")}
-              </Text>
-            </Pressable>
-          )}
+                {validCards.map((card) => (
+                  <SelectableCard
+                    key={card.id}
+                    card={card}
+                    selected={card.id === selectedId}
+                    reduceMotion={reduceMotion}
+                    scale={scale}
+                    onPress={() => setSelectedId(card.id)}
+                  />
+                ))}
+              </ScrollView>
+            )}
 
-          <Text style={styles.hint}>
-            {t(selectedCard ? "exchangeModal.hintConfirm" : "exchangeModal.hint")}
-          </Text>
+            {validCards.length > 0 && (
+              <Pressable
+                testID="exchange-confirm"
+                onPress={() => {
+                  if (!selectedCard) return;
+                  hapticMedium();
+                  onSelectCard(selectedCard.id);
+                }}
+                disabled={!selectedCard}
+                {...a11yState({ role: "button", disabled: !selectedCard })}
+                accessibilityLabel={t("exchangeModal.confirm")}
+                style={({ pressed }) => [
+                  styles.confirm,
+                  !selectedCard && styles.confirmDisabled,
+                  pressed && selectedCard && styles.confirmPressed,
+                ]}
+              >
+                <Text
+                  style={[styles.confirmLabel, !selectedCard && styles.confirmLabelDisabled]}
+                  {...a11yHidden()}
+                >
+                  {t("exchangeModal.confirm")}
+                </Text>
+              </Pressable>
+            )}
+
+            <Text style={styles.hint}>
+              {t(selectedCard ? "exchangeModal.hintConfirm" : "exchangeModal.hint")}
+            </Text>
+          </View>
         </View>
       </Animated.View>
     </Modal>
@@ -312,9 +354,26 @@ const styles = StyleSheet.create({
     padding: Spacing.roomy,
     alignItems: "center",
     gap: Spacing.snug,
-    maxWidth: 440,
     width: "90%",
     ...Shadow.gold,
+  },
+  cardPortrait: {
+    maxWidth: 440,
+  },
+  cardLandscape: {
+    flexDirection: "row",
+    alignItems: "stretch",
+    padding: Spacing.cosy,
+    maxWidth: LANDSCAPE_MAX_W,
+  },
+  column: {
+    alignSelf: "stretch",
+    alignItems: "center",
+    gap: Spacing.snug,
+  },
+  columnLandscape: {
+    flex: 1,
+    justifyContent: "center",
   },
   headerRow: {
     flexDirection: "row",
@@ -380,8 +439,6 @@ const styles = StyleSheet.create({
   cardSlotEmpty: {
     alignItems: "center",
     justifyContent: "center",
-    width: 52,
-    height: 72,
     borderRadius: Radius.sm,
     borderWidth: 1.5,
     borderColor: Colors.goldSoft,
@@ -403,6 +460,11 @@ const styles = StyleSheet.create({
     width: "100%",
     height: 1,
     backgroundColor: Colors.goldMuted,
+  },
+  dividerUpright: {
+    width: 1,
+    height: "auto",
+    alignSelf: "stretch",
   },
   sub: {
     fontFamily: "Inter_400Regular",
