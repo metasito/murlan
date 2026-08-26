@@ -85,6 +85,11 @@ Each of these produced a confident, wrong "fixed" in one session:
 - **One frame is not a state.** Screenshotting a seeded table at the viewer's turn proves
   that one frame. Play real hands (`tests/e2e/helpers/bot.ts` drives one), and sample
   *through* a turn handover, not after it.
+- **A Playwright spec is collected only from `tests/e2e/`.** `testDir` is that directory, so a
+  spec written anywhere else — a scratchpad, a temp dir — matches nothing, and the filter
+  argument is a path relative to it, not an absolute one. Neither mistake fails fast: the
+  webServer starts and Metro rebuilds the whole bundle before Playwright reports that it
+  collected no tests. #211 paid for that twice.
 - **`playwright.config.ts` declares its own `webServer`.** It starts and stops the e2e server
   itself, on `E2E_PORT`. Starting one by hand races it for the port, and the run that then fails
   looks like a broken spec.
