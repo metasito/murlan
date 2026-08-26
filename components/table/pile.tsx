@@ -232,32 +232,37 @@ function CatchCard({
 }) {
   const reduceMotion = usePrefersReducedMotion();
   const glow = useSharedValue(0);
-  const liftY = useSharedValue(0);
+  // 0 at rest, 1 at the top of the lift — the table's own scale multiplies it
+  // at render, so resizing the table cannot read as a fresh catch.
+  const lift = useSharedValue(0);
 
   useEffect(() => {
     if (!trigger || reduceMotion) return;
     glow.value = 0;
-    liftY.value = 0;
+    lift.value = 0;
     const half = CATCH_MS / 2;
-    glow.value = withSequence(
-      withTiming(1, { duration: half, easing: CATCH_EASING }),
-      withTiming(0, { duration: half, easing: CATCH_EASING })
-    );
-    liftY.value = withSequence(
-      withTiming(CATCH_LIFT * scale, { duration: half, easing: CATCH_EASING }),
-      withTiming(0, { duration: half, easing: CATCH_EASING })
-    );
-  }, [trigger, reduceMotion, scale, glow, liftY]);
+    // One descriptor per shared value: Reanimated mutates an animation as it
+    // runs, so two values cannot share one.
+    const bloom = () =>
+      withSequence(
+        withTiming(1, { duration: half, easing: CATCH_EASING }),
+        withTiming(0, { duration: half, easing: CATCH_EASING })
+      );
+    glow.value = bloom();
+    lift.value = bloom();
+  }, [trigger, reduceMotion, glow, lift]);
 
   useEffect(
     () => () => {
       cancelAnimation(glow);
-      cancelAnimation(liftY);
+      cancelAnimation(lift);
     },
-    [glow, liftY]
+    [glow, lift]
   );
 
-  const liftStyle = useAnimatedStyle(() => ({ transform: [{ translateY: liftY.value }] }));
+  const liftStyle = useAnimatedStyle(() => ({
+    transform: [{ translateY: lift.value * CATCH_LIFT * scale }],
+  }));
   // Opacity only, on a childless sibling behind the card — the same
   // compositor-safe substitute for an animated shadow hand.tsx's cardGlow uses.
   const glowStyle = useAnimatedStyle(() => ({ opacity: glow.value }));

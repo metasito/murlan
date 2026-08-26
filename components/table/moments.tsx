@@ -276,6 +276,10 @@ function Spark({ index, trigger, scale }: { index: number; trigger: number; scal
 // ─── BombBurst ──────────────────────────────────────────────────────────────
 
 const SPARK_INDICES = Array.from({ length: SPARK_COUNT }, (_, i) => i);
+// Over the pile it rings, under the flight still settling onto it
+// (pileStyles.flyingContainer, zIndex 60). Stated, never left to sibling
+// order — CLAUDE.md's invariant, and the iOS renderer is why.
+const BURST_Z = 50;
 
 /**
  * The bomb's four layers, centred on the impact point — the same point
@@ -284,7 +288,7 @@ const SPARK_INDICES = Array.from({ length: SPARK_COUNT }, (_, i) => i);
  */
 export function BombBurst({ trigger, scale }: { trigger: number; scale: number }) {
   return (
-    <View pointerEvents="none" style={momentStyles.overlay}>
+    <View pointerEvents="none" style={[momentStyles.overlay, { zIndex: BURST_Z }]}>
       <View style={momentStyles.anchor}>
         {WAVE_RINGS.map((ring, i) => (
           <Wave key={i} trigger={trigger} scale={scale} delayMs={ring.delay} durationMs={ring.duration} />
@@ -314,6 +318,8 @@ const SWEEP_Z = 65;
 export function Sweep({ trigger, width, height }: { trigger: number; width: number; height: number }) {
   const reduceMotion = usePrefersReducedMotion();
   const opacity = useSharedValue(0);
+  // -1 to 1 across the band's own travel, which is applied at render: a
+  // window resize changes how far that is, and must not restart the pass.
   const x = useSharedValue(0);
   const bandW = width * SWEEP_W_FACTOR;
   const bandH = height * SWEEP_H_FACTOR;
@@ -322,15 +328,15 @@ export function Sweep({ trigger, width, height }: { trigger: number; width: numb
   useEffect(() => {
     if (!trigger || reduceMotion) return;
     opacity.value = 0;
-    x.value = -travel;
+    x.value = -1;
     const e = SWEEP_EASING;
     opacity.value = withSequence(
       withTiming(1, { duration: SWEEP_MS * 0.12, easing: e }),
       withTiming(1, { duration: SWEEP_MS * 0.76, easing: e }),
       withTiming(0, { duration: SWEEP_MS * 0.12, easing: e })
     );
-    x.value = withTiming(travel, { duration: SWEEP_MS, easing: e });
-  }, [trigger, reduceMotion, travel, opacity, x]);
+    x.value = withTiming(1, { duration: SWEEP_MS, easing: e });
+  }, [trigger, reduceMotion, opacity, x]);
 
   useEffect(
     () => () => {
@@ -342,7 +348,7 @@ export function Sweep({ trigger, width, height }: { trigger: number; width: numb
 
   const aStyle = useAnimatedStyle(() => ({
     opacity: opacity.value,
-    transform: [{ translateX: x.value }],
+    transform: [{ translateX: x.value * travel }],
   }));
 
   return (

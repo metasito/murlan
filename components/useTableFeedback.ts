@@ -32,18 +32,30 @@ import { Motion } from "@/lib/theme";
 const BTN_REJECT_TRAVEL = 3;
 const BTN_REJECT_LEG_MS = 40;
 
-// The bomb's "kick": the whole table jolting off the impact, verbatim off
-// the prototype's own `kick` keyframe — a punch-in scale held briefly, then
-// a decaying series of jolts back to rest. Values are `* scale`; scale itself
-// never is. Segment lengths are the gaps between the keyframe's own percents
-// (0, 9, 16, 26, 36, 48, 60, 74, 100 of 1600ms).
+// The bomb's "kick": the whole table jolting off the impact, verbatim off the
+// prototype's own `kick` keyframe — a punch-in scale held briefly, then a
+// decaying series of jolts back to rest. `x`/`y` are `* scale`; `ms` never is.
 const KICK_MS = 1600;
 const KICK_EASING = Easing.bezier(0.33, 0.09, 0.2, 0.98);
-const KICK_SEG = { toNine: 144, toSixteen: 112, toTwentySix: 160, toThirtySix: 160, toFortyEight: 192, toSixty: 192, toSeventyFour: 224, toEnd: 416 };
+const KICK_PUNCH_MS = 144;
+const KICK_SETTLE_MS = 112;
 const KICK_SCALE_PEAK = 1.012;
 const KICK_SCALE_SETTLE = 1.006;
-const KICK_X = [-9, 9, -6, 5, -3, 2, 0];
-const KICK_Y = [5, -5, -3, 3, -1, 1, 0];
+/**
+ * Each jolt's stop and how long the table takes to reach it — the gaps between
+ * the keyframe's own percents (0, 9, 16, 26, 36, 48, 60, 74, 100 of KICK_MS).
+ * The first covers two of them: the table holds square through the punch-in,
+ * so the jolt only starts once the scale has settled.
+ */
+const KICK_JOLTS = [
+  { x: -9, y: 5, ms: KICK_PUNCH_MS + KICK_SETTLE_MS },
+  { x: 9, y: -5, ms: 160 },
+  { x: -6, y: -3, ms: 160 },
+  { x: 5, y: 3, ms: 192 },
+  { x: -3, y: -1, ms: 192 },
+  { x: 2, y: 1, ms: 224 },
+  { x: 0, y: 0, ms: 416 },
+] as const;
 
 interface TableFeedbackState {
   isMyTurn: boolean;
@@ -117,13 +129,14 @@ export function useTableFeedback({
     scaleRef.current = scale;
   }, [scale]);
 
-  // Nothing here scales: a fractional scale on a view containing text makes
-  // React Native resample the already-rasterised glyphs, and PASSA/GIOCA read
-  // as blurry for as long as it is applied. Emphasis is opacity and glow.
+  // Steady-state emphasis is opacity and glow, never scale: a fractional scale
+  // on a view containing text makes React Native resample the already-rasterised
+  // glyphs, and PASSA/GIOCA read as blurry for as long as it is applied.
   //
-  // The one scale on the table is the buttons' own press (BTN_PRESS_SCALE,
-  // GameTable.tsx), which lasts as long as a finger is down and is never a
-  // state anything is read in.
+  // The two scales on the table are both moments no one reads through — the
+  // buttons' own press (BTN_PRESS_SCALE, GameTable.tsx), which lasts as long as
+  // a finger is down, and the bomb's punch-in below, which peaks at 1.012 and
+  // decays back to 1 within the one beat.
   const giocaFlashVal = useSharedValue(0);
   const passaFlashVal = useSharedValue(0);
   const giocaGlowVal = useSharedValue(0);
@@ -274,32 +287,17 @@ export function useTableFeedback({
         if (!reduceMotion) {
           const s = scaleRef.current;
           const e = KICK_EASING;
-          // x/y hold at 0 through the first two keyframes (0%, 9%) — folded
-          // into the first step's own duration rather than a separate no-op.
-          const holdMs = KICK_SEG.toNine + KICK_SEG.toSixteen;
+          const jolt = (axis: "x" | "y") =>
+            withSequence(
+              ...KICK_JOLTS.map((j) => withTiming(j[axis] * s, { duration: j.ms, easing: e }))
+            );
           kickScale.value = withSequence(
-            withTiming(KICK_SCALE_PEAK, { duration: KICK_SEG.toNine, easing: e }),
-            withTiming(KICK_SCALE_SETTLE, { duration: KICK_SEG.toSixteen, easing: e }),
-            withTiming(1, { duration: KICK_MS - holdMs, easing: e })
+            withTiming(KICK_SCALE_PEAK, { duration: KICK_PUNCH_MS, easing: e }),
+            withTiming(KICK_SCALE_SETTLE, { duration: KICK_SETTLE_MS, easing: e }),
+            withTiming(1, { duration: KICK_MS - KICK_PUNCH_MS - KICK_SETTLE_MS, easing: e })
           );
-          kickX.value = withSequence(
-            withTiming(KICK_X[0] * s, { duration: holdMs, easing: e }),
-            withTiming(KICK_X[1] * s, { duration: KICK_SEG.toTwentySix, easing: e }),
-            withTiming(KICK_X[2] * s, { duration: KICK_SEG.toThirtySix, easing: e }),
-            withTiming(KICK_X[3] * s, { duration: KICK_SEG.toFortyEight, easing: e }),
-            withTiming(KICK_X[4] * s, { duration: KICK_SEG.toSixty, easing: e }),
-            withTiming(KICK_X[5] * s, { duration: KICK_SEG.toSeventyFour, easing: e }),
-            withTiming(KICK_X[6] * s, { duration: KICK_SEG.toEnd, easing: e })
-          );
-          kickY.value = withSequence(
-            withTiming(KICK_Y[0] * s, { duration: holdMs, easing: e }),
-            withTiming(KICK_Y[1] * s, { duration: KICK_SEG.toTwentySix, easing: e }),
-            withTiming(KICK_Y[2] * s, { duration: KICK_SEG.toThirtySix, easing: e }),
-            withTiming(KICK_Y[3] * s, { duration: KICK_SEG.toFortyEight, easing: e }),
-            withTiming(KICK_Y[4] * s, { duration: KICK_SEG.toSixty, easing: e }),
-            withTiming(KICK_Y[5] * s, { duration: KICK_SEG.toSeventyFour, easing: e }),
-            withTiming(KICK_Y[6] * s, { duration: KICK_SEG.toEnd, easing: e })
-          );
+          kickX.value = jolt("x");
+          kickY.value = jolt("y");
           setBoomTrigger((t) => t + 1);
         }
       } else {

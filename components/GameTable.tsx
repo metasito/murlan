@@ -1357,6 +1357,14 @@ export function GameTable({
 
   const showStartCardBanner = !gameState.firstPlayMade && !!gameState.startCard;
 
+  // The catch belongs to the combination that emptied a hand, and to no other:
+  // the pile mounts fresh cards for every play, so each one would read a
+  // standing counter as its own cue. A seat holding nothing can only have
+  // thrown its last cards, so the top layer being theirs is the whole test.
+  const pileThrower =
+    pileState.playedBy === null ? undefined : players[pileState.playedBy];
+  const pileFlushed = !!pileThrower && handCountOf(pileThrower) === 0;
+
   return (
     <Animated.View style={[styles.root, WEB_CLIP, kickStyle]}>
       <Sweep trigger={flushTrigger} width={W} height={H} />
@@ -1572,7 +1580,7 @@ export function GameTable({
                   current={flyInfo ? null : pileState.current}
                   roundWinner={roundWinnerTag === null ? null : players[roundWinnerTag.seat]?.name ?? ""}
                   bounceTrigger={pileBounceTrigger}
-                  catchTrigger={flushTrigger}
+                  catchTrigger={pileFlushed ? flushTrigger : undefined}
                   roomW={frame.fieldRoomW}
                   scale={scale}
                 />
