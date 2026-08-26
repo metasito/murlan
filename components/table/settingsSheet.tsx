@@ -13,7 +13,12 @@ import { Colors, FontSize, Garnet, Highlight, makeShadow, Motion, Scrim, Spacing
 import { usePrefersReducedMotion } from "@/lib/accessibility";
 import { useTranslation } from "@/lib/i18n";
 import { useSettings } from "@/context/SettingsContext";
-import { a11yHidden, a11yState, useA11yHint } from "@/lib/a11y";
+import { a11yHidden, a11yState, useA11yHint, useFocusTrap } from "@/lib/a11y";
+
+const SHEET_TESTID = "settings-sheet";
+/** The rail carries the knob that opened the sheet, and so stays reachable. */
+const RAIL_TESTID = "control-rail";
+const DIALOG_ABOVE = `[role="dialog"][aria-modal="true"]:not([data-testid="${SHEET_TESTID}"])`;
 
 /**
  * Closes on Escape, but only when nothing sits above the sheet already — a
@@ -27,7 +32,8 @@ function useEscapeToClose(onEscape: () => void) {
     if (typeof document === "undefined") return;
     const handler = (e: KeyboardEvent) => {
       if (e.key !== "Escape") return;
-      if (document.querySelector('[role="dialog"][aria-modal="true"]')) return;
+      // Excluding the sheet, which answers that selector itself.
+      if (document.querySelector(DIALOG_ABOVE)) return;
       onEscape();
     };
     document.addEventListener("keyup", handler);
@@ -225,6 +231,9 @@ export function GameSettingsSheet({
   } = useSettings();
   useEscapeToClose(onClose);
   useBackToClose(onClose);
+  // The veil covers pixels and nothing else, so without this the hand, PASSA
+  // and GIOCA all stay in the tab order behind it.
+  useFocusTrap([SHEET_TESTID, RAIL_TESTID]);
 
   return (
     <>
@@ -237,7 +246,17 @@ export function GameSettingsSheet({
         style={[sheetStyles.veil, { left: rail, zIndex: SHEET_Z }]}
       />
       <Animated.View
-        testID="settings-sheet"
+        testID={SHEET_TESTID}
+        // A named dialog on web only: on iOS `aria-modal` becomes
+        // `accessibilityViewIsModal`, which hides the rail knob — the sheet's
+        // own close control — from VoiceOver along with the table.
+        {...(Platform.OS === "web"
+          ? {
+              role: "dialog" as const,
+              "aria-modal": true,
+              "aria-label": t("gameSettingsSheet.title"),
+            }
+          : {})}
         entering={reduceMotion ? undefined : SlideInLeft.duration(Motion.duration.base)}
         style={[
           sheetStyles.sheetPos,

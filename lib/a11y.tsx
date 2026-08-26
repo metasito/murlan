@@ -1,4 +1,4 @@
-import { useId } from "react";
+import { useEffect, useId } from "react";
 import { Platform, StyleSheet, Text } from "react-native";
 import type { AccessibilityProps, AccessibilityRole, AccessibilityState } from "react-native";
 
@@ -88,6 +88,42 @@ export function useA11yHint(hint: string | undefined): {
       </Text>
     ) : null,
   };
+}
+
+/** What a keyboard can land on, as react-native-web renders this app. */
+const FOCUSABLE = 'a[href],button,input,select,textarea,[tabindex]:not([tabindex="-1"])';
+
+/**
+ * Keeps Tab inside the subtrees carrying `testIDs` for as long as the caller
+ * is mounted. React Native's `Modal` buys this on web for free
+ * (exports/Modal/ModalFocusTrap.js); a layer that deliberately is not one has
+ * to carry it itself. A phone has no Tab key, so there is nothing to trap.
+ */
+export function useFocusTrap(testIDs: string[]) {
+  const within = testIDs.map((id) => `[data-testid="${id}"]`).join(",");
+  useEffect(() => {
+    if (typeof document === "undefined") return;
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key !== "Tab") return;
+      const stops = Array.from(document.querySelectorAll<HTMLElement>(FOCUSABLE)).filter(
+        (el) => el.closest(within) !== null && !el.hasAttribute("disabled")
+      );
+      if (stops.length === 0) return;
+      const at = stops.indexOf(document.activeElement as HTMLElement);
+      // Focus outside the trap stands before the first stop, so Tab enters at
+      // the top of the order and Shift+Tab at the bottom.
+      const next =
+        at === -1
+          ? e.shiftKey
+            ? stops.length - 1
+            : 0
+          : (at + (e.shiftKey ? -1 : 1) + stops.length) % stops.length;
+      e.preventDefault();
+      stops[next]?.focus();
+    };
+    document.addEventListener("keydown", onKeyDown);
+    return () => document.removeEventListener("keydown", onKeyDown);
+  }, [within]);
 }
 
 /**

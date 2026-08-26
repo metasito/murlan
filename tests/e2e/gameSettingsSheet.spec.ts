@@ -5,7 +5,7 @@
 // transition (focus mode) and a scrollable box measured against its own
 // content (the row list) — exactly the class of thing only a rendered page
 // answers (docs/agents/loops.md).
-import { test, expect } from "@playwright/test";
+import { test, expect, type Page } from "@playwright/test";
 import { openSeededGame } from "./helpers/offlineSeed";
 
 const VIEWPORT = { width: 844, height: 390 };
@@ -185,4 +185,64 @@ test.describe("the rail's settings sheet", () => {
     // Cancelling the exit leaves the sheet closed behind it, not reopened.
     await expect(page.locator(SHEET)).toHaveCount(0);
   });
+});
+
+// ── #337 ─────────────────────────────────────────────────────────────────────
+
+/**
+ * Where focus lands after `presses` tabs, as `<in|OUT>|<label>`. The sheet is
+ * not a Modal, so what counts as "inside" is the sheet plus the rail the knob
+ * that opened it stands on — the veil covers everything else.
+ */
+async function tabTour(page: Page, presses: number): Promise<string[]> {
+  const seen: string[] = [];
+  for (let i = 0; i < presses; i++) {
+    await page.keyboard.press("Tab");
+    seen.push(
+      await page.evaluate(() => {
+        const el = document.activeElement;
+        if (!el || el === document.body) return "OUT|body";
+        const inside = el.closest(
+          '[data-testid="settings-sheet"],[data-testid="control-rail"]'
+        ) !== null;
+        const name =
+          el.getAttribute("aria-label") ?? el.textContent?.trim().slice(0, 24) ?? el.tagName;
+        return `${inside ? "in" : "OUT"}|${name}`;
+      })
+    );
+  }
+  return seen;
+}
+
+test("the open sheet keeps Tab off the table behind its veil", async ({ page, baseURL }) => {
+  test.setTimeout(60_000);
+  await page.setViewportSize(VIEWPORT);
+  await openSeededGame(page, baseURL!, 4);
+
+  const knob = page.getByRole("button", { name: "Impostazioni" });
+  await knob.click();
+  await expect(page.locator(SHEET)).toBeVisible();
+
+  // The table behind is still in the document — a veil covers pixels and
+  // nothing else — so the trap is the only thing keeping it out of reach.
+  const behind = page.locator('[data-testid="btn-passa"], [data-testid="btn-gioca"]');
+  expect(await behind.count(), "the table underneath is still rendered").toBeGreaterThan(0);
+
+  // More presses than the sheet and the rail have controls between them, so
+  // the tour wraps: an untrapped order escapes into the hand well before the
+  // last one.
+  const tour = await tabTour(page, 24);
+  expect(tour.filter((stop) => stop.startsWith("OUT"))).toEqual([]);
+
+  // The knob is the sheet's own close control and sits outside its box, so it
+  // has to be one of the stops — by keyboard, not only by tap.
+  expect(tour.some((stop) => stop === "in|Impostazioni")).toBe(true);
+  while (
+    (await page.evaluate(() => document.activeElement?.getAttribute("aria-label"))) !==
+    "Impostazioni"
+  ) {
+    await page.keyboard.press("Tab");
+  }
+  await page.keyboard.press("Enter");
+  await expect(page.locator(SHEET)).toHaveCount(0);
 });
