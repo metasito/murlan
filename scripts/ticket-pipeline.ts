@@ -77,6 +77,10 @@ function say(line: string): void {
   process.stdout.write(`${line}\n`);
 }
 
+function k(tokens: number): string {
+  return tokens >= 1000 ? `${(tokens / 1000).toFixed(1)}k` : String(tokens);
+}
+
 // ---------------------------------------------------------------- git as the witness
 
 function commitsAhead(cwd: string): number {
@@ -211,7 +215,12 @@ function stage(name: string, prompt: string, model: "sonnet" | "opus", effort: E
   say(`\n--- ${name} (${model}, effort ${effort}) ---`);
   const result = runAgent({ prompt, model, effort, cwd });
   const minutes = ((Date.now() - started) / 60_000).toFixed(1);
+  const { input, cacheRead, cacheWrite, output } = result.usage;
   say(`--- ${name} done in ${minutes}m, ${result.turns} turns, $${result.costUsd.toFixed(2)} ---`);
+  say(
+    `    in ${k(input + cacheRead + cacheWrite)} (${k(cacheRead)} cached, ${k(cacheWrite)} written)` +
+      `, out ${k(output)}`
+  );
   if (!result.ok) say(`(the ${name} agent exited non-zero; git decides whether it did the work)`);
   return result.text;
 }

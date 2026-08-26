@@ -43,12 +43,35 @@ describe("the argv a stage is spawned with", () => {
 });
 
 describe("reading a stage's output", () => {
+  const RESULT = JSON.stringify({
+    type: "result",
+    result: "done",
+    total_cost_usd: 1.5,
+    num_turns: 9,
+    usage: {
+      input_tokens: 12,
+      cache_read_input_tokens: 900,
+      cache_creation_input_tokens: 80,
+      output_tokens: 34,
+    },
+  });
+
   test("takes the result line, not the stream before it", () => {
-    const raw = ['{"type":"system"}', '{"type":"result","result":"done","total_cost_usd":1.5,"num_turns":9}'].join("\n");
-    const parsed = parseAgentOutput(raw);
+    const parsed = parseAgentOutput(['{"type":"system"}', RESULT].join("\n"));
     assert.equal(parsed.text, "done");
     assert.equal(parsed.costUsd, 1.5);
     assert.equal(parsed.turns, 9);
+  });
+
+  // The first landed run reported a dollar figure and nothing else, so "was it thinking or was it
+  // stuck" could not be answered from it at all.
+  test("reports what the stage cost in tokens", () => {
+    assert.deepEqual(parseAgentOutput(RESULT).usage, {
+      input: 12,
+      cacheRead: 900,
+      cacheWrite: 80,
+      output: 34,
+    });
   });
 
   // A stage killed by its timeout leaves whatever it had written on stdout. Reporting that as a
@@ -56,6 +79,12 @@ describe("reading a stage's output", () => {
   test("survives output that is not JSON at all", () => {
     assert.equal(parseAgentOutput("killed by signal SIGTERM").costUsd, 0);
     assert.match(parseAgentOutput("killed by signal SIGTERM").text, /SIGTERM/);
+    assert.equal(parseAgentOutput("killed by signal SIGTERM").usage.output, 0);
+  });
+
+  // A result line with no usage block at all must still parse.
+  test("a result missing its usage reports zeroes rather than throwing", () => {
+    assert.equal(parseAgentOutput('{"type":"result","result":"x"}').usage.input, 0);
   });
 });
 

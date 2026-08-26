@@ -12,12 +12,35 @@ export interface AgentSpec {
   cwd: string;
 }
 
+export interface AgentUsage {
+  input: number;
+  cacheRead: number;
+  cacheWrite: number;
+  output: number;
+}
+
 export interface AgentResult {
   ok: boolean;
   text: string;
   costUsd: number;
   turns: number;
+  usage: AgentUsage;
   raw: string;
+}
+
+/**
+ * What a stage cost, in tokens. Reported because the alternative is a run nobody can account for:
+ * the first landed run left `total_cost_usd` and nothing else, and "was it thinking or was it
+ * stuck" could not be answered from it at all.
+ */
+export function readUsage(json: { usage?: Record<string, number> }): AgentUsage {
+  const u = json.usage ?? {};
+  return {
+    input: u.input_tokens ?? 0,
+    cacheRead: u.cache_read_input_tokens ?? 0,
+    cacheWrite: u.cache_creation_input_tokens ?? 0,
+    output: u.output_tokens ?? 0,
+  };
 }
 
 /**
@@ -27,6 +50,10 @@ export interface AgentResult {
  *
  * MCP is the one exception, and not to save the 2.6k it costs: this runs unattended, and the
  * Chrome server's tools block on a browser extension nobody is there to answer.
+ *
+ * Sessions are deliberately left on disk. `--no-session-persistence` saves nothing that matters
+ * and costs the transcript, which is the only record of what an unattended stage actually did —
+ * the first landed run could not be asked where its time went, because there was nothing to read.
  */
 
 /** 45 minutes. Longer than any stage has ever needed; short enough that a wedged one still ends. */
@@ -49,7 +76,6 @@ export function buildAgentArgs(spec: AgentSpec): string[] {
     "--strict-mcp-config",
     "--setting-sources", "user,project",
     "--permission-mode", "bypassPermissions",
-    "--no-session-persistence",
   ];
 }
 
@@ -76,6 +102,8 @@ export function runAgent(spec: AgentSpec): AgentResult {
   return { ok, ...parseAgentOutput(raw) };
 }
 
+const NO_USAGE: AgentUsage = { input: 0, cacheRead: 0, cacheWrite: 0, output: 0 };
+
 export function parseAgentOutput(raw: string): Omit<AgentResult, "ok"> {
   const line = raw.trim().split("\n").pop() ?? "";
   try {
@@ -84,9 +112,10 @@ export function parseAgentOutput(raw: string): Omit<AgentResult, "ok"> {
       text: String(json.result ?? ""),
       costUsd: Number(json.total_cost_usd ?? 0),
       turns: Number(json.num_turns ?? 0),
+      usage: readUsage(json),
       raw,
     };
   } catch {
-    return { text: raw.slice(-2000), costUsd: 0, turns: 0, raw };
+    return { text: raw.slice(-2000), costUsd: 0, turns: 0, usage: NO_USAGE, raw };
   }
 }
