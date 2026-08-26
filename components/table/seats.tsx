@@ -6,7 +6,6 @@ import {
   FAN_DRAWN_CARDS,
   SEAT_DISC,
   SEAT_GAP,
-  SIDE_SECTION_W,
   displayedHandCount,
   fanCounts,
   impactDelayMs,
@@ -693,12 +692,15 @@ export function SideOppSlot({
  */
 const OPP_LABEL_MAX_W = 104 + Spacing.xs * 2;
 /**
- * …and what a side seat gets, in points rather than a multiple of the scale.
- * Its column is `SIDE_SECTION_W` wide whatever the table's scale, so a label
- * measured in scaled points outgrows the column on a big screen and is drawn
- * off the edge of it — which is what tests/e2e/tableFit.spec.ts caught.
+ * …and what a side seat gets, in points rather than a multiple of the scale: a
+ * label measured in scaled points outgrows its fixed column on a big screen and
+ * is drawn off the edge of it, which is what tests/e2e/tableFit.spec.ts caught.
+ *
+ * Wider than `SIDE_SECTION_W`, and not derived from it. The plate leans inward
+ * over the felt the way the fan does (`whoLabelLeft`), so the column is not its
+ * bound — while the floor above is real: at 80 this ellipsises "Besnik".
  */
-const SIDE_LABEL_MAX_W = SIDE_SECTION_W - Spacing.sm * 2;
+const SIDE_LABEL_MAX_W = 114;
 /** How far a seat recedes while another one is on move. */
 const SEAT_DIM_OPACITY = 0.62;
 /** The count badge's own diameter, and the digit inside it, at scale 1. */

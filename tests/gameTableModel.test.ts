@@ -25,6 +25,7 @@ import {
   displayedHandCount,
   fanCounts,
   flightOrigin,
+  sideSlotHeight,
   seatFanArc,
   SEAT_DISC,
   SEAT_GAP,
@@ -120,7 +121,7 @@ describe("layout constants (CLAUDE.md: MUST NOT CHANGE)", () => {
     assert.equal(actionBtnSize(1), 56);
     assert.equal(HAND_ZONE_GAP, 26);
     assert.equal(CHIP_H(1), 23);
-    assert.equal(SIDE_SECTION_W, 130);
+    assert.equal(SIDE_SECTION_W, 96);
   });
 
   test("CARD_W/CARD_H scale linearly with the short edge, no breakpoints", () => {
@@ -1044,6 +1045,23 @@ describe("computeTableFrame", () => {
     assert.ok(f.fieldRoomW < tableW);
     assert.ok(f.handRoomW < 844);
   });
+
+  // Numbers, not the formula again: restating `min(tableW - 2*SIDE_SECTION_W,
+  // share)` passes whatever either term holds, which is how a column twice the
+  // prototype's width sat here unnoticed. The small phone is where the seats'
+  // own columns bind rather than the share.
+  test("the seats' columns are what caps the field on the smallest phone", () => {
+    const noInsets = { top: 0, bottom: 0, left: 0, right: 0 };
+    const small = computeTableFrame({ width: 568, insets: noInsets, scale: 320 / 390 });
+    const tableW = 568 - small.tableLeft - small.tableRight;
+    assert.equal(Math.round(tableW - SIDE_SECTION_W * 2), 304);
+    assert.ok(
+      tableW - SIDE_SECTION_W * 2 < 568 * 0.55,
+      "the share is meant to be the looser of the two bounds here"
+    );
+    assert.equal(Math.round(small.fieldRoomW), 304);
+  });
+
 });
 
 // ─── Exchange ─────────────────────────────────────────────────────────────────
@@ -1336,6 +1354,7 @@ describe("flightOrigin", () => {
     tableTop: 10,
     handZoneH: 100,
     topDisplayedCount: 0,
+    sideDisplayedCount: 0,
   };
 
   test("bottom: the throw starts at the hand row's own vertical centre", () => {
@@ -1395,9 +1414,16 @@ describe("flightOrigin", () => {
     );
   });
 
-  test("left/right: dy is 0 — a side seat's ring sits on the same line as the pile", () => {
-    assert.equal(flightOrigin({ ...base, dir: "left" }).dy, 0);
-    assert.equal(flightOrigin({ ...base, dir: "right" }).dy, 0);
+  test("left/right: the throw starts at the side seat's own ring, high in the band", () => {
+    // The seat's column is anchored to the top of the mid band, so its ring
+    // rides the slot's centre while the pile rides the band's: the throw starts
+    // above the pile by half the difference.
+    const topSectionH = seatLabelH(1) + SEAT_DISC;
+    const midH = base.windowHeight - base.tableTop - topSectionH - base.handZoneH;
+    const dy = (sideSlotHeight(1, 0) - midH) / 2;
+    assert.ok(dy < 0, `a raised seat throws downward into the pile: ${dy}`);
+    assert.equal(flightOrigin({ ...base, dir: "left" }).dy, dy);
+    assert.equal(flightOrigin({ ...base, dir: "right" }).dy, dy);
   });
 
   test("left: the throw starts at the ring flush against the rail", () => {

@@ -388,9 +388,11 @@ export const sharedTableStyles = StyleSheet.create({
   // section to the table's outer edge is what keeps that overflow pointing
   // inward — centred, half of it lands off the side of the screen and takes
   // the avatar with it.
+  // `alignSelf`, not `justifyContent`: the mid band is a row, so up-and-down is
+  // its cross axis and only `alignSelf` moves a seat along it.
   sideSection: {
     width: SIDE_SECTION_W,
-    justifyContent: "center",
+    alignSelf: "flex-start",
     paddingHorizontal: Spacing.sm,
   },
   sideSectionLeft: { alignItems: "flex-start" },

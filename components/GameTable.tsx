@@ -1143,6 +1143,11 @@ export function GameTable({
       ? displayedHandCount(handCountOf(topPlayer), dir === "top" ? combo.cards.length : 0)
       : 0;
 
+    const sidePlayer = dir === "left" || dir === "right" ? opponents[dir]?.player : undefined;
+    const sideDisplayedCount = sidePlayer
+      ? displayedHandCount(handCountOf(sidePlayer), combo.cards.length)
+      : 0;
+
     setFlyInfo({
       key,
       dir,
@@ -1157,6 +1162,7 @@ export function GameTable({
         tableTop: frame.tableTop,
         handZoneH: HAND_ZONE_H(handCardH, frame.bottomPad),
         topDisplayedCount,
+        sideDisplayedCount,
       }),
     });
   }, [

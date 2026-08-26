@@ -22,7 +22,9 @@ import { Spacing } from "../lib/tokens.ts";
 // maths below can use them directly.
 
 export { CARD_H, CARD_W, cardScale };
-export const SIDE_SECTION_W = 130;
+// The column a side seat's ring and label stand in. The prototype's own side
+// seat measures 92 at scale 1; the fan leans out of the column by design.
+export const SIDE_SECTION_W = 96;
 
 // PASSA and GIOCA are square: they read as two keys either side of the hand
 // rather than as two columns of it, which is what a card-height button was.
@@ -380,6 +382,18 @@ export function seatFanArc(count: number, backScale: number) {
   return { cards, box, bounds: arcBounds(cards, box, backW, backH) };
 }
 
+/**
+ * A side seat's own slot height: its ring, or the fan beside it when that is
+ * taller. The fan is turned a quarter there, so what it occupies vertically is
+ * the arc's width — components/table/seats.tsx `CardFan`, `wrapH`.
+ */
+export function sideSlotHeight(scale: number, displayedCount: number): number {
+  const ring = SEAT_DISC * scale;
+  const drawn = Math.min(displayedCount, FAN_DRAWN_CARDS.left);
+  if (drawn <= 0) return ring;
+  return Math.max(ring, seatFanArc(drawn, scale * BACK_SCALE).bounds.w);
+}
+
 /** The top seat's own fan height for `displayedCount` backs. */
 function topFanHeight(scale: number, displayedCount: number): number {
   const drawn = Math.min(displayedCount, FAN_DRAWN_CARDS.top);
@@ -403,6 +417,12 @@ export interface FlightOriginInput {
    * is actually throwing. Ignored when `dir` is not "top".
    */
   topDisplayedCount: number;
+  /**
+   * …and the throwing side seat's, for the same reason: a side seat's slot is
+   * as tall as its fan, and the slot's own centre is where its ring sits.
+   * Ignored when `dir` is not "left" or "right".
+   */
+  sideDisplayedCount: number;
 }
 
 /**
@@ -439,18 +459,18 @@ export function flightOrigin(input: FlightOriginInput): { dx: number; dy: number
     return { dx: 0, dy: ringCenterY - pileCenterY };
   }
 
-  // A side seat's ring sits flush against the rail (or the opposite edge),
-  // and is vertically centred on the same row the pile is — see
-  // components/table/seats.tsx `sideOppSlot`/`sideSection` and
-  // components/GameTable.tsx `midSection`, whose `alignItems: "center"`
-  // centres every row-child, pile included, on the same line.
+  // A side seat's ring sits flush against the rail (or the opposite edge), and
+  // its column is anchored to the top of the mid band (components/table/
+  // chrome.tsx `sideSection`, `alignSelf`), so the ring rides the slot's own
+  // centre while the pile rides the band's.
   const tableW = input.windowWidth - input.tableLeft - input.tableRight;
   const pileCenterX = input.tableLeft + tableW / 2;
   const ringCenterX =
     dir === "left"
       ? input.tableLeft + Spacing.sm + ringSize / 2
       : input.windowWidth - input.tableRight - Spacing.sm - ringSize / 2;
-  return { dx: ringCenterX - pileCenterX, dy: 0 };
+  const slotH = sideSlotHeight(scale, input.sideDisplayedCount);
+  return { dx: ringCenterX - pileCenterX, dy: (slotH - midH) / 2 };
 }
 
 /**
