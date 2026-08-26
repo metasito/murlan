@@ -4,7 +4,7 @@
 import { describe, it, expect, jest, beforeEach } from '@jest/globals';
 import React from 'react';
 import { act, fireEvent, render, screen, within } from '@testing-library/react-native';
-import { Platform } from 'react-native';
+import { Platform, StyleSheet } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 jest.mock('@/lib/query-client', () => ({
@@ -19,12 +19,16 @@ jest.mock('expo-audio', () => ({
   createAudioPlayer: () => ({ play: () => {}, remove: () => {}, seekTo: async () => {}, volume: 1 }),
   setAudioModeAsync: async () => {},
 }));
+// Hoisted above the factories below, which is why they carry the `mock` prefix
+// jest requires for an out-of-scope reference.
+const mockLogout = jest.fn<() => Promise<void>>();
+const mockReplace = jest.fn();
 jest.mock('expo-router', () => ({
-  useRouter: () => ({ replace: jest.fn() }),
+  useRouter: () => ({ replace: mockReplace }),
   // The bug-report control sends the route it was opened from.
   usePathname: () => '/lobby',
 }));
-jest.mock('@/context/AuthContext', () => ({ useAuth: () => ({ logout: jest.fn() }) }));
+jest.mock('@/context/AuthContext', () => ({ useAuth: () => ({ logout: mockLogout }) }));
 
 import { SettingsModal } from '@/components/SettingsModal';
 import {
@@ -33,6 +37,7 @@ import {
 } from '@/context/NotificationContext';
 import { SettingsProvider } from '@/context/SettingsContext';
 import { en as locale } from '@/locales/en';
+import { Colors } from '@/lib/theme';
 
 const METRICS = {
   frame: { x: 0, y: 0, width: 568, height: 320 },
@@ -188,6 +193,105 @@ describe('settings modal', () => {
 
       expect(screen.getByLabelText(locale['settings.reportBugSend'])).toBeDisabled();
       expect(apiRequest).not.toHaveBeenCalled();
+      await view.unmount();
+    });
+  });
+
+  // Leaving is one of two account controls that sit together, and the pair has
+  // to stay told apart: one is reversible and the other is not.
+  describe('logging out', () => {
+    beforeEach(() => {
+      mockLogout.mockReset();
+      mockLogout.mockResolvedValue(undefined);
+      mockReplace.mockReset();
+    });
+
+    async function pressLogout() {
+      await act(async () => {
+        fireEvent.press(screen.getByLabelText(locale['settings.logoutA11yLabel']));
+      });
+    }
+
+    it('asks before it goes', async () => {
+      const view = await mount();
+      await pressLogout();
+
+      expect(
+        screen.getByText(locale['settings.logoutConfirmBody'], { includeHiddenElements: true })
+      ).toBeTruthy();
+      expect(mockLogout).not.toHaveBeenCalled();
+      await view.unmount();
+    });
+
+    it('lands on the auth screen once confirmed', async () => {
+      const view = await mount();
+      await pressLogout();
+      await act(async () => {
+        fireEvent.press(screen.getByTestId('confirm-accept', { includeHiddenElements: true }));
+      });
+
+      expect(mockLogout).toHaveBeenCalledTimes(1);
+      expect(mockReplace).toHaveBeenCalledWith('/auth');
+      await view.unmount();
+    });
+
+    it('cancelling leaves the session alone', async () => {
+      const view = await mount();
+      await pressLogout();
+      await act(async () => {
+        fireEvent.press(screen.getByTestId('confirm-cancel', { includeHiddenElements: true }));
+      });
+
+      expect(mockLogout).not.toHaveBeenCalled();
+      expect(mockReplace).not.toHaveBeenCalled();
+      await view.unmount();
+    });
+
+    // `logout` posts to the server before it clears anything locally, so a
+    // failed post leaves the player signed in — and being told that is the
+    // difference between a slow button and a dead one.
+    it('says so when the server cannot be reached, and stays put', async () => {
+      mockLogout.mockRejectedValueOnce(new Error('network'));
+      const view = await mount();
+      await pressLogout();
+      await act(async () => {
+        fireEvent.press(screen.getByTestId('confirm-accept', { includeHiddenElements: true }));
+      });
+
+      expect(
+        screen.getByText(locale['settings.logoutFailedBody'], { includeHiddenElements: true })
+      ).toBeTruthy();
+      expect(mockReplace).not.toHaveBeenCalled();
+      await view.unmount();
+    });
+
+    it('each account control is one node, and only one of them alarms', async () => {
+      const view = await mount();
+
+      for (const label of [
+        locale['settings.logoutA11yLabel'],
+        locale['settings.deleteAccount'],
+      ]) {
+        expect(screen.queryAllByLabelText(label, { includeHiddenElements: false })).toHaveLength(1);
+      }
+      // The visible words are hidden behind their own control's label, or a
+      // screen reader announces each row twice.
+      for (const word of [locale['settings.logout'], locale['settings.deleteAccount']]) {
+        expect(screen.queryAllByText(word, { includeHiddenElements: false })).toHaveLength(0);
+      }
+
+      const colourOf = (label: string, word: string) => {
+        const text = within(screen.getByLabelText(label)).getByText(word, {
+          includeHiddenElements: true,
+        });
+        return (StyleSheet.flatten(text.props.style) as { color?: string }).color;
+      };
+      expect(colourOf(locale['settings.logoutA11yLabel'], locale['settings.logout'])).toBe(
+        Colors.text
+      );
+      expect(
+        colourOf(locale['settings.deleteAccount'], locale['settings.deleteAccount'])
+      ).toBe(Colors.dangerDim);
       await view.unmount();
     });
   });
