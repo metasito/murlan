@@ -146,10 +146,15 @@ function implementPrompt(ticket: Ticket): string {
     "- **Do not review your own diff or dispatch a reviewer.** The next stage does that, in this",
     "  same worktree, and hands your evidence to it.",
     "",
-    "Commit on this branch. Do not push and do not open a pull request.",
+    // The one real loss this pipeline has suffered: an agent died on a network error 12 minutes
+    // in, having written 31 files and staged none, and there were no objects to recover.
+    "Commit as you finish each piece, not once at the end — an unstaged edit is the only work this",
+    "pipeline can actually lose. Do not push and do not open a pull request.",
     "",
-    "End your reply with the exact commands you ran and watched pass, one per line. The reviewer is",
-    "given that list as evidence, so what you leave out of it is what gets run a second time.",
+    "Your reply becomes the pull request body a human reads, so write it as one: what changed and",
+    "how you know, the Definition of done boxes closed and any not, and end with the exact commands",
+    "you ran and watched pass, one per line. No preamble about what you were instructed to do. The",
+    "reviewer is given that command list as evidence, so what you leave out is what gets run twice.",
     "",
     `${SHELL_NOTE} \`docs/agents/RULES.md\` is the ruleset — follow it over anything here.`,
     "",
@@ -352,6 +357,11 @@ function land(branch: string, prNumber: number, worktree: string, state: RunStat
 
 function work(ticket: Ticket, branch: string, state: RunState): void {
   const relative = worktreePathFor(ticket.number);
+  // The worktree branches from `origin/main`, which is only as current as the last fetch. Branch
+  // from a stale one and the pull request opens BEHIND: `decideLanding` sends it to
+  // `update-branch`, and the whole suite runs a second time on a tree the first run already
+  // passed. One fetch here is the difference between one ci.yml round and two.
+  bash("git fetch origin main --quiet", { fatal: false });
   bash(buildWorktreeCommands({ number: ticket.number, branch }).join(" && "));
   state.worktreePath = relative;
   const worktree = path.resolve(relative);
