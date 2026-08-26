@@ -169,6 +169,7 @@ export default function ReplayScreen() {
             setPlaying((p) => !p);
             hapticSelection();
           }}
+          onExit={() => router.back()}
           onCycleSpeed={() => {
             setSpeedIndex((i) => (i + 1) % REPLAY_SPEEDS.length);
             hapticSelection();

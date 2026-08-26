@@ -190,6 +190,7 @@ export function ReplayTransport({
   onCycleSpeed,
   onJump,
   onToggleMoves,
+  onExit,
   t,
 }: {
   index: number;
@@ -205,11 +206,13 @@ export function ReplayTransport({
   onCycleSpeed: () => void;
   onJump: () => void;
   onToggleMoves: () => void;
+  onExit: () => void;
   t: TFn;
 }) {
   return (
     <View style={styles.transport}>
       <View style={styles.row}>
+        <IconButton icon="close" label={t("replay.back")} onPress={onExit} />
         <IconButton icon="play-skip-back" label={t("replay.restartA11yLabel")} onPress={onRestart} />
         <IconButton icon="chevron-back" label={t("replay.prevA11yLabel")} onPress={() => onStep(-1)} />
         <IconButton

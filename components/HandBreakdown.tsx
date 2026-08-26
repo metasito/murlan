@@ -95,7 +95,20 @@ function Row({
   );
 }
 
-export function HandBreakdown({ myUserId, ratingDelta }: { myUserId: string; ratingDelta: number | null }) {
+export function HandBreakdown({
+  myUserId,
+  ratingDelta,
+  seatIsLive,
+}: {
+  myUserId: string;
+  ratingDelta: number | null;
+  /**
+   * The viewer still holds a seat the server will auto-pass for them
+   * (server/gameTimers.ts AFK_TIMEOUT_MS). A replay pushed over a live table
+   * keeps the seat and hides it, so there is no replay to open from here.
+   */
+  seatIsLive: boolean;
+}) {
   const { t } = useTranslation();
 
   // `staleTime: 0` against the client's default of Infinity: these same keys
@@ -255,7 +268,9 @@ export function HandBreakdown({ myUserId, ratingDelta }: { myUserId: string; rat
         </View>
       )}
 
-      {newestReplayId ? (
+      {seatIsLive ? (
+        <Text style={styles.stateBody}>{t("handBreakdown.replayAfterMatch")}</Text>
+      ) : newestReplayId ? (
         <Pressable
           onPress={() => router.push({ pathname: "/(online)/replay", params: { id: newestReplayId } })}
           style={styles.replayBtn}

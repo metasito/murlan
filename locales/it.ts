@@ -884,6 +884,7 @@ export const it: Record<keyof typeof en, string> = {
   "handBreakdown.formA11yLabel": "I tuoi ultimi piazzamenti, dal più recente: {{placements}}",
   "handBreakdown.notRecorded": "Questa manche non è stata registrata — troppi bot al tavolo.",
   "handBreakdown.noReplay": "Nessun replay per questa manche",
+  "handBreakdown.replayAfterMatch": "Guardalo dal tuo profilo quando la partita è finita",
   "handBreakdown.openReplay": "Guarda il replay",
   "handBreakdown.openReplayA11yLabel": "Apri il replay di questa manche",
 } as const;

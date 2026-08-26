@@ -890,6 +890,7 @@ export const sq: Record<keyof typeof en, string> = {
   "handBreakdown.formA11yLabel": "Vendet e tua të fundit, nga më i riu: {{placements}}",
   "handBreakdown.notRecorded": "Kjo manche nuk u regjistrua — shumë botë në tavolinë.",
   "handBreakdown.noReplay": "Asnjë riprodhim për këtë manche",
+  "handBreakdown.replayAfterMatch": "Shikoje nga profili yt kur partia të ketë mbaruar",
   "handBreakdown.openReplay": "Shiko riprodhimin",
   "handBreakdown.openReplayA11yLabel": "Hap riprodhimin e kësaj manche",
 };
