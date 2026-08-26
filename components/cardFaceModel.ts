@@ -87,6 +87,28 @@ export function stockLipHeight(h: number): number {
 const BACK_LATTICE_INSET_RATIO = 1.5 / BACK_H;
 const BACK_LATTICE_RADIUS_RATIO = 1.5 / BACK_H;
 
+/**
+ * The card back's 45 degree lattice, as one SVG path. A fine line reads as
+ * texture at any size where a dot grid reads as blobs, because a line keeps
+ * its identity when it falls below a pixel and a dot does not.
+ */
+const latticeCache = new Map<string, string>();
+export function getLattice(w: number, h: number, spacing: number): string {
+  const key = `${w}x${h}x${spacing}`;
+  let d = latticeCache.get(key);
+  if (!d) {
+    const span = w + h;
+    const parts: string[] = [];
+    for (let i = -h; i < span; i += spacing) {
+      parts.push(`M${i},0 L${i + h},${h}`);
+      parts.push(`M${i},${h} L${i + h},0`);
+    }
+    d = parts.join(" ");
+    latticeCache.set(key, d);
+  }
+  return d;
+}
+
 /** How far the lattice panel sits inside the back's own cut edge. */
 export function cardBackLatticeInset(h: number): number {
   return h * BACK_LATTICE_INSET_RATIO;

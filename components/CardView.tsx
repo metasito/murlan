@@ -35,6 +35,7 @@ import {
   cardRadius,
   COURT_RANKS,
   courtArtRect,
+  getLattice,
   INDEX_SUIT_SIZE,
   INDEX_SUIT_Y,
   INDEX_TEXT_W,
@@ -393,26 +394,7 @@ function CourtArt({ card, w, h }: { card: Card; w: number; h: number }) {
 
 // ─── Card back ────────────────────────────────────────────────────────────────
 //
-// A fine 45° lattice reads as texture at any size where a dot grid reads as
-// blobs, because a line keeps its identity when it falls below a pixel and a
-// dot does not. The whole thing is two Paths and a medallion.
-
-const latticeCache = new Map<string, string>();
-function getLattice(w: number, h: number, spacing: number): string {
-  const key = `${w}x${h}x${spacing}`;
-  let d = latticeCache.get(key);
-  if (!d) {
-    const span = w + h;
-    const parts: string[] = [];
-    for (let i = -h; i < span; i += spacing) {
-      parts.push(`M${i},0 L${i + h},${h}`);
-      parts.push(`M${i},${h} L${i + h},0`);
-    }
-    d = parts.join(" ");
-    latticeCache.set(key, d);
-  }
-  return d;
-}
+// Two Paths and a medallion.
 
 /** A `points`-pointed star as one polygon: alternate long and short radii. */
 function starPath(cx: number, cy: number, r: number, points: number): string {
