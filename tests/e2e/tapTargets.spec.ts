@@ -18,6 +18,7 @@ import { test, expect } from "./fixtures";
 import { openApp, registerNewAccount, startOfflineGame } from "./helpers/navigation";
 import { createRoom, goToOnlineLobby } from "./helpers/online";
 import { settled } from "./helpers/settle";
+import { TOUCH_TARGET_MIN } from "../../lib/tokens";
 
 interface Blocked {
   label: string;
@@ -150,8 +151,9 @@ async function expectNoBuriedControls(page: Page, where: string, minControls: nu
  * this platform a control's own box is the whole target.
  */
 async function sweepSizes(page: Page, allow: string[]): Promise<string[]> {
-  return page.evaluate((allowed) => {
-    const MIN = 44;
+  // The floor crosses into the page as an argument: this callback runs in the
+  // browser, where nothing this file imports exists.
+  return page.evaluate(({ allowed, MIN }) => {
     const out: string[] = [];
     const nameOf = (el: Element): string =>
       (el.getAttribute("aria-label") || el.textContent || "").trim().slice(0, 50);
@@ -176,7 +178,7 @@ async function sweepSizes(page: Page, allow: string[]): Promise<string[]> {
       out.push(`${name} — ${Math.round(width)}x${Math.round(height)}`);
     }
     return out;
-  }, allow);
+  }, { allowed: allow, MIN: TOUCH_TARGET_MIN });
 }
 
 /**

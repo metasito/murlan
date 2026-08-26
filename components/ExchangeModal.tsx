@@ -185,7 +185,7 @@ export function ExchangeModal({
         exiting={reduceMotion ? undefined : FadeOut.duration(200)}
         style={styles.overlay}
       >
-        <View style={styles.card}>
+        <View testID="exchange-panel" style={styles.card}>
           <View style={styles.headerRow}>
             <Ionicons name="swap-horizontal" size={22} color={Colors.gold} />
             <Text style={styles.title}>{t("exchangeModal.title")}</Text>

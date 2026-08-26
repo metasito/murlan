@@ -13,10 +13,7 @@
 // 720pt-tall desktop default, where the stack fits.
 import { test, expect } from "./fixtures";
 import { resumeSaved, offlineGameSave, DEAL_SIZE } from "./helpers/offlineSeed";
-
-// lib/theme.ts pulls in react-native, which Playwright's loader cannot parse —
-// tests/e2e/tapTargets.spec.ts restates the same HIG floor for the same reason.
-const TOUCH_TARGET_MIN = 44;
+import { TOUCH_TARGET_MIN } from "../../lib/tokens";
 
 // tests/e2e/tableFit.spec.ts's own phone fixtures, which are the windows this
 // modal is actually seen in.
@@ -58,9 +55,12 @@ for (const vp of VIEWPORTS) {
     const box = await confirm.boundingBox();
     if (!box) throw new Error("the confirm button never rendered");
 
-    // The floor: a button that laid out as an empty box would sit inside any
-    // viewport bound below having drawn nothing.
-    expect(box.height, "CONFIRM has no height at all").toBeGreaterThanOrEqual(TOUCH_TARGET_MIN);
+    // Also the floor: a button that laid out as an empty box would sit inside
+    // any viewport bound below having drawn nothing.
+    expect(
+      Math.round(box.height),
+      `CONFIRM is ${Math.round(box.height)}pt tall, under the ${TOUCH_TARGET_MIN}pt floor`
+    ).toBeGreaterThanOrEqual(TOUCH_TARGET_MIN);
 
     expect(
       Math.round(box.y + box.height),
@@ -79,21 +79,26 @@ for (const vp of VIEWPORTS) {
     expect(hit, "the point at CONFIRM's centre does not resolve to CONFIRM").toBe(true);
 
     // The rest of the modal, which the same overflow splits off the top: the
-    // title, both player rows and the picker.
-    const modalBox = await dialog.evaluate((el) => {
-      // The dialog is the full-screen overlay; the panel is the box it centres.
-      const panel = el.firstElementChild ?? el;
-      const r = panel.getBoundingClientRect();
-      return { top: r.top, bottom: r.bottom, left: r.left, right: r.right, height: r.height };
-    });
-    expect(modalBox.height, "the modal panel has no height at all").toBeGreaterThan(100);
+    // title, both player rows and the picker. The panel carries its own testID
+    // because `role=dialog` is react-native-web's full-screen ModalContent —
+    // measuring that, or its wrapper, measures the viewport and passes always.
+    const panel = await page.getByTestId("exchange-panel").boundingBox();
+    if (!panel) throw new Error("the modal panel never rendered");
+
+    // The floor: the panel is the bordered card, never the full-bleed overlay.
+    expect(panel.height, "the modal panel has no height at all").toBeGreaterThan(100);
     expect(
-      Math.round(modalBox.top),
-      `the modal runs from ${Math.round(modalBox.top)} to ${Math.round(modalBox.bottom)} on a ` +
-        `${vp.height}px-tall screen`
+      panel.height,
+      "the panel measured is the full-screen overlay, not the card"
+    ).toBeLessThan(vp.height);
+
+    expect(
+      Math.round(panel.y),
+      `the modal runs from ${Math.round(panel.y)} to ${Math.round(panel.y + panel.height)} on a ` +
+        `${vp.height}px-tall screen, so its header and the winner's row are off the top`
     ).toBeGreaterThanOrEqual(0);
-    expect(Math.round(modalBox.bottom)).toBeLessThanOrEqual(vp.height);
-    expect(Math.round(modalBox.left)).toBeGreaterThanOrEqual(0);
-    expect(Math.round(modalBox.right)).toBeLessThanOrEqual(vp.width);
+    expect(Math.round(panel.y + panel.height)).toBeLessThanOrEqual(vp.height);
+    expect(Math.round(panel.x)).toBeGreaterThanOrEqual(0);
+    expect(Math.round(panel.x + panel.width)).toBeLessThanOrEqual(vp.width);
   });
 }
