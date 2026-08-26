@@ -150,6 +150,7 @@ export function SettingsModal({ visible, onClose }: Props) {
   const router = useRouter();
   const reduceMotion = usePrefersReducedMotion();
   const [deleting, setDeleting] = useState(false);
+  const [loggingOut, setLoggingOut] = useState(false);
   const { t, locale, setLocale, locales, localeLabels } = useTranslation();
   const deleteHint = useA11yHint(t("settings.deleteAccountA11yHint"));
   const bugHint = useA11yHint(t("settings.reportBugA11yHint"));
@@ -196,6 +197,27 @@ export function SettingsModal({ visible, onClose }: Props) {
     }
   }
 
+  async function handleLogout() {
+    setLoggingOut(true);
+    try {
+      // The cache goes after the session, not before: the next person to sign
+      // in on this phone must not inherit this one's friends or invites.
+      await logout();
+      queryClient.clear();
+      onClose();
+      router.replace("/auth");
+    } catch {
+      // Cleared here rather than in a `finally`, for the same reason
+      // `handleSendBugReport` above avoids one.
+      setLoggingOut(false);
+      showNotification({
+        type: "game_error",
+        title: t("settings.logoutFailedTitle"),
+        message: t("settings.logoutFailedBody"),
+      });
+    }
+  }
+
   async function handleDeleteAccount() {
     setDeleting(true);
     try {
@@ -214,6 +236,16 @@ export function SettingsModal({ visible, onClose }: Props) {
         message: t("settings.deleteFailedBody"),
       });
     }
+  }
+
+  function confirmLogout() {
+    setConfirming({
+      title: t("settings.logoutConfirmTitle"),
+      body: t("settings.logoutConfirmBody"),
+      cancelLabel: t("common.cancel"),
+      confirmLabel: t("settings.logout"),
+      onConfirm: handleLogout,
+    });
   }
 
   function confirmDelete() {
@@ -467,7 +499,7 @@ export function SettingsModal({ visible, onClose }: Props) {
               style={({ pressed }) => [styles.bugBtn, pressed && { opacity: 0.8 }]}
             >
               {bugHint.node}
-              <Feather name="alert-circle" size={16} color={Colors.gold} {...a11yHidden} />
+              <Feather name="alert-circle" size={16} color={Colors.gold} {...a11yHidden()} />
               <Text style={styles.bugBtnText}>{t("settings.reportBug")}</Text>
             </Pressable>
 
@@ -512,19 +544,35 @@ export function SettingsModal({ visible, onClose }: Props) {
             <View style={styles.divider} />
 
             <Pressable
+              onPress={confirmLogout}
+              disabled={loggingOut}
+              accessibilityLabel={t("settings.logoutA11yLabel")}
+              {...a11yState({ role: "button", disabled: loggingOut, busy: loggingOut })}
+              style={({ pressed }) => [
+                styles.accountBtn,
+                pressed && !loggingOut && styles.logoutBtnPressed,
+                loggingOut && styles.accountBtnDisabled,
+              ]}
+            >
+              <Text style={styles.logoutBtnText} {...a11yHidden()}>
+                {t("settings.logout")}
+              </Text>
+            </Pressable>
+
+            <Pressable
               onPress={confirmDelete}
               disabled={deleting}
               accessibilityLabel={t("settings.deleteAccount")}
               {...deleteHint.props}
               {...a11yState({ role: "button", disabled: deleting, busy: deleting })}
               style={({ pressed }) => [
-                styles.deleteBtn,
+                styles.accountBtn,
                 pressed && !deleting && styles.deleteBtnPressed,
-                deleting && styles.deleteBtnDisabled,
+                deleting && styles.accountBtnDisabled,
               ]}
             >
               {deleteHint.node}
-              <Text style={styles.deleteBtnText}>
+              <Text style={styles.deleteBtnText} {...a11yHidden()}>
                 {deleting ? t("settings.deleting") : t("settings.deleteAccount")}
               </Text>
             </Pressable>
@@ -670,14 +718,18 @@ const styles = StyleSheet.create({
   },
   bugSendDisabled: { opacity: 0.5 },
   bugSendText: { ...Type.body, fontSize: FontSize.md, color: Colors.goldLit },
-  deleteBtn: {
-    minHeight: 44,
+  accountBtn: {
+    minHeight: TOUCH_TARGET_MIN,
     alignItems: "center",
     justifyContent: "center",
     borderRadius: Radius.sm,
     paddingVertical: Spacing.sm,
   },
+  accountBtnDisabled: { opacity: 0.5 },
+  logoutBtnPressed: { backgroundColor: Colors.goldGhost },
+  // Leaving is reversible and deleting is not, so only one of the two is
+  // allowed to read as an alarm.
+  logoutBtnText: { ...Type.body, color: Colors.text, textAlign: "center" },
   deleteBtnPressed: { backgroundColor: Colors.dangerDim + "1A" },
-  deleteBtnDisabled: { opacity: 0.5 },
   deleteBtnText: { ...Type.body, color: Colors.dangerDim, textAlign: "center" },
 });
