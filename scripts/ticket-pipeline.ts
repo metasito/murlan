@@ -20,6 +20,7 @@ import path from "node:path";
 import { pathToFileURL } from "node:url";
 
 import { classify, pickRoute } from "./next-ticket.mjs";
+import { detachReparsePoints } from "./prune-worktrees.mjs";
 import { runAgent, type Effort } from "../lib/ticketPipeline/agent.ts";
 import { claimTicket, releaseTicket } from "../lib/ticketPipeline/claim.ts";
 import { readVerdict, ghExecOptions, type Verdict } from "../lib/ticketPipeline/ciVerdict.ts";
@@ -389,15 +390,22 @@ function work(ticket: Ticket, branch: string, state: RunState): void {
  */
 function standUpWorktree(ticket: Ticket, branch: string, state: RunState): string {
   const relative = worktreePathFor(ticket.number);
-  const existing = git(process.cwd(), ["ls-remote", "--heads", "origin", branch]).trim();
   state.worktreePath = relative;
+  const absolute = path.resolve(relative);
 
-  if (existing) {
+  // Already standing, from a run that was killed before its teardown: use it rather than failing
+  // on `worktree add`, and rather than deleting a directory that may hold the only copy of an
+  // hour's work.
+  if (isRegisteredWorktree(git(process.cwd(), ["worktree", "list", "--porcelain"]), absolute)) {
+    say(`reusing the worktree already at ${relative}`);
+    return absolute;
+  }
+  if (git(process.cwd(), ["ls-remote", "--heads", "origin", branch]).trim()) {
     bash(`git worktree add ${JSON.stringify(relative)} ${JSON.stringify(branch)}`);
   } else {
     bash(buildWorktreeCommands({ number: ticket.number, branch }).join(" && "));
   }
-  return path.resolve(relative);
+  return absolute;
 }
 
 /**
@@ -467,6 +475,16 @@ function teardown(ticket: Ticket, state: RunState, why: string): void {
   // `origin/main` to compare against — without the fetch, a just-merged branch reads as unmerged
   // and survives.
   bash("git fetch origin main --quiet", { fatal: false });
+
+  // Before anything deletes the worktree. An agent reproducing a bug may junction the real
+  // `node_modules` into it, and `git worktree remove` walks into a junction rather than unlinking
+  // it — one such remove emptied `node_modules/.bin` of all 177 shims.
+  if (state.worktreePath) {
+    for (const name of detachReparsePoints(path.resolve(state.worktreePath))) {
+      say(`detached ${name} from the worktree (a link, not its target)`);
+    }
+  }
+
   for (const command of buildCleanupCommands({
     worktreePath: state.worktreePath,
     dockerStarted: false,
@@ -481,6 +499,13 @@ function teardown(ticket: Ticket, state: RunState, why: string): void {
 
 function main(): number {
   execFileSync("node", ["scripts/preflight.mjs"], { stdio: "inherit" });
+  // A killed run never reaches its own teardown, so the next one starts by clearing what the last
+  // one left. This removes only worktrees whose branch is merged or gone, and never one holding
+  // uncommitted work, an open pull request, or a state it could not read — so it cannot be the
+  // reason unpushed work is lost. It also sees worktrees this pipeline did not create: an agent
+  // reproducing a bug made a sibling one whose `node_modules` was a junction to the real install,
+  // and deleting through that link would have emptied it.
+  execFileSync("node", ["scripts/prune-worktrees.mjs"], { stdio: "inherit" });
 
   const ticket = pickTicket(forcedTicket(process.argv.slice(2)));
   if (!ticket) return 0;

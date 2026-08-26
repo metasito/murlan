@@ -116,6 +116,53 @@ export function classifyWorktree(state) {
   return { status: "live", reason: "unmerged, with no closed or open pull request found" };
 }
 
+/**
+ * The names among these entries that are links rather than real directories. A Windows junction
+ * reports as a symbolic link to Node, which is what makes this one test cover both.
+ * @param {import("node:fs").Dirent[]} entries
+ */
+export function reparsePointNames(entries) {
+  return entries.filter((e) => e.isSymbolicLink()).map((e) => e.name);
+}
+
+/**
+ * Removes the links at a worktree's top level, and nothing they point at.
+ *
+ * `git worktree remove` deletes the directory tree, and on Windows it walks **into** a junction
+ * rather than unlinking it: this repo's parallel-worktree convention junctions `node_modules` at
+ * the real install, and one such remove emptied `node_modules/.bin` of all 177 shims before
+ * failing with "Invalid argument". `rmdir` on a junction detaches it and leaves the target alone,
+ * so doing that first is what makes the remove that follows safe.
+ *
+ * Failures are swallowed: a link that cannot be detached is a reason to let the caller's remove
+ * fail on its own, not to abort the whole prune.
+ */
+export function detachReparsePoints(worktreePath) {
+  let entries;
+  try {
+    entries = fs.readdirSync(worktreePath, { withFileTypes: true });
+  } catch {
+    return [];
+  }
+  const detached = [];
+  for (const name of reparsePointNames(entries)) {
+    const link = path.join(worktreePath, name);
+    try {
+      // A directory link needs `rmdir` and a file link needs `unlink`; neither follows the link.
+      fs.rmdirSync(link);
+      detached.push(name);
+    } catch {
+      try {
+        fs.unlinkSync(link);
+        detached.push(name);
+      } catch {
+        // Left in place; the caller's own remove will report why.
+      }
+    }
+  }
+  return detached;
+}
+
 /** Includes untracked files - the near-miss #292 was filed over. */
 export function hasUncommittedChanges(worktreePath) {
   const out = execFileSync("git", ["-C", worktreePath, "status", "--porcelain"], { encoding: "utf8" });
@@ -307,6 +354,9 @@ if (invokedDirectly) {
         continue;
       }
       try {
+        for (const name of detachReparsePoints(entry.path)) {
+          console.log(`  detached ${name} (a link, not its target)`);
+        }
         execFileSync("git", ["worktree", "remove", entry.path], { stdio: "inherit" });
         console.log(`  removed ${entry.path}`);
         removed++;
@@ -335,6 +385,9 @@ if (invokedDirectly) {
       continue;
     }
     try {
+      for (const name of detachReparsePoints(dirPath)) {
+        console.log(`  detached ${name} (a link, not its target)`);
+      }
       fs.rmSync(dirPath, { recursive: true, force: true, maxRetries: 3, retryDelay: 100 });
       console.log(`  removed ${dirPath}`);
       orphansRemoved++;
