@@ -15,6 +15,7 @@ import path from "node:path";
 
 const STEPS = [
   { name: "typecheck", args: ["run", "typecheck"] },
+  { name: "typecheck:strict", args: ["run", "typecheck:strict"] },
   { name: "test", args: ["test"] },
   { name: "lint", args: ["run", "lint"] },
 ];

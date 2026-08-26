@@ -231,6 +231,12 @@ jobs:
       - name: Typecheck
         run: npm run typecheck
 
+      # noUncheckedIndexedAccess, scoped to the areas already proven clean —
+      # rides this job rather than a new one, which would bill its own
+      # runner minute for one more `tsc` invocation.
+      - name: Typecheck — noUncheckedIndexedAccess ratchet
+        run: npm run typecheck:strict
+
       - name: Test
         shell: bash
         run: |
