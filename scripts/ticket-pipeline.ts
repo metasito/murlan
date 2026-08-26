@@ -9,7 +9,8 @@
  *
  * Each of the three is prompted with a skill and the findings that skill cannot know: which
  * suites this repo makes an agent judge, what the previous stage already proved. Nothing in a
- * prompt decides control flow.
+ * prompt decides control flow, and nothing here decides whether the work was worth doing —
+ * ci.yml is the gate, and the only one.
  *
  * Nothing an agent says about what it did is believed. Git is asked instead.
  */
@@ -23,7 +24,6 @@ import { runAgent, type Effort } from "../lib/ticketPipeline/agent.ts";
 import { claimTicket, releaseTicket } from "../lib/ticketPipeline/claim.ts";
 import { readVerdict, ghExecOptions, type Verdict } from "../lib/ticketPipeline/ciVerdict.ts";
 import { buildCleanupCommands } from "../lib/ticketPipeline/cleanup.ts";
-import { filesNamedIn, needsDesignFirstGate } from "../lib/ticketPipeline/gate.ts";
 import { decideLanding, mergeArgs } from "../lib/ticketPipeline/land.ts";
 import { buildWorktreeCommands, worktreePathFor } from "../lib/ticketPipeline/worktree.ts";
 
@@ -85,10 +85,6 @@ function k(tokens: number): string {
 
 function commitsAhead(cwd: string): number {
   return Number(git(cwd, ["rev-list", "--count", "origin/main..HEAD"]).trim());
-}
-
-function changedFiles(cwd: string): string[] {
-  return git(cwd, ["diff", "--name-only", "origin/main...HEAD"]).split("\n").filter(Boolean);
 }
 
 /**
@@ -356,36 +352,61 @@ function land(branch: string, prNumber: number, worktree: string, state: RunStat
 // ---------------------------------------------------------------- the run
 
 function work(ticket: Ticket, branch: string, state: RunState): void {
-  const relative = worktreePathFor(ticket.number);
-  // The worktree branches from `origin/main`, which is only as current as the last fetch. Branch
-  // from a stale one and the pull request opens BEHIND: `decideLanding` sends it to
-  // `update-branch`, and the whole suite runs a second time on a tree the first run already
-  // passed. One fetch here is the difference between one ci.yml round and two.
-  bash("git fetch origin main --quiet", { fatal: false });
-  bash(buildWorktreeCommands({ number: ticket.number, branch }).join(" && "));
-  state.worktreePath = relative;
-  const worktree = path.resolve(relative);
+  // `origin/main` is only as current as the last fetch. Branch from a stale one and the pull
+  // request opens BEHIND, so landing sends it to `update-branch` and the whole suite runs a second
+  // time on a tree the first run already passed.
+  bash("git fetch origin --quiet", { fatal: false });
 
-  const evidence = stage("implement", implementPrompt(ticket), "sonnet", "high", worktree);
-  commitLeftovers(worktree, `Implement #${ticket.number}`);
-  if (commitsAhead(worktree) === 0) throw new Stop("the implement agent committed nothing");
+  const worktree = standUpWorktree(ticket, branch, state);
+  const resuming = commitsAhead(worktree) > 0;
 
-  // The same rules again, now on the real diff rather than on the paths the ticket named. The work
-  // is published either way — an escalation is a question for the owner, not a reason to bin a diff.
-  const facts = { filesTouched: changedFiles(worktree), body: ticket.body, comments: ticket.comments };
-  const gate = needsDesignFirstGate(facts);
-  if (gate.escalate) {
-    publish(ticket, branch, worktree, state, evidence);
-    throw new Stop(`design-first gate: ${gate.reason}. The diff is on #${state.prNumber}.`);
+  let evidence = "";
+  if (resuming) {
+    say(`resuming: ${commitsAhead(worktree)} commit(s) already on ${branch}, so implement is done`);
+  } else {
+    evidence = stage("implement", implementPrompt(ticket), "sonnet", "high", worktree);
+    commitLeftovers(worktree, `Implement #${ticket.number}`);
+    if (commitsAhead(worktree) === 0) throw new Stop("the implement agent committed nothing");
   }
 
-  stage("review", reviewPrompt(ticket, evidence), "opus", "max", worktree);
-  commitLeftovers(worktree, "Apply review findings");
+  if (!reviewedAlready(worktree)) {
+    stage("review", reviewPrompt(ticket, evidence), "opus", "max", worktree);
+    commitLeftovers(worktree, REVIEW_MARK);
+  }
 
   const prNumber = publish(ticket, branch, worktree, state, evidence);
-
   driveToGreen(branch, prNumber, worktree);
   land(branch, prNumber, worktree, state);
+}
+
+/**
+ * The commit subject the review stage leaves behind when it changes something, and the marker a
+ * resumed run reads to know the diff has been read once already.
+ */
+const REVIEW_MARK = "Apply review findings";
+
+function reviewedAlready(worktree: string): boolean {
+  return git(worktree, ["log", "--format=%s", "origin/main..HEAD"]).includes(REVIEW_MARK);
+}
+
+/**
+ * A worktree on the ticket's branch, whether or not the branch already exists.
+ *
+ * Picking up a branch that is already there is what stops a stopped run from being a wasted one:
+ * #278 was implemented in 26 minutes and $5.41, and there was no way back to it afterwards. A
+ * ticket whose branch carries commits skips straight to the stage that has not run yet.
+ */
+function standUpWorktree(ticket: Ticket, branch: string, state: RunState): string {
+  const relative = worktreePathFor(ticket.number);
+  const existing = git(process.cwd(), ["ls-remote", "--heads", "origin", branch]).trim();
+  state.worktreePath = relative;
+
+  if (existing) {
+    bash(`git worktree add ${JSON.stringify(relative)} ${JSON.stringify(branch)}`);
+  } else {
+    bash(buildWorktreeCommands({ number: ticket.number, branch }).join(" && "));
+  }
+  return path.resolve(relative);
 }
 
 /**
@@ -473,23 +494,6 @@ function main(): number {
   const ticket = pickTicket(forcedTicket(process.argv.slice(2)));
   if (!ticket) return 0;
   say(`#${ticket.number} — ${ticket.title}`);
-
-  // Before a worktree exists, because these are the questions that stop being askable once code is
-  // written: an open box under "What to settle" means an agent would guess and build on the guess,
-  // and a schema, socket or dependency change decided after the fact is a human anchoring on the
-  // shape in front of them rather than asking whether it should exist. The database holds real
-  // accounts and Replit runs the result with no build step; both are cheap to ask now and expensive
-  // to ask later.
-  const before = needsDesignFirstGate({
-    filesTouched: filesNamedIn(ticket.body),
-    body: ticket.body,
-    comments: ticket.comments,
-  });
-  if (before.escalate) {
-    releaseTicket(REPO, ticket.number, `Not taken: ${before.reason}.`);
-    say(`escalated #${ticket.number}: ${before.reason}`);
-    return 0;
-  }
 
   const branch = branchNameFor(ticket);
   const claim = claimTicket(REPO, ticket.number, branch);
