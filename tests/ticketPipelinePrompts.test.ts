@@ -43,6 +43,19 @@ describe("the ticket pipeline's stage prompts", () => {
     );
   });
 
+  // Review cannot know what Implement already proved, so it re-proves it: the two-minute native
+  // suite ran three times per ticket across #211 and #212, and `agent:check` three times. The
+  // list travels between the stages instead of each one deciding alone.
+  test("the review stage is handed what the implement stage already ran", () => {
+    const body = source();
+    assert.match(body, /checksRun/, "IMPLEMENT_SCHEMA does not carry the checks that were run");
+    assert.match(
+      body,
+      /\$\{[^}]*checksRun[^}]*\}/,
+      "the review prompt never interpolates impl.checksRun, so the list is collected and dropped"
+    );
+  });
+
   // Both stages that touch the tree locally ran suites the ticket never asked for — including the
   // two-minute native one, against a two-line diff. Whatever names the checks has to reach them.
   test("every stage that checks its work is told where the check list lives", () => {

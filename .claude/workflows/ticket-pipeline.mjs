@@ -97,6 +97,9 @@ const IMPLEMENT_SCHEMA = {
     commitSha: { type: 'string' },
     summary: { type: 'string' },
     filesTouched: { type: 'array', items: { type: 'string' } },
+    // Handed on, so the next stage re-proves only what its own edits could have broken rather
+    // than running the suite again to find out what this one already knew.
+    checksRun: { type: 'array', items: { type: 'string' } },
   },
   required: ['committed'],
 }
@@ -395,7 +398,11 @@ anything.
 
 In summary, say which Definition of done boxes you closed and name any you did not, with why.
 An honest gap is worth more than a green report — it is the thing a human can act on.
-Report: committed, commitSha, summary, filesTouched.`,
+
+Report \`checksRun\` as the exact commands you ran and watched pass against the tree you committed,
+copy-pasteable, one per entry. The review stage is handed that list as evidence, so what you leave
+out of it is what gets run a second time.
+Report: committed, commitSha, summary, filesTouched, checksRun.`,
     { model: MODELS.implement, phase: 'Implement', label: label('implement'), schema: IMPLEMENT_SCHEMA }
   )
   // Same absence as `reported()` handles below, one stage earlier: a session limit killed the
@@ -438,8 +445,12 @@ Fix what you find. A finding you cannot fix stands in your summary with why; a c
 is never pushed past. Then re-run only the checks the change you just made could break — a fix that
 improves the code can still make a test wrong. ${LOCAL_TEST_NOTE}
 
-The implement stage already ran the ticket's checks against this tree and ci.yml is about to run
-the whole sweep against it again, so anything you re-run here is being paid for a third time.
+These already passed against the tree you are reading. They are evidence, not something to repeat:
+
+${(impl.checksRun || []).map((c) => `  - ${c}`).join('\n') || '  (the implement stage reported none)'}
+
+Re-run one only where your own edit could have broken it, and run nothing outside the list: ci.yml
+sweeps this whole tree the moment you push, so a third pass here buys nothing but minutes.
 Commit whatever you changed.
 
 ## 2. Push and open the pull request
