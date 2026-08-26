@@ -190,6 +190,14 @@ function reviewPrompt(ticket: Ticket, evidence: string): string {
     "",
     "Commit whatever you fix. Do not push and do not open a pull request.",
     "",
+    // The implement stage is handed the ruleset and the reviewer was not, so the one stage that
+    // reads the diff cold had no idea what this repo requires of it. Rule 6 is the one that bites:
+    // a fix arriving without the test that would have caught the bug is a fix nothing can defend.
+    `${SHELL_NOTE} \`docs/agents/RULES.md\` is the ruleset — read it, and hold the diff to it.`,
+    "",
+    "Judge the diff against the issue as well as against the code. A part of the ticket quietly",
+    "left undone reads exactly like a small change when you have only the diff in front of you.",
+    "",
     "These already passed against the tree you are reading. They are evidence, not something to",
     `repeat — re-run one only where your own edit could have broken it. ${CHECKS_NOTE}`,
     "",
