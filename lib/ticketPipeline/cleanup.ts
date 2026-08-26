@@ -57,10 +57,27 @@ function tcpPorts(ports: number[] | undefined): number[] {
   return (ports ?? []).filter((p) => Number.isInteger(p) && p > 0 && p < 65536);
 }
 
+/**
+ * `--force` discards a worktree's uncommitted files silently. A run whose implement agent dies
+ * mid-edit leaves exactly that, and nothing staged means nothing recoverable: #278's died after
+ * thirty-one file edits and no `git add`, and the teardown threw all of it away.
+ *
+ * Fails closed, like the branch arm below: `$(…)` is empty both when the tree is clean and when
+ * the command could not run, so the removal is gated on `status` having *succeeded* as well.
+ */
+function removeWorktreeUnlessItHoldsWork(posixPath: string): string {
+  const p = shellQuote(posixPath);
+  return (
+    `if dirty=$(git -C ${p} status --porcelain 2>/dev/null) && test -z "$dirty"; ` +
+    `then git worktree remove ${p} --force; ` +
+    `else echo "kept ${posixPath}: it holds uncommitted work, or its status could not be read"; fi`
+  );
+}
+
 export function buildCleanupCommands(state: RunState): string[] {
   const commands: string[] = [];
   if (state.worktreePath) {
-    commands.push(`git worktree remove ${shellQuote(toPosixPath(state.worktreePath))} --force`);
+    commands.push(removeWorktreeUnlessItHoldsWork(toPosixPath(state.worktreePath)));
     // `remove` leaves the administrative registration behind whenever the directory was already
     // gone, and a registration git still believes in keeps its branch checked out and undeletable.
     commands.push("git worktree prune");
