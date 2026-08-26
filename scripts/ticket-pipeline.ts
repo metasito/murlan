@@ -14,7 +14,7 @@
  * Nothing an agent says about what it did is believed. Git is asked instead.
  */
 import { execFileSync } from "node:child_process";
-import { rmSync } from "node:fs";
+import { existsSync, rmSync } from "node:fs";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 
@@ -373,6 +373,53 @@ function work(ticket: Ticket, branch: string, state: RunState): void {
   land(branch, prNumber, worktree, state);
 }
 
+/**
+ * Whether `git worktree list --porcelain` still names this path. Windows compares paths without
+ * case, and a mismatch here reads a live worktree as an orphan — which is a directory deleted.
+ */
+export function isRegisteredWorktree(porcelain: string, target: string): boolean {
+  const wanted = path.resolve(target);
+  return porcelain
+    .split("\n")
+    .filter((line) => line.startsWith("worktree "))
+    .map((line) => path.resolve(line.slice("worktree ".length).trim()))
+    .some((p) => (process.platform === "win32" ? p.toLowerCase() === wanted.toLowerCase() : p === wanted));
+}
+
+/**
+ * `git worktree remove` unregisters first and deletes second, and on Windows the delete loses to
+ * whatever still holds a handle on the directory a stage has just exited. Git reports the failure
+ * with the registration already gone, and nothing tries again — thirteen orphaned directories under
+ * `.worktrees/` were made exactly this way.
+ *
+ * A registration still standing is the cleanup step having *decided to keep* the worktree, because
+ * it holds work nobody has staged. So this deletes only what git has already let go of, and keeps
+ * anything it cannot read: an implement agent that died mid-edit wrote 31 files that a `--force`
+ * teardown then destroyed, and there were no objects left to recover them from.
+ */
+function removeOrphanedDirectory(worktreePath: string): void {
+  const absolute = path.resolve(worktreePath);
+  if (!existsSync(absolute)) return;
+
+  let listed: string;
+  try {
+    listed = execFileSync("git", ["worktree", "list", "--porcelain"], { encoding: "utf8" });
+  } catch (error) {
+    say(`kept ${worktreePath}: git could not be asked whether it still owns it — ${(error as Error).message}`);
+    return;
+  }
+  if (isRegisteredWorktree(listed, absolute)) {
+    say(`kept ${worktreePath}: git still has a registration for it, so cleanup chose to keep it`);
+    return;
+  }
+
+  try {
+    rmSync(absolute, { recursive: true, force: true, maxRetries: 10, retryDelay: 500 });
+  } catch (error) {
+    say(`the worktree directory outlived the run: ${(error as Error).message}`);
+  }
+}
+
 function teardown(ticket: Ticket, state: RunState, why: string): void {
   if (!state.merged) {
     try {
@@ -391,17 +438,7 @@ function teardown(ticket: Ticket, state: RunState, why: string): void {
     bash(command, { fatal: false });
   }
 
-  // `git worktree remove` unregisters first and deletes second, and on Windows the delete loses to
-  // whatever still holds a handle on the directory a stage just exited. Git reports the failure and
-  // the registration is already gone, so nothing tries again: thirteen orphaned directories under
-  // `.worktrees/` were made exactly this way. `rmSync`'s retries are for this case.
-  if (state.worktreePath) {
-    try {
-      rmSync(path.resolve(state.worktreePath), { recursive: true, force: true, maxRetries: 10, retryDelay: 500 });
-    } catch (error) {
-      say(`the worktree directory outlived the run: ${(error as Error).message}`);
-    }
-  }
+  if (state.worktreePath) removeOrphanedDirectory(state.worktreePath);
 }
 
 function main(): number {

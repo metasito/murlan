@@ -3,7 +3,7 @@ import { test, describe } from "node:test";
 import assert from "node:assert/strict";
 
 import { buildAgentArgs, parseAgentOutput } from "../lib/ticketPipeline/agent.ts";
-import { branchNameFor, forcedTicket } from "../scripts/ticket-pipeline.ts";
+import { branchNameFor, forcedTicket, isRegisteredWorktree } from "../scripts/ticket-pipeline.ts";
 
 const SPEC = { prompt: "/code-review high --fix main", model: "opus", effort: "max", cwd: "/wt" } as const;
 
@@ -87,5 +87,42 @@ describe("aiming a run at one ticket", () => {
   test("a number that is not one stops the run", () => {
     assert.throws(() => forcedTicket(["--ticket"]), /needs an issue number/);
     assert.throws(() => forcedTicket(["--ticket", "main"]), /needs an issue number/);
+  });
+});
+
+describe("deleting the directory a worktree removal left behind", () => {
+  const LISTED = [
+    "worktree C:/Users/roton/murlan",
+    "HEAD abc",
+    "branch refs/heads/main",
+    "",
+    "worktree C:/Users/roton/murlan/.worktrees/agent-377",
+    "HEAD def",
+    "branch refs/heads/agent/377-x",
+    "",
+  ].join("\n");
+
+  // A registration still standing is the cleanup step having decided to KEEP the worktree, because
+  // it holds work nobody staged. An implement agent that died mid-edit wrote 31 files that a
+  // --force teardown then destroyed, with no objects left to recover them from.
+  test("a path git still names is not an orphan", () => {
+    assert.equal(isRegisteredWorktree(LISTED, "C:/Users/roton/murlan/.worktrees/agent-377"), true);
+  });
+
+  test("a path git no longer names is", () => {
+    assert.equal(isRegisteredWorktree(LISTED, "C:/Users/roton/murlan/.worktrees/agent-999"), false);
+  });
+
+  // Windows compares paths without case, and a mismatch reads a live worktree as an orphan.
+  test("case and separators do not change the answer", () => {
+    assert.equal(
+      isRegisteredWorktree(LISTED, String.raw`C:\Users\Roton\murlan\.worktrees\Agent-377`),
+      process.platform === "win32"
+    );
+  });
+
+  // Nothing is deleted on a listing that could not be read.
+  test("an empty listing names nothing", () => {
+    assert.equal(isRegisteredWorktree("", "C:/Users/roton/murlan/.worktrees/agent-377"), false);
   });
 });
