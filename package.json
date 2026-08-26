@@ -30,7 +30,8 @@
     "perf:web": "playwright test --config tests/e2e/playwright.perf.config.ts --reporter=line",
     "test:e2e": "playwright test --config tests/e2e/playwright.config.ts",
     "typecheck": "tsc --noEmit",
-    "verify": "npm run typecheck && npm run test && npm run test:native && npm run lint"
+    "verify": "npm run typecheck && npm run test && npm run test:native && npm run lint",
+    "ticket": "tsx scripts/ticket-pipeline.ts"
   },
   "dependencies": {
     "@expo-google-fonts/inter": "^0.4.2",

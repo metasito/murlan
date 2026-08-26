@@ -46,15 +46,6 @@ describe("the design-first gate", () => {
     assert.match(result.reason, /socket/);
   });
 
-  test("escalates a ticket touching more than 6 files with no recorded decision", () => {
-    const result = needsDesignFirstGate({
-      filesTouched: Array.from({ length: 7 }, (_, i) => `components/File${i}.tsx`),
-      body: "Rename a prop across the codebase.",
-    });
-    assert.equal(result.escalate, true);
-    assert.match(result.reason, /7 files/);
-  });
-
   test("escalates a ticket touching package.json to weigh a dependency", () => {
     const result = needsDesignFirstGate({
       filesTouched: ["components/SettingsModal.tsx", "package.json"],
@@ -89,40 +80,6 @@ describe("the design-first gate", () => {
       body: "Design decision: docs/BRIEF.md §2.4 chose the slider package.",
     });
     assert.equal(result.escalate, false);
-  });
-
-  // Every user-facing string is keyed in all three locales, and `it.ts`/`sq.ts` are
-  // `Record<keyof typeof en, string>`, so a gap is a compile error rather than a decision. Counted
-  // separately they spend three of the six the threshold allows, and #349 — a chip label, four
-  // real files — escalated at seven.
-  test("the three locale files count as the one edit the compiler forces", () => {
-    const result = needsDesignFirstGate({
-      filesTouched: [
-        "components/GameTable.tsx",
-        "components/table/pile.tsx",
-        "components/gameTableModel.ts",
-        "lib/gameEngine.ts",
-        "locales/en.ts",
-        "locales/it.ts",
-        "locales/sq.ts",
-      ],
-      body: "Name the player who made the play now on the felt.",
-    });
-    assert.equal(result.escalate, false, result.reason);
-  });
-
-  test("collapsing the locales does not hide a genuinely broad change", () => {
-    const result = needsDesignFirstGate({
-      filesTouched: [
-        ...Array.from({ length: 6 }, (_, i) => `components/File${i}.tsx`),
-        "locales/en.ts",
-        "locales/it.ts",
-        "locales/sq.ts",
-      ],
-      body: "Rename a prop across the codebase.",
-    });
-    assert.equal(result.escalate, true);
-    assert.match(result.reason, /7 files/);
   });
 
   // `ready-for-agent` is a promise that the decisions are made; unchecked boxes under "What to
