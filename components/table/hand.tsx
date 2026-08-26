@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { View, StyleSheet, ScrollView } from "react-native";
 import { TableText } from "./TableText";
 import Animated, {
@@ -19,7 +19,6 @@ import type { Card } from "@/lib/gameEngine";
 import { computeHandLayout } from "@/components/handLayout";
 import { HAND_ARC, solveArc } from "@/components/tableArc";
 import { HAND_CROP, HAND_ROW_HEADROOM } from "@/components/gameTableModel";
-import { HAND_TURN_TIMING } from "./chrome";
 import {
   CARD_W,
   CARD_H,
@@ -220,46 +219,20 @@ function cardItemPropsEqual(a: CardItemProps, b: CardItemProps): boolean {
 const CardItem = React.memo(CardItemBase, cardItemPropsEqual);
 CardItem.displayName = "CardItem";
 
-// ─── useHandNear ──────────────────────────────────────────────────────────────
-
-/**
- * The move that carries the hand between its two sizes when the turn changes
- * hands — the fifth of the table's turn signals, and the only one that changes
- * what the player can reach.
- *
- * The *size* is real layout (`handScale` below), not a lasting transform: web
- * rasterises text before transforming it, so a box held at 1.11 draws a blurred
- * rank corner for the whole of the player's turn (docs/agents/loops.md, React
- * Native Web traps). This only animates the change — it starts at the ratio
- * that cancels the new layout out and eases to exactly 1, so at rest, in both
- * states, there is no transform on the cards at all.
- *
- * The compensation is applied in a layout effect, before the browser paints the
- * frame the new size lands on; an ordinary effect would show one frame of the
- * jump this exists to hide.
- */
-function useHandNear(active: boolean) {
-  const flip = useSharedValue(1);
-  // The size already on screen. Starts at the mounted one, so a table rejoined
-  // mid-turn opens with the hand up rather than growing into it.
-  const shown = useRef(active);
-  const reduceMotion = usePrefersReducedMotion();
-
-  useLayoutEffect(() => {
-    if (shown.current === active) return;
-    shown.current = active;
-    if (reduceMotion) {
-      cancelAnimation(flip);
-      flip.value = 1;
-      return;
-    }
-    flip.value = active ? 1 / HAND_NEAR_RATIO : HAND_NEAR_RATIO;
-    flip.value = withTiming(1, HAND_TURN_TIMING);
-    return () => cancelAnimation(flip);
-  }, [active, reduceMotion, flip]);
-
-  return useAnimatedStyle(() => ({ transform: [{ scale: flip.value }] }));
-}
+// ─── The two sizes ────────────────────────────────────────────────────────────
+//
+// The hand is drawn bigger while the turn is the viewer's own — nearer, so
+// bigger, and so the same fraction more air between the cards, because the
+// share the row aims at grows with the card (`HAND_NEAR_RATIO`).
+//
+// Both sizes are real layout, and the change between them is not animated.
+// That is a platform constraint, not a preference: web rasterises text before
+// transforming it (docs/agents/loops.md, React Native Web traps), so a card
+// under a `scale` carries a distorted rank glyph for as long as the transform
+// lasts — `tests/e2e/a11yOverlays.spec.ts` measures exactly that and reports
+// clipping the glyph does not have. A turn changes hands every few seconds, so
+// an eased size would be running whenever anything looked. #420 holds the
+// transition, and what it would have to avoid.
 
 // ─── StraightHand ─────────────────────────────────────────────────────────────
 
@@ -311,7 +284,6 @@ export function StraightHand({
   // Computed before the early return below — Rules of Hooks requires every
   // hook to run unconditionally on every render of this component.
   const selectedSet = useMemo(() => new Set(selectedIds), [selectedIds]);
-  const nearStyle = useHandNear(onTurn);
 
   // Armed while the hand is empty, so the render on which a hand appears —
   // the start of a game, or of the next one after a rematch — is the render
@@ -400,7 +372,7 @@ export function StraightHand({
 
   return (
     <View style={[handStyles.handCenter, { width: availW, height: visibleH + arcRise }]}>
-      <Animated.View style={[handStyles.handGlowWrap, nearStyle]}>
+      <View style={handStyles.handGlowWrap}>
         {scrollable ? (
           // The hand compresses inside its share, so this is reached only when
           // even the finger floor cannot fit the row in availW — a full hand on
@@ -426,7 +398,7 @@ export function StraightHand({
         ) : (
           row
         )}
-      </Animated.View>
+      </View>
     </View>
   );
 }

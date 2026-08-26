@@ -97,7 +97,10 @@ async function handGeometry(page: import("@playwright/test").Page): Promise<Hand
     // fall back to scrolling. Its own width is all of the hand there is to see.
     let seen = right - left;
     for (let p = cards[0]?.el.parentElement; p; p = p.parentElement) {
-      if (p.scrollWidth > p.clientWidth + 1) {
+      // The row's own scroll window, not merely the first ancestor that clips
+      // anything: the page root clips too, and taking its width back would
+      // call every hand full-screen.
+      if (getComputedStyle(p).overflowX !== "visible" && p.clientWidth < seen) {
         seen = p.clientWidth;
         break;
       }
