@@ -360,7 +360,6 @@ function extractAssets(timestamp) {
 
       if (!assetsMap.has(key)) {
         const asset = {
-          url: path.posix.join("/", relativePath, filename),
           originalPath: originalPath,
           filename: filename,
           relativePath: relativePath,
@@ -400,13 +399,10 @@ async function downloadAssets(assets, timestamp) {
     }
 
     const decodedPath = decodeURIComponent(unstablePath);
-    // Requesting "/assets" + decodedPath as a URL path (rather than as the
-    // unstable_path query param Metro's own publicPath already uses) breaks when
-    // decodedPath starts with "../" — a junctioned node_modules resolves outside
-    // the project root, and path.posix.join collapses "/assets/.." away, producing
-    // a 404. The query param reaches Metro's server unmangled and resolves the
-    // ".." there via a plain path.resolve against projectRoot, landing on the
-    // junction's real target.
+    // Metro has to get the path as its own `unstable_path` query param, not as a
+    // URL path: a junctioned node_modules escapes the project root with "../", and
+    // path.posix.join collapses "/assets/.." away, so the request never reaches
+    // Metro's asset handler at all.
     const metroUrl = new URL("http://localhost:8081/assets/");
     metroUrl.searchParams.set(
       "unstable_path",
