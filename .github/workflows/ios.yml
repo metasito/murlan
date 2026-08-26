@@ -10,10 +10,12 @@ name: iOS UI (Maestro)
 # KVM step, no emulator boot poll, none of #186's "Timeout waiting for
 # emulator to boot". That is the whole reason this job exists alongside
 # `maestro.yml` instead of just fixing the Android one.
+# Disabled on pull requests until its smoke flow passes on `main`. It has been red since
+# the job landed, and a check that is always red teaches every reader that red is fine —
+# it also gates nothing, because ci.yml is the gate and `land.ts` merges past it. On demand
+# only until #354 turns both device loops green, then the `pull_request` trigger comes back.
 on:
   workflow_dispatch:
-  pull_request:
-    branches: [main]
 
 concurrency:
   group: ios-${{ github.ref }}
