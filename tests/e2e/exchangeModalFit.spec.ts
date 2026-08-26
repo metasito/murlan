@@ -13,7 +13,10 @@
 // 720pt-tall desktop default, where the stack fits.
 import { test, expect } from "./fixtures";
 import { resumeSaved, offlineGameSave, DEAL_SIZE } from "./helpers/offlineSeed";
-import { TOUCH_TARGET_MIN } from "../../lib/theme";
+
+// lib/theme.ts pulls in react-native, which Playwright's loader cannot parse —
+// tests/e2e/tapTargets.spec.ts restates the same HIG floor for the same reason.
+const TOUCH_TARGET_MIN = 44;
 
 // tests/e2e/tableFit.spec.ts's own phone fixtures, which are the windows this
 // modal is actually seen in.
