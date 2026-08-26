@@ -105,25 +105,35 @@ export function offlineGameSave(playerCount: 2 | 3 | 4, handSize: number = 13, t
 }
 
 /**
+ * Holds whichever seat the save is on, before the bundle evaluates.
+ *
+ * `EXPO_PUBLIC_E2E_FAST` takes the offline bot's own delay to zero, so a seeded
+ * bot turn is over before a spec can measure it (`lib/e2eAiSuspend.ts`).
+ */
+async function holdSeededTurn(page: Page): Promise<void> {
+  await page.addInitScript(
+    ({ key }) => window.localStorage.setItem(key, "1"),
+    { key: E2E_SUSPEND_AI_KEY }
+  );
+}
+
+/**
  * Opens the app with a game already saved, and resumes it.
  *
- * A seeded turn that is not the viewer's holds still: `EXPO_PUBLIC_E2E_FAST`
- * takes the bot's own delay to zero, so without this the seat moves on before
- * the first measurement (`lib/e2eAiSuspend.ts`).
+ * `holdTurn` is opt-in rather than implied by a non-zero `turn`: a spec that
+ * seeds a bot's turn may be there precisely to watch that bot play
+ * (`seatFans.spec.ts`'s throw origins), and holding it would leave nothing to
+ * measure.
  */
 export async function openSeededGame(
   page: Page,
   baseURL: string,
   playerCount: 2 | 3 | 4,
   handSize?: number,
-  turn: number = 0
+  turn: number = 0,
+  holdTurn: boolean = false
 ): Promise<void> {
-  if (turn !== 0) {
-    await page.addInitScript(
-      ({ key }) => window.localStorage.setItem(key, "1"),
-      { key: E2E_SUSPEND_AI_KEY }
-    );
-  }
+  if (holdTurn) await holdSeededTurn(page);
   await resumeSaved(page, baseURL, offlineGameSave(playerCount, handSize, turn));
 }
 
@@ -143,10 +153,7 @@ export async function openCaptureState(
   state: CaptureState
 ): Promise<void> {
   const save = offlineGameSave(state.playerCount, DEAL_SIZE[state.playerCount], state.turn);
-  await page.addInitScript(
-    ({ key }) => window.localStorage.setItem(key, "1"),
-    { key: E2E_SUSPEND_AI_KEY }
-  );
+  await holdSeededTurn(page);
   await resumeSaved(page, baseURL, { ...save, gameState: captureGameState(state) });
 }
 

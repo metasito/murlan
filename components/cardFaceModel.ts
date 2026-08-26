@@ -41,16 +41,10 @@ export const CARD_BACK_H = (s: number) => BACK_H * s;
 /** Multipliers on the table's own scale, by where the card is drawn. */
 export const FIELD_SCALE = 1.0;
 export const HAND_SCALE = 1.08;
-/**
- * …and what the hand reads as while the turn is the viewer's own, held up to
- * be looked at: bigger cards, and the same fraction more air between them.
- *
- * The row is laid out at `HAND_SCALE` and a transform carries it here, never
- * the other way round — the overlap step a finger has to find is solved at the
- * smaller of the two, so what a buried card exposes cannot shrink back under
- * the thumb when the turn passes.
- */
+/** …and while the turn is the viewer's own, when the hand is held up to be read. */
 export const HAND_SCALE_ON_TURN = 1.2;
+/** What the hand's width share is multiplied by at that size, so the fan opens with it. */
+export const HAND_NEAR_RATIO = HAND_SCALE_ON_TURN / HAND_SCALE;
 export const BACK_SCALE = 0.88;
 
 // ─── Card stock ─────────────────────────────────────────────────────────────

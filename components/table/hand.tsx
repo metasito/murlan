@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { View, StyleSheet, ScrollView } from "react-native";
 import { TableText } from "./TableText";
 import Animated, {
@@ -19,7 +19,16 @@ import type { Card } from "@/lib/gameEngine";
 import { computeHandLayout } from "@/components/handLayout";
 import { HAND_ARC, solveArc } from "@/components/tableArc";
 import { HAND_CROP, HAND_ROW_HEADROOM } from "@/components/gameTableModel";
-import { CARD_W, CARD_H, CARD_BACK_W, CARD_BACK_H, HAND_SCALE } from "@/components/cardFaceModel";
+import { HAND_TURN_TIMING } from "./chrome";
+import {
+  CARD_W,
+  CARD_H,
+  CARD_BACK_W,
+  CARD_BACK_H,
+  HAND_NEAR_RATIO,
+  HAND_SCALE,
+  HAND_SCALE_ON_TURN,
+} from "@/components/cardFaceModel";
 
 // ─── CardItem ─────────────────────────────────────────────────────────────────
 //
@@ -211,6 +220,47 @@ function cardItemPropsEqual(a: CardItemProps, b: CardItemProps): boolean {
 const CardItem = React.memo(CardItemBase, cardItemPropsEqual);
 CardItem.displayName = "CardItem";
 
+// ─── useHandNear ──────────────────────────────────────────────────────────────
+
+/**
+ * The move that carries the hand between its two sizes when the turn changes
+ * hands — the fifth of the table's turn signals, and the only one that changes
+ * what the player can reach.
+ *
+ * The *size* is real layout (`handScale` below), not a lasting transform: web
+ * rasterises text before transforming it, so a box held at 1.11 draws a blurred
+ * rank corner for the whole of the player's turn (docs/agents/loops.md, React
+ * Native Web traps). This only animates the change — it starts at the ratio
+ * that cancels the new layout out and eases to exactly 1, so at rest, in both
+ * states, there is no transform on the cards at all.
+ *
+ * The compensation is applied in a layout effect, before the browser paints the
+ * frame the new size lands on; an ordinary effect would show one frame of the
+ * jump this exists to hide.
+ */
+function useHandNear(active: boolean) {
+  const flip = useSharedValue(1);
+  // The size already on screen. Starts at the mounted one, so a table rejoined
+  // mid-turn opens with the hand up rather than growing into it.
+  const shown = useRef(active);
+  const reduceMotion = usePrefersReducedMotion();
+
+  useLayoutEffect(() => {
+    if (shown.current === active) return;
+    shown.current = active;
+    if (reduceMotion) {
+      cancelAnimation(flip);
+      flip.value = 1;
+      return;
+    }
+    flip.value = active ? 1 / HAND_NEAR_RATIO : HAND_NEAR_RATIO;
+    flip.value = withTiming(1, HAND_TURN_TIMING);
+    return () => cancelAnimation(flip);
+  }, [active, reduceMotion, flip]);
+
+  return useAnimatedStyle(() => ({ transform: [{ scale: flip.value }] }));
+}
+
 // ─── StraightHand ─────────────────────────────────────────────────────────────
 
 export function StraightHand({
@@ -240,7 +290,12 @@ export function StraightHand({
 }) {
   const { t } = useTranslation();
   const n = cards.length;
-  const cardScale = scale * HAND_SCALE;
+  const onTurn = isMyTurn === true;
+  // Bigger cards *and* the same fraction more air between them: the share the
+  // row aims at grows with the card, so the fan opens rather than just
+  // overlapping harder at a larger size.
+  const cardScale = scale * (onTurn ? HAND_SCALE_ON_TURN : HAND_SCALE);
+  const room = onTurn ? roomW * HAND_NEAR_RATIO : roomW;
   // A spectated hand draws backs (CardItem passes faceDown straight to
   // CardView), which are their own narrower aspect — the row's own layout
   // math has to size against the same dimensions CardView actually draws.
@@ -256,6 +311,7 @@ export function StraightHand({
   // Computed before the early return below — Rules of Hooks requires every
   // hook to run unconditionally on every render of this component.
   const selectedSet = useMemo(() => new Set(selectedIds), [selectedIds]);
+  const nearStyle = useHandNear(onTurn);
 
   // Armed while the hand is empty, so the render on which a hand appears —
   // the start of a game, or of the next one after a rematch — is the render
@@ -271,7 +327,7 @@ export function StraightHand({
   // hand of twenty-one compresses inside the same span rather than reaching
   // past it. Only `availW` is hard: past that the row scrolls. Solved above
   // the empty-hand return so the scroll effect below it can be a hook.
-  const { step, totalW, scrollable } = computeHandLayout(n, roomW, cardW, availW);
+  const { step, totalW, scrollable } = computeHandLayout(n, room, cardW, availW);
   const rowW = Math.min(totalW, availW);
   /** How much of a scrolling row lies outside the window, both ends together. */
   const overhang = Math.max(0, totalW - availW);
@@ -344,7 +400,7 @@ export function StraightHand({
 
   return (
     <View style={[handStyles.handCenter, { width: availW, height: visibleH + arcRise }]}>
-      <View style={handStyles.handGlowWrap}>
+      <Animated.View style={[handStyles.handGlowWrap, nearStyle]}>
         {scrollable ? (
           // The hand compresses inside its share, so this is reached only when
           // even the finger floor cannot fit the row in availW — a full hand on
@@ -370,7 +426,7 @@ export function StraightHand({
         ) : (
           row
         )}
-      </View>
+      </Animated.View>
     </View>
   );
 }

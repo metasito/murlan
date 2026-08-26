@@ -8,7 +8,7 @@ import {
   withTiming,
   cancelAnimation,
 } from "react-native-reanimated";
-import { Colors, FontSize, makeShadow, Radius, Scrim, Spacing, Type } from "@/lib/theme";
+import { Colors, FontSize, makeShadow, Motion, Radius, Scrim, Spacing, Type } from "@/lib/theme";
 import { usePrefersReducedMotion } from "@/lib/accessibility";
 import { useTranslation } from "@/lib/i18n";
 import { a11yState } from "@/lib/a11y";
@@ -420,7 +420,17 @@ export const sharedTableStyles = StyleSheet.create({
 
 /** How far the hand rises when the turn comes to the viewer, at scale 1. */
 const HAND_LIFT = 4;
-const HAND_LIFT_MS = 500;
+
+/**
+ * The lift and the hand's own grow (components/table/hand.tsx) are two halves
+ * of one move, on two different views, so the timing is derived here once
+ * rather than stated in each — apart, they drift and the hand arrives before
+ * it has finished rising.
+ */
+export const HAND_TURN_TIMING = {
+  duration: Motion.duration.slow,
+  easing: Easing.bezier(0.2, 0.8, 0.3, 1),
+} as const;
 
 /**
  * The hand rises off the bottom edge on the viewer's own turn — the fourth of
@@ -451,10 +461,7 @@ export function useHandLift(active: boolean, scale: number) {
       lift.value = resting;
       return;
     }
-    lift.value = withTiming(resting, {
-      duration: HAND_LIFT_MS,
-      easing: Easing.bezier(0.2, 0.8, 0.3, 1),
-    });
+    lift.value = withTiming(resting, HAND_TURN_TIMING);
     return () => cancelAnimation(lift);
   }, [active, scale, reduceMotion, lift]);
 

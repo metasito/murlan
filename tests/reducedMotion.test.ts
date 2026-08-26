@@ -224,7 +224,7 @@ test("the layout-animation scanner matches a real ungated use", () => {
 // fail one of them. Named per moment anyway, so a regression here reads as
 // "the deal" or "the bomb", not as a line number in a directory-wide sweep.
 
-test("the deal — hand.tsx's stagger and drop both skip under reduced motion", () => {
+test("the deal — hand.tsx's stagger, drop and turn grow all skip under reduced motion", () => {
   const source = readFileSync(path.join(repoRoot, "components/table/hand.tsx"), "utf8");
   assert.deepEqual(ungatedAnimationBlocks(source), []);
 });
