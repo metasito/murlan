@@ -1,7 +1,13 @@
 // tests/ciVerdict.test.ts
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
-import { decideVerdict, runForHead, runListArgs } from "../lib/ticketPipeline/ciVerdict.ts";
+import {
+  decideVerdict,
+  ghExecOptions,
+  runForHead,
+  runListArgs,
+  stripLogPrefix,
+} from "../lib/ticketPipeline/ciVerdict.ts";
 
 const done = (conclusion: string | null) => ({ databaseId: 7, conclusion, status: "completed" });
 
@@ -96,6 +102,34 @@ describe("reading ci.yml's verdict", () => {
   test("the run query reports each run's head, so a stale one can be told apart", () => {
     const args = runListArgs("metasito/murlan", "agent/1-x");
     assert.match(args[args.indexOf("--json") + 1], /headSha/);
+  });
+
+  // `gh run view --log-failed` for a browser-test job runs to several megabytes. Node's default
+  // 1MB buffer turned that into ENOBUFS, which the catch reported to the fix agent as
+  // "(could not read the failed log)" — #200's fix round then spent 76 minutes reproducing a
+  // failure CI had already described in full.
+  test("gh is given a buffer big enough for a failed job's log", () => {
+    const { maxBuffer } = ghExecOptions();
+    assert.ok(
+      typeof maxBuffer === "number" && maxBuffer > 1024 * 1024,
+      `maxBuffer is ${maxBuffer}; Node's 1MB default is smaller than any real CI log`
+    );
+  });
+
+  describe("the failed log a fix round is handed", () => {
+    const real =
+      "Browser tests	Browser tests	2026-08-26T02:24:03.9111584Z     Error: clipped at the cap";
+
+    test("loses its job, step and timestamp prefix", () => {
+      assert.equal(stripLogPrefix(real), "    Error: clipped at the cap");
+    });
+
+    // The strip must not eat content: a line that never carried the prefix is not one to trim.
+    test("leaves a line without the prefix untouched", () => {
+      for (const line of ["", "    at Object.<anonymous>", "Error: plain", "a	b	c"]) {
+        assert.equal(stripLogPrefix(line), line);
+      }
+    });
   });
 
   test("cancelled and timed_out are not passes", () => {
