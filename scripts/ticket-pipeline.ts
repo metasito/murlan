@@ -122,7 +122,7 @@ const CHECKS_NOTE =
  * `execFileSync` hands argv straight to the process with no shell in between, so none of this
  * needs quoting or a scratch file to carry it.
  */
-function implementPrompt(ticket: Ticket): string {
+function implementPrompt(ticket: Ticket, commitsAlready: number): string {
   return [
     "/mattpocock-skills:implement",
     "",
@@ -131,6 +131,14 @@ function implementPrompt(ticket: Ticket): string {
     "only tell you whether you broke something. No stubs, no deferring a part the ticket asked for,",
     "no test that asserts around the part that was hard.",
     "",
+    // Commits are not completion, so the runner does not read them as any. An earlier run may have
+    // stopped anywhere: finished, half-finished, or down a path worth abandoning.
+    commitsAlready > 0
+      ? `This branch already carries ${commitsAlready} commit(s) from an earlier run. Read \`git log ` +
+        "-p origin/main..HEAD` before anything else and judge it against the ticket yourself: " +
+        "finish what is unfinished, fix what is wrong, and leave alone what is already right. If " +
+        "the ticket is genuinely complete, say so and commit nothing.\n"
+      : "",
     "Write down the ticket's Definition of done as a checklist first and treat it as the contract.",
     "Say in your summary which boxes you closed and name any you did not, with why — an honest gap",
     "is worth more than a green report.",
@@ -358,21 +366,13 @@ function work(ticket: Ticket, branch: string, state: RunState): void {
   bash("git fetch origin --quiet", { fatal: false });
 
   const worktree = standUpWorktree(ticket, branch, state);
-  const resuming = commitsAhead(worktree) > 0;
 
-  let evidence = "";
-  if (resuming) {
-    say(`resuming: ${commitsAhead(worktree)} commit(s) already on ${branch}, so implement is done`);
-  } else {
-    evidence = stage("implement", implementPrompt(ticket), "sonnet", "high", worktree);
-    commitLeftovers(worktree, `Implement #${ticket.number}`);
-    if (commitsAhead(worktree) === 0) throw new Stop("the implement agent committed nothing");
-  }
+  const evidence = stage("implement", implementPrompt(ticket, commitsAhead(worktree)), "sonnet", "high", worktree);
+  commitLeftovers(worktree, `Implement #${ticket.number}`);
+  if (commitsAhead(worktree) === 0) throw new Stop("nothing is committed on the branch");
 
-  if (!reviewedAlready(worktree)) {
-    stage("review", reviewPrompt(ticket, evidence), "opus", "max", worktree);
-    commitLeftovers(worktree, REVIEW_MARK);
-  }
+  stage("review", reviewPrompt(ticket, evidence), "opus", "max", worktree);
+  commitLeftovers(worktree, "Apply review findings");
 
   const prNumber = publish(ticket, branch, worktree, state, evidence);
   driveToGreen(branch, prNumber, worktree);
@@ -380,21 +380,12 @@ function work(ticket: Ticket, branch: string, state: RunState): void {
 }
 
 /**
- * The commit subject the review stage leaves behind when it changes something, and the marker a
- * resumed run reads to know the diff has been read once already.
- */
-const REVIEW_MARK = "Apply review findings";
-
-function reviewedAlready(worktree: string): boolean {
-  return git(worktree, ["log", "--format=%s", "origin/main..HEAD"]).includes(REVIEW_MARK);
-}
-
-/**
  * A worktree on the ticket's branch, whether or not the branch already exists.
  *
- * Picking up a branch that is already there is what stops a stopped run from being a wasted one:
- * #278 was implemented in 26 minutes and $5.41, and there was no way back to it afterwards. A
- * ticket whose branch carries commits skips straight to the stage that has not run yet.
+ * Reusing a branch that is already there is what stops a stopped run from being a wasted one:
+ * #278 was implemented in 26 minutes and $5.41 and there was no way back to it afterwards. What
+ * is left of that work, and whether any of it still needs doing, is the implement stage's reading
+ * of the ticket — not something a commit count can answer.
  */
 function standUpWorktree(ticket: Ticket, branch: string, state: RunState): string {
   const relative = worktreePathFor(ticket.number);
