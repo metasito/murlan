@@ -14,6 +14,7 @@
  * Nothing an agent says about what it did is believed. Git is asked instead.
  */
 import { execFileSync } from "node:child_process";
+import { rmSync } from "node:fs";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 
@@ -215,7 +216,34 @@ function stage(name: string, prompt: string, model: "sonnet" | "opus", effort: E
   return result.text;
 }
 
-function pickTicket(): Ticket | null {
+interface IssueDetail {
+  number: number;
+  title: string;
+  state: string;
+  body: string | null;
+  labels: { name: string }[];
+  comments: { author: { login: string }; body: string; createdAt: string }[];
+}
+
+function readIssue(number: number): Ticket {
+  const detail = ghJson<IssueDetail>([
+    "issue", "view", String(number), "--repo", REPO,
+    "--json", "number,title,state,body,labels,comments",
+  ]);
+  if (detail.state !== "OPEN") throw new Stop(`#${number} is ${detail.state.toLowerCase()}`);
+  return {
+    number: detail.number,
+    title: detail.title,
+    body: detail.body ?? "",
+    comments: detail.comments
+      .map((c) => `### ${c.author.login} — ${c.createdAt}\n\n${c.body}`)
+      .join("\n\n"),
+  };
+}
+
+/** With no number, the queue picks; with one, that ticket, so a run can be aimed at a known case. */
+function pickTicket(forced?: number): Ticket | null {
+  if (forced) return readIssue(forced);
   const issues = ghJson<{ number: number; title: string; labels: { name: string }[] }[]>([
     "issue", "list", "--repo", REPO, "--state", "open", "--limit", "200", "--json", "number,title,labels",
   ]);
@@ -224,17 +252,18 @@ function pickTicket(): Ticket | null {
     say(`nothing to implement: the queue routes to \`${route.skill}\``);
     return null;
   }
-  const detail = ghJson<{ body: string | null; comments: { author: { login: string }; body: string; createdAt: string }[] }>([
-    "issue", "view", String(route.ticket.number), "--repo", REPO, "--json", "body,comments",
-  ]);
-  return {
-    number: route.ticket.number,
-    title: route.ticket.title,
-    body: detail.body ?? "",
-    comments: detail.comments
-      .map((c) => `### ${c.author.login} — ${c.createdAt}\n\n${c.body}`)
-      .join("\n\n"),
-  };
+  return readIssue(route.ticket.number);
+}
+
+/** `--ticket 348`, or nothing. Anything else is a typo worth stopping on, not a queue run. */
+export function forcedTicket(argv: string[]): number | undefined {
+  const at = argv.indexOf("--ticket");
+  if (at === -1) return undefined;
+  const value = Number(argv[at + 1]);
+  if (!Number.isInteger(value) || value <= 0) {
+    throw new Error(`--ticket needs an issue number, got ${JSON.stringify(argv[at + 1])}`);
+  }
+  return value;
 }
 
 export function branchNameFor(ticket: { number: number; title: string }): string {
@@ -361,12 +390,24 @@ function teardown(ticket: Ticket, state: RunState, why: string): void {
   })) {
     bash(command, { fatal: false });
   }
+
+  // `git worktree remove` unregisters first and deletes second, and on Windows the delete loses to
+  // whatever still holds a handle on the directory a stage just exited. Git reports the failure and
+  // the registration is already gone, so nothing tries again: thirteen orphaned directories under
+  // `.worktrees/` were made exactly this way. `rmSync`'s retries are for this case.
+  if (state.worktreePath) {
+    try {
+      rmSync(path.resolve(state.worktreePath), { recursive: true, force: true, maxRetries: 10, retryDelay: 500 });
+    } catch (error) {
+      say(`the worktree directory outlived the run: ${(error as Error).message}`);
+    }
+  }
 }
 
 function main(): number {
   execFileSync("node", ["scripts/preflight.mjs"], { stdio: "inherit" });
 
-  const ticket = pickTicket();
+  const ticket = pickTicket(forcedTicket(process.argv.slice(2)));
   if (!ticket) return 0;
   say(`#${ticket.number} — ${ticket.title}`);
 

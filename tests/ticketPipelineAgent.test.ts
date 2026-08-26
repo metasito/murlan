@@ -3,7 +3,7 @@ import { test, describe } from "node:test";
 import assert from "node:assert/strict";
 
 import { buildAgentArgs, parseAgentOutput } from "../lib/ticketPipeline/agent.ts";
-import { branchNameFor } from "../scripts/ticket-pipeline.ts";
+import { branchNameFor, forcedTicket } from "../scripts/ticket-pipeline.ts";
 
 const SPEC = { prompt: "/code-review high --fix main", model: "opus", effort: "max", cwd: "/wt" } as const;
 
@@ -70,5 +70,22 @@ describe("the branch a ticket is worked on", () => {
 
   test("stays a legal ref for a title that is nothing but punctuation", () => {
     assert.equal(branchNameFor({ number: 7, title: "!!! ???" }), "agent/7-ticket");
+  });
+});
+
+describe("aiming a run at one ticket", () => {
+  test("no flag means the queue picks", () => {
+    assert.equal(forcedTicket([]), undefined);
+  });
+
+  test("--ticket takes the number after it", () => {
+    assert.equal(forcedTicket(["--ticket", "348"]), 348);
+  });
+
+  // A typo here would silently run the queue's own pick instead of the ticket asked for, which is
+  // a claim on someone else's work.
+  test("a number that is not one stops the run", () => {
+    assert.throws(() => forcedTicket(["--ticket"]), /needs an issue number/);
+    assert.throws(() => forcedTicket(["--ticket", "main"]), /needs an issue number/);
   });
 });
