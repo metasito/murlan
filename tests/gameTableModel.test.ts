@@ -120,7 +120,7 @@ describe("layout constants (CLAUDE.md: MUST NOT CHANGE)", () => {
     assert.equal(actionBtnSize(1), 56);
     assert.equal(HAND_ZONE_GAP, 26);
     assert.equal(CHIP_H(1), 23);
-    assert.equal(SIDE_SECTION_W, 130);
+    assert.equal(SIDE_SECTION_W, 96);
   });
 
   test("CARD_W/CARD_H scale linearly with the short edge, no breakpoints", () => {

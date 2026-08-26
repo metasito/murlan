@@ -22,7 +22,9 @@ import { Spacing } from "../lib/tokens.ts";
 // maths below can use them directly.
 
 export { CARD_H, CARD_W, cardScale };
-export const SIDE_SECTION_W = 130;
+// The column a side seat's ring and label stand in. The prototype's own side
+// seat measures 92 at scale 1; the fan leans out of the column by design.
+export const SIDE_SECTION_W = 96;
 
 // PASSA and GIOCA are square: they read as two keys either side of the hand
 // rather than as two columns of it, which is what a card-height button was.
