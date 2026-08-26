@@ -22,6 +22,14 @@
  * that is the floor: this script must never be the reason unpushed work is
  * lost.
  *
+ * A separate, unconditional pass removes any `.worktrees/` directory
+ * `git worktree list` has no registration for at all - `git worktree
+ * remove` unregisters before it deletes, and on Windows the delete can lose
+ * to a file handle a just-exited process still holds, leaving the
+ * registration gone and the directory behind (#377). There is no branch or
+ * pull request left to check for one of these, so unlike `merged`/`gone`
+ * above, non-empty is not a reason to keep it.
+ *
  * Usage: node scripts/prune-worktrees.mjs [--dry-run]
  *        npm run worktrees:prune -- --dry-run
  */
@@ -205,6 +213,43 @@ function samePath(a, b) {
   return process.platform === "win32" ? ra.toLowerCase() === rb.toLowerCase() : ra === rb;
 }
 
+/**
+ * `.worktrees/` mirrors `lib/ticketPipeline/worktree.ts`'s `WORKTREE_DIR` - it is not imported
+ * here because that module is TypeScript and this script runs under plain `node`.
+ */
+const WORKTREE_DIR = ".worktrees";
+
+/** [] both when the directory is empty and when it does not exist at all. */
+export function listWorktreeDirNames(worktreesDir) {
+  try {
+    return fs
+      .readdirSync(worktreesDir, { withFileTypes: true })
+      .filter((entry) => entry.isDirectory())
+      .map((entry) => entry.name);
+  } catch (err) {
+    if (err.code === "ENOENT") return [];
+    throw err;
+  }
+}
+
+/**
+ * `.worktrees/` directory names `git worktree list` registers no path for - orphaned by
+ * `git worktree remove` unregistering before it deletes, then losing the delete to a
+ * lingering file handle (see the module comment at the top of this file).
+ * @param {string[]} dirNames - directory names read from `.worktrees/`
+ * @param {string[]} registeredPaths - every path `git worktree list` reported
+ * @returns {string[]}
+ */
+export function findOrphanedWorktreeDirs(dirNames, registeredPaths) {
+  const registeredNames = new Set(
+    registeredPaths.map((p) => (process.platform === "win32" ? path.basename(p).toLowerCase() : path.basename(p))),
+  );
+  return dirNames.filter((name) => {
+    const key = process.platform === "win32" ? name.toLowerCase() : name;
+    return !registeredNames.has(key);
+  });
+}
+
 const invokedDirectly = isInvokedDirectly(process.argv[1], import.meta.url);
 
 if (invokedDirectly) {
@@ -221,55 +266,81 @@ if (invokedDirectly) {
 
   console.log(`Primary: ${primary?.path ?? "(none found)"}`);
 
-  if (candidates.length === 0) {
-    console.log("No other worktree to classify (aside from the one this is running from).");
-    process.exit(0);
-  }
-
-  try {
-    execFileSync("git", ["fetch", "origin", "main", "--quiet"], { stdio: "ignore" });
-  } catch (err) {
-    console.error(`git fetch origin main failed (${err.message}); merge checks may read stale.`);
-  }
-
   let removed = 0;
   let kept = 0;
-  for (const entry of candidates) {
-    let result;
-    try {
-      result = classifyEntry(entry);
-    } catch (err) {
-      // A worktree this run cannot inspect - gh unauthenticated, the
-      // network down, git in a state the checks above didn't anticipate -
-      // is never removed on a guess. Same floor as uncommitted changes:
-      // unreadable stays put.
-      console.error(`SKIP\t${entry.path}\tcould not classify: ${err.message}`);
-      kept++;
-      continue;
-    }
-    console.log(`${result.status.toUpperCase()}\t${entry.path}\t${entry.branch ?? "(detached)"}\t${result.reason}`);
 
-    if (result.status !== "merged" && result.status !== "gone") {
-      kept++;
-      continue;
+  if (candidates.length === 0) {
+    console.log("No other worktree to classify (aside from the one this is running from).");
+  } else {
+    try {
+      execFileSync("git", ["fetch", "origin", "main", "--quiet"], { stdio: "ignore" });
+    } catch (err) {
+      console.error(`git fetch origin main failed (${err.message}); merge checks may read stale.`);
     }
+
+    for (const entry of candidates) {
+      let result;
+      try {
+        result = classifyEntry(entry);
+      } catch (err) {
+        // A worktree this run cannot inspect - gh unauthenticated, the
+        // network down, git in a state the checks above didn't anticipate -
+        // is never removed on a guess. Same floor as uncommitted changes:
+        // unreadable stays put.
+        console.error(`SKIP\t${entry.path}\tcould not classify: ${err.message}`);
+        kept++;
+        continue;
+      }
+      console.log(`${result.status.toUpperCase()}\t${entry.path}\t${entry.branch ?? "(detached)"}\t${result.reason}`);
+
+      if (result.status !== "merged" && result.status !== "gone") {
+        kept++;
+        continue;
+      }
+      if (dryRun) {
+        console.log(`  (dry run - would remove ${entry.path})`);
+        continue;
+      }
+      try {
+        execFileSync("git", ["worktree", "remove", entry.path], { stdio: "inherit" });
+        console.log(`  removed ${entry.path}`);
+        removed++;
+      } catch (err) {
+        console.error(`  failed to remove ${entry.path}: ${err.message}`);
+        kept++;
+      }
+    }
+  }
+
+  // A directory `git worktree list` has no registration for at all - never a `candidates`
+  // entry, so it needs its own pass regardless of whether any were found above.
+  const orphanNames = findOrphanedWorktreeDirs(
+    listWorktreeDirNames(WORKTREE_DIR),
+    entries.map((e) => e.path),
+  );
+  let orphansRemoved = 0;
+  for (const name of orphanNames) {
+    const dirPath = path.join(WORKTREE_DIR, name);
+    console.log(`ORPHAN\t${dirPath}\tno registration in git worktree list`);
     if (dryRun) {
-      console.log(`  (dry run - would remove ${entry.path})`);
+      console.log(`  (dry run - would remove ${dirPath})`);
       continue;
     }
     try {
-      execFileSync("git", ["worktree", "remove", entry.path], { stdio: "inherit" });
-      console.log(`  removed ${entry.path}`);
-      removed++;
+      fs.rmSync(dirPath, { recursive: true, force: true });
+      console.log(`  removed ${dirPath}`);
+      orphansRemoved++;
     } catch (err) {
-      console.error(`  failed to remove ${entry.path}: ${err.message}`);
+      console.error(`  failed to remove ${dirPath}: ${err.message}`);
       kept++;
     }
   }
 
+  const total = candidates.length + orphanNames.length;
+  const totalRemoved = removed + orphansRemoved;
   console.log(
     dryRun
-      ? `Dry run: ${candidates.length - kept} of ${candidates.length} would be removed, ${kept} kept.`
-      : `Removed ${removed} of ${candidates.length}; kept ${kept}.`,
+      ? `Dry run: ${total - kept} of ${total} would be removed, ${kept} kept.`
+      : `Removed ${totalRemoved} of ${total}; kept ${kept}.`,
   );
 }
