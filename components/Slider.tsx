@@ -16,6 +16,9 @@ const TRACK_H = 4;
 // The floor is physical size, not a fraction of the track — same rule as the
 // control rail's knobs (components/cardFaceModel.ts).
 const THUMB = physicalTouchTarget(1);
+/** The range the 0..1 position is announced over: `accessibilityValue` holds
+ * whole numbers only (lib/a11y.tsx). */
+const PERCENT = 100;
 /** One VoiceOver/keyboard press worth of adjustment. */
 const STEP = 0.05;
 /** A slider's keys are both axes, not just the horizontal pair. */
@@ -146,7 +149,7 @@ export function Slider({
         accessible
         accessibilityLabel={a11yLabel}
         {...a11yState({ role: "adjustable", disabled })}
-        {...a11yValue({ min: 0, max: 1, now: value, text: valueText })}
+        {...a11yValue({ min: 0, max: PERCENT, now: Math.round(value * PERCENT), text: valueText })}
         accessibilityActions={[{ name: "increment" }, { name: "decrement" }]}
         onAccessibilityAction={(e) => {
           if (e.nativeEvent.actionName === "increment") step(STEP);

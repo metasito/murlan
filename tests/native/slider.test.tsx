@@ -52,7 +52,16 @@ describe('Slider', () => {
     // children carrying the label are hidden.
     expect(control.props.accessible).toBe(true);
     expect(control.props.accessibilityRole).toBe('adjustable');
-    expect(control.props.accessibilityValue).toEqual({ min: 0, max: 1, now: 0.65, text: '65%' });
+    expect(control.props.accessibilityValue).toEqual({ min: 0, max: 100, now: 65, text: '65%' });
+  });
+
+  // The spoken value is the label, not the number, so the range it is reported
+  // over must not change a word of what a screen reader says.
+  it('still speaks the percentage it always did', async () => {
+    await render(
+      <Slider value={0.42} onValueChange={() => {}} a11yLabel="Music volume" valueText="42%" />
+    );
+    expect(screen.getByLabelText('Music volume').props.accessibilityValue.text).toBe('42%');
   });
 
   it('declares the increment/decrement actions VoiceOver drives an adjustable control with', async () => {
@@ -66,9 +75,9 @@ describe('Slider', () => {
   it('increment/decrement step the value and clamp at the ends', async () => {
     await render(<Probe initial={0.98} />);
     await increment();
-    expect(screen.getByLabelText('Sound effect volume').props.accessibilityValue.now).toBe(1);
+    expect(screen.getByLabelText('Sound effect volume').props.accessibilityValue.now).toBe(100);
     await increment();
-    expect(screen.getByLabelText('Sound effect volume').props.accessibilityValue.now).toBe(1);
+    expect(screen.getByLabelText('Sound effect volume').props.accessibilityValue.now).toBe(100);
   });
 
   it('decrement never drops below zero', async () => {
@@ -81,7 +90,7 @@ describe('Slider', () => {
 
   it('a stored value from an old build renders at its true position, not snapped to a preset', async () => {
     await render(<Slider value={0.42} onValueChange={() => {}} a11yLabel="Music volume" valueText="42%" />);
-    expect(screen.getByLabelText('Music volume').props.accessibilityValue.now).toBe(0.42);
+    expect(screen.getByLabelText('Music volume').props.accessibilityValue.now).toBe(42);
   });
 
   it('reports itself disabled and ignores the accessibility action', async () => {

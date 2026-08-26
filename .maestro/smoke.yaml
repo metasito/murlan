@@ -84,3 +84,14 @@ env:
 - assertVisible: "Offline"
 - assertVisible: "Online"
 - assertVisible: "Il mio profilo"
+# The settings modal is where #389 crashed: Fabric converts accessibilityValue
+# to int while mounting the host view, and the music slider's default volume is
+# a fraction — so the screen died on open, on device, against a green CI.
+# Opening it is the only way to exercise that mount for real.
+#
+# Tapped and asserted by accessibility label and by untransformed copy: the
+# modal's own title is uppercased by a style, which is not what the tree holds.
+- tapOn: "Impostazioni"
+- assertVisible: "Volume"
+- tapOn: "Chiudi impostazioni"
+- assertVisible: "Offline"

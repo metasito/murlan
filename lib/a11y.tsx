@@ -39,7 +39,17 @@ export function a11yState({ role, ...state }: StateProps): AccessibilityProps {
   return props;
 }
 
-/** A continuous control's current position, on both React Native and the DOM. */
+/**
+ * A continuous control's current position, on both React Native and the DOM.
+ *
+ * `min`, `max` and `now` must be whole numbers. That is Fabric's constraint
+ * rather than any control's: it declares them `int`
+ * (ReactCommon/react/renderer/components/view/AccessibilityPrimitives.h:127)
+ * and converts them in C++ while mounting the view. A control whose position
+ * is a fraction reports it over a wider range — percent, say — rather than
+ * rounding against a narrow one, which would collapse it to three values.
+ * `tests/native/setup.ts` is what enforces this.
+ */
 export function a11yValue(v: {
   min: number;
   max: number;
