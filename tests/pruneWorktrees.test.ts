@@ -11,6 +11,8 @@ import {
   parseWorktreeList,
   hasUncommittedChanges,
   isInvokedDirectly,
+  listWorktreeDirNames,
+  findOrphanedWorktreeDirs,
 } from "../scripts/prune-worktrees.mjs";
 
 function baseState(overrides = {}) {
@@ -205,6 +207,64 @@ describe("hasUncommittedChanges against a real worktree", () => {
   test("a worktree whose directory has already vanished throws rather than reading as clean", () => {
     const missing = path.join(os.tmpdir(), "prune-wt-does-not-exist-" + Date.now());
     assert.throws(() => hasUncommittedChanges(missing));
+  });
+});
+
+describe("listWorktreeDirNames", () => {
+  test("returns an empty list when .worktrees does not exist at all", () => {
+    const missing = path.join(os.tmpdir(), "prune-wt-no-dir-" + Date.now());
+    assert.deepEqual(listWorktreeDirNames(missing), []);
+  });
+
+  test("lists only directories under it, not stray files", () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "prune-wt-dirs-"));
+    fs.mkdirSync(path.join(root, "agent-1"));
+    fs.mkdirSync(path.join(root, "agent-2"));
+    fs.writeFileSync(path.join(root, "stray-file.txt"), "not a worktree");
+
+    const names = listWorktreeDirNames(root).sort();
+
+    assert.deepEqual(names, ["agent-1", "agent-2"]);
+    fs.rmSync(root, { recursive: true, force: true });
+  });
+});
+
+describe("findOrphanedWorktreeDirs", () => {
+  test("a directory with no registered path pointing at it is orphaned", () => {
+    const result = findOrphanedWorktreeDirs(
+      ["agent-377", "agent-12"],
+      ["C:/Users/roton/murlan", "C:/Users/roton/murlan/.worktrees/agent-12"],
+    );
+    assert.deepEqual(result, ["agent-377"]);
+  });
+
+  test("a directory name present among the registered paths is not orphaned", () => {
+    const result = findOrphanedWorktreeDirs(
+      ["agent-12"],
+      ["C:/Users/roton/murlan/.worktrees/agent-12"],
+    );
+    assert.deepEqual(result, []);
+  });
+
+  test("no directories under .worktrees/ means no orphans, regardless of what is registered", () => {
+    const result = findOrphanedWorktreeDirs([], ["C:/Users/roton/murlan"]);
+    assert.deepEqual(result, []);
+  });
+
+  test("a registered path with no matching directory name does not itself produce an orphan", () => {
+    const result = findOrphanedWorktreeDirs(
+      ["agent-12"],
+      ["C:/Users/roton/murlan/.worktrees/agent-12", "C:/Users/roton/murlan/.worktrees/agent-99"],
+    );
+    assert.deepEqual(result, []);
+  });
+
+  test("case-only difference matches on Windows, and is orphaned everywhere else", () => {
+    const result = findOrphanedWorktreeDirs(
+      ["Agent-12"],
+      ["C:/Users/roton/murlan/.worktrees/agent-12"],
+    );
+    assert.deepEqual(result, process.platform === "win32" ? [] : ["Agent-12"]);
   });
 });
 
