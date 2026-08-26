@@ -55,13 +55,32 @@ describe("the design-first gate", () => {
     assert.match(result.reason, /7 files/);
   });
 
-  test("escalates a ticket touching package.json with no recorded decision", () => {
+  test("escalates a ticket touching package.json to weigh a dependency", () => {
     const result = needsDesignFirstGate({
       filesTouched: ["components/SettingsModal.tsx", "package.json"],
-      body: "Replace the volume presets with a slider.",
+      body: "No slider is installed, and adding that dependency is not obviously right.",
     });
     assert.equal(result.escalate, true);
     assert.match(result.reason, /dependenc/);
+  });
+
+  // package.json also holds scripts, engines and config. #278 adds one npm script and installs
+  // nothing, and the file-path trigger alone sent it to the owner for a decision it had made.
+  test("does not escalate a package.json edit that installs nothing", () => {
+    const result = needsDesignFirstGate({
+      filesTouched: ["tsconfig.strictIndexed.json", "package.json"],
+      body: "An npm script that runs it, and a CI step invoking that script.",
+    });
+    assert.equal(result.escalate, false, result.reason);
+  });
+
+  // Dependency talk with no manifest in sight is somebody naming a package they already have.
+  test("does not escalate dependency language without package.json", () => {
+    const result = needsDesignFirstGate({
+      filesTouched: ["components/Slider.tsx"],
+      body: "Built on the already-installed dependency, so nothing new is added.",
+    });
+    assert.equal(result.escalate, false, result.reason);
   });
 
   test("does not escalate a dependency change with a recorded decision", () => {
