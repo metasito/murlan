@@ -60,10 +60,12 @@ for (const vp of VIEWPORTS) {
     // `role=dialog` is react-native-web's own full-screen ModalContent, so a
     // box read off that measures the viewport and agrees with anything.
     expect.soft(panel.height, "the modal panel has no height at all").toBeGreaterThan(100);
+    // The card is `width: "90%"`, so a box as wide as the window is the overlay.
+    // Width, not height: an overflowing panel is the defect, not a bad locator.
     expect.soft(
-      panel.height,
+      panel.width,
       "the box measured is the full-screen overlay, not the card"
-    ).toBeLessThan(vp.height);
+    ).toBeLessThan(vp.width);
 
     expect.soft(
       Math.round(panel.y),
