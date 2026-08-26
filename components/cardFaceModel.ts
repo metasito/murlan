@@ -77,6 +77,26 @@ export function stockLipHeight(h: number): number {
   return h * STOCK_LIP_RATIO;
 }
 
+// ─── Card back stock ────────────────────────────────────────────────────────
+//
+// The back's own corner radius is `cardRadius` above, fed the back's own
+// width — CARD_BACK_W/H is a different aspect ratio than the face, so the
+// ratio has to derive from that width rather than reuse the face's radius.
+// Only the lattice panel drawn inside it needs a ratio of its own, authored
+// at 2x table scale like the rest of the card and halved here.
+const BACK_LATTICE_INSET_RATIO = 1.5 / BACK_H;
+const BACK_LATTICE_RADIUS_RATIO = 1.5 / BACK_H;
+
+/** How far the lattice panel sits inside the back's own cut edge. */
+export function cardBackLatticeInset(h: number): number {
+  return h * BACK_LATTICE_INSET_RATIO;
+}
+
+/** Corner radius of the lattice panel. */
+export function cardBackLatticeRadius(h: number): number {
+  return h * BACK_LATTICE_RADIUS_RATIO;
+}
+
 /**
  * A touch target's floor is physical size — never `TOUCH_TARGET_MIN * s`.
  * The control rail's knobs are sized by it (`knobSize`, components/

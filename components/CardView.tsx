@@ -17,8 +17,8 @@ import {
   FontSize,
   Lantern,
   Motion,
-  Radius,
   Shadow,
+  withAlpha,
 } from "@/lib/theme";
 import { useCardBack } from "@/lib/cosmetics";
 import { usePrefersReducedMotion } from "@/lib/accessibility";
@@ -30,6 +30,8 @@ import {
   CARD_BACK_W,
   CARD_H,
   CARD_W,
+  cardBackLatticeInset,
+  cardBackLatticeRadius,
   cardRadius,
   COURT_RANKS,
   courtArtRect,
@@ -437,14 +439,26 @@ function OrnateCardBack({
   const r = Math.min(w, h) * 0.19;
   const ink = back.ink;
   const field = back.field;
+  // The cut edge itself is the enclosing View's own border (styles.cardBack);
+  // this is the printed panel just inside it, echoing the face's PrintBorder.
+  const panelInset = cardBackLatticeInset(h);
+  const panelRadius = cardBackLatticeRadius(h);
 
   return (
     <Svg width={w} height={h} style={StyleSheet.absoluteFill} pointerEvents="none">
       <Path d={getLattice(w, h, back.lattice)} stroke={ink} strokeOpacity={0.13} strokeWidth={0.6} fill="none" />
-      <Rect x={2.5} y={2.5} width={w - 5} height={h - 5} rx={5} ry={5}
-        fill="none" stroke={ink} strokeWidth={1.4} strokeOpacity={0.85} />
-      <Rect x={5.5} y={5.5} width={w - 11} height={h - 11} rx={3} ry={3}
-        fill="none" stroke={ink} strokeWidth={0.7} strokeOpacity={0.35} />
+      <Rect
+        x={panelInset}
+        y={panelInset}
+        width={w - panelInset * 2}
+        height={h - panelInset * 2}
+        rx={panelRadius}
+        ry={panelRadius}
+        fill="none"
+        stroke={ink}
+        strokeWidth={0.7}
+        strokeOpacity={0.34}
+      />
       <Path d={starPath(cx, cy, r, back.starPoints)} fill={ink} fillOpacity={0.55} />
       <Circle cx={cx} cy={cy} r={r * 0.42} fill={field[4]} />
       <Circle cx={cx} cy={cy} r={r * 0.42} fill="none" stroke={ink} strokeOpacity={0.7} strokeWidth={0.8} />
@@ -558,9 +572,13 @@ function CardViewBase({
   const h = faceDown ? CARD_BACK_H(scale) : CARD_H(scale);
 
   if (faceDown) {
+    const backStyle = {
+      borderRadius: cardRadius(w),
+      borderColor: withAlpha(back.ink, 0.32),
+    };
     return (
       <Animated.View style={[animStyle, style]}>
-        <View style={[styles.card, { width: w, height: h }, styles.cardBack]}>
+        <View style={[styles.card, { width: w, height: h }, styles.cardBack, backStyle]}>
           <LinearGradient
             colors={[backField[1], backField[2], backField[4]]}
             start={{ x: 0.15, y: 0 }}
@@ -777,10 +795,8 @@ const styles = StyleSheet.create({
   },
   cardBack: {
     backgroundColor: Colors.felt,
-    borderColor: Colors.goldDark,
     borderWidth: 1,
-    borderRadius: Radius.sm,
-    ...Shadow.card,
+    ...Shadow.cardBack,
   },
   // The index characters sit in the drawn index column: the suit mark below
   // them comes from the SVG layer, so the two must agree on INDEX_X.

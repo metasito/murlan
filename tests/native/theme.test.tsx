@@ -10,7 +10,7 @@ import { makeLayeredShadow, Shadow } from '@/lib/theme';
 // shadows at once, the native shadow props carry exactly one, and RN 0.76
 // brought `boxShadow` — which takes a list — to native under the New
 // Architecture this app enables.
-const LAYERED = ['card', 'cardLifted'];
+const LAYERED = ['card', 'cardLifted', 'cardBack'];
 
 /** The shadows in a boxShadow list, as `[offsetY, radius, opacity]` each. */
 function layersOf(key: string): { offsetY: number; radius: number; opacity: number }[] {

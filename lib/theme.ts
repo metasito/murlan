@@ -15,6 +15,16 @@ function hexToRgb(hex: string): { r: number; g: number; b: number } {
   };
 }
 
+/**
+ * A hex colour at reduced opacity, as the `rgba()` string a View style prop
+ * takes. SVG strokes/fills carry their own separate opacity attribute and
+ * never need this — it exists for the props that don't.
+ */
+export function withAlpha(hex: string, alpha: number): string {
+  const { r, g, b } = hexToRgb(hex);
+  return `rgba(${r},${g},${b},${alpha})`;
+}
+
 // RN Web needs boxShadow; native needs the shadow props. Neither accepts the other.
 // Exported because the table's shadows scale with the card, so they cannot be
 // frozen into the `Shadow` map below.
@@ -110,5 +120,13 @@ export const Shadow = {
       { color: '#000000', offsetY: 6, opacity: 0.3, radius: 13 },
     ],
     14
+  ),
+  /** A card back — an opponent's fan resting on the felt, same contact+cast split as the face. */
+  cardBack: makeLayeredShadow(
+    [
+      { color: '#000000', offsetY: 0.5, opacity: 0.7, radius: 1 },
+      { color: '#000000', offsetY: 3, opacity: 0.36, radius: 6.5 },
+    ],
+    5
   ),
 };
