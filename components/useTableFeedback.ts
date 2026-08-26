@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { ViewStyle } from "react-native";
 import {
   useAnimatedStyle,
@@ -32,6 +32,19 @@ import { Motion } from "@/lib/theme";
 const BTN_REJECT_TRAVEL = 3;
 const BTN_REJECT_LEG_MS = 40;
 
+// The bomb's "kick": the whole table jolting off the impact, verbatim off
+// the prototype's own `kick` keyframe — a punch-in scale held briefly, then
+// a decaying series of jolts back to rest. Values are `* scale`; scale itself
+// never is. Segment lengths are the gaps between the keyframe's own percents
+// (0, 9, 16, 26, 36, 48, 60, 74, 100 of 1600ms).
+const KICK_MS = 1600;
+const KICK_EASING = Easing.bezier(0.33, 0.09, 0.2, 0.98);
+const KICK_SEG = { toNine: 144, toSixteen: 112, toTwentySix: 160, toThirtySix: 160, toFortyEight: 192, toSixty: 192, toSeventyFour: 224, toEnd: 416 };
+const KICK_SCALE_PEAK = 1.012;
+const KICK_SCALE_SETTLE = 1.006;
+const KICK_X = [-9, 9, -6, 5, -3, 2, 0];
+const KICK_Y = [5, -5, -3, 3, -1, 1, 0];
+
 interface TableFeedbackState {
   isMyTurn: boolean;
   isFinished: boolean;
@@ -45,18 +58,30 @@ interface TableFeedbackState {
   gameOver: boolean;
   rankings: string[];
   viewerId: string | undefined;
+  /** The table's own scale — the kick's travel and the burst's size read off it. */
+  scale: number;
 }
 
 interface TableFeedback {
   giocaFlashStyle: AnimatedStyle<ViewStyle>;
   passaFlashStyle: AnimatedStyle<ViewStyle>;
   giocaGlowStyle: AnimatedStyle<ViewStyle>;
-  shakeStyle: AnimatedStyle<ViewStyle>;
+  kickStyle: AnimatedStyle<ViewStyle>;
   /** Driven by `rejectPlay`; GiocaButton folds it into its own press style. */
   giocaRejectX: SharedValue<number>;
   /** The thrown card has landed. Timing it against the flight is the caller's. */
   playImpact: (heavy: boolean) => void;
   rejectPlay: () => void;
+  /**
+   * Increments on every bomb impact — BombBurst (components/table/moments.tsx)
+   * re-fires its flare/wave/spark off the change, the same trigger-counter
+   * pattern PlayedPile's own `bounceTrigger` already uses.
+   */
+  boomTrigger: number;
+  /** Increments when a play empties a hand — Sweep and PlayedPile's `catchTrigger` read it the same way. */
+  flushTrigger: number;
+  /** Call once, at the same landing moment as `playImpact`, when that play emptied a hand. */
+  celebrateFlush: () => void;
 }
 
 export function useTableFeedback({
@@ -72,6 +97,7 @@ export function useTableFeedback({
   gameOver,
   rankings,
   viewerId,
+  scale,
 }: TableFeedbackState): TableFeedback {
   const reduceMotion = usePrefersReducedMotion();
   const prevMyTurnRef = useRef(false);
@@ -83,6 +109,13 @@ export function useTableFeedback({
   const prevRoundClosedRef = useRef(
     roundClosedWithWinner({ lastPlayedCombination, roundWinner })
   );
+  // Read fresh inside playImpact without putting `scale` in its own deps —
+  // GameTable's play effect lists playImpact as a dependency, and a table
+  // rotation/resize must not re-run it.
+  const scaleRef = useRef(scale);
+  useEffect(() => {
+    scaleRef.current = scale;
+  }, [scale]);
 
   // Nothing here scales: a fractional scale on a view containing text makes
   // React Native resample the already-rasterised glyphs, and PASSA/GIOCA read
@@ -94,8 +127,14 @@ export function useTableFeedback({
   const giocaFlashVal = useSharedValue(0);
   const passaFlashVal = useSharedValue(0);
   const giocaGlowVal = useSharedValue(0);
-  const shakeX = useSharedValue(0);
+  const kickX = useSharedValue(0);
+  const kickY = useSharedValue(0);
+  const kickScale = useSharedValue(1);
   const giocaRejectX = useSharedValue(0);
+  // BombBurst and Sweep own their animations; these just say "again" —
+  // PlayedPile's `bounceTrigger` is the same pattern.
+  const [boomTrigger, setBoomTrigger] = useState(0);
+  const [flushTrigger, setFlushTrigger] = useState(0);
 
   useEffect(() => {
     if (isMyTurn && !isFinished && !prevMyTurnRef.current) playYourTurn();
@@ -204,16 +243,22 @@ export function useTableFeedback({
     () => () => {
       cancelAnimation(giocaFlashVal);
       cancelAnimation(passaFlashVal);
-      cancelAnimation(shakeX);
+      cancelAnimation(kickX);
+      cancelAnimation(kickY);
+      cancelAnimation(kickScale);
       cancelAnimation(giocaRejectX);
     },
-    [giocaFlashVal, passaFlashVal, shakeX, giocaRejectX]
+    [giocaFlashVal, passaFlashVal, kickX, kickY, kickScale, giocaRejectX]
   );
 
   const giocaFlashStyle = useAnimatedStyle(() => ({ opacity: giocaFlashVal.value }));
   const passaFlashStyle = useAnimatedStyle(() => ({ opacity: passaFlashVal.value }));
-  const shakeStyle = useAnimatedStyle(() => ({
-    transform: [{ translateX: shakeX.value }],
+  const kickStyle = useAnimatedStyle(() => ({
+    transform: [
+      { translateX: kickX.value },
+      { translateY: kickY.value },
+      { scale: kickScale.value },
+    ],
   }));
   // Opacity only, on the childless sibling behind the button. A shadow written
   // per frame is main-thread paint the browser cannot composite.
@@ -227,22 +272,47 @@ export function useTableFeedback({
         // The biggest play in the game should not have to share the mix.
         duckMusicFor(1100);
         if (!reduceMotion) {
-          shakeX.value = withSequence(
-            withTiming(5, { duration: 45 }),
-            withTiming(-5, { duration: 45 }),
-            withTiming(4, { duration: 40 }),
-            withTiming(-4, { duration: 40 }),
-            withTiming(2, { duration: 35 }),
-            withTiming(-2, { duration: 35 }),
-            withTiming(0, { duration: 30 })
+          const s = scaleRef.current;
+          const e = KICK_EASING;
+          // x/y hold at 0 through the first two keyframes (0%, 9%) — folded
+          // into the first step's own duration rather than a separate no-op.
+          const holdMs = KICK_SEG.toNine + KICK_SEG.toSixteen;
+          kickScale.value = withSequence(
+            withTiming(KICK_SCALE_PEAK, { duration: KICK_SEG.toNine, easing: e }),
+            withTiming(KICK_SCALE_SETTLE, { duration: KICK_SEG.toSixteen, easing: e }),
+            withTiming(1, { duration: KICK_MS - holdMs, easing: e })
           );
+          kickX.value = withSequence(
+            withTiming(KICK_X[0] * s, { duration: holdMs, easing: e }),
+            withTiming(KICK_X[1] * s, { duration: KICK_SEG.toTwentySix, easing: e }),
+            withTiming(KICK_X[2] * s, { duration: KICK_SEG.toThirtySix, easing: e }),
+            withTiming(KICK_X[3] * s, { duration: KICK_SEG.toFortyEight, easing: e }),
+            withTiming(KICK_X[4] * s, { duration: KICK_SEG.toSixty, easing: e }),
+            withTiming(KICK_X[5] * s, { duration: KICK_SEG.toSeventyFour, easing: e }),
+            withTiming(KICK_X[6] * s, { duration: KICK_SEG.toEnd, easing: e })
+          );
+          kickY.value = withSequence(
+            withTiming(KICK_Y[0] * s, { duration: holdMs, easing: e }),
+            withTiming(KICK_Y[1] * s, { duration: KICK_SEG.toTwentySix, easing: e }),
+            withTiming(KICK_Y[2] * s, { duration: KICK_SEG.toThirtySix, easing: e }),
+            withTiming(KICK_Y[3] * s, { duration: KICK_SEG.toFortyEight, easing: e }),
+            withTiming(KICK_Y[4] * s, { duration: KICK_SEG.toSixty, easing: e }),
+            withTiming(KICK_Y[5] * s, { duration: KICK_SEG.toSeventyFour, easing: e }),
+            withTiming(KICK_Y[6] * s, { duration: KICK_SEG.toEnd, easing: e })
+          );
+          setBoomTrigger((t) => t + 1);
         }
       } else {
         playCardPlay();
       }
     },
-    [reduceMotion, shakeX]
+    [reduceMotion, kickX, kickY, kickScale]
   );
+
+  const celebrateFlush = useCallback(() => {
+    if (reduceMotion) return;
+    setFlushTrigger((t) => t + 1);
+  }, [reduceMotion]);
 
   const rejectPlay = useCallback(() => {
     if (reduceMotion) return;
@@ -258,9 +328,12 @@ export function useTableFeedback({
     giocaFlashStyle,
     passaFlashStyle,
     giocaGlowStyle,
-    shakeStyle,
+    kickStyle,
     giocaRejectX,
     playImpact,
     rejectPlay,
+    boomTrigger,
+    flushTrigger,
+    celebrateFlush,
   };
 }

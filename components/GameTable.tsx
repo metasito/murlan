@@ -101,6 +101,7 @@ import { StraightHand } from "@/components/table/hand";
 import { GameSettingsSheet } from "@/components/table/settingsSheet";
 import { useTableFeedback } from "@/components/useTableFeedback";
 import { FlyingCards, PlayedPile, getComboLabel } from "@/components/table/pile";
+import { BombBurst, Sweep } from "@/components/table/moments";
 import { TopOppSlot, SideOppSlot } from "@/components/table/seats";
 import { ExchangeModal } from "@/components/ExchangeModal";
 import { ExchangeAnnouncement } from "@/components/ExchangeAnnouncement";
@@ -983,10 +984,13 @@ export function GameTable({
     giocaFlashStyle,
     passaFlashStyle,
     giocaGlowStyle,
-    shakeStyle,
+    kickStyle,
     giocaRejectX,
     playImpact,
     rejectPlay,
+    boomTrigger,
+    flushTrigger,
+    celebrateFlush,
   } = useTableFeedback({
     isMyTurn,
     isFinished,
@@ -1000,6 +1004,7 @@ export function GameTable({
     gameOver: gameState.gameOver,
     rankings: gameState.rankings,
     viewerId: viewer?.id,
+    scale,
   });
 
   const handLiftStyle = useHandLift(isMyTurn && !isFinished && !exchange.active, scale);
@@ -1109,10 +1114,14 @@ export function GameTable({
     // reads as *impact* waits for it. Announced for every seat, not only the
     // viewer's: the sound belongs to a card landing, not to a tap.
     const heavy = combo.type === "bomb" || combo.type === "royal_straight";
-    impactTimerRef.current = setTimeout(
-      () => playImpact(heavy),
-      impactDelayMs(reduceMotion)
-    );
+    // The flush: this play emptied the throwing seat's hand. `players` is
+    // already this render's post-play state — same commit `combo` came from.
+    const playedByPlayer = players[gameState.lastPlayedBy];
+    const emptiedHand = !!playedByPlayer && handCountOf(playedByPlayer) === 0;
+    impactTimerRef.current = setTimeout(() => {
+      playImpact(heavy);
+      if (emptiedHand) celebrateFlush();
+    }, impactDelayMs(reduceMotion));
 
     // The throwing seat's held count and departing backs read off this same
     // boundary — the fan and the badge drop the instant the impact fires,
@@ -1158,6 +1167,8 @@ export function GameTable({
     players.length,
     reduceMotion,
     playImpact,
+    celebrateFlush,
+    players,
     opponents,
     scale,
     W,
@@ -1347,7 +1358,8 @@ export function GameTable({
   const showStartCardBanner = !gameState.firstPlayMade && !!gameState.startCard;
 
   return (
-    <Animated.View style={[styles.root, WEB_CLIP, shakeStyle]}>
+    <Animated.View style={[styles.root, WEB_CLIP, kickStyle]}>
+      <Sweep trigger={flushTrigger} width={W} height={H} />
       <A11yStatus label={tableA11yLabel} />
       {/* Two chips over the felt, at the corners the cards never reach — the
           combination in play at the head of the field, whose turn it is at the
@@ -1560,10 +1572,15 @@ export function GameTable({
                   current={flyInfo ? null : pileState.current}
                   roundWinner={roundWinnerTag === null ? null : players[roundWinnerTag.seat]?.name ?? ""}
                   bounceTrigger={pileBounceTrigger}
+                  catchTrigger={flushTrigger}
                   roomW={frame.fieldRoomW}
                   scale={scale}
                 />
               )}
+
+              {/* Centred on the same point the pile draws at, so the burst
+                  rings the impact rather than the middle of the table box. */}
+              <BombBurst trigger={boomTrigger} scale={scale} />
 
               {/* Beside the pile, not beside the table: the flight has to
                   settle exactly where PlayedPile then redraws the same cards,
