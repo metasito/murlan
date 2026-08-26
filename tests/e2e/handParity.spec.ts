@@ -33,10 +33,15 @@ const TURNS = [
 ] as const;
 
 /**
- * The share of the screen the row may span. The header's 0.56 is what it aims
- * at; this is the hard edge, and it has to clear the near hand as well as the
- * far one — a full two-player deal compresses onto the finger floor and
- * reaches past the share it was given.
+ * The share of the screen the hand may take up. The header's 0.56 is what the
+ * row aims at; this is the hard edge, and it has to clear the near hand as
+ * well as the far one.
+ *
+ * Measured on what the player can see. A full deal on a small phone compresses
+ * onto the finger floor, overflows its share and scrolls — and every card of
+ * that row still has a rect, most of them outside the window the ScrollView
+ * clips to. Reading the row's own extent there measures the content, not the
+ * hand, and calls a 63%-wide hand 92%.
  */
 const MAX_SPAN_SHARE = 0.7;
 
@@ -47,6 +52,8 @@ interface HandGeometry {
   cards: number;
   /** The widest card box drawn — the hand's own size, whoever is on move. */
   cardW: number;
+  /** What the player can see of the row: its window when it scrolls, else itself. */
+  visibleW: number;
   left: number;
   right: number;
   centre: number;
@@ -86,9 +93,19 @@ async function handGeometry(page: import("@playwright/test").Page): Promise<Hand
     const rects = cards.map((c) => c.r);
     const left = Math.min(...rects.map((r) => r.left));
     const right = Math.max(...rects.map((r) => r.right));
+    // The nearest ancestor that clips the row horizontally, if the hand had to
+    // fall back to scrolling. Its own width is all of the hand there is to see.
+    let seen = right - left;
+    for (let p = cards[0]?.el.parentElement; p; p = p.parentElement) {
+      if (p.scrollWidth > p.clientWidth + 1) {
+        seen = p.clientWidth;
+        break;
+      }
+    }
     return {
       cards: cards.length,
       cardW: Math.max(...rects.map((r) => r.width)),
+      visibleW: seen,
       left,
       right,
       centre: (left + right) / 2,
@@ -129,7 +146,7 @@ test.describe("the hand a player holds", () => {
           // A share of the screen, never all of it. The hand comes closer on
           // the viewer's turn and the fan opens with it, so this is the budget
           // that move is spending.
-          const span = (hand.right - hand.left) / phone.width;
+          const span = hand.visibleW / phone.width;
           expect(
             span,
             `the hand spans ${(span * 100).toFixed(1)}% of the screen ${turn.what}`
