@@ -272,8 +272,8 @@ export const en = {
   "game.autoPassBody": "Time is up: your turn was passed.",
 
   // -------------------------------------------------------------- gameTable.*
-  "gameTable.rotateTitle": "Rotate your device",
-  "gameTable.rotateBody": "The game needs landscape mode",
+  "gameTable.rotateTitle": "Turn your device sideways",
+  "gameTable.rotateBody": "The table is dealt across the long edge, where every seat has room.",
   "gameTable.settingsA11yLabel": "Settings",
   "gameTable.passLabel": "PASS",
   "gameTable.passA11yLabel": "Pass the turn",

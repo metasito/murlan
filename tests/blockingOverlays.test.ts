@@ -23,8 +23,8 @@ const BLOCKING_OVERLAYS: [string, string][] = [
   ["components/ResultExchangeOverlay.tsx", "exStyles.jokerEmoji"],
   ["components/ResultExchangeOverlay.tsx", "result.exchangeTitle"],
   ["components/ExchangeAnnouncement.tsx", "styles.overlay"],
-  // The portrait "rotate your device" cover, which is the whole screen.
-  ["components/GameTable.tsx", "portraitOverlayStyles.overlay"],
+  // The portrait cover, which is the whole screen.
+  ["components/table/rotateOverlay.tsx", "portraitOverlayStyles.overlay"],
 ];
 
 /** The text of every `<Modal …>…</Modal>` in `source`, nesting-aware. */
