@@ -10,6 +10,7 @@ const BASE_URL = `http://127.0.0.1:${PORT}`;
 // database. Run explicitly via `npm run test:e2e`.
 export default defineConfig({
   testDir: __dirname,
+  globalSetup: resolve(__dirname, "../../scripts/preflightMemory.mjs"),
   // Recorded by `npm run perf:web` through playwright.perf.config.ts, never
   // here: frame timing on a shared runner is noisy, and a perf check that
   // goes red at random gets disabled and then lies (#118).
