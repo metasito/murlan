@@ -123,6 +123,9 @@ describe("a throwing seat's held count and departing backs", () => {
     // onDone fires from the settle spring a few hundred ms later.
     await act(async () => {
       jest.advanceTimersByTime(impactDelayMs(false) + 10);
+      // Advancing the clock queues the landing's own callback rather than
+      // running it; on a loaded machine it is still pending here.
+      jest.runOnlyPendingTimers();
     });
     expect(within(leftSeat()).getByText('2')).toBeTruthy();
   });
