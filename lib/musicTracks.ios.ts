@@ -13,5 +13,4 @@ export const TRACKS = {
   menu: () => require("../assets/music/menu.m4a") as number,
   hand: () => require("../assets/music/hand.m4a") as number,
   cue: () => require("../assets/music/cue.m4a") as number,
-  final: () => require("../assets/music/final.m4a") as number,
 } as const;
