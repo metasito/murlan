@@ -17,6 +17,7 @@ import {
   Platform,
   Pressable,
   useWindowDimensions,
+  type AccessibilityProps,
   type ViewStyle,
 } from "react-native";
 import { TableText } from "@/components/table/TableText";
@@ -121,7 +122,7 @@ import { usePrefersReducedMotion } from "@/lib/accessibility";
 import { Colors, FontSize, Garnet, Highlight, makeShadow, Motion, Radius, Scrim, Shadow, Spacing, TOUCH_TARGET_MIN, Type } from "@/lib/theme";
 import { useTableFelt } from "@/lib/cosmetics";
 import { playMusic } from "@/lib/music";
-import { A11yStatus, a11yState, a11yVeiled } from "@/lib/a11y";
+import { A11yStatus, a11yHidden, a11yState, a11yVeiled } from "@/lib/a11y";
 
 // How long the round-winner tag stays over the pile. A domain beat, not a
 // generic UI transition, so it is not a Motion token.
@@ -389,10 +390,12 @@ function RematchPromptPanel({
   prompt,
   top,
   left,
+  veiled,
 }: {
   prompt: RematchPromptSlot;
   top: number;
   left: number;
+  veiled: AccessibilityProps;
 }) {
   const { t } = useTranslation();
   const reduceMotion = usePrefersReducedMotion();
@@ -406,6 +409,7 @@ function RematchPromptPanel({
     <Animated.View
       entering={reduceMotion ? undefined : FadeIn.duration(Motion.duration.moderate)}
       style={[styles.rematchPanel, { top, left }]}
+      {...veiled}
     >
       {answered ? (
         <TableText style={styles.rematchTally} accessibilityLiveRegion="polite">
@@ -1376,7 +1380,7 @@ export function GameTable({
   return (
     <Animated.View style={[styles.root, WEB_CLIP, kickStyle]}>
       <Sweep trigger={flushTrigger} width={W} height={H} />
-      <A11yStatus label={tableA11yLabel} silenced={settingsOpen} />
+      <A11yStatus label={tableA11yLabel} veiled={settingsOpen} />
       {/* Two chips over the felt, at the corners the cards never reach — the
           combination in play at the head of the field, whose turn it is at the
           far side. Anything wider would be chrome drawn where a card lands. */}
@@ -1493,7 +1497,7 @@ export function GameTable({
           rectangle in a dark room, which is the one thing a single overhead
           lamp cannot produce. The pool tracks whose turn it is, so half the
           cloth falls into shadow when it is not yours. */}
-      <View testID="table-felt" style={[StyleSheet.absoluteFill, FELT_Z]} pointerEvents="none" {...behindVeil}>
+      <View testID="table-felt" style={[StyleSheet.absoluteFill, FELT_Z]} pointerEvents="none" {...a11yHidden()}>
         <FeltPool
           width={feltW}
           height={feltH}
@@ -1736,6 +1740,7 @@ export function GameTable({
           prompt={rematchPrompt}
           top={frame.tableTop + CHIP_H(scale) + frame.pad}
           left={frame.tableLeft + Spacing.sm}
+          veiled={behindVeil}
         />
       )}
 
@@ -1759,6 +1764,7 @@ export function GameTable({
           key={rejectHint.key}
           entering={reduceMotion ? undefined : FadeIn.duration(Motion.duration.fast)}
           pointerEvents="none"
+          {...behindVeil}
           style={[
             styles.rejectHint,
             {

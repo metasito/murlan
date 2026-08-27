@@ -275,14 +275,19 @@ test("the open sheet takes the table out of the accessibility tree", async ({ pa
     "a screen reader can still reach the table through the veil"
   ).toHaveCount(0);
 
-  // The seats and the hand go with it — the veil covers one region, not one
-  // control.
-  for (const region of ["game-table", "game-hud-stack", "game-top-bar"]) {
-    await expect(
-      page.locator(`[data-testid="${region}"][inert]`),
-      `${region} is still in the accessibility tree`
-    ).toHaveCount(1);
-  }
+  // Named regions would only cover the regions someone remembered to name, and
+  // a sixth child of the root would escape in silence. Role queries read the
+  // tree assistive technology reads, so asking what is left in it answers for
+  // every child at once, including ones that do not exist yet.
+  const reachable = await page.evaluate(
+    (within) =>
+      Array.from(document.querySelectorAll('button,[role="button"]'))
+        .filter((el) => el.closest("[inert]") === null && el.closest('[aria-hidden="true"]') === null)
+        .filter((el) => el.closest(within) === null)
+        .map((el) => el.getAttribute("aria-label") ?? el.textContent?.trim().slice(0, 24) ?? "?"),
+    `${SHEET},${RAIL}`
+  );
+  expect(reachable, "these are reachable behind the veil").toEqual([]);
 
   // The knob is the sheet's own close control and stands outside its box, so
   // it must survive every one of those.
