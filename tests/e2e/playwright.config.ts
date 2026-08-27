@@ -25,10 +25,15 @@ export default defineConfig({
   // with a single Chromium driving this bundle, so a second and third lane
   // divide the same cores rather than adding any. Three ran the suite in the
   // same 7.5 minutes and starved three tests past their own timeouts (#73).
-  // Splitting across runners is the only parallelism with more CPU to give —
-  // #51.
+  // The parallelism that does pay is `--shard`, one runner each, which
+  // `.github/workflows/ci.yml` drives.
   workers: 1,
-  reporter: [["list"], ["html", { open: "never", outputFolder: "playwright-report" }]],
+  // A shard's own HTML report covers a quarter of the suite, so CI emits the
+  // intermediate form instead and `merge-reports` makes the one report the
+  // workflow uploads. Locally there is nothing to merge.
+  reporter: process.env.CI
+    ? [["list"], ["blob", { outputDir: "blob-report" }]]
+    : [["list"], ["html", { open: "never", outputFolder: "playwright-report" }]],
   use: {
     baseURL: BASE_URL,
     // Italian is the UI's source-of-truth language (locales/it.ts) and the
