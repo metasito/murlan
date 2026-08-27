@@ -1,4 +1,5 @@
-// tests/musicAssets.test.ts — assets/music and lib/music.ts still agree.
+// tests/musicAssets.test.ts — assets/music and lib/musicTracks{,.ios}.ts
+// still agree.
 //
 // Metro bundles what a `require` names, so a file added here without one is
 // dead weight and a require without a file is a runtime failure on the screen
@@ -12,18 +13,39 @@ import path from "node:path";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
-test("assets/music holds exactly the tracks lib/music.ts requires", () => {
-  const source = readFileSync(path.join(repoRoot, "lib", "music.ts"), "utf8");
-  const required = [...source.matchAll(/assets\/music\/([a-z]+)\.webm/g)].map((m) => m[1]).sort();
-  const onDisk = readdirSync(path.join(repoRoot, "assets", "music"))
-    .filter((f) => f.endsWith(".webm"))
-    .map((f) => f.replace(/\.webm$/, ""))
-    .sort();
+function tracksFor(file: string, ext: "webm" | "m4a"): string[] {
+  const source = readFileSync(path.join(repoRoot, "lib", file), "utf8");
+  const pattern = new RegExp(`assets/music/([a-z]+)\\.${ext}`, "g");
+  return [...source.matchAll(pattern)].map((m) => m[1]).sort();
+}
 
-  assert.ok(required.length > 0, "lib/music.ts requires no music at all");
+function onDiskFor(ext: "webm" | "m4a"): string[] {
+  return readdirSync(path.join(repoRoot, "assets", "music"))
+    .filter((f) => f.endsWith(`.${ext}`))
+    .map((f) => f.replace(new RegExp(`\\.${ext}$`), ""))
+    .sort();
+}
+
+test("assets/music holds exactly the tracks lib/musicTracks.ts and lib/musicTracks.ios.ts require", () => {
+  const requiredWebm = tracksFor("musicTracks.ts", "webm");
+  const requiredM4a = tracksFor("musicTracks.ios.ts", "m4a");
+
+  assert.ok(requiredWebm.length > 0, "lib/musicTracks.ts requires no WebM music at all");
   assert.deepEqual(
-    onDisk,
-    required,
-    "a music file was added or removed without lib/music.ts following it"
+    onDiskFor("webm"),
+    requiredWebm,
+    "a .webm music file was added or removed without lib/musicTracks.ts following it"
+  );
+
+  // Why iOS needs its own encode at all: assets/music/README.md, "The iOS encode".
+  assert.deepEqual(
+    requiredM4a,
+    requiredWebm,
+    "lib/musicTracks.ios.ts requires a different track list than lib/musicTracks.ts"
+  );
+  assert.deepEqual(
+    onDiskFor("m4a"),
+    requiredM4a,
+    "a .m4a music file was added or removed without lib/musicTracks.ios.ts following it"
   );
 });

@@ -56,12 +56,87 @@ ffmpeg is not a repo dependency and is not needed to build the app; it was used
 once, to author these four files. Re-encoding is a manual step, which is why the
 test guards the result rather than the process.
 
-## Native iOS has no music
+## The iOS encode
 
-AVFoundation cannot demux WebM — Opus reaches `AVPlayer` only in an MP4
-container, and only from iOS 17. Android has decoded Opus in WebM since 5.0, and
-web is unaffected. `lib/music.ts` therefore refuses on iOS deliberately rather
-than failing inside the player, and `tests/native/musicPlatform.test.tsx` pins
-both sides of that branch. The fix is a second encode, not a different format:
-changing the format costs web Safari, which is the platform this game actually
-ships on.
+AVFoundation cannot demux WebM at all — Opus reaches `AVPlayer` only inside an
+MP4 container, and only from iOS 17. Android has decoded Opus in WebM since
+5.0, and Safari is unaffected either way, which is why the format itself never
+changed (#121): switching container for everyone would cost web Safari to fix
+one platform.
+
+Each `*.m4a` alongside the matching `*.webm` is the same audio, **losslessly
+re-encoded to ALAC**: `ffmpeg -i menu.webm -c:a alac -sample_fmt s16p -f mp4
+menu.m4a`. `lib/music.ts` picks the container by platform — WebM for web and
+Android, M4A for iOS — and `tests/musicAssets.test.ts` pins that every track
+exists in both.
+
+**Why ALAC and not the two candidates that looked cheaper first**, in the
+order #178 laid out — both were tried and measured, not assumed:
+
+- **Opus, remuxed into the same MP4 with `-c:a copy`.** The audio bitstream is
+  untouched, but ffmpeg's `mov` muxer does not carry the WebM stream's
+  `discard_padding` side data across the remux, and separately recomputes the
+  pre-skip value (312 samples in the source, 336 after the remux). A decoder
+  reading the MP4 metadata alone — which is what a device does, not what the
+  Opus bitstream secretly still contains — is missing the trim it needs. A
+  fresh `libopus` encode straight into MP4 (the exact command #178 suggested
+  first) does not fix it either: Chromium's ISOBMFF-Opus decode path measured
+  a different sample count than its own WebM-Opus decode of the identical
+  audio, and the seam ratio (see `tests/e2e/musicLoops.spec.ts`) came out
+  above the 1× threshold on two of the four tracks.
+- **AAC in M4A.** Chromium decodes it gapless — sample count matched the WebM
+  decode exactly, unlike Opus-in-MP4 above — but the *lossy quantization
+  noise itself* landed large enough at the loop boundary to fail the seam
+  measurement on `menu` and `hand` at 160 kbps. Raising the bitrate fixed
+  `menu` and made `hand` measurably worse, which is the "at risk" warning
+  #178 raised about AAC borne out: the failure mode isn't a fixed encoder
+  delay you can compensate for, it moves with the encode.
+- **ALAC** sidesteps both failure modes by construction: it is lossless, so
+  there is no quantization noise to land near the seam, and it carries no
+  encoder delay or pre-skip to declare or lose in a remux — a decoder trims
+  nothing, so nothing about the container's trim metadata can go missing or
+  be recomputed wrong. Verified against the WebM source with `ffmpeg`
+  (decode both to raw PCM, diff): every sample count matches exactly, and the
+  largest per-sample difference is one 16-bit ALAC quantization step
+  (roughly -96 dBFS) — inaudible, and nowhere near the loop join specifically
+  since it is spread evenly across the whole file rather than concentrated
+  at the seam.
+
+**The gap this doesn't close.** All three measurements above ran through
+Chromium, the only decoder this repo can invoke without a device — not
+AVFoundation, the decoder iOS actually plays through. That matters most for
+AAC: Chromium's failure was quantization noise at the seam, but whether the
+playback path iOS actually uses honours the `iTunSMPB` priming-trim atom is a
+question about AVFoundation specifically, which a Chromium measurement cannot
+answer either way. #178 named this the thing to verify first, not assume, and
+it remains unverified here — ALAC was picked because it needs no such trim to
+go right by construction, not because either rejected candidate was confirmed
+to fail on-device.
+
+**Cost.** Lossless does not compress like Opus does — the four ALAC files run
+roughly 5× the WebM set's size (about 7.5 MB against 1.5 MB). Paid once in the
+iOS bundle, not over the wire to web players.
+
+**What "verified" means here, and what it does not.** Chromium cannot decode
+ALAC at all (`decodeAudioData` and `<audio>` both refuse it), so
+`tests/e2e/musicLoops.spec.ts` cannot run the same waveform-seam arithmetic
+against the `.m4a` files that it runs against the `.webm` files. What it does
+instead is parse the MP4 container's own boxes (`mdhd`, `stsd` — no decoder,
+just the header) and assert the sample count, sample rate and channel count
+match the WebM file exactly; the losslessness argument above is what carries
+the seam guarantee across, verified once by hand with `ffmpeg`, not re-derived
+by CI on every run. **Genuine on-device confirmation is still outstanding** —
+AVFoundation decoding ALAC is long-documented Apple behaviour on every iOS
+version, which is why it was picked over the other two, but nothing here has
+run on a physical device or simulator. See #178.
+
+The branch this replaced, `NATIVE_MUSIC_SUPPORTED`, existed precisely to avoid
+a silent failure on a decoder path nobody had confirmed — it refused to create
+a native player on iOS at all rather than hand AVPlayer a container it
+couldn't demux. Nothing takes its place for ALAC: if AVFoundation rejects one
+of these files on a real device after all, `nativePlayer`'s `catch` swallows
+the error and the result is silent music with nothing telling anyone why,
+which is the exact failure mode that branch was written to prevent.
+
+Why music and the sound effects share one `AVAudioSession` category rather
+than each setting their own: `lib/sounds.ts`'s `ensureAudioMode()` docblock.

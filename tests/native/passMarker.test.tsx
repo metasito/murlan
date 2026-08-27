@@ -26,6 +26,7 @@ jest.mock('@/lib/sounds', () => ({
   unloadSounds: jest.fn(() => {}),
   setSoundsMasterEnabled: jest.fn(() => {}),
   setSoundsMasterVolume: jest.fn(() => {}),
+  ensureAudioMode: jest.fn(async () => {}),
 }));
 
 // The flight collapses to a single timer, so nothing here waits on a spring.

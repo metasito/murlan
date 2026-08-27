@@ -149,11 +149,19 @@ async function playWeb(key: string, assetModule: number, volume: number): Promis
 let soundCache: Record<string, AudioPlayer> = {};
 let _audioModeSet = false;
 
-async function ensureAudioMode(): Promise<void> {
+/**
+ * The one AVAudioSession category, shared by effects and music: expo-audio has
+ * no per-player session, so whichever plays first decides it for both. Card
+ * games are routinely played with the ringer off, and a bomb going silent while
+ * the music keeps playing would read as broken — so both stay in `playback`
+ * rather than one of them respecting the mute switch. lib/music.ts calls this
+ * same function rather than setting its own mode, which is what keeps the two
+ * from settling on different answers.
+ */
+export async function ensureAudioMode(): Promise<void> {
   if (_audioModeSet) return;
   try {
     await setAudioModeAsync({
-      // Card games are routinely played with the ringer off.
       playsInSilentMode: true,
       shouldPlayInBackground: false,
       interruptionModeAndroid: "duckOthers",
