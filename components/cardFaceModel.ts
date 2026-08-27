@@ -157,7 +157,7 @@ const RANK_FONT_WIDE_RATIO = 12 / FACE_H;
 // card scales the glyph past a clearance sized for the base card, and the tip
 // clips against the card's own `overflow: hidden` (tests/e2e/a11yOverlays.spec.ts
 // "no rank glyph clips"). A fraction of card height keeps the two in step.
-const RANK_INSET_RATIO = 3 / FACE_H;
+const RANK_INSET_RATIO = 4.5 / FACE_H;
 const GLYPH_ADVANCE_EM = 0.55;
 const LETTER_SPACING = -0.5;
 
