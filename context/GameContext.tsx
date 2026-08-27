@@ -24,6 +24,7 @@ import {
   processPlay,
   processPass,
   aiChoosePlay,
+  opponentsOf,
   buildCombination,
   tallyRematchAnswers,
   canPlay,
@@ -331,9 +332,7 @@ export function GameProvider({ children }: { children: ReactNode }) {
     if (!currentPlayer || currentPlayer.type !== "ai") return;
 
     const isNewRound = gameState.lastPlayedCombination === null;
-    const otherCounts = gameState.players
-      .filter((_, i) => i !== gameState.currentTurnIndex)
-      .map((p) => p.hand.length);
+    const opponents = opponentsOf(gameState, gameState.currentTurnIndex);
 
     const requireCard = !gameState.firstPlayMade && gameState.startCard
       ? currentPlayer.hand.find((c) => c.id === gameState.startCard!.id)
@@ -343,8 +342,10 @@ export function GameProvider({ children }: { children: ReactNode }) {
       currentPlayer,
       isNewRound ? null : gameState.lastPlayedCombination,
       isNewRound,
-      otherCounts,
-      requireCard
+      opponents.handCounts,
+      requireCard,
+      undefined,
+      opponents.partnerHoldsTop
     );
 
     if (play) {

@@ -632,6 +632,41 @@ function applyPersonality(
   return result;
 }
 
+/** The seat across the table, or `undefined` in any game without teams. */
+function partnerSeat(state: GameState, seat: number): number | undefined {
+  const count = state.players.length;
+  const team = teamForSeat(seat, count, state.gameMode);
+  if (team === undefined) return undefined;
+  const partner = state.players.findIndex(
+    (_, i) => i !== seat && teamForSeat(i, count, state.gameMode) === team
+  );
+  return partner === -1 ? undefined : partner;
+}
+
+/** What a bot at `seat` is allowed to read about the rest of the table. */
+export function opponentsOf(
+  state: GameState,
+  seat: number
+): { handCounts: number[]; partnerHoldsTop: boolean } {
+  const partner = partnerSeat(state, seat);
+  const handCounts = state.players
+    .filter((_, i) => i !== seat && i !== partner)
+    .map((p) => p.hand.length);
+  return {
+    // `Math.min()` of nothing is Infinity, which reads as "no one is close".
+    handCounts: handCounts.length > 0 ? handCounts : [0],
+    // Two things stop "my partner played last" from meaning "my partner holds
+    // the round": `lastPlayedBy` still names the winner once everyone has
+    // passed, and `processPass` gives the lead to the next seat *still holding
+    // cards*, so a partner who has gone out would hand it to an opponent.
+    partnerHoldsTop:
+      partner !== undefined &&
+      state.lastPlayedBy === partner &&
+      state.lastPlayedCombination !== null &&
+      (state.players[partner]?.hand.length ?? 0) > 0,
+  };
+}
+
 /**
  * The AI's move for `player`, or null to pass. `rng` is a parameter so that
  * personalities can vary their play without making the engine untestable —
@@ -643,7 +678,8 @@ export function aiChoosePlay(
   isNewRound: boolean,
   otherPlayersHandCount: number[],
   requireCard?: Card,
-  rng: () => number = Math.random
+  rng: () => number = Math.random,
+  partnerHoldsTop = false
 ): Combination | null {
   const plays = getAllValidPlays(player.hand, lastPlayed, isNewRound, requireCard);
   if (plays.length === 0) return null;
@@ -659,6 +695,12 @@ export function aiChoosePlay(
   if (finishingPlays.length > 0) {
     return finishingPlays[0];
   }
+
+  // Beating the partner takes the round off the team that already had it, so
+  // no tier answers and no knob contests. Below the finishing branch on
+  // purpose: emptying the hand ends the manche in the team's favour, which is
+  // not contesting anything. A new round cannot be passed at all.
+  if (partnerHoldsTop && !isNewRound) return null;
 
   const withPersonality = (choice: Combination | null) =>
     applyPersonality(choice, plays, isNewRound, personality, rng);

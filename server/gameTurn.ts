@@ -29,6 +29,7 @@ import {
   buildCombination,
   sortHand,
   aiChoosePlay,
+  opponentsOf,
   getValidGivebackCards,
   getStartingPlayerAfterExchange,
   deepCloneState,
@@ -111,15 +112,15 @@ export function autoMoveForSeat(
   };
 
   if (useAi) {
-    const otherCounts = state.players
-      .filter((_, i) => i !== seat)
-      .map((p) => p.hand.length);
+    const opponents = opponentsOf(state, seat);
     const combo = aiChoosePlay(
       player,
       isNewRound ? null : state.lastPlayedCombination,
       isNewRound,
-      otherCounts.length > 0 ? otherCounts : [0],
-      requireCard
+      opponents.handCounts,
+      requireCard,
+      undefined,
+      opponents.partnerHoldsTop
     );
     if (combo) {
       recordPlayFlags(game, seat, combo);
