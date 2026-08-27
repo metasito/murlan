@@ -90,10 +90,14 @@ export async function registerForPush(): Promise<void> {
  * The cascade on `users` only covers an account being deleted. Without this,
  * the next person to sign in on a shared phone would receive the previous
  * player's invites.
+ *
+ * Returns whether there was a registration to withdraw, so a caller undoing
+ * this cannot register a device that never was: `registerForPush` asks for
+ * permission when the OS has not been asked yet, and that is a dialog.
  */
-export async function unregisterForPush(): Promise<void> {
+export async function unregisterForPush(): Promise<boolean> {
   const token = currentToken;
-  if (!token) return;
+  if (!token) return false;
   currentToken = null;
   registeredLocale = null;
   try {
@@ -104,4 +108,5 @@ export async function unregisterForPush(): Promise<void> {
   } catch {
     // The row outlives the session at worst; the next login overwrites it.
   }
+  return true;
 }

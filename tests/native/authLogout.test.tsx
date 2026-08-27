@@ -1,8 +1,7 @@
-// tests/native/authLogout.test.tsx — logout gives up the push registration
-// before it asks the server to end the session, because the unregister needs
-// the cookie. That ordering is what makes the failure path matter: everything
-// after the POST is skipped when it throws, so what it gave up first has to
-// come back, or the device stops receiving invites while still signed in.
+// tests/native/authLogout.test.tsx — logout withdraws the push registration
+// before it asks the server to end the session, because the endpoint needs the
+// cookie. Everything after the POST is skipped when it throws, so the failure
+// path is where that ordering has to be undone.
 import { describe, it, expect, beforeEach, jest } from '@jest/globals';
 import React from 'react';
 import { Text } from 'react-native';
@@ -13,7 +12,7 @@ import { AuthProvider, useAuth } from '@/context/AuthContext';
 
 const mockApiRequest = jest.fn<(...args: unknown[]) => Promise<unknown>>();
 const mockRegisterForPush = jest.fn<() => Promise<void>>();
-const mockUnregisterForPush = jest.fn<() => Promise<void>>();
+const mockUnregisterForPush = jest.fn<() => Promise<boolean>>();
 
 jest.mock('@/lib/query-client', () => ({
   getApiUrl: () => 'http://localhost',
@@ -62,7 +61,8 @@ beforeEach(async () => {
   jest.clearAllMocks();
   await AsyncStorage.clear();
   mockRegisterForPush.mockResolvedValue(undefined);
-  mockUnregisterForPush.mockResolvedValue(undefined);
+  // Signed in on a device that took a registration.
+  mockUnregisterForPush.mockResolvedValue(true);
   // `fetchMe` uses a raw fetch rather than apiRequest, so the boot check is
   // steered here and every apiRequest below belongs to logout itself.
   mockFetch.mockResolvedValue({ status: 200, ok: true, json: async () => SIGNED_IN });
@@ -83,6 +83,20 @@ describe('a logout the server refuses', () => {
 
     expect(mockUnregisterForPush).toHaveBeenCalledTimes(1);
     expect(mockRegisterForPush).toHaveBeenCalledTimes(1);
+    view.unmount();
+  });
+
+  // `registerForPush` asks the OS for permission when it has not been asked,
+  // so undoing a withdrawal that never happened is a dialog out of nowhere.
+  it('leaves a device that was never registered alone', async () => {
+    mockUnregisterForPush.mockResolvedValue(false);
+    const view = await signedIn();
+
+    await act(async () => {
+      await expect(logout()).rejects.toThrow('logout failed');
+    });
+
+    expect(mockRegisterForPush).not.toHaveBeenCalled();
     view.unmount();
   });
 

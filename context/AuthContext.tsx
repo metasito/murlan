@@ -116,14 +116,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const logout = useCallback(async () => {
     // Before the session goes: the endpoint needs the cookie, and the next
     // person to sign in on this phone must not inherit these invites.
-    await unregisterForPush();
+    const withdrawn = await unregisterForPush();
     try {
       await apiRequest("POST", "/api/auth/logout");
     } catch (e) {
-      // The session outlives a refused logout, so the device has to keep the
-      // registration it just gave up, or it stops receiving invites while
-      // still signed in.
-      await registerForPush();
+      // The session outlives a refused logout, so the device keeps the
+      // registration it gave up — but only one it actually had.
+      if (withdrawn) await registerForPush();
       throw e;
     }
     setUser(null);
