@@ -135,7 +135,7 @@ export const it: Record<keyof typeof en, string> = {
   "settings.logoutConfirmTitle": "Vuoi uscire?",
   "settings.logoutConfirmBody": "Per rientrare ti serviranno nome utente e password. Le partite e le statistiche restano sull'account.",
   "settings.logoutFailedTitle": "Ancora collegato",
-  "settings.logoutFailedBody": "Non siamo riusciti a raggiungere il server. Sei ancora collegato e questo dispositivo potrebbe non ricevere inviti finché non riprovi.",
+  "settings.logoutFailedBody": "Non siamo riusciti a raggiungere il server, quindi non è cambiato nulla. Riprova tra poco.",
   "settings.deleteAccount": "Elimina account",
   "settings.deleteAccountA11yHint": "Elimina definitivamente il tuo account e tutti i dati associati",
   "settings.deleting": "Eliminazione in corso…",
