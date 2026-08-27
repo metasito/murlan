@@ -18,7 +18,7 @@ import { Colors, Spacing, Radius, Type, Shadow } from "@/lib/theme";
 import { usePrefersReducedMotion } from "@/lib/accessibility";
 import { useTranslation } from "@/lib/i18n";
 import type { NotificationType, NotificationData } from "@/context/NotificationContext";
-import { useA11yHint } from "@/lib/a11y";
+import { a11yVeiled, useA11yHint } from "@/lib/a11y";
 
 export type { NotificationType, NotificationData };
 
@@ -142,6 +142,10 @@ export default function NotificationBanner({ notification, onDismiss }: Props) {
     <Animated.View
       testID="notification-banner"
       style={[styles.container, { top: topOffset + TOP_GAP, pointerEvents: notification ? "box-none" as const : "none" as const }, animStyle]}
+      // The banner never unmounts, so with nothing to announce its close button
+      // is an invisible control a screen reader still finds. `pointerEvents`
+      // answers for the pointer alone.
+      {...a11yVeiled(!notification)}
     >
       <View style={[styles.banner, { borderLeftColor: color }, pressed && styles.bannerPressed]}>
         {/* The alert is the body, not the row: a focusable close button inside

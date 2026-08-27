@@ -241,3 +241,60 @@ test("the open sheet keeps Tab off the table behind its veil", async ({ page, ba
   await page.keyboard.press("Enter");
   await expect(page.locator(SHEET)).toHaveCount(0);
 });
+
+/**
+ * Tab is not how a screen reader moves. VoiceOver and TalkBack swipe and
+ * explore by touch, neither of which the focus trap above can see, so the
+ * table has to leave the accessibility tree rather than merely the tab order.
+ *
+ * Playwright's role queries read the same tree assistive technology does, so
+ * a control that is present by testID and absent by role is exactly a control
+ * a screen reader cannot reach.
+ */
+test("the open sheet takes the table out of the accessibility tree", async ({ page, baseURL }) => {
+  test.setTimeout(60_000);
+  await page.setViewportSize(VIEWPORT);
+  await openSeededGame(page, baseURL!, 4);
+
+  const knob = page.getByRole("button", { name: "Impostazioni" });
+  const passByRole = page.getByRole("button", { name: "Passa il turno" });
+  const passByTestId = page.locator('[data-testid="btn-passa"]');
+
+  // Closed, the table answers to both.
+  await expect(passByRole).toHaveCount(1);
+  await expect(passByTestId).toHaveCount(1);
+
+  await knob.click();
+  await expect(page.locator(SHEET)).toBeVisible();
+
+  // `inert` is not `display: none`: the table keeps rendering behind the veil,
+  // and a player who closes the sheet finds it where they left it.
+  await expect(passByTestId, "the table stopped rendering behind the veil").toHaveCount(1);
+  await expect(
+    passByRole,
+    "a screen reader can still reach the table through the veil"
+  ).toHaveCount(0);
+
+  // Named regions would only cover the regions someone remembered to name, and
+  // a sixth child of the root would escape in silence. Role queries read the
+  // tree assistive technology reads, so asking what is left in it answers for
+  // every child at once, including ones that do not exist yet.
+  const reachable = await page.evaluate(
+    (within) =>
+      Array.from(document.querySelectorAll('button,[role="button"]'))
+        .filter((el) => el.closest("[inert]") === null && el.closest('[aria-hidden="true"]') === null)
+        .filter((el) => el.closest(within) === null)
+        .map((el) => el.getAttribute("aria-label") ?? el.textContent?.trim().slice(0, 24) ?? "?"),
+    `${SHEET},${RAIL}`
+  );
+  expect(reachable, "these are reachable behind the veil").toEqual([]);
+
+  // The knob is the sheet's own close control and stands outside its box, so
+  // it must survive every one of those.
+  await expect(knob, "the knob went inert with the table it sits beside").toHaveCount(1);
+  await knob.click();
+  await expect(page.locator(SHEET)).toHaveCount(0);
+
+  // Closing gives it all back.
+  await expect(passByRole, "the table never came back").toHaveCount(1);
+});

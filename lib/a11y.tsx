@@ -87,6 +87,22 @@ export function a11yHidden(hidden = true): AccessibilityProps {
 }
 
 /**
+ * Puts a subtree behind a veil: rendered, but reachable by nobody.
+ *
+ * `inert` withdraws focus as well as the accessibility tree, so the DOM never
+ * holds a focusable element inside an `aria-hidden` region — the one
+ * arrangement ARIA has no answer for. It reaches the DOM through
+ * react-native-web's forwarded props; React Native has none, hence the pair
+ * above. Not `a11yHidden`, which dresses decorative children of controls,
+ * where withdrawing hit-testing would take the control with it.
+ */
+export function a11yVeiled(veiled: boolean): AccessibilityProps {
+  const props = a11yHidden(veiled);
+  if (isWeb) (props as Record<string, unknown>).inert = veiled || undefined;
+  return props;
+}
+
+/**
  * A control's hint. `props` goes on the control, `node` beside it — the DOM
  * carries a description only by reference, so the text has to exist somewhere.
  * react-native-web's `Switch` spreads unknown props onto its wrapper rather
@@ -158,13 +174,14 @@ export function useFocusTrap(testIDs: string[]) {
  * it, which a bare `aria-label` on a role-less `<div>` does not: that role is
  * `generic`, for which a name is prohibited.
  */
-export function A11yStatus({ label }: { label: string }) {
+export function A11yStatus({ label, veiled = false }: { label: string; veiled?: boolean }) {
   return (
     <Text
       accessible
       accessibilityRole="text"
       accessibilityLabel={label}
       {...(isWeb ? { "aria-live": "polite" as const } : { accessibilityLiveRegion: "polite" as const })}
+      {...a11yVeiled(veiled)}
       style={styles.srOnly}
     >
       {label}
