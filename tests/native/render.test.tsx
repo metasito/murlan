@@ -82,11 +82,14 @@ describe('NotificationBanner', () => {
   // unmounted. Returning null on an empty notification is what previously
   // overwrote the slide-in. Asserted against the banner's own alert role, not
   // the tree as a whole, which any wrapper would keep non-null regardless.
+  // With nothing to announce that role is deliberately out of the
+  // accessibility tree, which is where the default query looks — mounted and
+  // reachable are two different claims, and this one is about mounting.
   it('stays mounted with no notification', async () => {
     const view = await render(
       withSafeArea(<NotificationBanner notification={null} onDismiss={() => {}} />)
     );
-    expect(view.getByRole('alert')).toBeTruthy();
+    expect(view.getByRole('alert', { includeHiddenElements: true })).toBeTruthy();
     await view.unmount();
   });
 
