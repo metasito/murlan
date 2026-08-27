@@ -1,10 +1,10 @@
 import React, { createContext, useCallback, useContext, useEffect, useState, useMemo } from "react";
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { setSoundsMasterEnabled, setSoundsMasterVolume } from "@/lib/sounds";
+import { setSoundsMasterVolume } from "@/lib/sounds";
 import { setMusicMasterEnabled, setMusicMasterVolume } from "@/lib/music";
 import { setHapticsMasterEnabled } from "@/lib/haptics";
 import { setMotionPreference, type MotionPreference } from "@/lib/accessibility";
-import { migrateLevel, withEnabled, withVolume, type AudioLevel } from "@/lib/audioLevel";
+import { migrateAudio, withEnabled, withVolume, type AudioLevel } from "@/lib/audioLevel";
 import {
   DEFAULT_CARD_BACK,
   DEFAULT_TABLE_FELT,
@@ -93,19 +93,7 @@ function parseStored(raw: string): Partial<Settings> {
   const parsed: unknown = JSON.parse(raw);
   if (typeof parsed !== "object" || parsed === null) return {};
   const v = parsed as Record<string, unknown>;
-  const out: Partial<Settings> = {};
-  const sound = migrateLevel(
-    { enabled: v.soundsEnabled, volume: v.soundVolume, restore: v.soundVolumeRestore },
-    DEFAULT_SOUND_VOLUME
-  );
-  out.soundVolume = sound.volume;
-  out.soundVolumeRestore = sound.restore;
-  const music = migrateLevel(
-    { enabled: v.musicEnabled, volume: v.musicVolume, restore: v.musicVolumeRestore },
-    DEFAULT_MUSIC_VOLUME
-  );
-  out.musicVolume = music.volume;
-  out.musicVolumeRestore = music.restore;
+  const out: Partial<Settings> = migrateAudio(v, DEFAULT_SOUND_VOLUME, DEFAULT_MUSIC_VOLUME);
   if (typeof v.hapticsEnabled === "boolean") out.hapticsEnabled = v.hapticsEnabled;
   if (v.motion === "system" || v.motion === "on" || v.motion === "off") {
     out.motion = v.motion;
@@ -131,15 +119,13 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
     AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(settings)).catch(() => {});
   }, [settings]);
 
-  // One effect per subsystem, not two. `setMusicMasterEnabled(false)` stops the
-  // track while a volume of 0 only silences it, so the two masters have to be
-  // driven from the same value in the same pass or the bed keeps playing
-  // inaudibly.
   useEffect(() => {
-    setSoundsMasterEnabled(settings.soundVolume > 0);
     setSoundsMasterVolume(settings.soundVolume);
   }, [settings.soundVolume]);
 
+  // Both, from one value in one pass: `setMusicMasterEnabled(false)` stops the
+  // track, where a volume of 0 only silences it — driven apart they would leave
+  // the bed playing inaudibly.
   useEffect(() => {
     setMusicMasterEnabled(settings.musicVolume > 0);
     setMusicMasterVolume(settings.musicVolume);
