@@ -181,8 +181,13 @@ jobs:
             exit 1
           fi
 
+  # The three checks that need the Postgres service, and only those: jest and
+  # eslint are their own jobs so this one's ~150s of tests stops standing in
+  # front of their ~90s. Nothing here is gated on them, and nothing there is
+  # gated on this, so one run still reports every failure rather than stopping
+  # at the first — which is what the folded job's `if: !cancelled()` bought.
   verify:
-    name: Typecheck, tests, lint
+    name: Typecheck and tests
     needs: scope
     if: needs.scope.outputs.app == 'true'
     runs-on: ubuntu-latest
@@ -260,20 +265,39 @@ jobs:
           fi
           echo "Integration suites ran against Postgres."
 
-      # React Native's own renderer, with Platform.OS set to ios and android —
-      # the one thing the Playwright suite structurally cannot do. It needs no
-      # database and nothing else this job has not already installed, so it
-      # rides here rather than starting a second runner to repeat `npm ci`.
-      # Runs even when the step above went red: parallel jobs used to show a
-      # failure in each on the same run, and folding must not cost a round trip
-      # to learn the second one.
-      - name: Native tests
-        if: ${{ !cancelled() }}
-        run: npm run test:native
+  # React Native's own renderer, with Platform.OS set to ios and android — the
+  # one thing the Playwright suite structurally cannot do. It rode in `verify`
+  # to avoid repeating `npm ci`, back when that job was not the run's longest.
+  # It is now: `npm ci` costs ~20s against the ~66s this spends, and paying it
+  # twice in parallel is cheaper in wall clock than either waiting for the
+  # other.
+  native:
+    name: Native tests
+    needs: scope
+    if: needs.scope.outputs.app == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+      - run: npm ci
+      - run: npm run test:native
 
-      - name: Lint
-        if: ${{ !cancelled() }}
-        run: npm run lint
+  lint:
+    name: Lint
+    needs: scope
+    if: needs.scope.outputs.app == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+      - run: npm ci
+      - run: npm run lint
 
   browser:
     name: Browser tests ${{ matrix.shard }}/4
