@@ -129,8 +129,10 @@ export function SettingsModal({ visible, onClose }: Props) {
   const {
     soundsEnabled,
     soundVolume,
+    soundVolumeRestore,
     musicEnabled,
     musicVolume,
+    musicVolumeRestore,
     hapticsEnabled,
     motion,
     cardBack,
@@ -144,6 +146,10 @@ export function SettingsModal({ visible, onClose }: Props) {
     setCardBack,
     setTableFelt,
   } = useSettings();
+  // Muting is a volume of 0, but the disabled slider keeps showing the level the
+  // toggle will come back to rather than dropping to 0%.
+  const shownSoundVolume = soundsEnabled ? soundVolume : soundVolumeRestore;
+  const shownMusicVolume = musicEnabled ? musicVolume : musicVolumeRestore;
   const { logout } = useAuth();
   const { notification, showNotification, dismissNotification } = useNotification();
   const [confirming, setConfirming] = useState<ConfirmRequest | null>(null);
@@ -337,10 +343,10 @@ export function SettingsModal({ visible, onClose }: Props) {
                 </View>
               </View>
               <Slider
-                value={soundVolume}
+                value={shownSoundVolume}
                 onValueChange={setSoundVolume}
                 a11yLabel={t("settings.volumeA11yLabel")}
-                valueText={t("settings.volumePercent", { percent: Math.round(soundVolume * 100) })}
+                valueText={t("settings.volumePercent", { percent: Math.round(shownSoundVolume * 100) })}
                 disabled={!soundsEnabled}
               />
             </View>
@@ -370,10 +376,10 @@ export function SettingsModal({ visible, onClose }: Props) {
                 </View>
               </View>
               <Slider
-                value={musicVolume}
+                value={shownMusicVolume}
                 onValueChange={setMusicVolume}
                 a11yLabel={t("settings.musicVolumeA11yLabel")}
-                valueText={t("settings.volumePercent", { percent: Math.round(musicVolume * 100) })}
+                valueText={t("settings.volumePercent", { percent: Math.round(shownMusicVolume * 100) })}
                 disabled={!musicEnabled}
               />
             </View>

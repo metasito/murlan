@@ -4,6 +4,7 @@ import { setSoundsMasterEnabled, setSoundsMasterVolume } from "@/lib/sounds";
 import { setMusicMasterEnabled, setMusicMasterVolume } from "@/lib/music";
 import { setHapticsMasterEnabled } from "@/lib/haptics";
 import { setMotionPreference, type MotionPreference } from "@/lib/accessibility";
+import { migrateLevel, withEnabled, withVolume, type AudioLevel } from "@/lib/audioLevel";
 import {
   DEFAULT_CARD_BACK,
   DEFAULT_TABLE_FELT,
@@ -15,20 +16,28 @@ import {
 } from "@/lib/cosmetics";
 
 interface Settings {
-  soundsEnabled: boolean;
-  /** 0–1, multiplied into every effect's own level. */
+  /** 0–1, multiplied into every effect's own level. 0 is muted. */
   soundVolume: number;
-  /** Music is its own switch: effects are feedback, music is furniture. */
-  musicEnabled: boolean;
+  /** What unmuting the effects returns to. */
+  soundVolumeRestore: number;
   /** 0–1. Defaults below the effects so the bed never competes with them. */
   musicVolume: number;
+  /** What unmuting the music returns to. */
+  musicVolumeRestore: number;
   hapticsEnabled: boolean;
   motion: MotionPreference;
   cardBack: CardBackId;
   tableFelt: TableFeltId;
 }
 
+/**
+ * `soundsEnabled` and `musicEnabled` are derived from their volumes rather than
+ * stored, so nothing can say "on" while the level says silence. They stay in
+ * the API because both settings surfaces still present a switch (#415, #416).
+ */
 interface SettingsContextValue extends Settings {
+  soundsEnabled: boolean;
+  musicEnabled: boolean;
   setSoundsEnabled: (v: boolean) => void;
   setSoundVolume: (v: number) => void;
   setMusicEnabled: (v: boolean) => void;
@@ -40,11 +49,14 @@ interface SettingsContextValue extends Settings {
 }
 
 const STORAGE_KEY = "@murlan_settings";
+const DEFAULT_SOUND_VOLUME = 1;
+const DEFAULT_MUSIC_VOLUME = 0.5;
+
 const defaults: Settings = {
-  soundsEnabled: true,
-  soundVolume: 1,
-  musicEnabled: true,
-  musicVolume: 0.5,
+  soundVolume: DEFAULT_SOUND_VOLUME,
+  soundVolumeRestore: DEFAULT_SOUND_VOLUME,
+  musicVolume: DEFAULT_MUSIC_VOLUME,
+  musicVolumeRestore: DEFAULT_MUSIC_VOLUME,
   hapticsEnabled: true,
   motion: "system",
   cardBack: DEFAULT_CARD_BACK,
@@ -52,6 +64,25 @@ const defaults: Settings = {
 };
 
 const SettingsContext = createContext<SettingsContextValue | null>(null);
+
+const soundLevel = (s: Settings): AudioLevel => ({
+  volume: s.soundVolume,
+  restore: s.soundVolumeRestore,
+});
+const musicLevel = (s: Settings): AudioLevel => ({
+  volume: s.musicVolume,
+  restore: s.musicVolumeRestore,
+});
+const withSound = (s: Settings, l: AudioLevel): Settings => ({
+  ...s,
+  soundVolume: l.volume,
+  soundVolumeRestore: l.restore,
+});
+const withMusic = (s: Settings, l: AudioLevel): Settings => ({
+  ...s,
+  musicVolume: l.volume,
+  musicVolumeRestore: l.restore,
+});
 
 /**
  * A stored value written by an older build can be any shape at all, and a bad
@@ -63,15 +94,19 @@ function parseStored(raw: string): Partial<Settings> {
   if (typeof parsed !== "object" || parsed === null) return {};
   const v = parsed as Record<string, unknown>;
   const out: Partial<Settings> = {};
-  if (typeof v.soundsEnabled === "boolean") out.soundsEnabled = v.soundsEnabled;
-  if (typeof v.musicEnabled === "boolean") out.musicEnabled = v.musicEnabled;
-  if (typeof v.musicVolume === "number" && Number.isFinite(v.musicVolume)) {
-    out.musicVolume = Math.max(0, Math.min(1, v.musicVolume));
-  }
+  const sound = migrateLevel(
+    { enabled: v.soundsEnabled, volume: v.soundVolume, restore: v.soundVolumeRestore },
+    DEFAULT_SOUND_VOLUME
+  );
+  out.soundVolume = sound.volume;
+  out.soundVolumeRestore = sound.restore;
+  const music = migrateLevel(
+    { enabled: v.musicEnabled, volume: v.musicVolume, restore: v.musicVolumeRestore },
+    DEFAULT_MUSIC_VOLUME
+  );
+  out.musicVolume = music.volume;
+  out.musicVolumeRestore = music.restore;
   if (typeof v.hapticsEnabled === "boolean") out.hapticsEnabled = v.hapticsEnabled;
-  if (typeof v.soundVolume === "number" && Number.isFinite(v.soundVolume)) {
-    out.soundVolume = Math.max(0, Math.min(1, v.soundVolume));
-  }
   if (v.motion === "system" || v.motion === "on" || v.motion === "off") {
     out.motion = v.motion;
   }
@@ -96,19 +131,17 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
     AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(settings)).catch(() => {});
   }, [settings]);
 
+  // One effect per subsystem, not two. `setMusicMasterEnabled(false)` stops the
+  // track while a volume of 0 only silences it, so the two masters have to be
+  // driven from the same value in the same pass or the bed keeps playing
+  // inaudibly.
   useEffect(() => {
-    setSoundsMasterEnabled(settings.soundsEnabled);
-  }, [settings.soundsEnabled]);
-
-  useEffect(() => {
+    setSoundsMasterEnabled(settings.soundVolume > 0);
     setSoundsMasterVolume(settings.soundVolume);
   }, [settings.soundVolume]);
 
   useEffect(() => {
-    setMusicMasterEnabled(settings.musicEnabled);
-  }, [settings.musicEnabled]);
-
-  useEffect(() => {
+    setMusicMasterEnabled(settings.musicVolume > 0);
     setMusicMasterVolume(settings.musicVolume);
   }, [settings.musicVolume]);
 
@@ -125,13 +158,13 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
   }, [settings.cardBack, settings.tableFelt]);
 
   const setSoundsEnabled = useCallback((v: boolean) =>
-    setSettings((s) => ({ ...s, soundsEnabled: v })), []);
+    setSettings((s) => withSound(s, withEnabled(soundLevel(s), v, DEFAULT_SOUND_VOLUME))), []);
   const setSoundVolume = useCallback((v: number) =>
-    setSettings((s) => ({ ...s, soundVolume: Math.max(0, Math.min(1, v)) })), []);
+    setSettings((s) => withSound(s, withVolume(soundLevel(s), v))), []);
   const setMusicEnabled = useCallback((v: boolean) =>
-    setSettings((s) => ({ ...s, musicEnabled: v })), []);
+    setSettings((s) => withMusic(s, withEnabled(musicLevel(s), v, DEFAULT_MUSIC_VOLUME))), []);
   const setMusicVolume = useCallback((v: number) =>
-    setSettings((s) => ({ ...s, musicVolume: Math.max(0, Math.min(1, v)) })), []);
+    setSettings((s) => withMusic(s, withVolume(musicLevel(s), v))), []);
   const setHapticsEnabled = useCallback((v: boolean) =>
     setSettings((s) => ({ ...s, hapticsEnabled: v })), []);
   const setMotion = useCallback((v: MotionPreference) =>
@@ -144,6 +177,8 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
   const contextValue = useMemo(
     () => ({
       ...settings,
+      soundsEnabled: settings.soundVolume > 0,
+      musicEnabled: settings.musicVolume > 0,
       setSoundsEnabled,
       setSoundVolume,
       setMusicEnabled,
