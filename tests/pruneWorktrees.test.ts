@@ -297,17 +297,15 @@ describe("isInvokedDirectly", () => {
     const moduleUrl = pathToFileURL(path.resolve("scripts/prune-worktrees.mjs")).href;
     const code = `import(${JSON.stringify(moduleUrl)}).then(() => process.exit(0)).catch((e) => { console.error(e); process.exit(2); });`;
 
-    const start = Date.now();
     const result = spawnSync(process.execPath, ["--require", preload, "-e", code], {
       env: { ...process.env, GUARD_MARKER: marker },
       encoding: "utf8",
-      timeout: 5000,
+      // A hang guard, not a budget — the marker below is the proof.
+      timeout: 60_000,
     });
-    const elapsedMs = Date.now() - start;
 
     assert.equal(result.status, 0, result.stderr);
     assert.equal(fs.existsSync(marker), false, "importing the module must not shell out to git or gh");
-    assert.ok(elapsedMs < 2000, `import took ${elapsedMs}ms - looks like it ran the CLI body`);
 
     fs.rmSync(tmpDir, { recursive: true, force: true });
   });

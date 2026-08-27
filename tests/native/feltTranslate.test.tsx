@@ -21,6 +21,16 @@ const LUAN = { x: 0.98, y: 0.48 };
 /** Comfortably past felt.tsx's own LAMP_MS swing, so withTiming has settled. */
 const SETTLE_MS = 900;
 
+/**
+ * Reanimated schedules each frame from inside the previous one, so advancing
+ * the clock by a span leaves the last frame queued and the value short of its
+ * target. Flushing what the advance itself scheduled is what settles it.
+ */
+function settle() {
+  jest.advanceTimersByTime(SETTLE_MS);
+  jest.runOnlyPendingTimers();
+}
+
 /** The two platforms name the SVG host component differently. */
 const SVG_VIEW = new Set(['RNSVGSvgView', 'RNSVGSvgViewAndroid']);
 
@@ -92,7 +102,7 @@ describe('the lamp pool moves by left/top, and the gradients move with it', () =
       <FeltPool width={W} height={H} stops={FeltGradients.verde} lightX={BESNIK.x} lightY={BESNIK.y} />
     );
     await act(async () => {
-      jest.advanceTimersByTime(SETTLE_MS);
+      settle();
     });
 
     let style = anchorStyle();
@@ -115,7 +125,7 @@ describe('the lamp pool moves by left/top, and the gradients move with it', () =
       );
     });
     await act(async () => {
-      jest.advanceTimersByTime(SETTLE_MS);
+      settle();
     });
 
     style = anchorStyle();

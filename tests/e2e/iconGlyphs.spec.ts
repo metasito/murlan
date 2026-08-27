@@ -116,7 +116,6 @@ test("the replay screen renders the correct transport icon in both its paused an
 
   await driveGameToCompletion(page, {
     isFinished: (p) => p.getByRole("button", { name: "Esci dalla partita" }).isVisible(),
-    timeoutMs: 5 * 60_000,
   });
   await expect(page.getByRole("button", { name: "Esci dalla partita" })).toBeVisible({ timeout: 15_000 });
 

@@ -125,16 +125,14 @@ describe("isInvokedDirectly", () => {
     // false and the CLI body below must not run.
     const code = `import(${JSON.stringify(moduleUrl)}).then(() => process.exit(0)).catch((e) => { console.error(e); process.exit(2); });`;
 
-    const start = Date.now();
     const result = spawnSync(process.execPath, ["--require", preload, "-e", code], {
       env: { ...process.env, GUARD_MARKER: marker },
       encoding: "utf8",
-      timeout: 5000,
+      // A hang guard, not a budget — the marker below is the proof.
+      timeout: 60_000,
     });
-    const elapsedMs = Date.now() - start;
 
     assert.equal(result.status, 0, result.stderr);
     assert.equal(fs.existsSync(marker), false, "importing the module must not shell out to `gh`");
-    assert.ok(elapsedMs < 2000, `import took ${elapsedMs}ms — looks like it ran the CLI body`);
   });
 });
