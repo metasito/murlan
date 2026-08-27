@@ -100,7 +100,7 @@ const YOUR_TURN = locale['gameTable.a11yYourTurn'];
  * harness; only the node that is an accessibility element reaches a player.
  */
 const spokenNodes = (pattern: RegExp) =>
-  screen.getAllByLabelText(pattern).filter((n) => n.props.accessible === true);
+  screen.queryAllByLabelText(pattern).filter((n) => n.props.accessible === true);
 
 describe('the table description reaches a screen reader', () => {
   it('is an accessibility element carrying the spoken state', async () => {
@@ -139,6 +139,55 @@ describe('the top-left chip names who played', () => {
     const chip = within(screen.getByTestId('game-top-bar'));
     expect(chip.queryByText(locale['gameShared.you'])).toBeNull();
     expect(chip.queryByText('Ana')).not.toBeNull();
+    await r.unmount();
+  });
+});
+
+// A watcher is handed a seat so the table has a bottom to draw from, but the
+// seat belongs to a real player they are not. Everything keyed off `isMyTurn`
+// then addresses them as that player.
+describe('a watcher is never the player on move', () => {
+  const notStarted = (turn: number): GameState => ({
+    ...state(turn),
+    firstPlayMade: false,
+    startCard: card('start', '3', 'spades'),
+  });
+
+  it.each([0, 1, 2, 3])('the turn chip never says YOUR TURN, at seat %i', async (turn) => {
+    const r = await render(table(state(turn), true));
+    const hud = within(screen.getByTestId('game-hud-stack'));
+    expect(hud.queryByText(locale['gameShared.yourTurn'])).toBeNull();
+    await r.unmount();
+  });
+
+  it('the spoken description does not open with your turn', async () => {
+    const r = await render(table(state(0), true));
+    expect(spokenNodes(new RegExp(YOUR_TURN))).toHaveLength(0);
+    await r.unmount();
+  });
+
+  it('the start-card banner names the seat rather than the watcher', async () => {
+    const r = await render(table(notStarted(0), true));
+    expect(screen.queryByText(/You start!/)).toBeNull();
+    expect(screen.queryByText(/Ana starts with/)).not.toBeNull();
+    await r.unmount();
+  });
+});
+
+// The same three, for the player whose seat it really is.
+describe('a seated player is still the player on move', () => {
+  it('the turn chip says YOUR TURN', async () => {
+    const r = await render(table(state(0)));
+    const hud = within(screen.getByTestId('game-hud-stack'));
+    expect(hud.queryByText(locale['gameShared.yourTurn'])).not.toBeNull();
+    await r.unmount();
+  });
+
+  it('the start-card banner uses the self form', async () => {
+    const r = await render(
+      table({ ...state(0), firstPlayMade: false, startCard: card('start', '3', 'spades') })
+    );
+    expect(screen.queryByText(/You start!/)).not.toBeNull();
     await r.unmount();
   });
 });

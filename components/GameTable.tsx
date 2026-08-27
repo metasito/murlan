@@ -807,7 +807,9 @@ export function GameTable({
 
   const players = gameState.players;
   const viewer = players[viewerSeat];
-  const isMyTurn = gameState.currentTurnIndex === viewerSeat;
+  // A watcher is given a seat so the table has a bottom to draw from, but that
+  // seat is a real player they are not: the turn belongs to whoever holds it.
+  const isMyTurn = !spectating && gameState.currentTurnIndex === viewerSeat;
   const isFinished = viewer?.finishPosition !== undefined;
   const isNewRound = gameState.lastPlayedCombination === null;
   const exchange = readExchange(gameState, viewerSeat);
@@ -1575,7 +1577,7 @@ export function GameTable({
               {showStartCardBanner ? (
                 <StartCardBanner
                   card={gameState.startCard!}
-                  starterIsViewer={gameState.currentTurnIndex === viewerSeat}
+                  starterIsViewer={isMyTurn}
                   starterName={players[gameState.currentTurnIndex]?.name ?? ""}
                   t={t}
                 />
