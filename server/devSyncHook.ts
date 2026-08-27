@@ -46,6 +46,11 @@ async function runGit(args: string[]) {
 }
 
 export async function syncMain(): Promise<SyncResult> {
+  const originalBranch = (
+    await execFileAsync("git", ["branch", "--show-current"], {
+      cwd: process.cwd(),
+    })
+  ).stdout.trim();
   const before = (
     await execFileAsync("git", ["rev-parse", "HEAD"], { cwd: process.cwd() })
   ).stdout.trim();
@@ -61,8 +66,15 @@ export async function syncMain(): Promise<SyncResult> {
   }
 
   await runGit(["fetch", "origin", "main", "--quiet"]);
-  await runGit(["checkout", "main", "--quiet"]);
-  await runGit(["merge", "--ff-only", "origin/main", "--quiet"]);
+  try {
+    await runGit(["checkout", "main", "--quiet"]);
+    await runGit(["merge", "--ff-only", "origin/main", "--quiet"]);
+  } catch (error) {
+    if (originalBranch && originalBranch !== "main") {
+      await runGit(["checkout", originalBranch, "--quiet"]).catch(() => {});
+    }
+    throw error;
+  }
 
   const sha = (
     await execFileAsync("git", ["rev-parse", "HEAD"], { cwd: process.cwd() })
@@ -78,6 +90,9 @@ export function createGithubDevSyncHandler({
   let inFlight: Promise<SyncResult> | undefined;
 
   return async function githubDevSyncHandler(req: Request, res: Response) {
+    if (process.env.NODE_ENV === "production") {
+      return res.status(404).end();
+    }
     if (!secret) {
       logger.error("REPLIT_DEV_HOOK_SECRET is not configured");
       return res.status(503).json({ error: "Dev sync hook is not configured" });
