@@ -121,13 +121,10 @@ import { hapticError, hapticLight, hapticMedium, hapticSelection } from "@/lib/h
 import { usePrefersReducedMotion } from "@/lib/accessibility";
 import { Colors, FontSize, Garnet, Highlight, makeShadow, Motion, Radius, Scrim, Shadow, Spacing, TOUCH_TARGET_MIN, Type } from "@/lib/theme";
 import { useTableFelt } from "@/lib/cosmetics";
-import { playMusic } from "@/lib/music";
 import { A11yStatus, a11yHidden, a11yState, a11yVeiled } from "@/lib/a11y";
 
 // How long the round-winner tag stays over the pile. A domain beat, not a
 // generic UI transition, so it is not a Motion token.
-/** Where the bed hands over to the pitched-down variant. */
-const FINAL_STRETCH_CARDS = 3;
 const ROUND_WINNER_MS = 1800;
 // Whole-pixel travel, mirroring components/MenuButton.tsx: PASSA/GIOCA hold
 // text labels, and React Native rasterises text before transforming it, so a
@@ -1014,16 +1011,6 @@ export function GameTable({
   });
 
   const handLiftStyle = useHandLift(isMyTurn && !isFinished && !exchange.active, scale);
-
-  // The last few cards get the same composition, pitched down — one piece of
-  // music with two intensities rather than a second piece (#113). Only while a
-  // hand is live: an empty hand means this player is out, and `gameOver` hands
-  // the route to the result screen, which owns its own cue.
-  const finalStretch =
-    !isFinished && sortedHand.length > 0 && sortedHand.length <= FINAL_STRETCH_CARDS;
-  useEffect(() => {
-    void playMusic(finalStretch ? "final" : "hand");
-  }, [finalStretch]);
 
   // ── Lifecycle ───────────────────────────────────────────────────────────────
 
