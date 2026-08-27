@@ -26,7 +26,7 @@ jest.mock('@/lib/sounds', () => ({
   onWebAudioUnlocked: () => () => {},
 }));
 
-import { playMusic, stopMusic, unloadMusic } from '@/lib/music';
+import { playMusic, setMusicMasterEnabled, stopMusic, unloadMusic } from '@/lib/music';
 
 const createAudioPlayer = (require('expo-audio') as { createAudioPlayer: jest.Mock })
   .createAudioPlayer;
@@ -68,6 +68,20 @@ describe(`music on ${Platform.OS}`, () => {
       await playMusic('menu');
       await playMusic('hand');
       expect(createAudioPlayer).toHaveBeenCalledTimes(2);
+    });
+
+    // The settings toggle is the only caller of setMusicMasterEnabled, and it
+    // passes no track — so turning music off has to leave the requested one
+    // behind or nothing ever comes back but a route change.
+    it('restarts the requested track when music is switched off and on again', async () => {
+      await playMusic('menu');
+      const player = createAudioPlayer.mock.results[0].value as { play: jest.Mock };
+      player.play.mockClear();
+
+      setMusicMasterEnabled(false);
+      setMusicMasterEnabled(true);
+
+      expect(player.play).toHaveBeenCalled();
     });
   }
 });
