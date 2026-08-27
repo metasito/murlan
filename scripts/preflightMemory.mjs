@@ -51,10 +51,13 @@ export default async function preflightMemory({
   sample = os.freemem,
   totalBytes = os.totalmem(),
   wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
+  env = process.env,
 } = {}) {
   // CI runners are sized for one job and start near their floor by design; the collision this
-  // guards against is two local sessions sharing one developer machine.
-  if (process.env.CI) return;
+  // guards against is two local sessions sharing one developer machine. Injectable because the
+  // suite that covers this function runs *on* CI, where reading process.env directly makes every
+  // case below return before it samples anything and pass for the wrong reason.
+  if (env.CI) return;
 
   const readings = [sample()];
   if (memoryVerdict({ freeBytes: readings[0], totalBytes }).ok) return;

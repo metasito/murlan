@@ -134,6 +134,9 @@ describe("memoryVerdict", () => {
 
 describe("preflightMemory", () => {
   const settled = () => Promise.resolve();
+  // This suite runs on CI too, where the real process.env.CI makes the function return before it
+  // samples anything — every case below then passes without exercising a line of it.
+  const local = { wait: settled, env: {} as NodeJS.ProcessEnv };
 
   // A suite tearing down frees its workers in one burst — the other session's hold ~2.6 GB. A
   // reading taken inside that burst refused a run that the identical command, retried a second
@@ -143,13 +146,13 @@ describe("preflightMemory", () => {
     await preflightMemory({
       sample: () => samples.shift()!,
       totalBytes: 16 * GB,
-      wait: settled,
+      ...local,
     });
   });
 
   test("a machine that is still starved a moment later is still refused", async () => {
     await assert.rejects(
-      preflightMemory({ sample: () => 0.2 * GB, totalBytes: 16 * GB, wait: settled }),
+      preflightMemory({ sample: () => 0.2 * GB, totalBytes: 16 * GB, ...local }),
       /memory/i
     );
   });
@@ -160,7 +163,7 @@ describe("preflightMemory", () => {
   test("a refusal names every reading it took, not just the one it ruled on", async () => {
     const samples = [0.2 * GB, 0.4 * GB];
     await assert.rejects(
-      preflightMemory({ sample: () => samples.shift()!, totalBytes: 16 * GB, wait: settled }),
+      preflightMemory({ sample: () => samples.shift()!, totalBytes: 16 * GB, ...local }),
       (err: Error) => /0\.20 GB/.test(err.message) && /0\.40 GB/.test(err.message)
     );
   });
@@ -170,7 +173,7 @@ describe("preflightMemory", () => {
   test("a box that degrades while settling is judged on the later reading", async () => {
     const samples = [1.4 * GB, 0.3 * GB];
     await assert.rejects(
-      preflightMemory({ sample: () => samples.shift()!, totalBytes: 16 * GB, wait: settled }),
+      preflightMemory({ sample: () => samples.shift()!, totalBytes: 16 * GB, ...local }),
       /0\.30 GB free/
     );
   });
@@ -183,7 +186,7 @@ describe("preflightMemory", () => {
         return 8 * GB;
       },
       totalBytes: 16 * GB,
-      wait: settled,
+      ...local,
     });
     assert.equal(taken, 1);
   });
