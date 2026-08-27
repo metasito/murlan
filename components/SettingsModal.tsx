@@ -48,6 +48,26 @@ interface Props {
 /** Room for a couple of sentences without the send button leaving the screen. */
 const BUG_INPUT_MIN_H = 96;
 
+/** Small enough to read as a row marker rather than a control. */
+const ROW_ICON_SIZE = 18;
+
+/**
+ * Decorative: the row's own control carries the label, so an icon left visible
+ * to a screen reader makes that control expose two nodes
+ * (`tests/native/a11yCollapse.test.tsx`).
+ */
+function RowIcon({ name }: { name: React.ComponentProps<typeof Feather>["name"] }) {
+  return (
+    <Feather
+      name={name}
+      size={ROW_ICON_SIZE}
+      color={Colors.textSecondary}
+      style={styles.icon}
+      {...a11yHidden()}
+    />
+  );
+}
+
 const MOTION_CHOICES: MotionPreference[] = ["system", "on", "off"];
 const MOTION_LABELS: Record<MotionPreference, TranslationKey> = {
   system: "settings.motionSystem",
@@ -127,17 +147,13 @@ function Segmented<T extends string | number>({
 
 export function SettingsModal({ visible, onClose }: Props) {
   const {
-    soundsEnabled,
     soundVolume,
-    musicEnabled,
     musicVolume,
     hapticsEnabled,
     motion,
     cardBack,
     tableFelt,
-    setSoundsEnabled,
     setSoundVolume,
-    setMusicEnabled,
     setMusicVolume,
     setHapticsEnabled,
     setMotion,
@@ -152,6 +168,10 @@ export function SettingsModal({ visible, onClose }: Props) {
   const [deleting, setDeleting] = useState(false);
   const [loggingOut, setLoggingOut] = useState(false);
   const { t, locale, setLocale, locales, localeLabels } = useTranslation();
+  // The slider is the mute now, so a screen reader has to say so — "0%" reads
+  // as a level rather than as off.
+  const volumeText = (v: number) =>
+    v === 0 ? t("settings.muted") : t("settings.volumePercent", { percent: Math.round(v * 100) });
   const deleteHint = useA11yHint(t("settings.deleteAccountA11yHint"));
   const bugHint = useA11yHint(t("settings.reportBugA11yHint"));
   const [bugOpen, setBugOpen] = useState(false);
@@ -312,73 +332,59 @@ export function SettingsModal({ visible, onClose }: Props) {
           </View>
 
           <ScrollView testID="settings-scroll" style={styles.body} showsVerticalScrollIndicator>
-            <View style={styles.row}>
-              <View style={styles.rowLeft}>
-                <Text style={styles.icon}>🔊</Text>
-                <View>
-                  <Text style={styles.label}>{t("settings.sounds")}</Text>
-                  <Text style={styles.sublabel}>{t("settings.soundsSubtitle")}</Text>
-                </View>
-              </View>
-              <Toggle
-                value={soundsEnabled}
-                onValueChange={setSoundsEnabled}
-                a11yLabel={t("settings.soundsA11yLabel")}
-                a11yHint={t("settings.soundsA11yHint")}
-              />
-            </View>
-
             <View style={styles.stackRow}>
               <View style={styles.rowLeft}>
-                <Text style={styles.icon}>🔉</Text>
+                <RowIcon name={soundVolume === 0 ? "volume-x" : "volume-2"} />
                 <View style={styles.rowLabels}>
-                  <Text style={styles.label}>{t("settings.volume")}</Text>
-                  <Text style={styles.sublabel}>{t("settings.volumeSubtitle")}</Text>
+                  <Text style={styles.label}>{t("settings.sounds")}</Text>
+                  <Text style={styles.sublabel}>{t("settings.soundsSubtitle")}</Text>
                 </View>
               </View>
               <Slider
                 value={soundVolume}
                 onValueChange={setSoundVolume}
                 a11yLabel={t("settings.volumeA11yLabel")}
-                valueText={t("settings.volumePercent", { percent: Math.round(soundVolume * 100) })}
-              />
-            </View>
-
-            <View style={styles.row}>
-              <View style={styles.rowLeft}>
-                <Text style={styles.icon}>🎵</Text>
-                <View>
-                  <Text style={styles.label}>{t("settings.music")}</Text>
-                  <Text style={styles.sublabel}>{t("settings.musicSubtitle")}</Text>
-                </View>
-              </View>
-              <Toggle
-                value={musicEnabled}
-                onValueChange={setMusicEnabled}
-                a11yLabel={t("settings.musicA11yLabel")}
-                a11yHint={t("settings.musicA11yHint")}
+                valueText={volumeText(soundVolume)}
               />
             </View>
 
             <View style={styles.stackRow}>
               <View style={styles.rowLeft}>
-                <Text style={styles.icon}>🎚️</Text>
+                <RowIcon name="music" />
                 <View style={styles.rowLabels}>
-                  <Text style={styles.label}>{t("settings.musicVolume")}</Text>
-                  <Text style={styles.sublabel}>{t("settings.musicVolumeSubtitle")}</Text>
+                  <Text style={styles.label}>{t("settings.music")}</Text>
+                  <Text style={styles.sublabel}>{t("settings.musicSubtitle")}</Text>
                 </View>
               </View>
               <Slider
                 value={musicVolume}
                 onValueChange={setMusicVolume}
                 a11yLabel={t("settings.musicVolumeA11yLabel")}
-                valueText={t("settings.volumePercent", { percent: Math.round(musicVolume * 100) })}
+                valueText={volumeText(musicVolume)}
               />
             </View>
 
+            {Platform.OS !== "web" && (
+              <View style={styles.row}>
+                <View style={styles.rowLeft}>
+                  <RowIcon name="smartphone" />
+                  <View>
+                    <Text style={styles.label}>{t("settings.haptics")}</Text>
+                    <Text style={styles.sublabel}>{t("settings.hapticsSubtitle")}</Text>
+                  </View>
+                </View>
+                <Toggle
+                  value={hapticsEnabled}
+                  onValueChange={toggleHaptics}
+                  a11yLabel={t("settings.hapticsA11yLabel")}
+                  a11yHint={t("settings.hapticsA11yHint")}
+                />
+              </View>
+            )}
+
             <View style={styles.stackRow}>
               <View style={styles.rowLeft}>
-                <Text style={styles.icon}>🎬</Text>
+                <RowIcon name="film" />
                 <View style={styles.rowLabels}>
                   <Text style={styles.label}>{t("settings.motion")}</Text>
                   <Text style={styles.sublabel}>{t("settings.motionSubtitle")}</Text>
@@ -394,7 +400,7 @@ export function SettingsModal({ visible, onClose }: Props) {
 
             <View style={styles.stackRow}>
               <View style={styles.rowLeft}>
-                <Text style={styles.icon}>🃏</Text>
+                <RowIcon name="layers" />
                 <View style={styles.rowLabels}>
                   <Text style={styles.label}>{t("settings.cardBack")}</Text>
                   <Text style={styles.sublabel}>{t("settings.cardBackSubtitle")}</Text>
@@ -414,7 +420,7 @@ export function SettingsModal({ visible, onClose }: Props) {
 
             <View style={styles.stackRow}>
               <View style={styles.rowLeft}>
-                <Text style={styles.icon}>🎴</Text>
+                <RowIcon name="grid" />
                 <View style={styles.rowLabels}>
                   <Text style={styles.label}>{t("settings.tableFelt")}</Text>
                   <Text style={styles.sublabel}>{t("settings.tableFeltSubtitle")}</Text>
@@ -432,27 +438,9 @@ export function SettingsModal({ visible, onClose }: Props) {
               />
             </View>
 
-            {Platform.OS !== "web" && (
-              <View style={styles.row}>
-                <View style={styles.rowLeft}>
-                  <Text style={styles.icon}>📳</Text>
-                  <View>
-                    <Text style={styles.label}>{t("settings.haptics")}</Text>
-                    <Text style={styles.sublabel}>{t("settings.hapticsSubtitle")}</Text>
-                  </View>
-                </View>
-                <Toggle
-                  value={hapticsEnabled}
-                  onValueChange={toggleHaptics}
-                  a11yLabel={t("settings.hapticsA11yLabel")}
-                  a11yHint={t("settings.hapticsA11yHint")}
-                />
-              </View>
-            )}
-
             <View style={styles.row}>
               <View style={styles.rowLeft}>
-                <Text style={styles.icon}>🌐</Text>
+                <RowIcon name="globe" />
                 <View>
                   <Text style={styles.label}>{t("settings.language")}</Text>
                   <Text style={styles.sublabel}>{t("settings.languageSubtitle")}</Text>
@@ -632,16 +620,16 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    minHeight: 44,
-    paddingVertical: Spacing.sm,
+    minHeight: TOUCH_TARGET_MIN,
+    paddingVertical: Spacing.slim,
     borderTopWidth: 1,
     borderTopColor: Colors.border,
   },
   rowLeft: { flexDirection: "row", alignItems: "center", gap: Spacing.sm },
-  icon: { fontSize: FontSize.xl, width: 32, textAlign: "center" },
-  label: { ...Type.bodyStrong, fontSize: FontSize.md, color: Colors.text },
+  icon: { width: 24, textAlign: "center" },
+  label: { ...Type.bodyStrong, fontSize: FontSize.sm, color: Colors.text },
   sublabel: { ...Type.caption },
-  stackRow: { gap: Spacing.sm, paddingVertical: Spacing.sm },
+  stackRow: { gap: Spacing.slim, paddingVertical: Spacing.slim },
   rowLabels: { flexShrink: 1 },
   segmentRow: { flexDirection: "row", gap: Spacing.xs },
   segmentRowDisabled: { opacity: 0.4 },
