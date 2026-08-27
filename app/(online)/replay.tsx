@@ -195,7 +195,7 @@ export default function ReplayScreen() {
           t={t}
         />
       }
-      overlays={
+      overlays={(veiled) =>
         movesOpen ? (
           <ReplayMoveList
             replay={named}
@@ -203,6 +203,7 @@ export default function ReplayScreen() {
             onJumpTo={goTo}
             onClose={() => setMovesOpen(false)}
             t={t}
+            veiled={veiled}
           />
         ) : null
       }

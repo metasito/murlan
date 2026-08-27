@@ -311,8 +311,15 @@ export interface GameTableProps {
   railExtra?: React.ReactNode;
   /** Transient strips under the top bar (online: reconnect notice). */
   banners?: React.ReactNode;
-  /** Full-screen layers above the table (game over, error toasts, waiting states). */
-  overlays?: React.ReactNode;
+  /**
+   * Full-screen layers above the table (game over, error toasts, waiting states).
+   *
+   * Takes the veil rather than returning plain nodes: whether the settings
+   * sheet is open is this component's own state, and a layer that renders a
+   * `<Modal>` is above the veil while one that does not is behind it — which
+   * only the caller knows.
+   */
+  overlays?: (veiled: AccessibilityProps) => React.ReactNode;
 }
 
 // ─── Turn countdown ───────────────────────────────────────────────────────────
@@ -1772,7 +1779,7 @@ export function GameTable({
         </Animated.View>
       )}
 
-      {overlays}
+      {overlays?.(behindVeil)}
 
       {W < H && <RotateOverlay />}
     </Animated.View>

@@ -25,4 +25,7 @@ const project = (platform) => ({
 
 module.exports = {
   projects: [project('ios'), project('android')],
+  // A worker holds a whole React Native module graph, and jest's default is one
+  // per core — enough of them to exhaust a developer machine's memory.
+  maxWorkers: '50%',
 };

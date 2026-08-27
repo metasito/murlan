@@ -6,12 +6,35 @@
 // content (the row list) — exactly the class of thing only a rendered page
 // answers (docs/agents/loops.md).
 import { test, expect, type Page } from "@playwright/test";
-import { openSeededGame } from "./helpers/offlineSeed";
+import { offlineGameSave, openSeededGame, resumeSaved } from "./helpers/offlineSeed";
+import { CLOSING_HAND_CARDS } from "../../lib/gameEngine";
 
 const VIEWPORT = { width: 844, height: 390 };
 const RAIL = '[data-testid="control-rail"]';
 const VEIL = '[data-testid="settings-veil"]';
 const SHEET = '[data-testid="settings-sheet"]';
+
+/**
+ * Everything still in the accessibility tree that is not the sheet or its rail:
+ * what a screen reader could reach, and what it would be told without being
+ * asked. Named regions would only cover the regions someone remembered to name,
+ * and a sixth child of the root would escape in silence; these queries read the
+ * tree assistive technology reads, so asking what is left in it answers for
+ * every child at once, including ones that do not exist yet.
+ *
+ * Live regions are in it because a veil that silences the controls and leaves
+ * the announcements is still talking over the sheet.
+ */
+async function reachableBehindVeil(page: Page): Promise<string[]> {
+  return page.evaluate(
+    (within) =>
+      Array.from(document.querySelectorAll('button,[role="button"],[aria-live]'))
+        .filter((el) => el.closest("[inert]") === null && el.closest('[aria-hidden="true"]') === null)
+        .filter((el) => el.closest(within) === null)
+        .map((el) => el.getAttribute("aria-label") ?? el.textContent?.trim().slice(0, 24) ?? "?"),
+    `${SHEET},${RAIL}`
+  );
+}
 
 test.describe("the rail's settings sheet", () => {
   test("opens beside the rail without trapping the knob that opened it", async ({
@@ -275,19 +298,7 @@ test("the open sheet takes the table out of the accessibility tree", async ({ pa
     "a screen reader can still reach the table through the veil"
   ).toHaveCount(0);
 
-  // Named regions would only cover the regions someone remembered to name, and
-  // a sixth child of the root would escape in silence. Role queries read the
-  // tree assistive technology reads, so asking what is left in it answers for
-  // every child at once, including ones that do not exist yet.
-  const reachable = await page.evaluate(
-    (within) =>
-      Array.from(document.querySelectorAll('button,[role="button"]'))
-        .filter((el) => el.closest("[inert]") === null && el.closest('[aria-hidden="true"]') === null)
-        .filter((el) => el.closest(within) === null)
-        .map((el) => el.getAttribute("aria-label") ?? el.textContent?.trim().slice(0, 24) ?? "?"),
-    `${SHEET},${RAIL}`
-  );
-  expect(reachable, "these are reachable behind the veil").toEqual([]);
+  expect(await reachableBehindVeil(page), "these are reachable behind the veil").toEqual([]);
 
   // The knob is the sheet's own close control and stands outside its box, so
   // it must survive every one of those.
@@ -297,4 +308,37 @@ test("the open sheet takes the table out of the accessibility tree", async ({ pa
 
   // Closing gives it all back.
   await expect(passByRole, "the table never came back").toHaveCount(1);
+});
+
+/**
+ * The check above can only see what is on screen when it runs, and the rematch
+ * prompt is only up while a match is ending — two minutes of played-out hands
+ * away (#424 is what that costs). A single-manche match counts as closing the
+ * moment a hand is nearly played out (`matchIsClosing`), so a seeded save with
+ * short hands raises the panel on the first frame.
+ */
+test("the open sheet takes a closing match's rematch prompt out of the tree", async ({
+  page,
+  baseURL,
+}) => {
+  test.setTimeout(60_000);
+  await page.setViewportSize(VIEWPORT);
+
+  const save = offlineGameSave(4, CLOSING_HAND_CARDS);
+  await resumeSaved(page, baseURL!, { ...save, match: { ...save.match, length: "single" } });
+
+  const yes = page.getByTestId("btn-rematch-yes");
+  await expect(yes, "the seed did not raise the rematch prompt, so this proves nothing").toHaveCount(
+    1
+  );
+  expect(
+    await reachableBehindVeil(page),
+    "the rematch buttons are unreachable with the sheet shut, so this cannot tell the veil apart from nothing"
+  ).toContain("Sì, voglio un'altra partita");
+
+  await page.getByRole("button", { name: "Impostazioni" }).click();
+  await expect(page.locator(SHEET)).toBeVisible();
+
+  await expect(yes, "the prompt stopped rendering behind the veil").toHaveCount(1);
+  expect(await reachableBehindVeil(page), "these are reachable behind the veil").toEqual([]);
 });

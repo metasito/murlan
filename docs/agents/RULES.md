@@ -43,34 +43,32 @@ Every rule an agent must follow, in one place. No rationale here — the *why* l
 
 16. **Read a file once, whole, with the Read tool.** Not in twenty grep windows.
 17. **Search with the Grep tool.** A shelled-out `grep -r` walks `node_modules`.
-18. **Never write a JSX tag inside a comment.** `tests/orientation.test.ts` and
-    `tests/blockingOverlays.test.ts` scan raw source and will read it as real markup.
-19. **No bare literals for colour, radius, font size, spacing or timing** — use `lib/theme.ts`, and
+18. **No bare literals for colour, radius, font size, spacing or timing** — use `lib/theme.ts`, and
     use a token in the role it was named for.
-20. **Every user-facing string goes through `t()`, keyed in `en`, `it` and `sq`.**
-21. **Default to no comment.** Never explain the bug you just fixed; that is the commit message.
+19. **Every user-facing string goes through `t()`, keyed in `en`, `it` and `sq`.**
+20. **Default to no comment.** Never explain the bug you just fixed; that is the commit message.
 
 ## Taking work
 
-22. **Take one item at a time. Don't ask which, or whether to proceed.** `node scripts/next-ticket.mjs`
+21. **Take one item at a time. Don't ask which, or whether to proceed.** `node scripts/next-ticket.mjs`
     picks it and prints the route.
-23. **Claim it before you touch anything**: add `in-progress`, comment naming your branch, then
+22. **Claim it before you touch anything**: add `in-progress`, comment naming your branch, then
     re-read the issue and stand down if an older claim is there.
-24. **Read an issue with both `gh issue view <n>` and `gh issue view <n> --comments`**, at
+23. **Read an issue with both `gh issue view <n>` and `gh issue view <n> --comments`**, at
     pick-up and again before finishing. Either alone is a partial read.
-25. **Release the claim whenever you stop without landing** — remove `in-progress`, say why.
-26. **A routed `implement` goes through `/ticket`**; `triage` through `/triage`; `wayfinder`
+24. **Release the claim whenever you stop without landing** — remove `in-progress`, say why.
+25. **A routed `implement` goes through `/ticket`**; `triage` through `/triage`; `wayfinder`
     through `/wayfinder`.
-27. **An item needing an owner decision gets `ready-for-human`, not closed** — and
+26. **An item needing an owner decision gets `ready-for-human`, not closed** — and
     `ready-for-agent` comes off at the same time.
-28. **Name a model on every sub-agent.** Mechanical work: haiku. Implementing, verifying, landing:
+27. **Name a model on every sub-agent.** Mechanical work: haiku. Implementing, verifying, landing:
     sonnet. Independent review: opus. Give every dispatch a label.
 
 ## Finishing
 
-29. **Report what you actually did.** A gap named is worth more than a green report.
-30. **Never leave an edit uncommitted in the shared checkout.** Commit it on a branch before you
+28. **Report what you actually did.** A gap named is worth more than a green report.
+29. **Never leave an edit uncommitted in the shared checkout.** Commit it on a branch before you
     stop. `node scripts/preflight.mjs` blocks a run that would start on top of one.
-31. **Leave no residue** — no stray branches, worktrees, scratch files or uncommitted edits in the
+30. **Leave no residue** — no stray branches, worktrees, scratch files or uncommitted edits in the
     shared checkout.
-32. **Outstanding work goes in a GitHub issue**, never a `TODO` or a markdown backlog.
+31. **Outstanding work goes in a GitHub issue**, never a `TODO` or a markdown backlog.

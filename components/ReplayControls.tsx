@@ -13,6 +13,7 @@ import {
   Pressable,
   ScrollView,
   StyleSheet,
+  type AccessibilityProps,
   type GestureResponderEvent,
   type LayoutChangeEvent,
 } from "react-native";
@@ -249,12 +250,14 @@ export function ReplayMoveList({
   onJumpTo,
   onClose,
   t,
+  veiled,
 }: {
   replay: ReplayDto;
   index: number;
   onJumpTo: (index: number) => void;
   onClose: () => void;
   t: TFn;
+  veiled?: AccessibilityProps;
 }) {
   const rows = useMemo(
     () =>
@@ -269,7 +272,7 @@ export function ReplayMoveList({
   );
 
   return (
-    <View style={styles.movePanel}>
+    <View {...veiled} style={styles.movePanel}>
       <View style={styles.movePanelHead}>
         <Text style={styles.movePanelTitle}>{t("replay.moveListTitle")}</Text>
         <IconButton icon="close" label={t("replay.moveListCloseA11yLabel")} onPress={onClose} />
