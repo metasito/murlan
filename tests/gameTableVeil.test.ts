@@ -39,11 +39,12 @@ const ALWAYS_HIDDEN = /\{\.\.\.a11yHidden\(\)\}/;
 /**
  * The veil, however it is spelled: spread onto a host view, passed down as a
  * prop, or handed to a slot whose caller decides which of its own layers is
- * behind it. The slot's is the narrower of the two — a cover rendered inside
- * it answers to the sheet alone, because it cannot veil itself (#474).
+ * behind it. Every alternative is an exact literal: matching a prefix would
+ * accept `veiled={settingsOpen && focusMode}`, which is a narrowing of the
+ * veil rather than a spelling of it.
  */
 const VEILED =
-  /\{\.\.\.behindVeil\}|veiled=\{behindVeil\}|veiled=\{settingsOpen\b|\(behindSheetOnly\)/;
+  /\{\.\.\.behindVeil\}|veiled=\{behindVeil\}|veiled=\{tableWithdrawn\}|\(behindSheetOnly\)/;
 
 export interface RootChild {
   name: string;
@@ -113,7 +114,7 @@ describe("every child of the game table's root answers to the veil", () => {
       }
       assert.ok(
         VEILED.test(child.source) || ALWAYS_HIDDEN.test(child.source),
-        `${child.name} is reachable by a screen reader while the settings sheet is open. ` +
+        `${child.name} is reachable by a screen reader while a layer covers the table. ` +
           `Give it the veil, or say in REACHABLE_ON_PURPOSE why it may stay.`
       );
     });

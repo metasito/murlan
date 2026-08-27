@@ -55,6 +55,19 @@ const gameState: GameState = {
 
 const noop = () => {};
 
+/**
+  * The `A11yStatus` nodes a screen reader can still reach — the table's spoken
+  * description and the hand's. The default query already excludes anything
+  * withdrawn, by its own props or by an ancestor's, which is the question.
+  */
+const liveRegions = () =>
+  screen
+    .queryAllByRole('text')
+    .filter(
+      (n) =>
+        n.props.accessibilityLiveRegion === 'polite' || n.props['aria-live'] === 'polite'
+    );
+
 /** True when this node is withdrawn from the accessibility tree on either platform. */
 const withdrawn = (props: Record<string, unknown>) =>
   props.accessibilityElementsHidden === true ||
@@ -94,10 +107,17 @@ describe('a cover in the overlays slot', () => {
     await r.unmount();
   });
 
+  // The node a screen reader actually hears: the whole table in one sentence,
+  // on a live region. Withdrawing the seats but still reading the board out is
+  // the fix half-applied, and the three testIDs above cannot see it.
+  it('withdraws the spoken table description with it', async () => {
+    const r = await mount(true);
+    expect(liveRegions()).toHaveLength(0);
+    await r.unmount();
+  });
+
   it('leaves the slot it is rendered in reachable', async () => {
     const r = await mount(true);
-    // The cover carries the only message on screen. Veiling the slot would
-    // withdraw that message along with the table it is explaining.
     let node = screen.getByTestId('the-cover').parent;
     while (node) {
       expect(withdrawn(node.props as Record<string, unknown>)).toBe(false);
@@ -110,6 +130,7 @@ describe('a cover in the overlays slot', () => {
     const r = await mount(false);
     expect(withdrawn(screen.getByTestId('game-table').props)).toBe(false);
     expect(withdrawn(screen.getByTestId('game-top-bar').props)).toBe(false);
+    expect(liveRegions().length).toBeGreaterThan(0);
     await r.unmount();
   });
 });

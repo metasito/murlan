@@ -32,7 +32,6 @@ const BLOCKING_OVERLAYS: [string, string][] = [
   ["components/SettingsModal.tsx", "StyleSheet.absoluteFill"],
   ["components/ErrorFallback.tsx", "styles.modalOverlay"],
   ["components/SessionReplacedNotice.tsx", "styles.overlay"],
-  ["app/(online)/index.tsx", "styles.modalOverlay"],
   ["app/(online)/index.tsx", "StyleSheet.absoluteFill"],
   // The portrait cover, which is the whole screen.
   ["components/table/rotateOverlay.tsx", "portraitOverlayStyles.overlay"],
@@ -53,8 +52,9 @@ const NOT_A_BLOCKER: [string, number, string][] = [
 
 /**
  * Blocking layers that must not be Modals, each with the properties it carries instead of
- * the ones a Modal would have brought. Each property is a fact about the source rather than
- * a promise about it, so a rename cannot quietly satisfy one.
+ * the ones a Modal would have brought. A property here is a call site, not a promise — but
+ * it can only say the layer is wired, never that the wiring is right. What the veil
+ * actually withdraws is `tests/native/tableCoveredVeil.test.tsx`'s job.
  */
 const NON_MODAL_OVERLAYS: [string, number, string, string, [string, RegExp][]][] = [
   [
@@ -73,8 +73,20 @@ const NON_MODAL_OVERLAYS: [string, number, string, string, [string, RegExp][]][]
     "app/(online)/game.tsx",
     1,
     "styles.waitOverlay",
-    "the exchange wait cover holds no control, so there is nothing to trap into and nothing to close — the player waits it out",
-    [["withdraws the table under it", /tableCovered=\{/]],
+    "the exchange wait cover holds no control, so there is nothing to trap into and nothing to close — the player waits it out. The rail stays reachable on purpose: the settings sheet it opens is the only route to onQuit",
+    [
+      // Spelled out rather than matched loosely. The cover and the veil are
+      // declared three hundred lines apart, and the seat they must both spare
+      // is the winner — who still owes a card back and whose ExchangeModal
+      // renders above the veil. Inverting this reads as a tidy-up and silently
+      // withdraws the table from the one player who can still act.
+      [
+        "derives the cover and the veil from one condition",
+        /const exchangeWaiting = exchange\.active && !exchange\.viewerIsWinner;/,
+      ],
+      ["withdraws the table under it", /tableCovered=\{exchangeWaiting\}/],
+      ["and gates the cover with the same name", /\{exchangeWaiting && \(/],
+    ],
   ],
 ];
 
@@ -163,7 +175,7 @@ test("every full-bleed layer has been classified by a human", () => {
   assert.deepEqual(
     unclassified,
     [],
-    "classify each of these into BLOCKING_OVERLAYS, NOT_A_BLOCKER or UNTRAPPED " +
+    "classify each of these into BLOCKING_OVERLAYS, NOT_A_BLOCKER, NON_MODAL_OVERLAYS or UNTRAPPED " +
       `— a layer nobody has ruled on is a layer nobody has checked:\n  ${unclassified.join("\n  ")}`
   );
 });
@@ -216,6 +228,9 @@ test("the scanner reads one modal at a time", () => {
 for (const [rel, , marker, why, properties] of NON_MODAL_OVERLAYS) {
   test(`${rel} covers a screen on a non-modal layer's own terms`, () => {
     const source = blankComments(readFileSync(path.join(repoRoot, rel), "utf8"));
+    // This list asserts an absence, so a marker that no longer matches anything
+    // would satisfy it silently — the opposite failure mode to BLOCKING_OVERLAYS.
+    assert.ok(source.includes(marker), `${rel}: nothing in the source matches ${marker}`);
     assert.ok(
       !modalBodies(source).some((body) => body.includes(marker)),
       `${rel} (${marker}) is inside a Modal now, so it belongs in BLOCKING_OVERLAYS`

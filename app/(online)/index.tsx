@@ -291,16 +291,25 @@ export default function OnlineLobbyScreen() {
       >
         <KeyboardAvoidingView
           behavior={Platform.OS === "ios" ? "padding" : "height"}
-          style={[styles.modalOverlay, { pointerEvents: "box-none" as const }]}
+          style={styles.modalOverlay}
         >
-          <Pressable style={StyleSheet.absoluteFill} onPress={closeJoin} accessibilityLabel={t("common.cancel")} />
+          <Pressable style={StyleSheet.absoluteFill} onPress={closeJoin} {...a11yHidden()} />
           <ScrollView
             contentContainerStyle={styles.modalScroll}
             bounces={false}
             keyboardShouldPersistTaps="handled"
           >
-            <View style={[styles.modalBox, isLandscape && styles.modalBoxLandscape, { width: isLandscape ? "80%" : "100%", maxWidth: isLandscape ? 600 : 400 }]}>
-              <Text style={styles.modalTitle}>{t("onlineLobby.joinModalTitle")}</Text>
+            <View
+              style={[styles.modalBox, isLandscape && styles.modalBoxLandscape, { width: isLandscape ? "80%" : "100%", maxWidth: isLandscape ? 600 : 400 }]}
+              accessibilityViewIsModal
+              accessibilityRole="none"
+            >
+              {/* A Modal's own host view is not an accessibility element on iOS,
+                  so the label above it reaches web only; this is what VoiceOver
+                  lands on and what confines it to the sheet. */}
+              <Text style={styles.modalTitle} accessibilityRole="header">
+                {t("onlineLobby.joinModalTitle")}
+              </Text>
               <MenuCard title={t("onlineLobby.roomCodeCardTitle")} style={{ marginBottom: 0 }}>
                 <TextInput
                   style={[styles.codeInput, isLandscape && styles.codeInputLandscape]}
@@ -444,9 +453,8 @@ const styles = StyleSheet.create({
   divLine: { flex: 1, height: 1, backgroundColor: Colors.border },
   divText: { fontFamily: "Inter_400Regular", fontSize: FontSize.xs, color: Colors.textMuted },
   modalOverlay: {
-    ...StyleSheet.absoluteFillObject,
+    flex: 1,
     backgroundColor: Colors.overlay,
-    zIndex: 100,
   },
   modalScroll: { 
     flexGrow: 1, 

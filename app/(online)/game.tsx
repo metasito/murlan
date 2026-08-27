@@ -225,6 +225,11 @@ export default function OnlineGameScreen() {
     myUserId in rematchIntents.answers ? rematchIntents.answers[myUserId] : null;
 
   const exchange = readExchange(gameState, mySeatIndex, isSpectator);
+  // One name for two things that must never disagree: the cover that says the
+  // player may not act, and the veil that withdraws what it covers. The winner
+  // is excluded because they still owe a card back — `ExchangeModal` is theirs
+  // and renders above the veil.
+  const exchangeWaiting = exchange.active && !exchange.viewerIsWinner;
   // The results overlay sits above the table and needs the same safe-area pads
   // the table uses; the table computes its own full frame from the same source.
   const pads = computeScreenPads({ insets });
@@ -258,7 +263,7 @@ export default function OnlineGameScreen() {
   return (
     <GameTable
       gameState={gameState}
-      tableCovered={exchange.active && !exchange.viewerIsWinner}
+      tableCovered={exchangeWaiting}
       // A spectator holds no seat, so the table is drawn from seat 0 and told
       // it is being watched. Every hand arrives blank from the server either
       // way; `spectating` is what makes the bottom one draw as backs rather
@@ -357,7 +362,7 @@ export default function OnlineGameScreen() {
 
             {/* Everyone but the winner waits out the exchange. Offline the AI
                 resolves it in under a second, so this exists online only. */}
-            {exchange.active && !exchange.viewerIsWinner && (
+            {exchangeWaiting && (
               <View style={styles.waitOverlay}>
                 <View style={styles.waitCard}>
                   <Text style={styles.waitGlyph}>🔄</Text>

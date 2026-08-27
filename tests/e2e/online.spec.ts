@@ -191,6 +191,12 @@ test("online — the join sheet is a modal dialog with a name, and Escape closes
   // What tells assistive technology to ignore everything outside the dialog.
   await expect(sheet).toHaveAttribute("aria-modal", "true");
 
+  // Closing by any route clears the code, so a half-typed one from a previous
+  // attempt is not waiting in the field the next time the sheet opens.
+  await page.getByRole("textbox", { name: "Codice stanza" }).fill("ABCD12");
   await page.keyboard.press("Escape");
   await expect(sheet).toBeHidden();
+
+  await page.getByRole("button", { name: "Inserisci codice stanza" }).click();
+  await expect(page.getByRole("textbox", { name: "Codice stanza" })).toHaveValue("");
 });
