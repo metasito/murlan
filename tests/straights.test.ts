@@ -164,7 +164,10 @@ describe("enumeration completeness", () => {
     assert.ok(types.has("straight"), "the mixed-suit plain straight must also be offered");
   });
 
-  test("royal straights are enumerated per suit and per length", () => {
+  // Every window of a suited run is its own royal, so the longest is not the
+  // only one offered. The 3-7 both suits hold is one play, not two — the
+  // enumerator returns one entry per (length, strength).
+  test("every distinct royal a suited run holds is enumerated, once each", () => {
     const hand = [
       c("3", "spades"), c("4", "spades"), c("5", "spades"),
       c("6", "spades"), c("7", "spades"), c("8", "spades"),
@@ -174,12 +177,10 @@ describe("enumeration completeness", () => {
     const royals = getAllValidPlays(hand, null, true).filter(
       (p) => p.type === "royal_straight"
     );
-    const suits = new Set(royals.map((p) => p.cards[0].suit));
-    assert.equal(suits.size, 2, "both suited runs must be enumerated");
-    const spadeLengths = new Set(
-      royals.filter((p) => p.cards[0].suit === "spades").map((p) => p.cards.length)
+    assert.deepEqual(
+      royals.map((p) => `${p.cards.length}:${p.strength}`).sort(),
+      ["5:7", "5:8", "6:8"]
     );
-    assert.deepEqual([...spadeLengths].sort((a, b) => a - b), [5, 6]);
   });
 
   test("requireCard forces the 3 of spades into every enumerated play", () => {

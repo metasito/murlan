@@ -417,17 +417,19 @@ export function getAllValidPlays(
   const plays: Combination[] = [];
   const seen = new Set<string>();
 
+  // `canPlay` discriminates on type, length and strength and on nothing else,
+  // and the strength chain is suit-blind, so entries agreeing on all three are
+  // interchangeable for legality. Deduping here rather than per arm is what
+  // makes that hold for the arms not yet written.
   function tryAdd(selected: Card[]): void {
     if (!selected.length) return;
     if (requireCard && !selected.some((c) => c.id === requireCard.id)) return;
-    const key = selected
-      .map((c) => c.id)
-      .sort()
-      .join(",");
+    const combo = buildCombination(selected);
+    if (!combo || !canPlay(combo, isNewRound ? null : lastPlayed)) return;
+    const key = `${combo.type}:${combo.cards.length}:${combo.strength}`;
     if (seen.has(key)) return;
     seen.add(key);
-    const combo = buildCombination(selected);
-    if (combo && canPlay(combo, isNewRound ? null : lastPlayed)) plays.push(combo);
+    plays.push(combo);
   }
 
   const nj = hand.filter((c) => !c.isJoker);

@@ -238,4 +238,60 @@ describe("enumerator property tests", () => {
       }
     }
   });
+
+  /** `shapeOf` is the equivalence class `canPlay` discriminates on. */
+  test("returns at most one entry per shape", () => {
+    const deck = createDeck();
+    const rand = mulberry32(0xd00d);
+
+    for (const size of REAL_SIZES) {
+      for (let run = 0; run < 120; run++) {
+        const hand = sample(deck, size, rand);
+        const lastPlayed = run % 2 === 0 ? null : randomLastPlayed(rand, deck);
+        const isNewRound = lastPlayed === null;
+        const plays = getAllValidPlays(hand, lastPlayed, isNewRound);
+
+        const byShape = new Map<string, Combination[]>();
+        for (const play of plays) {
+          const shape = shapeOf(play);
+          byShape.set(shape, [...(byShape.get(shape) ?? []), play]);
+        }
+        const duplicated = [...byShape].filter(([, group]) => group.length > 1);
+
+        assert.deepEqual(
+          duplicated.map(([shape, group]) => `${shape} ×${group.length}`),
+          [],
+          `${size} cards, run ${run}: hand ${cardKey(hand)} — ` +
+            duplicated
+              .map(([shape, group]) => `${shape} as ${group.map((p) => cardKey(p.cards)).join(" / ")}`)
+              .join("; ")
+        );
+      }
+    }
+  });
+
+  /**
+   * The royals arm enumerates per suit, so one span held in two suits reaches
+   * `tryAdd` twice with equal length and equal strength. Pinned on its own
+   * because a dedup written for the pairs alone would leave it standing.
+   */
+  test("one span suited twice is one royal straight", () => {
+    const suited = (suit: Card["suit"]) =>
+      ["3", "4", "5", "6", "7"].map((rank) => ({
+        id: `${rank}_${suit}`,
+        rank: rank as Card["rank"],
+        suit,
+        isJoker: false,
+      })) as Card[];
+    const hand = [...suited("hearts"), ...suited("spades")];
+
+    const royals = getAllValidPlays(hand, null, true).filter((p) => p.type === "royal_straight");
+    assert.ok(royals.length > 0, "the hand holds a royal straight in each of two suits");
+    assert.equal(
+      new Set(royals.map(shapeOf)).size,
+      royals.length,
+      `two suits of one span returned ${royals.length} entries of ` +
+        `${new Set(royals.map(shapeOf)).size} distinct shape(s)`
+    );
+  });
 });
