@@ -9,7 +9,7 @@
 // of it.
 import { describe, it, expect, afterAll, beforeEach, jest } from '@jest/globals';
 import { Platform } from 'react-native';
-import { readFileSync } from 'fs';
+import { readdirSync, readFileSync } from 'fs';
 import { join } from 'path';
 
 jest.mock('expo-audio', () => ({
@@ -84,6 +84,20 @@ describe(`music on ${Platform.OS}`, () => {
     await playMusic('menu');
     await playMusic('hand');
     expect(createAudioPlayer).toHaveBeenCalledTimes(2);
+  });
+
+  // Any screen that mounts GameTable reaches playMusic, which reaches
+  // ensureAudioMode — so a lib/sounds mock that omits it throws at render, in a
+  // suite about something else entirely, naming a line no one there wrote. The
+  // stub is one line; finding out why you need it is the expensive part.
+  it('every lib/sounds mock in this directory stubs ensureAudioMode', () => {
+    const offenders = readdirSync(__dirname)
+      .filter((f) => f.endsWith('.tsx') || f.endsWith('.ts'))
+      .filter((f) => {
+        const source = readFileSync(join(__dirname, f), 'utf8');
+        return source.includes("jest.mock('@/lib/sounds'") && !source.includes('ensureAudioMode');
+      });
+    expect(offenders).toEqual([]);
   });
 
   it('stays silent without throwing when creating the player fails', async () => {

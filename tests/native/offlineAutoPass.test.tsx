@@ -20,6 +20,7 @@ jest.mock('expo-router', () => ({
 
 jest.mock('@/lib/sounds', () => ({
   playCardPass: jest.fn(async () => {}),
+  ensureAudioMode: jest.fn(async () => {}),
 }));
 
 jest.mock('expo-haptics', () => ({

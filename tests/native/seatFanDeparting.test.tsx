@@ -14,6 +14,7 @@ import { act, render, screen, within } from '@testing-library/react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 jest.mock('@/lib/sounds', () => ({
+  ensureAudioMode: jest.fn(async () => {}),
   playCardSelect: jest.fn(async () => {}),
   playCardPlay: jest.fn(async () => {}),
   playCardPass: jest.fn(async () => {}),
