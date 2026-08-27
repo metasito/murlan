@@ -1,8 +1,3 @@
-// tests/importShellGuard.test.ts — the guard the CLI-script suites use to prove
-// that importing a script does not run its command-line body. Its own floor:
-// a guard that cannot see a script shelling out proves nothing, and one that
-// reports a timeout as `expected 0, got null` sends the reader after the wrong
-// thing (#409).
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
@@ -46,6 +41,18 @@ describe("importUnderShellGuard", () => {
       /timed out/,
       "a killed child must name the timeout, not surface `status: null`"
     );
+  });
+
+  test("a module that shells out and then hangs still names the command", () => {
+    // The hang is the less interesting half: the command it ran is the
+    // diagnosis, and reporting the timeout instead throws that away.
+    const url = moduleWith(
+      "import { execFileSync } from 'node:child_process';\n" +
+        "try { execFileSync('gh', ['issue', 'list']); } catch {}\n" +
+        "setInterval(() => {}, 1000);\nawait new Promise(() => {});\n"
+    );
+
+    assert.equal(importUnderShellGuard(url, { timeoutMs: 1_000 }).shelledOutTo, "gh");
   });
 
   test("a module that throws on import reports its own stderr", () => {

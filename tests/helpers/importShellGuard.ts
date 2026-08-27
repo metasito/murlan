@@ -20,7 +20,6 @@ const PRELOAD = [
 ].join("\n");
 
 export interface ShellGuardResult {
-  /** The command the module ran while being imported, or null if it ran none. */
   shelledOutTo: string | null;
 }
 
@@ -31,9 +30,7 @@ export interface ShellGuardOptions {
 
 /**
  * Imports `moduleUrl` in a child Node with any shelling out recorded and
- * refused, and reports what it tried to run. Throws — naming the timeout, the
- * signal or the module's own stderr — when the child never got as far as
- * answering that question.
+ * refused, and reports what it tried to run.
  */
 export function importUnderShellGuard(
   moduleUrl: string,
@@ -56,23 +53,21 @@ export function importUnderShellGuard(
       timeout: timeoutMs,
     });
 
-    // A killed child reports as ETIMEDOUT on Windows and as a bare signal with
-    // a null status elsewhere. Either way the question this asks went
-    // unanswered, and saying which is the difference between a diagnosis and
-    // `expected 0, got null`.
-    const timedOut =
-      (result.error as NodeJS.ErrnoException | undefined)?.code === "ETIMEDOUT" ||
-      result.signal !== null;
-    if (timedOut) {
-      throw new Error(
-        `importing ${moduleUrl} timed out after ${timeoutMs}ms` +
-          (result.signal ? ` (killed by ${result.signal})` : "")
-      );
-    }
-    // Read before judging the exit status: blocking the call is what made the
-    // import throw, so a module that shells out always exits non-zero. That is
-    // the answer this returns, not a failure to reach one.
+    // Before anything that could go wrong afterwards: the preload writes this
+    // synchronously, so a module that shelled out and then hung has still
+    // answered the question, and the hang is the less interesting half.
     if (fs.existsSync(marker)) return { shelledOutTo: fs.readFileSync(marker, "utf8") };
+
+    // Node sets ETIMEDOUT on every platform when the timeout is what killed the
+    // child, so the signal alone does not identify one: an OOM kill or a
+    // SIGSEGV also sets it, and calling either a timeout sends the reader after
+    // a budget when the machine ran out of memory.
+    if ((result.error as NodeJS.ErrnoException | undefined)?.code === "ETIMEDOUT") {
+      throw new Error(`importing ${moduleUrl} timed out after ${timeoutMs}ms`);
+    }
+    if (result.signal) {
+      throw new Error(`importing ${moduleUrl} was killed by ${result.signal}`);
+    }
 
     if (result.error) throw result.error;
     if (result.status !== 0) {
