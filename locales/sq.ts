@@ -151,7 +151,7 @@ export const sq: Record<keyof typeof en, string> = {
   "settings.logoutConfirmTitle": "Do të dalësh?",
   "settings.logoutConfirmBody": "Për të hyrë sërish të duhen emri i përdoruesit dhe fjalëkalimi. Ndeshjet dhe statistikat mbeten në llogari.",
   "settings.logoutFailedTitle": "Ende i kyçur",
-  "settings.logoutFailedBody": "Nuk arritëm te serveri. Je ende i kyçur dhe kjo pajisje mund të mos marrë ftesa derisa të provosh përsëri.",
+  "settings.logoutFailedBody": "Nuk arritëm te serveri. Asgjë nuk ka ndryshuar: je ende i kyçur dhe kjo pajisje vazhdon të marrë ftesa.",
   "settings.deleteAccount": "Fshi llogarinë",
   "settings.deleteAccountA11yHint": "Fshin përgjithmonë llogarinë tënde dhe të gjitha të dhënat e lidhura",
   "settings.deleting": "Duke fshirë…",
