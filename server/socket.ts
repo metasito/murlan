@@ -1241,19 +1241,24 @@ export function setupSocket(httpServer: HttpServer) {
 
           const currentRoomId = socketRoomMap.get(socket.id);
           socketRoomMap.delete(socket.id);
-          // Both exits below are correct and both are silent, so a seat that is
-          // never released looks the same as one that was never held. Which of
-          // the two ran is the whole diagnosis.
+          // Three paths reach a return without announcing the drop, and from
+          // outside a seat that should have been released reads exactly like
+          // one that was never held. Which path ran is the whole diagnosis.
           if (!currentRoomId) {
-            logger.debug({ userId, socketId: socket.id }, "Disconnect held no room");
+            logger.debug({ userId, socketId: socket.id }, "Socket held no room");
             return;
           }
 
           // Still connected elsewhere — nothing to tear down.
           if (userSocketMap.has(userId)) {
             logger.debug(
-              { userId, socketId: socket.id, currentRoomId, liveSocketId: userSocketMap.get(userId) },
-              "Disconnect left another socket for the account"
+              {
+                userId,
+                socketId: socket.id,
+                roomId: currentRoomId,
+                liveSocketId: userSocketMap.get(userId),
+              },
+              "Account still holds another socket"
             );
             return;
           }
@@ -1265,6 +1270,10 @@ export function setupSocket(httpServer: HttpServer) {
             // there is nothing for a grace period to protect. The seat is
             // freed straight away or it keeps counting towards the rematch
             // gate and the remaining players can never start the next manche.
+            logger.debug(
+              { userId, socketId: socket.id, roomId: currentRoomId, hasGame: Boolean(game) },
+              "Seat released without a grace period"
+            );
             await handleSeatRelease(io, currentRoomId, userId, username, {
               source: "disconnect",
             });
