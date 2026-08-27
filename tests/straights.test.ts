@@ -201,13 +201,14 @@ describe("enumeration completeness", () => {
     );
   });
 
-  test("enumeration of a full 21-card two-player hand stays polynomial", () => {
+  test("enumeration does not inspect a full 21-card hand once per subset", () => {
     const suits = ["hearts", "clubs", "spades", "diamonds"] as const;
     const ranks = ["3", "4", "5", "6", "7", "8", "9", "10", "J", "Q", "K", "A", "2"] as const;
     const size = 21;
-    // Counting rank reads rather than milliseconds: the defect this guards is
-    // an enumerator that walks the hand's subsets, and a loaded runner cannot
-    // make the count wrong the way it makes a stopwatch wrong.
+    // Counting rank reads rather than milliseconds. This sees an enumerator
+    // that reaches into the hand per subset, which is how the enumeration is
+    // written; one that copied the ranks out first and then walked subsets of
+    // the copy would read each card once and pass.
     let rankReads = 0;
     const hand: Card[] = [];
     for (const rank of ranks) {
@@ -230,7 +231,11 @@ describe("enumeration completeness", () => {
     assert.ok(plays.length > 0);
     const ceiling = size ** 3;
     assert.ok(
-      rankReads > 0 && rankReads < ceiling,
+      rankReads >= size,
+      `enumeration read only ${rankReads} ranks for ${size} cards, so the counter is not seeing its work`
+    );
+    assert.ok(
+      rankReads < ceiling,
       `enumeration read a card's rank ${rankReads} times for ${size} cards, over a cubic ceiling of ${ceiling} — it is walking subsets (2^${size} = ${2 ** size})`
     );
   });

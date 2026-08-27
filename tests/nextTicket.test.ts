@@ -128,9 +128,7 @@ describe("isInvokedDirectly", () => {
     const result = spawnSync(process.execPath, ["--require", preload, "-e", code], {
       env: { ...process.env, GUARD_MARKER: marker },
       encoding: "utf8",
-      // A hang guard, not a budget: the marker below is what proves the CLI
-      // body stayed asleep, and how long a cold Node takes to start says
-      // nothing about it.
+      // A hang guard, not a budget — the marker below is the proof.
       timeout: 60_000,
     });
 

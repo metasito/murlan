@@ -14,7 +14,6 @@
 // nothing beats the table.
 
 import type { Locator, Page } from "@playwright/test";
-import { DEADLINE_SCALE } from "../../helpers/deadlines.ts";
 
 const TABLE = '[data-testid="game-table"]';
 // Scoped to the hand wrapper specifically (its own accessibilityLabel always
@@ -44,6 +43,37 @@ async function tableDescription(page: Page): Promise<string | null> {
   } catch {
     return null;
   }
+}
+
+/**
+ * Every hand size the table announces, summed (`gameTable.a11yYourCards` and
+ * `a11yOpponentCards`, both numbers in locales/it.ts). Null when the state
+ * names none.
+ */
+export function cardsInHands(desc: string): number | null {
+  const counts = [...desc.matchAll(/(\d+) cart[ae] in mano/g)];
+  return counts.length === 0 ? null : counts.reduce((sum, m) => sum + Number(m[1]), 0);
+}
+
+export interface Progress {
+  /** Cards across every hand the table has announced so far. */
+  held: number | null;
+  /** Table states seen since that total last moved. */
+  stale: number;
+}
+
+export const NO_PROGRESS_YET: Progress = { held: null, stale: 0 };
+
+/**
+ * Folds one new table state into the progress seen so far. Any move of the
+ * total counts, including the deal that grows it again between hands: what a
+ * game that cannot end never does is change it.
+ */
+export function observeProgress(prev: Progress, desc: string): Progress {
+  const held = cardsInHands(desc);
+  // A state that names no hand sizes is neither progress nor a lack of it.
+  if (held === null) return prev;
+  return { held, stale: held === prev.held ? prev.stale + 1 : 0 };
 }
 
 function rankKeyOf(cardLabel: string): string {
@@ -383,17 +413,14 @@ export interface DriveOptions {
   /** Resolves true once the game has reached a terminal, checkable screen. */
   isFinished: (page: Page) => Promise<boolean>;
   /**
-   * How many distinct table states a game may pass through before it is a
-   * runaway rather than a long game. Counted rather than timed: a slow machine
-   * takes the same moves as a fast one, and the spread across deals is wide
-   * enough that any wall-clock figure covering the slow tail is useless as a
-   * check.
+   * How many table states may pass with no card leaving anyone's hand before
+   * this is a game that cannot end rather than a long one. Counted rather than
+   * timed: a slow machine plays the same moves as a fast one, and the spread
+   * across deals is wide enough that any wall-clock figure covering the slow
+   * tail is useless as a check.
    */
-  maxChanges?: number;
-  /**
-   * How long the table description may sit unchanged before this is a stall
-   * rather than a wait. A local budget, scaled by `DEADLINE_SCALE`.
-   */
+  maxStatesWithoutProgress?: number;
+  /** How long the table description may sit unchanged before this is a stall, not a wait. */
   stallMs?: number;
   log?: (line: string) => void;
 }
@@ -406,21 +433,21 @@ export interface DriveOptions {
  * identical to "still thinking" until you compare consecutive polls.
  */
 export async function driveGameToCompletion(page: Page, opts: DriveOptions): Promise<void> {
-  // A four-seat hand turns over a few hundred states; the ceiling is an order
-  // above that, because the only thing it has to separate is a game that ends
-  // from one that never will.
-  const maxChanges = opts.maxChanges ?? 5_000;
+  // A hand ends when someone runs out, so cards leaving hands is the only
+  // progress there is. Legitimately it pauses for a round of passes and the
+  // turn churn around it — a handful of states; this sits an order above that.
+  const maxStatesWithoutProgress = opts.maxStatesWithoutProgress ?? 100;
   // Generous relative to a normal turn (a few seconds, measured, with
   // EXPO_PUBLIC_E2E_FAST and reduced motion both active) without being so
   // tight that one slow AI response false-positives a healthy game.
-  const stallMs = (opts.stallMs ?? 15_000) * DEADLINE_SCALE;
+  const stallMs = opts.stallMs ?? 15_000;
   const log = opts.log ?? (() => {});
 
   let lastDesc = "";
   let lastChangeAt = Date.now();
-  let changes = 0;
+  let progress = NO_PROGRESS_YET;
 
-  while (changes <= maxChanges) {
+  for (;;) {
     if (await opts.isFinished(page)) return;
 
     await declineRematchPromptIfShown(page);
@@ -434,7 +461,14 @@ export async function driveGameToCompletion(page: Page, opts: DriveOptions): Pro
     if (desc !== lastDesc) {
       lastDesc = desc;
       lastChangeAt = Date.now();
-      changes++;
+
+      progress = observeProgress(progress, desc);
+      if (progress.stale > maxStatesWithoutProgress) {
+        throw new StuckError(
+          `Game passed through ${progress.stale} table states with ${progress.held} cards still in hand, ` +
+            `so no move is reducing them and it cannot end. Last table state: "${desc}".`
+        );
+      }
     }
 
     if (desc.startsWith(EXCHANGE_GIVE_PREFIX)) {
@@ -480,11 +514,6 @@ export async function driveGameToCompletion(page: Page, opts: DriveOptions): Pro
 
     await sleep(150);
   }
-
-  throw new Error(
-    `Game passed through ${changes} table states without finishing, so it is not going to. ` +
-      `Last table state: "${lastDesc}".`
-  );
 }
 
 /**
