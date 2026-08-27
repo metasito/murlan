@@ -7,7 +7,7 @@ import {
   skipMessage,
   type TestServer,
 } from "../helpers/testServer.ts";
-import { connectAs, waitFor } from "../helpers/client.ts";
+import { connectAs, waitFor, DEADLINE_SCALE } from "../helpers/client.ts";
 import {
   setUpRoom,
   startGame,
@@ -104,7 +104,7 @@ describe(
         const closed = new Promise<void>((resolve, reject) => {
           const timer = setTimeout(
             () => reject(new Error("the replaced socket was never closed")),
-            5_000
+            5_000 * DEADLINE_SCALE
           );
           alice.socket.once("disconnect", () => {
             clearTimeout(timer);
@@ -193,7 +193,7 @@ describe(
         const closed = new Promise<void>((resolve, reject) => {
           const timer = setTimeout(
             () => reject(new Error("the replaced socket was never closed")),
-            5_000
+            5_000 * DEADLINE_SCALE
           );
           alice.socket.once("disconnect", () => {
             clearTimeout(timer);

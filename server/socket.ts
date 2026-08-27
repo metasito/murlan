@@ -1241,10 +1241,22 @@ export function setupSocket(httpServer: HttpServer) {
 
           const currentRoomId = socketRoomMap.get(socket.id);
           socketRoomMap.delete(socket.id);
-          if (!currentRoomId) return;
+          // Both exits below are correct and both are silent, so a seat that is
+          // never released looks the same as one that was never held. Which of
+          // the two ran is the whole diagnosis.
+          if (!currentRoomId) {
+            logger.debug({ userId, socketId: socket.id }, "Disconnect held no room");
+            return;
+          }
 
           // Still connected elsewhere — nothing to tear down.
-          if (userSocketMap.has(userId)) return;
+          if (userSocketMap.has(userId)) {
+            logger.debug(
+              { userId, socketId: socket.id, currentRoomId, liveSocketId: userSocketMap.get(userId) },
+              "Disconnect left another socket for the account"
+            );
+            return;
+          }
 
           const game = activeGames.get(currentRoomId);
 

@@ -37,6 +37,22 @@ process.env.MURLAN_AUTH_RATE_LIMIT ??= "200";
  */
 process.env.MURLAN_LOGIN_USERNAME_RATE_LIMIT ??= "5";
 
+/**
+ * Node closes an idle keep-alive socket after 5s and advertises that in its
+ * `Keep-Alive` header; undici reuses one for 4s, and the 1s between the two is
+ * the whole safety margin. A loaded runner fires both timers late and out of
+ * order, so the client sends a request down a socket the server has already
+ * begun closing and `fetch` rejects with `UND_ERR_SOCKET: other side closed` —
+ * an error no assertion in the suite is about, on a request that never ran.
+ *
+ * The server therefore never expires the connection first: nothing here is
+ * testing keep-alive, and a pause between two requests is not a defect.
+ * Production keeps Node's default, which is what Replit's proxy expects.
+ */
+const KEEP_ALIVE_MS = 120_000;
+/** Node requires `headersTimeout` to outlast `keepAliveTimeout`. */
+const KEEP_ALIVE_HEADROOM_MS = 10_000;
+
 export function hasDatabase(): boolean {
   return Boolean(process.env.DATABASE_URL);
 }
@@ -126,6 +142,9 @@ export async function startTestServer(
     // one.
     const { pool: appPool } = await import("../../server/db.ts");
     const { server, io } = await createApp();
+    server.keepAliveTimeout = KEEP_ALIVE_MS;
+    // Node refuses to read headers for longer than it will hold the socket.
+    server.headersTimeout = KEEP_ALIVE_MS + KEEP_ALIVE_HEADROOM_MS;
     await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
     const port = (server.address() as { port: number }).port;
 
