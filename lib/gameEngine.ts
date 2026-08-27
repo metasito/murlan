@@ -81,6 +81,11 @@ export interface GameState {
   players: Player[];
   currentTurnIndex: number;
   lastPlayedCombination: Combination | null;
+  /**
+   * Who made the play on the table. `processPass` clears the combination when a
+   * round closes but leaves this naming that round's winner, so it answers "who
+   * holds the round" only while `lastPlayedCombination` is set.
+   */
   lastPlayedBy: number;
   passCount: number;
   gameMode: GameMode;
@@ -871,7 +876,7 @@ function assertPlayable(state: GameState, combination: Combination): void {
 export function processPlay(state: GameState, combination: Combination): GameState {
   assertPlayable(state, combination);
 
-  const newState = deepCloneState(state);
+  const newState = structuredClone(state);
   const player = newState.players[newState.currentTurnIndex];
 
   combination.cards.forEach((played) => {
@@ -931,7 +936,7 @@ export function processPass(state: GameState): GameState {
   // here rather than relying on the UI. State is returned untouched.
   if (state.lastPlayedCombination === null) return state;
 
-  const newState = deepCloneState(state);
+  const newState = structuredClone(state);
   newState.passCount += 1;
 
   // The round closes once every OTHER player still holding cards has passed
@@ -977,10 +982,6 @@ function getNextActivePlayer(state: GameState): number {
     attempts++;
   }
   return next;
-}
-
-export function deepCloneState(state: GameState): GameState {
-  return JSON.parse(JSON.stringify(state));
 }
 
 export function canPlayerPlay(
@@ -1100,7 +1101,7 @@ export function initializeRematch(
 export function processExchangeChoice(state: GameState, cardId: string): GameState {
   if (!state.exchangePhase?.active) return state;
   const { winnerIdx, loserIdx } = state.exchangePhase;
-  const newState = deepCloneState(state);
+  const newState = structuredClone(state);
   const winnerHand = newState.players[winnerIdx].hand;
   const cardIdx = winnerHand.findIndex((c) => c.id === cardId);
   if (cardIdx < 0) return state;
