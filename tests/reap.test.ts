@@ -1,7 +1,7 @@
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
 import { orphans, staleByAge, netstatListeners, toolingRoots, ownedByTooling } from "../scripts/reap.mjs";
-import { memoryVerdict, memoryFloor } from "../scripts/preflightMemory.mjs";
+import preflightMemory, { memoryVerdict, memoryFloor } from "../scripts/preflightMemory.mjs";
 
 const HOUR = 60 * 60 * 1000;
 const NOW = 1_700_000_000_000;
@@ -129,6 +129,63 @@ describe("memoryVerdict", () => {
   test("the floor never exceeds a tenth of the machine, however small it is", () => {
     assert.ok(memoryFloor(2 * GB) <= 0.2 * GB);
     assert.equal(memoryVerdict({ freeBytes: 0.25 * GB, totalBytes: 2 * GB }).ok, true);
+  });
+});
+
+describe("preflightMemory", () => {
+  const settled = () => Promise.resolve();
+
+  // A suite tearing down frees its workers in one burst — the other session's hold ~2.6 GB. A
+  // reading taken inside that burst refused a run that the identical command, retried a second
+  // later with nothing changed, then completed.
+  test("a reading taken mid-teardown does not refuse a run the machine can afford", async () => {
+    const samples = [0.2 * GB, 8 * GB];
+    await preflightMemory({
+      sample: () => samples.shift()!,
+      totalBytes: 16 * GB,
+      wait: settled,
+    });
+  });
+
+  test("a machine that is still starved a moment later is still refused", async () => {
+    await assert.rejects(
+      preflightMemory({ sample: () => 0.2 * GB, totalBytes: 16 * GB, wait: settled }),
+      /memory/i
+    );
+  });
+
+  // The first report of this was unsound because the refusal's own numbers had scrolled away and
+  // had to be reconstructed from a second reading taken seconds later. A refusal has to carry
+  // what it saw, or the next one cannot be told from a transient dip either.
+  test("a refusal names every reading it took, not just the one it ruled on", async () => {
+    const samples = [0.2 * GB, 0.4 * GB];
+    await assert.rejects(
+      preflightMemory({ sample: () => samples.shift()!, totalBytes: 16 * GB, wait: settled }),
+      (err: Error) => /0\.20 GB/.test(err.message) && /0\.40 GB/.test(err.message)
+    );
+  });
+
+  // Taking the better of the two readings would clear a box that fell further while we waited,
+  // on the strength of a number that had already stopped being true.
+  test("a box that degrades while settling is judged on the later reading", async () => {
+    const samples = [1.4 * GB, 0.3 * GB];
+    await assert.rejects(
+      preflightMemory({ sample: () => samples.shift()!, totalBytes: 16 * GB, wait: settled }),
+      /0\.30 GB free/
+    );
+  });
+
+  test("a machine with room is never sampled twice", async () => {
+    let taken = 0;
+    await preflightMemory({
+      sample: () => {
+        taken++;
+        return 8 * GB;
+      },
+      totalBytes: 16 * GB,
+      wait: settled,
+    });
+    assert.equal(taken, 1);
   });
 });
 

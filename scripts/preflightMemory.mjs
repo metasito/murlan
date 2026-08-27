@@ -24,10 +24,11 @@ export function memoryFloor(totalBytes) {
   return Math.min(WANTED, totalBytes * 0.1);
 }
 
+const gb = (bytes) => (bytes / GB).toFixed(2);
+
 export function memoryVerdict({ freeBytes, totalBytes }) {
   const floor = memoryFloor(totalBytes);
   if (freeBytes >= floor) return { ok: true, message: "" };
-  const gb = (bytes) => (bytes / GB).toFixed(2);
   return {
     ok: false,
     message:
@@ -39,10 +40,35 @@ export function memoryVerdict({ freeBytes, totalBytes }) {
   };
 }
 
-export default async function preflightMemory() {
+/**
+ * How long to let the box settle before ruling against it. A suite tearing down releases its
+ * workers in one burst — the other session's hold about 2.6 GB — and a reading landing inside
+ * that burst refused a run that the identical command completed a second later.
+ */
+const SETTLE_MS = 1000;
+
+export default async function preflightMemory({
+  sample = os.freemem,
+  totalBytes = os.totalmem(),
+  wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
+} = {}) {
   // CI runners are sized for one job and start near their floor by design; the collision this
   // guards against is two local sessions sharing one developer machine.
   if (process.env.CI) return;
-  const verdict = memoryVerdict({ freeBytes: os.freemem(), totalBytes: os.totalmem() });
-  if (!verdict.ok) throw new Error(verdict.message);
+
+  const readings = [sample()];
+  if (memoryVerdict({ freeBytes: readings[0], totalBytes }).ok) return;
+
+  await wait(SETTLE_MS);
+  readings.push(sample());
+
+  // The later reading, never the better of the two: taking the best would rule on the stale
+  // number in the one case that matters, a box that got worse while we waited.
+  const verdict = memoryVerdict({ freeBytes: readings[readings.length - 1], totalBytes });
+  if (verdict.ok) return;
+  // A refusal that leaves nothing behind cannot be told from a transient dip afterwards, and
+  // the readings are what a reader would otherwise reconstruct from a second clock.
+  throw new Error(
+    `${verdict.message}\n\nRead ${readings.map(gb).join(" GB, then ")} GB, ${SETTLE_MS} ms apart.`
+  );
 }
