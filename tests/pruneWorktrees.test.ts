@@ -4,8 +4,9 @@ import assert from "node:assert/strict";
 import path from "node:path";
 import fs from "node:fs";
 import os from "node:os";
-import { execFileSync, spawnSync } from "node:child_process";
+import { execFileSync } from "node:child_process";
 import { pathToFileURL } from "node:url";
+import { importUnderShellGuard } from "./helpers/importShellGuard.ts";
 import {
   classifyWorktree,
   parseWorktreeList,
@@ -279,34 +280,10 @@ describe("isInvokedDirectly", () => {
   });
 
   test("importing the module (not running it) never shells out to git or gh", () => {
-    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "prune-guard-"));
-    const marker = path.join(tmpDir, "called.txt");
-    const preload = path.join(tmpDir, "preload.cjs");
-    fs.writeFileSync(
-      preload,
-      [
-        "const cp = require('node:child_process');",
-        "const fs = require('node:fs');",
-        "cp.execFileSync = function (file) {",
-        "  fs.writeFileSync(process.env.GUARD_MARKER, String(file));",
-        "  throw new Error('blocked: ' + file + ' must not run during import');",
-        "};",
-      ].join("\n"),
-    );
-
     const moduleUrl = pathToFileURL(path.resolve("scripts/prune-worktrees.mjs")).href;
-    const code = `import(${JSON.stringify(moduleUrl)}).then(() => process.exit(0)).catch((e) => { console.error(e); process.exit(2); });`;
 
-    const result = spawnSync(process.execPath, ["--require", preload, "-e", code], {
-      env: { ...process.env, GUARD_MARKER: marker },
-      encoding: "utf8",
-      // A hang guard, not a budget — the marker below is the proof.
-      timeout: 60_000,
-    });
+    const { shelledOutTo } = importUnderShellGuard(moduleUrl);
 
-    assert.equal(result.status, 0, result.stderr);
-    assert.equal(fs.existsSync(marker), false, "importing the module must not shell out to git or gh");
-
-    fs.rmSync(tmpDir, { recursive: true, force: true });
+    assert.equal(shelledOutTo, null, "importing the module must not shell out to git or gh");
   });
 });
