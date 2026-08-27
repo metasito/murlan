@@ -341,7 +341,6 @@ export function SettingsModal({ visible, onClose }: Props) {
                 onValueChange={setSoundVolume}
                 a11yLabel={t("settings.volumeA11yLabel")}
                 valueText={t("settings.volumePercent", { percent: Math.round(soundVolume * 100) })}
-                disabled={!soundsEnabled}
               />
             </View>
 
@@ -374,7 +373,6 @@ export function SettingsModal({ visible, onClose }: Props) {
                 onValueChange={setMusicVolume}
                 a11yLabel={t("settings.musicVolumeA11yLabel")}
                 valueText={t("settings.volumePercent", { percent: Math.round(musicVolume * 100) })}
-                disabled={!musicEnabled}
               />
             </View>
 
