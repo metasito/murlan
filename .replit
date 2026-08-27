@@ -70,7 +70,7 @@ mode = "sequential"
 
 [[workflows.workflow.tasks]]
 task = "shell.exec"
-args = "npm run expo:dev"
+args = "npm run expo:dev:clean"
 waitForPort = 8081
 ensurePreviewReachable = "/status"
 
