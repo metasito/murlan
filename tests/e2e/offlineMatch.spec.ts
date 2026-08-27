@@ -44,21 +44,8 @@ test("offline vs AI — a match plays multiple hands and exercises the card exch
     await page.waitForURL(/\/game/);
   }
 
-  // Setting up the next hand can itself land on the two-joker exception
-  // (docs/RULES.md §10 — the loser holding both Jokers skips the exchange
-  // outright) shown as a confirmation overlay right on this result screen,
-  // covering the Home button until dismissed. Either outcome is a clean
-  // finish for this test: what matters is that the hand-transition and
-  // exchange machinery kept moving, not which of the two ends it on.
-  const bothJokersOk = page.getByRole("button", { name: "OK, inizia!" });
-  if (await bothJokersOk.count()) {
-    await bothJokersOk.click();
-    await page.waitForURL(/\/game/);
-    await expect(page.locator('[data-testid="game-table"]')).toBeVisible();
-  } else {
-    await page.locator('[data-testid="btn-home"]').click();
-    await page.waitForURL((url) => url.pathname === "/" || url.pathname === "");
-  }
+  await page.locator('[data-testid="btn-home"]').click();
+  await page.waitForURL((url) => url.pathname === "/" || url.pathname === "");
 
   expect(consoleErrors.entries, "no console errors/warnings across the whole match").toEqual([]);
 });

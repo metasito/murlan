@@ -1,4 +1,4 @@
-import React, { useEffect, useRef } from "react";
+import React, { useEffect } from "react";
 import {
   View,
   Text,
@@ -24,7 +24,6 @@ import { hapticLight, hapticMedium, hapticSuccess } from "@/lib/haptics";
 import Ionicons from "@expo/vector-icons/Ionicons";
 import { useGame } from "@/context/GameContext";
 import { usePrefersReducedMotion } from "@/lib/accessibility";
-import { ResultExchangeOverlay, shouldShowResultExchange } from "@/components/ResultExchangeOverlay";
 import { standings } from "@/lib/standings";
 import { Colors, FontSize, Motion, Radius, Spacing, Type } from '@/lib/theme';
 import { useTranslation, type TranslationKey } from "@/lib/i18n";
@@ -200,22 +199,8 @@ export default function ResultScreen() {
     tableWantsRematch,
     startNextHand,
     startNewMatch,
-    chooseExchangeCard,
     resetGame,
   } = useGame();
-  const prevExchangeActiveRef = useRef<boolean | undefined>(undefined);
-
-  const isActive = gameState?.exchangePhase?.active;
-  const bothJokers = gameState?.exchangePhase?.bothJokersException;
-
-  useEffect(() => {
-    if (isActive === undefined) return;
-    const wasActive = prevExchangeActiveRef.current;
-    if (wasActive === true && isActive === false && !bothJokers) {
-      router.replace("/game");
-    }
-    prevExchangeActiveRef.current = isActive;
-  }, [isActive, bothJokers]);
 
   useEffect(() => {
     if (!gameState) router.replace("/");
@@ -223,7 +208,6 @@ export default function ResultScreen() {
 
   if (!gameState) return null;
 
-  const showExchange = shouldShowResultExchange(gameState);
   const numPlayers = gameState.players.length;
   const isTeamMode = gameState.gameMode === "teams";
   const isSingleHand = match.length === "single";
@@ -412,10 +396,6 @@ export default function ResultScreen() {
             </View>
           </View>
         </View>
-
-        {showExchange && gameState.exchangePhase && (
-          <ResultExchangeOverlay gameState={gameState} chooseExchangeCard={chooseExchangeCard} />
-        )}
       </View>
     );
   }
@@ -452,10 +432,6 @@ export default function ResultScreen() {
         {verdictLine && <Text style={styles.verdictLine}>{verdictLine}</Text>}
         {actionsBlock()}
       </ScrollView>
-
-      {showExchange && gameState.exchangePhase && (
-        <ResultExchangeOverlay gameState={gameState} chooseExchangeCard={chooseExchangeCard} />
-      )}
     </View>
   );
 }
