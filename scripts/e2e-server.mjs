@@ -19,6 +19,7 @@ import { spawnSync } from "node:child_process";
 import { existsSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { assertBundleHasRoutes } from "./bundleRoutes.mjs";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const PORT = process.env.E2E_PORT ?? "5199";
@@ -41,6 +42,8 @@ run(process.execPath, [path.join(ROOT, "scripts", "dev-stack.mjs"), "up"]);
 if (process.env.E2E_SKIP_BUILD !== "1" || !existsSync(path.join(ROOT, "dist", "index.html"))) {
   run(process.platform === "win32" ? "npx.cmd" : "npx", ["expo", "export", "--platform", "web"], process.platform === "win32");
 }
+
+assertBundleHasRoutes(path.join(ROOT, "dist"), path.join(ROOT, "app"));
 
 process.env.DATABASE_URL = DB_URL;
 process.env.SESSION_SECRET = "e2e-test-secret";

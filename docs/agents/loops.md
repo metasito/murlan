@@ -146,6 +146,33 @@ after any session that ends without landing, or as a periodic sweep, removes wha
 prove is merged or gone and leaves anything uncommitted or still under an open pull request
 alone.
 
+### Metro's cache is machine-wide, and the fix lives in `metro.config.js`
+
+Metro keeps one transform cache for the whole machine (`%TEMP%/metro-cache`), and
+`getTransformCacheKey` is handed `projectRoot` but never hashes it. A worktree's
+`node_modules` is a junction to the main checkout's, so `expo-router/_ctx.web.js` is one
+physical file that every checkout transforms — and `babel-preset-expo` inlines the app root
+into it as a path *relative to that file*. Two checkouts therefore need different output from
+the same input, and collide on one cache entry.
+
+The result is silent. Whichever checkout exported first wins the entry; the next one bundles a
+route context pointing at a directory Metro is not watching, so `dist/` carries `_layout`, no
+routes at all, and nothing fails until the browser 404s — which a Playwright suite reads as
+every spec waiting out its own timeout in `openApp` (#438).
+
+`metro.config.js` puts the project root into `cacheVersion`, the only part of that key a
+config can reach, so each checkout gets its own namespace. Two consequences worth knowing:
+
+- A new worktree's first export is a cold build (~3 min). That is the price of correctness;
+  the cache it used to share was handing it the wrong bundle.
+- `scripts/bundleRoutes.mjs` re-checks the exported bundle against `app/` and
+  `scripts/e2e-server.mjs` calls it on every run, so an empty route table is named once rather
+  than diagnosed one five-minute timeout at a time. `npx expo export --platform web --clear`
+  is the confirmation, never the fix.
+
+This is *not* the mechanism behind #284's asset URLs, which was Metro's dev server deriving
+paths through the junction and is patched in `scripts/build.js`'s `sanitizeAssetPath`.
+
 ## Local ports
 
 Every port this repo's local tooling binds — including the local-substitute path CLAUDE.md's
