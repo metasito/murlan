@@ -38,6 +38,13 @@ process.env.MURLAN_AUTH_RATE_LIMIT ??= "200";
 process.env.MURLAN_LOGIN_USERNAME_RATE_LIMIT ??= "5";
 
 /**
+ * Production pauses 1.2s before a bot moves, which is about twenty pauses per
+ * hand played out. A suite wanting a different pace sets its own before
+ * importing this — tests/integration/spectator.test.ts does.
+ */
+process.env.MURLAN_BOT_MOVE_DELAY_MS ??= "20";
+
+/**
  * Long enough that the server is never the side that closes an idle
  * connection. Node's default expires one a second after `fetch`'s agent stops
  * reusing it, and a loaded runner fires the two timers out of that order.
@@ -151,7 +158,13 @@ export async function startTestServer(
       async stop() {
         try {
           io.close();
-          await new Promise<void>((resolve) => server.close(() => resolve()));
+          const closed = new Promise<void>((resolve) => server.close(() => resolve()));
+          // `close()` waits out every open connection, and a response body
+          // nobody read leaves one open but not idle — so not
+          // closeIdleConnections(). Teardown is past the last assertion; the
+          // fire-and-forget writes that outlive it are the pool's, below.
+          server.closeAllConnections();
+          await closed;
           // A suite whose assertions are satisfied early reaches teardown while
           // the tail of a fire-and-forget chain is still writing; ending the
           // pool under it abandons the write and fails the next one with

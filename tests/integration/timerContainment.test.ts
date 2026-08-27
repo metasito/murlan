@@ -22,7 +22,6 @@ import { setUpRoom, startGame } from "../helpers/table.ts";
  */
 
 process.env.MURLAN_AFK_TIMEOUT_MS = "60000";
-process.env.MURLAN_BOT_MOVE_DELAY_MS = "20";
 
 interface Notification {
   type?: string;

@@ -23,7 +23,6 @@ import { driveHumansToGameOver, waitForRow, type RoomState } from "../helpers/ga
 
 process.env.MURLAN_AFK_TIMEOUT_MS = "300";
 process.env.MURLAN_DISCONNECT_GRACE_MS = "500";
-process.env.MURLAN_BOT_MOVE_DELAY_MS = "20";
 
 interface BotTakeover {
   userId: string;
