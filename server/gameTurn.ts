@@ -32,7 +32,6 @@ import {
   opponentsOf,
   getValidGivebackCards,
   getStartingPlayerAfterExchange,
-  deepCloneState,
 } from "../lib/gameEngine.ts";
 import type { GameState, Combination } from "../lib/gameEngine.ts";
 
@@ -50,7 +49,7 @@ function actingSeat(state: GameState): number {
  * overlay forever.
  */
 function resolveStuckExchange(state: GameState): GameState {
-  const next = deepCloneState(state);
+  const next = structuredClone(state);
   if (next.exchangePhase) next.exchangePhase.active = false;
   next.currentTurnIndex = getStartingPlayerAfterExchange(state);
   next.lastPlayedBy = next.currentTurnIndex;
