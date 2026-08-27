@@ -63,7 +63,6 @@ describe("building the cleanup command list", () => {
       dockerStarted: false,
       localBranch: null,
       merged: true,
-      platform: "win32",
     });
     assert.ok(cmds.some((c) => c.includes("git worktree remove '/c/Users/dev/murlan-wt-42' --force")));
     assert.ok(
@@ -123,20 +122,25 @@ describe("building the cleanup command list", () => {
     assert.deepEqual(withEmpty, ["git status --short"]);
   });
 
-  test("each port gets a POSIX freeing command that tolerates the port being unbound", () => {
-    const cmds = buildCleanupCommands({ worktreePath: null, dockerStarted: false, localBranch: null, merged: true, ports: [5199, 5050], platform: "linux" });
-    assert.ok(cmds.includes("lsof -ti tcp:5199 | xargs -r kill -9"));
-    assert.ok(cmds.includes("lsof -ti tcp:5050 | xargs -r kill -9"));
+  test("each port is freed through the one tool that knows what holds a port", () => {
+    const cmds = buildCleanupCommands({ worktreePath: null, dockerStarted: false, localBranch: null, merged: true, ports: [5199, 5050] });
+    assert.ok(cmds.includes("E2E_PORT=5199 node scripts/reap.mjs --port"));
+    assert.ok(cmds.includes("E2E_PORT=5050 node scripts/reap.mjs --port"));
   });
 
-  test("on Windows the same ports get taskkill, since the distro's lsof is not on Git Bash's PATH", () => {
-    const cmds = buildCleanupCommands({ worktreePath: null, dockerStarted: false, localBranch: null, merged: true, ports: [5199], platform: "win32" });
-    const kill = cmds.find((c) => c.includes("taskkill"))!;
-    assert.ok(kill, "expected a taskkill command");
-    assert.match(kill, /netstat -ano/);
-    // Without this the MSYS layer rewrites /PID into a path and taskkill never sees the flag.
-    assert.match(kill, /env MSYS_NO_PATHCONV=1 taskkill/);
-    assert.ok(!cmds.some((c) => c.includes("lsof")));
+  /**
+   * `lsof -ti tcp:PORT` and a netstat line grep both match a client *connected to* the port as
+   * readily as the server listening on it, so either kills whoever was talking to the server.
+   * Neither may come back, on either platform.
+   */
+  test("no command matches a port by anything but what is listening on it", () => {
+    const cmds = buildCleanupCommands({ worktreePath: null, dockerStarted: false, localBranch: null, merged: true, ports: [5199] });
+    for (const pattern of [/lsof -ti/, /netstat -ano \| grep/, /taskkill/]) {
+      assert.ok(
+        !cmds.some((c) => pattern.test(c)),
+        `${pattern} decides what to kill without asking whether it is listening`
+      );
+    }
   });
 
   test("anything that is not a TCP port number is dropped rather than escaped into the command", () => {
@@ -146,10 +150,9 @@ describe("building the cleanup command list", () => {
       localBranch: null,
       merged: true,
       ports: [0, 70000, 5199.5, "5199; rm -rf ~" as unknown as number, 5199],
-      platform: "linux",
     });
-    const kills = cmds.filter((c) => c.includes("kill"));
-    assert.deepEqual(kills, ["lsof -ti tcp:5199 | xargs -r kill -9"]);
+    const frees = cmds.filter((c) => c.includes("reap.mjs"));
+    assert.deepEqual(frees, ["E2E_PORT=5199 node scripts/reap.mjs --port"]);
   });
 });
 
@@ -212,7 +215,9 @@ describe("running the branch-delete guard", () => {
 // Asserting the text of a kill command proves nothing about whether it kills. These bind a real
 // port in a real second process and check both directions: a bound port ends up free, and an
 // unbound one is a no-op that still exits 0 — the case almost every run actually hits.
-describe("running the POSIX port-freeing command", { skip: process.platform === "win32" }, () => {
+describe("running the port-freeing command", () => {
+  const repoRoot = new URL("..", import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, "$1");
+
   function commandFor(port: number): string {
     return buildCleanupCommands({
       worktreePath: null,
@@ -220,8 +225,12 @@ describe("running the POSIX port-freeing command", { skip: process.platform === 
       localBranch: null,
       merged: true,
       ports: [port],
-      platform: "linux",
-    }).find((c) => c.includes("lsof"))!;
+    }).find((c) => c.includes("reap.mjs"))!;
+  }
+
+  /** The command is bash, and Git Bash supplies `sh` on Windows too, so it runs as written. */
+  function runCommandFor(port: number): void {
+    execFileSync("sh", ["-c", commandFor(port)], { encoding: "utf8", cwd: repoRoot });
   }
 
   function unusedPort(): Promise<number> {
@@ -256,7 +265,7 @@ describe("running the POSIX port-freeing command", { skip: process.platform === 
 
   test("an unbound port is a no-op that still exits 0", async () => {
     const port = await unusedPort();
-    execFileSync("sh", ["-c", commandFor(port)], { encoding: "utf8" });
+    runCommandFor(port);
   });
 
   test("a bound port is freed and the process holding it is gone", async () => {
@@ -268,10 +277,50 @@ describe("running the POSIX port-freeing command", { skip: process.platform === 
     );
     try {
       await waitUntil(() => isBound(port), `the holder to bind ${port}`);
-      execFileSync("sh", ["-c", commandFor(port)], { encoding: "utf8" });
+      runCommandFor(port);
       await waitUntil(async () => !(await isBound(port)), `${port} to be freed`);
     } finally {
       holder.kill("SIGKILL");
+    }
+  });
+
+  /**
+   * The port names two processes: the one listening on it and everyone talking to it. A client's
+   * socket carries the port just as visibly, so a command that matches the number rather than the
+   * listening state takes the wrong one — and on the e2e port that is the suite itself.
+   */
+  test("a process merely connected to the port is left alone", async () => {
+    const port = await unusedPort();
+    const holder = spawn(
+      process.execPath,
+      ["-e", `require("net").createServer().listen(${port}, "127.0.0.1")`],
+      { stdio: "ignore" },
+    );
+    const client = spawn(
+      process.execPath,
+      [
+        "-e",
+        // Outlives the server on purpose: the socket dying is what the server being reaped
+          // looks like from here, and exiting on it would read as this process having been killed.
+          `setInterval(() => {}, 1000);` +
+          `const s = require("net").connect(${port}, "127.0.0.1");` +
+          `s.on("error", () => {});`,
+      ],
+      { stdio: "ignore" },
+    );
+    try {
+      await waitUntil(() => isBound(port), `the holder to bind ${port}`);
+      await new Promise((r) => setTimeout(r, 500));
+      runCommandFor(port);
+      await waitUntil(async () => !(await isBound(port)), `${port} to be freed`);
+      assert.equal(
+        client.exitCode,
+        null,
+        "the client connected to the port was killed along with the server on it"
+      );
+    } finally {
+      holder.kill("SIGKILL");
+      client.kill("SIGKILL");
     }
   });
 });
