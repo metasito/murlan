@@ -35,9 +35,16 @@ config.resolver.blockList = [
   /[\\/]\.local[\\/]state[\\/].*/,
 ];
 
-// Metro's transform cache is machine-wide and its key ignores the project root, so two
-// checkouts of this repo overwrite each other's entries. `cacheVersion` is the only part of
-// that key reachable from here — see docs/agents/loops.md, *Metro's cache is machine-wide*.
-config.cacheVersion = `${config.cacheVersion}-${__dirname}`;
+// Metro's transform cache is machine-wide, and its key covers neither the project root nor
+// the `EXPO_PUBLIC_*` values babel inlines into the code it caches. Both are inputs the
+// transform genuinely depends on, so both belong in the key.
+// See docs/agents/loops.md, *Metro's cache is machine-wide*.
+const inlinedEnv = Object.keys(process.env)
+  .filter((k) => k.startsWith("EXPO_PUBLIC_"))
+  .sort()
+  .map((k) => `${k}=${process.env[k]}`)
+  .join(",");
+
+config.cacheVersion = `${config.cacheVersion}-${__dirname}-${inlinedEnv}`;
 
 module.exports = config;

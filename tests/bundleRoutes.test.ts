@@ -7,6 +7,7 @@
 // mode, not the export.
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
+import { execFileSync } from "node:child_process";
 import { mkdtempSync, mkdirSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -53,12 +54,31 @@ describe("the exported bundle carries this checkout's routes", () => {
   });
 });
 
-describe("Metro's transform cache is namespaced per checkout", () => {
-  test("cacheVersion carries the project root", async () => {
-    const config = (await import("../metro.config.js")).default;
+/** `metro.config.js`'s own `cacheVersion`, read under a given environment. */
+function cacheVersionWith(env: Record<string, string | undefined>): string {
+  return execFileSync(
+    process.execPath,
+    ["-e", "process.stdout.write(require('./metro.config.js').cacheVersion)"],
+    { cwd: path.resolve(import.meta.dirname, ".."), env: { ...process.env, ...env }, encoding: "utf8" }
+  );
+}
+
+describe("Metro's transform cache key covers what the transform depends on", () => {
+  test("the project root, so two checkouts do not share entries", () => {
     assert.ok(
-      config.cacheVersion.includes(path.resolve(import.meta.dirname, "..")),
-      `cacheVersion is ${config.cacheVersion}; two checkouts would share transform cache entries`
+      cacheVersionWith({}).includes(path.resolve(import.meta.dirname, "..")),
+      "two checkouts of this repo would overwrite each other's cached transforms"
     );
+  });
+
+  // babel-preset-expo replaces `process.env.EXPO_PUBLIC_*` with a literal in a production
+  // build, so the value is part of the cached output. A build that sets one differently must
+  // not read back a transform made under the other — which is how an e2e export and a
+  // production build come to serve each other's code.
+  test("every EXPO_PUBLIC_ value babel inlines", () => {
+    const off = cacheVersionWith({ EXPO_PUBLIC_E2E_FAST: undefined });
+    const on = cacheVersionWith({ EXPO_PUBLIC_E2E_FAST: "1" });
+    assert.notEqual(on, off, "a zero-delay e2e build shares cache entries with a real one");
+    assert.ok(on.includes("EXPO_PUBLIC_E2E_FAST=1"));
   });
 });
