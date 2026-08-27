@@ -8,7 +8,6 @@ export interface RunState {
   localBranch: string | null;
   merged: boolean;
   ports?: number[];
-  platform?: string;
 }
 
 function shellQuote(value: string): string {
@@ -39,16 +38,14 @@ function deleteBranchUnlessItHoldsWork(branch: string): string {
   );
 }
 
-// Windows and a Linux userspace share no port-freeing command: netstat/taskkill do not exist in
-// the WSL distro, and lsof is not on Git Bash's PATH. `env MSYS_NO_PATHCONV=1` is what stops Git
-// Bash rewriting taskkill's /PID into a path — an assignment prefixed to the pipeline's first
-// command would reach netstat, not the taskkill that needs it. Both arms free nothing and exit 0
-// when the port is unbound, which is the case the pipeline hits on almost every run.
-function freePort(port: number, platform: string): string {
-  return platform === "win32"
-    ? `netstat -ano | grep -E ":${port}[[:space:]]" | awk '{print $5}' | sort -u | ` +
-        `xargs -r -I% env MSYS_NO_PATHCONV=1 taskkill /PID % /F`
-    : `lsof -ti tcp:${port} | xargs -r kill -9`;
+// `scripts/reap.mjs` is the one thing that decides what holds a port, so the two platforms need no
+// arms here and neither can drift from the other. Matching the port by `lsof -ti tcp:PORT` or by a
+// netstat line grep takes a client *connected to* it as readily as the server listening on it, and
+// kills whoever was talking to the server; the reaper matches listeners only. Node also sidesteps
+// the MSYS layer rewriting taskkill's `/PID` into a path. Frees nothing and exits 0 when the port
+// is unbound, which is the case the pipeline hits on almost every run.
+function freePort(port: number): string {
+  return `E2E_PORT=${port} node scripts/reap.mjs --port`;
 }
 
 // A port reaches this module as JSON on stdin and leaves it inside a shell command, so it is
@@ -88,7 +85,7 @@ export function buildCleanupCommands(state: RunState): string[] {
     commands.push("docker rm -f murlan-verify-boot");
   }
   for (const port of tcpPorts(state.ports)) {
-    commands.push(freePort(port, state.platform ?? process.platform));
+    commands.push(freePort(port));
   }
   if (state.localBranch && !state.merged) {
     commands.push(deleteBranchUnlessItHoldsWork(state.localBranch));
