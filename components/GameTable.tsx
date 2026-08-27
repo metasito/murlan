@@ -66,6 +66,7 @@ import {
   passedSeats,
   playButtonLabel,
   readExchange,
+  viewerOwnsSeat,
   roundClosedWithWinner,
   seatDirection,
   straightTopRankChar,
@@ -807,10 +808,10 @@ export function GameTable({
 
   const players = gameState.players;
   const viewer = players[viewerSeat];
-  const isMyTurn = !spectating && gameState.currentTurnIndex === viewerSeat;
+  const isMyTurn = viewerOwnsSeat(gameState.currentTurnIndex, viewerSeat, spectating);
   const isFinished = viewer?.finishPosition !== undefined;
   const isNewRound = gameState.lastPlayedCombination === null;
-  const exchange = readExchange(gameState, viewerSeat);
+  const exchange = readExchange(gameState, viewerSeat, spectating);
 
   // A spectator receives every hand blanked, so the bottom seat's cards come
   // from its count. They carry synthetic ids because nothing may identify a
@@ -932,7 +933,7 @@ export function GameTable({
     const lastPlay: TableA11yLastPlay | null = combo
       ? {
           label: lastPlayA11yLabel(combo, t),
-          byViewer: !spectating && gameState.lastPlayedBy === viewerSeat,
+          byViewer: viewerOwnsSeat(gameState.lastPlayedBy, viewerSeat, spectating),
           byName: players[gameState.lastPlayedBy]?.name ?? "",
         }
       : null;
@@ -1318,7 +1319,7 @@ export function GameTable({
   // game state would name the *new* player over the *old* combination for the
   // length of one throw. Spectating, the bottom seat is someone else's, so no
   // play on the felt is the watcher's own.
-  const playedByViewer = !spectating && pileState.playedBy === viewerSeat;
+  const playedByViewer = viewerOwnsSeat(pileState.playedBy, viewerSeat, spectating);
   const lastPlayName =
     pileState.playedBy === null
       ? ""

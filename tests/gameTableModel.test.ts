@@ -47,6 +47,7 @@ import {
   computeTableFrame,
   railWidth,
   readExchange,
+  viewerOwnsSeat,
   INACTIVE_EXCHANGE,
   describeTableForA11y,
   impactDelayMs,
@@ -1097,6 +1098,18 @@ describe("readExchange", () => {
     assert.equal(asLoser.viewerIsLoser, true);
   });
 
+  test("a watcher is neither, whichever seat they are drawn from", () => {
+    const state = withPhase({ active: true, winnerIdx: 0, loserIdx: 2 });
+    for (const seat of [0, 1, 2]) {
+      const v = readExchange(state, seat, true);
+      assert.equal(v.active, true, `seat ${seat} still sees the phase`);
+      assert.equal(v.viewerIsWinner, false, `seat ${seat} was called the winner`);
+      assert.equal(v.viewerIsLoser, false, `seat ${seat} was called the loser`);
+      assert.equal(v.winner, players[0], `seat ${seat} lost the winner's name`);
+      assert.equal(v.loser, players[2], `seat ${seat} lost the loser's name`);
+    }
+  });
+
   test("a bystander is neither", () => {
     const v = readExchange(withPhase({ active: true, winnerIdx: 0, loserIdx: 2 }), 1);
     assert.equal(v.active, true);
@@ -1548,4 +1561,40 @@ describe("the portrait cover's glyph", () => {
       assert.ok(path[i]! < path[i - 1]!, "the glyph reverses part-way through its turn");
     }
   });
+});
+
+// ─── Who the viewer is ────────────────────────────────────────────────────────
+
+describe("viewerOwnsSeat", () => {
+  test("a seated player owns the seat they are drawn from", () => {
+    assert.equal(viewerOwnsSeat(2, 2, false), true);
+    assert.equal(viewerOwnsSeat(1, 2, false), false);
+  });
+
+  test("a watcher owns none of them", () => {
+    for (const seat of [0, 1, 2, 3]) {
+      assert.equal(viewerOwnsSeat(seat, seat, true), false, `seat ${seat} was owned`);
+    }
+  });
+});
+
+// Three separate tickets fixed the same defect one site at a time — the
+// top-left chip (#349), the turn and the last play (#359), the exchange (#422)
+// — because each site asked `=== viewerSeat` for itself and a watcher's seat
+// answers yes. The helper is the only place that question is asked now, and
+// this is what says so when a fourth site tries to ask it directly.
+test("no identity question compares against viewerSeat by hand", () => {
+  const source = readFileSync(path.join(repoRoot, "components/GameTable.tsx"), "utf8");
+  const asked = source
+    .split("\n")
+    .map((line, i) => [i + 1, line] as const)
+    .filter(([, line]) => /===\s*viewerSeat/.test(line))
+    .map(([n, line]) => `${n}: ${line.trim()}`);
+
+  assert.deepEqual(
+    asked,
+    [],
+    `a watcher's seat answers yes to these: ${asked.join(" | ")}. ` +
+      `Use viewerOwnsSeat(seat, viewerSeat, spectating) from components/gameTableModel.`
+  );
 });
