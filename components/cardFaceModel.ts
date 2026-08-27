@@ -41,6 +41,10 @@ export const CARD_BACK_H = (s: number) => BACK_H * s;
 /** Multipliers on the table's own scale, by where the card is drawn. */
 export const FIELD_SCALE = 1.0;
 export const HAND_SCALE = 1.08;
+/** …and while the turn is the viewer's own, when the hand is held up to be read. */
+export const HAND_SCALE_ON_TURN = 1.2;
+/** What the hand's width share is multiplied by at that size, so the fan opens with it. */
+export const HAND_NEAR_RATIO = HAND_SCALE_ON_TURN / HAND_SCALE;
 export const BACK_SCALE = 0.88;
 
 // ─── Card stock ─────────────────────────────────────────────────────────────
@@ -153,7 +157,7 @@ const RANK_FONT_WIDE_RATIO = 12 / FACE_H;
 // card scales the glyph past a clearance sized for the base card, and the tip
 // clips against the card's own `overflow: hidden` (tests/e2e/a11yOverlays.spec.ts
 // "no rank glyph clips"). A fraction of card height keeps the two in step.
-const RANK_INSET_RATIO = 3 / FACE_H;
+const RANK_INSET_RATIO = 4.5 / FACE_H;
 const GLYPH_ADVANCE_EM = 0.55;
 const LETTER_SPACING = -0.5;
 

@@ -19,7 +19,15 @@ import type { Card } from "@/lib/gameEngine";
 import { computeHandLayout } from "@/components/handLayout";
 import { HAND_ARC, solveArc } from "@/components/tableArc";
 import { HAND_CROP, HAND_ROW_HEADROOM } from "@/components/gameTableModel";
-import { CARD_W, CARD_H, CARD_BACK_W, CARD_BACK_H, HAND_SCALE } from "@/components/cardFaceModel";
+import {
+  CARD_W,
+  CARD_H,
+  CARD_BACK_W,
+  CARD_BACK_H,
+  HAND_NEAR_RATIO,
+  HAND_SCALE,
+  HAND_SCALE_ON_TURN,
+} from "@/components/cardFaceModel";
 
 // ─── CardItem ─────────────────────────────────────────────────────────────────
 //
@@ -211,6 +219,21 @@ function cardItemPropsEqual(a: CardItemProps, b: CardItemProps): boolean {
 const CardItem = React.memo(CardItemBase, cardItemPropsEqual);
 CardItem.displayName = "CardItem";
 
+// ─── The two sizes ────────────────────────────────────────────────────────────
+//
+// The hand is drawn bigger while the turn is the viewer's own — nearer, so
+// bigger, and so the same fraction more air between the cards, because the
+// share the row aims at grows with the card (`HAND_NEAR_RATIO`).
+//
+// Both sizes are real layout, and the change between them is not animated.
+// That is a platform constraint, not a preference: web rasterises text before
+// transforming it (docs/agents/loops.md, React Native Web traps), so a card
+// under a `scale` carries a distorted rank glyph for as long as the transform
+// lasts — `tests/e2e/a11yOverlays.spec.ts` measures exactly that and reports
+// clipping the glyph does not have. A turn changes hands every few seconds, so
+// an eased size would be running whenever anything looked. #420 holds the
+// transition, and what it would have to avoid.
+
 // ─── StraightHand ─────────────────────────────────────────────────────────────
 
 export function StraightHand({
@@ -240,7 +263,12 @@ export function StraightHand({
 }) {
   const { t } = useTranslation();
   const n = cards.length;
-  const cardScale = scale * HAND_SCALE;
+  const onTurn = isMyTurn === true;
+  // Bigger cards *and* the same fraction more air between them: the share the
+  // row aims at grows with the card, so the fan opens rather than just
+  // overlapping harder at a larger size.
+  const cardScale = scale * (onTurn ? HAND_SCALE_ON_TURN : HAND_SCALE);
+  const room = onTurn ? roomW * HAND_NEAR_RATIO : roomW;
   // A spectated hand draws backs (CardItem passes faceDown straight to
   // CardView), which are their own narrower aspect — the row's own layout
   // math has to size against the same dimensions CardView actually draws.
@@ -271,7 +299,7 @@ export function StraightHand({
   // hand of twenty-one compresses inside the same span rather than reaching
   // past it. Only `availW` is hard: past that the row scrolls. Solved above
   // the empty-hand return so the scroll effect below it can be a hook.
-  const { step, totalW, scrollable } = computeHandLayout(n, roomW, cardW, availW);
+  const { step, totalW, scrollable } = computeHandLayout(n, room, cardW, availW);
   const rowW = Math.min(totalW, availW);
   /** How much of a scrolling row lies outside the window, both ends together. */
   const overhang = Math.max(0, totalW - availW);

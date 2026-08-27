@@ -16,22 +16,44 @@
 // height and takes the upside-down index at the card's foot out of the picture.
 import { test, expect } from "@playwright/test";
 import { DEAL_SIZE, openSeededGame } from "./helpers/offlineSeed";
-
-/** Landscape logical sizes, smallest and largest phone the app supports. */
-const PHONES = [
-  { name: "iPhone SE", width: 568, height: 320 },
-  { name: "iPhone 12", width: 844, height: 390 },
-  { name: "iPhone 16 Pro", width: 874, height: 402 },
-  { name: "iPhone 17 Pro Max", width: 956, height: 440 },
-];
+import { PHONES } from "./helpers/phones";
+import { HAND_NEAR_RATIO } from "../../components/cardFaceModel";
 
 const SEATS = [2, 3, 4] as const;
+
+/**
+ * The hand is a different size depending on whose turn it is (#344), and every
+ * budget below has to hold in both. Seat 1 is a bot, so seeding it puts the
+ * table off the viewer's turn — held there, or the bot moves before the deal
+ * has even finished landing.
+ */
+const TURNS = [
+  { what: "on turn", seat: 0, hold: false },
+  { what: "off turn", seat: 1, hold: true },
+] as const;
+
+/**
+ * The share of the screen the hand may take up. The header's 0.56 is what the
+ * row aims at; this is the hard edge, and it has to clear the near hand as
+ * well as the far one.
+ *
+ * Measured on what the player can see. A full deal on a small phone compresses
+ * onto the finger floor, overflows its share and scrolls — and every card of
+ * that row still has a rect, most of them outside the window the ScrollView
+ * clips to. Reading the row's own extent there measures the content, not the
+ * hand, and calls a 63%-wide hand 92%.
+ */
+const MAX_SPAN_SHARE = 0.7;
 
 /** How far the hand's own centre may sit from the middle of the screen. */
 const CENTRE_TOLERANCE = 45;
 
 interface HandGeometry {
   cards: number;
+  /** The widest card box drawn — the hand's own size, whoever is on move. */
+  cardW: number;
+  /** What the player can see of the row: its window when it scrolls, else itself. */
+  visibleW: number;
   left: number;
   right: number;
   centre: number;
@@ -71,8 +93,22 @@ async function handGeometry(page: import("@playwright/test").Page): Promise<Hand
     const rects = cards.map((c) => c.r);
     const left = Math.min(...rects.map((r) => r.left));
     const right = Math.max(...rects.map((r) => r.right));
+    // The nearest ancestor that clips the row horizontally, if the hand had to
+    // fall back to scrolling. Its own width is all of the hand there is to see.
+    let seen = right - left;
+    for (let p = cards[0]?.el.parentElement; p; p = p.parentElement) {
+      // The row's own scroll window, not merely the first ancestor that clips
+      // anything: the page root clips too, and taking its width back would
+      // call every hand full-screen.
+      if (getComputedStyle(p).overflowX !== "visible" && p.clientWidth < seen) {
+        seen = p.clientWidth;
+        break;
+      }
+    }
     return {
       cards: cards.length,
+      cardW: Math.max(...rects.map((r) => r.width)),
+      visibleW: seen,
       left,
       right,
       centre: (left + right) / 2,
@@ -89,37 +125,74 @@ test.describe("the hand a player holds", () => {
   for (const phone of PHONES) {
     for (const seats of SEATS) {
       const dealt = DEAL_SIZE[seats];
-      test(`${phone.name}, ${seats} seats, ${dealt} cards`, async ({ page, baseURL }) => {
-        test.setTimeout(90_000);
-        await page.setViewportSize({ width: phone.width, height: phone.height });
-        await openSeededGame(page, baseURL!, seats, dealt);
-        // Past the deal: every card flies in from the middle of the table, so
-        // until the stagger has run the row is a pack rather than a hand.
-        await page.waitForTimeout(2_500);
+      for (const turn of TURNS) {
+        test(`${phone.name}, ${seats} seats, ${dealt} cards, ${turn.what}`, async ({ page, baseURL }) => {
+          test.setTimeout(90_000);
+          await page.setViewportSize({ width: phone.width, height: phone.height });
+          await openSeededGame(page, baseURL!, seats, dealt, turn.seat, turn.hold);
+          // Past the deal: every card flies in from the middle of the table, so
+          // until the stagger has run the row is a pack rather than a hand.
+          await page.waitForTimeout(2_500);
 
-        const hand = await handGeometry(page);
+          const hand = await handGeometry(page);
 
-        expect(hand.cards, "every dealt card is laid out").toBe(dealt);
+          expect(hand.cards, "every dealt card is laid out").toBe(dealt);
 
-        // Centred on the play area. The rail eats the left edge, so the exact
-        // middle is a few points right of the screen's — the tolerance is that
-        // offset, not slack.
-        expect(
-          Math.abs(hand.centre - hand.screenCentre),
-          `hand centred at ${hand.centre.toFixed(1)}, screen centre ${hand.screenCentre}`
-        ).toBeLessThan(CENTRE_TOLERANCE);
+          // Centred on the play area. The rail eats the left edge, so the exact
+          // middle is a few points right of the screen's — the tolerance is that
+          // offset, not slack.
+          expect(
+            Math.abs(hand.centre - hand.screenCentre),
+            `hand centred at ${hand.centre.toFixed(1)}, screen centre ${hand.screenCentre}`
+          ).toBeLessThan(CENTRE_TOLERANCE);
 
-        // Cropped by the bottom edge, and not by so much that the rank goes
-        // with it. A hand that sits entirely on screen is one the table has
-        // given its own height away to.
-        expect(hand.crop, "the hand runs past the bottom edge").toBeGreaterThan(4);
-        expect(hand.top, "the hand stays in the bottom third").toBeGreaterThan(phone.height * 0.5);
+          // A share of the screen, never all of it. The hand comes closer on
+          // the viewer's turn and the fan opens with it, so this is the budget
+          // that move is spending.
+          const span = hand.visibleW / phone.width;
+          expect(
+            span,
+            `the hand spans ${(span * 100).toFixed(1)}% of the screen ${turn.what}`
+          ).toBeLessThan(MAX_SPAN_SHARE);
 
-        // Nothing laid out past either edge, and the page itself does not
-        // scroll — a table wider than the window is one a tap can slide away.
-        expect(hand.offscreen, "nothing is laid out off the screen").toBe(0);
-        expect(hand.docScrollW, "the document does not scroll sideways").toBe(phone.width);
-      });
+          // Cropped by the bottom edge, and not by so much that the rank goes
+          // with it. A hand that sits entirely on screen is one the table has
+          // given its own height away to.
+          expect(hand.crop, "the hand runs past the bottom edge").toBeGreaterThan(4);
+          expect(hand.top, "the hand stays in the bottom third").toBeGreaterThan(phone.height * 0.5);
+
+          // Nothing laid out past either edge, and the page itself does not
+          // scroll — a table wider than the window is one a tap can slide away.
+          expect(hand.offscreen, "nothing is laid out off the screen").toBe(0);
+          expect(hand.docScrollW, "the document does not scroll sideways").toBe(phone.width);
+        });
+      }
     }
   }
+
+  // The point of the two states, and the one thing the budgets above cannot
+  // say: the hand is actually nearer on the viewer's own turn. Measured on the
+  // card rather than on the row, so a fan that happened to lay out differently
+  // cannot be mistaken for the hand coming closer.
+  test("the hand comes closer when the turn is the viewer's own", async ({ page, baseURL }) => {
+    test.setTimeout(120_000);
+    const phone = PHONES[2];
+    await page.setViewportSize({ width: phone.width, height: phone.height });
+
+    await openSeededGame(page, baseURL!, 4, DEAL_SIZE[4], 1, true);
+    await page.waitForTimeout(2_500);
+    const away = await handGeometry(page);
+
+    await openSeededGame(page, baseURL!, 4, DEAL_SIZE[4], 0);
+    await page.waitForTimeout(2_500);
+    const near = await handGeometry(page);
+
+    const grew = near.cardW / away.cardW;
+    expect(
+      grew,
+      `a hand card is ${away.cardW.toFixed(1)}px off turn and ${near.cardW.toFixed(1)}px on it ` +
+        `— ${((grew - 1) * 100).toFixed(1)}% nearer, not the ` +
+        `${((HAND_NEAR_RATIO - 1) * 100).toFixed(1)}% components/cardFaceModel.ts asks for`
+    ).toBeCloseTo(HAND_NEAR_RATIO, 2);
+  });
 });
