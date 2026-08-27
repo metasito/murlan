@@ -1,6 +1,6 @@
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
-import { orphans, staleByAge } from "../scripts/reap.mjs";
+import { orphans, staleByAge, netstatListeners } from "../scripts/reap.mjs";
 import { memoryVerdict, memoryFloor } from "../scripts/preflightMemory.mjs";
 
 const HOUR = 60 * 60 * 1000;
@@ -50,6 +50,35 @@ describe("orphans", () => {
 
   test("never reaps a pid it was told to keep", () => {
     assert.deepEqual(orphans([proc({ pid: 7, ppid: 999 })], { ...opts, keep: new Set([7]) }), []);
+  });
+});
+
+describe("netstatListeners", () => {
+  const netstat = [
+    "  Proto  Local Address          Foreign Address        State           PID",
+    "  TCP    0.0.0.0:5199           0.0.0.0:0              LISTENING       4242",
+    "  TCP    127.0.0.1:8081         0.0.0.0:0              LISTENING       777",
+    "  TCP    127.0.0.1:5199         127.0.0.1:61000        TIME_WAIT       0",
+    "  TCP    127.0.0.1:61001        127.0.0.1:5199         ESTABLISHED     9999",
+  ].join("\n");
+
+  test("takes only what is listening on the port asked for", () => {
+    assert.deepEqual(netstatListeners(netstat, 5199), [4242]);
+  });
+
+  /**
+   * A client connected *to* the port holds a socket naming it. Killing that is killing whoever
+   * was talking to the server rather than the server.
+   */
+  test("never takes a connection merely involving the port", () => {
+    assert.equal(netstatListeners(netstat, 5199).includes(9999), false);
+  });
+
+  test("with no port, every listener — this is the spare-list, so it must not miss one", () => {
+    assert.deepEqual(
+      netstatListeners(netstat).sort((a: number, b: number) => a - b),
+      [777, 4242]
+    );
   });
 });
 

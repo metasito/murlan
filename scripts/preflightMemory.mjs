@@ -1,13 +1,14 @@
 /**
  * Refuses to start a suite that the machine does not have the memory to run.
  *
- * Starvation and a regression have the same symptoms. The same tree at the same commit gave two
- * failed jest suites under default workers and 723 passing tests under three, and an exhausted box
- * gave 37 browser specs failing at 0ms with ERR_CONNECTION_REFUSED. Someone reads that as a defect
- * and goes looking for one that is not there, so the run has to name exhaustion itself.
+ * Starvation and a regression are indistinguishable by their symptoms — an exhausted box gives
+ * failing suites and specs failing at 0ms with ERR_CONNECTION_REFUSED, and a reader goes looking
+ * for a defect that is not there. So the run names exhaustion itself rather than letting it
+ * arrive disguised. `docs/agents/loops.md` carries the recognition table.
  *
- * Wired in as the `globalSetup` of both jest and Playwright, which is every entry point that can
- * exhaust the box.
+ * The `globalSetup` of both jest and Playwright, which is every entry point that can exhaust the
+ * box. Jest reads this from the root config rather than per-project: `runGlobalHook` adds
+ * `globalConfig.globalSetup` to the per-project ones, so `projects` does not shadow it.
  */
 import os from "node:os";
 

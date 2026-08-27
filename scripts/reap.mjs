@@ -34,10 +34,9 @@ export function orphans(processes, { livePids, minAgeMs, now, keep }) {
 
 /**
  * A crashed session leaves its whole tree resident — the node process, the bash that launched it,
- * the cmd above that — so its parent is alive and `orphans` cannot see it. Nine such processes,
- * three to five days old, were what prompted this. Age is the only honest signal left, and it is
- * not a safe one on its own: a live session's node is also a node process that has been running a
- * long time. This is why `--stale` is asked for rather than assumed.
+ * the cmd above that — so its parent is alive and `orphans` cannot see it. Age is the only signal
+ * left, and not a safe one alone: a live session's node is also long-running. Hence `--stale`
+ * rather than the default.
  */
 export function staleByAge(processes, { maxAgeMs, now, keep }) {
   return processes.filter(
@@ -106,27 +105,41 @@ function killPid(pid, dryRun) {
   }
 }
 
-/** Whatever is listening on `port`, so the next run binds instead of adopting or failing. */
-export function portListeners(port) {
-  if (process.platform === "win32") {
-    return [
-      ...new Set(
-        sh("netstat", ["-ano"])
-          .split("\n")
-          .filter((l) => /LISTENING/.test(l) && new RegExp(`:${port}\\s`).test(l))
-          .map((l) => Number(l.trim().split(/\s+/).pop()))
-          .filter(Boolean)
-      ),
-    ];
-  }
+/** LISTENING pids in `netstat -ano` output — every one, or only those bound to `port`. */
+export function netstatListeners(text, port) {
   return [
     ...new Set(
-      sh("lsof", ["-ti", `tcp:${port}`])
+      text
         .split("\n")
-        .map((l) => Number(l.trim()))
+        .filter((l) => /LISTENING/.test(l) && (port === undefined || new RegExp(`:${port}\\s`).test(l)))
+        .map((l) => Number(l.trim().split(/\s+/).pop()))
         .filter(Boolean)
     ),
   ];
+}
+
+function pidLines(text) {
+  return [...new Set(text.split("\n").map((l) => Number(l.trim())).filter(Boolean))];
+}
+
+/** Whatever is listening on `port`, so the next run binds instead of adopting or failing. */
+export function portListeners(port) {
+  return process.platform === "win32"
+    ? netstatListeners(sh("netstat", ["-ano"]), port)
+    : pidLines(sh("lsof", ["-ti", `tcp:${port}`]));
+}
+
+/**
+ * Anything serving a port is doing work, whatever its parent or its age says. A dev server left
+ * running detached is the case this protects: its launcher is long gone and it is hours old, so
+ * both classes below would otherwise read it as a corpse.
+ */
+function listeningPids() {
+  return new Set(
+    process.platform === "win32"
+      ? netstatListeners(sh("netstat", ["-ano"]))
+      : pidLines(sh("lsof", ["-nP", "-iTCP", "-sTCP:LISTEN", "-t"]))
+  );
 }
 
 export function clearPort(port, { dryRun = false } = {}) {
@@ -155,6 +168,7 @@ if (import.meta.filename === process.argv[1]) {
   const table = processTable();
   const nodes = table.filter((p) => /^node(\.exe)?$/i.test(p.name));
   const keep = ancestry(table, process.pid);
+  for (const pid of listeningPids()) keep.add(pid);
   const hoursOf = (p) => ((now - p.startedAt) / 3_600_000).toFixed(1);
 
   const parentless = orphans(nodes, {

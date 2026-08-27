@@ -131,7 +131,11 @@ ever runs the webServer command.
 The last one needs asking for. A crashed session leaves its **whole tree** resident — the node
 process, the bash that launched it, the cmd above that — so its parent is alive and the
 parent test cannot see it. Age is the only signal left, and a live session's node is also a node
-process that has been running a long time. Both classes always spare the caller's own ancestry.
+process that has been running a long time.
+
+Both classes spare the caller's own ancestry, and **anything holding a listening port**: a
+detached dev server has a dead launcher and is hours old, so both classes would otherwise read a
+process that is still serving as a corpse.
 
 ## Pick the loop by what you changed
 
