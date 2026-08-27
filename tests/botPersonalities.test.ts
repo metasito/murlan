@@ -382,3 +382,20 @@ test("a requireCard that is not the 3♠ is still honoured", () => {
     }
   }
 });
+
+// rules.faq.a17 names Gent and Ana as the two that hold a 2, a Joker or a Bomb
+// back, because applyPersonality's floor runs on `difficulty === "hard"` and
+// those are the two hard personalities. Re-tier one and the answer is wrong in
+// three locales with nothing to say so — which is how it came to promise
+// premium spending the hard tier had stopped doing (#476).
+test("the personalities rules.faq.a17 singles out are still the hard ones", () => {
+  const hard = BOT_PERSONALITIES.filter((p) => p.difficulty === "hard")
+    .map((p) => p.name)
+    .sort();
+  assert.deepEqual(
+    hard,
+    ["Ana", "Gent"],
+    "rules.faq.a17 names Gent and Ana as the two that keep premium cards for defence; " +
+      "update that sentence in en.ts, it.ts and sq.ts to match the new hard tier"
+  );
+});
