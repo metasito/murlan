@@ -81,6 +81,11 @@ export interface GameState {
   players: Player[];
   currentTurnIndex: number;
   lastPlayedCombination: Combination | null;
+  /**
+   * Who made the play on the table. `processPass` clears the combination when a
+   * round closes but leaves this naming that round's winner, so it answers "who
+   * holds the round" only while `lastPlayedCombination` is set.
+   */
   lastPlayedBy: number;
   passCount: number;
   gameMode: GameMode;
