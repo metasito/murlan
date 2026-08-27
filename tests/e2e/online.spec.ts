@@ -170,3 +170,27 @@ test("online — a room can be created on a phone in portrait", async ({ page, b
     page.getByRole("button", { name: "In attesa di giocatori" }).locator("visible=true").last()
   ).toBeInViewport();
 });
+
+// A bare absolutely-positioned sheet covers the lobby's pixels and nothing
+// else — every control behind it stays focusable and announced. Only a real
+// browser can say whether the <Modal> that replaced it carries the three
+// things a Modal is here for, so the source scan in
+// tests/blockingOverlays.test.ts is not enough on its own (#474).
+test("online — the join sheet is a modal dialog with a name, and Escape closes it", async ({
+  page,
+  baseURL,
+}) => {
+  test.setTimeout(2 * 60_000);
+  await openApp(page, baseURL!);
+  await registerNewAccount(page, uniqueUsername("e2ejoin"));
+  await goToOnlineLobby(page);
+
+  await page.getByRole("button", { name: "Inserisci codice stanza" }).click();
+  const sheet = page.getByRole("dialog", { name: "Entra in una stanza" });
+  await expect(sheet).toBeVisible();
+  // What tells assistive technology to ignore everything outside the dialog.
+  await expect(sheet).toHaveAttribute("aria-modal", "true");
+
+  await page.keyboard.press("Escape");
+  await expect(sheet).toBeHidden();
+});
