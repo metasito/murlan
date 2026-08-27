@@ -6,13 +6,51 @@
  * asked for; killing a process is neither, and prune runs in places where doing it would be a
  * surprise.
  *
- * Usage: node scripts/reap.mjs [--dry-run] [--stale] [--port]
+ * Usage: node scripts/reap.mjs [--dry-run] [--stale] [--docker] [--port]
  */
 import { execFileSync } from "node:child_process";
+import os from "node:os";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 
 const ORPHAN_AGE_MS = 2 * 60 * 60 * 1000;
 const STALE_AGE_MS = 24 * 60 * 60 * 1000;
 const E2E_PORT = process.env.E2E_PORT ?? "5199";
+
+/**
+ * Where this repo's tooling runs from. Playwright is the reason this is a list rather than the
+ * checkout: it keeps its browsers under `ms-playwright` in the user's profile, so a rule that knew
+ * only the repo would leave behind the one process class that costs hundreds of megabytes.
+ */
+export function toolingRoots({ repoRoot, env = process.env, platform = process.platform, home = os.homedir() }) {
+  const browsers =
+    env.PLAYWRIGHT_BROWSERS_PATH ||
+    (platform === "win32"
+      ? `${env.LOCALAPPDATA}/ms-playwright`
+      : platform === "darwin"
+        ? `${home}/Library/Caches/ms-playwright`
+        : `${home}/.cache/ms-playwright`);
+  return [repoRoot, browsers].filter(Boolean).map((r) => normalizePath(r, platform));
+}
+
+function normalizePath(value, platform = process.platform) {
+  const slashed = String(value).replace(/\//g, "\\");
+  return platform === "win32" ? slashed.toLowerCase() : slashed;
+}
+
+/**
+ * Whether a process belongs to this repo's tooling, read off its command line.
+ *
+ * Matching by process name instead would be indefensible: `chrome.exe` is as likely to be the
+ * owner's own browser, and `python.exe` and `msedgewebview2.exe` on this machine belong to an
+ * unrelated agent and to Windows. A command line naming a root below is the only thing that
+ * distinguishes ours from theirs, so a command line that could not be read claims nothing.
+ */
+export function ownedByTooling(commandLine, roots, platform = process.platform) {
+  if (!commandLine) return false;
+  const haystack = normalizePath(commandLine, platform);
+  return roots.some((root) => haystack.includes(root));
+}
 
 /**
  * A dead parent alone is not enough. Every process a shell starts is briefly parentless while its
@@ -59,7 +97,7 @@ function processTable() {
     const json = sh("powershell", [
       "-NoProfile",
       "-Command",
-      "Get-CimInstance Win32_Process | Select-Object ProcessId,ParentProcessId,Name," +
+      "Get-CimInstance Win32_Process | Select-Object ProcessId,ParentProcessId,Name,CommandLine," +
         "@{n='Started';e={[int64][datetimeoffset]::new($_.CreationDate).ToUnixTimeMilliseconds()}} " +
         "| ConvertTo-Json -Compress",
     ]);
@@ -69,18 +107,20 @@ function processTable() {
       pid: r.ProcessId,
       ppid: r.ParentProcessId,
       name: String(r.Name ?? ""),
+      commandLine: r.CommandLine ?? "",
       startedAt: Number(r.Started ?? 0),
     }));
   }
   const now = Date.now();
-  return sh("ps", ["-eo", "pid=,ppid=,etimes=,comm="])
+  return sh("ps", ["-eo", "pid=,ppid=,etimes=,args="])
     .split("\n")
-    .map((line) => line.trim().split(/\s+/))
-    .filter((f) => f.length >= 4)
-    .map(([pid, ppid, etimes, ...rest]) => ({
+    .map((line) => line.trim().match(/^(\d+)\s+(\d+)\s+(\d+)\s+(.*)$/))
+    .filter(Boolean)
+    .map(([, pid, ppid, etimes, args]) => ({
       pid: Number(pid),
       ppid: Number(ppid),
-      name: rest.join(" "),
+      name: args.split(/\s+/)[0] ?? "",
+      commandLine: args,
       startedAt: now - Number(etimes) * 1000,
     }));
 }
@@ -142,6 +182,14 @@ function listeningPids() {
   );
 }
 
+/** Present only when docker is up; a stopped engine is not a container worth reporting. */
+function removeContainer(name, dryRun) {
+  const running = sh("docker", ["ps", "-a", "--filter", `name=^${name}$`, "--format", "{{.Names}}"]).trim();
+  if (running !== name) return false;
+  if (!dryRun) sh("docker", ["rm", "-f", name]);
+  return true;
+}
+
 export function clearPort(port, { dryRun = false } = {}) {
   const pids = portListeners(port).filter((pid) => pid !== process.pid);
   for (const pid of pids) killPid(pid, dryRun);
@@ -166,33 +214,52 @@ if (import.meta.filename === process.argv[1]) {
 
   const now = Date.now();
   const table = processTable();
-  const nodes = table.filter((p) => /^node(\.exe)?$/i.test(p.name));
+  // A worktree lives under the checkout, so naming the checkout covers every one of them —
+  // including the worktree this is running from, which is not necessarily the main one.
+  const checkout = path
+    .resolve(path.dirname(fileURLToPath(import.meta.url)), "..")
+    .split(/[\\/]\.worktrees[\\/]/)[0];
+  const roots = toolingRoots({ repoRoot: checkout, home: os.homedir() });
+  const ours = table.filter((p) => ownedByTooling(p.commandLine, roots));
   const keep = ancestry(table, process.pid);
   for (const pid of listeningPids()) keep.add(pid);
   const hoursOf = (p) => ((now - p.startedAt) / 3_600_000).toFixed(1);
+  const labelOf = (p) => `${p.name || "process"} pid ${p.pid}`;
 
-  const parentless = orphans(nodes, {
+  const parentless = orphans(ours, {
     livePids: new Set(table.map((p) => p.pid)),
     minAgeMs: ORPHAN_AGE_MS,
     now,
     keep,
   });
   for (const p of parentless) {
-    console.log(`reap: ${dryRun ? "would kill" : "killed"} node pid ${p.pid}, ${hoursOf(p)}h old, parent ${p.ppid} is gone`);
+    console.log(`reap: ${dryRun ? "would kill" : "killed"} ${labelOf(p)}, ${hoursOf(p)}h old, parent ${p.ppid} is gone`);
     killPid(p.pid, dryRun);
   }
-  if (!parentless.length) console.log("reap: no node process lost its parent");
+  if (!parentless.length) console.log("reap: nothing of ours lost its parent");
 
-  const stale = staleByAge(nodes, { maxAgeMs: STALE_AGE_MS, now, keep }).filter(
+  const stale = staleByAge(ours, { maxAgeMs: STALE_AGE_MS, now, keep }).filter(
     (p) => !parentless.includes(p)
   );
   const takeStale = process.argv.includes("--stale");
   for (const p of stale) {
     console.log(
-      `reap: ${takeStale && !dryRun ? "killed" : "would kill"} node pid ${p.pid}, ${hoursOf(p)}h old` +
+      `reap: ${takeStale && !dryRun ? "killed" : "would kill"} ${labelOf(p)}, ${hoursOf(p)}h old` +
         (takeStale ? "" : " — pass --stale to take it")
     );
     if (takeStale) killPid(p.pid, dryRun);
   }
-  if (!stale.length) console.log(`reap: no node process older than ${STALE_AGE_MS / 3_600_000}h`);
+  if (!stale.length) console.log(`reap: nothing of ours older than ${STALE_AGE_MS / 3_600_000}h`);
+
+  // A container is not owned by the session that started it, so only the single-run ones go by
+  // default. The dev stack backs whatever else is running — another session's e2e most of the
+  // time — and taking it is a decision, not a tidy-up.
+  for (const name of ["murlan-verify-pg", "murlan-verify-boot"]) {
+    if (removeContainer(name, dryRun)) {
+      console.log(`reap: ${dryRun ? "would remove" : "removed"} container ${name}`);
+    }
+  }
+  if (process.argv.includes("--docker") && removeContainer("murlan-dev-pg", dryRun)) {
+    console.log(`reap: ${dryRun ? "would remove" : "removed"} container murlan-dev-pg`);
+  }
 }

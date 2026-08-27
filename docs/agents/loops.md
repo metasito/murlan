@@ -125,13 +125,21 @@ ever runs the webServer command.
 | What | Taken |
 | --- | --- |
 | Whatever holds `E2E_PORT` | by default |
-| A node process over 2h old whose parent is gone | by default |
-| A node process over 24h old | only with `--stale` |
+| Anything of ours over 2h old whose parent is gone | by default |
+| Anything of ours over 24h old | only with `--stale` |
+| `murlan-verify-pg` / `murlan-verify-boot` containers | by default |
+| The shared `murlan-dev-pg` container | only with `--docker` |
 
-The last one needs asking for. A crashed session leaves its **whole tree** resident — the node
-process, the bash that launched it, the cmd above that — so its parent is alive and the
-parent test cannot see it. Age is the only signal left, and a live session's node is also a node
-process that has been running a long time.
+**"Ours" is decided by command line, never by process name.** A process is this repo's if its
+command line names the checkout — which covers every worktree, jest worker and bundler — or names
+Playwright's browser directory, which sits in the user's profile rather than under the checkout.
+Name matching would be indefensible: `chrome.exe` is as likely to be the developer's own browser,
+and this machine also runs an unrelated agent's `python.exe` and Windows' own `msedgewebview2.exe`.
+A command line that could not be read claims nothing.
+
+The 24h class needs asking for. A crashed session leaves its **whole tree** resident — the node
+process, the bash that launched it, the cmd above that — so its parent is alive and the parent test
+cannot see it. Age is the only signal left, and a live session's process is also long-running.
 
 Both classes spare the caller's own ancestry, and **anything holding a listening port**: a
 detached dev server has a dead launcher and is hours old, so both classes would otherwise read a
