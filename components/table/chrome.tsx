@@ -188,10 +188,11 @@ export function ChipText({
 }
 
 /** The lit dot beside the turn chip's label. */
-export function ChipDot({ scale, lit }: { scale: number; lit: boolean }) {
+export function ChipDot({ scale, lit, testID }: { scale: number; lit: boolean; testID?: string }) {
   const size = CHIP_DOT * scale;
   return (
     <View
+      testID={testID}
       style={[
         chipStyles.chipDot,
         { width: size, height: size, borderRadius: size / 2 },
