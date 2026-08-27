@@ -1,0 +1,1 @@
+- [GitHub publishing fallback](github-publishing.md) — Git integration can be unavailable to automation even after OAuth is attached; preserve safe sync guards and use a secure write credential.
