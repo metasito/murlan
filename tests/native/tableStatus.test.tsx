@@ -35,6 +35,7 @@ jest.mock('@/lib/accessibility', () => ({
 import { GameTable } from '@/components/GameTable';
 import { buildCombination, type Card, type GameState, type Player } from '@/lib/gameEngine';
 import { en as locale } from '@/locales/en';
+import { Colors } from '@/lib/theme';
 
 const METRICS = {
   frame: { x: 0, y: 0, width: 844, height: 390 },
@@ -143,20 +144,34 @@ describe('the top-left chip names who played', () => {
   });
 });
 
-// A watcher is handed a seat so the table has a bottom to draw from, but the
-// seat belongs to a real player they are not. Everything keyed off `isMyTurn`
-// then addresses them as that player.
-describe('a watcher is never the player on move', () => {
-  const notStarted = (turn: number): GameState => ({
-    ...state(turn),
-    firstPlayMade: false,
-    startCard: card('start', '3', 'spades'),
-  });
+/** The copy as a player reads it, so editing `locales/en.ts` moves the test with it. */
+const filled = (key: keyof typeof locale, vars: Record<string, string>) =>
+  Object.entries(vars).reduce((s, [k, v]) => s.replace(`{{${k}}}`, v), locale[key] as string);
 
-  it.each([0, 1, 2, 3])('the turn chip never says YOUR TURN, at seat %i', async (turn) => {
+const START_CARD = card('start', '3', 'spades');
+const startsSelf = filled('gameTable.startCardBannerSelf', { rank: '3', suit: '♠' });
+const startsOther = filled('gameTable.startCardBannerOther', { name: 'Ana', rank: '3', suit: '♠' });
+
+const dealt = (turn: number): GameState => ({
+  ...state(turn),
+  firstPlayMade: false,
+  startCard: START_CARD,
+});
+
+/** `chipDotLit` is the only thing that separates a lit dot from an unlit one. */
+const turnDotIsLit = () => {
+  const style = screen.getByTestId('turn-chip-dot').props.style;
+  return JSON.stringify(style).includes(Colors.goldLit);
+};
+
+describe('a watcher is never the player on move', () => {
+  // Every seat, because `viewerSeat` is the watcher's drawing seat rather than
+  // a claim about the turn: none of the four may address them as the player.
+  it.each([0, 1, 2, 3])('the turn chip is silent and dark, at seat %i', async (turn) => {
     const r = await render(table(state(turn), true));
     const hud = within(screen.getByTestId('game-hud-stack'));
     expect(hud.queryByText(locale['gameShared.yourTurn'])).toBeNull();
+    expect(turnDotIsLit()).toBe(false);
     await r.unmount();
   });
 
@@ -166,28 +181,42 @@ describe('a watcher is never the player on move', () => {
     await r.unmount();
   });
 
+  it('the spoken description does not say the watcher played the last card', async () => {
+    const r = await render(table(led(0), true));
+    expect(spokenNodes(/You played/)).toHaveLength(0);
+    await r.unmount();
+  });
+
   it('the start-card banner names the seat rather than the watcher', async () => {
-    const r = await render(table(notStarted(0), true));
-    expect(screen.queryByText(/You start!/)).toBeNull();
-    expect(screen.queryByText(/Ana starts with/)).not.toBeNull();
+    const r = await render(table(dealt(0), true));
+    expect(screen.queryByText(startsSelf)).toBeNull();
+    expect(screen.queryByText(startsOther)).not.toBeNull();
     await r.unmount();
   });
 });
 
-// The same three, for the player whose seat it really is.
 describe('a seated player is still the player on move', () => {
-  it('the turn chip says YOUR TURN', async () => {
+  it('the turn chip speaks and lights', async () => {
     const r = await render(table(state(0)));
     const hud = within(screen.getByTestId('game-hud-stack'));
     expect(hud.queryByText(locale['gameShared.yourTurn'])).not.toBeNull();
+    expect(turnDotIsLit()).toBe(true);
     await r.unmount();
   });
 
   it('the start-card banner uses the self form', async () => {
-    const r = await render(
-      table({ ...state(0), firstPlayMade: false, startCard: card('start', '3', 'spades') })
+    const r = await render(table(dealt(0)));
+    expect(screen.queryByText(startsSelf)).not.toBeNull();
+    await r.unmount();
+  });
+
+  // The top-left chip carries the same sentence, so this names the description.
+  it('the spoken description still says the viewer played', async () => {
+    const r = await render(table(led(0)));
+    const described = spokenNodes(/You played/).filter(
+      (n) => n.props.accessibilityLiveRegion === 'polite'
     );
-    expect(screen.queryByText(/You start!/)).not.toBeNull();
+    expect(described).toHaveLength(1);
     await r.unmount();
   });
 });

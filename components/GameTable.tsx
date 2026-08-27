@@ -807,8 +807,6 @@ export function GameTable({
 
   const players = gameState.players;
   const viewer = players[viewerSeat];
-  // A watcher is given a seat so the table has a bottom to draw from, but that
-  // seat is a real player they are not: the turn belongs to whoever holds it.
   const isMyTurn = !spectating && gameState.currentTurnIndex === viewerSeat;
   const isFinished = viewer?.finishPosition !== undefined;
   const isNewRound = gameState.lastPlayedCombination === null;
@@ -934,7 +932,7 @@ export function GameTable({
     const lastPlay: TableA11yLastPlay | null = combo
       ? {
           label: lastPlayA11yLabel(combo, t),
-          byViewer: gameState.lastPlayedBy === viewerSeat,
+          byViewer: !spectating && gameState.lastPlayedBy === viewerSeat,
           byName: players[gameState.lastPlayedBy]?.name ?? "",
         }
       : null;
@@ -970,6 +968,7 @@ export function GameTable({
     viewerSeat,
     sortedHand.length,
     isMyTurn,
+    spectating,
     exchange,
     tableA11yStrings,
     t,
@@ -1412,7 +1411,7 @@ export function GameTable({
         ]}
       >
         <TableChip scale={scale} lit={isMyTurn && !isFinished}>
-          <ChipDot scale={scale} lit={isMyTurn && !isFinished} />
+          <ChipDot testID="turn-chip-dot" scale={scale} lit={isMyTurn && !isFinished} />
           <ChipText scale={scale} lit={isMyTurn && !isFinished}>
             {isMyTurn && !isFinished
               ? t("gameShared.yourTurn")
