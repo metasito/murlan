@@ -7,8 +7,13 @@
 // ModalContent.js). Every blocking layer in the game must use one.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
-import { blankComments } from "./helpers/sourceScan.ts";
+import { readFileSync, readdirSync } from "node:fs";
+import {
+  blankComments,
+  coversNothing,
+  fullBleedAccessors,
+  fullBleedNodes,
+} from "./helpers/sourceScan.ts";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
 
@@ -22,9 +27,77 @@ const BLOCKING_OVERLAYS: [string, string][] = [
   ["components/ExchangeModal.tsx", "styles.overlay"],
   ["components/GameOverOverlay.tsx", "styles.innerCol"],
   ["components/ExchangeAnnouncement.tsx", "styles.overlay"],
+  ["components/ExchangeAnnouncement.tsx", "StyleSheet.absoluteFill"],
+  ["components/ConfirmDialog.tsx", "StyleSheet.absoluteFill"],
+  ["components/SettingsModal.tsx", "StyleSheet.absoluteFill"],
+  ["components/ErrorFallback.tsx", "styles.modalOverlay"],
+  ["components/SessionReplacedNotice.tsx", "styles.overlay"],
   // The portrait cover, which is the whole screen.
   ["components/table/rotateOverlay.tsx", "portraitOverlayStyles.overlay"],
 ];
+
+/**
+ * Full-bleed nodes that cover something other than the table, one entry per file with how
+ * many of them it holds. The count is the point: a file named here would otherwise absorb
+ * the next blocking layer added to it silently, which is the curated list's blind spot one
+ * level up.
+ */
+const NOT_A_BLOCKER: [string, number, string][] = [
+  ["components/table/felt.tsx", 1, "the table's own paint at zIndex 0 — the surface the game is drawn on, not a layer over it"],
+  ["components/table/chrome.tsx", 1, "the rail is a fixed-width strip down one edge: full-height, never full-screen, and the table is laid out beside it"],
+  ["components/table/settingsSheet.tsx", 1, "deliberately not a Modal (#195); the test below requires the four properties a Modal would have brought"],
+  ["app/index.tsx", 1, "the face of one animated card, absolute within that card's own view"],
+  ["app/(online)/game.tsx", 1, 'the overlay layer itself is pointerEvents="box-none" — it takes no touch and holds no content, only the overlays that do'],
+];
+
+/**
+ * Layers that do cover a screen and do not trap focus. Listed rather than fixed here, each
+ * against the issue that owns it: a reader behind one of these can still reach the controls
+ * underneath. Adding to this list is how the debt stays visible — a new untrapped layer
+ * cannot land without naming itself here.
+ */
+const UNTRAPPED: [string, number, string][] = [
+  ["app/(online)/index.tsx", 2, "the join-code sheet covers the lobby with a bare KeyboardAvoidingView — #474"],
+  ["app/(online)/game.tsx", 1, "the exchange wait cover leaves the table behind it focusable — #474"],
+];
+
+const SCANNED_DIRS = ["components", "app"];
+
+function scannedFiles(): string[] {
+  const out: string[] = [];
+  const walk = (dir: string) => {
+    for (const entry of readdirSync(path.join(repoRoot, dir), { withFileTypes: true })) {
+      const rel = `${dir}/${entry.name}`;
+      if (entry.isDirectory()) walk(rel);
+      else if (entry.name.endsWith(".tsx")) out.push(rel);
+    }
+  };
+  SCANNED_DIRS.forEach(walk);
+  return out;
+}
+
+/** Every full-bleed node that could cover something, by file. */
+export function candidatesByFile(files: string[], read: (rel: string) => string): Map<string, string[]> {
+  const sources = new Map(files.map((f) => [f, blankComments(read(f))]));
+  // A style sheet and the node wearing it need not share a file, so an accessor declared
+  // anywhere is offered to every file that names its object.
+  const declaredIn = new Map<string, string>();
+  for (const [file, source] of sources) {
+    for (const accessor of fullBleedAccessors(source)) declaredIn.set(accessor, file);
+  }
+  const found = new Map<string, string[]>();
+  for (const [file, source] of sources) {
+    const imported = [...declaredIn]
+      .filter(
+        ([accessor, from]) =>
+          from !== file && new RegExp(String.raw`\b${accessor.split(".")[0]}\b`).test(source)
+      )
+      .map(([accessor]) => accessor);
+    const covering = fullBleedNodes(source, imported).filter((tag) => !coversNothing(tag));
+    if (covering.length) found.set(file, covering);
+  }
+  return found;
+}
 
 /** The text of every `<Modal …>…</Modal>` in `source`, nesting-aware. */
 export function modalBodies(source: string): string[] {
@@ -36,6 +109,48 @@ export function modalBodies(source: string): string[] {
   }
   return out;
 }
+
+// The scan does not decide what a layer covers — it cannot, from source. It only refuses a
+// candidate nobody has classified, so forgetting one is a red build rather than a silent
+// hole. #337 added `components/table/chrome.tsx` to the curated list by hand; nothing would
+// have noticed if the person adding the layer had not remembered.
+test("every full-bleed layer has been classified by a human", () => {
+  const candidates = candidatesByFile(scannedFiles(), (rel) =>
+    readFileSync(path.join(repoRoot, rel), "utf8")
+  );
+  const count = (list: [string, number, string][], file: string) =>
+    list.filter(([f]) => f === file).reduce((n, [, c]) => n + c, 0);
+
+  const unclassified: string[] = [];
+  for (const [file, tags] of candidates) {
+    const claimed =
+      BLOCKING_OVERLAYS.filter(([f]) => f === file).length +
+      count(NOT_A_BLOCKER, file) +
+      count(UNTRAPPED, file);
+    if (claimed === tags.length) continue;
+    const shown = tags.map((t) => `      ${t.replace(/\s+/g, " ").slice(0, 110)}`);
+    unclassified.push(
+      [`${file}: ${tags.length} full-bleed node(s), ${claimed} classified`, ...shown].join("\n")
+    );
+  }
+
+  assert.deepEqual(
+    unclassified,
+    [],
+    "classify each of these into BLOCKING_OVERLAYS, NOT_A_BLOCKER or UNTRAPPED " +
+      `— a layer nobody has ruled on is a layer nobody has checked:\n  ${unclassified.join("\n  ")}`
+  );
+});
+
+test("the classification lists name files that still exist and still qualify", () => {
+  const candidates = candidatesByFile(scannedFiles(), (rel) =>
+    readFileSync(path.join(repoRoot, rel), "utf8")
+  );
+  const stale = [...NOT_A_BLOCKER, ...UNTRAPPED]
+    .map(([file]) => file)
+    .filter((file) => !candidates.has(file));
+  assert.deepEqual(stale, [], `no longer full-bleed, so drop the entry: ${stale.join(", ")}`);
+});
 
 test("every blocking overlay is inside a real modal", () => {
   const offenders = BLOCKING_OVERLAYS.filter(([rel, marker]) => {
