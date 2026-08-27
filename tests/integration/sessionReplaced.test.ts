@@ -209,9 +209,24 @@ describe(
         // is the last thing the connection handler emits, so it is the readiness
         // signal — and a real client is never that fast anyway.
         await waitFor(second, "friend:online_list");
+        const replacementId = second.id;
         second.close();
 
-        const drop = await dropped;
+        // The disconnect handler returns without announcing down three paths,
+        // and from here they are indistinguishable. Each logs, so the answer is
+        // already in the output — but a suite run carries a hundred of those
+        // lines, and only the ones naming this socket are about this failure.
+        const drop = await dropped.catch((err: Error) => {
+          throw new Error(
+            `${err.message}
+` +
+              `  userId ${alice.user.id}, replacement socket ${replacementId}
+` +
+              `  grep that socket id for "Socket held no room", "Account still holds ` +
+              `another socket" or "Seat released without a grace period": whichever ` +
+              `carries it is the diagnosis.`
+          );
+        });
         assert.equal(
           drop.userId,
           alice.user.id,
