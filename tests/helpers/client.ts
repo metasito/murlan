@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { io as ioClient, type Socket } from "socket.io-client";
 import type { TestServer } from "./testServer.ts";
+import { DEADLINE_SCALE } from "./deadlines.ts";
 
 /**
  * Shared low-level test client helpers for integration suites, so each
@@ -93,15 +94,7 @@ export async function connectAs(
   return { socket, user, cookie };
 }
 
-/**
- * These deadlines exist to fail a hung test loudly rather than stall the
- * suite; none of them asserts how fast the server is. A shared runner is
- * several times slower than a developer machine — this suite takes 134s
- * locally and 238s on CI — and the socket tests deliberately saturate the
- * connect path, so a budget chosen against local latency fails on load while
- * nothing is wrong. Every deadline scales instead of each one being retuned.
- */
-export const DEADLINE_SCALE = process.env.CI ? 4 : 1;
+export { DEADLINE_SCALE };
 
 /**
  * Waits for a single occurrence of `event` on `socket`, timing out loudly

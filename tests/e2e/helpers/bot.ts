@@ -14,6 +14,7 @@
 // nothing beats the table.
 
 import type { Locator, Page } from "@playwright/test";
+import { DEADLINE_SCALE } from "../../helpers/deadlines.ts";
 
 const TABLE = '[data-testid="game-table"]';
 // Scoped to the hand wrapper specifically (its own accessibilityLabel always
@@ -381,9 +382,18 @@ async function declineRematchPromptIfShown(page: Page): Promise<void> {
 export interface DriveOptions {
   /** Resolves true once the game has reached a terminal, checkable screen. */
   isFinished: (page: Page) => Promise<boolean>;
-  /** Hard wall-clock budget for the whole game. */
-  timeoutMs?: number;
-  /** How long the table description may sit unchanged before this is a stall, not a wait. */
+  /**
+   * How many distinct table states a game may pass through before it is a
+   * runaway rather than a long game. Counted rather than timed: a slow machine
+   * takes the same moves as a fast one, and the spread across deals is wide
+   * enough that any wall-clock figure covering the slow tail is useless as a
+   * check.
+   */
+  maxChanges?: number;
+  /**
+   * How long the table description may sit unchanged before this is a stall
+   * rather than a wait. A local budget, scaled by `DEADLINE_SCALE`.
+   */
   stallMs?: number;
   log?: (line: string) => void;
 }
@@ -396,18 +406,21 @@ export interface DriveOptions {
  * identical to "still thinking" until you compare consecutive polls.
  */
 export async function driveGameToCompletion(page: Page, opts: DriveOptions): Promise<void> {
-  const timeoutMs = opts.timeoutMs ?? 5 * 60_000;
+  // A four-seat hand turns over a few hundred states; the ceiling is an order
+  // above that, because the only thing it has to separate is a game that ends
+  // from one that never will.
+  const maxChanges = opts.maxChanges ?? 5_000;
   // Generous relative to a normal turn (a few seconds, measured, with
   // EXPO_PUBLIC_E2E_FAST and reduced motion both active) without being so
   // tight that one slow AI response false-positives a healthy game.
-  const stallMs = opts.stallMs ?? 15_000;
+  const stallMs = (opts.stallMs ?? 15_000) * DEADLINE_SCALE;
   const log = opts.log ?? (() => {});
 
-  const deadline = Date.now() + timeoutMs;
   let lastDesc = "";
   let lastChangeAt = Date.now();
+  let changes = 0;
 
-  while (Date.now() < deadline) {
+  while (changes <= maxChanges) {
     if (await opts.isFinished(page)) return;
 
     await declineRematchPromptIfShown(page);
@@ -421,13 +434,14 @@ export async function driveGameToCompletion(page: Page, opts: DriveOptions): Pro
     if (desc !== lastDesc) {
       lastDesc = desc;
       lastChangeAt = Date.now();
+      changes++;
     }
 
     if (desc.startsWith(EXCHANGE_GIVE_PREFIX)) {
       const gaveCard = await giveExchangeCard(page);
       if (gaveCard) {
         log(`exchange: gave back a card (${desc})`);
-        const changed = await waitForChange(page, desc, 10_000);
+        const changed = await waitForChange(page, desc, stallMs);
         if (!changed) {
           throw new StuckError(
             `Gave back an exchange card but the table state did not advance. Last state: "${desc}".`
@@ -448,7 +462,7 @@ export async function driveGameToCompletion(page: Page, opts: DriveOptions): Pro
         continue;
       }
       log(`${action} (was: "${desc}")`);
-      const changed = await waitForChange(page, desc, 10_000);
+      const changed = await waitForChange(page, desc, stallMs);
       if (!changed) {
         throw new StuckError(
           `Took action "${action}" but the table state did not advance. Last state: "${desc}".`
@@ -468,7 +482,8 @@ export async function driveGameToCompletion(page: Page, opts: DriveOptions): Pro
   }
 
   throw new Error(
-    `Game did not reach completion within ${timeoutMs}ms. Last table state: "${lastDesc}".`
+    `Game passed through ${changes} table states without finishing, so it is not going to. ` +
+      `Last table state: "${lastDesc}".`
   );
 }
 

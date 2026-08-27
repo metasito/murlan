@@ -31,17 +31,11 @@ test.describe("offline vs AI — single hand, reaches a result", () => {
       // the real GIOCA button to find out (helpers/bot.ts), so a move costs
       // as many clicks as the deal makes it cost. Measured on one run each
       // after that search learned to skip cards that cannot win: 2p 35s,
-      // 3p 34s, 4p free-for-all 29s, 4p teams 41s.
-      //
-      // The budget stays far above those rather than a tight multiple,
-      // because the spread across deals is the whole point — the same test
-      // has ranged from 49s to over 4 minutes. It is not the check either. A
-      // game that is actually broken is caught by `stallMs`, 15s with the
-      // table description unchanged, which is untouched and fails in seconds
-      // with the state it stopped in. This only stops a runaway from hanging
-      // the suite.
-      const driveTimeoutMs = 5 * 60_000;
-      test.setTimeout(driveTimeoutMs + 30_000);
+      // 3p 34s, 4p free-for-all 29s, 4p teams 41s — and the same test has
+      // ranged from 49s to over four minutes across deals. Playwright's own
+      // budget is the last resort behind `stallMs`, so it sits far above the
+      // slow tail rather than at a multiple of the measurements.
+      test.setTimeout(5 * 60_000);
       await openApp(page, baseURL!);
       await startOfflineGame(page, {
         playerCount: config.playerCount,
@@ -51,7 +45,6 @@ test.describe("offline vs AI — single hand, reaches a result", () => {
 
       await driveGameToCompletion(page, {
         isFinished: async (p) => RESULT_URL.test(p.url()),
-        timeoutMs: driveTimeoutMs,
         log: (line) => test.info().annotations.push({ type: "move", description: line }),
       });
 
@@ -90,7 +83,6 @@ test("offline vs AI — a match plays multiple hands and exercises the card exch
   for (let hand = 1; hand <= HANDS_TO_PLAY; hand++) {
     await driveGameToCompletion(page, {
       isFinished: async (p) => RESULT_URL.test(p.url()),
-      timeoutMs: 2 * 60_000,
       log: (line) =>
         test.info().annotations.push({ type: "move", description: `hand ${hand}: ${line}` }),
     });
