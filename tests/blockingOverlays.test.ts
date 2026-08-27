@@ -21,8 +21,6 @@ const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), ".."
 const BLOCKING_OVERLAYS: [string, string][] = [
   ["components/ExchangeModal.tsx", "styles.overlay"],
   ["components/GameOverOverlay.tsx", "styles.innerCol"],
-  ["components/ResultExchangeOverlay.tsx", "exStyles.jokerEmoji"],
-  ["components/ResultExchangeOverlay.tsx", "result.exchangeTitle"],
   ["components/ExchangeAnnouncement.tsx", "styles.overlay"],
   // The portrait cover, which is the whole screen.
   ["components/table/rotateOverlay.tsx", "portraitOverlayStyles.overlay"],
