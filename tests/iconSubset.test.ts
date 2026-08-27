@@ -34,8 +34,8 @@ test("every icon name the app uses exists in its family's glyphmap", () => {
 });
 
 // Measured on this branch: Ionicons is 21,912 B of 389,724 B (5.6%) over 80
-// glyphs, Feather 3,776 B of 55,596 B (6.8%) over 14. Ionicons has room for
-// hundreds more names; **Feather has about six**, at the ~270 B a glyph it
+// glyphs, Feather 4,084 B of 55,596 B (7.3%) over 16. Ionicons has room for
+// hundreds more names; **Feather has about five**, at the ~250 B a glyph it
 // costs here. So this ceiling is no longer only catching a subset that stopped
 // subsetting — the next handful of Feather icons will reach it, and the answer
 // then is to raise it deliberately, not to stop subsetting.

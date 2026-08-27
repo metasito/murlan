@@ -4,9 +4,10 @@
 // knob has to stay tappable to close it, and a full-screen modal would take
 // the tap away from it along with everything else.
 
-import { useEffect } from "react";
+import { useEffect, type ComponentProps } from "react";
 import { BackHandler, Platform, Pressable, ScrollView, StyleSheet, View } from "react-native";
 import Animated, { SlideInLeft } from "react-native-reanimated";
+import Feather from "@expo/vector-icons/Feather";
 import { RAIL_TESTID } from "./chrome";
 import { TableText } from "./TableText";
 import { LinearGradient } from "expo-linear-gradient";
@@ -98,18 +99,27 @@ const ROW_PAD_H = 7;
 const ROW_FS = 12.5;
 const ROW_HINT_FS = 9.5;
 const ROW_TRACKING = 0.7;
+const ROW_ICON_FS = 16;
+// Wider than the widest glyph, so the labels start at one x rather than at
+// each icon's own advance.
+const ROW_ICON_GUTTER = 20;
 
 function SheetRow({
   label,
+  icon,
   hint,
+  a11yLabel,
   a11yHint,
   on,
   onToggle,
   scale,
 }: {
   label: string;
+  icon: ComponentProps<typeof Feather>["name"];
   /** A second line under the label — visible, not a screen-reader-only hint. */
   hint?: string;
+  /** When the row's own word is too terse spoken aloud — "Sounds" alone. */
+  a11yLabel?: string;
   a11yHint?: string;
   on: boolean;
   onToggle: () => void;
@@ -121,7 +131,7 @@ function SheetRow({
       <Pressable
         testID={`settings-row-${label}`}
         onPress={onToggle}
-        accessibilityLabel={label}
+        accessibilityLabel={a11yLabel ?? label}
         {...a11yState({ role: "switch", checked: on })}
         {...a11y.props}
         style={({ pressed }) => [
@@ -130,18 +140,26 @@ function SheetRow({
           pressed && sheetStyles.rowPressed,
         ]}
       >
-        <View style={sheetStyles.rowLabels} {...a11yHidden()}>
-          <TableText
-            numberOfLines={1}
-            style={[sheetStyles.rowLabel, { fontSize: ROW_FS * scale, letterSpacing: ROW_TRACKING * scale }]}
-          >
-            {label}
-          </TableText>
-          {hint && (
-            <TableText numberOfLines={1} style={[sheetStyles.rowHint, { fontSize: ROW_HINT_FS * scale }]}>
-              {hint}
+        <View style={sheetStyles.rowLeft} {...a11yHidden()}>
+          <Feather
+            name={icon}
+            size={ROW_ICON_FS * scale}
+            color={Colors.textSecondary}
+            style={{ width: ROW_ICON_GUTTER * scale, textAlign: "center" }}
+          />
+          <View style={sheetStyles.rowLabels}>
+            <TableText
+              numberOfLines={1}
+              style={[sheetStyles.rowLabel, { fontSize: ROW_FS * scale, letterSpacing: ROW_TRACKING * scale }]}
+            >
+              {label}
             </TableText>
-          )}
+            {hint && (
+              <TableText numberOfLines={1} style={[sheetStyles.rowHint, { fontSize: ROW_HINT_FS * scale }]}>
+                {hint}
+              </TableText>
+            )}
+          </View>
         </View>
         <RowSwitch on={on} scale={scale} />
       </Pressable>
@@ -278,15 +296,9 @@ export function GameSettingsSheet({
               contentContainerStyle={{ gap: ROW_GAP * scale }}
             >
               <SheetRow
-                label={t("gameSettingsSheet.focusMode")}
-                hint={t("gameSettingsSheet.focusModeHint")}
-                a11yHint={t("gameSettingsSheet.focusModeA11yHint")}
-                on={focusMode}
-                onToggle={onToggleFocusMode}
-                scale={scale}
-              />
-              <SheetRow
                 label={t("settings.sounds")}
+                icon={soundsEnabled ? "volume-2" : "volume-x"}
+                a11yLabel={t("settings.soundsA11yLabel")}
                 a11yHint={t("settings.soundsA11yHint")}
                 on={soundsEnabled}
                 onToggle={() => setSoundsEnabled(!soundsEnabled)}
@@ -294,6 +306,8 @@ export function GameSettingsSheet({
               />
               <SheetRow
                 label={t("settings.music")}
+                icon="music"
+                a11yLabel={t("settings.musicA11yLabel")}
                 a11yHint={t("settings.musicA11yHint")}
                 on={musicEnabled}
                 onToggle={() => setMusicEnabled(!musicEnabled)}
@@ -302,6 +316,8 @@ export function GameSettingsSheet({
               {Platform.OS !== "web" && (
                 <SheetRow
                   label={t("settings.haptics")}
+                  icon="smartphone"
+                  a11yLabel={t("settings.hapticsA11yLabel")}
                   a11yHint={t("settings.hapticsA11yHint")}
                   on={hapticsEnabled}
                   onToggle={() => setHapticsEnabled(!hapticsEnabled)}
@@ -309,7 +325,17 @@ export function GameSettingsSheet({
                 />
               )}
               <SheetRow
+                label={t("gameSettingsSheet.focusMode")}
+                icon="eye"
+                hint={t("gameSettingsSheet.focusModeHint")}
+                a11yHint={t("gameSettingsSheet.focusModeA11yHint")}
+                on={focusMode}
+                onToggle={onToggleFocusMode}
+                scale={scale}
+              />
+              <SheetRow
                 label={t("gameSettingsSheet.playOnLeft")}
+                icon="corner-down-left"
                 hint={t("gameSettingsSheet.playOnLeftHint")}
                 a11yHint={t("gameSettingsSheet.playOnLeftA11yHint")}
                 on={playOnLeft}
@@ -389,6 +415,7 @@ const sheetStyles = StyleSheet.create({
     minHeight: TOUCH_TARGET_MIN,
   },
   rowPressed: { backgroundColor: Colors.goldGhost },
+  rowLeft: { flexDirection: "row", alignItems: "center", gap: Spacing.slim, flexShrink: 1 },
   rowLabels: { flexShrink: 1 },
   rowLabel: {
     fontFamily: "Rajdhani_600SemiBold",
