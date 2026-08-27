@@ -179,7 +179,7 @@ export default function GameScreen() {
         seatCount: rematchTally.total || gameState.players.length,
         onAnswer: answerRematch,
       }}
-      overlays={<ConfirmDialog request={confirming} onClose={() => setConfirming(null)} />}
+      overlays={() => <ConfirmDialog request={confirming} onClose={() => setConfirming(null)} />}
     />
   );
 }

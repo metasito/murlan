@@ -39,6 +39,15 @@ const GAME_OVER_DELAY = E2E_FAST ? 0 : 800;
 /** In-game server errors are transient; clear them rather than stacking. */
 const ERROR_TOAST_MS = 3000;
 
+/**
+ * The veiled wrapper below opens a stacking context, so the 100 and 300 its
+ * layers carry stop competing with the game table's own children (the felt at
+ * 0 up to the banner band at 50) and order only among themselves. The group
+ * therefore has to state its own place above them, rather than inherit one
+ * from where it sits in the tree.
+ */
+const OVERLAY_LAYER_Z = 300;
+
 export default function OnlineGameScreen() {
   const insets = useSafeAreaInsets();
   const { width, height } = useWindowDimensions();
@@ -316,65 +325,76 @@ export default function OnlineGameScreen() {
           </View>
         ) : null
       }
-      overlays={
+      overlays={(veiled) => (
         <>
+          {/* A <Modal> renders above the settings sheet rather than behind it,
+              so the veil would take away the confirmation the sheet just
+              asked for. */}
           <ConfirmDialog request={confirming} onClose={() => setConfirming(null)} />
 
-          <FloatingReactions />
+          {/* One veil for the whole slot: these are siblings of the table, and
+              a layer added here later is behind the sheet by construction
+              rather than by being remembered. */}
+          <View
+            style={[StyleSheet.absoluteFill, { zIndex: OVERLAY_LAYER_Z }]}
+            pointerEvents="box-none"
+            {...veiled}
+          >
+              <FloatingReactions />
 
-          {showReactions && (
-            <ReactionPanel
-              left={rail + Spacing.sm}
-              bottom={pads.bottomPad + Spacing.sm}
-              onSelect={(emoji) => {
-                hapticLight();
-                sendReaction(emoji);
-              }}
-              onClose={() => setShowReactions(false)}
-            />
-          )}
+            {showReactions && (
+              <ReactionPanel
+                left={rail + Spacing.sm}
+                bottom={pads.bottomPad + Spacing.sm}
+                onSelect={(emoji) => {
+                  hapticLight();
+                  sendReaction(emoji);
+                }}
+                onClose={() => setShowReactions(false)}
+              />
+            )}
 
-          {/* Everyone but the winner waits out the exchange. Offline the AI
-              resolves it in under a second, so this exists online only. */}
-          {exchange.active && !exchange.viewerIsWinner && (
-            <View style={styles.waitOverlay}>
-              <View style={styles.waitCard}>
-                <Text style={styles.waitGlyph}>🔄</Text>
-                <Text style={styles.waitTitle}>{t("onlineGame.exchangeInProgressTitle")}</Text>
-                <Text style={styles.waitBody}>
-                  {exchange.viewerIsLoser
-                    ? t("onlineGame.exchangeWaitAsLoser", { winner: exchange.winner?.name ?? t("onlineGame.theWinner") })
-                    : t("onlineGame.exchangeWaitAsOther", {
-                        winner: exchange.winner?.name ?? t("onlineGame.theWinner"),
-                        loser: exchange.loser?.name ?? t("onlineGame.theLoser"),
-                      })}
-                </Text>
+            {/* Everyone but the winner waits out the exchange. Offline the AI
+                resolves it in under a second, so this exists online only. */}
+            {exchange.active && !exchange.viewerIsWinner && (
+              <View style={styles.waitOverlay}>
+                <View style={styles.waitCard}>
+                  <Text style={styles.waitGlyph}>🔄</Text>
+                  <Text style={styles.waitTitle}>{t("onlineGame.exchangeInProgressTitle")}</Text>
+                  <Text style={styles.waitBody}>
+                    {exchange.viewerIsLoser
+                      ? t("onlineGame.exchangeWaitAsLoser", { winner: exchange.winner?.name ?? t("onlineGame.theWinner") })
+                      : t("onlineGame.exchangeWaitAsOther", {
+                          winner: exchange.winner?.name ?? t("onlineGame.theWinner"),
+                          loser: exchange.loser?.name ?? t("onlineGame.theLoser"),
+                        })}
+                  </Text>
+                </View>
               </View>
-            </View>
-          )}
+            )}
 
-          {error && (
-            <View style={styles.errorToast} accessibilityLiveRegion="polite">
-              <Ionicons name="alert-circle" size={15} color={Colors.white} />
-              <Text style={styles.errorText}>{error}</Text>
-            </View>
-          )}
+            {error && (
+              <View style={styles.errorToast} accessibilityLiveRegion="polite">
+                <Ionicons name="alert-circle" size={15} color={Colors.white} />
+                <Text style={styles.errorText}>{error}</Text>
+              </View>
+            )}
 
-          {showGameOver && gameState.gameOver && (
-            <GameOverOverlay
-              gameState={gameState}
-              topPad={pads.topPad}
-              bottomPad={pads.bottomPad}
-              onLeave={leaveAndExit}
-              onVoteRematch={() => {
-                hapticMedium();
-                voteRematch();
-              }}
-              voteState={rematchVoteState}
-              myUserId={user?.id ?? ""}
-              cumulativeScores={cumulativeScores}
-              handScores={handScores}
-              ratingDelta={ratingDeltas[user?.id ?? ""] ?? null}
+            {showGameOver && gameState.gameOver && (
+              <GameOverOverlay
+                gameState={gameState}
+                topPad={pads.topPad}
+                bottomPad={pads.bottomPad}
+                onLeave={leaveAndExit}
+                onVoteRematch={() => {
+                  hapticMedium();
+                  voteRematch();
+                }}
+                voteState={rematchVoteState}
+                myUserId={user?.id ?? ""}
+                cumulativeScores={cumulativeScores}
+                handScores={handScores}
+                ratingDelta={ratingDeltas[user?.id ?? ""] ?? null}
               match={{
                 target: matchState.target,
                 length: matchState.length,
@@ -383,10 +403,11 @@ export default function OnlineGameScreen() {
                 isDraw: matchState.isDraw,
                 continues: matchState.continues,
               }}
-            />
-          )}
+              />
+            )}
+          </View>
         </>
-      }
+      )}
     />
   );
 }
