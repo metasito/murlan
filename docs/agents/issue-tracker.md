@@ -5,7 +5,11 @@ Issues and specs for this repo live as GitHub issues. Use the `gh` CLI for all o
 ## Conventions
 
 - **Create an issue**: `gh issue create --title "..." --body "..."`. Use a heredoc for multi-line bodies.
-- **Read an issue**: `gh issue view <number> --comments`, filtering comments by `jq` and also fetching labels.
+- **Read an issue**, both halves: `gh issue view <number> && gh issue view <number> --comments`.
+  The first prints the body, the labels and a `comments:` count; the second prints the comment
+  thread *and nothing else*, so on an issue with no comments it outputs nothing and exits 0.
+  Either command alone is a partial read. `--json body,comments` gets the same two in one call
+  when you want to filter them with `jq`.
 - **List issues**: `gh issue list --state open --json number,title,body,labels,comments --jq '[.[] | {number, title, body, labels: [.labels[].name], comments: [.comments[].body]}]'` with appropriate `--label` and `--state` filters.
 - **Comment on an issue**: `gh issue comment <number> --body "..."`
 - **Apply / remove labels**: `gh issue edit <number> --add-label "..."` / `--remove-label "..."`
@@ -59,8 +63,9 @@ can, and that is what the claim carries.
   gh issue edit <n> --add-label in-progress
   gh issue comment <n> --body "Claimed by \`<branch-name>\`."
   ```
-- **Confirm you won the race**: `gh issue view <n> --comments`. Labelling is not atomic, and
-  two sessions can list the same free queue a second apart. If a claim comment predates
+- **Confirm you won the race**: `gh issue view <n> --comments`, the one place the thread alone
+  is what you want. Labelling is not atomic, and two sessions can list the same free queue a
+  second apart. If a claim comment predates
   yours, `gh issue edit <n> --remove-label in-progress`, comment that you are standing down,
   and take the next item.
 - **Release**: `gh issue close` ends the claim with the issue. Otherwise
@@ -93,7 +98,7 @@ Create a GitHub issue.
 
 ## When a skill says "fetch the relevant ticket"
 
-Run `gh issue view <number> --comments`.
+Run `gh issue view <number> && gh issue view <number> --comments`.
 
 
 ## Writing an issue body an agent can execute
@@ -104,7 +109,7 @@ without guessing.
 
 **The comments are part of it.** An owner's ruling, a decision a triage pass settled, a trap
 found later — all of those arrive as comments, and the body is often the state of the question
-before any of them. Read with `--comments` and treat a later ruling as overriding the body.
+before any of them. Read both halves, and treat a later ruling as overriding the body.
 
 The design gate reads them apart, and the difference matters when you write one. A recorded
 decision counts from either. Everything else — an open box under "What to settle", whether the

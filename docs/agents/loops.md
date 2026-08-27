@@ -146,6 +146,57 @@ after any session that ends without landing, or as a periodic sweep, removes wha
 prove is merged or gone and leaves anything uncommitted or still under an open pull request
 alone.
 
+### Metro's cache is machine-wide, and the key is short of two inputs
+
+Metro keeps one transform cache for the whole machine (`%TEMP%/metro-cache`).
+`getTransformCacheKey` hashes `cacheVersion`, the transformer and `globalPrefix`; the per-file
+key adds the file's path *relative to `projectRoot`* and its content hash. Two things a
+transform's output genuinely depends on are in none of that:
+
+- **Which checkout it is.** A worktree's `node_modules` is a junction, so
+  `expo-router/_ctx.web.js` is one physical file every checkout transforms, and
+  `babel-preset-expo` inlines the app root into it as a path *relative to that file*. Two
+  worktrees need different output from the same input. (The main checkout is safe from this
+  one by accident: its relative path to that file is `node_modules/…` where a worktree's is
+  `../../node_modules/…`, so their per-file keys differ. Two `.worktrees/w*` at equal depth
+  are what collide.)
+- **The `EXPO_PUBLIC_*` values.** `babel-preset-expo`'s `inline-env-vars.js` replaces
+  `process.env.EXPO_PUBLIC_X` with a **literal** in a production build, so the value is baked
+  into the cached output while being absent from the key.
+
+Both fail silently. The first bundles a route context pointing at a directory Metro is not
+watching, so `dist/` carries `_layout`, no routes at all, and nothing fails until the browser
+404s — which Playwright reads as every spec waiting out its own timeout in `openApp` (#438).
+The second serves one build's inlined constants to another: a plain `npx expo export` poisons
+the next e2e export into a bundle whose AI is never suspended, and — the direction that
+matters — an e2e export poisons the next production build into a zero-delay one.
+`scripts/assertNotE2EFast.js` checks the environment variable, which a cached transform has
+already outlived.
+
+`metro.config.js` puts both into `cacheVersion`. It is not the only reachable part of that key
+(`transformer.globalPrefix` is hashed too, and `cacheStores` could give each checkout its own
+directory) — it is simply the one that carries arbitrary strings.
+
+Three consequences worth knowing:
+
+- **A new worktree's first export is a cold build (~3 min)**, and so is the first export after
+  an `EXPO_PUBLIC_*` value changes. CI and Replit each pay it once, on a stable path. Sharing
+  was never a saving — it was fast and wrong.
+- `scripts/bundleRoutes.mjs` re-checks the exported bundle against `app/`, and
+  `scripts/e2e-server.mjs` calls it on every run, so an empty route table is named once rather
+  than diagnosed one five-minute timeout at a time. `npx expo export --platform web --clear`
+  is the confirmation, never the fix.
+- **The browser suite runs from a worktree** — `npx playwright test --config
+  tests/e2e/playwright.config.ts <spec>`, exactly as below, with no extra step. It did not
+  before #445, and the first run of a fresh worktree pays the cold build above.
+
+#284's asset URLs are a *different* proximate mechanism — Metro's dev server deriving a served
+path through the junction — and stay patched by `scripts/build.js`'s `sanitizeAssetPath`. They
+do share the upstream condition: the junction puts the real path outside the worktree, and
+every consumer that derives something from it inherits the `../..` escape. A worktree with its
+own real `node_modules` would remove the class outright; it costs an install per worktree,
+which is why it was not taken.
+
 ## Local ports
 
 Every port this repo's local tooling binds — including the local-substitute path CLAUDE.md's
