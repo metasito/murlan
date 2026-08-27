@@ -5,9 +5,18 @@ Issues and specs for this repo live as GitHub issues. Use the `gh` CLI for all o
 ## Conventions
 
 - **Create an issue**: `gh issue create --title "..." --body "..."`. Use a heredoc for multi-line bodies.
-- **Read an issue**, both halves: `gh issue view <number> && gh issue view <number> --comments`.
-  The first prints the body, the labels and a `comments:` count; the second prints the comment
-  thread *and nothing else*, so on an issue with no comments it outputs nothing and exits 0.
+- **Read an issue**, one command:
+
+  ```sh
+  gh issue view <number> --json title,body,comments \
+    --jq '.title, .body, (.comments[]|"--- "+.author.login+": "+.body)'
+  ```
+
+  Neither half alone is a read. `--comments` prints the comment thread *and nothing else*, so
+  on an issue with no comments it outputs nothing and exits 0 — which reads as "no body"
+  rather than "no comments", and has already been misread that way. `--json body` drops the
+  thread, where an owner's ruling that overrides the body usually lives. Add `labels` to the
+  `--json` list when the labels matter.
   Either command alone is a partial read. `--json body,comments` gets the same two in one call
   when you want to filter them with `jq`.
 - **List issues**: `gh issue list --state open --json number,title,body,labels,comments --jq '[.[] | {number, title, body, labels: [.labels[].name], comments: [.comments[].body]}]'` with appropriate `--label` and `--state` filters.
@@ -86,7 +95,8 @@ can, and that is what the claim carries.
 
 When set to `yes`, PRs run through the same labels and states as issues, using the `gh pr` equivalents:
 
-- **Read a PR**: `gh pr view <number> --comments` and `gh pr diff <number>` for the diff.
+- **Read a PR**: the same shape — `gh pr view <number> --json title,body,comments --jq '.title, .body, (.comments[]|"--- "+.author.login+": "+.body)'`, and `gh pr diff <number>` for the diff.
+  `gh pr view --comments` drops the body exactly as the issue form does.
 - **List external PRs for triage**: `gh pr list --state open --json number,title,body,labels,author,authorAssociation,comments` then keep only `authorAssociation` of `CONTRIBUTOR`, `FIRST_TIME_CONTRIBUTOR`, or `NONE` (drop `OWNER`/`MEMBER`/`COLLABORATOR`).
 - **Comment / label / close**: `gh pr comment`, `gh pr edit --add-label`/`--remove-label`, `gh pr close`.
 
@@ -98,7 +108,7 @@ Create a GitHub issue.
 
 ## When a skill says "fetch the relevant ticket"
 
-Run `gh issue view <number> && gh issue view <number> --comments`.
+Run the one-command read from **Conventions** above — title, body and thread together.
 
 
 ## Writing an issue body an agent can execute
