@@ -56,19 +56,21 @@ Every rule an agent must follow, in one place. No rationale here — the *why* l
     picks it and prints the route.
 23. **Claim it before you touch anything**: add `in-progress`, comment naming your branch, then
     re-read the issue and stand down if an older claim is there.
-24. **Release the claim whenever you stop without landing** — remove `in-progress`, say why.
-25. **A routed `implement` goes through `/ticket`**; `triage` through `/triage`; `wayfinder`
+24. **Read an issue with `--comments`, at pick-up and again before finishing.** A `--json body`
+    read omits every comment and looks complete.
+25. **Release the claim whenever you stop without landing** — remove `in-progress`, say why.
+26. **A routed `implement` goes through `/ticket`**; `triage` through `/triage`; `wayfinder`
     through `/wayfinder`.
-26. **An item needing an owner decision gets `ready-for-human`, not closed** — and
+27. **An item needing an owner decision gets `ready-for-human`, not closed** — and
     `ready-for-agent` comes off at the same time.
-27. **Name a model on every sub-agent.** Mechanical work: haiku. Implementing, verifying, landing:
+28. **Name a model on every sub-agent.** Mechanical work: haiku. Implementing, verifying, landing:
     sonnet. Independent review: opus. Give every dispatch a label.
 
 ## Finishing
 
-28. **Report what you actually did.** A gap named is worth more than a green report.
-29. **Never leave an edit uncommitted in the shared checkout.** Commit it on a branch before you
+29. **Report what you actually did.** A gap named is worth more than a green report.
+30. **Never leave an edit uncommitted in the shared checkout.** Commit it on a branch before you
     stop. `node scripts/preflight.mjs` blocks a run that would start on top of one.
-30. **Leave no residue** — no stray branches, worktrees, scratch files or uncommitted edits in the
+31. **Leave no residue** — no stray branches, worktrees, scratch files or uncommitted edits in the
     shared checkout.
-31. **Outstanding work goes in a GitHub issue**, never a `TODO` or a markdown backlog.
+32. **Outstanding work goes in a GitHub issue**, never a `TODO` or a markdown backlog.

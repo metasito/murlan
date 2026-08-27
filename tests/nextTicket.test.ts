@@ -2,11 +2,9 @@
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
 import path from "node:path";
-import fs from "node:fs";
-import os from "node:os";
 import { pathToFileURL } from "node:url";
-import { spawnSync } from "node:child_process";
 import { classify, pickRoute, isInvokedDirectly } from "../scripts/next-ticket.mjs";
+import { importUnderShellGuard } from "./helpers/importShellGuard.ts";
 
 function issue(number: number, labelNames: string[]) {
   return { number, title: `issue ${number}`, labels: labelNames.map((name) => ({ name })) };
@@ -96,43 +94,11 @@ describe("isInvokedDirectly", () => {
     assert.equal(isInvokedDirectly(undefined, moduleUrl), false);
   });
 
-  test("importing the module (not running it) never shells out to `gh`", (t) => {
-    // PATH shimming can't be trusted here: a bare `execFileSync("gh", …)`
-    // with no shell resolves through OS-level search rules that don't
-    // reliably prefer a shadowing PATH entry (confirmed against the real
-    // `gh` on this machine). Instead, patch `child_process.execFileSync`
-    // itself in the child process before the import runs, so any call the
-    // guard lets through is caught at the source, deterministically and
-    // without ever touching the network.
-    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "gh-guard-"));
-    t.after(() => fs.rmSync(tmpDir, { recursive: true, force: true }));
-    const marker = path.join(tmpDir, "called.txt");
-    const preload = path.join(tmpDir, "preload.cjs");
-    fs.writeFileSync(
-      preload,
-      [
-        "const cp = require('node:child_process');",
-        "const fs = require('node:fs');",
-        "cp.execFileSync = function (file) {",
-        "  fs.writeFileSync(process.env.GUARD_MARKER, String(file));",
-        "  throw new Error('blocked: ' + file + ' must not run during import');",
-        "};",
-      ].join("\n"),
-    );
-
+  test("importing the module (not running it) never shells out to `gh`", () => {
     const moduleUrl = pathToFileURL(path.resolve("scripts/next-ticket.mjs")).href;
-    // No `-e` argv[1], so isInvokedDirectly(undefined, moduleUrl) must be
-    // false and the CLI body below must not run.
-    const code = `import(${JSON.stringify(moduleUrl)}).then(() => process.exit(0)).catch((e) => { console.error(e); process.exit(2); });`;
 
-    const result = spawnSync(process.execPath, ["--require", preload, "-e", code], {
-      env: { ...process.env, GUARD_MARKER: marker },
-      encoding: "utf8",
-      // A hang guard, not a budget — the marker below is the proof.
-      timeout: 60_000,
-    });
+    const { shelledOutTo } = importUnderShellGuard(moduleUrl);
 
-    assert.equal(result.status, 0, result.stderr);
-    assert.equal(fs.existsSync(marker), false, "importing the module must not shell out to `gh`");
+    assert.equal(shelledOutTo, null, "importing the module must not shell out to `gh`");
   });
 });
