@@ -33,10 +33,12 @@ test("every icon name the app uses exists in its family's glyphmap", () => {
   }
 });
 
-// Measured on this branch: Ionicons is 22,056 B of 389,724 B (5.7%), Feather
-// 2,164 B of 55,596 B (3.9%). At roughly 280 B a glyph that leaves room for
-// some sixty more Ionicons names, so adding icons does not trip it — but a
-// subset that stopped subsetting, or a full face committed over one, does.
+// Measured on this branch: Ionicons is 21,912 B of 389,724 B (5.6%) over 80
+// glyphs, Feather 3,776 B of 55,596 B (6.8%) over 14. Ionicons has room for
+// hundreds more names; **Feather has about six**, at the ~270 B a glyph it
+// costs here. So this ceiling is no longer only catching a subset that stopped
+// subsetting — the next handful of Feather icons will reach it, and the answer
+// then is to raise it deliberately, not to stop subsetting.
 const MAX_SUBSET_RATIO = 0.1;
 
 test("the subsets exist and are much smaller than the originals", () => {
