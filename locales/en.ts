@@ -142,7 +142,7 @@ export const en = {
   "settings.logoutConfirmTitle": "Log out?",
   "settings.logoutConfirmBody": "You will need your username and password to sign back in. Your matches and stats stay on the account.",
   "settings.logoutFailedTitle": "Still signed in",
-  "settings.logoutFailedBody": "We could not reach the server. Nothing has changed — you are still signed in.",
+  "settings.logoutFailedBody": "We could not reach the server, so nothing has changed. Try again in a moment.",
   "settings.deleteAccount": "Delete account",
   "settings.deleteAccountA11yHint": "Permanently delete your account and all associated data",
   "settings.deleting": "Deleting…",
