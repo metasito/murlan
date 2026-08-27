@@ -8,6 +8,7 @@ import {
   type TestServer,
 } from "../helpers/testServer.ts";
 import { connectAs, waitFor, DEADLINE_SCALE } from "../helpers/client.ts";
+import { activeGames, socketRoomMap, userSocketMap } from "../../server/gameRoom.ts";
 import {
   setUpRoom,
   startGame,
@@ -188,6 +189,11 @@ describe(
           "game:seat_bot_takeover",
           GRACE_MS * 10
         );
+        // Both deadlines are already running, so when the first assertion fails
+        // this one rejects a moment later with nothing awaiting it. node:test
+        // cancels the test on that unhandled rejection and reports it in place
+        // of the failure that actually happened.
+        takenOver.catch(() => {});
 
         const closed = new Promise<void>((resolve, reject) => {
           const timer = setTimeout(
@@ -209,7 +215,18 @@ describe(
         // is the last thing the connection handler emits, so it is the readiness
         // signal — and a real client is never that fast anyway.
         await waitFor(second, "friend:online_list");
-        const replacementId = second.id;
+        // Present once connected; the wait above is that guarantee.
+        const replacementId = second.id!;
+        // Every exit of the disconnect handler is downstream of the server
+        // observing the close, and from the client the two are the same
+        // silence. The server runs in this process, so its own socket answers
+        // which half failed.
+        let serverSawClose = false;
+        server.io.sockets.sockets
+          .get(replacementId)
+          ?.once("disconnect", () => {
+            serverSawClose = true;
+          });
         second.close();
 
         // The disconnect handler returns without announcing down three paths,
@@ -217,14 +234,34 @@ describe(
         // already in the output — but a suite run carries a hundred of those
         // lines, and only the ones naming this socket are about this failure.
         const drop = await dropped.catch((err: Error) => {
+          if (!serverSawClose) {
+            throw new Error(
+              `${err.message}
+` +
+                `  the server never observed socket ${replacementId} close, so its
+` +
+                `  disconnect handler never ran and none of the exits below is the
+` +
+                `  cause — the close itself was not delivered`
+            );
+          }
+          // The three states the handler returned on are readable rather than
+          // inferable. Exactly one of these lines explains the silence.
+          const held = socketRoomMap.get(replacementId);
           throw new Error(
             `${err.message}
 ` +
               `  userId ${alice.user.id}, replacement socket ${replacementId}
 ` +
-              `  grep that socket id for "Socket held no room", "Account still holds ` +
-              `another socket" or "Seat released without a grace period": whichever ` +
-              `carries it is the diagnosis.`
+              `  socketRoomMap holds ${held ?? "nothing"} for it` +
+              `${held ? "" : " -> the handler took the 'Socket held no room' exit"}
+` +
+              `  userSocketMap holds ${userSocketMap.get(alice.user.id) ?? "nothing"} for the account` +
+              `${userSocketMap.has(alice.user.id) ? " -> the 'Account still holds another socket' exit" : ""}
+` +
+              `  activeGames ${held && activeGames.has(held) ? `has a game for ${held}` : "has no game for that room"}` +
+              `${held && !activeGames.has(held) ? " -> the 'Seat released without a grace period' exit" : ""}` +
+              `${held && activeGames.get(held)?.gameState.gameOver ? " (the game is over)" : ""}`
           );
         });
         assert.equal(
