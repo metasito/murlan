@@ -227,8 +227,10 @@ export async function playMusic(track: MusicTrack): Promise<void> {
   playNativeMusic(track);
 }
 
+// `_wanted` deliberately survives: silencing the bed does not change which
+// track the current route asks for, and re-enabling music has nothing else to
+// restart from. `unloadMusic` is the teardown that forgets it.
 export function stopMusic(): void {
-  _wanted = null;
   if (Platform.OS === "web") {
     const ctx = sharedWebCtx();
     if (ctx && webGain) rampWeb(ctx, 0, FADE_S);

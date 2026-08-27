@@ -28,7 +28,7 @@ jest.mock('@/lib/sounds', () => ({
   ensureAudioMode: jest.fn(async () => {}),
 }));
 
-import { playMusic, stopMusic, unloadMusic } from '@/lib/music';
+import { playMusic, setMusicMasterEnabled, stopMusic, unloadMusic } from '@/lib/music';
 import { ensureAudioMode } from '@/lib/sounds';
 import { CONTAINER } from '@/lib/musicTracks';
 
@@ -106,5 +106,22 @@ describe(`music on ${Platform.OS}`, () => {
     });
     await expect(playMusic('cue')).resolves.toBeUndefined();
     expect(() => stopMusic()).not.toThrow();
+  });
+
+  // The settings toggle is the only caller of setMusicMasterEnabled, and it
+  // passes no track — so turning music off has to leave the requested one
+  // behind or nothing ever comes back but a route change.
+  it('restarts the requested track when music is switched off and on again', async () => {
+    await playMusic('menu');
+    const player = createAudioPlayer.mock.results[0].value as { play: jest.Mock };
+    player.play.mockClear();
+
+    setMusicMasterEnabled(false);
+    setMusicMasterEnabled(true);
+    // setMusicMasterEnabled cannot be awaited, and playMusic awaits the audio
+    // mode before it reaches the player.
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(player.play).toHaveBeenCalled();
   });
 });
