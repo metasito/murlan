@@ -126,6 +126,7 @@ ever runs the webServer command.
 | --- | --- |
 | Whatever holds `E2E_PORT` | by default |
 | Anything of ours over 2h old whose parent is gone | by default |
+| **Any** process over 2h old whose parent is gone and which is burning ≥20% of a core | by default |
 | Anything of ours over 24h old | only with `--stale` |
 | `murlan-verify-pg` / `murlan-verify-boot` containers | by default |
 | The shared `murlan-dev-pg` container | only with `--docker` |
@@ -136,6 +137,22 @@ Playwright's browser directory, which sits in the user's profile rather than und
 Name matching would be indefensible: `chrome.exe` is as likely to be the developer's own browser,
 and this machine also runs an unrelated agent's `python.exe` and Windows' own `msedgewebview2.exe`.
 A command line that could not be read claims nothing.
+
+**The burning class is the one exception, and it is not decided by ownership at all.** Ownership
+is what makes the other classes safe, and it is exactly why they could not see the worst leftover
+this machine has had: a `tr | fold | awk` pipeline reading `/dev/urandom`, orphaned by a killed
+Git Bash session — Windows has no `SIGHUP` to send and the input never ends — holding a full core
+for 62 hours while `reap` reported "nothing of ours". What makes this class safe instead is the
+conjunction: parentless **and** over 2h old **and** measurably burning **and** not the operating
+system's. Nothing legitimate is all four.
+
+Two things it does not do. It never rules on cumulative CPU, which says only what a process has
+ever burned — it takes two snapshots a second apart and rules on the delta, so a process that
+burned a core for hours and then went idle reads as idle. And no system process can be a
+candidate: anything under `%SystemRoot%`, anything at pid 4 or below, and anything whose command
+line could not be read, which on Windows is the signature of a protected process. Pid 0, the
+System Idle Process, samples at over 2000% of a core because its time is summed across every one
+of them, and it is the loudest thing the scan sees.
 
 The 24h class needs asking for. A crashed session leaves its **whole tree** resident — the node
 process, the bash that launched it, the cmd above that — so its parent is alive and the parent test
