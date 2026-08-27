@@ -37,6 +37,16 @@ process.env.MURLAN_AUTH_RATE_LIMIT ??= "200";
  */
 process.env.MURLAN_LOGIN_USERNAME_RATE_LIMIT ??= "5";
 
+/**
+ * Long enough that the server is never the side that closes an idle
+ * connection. Node's default expires one a second after `fetch`'s agent stops
+ * reusing it, and a loaded runner fires the two timers out of that order.
+ * Production keeps the default, which is what Replit's proxy expects.
+ */
+export const KEEP_ALIVE_MS = 120_000;
+/** Node requires `headersTimeout` to outlast `keepAliveTimeout`. */
+const HEADERS_TIMEOUT_MS = 130_000;
+
 export function hasDatabase(): boolean {
   return Boolean(process.env.DATABASE_URL);
 }
@@ -126,6 +136,9 @@ export async function startTestServer(
     // one.
     const { pool: appPool } = await import("../../server/db.ts");
     const { server, io } = await createApp();
+    server.keepAliveTimeout = KEEP_ALIVE_MS;
+    // Node refuses to read headers for longer than it will hold the socket.
+    server.headersTimeout = HEADERS_TIMEOUT_MS;
     await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
     const port = (server.address() as { port: number }).port;
 
