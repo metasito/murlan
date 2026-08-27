@@ -48,19 +48,12 @@ interface Props {
 /** Room for a couple of sentences without the send button leaving the screen. */
 const BUG_INPUT_MIN_H = 96;
 
-/** Small enough to read as a row marker rather than a control. */
-const ROW_ICON_SIZE = 18;
-
-/**
- * Decorative: the row's own control carries the label, so an icon left visible
- * to a screen reader makes that control expose two nodes
- * (`tests/native/a11yCollapse.test.tsx`).
- */
+/** The row's label says what the setting is; the glyph repeats it in pictures. */
 function RowIcon({ name }: { name: React.ComponentProps<typeof Feather>["name"] }) {
   return (
     <Feather
       name={name}
-      size={ROW_ICON_SIZE}
+      size={FontSize.lg}
       color={Colors.textSecondary}
       style={styles.icon}
       {...a11yHidden()}
@@ -168,8 +161,7 @@ export function SettingsModal({ visible, onClose }: Props) {
   const [deleting, setDeleting] = useState(false);
   const [loggingOut, setLoggingOut] = useState(false);
   const { t, locale, setLocale, locales, localeLabels } = useTranslation();
-  // The slider is the mute now, so a screen reader has to say so — "0%" reads
-  // as a level rather than as off.
+  // "0%" reads as a level, not as off.
   const volumeText = (v: number) =>
     v === 0 ? t("settings.muted") : t("settings.volumePercent", { percent: Math.round(v * 100) });
   const deleteHint = useA11yHint(t("settings.deleteAccountA11yHint"));
@@ -627,7 +619,7 @@ const styles = StyleSheet.create({
   },
   rowLeft: { flexDirection: "row", alignItems: "center", gap: Spacing.sm },
   icon: { width: 24, textAlign: "center" },
-  label: { ...Type.bodyStrong, fontSize: FontSize.sm, color: Colors.text },
+  label: { ...Type.bodyStrong, color: Colors.text },
   sublabel: { ...Type.caption },
   stackRow: { gap: Spacing.slim, paddingVertical: Spacing.slim },
   rowLabels: { flexShrink: 1 },
