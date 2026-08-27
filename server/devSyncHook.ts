@@ -45,22 +45,27 @@ async function runGit(args: string[]) {
   });
 }
 
+async function gitOutput(args: string[]): Promise<string> {
+  return (await execFileAsync("git", args, { cwd: process.cwd() })).stdout.trim();
+}
+
+async function isAncestor(ancestor: string, descendant: string): Promise<boolean> {
+  try {
+    await runGit(["merge-base", "--is-ancestor", ancestor, descendant]);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 export async function syncMain(): Promise<SyncResult> {
-  const originalBranch = (
-    await execFileAsync("git", ["branch", "--show-current"], {
-      cwd: process.cwd(),
-    })
-  ).stdout.trim();
-  const before = (
-    await execFileAsync("git", ["rev-parse", "HEAD"], { cwd: process.cwd() })
-  ).stdout.trim();
-  const dirty = (
-    await execFileAsync(
-      "git",
-      ["status", "--porcelain", "--untracked-files=all"],
-      { cwd: process.cwd() }
-    )
-  ).stdout.trim();
+  const originalBranch = await gitOutput(["branch", "--show-current"]);
+  const before = await gitOutput(["rev-parse", "HEAD"]);
+  const dirty = await gitOutput([
+    "status",
+    "--porcelain",
+    "--untracked-files=all",
+  ]);
   if (dirty) {
     throw new Error("Dev workspace is not clean; refusing automatic main sync");
   }
@@ -68,7 +73,19 @@ export async function syncMain(): Promise<SyncResult> {
   await runGit(["fetch", "origin", "main", "--quiet"]);
   try {
     await runGit(["checkout", "main", "--quiet"]);
-    await runGit(["merge", "--ff-only", "origin/main", "--quiet"]);
+    const localMain = await gitOutput(["rev-parse", "HEAD"]);
+    const remoteMain = await gitOutput(["rev-parse", "origin/main"]);
+    if (localMain === remoteMain) return { updated: before !== localMain, sha: localMain };
+    if (await isAncestor(localMain, remoteMain)) {
+      await runGit(["merge", "--ff-only", "origin/main", "--quiet"]);
+    } else if (await isAncestor(remoteMain, localMain)) {
+      // A local commit has not reached GitHub yet. Leave it alone; the push
+      // action will run after it is published, at which point this relation
+      // reverses for the next remote main commit.
+      return { updated: false, sha: localMain };
+    } else {
+      throw new Error("Local main and origin/main diverged; refusing automatic sync");
+    }
   } catch (error) {
     if (originalBranch && originalBranch !== "main") {
       await runGit(["checkout", originalBranch, "--quiet"]).catch(() => {});
@@ -76,9 +93,7 @@ export async function syncMain(): Promise<SyncResult> {
     throw error;
   }
 
-  const sha = (
-    await execFileAsync("git", ["rev-parse", "HEAD"], { cwd: process.cwd() })
-  ).stdout.trim();
+  const sha = await gitOutput(["rev-parse", "HEAD"]);
   return { updated: before !== sha, sha };
 }
 
