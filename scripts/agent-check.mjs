@@ -12,11 +12,15 @@ import { createHash } from "node:crypto";
 import { execFileSync, spawnSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
+import { nativeScope } from "./native-scope.mjs";
 
 const STEPS = [
   { name: "typecheck", args: ["run", "typecheck"] },
   { name: "typecheck:strict", args: ["run", "typecheck:strict"] },
   { name: "test", args: ["test"] },
+  // Both jest projects, ios and android: they run the same files under
+  // different setups, so one of the two passing is not an outcome.
+  { name: "test:native", args: ["run", "test:native"], when: nativeScope },
   { name: "lint", args: ["run", "lint"] },
 ];
 
@@ -84,11 +88,22 @@ if (!force && cache[key]?.pass) {
 }
 
 const failed = [];
+const skipped = [];
 for (const step of STEPS) {
+  const scope = step.when?.();
+  if (scope && !scope.run) {
+    skipped.push(`${step.name} (${scope.reason})`);
+    continue;
+  }
   process.stdout.write(`\n=== ${step.name} ===\n`);
   const run = spawnSync("npm", step.args, { stdio: "inherit", shell: process.platform === "win32" });
   if (run.status !== 0) failed.push(step.name);
 }
+
+// A green line standing for a suite nobody ran is the defect this check was
+// reported for, so what it left out is part of its verdict.
+const verdict = (outcome) =>
+  skipped.length ? `${outcome}\n  not run: ${skipped.join(", ")}` : outcome;
 
 // Only a pass is cached. A failure has to re-run: the fix for it lands in the same tree the
 // failure was recorded against only when nothing else moved, and replaying a red verdict would
@@ -97,7 +112,7 @@ cache[key] = { pass: failed.length === 0, at: new Date().toISOString(), failed }
 fs.writeFileSync(cachePath(), JSON.stringify(cache, null, 2));
 
 if (failed.length) {
-  console.error(`\nagent:check  FAIL — ${failed.join(", ")}`);
+  console.error(verdict(`\nagent:check  FAIL — ${failed.join(", ")}`));
   process.exit(1);
 }
-console.log(`\nagent:check  PASS  (tree ${key})`);
+console.log(verdict(`\nagent:check  PASS  (tree ${key})`));

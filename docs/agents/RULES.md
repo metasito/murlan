@@ -5,13 +5,13 @@ Every rule an agent must follow, in one place. No rationale here — the *why* l
 
 ## Checking your work
 
-1. **Run `npm run agent:check` before you push.** It runs typecheck, tests and lint, and replays
-   the verdict if the tree has not changed — so running it again costs nothing.
+1. **Run `npm run agent:check` before you push.** It runs typecheck, tests, lint, and the native
+   suite when your change can reach it, names whatever it skipped, and replays the verdict if the
+   tree has not changed — so running it again costs nothing.
 2. **Do not run `npm run verify`.** It is the whole sweep; `ci.yml` already runs it on your push.
-3. **`npm run test:native` and `npm run test:e2e` are yours to judge.** They are slow (2 and 9
-   minutes) and CI runs both. Run one when your change could break what only it can see — a
-   native render, a browser interaction, an accessibility label a spec clicks by name. Skip it
-   otherwise.
+3. **`npm run test:e2e` is yours to judge.** It is slow (9 minutes) and CI runs it. Run it when
+   your change could break what only a browser can see — a laid-out box, an interaction, an
+   accessibility label a spec clicks by name. Skip it otherwise. Rule 1 decides `test:native`.
 4. **While iterating, run one file:** `node --test tests/x.test.ts`. One Playwright spec
    (`npx playwright test --config tests/e2e/playwright.config.ts one.spec.ts`) is that loop only
    under rule 5. Otherwise every run rebuilds: prove the spec red once and green once, push, and
