@@ -12,7 +12,7 @@
 // on a real table.
 import { describe, it, expect, beforeEach, afterEach, jest } from '@jest/globals';
 import React from 'react';
-import { render, screen } from '@testing-library/react-native';
+import { act, render, screen } from '@testing-library/react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 jest.mock('@/lib/sounds', () => ({
@@ -108,6 +108,19 @@ const table = (gameState: GameState, turnTimer: TurnTimerConfig) => (
 
 const clocks = () => screen.queryAllByTestId('seat-turn-clock').length;
 
+/**
+ * Mounting the table schedules the sweep rather than drawing it, so counting
+ * the clocks straight after `render` counts whatever the machine happened to
+ * have reached. Running what the mount queued settles it the same way on any
+ * machine.
+ */
+async function renderSettled(ui: React.ReactElement) {
+  await render(ui);
+  await act(async () => {
+    jest.runOnlyPendingTimers();
+  });
+}
+
 describe("a seat's turn clock", () => {
   beforeEach(() => {
     jest.clearAllMocks();
@@ -120,24 +133,24 @@ describe("a seat's turn clock", () => {
   // The two states that must still sweep. Without them every assertion below
   // would also pass on a ring that is never drawn at all.
   it('sweeps for the seat on move once a combination is down', async () => {
-    await render(table(state({ lastPlayedCombination: single(KING), lastPlayedBy: 0 }), OFFLINE_TIMER));
+    await renderSettled(table(state({ lastPlayedCombination: single(KING), lastPlayedBy: 0 }), OFFLINE_TIMER));
     expect(clocks()).toBe(1);
   });
 
   it('sweeps for another seat online after the viewer has gone out', async () => {
     const players = Array.from({ length: 4 }, (_, i) => seat(i));
     players[0] = { ...players[0], hand: [], finishPosition: 1 };
-    await render(table(state({ players }), ONLINE_TIMER));
+    await renderSettled(table(state({ players }), ONLINE_TIMER));
     expect(clocks()).toBe(1);
   });
 
   it('is dark offline while a seat leads a new round, where no deadline exists', async () => {
-    await render(table(state({}), OFFLINE_TIMER));
+    await renderSettled(table(state({}), OFFLINE_TIMER));
     expect(clocks()).toBe(0);
   });
 
   it('is dark through the exchange', async () => {
-    await render(
+    await renderSettled(
       table(
         state({
           lastPlayedCombination: single(KING),
