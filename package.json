@@ -10,6 +10,8 @@
     "expo:dev": "EXPO_OFFLINE=1 EXPO_PACKAGER_PROXY_URL=https://$REPLIT_DEV_DOMAIN REACT_NATIVE_PACKAGER_HOSTNAME=$REPLIT_DEV_DOMAIN EXPO_PUBLIC_DOMAIN=$REPLIT_DEV_DOMAIN:5000 npx expo start --localhost",
     "expo:dev:clean": "EXPO_OFFLINE=1 EXPO_PACKAGER_PROXY_URL=https://$REPLIT_DEV_DOMAIN REACT_NATIVE_PACKAGER_HOSTNAME=$REPLIT_DEV_DOMAIN EXPO_PUBLIC_DOMAIN=$REPLIT_DEV_DOMAIN:5000 npx expo start --localhost --clear",
     "server:dev": "NODE_ENV=development tsx server/index.ts",
+    "dev:workflow:backend": "node scripts/dev-workflow-supervisor.mjs backend",
+    "dev:workflow:frontend": "node scripts/dev-workflow-supervisor.mjs frontend",
     "expo:start:static:build": "npx expo start --no-dev --minify --localhost",
     "expo:static:build": "node scripts/build.js",
     "expo:web:build": "node scripts/assertNotE2EFast.js && npx expo export --platform web --source-maps && node scripts/moveSourceMaps.mjs",
