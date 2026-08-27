@@ -45,6 +45,37 @@ async function tableDescription(page: Page): Promise<string | null> {
   }
 }
 
+/**
+ * Every hand size the table announces, summed (`gameTable.a11yYourCards` and
+ * `a11yOpponentCards`, both numbers in locales/it.ts). Null when the state
+ * names none.
+ */
+export function cardsInHands(desc: string): number | null {
+  const counts = [...desc.matchAll(/(\d+) cart[ae] in mano/g)];
+  return counts.length === 0 ? null : counts.reduce((sum, m) => sum + Number(m[1]), 0);
+}
+
+export interface Progress {
+  /** Cards across every hand the table has announced so far. */
+  held: number | null;
+  /** Table states seen since that total last moved. */
+  stale: number;
+}
+
+export const NO_PROGRESS_YET: Progress = { held: null, stale: 0 };
+
+/**
+ * Folds one new table state into the progress seen so far. Any move of the
+ * total counts, including the deal that grows it again between hands: what a
+ * game that cannot end never does is change it.
+ */
+export function observeProgress(prev: Progress, desc: string): Progress {
+  const held = cardsInHands(desc);
+  // A state that names no hand sizes is neither progress nor a lack of it.
+  if (held === null) return prev;
+  return { held, stale: held === prev.held ? prev.stale + 1 : 0 };
+}
+
 function rankKeyOf(cardLabel: string): string {
   const sep = cardLabel.indexOf(" di ");
   return sep === -1 ? cardLabel : cardLabel.slice(0, sep);
@@ -97,14 +128,15 @@ const CARD_CLICK_TIMEOUT_MS = 4_000;
  */
 /**
  * Card strength, weakest first, by the word the table uses for each rank
- * (lib/cardNames.ts against locales/it.ts). Suit is absent on purpose: no
- * source gives suits an order and `cardStrength()` ignores them, so equal
- * ranks are equal strength.
+ * (lib/cardNames.ts against locales/it.ts) — "Jolly nero"/"Jolly rosso" for
+ * the jokers, since cardView.jokerBlack/jokerColored render "Jolly", not
+ * "Joker". Suit is absent on purpose: no source gives suits an order and
+ * `cardStrength()` ignores them, so equal ranks are equal strength.
  */
 const RANK_ORDER = [
   "3", "4", "5", "6", "7", "8", "9", "10",
   "Fante", "Donna", "Re", "Asso", "2",
-  "Joker nero", "Joker rosso",
+  "Jolly nero", "Jolly rosso",
 ];
 
 /** -1 for anything this does not recognise, which callers treat as "try it". */
@@ -322,12 +354,18 @@ async function giveExchangeCandidateCount(page: Page): Promise<number> {
   return labels.filter((l) => GIVEBACK_CARD_LABEL.test(l)).length;
 }
 
+const EXCHANGE_CONFIRM = '[data-testid="exchange-confirm"]';
+
+/**
+ * The modal is select-then-confirm: clicking a card only picks it, and the
+ * give happens on the confirm control. Both clicks are needed, in that order.
+ *
+ * Watch for: the confirm is disabled until a card is picked, so a confirm that
+ * does nothing means the card click missed. The candidate count dropping is
+ * what proves the give landed — a click that silently missed the gesture
+ * responder throws nothing.
+ */
 async function giveExchangeCard(page: Page): Promise<boolean> {
-  // A successful pick collapses the whole modal (or at least removes this
-  // card from the offered list), so the giveback-shaped count dropping is
-  // real, independent proof the press worked — not just "no exception was
-  // thrown", which a press that silently missed the gesture responder would
-  // also produce.
   const before = await giveExchangeCandidateCount(page);
   if (before === 0) return false;
 
@@ -338,13 +376,16 @@ async function giveExchangeCard(page: Page): Promise<boolean> {
 
   for (let i = labels.length - 1; i >= 0; i--) {
     if (!GIVEBACK_CARD_LABEL.test(labels[i])) continue;
-    // The label now sits on SelectableCard's own Pressable rather than on the
-    // disabled CardView inside it, so the matched element is the control —
-    // a real click lands on it directly, with no ancestor climb and no
-    // hand-dispatched pointer sequence to stand in for one.
+    // The label sits on SelectableCard's own Pressable, so the matched element
+    // is the control itself and a real click lands on it directly.
     for (let attempt = 0; attempt < 3; attempt++) {
       await candidates
         .nth(i)
+        .click({ timeout: CARD_CLICK_TIMEOUT_MS })
+        .catch(() => {});
+      await sleep(250);
+      await page
+        .locator(EXCHANGE_CONFIRM)
         .click({ timeout: CARD_CLICK_TIMEOUT_MS })
         .catch(() => {});
       await sleep(250);
@@ -371,8 +412,14 @@ async function declineRematchPromptIfShown(page: Page): Promise<void> {
 export interface DriveOptions {
   /** Resolves true once the game has reached a terminal, checkable screen. */
   isFinished: (page: Page) => Promise<boolean>;
-  /** Hard wall-clock budget for the whole game. */
-  timeoutMs?: number;
+  /**
+   * How many table states may pass with no card leaving anyone's hand before
+   * this is a game that cannot end rather than a long one. Counted rather than
+   * timed: a slow machine plays the same moves as a fast one, and the spread
+   * across deals is wide enough that any wall-clock figure covering the slow
+   * tail is useless as a check.
+   */
+  maxStatesWithoutProgress?: number;
   /** How long the table description may sit unchanged before this is a stall, not a wait. */
   stallMs?: number;
   log?: (line: string) => void;
@@ -386,18 +433,21 @@ export interface DriveOptions {
  * identical to "still thinking" until you compare consecutive polls.
  */
 export async function driveGameToCompletion(page: Page, opts: DriveOptions): Promise<void> {
-  const timeoutMs = opts.timeoutMs ?? 5 * 60_000;
+  // A hand ends when someone runs out, so cards leaving hands is the only
+  // progress there is. Legitimately it pauses for a round of passes and the
+  // turn churn around it — a handful of states; this sits an order above that.
+  const maxStatesWithoutProgress = opts.maxStatesWithoutProgress ?? 100;
   // Generous relative to a normal turn (a few seconds, measured, with
   // EXPO_PUBLIC_E2E_FAST and reduced motion both active) without being so
   // tight that one slow AI response false-positives a healthy game.
   const stallMs = opts.stallMs ?? 15_000;
   const log = opts.log ?? (() => {});
 
-  const deadline = Date.now() + timeoutMs;
   let lastDesc = "";
   let lastChangeAt = Date.now();
+  let progress = NO_PROGRESS_YET;
 
-  while (Date.now() < deadline) {
+  for (;;) {
     if (await opts.isFinished(page)) return;
 
     await declineRematchPromptIfShown(page);
@@ -411,13 +461,21 @@ export async function driveGameToCompletion(page: Page, opts: DriveOptions): Pro
     if (desc !== lastDesc) {
       lastDesc = desc;
       lastChangeAt = Date.now();
+
+      progress = observeProgress(progress, desc);
+      if (progress.stale > maxStatesWithoutProgress) {
+        throw new StuckError(
+          `Game passed through ${progress.stale} table states with ${progress.held} cards still in hand, ` +
+            `so no move is reducing them and it cannot end. Last table state: "${desc}".`
+        );
+      }
     }
 
     if (desc.startsWith(EXCHANGE_GIVE_PREFIX)) {
       const gaveCard = await giveExchangeCard(page);
       if (gaveCard) {
         log(`exchange: gave back a card (${desc})`);
-        const changed = await waitForChange(page, desc, 10_000);
+        const changed = await waitForChange(page, desc, stallMs);
         if (!changed) {
           throw new StuckError(
             `Gave back an exchange card but the table state did not advance. Last state: "${desc}".`
@@ -438,7 +496,7 @@ export async function driveGameToCompletion(page: Page, opts: DriveOptions): Pro
         continue;
       }
       log(`${action} (was: "${desc}")`);
-      const changed = await waitForChange(page, desc, 10_000);
+      const changed = await waitForChange(page, desc, stallMs);
       if (!changed) {
         throw new StuckError(
           `Took action "${action}" but the table state did not advance. Last state: "${desc}".`
@@ -456,10 +514,6 @@ export async function driveGameToCompletion(page: Page, opts: DriveOptions): Pro
 
     await sleep(150);
   }
-
-  throw new Error(
-    `Game did not reach completion within ${timeoutMs}ms. Last table state: "${lastDesc}".`
-  );
 }
 
 /**

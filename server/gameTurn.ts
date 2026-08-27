@@ -91,8 +91,9 @@ export function autoMoveForSeat(
     const player = state.players[seat];
     if (!player) return null;
     const valid = getValidGivebackCards(player.hand, state.exchangePhase.cardFromLoser?.id);
-    if (valid.length === 0) return resolveStuckExchange(state);
-    return processExchangeChoice(state, valid[0].id);
+    const [chosen] = valid;
+    if (!chosen) return resolveStuckExchange(state);
+    return processExchangeChoice(state, chosen.id);
   }
 
   if (state.currentTurnIndex !== seat) return null;

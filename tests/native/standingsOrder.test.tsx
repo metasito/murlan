@@ -117,7 +117,8 @@ describe('a standings row is explained by the number beside it', () => {
           voteState={null}
           myUserId="u1"
           cumulativeScores={TOTALS}
-          handScores={AWARDED}
+          ratingDelta={null}
+        handScores={AWARDED}
           match={{
             target: 14,
             length: 'match',
@@ -152,7 +153,8 @@ describe('a standings row is explained by the number beside it', () => {
           voteState={null}
           myUserId="u1"
           cumulativeScores={{ shtiz7: 2, rotonmeta: 0, KenziGmbH: 0 }}
-          handScores={AWARDED}
+          ratingDelta={null}
+        handScores={AWARDED}
           match={{
             target: 14,
             length: 'match',

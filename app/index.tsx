@@ -19,6 +19,18 @@ import Animated, {
   Easing,
 } from "react-native-reanimated";
 import { LinearGradient } from "expo-linear-gradient";
+import Svg, { Path } from "react-native-svg";
+import { getLattice } from "@/components/cardFaceModel";
+import { DEFAULT_CARD_BACK } from "@/lib/cosmetics";
+import { CardBacks } from "@/lib/tokens";
+import {
+  DEPTH_BANDS,
+  LANDSCAPE_CARDS,
+  PORTRAIT_CARDS,
+  cardBox,
+  restingPose,
+  type FloatingCardSpec,
+} from "@/components/homeCardField";
 import { hapticLight } from "@/lib/haptics";
 import Feather from "@expo/vector-icons/Feather";
 import Ionicons from "@expo/vector-icons/Ionicons";
@@ -26,10 +38,10 @@ import { useQuery } from "@tanstack/react-query";
 import { useAuth } from "@/context/AuthContext";
 import { useGame } from "@/context/GameContext";
 import { usePrefersReducedMotion } from "@/lib/accessibility";
-import { Colors, FontSize, Radius, Spacing, TOUCH_TARGET_MIN } from '@/lib/theme';
+import { Colors, FontSize, makeShadow, Radius, Spacing, TOUCH_TARGET_MIN } from '@/lib/theme';
 import { useTranslation } from "@/lib/i18n";
 import { SettingsModal } from "@/components/SettingsModal";
-import { a11yState } from "@/lib/a11y";
+import { a11yHidden, a11yState } from "@/lib/a11y";
 import { markTutorialSeen, tutorialSeen } from "@/lib/tutorialSeen";
 
 /**
@@ -154,64 +166,111 @@ function HomeMenuRow({
   );
 }
 
-function FloatingCard({
-  delay,
-  x,
-  size,
-  opacity: baseOpacity,
-}: {
-  delay: number;
-  x: number;
-  size: number;
-  opacity: number;
-}) {
+/** The field borrows the lattice of the back a fresh install deals with. */
+const LATTICE_SPACING = CardBacks[DEFAULT_CARD_BACK].lattice;
+const LATTICE_INK = 0.16;
+const LATTICE_STROKE = 0.6;
+
+/**
+ * The tail of a leg already `t0` of its *duration* through it.
+ * `Easing.inOut(Easing.sin)` is exactly (1 - cos(pi t)) / 2, so a leg resumed
+ * by restarting that ease leaves from a standstill — which is the tell that
+ * the drift is a keyframe rather than motion that was already under way.
+ */
+function resumeSine(t0: number) {
+  const covered = (1 - Math.cos(Math.PI * t0)) / 2;
+  return (t: number) => {
+    "worklet";
+    return ((1 - Math.cos(Math.PI * (t0 + t * (1 - t0)))) / 2 - covered) / (1 - covered);
+  };
+}
+
+/**
+ * A there-and-back loop with no end, entered at `at` rather than at rest, so a
+ * field of them is scattered and already moving on first paint. Under reduced
+ * motion it is that position and nothing more: there is nothing here to
+ * convey, only mood.
+ *
+ * How far along its *value* a card starts is not how far along its *time* it
+ * starts — an ease is the difference between the two — so the entry point goes
+ * back through the ease rather than standing in for a fraction of the leg.
+ */
+function phased(at: number, from: number, to: number, halfMs: number, reduceMotion: boolean) {
+  if (reduceMotion) return at;
+  const t0 = Math.acos(1 - 2 * ((at - from) / (to - from))) / Math.PI;
+  const leg = (target: number, ms: number) =>
+    withTiming(target, { duration: ms, easing: Easing.inOut(Easing.sin) });
+  return withSequence(
+    withTiming(to, { duration: halfMs * (1 - t0), easing: resumeSine(t0) }),
+    withRepeat(withSequence(leg(from, halfMs), leg(to, halfMs)), -1, false)
+  );
+}
+
+/**
+ * One drifting card. Two shared values carry three channels: the rise, and a
+ * swing whose tilt and sideways travel peak together the way a hanging card's
+ * do. Both start part-way through their first leg, so the field is already in
+ * motion on first paint (components/homeCardField.ts).
+ */
+function FloatingCard({ spec }: { spec: FloatingCardSpec }) {
   const reduceMotion = usePrefersReducedMotion();
-  const translateY = useSharedValue(0);
-  const rotate = useSharedValue(0);
+  const band = DEPTH_BANDS[spec.depth];
+  const { width, height } = cardBox(spec.depth);
+  const { rise: restLift, swing: restSwing } = restingPose(spec);
+  const lift = useSharedValue(restLift);
+  const swing = useSharedValue(restSwing);
 
   useEffect(() => {
-    // Decorative drift with no end. Under reduced motion the cards simply sit
-    // where they were placed — there is nothing here to convey, only mood.
-    if (reduceMotion) return;
-    translateY.value = withDelay(
-      delay,
-      withRepeat(
-        withSequence(
-          withTiming(-20, { duration: 3000 + Math.random() * 1000, easing: Easing.inOut(Easing.sin) }),
-          withTiming(0, { duration: 3000 + Math.random() * 1000, easing: Easing.inOut(Easing.sin) })
-        ),
-        -1,
-        false
-      )
-    );
-    rotate.value = withDelay(
-      delay,
-      withRepeat(
-        withSequence(
-          withTiming(8, { duration: 4000, easing: Easing.inOut(Easing.sin) }),
-          withTiming(-8, { duration: 4000, easing: Easing.inOut(Easing.sin) })
-        ),
-        -1,
-        false
-      )
-    );
-  }, [delay, reduceMotion, rotate, translateY]);
+    lift.value = phased(restLift, 0, 1, band.driftMs / 2, reduceMotion);
+    swing.value = phased(restSwing, -1, 1, band.tiltMs / 2, reduceMotion);
+  }, [band, lift, reduceMotion, restLift, restSwing, swing]);
 
   const animStyle = useAnimatedStyle(() => ({
-    transform: [{ translateY: translateY.value }, { rotate: `${rotate.value}deg` }],
+    transform: [
+      { translateY: -lift.value * band.rise },
+      { translateX: swing.value * band.sway },
+      { rotate: `${swing.value * band.tilt}deg` },
+    ],
   }));
 
   return (
     <Animated.View
+      testID="floating-card"
       style={[
         styles.floatingCard,
-        { left: x, width: size, height: size * 1.45, opacity: baseOpacity },
+        { left: `${spec.x * 100}%`, width, height, opacity: band.opacity },
+        makeShadow(Colors.shadow, 0, band.shadow.offsetY, band.shadow.opacity, band.shadow.radius, band.shadow.elevation),
         animStyle,
       ]}
     >
-      <LinearGradient colors={[Colors.feltLight, Colors.felt]} style={StyleSheet.absoluteFill} />
-      <View style={styles.floatingCardPattern} />
+      {/* The shadow is cast by the view above, which does not clip: iOS reads
+          `overflow: hidden` as masksToBounds, and a masked layer casts none. */}
+      <View style={styles.floatingCardFace}>
+        <LinearGradient colors={[Colors.feltLight, Colors.felt]} style={StyleSheet.absoluteFill} />
+        <Svg width={width} height={height} style={StyleSheet.absoluteFill} pointerEvents="none">
+          <Path
+            d={getLattice(width, height, LATTICE_SPACING)}
+            stroke={Colors.gold}
+            strokeOpacity={LATTICE_INK}
+            strokeWidth={LATTICE_STROKE}
+            fill="none"
+          />
+        </Svg>
+        <View style={styles.floatingCardPattern} />
+      </View>
     </Animated.View>
+  );
+}
+
+/** The whole field, decorative and out of reach of both the tab order and
+ * assistive technology. */
+function CardField({ cards }: { cards: FloatingCardSpec[] }) {
+  return (
+    <View testID="card-field" style={StyleSheet.absoluteFill} pointerEvents="none" {...a11yHidden()}>
+      {cards.map((spec) => (
+        <FloatingCard key={`${spec.depth}-${spec.x}`} spec={spec} />
+      ))}
+    </View>
   );
 }
 
@@ -362,8 +421,7 @@ export default function HomeScreen() {
     return (
       <View style={[styles.container, { paddingTop: topPad, paddingBottom: bottomPad, paddingLeft: leftPad, paddingRight: rightPad }]}>
         <LinearGradient colors={[Colors.bg, Colors.bgCard, Colors.feltDark]} locations={[0, 0.5, 1]} style={StyleSheet.absoluteFill} />
-        <FloatingCard delay={0} x={20} size={40} opacity={0.2} />
-        <FloatingCard delay={800} x={90} size={32} opacity={0.15} />
+        <CardField cards={LANDSCAPE_CARDS} />
 
         <View style={styles.landscapeRow}>
           <View style={styles.landscapeLeft}>
@@ -377,8 +435,8 @@ export default function HomeScreen() {
               <Text style={styles.subtitleLandscape}>{t("home.subtitle")}</Text>
             </Animated.View>
             <View style={styles.cardDecorationLandscape}>
-              {["♠", "♥", "♦", "♣"].map((suit, i) => (
-                <Text key={suit} style={[styles.suitDecorSmall, { color: i % 2 === 1 ? Colors.red : Colors.textMuted }]}>{suit}</Text>
+              {["♠", "♥", "♦", "♣"].map((suit) => (
+                <Text key={suit} style={[styles.suitDecorSmall, { color: suit === "♥" ? Colors.heart : suit === "♦" ? Colors.diamond : Colors.textMuted }]}>{suit}</Text>
               ))}
             </View>
             {user && (
@@ -417,10 +475,7 @@ export default function HomeScreen() {
     <View style={[styles.container, { paddingTop: topPad, paddingBottom: bottomPad + 20 }]}>
       <LinearGradient colors={[Colors.bg, Colors.bgCard, Colors.feltDark]} locations={[0, 0.5, 1]} style={StyleSheet.absoluteFill} />
 
-      <FloatingCard delay={0} x={20} size={55} opacity={0.25} />
-      <FloatingCard delay={800} x={120} size={42} opacity={0.18} />
-      <FloatingCard delay={400} x={270} size={62} opacity={0.22} />
-      <FloatingCard delay={1200} x={320} size={38} opacity={0.15} />
+      <CardField cards={PORTRAIT_CARDS} />
 
       <View style={styles.header}>
         <Animated.View style={[titleStyle, { alignItems: "center" }]}>
@@ -459,8 +514,8 @@ export default function HomeScreen() {
       )}
 
       <View style={styles.cardDecoration}>
-        {["♠", "♥", "♦", "♣"].map((suit, i) => (
-          <Text key={suit} style={[styles.suitDecor, { color: i % 2 === 1 ? Colors.red : Colors.textMuted }]}>{suit}</Text>
+        {["♠", "♥", "♦", "♣"].map((suit) => (
+          <Text key={suit} style={[styles.suitDecor, { color: suit === "♥" ? Colors.heart : suit === "♦" ? Colors.diamond : Colors.textMuted }]}>{suit}</Text>
         ))}
       </View>
 
@@ -685,6 +740,11 @@ const styles = StyleSheet.create({
   floatingCard: {
     position: "absolute",
     top: "12%",
+    borderRadius: Radius.sm,
+    backgroundColor: Colors.felt,
+  },
+  floatingCardFace: {
+    ...StyleSheet.absoluteFillObject,
     borderRadius: Radius.sm,
     overflow: "hidden",
     borderWidth: 1.5,

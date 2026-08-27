@@ -23,8 +23,8 @@ const BLOCKING_OVERLAYS: [string, string][] = [
   ["components/ResultExchangeOverlay.tsx", "exStyles.jokerEmoji"],
   ["components/ResultExchangeOverlay.tsx", "result.exchangeTitle"],
   ["components/ExchangeAnnouncement.tsx", "styles.overlay"],
-  // The portrait "rotate your device" cover, which is the whole screen.
-  ["components/GameTable.tsx", "portraitOverlayStyles.overlay"],
+  // The portrait cover, which is the whole screen.
+  ["components/table/rotateOverlay.tsx", "portraitOverlayStyles.overlay"],
 ];
 
 /** The text of every `<Modal …>…</Modal>` in `source`, nesting-aware. */
@@ -71,4 +71,28 @@ test("every blocking overlay answers a close request and names itself", () => {
 test("the scanner reads one modal at a time", () => {
   assert.deepEqual(modalBodies("<Modal a>x</Modal>\n<Modal b>y</Modal>"), ["<Modal a>x", "<Modal b>y"]);
   assert.deepEqual(modalBodies("<ModalContent>x</ModalContent>"), []);
+});
+
+// The rail's settings sheet is the one blocking layer that must *not* be a
+// Modal: a full-screen modal takes the tap away from the rail knob that opened
+// it, and the knob is the sheet's own close control (#195). It carries what a
+// Modal would have brought instead, so it is covered here rather than in the
+// list above — which stays the list of modals.
+const NON_MODAL_OVERLAY = "components/table/settingsSheet.tsx";
+const NON_MODAL_PROPERTIES: [string, RegExp][] = [
+  ["traps focus", /useFocusTrap\(/],
+  ["answers Escape", /useEscapeToClose\(/],
+  ["answers the Android back gesture", /useBackToClose\(/],
+  ["is announced as a dialog", /a11yDialog\(/],
+];
+
+test("the settings sheet covers the table on a non-modal layer's own terms", () => {
+  const source = readFileSync(path.join(repoRoot, NON_MODAL_OVERLAY), "utf8");
+  assert.deepEqual(
+    modalBodies(source),
+    [],
+    `${NON_MODAL_OVERLAY} is a Modal now, so it belongs in BLOCKING_OVERLAYS`
+  );
+  const missing = NON_MODAL_PROPERTIES.filter(([, re]) => !re.test(source)).map(([what]) => what);
+  assert.deepEqual(missing, [], `${NON_MODAL_OVERLAY} no longer ${missing.join(", nor ")}`);
 });

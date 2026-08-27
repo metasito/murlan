@@ -11,6 +11,7 @@ import {
 import { Colors, FontSize, makeShadow, Radius, Scrim, Spacing, Type } from "@/lib/theme";
 import { usePrefersReducedMotion } from "@/lib/accessibility";
 import { useTranslation } from "@/lib/i18n";
+import { a11yState } from "@/lib/a11y";
 import type { StartReason } from "@/lib/gameEngine";
 import { getCardDisplayRank, getSuitSymbol } from "@/lib/gameEngine";
 import { CHIP_H, SIDE_SECTION_W } from "@/components/gameTableModel";
@@ -151,6 +152,7 @@ export function ChipText({
   strong = false,
   lit = false,
   urgent = false,
+  maxWidth,
   children,
   ...a11y
 }: {
@@ -158,6 +160,8 @@ export function ChipText({
   strong?: boolean;
   lit?: boolean;
   urgent?: boolean;
+  /** Caps this run so an unbounded value (a username) ellipsizes instead of widening the chip. */
+  maxWidth?: number;
   children: ReactNode;
 } & Partial<Pick<TextProps, "accessibilityLabel" | "accessibilityLiveRegion">>) {
   return (
@@ -175,6 +179,7 @@ export function ChipText({
         strong && chipStyles.chipLabelStrong,
         lit && chipStyles.chipLabelLit,
         urgent && chipStyles.chipLabelUrgent,
+        maxWidth !== undefined && { maxWidth: maxWidth * scale },
       ]}
     >
       {children}
@@ -183,10 +188,11 @@ export function ChipText({
 }
 
 /** The lit dot beside the turn chip's label. */
-export function ChipDot({ scale, lit }: { scale: number; lit: boolean }) {
+export function ChipDot({ scale, lit, testID }: { scale: number; lit: boolean; testID?: string }) {
   const size = CHIP_DOT * scale;
   return (
     <View
+      testID={testID}
       style={[
         chipStyles.chipDot,
         { width: size, height: size, borderRadius: size / 2 },
@@ -205,6 +211,12 @@ const CHIP_DOT_GLOW = 9;
 // `.15em` and `.06em` of the chip's own `10 * s` type.
 const CHIP_TRACKING = 1.5;
 const CHIP_TRACKING_STRONG = 0.6;
+
+/**
+ * The top-left chip's name run, capped so a long username ellipsizes rather
+ * than pushing the band wider than the felt has room for.
+ */
+export const CHIP_NAME_MAX_W = 88;
 
 const chipStyles = StyleSheet.create({
   chip: {
@@ -227,7 +239,8 @@ const chipStyles = StyleSheet.create({
     fontVariant: ["tabular-nums"],
   },
   chipLabelLit: { color: Colors.goldLit },
-  chipLabelUrgent: { color: Colors.red },
+  // FontSize.xxs, so tests/tokenRoles.test.ts bars Colors.danger here.
+  chipLabelUrgent: { color: Colors.dangerDim },
   chipDot: { backgroundColor: Colors.textMuted },
   chipDotLit: { backgroundColor: Colors.goldLit },
 });
@@ -241,6 +254,9 @@ const chipStyles = StyleSheet.create({
  * which floors it well above a 44pt knob so a phone with no cutout lays out
  * exactly like one with a Dynamic Island.
  */
+/** The rail stays reachable behind a layer that traps focus (lib/a11y.tsx). */
+export const RAIL_TESTID = "control-rail";
+
 export function ControlRail({
   width,
   topPad,
@@ -256,7 +272,7 @@ export function ControlRail({
 }) {
   return (
     <View
-      testID="control-rail"
+      testID={RAIL_TESTID}
       style={[railStyles.rail, { width, paddingTop: topPad, paddingBottom: bottomPad }]}
     >
       <View>{top}</View>
@@ -274,18 +290,21 @@ export function RailKnob({
   onPress,
   a11yLabel,
   size,
+  expanded,
   children,
 }: {
   onPress: () => void;
   a11yLabel: string;
   size: number;
+  /** Set on a knob that opens something beside it — the settings sheet. */
+  expanded?: boolean;
   children: ReactNode;
 }) {
   return (
     <Pressable
       onPress={onPress}
-      accessibilityRole="button"
       accessibilityLabel={a11yLabel}
+      {...a11yState({ role: "button", expanded })}
       style={({ pressed }) => [
         railStyles.knob,
         { width: size, height: size, borderRadius: size / 2 },
@@ -373,9 +392,11 @@ export const sharedTableStyles = StyleSheet.create({
   // section to the table's outer edge is what keeps that overflow pointing
   // inward — centred, half of it lands off the side of the screen and takes
   // the avatar with it.
+  // `alignSelf`, not `justifyContent`: the mid band is a row, so up-and-down is
+  // its cross axis and only `alignSelf` moves a seat along it.
   sideSection: {
     width: SIDE_SECTION_W,
-    justifyContent: "center",
+    alignSelf: "flex-start",
     paddingHorizontal: Spacing.sm,
   },
   sideSectionLeft: { alignItems: "flex-start" },

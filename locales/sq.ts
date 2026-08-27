@@ -2,25 +2,21 @@
 // is the source of truth — a missing or misspelled key here is a compile error
 // (see lib/i18n.ts).
 //
-// SOURCED terms (from docs/RULES.md's cited Albanian-language research,
-// visixplay.com/murlan/rules.php AL text) and used verbatim below:
+// The card and combination terminology is sourced and owner-settled, per
+// docs/albanian-card-terminology-research.md and #29. Used verbatim below:
 //   - "shkallë" / "Shkalla" — straight (§5, §6 of docs/RULES.md quotes the
 //     Albanian text directly: "Shkalla duhet të ketë të paktën 5 letra")
 //   - "letër" / "letra" — card / cards
-//   - "Fanti" — Jack, "Zonja" — Queen, "Mbreti" — King, "Asi" — Ace
+//   - "Fanti" — Jack, "Çupa" — Queen, "Mbreti" — King, "Asi" — Ace
 //   - "Xholi i Zi" / "Xholi i Kuq" — Black Joker / Red Joker
+//   - "spathi" / "maç" / "kupë" / "karo" — Clubs / Spades / Hearts / Diamonds
+//   - "Letër teke" / "dyshe" / "treshe" / "katërshe" — single / pair / triple
+//     / four-of-a-kind
 //
-// UNSOURCED terms: everything else — general UI chrome, combination names
-// other than "shkallë" (single/pair/triple/bomb/royal straight), suit
-// names, and all narrative/FAQ prose — is a good-faith machine translation,
-// NOT verified against any Albanian-language source. It is grammatically
-// reasonable standard Albanian but has not been checked by a native
-// speaker. Treat this entire file as pending a native-speaker review pass
-// before shipping; the card-terminology keys (cards.*, gameShared.combo*,
-// gameTable.play*, lobby.rank*, rules.combo*/strength*, tutorial.type*)
-// are the highest-priority subset to check first, since getting the game's
-// own vocabulary wrong is the most visible kind of mistake to a native
-// Albanian player.
+// Everything else — general UI chrome, and all narrative/FAQ/tutorial/
+// achievement prose — remains a good-faith machine translation, NOT verified
+// against any Albanian-language source. It is grammatically reasonable
+// standard Albanian but has not been checked by a native speaker.
 import { en } from "./en.ts";
 
 export const sq: Record<keyof typeof en, string> = {
@@ -120,10 +116,8 @@ export const sq: Record<keyof typeof en, string> = {
   "settings.hapticsSubtitle": "Reagimi haptik",
   "settings.volume": "Volumi",
   "settings.volumeSubtitle": "Sa fort dëgjohen efektet",
-  "settings.volumeLow": "Ulët",
-  "settings.volumeMedium": "Mesëm",
-  "settings.volumeHigh": "Lartë",
   "settings.volumeA11yLabel": "Volumi i efekteve zanore",
+  "settings.volumePercent": "{{percent}}%",
   "settings.music": "Muzika",
   "settings.musicSubtitle": "Një melodi e qetë ndërsa luani",
   "settings.musicA11yLabel": "Muzika e sfondit",
@@ -152,6 +146,12 @@ export const sq: Record<keyof typeof en, string> = {
   "settings.reportBugSentBody": "Faleminderit — shkon drejt te ata që mund ta rregullojnë.",
   "settings.reportBugFailedTitle": "Nuk u dërgua",
   "settings.reportBugFailedBody": "Raporti nuk mund të dërgohej. Provo sërish pas pak.",
+  "settings.logout": "Dil",
+  "settings.logoutA11yLabel": "Dil nga kjo llogari",
+  "settings.logoutConfirmTitle": "Do të dalësh?",
+  "settings.logoutConfirmBody": "Për të hyrë sërish të duhen emri i përdoruesit dhe fjalëkalimi. Ndeshjet dhe statistikat mbeten në llogari.",
+  "settings.logoutFailedTitle": "Ende i kyçur",
+  "settings.logoutFailedBody": "Nuk arritëm te serveri, prandaj asgjë nuk ka ndryshuar. Provo përsëri pas pak.",
   "settings.deleteAccount": "Fshi llogarinë",
   "settings.deleteAccountA11yHint": "Fshin përgjithmonë llogarinë tënde dhe të gjitha të dhënat e lidhura",
   "settings.deleting": "Duke fshirë…",
@@ -209,17 +209,17 @@ export const sq: Record<keyof typeof en, string> = {
   "exchangeModal.subPrefix": "Zgjidh një letër për t'ia dhënë",
   "exchangeModal.subSuffix": "(vetëm 3–10):",
   "exchangeModal.noValidCards": "Nuk ka letër të vlefshme për ta dhënë.",
-  "exchangeModal.hint": "Prek një letër për t'ia dhënë humbësit",
-  "exchangeModal.giveCardA11yHint": "Ia jep këtë letër humbësit",
+  "exchangeModal.hint": "Prek një letër për ta zgjedhur",
+  "exchangeModal.hintConfirm": "Prek një letër tjetër për të ndërruar mendje, ose konfirmo për ta dhënë",
+  "exchangeModal.confirm": "Jep letrën",
+  "exchangeModal.giveCardA11yHint": "Zgjedh këtë letër për t'ia dhënë humbësit",
 
   // ----------------------------------------------------------------- cards.*
-  // UNSURE: suit names and the rank/suit name-format below are a best-effort
-  // machine translation, not sourced from docs/RULES.md — flag for review.
   "cards.rankAce": "Asi",
   "cards.rankJack": "Fanti",
-  "cards.rankQueen": "Zonja",
+  "cards.rankQueen": "Çupa",
   "cards.rankKing": "Mbreti",
-  "cards.suitHearts": "Kupa",
+  "cards.suitHearts": "Kupë",
   "cards.suitDiamonds": "Karo",
   "cards.suitClubs": "Spathi",
   "cards.suitSpades": "Maç",
@@ -264,13 +264,11 @@ export const sq: Record<keyof typeof en, string> = {
   "cardView.selectedA11yHint": "E zgjedhur",
 
   // ------------------------------------------------------------- gameShared.*
-  // UNSURE: combination names other than "Shkallë" (sourced) are not
-  // attested in docs/RULES.md's Albanian citations — flag for review.
-  "gameShared.comboSingle": "E vetme",
-  "gameShared.comboPair": "Çift",
-  "gameShared.comboTriple": "Tresh",
+  "gameShared.comboSingle": "Letër teke",
+  "gameShared.comboPair": "Dyshe",
+  "gameShared.comboTriple": "Treshe",
   "gameShared.comboStraight": "Shkallë",
-  "gameShared.comboBomb": "💣 Bombë",
+  "gameShared.comboBomb": "💣 Katërshe",
   "gameShared.comboRoyalStraight": "★ Shkallë Mbretërore",
   "gameShared.comboMultiplier": " ×{{count}}",
   "gameShared.emptyHand": "Letrat mbaruan!",
@@ -278,7 +276,7 @@ export const sq: Record<keyof typeof en, string> = {
   "gameShared.startReasonCardSub": "(3♠ nuk u nda)",
   "gameShared.startReasonLostRound": "{{name}} fillon — humbi raundin",
   "gameShared.startReasonWonNoSwap": "{{name}} fillon — fitoi (pa shkëmbim)",
-  "gameShared.onTable": "Në tavolinë",
+  "gameShared.you": "Ti",
   "gameShared.emptyTable": "— Tavolinë bosh —",
   "gameShared.yourTurn": "Radha jote",
   "gameShared.turnOf": "Radha e {{name}}",
@@ -289,32 +287,33 @@ export const sq: Record<keyof typeof en, string> = {
   "game.autoPassBody": "Koha mbaroi: radha jote u kalua.",
 
   // -------------------------------------------------------------- gameTable.*
-  "gameTable.rotateTitle": "Rrotulloni pajisjen",
-  "gameTable.rotateBody": "Loja kërkon modalitetin horizontal",
-  "gameTable.leaveA11yLabel": "Braktis lojën",
+  "gameTable.rotateTitle": "Kthejeni pajisjen anash",
+  "gameTable.rotateBody": "Tavolina ka nevojë për anën e gjatë.",
+  "gameTable.rotateA11yLabel": "Kthejeni pajisjen anash. Tavolina ka nevojë për anën e gjatë.",
+  "gameTable.settingsA11yLabel": "Cilësimet",
   "gameTable.passLabel": "KALO",
   "gameTable.passA11yLabel": "Kalo radhën",
   "gameTable.playLabelGioca": "LUAJ",
   "gameTable.playLabelInvalid": "JO\nE VLEFSHME",
   "gameTable.playLabelTooLow": "SHUMË\nE ULËT",
-  "gameTable.playLabelStartCard": "DUHET\n{{rank}}♠",
+  "gameTable.playLabelStartCard": "DUHET\n{{rank}}{{suit}}",
   "gameTable.playLabelRoyalUnbeatable": "E\nPAMUNDUR",
-  "gameTable.playLabelBombOnly": "VETËM\nBOMBË",
+  "gameTable.playLabelBombOnly": "VETËM\nKATËRSHE",
   "gameTable.playLabelWrongType": "LLOJ\nTJETËR",
   "gameTable.playLabelWrongLength": "NUMËR\nTJETËR",
   "gameTable.playA11ySpokenInvalid": "kombinim i pavlefshëm",
   "gameTable.playA11ySpokenTooLow": "letër shumë e ulët",
-  "gameTable.playA11ySpokenStartCard": "loja e parë duhet të përfshijë {{rank}}♠",
-  "gameTable.playA11ySpokenRoyalUnbeatable": "shkalla mbretërore mund gjithçka: këtu nuk mund të përgjigjesh",
-  "gameTable.playA11ySpokenBombOnly": "vetëm një bombë më e lartë mund ta mundë këtë",
+  "gameTable.playA11ySpokenStartCard": "loja e parë duhet të përfshijë {{card}}",
+  "gameTable.playA11ySpokenRoyalUnbeatable": "shkalla mbretërore i mund të gjitha: kësaj nuk mund t'i përgjigjesh",
+  "gameTable.playA11ySpokenBombOnly": "vetëm një katërshe më e lartë mund ta mundë këtë",
   "gameTable.playA11ySpokenWrongType": "duhet të përgjigjesh me të njëjtin lloj kombinimi, ose të kalosh",
   "gameTable.playA11ySpokenWrongLength": "duhet të ketë të njëjtin numër letrash si ajo në tavolinë",
   "gameTable.playA11yValid": "Luaj letrat e zgjedhura",
   "gameTable.playA11yUnavailable": "Luaj — jo e disponueshme: {{reason}}",
   "gameTable.selectedCountSuffix": "{{n}}l",
   "gameTable.waitingOthers": "Ke mbaruar! Duke pritur të tjerët...",
-  "gameTable.startCardBannerSelf": "Fillon ti! Ke {{rank}}♠",
-  "gameTable.startCardBannerOther": "{{name}} fillon me {{rank}}♠",
+  "gameTable.startCardBannerSelf": "Fillon ti! Ke {{rank}}{{suit}}",
+  "gameTable.startCardBannerOther": "{{name}} fillon me {{rank}}{{suit}}",
   "gameTable.a11yYourTurn": "Është radha jote.",
   "gameTable.a11yTurnOf": "Radha e {{name}}.",
   "gameTable.a11yEmptyTable": "Asnjë letër në tavolinë.",
@@ -328,9 +327,9 @@ export const sq: Record<keyof typeof en, string> = {
   "gameTable.a11ySecondsLeft_other": "Të mbeten {{count}} sekonda për të luajtur.",
   "gameTable.a11yExchangeGive": "Faza e shkëmbimit: duhet t'i japësh një letër {{name}}.",
   "gameTable.a11yExchangeWait": "Faza e shkëmbimit: po pret një letër nga {{name}}.",
-  "gameTable.a11yLastPlayPair": "çift me {{rank}}",
-  "gameTable.a11yLastPlayTriple": "tresh me {{rank}}",
-  "gameTable.a11yLastPlayBomb": "bombë me {{rank}}",
+  "gameTable.a11yLastPlayPair": "dyshe me {{rank}}",
+  "gameTable.a11yLastPlayTriple": "treshe me {{rank}}",
+  "gameTable.a11yLastPlayBomb": "katërshe me {{rank}}",
   "gameTable.a11yLastPlayStraight": "shkallë me {{count}} letra, më e larta {{rank}}",
   "gameTable.a11yLastPlayRoyalStraight": "shkallë mbretërore me {{count}} letra {{suit}}, më e larta {{rank}}",
   "gameTable.a11yHandCount_one": "Dora jote: {{count}} letër.",
@@ -345,6 +344,17 @@ export const sq: Record<keyof typeof en, string> = {
   "gameTable.rematchTally": "{{yes}}/{{total}} po",
   "gameTable.a11yHandSelected_one": "{{count}} e zgjedhur.",
   "gameTable.a11yHandSelected_other": "{{count}} të zgjedhura.",
+
+  // ----------------------------------------------------- gameSettingsSheet.*
+  "gameSettingsSheet.title": "Cilësimet",
+  "gameSettingsSheet.focusMode": "Modaliteti fokus",
+  "gameSettingsSheet.focusModeHint": "Vetëm kartat",
+  "gameSettingsSheet.focusModeA11yHint": "Fshih emrat, numërimet dhe çipet; lër kartat dhe unazën e radhës",
+  "gameSettingsSheet.playOnLeft": "Luaj majtas",
+  "gameSettingsSheet.playOnLeftHint": "Për mëngjarashët",
+  "gameSettingsSheet.playOnLeftA11yHint": "Këmbe KALO dhe LUAJ që LUAJ të bjerë nën gishtin e madh të majtë",
+  "gameSettingsSheet.exit": "Braktis lojën",
+  "gameSettingsSheet.footnote": "Kartat dhe tavolina: menyja kryesore.",
 
   // ------------------------------------------------------------- offlineGame.*
   "offlineGame.quitConfirmTitle": "Braktis",
@@ -499,29 +509,29 @@ export const sq: Record<keyof typeof en, string> = {
   "rules.strengthTwo": "Dyshi",
   "rules.strengthAce": "Asi",
   "rules.strengthKing": "Mbreti",
-  "rules.strengthQueen": "Zonja",
+  "rules.strengthQueen": "Çupa",
   "rules.strengthJack": "Fanti",
   "rules.strengthTen": "Dhjeta",
   "rules.strengthThree": "Treshi",
   "rules.combosSectionLabel": "KOMBINIME TË VLEFSHME",
-  "rules.comboSingleName": "E vetme",
+  "rules.comboSingleName": "Letër teke",
   "rules.comboSingleDesc": "1 letër çfarëdo",
-  "rules.comboPairName": "Çift",
+  "rules.comboPairName": "Dyshe",
   "rules.comboPairDesc": "2 letra të së njëjtës vlerë",
-  "rules.comboTripleName": "Tresh",
+  "rules.comboTripleName": "Treshe",
   "rules.comboTripleDesc": "3 letra të së njëjtës vlerë",
   "rules.comboStraightName": "Shkallë",
   "rules.comboStraightDesc": "Min. 5 letra të njëpasnjëshme, deri në 13 (p.sh. A-2-3-4-5)",
-  "rules.comboBombName": "Bombë 💣",
-  "rules.comboBombDesc": "4 letra të së njëjtës vlerë · mund gjithçka përveç Shkallës Mbretërore",
+  "rules.comboBombName": "Katërshe 💣",
+  "rules.comboBombDesc": "4 letra të së njëjtës vlerë · i mund të gjitha përveç Shkallës Mbretërore",
   "rules.comboRoyalName": "Shkallë Mbretërore ★",
-  "rules.comboRoyalDesc": "Shkallë me të njëjtën ngjyrë · mund edhe Bombën",
+  "rules.comboRoyalDesc": "Shkallë me të njëjtën ngjyrë · e mund edhe Bombën",
   "rules.faqSectionLabel": "PYETJE TË SHPESHTA",
 
   "rules.faq.q1": "Cili është qëllimi i lojës?",
   "rules.faq.a1": "Të jesh lojtari (ose çifti) i parë që mbetet pa letra. Loja vazhdon derisa të gjithë lojtarët përveç të fundit të kenë mbaruar letrat.",
   "rules.faq.q2": "Kush fillon i pari?",
-  "rules.faq.a2": "Dora e parë e ndeshjes:\nGjithmonë shpërndahet i gjithë mazhi, kështu që 3♠ është gjithmonë në dorën e dikujt. Kush e ka atë hap lojën, dhe loja e parë DUHET ta përfshijë atë letër.\n\nDuart pasuese (pas shkëmbimit të letrave):\n• Kush ka humbur dorën e mëparshme hap dorën tjetër.\n• Nëse fituesi fitoi pa u bërë shkëmbim (përjashtimi i dy Xholave), është vetë fituesi që hap dorën tjetër.\n\nRadha vazhdon gjithmonë në kahun orar.",
+  "rules.faq.a2": "Dora e parë e ndeshjes:\nKush e ka 3♠ hap lojën, dhe loja e parë DUHET ta përfshijë atë letër. Me 3 dhe 4 lojtarë shpërndahet gjithmonë i gjithë mazhi, kështu që 3♠ është gjithmonë në dorën e dikujt. Me 2 lojtarë ajo mund të bjerë mes 12 letrave të pashpërndara — në atë rast fillon kush ka letrën më të ulët të shpërndarë, dhe loja e parë duhet ta përfshijë atë letër.\n\nDuart pasuese (pas shkëmbimit të letrave):\n• Kush ka humbur dorën e mëparshme hap dorën tjetër.\n• Nëse fituesi fitoi pa u bërë shkëmbim (përjashtimi i dy Xholave), është vetë fituesi që hap dorën tjetër.\n\nRadha vazhdon gjithmonë në kahun orar.",
   "rules.faq.q3": "Cila është forca e letrave?",
   "rules.faq.a3": "Nga më e forta te më e dobëta:\n★ Xholi i Kuq > ☆ Xholi i Zi > 2 > A > K > Q > J > 10 > 9 > 8 > 7 > 6 > 5 > 4 > 3\n\n2-shi është letra e zakonshme më e fortë e mazhit!",
   "rules.faq.q4": "Cilat kombinime mund të luaj?",
@@ -588,18 +598,18 @@ export const sq: Record<keyof typeof en, string> = {
 
   // ---------------------------------------------------------------- tutorial.*
   "tutorial.you": "Ti",
-  "tutorial.typeSingle": "një E vetme",
-  "tutorial.typePair": "një Çift",
-  "tutorial.typeTriple": "një Tresh",
+  "tutorial.typeSingle": "një Letër teke",
+  "tutorial.typePair": "një Dyshe",
+  "tutorial.typeTriple": "një Treshe",
   "tutorial.typeStraight": "një Shkallë",
-  "tutorial.typeBomb": "një Bombë",
+  "tutorial.typeBomb": "një Katërshe",
   "tutorial.typeRoyalStraight": "një Shkallë Mbretërore",
 
   "tutorial.errSelectAtLeastOne": "Zgjidh të paktën një letër nga dora jote.",
   "tutorial.errNotAValidCombo": "Këto letra nuk formojnë një kombinim të vlefshëm.",
   "tutorial.errMustIncludeCard": "Loja e parë duhet të përfshijë {{rank}}{{suit}}.",
-  "tutorial.errRoyalBeatsAll": "Shkalla Mbretërore mund gjithçka: këtu nuk mund të përgjigjesh.",
-  "tutorial.errOnlyHigherBomb": "Vetëm një Bombë më e lartë mund ta mundë këtë.",
+  "tutorial.errRoyalBeatsAll": "Shkalla Mbretërore i mund të gjitha: kësaj nuk mund t'i përgjigjesh.",
+  "tutorial.errOnlyHigherBomb": "Vetëm një Katërshe më e lartë mund ta mundë këtë.",
   "tutorial.errSameType": "Duhet të përgjigjesh me të njëjtin lloj kombinimi, ose të kalosh.",
   "tutorial.errSameLength": "Duhet të ketë të njëjtin numër letrash si ajo në tavolinë.",
   "tutorial.errTooWeak": "Ky kombinim nuk është mjaftueshëm i fortë: nevojitet një letër më e lartë.",
@@ -800,9 +810,6 @@ export const sq: Record<keyof typeof en, string> = {
   "errorFallback.stackTraceLabel": "Stack trace:\n{{stack}}",
 
   // ----------------------------------------------------------- achievements.*
-  // Machine-translated, reusing this file's already-established terms for
-  // card vocabulary (Bombë, Xholi, letra, dorë, ndeshje — see header and
-  // rules.*/result.* above); not checked by a native speaker.
   "achievements.firstWin.name": "Fitorja e Parë",
   "achievements.firstWin.desc": "Fito dorën tënde të parë.",
   "achievements.runnerUp.name": "Vendi i Dytë",
@@ -868,4 +875,29 @@ export const sq: Record<keyof typeof en, string> = {
   "profile.retryAchievementsA11yLabel": "Provo përsëri të ngarkosh arritjet",
   "profile.achievementLockedLabel": "E kyçur",
   "profile.achievementUnlockedOn": "E zhbllokuar · {{time}}",
+  // ----------------------------------------------------------- handBreakdown.*
+  "handBreakdown.toggle": "Detajet e mancshes",
+  "handBreakdown.toggleA11yLabel": "Shfaq çfarë i bëri kjo manche rekordit tënd",
+  "handBreakdown.hideA11yLabel": "Fshih detajet e mancshes",
+  "handBreakdown.loadingA11yLabel": "Duke ngarkuar detajet e mancshes",
+  "handBreakdown.errorTitle": "Detajet nuk u ngarkuan",
+  "handBreakdown.retry": "Riprovo",
+  "handBreakdown.retryA11yLabel": "Riprovo të ngarkoj detajet e mancshes",
+  "handBreakdown.ratingLabel": "Vlerësimi i renditur",
+  "handBreakdown.ratingChange": "{{delta}} → {{rating}}",
+  "handBreakdown.ratingUnranked": "Manche e parenditur",
+  "handBreakdown.ratingProvisional": "E përkohshme — edhe {{n}} manche të renditura",
+  "handBreakdown.placementLabel": "Vendi",
+  "handBreakdown.placementValue": "{{position}} nga {{players}} · {{points}}pt",
+  "handBreakdown.bombsLabel": "Bomba të hedhura",
+  "handBreakdown.streakLabel": "Seri fitoresh",
+  "handBreakdown.streakValue": "{{n}} · rekordi {{best}}",
+  "handBreakdown.streakNone": "Asnjë seri në vazhdim",
+  "handBreakdown.formLabel": "Forma e fundit",
+  "handBreakdown.formA11yLabel": "Vendet e tua të fundit, nga më i riu: {{placements}}",
+  "handBreakdown.notRecorded": "Kjo manche nuk u regjistrua — shumë botë në tavolinë.",
+  "handBreakdown.noReplay": "Asnjë riprodhim për këtë manche",
+  "handBreakdown.replayAfterMatch": "Shikoje nga profili yt kur partia të ketë mbaruar",
+  "handBreakdown.openReplay": "Shiko riprodhimin",
+  "handBreakdown.openReplayA11yLabel": "Hap riprodhimin e kësaj manche",
 };

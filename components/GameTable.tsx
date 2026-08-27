@@ -16,8 +16,8 @@ import {
   StyleSheet,
   Platform,
   Pressable,
-  Modal,
   useWindowDimensions,
+  type AccessibilityProps,
   type ViewStyle,
 } from "react-native";
 import { TableText } from "@/components/table/TableText";
@@ -37,6 +37,8 @@ import Ionicons from "@expo/vector-icons/Ionicons";
 import {
   buildCombination,
   canPlay,
+  getCardDisplayRank,
+  getSuitSymbol,
   sortHand,
   type Card,
   type Combination,
@@ -56,7 +58,9 @@ import {
   comboKey,
   computeTableFrame,
   describeTableForA11y,
+  displayedHandCount,
   EMPTY_PILE,
+  flightOrigin,
   handCountOf,
   impactDelayMs,
   lightPosition,
@@ -69,7 +73,9 @@ import {
   turnTimerActive,
   urgentThresholdSeconds,
   URGENT_TICK_SECONDS,
+  viewerOwnsSeat,
   type FlyDirection,
+  type OpponentSide,
   type PileState,
   type PlayButtonLabel,
   type TableA11yExchange,
@@ -80,11 +86,11 @@ import {
 import { useTranslation, type TranslationKey } from "@/lib/i18n";
 import { cardSpokenName, rankSpokenName, suitSpokenName, type TFn } from "@/lib/cardNames";
 import {
+  CHIP_NAME_MAX_W,
   ChipDot,
   ChipText,
   ControlRail,
   useHandLift,
-  portraitOverlayStyles,
   RailKnob,
   sharedTableStyles,
   StartReasonBanner,
@@ -92,8 +98,11 @@ import {
 } from "@/components/table/chrome";
 import { FeltPool } from "@/components/table/felt";
 import { StraightHand } from "@/components/table/hand";
+import { RotateOverlay } from "@/components/table/rotateOverlay";
+import { GameSettingsSheet } from "@/components/table/settingsSheet";
 import { useTableFeedback } from "@/components/useTableFeedback";
 import { FlyingCards, PlayedPile, getComboLabel } from "@/components/table/pile";
+import { BombBurst, Sweep } from "@/components/table/moments";
 import { TopOppSlot, SideOppSlot } from "@/components/table/seats";
 import { ExchangeModal } from "@/components/ExchangeModal";
 import { ExchangeAnnouncement } from "@/components/ExchangeAnnouncement";
@@ -113,7 +122,7 @@ import { usePrefersReducedMotion } from "@/lib/accessibility";
 import { Colors, FontSize, Garnet, Highlight, makeShadow, Motion, Radius, Scrim, Shadow, Spacing, TOUCH_TARGET_MIN, Type } from "@/lib/theme";
 import { useTableFelt } from "@/lib/cosmetics";
 import { playMusic } from "@/lib/music";
-import { A11yStatus, a11yState } from "@/lib/a11y";
+import { A11yStatus, a11yHidden, a11yState, a11yVeiled } from "@/lib/a11y";
 
 // How long the round-winner tag stays over the pile. A domain beat, not a
 // generic UI transition, so it is not a Motion token.
@@ -155,6 +164,14 @@ const REJECT_HINT_MAX_W = 260;
 const REJECT_HINT_Z = 30;
 /** The banner band sits over the felt, under the reject hint. */
 const BANNER_BAND_Z = 50;
+/**
+ * The felt is decoration and everything else is the game, so the game is
+ * always on top. Stated rather than left to sibling order: the pool paints
+ * over the seats, the pile and the hand on the iOS renderer, which draws that
+ * subtree above them however the tree is written (#209).
+ */
+const FELT_Z = { zIndex: 0 } as const;
+const TABLE_Z = { zIndex: 1 } as const;
 
 // Raked light across the gold surface — bright at the top-left corner,
 // dropping to goldDark at the bottom-right — same treatment and same rake
@@ -373,10 +390,12 @@ function RematchPromptPanel({
   prompt,
   top,
   left,
+  veiled,
 }: {
   prompt: RematchPromptSlot;
   top: number;
   left: number;
+  veiled: AccessibilityProps;
 }) {
   const { t } = useTranslation();
   const reduceMotion = usePrefersReducedMotion();
@@ -390,6 +409,7 @@ function RematchPromptPanel({
     <Animated.View
       entering={reduceMotion ? undefined : FadeIn.duration(Motion.duration.moderate)}
       style={[styles.rematchPanel, { top, left }]}
+      {...veiled}
     >
       {answered ? (
         <TableText style={styles.rematchTally} accessibilityLiveRegion="polite">
@@ -659,6 +679,36 @@ function PassaButton({
   );
 }
 
+/**
+ * The pre-first-play banner naming who opens and with what card. A component
+ * of its own rather than inline JSX: `card` is only read here, so `rank` and
+ * `suit` derive once instead of once per interpolation.
+ */
+function StartCardBanner({
+  card,
+  starterIsViewer,
+  starterName,
+  t,
+}: {
+  card: Card;
+  starterIsViewer: boolean;
+  starterName: string;
+  t: TFn;
+}) {
+  const rank = getCardDisplayRank(card.rank);
+  const suit = getSuitSymbol(card.suit);
+  return (
+    <View style={styles.startCardBanner}>
+      <TableText style={styles.startCardGlyph}>{suit}</TableText>
+      <TableText style={styles.startCardText}>
+        {starterIsViewer
+          ? t("gameTable.startCardBannerSelf", { rank, suit })
+          : t("gameTable.startCardBannerOther", { name: starterName, rank, suit })}
+      </TableText>
+    </View>
+  );
+}
+
 // ─── GameTable ────────────────────────────────────────────────────────────────
 
 export function GameTable({
@@ -681,8 +731,10 @@ export function GameTable({
   const { t, tn } = useTranslation();
   const insets = useSafeAreaInsets();
   const { width: W, height: H } = useWindowDimensions();
-  // Landscape-locked, so the short edge is normally H — Math.min is the
-  // robust read regardless of how a platform reports it mid-rotation.
+  // The window's own short edge, so a phone and a browser at the same size draw the same
+  // table. The safe area is the layout's job — the rail absorbs the cutout and the hand zone
+  // carries the home indicator — and taking it off here instead shrinks the cards on device
+  // only, which is the divergence from the web design, not a fit for it.
   const scale = cardScale(Math.min(W, H));
   const handCardH = CARD_H(scale * HAND_SCALE);
   // What the player sees of a hand card, and how tall PASSA and GIOCA are —
@@ -691,6 +743,34 @@ export function GameTable({
   const knobSize = physicalTouchTarget(scale);
   const reduceMotion = usePrefersReducedMotion();
   const felt = useTableFelt();
+
+  // Whether the rail's settings sheet is open, and the two toggles it owns
+  // that live nowhere else: focus mode and the left-handed swap are a
+  // session's own choice, not a stored preference — sound, music and
+  // vibration are the persisted ones, which the sheet reads for itself.
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const behindVeil = a11yVeiled(settingsOpen);
+  const [focusMode, setFocusMode] = useState(false);
+  const [playOnLeft, setPlayOnLeft] = useState(false);
+  const closeSettings = useCallback(() => setSettingsOpen(false), [setSettingsOpen]);
+
+  // The HUD chips and the reactions trigger fade rather than vanish under
+  // focus mode — kept mounted throughout, so a timer or an in-flight
+  // animation living inside them (the turn countdown included) is never torn
+  // down and restarted by a toggle that is about decluttering the felt, not
+  // about the turn itself.
+  const focusFade = useSharedValue(1);
+  useEffect(() => {
+    const target = focusMode ? 0 : 1;
+    if (reduceMotion) {
+      cancelAnimation(focusFade);
+      focusFade.value = target;
+      return;
+    }
+    focusFade.value = withTiming(target, { duration: Motion.duration.moderate });
+    return () => cancelAnimation(focusFade);
+  }, [focusMode, reduceMotion, focusFade]);
+  const focusFadeStyle = useAnimatedStyle(() => ({ opacity: focusFade.value }));
 
   // The seat that took the last round and a counter of how many rounds have
   // closed. The counter is what makes an identical repeat a new announcement:
@@ -703,7 +783,15 @@ export function GameTable({
     key: string;
     dir: FlyDirection;
     cards: Card[];
+    /** Where the throw starts — components/gameTableModel.ts `flightOrigin`. */
+    origin: { dx: number; dy: number };
   } | null>(null);
+  // False for exactly impactDelayMs() from the moment a flight begins — the
+  // throwing seat's own held count and departing backs read off this, not off
+  // flyInfo's own lifetime, which runs past the landing to cover the settle
+  // spring too (components/table/pile.tsx `FlyingCards`).
+  const [flightLanded, setFlightLanded] = useState(true);
+  const landTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Impact feedback is scheduled for the moment the thrown card lands, so it
   // has to be cancellable: a fast next play, or leaving the table, must not
@@ -725,10 +813,10 @@ export function GameTable({
 
   const players = gameState.players;
   const viewer = players[viewerSeat];
-  const isMyTurn = gameState.currentTurnIndex === viewerSeat;
+  const isMyTurn = viewerOwnsSeat(gameState.currentTurnIndex, viewerSeat, spectating);
   const isFinished = viewer?.finishPosition !== undefined;
   const isNewRound = gameState.lastPlayedCombination === null;
-  const exchange = readExchange(gameState, viewerSeat);
+  const exchange = readExchange(gameState, viewerSeat, spectating);
 
   // A spectator receives every hand blanked, so the bottom seat's cards come
   // from its count. They carry synthetic ids because nothing may identify a
@@ -797,10 +885,15 @@ export function GameTable({
   });
   // Two words fit on the button; the sentence is what the screen reader speaks
   // and what the toast shows when the refusal is tapped. Only the start-card
-  // reason reads the rank.
-  const startCardRank = gameState.startCard?.rank ?? "";
+  // reason reads the card. At 2 players the opening card can be the fallback
+  // "lowest dealt card" rather than the 3♠ (docs/RULES.md §4).
+  const startCardDisplayRank = gameState.startCard ? getCardDisplayRank(gameState.startCard.rank) : "";
+  const startCardSuitSymbol = gameState.startCard ? getSuitSymbol(gameState.startCard.suit) : "";
+  const startCardSpokenName = gameState.startCard ? cardSpokenName(gameState.startCard, t) : "";
   const dimReasonText = t(PLAY_A11Y_SPOKEN_KEYS[dimLabel] ?? PLAY_LABEL_KEYS[dimLabel], {
-    rank: startCardRank,
+    rank: startCardDisplayRank,
+    suit: startCardSuitSymbol,
+    card: startCardSpokenName,
   });
 
   const opponents = React.useMemo(
@@ -845,7 +938,7 @@ export function GameTable({
     const lastPlay: TableA11yLastPlay | null = combo
       ? {
           label: lastPlayA11yLabel(combo, t),
-          byViewer: gameState.lastPlayedBy === viewerSeat,
+          byViewer: viewerOwnsSeat(gameState.lastPlayedBy, viewerSeat, spectating),
           byName: players[gameState.lastPlayedBy]?.name ?? "",
         }
       : null;
@@ -881,6 +974,7 @@ export function GameTable({
     viewerSeat,
     sortedHand.length,
     isMyTurn,
+    spectating,
     exchange,
     tableA11yStrings,
     t,
@@ -896,10 +990,13 @@ export function GameTable({
     giocaFlashStyle,
     passaFlashStyle,
     giocaGlowStyle,
-    shakeStyle,
+    kickStyle,
     giocaRejectX,
     playImpact,
     rejectPlay,
+    boomTrigger,
+    flushTrigger,
+    celebrateFlush,
   } = useTableFeedback({
     isMyTurn,
     isFinished,
@@ -913,6 +1010,7 @@ export function GameTable({
     gameOver: gameState.gameOver,
     rankings: gameState.rankings,
     viewerId: viewer?.id,
+    scale,
   });
 
   const handLiftStyle = useHandLift(isMyTurn && !isFinished && !exchange.active, scale);
@@ -954,6 +1052,7 @@ export function GameTable({
     () => () => {
       if (impactTimerRef.current) clearTimeout(impactTimerRef.current);
       if (roundHoldTimerRef.current) clearTimeout(roundHoldTimerRef.current);
+      if (landTimerRef.current) clearTimeout(landTimerRef.current);
     },
     []
   );
@@ -962,12 +1061,23 @@ export function GameTable({
   // re-run for one of the other dependencies leaves the pile, the flying card
   // and the pending impact exactly as they were.
   useEffect(() => {
+    // A flight ending early — a new lead before it landed, the table leaving —
+    // must not leave a stale hold on the throwing seat's own count.
+    const clearLanding = () => {
+      if (landTimerRef.current) {
+        clearTimeout(landTimerRef.current);
+        landTimerRef.current = null;
+      }
+      setFlightLanded(true);
+    };
+
     // Clearing the felt and announcing a new round are one beat, whether it
     // happens now or after the winning cards have been held.
     const openNewRound = () => {
       playRoundStart();
       setPileState(EMPTY_PILE);
       setFlyInfo(null);
+      clearLanding();
     };
 
     const combo = gameState.lastPlayedCombination;
@@ -978,6 +1088,7 @@ export function GameTable({
       if (prevComboKeyRef.current === "") {
         setPileState(EMPTY_PILE);
         setFlyInfo(null);
+        clearLanding();
         return;
       }
       if (impactTimerRef.current) clearTimeout(impactTimerRef.current);
@@ -1003,21 +1114,62 @@ export function GameTable({
       openNewRound();
     }
     prevComboKeyRef.current = key;
-    setPileState((s) => advancePile(s, combo));
+    setPileState((s) => advancePile(s, combo, gameState.lastPlayedBy));
 
     // The card is thrown here and arrives ~312ms later, so everything that
     // reads as *impact* waits for it. Announced for every seat, not only the
     // viewer's: the sound belongs to a card landing, not to a tap.
     const heavy = combo.type === "bomb" || combo.type === "royal_straight";
-    impactTimerRef.current = setTimeout(
-      () => playImpact(heavy),
-      impactDelayMs(reduceMotion)
-    );
+    // The flush: this play emptied the throwing seat's hand. `players` is
+    // already this render's post-play state — same commit `combo` came from.
+    const playedByPlayer = players[gameState.lastPlayedBy];
+    const emptiedHand = !!playedByPlayer && handCountOf(playedByPlayer) === 0;
+    impactTimerRef.current = setTimeout(() => {
+      playImpact(heavy);
+      if (emptiedHand) celebrateFlush();
+    }, impactDelayMs(reduceMotion));
+
+    // The throwing seat's held count and departing backs read off this same
+    // boundary — the fan and the badge drop the instant the impact fires,
+    // not whenever FlyingCards' settle spring happens to finish.
+    if (landTimerRef.current) clearTimeout(landTimerRef.current);
+    setFlightLanded(false);
+    landTimerRef.current = setTimeout(() => {
+      landTimerRef.current = null;
+      setFlightLanded(true);
+    }, impactDelayMs(reduceMotion));
+
+    const dir = seatDirection(gameState.lastPlayedBy, viewerSeat, players.length);
+    // The pile sits in whatever vertical room the top seat's own column
+    // leaves, whichever seat is actually throwing — so its origin needs the
+    // top seat's *displayed* count, held at its pre-play value for the length
+    // of a flight from that seat specifically.
+    const topPlayer = opponents.top?.player;
+    const topDisplayedCount = topPlayer
+      ? displayedHandCount(handCountOf(topPlayer), dir === "top" ? combo.cards.length : 0)
+      : 0;
+
+    const sidePlayer = dir === "left" || dir === "right" ? opponents[dir]?.player : undefined;
+    const sideDisplayedCount = sidePlayer
+      ? displayedHandCount(handCountOf(sidePlayer), combo.cards.length)
+      : 0;
 
     setFlyInfo({
       key,
-      dir: seatDirection(gameState.lastPlayedBy, viewerSeat, players.length),
+      dir,
       cards: combo.cards,
+      origin: flightOrigin({
+        dir,
+        scale,
+        windowWidth: W,
+        windowHeight: H,
+        tableLeft: frame.tableLeft,
+        tableRight: frame.tableRight,
+        tableTop: frame.tableTop,
+        handZoneH: HAND_ZONE_H(handCardH, frame.bottomPad),
+        topDisplayedCount,
+        sideDisplayedCount,
+      }),
     });
   }, [
     gameState.lastPlayedCombination,
@@ -1027,6 +1179,17 @@ export function GameTable({
     players.length,
     reduceMotion,
     playImpact,
+    celebrateFlush,
+    players,
+    opponents,
+    scale,
+    W,
+    H,
+    frame.tableLeft,
+    frame.tableRight,
+    frame.tableTop,
+    frame.bottomPad,
+    handCardH,
   ]);
 
   // Round-winner tag over the pile, keyed on the round *closing* rather than on
@@ -1115,7 +1278,7 @@ export function GameTable({
     // `selectedObjs`, and the server rejects — silently — any request naming a
     // card the hand does not hold.
     onPlay(selectedObjs.map((c) => c.id));
-  }, [playBtnValid, onPlay, selectedObjs, dimReasonText, rejectPlay]);
+  }, [playBtnValid, onPlay, selectedObjs, dimReasonText, rejectPlay, setRejectHint]);
   const handlePass = useCallback(() => {
     if (!canPass) return;
     // Haptic only: the pass sound follows the committed state, so firing it
@@ -1125,6 +1288,15 @@ export function GameTable({
   }, [canPass, onPass]);
 
   // ── Render ──────────────────────────────────────────────────────────────────
+
+  // Cards the throwing seat's own fan holds back until the flight lands —
+  // displayedHandCount's other term, cleared at `flightLanded` rather than at
+  // `flyInfo`'s own lifetime, which runs past the landing for the settle
+  // spring. `impactDelayMs(reduceMotion)` is 0 under reduced motion, so
+  // `flightLanded` is already true by the next render and nothing holds.
+  const departingSide: OpponentSide | null =
+    flyInfo && !flightLanded && flyInfo.dir !== "bottom" ? flyInfo.dir : null;
+  const departingCount = departingSide ? flyInfo!.cards.length : 0;
 
   const timerActive =
     !!turnTimer &&
@@ -1146,6 +1318,29 @@ export function GameTable({
       : "-");
 
   const comboLabel = getComboLabel(pileState.current, t);
+
+  // Named off `pileState`, not `gameState.lastPlayedBy` — the pile lags the
+  // game state by the flight animation, and reading the seat straight off the
+  // game state would name the *new* player over the *old* combination for the
+  // length of one throw. Spectating, the bottom seat is someone else's, so no
+  // play on the felt is the watcher's own.
+  const playedByViewer = viewerOwnsSeat(pileState.playedBy, viewerSeat, spectating);
+  const lastPlayName =
+    pileState.playedBy === null
+      ? ""
+      : playedByViewer
+        ? t("gameShared.you")
+        : (players[pileState.playedBy]?.name ?? "");
+
+  const topBarA11yLabel =
+    pileState.current === null
+      ? t("gameTable.a11yEmptyTable")
+      : playedByViewer
+        ? t("gameTable.a11yYouPlayed", { label: lastPlayA11yLabel(pileState.current, t) })
+        : t("gameTable.a11yPlayerPlayed", {
+            name: lastPlayName,
+            label: lastPlayA11yLabel(pileState.current, t),
+          });
 
   // The seat on move sweeps its own rim over the same window the viewer's chip
   // counts down, so both are armed by one gate. There is no per-seat deadline
@@ -1174,39 +1369,57 @@ export function GameTable({
 
   const showStartCardBanner = !gameState.firstPlayMade && !!gameState.startCard;
 
+  // The catch belongs to the combination that emptied a hand, and to no other:
+  // the pile mounts fresh cards for every play, so each one would read a
+  // standing counter as its own cue. A seat holding nothing can only have
+  // thrown its last cards, so the top layer being theirs is the whole test.
+  const pileThrower =
+    pileState.playedBy === null ? undefined : players[pileState.playedBy];
+  const pileFlushed = !!pileThrower && handCountOf(pileThrower) === 0;
+
   return (
-    <Animated.View style={[styles.root, WEB_CLIP, shakeStyle]}>
-      <A11yStatus label={tableA11yLabel} />
+    <Animated.View style={[styles.root, WEB_CLIP, kickStyle]}>
+      <Sweep trigger={flushTrigger} width={W} height={H} />
+      <A11yStatus label={tableA11yLabel} veiled={settingsOpen} />
       {/* Two chips over the felt, at the corners the cards never reach — the
           combination in play at the head of the field, whose turn it is at the
           far side. Anything wider would be chrome drawn where a card lands. */}
-      <View
+      <Animated.View
         testID="game-top-bar"
-        style={[styles.hudLeft, { left: frame.tableLeft + frame.pad, top: frame.tableTop }]}
+        accessible
+        accessibilityLabel={topBarA11yLabel}
+        pointerEvents={focusMode ? "none" : undefined}
+        {...behindVeil}
+        style={[styles.hudLeft, { left: frame.tableLeft + frame.pad, top: frame.tableTop }, focusFadeStyle]}
       >
         <TableChip scale={scale}>
           {comboLabel === null ? (
             <ChipText scale={scale}>{t("gameShared.emptyTable")}</ChipText>
           ) : (
             <>
-              <ChipText scale={scale}>{t("gameShared.onTable")}</ChipText>
+              <ChipText scale={scale} maxWidth={CHIP_NAME_MAX_W}>
+                {lastPlayName}
+              </ChipText>
               <ChipText scale={scale} strong>
                 {comboLabel}
               </ChipText>
             </>
           )}
         </TableChip>
-      </View>
+      </Animated.View>
 
-      <View
+      <Animated.View
         testID="game-hud-stack"
+        pointerEvents={focusMode ? "none" : undefined}
+        {...behindVeil}
         style={[
           styles.hudRight,
           { right: frame.tableRight + frame.pad, top: frame.tableTop, gap: frame.pad },
+          focusFadeStyle,
         ]}
       >
         <TableChip scale={scale} lit={isMyTurn && !isFinished}>
-          <ChipDot scale={scale} lit={isMyTurn && !isFinished} />
+          <ChipDot testID="turn-chip-dot" scale={scale} lit={isMyTurn && !isFinished} />
           <ChipText scale={scale} lit={isMyTurn && !isFinished}>
             {isMyTurn && !isFinished
               ? t("gameShared.yourTurn")
@@ -1222,28 +1435,52 @@ export function GameTable({
             scale={scale}
           />
         </TableChip>
-      </View>
+      </Animated.View>
 
       {/* The cutout's own column. A cutout can never sit on a card, but it sits
           happily between two controls — so the menu knob takes the head of the
           column, the reactions knob its foot, and the cutout the gap between. */}
       <ControlRail
         width={frame.rail}
-        topPad={frame.topPad}
-        bottomPad={frame.bottomPad}
+        topPad={frame.tableTop}
+        bottomPad={frame.tableBottom}
         top={
           <RailKnob
-            onPress={onQuit}
-            a11yLabel={t("gameTable.leaveA11yLabel")}
+            onPress={() => setSettingsOpen((open) => !open)}
+            a11yLabel={t("gameTable.settingsA11yLabel")}
             size={knobSize}
+            expanded={settingsOpen}
           >
-            <Ionicons name="close" size={knobSize * 0.4} color={Colors.textMuted} />
+            <Ionicons name={settingsOpen ? "close" : "menu"} size={knobSize * 0.4} color={Colors.textMuted} />
           </RailKnob>
         }
-        bottom={railExtra}
+        bottom={
+          <Animated.View pointerEvents={focusMode ? "none" : undefined} style={focusFadeStyle}>
+            {railExtra}
+          </Animated.View>
+        }
       />
 
+      {settingsOpen && (
+        <GameSettingsSheet
+          rail={frame.rail}
+          topPad={frame.tableTop}
+          bottomPad={frame.tableBottom}
+          scale={scale}
+          onClose={closeSettings}
+          focusMode={focusMode}
+          onToggleFocusMode={() => setFocusMode((v) => !v)}
+          playOnLeft={playOnLeft}
+          onTogglePlayOnLeft={() => setPlayOnLeft((v) => !v)}
+          onExit={() => {
+            closeSettings();
+            onQuit();
+          }}
+        />
+      )}
+
       <View
+        {...behindVeil}
         style={[
           styles.bannerBand,
           {
@@ -1260,7 +1497,7 @@ export function GameTable({
           rectangle in a dark room, which is the one thing a single overhead
           lamp cannot produce. The pool tracks whose turn it is, so half the
           cloth falls into shadow when it is not yours. */}
-      <View testID="table-felt" style={StyleSheet.absoluteFill} pointerEvents="none">
+      <View testID="table-felt" style={[StyleSheet.absoluteFill, FELT_Z]} pointerEvents="none" {...a11yHidden()}>
         <FeltPool
           width={feltW}
           height={feltH}
@@ -1280,8 +1517,10 @@ export function GameTable({
       <View
         testID="game-table"
         accessibilityLabel={tableA11yLabel}
+        {...behindVeil}
         style={[
           sharedTableStyles.tableOverlay,
+          TABLE_Z,
           {
             left: frame.tableLeft,
             top: frame.tableTop,
@@ -1299,9 +1538,11 @@ export function GameTable({
                 player={opponents.top.player}
                 isActive={opponents.top.seat === gameState.currentTurnIndex}
                 cardCount={handCountOf(opponents.top.player)}
+                departing={departingSide === "top" ? departingCount : 0}
                 passed={passed.includes(opponents.top.seat)}
                 scale={scale}
                 countdown={seatCountdown}
+                focusMode={focusMode}
               />
             ) : (
               <View />
@@ -1332,36 +1573,38 @@ export function GameTable({
                   isActive={opponents.left.seat === gameState.currentTurnIndex}
                   side="left"
                   cardCount={handCountOf(opponents.left.player)}
+                  departing={departingSide === "left" ? departingCount : 0}
                   passed={passed.includes(opponents.left.seat)}
                   scale={scale}
                   countdown={seatCountdown}
+                  focusMode={focusMode}
                 />
               )}
             </View>
 
             <View style={sharedTableStyles.centerSection}>
               {showStartCardBanner ? (
-                <View style={styles.startCardBanner}>
-                  <TableText style={styles.startCardGlyph}>♠</TableText>
-                  <TableText style={styles.startCardText}>
-                    {gameState.currentTurnIndex === viewerSeat
-                      ? t("gameTable.startCardBannerSelf", { rank: gameState.startCard!.rank })
-                      : t("gameTable.startCardBannerOther", {
-                          name: players[gameState.currentTurnIndex]?.name ?? "",
-                          rank: gameState.startCard!.rank,
-                        })}
-                  </TableText>
-                </View>
+                <StartCardBanner
+                  card={gameState.startCard!}
+                  starterIsViewer={isMyTurn}
+                  starterName={players[gameState.currentTurnIndex]?.name ?? ""}
+                  t={t}
+                />
               ) : (
                 <PlayedPile
                   prev={pileState.prev}
                   current={flyInfo ? null : pileState.current}
                   roundWinner={roundWinnerTag === null ? null : players[roundWinnerTag.seat]?.name ?? ""}
                   bounceTrigger={pileBounceTrigger}
+                  catchTrigger={pileFlushed ? flushTrigger : undefined}
                   roomW={frame.fieldRoomW}
                   scale={scale}
                 />
               )}
+
+              {/* Centred on the same point the pile draws at, so the burst
+                  rings the impact rather than the middle of the table box. */}
+              <BombBurst trigger={boomTrigger} scale={scale} />
 
               {/* Beside the pile, not beside the table: the flight has to
                   settle exactly where PlayedPile then redraws the same cards,
@@ -1372,6 +1615,7 @@ export function GameTable({
                   key={flyInfo.key}
                   cards={flyInfo.cards}
                   direction={flyInfo.dir}
+                  origin={flyInfo.origin}
                   onDone={() => {
                     setFlyInfo(null);
                     setPileBounceTrigger((t) => t + 1);
@@ -1389,9 +1633,11 @@ export function GameTable({
                   isActive={opponents.right.seat === gameState.currentTurnIndex}
                   side="right"
                   cardCount={handCountOf(opponents.right.player)}
+                  departing={departingSide === "right" ? departingCount : 0}
                   passed={passed.includes(opponents.right.seat)}
                   scale={scale}
                   countdown={seatCountdown}
+                  focusMode={focusMode}
                 />
               )}
             </View>
@@ -1409,6 +1655,10 @@ export function GameTable({
                 paddingBottom: frame.bottomPad,
                 gap: HAND_ZONE_GAP * scale,
               },
+              // Play on the left mirrors the row rather than moving the rail,
+              // which stays put at the physical cutout: only GIOCA changes
+              // which thumb it falls under.
+              playOnLeft && styles.handSectionReversed,
               handLiftStyle,
             ]}
           >
@@ -1490,6 +1740,7 @@ export function GameTable({
           prompt={rematchPrompt}
           top={frame.tableTop + CHIP_H(scale) + frame.pad}
           left={frame.tableLeft + Spacing.sm}
+          veiled={behindVeil}
         />
       )}
 
@@ -1513,6 +1764,7 @@ export function GameTable({
           key={rejectHint.key}
           entering={reduceMotion ? undefined : FadeIn.duration(Motion.duration.fast)}
           pointerEvents="none"
+          {...behindVeil}
           style={[
             styles.rejectHint,
             {
@@ -1520,10 +1772,11 @@ export function GameTable({
               left: frame.tableLeft,
               right: frame.tableRight,
             },
+            playOnLeft && styles.rejectHintMirrored,
           ]}
         >
           <TableText
-            style={styles.rejectHintText}
+            style={[styles.rejectHintText, playOnLeft && styles.rejectHintTextMirrored]}
             numberOfLines={2}
             accessibilityLiveRegion="polite"
           >
@@ -1534,28 +1787,7 @@ export function GameTable({
 
       {overlays}
 
-      {/* A Modal, not a scrim: covering the pixels leaves every control
-          beneath it in the tab order. Rotating back is the only way out, so
-          onRequestClose is inert. */}
-      {W < H && (
-      <Modal
-        transparent
-        visible
-        accessibilityLabel={t("gameTable.rotateTitle")}
-        supportedOrientations={["portrait", "landscape"]}
-        onRequestClose={() => {}}
-      >
-        <View style={portraitOverlayStyles.overlay}>
-          <View style={portraitOverlayStyles.card}>
-            <Ionicons name="phone-landscape-outline" size={56} color={Colors.gold} />
-            <TableText style={portraitOverlayStyles.title}>{t("gameTable.rotateTitle")}</TableText>
-            <TableText style={portraitOverlayStyles.sub}>
-              {t("gameTable.rotateBody")}
-            </TableText>
-          </View>
-        </View>
-      </Modal>
-      )}
+      {W < H && <RotateOverlay />}
     </Animated.View>
   );
 }
@@ -1580,6 +1812,7 @@ const styles = StyleSheet.create({
 
   hudLeft: { position: "absolute", zIndex: 10 },
   hudRight: { position: "absolute", alignItems: "flex-end", zIndex: 10 },
+  handSectionReversed: { flexDirection: "row-reverse" },
 
   startCardBanner: {
     alignItems: "center", gap: Spacing.slim,
@@ -1659,6 +1892,9 @@ const styles = StyleSheet.create({
     zIndex: REJECT_HINT_Z,
     alignItems: "flex-end",
   },
+  // The hint belongs beside the button that raised it, so it follows GIOCA
+  // across when the hand row is mirrored.
+  rejectHintMirrored: { alignItems: "flex-start" },
   rejectHintText: {
     fontFamily: "Rajdhani_600SemiBold",
     fontSize: FontSize.xs,
@@ -1673,6 +1909,7 @@ const styles = StyleSheet.create({
     paddingVertical: Spacing.xs,
     overflow: "hidden",
   },
+  rejectHintTextMirrored: { textAlign: "left" },
   rematchPanel: {
     position: "absolute",
     width: REMATCH_PANEL_W,

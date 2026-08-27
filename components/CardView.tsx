@@ -17,8 +17,8 @@ import {
   FontSize,
   Lantern,
   Motion,
-  Radius,
   Shadow,
+  withAlpha,
 } from "@/lib/theme";
 import { useCardBack } from "@/lib/cosmetics";
 import { usePrefersReducedMotion } from "@/lib/accessibility";
@@ -30,15 +30,22 @@ import {
   CARD_BACK_W,
   CARD_H,
   CARD_W,
+  cardBackLatticeInset,
+  cardBackLatticeRadius,
+  cardRadius,
   COURT_RANKS,
   courtArtRect,
+  getLattice,
   INDEX_SUIT_SIZE,
   INDEX_SUIT_Y,
   INDEX_TEXT_W,
   INDEX_X,
   placedPips,
+  printBorderInset,
+  printBorderRadius,
   rankFontSize,
   rankInset,
+  stockLipHeight,
 } from "@/components/cardFaceModel";
 import { a11yHidden, a11yState, useA11yHint } from "@/lib/a11y";
 
@@ -387,26 +394,7 @@ function CourtArt({ card, w, h }: { card: Card; w: number; h: number }) {
 
 // ─── Card back ────────────────────────────────────────────────────────────────
 //
-// A fine 45° lattice reads as texture at any size where a dot grid reads as
-// blobs, because a line keeps its identity when it falls below a pixel and a
-// dot does not. The whole thing is two Paths and a medallion.
-
-const latticeCache = new Map<string, string>();
-function getLattice(w: number, h: number, spacing: number): string {
-  const key = `${w}x${h}x${spacing}`;
-  let d = latticeCache.get(key);
-  if (!d) {
-    const span = w + h;
-    const parts: string[] = [];
-    for (let i = -h; i < span; i += spacing) {
-      parts.push(`M${i},0 L${i + h},${h}`);
-      parts.push(`M${i},${h} L${i + h},0`);
-    }
-    d = parts.join(" ");
-    latticeCache.set(key, d);
-  }
-  return d;
-}
+// Two Paths and a medallion.
 
 /** A `points`-pointed star as one polygon: alternate long and short radii. */
 function starPath(cx: number, cy: number, r: number, points: number): string {
@@ -433,14 +421,26 @@ function OrnateCardBack({
   const r = Math.min(w, h) * 0.19;
   const ink = back.ink;
   const field = back.field;
+  // The cut edge itself is the enclosing View's own border (styles.cardBack);
+  // this is the printed panel just inside it, echoing the face's PrintBorder.
+  const panelInset = cardBackLatticeInset(h);
+  const panelRadius = cardBackLatticeRadius(h);
 
   return (
     <Svg width={w} height={h} style={StyleSheet.absoluteFill} pointerEvents="none">
       <Path d={getLattice(w, h, back.lattice)} stroke={ink} strokeOpacity={0.13} strokeWidth={0.6} fill="none" />
-      <Rect x={2.5} y={2.5} width={w - 5} height={h - 5} rx={5} ry={5}
-        fill="none" stroke={ink} strokeWidth={1.4} strokeOpacity={0.85} />
-      <Rect x={5.5} y={5.5} width={w - 11} height={h - 11} rx={3} ry={3}
-        fill="none" stroke={ink} strokeWidth={0.7} strokeOpacity={0.35} />
+      <Rect
+        x={panelInset}
+        y={panelInset}
+        width={w - panelInset * 2}
+        height={h - panelInset * 2}
+        rx={panelRadius}
+        ry={panelRadius}
+        fill="none"
+        stroke={ink}
+        strokeWidth={0.7}
+        strokeOpacity={0.34}
+      />
       <Path d={starPath(cx, cy, r, back.starPoints)} fill={ink} fillOpacity={0.55} />
       <Circle cx={cx} cy={cy} r={r * 0.42} fill={field[4]} />
       <Circle cx={cx} cy={cy} r={r * 0.42} fill="none" stroke={ink} strokeOpacity={0.7} strokeWidth={0.8} />
@@ -554,9 +554,13 @@ function CardViewBase({
   const h = faceDown ? CARD_BACK_H(scale) : CARD_H(scale);
 
   if (faceDown) {
+    const backStyle = {
+      borderRadius: cardRadius(w),
+      borderColor: withAlpha(back.ink, 0.32),
+    };
     return (
       <Animated.View style={[animStyle, style]}>
-        <View style={[styles.card, { width: w, height: h }, styles.cardBack]}>
+        <View style={[styles.card, { width: w, height: h }, styles.cardBack, backStyle]}>
           <LinearGradient
             colors={[backField[1], backField[2], backField[4]]}
             start={{ x: 0.15, y: 0 }}
@@ -569,6 +573,11 @@ function CardViewBase({
       </Animated.View>
     );
   }
+
+  const stockStyle = {
+    borderRadius: cardRadius(w),
+    ...cardStockShadow(stockLipHeight(h)),
+  };
 
   const rankText = card.isJoker ? "JK" : getCardDisplayRank(card.rank);
   // "10" is the only two-glyph rank. At the single-glyph size it renders wider
@@ -608,7 +617,7 @@ function CardViewBase({
             measuring what the player *sees* has to measure this. */}
         <View
           testID="card-box"
-          style={[styles.card, { width: w, height: h }, selected && styles.cardSelected]}
+          style={[styles.card, { width: w, height: h }, stockStyle, selected && styles.cardSelected]}
         >
           {selectedHint.node}
           <LinearGradient
@@ -618,6 +627,7 @@ function CardViewBase({
             end={{ x: 0.9, y: 1 }}
             style={StyleSheet.absoluteFill}
           />
+          <PrintBorder inset={printBorderInset(h)} radius={printBorderRadius(h)} />
           <CardFaceArt card={card} color={color} w={w} h={h} compact={compact} />
           {!compact && COURT_RANKS.has(card.rank) && <CourtArt card={card} w={w} h={h} />}
           <TableText
@@ -645,6 +655,41 @@ function CardViewBase({
         </View>
       </Pressable>
     </Animated.View>
+  );
+}
+
+// ─── Card stock ───────────────────────────────────────────────────────────────
+//
+// Local one-offs rather than design tokens (lib/tokens.ts): the printed border
+// is `Colors.cardEdge`'s hue printed rather than cut, and the lip is the paper
+// ramp's own shade seen edge-on. Neither has a second use to name a token for.
+const PRINT_BORDER_COLOR = "rgba(90,78,52,0.2)";
+const STOCK_LIP_COLOR = "#D6D0BC";
+
+/**
+ * `Shadow.card`'s contact+cast pair (lib/theme.ts) plus a solid, unblurred
+ * lip along the bottom edge. Recombined here, not folded into `Shadow.card`
+ * itself, because the lip scales with the card and `Shadow.card` does not.
+ *
+ * The lip goes first: a shadow list paints front to back, and the contact
+ * layer sits at the same offset in near-opaque black, so a lip listed after it
+ * is drawn under it and never appears.
+ *
+ * Old Android's (<28) shadow fallback carries no `boxShadow` to prepend to —
+ * it keeps the cast shadow alone, same policy `makeLayeredShadow` uses.
+ */
+function cardStockShadow(lipHeight: number): Record<string, any> {
+  const base = Shadow.card as Record<string, any>;
+  if (typeof base.boxShadow !== "string") return base;
+  return { ...base, boxShadow: `0px ${lipHeight}px 0px ${STOCK_LIP_COLOR}, ${base.boxShadow}` };
+}
+
+function PrintBorder({ inset, radius }: { inset: number; radius: number }) {
+  return (
+    <View
+      pointerEvents="none"
+      style={[styles.printBorder, { left: inset, right: inset, top: inset, bottom: inset, borderRadius: radius }]}
+    />
   );
 }
 
@@ -717,11 +762,14 @@ CardView.displayName = "CardView";
 const styles = StyleSheet.create({
   card: {
     backgroundColor: Colors.cardPaper,
-    borderRadius: Radius.sm,
     borderWidth: 1,
     borderColor: Colors.cardEdge,
     overflow: "hidden",
-    ...Shadow.card,
+  },
+  printBorder: {
+    position: "absolute",
+    borderWidth: 1,
+    borderColor: PRINT_BORDER_COLOR,
   },
   cardSelected: {
     borderColor: Colors.gold,
@@ -729,8 +777,8 @@ const styles = StyleSheet.create({
   },
   cardBack: {
     backgroundColor: Colors.felt,
-    borderColor: Colors.goldDark,
     borderWidth: 1,
+    ...Shadow.cardBack,
   },
   // The index characters sit in the drawn index column: the suit mark below
   // them comes from the SVG layer, so the two must agree on INDEX_X.

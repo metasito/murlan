@@ -19,9 +19,17 @@
 # *before* this block, so an `env:` key here wins over the flag rather than
 # yielding to it — which is why the address has to be one that works
 # everywhere. Change it here, or drop the reverse and put a reachable host in.
-appId: host.exp.exponent
+# Expo Go's iOS bundle identifier capitalises Exponent; the Android package
+# does not, and a simulator answers NotFound to every request made with the
+# Android spelling. `ios.yml` passes the iOS one in; everything else, this
+# machine included, gets Android's.
+appId: "${typeof MAESTRO_EXPO_GO_APP_ID === 'string' ? MAESTRO_EXPO_GO_APP_ID : 'host.exp.exponent'}"
 env:
-  MURLAN_PACKAGER_URL: exp://127.0.0.1:8081
+  # `disableOnboarding=1` is expo-dev-menu's own switch (expo/expo#19024): it
+  # sets isOnboardingFinished before the app launches, so Expo Go never raises
+  # the "this is the developer menu" tip that otherwise covers the screen every
+  # run — `clearState` wipes the flag that would have remembered it.
+  MURLAN_PACKAGER_URL: exp://127.0.0.1:8081?disableOnboarding=1
 ---
 - launchApp:
     # Each flow has to start from the same place: run second and this one
@@ -30,7 +38,23 @@ env:
     # never taken - and asserts against a screen the app never rendered.
     # Which flow runs first is not fixed, so both orders have to work.
     clearState: true
+# Cleared, then stopped: Expo Go takes the link as a cold start and opens the
+# project with it. Delivered to the copy `launchApp` just brought to the
+# front, it is ignored and the flow asserts against Expo Go's own home.
+- stopApp
 - openLink: "${MURLAN_PACKAGER_URL}"
+# iOS asks before handing a custom-scheme link to another app, and the link
+# is not followed until it is answered. The simulator runs it-IT, so the
+# button reads "Apri". Android is never asked, and iOS only asks the first
+# time in a session — so this is optional inside the platform it belongs to,
+# rather than awaited.
+- runFlow:
+    when:
+      platform: iOS
+    commands:
+      - tapOn:
+          text: "Apri"
+          optional: true
 # Not "Murlan" alone: Expo Go's own native splash screen shows the app
 # name under the icon while the JS bundle is still loading, so a loose
 # "Murlan" wait is satisfied by Expo Go chrome, not the app. Wait for
@@ -42,47 +66,13 @@ env:
     # than that on a cold start, and running out of budget here reads
     # identically to the app never loading at all.
     timeout: 180000
-# On a fresh connection Expo Go shows a "this is the dev menu" tip
-# rendered *on top of* its real dev menu sheet (Reload / Go Home /
-# etc). Both layers have to go, and only in this order: "Continue"
-# dismisses the tip and *reveals* the sheet, then one back press closes
-# the sheet.
-#
-# A back press against the tip does not dismiss either layer — it
-# leaves the experience altogether and lands on Expo Go's own home
-# screen, where none of the app's copy exists and every assertion below
-# fails against a screen the app never rendered. A runner meets this on
-# every single run, because it installs Expo Go fresh each time.
-- runFlow:
-    when:
-      visible: "Continue"
-    commands:
-      - tapOn: "Continue"
-- runFlow:
-    when:
-      visible: "Reload"
-    commands:
-      - back
-- extendedWaitUntil:
-    notVisible: "Reload"
-    timeout: 10000
 # First cold launch auto-pushes the interactive tutorial
 # (app/index.tsx effect on `@murlan_tutorial_seen`). Skip it like a real
 # user would so the flag gets set and we land on the actual home screen.
 #
-# Selector note (a real app finding, not just a test inconvenience):
-# the header's "Salta" Pressable renders its label as a plain child
-# Text instead of collapsing into one accessible node (tutorial.tsx
-# ~line 505-507), so the UI tree exposes a second, non-clickable node
-# whose text is also exactly "Salta". Tapping by that text, or even by
-# the Pressable's own correct accessibilityLabel ("Salta il
-# tutorial"), reliably lands on the right element (verified via `adb
-# shell uiautomator dump`: clickable=true, bounds correct) but the tap
-# never fires the RN onPress — only a raw coordinate tap at the same
-# point does. Root cause not fully isolated; falling back to a point
-# tap here. Worth a look in the app: give the header Pressables
-# `accessible` so screen readers (and tools like this) see one node,
-# and re-test whether element-based taps then work.
+# Tapped by the button's accessibilityLabel rather than its visible "Salta":
+# the label is the one node the control exposes, its Text child being hidden
+# from the tree on purpose.
 - runFlow:
     when:
       visible: "Salta il tutorial"
@@ -94,3 +84,14 @@ env:
 - assertVisible: "Offline"
 - assertVisible: "Online"
 - assertVisible: "Il mio profilo"
+# The settings modal is where #389 crashed: Fabric converts accessibilityValue
+# to int while mounting the host view, and the music slider's default volume is
+# a fraction — so the screen died on open, on device, against a green CI.
+# Opening it is the only way to exercise that mount for real.
+#
+# Tapped and asserted by accessibility label and by untransformed copy: the
+# modal's own title is uppercased by a style, which is not what the tree holds.
+- tapOn: "Impostazioni"
+- assertVisible: "Volume"
+- tapOn: "Chiudi impostazioni"
+- assertVisible: "Offline"

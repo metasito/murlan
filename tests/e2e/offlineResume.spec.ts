@@ -18,6 +18,12 @@ async function handOf(page: import("@playwright/test").Page): Promise<string[]> 
     .evaluateAll((els) => els.map((el) => el.getAttribute("aria-label") ?? ""));
 }
 
+/** The rail knob opens the settings sheet; leaving is a row inside it. */
+async function leaveGame(page: import("@playwright/test").Page): Promise<void> {
+  await page.getByRole("button", { name: "Impostazioni" }).click();
+  await page.getByRole("button", { name: "Esci dalla partita" }).click();
+}
+
 test("a match interrupted mid-hand is offered back, with the same cards", async ({
   page,
   baseURL,
@@ -58,9 +64,9 @@ test("quitting asks first, and taking the offer back clears it", async ({ page, 
   await startOfflineGame(page, { playerCount: 4, gameMode: "free_for_all" });
   await page.locator(TABLE).waitFor({ timeout: 60_000 });
 
-  await page.getByRole("button", { name: "Abbandona la partita" }).click();
+  await leaveGame(page);
 
-  const dialog = page.getByRole("button", { name: "Esci" });
+  const dialog = page.getByRole("button", { name: "Esci", exact: true });
   await expect(dialog, "the confirmation has to be on screen at all").toBeVisible({
     timeout: 10_000,
   });
@@ -69,8 +75,8 @@ test("quitting asks first, and taking the offer back clears it", async ({ page, 
   await page.getByRole("button", { name: "Annulla" }).click();
   await expect(page.locator(TABLE)).toBeVisible();
 
-  await page.getByRole("button", { name: "Abbandona la partita" }).click();
-  await page.getByRole("button", { name: "Esci" }).click();
+  await leaveGame(page);
+  await page.getByRole("button", { name: "Esci", exact: true }).click();
 
   // resetGame() clears the save, so the home screen no longer offers it —
   // which is what never ran while the confirmation could not be shown.

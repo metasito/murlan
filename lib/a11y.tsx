@@ -1,4 +1,4 @@
-import { useId } from "react";
+import { useEffect, useId } from "react";
 import { Platform, StyleSheet, Text } from "react-native";
 import type { AccessibilityProps, AccessibilityRole, AccessibilityState } from "react-native";
 
@@ -39,6 +39,44 @@ export function a11yState({ role, ...state }: StateProps): AccessibilityProps {
   return props;
 }
 
+/**
+ * A continuous control's current position, on both React Native and the DOM.
+ *
+ * `min`, `max` and `now` must be whole numbers. That is Fabric's constraint
+ * rather than any control's: it declares them `int`
+ * (ReactCommon/react/renderer/components/view/AccessibilityPrimitives.h:127)
+ * and converts them in C++ while mounting the view. A control whose position
+ * is a fraction reports it over a wider range — percent, say — rather than
+ * rounding against a narrow one, which would collapse it to three values.
+ * `tests/native/setup.ts` is what enforces this.
+ */
+export function a11yValue(v: {
+  min: number;
+  max: number;
+  now: number;
+  text: string;
+}): AccessibilityProps {
+  const props: AccessibilityProps = { accessibilityValue: v };
+  if (!isWeb) return props;
+
+  const web = props as Record<string, unknown>;
+  web["aria-valuemin"] = v.min;
+  web["aria-valuemax"] = v.max;
+  web["aria-valuenow"] = v.now;
+  web["aria-valuetext"] = v.text;
+  return props;
+}
+
+/**
+ * Names a layer as a dialog. Web only, and deliberately without `aria-modal`:
+ * that marks everything outside the dialog inert to assistive technology, and
+ * a layer whose own close control sits outside its box would go with it.
+ */
+export function a11yDialog(label: string): AccessibilityProps {
+  if (!isWeb) return {};
+  return { role: "dialog", "aria-label": label } as AccessibilityProps;
+}
+
 /** Hides a decorative subtree from assistive technology on both platforms. */
 export function a11yHidden(hidden = true): AccessibilityProps {
   return {
@@ -46,6 +84,22 @@ export function a11yHidden(hidden = true): AccessibilityProps {
     importantForAccessibility: hidden ? "no-hide-descendants" : "auto",
     "aria-hidden": hidden || undefined,
   };
+}
+
+/**
+ * Puts a subtree behind a veil: rendered, but reachable by nobody.
+ *
+ * `inert` withdraws focus as well as the accessibility tree, so the DOM never
+ * holds a focusable element inside an `aria-hidden` region — the one
+ * arrangement ARIA has no answer for. It reaches the DOM through
+ * react-native-web's forwarded props; React Native has none, hence the pair
+ * above. Not `a11yHidden`, which dresses decorative children of controls,
+ * where withdrawing hit-testing would take the control with it.
+ */
+export function a11yVeiled(veiled: boolean): AccessibilityProps {
+  const props = a11yHidden(veiled);
+  if (isWeb) (props as Record<string, unknown>).inert = veiled || undefined;
+  return props;
 }
 
 /**
@@ -72,19 +126,62 @@ export function useA11yHint(hint: string | undefined): {
   };
 }
 
+/** What a keyboard can land on, as react-native-web renders this app. */
+const FOCUSABLE = 'a[href],button,input,select,textarea,[tabindex]:not([tabindex="-1"])';
+/** A react-native-web `Modal`, which brings a focus trap of its own. */
+const MODAL_DIALOG = '[role="dialog"][aria-modal="true"]';
+
+/**
+ * Keeps Tab inside the subtrees carrying `testIDs` for as long as the caller
+ * is mounted. React Native's `Modal` buys this on web for free
+ * (exports/Modal/ModalFocusTrap.js); a layer that deliberately is not one has
+ * to carry it itself. A phone has no Tab key, so there is nothing to trap.
+ */
+export function useFocusTrap(testIDs: string[]) {
+  const within = testIDs.map((id) => `[data-testid="${id}"]`).join(",");
+  useEffect(() => {
+    if (typeof document === "undefined") return;
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key !== "Tab") return;
+      // A Modal that opened over the trapped layer traps focus itself, and two
+      // traps on one keypress drag focus back under the dialog on top.
+      const above = Array.from(document.querySelectorAll(MODAL_DIALOG));
+      if (above.some((el) => el.closest(within) === null)) return;
+      const stops = Array.from(document.querySelectorAll<HTMLElement>(FOCUSABLE)).filter(
+        (el) => el.closest(within) !== null && !el.hasAttribute("disabled")
+      );
+      if (stops.length === 0) return;
+      const at = stops.indexOf(document.activeElement as HTMLElement);
+      // Focus outside the trap stands before the first stop, so Tab enters at
+      // the top of the order and Shift+Tab at the bottom.
+      const next =
+        at === -1
+          ? e.shiftKey
+            ? stops.length - 1
+            : 0
+          : (at + (e.shiftKey ? -1 : 1) + stops.length) % stops.length;
+      e.preventDefault();
+      stops[next]?.focus();
+    };
+    document.addEventListener("keydown", onKeyDown);
+    return () => document.removeEventListener("keydown", onKeyDown);
+  }, [within]);
+}
+
 /**
  * A live status sentence for a container that cannot be `accessible` itself
  * without collapsing its controls into one unreachable leaf. Its *text* names
  * it, which a bare `aria-label` on a role-less `<div>` does not: that role is
  * `generic`, for which a name is prohibited.
  */
-export function A11yStatus({ label }: { label: string }) {
+export function A11yStatus({ label, veiled = false }: { label: string; veiled?: boolean }) {
   return (
     <Text
       accessible
       accessibilityRole="text"
       accessibilityLabel={label}
       {...(isWeb ? { "aria-live": "polite" as const } : { accessibilityLiveRegion: "polite" as const })}
+      {...a11yVeiled(veiled)}
       style={styles.srOnly}
     >
       {label}

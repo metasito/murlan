@@ -73,9 +73,11 @@ export interface MatchState {
 export type RematchAnswers = Record<string, boolean>;
 
 function freshMatch(length: MatchLength, playerCount: number): MatchState {
+  const [target] = targetsFor(playerCount);
+  if (target === undefined) throw new Error(`targetsFor(${playerCount}) returned no targets`);
   return {
     length,
-    target: targetsFor(playerCount)[0],
+    target,
     scores: {},
     hands: [],
     over: false,
@@ -167,8 +169,6 @@ export function GameProvider({ children }: { children: ReactNode }) {
 
   const [exchangeAnnouncing, setExchangeAnnouncing] = useState(false);
   const [exchangeAnnounceData, setExchangeAnnounceData] = useState<ExchangeAnnounceData | null>(null);
-  const gameStateRef = useRef<GameState | null>(null);
-  gameStateRef.current = gameState;
 
   /**
    * The single write path for engine output: a manche that has just ended is
@@ -243,21 +243,19 @@ export function GameProvider({ children }: { children: ReactNode }) {
   }, [gameState, match]);
 
   const answerRematch = useCallback((wants: boolean) => {
-    const gs = gameStateRef.current;
-    const human = gs?.players.find((p) => p.type === "human");
+    const human = gameState?.players.find((p) => p.type === "human");
     if (!human) return;
     setRematchAnswers((prev) => ({ ...prev, [human.id]: wants }));
-  }, []);
+  }, [gameState]);
 
   const chooseExchangeCard = useCallback(
     (cardId: string) => {
-      const gs = gameStateRef.current;
-      if (gs?.exchangePhase?.active) {
-        const ep = gs.exchangePhase;
-        const winnerName = gs.players[ep.winnerIdx]?.name ?? "";
-        const loserName = gs.players[ep.loserIdx]?.name ?? "";
+      if (gameState?.exchangePhase?.active) {
+        const ep = gameState.exchangePhase;
+        const winnerName = gameState.players[ep.winnerIdx]?.name ?? "";
+        const loserName = gameState.players[ep.loserIdx]?.name ?? "";
         const cardReceived = ep.cardFromLoser;
-        const cardGiven = gs.players[ep.winnerIdx].hand.find((c) => c.id === cardId);
+        const cardGiven = gameState.players[ep.winnerIdx]?.hand.find((c) => c.id === cardId);
         setExchangeAnnounceData({
           winnerName,
           loserName,
@@ -273,7 +271,7 @@ export function GameProvider({ children }: { children: ReactNode }) {
       });
       setSelectedCards([]);
     },
-    []
+    [gameState]
   );
 
   const acknowledgeExchange = useCallback(() => {
@@ -295,6 +293,7 @@ export function GameProvider({ children }: { children: ReactNode }) {
   const playSelected = useCallback((): boolean => {
     if (!gameState) return false;
     const player = gameState.players[gameState.currentTurnIndex];
+    if (!player) return false;
     const cards = player.hand.filter((c) => selectedCards.includes(c.id));
     if (cards.length === 0) return false;
 
@@ -329,7 +328,7 @@ export function GameProvider({ children }: { children: ReactNode }) {
   const runAITurn = useCallback(() => {
     if (!gameState) return;
     const currentPlayer = gameState.players[gameState.currentTurnIndex];
-    if (currentPlayer.type !== "ai") return;
+    if (!currentPlayer || currentPlayer.type !== "ai") return;
 
     const isNewRound = gameState.lastPlayedCombination === null;
     const otherCounts = gameState.players
@@ -427,9 +426,10 @@ export function GameProvider({ children }: { children: ReactNode }) {
   // and vacated seats (docs/BRIEF.md §3.1).
   const rematchTally = useMemo(() => {
     const players = gameState?.players ?? [];
-    return tallyRematchAnswers(players.length, (seat) =>
-      players[seat].type === "ai" ? "abstain" : rematchAnswers[players[seat].id] === true
-    );
+    return tallyRematchAnswers(players.length, (seat) => {
+      const p = players[seat];
+      return !p || p.type === "ai" ? "abstain" : rematchAnswers[p.id] === true;
+    });
   }, [gameState?.players, rematchAnswers]);
 
   const tableWantsRematch = isMajority(rematchTally.yes, rematchTally.total);

@@ -7,9 +7,10 @@
 // relative and carry its .ts extension; `@/` is safe only in a type-only import,
 // which is erased before resolution.
 
-import type { Card, Combination, GameState, Player } from "@/lib/gameEngine";
-import { getCardDisplayRank, getSuitSymbol } from "../lib/gameEngine.ts";
-import { CARD_H, CARD_W, cardScale } from "./cardFaceModel.ts";
+import type { Combination, GameState, Player } from "@/lib/gameEngine";
+import { CARD_H, CARD_W, cardScale, CARD_BACK_H, CARD_BACK_W, BACK_SCALE } from "./cardFaceModel.ts";
+import { arcBounds, solveArc, SEAT_ARC } from "./tableArc.ts";
+import { Spacing } from "../lib/tokens.ts";
 
 // ─── Layout constants ─────────────────────────────────────────────────────────
 //
@@ -21,7 +22,9 @@ import { CARD_H, CARD_W, cardScale } from "./cardFaceModel.ts";
 // maths below can use them directly.
 
 export { CARD_H, CARD_W, cardScale };
-export const SIDE_SECTION_W = 130;
+// The column a side seat's ring and label stand in. The prototype's own side
+// seat measures 92 at scale 1; the fan leans out of the column by design.
+export const SIDE_SECTION_W = 96;
 
 // PASSA and GIOCA are square: they read as two keys either side of the hand
 // rather than as two columns of it, which is what a card-height button was.
@@ -241,6 +244,36 @@ export function handCountOf(player: Player | (Player & { handCount?: number })):
   return typeof count === "number" ? count : player.hand.length;
 }
 
+/**
+ * The number a seat's fan and count badge both show — derived, never stored.
+ * docs/adr/0002-a-play-leaves-the-seat-it-was-thrown-from.md §2.
+ */
+export function displayedHandCount(handCount: number, cardsInFlight: number): number {
+  return handCount + cardsInFlight;
+}
+
+/** How many of a `CardFan`'s backs stay put versus lift and fade, at `cap`. */
+export interface FanCounts {
+  /** Backs re-solving into the smaller arc — `i < remaining` in the map. */
+  remaining: number;
+  /** Backs lifting and fading in place — drawn, never re-solved. */
+  departing: number;
+}
+
+/**
+ * `count` is the pre-play total (`displayedHandCount`); `departing` of it are
+ * mid-flight. A fan never draws more than `cap` backs, so `remaining` re-caps
+ * the *post-play* total rather than subtracting `departing` from an already
+ * capped one — the difference only shows once a hand sits at `cap`, where
+ * subtracting first left the fan visibly short for the length of the flight
+ * and then popping back to `cap` the instant it landed.
+ */
+export function fanCounts(count: number, departing: number, cap: number): FanCounts {
+  const cappedTotal = Math.min(count, cap);
+  const remaining = Math.min(count - departing, cap);
+  return { remaining, departing: cappedTotal - remaining };
+}
+
 // ─── Pile state ───────────────────────────────────────────────────────────────
 //
 // The pile shows at most two layers: the combination currently on the table and
@@ -250,9 +283,11 @@ export function handCountOf(player: Player | (Player & { handCount?: number })):
 export interface PileState {
   prev: Combination | null;
   current: Combination | null;
+  /** Seat `current` came from — carried alongside it so a name and its combination can never name different plays. */
+  playedBy: number | null;
 }
 
-export const EMPTY_PILE: PileState = { prev: null, current: null };
+export const EMPTY_PILE: PileState = { prev: null, current: null, playedBy: null };
 
 // ─── Flight and impact timing ─────────────────────────────────────────────────
 //
@@ -275,6 +310,169 @@ export function impactDelayMs(reduceMotion: boolean): number {
   return reduceMotion ? 0 : Math.round(FLIGHT_MS * LANDING_FRACTION);
 }
 
+// ─── Bomb burst ────────────────────────────────────────────────────────────────
+
+/** Spark dots ringing the bomb's impact point. */
+export const SPARK_COUNT = 16;
+
+export interface SparkOffset {
+  /** Where the spark ends up, relative to the impact point. */
+  dx: number;
+  dy: number;
+  /** ms before this spark's own animation starts. */
+  delay: number;
+}
+
+/**
+ * Where the i-th of `SPARK_COUNT` sparks flies to, and when it starts —
+ * derived from its index so every client draws the same burst. `dy` is
+ * squashed to .62 of the unsquashed distance: sparks land in a shallow
+ * ellipse, not a circle, the way debris does on a table seen from above
+ * rather than face-on. The distance steps every 4th spark and the delay
+ * every 5th, so the two cycles fall out of phase across the ring instead of
+ * both resetting at the same spark.
+ */
+export function sparkOffset(i: number, scale: number): SparkOffset {
+  const angle = (i / SPARK_COUNT) * Math.PI * 2;
+  const dist = (110 + (i % 4) * 34) * scale;
+  return {
+    dx: Math.cos(angle) * dist,
+    dy: Math.sin(angle) * dist * 0.62,
+    delay: 60 + (i % 5) * 22,
+  };
+}
+
+// ─── Flight origin ─────────────────────────────────────────────────────────────
+//
+// Where a throw starts. docs/adr/0002-a-play-leaves-the-seat-it-was-thrown-from.md §1.
+
+/** The seat disc's diameter at scale 1 (components/table/seats.tsx `SeatRing`). */
+export const SEAT_DISC = 33;
+/** Ring to fan, the same on every seat (components/table/seats.tsx `SeatWho`). */
+export const SEAT_GAP = Spacing.slim;
+const SEAT_NAME_LINE = 17;
+
+/**
+ * The band a seat's floating label needs above its ring: the name's own line,
+ * plus the badge row, which is a chip and therefore scales with the table. A
+ * side seat's label runs inward rather than upward and does not need this,
+ * but the top seat's does — drawn off the top of the screen otherwise.
+ */
+export function seatLabelH(scale: number): number {
+  return SEAT_NAME_LINE * scale + CHIP_H(scale) + Spacing.xs;
+}
+
+/**
+ * A seat's own fan of `count` backs at `backScale` — the one solve `CardFan`
+ * (components/table/seats.tsx) performs for its wrapper box, `topFanHeight`
+ * and `flightOrigin` below, so none of the three can disagree with what the
+ * fan actually draws.
+ */
+export function seatFanArc(count: number, backScale: number) {
+  const backW = CARD_BACK_W(backScale);
+  const backH = CARD_BACK_H(backScale);
+  const { cards, box } = solveArc(count, {
+    budget: SEAT_ARC,
+    cardW: backW,
+    cardH: backH,
+    scale: backScale,
+    room: Infinity,
+    flip: true,
+  });
+  return { cards, box, bounds: arcBounds(cards, box, backW, backH) };
+}
+
+/**
+ * A side seat's own slot height: its ring, or the fan beside it when that is
+ * taller. The fan is turned a quarter there, so what it occupies vertically is
+ * the arc's width — components/table/seats.tsx `CardFan`, `wrapH`.
+ */
+export function sideSlotHeight(scale: number, displayedCount: number): number {
+  const ring = SEAT_DISC * scale;
+  const drawn = Math.min(displayedCount, FAN_DRAWN_CARDS.left);
+  if (drawn <= 0) return ring;
+  return Math.max(ring, seatFanArc(drawn, scale * BACK_SCALE).bounds.w);
+}
+
+/** The top seat's own fan height for `displayedCount` backs. */
+function topFanHeight(scale: number, displayedCount: number): number {
+  const drawn = Math.min(displayedCount, FAN_DRAWN_CARDS.top);
+  if (drawn <= 0) return 0;
+  return seatFanArc(drawn, scale * BACK_SCALE).bounds.h;
+}
+
+export interface FlightOriginInput {
+  dir: FlyDirection;
+  scale: number;
+  windowWidth: number;
+  windowHeight: number;
+  tableLeft: number;
+  tableRight: number;
+  tableTop: number;
+  /** HAND_ZONE_H(handCardH, bottomPad) — the hand row's own height. */
+  handZoneH: number;
+  /**
+   * The top seat's displayed hand count (`displayedHandCount`) — needed
+   * because the pile sits in the space *below* the top seat, whichever seat
+   * is actually throwing. Ignored when `dir` is not "top".
+   */
+  topDisplayedCount: number;
+  /**
+   * …and the throwing side seat's, for the same reason: a side seat's slot is
+   * as tall as its fan, and the slot's own centre is where its ring sits.
+   * Ignored when `dir` is not "left" or "right".
+   */
+  sideDisplayedCount: number;
+}
+
+/**
+ * The delta a throw starts at: from the throwing seat's own point to the
+ * pile's. `FlyingCards` (components/table/pile.tsx) animates this toward
+ * zero, so the throw lands exactly where `PlayedPile` then redraws the same
+ * cards.
+ */
+export function flightOrigin(input: FlightOriginInput): { dx: number; dy: number } {
+  const { dir, scale } = input;
+
+  const ringSize = SEAT_DISC * scale;
+  // The column the top seat's label, ring and fan stack in — see
+  // components/table/seats.tsx `topOppSlot`. The pile sits in whatever
+  // vertical space that column leaves, whichever seat is actually throwing.
+  const topSectionH =
+    seatLabelH(scale) +
+    ringSize +
+    (input.topDisplayedCount > 0 ? SEAT_GAP + topFanHeight(scale, input.topDisplayedCount) : 0);
+  const contentH = input.windowHeight - input.tableTop;
+  const midH = contentH - topSectionH - input.handZoneH;
+  const pileCenterY = input.tableTop + topSectionH + midH / 2;
+
+  if (dir === "bottom") {
+    // The hand zone runs flush to the window's bottom edge (GameTable.tsx
+    // `handSection`, a flex sibling of the pile's own midSection), so its
+    // vertical centre sits `handZoneH / 2` above that edge.
+    const handCenterY = input.windowHeight - input.handZoneH / 2;
+    return { dx: 0, dy: handCenterY - pileCenterY };
+  }
+
+  if (dir === "top") {
+    const ringCenterY = input.tableTop + seatLabelH(scale) + ringSize / 2;
+    return { dx: 0, dy: ringCenterY - pileCenterY };
+  }
+
+  // A side seat's ring sits flush against the rail (or the opposite edge), and
+  // its column is anchored to the top of the mid band (components/table/
+  // chrome.tsx `sideSection`, `alignSelf`), so the ring rides the slot's own
+  // centre while the pile rides the band's.
+  const tableW = input.windowWidth - input.tableLeft - input.tableRight;
+  const pileCenterX = input.tableLeft + tableW / 2;
+  const ringCenterX =
+    dir === "left"
+      ? input.tableLeft + Spacing.sm + ringSize / 2
+      : input.windowWidth - input.tableRight - Spacing.sm - ringSize / 2;
+  const slotH = sideSlotHeight(scale, input.sideDisplayedCount);
+  return { dx: ringCenterX - pileCenterX, dy: (slotH - midH) / 2 };
+}
+
 /**
  * Identity of a played combination. Two different players playing the same
  * card ids is impossible, but the same player replaying an identical-looking
@@ -285,8 +483,8 @@ export function comboKey(combo: Combination, playedBy: number): string {
 }
 
 /** The old current becomes the faded layer; the new combination takes the top. */
-export function advancePile(state: PileState, combo: Combination): PileState {
-  return { prev: state.current, current: combo };
+export function advancePile(state: PileState, combo: Combination, playedBy: number): PileState {
+  return { prev: state.current, current: combo, playedBy };
 }
 
 /**
@@ -460,26 +658,6 @@ export function turnTimerActive(opts: {
   return true;
 }
 
-// ─── Start-card banner ────────────────────────────────────────────────────────
-
-/**
- * Italian copy for the pre-first-play banner. Existed offline only; the online
- * screen showed an empty pile instead.
- */
-export function startCardBannerText(opts: {
-  card: Card;
-  starterName: string;
-  viewerIsStarter: boolean;
-}): string {
-  // At 2 players the opening card can be the fallback "lowest dealt card"
-  // rather than the 3♠ (docs/RULES.md §4), so the suit is read off the card
-  // rather than assumed.
-  const label = `${getCardDisplayRank(opts.card.rank)}${getSuitSymbol(opts.card.suit)}`;
-  return opts.viewerIsStarter
-    ? `Inizi tu! Hai il ${label}`
-    : `${opts.starterName} inizia con il ${label}`;
-}
-
 // ─── Table frame ──────────────────────────────────────────────────────────────
 
 export interface EdgeInsets {
@@ -614,6 +792,23 @@ export function notificationTopOffset(opts: {
   return chipTop + CHIP_H(opts.scale) + PAD_INNER * opts.scale;
 }
 
+// ─── Who the viewer is ────────────────────────────────────────────────────────
+
+/**
+ * A watcher is handed a seat so the table has a bottom to draw from, but that
+ * seat is a real player they are not, so every question of identity answers no
+ * for them. Questions of *geometry* — which side a seat draws on — still use
+ * `viewerSeat` raw, because a watcher's table is laid out from a seat all the
+ * same. `tests/gameTableModel.test.ts` pins that identity never asks directly.
+ */
+export function viewerOwnsSeat(
+  seat: number | null,
+  viewerSeat: number,
+  spectating: boolean
+): boolean {
+  return !spectating && seat === viewerSeat;
+}
+
 // ─── Exchange phase ───────────────────────────────────────────────────────────
 
 export interface ExchangeView {
@@ -634,13 +829,17 @@ export const INACTIVE_EXCHANGE: ExchangeView = {
   loser: null,
 };
 
-export function readExchange(state: GameState, viewerSeat: number): ExchangeView {
+export function readExchange(
+  state: GameState,
+  viewerSeat: number,
+  spectating: boolean
+): ExchangeView {
   const phase = state.exchangePhase;
   if (!phase?.active) return INACTIVE_EXCHANGE;
   return {
     active: true,
-    viewerIsWinner: phase.winnerIdx === viewerSeat,
-    viewerIsLoser: phase.loserIdx === viewerSeat,
+    viewerIsWinner: viewerOwnsSeat(phase.winnerIdx, viewerSeat, spectating),
+    viewerIsLoser: viewerOwnsSeat(phase.loserIdx, viewerSeat, spectating),
     winner: state.players[phase.winnerIdx] ?? null,
     loser: state.players[phase.loserIdx] ?? null,
   };
@@ -753,4 +952,18 @@ const FACE_VALUE_RANK: Record<number, string> = {
  */
 export function straightTopRankChar(strength: number): string {
   return FACE_VALUE_RANK[strength] ?? String(strength);
+}
+
+// ─── The portrait cover's glyph ───────────────────────────────────────────────
+
+/** A landscape phone glyph stood on its end, which is how the player holds it. */
+export const ROTATE_UPRIGHT = 0;
+/** Lying down: the pose the prompt is asking for, and where it comes to rest. */
+export const ROTATE_SETTLED = 1;
+const UPRIGHT_DEGREES = 90;
+
+/** The glyph's angle at `turn`, upright at `ROTATE_UPRIGHT` and flat at `ROTATE_SETTLED`. */
+export function rotateGlyphAngle(turn: number): number {
+  "worklet";
+  return (ROTATE_SETTLED - turn) * UPRIGHT_DEGREES;
 }

@@ -6,8 +6,7 @@
 cd C:/Users/roton/murlan
 git log --oneline -5
 git status --porcelain
-npm run verify        # typecheck + unit/integration + native
-npm run lint          # whole repo; must be ZERO errors; CI enforces it
+npm run verify        # typecheck + unit/integration + native + lint; must be ZERO lint errors; CI enforces it
 ```
 
 Do not trust this file over the commands. It ages; they do not.

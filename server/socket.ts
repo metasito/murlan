@@ -658,6 +658,11 @@ export function setupSocket(httpServer: HttpServer) {
           if (!r.isBot) playerMap[idx] = r.userId;
         });
 
+        const [firstTarget] = targetsFor(roster.length);
+        if (firstTarget === undefined) {
+          throw new Error(`targetsFor(${roster.length}) returned no targets`);
+        }
+
         const newGame: OnlineGameState = {
           gameState,
           playerMap,
@@ -668,7 +673,7 @@ export function setupSocket(httpServer: HttpServer) {
           cumulativeScores: previous?.cumulativeScores ?? {},
           gameMode: room.gameMode,
           maxPlayers: room.maxPlayers,
-          matchTarget: previous?.matchTarget ?? targetsFor(roster.length)[0],
+          matchTarget: previous?.matchTarget ?? firstTarget,
           matchLength: matchLength ?? previous?.matchLength ?? "match",
           matchOver: previous?.matchOver ?? false,
           handFlags: {},
@@ -1236,10 +1241,27 @@ export function setupSocket(httpServer: HttpServer) {
 
           const currentRoomId = socketRoomMap.get(socket.id);
           socketRoomMap.delete(socket.id);
-          if (!currentRoomId) return;
+          // Three paths reach a return without announcing the drop, and from
+          // outside a seat that should have been released reads exactly like
+          // one that was never held. Which path ran is the whole diagnosis.
+          if (!currentRoomId) {
+            logger.debug({ userId, socketId: socket.id }, "Socket held no room");
+            return;
+          }
 
           // Still connected elsewhere — nothing to tear down.
-          if (userSocketMap.has(userId)) return;
+          if (userSocketMap.has(userId)) {
+            logger.debug(
+              {
+                userId,
+                socketId: socket.id,
+                roomId: currentRoomId,
+                liveSocketId: userSocketMap.get(userId),
+              },
+              "Account still holds another socket"
+            );
+            return;
+          }
 
           const game = activeGames.get(currentRoomId);
 
@@ -1248,6 +1270,10 @@ export function setupSocket(httpServer: HttpServer) {
             // there is nothing for a grace period to protect. The seat is
             // freed straight away or it keeps counting towards the rematch
             // gate and the remaining players can never start the next manche.
+            logger.debug(
+              { userId, socketId: socket.id, roomId: currentRoomId, hasGame: Boolean(game) },
+              "Seat released without a grace period"
+            );
             await handleSeatRelease(io, currentRoomId, userId, username, {
               source: "disconnect",
             });
@@ -1540,7 +1566,8 @@ async function handleSeatRelease(
     }
     let newHostId = room.hostUserId;
     if (room.hostUserId === userId) {
-      const nextHost = remaining.sort((a, b) => a.seatIndex - b.seatIndex)[0];
+      const [nextHost] = remaining.sort((a, b) => a.seatIndex - b.seatIndex);
+      if (!nextHost) throw new Error(`releaseSeat: room ${roomId} has no remaining players to host`);
       newHostId = nextHost.userId;
       await storage
         .updateRoomHost(roomId, newHostId)

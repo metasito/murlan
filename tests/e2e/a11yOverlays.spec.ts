@@ -212,6 +212,12 @@ test("no rank glyph clips at the table's font-scale cap", async ({ page, baseURL
   await openApp(page, baseURL!);
   await startOfflineGame(page, { playerCount: 4, gameMode: "free_for_all" });
   await page.locator(TABLE).waitFor({ timeout: 60_000 });
+  // Settled, not merely rendered. This measures a glyph's ink against the box
+  // that clips it, and a card still under a transform — the deal's own drop and
+  // rotate, or the hand changing size as the turn arrives (#344) — reports
+  // clipping the glyph does not actually have. The table is on screen well
+  // before any of that has finished.
+  await page.waitForTimeout(2_500);
 
   const atCap = await clippedGlyphs(page, TABLE_FONT_SCALE_MAX);
   expect(

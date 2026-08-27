@@ -57,6 +57,14 @@ function stubServer(overrides: Partial<Record<keyof GameOverWriters, Error>> = {
     recordGameResult: record("recordGameResult"),
     recordRatedResult: record("recordRatedResult"),
     saveReplay: record("saveReplay"),
+    // A read, not a write, and the one thing that must happen *before* the
+    // broadcast: the rating delta stops existing once the rated write lands.
+    previewRatedDeltas: (...args: unknown[]) => {
+      order.push("previewRatedDeltas");
+      calls.push({ name: "previewRatedDeltas" as keyof GameOverWriters, args });
+      const failure = overrides.previewRatedDeltas;
+      return failure ? Promise.reject(failure) : Promise.resolve(new Map<string, number>());
+    },
   } as unknown as GameOverWriters;
 
   return {
@@ -131,7 +139,23 @@ describe("handleGameOver — the broadcast", () => {
 
     await handleGameOver(s.io, ROOM, makeGame(), s.writers);
 
-    assert.equal(s.order[0], "game:over", "nothing is written ahead of the result");
+    // By name rather than by position: `previewRatedDeltas` runs first and is
+    // a read. What the guarantee is about is that no *write* is attempted
+    // before the table has been told.
+    const WRITES = [
+      "updateRoomStatus",
+      "persistGameState",
+      "recordGameResult",
+      "recordRatedResult",
+      "saveReplay",
+    ];
+    const emittedAt = s.order.indexOf("game:over");
+    const firstWrite = s.order.findIndex((name) => WRITES.includes(name));
+    assert.ok(emittedAt >= 0, "the table is told");
+    assert.ok(
+      firstWrite === -1 || emittedAt < firstWrite,
+      `nothing is written ahead of the result: ${s.order.join(" → ")}`
+    );
     assert.deepEqual(
       s.emitted.map((e) => e.event),
       ["game:over"],
@@ -194,6 +218,9 @@ describe("handleGameOver — the writes", () => {
     await handleGameOver(s.io, ROOM, game, s.writers);
 
     assert.deepEqual(s.names(), [
+      // First, and a read: the delta it returns cannot be recovered once the
+      // rated write below has landed.
+      "previewRatedDeltas",
       "updateRoomStatus",
       "persistGameState",
       "recordGameResult",
@@ -202,6 +229,14 @@ describe("handleGameOver — the writes", () => {
     ]);
 
     assert.deepEqual(s.of("updateRoomStatus")[0].args, [ROOM, "finished"]);
+
+    // One clock for the preview and the rated write: the season key is derived
+    // from it, and two `new Date()` calls can straddle a month boundary.
+    assert.equal(
+      s.of("previewRatedDeltas")[0].args[2],
+      s.of("recordRatedResult")[0].args[2],
+      "the delta is read for the same season it is written to"
+    );
 
     const persisted = s.of("persistGameState")[0].args;
     assert.equal(persisted[0], ROOM);

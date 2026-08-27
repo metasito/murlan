@@ -8,6 +8,38 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { buildCleanupCommands } from "../lib/ticketPipeline/cleanup.ts";
 
+// A run whose implement agent died leaves the tree it built uncommitted, and `--force` throws it
+// away without a word. #278's died after thirty-one file edits and no `git add`; the teardown
+// removed the worktree and the work was unrecoverable, because nothing was ever staged.
+//
+// The branch arm has refused to delete work since it was written. This is the same guard for the
+// other arm, and it fails closed: a `status` that cannot run keeps the worktree.
+test("a worktree holding uncommitted work is kept, not forced away", () => {
+  const [remove] = buildCleanupCommands({
+    worktreePath: "C:/w/agent-278",
+    dockerStarted: false,
+    localBranch: null,
+    merged: false,
+  });
+  assert.match(remove, /status --porcelain/, "removal does not look for uncommitted work first");
+  assert.match(remove, /git worktree remove/);
+  assert.ok(
+    remove.indexOf("status --porcelain") < remove.indexOf("git worktree remove"),
+    "the check has to run before the removal, not after it"
+  );
+});
+
+// The floor: a clean worktree must still be removed, or every run leaks one.
+test("a clean worktree is still removed", () => {
+  const [remove] = buildCleanupCommands({
+    worktreePath: "C:/w/agent-1",
+    dockerStarted: false,
+    localBranch: null,
+    merged: true,
+  });
+  assert.match(remove, /git worktree remove [^;]*--force/);
+});
+
 describe("building the cleanup command list", () => {
   test("a merged run with no worktree and no docker needs no teardown beyond the status check", () => {
     const cmds = buildCleanupCommands({ worktreePath: null, dockerStarted: false, localBranch: "agent/1-x", merged: true });
@@ -19,9 +51,38 @@ describe("building the cleanup command list", () => {
     assert.ok(cmds.includes("docker rm -f murlan-verify-pg"));
   });
 
-  test("a run in a worktree gets it force-removed", () => {
+  test("a run in a worktree gets it removed, once it is known to be clean", () => {
     const cmds = buildCleanupCommands({ worktreePath: ".worktrees/agent-1", dockerStarted: false, localBranch: null, merged: true });
-    assert.ok(cmds.includes("git worktree remove .worktrees/agent-1 --force"));
+    assert.ok(cmds.some((c) => c.includes("git worktree remove '.worktrees/agent-1' --force")));
+    assert.ok(cmds.some((c) => c.includes("git -C '.worktrees/agent-1' status --porcelain")));
+  });
+
+  test("a Windows worktree path is converted and quoted before it reaches a command", () => {
+    const cmds = buildCleanupCommands({
+      worktreePath: "C:\\Users\\dev\\murlan-wt-42",
+      dockerStarted: false,
+      localBranch: null,
+      merged: true,
+      platform: "win32",
+    });
+    assert.ok(cmds.some((c) => c.includes("git worktree remove '/c/Users/dev/murlan-wt-42' --force")));
+    assert.ok(
+      !cmds.some((c) => c.includes("C:\\")),
+      "a backslash path reaching a bash command is what created the murlan-wt-294;C directory"
+    );
+  });
+
+  test("the administrative registration is pruned after the removal", () => {
+    const cmds = buildCleanupCommands({ worktreePath: "../murlan-wt-42", dockerStarted: false, localBranch: null, merged: true });
+    const remove = cmds.findIndex((c) => c.startsWith("git worktree remove"));
+    const prune = cmds.indexOf("git worktree prune");
+    assert.ok(prune !== -1, "expected git worktree prune");
+    assert.ok(remove < prune, "prune has to follow the removal it is cleaning up after");
+  });
+
+  test("no worktree means no teardown commands for one", () => {
+    const cmds = buildCleanupCommands({ worktreePath: null, dockerStarted: false, localBranch: null, merged: true });
+    assert.ok(!cmds.some((c) => c.includes("node_modules") || c.includes("git worktree")));
   });
 
   test("an abandoned (not merged) run guards the branch delete instead of issuing it bare", () => {

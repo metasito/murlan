@@ -12,11 +12,43 @@
 //   node scripts/bundle-report.mjs > docs/BUNDLE.md
 
 import fs from "node:fs";
+import { createRequire } from "node:module";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(__dirname, "..");
+const require = createRequire(import.meta.url);
+
+/**
+ * A dependency's own install directory — found by resolving its entry point
+ * and walking up to the nearest package.json whose name matches, not by
+ * joining `ROOT + "node_modules" + name`: a git worktree has no
+ * `node_modules` of its own and depends on Node's ancestor lookup finding
+ * the real one. `null` when the package cannot be resolved at all.
+ */
+function resolvePackageDir(name) {
+  let entry;
+  try {
+    entry = require.resolve(name);
+  } catch {
+    return null;
+  }
+  let dir = path.dirname(entry);
+  for (;;) {
+    const pkgJsonPath = path.join(dir, "package.json");
+    if (fs.existsSync(pkgJsonPath)) {
+      try {
+        if (JSON.parse(fs.readFileSync(pkgJsonPath, "utf8")).name === name) return dir;
+      } catch {
+        // malformed package.json above the entry point — keep walking up
+      }
+    }
+    const parent = path.dirname(dir);
+    if (parent === dir) return null;
+    dir = parent;
+  }
+}
 
 /** Recursively sum file sizes under `dir`. Skips symlinks to avoid cycles. */
 function dirSize(dir) {
@@ -90,9 +122,8 @@ function buildDependencyReport() {
   const pkg = JSON.parse(fs.readFileSync(pkgPath, "utf8"));
   const deps = Object.keys(pkg.dependencies || {});
   const rows = deps.map((name) => {
-    const dir = path.join(ROOT, "node_modules", ...name.split("/"));
-    const size = fs.existsSync(dir) ? dirSize(dir) : 0;
-    return { name, size, installed: fs.existsSync(dir) };
+    const dir = resolvePackageDir(name);
+    return { name, size: dir ? dirSize(dir) : 0, installed: dir !== null };
   });
   const sorted = sortLargestFirst(rows, "name");
   const total = rows.reduce((sum, r) => sum + r.size, 0);

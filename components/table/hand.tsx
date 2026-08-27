@@ -8,6 +8,7 @@ import Animated, {
   withTiming,
   withDelay,
   cancelAnimation,
+  Easing,
 } from "react-native-reanimated";
 import Ionicons from "@expo/vector-icons/Ionicons";
 import { CardView } from "@/components/CardView";
@@ -18,7 +19,15 @@ import type { Card } from "@/lib/gameEngine";
 import { computeHandLayout } from "@/components/handLayout";
 import { HAND_ARC, solveArc } from "@/components/tableArc";
 import { HAND_CROP, HAND_ROW_HEADROOM } from "@/components/gameTableModel";
-import { CARD_W, CARD_H, CARD_BACK_W, CARD_BACK_H, HAND_SCALE } from "@/components/cardFaceModel";
+import {
+  CARD_W,
+  CARD_H,
+  CARD_BACK_W,
+  CARD_BACK_H,
+  HAND_NEAR_RATIO,
+  HAND_SCALE,
+  HAND_SCALE_ON_TURN,
+} from "@/components/cardFaceModel";
 
 // ─── CardItem ─────────────────────────────────────────────────────────────────
 //
@@ -30,9 +39,16 @@ import { CARD_W, CARD_H, CARD_BACK_W, CARD_BACK_H, HAND_SCALE } from "@/componen
 // picked up. The rotation is what stops the lift reading as a flat slide.
 const SELECT_LIFT = -16;
 const SELECT_TILT = -3;
-const DEAL_TILT = 14;
-// Where a dealt card comes from: up and in, i.e. the middle of the table.
-const DEAL_RISE_FACTOR = -2.2;
+// A deal drops from above the table, not up out of the middle of it — a fixed
+// distance (scaled with the hand), not one derived from the card's own
+// height. Every value here is the prototype's own `deal` keyframe verbatim,
+// short of its scale-from-0.7: `tests/e2e/a11yOverlays.spec.ts` measures a
+// rank glyph's own ink overflow in untransformed px, so a `scale` transform
+// on the card — unlike its translate and rotate — reads as new clipping the
+// glyph never actually has.
+const DEAL_RISE_PX = -170;
+const DEAL_DURATION_MS = 500;
+const DEAL_EASING = Easing.bezier(0.2, 0.85, 0.3, 1);
 
 interface CardItemProps {
   card: Card;
@@ -98,7 +114,7 @@ function CardItemBase({
     if (dealing.value === 0) return;
     dealing.value = withDelay(
       dealDelayRef.current,
-      withSpring(0, Motion.spring.land)
+      withTiming(0, { duration: DEAL_DURATION_MS, easing: DEAL_EASING })
     );
   }, [dealing]);
 
@@ -126,12 +142,15 @@ function CardItemBase({
 
   const aStyle = useAnimatedStyle(() => {
     const d = dealing.value;
+    // The deal starts upright (0deg) and rotates into the card's own resting
+    // tilt as it lands, rather than overshooting past it.
+    const restRot = arcRot + tilt.value;
     return {
       opacity: 1 - d,
       transform: [
         { translateX: dealFromX * d },
         { translateY: liftY.value + dealRise * d },
-        { rotate: `${arcRot + tilt.value + DEAL_TILT * d}deg` },
+        { rotate: `${restRot * (1 - d)}deg` },
       ],
     };
   });
@@ -200,6 +219,21 @@ function cardItemPropsEqual(a: CardItemProps, b: CardItemProps): boolean {
 const CardItem = React.memo(CardItemBase, cardItemPropsEqual);
 CardItem.displayName = "CardItem";
 
+// ─── The two sizes ────────────────────────────────────────────────────────────
+//
+// The hand is drawn bigger while the turn is the viewer's own — nearer, so
+// bigger, and so the same fraction more air between the cards, because the
+// share the row aims at grows with the card (`HAND_NEAR_RATIO`).
+//
+// Both sizes are real layout, and the change between them is not animated.
+// That is a platform constraint, not a preference: web rasterises text before
+// transforming it (docs/agents/loops.md, React Native Web traps), so a card
+// under a `scale` carries a distorted rank glyph for as long as the transform
+// lasts — `tests/e2e/a11yOverlays.spec.ts` measures exactly that and reports
+// clipping the glyph does not have. A turn changes hands every few seconds, so
+// an eased size would be running whenever anything looked. #420 holds the
+// transition, and what it would have to avoid.
+
 // ─── StraightHand ─────────────────────────────────────────────────────────────
 
 export function StraightHand({
@@ -229,7 +263,12 @@ export function StraightHand({
 }) {
   const { t } = useTranslation();
   const n = cards.length;
-  const cardScale = scale * HAND_SCALE;
+  const onTurn = isMyTurn === true;
+  // Bigger cards *and* the same fraction more air between them: the share the
+  // row aims at grows with the card, so the fan opens rather than just
+  // overlapping harder at a larger size.
+  const cardScale = scale * (onTurn ? HAND_SCALE_ON_TURN : HAND_SCALE);
+  const room = onTurn ? roomW * HAND_NEAR_RATIO : roomW;
   // A spectated hand draws backs (CardItem passes faceDown straight to
   // CardView), which are their own narrower aspect — the row's own layout
   // math has to size against the same dimensions CardView actually draws.
@@ -239,7 +278,7 @@ export function StraightHand({
   // its foot is lost, and the row keeps the height that buys for the table.
   const crop = cardH * HAND_CROP;
   const visibleH = cardH - crop;
-  const dealRise = cardH * DEAL_RISE_FACTOR;
+  const dealRise = DEAL_RISE_PX * cardScale;
   // O(1) membership check per card instead of `selectedIds.includes(card.id)`
   // (an O(k) scan repeated for every one of the up to 21 cards in a hand).
   // Computed before the early return below — Rules of Hooks requires every
@@ -260,7 +299,7 @@ export function StraightHand({
   // hand of twenty-one compresses inside the same span rather than reaching
   // past it. Only `availW` is hard: past that the row scrolls. Solved above
   // the empty-hand return so the scroll effect below it can be a hook.
-  const { step, totalW, scrollable } = computeHandLayout(n, roomW, cardW, availW);
+  const { step, totalW, scrollable } = computeHandLayout(n, room, cardW, availW);
   const rowW = Math.min(totalW, availW);
   /** How much of a scrolling row lies outside the window, both ends together. */
   const overhang = Math.max(0, totalW - availW);

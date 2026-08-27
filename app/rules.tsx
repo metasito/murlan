@@ -117,10 +117,10 @@ export default function RulesScreen() {
             style={StyleSheet.absoluteFill}
           />
           <View style={styles.heroSuits}>
-            {["♠", "♥", "♦", "♣"].map((s, i) => (
+            {["♠", "♥", "♦", "♣"].map((s) => (
               <Text
                 key={s}
-                style={[styles.heroSuit, { color: i % 2 === 0 ? Colors.textMuted : Colors.red }]}
+                style={[styles.heroSuit, { color: s === "♥" ? Colors.heart : s === "♦" ? Colors.diamond : Colors.textMuted }]}
               >
                 {s}
               </Text>

@@ -2,22 +2,34 @@ import { useEffect } from "react";
 import { View, StyleSheet } from "react-native";
 import { TableText } from "./TableText";
 import { ChipText, TableChip } from "./chrome";
-import { CHIP_H, FAN_DRAWN_CARDS, SIDE_SECTION_W } from "@/components/gameTableModel";
+import {
+  FAN_DRAWN_CARDS,
+  SEAT_DISC,
+  SEAT_GAP,
+  displayedHandCount,
+  fanCounts,
+  impactDelayMs,
+  seatFanArc,
+  seatLabelH,
+} from "@/components/gameTableModel";
 import Animated, {
   useAnimatedProps,
   useAnimatedStyle,
   useSharedValue,
   withTiming,
+  withRepeat,
+  interpolate,
   Easing,
   cancelAnimation,
+  type SharedValue,
 } from "react-native-reanimated";
 import Svg, { Circle } from "react-native-svg";
 import Ionicons from "@expo/vector-icons/Ionicons";
 import { LinearGradient } from "expo-linear-gradient";
 import { CardView } from "@/components/CardView";
-import { arcBounds, SEAT_ARC, solveArc } from "@/components/tableArc";
+import type { ArcCard } from "@/components/tableArc";
 import type { OpponentSide } from "@/components/gameTableModel";
-import { CARD_BACK_H, CARD_BACK_W, BACK_SCALE } from "@/components/cardFaceModel";
+import { BACK_SCALE } from "@/components/cardFaceModel";
 import { Colors, makeShadow, Motion, Radius, Spacing } from "@/lib/theme";
 import { usePrefersReducedMotion } from "@/lib/accessibility";
 import { useTranslation } from "@/lib/i18n";
@@ -42,35 +54,133 @@ const FAN_PERSPECTIVE = 560;
 /** A quarter turn per side, so one construction serves all three seats. */
 const FAN_TURN: Record<OpponentSide, number> = { top: 0, left: -90, right: 90 };
 
+/**
+ * How far a departing back lifts (deg 1, points at scale 1) while it fades,
+ * so the exit reads as a card leaving rather than a count ticking down.
+ */
+const FAN_EXIT_LIFT = 14;
+
+/** A remaining back eases toward `to`; a departing one lifts and fades in place. */
+type FanDest = { departing: true } | { departing: false; to: ArcCard };
+
+/**
+ * One back, positioned as a `transform` throughout — including the static
+ * case — so an exit or a re-solve is never anything but a change to a shared
+ * value already being read every frame. `from` is where every back in this
+ * fan sits until a departure begins.
+ */
+function FanBack({
+  from,
+  dest,
+  progress,
+  boxW,
+  backScale,
+  liftPx,
+  isActive,
+  zIndex,
+}: {
+  from: ArcCard;
+  dest: FanDest;
+  /** 0 at the throw's first frame, 1 once it has landed. */
+  progress: SharedValue<number>;
+  boxW: number;
+  backScale: number;
+  liftPx: number;
+  isActive: boolean;
+  zIndex: number;
+}) {
+  const aStyle = useAnimatedStyle(() => {
+    const t = progress.value;
+    if (dest.departing) {
+      return {
+        opacity: 1 - t,
+        transform: [
+          { translateX: boxW / 2 + from.x },
+          { translateY: from.y - liftPx * t },
+          { rotate: `${from.rot}deg` },
+        ],
+      };
+    }
+    const { to } = dest;
+    return {
+      opacity: 1,
+      transform: [
+        { translateX: boxW / 2 + from.x + (to.x - from.x) * t },
+        { translateY: from.y + (to.y - from.y) * t },
+        { rotate: `${from.rot + (to.rot - from.rot) * t}deg` },
+      ],
+    };
+  });
+
+  return (
+    <Animated.View
+      testID={dest.departing ? "seat-back-departing" : "seat-back"}
+      style={[{ position: "absolute", zIndex }, aStyle]}
+    >
+      <CardView
+        card={{ id: "bk", suit: null, rank: "3", isJoker: false }}
+        faceDown
+        scale={backScale}
+        light={isActive ? "standingLit" : "standing"}
+      />
+    </Animated.View>
+  );
+}
+
 function CardFan({
   count,
+  departing = 0,
   side,
   isActive,
   scale = 1,
 }: {
+  /** The seat's displayed count — `handCountOf` plus whatever is in flight. */
   count: number;
+  /**
+   * How many of `count` are mid-flight and should lift and fade out of the
+   * fan rather than sit in it. `displayedHandCount`'s own two-term sum is
+   * what this and `count` come from, so the fan can never draw more backs
+   * than the badge claims or fewer than the flight is actually carrying.
+   */
+  departing?: number;
   side: OpponentSide;
   /** This seat is on move, so the lamp is over it and its backs are lit. */
   isActive: boolean;
   /** The table's own scale — the fan draws its backs at `scale * BACK_SCALE`. */
   scale?: number;
 }) {
+  // Every hook above and below runs unconditionally, before the early return
+  // past them: count can go from a real hand to 0 (a player going out) on any
+  // render, and a hook called only on some of those renders is exactly the
+  // "changed order" React refuses to tolerate.
+  const reduceMotion = usePrefersReducedMotion();
+  const { remaining, departing: cappedDeparting } = fanCounts(count, departing, FAN_DRAWN_CARDS[side]);
+  const cappedTotal = remaining + cappedDeparting;
+  const hasDeparture = cappedDeparting !== 0;
+
+  const progress = useSharedValue(hasDeparture ? 0 : 1);
+  useEffect(() => {
+    if (!hasDeparture) {
+      progress.value = 1;
+      return;
+    }
+    progress.value = 0;
+    progress.value = withTiming(1, { duration: impactDelayMs(reduceMotion) });
+    return () => cancelAnimation(progress);
+  }, [hasDeparture, reduceMotion, progress]);
+
   if (count === 0) return null;
-  const drawn = Math.min(count, FAN_DRAWN_CARDS[side]);
+
   const backScale = scale * BACK_SCALE;
-  const backW = CARD_BACK_W(backScale);
-  const backH = CARD_BACK_H(backScale);
   // A fan is never width-budgeted: the seat's own column bounds it, and it is
-  // the rise that actually binds.
-  const { cards, box } = solveArc(drawn, {
-    budget: SEAT_ARC,
-    cardW: backW,
-    cardH: backH,
-    scale: backScale,
-    room: Infinity,
-    flip: true,
-  });
-  const bounds = arcBounds(cards, box, backW, backH);
+  // the rise that actually binds. `full` is where every back — remaining and
+  // departing alike — sits until a departure resolves; `settled` is only
+  // where the *remaining* ones are headed, one solve for a smaller count
+  // rather than a hand-picked subset of the larger one, which is what keeps
+  // the step between them from reading as a jump.
+  const full = seatFanArc(cappedTotal, backScale);
+  const settled = cappedDeparting === 0 ? full : seatFanArc(remaining, backScale);
+  const bounds = full.bounds;
 
   // The wrapper is what the cards occupy once turned, so the seat's own row or
   // column reserves exactly that and the ring-to-fan gap is one number on all
@@ -78,14 +188,15 @@ function CardFan({
   const turn = FAN_TURN[side];
   const wrapW = turn === 0 ? bounds.w : bounds.h;
   const wrapH = turn === 0 ? bounds.h : bounds.w;
+  const liftPx = FAN_EXIT_LIFT * backScale;
 
   return (
     <View style={{ width: wrapW, height: wrapH }}>
       <View
         style={{
           position: "absolute",
-          width: box.w,
-          height: box.h,
+          width: full.box.w,
+          height: full.box.h,
           left: wrapW / 2 - bounds.cx,
           top: wrapH / 2 - bounds.cy,
           transformOrigin: [bounds.cx, bounds.cy, 0],
@@ -96,25 +207,18 @@ function CardFan({
           ],
         }}
       >
-        {cards.map((card, i) => (
-          <View
+        {full.cards.map((card, i) => (
+          <FanBack
             key={i}
-            testID="seat-back"
-            style={{
-              position: "absolute",
-              left: box.w / 2 + card.x,
-              top: card.y,
-              transform: [{ rotate: `${card.rot}deg` }],
-              zIndex: i,
-            }}
-          >
-            <CardView
-              card={{ id: `bk${i}`, suit: null, rank: "3", isJoker: false }}
-              faceDown
-              scale={backScale}
-              light={isActive ? "standingLit" : "standing"}
-            />
-          </View>
+            from={card}
+            dest={i < remaining ? { departing: false, to: settled.cards[i] } : { departing: true }}
+            progress={progress}
+            boxW={full.box.w}
+            backScale={backScale}
+            liftPx={liftPx}
+            isActive={isActive}
+            zIndex={i}
+          />
         ))}
       </View>
     </View>
@@ -128,8 +232,6 @@ function CardFan({
 // middle, the cards left in a badge at its foot, and, while the seat is on
 // move, the turn's own clock sweeping the rim.
 
-/** The disc's diameter at scale 1. Everything else on the seat derives from it. */
-const SEAT_DISC = 33;
 /** How far the countdown ring stands off the disc, and how thick it is drawn. */
 const RING_GAP = 4;
 const RING_STROKE = 2;
@@ -201,6 +303,10 @@ function CountdownRing({
   );
 }
 
+/** One full brighten-and-fade cycle of the focus-mode breathing ring. */
+const BREATHE_MS = 3400;
+const BREATHE_GLOW = 30;
+
 function SeatRing({
   name,
   isActive,
@@ -208,6 +314,7 @@ function SeatRing({
   finishPos,
   scale,
   countdown,
+  focusMode = false,
 }: {
   name: string;
   isActive: boolean;
@@ -216,6 +323,8 @@ function SeatRing({
   scale: number;
   /** The turn window, on the seat that is on move. Absent on every other seat. */
   countdown?: { seconds: number; resetKey: string };
+  /** The felt and this ring are what carry the turn — everything else on the seat is quiet. */
+  focusMode?: boolean;
 }) {
   // One shot when the seat takes the turn: the ring itself says who is on move
   // for as long as it lasts, so this only has to catch the eye at the handover.
@@ -248,6 +357,29 @@ function SeatRing({
     opacity: pingOpacity.value,
     transform: [{ scale: pingScale.value }],
   }));
+
+  // Focus mode strips every other turn signal off the felt, so the ring on
+  // move has to carry that on its own — a slow breathe, on a loop for as
+  // long as the turn lasts, not a one-shot like the ping above.
+  const breathe = useSharedValue(0);
+  const breathing = isActive && focusMode && !reduceMotion;
+  useEffect(() => {
+    if (!breathing) {
+      cancelAnimation(breathe);
+      breathe.value = 0;
+      return;
+    }
+    breathe.value = withRepeat(
+      withTiming(1, { duration: BREATHE_MS / 2, easing: Easing.inOut(Easing.sin) }),
+      -1,
+      true
+    );
+    return () => cancelAnimation(breathe);
+  }, [breathing, breathe]);
+  const breatheStyle = useAnimatedStyle(() => ({
+    opacity: isActive && focusMode ? interpolate(breathe.value, [0, 1], [0.35, 1]) : 0,
+  }));
+
   const initials = name
     .split(" ")
     .map((w) => w[0])
@@ -257,6 +389,7 @@ function SeatRing({
 
   const size = SEAT_DISC * scale;
   const badge = SEAT_BADGE * scale;
+  const showCount = finishPos !== undefined || !focusMode;
   return (
     <View testID="seat-ring" style={{ width: size, height: size }}>
       <Animated.View
@@ -265,6 +398,15 @@ function SeatRing({
           seatStyles.ringPing,
           { width: size, height: size, borderRadius: size / 2, borderWidth: RING_STROKE * scale },
           pingStyle,
+        ]}
+      />
+      <Animated.View
+        testID="seat-ring-breathe"
+        pointerEvents="none"
+        style={[
+          { position: "absolute", width: size, height: size, borderRadius: size / 2 },
+          makeShadow(Colors.goldLit, 0, 0, 0.6, BREATHE_GLOW * scale, 0),
+          breatheStyle,
         ]}
       />
       <LinearGradient
@@ -293,28 +435,30 @@ function SeatRing({
           scale={scale}
         />
       )}
-      <View
-        testID="seat-card-count"
-        style={[
-          seatStyles.countBubble,
-          finishPos !== undefined && seatStyles.countBubbleFinished,
-          {
-            minWidth: badge,
-            height: badge,
-            borderRadius: badge / 2,
-            bottom: -RING_GAP * scale,
-            right: -RING_GAP * scale,
-          },
-        ]}
-      >
-        {finishPos !== undefined ? (
-          <Ionicons name="trophy" size={badge * 0.5} color={Colors.gold} />
-        ) : (
-          <TableText style={[seatStyles.countBubbleText, { fontSize: SEAT_BADGE_FS * scale }]}>
-            {cardCount}
-          </TableText>
-        )}
-      </View>
+      {showCount && (
+        <View
+          testID="seat-card-count"
+          style={[
+            seatStyles.countBubble,
+            finishPos !== undefined && seatStyles.countBubbleFinished,
+            {
+              minWidth: badge,
+              height: badge,
+              borderRadius: badge / 2,
+              bottom: -RING_GAP * scale,
+              right: -RING_GAP * scale,
+            },
+          ]}
+        >
+          {finishPos !== undefined ? (
+            <Ionicons name="trophy" size={badge * 0.5} color={Colors.gold} />
+          ) : (
+            <TableText style={[seatStyles.countBubbleText, { fontSize: SEAT_BADGE_FS * scale }]}>
+              {cardCount}
+            </TableText>
+          )}
+        </View>
+      )}
     </View>
   );
 }
@@ -352,21 +496,29 @@ export function TopOppSlot({
   player,
   isActive,
   cardCount,
+  departing = 0,
   passed = false,
   scale = 1,
   countdown,
+  focusMode = false,
 }: {
   player: Player;
   isActive: boolean;
   cardCount?: number;
+  /** Cards this seat just threw that are still mid-flight — see displayedHandCount. */
+  departing?: number;
   /** This seat has passed in the round on the table. */
   passed?: boolean;
   /** The table's own scale — the seat's fan draws its backs at `scale * BACK_SCALE`. */
   scale?: number;
   /** The turn window, so the seat on move can sweep its own rim. */
   countdown?: { seconds: number; resetKey: string };
+  /** Cards only: the name, the badges and the card count fall away. */
+  focusMode?: boolean;
 }) {
-  const count = cardCount ?? player.hand.length;
+  // The fan and the badge read one number, held at its pre-play value for as
+  // long as the flight is up — see displayedHandCount.
+  const displayed = displayedHandCount(cardCount ?? player.hand.length, departing);
   return (
     <View
       testID="top-seat"
@@ -379,14 +531,15 @@ export function TopOppSlot({
       <SeatWho
         name={player.name}
         isActive={isActive}
-        count={count}
+        count={displayed}
         finishPos={player.finishPosition}
         passed={passed}
         scale={scale}
         countdown={countdown}
+        focusMode={focusMode}
       />
-      {player.finishPosition === undefined && count > 0 && (
-        <CardFan count={count} side="top" isActive={isActive} scale={scale} />
+      {player.finishPosition === undefined && displayed > 0 && (
+        <CardFan count={displayed} departing={departing} side="top" isActive={isActive} scale={scale} />
       )}
     </View>
   );
@@ -410,6 +563,7 @@ function SeatWho({
   scale,
   countdown,
   anchor = "centre",
+  focusMode = false,
 }: {
   name: string;
   isActive: boolean;
@@ -424,6 +578,7 @@ function SeatWho({
    * own column, so a label centred there hangs off the screen.
    */
   anchor?: "centre" | "left" | "right";
+  focusMode?: boolean;
 }) {
   const disc = SEAT_DISC * scale;
   const labelW = anchor === "centre" ? OPP_LABEL_MAX_W * scale : SIDE_LABEL_MAX_W;
@@ -431,29 +586,32 @@ function SeatWho({
     anchor === "centre" ? (disc - labelW) / 2 : anchor === "left" ? 0 : disc - labelW;
   return (
     <View style={seatStyles.who}>
-      <View
-        style={[
-          seatStyles.whoLabel,
-          { width: labelW, left: labelLeft, bottom: disc },
-          anchor === "left" && seatStyles.whoLabelLeft,
-          anchor === "right" && seatStyles.whoLabelRight,
-        ]}
-        pointerEvents="none"
-      >
-        <TableText
+      {!focusMode && (
+        <View
           style={[
-            seatStyles.oppName,
-            // The cap rides the scale the glyphs do; fixed, it ellipsises
-            // every name above a phone's own scale.
-            { fontSize: SEAT_NAME_FS * scale, maxWidth: labelW },
-            isActive && seatStyles.oppNameActive,
+            seatStyles.whoLabel,
+            { width: labelW, left: labelLeft, bottom: disc },
+            anchor === "left" && seatStyles.whoLabelLeft,
+            anchor === "right" && seatStyles.whoLabelRight,
           ]}
-          numberOfLines={1}
+          pointerEvents="none"
         >
-          {name}
-        </TableText>
-        <SeatBadges passed={passed} scale={scale} maxW={labelW} />
-      </View>
+          <TableText
+            testID="seat-name"
+            style={[
+              seatStyles.oppName,
+              // The cap rides the scale the glyphs do; fixed, it ellipsises
+              // every name above a phone's own scale.
+              { fontSize: SEAT_NAME_FS * scale, maxWidth: labelW },
+              isActive && seatStyles.oppNameActive,
+            ]}
+            numberOfLines={1}
+          >
+            {name}
+          </TableText>
+          <SeatBadges passed={passed} scale={scale} maxW={labelW} />
+        </View>
+      )}
       <SeatRing
         name={name}
         isActive={isActive}
@@ -461,6 +619,7 @@ function SeatWho({
         finishPos={finishPos}
         scale={scale}
         countdown={countdown}
+        focusMode={focusMode}
       />
     </View>
   );
@@ -473,22 +632,28 @@ export function SideOppSlot({
   isActive,
   side,
   cardCount,
+  departing = 0,
   passed = false,
   scale = 1,
   countdown,
+  focusMode = false,
 }: {
   player: Player;
   isActive: boolean;
   side: "left" | "right";
   cardCount?: number;
+  /** Cards this seat just threw that are still mid-flight — see displayedHandCount. */
+  departing?: number;
   /** This seat has passed in the round on the table. */
   passed?: boolean;
   /** The table's own scale — the seat's fan draws its backs at `scale * BACK_SCALE`. */
   scale?: number;
   /** The turn window, so the seat on move can sweep its own rim. */
   countdown?: { seconds: number; resetKey: string };
+  /** Cards only: the name, the badges and the card count fall away. */
+  focusMode?: boolean;
 }) {
-  const count = cardCount ?? player.hand.length;
+  const displayed = displayedHandCount(cardCount ?? player.hand.length, departing);
   const isLeft = side === "left";
   return (
     <View
@@ -502,15 +667,16 @@ export function SideOppSlot({
       <SeatWho
         name={player.name}
         isActive={isActive}
-        count={count}
+        count={displayed}
         finishPos={player.finishPosition}
         passed={passed}
         scale={scale}
         countdown={countdown}
         anchor={isLeft ? "left" : "right"}
+        focusMode={focusMode}
       />
-      {count > 0 && player.finishPosition === undefined && (
-        <CardFan count={count} side={side} isActive={isActive} scale={scale} />
+      {displayed > 0 && player.finishPosition === undefined && (
+        <CardFan count={displayed} departing={departing} side={side} isActive={isActive} scale={scale} />
       )}
     </View>
   );
@@ -526,26 +692,17 @@ export function SideOppSlot({
  */
 const OPP_LABEL_MAX_W = 104 + Spacing.xs * 2;
 /**
- * …and what a side seat gets, in points rather than a multiple of the scale.
- * Its column is `SIDE_SECTION_W` wide whatever the table's scale, so a label
- * measured in scaled points outgrows the column on a big screen and is drawn
- * off the edge of it — which is what tests/e2e/tableFit.spec.ts caught.
+ * …and what a side seat gets, in points rather than a multiple of the scale: a
+ * label measured in scaled points outgrows its fixed column on a big screen and
+ * is drawn off the edge of it, which is what tests/e2e/tableFit.spec.ts caught.
+ *
+ * Wider than `SIDE_SECTION_W`, and not derived from it. The plate leans inward
+ * over the felt the way the fan does (`whoLabelLeft`), so the column is not its
+ * bound — while the floor above is real: at 80 this ellipsises "Besnik".
  */
-const SIDE_LABEL_MAX_W = SIDE_SECTION_W - Spacing.sm * 2;
-/** Ring to fan, the same on every seat — see SeatWho. */
-const SEAT_GAP = Spacing.slim;
+const SIDE_LABEL_MAX_W = 114;
 /** How far a seat recedes while another one is on move. */
 const SEAT_DIM_OPACITY = 0.62;
-/**
- * The band the floating label needs above the disc: the name's own line, plus
- * the badge row, which is a chip and therefore scales with the table. A fixed
- * number here is the top seat's name drawn off the top of the screen — the
- * column reserves this, and only the top seat has a screen edge above it.
- */
-function seatLabelH(scale: number): number {
-  return SEAT_NAME_LINE * scale + CHIP_H(scale) + Spacing.xs;
-}
-const SEAT_NAME_LINE = 17;
 /** The count badge's own diameter, and the digit inside it, at scale 1. */
 const SEAT_BADGE = 18;
 const SEAT_BADGE_FS = 10;

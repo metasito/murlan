@@ -40,8 +40,12 @@ const banner = (
   </SafeAreaProvider>
 );
 
+// Geometry, not reachability: with nothing to announce the banner is out of the
+// accessibility tree, which is where the default query looks.
+const HIDDEN = { includeHiddenElements: true };
+
 const bannerTop = () =>
-  StyleSheet.flatten(screen.getByTestId('notification-banner').props.style).top as number;
+  StyleSheet.flatten(screen.getByTestId('notification-banner', HIDDEN).props.style).top as number;
 
 describe('the notification banner', () => {
   it('starts below the HUD chips the game table draws, in landscape', async () => {
@@ -68,7 +72,35 @@ describe('the notification banner', () => {
     mockWindow = LANDSCAPE;
     const r = await render(banner);
 
-    expect(screen.getByTestId('notification-banner')).toBeTruthy();
+    expect(screen.getByTestId('notification-banner', HIDDEN)).toBeTruthy();
+
+    await r.unmount();
+  });
+
+  // Always mounted means its close button is in the accessibility tree for the
+  // whole session, announced and tabbable over a banner nobody can see.
+  // `pointerEvents: "none"` answers for the pointer and for nothing else.
+  it('offers no control while there is nothing to announce', async () => {
+    mockWindow = LANDSCAPE;
+    const r = await render(banner);
+
+    expect(screen.queryAllByRole('button', { includeHiddenElements: false })).toHaveLength(0);
+
+    await r.unmount();
+  });
+
+  it('gives the control back with the notification', async () => {
+    mockWindow = LANDSCAPE;
+    const r = await render(
+      <SafeAreaProvider initialMetrics={METRICS}>
+        <NotificationBanner
+          notification={{ type: 'game_info', title: 'Tocca a te', message: 'Gioca una carta' }}
+          onDismiss={noop}
+        />
+      </SafeAreaProvider>
+    );
+
+    expect(screen.queryAllByRole('button', { includeHiddenElements: false })).toHaveLength(1);
 
     await r.unmount();
   });

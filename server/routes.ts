@@ -208,9 +208,17 @@ function requireAuth(req: Request, res: Response, next: () => void) {
 // user row already exists, so either one failing leaves the same orphan: the
 // account is created but unreachable, and its username is permanently taken.
 // Both failure paths call this so the rollback isn't duplicated.
-async function rollbackRegistration(userId: string, res: Response) {
+async function rollbackRegistration(req: Request, userId: string, res: Response) {
   await storage.deleteUser(userId).catch((cleanupErr) =>
     logger.error({ cleanupErr, userId }, "Failed to roll back orphaned registration")
+  );
+  // express-session retries the save at `res.end` for as long as a session is
+  // attached, and the save is what just failed.
+  await new Promise<void>((resolve) =>
+    req.session.destroy((destroyErr) => {
+      if (destroyErr) logger.error({ destroyErr, userId }, "Failed to drop the session after a failed registration");
+      resolve();
+    })
   );
   res.status(500).json({ message: "Internal server error", code: "INTERNAL_SERVER_ERROR" });
 }
@@ -245,14 +253,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
     req.session.regenerate((regenErr) => {
       if (regenErr) {
         logger.error({ err: regenErr }, "Session regenerate failed on register");
-        void rollbackRegistration(user.id, res);
+        void rollbackRegistration(req, user.id, res);
         return;
       }
       req.session.userId = user.id;
       req.session.save((err) => {
         if (err) {
           logger.error({ err }, "Session save failed on register");
-          void rollbackRegistration(user.id, res);
+          void rollbackRegistration(req, user.id, res);
           return;
         }
         logger.info({ userId: user.id, username }, "User registered");

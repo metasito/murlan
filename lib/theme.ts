@@ -15,6 +15,16 @@ function hexToRgb(hex: string): { r: number; g: number; b: number } {
   };
 }
 
+/**
+ * A hex colour at reduced opacity, as the `rgba()` string a View style prop
+ * takes. SVG strokes/fills carry their own separate opacity attribute and
+ * never need this — it exists for the props that don't.
+ */
+export function withAlpha(hex: string, alpha: number): string {
+  const { r, g, b } = hexToRgb(hex);
+  return `rgba(${r},${g},${b},${alpha})`;
+}
+
 // RN Web needs boxShadow; native needs the shadow props. Neither accepts the other.
 // Exported because the table's shadows scale with the card, so they cannot be
 // frozen into the `Shadow` map below.
@@ -27,8 +37,7 @@ export function makeShadow(
   elevation: number
 ): Record<string, any> {
   if (Platform.OS === "web") {
-    const { r, g, b } = hexToRgb(color);
-    return { boxShadow: `${offsetX}px ${offsetY}px ${radius}px rgba(${r},${g},${b},${opacity})` };
+    return { boxShadow: `${offsetX}px ${offsetY}px ${radius}px ${withAlpha(color, opacity)}` };
   }
   return {
     shadowColor: color,
@@ -72,10 +81,7 @@ export function makeLayeredShadow(layers: ShadowLayer[], elevation: number): Rec
   }
   return {
     boxShadow: layers
-      .map(({ color, offsetY, opacity, radius }) => {
-        const { r, g, b } = hexToRgb(color);
-        return `0px ${offsetY}px ${radius}px rgba(${r},${g},${b},${opacity})`;
-      })
+      .map(({ color, offsetY, opacity, radius }) => `0px ${offsetY}px ${radius}px ${withAlpha(color, opacity)}`)
       .join(", "),
   };
 }
@@ -101,8 +107,7 @@ export const Shadow = {
    * A card held above the cloth — selected, or in a hand on your turn. No
    * component switches to this on selection yet: `CardView`'s `selected` prop
    * lifts the card with a `translateY` animation but still spreads
-   * `Shadow.card`, so the shadow does not yet travel with it. #211/#212 are
-   * where a component picks this up; the values are ready.
+   * `Shadow.card`, so the shadow does not yet travel with it.
    */
   cardLifted: makeLayeredShadow(
     [
@@ -110,5 +115,13 @@ export const Shadow = {
       { color: '#000000', offsetY: 6, opacity: 0.3, radius: 13 },
     ],
     14
+  ),
+  /** A card back — an opponent's fan resting on the felt, same contact+cast split as the face. */
+  cardBack: makeLayeredShadow(
+    [
+      { color: '#000000', offsetY: 0.5, opacity: 0.7, radius: 1 },
+      { color: '#000000', offsetY: 3, opacity: 0.36, radius: 6.5 },
+    ],
+    5
   ),
 };

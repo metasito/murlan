@@ -216,3 +216,29 @@ test("the layout-animation scanner matches a real ungated use", () => {
     []
   );
 });
+
+// ─── The three moments (#200) ──────────────────────────────────────────────
+//
+// The generic scans above already cover every source file, these new ones
+// included — a moment that stopped consulting the preference would already
+// fail one of them. Named per moment anyway, so a regression here reads as
+// "the deal" or "the bomb", not as a line number in a directory-wide sweep.
+
+test("the deal — hand.tsx's stagger, drop and turn grow all skip under reduced motion", () => {
+  const source = readFileSync(path.join(repoRoot, "components/table/hand.tsx"), "utf8");
+  assert.deepEqual(ungatedAnimationBlocks(source), []);
+});
+
+test("the bomb — kick (useTableFeedback.ts) and flare/wave/spark (moments.tsx) all skip under reduced motion", () => {
+  const feedback = readFileSync(path.join(repoRoot, "components/useTableFeedback.ts"), "utf8");
+  const moments = readFileSync(path.join(repoRoot, "components/table/moments.tsx"), "utf8");
+  assert.deepEqual(ungatedAnimationBlocks(feedback), []);
+  assert.deepEqual(ungatedAnimationBlocks(moments), []);
+});
+
+test("the flush — the sweep (moments.tsx) and the pile's own catch (pile.tsx) both skip under reduced motion", () => {
+  const moments = readFileSync(path.join(repoRoot, "components/table/moments.tsx"), "utf8");
+  const pile = readFileSync(path.join(repoRoot, "components/table/pile.tsx"), "utf8");
+  assert.deepEqual(ungatedAnimationBlocks(moments), []);
+  assert.deepEqual(ungatedAnimationBlocks(pile), []);
+});

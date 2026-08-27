@@ -1,0 +1,231 @@
+name: iOS UI (Maestro)
+
+# Runs on pull requests targeting `main`, and on demand — not on `push`
+# and not on a schedule: `maestro.yml`'s own header explains why a flaky
+# device job on every push is worse than no job.
+#
+# `macos-latest` is free on this repo's standard runners (the repo went
+# public in #277), ships Xcode and iOS simulators preinstalled, and an iOS
+# Simulator is a process on the host rather than a virtualised device — no
+# KVM step, no emulator boot poll, none of #186's "Timeout waiting for
+# emulator to boot". That is the whole reason this job exists alongside
+# `maestro.yml` instead of just fixing the Android one.
+# Disabled on pull requests until its smoke flow passes on `main`. It has been red since
+# the job landed, and a check that is always red teaches every reader that red is fine —
+# it also gates nothing, because ci.yml is the gate and `land.ts` merges past it. On demand
+# only until #354 turns both device loops green, then the `pull_request` trigger comes back.
+on:
+  workflow_dispatch:
+
+concurrency:
+  group: ios-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
+jobs:
+  ios:
+    name: Drive the app on a real iOS simulator
+    runs-on: macos-latest
+    # More than maestro.yml's 45: this job runs offline-game.yaml as well as
+    # smoke.yaml, and offline-game is a full hand — 16 minutes on a developer
+    # machine. Hitting the cap cancels the job, and a cancelled job skips
+    # every `if: failure()` step below, so an overrun costs the artefacts that
+    # would say what happened.
+    timeout-minutes: 75
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      # Same shape as maestro.yml's server: --offline because app.json
+      # carries an EAS projectId, and an unauthenticated runner cannot get a
+      # *signed* manifest for a linked project.
+      - name: Start the Expo dev server
+        run: |
+          nohup npx expo start --offline --port 8081 > "$RUNNER_TEMP/metro.log" 2>&1 &
+          disown
+          for i in $(seq 1 60); do
+            if curl -sf http://127.0.0.1:8081/status | grep -q "packager-status:running"; then
+              echo "Metro is up."
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "::error::Metro never came up on 8081."
+          cat "$RUNNER_TEMP/metro.log"
+          exit 1
+
+      # See maestro.yml: warms the bundle cache before the simulator is
+      # competing for the CPU, so the device's own request is a cache hit.
+      - name: Build the bundle before the simulator competes for the CPU
+        run: |
+          curl -s -o "$RUNNER_TEMP/manifest.json" -H 'expo-platform: ios' -H 'accept: multipart/mixed,application/expo+json,application/json' http://127.0.0.1:8081/
+          bundle=$(node -e '
+            const body = require("fs").readFileSync(process.env.RUNNER_TEMP + "/manifest.json", "utf8");
+            const json = body.slice(body.indexOf("{"), body.lastIndexOf("}") + 1);
+            let url;
+            try {
+              url = JSON.parse(json).launchAsset?.url;
+            } catch {
+              url = null;
+            }
+            if (!url) {
+              console.error("::error::No launchAsset in the dev server manifest.");
+              process.exit(1);
+            }
+            process.stdout.write(url);
+          ')
+          echo "Warming $bundle"
+          curl -sf -o /dev/null -w 'bundle: %{http_code} in %{time_total}s' "$bundle"
+          echo
+
+      # `macos-latest` ships a fixed set of pre-created simulators rather
+      # than a fresh AVD per run, so the device to drive has to be found
+      # rather than declared. Picks the highest-versioned iOS runtime the
+      # image has — the same "don't hardcode a model" reasoning maestro.yml
+      # applies to the Expo Go SDK below.
+      #
+      # The iPhone within it is chosen by name rather than taken as simctl
+      # happens to order them, and the SE is excluded: offline-game.yaml taps
+      # the hand fan by percentage of the screen ("17%,81%", +2.5% per slot),
+      # calibrated against a 19.5:9 landscape. The SE is 16:9, so the same
+      # percentages land on a different card, or on none — a red run that
+      # reads as an app regression and is really the runner image having
+      # reordered its device list.
+      - name: Find and boot an iPhone simulator
+        run: |
+          udid=$(xcrun simctl list devices available -j | node -e '
+            let s = "";
+            process.stdin.on("data", (d) => (s += d)).on("end", () => {
+              const { devices } = JSON.parse(s);
+              const usable = (d) => /^iPhone/.test(d.name) && !/\bSE\b/.test(d.name);
+              const version = (r) => (r.match(/iOS-(\d+)-(\d+)/) || []).slice(1).map(Number);
+              const runtimes = Object.keys(devices)
+                .filter((r) => /iOS/i.test(r) && devices[r].some(usable))
+                .sort((a, b) => {
+                  const [aMaj, aMin] = version(a);
+                  const [bMaj, bMin] = version(b);
+                  return aMaj - bMaj || aMin - bMin;
+                });
+              if (runtimes.length === 0) {
+                console.error("::error::No iOS runtime with a full-screen iPhone on this runner.");
+                process.exit(1);
+              }
+              const runtime = runtimes[runtimes.length - 1];
+              const iphones = devices[runtime]
+                .filter(usable)
+                .sort((a, b) => a.name.localeCompare(b.name, "en", { numeric: true }));
+              const iphone = iphones[iphones.length - 1];
+              console.error(`Using ${iphone.name} on ${runtime}`);
+              process.stdout.write(iphone.udid);
+            });
+          ')
+          echo "SIMULATOR_UDID=$udid" >> "$GITHUB_ENV"
+          # `bootstatus -b` boots the device if it is not already booted and
+          # then waits. A bare `simctl boot` on a device the image left booted
+          # exits non-zero instead, taking the step with it.
+          xcrun simctl bootstatus "$udid" -b
+
+      # The flows select on Italian copy (see maestro.yml) for the same
+      # reason here: a stock simulator comes up en-US. `defaults write`
+      # against the simulator's own domain only takes effect after the
+      # device restarts, which for a simulator is shutdown+boot rather
+      # than a real reboot.
+      - name: Set the simulator locale to it-IT
+        run: |
+          xcrun simctl spawn "$SIMULATOR_UDID" defaults write "Apple Global Domain" AppleLanguages -array "it-IT"
+          xcrun simctl spawn "$SIMULATOR_UDID" defaults write "Apple Global Domain" AppleLocale -string "it_IT"
+          xcrun simctl shutdown "$SIMULATOR_UDID"
+          # `shutdown` returns while the device can still be "Shutting Down",
+          # and a boot in that state fails outright rather than queueing.
+          for i in $(seq 1 30); do
+            xcrun simctl list devices | grep -q "$SIMULATOR_UDID) (Shutdown)" && break
+            sleep 2
+          done
+          xcrun simctl bootstatus "$SIMULATOR_UDID" -b
+          # AppleLanguages, not AppleLocale, is what the app reads: lib/i18n.ts
+          # picks the locale from expo-localization's `getLocales()`, which on
+          # iOS is `Locale.preferredLanguages`. AppleLocale only carries the
+          # region formats, so checking it alone passes on a device still
+          # rendering English.
+          languages=$(xcrun simctl spawn "$SIMULATOR_UDID" defaults read "Apple Global Domain" AppleLanguages || echo unset)
+          echo "$languages" | tr -d '\n ' | grep -q '^("\{0,1\}it' || { echo "::error::Simulator's preferred language is $languages, not Italian; the flows select on Italian copy."; exit 1; }
+          locale=$(xcrun simctl spawn "$SIMULATOR_UDID" defaults read "Apple Global Domain" AppleLocale || echo unset)
+          [ "$locale" = "it_IT" ] || { echo "::error::Simulator locale is '$locale', not it_IT; the flows select on Italian copy."; exit 1; }
+
+      # Resolved from the SDK this project pins, same as maestro.yml's
+      # Android client fetch and for the same reason: Expo Go carries one
+      # SDK at a time. `iosClientUrl` is a tarball of the simulator .app's
+      # own contents (verified by hand against the SDK 54 release: an
+      # Info.plist with CFBundleIdentifier host.exp.exponent and executable
+      # "Expo Go", not a device .ipa), so it installs with `simctl install`
+      # exactly the way `expo start --ios` installs it on a developer's
+      # own Mac.
+      - name: Fetch and install the Expo Go client for this project's SDK
+        run: |
+          url=$(curl -sf https://api.expo.dev/v2/versions/latest | node -e '
+            let s = "";
+            process.stdin.on("data", (d) => (s += d)).on("end", () => {
+              const major = require("./package.json").dependencies.expo.replace(/^\D*/, "").split(".")[0];
+              const sdk = `${major}.0.0`;
+              const url = JSON.parse(s).data.sdkVersions?.[sdk]?.iosClientUrl;
+              if (!url) {
+                console.error(`::error::No Expo Go iOS client published for SDK ${sdk}.`);
+                process.exit(1);
+              }
+              process.stdout.write(url);
+            });
+          ')
+          echo "Expo Go client: $url"
+          curl -Lsf -o "$RUNNER_TEMP/expo-go.tar.gz" "$url"
+          mkdir -p "$RUNNER_TEMP/Expo Go.app"
+          tar -xzf "$RUNNER_TEMP/expo-go.tar.gz" -C "$RUNNER_TEMP/Expo Go.app"
+          xcrun simctl install "$SIMULATOR_UDID" "$RUNNER_TEMP/Expo Go.app"
+      - name: Install Maestro
+        run: |
+          curl -Ls "https://get.maestro.mobile.dev" | bash
+          echo "$HOME/.maestro/bin" >> "$GITHUB_PATH"
+
+      # No `adb reverse` equivalent needed. The iOS Simulator is a process
+      # on the runner's own host, not a virtualised device behind a NAT, so
+      # 127.0.0.1 in the flows' MURLAN_PACKAGER_URL already reaches Metro
+      # directly.
+      #
+      # smoke.yaml only, as on Android. offline-game.yaml fails here at the
+      # tutorial skip when it runs second, and its card taps are point taps
+      # derived from an Android emulator's layout — #353 has both.
+      - name: Run the flows
+        run: |
+          curl -sf -o /dev/null -w 'metro /status: %{http_code}' http://127.0.0.1:8081/status || echo "::warning::Metro is no longer answering on 8081."
+          echo
+          # Derived, not hardcoded, for the reason the client fetch above is:
+          # asking for an SDK the project no longer pins makes this diagnostic
+          # report a mismatch that is its own doing.
+          sdk=$(node -p 'require("./package.json").dependencies.expo.replace(/^\D*/, "").split(".")[0] + ".0.0"')
+          curl -s -o "$RUNNER_TEMP/manifest.out" -w 'manifest: %{http_code}' -H 'expo-platform: ios' -H "expo-runtime-version: exposdk:$sdk" -H 'accept: multipart/mixed,application/expo+json,application/json' http://127.0.0.1:8081/
+          echo
+          head -c 1200 "$RUNNER_TEMP/manifest.out"
+          echo
+          # The flows default to the Android package; iOS registers Expo Go as
+          # `host.exp.Exponent`, and a simulator answers NotFound to anything else.
+          maestro test -e MAESTRO_EXPO_GO_APP_ID=host.exp.Exponent .maestro/smoke.yaml
+
+      - name: Collect Metro's log alongside Maestro's debug output
+        if: failure()
+        run: |
+          mkdir -p "$HOME/.maestro/tests"
+          cp "$RUNNER_TEMP/metro.log" "$HOME/.maestro/tests/metro.log" || true
+
+      - name: Upload Maestro debug output
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: maestro-debug-ios
+          path: ~/.maestro/tests/
+          if-no-files-found: ignore

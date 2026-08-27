@@ -90,4 +90,28 @@ describe('a replay that no longer exists', () => {
     expect(view.queryByText(t('replay.loadErrorTitle'))).toBeNull();
     expect(view.getByLabelText(t('replay.loadingA11yLabel'))).toBeTruthy();
   });
+
+  // A replay is opened from a table, and a screen with no control of its own
+  // leaves a spectator the rail's knob — the table's, and clipped (#347).
+  it('offers the way out while the replay is still coming, too', async () => {
+    mockQueryResult = { data: undefined, isError: false, isLoading: true };
+    mockBack.mockClear();
+
+    const view = await show();
+    await act(async () => {});
+    await fireEvent.press(view.getByLabelText(t('replay.back')));
+
+    expect(mockBack).toHaveBeenCalled();
+  });
+
+  // A query can settle with nothing: no error, and no replay either.
+  it('does not render a blank screen for a replay that arrived empty', async () => {
+    mockQueryResult = { data: null, isError: false, isLoading: false };
+
+    const view = await show();
+    await act(async () => {});
+
+    expect(view.getByText(t('replay.loadErrorTitle'))).toBeTruthy();
+    expect(view.getByLabelText(t('replay.back'))).toBeTruthy();
+  });
 });

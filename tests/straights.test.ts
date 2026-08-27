@@ -201,22 +201,42 @@ describe("enumeration completeness", () => {
     );
   });
 
-  test("enumeration of a full 21-card two-player hand is fast", () => {
+  test("enumeration does not inspect a full 21-card hand once per subset", () => {
     const suits = ["hearts", "clubs", "spades", "diamonds"] as const;
     const ranks = ["3", "4", "5", "6", "7", "8", "9", "10", "J", "Q", "K", "A", "2"] as const;
+    const size = 21;
+    // Counting rank reads rather than milliseconds. This sees an enumerator
+    // that reaches into the hand per subset, which is how the enumeration is
+    // written; one that copied the ranks out first and then walked subsets of
+    // the copy would read each card once and pass.
+    let rankReads = 0;
     const hand: Card[] = [];
     for (const rank of ranks) {
       for (const suit of suits) {
-        if (hand.length < 21) hand.push(c(rank, suit));
+        if (hand.length >= size) break;
+        const card = c(rank, suit);
+        Object.defineProperty(card, "rank", {
+          get() {
+            rankReads++;
+            return rank;
+          },
+          enumerable: true,
+        });
+        hand.push(card);
       }
     }
-    const started = process.hrtime.bigint();
+
     const plays = getAllValidPlays(hand, null, true);
-    const elapsedMs = Number(process.hrtime.bigint() - started) / 1e6;
+
     assert.ok(plays.length > 0);
+    const ceiling = size ** 3;
     assert.ok(
-      elapsedMs < 50,
-      `enumeration took ${elapsedMs.toFixed(2)}ms, expected well under 50ms`
+      rankReads >= size,
+      `enumeration read only ${rankReads} ranks for ${size} cards, so the counter is not seeing its work`
+    );
+    assert.ok(
+      rankReads < ceiling,
+      `enumeration read a card's rank ${rankReads} times for ${size} cards, over a cubic ceiling of ${ceiling} — it is walking subsets (2^${size} = ${2 ** size})`
     );
   });
 });

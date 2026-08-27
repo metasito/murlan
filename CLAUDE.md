@@ -70,6 +70,22 @@ Verify against source before changing any.
 - **Impact feedback is timed to the card landing**, not the throw. `impactDelayMs()`
   (`components/gameTableModel.ts`) is the one place that delay is derived, so the animation
   and the feedback cannot drift apart.
+- **Which view covers which is stated, never left to sibling order.** The felt carries
+  `zIndex: 0` and the game table `zIndex: 1` (`components/GameTable.tsx`). Web and Android
+  paint siblings in tree order; the iOS renderer put the felt's pool *above* the seats, the
+  pile, the hand and the buttons, and the game vanished behind a region with hard straight
+  edges that moved with the lamp (#209). It cost three sessions, and every hypothesis that
+  read the symptom as a missing render, a clip or an opaque overlay was wrong.
+- **A native-only visual defect is diagnosed from device pixels, not from reasoning.** #209's
+  own captures held the answer for days: felt colour was visible on *both* sides of the cut,
+  which rules out anything black covering the table and leaves only the felt's own paint
+  landing on top. Sample pixels first (`docs/agents/loops.md`); a fix argued from the code
+  alone gets one thing right and two things wrong, on the owner's phone, each round.
+- **The table's scale comes from the window's own short edge**, never from the short edge
+  minus the safe-area insets. A phone and a browser at the same window size must draw the same
+  table; taking the insets off here shrank the cards on device only, which is a divergence
+  from the web design rather than a fit for it. The safe area is the layout's job — the rail
+  absorbs the cutout (`railWidth`), the hand zone carries the home indicator (`HAND_ZONE_H`).
 - **Design tokens are used in the role they were named for.** A fill or border token used as
   a text colour renders as almost nothing, silently. Pinned by `tests/tokenRoles.test.ts`.
 - **A labelled control exposes one accessible node** — hide decorative children explicitly;
@@ -118,118 +134,24 @@ lines is explaining itself instead of being clear.
 
 ## Working agreement
 
-- **Autonomy.** Work the queue one item at a time, one commit per item, and don't ask which
-  item or whether to proceed. The queue is `node scripts/next-ticket.mjs`, which prints the
-  route as well as the ticket: implement a frontier ticket (`ready-for-agent`, unclaimed, no
-  open native blocker, smallest `size:*` first); if no frontier work is takeable it routes
-  triage, then wayfinder, then hands off to you (`docs/agents/issue-tracker.md`).
-  **A routed implement ticket goes through
-  `Workflow({ scriptPath: '.claude/workflows/ticket-pipeline.mjs' })`** — the `name` form does
-  not resolve, because that registry does not read the project's `.claude/workflows/`. It claims
-  the ticket, gates it, implements it, verifies it, reviews it through three independent lenses
-  and lands it. Everything below still holds — the pipeline does it for you rather than
-  replacing it.
-- **Working an item by hand**, when the pipeline doesn't apply (a `ready-for-human` item, a
-  triage or wayfinder route, hygiene work with no ticket): commit and push yourself — don't
-  wait to be asked — then `gh run watch` **the pull request's run** and close the issue only
-  once it is green; red CI is the next thing you work on, not something to leave behind.
-  Never watch `main`'s run: it is either the same tree skipped, or a duplicate of a result
-  you have already read, and watching it blocks for the whole suite to say nothing new. Keep
-  `Closes #NN` out of the commit message: it closes the issue at push time, before CI has
-  said anything.
-- **Claim the item before working it.** Sessions run in parallel, and every one of them
-  authenticates as the same GitHub account — an assignee says who owns the repo, not who
-  owns the item, so the claim is `in-progress` plus a comment naming the branch. It is the
-  session's *first* write, before the branch and before reading the code: a claim made after
-  the work is a claim made after the collision. Then re-read the issue, because two sessions
-  can list the same free queue a second apart — if a claim older than yours is there, drop
-  yours and take the next item. Release it whenever you stop without landing it, including
-  the hand-off to `ready-for-human`; closing the issue releases it for you. A claim whose
-  branch exists in neither `git ls-remote --heads origin` nor `git worktree list` is stale,
-  and taking it over is fine once you have said so on the issue.
-  `docs/agents/issue-tracker.md` has the commands.
-- **Work on a branch, land through a pull request.** Never push an item straight to `main`.
-  A change that turns out to be wrong goes red on the pull request, where it costs one run
-  and nothing else; pushed to `main` it goes red on `main`, and the next person starts from
-  a broken tree. **The merge costs a second run only if you let it.** `ci.yml`'s `scope` job
-  skips a `main` push whose tree the pull request already passed — it compares the merge
-  commit's tree against the pull request head's, so they match only while `main` has not
-  moved underneath. Once it has, the merge builds a tree nothing has tested and the whole
-  suite runs again, billed. So before merging, bring the branch up to date
-  (`gh pr update-branch`) and let the pull request go green on *that* tree: one run either
-  way, instead of one on the branch and a second on `main`. An item that turns
-  out to need an owner-level call gets relabelled
-  `ready-for-human` (not closed) and the next item is taken. When no
-  `ready-for-agent` issue remains, run `superpowers:brainstorming` and file what it finds
-  with `mattpocock-skills:to-tickets`.
-- **A second session works in a worktree, and removes it after.** One checkout cannot hold two
-  agents: switching branches under a session that has uncommitted work is how both lose it. Take
-  a worktree instead, and delete it once the pull request has merged — a worktree left behind is
-  a stale second copy of the tree, and its `npm install` is a second `node_modules`.
-- **Don't rehearse CI locally.** `.github/workflows/ci.yml` runs typecheck, `npm test`, lint,
-  `test:native`, `test:e2e` and a build-and-boot on every push. Running that same sweep before
-  pushing doubles the time per item and tells you nothing the run won't. Push, then
-  `gh run watch` the pull request — and take the verdict from `gh run view --json conclusion`,
-  never from the watcher's own exit status. Piped into anything, that status belongs to the
-  pipe's last command, so `--exit-status` is discarded and a failed run reads as a pass. That
-  is how a red branch reached `main`. What *is* worth running locally is the narrow thing CI
-  can't give you:
-  a single test file while you iterate on it, proving a new test fails before the fix, or any
-  check CI does not cover. If CI does not run it, run it yourself. Lint is worth the 25
-  seconds: it fails on a single unused variable, and it is the last job to run.
-- **When Actions cannot start, run the one job that covers the change.** A run whose `scope`
-  job dies in three seconds with no steps is saying nothing about the diff — check
-  `gh api repos/metasito/murlan/check-runs/<job-id>/annotations` before reading it as a
-  verdict, because a billing or runner failure looks exactly like a red suite from the
-  outside. Then substitute locally for that item only: a throwaway Postgres
-  (`docker run -d -e POSTGRES_USER=postgres … -p 55433:5432 postgres:16-alpine`, `DATABASE_URL`
-  and `SESSION_SECRET` set) and the suites the change touches, plus the floor — revert the fix
-  and watch the new test go red. That is not the local rehearsal the rule above forbids; it is
-  the only evidence available. `docs/agents/loops.md`'s "Local ports" table lists this and the
-  repo's other local ports.
-- **Review depth follows the size label, outside the pipeline.** The pipeline reviews every
-  ticket through all three lenses regardless of size, so this is the rule for work it doesn't
-  cover. An `size:XS`/`size:S` item gets one pass; the two-axis
-  `mattpocock-skills:code-review` is the fit, because standards and spec are what a small diff
-  gets wrong. Reserve a second correctness pass (`/code-review`) for `size:M` and up, or any
-  diff touching the engine, the socket protocol or auth.
-- **Every sub-agent names its model, and stages merge before they multiply.** An omitted model
-  inherits the session's, so editing a label costs what reviewing a diff costs, on every item.
-  Mechanical work that follows a written procedure — `gh` label and comment writes, a CLI whose
-  failure mode is fail-safe — is Haiku; implementing, verifying, fixing, landing and tearing
-  down are Sonnet; independent review is Opus, because with CI billing-blocked it is the only
-  thing between a
-  defect and an `--admin` merge. Two steps that need the same context and the same judgement are
-  one agent, not two: a second `agent()` call re-reads everything the first already had. The
-  pipeline's map is `MODELS` in `.claude/workflows/ticket-pipeline.mjs`; hand work follows the
-  same shape. **Every dispatch also names its subject** — a `label` on `agent()`, a `description`
-  on the Agent tool — because the progress view falls back to the head of the prompt, and a fleet
-  of agents all showing their first instruction line is unreadable at a glance.
-- **Merge the moment the run is green.** `ci.yml`'s `scope` job skips a `main` push whose tree
-  a pull request already passed, and that holds only while `main` has not moved. A run takes
-  about seven minutes, and every minute a green pull request waits is a minute another session
-  can land — after which the merged tree is one no run has tested, so the whole suite runs
-  again. Rebasing onto current `main` first does not avoid that: it buys a second
-  pull-request run instead, which costs the same. The window is the only lever there is.
-- **No workarounds.** If the correct fix is bigger, do the correct fix. Look up current best
-  practice rather than guessing.
+**Every rule an agent follows lives in `docs/agents/RULES.md`** — numbered, one screen, no
+rationale. It is the only normative list; nothing here or in a prompt restates it, and
+`tests/rulesAreSingleSourced.test.ts` fails if something does.
+
+The *why* behind a rule, and the commands it refers to, live in the reference docs:
+
+- `docs/agents/issue-tracker.md` — the queue, labels, claiming, the `gh` invocations.
+- `docs/agents/loops.md` — which check catches what, what each costs, the local ports.
+- `scripts/ticket-pipeline.ts` — the whole queue runner, top to bottom. Node does everything
+  deterministic; a model runs at three points, each prompted with one line naming a skill.
+
+Two things that are this project's shape rather than a rule, and so are stated only here:
+
 - **Design first** for anything touching storage, the socket protocol, or many files.
-- **The database holds accounts now.** Beta testers have them, so dropping and recreating is
-  no longer free: `pg_dump` first, and read `db:push`'s rename-or-drop prompt rather than
-  accepting it — answering it wrong deletes the column's data (`docs/DEPLOY-RUNBOOK.md`).
-  Order a change by design, not by deploy cost: derive from existing rows → ride an existing
-  jsonb column → new table → new column.
-- **Outstanding work lives only in GitHub Issues** (`metasito/murlan`) — never a `TODO`
-  comment, never a markdown backlog. Elsewhere, point at an issue number (`#45`); never copy
-  its content. A second copy goes stale. Labels: `needs-triage` / `needs-info` /
-  `ready-for-agent` / `ready-for-human` / `rejected`, plus `size:XS`…`size:XL`. See
-  `docs/agents/issue-tracker.md`.
-- **Leave no residue.** Implemented design docs, superseded plans and scratch scripts get
-  deleted, not archived. A claim that no longer holds is removed the moment it's found.
-- **No self-defeating safeguards.** Never ship a guard together with the thing that gets past
-  it. **The tell is the justifying comment.** A guard needs a *floor* as well as a trigger:
-  prove it fails both on the defect and on the null case where it inspects nothing. It keeps
-  recurring, and every instance was verified by its author before it shipped.
+- **The database holds real accounts.** `pg_dump` before a schema change, and read `db:push`'s
+  rename-or-drop prompt rather than accepting it (`docs/DEPLOY-RUNBOOK.md`). Order a change by
+  design, not deploy cost: derive from existing rows → ride an existing jsonb column → new table
+  → new column.
 
 ## Known pitfalls
 

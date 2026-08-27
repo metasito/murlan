@@ -33,7 +33,6 @@ test("online — host fills the room with bots and plays a real server-authorita
 
   await driveGameToCompletion(page, {
     isFinished: isOnlineGameOver,
-    timeoutMs: 5 * 60_000,
     log: (line) => test.info().annotations.push({ type: "move", description: line }),
   });
 
@@ -85,12 +84,10 @@ test("online — two real browsers play a live 2-player game against each other"
     await Promise.all([
       driveGameToCompletion(pageA, {
         isFinished: isOnlineGameOver,
-        timeoutMs: 6 * 60_000,
         log: (line) => test.info().annotations.push({ type: "move-A", description: line }),
       }),
       driveGameToCompletion(pageB, {
         isFinished: isOnlineGameOver,
-        timeoutMs: 6 * 60_000,
         log: (line) => test.info().annotations.push({ type: "move-B", description: line }),
       }),
     ]);

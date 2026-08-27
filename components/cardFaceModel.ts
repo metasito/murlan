@@ -40,8 +40,88 @@ export const CARD_BACK_H = (s: number) => BACK_H * s;
 
 /** Multipliers on the table's own scale, by where the card is drawn. */
 export const FIELD_SCALE = 1.0;
-export const HAND_SCALE = 0.95;
+export const HAND_SCALE = 1.08;
+/** …and while the turn is the viewer's own, when the hand is held up to be read. */
+export const HAND_SCALE_ON_TURN = 1.2;
+/** What the hand's width share is multiplied by at that size, so the fan opens with it. */
+export const HAND_NEAR_RATIO = HAND_SCALE_ON_TURN / HAND_SCALE;
 export const BACK_SCALE = 0.88;
+
+// ─── Card stock ─────────────────────────────────────────────────────────────
+//
+// A card is a physical object, not a flat swatch: a corner cut, a printed
+// border just inside the edge, and a lit lip where the stock meets the felt.
+// Values below are authored at 2x table scale, like the rest of the card, and
+// halved here to land at scale 1.
+
+// Real poker stock has a 1/8in radius on a 2.5in card — 5% of card width. A
+// fixed step of `Radius` (lib/tokens.ts) can't express that, since it has to
+// scale with the card rather than sit on the app's five-step scale.
+const CARD_RADIUS_RATIO = 0.05;
+export function cardRadius(w: number): number {
+  return w * CARD_RADIUS_RATIO;
+}
+
+const PRINT_BORDER_INSET_RATIO = 2.5 / FACE_H;
+const PRINT_BORDER_RADIUS_RATIO = 2 / FACE_H;
+const STOCK_LIP_RATIO = 1 / FACE_H;
+
+/** How far the printed border sits inside the card's own cut edge. */
+export function printBorderInset(h: number): number {
+  return h * PRINT_BORDER_INSET_RATIO;
+}
+
+/** Corner radius of the printed border — tighter than the cut edge's own. */
+export function printBorderRadius(h: number): number {
+  return h * PRINT_BORDER_RADIUS_RATIO;
+}
+
+/** Height of the lit lip along the stock's bottom edge. */
+export function stockLipHeight(h: number): number {
+  return h * STOCK_LIP_RATIO;
+}
+
+// ─── Card back stock ────────────────────────────────────────────────────────
+//
+// The back's own corner radius is `cardRadius` above, fed the back's own
+// width — CARD_BACK_W/H is a different aspect ratio than the face, so the
+// ratio has to derive from that width rather than reuse the face's radius.
+// Only the lattice panel drawn inside it needs a ratio of its own, authored
+// at 2x table scale like the rest of the card and halved here.
+const BACK_LATTICE_INSET_RATIO = 1.5 / BACK_H;
+const BACK_LATTICE_RADIUS_RATIO = 1.5 / BACK_H;
+
+/**
+ * The card back's 45 degree lattice, as one SVG path. A fine line reads as
+ * texture at any size where a dot grid reads as blobs, because a line keeps
+ * its identity when it falls below a pixel and a dot does not.
+ */
+const latticeCache = new Map<string, string>();
+export function getLattice(w: number, h: number, spacing: number): string {
+  const key = `${w}x${h}x${spacing}`;
+  let d = latticeCache.get(key);
+  if (!d) {
+    const span = w + h;
+    const parts: string[] = [];
+    for (let i = -h; i < span; i += spacing) {
+      parts.push(`M${i},0 L${i + h},${h}`);
+      parts.push(`M${i},${h} L${i + h},0`);
+    }
+    d = parts.join(" ");
+    latticeCache.set(key, d);
+  }
+  return d;
+}
+
+/** How far the lattice panel sits inside the back's own cut edge. */
+export function cardBackLatticeInset(h: number): number {
+  return h * BACK_LATTICE_INSET_RATIO;
+}
+
+/** Corner radius of the lattice panel. */
+export function cardBackLatticeRadius(h: number): number {
+  return h * BACK_LATTICE_RADIUS_RATIO;
+}
 
 /**
  * A touch target's floor is physical size — never `TOUCH_TARGET_MIN * s`.
@@ -77,7 +157,7 @@ const RANK_FONT_WIDE_RATIO = 12 / FACE_H;
 // card scales the glyph past a clearance sized for the base card, and the tip
 // clips against the card's own `overflow: hidden` (tests/e2e/a11yOverlays.spec.ts
 // "no rank glyph clips"). A fraction of card height keeps the two in step.
-const RANK_INSET_RATIO = 3 / FACE_H;
+const RANK_INSET_RATIO = 4.5 / FACE_H;
 const GLYPH_ADVANCE_EM = 0.55;
 const LETTER_SPACING = -0.5;
 

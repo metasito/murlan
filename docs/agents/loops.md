@@ -11,9 +11,10 @@ prototype, and shipping nothing the reporter could see — because the defect wa
 and no loop here could reach it.
 
 So before touching a rendering bug, answer in one line: *which renderer produced the
-screenshot I am fixing?* Then pick the loop that runs on it. No loop here *runs* iOS; the
-next section is how you get an iOS answer anyway. Reporting a green web run as a fix for a
-native defect is not one of the options.
+screenshot I am fixing?* Then pick the loop that runs on it. One loop does reach iOS — a
+Maestro job on a CI simulator — but it *drives* the app rather than looking at it, so a pixel
+still comes back from a capture. The next section is both. Reporting a green web run as a fix
+for a native defect is not one of the options.
 
 **What differs between the two renderers is not cosmetic.** `react-native-svg` on native is
 a different implementation, not a polyfill:
@@ -29,12 +30,18 @@ The portable way to shape a radial is neither: give the **rect** the radii (`2*r
 `2*ry`) and let the gradient keep its default `r="50%"`, which is the inscribed ellipse on
 both. `tests/vignette.test.ts` pins that no radial shapes itself.
 
-## The iOS loop: ask for a capture
+## The iOS loop: a CI simulator, or ask for a capture
 
-There is no runner here that renders iOS, and #205 leaves whether to buy one — EAS Build plus
-Maestro Cloud, or a simulator on a macOS runner — as an owner's call. What exists today is the
-cheaper half: a named list of states, a screen that reaches each of them on the device, and the
-rule that a native rendering fix is not claimed until the captures come back.
+`.github/workflows/ios.yml` drives `.maestro/smoke.yaml` (offline-game.yaml is #353)
+through Expo Go on a real iOS Simulator, on a free `macos-latest` GitHub runner (#205) — the
+same flows `maestro.yml` already runs on Android, with the emulator-only failure classes
+(#185, #186) gone because a Simulator is a process on the host rather than a virtualised
+device. It runs on every pull request targeting `main`, and on demand.
+
+That job proves the flows still run and the app still renders *something* on device — it does
+not replace looking at the device. A rendering defect like #209 needs a screenshot regardless:
+a named list of states, a screen that reaches each of them on the device, and the rule that a
+native rendering fix is not claimed until the captures come back.
 
 **The states are `lib/captureStates.ts`.** That list is the contract. `app/capture.tsx` walks it
 on the device and `tests/e2e/lampSeats.spec.ts` walks it in Chromium, so a photograph and a web
@@ -69,13 +76,23 @@ Each of these produced a confident, wrong "fixed" in one session:
   `PARITY_REAL_DELAYS=1`, by `.scratch/parity/static-server.mjs`) sets every AI delay to
   `0`. The bots move instantly, so **no screenshot is ever taken on a bot's turn** — the
   state where the lamp is over someone else and the table is at its darkest. Turn it off to
-  look at turn-handover.
+  look at turn-handover. The one exception is a capture state: `openCaptureState` writes the
+  suspend flag (`lib/e2eAiSuspend.ts`), which holds the seeded turn for as long as the page
+  lives, and reads as nothing at all in any build that flag did not come from.
 - **Metro caches the transform that inlines `process.env.EXPO_PUBLIC_*`.** Flipping that env
   var and rebuilding gives you the *previous* value. `expo export --clear` is what actually
   rebuilds it.
 - **One frame is not a state.** Screenshotting a seeded table at the viewer's turn proves
   that one frame. Play real hands (`tests/e2e/helpers/bot.ts` drives one), and sample
   *through* a turn handover, not after it.
+- **A Playwright spec is collected only from `tests/e2e/`.** `testDir` is that directory, so a
+  spec written anywhere else — a scratchpad, a temp dir — matches nothing, and the filter
+  argument is a path relative to it, not an absolute one. Neither mistake fails fast: the
+  webServer starts and Metro rebuilds the whole bundle before Playwright reports that it
+  collected no tests. #211 paid for that twice.
+- **`playwright.config.ts` declares its own `webServer`.** It starts and stops the e2e server
+  itself, on `E2E_PORT`. Starting one by hand races it for the port, and the run that then fails
+  looks like a broken spec.
 - **A piped Playwright run reports the pipe's exit code.** `playwright test … | grep` returns
   grep's status; a red run reads as green. Read the `N passed / N failed` line.
 - **Compare pixels, not impressions.** "Looks darker" cost hours; sampling the same relative
@@ -90,10 +107,27 @@ Each of these produced a confident, wrong "fixed" in one session:
 | Anything with a **layout** (flex, absolute, transform) | Playwright | which side of the screen it is on | ~35s |
 | Anything **visual** (colour, gradient, shadow, size) | the parity harness below | pixels vs the prototype | ~40s |
 | Tokens, contrast, roles | `node --test tests/contrast.test.ts tests/tokenRoles.test.ts tests/cosmetics.test.ts` | AA floors | ~1s |
+| The server, the socket protocol, auth or storage | `tests/integration/` — see below, it needs a database | the routes and handlers end to end | ~10s a file |
+| Anything the app must **boot and stay drivable through on iOS** | `.github/workflows/ios.yml`, dispatched by hand | a crash, a screen that never renders, a control the flows tap going missing — on a real simulator | unmeasured; the job's own ceiling is 75 min |
 
 Full sweeps, for the end of an item only: `npx tsc --noEmit` (~5s) → `npm test` (~12s, 1066) →
 `npx jest` (~50s, 527) → `npx eslint components lib tests app` (~25s).
 `docs/agents/issue-tracker.md` covers when CI runs instead.
+
+**`npm test` does not run the integration suite** — every file under `tests/integration/` skips
+itself when `DATABASE_URL` is unset, so a green sweep says nothing about any of them. CI sets one
+and runs them all, which is why a branch can be green locally and red there. Point them at the
+dev-stack instead of finding out from CI:
+
+```
+node scripts/dev-stack.mjs up      # the same disposable Postgres the E2E suite uses
+DATABASE_URL=postgres://postgres:postgres@127.0.0.1:55432/murlan_dev \
+  node --no-warnings --experimental-strip-types --test tests/integration/<file>.test.ts
+node scripts/dev-stack.mjs down
+```
+
+Each server takes its own schema and drops it, so runs cannot collide and the database can stay
+up between them.
 
 **No unit test can see a layout bug.** `react-test-renderer` never runs flexbox. A green
 `npx jest` on a fan rendered off-screen is the normal outcome, not a surprise.
@@ -104,6 +138,14 @@ Use `Edit`. Never a batched Python/sed rewrite of a `.tsx`: one bad match aborts
 mid-run and silently discards every edit that preceded it, and you cannot tell from the exit
 code which of ten hunks landed. `Edit` fails one hunk at a time, loudly.
 
+## Worktrees
+
+A worktree left behind by a killed, crashed or context-cleared session is not cleaned up by
+anything else — `npm run worktrees:prune` (`-- --dry-run` to only see the classification)
+after any session that ends without landing, or as a periodic sweep, removes what it can
+prove is merged or gone and leaves anything uncommitted or still under an open pull request
+alone.
+
 ## Local ports
 
 Every port this repo's local tooling binds — including the local-substitute path CLAUDE.md's
@@ -113,10 +155,9 @@ Every port this repo's local tooling binds — including the local-substitute pa
 | --- | --- | --- |
 | `5000` | The Express server (`PORT`) | `server/index.ts`, `.replit` (`[[ports]]` localPort/externalPort, `[env] PORT`, `waitForPort`), `package.json` (`expo:dev`, `expo:dev:clean`) |
 | `8081` | Metro (`npx expo start` / `npm start`) | `scripts/build.js`, `.replit` |
-| `5199` | Playwright's e2e webServer (`E2E_PORT`) | `tests/e2e/playwright.config.ts`, `scripts/e2e-server.mjs`, `.claude/workflows/ticket-pipeline.mjs`; freed by `lib/ticketPipeline/cleanup.ts` |
+| `5199` | Playwright's e2e webServer (`E2E_PORT`) | `tests/e2e/playwright.config.ts`, `scripts/e2e-server.mjs`; freed by `lib/ticketPipeline/cleanup.ts` |
 | `55432` | The dev-stack's disposable Postgres (`MURLAN_DEV_PG_PORT`) | `murlan-dev-pg` container — `scripts/dev-stack.mjs`, `scripts/e2e-server.mjs` |
-| `55433` | The verify-only Postgres substituted for CI's database | `murlan-verify-pg` container — `.claude/workflows/ticket-pipeline.mjs`, `lib/ticketPipeline/cleanup.ts`; also bound manually by CLAUDE.md's "When Actions cannot start" |
-| `5050` | The ticket-pipeline's boot-check server (`BOOT_PORT`) | `murlan-verify-boot` container — `.claude/workflows/ticket-pipeline.mjs`; container and port both freed by `lib/ticketPipeline/cleanup.ts` |
+| `55433` | The verify-only Postgres substituted for CI's database | `murlan-verify-pg` container — freed by `lib/ticketPipeline/cleanup.ts`; also bound manually by CLAUDE.md's "When Actions cannot start" |
 
 ## Playwright, locally
 

@@ -92,6 +92,13 @@ test("every card back has its own five-stop field", () => {
   }
 });
 
+// The back's cut edge is its ink at reduced alpha, and `withAlpha` (lib/theme.ts)
+// reads a hex triplet: an ink already written as `rgba()` would parse to NaN and
+// leave the edge invisible rather than fail.
+test("every card back's ink is a hex colour", () => {
+  for (const id of CARD_BACK_IDS) assert.match(CardBacks[id].ink, /^#[0-9A-Fa-f]{6}$/);
+});
+
 // A back's own field must stay its own literal gradient — sharing one with a
 // felt would mean repainting the felt silently repaints the back too.
 test("a card back's field is never a reference to a felt's gradient", () => {

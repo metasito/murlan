@@ -6,9 +6,12 @@ import assert from "node:assert/strict";
 import { readdirSync, readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
-import { CARD_H, CARD_W } from "../components/cardFaceModel.ts";
+import { CARD_H, CARD_W, BACK_SCALE } from "../components/cardFaceModel.ts";
 import { TOUCH_TARGET_MIN } from "../lib/tokens.ts";
 import {
+  ROTATE_SETTLED,
+  ROTATE_UPRIGHT,
+  rotateGlyphAngle,
   actionBtnSize,
   HAND_ZONE_GAP,
   CHIP_H,
@@ -22,6 +25,15 @@ import {
   seatDirection,
   arrangeOpponents,
   handCountOf,
+  displayedHandCount,
+  fanCounts,
+  flightOrigin,
+  sideSlotHeight,
+  seatFanArc,
+  SEAT_DISC,
+  SEAT_GAP,
+  seatLabelH,
+  FAN_DRAWN_CARDS,
   comboKey,
   advancePile,
   roundClosedWithWinner,
@@ -32,10 +44,10 @@ import {
   urgentThresholdSeconds,
   URGENT_TICK_SECONDS,
   notificationTopOffset,
-  startCardBannerText,
   computeTableFrame,
   railWidth,
   readExchange,
+  viewerOwnsSeat,
   INACTIVE_EXCHANGE,
   describeTableForA11y,
   impactDelayMs,
@@ -43,6 +55,8 @@ import {
   LANDING_FRACTION,
   passedSeats,
   straightTopRankChar,
+  sparkOffset,
+  SPARK_COUNT,
   type ComboShape,
   type TableA11yStrings,
 } from "../components/gameTableModel.ts";
@@ -111,7 +125,7 @@ describe("layout constants (CLAUDE.md: MUST NOT CHANGE)", () => {
     assert.equal(actionBtnSize(1), 56);
     assert.equal(HAND_ZONE_GAP, 26);
     assert.equal(CHIP_H(1), 23);
-    assert.equal(SIDE_SECTION_W, 130);
+    assert.equal(SIDE_SECTION_W, 96);
   });
 
   test("CARD_W/CARD_H scale linearly with the short edge, no breakpoints", () => {
@@ -326,6 +340,24 @@ describe("handCountOf", () => {
   });
 });
 
+describe("displayedHandCount", () => {
+  test("no flight: the display is exactly the authoritative count", () => {
+    assert.equal(displayedHandCount(14, 0), 14);
+  });
+
+  test("mid-flight: the cards in the air are added back, reproducing the pre-play count", () => {
+    // The engine already dropped the seat to 11 for a 3-card play; the fan
+    // and the badge should still read the 14 the player saw before throwing.
+    assert.equal(displayedHandCount(11, 3), 14);
+  });
+
+  test("once the flight lands, cardsInFlight is 0 and the sum already is handCount", () => {
+    // No step-down to schedule: the same seat that read 14 during the flight
+    // reads 11 the instant cardsInFlight returns to 0, with nothing else changing.
+    assert.equal(displayedHandCount(11, 0), 11);
+  });
+});
+
 // ─── Pile state ───────────────────────────────────────────────────────────────
 
 const combo = (ids: string[]): any => ({
@@ -347,7 +379,7 @@ describe("comboKey", () => {
 describe("advancePile", () => {
   test("the first play sits alone on the table", () => {
     const first = combo(["a"]);
-    const next = advancePile(EMPTY_PILE, first);
+    const next = advancePile(EMPTY_PILE, first, 0);
     assert.equal(next.current, first);
     assert.equal(next.prev, null);
   });
@@ -356,11 +388,11 @@ describe("advancePile", () => {
     const a = combo(["a"]);
     const b = combo(["b"]);
     const c = combo(["c"]);
-    const s1 = advancePile(EMPTY_PILE, a);
-    const s2 = advancePile(s1, b);
+    const s1 = advancePile(EMPTY_PILE, a, 0);
+    const s2 = advancePile(s1, b, 1);
     assert.equal(s2.prev, a);
     assert.equal(s2.current, b);
-    const s3 = advancePile(s2, c);
+    const s3 = advancePile(s2, c, 2);
     // `a` is gone entirely — never rendered twice, never stuck behind.
     assert.equal(s3.prev, b);
     assert.equal(s3.current, c);
@@ -369,18 +401,27 @@ describe("advancePile", () => {
 
   test("a card is never in both layers at once", () => {
     const a = combo(["a"]);
-    const s = advancePile(advancePile(EMPTY_PILE, a), combo(["b"]));
+    const s = advancePile(advancePile(EMPTY_PILE, a, 0), combo(["b"]), 1);
     const prevIds = (s.prev?.cards ?? []).map((c: any) => c.id);
     const curIds = (s.current?.cards ?? []).map((c: any) => c.id);
     assert.deepEqual(prevIds.filter((id: string) => curIds.includes(id)), []);
   });
 
   test("the input state is not mutated", () => {
-    const s1 = advancePile(EMPTY_PILE, combo(["a"]));
+    const s1 = advancePile(EMPTY_PILE, combo(["a"]), 0);
     const snapshot = { ...s1 };
-    advancePile(s1, combo(["b"]));
+    advancePile(s1, combo(["b"]), 1);
     assert.deepEqual(s1, snapshot);
-    assert.deepEqual(EMPTY_PILE, { prev: null, current: null });
+    assert.deepEqual(EMPTY_PILE, { prev: null, current: null, playedBy: null });
+  });
+
+  test("current's seat is carried alongside it, so the name and the shape can never name different plays", () => {
+    const s1 = advancePile(EMPTY_PILE, combo(["a"]), 2);
+    assert.equal(s1.playedBy, 2);
+    const s2 = advancePile(s1, combo(["b"]), 0);
+    // The new play's seat replaces the old one — `prev`'s owner is never
+    // asked for, since only `current` is ever named.
+    assert.equal(s2.playedBy, 0);
   });
 });
 
@@ -877,41 +918,6 @@ describe("notificationTopOffset", () => {
   });
 });
 
-describe("startCardBannerText", () => {
-  test("second person when the viewer opens", () => {
-    assert.equal(
-      startCardBannerText({
-        card: { rank: "3", suit: "spades" } as any,
-        starterName: "Ana",
-        viewerIsStarter: true,
-      }),
-      "Inizi tu! Hai il 3♠"
-    );
-  });
-
-  test("names the opener otherwise", () => {
-    assert.equal(
-      startCardBannerText({
-        card: { rank: "3", suit: "spades" } as any,
-        starterName: "Ana",
-        viewerIsStarter: false,
-      }),
-      "Ana inizia con il 3♠"
-    );
-  });
-
-  test("2-player fallback opener: a non-spade card reads its real suit, not a hardcoded ♠", () => {
-    assert.equal(
-      startCardBannerText({
-        card: { rank: "5", suit: "hearts" } as any,
-        starterName: "Ana",
-        viewerIsStarter: false,
-      }),
-      "Ana inizia con il 5♥"
-    );
-  });
-});
-
 // ─── Frame ────────────────────────────────────────────────────────────────────
 
 describe("railWidth", () => {
@@ -932,6 +938,24 @@ describe("railWidth", () => {
 
   test("grows with the table's scale, so it is never a fixed column on a tablet", () => {
     assert.ok(railWidth(0, 2) > railWidth(0, 1));
+  });
+});
+
+describe("the rail's vertical pad", () => {
+  // railWidth already floors the horizontal axis against a raw inset; the
+  // knobs at the rail's own top and bottom need the same floor every other
+  // element pinned to an edge gets (tableTop/tableBottom), or a device with
+  // insets.top === 0 (an iPhone in landscape) flushes a knob against the
+  // screen edge.
+  test("the control rail and its settings sheet take the floored pad, not the raw inset", () => {
+    assert.deepEqual(scan(/(?:top|bottom)Pad=\{frame\.(?:topPad|bottomPad)\}/g), []);
+  });
+
+  // Banning the raw spelling is half the pin: it also passes when the props are
+  // gone entirely, or spelled some third way. Both ends of both must be found.
+  test("both ends of both are pinned to the floored pad", () => {
+    assert.equal(scan(/topPad=\{frame\.tableTop\}/g).length, 2);
+    assert.equal(scan(/bottomPad=\{frame\.tableBottom\}/g).length, 2);
   });
 });
 
@@ -1025,6 +1049,23 @@ describe("computeTableFrame", () => {
     assert.ok(f.fieldRoomW < tableW);
     assert.ok(f.handRoomW < 844);
   });
+
+  // Numbers, not the formula again: restating `min(tableW - 2*SIDE_SECTION_W,
+  // share)` passes whatever either term holds, which is how a column twice the
+  // prototype's width sat here unnoticed. The small phone is where the seats'
+  // own columns bind rather than the share.
+  test("the seats' columns are what caps the field on the smallest phone", () => {
+    const noInsets = { top: 0, bottom: 0, left: 0, right: 0 };
+    const small = computeTableFrame({ width: 568, insets: noInsets, scale: 320 / 390 });
+    const tableW = 568 - small.tableLeft - small.tableRight;
+    assert.equal(Math.round(tableW - SIDE_SECTION_W * 2), 304);
+    assert.ok(
+      tableW - SIDE_SECTION_W * 2 < 568 * 0.55,
+      "the share is meant to be the looser of the two bounds here"
+    );
+    assert.equal(Math.round(small.fieldRoomW), 304);
+  });
+
 });
 
 // ─── Exchange ─────────────────────────────────────────────────────────────────
@@ -1034,38 +1075,50 @@ describe("readExchange", () => {
   const withPhase = (phase: any) => ({ players, exchangePhase: phase }) as any;
 
   test("no phase at all is inactive", () => {
-    assert.deepEqual(readExchange(withPhase(undefined), 0), INACTIVE_EXCHANGE);
+    assert.deepEqual(readExchange(withPhase(undefined), 0, false), INACTIVE_EXCHANGE);
   });
 
   test("an inactive phase object is still inactive", () => {
     assert.deepEqual(
-      readExchange(withPhase({ active: false, winnerIdx: 0, loserIdx: 2 }), 0),
+      readExchange(withPhase({ active: false, winnerIdx: 0, loserIdx: 2 }), 0, false),
       INACTIVE_EXCHANGE
     );
   });
 
   test("the winner is asked to give, the loser to wait", () => {
     const state = withPhase({ active: true, winnerIdx: 0, loserIdx: 2 });
-    const asWinner = readExchange(state, 0);
+    const asWinner = readExchange(state, 0, false);
     assert.equal(asWinner.viewerIsWinner, true);
     assert.equal(asWinner.viewerIsLoser, false);
     assert.equal(asWinner.winner, players[0]);
     assert.equal(asWinner.loser, players[2]);
 
-    const asLoser = readExchange(state, 2);
+    const asLoser = readExchange(state, 2, false);
     assert.equal(asLoser.viewerIsWinner, false);
     assert.equal(asLoser.viewerIsLoser, true);
   });
 
+  test("a watcher is neither, whichever seat they are drawn from", () => {
+    const state = withPhase({ active: true, winnerIdx: 0, loserIdx: 2 });
+    for (const seat of [0, 1, 2]) {
+      const v = readExchange(state, seat, true);
+      assert.equal(v.active, true, `seat ${seat} still sees the phase`);
+      assert.equal(v.viewerIsWinner, false, `seat ${seat} was called the winner`);
+      assert.equal(v.viewerIsLoser, false, `seat ${seat} was called the loser`);
+      assert.equal(v.winner, players[0], `seat ${seat} lost the winner's name`);
+      assert.equal(v.loser, players[2], `seat ${seat} lost the loser's name`);
+    }
+  });
+
   test("a bystander is neither", () => {
-    const v = readExchange(withPhase({ active: true, winnerIdx: 0, loserIdx: 2 }), 1);
+    const v = readExchange(withPhase({ active: true, winnerIdx: 0, loserIdx: 2 }), 1, false);
     assert.equal(v.active, true);
     assert.equal(v.viewerIsWinner, false);
     assert.equal(v.viewerIsLoser, false);
   });
 
   test("an out-of-range seat resolves to null rather than undefined", () => {
-    const v = readExchange(withPhase({ active: true, winnerIdx: 9, loserIdx: 2 }), 9);
+    const v = readExchange(withPhase({ active: true, winnerIdx: 9, loserIdx: 2 }), 9, false);
     assert.equal(v.winner, null);
   });
 });
@@ -1301,4 +1354,253 @@ describe("impact feedback is timed to the card landing, not to the throw", () =>
     // animation it is supposed to match.
     assert.equal(impactDelayMs(false) % 1, 0);
   });
+});
+
+// ─── Flight origin ────────────────────────────────────────────────────────────
+
+describe("flightOrigin", () => {
+  // Deliberately asymmetric left/right pads, so a test that happens to pass
+  // only because the table is centred cannot hide here.
+  const base = {
+    scale: 1,
+    windowWidth: 800,
+    windowHeight: 600,
+    tableLeft: 40,
+    tableRight: 20,
+    tableTop: 10,
+    handZoneH: 100,
+    topDisplayedCount: 0,
+    sideDisplayedCount: 0,
+  };
+
+  test("bottom: the throw starts at the hand row's own vertical centre", () => {
+    // handRowCenterY = windowHeight - handZoneH/2 = 600-50 = 550;
+    // topSectionH (no fan) = 77, pileCenterY = 293.5 (worked in the `top`
+    // test below, which shares this same pile centre); dy = 550-293.5 = 256.5.
+    assert.deepEqual(flightOrigin({ ...base, dir: "bottom" }), { dx: 0, dy: 256.5 });
+  });
+
+  test("bottom: the pile's own centre, not a fixed constant, is what scale moves through", () => {
+    // seatLabelH(2)=84, ringSize(2)=66, topSectionH=150; midH=590-150-100=340;
+    // pileCenterY=10+150+170=330; handRowCenterY is unchanged at 550 (handZoneH
+    // is a caller-measured input here, not itself a function of scale); dy=220.
+    assert.equal(flightOrigin({ ...base, dir: "bottom", scale: 2 }).dy, 220);
+  });
+
+  test("top: dx is 0 — the top seat and the pile share the same horizontal centre", () => {
+    assert.equal(flightOrigin({ ...base, dir: "top" }).dx, 0);
+  });
+
+  test("top: the throw starts above the pile, at the ring's own line", () => {
+    // Worked by hand from seatLabelH/SEAT_DISC/CHIP_H/Spacing — see the ADR.
+    // seatLabelH(1) = 17 + CHIP_H(1)=23 + Spacing.xs=4 = 44; ringSize = 33.
+    // topSectionH (no fan) = 44 + 33 = 77; contentH = 600-10 = 590;
+    // midH = 590-77-100 = 413; pileCenterY = 10+77+413/2 = 293.5;
+    // ringCenterY = 10+44+33/2 = 70.5; dy = 70.5-293.5 = -223.
+    assert.equal(flightOrigin({ ...base, dir: "top" }).dy, -223);
+  });
+
+  test("top: a bigger held fan pushes the pile down, lengthening the throw", () => {
+    const noFan = flightOrigin({ ...base, dir: "top", topDisplayedCount: 0 }).dy;
+    const withFan = flightOrigin({ ...base, dir: "top", topDisplayedCount: 5 }).dy;
+    // The ring never moves; only the pile does, so the gap between them grows.
+    assert.ok(withFan < noFan, `expected the throw to lengthen: ${withFan} was not < ${noFan}`);
+  });
+
+  test("top: the fan's own cap means a held count past it changes nothing further", () => {
+    const atCap = flightOrigin({ ...base, dir: "top", topDisplayedCount: FAN_DRAWN_CARDS.top });
+    const wayPastCap = flightOrigin({ ...base, dir: "top", topDisplayedCount: 21 });
+    assert.deepEqual(wayPastCap, atCap);
+  });
+
+  test("top: a held fan's own height is folded into the pile's offset, not just its sign", () => {
+    // Same solve `topFanHeight` performs internally (`seatFanArc`), so this
+    // pins the arithmetic that combines it with `seatLabelH`/`SEAT_DISC`/
+    // `SEAT_GAP`, not the geometry of the solve itself.
+    const topDisplayedCount = 3;
+    const fanH = seatFanArc(topDisplayedCount, BACK_SCALE).bounds.h;
+    const topSectionH = seatLabelH(1) + SEAT_DISC + SEAT_GAP + fanH;
+    const contentH = base.windowHeight - base.tableTop;
+    const midH = contentH - topSectionH - base.handZoneH;
+    const pileCenterY = base.tableTop + topSectionH + midH / 2;
+    const ringCenterY = base.tableTop + seatLabelH(1) + SEAT_DISC / 2;
+    assert.equal(
+      flightOrigin({ ...base, dir: "top", topDisplayedCount }).dy,
+      ringCenterY - pileCenterY
+    );
+  });
+
+  test("left/right: the throw starts at the side seat's own ring, high in the band", () => {
+    // The seat's column is anchored to the top of the mid band, so its ring
+    // rides the slot's centre while the pile rides the band's: the throw starts
+    // above the pile by half the difference.
+    const topSectionH = seatLabelH(1) + SEAT_DISC;
+    const midH = base.windowHeight - base.tableTop - topSectionH - base.handZoneH;
+    const dy = (sideSlotHeight(1, 0) - midH) / 2;
+    assert.ok(dy < 0, `a raised seat throws downward into the pile: ${dy}`);
+    assert.equal(flightOrigin({ ...base, dir: "left" }).dy, dy);
+    assert.equal(flightOrigin({ ...base, dir: "right" }).dy, dy);
+  });
+
+  test("left: the throw starts at the ring flush against the rail", () => {
+    // tableW = 800-40-20 = 740; pileCenterX = 40+370 = 410;
+    // ringCenterX = 40 + Spacing.sm(8) + SEAT_DISC/2(16.5) = 64.5; dx = -345.5.
+    assert.equal(flightOrigin({ ...base, dir: "left" }).dx, -345.5);
+  });
+
+  test("right: the throw starts at the ring flush against the opposite edge", () => {
+    assert.equal(flightOrigin({ ...base, dir: "right" }).dx, 345.5);
+  });
+
+  test("left and right are mirror images of the same pile centre, however asymmetric the rail is", () => {
+    const left = flightOrigin({ ...base, dir: "left" }).dx;
+    const right = flightOrigin({ ...base, dir: "right" }).dx;
+    assert.equal(left + right, 0);
+  });
+
+  test("SEAT_DISC and FAN_DRAWN_CARDS.top are the numbers a throw's origin is measured against", () => {
+    // Pinned so a change to either is a deliberate edit here too, not a
+    // silent drift between the seat's own rendering and the throw's origin.
+    assert.equal(SEAT_DISC, 33);
+    assert.equal(FAN_DRAWN_CARDS.top, 7);
+  });
+
+  // A copy of SEAT_DISC also holds the pinned value above, so that assertion
+  // alone can never see one — only the source scan can (same reasoning as the
+  // CARD_W/CARD_H scan further up this file).
+  test("SEAT_DISC is declared in gameTableModel.ts and nowhere else", () => {
+    const SEAT_DISC_DECL = /(?<![\w$])(?:const|let|var)\s+SEAT_DISC(?![\w$])/g;
+    assert.deepEqual(scan(SEAT_DISC_DECL), ["components/gameTableModel.ts: const SEAT_DISC"]);
+  });
+});
+
+describe("sparkOffset", () => {
+  test("16 sparks ring the impact, evenly spaced", () => {
+    assert.equal(SPARK_COUNT, 16);
+  });
+
+  test("the first spark flies straight out along +x, unsquashed there", () => {
+    const s = sparkOffset(0, 1);
+    assert.equal(s.dx, 110);
+    assert.equal(s.dy, 0);
+    assert.equal(s.delay, 60);
+  });
+
+  test("a quarter turn round the ring flies +y, squashed to .62", () => {
+    // i = 4: angle = (4/16)*2π = π/2, distance = 110 + (4%4)*34 = 110.
+    const s = sparkOffset(4, 1);
+    assert.ok(Math.abs(s.dx) < 1e-9);
+    assert.equal(Math.round(s.dy), 68); // 110 * 0.62
+  });
+
+  test("distance steps every 4th spark, delay every 5th — the two cycles fall out of phase", () => {
+    const near = sparkOffset(0, 1);
+    const far = sparkOffset(1, 1);
+    assert.equal(Math.hypot(near.dx, near.dy / 0.62), 110);
+    assert.equal(Math.hypot(far.dx, far.dy / 0.62), 144); // 110 + 34
+    assert.equal(sparkOffset(5, 1).delay, 60); // (5 % 5) === 0, same as spark 0
+  });
+
+  test("distance scales with the table; delay is a stagger and never does", () => {
+    const s = sparkOffset(0, 2);
+    assert.equal(s.dx, 220);
+    assert.equal(s.delay, 60);
+  });
+
+  test("every spark before SPARK_COUNT has a distinct angle", () => {
+    const angles = new Set<string>();
+    for (let i = 0; i < SPARK_COUNT; i++) {
+      const s = sparkOffset(i, 1);
+      angles.add(Math.atan2(s.dy / 0.62, s.dx).toFixed(6));
+    }
+    assert.equal(angles.size, SPARK_COUNT);
+  });
+});
+
+describe("fanCounts", () => {
+  test("under cap: identical to subtracting departing from the capped total", () => {
+    assert.deepEqual(fanCounts(4, 2, 5), { remaining: 2, departing: 2 });
+  });
+
+  test("no flight: everything held is drawn, nothing departs", () => {
+    assert.deepEqual(fanCounts(4, 0, 5), { remaining: 4, departing: 0 });
+  });
+
+  test("at cap: the fan stays at cap through the flight instead of dipping and popping back", () => {
+    // A left seat holding 10 that plays 3: the post-play hand is 7, still past
+    // the cap of 5, so the fan never had fewer than 5 to show and nothing
+    // should visibly depart.
+    assert.deepEqual(fanCounts(10, 3, 5), { remaining: 5, departing: 0 });
+  });
+
+  test("crossing the cap: only the room the play actually freed up departs", () => {
+    // Pre-play 6 (1 over cap of 5) playing 3 drops the hand to 3, under cap —
+    // the fan does shrink, but the seat only ever drew 5 backs to begin with,
+    // so only 2 of the 3 played cards were ever drawn as one.
+    assert.deepEqual(fanCounts(6, 3, 5), { remaining: 3, departing: 2 });
+  });
+});
+
+
+describe("the portrait cover's glyph", () => {
+  test("stands upright at the start and lies down at the end", () => {
+    assert.equal(rotateGlyphAngle(ROTATE_UPRIGHT), 90);
+    assert.equal(rotateGlyphAngle(ROTATE_SETTLED), 0);
+  });
+
+  test("parks in the pose it is asking for, not the one the player is in", () => {
+    // The whole point of the still frame: a glyph parked upright shows the
+    // player what they already have.
+    assert.notEqual(rotateGlyphAngle(ROTATE_SETTLED), rotateGlyphAngle(ROTATE_UPRIGHT));
+    assert.equal(rotateGlyphAngle(ROTATE_SETTLED), 0);
+  });
+
+  test("turns without doubling back", () => {
+    const path = [0, 0.25, 0.5, 0.75, 1].map(rotateGlyphAngle);
+    for (let i = 1; i < path.length; i++) {
+      assert.ok(path[i]! < path[i - 1]!, "the glyph reverses part-way through its turn");
+    }
+  });
+});
+
+// ─── Who the viewer is ────────────────────────────────────────────────────────
+
+describe("viewerOwnsSeat", () => {
+  test("a seated player owns the seat they are drawn from", () => {
+    assert.equal(viewerOwnsSeat(2, 2, false), true);
+    assert.equal(viewerOwnsSeat(1, 2, false), false);
+  });
+
+  test("a watcher owns none of them", () => {
+    for (const seat of [0, 1, 2, 3]) {
+      assert.equal(viewerOwnsSeat(seat, seat, true), false, `seat ${seat} was owned`);
+    }
+  });
+});
+
+// `viewerOwnsSeat` is the only place identity is decided. `readExchange` takes
+// `spectating` as a required argument, so tsc names any caller that forgets it;
+// these are the screens, where the question would otherwise be asked by hand.
+//
+// `===` only: `seat !== viewerSeat` is "everyone else", which is how the
+// opponent list and the seat ring are built and is right for a watcher too.
+test("no screen asks whether a seat is the viewer's by hand", () => {
+  const IDENTITY = new RegExp(
+    String.raw`(?:===\s*(?:viewerSeat|mySeatIndex)\b)|(?:\b(?:viewerSeat|mySeatIndex)\s*===)`
+  );
+  const asked: string[] = [];
+  for (const rel of ["components/GameTable.tsx", "app/(online)/game.tsx", "app/(online)/replay.tsx"]) {
+    readFileSync(path.join(repoRoot, rel), "utf8")
+      .split("\n")
+      .forEach((line, i) => {
+        if (IDENTITY.test(line)) asked.push(`${rel}:${i + 1}: ${line.trim()}`);
+      });
+  }
+
+  assert.deepEqual(
+    asked,
+    [],
+    `a watcher's seat answers yes to these: ${asked.join(" | ")}. ` +
+      `Use viewerOwnsSeat(seat, viewerSeat, spectating) from components/gameTableModel.`
+  );
 });

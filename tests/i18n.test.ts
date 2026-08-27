@@ -402,6 +402,29 @@ describe("interpolation placeholders stay in sync across locales", () => {
   });
 });
 
+describe("gameTable.playLabelStartCard, gameTable.startCardBannerSelf and gameTable.startCardBannerOther name the actual card", () => {
+  const KEYS = [
+    "gameTable.playLabelStartCard",
+    "gameTable.startCardBannerSelf",
+    "gameTable.startCardBannerOther",
+  ] as const;
+
+  test("no locale hardcodes ♠ — the 2-player fallback opener can hold any suit", () => {
+    for (const key of KEYS) {
+      for (const name of LOCALE_NAMES) {
+        assert.ok(
+          !LOCALES[name][key].includes("♠"),
+          `${name}["${key}"] hardcodes ♠ instead of interpolating {{suit}}`
+        );
+        assert.ok(
+          LOCALES[name][key].includes("{{suit}}"),
+          `${name}["${key}"] is missing the {{suit}} placeholder entirely`
+        );
+      }
+    }
+  });
+});
+
 describe("interpolate()", () => {
   test("replaces a single placeholder", () => {
     assert.equal(interpolate("Hello {{name}}", { name: "Ana" }), "Hello Ana");
@@ -804,10 +827,11 @@ describe("Albanian card terminology", () => {
    * Attested in docs/albanian-card-terminology-research.md. `Trefla` and `Pika`
    * were a calque of *trefoil* and a borrowing of German *Pik*, attested as card
    * suits nowhere; docs/RULES.md's cited Albanian text opens the game with
-   * "ai lojtar që ka 3 maç".
+   * "ai lojtar që ka 3 maç". `Kupë`, not `Kupa`, is the bare singular the
+   * `{{rank}} {{suit}}` slot wants — `Kupa` is the noun's plural, per #29.
    */
   const SUITS = {
-    "cards.suitHearts": "Kupa",
+    "cards.suitHearts": "Kupë",
     "cards.suitDiamonds": "Karo",
     "cards.suitClubs": "Spathi",
     "cards.suitSpades": "Maç",
@@ -833,5 +857,60 @@ describe("Albanian card terminology", () => {
     }
     assert.ok(scanned > 500, `expected to scan all of sq.ts, got ${scanned}`);
     assert.deepEqual(violations, [], `these disagree in gender: ${violations.join(" | ")}`);
+  });
+
+  /** Attested over "Zonja" in #29. */
+  const QUEEN = {
+    "cards.rankQueen": "Çupa",
+    "rules.strengthQueen": "Çupa",
+  } as const;
+
+  test("the Queen is named Çupa, not Zonja", () => {
+    for (const [key, expected] of Object.entries(QUEEN)) {
+      assert.equal((sq as Record<string, string>)[key], expected, `sq.ts ${key}`);
+    }
+  });
+
+  /** Attested combination names, settled in #29. */
+  const COMBO_NAMES = {
+    "gameShared.comboPair": "Dyshe",
+    "gameShared.comboTriple": "Treshe",
+    "rules.comboPairName": "Dyshe",
+    "rules.comboTripleName": "Treshe",
+    "tutorial.typePair": "një Dyshe",
+    "tutorial.typeTriple": "një Treshe",
+    "tutorial.typeBomb": "një Katërshe",
+  } as const;
+
+  test("combination names use the attested register, not a literal Bombë calque", () => {
+    for (const [key, expected] of Object.entries(COMBO_NAMES)) {
+      assert.equal((sq as Record<string, string>)[key], expected, `sq.ts ${key}`);
+    }
+    assert.match((sq as Record<string, string>)["gameShared.comboBomb"], /Katërshe/, "sq.ts gameShared.comboBomb");
+    assert.match((sq as Record<string, string>)["rules.comboBombName"], /Katërshe/, "sq.ts rules.comboBombName");
+  });
+
+  /**
+   * "mund" is a modal clitic here, not the bare verb "beats" — the literal
+   * calque ("Shkalla Mbretërore mund gjithçka") is ungrammatical Albanian.
+   * Fixed to "i mund të gjitha" / "nuk mund t'i përgjigjesh" per #29.
+   */
+  test("the royal-straight-is-unbeatable strings use the fixed mund clitic", () => {
+    assert.match(
+      sq["gameTable.playA11ySpokenRoyalUnbeatable"],
+      /\bi mund të gjitha\b/,
+      "gameTable.playA11ySpokenRoyalUnbeatable",
+    );
+    assert.match(
+      sq["gameTable.playA11ySpokenRoyalUnbeatable"],
+      /nuk mund t'i përgjigjesh\b/,
+      "gameTable.playA11ySpokenRoyalUnbeatable",
+    );
+    assert.match(sq["tutorial.errRoyalBeatsAll"], /\bi mund të gjitha\b/, "tutorial.errRoyalBeatsAll");
+    assert.match(
+      sq["tutorial.errRoyalBeatsAll"],
+      /nuk mund t'i përgjigjesh\b/,
+      "tutorial.errRoyalBeatsAll",
+    );
   });
 });

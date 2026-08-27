@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef } from "react";
+import { useCallback, useEffect, useRef, type ReactNode } from "react";
 import { View, StyleSheet } from "react-native";
 import { TableText } from "./TableText";
 import Animated, {
@@ -16,7 +16,7 @@ import Animated, {
 import { scheduleOnRN } from "react-native-worklets";
 import Ionicons from "@expo/vector-icons/Ionicons";
 import { CardView } from "@/components/CardView";
-import { Colors, FontSize, Motion, Radius, Scrim, Spacing } from "@/lib/theme";
+import { Colors, FontSize, Motion, Radius, Scrim, Shadow, Spacing } from "@/lib/theme";
 import { usePrefersReducedMotion } from "@/lib/accessibility";
 import { useTranslation, type TranslationKey } from "@/lib/i18n";
 import type { Card, Combination } from "@/lib/gameEngine";
@@ -30,12 +30,6 @@ import {
 } from "@/components/gameTableModel";
 import { FIELD_ARC, solveArc } from "@/components/tableArc";
 
-const FLY_OFFSETS: Record<FlyDirection, { dx: number; dy: number }> = {
-  bottom: { dx: 0, dy: 140 },
-  top:    { dx: 0, dy: -100 },
-  left:   { dx: -180, dy: 0 },
-  right:  { dx: 180, dy: 0 },
-};
 const FLY_ROTS: Record<FlyDirection, number> = {
   bottom: -12, top: 12, left: -18, right: 18,
 };
@@ -77,19 +71,22 @@ function fieldArc(cards: Card[], cardScale: number, roomW: number) {
 export function FlyingCards({
   cards,
   direction,
+  origin,
   onDone,
   roomW,
   scale = 1,
 }: {
   cards: Card[];
   direction: FlyDirection;
+  /** Where the throw starts — components/gameTableModel.ts `flightOrigin`. */
+  origin: { dx: number; dy: number };
   onDone: () => void;
   /** The width share the field's arc may take — see FIELD_WIDTH_SHARE. */
   roomW: number;
   /** The table's own scale — the pile draws its cards at `scale * FIELD_SCALE`. */
   scale?: number;
 }) {
-  const { dx, dy } = FLY_OFFSETS[direction];
+  const { dx, dy } = origin;
   const startRot = FLY_ROTS[direction];
   const landingRot = FLY_LANDING_ROTS[direction];
   const reduceMotion = usePrefersReducedMotion();
@@ -177,7 +174,10 @@ export function FlyingCards({
 
   return (
     <View style={[pileStyles.flyingContainer, { pointerEvents: "none" as const }]}>
-      <Animated.View style={[pileStyles.flyingInner, { width: box.w, height: box.h }, aStyle]}>
+      <Animated.View
+        testID="flying-cards"
+        style={[pileStyles.flyingInner, { width: box.w, height: box.h }, aStyle]}
+      >
         {arc.map((place, i) => (
           <View
             key={cards[i].id}
@@ -212,34 +212,109 @@ const COMBO_LABEL_KEYS: Record<string, TranslationKey> = {
 
 const POWER_COMBOS = new Set(["bomb", "royal_straight"]);
 
+// The flush's "catch": a hand-emptying play's own cards bloom gold and lift,
+// same 620ms every time — verbatim off the prototype's `catch` keyframe.
+// Two segments (0-50%, 50-100%), each ease-out, rather than one duration
+// straight through: the bloom and lift both peak at the midpoint and return,
+// not ramp continuously to it.
+const CATCH_MS = 620;
+const CATCH_LIFT = -9;
+const CATCH_EASING = Easing.out(Easing.cubic);
+
+function CatchCard({
+  trigger,
+  scale,
+  children,
+}: {
+  trigger: number;
+  scale: number;
+  children: ReactNode;
+}) {
+  const reduceMotion = usePrefersReducedMotion();
+  const glow = useSharedValue(0);
+  // 0 at rest, 1 at the top of the lift — the table's own scale multiplies it
+  // at render, so resizing the table cannot read as a fresh catch.
+  const lift = useSharedValue(0);
+
+  useEffect(() => {
+    if (!trigger || reduceMotion) return;
+    glow.value = 0;
+    lift.value = 0;
+    const half = CATCH_MS / 2;
+    // One descriptor per shared value: Reanimated mutates an animation as it
+    // runs, so two values cannot share one.
+    const bloom = () =>
+      withSequence(
+        withTiming(1, { duration: half, easing: CATCH_EASING }),
+        withTiming(0, { duration: half, easing: CATCH_EASING })
+      );
+    glow.value = bloom();
+    lift.value = bloom();
+  }, [trigger, reduceMotion, glow, lift]);
+
+  useEffect(
+    () => () => {
+      cancelAnimation(glow);
+      cancelAnimation(lift);
+    },
+    [glow, lift]
+  );
+
+  const liftStyle = useAnimatedStyle(() => ({
+    transform: [{ translateY: lift.value * CATCH_LIFT * scale }],
+  }));
+  // Opacity only, on a childless sibling behind the card — the same
+  // compositor-safe substitute for an animated shadow hand.tsx's cardGlow uses.
+  const glowStyle = useAnimatedStyle(() => ({ opacity: glow.value }));
+
+  return (
+    <Animated.View style={liftStyle}>
+      <Animated.View pointerEvents="none" style={[pileStyles.catchGlow, glowStyle]} />
+      {children}
+    </Animated.View>
+  );
+}
+
 function PileComboCards({
   cards,
   scale,
   roomW,
+  catchTrigger,
 }: {
   cards: Card[];
   scale: number;
   roomW: number;
+  /** Runs `catch` on every card here when it changes — omit for a layer that never should (the beaten `prev` combination). */
+  catchTrigger?: number;
 }) {
   const { arc, box, cardH } = fieldArc(cards, scale, roomW);
   return (
     <View style={{ width: box.w, height: box.h, position: "relative" }}>
-      {arc.map((place, i) => (
-        <View
-          key={cards[i].id}
-          style={{
-            position: "absolute",
-            left: box.w / 2 + place.x,
-            top: place.y + (box.h - cardH),
-            zIndex: i,
-            transform: [
-              { rotate: `${place.rot + cardTilt(cards[i].id, COMBO_MAX_TILT)}deg` },
-            ],
-          }}
-        >
-          <CardView card={cards[i]} scale={scale} light="flat" />
-        </View>
-      ))}
+      {arc.map((place, i) => {
+        const face = <CardView card={cards[i]} scale={scale} light="flat" />;
+        return (
+          <View
+            key={cards[i].id}
+            style={{
+              position: "absolute",
+              left: box.w / 2 + place.x,
+              top: place.y + (box.h - cardH),
+              zIndex: i,
+              transform: [
+                { rotate: `${place.rot + cardTilt(cards[i].id, COMBO_MAX_TILT)}deg` },
+              ],
+            }}
+          >
+            {catchTrigger !== undefined ? (
+              <CatchCard trigger={catchTrigger} scale={scale}>
+                {face}
+              </CatchCard>
+            ) : (
+              face
+            )}
+          </View>
+        );
+      })}
     </View>
   );
 }
@@ -249,6 +324,7 @@ export function PlayedPile({
   current,
   roundWinner,
   bounceTrigger,
+  catchTrigger,
   roomW,
   scale = 1,
 }: {
@@ -256,6 +332,8 @@ export function PlayedPile({
   current: Combination | null;
   roundWinner: string | null;
   bounceTrigger?: number;
+  /** The flush: the play just landed emptied a hand. */
+  catchTrigger?: number;
   /** The width share the field's arc may take — see FIELD_WIDTH_SHARE. */
   roomW: number;
   /** The table's own scale — the pile draws its cards at `scale * FIELD_SCALE`. */
@@ -310,7 +388,14 @@ export function PlayedPile({
             <PileComboCards cards={prev.cards} scale={cardScale} roomW={roomW} />
           </View>
         )}
-        {current && <PileComboCards cards={current.cards} scale={cardScale} roomW={roomW} />}
+        {current && (
+          <PileComboCards
+            cards={current.cards}
+            scale={cardScale}
+            roomW={roomW}
+            catchTrigger={catchTrigger}
+          />
+        )}
       </View>
 
       {current && (
@@ -362,6 +447,15 @@ const pileStyles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     minHeight: 80,
+  },
+  // Behind a catching card, never on it — the same childless-sibling
+  // substitute for an animated shadow hand.tsx's cardGlow uses.
+  catchGlow: {
+    position: "absolute",
+    top: 2, left: 2, right: 2, bottom: 2,
+    borderRadius: Radius.sm,
+    backgroundColor: Colors.gold,
+    ...Shadow.goldSoft,
   },
   // A dark plate, not a gold wash: gold on gold over the felt clears AA at no
   // stop of any felt. The border is where the chip's identity lives.

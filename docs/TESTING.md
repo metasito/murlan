@@ -12,10 +12,10 @@ blocker documented below rather than glossed over.
 | Web e2e | `npm run test:e2e` | Playwright, chromium — gameplay, reconnect, a tap-target sweep of every screen at three sizes, and a check that no part of the table renders off the side of one | Docker + a built web bundle |
 | Android UI (Maestro) | `maestro test .maestro/*.yaml` | 2 flows | Android SDK + emulator + Maestro, see §5 |
 
-`npm run verify` runs typecheck, unit/integration and the native suite. The web
-e2e suite is deliberately excluded — it builds the Expo web bundle and is far
-slower than the rest. The Maestro layer is not wired into `verify` or CI —
-see §5 for exactly what runs and what does not on this machine.
+`npm run verify` runs typecheck, unit/integration, the native suite and lint.
+The web e2e suite is deliberately excluded — it builds the Expo web bundle and
+is far slower than the rest. The Maestro layer is not wired into `verify` or
+CI — see §5 for exactly what runs and what does not on this machine.
 
 ---
 

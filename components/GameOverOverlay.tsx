@@ -4,7 +4,7 @@
 // no equivalent (it navigates to app/result.tsx), so this is passed to
 // <GameTable> through the `overlays` slot rather than living inside it.
 
-import React, { useEffect } from "react";
+import React, { useEffect, useState } from "react";
 import { Modal, View, Text, StyleSheet, Pressable, ScrollView } from "react-native";
 import Animated, {
   useAnimatedStyle,
@@ -25,7 +25,8 @@ import { standings } from "@/lib/standings";
 import { Colors, FontSize, Motion, Radius, Spacing, TOUCH_TARGET_MIN } from "@/lib/theme";
 import { usePrefersReducedMotion } from "@/lib/accessibility";
 import { useTranslation, type TranslationKey } from "@/lib/i18n";
-import { a11yState } from "@/lib/a11y";
+import { a11yHidden, a11yState } from "@/lib/a11y";
+import { HandBreakdown } from "./HandBreakdown";
 
 const POSITION_MEDALS = ["trophy", "medal", "ribbon", "remove-circle"] as const;
 const POSITION_COLORS = [Colors.podiumGold, Colors.podiumSilver, Colors.podiumBronze, Colors.textMuted];
@@ -134,6 +135,7 @@ export function GameOverOverlay({
   myUserId,
   cumulativeScores,
   handScores,
+  ratingDelta,
   match,
 }: {
   gameState: GameState;
@@ -146,9 +148,14 @@ export function GameOverOverlay({
   cumulativeScores: Record<string, number>;
   /** What the manche just played awarded, by display name. */
   handScores: Record<string, number>;
+  /** What it did to this player's ladder rating, or null for a hand that earned none. */
+  ratingDelta: number | null;
   match: MatchSummary;
 }) {
   const { t } = useTranslation();
+  // Closed until asked for: the breakdown's queries do not run, so reaching
+  // the rematch button costs exactly what it costs today.
+  const [breakdownOpen, setBreakdownOpen] = useState(false);
   // `rankings` holds engine player ids (`player_0`); everything shown here and
   // every cumulative-score key is a display name.
   const nameOf = (playerId: string) =>
@@ -289,6 +296,35 @@ export function GameOverOverlay({
                 handPts={row.points}
               />
             ))}
+
+            <Pressable
+              onPress={() => setBreakdownOpen((open) => !open)}
+              style={styles.breakdownToggle}
+              accessibilityRole="button"
+              accessibilityLabel={
+                breakdownOpen
+                  ? t("handBreakdown.hideA11yLabel")
+                  : t("handBreakdown.toggleA11yLabel")
+              }
+              {...a11yState({ role: "button", expanded: breakdownOpen })}
+            >
+              <Ionicons
+                name={breakdownOpen ? "chevron-up" : "chevron-down"}
+                size={14}
+                color={Colors.gold}
+                {...a11yHidden()}
+              />
+              <Text style={styles.breakdownToggleText} {...a11yHidden()}>
+                {t("handBreakdown.toggle")}
+              </Text>
+            </Pressable>
+            {breakdownOpen && (
+              <HandBreakdown
+                myUserId={myUserId}
+                ratingDelta={ratingDelta}
+                mancheCanFollow={canContinue}
+              />
+            )}
           </ScrollView>
 
           <View style={styles.actions}>
@@ -481,6 +517,20 @@ const styles = StyleSheet.create({
     fontFamily: "Rajdhani_700Bold",
     fontSize: FontSize.xs,
     color: Colors.gold,
+  },
+
+  breakdownToggle: {
+    minHeight: TOUCH_TARGET_MIN,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: Spacing.xs,
+  },
+  breakdownToggleText: {
+    fontFamily: "Rajdhani_600SemiBold",
+    fontSize: FontSize.xs,
+    color: Colors.gold,
+    letterSpacing: 0.5,
   },
 
   actions: { flexDirection: "row", gap: Spacing.sm },

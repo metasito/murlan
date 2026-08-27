@@ -18,6 +18,9 @@
     "server:prod": "NODE_ENV=production node server_dist/index.mjs",
     "db:push": "drizzle-kit push",
     "db:backup": "node scripts/backup-db.mjs",
+    "db:backup:prune": "node scripts/prune-backups.mjs",
+    "agent:check": "node scripts/agent-check.mjs",
+    "worktrees:prune": "node scripts/prune-worktrees.mjs",
     "db:reset": "node scripts/reset-db.mjs && drizzle-kit push",
     "start": "npx expo start",
     "lint": "npx expo lint . -- --max-warnings 0",
@@ -27,7 +30,9 @@
     "perf:web": "playwright test --config tests/e2e/playwright.perf.config.ts --reporter=line",
     "test:e2e": "playwright test --config tests/e2e/playwright.config.ts",
     "typecheck": "tsc --noEmit",
-    "verify": "npm run typecheck && npm run test && npm run test:native"
+    "typecheck:strict": "node scripts/checkStrictIndexed.mjs",
+    "verify": "npm run typecheck && npm run typecheck:strict && npm run test && npm run test:native && npm run lint",
+    "ticket": "tsx scripts/ticket-pipeline.ts"
   },
   "dependencies": {
     "@expo-google-fonts/inter": "^0.4.2",

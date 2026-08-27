@@ -196,7 +196,11 @@ function configureExpoAndLanding(app: express.Application) {
       // every visitor gets a 200 and the owner never sees the dashboard.
       if (req.path.startsWith("/api") || req.path === "/admin") return next();
       res.set("Cache-Control", "no-cache");
-      res.sendFile(webIndexPath);
+      // `root` here, rather than folding it into an absolute path: without
+      // it `send` dotfile-checks every segment of the *filesystem* path, so
+      // a checkout under a dot directory (a worktree under `.claude/`, say)
+      // 404s every client-side route instead of serving the SPA shell.
+      res.sendFile("index.html", { root: distPath });
     });
     logger.info("Serving Expo web build from dist/");
   } else {
@@ -221,6 +225,10 @@ function setupErrorHandler(app: express.Application) {
       };
       const status = error.status || error.statusCode || 500;
       logger.error({ err }, "Internal Server Error");
+      // Delegating destroys the socket, which a finished response does not
+      // deserve: express-session saves after `res.end`, so a store failing
+      // there would drop a connection the client is still pooling.
+      if (res.writableEnded) return;
       if (res.headersSent) return next(err);
       // A 4xx message was chosen for the caller (a body-parse failure, say);
       // a 5xx message is whatever internal thing threw, and has leaked

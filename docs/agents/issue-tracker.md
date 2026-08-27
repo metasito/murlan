@@ -23,12 +23,12 @@ Infer the repo from `git remote -v`; `gh` does this automatically when run insid
 
 ## Claiming an item
 
-The standard way to work a ticket the picker routes to implement is
-`Workflow({ scriptPath: '.claude/workflows/ticket-pipeline.mjs' })` — the `name` form does not
-resolve, because that registry does not read the project's `.claude/workflows/`. It claims,
-gates, implements, verifies, reviews through three independent lenses, lands and tears down,
-per `docs/superpowers/specs/2026-08-24-autonomous-ticket-pipeline-design.md`. Everything
-below describes what it does, and stays the instruction for anything worked by hand.
+The standard way to work a ticket the picker routes to implement is **`npm run ticket`**
+(`scripts/ticket-pipeline.ts`), or **`/ticket`** which runs it. It claims, implements, reviews its
+own diff with `/code-review --fix` before pushing, reads `ci.yml`'s verdict, fixes a red run,
+lands and tears down. The picker's other two routes have entry points of their own — `/triage`
+and `/wayfinder`. Everything below describes what the runner does, and stays the instruction for
+anything worked by hand.
 
 Sessions run in parallel against one repo, and every one of them authenticates as the same
 GitHub account — so `--add-assignee @me` cannot tell two sessions apart. The branch name
@@ -44,13 +44,16 @@ can, and that is what the claim carries.
   removes a ticket from the frontier (the lost-label backstop). It is the single
   picker; do not re-derive a queue per session, and do not encode blocking anywhere
   but GitHub's dependency graph.
-- **Execute the route through the mattpocock skills** — `implement`: read the issue
-  body as the spec; TDD at pre-agreed seams, typecheck and single test files while
-  iterating, the full suite once, `/code-review` before committing (the skill cascades
-  `/tdd` and `/code-review` itself — do not run them by hand instead). `triage`:
-  verify claims against the codebase, write agent briefs for `ready-for-agent`, keep
-  the AI-generated-content disclaimer on everything posted. `wayfinder`: work through
-  the map, one decision per ticket; record the resolution, graduate the fog it clears.
+- **Execute the route through its command** — `/ticket`, `/triage` or `/wayfinder`, each
+  taking `loop`. `/triage` and `/wayfinder` run `mattpocock-skills:triage` and
+  `mattpocock-skills:wayfinder`, which own their procedures; the command files carry
+  only what is specific to this repo.
+  `mattpocock-skills:implement` is **not** among them: it is marked
+  `disable-model-invocation`, so no agent can call it, and its "run the full test suite
+  once at the end" contradicts this repo's rule that `ci.yml` owns the sweep. The
+  implement stage spells its own workflow out instead — read the whole issue, write its
+  Definition of done out as a checklist, build test-first, `/code-review --fix` the diff,
+  then check the boxes against the code actually written.
 - **Claim**, as the session's first write, before the branch and before reading the code:
   ```sh
   gh issue edit <n> --add-label in-progress
@@ -66,6 +69,11 @@ can, and that is what the claim carries.
   item nobody will pick up.
 - **Stale claim**: the branch named in the claim comment is in neither
   `git ls-remote --heads origin` nor `git worktree list`. Say so on the issue, then claim it.
+- **Abandoned branch**: on origin, in no worktree, with **no open pull request**. A run that
+  ended without landing leaves one, and it is residue rather than a claim — say so, delete it
+  (`git push origin --delete <branch>`), then take the ticket. Left alone it satisfies the
+  staleness test above and the ticket can never be picked up again; #294 refused every run for
+  exactly this reason.
 
 ## Pull requests as a triage surface
 
@@ -90,11 +98,22 @@ Run `gh issue view <number> --comments`.
 
 ## Writing an issue body an agent can execute
 
-An agent working the queue gets the issue body and nothing else. It cannot ask a follow-up
-question. So the body is the whole specification, and the test of a good one is that a
-competent stranger could land the change without guessing.
+An agent working the queue cannot ask a follow-up question, so the issue is the whole
+specification and the test of a good one is that a competent stranger could land the change
+without guessing.
 
-Six sections, in this order. Drop any that would be empty — an empty heading is noise.
+**The comments are part of it.** An owner's ruling, a decision a triage pass settled, a trap
+found later — all of those arrive as comments, and the body is often the state of the question
+before any of them. Read with `--comments` and treat a later ruling as overriding the body.
+
+The design gate reads them apart, and the difference matters when you write one. A recorded
+decision counts from either. Everything else — an open box under "What to settle", whether the
+ticket weighs a dependency — is read from the **body only**, because the gate comments on the
+issues it escalates, and reading its own notice back turned #278 into a loop that escalated on
+its own words. So write the body to stand alone: a decision that changes the work is worth
+folding back into it, and a decision left only in a comment will not move any gate but that one.
+
+Eight sections, in this order. Drop any that would be empty — an empty heading is noise.
 
 ```markdown
 ## Question            ← or "The defect" / "The opportunity". One sentence: what is being decided or fixed.
@@ -103,6 +122,7 @@ Six sections, in this order. Drop any that would be empty — an empty heading i
 ## What to settle      ← `- [ ]` checkboxes, one per sub-decision. Empty tables to fill in beat prose.
 ## Constraints         ← `> [!IMPORTANT]` — the invariants this change can break, and how.
 ## Definition of done  ← `- [ ]` per artefact. What must exist for this to close.
+## Checks              ← what to run while iterating, and what to run once before pushing.
 ## Not this ticket     ← the adjacent work it will be tempting to absorb, with issue numbers.
 ```
 
@@ -113,8 +133,30 @@ What makes the difference in practice:
 - **Name the invariant *and* its enforcement.** "`CARD_W` is declared once, and
   `tests/gameTableModel.test.ts` source-scans for a second declaration" tells an agent both
   what not to do and what will catch it.
+- **Name the checks in two slots: the loop, and the gate.** `docs/agents/RULES.md` rules 3 to 5
+  leave the slow suites to the agent, and an agent judging in the dark reads `loops.md`, hunts
+  for a spec, probes for Docker, and then runs the two-minute native suite against a two-line
+  diff. You have read the change coming; it has not. So write:
+
+  ```markdown
+  ## Checks
+
+  While iterating: `node --test tests/gameTableModel.test.ts`
+  Once before pushing: `npm run agent:check`
+  Not `npm run test:native`: react-test-renderer never runs flexbox, so it cannot see this.
+  ```
+
+  **Never put a rebuilding command in the loop slot.** A Playwright spec is nine minutes and a
+  full Metro rebuild for any change outside `tests/e2e/` — named as the loop, it becomes the
+  loop: #349 ran one seven times, which was two thirds of that ticket's wall clock. A browser
+  check belongs in the gate slot, bounded to red-once and green-once, with CI carrying the rest.
 - **Checkboxes over prose.** They render as progress on the issue, and an agent can report
   against them. A wall of paragraphs makes partial completion invisible.
+- **An open box under `## What to settle` means the ticket is not `ready-for-agent`.** That
+  label promises the decisions are made; an unchecked box says they are not, and an agent that
+  meets both builds on whichever reading it picked. Settle them and write the answers down, or
+  label it `ready-for-human` and leave them open. The design gate escalates a ticket carrying
+  both, so the contradiction costs a claim rather than a diff.
 - **An empty table is an instruction.** Giving the columns of a decision to be made
   (`Event | Visual | Sound | Haptic | Fallback`) specifies the shape of the answer far more
   cheaply than describing it.

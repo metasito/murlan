@@ -13,6 +13,7 @@ import type { Page } from "@playwright/test";
 import { openApp } from "./navigation";
 import { createDeck, dealCards } from "../../../lib/gameEngine";
 import { captureGameState, type CaptureState } from "../../../lib/captureStates";
+import { E2E_SUSPEND_AI_KEY } from "../../../lib/e2eAiSuspend";
 
 /** Bot names and personalities as app/lobby.tsx fills empty seats. */
 const BOTS = [
@@ -103,14 +104,36 @@ export function offlineGameSave(playerCount: 2 | 3 | 4, handSize: number = 13, t
   };
 }
 
-/** Opens the app with a game already saved, and resumes it. */
+/**
+ * Holds whichever seat the save is on, before the bundle evaluates.
+ *
+ * `EXPO_PUBLIC_E2E_FAST` takes the offline bot's own delay to zero, so a seeded
+ * bot turn is over before a spec can measure it (`lib/e2eAiSuspend.ts`).
+ */
+async function holdSeededTurn(page: Page): Promise<void> {
+  await page.addInitScript(
+    ({ key }) => window.localStorage.setItem(key, "1"),
+    { key: E2E_SUSPEND_AI_KEY }
+  );
+}
+
+/**
+ * Opens the app with a game already saved, and resumes it.
+ *
+ * `holdTurn` is opt-in rather than implied by a non-zero `turn`: a spec that
+ * seeds a bot's turn may be there precisely to watch that bot play
+ * (`seatFans.spec.ts`'s throw origins), and holding it would leave nothing to
+ * measure.
+ */
 export async function openSeededGame(
   page: Page,
   baseURL: string,
   playerCount: 2 | 3 | 4,
   handSize?: number,
-  turn?: number
+  turn: number = 0,
+  holdTurn: boolean = false
 ): Promise<void> {
+  if (holdTurn) await holdSeededTurn(page);
   await resumeSaved(page, baseURL, offlineGameSave(playerCount, handSize, turn));
 }
 
@@ -121,6 +144,8 @@ export async function openSeededGame(
  * from a seat count and a turn is what keeps a Playwright run and a photograph
  * comparable: a state that carries a pile carries it on both, instead of the
  * web run quietly checking an empty felt under the same name.
+ *
+ * It also holds the seeded turn still (`lib/e2eAiSuspend.ts`).
  */
 export async function openCaptureState(
   page: Page,
@@ -128,6 +153,7 @@ export async function openCaptureState(
   state: CaptureState
 ): Promise<void> {
   const save = offlineGameSave(state.playerCount, DEAL_SIZE[state.playerCount], state.turn);
+  await holdSeededTurn(page);
   await resumeSaved(page, baseURL, { ...save, gameState: captureGameState(state) });
 }
 
@@ -140,7 +166,7 @@ export async function openCaptureState(
  * point: a write-then-reload costs a second load of the bundle, which is about
  * what the lobby clicks cost, and saves nothing.
  */
-async function resumeSaved(page: Page, baseURL: string, save: object): Promise<void> {
+export async function resumeSaved(page: Page, baseURL: string, save: object): Promise<void> {
   await page.addInitScript(
     ({ key, value }) => window.localStorage.setItem(key, value),
     { key: "@murlan_offline_game", value: JSON.stringify(save) }

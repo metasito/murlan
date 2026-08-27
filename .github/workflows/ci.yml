@@ -26,6 +26,11 @@ env:
   # local and CI runs identical. The `build` job is deliberately not on this —
   # it runs production's Node, for the reason given there.
   NODE_VERSION: "24"
+  # Single source of truth for the secret-scan image: the scan step and the
+  # self-test must run the exact same binary, or a version bump to one and not
+  # the other leaves the self-test attesting to a scanner that isn't the one
+  # guarding the repo.
+  GITLEAKS_IMAGE: "zricethezav/gitleaks:v8.30.1"
 
 jobs:
   # Two reasons the suite below can be skipped, both settled here: the commit is
@@ -95,8 +100,94 @@ jobs:
             echo "app=true" >> "$GITHUB_OUTPUT"
           fi
 
+  # Runs unconditionally rather than depending on `scope`: `scope` exempts
+  # doc-only changes (docs/, .claude/, *.md), but a secret can land in exactly
+  # those paths — #277 found one under `.claude/` — so gating this job on
+  # `scope` would let it through unscanned.
+  secrets:
+    name: Secret scan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Full history checked out
+        run: |
+          if [ "$(git rev-parse --is-shallow-repository)" = "true" ]; then
+            echo "::error::checkout is shallow — a full-history scan needs fetch-depth: 0."
+            exit 1
+          fi
+
+      # The pinned image, not the official gitleaks-action: that action scans
+      # only the commits a push or PR adds, and this needs the whole history
+      # every run. Runs through the shared script (see there) rather than a
+      # docker command written out here, so the self-test below exercises the
+      # identical invocation.
+      - name: gitleaks
+        shell: bash
+        run: bash .github/scripts/gitleaks-scan.sh "$PWD" gitleaks-output.txt
+
+      # gitleaks logs "N commits scanned" to stderr, not stdout — the step
+      # above must fold both into gitleaks-output.txt or this reads an empty
+      # file on every run.
+      - name: The scan actually inspected commit history
+        run: |
+          scanned=$(grep -oE '[0-9]+ commits scanned' gitleaks-output.txt | grep -oE '^[0-9]+' || true)
+          if [ -z "$scanned" ] || [ "$scanned" -eq 0 ]; then
+            echo "::error::gitleaks reported scanning ${scanned:-no} commits — the scan inspected nothing."
+            exit 1
+          fi
+
+      # A scanner nobody has seen fail is a scanner nobody knows is running.
+      # The planted credential is assembled at runtime so no committed line
+      # ever matches the rule it exists to prove fires — including in the
+      # history of this very step. It carries no key/api/token/secret keyword,
+      # so generic-api-key cannot substitute for the rule under test; its
+      # charset is restricted to aws-access-token's own `[A-Z2-7]` (no
+      # 0/1/8/9), which the regex requires character-for-character, and drawn
+      # without repeats so its Shannon entropy always clears the rule's
+      # threshold — an unfiltered A-Z0-9 draw fails both, unpredictably.
+      - name: Self-test — a planted credential still fires the gate
+        shell: bash
+        run: |
+          scratch=$(mktemp -d)
+          git -C "$scratch" init -q
+          git -C "$scratch" config user.email "ci@murlan.invalid"
+          git -C "$scratch" config user.name "CI"
+          cp .gitleaks.toml "$scratch/.gitleaks.toml"
+          suffix=$(head -c 8192 /dev/urandom | LC_ALL=C tr -dc 'A-Z2-7' | fold -w1 | awk '!seen[$0]++' | head -16 | tr -d '\n')
+          printf 'AKIA%s\n' "$suffix" > "$scratch/planted.txt"
+          git -C "$scratch" add -A
+          git -C "$scratch" commit -q -m "planted"
+
+          # bash runs this script with -e, and the leak-found exit below is
+          # the expected outcome, not a script error — `|| status=$?` reads
+          # it without that exit code aborting the step before it is checked.
+          bash .github/scripts/gitleaks-scan.sh "$scratch" gitleaks-selftest.txt || status=$?
+          status=${status:-0}
+          rm -rf "$scratch"
+
+          if [ "$status" -ne 1 ]; then
+            echo "::error::planting a credential should make gitleaks exit 1 (leak found); got $status."
+            exit 1
+          fi
+          if ! grep -q "leaks found: 1" gitleaks-selftest.txt; then
+            echo "::error::gitleaks exited 1 but did not report the planted finding."
+            exit 1
+          fi
+          if ! grep -qE 'RuleID:[[:space:]]+aws-access-token' gitleaks-selftest.txt; then
+            echo "::error::the planted credential fired a different rule than aws-access-token — the self-test no longer proves what it claims."
+            exit 1
+          fi
+
+  # The three checks that need the Postgres service, and only those: jest and
+  # eslint are their own jobs so this one's ~150s of tests stops standing in
+  # front of their ~90s. Nothing here is gated on them, and nothing there is
+  # gated on this, so one run still reports every failure rather than stopping
+  # at the first — which is what the folded job's `if: !cancelled()` bought.
   verify:
-    name: Typecheck, tests, lint
+    name: Typecheck and tests
     needs: scope
     if: needs.scope.outputs.app == 'true'
     runs-on: ubuntu-latest
@@ -135,8 +226,21 @@ jobs:
           cache: npm
       - run: npm ci
 
+      # tests/backupDb.test.ts restores a real dump — needs the same client
+      # tools scripts/backup-db.mjs itself depends on, matched to the service
+      # container's major version so the dump a pg_dump writes is one its own
+      # psql can read back.
+      - name: Install postgresql-client
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends postgresql-client-16
+
       - name: Typecheck
         run: npm run typecheck
+
+      # noUncheckedIndexedAccess, scoped to the areas already proven clean —
+      # rides this job rather than a new one, which would bill its own
+      # runner minute for one more `tsc` invocation.
+      - name: Typecheck — noUncheckedIndexedAccess ratchet
+        run: npm run typecheck:strict
 
       - name: Test
         shell: bash
@@ -154,32 +258,66 @@ jobs:
             echo "These cover socket auth, hand secrecy, the exchange bypass and seat vacancy."
             exit 1
           fi
+          if grep -qE "pg_dump not on PATH|psql not on PATH" test-output.txt; then
+            echo "::error::The backup restore test skipped — postgresql-client-16 did not provide pg_dump/psql."
+            echo "This is the only test proving a dump actually restores; see the 'Install postgresql-client' step above."
+            exit 1
+          fi
           echo "Integration suites ran against Postgres."
 
-      # React Native's own renderer, with Platform.OS set to ios and android —
-      # the one thing the Playwright suite structurally cannot do. It needs no
-      # database and nothing else this job has not already installed, so it
-      # rides here rather than starting a second runner to repeat `npm ci`.
-      # Runs even when the step above went red: parallel jobs used to show a
-      # failure in each on the same run, and folding must not cost a round trip
-      # to learn the second one.
-      - name: Native tests
-        if: ${{ !cancelled() }}
-        run: npm run test:native
-
-      - name: Lint
-        if: ${{ !cancelled() }}
-        run: npm run lint
-
-  browser:
-    name: Browser tests
+  # React Native's own renderer, with Platform.OS set to ios and android — the
+  # one thing the Playwright suite structurally cannot do. It rode in `verify`
+  # to avoid repeating `npm ci`, back when that job was not the run's longest.
+  # It is now: `npm ci` costs ~20s against the ~66s this spends, and paying it
+  # twice in parallel is cheaper in wall clock than either waiting for the
+  # other.
+  native:
+    name: Native tests
     needs: scope
     if: needs.scope.outputs.app == 'true'
     runs-on: ubuntu-latest
-    # The longest job by a wide margin, and so the run's critical path. It
-    # builds its own bundle and its own disposable Postgres
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+      - run: npm ci
+      - run: npm run test:native
+
+  lint:
+    name: Lint
+    needs: scope
+    if: needs.scope.outputs.app == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+      - run: npm ci
+      - run: npm run lint
+
+  browser:
+    name: Browser tests ${{ matrix.shard }}/4
+    needs: scope
+    if: needs.scope.outputs.app == 'true'
+    runs-on: ubuntu-latest
+    # Each shard builds its own bundle and its own disposable Postgres
     # (scripts/e2e-server.mjs) rather than reusing another job's, which is what
-    # lets it start at the same moment as everything else instead of waiting.
+    # lets them all start at the same moment as everything else instead of
+    # waiting. That costs the same 85s of setup on every shard — measured on
+    # run 33063120496: 33s for `npm ci` and the browser, 31s for the Expo
+    # export, the rest booting — which is small enough against ~485s of tests
+    # that a shared bundle job would serialise more than it saves.
+    strategy:
+      # One shard's red must not cancel the others: the report the merge job
+      # builds is only whole if every shard uploaded, and a suite that stops at
+      # the first failing shard hides what the rest would have found.
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3, 4]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -198,27 +336,28 @@ jobs:
       # The only layer that exercises react-native-web's side of every
       # Platform.OS branch, and the only one that measures a laid-out box —
       # tap targets, and whether the table renders off the side of the screen.
-      # 40 tests in 8.4 minutes on a shared runner, the bundle build it does
-      # first included (run 32304169964). 20 minutes is that with room for a
-      # slow one rather than a budget anything today comes near.
+      # `fullyParallel: false` makes a whole spec file the unit of sharding, so
+      # the split follows the files rather than the tests. 20 minutes was a
+      # ceiling for the unsharded suite and is left alone: it is a hang
+      # detector, not a budget, and a quarter of the suite comes nowhere near.
       - name: Browser tests
         timeout-minutes: 20
-        run: npm run test:e2e
+        run: npm run test:e2e -- --shard=${{ matrix.shard }}/4
 
-      # Uploaded on success too, not just on failure: a green run with no
-      # report is a run that skipped the suite, and `if-no-files-found: error`
+      # Uploaded on success too, not just on failure: a green shard with no
+      # blob is a shard that skipped the suite, and `if-no-files-found: error`
       # is what turns that into a red step rather than a warning nobody reads.
-      # The path is the config file's own directory — `outputFolder` in
-      # tests/e2e/playwright.config.ts resolves relative to that, not to the
-      # working directory the run was launched from.
-      - name: Keep the Playwright report
+      # The path is the config file's own directory — the blob reporter writes
+      # relative to that, not to the working directory the run was launched
+      # from.
+      - name: Keep this shard's report
         if: ${{ !cancelled() }}
         uses: actions/upload-artifact@v4
         with:
-          name: playwright-report
-          path: tests/e2e/playwright-report/
+          name: blob-report-${{ matrix.shard }}
+          path: tests/e2e/blob-report/
           if-no-files-found: error
-          retention-days: 7
+          retention-days: 1
 
       # The HTML reporter copies every attachment into playwright-report/data/
       # under its own SHA-1, so for a run that reaches the end this duplicates
@@ -231,9 +370,57 @@ jobs:
         if: failure()
         uses: actions/upload-artifact@v4
         with:
-          name: playwright-test-results
+          name: playwright-test-results-${{ matrix.shard }}
           path: tests/e2e/test-results/
           if-no-files-found: ignore
+          retention-days: 7
+
+  # Four shards produce four partial reports; this is what puts the one report
+  # the run publishes back together. It carries the floor the browser job used
+  # to: a run that reaches the end and publishes no report is a run that tested
+  # nothing, and `if-no-files-found: error` is what says so.
+  browser-report:
+    name: Browser test report
+    needs: browser
+    # Not `success()`: a red shard is exactly when the report is worth reading.
+    if: ${{ !cancelled() && needs.browser.result != 'skipped' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+      - run: npm ci
+
+      - name: Collect every shard's report
+        uses: actions/download-artifact@v4
+        with:
+          path: all-blob-reports
+          pattern: blob-report-*
+          merge-multiple: true
+
+      # A shard that died before writing its blob leaves a gap that the merged
+      # report cannot show, so the count is checked against the matrix rather
+      # than inferred from whatever arrived.
+      - name: Every shard reported
+        run: |
+          found=$(find all-blob-reports -name '*.zip' | wc -l)
+          if [ "$found" -ne 4 ]; then
+            echo "::error::$found of 4 shard reports arrived — the merged report would be missing a quarter of the suite per absent shard."
+            exit 1
+          fi
+
+      - name: Merge into one report
+        run: npx playwright merge-reports --reporter html ./all-blob-reports
+
+      - name: Keep the Playwright report
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: playwright-report/
+          if-no-files-found: error
           retention-days: 7
 
   build:

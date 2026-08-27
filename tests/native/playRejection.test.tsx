@@ -39,7 +39,15 @@ jest.mock('expo-haptics', () => ({
 import * as Haptics from 'expo-haptics';
 import { GameTable } from '@/components/GameTable';
 import { t } from '@/lib/i18n';
-import type { Card, Combination, GameState, Player, Rank, Suit } from '@/lib/gameEngine';
+import { cardSpokenName } from '@/lib/cardNames';
+import {
+  type Card,
+  type Combination,
+  type GameState,
+  type Player,
+  type Rank,
+  type Suit,
+} from '@/lib/gameEngine';
 
 const METRICS = {
   frame: { x: 0, y: 0, width: 844, height: 390 },
@@ -125,9 +133,23 @@ describe('the refused GIOCA names the right reason', () => {
     );
 
     expect(reasonOf()).toContain(
-      t('gameTable.playA11ySpokenStartCard', { rank: THREE_S.rank })
+      t('gameTable.playA11ySpokenStartCard', { card: cardSpokenName(THREE_S, t) })
     );
     expect(reasonOf()).not.toContain(t('gameTable.playA11ySpokenTooLow'));
+
+    await r.unmount();
+  });
+
+  it('names the actual 2-player fallback card, not the 3♠, when it opens instead', async () => {
+    const FIVE_H = card('5', 'hearts');
+    const r = await render(
+      table(state({ firstPlayMade: false, startCard: FIVE_H }), [SEVEN_H.id, SEVEN_C.id])
+    );
+
+    expect(reasonOf()).toContain(
+      t('gameTable.playA11ySpokenStartCard', { card: cardSpokenName(FIVE_H, t) })
+    );
+    expect(reasonOf()).not.toContain('♠');
 
     await r.unmount();
   });
@@ -155,6 +177,36 @@ describe('the refused GIOCA names the right reason', () => {
 
     expect(screen.getByText(t('gameTable.playLabelGioca'))).toBeTruthy();
     expect(screen.queryByText(t('gameTable.playLabelTooLow'))).toBeNull();
+
+    await r.unmount();
+  });
+});
+
+describe('the start-card banner names the real fallback card', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+  });
+
+  const FIVE_H = card('5', 'hearts');
+
+  it('the viewer opens: banner names the actual card, not the 3♠', async () => {
+    const r = await render(
+      table(state({ firstPlayMade: false, startCard: FIVE_H, currentTurnIndex: 0 }), [])
+    );
+
+    expect(screen.getByText('You start! You hold the 5♥')).toBeTruthy();
+    expect(screen.queryByText('♠')).toBeNull();
+
+    await r.unmount();
+  });
+
+  it('another seat opens: banner names the actual card, not the 3♠', async () => {
+    const r = await render(
+      table(state({ firstPlayMade: false, startCard: FIVE_H, currentTurnIndex: 1 }), [])
+    );
+
+    expect(screen.getByText('Besi starts with the 5♥')).toBeTruthy();
+    expect(screen.queryByText('♠')).toBeNull();
 
     await r.unmount();
   });
