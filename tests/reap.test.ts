@@ -1,6 +1,6 @@
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
-import { orphans, staleByAge, netstatListeners } from "../scripts/reap.mjs";
+import { orphans, staleByAge, netstatListeners, toolingRoots, ownedByTooling } from "../scripts/reap.mjs";
 import { memoryVerdict, memoryFloor } from "../scripts/preflightMemory.mjs";
 
 const HOUR = 60 * 60 * 1000;
@@ -129,5 +129,61 @@ describe("memoryVerdict", () => {
   test("the floor never exceeds a tenth of the machine, however small it is", () => {
     assert.ok(memoryFloor(2 * GB) <= 0.2 * GB);
     assert.equal(memoryVerdict({ freeBytes: 0.25 * GB, totalBytes: 2 * GB }).ok, true);
+  });
+});
+
+describe("ownedByTooling", () => {
+  const roots = toolingRoots({
+    repoRoot: "C:/Users/roton/murlan",
+    env: { LOCALAPPDATA: "C:/Users/roton/AppData/Local" } as unknown as NodeJS.ProcessEnv,
+    platform: "win32",
+  });
+  const owned = (cl: string) => ownedByTooling(cl, roots, "win32");
+
+  test("claims a jest worker, which runs out of the repo's own node_modules", () => {
+    assert.equal(
+      owned(String.raw`"C:\Program Files\nodejs\node.exe" C:\Users\roton\murlan\node_modules\jest-worker\build\workers\processChild.js`),
+      true
+    );
+  });
+
+  /**
+   * Playwright keeps its browsers in the user's profile, not under the checkout, so a rule that
+   * knew only the repo root would leave every stray browser behind — and the browser is the
+   * process class that actually costs hundreds of megabytes.
+   */
+  test("claims a Playwright browser, which lives outside the checkout entirely", () => {
+    assert.equal(
+      owned(String.raw`C:\Users\roton\AppData\Local\ms-playwright\chromium_headless_shell-1234\chrome-headless-shell-win64\chrome-headless-shell.exe --headless`),
+      true
+    );
+  });
+
+  test("claims a process running from a worktree of the repo", () => {
+    assert.equal(
+      owned(String.raw`"node" C:\Users\roton\murlan\.worktrees\w465\node_modules\.bin\jest`),
+      true
+    );
+  });
+
+  /**
+   * The reason this is a path rule and not a list of process names. All three of these were
+   * running on the owner's machine while the reaper was being written.
+   */
+  test("never claims something that merely shares a name with our tooling", () => {
+    for (const cl of [
+      String.raw`"C:\Program Files\Google\Chrome\Application\chrome.exe" --profile-directory=Default`,
+      String.raw`C:\Users\roton\AppData\Local\hermes\hermes-agent\venv\Scripts\python.exe -m hermes_cli.main gateway run`,
+      String.raw`"C:\Program Files (x86)\Microsoft\EdgeWebView\Application\msedgewebview2.exe" --type=renderer`,
+    ]) {
+      assert.equal(owned(cl), false, cl.slice(0, 60));
+    }
+  });
+
+  /** A command line the platform would not give up names nothing, so it claims nothing. */
+  test("claims nothing when the command line could not be read", () => {
+    for (const cl of [null, undefined, ""]) {
+      assert.equal(ownedByTooling(cl as unknown as string, roots, "win32"), false);
+    }
   });
 });
