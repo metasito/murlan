@@ -47,6 +47,7 @@ import {
   computeTableFrame,
   railWidth,
   readExchange,
+  viewerOwnsSeat,
   INACTIVE_EXCHANGE,
   describeTableForA11y,
   impactDelayMs,
@@ -1074,38 +1075,50 @@ describe("readExchange", () => {
   const withPhase = (phase: any) => ({ players, exchangePhase: phase }) as any;
 
   test("no phase at all is inactive", () => {
-    assert.deepEqual(readExchange(withPhase(undefined), 0), INACTIVE_EXCHANGE);
+    assert.deepEqual(readExchange(withPhase(undefined), 0, false), INACTIVE_EXCHANGE);
   });
 
   test("an inactive phase object is still inactive", () => {
     assert.deepEqual(
-      readExchange(withPhase({ active: false, winnerIdx: 0, loserIdx: 2 }), 0),
+      readExchange(withPhase({ active: false, winnerIdx: 0, loserIdx: 2 }), 0, false),
       INACTIVE_EXCHANGE
     );
   });
 
   test("the winner is asked to give, the loser to wait", () => {
     const state = withPhase({ active: true, winnerIdx: 0, loserIdx: 2 });
-    const asWinner = readExchange(state, 0);
+    const asWinner = readExchange(state, 0, false);
     assert.equal(asWinner.viewerIsWinner, true);
     assert.equal(asWinner.viewerIsLoser, false);
     assert.equal(asWinner.winner, players[0]);
     assert.equal(asWinner.loser, players[2]);
 
-    const asLoser = readExchange(state, 2);
+    const asLoser = readExchange(state, 2, false);
     assert.equal(asLoser.viewerIsWinner, false);
     assert.equal(asLoser.viewerIsLoser, true);
   });
 
+  test("a watcher is neither, whichever seat they are drawn from", () => {
+    const state = withPhase({ active: true, winnerIdx: 0, loserIdx: 2 });
+    for (const seat of [0, 1, 2]) {
+      const v = readExchange(state, seat, true);
+      assert.equal(v.active, true, `seat ${seat} still sees the phase`);
+      assert.equal(v.viewerIsWinner, false, `seat ${seat} was called the winner`);
+      assert.equal(v.viewerIsLoser, false, `seat ${seat} was called the loser`);
+      assert.equal(v.winner, players[0], `seat ${seat} lost the winner's name`);
+      assert.equal(v.loser, players[2], `seat ${seat} lost the loser's name`);
+    }
+  });
+
   test("a bystander is neither", () => {
-    const v = readExchange(withPhase({ active: true, winnerIdx: 0, loserIdx: 2 }), 1);
+    const v = readExchange(withPhase({ active: true, winnerIdx: 0, loserIdx: 2 }), 1, false);
     assert.equal(v.active, true);
     assert.equal(v.viewerIsWinner, false);
     assert.equal(v.viewerIsLoser, false);
   });
 
   test("an out-of-range seat resolves to null rather than undefined", () => {
-    const v = readExchange(withPhase({ active: true, winnerIdx: 9, loserIdx: 2 }), 9);
+    const v = readExchange(withPhase({ active: true, winnerIdx: 9, loserIdx: 2 }), 9, false);
     assert.equal(v.winner, null);
   });
 });
@@ -1548,4 +1561,46 @@ describe("the portrait cover's glyph", () => {
       assert.ok(path[i]! < path[i - 1]!, "the glyph reverses part-way through its turn");
     }
   });
+});
+
+// ─── Who the viewer is ────────────────────────────────────────────────────────
+
+describe("viewerOwnsSeat", () => {
+  test("a seated player owns the seat they are drawn from", () => {
+    assert.equal(viewerOwnsSeat(2, 2, false), true);
+    assert.equal(viewerOwnsSeat(1, 2, false), false);
+  });
+
+  test("a watcher owns none of them", () => {
+    for (const seat of [0, 1, 2, 3]) {
+      assert.equal(viewerOwnsSeat(seat, seat, true), false, `seat ${seat} was owned`);
+    }
+  });
+});
+
+// `viewerOwnsSeat` is the only place identity is decided. `readExchange` takes
+// `spectating` as a required argument, so tsc names any caller that forgets it;
+// these are the screens, where the question would otherwise be asked by hand.
+//
+// `===` only: `seat !== viewerSeat` is "everyone else", which is how the
+// opponent list and the seat ring are built and is right for a watcher too.
+test("no screen asks whether a seat is the viewer's by hand", () => {
+  const IDENTITY = new RegExp(
+    String.raw`(?:===\s*(?:viewerSeat|mySeatIndex)\b)|(?:\b(?:viewerSeat|mySeatIndex)\s*===)`
+  );
+  const asked: string[] = [];
+  for (const rel of ["components/GameTable.tsx", "app/(online)/game.tsx", "app/(online)/replay.tsx"]) {
+    readFileSync(path.join(repoRoot, rel), "utf8")
+      .split("\n")
+      .forEach((line, i) => {
+        if (IDENTITY.test(line)) asked.push(`${rel}:${i + 1}: ${line.trim()}`);
+      });
+  }
+
+  assert.deepEqual(
+    asked,
+    [],
+    `a watcher's seat answers yes to these: ${asked.join(" | ")}. ` +
+      `Use viewerOwnsSeat(seat, viewerSeat, spectating) from components/gameTableModel.`
+  );
 });

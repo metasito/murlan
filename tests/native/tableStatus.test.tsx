@@ -220,3 +220,52 @@ describe('a seated player is still the player on move', () => {
     await r.unmount();
   });
 });
+
+const PHASE = {
+  active: true,
+  cardFromLoser: card('given', '2', 'hearts'),
+  bothJokersException: false,
+} as const;
+
+/** Seat 0 owes seat 2 a card. */
+const owing = (): GameState => ({
+  ...state(1),
+  exchangePhase: { ...PHASE, winnerIdx: 0, loserIdx: 2 },
+});
+
+/** Seat 2 owes seat 0 a card, so a seated viewer at 0 is the one waiting. */
+const awaiting = (): GameState => ({
+  ...state(1),
+  exchangePhase: { ...PHASE, winnerIdx: 2, loserIdx: 0 },
+});
+
+const EXCHANGE_GIVE = filled('gameTable.a11yExchangeGive', { name: 'Cimi' });
+const EXCHANGE_WAIT = filled('gameTable.a11yExchangeWait', { name: 'Cimi' });
+
+// A watcher owes nobody a card and is owed none, whichever seat they are
+// drawn from.
+describe('an exchange asks the player, never the watcher', () => {
+  it('does not ask a watcher to hand over a card', async () => {
+    const r = await render(table(owing(), true));
+    expect(spokenNodes(new RegExp(EXCHANGE_GIVE))).toHaveLength(0);
+    await r.unmount();
+  });
+
+  it('does not tell a watcher they are waiting for one', async () => {
+    const r = await render(table(awaiting(), true));
+    expect(spokenNodes(new RegExp(EXCHANGE_WAIT))).toHaveLength(0);
+    await r.unmount();
+  });
+
+  it('still tells the player whose seat it is they are waiting', async () => {
+    const r = await render(table(awaiting()));
+    expect(spokenNodes(new RegExp(EXCHANGE_WAIT))).toHaveLength(1);
+    await r.unmount();
+  });
+
+  it('still asks the player whose seat it is to hand one over', async () => {
+    const r = await render(table(owing()));
+    expect(spokenNodes(new RegExp(EXCHANGE_GIVE))).toHaveLength(1);
+    await r.unmount();
+  });
+});

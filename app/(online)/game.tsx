@@ -215,7 +215,7 @@ export default function OnlineGameScreen() {
   const myRematchAnswer =
     myUserId in rematchIntents.answers ? rematchIntents.answers[myUserId] : null;
 
-  const exchange = readExchange(gameState, mySeatIndex);
+  const exchange = readExchange(gameState, mySeatIndex, isSpectator);
   // The results overlay sits above the table and needs the same safe-area pads
   // the table uses; the table computes its own full frame from the same source.
   const pads = computeScreenPads({ insets });

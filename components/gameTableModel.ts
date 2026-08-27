@@ -792,6 +792,23 @@ export function notificationTopOffset(opts: {
   return chipTop + CHIP_H(opts.scale) + PAD_INNER * opts.scale;
 }
 
+// ─── Who the viewer is ────────────────────────────────────────────────────────
+
+/**
+ * A watcher is handed a seat so the table has a bottom to draw from, but that
+ * seat is a real player they are not, so every question of identity answers no
+ * for them. Questions of *geometry* — which side a seat draws on — still use
+ * `viewerSeat` raw, because a watcher's table is laid out from a seat all the
+ * same. `tests/gameTableModel.test.ts` pins that identity never asks directly.
+ */
+export function viewerOwnsSeat(
+  seat: number | null,
+  viewerSeat: number,
+  spectating: boolean
+): boolean {
+  return !spectating && seat === viewerSeat;
+}
+
 // ─── Exchange phase ───────────────────────────────────────────────────────────
 
 export interface ExchangeView {
@@ -812,13 +829,17 @@ export const INACTIVE_EXCHANGE: ExchangeView = {
   loser: null,
 };
 
-export function readExchange(state: GameState, viewerSeat: number): ExchangeView {
+export function readExchange(
+  state: GameState,
+  viewerSeat: number,
+  spectating: boolean
+): ExchangeView {
   const phase = state.exchangePhase;
   if (!phase?.active) return INACTIVE_EXCHANGE;
   return {
     active: true,
-    viewerIsWinner: phase.winnerIdx === viewerSeat,
-    viewerIsLoser: phase.loserIdx === viewerSeat,
+    viewerIsWinner: viewerOwnsSeat(phase.winnerIdx, viewerSeat, spectating),
+    viewerIsLoser: viewerOwnsSeat(phase.loserIdx, viewerSeat, spectating),
     winner: state.players[phase.winnerIdx] ?? null,
     loser: state.players[phase.loserIdx] ?? null,
   };
