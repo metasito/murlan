@@ -23,7 +23,7 @@ import {
   processPass,
   processPlay,
 } from "../lib/gameEngine.ts";
-import { c, makePlayer } from "./helpers.ts";
+import { c, j, makePlayer } from "./helpers.ts";
 import type { GameState } from "../lib/gameEngine.ts";
 import type { BotPersonalityId } from "../lib/botPersonalities.ts";
 
@@ -157,6 +157,92 @@ test("aggression decides whether a lead spends premium cards", () => {
     !ask("drita")!.cards.some((x) => x.rank === "2"),
     "a cautious lead keeps them"
   );
+});
+
+// The hard tier hoards what wins a contested round: 2s, jokers, bombs and
+// royal straights. The shortcut below still picks from everything legal; it is
+// `applyPersonality`'s floor, downstream of it, that keeps the premium plays.
+
+test("the hard tier leads a plain play rather than dump a royal straight", () => {
+  // Seven cards, so the five-card royal clears `myCards - 2` and is the longest
+  // play the shortcut can see.
+  const hand = [c("3", "spades"), c("4", "spades"), c("5", "spades"),
+    c("6", "spades"), c("7", "spades"), c("9", "clubs"), c("J", "diamonds")];
+  const choice = aiChoosePlay(
+    makePlayer("bot", hand, { type: "ai", personality: "gent" }), null, true,
+    [9, 9, 9], undefined, fixedRng([0.5])
+  );
+  assert.notEqual(choice?.type, "royal_straight", "the royal is defence, not a lead");
+  assert.ok(
+    !choice!.cards.some((x) => x.rank === "2" || x.isJoker),
+    "and neither is a 2 or a joker"
+  );
+});
+
+// Eight cards with straights of five, six and seven — `near3` is non-empty, so
+// this is the shortcut itself rather than the dump-value fallback under it.
+test("the hard tier's near-finish shortcut leads its longest play", () => {
+  const hand = [c("3", "hearts"), c("4", "diamonds"), c("5", "clubs"),
+    c("6", "spades"), c("7", "hearts"), c("8", "diamonds"),
+    c("9", "clubs"), c("J", "diamonds")];
+  const choice = aiChoosePlay(
+    makePlayer("bot", hand, { type: "ai", personality: "gent" }), null, true,
+    [9, 9, 9], undefined, fixedRng([0.5])
+  );
+  assert.equal(choice?.cards.length, 7, "the longest straight goes down");
+});
+
+// The shortcut sorts on length alone, which is what separates it from the
+// dump-value fallback under it: with two pairs of equal length the fallback
+// would lead the weaker one. Four cards, so both pairs clear `myCards - 2`.
+test("the hard tier's near-finish shortcut sorts on length, not on dump value", () => {
+  const hand = [c("K", "clubs"), c("K", "hearts"), c("3", "clubs"), c("3", "diamonds")];
+  const choice = aiChoosePlay(
+    makePlayer("bot", hand, { type: "ai", personality: "gent" }), null, true,
+    [9, 9, 9], undefined, fixedRng([0.5])
+  );
+  assert.deepEqual(choice?.cards.map((x) => x.rank), ["K", "K"]);
+});
+
+// Six cards with a four-of-a-kind: `near3` holds the bomb alone, so the tier
+// opens with it. The plain plays left are singles, a pair and a triple, so the
+// answer also says which of them a lead takes — the longest, not the weakest.
+test("the hard tier leads its longest plain play rather than open with a bomb", () => {
+  const hand = [c("K", "clubs"), c("K", "hearts"), c("K", "spades"),
+    c("K", "diamonds"), c("3", "clubs"), c("4", "diamonds")];
+  for (const personality of ["gent", "ana"] as BotPersonalityId[]) {
+    for (const roll of [0, 0.5, 0.99]) {
+      const choice = aiChoosePlay(
+        makePlayer("bot", hand, { type: "ai", personality }), null, true,
+        [9, 9, 9], undefined, fixedRng([roll])
+      );
+      assert.deepEqual(
+        choice?.cards.map((x) => x.rank), ["K", "K", "K"],
+        `${personality} at rng ${roll} led ${choice?.type}`
+      );
+    }
+  }
+});
+
+// The floor is not a knob. `fixedRng` feeds one value to every draw, so the
+// sweep moves both knobs together; the roll that reaches the joker here is 0,
+// where unpredictability swaps the tier's K♥ for the same-shape joker single.
+test("the hard tier answers plainly rather than spend a joker, at every roll", () => {
+  const hand = [j("colored"), c("K", "hearts"), c("4", "clubs"), c("5", "clubs"),
+    c("6", "clubs"), c("7", "clubs"), c("9", "clubs"), c("10", "diamonds")];
+  const lastPlayed = buildCombination([c("Q", "spades")])!;
+  for (const personality of ["gent", "ana"] as BotPersonalityId[]) {
+    for (const roll of [0, 0.5, 0.99]) {
+      const choice = aiChoosePlay(
+        makePlayer("bot", hand, { type: "ai", personality }), lastPlayed, false,
+        [9, 9, 9], undefined, fixedRng([roll])
+      );
+      assert.ok(
+        !choice?.cards.some((x) => x.isJoker || x.rank === "2"),
+        `${personality} at rng ${roll} spent ${choice?.cards.map((x) => x.rank).join("+")}`
+      );
+    }
+  }
 });
 
 // applyPersonality's unpredictability knob indexes a filtered slice of `plays`,
