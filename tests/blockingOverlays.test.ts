@@ -8,6 +8,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
+import { blankComments } from "./helpers/sourceScan.ts";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
 
@@ -40,7 +41,7 @@ export function modalBodies(source: string): string[] {
 
 test("every blocking overlay is inside a real modal", () => {
   const offenders = BLOCKING_OVERLAYS.filter(([rel, marker]) => {
-    const source = readFileSync(path.join(repoRoot, rel), "utf8");
+    const source = blankComments(readFileSync(path.join(repoRoot, rel), "utf8"));
     return !modalBodies(source).some((body) => body.includes(marker));
   }).map(([rel, marker]) => `${rel} (${marker})`);
 
@@ -57,7 +58,7 @@ test("every blocking overlay is inside a real modal", () => {
 test("every blocking overlay answers a close request and names itself", () => {
   const offenders: string[] = [];
   for (const [rel, marker] of BLOCKING_OVERLAYS) {
-    const source = readFileSync(path.join(repoRoot, rel), "utf8");
+    const source = blankComments(readFileSync(path.join(repoRoot, rel), "utf8"));
     for (const body of modalBodies(source)) {
       if (!body.includes(marker)) continue;
       if (!/onRequestClose=/.test(body)) offenders.push(`${rel} (${marker}): no close handler`);
@@ -87,7 +88,7 @@ const NON_MODAL_PROPERTIES: [string, RegExp][] = [
 ];
 
 test("the settings sheet covers the table on a non-modal layer's own terms", () => {
-  const source = readFileSync(path.join(repoRoot, NON_MODAL_OVERLAY), "utf8");
+  const source = blankComments(readFileSync(path.join(repoRoot, NON_MODAL_OVERLAY), "utf8"));
   assert.deepEqual(
     modalBodies(source),
     [],

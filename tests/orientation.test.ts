@@ -10,6 +10,7 @@ import assert from "node:assert/strict";
 import { readdirSync, readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
+import { blankComments } from "./helpers/sourceScan.ts";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
@@ -20,7 +21,7 @@ function screenSources(): [string, string][] {
       .filter((f) => f.endsWith(".tsx"))
       .map((f): [string, string] => {
         const rel = path.posix.join(dir, f.split(path.sep).join("/"));
-        return [rel, readFileSync(path.join(repoRoot, dir, f), "utf8")];
+        return [rel, blankComments(readFileSync(path.join(repoRoot, dir, f), "utf8"))];
       })
   );
 }

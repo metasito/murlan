@@ -16,6 +16,7 @@ import assert from "node:assert/strict";
 import { readFileSync, readdirSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
+import { blankCommentsAndStrings } from "./helpers/sourceScan.ts";
 
 const selfPath = fileURLToPath(import.meta.url);
 const repoRoot = path.resolve(path.dirname(selfPath), "..");
@@ -44,17 +45,6 @@ const READING = new RegExp(
  */
 const FIXED = String.raw`(?:(?!0\b|1\b)[\d_]+(?:\.\d+)?(?:e-?\d+)?|[A-Z][A-Z\d_]*)\b`;
 const COMPARE = String.raw`\s*[<>]=?\s*`;
-
-/** Blanked, not removed: every offset still points at the line it came from. */
-function blankCommentsAndStrings(source: string): string {
-  const blank = (m: string) => m.replace(/[^\n]/g, " ");
-  return source
-    .replace(/\/\*[\s\S]*?\*\//g, blank)
-    .replace(/(^|[^:])(\/\/[^\n]*)/g, (_, before: string, comment: string) => before + blank(comment))
-    .replace(/`(?:\\.|\$\{[^}]*\}|[^`\\])*`/g, blank)
-    .replace(/'(?:\\.|[^'\\])*'/g, blank)
-    .replace(/"(?:\\.|[^"\\])*"/g, blank);
-}
 
 /** The source of each `assert…(…)` / `expect(…)…` call, to its closing paren. */
 function assertionExtents(source: string): { at: number; text: string }[] {
