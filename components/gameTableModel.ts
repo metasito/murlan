@@ -795,8 +795,6 @@ export function notificationTopOffset(opts: {
 // ─── Who the viewer is ────────────────────────────────────────────────────────
 
 /**
- * Whether the player at `seat` is the viewer themselves.
- *
  * A watcher is handed a seat so the table has a bottom to draw from, but that
  * seat is a real player they are not, so every question of identity answers no
  * for them. Questions of *geometry* — which side a seat draws on — still use
@@ -834,7 +832,7 @@ export const INACTIVE_EXCHANGE: ExchangeView = {
 export function readExchange(
   state: GameState,
   viewerSeat: number,
-  spectating = false
+  spectating: boolean
 ): ExchangeView {
   const phase = state.exchangePhase;
   if (!phase?.active) return INACTIVE_EXCHANGE;

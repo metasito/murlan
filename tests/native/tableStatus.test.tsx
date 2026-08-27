@@ -243,8 +243,7 @@ const EXCHANGE_GIVE = filled('gameTable.a11yExchangeGive', { name: 'Cimi' });
 const EXCHANGE_WAIT = filled('gameTable.a11yExchangeWait', { name: 'Cimi' });
 
 // A watcher owes nobody a card and is owed none, whichever seat they are
-// drawn from. The card picker a seated winner gets is a separate surface;
-// `readExchange`'s own tests cover that side.
+// drawn from.
 describe('an exchange asks the player, never the watcher', () => {
   it('does not ask a watcher to hand over a card', async () => {
     const r = await render(table(owing(), true));
@@ -258,9 +257,15 @@ describe('an exchange asks the player, never the watcher', () => {
     await r.unmount();
   });
 
-  it('still tells the player whose seat it is', async () => {
+  it('still tells the player whose seat it is they are waiting', async () => {
     const r = await render(table(awaiting()));
     expect(spokenNodes(new RegExp(EXCHANGE_WAIT))).toHaveLength(1);
+    await r.unmount();
+  });
+
+  it('still asks the player whose seat it is to hand one over', async () => {
+    const r = await render(table(owing()));
+    expect(spokenNodes(new RegExp(EXCHANGE_GIVE))).toHaveLength(1);
     await r.unmount();
   });
 });
