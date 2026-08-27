@@ -39,9 +39,11 @@ const ALWAYS_HIDDEN = /\{\.\.\.a11yHidden\(\)\}/;
 /**
  * The veil, however it is spelled: spread onto a host view, passed down as a
  * prop, or handed to a slot whose caller decides which of its own layers is
- * behind it.
+ * behind it. The slot's is the narrower of the two — a cover rendered inside
+ * it answers to the sheet alone, because it cannot veil itself (#474).
  */
-const VEILED = /\{\.\.\.behindVeil\}|veiled=\{behindVeil\}|veiled=\{settingsOpen\}|\(behindVeil\)/;
+const VEILED =
+  /\{\.\.\.behindVeil\}|veiled=\{behindVeil\}|veiled=\{settingsOpen\b|\(behindSheetOnly\)/;
 
 export interface RootChild {
   name: string;

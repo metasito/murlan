@@ -32,6 +32,8 @@ const BLOCKING_OVERLAYS: [string, string][] = [
   ["components/SettingsModal.tsx", "StyleSheet.absoluteFill"],
   ["components/ErrorFallback.tsx", "styles.modalOverlay"],
   ["components/SessionReplacedNotice.tsx", "styles.overlay"],
+  ["app/(online)/index.tsx", "styles.modalOverlay"],
+  ["app/(online)/index.tsx", "StyleSheet.absoluteFill"],
   // The portrait cover, which is the whole screen.
   ["components/table/rotateOverlay.tsx", "portraitOverlayStyles.overlay"],
 ];
@@ -45,21 +47,44 @@ const BLOCKING_OVERLAYS: [string, string][] = [
 const NOT_A_BLOCKER: [string, number, string][] = [
   ["components/table/felt.tsx", 1, "the table's own paint at zIndex 0 — the surface the game is drawn on, not a layer over it"],
   ["components/table/chrome.tsx", 1, "the rail is a fixed-width strip down one edge: full-height, never full-screen, and the table is laid out beside it"],
-  ["components/table/settingsSheet.tsx", 1, "deliberately not a Modal (#195); the test below requires the four properties a Modal would have brought"],
   ["app/index.tsx", 1, "the face of one animated card, absolute within that card's own view"],
   ["app/(online)/game.tsx", 1, 'the overlay layer itself is pointerEvents="box-none" — it takes no touch and holds no content, only the overlays that do'],
+];
+
+/**
+ * Blocking layers that must not be Modals, each with the properties it carries instead of
+ * the ones a Modal would have brought. Each property is a fact about the source rather than
+ * a promise about it, so a rename cannot quietly satisfy one.
+ */
+const NON_MODAL_OVERLAYS: [string, number, string, string, [string, RegExp][]][] = [
+  [
+    "components/table/settingsSheet.tsx",
+    1,
+    'testID="settings-veil"',
+    "a full-screen modal takes the tap away from the rail knob that opened it, and the knob is the sheet's own close control (#195)",
+    [
+      ["traps focus", /useFocusTrap\(/],
+      ["answers Escape", /useEscapeToClose\(/],
+      ["answers the Android back gesture", /useBackToClose\(/],
+      ["is announced as a dialog", /a11yDialog\(/],
+    ],
+  ],
+  [
+    "app/(online)/game.tsx",
+    1,
+    "styles.waitOverlay",
+    "the exchange wait cover holds no control, so there is nothing to trap into and nothing to close — the player waits it out",
+    [["withdraws the table under it", /tableCovered=\{/]],
+  ],
 ];
 
 /**
  * Layers that do cover a screen and do not trap focus. Listed rather than fixed here, each
  * against the issue that owns it: a reader behind one of these can still reach the controls
  * underneath. Adding to this list is how the debt stays visible — a new untrapped layer
- * cannot land without naming itself here.
+ * cannot land without naming itself here. Empty is the goal, not the invariant.
  */
-const UNTRAPPED: [string, number, string][] = [
-  ["app/(online)/index.tsx", 2, "the join-code sheet covers the lobby with a bare KeyboardAvoidingView — #474"],
-  ["app/(online)/game.tsx", 1, "the exchange wait cover leaves the table behind it focusable — #474"],
-];
+const UNTRAPPED: [string, number, string][] = [];
 
 const SCANNED_DIRS = ["components", "app"];
 
@@ -118,7 +143,7 @@ test("every full-bleed layer has been classified by a human", () => {
   const candidates = candidatesByFile(scannedFiles(), (rel) =>
     readFileSync(path.join(repoRoot, rel), "utf8")
   );
-  const count = (list: [string, number, string][], file: string) =>
+  const count = (list: [string, number, ...unknown[]][], file: string) =>
     list.filter(([f]) => f === file).reduce((n, [, c]) => n + c, 0);
 
   const unclassified: string[] = [];
@@ -126,6 +151,7 @@ test("every full-bleed layer has been classified by a human", () => {
     const claimed =
       BLOCKING_OVERLAYS.filter(([f]) => f === file).length +
       count(NOT_A_BLOCKER, file) +
+      count(NON_MODAL_OVERLAYS, file) +
       count(UNTRAPPED, file);
     if (claimed === tags.length) continue;
     const shown = tags.map((t) => `      ${t.replace(/\s+/g, " ").slice(0, 110)}`);
@@ -146,7 +172,7 @@ test("the classification lists name files that still exist and still qualify", (
   const candidates = candidatesByFile(scannedFiles(), (rel) =>
     readFileSync(path.join(repoRoot, rel), "utf8")
   );
-  const stale = [...NOT_A_BLOCKER, ...UNTRAPPED]
+  const stale = [...NOT_A_BLOCKER, ...NON_MODAL_OVERLAYS, ...UNTRAPPED]
     .map(([file]) => file)
     .filter((file) => !candidates.has(file));
   assert.deepEqual(stale, [], `no longer full-bleed, so drop the entry: ${stale.join(", ")}`);
@@ -187,26 +213,14 @@ test("the scanner reads one modal at a time", () => {
   assert.deepEqual(modalBodies("<ModalContent>x</ModalContent>"), []);
 });
 
-// The rail's settings sheet is the one blocking layer that must *not* be a
-// Modal: a full-screen modal takes the tap away from the rail knob that opened
-// it, and the knob is the sheet's own close control (#195). It carries what a
-// Modal would have brought instead, so it is covered here rather than in the
-// list above — which stays the list of modals.
-const NON_MODAL_OVERLAY = "components/table/settingsSheet.tsx";
-const NON_MODAL_PROPERTIES: [string, RegExp][] = [
-  ["traps focus", /useFocusTrap\(/],
-  ["answers Escape", /useEscapeToClose\(/],
-  ["answers the Android back gesture", /useBackToClose\(/],
-  ["is announced as a dialog", /a11yDialog\(/],
-];
-
-test("the settings sheet covers the table on a non-modal layer's own terms", () => {
-  const source = blankComments(readFileSync(path.join(repoRoot, NON_MODAL_OVERLAY), "utf8"));
-  assert.deepEqual(
-    modalBodies(source),
-    [],
-    `${NON_MODAL_OVERLAY} is a Modal now, so it belongs in BLOCKING_OVERLAYS`
-  );
-  const missing = NON_MODAL_PROPERTIES.filter(([, re]) => !re.test(source)).map(([what]) => what);
-  assert.deepEqual(missing, [], `${NON_MODAL_OVERLAY} no longer ${missing.join(", nor ")}`);
-});
+for (const [rel, , marker, why, properties] of NON_MODAL_OVERLAYS) {
+  test(`${rel} covers a screen on a non-modal layer's own terms`, () => {
+    const source = blankComments(readFileSync(path.join(repoRoot, rel), "utf8"));
+    assert.ok(
+      !modalBodies(source).some((body) => body.includes(marker)),
+      `${rel} (${marker}) is inside a Modal now, so it belongs in BLOCKING_OVERLAYS`
+    );
+    const missing = properties.filter(([, re]) => !re.test(source)).map(([what]) => what);
+    assert.deepEqual(missing, [], `${rel} no longer ${missing.join(", nor ")} — ${why}`);
+  });
+}
