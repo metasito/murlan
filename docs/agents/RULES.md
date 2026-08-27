@@ -54,8 +54,9 @@ Every rule an agent must follow, in one place. No rationale here — the *why* l
     picks it and prints the route.
 22. **Claim it before you touch anything**: add `in-progress`, comment naming your branch, then
     re-read the issue and stand down if an older claim is there.
-23. **Read an issue with both `gh issue view <n>` and `gh issue view <n> --comments`**, at
-    pick-up and again before finishing. Either alone is a partial read.
+23. **Read an issue with one command, at pick-up and again before finishing:**
+    `gh issue view <n> --json title,body,comments --jq '.title, .body, (.comments[]|"--- "+.author.login+": "+.body)'`.
+    `--comments` prints the thread *instead of* the body, and `--json body` drops the thread.
 24. **Release the claim whenever you stop without landing** — remove `in-progress`, say why.
 25. **A routed `implement` goes through `/ticket`**; `triage` through `/triage`; `wayfinder`
     through `/wayfinder`.
