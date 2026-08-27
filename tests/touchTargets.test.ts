@@ -24,6 +24,12 @@ const CONTROLS: [string, string][] = [
   ["components/GameOverOverlay.tsx", "rematchGradient"],
   ["components/SettingsModal.tsx", "segment"],
   ["components/SettingsModal.tsx", "localeBtn"],
+  // The settings rows were tightened in #415. The row is not itself pressable,
+  // but it is the box the slider and the toggle sit in, and its floor is what
+  // stops a denser row from being made denser still.
+  ["components/SettingsModal.tsx", "row"],
+  ["components/Slider.tsx", "container"],
+  ["components/Toggle.tsx", "control"],
   ["components/MenuButton.tsx", "sm"],
   ["app/lobby.tsx", "personalityBtn"],
   ["app/(online)/room.tsx", "codeBtn"],
