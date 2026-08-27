@@ -320,6 +320,12 @@ export interface GameTableProps {
    * only the caller knows.
    */
   overlays?: (veiled: AccessibilityProps) => React.ReactNode;
+
+  /**
+   * A layer in `overlays` covers the table and the player may not act. It
+   * withdraws what is under it, and not the slot it is rendered in.
+   */
+  tableCovered?: boolean;
 }
 
 // ─── Turn countdown ───────────────────────────────────────────────────────────
@@ -731,6 +737,7 @@ export function GameTable({
   railExtra,
   banners,
   overlays,
+  tableCovered = false,
 }: GameTableProps) {
   const { t, tn } = useTranslation();
   const insets = useSafeAreaInsets();
@@ -753,7 +760,13 @@ export function GameTable({
   // session's own choice, not a stored preference — sound, music and
   // vibration are the persisted ones, which the sheet reads for itself.
   const [settingsOpen, setSettingsOpen] = useState(false);
-  const behindVeil = a11yVeiled(settingsOpen);
+  const tableWithdrawn = settingsOpen || tableCovered;
+  const behindVeil = a11yVeiled(tableWithdrawn);
+  // The sheet hangs off the rail, outside the overlays slot, so the slot goes
+  // behind its veil. A cover inside the slot does not: `app/(online)/game.tsx`
+  // spreads this onto the one wrapper holding the cover, which would withdraw
+  // the cover's own message along with the table it is explaining.
+  const behindSheetOnly = a11yVeiled(settingsOpen);
   const [focusMode, setFocusMode] = useState(false);
   const [playOnLeft, setPlayOnLeft] = useState(false);
   const closeSettings = useCallback(() => setSettingsOpen(false), [setSettingsOpen]);
@@ -1374,7 +1387,7 @@ export function GameTable({
   return (
     <Animated.View style={[styles.root, WEB_CLIP, kickStyle]}>
       <Sweep trigger={flushTrigger} width={W} height={H} />
-      <A11yStatus label={tableA11yLabel} veiled={settingsOpen} />
+      <A11yStatus label={tableA11yLabel} veiled={tableWithdrawn} />
       {/* Two chips over the felt, at the corners the cards never reach — the
           combination in play at the head of the field, whose turn it is at the
           far side. Anything wider would be chrome drawn where a card lands. */}
@@ -1779,7 +1792,7 @@ export function GameTable({
         </Animated.View>
       )}
 
-      {overlays?.(behindVeil)}
+      {overlays?.(behindSheetOnly)}
 
       {W < H && <RotateOverlay />}
     </Animated.View>

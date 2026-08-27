@@ -8,6 +8,7 @@ import {
   ScrollView,
   useWindowDimensions,
   KeyboardAvoidingView,
+  Modal,
   Platform,
 } from "react-native";
 import { router } from "expo-router";
@@ -22,9 +23,11 @@ import { MenuCard } from "@/components/MenuCard";
 import { MenuButton } from "@/components/MenuButton";
 import { useTranslation } from "@/lib/i18n";
 import { a11yHidden, a11yState, useA11yHint } from "@/lib/a11y";
+import { usePrefersReducedMotion } from "@/lib/accessibility";
 
 export default function OnlineLobbyScreen() {
   const { t } = useTranslation();
+  const reduceMotion = usePrefersReducedMotion();
   const roomCodeHint = useA11yHint(t("onlineLobby.roomCodeA11yHint"));
   const watchHint = useA11yHint(t("onlineLobby.watchA11yHint"));
   const { width: W, height: H } = useWindowDimensions();
@@ -68,20 +71,23 @@ export default function OnlineLobbyScreen() {
     createRoom(createMode, createPlayers);
   }
 
+  function closeJoin() {
+    setJoinModalVisible(false);
+    setJoinCode("");
+  }
+
   function handleJoin() {
     if (joinCode.length < 4) return;
     hapticMedium();
     joinRoom(joinCode.trim().toUpperCase());
-    setJoinModalVisible(false);
-    setJoinCode("");
+    closeJoin();
   }
 
   function handleSpectate() {
     if (joinCode.length < 4) return;
     hapticMedium();
     spectateRoom(joinCode.trim().toUpperCase());
-    setJoinModalVisible(false);
-    setJoinCode("");
+    closeJoin();
   }
 
   // `flex: 1` is for the landscape row, where the two sections share the width.
@@ -272,19 +278,38 @@ export default function OnlineLobbyScreen() {
         </ScrollView>
       )}
 
-      {joinModalVisible && (
+      <Modal
+        visible={joinModalVisible}
+        transparent
+        animationType={reduceMotion ? "none" : "fade"}
+        onRequestClose={closeJoin}
+        statusBarTranslucent
+        // iOS defaults this to portrait only, which rotates the whole app when the
+        // modal opens in landscape and leaves the screen behind it mis-laid-out.
+        supportedOrientations={["portrait", "landscape"]}
+        accessibilityLabel={t("onlineLobby.joinModalTitle")}
+      >
         <KeyboardAvoidingView
           behavior={Platform.OS === "ios" ? "padding" : "height"}
-          style={[styles.modalOverlay, { pointerEvents: "box-none" as const }]}
+          style={styles.modalOverlay}
         >
-          <Pressable style={StyleSheet.absoluteFill} onPress={() => { setJoinModalVisible(false); setJoinCode(""); }} />
+          <Pressable style={StyleSheet.absoluteFill} onPress={closeJoin} {...a11yHidden()} />
           <ScrollView
             contentContainerStyle={styles.modalScroll}
             bounces={false}
             keyboardShouldPersistTaps="handled"
           >
-            <View style={[styles.modalBox, isLandscape && styles.modalBoxLandscape, { width: isLandscape ? "80%" : "100%", maxWidth: isLandscape ? 600 : 400 }]}>
-              <Text style={styles.modalTitle}>{t("onlineLobby.joinModalTitle")}</Text>
+            <View
+              style={[styles.modalBox, isLandscape && styles.modalBoxLandscape, { width: isLandscape ? "80%" : "100%", maxWidth: isLandscape ? 600 : 400 }]}
+              accessibilityViewIsModal
+              accessibilityRole="none"
+            >
+              {/* A Modal's own host view is not an accessibility element on iOS,
+                  so the label above it reaches web only; this is what VoiceOver
+                  lands on and what confines it to the sheet. */}
+              <Text style={styles.modalTitle} accessibilityRole="header">
+                {t("onlineLobby.joinModalTitle")}
+              </Text>
               <MenuCard title={t("onlineLobby.roomCodeCardTitle")} style={{ marginBottom: 0 }}>
                 <TextInput
                   style={[styles.codeInput, isLandscape && styles.codeInputLandscape]}
@@ -302,7 +327,7 @@ export default function OnlineLobbyScreen() {
               </MenuCard>
               <View style={styles.modalRow}>
                 <Pressable
-                  onPress={() => { setJoinModalVisible(false); setJoinCode(""); }}
+                  onPress={closeJoin}
                   style={styles.modalCancelBtn}
                   accessibilityRole="button"
                   accessibilityLabel={t("common.cancel")}
@@ -333,7 +358,7 @@ export default function OnlineLobbyScreen() {
             </View>
           </ScrollView>
         </KeyboardAvoidingView>
-      )}
+      </Modal>
     </MenuLayout>
   );
 }
@@ -428,9 +453,8 @@ const styles = StyleSheet.create({
   divLine: { flex: 1, height: 1, backgroundColor: Colors.border },
   divText: { fontFamily: "Inter_400Regular", fontSize: FontSize.xs, color: Colors.textMuted },
   modalOverlay: {
-    ...StyleSheet.absoluteFillObject,
+    flex: 1,
     backgroundColor: Colors.overlay,
-    zIndex: 100,
   },
   modalScroll: { 
     flexGrow: 1, 
