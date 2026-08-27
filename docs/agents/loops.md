@@ -98,6 +98,41 @@ Each of these produced a confident, wrong "fixed" in one session:
 - **Compare pixels, not impressions.** "Looks darker" cost hours; sampling the same relative
   points out of both PNGs found the halved vignette radius in one run.
 
+## Starvation looks exactly like a red suite
+
+Two sessions running a full suite each drove a 15.6 GB machine to 242 MB free, and processes
+began failing to launch with `0xC0000142`. Neither suite said anything about memory. What they
+said was:
+
+| Symptom | Reads as | Actually |
+| --- | --- | --- |
+| `npx jest` — 2 suites failed | a regression | `npx jest -w 3` on the same commit: 723 passed |
+| 37 specs failing at 0ms, `ERR_CONNECTION_REFUSED` | the server never started | nothing had memory to start |
+| specs failing inside `openApp` | the #438 flake | a different cause with the same shape |
+
+**A rerun with fewer workers that disagrees with the first run is the tell.** A real regression
+does not care how many workers you gave it. Before believing a red, check free memory and rerun
+with `-w 3`.
+
+Both suites now refuse up front rather than failing this way — `scripts/preflightMemory.mjs` is
+the `globalSetup` of jest and Playwright alike, and names exhaustion. It is off under `CI`, where
+a runner is sized for one job and starts near its floor by design.
+
+`npm run reap` clears what a killed run leaves behind. `--dry-run` lists without killing anything.
+`npm run test:e2e` already frees the port first, because Playwright refuses a busy one before it
+ever runs the webServer command.
+
+| What | Taken |
+| --- | --- |
+| Whatever holds `E2E_PORT` | by default |
+| A node process over 2h old whose parent is gone | by default |
+| A node process over 24h old | only with `--stale` |
+
+The last one needs asking for. A crashed session leaves its **whole tree** resident — the node
+process, the bash that launched it, the cmd above that — so its parent is alive and the
+parent test cannot see it. Age is the only signal left, and a live session's node is also a node
+process that has been running a long time. Both classes always spare the caller's own ancestry.
+
 ## Pick the loop by what you changed
 
 | You changed | Loop | Catches | Cost |
@@ -206,7 +241,7 @@ Every port this repo's local tooling binds — including the local-substitute pa
 | --- | --- | --- |
 | `5000` | The Express server (`PORT`) | `server/index.ts`, `.replit` (`[[ports]]` localPort/externalPort, `[env] PORT`, `waitForPort`), `package.json` (`expo:dev`, `expo:dev:clean`) |
 | `8081` | Metro (`npx expo start` / `npm start`) | `scripts/build.js`, `.replit` |
-| `5199` | Playwright's e2e webServer (`E2E_PORT`) | `tests/e2e/playwright.config.ts`, `scripts/e2e-server.mjs`; freed by `lib/ticketPipeline/cleanup.ts` |
+| `5199` | Playwright's e2e webServer (`E2E_PORT`) | `tests/e2e/playwright.config.ts`, `scripts/e2e-server.mjs`; freed by `scripts/reap.mjs` and by `lib/ticketPipeline/cleanup.ts` |
 | `55432` | The dev-stack's disposable Postgres (`MURLAN_DEV_PG_PORT`) | `murlan-dev-pg` container — `scripts/dev-stack.mjs`, `scripts/e2e-server.mjs` |
 | `55433` | The verify-only Postgres substituted for CI's database | `murlan-verify-pg` container — freed by `lib/ticketPipeline/cleanup.ts`; also bound manually by CLAUDE.md's "When Actions cannot start" |
 
