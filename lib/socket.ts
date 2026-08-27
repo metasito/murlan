@@ -64,9 +64,6 @@ export function connectSocket(userId: string): Socket {
   return socket;
 }
 
-export function getSocket(userId: string): Socket | null {
-  return socketMap.get(userId) ?? null;
-}
 
 export function disconnectSocket(userId: string) {
   const s = socketMap.get(userId);

@@ -88,7 +88,6 @@
   "devDependencies": {
     "@babel/core": "^7.25.2",
     "@breezystack/lamejs": "^1.2.7",
-    "@expo/ngrok": "^4.1.0",
     "@playwright/test": "^1.62.1",
     "@testing-library/react-native": "^14.0.1",
     "@types/bcryptjs": "^2.4.6",
@@ -107,7 +106,6 @@
     "mpg123-decoder": "^1.0.3",
     "patch-package": "^8.0.0",
     "subset-font": "^2.5.0",
-    "test-renderer": "^1.2.0",
     "tsx": "^4.20.6",
     "typescript": "~5.9.2"
   },

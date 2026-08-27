@@ -71,8 +71,8 @@ module.exports = defineConfig([
   {
     // `eslint-config-expo` registers `@typescript-eslint` only for TS files, and
     // a flat-config block may only name a rule from a plugin registered for the
-    // same file — a wider glob here fails config resolution on tests/**/*.mjs.
-    files: ["tests/**/*.{ts,tsx}"],
+    // same file — which is why this names .ts/.tsx rather than every file.
+    files: ["**/*.{ts,tsx}"],
     rules: {
       // `@ts-ignore` suppresses whatever error lands on the next line, for as
       // long as it stays there; `@ts-expect-error` goes red the moment the

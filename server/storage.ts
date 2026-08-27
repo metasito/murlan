@@ -30,39 +30,6 @@ export class UsernameTakenError extends Error {
   }
 }
 
-export interface IStorage {
-  deleteUser(userId: string): Promise<void>;
-  getUser(id: string): Promise<User | undefined>;
-  getUserByUsername(username: string): Promise<User | undefined>;
-  createUser(user: InsertUser): Promise<User>;
-  updateLastSeen(userId: string): Promise<void>;
-  markTutorialSeen(userId: string): Promise<void>;
-
-  createRoom(hostUserId: string, gameMode: "free_for_all" | "teams", maxPlayers: number): Promise<Room>;
-  getRoomByCode(code: string): Promise<Room | undefined>;
-  getRoomById(id: string): Promise<Room | undefined>;
-  updateRoomStatus(roomId: string, status: "waiting" | "in_progress" | "finished"): Promise<void>;
-  updateRoomHost(roomId: string, hostUserId: string): Promise<void>;
-
-  getRoomPlayers(roomId: string): Promise<(RoomPlayer & { user: User })[]>;
-  addRoomPlayer(roomId: string, userId: string, seatIndex: number): Promise<void>;
-  upsertRoomPlayer(roomId: string, userId: string, seatIndex: number): Promise<void>;
-  claimRoomSeat(roomId: string, userId: string): Promise<SeatClaim>;
-  getWaitingRooms(roomIds: string[], userId: string): Promise<JoinableRoom[]>;
-  removeRoomPlayer(roomId: string, userId: string): Promise<void>;
-
-  getFriends(userId: string): Promise<(Friend & { friend: User })[]>;
-  getPendingFriendRequests(userId: string): Promise<(Friend & { requester: User })[]>;
-  getSentFriendRequests(userId: string): Promise<(Friend & { recipient: User })[]>;
-  hasPendingRequest(userId: string, friendUserId: string): Promise<boolean>;
-  addFriend(userId: string, friendUserId: string): Promise<void>;
-  acceptFriend(id: string, accepterId: string): Promise<{ requesterId: string } | null>;
-  areFriends(userId: string, friendUserId: string): Promise<boolean>;
-  removeFriend(userId: string, friendUserId: string): Promise<void>;
-  declineFriendRequest(id: string, recipientId: string): Promise<boolean>;
-  cancelFriendRequest(requestId: string, fromUserId: string): Promise<boolean>;
-}
-
 // No O/0/I/1 — same alphabet as the friend codes, so a code read aloud or
 // typed from a screenshot is unambiguous.
 const CODE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
@@ -81,7 +48,7 @@ function generateRoomCode(): string {
   return randomCode(6);
 }
 
-class DrizzleStorage implements IStorage {
+class DrizzleStorage {
   /**
    * Apple requires in-app account deletion to actually work. Every row that
    * references users.id has to go, or the final DELETE trips a foreign key and

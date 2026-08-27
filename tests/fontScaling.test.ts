@@ -66,7 +66,9 @@ test("TableText caps after the spread, so a caller cannot pass a larger multipli
   for (const m of source.matchAll(/\{\.\.\.props\}([^>]*)/g)) {
     assert.match(m[1], /maxFontSizeMultiplier=\{TABLE_FONT_SCALE_MAX\}/);
   }
-  assert.equal([...source.matchAll(/\{\.\.\.props\}/g)].length, 2);
+  // The loop above is vacuous if the spread is ever renamed away, so the count is what proves
+  // it ran against something. One component, one spread.
+  assert.equal([...source.matchAll(/\{\.\.\.props\}/g)].length, 1);
 });
 
 for (const rel of FIXED_GEOMETRY) {
