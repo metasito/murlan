@@ -586,6 +586,21 @@ function isPremiumPlay(play: Combination): boolean {
 }
 
 /**
+ * The play to make when hoarding: shedding as many cards as possible on a
+ * lead, answering as cheaply as possible otherwise. `null` when every legal
+ * play is premium.
+ */
+function cheapestPlain(plays: Combination[], isNewRound: boolean): Combination | null {
+  const plain = plays.filter((p) => !isPremiumPlay(p));
+  if (plain.length === 0) return null;
+  return [...plain].sort(
+    isNewRound
+      ? (a, b) => b.cards.length - a.cards.length || a.strength - b.strength
+      : (a, b) => a.strength - b.strength
+  )[0];
+}
+
+/**
  * Applies a personality's two knobs to the strategy tier's choice. Both only
  * re-rank plays the tier already had in hand, so nothing here can produce an
  * illegal play — `plays` is `getAllValidPlays`' output, untouched.
@@ -594,7 +609,7 @@ function applyPersonality(
   choice: Combination | null,
   plays: Combination[],
   isNewRound: boolean,
-  traits: { aggression: number; unpredictability: number },
+  traits: { aggression: number; unpredictability: number; difficulty: AIDifficulty },
   rng: () => number
 ): Combination | null {
   let result = choice;
@@ -611,17 +626,7 @@ function applyPersonality(
       result = [...(plain.length > 0 ? plain : pool)].sort((a, b) => a.strength - b.strength)[0] ?? null;
     }
   } else if (isPremiumPlay(result) && rng() >= traits.aggression) {
-    // A cautious personality keeps its 2s, jokers and bombs while a plain play
-    // exists — shedding as many cards as it can when leading, answering as
-    // cheaply as it can when not.
-    const plain = plays.filter((p) => !isPremiumPlay(p));
-    if (plain.length > 0) {
-      result = [...plain].sort(
-        isNewRound
-          ? (a, b) => b.cards.length - a.cards.length || a.strength - b.strength
-          : (a, b) => a.strength - b.strength
-      )[0];
-    }
+    result = cheapestPlain(plays, isNewRound) ?? result;
   }
 
   if (result && rng() < traits.unpredictability) {
@@ -632,6 +637,13 @@ function applyPersonality(
     if (alts.length > 0) {
       result = alts[Math.min(alts.length - 1, Math.floor(rng() * alts.length))];
     }
+  }
+
+  // Last, below the unpredictability knob: that knob swaps a play for a
+  // same-shape alternative, premium ones included, so a floor placed any
+  // earlier is overwritten by it.
+  if (traits.difficulty === "hard" && result && isPremiumPlay(result)) {
+    result = cheapestPlain(plays, isNewRound) ?? result;
   }
 
   return result;
@@ -764,7 +776,6 @@ export function aiChoosePlay(
   }
 
   // Responding to opponent's combo
-  // If near finishing, be aggressive
   if (myCards <= 4 && normal.length > 0) {
     return withPersonality(normal.sort((a, b) => a.strength - b.strength)[0]);
   }
