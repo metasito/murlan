@@ -32,7 +32,8 @@ mkdirSync(path.dirname(outfile), { recursive: true });
 
 const { error, status } = spawnSync(
   "pg_dump",
-  [process.env.DATABASE_URL, "--no-owner", "--no-privileges", "-f", outfile],
+  // pg_dump's documented order, and the only one its Windows build accepts.
+  ["--no-owner", "--no-privileges", "-f", outfile, process.env.DATABASE_URL],
   { stdio: ["ignore", "inherit", "inherit"] }
 );
 

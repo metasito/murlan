@@ -12,12 +12,50 @@ import path from "node:path";
 import { mkdtempSync, writeFileSync, readdirSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import pg from "pg";
-import { hasDatabase, skipMessage, startTestServer } from "./helpers/testServer.ts";
+import {
+  hasDatabase,
+  skipMessage,
+  startTestServer,
+  type TestServer,
+} from "./helpers/testServer.ts";
 import { DUMP_NAME, dumpName } from "../scripts/backupNaming.mjs";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const script = path.join(repoRoot, "scripts", "backup-db.mjs");
 const pruneScript = path.join(repoRoot, "scripts", "prune-backups.mjs");
+
+function urlFor(databaseUrl: string, database: string): string {
+  const url = new URL(databaseUrl);
+  url.pathname = `/${database}`;
+  return url.toString();
+}
+
+/** The major of `pg_dump (PostgreSQL) 16.9`, or null when it is not on PATH. */
+function pgDumpMajor(): number | null {
+  const { stdout, error } = spawnSync("pg_dump", ["--version"], { encoding: "utf8" });
+  if (error) return null;
+  const major = /(\d+)\./.exec(stdout ?? "")?.[1];
+  return major ? Number(major) : null;
+}
+
+async function serverMajor(databaseUrl: string): Promise<number> {
+  const pool = new pg.Pool({ connectionString: databaseUrl });
+  try {
+    const { rows } = await pool.query<{ server_version: string }>("SHOW server_version");
+    return Number(rows[0].server_version.split(".")[0]);
+  } finally {
+    await pool.end();
+  }
+}
+
+async function onMaintenance(databaseUrl: string, sql: string): Promise<void> {
+  const pool = new pg.Pool({ connectionString: urlFor(databaseUrl, "postgres") });
+  try {
+    await pool.query(sql);
+  } finally {
+    await pool.end();
+  }
+}
 
 function run(env: Record<string, string | undefined>) {
   const { DATABASE_URL, ...rest } = process.env;
@@ -160,127 +198,146 @@ test("a dump restores into an empty database with matching account and rating ro
     return;
   }
 
-  const baseUrl = process.env.DATABASE_URL!;
-  const server = await startTestServer();
-  const admin = new pg.Pool({ connectionString: baseUrl });
-  const dumpDir = mkdtempSync(path.join(tmpdir(), "murlan-dump-"));
-  let restoreDb: string | null = null;
+  const configuredUrl = process.env.DATABASE_URL!;
+  // A newer pg_dump emits settings the older server restoring them rejects, so
+  // a mismatch proves nothing either way. ci.yml fails on this skip.
+  const client = pgDumpMajor();
+  const database = await serverMajor(configuredUrl);
+  if (client !== null && client !== database) {
+    t.skip(`pg_dump ${client} against a Postgres ${database} server — client majors must match`);
+    return;
+  }
 
+  // Its own database: `pg_dump` enumerates a database's tables and then locks
+  // them, so a concurrent suite dropping its schema between the two fails the
+  // dump.
+  const sourceDb = `murlan_dump_test_${Date.now()}`;
+  await onMaintenance(configuredUrl, `CREATE DATABASE "${sourceDb}"`);
+  const baseUrl = urlFor(configuredUrl, sourceDb);
+
+  process.env.DATABASE_URL = baseUrl;
+
+  // Outer scope owns the database and the variable; inner owns the server, so
+  // a boot that throws still gives both back.
   try {
-    for (const username of ["restore_user_a", "restore_user_b"]) {
-      const res = await fetch(`${server.url}/api/auth/register`, {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ username: `${username}_${Date.now()}`, password: "password123" }),
-      });
-      assert.equal(res.status, 200, await res.text());
-    }
-    await admin.query(
-      `INSERT INTO "${server.schema}".user_ratings (user_id, season, rating)
-       SELECT id, 'test-season', 1200 FROM "${server.schema}".users`
-    );
-    // connect-pg-simple's own table (server/session.ts) — the reason
-    // backup-db.mjs dumps the whole database instead of a schema-driven table
-    // list. A restore proof that never looks at it would stay green against a
-    // dump that silently excludes it. The two registrations above already
-    // seeded it via express-session's own writes; this row is on top of
-    // those, so the count asserted below is whatever that total is, not a
-    // literal this test invents.
-    await admin.query(
-      `INSERT INTO "${server.schema}".session (sid, sess, expire)
-       VALUES ('backup-test-sid', '{}', now() + interval '1 day')`
-    );
+    const server: TestServer = await startTestServer();
+    const admin = new pg.Pool({ connectionString: baseUrl });
+    const dumpDir = mkdtempSync(path.join(tmpdir(), "murlan-dump-"));
+    let restoreDb: string | null = null;
 
-    const before = {
-      users: (await admin.query(`SELECT count(*)::int AS n FROM "${server.schema}".users`)).rows[0]
-        .n,
-      ratings: (
-        await admin.query(`SELECT count(*)::int AS n FROM "${server.schema}".user_ratings`)
-      ).rows[0].n,
-      sessions: (
-        await admin.query(`SELECT count(*)::int AS n FROM "${server.schema}".session`)
-      ).rows[0].n,
-    };
-    assert.equal(before.users, 2);
-    assert.equal(before.ratings, 2);
-    assert.ok(before.sessions >= 1, "the session row this test inserted must be present");
-
-    // No explicit outfile: this is what proves the pruner's DUMP_NAME regex
-    // actually matches what backup-db.mjs writes by default, not just what
-    // this test's own fixtures are named.
-    const dump = spawnSync(process.execPath, [script], {
-      env: { ...process.env, DATABASE_URL: baseUrl },
-      encoding: "utf8",
-      cwd: dumpDir,
-    });
-    // The child here is node running backup-db.mjs, which itself spawns
-    // pg_dump — so a missing pg_dump surfaces as backup-db.mjs's own exit 1
-    // and stderr message, not as this spawnSync's own `.error`.
-    if (dump.status !== 0 && /pg_dump is not on PATH/.test(dump.stderr ?? "")) {
-      t.skip("pg_dump not on PATH — cannot prove restore in this environment");
-      return;
-    }
-    assert.equal(dump.status, 0, dump.stderr);
-
-    const written = readdirSync(path.join(dumpDir, "backups"));
-    assert.equal(written.length, 1, "backup-db.mjs must write exactly one dump per run");
-    assert.match(
-      written[0],
-      DUMP_NAME,
-      "backup-db.mjs's default filename must match what prune-backups.mjs recognizes"
-    );
-    const dumpFile = path.join(dumpDir, "backups", written[0]);
-
-    const maintenanceUrl = new URL(baseUrl);
-    maintenanceUrl.pathname = "/postgres";
-    const maintenance = new pg.Pool({ connectionString: maintenanceUrl.toString() });
-    restoreDb = `murlan_restore_test_${Date.now()}`;
     try {
-      await maintenance.query(`CREATE DATABASE "${restoreDb}"`);
-    } finally {
-      await maintenance.end();
-    }
+      for (const username of ["restore_user_a", "restore_user_b"]) {
+        const res = await fetch(`${server.url}/api/auth/register`, {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ username: `${username}_${Date.now()}`, password: "password123" }),
+        });
+        assert.equal(res.status, 200, await res.text());
+      }
+      await admin.query(
+        `INSERT INTO "${server.schema}".user_ratings (user_id, season, rating)
+         SELECT id, 'test-season', 1200 FROM "${server.schema}".users`
+      );
+      // connect-pg-simple's own table (server/session.ts) — the reason
+      // backup-db.mjs dumps the whole database instead of a schema-driven table
+      // list. A restore proof that never looks at it would stay green against a
+      // dump that silently excludes it. The two registrations above already
+      // seeded it via express-session's own writes; this row is on top of
+      // those, so the count asserted below is whatever that total is, not a
+      // literal this test invents.
+      await admin.query(
+        `INSERT INTO "${server.schema}".session (sid, sess, expire)
+         VALUES ('backup-test-sid', '{}', now() + interval '1 day')`
+      );
 
-    const restoreUrl = new URL(baseUrl);
-    restoreUrl.pathname = `/${restoreDb}`;
-    const restore = spawnSync("psql", [restoreUrl.toString(), "-v", "ON_ERROR_STOP=1", "-f", dumpFile], {
-      encoding: "utf8",
-    });
-    if ((restore.error as NodeJS.ErrnoException | undefined)?.code === "ENOENT") {
-      t.skip("psql not on PATH — cannot prove restore in this environment");
-      return;
-    }
-    assert.equal(restore.status, 0, restore.stderr);
-
-    const restored = new pg.Pool({ connectionString: restoreUrl.toString() });
-    try {
-      const after = {
-        users: (
-          await restored.query(`SELECT count(*)::int AS n FROM "${server.schema}".users`)
-        ).rows[0].n,
+      const before = {
+        users: (await admin.query(`SELECT count(*)::int AS n FROM "${server.schema}".users`)).rows[0]
+          .n,
         ratings: (
-          await restored.query(`SELECT count(*)::int AS n FROM "${server.schema}".user_ratings`)
+          await admin.query(`SELECT count(*)::int AS n FROM "${server.schema}".user_ratings`)
         ).rows[0].n,
         sessions: (
-          await restored.query(`SELECT count(*)::int AS n FROM "${server.schema}".session`)
+          await admin.query(`SELECT count(*)::int AS n FROM "${server.schema}".session`)
         ).rows[0].n,
       };
-      assert.deepEqual(after, before, "restored row counts must match the source exactly");
+      assert.equal(before.users, 2);
+      assert.equal(before.ratings, 2);
+      assert.ok(before.sessions >= 1, "the session row this test inserted must be present");
+
+      // No explicit outfile: this is what proves the pruner's DUMP_NAME regex
+      // actually matches what backup-db.mjs writes by default, not just what
+      // this test's own fixtures are named.
+      const dump = spawnSync(process.execPath, [script], {
+        env: { ...process.env, DATABASE_URL: baseUrl },
+        encoding: "utf8",
+        cwd: dumpDir,
+      });
+      // The child here is node running backup-db.mjs, which itself spawns
+      // pg_dump — so a missing pg_dump surfaces as backup-db.mjs's own exit 1
+      // and stderr message, not as this spawnSync's own `.error`.
+      if (dump.status !== 0 && /pg_dump is not on PATH/.test(dump.stderr ?? "")) {
+        t.skip("pg_dump not on PATH — cannot prove restore in this environment");
+        return;
+      }
+      assert.equal(dump.status, 0, dump.stderr);
+
+      const written = readdirSync(path.join(dumpDir, "backups"));
+      assert.equal(written.length, 1, "backup-db.mjs must write exactly one dump per run");
+      assert.match(
+        written[0],
+        DUMP_NAME,
+        "backup-db.mjs's default filename must match what prune-backups.mjs recognizes"
+      );
+      const dumpFile = path.join(dumpDir, "backups", written[0]);
+
+      restoreDb = `murlan_restore_test_${Date.now()}`;
+      await onMaintenance(baseUrl, `CREATE DATABASE "${restoreDb}"`);
+
+      const restoreUrl = urlFor(baseUrl, restoreDb);
+      const restore = spawnSync("psql", ["-v", "ON_ERROR_STOP=1", "-f", dumpFile, restoreUrl], {
+        encoding: "utf8",
+      });
+      if ((restore.error as NodeJS.ErrnoException | undefined)?.code === "ENOENT") {
+        t.skip("psql not on PATH — cannot prove restore in this environment");
+        return;
+      }
+      assert.equal(restore.status, 0, restore.stderr);
+
+      const restored = new pg.Pool({ connectionString: restoreUrl });
+      try {
+        const after = {
+          users: (
+            await restored.query(`SELECT count(*)::int AS n FROM "${server.schema}".users`)
+          ).rows[0].n,
+          ratings: (
+            await restored.query(`SELECT count(*)::int AS n FROM "${server.schema}".user_ratings`)
+          ).rows[0].n,
+          sessions: (
+            await restored.query(`SELECT count(*)::int AS n FROM "${server.schema}".session`)
+          ).rows[0].n,
+        };
+        assert.deepEqual(after, before, "restored row counts must match the source exactly");
+      } finally {
+        await restored.end();
+      }
     } finally {
-      await restored.end();
+      rmSync(dumpDir, { recursive: true, force: true });
+      await admin.end();
+      await server.stop();
+      if (restoreDb) {
+        await onMaintenance(
+          configuredUrl,
+          `DROP DATABASE IF EXISTS "${restoreDb}" WITH (FORCE)`
+        ).catch(() => {});
+      }
     }
   } finally {
-    if (restoreDb) {
-      const maintenanceUrl = new URL(baseUrl);
-      maintenanceUrl.pathname = "/postgres";
-      const cleanup = new pg.Pool({ connectionString: maintenanceUrl.toString() });
-      await cleanup
-        .query(`DROP DATABASE IF EXISTS "${restoreDb}" WITH (FORCE)`)
-        .catch(() => {});
-      await cleanup.end();
-    }
-    rmSync(dumpDir, { recursive: true, force: true });
-    await admin.end();
-    await server.stop();
+    // stop() points DATABASE_URL back at the database it was handed — this
+    // one, which is about to go.
+    process.env.DATABASE_URL = configuredUrl;
+    await onMaintenance(
+      configuredUrl,
+      `DROP DATABASE IF EXISTS "${sourceDb}" WITH (FORCE)`
+    ).catch(() => {});
   }
 });

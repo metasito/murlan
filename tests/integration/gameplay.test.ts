@@ -22,11 +22,12 @@ import {
 } from "../helpers/table.ts";
 
 /**
- * Shortened well below the 60s disconnect grace / 30s AFK / 1.2s bot-move
- * production defaults, and the per-user game-action rate limit raised past
- * anything this file can spend, so the tests below don't stall on real-world
- * timer lengths or get throttled replaying several hands down one socket.
- * `server/socket.ts` reads all four once at module scope, so they must be set
+ * Shortened well below the 60s disconnect grace and 30s AFK production
+ * defaults, and the per-user game-action rate limit raised past anything this
+ * file can spend, so the tests below don't stall on real-world timer lengths or
+ * get throttled replaying several hands down one socket. The bot's own pace
+ * comes from the harness. `server/socket.ts` reads these once at module scope,
+ * so they must be set
  * before that module is first imported — this file always runs as its own
  * process under `node --test`, so the override never leaks into another test
  * file's process.
@@ -45,7 +46,6 @@ import {
  */
 process.env.MURLAN_AFK_TIMEOUT_MS = "300";
 process.env.MURLAN_DISCONNECT_GRACE_MS = "500";
-process.env.MURLAN_BOT_MOVE_DELAY_MS = "20";
 process.env.MURLAN_GAME_ACTION_RATE_LIMIT = "1200";
 
 describe("gameplay integrity", { skip: hasDatabase() ? false : skipMessage() }, () => {

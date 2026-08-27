@@ -18,15 +18,15 @@ import {
 } from "../helpers/table.ts";
 
 /**
- * Shortened well below the 60s disconnect grace / 30s AFK / 1.2s bot-move
- * production defaults so a manche played out against bots finishes in about a
- * second. `server/socket.ts` reads these once at module scope, so they must be
+ * Shortened well below the 60s disconnect grace and 30s AFK production
+ * defaults so a manche played out against bots finishes in about a second; the
+ * bot's own pace comes from the harness. `server/socket.ts` reads these once at
+ * module scope, so they must be
  * set before that module is first imported — this file always runs as its own
  * process under `node --test`, so the override never leaks into another test
  * file's process.
  */
 process.env.MURLAN_AFK_TIMEOUT_MS = "300";
-process.env.MURLAN_BOT_MOVE_DELAY_MS = "20";
 
 /**
  * `game:rematch_vote` deals the next manche from the running game's own

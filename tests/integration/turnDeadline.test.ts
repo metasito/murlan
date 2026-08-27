@@ -19,7 +19,6 @@ import type { SanitizedState } from "../helpers/gameDriver.ts";
  */
 const AFK_SECONDS = 9;
 process.env.MURLAN_AFK_TIMEOUT_MS = String(AFK_SECONDS * 1000);
-process.env.MURLAN_BOT_MOVE_DELAY_MS = "20";
 
 interface TurnDeadline {
   turnDeadlineMs?: number;
