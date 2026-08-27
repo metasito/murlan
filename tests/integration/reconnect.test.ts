@@ -34,7 +34,6 @@ import {
  */
 process.env.MURLAN_AFK_TIMEOUT_MS = "400";
 process.env.MURLAN_DISCONNECT_GRACE_MS = "4000";
-process.env.MURLAN_BOT_MOVE_DELAY_MS = "20";
 
 interface AuthedClient extends Client {
   cookie: string;
