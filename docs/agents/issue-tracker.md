@@ -63,9 +63,9 @@ can, and that is what the claim carries.
   gh issue edit <n> --add-label in-progress
   gh issue comment <n> --body "Claimed by \`<branch-name>\`."
   ```
-- **Confirm you won the race**: `gh issue view <n> --comments`, which is the one place the
-  thread alone is what you want. Labelling is not atomic, and
-  two sessions can list the same free queue a second apart. If a claim comment predates
+- **Confirm you won the race**: `gh issue view <n> --comments`, the one place the thread alone
+  is what you want. Labelling is not atomic, and two sessions can list the same free queue a
+  second apart. If a claim comment predates
   yours, `gh issue edit <n> --remove-label in-progress`, comment that you are standing down,
   and take the next item.
 - **Release**: `gh issue close` ends the claim with the issue. Otherwise
@@ -98,8 +98,7 @@ Create a GitHub issue.
 
 ## When a skill says "fetch the relevant ticket"
 
-Run `gh issue view <number> && gh issue view <number> --comments` — the body and the thread are
-separate reads, and the ticket is both.
+Run `gh issue view <number> && gh issue view <number> --comments`.
 
 
 ## Writing an issue body an agent can execute

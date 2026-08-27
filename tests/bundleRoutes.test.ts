@@ -54,10 +54,6 @@ describe("the exported bundle carries this checkout's routes", () => {
 });
 
 describe("Metro's transform cache is namespaced per checkout", () => {
-  // Without this, two checkouts on one machine share a cache entry for
-  // `expo-router/_ctx.web.js`, whose transformed output has this checkout's
-  // `app/` path baked into it. The second to export gets the first's routes,
-  // which is to say none of its own.
   test("cacheVersion carries the project root", async () => {
     const config = (await import("../metro.config.js")).default;
     assert.ok(

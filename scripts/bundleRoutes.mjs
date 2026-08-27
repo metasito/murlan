@@ -39,8 +39,13 @@ export function expectedRouteKeys(appDir) {
 /** The web bundle's own text, whatever the export happened to name it. */
 function readWebBundle(distDir) {
   const jsDir = path.join(distDir, "_expo", "static", "js", "web");
-  const bundles = readdirSync(jsDir).filter((f) => f.endsWith(".js"));
-  if (bundles.length === 0) throw new Error(`no web bundle under ${jsDir}`);
+  let bundles = [];
+  try {
+    bundles = readdirSync(jsDir).filter((f) => f.endsWith(".js"));
+  } catch {
+    // A missing directory and an empty one are the same failure to report.
+  }
+  if (bundles.length === 0) throw new Error(`the export produced no web bundle under ${jsDir}`);
   return bundles.map((f) => readFileSync(path.join(jsDir, f), "utf8")).join("\n");
 }
 
@@ -49,12 +54,12 @@ export function missingRoutes(bundle, appDir) {
 }
 
 export function assertBundleHasRoutes(distDir, appDir) {
+  const expected = expectedRouteKeys(appDir);
   const missing = missingRoutes(readWebBundle(distDir), appDir);
   if (missing.length === 0) return;
   throw new Error(
-    `The exported bundle carries no route for ${missing.length} of ${
-      expectedRouteKeys(appDir).length
-    } files under ${appDir}:\n` +
+    `The exported bundle carries no route for ${missing.length} of ${expected.length} ` +
+      `files under ${appDir}:\n` +
       missing.map((m) => `  ${m}`).join("\n") +
       `\n\nexpo-router's context resolved somewhere other than this checkout's app/. ` +
       `A stale Metro transform cache is the usual cause — see docs/agents/loops.md, ` +

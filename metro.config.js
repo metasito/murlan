@@ -35,15 +35,9 @@ config.resolver.blockList = [
   /[\\/]\.local[\\/]state[\\/].*/,
 ];
 
-// Metro keeps one transform cache for the whole machine (`%TEMP%/metro-cache`), and
-// `getTransformCacheKey` is handed `projectRoot` but never hashes it. `babel-preset-expo`
-// inlines expo-router's app root into `expo-router/_ctx.web.js` as a path relative to that
-// file — one physical file shared by every checkout, since a worktree's `node_modules` is a
-// junction to this one. So two checkouts need different output from the same input and land
-// on the same cache entry: whichever exported first wins, and the other gets a bundle whose
-// route context points at a directory Metro is not watching. It carries `_layout`, no routes,
-// and fails nowhere until the browser 404s. `cacheVersion` is the only part of that key a
-// config can reach.
+// Metro's transform cache is machine-wide and its key ignores the project root, so two
+// checkouts of this repo overwrite each other's entries. `cacheVersion` is the only part of
+// that key reachable from here — see docs/agents/loops.md, *Metro's cache is machine-wide*.
 config.cacheVersion = `${config.cacheVersion}-${__dirname}`;
 
 module.exports = config;
