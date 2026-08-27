@@ -549,7 +549,7 @@ export const en = {
   "rules.faq.q16": "How does the online Rematch work?",
   "rules.faq.a16": "In Online mode, a rematch is democratic:\n\n• Every player sees the \"Rematch\" button on the results screen\n• A new game starts ONLY once EVERY player has clicked Rematch\n• The counter shows in real time how many have already voted (e.g. 2/4 want to play)\n• If not everyone votes, you can always leave by pressing Exit\n\nScores accumulate from one rematch to the next — whoever has the highest total wins the session!",
   "rules.faq.q17": "How does the AI work?",
-  "rules.faq.a17": "Every computer opponent has a personality with its own style:\n• Luan: impulsive and unpredictable\n• Drita: cautious, saves her high cards\n• Besnik: contests every round\n• Gent: ruthless, lets nothing through\n• Ana: patient and calculating\nStyle decides when a 2, a Joker or a Bomb gets spent, and when a round is conceded — never which combinations are legal.",
+  "rules.faq.a17": "Every computer opponent has a personality with its own style:\n• Luan: impulsive and unpredictable\n• Drita: cautious, saves her high cards\n• Besnik: contests every round\n• Gent: ruthless, lets nothing through\n• Ana: patient and calculating\nStyle decides how hard a bot contests a round, and when it gives one up. Gent and Ana hold a 2, a Joker or a Bomb back for when nothing ordinary is left to play; Luan, Drita and Besnik spend one when their style says to press. Style never changes which combinations are legal.",
   "rules.faq.q18": "Does the game end as soon as I finish my cards?",
   "rules.faq.a18": "No! If there are other players, the game continues among them. You simply wait for them to finish. You can see the final standings on the results screen (1st, 2nd, 3rd, 4th).",
 
