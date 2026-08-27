@@ -258,8 +258,8 @@ jobs:
             echo "These cover socket auth, hand secrecy, the exchange bypass and seat vacancy."
             exit 1
           fi
-          if grep -qE "pg_dump not on PATH|psql not on PATH" test-output.txt; then
-            echo "::error::The backup restore test skipped — postgresql-client-16 did not provide pg_dump/psql."
+          if grep -qE "pg_dump not on PATH|psql not on PATH|client majors must match" test-output.txt; then
+            echo "::error::The backup restore test skipped — postgresql-client-16 is missing, or is not the major the service container runs."
             echo "This is the only test proving a dump actually restores; see the 'Install postgresql-client' step above."
             exit 1
           fi
