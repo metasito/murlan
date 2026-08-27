@@ -100,7 +100,10 @@ function uncalledSpreads(source: string, names: string[]): string[] {
 const A11Y_HELPERS = helperNames(readFileSync(path.join(repoRoot, "lib/a11y.tsx"), "utf8"));
 
 test("every prop helper lib/a11y exports is in the scanned set", () => {
-  assert.deepEqual([...A11Y_HELPERS].sort(), ["a11yDialog", "a11yHidden", "a11yState", "a11yValue"]);
+  assert.deepEqual(
+    [...A11Y_HELPERS].sort(),
+    ["a11yDialog", "a11yHidden", "a11yState", "a11yValue", "a11yVeiled"]
+  );
 });
 
 test("a helper is found whichever way it is declared", () => {

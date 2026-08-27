@@ -121,7 +121,7 @@ import { usePrefersReducedMotion } from "@/lib/accessibility";
 import { Colors, FontSize, Garnet, Highlight, makeShadow, Motion, Radius, Scrim, Shadow, Spacing, TOUCH_TARGET_MIN, Type } from "@/lib/theme";
 import { useTableFelt } from "@/lib/cosmetics";
 import { playMusic } from "@/lib/music";
-import { A11yStatus, a11yState } from "@/lib/a11y";
+import { A11yStatus, a11yState, a11yVeiled } from "@/lib/a11y";
 
 // How long the round-winner tag stays over the pile. A domain beat, not a
 // generic UI transition, so it is not a Motion token.
@@ -745,6 +745,7 @@ export function GameTable({
   // session's own choice, not a stored preference — sound, music and
   // vibration are the persisted ones, which the sheet reads for itself.
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const behindVeil = a11yVeiled(settingsOpen);
   const [focusMode, setFocusMode] = useState(false);
   const [playOnLeft, setPlayOnLeft] = useState(false);
   const closeSettings = useCallback(() => setSettingsOpen(false), [setSettingsOpen]);
@@ -1375,7 +1376,7 @@ export function GameTable({
   return (
     <Animated.View style={[styles.root, WEB_CLIP, kickStyle]}>
       <Sweep trigger={flushTrigger} width={W} height={H} />
-      <A11yStatus label={tableA11yLabel} />
+      <A11yStatus label={tableA11yLabel} silenced={settingsOpen} />
       {/* Two chips over the felt, at the corners the cards never reach — the
           combination in play at the head of the field, whose turn it is at the
           far side. Anything wider would be chrome drawn where a card lands. */}
@@ -1384,6 +1385,7 @@ export function GameTable({
         accessible
         accessibilityLabel={topBarA11yLabel}
         pointerEvents={focusMode ? "none" : undefined}
+        {...behindVeil}
         style={[styles.hudLeft, { left: frame.tableLeft + frame.pad, top: frame.tableTop }, focusFadeStyle]}
       >
         <TableChip scale={scale}>
@@ -1405,6 +1407,7 @@ export function GameTable({
       <Animated.View
         testID="game-hud-stack"
         pointerEvents={focusMode ? "none" : undefined}
+        {...behindVeil}
         style={[
           styles.hudRight,
           { right: frame.tableRight + frame.pad, top: frame.tableTop, gap: frame.pad },
@@ -1473,6 +1476,7 @@ export function GameTable({
       )}
 
       <View
+        {...behindVeil}
         style={[
           styles.bannerBand,
           {
@@ -1489,7 +1493,7 @@ export function GameTable({
           rectangle in a dark room, which is the one thing a single overhead
           lamp cannot produce. The pool tracks whose turn it is, so half the
           cloth falls into shadow when it is not yours. */}
-      <View testID="table-felt" style={[StyleSheet.absoluteFill, FELT_Z]} pointerEvents="none">
+      <View testID="table-felt" style={[StyleSheet.absoluteFill, FELT_Z]} pointerEvents="none" {...behindVeil}>
         <FeltPool
           width={feltW}
           height={feltH}
@@ -1509,6 +1513,7 @@ export function GameTable({
       <View
         testID="game-table"
         accessibilityLabel={tableA11yLabel}
+        {...behindVeil}
         style={[
           sharedTableStyles.tableOverlay,
           TABLE_Z,
