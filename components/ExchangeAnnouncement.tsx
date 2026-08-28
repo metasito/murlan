@@ -22,7 +22,7 @@ import { Colors, Spacing, Radius, FontSize, Type, Motion, Shadow, TOUCH_TARGET_M
 import { usePrefersReducedMotion } from "@/lib/accessibility";
 import { useTranslation } from "@/lib/i18n";
 import { cardSpokenName } from "@/lib/cardNames";
-import { a11yHidden, useA11yHint } from "@/lib/a11y";
+import { A11yStatus, a11yHidden } from "@/lib/a11y";
 import { CARD_H, CARD_W } from "@/components/cardFaceModel";
 
 // Domain timings, not generic UI transitions — not a lib/theme.ts Motion
@@ -99,7 +99,6 @@ export function ExchangeAnnouncement({
   onDismiss,
 }: ExchangeAnnouncementProps) {
   const { t } = useTranslation();
-  const dismissHint = useA11yHint(t("exchangeAnnouncement.dismissA11yHint"));
   const [shown, setShown] = useState(false);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const { width: screenWidth, height: screenHeight } = useWindowDimensions();
@@ -195,11 +194,12 @@ export function ExchangeAnnouncement({
           onPress={handleDismiss}
           style={styles.card}
           accessibilityViewIsModal
-          accessibilityRole="alert"
-          accessibilityLabel={a11yLabel}
-          {...dismissHint.props}
+          // Pointer only. A labelled, accessible panel is one leaf on iOS, and
+          // the close button below it was unreachable there; the announcement
+          // is the status line's job, not this node's.
+          accessible={false}
         >
-          {dismissHint.node}
+          <A11yStatus label={a11yLabel} alert />
           <Pressable
             onPress={handleDismiss}
             style={({ pressed }) => [styles.closeBtn, { opacity: pressed ? 0.6 : 1 }]}
@@ -210,14 +210,14 @@ export function ExchangeAnnouncement({
             <Feather name="x" size={18} color={Colors.textMuted} {...a11yHidden()} />
           </Pressable>
 
-          <Text style={styles.title}>{t("exchangeAnnouncement.title")}</Text>
+          <Text style={styles.title} {...a11yHidden()}>{t("exchangeAnnouncement.title")}</Text>
 
           {bothJokersException ? (
-            <Text style={styles.noSwapText}>
+            <Text style={styles.noSwapText} {...a11yHidden()}>
               {t("exchangeAnnouncement.noSwapText")}
             </Text>
           ) : (
-            <View style={styles.rowsContainer}>
+            <View style={styles.rowsContainer} {...a11yHidden()}>
               {cardReceived && (
                 <View style={styles.exchangeBlock}>
                   <View style={styles.exchangeRow}>

@@ -214,7 +214,6 @@ export const it: Record<keyof typeof en, string> = {
   // -------------------------------------------------------- exchangeAnnouncement.*
   "exchangeAnnouncement.a11yNoSwap": "Scambio: nessuno scambio, {{loserName}} ha mostrato entrambi i Jolly",
   "exchangeAnnouncement.giveLine": "{{from}} dà {{card}} a {{to}}",
-  "exchangeAnnouncement.dismissA11yHint": "Tocca per chiudere",
   "exchangeAnnouncement.closeA11yLabel": "Chiudi annuncio scambio",
   "exchangeAnnouncement.title": "Scambio",
   "exchangeAnnouncement.noSwapText": "Nessuno scambio — Jolly doppio 🃏",

@@ -18,7 +18,7 @@ import { Colors, Spacing, Radius, Type, Shadow, TOUCH_TARGET_MIN } from "@/lib/t
 import { usePrefersReducedMotion } from "@/lib/accessibility";
 import { useTranslation } from "@/lib/i18n";
 import type { NotificationType, NotificationData } from "@/context/NotificationContext";
-import { a11yHidden, a11yVeiled, useA11yHint } from "@/lib/a11y";
+import { A11yStatus, a11yHidden, a11yVeiled, useA11yHint } from "@/lib/a11y";
 
 export type { NotificationType, NotificationData };
 
@@ -148,15 +148,17 @@ export default function NotificationBanner({ notification, onDismiss }: Props) {
       {...a11yVeiled(!notification)}
     >
       <View style={[styles.banner, { borderLeftColor: color }, pressed && styles.bannerPressed]}>
-        {/* The alert is the body, not the row: a focusable close button inside
-            a live region is invalid. */}
+        {/* The announcement is a node of its own. The body below is a button —
+            pressing it runs the notification's own action — and a button's copy
+            is its face, so hiding it would leave the region with nothing to
+            announce and every notification would arrive silently. */}
+        <A11yStatus label={a11yLabel ?? ""} veiled={!notification} alert />
         <Pressable
           onPress={handlePress}
           onPressIn={() => setPressed(true)}
           onPressOut={() => setPressed(false)}
           style={styles.body}
-          accessibilityRole="alert"
-          accessibilityLiveRegion={notification ? "polite" : "none"}
+          accessibilityRole="button"
           accessibilityLabel={a11yLabel}
           {...dismissHint.props}
         >
@@ -164,7 +166,7 @@ export default function NotificationBanner({ notification, onDismiss }: Props) {
           <View style={[styles.iconCircle, { backgroundColor: color + "22" }]} {...a11yHidden()}>
             <Ionicons name={icon} size={20} color={color} />
           </View>
-          <View style={styles.textGroup}>
+          <View style={styles.textGroup} {...a11yHidden()}>
             <Text style={styles.title} numberOfLines={1}>{notification?.title ?? ""}</Text>
             <Text style={styles.message} numberOfLines={2}>{notification?.message ?? ""}</Text>
           </View>

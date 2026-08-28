@@ -100,7 +100,9 @@ describe('the notification banner', () => {
       </SafeAreaProvider>
     );
 
-    expect(screen.queryAllByRole('button', { includeHiddenElements: false })).toHaveLength(1);
+    // Two, because the banner offers two things: pressing the body runs the
+    // notification's own action, and the close button dismisses without it.
+    expect(screen.queryAllByRole('button', { includeHiddenElements: false })).toHaveLength(2);
 
     await r.unmount();
   });

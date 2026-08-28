@@ -102,7 +102,9 @@ describe('NotificationBanner', () => {
         />
       )
     );
-    expect(view.getByText('Messaggio')).toBeTruthy();
+    // Drawn, not announced: the copy is the body button's own face, and the
+    // alert beside it carries the sentence.
+    expect(view.getByText('Messaggio', { includeHiddenElements: true })).toBeTruthy();
     await view.unmount();
   });
 

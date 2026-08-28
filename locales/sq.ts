@@ -226,7 +226,6 @@ export const sq: Record<keyof typeof en, string> = {
   // -------------------------------------------------------- exchangeAnnouncement.*
   "exchangeAnnouncement.a11yNoSwap": "Shkëmbim: pa shkëmbim, {{loserName}} tregoi të dy Xholat",
   "exchangeAnnouncement.giveLine": "Nga {{from}} te {{to}}: {{card}}",
-  "exchangeAnnouncement.dismissA11yHint": "Prek për të mbyllur",
   "exchangeAnnouncement.closeA11yLabel": "Mbyll njoftimin e shkëmbimit",
   "exchangeAnnouncement.title": "Shkëmbimi",
   "exchangeAnnouncement.noSwapText": "Pa shkëmbim — Xhola të dyfishtë 🃏",
