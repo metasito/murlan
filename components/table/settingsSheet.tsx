@@ -368,9 +368,10 @@ export function GameSettingsSheet({
                 {
                   borderRadius: EXIT_RADIUS * scale,
                   paddingVertical: EXIT_PAD_V * scale,
-                  // Padding around a scaled label put this at ~29pt on an iPhone SE. The
-                  // floor is physical, never `TOUCH_TARGET_MIN * scale`; the rows list
-                  // above is the part of the sheet free to give, and it scrolls.
+                  // The floor is physical, never `TOUCH_TARGET_MIN * scale`: padding
+                  // around a scaled label shrinks straight through it on a small phone.
+                  // The rows list above is the part of the sheet free to give, and it
+                  // scrolls.
                   minHeight: physicalTouchTarget(scale),
                 },
               ]}

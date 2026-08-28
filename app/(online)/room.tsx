@@ -233,9 +233,8 @@ function InviteFriendsPanel({
     }, 2000);
   }
 
-  // The list does not scroll, so its height is the rows it shows. Landscape shows one
-  // fewer rather than a shorter row: at 36pt the row was under the touch floor, and two
-  // reachable rows take less height than the three unreachable ones did.
+  // The list does not scroll, so its height is exactly the rows it shows: landscape keeps
+  // the row at the touch floor by showing one fewer, never by making the row shorter.
   const ROW_H = TOUCH_TARGET_MIN;
   const maxVisible = isLandscape ? 2 : 3;
   const listMaxHeight = ROW_H * maxVisible + 12;

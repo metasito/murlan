@@ -190,9 +190,9 @@ test.describe("the rail's settings sheet", () => {
     await expect(page.getByRole("button", { name: "Esci dalla partita" })).toBeVisible();
   });
 
-  // A rendered rect, because that is the only thing that answers this: the exit's box is
-  // padding around a label that both ride `scale`, so a source-level check can read the
-  // floor being declared but never what the box comes out at. It was ~35pt here (#493).
+  // A rendered rect, because nothing else answers this: the exit's box is padding around a
+  // label that both ride `scale`, so a source-level check can read the floor being declared
+  // but never what the box comes out at.
   test("the exit button is a real touch target in landscape", async ({ page, baseURL }) => {
     test.setTimeout(60_000);
     await page.setViewportSize(VIEWPORT);
