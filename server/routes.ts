@@ -459,6 +459,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     res.json(requests.map((r) => ({
       id: r.id,
       username: r.requester.username,
+      createdAt: r.createdAt,
     })));
   });
 
@@ -481,6 +482,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     res.json(sent.map((r) => ({
       id: r.id,
       username: r.recipient.username,
+      createdAt: r.createdAt,
     })));
   });
 
