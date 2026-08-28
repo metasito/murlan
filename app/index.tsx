@@ -271,7 +271,7 @@ function HomeModeTile({
   step,
 }: {
   label: string;
-  /** Why it cannot be taken — shown, and folded into the spoken name. */
+  /** Why it cannot be taken — drawn on the tile, and folded into the spoken name. */
   reason?: string;
   icon: React.ComponentProps<typeof Ionicons>["name"];
   onPress: () => void;
@@ -312,6 +312,11 @@ function HomeModeTile({
         >
           {label}
         </Text>
+        {disabled ? (
+          <Text {...a11yHidden()} style={styles.tileReason} numberOfLines={1}>
+            {reason}
+          </Text>
+        ) : null}
       </Pressable>
     </Animated.View>
   );
@@ -1005,6 +1010,7 @@ const styles = StyleSheet.create({
     borderColor: Colors.goldBorder,
   },
   tileDisabled: { borderColor: Colors.border, opacity: 0.6 },
+  tileReason: { ...Type.caption, textAlign: "center" },
   tileLabel: {
     fontFamily: "Rajdhani_600SemiBold",
     fontSize: FontSize.md,

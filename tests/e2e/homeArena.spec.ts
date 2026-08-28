@@ -8,7 +8,7 @@
 // row is against the bottom edge" and "the account block is never one line"
 // are true or false only in a browser.
 import { test, expect, type Page } from "@playwright/test";
-import { openApp } from "./helpers/navigation";
+import { openApp, registerNewAccount, uniqueUsername } from "./helpers/navigation";
 import { offlineGameSave } from "./helpers/offlineSeed";
 // The suite runs the app in Italian. Read from the locale rather than restated
 // here: a spec holding its own copy of the copy goes stale on the next rename
@@ -131,6 +131,17 @@ test("signed out, the account-only tiles are refused rather than redirected", as
     );
   }
 
+  // The ticket asks for a *visible* reason, and the spoken name is not one: a
+  // reason folded only into `accessibilityLabel` leaves a sighted player with
+  // two greyed tiles and no explanation, which is the state this replaced.
+  const drawn = await page.locator(TILE).evaluateAll((els) =>
+    els.map((el) => (el as HTMLElement).innerText.replace(/\s+/g, " ").trim())
+  );
+  expect(
+    drawn.filter((text) => text.includes(copy["home.requiresAccount"])),
+    "a disabled tile does not draw its reason, only speaks it"
+  ).toHaveLength(2);
+
   // The redirect is the defect: clicking a refused tile must leave the player
   // where they are.
   await page.locator(TILE).nth(1).click({ force: true });
@@ -141,17 +152,23 @@ test("landscape composes the account block down the column, never along one line
   page,
   baseURL,
 }) => {
-  await page.setViewportSize(LANDSCAPE);
+  test.setTimeout(60_000);
+  // Signed out the block collapses to Sign in and Settings, so there is no
+  // pair and no avatar to place. An account is what this composition is *for*,
+  // and a spec that skipped itself when signed out never checked it at all.
+  await page.setViewportSize(PORTRAIT);
   await openApp(page, baseURL!);
+  await registerNewAccount(page, uniqueUsername("arena"));
+  await page.setViewportSize(LANDSCAPE);
 
-  // Signed out it collapses to two entries and there is no pair to check.
-  const pair = page.locator('[data-testid="home-account-pair"]');
-  if ((await pair.count()) === 0) {
-    test.skip(true, "signed out: the account block has no avatar and no pair");
-  }
+  // `:visible`, because the screen left behind by /auth stays mounted at 0x0
+  // and would otherwise match too — the same stale-node problem the icon-glyph
+  // sweep solves with its own displayed filter.
+  const pair = page.locator('[data-testid="home-account-pair"]:visible');
+  await pair.waitFor({ state: "visible" });
 
-  const avatar = (await box(page, '[data-testid="home-account-avatar"]'))!;
-  const settings = (await box(page, '[data-testid="home-account-settings"]'))!;
+  const avatar = (await box(page, '[data-testid="home-account-avatar"]:visible'))!;
+  const settings = (await box(page, '[data-testid="home-account-settings"]:visible'))!;
   const pills = await pair.locator('[role="button"]').evaluateAll((els) =>
     els.map((el) => {
       const r = el.getBoundingClientRect();
