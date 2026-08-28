@@ -212,6 +212,7 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: Spacing.sm + 4,
+    minHeight: TOUCH_TARGET_MIN,
   },
   bannerPressed: { backgroundColor: Colors.bgElevated },
   iconCircle: {
