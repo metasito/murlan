@@ -50,6 +50,7 @@ Three pillars, in priority order:
 | Deployment | Replit stays the backend, unchanged. Add EAS Cloud for iOS/Android binaries pointing at the Replit API. |
 | Socket auth | Short-lived single-use signed ticket, minted by an authenticated REST endpoint, consumed in the handshake. No new dependencies. |
 | Game rules | Research Murlan rules from real sources, consolidate into one documented specification, reconcile code and UI against it. Escalate genuine ambiguities rather than guessing. |
+| The hand's two sizes | The change between them is a cut, not a transition. The turn is already signalled continuously by the lamp, the seat's ring, the other seats dimming and the hand's own eased lift — the size is the fifth signal, and the one the platform will not let us ease. See below. |
 
 ### 3.1 Rule decisions (taken after research — the sources are cited in `docs/RULES.md`)
 
@@ -77,6 +78,40 @@ existing Murlan apps.
 | **Who votes on a rematch** | **Only seats held by a human vote, offline and online alike.** Bot seats and vacated seats abstain from both the count and the total. | Online already worked this way and the row above already says vacated and bot seats abstain; offline let AI seats vote *and* counted them toward the majority, so "most players agreed" meant two different things depending on where you were sitting. A computer has no preference to record, and a table of one human plus bots should restart when that human says so. |
 
 ---
+
+### 3.2 Why the hand's size change is a cut
+
+`HAND_SCALE` 1.08 off the viewer's turn and `HAND_SCALE_ON_TURN` 1.20 on it are both real
+layout: the card's own width, height and type, and the air between cards, are all computed from
+that number. Easing between them means either transforming the row or laying it out repeatedly,
+and each was ruled out against something measured rather than argued.
+
+**A `scale` transform is unusable.** Web rasterises text before transforming it, so a card under
+a scale carries a distorted rank glyph for as long as the transform lasts.
+`tests/e2e/a11yOverlays.spec.ts` measures a glyph's ink against the box that clips it and
+reports clipping the glyph does not have. Two CI runs on #418: 32 glyphs clipped with an eased
+size, 14 with a 2.5-second settle added before measuring. The settle could not fix it, because
+in a four-player game the turn changes every few seconds and the animation is running whenever
+anything looks.
+
+**A cross-fade of two rows would pass that guard** — opacity is not a transform, so both rows
+carry honest glyphs — but it puts two hands in the DOM at once, and two other specs measure the
+hand by querying every card in it. `tests/e2e/cardScale.spec.ts` takes the *first*
+`[data-testid="card-box"]` in document order and asserts its width tracks the viewport's short
+edge; during a fade that can be the outgoing row's card at the old size. `tests/e2e/handBudget.spec.ts`
+takes *all* of them and measures the row's extent and its share of the width; two rows double
+the count and overlap the rects. Both run against a live four-player game. Easing the hand would
+mean rewriting two specs that are not about the hand's size at all.
+
+**Easing only the fan's spread** — `translateX` per card, which the guard does tolerate, since
+the deal already animates translate and rotate — was rejected on its own merits rather than on a
+constraint: the cards would jump size and *then* slide apart, which reads as two events where
+there is one.
+
+What is not a cut: the hand's lift. `useHandLift` eases 500ms on the same turn change
+(`components/table/chrome.tsx`), so the moment is animated even though the size within it is
+not. Revisit if the glyph measurement ever moves off ink-versus-box, which is what makes a
+transformed card unmeasurable.
 
 ## 4. Workstreams
 
