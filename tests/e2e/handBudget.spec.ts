@@ -11,6 +11,7 @@
 // react-test-renderer cannot see any of it.
 import { test, expect, type Page } from "@playwright/test";
 import { openSeededGame } from "./helpers/offlineSeed";
+import { GIOCA_VALID_LABEL } from "./helpers/labels";
 
 const VIEWPORT = { width: 844, height: 390 };
 
@@ -128,7 +129,7 @@ async function playOneCombination(page: Page): Promise<void> {
   for (const label of labels) {
     const card = page.locator(`[aria-label^="La tua mano"] [aria-label="${label}"]`);
     await card.click({ timeout: 4_000 }).catch(() => {});
-    if ((await gioca.getAttribute("aria-label")) === "Gioca le carte selezionate") {
+    if ((await gioca.getAttribute("aria-label")) === GIOCA_VALID_LABEL) {
       await gioca.click({ timeout: 4_000 }).catch(() => {});
       await page.waitForTimeout(1_500);
       return;
