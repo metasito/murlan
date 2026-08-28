@@ -37,6 +37,9 @@ const SIZED_AT_RUNTIME: [string, number, string][] = [
   ["components/table/chrome.tsx", 1, "the rail's knobs take `physicalTouchTarget(scale)`, floored at TOUCH_TARGET_MIN"],
   ["components/MenuButton.tsx", 1, "the box is `styles[size]`, one of three steps the scan reads as declared styles in their own right"],
   ["components/GameOverOverlay.tsx", 1, "the rematch button's box is `rematchGradient`, which declares the floor"],
+  ["components/table/settingsSheet.tsx", 1, "the exit button's box is the gradient it wraps, floored at `physicalTouchTarget(scale)`"],
+  ["app/(online)/index.tsx", 1, "the error banner's close is a 16pt icon reaching the floor through `hitSlop`"],
+  ["app/(online)/room.tsx", 1, "an invite row takes `{ height: ROW_H }` inline, and ROW_H is the token"],
 ];
 
 /**
@@ -62,12 +65,6 @@ const NOT_A_TARGET: [string, number, string][] = [
  * goal, not the invariant.
  */
 const UNDER_THE_FLOOR: [string, number, string][] = [
-  ["app/(online)/friends.tsx", 1, "the send button is a 36pt circle; #493"],
-  ["app/(online)/index.tsx", 1, "the error banner's close is a 16pt icon with 12pt of slop, so 40pt; #493"],
-  ["app/(online)/room.tsx", 1, "an invite row is 36pt in landscape, which is the orientation the game plays in; #493"],
-  ["components/ReplayControls.tsx", 1, "a move row is one text line inside 4pt of padding; #493"],
-  ["app/index.tsx", 2, "the logout button is caption text inside 2pt of padding; #493"],
-  ["components/table/settingsSheet.tsx", 1, "the exit button is `EXIT_PAD_V * scale` around a 12.5pt label: ~35pt at scale 1, ~29pt on an iPhone SE; #493"],
 ];
 
 type Candidate = { file: string; line: number; width: number | null; height: number | null };
@@ -262,6 +259,44 @@ test("a second control in a classified file is not absorbed by its entry", () =>
     (c) => c.file === file
   ).length;
   assert.equal(after, before + 1, "the scan counts nodes, so an extra one cannot hide behind an entry");
+});
+
+// The three whose box is real but unreadable from a style sheet. Each is in SIZED_AT_RUNTIME,
+// and a classification only says someone looked — these say what they looked at.
+test("the settings sheet's exit floors rather than scales", () => {
+  const source = read("components/table/settingsSheet.tsx");
+  assert.match(source, /minHeight: physicalTouchTarget\(scale\)/);
+  const num = (name: string) => {
+    const m = new RegExp(String.raw`const ${name} = ([\d.]+);`).exec(source);
+    assert.ok(m, `${name} is gone, so the arithmetic below proves nothing`);
+    return Number(m[1]);
+  };
+  // Padding around a scaled label, which is what it had, shrinks straight through the floor.
+  const unfloored = (s: number) => num("EXIT_PAD_V") * 2 * s + num("EXIT_FS") * s;
+  assert.ok(unfloored(1) < TOUCH_TARGET_MIN, "the floor is doing nothing at scale 1");
+  assert.ok(unfloored(0.82) < unfloored(1), "the box shrinks with the table");
+  assert.equal(physicalTouchTarget(0.82), TOUCH_TARGET_MIN);
+});
+
+test("the error banner's close reaches the floor on slop, having no room for a box", () => {
+  const source = read("app/(online)/index.tsx");
+  const tag = /<Pressable\s+onPress=\{clearError\}\s+hitSlop=\{Spacing\.(\w+)\}/.exec(source);
+  assert.ok(tag, "the close button no longer takes its reach from hitSlop");
+  const icon = /name="close"\s+size=\{(\d+)\}/.exec(source);
+  assert.ok(icon, "the close button no longer wraps a sized icon");
+  const inset = Spacing[tag[1] as keyof typeof Spacing];
+  assert.ok(
+    Number(icon[1]) + inset * 2 >= TOUCH_TARGET_MIN,
+    `${icon[1]}pt icon plus ${inset}pt each side is ${Number(icon[1]) + inset * 2}pt`
+  );
+});
+
+test("an invite row is a touch target in both orientations", () => {
+  const source = read("app/(online)/room.tsx");
+  assert.match(source, /const ROW_H = TOUCH_TARGET_MIN;/);
+  // The list does not scroll, so landscape buys the taller row by showing one fewer.
+  assert.match(source, /const maxVisible = isLandscape \? 2 : 3;/);
+  assert.match(source, /scrollEnabled=\{false\}/);
 });
 
 test("the rail's knobs are sized by physicalTouchTarget, at the HIG floor", () => {
