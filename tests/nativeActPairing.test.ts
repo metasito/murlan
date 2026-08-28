@@ -22,7 +22,11 @@ function poisonedLines(source: string): number[] {
     const line = lines[i];
     if (!/(?<!await\s)\bfireEvent\.\w+\(/.test(line)) continue;
     if (/\bawait\s+fireEvent\./.test(line) || /\bact\(/.test(line)) continue;
-    const next = lines.slice(i + 1).find((l) => l.trim() !== "");
+    // A comment between the two is likelier than not: the flush gets added
+    // deliberately, so it gets explained.
+    const next = lines
+      .slice(i + 1)
+      .find((l) => l.trim() !== "" && !/^\s*(\/\/|\/\*|\*)/.test(l));
     if (next && /\bawait\s+act\(/.test(next)) hits.push(i + 1);
   }
   return hits;
@@ -43,6 +47,7 @@ describe("no native test pairs a bare fireEvent with an act flush", () => {
   test("the pattern names the shape, and only that shape", () => {
     assert.deepEqual(poisonedLines("fireEvent.press(x);\nawait act(async () => {});"), [1]);
     assert.deepEqual(poisonedLines("fireEvent.press(x);\n\n  await act(async () => {});"), [1]);
+    assert.deepEqual(poisonedLines("fireEvent.press(x);\n// flush it\nawait act(async () => {});"), [1]);
     // Awaiting the fireEvent is the fix, so it must never be named.
     assert.deepEqual(poisonedLines("await fireEvent.press(x);\nawait act(async () => {});"), []);
     // Measured safe: waitFor does not corrupt the environment.
