@@ -46,6 +46,7 @@ import {
   notificationTopOffset,
   computeTableFrame,
   railWidth,
+  cutoutClass,
   readExchange,
   viewerOwnsSeat,
   INACTIVE_EXCHANGE,
@@ -1603,4 +1604,87 @@ test("no screen asks whether a seat is the viewer's by hand", () => {
     `a watcher's seat answers yes to these: ${asked.join(" | ")}. ` +
       `Use viewerOwnsSeat(seat, viewerSeat, spectating) from components/gameTableModel.`
   );
+});
+
+// ─── The cutout, and the side the rail is on ─────────────────────────────────
+
+describe("cutoutClass", () => {
+  // The three classes do not overlap in what iOS reports, so one inset answers
+  // the question and no device table is needed (docs/research/
+  // 2026-08-26-notch-and-dynamic-island.md).
+  test("names each of the three device classes from its reported inset", () => {
+    assert.equal(cutoutClass(0), "none");
+    assert.equal(cutoutClass(20), "none");
+    assert.equal(cutoutClass(44), "notch");
+    assert.equal(cutoutClass(50), "notch");
+    assert.equal(cutoutClass(59), "island");
+    assert.equal(cutoutClass(68), "island");
+  });
+
+  // The boundaries are the whole of this function: a threshold that drifts by a
+  // point reclassifies a real phone, and nothing else would notice.
+  test("the boundaries fall between the reported ranges, not inside one", () => {
+    assert.equal(cutoutClass(29), "none");
+    assert.equal(cutoutClass(30), "notch");
+    assert.equal(cutoutClass(54), "notch");
+    assert.equal(cutoutClass(55), "island");
+  });
+
+  test("a value below zero or absurdly large still answers", () => {
+    assert.equal(cutoutClass(-1), "none");
+    assert.equal(cutoutClass(200), "island");
+  });
+});
+
+describe("computeTableFrame, mirrored", () => {
+  const insets = { top: 20, bottom: 10, left: 59, right: 59 };
+  const frameOf = (railSide: "left" | "right") =>
+    computeTableFrame({ width: 800, insets, scale: 1, railSide });
+
+  // The point of the ticket: rotate the phone and the cutout moves to the other
+  // side, so the rail has to follow it. Everything about the frame is the same
+  // shape either way — only the edges swap.
+  test("the right-hand frame is the left-hand one with its edges swapped", () => {
+    const l = frameOf("left");
+    const r = frameOf("right");
+
+    assert.equal(r.rail, l.rail, "the rail changed width when it changed sides");
+    assert.equal(r.tableRight, l.tableLeft, "the rail is not against the right edge");
+    assert.equal(r.tableLeft, l.tableRight, "the play area does not start where the rail is not");
+  });
+
+  test("the play area is the same width whichever side the rail is on", () => {
+    const l = frameOf("left");
+    const r = frameOf("right");
+    assert.equal(800 - r.tableLeft - r.tableRight, 800 - l.tableLeft - l.tableRight);
+    assert.equal(r.handAvailW, l.handAvailW);
+    assert.equal(r.fieldRoomW, l.fieldRoomW);
+  });
+
+  // The defect this replaces: the rail was grown from `insets.left` whatever the
+  // rotation, so in the rotation with the Island on the right the app reserved
+  // the cutout's width twice — once as a rail nothing sits behind, once as
+  // right-edge padding — and the cutout sat over the padding rather than
+  // between the two knobs.
+  test("the rail is grown from the inset on its own side", () => {
+    const lopsided = { top: 20, bottom: 10, left: 0, right: 59 };
+    const r = computeTableFrame({ width: 800, insets: lopsided, scale: 1, railSide: "right" });
+    assert.equal(r.rail, railWidth(59, 1));
+
+    const l = computeTableFrame({ width: 800, insets: lopsided, scale: 1, railSide: "left" });
+    assert.equal(l.rail, railWidth(0, 1));
+  });
+
+  test("the play area's centre is the box's own centre on either side", () => {
+    for (const side of ["left", "right"] as const) {
+      const f = computeTableFrame({ width: 844, insets, scale: 1, railSide: side });
+      const boxCentre = f.tableLeft + (844 - f.tableLeft - f.tableRight) / 2;
+      assert.equal(boxCentre, (f.tableLeft + 844 - f.tableRight) / 2, side);
+    }
+  });
+
+  test("a frame asked for no side at all still puts the rail on the left", () => {
+    const f = computeTableFrame({ width: 800, insets, scale: 1 });
+    assert.equal(f.tableLeft, f.rail);
+  });
 });

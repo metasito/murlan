@@ -14,7 +14,7 @@ import { useTranslation } from "@/lib/i18n";
 import { a11yState } from "@/lib/a11y";
 import type { StartReason } from "@/lib/gameEngine";
 import { getCardDisplayRank, getSuitSymbol } from "@/lib/gameEngine";
-import { CHIP_H, SIDE_SECTION_W } from "@/components/gameTableModel";
+import { CHIP_H, SIDE_SECTION_W, type RailSide } from "@/components/gameTableModel";
 
 // ─── StartReasonBanner ────────────────────────────────────────────────────────
 
@@ -259,6 +259,7 @@ export const RAIL_TESTID = "control-rail";
 
 export function ControlRail({
   width,
+  side,
   topPad,
   bottomPad,
   top,
@@ -266,6 +267,8 @@ export function ControlRail({
   veiled,
 }: {
   width: number;
+  /** The edge the cutout is on, from the frame (components/gameTableModel.ts). */
+  side: RailSide;
   topPad: number;
   bottomPad: number;
   top?: ReactNode;
@@ -280,7 +283,10 @@ export function ControlRail({
   return (
     <View
       testID={RAIL_TESTID}
-      style={[railStyles.rail, { width, paddingTop: topPad, paddingBottom: bottomPad }]}
+      style={[
+        railStyles.rail,
+        { width, paddingTop: topPad, paddingBottom: bottomPad, [side]: 0 },
+      ]}
       {...veiled}
     >
       <View>{top}</View>
@@ -328,9 +334,10 @@ export function RailKnob({
 const RAIL_Z = 20;
 
 const railStyles = StyleSheet.create({
+  // No horizontal edge here: `side` sets the one it is against, and a `left: 0`
+  // left standing would pin the rail to both edges at once.
   rail: {
     position: "absolute",
-    left: 0,
     top: 0,
     bottom: 0,
     alignItems: "center",

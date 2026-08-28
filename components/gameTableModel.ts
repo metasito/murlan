@@ -695,6 +695,26 @@ export function computeScreenPads(opts: { insets: EdgeInsets }): ScreenPads {
 // The column the cutout occupies is the rail: menu knob at the top, reactions
 // knob at the bottom, cutout in the gap between them.
 
+/**
+ * What kind of cutout the device has, from the inset it reports beside it.
+ *
+ * The three classes do not overlap in what iOS reports — 0-20 with no cutout,
+ * 44-50 for a notch, 59-68 for a Dynamic Island — so the inset the app already
+ * reads answers the question, and a model-string table (which returns `false`
+ * for every phone released after it was written) is not needed.
+ * See docs/research/2026-08-26-notch-and-dynamic-island.md.
+ */
+export type CutoutClass = "none" | "notch" | "island";
+
+const NOTCH_MIN = 30;
+const ISLAND_MIN = 55;
+
+export function cutoutClass(inset: number): CutoutClass {
+  if (inset >= ISLAND_MIN) return "island";
+  if (inset >= NOTCH_MIN) return "notch";
+  return "none";
+}
+
 /** Air on both sides of a 44pt knob — the width the rail holds with no cutout. */
 const RAIL_FLOOR = 58;
 /** …and what it grows to on a large screen, before any cutout is considered. */
@@ -707,13 +727,17 @@ const RAIL_CUTOUT_CLEARANCE = 12;
  * like a notched one: below `RAIL_FLOOR - RAIL_CUTOUT_CLEARANCE` of inset the
  * rail is already wider than the cutout, so the cutout appearing moves nothing.
  */
-export function railWidth(insetLeft: number, scale: number): number {
-  return Math.max(RAIL_FLOOR, RAIL_SCALED * scale, insetLeft + RAIL_CUTOUT_CLEARANCE);
+export function railWidth(insetOnRailSide: number, scale: number): number {
+  return Math.max(RAIL_FLOOR, RAIL_SCALED * scale, insetOnRailSide + RAIL_CUTOUT_CLEARANCE);
 }
 
+export type RailSide = "left" | "right";
+
 export interface TableFrame extends ScreenPads {
-  /** Width of the control rail, which is also the play area's left edge. */
+  /** Width of the control rail, whichever edge it is against. */
   rail: number;
+  /** …and which edge that is, so nothing downstream has to work it out again. */
+  railSide: RailSide;
   /** From an edge to the first thing drawn over the felt. */
   pad: number;
   tableLeft: number;
@@ -740,18 +764,27 @@ export function computeTableFrame(opts: {
   insets: EdgeInsets;
   /** The table's own scale — the rail widens with it. */
   scale: number;
+  /**
+   * Which edge the cutout is on, and therefore the rail. The table is locked to
+   * landscape but not to one landscape *direction*, so this follows the
+   * rotation. Resolved here rather than by each caller, because the arithmetic
+   * mirrors and doing that twice is how the two halves drift apart.
+   */
+  railSide?: RailSide;
 }): TableFrame {
   const { topPad, bottomPad, leftPad, rightPad } = computeScreenPads(opts);
+  const railSide = opts.railSide ?? "left";
 
-  // The rail eats the left edge, so the play area starts at its outer edge and
-  // everything centred on the table centres on that box rather than on the
+  // The rail eats the cutout's edge, so the play area starts at its outer edge
+  // and everything centred on the table centres on that box rather than on the
   // screen — centring on 50% puts the pile and the top seat ~17px off on an
   // 844pt phone.
-  const rail = railWidth(leftPad, opts.scale);
-  const tableLeft = rail;
+  const rail = railWidth(railSide === "left" ? leftPad : rightPad, opts.scale);
   const tableTop = Math.max(PAD_TOP * opts.scale, topPad);
-  const tableRight = Math.max(PAD_RIGHT * opts.scale, rightPad);
   const tableBottom = Math.max(PAD_BOTTOM * opts.scale, bottomPad);
+  const away = Math.max(PAD_RIGHT * opts.scale, railSide === "left" ? rightPad : leftPad);
+  const tableLeft = railSide === "left" ? rail : away;
+  const tableRight = railSide === "left" ? away : rail;
   const tableW = opts.width - tableLeft - tableRight;
   const handAvailW = tableW - (actionBtnSize(opts.scale) + HAND_ZONE_GAP * opts.scale) * 2;
 
@@ -761,6 +794,7 @@ export function computeTableFrame(opts: {
     leftPad,
     rightPad,
     rail,
+    railSide,
     pad: PAD_INNER * opts.scale,
     tableLeft,
     tableTop,
