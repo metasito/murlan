@@ -141,17 +141,24 @@ export const it: Record<keyof typeof en, string> = {
 
   // ----------------------------------------------------------------- home.*
   "home.subtitle": "Il Gioco di Carte",
-  "home.footer": "2–4 giocatori · Tutte le modalità",
-  "home.logout": "Esci",
   "home.friendsLabel": "Amici",
+  "home.friendsA11yLabel_one": "Amici, {{count}} richiesta in attesa",
+  "home.friendsA11yLabel_other": "Amici, {{count}} richieste in attesa",
   "home.settingsA11yLabel": "Impostazioni",
   "home.resumeGame": "Riprendi partita",
+  "home.playOnline": "Gioca online",
+  "home.playOnlineSignedOut": "Accedi per giocare",
   "home.modeOffline": "Offline",
   "home.modePlayWithFriends": "Gioca con amici",
   "home.modeOnline": "Online",
+  "home.modePassAndPlay": "Passa e gioca",
   "home.modeProfile": "Il mio profilo",
-  "home.modeTutorial": "Tutorial",
-  "home.modeRules": "Regole & FAQ",
+  "home.leaderboard": "Classifica",
+  "home.signIn": "Accedi",
+  "home.howToPlay": "Come si gioca",
+  "home.requiresAccount": "Richiede un account",
+  "home.inviteWaiting": "{{name}} ti sta aspettando",
+  "home.inviteJoin": "Entra",
 
   // ---------------------------------------------------------- notFound.*
   "notFound.screenTitle": "Ops!",

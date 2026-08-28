@@ -31,144 +31,21 @@ import {
   restingPose,
   type FloatingCardSpec,
 } from "@/components/homeCardField";
+import { homeMenu, type HomeAction } from "@/components/homeMenuModel";
 import { hapticLight } from "@/lib/haptics";
 import Feather from "@expo/vector-icons/Feather";
 import Ionicons from "@expo/vector-icons/Ionicons";
 import { useQuery } from "@tanstack/react-query";
 import { useAuth } from "@/context/AuthContext";
 import { useGame } from "@/context/GameContext";
+import { useSocket } from "@/context/SocketContext";
 import { usePrefersReducedMotion } from "@/lib/accessibility";
-import { Colors, FontSize, makeShadow, Radius, Spacing, TOUCH_TARGET_MIN } from '@/lib/theme';
+import { Colors, FontSize, makeShadow, Motion, Radius, Spacing, TOUCH_TARGET_MIN, Type } from '@/lib/theme';
 import { useTranslation } from "@/lib/i18n";
 import { SettingsModal } from "@/components/SettingsModal";
 import { a11yHidden, a11yState } from "@/lib/a11y";
 import { markTutorialSeen, tutorialSeen } from "@/lib/tutorialSeen";
 
-/**
- * A destination on the home screen: an icon, a label, and a chevron, animated
- * in on a stagger.
- *
- * Deliberately not components/MenuButton.tsx, which twelve other screens use —
- * that is a pill-shaped CTA with variants and sizes, and this is a row in a
- * list. The names must stay apart: the shared component clips its gradient and
- * has no padding conflict, so reading it tells you nothing about this one.
- */
-interface HomeMenuRowProps {
-  label: string;
-  icon: React.ComponentProps<typeof Ionicons>["name"];
-  onPress: () => void;
-  delay?: number;
-  accent?: boolean;
-  disabled?: boolean;
-  compact?: boolean;
-  accessibilityLabel?: string;
-}
-
-function HomeMenuRow({
-  label,
-  icon,
-  onPress,
-  delay = 0,
-  accent = false,
-  disabled = false,
-  compact = false,
-  accessibilityLabel,
-}: HomeMenuRowProps) {
-  const reduceMotion = usePrefersReducedMotion();
-  const opacity = useSharedValue(0);
-  const translateY = useSharedValue(30);
-  const scale = useSharedValue(1);
-
-  // Must precede the hooks that read `scale` — the React Compiler skips any component that mutates a value a hook captured.
-  const handlePress = () => {
-    if (disabled) return;
-    if (!reduceMotion) {
-      scale.value = withSequence(
-        withTiming(0.96, { duration: 80 }),
-        withTiming(1, { duration: 120 })
-      );
-    }
-    hapticLight();
-    onPress();
-  };
-
-  useEffect(() => {
-    if (reduceMotion) {
-      opacity.value = 1;
-      translateY.value = 0;
-      return;
-    }
-    opacity.value = withDelay(delay, withTiming(1, { duration: 500 }));
-    translateY.value = withDelay(
-      delay,
-      withTiming(0, { duration: 500, easing: Easing.out(Easing.cubic) })
-    );
-  }, [delay, opacity, reduceMotion, translateY]);
-
-  const animStyle = useAnimatedStyle(() => ({
-    opacity: opacity.value,
-    transform: [{ translateY: translateY.value }, { scale: scale.value }],
-  }));
-
-  return (
-    <Animated.View style={animStyle}>
-      <Pressable
-        onPress={handlePress}
-        disabled={disabled}
-        accessibilityLabel={accessibilityLabel ?? label}
-        {...a11yState({ role: "button", disabled })}
-        style={({ pressed }) => [
-          styles.menuButton,
-          compact && styles.menuButtonCompact,
-          accent && styles.menuButtonAccent,
-          disabled && styles.menuButtonDisabled,
-          pressed && { opacity: 0.85 },
-        ]}
-      >
-        {accent ? (
-          <LinearGradient
-            colors={[Colors.gold, Colors.goldDark]}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 1 }}
-            style={compact ? styles.accentGradientCompact : styles.accentGradient}
-            {...a11yHidden()}
-          >
-            <Ionicons name={icon} size={compact ? 18 : 20} color={Colors.bgCard} />
-            <Text style={[styles.menuLabel, styles.menuLabelAccent, compact && styles.menuLabelCompact]}>
-              {label}
-            </Text>
-            <View style={{ width: compact ? 18 : 20 }} />
-          </LinearGradient>
-        ) : (
-          <>
-            <Ionicons
-              name={icon}
-              size={compact ? 18 : 20}
-              color={disabled ? Colors.textMuted : Colors.gold}
-              {...a11yHidden()}
-            />
-            <Text
-              {...a11yHidden()}
-              style={[
-                styles.menuLabel,
-                compact && styles.menuLabelCompact,
-                disabled && { color: Colors.textMuted },
-              ]}
-            >
-              {label}
-            </Text>
-            <Ionicons
-              name="chevron-forward"
-              size={compact ? 14 : 16}
-              color={Colors.textMuted}
-              {...a11yHidden()}
-            />
-          </>
-        )}
-      </Pressable>
-    </Animated.View>
-  );
-}
 
 /** The field borrows the lattice of the back a fresh install deals with. */
 const LATTICE_SPACING = CardBacks[DEFAULT_CARD_BACK].lattice;
@@ -278,65 +155,492 @@ function CardField({ cards }: { cards: FloatingCardSpec[] }) {
   );
 }
 
-function FriendsButton({ compact }: { compact?: boolean }) {
-  const { user } = useAuth();
-  const { t } = useTranslation();
+/** One item after another, so the screen assembles rather than appearing. */
+const ENTRANCE_STEP_MS = Motion.duration.fast;
+/** How far an entering item travels. */
+const RISE = 24;
 
-  const { data: requests = [] } = useQuery<{ id: string }[]>({
+function useEntrance(step: number) {
+  const reduceMotion = usePrefersReducedMotion();
+  const opacity = useSharedValue(0);
+  const translateY = useSharedValue(RISE);
+
+  useEffect(() => {
+    if (reduceMotion) {
+      opacity.value = 1;
+      translateY.value = 0;
+      return;
+    }
+    const delay = step * ENTRANCE_STEP_MS;
+    opacity.value = withDelay(delay, withTiming(1, { duration: Motion.duration.slow }));
+    translateY.value = withDelay(
+      delay,
+      withTiming(0, { duration: Motion.duration.slow, easing: Easing.out(Easing.cubic) })
+    );
+  }, [opacity, reduceMotion, step, translateY]);
+
+  return useAnimatedStyle(() => ({
+    opacity: opacity.value,
+    transform: [{ translateY: translateY.value }],
+  }));
+}
+
+function usePressScale() {
+  const reduceMotion = usePrefersReducedMotion();
+  const scale = useSharedValue(1);
+
+  // Must precede the hook that reads `scale` — the React Compiler skips any
+  // component that mutates a value a hook captured.
+  const press = () => {
+    if (reduceMotion) return;
+    scale.value = withSequence(
+      withTiming(PRESS_SCALE, { duration: Motion.duration.flash }),
+      withTiming(1, { duration: Motion.duration.fast })
+    );
+  };
+
+  const style = useAnimatedStyle(() => ({ transform: [{ scale: scale.value }] }));
+  return { style, press };
+}
+
+const PRESS_SCALE = 0.96;
+
+/**
+ * The one thing on the screen worth doing next. Never two, never absent —
+ * which of the ways to play is promoted is `homeMenu`'s decision, not this
+ * component's.
+ */
+function HomeHero({
+  label,
+  sublabel,
+  icon,
+  onPress,
+  step,
+}: {
+  label: string;
+  sublabel?: string;
+  icon: React.ComponentProps<typeof Ionicons>["name"];
+  onPress: () => void;
+  step: number;
+}) {
+  const entrance = useEntrance(step);
+  const { style: pressed, press } = usePressScale();
+
+  return (
+    <Animated.View style={[entrance, pressed]}>
+      <Pressable
+        testID="home-hero"
+        onPress={() => {
+          press();
+          hapticLight();
+          onPress();
+        }}
+        accessibilityLabel={sublabel ? `${label}. ${sublabel}` : label}
+        {...a11yState({ role: "button" })}
+        style={({ pressed: down }) => [styles.hero, down && { opacity: 0.9 }]}
+      >
+        <LinearGradient
+          colors={[Colors.gold, Colors.goldDark]}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+          style={styles.heroFill}
+          {...a11yHidden()}
+        >
+          <Ionicons name={icon} size={HERO_ICON} color={Colors.bgCard} />
+          <View>
+            <Text style={styles.heroLabel}>{label}</Text>
+            {sublabel ? <Text style={styles.heroSublabel}>{sublabel}</Text> : null}
+          </View>
+          <Ionicons name="chevron-forward" size={HERO_CHEVRON} color={Colors.bgCard} />
+        </LinearGradient>
+      </Pressable>
+    </Animated.View>
+  );
+}
+
+const HERO_ICON = 26;
+const HERO_CHEVRON = 20;
+const TILE_ICON = 24;
+
+/** A way to play that is not the hero: icon over label, and nowhere to look next. */
+function HomeModeTile({
+  label,
+  reason,
+  icon,
+  onPress,
+  step,
+}: {
+  label: string;
+  /** Why it cannot be taken — shown, and folded into the spoken name. */
+  reason?: string;
+  icon: React.ComponentProps<typeof Ionicons>["name"];
+  onPress: () => void;
+  step: number;
+}) {
+  const entrance = useEntrance(step);
+  const { style: pressed, press } = usePressScale();
+  const disabled = reason !== undefined;
+
+  return (
+    <Animated.View style={[styles.tileSlot, entrance, pressed]}>
+      <Pressable
+        testID="home-mode-tile"
+        onPress={() => {
+          press();
+          hapticLight();
+          onPress();
+        }}
+        disabled={disabled}
+        accessibilityLabel={disabled ? `${label}. ${reason}` : label}
+        {...a11yState({ role: "button", disabled })}
+        style={({ pressed: down }) => [
+          styles.tile,
+          disabled && styles.tileDisabled,
+          down && { opacity: 0.85 },
+        ]}
+      >
+        <Ionicons
+          name={icon}
+          size={TILE_ICON}
+          color={disabled ? Colors.textMuted : Colors.gold}
+          {...a11yHidden()}
+        />
+        <Text
+          {...a11yHidden()}
+          style={[styles.tileLabel, disabled && { color: Colors.textMuted }]}
+          numberOfLines={2}
+        >
+          {label}
+        </Text>
+        {disabled ? (
+          <Text {...a11yHidden()} style={styles.tileReason}>
+            {reason}
+          </Text>
+        ) : null}
+      </Pressable>
+    </Animated.View>
+  );
+}
+
+/**
+ * The quietest thing that is still a destination — no fill, a hairline, and
+ * the chevron that says you are coming back.
+ */
+function HomeQuietRow({
+  label,
+  icon,
+  onPress,
+  step,
+}: {
+  label: string;
+  icon: React.ComponentProps<typeof Ionicons>["name"];
+  onPress: () => void;
+  step: number;
+}) {
+  const entrance = useEntrance(step);
+
+  return (
+    <Animated.View style={[styles.quietRowSlot, entrance]}>
+      <Pressable
+        testID="home-how-to-play"
+        onPress={() => {
+          hapticLight();
+          onPress();
+        }}
+        accessibilityLabel={label}
+        {...a11yState({ role: "button" })}
+        style={({ pressed }) => [styles.quietRow, pressed && { opacity: 0.8 }]}
+      >
+        <Ionicons name={icon} size={QUIET_ICON} color={Colors.textMuted} {...a11yHidden()} />
+        <Text {...a11yHidden()} style={styles.quietLabel}>
+          {label}
+        </Text>
+        <Ionicons name="chevron-forward" size={QUIET_CHEVRON} color={Colors.textMuted} {...a11yHidden()} />
+      </Pressable>
+    </Animated.View>
+  );
+}
+
+const QUIET_ICON = 16;
+const QUIET_CHEVRON = 14;
+const ACCOUNT_ICON = 20;
+const AVATAR_SIZE = 52;
+
+/** A place you land on rather than pass through, which is why it has no chevron. */
+function HomeAccountButton({
+  label,
+  icon,
+  badge,
+  onPress,
+}: {
+  label: string;
+  /** Drawn by the caller: an icon named through a prop is a name the subset
+      builder cannot follow, and an unbuilt glyph renders as a blank box. */
+  icon: React.ReactNode;
+  badge?: number;
+  onPress: () => void;
+}) {
+  return (
+    <Pressable
+      onPress={() => {
+        hapticLight();
+        onPress();
+      }}
+      accessibilityLabel={label}
+      {...a11yState({ role: "button" })}
+      style={({ pressed }) => [styles.accountBtn, pressed && { opacity: 0.8 }]}
+    >
+      {icon}
+      {badge ? (
+        <View style={styles.badge} {...a11yHidden()}>
+          <Text style={styles.badgeText}>{badge > BADGE_MAX ? `${BADGE_MAX}+` : String(badge)}</Text>
+        </View>
+      ) : null}
+    </Pressable>
+  );
+}
+
+const BADGE_MAX = 9;
+
+/** How many friend requests are waiting, for whoever is signed in. */
+function useFriendRequestCount() {
+  const { user } = useAuth();
+  const { data = [] } = useQuery<{ id: string }[]>({
     queryKey: ["/api/friends/requests"],
     enabled: !!user,
-    staleTime: 15000,
+    staleTime: FRIEND_REQUEST_STALE_MS,
     refetchOnWindowFocus: true,
   });
+  return data.length;
+}
 
-  const badgeCount = requests.length;
+const FRIEND_REQUEST_STALE_MS = 15000;
 
-  function handlePress() {
-    hapticLight();
-    if (user) {
-      router.push("/(online)/friends");
-    } else {
-      router.push("/auth");
-    }
+const goProfile = () => router.push("/(online)/profile");
+const goFriends = () => router.push("/(online)/friends");
+const goRanking = () => router.push("/(online)/leaderboard");
+
+/** Portrait: who you are and the four places that are about you, top right. */
+function HomeAccountBar({ onSettings }: { onSettings: () => void }) {
+  const { user } = useAuth();
+  const { t, tn } = useTranslation();
+  const requests = useFriendRequestCount();
+  const entrance = useEntrance(0);
+
+  return (
+    <Animated.View style={[styles.accountBar, entrance]}>
+      {user ? (
+        <>
+          <HomeAccountButton
+            label={t("home.modeProfile")}
+            icon={<Ionicons name="person-circle-outline" size={ACCOUNT_ICON} color={Colors.gold} {...a11yHidden()} />}
+            onPress={goProfile}
+          />
+          <HomeAccountButton
+            label={requests > 0 ? tn("home.friendsA11yLabel", requests) : t("home.friendsLabel")}
+            icon={<Ionicons name="people" size={ACCOUNT_ICON} color={Colors.gold} {...a11yHidden()} />}
+            badge={requests}
+            onPress={goFriends}
+          />
+          <HomeAccountButton
+            label={t("home.leaderboard")}
+            icon={<Ionicons name="podium-outline" size={ACCOUNT_ICON} color={Colors.gold} {...a11yHidden()} />}
+            onPress={goRanking}
+          />
+        </>
+      ) : (
+        <HomeAccountButton
+          label={t("home.signIn")}
+          icon={<Ionicons name="log-in-outline" size={ACCOUNT_ICON} color={Colors.gold} {...a11yHidden()} />}
+          onPress={() => router.push("/auth")}
+        />
+      )}
+      <HomeAccountButton
+        label={t("home.settingsA11yLabel")}
+        icon={<Feather name="settings" size={ACCOUNT_ICON} color={Colors.gold} {...a11yHidden()} />}
+        onPress={onSettings}
+      />
+    </Animated.View>
+  );
+}
+
+/**
+ * Landscape: the same entries, composed down the brand column rather than
+ * along one line. Friends and Ranking are both about other people and read as
+ * a pair; Settings is app configuration and is deliberately quieter.
+ */
+function HomePlayerUnit({ onSettings }: { onSettings: () => void }) {
+  const { user } = useAuth();
+  const { t, tn } = useTranslation();
+  const requests = useFriendRequestCount();
+  const entrance = useEntrance(1);
+
+  if (!user) {
+    return (
+      <Animated.View style={[styles.playerUnit, entrance]}>
+        <HomePill
+          label={t("home.signIn")}
+          icon={<Ionicons name="log-in-outline" size={PILL_ICON} color={Colors.gold} {...a11yHidden()} />}
+          onPress={() => router.push("/auth")}
+        />
+        <HomePill
+          label={t("home.settingsA11yLabel")}
+          icon={<Feather name="settings" size={PILL_ICON} color={Colors.textMuted} {...a11yHidden()} />}
+          quiet
+          testID="home-account-settings"
+          onPress={onSettings}
+        />
+      </Animated.View>
+    );
   }
 
   return (
-    <Pressable
-      onPress={handlePress}
-      style={({ pressed }) => [styles.friendsBtn, compact && styles.friendsBtnCompact, pressed && { opacity: 0.8 }]}
-      hitSlop={4}
-    >
-      <Ionicons name="people" size={compact ? 16 : 20} color={compact ? Colors.gold : Colors.bgCard} />
-      {!compact && <Text style={styles.friendsBtnText}>{t("home.friendsLabel")}</Text>}
-      {badgeCount > 0 && (
-        <View style={styles.badge}>
-          <Text style={styles.badgeText}>{badgeCount > 9 ? "9+" : String(badgeCount)}</Text>
+    <Animated.View style={[styles.playerUnit, entrance]}>
+      <Pressable
+        onPress={() => {
+          hapticLight();
+          goProfile();
+        }}
+        accessibilityLabel={t("home.modeProfile")}
+        {...a11yState({ role: "button" })}
+        style={({ pressed }) => [styles.avatarBtn, pressed && { opacity: 0.85 }]}
+        testID="home-account-avatar"
+      >
+        <View style={styles.avatar} {...a11yHidden()}>
+          <Text style={styles.avatarText}>{user.username.charAt(0).toUpperCase()}</Text>
         </View>
-      )}
+        <Text {...a11yHidden()} style={styles.playerName} numberOfLines={1}>
+          {user.username}
+        </Text>
+      </Pressable>
+
+      <View style={styles.pillPair} testID="home-account-pair">
+        <HomePill
+          label={requests > 0 ? tn("home.friendsA11yLabel", requests) : t("home.friendsLabel")}
+          text={t("home.friendsLabel")}
+          icon={<Ionicons name="people" size={PILL_ICON} color={Colors.gold} {...a11yHidden()} />}
+          badge={requests}
+          onPress={goFriends}
+        />
+        <HomePill
+          label={t("home.leaderboard")}
+          text={t("home.leaderboard")}
+          icon={<Ionicons name="podium-outline" size={PILL_ICON} color={Colors.gold} {...a11yHidden()} />}
+          onPress={goRanking}
+        />
+      </View>
+
+      <HomePill
+          label={t("home.settingsA11yLabel")}
+          icon={<Feather name="settings" size={PILL_ICON} color={Colors.textMuted} {...a11yHidden()} />}
+          quiet
+          testID="home-account-settings"
+          onPress={onSettings}
+        />
+    </Animated.View>
+  );
+}
+
+const PILL_ICON = 16;
+
+function HomePill({
+  label,
+  text,
+  icon,
+  badge,
+  quiet = false,
+  testID,
+  onPress,
+}: {
+  label: string;
+  /** The word on the pill, when it carries one. */
+  text?: string;
+  icon: React.ReactNode;
+  badge?: number;
+  quiet?: boolean;
+  testID?: string;
+  onPress: () => void;
+}) {
+  return (
+    <Pressable
+      testID={testID}
+      onPress={() => {
+        hapticLight();
+        onPress();
+      }}
+      accessibilityLabel={label}
+      {...a11yState({ role: "button" })}
+      style={({ pressed }) => [styles.pill, quiet && styles.pillQuiet, pressed && { opacity: 0.8 }]}
+    >
+      {icon}
+      {text ? (
+        <Text {...a11yHidden()} style={[styles.pillText, quiet && { color: Colors.textMuted }]}>
+          {text}
+        </Text>
+      ) : null}
+      {badge ? (
+        <View style={styles.pillBadge} {...a11yHidden()}>
+          <Text style={styles.badgeText}>{badge > BADGE_MAX ? `${BADGE_MAX}+` : String(badge)}</Text>
+        </View>
+      ) : null}
     </Pressable>
   );
 }
 
-function SettingsButton({ compact, onPress }: { compact?: boolean; onPress: () => void }) {
+/**
+ * An invitation, where the player already is, with the join on it.
+ *
+ * The join cannot happen here: `joinRoom` lives in `OnlineGameContext`, whose
+ * provider is mounted inside the `(online)` group alone, and hoisting it would
+ * put a socket-backed game context above every signed-out screen. So this
+ * navigates into the group and the invite is read there — the invite is
+ * already in `SocketContext`, above the whole app, so nothing has to be
+ * carried across (#398).
+ */
+function HomeInviteCard({ from, step }: { from: string; step: number }) {
   const { t } = useTranslation();
+  const entrance = useEntrance(step);
+
   return (
-    <Pressable
-      onPress={onPress}
-      accessibilityRole="button"
-      accessibilityLabel={t("home.settingsA11yLabel")}
-      style={({ pressed }) => [styles.settingsBtn, pressed && { opacity: 0.8 }]}
-      hitSlop={8}
-    >
-      <Feather name="settings" size={compact ? 16 : 18} color={Colors.gold} {...a11yHidden()} />
-    </Pressable>
+    <Animated.View style={[styles.inviteCard, entrance]}>
+      <Ionicons name="mail-unread-outline" size={INVITE_ICON} color={Colors.gold} {...a11yHidden()} />
+      <Text style={styles.inviteText} numberOfLines={1}>
+        {t("home.inviteWaiting", { name: from })}
+      </Text>
+      <Pressable
+        testID="home-invite-join"
+        onPress={() => {
+          hapticLight();
+          router.push("/(online)");
+        }}
+        accessibilityLabel={t("home.inviteJoin")}
+        {...a11yState({ role: "button" })}
+        style={({ pressed }) => [styles.inviteJoin, pressed && { opacity: 0.85 }]}
+      >
+        <Text {...a11yHidden()} style={styles.inviteJoinText}>
+          {t("home.inviteJoin")}
+        </Text>
+      </Pressable>
+    </Animated.View>
   );
 }
+
+const INVITE_ICON = 18;
+
+const TILE_ICONS: Record<HomeAction, React.ComponentProps<typeof Ionicons>["name"]> = {
+  resume: "play-circle",
+  offline: "game-controller",
+  friends: "people",
+  online: "earth-outline",
+  passAndPlay: "phone-portrait-outline",
+};
 
 export default function HomeScreen() {
   const insets = useSafeAreaInsets();
-  const { user, loading: authLoading, logout } = useAuth();
+  const { user, loading: authLoading } = useAuth();
   const tutorialDecided = useRef(false);
   const { hasSavedGame, resumeGame } = useGame();
+  const { gameInvites } = useSocket();
   const { t } = useTranslation();
   const { width: W, height: H } = useWindowDimensions();
   const isLandscape = W > H;
@@ -344,20 +648,20 @@ export default function HomeScreen() {
 
   const reduceMotion = usePrefersReducedMotion();
   const titleOpacity = useSharedValue(0);
-  const titleScale = useSharedValue(0.85);
-  const subtitleOpacity = useSharedValue(0);
+  const titleScale = useSharedValue(TITLE_FROM);
 
   useEffect(() => {
     if (reduceMotion) {
       titleOpacity.value = 1;
       titleScale.value = 1;
-      subtitleOpacity.value = 1;
       return;
     }
-    titleOpacity.value = withDelay(200, withTiming(1, { duration: 700 }));
-    titleScale.value = withDelay(200, withTiming(1, { duration: 700, easing: Easing.out(Easing.back(1.5)) }));
-    subtitleOpacity.value = withDelay(500, withTiming(1, { duration: 600 }));
-  }, [reduceMotion, subtitleOpacity, titleOpacity, titleScale]);
+    titleOpacity.value = withTiming(1, { duration: Motion.duration.slow });
+    titleScale.value = withTiming(1, {
+      duration: Motion.duration.slow,
+      easing: Easing.out(Easing.back(TITLE_OVERSHOOT)),
+    });
+  }, [reduceMotion, titleOpacity, titleScale]);
 
   // First-launch onboarding: offer the interactive tutorial automatically, once
   // ever. This runs on every mount of the title screen, and every
@@ -390,9 +694,6 @@ export default function HomeScreen() {
     opacity: titleOpacity.value,
     transform: [{ scale: titleScale.value }],
   }));
-  const subtitleStyle = useAnimatedStyle(() => ({
-    opacity: subtitleOpacity.value,
-  }));
 
   // A floor, not just the real inset: on a notchless device (most desktop
   // browsers) env(safe-area-inset-*) is genuinely 0, and content flush
@@ -402,72 +703,118 @@ export default function HomeScreen() {
   const leftPad = isLandscape ? insets.left : 0;
   const rightPad = isLandscape ? insets.right : 0;
 
+  const menu = homeMenu({ savedGame: hasSavedGame, account: !!user });
+  // The most recent, because an invitation that has just arrived is the one
+  // the player is looking for. `SocketContext` appends.
+  const invite = gameInvites.at(-1) ?? null;
+
   // Resuming restores the context first; the table renders from what it finds.
-  const onResume = () => {
-    if (resumeGame()) router.push("/game");
+  const go: Record<HomeAction, () => void> = {
+    resume: () => {
+      if (resumeGame()) router.push("/game");
+    },
+    offline: () => router.push({ pathname: "/lobby", params: { mode: "ai" } }),
+    friends: () => router.push("/(online)"),
+    online: () => router.push("/(online)/quickmatch"),
+    passAndPlay: () => router.push({ pathname: "/lobby", params: { mode: "local" } }),
   };
 
-  const menuButtons = (compact: boolean) => (
-    <>
-      {hasSavedGame && (
-        <HomeMenuRow compact={compact} label={t("home.resumeGame")} icon="play-circle" accent onPress={onResume} delay={240} />
-      )}
-      <HomeMenuRow compact={compact} label={t("home.modeOffline")} icon="game-controller" accent={!hasSavedGame} onPress={() => router.push({ pathname: "/lobby", params: { mode: "ai" } })} delay={300} />
-      <HomeMenuRow compact={compact} label={t("home.modePlayWithFriends")} icon="people" onPress={() => { if (user) router.push("/(online)"); else router.push("/auth"); }} delay={420} />
-      <HomeMenuRow compact={compact} label={t("home.modeOnline")} icon="earth-outline" onPress={() => { if (user) router.push("/(online)/quickmatch"); else router.push("/auth"); }} delay={540} />
-      <HomeMenuRow compact={compact} label={t("home.modeProfile")} icon="stats-chart-outline" onPress={() => { if (user) router.push("/(online)/profile"); else router.push("/auth"); }} delay={580} />
-      <HomeMenuRow compact={compact} label={t("home.modeTutorial")} icon="school-outline" onPress={() => router.push("/tutorial")} delay={600} />
-      <HomeMenuRow compact={compact} label={t("home.modeRules")} icon="book-outline" onPress={() => router.push("/rules")} delay={660} />
-    </>
+  const label: Record<HomeAction, string> = {
+    resume: t("home.resumeGame"),
+    offline: t("home.modeOffline"),
+    friends: t("home.modePlayWithFriends"),
+    online: t("home.modeOnline"),
+    passAndPlay: t("home.modePassAndPlay"),
+  };
+
+  // The signed-out hero says where it leads rather than redirecting silently.
+  const heroLabel = menu.hero === "online" ? t("home.playOnline") : label[menu.hero];
+  const hero = (
+    <HomeHero
+      label={heroLabel}
+      sublabel={menu.heroNeedsAccount ? t("home.playOnlineSignedOut") : undefined}
+      icon={TILE_ICONS[menu.hero]}
+      onPress={menu.heroNeedsAccount ? () => router.push("/auth") : go[menu.hero]}
+      step={STEP_HERO}
+    />
+  );
+
+  const tiles = (
+    <View style={styles.tileGrid}>
+      {menu.tiles.map((tile, i) => (
+        <HomeModeTile
+          key={tile.action}
+          label={label[tile.action]}
+          reason={tile.disabled ? t("home.requiresAccount") : undefined}
+          icon={TILE_ICONS[tile.action]}
+          onPress={go[tile.action]}
+          step={STEP_TILES + i}
+        />
+      ))}
+    </View>
+  );
+
+  const howToPlay = (
+    <HomeQuietRow
+      label={t("home.howToPlay")}
+      icon="book-outline"
+      onPress={() => router.push("/rules")}
+      step={STEP_TILES + menu.tiles.length}
+    />
+  );
+
+  const wordmark = (
+    <Animated.View style={[titleStyle, { alignItems: "center" }]}>
+      <View style={styles.wordmarkRow}>
+        <Text style={isLandscape ? styles.titleLandscape : styles.title}>MURLAN</Text>
+        {__DEV__ && (
+          <View style={styles.devBadge}>
+            <Text style={styles.devBadgeText}>DEV</Text>
+          </View>
+        )}
+      </View>
+      <View style={isLandscape ? styles.titleUnderlineLandscape : styles.titleUnderline}>
+        <LinearGradient
+          colors={[Colors.goldDark, Colors.gold, Colors.goldDark]}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 0 }}
+          style={styles.underlineFill}
+        />
+      </View>
+      <Text style={isLandscape ? styles.subtitleLandscape : styles.subtitle}>{t("home.subtitle")}</Text>
+    </Animated.View>
   );
 
   if (isLandscape) {
     return (
-      <View style={[styles.container, { paddingTop: topPad, paddingBottom: bottomPad, paddingLeft: leftPad, paddingRight: rightPad }]}>
-        <LinearGradient colors={[Colors.bg, Colors.bgCard, Colors.feltDark]} locations={[0, 0.5, 1]} style={StyleSheet.absoluteFill} />
+      <View
+        style={[
+          styles.container,
+          { paddingTop: topPad, paddingBottom: bottomPad, paddingLeft: leftPad, paddingRight: rightPad },
+        ]}
+      >
+        <LinearGradient
+          colors={[Colors.bg, Colors.bgCard, Colors.feltDark]}
+          locations={GRADIENT_STOPS}
+          style={StyleSheet.absoluteFill}
+        />
         <CardField cards={LANDSCAPE_CARDS} />
 
         <View style={styles.landscapeRow}>
-          <View style={styles.landscapeLeft}>
-            <Animated.View style={[titleStyle, { alignItems: "center" }]}>
-              <Text style={styles.titleLandscape}>MURLAN</Text>
-              <View style={styles.titleUnderlineLandscape}>
-                <LinearGradient colors={[Colors.goldDark, Colors.gold, Colors.goldDark]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={{ flex: 1, height: 2, borderRadius: Radius.sm }} />
-              </View>
-            </Animated.View>
-            <Animated.View style={subtitleStyle}>
-              <Text style={styles.subtitleLandscape}>{t("home.subtitle")}</Text>
-            </Animated.View>
-            <View style={styles.cardDecorationLandscape}>
-              {["♠", "♥", "♦", "♣"].map((suit) => (
-                <Text key={suit} style={[styles.suitDecorSmall, { color: suit === "♥" ? Colors.heart : suit === "♦" ? Colors.diamond : Colors.textMuted }]}>{suit}</Text>
-              ))}
-            </View>
-            {user && (
-              <Animated.View style={[subtitleStyle, styles.userRowLandscape]}>
-                <Ionicons name="person-circle-outline" size={13} color={Colors.gold} />
-                <Text style={styles.userTextSmall} numberOfLines={1}>{user.username}</Text>
-                <Pressable onPress={logout} style={styles.logoutBtn}>
-                  <Text style={styles.logoutText}>{t("home.logout")}</Text>
-                </Pressable>
-                <FriendsButton compact />
-                <SettingsButton compact onPress={() => setSettingsVisible(true)} />
-              </Animated.View>
-            )}
-            {!user && (
-              <View style={styles.userRowLandscape}>
-                <SettingsButton compact onPress={() => setSettingsVisible(true)} />
-              </View>
-            )}
+          <View style={styles.brandColumn}>
+            {wordmark}
+            <HomePlayerUnit onSettings={() => setSettingsVisible(true)} />
           </View>
 
-          <ScrollView style={styles.landscapeRight} contentContainerStyle={styles.landscapeMenuContent} showsVerticalScrollIndicator={false}>
-            {menuButtons(true)}
-            <Animated.View style={subtitleStyle}>
-              <Text style={[styles.footerText, { textAlign: "center", marginTop: Spacing.sm }]}>
-                {t("home.footer")}
-              </Text>
-            </Animated.View>
+          <ScrollView
+            style={styles.playColumn}
+            contentContainerStyle={styles.playColumnContent}
+            showsVerticalScrollIndicator={false}
+          >
+            {invite && <HomeInviteCard from={invite.from} step={STEP_INVITE} />}
+            {hero}
+            {tiles}
+            {howToPlay}
           </ScrollView>
         </View>
         <SettingsModal visible={settingsVisible} onClose={() => setSettingsVisible(false)} />
@@ -476,93 +823,77 @@ export default function HomeScreen() {
   }
 
   return (
-    <View style={[styles.container, { paddingTop: topPad, paddingBottom: bottomPad + 20 }]}>
-      <LinearGradient colors={[Colors.bg, Colors.bgCard, Colors.feltDark]} locations={[0, 0.5, 1]} style={StyleSheet.absoluteFill} />
-
+    <View style={[styles.container, { paddingTop: topPad, paddingBottom: bottomPad }]}>
+      <LinearGradient
+        colors={[Colors.bg, Colors.bgCard, Colors.feltDark]}
+        locations={GRADIENT_STOPS}
+        style={StyleSheet.absoluteFill}
+      />
       <CardField cards={PORTRAIT_CARDS} />
 
-      <View style={styles.header}>
-        <Animated.View style={[titleStyle, { alignItems: "center" }]}>
-          <View style={{ flexDirection: "row", alignItems: "center", gap: Spacing.snug }}>
-            <Text style={styles.title}>MURLAN</Text>
-            {__DEV__ && (
-              <View style={styles.devBadge}>
-                <Text style={styles.devBadgeText}>DEV</Text>
-              </View>
-            )}
-          </View>
-          <View style={styles.titleUnderline}>
-            <LinearGradient colors={[Colors.goldDark, Colors.gold, Colors.goldDark]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={{ flex: 1, height: 2, borderRadius: Radius.sm }} />
-          </View>
-        </Animated.View>
-        <Animated.View style={subtitleStyle}>
-          <Text style={styles.subtitle}>{t("home.subtitle")}</Text>
-        </Animated.View>
+      <HomeAccountBar onSettings={() => setSettingsVisible(true)} />
+
+      <View style={styles.header}>{wordmark}</View>
+
+      {invite && <HomeInviteCard from={invite.from} step={STEP_INVITE} />}
+
+      <View style={styles.playBlock}>
+        {hero}
+        {tiles}
       </View>
 
-      {user && (
-        <Animated.View style={[subtitleStyle, styles.userRow]}>
-          <Ionicons name="person-circle-outline" size={15} color={Colors.gold} />
-          <Text style={styles.userText}>{user.username}</Text>
-          <Pressable onPress={logout} style={styles.logoutBtn}>
-            <Text style={styles.logoutText}>{t("home.logout")}</Text>
-          </Pressable>
-          <FriendsButton />
-          <SettingsButton onPress={() => setSettingsVisible(true)} />
-        </Animated.View>
-      )}
-      {!user && (
-        <Animated.View style={[subtitleStyle, styles.userRow, { justifyContent: "center" }]}>
-          <SettingsButton onPress={() => setSettingsVisible(true)} />
-        </Animated.View>
-      )}
-
-      <View style={styles.cardDecoration}>
-        {["♠", "♥", "♦", "♣"].map((suit) => (
-          <Text key={suit} style={[styles.suitDecor, { color: suit === "♥" ? Colors.heart : suit === "♦" ? Colors.diamond : Colors.textMuted }]}>{suit}</Text>
-        ))}
-      </View>
-
-      <ScrollView
-        style={styles.menuScroll}
-        contentContainerStyle={styles.menu}
-        showsVerticalScrollIndicator={false}
-      >
-        {menuButtons(false)}
-      </ScrollView>
-
-      <Animated.View style={[subtitleStyle, styles.footer]}>
-        <Text style={styles.footerText}>
-          {t("home.footer")}
-        </Text>
-      </Animated.View>
+      {howToPlay}
       <SettingsModal visible={settingsVisible} onClose={() => setSettingsVisible(false)} />
     </View>
   );
 }
 
+const GRADIENT_STOPS = [0, 0.5, 1] as const;
+const TITLE_FROM = 0.85;
+const TITLE_OVERSHOOT = 1.5;
+const STEP_INVITE = 1;
+const STEP_HERO = 2;
+const STEP_TILES = 3;
+
 // The wordmark, above every step of the type scale on purpose — it is the one
 // thing on the screen that is not text to read.
 const WORDMARK_SIZE = 56;
+const UNDERLINE_H = 2;
+const HAIRLINE = 1;
+const BADGE_SIZE = 18;
+const BADGE_OFFSET = -4;
+const BADGE_RING = 1.5;
+const CARD_EDGE = 1.5;
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: Colors.bg },
 
-  landscapeRow: { flex: 1, flexDirection: "row" },
-  landscapeLeft: {
-    width: "38%",
+  accountBar: {
+    flexDirection: "row",
+    alignSelf: "flex-end",
+    alignItems: "center",
+    gap: Spacing.xs,
+    paddingHorizontal: Spacing.md,
+  },
+  accountBtn: {
+    width: TOUCH_TARGET_MIN,
+    height: TOUCH_TARGET_MIN,
     alignItems: "center",
     justifyContent: "center",
-    paddingHorizontal: Spacing.roomy,
-    gap: Spacing.sm,
-    borderRightWidth: 1,
-    borderRightColor: Colors.border,
+    borderRadius: Radius.full,
+    backgroundColor: Colors.bgSurface,
+    borderWidth: HAIRLINE,
+    borderColor: Colors.goldSoft,
   },
-  landscapeRight: { flex: 1 },
-  landscapeMenuContent: {
-    padding: Spacing.md,
-    gap: Spacing.snug,
-    justifyContent: "center",
+
+  header: { alignItems: "center", paddingTop: Spacing.lg, paddingBottom: Spacing.cosy },
+  wordmarkRow: { flexDirection: "row", alignItems: "center", gap: Spacing.snug },
+  title: {
+    fontFamily: "Rajdhani_700Bold",
+    fontSize: WORDMARK_SIZE,
+    color: Colors.text,
+    letterSpacing: 12,
+    textAlign: "center",
   },
   titleLandscape: {
     fontFamily: "Rajdhani_700Bold",
@@ -571,7 +902,18 @@ const styles = StyleSheet.create({
     letterSpacing: 8,
     textAlign: "center",
   },
+  titleUnderline: { width: 160, alignSelf: "center", marginTop: Spacing.xs },
   titleUnderlineLandscape: { width: 110, alignSelf: "center", marginTop: Spacing.xxs },
+  underlineFill: { flex: 1, height: UNDERLINE_H, borderRadius: Radius.sm },
+  subtitle: {
+    fontFamily: "Inter_400Regular",
+    fontSize: FontSize.sm,
+    color: Colors.gold,
+    letterSpacing: 4,
+    textTransform: "uppercase",
+    textAlign: "center",
+    marginTop: Spacing.xs,
+  },
   subtitleLandscape: {
     fontFamily: "Inter_400Regular",
     fontSize: FontSize.xxs,
@@ -579,27 +921,8 @@ const styles = StyleSheet.create({
     letterSpacing: 3,
     textTransform: "uppercase",
     textAlign: "center",
+    marginTop: Spacing.xxs,
   },
-  cardDecorationLandscape: { flexDirection: "row", gap: Spacing.cosy, paddingVertical: Spacing.slim },
-  suitDecorSmall: { fontSize: FontSize.lg, opacity: 0.7 },
-  userRowLandscape: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: Spacing.xs,
-    flexWrap: "wrap",
-  },
-  userTextSmall: { fontFamily: "Inter_500Medium", fontSize: FontSize.xs, color: Colors.text, maxWidth: 100 },
-
-  header: { alignItems: "center", paddingTop: Spacing.xxl, paddingBottom: Spacing.cosy, gap: Spacing.slim },
-  title: {
-    fontFamily: "Rajdhani_700Bold",
-    fontSize: WORDMARK_SIZE,
-    color: Colors.text,
-    letterSpacing: 12,
-    textAlign: "center",
-  },
-  titleUnderline: { width: 160, alignSelf: "center", marginTop: Spacing.xs },
   devBadge: {
     backgroundColor: Colors.danger,
     borderRadius: Radius.sm,
@@ -613,140 +936,167 @@ const styles = StyleSheet.create({
     color: Colors.white,
     letterSpacing: 1,
   },
-  subtitle: {
-    fontFamily: "Inter_400Regular",
-    fontSize: FontSize.sm,
-    color: Colors.gold,
-    letterSpacing: 4,
-    textTransform: "uppercase",
-    textAlign: "center",
-    marginTop: Spacing.xs,
-  },
-  userRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: Spacing.slim,
-    marginTop: Spacing.xs,
-  },
-  userText: { fontFamily: "Inter_500Medium", fontSize: FontSize.sm, color: Colors.text },
-  logoutBtn: {
+
+  playBlock: { flex: 1, justifyContent: "center", paddingHorizontal: Spacing.lg, gap: Spacing.cosy },
+
+  hero: {
     minHeight: TOUCH_TARGET_MIN,
-    justifyContent: "center",
-    paddingHorizontal: Spacing.sm,
-    paddingVertical: Spacing.xxs,
-  },
-  logoutText: { fontFamily: "Inter_400Regular", fontSize: FontSize.xs, color: Colors.textMuted },
-  friendsBtn: {
-    minHeight: TOUCH_TARGET_MIN,
-    position: "relative",
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: Spacing.slim,
-    backgroundColor: Colors.gold,
-    borderRadius: Radius.lg,
-    paddingVertical: Spacing.slim,
-    paddingHorizontal: Spacing.wide,
-  },
-  friendsBtnCompact: {
-    backgroundColor: "transparent",
-    borderWidth: 1,
-    borderColor: Colors.gold,
-    paddingVertical: Spacing.xs,
-    paddingHorizontal: Spacing.snug,
     borderRadius: Radius.md,
+    overflow: "hidden",
+    borderWidth: HAIRLINE,
+    borderColor: Colors.gold,
   },
-  friendsBtnText: {
+  heroFill: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingVertical: Spacing.md,
+    paddingHorizontal: Spacing.roomy,
+    gap: Spacing.wide,
+  },
+  heroLabel: {
     fontFamily: "Rajdhani_700Bold",
-    fontSize: FontSize.sm,
+    fontSize: FontSize.xl,
     color: Colors.bgCard,
     letterSpacing: 0.5,
   },
-  settingsBtn: {
-    width: TOUCH_TARGET_MIN,
-    height: TOUCH_TARGET_MIN,
+  heroSublabel: { fontFamily: "Inter_500Medium", fontSize: FontSize.xs, color: Colors.bgCard },
+
+  tileGrid: { flexDirection: "row", flexWrap: "wrap", gap: Spacing.cosy },
+  tileSlot: { flexGrow: 1, flexBasis: "45%" },
+  tile: {
+    minHeight: TOUCH_TARGET_MIN,
     alignItems: "center",
     justifyContent: "center",
-    borderRadius: TOUCH_TARGET_MIN / 2,
-    borderWidth: 1,
+    gap: Spacing.sm,
+    backgroundColor: Colors.bgCard,
+    borderRadius: Radius.md,
+    paddingVertical: Spacing.md,
+    paddingHorizontal: Spacing.snug,
+    borderWidth: HAIRLINE,
+    borderColor: Colors.goldBorder,
+  },
+  tileDisabled: { borderColor: Colors.border, opacity: 0.6 },
+  tileLabel: {
+    fontFamily: "Rajdhani_600SemiBold",
+    fontSize: FontSize.md,
+    color: Colors.text,
+    textAlign: "center",
+  },
+  tileReason: { ...Type.caption, textAlign: "center" },
+
+  quietRowSlot: { marginTop: "auto", paddingHorizontal: Spacing.lg, paddingTop: Spacing.md },
+  quietRow: {
+    minHeight: TOUCH_TARGET_MIN,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: Spacing.cosy,
+    paddingHorizontal: Spacing.md,
+    borderRadius: Radius.md,
+    borderWidth: HAIRLINE,
     borderColor: Colors.border,
   },
-  badge: {
-    position: "absolute",
-    top: -4,
-    right: -4,
-    minWidth: 18,
-    height: 18,
+  quietLabel: { ...Type.label, flex: 1 },
+
+  inviteCard: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: Spacing.cosy,
+    marginHorizontal: Spacing.lg,
+    padding: Spacing.cosy,
+    borderRadius: Radius.md,
+    backgroundColor: Colors.bgSurface,
+    borderWidth: HAIRLINE,
+    borderColor: Colors.gold,
+  },
+  inviteText: { ...Type.bodyStrong, flex: 1 },
+  inviteJoin: {
+    minHeight: TOUCH_TARGET_MIN,
+    justifyContent: "center",
+    paddingHorizontal: Spacing.md,
+    borderRadius: Radius.md,
+    backgroundColor: Colors.gold,
+  },
+  inviteJoinText: { fontFamily: "Rajdhani_700Bold", fontSize: FontSize.md, color: Colors.bgCard },
+
+  landscapeRow: { flex: 1, flexDirection: "row" },
+  brandColumn: {
+    width: "38%",
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: Spacing.md,
+    gap: Spacing.md,
+    borderRightWidth: HAIRLINE,
+    borderRightColor: Colors.border,
+  },
+  playColumn: { flex: 1 },
+  playColumnContent: {
+    flexGrow: 1,
+    padding: Spacing.md,
+    gap: Spacing.cosy,
+    justifyContent: "center",
+  },
+
+  playerUnit: { alignItems: "center", gap: Spacing.sm, alignSelf: "stretch" },
+  avatarBtn: { alignItems: "center", gap: Spacing.xs, minHeight: TOUCH_TARGET_MIN },
+  avatar: {
+    width: AVATAR_SIZE,
+    height: AVATAR_SIZE,
+    borderRadius: Radius.full,
+    backgroundColor: Colors.felt,
+    borderWidth: HAIRLINE,
+    borderColor: Colors.gold,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  avatarText: { fontFamily: "Rajdhani_700Bold", fontSize: FontSize.xl, color: Colors.gold },
+  playerName: { ...Type.bodyStrong, maxWidth: "100%" },
+
+  pillPair: { flexDirection: "row", gap: Spacing.sm, alignSelf: "stretch" },
+  pill: {
+    flex: 1,
+    minHeight: TOUCH_TARGET_MIN,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: Spacing.slim,
+    paddingHorizontal: Spacing.snug,
+    borderRadius: Radius.md,
+    backgroundColor: Colors.bgSurface,
+    borderWidth: HAIRLINE,
+    borderColor: Colors.goldSoft,
+  },
+  pillQuiet: { backgroundColor: "transparent", borderColor: Colors.border, alignSelf: "stretch" },
+  pillText: { ...Type.label, color: Colors.text },
+  pillBadge: {
+    minWidth: BADGE_SIZE,
+    height: BADGE_SIZE,
     borderRadius: Radius.full,
     backgroundColor: Colors.danger,
     alignItems: "center",
     justifyContent: "center",
     paddingHorizontal: Spacing.xs,
-    borderWidth: 1.5,
+  },
+
+  badge: {
+    position: "absolute",
+    top: BADGE_OFFSET,
+    right: BADGE_OFFSET,
+    minWidth: BADGE_SIZE,
+    height: BADGE_SIZE,
+    borderRadius: Radius.full,
+    backgroundColor: Colors.danger,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: Spacing.xs,
+    borderWidth: BADGE_RING,
     borderColor: Colors.bg,
   },
   badgeText: {
     fontFamily: "Inter_600SemiBold",
     fontSize: FontSize.xxs,
     color: Colors.white,
-    lineHeight: 13,
   },
-  cardDecoration: { flexDirection: "row", justifyContent: "center", gap: Spacing.roomy, paddingVertical: Spacing.lg },
-  suitDecor: { fontSize: FontSize.xl, opacity: 0.7 },
-  menuScroll: { flex: 1 },
-  menu: { flexGrow: 1, paddingHorizontal: Spacing.lg, justifyContent: "center", gap: Spacing.cosy },
-  menuButton: {
-    minHeight: TOUCH_TARGET_MIN,
-    flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: Colors.bgSurface,
-    borderRadius: Radius.md,
-    paddingVertical: Spacing.md,
-    paddingHorizontal: Spacing.roomy,
-    gap: Spacing.wide,
-    borderWidth: 1,
-    borderColor: Colors.border,
-  },
-  menuButtonCompact: { paddingVertical: Spacing.cosy, paddingHorizontal: Spacing.md },
-  // Zeroed as longhands, not as `padding: 0`: the base style sets
-  // paddingVertical/paddingHorizontal, and React Native resolves the longhand
-  // over the shorthand whatever the order. The shorthand left the padding in
-  // place, so the gradient — which carries its own padding and is meant to
-  // reach the edges — sat inset inside the border with its own square corners
-  // showing against the rounded container.
-  menuButtonAccent: {
-    paddingVertical: 0,
-    paddingHorizontal: 0,
-    overflow: "hidden",
-    borderColor: Colors.gold,
-  },
-  menuButtonDisabled: { borderColor: Colors.border, opacity: 0.5 },
-  accentGradient: {
-    flex: 1,
-    flexDirection: "row",
-    alignItems: "center",
-    paddingVertical: Spacing.md,
-    paddingHorizontal: Spacing.roomy,
-    gap: Spacing.wide,
-  },
-  accentGradientCompact: {
-    flex: 1,
-    flexDirection: "row",
-    alignItems: "center",
-    paddingVertical: Spacing.cosy,
-    paddingHorizontal: Spacing.md,
-    gap: Spacing.cosy,
-  },
-  menuLabel: {
-    flex: 1,
-    fontFamily: "Rajdhani_600SemiBold",
-    fontSize: FontSize.lg,
-    color: Colors.text,
-    letterSpacing: 0.5,
-  },
-  menuLabelCompact: { fontSize: FontSize.md },
-  menuLabelAccent: { color: Colors.bgCard, fontFamily: "Rajdhani_700Bold" },
+
   floatingCard: {
     position: "absolute",
     top: "12%",
@@ -757,19 +1107,17 @@ const styles = StyleSheet.create({
     ...StyleSheet.absoluteFillObject,
     borderRadius: Radius.sm,
     overflow: "hidden",
-    borderWidth: 1.5,
+    borderWidth: CARD_EDGE,
     borderColor: Colors.goldDark,
   },
   floatingCardPattern: {
     position: "absolute",
-    top: 4,
-    left: 4,
-    right: 4,
-    bottom: 4,
+    top: Spacing.xs,
+    left: Spacing.xs,
+    right: Spacing.xs,
+    bottom: Spacing.xs,
     borderRadius: Radius.sm,
-    borderWidth: 1,
+    borderWidth: HAIRLINE,
     borderColor: Colors.goldBorder,
   },
-  footer: { alignItems: "center", paddingTop: Spacing.roomy },
-  footerText: { fontFamily: "Inter_400Regular", fontSize: FontSize.xs, color: Colors.textMuted, letterSpacing: 1 },
 });

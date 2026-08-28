@@ -157,17 +157,24 @@ export const sq: Record<keyof typeof en, string> = {
 
   // ----------------------------------------------------------------- home.*
   "home.subtitle": "Loja e Letrave",
-  "home.footer": "2–4 lojtarë · Të gjitha modalitetet",
-  "home.logout": "Dil",
   "home.friendsLabel": "Miqtë",
+  "home.friendsA11yLabel_one": "Miqtë, {{count}} kërkesë në pritje",
+  "home.friendsA11yLabel_other": "Miqtë, {{count}} kërkesa në pritje",
   "home.settingsA11yLabel": "Cilësimet",
   "home.resumeGame": "Vazhdo lojën",
+  "home.playOnline": "Luaj online",
+  "home.playOnlineSignedOut": "Hyr për të luajtur",
   "home.modeOffline": "Offline",
   "home.modePlayWithFriends": "Luaj me miq",
   "home.modeOnline": "Online",
+  "home.modePassAndPlay": "Kalo dhe luaj",
   "home.modeProfile": "Profili im",
-  "home.modeTutorial": "Tutorial",
-  "home.modeRules": "Rregullat & FAQ",
+  "home.leaderboard": "Renditja",
+  "home.signIn": "Hyr",
+  "home.howToPlay": "Si luhet",
+  "home.requiresAccount": "Kërkon një llogari",
+  "home.inviteWaiting": "{{name}} po pret",
+  "home.inviteJoin": "Hyr",
 
   // ---------------------------------------------------------- notFound.*
   "notFound.screenTitle": "Ups!",
