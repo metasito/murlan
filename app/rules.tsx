@@ -18,7 +18,7 @@ import { Colors, FontSize, Radius, Spacing, TOUCH_TARGET_MIN, Type } from "@/lib
 import { MenuLayout } from "@/components/MenuLayout";
 import { usePrefersReducedMotion } from "@/lib/accessibility";
 import { useTranslation, type TranslationKey } from "@/lib/i18n";
-import { a11yState } from "@/lib/a11y";
+import { a11yHidden, a11yState } from "@/lib/a11y";
 
 interface FAQ {
   question: string;
@@ -26,6 +26,10 @@ interface FAQ {
 }
 
 const FAQ_COUNT = 18;
+
+const CTA_ICON = 18;
+const FAQ_ICON = 16;
+const NAV_ICON = 22;
 
 function useFaqs(): FAQ[] {
   const { t } = useTranslation();
@@ -76,11 +80,12 @@ function FAQItem({ item, isLast }: { item: FAQ; isLast: boolean }) {
         {...a11yState({ role: "button", expanded: open })}
         hitSlop={4}
       >
-        <Text style={styles.faqQuestionText}>{item.question}</Text>
+        <Text style={styles.faqQuestionText} {...a11yHidden()}>{item.question}</Text>
         <Ionicons
           name={open ? "chevron-up" : "chevron-down"}
-          size={16}
+          size={FAQ_ICON}
           color={Colors.gold}
+          {...a11yHidden()}
         />
       </Pressable>
       <Animated.View style={answerStyle}>
@@ -104,7 +109,7 @@ export default function RulesScreen() {
           accessibilityLabel={t("common.back")}
           hitSlop={12}
         >
-          <Ionicons name="chevron-back" size={22} color={Colors.gold} />
+          <Ionicons name="chevron-back" size={NAV_ICON} color={Colors.gold} {...a11yHidden()} />
         </Pressable>
         <Text style={styles.screenTitle}>{t("rules.headerTitle")}</Text>
         <View style={{ width: 38 }} />
@@ -130,14 +135,16 @@ export default function RulesScreen() {
           <Text style={styles.heroSubtitle}>{t("rules.heroSubtitle")}</Text>
           <Pressable
             onPress={() => router.push("/tutorial")}
-            style={styles.tutorialLink}
-            accessibilityRole="link"
-            accessibilityLabel={t("rules.tutorialLink")}
-            hitSlop={12}
+            style={styles.startTutorial}
+            accessibilityRole="button"
+            accessibilityLabel={t("rules.startTutorialA11yLabel")}
           >
-            <Ionicons name="school-outline" size={14} color={Colors.gold} />
-            <Text style={styles.tutorialLinkText}>{t("rules.tutorialLink")}</Text>
-            <Ionicons name="chevron-forward" size={14} color={Colors.gold} />
+            <Ionicons name="school-outline" size={CTA_ICON} color={Colors.gold} {...a11yHidden()} />
+            <View style={styles.startTutorialCopy} {...a11yHidden()}>
+              <Text style={styles.startTutorialTitle}>{t("rules.startTutorial")}</Text>
+              <Text style={styles.startTutorialSubtitle}>{t("rules.startTutorialSubtitle")}</Text>
+            </View>
+            <Ionicons name="chevron-forward" size={CTA_ICON} color={Colors.gold} {...a11yHidden()} />
           </Pressable>
         </View>
 
@@ -177,7 +184,7 @@ export default function RulesScreen() {
               <View key={c.name} style={styles.comboCard}>
                 <Ionicons
                   name={c.icon as React.ComponentProps<typeof Ionicons>["name"]}
-                  size={22}
+                  size={NAV_ICON}
                   color={Colors.gold}
                 />
                 <Text style={styles.comboName}>{c.name}</Text>
@@ -261,10 +268,10 @@ const styles = StyleSheet.create({
     letterSpacing: 3,
     textTransform: "uppercase",
   },
-  tutorialLink: {
+  startTutorial: {
     flexDirection: "row",
     alignItems: "center",
-    gap: Spacing.slim,
+    gap: Spacing.cosy,
     marginTop: Spacing.cosy,
     paddingHorizontal: Spacing.cosy,
     paddingVertical: Spacing.sm,
@@ -274,12 +281,21 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: Colors.border,
   },
-  tutorialLinkText: {
-    fontFamily: "Inter_500Medium",
-    fontSize: FontSize.xs,
-    color: Colors.gold,
-    textAlign: "center",
+  startTutorialCopy: {
     flexShrink: 1,
+    gap: Spacing.xxs,
+  },
+  startTutorialTitle: {
+    fontFamily: "Inter_600SemiBold",
+    fontSize: FontSize.sm,
+    color: Colors.gold,
+  },
+  startTutorialSubtitle: {
+    ...Type.caption,
+    // Not caption's own `textMuted`: this sits on a translucent gold chip over
+    // the hero gradient, and that composite drops it to 4.45:1, under AA.
+    // `tests/contrast.test.ts` pairs tokens with flat surfaces and cannot see it.
+    color: Colors.textSecondary,
   },
 
   quickRef: {
