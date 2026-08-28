@@ -10,7 +10,7 @@
 import { test, expect } from "./fixtures";
 import { openApp, startOfflineGame } from "./helpers/navigation";
 
-import { HAND_CARDS, TABLE } from "./helpers/selectors.ts";
+import { HAND_CARDS } from "./helpers/selectors.ts";
 
 interface FaceStats {
   label: string;
