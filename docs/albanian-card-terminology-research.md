@@ -371,8 +371,8 @@ worst first. This is a shortlist, not a rewrite.
 
 **1. `cards.suitClubs` and `cards.suitSpades` name the wrong things — CONFIRMED**
 `Trefla` → **`spathi`**, `Pika` → **`maç`** (S1, S2, S7 — §a). ♠ is the suit the game speaks
-most, because the 3♠ opens every session and `gameTable.playLabelStartCard` /
-`playA11ySpokenStartCard` point at it. While there: `cards.suitHearts` `Kupa` and
+most, because the 3♠ opens every session and `gameTable.playA11ySpokenStartCard`
+points at it. While there: `cards.suitHearts` `Kupa` and
 `suitDiamonds` `Karo` are right, but `Kupa` is a plural/definite form sitting in a slot that
 S2's examples fill with the bare singular (`Fanti spathi`, `Asi maç`). Whether Albanian says
 `asi kupë` or `asi kupe` for the ace of hearts is a **native-speaker judgment I could not
