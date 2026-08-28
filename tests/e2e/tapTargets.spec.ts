@@ -297,16 +297,14 @@ test("settings scrolls to the delete-account button at a short viewport", async 
   await expect(deleteBtn).toBeInViewport();
 });
 
-// UI-03: the portrait home menu had no ScrollView, so `justifyContent:
-// "center"` split the overflow across both edges — on a 375x667 iPhone SE
-// three of the seven destinations, including the last, were off-screen with
-// no way to reach them.
+// The home's quiet row is pinned to the bottom edge (`marginTop: "auto"`),
+// so at a short viewport it is the row most likely to be pushed out of reach.
 test("the home menu scrolls to its last row", async ({ page, baseURL }) => {
   test.setTimeout(60_000);
   await page.setViewportSize({ width: 375, height: 667 });
   await openApp(page, baseURL!);
 
-  const lastRow = page.getByRole("button", { name: "Regole & FAQ" });
+  const lastRow = page.getByRole("button", { name: "Come si gioca" });
   await lastRow.scrollIntoViewIfNeeded();
   await expect(lastRow).toBeInViewport();
 });

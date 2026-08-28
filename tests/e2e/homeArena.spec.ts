@@ -115,7 +115,10 @@ test("signed out, the account-only tiles are refused rather than redirected", as
   baseURL,
 }) => {
   await page.setViewportSize(PORTRAIT);
-  await openApp(page, baseURL!);
+  // With a save the hero is Resume, so both account-only ways of playing sit
+  // in the grid where this test can refuse them. Without one, Online is the
+  // hero (homeMenu) and is tested there, not as a tile.
+  await openWithSave(page, baseURL!);
 
   const labels = await page.locator(TILE).evaluateAll((els) =>
     els.map((el) => el.getAttribute("aria-label") ?? "")

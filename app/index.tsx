@@ -480,6 +480,7 @@ function HomePlayerUnit({ onSettings }: { onSettings: () => void }) {
       <Animated.View style={[styles.playerUnit, entrance]}>
         <HomePill
           label={t("home.signIn")}
+          text={t("home.signIn")}
           icon={<Ionicons name="log-in-outline" size={PILL_ICON} color={Colors.gold} {...a11yHidden()} />}
           onPress={() => router.push("/auth")}
         />
