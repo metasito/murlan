@@ -402,23 +402,25 @@ describe("interpolation placeholders stay in sync across locales", () => {
   });
 });
 
-describe("gameTable.playLabelStartCard, gameTable.startCardBannerSelf and gameTable.startCardBannerOther name the actual card", () => {
+describe("every sentence that names the opening card interpolates it", () => {
+  // The spoken form names the whole card, the banners its rank and suit — so the
+  // placeholder differs, and only the ♠ half of the rule is common to all three.
   const KEYS = [
-    "gameTable.playLabelStartCard",
-    "gameTable.startCardBannerSelf",
-    "gameTable.startCardBannerOther",
+    ["gameTable.playA11ySpokenStartCard", "{{card}}"],
+    ["gameTable.startCardBannerSelf", "{{suit}}"],
+    ["gameTable.startCardBannerOther", "{{suit}}"],
   ] as const;
 
   test("no locale hardcodes ♠ — the 2-player fallback opener can hold any suit", () => {
-    for (const key of KEYS) {
+    for (const [key, placeholder] of KEYS) {
       for (const name of LOCALE_NAMES) {
         assert.ok(
           !LOCALES[name][key].includes("♠"),
-          `${name}["${key}"] hardcodes ♠ instead of interpolating {{suit}}`
+          `${name}["${key}"] hardcodes ♠ instead of interpolating ${placeholder}`
         );
         assert.ok(
-          LOCALES[name][key].includes("{{suit}}"),
-          `${name}["${key}"] is missing the {{suit}} placeholder entirely`
+          LOCALES[name][key].includes(placeholder),
+          `${name}["${key}"] is missing the ${placeholder} placeholder entirely`
         );
       }
     }
