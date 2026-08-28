@@ -16,7 +16,7 @@
 import type { Locator, Page } from "@playwright/test";
 // Extensioned because `tests/botProgress.test.ts` loads this file through Node's ESM
 // resolver, which will not guess one. Playwright accepts it either way.
-import { GIOCA_VALID_LABEL } from "./labels.ts";
+import { GIOCA_VALID_LABEL, YOUR_TURN_PREFIX } from "./labels.ts";
 
 const TABLE = '[data-testid="game-table"]';
 // Scoped to the hand wrapper specifically (its own accessibilityLabel always
@@ -28,7 +28,6 @@ const TABLE = '[data-testid="game-table"]';
 // opponent's just-played combination.
 const HAND_CARDS = `${TABLE} [aria-label^="La tua mano"] [role="button"]`;
 const EXCHANGE_GIVE_PREFIX = "Fase di scambio: devi dare una carta a";
-const YOUR_TURN_PREFIX = "È il tuo turno.";
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
