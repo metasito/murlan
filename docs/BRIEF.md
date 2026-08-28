@@ -94,14 +94,24 @@ size, 14 with a 2.5-second settle added before measuring. The settle could not f
 in a four-player game the turn changes every few seconds and the animation is running whenever
 anything looks.
 
-**A cross-fade of two rows would pass that guard** — opacity is not a transform, so both rows
-carry honest glyphs — but it puts two hands in the DOM at once, and two other specs measure the
-hand by querying every card in it. `tests/e2e/cardScale.spec.ts` takes the *first*
-`[data-testid="card-box"]` in document order and asserts its width tracks the viewport's short
-edge; during a fade that can be the outgoing row's card at the old size. `tests/e2e/handBudget.spec.ts`
-takes *all* of them and measures the row's extent and its share of the width; two rows double
-the count and overlap the rects. Both run against a live four-player game. Easing the hand would
-mean rewriting two specs that are not about the hand's size at all.
+**A cross-fade of two rows is not ruled out by measurement — it is ruled out on cost.** Opacity
+does not affect the box model, so both rows would carry honest glyphs and the guard above would
+stay green. That is an inference from how the browser lays out `opacity`, not a measurement:
+nobody has implemented a cross-fade and run the suite against it, and `clippedGlyphs` never
+exercises one.
+
+What it would cost is concrete. It puts two hands in the DOM for the length of every transition,
+and two specs query the hand by its cards: `tests/e2e/cardScale.spec.ts:24` takes the *first*
+`[data-testid="card-box"]` in document order, and `tests/e2e/handBudget.spec.ts:26` takes *all*
+of them and measures the row's span. With two rows, the first is whichever row React rendered
+first, and the span is measured across both.
+
+Be precise about how much of that is demonstrated: neither spec fails today, and `cardScale`
+could not — it seeds `turn: 0`, the viewer's own seat, and never plays a card, so the size never
+changes while it runs. `handBudget` does play a combination, which hands the turn away, so it is
+genuinely exposed. So this is a real hazard in two specs that are not about the hand's size,
+plus the cost of a doubled card count and the a11y and `testID` duplication that comes with it —
+weighed against easing one of five turn signals. It is not worth it. It is not impossible.
 
 **Easing only the fan's spread** — `translateX` per card, which the guard does tolerate, since
 the deal already animates translate and rotate — was rejected on its own merits rather than on a
