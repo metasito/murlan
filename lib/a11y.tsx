@@ -213,7 +213,12 @@ export function A11yStatus({
       accessible
       accessibilityRole={role}
       accessibilityLabel={label}
-      {...(isWeb ? { "aria-live": live } : { accessibilityLiveRegion: live })}
+      {...(isWeb
+        ? // `text` is one of the roles react-native-web maps to nothing, which
+          // would leave the sentence on a role-less node — `generic`, for which
+          // a name is prohibited. `status` is the live region's own role.
+          { role: role === "alert" ? "alert" : "status", "aria-live": live }
+        : { accessibilityLiveRegion: live })}
       {...a11yVeiled(veiled)}
       style={styles.srOnly}
     >

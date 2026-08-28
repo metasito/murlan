@@ -1695,7 +1695,9 @@ export function GameTable({
             ) : (
               // The wrapper carries no `accessible`, which would hide the
               // individual cards' own labels behind one leaf node; the summary
-              // reaches a screen reader through A11yStatus instead.
+              // reaches a screen reader through A11yStatus instead. The label
+              // here is a channel the browser harness reads by attribute
+              // rather than a name a reader ever hears (#505).
               <View accessibilityLabel={handA11yLabel}>
                 <A11yStatus label={handA11yLabel} />
                 <StraightHand
