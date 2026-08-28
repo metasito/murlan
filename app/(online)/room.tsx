@@ -162,7 +162,7 @@ const formatStyles = StyleSheet.create({
   row: { flexDirection: "row", gap: Spacing.sm },
   option: {
     flex: 1,
-    minHeight: 44,
+    minHeight: TOUCH_TARGET_MIN,
     alignItems: "center",
     justifyContent: "center",
     gap: Spacing.xs / 2,
@@ -742,7 +742,7 @@ const botFillStyles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    minHeight: 44,
+    minHeight: TOUCH_TARGET_MIN,
     gap: Spacing.sm,
   },
   rowText: { flex: 1, gap: Spacing.xxs },
@@ -765,7 +765,7 @@ const botFillStyles = StyleSheet.create({
     // Five names never fit one phone-width row; wrap to two rather than clip.
     flexGrow: 1,
     flexBasis: "28%",
-    minHeight: 44,
+    minHeight: TOUCH_TARGET_MIN,
     alignItems: "center",
     justifyContent: "center",
     borderRadius: Radius.sm,
@@ -860,7 +860,7 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: Colors.border,
   },
-  backBtn: { width: 44, height: 44, alignItems: "center", justifyContent: "center" },
+  backBtn: { width: TOUCH_TARGET_MIN, height: TOUCH_TARGET_MIN, alignItems: "center", justifyContent: "center" },
   screenTitle: {
     flex: 1,
     textAlign: "center",

@@ -18,7 +18,7 @@ import Animated, {
 import Feather from "@expo/vector-icons/Feather";
 import type { Card } from "@/lib/gameEngine";
 import { CardView } from "@/components/CardView";
-import { Colors, Spacing, Radius, FontSize, Type, Motion, Shadow } from "@/lib/theme";
+import { Colors, Spacing, Radius, FontSize, Type, Motion, Shadow, TOUCH_TARGET_MIN } from "@/lib/theme";
 import { usePrefersReducedMotion } from "@/lib/accessibility";
 import { useTranslation } from "@/lib/i18n";
 import { cardSpokenName } from "@/lib/cardNames";
@@ -296,8 +296,8 @@ const styles = StyleSheet.create({
     position: "absolute",
     top: Spacing.xs,
     right: Spacing.xs,
-    width: 44,
-    height: 44,
+    width: TOUCH_TARGET_MIN,
+    height: TOUCH_TARGET_MIN,
     alignItems: "center",
     justifyContent: "center",
     zIndex: 1,

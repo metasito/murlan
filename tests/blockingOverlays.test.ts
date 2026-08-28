@@ -7,12 +7,13 @@
 // ModalContent.js). Every blocking layer in the game must use one.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { readFileSync, readdirSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import {
   blankComments,
   coversNothing,
   fullBleedAccessors,
   fullBleedNodes,
+  scannedFiles,
 } from "./helpers/sourceScan.ts";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
@@ -98,21 +99,6 @@ const NON_MODAL_OVERLAYS: [string, number, string, string, [string, RegExp][]][]
  */
 const UNTRAPPED: [string, number, string][] = [];
 
-const SCANNED_DIRS = ["components", "app"];
-
-function scannedFiles(): string[] {
-  const out: string[] = [];
-  const walk = (dir: string) => {
-    for (const entry of readdirSync(path.join(repoRoot, dir), { withFileTypes: true })) {
-      const rel = `${dir}/${entry.name}`;
-      if (entry.isDirectory()) walk(rel);
-      else if (entry.name.endsWith(".tsx")) out.push(rel);
-    }
-  };
-  SCANNED_DIRS.forEach(walk);
-  return out;
-}
-
 /** Every full-bleed node that could cover something, by file. */
 export function candidatesByFile(files: string[], read: (rel: string) => string): Map<string, string[]> {
   const sources = new Map(files.map((f) => [f, blankComments(read(f))]));
@@ -152,7 +138,7 @@ export function modalBodies(source: string): string[] {
 // hole. #337 added `components/table/chrome.tsx` to the curated list by hand; nothing would
 // have noticed if the person adding the layer had not remembered.
 test("every full-bleed layer has been classified by a human", () => {
-  const candidates = candidatesByFile(scannedFiles(), (rel) =>
+  const candidates = candidatesByFile(scannedFiles(repoRoot), (rel) =>
     readFileSync(path.join(repoRoot, rel), "utf8")
   );
   const count = (list: [string, number, ...unknown[]][], file: string) =>
@@ -181,7 +167,7 @@ test("every full-bleed layer has been classified by a human", () => {
 });
 
 test("the classification lists name files that still exist and still qualify", () => {
-  const candidates = candidatesByFile(scannedFiles(), (rel) =>
+  const candidates = candidatesByFile(scannedFiles(repoRoot), (rel) =>
     readFileSync(path.join(repoRoot, rel), "utf8")
   );
   const stale = [...NOT_A_BLOCKER, ...NON_MODAL_OVERLAYS, ...UNTRAPPED]

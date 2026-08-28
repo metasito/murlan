@@ -10,6 +10,8 @@ const {
   TOKEN_AS_TEMPLATE,
   STRING_TOKEN_MESSAGE,
   SCALED_LITERAL_MESSAGE,
+  TOUCH_TARGET_LITERAL,
+  TOUCH_TARGET_LITERAL_MESSAGE,
 } = require('./eslint.selectors.cjs');
 
 module.exports = defineConfig([
@@ -64,6 +66,10 @@ module.exports = defineConfig([
           // came to ship five corner radii for one role.
           selector: SCALED_LITERAL,
           message: SCALED_LITERAL_MESSAGE,
+        },
+        {
+          selector: TOUCH_TARGET_LITERAL,
+          message: TOUCH_TARGET_LITERAL_MESSAGE,
         },
       ],
     },

@@ -12,7 +12,7 @@ import { router } from "expo-router";
 import Ionicons from "@expo/vector-icons/Ionicons";
 import { hapticLight } from "@/lib/haptics";
 import { useAuth } from "@/context/AuthContext";
-import { Colors, FontSize, Radius, Spacing, Type } from "@/lib/theme";
+import { Colors, FontSize, Radius, Spacing, TOUCH_TARGET_MIN, Type } from "@/lib/theme";
 import { MenuLayout } from "@/components/MenuLayout";
 import { MenuCard } from "@/components/MenuCard";
 import { MenuButton } from "@/components/MenuButton";
@@ -199,8 +199,8 @@ const styles = StyleSheet.create({
     marginBottom: Spacing.xs,
   },
   backBtn: {
-    width: 44,
-    height: 44,
+    width: TOUCH_TARGET_MIN,
+    height: TOUCH_TARGET_MIN,
     alignItems: "center",
     justifyContent: "center",
   },
@@ -226,7 +226,7 @@ const styles = StyleSheet.create({
     marginTop: Spacing.slim,
   },
   tabs: { flexDirection: "row", borderBottomWidth: 1, borderBottomColor: Colors.border, marginHorizontal: -Spacing.md, marginTop: -Spacing.md },
-  tabBtn: { flex: 1, paddingVertical: Spacing.md, minHeight: 44, alignItems: "center", justifyContent: "center" },
+  tabBtn: { flex: 1, paddingVertical: Spacing.md, minHeight: TOUCH_TARGET_MIN, alignItems: "center", justifyContent: "center" },
   tabActive: { borderBottomWidth: 2, borderBottomColor: Colors.gold },
   tabText: {
     fontFamily: "Rajdhani_600SemiBold",
@@ -252,7 +252,7 @@ const styles = StyleSheet.create({
     borderColor: Colors.border,
     paddingHorizontal: Spacing.wide,
     paddingVertical: Spacing.wide,
-    minHeight: 44,
+    minHeight: TOUCH_TARGET_MIN,
     gap: Spacing.snug,
   },
   inputIcon: {},

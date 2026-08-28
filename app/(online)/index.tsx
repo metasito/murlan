@@ -17,7 +17,7 @@ import Ionicons from "@expo/vector-icons/Ionicons";
 import { useOnlineGame } from "@/context/OnlineGameContext";
 import { useAuth } from "@/context/AuthContext";
 import { useSocket } from "@/context/SocketContext";
-import { Colors, Spacing, FontSize, Radius, Type } from '@/lib/theme';
+import { Colors, Spacing, FontSize, Radius, TOUCH_TARGET_MIN, Type } from '@/lib/theme';
 import { MenuLayout } from "@/components/MenuLayout";
 import { MenuCard } from "@/components/MenuCard";
 import { MenuButton } from "@/components/MenuButton";
@@ -161,7 +161,7 @@ export default function OnlineLobbyScreen() {
             onPress={handleCreate}
             variant="primary"
             fullWidth={true}
-            style={isLandscape ? { minHeight: 44 } : undefined}
+            style={isLandscape ? { minHeight: TOUCH_TARGET_MIN } : undefined}
             disabled={createMode === "teams" && createPlayers !== 4}
             icon={<Ionicons name="add-circle-outline" size={20} color={createMode === "teams" && createPlayers !== 4 ? Colors.textMuted : Colors.bg} />}
           />
@@ -179,7 +179,7 @@ export default function OnlineLobbyScreen() {
             onPress={() => setJoinModalVisible(true)}
             variant="secondary"
             fullWidth={true}
-            style={isLandscape ? { minHeight: 44 } : undefined}
+            style={isLandscape ? { minHeight: TOUCH_TARGET_MIN } : undefined}
             icon={<Ionicons name="enter-outline" size={20} color={Colors.gold} />}
           />
         </View>
@@ -374,8 +374,8 @@ const styles = StyleSheet.create({
     borderBottomColor: Colors.border,
   },
   backBtn: {
-    width: 44,
-    height: 44,
+    width: TOUCH_TARGET_MIN,
+    height: TOUCH_TARGET_MIN,
     alignItems: "center",
     justifyContent: "center",
   },
@@ -496,6 +496,8 @@ const styles = StyleSheet.create({
   modalRow: { flexDirection: "row", gap: Spacing.cosy },
   modalCancelBtn: {
     flex: 1,
+    minHeight: TOUCH_TARGET_MIN,
+    justifyContent: "center",
     paddingVertical: Spacing.cosy,
     borderRadius: Radius.sm,
     borderWidth: 1,
@@ -505,6 +507,8 @@ const styles = StyleSheet.create({
   modalCancelText: { fontFamily: "Rajdhani_600SemiBold", fontSize: FontSize.md, color: Colors.textMuted },
   modalOkBtn: {
     flex: 1,
+    minHeight: TOUCH_TARGET_MIN,
+    justifyContent: "center",
     paddingVertical: Spacing.cosy,
     borderRadius: Radius.sm,
     backgroundColor: Colors.gold,
