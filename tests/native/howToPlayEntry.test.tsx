@@ -65,7 +65,7 @@ describe('the How to play screen', () => {
 
   it('starts the tutorial', async () => {
     const r = await mount();
-    fireEvent.press(r.getByLabelText(en['rules.startTutorialA11yLabel']));
+    await fireEvent.press(r.getByLabelText(en['rules.startTutorialA11yLabel']));
     expect(router.push).toHaveBeenCalledWith('/tutorial');
     await r.unmount();
   });
