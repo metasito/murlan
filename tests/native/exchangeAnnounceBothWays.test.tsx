@@ -15,8 +15,9 @@ jest.mock('expo-haptics', () => ({
 }));
 
 import React from 'react';
-import { act, render } from '@testing-library/react-native';
+import { act, render, within } from '@testing-library/react-native';
 import { ExchangeAnnouncement } from '@/components/ExchangeAnnouncement';
+import { en } from '@/locales/en';
 import type { Card } from '@/lib/gameEngine';
 
 const WINNER = 'Ana';
@@ -90,6 +91,17 @@ describe('the exchange announcement states both legs', () => {
 
     expect(spoken(view)).toContain(LOSER);
     expect(givesCount(spoken(view), WINNER)).toBe(0);
+
+    await view.unmount();
+  });
+
+  // The alert is announced; the close button is landed on. Never the same node.
+  it('offers its close button as a control of its own, beside the alert', async () => {
+    const view = await announce({ cardReceived: TAKEN, cardGiven: RETURNED });
+
+    expect(within(view.getByRole('alert')).queryAllByLabelText(
+      en['exchangeAnnouncement.closeA11yLabel']
+    )).toHaveLength(0);
 
     await view.unmount();
   });

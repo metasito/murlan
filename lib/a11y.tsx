@@ -178,13 +178,26 @@ export function useFocusTrap(testIDs: string[]) {
  * it, which a bare `aria-label` on a role-less `<div>` does not: that role is
  * `generic`, for which a name is prohibited.
  */
-export function A11yStatus({ label, veiled = false }: { label: string; veiled?: boolean }) {
+export function A11yStatus({
+  label,
+  veiled = false,
+  role = "text",
+  live = "polite",
+}: {
+  label: string;
+  veiled?: boolean;
+  /** `alert` for a layer that arrives unbidden rather than a running commentary. */
+  role?: "text" | "alert";
+  /** Whether it waits for a pause. Separate from `role`, because `alert`'s
+   *  implicit assertiveness is not always what a layer wants. */
+  live?: "polite" | "assertive";
+}) {
   return (
     <Text
       accessible
-      accessibilityRole="text"
+      accessibilityRole={role}
       accessibilityLabel={label}
-      {...(isWeb ? { "aria-live": "polite" as const } : { accessibilityLiveRegion: "polite" as const })}
+      {...(isWeb ? { "aria-live": live } : { accessibilityLiveRegion: live })}
       {...a11yVeiled(veiled)}
       style={styles.srOnly}
     >

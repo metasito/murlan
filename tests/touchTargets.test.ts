@@ -51,7 +51,6 @@ const NOT_A_TARGET: [string, number, string][] = [
   ["components/CardView.tsx", 1, "a playing card, sized CARD_W x CARD_H — the hand's geometry, not a control's"],
   ["components/ExchangeModal.tsx", 1, "a playing card offered for exchange, same geometry"],
   ["components/ExchangeAnnouncement.tsx", 1, "the announcement card itself: tap anywhere on it to dismiss"],
-  ["components/NotificationBanner.tsx", 1, "the banner body — the whole banner is the target"],
   ["components/table/chrome.tsx", 1, "the start-reason toast: a full-width surface, tap anywhere to dismiss"],
   ["components/table/settingsSheet.tsx", 1, "the veil, which covers the table beside the rail"],
   ["app/(online)/quickmatch.tsx", 1, "a mode card, laid out at card size rather than control size"],

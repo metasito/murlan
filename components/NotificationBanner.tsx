@@ -18,7 +18,7 @@ import { Colors, Spacing, Radius, Type, Shadow, TOUCH_TARGET_MIN } from "@/lib/t
 import { usePrefersReducedMotion } from "@/lib/accessibility";
 import { useTranslation } from "@/lib/i18n";
 import type { NotificationType, NotificationData } from "@/context/NotificationContext";
-import { a11yHidden, a11yVeiled, useA11yHint } from "@/lib/a11y";
+import { A11yStatus, a11yHidden, a11yVeiled, useA11yHint } from "@/lib/a11y";
 
 export type { NotificationType, NotificationData };
 
@@ -67,7 +67,11 @@ const TOP_GAP = 8;
 
 export default function NotificationBanner({ notification, onDismiss }: Props) {
   const { t } = useTranslation();
-  const dismissHint = useA11yHint(t("notificationBanner.dismissA11yHint"));
+  // Pressing the body runs the notification's own action before it dismisses,
+  // and every caller that supplies one navigates away.
+  const dismissHint = useA11yHint(
+    t(notification?.onPress ? "notificationBanner.openA11yHint" : "notificationBanner.dismissA11yHint")
+  );
   const [pressed, setPressed] = useState(false);
   const insets = useSafeAreaInsets();
   const { width, height } = useWindowDimensions();
@@ -148,15 +152,15 @@ export default function NotificationBanner({ notification, onDismiss }: Props) {
       {...a11yVeiled(!notification)}
     >
       <View style={[styles.banner, { borderLeftColor: color }, pressed && styles.bannerPressed]}>
-        {/* The alert is the body, not the row: a focusable close button inside
-            a live region is invalid. */}
+        {/* The body's copy is a button's face and is hidden as one, so the
+            region would have nothing left to announce. */}
+        <A11yStatus label={a11yLabel ?? ""} veiled={!notification} role="alert" />
         <Pressable
           onPress={handlePress}
           onPressIn={() => setPressed(true)}
           onPressOut={() => setPressed(false)}
           style={styles.body}
-          accessibilityRole="alert"
-          accessibilityLiveRegion={notification ? "polite" : "none"}
+          accessibilityRole="button"
           accessibilityLabel={a11yLabel}
           {...dismissHint.props}
         >
@@ -164,7 +168,7 @@ export default function NotificationBanner({ notification, onDismiss }: Props) {
           <View style={[styles.iconCircle, { backgroundColor: color + "22" }]} {...a11yHidden()}>
             <Ionicons name={icon} size={20} color={color} />
           </View>
-          <View style={styles.textGroup}>
+          <View style={styles.textGroup} {...a11yHidden()}>
             <Text style={styles.title} numberOfLines={1}>{notification?.title ?? ""}</Text>
             <Text style={styles.message} numberOfLines={2}>{notification?.message ?? ""}</Text>
           </View>
@@ -208,6 +212,7 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: Spacing.sm + 4,
+    minHeight: TOUCH_TARGET_MIN,
   },
   bannerPressed: { backgroundColor: Colors.bgElevated },
   iconCircle: {

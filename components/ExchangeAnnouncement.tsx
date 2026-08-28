@@ -22,7 +22,7 @@ import { Colors, Spacing, Radius, FontSize, Type, Motion, Shadow, TOUCH_TARGET_M
 import { usePrefersReducedMotion } from "@/lib/accessibility";
 import { useTranslation } from "@/lib/i18n";
 import { cardSpokenName } from "@/lib/cardNames";
-import { a11yHidden, useA11yHint } from "@/lib/a11y";
+import { A11yStatus, a11yHidden } from "@/lib/a11y";
 import { CARD_H, CARD_W } from "@/components/cardFaceModel";
 
 // Domain timings, not generic UI transitions — not a lib/theme.ts Motion
@@ -99,7 +99,6 @@ export function ExchangeAnnouncement({
   onDismiss,
 }: ExchangeAnnouncementProps) {
   const { t } = useTranslation();
-  const dismissHint = useA11yHint(t("exchangeAnnouncement.dismissA11yHint"));
   const [shown, setShown] = useState(false);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const { width: screenWidth, height: screenHeight } = useWindowDimensions();
@@ -192,14 +191,18 @@ export function ExchangeAnnouncement({
         )}
 
         <Pressable
+          testID="exchange-announce-panel"
           onPress={handleDismiss}
           style={styles.card}
           accessibilityViewIsModal
-          accessibilityRole="alert"
-          accessibilityLabel={a11yLabel}
-          {...dismissHint.props}
+          // Pointer only: an accessible panel is one leaf on iOS, which seals
+          // the close button inside it. The sentence is A11yStatus's job.
+          accessible={false}
+          // react-native-web gives every Pressable `tabIndex=0`, so without
+          // this the panel is a tab stop with no role and no name.
+          tabIndex={-1}
         >
-          {dismissHint.node}
+          <A11yStatus label={a11yLabel} role="alert" live="assertive" />
           <Pressable
             onPress={handleDismiss}
             style={({ pressed }) => [styles.closeBtn, { opacity: pressed ? 0.6 : 1 }]}
@@ -220,7 +223,9 @@ export function ExchangeAnnouncement({
             <View style={styles.rowsContainer}>
               {cardReceived && (
                 <View style={styles.exchangeBlock}>
-                  <View style={styles.exchangeRow}>
+                  {/* The picture of the exchange; the sentence under it says
+                      the same thing in words. */}
+                  <View style={styles.exchangeRow} {...a11yHidden()}>
                     <Text style={styles.playerName}>{loserName}</Text>
                     <Text style={styles.arrow}>→</Text>
                     <View style={styles.cardWrap}>
@@ -245,7 +250,7 @@ export function ExchangeAnnouncement({
 
               {cardGiven && (
                 <View style={styles.exchangeBlock}>
-                  <View style={styles.exchangeRow}>
+                  <View style={styles.exchangeRow} {...a11yHidden()}>
                     <Text style={styles.playerName}>{winnerName}</Text>
                     <Text style={styles.arrow}>→</Text>
                     <View style={styles.cardWrap}>

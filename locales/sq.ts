@@ -187,6 +187,7 @@ export const sq: Record<keyof typeof en, string> = {
 
   // ---------------------------------------------------- notificationBanner.*
   "notificationBanner.dismissA11yHint": "Prek për të mbyllur njoftimin",
+  "notificationBanner.openA11yHint": "Prek për ta hapur",
   "notificationBanner.closeA11yLabel": "Mbyll njoftimin",
   // ---------------------------------------------------------- notifications.*
   "notifications.friendRequestTitle": "Kërkesë miqësie",
@@ -226,7 +227,6 @@ export const sq: Record<keyof typeof en, string> = {
   // -------------------------------------------------------- exchangeAnnouncement.*
   "exchangeAnnouncement.a11yNoSwap": "Shkëmbim: pa shkëmbim, {{loserName}} tregoi të dy Xholat",
   "exchangeAnnouncement.giveLine": "Nga {{from}} te {{to}}: {{card}}",
-  "exchangeAnnouncement.dismissA11yHint": "Prek për të mbyllur",
   "exchangeAnnouncement.closeA11yLabel": "Mbyll njoftimin e shkëmbimit",
   "exchangeAnnouncement.title": "Shkëmbimi",
   "exchangeAnnouncement.noSwapText": "Pa shkëmbim — Xhola të dyfishtë 🃏",

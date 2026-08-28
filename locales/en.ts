@@ -178,6 +178,7 @@ export const en = {
 
   // ---------------------------------------------------- notificationBanner.*
   "notificationBanner.dismissA11yHint": "Tap to dismiss the notification",
+  "notificationBanner.openA11yHint": "Tap to open it",
   "notificationBanner.closeA11yLabel": "Close notification",
   // ---------------------------------------------------------- notifications.*
   "notifications.friendRequestTitle": "Friend request",
@@ -217,7 +218,6 @@ export const en = {
   // -------------------------------------------------------- exchangeAnnouncement.*
   "exchangeAnnouncement.a11yNoSwap": "Exchange: no exchange, {{loserName}} showed both Jokers",
   "exchangeAnnouncement.giveLine": "{{from}} gives {{card}} to {{to}}",
-  "exchangeAnnouncement.dismissA11yHint": "Tap to dismiss",
   "exchangeAnnouncement.closeA11yLabel": "Close exchange announcement",
   "exchangeAnnouncement.title": "Exchange",
   "exchangeAnnouncement.noSwapText": "No exchange — double Joker 🃏",
