@@ -103,6 +103,25 @@ children are undecorated `View` pips with no text to leak.
 
 ## The checks
 
+### The rule that already exists, with a false premise
+
+`tests/a11yLabels.test.ts` was written for exactly this — its header says "an
+`accessibilityLabel` on a layout container is in the DOM and in no accessibility
+tree", and it names the `generic` role and the prohibited name. It lets all
+nineteen through because its `REACHABLE` regex counts `\baccessible\b` as making
+the label reachable:
+
+```ts
+const REACHABLE = /\baccessible\b|accessibilityRole|a11yState\(/;
+```
+
+That term is the defect. `accessible` reaches the DOM as nothing, so it is the
+one thing in that alternation that does *not* make a label reachable. Removing
+it and adding `a11yGroup\(` is the root-cause fix, and it turns the existing
+sweep red on the fifteen sites of outcome 1 without a new scanner.
+
+### The rules that are new
+
 `tests/a11yOneNode.test.ts` gains the shape rather than a second scanner. Its
 `reachableChildren` already walks subtrees, tracks hidden ancestors and resolves
 `Text` aliases; what changes is which tags it considers.
@@ -115,10 +134,11 @@ children are undecorated `View` pips with no text to leak.
   defect, and it is not about a control's own face — it is a control that
   cannot be reached at all on one platform. It gets its own assertion and its
   own message.
-- **A third, mechanical rule: `accessible` on a non-touchable is written as
-  `a11yGroup()`.** A hand-written `accessible accessibilityLabel={…}` pair is
-  refused by name, because the pair alone cannot name itself on web. This is
-  what stops the next site being added the old way.
+A third rule — "`accessible` on a non-touchable must be written as `a11yGroup()`"
+— is deliberately **not** added. The corrected `REACHABLE` above already refuses
+the hand-written pair, by the property that actually matters rather than by
+spelling, and two rules refusing the same code differ only in which error a
+reader sees first.
 
 Each rule gets a fixture test in the same file, in the style already there:
 a synthetic source string proving the rule fires. The sweep cannot pass
