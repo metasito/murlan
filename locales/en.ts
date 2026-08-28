@@ -739,7 +739,7 @@ export const en = {
   "friends.seenAgo": "Seen {{time}}",
   "friends.title": "Friends",
   "friends.sectionFriends": "FRIENDS",
-  "friends.emptyFriends": "No friends yet.\nSearch for a username!",
+  "friends.emptyFriends": "No friends yet.\nSearch for a username above.",
   "friends.loadErrorTitle": "Couldn't load your friends.",
   "friends.removeA11yLabel": "Remove {{username}} from friends",
   "friends.sectionGameInvites": "GAME INVITES",

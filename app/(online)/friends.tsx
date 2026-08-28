@@ -111,6 +111,8 @@ export default function FriendsScreen() {
     refetchOnWindowFocus: true,
   });
 
+  const pendingCount = requests.length + sentRequests.length;
+
   const acceptMutation = useMutation({
     mutationFn: async (id: string) => {
       await apiRequest("POST", `/api/friends/accept/${id}`);
@@ -251,7 +253,78 @@ export default function FriendsScreen() {
       </View>
 
       <View style={styles.contentWrapper}>
-        {/* ── SECTION 1: Amici ── */}
+        {/* ── SECTION 1: Aggiungi Amico ── */}
+        <SectionHeader title={t("friends.sectionAddFriend")} />
+
+        {/* Username search */}
+        <View style={styles.inputCard}>
+          <Text style={styles.inputCardLabel}>{t("friends.searchByUsername")}</Text>
+          <View style={styles.inputRow}>
+            <TextInput
+              style={styles.input}
+              value={searchQuery}
+              onChangeText={(v) => {
+                setSearchQuery(v);
+                setSearchDone(false);
+                setSearchResult(null);
+                setSearchError(null);
+              }}
+              placeholder={t("friends.usernamePlaceholder")}
+              placeholderTextColor={Colors.textMuted}
+              autoCapitalize="none"
+              autoCorrect={false}
+              maxLength={30}
+              onSubmitEditing={handleSearchUsername}
+              returnKeyType="search"
+              accessibilityLabel={t("friends.searchA11yLabel")}
+              {...searchHint.props}
+            />
+            {searchHint.node}
+            <Pressable
+              onPress={handleSearchUsername}
+              disabled={searchLoading || !searchQuery.trim()}
+              style={({ pressed }) => [styles.addBtn, pressed && { opacity: 0.85 }, (!searchQuery.trim()) && styles.addBtnDim]}
+              accessibilityLabel={t("friends.searchA11yLabel")}
+              {...a11yState({ role: "button", disabled: searchLoading || !searchQuery.trim() })}
+            >
+              {searchLoading ? (
+                <ActivityIndicator color={Colors.bgCard} size="small" />
+              ) : (
+                <Ionicons name="search" size={18} color={(!searchQuery.trim()) ? Colors.textMuted : Colors.bgCard} {...a11yHidden()} />
+              )}
+            </Pressable>
+          </View>
+
+          {searchDone && searchResult && (
+            <View style={styles.searchResultCard}>
+              <Avatar name={searchResult.username} />
+              <View style={styles.rowInfo}>
+                <Text style={styles.rowName}>{searchResult.username}</Text>
+              </View>
+              <Pressable
+                onPress={handleSendRequestToFound}
+                disabled={addLoading}
+                style={styles.sendBtn}
+                accessibilityRole="button"
+                accessibilityLabel={t("friends.sendRequestA11yLabel", { username: searchResult.username })}
+              >
+                {addLoading ? (
+                  <ActivityIndicator color={Colors.bgCard} size="small" />
+                ) : (
+                  <Ionicons name="person-add" size={16} color={Colors.bgCard} {...a11yHidden()} />
+                )}
+              </Pressable>
+            </View>
+          )}
+
+          {searchDone && searchError && (
+            <View style={styles.searchErrorRow}>
+              <Ionicons name="alert-circle-outline" size={14} color={Colors.textMuted} />
+              <Text style={styles.searchErrorText}>{searchError}</Text>
+            </View>
+          )}
+        </View>
+        {/* ── SECTION 2: Amici ── */}
         <SectionHeader
           title={t("friends.sectionFriends")}
           count={friends.length > 0 ? friends.length : undefined}
@@ -318,7 +391,7 @@ export default function FriendsScreen() {
           </View>
         )}
 
-        {/* ── SECTION 2: Inviti a Giocare ── */}
+        {/* ── SECTION 3: Inviti a Giocare ── */}
         {gameInvites.length > 0 && (
           <>
             <SectionHeader title={t("friends.sectionGameInvites")} count={gameInvites.length} />
@@ -358,13 +431,17 @@ export default function FriendsScreen() {
           </>
         )}
 
-        {/* ── SECTION 3: In Sospeso ──
+        {/* ── SECTION 4: In Sospeso ──
             Always rendered, in both directions: a request that only has a home
-            once it exists is a place nobody can find before they need it. The
-            badge counts incoming alone — one you sent is not a task you owe. */}
+            once it exists is a place nobody can find before they need it.
+
+            The count is everything in the section, both ways, like the friends
+            count above it. Only the home button's badge is a task counter, and
+            that one reads incoming alone — a request you sent is not a task
+            you owe. */}
         <SectionHeader
           title={t("friends.sectionPending")}
-          count={requests.length > 0 ? requests.length : undefined}
+          count={pendingCount > 0 ? pendingCount : undefined}
         />
         {requests.length === 0 && sentRequests.length === 0 && (
           <View style={styles.empty}>
@@ -436,77 +513,6 @@ export default function FriendsScreen() {
           </>
         )}
 
-        {/* ── SECTION 4: Aggiungi Amico ── */}
-        <SectionHeader title={t("friends.sectionAddFriend")} />
-
-        {/* Username search */}
-        <View style={styles.inputCard}>
-          <Text style={styles.inputCardLabel}>{t("friends.searchByUsername")}</Text>
-          <View style={styles.inputRow}>
-            <TextInput
-              style={styles.input}
-              value={searchQuery}
-              onChangeText={(v) => {
-                setSearchQuery(v);
-                setSearchDone(false);
-                setSearchResult(null);
-                setSearchError(null);
-              }}
-              placeholder={t("friends.usernamePlaceholder")}
-              placeholderTextColor={Colors.textMuted}
-              autoCapitalize="none"
-              autoCorrect={false}
-              maxLength={30}
-              onSubmitEditing={handleSearchUsername}
-              returnKeyType="search"
-              accessibilityLabel={t("friends.searchA11yLabel")}
-              {...searchHint.props}
-            />
-            {searchHint.node}
-            <Pressable
-              onPress={handleSearchUsername}
-              disabled={searchLoading || !searchQuery.trim()}
-              style={({ pressed }) => [styles.addBtn, pressed && { opacity: 0.85 }, (!searchQuery.trim()) && styles.addBtnDim]}
-              accessibilityLabel={t("friends.searchA11yLabel")}
-              {...a11yState({ role: "button", disabled: searchLoading || !searchQuery.trim() })}
-            >
-              {searchLoading ? (
-                <ActivityIndicator color={Colors.bgCard} size="small" />
-              ) : (
-                <Ionicons name="search" size={18} color={(!searchQuery.trim()) ? Colors.textMuted : Colors.bgCard} {...a11yHidden()} />
-              )}
-            </Pressable>
-          </View>
-
-          {searchDone && searchResult && (
-            <View style={styles.searchResultCard}>
-              <Avatar name={searchResult.username} />
-              <View style={styles.rowInfo}>
-                <Text style={styles.rowName}>{searchResult.username}</Text>
-              </View>
-              <Pressable
-                onPress={handleSendRequestToFound}
-                disabled={addLoading}
-                style={styles.sendBtn}
-                accessibilityRole="button"
-                accessibilityLabel={t("friends.sendRequestA11yLabel", { username: searchResult.username })}
-              >
-                {addLoading ? (
-                  <ActivityIndicator color={Colors.bgCard} size="small" />
-                ) : (
-                  <Ionicons name="person-add" size={16} color={Colors.bgCard} {...a11yHidden()} />
-                )}
-              </Pressable>
-            </View>
-          )}
-
-          {searchDone && searchError && (
-            <View style={styles.searchErrorRow}>
-              <Ionicons name="alert-circle-outline" size={14} color={Colors.textMuted} />
-              <Text style={styles.searchErrorText}>{searchError}</Text>
-            </View>
-          )}
-        </View>
       </View>
 
       <ConfirmDialog request={confirming} onClose={() => setConfirming(null)} />

@@ -87,7 +87,7 @@ test("pending requests — the section is there when empty, and names both direc
   }
 });
 
-test("pending requests — the badge counts incoming only", async ({ browser, baseURL }) => {
+test("pending requests — the section counts both ways, the home badge counts only what needs you", async ({ browser, baseURL }) => {
   test.setTimeout(3 * 60_000);
 
   const contextA = await browser.newContext({ locale: "it-IT" });
@@ -107,19 +107,21 @@ test("pending requests — the badge counts incoming only", async ({ browser, ba
     await openFriends(pageA);
     await sendRequestTo(pageA, userB);
 
-    // A holds one outgoing request. It is not a task A owes anyone, so neither
-    // the section header nor the home entry point may count it. A has no
-    // friends either, so every count badge on this screen would be a wrong one.
+    // A holds one outgoing request. The section is called PENDING and has one
+    // row in it, so it says 1 — an inventory count, like the friends count.
+    // A has no friends, so PENDING's is the only badge on the screen.
     await expect(pageA.getByText(copy["friends.pendingOutgoing"])).toBeVisible();
-    await expect(pageA.getByTestId("section-count")).toHaveCount(0);
+    await expect(pageA.getByTestId("section-count")).toHaveText("1");
 
+    // The home button is the other kind of number. A owes nobody anything, so
+    // it stays unnumbered.
     await pageA.getByRole("button", { name: copy["common.back"] }).click();
     await expect(
       pageA.getByRole("button", { name: copy["home.friendsLabel"], exact: true }).first()
     ).toBeVisible();
 
     // B holds the matching incoming request, which does count — on the home
-    // button's own name, which is where the count is spoken.
+    // button's own name, which is where a task counter belongs.
     await pageB.reload();
     await expect(
       pageB.getByRole("button", {
@@ -130,4 +132,24 @@ test("pending requests — the badge counts incoming only", async ({ browser, ba
     await contextA.close();
     await contextB.close();
   }
+});
+
+test("friends screen — Add Friend is the first section, above the lists", async ({
+  page,
+  baseURL,
+}) => {
+  test.setTimeout(2 * 60_000);
+
+  await openApp(page, baseURL!);
+  await registerNewAccount(page, uniqueUsername("e2eorder"));
+  await openFriends(page);
+
+  // A fresh account has no friends and nothing pending, so the only headings
+  // on the screen are the sections themselves — group labels appear with rows.
+  const headings = await page.getByRole("heading").allInnerTexts();
+  expect(headings.map((h) => h.trim())).toEqual([
+    copy["friends.sectionAddFriend"],
+    copy["friends.sectionFriends"],
+    copy["friends.sectionPending"],
+  ]);
 });

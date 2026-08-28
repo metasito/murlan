@@ -748,7 +748,7 @@ export const sq: Record<keyof typeof en, string> = {
   "friends.seenAgo": "Parë {{time}}",
   "friends.title": "Miqtë",
   "friends.sectionFriends": "MIQTË",
-  "friends.emptyFriends": "Ende asnjë mik.\nKërko një emër përdoruesi!",
+  "friends.emptyFriends": "Ende asnjë mik.\nKërko një emër përdoruesi më lart.",
   "friends.loadErrorTitle": "Nuk u arrit të ngarkohen miqtë.",
   "friends.removeA11yLabel": "Hiq {{username}} nga miqtë",
   "friends.sectionGameInvites": "FTESA PËR TË LUAJTUR",

@@ -741,7 +741,7 @@ export const it: Record<keyof typeof en, string> = {
   "friends.seenAgo": "Visto {{time}}",
   "friends.title": "Amici",
   "friends.sectionFriends": "AMICI",
-  "friends.emptyFriends": "Nessun amico ancora.\nCerca un username!",
+  "friends.emptyFriends": "Nessun amico ancora.\nCerca un username qui sopra.",
   "friends.loadErrorTitle": "Impossibile caricare gli amici.",
   "friends.removeA11yLabel": "Rimuovi {{username}} dagli amici",
   "friends.sectionGameInvites": "INVITI A GIOCARE",
