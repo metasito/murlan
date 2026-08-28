@@ -1,7 +1,8 @@
-import React from "react";
+import React, { useState } from "react";
 import {
   View,
   Text,
+  TextInput,
   StyleSheet,
   Pressable,
   ActivityIndicator,
@@ -9,7 +10,7 @@ import {
 import Animated, { FadeIn } from "react-native-reanimated";
 import { router } from "expo-router";
 import Ionicons from "@expo/vector-icons/Ionicons";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "@/context/AuthContext";
 import { Colors, Spacing, Radius, FontSize, Type, Motion, TOUCH_TARGET_MIN } from "@/lib/theme";
 import { MenuLayout } from "@/components/MenuLayout";
@@ -29,6 +30,8 @@ import type { ReplaySummary } from "@/lib/replay";
 import { REPLAY_RETENTION_DAYS } from "@/lib/replay";
 import { PROVISIONAL_GAMES, formatSeason } from "@/lib/rating";
 import { a11yGroup, a11yHidden } from "@/lib/a11y";
+import { serverErrorMessage } from "@/lib/apiError";
+import { USERNAME_MAX, USERNAME_MIN, usernameProblem } from "@/shared/username";
 
 type TFn = (key: TranslationKey, params?: TranslationParams) => string;
 type TnFn = (base: string, count: number, params?: TranslationParams) => string;
@@ -168,6 +171,135 @@ function StatTile({ icon, value, label }: { icon: IconName; value: string; label
   );
 }
 
+/**
+ * The signed-in player, and the one control that changes who they are.
+ *
+ * `usernameProblem` runs before the request so "too short" and "invalid
+ * characters" can be told apart: the server answers both with `INVALID_PAYLOAD`,
+ * and it is one rule read twice rather than two rules (`shared/username.ts`).
+ */
+function UserCard({ user }: { user: { username: string } }) {
+  const { t } = useTranslation();
+  const { rename } = useAuth();
+  const queryClient = useQueryClient();
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(user.username);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const open = () => {
+    setDraft(user.username);
+    setError(null);
+    setEditing(true);
+  };
+
+  const problemKey: Record<NonNullable<ReturnType<typeof usernameProblem>>, TranslationKey> = {
+    tooShort: "profile.renameTooShort",
+    tooLong: "profile.renameTooLong",
+    invalidChars: "profile.renameInvalidChars",
+  };
+
+  async function save() {
+    const name = draft.trim();
+    if (name === user.username) {
+      setEditing(false);
+      return;
+    }
+    const problem = usernameProblem(name);
+    if (problem) {
+      setError(t(problemKey[problem], { min: USERNAME_MIN, max: USERNAME_MAX }));
+      return;
+    }
+    setSaving(true);
+    setError(null);
+    try {
+      await rename(name);
+      // The ladder is the only cached list that carries the viewer's own name —
+      // friends and requests carry other people's, and home reads the account
+      // straight from AuthContext.
+      queryClient.invalidateQueries({ queryKey: ["/api/ratings/leaderboard"] });
+      setEditing(false);
+    } catch (e: unknown) {
+      setError(serverErrorMessage(e, t("profile.renameFailed")));
+    }
+    setSaving(false);
+  }
+
+  if (!editing) {
+    return (
+      <View style={styles.userCard}>
+        <View
+          style={styles.userIdentity}
+          {...a11yGroup(t("profile.loggedInAs", { username: user.username }))}
+        >
+          <View style={styles.avatar} {...a11yHidden()}>
+            <Text style={styles.avatarText}>{user.username.charAt(0).toUpperCase()}</Text>
+          </View>
+          <Text style={styles.username} numberOfLines={1} {...a11yHidden()}>
+            {user.username}
+          </Text>
+        </View>
+        <Pressable
+          onPress={open}
+          style={styles.renameBtn}
+          accessibilityRole="button"
+          accessibilityLabel={t("profile.renameA11yLabel")}
+          hitSlop={12}
+          testID="btn-rename"
+        >
+          <Ionicons name="pencil" size={18} color={Colors.gold} {...a11yHidden()} />
+        </Pressable>
+      </View>
+    );
+  }
+
+  return (
+    <View style={styles.renameCard}>
+      <View style={styles.inputRow}>
+        <TextInput
+          style={styles.renameInput}
+          value={draft}
+          onChangeText={(v) => {
+            setDraft(v);
+            setError(null);
+          }}
+          placeholder={t("profile.renamePlaceholder")}
+          placeholderTextColor={Colors.textMuted}
+          autoCapitalize="none"
+          autoCorrect={false}
+          autoFocus
+          maxLength={USERNAME_MAX}
+          returnKeyType="done"
+          onSubmitEditing={save}
+          editable={!saving}
+          accessibilityLabel={t("profile.renameA11yLabel")}
+          testID="input-rename"
+        />
+      </View>
+
+      {error && (
+        <Text style={styles.renameError} testID="rename-error">
+          {error}
+        </Text>
+      )}
+
+      <View style={styles.renameActions}>
+        <MenuButton
+          label={t("common.cancel")}
+          variant="ghost"
+          onPress={() => setEditing(false)}
+          disabled={saving}
+        />
+        <MenuButton
+          label={saving ? t("profile.renameSaving") : t("common.save")}
+          onPress={save}
+          disabled={saving}
+        />
+      </View>
+    </View>
+  );
+}
+
 export default function ProfileScreen() {
   const { t, tn } = useTranslation();
   const { user } = useAuth();
@@ -210,17 +342,7 @@ export default function ProfileScreen() {
       </View>
 
       <View style={styles.contentWrapper}>
-        {user && (
-          <View
-            style={styles.userCard}
-            {...a11yGroup(t("profile.loggedInAs", { username: user.username }))}
-          >
-            <View style={styles.avatar} {...a11yHidden()}>
-              <Text style={styles.avatarText}>{user.username.charAt(0).toUpperCase()}</Text>
-            </View>
-            <Text style={styles.username} numberOfLines={1} {...a11yHidden()}>{user.username}</Text>
-          </View>
-        )}
+        {user && <UserCard user={user} />}
 
         {/* ── Classifica ── */}
         {/* Ahead of Statistiche: it's the one card whose control (open the
@@ -593,6 +715,37 @@ const styles = StyleSheet.create({
     paddingHorizontal: Spacing.xs,
     marginBottom: Spacing.xs,
   },
+  userIdentity: { flex: 1, flexDirection: "row", alignItems: "center", gap: Spacing.sm },
+  renameBtn: {
+    width: TOUCH_TARGET_MIN,
+    height: TOUCH_TARGET_MIN,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  renameCard: {
+    gap: Spacing.sm,
+    paddingVertical: Spacing.sm,
+    paddingHorizontal: Spacing.xs,
+    marginBottom: Spacing.xs,
+  },
+  inputRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    minHeight: TOUCH_TARGET_MIN,
+    paddingHorizontal: Spacing.sm,
+    borderWidth: 1,
+    borderColor: Colors.goldBorder,
+    borderRadius: Radius.sm,
+    backgroundColor: Colors.bgCard,
+  },
+  renameInput: {
+    flex: 1,
+    fontFamily: "Inter_400Regular",
+    fontSize: FontSize.md,
+    color: Colors.text,
+  },
+  renameError: { ...Type.caption, color: Colors.dangerDim },
+  renameActions: { flexDirection: "row", gap: Spacing.sm },
   avatar: {
     width: 48,
     height: 48,

@@ -22,6 +22,7 @@ import { en } from "./en.ts";
 export const sq: Record<keyof typeof en, string> = {
   // ---------------------------------------------------------------- common
   "common.cancel": "Anulo",
+  "common.save": "Ruaj",
   "common.close": "Mbyll",
   "common.back": "Prapa",
   "common.loading": "Duke ngarkuar…",
@@ -817,6 +818,13 @@ export const sq: Record<keyof typeof en, string> = {
   // ------------------------------------------------------------- profile.*
   "profile.title": "Profili",
   "profile.loggedInAs": "Identifikuar si {{username}}",
+  "profile.renameA11yLabel": "Ndrysho emrin tënd të përdoruesit",
+  "profile.renamePlaceholder": "Emri i ri i përdoruesit",
+  "profile.renameSaving": "Po ruhet…",
+  "profile.renameTooShort": "Të paktën {{min}} shenja.",
+  "profile.renameTooLong": "Më së shumti {{max}} shenja.",
+  "profile.renameInvalidChars": "Vetëm shkronja, numra dhe nënvija.",
+  "profile.renameFailed": "Emri nuk u ndryshua dot. Provo sërish.",
 
   "profile.statsTitle": "Statistikat",
   "profile.statsLoadingA11yLabel": "Duke ngarkuar statistikat",

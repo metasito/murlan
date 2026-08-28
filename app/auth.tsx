@@ -16,7 +16,8 @@ import { Colors, FontSize, Radius, Spacing, TOUCH_TARGET_MIN, Type } from "@/lib
 import { MenuLayout } from "@/components/MenuLayout";
 import { MenuCard } from "@/components/MenuCard";
 import { MenuButton } from "@/components/MenuButton";
-import { useTranslation, translateServerPayload } from "@/lib/i18n";
+import { useTranslation } from "@/lib/i18n";
+import { serverErrorMessage } from "@/lib/apiError";
 import { a11yHidden, a11yState, useA11yHint } from "@/lib/a11y";
 
 type Tab = "login" | "register";
@@ -50,14 +51,7 @@ export default function AuthScreen() {
       }
       router.replace("/");
     } catch (e: unknown) {
-      const msg = e instanceof Error ? e.message : t("auth.unknownError");
-      const match = msg.match(/\d+: (.+)/);
-      const body = match ? match[1] : msg;
-      try {
-        setError(translateServerPayload(JSON.parse(body)));
-      } catch {
-        setError(body);
-      }
+      setError(serverErrorMessage(e, t("auth.unknownError")));
     }
     setLoading(false);
   }
