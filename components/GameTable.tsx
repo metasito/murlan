@@ -767,6 +767,9 @@ export function GameTable({
   // spreads this onto the one wrapper holding the cover, which would withdraw
   // the cover's own message along with the table it is explaining.
   const behindSheetOnly = a11yVeiled(settingsOpen);
+  // The rail is the one child that answers to a cover but not to the sheet: the sheet is
+  // closed by the knob the rail carries, so veiling it there shuts the reader inside.
+  const behindCoverOnly = a11yVeiled(tableCovered && !settingsOpen);
   const [focusMode, setFocusMode] = useState(false);
   const [playOnLeft, setPlayOnLeft] = useState(false);
   const closeSettings = useCallback(() => setSettingsOpen(false), [setSettingsOpen]);
@@ -1448,6 +1451,7 @@ export function GameTable({
           happily between two controls — so the menu knob takes the head of the
           column, the reactions knob its foot, and the cutout the gap between. */}
       <ControlRail
+        veiled={behindCoverOnly}
         width={frame.rail}
         topPad={frame.tableTop}
         bottomPad={frame.tableBottom}
