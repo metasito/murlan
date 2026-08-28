@@ -13,6 +13,17 @@ import { openApp } from "./helpers/navigation";
 /** Roles whose contents are the control's own face rather than content. */
 const WIDGETS = new Set(["button", "radio", "link", "checkbox", "switch", "tab"]);
 
+/**
+ * A live region is announced, never landed on, so a control inside one is
+ * unreachable by the reader it interrupts (#495).
+ *
+ * This does not fire on the screens below: both live regions in the app render
+ * over the game table, and one of them is veiled until a notification arrives.
+ * It is a guard against the shape coming back, not a check of it — that half is
+ * `tests/native/exchangeAnnounceBothWays.test.tsx`.
+ */
+const LIVE = new Set(["alert", "status", "log"]);
+
 const SCREENS = ["/", "/lobby", "/rules"];
 
 interface AxNode {
@@ -48,6 +59,20 @@ for (const screen of SCREENS) {
         if (!child.ignored && child.name?.value?.trim()) {
           offenders.push(
             `${widget.role?.value} "${widget.name?.value}" -> ${child.role?.value} "${child.name.value}"`
+          );
+        }
+        stack.push(...(child.childIds ?? []));
+      }
+    }
+
+    for (const region of nodes.filter((n) => !n.ignored && LIVE.has(n.role?.value ?? ""))) {
+      const stack = [...(region.childIds ?? [])];
+      while (stack.length) {
+        const child = byId.get(stack.pop()!);
+        if (!child) continue;
+        if (!child.ignored && WIDGETS.has(child.role?.value ?? "")) {
+          offenders.push(
+            `${region.role?.value} "${region.name?.value}" encloses ${child.role?.value} "${child.name?.value}"`
           );
         }
         stack.push(...(child.childIds ?? []));

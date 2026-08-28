@@ -92,8 +92,9 @@ Verify against source before changing any.
   `a11yHidden()`. This is a web defect and only a web one: `Pressable`'s `accessible` default
   becomes `isAccessibilityElement` on iOS, which makes the view a UIKit leaf, and
   react-native-web forwards the prop nowhere, so on web the children stay live under a node
-  that is already named. Two exceptions, both live regions that announce their own contents
-  rather than their label (#495). Pinned by `tests/a11yOneNode.test.ts` (the props),
+  that is already named. No exceptions: a live region announces rather than being landed on,
+  so it is a node of its own (`A11yStatus`) and never a control. Pinned by
+  `tests/a11yOneNode.test.ts` (the props),
   `tests/e2e/oneAccessibleNode.spec.ts` (the browser's own tree, which is the only place the
   claim is true or false) and `tests/native/a11yCollapse.test.tsx`.
 - **Every `<Modal>` declares `supportedOrientations` including landscape**, or iOS rotates

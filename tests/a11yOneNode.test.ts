@@ -46,9 +46,10 @@ const HIDDEN = /\.\.\.a11yHidden\(\s*(true\s*)?\)|accessibilityElementsHidden|ar
 const LABELLED = /accessibilityLabel=/;
 
 /**
- * Controls whose child must stay reachable, with the reason. Short by design:
- * nearly every candidate is the same defect with the same one-prop fix, so a
- * long list here would be bugs wearing the costume of decisions.
+ * Controls whose child must stay reachable, with the reason. Empty, and that is
+ * the state rather than an aspiration: the two entries this once held were live
+ * regions carried by a control, and #495 gave each its own node instead. A new
+ * entry is a claim that some control is different, and it needs to say how.
  */
 const DELIBERATELY_REACHABLE: [string, string, string][] = [];
 
