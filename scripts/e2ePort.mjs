@@ -1,15 +1,14 @@
 /**
  * Which port an e2e run takes.
  *
- * Playwright refuses a busy port before it ever runs the `webServer` command, so the port has
- * to be free by the time the run starts. `npm run test:e2e` used to guarantee that by killing
- * whoever held it — which is exactly how two concurrent runs took each other's server (#491).
- * A run that picks a port already free has nothing to kill.
+ * Playwright refuses a busy port before it ever runs the `webServer` command, so the port has to
+ * be free by the time a run starts. Freeing it by killing whoever holds it is what a run must
+ * never do: on a machine running two of them, that is the other run's server.
  *
  * The base port still wins whenever it can, so the common case is the documented one and a
  * reader looking for a run's server finds it at 5199. It only moves for a live neighbour.
  */
-import { readFileSync, writeFileSync } from "node:fs";
+import { readFileSync, rmSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { clearPort, portListeners, staleAmong } from "./reap.mjs";
@@ -37,7 +36,10 @@ export function chooseE2ePort(base, { listeners, staleAmong, claimedBy, claim })
     const stale = held.length ? staleAmong(held) : [];
     // Half a port's holders killed frees nothing and breaks whoever owned the other half.
     if (held.length && stale.length !== held.length) continue;
-    claim(port);
+    // Reading a claim and writing one are two steps, so two runs starting in the same instant
+    // both get here. `claim` is an exclusive create and settles it: one wins, the other is
+    // told now rather than when its server cannot bind.
+    if (!claim(port)) continue;
     return { port, clear: stale };
   }
   throw new Error(
@@ -55,6 +57,13 @@ export function chooseE2ePort(base, { listeners, staleAmong, claimedBy, claim })
  */
 const claimFile = (port) => path.join(os.tmpdir(), `murlan-e2e-port-${port}`);
 
+/**
+ * Longer than any run, and short enough that an operating system reusing a pid cannot make a
+ * claim outlive the run that filed it. Without this, a recycled pid reads as a live claim and
+ * skips that port for as long as the unrelated process happens to live.
+ */
+export const CLAIM_TTL_MS = 30 * 60_000;
+
 const alive = (pid) => {
   try {
     process.kill(pid, 0);
@@ -65,14 +74,42 @@ const alive = (pid) => {
 };
 
 /** The live process claiming `port`, or null — including when there is no claim file at all. */
-export function claimedBy(port, self) {
-  let pid;
+export function claimedBy(port, self, now = Date.now()) {
+  let pid, at;
   try {
-    pid = Number(readFileSync(claimFile(port), "utf8").trim());
+    [pid, at] = readFileSync(claimFile(port), "utf8").trim().split(/\s+/).map(Number);
   } catch {
     return null;
   }
-  return Number.isFinite(pid) && pid !== self && alive(pid) ? pid : null;
+  if (!Number.isFinite(pid) || pid === self) return null;
+  if (!Number.isFinite(at) || now - at > CLAIM_TTL_MS) return null;
+  return alive(pid) ? pid : null;
+}
+
+/**
+ * Files the claim, or reports that somebody else got there first.
+ *
+ * `wx` is the whole mechanism: an exclusive create is one operation the filesystem serialises,
+ * so of two runs picking the same port in the same instant exactly one succeeds. A claim that
+ * is merely *present* is not a winner — a dead or expired one is replaced, which is also the
+ * only cleanup these files need.
+ */
+export function claimPort(port, owner, now = Date.now()) {
+  const file = claimFile(port);
+  const write = (flag) => writeFileSync(file, `${owner} ${now}`, { flag });
+  try {
+    write("wx");
+    return true;
+  } catch {
+    if (claimedBy(port, owner, now) !== null) return false;
+  }
+  try {
+    rmSync(file, { force: true });
+    write("wx");
+    return true;
+  } catch {
+    return false; // Somebody claimed it between the remove and the create.
+  }
 }
 
 /**
@@ -88,7 +125,7 @@ export function takeE2ePort(base = Number(process.env.E2E_PORT ?? BASE_PORT), ow
     listeners: portListeners,
     staleAmong,
     claimedBy: (port) => claimedBy(port, owner),
-    claim: (port) => writeFileSync(claimFile(port), String(owner)),
+    claim: (port) => claimPort(port, owner),
   });
   if (chosen.clear.length) clearPort(chosen.port);
   return chosen.port;

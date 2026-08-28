@@ -18,7 +18,7 @@ const machine = (
   listeners: (port: number) => held[port] ?? [],
   staleAmong: (pids: number[]) => pids.filter((pid) => stale.includes(pid)),
   claimedBy: (port: number) => claimed[port] ?? null,
-  claim: () => {},
+  claim: () => true,
 });
 
 describe("choosing the port an e2e run will take", () => {
@@ -82,9 +82,33 @@ describe("choosing the port an e2e run will take", () => {
     const claimed: number[] = [];
     const { port } = chooseE2ePort(5199, {
       ...machine({}),
-      claim: (p: number) => claimed.push(p),
+      claim: (p: number) => {
+        claimed.push(p);
+        return true;
+      },
     });
     assert.deepEqual(claimed, [port]);
+  });
+
+  // Reading a claim and then writing one is two steps, and two runs starting in the same
+  // instant both read "unclaimed" before either writes. The claim itself is what settles it:
+  // it is an exclusive create, so exactly one of them can succeed, and the loser is told so
+  // here rather than finding out when its server cannot bind.
+  test("a claim that loses the race sends the run to the next port", () => {
+    const lost: number[] = [];
+    const { port } = chooseE2ePort(5199, {
+      ...machine({}),
+      claim: (p: number) => {
+        lost.push(p);
+        return p !== 5199;
+      },
+    });
+    assert.equal(port, 5200);
+    assert.deepEqual(lost, [5199, 5200], "it tried the base first and was refused");
+  });
+
+  test("gives up when every port refuses the claim", () => {
+    assert.throws(() => chooseE2ePort(5199, { ...machine({}), claim: () => false }), /5199/);
   });
 
   test("a listener and a claim are both disqualifying, in either order", () => {

@@ -2,11 +2,8 @@ import { defineConfig, devices } from "@playwright/test";
 import { execFileSync } from "node:child_process";
 import { resolve } from "node:path";
 
-// Chosen per run, rather than taken from whoever holds it. Playwright refuses a busy port before
-// it ever runs the `webServer` command, so `npm run test:e2e` used to free it unconditionally —
-// which is how two concurrent runs took each other's server (#491). This is the one place that
-// knows both `baseURL` and the command, so it is the one place that can hand a port to the
-// server, the health check and every spec at once.
+// This is the one place that knows both `baseURL` and the `webServer` command, so it is the one
+// place that can hand a single port to the server, the health check and every spec at once.
 //
 // Run rather than imported: Playwright loads this config as CommonJS, which cannot `require`
 // scripts/e2ePort.mjs. An explicit E2E_PORT still wins, so a proof can pin its own.
