@@ -38,6 +38,8 @@ const POSITION_LABEL_KEYS: TranslationKey[] = [
 ];
 
 /** Stagger between ranking rows, after an initial beat. */
+/** The trophy badge's diameter. It is not a touch target — nothing presses it. */
+const TROPHY_D = 44;
 const RANK_STAGGER_MS = 80;
 const RANK_LEAD_IN_MS = 300;
 
@@ -419,8 +421,8 @@ const styles = StyleSheet.create({
     top: -30,
   },
   trophyCircle: {
-    width: TOUCH_TARGET_MIN,
-    height: TOUCH_TARGET_MIN,
+    width: TROPHY_D,
+    height: TROPHY_D,
     borderRadius: Radius.full,
     overflow: "hidden",
     borderWidth: 2,

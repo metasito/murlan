@@ -27,16 +27,16 @@ import {
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
 /**
- * Pressables whose box is a number computed at render, so there is no style to read. Each
- * names where the number comes from; the arithmetic itself is asserted further down, which
- * is the half a source scan cannot do.
+ * Pressables whose box is a number computed at render, so there is no style to read. Each names
+ * where the number comes from. The two that scale with the table have their arithmetic asserted
+ * at the bottom of this file, which is the half a source scan cannot do; the other two are read
+ * off a style the scan does see, one indirection away.
  */
 const SIZED_AT_RUNTIME: [string, number, string][] = [
   ["components/GameTable.tsx", 2, "PASSA and GIOCA take `actionBtnSize(scale)`, floored at ACTION_BTN_FLOOR"],
   ["components/table/chrome.tsx", 1, "the rail's knobs take `physicalTouchTarget(scale)`, floored at TOUCH_TARGET_MIN"],
   ["components/MenuButton.tsx", 1, "the box is `styles[size]`, one of three steps the scan reads as declared styles in their own right"],
-  ["components/GameOverOverlay.tsx", 1, "the rematch button's box is the gradient it wraps, which declares the floor"],
-  ["components/table/settingsSheet.tsx", 1, "the exit button's box is the gradient it wraps, sized `EXIT_PAD_V * scale`"],
+  ["components/GameOverOverlay.tsx", 1, "the rematch button's box is `rematchGradient`, which declares the floor"],
 ];
 
 /**
@@ -67,40 +67,48 @@ const UNDER_THE_FLOOR: [string, number, string][] = [
   ["app/(online)/room.tsx", 1, "an invite row is 36pt in landscape, which is the orientation the game plays in; #493"],
   ["components/ReplayControls.tsx", 1, "a move row is one text line inside 4pt of padding; #493"],
   ["app/index.tsx", 2, "the logout button is caption text inside 2pt of padding; #493"],
+  ["components/table/settingsSheet.tsx", 1, "the exit button is `EXIT_PAD_V * scale` around a 12.5pt label: ~35pt at scale 1, ~29pt on an iPhone SE; #493"],
 ];
 
-type Candidate = { file: string; line: number; effective: number | null };
+type Candidate = { file: string; line: number; width: number | null; height: number | null };
+
+/** Whether `source` imports `object` from somewhere else, rather than declaring it. */
+const imports = (source: string, object: string) =>
+  new RegExp(String.raw`import\s[^;]*\b${object}\b[^;]*from`).test(source);
 
 /**
- * Every pressable node in the app, with the box its declared styles give it.
+ * Every pressable node in the app, with the box its declared styles give it, per dimension.
  *
- * A style sheet and the node wearing it need not share a file, so an accessor declared
- * anywhere is offered to every file that names its object — the hole that made
- * `rotateOverlay` invisible to #404's first draft, one guard over.
+ * A style sheet and the node wearing it need not share a file — `rotateOverlay.tsx` wears
+ * `portraitOverlayStyles.overlay`, which `chrome.tsx` declares — so an accessor this file does
+ * not declare is looked up elsewhere. Only when this file actually *imports* that object:
+ * 78 accessor names are declared in more than one file, `styles` above all, and matching on the
+ * bare name lets a pressable borrow an unrelated file's box and pass on it.
  *
- * `null` means no style it wears declares a size at all. That is not a pass: a box that
- * comes from padding, from flex or from a runtime prop is not decidable from source, which
- * is exactly why the caller refuses it rather than judging it.
+ * A `null` dimension is one no style it wears declares. That is not a pass: a box that comes
+ * from padding, from flex or from a runtime prop is not decidable from source, which is exactly
+ * why the caller refuses it rather than judging it.
  */
 export function pressableBoxes(files: string[], read: (rel: string) => string): Candidate[] {
   const sources = new Map(files.map((f) => [f, blankComments(read(f))]));
   const sheets = new Map([...sources].map(([f, s]) => [f, styleSheetEntries(s)]));
-  const declaredIn = new Map<string, { file: string; body: string }>();
-  for (const [file, entries] of sheets) {
-    for (const [accessor, body] of entries) declaredIn.set(accessor, { file, body });
+  const declaredIn = new Map<string, string>();
+  for (const [, entries] of sheets) {
+    for (const [accessor, body] of entries) declaredIn.set(accessor, body);
   }
 
   const out: Candidate[] = [];
   for (const [file, source] of sources) {
     const local = sheets.get(file)!;
+    const declaresObject = new Set([...local.keys()].map((a) => a.split(".")[0]));
     for (const node of pressableNodes(source)) {
       const bodies = node.accessors
         .map((a) => {
           const here = local.get(a);
           if (here !== undefined) return here;
-          const elsewhere = declaredIn.get(a);
-          const named = new RegExp(String.raw`\b${a.split(".")[0]}\b`).test(source);
-          return elsewhere && named ? elsewhere.body : undefined;
+          const object = a.split(".")[0];
+          if (declaresObject.has(object) || !imports(source, object)) return undefined;
+          return declaredIn.get(a);
         })
         .filter((b): b is string => b !== undefined);
 
@@ -111,18 +119,29 @@ export function pressableBoxes(files: string[], read: (rel: string) => string): 
       ) {
         continue;
       }
-      const sizes = bodies
-        .map((b) => declaredBox(b, TOUCH_TARGET_MIN))
-        .filter((n): n is number => n !== null);
+      const slop = hitSlopGrowth(node.tag, Spacing);
+      const grown = (n: number | null) => (n === null ? null : n + slop);
+      const boxes = bodies.map((b) => declaredBox(b, TOUCH_TARGET_MIN));
+      const widest = (side: "width" | "height") => {
+        const found = boxes.map((b) => b[side]).filter((n): n is number => n !== null);
+        return found.length ? Math.max(...found) : null;
+      };
       out.push({
         file,
         line: node.line,
-        effective: sizes.length ? Math.max(...sizes) + hitSlopGrowth(node.tag, Spacing) : null,
+        width: grown(widest("width")),
+        height: grown(widest("height")),
       });
     }
   }
   return out;
 }
+
+/** A dimension a style declares must reach the floor; one none of them declares is a question. */
+const measuresUp = (c: Candidate) =>
+  (c.width !== null || c.height !== null) &&
+  (c.width ?? TOUCH_TARGET_MIN) >= TOUCH_TARGET_MIN &&
+  (c.height ?? TOUCH_TARGET_MIN) >= TOUCH_TARGET_MIN;
 
 const read = (rel: string) => readFileSync(path.join(repoRoot, rel), "utf8");
 
@@ -135,33 +154,35 @@ test("the touch minimum is the iOS HIG floor", () => {
 // a silent hole. #393 promoted a control whose style already declared the floor as a literal,
 // absent from every list here; nothing would have noticed had it been 32.
 test("every control's touch size has been ruled on", () => {
-  const candidates = pressableBoxes(scannedFiles(repoRoot), read);
   const byFile = new Map<string, Candidate[]>();
-  for (const c of candidates) {
-    if (c.effective !== null && c.effective >= TOUCH_TARGET_MIN) continue;
+  for (const c of pressableBoxes(scannedFiles(repoRoot), read)) {
+    if (measuresUp(c)) continue;
     byFile.set(c.file, [...(byFile.get(c.file) ?? []), c]);
   }
 
+  const lists = [SIZED_AT_RUNTIME, NOT_A_TARGET, UNDER_THE_FLOOR].flat();
   const claimed = (file: string) =>
-    [SIZED_AT_RUNTIME, NOT_A_TARGET, UNDER_THE_FLOOR]
-      .flat()
-      .filter(([f]) => f === file)
-      .reduce((n, [, c]) => n + c, 0);
+    lists.filter(([f]) => f === file).reduce((n, [, c]) => n + c, 0);
 
-  const unruled: string[] = [];
-  for (const [file, found] of byFile) {
+  // Every file either list names, so a claim that no longer matches anything is a failure too:
+  // a stale entry is a claim going spare, and the next control added to that file inherits it.
+  const files = new Set([...byFile.keys(), ...lists.map(([f]) => f)]);
+  const wrong: string[] = [];
+  for (const file of files) {
+    const found = byFile.get(file) ?? [];
     if (claimed(file) === found.length) continue;
     const shown = found.map(
-      (c) => `      line ${c.line}: ${c.effective === null ? "no declared box" : `${c.effective}pt`}`
+      (c) => `      line ${c.line}: ${c.width ?? "?"} x ${c.height ?? "?"}`
     );
-    unruled.push([`${file}: ${found.length} unmeasured, ${claimed(file)} classified`, ...shown].join("\n"));
+    wrong.push([`${file}: ${found.length} unmeasured, ${claimed(file)} classified`, ...shown].join("\n"));
   }
 
   assert.deepEqual(
-    unruled,
+    wrong,
     [],
-    "classify each of these into SIZED_AT_RUNTIME, NOT_A_TARGET or UNDER_THE_FLOOR — a control " +
-      `nobody has ruled on is a control nobody has measured:\n  ${unruled.join("\n  ")}`
+    "each of these needs one entry in SIZED_AT_RUNTIME, NOT_A_TARGET or UNDER_THE_FLOOR, and no " +
+      "more: a control nobody has ruled on is a control nobody has measured, and a claim with " +
+      "nothing left to cover is one the next control will inherit"
   );
 });
 
@@ -171,13 +192,47 @@ test("the scan finds the app's controls, and reads a real box", () => {
   const candidates = pressableBoxes(scannedFiles(repoRoot), read);
   assert.ok(candidates.length > 80, `only ${candidates.length} pressables found`);
   assert.ok(
-    candidates.filter((c) => c.effective !== null).length > 50,
+    candidates.filter(measuresUp).length > 50,
     "no candidate has a box the reader could measure"
   );
   // MenuButton is the in-repo reference for what this project considers a correct control.
   const md = styleSheetEntries(read("components/MenuButton.tsx")).get("sizeStyles.md");
   assert.ok(md, "MenuButton no longer declares a md size");
-  assert.equal(declaredBox(md, TOUCH_TARGET_MIN), 52);
+  assert.deepEqual(declaredBox(md, TOUCH_TARGET_MIN), { width: null, height: 52 });
+});
+
+test("a box has to clear the floor in both dimensions, and only its own", () => {
+  const box = (body: string) => declaredBox(body, TOUCH_TARGET_MIN);
+  const at = (width: number | null, height: number | null) => ({ file: "x", line: 1, width, height });
+
+  // A 200pt-wide control 20pt tall is a 20pt-tall control.
+  assert.deepEqual(box("width: 200, height: 20"), { width: 200, height: 20 });
+  assert.equal(measuresUp(at(200, 20)), false);
+  assert.equal(measuresUp(at(44, 44)), true);
+  // One dimension declared and one from padding: the declared half is all there is to check.
+  assert.equal(measuresUp(at(null, 44)), true);
+  assert.equal(measuresUp(at(null, 20)), false);
+  assert.equal(measuresUp(at(null, null)), false, "an undeclared box is a question, not a pass");
+
+  // An offset is not a box.
+  assert.deepEqual(box("height: 20, shadowOffset: { width: 44, height: 44 }"), {
+    width: null,
+    height: 20,
+  });
+  assert.deepEqual(box("minHeight: TOUCH_TARGET_MIN"), { width: null, height: 44 });
+});
+
+test("a pressable cannot borrow a same-named style from a file it does not import", () => {
+  const seeded = new Map([
+    ["components/Big.tsx", `const styles = StyleSheet.create({ btn: { height: 60, width: 60 } });\n`],
+    [
+      "components/Small.tsx",
+      `const styles = StyleSheet.create({ other: { height: 60 } });\n` +
+        `export const S = () => <Pressable style={styles.btn} onPress={go} />;\n`,
+    ],
+  ]);
+  const found = pressableBoxes([...seeded.keys()], (f) => seeded.get(f)!);
+  assert.deepEqual(found, [{ file: "components/Small.tsx", line: 2, width: null, height: null }]);
 });
 
 test("a control nobody has ruled on fails, naming itself", () => {
@@ -190,7 +245,7 @@ test("a control nobody has ruled on fails, naming itself", () => {
   const found = pressableBoxes([...seeded.keys()], (f) => seeded.get(f)!).filter(
     (c) => c.file === "components/Seeded.tsx"
   );
-  assert.deepEqual(found, [{ file: "components/Seeded.tsx", line: 2, effective: 20 }]);
+  assert.deepEqual(found, [{ file: "components/Seeded.tsx", line: 2, width: null, height: 20 }]);
 });
 
 // A file already in a list is the case a plain per-file exemption gets wrong: it clears the

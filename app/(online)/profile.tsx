@@ -82,6 +82,8 @@ const PLACEMENT_COLORS = [
   Colors.podiumBronze,
   Colors.textMuted,
 ];
+/** The floor a stat tile and an achievement row read at. Neither takes a press. */
+const READABLE_ROW_H = 44;
 const FORM_KEY_W = 34;
 const FORM_VALUE_W = 28;
 const placementColor = (placement: number) => PLACEMENT_COLORS[placement - 1] ?? Colors.textMuted;
@@ -598,7 +600,7 @@ const styles = StyleSheet.create({
   statsGrid: { flexDirection: "row", flexWrap: "wrap", gap: Spacing.sm },
   statTile: {
     width: "31%",
-    minHeight: TOUCH_TARGET_MIN,
+    minHeight: READABLE_ROW_H,
     backgroundColor: Colors.bgSurface,
     borderRadius: Radius.md,
     borderWidth: 1,
@@ -713,7 +715,7 @@ const styles = StyleSheet.create({
     borderColor: Colors.goldBorder,
     padding: Spacing.sm,
     gap: Spacing.sm,
-    minHeight: TOUCH_TARGET_MIN,
+    minHeight: READABLE_ROW_H,
   },
   achievementRowLocked: { borderColor: Colors.border, opacity: 0.7 },
   achievementIcon: {

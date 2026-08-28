@@ -164,18 +164,35 @@ export function pressableNodes(source: string): PressableNode[] {
   return out;
 }
 
-const SIZE = /\b(?:minHeight|minWidth|height|width)\s*:\s*(TOUCH_TARGET_MIN|\d+(?:\.\d+)?)/g;
+const SIZE = /\b(min)?(Height|Width|height|width)\s*:\s*(TOUCH_TARGET_MIN|\d+(?:\.\d+)?)/g;
+
+/** The top level of a `{…}` body, with every nested object blanked out. */
+function topLevel(body: string): string {
+  let depth = 0;
+  return [...body].map((c) => (c === "{" ? (depth++, " ") : c === "}" ? (depth--, " ") : depth ? " " : c)).join("");
+}
+
+export type Box = { width: number | null; height: number | null };
 
 /**
- * The largest box `body` declares, with the token resolved to `floor`, or null when it declares
- * none — a box that comes from padding, from flex or from a runtime prop reads as null, which is
- * a question for the caller rather than a pass.
+ * The box `body` declares, per dimension, with the token resolved to `floor`.
+ *
+ * Per dimension and not as one number, because a target has to be wide enough *and* tall
+ * enough: `{ width: 200, height: 20 }` is a 20pt-tall control, however wide it is. A `null`
+ * dimension is one no style declares — it comes from padding, from flex or from a runtime
+ * prop, which is not decidable from source and so is a question for the caller rather than
+ * a pass.
+ *
+ * Only the top level counts: `shadowOffset: { width: 44, height: 44 }` is an offset, not a box.
  */
-export function declaredBox(body: string, floor: number): number | null {
-  const sizes = [...body.matchAll(SIZE)].map((m) =>
-    m[1] === "TOUCH_TARGET_MIN" ? floor : Number(m[1])
-  );
-  return sizes.length ? Math.max(...sizes) : null;
+export function declaredBox(body: string, floor: number): Box {
+  const out: Box = { width: null, height: null };
+  for (const m of topLevel(body).matchAll(SIZE)) {
+    const side = m[2].toLowerCase() === "width" ? "width" : "height";
+    const n = m[3] === "TOUCH_TARGET_MIN" ? floor : Number(m[3]);
+    out[side] = Math.max(out[side] ?? 0, n);
+  }
+  return out;
 }
 
 /**
@@ -183,7 +200,7 @@ export function declaredBox(body: string, floor: number): number | null {
  * A form this does not read returns 0, which understates the node and sends it to be
  * classified rather than silently passing it.
  */
-export function hitSlopGrowth(tag: string, spacing: Record<string, number> = {}): number {
+export function hitSlopGrowth(tag: string, spacing: Record<string, number>): number {
   const m = /hitSlop=\{\s*(?:Spacing\.(\w+)|(\d+(?:\.\d+)?))\s*\}/.exec(tag);
   if (!m) return 0;
   const inset = m[1] !== undefined ? spacing[m[1]] : Number(m[2]);

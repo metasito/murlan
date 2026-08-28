@@ -146,14 +146,19 @@ describe("44 in a size property is the touch floor, written as a number", () => 
     assert.ok(!touch("const s = { minHeight: TOUCH_TARGET_MIN };"));
   });
 
-  // The sizes the rule must leave alone are why it names one value rather than
-  // banning bare numbers on these properties: each of these is a real style in
-  // this repo, and none of them is a touch target.
+  // Each of these is a real style in this repo, and none of them is a touch target.
   test("a size that is not the floor is accepted", () => {
     assert.ok(!touch("const s = { minWidth: 0 };"), "the flex truncation idiom");
     assert.ok(!touch("const s = { minWidth: 28 };"), "a badge");
     assert.ok(!touch("const s = { minHeight: 120 };"), "a text area");
     assert.ok(!touch("const s = { minHeight: 52 };"), "MenuButton's md step");
+  });
+
+  // The rule sees a style object, never who wears it, so it cannot tell a control from a
+  // trophy badge that happens to be 44 across. The escape is the one the design system
+  // already allows for the scaled literals, and it makes the distinction say itself.
+  test("a decorative box takes a named constant", () => {
+    assert.ok(!touch("const TROPHY_D = 44; const s = { width: TROPHY_D };"));
   });
 
   test("44 outside a size property is accepted", () => {
