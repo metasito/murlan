@@ -688,6 +688,7 @@ const styles = StyleSheet.create({
   menuScroll: { flex: 1 },
   menu: { flexGrow: 1, paddingHorizontal: Spacing.lg, justifyContent: "center", gap: Spacing.cosy },
   menuButton: {
+    minHeight: TOUCH_TARGET_MIN,
     flexDirection: "row",
     alignItems: "center",
     backgroundColor: Colors.bgSurface,

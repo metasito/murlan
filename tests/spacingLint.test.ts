@@ -23,6 +23,7 @@ const selectors = require("../eslint.selectors.cjs") as {
   SCALED_LITERAL: string;
   TOKEN_AS_STRING: string;
   TOKEN_AS_TEMPLATE: string;
+  TOUCH_TARGET_LITERAL: string;
 };
 
 const linter = new Linter({ configType: "flat" });
@@ -132,6 +133,36 @@ describe("a design token written as a string", () => {
   });
 });
 
+describe("44 in a size property is the touch floor, written as a number", () => {
+  const touch = (code: string) => violations(code, selectors.TOUCH_TARGET_LITERAL) > 0;
+
+  for (const prop of ["minHeight", "minWidth", "height", "width"]) {
+    test(`${prop}: 44 is refused`, () => {
+      assert.ok(touch(`const s = { ${prop}: 44 };`));
+    });
+  }
+
+  test("the token itself is accepted", () => {
+    assert.ok(!touch("const s = { minHeight: TOUCH_TARGET_MIN };"));
+  });
+
+  // The sizes the rule must leave alone are why it names one value rather than
+  // banning bare numbers on these properties: each of these is a real style in
+  // this repo, and none of them is a touch target.
+  test("a size that is not the floor is accepted", () => {
+    assert.ok(!touch("const s = { minWidth: 0 };"), "the flex truncation idiom");
+    assert.ok(!touch("const s = { minWidth: 28 };"), "a badge");
+    assert.ok(!touch("const s = { minHeight: 120 };"), "a text area");
+    assert.ok(!touch("const s = { minHeight: 52 };"), "MenuButton's md step");
+  });
+
+  test("44 outside a size property is accepted", () => {
+    assert.ok(!touch("const s = { lineHeight: 44 };"));
+    assert.ok(!touch("export const TOUCH_TARGET_MIN = 44;"));
+    assert.ok(!touch("const n = 44;"));
+  });
+});
+
 describe("the selectors under test are the ones that ship", () => {
   // Without this the suite could pass against selectors nobody runs.
   test("eslint.config.js uses each of them by reference", () => {
@@ -146,7 +177,12 @@ describe("the selectors under test are the ones that ship", () => {
       .filter((entry): entry is { selector: string } => typeof entry === "object" && entry !== null);
 
     const shipped = restricted.map((entry) => entry.selector);
-    for (const name of ["SCALED_LITERAL", "TOKEN_AS_STRING", "TOKEN_AS_TEMPLATE"] as const) {
+    for (const name of [
+      "SCALED_LITERAL",
+      "TOKEN_AS_STRING",
+      "TOKEN_AS_TEMPLATE",
+      "TOUCH_TARGET_LITERAL",
+    ] as const) {
       assert.ok(
         shipped.includes(selectors[name]),
         `${name} is not among the selectors eslint.config.js enforces`

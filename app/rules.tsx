@@ -14,7 +14,7 @@ import Animated, {
 } from "react-native-reanimated";
 import { LinearGradient } from "expo-linear-gradient";
 import Ionicons from "@expo/vector-icons/Ionicons";
-import { Colors, FontSize, Radius, Spacing, Type } from "@/lib/theme";
+import { Colors, FontSize, Radius, Spacing, TOUCH_TARGET_MIN, Type } from "@/lib/theme";
 import { MenuLayout } from "@/components/MenuLayout";
 import { usePrefersReducedMotion } from "@/lib/accessibility";
 import { useTranslation, type TranslationKey } from "@/lib/i18n";
@@ -211,8 +211,8 @@ const styles = StyleSheet.create({
     borderBottomColor: Colors.border,
   },
   backBtn: {
-    width: 44,
-    height: 44,
+    width: TOUCH_TARGET_MIN,
+    height: TOUCH_TARGET_MIN,
     alignItems: "center",
     justifyContent: "center",
   },
@@ -268,7 +268,7 @@ const styles = StyleSheet.create({
     marginTop: Spacing.cosy,
     paddingHorizontal: Spacing.cosy,
     paddingVertical: Spacing.sm,
-    minHeight: 44,
+    minHeight: TOUCH_TARGET_MIN,
     borderRadius: Radius.sm,
     backgroundColor: Colors.goldMuted,
     borderWidth: 1,
@@ -371,7 +371,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "space-between",
     paddingVertical: Spacing.wide,
-    minHeight: 44,
+    minHeight: TOUCH_TARGET_MIN,
     gap: Spacing.cosy,
   },
   faqQuestionText: {

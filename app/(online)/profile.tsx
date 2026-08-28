@@ -11,7 +11,7 @@ import { router } from "expo-router";
 import Ionicons from "@expo/vector-icons/Ionicons";
 import { useQuery } from "@tanstack/react-query";
 import { useAuth } from "@/context/AuthContext";
-import { Colors, Spacing, Radius, FontSize, Type, Motion } from "@/lib/theme";
+import { Colors, Spacing, Radius, FontSize, Type, Motion, TOUCH_TARGET_MIN } from "@/lib/theme";
 import { MenuLayout } from "@/components/MenuLayout";
 import { MenuCard } from "@/components/MenuCard";
 import {
@@ -554,8 +554,8 @@ const styles = StyleSheet.create({
     borderBottomColor: Colors.border,
   },
   backBtn: {
-    width: 44,
-    height: 44,
+    width: TOUCH_TARGET_MIN,
+    height: TOUCH_TARGET_MIN,
     alignItems: "center",
     justifyContent: "center",
   },
@@ -598,7 +598,7 @@ const styles = StyleSheet.create({
   statsGrid: { flexDirection: "row", flexWrap: "wrap", gap: Spacing.sm },
   statTile: {
     width: "31%",
-    minHeight: 44,
+    minHeight: TOUCH_TARGET_MIN,
     backgroundColor: Colors.bgSurface,
     borderRadius: Radius.md,
     borderWidth: 1,
@@ -685,7 +685,7 @@ const styles = StyleSheet.create({
     borderColor: Colors.border,
     padding: Spacing.sm,
     gap: Spacing.sm,
-    minHeight: 44,
+    minHeight: TOUCH_TARGET_MIN,
   },
   posBadge: {
     width: 32,
@@ -713,7 +713,7 @@ const styles = StyleSheet.create({
     borderColor: Colors.goldBorder,
     padding: Spacing.sm,
     gap: Spacing.sm,
-    minHeight: 44,
+    minHeight: TOUCH_TARGET_MIN,
   },
   achievementRowLocked: { borderColor: Colors.border, opacity: 0.7 },
   achievementIcon: {

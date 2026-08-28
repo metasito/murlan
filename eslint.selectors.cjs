@@ -27,6 +27,16 @@ const SCALED_LITERAL =
   `Property[key.name=/^(${SCALED_PROPS})$/] > ${BARE_NUMBER}, ` +
   `Property[key.name=/^(${SCALED_PROPS})$/] > UnaryExpression > ${BARE_NUMBER}`;
 
+// 44 in a size property is the iOS HIG touch floor and nothing else — every one
+// of the sites this found was a control. Narrowing to the single value is what
+// makes the rule expressible: banning bare numbers on these properties outright
+// would flag `minWidth: 0` (the flex truncation idiom), a 28pt badge and a 120pt
+// text area, none of which belong on a scale.
+const SIZE_PROPS = 'minHeight|minWidth|height|width';
+const TOUCH_TARGET_LITERAL = `Property[key.name=/^(${SIZE_PROPS})$/] > Literal[raw="44"]`;
+const TOUCH_TARGET_LITERAL_MESSAGE =
+  'This is TOUCH_TARGET_MIN written as a bare number. Import it from lib/tokens — a literal cannot be found by the sweep that checks controls meet the floor.';
+
 const TOKEN_AS_STRING = `Literal[value=/^(${TOKEN_OBJECTS})\\.[A-Za-z0-9_]+$/]`;
 const TOKEN_AS_TEMPLATE = `TemplateElement[value.raw=/^(${TOKEN_OBJECTS})\\.[A-Za-z0-9_]+$/]`;
 
@@ -39,8 +49,11 @@ module.exports = {
   TOKEN_OBJECTS,
   SPACING_PROPS,
   SCALED_PROPS,
+  SIZE_PROPS,
   BARE_NUMBER,
   SCALED_LITERAL,
+  TOUCH_TARGET_LITERAL,
+  TOUCH_TARGET_LITERAL_MESSAGE,
   TOKEN_AS_STRING,
   TOKEN_AS_TEMPLATE,
   STRING_TOKEN_MESSAGE,

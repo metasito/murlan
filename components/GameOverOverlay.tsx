@@ -419,8 +419,8 @@ const styles = StyleSheet.create({
     top: -30,
   },
   trophyCircle: {
-    width: 44,
-    height: 44,
+    width: TOUCH_TARGET_MIN,
+    height: TOUCH_TARGET_MIN,
     borderRadius: Radius.full,
     overflow: "hidden",
     borderWidth: 2,

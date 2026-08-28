@@ -14,7 +14,7 @@ import {
   computeScreenPads,
   notificationTopOffset,
 } from "@/components/gameTableModel";
-import { Colors, Spacing, Radius, Type, Shadow } from "@/lib/theme";
+import { Colors, Spacing, Radius, Type, Shadow, TOUCH_TARGET_MIN } from "@/lib/theme";
 import { usePrefersReducedMotion } from "@/lib/accessibility";
 import { useTranslation } from "@/lib/i18n";
 import type { NotificationType, NotificationData } from "@/context/NotificationContext";
@@ -231,8 +231,8 @@ const styles = StyleSheet.create({
     lineHeight: 16,
   },
   closeBtn: {
-    width: 44,
-    height: 44,
+    width: TOUCH_TARGET_MIN,
+    height: TOUCH_TARGET_MIN,
     marginVertical: -Spacing.cosy,
     marginRight: -Spacing.sm,
     alignItems: "center",

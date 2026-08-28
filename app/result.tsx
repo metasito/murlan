@@ -25,7 +25,7 @@ import Ionicons from "@expo/vector-icons/Ionicons";
 import { useGame } from "@/context/GameContext";
 import { usePrefersReducedMotion } from "@/lib/accessibility";
 import { standings } from "@/lib/standings";
-import { Colors, FontSize, Motion, Radius, Spacing, Type } from '@/lib/theme';
+import { Colors, FontSize, Motion, Radius, Spacing, TOUCH_TARGET_MIN, Type } from '@/lib/theme';
 import { useTranslation, type TranslationKey } from "@/lib/i18n";
 
 const POSITION_COLORS = [Colors.podiumGold, Colors.podiumSilver, Colors.podiumBronze, Colors.textMuted];
@@ -573,6 +573,7 @@ const styles = StyleSheet.create({
   actions: { gap: Spacing.sm },
   actionsRow: { flexDirection: "row", gap: Spacing.sm },
   homeBtn: {
+    minHeight: TOUCH_TARGET_MIN,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
@@ -594,7 +595,7 @@ const styles = StyleSheet.create({
     fontSize: FontSize.md,
     color: Colors.textSecondary,
   },
-  rematchBtn: { borderRadius: Radius.md, overflow: "hidden" },
+  rematchBtn: { minHeight: TOUCH_TARGET_MIN, borderRadius: Radius.md, overflow: "hidden" },
   rematchBtnFlex: { flex: 1 },
   rematchGrad: {
     flexDirection: "row",
