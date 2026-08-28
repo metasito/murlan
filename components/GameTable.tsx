@@ -179,20 +179,10 @@ const GIOCA_GRADIENT_PRESSED = [Colors.gold, Colors.goldDark, Colors.goldDim] as
 const GIOCA_GRADIENT_LOCATIONS = [0, 0.48, 1] as const;
 
 // gameTableModel.ts's `playButtonLabel` returns a rejection reason, not copy.
-// This is the translation boundary: the short two-line form the button wears,
-// and the full sentence a screen reader speaks. Both are keyed by the same
-// identifier, so a new reason cannot be added without both.
-const PLAY_LABEL_KEYS: Record<PlayButtonLabel, TranslationKey> = {
-  play: "gameTable.playLabelGioca",
-  notACombination: "gameTable.playLabelInvalid",
-  needsStartCard: "gameTable.playLabelStartCard",
-  royalUnbeatable: "gameTable.playLabelRoyalUnbeatable",
-  bombOnly: "gameTable.playLabelBombOnly",
-  wrongType: "gameTable.playLabelWrongType",
-  wrongLength: "gameTable.playLabelWrongLength",
-  tooLow: "gameTable.playLabelTooLow",
-};
-const PLAY_A11Y_SPOKEN_KEYS: Partial<Record<PlayButtonLabel, TranslationKey>> = {
+// The translation boundary for why a play is refused. Total, so a new reason
+// cannot reach a screen reader without a sentence of its own.
+const PLAY_A11Y_SPOKEN_KEYS: Record<PlayButtonLabel, TranslationKey> = {
+  play: "gameTable.playA11ySpokenNothingSelected",
   notACombination: "gameTable.playA11ySpokenInvalid",
   needsStartCard: "gameTable.playA11ySpokenStartCard",
   royalUnbeatable: "gameTable.playA11ySpokenRoyalUnbeatable",
@@ -548,7 +538,10 @@ function GiocaButton({
         onPressOut={() => setPress(false)}
         style={styles.actionBtnInner}
         accessibilityLabel={a11yLabel}
-        {...a11yState({ role: "button", disabled: !valid })}
+        // No `disabled` state, on either platform: an illegal play is answered
+        // with the shake and the spoken reason rather than ignored, so the
+        // control is operable and its name is what carries the refusal.
+        {...a11yState({ role: "button" })}
       >
         {lit ? (
           <LinearGradient
@@ -913,7 +906,14 @@ export function GameTable({
   const startCardDisplayRank = gameState.startCard ? getCardDisplayRank(gameState.startCard.rank) : "";
   const startCardSuitSymbol = gameState.startCard ? getSuitSymbol(gameState.startCard.suit) : "";
   const startCardSpokenName = gameState.startCard ? cardSpokenName(gameState.startCard, t) : "";
-  const dimReasonText = t(PLAY_A11Y_SPOKEN_KEYS[dimLabel] ?? PLAY_LABEL_KEYS[dimLabel], {
+  // `playButtonLabel` answers "play" to three different questions — not your turn,
+  // your hand is over, nothing selected — and only the last is about the selection.
+  const dimReasonKey = !isMyTurn
+    ? "gameTable.playA11ySpokenNotYourTurn"
+    : isFinished
+      ? "gameTable.playA11ySpokenYouAreDone"
+      : PLAY_A11Y_SPOKEN_KEYS[dimLabel];
+  const dimReasonText = t(dimReasonKey, {
     rank: startCardDisplayRank,
     suit: startCardSuitSymbol,
     card: startCardSpokenName,

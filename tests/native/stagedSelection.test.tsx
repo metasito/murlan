@@ -44,7 +44,7 @@ import { playCardSelect } from '@/lib/sounds';
 import { GameTable } from '@/components/GameTable';
 import { GameProvider, useGame } from '@/context/GameContext';
 import { cardSpokenName } from '@/lib/cardNames';
-import { t } from '@/lib/i18n';
+import { t, type TranslationKey } from '@/lib/i18n';
 import type { Card, GameState, Player, Rank, Suit } from '@/lib/gameEngine';
 
 const METRICS = {
@@ -113,8 +113,11 @@ const pressCard = async (c: Card) => {
   });
 };
 
-const giocaDisabled = () =>
-  screen.getByTestId('btn-gioca').props.accessibilityState?.disabled;
+const gioca = () => screen.getByTestId('btn-gioca').props;
+/** GIOCA is pressable whatever it says, so its name is where availability lives. */
+const giocaSays = () => gioca().accessibilityLabel;
+const unavailable = (reason: TranslationKey) =>
+  t('gameTable.playA11yUnavailable', { reason: t(reason) });
 
 describe('selecting a card out of turn', () => {
   beforeEach(() => {
@@ -139,10 +142,11 @@ describe('selecting a card out of turn', () => {
     const onPlay = jest.fn<(ids: string[]) => void>();
     const staged = [SEVEN_H.id, SEVEN_C.id];
     const r = await render(table({ currentTurnIndex: 1, selectedIds: staged, onPlay }));
-    expect(giocaDisabled()).toBe(true);
+    expect(giocaSays()).toBe(unavailable('gameTable.playA11ySpokenNotYourTurn'));
+    expect(gioca().accessibilityState?.disabled).toBeUndefined();
 
     await act(async () => r.rerender(table({ currentTurnIndex: 0, selectedIds: staged, onPlay })));
-    expect(giocaDisabled()).toBe(false);
+    expect(giocaSays()).toBe(t('gameTable.playA11yValid'));
 
     await act(async () => {
       fireEvent.press(screen.getByTestId('btn-gioca'));
