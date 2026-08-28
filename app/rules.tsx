@@ -28,6 +28,8 @@ interface FAQ {
 const FAQ_COUNT = 18;
 
 const CTA_ICON = 18;
+const FAQ_ICON = 16;
+const NAV_ICON = 22;
 
 function useFaqs(): FAQ[] {
   const { t } = useTranslation();
@@ -78,11 +80,12 @@ function FAQItem({ item, isLast }: { item: FAQ; isLast: boolean }) {
         {...a11yState({ role: "button", expanded: open })}
         hitSlop={4}
       >
-        <Text style={styles.faqQuestionText}>{item.question}</Text>
+        <Text style={styles.faqQuestionText} {...a11yHidden()}>{item.question}</Text>
         <Ionicons
           name={open ? "chevron-up" : "chevron-down"}
-          size={16}
+          size={FAQ_ICON}
           color={Colors.gold}
+          {...a11yHidden()}
         />
       </Pressable>
       <Animated.View style={answerStyle}>
@@ -106,7 +109,7 @@ export default function RulesScreen() {
           accessibilityLabel={t("common.back")}
           hitSlop={12}
         >
-          <Ionicons name="chevron-back" size={22} color={Colors.gold} />
+          <Ionicons name="chevron-back" size={NAV_ICON} color={Colors.gold} {...a11yHidden()} />
         </Pressable>
         <Text style={styles.screenTitle}>{t("rules.headerTitle")}</Text>
         <View style={{ width: 38 }} />
@@ -181,7 +184,7 @@ export default function RulesScreen() {
               <View key={c.name} style={styles.comboCard}>
                 <Ionicons
                   name={c.icon as React.ComponentProps<typeof Ionicons>["name"]}
-                  size={22}
+                  size={NAV_ICON}
                   color={Colors.gold}
                 />
                 <Text style={styles.comboName}>{c.name}</Text>
@@ -215,8 +218,8 @@ const styles = StyleSheet.create({
     borderBottomColor: Colors.border,
   },
   backBtn: {
-    width: 44,
-    height: 44,
+    width: TOUCH_TARGET_MIN,
+    height: TOUCH_TARGET_MIN,
     alignItems: "center",
     justifyContent: "center",
   },
@@ -288,9 +291,11 @@ const styles = StyleSheet.create({
     color: Colors.gold,
   },
   startTutorialSubtitle: {
-    fontFamily: "Inter_400Regular",
-    fontSize: FontSize.xs,
-    color: Colors.textMuted,
+    ...Type.caption,
+    // Not caption's own `textMuted`: this sits on a translucent gold chip over
+    // the hero gradient, and that composite drops it to 4.45:1, under AA.
+    // `tests/contrast.test.ts` pairs tokens with flat surfaces and cannot see it.
+    color: Colors.textSecondary,
   },
 
   quickRef: {
@@ -382,7 +387,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "space-between",
     paddingVertical: Spacing.wide,
-    minHeight: 44,
+    minHeight: TOUCH_TARGET_MIN,
     gap: Spacing.cosy,
   },
   faqQuestionText: {

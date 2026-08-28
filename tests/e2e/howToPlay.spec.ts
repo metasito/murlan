@@ -2,6 +2,13 @@
 // readable under it without another tap. react-test-renderer never runs
 // flexbox, so only a browser can say whether the offer and the first rules
 // section are both actually on screen — in either orientation.
+//
+// What the browser cannot say is whether the offer is one accessible node.
+// react-native-web renders it as `div[role=button][aria-label]`, and an
+// explicit aria-label means descendants never surface as separate stops —
+// neither `getByText` nor an ARIA snapshot moves when a child is exposed.
+// That half is pinned on the platforms it matters on, in
+// tests/native/howToPlayEntry.test.tsx.
 import { test, expect } from "./fixtures";
 import { openApp } from "./helpers/navigation";
 
@@ -19,12 +26,9 @@ for (const vp of VIEWPORTS) {
     await openApp(page, baseURL!);
     await page.goto(`${baseURL}/rules`);
 
-    const cta = page.getByRole("button", { name: "Inizia il tutorial, una mano guidata" });
+    const cta = page.getByRole("button", { name: "Inizia il tutorial, una manche guidata" });
     await expect(cta).toBeInViewport();
 
-    // The offer names itself once. Its visible copy is the control's own face,
-    // so it must not be a second stop.
-    await expect(page.getByText("Inizia il tutorial", { exact: true })).toHaveCount(1);
 
     const ctaBox = (await cta.boundingBox())!;
     expect(ctaBox.height).toBeGreaterThanOrEqual(44);

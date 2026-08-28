@@ -16,7 +16,7 @@ jest.mock('@/lib/accessibility', () => ({
 }));
 
 import React from 'react';
-import { render, screen } from '@testing-library/react-native';
+import { fireEvent, isHiddenFromAccessibility, render } from '@testing-library/react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 
@@ -38,34 +38,36 @@ const mount = () =>
 describe('the How to play screen', () => {
   it('offers the tutorial as one accessible node, not a label plus its echo', async () => {
     const r = await mount();
-    const cta = screen.getByLabelText(en['rules.startTutorialA11yLabel']);
-    expect(cta).toBeTruthy();
-    // The visible label and the glyphs are the control's own face. Reachable
-    // separately, they are extra stops a screen reader has to walk past.
-    expect(screen.queryAllByText(en['rules.startTutorial'])).toHaveLength(0);
+    const cta = r.getByLabelText(en['rules.startTutorialA11yLabel']);
+    // Every descendant, not the copy alone: a glyph left in the tree is a stop
+    // a reader walks past, and querying by string cannot see one.
+    for (const child of cta.children) {
+      if (typeof child === 'string') continue;
+      expect(isHiddenFromAccessibility(child)).toBe(true);
+    }
+    expect(r.queryAllByText(en['rules.startTutorial'])).toHaveLength(0);
+    await r.unmount();
+  });
+
+  it('is titled How to play, says what the tutorial is, and reads on underneath', async () => {
+    const r = await mount();
+    expect(r.getByText(en['rules.headerTitle'])).toBeTruthy();
+    // Hidden on purpose — it is the control's own face — so the query has to
+    // ask for it, but an orphaned key would still fail here.
+    expect(
+      r.getByText(en['rules.startTutorialSubtitle'], { includeHiddenElements: true })
+    ).toBeTruthy();
+    // The rank reference is the first thing under the offer. If it needed a
+    // tap this query would find nothing.
+    expect(r.getByText(en['rules.strengthSectionLabel'])).toBeTruthy();
     await r.unmount();
   });
 
   it('starts the tutorial', async () => {
     const r = await mount();
-    screen.getByLabelText(en['rules.startTutorialA11yLabel']).props.onClick?.();
-    await r.unmount();
-  });
-
-  it('is titled How to play, and the rules are readable without another tap', async () => {
-    const r = await mount();
-    expect(screen.getByText(en['rules.headerTitle'])).toBeTruthy();
-    // The rank reference is the first thing under the tutorial offer. If it
-    // needed a tap this query would find nothing.
-    expect(screen.getByText(en['rules.strengthSectionLabel'])).toBeTruthy();
+    fireEvent.press(r.getByLabelText(en['rules.startTutorialA11yLabel']));
+    expect(router.push).toHaveBeenCalledWith('/tutorial');
     await r.unmount();
   });
 });
 
-describe('the tutorial route', () => {
-  it('is still reachable directly', () => {
-    // `/tutorial` keeps its own route; this screen links into it rather than
-    // absorbing it, so a deep link into the tutorial is unaffected.
-    expect(typeof router.push).toBe('function');
-  });
-});
