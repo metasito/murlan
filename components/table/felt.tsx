@@ -74,6 +74,12 @@ const BLOOM_RX = 0.34;
 const BLOOM_RY = 0.46;
 const VIGNETTE_RX = 1.28;
 const VIGNETTE_RY = 1.04;
+// The lamp hangs over an edge midpoint in every seating, so one felt-width and
+// one felt-height reach the opposite edge from any of them. The far corners
+// fall outside and take no shade, which is deliberate: the table-centred
+// vignette is already at its full strength there.
+const NAP_RX = 1.0;
+const NAP_RY = 1.0;
 
 /** Where the felt's own five stops sit along the falloff, before the dark. */
 const FIELD_OFFSETS = [0, 0.14, 0.3, 0.46, 0.62] as const;
@@ -130,10 +136,24 @@ const BLOOM_ID = "feltBloom";
 const VIGNETTE_ID = "feltVignette";
 const WEAVE_LIGHT_ID = "feltWeaveLight";
 const WEAVE_DARK_ID = "feltWeaveDark";
+const NAP_ID = "feltNap";
 
 /** The cloth's weave: a 1px thread every 3px, crossing at 45 degrees. */
 const WEAVE_PERIOD = 3;
 const WEAVE_THREAD = 1;
+
+/**
+ * The pile's profile against distance from the lamp: no sheen straight down
+ * the fibres, the raking band where you see their sides, then cloth the lamp
+ * does not reach.
+ *
+ * The two transparent stops in the middle are one profile, not two. SVG
+ * interpolates stops non-premultiplied, so a run straight from a transparent
+ * warm to a translucent black passes through a grey haze at half strength on
+ * both renderers. Giving each half its own zero keeps every visible segment
+ * inside one hue; the segment between the two zeroes paints nothing.
+ */
+const NAP_OFFSETS = { under: 0, sheen: 0.34, lit: 0.58, unlit: 0.59, dark: 1 } as const;
 
 /** How long the lamp takes to swing to the seat that just came on move. */
 const LAMP_MS = 800;
@@ -185,11 +205,17 @@ export function FeltPool({
     [x, y]
   );
 
-  const poolStyle = useAnimatedStyle(() =>
+  const atLamp = () =>
     Platform.OS === "web"
       ? { transform: [{ translateX: x.value }, { translateY: y.value }] }
-      : { left: x.value, top: y.value }
-  );
+      : { left: x.value, top: y.value };
+
+  const poolStyle = useAnimatedStyle(atLamp);
+  // Its own hook, and the same two values: an animated style binds to one
+  // view, so the nap cannot share the pool's. Reading the values rather than
+  // running a second `withTiming` is what makes the two unable to part company
+  // mid-swing.
+  const napStyle = useAnimatedStyle(atLamp);
 
   // Each radial's own ellipse, `rx` by `ry` of the felt, centred on the point
   // it hangs from. The box is the SVG's own size, so the viewport is what
@@ -304,6 +330,27 @@ export function FeltPool({
         <Rect width={width} height={height} fill={`url(#${WEAVE_LIGHT_ID})`} />
         <Rect width={width} height={height} fill={`url(#${WEAVE_DARK_ID})`} />
       </Svg>
+
+      {/* The pile, over the threads rather than under them. Under them it
+          would brighten the base the light thread contrasts against, which
+          makes the hatch *less* legible exactly where the lamp is. */}
+      <Animated.View
+        testID="felt-nap-anchor"
+        style={[{ position: "absolute", width: 0, height: 0 }, POOL_LAYER, napStyle]}
+      >
+        <Svg {...ellipse(NAP_RX, NAP_RY)}>
+          <Defs>
+            <RadialGradient id={NAP_ID}>
+              <Stop offset={NAP_OFFSETS.under} {...stop(Lantern.clear)} />
+              <Stop offset={NAP_OFFSETS.sheen} {...stop(Lantern.napSheen)} />
+              <Stop offset={NAP_OFFSETS.lit} {...stop(Lantern.clear)} />
+              <Stop offset={NAP_OFFSETS.unlit} {...stop(Lantern.vignetteClear)} />
+              <Stop offset={NAP_OFFSETS.dark} {...stop(Lantern.napShade)} />
+            </RadialGradient>
+          </Defs>
+          <Rect width={POOL_UNITS} height={POOL_UNITS} fill={`url(#${NAP_ID})`} />
+        </Svg>
+      </Animated.View>
 
       {/* Its own layer, and radial: a vignette assembled from straight-edged
           pieces carries ink along the edges facing the middle of the table and
