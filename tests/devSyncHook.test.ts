@@ -119,6 +119,7 @@ test("ignores pushes for branches other than main", async () => {
   assert.deepEqual(res.result.body, {
     ignored: true,
     reason: "Not a main push",
+    code: "IGNORED_NON_MAIN_PUSH",
   });
   assert.equal(synced, false);
 });
