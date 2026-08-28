@@ -6,6 +6,11 @@
 //
 // A sentinel is allowed to exist; it has to be declared once, and a copy edit to it has to
 // fail here rather than in a spec that can only report it as a rules violation.
+//
+// What it does not see, stated rather than left to be discovered: a sentence that only ever
+// exists at runtime, and a name resolved through an import. The shared sentinels live in
+// `tests/e2e/helpers/labels.ts`, and the third test below refuses a second spelling of any
+// of them, which is what covers the import case.
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync, readdirSync } from "node:fs";
@@ -19,6 +24,7 @@ const E2E = path.join(repoRoot, "tests", "e2e");
 /** Every sentinel the suite is allowed to hold, and the locale key each one mirrors. */
 const SENTINELS: Record<string, string> = {
   GIOCA_VALID_LABEL: "gameTable.playA11yValid",
+  YOUR_TURN_PREFIX: "gameTable.a11yYourTurn",
 };
 
 function e2eFiles(): string[] {
@@ -70,12 +76,57 @@ test("every sentinel still says what the locale says", () => {
  */
 const COMPARED_BUT_NOT_A_SENTINEL: [string, string, string][] = [
   [
+    "tests/e2e/exchangeAnnounceNodes.spec.ts",
+    "exchangeAnnouncement.closeA11yLabel",
+    "picks the close button out of an accessibility tree, where a node carries a name and " +
+      "nothing else — the button `getByRole` would take by name if the assertion were about " +
+      "the DOM, and there is no locator query for a CDP node",
+  ],
+  [
     "tests/e2e/gameSettingsSheet.spec.ts",
     "gameSettingsSheet.title",
     "asks which control has focus, not whether something is legal — the same identity the file " +
       "takes by role five times over, and there is no locator query for `document.activeElement`",
   ],
 ];
+
+/**
+ * `NAME -> "the sentence"` for every `const` in `source` bound to a plain
+ * string literal, at any indentation.
+ *
+ * `const` and not `let`: a `let` reassigned later would be recorded as its
+ * first value forever, because a bare `X = "…"` carries no keyword to find.
+ * A name declared twice is dropped rather than guessed at, and a template
+ * holding `${` is not a literal at all.
+ */
+function literalConsts(source: string): Map<string, string> {
+  const found = new Map<string, string>();
+  const ambiguous = new Set<string>();
+  for (const m of source.matchAll(
+    /^[ \t]*(?:export\s+)?const\s+(\w+)\s*=\s*(["'`])((?:[^\\]|\\.)*?)\2\s*;?[ \t]*$/gm
+  )) {
+    const [, name, quote, raw] = m;
+    if (found.has(name)) ambiguous.add(name);
+    if (quote === "`" && raw.includes("${")) ambiguous.add(name);
+    found.set(name, raw.replace(/\\(["'`\\])/g, "$1"));
+  }
+  for (const name of ambiguous) found.delete(name);
+  return found;
+}
+
+/**
+ * Puts every hoisted name in a file back as the literal it holds, so a
+ * comparison against the name reads as a comparison against the sentence.
+ *
+ * One alternation, built once per file rather than per line, from the names
+ * that file actually declares.
+ */
+function inlinerFor(consts: Map<string, string>): (line: string) => string {
+  if (consts.size === 0) return (line) => line;
+  const names = new RegExp(`\\b(${[...consts.keys()].join("|")})\\b`, "g");
+  return (line) =>
+    line.replace(names, (name) => `"${consts.get(name)!.replace(/"/g, '\\"')}"`);
+}
 
 /** The literal sits either side of an equality operator, or inside a substring test. */
 function comparesTo(line: string, literal: string): boolean {
@@ -103,10 +154,17 @@ test("no new copy is compared for equality without being declared a sentinel", (
 
   for (const file of e2eFiles()) {
     const rel = path.relative(repoRoot, file).split(path.sep).join("/");
-    const lines = blankComments(readFileSync(file, "utf8")).split(/\r?\n/);
-    lines.forEach((line, i) => {
+    const source = blankComments(readFileSync(file, "utf8"));
+    const inline = inlinerFor(literalConsts(source));
+    source.split(/\r?\n/).forEach((raw, i) => {
+      // Both spellings of the line, because substitution can hide as well as
+      // reveal: a name that is also a word of a locale sentence would rewrite
+      // that sentence out of a literal sitting on the same line.
+      const line = inline(raw);
       for (const [value, keys] of compared) {
-        if (!line.includes(value) || !comparesTo(line, value)) continue;
+        let found = raw.includes(value) && comparesTo(raw, value);
+        if (!found && line !== raw) found = line.includes(value) && comparesTo(line, value);
+        if (!found) continue;
         const claim = claimOf(rel, value);
         if (allowed.has(claim)) unused.delete(claim);
         else offenders.push(`${rel}:${i + 1} compares "${value}" (${keys.join(", ")})`);
@@ -127,6 +185,35 @@ test("no new copy is compared for equality without being declared a sentinel", (
     [],
     "COMPARED_BUT_NOT_A_SENTINEL claims a comparison that is no longer there; delete the entry"
   );
+});
+
+test("a hoisted sentence is read as the sentence", () => {
+  assert.deepEqual(
+    [...literalConsts("const A = \"Chiudi\";\nexport const B = 'Gioca';\n  const C = `Passa`;\n").entries()],
+    [
+      ["A", "Chiudi"],
+      ["B", "Gioca"],
+      ["C", "Passa"],
+    ]
+  );
+  assert.deepEqual([...literalConsts('const A = "He said \\"hi\\"";').entries()], [["A", 'He said "hi"']]);
+  // Two bindings, and the scan cannot say which one reaches the comparison.
+  assert.deepEqual([...literalConsts('const A = "x";\nconst A = "y";\n').keys()], []);
+  // Reassignable, so its first value is not its value at the comparison.
+  assert.deepEqual([...literalConsts('let A = "x";\n').keys()], []);
+  // Interpolated, so its value is not in the source at all.
+  assert.deepEqual([...literalConsts("const A = `${p} scambio`;\n").keys()], []);
+  // A call, an object, a concatenation: not a literal binding.
+  assert.deepEqual([...literalConsts('const A = t("k");\nconst B = "a" + b;\n').keys()], []);
+});
+
+// The empty case is the load-bearing one: an alternation built from no names
+// is `\b()\b`, which matches at every boundary and blanks the line.
+test("the inliner puts a name back, and leaves a file with no names alone", () => {
+  const inline = inlinerFor(new Map([["CLOSE", 'Chiudi "x" scambio']]));
+  assert.equal(inline("n === CLOSE"), 'n === "Chiudi \\"x\\" scambio"');
+  assert.equal(inline("n === CLOSER"), "n === CLOSER");
+  assert.equal(inlinerFor(new Map())("n === CLOSE"), "n === CLOSE");
 });
 
 test("a sentinel is declared once, and nowhere else spells it out", () => {

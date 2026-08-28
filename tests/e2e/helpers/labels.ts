@@ -10,3 +10,6 @@
 
 /** GIOCA's label when, and only when, the current selection is a legal play. */
 export const GIOCA_VALID_LABEL = "Gioca le carte selezionate";
+
+/** How the table's own state sentence opens when the viewer is on move. */
+export const YOUR_TURN_PREFIX = "È il tuo turno.";

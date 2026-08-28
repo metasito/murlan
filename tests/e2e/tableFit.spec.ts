@@ -11,7 +11,7 @@ import { test, expect, type Page } from "@playwright/test";
 import { openApp, startOfflineGame } from "./helpers/navigation";
 import { openSeededGame, offlineGameSave, resumeSaved, DEAL_SIZE } from "./helpers/offlineSeed";
 import { buildCombination } from "../../lib/gameEngine";
-import { GIOCA_VALID_LABEL } from "./helpers/labels";
+import { GIOCA_VALID_LABEL, YOUR_TURN_PREFIX } from "./helpers/labels";
 import { HAND_ZONE, TABLE_STATE } from "./helpers/selectors.ts";
 
 const VIEWPORTS = [
@@ -276,8 +276,7 @@ test.describe("the table's bands", () => {
 
 /** locales/it.ts `game.autoPassTitle` — the offline clock expiring. */
 const AUTO_PASS_TITLE = "Passaggio automatico";
-/** locales/it.ts `gameTable.a11yYourTurn` / `gameTable.a11yPlayerPlayed`. */
-const YOUR_TURN = "È il tuo turno.";
+/** locales/it.ts `gameTable.a11yPlayerPlayed`. */
 const OPPONENT_PLAYED = " ha giocato ";
 /** app/game.tsx HUMAN_TURN_SECONDS, which EXPO_PUBLIC_E2E_FAST does not shorten. */
 const OFFLINE_CLOCK_MS = 20_000;
@@ -321,9 +320,9 @@ async function waitForAnswerableTurn(page: Page): Promise<void> {
 
   while (Date.now() < deadline) {
     const desc = (await table.getAttribute(TABLE_STATE)) ?? "";
-    if (desc.startsWith(YOUR_TURN) && desc.includes(OPPONENT_PLAYED)) return;
+    if (desc.startsWith(YOUR_TURN_PREFIX) && desc.includes(OPPONENT_PLAYED)) return;
 
-    if (desc.startsWith(YOUR_TURN)) {
+    if (desc.startsWith(YOUR_TURN_PREFIX)) {
       const cards = page.locator(`${HAND_ZONE} [role="button"]`);
       const labels = await cards.evaluateAll((els) =>
         els.map((el) => el.getAttribute("aria-label") ?? "")
