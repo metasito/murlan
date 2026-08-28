@@ -131,6 +131,7 @@ function HomeMenuRow({
             start={{ x: 0, y: 0 }}
             end={{ x: 1, y: 1 }}
             style={compact ? styles.accentGradientCompact : styles.accentGradient}
+            {...a11yHidden()}
           >
             <Ionicons name={icon} size={compact ? 18 : 20} color={Colors.bgCard} />
             <Text style={[styles.menuLabel, styles.menuLabelAccent, compact && styles.menuLabelCompact]}>
@@ -144,8 +145,10 @@ function HomeMenuRow({
               name={icon}
               size={compact ? 18 : 20}
               color={disabled ? Colors.textMuted : Colors.gold}
+              {...a11yHidden()}
             />
             <Text
+              {...a11yHidden()}
               style={[
                 styles.menuLabel,
                 compact && styles.menuLabelCompact,
@@ -158,6 +161,7 @@ function HomeMenuRow({
               name="chevron-forward"
               size={compact ? 14 : 16}
               color={Colors.textMuted}
+              {...a11yHidden()}
             />
           </>
         )}
@@ -323,7 +327,7 @@ function SettingsButton({ compact, onPress }: { compact?: boolean; onPress: () =
       style={({ pressed }) => [styles.settingsBtn, pressed && { opacity: 0.8 }]}
       hitSlop={8}
     >
-      <Feather name="settings" size={compact ? 16 : 18} color={Colors.gold} />
+      <Feather name="settings" size={compact ? 16 : 18} color={Colors.gold} {...a11yHidden()} />
     </Pressable>
   );
 }

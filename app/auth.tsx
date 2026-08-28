@@ -17,7 +17,7 @@ import { MenuLayout } from "@/components/MenuLayout";
 import { MenuCard } from "@/components/MenuCard";
 import { MenuButton } from "@/components/MenuButton";
 import { useTranslation, translateServerPayload } from "@/lib/i18n";
-import { a11yState, useA11yHint } from "@/lib/a11y";
+import { a11yHidden, a11yState, useA11yHint } from "@/lib/a11y";
 
 type Tab = "login" | "register";
 
@@ -76,7 +76,7 @@ export default function AuthScreen() {
             accessibilityLabel={t("common.back")}
             hitSlop={12}
           >
-            <Ionicons name="chevron-back" size={22} color={Colors.gold} />
+            <Ionicons name="chevron-back" size={22} color={Colors.gold} {...a11yHidden()} />
           </Pressable>
           <View style={{ width: 38 }} />
         </View>
@@ -97,7 +97,7 @@ export default function AuthScreen() {
                   accessibilityLabel={tabOption === "login" ? t("auth.tabLogin") : t("auth.tabRegister")}
                   {...a11yState({ role: "tab", selected: tab === tabOption })}
                 >
-                  <Text style={[styles.tabText, tab === tabOption && styles.tabTextActive]}>
+                  <Text {...a11yHidden()} style={[styles.tabText, tab === tabOption && styles.tabTextActive]}>
                     {tabOption === "login" ? t("auth.tabLogin") : t("auth.tabRegister")}
                   </Text>
                 </Pressable>
@@ -160,6 +160,7 @@ export default function AuthScreen() {
                       name={showPwd ? "eye-off-outline" : "eye-outline"}
                       size={18}
                       color={Colors.textMuted}
+                      {...a11yHidden()}
                     />
                   </Pressable>
                 </View>

@@ -30,6 +30,7 @@ import {
 } from "@/lib/captureStates";
 import { Colors, FontSize, Radius, Spacing, TOUCH_TARGET_MIN, Type } from "@/lib/theme";
 import type { GameState } from "@/lib/gameEngine";
+import { a11yHidden } from "@/lib/a11y";
 
 /**
  * Its own labels, in English, off the translation layer on purpose: these are
@@ -120,8 +121,8 @@ function CaptureList() {
             onPress={() => router.push({ pathname: "/capture", params: { state: state.id } })}
             style={styles.row}
           >
-            <Text style={styles.rowId}>{state.id}</Text>
-            <Text style={styles.rowLabel}>{state.label}</Text>
+            <Text style={styles.rowId} {...a11yHidden()}>{state.id}</Text>
+            <Text style={styles.rowLabel} {...a11yHidden()}>{state.label}</Text>
           </Pressable>
         ))}
       </ScrollView>
