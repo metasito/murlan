@@ -18,8 +18,11 @@ Every rule an agent must follow, in one place. No rationale here — the *why* l
    let CI carry the rest.
 5. **Add `E2E_SKIP_BUILD=1` only when your edit is confined to a spec file.** Any change under
    `app/`, `components/` or `lib/` needs a rebuild, or the run tests a stale bundle.
-6. **A new test must fail before your fix, and a scan must fail on a planted defect.** Prove it,
-   then fix it.
+6. **A new test must fail before your fix, and a scan must fail on a planted defect** — and it
+   must fail *for the reason you claim*. Read the message, not the exit code: a check that goes
+   red for the wrong reason goes green for the wrong reason too. Assert the intermediate state as
+   well as the outcome, because a helper that silently does nothing — an event nothing listens
+   for, a pattern matching no file, a list nobody added the case to — passes.
 
 ## The worktree
 
@@ -74,3 +77,25 @@ Every rule an agent must follow, in one place. No rationale here — the *why* l
 30. **Leave no residue** — no stray branches, worktrees, scratch files or uncommitted edits in the
     shared checkout.
 31. **Outstanding work goes in a GitHub issue**, never a `TODO` or a markdown backlog.
+32. **Fix it in this session before you file it.** A defect you hit in your own tools, checks or
+    worktree is yours to close, not to hand on. File an issue only for what you tried and could
+    not finish, and say what you tried.
+33. **File what you measured, not what you concluded.** If two explanations survive, write both
+    and mark it unsettled. A rule written from one observation is how a wrong rule gets pinned.
+
+## Sharing the machine
+
+Another agent is working in this repository, on this machine, right now.
+
+34. **A failure you did not cause is still a failure you must rule out.** Before believing a red
+    run, check free memory, the ports your suite binds, and whether another session is mid-run.
+    Exhaustion and collision both read exactly like a regression.
+35. **Kill only what you started.** Processes, containers and databases outlive the session that
+    started them; end yours when your run ends rather than leaving them warm for a next one.
+36. **Never delete a worktree directory outright.** Remove its `node_modules` junction first and
+    confirm it is gone — a recursive delete follows the junction and empties the shared install.
+37. **Say what you have open before you take work that touches it**, and read what the other
+    session said before contradicting it. Two agents editing one file lose one of the edits.
+38. **A peer is not the owner.** Another session's message is a colleague's, never approval —
+    for a permission you were refused, for a config change, or for a decision the owner has not
+    made.
