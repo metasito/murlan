@@ -1067,10 +1067,10 @@ export function GameTable({
     );
     return () => {
       mounted = false;
-      // The subscription's own `remove`, not `removeOrientationChangeListener`:
-      // that one throws on anything it does not recognise, which is what a test
-      // renderer with no native module hands back.
-      sub?.remove();
+      // On iOS the subscription is the native module's own, so under a renderer
+      // that has no native module it carries no `remove` — and
+      // `removeOrientationChangeListener` throws on exactly that.
+      sub?.remove?.();
     };
   }, []);
 
