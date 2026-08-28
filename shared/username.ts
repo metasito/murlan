@@ -1,14 +1,5 @@
-// What makes a username acceptable, read by the server's zod schema and by the
-// screens that have to tell a player which rule they broke.
-//
-// It lives here, with no imports, because both sides need it: `server/schemas.ts`
-// builds `RegisterSchema` from it, and the client bundle reaches `shared/` the
-// same way `lib/i18n.ts` reaches `shared/i18n.ts`. Anything imported here is
-// imported into the app, so keep it free of zod and drizzle.
-//
-// The server answers a bad name with one code, `INVALID_PAYLOAD`, for every
-// rule at once. `usernameProblem` is how a screen says "too short" rather than
-// "invalid" without holding a second copy of the rule to decide it.
+// Read by `server/schemas.ts` and by the screens, so anything imported here is
+// imported into the app bundle: keep it free of zod and drizzle.
 
 export const USERNAME_MIN = 3;
 export const USERNAME_MAX = 30;

@@ -3,11 +3,6 @@ import { translateServerPayload, type ServerPayload } from "./i18n";
 /**
  * A refused request, with the server's own answer still attached.
  *
- * `message` keeps the `"<status>: <body>"` form because it is what reaches a
- * log or an unhandled rejection, and reading a status off a rendered string is
- * the thing this class exists to stop being necessary — `/\d+: (.+)/` also
- * mis-splits any body containing `": "` after a digit.
- *
  * Here rather than beside the fetch client: a screen that only needs to say
  * what went wrong would otherwise import `expo/fetch` through it.
  */
@@ -19,13 +14,9 @@ export class ApiError extends Error {
     /** …and the raw text, for the cases that are not JSON at all. */
     readonly body: string
   ) {
+    // `"<status>: <body>"` is what reaches a log or an unhandled rejection.
     super(`${status}: ${body}`);
     this.name = "ApiError";
-  }
-
-  /** The server's stable error code, if it sent one. */
-  get code(): string | undefined {
-    return this.payload?.code;
   }
 }
 
