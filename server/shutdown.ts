@@ -4,6 +4,7 @@ import type { Server as SocketIOServer } from "socket.io";
 import { logger } from "./logger.ts";
 import { pool as appPool, QUERY_TIMEOUT_MS } from "./db.ts";
 import { drainPool } from "./drainPool.ts";
+import { beginShutdown } from "./socket.ts";
 
 /**
  * Replit Cloud Run sends SIGTERM and SIGKILLs roughly ten seconds later. The
@@ -63,6 +64,7 @@ export async function shutdown(
   (forceExit as unknown as { unref?: () => void }).unref?.();
 
   try {
+    beginShutdown();
     await io.close();
     // Only reachable if `io` was never attached to this server.
     if (server.listening) {

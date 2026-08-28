@@ -541,11 +541,12 @@ describe("reconnect", { skip: hasDatabase() ? false : skipMessage() }, () => {
     const room = await setUpRoom([alice, bob], 2);
     const table = [alice, bob];
     try {
-      // The seat release is what makes this a recovery rather than a no-op,
-      // and it is also what the returning socket must not race.
-      const released = waitFor<RoomState>(alice.socket, "room:state", 5_000);
+      // The seat is held through the lobby grace, so the room never sees the
+      // drop. What makes this a recovery is that the returning socket has no
+      // socketRoomMap entry until it rejoins — without that, every later room
+      // event resolves to no room and returns silently.
       bob.socket.disconnect();
-      assert.equal((await released).players.length, 1);
+      await new Promise((r) => setTimeout(r, 300));
 
       const back = await reconnect(bob);
       table[1] = { ...bob, socket: back };
@@ -577,9 +578,10 @@ describe("reconnect", { skip: hasDatabase() ? false : skipMessage() }, () => {
     assert.equal(room.hostUserId, carol.user.id);
     const table = [carol, dave];
     try {
-      const migrated = waitFor<RoomState>(dave.socket, "room:state", 5_000);
+      // The room does not change hands over a dropped connection: the seat
+      // row survives the grace, so carol is still the host throughout.
       carol.socket.disconnect();
-      assert.equal((await migrated).hostUserId, dave.user.id);
+      await new Promise((r) => setTimeout(r, 300));
 
       const back = await reconnect(carol);
       table[0] = { ...carol, socket: back };
@@ -666,9 +668,8 @@ describe("reconnect", { skip: hasDatabase() ? false : skipMessage() }, () => {
         [liam.user.id, mia.user.id].sort()
       );
 
-      const released = waitFor<RoomState>(liam.socket, "room:state", 5_000);
       mia.socket.disconnect();
-      assert.equal((await released).players.length, 1);
+      await new Promise((r) => setTimeout(r, 300));
 
       const back = await reconnect(mia);
       mia = { ...mia, socket: back };
@@ -676,9 +677,10 @@ describe("reconnect", { skip: hasDatabase() ? false : skipMessage() }, () => {
       back.emit("room:rejoin", { code: room.code });
       const state = await recovered;
 
-      // Seat 0 is the one kate vacated, and taking it is what used to carry
-      // the room with it.
-      assert.equal(state.players.find((p) => p.userId === mia.user.id)?.seatIndex, 0);
+      // Mia never lost her seat, so she is back in the one she had rather
+      // than sliding into the one kate vacated — and the room stayed liam's
+      // throughout, which is what the old seat shuffle used to threaten.
+      assert.ok(state.players.some((p) => p.userId === mia.user.id));
       assert.equal(state.hostUserId, liam.user.id);
     });
   });

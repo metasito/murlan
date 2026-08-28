@@ -4,6 +4,8 @@ import type { OnlineGameState } from "./gameRoom.ts";
 // clearAfkTimer / clearRoomTimers / clearAllTimersForUser / disposeGame.
 export const afkTimers = new Map<string, ReturnType<typeof setTimeout>>();
 export const disconnectTimers = new Map<string, ReturnType<typeof setTimeout>>();
+/** Keyed `roomId:userId`, so one account can hold a seat in only one lobby. */
+export const lobbyGraceTimers = new Map<string, ReturnType<typeof setTimeout>>();
 export const botTimers = new Map<string, ReturnType<typeof setTimeout>>();
 
 /**
@@ -21,6 +23,13 @@ function timeoutFromEnv(name: string, defaultMs: number): number {
 
 export const AFK_TIMEOUT_MS = timeoutFromEnv("MURLAN_AFK_TIMEOUT_MS", 30_000);
 export const DISCONNECT_GRACE_MS = timeoutFromEnv("MURLAN_DISCONNECT_GRACE_MS", 60_000);
+/**
+ * Shorter than the in-game grace on purpose. A player who drops mid-hand is
+ * one everyone is already waiting for, and a minute is worth it. A seat in a
+ * lobby is one nobody has arrived for yet, so holding it that long blocks the
+ * room from filling — this only has to outlast a network hiccup.
+ */
+export const LOBBY_GRACE_MS = timeoutFromEnv("MURLAN_LOBBY_GRACE_MS", 20_000);
 // Paced so a bot seat reads as thinking rather than as an instant reflex.
 // Tunable for tests, which otherwise pay it on every move of every table a
 // disconnect hands over to the AI.
@@ -65,6 +74,20 @@ export function clearRoomTimers(roomId: string) {
   clearBotTimer(roomId);
 }
 
+export function lobbyGraceKey(roomId: string, userId: string): string {
+  return `${roomId}:${userId}`;
+}
+
+/** Cancels a pending lobby release. Returns whether one was armed. */
+export function clearLobbyGrace(roomId: string, userId: string): boolean {
+  const key = lobbyGraceKey(roomId, userId);
+  const t = lobbyGraceTimers.get(key);
+  if (!t) return false;
+  clearTimeout(t);
+  lobbyGraceTimers.delete(key);
+  return true;
+}
+
 export function clearAllTimersForUser(userId: string, roomId?: string) {
   const dcTimer = disconnectTimers.get(userId);
   if (dcTimer) {
@@ -73,6 +96,7 @@ export function clearAllTimersForUser(userId: string, roomId?: string) {
   }
   if (roomId) {
     clearAfkTimer(roomId, userId);
+    clearLobbyGrace(roomId, userId);
   }
 }
 
