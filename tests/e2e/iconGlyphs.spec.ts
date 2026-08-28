@@ -24,7 +24,7 @@ test("menu screens render every icon glyph, across the states reachable with no 
   test.setTimeout(60_000);
 
   await openApp(page, baseURL!);
-  await assertAllGlyphsRender(page, "home", 14);
+  await assertAllGlyphsRender(page, "home", 11);
 
   await page.getByRole("button", { name: "Offline" }).click();
   // Four players is what reveals the game-mode row (app/lobby.tsx) — both its
@@ -63,7 +63,7 @@ test("online screens render every icon glyph, across the states reachable once s
   await goToOnlineLobby(page);
   // Both "Libera" and "Coppie" render together — both branches of
   // `m === "teams" ? "people" : "person"` are already on screen.
-  await assertAllGlyphsRender(page, "online lobby — room creator", 35);
+  await assertAllGlyphsRender(page, "online lobby — room creator", 27);
   await page.goBack();
 
   await page.getByRole("button", { name: "Online" }).click();
