@@ -12,13 +12,14 @@
 import { test, expect, type Page } from "@playwright/test";
 import { openSeededGame } from "./helpers/offlineSeed";
 import { GIOCA_VALID_LABEL } from "./helpers/labels";
+import { HAND_ZONE } from "./helpers/selectors.ts";
 
 const VIEWPORT = { width: 844, height: 390 };
 
 /** Every hand card's rect, left to right. */
 async function handCards(page: Page) {
   return page.evaluate(() => {
-    const hand = document.querySelector('[aria-label^="La tua mano"]');
+    const hand = document.querySelector("[data-hand-state]");
     if (!hand) throw new Error("the hand never rendered");
     // `card-box`, not the pressable: in a hand the pressable is only the strip
     // the card exposes, and what is drawn is what this measures.
@@ -124,10 +125,10 @@ test.describe("the hand's own budget", () => {
 async function playOneCombination(page: Page): Promise<void> {
   const gioca = page.locator('[data-testid="btn-gioca"]');
   const labels = await page
-    .locator('[aria-label^="La tua mano"] [role="button"]')
+    .locator(`${HAND_ZONE} [role="button"]`)
     .evaluateAll((els) => els.map((el) => el.getAttribute("aria-label") ?? ""));
   for (const label of labels) {
-    const card = page.locator(`[aria-label^="La tua mano"] [aria-label="${label}"]`);
+    const card = page.locator(`${HAND_ZONE} [aria-label="${label}"]`);
     await card.click({ timeout: 4_000 }).catch(() => {});
     if ((await gioca.getAttribute("aria-label")) === GIOCA_VALID_LABEL) {
       await gioca.click({ timeout: 4_000 }).catch(() => {});

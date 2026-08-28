@@ -19,7 +19,7 @@ const LARGE = { width: 1112, height: 834 };
  */
 async function firstHandCardWidth(page: import("@playwright/test").Page): Promise<number> {
   const width = await page.evaluate(() => {
-    const hand = document.querySelector('[aria-label^="La tua mano"]');
+    const hand = document.querySelector("[data-hand-state]");
     if (!hand) throw new Error("the hand never rendered");
     const box = hand.querySelector('[data-testid="card-box"]');
     return box ? box.getBoundingClientRect().width : null;

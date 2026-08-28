@@ -9,6 +9,7 @@
 import type { Page } from "@playwright/test";
 import { test, expect } from "./fixtures";
 import { resumeSaved } from "./helpers/offlineSeed";
+import { HAND_ZONE } from "./helpers/selectors.ts";
 
 /** Two cards in the 3–10 giveback range, so both are valid picks. */
 const FIVE = { id: "5_hearts", rank: "5", suit: "hearts", isJoker: false };
@@ -117,7 +118,7 @@ test("changing the exchange pick before confirming gives the last card chosen", 
   await page.getByRole("button", { name: "Chiudi annuncio scambio" }).click();
   await expect(alert).toBeHidden({ timeout: 15_000 });
 
-  const hand = page.locator('[aria-label^="La tua mano"]');
+  const hand = page.locator(HAND_ZONE);
   await expect(
     hand.getByRole("button", { name: FIVE_SPOKEN, exact: true }),
     "the card not chosen last stays in the winner's hand"

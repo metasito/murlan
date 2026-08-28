@@ -18,15 +18,7 @@ import type { Locator, Page } from "@playwright/test";
 // resolver, which will not guess one. Playwright accepts it either way.
 import { GIOCA_VALID_LABEL, YOUR_TURN_PREFIX } from "./labels.ts";
 
-const TABLE = '[data-testid="game-table"]';
-// Scoped to the hand wrapper specifically (its own accessibilityLabel always
-// starts with "La tua mano:" — components/GameTable.tsx `handA11yLabel`),
-// not just anywhere under the table: the played-pile display renders real,
-// correctly-labelled CardView buttons too (disabled, decorative), and an
-// unscoped `[role="button"]` sweep picks those up as if they were playable
-// hand cards — including, confusingly, a card that's actually sitting in an
-// opponent's just-played combination.
-const HAND_CARDS = `${TABLE} [aria-label^="La tua mano"] [role="button"]`;
+import { HAND_CARDS, TABLE, TABLE_STATE } from "./selectors.ts";
 const EXCHANGE_GIVE_PREFIX = "Fase di scambio: devi dare una carta a";
 
 function sleep(ms: number): Promise<void> {
@@ -40,7 +32,7 @@ async function tableDescription(page: Page): Promise<string | null> {
     // The table can unmount between the count() above and this read — exactly
     // when a game ends — so a short bound lets the caller's isFinished loop
     // re-check instead of waiting out the whole test budget.
-    return await table.getAttribute("aria-label", { timeout: CARD_CLICK_TIMEOUT_MS });
+    return await table.getAttribute(TABLE_STATE, { timeout: CARD_CLICK_TIMEOUT_MS });
   } catch {
     return null;
   }

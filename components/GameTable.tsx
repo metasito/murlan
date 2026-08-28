@@ -18,6 +18,7 @@ import {
   Pressable,
   useWindowDimensions,
   type AccessibilityProps,
+  type ViewProps,
   type ViewStyle,
 } from "react-native";
 import { TableText } from "@/components/table/TableText";
@@ -179,6 +180,16 @@ const GIOCA_GRADIENT_PRESSED = [Colors.gold, Colors.goldDark, Colors.goldDim] as
 const GIOCA_GRADIENT_LOCATIONS = [0, 0.48, 1] as const;
 
 // gameTableModel.ts's `playButtonLabel` returns a rejection reason, not copy.
+/**
+ * A sentence the browser harness reads, as `data-<hyphenated key>`. `dataSet` is
+ * react-native-web's own escape hatch and reaches the DOM; React Native has no such
+ * prop and no types for it, which is what the cast is for. It is deliberately not an
+ * `accessibilityLabel`: these containers cannot be `accessible` without collapsing
+ * their controls into one leaf, so a name on them would reach no reader at all.
+ * `tests/e2e/helpers/selectors.ts` holds the other end.
+ */
+const harnessState = (state: Record<string, string>) => ({ dataSet: state }) as ViewProps;
+
 // The translation boundary for why a play is refused. Total, so a new reason
 // cannot reach a screen reader without a sentence of its own.
 const PLAY_A11Y_SPOKEN_KEYS: Record<PlayButtonLabel, TranslationKey> = {
@@ -1524,15 +1535,14 @@ export function GameTable({
       </View>
 
       {/* Same coordinates, overflow visible so slots and buttons can extend out.
-          accessibilityLabel is the E2E harness's hook on the table description
-          (tests/e2e/helpers/bot.ts reads the raw attribute). Players get the
-          same sentence from the A11yStatus node above — a container without
-          `accessible` reaches no screen reader on any platform, and adding it
-          would collapse the PASSA/GIOCA buttons and every card underneath into
-          one unreachable leaf. */}
+          `dataSet` and not `accessibilityLabel`: this sentence is the browser
+          harness's hook, and a container without `accessible` names nobody on any
+          platform. It cannot have `accessible` either — that would collapse the
+          PASSA/GIOCA buttons and every card underneath into one unreachable leaf.
+          Players get the same sentence from the A11yStatus node above. */}
       <View
         testID="game-table"
-        accessibilityLabel={tableA11yLabel}
+        {...harnessState({ tableState: tableA11yLabel })}
         {...behindVeil}
         style={[
           sharedTableStyles.tableOverlay,
@@ -1696,12 +1706,10 @@ export function GameTable({
                 <TableText style={styles.finishedText}>{t("gameTable.waitingOthers")}</TableText>
               </View>
             ) : (
-              // The wrapper carries no `accessible`, which would hide the
-              // individual cards' own labels behind one leaf node; the summary
-              // reaches a screen reader through A11yStatus instead. The label
-              // here is a channel the browser harness reads by attribute
-              // rather than a name a reader ever hears (#505).
-              <View accessibilityLabel={handA11yLabel}>
+              // The harness's hook, for the same reason as the table's above: no
+              // `accessible` here — it would hide every card's own label behind one
+              // leaf — so a name on this wrapper would reach nobody.
+              <View {...harnessState({ handState: handA11yLabel })}>
                 <A11yStatus label={handA11yLabel} />
                 <StraightHand
                   faceDown={spectating}
