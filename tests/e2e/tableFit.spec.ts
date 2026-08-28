@@ -11,6 +11,7 @@ import { test, expect, type Page } from "@playwright/test";
 import { openApp, startOfflineGame } from "./helpers/navigation";
 import { openSeededGame, offlineGameSave, resumeSaved, DEAL_SIZE } from "./helpers/offlineSeed";
 import { buildCombination } from "../../lib/gameEngine";
+import { GIOCA_VALID_LABEL } from "./helpers/labels";
 
 const VIEWPORTS = [
   { name: "small phone landscape", width: 667, height: 375 },
@@ -331,7 +332,7 @@ async function waitForAnswerableTurn(page: Page): Promise<void> {
           `[aria-label^="La tua mano"] [aria-label="${label.replace(/"/g, '\\"')}"]`
         );
         await card.click({ timeout: 4_000 }).catch(() => {});
-        if ((await gioca.getAttribute("aria-label")) === "Gioca le carte selezionate") {
+        if ((await gioca.getAttribute("aria-label")) === GIOCA_VALID_LABEL) {
           await gioca.click({ timeout: 4_000 }).catch(() => {});
           break;
         }

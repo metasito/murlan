@@ -1,8 +1,24 @@
 import { defineConfig, devices } from "@playwright/test";
+import { execFileSync } from "node:child_process";
 import { resolve } from "node:path";
 
-const PORT = process.env.E2E_PORT ?? "5199";
+// This is the one place that knows both `baseURL` and the `webServer` command, so it is the one
+// place that can hand a single port to the server, the health check and every spec at once.
+//
+// Run rather than imported: Playwright loads this config as CommonJS, which cannot `require`
+// scripts/e2ePort.mjs. An explicit E2E_PORT still wins, so a proof can pin its own.
+const PORT =
+  process.env.E2E_PORT ??
+  execFileSync(process.execPath, [resolve(__dirname, "../../scripts/e2ePort.mjs")], {
+    encoding: "utf8",
+  }).trim();
+// Playwright loads this config once per process — the runner and every worker — and each load
+// would otherwise pick a port of its own, leaving the workers pointed at a server the runner
+// never started. Workers inherit this, so the first load decides for the whole run.
+process.env.E2E_PORT = PORT;
 const BASE_URL = `http://127.0.0.1:${PORT}`;
+// A run whose server is not where the docs say it is has to be able to say where it is.
+if (PORT !== "5199") console.log(`e2e: port 5199 is taken, serving on ${PORT}`);
 
 // Kept out of `npm test` (tests/**/*.test.ts) on purpose — this suite builds
 // the Expo web bundle and drives a real browser against the real server, so
