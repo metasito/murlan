@@ -11,14 +11,10 @@
 // static check passed, because nothing ever pressed play. A screen visited
 // once, at rest, proves nothing about an icon that only exists after a tap.
 import { test, expect } from "./fixtures";
-import { openApp, registerNewAccount } from "./helpers/navigation";
+import { openApp, registerNewAccount, uniqueUsername } from "./helpers/navigation";
 import { createRoom, fillWithBotsAndStart, goToOnlineLobby } from "./helpers/online";
 import { driveGameToCompletion } from "./helpers/bot";
 import { assertAllGlyphsRender } from "./helpers/glyphCoverage";
-
-function uniqueUsername(prefix: string): string {
-  return `${prefix}${Date.now().toString(36).slice(-6)}${Math.floor(Math.random() * 900 + 100)}`;
-}
 
 test("menu screens render every icon glyph, across the states reachable with no account", async ({
   page,

@@ -29,12 +29,12 @@ import { MenuButton } from "@/components/MenuButton";
 import { Toggle } from "@/components/Toggle";
 import { ConfirmDialog, type ConfirmRequest } from "@/components/ConfirmDialog";
 import { useTranslation } from "@/lib/i18n";
-import { a11yHidden, a11yState } from "@/lib/a11y";
+import { A11yStatus, a11yHidden, a11yState } from "@/lib/a11y";
 import { usePrefersReducedMotion } from "@/lib/accessibility";
 
 const TEAM_COLORS = { A: Colors.gold, B: Colors.info };
 
-/** How long the copy button says it copied. Long enough to read a word. */
+/** Long enough to read as a confirmation rather than as a flicker. */
 const COPIED_FOR_MS = Motion.duration.pulse;
 
 function BotFillControls({
@@ -330,8 +330,8 @@ export default function RoomScreen() {
   const [matchLength, setMatchLength] = useState<MatchLength>("match");
   const [confirming, setConfirming] = useState<ConfirmRequest | null>(null);
   const [copied, setCopied] = useState(false);
-  const copiedTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  useEffect(() => () => clearTimeout(copiedTimer.current ?? undefined), []);
+  const copiedTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  useEffect(() => () => clearTimeout(copiedTimer.current), []);
 
   const isLandscape = W > H;
 
@@ -379,16 +379,20 @@ export default function RoomScreen() {
     isHost && !notEnoughPlayers && !teamsNeedFour && room.status === "waiting";
   const showBotFillControls = isHost && room.status === "waiting" && hasEmptySeats;
 
-  // The button is the only feedback there is: nothing else on the screen
-  // changes when the code reaches the clipboard, and the haptic below is
-  // silent on web.
-  const copyLabel = t(copied ? "common.copied" : "common.copy");
+  // The button's face is the only feedback there is: nothing else on the
+  // screen changes when the code reaches the clipboard, and the haptic below
+  // is silent on web. Its accessible name deliberately does not follow —
+  // renaming a live control to a past-tense status makes it unreachable by
+  // name for as long as it says it, and no screen reader re-announces a name
+  // that changes under a control it has already activated. The confirmation
+  // reaches them as a live region instead.
+  const copyFace = t(copied ? "common.copied" : "common.copy");
 
   async function handleCopyCode() {
     await Clipboard.setStringAsync(room!.code);
     hapticSuccess();
     setCopied(true);
-    clearTimeout(copiedTimer.current ?? undefined);
+    clearTimeout(copiedTimer.current);
     copiedTimer.current = setTimeout(() => setCopied(false), COPIED_FOR_MS);
   }
 
@@ -495,12 +499,13 @@ export default function RoomScreen() {
                     onPress={handleCopyCode}
                     style={styles.codeBtn}
                     accessibilityRole="button"
-                    accessibilityLabel={copyLabel}
+                    accessibilityLabel={t("common.copy")}
                     hitSlop={8}
                   >
                     <Ionicons name="copy-outline" size={15} color={Colors.gold} {...a11yHidden()} />
-                    <Text style={styles.codeBtnText} {...a11yHidden()}>{copyLabel}</Text>
+                    <Text style={styles.codeBtnText} {...a11yHidden()}>{copyFace}</Text>
                   </Pressable>
+                  <A11yStatus label={copied ? t("common.copied") : ""} />
                   <Pressable
                     onPress={handleShare}
                     style={styles.codeBtn}
@@ -639,12 +644,13 @@ export default function RoomScreen() {
               onPress={handleCopyCode}
               style={styles.codeBtn}
               accessibilityRole="button"
-              accessibilityLabel={copyLabel}
+              accessibilityLabel={t("common.copy")}
               hitSlop={Spacing.sm}
             >
               <Ionicons name="copy-outline" size={16} color={Colors.gold} {...a11yHidden()} />
-              <Text style={styles.codeBtnText} {...a11yHidden()}>{copyLabel}</Text>
+              <Text style={styles.codeBtnText} {...a11yHidden()}>{copyFace}</Text>
             </Pressable>
+            <A11yStatus label={copied ? t("common.copied") : ""} />
             <Pressable
               onPress={handleShare}
               style={styles.codeBtn}

@@ -63,6 +63,15 @@ export async function startOfflineGame(page: Page, setup: OfflineSetup): Promise
   await page.getByRole("button", { name: "Inizia Partita" }).click();
 }
 
+/**
+ * A username no other run holds. Registration is the one step in this suite
+ * that writes to a database shared with every other spec and every earlier
+ * run, so a fixed name passes once and 409s forever after.
+ */
+export function uniqueUsername(prefix: string): string {
+  return `${prefix}${Date.now().toString(36).slice(-6)}${Math.floor(Math.random() * 900 + 100)}`;
+}
+
 /** Registers a brand-new account through the UI and lands back on the home screen. */
 export async function registerNewAccount(page: Page, username: string): Promise<void> {
   await page.getByRole("button", { name: "Gioca con amici" }).click();
