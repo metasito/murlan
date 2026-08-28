@@ -105,19 +105,29 @@ function parseStored(raw: string): Partial<Settings> {
 
 export function SettingsProvider({ children }: { children: React.ReactNode }) {
   const [settings, setSettings] = useState<Settings>(defaults);
+  const [loaded, setLoaded] = useState(false);
 
   useEffect(() => {
-    AsyncStorage.getItem(STORAGE_KEY).then((raw) => {
-      if (!raw) return;
-      try {
-        setSettings({ ...defaults, ...parseStored(raw) });
-      } catch {}
-    });
+    AsyncStorage.getItem(STORAGE_KEY)
+      .then((raw) => {
+        if (!raw) return;
+        try {
+          setSettings({ ...defaults, ...parseStored(raw) });
+        } catch {}
+      })
+      // Not in `then`: a read that rejects must still release the write below,
+      // or one failed read stops the player's settings persisting for the whole
+      // session.
+      .finally(() => setLoaded(true));
   }, []);
 
   useEffect(() => {
+    // `settings` is the defaults until the read lands, and writing those would
+    // put them in storage for as long as the read takes. A kill in that window
+    // — an OS reclaim, a force-quit — makes them the player's settings.
+    if (!loaded) return;
     AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(settings)).catch(() => {});
-  }, [settings]);
+  }, [settings, loaded]);
 
   useEffect(() => {
     setSoundsMasterVolume(settings.soundVolume);
