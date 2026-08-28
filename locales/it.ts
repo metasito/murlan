@@ -489,10 +489,12 @@ export const it: Record<keyof typeof en, string> = {
   "lobby.rankWeakest": "Più basso",
 
   // ------------------------------------------------------------------ rules.*
-  "rules.headerTitle": "Regole & FAQ",
+  "rules.headerTitle": "Come si gioca",
   "rules.heroTitle": "MURLAN",
   "rules.heroSubtitle": "Guida al Gioco",
-  "rules.tutorialLink": "Preferisci imparare giocando? Prova il Tutorial guidato",
+  "rules.startTutorial": "Inizia il tutorial",
+  "rules.startTutorialSubtitle": "Impara giocando una mano guidata.",
+  "rules.startTutorialA11yLabel": "Inizia il tutorial, una mano guidata",
   "rules.strengthSectionLabel": "FORZA CARTE (più forte → più debole)",
   "rules.strengthJokerColored": "Jolly Rosso",
   "rules.strengthJokerBlack": "Jolly Nero",

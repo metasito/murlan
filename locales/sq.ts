@@ -496,10 +496,12 @@ export const sq: Record<keyof typeof en, string> = {
   "lobby.rankWeakest": "Më i dobëti",
 
   // ------------------------------------------------------------------ rules.*
-  "rules.headerTitle": "Rregullat & FAQ",
+  "rules.headerTitle": "Si luhet",
   "rules.heroTitle": "MURLAN",
   "rules.heroSubtitle": "Udhëzuesi i Lojës",
-  "rules.tutorialLink": "Preferon të mësosh duke luajtur? Provo Tutorialin e udhëhequr",
+  "rules.startTutorial": "Fillo tutorialin",
+  "rules.startTutorialSubtitle": "Mëso duke luajtur një dorë të udhëhequr.",
+  "rules.startTutorialA11yLabel": "Fillo tutorialin, një dorë e udhëhequr",
   "rules.strengthSectionLabel": "FORCA E LETRAVE (më e forta → më e dobëta)",
   "rules.strengthJokerColored": "Xholi i Kuq",
   "rules.strengthJokerBlack": "Xholi i Zi",

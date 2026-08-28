@@ -34,6 +34,7 @@ const CONTROLS: [string, string][] = [
   ["app/lobby.tsx", "personalityBtn"],
   ["app/(online)/room.tsx", "codeBtn"],
   ["app/index.tsx", "friendsBtn"],
+  ["app/rules.tsx", "startTutorial"],
 ];
 
 /** Controls sized by an explicit box rather than a floor. */

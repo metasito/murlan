@@ -487,10 +487,12 @@ export const en = {
   "lobby.rankWeakest": "Weakest",
 
   // ------------------------------------------------------------------ rules.*
-  "rules.headerTitle": "Rules & FAQ",
+  "rules.headerTitle": "How to play",
   "rules.heroTitle": "MURLAN",
   "rules.heroSubtitle": "Game Guide",
-  "rules.tutorialLink": "Prefer to learn by playing? Try the guided Tutorial",
+  "rules.startTutorial": "Start the tutorial",
+  "rules.startTutorialSubtitle": "Learn by playing a guided hand.",
+  "rules.startTutorialA11yLabel": "Start the tutorial, a guided hand",
   "rules.strengthSectionLabel": "CARD STRENGTH (strongest → weakest)",
   "rules.strengthJokerColored": "Red Joker",
   "rules.strengthJokerBlack": "Black Joker",

@@ -14,11 +14,11 @@ import Animated, {
 } from "react-native-reanimated";
 import { LinearGradient } from "expo-linear-gradient";
 import Ionicons from "@expo/vector-icons/Ionicons";
-import { Colors, FontSize, Radius, Spacing, Type } from "@/lib/theme";
+import { Colors, FontSize, Radius, Spacing, TOUCH_TARGET_MIN, Type } from "@/lib/theme";
 import { MenuLayout } from "@/components/MenuLayout";
 import { usePrefersReducedMotion } from "@/lib/accessibility";
 import { useTranslation, type TranslationKey } from "@/lib/i18n";
-import { a11yState } from "@/lib/a11y";
+import { a11yHidden, a11yState } from "@/lib/a11y";
 
 interface FAQ {
   question: string;
@@ -26,6 +26,8 @@ interface FAQ {
 }
 
 const FAQ_COUNT = 18;
+
+const CTA_ICON = 18;
 
 function useFaqs(): FAQ[] {
   const { t } = useTranslation();
@@ -130,14 +132,16 @@ export default function RulesScreen() {
           <Text style={styles.heroSubtitle}>{t("rules.heroSubtitle")}</Text>
           <Pressable
             onPress={() => router.push("/tutorial")}
-            style={styles.tutorialLink}
-            accessibilityRole="link"
-            accessibilityLabel={t("rules.tutorialLink")}
-            hitSlop={12}
+            style={styles.startTutorial}
+            accessibilityRole="button"
+            accessibilityLabel={t("rules.startTutorialA11yLabel")}
           >
-            <Ionicons name="school-outline" size={14} color={Colors.gold} />
-            <Text style={styles.tutorialLinkText}>{t("rules.tutorialLink")}</Text>
-            <Ionicons name="chevron-forward" size={14} color={Colors.gold} />
+            <Ionicons name="school-outline" size={CTA_ICON} color={Colors.gold} {...a11yHidden()} />
+            <View style={styles.startTutorialCopy} {...a11yHidden()}>
+              <Text style={styles.startTutorialTitle}>{t("rules.startTutorial")}</Text>
+              <Text style={styles.startTutorialSubtitle}>{t("rules.startTutorialSubtitle")}</Text>
+            </View>
+            <Ionicons name="chevron-forward" size={CTA_ICON} color={Colors.gold} {...a11yHidden()} />
           </Pressable>
         </View>
 
@@ -261,25 +265,32 @@ const styles = StyleSheet.create({
     letterSpacing: 3,
     textTransform: "uppercase",
   },
-  tutorialLink: {
+  startTutorial: {
     flexDirection: "row",
     alignItems: "center",
-    gap: Spacing.slim,
+    gap: Spacing.cosy,
     marginTop: Spacing.cosy,
     paddingHorizontal: Spacing.cosy,
     paddingVertical: Spacing.sm,
-    minHeight: 44,
+    minHeight: TOUCH_TARGET_MIN,
     borderRadius: Radius.sm,
     backgroundColor: Colors.goldMuted,
     borderWidth: 1,
     borderColor: Colors.border,
   },
-  tutorialLinkText: {
-    fontFamily: "Inter_500Medium",
-    fontSize: FontSize.xs,
-    color: Colors.gold,
-    textAlign: "center",
+  startTutorialCopy: {
     flexShrink: 1,
+    gap: Spacing.xxs,
+  },
+  startTutorialTitle: {
+    fontFamily: "Inter_600SemiBold",
+    fontSize: FontSize.sm,
+    color: Colors.gold,
+  },
+  startTutorialSubtitle: {
+    fontFamily: "Inter_400Regular",
+    fontSize: FontSize.xs,
+    color: Colors.textMuted,
   },
 
   quickRef: {
