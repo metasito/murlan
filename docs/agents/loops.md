@@ -3,9 +3,7 @@
 Which loop to run for which change, what each one costs, and what it can and cannot see.
 Read this **before** starting a change, not after a loop has already lied to you.
 
-Which checks you owe before pushing is a rule, and rules live in `docs/agents/RULES.md`.
-This file is the *why* behind them and the commands they refer to; where the two disagree,
-the ruleset wins.
+The rules themselves are in `docs/agents/RULES.md`. This file is the *why* behind them.
 
 ## Ask which platform the report came from, first
 
@@ -101,37 +99,47 @@ Each of these produced a confident, wrong "fixed" in one session:
   grep's status; a red run reads as green. Read the `N passed / N failed` line.
 - **Compare pixels, not impressions.** "Looks darker" cost hours; sampling the same relative
   points out of both PNGs found the halved vignette radius in one run.
-- **A scan or a measure with no floor reports the state of the scanner.** It reads identically
-  either way, which is the whole problem — see below.
+- **A scan that has only ever been green has not been tested, it has been assumed.** Rule 6
+  covers it; the section below is why, and which way to lean when you get to choose.
 
 ## A scan needs a planted floor
 
-A check that has only ever been green has not been tested; it has been assumed. Plant the
-defect it exists to catch, watch it fire, and keep the planted case as a test. Thirteen files
-already do this and name it the same way — `// The floor.` — including
-`tests/vignette.test.ts`, `tests/native/feltEllipse.test.tsx` and `tests/bundleRoutes.test.ts`.
-`tests/a11yProps.test.ts` and `tests/e2eSentinels.test.ts` do it under their own names.
+Rule 6 says a scan must fail on a planted defect. The reason it is worth its own rule for a
+scan, and not just for a fix, is that a scan reads identically whether it is working or not:
+the output of a scan with nothing to report and the output of a scan that cannot see anything
+are the same empty list.
+
+The convention is already here — about fifty test files carry a `// The floor…` comment.
+`tests/vignette.test.ts`, `tests/native/feltEllipse.test.tsx` and `tests/bundleRoutes.test.ts`
+each plant the defect verbatim; `tests/a11yProps.test.ts` and `tests/e2eSentinels.test.ts` do
+it under names of their own, which is why grepping the phrase undercounts it.
 
 **Which direction it fails in decides whether you find out.** Three scans lied here in one
 week, and only the loud one was caught by the person who wrote it:
 
-| | what it did | what happened |
+| The scan | what it did | what happened |
 | --- | --- | --- |
-| substring grep | reported a dead locale key as live — `common.no` matched inside `common.notice` | a **false negative**: an issue was written on top of it, describing a confirm dialog that does not exist |
+| substring grep | reported a dead locale key as live — `common.no` matched inside `common.notice` | a **false negative**: #512 was written on top of it, describing a confirm dialog that does not exist |
 | literal tokeniser | an apostrophe in a comment (`player's`) opened a literal that ran to the next one, losing every key after it in the file | a **false positive** storm: 128 orphans, most obviously live, investigated in a minute |
-| pixel measure | passed 4:1 before any change was made, because one of the two threads was already multiplicative | would have shipped a **green for a live defect** |
+| pixel measure (#341) | passed 4:1 before any change was made, because one of the two threads was already multiplicative | would have shipped a **green for a live defect** |
 
-So: 128 obvious false positives get checked; one plausible false negative gets believed. When
-you can choose which way a scan fails, choose loud.
+When you can choose which way a scan fails, choose loud. The middle row is the one to copy:
+it was alarming, so it was caught in a minute by the person who wrote it.
 
-**What the first two have in common** is that both tracked state across a file and could
-desynchronise. Matching the shape you are looking for directly — a quoted `"[\w.]+"` token —
-cannot. Prefer a scan that cannot lose its place over one that parses properly.
+**The first two both tracked state across a file and could desynchronise.** Matching the shape
+you are after directly — `/(["'`])([\w.]+)\1/g`, the token, not the language around it —
+cannot lose its place. It buys that with a quieter failure of its own: a key named in a
+comment or in an unrelated string reads as live. `tests/e2eSentinels.test.ts` blanks comments
+first for exactly that reason. Know which of the two you are paying for.
 
-**Why this is written here and not enforced.** A floor is a semantic property, not a
-syntactic one: 34 of the 36 test files that scan the tree and assert an empty result do not
-carry the phrase, and most of them have a floor under another name. A check keyed on the
-words would flag them all and be satisfied by adding the words.
+**Why this is a rule and not a check.** Two checks were considered. One keyed on the comment
+would flag 34 of the 36 files that scan the tree and assert an empty result, and be satisfied
+by adding the comment. The allow-list-with-a-reason this repo uses for its other semantic
+properties (`tests/touchTargets.test.ts`, `tests/i18n.test.ts`'s `CONSTRUCTED`) does fit, and
+is worth building if this recurs — it was not built here because two of the three failures
+above were never committed checks at all. One was an ad-hoc grep in an issue body and one was
+a draft measure on a branch, so no repo-level gate could have seen either. The enforcement
+point is your own loop, before the thing exists to be gated.
 
 ## Starvation looks exactly like a red suite
 

@@ -18,7 +18,8 @@ Every rule an agent must follow, in one place. No rationale here — the *why* l
    let CI carry the rest.
 5. **Add `E2E_SKIP_BUILD=1` only when your edit is confined to a spec file.** Any change under
    `app/`, `components/` or `lib/` needs a rebuild, or the run tests a stale bundle.
-6. **A new test must fail before your fix.** Prove it, then fix it.
+6. **A new test must fail before your fix, and a scan must fail on a planted defect.** Prove it,
+   then fix it.
 
 ## The worktree
 

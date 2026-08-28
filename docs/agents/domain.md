@@ -2,6 +2,8 @@
 
 How the engineering skills should consume this repo's domain documentation when exploring the codebase.
 
+What an agent must do is in `docs/agents/RULES.md`; this file is only where to read first.
+
 ## Before exploring, read these
 
 - **`CONTEXT.md`** at the repo root, or

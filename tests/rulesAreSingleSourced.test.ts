@@ -14,6 +14,7 @@ const INSTRUCTION_FILES = [
   "scripts/ticket-pipeline.ts",
   "docs/agents/issue-tracker.md",
   "docs/agents/loops.md",
+  "docs/agents/domain.md",
 ];
 
 /**
@@ -29,6 +30,7 @@ const RULE_PHRASES: [string, RegExp][] = [
   ["one pre-push check", /agent:check.{0,30}before you push/i],
   ["never run the whole sweep locally", /npm run verify/i],
   ["read a file once, whole", /read a file once, whole/i],
+  ["prove it red first", /fail before your fix/i],
 ];
 
 function read(path: string): string {
@@ -67,8 +69,18 @@ describe("every agent rule is written down exactly once", () => {
     );
   });
 
+  // The floor for both tests below: a path that no longer resolves reads as an
+  // empty file, which is clean under every assertion here. Without this, moving
+  // one of these files takes it out of the guard silently.
+  test("every instruction file is still where the list says", () => {
+    const gone = INSTRUCTION_FILES.filter((f) => !existsSync(f));
+    assert.deepEqual(gone, [], `listed but missing: ${gone.join(", ")}`);
+  });
+
   test("instruction files point at the ruleset rather than repeating it", () => {
-    const silent = INSTRUCTION_FILES.filter((f) => read(f) && !read(f).includes("RULES.md"));
+    // `RULES`, not the bare basename: `docs/RULES.md` is the game's rules spec,
+    // and matching it would pass a file that never names the agent ruleset.
+    const silent = INSTRUCTION_FILES.filter((f) => !read(f).includes(RULES));
     assert.deepEqual(silent, [], `${silent.join(", ")} never mentions ${RULES}`);
   });
 });
