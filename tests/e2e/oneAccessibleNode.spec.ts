@@ -38,18 +38,11 @@ async function axTree(page: Page): Promise<AxNode[]> {
  * Names ARIA will not announce: `generic` is the implicit role of a `<div>`,
  * and a name is prohibited on it. A container labelled with `accessible` alone
  * lands here, because react-native-web forwards that prop nowhere.
- *
- * The game table carries two on purpose: `game-table`'s label and the hand
- * zone's are channels `tests/e2e/helpers/bot.ts` reads as attributes rather
- * than names, which their own call sites say (#505). They are passed in by
- * name rather than exempted by count, so a third one fails.
  */
-function namedGenerics(nodes: AxNode[], harnessChannels: string[] = []): string[] {
+function namedGenerics(nodes: AxNode[]): string[] {
   return nodes
     .filter((n) => !n.ignored && n.role?.value === "generic" && n.name?.value?.trim())
-    .map((n) => n.name!.value)
-    .filter((name) => !harnessChannels.includes(name))
-    .map((name) => `generic "${name}"`);
+    .map((n) => `generic "${n.name!.value}"`);
 }
 
 for (const screen of SCREENS) {
@@ -119,9 +112,5 @@ test("a grouped container reaches the browser as a named group", async ({ page, 
   }
   expect(inside, "a group speaks once, like any other one node").toEqual([]);
 
-  const channels = [
-    (await page.locator('[data-testid="game-table"]').getAttribute("aria-label")) ?? "",
-    (await page.locator('[aria-label^="La tua mano"]').first().getAttribute("aria-label")) ?? "",
-  ];
-  expect(namedGenerics(nodes, channels)).toEqual([]);
+  expect(namedGenerics(nodes)).toEqual([]);
 });
