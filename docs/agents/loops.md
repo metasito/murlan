@@ -119,8 +119,8 @@ the `globalSetup` of jest and Playwright alike, and names exhaustion. It is off 
 a runner is sized for one job and starts near its floor by design.
 
 `npm run reap` clears what a killed run leaves behind. `--dry-run` lists without killing anything.
-`npm run test:e2e` already frees the port first, because Playwright refuses a busy one before it
-ever runs the webServer command.
+A run does not need it first: `scripts/e2ePort.mjs` picks a port that is already free, and clears
+a holder only when that holder's launcher has exited.
 
 | What | Taken |
 | --- | --- |
@@ -139,13 +139,16 @@ Name matching would be indefensible: `chrome.exe` is as likely to be the develop
 and this machine also runs an unrelated agent's `python.exe` and Windows' own `msedgewebview2.exe`.
 A command line that could not be read claims nothing.
 
-**A sweep never takes a port somebody is using; `--port` always does.** The two callers want
-opposite things. `npm run test:e2e` passes `--port` because Playwright refuses a busy port
-*before* it runs the `webServer` command, so the run about to start is the authority and takes the
-port from whoever holds it. A bare `npm run reap` has nothing waiting on the port, so a holder
-still attached to a live launcher is somebody's run and stays — parentage is the signal, and a
-holder the process table cannot describe is left alone. **Two sessions running e2e at once still
-collide**, and nothing here changes that; it needs a port lease or a port per session.
+**A sweep never takes a port somebody is using; `--port` always does.** A bare `npm run reap` has
+nothing waiting on the port, so a holder still attached to a live launcher is somebody's run and
+stays — parentage is the signal, and a holder the process table cannot describe is left alone.
+`--port` is the blunt form, kept for cleaning up after a run that is already over
+(`lib/ticketPipeline/cleanup.ts`); no run takes that path on its way in any more.
+
+Starting a run used to, and that is what made two sessions collide: Playwright refuses a busy port
+*before* it runs the `webServer` command, so freeing it was the only way to boot — and the run
+that started second freed the first one's server out from under it. A run now picks a port that
+is free instead (`scripts/e2ePort.mjs`), which is a smaller thing to get right than a lease.
 
 The reason this matters more than one lost run: a webServer pulled out from under Playwright
 surfaces as a connection error or a 0ms failure, which reads exactly like a defect. A sweep that
@@ -290,7 +293,7 @@ Every port this repo's local tooling binds — including the local-substitute pa
 | --- | --- | --- |
 | `5000` | The Express server (`PORT`) | `server/index.ts`, `.replit` (`[[ports]]` localPort/externalPort, `[env] PORT`, `waitForPort`), `package.json` (`expo:dev`, `expo:dev:clean`) |
 | `8081` | Metro (`npx expo start` / `npm start`) | `scripts/build.js`, `.replit` |
-| `5199` | Playwright's e2e webServer (`E2E_PORT`) | `tests/e2e/playwright.config.ts`, `scripts/e2e-server.mjs`; freed by `scripts/reap.mjs` and by `lib/ticketPipeline/cleanup.ts` |
+| `5199`+ | Playwright's e2e webServer (`E2E_PORT`) — the base, and the first free port above it when a neighbour holds it | chosen by `scripts/e2ePort.mjs`, used by `tests/e2e/playwright.config.ts` and `scripts/e2e-server.mjs`; a leftover is freed by `scripts/reap.mjs` and by `lib/ticketPipeline/cleanup.ts` |
 | `55432` | The dev-stack's disposable Postgres (`MURLAN_DEV_PG_PORT`) | `murlan-dev-pg` container — `scripts/dev-stack.mjs`, `scripts/e2e-server.mjs` |
 | `55433` | The verify-only Postgres substituted for CI's database | `murlan-verify-pg` container — freed by `lib/ticketPipeline/cleanup.ts`; also bound manually by CLAUDE.md's "When Actions cannot start" |
 
@@ -302,6 +305,12 @@ npx playwright test --config tests/e2e/playwright.config.ts <spec>
 # iterating on the spec only, source untouched
 E2E_SKIP_BUILD=1 npx playwright test --config tests/e2e/playwright.config.ts <spec>
 ```
+
+Two runs at once are safe: each takes its own port, so a review agent's Playwright and the
+session that spawned it no longer take each other's server (#491). A run that has to move off
+`5199` says so on its first line — `e2e: port 5199 is taken, serving on 5200` — and that line is
+where to look when a run's server is not where this table says. Setting `E2E_PORT` yourself still
+wins over the choosing, which is how a proof pins a port of its own.
 
 `E2E_SKIP_BUILD=1` reuses the last bundle. Set it after a source edit and you measure the old
 code and it passes.
