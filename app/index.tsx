@@ -31,7 +31,7 @@ import {
   restingPose,
   type FloatingCardSpec,
 } from "@/components/homeCardField";
-import { homeMenu, type HomeAction } from "@/components/homeMenuModel";
+import { homeMenu, type HomeAction, type HomeTile } from "@/components/homeMenuModel";
 import { hapticLight } from "@/lib/haptics";
 import Feather from "@expo/vector-icons/Feather";
 import Ionicons from "@expo/vector-icons/Ionicons";
@@ -312,11 +312,6 @@ function HomeModeTile({
         >
           {label}
         </Text>
-        {disabled ? (
-          <Text {...a11yHidden()} style={styles.tileReason}>
-            {reason}
-          </Text>
-        ) : null}
       </Pressable>
     </Animated.View>
   );
@@ -371,6 +366,7 @@ function HomeAccountButton({
   label,
   icon,
   badge,
+  testID,
   onPress,
 }: {
   label: string;
@@ -378,10 +374,12 @@ function HomeAccountButton({
       builder cannot follow, and an unbuilt glyph renders as a blank box. */
   icon: React.ReactNode;
   badge?: number;
+  testID?: string;
   onPress: () => void;
 }) {
   return (
     <Pressable
+      testID={testID}
       onPress={() => {
         hapticLight();
         onPress();
@@ -428,39 +426,46 @@ function HomeAccountBar({ onSettings }: { onSettings: () => void }) {
   const entrance = useEntrance(0);
 
   return (
-    <Animated.View style={[styles.accountBar, entrance]}>
+    <View style={styles.accountControls}>
       {user ? (
-        <>
+        <Animated.View style={[styles.profileCorner, entrance]}>
           <HomeAccountButton
             label={t("home.modeProfile")}
+            testID="home-account-profile"
             icon={<Ionicons name="person-circle-outline" size={ACCOUNT_ICON} color={Colors.gold} {...a11yHidden()} />}
             onPress={goProfile}
           />
+        </Animated.View>
+      ) : null}
+      <Animated.View style={[styles.accountBar, entrance]}>
+        {user ? (
+          <>
+            <HomeAccountButton
+              label={requests > 0 ? tn("home.friendsA11yLabel", requests) : t("home.friendsLabel")}
+              icon={<Ionicons name="people" size={ACCOUNT_ICON} color={Colors.gold} {...a11yHidden()} />}
+              badge={requests}
+              onPress={goFriends}
+            />
+            <HomeAccountButton
+              label={t("home.leaderboard")}
+              icon={<Ionicons name="podium-outline" size={ACCOUNT_ICON} color={Colors.gold} {...a11yHidden()} />}
+              onPress={goRanking}
+            />
+          </>
+        ) : (
           <HomeAccountButton
-            label={requests > 0 ? tn("home.friendsA11yLabel", requests) : t("home.friendsLabel")}
-            icon={<Ionicons name="people" size={ACCOUNT_ICON} color={Colors.gold} {...a11yHidden()} />}
-            badge={requests}
-            onPress={goFriends}
+            label={t("home.signIn")}
+            icon={<Ionicons name="log-in-outline" size={ACCOUNT_ICON} color={Colors.gold} {...a11yHidden()} />}
+            onPress={() => router.push("/auth")}
           />
-          <HomeAccountButton
-            label={t("home.leaderboard")}
-            icon={<Ionicons name="podium-outline" size={ACCOUNT_ICON} color={Colors.gold} {...a11yHidden()} />}
-            onPress={goRanking}
-          />
-        </>
-      ) : (
+        )}
         <HomeAccountButton
-          label={t("home.signIn")}
-          icon={<Ionicons name="log-in-outline" size={ACCOUNT_ICON} color={Colors.gold} {...a11yHidden()} />}
-          onPress={() => router.push("/auth")}
+          label={t("home.settingsA11yLabel")}
+          icon={<Feather name="settings" size={ACCOUNT_ICON} color={Colors.gold} {...a11yHidden()} />}
+          onPress={onSettings}
         />
-      )}
-      <HomeAccountButton
-        label={t("home.settingsA11yLabel")}
-        icon={<Feather name="settings" size={ACCOUNT_ICON} color={Colors.gold} {...a11yHidden()} />}
-        onPress={onSettings}
-      />
-    </Animated.View>
+      </Animated.View>
+    </View>
   );
 }
 
@@ -740,17 +745,29 @@ export default function HomeScreen() {
     />
   );
 
+  // Explicit rows of at most two, not `flexWrap`: Yoga's line-breaking for a
+  // `flexWrap` row combining a percentage `flexBasis` with `gap` has gone
+  // stale mid-session on device (#link-pending) and dropped every tile to its
+  // own line — full-width pills stacked instead of the intended 2-then-1
+  // grid. A row the code builds itself never depends on that wrap decision.
+  const tileRows: HomeTile[][] = [];
+  for (let i = 0; i < menu.tiles.length; i += 2) tileRows.push(menu.tiles.slice(i, i + 2));
+
   const tiles = (
     <View style={styles.tileGrid}>
-      {menu.tiles.map((tile, i) => (
-        <HomeModeTile
-          key={tile.action}
-          label={label[tile.action]}
-          reason={tile.disabled ? t("home.requiresAccount") : undefined}
-          icon={TILE_ICONS[tile.action]}
-          onPress={go[tile.action]}
-          step={STEP_TILES + i}
-        />
+      {tileRows.map((row, r) => (
+        <View key={row.map((tile) => tile.action).join("-")} style={styles.tileRow}>
+          {row.map((tile, i) => (
+            <HomeModeTile
+              key={tile.action}
+              label={label[tile.action]}
+              reason={tile.disabled ? t("home.requiresAccount") : undefined}
+              icon={TILE_ICONS[tile.action]}
+              onPress={go[tile.action]}
+              step={STEP_TILES + r * 2 + i}
+            />
+          ))}
+        </View>
       ))}
     </View>
   );
@@ -876,6 +893,16 @@ const styles = StyleSheet.create({
     gap: Spacing.xs,
     paddingHorizontal: Spacing.md,
   },
+  accountControls: {
+    width: "100%",
+    minHeight: TOUCH_TARGET_MIN,
+    position: "relative",
+  },
+  profileCorner: {
+    position: "absolute",
+    left: Spacing.md,
+    top: 0,
+  },
   accountBtn: {
     width: TOUCH_TARGET_MIN,
     height: TOUCH_TARGET_MIN,
@@ -962,8 +989,9 @@ const styles = StyleSheet.create({
   },
   heroSublabel: { fontFamily: "Inter_500Medium", fontSize: FontSize.xs, color: Colors.bgCard },
 
-  tileGrid: { flexDirection: "row", flexWrap: "wrap", gap: Spacing.cosy },
-  tileSlot: { flexGrow: 1, flexBasis: "45%" },
+  tileGrid: { gap: Spacing.cosy },
+  tileRow: { flexDirection: "row", gap: Spacing.cosy },
+  tileSlot: { flex: 1 },
   tile: {
     minHeight: TOUCH_TARGET_MIN,
     alignItems: "center",
@@ -983,8 +1011,6 @@ const styles = StyleSheet.create({
     color: Colors.text,
     textAlign: "center",
   },
-  tileReason: { ...Type.caption, textAlign: "center" },
-
   quietRowSlot: { marginTop: "auto", paddingHorizontal: Spacing.lg, paddingTop: Spacing.md },
   quietRow: {
     minHeight: TOUCH_TARGET_MIN,

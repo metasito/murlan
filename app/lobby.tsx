@@ -332,24 +332,6 @@ export default function LobbyScreen() {
           <ScrollView contentContainerStyle={[styles.scroll, { paddingBottom: bottomInset + 120 }]} showsVerticalScrollIndicator={false}>
             {configSection}
             {playerListSection}
-            <View style={styles.section}>
-              <Text style={styles.rulesTitle}>{t("lobby.rulesTitle")}</Text>
-              <View style={styles.rulesRow}>
-                {[
-                  { label: "JKR★", desc: t("lobby.rankJokerColored") },
-                  { label: "JKR", desc: t("lobby.rankJokerBlack") },
-                  { label: "2", desc: t("lobby.rankStrongest") },
-                  { label: "A", desc: t("lobby.rankAce") },
-                  { label: "K", desc: t("lobby.rankKing") },
-                  { label: "3", desc: t("lobby.rankWeakest") },
-                ].map((r) => (
-                  <View key={r.label} style={styles.ruleCard}>
-                    <Text style={styles.ruleRank}>{r.label}</Text>
-                    <Text style={styles.ruleDesc}>{r.desc}</Text>
-                  </View>
-                ))}
-              </View>
-            </View>
           </ScrollView>
 
           <View style={[styles.startContainer, { paddingBottom: bottomInset + 16 }]} pointerEvents="box-none">
@@ -559,38 +541,6 @@ const styles = StyleSheet.create({
     fontFamily: "Rajdhani_600SemiBold",
     fontSize: FontSize.sm,
     color: Colors.gold,
-  },
-  rulesTitle: {
-    fontFamily: "Rajdhani_600SemiBold",
-    fontSize: FontSize.md,
-    color: Colors.textSecondary,
-    marginBottom: Spacing.xs,
-  },
-  rulesRow: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: Spacing.sm,
-  },
-  ruleCard: {
-    backgroundColor: Colors.bgSurface,
-    borderRadius: Radius.sm,
-    padding: Spacing.snug,
-    alignItems: "center",
-    minWidth: 70,
-    borderWidth: 1,
-    borderColor: Colors.border,
-  },
-  ruleRank: {
-    fontFamily: "Rajdhani_700Bold",
-    fontSize: FontSize.md,
-    color: Colors.gold,
-  },
-  ruleDesc: {
-    fontFamily: "Inter_400Regular",
-    fontSize: FontSize.xxs,
-    color: Colors.textMuted,
-    textAlign: "center",
-    marginTop: Spacing.xxs,
   },
   startContainer: {
     position: "absolute",
