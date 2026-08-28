@@ -34,6 +34,8 @@ const CONTROLS: [string, string][] = [
   ["app/lobby.tsx", "personalityBtn"],
   ["app/(online)/room.tsx", "codeBtn"],
   ["app/index.tsx", "friendsBtn"],
+  ["app/rules.tsx", "startTutorial"],
+  ["app/rules.tsx", "faqQuestion"],
 ];
 
 /** Controls sized by an explicit box rather than a floor. */
@@ -41,6 +43,7 @@ const FIXED_SIZE: [string, string][] = [
   ["components/ReactionLayer.tsx", "trigger"],
   ["app/(online)/friends.tsx", "iconBtn"],
   ["app/index.tsx", "settingsBtn"],
+  ["app/rules.tsx", "backBtn"],
 ];
 
 /**
