@@ -225,14 +225,12 @@ CardItem.displayName = "CardItem";
 // bigger, and so the same fraction more air between the cards, because the
 // share the row aims at grows with the card (`HAND_NEAR_RATIO`).
 //
-// Both sizes are real layout, and the change between them is not animated.
-// That is a platform constraint, not a preference: web rasterises text before
-// transforming it (docs/agents/loops.md, React Native Web traps), so a card
-// under a `scale` carries a distorted rank glyph for as long as the transform
-// lasts — `tests/e2e/a11yOverlays.spec.ts` measures exactly that and reports
-// clipping the glyph does not have. A turn changes hands every few seconds, so
-// an eased size would be running whenever anything looked. #420 holds the
-// transition, and what it would have to avoid.
+// Both sizes are real layout, and the change between them is a cut rather than
+// a transition — a decision with its evidence, not an omission: `docs/BRIEF.md`
+// §3.2. The short of it is that web rasterises text before transforming it, so
+// a card under a `scale` carries a rank glyph `tests/e2e/a11yOverlays.spec.ts`
+// reads as clipped, and a turn changes hands too often for the animation ever
+// to be settled when something looks.
 
 // ─── StraightHand ─────────────────────────────────────────────────────────────
 
