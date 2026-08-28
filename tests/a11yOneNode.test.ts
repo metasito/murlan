@@ -50,18 +50,7 @@ const LABELLED = /accessibilityLabel=/;
  * nearly every candidate is the same defect with the same one-prop fix, so a
  * long list here would be bugs wearing the costume of decisions.
  */
-const DELIBERATELY_REACHABLE: [string, string, string][] = [
-  [
-    "components/ExchangeAnnouncement.tsx",
-    "194: <Pressable>",
-    "the panel is `accessibilityRole=\"alert\"`, and a live region announces the text that changes inside it rather than its own label — hiding its copy leaves nothing to announce (#495)",
-  ],
-  [
-    "components/NotificationBanner.tsx",
-    "153: <Pressable>",
-    "the banner's body is a live region too, and it never unmounts, so a content change is the only announcement there is — hide the copy and every notification arrives silently on web (#495)",
-  ],
-];
+const DELIBERATELY_REACHABLE: [string, string, string][] = [];
 
 function sourcesUnder(dir: string): string[] {
   const out: string[] = [];
