@@ -53,7 +53,7 @@ for (const state of AWAY) {
         seats: rects(
           '[data-testid="top-seat"], [data-testid="side-seat-left"], [data-testid="side-seat-right"]'
         ),
-        cards: rects('[aria-label^="La tua mano"] [data-testid="card-box"]'),
+        cards: rects('[data-hand-state] [data-testid="card-box"]'),
       };
     });
 

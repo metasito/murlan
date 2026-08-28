@@ -45,7 +45,7 @@ async function boxes(page: Page) {
       topBar: one('[data-testid="game-top-bar"]'),
       rings: many('[data-testid="seat-ring"]'),
       pile: one('[data-testid="pile-area"]'),
-      hand: one('[aria-label^="La tua mano"]'),
+      hand: one("[data-hand-state]"),
       sideSeats: [
         one('[data-testid="side-seat-left"]'),
         one('[data-testid="side-seat-right"]'),
