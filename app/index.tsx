@@ -40,7 +40,7 @@ import { useAuth } from "@/context/AuthContext";
 import { useGame } from "@/context/GameContext";
 import { useSocket } from "@/context/SocketContext";
 import { usePrefersReducedMotion } from "@/lib/accessibility";
-import { Colors, FontSize, makeShadow, Motion, Radius, Spacing, TOUCH_TARGET_MIN, Type } from '@/lib/theme';
+import { Colors, FontSize, makeShadow, Motion, motionMs, Radius, Spacing, TOUCH_TARGET_MIN, Type } from '@/lib/theme';
 import { useTranslation } from "@/lib/i18n";
 import { SettingsModal } from "@/components/SettingsModal";
 import { a11yHidden, a11yState } from "@/lib/a11y";
@@ -166,17 +166,14 @@ function useEntrance(step: number) {
   const translateY = useSharedValue(RISE);
 
   useEffect(() => {
-    if (reduceMotion) {
-      opacity.value = 1;
-      translateY.value = 0;
-      return;
-    }
     const delay = step * ENTRANCE_STEP_MS;
-    opacity.value = withDelay(delay, withTiming(1, { duration: Motion.duration.reveal }));
-    translateY.value = withDelay(
-      delay,
-      withTiming(0, { duration: Motion.duration.reveal, easing: Easing.out(Easing.cubic) })
-    );
+    opacity.value = withDelay(delay, withTiming(1, { duration: motionMs("reveal", reduceMotion) }));
+    translateY.value = reduceMotion
+      ? 0
+      : withDelay(
+          delay,
+          withTiming(0, { duration: Motion.duration.reveal, easing: Easing.out(Easing.cubic) })
+        );
   }, [opacity, reduceMotion, step, translateY]);
 
   return useAnimatedStyle(() => ({
@@ -662,16 +659,13 @@ export default function HomeScreen() {
   const titleScale = useSharedValue(TITLE_FROM);
 
   useEffect(() => {
-    if (reduceMotion) {
-      titleOpacity.value = 1;
-      titleScale.value = 1;
-      return;
-    }
-    titleOpacity.value = withTiming(1, { duration: Motion.duration.reveal });
-    titleScale.value = withTiming(1, {
-      duration: Motion.duration.reveal,
-      easing: Easing.out(Easing.back(TITLE_OVERSHOOT)),
-    });
+    titleOpacity.value = withTiming(1, { duration: motionMs("reveal", reduceMotion) });
+    titleScale.value = reduceMotion
+      ? 1
+      : withTiming(1, {
+          duration: Motion.duration.reveal,
+          easing: Easing.out(Easing.back(TITLE_OVERSHOOT)),
+        });
   }, [reduceMotion, titleOpacity, titleScale]);
 
   // First-launch onboarding: offer the interactive tutorial automatically, once

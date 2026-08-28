@@ -21,7 +21,8 @@ export interface NotificationData {
   title: string;
   message: string;
   onPress?: () => void;
-  duration?: number; // ms, defaults to 4000
+  /** How long it stays readable. Defaults to `Reading.notice`. */
+  duration?: number;
 }
 
 interface NotificationContextValue {

@@ -371,8 +371,8 @@ export function PlayedPile({
     <Animated.View style={[pileStyles.pileArea, bounceStyle]} testID="pile-area">
       {roundWinner && (
         <Animated.View
-          entering={reduceMotion ? undefined : FadeIn.duration(250)}
-          exiting={reduceMotion ? undefined : FadeOut.duration(250)}
+          entering={reduceMotion ? undefined : FadeIn.duration(Motion.duration.travel)}
+          exiting={reduceMotion ? undefined : FadeOut.duration(Motion.duration.travel)}
           style={pileStyles.winnerTag}
         >
           <Ionicons name="star" size={9} color={Colors.gold} />

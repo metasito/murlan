@@ -325,6 +325,15 @@ export interface SparkOffset {
 }
 
 /**
+ * The burst's own head start, and the gap between its five phases. Off the
+ * Motion scale on purpose: every other timing in the app is chosen to line up
+ * with its neighbours, and these two are chosen against each other so that
+ * sixteen sparks read as debris rather than as one ring leaving at once.
+ */
+const SPARK_LEAD_MS = 60;
+const SPARK_PHASE_MS = 22;
+
+/**
  * Where the i-th of `SPARK_COUNT` sparks flies to, and when it starts —
  * derived from its index so every client draws the same burst. `dy` is
  * squashed to .62 of the unsquashed distance: sparks land in a shallow
@@ -339,7 +348,7 @@ export function sparkOffset(i: number, scale: number): SparkOffset {
   return {
     dx: Math.cos(angle) * dist,
     dy: Math.sin(angle) * dist * 0.62,
-    delay: 60 + (i % 5) * 22,
+    delay: SPARK_LEAD_MS + (i % 5) * SPARK_PHASE_MS,
   };
 }
 

@@ -10,7 +10,7 @@
 // produce one that neither TypeScript nor a render test catches.
 
 const TOKEN_OBJECTS =
-  'Colors|Spacing|Radius|FontSize|Type|Motion|Scrim|Highlight|Shadow|FeltGradient|FeltGradients|CardBacks';
+  'Colors|Spacing|Radius|FontSize|Type|Motion|Reading|Scrim|Highlight|Shadow|FeltGradient|FeltGradients|CardBacks';
 
 // Every edge shorthand React Native accepts, built from the two prefixes and
 // the edge suffixes rather than enumerated.
@@ -37,6 +37,22 @@ const TOUCH_TARGET_LITERAL = `Property[key.name=/^(${SIZE_PROPS})$/] > Literal[r
 const TOUCH_TARGET_LITERAL_MESSAGE =
   'This is TOUCH_TARGET_MIN written as a bare number, and tests/touchTargets.test.ts reads the token. Import it from @/lib/theme, or — if this box is not a touch target — give it a named module constant that says so.';
 
+// Timing, on the same footing as the other scales. `duration` and `delay` are
+// deliberately their own selector rather than another entry in SCALED_PROPS:
+// they carry a different message, because the scale they belong to is `Motion`
+// and the escape for a value that is not motion at all — a reading budget, a
+// deliberately unsynchronised scatter — is a named constant rather than a step.
+// Reanimated spells a timing two ways — `withTiming(v, { duration })` and the
+// layout-animation builder's `FadeIn.duration(n)` — and a rule that knows only
+// the first leaves the second free to drift, which is where `FadeIn.duration(280)`
+// survived the migration that swept every object property in the same file.
+const TIMING_PROPS = 'duration|delay';
+const TIMING_LITERAL =
+  `Property[key.name=/^(${TIMING_PROPS})$/] > ${BARE_NUMBER}, ` +
+  `CallExpression[callee.property.name=/^(${TIMING_PROPS})$/] > ${BARE_NUMBER}`;
+const TIMING_LITERAL_MESSAGE =
+  'Use a Motion step from @/lib/theme, picked by the role it plays (flash, tap, shift, travel, reveal, dwell). A duration that is not motion — how long something stays readable, a scatter that must not synchronise — takes a named module constant that says so, never a bare number.';
+
 const TOKEN_AS_STRING = `Literal[value=/^(${TOKEN_OBJECTS})\\.[A-Za-z0-9_]+$/]`;
 const TOKEN_AS_TEMPLATE = `TemplateElement[value.raw=/^(${TOKEN_OBJECTS})\\.[A-Za-z0-9_]+$/]`;
 
@@ -51,6 +67,9 @@ module.exports = {
   SCALED_PROPS,
   BARE_NUMBER,
   SCALED_LITERAL,
+  TIMING_PROPS,
+  TIMING_LITERAL,
+  TIMING_LITERAL_MESSAGE,
   TOUCH_TARGET_LITERAL,
   TOUCH_TARGET_LITERAL_MESSAGE,
   TOKEN_AS_STRING,

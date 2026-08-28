@@ -14,7 +14,7 @@ import {
   computeScreenPads,
   notificationTopOffset,
 } from "@/components/gameTableModel";
-import { Colors, Spacing, Radius, Type, Shadow, TOUCH_TARGET_MIN } from "@/lib/theme";
+import { Colors, Reading, Spacing, Radius, Type, Shadow, TOUCH_TARGET_MIN } from "@/lib/theme";
 import { usePrefersReducedMotion } from "@/lib/accessibility";
 import { useTranslation } from "@/lib/i18n";
 import type { NotificationType, NotificationData } from "@/context/NotificationContext";
@@ -54,7 +54,7 @@ const COLOR_MAP: Record<NotificationType, string> = {
 // entry there matches 320ms and this exact number is the contract, not a
 // generic transition duration.
 const SLIDE_DURATION = 320;
-const DEFAULT_VISIBLE_DURATION = 4500;
+const DEFAULT_VISIBLE_DURATION = Reading.notice;
 /**
  * Slack on the floor that ends a banner whose animation chain never reported
  * back. Under reduced motion every leg collapses to 0ms, so without it the

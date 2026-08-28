@@ -185,8 +185,13 @@ export function ExchangeModal({
 
   useEffect(() => {
     if (reduceMotion) return;
-    arrowScale.value = withDelay(300, withSpring(1, Motion.spring.entrance));
-    arrowOpacity.value = withDelay(300, withTiming(1, { duration: 300 }));
+    // The arrow explains a move the two cards have already made, so it waits
+    // out their own travel before it appears.
+    arrowScale.value = withDelay(Motion.duration.travel, withSpring(1, Motion.spring.entrance));
+    arrowOpacity.value = withDelay(
+      Motion.duration.travel,
+      withTiming(1, { duration: Motion.duration.travel })
+    );
   }, [arrowOpacity, arrowScale, reduceMotion]);
 
   const arrowAnim = useAnimatedStyle(() => ({
@@ -205,8 +210,8 @@ export function ExchangeModal({
       onRequestClose={() => {}}
     >
       <Animated.View
-        entering={reduceMotion ? undefined : FadeIn.duration(280)}
-        exiting={reduceMotion ? undefined : FadeOut.duration(200)}
+        entering={reduceMotion ? undefined : FadeIn.duration(Motion.duration.travel)}
+        exiting={reduceMotion ? undefined : FadeOut.duration(Motion.duration.shift)}
         style={styles.overlay}
       >
         <View

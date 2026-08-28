@@ -13,6 +13,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useSocket } from "@/context/SocketContext";
 import { useNotification } from "@/context/NotificationContext";
 import { t, translateServerPayload, type ServerPayload } from "@/lib/i18n";
+import { Reading } from "@/lib/theme";
 import { MATCH_TARGETS, matchIsClosing } from "@/lib/gameEngine";
 import { handCountOf } from "@/components/gameTableModel";
 import { clearReactions, pushReaction } from "@/lib/reactions";
@@ -298,7 +299,7 @@ export function OnlineGameProvider({ userId, children }: { userId: string; child
         type: "game_error",
         title: t("onlineGame.rejoinFailedTitle"),
         message: translateServerPayload(payload),
-        duration: 4500,
+        duration: Reading.notice,
       });
       forgetRejoinAttempt();
       persistActiveRoom(null);
@@ -466,14 +467,14 @@ export function OnlineGameProvider({ userId, children }: { userId: string; child
           type: "afk",
           title: t("game.autoPassTitle"),
           message: text,
-          duration: 4500,
+          duration: Reading.notice,
         });
       } else {
         showNotification({
           type: "game_info",
           title: t("common.notice"),
           message: text,
-          duration: 4000,
+          duration: Reading.notice,
         });
       }
     };
@@ -561,7 +562,7 @@ export function OnlineGameProvider({ userId, children }: { userId: string; child
         type: "game_info",
         title: t("common.notice"),
         message: translateServerPayload(payload),
-        duration: 4500,
+        duration: Reading.notice,
       });
     };
 

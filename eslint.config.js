@@ -10,6 +10,8 @@ const {
   TOKEN_AS_TEMPLATE,
   STRING_TOKEN_MESSAGE,
   SCALED_LITERAL_MESSAGE,
+  TIMING_LITERAL,
+  TIMING_LITERAL_MESSAGE,
   TOUCH_TARGET_LITERAL,
   TOUCH_TARGET_LITERAL_MESSAGE,
 } = require('./eslint.selectors.cjs');
@@ -66,6 +68,13 @@ module.exports = defineConfig([
           // came to ship five corner radii for one role.
           selector: SCALED_LITERAL,
           message: SCALED_LITERAL_MESSAGE,
+        },
+        {
+          // Timing was convention until #126 decided what the game should feel
+          // like. The scale exists now, so a bare millisecond is the same
+          // silent drift a bare radius was.
+          selector: TIMING_LITERAL,
+          message: TIMING_LITERAL_MESSAGE,
         },
         {
           selector: TOUCH_TARGET_LITERAL,

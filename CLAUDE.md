@@ -134,9 +134,13 @@ lines is explaining itself instead of being clear.
 ## Design system
 
 - **No bare literals for colour, radius, font size, spacing or timing** — all from
-  `lib/theme.ts`. `eslint.config.js` refuses a bare number for radius, font size and
-  spacing only; colour and timing are convention, caught in review or not at all. A
+  `lib/theme.ts`. `eslint.config.js` refuses a bare number for radius, font size, spacing
+  and timing; colour alone is convention, caught in review or not at all. A
   component-local one-off may be a named module constant. `0` is still a plain `0`.
+- **Timing is `Motion`, and a duration that is not motion is not a `Motion` step.** How
+  long a banner stays readable is `Reading`; a scatter that must not synchronise is a
+  named constant. What an animation becomes under reduced motion comes from
+  `Motion.reduced` via `motionMs()`, never from the call site's own judgement.
 - Gold is a five-step alpha scale (`goldGhost` … `goldStrong`). Pick by role; don't add a
   sixth to split the difference.
 - Menu screens use `MenuLayout` / `MenuCard` / `MenuButton`; `app/lobby.tsx` is the

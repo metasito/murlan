@@ -29,7 +29,7 @@ import { LinearGradient } from "expo-linear-gradient";
 import { stop } from "./felt";
 import { usePrefersReducedMotion } from "@/lib/accessibility";
 import { sparkOffset, SPARK_COUNT } from "@/components/gameTableModel";
-import { makeShadow } from "@/lib/theme";
+import { makeShadow, Motion } from "@/lib/theme";
 
 // The prototype's own literal colours for this one effect — a lamp exploding
 // at the pile is a brighter, whiter flash than the felt's own ambient
@@ -124,10 +124,10 @@ const WAVE_SIZE = 120;
 const WAVE_BORDER = 2;
 const WAVE_EASING = Easing.bezier(0.1, 0.7, 0.25, 1);
 const WAVE_Z = 9;
-/** The two rings' own delay and duration — the second trails the first. */
+/** The two rings. They run for the same length; the trail is entirely the delay. */
 const WAVE_RINGS = [
-  { delay: 80, duration: 1250 },
-  { delay: 260, duration: 1350 },
+  { delay: Motion.duration.flash, duration: Motion.duration.dwell },
+  { delay: Motion.duration.travel, duration: Motion.duration.dwell },
 ] as const;
 
 function Wave({

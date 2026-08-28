@@ -205,14 +205,9 @@ export function useTableFeedback({
   // GIOCA bloom — a slow gold pulse while the button is armed.
   useEffect(() => {
     if (playBtnValid && !reduceMotion) {
-      giocaGlowVal.value = withRepeat(
-        withSequence(
-          withTiming(1.0, { duration: 1000, easing: Easing.inOut(Easing.sin) }),
-          withTiming(0.35, { duration: 1000, easing: Easing.inOut(Easing.sin) })
-        ),
-        -1,
-        false
-      );
+      const breath = (to: number) =>
+        withTiming(to, { duration: Motion.duration.dwell, easing: Easing.inOut(Easing.sin) });
+      giocaGlowVal.value = withRepeat(withSequence(breath(1.0), breath(0.35)), -1, false);
     } else {
       cancelAnimation(giocaGlowVal);
       giocaGlowVal.value =

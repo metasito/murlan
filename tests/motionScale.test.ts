@@ -9,7 +9,7 @@
 // per call site is the answer nobody wrote down.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { Motion } from "../lib/tokens.ts";
+import { Motion, motionMs, Reading } from "../lib/tokens.ts";
 
 const steps = Object.entries(Motion.duration) as [string, number][];
 
@@ -85,4 +85,36 @@ test("the card's flight is the weight that was chosen", () => {
 test("travel and shift lose their travel entirely under reduced motion", () => {
   assert.equal(Motion.reduced.shift, 0, "a shift that still travels has not been reduced");
   assert.equal(Motion.reduced.travel, 0, "a card that still flies has not been reduced");
+});
+
+// The sweep's own guard. `Motion.reduced` only helps if the call sites read it,
+// and the reason #52 kept finding "reduced" spelt differently on every screen
+// is that each one answered the question itself.
+test("motionMs answers with the step, or with the reduced form the step states", () => {
+  for (const [name, ms] of steps) {
+    const step = name as keyof typeof Motion.duration;
+    assert.equal(motionMs(step, false), ms, `${name} is not itself at full motion`);
+
+    const to = (Motion.reduced as Record<string, number | null>)[name];
+    assert.equal(
+      motionMs(step, true),
+      to ?? ms,
+      `${name} reduced to something Motion.reduced does not say it becomes`
+    );
+  }
+});
+
+// Reading time is set by how many words there are, not by how the table moves,
+// and the whole point of the separate group is that a later sweep cannot quietly
+// fold a 4-second read back onto a step. Every budget sits clear of the longest
+// one, so the two can never be mistaken for neighbours on one scale.
+test("a reading budget is not a motion step", () => {
+  const longest = Math.max(...steps.map(([, ms]) => ms));
+  for (const [name, ms] of Object.entries(Reading)) {
+    assert.ok(
+      ms > longest * 2,
+      `Reading.${name} (${ms}ms) is close enough to the Motion scale (longest step ${longest}ms) ` +
+        "to read as a step, which is the category error the group exists to prevent"
+    );
+  }
 });
