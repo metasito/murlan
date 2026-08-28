@@ -59,14 +59,101 @@ test("the scanner matches a real use", () => {
   );
 });
 
-// The helper is only worth having if it emits the web half. A version that
-// returned the React Native props alone would pass the scan above and change
-// nothing on the platform Replit serves.
-test("a11yState emits the aria twin for the role it is given", async () => {
-  const source = readFileSync(path.join(repoRoot, "lib/a11y.tsx"), "utf8");
-  for (const aria of ["aria-disabled", "aria-busy", "aria-expanded", "aria-checked", "aria-selected", "aria-hidden", "aria-describedby"]) {
-    assert.ok(source.includes(`"${aria}"`), `lib/a11y.tsx never emits ${aria}`);
+// Whether a twin *arrives* is a question only a browser answers, and
+// tests/e2e/ariaTwins.spec.ts reads each one off a rendered control. What is
+// checked here is the one twin the DOM cannot receive from this helper:
+// react-native-web's Pressable renders
+//   createElement(View, {...rest, ...pressEventHandlers, "aria-disabled": disabled})
+// so its own prop overwrites whatever `a11yState` put in `rest`, with `undefined`
+// when the caller passes none. A View has no such override.
+// Two copies of one pattern: `.test` on a global regex carries `lastIndex` between
+// calls and would answer differently every other time.
+const A11Y_STATE_DISABLED = /a11yState\(\{[^}]*\bdisabled\b/;
+const A11Y_STATE_DISABLED_ALL = new RegExp(A11Y_STATE_DISABLED.source, "g");
+/** `disabled` as a prop of its own, not `isDisabled` and not the `disabled:` inside the call. */
+const REAL_DISABLED = /\sdisabled(?=[\s=/>])/;
+/** Only `Pressable` overwrites the attribute; a `View` receives what the helper emits. */
+const NO_OVERRIDE = /^(Animated\.)?View$/;
+
+/**
+ * The prop names of the JSX opening tag containing line `at` — `<Tag` through the `>`
+ * that closes it, props after the spread included, since prop order is nobody's
+ * contract. Every value is blanked: a string, and the inside of every `{…}`. Without
+ * that, `style={({ pressed }) => [disabled && styles.disabled]}` reads as a `disabled`
+ * prop, and so does the `disabled:` inside the `a11yState` call being judged.
+ */
+function openingTag(lines: string[], at: number): string {
+  let start = at;
+  while (start > 0 && !/^\s*<[A-Za-z]/.test(lines[start])) start--;
+  let depth = 0;
+  let text = "";
+  outer: for (let i = start; i < lines.length; i++) {
+    for (const ch of lines[i].replace(/"[^"]*"|'[^']*'/g, '""')) {
+      if (ch === "{") depth++;
+      if (depth === 0) text += ch;
+      if (ch === "}" && --depth === 0) text += "{}";
+      if (ch === ">" && depth === 0 && text.length > 1) break outer;
+    }
+    if (depth === 0) text += " ";
   }
+  return text;
+}
+
+const matchCount = (source: string, re: RegExp) => (source.match(re) ?? []).length;
+
+/**
+ * The file's lines, with a call Prettier wrapped folded back onto the line it starts
+ * on. Indices are preserved, so a fold does not move any other line's number.
+ */
+function foldedLines(source: string): string[] {
+  const lines = source.split("\n");
+  return lines.map((line, i) => {
+    if (!/a11yState\(\{/.test(line) || /\}\)/.test(line)) return line;
+    let joined = line;
+    for (let j = i + 1; j < lines.length; j++) {
+      joined += ` ${lines[j].trim()}`;
+      if (/\}\)/.test(lines[j])) break;
+    }
+    return joined;
+  });
+}
+
+test("a control claiming disabled state also carries the prop that delivers it", () => {
+  const offenders: string[] = [];
+  const unseen: string[] = [];
+  for (const rel of [...sourcesUnder("app"), ...sourcesUnder("components")]) {
+    const source = readFileSync(path.join(repoRoot, rel), "utf8");
+    const lines = source.split("\n");
+    let found = 0;
+    foldedLines(source).forEach((line, i) => {
+      if (!A11Y_STATE_DISABLED.test(line)) return;
+      found++;
+      const tag = openingTag(lines, i);
+      const name = /<([A-Za-z][\w.]*)/.exec(tag)?.[1] ?? "?";
+      if (NO_OVERRIDE.test(name) || REAL_DISABLED.test(tag)) return;
+      offenders.push(`${rel}:${i + 1} <${name}>`);
+    });
+    // Against the whole file with its newlines gone, so a call the folding above
+    // failed to reassemble is reported rather than skipped in silence.
+    const whole = matchCount(source.replace(/\s+/g, " "), A11Y_STATE_DISABLED_ALL);
+    if (whole !== found) unseen.push(`${rel}: ${whole} call(s), ${found} seen`);
+  }
+
+  assert.deepEqual(
+    unseen,
+    [],
+    "a11yState is written here in a shape `foldedLines` cannot reassemble, so the check " +
+      `below would pass it without looking:\n  ${unseen.join("\n  ")}`
+  );
+
+  assert.deepEqual(
+    offenders,
+    [],
+    "these announce a disabled state that never reaches the web DOM. Give the element a " +
+      "real `disabled` prop, or — if it stays operable on purpose, as GIOCA does — say so " +
+      "in its accessible name and stop claiming `disabled`, which also reaches iOS and " +
+      `Android and is a false claim there too:\n  ${offenders.join("\n  ")}`
+  );
 });
 
 // A helper in lib/a11y returns props, so it has to be *called* before it is

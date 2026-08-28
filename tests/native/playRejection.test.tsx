@@ -247,7 +247,12 @@ describe('tapping an unavailable GIOCA', () => {
       fireEvent.press(screen.getByTestId('btn-gioca'));
     });
 
-    expect(screen.getByTestId('btn-gioca').props.accessibilityState?.disabled).toBe(true);
+    // In its name, not as a disabled state: the press above was answered rather
+    // than ignored, so the control is operable and `disabled` would be a lie.
+    expect(screen.getByTestId('btn-gioca').props.accessibilityLabel).toBe(
+      t('gameTable.playA11yUnavailable', { reason: t('gameTable.playA11ySpokenWrongType') })
+    );
+    expect(screen.getByTestId('btn-gioca').props.accessibilityState?.disabled).toBeUndefined();
 
     await r.unmount();
   });
