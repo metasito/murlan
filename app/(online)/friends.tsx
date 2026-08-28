@@ -33,7 +33,7 @@ interface FriendInfo {
   username: string;
   lastSeen: string | null;
 }
-interface FriendRequest { id: string; username: string }
+interface FriendRequest { id: string; username: string; createdAt: string | null }
 interface SearchResult { id: string; username: string }
 
 function relativeTime(isoString: string | null | undefined, t: TFn, tn: TnFn): string {
@@ -53,12 +53,17 @@ function SectionHeader({ title, count }: { title: string; count?: number }) {
     <View style={styles.sectionHeader}>
       <Text style={styles.sectionTitle} accessibilityRole="header">{title}</Text>
       {count !== undefined && (
-        <View style={styles.badge}>
+        <View style={styles.badge} testID="section-count">
           <Text style={styles.badgeText}>{count}</Text>
         </View>
       )}
     </View>
   );
+}
+
+/** The direction inside PENDING. Quieter than a section, and never a count. */
+function GroupLabel({ text }: { text: string }) {
+  return <Text style={styles.groupLabel} accessibilityRole="header">{text}</Text>;
 }
 
 function Avatar({ name }: { name: string }) {
@@ -353,10 +358,23 @@ export default function FriendsScreen() {
           </>
         )}
 
-        {/* ── SECTION 3: Richieste Ricevute ── */}
+        {/* ── SECTION 3: In Sospeso ──
+            Always rendered, in both directions: a request that only has a home
+            once it exists is a place nobody can find before they need it. The
+            badge counts incoming alone — one you sent is not a task you owe. */}
+        <SectionHeader
+          title={t("friends.sectionPending")}
+          count={requests.length > 0 ? requests.length : undefined}
+        />
+        {requests.length === 0 && sentRequests.length === 0 && (
+          <View style={styles.empty}>
+            <Ionicons name="hourglass-outline" size={32} color={Colors.textMuted} {...a11yHidden()} />
+            <Text style={styles.emptyText}>{t("friends.emptyPending")}</Text>
+          </View>
+        )}
         {requests.length > 0 && (
           <>
-            <SectionHeader title={t("friends.sectionReceivedRequests")} count={requests.length} />
+            <GroupLabel text={t("friends.pendingIncoming")} />
             <View style={styles.listBlock}>
               {requests.map(r => (
                 <View key={r.id} style={styles.row}>
@@ -390,17 +408,18 @@ export default function FriendsScreen() {
           </>
         )}
 
-        {/* ── SECTION 3: Richieste Inviate ── */}
         {sentRequests.length > 0 && (
           <>
-            <SectionHeader title={t("friends.sectionSentRequests")} count={sentRequests.length} />
+            <GroupLabel text={t("friends.pendingOutgoing")} />
             <View style={styles.listBlock}>
               {sentRequests.map(r => (
                 <View key={r.id} style={styles.row}>
                   <Avatar name={r.username} />
                   <View style={styles.rowInfo}>
                     <Text style={styles.rowName}>{r.username}</Text>
-                    <Text style={styles.rowSub}>{t("friends.awaitingResponse")}</Text>
+                    <Text style={styles.rowSub}>
+                      {t("friends.awaitingSince", { time: relativeTime(r.createdAt, t, tn) })}
+                    </Text>
                   </View>
                   <Pressable
                     onPress={() => cancelMutation.mutate(r.id)}
@@ -547,6 +566,12 @@ const styles = StyleSheet.create({
     fontFamily: "Rajdhani_700Bold",
     fontSize: FontSize.xs,
     color: Colors.textSecondary,
+  },
+
+  groupLabel: {
+    ...Type.caption,
+    letterSpacing: 1.5,
+    marginTop: Spacing.xs,
   },
 
   listBlock: { gap: Spacing.sm },
