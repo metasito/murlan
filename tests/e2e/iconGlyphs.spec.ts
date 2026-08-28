@@ -24,28 +24,28 @@ test("menu screens render every icon glyph, across the states reachable with no 
   test.setTimeout(60_000);
 
   await openApp(page, baseURL!);
-  await assertAllGlyphsRender(page, "home", 11);
+  await assertAllGlyphsRender(page, "home", 9);
 
   await page.getByRole("button", { name: "Offline" }).click();
   // Four players is what reveals the game-mode row (app/lobby.tsx) — both its
   // options render at once, so both the "person" and "people" mode icons and
   // both the human/bot row icons are already on screen with no further click.
   await page.getByRole("radio", { name: "4 giocatori" }).click();
-  await assertAllGlyphsRender(page, "offline lobby — 4 players", 25);
+  await assertAllGlyphsRender(page, "offline lobby — 4 players", 11);
   await page.goBack();
 
   await page.goto(`${baseURL}/rules`);
   await page.waitForLoadState("networkidle");
-  await assertAllGlyphsRender(page, "rules — FAQ collapsed (chevron-down)", 29);
+  await assertAllGlyphsRender(page, "rules — FAQ collapsed (chevron-down)", 27);
   await page.getByRole("button", { name: "Qual è l'obiettivo del gioco?" }).click();
   await page.waitForTimeout(400); // the answer's height animates open
-  await assertAllGlyphsRender(page, "rules — FAQ expanded (chevron-up)", 29);
+  await assertAllGlyphsRender(page, "rules — FAQ expanded (chevron-up)", 27);
 
   await page.goto(`${baseURL}/auth`);
   await page.waitForLoadState("networkidle");
-  await assertAllGlyphsRender(page, "auth — password hidden (eye-outline)", 6);
+  await assertAllGlyphsRender(page, "auth — password hidden (eye-outline)", 4);
   await page.getByRole("button", { name: "Mostra password" }).click();
-  await assertAllGlyphsRender(page, "auth — password shown (eye-off-outline)", 6);
+  await assertAllGlyphsRender(page, "auth — password shown (eye-off-outline)", 4);
 
   expect(consoleErrors.entries, "no console errors/warnings across the menu screens").toEqual([]);
 });
@@ -63,17 +63,17 @@ test("online screens render every icon glyph, across the states reachable once s
   await goToOnlineLobby(page);
   // Both "Libera" and "Coppie" render together — both branches of
   // `m === "teams" ? "people" : "person"` are already on screen.
-  await assertAllGlyphsRender(page, "online lobby — room creator", 27);
+  await assertAllGlyphsRender(page, "online lobby — room creator", 5);
   await page.goBack();
 
   await page.getByRole("button", { name: "Online" }).click();
   await page.waitForLoadState("networkidle");
   // All four MODES render at once (mode.icon), but the "selected mode" chip
   // (selectedMode.icon) only exists after a card is tapped.
-  await assertAllGlyphsRender(page, "quickmatch — mode list, nothing selected", 35);
+  await assertAllGlyphsRender(page, "quickmatch — mode list, nothing selected", 5);
   await page.getByText("1 vs 1", { exact: true }).click();
   await page.waitForTimeout(300);
-  await assertAllGlyphsRender(page, "quickmatch — mode selected", 36);
+  await assertAllGlyphsRender(page, "quickmatch — mode selected", 6);
   // Selecting a mode starts matchmaking immediately (quickmatch.tsx
   // handleSelectMode) rather than just toggling a display state, so a full
   // reload is the reliable way back to a known screen — an in-app "cancel"
@@ -83,7 +83,7 @@ test("online screens render every icon glyph, across the states reachable once s
 
   await page.getByRole("button", { name: "Il mio profilo" }).click();
   await page.waitForTimeout(1500);
-  await assertAllGlyphsRender(page, "profile — empty state", 31);
+  await assertAllGlyphsRender(page, "profile — empty state", 16);
 
   expect(consoleErrors.entries, "no console errors/warnings across the online screens").toEqual([]);
 });
@@ -127,11 +127,11 @@ test("the replay screen renders the correct transport icon in both its paused an
   await page.waitForTimeout(500);
 
   await expect(page.getByRole("button", { name: "Riproduci" })).toBeVisible();
-  await assertAllGlyphsRender(page, "replay — paused (play)", 28);
+  await assertAllGlyphsRender(page, "replay — paused (play)", 8);
 
   await page.getByRole("button", { name: "Riproduci" }).click();
   await expect(page.getByRole("button", { name: "Pausa" })).toBeVisible();
-  await assertAllGlyphsRender(page, "replay — playing (pause)", 28);
+  await assertAllGlyphsRender(page, "replay — playing (pause)", 8);
 
   expect(consoleErrors.entries, "no console errors/warnings across the replay screen").toEqual([]);
 });

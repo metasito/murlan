@@ -54,11 +54,34 @@ export async function sweepGlyphs(page: Page): Promise<GlyphSweep> {
       const missingWidth: Record<string, number> = {};
       for (const f of families) missingWidth[f] = widthOf(f, String.fromCodePoint(missingCp));
 
+      // expo-router keeps a screen navigated away from mounted rather than
+      // unmounting it, so the document holds every screen a test has ever
+      // visited, not just the one on screen. What actually leaves a screen
+      // is `display: none` on its own container (react-navigation's web
+      // stack, not this app's styling); `inert`/`visibility: hidden` cover
+      // the same "mounted but off-stage" shape elsewhere (overlays, closed
+      // toasts). None of that touches `aria-hidden` alone, which decorative
+      // icons in `a11yHidden()` carry while still fully on screen — so it is
+      // deliberately not part of this test.
+      const displayedCache = new Map<Element, boolean>();
+      const isDisplayed = (el: Element | null): boolean => {
+        if (!el) return true;
+        const cached = displayedCache.get(el);
+        if (cached !== undefined) return cached;
+        const style = getComputedStyle(el);
+        const hiddenHere =
+          style.display === "none" || style.visibility === "hidden" || (el as HTMLElement).inert;
+        const result = !hiddenHere && isDisplayed(el.parentElement);
+        displayedCache.set(el, result);
+        return result;
+      };
+
       const failures: { family: string; codepoint: string }[] = [];
       const seen = new Set<string>();
       let examined = 0;
       for (const el of Array.from(document.querySelectorAll("*"))) {
         if (el.childElementCount !== 0) continue;
+        if (!isDisplayed(el)) continue;
         const primary = getComputedStyle(el)
           .fontFamily.split(",")[0]
           .replace(/["']/g, "")
