@@ -4,6 +4,7 @@ import { Pressable, Text } from 'react-native';
 import { render } from '@testing-library/react-native';
 
 import { CardView } from '@/components/CardView';
+import { MenuButton } from '@/components/MenuButton';
 import type { Card } from '@/lib/gameEngine';
 
 // A labelled control must expose exactly one accessible node. Pressable already
@@ -37,6 +38,23 @@ describe('a labelled control exposes one accessible node', () => {
     );
     expect(view.queryAllByText('Salta', { includeHiddenElements: false })).toHaveLength(0);
     expect(view.getByLabelText('Salta il tutorial')).toBeTruthy();
+  });
+});
+
+// Every menu screen's buttons are instances of this one component, so what it
+// does is what most of the app does.
+describe('MenuButton', () => {
+  it('draws its own face rather than offering it as a second stop', async () => {
+    const view = await render(<MenuButton label="Inizia Partita" onPress={() => {}} />);
+    expect(view.queryAllByText('Inizia Partita', { includeHiddenElements: false })).toHaveLength(0);
+    expect(view.getByLabelText('Inizia Partita')).toBeTruthy();
+  });
+
+  it('hides an icon the caller supplied, which it cannot reach into', async () => {
+    const view = await render(
+      <MenuButton label="Gioca" onPress={() => {}} icon={<Text>ICON</Text>} />
+    );
+    expect(view.queryAllByText('ICON', { includeHiddenElements: false })).toHaveLength(0);
   });
 });
 
@@ -86,7 +104,9 @@ describe('CardView decorative', () => {
   // clips, and the rank is the card's whole identity.
   it('caps how far the rank glyph can scale', async () => {
     const view = await render(<CardView card={ACE} />);
-    const glyphs = view.getAllByText('A');
+    // The glyph is the card's own face, so the reader never meets it; this is
+    // about how it renders, not whether it is reachable.
+    const glyphs = view.getAllByText('A', { includeHiddenElements: true });
     expect(glyphs.length).toBeGreaterThan(0);
     for (const glyph of glyphs) expect(glyph.props.maxFontSizeMultiplier).toBe(1.2);
   });

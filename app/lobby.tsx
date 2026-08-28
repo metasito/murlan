@@ -21,7 +21,7 @@ import { Colors, Spacing, Radius, FontSize, TOUCH_TARGET_MIN, Type } from '@/lib
 import { MenuLayout } from "@/components/MenuLayout";
 import { MenuButton } from "@/components/MenuButton";
 import { useTranslation } from "@/lib/i18n";
-import { a11yState, useA11yHint } from "@/lib/a11y";
+import { a11yHidden, a11yState, useA11yHint } from "@/lib/a11y";
 
 type LobbyMode = "ai" | "local";
 
@@ -107,10 +107,10 @@ function PlayerRow({ index, config, onChange, isHuman, lobbyMode }: PlayerRowPro
           })}
           hitSlop={8}
         >
-          <Text style={styles.personalityText} numberOfLines={1}>
+          <Text {...a11yHidden()} style={styles.personalityText} numberOfLines={1}>
             {t(botBlurbKey(personality.id))}
           </Text>
-          <Ionicons name="chevron-down" size={12} color={Colors.gold} />
+          <Ionicons name="chevron-down" size={12} color={Colors.gold} {...a11yHidden()} />
         </Pressable>
       )}
     </View>
@@ -232,7 +232,7 @@ export default function LobbyScreen() {
               accessibilityLabel={t("lobby.playerCountOptionA11yLabel", { n })}
               {...a11yState({ role: "radio", selected: playerCount === n })}
             >
-              <Text style={[styles.countBtnText, playerCount === n && styles.countBtnTextActive]}>{n}</Text>
+              <Text {...a11yHidden()} style={[styles.countBtnText, playerCount === n && styles.countBtnTextActive]}>{n}</Text>
             </Pressable>
           ))}
         </View>
@@ -250,8 +250,8 @@ export default function LobbyScreen() {
                 accessibilityLabel={gm === "teams" ? t("lobby.modeTeams") : t("lobby.modeFreeForAll")}
                 {...a11yState({ role: "radio", selected: gameMode === gm })}
               >
-                <Ionicons name={gm === "teams" ? "people" : "person"} size={16} color={gameMode === gm ? Colors.gold : Colors.textSecondary} />
-                <Text style={[styles.modeBtnText, gameMode === gm && styles.modeBtnTextActive]}>
+                <Ionicons name={gm === "teams" ? "people" : "person"} size={16} color={gameMode === gm ? Colors.gold : Colors.textSecondary} {...a11yHidden()} />
+                <Text {...a11yHidden()} style={[styles.modeBtnText, gameMode === gm && styles.modeBtnTextActive]}>
                   {gm === "teams" ? t("lobby.modeTeams") : t("lobby.modeFreeForAll")}
                 </Text>
               </Pressable>
@@ -274,8 +274,8 @@ export default function LobbyScreen() {
                 accessibilityLabel={t("lobby.formatA11yLabel", { format: title, detail })}
                 {...a11yState({ role: "radio", selected })}
               >
-                <Text style={[styles.formatTitle, selected && styles.countBtnTextActive]}>{title}</Text>
-                <Text style={[styles.formatDetail, selected && styles.formatDetailActive]}>{detail}</Text>
+                <Text {...a11yHidden()} style={[styles.formatTitle, selected && styles.countBtnTextActive]}>{title}</Text>
+                <Text {...a11yHidden()} style={[styles.formatDetail, selected && styles.formatDetailActive]}>{detail}</Text>
               </Pressable>
             );
           })}
@@ -305,7 +305,7 @@ export default function LobbyScreen() {
           accessibilityLabel={t("common.back")}
           hitSlop={12}
         >
-          <Ionicons name="chevron-back" size={22} color={Colors.gold} />
+          <Ionicons name="chevron-back" size={22} color={Colors.gold} {...a11yHidden()} />
         </Pressable>
         <Text style={styles.screenTitle}>{isAI ? t("lobby.titleVsAI") : t("lobby.titlePassPlay")}</Text>
         <View style={{ width: 38 }} />

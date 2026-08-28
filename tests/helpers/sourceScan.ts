@@ -50,23 +50,64 @@ export function blankCommentsAndStrings(source: string): string {
  * is not inside one. Brace-aware, so a `>` inside `style={{…}}` does not end it.
  */
 export function enclosingTag(source: string, index: number): string | null {
-  let open = -1;
-  for (let i = index; i >= 0; i--) {
-    if (source[i] === "<" && /[A-Za-z]/.test(source[i + 1] ?? "")) {
-      open = i;
-      break;
+  // The innermost, not the first: a tag whose props hold JSX — `overlays={…}`
+  // on GameTable — spans every node inside it, and the outermost match would
+  // report the parent for each of its children.
+  const containing = jsxTags(source).filter(
+    (t) => !t.isClose && t.start <= index && index <= t.end
+  );
+  return containing.at(-1)?.text ?? null;
+}
+
+export interface JsxTag {
+  name: string;
+  isClose: boolean;
+  selfClose: boolean;
+  start: number;
+  end: number;
+  text: string;
+}
+
+/**
+ * Every JSX tag in `source`, in document order. Brace-aware for the same
+ * reason `enclosingTag` is: a `>` inside `style={{…}}` does not end a tag.
+ * Walking a subtree needs the closers too, which is what this adds.
+ */
+export function jsxTags(source: string): JsxTag[] {
+  const out: JsxTag[] = [];
+  for (let i = 0; i < source.length; i++) {
+    if (source[i] !== "<") continue;
+    const isClose = source[i + 1] === "/";
+    const name = /^[A-Za-z][\w.]*/.exec(source.slice(i + (isClose ? 2 : 1)));
+    if (!name) continue;
+    let depth = 0;
+    let end = -1;
+    for (let j = i; j < source.length; j++) {
+      const c = source[j];
+      // A quoted attribute value is opaque: one `}` in a string title would
+      // otherwise unbalance the count and swallow every child up to the next
+      // `>`, reporting the control clean.
+      if (c === '"' || c === "'" || c === "`") {
+        const close = source.indexOf(c, j + 1);
+        if (close === -1) break;
+        j = close;
+        continue;
+      }
+      if (c === "{") depth++;
+      else if (c === "}") depth--;
+      else if (c === ">" && depth === 0) {
+        end = j;
+        break;
+      }
     }
-    if (source[i] === ">") return null;
+    if (end === -1) continue;
+    const text = source.slice(i, end + 1);
+    out.push({ name: name[0], isClose, selfClose: text.endsWith("/>"), start: i, end, text });
+    // Deliberately not `i = end`: a prop can hold JSX — `overlays={(veiled) =>
+    // (…)}` on GameTable — and jumping the tag's span would skip every node
+    // declared inside it.
   }
-  if (open === -1) return null;
-  let depth = 0;
-  for (let i = open; i < source.length; i++) {
-    const c = source[i];
-    if (c === "{") depth++;
-    else if (c === "}") depth--;
-    else if (c === ">" && depth === 0) return source.slice(open, i + 1);
-  }
-  return null;
+  return out;
 }
 
 /** The index just past the `}` that closes the `{` at `open`. */

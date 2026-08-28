@@ -29,7 +29,7 @@ import { MenuButton } from "@/components/MenuButton";
 import { Toggle } from "@/components/Toggle";
 import { ConfirmDialog, type ConfirmRequest } from "@/components/ConfirmDialog";
 import { useTranslation } from "@/lib/i18n";
-import { a11yState } from "@/lib/a11y";
+import { a11yHidden, a11yState } from "@/lib/a11y";
 import { usePrefersReducedMotion } from "@/lib/accessibility";
 
 const TEAM_COLORS = { A: Colors.gold, B: Colors.info };
@@ -84,6 +84,7 @@ function BotFillControls({
                 style={[botFillStyles.personalityPill, selected && botFillStyles.personalityPillActive]}
               >
                 <Text
+                  {...a11yHidden()}
                   style={[
                     botFillStyles.personalityPillText,
                     selected && botFillStyles.personalityPillTextActive,
@@ -137,10 +138,10 @@ function MatchLengthControls({
               accessibilityLabel={t("lobby.formatA11yLabel", { format: title, detail })}
               {...a11yState({ role: "radio", selected })}
             >
-              <Text style={[formatStyles.optionTitle, selected && formatStyles.optionTitleActive]}>
+              <Text {...a11yHidden()} style={[formatStyles.optionTitle, selected && formatStyles.optionTitleActive]}>
                 {title}
               </Text>
-              <Text style={[formatStyles.optionDetail, selected && formatStyles.optionDetailActive]}>
+              <Text {...a11yHidden()} style={[formatStyles.optionDetail, selected && formatStyles.optionDetailActive]}>
                 {detail}
               </Text>
             </Pressable>
@@ -276,19 +277,19 @@ function InviteFriendsPanel({
                 accessibilityLabel={sent ? t("room.inviteSentA11yLabel", { username: friend.username }) : t("room.inviteA11yLabel", { username: friend.username })}
                 {...a11yState({ role: "button", disabled: sent })}
               >
-                <View style={inviteStyles.avatar}>
+                <View style={inviteStyles.avatar} {...a11yHidden()}>
                   <Text style={inviteStyles.avatarInitial}>
                     {friend.username.charAt(0).toUpperCase()}
                   </Text>
                   <View style={inviteStyles.onlineDot} />
                 </View>
-                <Text style={inviteStyles.friendName} numberOfLines={1}>
+                <Text style={inviteStyles.friendName} numberOfLines={1} {...a11yHidden()}>
                   {friend.username}
                 </Text>
                 {sent ? (
-                  <Ionicons name="checkmark-circle" size={16} color={Colors.success} />
+                  <Ionicons name="checkmark-circle" size={16} color={Colors.success} {...a11yHidden()} />
                 ) : (
-                  <View style={inviteStyles.inviteBtn}>
+                  <View style={inviteStyles.inviteBtn} {...a11yHidden()}>
                     <Text style={inviteStyles.inviteBtnText}>{t("room.invite")}</Text>
                   </View>
                 )}
@@ -454,7 +455,7 @@ export default function RoomScreen() {
             accessibilityLabel={t("room.leaveA11yLabel")}
             hitSlop={8}
           >
-            <Ionicons name="chevron-back" size={22} color={Colors.gold} />
+            <Ionicons name="chevron-back" size={22} color={Colors.gold} {...a11yHidden()} />
           </Pressable>
           <Text style={styles.screenTitle}>{t("room.title")}</Text>
           <View style={{ width: 38 }} />
@@ -483,8 +484,8 @@ export default function RoomScreen() {
                     accessibilityLabel={t("common.copy")}
                     hitSlop={8}
                   >
-                    <Ionicons name="copy-outline" size={15} color={Colors.gold} />
-                    <Text style={styles.codeBtnText}>{t("common.copy")}</Text>
+                    <Ionicons name="copy-outline" size={15} color={Colors.gold} {...a11yHidden()} />
+                    <Text style={styles.codeBtnText} {...a11yHidden()}>{t("common.copy")}</Text>
                   </Pressable>
                   <Pressable
                     onPress={handleShare}
@@ -493,8 +494,8 @@ export default function RoomScreen() {
                     accessibilityLabel={t("room.share")}
                     hitSlop={8}
                   >
-                    <Ionicons name="share-outline" size={15} color={Colors.gold} />
-                    <Text style={styles.codeBtnText}>{t("room.share")}</Text>
+                    <Ionicons name="share-outline" size={15} color={Colors.gold} {...a11yHidden()} />
+                    <Text style={styles.codeBtnText} {...a11yHidden()}>{t("room.share")}</Text>
                   </Pressable>
                 </View>
               </Animated.View>
@@ -605,7 +606,7 @@ export default function RoomScreen() {
           accessibilityLabel={t("room.leaveA11yLabel")}
           hitSlop={8}
         >
-          <Ionicons name="chevron-back" size={22} color={Colors.gold} />
+          <Ionicons name="chevron-back" size={22} color={Colors.gold} {...a11yHidden()} />
         </Pressable>
         <Text style={styles.screenTitle}>{t("room.title")}</Text>
         <View style={{ width: 38 }} />
@@ -627,8 +628,8 @@ export default function RoomScreen() {
               accessibilityLabel={t("common.copy")}
               hitSlop={Spacing.sm}
             >
-              <Ionicons name="copy-outline" size={16} color={Colors.gold} />
-              <Text style={styles.codeBtnText}>{t("common.copy")}</Text>
+              <Ionicons name="copy-outline" size={16} color={Colors.gold} {...a11yHidden()} />
+              <Text style={styles.codeBtnText} {...a11yHidden()}>{t("common.copy")}</Text>
             </Pressable>
             <Pressable
               onPress={handleShare}
@@ -637,8 +638,8 @@ export default function RoomScreen() {
               accessibilityLabel={t("room.share")}
               hitSlop={Spacing.sm}
             >
-              <Ionicons name="share-outline" size={16} color={Colors.gold} />
-              <Text style={styles.codeBtnText}>{t("room.share")}</Text>
+              <Ionicons name="share-outline" size={16} color={Colors.gold} {...a11yHidden()} />
+              <Text style={styles.codeBtnText} {...a11yHidden()}>{t("room.share")}</Text>
             </Pressable>
           </View>
         </Animated.View>

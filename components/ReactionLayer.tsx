@@ -18,6 +18,7 @@ import { Colors, FontSize, Motion, Radius, Scrim, Spacing, TOUCH_TARGET_MIN } fr
 import { usePrefersReducedMotion } from "@/lib/accessibility";
 import { useTableReactions, type TableReaction } from "@/lib/reactions";
 import { useTranslation } from "@/lib/i18n";
+import { a11yHidden } from "@/lib/a11y";
 
 export const EMOJIS = ["😂", "🔥", "😤", "👏", "😱", "🤡", "💣", "👑"];
 
@@ -82,7 +83,7 @@ export function ReactionTrigger({ onPress }: { onPress: () => void }) {
       accessibilityRole="button"
       accessibilityLabel={t("reactionLayer.triggerA11yLabel")}
     >
-      <Text style={styles.triggerText}>💬</Text>
+      <Text style={styles.triggerText} {...a11yHidden()}>💬</Text>
     </Pressable>
   );
 }
@@ -117,7 +118,7 @@ export function ReactionPanel({
           accessibilityRole="button"
           accessibilityLabel={t("reactionLayer.emojiA11yLabel", { emoji: e })}
         >
-          <Text style={styles.emojiBtnText}>{e}</Text>
+          <Text style={styles.emojiBtnText} {...a11yHidden()}>{e}</Text>
         </Pressable>
       ))}
     </Animated.View>

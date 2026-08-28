@@ -27,6 +27,7 @@ import { usePrefersReducedMotion } from "@/lib/accessibility";
 import { standings } from "@/lib/standings";
 import { Colors, FontSize, Motion, Radius, Spacing, TOUCH_TARGET_MIN, Type } from '@/lib/theme';
 import { useTranslation, type TranslationKey } from "@/lib/i18n";
+import { a11yHidden } from "@/lib/a11y";
 
 const POSITION_COLORS = [Colors.podiumGold, Colors.podiumSilver, Colors.podiumBronze, Colors.textMuted];
 // Shares its display text with components/GameOverOverlay.tsx's identical
@@ -306,8 +307,8 @@ export default function ResultScreen() {
         accessibilityRole="button"
         accessibilityLabel={t("result.home")}
       >
-        <Ionicons name="home" size={18} color={Colors.textSecondary} />
-        {!compact && <Text style={styles.homeBtnText}>{t("result.home")}</Text>}
+        <Ionicons name="home" size={18} color={Colors.textSecondary} {...a11yHidden()} />
+        {!compact && <Text style={styles.homeBtnText} {...a11yHidden()}>{t("result.home")}</Text>}
       </Pressable>
       {continueAction && (
         <Pressable
@@ -318,8 +319,8 @@ export default function ResultScreen() {
           accessibilityLabel={continueAction.label}
         >
           <LinearGradient colors={[Colors.gold, Colors.goldDark]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={[styles.rematchGrad, compact && styles.rematchGradCompact]}>
-            <Ionicons name={continueAction.icon} size={18} color={Colors.bgCard} />
-            <Text style={styles.rematchText}>{continueAction.label}</Text>
+            <Ionicons name={continueAction.icon} size={18} color={Colors.bgCard} {...a11yHidden()} />
+            <Text style={styles.rematchText} {...a11yHidden()}>{continueAction.label}</Text>
           </LinearGradient>
         </Pressable>
       )}

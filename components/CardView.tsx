@@ -631,6 +631,7 @@ function CardViewBase({
           <CardFaceArt card={card} color={color} w={w} h={h} compact={compact} />
           {!compact && COURT_RANKS.has(card.rank) && <CourtArt card={card} w={w} h={h} />}
           <TableText
+            {...a11yHidden()}
             style={[
               styles.rankText,
               rankBox,
@@ -641,6 +642,7 @@ function CardViewBase({
             {rankText}
           </TableText>
           <TableText
+            {...a11yHidden()}
             style={[
               styles.rankText,
               rankBox,

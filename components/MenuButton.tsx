@@ -12,7 +12,7 @@ import Animated, {
 } from 'react-native-reanimated';
 import { Colors, Spacing, Radius, FontSize, Highlight, Motion, Shadow, TOUCH_TARGET_MIN } from '@/lib/theme';
 import { usePrefersReducedMotion } from '@/lib/accessibility';
-import { a11yState, useA11yHint } from "@/lib/a11y";
+import { a11yHidden, a11yState, useA11yHint } from "@/lib/a11y";
 
 type Variant = 'primary' | 'secondary' | 'danger' | 'ghost';
 type Size = 'sm' | 'md' | 'lg';
@@ -99,8 +99,10 @@ export function MenuButton({
           <ActivityIndicator color={variant === 'primary' ? Colors.bg : Colors.gold} />
         ) : (
           <>
-            {icon}
+            {/* The caller builds the icon, so the hide goes on a wrapper. */}
+            {icon ? <View {...a11yHidden()}>{icon}</View> : null}
             <Text
+              {...a11yHidden()}
               style={[styles.label, labelStyles[variant], sizeLabelStyles[size]]}
               numberOfLines={1}
             >

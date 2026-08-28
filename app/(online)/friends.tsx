@@ -22,7 +22,7 @@ import { ConfirmDialog, type ConfirmRequest } from "@/components/ConfirmDialog";
 import { useTranslation, translateServerPayload } from "@/lib/i18n";
 import { registerForPush } from "@/lib/pushRegistration";
 import type { TranslationKey, TranslationParams } from "@/lib/i18n";
-import { a11yState, useA11yHint } from "@/lib/a11y";
+import { a11yHidden, a11yState, useA11yHint } from "@/lib/a11y";
 
 type TFn = (key: TranslationKey, params?: TranslationParams) => string;
 type TnFn = (base: string, count: number, params?: TranslationParams) => string;
@@ -252,7 +252,7 @@ export default function FriendsScreen() {
           accessibilityLabel={t("common.back")}
           hitSlop={12}
         >
-          <Ionicons name="chevron-back" size={22} color={Colors.gold} />
+          <Ionicons name="chevron-back" size={22} color={Colors.gold} {...a11yHidden()} />
         </Pressable>
         <Text style={styles.screenTitle}>{t("friends.title")}</Text>
         <View style={{ width: 38 }} />
@@ -315,7 +315,7 @@ export default function FriendsScreen() {
                     accessibilityLabel={t("friends.removeA11yLabel", { username: item.username })}
                     hitSlop={12}
                   >
-                    <Ionicons name="person-remove-outline" size={16} color={Colors.textMuted} />
+                    <Ionicons name="person-remove-outline" size={16} color={Colors.textMuted} {...a11yHidden()} />
                   </Pressable>
                 </View>
               );
@@ -346,7 +346,7 @@ export default function FriendsScreen() {
                       accessibilityLabel={t("friends.dismissInviteA11yLabel", { username: invite.from })}
                       hitSlop={8}
                     >
-                      <Ionicons name="close" size={16} color={Colors.textMuted} />
+                      <Ionicons name="close" size={16} color={Colors.textMuted} {...a11yHidden()} />
                     </Pressable>
                     <Pressable
                       onPress={() => handleJoinGameInvite(invite.roomCode)}
@@ -354,7 +354,7 @@ export default function FriendsScreen() {
                       accessibilityRole="button"
                       accessibilityLabel={t("friends.joinInviteA11yLabel", { username: invite.from })}
                     >
-                      <Text style={styles.joinBtnText}>{t("friends.join")}</Text>
+                      <Text style={styles.joinBtnText} {...a11yHidden()}>{t("friends.join")}</Text>
                     </Pressable>
                   </View>
                 </View>
@@ -382,7 +382,7 @@ export default function FriendsScreen() {
                       accessibilityLabel={t("friends.declineRequestA11yLabel", { username: r.username })}
                       hitSlop={8}
                     >
-                      <Ionicons name="close" size={16} color={Colors.textMuted} />
+                      <Ionicons name="close" size={16} color={Colors.textMuted} {...a11yHidden()} />
                     </Pressable>
                     <Pressable
                       onPress={() => acceptMutation.mutate(r.id)}
@@ -391,7 +391,7 @@ export default function FriendsScreen() {
                       accessibilityLabel={t("friends.acceptRequestA11yLabel", { username: r.username })}
                       hitSlop={8}
                     >
-                      <Ionicons name="checkmark" size={16} color={Colors.bgCard} />
+                      <Ionicons name="checkmark" size={16} color={Colors.bgCard} {...a11yHidden()} />
                     </Pressable>
                   </View>
                 </View>
@@ -419,7 +419,7 @@ export default function FriendsScreen() {
                     accessibilityLabel={t("friends.cancelRequestA11yLabel", { username: r.username })}
                     hitSlop={12}
                   >
-                    <Ionicons name="close-circle-outline" size={18} color={Colors.textMuted} />
+                    <Ionicons name="close-circle-outline" size={18} color={Colors.textMuted} {...a11yHidden()} />
                   </Pressable>
                 </View>
               ))}
@@ -464,7 +464,7 @@ export default function FriendsScreen() {
               {searchLoading ? (
                 <ActivityIndicator color={Colors.bgCard} size="small" />
               ) : (
-                <Ionicons name="search" size={18} color={(!searchQuery.trim()) ? Colors.textMuted : Colors.bgCard} />
+                <Ionicons name="search" size={18} color={(!searchQuery.trim()) ? Colors.textMuted : Colors.bgCard} {...a11yHidden()} />
               )}
             </Pressable>
           </View>
@@ -485,7 +485,7 @@ export default function FriendsScreen() {
                 {addLoading ? (
                   <ActivityIndicator color={Colors.bgCard} size="small" />
                 ) : (
-                  <Ionicons name="person-add" size={16} color={Colors.bgCard} />
+                  <Ionicons name="person-add" size={16} color={Colors.bgCard} {...a11yHidden()} />
                 )}
               </Pressable>
             </View>

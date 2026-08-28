@@ -336,8 +336,8 @@ export function GameOverOverlay({
               accessibilityRole="button"
               accessibilityLabel={t("gameOverOverlay.leaveA11yLabel")}
             >
-              <Ionicons name="home" size={15} color={Colors.textSecondary} />
-              <Text style={styles.homeBtnText}>{t("gameOverOverlay.leave")}</Text>
+              <Ionicons name="home" size={15} color={Colors.textSecondary} {...a11yHidden()} />
+              <Text style={styles.homeBtnText} {...a11yHidden()}>{t("gameOverOverlay.leave")}</Text>
             </Pressable>
             {canContinue ? (
               <Pressable
@@ -346,9 +346,11 @@ export function GameOverOverlay({
                 disabled={hasVoted}
                 style={[styles.rematchBtn, hasVoted && styles.rematchBtnDim]}
                 accessibilityLabel={
-                  match.over
-                    ? t("gameOverOverlay.newMatchA11yLabel")
-                    : t("gameOverOverlay.nextHandA11yLabel")
+                  hasVoted
+                    ? t("gameOverOverlay.waitingA11yLabel", { count: voteCount, total: voteTotal })
+                    : match.over
+                      ? t("gameOverOverlay.newMatchA11yLabel")
+                      : t("gameOverOverlay.nextHandA11yLabel")
                 }
                 {...a11yState({ role: "button", disabled: hasVoted })}
               >
@@ -361,6 +363,7 @@ export function GameOverOverlay({
                   start={{ x: 0, y: 0 }}
                   end={{ x: 1, y: 1 }}
                   style={styles.rematchGradient}
+                  {...a11yHidden()}
                 >
                   <Ionicons
                     name={hasVoted ? "checkmark-circle" : match.over ? "refresh" : "play-forward"}

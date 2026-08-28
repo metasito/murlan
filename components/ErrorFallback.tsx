@@ -15,6 +15,7 @@ import Feather from "@expo/vector-icons/Feather";
 import { Colors, Spacing, Radius, FontSize, Shadow, TOUCH_TARGET_MIN } from "@/lib/theme";
 import { MenuButton } from "@/components/MenuButton";
 import { useTranslation } from "@/lib/i18n";
+import { a11yHidden } from "@/lib/a11y";
 
 export type ErrorFallbackProps = {
   error: Error;
@@ -71,7 +72,7 @@ export function ErrorFallback({ error, resetError }: ErrorFallbackProps) {
             { top: insets.top + Spacing.md, opacity: pressed ? 0.7 : 1 },
           ]}
         >
-          <Feather name="alert-circle" size={20} color={Colors.gold} />
+          <Feather name="alert-circle" size={20} color={Colors.gold} {...a11yHidden()} />
         </Pressable>
       ) : null}
 
@@ -127,7 +128,7 @@ export function ErrorFallback({ error, resetError }: ErrorFallbackProps) {
                   hitSlop={Spacing.xs}
                   style={({ pressed }) => [styles.closeButton, { opacity: pressed ? 0.6 : 1 }]}
                 >
-                  <Feather name="x" size={24} color={Colors.text} />
+                  <Feather name="x" size={24} color={Colors.text} {...a11yHidden()} />
                 </Pressable>
               </View>
 

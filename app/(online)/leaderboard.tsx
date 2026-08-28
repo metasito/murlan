@@ -14,6 +14,7 @@ import { MenuButton } from "@/components/MenuButton";
 import { Colors, FontSize, Radius, Spacing, TOUCH_TARGET_MIN, Type } from "@/lib/theme";
 import { PROVISIONAL_GAMES, formatSeason } from "@/lib/rating";
 import { useTranslation } from "@/lib/i18n";
+import { a11yHidden } from "@/lib/a11y";
 
 interface LeaderboardEntryDto {
   rank: number;
@@ -54,7 +55,7 @@ export default function LeaderboardScreen() {
           accessibilityLabel={t("common.back")}
           hitSlop={12}
         >
-          <Ionicons name="chevron-back" size={22} color={Colors.gold} />
+          <Ionicons name="chevron-back" size={22} color={Colors.gold} {...a11yHidden()} />
         </Pressable>
         <Text style={styles.screenTitle}>{t("ladder.title")}</Text>
         <View style={{ width: 38 }} />
