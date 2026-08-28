@@ -47,6 +47,8 @@ import {
   computeTableFrame,
   railWidth,
   cutoutClass,
+  railSideForOrientation,
+  LANDSCAPE_LEFT,
   readExchange,
   viewerOwnsSeat,
   INACTIVE_EXCHANGE,
@@ -1613,21 +1615,21 @@ describe("cutoutClass", () => {
   // the question and no device table is needed (docs/research/
   // 2026-08-26-notch-and-dynamic-island.md).
   test("names each of the three device classes from its reported inset", () => {
-    assert.equal(cutoutClass(0), "none");
-    assert.equal(cutoutClass(20), "none");
-    assert.equal(cutoutClass(44), "notch");
-    assert.equal(cutoutClass(50), "notch");
-    assert.equal(cutoutClass(59), "island");
-    assert.equal(cutoutClass(68), "island");
+    for (const [inset, expected] of [
+      [0, "none"], [20, "none"], [44, "notch"], [50, "notch"], [59, "island"], [68, "island"],
+    ] as const) {
+      assert.equal(cutoutClass(inset), expected, `an inset of ${inset} is a ${expected} cutout`);
+    }
   });
 
   // The boundaries are the whole of this function: a threshold that drifts by a
   // point reclassifies a real phone, and nothing else would notice.
   test("the boundaries fall between the reported ranges, not inside one", () => {
-    assert.equal(cutoutClass(29), "none");
-    assert.equal(cutoutClass(30), "notch");
-    assert.equal(cutoutClass(54), "notch");
-    assert.equal(cutoutClass(55), "island");
+    for (const [inset, expected] of [
+      [29, "none"], [30, "notch"], [54, "notch"], [55, "island"],
+    ] as const) {
+      assert.equal(cutoutClass(inset), expected, `the boundary moved: ${inset} read as ${cutoutClass(inset)}`);
+    }
   });
 
   test("a value below zero or absurdly large still answers", () => {
@@ -1669,10 +1671,10 @@ describe("computeTableFrame, mirrored", () => {
   test("the rail is grown from the inset on its own side", () => {
     const lopsided = { top: 20, bottom: 10, left: 0, right: 59 };
     const r = computeTableFrame({ width: 800, insets: lopsided, scale: 1, railSide: "right" });
-    assert.equal(r.rail, railWidth(59, 1));
+    assert.equal(r.rail, railWidth(59, 1), "a right-hand rail was grown from the left inset");
 
     const l = computeTableFrame({ width: 800, insets: lopsided, scale: 1, railSide: "left" });
-    assert.equal(l.rail, railWidth(0, 1));
+    assert.equal(l.rail, railWidth(0, 1), "a left-hand rail was grown from the right inset");
   });
 
   test("the play area's centre is the box's own centre on either side", () => {
@@ -1686,5 +1688,27 @@ describe("computeTableFrame, mirrored", () => {
   test("a frame asked for no side at all still puts the rail on the left", () => {
     const f = computeTableFrame({ width: 800, insets, scale: 1 });
     assert.equal(f.tableLeft, f.rail);
+  });
+});
+
+describe("railSideForOrientation", () => {
+  // The table locks to landscape but not to one landscape direction, so the
+  // rail's side is a function of the rotation and of nothing else.
+  test("the two landscape rotations put the rail on opposite sides", () => {
+    assert.equal(railSideForOrientation(LANDSCAPE_LEFT), "left", "the named rotation lost its side");
+    assert.notEqual(
+      railSideForOrientation(LANDSCAPE_LEFT + 1),
+      "left",
+      "both rotations put the rail on the same side, so it never follows the cutout"
+    );
+  });
+
+  // Portrait and unknown reach this only in the moment before the lock takes,
+  // and either side is wrong then; what must not happen is a crash or an
+  // undefined that reaches a style.
+  test("every other value still answers with a side", () => {
+    for (const o of [0, 1, 2, 99]) {
+      assert.ok(["left", "right"].includes(railSideForOrientation(o)), String(o));
+    }
   });
 });

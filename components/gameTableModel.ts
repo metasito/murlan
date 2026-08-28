@@ -733,6 +733,24 @@ export function railWidth(insetOnRailSide: number, scale: number): number {
 
 export type RailSide = "left" | "right";
 
+/**
+ * `expo-screen-orientation`'s `Orientation.LANDSCAPE_LEFT` (3) and
+ * `LANDSCAPE_RIGHT` (4), as the side the device's top edge — and so its cutout
+ * — ends up on.
+ *
+ * The polarity is the one thing here a device has to settle: the enum's own
+ * docs do not say which member puts the home indicator on which side, iOS's
+ * `UIInterfaceOrientation` numbers landscape the opposite way round to its
+ * names, and the research could not resolve it either
+ * (docs/research/2026-08-26-notch-and-dynamic-island.md §7.1). It is one
+ * constant so confirming it is one edit, and #413 carries the measurement.
+ */
+export const LANDSCAPE_LEFT = 3;
+
+export function railSideForOrientation(orientation: number): RailSide {
+  return orientation === LANDSCAPE_LEFT ? "left" : "right";
+}
+
 export interface TableFrame extends ScreenPads {
   /** Width of the control rail, whichever edge it is against. */
   rail: number;

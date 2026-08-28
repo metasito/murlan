@@ -36,6 +36,7 @@ async function mount() {
         <Probe />
         <GameSettingsSheet
           rail={40}
+          railSide="left"
           topPad={0}
           bottomPad={0}
           scale={1}
