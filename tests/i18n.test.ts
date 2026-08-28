@@ -317,8 +317,8 @@ describe("one name per card", () => {
   const ABBREVIATIONS = ["B/W", "B/N", "B/Z"];
   /** Every key that names a joker in the UI; each must agree with the cardView name. */
   const JOKER_ALIASES = {
-    "cardView.jokerColored": ["lobby.rankJokerColored", "rules.strengthJokerColored"],
-    "cardView.jokerBlack": ["lobby.rankJokerBlack", "rules.strengthJokerBlack"],
+    "cardView.jokerColored": ["rules.strengthJokerColored"],
+    "cardView.jokerBlack": ["rules.strengthJokerBlack"],
   } as const;
 
   test("no locale abbreviates a joker's colour", () => {

@@ -110,7 +110,7 @@ export function createGithubDevSyncHandler({
     }
     if (!secret) {
       logger.error("REPLIT_DEV_HOOK_SECRET is not configured");
-      return res.status(503).json({ error: "Dev sync hook is not configured" });
+      return res.status(503).json({ error: "Dev sync hook is not configured", code: "DEV_SYNC_NOT_CONFIGURED" });
     }
 
     const rawBody = Buffer.isBuffer(req.rawBody)
@@ -123,7 +123,7 @@ export function createGithubDevSyncHandler({
         secret
       )
     ) {
-      return res.status(401).json({ error: "Invalid webhook signature" });
+      return res.status(401).json({ error: "Invalid webhook signature", code: "INVALID_WEBHOOK_SIGNATURE" });
     }
 
     if (req.header("x-github-event") !== "push") {
@@ -132,7 +132,7 @@ export function createGithubDevSyncHandler({
 
     const payload = req.body as GitHubPush;
     if (payload.ref !== "refs/heads/main") {
-      return res.status(202).json({ ignored: true, reason: "Not a main push" });
+      return res.status(202).json({ ignored: true, reason: "Not a main push", code: "IGNORED_NON_MAIN_PUSH" });
     }
 
     try {
@@ -152,7 +152,7 @@ export function createGithubDevSyncHandler({
       });
     } catch (error) {
       logger.error({ err: error }, "GitHub dev sync failed");
-      return res.status(409).json({ error: "Dev sync was not applied" });
+      return res.status(409).json({ error: "Dev sync was not applied", code: "DEV_SYNC_FAILED" });
     }
   };
 }
