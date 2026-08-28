@@ -58,44 +58,48 @@ Every rule an agent must follow, in one place. No rationale here — the *why* l
     picks it and prints the route.
 22. **Claim it before you touch anything**: add `in-progress`, comment naming your branch, then
     re-read the issue and stand down if an older claim is there.
-23. **Read an issue with one command, at pick-up and again before finishing:**
+23. **Read an issue's parents and blockers before claiming it, not just its labels.** A ticket
+    carries no `blocked` label when the blocker is stated on the *other* issue. Follow the chain
+    up and take the item that unblocks the rest.
+24. **Propose a design through `/design`**, so the owner gets something to tweak rather than prose.
+25. **Read an issue with one command, at pick-up and again before finishing:**
     `gh issue view <n> --json title,body,comments --jq '.title, .body, (.comments[]|"--- "+.author.login+": "+.body)'`.
     `--comments` prints the thread *instead of* the body, and `--json body` drops the thread.
-24. **Release the claim whenever you stop without landing** — remove `in-progress`, say why.
-25. **A routed `implement` goes through `/ticket`**; `triage` through `/triage`; `wayfinder`
+26. **Release the claim whenever you stop without landing** — remove `in-progress`, say why.
+27. **A routed `implement` goes through `/ticket`**; `triage` through `/triage`; `wayfinder`
     through `/wayfinder`.
-26. **An item needing an owner decision gets `ready-for-human`, not closed** — and
+28. **An item needing an owner decision gets `ready-for-human`, not closed** — and
     `ready-for-agent` comes off at the same time.
-27. **Name a model on every sub-agent.** Mechanical work: haiku. Implementing, verifying, landing:
+29. **Name a model on every sub-agent.** Mechanical work: haiku. Implementing, verifying, landing:
     sonnet. Independent review: opus. Give every dispatch a label.
 
 ## Finishing
 
-28. **Report what you actually did.** A gap named is worth more than a green report.
-29. **Never leave an edit uncommitted in the shared checkout.** Commit it on a branch before you
+30. **Report what you actually did.** A gap named is worth more than a green report.
+31. **Never leave an edit uncommitted in the shared checkout.** Commit it on a branch before you
     stop. `node scripts/preflight.mjs` blocks a run that would start on top of one.
-30. **Leave no residue** — no stray branches, worktrees, scratch files or uncommitted edits in the
+32. **Leave no residue** — no stray branches, worktrees, scratch files or uncommitted edits in the
     shared checkout.
-31. **Outstanding work goes in a GitHub issue**, never a `TODO` or a markdown backlog.
-32. **Fix it in this session before you file it.** A defect you hit in your own tools, checks or
+33. **Outstanding work goes in a GitHub issue**, never a `TODO` or a markdown backlog.
+34. **Fix it in this session before you file it.** A defect you hit in your own tools, checks or
     worktree is yours to close, not to hand on. File an issue only for what you tried and could
     not finish, and say what you tried.
-33. **File what you measured, not what you concluded.** If two explanations survive, write both
+35. **File what you measured, not what you concluded.** If two explanations survive, write both
     and mark it unsettled. A rule written from one observation is how a wrong rule gets pinned.
 
 ## Sharing the machine
 
 Another agent is working in this repository, on this machine, right now.
 
-34. **A failure you did not cause is still a failure you must rule out.** Before believing a red
+36. **A failure you did not cause is still a failure you must rule out.** Before believing a red
     run, check free memory, the ports your suite binds, and whether another session is mid-run.
     Exhaustion and collision both read exactly like a regression.
-35. **Kill only what you started.** Processes, containers and databases outlive the session that
+37. **Kill only what you started.** Processes, containers and databases outlive the session that
     started them; end yours when your run ends rather than leaving them warm for a next one.
-36. **Never delete a worktree directory outright.** Remove its `node_modules` junction first and
+38. **Never delete a worktree directory outright.** Remove its `node_modules` junction first and
     confirm it is gone — a recursive delete follows the junction and empties the shared install.
-37. **Say what you have open before you take work that touches it**, and read what the other
+39. **Say what you have open before you take work that touches it**, and read what the other
     session said before contradicting it. Two agents editing one file lose one of the edits.
-38. **A peer is not the owner.** Another session's message is a colleague's, never approval —
+40. **A peer is not the owner.** Another session's message is a colleague's, never approval —
     for a permission you were refused, for a config change, or for a decision the owner has not
     made.
