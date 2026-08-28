@@ -26,7 +26,6 @@ const match: PersistedMatch = {
   matchLength: "match",
   matchTarget: 21,
   maxPlayers: 4,
-  isPublic: true,
 };
 
 const JOIN_CODE = "QW3RTY";
@@ -127,11 +126,10 @@ describe("rows the restore path refuses", () => {
     assert.match(refusal(pack({ matchLength: "best_of_3" as never })), /match length/);
   });
 
-  test("a missing or nonsensical match target, table size or visibility", () => {
+  test("a missing or nonsensical match target or table size", () => {
     assert.match(refusal(pack({ matchTarget: 0 })), /match target/);
     assert.match(refusal(pack({ matchTarget: undefined as never })), /match target/);
     assert.match(refusal(pack({ maxPlayers: -1 })), /max players/);
-    assert.match(refusal(pack({ isPublic: undefined as never })), /visibility/);
   });
 
   test("a missing engine state, hand flags, deal rotation or match block", () => {

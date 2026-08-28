@@ -25,6 +25,12 @@ export const users = pgTable(
 
 export const roomStatusEnum = pgEnum("room_status", ["waiting", "in_progress", "finished"]);
 export const gameModeEnum = pgEnum("game_mode_type", ["free_for_all", "teams"]);
+/**
+ * Who may walk in. `public` is what quick-match matches strangers into;
+ * `private` is reachable by its code and nothing else. Stored rather than
+ * held in memory so a restart cannot make a waiting room unfindable.
+ */
+export const roomVisibilityEnum = pgEnum("room_visibility", ["public", "private"]);
 
 export const rooms = pgTable(
   "rooms",
@@ -35,11 +41,13 @@ export const rooms = pgTable(
     status: roomStatusEnum("status").default("waiting").notNull(),
     gameMode: gameModeEnum("game_mode").default("free_for_all").notNull(),
     maxPlayers: integer("max_players").default(4).notNull(),
+    visibility: roomVisibilityEnum("visibility").default("private").notNull(),
     createdAt: timestamp("created_at").defaultNow(),
   },
   (t) => [
     index("rooms_host_user_id_idx").on(t.hostUserId),
     index("rooms_status_idx").on(t.status),
+    index("rooms_open_idx").on(t.visibility, t.status, t.gameMode, t.maxPlayers),
   ]
 );
 
@@ -262,6 +270,7 @@ export const insertUserSchema = createInsertSchema(users).pick({
 export type InsertUser = z.infer<typeof insertUserSchema>;
 export type User = typeof users.$inferSelect;
 export type Room = typeof rooms.$inferSelect;
+export type RoomVisibility = (typeof roomVisibilityEnum.enumValues)[number];
 export type RoomPlayer = typeof roomPlayers.$inferSelect;
 export type Friend = typeof friends.$inferSelect;
 export type UserStats = typeof userStats.$inferSelect;

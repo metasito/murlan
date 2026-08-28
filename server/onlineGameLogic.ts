@@ -163,10 +163,6 @@ export const persistedMatchSchema = z.object({
     .number({ required_error: "max players missing", invalid_type_error: "max players missing" })
     .int("max players missing")
     .min(1, "max players missing"),
-  isPublic: z.boolean({
-    required_error: "no visibility",
-    invalid_type_error: "no visibility",
-  }),
 }, { required_error: "no match state", invalid_type_error: "no match state" });
 
 export type PersistedMatch = z.infer<typeof persistedMatchSchema>;

@@ -82,7 +82,6 @@ export const socketRoomMap = new Map<string, string>();
 // out must not run a single line of them.
 export const spectatorRoomMap = new Map<string, string>();
 export const userSocketMap = new Map<string, string>();
-export const publicRoomIds = new Set<string>();
 
 /**
  * Who lost their connection to a waiting lobby: room id -> userId -> whether
