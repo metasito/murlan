@@ -361,7 +361,17 @@ class DrizzleStorage {
     return rows.map((r) => ({ ...r.friends, requester: r.users }));
   }
 
-  async hasPendingRequest(userId: string, friendUserId: string): Promise<boolean> {
+  /**
+   * Which way a pending request between these two runs, or null.
+   *
+   * The direction is the whole answer: told "already sent" for a request that
+   * is in fact waiting on *them*, a player has no way to learn that accepting
+   * it is what they should do.
+   */
+  async pendingRequestBetween(
+    userId: string,
+    friendUserId: string
+  ): Promise<"sent" | "received" | null> {
     const [row] = await db
       .select()
       .from(friends)
@@ -374,7 +384,8 @@ class DrizzleStorage {
           eq(friends.status, "pending")
         )
       );
-    return !!row;
+    if (!row) return null;
+    return row.userId === userId ? "sent" : "received";
   }
 
   async addFriend(userId: string, friendUserId: string) {

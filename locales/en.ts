@@ -45,6 +45,7 @@ export const en = {
   "server.CANNOT_ADD_SELF": "You can't add yourself",
   "server.ALREADY_FRIENDS": "You're already friends",
   "server.FRIEND_REQUEST_ALREADY_SENT": "Friend request already sent",
+  "server.FRIEND_REQUEST_INCOMING_PENDING": "They already sent you a request — accept it instead",
   "server.FRIEND_REQUEST_NOT_FOUND": "Request not found",
   "server.FRIEND_INVITE": "{{username}} invited you to play.",
   "server.GAME_INTERRUPTED_EMPTY_SEAT": "Game interrupted: an empty seat can't play.",

@@ -38,6 +38,7 @@ export const it: Record<keyof typeof en, string> = {
   "server.CANNOT_ADD_SELF": "Non puoi aggiungere il tuo account",
   "server.ALREADY_FRIENDS": "Siete già amici",
   "server.FRIEND_REQUEST_ALREADY_SENT": "Richiesta di amicizia già inviata",
+  "server.FRIEND_REQUEST_INCOMING_PENDING": "Ti ha già inviato una richiesta — accettala",
   "server.FRIEND_REQUEST_NOT_FOUND": "Richiesta non trovata",
   "server.FRIEND_INVITE": "{{username}} ti ha invitato a giocare.",
   "server.GAME_INTERRUPTED_EMPTY_SEAT": "Partita interrotta: un posto vuoto non può giocare.",
