@@ -148,17 +148,24 @@ export const en = {
 
   // ----------------------------------------------------------------- home.*
   "home.subtitle": "The Card Game",
-  "home.footer": "2–4 players · All modes",
-  "home.logout": "Log Out",
   "home.friendsLabel": "Friends",
+  "home.friendsA11yLabel_one": "Friends, {{count}} request waiting",
+  "home.friendsA11yLabel_other": "Friends, {{count}} requests waiting",
   "home.settingsA11yLabel": "Settings",
   "home.resumeGame": "Resume game",
+  "home.playOnline": "Play online",
+  "home.playOnlineSignedOut": "Sign in to play",
   "home.modeOffline": "Offline",
   "home.modePlayWithFriends": "Play with friends",
   "home.modeOnline": "Online",
+  "home.modePassAndPlay": "Pass and play",
   "home.modeProfile": "My profile",
-  "home.modeTutorial": "Tutorial",
-  "home.modeRules": "Rules & FAQ",
+  "home.leaderboard": "Ranking",
+  "home.signIn": "Sign in",
+  "home.howToPlay": "How to play",
+  "home.requiresAccount": "Needs an account",
+  "home.inviteWaiting": "{{name}} is waiting",
+  "home.inviteJoin": "Join",
 
   // ---------------------------------------------------------- notFound.*
   "notFound.screenTitle": "Oops!",

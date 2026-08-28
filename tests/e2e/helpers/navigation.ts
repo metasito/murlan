@@ -74,7 +74,10 @@ export function uniqueUsername(prefix: string): string {
 
 /** Registers a brand-new account through the UI and lands back on the home screen. */
 export async function registerNewAccount(page: Page, username: string): Promise<void> {
-  await page.getByRole("button", { name: "Gioca con amici" }).click();
+  // Signed out, the account-only tiles are disabled, so they no longer reach
+  // /auth. "Accedi" without `exact` also matches the hero's "Accedi per
+  // giocare"; the sign-in button is the unique exact one.
+  await page.getByRole("button", { name: "Accedi", exact: true }).click();
   await page.waitForURL(/\/auth/);
   await page.getByRole("tab", { name: "Registrati" }).click();
   await page.getByRole("textbox", { name: "Nome utente" }).fill(username);
