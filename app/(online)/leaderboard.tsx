@@ -14,7 +14,7 @@ import { MenuButton } from "@/components/MenuButton";
 import { Colors, FontSize, Radius, Spacing, TOUCH_TARGET_MIN, Type } from "@/lib/theme";
 import { PROVISIONAL_GAMES, formatSeason } from "@/lib/rating";
 import { useTranslation } from "@/lib/i18n";
-import { a11yHidden } from "@/lib/a11y";
+import { a11yGroup, a11yHidden } from "@/lib/a11y";
 
 interface LeaderboardEntryDto {
   rank: number;
@@ -63,12 +63,13 @@ export default function LeaderboardScreen() {
 
       <MenuCard>
         {me && (
-          <View style={styles.selfBlock} accessible
-            accessibilityLabel={`${t("ladder.ratingLabel")}: ${me.rating}. ${t("ladder.seasonLabel", { season: formatSeason(me.season, t) })}`}
+          <View
+            style={styles.selfBlock}
+            {...a11yGroup(`${t("ladder.ratingLabel")}: ${me.rating}. ${t("ladder.seasonLabel", { season: formatSeason(me.season, t) })}`)}
           >
-            <Text style={styles.selfRating}>{me.rating}</Text>
-            <Text style={styles.selfSeason}>{t("ladder.seasonLabel", { season: formatSeason(me.season, t) })}</Text>
-            <Text style={styles.selfGames}>
+            <Text style={styles.selfRating} {...a11yHidden()}>{me.rating}</Text>
+            <Text style={styles.selfSeason} {...a11yHidden()}>{t("ladder.seasonLabel", { season: formatSeason(me.season, t) })}</Text>
+            <Text style={styles.selfGames} {...a11yHidden()}>
               {me.provisional
                 ? t("ladder.provisional", { n: PROVISIONAL_GAMES - me.games })
                 : t("ladder.gamesLabel", { n: me.games })}
@@ -98,12 +99,13 @@ export default function LeaderboardScreen() {
         )}
 
         {boardQuery.isSuccess && board.length === 0 && (
-          <View style={styles.stateBlock} accessible
-            accessibilityLabel={`${t("ladder.emptyTitle")}. ${t("ladder.emptyBody", { n: PROVISIONAL_GAMES })}`}
+          <View
+            style={styles.stateBlock}
+            {...a11yGroup(`${t("ladder.emptyTitle")}. ${t("ladder.emptyBody", { n: PROVISIONAL_GAMES })}`)}
           >
-            <Ionicons name="trophy-outline" size={28} color={Colors.textMuted} />
-            <Text style={styles.stateTitle}>{t("ladder.emptyTitle")}</Text>
-            <Text style={styles.stateBody}>{t("ladder.emptyBody", { n: PROVISIONAL_GAMES })}</Text>
+            <Ionicons name="trophy-outline" size={28} color={Colors.textMuted} {...a11yHidden()} />
+            <Text style={styles.stateTitle} {...a11yHidden()}>{t("ladder.emptyTitle")}</Text>
+            <Text style={styles.stateBody} {...a11yHidden()}>{t("ladder.emptyBody", { n: PROVISIONAL_GAMES })}</Text>
           </View>
         )}
 
@@ -113,23 +115,25 @@ export default function LeaderboardScreen() {
               <View
                 key={entry.userId}
                 style={[styles.row, entry.userId === user?.id && styles.rowSelf]}
-                accessible
-                accessibilityLabel={t("ladder.rowA11yLabel", {
-                  rank: entry.rank,
-                  name: entry.username,
-                  rating: entry.rating,
-                })}
+                {...a11yGroup(
+                  t("ladder.rowA11yLabel", {
+                    rank: entry.rank,
+                    name: entry.username,
+                    rating: entry.rating,
+                  })
+                )}
               >
                 <Text
                   style={[
                     styles.rank,
                     { color: RANK_COLORS[entry.rank - 1] ?? Colors.textMuted },
                   ]}
+                  {...a11yHidden()}
                 >
                   {entry.rank}
                 </Text>
-                <Text style={styles.name} numberOfLines={1}>{entry.username}</Text>
-                <Text style={styles.rating}>{entry.rating}</Text>
+                <Text style={styles.name} numberOfLines={1} {...a11yHidden()}>{entry.username}</Text>
+                <Text style={styles.rating} {...a11yHidden()}>{entry.rating}</Text>
               </View>
             ))}
           </View>

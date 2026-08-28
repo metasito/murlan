@@ -167,7 +167,7 @@ export default function AuthScreen() {
               </View>
 
               {error && (
-                <View style={styles.errorBox} accessible accessibilityLiveRegion="polite">
+                <View style={styles.errorBox} accessibilityLiveRegion="polite">
                   <Ionicons name="alert-circle-outline" size={14} color={Colors.dangerDim} />
                   <Text style={styles.errorText}>{error}</Text>
                 </View>

@@ -121,7 +121,7 @@ import { hapticError, hapticLight, hapticMedium, hapticSelection } from "@/lib/h
 import { usePrefersReducedMotion } from "@/lib/accessibility";
 import { Colors, FontSize, Garnet, Highlight, makeShadow, Motion, Radius, Scrim, Shadow, Spacing, TOUCH_TARGET_MIN, Type } from "@/lib/theme";
 import { useTableFelt } from "@/lib/cosmetics";
-import { A11yStatus, a11yHidden, a11yState, a11yVeiled } from "@/lib/a11y";
+import { A11yStatus, a11yGroup, a11yHidden, a11yState, a11yVeiled } from "@/lib/a11y";
 
 // How long the round-winner tag stays over the pile. A domain beat, not a
 // generic UI transition, so it is not a Motion token.
@@ -1399,8 +1399,7 @@ export function GameTable({
           far side. Anything wider would be chrome drawn where a card lands. */}
       <Animated.View
         testID="game-top-bar"
-        accessible
-        accessibilityLabel={topBarA11yLabel}
+        {...a11yGroup(topBarA11yLabel)}
         pointerEvents={focusMode ? "none" : undefined}
         {...behindVeil}
         style={[styles.hudLeft, { left: frame.tableLeft + frame.pad, top: frame.tableTop }, focusFadeStyle]}

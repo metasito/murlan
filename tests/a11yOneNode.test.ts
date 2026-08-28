@@ -106,6 +106,44 @@ export function reachableChildren(source: string, aliases: Set<string> = new Set
   return out;
 }
 
+/** A container that speaks as one node, however it is written. */
+const GROUPING = /(?:^|\s)accessible(?=\s|$|=\{true\})|a11yGroup\(/;
+
+/**
+ * `line: <Tag> -> Pressable@line` for every grouped container holding a
+ * control. On iOS the container is one leaf and the control inside it is
+ * reachable by nobody, which no amount of hiding can fix.
+ */
+export function sealedControls(source: string): string[] {
+  const src = blankComments(source);
+  const lineAt = (i: number) => src.slice(0, i).split("\n").length;
+  const tags = jsxTags(src);
+  const out: string[] = [];
+
+  for (let k = 0; k < tags.length; k++) {
+    const container = tags[k];
+    if (container.isClose || container.selfClose) continue;
+    if (INTERACTIVE.test(container.name) || !GROUPING.test(container.text)) continue;
+
+    let depth = 0;
+    const sealed: string[] = [];
+    for (let j = k + 1; j < tags.length; j++) {
+      const child = tags[j];
+      if (child.isClose) {
+        if (depth === 0) break;
+        depth -= 1;
+        continue;
+      }
+      if (INTERACTIVE.test(child.name)) sealed.push(`${child.name}@${lineAt(child.start)}`);
+      if (!child.selfClose) depth += 1;
+    }
+    if (sealed.length) {
+      out.push(`${lineAt(container.start)}: <${container.name}> -> ${sealed.join(", ")}`);
+    }
+  }
+  return out;
+}
+
 test("the tokeniser reads names, closers and self-closers in order", () => {
   assert.deepEqual(
     jsxTags("<View a={{x:1}}>\n  <Text />\n</View>").map(
@@ -171,12 +209,47 @@ test("a nested control keeps its own contents", () => {
   );
 });
 
+test("an accessible container reports the control it seals", () => {
+  assert.deepEqual(
+    sealedControls(
+      '<View accessible accessibilityLabel={x}>\n  <Text>a</Text>\n  <Pressable onPress={f} />\n</View>'
+    ),
+    ["1: <View> -> Pressable@3"]
+  );
+  assert.deepEqual(
+    sealedControls('<View {...a11yGroup(x)}>\n  <Pressable onPress={f} />\n</View>'),
+    ["1: <View> -> Pressable@2"]
+  );
+});
+
+// The floor. A grouped container with no control inside is the ordinary case,
+// and a rule that fired on it would be one nobody could satisfy.
+test("a grouped container with no control inside is clean", () => {
+  assert.deepEqual(
+    sealedControls('<View accessible accessibilityLabel={x}>\n  <Text>a</Text>\n</View>'),
+    []
+  );
+});
+
 const read = (rel: string) => readFileSync(path.join(repoRoot, rel), "utf8");
 const scanned = () => [...sourcesUnder("app"), ...sourcesUnder("components")];
 
 // No exception list: the one control that looked like it needed one was a
 // live region wearing a button's clothes, and the answer was a node of its
 // own (`lib/a11y.tsx`'s `A11yStatus`) rather than a licence.
+test("no grouped container seals a control", () => {
+  const offenders: string[] = [];
+  for (const rel of scanned()) {
+    for (const hit of sealedControls(read(rel))) offenders.push(`${rel}:${hit}`);
+  }
+  assert.deepEqual(
+    offenders,
+    [],
+    "`accessible` makes the view a UIKit leaf, so a control inside it cannot be reached " +
+      `on iOS at all — drop the grouping, or move the control out:\n  ${offenders.join("\n  ")}`
+  );
+});
+
 test("no labelled control leaves its own face reachable", () => {
   const aliases = faceAliases(read, scanned());
 

@@ -18,7 +18,7 @@ import Animated, {
 import { TableText } from "./TableText";
 import { portraitOverlayStyles } from "./chrome";
 import { ROTATE_SETTLED, ROTATE_UPRIGHT, rotateGlyphAngle } from "../gameTableModel";
-import { a11yHidden } from "@/lib/a11y";
+import { a11yGroup, a11yHidden } from "@/lib/a11y";
 import { usePrefersReducedMotion } from "@/lib/accessibility";
 import { useTranslation } from "@/lib/i18n";
 import { Colors, Motion } from "@/lib/theme";
@@ -74,8 +74,7 @@ export function RotateOverlay() {
             read by nothing. */}
         <View
           style={portraitOverlayStyles.card}
-          accessible
-          accessibilityLabel={t("gameTable.rotateA11yLabel")}
+          {...a11yGroup(t("gameTable.rotateA11yLabel"))}
         >
           <Animated.View style={glyphStyle} {...a11yHidden()}>
             <Ionicons name="phone-landscape-outline" size={GLYPH_SIZE} color={Colors.gold} />
