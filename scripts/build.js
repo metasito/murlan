@@ -94,21 +94,6 @@ function prepareDirectories(timestamp) {
   console.log("Build:", timestamp);
 }
 
-function clearMetroCache() {
-  console.log("Clearing Metro cache...");
-
-  const cacheDirs = [
-    ...fs.globSync(".metro-cache"),
-    ...fs.globSync("node_modules/.cache/metro"),
-  ];
-
-  for (const dir of cacheDirs) {
-    fs.rmSync(dir, { recursive: true, force: true });
-  }
-
-  console.log("Cache cleared");
-}
-
 async function checkMetroHealth() {
   try {
     const response = await fetch("http://localhost:8081/status", {
@@ -543,7 +528,6 @@ async function main() {
   const timestamp = `${Date.now()}-${process.pid}`;
 
   prepareDirectories(timestamp);
-  clearMetroCache();
 
   await startMetro(domain);
 
