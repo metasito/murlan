@@ -4,11 +4,8 @@
 // deliberate and not what this guards. What this guards is copy doing duty as a *protocol*: a
 // label compared for equality to decide whether something is legal, allowed or finished.
 //
-// #492 changed one such label for a good reason and three browser shards went red with
-// "No combination in hand satisfies GIOCA, and PASSA is disabled — the rules guarantee one of
-// those always holds". Not one of them named a label, a locale or a copy change; the first said
-// the rules were broken. A sentinel is allowed to exist, but it has to be declared once, and a
-// copy change has to fail as a copy change.
+// A sentinel is allowed to exist; it has to be declared once, and a copy edit to it has to
+// fail here rather than in a spec that can only report it as a rules violation.
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync, readdirSync } from "node:fs";
@@ -19,12 +16,7 @@ import { blankComments } from "./helpers/sourceScan.ts";
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const E2E = path.join(repoRoot, "tests", "e2e");
 
-/**
- * Every sentinel the suite is allowed to hold, and the locale key each one mirrors. The check
- * below reads the key from `locales/it.ts` and refuses a sentinel that has drifted from it, so
- * a copy change fails here — once, saying what it is — rather than three times somewhere that
- * reports a rules violation.
- */
+/** Every sentinel the suite is allowed to hold, and the locale key each one mirrors. */
 const SENTINELS: Record<string, string> = {
   GIOCA_VALID_LABEL: "gameTable.playA11yValid",
 };
@@ -73,11 +65,8 @@ test("every sentinel still says what the locale says", () => {
 });
 
 /**
- * Comparing UI copy is what makes it a sentinel. Naming a control by its text is not — the
- * suite does that 160-odd times on purpose, and a copy edit breaks such a call with a message
- * that quotes the missing name, which is already the diagnostic #499 wanted.
- *
- * Each entry: file, locale key, and why comparing it is not a sentinel.
+ * A comparison that is asking which control it is looking at rather than deciding something.
+ * Each entry: file, locale key, and why it is not a sentinel.
  */
 const COMPARED_BUT_NOT_A_SENTINEL: [string, string, string][] = [
   [
