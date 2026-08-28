@@ -31,6 +31,7 @@ const RULE_PHRASES: [string, RegExp][] = [
   ["never run the whole sweep locally", /npm run verify/i],
   ["read a file once, whole", /read a file once, whole/i],
   ["prove it red first", /fail before your fix/i],
+  ["leave no residue", /leave no residue/i],
 ];
 
 function read(path: string): string {
