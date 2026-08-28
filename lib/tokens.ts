@@ -141,20 +141,22 @@ export const Lantern = {
   coreMid:  'rgba(255,226,172,0.09)',
   bloom:    'rgba(255,236,190,0.12)',
   clear:    'rgba(255,242,208,0)',
-  // The cloth's own weave, one bright thread and one dark, crossing at 45.
-  weaveLight: 'rgba(255,255,255,0.02)',
-  weaveDark:  'rgba(0,0,0,0.055)',
-  // …and the pile standing off it. The weave is geometry and does not move;
-  // the pile answers to where the lamp is. `napSheen` is the band where the
+  // The cloth's own weave: the shadow cast between the threads, deeper one way
+  // than the other, crossing at 45. Both are black, and that is the whole
+  // point — a shadow *scales* what it is laid over, so the crosshatch is loud
+  // under the lamp and gone in the dark without anything having to move. A
+  // white thread cannot do that: it adds the same few levels wherever it is
+  // painted, so on an unlit `#010B07` rim it is a legible hatch on nothing,
+  // which is what read as a screen pattern rather than as cloth.
+  weaveShade:      'rgba(0,0,0,0.085)',
+  weaveShadeCross: 'rgba(0,0,0,0.035)',
+  // The pile standing off that weave. The threads are geometry and do not
+  // move; the pile answers to where the lamp is — this is the band where the
   // light rakes across the fibres and you see their sides, which is around the
-  // lamp rather than under it. `napShade` is cloth the lamp does not reach —
-  // and it is what takes the crosshatch down with it, since a 2% white thread
-  // over an unlit rim is a legible hatch in a corner with no light in it.
-  // Shares `clear`'s own hue, so the run out of it interpolates within one
-  // colour: SVG blends stops non-premultiplied, and two hues either side of a
-  // transparent stop read as grey at half strength.
+  // lamp rather than under it. It shares `clear`'s own hue so the run out of it
+  // stays inside one colour: SVG blends stops non-premultiplied, and two hues
+  // either side of a transparent stop read as grey at half strength.
   napSheen: 'rgba(255,242,208,0.055)',
-  napShade: 'rgba(0,0,0,0.2)',
   // Real darkness past the falloff, and the vignette over all of it.
   vignette:      'rgba(0,0,0,0.5)',
   vignetteClear: 'rgba(0,0,0,0)',

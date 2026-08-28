@@ -1,19 +1,25 @@
-// tests/e2e/feltNap.spec.ts — the crosshatch is brighter under the lamp than
-// away from it, measured rather than described.
+// tests/e2e/feltNap.spec.ts — the cloth is more textured where the light is,
+// not less. Measured, because "looks darker" cost this repo hours
+// (`docs/agents/loops.md`).
 //
 // This is the half of #341 no unit test can reach. A native test can assert
 // that a gradient exists with the right stops; only a browser composites the
-// weave, the pool and the nap and produces the number that says whether the
-// cloth answers to the light. "Looks darker" cost this repo hours
-// (`docs/agents/loops.md`), so the assertion is a ratio between two samples of
-// the same point, not an impression of one.
+// weave, the pool and the nap into the one image where the claim is true or
+// false.
 //
-// **The measure.** Over a 15px patch the felt's own gradients move by a
-// fraction of a level, while the weave alternates every 3px between a 2% white
-// thread, a 5.5% black one and bare cloth. So `max − min` of luminance across a
-// small patch is the crosshatch's amplitude and almost nothing else. Sampling
-// the *same* table point in two states — lamp near it, lamp across the table —
-// divides out everything about that point except how much light reaches it.
+// **The measure, and the mistake it exists to avoid.** Raw crosshatch
+// amplitude is not the defect: `weaveDark` is 5.5% *black*, so it already
+// scales with whatever it is painted over and the hatch is louder in absolute
+// terms under the lamp. That reading is 4:1 in favour of the lamp with a
+// uniform weave and proves nothing.
+//
+// What is wrong is the hatch measured *against its own cloth*. A white thread
+// is additive and does not care how dark the felt under it is, so on a
+// `#010B07` rim it is a fixed lift on almost nothing — the unlit corner carried
+// several times the relative contrast of the lit middle. A surface with no
+// light on it showing more texture than one under a lamp is the screen-pattern
+// tell, and it is one number: relief 0.264 dark against 0.098 lit here, and
+// 0.793 against 0.169 in the prototype, which has the same defect.
 import { test, expect } from "@playwright/test";
 import { openCaptureState } from "./helpers/offlineSeed";
 import { CAPTURE_STATES } from "../../lib/captureStates";
@@ -31,17 +37,23 @@ const stateById = (id: string) => {
 
 /**
  * A patch of bare felt on the table's left third, clear of the seats, the pile
- * and the hand — so what is sampled is cloth rather than a card edge. Stated
- * as a fraction of the viewport so it moves with it.
+ * and the hand, so what is sampled is cloth rather than a card edge. A fraction
+ * of the viewport, so it moves with it.
  */
 const PATCH = { x: 0.17, y: 0.3, size: 15 };
 
+interface Cloth {
+  /** How far the brightest pixel in the patch is from the darkest. */
+  amplitude: number;
+  /** …and how much light is on the patch at all. */
+  mean: number;
+}
+
 /**
- * The crosshatch's amplitude at `PATCH`: how far the brightest pixel in it is
- * from the darkest. Reads the composited frame, which is the only place the
- * weave, the pool and the nap are one image.
+ * The patch as the compositor drew it — the weave, the pool and the nap as one
+ * image, which is the only place they are one image.
  */
-async function weaveAmplitude(page: import("@playwright/test").Page): Promise<number> {
+async function cloth(page: import("@playwright/test").Page): Promise<Cloth> {
   const shot = (await page.screenshot({ type: "png" })).toString("base64");
   return page.evaluate(
     async ({ png, patch, viewport }) => {
@@ -64,49 +76,64 @@ async function weaveAmplitude(page: import("@playwright/test").Page): Promise<nu
       );
       let lo = Infinity;
       let hi = -Infinity;
+      let sum = 0;
+      let n = 0;
       for (let i = 0; i < data.length; i += 4) {
         const lum = 0.2126 * data[i] + 0.7152 * data[i + 1] + 0.0722 * data[i + 2];
         if (lum < lo) lo = lum;
         if (lum > hi) hi = lum;
+        sum += lum;
+        n++;
       }
-      return hi - lo;
+      return { amplitude: hi - lo, mean: sum / n };
     },
     { png: shot, patch: PATCH, viewport: VIEWPORT }
   );
 }
 
-async function amplitudeAt(
+async function clothAt(
   page: import("@playwright/test").Page,
   baseURL: string,
   id: string
-): Promise<number> {
+): Promise<Cloth> {
   await page.setViewportSize(VIEWPORT);
   await openCaptureState(page, baseURL, stateById(id));
   await page.waitForTimeout(DEALT_MS);
-  return weaveAmplitude(page);
+  return cloth(page);
 }
 
+/** The hatch as a fraction of the cloth it sits on. */
+const relief = (c: Cloth) => c.amplitude / Math.max(c.mean, 1);
+
 test.describe("the cloth answers to the lamp", () => {
-  test("the crosshatch is stronger under the light than across the table from it", async ({
-    page,
-    baseURL,
-  }) => {
+  test("shows less texture where there is no light, not more", async ({ page, baseURL }) => {
     test.setTimeout(180_000);
 
     // `PATCH` sits on the left third, so the lamp is over it in `lamp-left`
     // and at the opposite edge in `lamp-right`. Same pixels, same felt, same
     // seating — the only difference is where the light is.
-    const near = await amplitudeAt(page, baseURL!, "lamp-left");
-    const far = await amplitudeAt(page, baseURL!, "lamp-right");
+    const lit = await clothAt(page, baseURL!, "lamp-left");
+    const dark = await clothAt(page, baseURL!, "lamp-right");
 
-    // The defect, as a number: a uniform screen pattern gives a ratio of about
-    // 1 whatever the lamp does, because its alpha never changes. Cloth does
-    // not. 1.4 is well clear of the compression noise in a PNG at this depth
-    // and well under what the change actually produces.
-    expect(near / far).toBeGreaterThan(1.4);
+    // Sanity on the states themselves, so a seeding failure cannot read as a
+    // passing measurement: the lamp really is somewhere else in the second one.
+    expect(dark.mean).toBeLessThan(lit.mean);
 
-    // …and the far side is still cloth rather than a flat wash: the threads
-    // are dimmed, not deleted.
-    expect(far).toBeGreaterThan(0);
+    // The defect, as a number: relief *inverted*. A white thread is a fixed
+    // lift, so on a nearly black rim it carried several times the relief of
+    // the lit middle — the surface with no light on it was the more textured
+    // one. A shadow cannot do that, and equal relief either side is the right
+    // answer rather than a compromise: that is what a diffuse surface does.
+    expect(relief(dark)).toBeLessThanOrEqual(relief(lit));
+
+    // The same thing in absolute levels, which is what the eye reads. The
+    // unlit corner has to fall under the floor where a hatch stops being a
+    // hatch; a uniform weave leaves it at about three levels here, and the
+    // prototype at five.
+    expect(dark.amplitude).toBeLessThanOrEqual(1.5);
+
+    // …and the lit cloth was not flattened to buy that. A weave that vanishes
+    // everywhere passes both lines above and is not cloth either.
+    expect(lit.amplitude).toBeGreaterThan(11);
   });
 });

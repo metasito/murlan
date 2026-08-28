@@ -1,17 +1,18 @@
 // tests/native/feltNap.test.tsx — the cloth has pile, and the pile answers to
 // where the lamp is.
 //
-// A weave is geometry: fixed threads, one width, everywhere. Pile is not — the
-// light rakes across the fibres at a grazing angle and the cloth sheens in a
-// band *around* the lamp, and where the lamp does not reach there is nothing
-// for the crosshatch to catch. That second half is the one a screenshot shows:
-// `weaveLight` is a 2% white lift, which over a `#010B07` rim is a legible
-// hatch in a corner with no light in it.
+// Two claims, and this file holds both.
 //
-// Both halves are one function of distance from the lamp, so they are one
-// gradient. What this pins is the three things that make it that rather than a
-// third glow stacked on the pool: the sheen peaks away from the centre, it
-// paints over the threads rather than under them, and it rides the lamp.
+// **The weave is shadow.** Both threads are black, at two depths, so what they
+// take away is a fraction of whatever light reached them and the crosshatch
+// tracks the lamp without moving. A white thread cannot: it adds the same few
+// levels wherever it is painted, so on a `#010B07` rim it drew a legible hatch
+// on nothing, which is what read as a screen pattern.
+//
+// **The pile is not the weave.** It sheens in a band *around* the lamp, where
+// the light rakes across the fibres and you see their sides. What is pinned
+// here is what makes that a nap rather than a third glow on the pool: the peak
+// is away from the centre, it paints over the threads, and it rides the lamp.
 import { describe, it, expect, jest, beforeEach, afterEach } from '@jest/globals';
 import React from 'react';
 import { act, render, screen } from '@testing-library/react-native';
@@ -114,7 +115,7 @@ describe('the cloth has a nap, keyed to the lamp', () => {
     const r = await render(felt(BESNIK));
 
     const stops = gradientStops('feltNap');
-    expect(stops.length).toBeGreaterThanOrEqual(4);
+    expect(stops.length).toBeGreaterThanOrEqual(3);
 
     const [firstOffset, firstColor] = stops[0];
     expect(firstOffset).toBe(0);
@@ -128,11 +129,10 @@ describe('the cloth has a nap, keyed to the lamp', () => {
     expect(sheen![0]).toBeGreaterThan(0);
     expect(sheen![0]).toBeLessThan(1);
 
-    // …and the far end is the cloth the lamp does not reach, which is what
-    // takes the crosshatch down with it.
-    const [lastOffset, lastColor] = stops[stops.length - 1];
-    expect(lastOffset).toBe(1);
-    expect(alphaOf(lastColor)).toBe(tokenAlpha(Lantern.napShade));
+    // …and it is spent by the time the light stops grazing. Carrying alpha out
+    // to the edge would be a wash over the whole pool rather than a band.
+    const [, lastColor] = stops[stops.length - 1];
+    expect(alphaOf(lastColor)).toBe(0);
 
     await r.unmount();
   });
@@ -140,11 +140,11 @@ describe('the cloth has a nap, keyed to the lamp', () => {
   it('interpolates every segment within one hue', async () => {
     const r = await render(felt(BESNIK));
 
-    // SVG interpolates stops non-premultiplied, so a run from a transparent
-    // warm to a translucent black passes through a grey haze at half strength.
-    // Each end of the profile therefore needs its own zero.
+    // SVG interpolates stops non-premultiplied, so a run between two hues with
+    // a transparent stop at one end reads as grey at half strength on both
+    // renderers rather than as a fade.
     const stops = gradientStops('feltNap');
-    expect(stops.length).toBeGreaterThanOrEqual(4);
+    expect(stops.length).toBeGreaterThanOrEqual(3);
     const rgbOf = (packed: number) => packed & 0x00ffffff;
     for (let i = 1; i < stops.length; i++) {
       const [, from] = stops[i - 1];
@@ -153,6 +153,33 @@ describe('the cloth has a nap, keyed to the lamp', () => {
       const bothClear = alphaOf(from) === 0 && alphaOf(to) === 0;
       expect(sameHue || bothClear).toBe(true);
     }
+
+    await r.unmount();
+  });
+
+  it('draws the weave as shadow, so it cannot outlive the light', async () => {
+    const r = await render(felt(BESNIK));
+
+    // Read off the packed colour the native side is handed, not off the token:
+    // a thread that adds light is the one shape this must never go back to,
+    // and the token is only where it would be written.
+    const strokes: number[] = [];
+    const walk = (node: any) => {
+      if (!node || typeof node === 'string') return;
+      const packed = node.props?.stroke?.payload;
+      if (typeof packed === 'number') strokes.push(packed);
+      (node.children ?? []).forEach(walk);
+    };
+    walk(screen.toJSON());
+
+    expect(strokes).toHaveLength(2);
+    for (const packed of strokes) {
+      expect(packed & 0x00ffffff).toBe(0);
+      expect(alphaOf(packed)).toBeGreaterThan(0);
+    }
+    // Two depths, not one: a single depth crossing itself is a grid, and cloth
+    // is woven over and under.
+    expect(new Set(strokes.map(alphaOf)).size).toBe(2);
 
     await r.unmount();
   });
