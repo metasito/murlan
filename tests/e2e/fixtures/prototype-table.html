@@ -1,0 +1,1026 @@
+<!--
+  The #98 + #100 prototype — "Murlan Table, Sized" — as fetched from
+  https://claude.ai/code/artifact/80607f3e-e852-416e-a6f1-91788d80f40f
+
+  Here rather than fetched per run because a parity harness that reaches the
+  network is a parity harness that stops working, and #341's own comparison not
+  surviving its session is half of why #519 exists.
+
+  One edit: the <!-- frame-runtime --> block, which carries a <base href> that
+  repoints every relative URL and a script that waits on a parent frame that is
+  not there. Nothing below it is touched, so the numbers a spec reads off this
+  file are the prototype's own.
+-->
+<!doctype html><html><head><meta charset=utf8><meta name=viewport content="width=device-width,initial-scale=1"><style>:root{color-scheme:light}body{margin:0;padding:0;font:14px -apple-system,BlinkMacSystemFont,sans-serif;background:#faf9f5;color:#141413}img{max-width:100%}</style></head><body>
+<title>Murlan Table, Sized</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@500;600;700&family=Inter:wght@400;500;600&display=swap" />
+
+<style>
+@property --lx { syntax: "<percentage>"; inherits: true; initial-value: 50%; }
+@property --ly { syntax: "<percentage>"; inherits: true; initial-value: 92%; }
+@property --clock { syntax: "<angle>"; inherits: false; initial-value: 360deg; }
+
+:root {
+  --room-deep: #010604;
+  --gold:      #C9A84C;
+  --gold-lit:  #F3E0A6;
+  --gold-rule: rgba(201,168,76,.3);
+  --gold-dim:  rgba(201,168,76,.14);
+  --paper:     #FCFAF3;
+  --paper-lo:  #E8E2D0;
+  --ink:       #16140E;
+  --ink-red:   #B0202A;
+  --text:      #EFEADB;
+  --dim:       rgba(239,234,219,.5);
+  --hair: 1px;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; }
+body { background: var(--room-deep); color: var(--text); font-family: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; -webkit-font-smoothing: antialiased; }
+
+/* ── page ─────────────────────────────────────────────────────────────── */
+.page { max-width: 1300px; margin: 0 auto; padding: clamp(1.75rem,4vw,3.5rem) clamp(1rem,3vw,2.5rem) 5rem; }
+h1 { font-family: Rajdhani, sans-serif; font-weight: 600; font-size: clamp(2rem,5vw,3.2rem); line-height: 1.04; margin: 0; text-wrap: balance; }
+h2 { font-family: Rajdhani, sans-serif; font-weight: 600; font-size: 1.7rem; margin: 0 0 .6rem; }
+h3 { font-family: Rajdhani, sans-serif; font-weight: 600; font-size: .95rem; letter-spacing: .13em; text-transform: uppercase; color: var(--gold); margin: 0 0 .4rem; }
+.eyebrow { font-family: Rajdhani, sans-serif; font-weight: 600; text-transform: uppercase; letter-spacing: .24em; font-size: .78rem; color: var(--gold); margin: 0 0 .6rem; }
+.lede { max-width: 66ch; font-size: 1.12rem; line-height: 1.6; color: rgba(239,234,219,.86); margin: 1rem 0 0; }
+.prose { max-width: 66ch; line-height: 1.65; color: rgba(239,234,219,.76); }
+.prose p { margin: 0 0 1rem; }
+.prose strong, .prose em { color: var(--text); font-style: normal; }
+code { font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: .87em; background: var(--gold-dim); padding: .1em .35em; border-radius: 3px; }
+hr { border: 0; border-top: var(--hair) solid var(--gold-rule); margin: 3rem 0; }
+
+.panel { display: grid; gap: .55rem 1.5rem; grid-template-columns: repeat(auto-fit, minmax(230px,1fr)); margin: 2rem 0 1.25rem; }
+.ctl { display: flex; align-items: center; gap: .5rem; flex-wrap: wrap; }
+.ctl-label { font-family: Rajdhani, sans-serif; font-weight: 600; text-transform: uppercase; letter-spacing: .15em; font-size: .72rem; color: var(--dim); min-width: 5.4em; }
+.seg { display: flex; border: var(--hair) solid var(--gold-rule); border-radius: 999px; overflow: hidden; }
+.seg button {
+  appearance: none; border: 0; cursor: pointer; background: transparent; color: rgba(239,234,219,.68);
+  font-family: Rajdhani, sans-serif; font-weight: 600; font-size: .82rem; letter-spacing: .06em;
+  padding: .35rem .8rem; transition: background .15s, color .15s;
+}
+.seg button + button { border-left: var(--hair) solid var(--gold-dim); }
+.seg button[aria-pressed="true"] { background: var(--gold); color: #120D02; }
+.seg button:focus-visible { outline: var(--hair) solid var(--gold-lit); outline-offset: -2px; }
+.stage { border: var(--hair) solid var(--gold-dim); padding: clamp(.75rem,2vw,2rem); overflow-x: auto; background: #000; }
+
+/* ═══ device ════════════════════════════════════════════════════════════ */
+.device {
+  margin: 0 auto; position: relative; --s: 1;
+  --sp: calc(var(--s) * 1); --sh: calc(var(--s) * .95); --sf: calc(var(--s) * .88);
+  --rail: 54px; --safe-t: 14px; --safe-b: 14px; --safe-r: 18px;
+}
+/* the short edge sets the scale; the cutout inset sets the rail. #100 in two lines. */
+.device {
+  width: calc(var(--vw) * 1px); height: calc(var(--vh) * 1px);
+  --s: calc(var(--vh) / 390);
+  --rail: max(58px, calc(52px * var(--s)), calc((var(--inset-x) + 12) * 1px));
+  --safe-t: calc(13px * var(--s));
+  --safe-b: max(calc(13px * var(--s)), calc((var(--inset-b) + 4) * 1px));
+  --safe-r: max(calc(17px * var(--s)), calc((var(--inset-x) - 22) * 1px));
+}
+.table { position: absolute; inset: 0; overflow: hidden; background: var(--room-deep);
+  --pad: calc(10px * var(--s));
+  --cx: calc((var(--rail) + 100% - var(--safe-r)) / 2); }
+
+/* ── cloth ───────────────────────────────────────────────────────────── */
+.felt { position: absolute; inset: 0; }
+.felt::before { content: ""; position: absolute; inset: 0;
+  background:
+    radial-gradient(44% 60% at var(--lx) var(--ly),
+      rgba(255,242,208,.26), rgba(255,226,172,.09) 46%, transparent 78%),
+    radial-gradient(76% 100% at var(--lx) var(--ly),
+      #2E9F62 0%, #23854F 14%, #186B41 30%, #0F4E31 46%, #093320 62%,
+      #041D12 78%, #010B07 92%, var(--room-deep) 100%); }
+.felt::after { content: ""; position: absolute; inset: 0;
+  background:
+    repeating-linear-gradient(45deg,  rgba(255,255,255,.02) 0 1px, transparent 1px 3px),
+    repeating-linear-gradient(-45deg, rgba(0,0,0,.055) 0 1px, transparent 1px 3px),
+    radial-gradient(34% 46% at var(--lx) var(--ly), rgba(255,236,190,.12), transparent 76%),
+    radial-gradient(128% 104% at 50% 50%, transparent 40%, rgba(0,0,0,.5) 100%); }
+
+/* ── chips ───────────────────────────────────────────────────────────── */
+.chip {
+  position: absolute; z-index: 6; display: flex; align-items: center; gap: calc(7px * var(--s));
+  height: calc(23px * var(--s)); padding: 0 calc(11px * var(--s));
+  border-radius: 999px; border: var(--hair) solid var(--gold-rule); background: rgba(3,14,9,.55);
+  backdrop-filter: blur(6px);
+  font-family: Rajdhani, sans-serif; font-weight: 600; font-size: calc(10px * var(--s));
+  letter-spacing: .15em; text-transform: uppercase; color: var(--dim); white-space: nowrap;
+}
+.chip b { color: var(--gold); font-weight: 700; font-variant-numeric: tabular-nums; letter-spacing: .06em; }
+.chip .dot { width: calc(6px * var(--s)); height: calc(6px * var(--s)); border-radius: 50%; background: var(--dim); transition: background .45s, box-shadow .45s; }
+
+.combo { left: calc(var(--rail) + var(--pad)); top: var(--safe-t); }
+/* Turn and count share the top-right corner so the top-centre stays the top
+   seat's, and nothing is ever drawn over the felt where cards land. */
+.tr { position: absolute; right: calc(var(--safe-r) + var(--pad)); top: var(--safe-t); z-index: 6;
+      display: flex; align-items: flex-end; gap: calc(8px * var(--s)); }
+.tr .chip { position: static; }
+.turncap { transition: color .45s, border-color .45s, box-shadow .45s; }
+.table.mine .turncap { color: var(--gold-lit); border-color: rgba(243,224,166,.55); box-shadow: 0 0 calc(20px * var(--s)) rgba(243,224,166,.16); }
+.table.mine .turncap .dot { background: var(--gold-lit); box-shadow: 0 0 calc(9px * var(--s)) var(--gold-lit); }
+
+/* HUD B — turn drops under the combination, one column on the left */
+[data-hud="pill"] .turncap { position: absolute; left: calc(var(--rail) + 4px * var(--s));
+  top: calc(var(--safe-t) + 32px * var(--s)); }
+/* HUD C — one column on the right */
+[data-hud="stack"] .tr { flex-direction: column; align-items: flex-end; }
+
+/* ── control rail ────────────────────────────────────────────────────── */
+.rail {
+  position: absolute; left: 0; top: 0; bottom: 0; width: var(--rail); z-index: 10;
+  display: flex; flex-direction: column; align-items: center; justify-content: space-between;
+  padding: var(--safe-t) 0 var(--safe-b);
+}
+.knob {
+  appearance: none; cursor: pointer; flex: none; position: relative;
+  width: max(44px, calc(44px * var(--s))); height: max(44px, calc(44px * var(--s))); border-radius: 50%;
+  border: var(--hair) solid var(--gold-rule); background: rgba(2,12,8,.55); backdrop-filter: blur(4px);
+  display: grid; place-items: center; color: var(--dim);
+  font-family: Rajdhani, sans-serif; font-size: calc(17px * var(--s)); line-height: 1;
+  transition: color .25s, border-color .25s, transform .18s;
+}
+.knob:hover { color: var(--gold-lit); border-color: var(--gold-lit); transform: scale(1.08); }
+.knob:focus-visible { outline: var(--hair) solid var(--gold-lit); outline-offset: 3px; }
+.knob.emo { font-size: calc(19px * var(--s)); }
+
+.tray {
+  position: absolute; left: calc(100% + 8px * var(--s)); bottom: 0;
+  display: flex; gap: calc(10px * var(--s)); padding: calc(6px * var(--s));
+  border-radius: 999px; border: var(--hair) solid var(--gold-rule); background: rgba(2,12,8,.85);
+  backdrop-filter: blur(6px);
+  opacity: 0; transform: translateX(calc(-8px * var(--s))) scale(.92); pointer-events: none;
+  transform-origin: left bottom; transition: opacity .22s ease, transform .22s cubic-bezier(.2,.9,.3,1.3);
+}
+.tray.open { opacity: 1; transform: none; pointer-events: auto; }
+.tray button { appearance: none; border: 0; background: transparent; cursor: pointer;
+  width: max(44px, calc(44px * var(--s))); height: max(44px, calc(44px * var(--s))); border-radius: 50%;
+  font-size: calc(20px * var(--s)); line-height: 1; transition: transform .15s; }
+.tray button:hover { transform: scale(1.22); }
+.thrown { position: absolute; z-index: 12; pointer-events: none; font-size: calc(30px * var(--s)); line-height: 1;
+  animation: throw 1.5s cubic-bezier(.2,.7,.3,1) forwards; }
+@keyframes throw {
+  0% { opacity: 0; transform: translate(-50%,-50%) scale(.3); }
+  14% { opacity: 1; transform: translate(-50%,-50%) scale(1.25); }
+  30% { transform: translate(-50%,-50%) scale(1); }
+  100% { opacity: 0; transform: translate(-50%,-160%) scale(.85); } }
+
+/* ── seats ───────────────────────────────────────────────────────────── */
+.seat { position: absolute; z-index: 4; display: flex; align-items: center; text-align: center; gap: calc(10px * var(--s)); transition: opacity .5s ease, filter .5s ease; }
+.seat.dim { opacity: .5; filter: brightness(.78); }
+.seat.top   { top: calc(var(--safe-t) + 6px * var(--s)); left: var(--cx); transform: translateX(-50%); flex-direction: column-reverse; gap: calc(6px * var(--s)); }
+.seat.left  { left: calc(var(--rail) + var(--pad)); top: 47%; transform: translateY(-50%);
+  flex-direction: row-reverse; gap: calc(6px * var(--s)); }
+.seat.right { right: calc(var(--safe-r) + var(--pad)); top: 47%; transform: translateY(-50%);
+  flex-direction: row; gap: calc(6px * var(--s)); }
+.who { display: flex; align-items: center; gap: calc(7px * var(--s)); }
+.seat.top .who   { flex-direction: column-reverse; gap: calc(5px * var(--s)); }
+.seat.left .who, .seat.right .who { position: relative; }
+
+.ring {
+  position: relative; flex: none;
+  width: calc(33px * var(--s)); height: calc(33px * var(--s)); border-radius: 50%;
+  display: grid; place-items: center;
+  font-family: Rajdhani, sans-serif; font-weight: 700; font-size: calc(13px * var(--s)); color: var(--text);
+  background: radial-gradient(120% 120% at 30% 25%, #12402A, #061C12);
+  box-shadow: inset 0 0 0 var(--hair) var(--gold-rule), 0 calc(3px * var(--s)) calc(9px * var(--s)) rgba(0,0,0,.62);
+  transition: box-shadow .45s ease, color .45s ease;
+}
+.seat.on .ring { color: var(--gold-lit); box-shadow: inset 0 0 0 var(--hair) var(--gold-lit), 0 0 calc(22px * var(--s)) rgba(243,224,166,.38), 0 calc(3px * var(--s)) calc(9px * var(--s)) rgba(0,0,0,.62); }
+.ring::before { content: ""; position: absolute; inset: calc(-4px * var(--s)); border-radius: 50%;
+  background: conic-gradient(var(--gold-lit) var(--clock), transparent var(--clock));
+  -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - 2px), #000 calc(100% - 2px));
+          mask: radial-gradient(farthest-side, transparent calc(100% - 2px), #000 calc(100% - 2px));
+  opacity: 0; transition: opacity .4s ease; }
+.seat.on .ring::before { opacity: 1; }
+.ring .n {
+  position: absolute; right: calc(-4px * var(--s)); bottom: calc(-4px * var(--s));
+  min-width: calc(18px * var(--s)); height: calc(18px * var(--s)); padding: 0 calc(4px * var(--s));
+  border-radius: 999px; background: #03110A; box-shadow: inset 0 0 0 var(--hair) var(--gold-rule);
+  font-size: calc(10px * var(--s)); font-weight: 600; display: grid; place-items: center;
+  font-variant-numeric: tabular-nums; color: var(--gold); }
+.nm { font-family: Rajdhani, sans-serif; font-weight: 600; font-size: calc(11px * var(--s));
+  letter-spacing: .16em; text-transform: uppercase; color: var(--dim); white-space: nowrap;
+  transition: color .45s ease; }
+.seat.left .nm, .seat.right .nm { position: absolute; bottom: 100%; left: 50%;
+  transform: translateX(-50%); margin-bottom: calc(7px * var(--s)); }
+.seat.on .nm { color: var(--gold-lit); }
+
+/* SEAT B — one capsule holding avatar, name and count */
+[data-seat="capsule"] .who {
+  flex-direction: row; gap: calc(8px * var(--s));
+  padding: calc(4px * var(--s)) calc(12px * var(--s)) calc(4px * var(--s)) calc(4px * var(--s));
+  border-radius: 999px; border: var(--hair) solid var(--gold-rule); background: rgba(3,14,9,.5);
+  backdrop-filter: blur(5px); transition: border-color .45s, box-shadow .45s;
+}
+[data-seat="capsule"] .ring { width: calc(30px * var(--s)); height: calc(30px * var(--s)); font-size: calc(14px * var(--s)); }
+[data-seat="capsule"] .ring .n { right: calc(-3px * var(--s)); bottom: calc(-3px * var(--s)); min-width: calc(15px * var(--s)); height: calc(15px * var(--s)); font-size: calc(9px * var(--s)); }
+[data-seat="capsule"] .seat.on .who { border-color: rgba(243,224,166,.6); box-shadow: 0 0 calc(20px * var(--s)) rgba(243,224,166,.18); }
+
+/* SEAT C — no chrome: the initial is the avatar */
+[data-seat="bare"] .ring { background: none; box-shadow: none; font-size: calc(26px * var(--s)); color: var(--dim); }
+[data-seat="bare"] .seat.on .ring { color: var(--gold-lit); text-shadow: 0 0 calc(18px * var(--s)) rgba(243,224,166,.6); box-shadow: none; }
+[data-seat="bare"] .ring .n { background: none; box-shadow: none; right: auto; left: 50%; transform: translateX(-50%); bottom: calc(-13px * var(--s)); }
+[data-seat="bare"] .nm { display: none; }
+[data-seat="bare"] .ring::before { inset: calc(-2px * var(--s)); }
+
+/* ── card backs ──────────────────────────────────────────────────────── */
+.fanbox { position: relative; flex: none;
+  perspective: calc(560px * var(--s)); perspective-origin: 50% 50%;
+  filter: drop-shadow(0 calc(5px * var(--s)) calc(9px * var(--s)) rgba(0,0,0,.5)); }
+.fan { --s: var(--sf); position: absolute; }
+.fan i {
+  position: absolute; top: 0; left: 50%; display: block;
+  width: calc(27px * var(--s)); height: calc(48px * var(--s)); border-radius: calc(3.5px * var(--s));
+  background:
+    repeating-linear-gradient(45deg, rgba(201,168,76,.26) 0 1px, transparent 1px 5px),
+    repeating-linear-gradient(-45deg, rgba(201,168,76,.16) 0 1px, transparent 1px 5px),
+    linear-gradient(155deg, #1E6544, #0A3120);
+  box-shadow: inset 0 0 0 var(--hair) rgba(201,168,76,.42), calc(-1px * var(--s)) 0 calc(3px * var(--s)) rgba(0,0,0,.55);
+  display: grid; place-items: center;
+  font-family: Rajdhani, sans-serif; font-weight: 700; color: rgba(201,168,76,.5); font-size: calc(14px * var(--s));
+}
+.fan i::before { content: ""; position: absolute; inset: 0; border-radius: inherit;
+  pointer-events: none; z-index: 1;
+  background: linear-gradient(180deg,
+    rgba(255,240,205,.26) 0%, rgba(255,240,205,.08) 30%,
+    rgba(0,0,0,.12) 64%, rgba(0,0,0,.34) 100%); }
+.seat.on .fan i::before { background: linear-gradient(180deg,
+    rgba(255,244,214,.4) 0%, rgba(255,240,205,.13) 34%,
+    rgba(0,0,0,.08) 68%, rgba(0,0,0,.26) 100%); }
+[data-back="mono"] .fan i {
+  background: linear-gradient(155deg, #14472F, #06210F);
+  box-shadow: inset 0 0 0 var(--hair) rgba(201,168,76,.5), 0 calc(2px * var(--s)) calc(5px * var(--s)) rgba(0,0,0,.65); }
+[data-back="mono"] .fan i::after { content: "M"; }
+[data-back="ray"] .fan i {
+  background: repeating-conic-gradient(from 0deg at 50% 50%, rgba(201,168,76,.18) 0deg 9deg, transparent 9deg 18deg), linear-gradient(155deg, #164C33, #071F14); }
+
+/* ── cards ───────────────────────────────────────────────────────────── */
+.card { position: relative; flex: none;
+  width: calc(64px * var(--s)); height: calc(90px * var(--s)); border-radius: calc(5px * var(--s));
+  background: linear-gradient(160deg, #FFFFFF 0%, var(--paper) 42%, var(--paper-lo) 100%);
+  color: var(--ink); font-family: Rajdhani, sans-serif;
+  box-shadow: 0 1px 1px rgba(0,0,0,.5), 0 calc(4px * var(--s)) calc(9px * var(--s)) rgba(0,0,0,.42); }
+.card.red { color: var(--ink-red); }
+.card::after { content: ""; position: absolute; inset: 0; border-radius: inherit; pointer-events: none;
+  box-shadow: inset 0 0 0 var(--hair) rgba(20,18,14,.14), inset 0 1px 0 rgba(255,255,255,.9); }
+.ix { position: absolute; display: flex; flex-direction: column; align-items: center; line-height: .82; }
+.ix.a { top: calc(5px * var(--s)); left: calc(5px * var(--s)); }
+.ix.b { bottom: calc(5px * var(--s)); right: calc(5px * var(--s)); transform: rotate(180deg); }
+.ix .r { font-weight: 700; font-size: calc(19px * var(--s)); letter-spacing: -.05em; }
+.ix .u { font-size: calc(12px * var(--s)); margin-top: calc(1px * var(--s)); }
+.pips { position: absolute; inset: calc(16px * var(--s)) calc(14px * var(--s));
+  display: grid; grid-template-columns: repeat(3,1fr); grid-template-rows: repeat(7,1fr);
+  place-items: center; font-size: calc(12px * var(--s)); line-height: 1; }
+.pips span.f { transform: rotate(180deg); }
+.court { position: absolute; inset: calc(13px * var(--s)) calc(10px * var(--s));
+  display: grid; place-items: center; border: var(--hair) solid rgba(201,168,76,.8);
+  background: linear-gradient(160deg, rgba(201,168,76,.13), transparent 60%); }
+.court::before, .court::after { content: ""; position: absolute;
+  width: calc(7px * var(--s)); height: calc(7px * var(--s)); border: var(--hair) solid var(--gold); }
+.court::before { top: calc(-3px * var(--s)); left: calc(-3px * var(--s)); border-right: 0; border-bottom: 0; }
+.court::after { bottom: calc(-3px * var(--s)); right: calc(-3px * var(--s)); border-left: 0; border-top: 0; }
+.court b { font-weight: 700; font-size: calc(27px * var(--s)); letter-spacing: -.03em; }
+.ace { position: absolute; inset: 0; display: grid; place-items: center; }
+.ace span { font-size: calc(33px * var(--s)); line-height: 1; }
+
+.pile { --s: var(--sp); position: absolute; left: var(--cx); top: 49%; transform: translate(-50%,-50%); z-index: 4; }
+.pile .card { position: absolute; top: 0; left: 50%; }
+.pile .card::before { content: ""; position: absolute; inset: 0; border-radius: inherit;
+  pointer-events: none; z-index: 2;
+  background: linear-gradient(178deg, rgba(255,246,222,.22), rgba(255,246,222,.04) 34%,
+    rgba(24,20,12,.05) 74%, rgba(24,20,12,.13) 100%); }
+
+/* ── hand + actions ──────────────────────────────────────────────────── */
+.handzone { position: absolute; left: var(--rail); right: var(--safe-r); bottom: 0;
+  height: calc(78px * var(--s) + var(--safe-b)); padding: 0 var(--pad);
+  display: flex; align-items: flex-end; justify-content: space-between; gap: calc(26px * var(--s)); z-index: 5;
+  transition: transform .5s cubic-bezier(.2,.8,.3,1); }
+.table.mine .handzone { transform: translateY(calc(-4px * var(--s))); }
+.hand { --s: var(--sh); position: relative; flex: 1; height: 100%;
+  transform: translateY(calc(26px * var(--s))); }
+.hand .card { position: absolute; bottom: 0; left: 50%; transition: transform .22s cubic-bezier(.2,.9,.28,1.3), box-shadow .22s ease; }
+.hand .card:hover, .hand .card.up { z-index: 9; box-shadow: 0 calc(14px * var(--s)) calc(24px * var(--s)) rgba(0,0,0,.6), 0 0 0 var(--hair) var(--gold-lit); }
+.table.mine .hand .card { box-shadow: 0 1px 1px rgba(0,0,0,.5), 0 calc(8px * var(--s)) calc(16px * var(--s)) rgba(0,0,0,.45), 0 -1px 0 rgba(243,224,166,.5); }
+
+.btn {
+  appearance: none; cursor: pointer; flex: none; align-self: flex-end;
+  font-family: Rajdhani, sans-serif; font-weight: 700; letter-spacing: .16em; text-transform: uppercase;
+  font-size: calc(12px * var(--s)); margin-bottom: var(--safe-b);
+  width: max(48px, calc(56px * var(--s))); height: max(48px, calc(56px * var(--s))); border-radius: calc(16px * var(--s));
+  border: var(--hair) solid var(--gold-dim); background: rgba(0,0,0,.3);
+  color: rgba(239,234,219,.3); display: grid; place-items: center;
+  transition: color .4s, border-color .4s, background .4s, box-shadow .4s, transform .15s;
+}
+.btn:active { transform: scale(.94); }
+.table.mine .btn { color: var(--text); border-color: var(--gold-rule); }
+.table.mine .btn.pass { border-color: rgba(176,32,42,.55); color: #E8A9AC; }
+.table.mine .btn.go { color: #120D02; border-color: var(--gold-lit);
+  background: linear-gradient(180deg, #F8E8B8 0%, var(--gold) 48%, #9C7A2C 100%);
+  box-shadow: 0 0 calc(26px * var(--s)) rgba(243,224,166,.3), inset 0 1px 0 rgba(255,255,255,.6); }
+.btn:focus-visible { outline: var(--hair) solid var(--gold-lit); outline-offset: 3px; }
+
+/* BUTTON B — circles */
+[data-btn="round"] .btn { border-radius: 50%; }
+/* BUTTON C — lozenges, wider than tall, sitting on the baseline */
+[data-btn="lozenge"] .btn { width: calc(94px * var(--s)); height: calc(46px * var(--s)); border-radius: 999px; margin-bottom: calc(10px * var(--s)); }
+/* BUTTON D — bevelled brass: a lit top edge and a seated shadow */
+[data-btn="bevel"] .btn { border-radius: calc(14px * var(--s)); border: 0;
+  background: linear-gradient(180deg, rgba(255,255,255,.1), rgba(0,0,0,.42));
+  box-shadow: inset 0 1px 0 rgba(255,240,200,.22), inset 0 0 0 var(--hair) rgba(201,168,76,.22),
+              0 calc(3px * var(--s)) calc(8px * var(--s)) rgba(0,0,0,.55); }
+/* ── Passa: garnet, not alarm red ──────────────────────────────────────
+   Same construction as Gioca — lit top lip, seated shadow — but lower
+   luminance, hue pulled to garnet, and NO glow. Glow is reserved for the
+   primary action, which is the whole reason red can sit here without shouting. */
+.btn.pass { position: relative; }
+
+[data-pass="solid"] .table.mine .btn.pass {
+  color: #F4D5D0; border: 0;
+  background: linear-gradient(180deg, #A03B41 0%, #7C2029 22%, #5A141C 60%, #370A11 100%);
+  box-shadow: inset 0 1px 0 rgba(255,206,198,.42),
+              inset 0 calc(-2px * var(--s)) calc(4px * var(--s)) rgba(0,0,0,.42),
+              0 calc(4px * var(--s)) calc(12px * var(--s)) rgba(0,0,0,.5); }
+
+/* ── device furniture ────────────────────────────────────────────────── */
+.cutout { position: absolute; top: 50%; transform: translateY(-50%); z-index: 20;
+  background: #000; box-shadow: 0 0 0 var(--hair) rgba(255,255,255,.12); display: none; }
+.device[data-cut="notch"] .cutout { display: block;
+  left: 0; width: 30px; height: 209px; border-radius: 0 20px 20px 0; }
+.device[data-cut="island"] .cutout { display: block;
+  left: 11px; width: 37px; height: 125px; border-radius: 999px; }
+.homebar { position: absolute; left: 50%; bottom: 5px; transform: translateX(-50%); z-index: 20;
+  width: calc(150px * var(--s)); height: 5px; border-radius: 3px; background: rgba(255,255,255,.4); display: none; }
+.device:not([data-cut="home"]) .homebar { display: block; }
+.device { border-radius: calc(var(--corner) * 1px); overflow: hidden; }
+.device .table { border-radius: inherit; }
+
+/* ── moments ─────────────────────────────────────────────────────────── */
+.felt::before, .felt::after { transition: --lx .8s cubic-bezier(.34,1.36,.5,1), --ly .8s cubic-bezier(.34,1.36,.5,1); }
+.dealing .hand .card { animation: deal .5s cubic-bezier(.2,.85,.3,1) backwards; }
+@keyframes deal { from { opacity: 0; transform: translate(-50%, calc(-170px * var(--s))) rotate(0deg) scale(.7); } }
+@keyframes kick {
+  0% { transform: scale(1.012); } 9% { transform: scale(1.012); }
+  16% { transform: translate(calc(-9px * var(--s)), calc(5px * var(--s))) scale(1.006); }
+  26% { transform: translate(calc(9px * var(--s)), calc(-5px * var(--s))); }
+  36% { transform: translate(calc(-6px * var(--s)), calc(-3px * var(--s))); }
+  48% { transform: translate(calc(5px * var(--s)), calc(3px * var(--s))); }
+  60% { transform: translate(calc(-3px * var(--s)), calc(-1px * var(--s))); }
+  74% { transform: translate(calc(2px * var(--s)), calc(1px * var(--s))); }
+  100% { transform: none; } }
+.table.boom { animation: kick 1.6s cubic-bezier(.33,.09,.2,.98); }
+.flare { position: absolute; left: 50%; top: 51%; transform: translate(-50%,-50%);
+  width: calc(150px * var(--s)); height: calc(150px * var(--s)); border-radius: 50%; z-index: 10;
+  background: radial-gradient(closest-side, rgba(255,250,232,.98), rgba(255,201,102,.5) 40%, transparent 72%);
+  opacity: 0; pointer-events: none; mix-blend-mode: screen; }
+@keyframes flare { 0% { opacity: 0; transform: translate(-50%,-50%) scale(.15); }
+  6% { opacity: 1; transform: translate(-50%,-50%) scale(.9); }
+  12% { opacity: 1; transform: translate(-50%,-50%) scale(1.05); }
+  100% { opacity: 0; transform: translate(-50%,-50%) scale(7); } }
+.table.boom .flare { animation: flare 1.5s cubic-bezier(.12,.72,.28,1); }
+.wave { position: absolute; left: 50%; top: 51%; z-index: 9; pointer-events: none;
+  width: calc(120px * var(--s)); height: calc(120px * var(--s)); margin: calc(-60px * var(--s)) 0 0 calc(-60px * var(--s));
+  border-radius: 50%; border: calc(2px * var(--s)) solid rgba(255,236,180,.9); opacity: 0; }
+@keyframes wave { 0% { opacity: 0; transform: scale(.15); } 8% { opacity: .95; } 100% { opacity: 0; transform: scale(6.5); } }
+.table.boom .wave { animation: wave 1.25s cubic-bezier(.1,.7,.25,1) .08s; }
+.table.boom .wave.w2 { animation: wave 1.35s cubic-bezier(.1,.7,.25,1) .26s; }
+.spark { position: absolute; left: 50%; top: 51%; z-index: 11; pointer-events: none;
+  width: calc(3px * var(--s)); height: calc(3px * var(--s)); border-radius: 50%;
+  background: #FFE9B0; box-shadow: 0 0 calc(7px * var(--s)) #FFD070; opacity: 0; }
+@keyframes spark { 0% { opacity: 0; transform: translate(-50%,-50%) scale(.4); } 10% { opacity: 1; }
+  100% { opacity: 0; transform: translate(calc(-50% + var(--sx)), calc(-50% + var(--sy))) scale(.2); } }
+.table.boom .spark { animation: spark 1.15s cubic-bezier(.15,.75,.3,1) .06s; }
+.sweep { position: absolute; inset: -20% -60%; z-index: 8; pointer-events: none; opacity: 0;
+  background: linear-gradient(105deg, transparent 42%, rgba(255,240,200,.42) 50%, transparent 58%);
+  mix-blend-mode: screen; }
+@keyframes sweep { 0% { opacity: 0; transform: translateX(-60%); } 12% { opacity: 1; } 88% { opacity: 1; } 100% { opacity: 0; transform: translateX(60%); } }
+.table.flush .sweep { animation: sweep 1.5s cubic-bezier(.4,0,.25,1); }
+@keyframes catch {
+  0%,100% { box-shadow: 0 1px 1px rgba(0,0,0,.5), 0 calc(8px * var(--s)) calc(16px * var(--s)) rgba(0,0,0,.45); }
+  50% { box-shadow: 0 0 calc(26px * var(--s)) rgba(255,240,200,.85), 0 0 0 var(--hair) var(--gold-lit);
+        transform: var(--tf) translateY(calc(-9px * var(--s))); } }
+.table.flush .hand .card { animation: catch .62s ease-out; }
+
+@media (prefers-reduced-motion: reduce) { *, .felt::before, .felt::after { transition-duration: .01ms !important; animation-duration: .01ms !important; } }
+
+/* ── settings sheet ──────────────────────────────────────────────────── */
+.sheet {
+  position: absolute; z-index: 9; left: var(--rail); top: var(--safe-t); bottom: var(--safe-b);
+  width: calc(212px * var(--s)); display: flex; flex-direction: column;
+  border-radius: calc(14px * var(--s)); border: var(--hair) solid var(--gold-rule);
+  background: linear-gradient(180deg, rgba(4,18,12,.93), rgba(1,8,5,.96));
+  backdrop-filter: blur(10px);
+  box-shadow: 0 calc(12px * var(--s)) calc(34px * var(--s)) rgba(0,0,0,.6);
+  padding: calc(9px * var(--s)) calc(12px * var(--s));
+  opacity: 0; transform: translateX(calc(-10px * var(--s))) scale(.97); pointer-events: none;
+  transform-origin: left center;
+  transition: opacity .22s ease, transform .26s cubic-bezier(.2,.9,.3,1.25);
+}
+.sheet.open { opacity: 1; transform: none; pointer-events: auto; }
+.sheet h4 {
+  margin: 0 0 calc(4px * var(--s)); font-family: Rajdhani, sans-serif; font-weight: 600;
+  font-size: calc(10px * var(--s)); letter-spacing: .22em; text-transform: uppercase; color: var(--gold);
+}
+.sheet .rows { display: flex; flex-direction: column; gap: calc(2px * var(--s)); overflow-y: auto; flex: 1;
+  scrollbar-width: none;
+  -webkit-mask: linear-gradient(#000 calc(100% - 14px), transparent);
+          mask: linear-gradient(#000 calc(100% - 14px), transparent); }
+.sheet .rows::-webkit-scrollbar { display: none; }
+.row {
+  appearance: none; border: 0; background: transparent; cursor: pointer; width: 100%;
+  display: flex; align-items: center; justify-content: space-between; gap: calc(10px * var(--s));
+  min-height: 44px; padding: 0 calc(7px * var(--s)); border-radius: calc(8px * var(--s));
+  font-family: Rajdhani, sans-serif; font-weight: 600; font-size: calc(12.5px * var(--s));
+  letter-spacing: .07em; color: rgba(239,234,219,.82); text-align: left;
+  transition: background .16s, color .16s;
+}
+.row:hover { background: rgba(201,168,76,.08); color: var(--gold-lit); }
+.row:focus-visible { outline: var(--hair) solid var(--gold-lit); outline-offset: -2px; }
+.row .hint { display: block; font-size: calc(9.5px * var(--s)); letter-spacing: .12em;
+  text-transform: uppercase; color: rgba(239,234,219,.36); font-weight: 500; margin-top: calc(1px * var(--s)); }
+.sw { flex: none; width: calc(34px * var(--s)); height: calc(19px * var(--s)); border-radius: 999px;
+  background: rgba(255,255,255,.07); box-shadow: inset 0 0 0 var(--hair) var(--gold-rule);
+  position: relative; transition: background .2s, box-shadow .2s; }
+.sw::after { content: ""; position: absolute; top: calc(3px * var(--s)); left: calc(3px * var(--s));
+  width: calc(13px * var(--s)); height: calc(13px * var(--s)); border-radius: 50%;
+  background: rgba(239,234,219,.45); transition: transform .22s cubic-bezier(.2,.9,.3,1.4), background .22s; }
+.row[aria-pressed="true"] .sw { background: rgba(201,168,76,.3); box-shadow: inset 0 0 0 var(--hair) var(--gold-lit); }
+.row[aria-pressed="true"] .sw::after { transform: translateX(calc(15px * var(--s))); background: var(--gold-lit); }
+.sheet .div { height: var(--hair); background: var(--gold-rule); margin: calc(5px * var(--s)) calc(-4px * var(--s)); flex: none; }
+.leave {
+  appearance: none; cursor: pointer; flex: none; width: 100%; border: 0;
+  min-height: 44px; padding: calc(10px * var(--s)) 0; border-radius: calc(9px * var(--s));
+  font-family: Rajdhani, sans-serif; font-weight: 700; font-size: calc(12.5px * var(--s));
+  letter-spacing: .18em; text-transform: uppercase; color: #F4D5D0;
+  background: linear-gradient(180deg, #8E3339 0%, #6C1C24 30%, #451017 100%);
+  box-shadow: inset 0 1px 0 rgba(255,206,198,.34),
+              inset 0 calc(-2px * var(--s)) calc(4px * var(--s)) rgba(0,0,0,.42),
+              0 calc(3px * var(--s)) calc(9px * var(--s)) rgba(0,0,0,.5);
+  transition: filter .18s, transform .12s;
+}
+.leave:hover { filter: brightness(1.16); }
+.leave:active { transform: translateY(1px); }
+
+/* ── confirm dialog ──────────────────────────────────────────────────── */
+.scrim {
+  position: absolute; inset: 0; z-index: 14; display: grid; place-items: center;
+  background: rgba(0,0,0,.62); backdrop-filter: blur(3px);
+  opacity: 0; pointer-events: none; transition: opacity .22s ease;
+}
+.scrim.open { opacity: 1; pointer-events: auto; }
+.dialog {
+  width: min(calc(300px * var(--s)), 76%); padding: calc(18px * var(--s)) calc(18px * var(--s)) calc(14px * var(--s));
+  border-radius: calc(14px * var(--s)); border: var(--hair) solid var(--gold-rule);
+  background: linear-gradient(180deg, rgba(6,22,15,.98), rgba(1,9,6,.99));
+  box-shadow: 0 calc(18px * var(--s)) calc(46px * var(--s)) rgba(0,0,0,.7);
+  transform: scale(.9) translateY(calc(8px * var(--s))); transition: transform .26s cubic-bezier(.2,.9,.3,1.3);
+  text-align: center;
+}
+.scrim.open .dialog { transform: none; }
+.dialog h5 { margin: 0; font-family: Rajdhani, sans-serif; font-weight: 600;
+  font-size: calc(17px * var(--s)); letter-spacing: .04em; color: var(--text); }
+.dialog p { margin: calc(6px * var(--s)) 0 calc(14px * var(--s)); font-size: calc(11.5px * var(--s));
+  line-height: 1.5; color: rgba(239,234,219,.6); }
+.dialog .acts { display: flex; gap: calc(9px * var(--s)); }
+.dialog .acts > * { flex: 1; }
+.dbtn {
+  appearance: none; cursor: pointer; border: 0; padding: calc(10px * var(--s)) 0;
+  min-height: 44px; border-radius: calc(9px * var(--s)); font-family: Rajdhani, sans-serif; font-weight: 700;
+  font-size: calc(12.5px * var(--s)); letter-spacing: .18em; text-transform: uppercase;
+  transition: filter .18s, transform .12s;
+}
+.dbtn:active { transform: translateY(1px); }
+.dbtn.stay { color: rgba(239,234,219,.8); background: rgba(255,255,255,.06);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.09), inset 0 0 0 var(--hair) var(--gold-rule); }
+.dbtn.stay:hover { color: var(--gold-lit); }
+.dbtn.quit { color: #F4D5D0;
+  background: linear-gradient(180deg, #A03B41 0%, #7C2029 22%, #5A141C 60%, #370A11 100%);
+  box-shadow: inset 0 1px 0 rgba(255,206,198,.42),
+              inset 0 calc(-2px * var(--s)) calc(4px * var(--s)) rgba(0,0,0,.42),
+              0 calc(4px * var(--s)) calc(12px * var(--s)) rgba(0,0,0,.5); }
+.dbtn.quit:hover { filter: brightness(1.14); }
+
+/* ── focus mode: the felt carries the turn, nothing else speaks ──────── */
+.device[data-focus="on"] .chip,
+.device[data-focus="on"] .knob.emo,
+.device[data-focus="on"] .tray,
+.device[data-focus="on"] .nm,
+.device[data-focus="on"] .n { opacity: 0; pointer-events: none; }
+.chip, .knob.emo, .nm, .n { transition: opacity .4s ease; }
+.device[data-focus="on"] .table.mine .felt { --lit: 1; }
+.device[data-focus="on"] .seat.on .ring {
+  animation: breathe 3.4s ease-in-out infinite;
+}
+@keyframes breathe {
+  0%,100% { box-shadow: inset 0 0 0 var(--hair) var(--gold-lit), 0 0 calc(16px * var(--s)) rgba(243,224,166,.26), 0 calc(3px * var(--s)) calc(9px * var(--s)) rgba(0,0,0,.62); }
+  50%     { box-shadow: inset 0 0 0 var(--hair) var(--gold-lit), 0 0 calc(30px * var(--s)) rgba(243,224,166,.5),  0 calc(3px * var(--s)) calc(9px * var(--s)) rgba(0,0,0,.62); }
+}
+
+.sheet .foot { flex: none; margin: calc(5px * var(--s)) 0 0; font-family: Rajdhani, sans-serif;
+  font-size: calc(9.5px * var(--s)); letter-spacing: .1em; line-height: 1.45;
+  color: rgba(239,234,219,.34); text-align: center; }
+.device[data-swap="on"] .handzone { flex-direction: row-reverse;
+  padding-left: 0; padding-right: calc(16px * var(--s)); }
+
+.pick { appearance: none; cursor: pointer; font-family: Rajdhani, sans-serif; font-weight: 600;
+  font-size: .88rem; letter-spacing: .04em; color: var(--text); background: #0B1A12;
+  border: var(--hair) solid var(--gold-rule); border-radius: 999px; padding: .38rem 1.6rem .38rem .9rem; }
+.pick:focus-visible { outline: var(--hair) solid var(--gold-lit); outline-offset: 2px; }
+.spec { font-family: Rajdhani, sans-serif; font-size: .74rem; letter-spacing: .13em;
+  text-transform: uppercase; color: rgba(239,234,219,.42); font-variant-numeric: tabular-nums; }
+
+.veil { position: absolute; inset: 0 0 0 var(--rail); z-index: 8; background: rgba(0,0,0,.42);
+  opacity: 0; pointer-events: none; transition: opacity .24s ease; }
+.veil.open { opacity: 1; pointer-events: auto; }
+</style>
+
+<div class="page">
+  <p class="eyebrow">Issues #98 + #100 · workbench</p>
+  <h1>The table, sized</h1>
+  <p class="lede">
+    The whole table on eleven real iPhones, from the 5s to the 17 Pro Max. Change the handset and
+    nothing jumps: the cutout column is a control rail, and every card size falls out of the short
+    edge. Open the menu for focus mode and the exit flow.
+  </p>
+
+  <div class="panel">
+    <div class="ctl"><span class="ctl-label">Field</span>
+      <div class="seg" id="field">
+        <button data-field="1" aria-pressed="false">Single</button>
+        <button data-field="3" aria-pressed="true">Tris</button>
+        <button data-field="5" aria-pressed="false">Scala</button>
+        <button data-field="13" aria-pressed="false">A&rarr;K</button>
+      </div>
+    </div>
+    <div class="ctl"><span class="ctl-label">Turn</span>
+      <div class="seg" id="turn">
+        <button data-turn="me" aria-pressed="true">Yours</button>
+        <button data-turn="top" aria-pressed="false">Drita</button>
+        <button data-turn="left" aria-pressed="false">Besnik</button>
+        <button data-turn="right" aria-pressed="false">Luan</button>
+      </div>
+    </div>
+    <div class="ctl"><span class="ctl-label">iPhone</span>
+      <select id="model" class="pick"></select>
+      <span class="spec" id="spec"></span>
+    </div>
+    <div class="ctl"><span class="ctl-label">Moments</span>
+      <div class="seg">
+        <button id="deal">Deal</button><button id="boom">Bomb</button><button id="flush">Flush</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="stage">
+    <div class="device" data-cut="notch" data-focus="off" data-swap="off" data-btn="bevel" data-seat="ring" data-hud="stack" data-back="lattice" data-pass="solid" id="device">
+      <div class="table mine" id="table">
+        <div class="felt" id="felt"></div>
+
+        <div class="chip combo">Tris di <b>9</b></div>
+        <div class="tr">
+          <div class="chip turncap"><span class="dot"></span><span id="cap">Il tuo turno</span></div>
+        </div>
+
+        <div class="rail">
+          <button class="knob" id="menu" aria-label="Menu">&#9776;</button>
+          <div style="position:relative">
+            <button class="knob emo" id="emo" aria-label="Reazioni" aria-expanded="false">&#9786;</button>
+            <div class="tray" id="tray">
+              <button data-e="👏">👏</button><button data-e="😂">😂</button>
+              <button data-e="😮">😮</button><button data-e="🔥">🔥</button><button data-e="🧊">🧊</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="veil" id="veil"></div>
+        <div class="sheet" id="sheet" role="dialog" aria-label="Impostazioni" aria-modal="false">
+          <h4>Impostazioni</h4>
+          <div class="rows">
+            <button class="row" id="focus" aria-pressed="false">
+              <span>Modalit&agrave; focus<span class="hint">Solo le carte</span></span><span class="sw"></span>
+            </button>
+            <button class="row" data-t aria-pressed="true"><span>Effetti sonori</span><span class="sw"></span></button>
+            <button class="row" data-t aria-pressed="true"><span>Musica</span><span class="sw"></span></button>
+            <button class="row" data-t aria-pressed="true"><span>Vibrazione</span><span class="sw"></span></button>
+            <button class="row" id="swap" aria-pressed="false">
+              <span>Gioca a sinistra<span class="hint">Per mancini</span></span><span class="sw"></span>
+            </button>
+          </div>
+          <div class="div"></div>
+          <button class="leave" id="leave">Esci dalla partita</button>
+          <p class="foot">Carte e tavolo: menu principale.</p>
+        </div>
+        <div class="seat top" id="s-top">
+          <div class="fanbox"><div class="fan" data-n="13"></div></div>
+          <div class="who"><div class="ring">D<span class="n">13</span></div><span class="nm">Drita</span></div>
+        </div>
+        <div class="seat left" id="s-left">
+          <div class="fanbox"><div class="fan" data-n="13"></div></div>
+          <div class="who"><div class="ring">B<span class="n">13</span></div><span class="nm">Besnik</span></div>
+        </div>
+        <div class="seat right" id="s-right">
+          <div class="fanbox"><div class="fan" data-n="13"></div></div>
+          <div class="who"><div class="ring">L<span class="n">13</span></div><span class="nm">Luan</span></div>
+        </div>
+
+        <div class="pile" id="pile"></div>
+
+        <div class="handzone">
+          <button class="btn pass">Passa</button>
+          <div class="hand" id="hand"></div>
+          <button class="btn go">Gioca</button>
+        </div>
+
+      <div class="scrim" id="scrim" role="dialog" aria-modal="true" aria-labelledby="qt">
+        <div class="dialog">
+          <h5 id="qt">Uscire dalla partita?</h5>
+          <p>La manche in corso viene abbandonata e i punti restano a Drita, Besnik e Luan.</p>
+          <div class="acts">
+            <button class="dbtn stay" id="stay">Resta</button>
+            <button class="dbtn quit" id="quit">Esci</button>
+          </div>
+        </div>
+      </div>
+        <div class="sweep"></div><div class="wave"></div><div class="wave w2"></div><div class="flare"></div>
+      </div>
+      <div class="cutout"></div>
+      <div class="homebar"></div>
+    </div>
+  </div>
+
+  <hr />
+
+  <div class="prose">
+    <h2>Everything is derived from the short edge</h2>
+    <p>
+      A landscape phone is short of <em>height</em>, never width, so height is the only budget worth
+      writing down. One number governs the table: <code>--s</code>, the device's short edge over 390.
+      An iPhone SE runs at 0.82, a 17 Pro Max at 1.13, and every card, chip, gap and radius is a
+      multiple of it. That is <strong>#100</strong> in a line — no breakpoints, no tablet branch, no
+      500px of empty felt.
+    </p>
+    <p>
+      Three scales sit on top of it. The field runs at <strong>0.92</strong>, your hand at
+      <strong>0.78</strong>, the opponents' backs at <strong>0.60</strong> — measured as a share of
+      screen height, that is 21%, 18% and 6%. Magic Arena tilts its board so the player's half reads
+      about 60/40 against the opponent's; we can't tilt a camera, so scale does the same job.
+    </p>
+
+    <h2>Two sizes are not aesthetic choices</h2>
+    <p>
+      <strong>The hand steps 34px, set by the thumb.</strong> Tighter reads calmer, and I tried it —
+      but each buried card's tappable strip drops under the 44pt floor, so the fan is fitted to the
+      target rather than the other way round. <strong>Gioca and Passa are 56pt</strong>, down from
+      64: still clear of the floor, and they stopped anchoring the corners like furniture.
+    </p>
+    <p>
+      The rest is a width budget, which is what was actually missing. Every arc gets a share of the
+      table instead of all the room it can reach — the hand is pinned at 54% and never stretches,
+      and the field takes what the seats leave it. A tris occupies 15% of the width; a thirteen-card
+      A&rarr;K run compresses to 45% and stops. Same layout, no special case, and every rank still
+      readable because the arcs solve for the index corner — the one part of a card guaranteed to
+      survive the overlap.
+    </p>
+
+    <h2>The cutout is a control rail</h2>
+    <p>
+      The old rule was to treat the notch as darkness and stay out of it, which cost 67px at the top
+      of every screen — including the phones that have no cutout at all. The better rule is the one
+      you gave me: <strong>a cutout can never sit on a card, but it sits happily between two
+      controls.</strong> So the column it occupies became the rail — menu at the top, reactions at
+      the bottom, cutout in the gap.
+    </p>
+    <p>
+      The rail is <code>max(52 × --s, inset + 12)</code>, so it widens for a Dynamic Island and holds
+      its floor on an iPhone 8. Switch handsets in the picker and watch: the cutout appears and
+      disappears, and <em>nothing moves</em>. That is the test — a layout that shifts when the notch
+      toggles was never sized for it.
+    </p>
+
+    <h2>Focus mode</h2>
+    <p>
+      Open the menu and turn it on. Chips, counts, names and the reactions button all leave; the
+      cards, the avatars and the menu stay. What carries the turn afterwards is the table itself —
+      the lamp and the seat ring, not a label. Card backs and felt colour are deliberately absent
+      from this sheet: those belong to the main menu, before a hand starts, not mid-manche.
+    </p>
+
+    <h2>What ships</h2>
+    <p>
+      Four sized <code>ready-for-agent</code> tickets under <strong>#98</strong> and
+      <strong>#100</strong>: replace <code>WEB_TOP_PAD</code> / <code>WEB_BOTTOM_PAD</code> with real
+      insets and add <code>viewport-fit=cover</code>; derive <code>--s</code> from the short edge;
+      build the rail and move the menu and reactions into it; add the settings sheet with focus mode
+      and the exit confirmation. One caution carried over from <strong>#94</strong>:
+      <code>CardBacks</code> reuses the felt palette as its own field, so any change to the default
+      felt makes the backs vanish — that dependency gets broken first or it takes the rest with it.
+    </p>
+  </div>
+</div>
+</div>
+
+<script>
+const SUITS = { h: "♥", d: "♦", c: "♣", s: "♠" };
+const RED = new Set(["h", "d"]);
+const PIPS = {
+  "2":[[2,1,0],[2,7,1]], "3":[[2,1,0],[2,4,0],[2,7,1]],
+  "4":[[1,1,0],[3,1,0],[1,7,1],[3,7,1]], "5":[[1,1,0],[3,1,0],[2,4,0],[1,7,1],[3,7,1]],
+  "6":[[1,1,0],[3,1,0],[1,4,0],[3,4,0],[1,7,1],[3,7,1]],
+  "7":[[1,1,0],[3,1,0],[2,2,0],[1,4,0],[3,4,0],[1,7,1],[3,7,1]],
+  "8":[[1,1,0],[3,1,0],[2,2,0],[1,4,0],[3,4,0],[2,6,1],[1,7,1],[3,7,1]],
+  "9":[[1,1,0],[3,1,0],[1,3,0],[3,3,0],[2,4,0],[1,5,1],[3,5,1],[1,7,1],[3,7,1]],
+  "10":[[1,1,0],[3,1,0],[2,2,0],[1,3,0],[3,3,0],[1,5,1],[3,5,1],[2,6,1],[1,7,1],[3,7,1]],
+};
+function card([rank, suit]) {
+  const el = document.createElement("div");
+  const u = SUITS[suit];
+  el.className = "card" + (RED.has(suit) ? " red" : "");
+  const ix = `<span class="r">${rank}</span><span class="u">${u}</span>`;
+  let body;
+  if (PIPS[rank]) {
+    body = `<span class="pips">` + PIPS[rank].map(([c, r, f]) =>
+      `<span class="${f ? "f" : ""}" style="grid-column:${c};grid-row:${r}">${u}</span>`).join("") + `</span>`;
+  } else if (rank === "A") { body = `<span class="ace"><span>${u}</span></span>`; }
+  else { body = `<span class="court"><b>${rank}</b></span>`; }
+  el.innerHTML = `<span class="ix a">${ix}</span>${body}<span class="ix b">${ix}</span>`;
+  return el;
+}
+function arc(els, { radius, spread, cardW, cardH, flip }) {
+  const n = els.length;
+  if (!n) return { w: 0, h: 0 };
+  const pts = els.map((_, i) => {
+    const t = n === 1 ? 0 : -spread / 2 + (spread * i) / (n - 1);
+    const rad = (t * Math.PI) / 180;
+    return { t, x: radius * Math.sin(rad), y: radius * (1 - Math.cos(rad)) };
+  });
+  const maxY = Math.max(...pts.map((p) => p.y));
+  const xs = pts.map((p) => p.x);
+  els.forEach((el, i) => {
+    const { t, x, y } = pts[i];
+    const dy = flip ? -y : y - maxY, dt = flip ? -t : t;
+    el.dataset.x = x - cardW / 2; el.dataset.y = dy; el.dataset.rot = dt;
+    el.style.transform = `translate(${x - cardW / 2}px, ${dy}px) rotate(${dt}deg)`;
+  });
+  return { w: Math.max(...xs) - Math.min(...xs) + cardW, h: cardH + maxY };
+}
+
+const device = document.getElementById("device");
+const table = document.getElementById("table");
+const felt = document.getElementById("felt");
+const hand = document.getElementById("hand");
+const HAND = [["3","h"],["4","s"],["5","c"],["6","d"],["7","h"],["8","s"],["9","c"],["10","d"],["J","s"],["Q","h"],["K","c"],["A","d"],["2","h"]];
+
+for (const c of HAND) {
+  const el = card(c); el.tabIndex = 0;
+  el.addEventListener("click", () => { el.classList.toggle("up"); layout(); });
+  hand.appendChild(el);
+}
+const PLAYS = {
+  1:  [["2","s"]],
+  3:  [["9","c"],["9","h"],["9","s"]],
+  5:  [["7","d"],["8","d"],["9","d"],["10","d"],["J","d"]],
+  13: [["A","d"],["2","d"],["3","d"],["4","d"],["5","d"],["6","d"],["7","d"],["8","d"],
+       ["9","d"],["10","d"],["J","d"],["Q","d"],["K","d"]],
+};
+const COMBO = { 1: "Singola", 3: "Tris di <b>9</b>", 5: "Scala di <b>5</b>", 13: "Scala reale" };
+function setField(n) {
+  const pile = document.getElementById("pile");
+  pile.innerHTML = "";
+  for (const c of PLAYS[n]) pile.appendChild(card(c));
+  document.querySelector(".combo").innerHTML = COMBO[n];
+  layout();
+}
+for (const fan of document.querySelectorAll(".fan")) {
+  for (let i = 0; i < +fan.dataset.n; i++) fan.appendChild(document.createElement("i"));
+}
+for (let i = 0; i < 16; i++) {
+  const sp = document.createElement("span"); sp.className = "spark";
+  const a = (i / 16) * Math.PI * 2, d = 110 + (i % 4) * 34;
+  sp.style.setProperty("--sx", (Math.cos(a) * d).toFixed(0) + "px");
+  sp.style.setProperty("--sy", (Math.sin(a) * d * 0.62).toFixed(0) + "px");
+  sp.style.animationDelay = 60 + (i % 5) * 22 + "ms";
+  table.appendChild(sp);
+}
+
+function layout() {
+  const s = parseFloat(getComputedStyle(device).getPropertyValue("--s")) || 1;
+  const scaleOf = (el, base) => (el ? el.offsetWidth / base : s);
+
+  /* Solve the spread for a target width, then flatten it until the arc's rise
+     fits the budget. Height is what the table is short of, never width. */
+  const fit = (n, { radius, cardW, room, step, rise }) => {
+    if (n < 2) return 0;
+    const w = Math.min(cardW + step * (n - 1), Math.max(cardW + 8, room));
+    const byWidth = 2 * Math.asin(Math.min(1, (w - cardW) / (2 * radius)));
+    const byRise = 2 * Math.acos(Math.max(-1, 1 - rise / radius));
+    return Math.min(byWidth, byRise) * 180 / Math.PI;
+  };
+
+  const cards = [...hand.querySelectorAll(".card")];
+  const hs = scaleOf(cards[0], 64);
+  const cardW = 64 * hs, radius = 2200 * hs;
+  const tw = table.clientWidth;
+  const room = Math.max(cardW + 20, Math.min(hand.clientWidth - 6, tw * .56));
+  const spread = fit(cards.length, { radius, cardW, room, step: cardW * .68, rise: 15 * hs });
+  arc(cards, { radius, spread, cardW, cardH: 90 * hs });
+  for (const el of cards) {
+    const t = +el.dataset.rot, x = +el.dataset.x, y = +el.dataset.y;
+    const up = el.classList.contains("up") ? 20 * hs : 0;
+    const tf = `translate(${x + Math.sin((t * Math.PI) / 180) * up}px, ${y - Math.cos((t * Math.PI) / 180) * up}px) rotate(${t}deg)`;
+    el.style.transform = tf; el.style.setProperty("--tf", tf);
+  }
+
+  for (const fan of document.querySelectorAll(".fan")) {
+    const kids = [...fan.children];
+    const fs = scaleOf(kids[0], 27);
+    const frad = 150 * fs;
+    const fspread = fit(kids.length, { radius: frad, cardW: 27 * fs, room: 1e4, step: 9 * fs, rise: 16 * fs });
+    const box = arc(kids, { radius: frad, spread: fspread, cardW: 27 * fs, cardH: 48 * fs, flip: true });
+    fan.style.width = box.w + "px"; fan.style.height = box.h + "px";
+
+    /* Rotate about what the cards occupy, not about the box: the arc overflows
+       its own container. Derived from the arc, never measured — a measurement
+       here reads back the rotation this pass is about to replace. */
+    const cw = 27 * fs, ch = 48 * fs;
+    let X0 = Infinity, X1 = -Infinity, Y0 = Infinity, Y1 = -Infinity;
+    for (const k of kids) {
+      const t = (+k.dataset.rot * Math.PI) / 180;
+      const co = Math.abs(Math.cos(t)), si = Math.abs(Math.sin(t));
+      const hx = (cw * co + ch * si) / 2, hy = (cw * si + ch * co) / 2;
+      const px = box.w / 2 + +k.dataset.x + cw / 2, py = +k.dataset.y + ch / 2;
+      X0 = Math.min(X0, px - hx); X1 = Math.max(X1, px + hx);
+      Y0 = Math.min(Y0, py - hy); Y1 = Math.max(Y1, py + hy);
+    }
+    const w = X1 - X0, h = Y1 - Y0, cxf = (X0 + X1) / 2, cyf = (Y0 + Y1) / 2;
+    const turn = fan.closest(".seat.left") ? -90 : fan.closest(".seat.right") ? 90 : 0;
+    fan.style.transformOrigin = `${cxf}px ${cyf}px`;
+    fan.style.transform = `rotate(${turn}deg) rotateX(-17deg)`;
+    const wrap = fan.parentElement;
+    wrap.style.width = (turn ? h : w) + "px";
+    wrap.style.height = (turn ? w : h) + "px";
+    fan.style.left = `calc(50% - ${cxf}px)`;
+    fan.style.top = `calc(50% - ${cyf}px)`;
+  }
+
+  const tb = table.getBoundingClientRect();
+  const lowEdge = Math.min(...[...document.querySelectorAll(".hand .card, .handzone .btn")]
+    .map((el) => el.getBoundingClientRect().top));
+  const band = [
+    document.getElementById("s-top").getBoundingClientRect().bottom - tb.top,
+    lowEdge - tb.top,
+  ];
+  const cy = (band[0] + band[1]) / 2;
+  const pile = document.getElementById("pile");
+  for (const el of document.querySelectorAll(".seat.left, .seat.right")) el.style.top = cy + "px";
+
+  const pc = [...pile.children];
+  const ps = scaleOf(pc[0], 64);
+  const pw = 64 * ps;
+  const seat = document.querySelector(".seat.left");
+  const gutter = seat ? seat.getBoundingClientRect().right - tb.left : 0;
+  const proom = Math.max(pw + 20, Math.min(tb.width - 2 * gutter - 16 * s, tb.width * .55));
+  const prad = 1100 * ps;
+  const pspread = fit(pc.length, { radius: prad, cardW: pw, room: proom, step: pw * .52, rise: 13 * ps });
+  const p = arc(pc, { radius: prad, spread: pspread, cardW: pw, cardH: 90 * ps });
+  pile.style.width = p.w + "px"; pile.style.height = p.h + "px"; pile.style.top = cy + "px";
+}
+
+const SEATS = {
+  me:    { at: ["50%", "98%"], cap: "Il tuo turno" },
+  top:   { at: ["50%", "2%"],  cap: "Turno di Drita" },
+  left:  { at: ["2%", "48%"],  cap: "Turno di Besnik" },
+  right: { at: ["98%", "48%"], cap: "Turno di Luan" },
+};
+let clockTimer;
+function setTurn(who) {
+  const s = SEATS[who];
+  felt.style.setProperty("--lx", s.at[0]);
+  felt.style.setProperty("--ly", s.at[1]);
+  table.classList.toggle("mine", who === "me");
+  document.getElementById("cap").textContent = s.cap;
+  for (const seat of ["top", "left", "right"]) {
+    const el = document.getElementById("s-" + seat);
+    el.classList.toggle("on", who === seat);
+    el.classList.toggle("dim", who !== seat);
+  }
+  clearTimeout(clockTimer);
+  document.querySelectorAll(".ring").forEach((r) => { r.style.transition = "none"; r.style.setProperty("--clock", "360deg"); });
+  if (who !== "me") {
+    const ring = document.querySelector(`#s-${who} .ring`);
+    clockTimer = setTimeout(() => { ring.style.transition = "--clock 12s linear"; ring.style.setProperty("--clock", "0deg"); }, 60);
+  }
+}
+
+/* Landscape logical viewport (CSS px) and the safe-area insets Safari reports there.
+   inset-x is the cutout side; inset-b is the home indicator. */
+const PHONES = [
+  ["iPhone SE (1st) / 5s",        568, 320, "home",   0,  0, 20],
+  ["iPhone 8 / SE (2nd, 3rd)",    667, 375, "home",   0,  0, 20],
+  ["iPhone 8 Plus",               736, 414, "home",   0,  0, 20],
+  ["iPhone X / XS / 11 Pro",      812, 375, "notch", 44, 21, 39],
+  ["iPhone 11 / XR",              896, 414, "notch", 44, 21, 41],
+  ["iPhone 12 / 13 / 14",         844, 390, "notch", 47, 21, 47],
+  ["iPhone 14 Plus / 13 Pro Max", 926, 428, "notch", 47, 21, 53],
+  ["iPhone 15 / 15 Pro / 16",     852, 393, "island", 59, 21, 55],
+  ["iPhone 16 Pro / 17",          874, 402, "island", 59, 21, 62],
+  ["iPhone Air",                  912, 420, "island", 59, 21, 62],
+  ["iPhone 17 Pro Max",           956, 440, "island", 59, 21, 62],
+];
+const model = document.getElementById("model");
+const spec = document.getElementById("spec");
+PHONES.forEach(([name], i) => model.add(new Option(name, i)));
+function setPhone(i) {
+  const [name, w, h, cut, ix, ib, corner] = PHONES[i];
+  device.dataset.cut = cut;
+  device.style.setProperty("--vw", w);
+  device.style.setProperty("--vh", h);
+  device.style.setProperty("--inset-x", ix);
+  device.style.setProperty("--inset-b", ib);
+  device.style.setProperty("--corner", corner);
+  spec.textContent = `${w}×${h} · ${cut === "home" ? "no cutout" : cut === "notch" ? "notch" : "dynamic island"}`;
+  layout();
+}
+model.addEventListener("change", () => setPhone(+model.value));
+model.value = "5";
+setPhone(5);
+
+function wire(id, key, fn) {
+  const g = document.getElementById(id);
+  g.addEventListener("click", (e) => {
+    const b = e.target.closest("button"); if (!b) return;
+    for (const x of g.querySelectorAll("button")) x.setAttribute("aria-pressed", String(x === b));
+    fn(b.dataset[key]);
+  });
+}
+const setAttr = (k) => (v) => { device.dataset[k] = v; layout(); };
+wire("turn", "turn", setTurn);
+wire("field", "field", (v) => setField(+v));
+
+const tray = document.getElementById("tray"), emo = document.getElementById("emo");
+emo.addEventListener("click", () => emo.setAttribute("aria-expanded", String(tray.classList.toggle("open"))));
+tray.addEventListener("click", (e) => {
+  const b = e.target.closest("button"); if (!b) return;
+  const el = document.createElement("div");
+  el.className = "thrown"; el.textContent = b.dataset.e;
+  el.style.left = "52%"; el.style.top = "58%";
+  table.appendChild(el); setTimeout(() => el.remove(), 1600);
+  tray.classList.remove("open"); emo.setAttribute("aria-expanded", "false");
+});
+
+function fire(cls, ms) { table.classList.remove(cls); void table.offsetWidth; table.classList.add(cls); setTimeout(() => table.classList.remove(cls), ms); }
+/* -- settings sheet, focus mode, exit --------------------------------- */
+const sheet = document.getElementById("sheet");
+const menu = document.getElementById("menu");
+const scrim = document.getElementById("scrim");
+
+function openSheet(on) {
+  sheet.classList.toggle("open", on);
+  document.getElementById("veil").classList.toggle("open", on);
+  menu.setAttribute("aria-expanded", String(on));
+  menu.innerHTML = on ? "&#10005;" : "&#9776;";
+  if (on) { tray.classList.remove("open"); emo.setAttribute("aria-expanded", "false"); }
+}
+menu.setAttribute("aria-expanded", "false");
+menu.addEventListener("click", () => openSheet(!sheet.classList.contains("open")));
+
+sheet.querySelectorAll(".row").forEach((r) => r.addEventListener("click", () => {
+  const on = r.getAttribute("aria-pressed") !== "true";
+  r.setAttribute("aria-pressed", String(on));
+  if (r.id === "focus") device.dataset.focus = on ? "on" : "off";
+  if (r.id === "swap") { device.dataset.swap = on ? "on" : "off"; layout(); }
+}));
+
+document.getElementById("leave").addEventListener("click", () => scrim.classList.add("open"));
+document.getElementById("stay").addEventListener("click", () => scrim.classList.remove("open"));
+document.getElementById("quit").addEventListener("click", () => {
+  scrim.classList.remove("open"); openSheet(false);
+});
+scrim.addEventListener("click", (e) => { if (e.target === scrim) scrim.classList.remove("open"); });
+document.getElementById("veil").addEventListener("click", () => openSheet(false));
+
+document.addEventListener("keydown", (e) => {
+  if (e.key !== "Escape") return;
+  if (scrim.classList.contains("open")) scrim.classList.remove("open");
+  else if (sheet.classList.contains("open")) openSheet(false);
+});
+
+document.getElementById("deal").addEventListener("click", () => {
+  table.classList.remove("dealing"); void table.offsetWidth;
+  hand.querySelectorAll(".card").forEach((c, i) => { c.classList.remove("up"); c.style.animationDelay = i * 42 + "ms"; });
+  layout(); table.classList.add("dealing");
+});
+document.getElementById("boom").addEventListener("click", () => fire("boom", 1700));
+document.getElementById("flush").addEventListener("click", () => {
+  hand.querySelectorAll(".card").forEach((c, i) => { c.style.animationDelay = 120 + i * 55 + "ms"; });
+  fire("flush", 1600);
+});
+
+setField(3);
+setTurn("me");
+</script>
+
+</body></html>
