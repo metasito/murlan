@@ -1722,9 +1722,14 @@ export function GameTable({
                 flashStyle={giocaFlashStyle}
                 glowStyle={giocaGlowStyle}
                 onPress={handlePlay}
+                // The visible `3c` suffix is hidden and deliberately not folded
+                // in here: each card already reports its own selectedness, and a
+                // button whose name changes on every tap is re-announced on
+                // every tap. `tests/e2e/helpers/bot.ts` also reads this exact
+                // sentence as the signal that the play is legal.
                 a11yLabel={
                   playBtnValid
-                    ? tn("gameTable.playA11yValid", selectedIds.length)
+                    ? t("gameTable.playA11yValid")
                     : t("gameTable.playA11yUnavailable", { reason: dimReasonText })
                 }
                 selectedCount={selectedIds.length}
