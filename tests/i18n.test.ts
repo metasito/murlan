@@ -481,9 +481,9 @@ describe("translate() produces the expected output per locale", () => {
   });
 
   test("simple key, no params, in every locale", () => {
-    assert.equal(translate("it", "common.ok"), "OK");
-    assert.equal(translate("en", "common.ok"), "OK");
-    assert.equal(translate("sq", "common.ok"), "OK");
+    assert.equal(translate("it", "common.close"), "Chiudi");
+    assert.equal(translate("en", "common.close"), "Close");
+    assert.equal(translate("sq", "common.close"), "Mbyll");
   });
 
   test("interpolated key substitutes the param in every locale", () => {
@@ -586,6 +586,133 @@ describe("translate() produces the expected output per locale", () => {
       .map((key) => key.slice("server.".length))
       .filter((code) => !sources.includes(`"${code}"`));
     assert.deepEqual(unused, [], `unused server.* keys: ${unused.join(", ")}`);
+  });
+});
+
+describe("no key outlives its last reader", () => {
+  // The test above is this one for a single prefix. Every other key had
+  // nothing: a screen could be deleted and the sentences it used stayed
+  // behind, translated in three languages for nobody, which is how #507's
+  // seven survived #502.
+
+  /**
+   * Where a `t()` call can live. `tests/` is deliberately out: a key a test
+   * names in an assertion has no reader in the app, and counting one would
+   * let a suite keep a dead sentence alive.
+   */
+  const READER_DIRS = ["app", "components", "context", "lib", "scripts", "server", "shared"];
+
+  /**
+   * A key nothing spells out because it is assembled at runtime, against the
+   * single place that assembles it. `where` and `needle` are read from disk
+   * on every run, so an entry cannot outlive its constructor — a prefix
+   * cannot be added to silence a real orphan without naming code that builds
+   * the key.
+   */
+  const CONSTRUCTED: {
+    covers: (key: string, named: Set<string>) => boolean;
+    where: string;
+    needle: string;
+  }[] = [
+    {
+      covers: (key) => key.startsWith("server."),
+      where: "lib/i18n.ts",
+      needle: "`server.${payload.code}`",
+    },
+    {
+      // Both halves ride the base `tn()` is called with, so a pair whose
+      // caller is gone is still reported — as the base, once, not twice.
+      covers: (key, named) =>
+        /_(one|other)$/.test(key) && named.has(key.replace(/_(one|other)$/, "")),
+      where: "lib/i18n.ts",
+      needle: "`${base}${suffix}`",
+    },
+    {
+      covers: (key) => /^rules\.faq\.[qa]\d+$/.test(key),
+      where: "app/rules.tsx",
+      needle: "`rules.faq.q${n}`",
+    },
+    {
+      covers: (key) => /^month\.\d+$/.test(key),
+      where: "lib/rating.ts",
+      needle: "`month.${month}`",
+    },
+    {
+      covers: (key) => key.startsWith("cosmetics.back."),
+      where: "lib/cosmetics.ts",
+      needle: "`cosmetics.back.${id}`",
+    },
+    {
+      covers: (key) => key.startsWith("cosmetics.felt."),
+      where: "lib/cosmetics.ts",
+      needle: "`cosmetics.felt.${id}`",
+    },
+    {
+      covers: (key) => /^bot\..+Blurb$/.test(key),
+      where: "lib/botPersonalities.ts",
+      needle: "`bot.${id}Blurb`",
+    },
+  ];
+
+  function readerSources(): { file: string; source: string }[] {
+    return READER_DIRS.flatMap((dir) => {
+      const root = path.join(REPO_ROOT, dir);
+      return readdirSync(root, { recursive: true, encoding: "utf8" })
+        .filter((f) => /\.tsx?$/.test(f))
+        .map((f) => ({ file: `${dir}/${f}`, source: readFileSync(path.join(root, f), "utf8") }));
+    });
+  }
+
+  /**
+   * Every quoted key-shaped token in `source`, in all three quote styles.
+   *
+   * Deliberately not a string tokenizer: an apostrophe in a comment opens a
+   * literal that runs to the next one, and every name after it in the file
+   * is lost — a scan that fails that way reports live keys as dead, which is
+   * indistinguishable from the defect. A key has no whitespace, so matching
+   * one directly cannot desynchronise.
+   */
+  function namesIn(source: string, into: Set<string>): void {
+    for (const m of source.matchAll(/(["'`])([\w.]+)\1/g)) into.add(m[2]);
+  }
+
+  function orphansAmong(keys: string[], named: Set<string>): string[] {
+    return keys.filter(
+      (key) => !named.has(key) && !CONSTRUCTED.some(({ covers }) => covers(key, named))
+    );
+  }
+
+  const named = new Set<string>();
+  for (const { source } of readerSources()) namesIn(source, named);
+
+  test("every constructed-key entry still points at the code that builds it", () => {
+    for (const { where, needle } of CONSTRUCTED) {
+      const source = readFileSync(path.join(REPO_ROOT, where), "utf8");
+      assert.ok(source.includes(needle), `${where} no longer builds ${needle}`);
+    }
+  });
+
+  test("no constructed-key entry covers nothing", () => {
+    // A shape that matches no key is a claim going spare, and the next key
+    // written under it inherits an exemption nobody chose to give it.
+    for (const { where, needle, covers } of CONSTRUCTED) {
+      const covered = Object.keys(en).filter((key) => covers(key, named));
+      assert.ok(covered.length > 0, `${where}'s ${needle} covers no key in en`);
+    }
+  });
+
+  test("the scan can tell a named key from an orphan", () => {
+    assert.deepEqual(orphansAmong(["lobby.title", "lobby.gone"], new Set(["lobby.title"])), [
+      "lobby.gone",
+    ]);
+    assert.deepEqual(orphansAmong(["server.ANY", "month.3", "bot.luanBlurb"], new Set()), []);
+    assert.deepEqual(orphansAmong(["x_one", "x_other"], new Set(["x"])), []);
+    assert.deepEqual(orphansAmong(["x_one", "x_other"], new Set()), ["x_one", "x_other"]);
+  });
+
+  test("every key in en is named by something outside locales/", () => {
+    const orphans = orphansAmong(Object.keys(en), named);
+    assert.deepEqual(orphans, [], `nothing reads these keys: ${orphans.join(", ")}`);
   });
 });
 
