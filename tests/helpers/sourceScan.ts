@@ -49,6 +49,46 @@ export function enclosingTag(source: string, index: number): string | null {
   return null;
 }
 
+export interface JsxTag {
+  name: string;
+  isClose: boolean;
+  selfClose: boolean;
+  start: number;
+  end: number;
+  text: string;
+}
+
+/**
+ * Every JSX tag in `source`, in document order. Brace-aware for the same
+ * reason `enclosingTag` is: a `>` inside `style={{…}}` does not end a tag.
+ * Walking a subtree needs the closers too, which is what this adds.
+ */
+export function jsxTags(source: string): JsxTag[] {
+  const out: JsxTag[] = [];
+  for (let i = 0; i < source.length; i++) {
+    if (source[i] !== "<") continue;
+    const isClose = source[i + 1] === "/";
+    const name = /^[A-Za-z][\w.]*/.exec(source.slice(i + (isClose ? 2 : 1)));
+    if (!name) continue;
+    let depth = 0;
+    let end = -1;
+    for (let j = i; j < source.length; j++) {
+      const c = source[j];
+      if (c === "{") depth++;
+      else if (c === "}") depth--;
+      else if (c === ">" && depth === 0) {
+        end = j;
+        break;
+      }
+    }
+    if (end === -1) continue;
+    const text = source.slice(i, end + 1);
+    out.push({ name: name[0], isClose, selfClose: text.endsWith("/>"), start: i, end, text });
+    i = end;
+  }
+  return out;
+}
+
 /** The index just past the `}` that closes the `{` at `open`. */
 function closingBrace(source: string, open: number): number {
   let depth = 0;
