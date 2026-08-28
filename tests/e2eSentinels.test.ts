@@ -7,11 +7,10 @@
 // A sentinel is allowed to exist; it has to be declared once, and a copy edit to it has to
 // fail here rather than in a spec that can only report it as a rules violation.
 //
-// What it does not see, stated rather than left to be discovered: a comparison against an
-// interpolated template — `desc === `${prefix} scambio`` — because the sentence it ends up
-// holding is not in the source. A sentinel resolved through an import is not seen either;
-// the shared ones live in `tests/e2e/helpers/labels.ts`, and this refuses a second spelling
-// of any of them.
+// What it does not see, stated rather than left to be discovered: a sentence that only ever
+// exists at runtime, and a name resolved through an import. The shared sentinels live in
+// `tests/e2e/helpers/labels.ts`, and the third test below refuses a second spelling of any
+// of them, which is what covers the import case.
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync, readdirSync } from "node:fs";
@@ -80,8 +79,8 @@ const COMPARED_BUT_NOT_A_SENTINEL: [string, string, string][] = [
     "tests/e2e/exchangeAnnounceNodes.spec.ts",
     "exchangeAnnouncement.closeA11yLabel",
     "picks the close button out of an accessibility tree, where a node carries a name and " +
-      "nothing else — the same identity `getByRole` takes by name elsewhere in the file, and " +
-      "there is no locator query for a CDP node",
+      "nothing else — the button `getByRole` would take by name if the assertion were about " +
+      "the DOM, and there is no locator query for a CDP node",
   ],
   [
     "tests/e2e/gameSettingsSheet.spec.ts",
@@ -92,26 +91,26 @@ const COMPARED_BUT_NOT_A_SENTINEL: [string, string, string][] = [
 ];
 
 /**
- * `NAME -> "the sentence"` for every module-level `const` in `source` bound
- * once to a plain string literal.
+ * `NAME -> "the sentence"` for every `const` in `source` bound to a plain
+ * string literal, at any indentation.
  *
- * A spec that uses a sentence twice hoists it, which is the natural thing to
- * do and the thing that hid it: the declaration carries no operator and the
- * comparison carries no literal, so neither line is one this scan can read.
- *
- * A name assigned more than once is dropped rather than guessed at, and a
- * template holding `${` is not a literal at all.
+ * `const` and not `let`: a `let` reassigned later would be recorded as its
+ * first value forever, because a bare `X = "…"` carries no keyword to find.
+ * A name declared twice is dropped rather than guessed at, and a template
+ * holding `${` is not a literal at all.
  */
-export function literalConsts(source: string): Map<string, string> {
+function literalConsts(source: string): Map<string, string> {
   const found = new Map<string, string>();
-  const rebound = new Set<string>();
-  for (const m of source.matchAll(/^\s*(?:const|let)\s+(\w+)\s*=\s*(["'`])((?:[^\\]|\\.)*?)\2\s*;?\s*$/gm)) {
-    const [, name, quote, value] = m;
-    if (found.has(name)) rebound.add(name);
-    if (quote === "`" && value.includes("${")) rebound.add(name);
-    found.set(name, value);
+  const ambiguous = new Set<string>();
+  for (const m of source.matchAll(
+    /^[ \t]*(?:export\s+)?const\s+(\w+)\s*=\s*(["'`])((?:[^\\]|\\.)*?)\2\s*;?[ \t]*$/gm
+  )) {
+    const [, name, quote, raw] = m;
+    if (found.has(name)) ambiguous.add(name);
+    if (quote === "`" && raw.includes("${")) ambiguous.add(name);
+    found.set(name, raw.replace(/\\(["'`\\])/g, "$1"));
   }
-  for (const name of rebound) found.delete(name);
+  for (const name of ambiguous) found.delete(name);
   return found;
 }
 
@@ -119,9 +118,8 @@ export function literalConsts(source: string): Map<string, string> {
  * Puts every hoisted name in a file back as the literal it holds, so a
  * comparison against the name reads as a comparison against the sentence.
  *
- * One alternation of the names this file actually declares, built once:
- * matching every word of every line instead ran the whole sweep at twice the
- * cost for the same answer.
+ * One alternation, built once per file rather than per line, from the names
+ * that file actually declares.
  */
 function inlinerFor(consts: Map<string, string>): (line: string) => string {
   if (consts.size === 0) return (line) => line;
@@ -159,11 +157,14 @@ test("no new copy is compared for equality without being declared a sentinel", (
     const source = blankComments(readFileSync(file, "utf8"));
     const inline = inlinerFor(literalConsts(source));
     source.split(/\r?\n/).forEach((raw, i) => {
-      // Substituted before the `includes` pre-filter, not after: the whole
-      // point is that the sentence is not on this line.
+      // Both spellings of the line, because substitution can hide as well as
+      // reveal: a name that is also a word of a locale sentence would rewrite
+      // that sentence out of a literal sitting on the same line.
       const line = inline(raw);
       for (const [value, keys] of compared) {
-        if (!line.includes(value) || !comparesTo(line, value)) continue;
+        let found = raw.includes(value) && comparesTo(raw, value);
+        if (!found && line !== raw) found = line.includes(value) && comparesTo(line, value);
+        if (!found) continue;
         const claim = claimOf(rel, value);
         if (allowed.has(claim)) unused.delete(claim);
         else offenders.push(`${rel}:${i + 1} compares "${value}" (${keys.join(", ")})`);
@@ -188,18 +189,31 @@ test("no new copy is compared for equality without being declared a sentinel", (
 
 test("a hoisted sentence is read as the sentence", () => {
   assert.deepEqual(
-    [...literalConsts('const A = "Chiudi";\nlet b = `Gioca`;\n').entries()],
+    [...literalConsts("const A = \"Chiudi\";\nexport const B = 'Gioca';\n  const C = `Passa`;\n").entries()],
     [
       ["A", "Chiudi"],
-      ["b", "Gioca"],
+      ["B", "Gioca"],
+      ["C", "Passa"],
     ]
   );
+  assert.deepEqual([...literalConsts('const A = "He said \\"hi\\"";').entries()], [["A", 'He said "hi"']]);
   // Two bindings, and the scan cannot say which one reaches the comparison.
   assert.deepEqual([...literalConsts('const A = "x";\nconst A = "y";\n').keys()], []);
+  // Reassignable, so its first value is not its value at the comparison.
+  assert.deepEqual([...literalConsts('let A = "x";\n').keys()], []);
   // Interpolated, so its value is not in the source at all.
   assert.deepEqual([...literalConsts("const A = `${p} scambio`;\n").keys()], []);
   // A call, an object, a concatenation: not a literal binding.
   assert.deepEqual([...literalConsts('const A = t("k");\nconst B = "a" + b;\n').keys()], []);
+});
+
+// The empty case is the load-bearing one: an alternation built from no names
+// is `\b()\b`, which matches at every boundary and blanks the line.
+test("the inliner puts a name back, and leaves a file with no names alone", () => {
+  const inline = inlinerFor(new Map([["CLOSE", 'Chiudi "x" scambio']]));
+  assert.equal(inline("n === CLOSE"), 'n === "Chiudi \\"x\\" scambio"');
+  assert.equal(inline("n === CLOSER"), "n === CLOSER");
+  assert.equal(inlinerFor(new Map())("n === CLOSE"), "n === CLOSE");
 });
 
 test("a sentinel is declared once, and nowhere else spells it out", () => {
