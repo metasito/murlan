@@ -159,6 +159,15 @@ test("a nested control keeps its own contents", () => {
   );
 });
 
+// The list spends a file's first N hits, so an entry left behind after its
+// control was fixed would quietly spend someone else's instead.
+test("every exception still names a control that has one", () => {
+  const stale = DELIBERATELY_REACHABLE.filter(
+    ([file, count]) => reachableChildren(readFileSync(path.join(repoRoot, file), "utf8")).length < count
+  ).map(([file]) => file);
+  assert.deepEqual(stale, [], `no longer exposes a child, so drop the entry: ${stale.join(", ")}`);
+});
+
 test("no labelled control leaves its own face reachable", () => {
   const allowed = new Map<string, number>();
   for (const [file, count] of DELIBERATELY_REACHABLE) {
