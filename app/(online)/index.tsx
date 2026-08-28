@@ -220,9 +220,11 @@ export default function OnlineLobbyScreen() {
           <Text style={styles.errorBannerText} numberOfLines={2}>
             {error}
           </Text>
+          {/* 16pt icon, so the slop lands on both edges to reach the floor: a declared
+              box would take the banner from 32pt to 60 on a single-line message. */}
           <Pressable
             onPress={clearError}
-            hitSlop={12}
+            hitSlop={Spacing.wide}
             accessibilityRole="button"
             accessibilityLabel={t("common.close")}
           >

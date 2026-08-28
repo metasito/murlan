@@ -9,6 +9,7 @@ import { BackHandler, Platform, Pressable, ScrollView, StyleSheet, View } from "
 import Animated, { SlideInLeft } from "react-native-reanimated";
 import Feather from "@expo/vector-icons/Feather";
 import { RAIL_TESTID } from "./chrome";
+import { physicalTouchTarget } from "@/components/cardFaceModel";
 import { TableText } from "./TableText";
 import { LinearGradient } from "expo-linear-gradient";
 import { Colors, FontSize, Garnet, Highlight, makeShadow, Motion, Scrim, Spacing, TOUCH_TARGET_MIN } from "@/lib/theme";
@@ -364,7 +365,14 @@ export function GameSettingsSheet({
               locations={EXIT_GRADIENT_LOCATIONS}
               style={[
                 sheetStyles.exit,
-                { borderRadius: EXIT_RADIUS * scale, paddingVertical: EXIT_PAD_V * scale },
+                {
+                  borderRadius: EXIT_RADIUS * scale,
+                  paddingVertical: EXIT_PAD_V * scale,
+                  // Padding around a scaled label put this at ~29pt on an iPhone SE. The
+                  // floor is physical, never `TOUCH_TARGET_MIN * scale`; the rows list
+                  // above is the part of the sheet free to give, and it scrolls.
+                  minHeight: physicalTouchTarget(scale),
+                },
               ]}
             >
               <TableText

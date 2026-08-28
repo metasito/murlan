@@ -671,8 +671,8 @@ const styles = StyleSheet.create({
     borderColor: Colors.border,
   },
   sendBtn: {
-    width: 36,
-    height: 36,
+    width: TOUCH_TARGET_MIN,
+    height: TOUCH_TARGET_MIN,
     borderRadius: Radius.full,
     backgroundColor: Colors.gold,
     alignItems: "center",

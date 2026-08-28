@@ -626,7 +626,12 @@ const styles = StyleSheet.create({
     marginTop: Spacing.xs,
   },
   userText: { fontFamily: "Inter_500Medium", fontSize: FontSize.sm, color: Colors.text },
-  logoutBtn: { paddingHorizontal: Spacing.sm, paddingVertical: Spacing.xxs },
+  logoutBtn: {
+    minHeight: TOUCH_TARGET_MIN,
+    justifyContent: "center",
+    paddingHorizontal: Spacing.sm,
+    paddingVertical: Spacing.xxs,
+  },
   logoutText: { fontFamily: "Inter_400Regular", fontSize: FontSize.xs, color: Colors.textMuted },
   friendsBtn: {
     minHeight: TOUCH_TARGET_MIN,

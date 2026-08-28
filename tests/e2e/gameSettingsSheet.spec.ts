@@ -8,6 +8,7 @@
 import { test, expect, type Page } from "@playwright/test";
 import { offlineGameSave, openSeededGame, resumeSaved } from "./helpers/offlineSeed";
 import { CLOSING_HAND_CARDS } from "../../lib/gameEngine";
+import { TOUCH_TARGET_MIN } from "../../lib/tokens";
 
 const VIEWPORT = { width: 844, height: 390 };
 const RAIL = '[data-testid="control-rail"]';
@@ -187,6 +188,22 @@ test.describe("the rail's settings sheet", () => {
     await expect(page.getByRole("switch", { name: "Gioca a sinistra" })).toBeVisible();
     await page.getByRole("button", { name: "Esci dalla partita" }).scrollIntoViewIfNeeded();
     await expect(page.getByRole("button", { name: "Esci dalla partita" })).toBeVisible();
+  });
+
+  // A rendered rect, because that is the only thing that answers this: the exit's box is
+  // padding around a label that both ride `scale`, so a source-level check can read the
+  // floor being declared but never what the box comes out at. It was ~35pt here (#493).
+  test("the exit button is a real touch target in landscape", async ({ page, baseURL }) => {
+    test.setTimeout(60_000);
+    await page.setViewportSize(VIEWPORT);
+    await openSeededGame(page, baseURL!, 4);
+
+    await page.getByRole("button", { name: "Impostazioni" }).click();
+    const exit = page.getByTestId("settings-exit");
+    await expect(exit).toBeVisible();
+    const box = await exit.boundingBox();
+    expect(box).not.toBeNull();
+    expect(box!.height).toBeGreaterThanOrEqual(TOUCH_TARGET_MIN);
   });
 
   test("leaving from the sheet opens the same exit confirmation as the rail knob used to", async ({
