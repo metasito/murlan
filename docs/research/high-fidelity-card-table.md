@@ -21,7 +21,7 @@ Grounding, so the ladder in §5 is not re-proposing things that exist.
 
 - `lib/tokens.ts` already models the table as **surface + light, not colour**: `FeltGradients`
   is a five-stop cloth gradient per felt, and `Lantern` is a set of *translucent* overlays
-  (`core`, `coreMid`, `bloom`, `clear`, `weaveLight`/`weaveDark` at 45°, `vignette`) laid on
+  (`core`, `coreMid`, `bloom`, `clear`, `weaveShade`/`weaveShadeCross` at 45°, `vignette`) laid on
   top of it. The comment in the file states the principle outright: "a lit surface is the
   surface plus the light, never a colour of its own." That is the correct model and most of
   §1 is an elaboration of it, not a replacement.
@@ -82,7 +82,8 @@ Everything convincing on a felt table comes from one hanging key light plus fill
   light read as *cloth* rather than as a gradient.
 
 This repo's `Lantern` block is already exactly this decomposition, including the two-thread
-45° weave at α 0.02 / 0.055. The prototype numbers recorded in `docs/agents/loops.md` —
+45° weave, at α 0.085 / 0.035 — both shadow, so the crosshatch is a fraction of whatever
+light reached it rather than a fixed lift. The prototype numbers recorded in `docs/agents/loops.md` —
 falloff ellipse `76% 100%` at the lamp, vignette `128% 104%` at the felt's centre — are the
 "ellipse not circle" point made concrete.
 

@@ -141,9 +141,17 @@ export const Lantern = {
   coreMid:  'rgba(255,226,172,0.09)',
   bloom:    'rgba(255,236,190,0.12)',
   clear:    'rgba(255,242,208,0)',
-  // The cloth's own weave, one bright thread and one dark, crossing at 45.
-  weaveLight: 'rgba(255,255,255,0.02)',
-  weaveDark:  'rgba(0,0,0,0.055)',
+  // The weave, crossing at 45: shadow between the threads, deeper one way than
+  // the other. Both must stay black — a shadow scales the light that reached
+  // it, so the crosshatch tracks the lamp with nothing moving, and a thread
+  // that adds light instead reads loudest on the darkest felt
+  // (tests/feltWeave.test.ts).
+  weaveShade:      'rgba(0,0,0,0.085)',
+  weaveShadeCross: 'rgba(0,0,0,0.035)',
+  // The pile standing off that weave, where the light rakes across the fibres.
+  // Shares `clear`'s hue: SVG blends stops non-premultiplied, so two hues
+  // either side of a transparent stop read as grey at half strength.
+  napSheen: 'rgba(255,242,208,0.055)',
   // Real darkness past the falloff, and the vignette over all of it.
   vignette:      'rgba(0,0,0,0.5)',
   vignetteClear: 'rgba(0,0,0,0)',

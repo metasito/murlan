@@ -146,13 +146,18 @@ test("the scan finds a self-shaped radial of either kind", () => {
 test("the vignette is drawn outside the pool, so the lamp can move under it", () => {
   // The pool sits inside the Animated.View that carries the lamp's position;
   // the vignette must not, or the dark rim swings with the light.
-  const pool = source.match(/<Animated\.View[\s\S]*?<\/Animated\.View>/);
-  assert.ok(pool, "the pool is no longer the thing that moves");
+  const moving = source.match(/<Animated\.View[\s\S]*?<\/Animated\.View>/g);
+  assert.ok(moving, "the pool is no longer the thing that moves");
+  for (const layer of moving) {
+    assert.ok(
+      !layer.includes("VIGNETTE_ID"),
+      "the vignette is inside a layer the lamp animates, so it travels with the light"
+    );
+  }
   assert.ok(
-    !pool[0].includes("VIGNETTE_ID"),
-    "the vignette is inside the layer the lamp animates, so it travels with the light"
+    moving.some((layer) => layer.includes("FIELD_ID")),
+    "the field itself is not in a layer that moves"
   );
-  assert.match(pool[0], /FIELD_ID/, "the field itself is not in the layer that moves");
 });
 
 test("the lamp moves by position on native and by transform on web", () => {
@@ -160,14 +165,46 @@ test("the lamp moves by position on native and by transform on web", () => {
   // (felt.tsx's header); web composites the transform and keeps a 2560x1440
   // subtree off the layout path. Either way it is position or transform — a
   // gradient rewritten per frame is paint no platform can composite.
-  const animated = source.match(/const poolStyle = useAnimatedStyle\([\s\S]*?\);\n/);
-  assert.ok(animated, "the pool no longer animates through useAnimatedStyle");
-  assert.match(animated[0], /Platform\.OS === "web"/, "web still swings the anchor's frame");
-  assert.match(animated[0], /translateX: x\.value/);
-  assert.match(animated[0], /left: x\.value/);
-  assert.match(animated[0], /top: y\.value/);
+  //
+  // Every animated style the felt declares, not one by name: more than one
+  // layer rides the lamp, and a worklet that animated paint would be invisible
+  // to a scan pinned to the first. A hook handed a bare identifier is followed
+  // to where that identifier is declared, so extracting the worklet to share it
+  // between layers does not empty the scan out.
+  const bodies: string[] = [];
+  for (const call of source.matchAll(/useAnimatedStyle\(([\s\S]*?)\);\n/g)) {
+    const arg = call[1].trim();
+    if (!/^[A-Za-z_$][\w$]*$/.test(arg)) {
+      bodies.push(call[0]);
+      continue;
+    }
+    const declared = source.match(new RegExp(`const ${arg} =[\\s\\S]*?;\\n`));
+    assert.ok(declared, `${arg} is handed to useAnimatedStyle and declared nowhere`);
+    bodies.push(declared[0]);
+  }
+  assert.ok(bodies.length > 0, "the pool no longer animates through useAnimatedStyle");
+  const animated = bodies.join("\n");
+
+  assert.match(animated, /Platform\.OS === "web"/, "web still swings the anchor's frame");
+  assert.match(animated, /translateX: x\.value/);
+  assert.match(animated, /left: x\.value/);
+  assert.match(animated, /top: y\.value/);
   assert.ok(
-    !/(cx|cy|rx|ry|stopColor|backgroundColor):/.test(animated[0]),
-    `the lamp animates something the compositor cannot take: ${animated[0]}`
+    !/(cx|cy|rx|ry|stopColor|backgroundColor):/.test(animated),
+    `the lamp animates something the compositor cannot take: ${animated}`
+  );
+
+  // Every layer that rides the lamp reads the same two values. A second
+  // `withTiming` pair would be a second clock, and the layers would part
+  // company mid-swing on any frame the two rounded differently.
+  const clocks = source.match(/withTiming\(/g) ?? [];
+  assert.equal(clocks.length, 2, "the lamp is driven by something other than one x and one y");
+
+  // The same defect reached through the other door: `useAnimatedProps` writes
+  // SVG attributes rather than style, so it can animate `cx` or `stopColor`
+  // past every check above. Nothing here needs it.
+  assert.ok(
+    !/useAnimatedProps/.test(source),
+    "the felt animates SVG attributes, which is paint no compositor can take"
   );
 });

@@ -111,8 +111,9 @@ describe('the lamp pool moves by left/top, and the gradients move with it', () =
     expect(style.transform).toBeUndefined();
 
     // The field, core and bloom radials hang off the anchor so that moving
-    // it moves what it paints. The weave and the vignette are the two SVGs
-    // in the tree that deliberately do not — 5 in total, 3 under the anchor.
+    // it moves what it paints. The weave and the vignette are the SVGs in the
+    // tree that deliberately do not; the nap has an anchor of its own, above
+    // the weave, reading these same two values.
     let anchorNode = findByTestId(screen.toJSON(), 'felt-lamp-anchor');
     expect(svgViewCount(anchorNode)).toBe(3);
 

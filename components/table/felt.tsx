@@ -128,12 +128,20 @@ const FIELD_ID = "feltField";
 const CORE_ID = "feltCore";
 const BLOOM_ID = "feltBloom";
 const VIGNETTE_ID = "feltVignette";
-const WEAVE_LIGHT_ID = "feltWeaveLight";
-const WEAVE_DARK_ID = "feltWeaveDark";
+const WEAVE_ID = "feltWeave";
+const WEAVE_CROSS_ID = "feltWeaveCross";
+const NAP_ID = "feltNap";
 
 /** The cloth's weave: a 1px thread every 3px, crossing at 45 degrees. */
 const WEAVE_PERIOD = 3;
 const WEAVE_THREAD = 1;
+
+/**
+ * The pile's profile against distance from the lamp: nothing straight down the
+ * fibres, the raking band where you see their sides, nothing again once the
+ * light is no longer grazing.
+ */
+const NAP_OFFSETS = { under: 0, sheen: 0.5, lit: 0.86 } as const;
 
 /** How long the lamp takes to swing to the seat that just came on move. */
 const LAMP_MS = 800;
@@ -185,11 +193,17 @@ export function FeltPool({
     [x, y]
   );
 
-  const poolStyle = useAnimatedStyle(() =>
+  const atLamp = () =>
     Platform.OS === "web"
       ? { transform: [{ translateX: x.value }, { translateY: y.value }] }
-      : { left: x.value, top: y.value }
-  );
+      : { left: x.value, top: y.value };
+
+  const poolStyle = useAnimatedStyle(atLamp);
+  // Its own hook, and the same two values: an animated style binds to one
+  // view, so the nap cannot share the pool's. Reading the values rather than
+  // running a second `withTiming` is what makes the two unable to part company
+  // mid-swing.
+  const napStyle = useAnimatedStyle(atLamp);
 
   // Each radial's own ellipse, `rx` by `ry` of the felt, centred on the point
   // it hangs from. The box is the SVG's own size, so the viewport is what
@@ -265,11 +279,13 @@ export function FeltPool({
       </Animated.View>
 
       {/* The cloth itself. It does not move with the lamp — a weave that
-          travelled with the light would read as a moving surface. */}
+          travelled with the light would read as a moving surface — and it does
+          not need to: both threads are shadow, so what they take away is a
+          fraction of whatever light has reached them. */}
       <Svg width={width} height={height} style={StyleSheet.absoluteFill}>
         <Defs>
           <Pattern
-            id={WEAVE_LIGHT_ID}
+            id={WEAVE_ID}
             width={WEAVE_PERIOD}
             height={WEAVE_PERIOD}
             patternUnits="userSpaceOnUse"
@@ -280,12 +296,12 @@ export function FeltPool({
               y1={0}
               x2={0}
               y2={WEAVE_PERIOD}
-              stroke={Lantern.weaveLight}
+              stroke={Lantern.weaveShade}
               strokeWidth={WEAVE_THREAD}
             />
           </Pattern>
           <Pattern
-            id={WEAVE_DARK_ID}
+            id={WEAVE_CROSS_ID}
             width={WEAVE_PERIOD}
             height={WEAVE_PERIOD}
             patternUnits="userSpaceOnUse"
@@ -296,14 +312,33 @@ export function FeltPool({
               y1={0}
               x2={0}
               y2={WEAVE_PERIOD}
-              stroke={Lantern.weaveDark}
+              stroke={Lantern.weaveShadeCross}
               strokeWidth={WEAVE_THREAD}
             />
           </Pattern>
         </Defs>
-        <Rect width={width} height={height} fill={`url(#${WEAVE_LIGHT_ID})`} />
-        <Rect width={width} height={height} fill={`url(#${WEAVE_DARK_ID})`} />
+        <Rect width={width} height={height} fill={`url(#${WEAVE_ID})`} />
+        <Rect width={width} height={height} fill={`url(#${WEAVE_CROSS_ID})`} />
       </Svg>
+
+      {/* The pile, over the threads rather than under them: under them its own
+          light would be shaded by the weave, and the sheen is the fibre ends
+          catching the lamp on top of the cloth, not through it. */}
+      <Animated.View
+        testID="felt-nap-anchor"
+        style={[{ position: "absolute", width: 0, height: 0 }, POOL_LAYER, napStyle]}
+      >
+        <Svg {...ellipse(FIELD_RX, FIELD_RY)}>
+          <Defs>
+            <RadialGradient id={NAP_ID}>
+              <Stop offset={NAP_OFFSETS.under} {...stop(Lantern.clear)} />
+              <Stop offset={NAP_OFFSETS.sheen} {...stop(Lantern.napSheen)} />
+              <Stop offset={NAP_OFFSETS.lit} {...stop(Lantern.clear)} />
+            </RadialGradient>
+          </Defs>
+          <Rect width={POOL_UNITS} height={POOL_UNITS} fill={`url(#${NAP_ID})`} />
+        </Svg>
+      </Animated.View>
 
       {/* Its own layer, and radial: a vignette assembled from straight-edged
           pieces carries ink along the edges facing the middle of the table and
