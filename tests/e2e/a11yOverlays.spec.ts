@@ -10,7 +10,7 @@ import type { Page } from "@playwright/test";
 import { test, expect } from "./fixtures";
 import { openApp, startOfflineGame } from "./helpers/navigation";
 
-const TABLE = '[data-testid="game-table"]';
+import { HAND_CARDS, TABLE } from "./helpers/selectors.ts";
 
 // ── A11Y-02 ──────────────────────────────────────────────────────────────────
 
@@ -113,7 +113,7 @@ test("the exchange overlay keeps the tab order inside itself", async ({ page, ba
 
   // The hand behind it is still in the document — an overlay covers pixels and
   // nothing else — so the trap is the only thing keeping it out of reach.
-  const handBehind = page.locator(`${TABLE} [aria-label^="La tua mano"] [role="button"]`);
+  const handBehind = page.locator(HAND_CARDS);
   expect(await handBehind.count(), "the table underneath is still rendered").toBeGreaterThan(0);
 
   // More presses than the overlay has controls, so the tour wraps: an untrapped

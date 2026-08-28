@@ -12,6 +12,7 @@ import { openApp, startOfflineGame } from "./helpers/navigation";
 import { openSeededGame, offlineGameSave, resumeSaved, DEAL_SIZE } from "./helpers/offlineSeed";
 import { buildCombination } from "../../lib/gameEngine";
 import { GIOCA_VALID_LABEL } from "./helpers/labels";
+import { HAND_ZONE, TABLE_STATE } from "./helpers/selectors.ts";
 
 const VIEWPORTS = [
   { name: "small phone landscape", width: 667, height: 375 },
@@ -319,17 +320,17 @@ async function waitForAnswerableTurn(page: Page): Promise<void> {
   const deadline = Date.now() + 120_000;
 
   while (Date.now() < deadline) {
-    const desc = (await table.getAttribute("aria-label")) ?? "";
+    const desc = (await table.getAttribute(TABLE_STATE)) ?? "";
     if (desc.startsWith(YOUR_TURN) && desc.includes(OPPONENT_PLAYED)) return;
 
     if (desc.startsWith(YOUR_TURN)) {
-      const cards = page.locator('[aria-label^="La tua mano"] [role="button"]');
+      const cards = page.locator(`${HAND_ZONE} [role="button"]`);
       const labels = await cards.evaluateAll((els) =>
         els.map((el) => el.getAttribute("aria-label") ?? "")
       );
       for (const label of labels) {
         const card = page.locator(
-          `[aria-label^="La tua mano"] [aria-label="${label.replace(/"/g, '\\"')}"]`
+          `${HAND_ZONE} [aria-label="${label.replace(/"/g, '\\"')}"]`
         );
         await card.click({ timeout: 4_000 }).catch(() => {});
         if ((await gioca.getAttribute("aria-label")) === GIOCA_VALID_LABEL) {

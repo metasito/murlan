@@ -10,8 +10,7 @@
 import { test, expect } from "./fixtures";
 import { openApp, startOfflineGame } from "./helpers/navigation";
 
-const TABLE = '[data-testid="game-table"]';
-const HAND_CARDS = `${TABLE} [aria-label^="La tua mano"] [role="button"]`;
+import { HAND_CARDS, TABLE } from "./helpers/selectors.ts";
 
 interface FaceStats {
   label: string;
