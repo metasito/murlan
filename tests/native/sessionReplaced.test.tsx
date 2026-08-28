@@ -116,7 +116,7 @@ describe('SESSION_REPLACED', () => {
     await fireSocketError(REPLACED);
 
     await act(async () => {
-      fireEvent.press(view.getByText(locale['sessionReplaced.reconnect']));
+      fireEvent.press(view.getByLabelText(locale['sessionReplaced.reconnect']));
     });
 
     expect(mockSocket.io.reconnection).toHaveBeenLastCalledWith(true);
