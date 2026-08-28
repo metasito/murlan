@@ -30,7 +30,10 @@ function sourcesUnder(dir: string): string[] {
 /** Containers with no accessibility semantics of their own. */
 const CONTAINERS = /^(Animated\.)?(View|ScrollView)$/;
 const OPENS_TAG = /^\s*<([A-Za-z][\w.]*)\b/;
-const LABEL = /accessibilityLabel=(\{[^}]*\}|"[^"]*")/;
+// Both spellings, so a grouped container is a candidate here rather than
+// invisible to the scan: without the second the `a11yGroup` branch below could
+// only fire on a tag carrying both, which is a tag nobody writes.
+const LABEL = /accessibilityLabel=(\{[^}]*\}|"[^"]*")|(\{\.\.\.a11yGroup\()/;
 // `accessible` is deliberately absent: it makes a view an accessibility element
 // on iOS and reaches the DOM as nothing, so on web it leaves the label on a
 // role-less <div>. A role is what lets a name be announced, and `a11yGroup` is

@@ -1,5 +1,5 @@
 // tests/a11yOneNode.test.ts — a labelled control's own face is not a second
-// stop for a reader.
+// stop for a reader, and neither is a grouped container's.
 //
 // `Pressable` defaults `accessible` to true. On iOS that is the whole story:
 // it becomes `isAccessibilityElement` (RCTViewComponentView.mm), and such a
@@ -30,12 +30,25 @@ const FACE = /^(Text|Ionicons|MaterialIcons|MaterialCommunityIcons|Feather|AntDe
  * The next such wrapper is found by being one, not by being listed here.
  */
 function faceAliases(read: (rel: string) => string, files: string[]): Set<string> {
-  const out = new Set<string>();
+  const returns = new Map<string, string>();
   for (const rel of files) {
     const source = blankComments(read(rel));
     for (const decl of source.matchAll(/export function (\w+)\s*\(/g)) {
       const returned = /return\s*\(?\s*<([A-Za-z][\w.]*)/.exec(source.slice(decl.index));
-      if (returned && FACE.test(returned[1])) out.add(decl[1]);
+      if (returned) returns.set(decl[1], returned[1]);
+    }
+  }
+
+  // To a fixed point, because an alias can wrap an alias: `ChipText` returns a
+  // `TableText`, which returns a `Text`. One pass finds `TableText` and reports
+  // the game table clean.
+  const out = new Set<string>();
+  for (let grew = true; grew; ) {
+    grew = false;
+    for (const [name, returned] of returns) {
+      if (out.has(name) || !(FACE.test(returned) || out.has(returned))) continue;
+      out.add(name);
+      grew = true;
     }
   }
   return out;
@@ -56,8 +69,8 @@ function sourcesUnder(dir: string): string[] {
 }
 
 /**
- * `line: <Tag> -> Text@line, Ionicons@line` for every labelled control still
- * exposing part of its own face.
+ * `line: <Tag> -> Text@line, Ionicons@line` for every labelled control or
+ * grouped container still exposing part of its own face.
  *
  * A nested control is skipped whole: its contents belong to it, and hiding
  * them would take the control with them.
@@ -72,7 +85,13 @@ export function reachableChildren(source: string, aliases: Set<string> = new Set
   for (let k = 0; k < tags.length; k++) {
     const control = tags[k];
     if (control.isClose || control.selfClose) continue;
-    if (!INTERACTIVE.test(control.name) || !LABELLED.test(control.text)) continue;
+    // A grouped container is one node for the same reason a control is, so its
+    // contents are its face too — `a11yGroup` carries the label as an argument
+    // rather than as a prop, which is why it is not `LABELLED` that decides.
+    const named = INTERACTIVE.test(control.name)
+      ? LABELLED.test(control.text)
+      : GROUPING.test(control.text);
+    if (!named) continue;
     if (HIDDEN.test(control.text)) continue;
 
     let depth = 0;
@@ -107,7 +126,7 @@ export function reachableChildren(source: string, aliases: Set<string> = new Set
 }
 
 /** A container that speaks as one node, however it is written. */
-const GROUPING = /(?:^|\s)accessible(?=\s|$|=\{true\})|a11yGroup\(/;
+const GROUPING = /(?:^|\s)accessible(?=[\s>]|$|=\{true\})|a11yGroup\(/;
 
 /**
  * `line: <Tag> -> Pressable@line` for every grouped container holding a
@@ -200,6 +219,33 @@ test("a wrapper hides what it holds and nothing after it", () => {
   );
 });
 
+// The rule reaches a container through `a11yGroup`, which carries the label as
+// an argument — so nothing in the tag says `accessibilityLabel`, and a scan
+// keyed on that prop reports the whole game table clean.
+test("a grouped container's own face is reported too", () => {
+  assert.deepEqual(
+    reachableChildren('<View {...a11yGroup(x)}>\n  <Text>leaky</Text>\n</View>'),
+    ["1: <View> -> Text@2"]
+  );
+  assert.deepEqual(
+    reachableChildren('<View {...a11yGroup(x)}>\n  <Text {...a11yHidden()}>a</Text>\n</View>'),
+    []
+  );
+});
+
+// One alias may wrap another: `ChipText` returns a `TableText`, which returns a
+// `Text`. Resolving a single level reports the game table clean.
+test("a face alias is resolved through another alias", () => {
+  const aliases = faceAliases(
+    (rel) =>
+      rel === "a"
+        ? "export function TableText(p) {\n  return <Text {...p} />;\n}"
+        : "export function ChipText(p) {\n  return <TableText {...p} />;\n}",
+    ["a", "b"]
+  );
+  assert.deepEqual([...aliases].sort(), ["ChipText", "TableText"]);
+});
+
 test("a nested control keeps its own contents", () => {
   assert.deepEqual(
     reachableChildren(
@@ -234,9 +280,6 @@ test("a grouped container with no control inside is clean", () => {
 const read = (rel: string) => readFileSync(path.join(repoRoot, rel), "utf8");
 const scanned = () => [...sourcesUnder("app"), ...sourcesUnder("components")];
 
-// No exception list: the one control that looked like it needed one was a
-// live region wearing a button's clothes, and the answer was a node of its
-// own (`lib/a11y.tsx`'s `A11yStatus`) rather than a licence.
 test("no grouped container seals a control", () => {
   const offenders: string[] = [];
   for (const rel of scanned()) {
@@ -250,6 +293,9 @@ test("no grouped container seals a control", () => {
   );
 });
 
+// No exception list: the one control that looked like it needed one was a
+// live region wearing a button's clothes, and the answer was a node of its
+// own (`lib/a11y.tsx`'s `A11yStatus`) rather than a licence.
 test("no labelled control leaves its own face reachable", () => {
   const aliases = faceAliases(read, scanned());
 

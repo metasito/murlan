@@ -236,20 +236,22 @@ export default function ProfileScreen() {
                   onRetry={() => ratingQuery.refetch()}
                 />
               )}
-              {rating && (
-                <View
-                  style={styles.ratingBlock}
-                  {...a11yGroup(`${t("ladder.ratingLabel")}: ${rating.rating}. ${t("ladder.seasonLabel", { season: formatSeason(rating.season, t) })}`)}
-                >
-                  <Text style={styles.ratingValue} {...a11yHidden()}>{rating.rating}</Text>
-                  <Text style={styles.ratingSeason} {...a11yHidden()}>{t("ladder.seasonLabel", { season: formatSeason(rating.season, t) })}</Text>
-                  <Text style={styles.ratingGames} {...a11yHidden()}>
-                    {rating.provisional
-                      ? t("ladder.provisional", { n: PROVISIONAL_GAMES - rating.games })
-                      : t("ladder.gamesLabel", { n: rating.games })}
-                  </Text>
-                </View>
-              )}
+              {rating && (() => {
+                const season = t("ladder.seasonLabel", { season: formatSeason(rating.season, t) });
+                const games = rating.provisional
+                  ? t("ladder.provisional", { n: PROVISIONAL_GAMES - rating.games })
+                  : t("ladder.gamesLabel", { n: rating.games });
+                return (
+                  <View
+                    style={styles.ratingBlock}
+                    {...a11yGroup(`${t("ladder.ratingLabel")}: ${rating.rating}. ${season}. ${games}`)}
+                  >
+                    <Text style={styles.ratingValue} {...a11yHidden()}>{rating.rating}</Text>
+                    <Text style={styles.ratingSeason} {...a11yHidden()}>{season}</Text>
+                    <Text style={styles.ratingGames} {...a11yHidden()}>{games}</Text>
+                  </View>
+                );
+              })()}
               <MenuButton
                 label={t("ladder.open")}
                 onPress={() => router.push("/(online)/leaderboard")}
@@ -413,6 +415,7 @@ export default function ProfileScreen() {
                     const rowLabel = t("profile.historyRowA11yLabel", {
                       position: posText,
                       mode: modeText,
+                      players: playersText,
                       points: h.points,
                       time: timeText,
                     });

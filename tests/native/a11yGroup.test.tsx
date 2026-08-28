@@ -11,7 +11,7 @@ describe('a11yGroup', () => {
     });
   });
 
-  // This project runs with Platform.OS === 'ios', where the DOM role would be
+  // These projects run as ios and android, where the DOM role would be
   // meaningless. The web half is asserted by the source scan in
   // tests/a11yLabels.test.ts and by the browser sweep, which are the only two
   // places it is true or false.

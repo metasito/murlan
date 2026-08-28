@@ -1404,20 +1404,23 @@ export function GameTable({
         {...behindVeil}
         style={[styles.hudLeft, { left: frame.tableLeft + frame.pad, top: frame.tableTop }, focusFadeStyle]}
       >
-        <TableChip scale={scale}>
-          {comboLabel === null ? (
-            <ChipText scale={scale}>{t("gameShared.emptyTable")}</ChipText>
-          ) : (
-            <>
-              <ChipText scale={scale} maxWidth={CHIP_NAME_MAX_W}>
-                {lastPlayName}
-              </ChipText>
-              <ChipText scale={scale} strong>
-                {comboLabel}
-              </ChipText>
-            </>
-          )}
-        </TableChip>
+        {/* The chip draws the words the group's label already says. */}
+        <View {...a11yHidden()}>
+          <TableChip scale={scale}>
+            {comboLabel === null ? (
+              <ChipText scale={scale}>{t("gameShared.emptyTable")}</ChipText>
+            ) : (
+              <>
+                <ChipText scale={scale} maxWidth={CHIP_NAME_MAX_W}>
+                  {lastPlayName}
+                </ChipText>
+                <ChipText scale={scale} strong>
+                  {comboLabel}
+                </ChipText>
+              </>
+            )}
+          </TableChip>
+        </View>
       </Animated.View>
 
       <Animated.View

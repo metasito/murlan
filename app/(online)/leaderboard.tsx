@@ -44,6 +44,12 @@ export default function LeaderboardScreen() {
 
   const board = boardQuery.data ?? [];
   const me = meQuery.data;
+  const selfSeason = me ? t("ladder.seasonLabel", { season: formatSeason(me.season, t) }) : "";
+  const selfGames = me
+    ? me.provisional
+      ? t("ladder.provisional", { n: PROVISIONAL_GAMES - me.games })
+      : t("ladder.gamesLabel", { n: me.games })
+    : "";
 
   return (
     <MenuLayout scrollable centered={false}>
@@ -65,15 +71,13 @@ export default function LeaderboardScreen() {
         {me && (
           <View
             style={styles.selfBlock}
-            {...a11yGroup(`${t("ladder.ratingLabel")}: ${me.rating}. ${t("ladder.seasonLabel", { season: formatSeason(me.season, t) })}`)}
+            {...a11yGroup(
+              `${t("ladder.ratingLabel")}: ${me.rating}. ${selfSeason}. ${selfGames}`
+            )}
           >
             <Text style={styles.selfRating} {...a11yHidden()}>{me.rating}</Text>
-            <Text style={styles.selfSeason} {...a11yHidden()}>{t("ladder.seasonLabel", { season: formatSeason(me.season, t) })}</Text>
-            <Text style={styles.selfGames} {...a11yHidden()}>
-              {me.provisional
-                ? t("ladder.provisional", { n: PROVISIONAL_GAMES - me.games })
-                : t("ladder.gamesLabel", { n: me.games })}
-            </Text>
+            <Text style={styles.selfSeason} {...a11yHidden()}>{selfSeason}</Text>
+            <Text style={styles.selfGames} {...a11yHidden()}>{selfGames}</Text>
           </View>
         )}
 

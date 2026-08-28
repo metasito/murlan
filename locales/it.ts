@@ -854,7 +854,7 @@ export const it: Record<keyof typeof en, string> = {
   "profile.historyEmptyBody": "La cronologia delle tue partite apparirà qui non appena giocherai la tua prima mano.",
   "profile.historyPlayers_one": "{{count}} giocatore",
   "profile.historyPlayers_other": "{{count}} giocatori",
-  "profile.historyRowA11yLabel": "{{position}} posto, {{mode}}, {{points}} punti, {{time}}",
+  "profile.historyRowA11yLabel": "{{position}} posto, {{mode}}, {{players}}, {{points}} punti, {{time}}",
 
   "profile.achievementsTitle": "Obiettivi",
   "profile.achievementsLoadingA11yLabel": "Caricamento obiettivi",

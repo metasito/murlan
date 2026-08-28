@@ -78,7 +78,8 @@ export function a11yDialog(label: string): AccessibilityProps {
 }
 
 /**
- * A container that speaks as one node: labelled, with its own contents hidden.
+ * Names a container and makes it one node on both platforms. Its contents are
+ * hidden at the call site, which `tests/a11yOneNode.test.ts` enforces.
  *
  * `accessible` is what makes a View an accessibility element on iOS, and
  * react-native-web forwards it nowhere — the label would land on a role-less
@@ -89,7 +90,7 @@ export function a11yDialog(label: string): AccessibilityProps {
  */
 export function a11yGroup(label: string): AccessibilityProps {
   const props: AccessibilityProps = { accessible: true, accessibilityLabel: label };
-  if (isWeb) (props as Record<string, unknown>).role = "group";
+  if (isWeb) props.role = "group";
   return props;
 }
 

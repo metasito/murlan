@@ -851,7 +851,7 @@ export const en = {
   "profile.historyEmptyBody": "Your match history will show up here as soon as you play your first hand.",
   "profile.historyPlayers_one": "{{count}} player",
   "profile.historyPlayers_other": "{{count}} players",
-  "profile.historyRowA11yLabel": "{{position}} place, {{mode}}, {{points}} points, {{time}}",
+  "profile.historyRowA11yLabel": "{{position}} place, {{mode}}, {{players}}, {{points}} points, {{time}}",
 
   "profile.achievementsTitle": "Achievements",
   "profile.achievementsLoadingA11yLabel": "Loading achievements",

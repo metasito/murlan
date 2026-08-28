@@ -860,7 +860,7 @@ export const sq: Record<keyof typeof en, string> = {
   "profile.historyEmptyBody": "Historiku i ndeshjeve të tua do të shfaqet këtu sapo të luash mancën tënde të parë.",
   "profile.historyPlayers_one": "{{count}} lojtar",
   "profile.historyPlayers_other": "{{count}} lojtarë",
-  "profile.historyRowA11yLabel": "Vendi {{position}}, {{mode}}, {{points}} pikë, {{time}}",
+  "profile.historyRowA11yLabel": "Vendi {{position}}, {{mode}}, {{players}}, {{points}} pikë, {{time}}",
 
   "profile.achievementsTitle": "Arritjet",
   "profile.achievementsLoadingA11yLabel": "Duke ngarkuar arritjet",

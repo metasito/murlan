@@ -1,5 +1,7 @@
 // A labelled control must be a leaf: the words and glyphs it draws itself with
-// are its face, not extra stops a reader walks past.
+// are its face, not extra stops a reader walks past. A grouped container is the
+// same claim with a role in front of it, and the role is what the browser
+// settles.
 //
 // `tests/a11yOneNode.test.ts` reads the props. This reads what the browser
 // built from them, which is the only place the property is actually true or
@@ -37,14 +39,17 @@ async function axTree(page: Page): Promise<AxNode[]> {
  * and a name is prohibited on it. A container labelled with `accessible` alone
  * lands here, because react-native-web forwards that prop nowhere.
  *
- * Asserted on the menu screens only. The game table carries one deliberately —
- * `game-table`'s label is a channel `tests/e2e/helpers/bot.ts` reads as an
- * attribute rather than a name, which its own call site says (#505).
+ * The game table carries two on purpose: `game-table`'s label and the hand
+ * zone's are channels `tests/e2e/helpers/bot.ts` reads as attributes rather
+ * than names, which their own call sites say (#505). They are passed in by
+ * name rather than exempted by count, so a third one fails.
  */
-function namedGenerics(nodes: AxNode[]): string[] {
+function namedGenerics(nodes: AxNode[], harnessChannels: string[] = []): string[] {
   return nodes
     .filter((n) => !n.ignored && n.role?.value === "generic" && n.name?.value?.trim())
-    .map((n) => `generic "${n.name!.value}"`);
+    .map((n) => n.name!.value)
+    .filter((name) => !harnessChannels.includes(name))
+    .map((name) => `generic "${name}"`);
 }
 
 for (const screen of SCREENS) {
@@ -87,12 +92,36 @@ for (const screen of SCREENS) {
 test("a grouped container reaches the browser as a named group", async ({ page, baseURL }) => {
   test.setTimeout(120_000);
   await openSeededGame(page, baseURL!, 4);
-  await page.locator('[data-testid="game-top-bar"]').waitFor({ timeout: 30_000 });
+  const topBar = page.locator('[data-testid="game-top-bar"]');
+  await topBar.waitFor({ timeout: 30_000 });
+
+  // Read off the element rather than restated, so a copy change cannot make
+  // this pass by matching a sentence nothing renders any more.
+  const spoken = (await topBar.getAttribute("aria-label")) ?? "";
+  expect(spoken, "the top bar has to carry a name at all").not.toEqual("");
 
   const nodes = await axTree(page);
-  const groups = nodes.filter(
-    (n) => !n.ignored && n.role?.value === "group" && n.name?.value?.trim()
+  const named = nodes.filter(
+    (n) => !n.ignored && n.role?.value === "group" && n.name?.value === spoken
   );
+  expect(named, "the top bar reaches the tree as a named group").toHaveLength(1);
 
-  expect(groups.length, "the table's top bar is a named group").toBeGreaterThan(0);
+  // Its chips draw the same words, and a group announces its name and then
+  // whatever is still live beneath it.
+  const inside: string[] = [];
+  const byId = new Map(nodes.map((n) => [n.nodeId, n]));
+  const stack = [...(named[0].childIds ?? [])];
+  while (stack.length) {
+    const child = byId.get(stack.pop()!);
+    if (!child) continue;
+    if (!child.ignored && child.name?.value?.trim()) inside.push(child.name.value);
+    stack.push(...(child.childIds ?? []));
+  }
+  expect(inside, "a group speaks once, like any other one node").toEqual([]);
+
+  const channels = [
+    (await page.locator('[data-testid="game-table"]').getAttribute("aria-label")) ?? "",
+    (await page.locator('[aria-label^="La tua mano"]').first().getAttribute("aria-label")) ?? "",
+  ];
+  expect(namedGenerics(nodes, channels)).toEqual([]);
 });
