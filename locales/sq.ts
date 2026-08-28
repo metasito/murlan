@@ -54,6 +54,7 @@ export const sq: Record<keyof typeof en, string> = {
   "server.CANNOT_ADD_SELF": "Nuk mund të shtosh veten",
   "server.ALREADY_FRIENDS": "Jeni tashmë miq",
   "server.FRIEND_REQUEST_ALREADY_SENT": "Kërkesa për miqësi është dërguar tashmë",
+  "server.FRIEND_REQUEST_INCOMING_PENDING": "Ke tashmë një kërkesë në pritje — pranoje",
   "server.FRIEND_REQUEST_NOT_FOUND": "Kërkesa nuk u gjet",
   "server.FRIEND_INVITE": "{{username}} të ftoi të luash.",
   "server.GAME_INTERRUPTED_EMPTY_SEAT": "Loja u ndërpre: një vend bosh nuk mund të luajë.",

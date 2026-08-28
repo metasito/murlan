@@ -504,9 +504,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
       return;
     }
 
-    const pending = await storage.hasPendingRequest(req.session.userId!, friend.id);
-    if (pending) {
+    const pending = await storage.pendingRequestBetween(req.session.userId!, friend.id);
+    if (pending === "sent") {
       res.status(409).json({ message: "Friend request already sent", code: "FRIEND_REQUEST_ALREADY_SENT" });
+      return;
+    }
+    if (pending === "received") {
+      res.status(409).json({
+        message: "They already sent you a request — accept it instead",
+        code: "FRIEND_REQUEST_INCOMING_PENDING",
+      });
       return;
     }
 

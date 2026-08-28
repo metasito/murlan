@@ -42,6 +42,18 @@ interface SocketContextValue {
   dismissGameInvite: (roomCode: string) => void;
 }
 
+/**
+ * What a reconnect re-reads, because the events that would have changed it are
+ * dropped rather than queued when the socket is down. Presence is deliberately
+ * absent: who was online while you were away is not a fact worth catching up
+ * on, and `friend:get_online_list` answers it fresh anyway.
+ */
+const RECONCILED_ON_CONNECT = [
+  ["/api/friends"],
+  ["/api/friends/requests"],
+  ["/api/friends/sent"],
+] as const;
+
 const SocketContext = createContext<SocketContextValue | null>(null);
 
 export function useSocket() {
@@ -136,6 +148,12 @@ export function SocketProvider({ children }: { children: ReactNode }) {
       setSessionReplaced(null);
       retryAttemptRef.current = 0;
       socket.emit("friend:get_online_list");
+      // Anything that happened while the socket was down was pushed to nobody:
+      // `emitToUser` drops the event when the recipient has no socket, and no
+      // second attempt is ever made. The rows are the truth, so connecting is
+      // where we ask again — otherwise a friend request sent to someone
+      // offline is invisible to them, and neither side can then act on it.
+      for (const queryKey of RECONCILED_ON_CONNECT) qc.invalidateQueries({ queryKey });
     };
 
     const onDisconnect = () => {
