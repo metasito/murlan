@@ -22,7 +22,27 @@ const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), ".."
 const INTERACTIVE = /^(Animated\.)?(Pressable|Touchable[A-Za-z]*)$/;
 /** What a control draws itself with: words and glyphs, never layout. */
 const FACE = /^(Text|Ionicons|MaterialIcons|MaterialCommunityIcons|Feather|AntDesign|FontAwesome\d*)$/;
-const HIDDEN = /\.\.\.a11yHidden\(|accessibilityElementsHidden|aria-hidden|\.\.\.a11yVeiled\(/;
+
+/**
+ * Components that are a face under another name. `TableText` is one line —
+ * `<Text {...props} maxFontSizeMultiplier={…} />` — and a scan that matches tag
+ * names alone cannot see through it, so the whole game table reads as clean.
+ * The next such wrapper is found by being one, not by being listed here.
+ */
+function faceAliases(read: (rel: string) => string, files: string[]): Set<string> {
+  const out = new Set<string>();
+  for (const rel of files) {
+    const source = blankComments(read(rel));
+    for (const decl of source.matchAll(/export function (\w+)\s*\(/g)) {
+      const returned = /return\s*\(?\s*<([A-Za-z][\w.]*)/.exec(source.slice(decl.index));
+      if (returned && FACE.test(returned[1])) out.add(decl[1]);
+    }
+  }
+  return out;
+}
+// Unconditionally hidden only. `a11yHidden(decorative)` hides on some renders
+// and not others, and the renders it does not cover are the defect.
+const HIDDEN = /\.\.\.a11yHidden\(\s*(true\s*)?\)|accessibilityElementsHidden|aria-hidden/;
 const LABELLED = /accessibilityLabel=/;
 
 /**
@@ -30,16 +50,16 @@ const LABELLED = /accessibilityLabel=/;
  * nearly every candidate is the same defect with the same one-prop fix, so a
  * long list here would be bugs wearing the costume of decisions.
  */
-const DELIBERATELY_REACHABLE: [string, number, string][] = [
+const DELIBERATELY_REACHABLE: [string, string, string][] = [
   [
     "components/ExchangeAnnouncement.tsx",
-    1,
-    "the announcement panel is itself the labelled node, and it holds both its own copy and a close button — hiding its subtree erases the panel and the only way out of it (#495)",
+    "194: <Pressable>",
+    "the panel is `accessibilityRole=\"alert\"`, and a live region announces the text that changes inside it rather than its own label — hiding its copy leaves nothing to announce (#495)",
   ],
   [
     "components/NotificationBanner.tsx",
-    1,
-    "the banner's body is a live region, and a live region announces the text that changes inside it rather than its own label — hide the copy and every notification arrives silently on web (#495)",
+    "153: <Pressable>",
+    "the banner's body is a live region too, and it never unmounts, so a content change is the only announcement there is — hide the copy and every notification arrives silently on web (#495)",
   ],
 ];
 
@@ -60,7 +80,8 @@ function sourcesUnder(dir: string): string[] {
  * A nested control is skipped whole: its contents belong to it, and hiding
  * them would take the control with them.
  */
-export function reachableChildren(source: string): string[] {
+export function reachableChildren(source: string, aliases: Set<string> = new Set()): string[] {
+  const isFace = (name: string) => FACE.test(name) || aliases.has(name);
   const src = blankComments(source);
   const lineAt = (i: number) => src.slice(0, i).split("\n").length;
   const tags = jsxTags(src);
@@ -87,7 +108,7 @@ export function reachableChildren(source: string): string[] {
         continue;
       }
       const skipping = skipBelow !== null;
-      if (!skipping && FACE.test(child.name) && !HIDDEN.test(child.text) && hiddenAt.length === 0) {
+      if (!skipping && isFace(child.name) && !HIDDEN.test(child.text) && hiddenAt.length === 0) {
         exposed.push(`${child.name}@${lineAt(child.start)}`);
       }
       if (child.selfClose) continue;
@@ -113,6 +134,15 @@ test("the tokeniser reads names, closers and self-closers in order", () => {
   assert.match(
     jsxTags('<Pressable style={{ w: a > b }} accessibilityLabel="x">')[0].text,
     /accessibilityLabel="x"/
+  );
+});
+
+// An unbalanced brace inside a quoted attribute value used to leave the count
+// negative, so the tag ran on to a later `>` and absorbed its own children.
+test("a brace inside a string does not extend the tag over its children", () => {
+  assert.deepEqual(
+    reachableChildren('<Pressable accessibilityLabel={x} title="a } b">\n  <Text>hi</Text>\n</Pressable>'),
+    ["1: <Pressable> -> Text@2"]
   );
 });
 
@@ -159,26 +189,29 @@ test("a nested control keeps its own contents", () => {
   );
 });
 
-// The list spends a file's first N hits, so an entry left behind after its
-// control was fixed would quietly spend someone else's instead.
+const read = (rel: string) => readFileSync(path.join(repoRoot, rel), "utf8");
+const scanned = () => [...sourcesUnder("app"), ...sourcesUnder("components")];
+
+// Named, not counted: an entry that outlived its control would otherwise
+// forgive whichever control took its place in the file.
 test("every exception still names a control that has one", () => {
+  const aliases = faceAliases(read, scanned());
   const stale = DELIBERATELY_REACHABLE.filter(
-    ([file, count]) => reachableChildren(readFileSync(path.join(repoRoot, file), "utf8")).length < count
-  ).map(([file]) => file);
+    ([file, control]) => !reachableChildren(read(file), aliases).some((hit) => hit.startsWith(control))
+  ).map(([file, control]) => `${file} ${control}`);
   assert.deepEqual(stale, [], `no longer exposes a child, so drop the entry: ${stale.join(", ")}`);
 });
 
 test("no labelled control leaves its own face reachable", () => {
-  const allowed = new Map<string, number>();
-  for (const [file, count] of DELIBERATELY_REACHABLE) {
-    allowed.set(file, (allowed.get(file) ?? 0) + count);
-  }
+  const aliases = faceAliases(read, scanned());
+  const excused = new Set(DELIBERATELY_REACHABLE.map(([file, control]) => `${file}:${control}`));
 
   const offenders: string[] = [];
-  for (const rel of [...sourcesUnder("app"), ...sourcesUnder("components")]) {
-    const hits = reachableChildren(readFileSync(path.join(repoRoot, rel), "utf8"));
-    const spare = allowed.get(rel) ?? 0;
-    offenders.push(...hits.slice(spare).map((hit) => `${rel}:${hit}`));
+  for (const rel of scanned()) {
+    for (const hit of reachableChildren(read(rel), aliases)) {
+      if (excused.has(`${rel}:${hit.slice(0, hit.indexOf(">") + 1)}`)) continue;
+      offenders.push(`${rel}:${hit}`);
+    }
   }
 
   assert.deepEqual(

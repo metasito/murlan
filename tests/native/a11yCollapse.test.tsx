@@ -104,7 +104,9 @@ describe('CardView decorative', () => {
   // clips, and the rank is the card's whole identity.
   it('caps how far the rank glyph can scale', async () => {
     const view = await render(<CardView card={ACE} />);
-    const glyphs = view.getAllByText('A');
+    // The glyph is the card's own face, so the reader never meets it; this is
+    // about how it renders, not whether it is reachable.
+    const glyphs = view.getAllByText('A', { includeHiddenElements: true });
     expect(glyphs.length).toBeGreaterThan(0);
     for (const glyph of glyphs) expect(glyph.props.maxFontSizeMultiplier).toBe(1.2);
   });

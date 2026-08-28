@@ -440,7 +440,7 @@ function RematchPromptPanel({
               accessibilityRole="button"
               accessibilityLabel={t("gameTable.rematchYesA11yLabel")}
             >
-              <TableText style={styles.rematchChoiceYesLabel}>{t("gameTable.rematchYes")}</TableText>
+              <TableText style={styles.rematchChoiceYesLabel} {...a11yHidden()}>{t("gameTable.rematchYes")}</TableText>
             </Pressable>
             <Pressable
               testID="btn-rematch-no"
@@ -452,7 +452,7 @@ function RematchPromptPanel({
               accessibilityRole="button"
               accessibilityLabel={t("gameTable.rematchNoA11yLabel")}
             >
-              <TableText style={styles.rematchChoiceLabel}>{t("gameTable.rematchNo")}</TableText>
+              <TableText style={styles.rematchChoiceLabel} {...a11yHidden()}>{t("gameTable.rematchNo")}</TableText>
             </Pressable>
           </View>
           <TableText style={styles.rematchTally}>{tally}</TableText>
@@ -564,6 +564,7 @@ function GiocaButton({
               style={[StyleSheet.absoluteFill, styles.btnFlash, flashStyle]}
             />
             <TableText
+              {...a11yHidden()}
               style={[
                 styles.actionBtnLabel,
                 styles.playBtnLabel,
@@ -573,7 +574,7 @@ function GiocaButton({
               {t("gameTable.playLabelGioca")}
             </TableText>
             {selectedCount > 1 && (
-              <TableText style={[styles.playBtnSub, { fontSize: BTN_SUB_FS * scale }]}>
+              <TableText {...a11yHidden()} style={[styles.playBtnSub, { fontSize: BTN_SUB_FS * scale }]}>
                 {t("gameTable.selectedCountSuffix", { n: selectedCount })}
               </TableText>
             )}
@@ -587,6 +588,7 @@ function GiocaButton({
             ]}
           >
             <TableText
+              {...a11yHidden()}
               style={[
                 styles.actionBtnLabel,
                 styles.btnDimLabel,
@@ -675,6 +677,7 @@ function PassaButton({
         )}
         <View style={styles.actionBtnFace}>
           <TableText
+            {...a11yHidden()}
             style={[
               styles.actionBtnLabel,
               canPass ? styles.passBtnLabel : styles.btnDimLabel,
@@ -1721,7 +1724,7 @@ export function GameTable({
                 onPress={handlePlay}
                 a11yLabel={
                   playBtnValid
-                    ? t("gameTable.playA11yValid")
+                    ? tn("gameTable.playA11yValid", selectedIds.length)
                     : t("gameTable.playA11yUnavailable", { reason: dimReasonText })
                 }
                 selectedCount={selectedIds.length}

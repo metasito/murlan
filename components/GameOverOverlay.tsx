@@ -344,9 +344,11 @@ export function GameOverOverlay({
                 disabled={hasVoted}
                 style={[styles.rematchBtn, hasVoted && styles.rematchBtnDim]}
                 accessibilityLabel={
-                  match.over
-                    ? t("gameOverOverlay.newMatchA11yLabel")
-                    : t("gameOverOverlay.nextHandA11yLabel")
+                  hasVoted
+                    ? t("gameOverOverlay.waitingA11yLabel", { count: voteCount, total: voteTotal })
+                    : match.over
+                      ? t("gameOverOverlay.newMatchA11yLabel")
+                      : t("gameOverOverlay.nextHandA11yLabel")
                 }
                 {...a11yState({ role: "button", disabled: hasVoted })}
               >

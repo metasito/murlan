@@ -161,7 +161,7 @@ export default function NotificationBanner({ notification, onDismiss }: Props) {
           {...dismissHint.props}
         >
           {dismissHint.node}
-          <View style={[styles.iconCircle, { backgroundColor: color + "22" }]}>
+          <View style={[styles.iconCircle, { backgroundColor: color + "22" }]} {...a11yHidden()}>
             <Ionicons name={icon} size={20} color={color} />
           </View>
           <View style={styles.textGroup}>

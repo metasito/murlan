@@ -275,19 +275,19 @@ function InviteFriendsPanel({
                 accessibilityLabel={sent ? t("room.inviteSentA11yLabel", { username: friend.username }) : t("room.inviteA11yLabel", { username: friend.username })}
                 {...a11yState({ role: "button", disabled: sent })}
               >
-                <View style={inviteStyles.avatar}>
+                <View style={inviteStyles.avatar} {...a11yHidden()}>
                   <Text style={inviteStyles.avatarInitial}>
                     {friend.username.charAt(0).toUpperCase()}
                   </Text>
                   <View style={inviteStyles.onlineDot} />
                 </View>
-                <Text style={inviteStyles.friendName} numberOfLines={1}>
+                <Text style={inviteStyles.friendName} numberOfLines={1} {...a11yHidden()}>
                   {friend.username}
                 </Text>
                 {sent ? (
-                  <Ionicons name="checkmark-circle" size={16} color={Colors.success} />
+                  <Ionicons name="checkmark-circle" size={16} color={Colors.success} {...a11yHidden()} />
                 ) : (
-                  <View style={inviteStyles.inviteBtn}>
+                  <View style={inviteStyles.inviteBtn} {...a11yHidden()}>
                     <Text style={inviteStyles.inviteBtnText}>{t("room.invite")}</Text>
                   </View>
                 )}

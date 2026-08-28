@@ -119,7 +119,11 @@ export function useA11yHint(hint: string | undefined): {
   return {
     props,
     node: isWeb ? (
-      <Text nativeID={id} style={styles.srOnly}>
+      // Hidden and still announced: a node named directly by `aria-describedby`
+      // is used for the description even when hidden, and half these hints
+      // render inside the control they describe, where a reachable node is a
+      // second stop.
+      <Text nativeID={id} aria-hidden style={styles.srOnly}>
         {hint}
       </Text>
     ) : null,

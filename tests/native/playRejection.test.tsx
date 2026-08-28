@@ -175,8 +175,10 @@ describe('the refused GIOCA names the right reason', () => {
       )
     );
 
-    expect(screen.getByText(t('gameTable.playLabelGioca'))).toBeTruthy();
-    expect(screen.queryByText(t('gameTable.playLabelTooLow'))).toBeNull();
+    // What the button says, not what it announces: the word is the button's own
+    // face and is hidden from the reader, which the label carries instead.
+    expect(screen.getByText(t('gameTable.playLabelGioca'), { includeHiddenElements: true })).toBeTruthy();
+    expect(screen.queryByText(t('gameTable.playLabelTooLow'), { includeHiddenElements: true })).toBeNull();
 
     await r.unmount();
   });

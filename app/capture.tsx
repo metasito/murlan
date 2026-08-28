@@ -100,7 +100,7 @@ export default function CaptureScreen() {
           onPress={() => setLive((s) => ({ ...(s ?? gameState), currentTurnIndex: nextTurn(s ?? gameState) }))}
           style={styles.swing}
         >
-          <Ionicons name="arrow-forward" size={SWING_GLYPH} color={Colors.textMuted} />
+          <Ionicons name="arrow-forward" size={SWING_GLYPH} color={Colors.textMuted} {...a11yHidden()} />
         </Pressable>
       }
     />

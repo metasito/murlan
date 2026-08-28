@@ -456,7 +456,7 @@ export default function ProfileScreen() {
                     const modeText = r.gameMode === "teams" ? t("gameOverOverlay.modeTeams") : t("gameOverOverlay.modeFreeForAll");
                     const playersText = tn("profile.historyPlayers", r.playerCount);
                     const timeText = relativeTime(r.finishedAt, t, tn);
-                    const movesText = `${r.moveCount} ${t("replay.moves")}`;
+                    const movesText = tn("replay.moves", r.moveCount);
                     return (
                       <Pressable
                         key={r.id}
