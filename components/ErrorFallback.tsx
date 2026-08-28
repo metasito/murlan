@@ -12,7 +12,7 @@ import {
 import { SafeAreaInsetsContext } from "react-native-safe-area-context";
 import { LinearGradient } from "expo-linear-gradient";
 import Feather from "@expo/vector-icons/Feather";
-import { Colors, Spacing, Radius, FontSize, Shadow } from "@/lib/theme";
+import { Colors, Spacing, Radius, FontSize, Shadow, TOUCH_TARGET_MIN } from "@/lib/theme";
 import { MenuButton } from "@/components/MenuButton";
 import { useTranslation } from "@/lib/i18n";
 import { a11yHidden } from "@/lib/a11y";
@@ -207,8 +207,8 @@ const styles = StyleSheet.create({
   devButton: {
     position: "absolute",
     right: Spacing.md,
-    width: 44,
-    height: 44,
+    width: TOUCH_TARGET_MIN,
+    height: TOUCH_TARGET_MIN,
     borderRadius: Radius.sm,
     backgroundColor: Colors.bgSurface,
     borderWidth: 1,
@@ -251,8 +251,8 @@ const styles = StyleSheet.create({
     textTransform: "uppercase",
   },
   closeButton: {
-    width: 44,
-    height: 44,
+    width: TOUCH_TARGET_MIN,
+    height: TOUCH_TARGET_MIN,
     alignItems: "center",
     justifyContent: "center",
   },

@@ -11,7 +11,7 @@ import { useAuth } from "@/context/AuthContext";
 import { MenuLayout } from "@/components/MenuLayout";
 import { MenuCard } from "@/components/MenuCard";
 import { MenuButton } from "@/components/MenuButton";
-import { Colors, FontSize, Radius, Spacing, Type } from "@/lib/theme";
+import { Colors, FontSize, Radius, Spacing, TOUCH_TARGET_MIN, Type } from "@/lib/theme";
 import { PROVISIONAL_GAMES, formatSeason } from "@/lib/rating";
 import { useTranslation } from "@/lib/i18n";
 import { a11yHidden } from "@/lib/a11y";
@@ -159,8 +159,8 @@ const styles = StyleSheet.create({
     borderBottomColor: Colors.border,
   },
   backBtn: {
-    width: 44,
-    height: 44,
+    width: TOUCH_TARGET_MIN,
+    height: TOUCH_TARGET_MIN,
     alignItems: "center",
     justifyContent: "center",
   },

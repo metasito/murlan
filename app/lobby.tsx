@@ -389,8 +389,8 @@ const styles = StyleSheet.create({
     borderBottomColor: Colors.border,
   },
   backBtn: {
-    width: 44,
-    height: 44,
+    width: TOUCH_TARGET_MIN,
+    height: TOUCH_TARGET_MIN,
     alignItems: "center",
     justifyContent: "center",
   },
@@ -418,7 +418,7 @@ const styles = StyleSheet.create({
   },
   countBtn: {
     flex: 1,
-    minHeight: 44,
+    minHeight: TOUCH_TARGET_MIN,
     paddingVertical: Spacing.wide,
     borderRadius: Radius.md,
     alignItems: "center",
@@ -445,7 +445,7 @@ const styles = StyleSheet.create({
   },
   formatBtn: {
     flex: 1,
-    minHeight: 44,
+    minHeight: TOUCH_TARGET_MIN,
     paddingVertical: Spacing.sm + 2,
     paddingHorizontal: Spacing.sm,
     borderRadius: Radius.md,
@@ -473,7 +473,7 @@ const styles = StyleSheet.create({
   },
   modeBtn: {
     flex: 1,
-    minHeight: 44,
+    minHeight: TOUCH_TARGET_MIN,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",

@@ -603,8 +603,8 @@ const styles = StyleSheet.create({
     textTransform: "uppercase",
   },
   closeBtn: {
-    width: 44,
-    height: 44,
+    width: TOUCH_TARGET_MIN,
+    height: TOUCH_TARGET_MIN,
     alignItems: "center",
     justifyContent: "center",
     marginRight: -Spacing.sm,

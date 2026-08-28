@@ -394,6 +394,7 @@ const styles = StyleSheet.create({
     marginTop: Spacing.xs,
   },
   moveRow: {
+    minHeight: TOUCH_TARGET_MIN,
     flexDirection: "row",
     alignItems: "center",
     gap: Spacing.sm,
