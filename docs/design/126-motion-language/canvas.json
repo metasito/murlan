@@ -1,0 +1,17 @@
+{
+  "artboards": [
+    { "file": "Main.dc.html", "x": 0, "y": 0, "w": 1040, "h": 560, "title": "Does a card have weight?" },
+    { "file": "Scale.dc.html", "x": 0, "y": 700, "w": 900, "h": 760, "title": "The scale" },
+    { "file": "Literals.dc.html", "x": 1020, "y": 700, "w": 940, "h": 800, "title": "What the sweep changes" }
+  ],
+  "annotations": [
+    {
+      "id": "the-question",
+      "x": 1130,
+      "y": 0,
+      "w": 300,
+      "text": "Pick one of the three.\n\nEverything below follows from it — the step values, whether the anticipate curve exists at all, and which of the 33 literals genuinely change feel.\n\nSlow the speed chip right down to judge the arrival; that is where the three differ most."
+    }
+  ],
+  "launch": { "view": "canvas" }
+}

@@ -1,0 +1,206 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@600;700&family=Inter:wght@400;500&display=swap">
+  <style>
+    body { margin: 0; background: #031008; font-family: Inter, system-ui, sans-serif; }
+    a { color: #C9A84C; } a:hover { color: #E2C06A; }
+
+    .col { --cycle: 3200ms; }
+    .runner { animation-duration: calc(var(--cycle) / var(--speed)); animation-iteration-count: infinite; }
+
+    /* Weighted: anticipation dip, long flight, overshoot, settle. */
+    @keyframes playWeighted {
+      0%     { transform: translate(0,0) rotate(0deg) scale(1); opacity: 1; }
+      1.9%   { transform: translate(0,7px) rotate(-1deg) scale(.975); }
+      14.4%  { transform: translate(var(--dx), var(--dy)) rotate(-4.2deg) scale(1.07); }
+      20.6%  { transform: translate(var(--dx), var(--dy)) rotate(-2.2deg) scale(1); }
+      84%    { transform: translate(var(--dx), var(--dy)) rotate(-2.2deg) scale(1); opacity: 1; }
+      90%    { transform: translate(var(--dx), var(--dy)) rotate(-2.2deg) scale(1); opacity: 0; }
+      91%    { transform: translate(0,0) rotate(0deg) scale(1); opacity: 0; }
+      97%    { transform: translate(0,0) rotate(0deg) scale(1); opacity: 1; }
+      100%   { transform: translate(0,0) rotate(0deg) scale(1); opacity: 1; }
+    }
+    /* Balanced: a hint of load, decisive arrival, small settle. */
+    @keyframes playBalanced {
+      0%     { transform: translate(0,0) rotate(0deg) scale(1); opacity: 1; }
+      1.25%  { transform: translate(0,3px) rotate(0deg) scale(.99); }
+      10.6%  { transform: translate(var(--dx), var(--dy)) rotate(-3deg) scale(1.025); }
+      13.1%  { transform: translate(var(--dx), var(--dy)) rotate(-2.2deg) scale(1); }
+      84%    { transform: translate(var(--dx), var(--dy)) rotate(-2.2deg) scale(1); opacity: 1; }
+      90%    { transform: translate(var(--dx), var(--dy)) rotate(-2.2deg) scale(1); opacity: 0; }
+      91%    { transform: translate(0,0) rotate(0deg) scale(1); opacity: 0; }
+      97%    { transform: translate(0,0) rotate(0deg) scale(1); opacity: 1; }
+      100%   { transform: translate(0,0) rotate(0deg) scale(1); opacity: 1; }
+    }
+    /* Crisp: no anticipation, no overshoot. It is simply there. */
+    @keyframes playCrisp {
+      0%     { transform: translate(0,0) rotate(0deg) scale(1); opacity: 1; }
+      5.9%   { transform: translate(var(--dx), var(--dy)) rotate(-2.2deg) scale(1); }
+      84%    { transform: translate(var(--dx), var(--dy)) rotate(-2.2deg) scale(1); opacity: 1; }
+      90%    { transform: translate(var(--dx), var(--dy)) rotate(-2.2deg) scale(1); opacity: 0; }
+      91%    { transform: translate(0,0) rotate(0deg) scale(1); opacity: 0; }
+      97%    { transform: translate(0,0) rotate(0deg) scale(1); opacity: 1; }
+      100%   { transform: translate(0,0) rotate(0deg) scale(1); opacity: 1; }
+    }
+    /* Reduce motion: no travel at all — the card is dealt by a cross-fade. */
+    @keyframes playReduced {
+      0%    { opacity: 1; transform: translate(0,0); }
+      6%    { opacity: 0; transform: translate(0,0); }
+      6.1%  { opacity: 0; transform: translate(var(--dx), var(--dy)) rotate(-2.2deg); }
+      12%   { opacity: 1; transform: translate(var(--dx), var(--dy)) rotate(-2.2deg); }
+      84%   { opacity: 1; transform: translate(var(--dx), var(--dy)) rotate(-2.2deg); }
+      90%   { opacity: 0; transform: translate(var(--dx), var(--dy)) rotate(-2.2deg); }
+      91%   { opacity: 0; transform: translate(0,0); }
+      97%   { opacity: 1; transform: translate(0,0); }
+      100%  { opacity: 1; transform: translate(0,0); }
+    }
+
+    .weighted { animation-name: playWeighted; animation-timing-function: cubic-bezier(.34,1.4,.5,1); }
+    .balanced { animation-name: playBalanced; animation-timing-function: cubic-bezier(.2,.9,.25,1); }
+    .crisp    { animation-name: playCrisp;    animation-timing-function: cubic-bezier(.22,0,0,1); }
+    .reduced  { animation-name: playReduced;  animation-timing-function: linear; }
+
+    /* The ring the pile throws when the card lands. Timed to the landing, never the throw. */
+    @keyframes ringWeighted {
+      0%, 13.4% { opacity: 0; transform: scale(.55); }
+      15.4%     { opacity: .85; transform: scale(.8); }
+      24%       { opacity: 0; transform: scale(1.5); }
+      100%      { opacity: 0; transform: scale(.55); }
+    }
+    @keyframes ringBalanced {
+      0%, 9.8% { opacity: 0; transform: scale(.6); }
+      11.2%    { opacity: .7; transform: scale(.85); }
+      17%      { opacity: 0; transform: scale(1.32); }
+      100%     { opacity: 0; transform: scale(.6); }
+    }
+    @keyframes ringCrisp {
+      0%, 5.4% { opacity: 0; transform: scale(.7); }
+      6.3%     { opacity: .55; transform: scale(.9); }
+      10%      { opacity: 0; transform: scale(1.15); }
+      100%     { opacity: 0; transform: scale(.7); }
+    }
+    @keyframes ringNone { 0%, 100% { opacity: 0; transform: scale(.7); } }
+    .r-weighted { animation-name: ringWeighted; }
+    .r-balanced { animation-name: ringBalanced; }
+    .r-crisp    { animation-name: ringCrisp; }
+    .r-reduced  { animation-name: ringNone; }
+  </style>
+</helmet>
+
+<div style="padding: 24px 24px 20px; display: flex; flex-direction: column; gap: 20px; background: #031008; --speed: {{speed}};">
+
+  <div style="display: flex; flex-direction: column; gap: 6px;">
+    <div style="font-family: Rajdhani, sans-serif; font-weight: 700; font-size: 22px; color: #F0EAD6; letter-spacing: .01em;">Does a card have weight?</div>
+    <div style="font-family: Inter, sans-serif; font-size: 13px; line-height: 1.5; color: rgba(240,234,214,0.75); max-width: 620px;">
+      The same play — one card leaving the hand and landing on the pile — under three physical models. Everything else in the timing scale follows from which of these the table is. Watch them together; the numbers are underneath.
+    </div>
+  </div>
+
+  <div style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 20px;">
+
+    <sc-for list="{{models}}" as="m" hint-placeholder-count="3">
+      <div class="col" style="display: flex; flex-direction: column; gap: 10px;">
+
+        <div style="display: flex; flex-direction: column; gap: 2px;">
+          <div style="font-family: Rajdhani, sans-serif; font-weight: 700; font-size: 18px; color: {{m.ink}};">{{m.name}}</div>
+          <div style="font-family: Inter, sans-serif; font-size: 11px; color: rgba(240,234,214,0.58); min-height: 30px; line-height: 1.4;">{{m.claim}}</div>
+        </div>
+
+        <!-- The felt. Lit from the top, as the lantern does it. -->
+        <div style="position: relative; height: 250px; border-radius: 12px; overflow: hidden; background:
+              radial-gradient(120% 90% at 50% 8%, #0F4A30 0%, #0B3B25 46%, #082B1A 100%);
+              border: 1px solid rgba(201,168,76,0.2);">
+
+          <div style="position: absolute; inset: 0; background: radial-gradient(60% 42% at 50% 30%, rgba(255,242,208,0.20) 0%, rgba(255,236,190,0.07) 45%, rgba(255,242,208,0) 72%); pointer-events: none;"></div>
+
+          <!-- Pile marker, where the card is going. -->
+          <div style="position: absolute; left: 50%; top: 78px; width: 64px; height: 90px; margin-left: -32px; border-radius: 3.2px; border: 1px dashed rgba(201,168,76,0.3);"></div>
+
+          <div class="runner {{m.ringClass}}" style="position: absolute; left: 50%; top: 123px; width: 92px; height: 92px; margin-left: -46px; margin-top: -46px; border-radius: 9999px; border: 2px solid #F3E0A6; opacity: 0;"></div>
+
+          <!-- The card, resting in the hand at the foot of the felt. -->
+          <div class="runner {{m.cardClass}}" style="position: absolute; left: 50%; top: 168px; width: 64px; height: 90px; margin-left: -32px; --dx: 0px; --dy: -90px;
+                border-radius: 3.2px; background: linear-gradient(150deg, #FFFDF7 0%, #F7F4EA 55%, #E6E1D2 100%);
+                box-shadow: 0 6px 14px rgba(0,0,0,0.45); border: 0.5px solid rgba(90,78,52,0.45); will-change: transform;">
+            <div style="position: absolute; left: 5px; top: 4px; font-family: Rajdhani, sans-serif; font-weight: 700; font-size: 17px; line-height: 1; color: #C8102E;">A</div>
+            <div style="position: absolute; left: 5px; top: 20px; font-size: 12px; line-height: 1; color: #C8102E;">&#9829;</div>
+            <div style="position: absolute; left: 50%; top: 50%; margin: -13px 0 0 -10px; font-size: 26px; line-height: 1; color: #C8102E;">&#9829;</div>
+          </div>
+
+          <!-- The rest of the hand, cropped by the bottom edge as the real table crops it. -->
+          <div style="position: absolute; left: 50%; bottom: -22px; margin-left: -78px; display: flex; gap: 0;">
+            <sc-for list="{{rest}}" as="c" hint-placeholder-count="3">
+              <div style="width: 64px; height: 90px; margin-right: -30px; border-radius: 3.2px; background: linear-gradient(150deg, #FFFDF7 0%, #F7F4EA 55%, #E6E1D2 100%); box-shadow: 0 4px 10px rgba(0,0,0,0.4); border: 0.5px solid rgba(90,78,52,0.45);">
+                <div style="position: absolute; margin: 4px 0 0 5px; font-family: Rajdhani, sans-serif; font-weight: 700; font-size: 17px; line-height: 1; color: {{c.ink}};">{{c.rank}}</div>
+              </div>
+            </sc-for>
+          </div>
+        </div>
+
+        <div style="display: flex; flex-direction: column; gap: 3px; font-family: Inter, sans-serif; font-size: 11px; color: rgba(240,234,214,0.58);">
+          <div><span style="color: {{m.ink}}; font-weight: 500;">{{m.flight}}</span> flight &middot; {{m.antic}} anticipation</div>
+          <div>{{m.arrive}}</div>
+        </div>
+      </div>
+    </sc-for>
+  </div>
+
+  <div style="display: flex; gap: 10px; align-items: flex-start; padding-top: 4px; border-top: 1px solid rgba(240,234,214,0.1);">
+    <div style="font-family: Inter, sans-serif; font-size: 11px; line-height: 1.55; color: rgba(240,234,214,0.58);">
+      <span style="color: #C9A84C; font-weight: 500;">Slow it down</span> with the speed chip above to see the arrival, and turn on <span style="color: #C9A84C; font-weight: 500;">reduce motion</span> to see what each becomes when the player has asked for less movement — that form has to be decided at the same time, or the sweep invents one per call site.
+    </div>
+  </div>
+</div>
+</x-dc>
+
+<script data-dc-script data-props='{
+  "speed": {"editor": "range", "default": 1, "min": 0.15, "max": 1.5, "step": 0.05, "unit": "x", "section": "Playback"},
+  "reduceMotion": {"editor": "boolean", "default": false, "section": "Playback"},
+  "$preview": {"width": 1040, "height": 560}
+}'>
+class Component extends DCLogic {
+  renderVals() {
+    const reduced = this.props.reduceMotion ?? false;
+    const models = [
+      {
+        key: 'weighted', name: 'Weighted', ink: '#F3E0A6',
+        claim: 'The card is an object. It loads before it leaves and settles after it lands.',
+        flight: '380ms', antic: '60ms', arrive: 'Overshoots, then settles on a spring',
+      },
+      {
+        key: 'balanced', name: 'Balanced', ink: '#E2C06A',
+        claim: 'A hint of load, then a decisive arrival. Weight you feel but never wait for.',
+        flight: '260ms', antic: '40ms', arrive: 'Small settle, no visible bounce',
+      },
+      {
+        key: 'crisp', name: 'Crisp', ink: '#C9A84C',
+        claim: 'The card is information. It is where it needs to be, immediately.',
+        flight: '160ms', antic: 'none', arrive: 'Decelerates to a stop, no overshoot',
+      },
+    ].map((m) => ({
+      ...m,
+      cardClass: reduced ? 'reduced' : m.key,
+      ringClass: reduced ? 'r-reduced' : 'r-' + m.key,
+    }));
+
+    return {
+      speed: this.props.speed ?? 1,
+      models,
+      rest: [
+        { rank: 'K', ink: '#1A1A1A' },
+        { rank: '9', ink: '#C8102E' },
+        { rank: '4', ink: '#1A1A1A' },
+      ],
+    };
+  }
+}
+</script>
+</body>
+</html>

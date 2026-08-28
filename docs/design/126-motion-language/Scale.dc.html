@@ -1,0 +1,123 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@600;700&family=Inter:wght@400;500&display=swap">
+  <style>
+    body { margin: 0; background: #031008; font-family: Inter, system-ui, sans-serif; }
+    a { color: #C9A84C; } a:hover { color: #E2C06A; }
+    .bar { height: 6px; border-radius: 9999px; background: #C9A84C; }
+    th { text-align: left; font-family: Rajdhani, sans-serif; font-weight: 600; font-size: 12px;
+         color: rgba(240,234,214,0.58); text-transform: uppercase; letter-spacing: .06em;
+         padding: 0 0 8px; border-bottom: 1px solid rgba(240,234,214,0.1); }
+    td { padding: 11px 0; border-bottom: 1px solid rgba(240,234,214,0.1); vertical-align: top;
+         font-size: 12px; color: rgba(240,234,214,0.75); line-height: 1.45; }
+    .step { font-family: Rajdhani, sans-serif; font-weight: 700; font-size: 15px; color: #F0EAD6; }
+    .ms { font-family: Rajdhani, sans-serif; font-weight: 600; font-size: 14px; color: #C9A84C; }
+  </style>
+</helmet>
+
+<div style="padding: 28px; display: flex; flex-direction: column; gap: 22px; background: #031008;">
+
+  <div style="display: flex; flex-direction: column; gap: 6px;">
+    <div style="font-family: Rajdhani, sans-serif; font-weight: 700; font-size: 22px; color: #F0EAD6;">The scale, if the table is <span style="color: #E2C06A;">{{model}}</span></div>
+    <div style="font-size: 13px; line-height: 1.5; color: rgba(240,234,214,0.75); max-width: 700px;">
+      Six steps, each named for what it is <em>for</em>. A step exists because a role needs it, never because a component wanted a number — that is the trap #52 identified. Every step carries its reduced form here, so the sweep cannot invent one per call site.
+    </div>
+  </div>
+
+  <table style="width: 100%; border-collapse: collapse;">
+    <tr>
+      <th style="width: 118px;">Step</th>
+      <th style="width: 62px;">ms</th>
+      <th style="width: 88px;"></th>
+      <th>What it is for</th>
+      <th style="width: 168px;">Reduced</th>
+    </tr>
+    <sc-for list="{{steps}}" as="s" hint-placeholder-count="6">
+      <tr>
+        <td><span class="step">{{s.name}}</span></td>
+        <td><span class="ms">{{s.ms}}</span></td>
+        <td><div class="bar" style="width: {{s.w}}; opacity: {{s.o}};"></div></td>
+        <td>{{s.role}}</td>
+        <td style="color: rgba(240,234,214,0.58);">{{s.reduced}}</td>
+      </tr>
+    </sc-for>
+  </table>
+
+  <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 22px;">
+
+    <div style="display: flex; flex-direction: column; gap: 10px;">
+      <div style="font-family: Rajdhani, sans-serif; font-weight: 700; font-size: 16px; color: #F0EAD6;">Easing vocabulary</div>
+      <sc-for list="{{easings}}" as="e" hint-placeholder-count="4">
+        <div style="display: flex; gap: 10px; align-items: baseline;">
+          <div style="width: 96px; flex-shrink: 0; font-family: Rajdhani, sans-serif; font-weight: 600; font-size: 13px; color: #C9A84C;">{{e.name}}</div>
+          <div style="font-size: 11.5px; line-height: 1.45; color: rgba(240,234,214,0.75);">{{e.use}}</div>
+        </div>
+      </sc-for>
+    </div>
+
+    <div style="display: flex; flex-direction: column; gap: 10px;">
+      <div style="font-family: Rajdhani, sans-serif; font-weight: 700; font-size: 16px; color: #F0EAD6;">Springs or durations</div>
+      <div style="font-size: 11.5px; line-height: 1.55; color: rgba(240,234,214,0.75);">
+        A <strong style="color: #E2C06A;">spring</strong> when the player caused it and is still touching it — a card picked up, dragged, released. Its arrival should answer the finger, and a duration cannot.
+      </div>
+      <div style="font-size: 11.5px; line-height: 1.55; color: rgba(240,234,214,0.75);">
+        A <strong style="color: #E2C06A;">duration</strong> for everything the table does on its own — a banner, a reveal, an opponent's play. These must be predictable and must line up with each other; springs drift apart under load.
+      </div>
+      <div style="font-size: 11.5px; line-height: 1.55; color: rgba(240,234,214,0.58); border-left: 2px solid rgba(201,168,76,0.3); padding-left: 10px;">
+        Three springs were mis-tuned once and had to be fixed by hand. <code style="color: #C9A84C;">pickup</code> is critically damped on purpose — it must not ring under the finger — and <code style="color: #C9A84C;">land</code> overshoots about 7% once, which is the one bounce a dropped object earns.
+      </div>
+    </div>
+  </div>
+
+  <div style="border-top: 1px solid rgba(240,234,214,0.1); padding-top: 14px; font-size: 11.5px; line-height: 1.55; color: rgba(240,234,214,0.58);">
+    <span style="color: #C9A84C; font-weight: 500;">Reduce motion is not "off".</span> Travel is what goes; state change stays legible. A card that flew now cross-fades in place, and <code style="color: #C9A84C;">impactDelayMs()</code> already returns 0 under reduced motion so the feedback fires immediately rather than waiting for a flight that never happens. That function stays the single source of the landing delay.
+  </div>
+</div>
+</x-dc>
+
+<script data-dc-script data-props='{
+  "model": {"editor": "enum", "default": "Balanced", "options": ["Weighted", "Balanced", "Crisp"]},
+  "$preview": {"width": 900, "height": 760}
+}'>
+class Component extends DCLogic {
+  renderVals() {
+    const model = this.props.model ?? 'Balanced';
+    const factor = model === 'Weighted' ? 1.35 : model === 'Crisp' ? 0.66 : 1;
+    const round = (n) => Math.round((n * factor) / 10) * 10;
+
+    const base = [
+      { name: 'flash',  ms: 90,   role: 'A state registering, too short to read as movement — a chip toggling, a glyph swapping.', reduced: 'unchanged' },
+      { name: 'tap',    ms: 120,  role: 'The answer to a finger: a press state, a selection lifting.', reduced: 'unchanged' },
+      { name: 'shift',  ms: 200,  role: 'Something moving a short way inside its own container.', reduced: 'cross-fade, no travel' },
+      { name: 'travel', ms: 300,  role: 'Something crossing the table — the card in flight. The one step the whole feel hangs on.', reduced: 'cross-fade, no travel' },
+      { name: 'reveal', ms: 600,  role: 'Something arriving that was not there: a banner, an overlay, a hand being dealt in.', reduced: 'fade only, 200ms' },
+      { name: 'dwell',  ms: 1200, role: 'An ambient loop, and how long a moment holds before it releases.', reduced: 'hold, do not loop' },
+    ];
+
+    const steps = base.map((s) => {
+      const ms = s.name === 'flash' || s.name === 'tap' ? s.ms : round(s.ms);
+      return { ...s, ms: ms + 'ms', w: Math.max(8, Math.round((ms / 1620) * 100)) + '%', o: s.name === 'travel' ? 1 : 0.45 };
+    });
+
+    return {
+      model,
+      steps,
+      easings: [
+        { name: 'decelerate', use: 'Anything arriving. Fast in, easing to a stop — the default, and what a card landing uses.' },
+        { name: 'accelerate', use: 'Anything leaving the screen for good. It should not decelerate into an edge it never reaches.' },
+        { name: 'standard',   use: 'Something moving between two places that both remain on screen.' },
+        { name: 'anticipate', use: 'A deliberate launch: a small load against the direction of travel first. Weighted only — in Crisp this curve does not exist.' },
+      ],
+    };
+  }
+}
+</script>
+</body>
+</html>
