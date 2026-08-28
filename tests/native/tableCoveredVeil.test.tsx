@@ -126,6 +126,20 @@ describe('a cover in the overlays slot', () => {
     await r.unmount();
   });
 
+  // The cover paints over the rail — it is absoluteFill at z 100 inside a z 300
+  // slot, the rail is at z 20 — so a sighted player cannot reach the settings
+  // knob under it. #408 exempted the rail from the veil unconditionally because
+  // the knob closes the settings sheet; a cover has no close control, so under
+  // one the exemption hands a screen reader a control nobody else has.
+  it('withdraws the control rail, which it paints over', async () => {
+    const r = await mount(true);
+    expect(screen.queryByTestId('control-rail')).toBeNull();
+    expect(
+      withdrawn(screen.getByTestId('control-rail', { includeHiddenElements: true }).props)
+    ).toBe(true);
+    await r.unmount();
+  });
+
   it('withdraws nothing while no cover is up', async () => {
     const r = await mount(false);
     expect(withdrawn(screen.getByTestId('game-table').props)).toBe(false);
