@@ -283,6 +283,11 @@ export function stalePortHolders(pids, table) {
   });
 }
 
+/** `stalePortHolders` against this machine's own process table. */
+export function staleAmong(pids) {
+  return stalePortHolders(pids, processTable());
+}
+
 export function clearPort(port, { dryRun = false } = {}) {
   const pids = portListeners(port).filter((pid) => pid !== process.pid);
   for (const pid of pids) killPid(pid, dryRun);
@@ -293,10 +298,9 @@ if (import.meta.filename === process.argv[1]) {
   const dryRun = process.argv.includes("--dry-run");
   const verb = dryRun ? "would clear" : "cleared";
 
-  // `npm run test:e2e` takes this path. Playwright refuses a busy port before it ever runs the
-  // webServer command, so the port has to be free by then — the run about to start is the
-  // authority on it and takes it from whoever holds it. Two sessions running e2e at once still
-  // collide; making that safe needs a port lease or a port per session, which #489 leaves open.
+  // Cleaning up after a run that is already over — `lib/ticketPipeline/cleanup.ts` is the
+  // caller. Starting a run does not come through here: `scripts/e2ePort.mjs` picks a port that
+  // is already free, which is what stopped two concurrent runs taking each other's server.
   //
   // A suite is also not the place to decide that some other node process has outlived its
   // session, so this exits before the classes below.
