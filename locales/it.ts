@@ -22,6 +22,7 @@ export const it: Record<keyof typeof en, string> = {
 
   // ------------------------------------------------------------- server.*
   "server.AUTH_RATE_LIMITED": "Troppi tentativi, riprova tra 15 minuti.",
+  "server.RENAME_RATE_LIMITED": "Troppi cambi di nome, riprova domani.",
   "server.RATE_LIMITED": "Troppe richieste, rallenta.",
   "server.NOT_AUTHENTICATED": "Autenticazione richiesta",
   "server.USERNAME_TAKEN": "Username già in uso",

@@ -153,6 +153,26 @@ class DrizzleStorage {
     throw new Error("Failed to generate unique friend code");
   }
 
+  /**
+   * Throws `UsernameTakenError` when the name is another account's. Both unique constraints can
+   * raise it — the column's own, and `users_username_lower_uq` on `lower(username)` — so a caller
+   * that checked first still has to catch: the check and the write are not one transaction.
+   */
+  async renameUser(userId: string, username: string): Promise<User> {
+    try {
+      const [user] = await db
+        .update(users)
+        .set({ username })
+        .where(eq(users.id, userId))
+        .returning();
+      if (!user) throw new Error("renameUser: no such user");
+      return user;
+    } catch (err) {
+      if (uniqueViolation(err)?.includes("username")) throw new UsernameTakenError();
+      throw err;
+    }
+  }
+
   async updateLastSeen(userId: string): Promise<void> {
     await db.update(users).set({ lastSeen: new Date() }).where(eq(users.id, userId));
   }

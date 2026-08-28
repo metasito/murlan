@@ -38,6 +38,7 @@ export const sq: Record<keyof typeof en, string> = {
 
   // ------------------------------------------------------------- server.*
   "server.AUTH_RATE_LIMITED": "Shumë përpjekje, provo përsëri pas 15 minutash.",
+  "server.RENAME_RATE_LIMITED": "Shumë ndryshime emri, provo përsëri nesër.",
   "server.RATE_LIMITED": "Shumë kërkesa, ngadalëso.",
   "server.NOT_AUTHENTICATED": "Kërkohet kyçja",
   "server.USERNAME_TAKEN": "Emri i përdoruesit është i zënë",
