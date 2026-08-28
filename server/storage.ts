@@ -2,7 +2,7 @@ import { eq, and, or, sql, inArray, isNull } from "drizzle-orm";
 import { randomInt } from "node:crypto";
 import { db } from "./db.ts";
 import { users, rooms, roomPlayers, friends, activeGames, matchReplays } from "../shared/schema.ts";
-import type { User, InsertUser, Room, RoomPlayer, Friend } from "../shared/schema.ts";
+import type { User, InsertUser, Room, RoomPlayer, Friend, RoomVisibility } from "../shared/schema.ts";
 
 export type SeatClaim =
   | { ok: true; seatIndex: number }
@@ -195,7 +195,12 @@ class DrizzleStorage {
    * unverified. The constraint is the only thing that can settle it, so the
    * insert asks it and retries on the answer.
    */
-  async createRoom(hostUserId: string, gameMode: "free_for_all" | "teams", maxPlayers: number): Promise<Room> {
+  async createRoom(
+    hostUserId: string,
+    gameMode: "free_for_all" | "teams",
+    maxPlayers: number,
+    visibility: RoomVisibility = "private"
+  ): Promise<Room> {
     for (let attempt = 0; attempt < 10; attempt++) {
       try {
         const [room] = await db.insert(rooms).values({
@@ -204,6 +209,7 @@ class DrizzleStorage {
           status: "waiting",
           gameMode,
           maxPlayers,
+          visibility,
         }).returning();
         if (!room) throw new Error("createRoom: insert returned no row");
         return room;
@@ -312,21 +318,29 @@ class DrizzleStorage {
    * one round trip — avoids an N+1 query pattern while the matchmaking
    * request waits.
    */
-  async getWaitingRooms(
-    roomIds: string[],
-    userId: string
-  ): Promise<JoinableRoom[]> {
-    if (roomIds.length === 0) return [];
+  /**
+   * Every public room still waiting for players, newest last so the fullest
+   * room fills first rather than four arrivals opening four rooms.
+   *
+   * Takes no candidate list on purpose. The register that used to supply one
+   * lived in this process's memory and only quick-match ever wrote to it, so a
+   * restart or a second process made a waiting room permanently unfindable
+   * while its row still said "waiting".
+   */
+  async findWaitingPublicRooms(userId?: string): Promise<JoinableRoom[]> {
     const rows = await db
       .select({
         room: rooms,
         playerCount: sql<number>`count(${roomPlayers.id})`,
-        containsUser: sql<boolean>`coalesce(bool_or(${roomPlayers.userId} = ${userId}), false)`,
+        containsUser: userId
+          ? sql<boolean>`coalesce(bool_or(${roomPlayers.userId} = ${userId}), false)`
+          : sql<boolean>`false`,
       })
       .from(rooms)
       .leftJoin(roomPlayers, eq(roomPlayers.roomId, rooms.id))
-      .where(and(inArray(rooms.id, roomIds), eq(rooms.status, "waiting")))
-      .groupBy(rooms.id);
+      .where(and(eq(rooms.visibility, "public"), eq(rooms.status, "waiting")))
+      .groupBy(rooms.id)
+      .orderBy(rooms.createdAt);
 
     return rows.map((r) => ({
       room: r.room,

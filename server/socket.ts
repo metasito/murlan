@@ -19,7 +19,6 @@ import {
   activeGames,
   forgetLobbyDropout,
   lobbyDropouts,
-  publicRoomIds,
   rememberLobbyDropout,
   seatOfUser,
   socketRoomMap,
@@ -293,7 +292,7 @@ export function setupSocket(httpServer: HttpServer) {
           });
           return;
         }
-        const room = await storage.createRoom(userId, gameMode, maxPlayers);
+        const room = await storage.createRoom(userId, gameMode, maxPlayers, "private");
         await storage.addRoomPlayer(room.id, userId, 0);
 
         socket.join(room.id);
@@ -479,12 +478,6 @@ export function setupSocket(httpServer: HttpServer) {
           socket.data?.username ?? username,
           { socket, source: "leave" }
         );
-        // Needs the player count as it stands after the removal, which is why
-        // it is here rather than inside handleSeatRelease.
-        if (publicRoomIds.has(leavingRoomId)) {
-          const remaining = await storage.getRoomPlayers(leavingRoomId);
-          if (remaining.length === 0) publicRoomIds.delete(leavingRoomId);
-        }
       },
       { limit: 20, windowMs: 60_000 }
     );
@@ -501,34 +494,24 @@ export function setupSocket(httpServer: HttpServer) {
           });
           return;
         }
-        const waiting = await storage.getWaitingRooms(
-          Array.from(publicRoomIds),
-          userId
-        );
-        const stillWaiting = new Set(waiting.map((c) => c.room.id));
-        for (const roomId of Array.from(publicRoomIds)) {
-          if (!stillWaiting.has(roomId)) publicRoomIds.delete(roomId);
-        }
+        const waiting = await storage.findWaitingPublicRooms(userId);
 
         let joinedRoomId: string | null = null;
         for (const candidate of waiting) {
           if (candidate.containsUser) continue;
+          // Nobody in it means nobody is coming: the row outlived the write
+          // that should have closed it, and seating someone alone in it would
+          // strand them in a lobby with a host who already left.
+          if (candidate.playerCount === 0) continue;
           if (
             candidate.room.maxPlayers !== maxPlayers ||
-            candidate.room.gameMode !== gameMode
+            candidate.room.gameMode !== gameMode ||
+            candidate.playerCount >= candidate.room.maxPlayers
           )
             continue;
-          if (candidate.playerCount >= candidate.room.maxPlayers) {
-            publicRoomIds.delete(candidate.room.id);
-            continue;
-          }
+
           const claim = await storage.claimRoomSeat(candidate.room.id, userId);
-          if (!claim.ok) {
-            if (claim.reason === "full" || claim.reason === "not_waiting") {
-              publicRoomIds.delete(candidate.room.id);
-            }
-            continue;
-          }
+          if (!claim.ok) continue;
 
           const roomId = candidate.room.id;
           socket.join(roomId);
@@ -539,17 +522,13 @@ export function setupSocket(httpServer: HttpServer) {
             "room:state",
             roomStatePayload(candidate.room, updatedPlayers)
           );
-          if (updatedPlayers.length >= candidate.room.maxPlayers) {
-            publicRoomIds.delete(roomId);
-          }
           joinedRoomId = roomId;
           break;
         }
 
         if (!joinedRoomId) {
-          const room = await storage.createRoom(userId, gameMode, maxPlayers);
+          const room = await storage.createRoom(userId, gameMode, maxPlayers, "public");
           await storage.addRoomPlayer(room.id, userId, 0);
-          publicRoomIds.add(room.id);
           socket.join(room.id);
           socketRoomMap.set(socket.id, room.id);
 
@@ -682,9 +661,14 @@ export function setupSocket(httpServer: HttpServer) {
           moveLog: startReplayLog(),
           dealFirstSeat: 0,
         };
+        // Before the game exists, not after: `claimRoomSeat` re-reads the
+        // status under its own row lock, so a room that is no longer `waiting`
+        // cannot take a straggler. Leaving it to dealManche would open a
+        // window the width of one round-trip in which quick-match can seat
+        // someone into a hand whose roster is already frozen.
+        await storage.updateRoomStatus(roomId, "in_progress");
         activeGames.set(roomId, newGame);
 
-        publicRoomIds.delete(roomId);
         // The lobby is over; a seat lost from here on is the live game's to
         // hold open through the disconnect grace.
         lobbyDropouts.delete(roomId);
@@ -1010,7 +994,7 @@ export function setupSocket(httpServer: HttpServer) {
             return;
           }
 
-          const { playerMap, scores, gameMode, matchLength, matchTarget, maxPlayers, isPublic } =
+          const { playerMap, scores, gameMode, matchLength, matchTarget, maxPlayers } =
             restored.match;
           if (!Object.values(playerMap).includes(userId)) {
             socket.emit("game:rejoin_failed", { message: "Not authorized", code: "UNAUTHORIZED", roomId });
@@ -1051,7 +1035,6 @@ export function setupSocket(httpServer: HttpServer) {
             dealFirstSeat: restored.dealFirstSeat,
           };
           activeGames.set(roomId, game);
-          if (isPublic) publicRoomIds.add(roomId);
           logger.info({ roomId }, "Rehydrated activeGames from DB after restart");
 
           const seat = seatOfUser(game, userId);
@@ -1355,6 +1338,7 @@ function roomStatePayload(
     status: string;
     gameMode: string;
     maxPlayers: number;
+    visibility: string;
   },
   players: { seatIndex: number; userId: string; user: { username: string } }[]
 ) {
@@ -1365,6 +1349,7 @@ function roomStatePayload(
     status: room.status,
     gameMode: room.gameMode,
     maxPlayers: room.maxPlayers,
+    visibility: room.visibility,
     players: players.map((p) => ({
       seatIndex: p.seatIndex,
       userId: p.userId,
@@ -1395,6 +1380,9 @@ function roomOf(game: OnlineGameState) {
     status: "in_progress",
     gameMode: game.gameMode,
     maxPlayers: game.maxPlayers,
+    // Reached only when the rooms row could not be read, and a running game
+    // takes nobody either way. Private is the answer that cannot mislead.
+    visibility: "private",
   };
 }
 
@@ -1553,7 +1541,6 @@ async function handleSeatRelease(
             "Failed to set rooms.status = finished after the last player left the lobby"
           )
         );
-      publicRoomIds.delete(roomId);
       lobbyDropouts.delete(roomId);
       return;
     }

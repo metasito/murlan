@@ -14,7 +14,6 @@ import {
 import {
   activeGames,
   lobbyDropouts,
-  publicRoomIds,
   userSocketMap,
 } from "./gameRoom.ts";
 import type { OnlineGameState } from "./gameRoom.ts";
@@ -102,7 +101,6 @@ export function disposeGame(roomId: string, deleteRow = true) {
   if (game) clearRoomDisconnectTimers(game);
   clearRoomTimers(roomId);
   activeGames.delete(roomId);
-  publicRoomIds.delete(roomId);
   if (deleteRow) {
     db.delete(activeGamesTable)
       .where(eq(activeGamesTable.roomId, roomId))
@@ -129,7 +127,6 @@ export function persistGameState(roomId: string, game: OnlineGameState): Promise
       matchLength: game.matchLength,
       matchTarget: game.matchTarget,
       maxPlayers: game.maxPlayers,
-      isPublic: publicRoomIds.has(roomId),
     }),
     updatedAt: new Date(),
   };
@@ -281,20 +278,6 @@ export function startSweeper(io: SocketServer) {
       void pruneStaleRooms().catch((err: unknown) =>
         logger.error({ err }, "Pruning stale rooms failed")
       );
-
-      for (const roomId of Array.from(publicRoomIds)) {
-        void storage
-          .getRoomById(roomId)
-          .then((room) => {
-            if (!room || room.status !== "waiting") publicRoomIds.delete(roomId);
-          })
-          .catch((err) =>
-            logger.warn(
-              { err, roomId },
-              "Failed to read the rooms row while sweeping — the public room list keeps a possibly unjoinable entry"
-            )
-          );
-      }
     } catch (err) {
       logger.error({ err }, "Sweeper failed");
     }
