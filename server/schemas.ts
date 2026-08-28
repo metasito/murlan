@@ -1,13 +1,14 @@
 import { z } from "zod";
 import { SUPPORTED_LOCALES, type Locale } from "../shared/i18n.ts";
+import { USERNAME_MAX, USERNAME_MIN, USERNAME_PATTERN } from "../shared/username.ts";
 import { BUG_REPORT_LIMITS } from "./bugReports.ts";
 
 export const RegisterSchema = z.object({
   username: z
     .string()
-    .min(3)
-    .max(30)
-    .regex(/^[a-zA-Z0-9_]+$/, { message: "Letters, numbers and underscores only" }),
+    .min(USERNAME_MIN)
+    .max(USERNAME_MAX)
+    .regex(USERNAME_PATTERN, { message: "Letters, numbers and underscores only" }),
   password: z.string().min(6).max(100),
 });
 
@@ -17,8 +18,10 @@ export const RegisterSchema = z.object({
  */
 export const RenameSchema = z.object({ username: RegisterSchema.shape.username });
 
+// Bounded like a username but not validated like one: a login says whether the
+// credentials match, never which half of them was malformed.
 export const LoginSchema = z.object({
-  username: z.string().min(1).max(30),
+  username: z.string().min(1).max(USERNAME_MAX),
   password: z.string().min(1).max(100),
 });
 

@@ -6,6 +6,7 @@ import { en } from "./en.ts";
 export const it: Record<keyof typeof en, string> = {
   // ---------------------------------------------------------------- common
   "common.cancel": "Annulla",
+  "common.save": "Salva",
   "common.close": "Chiudi",
   "common.back": "Indietro",
   "common.loading": "Caricamento…",
@@ -811,6 +812,13 @@ export const it: Record<keyof typeof en, string> = {
   // ------------------------------------------------------------- profile.*
   "profile.title": "Profilo",
   "profile.loggedInAs": "Connesso come {{username}}",
+  "profile.renameA11yLabel": "Cambia il tuo nome utente",
+  "profile.renamePlaceholder": "Nuovo nome utente",
+  "profile.renameSaving": "Salvataggio…",
+  "profile.renameTooShort": "Almeno {{min}} caratteri.",
+  "profile.renameTooLong": "Al massimo {{max}} caratteri.",
+  "profile.renameInvalidChars": "Solo lettere, numeri e trattini bassi.",
+  "profile.renameFailed": "Non è stato possibile cambiare il nome. Riprova.",
 
   "profile.statsTitle": "Statistiche",
   "profile.statsLoadingA11yLabel": "Caricamento statistiche",

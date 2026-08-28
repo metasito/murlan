@@ -1,5 +1,6 @@
 import { fetch } from "expo/fetch";
 import { QueryClient, QueryFunction } from "@tanstack/react-query";
+import { ApiError, parseServerPayload } from "./apiError";
 
 /**
  * Gets the base URL for the Express API server (e.g., "http://localhost:3000")
@@ -22,7 +23,7 @@ export function getApiUrl(): string {
 async function throwIfResNotOk(res: Response) {
   if (!res.ok) {
     const text = (await res.text()) || res.statusText;
-    throw new Error(`${res.status}: ${text}`);
+    throw new ApiError(res.status, parseServerPayload(text), text);
   }
 }
 

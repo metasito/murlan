@@ -16,6 +16,8 @@ interface AuthContextValue {
   loading: boolean;
   login: (username: string, password: string) => Promise<void>;
   register: (username: string, password: string) => Promise<void>;
+  /** Throws `ApiError` when the server refuses; the account is left untouched. */
+  rename: (username: string) => Promise<void>;
   logout: () => Promise<void>;
 }
 
@@ -113,6 +115,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(data));
   }, []);
 
+  // Here rather than in the screen: the signed-in player lives in state *and*
+  // in storage, and the boot check keeps what was stored whenever the server
+  // cannot be reached. A rename that updated only the state would come back
+  // under the old name on the next launch, offline, with nothing to see.
+  const rename = useCallback(async (username: string) => {
+    const res = await apiRequest("PATCH", "/api/users/me", { username });
+    const data = await res.json();
+    setUser(data);
+    await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+  }, []);
+
   const logout = useCallback(async () => {
     // Before the session goes: the endpoint needs the cookie, and the next
     // person to sign in on this phone must not inherit these invites.
@@ -130,8 +143,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const contextValue = useMemo(
-    () => ({ user, loading, login, register, logout }),
-    [user, loading, login, register, logout]
+    () => ({ user, loading, login, register, rename, logout }),
+    [user, loading, login, register, rename, logout]
   );
 
   return (

@@ -13,6 +13,7 @@
 export const en = {
   // ---------------------------------------------------------------- common
   "common.cancel": "Cancel",
+  "common.save": "Save",
   "common.close": "Close",
   "common.back": "Back",
   "common.loading": "Loading…",
@@ -808,6 +809,13 @@ export const en = {
   // ------------------------------------------------------------- profile.*
   "profile.title": "Profile",
   "profile.loggedInAs": "Signed in as {{username}}",
+  "profile.renameA11yLabel": "Change your username",
+  "profile.renamePlaceholder": "New username",
+  "profile.renameSaving": "Saving…",
+  "profile.renameTooShort": "At least {{min}} characters.",
+  "profile.renameTooLong": "At most {{max}} characters.",
+  "profile.renameInvalidChars": "Letters, numbers and underscores only.",
+  "profile.renameFailed": "The name could not be changed. Try again.",
 
   "profile.statsTitle": "Stats",
   "profile.statsLoadingA11yLabel": "Loading stats",

@@ -14,12 +14,13 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useSocket } from "@/context/SocketContext";
 import { useOnlineGame } from "@/context/OnlineGameContext";
 import { useNotification } from "@/context/NotificationContext";
+import { serverErrorMessage } from "@/lib/apiError";
 import { apiRequest } from "@/lib/query-client";
 import { Colors, Spacing, FontSize, Radius, TOUCH_TARGET_MIN, Type } from '@/lib/theme';
 import { MenuButton } from "@/components/MenuButton";
 import { MenuLayout } from "@/components/MenuLayout";
 import { ConfirmDialog, type ConfirmRequest } from "@/components/ConfirmDialog";
-import { useTranslation, translateServerPayload } from "@/lib/i18n";
+import { useTranslation } from "@/lib/i18n";
 import { registerForPush } from "@/lib/pushRegistration";
 import type { TranslationKey, TranslationParams } from "@/lib/i18n";
 import { a11yHidden, a11yState, useA11yHint } from "@/lib/a11y";
@@ -172,14 +173,7 @@ export default function FriendsScreen() {
       setSearchResult(data);
       setSearchDone(true);
     } catch (e: unknown) {
-      const msg = e instanceof Error ? e.message : t("common.error");
-      const match = msg.match(/\d+: (.+)/);
-      const body = match ? match[1] : msg;
-      try {
-        setSearchError(translateServerPayload(JSON.parse(body)));
-      } catch {
-        setSearchError(t("friends.userNotFound"));
-      }
+      setSearchError(serverErrorMessage(e, t("friends.userNotFound")));
       setSearchDone(true);
     }
     setSearchLoading(false);
@@ -202,14 +196,7 @@ export default function FriendsScreen() {
       setSearchDone(false);
       qc.invalidateQueries({ queryKey: ["/api/friends/sent"] });
     } catch (e: unknown) {
-      const msg = e instanceof Error ? e.message : t("common.error");
-      const match = msg.match(/\d+: (.+)/);
-      const body = match ? match[1] : msg;
-      try {
-        showError(translateServerPayload(JSON.parse(body)));
-      } catch {
-        showError(body);
-      }
+      showError(serverErrorMessage(e, t("common.error")));
     }
     setAddLoading(false);
   }
