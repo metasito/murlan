@@ -6,10 +6,11 @@
 
 import { useEffect, type ComponentProps } from "react";
 import { BackHandler, Platform, Pressable, ScrollView, StyleSheet, View } from "react-native";
-import Animated, { SlideInLeft } from "react-native-reanimated";
+import Animated, { SlideInLeft, SlideInRight } from "react-native-reanimated";
 import Feather from "@expo/vector-icons/Feather";
 import { RAIL_TESTID } from "./chrome";
 import { physicalTouchTarget } from "@/components/cardFaceModel";
+import type { RailSide } from "@/components/gameTableModel";
 import { TableText } from "./TableText";
 import { LinearGradient } from "expo-linear-gradient";
 import { Colors, FontSize, Garnet, Highlight, makeShadow, Motion, Scrim, Spacing, TOUCH_TARGET_MIN } from "@/lib/theme";
@@ -204,6 +205,8 @@ const EXIT_GRADIENT_LOCATIONS = [0, 0.22, 0.6, 1] as const;
 export interface GameSettingsSheetProps {
   /** The rail's own width — the sheet and its veil both start at its outer edge. */
   rail: number;
+  /** …and the edge the rail is against, which is the edge the sheet opens from. */
+  railSide: RailSide;
   topPad: number;
   bottomPad: number;
   scale: number;
@@ -221,6 +224,7 @@ const SHEET_Z = 60;
 
 export function GameSettingsSheet({
   rail,
+  railSide,
   topPad,
   bottomPad,
   scale,
@@ -251,6 +255,8 @@ export function GameSettingsSheet({
   // and GIOCA all stay in the tab order behind it.
   useFocusTrap([SHEET_TESTID, RAIL_TESTID]);
 
+  const away = railSide === "left" ? "right" : "left";
+
   return (
     <>
       {/* Starts at the rail's own outer edge, never under it — the menu knob
@@ -259,15 +265,28 @@ export function GameSettingsSheet({
         testID="settings-veil"
         onPress={onClose}
         {...a11yHidden()}
-        style={[sheetStyles.veil, { left: rail, zIndex: SHEET_Z }]}
+        style={[
+          sheetStyles.veil,
+          { [railSide]: rail, [away]: 0, zIndex: SHEET_Z },
+        ]}
       />
       <Animated.View
         testID={SHEET_TESTID}
         {...a11yDialog(t("gameSettingsSheet.title"))}
-        entering={reduceMotion ? undefined : SlideInLeft.duration(Motion.duration.base)}
+        entering={
+          reduceMotion
+            ? undefined
+            : (railSide === "left" ? SlideInLeft : SlideInRight).duration(Motion.duration.base)
+        }
         style={[
           sheetStyles.sheetPos,
-          { left: rail, top: topPad, bottom: bottomPad, width: SHEET_W * scale, zIndex: SHEET_Z + 1 },
+          {
+            [railSide]: rail,
+            top: topPad,
+            bottom: bottomPad,
+            width: SHEET_W * scale,
+            zIndex: SHEET_Z + 1,
+          },
         ]}
       >
         <LinearGradient
@@ -395,11 +414,12 @@ export function GameSettingsSheet({
 }
 
 const sheetStyles = StyleSheet.create({
+  // Both horizontal edges are set per render: the veil starts at the rail's
+  // outer edge and runs to the far one, whichever side the rail is on.
   veil: {
     position: "absolute",
     top: 0,
     bottom: 0,
-    right: 0,
     backgroundColor: Scrim.medium,
   },
   sheetPos: { position: "absolute" },

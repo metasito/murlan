@@ -58,6 +58,8 @@ import {
   canPassNow as canPassNowOf,
   comboKey,
   computeTableFrame,
+  railSideFor,
+  LANDSCAPE_LEFT,
   describeTableForA11y,
   displayedHandCount,
   EMPTY_PILE,
@@ -767,6 +769,7 @@ export function GameTable({
   // session's own choice, not a stored preference — sound, music and
   // vibration are the persisted ones, which the sheet reads for itself.
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [rotation, setRotation] = useState<number>(LANDSCAPE_LEFT);
   const tableWithdrawn = settingsOpen || tableCovered;
   const behindVeil = a11yVeiled(tableWithdrawn);
   // The sheet hangs off the rail, outside the overlays slot, so the slot goes
@@ -935,7 +938,8 @@ export function GameTable({
     [players, viewerSeat]
   );
 
-  const frame = computeTableFrame({ width: W, insets, scale });
+  const railSide = railSideFor(Math.max(insets.left, insets.right), rotation);
+  const frame = computeTableFrame({ width: W, insets, scale, railSide });
   // The felt box the lamp lives in. The pool is drawn oversized and slid under
   // this box's own clipping, so it needs the box rather than the screen.
   const feltW = W;
@@ -1050,6 +1054,25 @@ export function GameTable({
   const handLiftStyle = useHandLift(isMyTurn && !isFinished && !exchange.active, scale);
 
   // ── Lifecycle ───────────────────────────────────────────────────────────────
+
+  // The lock permits both landscape directions, so the cutout is on whichever
+  // side the player is holding the phone — and the rail is the cutout's column.
+  useEffect(() => {
+    let mounted = true;
+    const follow = (o: ScreenOrientation.Orientation) => {
+      if (mounted) setRotation(o);
+    };
+    ScreenOrientation.getOrientationAsync().then(follow).catch(() => {});
+    const sub = ScreenOrientation.addOrientationChangeListener((e) =>
+      follow(e.orientationInfo.orientation)
+    );
+    return () => {
+      mounted = false;
+      // `removeOrientationChangeListener` throws on a subscription with no
+      // `remove`, which is what the native module hands back untethered.
+      sub?.remove?.();
+    };
+  }, []);
 
   useEffect(() => {
     let mounted = true;
@@ -1469,6 +1492,7 @@ export function GameTable({
       <ControlRail
         veiled={behindCoverOnly}
         width={frame.rail}
+        side={frame.railSide}
         topPad={frame.tableTop}
         bottomPad={frame.tableBottom}
         top={
@@ -1491,6 +1515,7 @@ export function GameTable({
       {settingsOpen && (
         <GameSettingsSheet
           rail={frame.rail}
+          railSide={frame.railSide}
           topPad={frame.tableTop}
           bottomPad={frame.tableBottom}
           scale={scale}
