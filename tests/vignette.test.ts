@@ -199,4 +199,12 @@ test("the lamp moves by position on native and by transform on web", () => {
   // company mid-swing on any frame the two rounded differently.
   const clocks = source.match(/withTiming\(/g) ?? [];
   assert.equal(clocks.length, 2, "the lamp is driven by something other than one x and one y");
+
+  // The same defect reached through the other door: `useAnimatedProps` writes
+  // SVG attributes rather than style, so it can animate `cx` or `stopColor`
+  // past every check above. Nothing here needs it.
+  assert.ok(
+    !/useAnimatedProps/.test(source),
+    "the felt animates SVG attributes, which is paint no compositor can take"
+  );
 });

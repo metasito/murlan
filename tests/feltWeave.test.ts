@@ -41,18 +41,27 @@ const over = (base: number, thread: { lum: number; alpha: number }) =>
  * thread every 3px produces, which is enough to compare surfaces against each
  * other — the same measure `tests/e2e/feltNap.spec.ts` takes off real pixels.
  */
-function relief(stop: string, threads: string[]): number {
+function regions(stop: string, threads: string[]): number[] {
   const base = luminance(stop);
   const parsed = threads.map(parse);
-  const both = parsed.reduce(over, base);
-  const each = parsed.map((t) => over(base, t));
-  // Brightest minus darkest, over all four regions — bare cloth, either thread,
-  // and the crossing. Taking bare cloth as the brightest is what a shadow
-  // guarantees and an added highlight does not, so assuming it would hide the
-  // very case this measure exists to catch.
-  const regions = [base, ...each, both];
-  const mean = (base * 4 + each[0] * 2 + each[1] * 2 + both) / 9;
-  return (Math.max(...regions) - Math.min(...regions)) / Math.max(mean, 1);
+  // Bare cloth, either thread alone, and the crossing where both apply.
+  return [base, ...parsed.map((t) => over(base, t)), parsed.reduce(over, base)];
+}
+
+/**
+ * Brightest region minus darkest, in levels. Taking bare cloth as the brightest
+ * is what a shadow guarantees and an added highlight does not, so assuming it
+ * would hide the very case this measure exists to catch.
+ */
+function amplitude(stop: string, threads: string[]): number {
+  const r = regions(stop, threads);
+  return Math.max(...r) - Math.min(...r);
+}
+
+function relief(stop: string, threads: string[]): number {
+  const [base, a, b, both] = regions(stop, threads);
+  const mean = (base * 4 + a * 2 + b * 2 + both) / 9;
+  return amplitude(stop, threads) / Math.max(mean, 1);
 }
 
 const SHADOW = [Lantern.weaveShade, Lantern.weaveShadeCross];
@@ -86,6 +95,24 @@ describe("the weave is the same cloth whichever felt is chosen", () => {
       const { lum, alpha } = parse(thread);
       assert.equal(lum, 0, `${thread} adds light, so its lift does not scale with the lamp`);
       assert.ok(alpha > 0 && alpha < 1, `${thread} is not a translucent thread`);
+    }
+  });
+
+  // Constant relief follows from the threads being black, so the two tests
+  // above are together one claim about their *colour* and say nothing about
+  // how deep they are. This is the only part that holds the chosen alphas, and
+  // it is deliberately the lit end alone: because amplitude is a fraction of
+  // the base, any ratio between two stops of the same felt reduces to that
+  // felt's own contrast and would pass whatever the threads were set to.
+  //
+  // What the crosshatch does on cloth the lamp is not reaching is a claim about
+  // rendered pixels rather than about a stop, and `tests/e2e/feltNap.spec.ts`
+  // is where it is measured.
+  test("the depth chosen is legible on lit cloth, on every felt", () => {
+    for (const [felt, stops] of Object.entries(FeltGradients)) {
+      const lit = amplitude(stops[0], SHADOW);
+      assert.ok(lit > 6, `${felt}'s weave is invisible under the lamp: ${lit.toFixed(1)} levels`);
+      assert.ok(lit < 20, `${felt}'s weave is coarse under the lamp: ${lit.toFixed(1)} levels`);
     }
   });
 

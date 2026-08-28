@@ -74,9 +74,6 @@ const BLOOM_RX = 0.34;
 const BLOOM_RY = 0.46;
 const VIGNETTE_RX = 1.28;
 const VIGNETTE_RY = 1.04;
-// The sheen belongs to the pool, so it is drawn on the pool's own ellipse.
-const NAP_RX = 0.76;
-const NAP_RY = 1.0;
 
 /** Where the felt's own five stops sit along the falloff, before the dark. */
 const FIELD_OFFSETS = [0, 0.14, 0.3, 0.46, 0.62] as const;
@@ -331,7 +328,7 @@ export function FeltPool({
         testID="felt-nap-anchor"
         style={[{ position: "absolute", width: 0, height: 0 }, POOL_LAYER, napStyle]}
       >
-        <Svg {...ellipse(NAP_RX, NAP_RY)}>
+        <Svg {...ellipse(FIELD_RX, FIELD_RY)}>
           <Defs>
             <RadialGradient id={NAP_ID}>
               <Stop offset={NAP_OFFSETS.under} {...stop(Lantern.clear)} />

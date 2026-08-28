@@ -141,20 +141,15 @@ export const Lantern = {
   coreMid:  'rgba(255,226,172,0.09)',
   bloom:    'rgba(255,236,190,0.12)',
   clear:    'rgba(255,242,208,0)',
-  // The cloth's own weave: the shadow cast between the threads, deeper one way
-  // than the other, crossing at 45. Both are black, and that is the whole
-  // point — a shadow *scales* what it is laid over, so the crosshatch is loud
-  // under the lamp and gone in the dark without anything having to move. A
-  // white thread cannot do that: it adds the same few levels wherever it is
-  // painted, so on an unlit `#010B07` rim it is a legible hatch on nothing,
-  // which is what read as a screen pattern rather than as cloth.
+  // The weave, crossing at 45: shadow between the threads, deeper one way than
+  // the other. Both must stay black — a shadow scales the light that reached
+  // it, so the crosshatch tracks the lamp with nothing moving, and a thread
+  // that adds light instead reads loudest on the darkest felt
+  // (tests/feltWeave.test.ts).
   weaveShade:      'rgba(0,0,0,0.085)',
   weaveShadeCross: 'rgba(0,0,0,0.035)',
-  // The pile standing off that weave. The threads are geometry and do not
-  // move; the pile answers to where the lamp is — this is the band where the
-  // light rakes across the fibres and you see their sides, which is around the
-  // lamp rather than under it. It shares `clear`'s own hue so the run out of it
-  // stays inside one colour: SVG blends stops non-premultiplied, and two hues
+  // The pile standing off that weave, where the light rakes across the fibres.
+  // Shares `clear`'s hue: SVG blends stops non-premultiplied, so two hues
   // either side of a transparent stop read as grey at half strength.
   napSheen: 'rgba(255,242,208,0.055)',
   // Real darkness past the falloff, and the vignette over all of it.

@@ -13,13 +13,10 @@
 // terms under the lamp. That reading is 4:1 in favour of the lamp with a
 // uniform weave and proves nothing.
 //
-// What is wrong is the hatch measured *against its own cloth*. A white thread
-// is additive and does not care how dark the felt under it is, so on a
-// `#010B07` rim it is a fixed lift on almost nothing — the unlit corner carried
-// several times the relative contrast of the lit middle. A surface with no
-// light on it showing more texture than one under a lamp is the screen-pattern
-// tell, and it is one number: relief 0.264 dark against 0.098 lit here, and
-// 0.793 against 0.169 in the prototype, which has the same defect.
+// What the eye reads is the hatch measured *against its own cloth*. A surface
+// with no light on it must not show more texture than one under the lamp, and
+// that is one number: amplitude over local mean, sampled at one point with the
+// lamp near it and again with the lamp across the table.
 import { test, expect } from "@playwright/test";
 import { openCaptureState } from "./helpers/offlineSeed";
 import { CAPTURE_STATES } from "../../lib/captureStates";

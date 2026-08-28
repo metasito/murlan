@@ -5,9 +5,8 @@
 //
 // **The weave is shadow.** Both threads are black, at two depths, so what they
 // take away is a fraction of whatever light reached them and the crosshatch
-// tracks the lamp without moving. A white thread cannot: it adds the same few
-// levels wherever it is painted, so on a `#010B07` rim it drew a legible hatch
-// on nothing, which is what read as a screen pattern.
+// tracks the lamp without moving. A thread that adds light cannot, which is why
+// the colour is pinned here and not left to the token file.
 //
 // **The pile is not the weave.** It sheens in a band *around* the lamp, where
 // the light rakes across the fibres and you see their sides. What is pinned
@@ -196,9 +195,8 @@ describe('the cloth has a nap, keyed to the lamp', () => {
 
     expect(weave).toBeGreaterThan(-1);
     expect(nap).toBeGreaterThan(-1);
-    // Under the threads it would brighten the base the light thread contrasts
-    // against, which is the wrong direction: it would make the hatch *less*
-    // legible where the lamp is.
+    // Under them the threads would shade the sheen, and the pile catches the
+    // lamp on top of the cloth rather than through it.
     expect(nap).toBeGreaterThan(weave);
 
     await r.unmount();
