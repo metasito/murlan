@@ -11,6 +11,7 @@
 // slash in it with the same `INVALID_PAYLOAD`.
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import { SUPPORTED_LOCALES, catalogs, type Locale } from "../shared/i18n.ts";
 import { usernameProblem } from "../shared/username.ts";
 
@@ -72,5 +73,20 @@ describe("a refused rename says which refusal it was", () => {
     assert.equal(usernameProblem("ab"), "tooShort");
     assert.equal(usernameProblem("a".repeat(31)), "tooLong");
     assert.equal(usernameProblem("ana besi"), "invalidChars");
+  });
+
+  // `tests/native/renameFailureCopy.test.tsx` proves the five sentences differ
+  // once a refusal reaches `serverErrorMessage`. Nothing there proves the
+  // screen calls it, and no test can drive the control to find out (#523), so
+  // the last link is read from source: a `catch` that rendered its own fallback
+  // would collapse taken and rate-limited into one sentence with every other
+  // test still green.
+  test("the rename's catch renders what the server said", () => {
+    const source = readFileSync(new URL("../app/(online)/profile.tsx", import.meta.url), "utf8");
+    assert.match(
+      source,
+      /catch[\s\S]{0,120}setError\(serverErrorMessage\(/,
+      "profile.tsx no longer routes a refused rename through serverErrorMessage"
+    );
   });
 });

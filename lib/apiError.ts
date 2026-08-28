@@ -7,16 +7,21 @@ import { translateServerPayload, type ServerPayload } from "./i18n";
  * what went wrong would otherwise import `expo/fetch` through it.
  */
 export class ApiError extends Error {
-  constructor(
-    readonly status: number,
-    /** The parsed JSON body, or `null` when the server sent something else. */
-    readonly payload: ServerPayload | null,
-    /** …and the raw text, for the cases that are not JSON at all. */
-    readonly body: string
-  ) {
-    // `"<status>: <body>"` is what reaches a log or an unhandled rejection.
+  readonly status: number;
+  /** The parsed JSON body, or `null` when the server sent something else. */
+  readonly payload: ServerPayload | null;
+  /** …and the raw text, for the cases that are not JSON at all. */
+  readonly body: string;
+
+  // Fields assigned rather than declared as constructor parameters: Node's
+  // type stripping refuses a parameter property, and this file is read by the
+  // node test runner (tests/renameCopy.test.ts).
+  constructor(status: number, payload: ServerPayload | null, body: string) {
     super(`${status}: ${body}`);
     this.name = "ApiError";
+    this.status = status;
+    this.payload = payload;
+    this.body = body;
   }
 }
 
