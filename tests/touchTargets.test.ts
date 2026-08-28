@@ -62,11 +62,11 @@ const NOT_A_TARGET: [string, number, string][] = [
  * goal, not the invariant.
  */
 const UNDER_THE_FLOOR: [string, number, string][] = [
-  ["app/(online)/friends.tsx", 1, "the send button is a 36pt circle; #492"],
-  ["app/(online)/index.tsx", 1, "the error banner's close is a 16pt icon with 12pt of slop, so 40pt; #492"],
-  ["app/(online)/room.tsx", 1, "an invite row is 36pt in landscape, which is the orientation the game plays in; #492"],
-  ["components/ReplayControls.tsx", 1, "a move row is one text line inside 4pt of padding; #492"],
-  ["app/index.tsx", 2, "the logout button is caption text inside 2pt of padding; #492"],
+  ["app/(online)/friends.tsx", 1, "the send button is a 36pt circle; #493"],
+  ["app/(online)/index.tsx", 1, "the error banner's close is a 16pt icon with 12pt of slop, so 40pt; #493"],
+  ["app/(online)/room.tsx", 1, "an invite row is 36pt in landscape, which is the orientation the game plays in; #493"],
+  ["components/ReplayControls.tsx", 1, "a move row is one text line inside 4pt of padding; #493"],
+  ["app/index.tsx", 2, "the logout button is caption text inside 2pt of padding; #493"],
 ];
 
 type Candidate = { file: string; line: number; effective: number | null };
