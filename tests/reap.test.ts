@@ -10,6 +10,7 @@ import {
   isSystemProcess,
   burningOrphans,
   psTimeToMs,
+  stalePortHolders,
 } from "../scripts/reap.mjs";
 import preflightMemory, { memoryVerdict, memoryFloor } from "../scripts/preflightMemory.mjs";
 
@@ -118,6 +119,39 @@ describe("staleByAge", () => {
 
   test("never takes a process whose start time could not be read", () => {
     assert.deepEqual(staleByAge([proc({ pid: 7, startedAt: 0 })], opts), []);
+  });
+});
+
+describe("stalePortHolders", () => {
+  const table = [
+    { pid: 500, ppid: 42, startedAt: NOW - HOUR, name: "node.exe", commandLine: "node e2e-server.mjs" },
+    { pid: 501, ppid: 999, startedAt: NOW - HOUR, name: "node.exe", commandLine: "node e2e-server.mjs" },
+    { pid: 42, ppid: 1, startedAt: NOW - HOUR, name: "node.exe", commandLine: "playwright" },
+  ];
+
+  /**
+   * A sweep must not be able to end a suite that is running. Playwright stays alive for the whole
+   * run and the webServer is its child, so a live holder has a live parent — the same signal
+   * `orphans` uses, and a much better one than age here.
+   */
+  test("leaves a holder whose launcher is still running", () => {
+    assert.deepEqual(stalePortHolders([500], table), []);
+  });
+
+  test("takes a holder left behind by a session that exited", () => {
+    assert.deepEqual(stalePortHolders([501], table), [501]);
+  });
+
+  /**
+   * A pid the process table does not describe cannot be shown to be a leftover, and this is the
+   * one class that kills something no ownership rule vouched for. It has to fail closed.
+   */
+  test("leaves a holder it cannot find in the process table", () => {
+    assert.deepEqual(stalePortHolders([777], table), []);
+  });
+
+  test("judges each holder on its own parent", () => {
+    assert.deepEqual(stalePortHolders([500, 501], table), [501]);
   });
 });
 

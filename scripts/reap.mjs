@@ -262,6 +262,27 @@ function removeContainer(name, dryRun) {
   return true;
 }
 
+/**
+ * Which of `pids` hold the port as a leftover rather than as a running suite.
+ *
+ * A sweep must not be able to end a suite mid-run — and not only because it costs the run. A
+ * webServer pulled out from under Playwright surfaces as a connection error or a 0ms failure,
+ * which reads exactly like a defect, so a sweep that takes a live port *manufactures a test
+ * result* in another process. Anything trusting a suite's verdict then acts on it.
+ *
+ * Parentage is the signal, not age: Playwright outlives the whole run and the webServer is its
+ * child, so a live holder has a live parent. A pid the table cannot describe is left alone —
+ * this is the one class that kills something no ownership rule vouched for, so it fails closed.
+ */
+export function stalePortHolders(pids, table) {
+  const live = new Set(table.map((p) => p.pid));
+  const byPid = new Map(table.map((p) => [p.pid, p]));
+  return pids.filter((pid) => {
+    const held = byPid.get(pid);
+    return held !== undefined && !live.has(held.ppid);
+  });
+}
+
 export function clearPort(port, { dryRun = false } = {}) {
   const pids = portListeners(port).filter((pid) => pid !== process.pid);
   for (const pid of pids) killPid(pid, dryRun);
@@ -272,17 +293,22 @@ if (import.meta.filename === process.argv[1]) {
   const dryRun = process.argv.includes("--dry-run");
   const verb = dryRun ? "would clear" : "cleared";
 
-  const held = clearPort(E2E_PORT, { dryRun });
-  console.log(
-    held.length
-      ? `reap: ${verb} the e2e port ${E2E_PORT}, held by pid ${held.join(", ")}`
-      : `reap: e2e port ${E2E_PORT} is free`
-  );
-
   // `npm run test:e2e` takes this path. Playwright refuses a busy port before it ever runs the
-  // webServer command, so the port has to be free by then — but a suite is not the place to
-  // decide that some other node process has outlived its session.
-  if (process.argv.includes("--port")) process.exit(0);
+  // webServer command, so the port has to be free by then — the run about to start is the
+  // authority on it and takes it from whoever holds it. Two sessions running e2e at once still
+  // collide; making that safe needs a port lease or a port per session, which #489 leaves open.
+  //
+  // A suite is also not the place to decide that some other node process has outlived its
+  // session, so this exits before the classes below.
+  if (process.argv.includes("--port")) {
+    const held = clearPort(E2E_PORT, { dryRun });
+    console.log(
+      held.length
+        ? `reap: ${verb} the e2e port ${E2E_PORT}, held by pid ${held.join(", ")}`
+        : `reap: e2e port ${E2E_PORT} is free`
+    );
+    process.exit(0);
+  }
 
   // Two snapshots a moment apart: cumulative CPU says only what a process has ever burned, and
   // the class below turns on what it is burning now.
@@ -302,6 +328,26 @@ if (import.meta.filename === process.argv[1]) {
   for (const pid of listeningPids()) keep.add(pid);
   const hoursOf = (p) => ((now - p.startedAt) / 3_600_000).toFixed(1);
   const labelOf = (p) => `${p.name || "process"} pid ${p.pid}`;
+
+  // A sweep is not a suite. It has nothing waiting on the port, so a holder still attached to a
+  // live launcher is somebody's run and stays — taking it does not merely cost that run, it
+  // makes the suite fail in a way that reads as a defect. The command line is printed because
+  // "held by pid 33196" tells whoever lost a run nothing about whose it was.
+  const holders = portListeners(E2E_PORT).filter((pid) => pid !== process.pid);
+  const byPid = new Map(table.map((p) => [p.pid, p]));
+  const staleHolders = stalePortHolders(holders, table);
+  for (const pid of staleHolders) {
+    console.log(`reap: ${verb} the e2e port ${E2E_PORT}, held by ${labelOf(byPid.get(pid))}`);
+    killPid(pid, dryRun);
+  }
+  for (const pid of holders.filter((p) => !staleHolders.includes(p))) {
+    const held = byPid.get(pid);
+    console.log(
+      `reap: left the e2e port ${E2E_PORT} to a live run — ${labelOf(held ?? { pid })}, ` +
+        `launched by ${held?.ppid ?? "?"}: ${(held?.commandLine || "command line unreadable").slice(0, 120)}`
+    );
+  }
+  if (!holders.length) console.log(`reap: e2e port ${E2E_PORT} is free`);
 
   const parentless = orphans(ours, {
     livePids: new Set(table.map((p) => p.pid)),

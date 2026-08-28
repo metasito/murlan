@@ -124,7 +124,8 @@ ever runs the webServer command.
 
 | What | Taken |
 | --- | --- |
-| Whatever holds `E2E_PORT` | by default |
+| A **stale** holder of `E2E_PORT` — one whose launcher has exited | by default |
+| **Any** holder of `E2E_PORT`, live run or not | only with `--port` |
 | Anything of ours over 2h old whose parent is gone | by default |
 | **Any** process over 2h old whose parent is gone and which is burning ≥20% of a core | by default |
 | Anything of ours over 24h old | only with `--stale` |
@@ -137,6 +138,25 @@ Playwright's browser directory, which sits in the user's profile rather than und
 Name matching would be indefensible: `chrome.exe` is as likely to be the developer's own browser,
 and this machine also runs an unrelated agent's `python.exe` and Windows' own `msedgewebview2.exe`.
 A command line that could not be read claims nothing.
+
+**A sweep never takes a port somebody is using; `--port` always does.** The two callers want
+opposite things. `npm run test:e2e` passes `--port` because Playwright refuses a busy port
+*before* it runs the `webServer` command, so the run about to start is the authority and takes the
+port from whoever holds it. A bare `npm run reap` has nothing waiting on the port, so a holder
+still attached to a live launcher is somebody's run and stays — parentage is the signal, and a
+holder the process table cannot describe is left alone. **Two sessions running e2e at once still
+collide**, and nothing here changes that; it needs a port lease or a port per session.
+
+The reason this matters more than one lost run: a webServer pulled out from under Playwright
+surfaces as a connection error or a 0ms failure, which reads exactly like a defect. A sweep that
+takes a live port *manufactures a test result* in another process, and anything trusting a
+suite's verdict — a review agent, `scripts/ticket-pipeline.ts` — then acts on it. Same shape as
+the starvation table below, one layer up.
+
+And it can manufacture a **green** as easily as a red: land part-way through a suite and the
+specs that already finished still report passed, while the ones that never ran are simply absent
+from the count. A truncated green is the one a reader skims past, so anything consuming a suite
+verdict should check the **spec count**, not the colour.
 
 **The burning class is the one exception, and it is not decided by ownership at all.** Ownership
 is what makes the other classes safe, and it is exactly why they could not see the worst leftover
