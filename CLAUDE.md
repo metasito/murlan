@@ -88,9 +88,14 @@ Verify against source before changing any.
   absorbs the cutout (`railWidth`), the hand zone carries the home indicator (`HAND_ZONE_H`).
 - **Design tokens are used in the role they were named for.** A fill or border token used as
   a text colour renders as almost nothing, silently. Pinned by `tests/tokenRoles.test.ts`.
-- **A labelled control exposes one accessible node** — hide decorative children explicitly;
-  `Pressable`'s `accessible` default does not do it for you. Pinned by
-  `tests/native/a11yCollapse.test.tsx`.
+- **A labelled control exposes one accessible node** — hide its own words and glyphs with
+  `a11yHidden()`. This is a web defect and only a web one: `Pressable`'s `accessible` default
+  becomes `isAccessibilityElement` on iOS, which makes the view a UIKit leaf, and
+  react-native-web forwards the prop nowhere, so on web the children stay live under a node
+  that is already named. Two exceptions, both live regions that announce their own contents
+  rather than their label (#495). Pinned by `tests/a11yOneNode.test.ts` (the props),
+  `tests/e2e/oneAccessibleNode.spec.ts` (the browser's own tree, which is the only place the
+  claim is true or false) and `tests/native/a11yCollapse.test.tsx`.
 - **Every `<Modal>` declares `supportedOrientations` including landscape**, or iOS rotates
   the app to portrait behind it. Pinned by `tests/orientation.test.ts`.
 - **`NotificationBanner`** never returns null, and animates by callback chain — parallel
