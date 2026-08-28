@@ -29,6 +29,7 @@ export const en = {
 
   // ------------------------------------------------------------- server.*
   "server.AUTH_RATE_LIMITED": "Too many attempts, try again in 15 minutes.",
+  "server.RENAME_RATE_LIMITED": "Too many name changes, try again tomorrow.",
   "server.RATE_LIMITED": "Too many requests, slow down.",
   "server.NOT_AUTHENTICATED": "Not authenticated",
   "server.USERNAME_TAKEN": "Username already in use",
