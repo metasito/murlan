@@ -148,11 +148,9 @@ export default function NotificationBanner({ notification, onDismiss }: Props) {
       {...a11yVeiled(!notification)}
     >
       <View style={[styles.banner, { borderLeftColor: color }, pressed && styles.bannerPressed]}>
-        {/* The announcement is a node of its own. The body below is a button —
-            pressing it runs the notification's own action — and a button's copy
-            is its face, so hiding it would leave the region with nothing to
-            announce and every notification would arrive silently. */}
-        <A11yStatus label={a11yLabel ?? ""} veiled={!notification} alert />
+        {/* The body's copy is a button's face and is hidden as one, so the
+            region would have nothing left to announce. */}
+        <A11yStatus label={a11yLabel ?? ""} veiled={!notification} role="alert" />
         <Pressable
           onPress={handlePress}
           onPressIn={() => setPressed(true)}

@@ -181,18 +181,21 @@ export function useFocusTrap(testIDs: string[]) {
 export function A11yStatus({
   label,
   veiled = false,
-  alert = false,
+  role = "text",
+  live = "polite",
 }: {
   label: string;
   veiled?: boolean;
-  /** Interrupt rather than wait: for a layer that appears unbidden. */
-  alert?: boolean;
+  /** `alert` for a layer that arrives unbidden rather than a running commentary. */
+  role?: "text" | "alert";
+  /** Whether it waits for a pause. Separate from `role`, because `alert`'s
+   *  implicit assertiveness is not always what a layer wants. */
+  live?: "polite" | "assertive";
 }) {
-  const live = alert ? ("assertive" as const) : ("polite" as const);
   return (
     <Text
       accessible
-      accessibilityRole={alert ? "alert" : "text"}
+      accessibilityRole={role}
       accessibilityLabel={label}
       {...(isWeb ? { "aria-live": live } : { accessibilityLiveRegion: live })}
       {...a11yVeiled(veiled)}

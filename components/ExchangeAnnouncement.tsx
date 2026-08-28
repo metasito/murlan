@@ -194,12 +194,11 @@ export function ExchangeAnnouncement({
           onPress={handleDismiss}
           style={styles.card}
           accessibilityViewIsModal
-          // Pointer only. A labelled, accessible panel is one leaf on iOS, and
-          // the close button below it was unreachable there; the announcement
-          // is the status line's job, not this node's.
+          // Pointer only: an accessible panel is one leaf on iOS, which seals
+          // the close button inside it. The sentence is A11yStatus's job.
           accessible={false}
         >
-          <A11yStatus label={a11yLabel} alert />
+          <A11yStatus label={a11yLabel} role="alert" live="assertive" />
           <Pressable
             onPress={handleDismiss}
             style={({ pressed }) => [styles.closeBtn, { opacity: pressed ? 0.6 : 1 }]}

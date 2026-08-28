@@ -47,9 +47,8 @@ const LABELLED = /accessibilityLabel=/;
 
 /**
  * Controls whose child must stay reachable, with the reason. Empty, and that is
- * the state rather than an aspiration: the two entries this once held were live
- * regions carried by a control, and #495 gave each its own node instead. A new
- * entry is a claim that some control is different, and it needs to say how.
+ * the state rather than an aspiration. An entry is a claim that some control is
+ * different from every other one, and it has to say how.
  */
 const DELIBERATELY_REACHABLE: [string, string, string][] = [];
 

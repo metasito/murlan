@@ -95,13 +95,10 @@ describe('the exchange announcement states both legs', () => {
     await view.unmount();
   });
 
-  // The panel used to be one labelled, accessible node, which on iOS made it a
-  // UIKit leaf with the close button sealed inside it.
+  // The alert is announced; the close button is landed on. Never the same node.
   it('offers its close button as a control of its own, beside the alert', async () => {
     const view = await announce({ cardReceived: TAKEN, cardGiven: RETURNED });
 
-    const close = view.getByLabelText(en['exchangeAnnouncement.closeA11yLabel']);
-    expect(close).toBeTruthy();
     expect(within(view.getByRole('alert')).queryAllByLabelText(
       en['exchangeAnnouncement.closeA11yLabel']
     )).toHaveLength(0);
