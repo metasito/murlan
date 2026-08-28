@@ -121,7 +121,7 @@ import { hapticError, hapticLight, hapticMedium, hapticSelection } from "@/lib/h
 import { usePrefersReducedMotion } from "@/lib/accessibility";
 import { Colors, FontSize, Garnet, Highlight, makeShadow, Motion, Radius, Scrim, Shadow, Spacing, TOUCH_TARGET_MIN, Type } from "@/lib/theme";
 import { useTableFelt } from "@/lib/cosmetics";
-import { A11yStatus, a11yHidden, a11yState, a11yVeiled } from "@/lib/a11y";
+import { A11yStatus, a11yGroup, a11yHidden, a11yState, a11yVeiled } from "@/lib/a11y";
 
 // How long the round-winner tag stays over the pile. A domain beat, not a
 // generic UI transition, so it is not a Motion token.
@@ -1399,26 +1399,28 @@ export function GameTable({
           far side. Anything wider would be chrome drawn where a card lands. */}
       <Animated.View
         testID="game-top-bar"
-        accessible
-        accessibilityLabel={topBarA11yLabel}
+        {...a11yGroup(topBarA11yLabel)}
         pointerEvents={focusMode ? "none" : undefined}
         {...behindVeil}
         style={[styles.hudLeft, { left: frame.tableLeft + frame.pad, top: frame.tableTop }, focusFadeStyle]}
       >
-        <TableChip scale={scale}>
-          {comboLabel === null ? (
-            <ChipText scale={scale}>{t("gameShared.emptyTable")}</ChipText>
-          ) : (
-            <>
-              <ChipText scale={scale} maxWidth={CHIP_NAME_MAX_W}>
-                {lastPlayName}
-              </ChipText>
-              <ChipText scale={scale} strong>
-                {comboLabel}
-              </ChipText>
-            </>
-          )}
-        </TableChip>
+        {/* The chip draws the words the group's label already says. */}
+        <View {...a11yHidden()}>
+          <TableChip scale={scale}>
+            {comboLabel === null ? (
+              <ChipText scale={scale}>{t("gameShared.emptyTable")}</ChipText>
+            ) : (
+              <>
+                <ChipText scale={scale} maxWidth={CHIP_NAME_MAX_W}>
+                  {lastPlayName}
+                </ChipText>
+                <ChipText scale={scale} strong>
+                  {comboLabel}
+                </ChipText>
+              </>
+            )}
+          </TableChip>
+        </View>
       </Animated.View>
 
       <Animated.View
@@ -1696,7 +1698,9 @@ export function GameTable({
             ) : (
               // The wrapper carries no `accessible`, which would hide the
               // individual cards' own labels behind one leaf node; the summary
-              // reaches a screen reader through A11yStatus instead.
+              // reaches a screen reader through A11yStatus instead. The label
+              // here is a channel the browser harness reads by attribute
+              // rather than a name a reader ever hears (#505).
               <View accessibilityLabel={handA11yLabel}>
                 <A11yStatus label={handA11yLabel} />
                 <StraightHand

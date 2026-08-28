@@ -77,6 +77,23 @@ export function a11yDialog(label: string): AccessibilityProps {
   return { role: "dialog", "aria-label": label } as AccessibilityProps;
 }
 
+/**
+ * Names a container and makes it one node on both platforms. Its contents are
+ * hidden at the call site, which `tests/a11yOneNode.test.ts` enforces.
+ *
+ * `accessible` is what makes a View an accessibility element on iOS, and
+ * react-native-web forwards it nowhere — the label would land on a role-less
+ * `<div>`, whose role is `generic` and for which a name is prohibited. The web
+ * half is the role, which is why this is not two props at the call site. Not
+ * `accessibilityRole`: React Native's role union has no `group`, and its
+ * nearest, `summary`, reaches the DOM as the landmark `region`.
+ */
+export function a11yGroup(label: string): AccessibilityProps {
+  const props: AccessibilityProps = { accessible: true, accessibilityLabel: label };
+  if (isWeb) props.role = "group";
+  return props;
+}
+
 /** Hides a decorative subtree from assistive technology on both platforms. */
 export function a11yHidden(hidden = true): AccessibilityProps {
   return {
@@ -197,7 +214,12 @@ export function A11yStatus({
       accessible
       accessibilityRole={role}
       accessibilityLabel={label}
-      {...(isWeb ? { "aria-live": live } : { accessibilityLiveRegion: live })}
+      {...(isWeb
+        ? // `text` is one of the roles react-native-web maps to nothing, which
+          // would leave the sentence on a role-less node — `generic`, for which
+          // a name is prohibited. `status` is the live region's own role.
+          { role: role === "alert" ? "alert" : "status", "aria-live": live }
+        : { accessibilityLiveRegion: live })}
       {...a11yVeiled(veiled)}
       style={styles.srOnly}
     >

@@ -12,7 +12,7 @@ import Ionicons from "@expo/vector-icons/Ionicons";
 import { useQuery } from "@tanstack/react-query";
 import { Colors, FontSize, Radius, Spacing, TOUCH_TARGET_MIN } from "@/lib/theme";
 import { useTranslation, type TranslationKey } from "@/lib/i18n";
-import { a11yHidden } from "@/lib/a11y";
+import { a11yGroup, a11yHidden } from "@/lib/a11y";
 import { recentForm } from "@/lib/profileStats";
 import { bombsPlayedBy } from "@/lib/replay";
 import type { ReplayDto, ReplaySummary } from "@/lib/replay";
@@ -74,8 +74,7 @@ function Row({
   return (
     <View
       style={styles.row}
-      accessible
-      accessibilityLabel={note ? `${label}: ${value}. ${note}` : `${label}: ${value}`}
+      {...a11yGroup(note ? `${label}: ${value}. ${note}` : `${label}: ${value}`)}
     >
       <Ionicons name={icon} size={14} color={Colors.gold} {...a11yHidden()} />
       <Text style={styles.rowLabel} numberOfLines={1} {...a11yHidden()}>
@@ -250,8 +249,7 @@ export function HandBreakdown({
       {form.length > 0 && (
         <View
           style={styles.formRow}
-          accessible
-          accessibilityLabel={t("handBreakdown.formA11yLabel", { placements: form.join(", ") })}
+          {...a11yGroup(t("handBreakdown.formA11yLabel", { placements: form.join(", ") }))}
         >
           <Ionicons name="stats-chart" size={14} color={Colors.gold} {...a11yHidden()} />
           <Text style={styles.rowLabel} {...a11yHidden()}>

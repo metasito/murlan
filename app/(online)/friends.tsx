@@ -296,9 +296,12 @@ export default function FriendsScreen() {
             {friends.map(item => {
               const isOnline = onlineIds.has(item.id);
               const statusText = isOnline ? t("friends.online") : t("friends.seenAgo", { time: relativeTime(item.lastSeen, t, tn) });
+              // Not grouped: the row holds a control of its own, and
+              // `accessible` would make it a leaf on iOS with that control
+              // sealed inside.
               return (
-                <View key={item.id} style={styles.row} accessible accessibilityLabel={`${item.username}. ${statusText}`}>
-                  <View style={styles.avatarWrapper}>
+                <View key={item.id} style={styles.row}>
+                  <View style={styles.avatarWrapper} {...a11yHidden()}>
                     <Avatar name={item.username} />
                     <View style={[styles.statusDot, { backgroundColor: isOnline ? Colors.success : Colors.textMuted }]} />
                   </View>

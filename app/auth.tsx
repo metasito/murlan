@@ -166,8 +166,11 @@ export default function AuthScreen() {
                 </View>
               </View>
 
+              {/* A live region announces the text that changes inside it, so it
+                  is never `accessible`: that would make it a leaf with no label
+                  of its own to speak. */}
               {error && (
-                <View style={styles.errorBox} accessible accessibilityLiveRegion="polite">
+                <View style={styles.errorBox} accessibilityLiveRegion="polite">
                   <Ionicons name="alert-circle-outline" size={14} color={Colors.dangerDim} />
                   <Text style={styles.errorText}>{error}</Text>
                 </View>

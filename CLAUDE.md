@@ -99,6 +99,14 @@ Verify against source before changing any.
   `tests/a11yOneNode.test.ts` (the props), `tests/e2e/oneAccessibleNode.spec.ts` (the
   browser's own tree, which is the only place the claim is true or false) and
   `tests/native/a11yCollapse.test.tsx`.
+- **A labelled *container* is the same shape with the opposite remedy.** `accessible` makes
+  a `View` a leaf on iOS and reaches the DOM as nothing, so on web the label sits on a
+  role-less `<div>` — role `generic`, for which a name is prohibited — and hiding the
+  children to match would leave nothing to read at all. What makes a label reachable is a
+  role, and `a11yGroup()` carries both halves. A container holding a control must not be
+  grouped at all: on iOS the control is sealed inside the leaf. Pinned by
+  `tests/a11yLabels.test.ts`, `tests/a11yOneNode.test.ts`'s `sealedControls`, and
+  `tests/e2e/oneAccessibleNode.spec.ts` (no name on a `generic` node; a group keeps its).
 - **Every `<Modal>` declares `supportedOrientations` including landscape**, or iOS rotates
   the app to portrait behind it. Pinned by `tests/orientation.test.ts`.
 - **`NotificationBanner`** never returns null, and animates by callback chain — parallel

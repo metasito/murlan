@@ -129,18 +129,22 @@ describe('the table description reaches a screen reader', () => {
 // table is drawn from is nobody's own — a self form there names a play the
 // watcher did not make.
 describe('the top-left chip names who played', () => {
+  // Painted text, not announced text: the chip is hidden from assistive
+  // technology because the group around it already says these words.
+  const shown = { includeHiddenElements: true };
+
   it('uses the self form for the viewer', async () => {
     const r = await render(table(led(0)));
     const chip = within(screen.getByTestId('game-top-bar'));
-    expect(chip.queryByText(locale['gameShared.you'])).not.toBeNull();
+    expect(chip.queryByText(locale['gameShared.you'], shown)).not.toBeNull();
     await r.unmount();
   });
 
   it('names the seat rather than the watcher while spectating', async () => {
     const r = await render(table(led(0), true));
     const chip = within(screen.getByTestId('game-top-bar'));
-    expect(chip.queryByText(locale['gameShared.you'])).toBeNull();
-    expect(chip.queryByText('Ana')).not.toBeNull();
+    expect(chip.queryByText(locale['gameShared.you'], shown)).toBeNull();
+    expect(chip.queryByText('Ana', shown)).not.toBeNull();
     await r.unmount();
   });
 });

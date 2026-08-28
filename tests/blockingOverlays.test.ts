@@ -199,8 +199,11 @@ test("every blocking overlay answers a close request and names itself", () => {
     for (const body of modalBodies(source)) {
       if (!body.includes(marker)) continue;
       if (!/onRequestClose=/.test(body)) offenders.push(`${rel} (${marker}): no close handler`);
-      // aria-modal with no name announces as an unnamed dialog.
-      if (!/accessibilityLabel=/.test(body)) offenders.push(`${rel} (${marker}): unnamed`);
+      // aria-modal with no name announces as an unnamed dialog. `a11yGroup`
+      // carries the label as its argument, so the prop is not written out.
+      if (!/accessibilityLabel=|a11yGroup\(/.test(body)) {
+        offenders.push(`${rel} (${marker}): unnamed`);
+      }
     }
   }
   assert.deepEqual(offenders, [], offenders.join(", "));

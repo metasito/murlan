@@ -28,7 +28,7 @@ import type { GameMode } from "@/lib/gameEngine";
 import type { ReplaySummary } from "@/lib/replay";
 import { REPLAY_RETENTION_DAYS } from "@/lib/replay";
 import { PROVISIONAL_GAMES, formatSeason } from "@/lib/rating";
-import { a11yHidden } from "@/lib/a11y";
+import { a11yGroup, a11yHidden } from "@/lib/a11y";
 
 type TFn = (key: TranslationKey, params?: TranslationParams) => string;
 type TnFn = (base: string, count: number, params?: TranslationParams) => string;
@@ -150,20 +150,20 @@ function ErrorBlock({
 
 function EmptyBlock({ icon, title, body }: { icon: IconName; title: string; body: string }) {
   return (
-    <View style={styles.stateBlock} accessible accessibilityLabel={`${title}. ${body}`}>
-      <Ionicons name={icon} size={28} color={Colors.textMuted} />
-      <Text style={styles.stateTitle}>{title}</Text>
-      <Text style={styles.stateBody}>{body}</Text>
+    <View style={styles.stateBlock} {...a11yGroup(`${title}. ${body}`)}>
+      <Ionicons name={icon} size={28} color={Colors.textMuted} {...a11yHidden()} />
+      <Text style={styles.stateTitle} {...a11yHidden()}>{title}</Text>
+      <Text style={styles.stateBody} {...a11yHidden()}>{body}</Text>
     </View>
   );
 }
 
 function StatTile({ icon, value, label }: { icon: IconName; value: string; label: string }) {
   return (
-    <View style={styles.statTile} accessible accessibilityLabel={`${label}: ${value}`}>
-      <Ionicons name={icon} size={18} color={Colors.gold} />
-      <Text style={styles.statValue}>{value}</Text>
-      <Text style={styles.statLabel}>{label}</Text>
+    <View style={styles.statTile} {...a11yGroup(`${label}: ${value}`)}>
+      <Ionicons name={icon} size={18} color={Colors.gold} {...a11yHidden()} />
+      <Text style={styles.statValue} {...a11yHidden()}>{value}</Text>
+      <Text style={styles.statLabel} {...a11yHidden()}>{label}</Text>
     </View>
   );
 }
@@ -213,13 +213,12 @@ export default function ProfileScreen() {
         {user && (
           <View
             style={styles.userCard}
-            accessible
-            accessibilityLabel={t("profile.loggedInAs", { username: user.username })}
+            {...a11yGroup(t("profile.loggedInAs", { username: user.username }))}
           >
-            <View style={styles.avatar}>
+            <View style={styles.avatar} {...a11yHidden()}>
               <Text style={styles.avatarText}>{user.username.charAt(0).toUpperCase()}</Text>
             </View>
-            <Text style={styles.username} numberOfLines={1}>{user.username}</Text>
+            <Text style={styles.username} numberOfLines={1} {...a11yHidden()}>{user.username}</Text>
           </View>
         )}
 
@@ -237,19 +236,22 @@ export default function ProfileScreen() {
                   onRetry={() => ratingQuery.refetch()}
                 />
               )}
-              {rating && (
-                <View style={styles.ratingBlock} accessible
-                  accessibilityLabel={`${t("ladder.ratingLabel")}: ${rating.rating}. ${t("ladder.seasonLabel", { season: formatSeason(rating.season, t) })}`}
-                >
-                  <Text style={styles.ratingValue}>{rating.rating}</Text>
-                  <Text style={styles.ratingSeason}>{t("ladder.seasonLabel", { season: formatSeason(rating.season, t) })}</Text>
-                  <Text style={styles.ratingGames}>
-                    {rating.provisional
-                      ? t("ladder.provisional", { n: PROVISIONAL_GAMES - rating.games })
-                      : t("ladder.gamesLabel", { n: rating.games })}
-                  </Text>
-                </View>
-              )}
+              {rating && (() => {
+                const season = t("ladder.seasonLabel", { season: formatSeason(rating.season, t) });
+                const games = rating.provisional
+                  ? t("ladder.provisional", { n: PROVISIONAL_GAMES - rating.games })
+                  : t("ladder.gamesLabel", { n: rating.games });
+                return (
+                  <View
+                    style={styles.ratingBlock}
+                    {...a11yGroup(`${t("ladder.ratingLabel")}: ${rating.rating}. ${season}. ${games}`)}
+                  >
+                    <Text style={styles.ratingValue} {...a11yHidden()}>{rating.rating}</Text>
+                    <Text style={styles.ratingSeason} {...a11yHidden()}>{season}</Text>
+                    <Text style={styles.ratingGames} {...a11yHidden()}>{games}</Text>
+                  </View>
+                );
+              })()}
               <MenuButton
                 label={t("ladder.open")}
                 onPress={() => router.push("/(online)/leaderboard")}
@@ -306,12 +308,13 @@ export default function ProfileScreen() {
                 <Text style={styles.formLabel}>{t("profile.formRecentLabel")}</Text>
                 <View
                   style={styles.formStrip}
-                  accessible
-                  accessibilityLabel={t("profile.formRecentA11yLabel", {
-                    results: recentForm(history)
-                      .map((p) => t(POSITION_LABEL_KEYS[p - 1] ?? "gameOverOverlay.position4"))
-                      .join(", "),
-                  })}
+                  {...a11yGroup(
+                    t("profile.formRecentA11yLabel", {
+                      results: recentForm(history)
+                        .map((p) => t(POSITION_LABEL_KEYS[p - 1] ?? "gameOverOverlay.position4"))
+                        .join(", "),
+                    })
+                  )}
                 >
                   {recentForm(history).map((placement, i) => (
                     <View
@@ -330,14 +333,15 @@ export default function ProfileScreen() {
                     <View
                       key={slice.placement}
                       style={styles.formBarRow}
-                      accessible
-                      accessibilityLabel={t("profile.formPlacementRowA11yLabel", {
-                        position: posText,
-                        n: slice.played,
-                        total: history.length,
-                      })}
+                      {...a11yGroup(
+                        t("profile.formPlacementRowA11yLabel", {
+                          position: posText,
+                          n: slice.played,
+                          total: history.length,
+                        })
+                      )}
                     >
-                      <Text style={styles.formBarKey}>{posText}</Text>
+                      <Text style={styles.formBarKey} {...a11yHidden()}>{posText}</Text>
                       <View style={styles.formBarTrack}>
                         <View
                           style={[
@@ -349,7 +353,7 @@ export default function ProfileScreen() {
                           ]}
                         />
                       </View>
-                      <Text style={styles.formBarValue}>{slice.played}</Text>
+                      <Text style={styles.formBarValue} {...a11yHidden()}>{slice.played}</Text>
                     </View>
                   );
                 })}
@@ -359,18 +363,19 @@ export default function ProfileScreen() {
                   <View
                     key={slice.playerCount}
                     style={styles.formCountRow}
-                    accessible
-                    accessibilityLabel={t("profile.formByPlayersRowA11yLabel", {
-                      players: tn("profile.historyPlayers", slice.playerCount),
-                      played: slice.played,
-                      won: slice.won,
-                      avg: slice.averagePlacement,
-                    })}
+                    {...a11yGroup(
+                      t("profile.formByPlayersRowA11yLabel", {
+                        players: tn("profile.historyPlayers", slice.playerCount),
+                        played: slice.played,
+                        won: slice.won,
+                        avg: slice.averagePlacement,
+                      })
+                    )}
                   >
-                    <Text style={styles.formCountKey}>
+                    <Text style={styles.formCountKey} {...a11yHidden()}>
                       {tn("profile.historyPlayers", slice.playerCount)}
                     </Text>
-                    <Text style={styles.formCountValue}>
+                    <Text style={styles.formCountValue} {...a11yHidden()}>
                       {t("profile.formAveragePlacement", { n: slice.averagePlacement })}
                     </Text>
                   </View>
@@ -410,21 +415,25 @@ export default function ProfileScreen() {
                     const rowLabel = t("profile.historyRowA11yLabel", {
                       position: posText,
                       mode: modeText,
+                      players: playersText,
                       points: h.points,
                       time: timeText,
                     });
                     return (
-                      <View key={h.id} style={styles.row} accessible accessibilityLabel={rowLabel}>
-                        <View style={[styles.posBadge, h.placement === 1 && styles.posBadgeWinner]}>
+                      <View key={h.id} style={styles.row} {...a11yGroup(rowLabel)}>
+                        <View
+                          style={[styles.posBadge, h.placement === 1 && styles.posBadgeWinner]}
+                          {...a11yHidden()}
+                        >
                           <Text style={[styles.posBadgeText, h.placement === 1 && styles.posBadgeTextWinner]}>
                             {posText}
                           </Text>
                         </View>
-                        <View style={styles.rowInfo}>
+                        <View style={styles.rowInfo} {...a11yHidden()}>
                           <Text style={styles.rowName}>{modeText} · {playersText}</Text>
                           <Text style={styles.rowSub}>{timeText}</Text>
                         </View>
-                        <Text style={styles.rowPoints}>{pointsText}</Text>
+                        <Text style={styles.rowPoints} {...a11yHidden()}>{pointsText}</Text>
                       </View>
                     );
                   })}
@@ -518,17 +527,19 @@ export default function ProfileScreen() {
                       <View
                         key={a.id}
                         style={[styles.achievementRow, !a.unlocked && styles.achievementRowLocked]}
-                        accessible
-                        accessibilityLabel={rowLabel}
+                        {...a11yGroup(rowLabel)}
                       >
-                        <View style={[styles.achievementIcon, a.unlocked && styles.achievementIconUnlocked]}>
+                        <View
+                          style={[styles.achievementIcon, a.unlocked && styles.achievementIconUnlocked]}
+                          {...a11yHidden()}
+                        >
                           <Ionicons
                             name={a.unlocked ? "trophy" : "lock-closed"}
                             size={18}
                             color={a.unlocked ? Colors.bgCard : Colors.textMuted}
                           />
                         </View>
-                        <View style={styles.rowInfo}>
+                        <View style={styles.rowInfo} {...a11yHidden()}>
                           <Text style={[styles.achievementName, !a.unlocked && styles.achievementNameLocked]}>
                             {name}
                           </Text>
