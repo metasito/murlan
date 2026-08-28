@@ -22,7 +22,7 @@ import { LinearGradient } from "expo-linear-gradient";
 import Ionicons from "@expo/vector-icons/Ionicons";
 import type { GameState } from "@/lib/gameEngine";
 import { standings } from "@/lib/standings";
-import { Colors, FontSize, Motion, Radius, Spacing, TOUCH_TARGET_MIN } from "@/lib/theme";
+import { Colors, FontSize, Motion, motionMs, Radius, Spacing, TOUCH_TARGET_MIN } from "@/lib/theme";
 import { usePrefersReducedMotion } from "@/lib/accessibility";
 import { useTranslation, type TranslationKey } from "@/lib/i18n";
 import { a11yHidden, a11yState } from "@/lib/a11y";
@@ -81,13 +81,8 @@ function RankCard({
   const tx = useSharedValue(40);
 
   useEffect(() => {
-    if (reduceMotion) {
-      opacity.value = 1;
-      tx.value = 0;
-      return;
-    }
-    opacity.value = withDelay(delay, withTiming(1, { duration: 350 }));
-    tx.value = withDelay(delay, withSpring(0, Motion.spring.entrance));
+    opacity.value = withDelay(delay, withTiming(1, { duration: motionMs("travel", reduceMotion) }));
+    tx.value = reduceMotion ? 0 : withDelay(delay, withSpring(0, Motion.spring.entrance));
   }, [delay, opacity, reduceMotion, tx]);
 
   const animStyle = useAnimatedStyle(() => ({
@@ -233,7 +228,7 @@ export function GameOverOverlay({
       onRequestClose={() => {}}
     >
       <Animated.View
-        entering={reduceMotion ? undefined : FadeIn.duration(Motion.duration.travel + 100)}
+        entering={reduceMotion ? undefined : FadeIn.duration(Motion.duration.reveal)}
         style={[styles.overlay, { paddingTop: topPad + 4, paddingBottom: bottomPad + 4 }]}
       >
         <LinearGradient

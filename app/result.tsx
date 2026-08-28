@@ -25,7 +25,7 @@ import Ionicons from "@expo/vector-icons/Ionicons";
 import { useGame } from "@/context/GameContext";
 import { usePrefersReducedMotion } from "@/lib/accessibility";
 import { standings } from "@/lib/standings";
-import { Colors, FontSize, Motion, Radius, Spacing, TOUCH_TARGET_MIN, Type } from '@/lib/theme';
+import { Colors, FontSize, Motion, motionMs, Radius, Spacing, TOUCH_TARGET_MIN, Type } from '@/lib/theme';
 import { useTranslation, type TranslationKey } from "@/lib/i18n";
 import { a11yHidden } from "@/lib/a11y";
 
@@ -62,13 +62,8 @@ function ScoreRow({
   const opacity = useSharedValue(0);
   const tx = useSharedValue(30);
   useEffect(() => {
-    if (reduceMotion) {
-      opacity.value = 1;
-      tx.value = 0;
-      return;
-    }
-    opacity.value = withDelay(delay, withTiming(1, { duration: 320 }));
-    tx.value = withDelay(delay, withSpring(0, Motion.spring.entrance));
+    opacity.value = withDelay(delay, withTiming(1, { duration: motionMs("travel", reduceMotion) }));
+    tx.value = reduceMotion ? 0 : withDelay(delay, withSpring(0, Motion.spring.entrance));
   }, [delay, opacity, reduceMotion, tx]);
   const anim = useAnimatedStyle(() => ({
     opacity: opacity.value,
@@ -135,31 +130,18 @@ function WinnerCelebration({
   }, []);
 
   useEffect(() => {
+    opacity.value = withTiming(1, { duration: motionMs("reveal", reduceMotion) });
     if (reduceMotion) {
-      // The entrance and the endless glow behind it are the parts with nothing
-      // to say; the result itself still arrives.
+      // The swell and the endless glow behind it are the parts with nothing to
+      // say; the result itself still arrives.
       scale.value = 1;
-      opacity.value = 1;
       return;
     }
     scale.value = withSpring(1, Motion.spring.reveal);
-    opacity.value = withTiming(1, { duration: 600 });
-    glow.value = withRepeat(
-      withSequence(
-        withTiming(1, { duration: 1200, easing: Easing.inOut(Easing.sin) }),
-        withTiming(0.5, { duration: 1200, easing: Easing.inOut(Easing.sin) })
-      ),
-      -1,
-      false
-    );
-    glowScale.value = withRepeat(
-      withSequence(
-        withTiming(1.15, { duration: 1200, easing: Easing.inOut(Easing.sin) }),
-        withTiming(1.0, { duration: 1200, easing: Easing.inOut(Easing.sin) })
-      ),
-      -1,
-      false
-    );
+    const breath = (to: number) =>
+      withTiming(to, { duration: Motion.duration.dwell, easing: Easing.inOut(Easing.sin) });
+    glow.value = withRepeat(withSequence(breath(1), breath(0.5)), -1, false);
+    glowScale.value = withRepeat(withSequence(breath(1.15), breath(1.0)), -1, false);
   }, [glow, glowScale, opacity, reduceMotion, scale]);
   const containerAnim = useAnimatedStyle(() => ({
     transform: [{ scale: scale.value }],

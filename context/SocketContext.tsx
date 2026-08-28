@@ -15,6 +15,7 @@ import { connectSocket, disconnectSocket, setSocketAuthFailureHandler } from "@/
 import { useNotification } from "@/context/NotificationContext";
 import { SessionReplacedNotice } from "@/components/SessionReplacedNotice";
 import { t, translateServerPayload, type ServerPayload } from "@/lib/i18n";
+import { Reading } from "@/lib/theme";
 import type { Socket } from "socket.io-client";
 
 const RETRY_BASE_MS = 2000;
@@ -244,7 +245,7 @@ export function SocketProvider({ children }: { children: ReactNode }) {
         type: "game_invite",
         title: t("notifications.gameInviteTitle", { name: from }),
         message: t("notifications.gameInviteBody", { code: roomCode }),
-        duration: 6000,
+        duration: Reading.invite,
         onPress: () => {
           router.push("/(online)");
         },
@@ -260,7 +261,7 @@ export function SocketProvider({ children }: { children: ReactNode }) {
         type: "game_error",
         title: t("common.error"),
         message: translateServerPayload(payload),
-        duration: 4000,
+        duration: Reading.notice,
       });
     };
     const onSocketError = (payload: ServerPayload) => {
@@ -279,7 +280,7 @@ export function SocketProvider({ children }: { children: ReactNode }) {
         type: "game_error",
         title: t("common.error"),
         message: translateServerPayload(payload),
-        duration: 4000,
+        duration: Reading.notice,
       });
     };
 

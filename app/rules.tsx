@@ -14,7 +14,7 @@ import Animated, {
 } from "react-native-reanimated";
 import { LinearGradient } from "expo-linear-gradient";
 import Ionicons from "@expo/vector-icons/Ionicons";
-import { Colors, FontSize, Radius, Spacing, TOUCH_TARGET_MIN, Type } from "@/lib/theme";
+import { Colors, FontSize, motionMs, Radius, Spacing, TOUCH_TARGET_MIN, Type } from "@/lib/theme";
 import { MenuLayout } from "@/components/MenuLayout";
 import { usePrefersReducedMotion } from "@/lib/accessibility";
 import { useTranslation, type TranslationKey } from "@/lib/i18n";
@@ -56,13 +56,8 @@ function FAQItem({ item, isLast }: { item: FAQ; isLast: boolean }) {
     const nextOpen = !open;
     const to = nextOpen ? 1 : 0;
     setOpen(nextOpen);
-    if (reduceMotion) {
-      height.value = to;
-      opacity.value = to;
-      return;
-    }
-    height.value = withTiming(to, { duration: 280 });
-    opacity.value = withTiming(to, { duration: 200 });
+    height.value = withTiming(to, { duration: motionMs("travel", reduceMotion) });
+    opacity.value = withTiming(to, { duration: motionMs("shift", reduceMotion) });
   };
 
   const answerStyle = useAnimatedStyle(() => ({

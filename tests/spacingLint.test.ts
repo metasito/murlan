@@ -21,6 +21,7 @@ import tsParser from "@typescript-eslint/parser";
 const require = createRequire(import.meta.url);
 const selectors = require("../eslint.selectors.cjs") as {
   SCALED_LITERAL: string;
+  TIMING_LITERAL: string;
   TOKEN_AS_STRING: string;
   TOKEN_AS_TEMPLATE: string;
   TOUCH_TARGET_LITERAL: string;
@@ -168,6 +169,38 @@ describe("44 in a size property is the touch floor, written as a number", () => 
   });
 });
 
+describe("a bare millisecond is refused wherever Reanimated takes one", () => {
+  const timed = (code: string) => violations(code, selectors.TIMING_LITERAL) > 0;
+
+  test("the object form — withTiming's config", () => {
+    assert.ok(timed("withTiming(1, { duration: 320 });"));
+    assert.ok(timed("const r = { delay: 80, duration: 1250 };"));
+  });
+
+  // The half the first version of this rule could not see: a layout-animation
+  // builder takes its milliseconds as a call argument, so `FadeIn.duration(280)`
+  // survived a migration that swept every object property in the same file.
+  test("the builder form — a layout animation's own call", () => {
+    assert.ok(timed("const e = FadeIn.duration(280);"));
+    assert.ok(timed("const e = FadeOut.duration(200).delay(80);"));
+  });
+
+  test("a Motion step is accepted in either form", () => {
+    assert.ok(!timed("withTiming(1, { duration: Motion.duration.travel });"));
+    assert.ok(!timed("const e = FadeIn.duration(Motion.duration.reveal);"));
+  });
+
+  test("a named constant is accepted — that is the escape for what is not motion", () => {
+    assert.ok(!timed("const s = { duration: Reading.notice };"));
+    assert.ok(!timed("const s = { delay: SPARK_LEAD_MS + i * SPARK_PHASE_MS };"));
+  });
+
+  test("zero is accepted, and so is a duration that is not a timing", () => {
+    assert.ok(!timed("withTiming(1, { duration: 0 });"));
+    assert.ok(!timed("const meta = { title: 'x' };"));
+  });
+});
+
 describe("the selectors under test are the ones that ship", () => {
   // Without this the suite could pass against selectors nobody runs.
   test("eslint.config.js uses each of them by reference", () => {
@@ -184,6 +217,7 @@ describe("the selectors under test are the ones that ship", () => {
     const shipped = restricted.map((entry) => entry.selector);
     for (const name of [
       "SCALED_LITERAL",
+      "TIMING_LITERAL",
       "TOKEN_AS_STRING",
       "TOKEN_AS_TEMPLATE",
       "TOUCH_TARGET_LITERAL",

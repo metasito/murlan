@@ -361,3 +361,31 @@ export const Motion = {
   // combination, fast enough that a whole hand is not a sitting.
   replayStep: 1200,
 } as const;
+
+/**
+ * How long `step` runs for this player.
+ *
+ * A `null` reduced form is a step with nothing to shorten — a flash is over
+ * before it registers as movement, and a loop gives up its repeat rather than
+ * its duration — so the step's own length stands. Everything else takes the
+ * answer `Motion.reduced` already wrote down, which is the point: a call site
+ * that decides for itself is how "reduced" came to mean a 200ms fade in one
+ * screen and an instant jump in the next.
+ */
+export function motionMs(step: keyof typeof Motion.duration, reduceMotion: boolean): number {
+  if (!reduceMotion) return Motion.duration[step];
+  return Motion.reduced[step] ?? Motion.duration[step];
+}
+
+/**
+ * How long something stays on screen to be read. Not motion, and deliberately
+ * not a `Motion` step: this is set by how many words there are and what the
+ * player has to do about them, so folding a reading budget in beside a 90ms
+ * flash would put two unrelated decisions on one scale.
+ */
+export const Reading = {
+  /** A banner that is only news — it is read, and then it is gone. */
+  notice: 4000,
+  /** An invitation, which is acted on rather than read, so it outlasts its own sentence. */
+  invite: 6000,
+} as const;

@@ -20,7 +20,7 @@ import { router, useNavigation } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import Ionicons from "@expo/vector-icons/Ionicons";
 import { useOnlineGame } from "@/context/OnlineGameContext";
-import { Colors, FontSize, Radius, Spacing } from '@/lib/theme';
+import { Colors, FontSize, Motion, Radius, Spacing } from '@/lib/theme';
 import { MenuLayout, CONTENT_H_PAD } from "@/components/MenuLayout";
 import { MenuCard } from "@/components/MenuCard";
 import { MenuButton } from "@/components/MenuButton";
@@ -128,14 +128,9 @@ export default function QuickmatchScreen() {
       pulse.value = 1;
       return;
     }
-    pulse.value = withRepeat(
-      withSequence(
-        withTiming(1.15, { duration: 900, easing: Easing.inOut(Easing.sin) }),
-        withTiming(1, { duration: 900, easing: Easing.inOut(Easing.sin) })
-      ),
-      -1,
-      false
-    );
+    const breath = (to: number) =>
+      withTiming(to, { duration: Motion.duration.dwell, easing: Easing.inOut(Easing.sin) });
+    pulse.value = withRepeat(withSequence(breath(1.15), breath(1)), -1, false);
   }, [phase, pulse, reduceMotion]);
 
   // After the effect above, not before it: reading a shared value here freezes
