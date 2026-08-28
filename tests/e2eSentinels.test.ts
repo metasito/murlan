@@ -42,12 +42,20 @@ function e2eFiles(): string[] {
   return out;
 }
 
-/** `"key": "value"` from a locale module, which is a flat object of string literals. */
-function localeValue(key: string): string {
+/** Every `"key": "value"` in a locale module, which is one flat object of string literals. */
+function localeEntries(): Map<string, string> {
   const source = readFileSync(path.join(repoRoot, "locales", "it.ts"), "utf8");
-  const m = new RegExp(String.raw`"${key}":\s*"((?:[^"\\]|\\.)*)"`).exec(source);
-  assert.ok(m, `locales/it.ts has no key ${key}`);
-  return m[1].replace(/\\"/g, '"');
+  const out = new Map<string, string>();
+  for (const m of source.matchAll(/"([\w.]+)":\s*"((?:[^"\\]|\\.)*)"/g)) {
+    out.set(m[1], m[2].replace(/\\"/g, '"'));
+  }
+  return out;
+}
+
+function localeValue(key: string): string {
+  const value = localeEntries().get(key);
+  assert.ok(value !== undefined, `locales/it.ts has no key ${key}`);
+  return value;
 }
 
 test("every sentinel still says what the locale says", () => {
@@ -62,6 +70,74 @@ test("every sentinel still says what the locale says", () => {
         `not a rules failure: update the constant, and check nothing else read the old wording.`
     );
   }
+});
+
+/**
+ * Comparing UI copy is what makes it a sentinel. Naming a control by its text is not — the
+ * suite does that 160-odd times on purpose, and a copy edit breaks such a call with a message
+ * that quotes the missing name, which is already the diagnostic #499 wanted.
+ *
+ * Each entry: file, locale key, and why comparing it is not a sentinel.
+ */
+const COMPARED_BUT_NOT_A_SENTINEL: [string, string, string][] = [
+  [
+    "tests/e2e/gameSettingsSheet.spec.ts",
+    "gameSettingsSheet.title",
+    "asks which control has focus, not whether something is legal — the same identity the file " +
+      "takes by role five times over, and there is no locator query for `document.activeElement`",
+  ],
+];
+
+/** The literal sits either side of an equality operator, or inside a substring test. */
+function comparesTo(line: string, literal: string): boolean {
+  const q = literal.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return new RegExp(
+    String.raw`[!=]==?\s*["'\`]${q}["'\`]` +
+      String.raw`|["'\`]${q}["'\`]\s*[!=]==?` +
+      String.raw`|\.(?:includes|startsWith|endsWith)\(\s*["'\`]${q}["'\`]\s*\)`
+  ).test(line);
+}
+
+test("no new copy is compared for equality without being declared a sentinel", () => {
+  // Keyed by the sentence, not by the key that names it: four keys carry "Impostazioni",
+  // and a comparison cannot say which one it meant.
+  const compared = new Map<string, string[]>();
+  for (const [key, value] of localeEntries()) {
+    if (value.length > 3) compared.set(value, [...(compared.get(value) ?? []), key]);
+  }
+  const claimOf = (file: string, value: string) => [file, value].join("\t");
+  const allowed = new Set(
+    COMPARED_BUT_NOT_A_SENTINEL.map(([file, key]) => claimOf(file, localeValue(key)))
+  );
+  const offenders: string[] = [];
+  const unused = new Set(allowed);
+
+  for (const file of e2eFiles()) {
+    const rel = path.relative(repoRoot, file).split(path.sep).join("/");
+    const lines = blankComments(readFileSync(file, "utf8")).split(/\r?\n/);
+    lines.forEach((line, i) => {
+      for (const [value, keys] of compared) {
+        if (!line.includes(value) || !comparesTo(line, value)) continue;
+        const claim = claimOf(rel, value);
+        if (allowed.has(claim)) unused.delete(claim);
+        else offenders.push(`${rel}:${i + 1} compares "${value}" (${keys.join(", ")})`);
+      }
+    });
+  }
+
+  assert.deepEqual(
+    offenders,
+    [],
+    "this copy is deciding something, which makes it a harness sentinel. Declare it in " +
+      "tests/e2e/helpers/labels.ts and add it to SENTINELS above, or — if it is naming a " +
+      "control rather than deciding — say so in COMPARED_BUT_NOT_A_SENTINEL:\n  " +
+      offenders.join("\n  ")
+  );
+  assert.deepEqual(
+    [...unused],
+    [],
+    "COMPARED_BUT_NOT_A_SENTINEL claims a comparison that is no longer there; delete the entry"
+  );
 });
 
 test("a sentinel is declared once, and nowhere else spells it out", () => {
