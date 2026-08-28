@@ -218,7 +218,7 @@ export function useTableFeedback({
       giocaGlowVal.value =
         reduceMotion && playBtnValid
           ? 0.6
-          : withTiming(0, { duration: Motion.duration.fast });
+          : withTiming(0, { duration: Motion.duration.tap });
     }
     return () => {
       cancelAnimation(giocaGlowVal);
@@ -231,8 +231,8 @@ export function useTableFeedback({
     const hasSelection = selectedCount > 0 && isMyTurn && !isFinished;
     if (hasSelection && prevSelectedLen.current !== selectedCount && !reduceMotion) {
       giocaFlashVal.value = withSequence(
-        withTiming(1, { duration: Motion.duration.fast }),
-        withTiming(0, { duration: Motion.duration.base })
+        withTiming(1, { duration: Motion.duration.tap }),
+        withTiming(0, { duration: Motion.duration.shift })
       );
     }
     prevSelectedLen.current = selectedCount;
@@ -244,8 +244,8 @@ export function useTableFeedback({
   useEffect(() => {
     if (canPass && !reduceMotion) {
       passaFlashVal.value = withSequence(
-        withTiming(1, { duration: Motion.duration.base }),
-        withTiming(0, { duration: Motion.duration.moderate })
+        withTiming(1, { duration: Motion.duration.shift }),
+        withTiming(0, { duration: Motion.duration.travel })
       );
     }
   }, [canPass, reduceMotion, passaFlashVal]);

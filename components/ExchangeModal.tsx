@@ -57,7 +57,7 @@ function AnimatedCard({
     if (reduceMotion) return;
     ty.value = withDelay(delay, withSpring(0, Motion.spring.land));
     rot.value = withDelay(delay, withSpring(0, Motion.spring.land));
-    opacity.value = withDelay(delay, withTiming(1, { duration: Motion.duration.moderate }));
+    opacity.value = withDelay(delay, withTiming(1, { duration: Motion.duration.travel }));
     // A delayed spring outlives the view that started it. This card is remounted
     // whenever the pick changes, so without this each pick leaves a timeline
     // animating a shared value nothing reads any more.
@@ -116,7 +116,7 @@ function SelectableCard({
       return;
     }
     lift.value = withSpring(down ? 1 : 0, down ? Motion.spring.pickup : Motion.spring.land);
-    glow.value = withTiming(down ? 1 : 0, { duration: Motion.duration.fast });
+    glow.value = withTiming(down ? 1 : 0, { duration: Motion.duration.tap });
   }
 
   useEffect(

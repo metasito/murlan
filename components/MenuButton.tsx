@@ -55,7 +55,7 @@ export function MenuButton({
     setPressed(down);
     press.value = reduceMotion
       ? down ? 1 : 0
-      : withTiming(down ? 1 : 0, { duration: Motion.duration.fast });
+      : withTiming(down ? 1 : 0, { duration: Motion.duration.tap });
   };
 
   useEffect(() => () => cancelAnimation(press), [press]);

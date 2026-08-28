@@ -156,7 +156,7 @@ function CardField({ cards }: { cards: FloatingCardSpec[] }) {
 }
 
 /** One item after another, so the screen assembles rather than appearing. */
-const ENTRANCE_STEP_MS = Motion.duration.fast;
+const ENTRANCE_STEP_MS = Motion.duration.tap;
 /** How far an entering item travels. */
 const RISE = 24;
 
@@ -172,10 +172,10 @@ function useEntrance(step: number) {
       return;
     }
     const delay = step * ENTRANCE_STEP_MS;
-    opacity.value = withDelay(delay, withTiming(1, { duration: Motion.duration.slow }));
+    opacity.value = withDelay(delay, withTiming(1, { duration: Motion.duration.reveal }));
     translateY.value = withDelay(
       delay,
-      withTiming(0, { duration: Motion.duration.slow, easing: Easing.out(Easing.cubic) })
+      withTiming(0, { duration: Motion.duration.reveal, easing: Easing.out(Easing.cubic) })
     );
   }, [opacity, reduceMotion, step, translateY]);
 
@@ -195,7 +195,7 @@ function usePressScale() {
     if (reduceMotion) return;
     scale.value = withSequence(
       withTiming(PRESS_SCALE, { duration: Motion.duration.flash }),
-      withTiming(1, { duration: Motion.duration.fast })
+      withTiming(1, { duration: Motion.duration.tap })
     );
   };
 
@@ -667,9 +667,9 @@ export default function HomeScreen() {
       titleScale.value = 1;
       return;
     }
-    titleOpacity.value = withTiming(1, { duration: Motion.duration.slow });
+    titleOpacity.value = withTiming(1, { duration: Motion.duration.reveal });
     titleScale.value = withTiming(1, {
-      duration: Motion.duration.slow,
+      duration: Motion.duration.reveal,
       easing: Easing.out(Easing.back(TITLE_OVERSHOOT)),
     });
   }, [reduceMotion, titleOpacity, titleScale]);

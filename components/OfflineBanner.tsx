@@ -29,7 +29,7 @@ export function OfflineBanner() {
       isOfflineRef.current = offline;
       setIsOffline(offline);
       translateY.value = withTiming(offline ? 0 : -BANNER_H, {
-        duration: reduceMotion ? 0 : Motion.duration.moderate,
+        duration: reduceMotion ? 0 : Motion.duration.travel,
       });
     });
     return () => unsub();

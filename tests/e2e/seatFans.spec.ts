@@ -242,7 +242,7 @@ test.describe("the opponents' fans", () => {
 // Reduced motion is forced so the check is deterministic rather than a race
 // against a 380ms animation: under it, `FlyingCards` (components/table/pile.tsx)
 // still mounts at its computed origin and holds there, un-animated, for
-// `Motion.duration.fast` (120ms) before calling `onDone` — invisible (opacity
+// `Motion.duration.tap` (120ms) before calling `onDone` — invisible (opacity
 // stays 0) but still laid out, which is all `getBoundingClientRect` needs. A
 // `MutationObserver` installed before the app even boots (`addInitScript`) is
 // what catches that node the instant it appears, however fast the AI seat

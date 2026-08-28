@@ -198,11 +198,11 @@ export function GameOverOverlay({
       return;
     }
     scale.value = withSpring(1, Motion.spring.reveal);
-    opacity.value = withTiming(1, { duration: Motion.duration.slow });
+    opacity.value = withTiming(1, { duration: Motion.duration.reveal });
     glow.value = withRepeat(
       withSequence(
-        withTiming(1, { duration: Motion.duration.pulse, easing: Easing.inOut(Easing.sin) }),
-        withTiming(0.5, { duration: Motion.duration.pulse, easing: Easing.inOut(Easing.sin) })
+        withTiming(1, { duration: Motion.duration.dwell, easing: Easing.inOut(Easing.sin) }),
+        withTiming(0.5, { duration: Motion.duration.dwell, easing: Easing.inOut(Easing.sin) })
       ),
       -1,
       false
@@ -233,7 +233,7 @@ export function GameOverOverlay({
       onRequestClose={() => {}}
     >
       <Animated.View
-        entering={reduceMotion ? undefined : FadeIn.duration(Motion.duration.moderate + 100)}
+        entering={reduceMotion ? undefined : FadeIn.duration(Motion.duration.travel + 100)}
         style={[styles.overlay, { paddingTop: topPad + 4, paddingBottom: bottomPad + 4 }]}
       >
         <LinearGradient

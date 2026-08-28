@@ -691,7 +691,7 @@ export default function TutorialScreen() {
       {header}
       <Animated.View
         key={stepIndex}
-        entering={reduceMotion ? undefined : FadeIn.duration(Motion.duration.moderate)}
+        entering={reduceMotion ? undefined : FadeIn.duration(Motion.duration.travel)}
         style={styles.body}
       >
         {renderBody()}

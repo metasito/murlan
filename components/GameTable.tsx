@@ -420,7 +420,7 @@ function RematchPromptPanel({
 
   return (
     <Animated.View
-      entering={reduceMotion ? undefined : FadeIn.duration(Motion.duration.moderate)}
+      entering={reduceMotion ? undefined : FadeIn.duration(Motion.duration.travel)}
       style={[styles.rematchPanel, { top, left }]}
       {...veiled}
     >
@@ -513,7 +513,7 @@ function GiocaButton({
     setPressed(down);
     pressVal.value = reduceMotion
       ? down ? 1 : 0
-      : withTiming(down ? 1 : 0, { duration: Motion.duration.fast });
+      : withTiming(down ? 1 : 0, { duration: Motion.duration.tap });
   };
 
   useEffect(() => () => cancelAnimation(pressVal), [pressVal]);
@@ -638,7 +638,7 @@ function PassaButton({
     setPressed(down);
     pressVal.value = reduceMotion
       ? down ? 1 : 0
-      : withTiming(down ? 1 : 0, { duration: Motion.duration.fast });
+      : withTiming(down ? 1 : 0, { duration: Motion.duration.tap });
   };
 
   useEffect(() => () => cancelAnimation(pressVal), [pressVal]);
@@ -797,7 +797,7 @@ export function GameTable({
       focusFade.value = target;
       return;
     }
-    focusFade.value = withTiming(target, { duration: Motion.duration.moderate });
+    focusFade.value = withTiming(target, { duration: Motion.duration.travel });
     return () => cancelAnimation(focusFade);
   }, [focusMode, reduceMotion, focusFade]);
   const focusFadeStyle = useAnimatedStyle(() => ({ opacity: focusFade.value }));
@@ -1818,7 +1818,7 @@ export function GameTable({
       {rejectHint && (
         <Animated.View
           key={rejectHint.key}
-          entering={reduceMotion ? undefined : FadeIn.duration(Motion.duration.fast)}
+          entering={reduceMotion ? undefined : FadeIn.duration(Motion.duration.tap)}
           pointerEvents="none"
           {...behindVeil}
           style={[

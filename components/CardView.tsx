@@ -517,7 +517,7 @@ function CardViewBase({
     }
     const target = selected ? -14 : 0;
     translateY.value = reduceMotion
-      ? withTiming(target, { duration: Motion.duration.fast })
+      ? withTiming(target, { duration: Motion.duration.tap })
       : withSpring(target, Motion.spring.pickup);
   }, [selected, noLift, reduceMotion, translateY]);
 

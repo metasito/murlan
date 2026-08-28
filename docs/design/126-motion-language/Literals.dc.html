@@ -1,0 +1,108 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@600;700&family=Inter:wght@400;500&display=swap">
+  <style>
+    body { margin: 0; background: #031008; font-family: Inter, system-ui, sans-serif; }
+    a { color: #C9A84C; } a:hover { color: #E2C06A; }
+    th { text-align: left; font-family: Rajdhani, sans-serif; font-weight: 600; font-size: 11px;
+         color: rgba(240,234,214,0.58); text-transform: uppercase; letter-spacing: .06em;
+         padding: 0 0 7px; border-bottom: 1px solid rgba(240,234,214,0.1); }
+    td { padding: 7px 0; border-bottom: 1px solid rgba(240,234,214,0.1);
+         font-size: 11.5px; color: rgba(240,234,214,0.75); }
+    .file { font-family: Rajdhani, sans-serif; font-weight: 600; font-size: 12px; color: #F0EAD6; }
+    .tag { font-family: Rajdhani, sans-serif; font-weight: 600; font-size: 10px; letter-spacing: .05em;
+           padding: 2px 7px; border-radius: 9999px; text-transform: uppercase; }
+  </style>
+</helmet>
+
+<div style="padding: 28px; display: flex; flex-direction: column; gap: 20px; background: #031008;">
+
+  <div style="display: flex; flex-direction: column; gap: 6px;">
+    <div style="font-family: Rajdhani, sans-serif; font-weight: 700; font-size: 22px; color: #F0EAD6;">What the sweep actually changes</div>
+    <div style="font-size: 13px; line-height: 1.5; color: rgba(240,234,214,0.75); max-width: 700px;">
+      The 33 literals, measured from the tree rather than quoted from the ticket. Most are renames — the value survives, only its spelling changes. The ones marked <span style="color: #F3E0A6;">retime</span> genuinely move, and are what needs watching once it lands.
+    </div>
+  </div>
+
+  <div style="display: flex; gap: 22px;">
+    <sc-for list="{{tallies}}" as="t" hint-placeholder-count="3">
+      <div style="display: flex; flex-direction: column; gap: 2px;">
+        <div style="font-family: Rajdhani, sans-serif; font-weight: 700; font-size: 26px; color: {{t.ink}};">{{t.n}}</div>
+        <div style="font-size: 11px; color: rgba(240,234,214,0.58);">{{t.label}}</div>
+      </div>
+    </sc-for>
+  </div>
+
+  <table style="width: 100%; border-collapse: collapse;">
+    <tr>
+      <th style="width: 210px;">Where</th>
+      <th style="width: 78px;">Now</th>
+      <th style="width: 128px;">Becomes</th>
+      <th style="width: 76px;"></th>
+      <th>Note</th>
+    </tr>
+    <sc-for list="{{rows}}" as="r" hint-placeholder-count="10">
+      <tr>
+        <td><span class="file">{{r.where}}</span></td>
+        <td style="font-family: Rajdhani, sans-serif; font-weight: 600; color: rgba(240,234,214,0.58);">{{r.now}}</td>
+        <td style="font-family: Rajdhani, sans-serif; font-weight: 600; color: #C9A84C;">{{r.becomes}}</td>
+        <td><span class="tag" style="background: {{r.bg}}; color: {{r.ink}};">{{r.kind}}</span></td>
+        <td style="color: rgba(240,234,214,0.58);">{{r.note}}</td>
+      </tr>
+    </sc-for>
+  </table>
+
+  <div style="border-top: 1px solid rgba(240,234,214,0.1); padding-top: 14px; display: flex; flex-direction: column; gap: 9px; font-size: 11.5px; line-height: 1.55; color: rgba(240,234,214,0.58);">
+    <div><span style="color: #C9A84C; font-weight: 500;">Two of the 33 are not timings at all.</span> <code style="color: #E2C06A;">showNotification({ duration })</code> is how long a banner stays readable — a reading budget, not motion. It belongs on its own <code style="color: #E2C06A;">dwell</code> group whatever this ticket decides; folding a 4.5&thinsp;s read in with a 90&thinsp;ms flash is a category error, and seven call sites do it.</div>
+    <div><span style="color: #C9A84C; font-weight: 500;">One is deliberately off-scale.</span> <code style="color: #E2C06A;">sparkOffset</code> scatters sixteen sparks with <code>60 + (i % 5) * 22</code>. The point is that they are <em>not</em> synchronised, so those two numbers are chosen against each other and belong as named constants beside the function, not as steps everything else shares.</div>
+  </div>
+</div>
+</x-dc>
+
+<script data-dc-script data-props='{"$preview": {"width": 940, "height": 800}}'>
+class Component extends DCLogic {
+  renderVals() {
+    const RENAME = { kind: 'rename', bg: 'rgba(201,168,76,0.15)', ink: '#C9A84C' };
+    const RETIME = { kind: 'retime', bg: 'rgba(243,224,166,0.18)', ink: '#F3E0A6' };
+    const OFF    = { kind: 'own scale', bg: 'rgba(240,234,214,0.08)', ink: 'rgba(240,234,214,0.75)' };
+
+    const rows = [
+      { where: 'app/index.tsx', now: '80 / 120', becomes: 'flash / tap', note: 'The press dip on a menu tile.', ...RENAME },
+      { where: 'app/index.tsx', now: '500 × 2', becomes: 'reveal', note: 'Cards fading in behind the menu.', ...RETIME },
+      { where: 'app/index.tsx', now: '700 × 2, 600', becomes: 'reveal', note: 'Title and subtitle entrance.', ...RETIME },
+      { where: 'app/rules.tsx', now: '280 / 200', becomes: 'travel / shift', note: 'A section expanding.', ...RENAME },
+      { where: 'app/result.tsx', now: '320', becomes: 'travel', note: 'Each result row arriving.', ...RENAME },
+      { where: 'app/result.tsx', now: '600', becomes: 'reveal', note: 'The panel itself.', ...RENAME },
+      { where: 'app/result.tsx', now: '1200 × 4', becomes: 'dwell', note: 'The winner’s ambient glow loop.', ...RENAME },
+      { where: 'app/(online)/quickmatch.tsx', now: '900 × 2', becomes: 'dwell', note: 'Searching pulse. Slows slightly.', ...RETIME },
+      { where: 'components/ExchangeModal.tsx', now: '300', becomes: 'travel', note: 'The arrow between the two cards.', ...RENAME },
+      { where: 'components/GameOverOverlay.tsx', now: '350', becomes: 'travel', note: 'Each line of the summary.', ...RETIME },
+      { where: 'components/useTableFeedback.ts', now: '1000 × 2', becomes: 'dwell', note: 'Turn-warning pulse.', ...RETIME },
+      { where: 'components/table/moments.tsx', now: '1250 / 1350', becomes: 'dwell', note: 'Two bomb rings. The trail comes from their delays, so both can share one duration.', ...RETIME },
+      { where: 'components/table/moments.tsx', now: '80 / 260', becomes: 'flash / travel', note: 'The delays that make the two rings trail.', ...RENAME },
+      { where: 'components/gameTableModel.ts', now: '60 + i×22', becomes: 'named constants', note: 'A scatter, deliberately unsynchronised.', ...OFF },
+      { where: 'context/SocketContext.tsx', now: '6000', becomes: 'dwell.invite', note: 'An invite is acted on, not just read.', ...OFF },
+      { where: 'context/SocketContext.tsx', now: '4000 × 2', becomes: 'dwell.notice', note: 'Banner reading time.', ...OFF },
+      { where: 'context/OnlineGameContext.tsx', now: '4500 × 3, 4000', becomes: 'dwell.notice', note: 'Same banner budget, four call sites.', ...OFF },
+    ];
+
+    return {
+      rows,
+      tallies: [
+        { n: '33', label: 'literals, 10 files', ink: '#F0EAD6' },
+        { n: '2', label: 'already on a step', ink: 'rgba(240,234,214,0.75)' },
+        { n: '8', label: 'genuinely retimed', ink: '#F3E0A6' },
+      ],
+    };
+  }
+}
+</script>
+</body>
+</html>

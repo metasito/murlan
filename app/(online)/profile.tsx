@@ -323,7 +323,7 @@ export default function ProfileScreen() {
     ? `${t("profile.achievementsTitle")} · ${unlockedCount}/${achievements.length}`
     : t("profile.achievementsTitle");
 
-  const entering = reduceMotion ? undefined : FadeIn.duration(Motion.duration.moderate);
+  const entering = reduceMotion ? undefined : FadeIn.duration(Motion.duration.travel);
 
   return (
     <MenuLayout scrollable centered={false}>

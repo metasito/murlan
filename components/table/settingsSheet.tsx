@@ -276,7 +276,7 @@ export function GameSettingsSheet({
         entering={
           reduceMotion
             ? undefined
-            : (railSide === "left" ? SlideInLeft : SlideInRight).duration(Motion.duration.base)
+            : (railSide === "left" ? SlideInLeft : SlideInRight).duration(Motion.duration.shift)
         }
         style={[
           sheetStyles.sheetPos,

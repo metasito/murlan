@@ -24,10 +24,10 @@ import { useTranslation } from "@/lib/i18n";
 import { Colors, Motion } from "@/lib/theme";
 
 const GLYPH_SIZE = 56;
-const TURN_MS = Motion.duration.slow;
+const TURN_MS = Motion.duration.reveal;
 /** Long enough to read as an instruction rather than as a spinner. */
-const HOLD_SETTLED = Motion.duration.pulse;
-const HOLD_UPRIGHT = Motion.duration.moderate;
+const HOLD_SETTLED = Motion.duration.dwell;
+const HOLD_UPRIGHT = Motion.duration.travel;
 const EASE = Easing.inOut(Easing.sin);
 
 export function RotateOverlay() {
