@@ -187,6 +187,7 @@ export const sq: Record<keyof typeof en, string> = {
 
   // ---------------------------------------------------- notificationBanner.*
   "notificationBanner.dismissA11yHint": "Prek për të mbyllur njoftimin",
+  "notificationBanner.openA11yHint": "Prek për ta hapur",
   "notificationBanner.closeA11yLabel": "Mbyll njoftimin",
   // ---------------------------------------------------------- notifications.*
   "notifications.friendRequestTitle": "Kërkesë miqësie",

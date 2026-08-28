@@ -45,13 +45,6 @@ function faceAliases(read: (rel: string) => string, files: string[]): Set<string
 const HIDDEN = /\.\.\.a11yHidden\(\s*(true\s*)?\)|accessibilityElementsHidden|aria-hidden/;
 const LABELLED = /accessibilityLabel=/;
 
-/**
- * Controls whose child must stay reachable, with the reason. Empty, and that is
- * the state rather than an aspiration. An entry is a claim that some control is
- * different from every other one, and it has to say how.
- */
-const DELIBERATELY_REACHABLE: [string, string, string][] = [];
-
 function sourcesUnder(dir: string): string[] {
   const out: string[] = [];
   for (const entry of readdirSync(path.join(repoRoot, dir), { withFileTypes: true })) {
@@ -181,24 +174,15 @@ test("a nested control keeps its own contents", () => {
 const read = (rel: string) => readFileSync(path.join(repoRoot, rel), "utf8");
 const scanned = () => [...sourcesUnder("app"), ...sourcesUnder("components")];
 
-// Named, not counted: an entry that outlived its control would otherwise
-// forgive whichever control took its place in the file.
-test("every exception still names a control that has one", () => {
-  const aliases = faceAliases(read, scanned());
-  const stale = DELIBERATELY_REACHABLE.filter(
-    ([file, control]) => !reachableChildren(read(file), aliases).some((hit) => hit.startsWith(control))
-  ).map(([file, control]) => `${file} ${control}`);
-  assert.deepEqual(stale, [], `no longer exposes a child, so drop the entry: ${stale.join(", ")}`);
-});
-
+// No exception list: the one control that looked like it needed one was a
+// live region wearing a button's clothes, and the answer was a node of its
+// own (`lib/a11y.tsx`'s `A11yStatus`) rather than a licence.
 test("no labelled control leaves its own face reachable", () => {
   const aliases = faceAliases(read, scanned());
-  const excused = new Set(DELIBERATELY_REACHABLE.map(([file, control]) => `${file}:${control}`));
 
   const offenders: string[] = [];
   for (const rel of scanned()) {
     for (const hit of reachableChildren(read(rel), aliases)) {
-      if (excused.has(`${rel}:${hit.slice(0, hit.indexOf(">") + 1)}`)) continue;
       offenders.push(`${rel}:${hit}`);
     }
   }

@@ -67,7 +67,11 @@ const TOP_GAP = 8;
 
 export default function NotificationBanner({ notification, onDismiss }: Props) {
   const { t } = useTranslation();
-  const dismissHint = useA11yHint(t("notificationBanner.dismissA11yHint"));
+  // Pressing the body runs the notification's own action before it dismisses,
+  // and every caller that supplies one navigates away.
+  const dismissHint = useA11yHint(
+    t(notification?.onPress ? "notificationBanner.openA11yHint" : "notificationBanner.dismissA11yHint")
+  );
   const [pressed, setPressed] = useState(false);
   const insets = useSafeAreaInsets();
   const { width, height } = useWindowDimensions();

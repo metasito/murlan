@@ -172,6 +172,7 @@ export const it: Record<keyof typeof en, string> = {
 
   // ---------------------------------------------------- notificationBanner.*
   "notificationBanner.dismissA11yHint": "Tocca per chiudere la notifica",
+  "notificationBanner.openA11yHint": "Tocca per aprirla",
   "notificationBanner.closeA11yLabel": "Chiudi notifica",
   // ---------------------------------------------------------- notifications.*
   "notifications.friendRequestTitle": "Richiesta di amicizia",

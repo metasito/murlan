@@ -178,6 +178,7 @@ export const en = {
 
   // ---------------------------------------------------- notificationBanner.*
   "notificationBanner.dismissA11yHint": "Tap to dismiss the notification",
+  "notificationBanner.openA11yHint": "Tap to open it",
   "notificationBanner.closeA11yLabel": "Close notification",
   // ---------------------------------------------------------- notifications.*
   "notifications.friendRequestTitle": "Friend request",

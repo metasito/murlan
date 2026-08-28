@@ -191,12 +191,16 @@ export function ExchangeAnnouncement({
         )}
 
         <Pressable
+          testID="exchange-announce-panel"
           onPress={handleDismiss}
           style={styles.card}
           accessibilityViewIsModal
           // Pointer only: an accessible panel is one leaf on iOS, which seals
           // the close button inside it. The sentence is A11yStatus's job.
           accessible={false}
+          // react-native-web gives every Pressable `tabIndex=0`, so without
+          // this the panel is a tab stop with no role and no name.
+          tabIndex={-1}
         >
           <A11yStatus label={a11yLabel} role="alert" live="assertive" />
           <Pressable
@@ -209,17 +213,19 @@ export function ExchangeAnnouncement({
             <Feather name="x" size={18} color={Colors.textMuted} {...a11yHidden()} />
           </Pressable>
 
-          <Text style={styles.title} {...a11yHidden()}>{t("exchangeAnnouncement.title")}</Text>
+          <Text style={styles.title}>{t("exchangeAnnouncement.title")}</Text>
 
           {bothJokersException ? (
-            <Text style={styles.noSwapText} {...a11yHidden()}>
+            <Text style={styles.noSwapText}>
               {t("exchangeAnnouncement.noSwapText")}
             </Text>
           ) : (
-            <View style={styles.rowsContainer} {...a11yHidden()}>
+            <View style={styles.rowsContainer}>
               {cardReceived && (
                 <View style={styles.exchangeBlock}>
-                  <View style={styles.exchangeRow}>
+                  {/* The picture of the exchange; the sentence under it says
+                      the same thing in words. */}
+                  <View style={styles.exchangeRow} {...a11yHidden()}>
                     <Text style={styles.playerName}>{loserName}</Text>
                     <Text style={styles.arrow}>→</Text>
                     <View style={styles.cardWrap}>
@@ -244,7 +250,7 @@ export function ExchangeAnnouncement({
 
               {cardGiven && (
                 <View style={styles.exchangeBlock}>
-                  <View style={styles.exchangeRow}>
+                  <View style={styles.exchangeRow} {...a11yHidden()}>
                     <Text style={styles.playerName}>{winnerName}</Text>
                     <Text style={styles.arrow}>→</Text>
                     <View style={styles.cardWrap}>
