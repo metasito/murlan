@@ -201,7 +201,7 @@ export default function ProfileScreen() {
           accessibilityLabel={t("common.back")}
           hitSlop={12}
         >
-          <Ionicons name="chevron-back" size={22} color={Colors.gold} />
+          <Ionicons name="chevron-back" size={22} color={Colors.gold} {...a11yHidden()} />
         </Pressable>
         <Text style={styles.screenTitle}>{t("profile.title")}</Text>
         <View style={{ width: 38 }} />
@@ -456,6 +456,7 @@ export default function ProfileScreen() {
                     const modeText = r.gameMode === "teams" ? t("gameOverOverlay.modeTeams") : t("gameOverOverlay.modeFreeForAll");
                     const playersText = tn("profile.historyPlayers", r.playerCount);
                     const timeText = relativeTime(r.finishedAt, t, tn);
+                    const movesText = `${r.moveCount} ${t("replay.moves")}`;
                     return (
                       <Pressable
                         key={r.id}
@@ -466,6 +467,7 @@ export default function ProfileScreen() {
                           mode: modeText,
                           players: playersText,
                           time: timeText,
+                          moves: movesText,
                         })}
                       >
                         <Ionicons
@@ -474,12 +476,12 @@ export default function ProfileScreen() {
                           color={Colors.gold}
                           {...a11yHidden()}
                         />
-                        <View style={styles.rowInfo}>
+                        <View style={styles.rowInfo} {...a11yHidden()}>
                           <Text style={styles.rowName}>{modeText} · {playersText}</Text>
                           <Text style={styles.rowSub}>{timeText}</Text>
                         </View>
-                        <Text style={styles.rowPoints}>
-                          {r.moveCount} {t("replay.moves")}
+                        <Text style={styles.rowPoints} {...a11yHidden()}>
+                          {movesText}
                         </Text>
                       </Pressable>
                     );

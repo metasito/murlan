@@ -384,7 +384,7 @@ export const sq: Record<keyof typeof en, string> = {
   "replay.errorTitle": "Replay-t nuk janë të disponueshëm",
   "replay.errorBody": "Nuk arritëm të ngarkojmë replay-t.",
   "replay.errorRetry": "Provo përsëri",
-  "replay.rowA11yLabel": "Rishiko: {{mode}}, {{players}}, {{time}}",
+  "replay.rowA11yLabel": "Rishiko: {{mode}}, {{players}}, {{time}}, {{moves}}",
   "replay.moves": "lëvizje",
   "replay.moveOf": "Lëvizja {{n}} nga {{total}}",
   "replay.start": "Fillimi",

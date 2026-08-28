@@ -375,7 +375,7 @@ export const en = {
   "replay.errorTitle": "Replays unavailable",
   "replay.errorBody": "We could not load your replays.",
   "replay.errorRetry": "Retry",
-  "replay.rowA11yLabel": "Watch: {{mode}}, {{players}}, {{time}}",
+  "replay.rowA11yLabel": "Watch: {{mode}}, {{players}}, {{time}}, {{moves}}",
   "replay.moves": "moves",
   "replay.moveOf": "Move {{n}} of {{total}}",
   "replay.start": "Start",

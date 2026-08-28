@@ -377,7 +377,7 @@ export const it: Record<keyof typeof en, string> = {
   "replay.errorTitle": "Replay non disponibili",
   "replay.errorBody": "Non siamo riusciti a caricare i replay.",
   "replay.errorRetry": "Riprova",
-  "replay.rowA11yLabel": "Rivedi: {{mode}}, {{players}}, {{time}}",
+  "replay.rowA11yLabel": "Rivedi: {{mode}}, {{players}}, {{time}}, {{moves}}",
   "replay.moves": "mosse",
   "replay.moveOf": "Mossa {{n}} di {{total}}",
   "replay.start": "Inizio",

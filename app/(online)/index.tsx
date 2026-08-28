@@ -115,12 +115,13 @@ export default function OnlineLobbyScreen() {
                 accessibilityLabel={m === "free_for_all" ? t("onlineLobby.modeFreeForAll") : t("onlineLobby.modeTeams")}
                 {...a11yState({ role: "radio", selected: createMode === m })}
               >
-                <Ionicons 
-                  name={m === "teams" ? "people" : "person"} 
-                  size={isLandscape ? 14 : 16} 
-                  color={createMode === m ? Colors.gold : Colors.textSecondary} 
+                <Ionicons
+                  name={m === "teams" ? "people" : "person"}
+                  size={isLandscape ? 14 : 16}
+                  color={createMode === m ? Colors.gold : Colors.textSecondary}
+                  {...a11yHidden()}
                 />
-                <Text style={[styles.toggleText, createMode === m && styles.toggleTextActive, isLandscape && { fontSize: FontSize.xs }]}>
+                <Text {...a11yHidden()} style={[styles.toggleText, createMode === m && styles.toggleTextActive, isLandscape && { fontSize: FontSize.xs }]}>
                   {m === "free_for_all" ? t("onlineLobby.modeFreeForAll") : t("onlineLobby.modeTeams")}
                 </Text>
               </Pressable>
@@ -143,7 +144,7 @@ export default function OnlineLobbyScreen() {
                 accessibilityLabel={t("lobby.playerCountOptionA11yLabel", { n })}
                 {...a11yState({ role: "radio", selected: createPlayers === n })}
               >
-                <Text style={[styles.toggleText, createPlayers === n && styles.toggleTextActive, { fontSize: isLandscape ? 14 : 18 }]}>
+                <Text {...a11yHidden()} style={[styles.toggleText, createPlayers === n && styles.toggleTextActive, { fontSize: isLandscape ? 14 : 18 }]}>
                   {n}
                 </Text>
               </Pressable>
@@ -197,7 +198,7 @@ export default function OnlineLobbyScreen() {
           accessibilityLabel={t("common.back")}
           hitSlop={12}
         >
-          <Ionicons name="chevron-back" size={22} color={Colors.gold} />
+          <Ionicons name="chevron-back" size={22} color={Colors.gold} {...a11yHidden()} />
         </Pressable>
         <Text style={styles.screenTitle}>{t("onlineLobby.title")}</Text>
         <View style={{ width: 38 }} />
@@ -332,7 +333,7 @@ export default function OnlineLobbyScreen() {
                   accessibilityRole="button"
                   accessibilityLabel={t("common.cancel")}
                 >
-                  <Text style={styles.modalCancelText}>{t("common.cancel")}</Text>
+                  <Text style={styles.modalCancelText} {...a11yHidden()}>{t("common.cancel")}</Text>
                 </Pressable>
                 <Pressable
                   onPress={handleSpectate}
@@ -343,7 +344,7 @@ export default function OnlineLobbyScreen() {
                   {...a11yState({ role: "button", disabled: joinCode.length < 4 })}
                 >
                   {watchHint.node}
-                  <Text style={styles.modalCancelText}>{t("onlineLobby.watch")}</Text>
+                  <Text style={styles.modalCancelText} {...a11yHidden()}>{t("onlineLobby.watch")}</Text>
                 </Pressable>
                 <Pressable
                   onPress={handleJoin}
@@ -352,7 +353,7 @@ export default function OnlineLobbyScreen() {
                   accessibilityLabel={t("onlineLobby.enter")}
                   {...a11yState({ role: "button", disabled: joinCode.length < 4 })}
                 >
-                  <Text style={styles.modalOkText}>{t("onlineLobby.enter")}</Text>
+                  <Text style={styles.modalOkText} {...a11yHidden()}>{t("onlineLobby.enter")}</Text>
                 </Pressable>
               </View>
             </View>
