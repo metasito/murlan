@@ -5,7 +5,7 @@
 
 import type { Page } from "@playwright/test";
 import { test, expect, isExpectedNoise } from "./fixtures";
-import { openApp, registerNewAccount } from "./helpers/navigation";
+import { openApp, registerNewAccount, uniqueUsername } from "./helpers/navigation";
 import { createRoom, fillWithBotsAndStart, goToOnlineLobby, joinRoom, startRoom } from "./helpers/online";
 import { driveGameToCompletion } from "./helpers/bot";
 
@@ -13,10 +13,6 @@ const LEAVE_BUTTON = { role: "button" as const, name: "Esci dalla partita" };
 
 async function isOnlineGameOver(page: Page): Promise<boolean> {
   return page.getByRole(LEAVE_BUTTON.role, { name: LEAVE_BUTTON.name }).isVisible();
-}
-
-function uniqueUsername(prefix: string): string {
-  return `${prefix}${Date.now().toString(36).slice(-6)}${Math.floor(Math.random() * 900 + 100)}`;
 }
 
 test("online — host fills the room with bots and plays a real server-authoritative game", async ({

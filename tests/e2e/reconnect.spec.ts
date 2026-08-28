@@ -13,14 +13,10 @@
 
 import type { Page } from "@playwright/test";
 import { test, expect, isExpectedNoise } from "./fixtures";
-import { openApp, registerNewAccount } from "./helpers/navigation";
+import { openApp, registerNewAccount, uniqueUsername } from "./helpers/navigation";
 import { createRoom, fillWithBotsAndStart, goToOnlineLobby } from "./helpers/online";
 
 const RECONNECTING = "Connessione persa — riconnessione…";
-
-function uniqueUsername(prefix: string): string {
-  return `${prefix}${Date.now().toString(36).slice(-6)}${Math.floor(Math.random() * 900 + 100)}`;
-}
 
 test("online — a dropped connection says so, and the table comes back", async ({
   browser,

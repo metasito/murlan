@@ -16,6 +16,8 @@ import { it } from "../locales/it.ts";
 import { en } from "../locales/en.ts";
 import { sq } from "../locales/sq.ts";
 import { translate, interpolate, DEFAULT_LOCALE } from "../lib/i18n.ts";
+import { CARD_BACK_IDS, TABLE_FELT_IDS } from "../lib/cosmetics.ts";
+import { BOT_PERSONALITIES } from "../lib/botPersonalities.ts";
 
 const LOCALES = { it, en, sq } as const;
 type LocaleName = keyof typeof LOCALES;
@@ -483,9 +485,9 @@ describe("translate() produces the expected output per locale", () => {
   });
 
   test("simple key, no params, in every locale", () => {
-    assert.equal(translate("it", "common.ok"), "OK");
-    assert.equal(translate("en", "common.ok"), "OK");
-    assert.equal(translate("sq", "common.ok"), "OK");
+    assert.equal(translate("it", "common.close"), "Chiudi");
+    assert.equal(translate("en", "common.close"), "Close");
+    assert.equal(translate("sq", "common.close"), "Mbyll");
   });
 
   test("interpolated key substitutes the param in every locale", () => {
@@ -588,6 +590,159 @@ describe("translate() produces the expected output per locale", () => {
       .map((key) => key.slice("server.".length))
       .filter((code) => !sources.includes(`"${code}"`));
     assert.deepEqual(unused, [], `unused server.* keys: ${unused.join(", ")}`);
+  });
+});
+
+describe("no key outlives its last reader", () => {
+  // The test above is this one for a single prefix. Every other key had
+  // nothing: a screen could be deleted and the sentences it used stayed
+  // behind, translated in three languages for nobody, which is how #507's
+  // seven survived #502.
+
+  /**
+   * Where a `t()` call can live. `tests/` is deliberately out: a key a test
+   * names in an assertion has no reader in the app, and counting one would
+   * let a suite keep a dead sentence alive.
+   */
+  const READER_DIRS = ["app", "components", "context", "lib", "scripts", "server", "shared"];
+
+  /**
+   * A key nothing spells out because it is assembled at runtime, against the
+   * single place that assembles it. `where` and `needle` are read from disk
+   * on every run, so an entry cannot outlive its constructor — one cannot be
+   * added to silence a real orphan without naming code that builds the key.
+   *
+   * What it still cannot see: `rules.faq` is bounded by a count private to
+   * `app/rules.tsx`, so lowering that count leaves the keys above it exempt,
+   * and `server.*` is a prefix — its per-code check is the separate test
+   * above. The other five entries name the id or the range, which is what
+   * closes them.
+   */
+  const CONSTRUCTED: {
+    covers: (key: string, named: Set<string>) => boolean;
+    where: string;
+    needle: string;
+  }[] = [
+    {
+      covers: (key) => key.startsWith("server."),
+      where: "lib/i18n.ts",
+      needle: "`server.${payload.code}`",
+    },
+    {
+      // Both halves ride the base `tn()` is called with, so a pair whose
+      // caller is gone is reported as both halves.
+      covers: (key, named) =>
+        /_(one|other)$/.test(key) && named.has(key.replace(/_(one|other)$/, "")),
+      where: "lib/i18n.ts",
+      needle: "`${base}${suffix}`",
+    },
+    {
+      covers: (key) => /^rules\.faq\.q\d+$/.test(key),
+      where: "app/rules.tsx",
+      needle: "`rules.faq.q${n}`",
+    },
+    {
+      // The question and the answer are built a line apart and one can go
+      // without the other, so an entry covering both would keep half the
+      // catalogue exempt on the strength of the other half's constructor.
+      covers: (key) => /^rules\.faq\.a\d+$/.test(key),
+      where: "app/rules.tsx",
+      needle: "`rules.faq.a${n}`",
+    },
+    {
+      covers: (key) => /^month\.(?:[1-9]|1[0-2])$/.test(key),
+      where: "lib/rating.ts",
+      needle: "`month.${month}`",
+    },
+    // The three id-derived sets take the ids themselves rather than the
+    // prefix. A prefix exempts whatever is written under it, so dropping a
+    // card back would leave its name translated in three languages with
+    // nothing able to reach it — the shape this whole block exists to catch.
+    {
+      covers: (key) => CARD_BACK_IDS.some((id) => key === `cosmetics.back.${id}`),
+      where: "lib/cosmetics.ts",
+      needle: "`cosmetics.back.${id}`",
+    },
+    {
+      covers: (key) => TABLE_FELT_IDS.some((id) => key === `cosmetics.felt.${id}`),
+      where: "lib/cosmetics.ts",
+      needle: "`cosmetics.felt.${id}`",
+    },
+    {
+      covers: (key) => BOT_PERSONALITIES.some((p) => key === `bot.${p.id}Blurb`),
+      where: "lib/botPersonalities.ts",
+      needle: "`bot.${id}Blurb`",
+    },
+  ];
+
+  function readerSources(): { file: string; source: string }[] {
+    return READER_DIRS.flatMap((dir) => {
+      const root = path.join(REPO_ROOT, dir);
+      return readdirSync(root, { recursive: true, encoding: "utf8" })
+        .filter((f) => /\.tsx?$/.test(f))
+        .map((f) => ({ file: `${dir}/${f}`, source: readFileSync(path.join(root, f), "utf8") }));
+    });
+  }
+
+  /**
+   * Every quoted key-shaped token in `source`, in all three quote styles.
+   *
+   * Deliberately not a string tokenizer: an apostrophe in a comment opens a
+   * literal that runs to the next one, and every name after it in the file
+   * is lost — a scan that fails that way reports live keys as dead, which is
+   * indistinguishable from the defect. A key has no whitespace, so matching
+   * one directly cannot desynchronise.
+   */
+  function namesIn(source: string, into: Set<string>): void {
+    for (const m of source.matchAll(/(["'`])([\w.]+)\1/g)) into.add(m[2]);
+  }
+
+  function orphansAmong(keys: string[], named: Set<string>): string[] {
+    return keys.filter(
+      (key) => !named.has(key) && !CONSTRUCTED.some(({ covers }) => covers(key, named))
+    );
+  }
+
+  // Read on first use rather than here: every other scan in this file walks
+  // the tree inside a test body, so a directory that cannot be read fails one
+  // test instead of the whole file's collection.
+  let cached: Set<string> | undefined;
+  function namedKeys(): Set<string> {
+    if (!cached) {
+      cached = new Set<string>();
+      for (const { source } of readerSources()) namesIn(source, cached);
+    }
+    return cached;
+  }
+
+  test("every constructed-key entry still points at the code that builds it", () => {
+    for (const { where, needle } of CONSTRUCTED) {
+      const source = readFileSync(path.join(REPO_ROOT, where), "utf8");
+      assert.ok(source.includes(needle), `${where} no longer builds ${needle}`);
+    }
+  });
+
+  test("no constructed-key entry covers nothing", () => {
+    // A shape that matches no key is a claim going spare, and the next key
+    // written under it inherits an exemption nobody chose to give it.
+    for (const { where, needle, covers } of CONSTRUCTED) {
+      const covered = Object.keys(en).filter((key) => covers(key, namedKeys()));
+      assert.ok(covered.length > 0, `${where}'s ${needle} covers no key in en`);
+    }
+  });
+
+  test("the scan can tell a named key from an orphan", () => {
+    assert.deepEqual(orphansAmong(["lobby.title", "lobby.gone"], new Set(["lobby.title"])), [
+      "lobby.gone",
+    ]);
+    assert.deepEqual(orphansAmong(["server.ANY", "month.3", "bot.luanBlurb"], new Set()), []);
+    assert.deepEqual(orphansAmong(["x_one", "x_other"], new Set(["x"])), []);
+    assert.deepEqual(orphansAmong(["x_one", "x_other"], new Set()), ["x_one", "x_other"]);
+  });
+
+  test("every key in en is named by something outside locales/", () => {
+    const orphans = orphansAmong(Object.keys(en), namedKeys());
+    assert.deepEqual(orphans, [], `nothing reads these keys: ${orphans.join(", ")}`);
   });
 });
 
