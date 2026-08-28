@@ -3,6 +3,10 @@
 Which loop to run for which change, what each one costs, and what it can and cannot see.
 Read this **before** starting a change, not after a loop has already lied to you.
 
+Which checks you owe before pushing is a rule, and rules live in `docs/agents/RULES.md`.
+This file is the *why* behind them and the commands they refer to; where the two disagree,
+the ruleset wins.
+
 ## Ask which platform the report came from, first
 
 Every loop below except the last runs **Chromium**. The owner tests on **iOS through Expo
@@ -97,6 +101,37 @@ Each of these produced a confident, wrong "fixed" in one session:
   grep's status; a red run reads as green. Read the `N passed / N failed` line.
 - **Compare pixels, not impressions.** "Looks darker" cost hours; sampling the same relative
   points out of both PNGs found the halved vignette radius in one run.
+- **A scan or a measure with no floor reports the state of the scanner.** It reads identically
+  either way, which is the whole problem — see below.
+
+## A scan needs a planted floor
+
+A check that has only ever been green has not been tested; it has been assumed. Plant the
+defect it exists to catch, watch it fire, and keep the planted case as a test. Thirteen files
+already do this and name it the same way — `// The floor.` — including
+`tests/vignette.test.ts`, `tests/native/feltEllipse.test.tsx` and `tests/bundleRoutes.test.ts`.
+`tests/a11yProps.test.ts` and `tests/e2eSentinels.test.ts` do it under their own names.
+
+**Which direction it fails in decides whether you find out.** Three scans lied here in one
+week, and only the loud one was caught by the person who wrote it:
+
+| | what it did | what happened |
+| --- | --- | --- |
+| substring grep | reported a dead locale key as live — `common.no` matched inside `common.notice` | a **false negative**: an issue was written on top of it, describing a confirm dialog that does not exist |
+| literal tokeniser | an apostrophe in a comment (`player's`) opened a literal that ran to the next one, losing every key after it in the file | a **false positive** storm: 128 orphans, most obviously live, investigated in a minute |
+| pixel measure | passed 4:1 before any change was made, because one of the two threads was already multiplicative | would have shipped a **green for a live defect** |
+
+So: 128 obvious false positives get checked; one plausible false negative gets believed. When
+you can choose which way a scan fails, choose loud.
+
+**What the first two have in common** is that both tracked state across a file and could
+desynchronise. Matching the shape you are looking for directly — a quoted `"[\w.]+"` token —
+cannot. Prefer a scan that cannot lose its place over one that parses properly.
+
+**Why this is written here and not enforced.** A floor is a semantic property, not a
+syntactic one: 34 of the 36 test files that scan the tree and assert an empty result do not
+carry the phrase, and most of them have a floor under another name. A check keyed on the
+words would flag them all and be satisfied by adding the words.
 
 ## Starvation looks exactly like a red suite
 

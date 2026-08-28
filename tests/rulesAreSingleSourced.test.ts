@@ -13,6 +13,7 @@ const INSTRUCTION_FILES = [
   ".claude/commands/wayfinder.md",
   "scripts/ticket-pipeline.ts",
   "docs/agents/issue-tracker.md",
+  "docs/agents/loops.md",
 ];
 
 /**
