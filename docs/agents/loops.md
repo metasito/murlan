@@ -164,27 +164,31 @@ Which forms deliver a re-render, all measured:
 | `await fireEvent.press(x)` | yes |
 | `await act(async () => fireEvent.press(x))` | yes |
 | `await act(async () => { fireEvent.press(x) })` — promise dropped | yes |
-| `fireEvent.press(x)` then any later `act` flush or `await waitFor` | yes |
+| `fireEvent.press(x)` then `await waitFor(…)` | yes |
+| `fireEvent.press(x)` then an `act` flush | yes, and see below |
 
-Only the first fails to re-render, and every existing call site in `tests/native/` is sound for
-one of these reasons. Awaiting the `fireEvent` is still the form to write: it is the one that
-does not depend on something else happening to flush afterwards.
+Only the first fails to re-render. Awaiting the `fireEvent` is the form to write: it is the one
+that does not depend on something else happening to flush afterwards.
 
-**One pairing is worse than a missed re-render, and it is the last row above followed by the
-wrong flush.** A bare `fireEvent` leaves its own `act` scope open. An `await act(…)` on the next
-line nests inside it, and React's act environment stays corrupted **for the rest of the file** —
-every later `render()` returns a tree whose queries find nothing, so a control that is
-unconditionally present reads as absent:
+**The last row re-renders and is still the dangerous one.** A bare `fireEvent` leaves its own
+`act` scope open, and the next `act` **entered without yielding first** nests inside it. React
+says so —
 
 ```
-Unable to find an element with testID: go
+Warning: You seem to have overlapping act() calls, this is not supported.
 ```
 
-The test that pays is never the test that did it, which is why this reads as "a screen that
-cannot be mounted twice" or "one interaction per file". It is neither. Measured on a twelve-line
-`Pressable`: `await waitFor(…)` after a bare `fireEvent` is safe, awaiting the `fireEvent` is
-safe, and only the `await act(…)` pairing poisons. `tests/nativeActPairing.test.ts` refuses the
-two-line shape.
+— and its act environment then stays corrupted **for the rest of the file**. Every later
+`render()` returns a tree whose queries find nothing, so a control that is unconditionally
+present reads as `Unable to find an element with testID: …`. The test that pays is never the
+test that did it, which is why this reads as "a screen that cannot be mounted twice" or "one
+interaction per file". It is neither.
+
+Yielding is the whole distinction, and it is why `await waitFor(…)` is safe: it yields before
+entering its own scope. Adjacency has nothing to do with it — any run of synchronous statements
+between the two still pairs. **And `unmount` and `rerender` are `act` calls under another name**
+(`dist/render.js`), so `await view.unmount()` closes the trap just as `await act(…)` does.
+`tests/nativeActPairing.test.ts` refuses the pairing; every call site it reaches is sound.
 
 **Do not reach into `.props` to drive a control instead.** `getByTestId` returns the *host*
 node. On a `Pressable` that host is the `View` carrying the responder props, and
@@ -194,9 +198,8 @@ work there, which is how it gets adopted.
 
 ## `import.meta.dirname` is `undefined` under `npx tsx --test`
 
-`tests/bundleRoutes.test.ts` and `tests/landingPage.test.ts` are the only two files that use it,
-and under `tsx` they fail with `The "paths[0]" argument must be of type string` — which reads as
-a bug in whatever you just touched. Rule 4's `node --test` runs them. Reaching for `tsx` because
+The `node --test` files that use it fail under `tsx` with `The "paths[0]" argument must be of
+type string` — which reads as a bug in whatever you just touched. Rule 4's `node --test` runs them. Reaching for `tsx` because
 the file is TypeScript is the trap; two sessions hit it on the same day, on different files.
 
 ## Starvation looks exactly like a red suite
@@ -325,8 +328,8 @@ waiting on is a container nobody will notice. `murlan-dev-pg` and Docker Desktop
 `node scripts/dev-stack.mjs down` takes the container, and `npm run reap -- --docker` takes it
 too if you have lost track of which sitting started it. Neither quits the engine: Docker Desktop
 is a separate ~1 GB, and on a machine two sessions are already sharing, that is the difference
-between a suite running and the jest preflight refusing. Quit it once neither session needs a
-Postgres; the next `up` costs seconds.
+between a suite running and the jest preflight refusing. A stack left warm for the next ticket
+buys nothing: the next `up` costs seconds.
 
 **No unit test can see a layout bug.** `react-test-renderer` never runs flexbox. A green
 `npx jest` on a fan rendered off-screen is the normal outcome, not a surprise.
