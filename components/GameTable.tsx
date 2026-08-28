@@ -58,8 +58,8 @@ import {
   canPassNow as canPassNowOf,
   comboKey,
   computeTableFrame,
-  railSideForOrientation,
-  type RailSide,
+  railSideFor,
+  LANDSCAPE_LEFT,
   describeTableForA11y,
   displayedHandCount,
   EMPTY_PILE,
@@ -769,7 +769,7 @@ export function GameTable({
   // session's own choice, not a stored preference — sound, music and
   // vibration are the persisted ones, which the sheet reads for itself.
   const [settingsOpen, setSettingsOpen] = useState(false);
-  const [railSide, setRailSide] = useState<RailSide>("left");
+  const [rotation, setRotation] = useState<number>(LANDSCAPE_LEFT);
   const tableWithdrawn = settingsOpen || tableCovered;
   const behindVeil = a11yVeiled(tableWithdrawn);
   // The sheet hangs off the rail, outside the overlays slot, so the slot goes
@@ -938,6 +938,7 @@ export function GameTable({
     [players, viewerSeat]
   );
 
+  const railSide = railSideFor(Math.max(insets.left, insets.right), rotation);
   const frame = computeTableFrame({ width: W, insets, scale, railSide });
   // The felt box the lamp lives in. The pool is drawn oversized and slid under
   // this box's own clipping, so it needs the box rather than the screen.
@@ -1059,7 +1060,7 @@ export function GameTable({
   useEffect(() => {
     let mounted = true;
     const follow = (o: ScreenOrientation.Orientation) => {
-      if (mounted) setRailSide(railSideForOrientation(o));
+      if (mounted) setRotation(o);
     };
     ScreenOrientation.getOrientationAsync().then(follow).catch(() => {});
     const sub = ScreenOrientation.addOrientationChangeListener((e) =>
@@ -1067,9 +1068,8 @@ export function GameTable({
     );
     return () => {
       mounted = false;
-      // On iOS the subscription is the native module's own, so under a renderer
-      // that has no native module it carries no `remove` — and
-      // `removeOrientationChangeListener` throws on exactly that.
+      // `removeOrientationChangeListener` throws on a subscription with no
+      // `remove`, which is what the native module hands back untethered.
       sub?.remove?.();
     };
   }, []);

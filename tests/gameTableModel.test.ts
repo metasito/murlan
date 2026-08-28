@@ -48,6 +48,7 @@ import {
   railWidth,
   cutoutClass,
   railSideForOrientation,
+  railSideFor,
   LANDSCAPE_LEFT,
   readExchange,
   viewerOwnsSeat,
@@ -1709,6 +1710,29 @@ describe("railSideForOrientation", () => {
   test("every other value still answers with a side", () => {
     for (const o of [0, 1, 2, 99]) {
       assert.ok(["left", "right"].includes(railSideForOrientation(o)), String(o));
+    }
+  });
+});
+
+describe("railSideFor", () => {
+  const OTHER = LANDSCAPE_LEFT + 1;
+
+  // The knobs only change hands when there is something to follow. A notchless
+  // phone flipping would move them for no gain, and the rail already clears a
+  // notch without growing, so only an island moves anything.
+  test("a phone with no cutout keeps the rail where it was", () => {
+    assert.equal(railSideFor(0, LANDSCAPE_LEFT), "left");
+    assert.equal(railSideFor(0, OTHER), "left", "a notchless phone moved its knobs on rotation");
+    assert.equal(railSideFor(20, OTHER), "left", "a notchless phone moved its knobs on rotation");
+  });
+
+  test("a phone with a cutout follows the rotation", () => {
+    for (const inset of [44, 59, 68]) {
+      assert.notEqual(
+        railSideFor(inset, LANDSCAPE_LEFT),
+        railSideFor(inset, OTHER),
+        `an inset of ${inset} put the rail on the same side in both rotations`
+      );
     }
   });
 });

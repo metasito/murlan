@@ -46,7 +46,8 @@ export function actionBtnSize(scale: number): number {
 
 const PAD_TOP = 13;
 const PAD_BOTTOM = 13;
-const PAD_RIGHT = 17;
+/** The edge opposite the rail, whichever physical side that is. */
+const PAD_AWAY = 17;
 /** From the rail, or the safe edge, to the first thing drawn over the felt. */
 const PAD_INNER = 10;
 
@@ -734,21 +735,27 @@ export function railWidth(insetOnRailSide: number, scale: number): number {
 export type RailSide = "left" | "right";
 
 /**
- * `expo-screen-orientation`'s `Orientation.LANDSCAPE_LEFT` (3) and
- * `LANDSCAPE_RIGHT` (4), as the side the device's top edge — and so its cutout
- * — ends up on.
- *
- * The polarity is the one thing here a device has to settle: the enum's own
- * docs do not say which member puts the home indicator on which side, iOS's
- * `UIInterfaceOrientation` numbers landscape the opposite way round to its
- * names, and the research could not resolve it either
- * (docs/research/2026-08-26-notch-and-dynamic-island.md §7.1). It is one
- * constant so confirming it is one edit, and #413 carries the measurement.
+ * `Orientation.LANDSCAPE_LEFT`, as the side the cutout ends up on. Which member
+ * means which physical side is unverified — the enum's docs do not say and iOS
+ * numbers landscape the opposite way round to its names
+ * (docs/research/2026-08-26-notch-and-dynamic-island.md §7.1, measured in #413).
  */
 export const LANDSCAPE_LEFT = 3;
 
 export function railSideForOrientation(orientation: number): RailSide {
   return orientation === LANDSCAPE_LEFT ? "left" : "right";
+}
+
+/**
+ * The edge the rail sits against, from the cutout's own inset and the rotation.
+ *
+ * A phone with nothing to nest keeps the rail where it is: flipping it would
+ * move the menu and reactions knobs to the other hand for no gain, and the rail
+ * is already wider than a notch (`RAIL_FLOOR`) so there is nothing to follow.
+ */
+export function railSideFor(sideInset: number, orientation: number): RailSide {
+  if (cutoutClass(sideInset) === "none") return "left";
+  return railSideForOrientation(orientation);
 }
 
 export interface TableFrame extends ScreenPads {
@@ -800,7 +807,7 @@ export function computeTableFrame(opts: {
   const rail = railWidth(railSide === "left" ? leftPad : rightPad, opts.scale);
   const tableTop = Math.max(PAD_TOP * opts.scale, topPad);
   const tableBottom = Math.max(PAD_BOTTOM * opts.scale, bottomPad);
-  const away = Math.max(PAD_RIGHT * opts.scale, railSide === "left" ? rightPad : leftPad);
+  const away = Math.max(PAD_AWAY * opts.scale, railSide === "left" ? rightPad : leftPad);
   const tableLeft = railSide === "left" ? rail : away;
   const tableRight = railSide === "left" ? away : rail;
   const tableW = opts.width - tableLeft - tableRight;
