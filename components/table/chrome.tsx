@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
-import { View, StyleSheet, Pressable, type TextProps } from "react-native";
+import { View, StyleSheet, Pressable, type TextProps, type AccessibilityProps } from "react-native";
 import { TableText } from "./TableText";
 import {
   Easing,
@@ -263,17 +263,25 @@ export function ControlRail({
   bottomPad,
   top,
   bottom,
+  veiled,
 }: {
   width: number;
   topPad: number;
   bottomPad: number;
   top?: ReactNode;
   bottom?: ReactNode;
+  /**
+   * The rail answers to a cover that paints over it, and deliberately not to
+   * the settings sheet — the sheet is closed by the knob on this rail, so
+   * veiling it there would shut the reader inside with no way out.
+   */
+  veiled?: AccessibilityProps;
 }) {
   return (
     <View
       testID={RAIL_TESTID}
       style={[railStyles.rail, { width, paddingTop: topPad, paddingBottom: bottomPad }]}
+      {...veiled}
     >
       <View>{top}</View>
       <View>{bottom}</View>

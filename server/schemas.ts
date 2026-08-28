@@ -11,6 +11,12 @@ export const RegisterSchema = z.object({
   password: z.string().min(6).max(100),
 });
 
+/**
+ * A rename is registration's username rule and nothing else — referenced rather than restated,
+ * so the two cannot drift into accepting different names.
+ */
+export const RenameSchema = z.object({ username: RegisterSchema.shape.username });
+
 export const LoginSchema = z.object({
   username: z.string().min(1).max(30),
   password: z.string().min(1).max(100),

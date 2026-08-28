@@ -1,6 +1,17 @@
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
-import { orphans, staleByAge, netstatListeners, toolingRoots, ownedByTooling } from "../scripts/reap.mjs";
+import {
+  orphans,
+  staleByAge,
+  netstatListeners,
+  toolingRoots,
+  ownedByTooling,
+  cpuRatios,
+  isSystemProcess,
+  burningOrphans,
+  psTimeToMs,
+  stalePortHolders,
+} from "../scripts/reap.mjs";
 import preflightMemory, { memoryVerdict, memoryFloor } from "../scripts/preflightMemory.mjs";
 
 const HOUR = 60 * 60 * 1000;
@@ -108,6 +119,169 @@ describe("staleByAge", () => {
 
   test("never takes a process whose start time could not be read", () => {
     assert.deepEqual(staleByAge([proc({ pid: 7, startedAt: 0 })], opts), []);
+  });
+});
+
+describe("stalePortHolders", () => {
+  const table = [
+    { pid: 500, ppid: 42, startedAt: NOW - HOUR, name: "node.exe", commandLine: "node e2e-server.mjs" },
+    { pid: 501, ppid: 999, startedAt: NOW - HOUR, name: "node.exe", commandLine: "node e2e-server.mjs" },
+    { pid: 42, ppid: 1, startedAt: NOW - HOUR, name: "node.exe", commandLine: "playwright" },
+  ];
+
+  /**
+   * A sweep must not be able to end a suite that is running. Playwright stays alive for the whole
+   * run and the webServer is its child, so a live holder has a live parent — the same signal
+   * `orphans` uses, and a much better one than age here.
+   */
+  test("leaves a holder whose launcher is still running", () => {
+    assert.deepEqual(stalePortHolders([500], table), []);
+  });
+
+  test("takes a holder left behind by a session that exited", () => {
+    assert.deepEqual(stalePortHolders([501], table), [501]);
+  });
+
+  /**
+   * A pid the process table does not describe cannot be shown to be a leftover, and this is the
+   * one class that kills something no ownership rule vouched for. It has to fail closed.
+   */
+  test("leaves a holder it cannot find in the process table", () => {
+    assert.deepEqual(stalePortHolders([777], table), []);
+  });
+
+  test("judges each holder on its own parent", () => {
+    assert.deepEqual(stalePortHolders([500, 501], table), [501]);
+  });
+});
+
+describe("cpuRatios", () => {
+  const before = [{ pid: 7, cpuMs: 1_000 }, { pid: 8, cpuMs: 5_000 }];
+
+  test("a process that burned a full second of CPU in a second reads as a whole core", () => {
+    const after = [{ pid: 7, cpuMs: 2_000 }, { pid: 8, cpuMs: 5_000 }];
+    const byPid = new Map(
+      cpuRatios(before, after, 1_000).map((p: { pid: number; cpuRatio: number }) => [p.pid, p.cpuRatio])
+    );
+    assert.equal(byPid.get(7), 1);
+    assert.equal(byPid.get(8), 0);
+  });
+
+  /**
+   * Cumulative CPU time is what the platform reports, and a process that burned a core for hours
+   * and then went idle still carries all of it. Only the delta across the interval says it is
+   * burning one *now*, which is the difference between measuring and assuming.
+   */
+  test("a long-idle process that once burned hours of CPU reads as idle", () => {
+    const idled = [{ pid: 7, cpuMs: 225_000_000 }];
+    assert.equal(cpuRatios(idled, idled, 1_000)[0].cpuRatio, 0);
+  });
+
+  test("a process absent from the first sample is not rated at all", () => {
+    assert.deepEqual(cpuRatios(before, [{ pid: 99, cpuMs: 900 }], 1_000), []);
+  });
+
+  test("an unreadable CPU time yields no rating rather than a wrong one", () => {
+    for (const cpuMs of [NaN, undefined]) {
+      assert.deepEqual(
+        cpuRatios([{ pid: 7, cpuMs: 0 }], [{ pid: 7, cpuMs } as { pid: number; cpuMs: number }], 1_000),
+        []
+      );
+    }
+  });
+});
+
+describe("isSystemProcess", () => {
+  const win = { systemRoot: "C:/Windows", platform: "win32" as const };
+
+  test("anything running out of the Windows directory is never a candidate", () => {
+    assert.equal(
+      isSystemProcess({ pid: 900, commandLine: String.raw`C:\Windows\System32\svchost.exe -k netsvcs` }, win),
+      true
+    );
+  });
+
+  /**
+   * Sampled on the owner's machine: the System Idle Process, pid 0, reads at 2297% of a core
+   * because its CPU time is summed across all of them. It is the single largest burner the scan
+   * sees and it must never be a candidate — nor pid 4, `System`, behind it.
+   */
+  test("the kernel's own low pids are never candidates, however hot they read", () => {
+    assert.equal(isSystemProcess({ pid: 0, commandLine: "" }, win), true);
+    assert.equal(isSystemProcess({ pid: 4, commandLine: "System" }, win), true);
+  });
+
+  /**
+   * On Windows a command line that cannot be read is the signature of a protected process, so the
+   * unreadable case has to fail closed — the opposite of `ownedByTooling`, which claims nothing
+   * for the same reason.
+   */
+  test("a process whose command line could not be read is never a candidate", () => {
+    assert.equal(isSystemProcess({ pid: 900, commandLine: "" }, win), true);
+  });
+
+  test("a Git Bash utility under Program Files is a candidate", () => {
+    assert.equal(
+      isSystemProcess({ pid: 900, commandLine: String.raw`C:\Program Files\Git\usr\bin\awk.exe !seen[$0]++` }, win),
+      false
+    );
+  });
+
+  test("init and the service managers are never candidates on posix", () => {
+    const posix = { platform: "linux" as const };
+    assert.equal(isSystemProcess({ pid: 1, commandLine: "/sbin/init" }, posix), true);
+    assert.equal(isSystemProcess({ pid: 900, commandLine: "/usr/lib/systemd/systemd-journald" }, posix), true);
+    assert.equal(isSystemProcess({ pid: 900, commandLine: "/usr/bin/awk !seen[$0]++" }, posix), false);
+  });
+});
+
+describe("burningOrphans", () => {
+  const opts = {
+    livePids: new Set([1, 42]),
+    minAgeMs: 2 * HOUR,
+    now: NOW,
+    keep: new Set<number>(),
+    minRatio: 0.2,
+    systemRoot: "C:/Windows",
+    platform: "win32" as const,
+  };
+  const burner = (over: Record<string, unknown> = {}) => ({
+    pid: 7,
+    ppid: 999,
+    startedAt: NOW - 62 * HOUR,
+    cpuRatio: 1,
+    commandLine: String.raw`C:\Program Files\Git\usr\bin\awk.exe !seen[$0]++`,
+    ...over,
+  });
+
+  /**
+   * The case this class exists for: a `tr | fold | awk` pipeline reading `/dev/urandom`, orphaned
+   * by a killed Git Bash session that had no SIGHUP to send, burning a core for 62 hours. It
+   * names nothing of this repo's, so every ownership-based class was blind to it.
+   */
+  test("takes a parentless process burning a core for hours, though it is not ours", () => {
+    assert.deepEqual(burningOrphans([burner()], opts).map((p: { pid: number }) => p.pid), [7]);
+  });
+
+  test("leaves a parentless process that is merely resident", () => {
+    assert.deepEqual(burningOrphans([burner({ cpuRatio: 0.01 })], opts), []);
+  });
+
+  test("leaves a busy process whose parent is still alive", () => {
+    assert.deepEqual(burningOrphans([burner({ ppid: 42 })], opts), []);
+  });
+
+  test("leaves a busy orphan that is younger than the age floor", () => {
+    assert.deepEqual(burningOrphans([burner({ startedAt: NOW - HOUR })], opts), []);
+  });
+
+  test("never takes a Windows process, however busy and however orphaned", () => {
+    const system = burner({ commandLine: String.raw`C:\Windows\System32\MsMpEng.exe` });
+    assert.deepEqual(burningOrphans([system], opts), []);
+  });
+
+  test("never takes what it was told to keep", () => {
+    assert.deepEqual(burningOrphans([burner()], { ...opts, keep: new Set([7]) }), []);
   });
 });
 
@@ -245,5 +419,18 @@ describe("ownedByTooling", () => {
     for (const cl of [null, undefined, ""]) {
       assert.equal(ownedByTooling(cl as unknown as string, roots, "win32"), false);
     }
+  });
+});
+
+describe("psTimeToMs", () => {
+  test("reads ps's cumulative CPU column in each width it prints", () => {
+    assert.equal(psTimeToMs("00:00"), 0);
+    assert.equal(psTimeToMs("01:30"), 90_000);
+    assert.equal(psTimeToMs("02:01:30"), 7_290_000);
+    assert.equal(psTimeToMs("2-02:01:30"), 180_090_000);
+  });
+
+  test("an unparseable column yields NaN, which cpuRatios then declines to rate", () => {
+    assert.equal(Number.isNaN(psTimeToMs("-")), true);
   });
 });

@@ -26,12 +26,26 @@ const SOURCE = path.join(repoRoot, "components", "GameTable.tsx");
  * quietly move something onto this list.
  */
 const REACHABLE_ON_PURPOSE: Record<string, string> = {
-  ControlRail: "carries the knob that closes the sheet, so it stands outside the veil",
   GameSettingsSheet: "is the sheet",
   ExchangeModal: "renders a <Modal>, which is above the veil rather than behind it",
   ExchangeAnnouncement: "renders a <Modal>, which is above the veil rather than behind it",
   RotateOverlay: "replaces the table rather than sitting over it",
   Sweep: "is a decoration with nothing to reach",
+};
+
+/**
+ * A child that answers to some of the reasons to veil and deliberately not all of them, with
+ * the exact spelling that says which. This is the decision itself, not a note about it: the
+ * table's own veil below would satisfy any looser check, and here it is the wrong answer.
+ */
+const VEILED_ON_ITS_OWN_TERMS: Record<string, { spelling: RegExp; why: string }> = {
+  ControlRail: {
+    spelling: /veiled=\{behindCoverOnly\}/,
+    why:
+      "answers to a cover that paints over it and deliberately not to the settings sheet — " +
+      "the sheet is closed by the knob this rail carries, so the table's own veil would shut " +
+      "a screen reader inside the sheet with no way out",
+  },
 };
 
 /** A child already withdrawn whatever the sheet is doing needs no veil. */
@@ -104,7 +118,19 @@ describe("every child of the game table's root answers to the veil", () => {
 
   for (const child of children) {
     const reason = REACHABLE_ON_PURPOSE[child.name];
+    const own = VEILED_ON_ITS_OWN_TERMS[child.name];
     test(`${child.name} (line ${child.line})`, () => {
+      if (own) {
+        assert.ok(
+          own.spelling.test(child.source),
+          `${child.name} ${own.why} — it no longer carries that veil`
+        );
+        assert.ok(
+          !VEILED.test(child.source),
+          `${child.name} carries the table's own veil, which reverses the decision above: it ${own.why}`
+        );
+        return;
+      }
       if (reason) {
         assert.ok(
           !VEILED.test(child.source),

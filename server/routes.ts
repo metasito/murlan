@@ -8,6 +8,7 @@ import { logger } from "./logger.ts";
 import { validate } from "./validate.ts";
 import {
   RegisterSchema,
+  RenameSchema,
   LoginSchema,
   AddFriendSchema,
   ClientErrorSchema,
@@ -72,6 +73,30 @@ const authLimiter = rateLimit({
   legacyHeaders: false,
   message: { error: "Too many attempts, try again in 15 minutes.", code: "AUTH_RATE_LIMITED" },
 });
+
+/**
+ * A rename with no ceiling is how one account cycles through names to impersonate others between
+ * games. Keyed on the account rather than the address, because the address is shared by everyone
+ * behind a household NAT and the limit is about the account's behaviour.
+ *
+ * A limiter rather than a `usernameChangedAt` column: `CLAUDE.md` orders a change by design, and
+ * a column is the last resort. A player-visible "you can change this again in N days" would need
+ * one, and that is its own ticket.
+ */
+const renameLimiter = rateLimit({
+  windowMs: 24 * 60 * 60 * 1000,
+  max: renameMaxFromEnv(),
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: (req: Request) => req.session?.userId ?? "anonymous",
+  message: { message: "Too many name changes, try again tomorrow.", code: "RENAME_RATE_LIMITED" },
+});
+
+/** Same pattern as authMaxFromEnv() above. */
+function renameMaxFromEnv(): number {
+  const parsed = Number(process.env.MURLAN_RENAME_RATE_LIMIT);
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : 5;
+}
 
 /** Same pattern as authMaxFromEnv() above. */
 function loginUsernameMaxFromEnv(): number {
@@ -350,6 +375,40 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // ── User ─────────────────────────────────────────────────────────────────
+
+  // Nothing stores a username as history: `matchHistory.userId`, `replays.playerIds` and every
+  // stats, rating and friends table key on the id, so each read projects whatever the name is
+  // now. A rename is one column, with no backfill behind it.
+  //
+  // Seated players keep the name the room was joined under — rewriting live room state mid-hand
+  // would change an opponent's name under the other players for no benefit. The table catches up
+  // when the player next sits down.
+  // Validation before the limiter: a body that fails the rule never renamed anything, and the
+  // budget is there to bound name *cycling*. Spending it on typos would lock a player out of a
+  // rename they never made.
+  app.patch("/api/users/me", requireAuth, validate(RenameSchema), renameLimiter, async (req, res) => {
+    const userId = req.session.userId!;
+    const { username } = req.body as { username: string };
+
+    // Case-insensitively, by `users_username_lower_uq`. Comparing ids rather than names is what
+    // lets a player recase their own: that lookup finds their own row.
+    const holder = await storage.getUserByUsername(username);
+    if (holder && holder.id !== userId) {
+      res.status(409).json({ message: "Username already taken", code: "USERNAME_TAKEN" });
+      return;
+    }
+
+    try {
+      const user = await storage.renameUser(userId, username);
+      logger.info({ userId, username }, "User renamed");
+      res.json(sessionUser(user));
+    } catch (err) {
+      // The check above and this write are not one transaction, so the name can be claimed in
+      // between. The constraint is the authority; the check only makes the common case a clean 409.
+      if (!(err instanceof UsernameTakenError)) throw err;
+      res.status(409).json({ message: "Username already taken", code: "USERNAME_TAKEN" });
+    }
+  });
 
   app.post("/api/users/me/tutorial-seen", requireAuth, async (req, res) => {
     const userId = req.session.userId!;

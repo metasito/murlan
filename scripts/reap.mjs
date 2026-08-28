@@ -71,6 +71,63 @@ export function orphans(processes, { livePids, minAgeMs, now, keep }) {
 }
 
 /**
+ * How much of one core, sustained across the sample, counts as burning. Well under the full core
+ * the observed pipeline held, and far above the noise a process makes doing nothing.
+ */
+const BURN_MIN_RATIO = 0.2;
+const BURN_SAMPLE_MS = 1000;
+
+/**
+ * How much CPU each process used *between* two snapshots, as a fraction of one core.
+ *
+ * The platform reports CPU time cumulatively, and a process that burned a core for hours and then
+ * stopped still carries every second of it. Only the delta says it is burning one now, which is
+ * the whole difference between measuring this and assuming it.
+ */
+export function cpuRatios(before, after, intervalMs) {
+  const start = new Map(before.map((p) => [p.pid, p.cpuMs]));
+  return after
+    .filter((p) => Number.isFinite(p.cpuMs) && Number.isFinite(start.get(p.pid)))
+    .map((p) => ({ ...p, cpuRatio: (p.cpuMs - start.get(p.pid)) / intervalMs }))
+    .filter((p) => p.cpuRatio >= 0);
+}
+
+/**
+ * Whether a process belongs to the operating system, and so can never be a candidate.
+ *
+ * This is the one class that kills something the repo does not own, so the exclusion has to fail
+ * closed in both directions it can be wrong. An unreadable command line is the signature of a
+ * protected process on Windows — the opposite conclusion from `ownedByTooling`, which claims
+ * nothing in the same situation, because there an unknown process must not be *taken* and here an
+ * unknown process must not be *spared* by accident.
+ */
+export function isSystemProcess({ pid, commandLine = "" }, { systemRoot, platform = process.platform } = {}) {
+  if (!Number.isFinite(pid) || pid <= 4) return true;
+  if (!commandLine.trim()) return true;
+  const where = normalizePath(commandLine, platform);
+  const roots =
+    platform === "win32"
+      ? [systemRoot || process.env.SystemRoot || "C:/Windows"]
+      : ["/sbin", "/usr/sbin", "/lib/systemd", "/usr/lib/systemd"];
+  return roots.some((root) => where.includes(normalizePath(root, platform)));
+}
+
+/**
+ * A parentless process that is measurably burning CPU, whoever owns it.
+ *
+ * The class the ownership rule cannot reach. A `tr | fold | awk` pipeline reading `/dev/urandom`,
+ * orphaned by a killed Git Bash session — Windows has no `SIGHUP` to send it and the input never
+ * ends — held a core for 62 hours while `reap` reported "nothing of ours". Nothing legitimate is
+ * at once parentless, hours old, and pegged, so the conjunction is what makes this safe rather
+ * than ownership.
+ */
+export function burningOrphans(sampled, { livePids, minAgeMs, now, keep, minRatio, systemRoot, platform }) {
+  return orphans(sampled, { livePids, minAgeMs, now, keep }).filter(
+    (p) => p.cpuRatio >= minRatio && !isSystemProcess(p, { systemRoot, platform })
+  );
+}
+
+/**
  * A crashed session leaves its whole tree resident — the node process, the bash that launched it,
  * the cmd above that — so its parent is alive and `orphans` cannot see it. Age is the only signal
  * left, and not a safe one alone: a live session's node is also long-running. Hence `--stale`
@@ -98,7 +155,9 @@ function processTable() {
       "-NoProfile",
       "-Command",
       "Get-CimInstance Win32_Process | Select-Object ProcessId,ParentProcessId,Name,CommandLine," +
-        "@{n='Started';e={[int64][datetimeoffset]::new($_.CreationDate).ToUnixTimeMilliseconds()}} " +
+        "@{n='Started';e={[int64][datetimeoffset]::new($_.CreationDate).ToUnixTimeMilliseconds()}}," +
+        // Both times are cumulative, in 100-ns units. Their sum over 10,000 is milliseconds of CPU.
+        "@{n='Cpu';e={[int64](($_.KernelModeTime + $_.UserModeTime) / 10000)}} " +
         "| ConvertTo-Json -Compress",
     ]);
     if (!json.trim()) return [];
@@ -109,20 +168,33 @@ function processTable() {
       name: String(r.Name ?? ""),
       commandLine: r.CommandLine ?? "",
       startedAt: Number(r.Started ?? 0),
+      cpuMs: Number(r.Cpu ?? NaN),
     }));
   }
   const now = Date.now();
-  return sh("ps", ["-eo", "pid=,ppid=,etimes=,args="])
+  return sh("ps", ["-eo", "pid=,ppid=,etimes=,time=,args="])
     .split("\n")
-    .map((line) => line.trim().match(/^(\d+)\s+(\d+)\s+(\d+)\s+(.*)$/))
+    .map((line) => line.trim().match(/^(\d+)\s+(\d+)\s+(\d+)\s+(\S+)\s+(.*)$/))
     .filter(Boolean)
-    .map(([, pid, ppid, etimes, args]) => ({
+    .map(([, pid, ppid, etimes, cpuTime, args]) => ({
       pid: Number(pid),
       ppid: Number(ppid),
       name: args.split(/\s+/)[0] ?? "",
       commandLine: args,
       startedAt: now - Number(etimes) * 1000,
+      cpuMs: psTimeToMs(cpuTime),
     }));
+}
+
+/** `ps`'s cumulative CPU column, which is `[[DD-]HH:]MM:SS[.ss]`, in milliseconds. */
+export function psTimeToMs(text) {
+  const m = /^(?:(\d+)-)?(?:(\d+):)?(\d+):(\d+(?:\.\d+)?)$/.exec(String(text).trim());
+  if (!m) return NaN;
+  const [, days, hours, minutes, seconds] = m;
+  return (
+    ((Number(days ?? 0) * 24 + Number(hours ?? 0)) * 3600 + Number(minutes) * 60 + Number(seconds)) *
+    1000
+  );
 }
 
 /** This process and everything that launched it, so the reaper cannot kill its own caller. */
@@ -190,6 +262,27 @@ function removeContainer(name, dryRun) {
   return true;
 }
 
+/**
+ * Which of `pids` hold the port as a leftover rather than as a running suite.
+ *
+ * A sweep must not be able to end a suite mid-run — and not only because it costs the run. A
+ * webServer pulled out from under Playwright surfaces as a connection error or a 0ms failure,
+ * which reads exactly like a defect, so a sweep that takes a live port *manufactures a test
+ * result* in another process. Anything trusting a suite's verdict then acts on it.
+ *
+ * Parentage is the signal, not age: Playwright outlives the whole run and the webServer is its
+ * child, so a live holder has a live parent. A pid the table cannot describe is left alone —
+ * this is the one class that kills something no ownership rule vouched for, so it fails closed.
+ */
+export function stalePortHolders(pids, table) {
+  const live = new Set(table.map((p) => p.pid));
+  const byPid = new Map(table.map((p) => [p.pid, p]));
+  return pids.filter((pid) => {
+    const held = byPid.get(pid);
+    return held !== undefined && !live.has(held.ppid);
+  });
+}
+
 export function clearPort(port, { dryRun = false } = {}) {
   const pids = portListeners(port).filter((pid) => pid !== process.pid);
   for (const pid of pids) killPid(pid, dryRun);
@@ -200,17 +293,27 @@ if (import.meta.filename === process.argv[1]) {
   const dryRun = process.argv.includes("--dry-run");
   const verb = dryRun ? "would clear" : "cleared";
 
-  const held = clearPort(E2E_PORT, { dryRun });
-  console.log(
-    held.length
-      ? `reap: ${verb} the e2e port ${E2E_PORT}, held by pid ${held.join(", ")}`
-      : `reap: e2e port ${E2E_PORT} is free`
-  );
-
   // `npm run test:e2e` takes this path. Playwright refuses a busy port before it ever runs the
-  // webServer command, so the port has to be free by then — but a suite is not the place to
-  // decide that some other node process has outlived its session.
-  if (process.argv.includes("--port")) process.exit(0);
+  // webServer command, so the port has to be free by then — the run about to start is the
+  // authority on it and takes it from whoever holds it. Two sessions running e2e at once still
+  // collide; making that safe needs a port lease or a port per session, which #489 leaves open.
+  //
+  // A suite is also not the place to decide that some other node process has outlived its
+  // session, so this exits before the classes below.
+  if (process.argv.includes("--port")) {
+    const held = clearPort(E2E_PORT, { dryRun });
+    console.log(
+      held.length
+        ? `reap: ${verb} the e2e port ${E2E_PORT}, held by pid ${held.join(", ")}`
+        : `reap: e2e port ${E2E_PORT} is free`
+    );
+    process.exit(0);
+  }
+
+  // Two snapshots a moment apart: cumulative CPU says only what a process has ever burned, and
+  // the class below turns on what it is burning now.
+  const firstSample = processTable();
+  await new Promise((resolve) => setTimeout(resolve, BURN_SAMPLE_MS));
 
   const now = Date.now();
   const table = processTable();
@@ -225,6 +328,26 @@ if (import.meta.filename === process.argv[1]) {
   for (const pid of listeningPids()) keep.add(pid);
   const hoursOf = (p) => ((now - p.startedAt) / 3_600_000).toFixed(1);
   const labelOf = (p) => `${p.name || "process"} pid ${p.pid}`;
+
+  // A sweep is not a suite. It has nothing waiting on the port, so a holder still attached to a
+  // live launcher is somebody's run and stays — taking it does not merely cost that run, it
+  // makes the suite fail in a way that reads as a defect. The command line is printed because
+  // "held by pid 33196" tells whoever lost a run nothing about whose it was.
+  const holders = portListeners(E2E_PORT).filter((pid) => pid !== process.pid);
+  const byPid = new Map(table.map((p) => [p.pid, p]));
+  const staleHolders = stalePortHolders(holders, table);
+  for (const pid of staleHolders) {
+    console.log(`reap: ${verb} the e2e port ${E2E_PORT}, held by ${labelOf(byPid.get(pid))}`);
+    killPid(pid, dryRun);
+  }
+  for (const pid of holders.filter((p) => !staleHolders.includes(p))) {
+    const held = byPid.get(pid);
+    console.log(
+      `reap: left the e2e port ${E2E_PORT} to a live run — ${labelOf(held ?? { pid })}, ` +
+        `launched by ${held?.ppid ?? "?"}: ${(held?.commandLine || "command line unreadable").slice(0, 120)}`
+    );
+  }
+  if (!holders.length) console.log(`reap: e2e port ${E2E_PORT} is free`);
 
   const parentless = orphans(ours, {
     livePids: new Set(table.map((p) => p.pid)),
@@ -250,6 +373,28 @@ if (import.meta.filename === process.argv[1]) {
     if (takeStale) killPid(p.pid, dryRun);
   }
   if (!stale.length) console.log(`reap: nothing of ours older than ${STALE_AGE_MS / 3_600_000}h`);
+
+  // Ownership is what makes the classes above safe, and it is exactly why they could not see the
+  // worst leftover on this machine: a `tr | fold | awk` pipeline reading `/dev/urandom`, orphaned
+  // by a killed Git Bash session with no SIGHUP to end it, holding a core for 62 hours while reap
+  // reported "nothing of ours". Here the conjunction does that work instead — parentless, hours
+  // old, measurably burning, and not the operating system's.
+  const burning = burningOrphans(cpuRatios(firstSample, table, BURN_SAMPLE_MS), {
+    livePids: new Set(table.map((p) => p.pid)),
+    minAgeMs: ORPHAN_AGE_MS,
+    now,
+    keep,
+    minRatio: BURN_MIN_RATIO,
+  }).filter((p) => !parentless.some((q) => q.pid === p.pid));
+  for (const p of burning) {
+    const percent = Math.round(p.cpuRatio * 100);
+    console.log(
+      `reap: ${dryRun ? "would kill" : "killed"} ${labelOf(p)}, ${hoursOf(p)}h old, ` +
+        `parent ${p.ppid} is gone, burning ${percent}% of a core`
+    );
+    killPid(p.pid, dryRun);
+  }
+  if (!burning.length) console.log("reap: no orphan is burning CPU");
 
   // A container is not owned by the session that started it, so only the single-run ones go by
   // default. The dev stack backs whatever else is running — another session's e2e most of the
