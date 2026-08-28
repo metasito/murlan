@@ -120,14 +120,14 @@ function CardItemBase({
 
   useEffect(() => {
     if (reduceMotion) {
-      liftY.value = withTiming(isSelected ? SELECT_LIFT : 0, { duration: Motion.duration.fast });
+      liftY.value = withTiming(isSelected ? SELECT_LIFT : 0, { duration: Motion.duration.tap });
       tilt.value = 0;
-      glow.value = withTiming(isSelected ? 1 : 0, { duration: Motion.duration.fast });
+      glow.value = withTiming(isSelected ? 1 : 0, { duration: Motion.duration.tap });
       return;
     }
     liftY.value = withSpring(isSelected ? SELECT_LIFT : 0, Motion.spring.pickup);
     tilt.value = withSpring(isSelected ? SELECT_TILT : 0, Motion.spring.pickup);
-    glow.value = withTiming(isSelected ? 1 : 0, { duration: Motion.duration.fast });
+    glow.value = withTiming(isSelected ? 1 : 0, { duration: Motion.duration.tap });
   }, [isSelected, reduceMotion, liftY, tilt, glow]);
 
   useEffect(

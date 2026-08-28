@@ -159,8 +159,8 @@ export function ExchangeAnnouncement({
       onRequestClose={handleDismiss}
     >
       <Animated.View
-        entering={reduceMotion ? undefined : FadeIn.duration(Motion.duration.moderate)}
-        exiting={reduceMotion ? undefined : FadeOut.duration(Motion.duration.moderate)}
+        entering={reduceMotion ? undefined : FadeIn.duration(Motion.duration.travel)}
+        exiting={reduceMotion ? undefined : FadeOut.duration(Motion.duration.travel)}
         style={styles.overlay}
       >
         <Pressable

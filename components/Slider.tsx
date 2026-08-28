@@ -110,7 +110,7 @@ export function Slider({
 
   const displayProgress = useDerivedValue(() => {
     if (isDragging.value) return dragProgress.value;
-    return withTiming(value, { duration: reduceMotion ? 0 : Motion.duration.fast });
+    return withTiming(value, { duration: reduceMotion ? 0 : Motion.duration.tap });
   });
 
   const thumbStyle = useAnimatedStyle(() => ({

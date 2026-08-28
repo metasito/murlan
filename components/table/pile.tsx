@@ -116,7 +116,7 @@ export function FlyingCards({
     if (reduceMotion) {
       // The pile is about to show these cards anyway; skip the flight entirely
       // and hand control straight back rather than jumping them across.
-      const id = setTimeout(() => onDoneRef.current(), Motion.duration.fast);
+      const id = setTimeout(() => onDoneRef.current(), Motion.duration.tap);
       return () => clearTimeout(id);
     }
     const easing = Easing.bezier(0.22, 0.61, 0.36, 1.0);

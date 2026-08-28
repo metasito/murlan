@@ -272,16 +272,72 @@ export const Type = {
 } as const satisfies Record<string, TextStyle>;
 
 
+/**
+ * The game's sense of weight, and the scale that expresses it.
+ *
+ * **A card has weight, but never keeps you waiting for it.** Decided by the
+ * owner against three moving alternatives (#126): a small load before it
+ * leaves, 260ms of travel, and a settle on arrival with no visible bounce.
+ * Weighted (380ms, spring overshoot) bought a bomb its sense of occasion by
+ * taxing all thirteen singles in a hand; Crisp made the table read as a
+ * utility rather than the cinematic one #98 chose.
+ *
+ * Every step is named for the role it plays, never for its number — a step
+ * that exists because some component wanted 240ms is not a scale, which is
+ * the trap #52 identified. Each carries its reduced form here, so a sweep
+ * cannot invent one per call site.
+ */
 export const Motion = {
   duration: {
-    // A frame-scale flash: long enough to register, too short to read as a state.
+    /** A state registering, too short to read as movement — a chip toggling, a glyph swapping. */
     flash: 90,
-    fast: 120,
-    base: 200,
-    moderate: 300,
-    slow: 600,
-    pulse: 1200,
+    /** The answer to a finger: a press state, a selection lifting. */
+    tap: 120,
+    /** Something moving a short way inside its own container. */
+    shift: 200,
+    /** Something crossing the table — the card in flight. The whole feel hangs on this one. */
+    travel: 260,
+    /** Something arriving that was not there: a banner, an overlay, a hand dealt in. */
+    reveal: 600,
+    /** An ambient loop, and how long a moment holds before it releases. */
+    dwell: 1200,
   },
+  /**
+   * The load before a deliberate launch — a small move against the direction of
+   * travel. This is what makes `travel` read as weight rather than as a
+   * duration. Crisp had none; that is most of what made it Crisp.
+   */
+  anticipate: 40,
+  /**
+   * What each step becomes when the player asked for less motion.
+   *
+   * Not "off": travel is what goes, and the state change stays legible. A card
+   * that flew cross-fades in place instead. `null` means the step is already
+   * short enough to leave alone.
+   *
+   * `impactDelayMs()` stays the single source of the card-landing delay and
+   * already returns 0 here, so the feedback fires immediately rather than
+   * waiting out a flight that never happens.
+   */
+  reduced: {
+    flash: null,
+    tap: null,
+    /** Cross-fade in place, no travel. */
+    shift: 0,
+    /** Cross-fade in place, no travel. */
+    travel: 0,
+    /** Fade only. */
+    reveal: 200,
+    /** Hold at rest; do not loop. */
+    dwell: null,
+  },
+  /**
+   * A spring when the player caused it and is still touching it — picked up,
+   * dragged, released; its arrival has to answer the finger, and a duration
+   * cannot. A duration for everything the table does on its own, which must be
+   * predictable and must line up with its neighbours; springs drift apart
+   * under load.
+   */
   spring: {
     settle:   { damping: 10, stiffness: 200 },
     gentle:   { damping: 10, stiffness: 180 },

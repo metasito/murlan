@@ -39,8 +39,8 @@ function FloatingReaction({ reaction }: { reaction: TableReaction }) {
     }
     y.value = withTiming(RISE_PX, { duration: RISE_MS });
     opacity.value = withSequence(
-      withTiming(1, { duration: Motion.duration.base }),
-      withTiming(0, { duration: RISE_MS - Motion.duration.base })
+      withTiming(1, { duration: Motion.duration.shift }),
+      withTiming(0, { duration: RISE_MS - Motion.duration.shift })
     );
   }, [opacity, reduceMotion, y]);
 
@@ -104,7 +104,7 @@ export function ReactionPanel({
   const reduceMotion = usePrefersReducedMotion();
   return (
     <Animated.View
-      entering={reduceMotion ? undefined : SlideInLeft.duration(Motion.duration.base)}
+      entering={reduceMotion ? undefined : SlideInLeft.duration(Motion.duration.shift)}
       style={[styles.panel, { left, bottom }]}
     >
       {EMOJIS.map((e) => (

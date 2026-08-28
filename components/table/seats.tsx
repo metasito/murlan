@@ -336,11 +336,11 @@ function SeatRing({
     pingScale.value = 1;
     pingOpacity.value = 0.9;
     pingScale.value = withTiming(RING_PING_SCALE, {
-      duration: Motion.duration.slow,
+      duration: Motion.duration.reveal,
       easing: Easing.out(Easing.cubic),
     });
     pingOpacity.value = withTiming(0, {
-      duration: Motion.duration.slow,
+      duration: Motion.duration.reveal,
       easing: Easing.out(Easing.quad),
     });
   }, [isActive, reduceMotion, pingScale, pingOpacity]);

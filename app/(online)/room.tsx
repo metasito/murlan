@@ -35,7 +35,7 @@ import { usePrefersReducedMotion } from "@/lib/accessibility";
 const TEAM_COLORS = { A: Colors.gold, B: Colors.info };
 
 /** Long enough to read as a confirmation rather than as a flicker. */
-const COPIED_FOR_MS = Motion.duration.pulse;
+const COPIED_FOR_MS = Motion.duration.dwell;
 
 function BotFillControls({
   fillWithBots,
@@ -311,7 +311,7 @@ function InviteFriendsPanel({
 export default function RoomScreen() {
   const { t } = useTranslation();
   const reduceMotion = usePrefersReducedMotion();
-  const entering = reduceMotion ? undefined : FadeIn.duration(Motion.duration.moderate);
+  const entering = reduceMotion ? undefined : FadeIn.duration(Motion.duration.travel);
   const { width: W, height: H } = useWindowDimensions();
   const { user } = useAuth();
   const {
