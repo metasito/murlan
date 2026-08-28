@@ -105,19 +105,26 @@ function parseStored(raw: string): Partial<Settings> {
 
 export function SettingsProvider({ children }: { children: React.ReactNode }) {
   const [settings, setSettings] = useState<Settings>(defaults);
+  const [readFinished, setReadFinished] = useState(false);
 
   useEffect(() => {
-    AsyncStorage.getItem(STORAGE_KEY).then((raw) => {
-      if (!raw) return;
-      try {
-        setSettings({ ...defaults, ...parseStored(raw) });
-      } catch {}
-    });
+    AsyncStorage.getItem(STORAGE_KEY)
+      .then((raw) => {
+        if (!raw) return;
+        try {
+          setSettings({ ...defaults, ...parseStored(raw) });
+        } catch {}
+      })
+      // Not in `then`: a rejected read must release the write below too, or one
+      // failed read stops settings persisting for the session.
+      .finally(() => setReadFinished(true))
+      .catch(() => {});
   }, []);
 
   useEffect(() => {
+    if (!readFinished) return;
     AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(settings)).catch(() => {});
-  }, [settings]);
+  }, [settings, readFinished]);
 
   useEffect(() => {
     setSoundsMasterVolume(settings.soundVolume);

@@ -416,7 +416,8 @@ export default function TutorialScreen() {
         const n = raw ? parseInt(raw, 10) : NaN;
         if (!Number.isNaN(n) && n >= 0 && n < BEATS.length) setStepIndex(n);
       })
-      .finally(() => setLoaded(true));
+      .finally(() => setLoaded(true))
+      .catch(() => {});
   }, [BEATS.length]);
 
   useEffect(() => {
