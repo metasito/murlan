@@ -149,17 +149,12 @@ point is your own loop, before the thing exists to be gated.
 `@testing-library/react-native` is v14 here, where `render` **and every `fireEvent`** return
 promises. Miss one and the harness reports its own unfinished state as the app's.
 
-The handler still runs. Only the re-render is deferred, which is what makes this so quiet —
-measured on one press, both in the same test:
-
-| After a bare `fireEvent.press(go)` | |
-| --- | --- |
-| the mock the handler calls | called, synchronously |
-| the text the handler sets | still the old value |
-
-So `expect(onExit).toHaveBeenCalled()` passes and `expect(getByTestId('msg')).toHaveTextContent`
-fails, one line apart, off the same press. A test asserting the first is right; the same test
-asserting the second is a defect that reads as a broken component.
+The handler still runs. Only the re-render is deferred, which is what makes this so quiet: after
+a bare `fireEvent.press(go)`, the mock the handler calls has been called, and the text the
+handler sets is still the old value. So `expect(onExit).toHaveBeenCalled()` passes and
+`expect(view.getByTestId('msg').props.children).toBe('pressed')` fails, one line apart, off the
+same press. A test asserting the first is right; the same test asserting the second is a defect
+that reads as a broken component.
 
 Which forms deliver a re-render, all measured:
 
@@ -171,9 +166,25 @@ Which forms deliver a re-render, all measured:
 | `await act(async () => { fireEvent.press(x) })` — promise dropped | yes |
 | `fireEvent.press(x)` then any later `act` flush or `await waitFor` | yes |
 
-Only the first is broken, so the `act`-wrapped calls already in `tests/native/` are sound and
-do not need rewriting. Awaiting the `fireEvent` is still the form to write: it is the one that
+Only the first fails to re-render, and every existing call site in `tests/native/` is sound for
+one of these reasons. Awaiting the `fireEvent` is still the form to write: it is the one that
 does not depend on something else happening to flush afterwards.
+
+**One pairing is worse than a missed re-render, and it is the last row above followed by the
+wrong flush.** A bare `fireEvent` leaves its own `act` scope open. An `await act(…)` on the next
+line nests inside it, and React's act environment stays corrupted **for the rest of the file** —
+every later `render()` returns a tree whose queries find nothing, so a control that is
+unconditionally present reads as absent:
+
+```
+Unable to find an element with testID: go
+```
+
+The test that pays is never the test that did it, which is why this reads as "a screen that
+cannot be mounted twice" or "one interaction per file". It is neither. Measured on a twelve-line
+`Pressable`: `await waitFor(…)` after a bare `fireEvent` is safe, awaiting the `fireEvent` is
+safe, and only the `await act(…)` pairing poisons. `tests/nativeActPairing.test.ts` refuses the
+two-line shape.
 
 **Do not reach into `.props` to drive a control instead.** `getByTestId` returns the *host*
 node. On a `Pressable` that host is the `View` carrying the responder props, and
@@ -181,16 +192,12 @@ node. On a `Pressable` that host is the `View` carrying the responder props, and
 problem. On a `TextInput` the host does carry `onChangeText`, so the same reach appears to
 work there, which is how it gets adopted.
 
-**`import.meta.dirname` is `undefined` under `npx tsx --test`.** Tests using it fail with
-`The "paths[0]" argument must be of type string`, which reads as a bug in the test you just
-touched. Rule 4's `node --test` runs them. Reaching for `tsx` because the file is TypeScript
-is the trap; two sessions hit it on the same day, on different files.
+## `import.meta.dirname` is `undefined` under `npx tsx --test`
 
-**Still open:** a screen whose control goes unfindable on a later `it()` in the same file,
-while `tests/native/profileForm.test.tsx` renders three times and passes. Neither "a second
-render in one `it()`" nor "a second render in the file" survived measurement — three `it()`s
-with one render each, one leaving a press in flight, all found their control. It is specific
-to the screen, not to the harness; #523 has the measurements.
+`tests/bundleRoutes.test.ts` and `tests/landingPage.test.ts` are the only two files that use it,
+and under `tsx` they fail with `The "paths[0]" argument must be of type string` — which reads as
+a bug in whatever you just touched. Rule 4's `node --test` runs them. Reaching for `tsx` because
+the file is TypeScript is the trap; two sessions hit it on the same day, on different files.
 
 ## Starvation looks exactly like a red suite
 
@@ -310,12 +317,16 @@ node scripts/dev-stack.mjs down
 Each server takes its own schema and drops it, so runs cannot collide and the database can stay
 up between the runs of one sitting.
 
-It does not stay up past them. `down` is in the block above because nothing else stops it: no
-test teardown, no session exit, and no other user of this machine — Docker here serves the agent
-sessions and nobody else, so a container nobody is waiting on is a container nobody will notice.
-`murlan-dev-pg` and Docker Desktop together held ~2.3k CPU-seconds across an afternoon of tickets
-that had each long since finished. Quit the engine too, not just the container, once neither
-session needs a Postgres; the next `up` costs seconds. Rule 30 covers it.
+It does not stay up past them. Nothing stops it on its own — no test teardown and no session
+exit — and Docker here serves the agent sessions and nobody else, so a container nobody is
+waiting on is a container nobody will notice. `murlan-dev-pg` and Docker Desktop together held
+~2.3k CPU-seconds across an afternoon of tickets that had each long since finished.
+
+`node scripts/dev-stack.mjs down` takes the container, and `npm run reap -- --docker` takes it
+too if you have lost track of which sitting started it. Neither quits the engine: Docker Desktop
+is a separate ~1 GB, and on a machine two sessions are already sharing, that is the difference
+between a suite running and the jest preflight refusing. Quit it once neither session needs a
+Postgres; the next `up` costs seconds.
 
 **No unit test can see a layout bug.** `react-test-renderer` never runs flexbox. A green
 `npx jest` on a fan rendered off-screen is the normal outcome, not a surprise.

@@ -40,12 +40,6 @@ const t = (key: string, params?: TranslationParams) =>
 
 const spoken = (card: Card) => cardSpokenName(card, t as never);
 
-/** A tap and the re-render it causes; `fireEvent.press` only queues the update. */
-async function press(element: Parameters<typeof fireEvent.press>[0]) {
-  fireEvent.press(element);
-  await act(async () => {});
-}
-
 async function open() {
   const onSelectCard = jest.fn();
   const view = await render(
@@ -75,21 +69,21 @@ describe('the exchange pick is uncommitted until confirmed', () => {
 
     // The floor: a confirm control that fired unconditionally would satisfy
     // every assertion below, so it has to do nothing with no card chosen.
-    await press(view.getByTestId('exchange-confirm'));
+    await fireEvent.press(view.getByTestId('exchange-confirm'));
     expect(onSelectCard).not.toHaveBeenCalled();
 
     // The slot starts empty, so the card appears once — in the row of choices.
     expect(view.queryAllByLabelText(spoken(FIVE))).toHaveLength(1);
 
     // Choosing is not giving.
-    await press(view.getByLabelText(spoken(FIVE)));
+    await fireEvent.press(view.getByLabelText(spoken(FIVE)));
     expect(onSelectCard).not.toHaveBeenCalled();
 
     // ...and it fills the slot that was a "?": once in the row, once in the slot.
     expect(view.queryAllByLabelText(spoken(FIVE))).toHaveLength(2);
 
     // Only the confirm gives, and it gives the card that was chosen.
-    await press(view.getByTestId('exchange-confirm'));
+    await fireEvent.press(view.getByTestId('exchange-confirm'));
     expect(onSelectCard).toHaveBeenCalledTimes(1);
     expect(onSelectCard).toHaveBeenCalledWith(FIVE.id);
   });
