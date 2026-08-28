@@ -18,7 +18,7 @@ import { Colors, Spacing, Radius, Type, Shadow } from "@/lib/theme";
 import { usePrefersReducedMotion } from "@/lib/accessibility";
 import { useTranslation } from "@/lib/i18n";
 import type { NotificationType, NotificationData } from "@/context/NotificationContext";
-import { a11yVeiled, useA11yHint } from "@/lib/a11y";
+import { a11yHidden, a11yVeiled, useA11yHint } from "@/lib/a11y";
 
 export type { NotificationType, NotificationData };
 
@@ -176,7 +176,7 @@ export default function NotificationBanner({ notification, onDismiss }: Props) {
           accessibilityRole="button"
           accessibilityLabel={t("notificationBanner.closeA11yLabel")}
         >
-          <Ionicons name="close" size={20} color={Colors.textMuted} />
+          <Ionicons name="close" size={20} color={Colors.textMuted} {...a11yHidden()} />
         </Pressable>
       </View>
     </Animated.View>

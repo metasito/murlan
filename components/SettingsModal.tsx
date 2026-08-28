@@ -126,6 +126,7 @@ function Segmented<T extends string | number>({
               />
             )}
             <Text
+              {...a11yHidden()}
               numberOfLines={1}
               style={[styles.segmentText, active && styles.segmentTextActive]}
             >
@@ -319,7 +320,7 @@ export function SettingsModal({ visible, onClose }: Props) {
               hitSlop={Spacing.xs}
               style={({ pressed }) => [styles.closeBtn, { opacity: pressed ? 0.6 : 1 }]}
             >
-              <Feather name="x" size={FontSize.xl} color={Colors.text} />
+              <Feather name="x" size={FontSize.xl} color={Colors.text} {...a11yHidden()} />
             </Pressable>
           </View>
 
@@ -453,7 +454,7 @@ export function SettingsModal({ visible, onClose }: Props) {
                         pressed && { opacity: 0.8 },
                       ]}
                     >
-                      <Text style={[styles.localeBtnText, active && styles.localeBtnTextActive]}>
+                      <Text {...a11yHidden()} style={[styles.localeBtnText, active && styles.localeBtnTextActive]}>
                         {code.toUpperCase()}
                       </Text>
                     </Pressable>
@@ -479,7 +480,7 @@ export function SettingsModal({ visible, onClose }: Props) {
             >
               {bugHint.node}
               <Feather name="alert-circle" size={16} color={Colors.gold} {...a11yHidden()} />
-              <Text style={styles.bugBtnText}>{t("settings.reportBug")}</Text>
+              <Text style={styles.bugBtnText} {...a11yHidden()}>{t("settings.reportBug")}</Text>
             </Pressable>
 
             {bugOpen && (
@@ -513,7 +514,7 @@ export function SettingsModal({ visible, onClose }: Props) {
                     pressed && !sendingBug && { opacity: 0.85 },
                   ]}
                 >
-                  <Text style={styles.bugSendText}>
+                  <Text style={styles.bugSendText} {...a11yHidden()}>
                     {sendingBug ? t("settings.reportBugSending") : t("settings.reportBugSend")}
                   </Text>
                 </Pressable>

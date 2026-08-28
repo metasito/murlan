@@ -36,6 +36,11 @@ const DELIBERATELY_REACHABLE: [string, number, string][] = [
     1,
     "the announcement panel is itself the labelled node, and it holds both its own copy and a close button — hiding its subtree erases the panel and the only way out of it (#495)",
   ],
+  [
+    "components/NotificationBanner.tsx",
+    1,
+    "the banner's body is a live region, and a live region announces the text that changes inside it rather than its own label — hide the copy and every notification arrives silently on web (#495)",
+  ],
 ];
 
 function sourcesUnder(dir: string): string[] {

@@ -207,7 +207,7 @@ export function ExchangeAnnouncement({
             accessibilityRole="button"
             accessibilityLabel={t("exchangeAnnouncement.closeA11yLabel")}
           >
-            <Feather name="x" size={18} color={Colors.textMuted} />
+            <Feather name="x" size={18} color={Colors.textMuted} {...a11yHidden()} />
           </Pressable>
 
           <Text style={styles.title}>{t("exchangeAnnouncement.title")}</Text>
