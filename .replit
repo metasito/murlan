@@ -3,7 +3,7 @@ modules = ["nodejs-22", "javascript", "postgresql-16"]
 
 [nix]
 channel = "stable-24_05"
-packages = ["dig", "q"]
+packages = ["dig", "q", "glib", "nss", "nspr", "atk", "cups", "dbus", "libdrm", "libxkbcommon", "at-spi2-atk", "at-spi2-core", "cairo", "pango", "alsa-lib", "xorg.libX11", "xorg.libXcomposite", "xorg.libXdamage", "xorg.libXext", "xorg.libXfixes", "xorg.libXrandr", "mesa", "expat"]
 
 [deployment]
 deploymentTarget = "cloudrun"
@@ -13,6 +13,10 @@ run = ["npm", "run", "server:prod"]
 [[ports]]
 localPort = 5000
 externalPort = 5000
+
+[[ports]]
+localPort = 5199
+externalPort = 3000
 
 [[ports]]
 localPort = 8081
@@ -60,7 +64,7 @@ mode = "sequential"
 
 [[workflows.workflow.tasks]]
 task = "shell.exec"
-args = "npm run server:dev"
+args = "npm run dev:workflow:backend"
 waitForPort = 5000
 
 [[workflows.workflow]]
@@ -70,7 +74,7 @@ mode = "sequential"
 
 [[workflows.workflow.tasks]]
 task = "shell.exec"
-args = "npm run expo:dev"
+args = "npm run dev:workflow:frontend"
 waitForPort = 8081
 ensurePreviewReachable = "/status"
 
