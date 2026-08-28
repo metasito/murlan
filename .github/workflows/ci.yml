@@ -93,7 +93,16 @@ jobs:
           fi
           changed=$(git diff --name-only "$base" HEAD)
           echo "Changed files:"; echo "$changed"
-          if [ -n "$changed" ] && ! grep -qvE '^(docs/|\.claude/)|\.md$' <<< "$changed"; then
+          # Prose the suite asserts *on* is not prose to this filter.
+          # `tests/rulesAreSingleSourced.test.ts` reads RULES.md, CLAUDE.md, the
+          # command files and docs/agents/ — so a change to exactly those paths
+          # is the one change that must run it, and the allowlist below would
+          # skip it. The failure would surface later, on whichever unrelated
+          # code change ran the suite next.
+          if grep -qE '^(docs/agents/|\.claude/commands/|CLAUDE\.md$)' <<< "$changed"; then
+            echo "Documentation the suite asserts on — running everything."
+            echo "app=true" >> "$GITHUB_OUTPUT"
+          elif [ -n "$changed" ] && ! grep -qvE '^(docs/|\.claude/)|\.md$' <<< "$changed"; then
             echo "Documentation only — skipping the app checks."
             echo "app=false" >> "$GITHUB_OUTPUT"
           else
