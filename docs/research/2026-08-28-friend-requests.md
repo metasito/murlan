@@ -176,7 +176,12 @@ that **always renders**. Inside it, two sub-labels — waiting for you / waiting
 each with its rows. Empty: one line under the header saying nothing is waiting, with the
 search card immediately below as the next action.
 
-- Badge on the section header counts incoming only.
+- Badge on the section header counts the rows in the section, both directions — it is an
+  inventory count, like the friends count above it. **Corrected after shipping**: it went out
+  incoming-only, which left a PENDING section holding two outgoing requests displaying no
+  number at all, and the owner read that as broken. The task-counter argument in §3 is sound
+  and applies to the home button's badge, which is the thing that makes a player open the app.
+  It does not apply to a section header. #546 split the two meanings apart.
 - Outgoing rows keep cancel, and gain "sent {time} ago".
 - Cost: one screen, no navigation change. Does not touch #343 or #398.
 
