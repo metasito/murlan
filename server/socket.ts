@@ -1338,6 +1338,7 @@ function roomStatePayload(
     status: string;
     gameMode: string;
     maxPlayers: number;
+    visibility: string;
   },
   players: { seatIndex: number; userId: string; user: { username: string } }[]
 ) {
@@ -1348,6 +1349,7 @@ function roomStatePayload(
     status: room.status,
     gameMode: room.gameMode,
     maxPlayers: room.maxPlayers,
+    visibility: room.visibility,
     players: players.map((p) => ({
       seatIndex: p.seatIndex,
       userId: p.userId,
@@ -1378,6 +1380,9 @@ function roomOf(game: OnlineGameState) {
     status: "in_progress",
     gameMode: game.gameMode,
     maxPlayers: game.maxPlayers,
+    // Reached only when the rooms row could not be read, and a running game
+    // takes nobody either way. Private is the answer that cannot mislead.
+    visibility: "private",
   };
 }
 
