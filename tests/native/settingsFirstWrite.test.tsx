@@ -26,31 +26,32 @@ import { SettingsProvider, useSettings } from "@/context/SettingsContext";
 const MUTED = JSON.stringify({ soundVolume: 0, soundVolumeRestore: 0.8, hapticsEnabled: false });
 
 function Probe() {
-  const { soundVolume, hapticsEnabled, setHapticsEnabled } = useSettings();
+  const { hapticsEnabled, setHapticsEnabled } = useSettings();
   return (
-    <>
-      <Text>{`sound:${soundVolume}`}</Text>
-      <Pressable accessibilityRole="button" accessibilityLabel="toggle" onPress={() => setHapticsEnabled(!hapticsEnabled)}>
-        <Text>toggle</Text>
-      </Pressable>
-    </>
+    <Pressable accessibilityRole="button" accessibilityLabel="toggle" onPress={() => setHapticsEnabled(!hapticsEnabled)}>
+      <Text>toggle</Text>
+    </Pressable>
   );
 }
 
 let releaseRead: (raw: string | null) => void;
-let getItem: ReturnType<typeof jest.spyOn>;
-let setItem: ReturnType<typeof jest.spyOn>;
+let failRead: (reason: Error) => void;
+let getItem: jest.SpiedFunction<typeof AsyncStorage.getItem>;
+let setItem: jest.SpiedFunction<typeof AsyncStorage.setItem>;
 
 /** Every value handed to `setItem`, oldest first. */
 function writes(): Record<string, unknown>[] {
-  return (setItem.mock.calls as unknown as [string, string][]).map(([, value]) => JSON.parse(value));
+  return setItem.mock.calls.map(([, value]) => JSON.parse(value));
 }
 
 beforeEach(() => {
   getItem = jest
     .spyOn(AsyncStorage, "getItem")
-    .mockReturnValue(new Promise<string | null>((resolve) => { releaseRead = resolve; }));
-  setItem = jest.spyOn(AsyncStorage, "setItem").mockResolvedValue(undefined as never);
+    .mockReturnValue(new Promise<string | null>((resolve, reject) => {
+      releaseRead = resolve;
+      failRead = reject;
+    }));
+  setItem = jest.spyOn(AsyncStorage, "setItem").mockResolvedValue(undefined);
 });
 
 afterEach(() => {
@@ -65,6 +66,23 @@ afterEach(() => {
 async function settleRead(raw: string | null) {
   await act(async () => { releaseRead(raw); });
   await act(async () => {});
+}
+
+/** The same, for a read that never lands. */
+async function settleFailedRead() {
+  await act(async () => { failRead(new Error("storage unavailable")); });
+  await act(async () => {});
+}
+
+/**
+ * Presses the probe's toggle and waits for the write it should cause. Counted
+ * from the writes already made, not from zero: the load itself writes once, so
+ * a gate on "any write at all" is satisfied before the press happens.
+ */
+async function pressToggleAndWait(view: Awaited<ReturnType<typeof mountWithReadPending>>) {
+  const before = writes().length;
+  fireEvent.press(view.getByRole("button", { name: "toggle" }));
+  await waitFor(() => expect(writes().length).toBeGreaterThan(before));
 }
 
 /** Mounts and settles the effects, leaving the read outstanding. */
@@ -85,10 +103,6 @@ test("nothing is written while the read is still outstanding", async () => {
 });
 
 test("a muted install is never written back as unmuted", async () => {
-  // The floor for the test above, and #414's own callout: silently re-enabling
-  // audio for the whole install base is the failure mode. A defaults-first
-  // write says `soundVolume: 1` before the stored 0 is ever seen, so this
-  // fails on the *first* element rather than the last.
   await mountWithReadPending();
   await settleRead(MUTED);
 
@@ -98,14 +112,21 @@ test("a muted install is never written back as unmuted", async () => {
   }
 });
 
+// The two floors. A guard that waits for a stored *value* rather than for the
+// read to finish never releases on either of these, and settings stop
+// persisting for the session — worse than what is being fixed, and silent.
 test("a first-run install with nothing stored still persists", async () => {
-  // The other floor. A guard that waits for a *value* rather than for the read
-  // to finish never releases on a fresh install, and settings stop persisting
-  // entirely — a worse bug than the one being fixed, and a silent one.
   const view = await mountWithReadPending();
   await settleRead(null);
 
-  fireEvent.press(view.getByRole("button", { name: "toggle" }));
-  await waitFor(() => expect(writes().length).toBeGreaterThan(0));
+  await pressToggleAndWait(view);
+  expect(writes().at(-1)!.hapticsEnabled).toBe(false);
+});
+
+test("a read that fails still leaves settings persisting", async () => {
+  const view = await mountWithReadPending();
+  await settleFailedRead();
+
+  await pressToggleAndWait(view);
   expect(writes().at(-1)!.hapticsEnabled).toBe(false);
 });
