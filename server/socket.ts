@@ -499,6 +499,10 @@ export function setupSocket(httpServer: HttpServer) {
         let joinedRoomId: string | null = null;
         for (const candidate of waiting) {
           if (candidate.containsUser) continue;
+          // Nobody in it means nobody is coming: the row outlived the write
+          // that should have closed it, and seating someone alone in it would
+          // strand them in a lobby with a host who already left.
+          if (candidate.playerCount === 0) continue;
           if (
             candidate.room.maxPlayers !== maxPlayers ||
             candidate.room.gameMode !== gameMode ||
@@ -657,6 +661,12 @@ export function setupSocket(httpServer: HttpServer) {
           moveLog: startReplayLog(),
           dealFirstSeat: 0,
         };
+        // Before the game exists, not after: `claimRoomSeat` re-reads the
+        // status under its own row lock, so a room that is no longer `waiting`
+        // cannot take a straggler. Leaving it to dealManche would open a
+        // window the width of one round-trip in which quick-match can seat
+        // someone into a hand whose roster is already frozen.
+        await storage.updateRoomStatus(roomId, "in_progress");
         activeGames.set(roomId, newGame);
 
         // The lobby is over; a seat lost from here on is the live game's to
