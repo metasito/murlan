@@ -65,6 +65,7 @@ export const sq: Record<keyof typeof en, string> = {
   "server.PLAYER_LEFT_BOT_TAKEOVER": "{{username}} u largua nga loja — kompjuteri po luan tani në atë vend.",
   "server.REPLAY_NOT_FOUND": "Përsëritja nuk u gjet",
   "server.ROOM_NOT_FOUND": "Dhoma nuk u gjet",
+  "server.INVALID_ROOM_CODE": "Kodi i dhomës nuk është i vlefshëm",
   "server.GAME_ALREADY_STARTED": "Loja ka filluar tashmë",
   "server.ROOM_FULL": "Dhoma është plot",
   "server.ALREADY_IN_ROOM": "Je tashmë në dhomë",

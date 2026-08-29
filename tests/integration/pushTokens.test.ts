@@ -16,6 +16,7 @@ import {
   type TestServer,
 } from "../helpers/testServer.ts";
 import { connectAs, waitFor } from "../helpers/client.ts";
+import type { Socket } from "socket.io-client";
 import { translate } from "../../shared/i18n.ts";
 import { createServer, type Server } from "node:http";
 
@@ -70,6 +71,17 @@ describe("push token registry", { skip: hasDatabase() ? false : skipMessage() },
   });
 
   /** Waits for the stub to see a request, so the fire-and-forget send lands. */
+/**
+   * A real waiting room to invite into. An invite now references its room by
+   * foreign key, so a made-up code is refused — which is the point: it could
+   * never have been joined.
+   */
+  async function roomFor(client: { socket: Socket }): Promise<string> {
+    const made = waitFor<{ code: string }>(client.socket, "room:state");
+    client.socket.emit("room:create", { gameMode: "free_for_all", maxPlayers: 4 });
+    return (await made).code;
+  }
+
   async function waitForPush(timeoutMs = 3_000): Promise<unknown[]> {
     const deadline = Date.now() + timeoutMs;
     while (Date.now() < deadline) {
@@ -246,11 +258,12 @@ describe("push token registry", { skip: hasDatabase() ? false : skipMessage() },
       });
       assert.equal(accepted.status, 200, await accepted.text());
 
+      const code = await roomFor(ana);
       const invited = waitFor<{ from: string; roomCode: string }>(ben.socket, "friend:invite");
-      ana.socket.emit("friend:invite", { friendUserId: ben.user.id, roomCode: "ZZZ999" });
+      ana.socket.emit("friend:invite", { friendUserId: ben.user.id, roomCode: code });
       const payload = await invited;
 
-      assert.equal(payload.roomCode, "ZZZ999");
+      assert.equal(payload.roomCode, code);
       assert.equal(payload.from, ana.user.username);
       assert.equal(received.length, 0, "a connected friend saw it on screen; a push would be noise");
     } finally {
@@ -282,10 +295,11 @@ describe("push token registry", { skip: hasDatabase() ? false : skipMessage() },
 
       // Ben puts the phone down. His socket is what used to make the invite
       // reachable, and its absence is what used to make it vanish.
+      const code = await roomFor(ana);
       ben.socket.close();
       await new Promise((r) => setTimeout(r, 300));
 
-      ana.socket.emit("friend:invite", { friendUserId: ben.user.id, roomCode: "ZZZ999" });
+      ana.socket.emit("friend:invite", { friendUserId: ben.user.id, roomCode: code });
       const sent = (await waitForPush()) as {
         to: string;
         title: string;
@@ -298,7 +312,7 @@ describe("push token registry", { skip: hasDatabase() ? false : skipMessage() },
       for (const message of sent) {
         assert.match(message.body, new RegExp(ana.user.username));
         // Tapping it has to be able to reach the table that is waiting.
-        assert.equal(message.data?.roomCode, "ZZZ999");
+        assert.equal(message.data?.roomCode, code);
       }
     } finally {
       ana.socket.close();
@@ -328,10 +342,11 @@ describe("push token registry", { skip: hasDatabase() ? false : skipMessage() },
       await post(ben.cookie, { token: TOKEN_A, platform: "ios", locale: "it" });
       await post(ben.cookie, { token: TOKEN_B, platform: "android", locale: "sq" });
 
+      const code = await roomFor(ana);
       ben.socket.close();
       await new Promise((r) => setTimeout(r, 300));
 
-      ana.socket.emit("friend:invite", { friendUserId: ben.user.id, roomCode: "LOC001" });
+      ana.socket.emit("friend:invite", { friendUserId: ben.user.id, roomCode: code });
       const sent = (await waitForPush()) as { to: string; body: string }[];
 
       const bodyOf = (token: string) => sent.find((m) => m.to === token)?.body;

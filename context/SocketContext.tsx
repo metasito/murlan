@@ -9,7 +9,8 @@ import React, {
   ReactNode,
 } from "react";
 import { router } from "expo-router";
-import { useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { apiRequest } from "@/lib/query-client";
 import { useAuth } from "@/context/AuthContext";
 import { connectSocket, disconnectSocket, setSocketAuthFailureHandler } from "@/lib/socket";
 import { useNotification } from "@/context/NotificationContext";
@@ -33,6 +34,14 @@ interface PendingInvite {
   roomCode: string;
 }
 
+/** `GET /api/friends/invites` — the invites still open for this account. */
+interface InviteRow {
+  id: string;
+  roomCode: string;
+  fromUsername: string;
+  createdAt: string;
+}
+
 interface SocketContextValue {
   socket: Socket | null;
   connected: boolean;
@@ -53,6 +62,7 @@ const RECONCILED_ON_CONNECT = [
   ["/api/friends"],
   ["/api/friends/requests"],
   ["/api/friends/sent"],
+  ["/api/friends/invites"],
 ] as const;
 
 const SocketContext = createContext<SocketContextValue | null>(null);
@@ -74,7 +84,18 @@ export function SocketProvider({ children }: { children: ReactNode }) {
   const [connected, setConnected] = useState(false);
   const [onlineIds, setOnlineIds] = useState<Set<string>>(new Set());
   const [pendingInvite, setPendingInvite] = useState<PendingInvite | null>(null);
-  const [gameInvites, setGameInvites] = useState<PendingInvite[]>([]);
+  // The row is the invite; the socket event and the push are both only "look
+  // now". Holding this in component state instead was why an invite that
+  // arrived while the socket was down could not be seen anywhere afterwards.
+  const { data: inviteRows = [] } = useQuery<InviteRow[]>({
+    queryKey: ["/api/friends/invites"],
+    enabled: !!userId,
+    refetchOnWindowFocus: true,
+  });
+  const gameInvites = useMemo<PendingInvite[]>(
+    () => inviteRows.map((row) => ({ from: row.fromUsername, roomCode: row.roomCode })),
+    [inviteRows]
+  );
   const [sessionReplaced, setSessionReplaced] = useState<ServerPayload | null>(null);
   const socketRef = useRef<Socket | null>(null);
   // The socket's auth is a ticket-minting callback now, so the connected user
@@ -87,9 +108,22 @@ export function SocketProvider({ children }: { children: ReactNode }) {
 
   const clearInvite = useCallback(() => setPendingInvite(null), []);
 
-  const dismissGameInvite = useCallback((roomCode: string) => {
-    setGameInvites((prev) => prev.filter((i) => i.roomCode !== roomCode));
-  }, []);
+  /**
+   * Turning an invite down deletes it rather than hiding it. A dismissal that
+   * only cleared the screen would come back on the next reconnect, and would
+   * leave the host waiting for someone who has already said no.
+   */
+  const dismissGameInvite = useCallback(
+    (roomCode: string) => {
+      qc.setQueryData<InviteRow[]>(["/api/friends/invites"], (prev) =>
+        (prev ?? []).filter((row) => row.roomCode !== roomCode)
+      );
+      void apiRequest("DELETE", `/api/friends/invites/${roomCode}`)
+        .catch(() => {})
+        .finally(() => qc.invalidateQueries({ queryKey: ["/api/friends/invites"] }));
+    },
+    [qc]
+  );
 
   /**
    * Claims the account back on this device. The only way out of the replaced
@@ -237,10 +271,7 @@ export function SocketProvider({ children }: { children: ReactNode }) {
 
     const onInvite = ({ from, roomCode }: { from: string; roomCode: string }) => {
       setPendingInvite({ from, roomCode });
-      setGameInvites((prev) => {
-        if (prev.some((i) => i.roomCode === roomCode)) return prev;
-        return [...prev, { from, roomCode }];
-      });
+      qc.invalidateQueries({ queryKey: ["/api/friends/invites"] });
       showNotification({
         type: "game_invite",
         title: t("notifications.gameInviteTitle", { name: from }),

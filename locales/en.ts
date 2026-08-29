@@ -56,6 +56,7 @@ export const en = {
   "server.PLAYER_LEFT_BOT_TAKEOVER": "{{username}} left the game — the computer is now playing their seat.",
   "server.REPLAY_NOT_FOUND": "Replay not found",
   "server.ROOM_NOT_FOUND": "Room not found",
+  "server.INVALID_ROOM_CODE": "That room code is not valid",
   "server.GAME_ALREADY_STARTED": "Game already started",
   "server.ROOM_FULL": "Room full",
   "server.ALREADY_IN_ROOM": "You're already in the room",

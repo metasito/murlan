@@ -87,6 +87,42 @@ export const friends = pgTable(
   ]
 );
 
+/**
+ * Who has been asked to join which room.
+ *
+ * The cascades are deliberate, and a departure from the tables above: an
+ * invite is meaningless without its room or either of its users, so the
+ * database is what knows that rather than every call site that deletes one.
+ * There is no `expires_at` — a clock would be a second source of truth that
+ * can disagree with the room, and a room that can no longer be joined already
+ * says so in `rooms.status`.
+ */
+export const gameInvites = pgTable(
+  "game_invites",
+  {
+    id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+    roomId: varchar("room_id")
+      .references(() => rooms.id, { onDelete: "cascade" })
+      .notNull(),
+    inviterId: varchar("inviter_id")
+      .references(() => users.id, { onDelete: "cascade" })
+      .notNull(),
+    inviteeId: varchar("invitee_id")
+      .references(() => users.id, { onDelete: "cascade" })
+      .notNull(),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+  },
+  (t) => [
+    // "What have I been invited to" is the only read, and it runs on every
+    // app open and every reconnect.
+    index("game_invites_invitee_id_idx").on(t.inviteeId),
+    index("game_invites_room_id_idx").on(t.roomId),
+    // Re-inviting the same person to the same room is one invite, so an
+    // impatient host and a retried emit are the same event to the database.
+    uniqueIndex("game_invites_room_invitee_uq").on(t.roomId, t.inviteeId),
+  ]
+);
+
 // One live table. Everything about it rides the versioned `game_state`
 // envelope — see `PersistedEnvelope` in server/onlineGameLogic.ts.
 export const activeGames = pgTable("active_games", {

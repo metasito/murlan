@@ -681,6 +681,14 @@ export function setupSocket(httpServer: HttpServer) {
         // window the width of one round-trip in which quick-match can seat
         // someone into a hand whose roster is already frozen.
         await storage.updateRoomStatus(roomId, "in_progress");
+        // Nobody can join this room now, so nobody should be looking at an
+        // invitation to it. The read already filters on `waiting`, so this is
+        // hygiene rather than the guarantee — hence logged, never thrown.
+        void storage
+          .clearGameInvites(roomId)
+          .catch((err: unknown) =>
+            logger.warn({ err, roomId }, "Failed to clear invites for a started room")
+          );
         activeGames.set(roomId, newGame);
 
         // The room hears that it started, before anyone is sent their cards.
@@ -1142,25 +1150,39 @@ export function setupSocket(httpServer: HttpServer) {
         const areFriends = await storage.areFriends(userId, friendUserId);
         if (!areFriends) {
           socket.emit("friend:error", { message: "You are not friends", code: "NOT_FRIENDS" });
-          return;
+          return { ok: false, code: "NOT_FRIENDS" };
         }
+
+        const room = await storage.getRoomByCode(roomCode.toUpperCase());
+        if (!room || room.status !== "waiting") {
+          socket.emit("friend:error", { message: "Room not found", code: "ROOM_NOT_FOUND" });
+          return { ok: false, code: "ROOM_NOT_FOUND" };
+        }
+
+        // Written before it is announced. The emit and the push are both ways
+        // of saying "look now"; the row is what makes the invite exist, and it
+        // is the only one of the three that survives the friend being away.
+        await storage.recordGameInvite(room.id, userId, friendUserId);
+
         const friendIsHere = isUserOnline(friendUserId);
-        if (!friendIsHere) {
-          // Nothing about an invite expires while it waits — the room stays
-          // `waiting` until the host starts it — so this is worth delivering
-          // late. Not awaited: the invite must not be held up by a push.
+        if (friendIsHere) {
+          io.to(userRoom(friendUserId)).emit("friend:invite", {
+            from: username,
+            roomCode,
+          });
+        } else {
+          // Not awaited: the invite must not be held up by a push, and the row
+          // above already means a failed push costs nothing.
           void notifyUser(friendUserId, {
             title: "Murlan",
             code: "FRIEND_INVITE",
             params: { username },
             data: { roomCode },
           });
-          return;
         }
-        io.to(userRoom(friendUserId)).emit("friend:invite", {
-          from: username,
-          roomCode,
-        });
+        // Not "delivered or lost" — the invite is written down either way, so
+        // what the host learns is whether their friend is looking right now.
+        return { ok: true, code: friendIsHere ? "INVITE_SHOWN" : "INVITE_WAITING" };
       },
       { limit: 5, windowMs: 60_000 }
     );
