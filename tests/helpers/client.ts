@@ -63,6 +63,33 @@ export function connect(
  * and a REST route (replays, ratings) would otherwise have to register the
  * same person twice and end up with two accounts.
  */
+/**
+ * A second socket for an account that already exists, which `connectAs` cannot
+ * give: registering the same username twice is refused. This is what a phone
+ * coming back from a dropped connection does — a fresh ticket on the session it
+ * already holds.
+ */
+export async function reconnectWith(server: TestServer, cookie: string): Promise<Socket> {
+  const res = await fetch(`${server.url}/api/auth/socket-ticket`, {
+    method: "POST",
+    headers: { cookie },
+  });
+  const text = await res.text();
+  assert.equal(res.status, 200, text);
+  const { ticket } = JSON.parse(text) as { ticket: string };
+
+  const socket = ioClient(server.url, {
+    auth: { ticket },
+    transports: ["websocket"],
+    reconnection: false,
+  });
+  await new Promise<void>((resolve, reject) => {
+    socket.once("connect", () => resolve());
+    socket.once("connect_error", (e) => reject(e));
+  });
+  return socket;
+}
+
 export async function connectAs(
   server: TestServer,
   username: string
