@@ -205,9 +205,17 @@ function wrappedEventsIn(source: string): string[] {
 
 const WRAPPED_EVENT_COUNT = 17;
 
+/**
+ * The files the connection handler registers from. One list, so a family split
+ * out of `socket.ts` stays inside this assertion instead of escaping it —
+ * every registration must still be somewhere a reader is told to look.
+ */
+const SOCKET_FAMILY = ["server/socket.ts", "server/socketRooms.ts"];
+
 test("the events that exist are registered through the wrapper", () => {
-  const source = readFileSync(path.join(repoRoot, "server/socket.ts"), "utf8");
-  const wrapped = wrappedEventsIn(source);
+  const wrapped = SOCKET_FAMILY.flatMap((file) =>
+    wrappedEventsIn(readFileSync(path.join(repoRoot, file), "utf8"))
+  );
 
   assert.equal(
     wrapped.length,
@@ -218,13 +226,15 @@ test("the events that exist are registered through the wrapper", () => {
   );
 
   const elsewhere = serverSources()
-    .filter(([file]) => file !== "server/socket.ts")
+    .filter(([file]) => !SOCKET_FAMILY.includes(file))
     .flatMap(([file, src]) => wrappedEventsIn(src).map((e) => `${file}: ${e}`));
   assert.deepEqual(
     elsewhere,
     [],
-    `every onEvent registration belongs in server/socket.ts, where this file and ` +
-      `tests/serverLoadable.test.ts look for it: ${elsewhere.join(", ")}`
+    `every onEvent registration belongs to the socket family (${SOCKET_FAMILY.join(", ")}), ` +
+      `where this file and tests/serverLoadable.test.ts look for it. Splitting another ` +
+      `family out means adding it to SOCKET_FAMILY, not registering somewhere unlisted: ` +
+      `${elsewhere.join(", ")}`
   );
   for (const required of [
     "room:spectate",

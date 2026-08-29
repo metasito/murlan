@@ -4,7 +4,7 @@ import type { Server as SocketIOServer } from "socket.io";
 import { logger } from "./logger.ts";
 import { pool as appPool, QUERY_TIMEOUT_MS } from "./db.ts";
 import { drainPool } from "./drainPool.ts";
-import { beginShutdown } from "./socket.ts";
+import { beginShutdown } from "./socketTable.ts";
 import { socketAdapterPool, socketAdapterReady } from "./socketAdapter.ts";
 
 /**
