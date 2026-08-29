@@ -56,13 +56,7 @@ export function registerRoomHandlers({ io, socket, userId, username }: RoomHandl
       "room:create",
       RoomCreateSchema,
       async ({ gameMode, maxPlayers }) => {
-        if (gameMode === "teams" && maxPlayers !== TEAMS_PLAYER_COUNT) {
-          socket.emit("room:error", {
-            message: "Teams mode needs exactly 4 players",
-            code: "TEAMS_REQUIRE_FOUR",
-          });
-          return;
-        }
+        if (!teamsSizeAllowed(socket, gameMode, maxPlayers)) return;
         const room = await storage.createRoom(userId, gameMode, maxPlayers, "private");
         await storage.addRoomPlayer(room.id, userId, 0);
 
@@ -153,10 +147,7 @@ export function registerRoomHandlers({ io, socket, userId, username }: RoomHandl
 
         const claim = await storage.claimRoomSeat(room.id, userId);
         if (!claim.ok) {
-          socket.emit("room:error", {
-            message: seatClaimMessage(claim.reason),
-            code: seatClaimCode(claim.reason),
-          });
+          socket.emit("room:error", SEAT_CLAIM_REFUSAL[claim.reason]);
           return;
         }
 
@@ -204,10 +195,7 @@ export function registerRoomHandlers({ io, socket, userId, username }: RoomHandl
 
         const claim = await storage.claimRoomSeat(room.id, userId);
         if (!claim.ok && claim.reason !== "already_joined") {
-          socket.emit("room:error", {
-            message: seatClaimMessage(claim.reason),
-            code: seatClaimCode(claim.reason),
-          });
+          socket.emit("room:error", SEAT_CLAIM_REFUSAL[claim.reason]);
           return;
         }
 
@@ -246,13 +234,7 @@ export function registerRoomHandlers({ io, socket, userId, username }: RoomHandl
       "room:quickmatch",
       RoomQuickmatchSchema,
       async ({ maxPlayers, gameMode }) => {
-        if (gameMode === "teams" && maxPlayers !== TEAMS_PLAYER_COUNT) {
-          socket.emit("room:error", {
-            message: "Teams mode needs exactly 4 players",
-            code: "TEAMS_REQUIRE_FOUR",
-          });
-          return;
-        }
+        if (!teamsSizeAllowed(socket, gameMode, maxPlayers)) return;
         const waiting = await storage.findWaitingPublicRooms(userId);
 
         let joinedRoomId: string | null = null;
@@ -387,13 +369,7 @@ export function registerRoomHandlers({ io, socket, userId, username }: RoomHandl
         // cannot shift a hand onto the wrong player. Bot seats are left out of
         // playerMap, which armTurn already reads as "drive this seat with the AI".
         const roster = buildSeatRoster(humans, room.maxPlayers, { fillWithBots, botPersonality });
-        if (room.gameMode === "teams" && roster.length !== TEAMS_PLAYER_COUNT) {
-          socket.emit("room:error", {
-            message: "Teams mode needs exactly 4 players",
-            code: "TEAMS_REQUIRE_FOUR",
-          });
-          return;
-        }
+        if (!teamsSizeAllowed(socket, room.gameMode, roster.length)) return;
 
         const playerSetup = roster.map((r, idx) => ({
           name: r.username,
@@ -470,34 +446,32 @@ export function registerRoomHandlers({ io, socket, userId, username }: RoomHandl
     );
 }
 
-function seatClaimMessage(
-  reason: "no_room" | "not_waiting" | "full" | "already_joined"
-): string {
-  switch (reason) {
-    case "no_room":
-      return "Room not found";
-    case "not_waiting":
-      return "Game already started";
-    case "full":
-      return "Room full";
-    case "already_joined":
-      return "You are already in the room";
-  }
-}
+/**
+ * Why a seat claim was refused, in the shape the wire carries it: a stable
+ * `code` the client localises, and English fallback text for a client that
+ * cannot.
+ */
+const SEAT_CLAIM_REFUSAL = {
+  no_room: { message: "Room not found", code: "ROOM_NOT_FOUND" },
+  not_waiting: { message: "Game already started", code: "GAME_ALREADY_STARTED" },
+  full: { message: "Room full", code: "ROOM_FULL" },
+  already_joined: { message: "You are already in the room", code: "ALREADY_IN_ROOM" },
+} as const;
 
-// Stable code counterpart to seatClaimMessage's English fallback text, so the
-// client can localise the same rejection reason (see the `code` field above).
-function seatClaimCode(
-  reason: "no_room" | "not_waiting" | "full" | "already_joined"
-): string {
-  switch (reason) {
-    case "no_room":
-      return "ROOM_NOT_FOUND";
-    case "not_waiting":
-      return "GAME_ALREADY_STARTED";
-    case "full":
-      return "ROOM_FULL";
-    case "already_joined":
-      return "ALREADY_IN_ROOM";
-  }
+/**
+ * Teams is the one mode with a fixed size, checked both where a room is sized
+ * and where it is seated. Returns whether the caller may carry on; emits the
+ * refusal itself when it may not.
+ */
+function teamsSizeAllowed(
+  socket: Socket,
+  gameMode: string,
+  playerCount: number
+): boolean {
+  if (gameMode !== "teams" || playerCount === TEAMS_PLAYER_COUNT) return true;
+  socket.emit("room:error", {
+    message: "Teams mode needs exactly 4 players",
+    code: "TEAMS_REQUIRE_FOUR",
+  });
+  return false;
 }

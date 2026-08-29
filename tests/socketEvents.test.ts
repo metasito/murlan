@@ -353,3 +353,22 @@ test("the computed-name scanner catches a constant event name", () => {
     []
   );
 });
+
+test("a refusal is spelled once, not once per place it can happen", () => {
+  // Sizing a room and seating it are two moments of one rule. Copies of the
+  // emit are kept in agreement by nothing, so there may only be one.
+  const emitters = serverSources().flatMap(([file, source]) =>
+    stripComments(source)
+      .split("\n")
+      .flatMap((line, i) =>
+        line.includes('"TEAMS_REQUIRE_FOUR"') ? [`${file}:${i + 1}`] : []
+      )
+  );
+  assert.equal(
+    emitters.length,
+    1,
+    `the teams-size refusal is emitted from ${emitters.length} places: ` +
+      `${emitters.join(", ")}. It is one rule — route the new caller through ` +
+      `the existing helper rather than copying the emit.`
+  );
+});
