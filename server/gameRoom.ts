@@ -83,29 +83,6 @@ export const socketRoomMap = new Map<string, string>();
 export const spectatorRoomMap = new Map<string, string>();
 export const userSocketMap = new Map<string, string>();
 
-/**
- * Who lost their connection to a waiting lobby: room id -> userId -> whether
- * they held the room when they dropped.
- *
- * A lobby disconnect deletes the `room_players` row at once, so this is the
- * only evidence the caller was ever seated, and `room:rejoin` its only reader:
- * with no entry and no seat row, a caller holding the code is arriving. It is
- * also the only thing that hands the room back to the account that lost it.
- */
-export const lobbyDropouts = new Map<string, Map<string, boolean>>();
-
-export function rememberLobbyDropout(roomId: string, userId: string, wasHost: boolean) {
-  const room = lobbyDropouts.get(roomId) ?? new Map<string, boolean>();
-  room.set(userId, wasHost);
-  lobbyDropouts.set(roomId, room);
-}
-
-export function forgetLobbyDropout(roomId: string, userId: string) {
-  const room = lobbyDropouts.get(roomId);
-  if (!room) return;
-  room.delete(userId);
-  if (room.size === 0) lobbyDropouts.delete(roomId);
-}
 
 export function scoreKeyForSeat(game: OnlineGameState, seat: number): string {
   return scoreKeyForMapSeat(game.playerMap, seat);

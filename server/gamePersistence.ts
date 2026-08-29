@@ -13,7 +13,6 @@ import {
 } from "../shared/schema.ts";
 import {
   activeGames,
-  lobbyDropouts,
   userSocketMap,
 } from "./gameRoom.ts";
 import type { OnlineGameState } from "./gameRoom.ts";
@@ -232,9 +231,6 @@ export async function pruneStaleRooms(): Promise<number> {
 
   const ids = candidates.map((r) => r.id).filter((id) => !activeGames.has(id));
   if (ids.length === 0) return 0;
-  // A lobby nobody ever came back to keeps its dropout records until here.
-  ids.forEach((id) => lobbyDropouts.delete(id));
-
   await db.delete(roomPlayersTable).where(inArray(roomPlayersTable.roomId, ids));
   await db.delete(activeGamesTable).where(inArray(activeGamesTable.roomId, ids));
   const gone = await db

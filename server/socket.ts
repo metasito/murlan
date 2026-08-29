@@ -17,9 +17,6 @@ import { isAllowedOrigin } from "./cors.ts";
 import { allowSocketAction, onEvent } from "./socketSafety.ts";
 import {
   activeGames,
-  forgetLobbyDropout,
-  lobbyDropouts,
-  rememberLobbyDropout,
   seatOfUser,
   socketRoomMap,
   spectatorRoomMap,
@@ -29,6 +26,11 @@ import type { OnlineGameState } from "./gameRoom.ts";
 import {
   disconnectTimers,
   DISCONNECT_GRACE_MS,
+  LOBBY_GRACE_MS,
+  lobbyGraceTimers,
+  lobbyGraceKey,
+  clearLobbyGrace,
+  usersInLobbyGrace,
   clearRoomTimers,
   clearAllTimersForUser,
 } from "./gameTimers.ts";
@@ -115,6 +117,17 @@ const GAME_ACTION_RATE_LIMIT = gameActionLimitFromEnv();
 const HANDSHAKE_WINDOW_MS = 60_000;
 
 let _io: SocketServer | null = null;
+
+let shuttingDown = false;
+
+/**
+ * Called before `io.close()`. Every socket is about to be disconnected, and a
+ * lobby seat held for a grace period the next process will never honour is a
+ * room nobody can join and nothing will clean up.
+ */
+export function beginShutdown() {
+  shuttingDown = true;
+}
 
 export function emitToUser(userId: string, event: string, data: unknown) {
   if (!_io) return;
@@ -406,11 +419,11 @@ export function setupSocket(httpServer: HttpServer) {
     );
 
     /**
-     * Coming back to a waiting lobby on a new socket. Only for a caller who was
-     * already in the room — a seat row that survived, or a `lobbyDropouts`
-     * record; anyone else holding the code is joining, which is `room:join`.
+     * Coming back to a waiting lobby on a new socket. The seat row is the whole
+     * proof of membership: it outlives a disconnect for LOBBY_GRACE_MS, so a
+     * caller still holding one dropped and returned, and anyone else holding
+     * the code is arriving, which is `room:join`.
      *
-     * The host role goes back to the account that lost it and to nobody else.
      * Without this the returning socket has no socketRoomMap entry, so every
      * later room event resolves to no room and returns silently.
      */
@@ -426,8 +439,7 @@ export function setupSocket(httpServer: HttpServer) {
         }
 
         const seated = await storage.getRoomPlayers(room.id);
-        const wasHost = lobbyDropouts.get(room.id)?.get(userId);
-        if (wasHost === undefined && !seated.some((p) => p.userId === userId)) {
+        if (!seated.some((p) => p.userId === userId)) {
           socket.emit("room:error", {
             message: "You are not in this room",
             code: "NOT_IN_ROOM",
@@ -446,18 +458,10 @@ export function setupSocket(httpServer: HttpServer) {
 
         socket.join(room.id);
         socketRoomMap.set(socket.id, room.id);
-        forgetLobbyDropout(room.id, userId);
+        clearLobbyGrace(room.id, userId);
 
         const players = await storage.getRoomPlayers(room.id);
-        let hostUserId = room.hostUserId;
-        if (wasHost && hostUserId !== userId) {
-          hostUserId = userId;
-          await storage.updateRoomHost(room.id, hostUserId);
-        }
-        io.to(room.id).emit(
-          "room:state",
-          roomStatePayload({ ...room, hostUserId }, players)
-        );
+        io.to(room.id).emit("room:state", roomStatePayload(room, players));
       },
       { limit: 20, windowMs: 60_000 }
     );
@@ -595,7 +599,19 @@ export function setupSocket(httpServer: HttpServer) {
           return;
         }
 
-        const players = await storage.getRoomPlayers(room.id);
+        // A seat inside its grace is held for someone who is not here. Dealing
+        // them a hand gives the table a player who cannot play it and whom no
+        // disconnect can ever hand to a bot, because their disconnect already
+        // happened. Release the seat instead; they can rejoin the next lobby.
+        const seated = await storage.getRoomPlayers(room.id);
+        const absent = new Set(usersInLobbyGrace(roomId));
+        for (const p of seated.filter((p) => absent.has(p.userId))) {
+          clearLobbyGrace(roomId, p.userId);
+          await handleSeatRelease(io, roomId, p.userId, p.user.username, {
+            source: "disconnect",
+          });
+        }
+        const players = seated.filter((p) => !absent.has(p.userId));
         // With bots filling every empty seat, one seated human is enough —
         // the min-2 guard only matters for an all-human table.
         if (!fillWithBots && players.length < 2) {
@@ -668,10 +684,6 @@ export function setupSocket(httpServer: HttpServer) {
         // someone into a hand whose roster is already frozen.
         await storage.updateRoomStatus(roomId, "in_progress");
         activeGames.set(roomId, newGame);
-
-        // The lobby is over; a seat lost from here on is the live game's to
-        // hold open through the disconnect grace.
-        lobbyDropouts.delete(roomId);
 
         await dealManche(io, newGame, gameState);
         logger.info(
@@ -1248,13 +1260,20 @@ export function setupSocket(httpServer: HttpServer) {
 
           const game = activeGames.get(currentRoomId);
 
-          if (!game || game.gameState.gameOver) {
-            // In the lobby, or at the results screen: nobody is mid-turn, so
-            // there is nothing for a grace period to protect. The seat is
-            // freed straight away or it keeps counting towards the rematch
-            // gate and the remaining players can never start the next manche.
+          if (!game) {
+            // A waiting lobby. Nobody is mid-turn, but the seat is still
+            // theirs: releasing it on the disconnect itself made a two-second
+            // hiccup cost a player their place in a room they were waiting in.
+            await armLobbyGrace(io, currentRoomId, userId, username);
+            return;
+          }
+
+          if (game.gameState.gameOver) {
+            // The results screen is the opposite case: the seat counts towards
+            // the rematch gate, so holding it means the others can never start
+            // the next manche.
             logger.debug(
-              { userId, socketId: socket.id, roomId: currentRoomId, hasGame: Boolean(game) },
+              { userId, socketId: socket.id, roomId: currentRoomId },
               "Seat released without a grace period"
             );
             await handleSeatRelease(io, currentRoomId, userId, username, {
@@ -1492,6 +1511,49 @@ function seatClaimCode(
 }
 
 /**
+ * Holds a lobby seat open for LOBBY_GRACE_MS, then releases it.
+ *
+ * Nothing is broadcast when the timer is armed. A blip the player recovers
+ * from should be invisible to the rest of the room, and the seat row staying
+ * put is what makes `room:rejoin` work without a memory of who dropped.
+ */
+function armLobbyGrace(
+  io: SocketServer,
+  roomId: string,
+  userId: string,
+  username: string
+): Promise<void> | void {
+  // A shutdown is not a blip. Holding the seat would leave a `waiting` lobby
+  // full of players who are already gone, and the next process has no memory
+  // of the timer that was going to clear it.
+  if (shuttingDown) {
+    return handleSeatRelease(io, roomId, userId, username, { source: "disconnect" });
+  }
+  clearLobbyGrace(roomId, userId);
+  const timer = setTimeout(() => {
+    void (async () => {
+      try {
+        lobbyGraceTimers.delete(lobbyGraceKey(roomId, userId));
+        // Back in *this* room, not merely back online: a player who reconnects
+        // straight into a different lobby is no longer holding this seat, and
+        // asking only whether they have a socket would leave it held.
+        const liveSocket = userSocketMap.get(userId);
+        if (liveSocket && socketRoomMap.get(liveSocket) === roomId) return;
+        await handleSeatRelease(io, roomId, userId, username, { source: "disconnect" });
+        logger.info({ userId, roomId }, "Lobby grace expired — seat released");
+      } catch (err) {
+        logger.error({ err, userId, roomId }, "Lobby grace handler failed");
+      }
+    })();
+  }, LOBBY_GRACE_MS);
+  // A seat waiting to be given back must not be what keeps the process alive:
+  // shutdown disconnects every socket, which arms one of these per lobby, and
+  // the row outlives the process either way.
+  (timer as unknown as { unref?: () => void }).unref?.();
+  lobbyGraceTimers.set(lobbyGraceKey(roomId, userId), timer);
+}
+
+/**
  * Releases a seat: the room_players row, the user's timers, and the seat in a
  * live game. A `room:leave` and a lost connection differ only in what the
  * caller can hand over, so the seat-side work lives in one place.
@@ -1541,15 +1603,7 @@ async function handleSeatRelease(
             "Failed to set rooms.status = finished after the last player left the lobby"
           )
         );
-      lobbyDropouts.delete(roomId);
       return;
-    }
-    // A lost connection is the only release room:rejoin may answer: a
-    // `room:leave` is the player choosing to go, and room:join is how they come
-    // back from that. Recorded before the migration below, so it holds who was
-    // host at the moment of the drop.
-    if (opts.source === "disconnect") {
-      rememberLobbyDropout(roomId, userId, room.hostUserId === userId);
     }
     let newHostId = room.hostUserId;
     if (room.hostUserId === userId) {
