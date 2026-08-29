@@ -19,6 +19,7 @@ import {
 import type { OnlineGameState } from "./gameRoom.ts";
 import type { GameOverWriters } from "./gameOver.ts";
 import {
+  STATE_ACK_TIMEOUT_MS,
   SWEEP_INTERVAL_MS,
   clearRoomTimers,
   clearRoomDisconnectTimers,
@@ -142,19 +143,50 @@ export function persistGameState(roomId: string, game: OnlineGameState): Promise
     );
 }
 
-export function broadcastGameState(io: SocketServer, game: OnlineGameState) {
-  const { gameState, playerMap } = game;
-  const send = (uid: string) => {
-    io.to(userRoom(uid)).emit(
-      "game:state",
-      sanitizeStateForPlayer(gameState, uid, playerMap, game.turnDeadlineMs)
-    );
+/**
+ * Sends one player the table as they are allowed to see it, and sends it again
+ * if they do not say it arrived.
+ *
+ * `sanitizeStateForPlayer` ships a whole snapshot, so a dropped `game:state` is
+ * corrected by the next one — except for the last of a hand, and for the one
+ * answering a rejoin. Those have nothing coming after them, and a player who
+ * misses one is left looking at a table that will never right itself.
+ *
+ * One retry, not a stream: the socket's own reconnect and `game:rejoin` are what
+ * recover a client that is genuinely gone, and shouting at it meanwhile only
+ * competes with them.
+ *
+ * The retry re-derives from whatever is live now rather than replaying the
+ * snapshot it was called with. That is what makes it safe: by the time it fires
+ * the hand may have moved on, and re-sending the older state would rewind the
+ * player's table rather than repair it.
+ */
+export function sendGameStateTo(io: SocketServer, uid: string, game: OnlineGameState) {
+  const send = (retrying: boolean) => {
+    // A retry for a table that has since ended has nothing to say. `game` is
+    // still in scope, but it holds the state as it was, which is exactly what
+    // must not go out.
+    const live = retrying ? activeGames.get(game.roomId) : game;
+    if (!live) return;
+    io.to(userRoom(uid))
+      .timeout(STATE_ACK_TIMEOUT_MS)
+      .emit(
+        "game:state",
+        sanitizeStateForPlayer(live.gameState, uid, live.playerMap, live.turnDeadlineMs),
+        (err: unknown) => {
+          if (err && !retrying) send(true);
+        }
+      );
   };
-  Object.values(playerMap).forEach(send);
+  send(false);
+}
+
+export function broadcastGameState(io: SocketServer, game: OnlineGameState) {
+  Object.values(game.playerMap).forEach((uid) => sendGameStateTo(io, uid, game));
   // Spectators go through the same sanitiser. findViewerSeat returns null for
   // a userId that holds no seat, and every hand is blanked on that basis, so a
   // spectator cannot be sent a card without the seated path breaking first.
-  game.spectators.forEach(send);
+  game.spectators.forEach((uid) => sendGameStateTo(io, uid, game));
 }
 
 /**

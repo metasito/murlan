@@ -284,6 +284,7 @@ export const it: Record<keyof typeof en, string> = {
   // -------------------------------------------------------------- game.*
   // Shared by both modes: offline the client enforces the response deadline,
   // online the server announces its own.
+  "game.moveNotDelivered": "La tua mossa non è arrivata al tavolo. Controlla la connessione e riprova.",
   "game.autoPassTitle": "Passaggio automatico",
   "game.autoPassBody": "Tempo scaduto: hai passato il turno.",
 

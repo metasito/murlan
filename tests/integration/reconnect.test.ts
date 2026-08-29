@@ -308,6 +308,14 @@ describe("reconnect", { skip: hasDatabase() ? false : skipMessage() }, () => {
     const table = [erin, frank];
     try {
       await startGame(table);
+      // Stop the room's clock before reading the row back. The read imports
+      // the database module for the first time, which takes several AFK
+      // windows at 400ms — long enough for the hand to auto-pass its way into
+      // vacating a seat, and a vacated seat plays at BOT_MOVE_DELAY_MS. What
+      // gets rehydrated below is then a hand that is already over, and the
+      // table is disposed before the assertions can look at it.
+      const { clearRoomTimers } = await import("../../server/gameTimers.ts");
+      clearRoomTimers(room.roomId);
       // The write that outlives a restart is fire-and-forget, so the row is
       // not there yet when the opening deal reaches the clients.
       await waitForPersistedGame(room.roomId);

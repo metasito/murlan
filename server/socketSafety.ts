@@ -100,14 +100,54 @@ export function allowSocketAction(
   return true;
 }
 
+/**
+ * What an intent's acknowledgement carries back.
+ *
+ * `ok: false` is an answer, not a silence: a client that retries when nothing
+ * comes back must be able to tell "the server never heard me" from "the server
+ * heard me and said no", or it retries a thing that will never work.
+ */
+export interface EventOutcome {
+  ok: boolean;
+  code?: string;
+}
+
+/**
+ * A handler that returns nothing did the thing. One that turned the intent
+ * away returns why.
+ *
+ * Returning is what makes the refusal reachable: a handler that emitted
+ * `game:error` and returned, or that returned in silence because the socket
+ * held no room, is indistinguishable from success to the wrapper — and
+ * answering `ok: true` there is worse than the silence acknowledgement
+ * replaced, because the client stops retrying and tells the player it worked.
+ */
+type EventResult = void | EventOutcome;
+
 export function onEvent<S extends z.ZodTypeAny>(
   socket: Socket,
   event: string,
   schema: S,
-  handler: (payload: z.infer<S>) => void | Promise<void>,
+  handler: (payload: z.infer<S>) => EventResult | Promise<EventResult>,
   options: EventOptions = {}
 ): void {
-  socket.on(event, (rawPayload: unknown) => {
+  socket.on(event, (...args: unknown[]) => {
+    // Socket.IO appends the client's acknowledgement callback as the last
+    // argument when there is one, so the payload is not always args[0] alone.
+    const ack = typeof args[args.length - 1] === "function"
+      ? (args.pop() as (reply: EventOutcome) => void)
+      : undefined;
+    const rawPayload = args[0];
+    // Exactly once, whatever the handler does. A client that retries on
+    // silence must not be answered twice, and must not be left waiting
+    // because a handler threw before saying anything.
+    let answered = false;
+    const answer = (reply: EventOutcome) => {
+      if (answered) return;
+      answered = true;
+      ack?.(reply);
+    };
+
     void (async () => {
       try {
         if (
@@ -118,6 +158,7 @@ export function onEvent<S extends z.ZodTypeAny>(
             code: "RATE_LIMITED",
             message: "Too many requests, slow down.",
           });
+          answer({ ok: false, code: "RATE_LIMITED" });
           return;
         }
 
@@ -128,16 +169,18 @@ export function onEvent<S extends z.ZodTypeAny>(
             "Rejected malformed socket payload"
           );
           socket.emit(errorEventFor(event), { code: "INVALID_PAYLOAD", message: "Invalid data" });
+          answer({ ok: false, code: "INVALID_PAYLOAD" });
           return;
         }
 
-        await handler(parsed.data);
+        answer((await handler(parsed.data)) ?? { ok: true });
       } catch (err) {
         logger.error(
           { err, event, userId: socket.data?.userId },
           "Socket handler threw — contained"
         );
         socket.emit(errorEventFor(event), { code: "SERVER_ERROR", message: "Server error" });
+        answer({ ok: false, code: "SERVER_ERROR" });
       }
     })();
   });

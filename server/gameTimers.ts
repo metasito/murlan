@@ -30,6 +30,12 @@ export const DISCONNECT_GRACE_MS = timeoutFromEnv("MURLAN_DISCONNECT_GRACE_MS", 
  * room from filling — this only has to outlast a network hiccup.
  */
 export const LOBBY_GRACE_MS = timeoutFromEnv("MURLAN_LOBBY_GRACE_MS", 20_000);
+/**
+ * How long a client has to say it received a state broadcast before the server
+ * sends it again. Generous: this must outlast a slow round trip on mobile, or a
+ * table on a bad connection pays a duplicate snapshot for every move.
+ */
+export const STATE_ACK_TIMEOUT_MS = timeoutFromEnv("MURLAN_STATE_ACK_TIMEOUT_MS", 5_000);
 // Paced so a bot seat reads as thinking rather than as an instant reflex.
 // Tunable for tests, which otherwise pay it on every move of every table a
 // disconnect hands over to the AI.
