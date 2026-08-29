@@ -707,6 +707,8 @@ export const sq: Record<keyof typeof en, string> = {
   "room.leaveA11yLabel": "Largohu nga dhoma",
   "room.title": "Dhoma",
   "room.codeLabel": "KODI I DHOMËS",
+  "room.kindPrivateBody": "Vetëm ata që kanë këtë kod mund të hyjnë.",
+  "room.kindPublicBody": "Kushdo mund të hyjë sa ka një vend të lirë.",
   "room.share": "Ndaj",
   "room.modeAndPlayers": "{{mode}} · {{n}} lojtarë",
   "room.modeTeams": "Në çifte",

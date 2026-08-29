@@ -698,6 +698,8 @@ export const en = {
   "room.leaveA11yLabel": "Leave the room",
   "room.title": "Room",
   "room.codeLabel": "ROOM CODE",
+  "room.kindPrivateBody": "Only people with this code can join.",
+  "room.kindPublicBody": "Anyone can join while there is a free seat.",
   "room.share": "Share",
   "room.modeAndPlayers": "{{mode}} · {{n}} players",
   "room.modeTeams": "Teams",
