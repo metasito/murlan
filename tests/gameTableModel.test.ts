@@ -1858,34 +1858,33 @@ describe("exchangeFlight", () => {
     }
   });
 
-  test("the offset is perpendicular to the trip, so neither card is sent short or long", () => {
+  test("the lane runs across the trip, so neither card is sent short or long", () => {
     for (const [from, to] of PAIRS) {
       const flight = exchangeFlight({ ...frame, sideDisplayedCounts, from, to, cardW, cardH });
       const travel = { x: flight.to.dx - flight.from.dx, y: flight.to.dy - flight.from.dy };
-      const mid = {
-        x: (flight.from.dx + flight.to.dx) / 2,
-        y: (flight.from.dy + flight.to.dy) / 2,
-      };
-      const offset = { x: flight.meet.dx - mid.x, y: flight.meet.dy - mid.y };
-      const along = (travel.x * offset.x + travel.y * offset.y) / Math.hypot(travel.x, travel.y);
+      // The lane is reported rather than recovered from the three points: all
+      // three carry it, so any difference between them has it cancelled out.
+      const along =
+        (travel.x * flight.lane.dx + travel.y * flight.lane.dy) / Math.hypot(travel.x, travel.y);
       assert.ok(
         Math.abs(along) < 1e-9,
-        `${from} → ${to}: the meeting point is displaced ${along.toFixed(2)}px along the ` +
+        `${from} → ${to}: the lane is displaced ${along.toFixed(2)}px along the ` +
           `trip rather than across it, which changes when the card arrives`
+      );
+      assert.ok(
+        Math.hypot(flight.lane.dx, flight.lane.dy) > 0,
+        `${from} → ${to}: the trip has no lane, so anything placed off it lands on it`
       );
     }
   });
 
   test("a bigger card is given proportionally more room, not a fixed gap", () => {
-    const narrow = exchangeFlight({ ...frame, sideDisplayedCounts, from: "bottom", to: "top", cardW: 40, cardH: 56 });
-    const wide = exchangeFlight({ ...frame, sideDisplayedCounts, from: "bottom", to: "top", cardW: 120, cardH: 168 });
-    const mid = {
-      dx: (narrow.from.dx + narrow.to.dx) / 2,
-      dy: (narrow.from.dy + narrow.to.dy) / 2,
-    };
+    const trip = (cardW: number, cardH: number) =>
+      exchangeFlight({ ...frame, sideDisplayedCounts, from: "bottom", to: "top", cardW, cardH });
+    const width = (f: ReturnType<typeof exchangeFlight>) => Math.hypot(f.lane.dx, f.lane.dy);
     assert.ok(
-      dist(wide.meet, mid) > dist(narrow.meet, mid),
-      "the clearance is a fixed distance rather than the card's own width"
+      width(trip(120, 168)) > width(trip(40, 56)),
+      "the clearance is a fixed distance rather than the card's own reach"
     );
   });
 });

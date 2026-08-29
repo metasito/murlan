@@ -510,6 +510,14 @@ export interface ExchangeFlight {
   /** Where the card waits out the beat that makes the pair read as a trade. */
   meet: { dx: number; dy: number };
   to: { dx: number; dy: number };
+  /**
+   * The shift that took this trip out of the shared line and into its own
+   * lane, across the direction of travel and as long as the card's own reach
+   * that way. Anything that has to sit clear of this card — a label at the
+   * seat — goes further along it; the three points cannot supply that
+   * direction between them, since all three carry the same shift.
+   */
+  lane: { dx: number; dy: number };
 }
 
 /**
@@ -559,12 +567,13 @@ export function exchangeFlight(input: ExchangeFlightInput): ExchangeFlight {
   const clearance = (Math.abs(px) * input.cardW + Math.abs(py) * input.cardH) / 2;
   const offX = len === 0 ? 0 : px * clearance;
   const offY = len === 0 ? 0 : py * clearance;
-  const lane = (p: { dx: number; dy: number }) => ({ dx: p.dx + offX, dy: p.dy + offY });
+  const intoLane = (p: { dx: number; dy: number }) => ({ dx: p.dx + offX, dy: p.dy + offY });
 
   return {
-    from: lane(from),
-    meet: lane({ dx: (from.dx + to.dx) / 2, dy: (from.dy + to.dy) / 2 }),
-    to: lane(to),
+    from: intoLane(from),
+    meet: intoLane({ dx: (from.dx + to.dx) / 2, dy: (from.dy + to.dy) / 2 }),
+    to: intoLane(to),
+    lane: { dx: offX, dy: offY },
   };
 }
 

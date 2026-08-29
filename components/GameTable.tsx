@@ -41,6 +41,7 @@ import {
   getCardDisplayRank,
   getSuitSymbol,
   getValidGivebackCards,
+  givebackIsFallback,
   sortHand,
   type Card,
   type Combination,
@@ -932,15 +933,14 @@ export function GameTable({
   // `getValidGivebackCards` is the same call `processExchangeChoice` validates
   // against, asked here only to decide which cards light up.
   const exchangeIsMine = exchange.active && exchange.viewerIsWinner;
-  const giveableIds = React.useMemo(
+  const giveable = React.useMemo(
     () =>
       exchangeIsMine
-        ? getValidGivebackCards(sortedHand, gameState.exchangePhase?.cardFromLoser?.id).map(
-            (c) => c.id
-          )
+        ? getValidGivebackCards(sortedHand, gameState.exchangePhase?.cardFromLoser?.id)
         : undefined,
     [exchangeIsMine, sortedHand, gameState.exchangePhase?.cardFromLoser?.id]
   );
+  const giveableIds = React.useMemo(() => giveable?.map((c) => c.id), [giveable]);
   // Kept apart from `selectedIds`, which stages a *play*: an exchange gives one
   // card, and folding it into a multi-select the play button also reads would
   // let a staged combination survive into the next manche.
@@ -1756,7 +1756,7 @@ export function GameTable({
                   loserName={exchangeLoserName}
                   viewerIsWinner={exchange.viewerIsWinner}
                   viewerIsLoser={exchange.viewerIsLoser}
-                  noValidCards={giveableIds?.length === 0}
+                  noValidCards={!!giveable && givebackIsFallback(giveable)}
                   scale={scale}
                 />
               ) : showStartCardBanner ? (

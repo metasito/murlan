@@ -340,14 +340,13 @@ const GIOCA_BTN = '[data-testid="btn-gioca"]';
  * where a hand holding nothing in range offers its single lowest card instead
  * and a rank filter would find nothing to click.
  *
- * Scoped to the table because the click handler sits on the `<button>` the
- * card's own label is on, matched through Chromium's accessibility tree rather
- * than the DOM: react-native-web turns `accessibilityRole="button"` into a
- * literal `<button>`, and two cannot legally nest, so the parser's treatment of
- * that nesting is not bettable.
+ * Scoped to the hand, not the table: with nothing in range the rank filter
+ * matches nothing and every candidate is tried in turn, so a selector reaching
+ * the whole table would work its way through GIOCA, PASS and the rail's own
+ * controls looking for a card.
  */
 function giveCandidates(page: Page) {
-  return page.locator(`${TABLE} button[aria-label]:not([aria-disabled="true"])`);
+  return page.locator(`${HAND_CARDS}[aria-label]:not([aria-disabled="true"])`);
 }
 
 async function giveCandidateLabels(page: Page): Promise<string[]> {

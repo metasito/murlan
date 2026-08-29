@@ -14,7 +14,7 @@ import { TableText } from "./TableText";
 import type { Card } from "@/lib/gameEngine";
 import { a11yHidden } from "@/lib/a11y";
 import { usePrefersReducedMotion } from "@/lib/accessibility";
-import { Colors, Motion, Radius, Scrim, Spacing } from "@/lib/theme";
+import { Colors, Motion, motionMs, Radius, Scrim, Spacing } from "@/lib/theme";
 import type { ExchangeFlight as Trip } from "@/components/gameTableModel";
 
 const TAG_FS = 11;
@@ -74,8 +74,9 @@ export function ExchangeFlyingCard({
       // rests at its destination rather than being thrown there.
       tx.value = trip.to.dx;
       ty.value = trip.to.dy;
-      opacity.value = withTiming(1, { duration: Motion.duration.reveal });
-      const id = setTimeout(() => onDoneRef.current?.(), Motion.duration.reveal);
+      const settle = motionMs("reveal", reduceMotion);
+      opacity.value = withTiming(1, { duration: settle });
+      const id = setTimeout(() => onDoneRef.current?.(), settle);
       return () => clearTimeout(id);
     }
 
@@ -122,7 +123,7 @@ export function ExchangeFlyingCard({
   );
 }
 
-/** How far a tag sits off its own card, across the trip rather than along it. */
+/** How far clear of its own card a tag sits, beyond the card itself. */
 const TAG_CLEARANCE = 30;
 
 /**
@@ -131,9 +132,9 @@ const TAG_CLEARANCE = 30;
  * The two players not trading are also watching this, and they cannot read a
  * flight they may have looked away from — so the words sit where the people
  * are, and each names its own side of the trade. It shares the flight's
- * geometry rather than measuring the seat again, and takes the same
- * perpendicular the card did, so a tag is never on top of the card it
- * describes and the two tags are never on top of each other.
+ * geometry rather than measuring the seat again, and sits further along the
+ * lane its own card took, so a tag is never on top of the card it describes
+ * and the two tags are never on top of each other.
  */
 export function ExchangeSeatTag({
   label,
@@ -149,18 +150,18 @@ export function ExchangeSeatTag({
 
   useEffect(() => {
     opacity.value = withTiming(visible ? 1 : 0, {
-      duration: reduceMotion ? Motion.duration.tap : Motion.duration.reveal,
+      duration: motionMs("reveal", reduceMotion),
     });
     return () => cancelAnimation(opacity);
   }, [visible, reduceMotion, opacity]);
 
   const anim = useAnimatedStyle(() => ({ opacity: opacity.value }));
 
-  const midX = (trip.from.dx + trip.to.dx) / 2;
-  const midY = (trip.from.dy + trip.to.dy) / 2;
-  const px = trip.meet.dx - midX;
-  const py = trip.meet.dy - midY;
-  const plen = Math.hypot(px, py) || 1;
+  // Past the card rather than beside it: the lane is exactly the card's own
+  // reach across the trip, so one more of it clears the card that landed here,
+  // and the far lane is the other way round from this one.
+  const laneLen = Math.hypot(trip.lane.dx, trip.lane.dy) || 1;
+  const reach = laneLen + TAG_CLEARANCE;
 
   return (
     <Animated.View
@@ -169,8 +170,8 @@ export function ExchangeSeatTag({
         styles.flier,
         {
           transform: [
-            { translateX: trip.to.dx + (px / plen) * TAG_CLEARANCE },
-            { translateY: trip.to.dy + (py / plen) * TAG_CLEARANCE },
+            { translateX: trip.to.dx + (trip.lane.dx / laneLen) * reach },
+            { translateY: trip.to.dy + (trip.lane.dy / laneLen) * reach },
           ],
         },
         anim,
