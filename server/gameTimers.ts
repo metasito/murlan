@@ -78,6 +78,14 @@ export function lobbyGraceKey(roomId: string, userId: string): string {
   return `${roomId}:${userId}`;
 }
 
+/** Who is holding a seat in this room without a connection to it. */
+export function usersInLobbyGrace(roomId: string): string[] {
+  const prefix = `${roomId}:`;
+  return Array.from(lobbyGraceTimers.keys())
+    .filter((k) => k.startsWith(prefix))
+    .map((k) => k.slice(prefix.length));
+}
+
 /** Cancels a pending lobby release. Returns whether one was armed. */
 export function clearLobbyGrace(roomId: string, userId: string): boolean {
   const key = lobbyGraceKey(roomId, userId);

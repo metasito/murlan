@@ -17,6 +17,8 @@ import {
   type TestServer,
 } from "../helpers/testServer.ts";
 import { connectAs, waitFor } from "../helpers/client.ts";
+import { io as ioClient } from "socket.io-client";
+import type { SanitizedState } from "../helpers/table.ts";
 
 // Short enough that the expiry test does not stall the suite, long enough that
 // the survival test is not racing it. Read at module scope by gameTimers.ts.
@@ -62,6 +64,26 @@ describe("lobby disconnect grace", { skip: hasDatabase() ? false : skipMessage()
     const c = await connectAs(server, `lg_${tag}_${Date.now().toString(36)}_${n++}`);
     sockets.push(c.socket);
     return c;
+  }
+
+  /** The same account back on a second socket, as the client's own retry does. */
+  async function reconnect(cookie: string) {
+    const res = await fetch(`${server.url}/api/auth/socket-ticket`, {
+      method: "POST",
+      headers: { cookie },
+    });
+    const { ticket } = (await res.json()) as { ticket: string };
+    const socket = ioClient(server.url, {
+      auth: { ticket },
+      transports: ["websocket"],
+      reconnection: false,
+    });
+    sockets.push(socket);
+    await new Promise<void>((resolve, reject) => {
+      socket.once("connect", () => resolve());
+      socket.once("connect_error", reject);
+    });
+    return socket;
   }
 
   /** A two-seat lobby with a host and a guest, both seated. */
@@ -127,6 +149,45 @@ describe("lobby disconnect grace", { skip: hasDatabase() ? false : skipMessage()
       "the room must not change hands over a dropped connection"
     );
     assert.ok(guest.socket.connected, "the guest is a control: they never went anywhere");
+  });
+
+  test("a player who reconnects into a different room stops holding the first seat", async () => {
+    const { guest, room } = await lobby("moved");
+
+    guest.socket.close();
+    const second = await reconnect(guest.cookie);
+    const elsewhere = waitFor<RoomState>(second, "room:state");
+    second.emit("room:create", { gameMode: "free_for_all", maxPlayers: 4 });
+    await elsewhere;
+
+    await new Promise((r) => setTimeout(r, 3000));
+
+    const { storage } = await import("../../server/storage.ts");
+    const seats = await storage.getRoomPlayers(room.roomId);
+    assert.ok(
+      !seats.some((s) => s.userId === guest.user.id),
+      "being online somewhere else is not being in this room: the seat must be given back"
+    );
+  });
+
+  test("starting mid-grace does not deal a hand to someone who is not there", async () => {
+    const { host, guest } = await lobby("start");
+
+    guest.socket.close();
+    const dealt = waitFor<SanitizedState>(host.socket, "game:state");
+    host.socket.emit("room:start", { fillWithBots: true, botDifficulty: "easy" });
+    const state = await dealt;
+
+    assert.equal(
+      state.players.filter((p) => p.type === "human").length,
+      1,
+      "the absent player must not be seated: nothing in a live game hands their seat to a bot, " +
+        "because the disconnect that would have done it already happened in the lobby"
+    );
+    assert.ok(
+      !state.players.some((p) => p.name === guest.user.username),
+      "and the seat they held must be a bot, not their name attached to a hand nobody plays"
+    );
   });
 
   test("leaving on purpose still gives the seat back at once", async () => {
