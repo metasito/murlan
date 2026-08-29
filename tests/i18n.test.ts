@@ -559,7 +559,12 @@ describe("translate() produces the expected output per locale", () => {
     // wire's { code, message } contract — `reason` is invisible to
     // translateServerPayload — and no two of them may render the same
     // sentence, or the codes carry no information.
-    const source = readFileSync(path.join(SERVER_DIR, "socket.ts"), "utf8");
+    // Read across the socket family rather than one file: which module the
+    // rejoin handler sits in is a layout decision, and the contract being
+    // checked here is not.
+    const source = ["socket.ts", "socketRooms.ts", "socketGameplay.ts"]
+      .map((f) => readFileSync(path.join(SERVER_DIR, f), "utf8"))
+      .join("\n");
     const sites = source
       .split("\n")
       .filter((line) => line.includes('"game:rejoin_failed"'));

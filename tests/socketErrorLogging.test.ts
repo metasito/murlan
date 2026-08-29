@@ -23,9 +23,12 @@ const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), ".."
  * error is no less silent for having been moved into a sibling file, so the
  * scan follows the handlers rather than the filename.
  */
-const SOCKET_SOURCES = ["socket.ts", "socketRooms.ts", "socketTable.ts"].map((f) =>
-  path.join(repoRoot, "server", f)
-);
+const SOCKET_SOURCES = [
+  "socket.ts",
+  "socketRooms.ts",
+  "socketGameplay.ts",
+  "socketTable.ts",
+].map((f) => path.join(repoRoot, "server", f));
 const readSocketFamily = () => SOCKET_SOURCES.map((p) => readFileSync(p, "utf8")).join("\n");
 
 function stripComments(s: string): string {
