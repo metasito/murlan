@@ -210,7 +210,11 @@ const WRAPPED_EVENT_COUNT = 17;
  * out of `socket.ts` stays inside this assertion instead of escaping it —
  * every registration must still be somewhere a reader is told to look.
  */
-const SOCKET_FAMILY = ["server/socket.ts", "server/socketRooms.ts"];
+const SOCKET_FAMILY = [
+  "server/socket.ts",
+  "server/socketRooms.ts",
+  "server/socketGameplay.ts",
+];
 
 test("the events that exist are registered through the wrapper", () => {
   const wrapped = SOCKET_FAMILY.flatMap((file) =>
