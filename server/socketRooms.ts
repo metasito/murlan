@@ -450,9 +450,6 @@ export function registerRoomHandlers({ io, socket, userId, username }: RoomHandl
  * Why a seat claim was refused, in the shape the wire carries it: a stable
  * `code` the client localises, and English fallback text for a client that
  * cannot.
- *
- * One table rather than two switches over the same four reasons. Nothing kept
- * those in step except the next reader noticing there were two of them.
  */
 const SEAT_CLAIM_REFUSAL = {
   no_room: { message: "Room not found", code: "ROOM_NOT_FOUND" },
@@ -462,11 +459,9 @@ const SEAT_CLAIM_REFUSAL = {
 } as const;
 
 /**
- * Teams is the one mode with a fixed size, and the rule is checked at three
- * moments: the two that size a room and the one that seats it. The refusal is
- * identical at all three, so it is written once.
- *
- * Returns whether the caller may carry on.
+ * Teams is the one mode with a fixed size, checked both where a room is sized
+ * and where it is seated. Returns whether the caller may carry on; emits the
+ * refusal itself when it may not.
  */
 function teamsSizeAllowed(
   socket: Socket,

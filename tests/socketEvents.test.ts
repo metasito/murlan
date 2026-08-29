@@ -355,9 +355,8 @@ test("the computed-name scanner catches a constant event name", () => {
 });
 
 test("a refusal is spelled once, not once per place it can happen", () => {
-  // The teams-needs-four rule was written out three times — twice sizing a
-  // room, once seating it — and the copies were kept identical by nothing.
-  // #219's contract step collapsed them; this is what notices the fourth.
+  // Sizing a room and seating it are two moments of one rule. Copies of the
+  // emit are kept in agreement by nothing, so there may only be one.
   const emitters = serverSources().flatMap(([file, source]) =>
     stripComments(source)
       .split("\n")
