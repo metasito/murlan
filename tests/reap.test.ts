@@ -1,5 +1,6 @@
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import {
   orphans,
   staleByAge,
@@ -11,6 +12,8 @@ import {
   burningOrphans,
   psTimeToMs,
   stalePortHolders,
+  wouldTakeSelf,
+  isSessionHost,
 } from "../scripts/reap.mjs";
 import preflightMemory, { memoryVerdict, memoryFloor } from "../scripts/preflightMemory.mjs";
 
@@ -419,6 +422,147 @@ describe("ownedByTooling", () => {
     for (const cl of [null, undefined, ""]) {
       assert.equal(ownedByTooling(cl as unknown as string, roots, "win32"), false);
     }
+  });
+});
+
+/**
+ * The session this reaper runs inside. `node` is the reaper; every link above it is a real
+ * one read off the owner's machine, ending — as it always does on Windows — at a launcher
+ * that has already exited and so is absent from the table.
+ */
+const SESSION = [
+  { pid: 42320, ppid: 1, name: "<gone>", commandLine: "", startedAt: NOW - 9 * HOUR, absent: true },
+  {
+    pid: 12148,
+    ppid: 42320,
+    name: "WindowsTerminal.exe",
+    commandLine: String.raw`"C:\Program Files\WindowsApps\Microsoft.WindowsTerminal_1.24.0_x64__8wekyb3d8bbwe\wt.exe" -d C:\Users\roton\murlan`,
+    startedAt: NOW - 9 * HOUR,
+  },
+  { pid: 9436, ppid: 12148, name: "powershell.exe", commandLine: String.raw`C:\windows\System32\WindowsPowerShell\v1.0\powershell.exe`, startedAt: NOW - 9 * HOUR },
+  { pid: 24044, ppid: 9436, name: "claude.exe", commandLine: String.raw`"C:\Users\roton\.local\bin\claude.exe"`, startedAt: NOW - 9 * HOUR },
+  { pid: 43240, ppid: 24044, name: "bash.exe", commandLine: String.raw`"C:\Program Files\Git\bin\bash.exe" -c -l "cd C:\Users\roton\murlan && npm run reap"`, startedAt: NOW - 60_000 },
+  { pid: 39464, ppid: 43240, name: "node.exe", commandLine: String.raw`node C:\Users\roton\murlan\scripts\reap.mjs`, startedAt: NOW - 5_000 },
+].filter((p) => !p.absent);
+
+const WIN = { platform: "win32" as const };
+const REAP_PID = 39464;
+
+describe("wouldTakeSelf", () => {
+  /**
+   * The defect that stopped two unattended runs. `taskkill /T` ends the whole tree, and the
+   * terminal's tree is the session: the reaper, the shell, the agent, the window.
+   */
+  test("refuses the terminal hosting the reaper", () => {
+    assert.equal(wouldTakeSelf(SESSION, 12148, REAP_PID), true);
+  });
+
+  test("refuses every link between the terminal and the reaper", () => {
+    for (const pid of [9436, 24044, 43240, 39464]) {
+      assert.equal(wouldTakeSelf(SESSION, pid, REAP_PID), true, `pid ${pid}`);
+    }
+  });
+
+  /**
+   * The guard has to leave real leftovers takeable, or it is just an off switch. A sibling
+   * tree shares no link with the reaper's.
+   */
+  test("allows a tree the reaper is not inside", () => {
+    const table = [
+      ...SESSION,
+      { pid: 700, ppid: 99999, name: "node.exe", commandLine: String.raw`node C:\Users\roton\murlan\node_modules\.bin\jest`, startedAt: NOW - 5 * HOUR },
+      { pid: 701, ppid: 700, name: "node.exe", commandLine: "worker", startedAt: NOW - 5 * HOUR },
+    ];
+    assert.equal(wouldTakeSelf(table, 700, REAP_PID), false);
+  });
+
+  /**
+   * The whole point of reading the tree downward rather than walking parents upward: the walk
+   * stops at the first pid the snapshot is missing, and on Windows the launcher above a
+   * terminal is always missing. The tree cannot be fooled that way.
+   */
+  test("still refuses the terminal when its own parent is absent from the table", () => {
+    assert.equal(
+      SESSION.some((p) => p.pid === 42320),
+      false,
+      "the fixture must reproduce the broken parent link"
+    );
+    assert.equal(wouldTakeSelf(SESSION, 12148, REAP_PID), true);
+  });
+});
+
+describe("isSessionHost", () => {
+  /**
+   * A terminal's command line carries the directory it was opened in, so `ownedByTooling`
+   * reads `-d C:\Users\roton\murlan` and claims the window as this repo's tooling. Where a
+   * process was started is not what it is running.
+   */
+  test("a terminal opened in the repo is never claimed as tooling", () => {
+    const terminal = SESSION.find((p) => p.pid === 12148)!;
+    const roots = toolingRoots({
+      repoRoot: "C:/Users/roton/murlan",
+      env: { LOCALAPPDATA: "C:/Users/roton/AppData/Local" } as unknown as NodeJS.ProcessEnv,
+      platform: "win32",
+    });
+    assert.match(
+      terminal.commandLine.toLowerCase(),
+      /murlan/,
+      "the command line really does name the repo — that is the trap"
+    );
+    assert.equal(isSessionHost(terminal.commandLine, WIN), true);
+    assert.equal(ownedByTooling(terminal.commandLine, roots, "win32"), false);
+  });
+
+  /** The shell and the console host between the window and the agent, same reasoning. */
+  test("neither is the shell the terminal runs, nor its console host", () => {
+    const roots = toolingRoots({
+      repoRoot: "C:/Users/roton/murlan",
+      env: { LOCALAPPDATA: "C:/Users/roton/AppData/Local" } as unknown as NodeJS.ProcessEnv,
+      platform: "win32",
+    });
+    for (const cl of [
+      String.raw`C:\windows\System32\WindowsPowerShell\v1.0\powershell.exe -NoProfile -Command cd C:\Users\roton\murlan`,
+      String.raw`\??\C:\windows\system32\conhost.exe 0x4 C:\Users\roton\murlan`,
+    ]) {
+      assert.equal(ownedByTooling(cl, roots, "win32"), false, cl.slice(0, 60));
+    }
+  });
+
+  test("claims the console host and the shell it runs", () => {
+    assert.equal(isSessionHost(String.raw`\??\C:\windows\system32\conhost.exe 0x4`, WIN), true);
+    assert.equal(
+      isSessionHost(String.raw`C:\windows\System32\WindowsPowerShell\v1.0\powershell.exe -NoProfile`, WIN),
+      true
+    );
+  });
+
+  test("claims nothing that actually runs our work", () => {
+    for (const cl of [
+      String.raw`node C:\Users\roton\murlan\scripts\reap.mjs`,
+      String.raw`"C:\Program Files\nodejs\node.exe" C:\Users\roton\murlan\node_modules\jest-worker\build\workers\processChild.js`,
+      String.raw`C:\Users\roton\AppData\Local\ms-playwright\chromium-1234\chrome-headless-shell.exe --headless`,
+      "",
+    ]) {
+      assert.equal(isSessionHost(cl, WIN), false, cl.slice(0, 50));
+    }
+  });
+});
+
+/**
+ * `killPid` is the last thing between a wrong selection and a terminated session, and it is
+ * not exported — nothing above can reach it. Reading the source is the only way to state that
+ * it still asks, and the claim is worth stating: every other guard in the file has failed at
+ * least once.
+ */
+describe("killPid consults the tree it is about to end", () => {
+  const source = readFileSync(new URL("../scripts/reap.mjs", import.meta.url), "utf8");
+  const body = source.slice(source.indexOf("function killPid("));
+
+  test("checks wouldTakeSelf before any kill", () => {
+    const guard = body.indexOf("wouldTakeSelf");
+    const taskkill = body.indexOf("taskkill");
+    assert.ok(guard > 0, "killPid must consult wouldTakeSelf");
+    assert.ok(guard < taskkill, "and must consult it before terminating anything");
   });
 });
 

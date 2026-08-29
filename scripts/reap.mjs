@@ -45,9 +45,13 @@ function normalizePath(value, platform = process.platform) {
  * owner's own browser, and `python.exe` and `msedgewebview2.exe` on this machine belong to an
  * unrelated agent and to Windows. A command line naming a root below is the only thing that
  * distinguishes ours from theirs, so a command line that could not be read claims nothing.
+ *
+ * A session host is the one thing that satisfies that rule without being ours, so the rule
+ * cannot state the exception itself: see `isSessionHost`.
  */
 export function ownedByTooling(commandLine, roots, platform = process.platform) {
   if (!commandLine) return false;
+  if (isSessionHost(commandLine, { platform })) return false;
   const haystack = normalizePath(commandLine, platform);
   return roots.some((root) => haystack.includes(root));
 }
@@ -205,8 +209,57 @@ function ancestry(table, pid) {
   return keep;
 }
 
+/**
+ * Whether ending `pid` would end `selfPid` with it — `pid` and everything below it, which on
+ * Windows is exactly what `taskkill /T` takes.
+ *
+ * The guard that holds when the process table does not. `ancestry` walks parent links upward
+ * and stops at the first pid the snapshot is missing; above a terminal that pid is the
+ * launcher, which has always already exited, and any of the links below it may exit during
+ * the walk. Everything above the gap then silently stops being protected — which is how a
+ * reaper came to take the terminal, the shell, the agent and itself in one call. Reading the
+ * tree that is about to be terminated cannot be fooled the same way: the reaper is inside it
+ * or it is not.
+ */
+export function wouldTakeSelf(table, pid, selfPid) {
+  const children = new Map();
+  for (const p of table) {
+    if (!children.has(p.ppid)) children.set(p.ppid, []);
+    children.get(p.ppid).push(p.pid);
+  }
+  const seen = new Set([pid]);
+  for (const cur of seen) for (const kid of children.get(cur) ?? []) seen.add(kid);
+  return seen.has(selfPid);
+}
+
+/**
+ * Where a session is hosted rather than where its work runs: the terminal window, the console
+ * host, the shell inside them.
+ *
+ * `ownedByTooling` reads the whole command line, and a terminal's carries the directory it was
+ * opened in — `WindowsTerminal.exe -d C:\Users\roton\murlan` names this repo exactly as loudly
+ * as a jest worker does. Where a process was *started* is not what it is running, and every
+ * process of the session sits inside the window's tree.
+ *
+ * Stated for Windows alone because that is where a session has a process for its window. A
+ * POSIX terminal emulator is not in the repo's tree at all, so no rule here can reach it.
+ */
+export function isSessionHost(commandLine, { platform = process.platform, systemRoot } = {}) {
+  if (!commandLine || platform !== "win32") return false;
+  const where = normalizePath(commandLine, platform);
+  return [systemRoot || process.env.SystemRoot || "C:/Windows", "C:/Program Files/WindowsApps"].some(
+    (root) => where.includes(normalizePath(root, platform))
+  );
+}
+
 function killPid(pid, dryRun) {
   if (dryRun) return;
+  if (wouldTakeSelf(processTable(), pid, process.pid)) {
+    // Re-read rather than trust the caller's snapshot: the tree is what `/T` acts on, and a
+    // process that joined it since the sweep began is as fatal as one that was always there.
+    console.log(`reap: refused to kill pid ${pid} — this session is inside its process tree`);
+    return;
+  }
   if (process.platform === "win32") sh("taskkill", ["/PID", String(pid), "/T", "/F"]);
   else {
     try {
