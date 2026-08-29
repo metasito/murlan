@@ -49,6 +49,7 @@ export const it: Record<keyof typeof en, string> = {
   "server.PLAYER_LEFT_BOT_TAKEOVER": "{{username}} ha lasciato la partita — il computer gioca al suo posto.",
   "server.REPLAY_NOT_FOUND": "Replay non trovato",
   "server.ROOM_NOT_FOUND": "Stanza non trovata",
+  "server.INVALID_ROOM_CODE": "Codice stanza non valido",
   "server.GAME_ALREADY_STARTED": "Partita già iniziata",
   "server.ROOM_FULL": "Stanza piena",
   "server.ALREADY_IN_ROOM": "Sei già nella stanza",

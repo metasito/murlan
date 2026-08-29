@@ -1,7 +1,15 @@
-import { eq, and, or, sql, inArray, isNull } from "drizzle-orm";
+import { eq, and, or, sql, desc, inArray, isNull } from "drizzle-orm";
 import { randomInt } from "node:crypto";
 import { db } from "./db.ts";
-import { users, rooms, roomPlayers, friends, activeGames, matchReplays } from "../shared/schema.ts";
+import {
+  users,
+  rooms,
+  roomPlayers,
+  friends,
+  gameInvites,
+  activeGames,
+  matchReplays,
+} from "../shared/schema.ts";
 import type { User, InsertUser, Room, RoomPlayer, Friend, RoomVisibility } from "../shared/schema.ts";
 
 export type SeatClaim =
@@ -451,6 +459,75 @@ class DrizzleStorage {
         )
       );
     return !!row;
+  }
+
+  /**
+   * Records that one player asked another to join a room, and returns whether
+   * the invite is new. Re-inviting the same person to the same room refreshes
+   * the existing row rather than adding a second — so an impatient host and a
+   * retried emit are the same event.
+   */
+  async recordGameInvite(
+    roomId: string,
+    inviterId: string,
+    inviteeId: string
+  ): Promise<{ created: boolean }> {
+    const [row] = await db
+      .insert(gameInvites)
+      .values({ roomId, inviterId, inviteeId })
+      .onConflictDoUpdate({
+        target: [gameInvites.roomId, gameInvites.inviteeId],
+        set: { inviterId, createdAt: new Date() },
+      })
+      .returning({ createdAt: gameInvites.createdAt, id: gameInvites.id });
+    return { created: !!row };
+  }
+
+  /**
+   * The rooms this player has been asked to join and can still join.
+   *
+   * The `waiting` filter is the expiry: a room that has started, filled or been
+   * abandoned cannot be entered, so its invites are not offered whatever rows
+   * survive. Deleting them is hygiene, not what this guarantee rests on.
+   */
+  async getGameInvites(
+    inviteeId: string
+  ): Promise<{ id: string; roomCode: string; fromUsername: string; createdAt: Date }[]> {
+    const rows = await db
+      .select({
+        id: gameInvites.id,
+        roomCode: rooms.code,
+        fromUsername: users.username,
+        createdAt: gameInvites.createdAt,
+      })
+      .from(gameInvites)
+      .innerJoin(rooms, eq(gameInvites.roomId, rooms.id))
+      .innerJoin(users, eq(gameInvites.inviterId, users.id))
+      .where(and(eq(gameInvites.inviteeId, inviteeId), eq(rooms.status, "waiting")))
+      .orderBy(desc(gameInvites.createdAt));
+    return rows;
+  }
+
+  /** Drops a room's invites once it can no longer be joined. */
+  async clearGameInvites(roomId: string): Promise<void> {
+    await db.delete(gameInvites).where(eq(gameInvites.roomId, roomId));
+  }
+
+  /**
+   * Turns one invite down. Addressed by room code rather than row id because
+   * the unique index makes (invitee, room) name exactly one row, which also
+   * makes a repeated decline a no-op instead of an error.
+   */
+  async declineGameInvite(inviteeId: string, roomCode: string): Promise<void> {
+    await db.delete(gameInvites).where(
+      and(
+        eq(gameInvites.inviteeId, inviteeId),
+        inArray(
+          gameInvites.roomId,
+          db.select({ id: rooms.id }).from(rooms).where(eq(rooms.code, roomCode))
+        )
+      )
+    );
   }
 
   async removeFriend(userId: string, friendUserId: string): Promise<void> {

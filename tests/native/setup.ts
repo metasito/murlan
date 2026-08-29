@@ -19,6 +19,14 @@ jest.mock('@react-native-async-storage/async-storage', () =>
 // the vendor's own mocks.
 require('react-native-gesture-handler/jestSetup');
 
+// expo/fetch extends a native Response that does not exist here, so `import`ing
+// it throws at module load — before any test runs — for every file that reaches
+// lib/query-client. The platform's own fetch has the interface the app uses.
+jest.mock('expo/fetch', () => ({
+  fetch: (...args: unknown[]) =>
+    (globalThis.fetch as (...a: unknown[]) => unknown)(...args),
+}));
+
 /**
  * Whatever a test left on screen is checked against Fabric's integer props
  * (tests/native/fabricIntProps.ts), so a fraction that would throw while the

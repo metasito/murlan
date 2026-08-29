@@ -463,6 +463,22 @@ export async function registerRoutes(app: Express): Promise<Server> {
     })));
   });
 
+  // The invites a socket would have announced. This is the half that survives
+  // the recipient being away — the emit and the push are both "look now".
+  app.get("/api/friends/invites", requireAuth, async (req, res) => {
+    res.json(await storage.getGameInvites(req.session.userId!));
+  });
+
+  app.delete("/api/friends/invites/:roomCode", requireAuth, async (req, res) => {
+    const roomCode = z.string().length(6).safeParse(String(req.params.roomCode ?? "").toUpperCase());
+    if (!roomCode.success) {
+      res.status(400).json({ message: "Invalid room code", code: "INVALID_ROOM_CODE" });
+      return;
+    }
+    await storage.declineGameInvite(req.session.userId!, roomCode.data);
+    res.json({ ok: true });
+  });
+
   app.get("/api/users/search", requireAuth, async (req, res) => {
     const username = z.string().min(1).max(30).safeParse(req.query.username);
     if (!username.success) {
