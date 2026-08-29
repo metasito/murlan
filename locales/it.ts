@@ -700,6 +700,8 @@ export const it: Record<keyof typeof en, string> = {
   "room.leaveA11yLabel": "Lascia la stanza",
   "room.title": "Stanza",
   "room.codeLabel": "CODICE STANZA",
+  "room.kindPrivateBody": "Solo chi ha questo codice può entrare.",
+  "room.kindPublicBody": "Chiunque può entrare finché c'è un posto libero.",
   "room.share": "Condividi",
   "room.modeAndPlayers": "{{mode}} · {{n}} giocatori",
   "room.modeTeams": "A coppie",

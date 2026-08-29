@@ -27,6 +27,7 @@ import type { BotPersonalityId } from "@/lib/botPersonalities";
 import { MenuLayout } from "@/components/MenuLayout";
 import { MenuButton } from "@/components/MenuButton";
 import { Toggle } from "@/components/Toggle";
+import { RoomKindNote } from "@/components/RoomKindNote";
 import { ConfirmDialog, type ConfirmRequest } from "@/components/ConfirmDialog";
 import { useTranslation } from "@/lib/i18n";
 import { A11yStatus, a11yHidden, a11yState } from "@/lib/a11y";
@@ -517,6 +518,7 @@ export default function RoomScreen() {
                     <Text style={styles.codeBtnText} {...a11yHidden()}>{t("room.share")}</Text>
                   </Pressable>
                 </View>
+                <RoomKindNote visibility={room.visibility} />
               </Animated.View>
 
               <View style={styles.modePill}>
@@ -662,6 +664,7 @@ export default function RoomScreen() {
               <Text style={styles.codeBtnText} {...a11yHidden()}>{t("room.share")}</Text>
             </Pressable>
           </View>
+          <RoomKindNote visibility={room.visibility} />
         </Animated.View>
 
         <View style={styles.modePill}>

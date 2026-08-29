@@ -86,6 +86,21 @@ describe("lobby disconnect grace", { skip: hasDatabase() ? false : skipMessage()
     return socket;
   }
 
+  /**
+   * Resolves once the server has actually seen the socket go. Closing a socket
+   * and acting on the next line races the server's own disconnect handler: on a
+   * loaded machine the seat is still held when the next event arrives, and the
+   * test fails for a reason that has nothing to do with what it asserts.
+   */
+  async function graceArmed(roomId: string, userId: string) {
+    const { lobbyGraceTimers, lobbyGraceKey } = await import("../../server/gameTimers.ts");
+    for (let i = 0; i < 200; i++) {
+      if (lobbyGraceTimers.has(lobbyGraceKey(roomId, userId))) return;
+      await new Promise((r) => setTimeout(r, 25));
+    }
+    throw new Error("the server never armed a lobby grace for the closed socket");
+  }
+
   /** A two-seat lobby with a host and a guest, both seated. */
   async function lobby(tag: string) {
     const host = await player(`${tag}_host`);
@@ -155,6 +170,7 @@ describe("lobby disconnect grace", { skip: hasDatabase() ? false : skipMessage()
     const { guest, room } = await lobby("moved");
 
     guest.socket.close();
+    await graceArmed(room.roomId, guest.user.id);
     const second = await reconnect(guest.cookie);
     const elsewhere = waitFor<RoomState>(second, "room:state");
     second.emit("room:create", { gameMode: "free_for_all", maxPlayers: 4 });
@@ -171,9 +187,10 @@ describe("lobby disconnect grace", { skip: hasDatabase() ? false : skipMessage()
   });
 
   test("starting mid-grace does not deal a hand to someone who is not there", async () => {
-    const { host, guest } = await lobby("start");
+    const { host, guest, room } = await lobby("start");
 
     guest.socket.close();
+    await graceArmed(room.roomId, guest.user.id);
     const dealt = waitFor<SanitizedState>(host.socket, "game:state");
     host.socket.emit("room:start", { fillWithBots: true, botDifficulty: "easy" });
     const state = await dealt;

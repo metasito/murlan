@@ -27,6 +27,7 @@ export interface RoomState {
   hostUserId: string | null;
   status: "waiting" | "in_progress" | "finished";
   gameMode: "free_for_all" | "teams";
+  visibility: "public" | "private";
   maxPlayers: number;
   players: { seatIndex: number; userId: string; username: string }[];
 }
