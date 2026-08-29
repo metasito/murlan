@@ -1,0 +1,74 @@
+# Plays real hands of Murlan through real sockets and checks that the clients
+# and the server still agree. Deliberately NOT on `pull_request`: a soak is a
+# search, so a run that finds something is a run that fails, and gating every
+# pull request on a search would make `main` red for a defect the pull request
+# did not introduce. It runs nightly and on demand, and earns its way into the
+# critical path only after it has been quiet for a while.
+name: Soak
+
+on:
+  schedule:
+    # 03:00 UTC, when nothing else is competing for runners.
+    - cron: "0 3 * * *"
+  workflow_dispatch:
+    inputs:
+      minutes:
+        description: How long each seed plays for
+        default: "5"
+      seeds:
+        description: Space-separated seeds to run
+        default: "1 7 31"
+
+concurrency:
+  group: soak-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  soak:
+    name: Play the game
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: murlan_soak
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      DATABASE_URL: postgres://postgres:postgres@localhost:5432/murlan_soak
+      SESSION_SECRET: ci-soak-secret-not-used-in-production
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+
+      - name: Play
+        # Through `env`, never spliced into the script: `${{ }}` is substituted
+        # as literal text before bash parses the line, so a dispatch input
+        # holding shell syntax would run as shell syntax on the runner.
+        env:
+          MINUTES: ${{ inputs.minutes || '5' }}
+          SEEDS: ${{ inputs.seeds || '1 7 31' }}
+        run: |
+          set -o pipefail
+          failed=0
+          for seed in $SEEDS; do
+            echo "::group::seed $seed"
+            npm run soak --silent -- --seats 4 --minutes "$MINUTES" --seed "$seed" || failed=1
+            echo "::endgroup::"
+          done
+          exit $failed
