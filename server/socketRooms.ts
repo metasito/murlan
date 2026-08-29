@@ -485,6 +485,8 @@ function seatClaimMessage(
   }
 }
 
+// Stable code counterpart to seatClaimMessage's English fallback text, so the
+// client can localise the same rejection reason (see the `code` field above).
 function seatClaimCode(
   reason: "no_room" | "not_waiting" | "full" | "already_joined"
 ): string {

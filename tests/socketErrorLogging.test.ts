@@ -27,6 +27,8 @@ const SOCKET_SOURCES = [
   "socket.ts",
   "socketRooms.ts",
   "socketGameplay.ts",
+  "socketPresence.ts",
+  "socketRegistry.ts",
   "socketTable.ts",
 ].map((f) => path.join(repoRoot, "server", f));
 const readSocketFamily = () => SOCKET_SOURCES.map((p) => readFileSync(p, "utf8")).join("\n");
