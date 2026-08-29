@@ -196,17 +196,19 @@ export const it: Record<keyof typeof en, string> = {
   "reactionLayer.triggerA11yLabel": "Invia una reazione",
   "reactionLayer.emojiA11yLabel": "Reazione {{emoji}}",
 
-  // ------------------------------------------------------------ exchangeModal.*
-  "exchangeModal.title": "Scambio di carte",
-  "exchangeModal.receives": "riceve",
-  "exchangeModal.willReceive": "riceverà",
-  "exchangeModal.subPrefix": "Scegli una carta da dare a",
-  "exchangeModal.subSuffix": "(solo 3–10):",
-  "exchangeModal.noValidCards": "Nessuna carta valida da restituire.",
-  "exchangeModal.hint": "Tocca una carta per sceglierla",
-  "exchangeModal.hintConfirm": "Tocca un'altra carta per cambiare idea, o conferma per darla",
-  "exchangeModal.confirm": "Dai la carta",
-  "exchangeModal.giveCardA11yHint": "Sceglie questa carta da dare al perdente",
+  // ----------------------------------------------------------------- exchange.*
+  "exchange.prompt": "{{name}} ti ha dato questa — dagliene una",
+  "exchange.rule": "Puoi dare da un 3 a un 10",
+  "exchange.noValidCards": "Nessuna carta da 3 a 10 — dai la più bassa",
+  "exchange.watching": "{{winner}} sta scegliendo una carta per {{loser}}",
+  "exchange.waitingForYou": "{{winner}} sta scegliendo una carta per te",
+  "exchange.confirm": "Dai",
+  "exchange.confirmA11yReady": "Dai {{card}} a {{name}}",
+  "exchange.confirmA11yWaiting": "Dai una carta a {{name}}. Scegli prima una delle carte evidenziate.",
+  "exchange.cardA11yHint": "Sceglie questa carta da dare",
+  "exchange.cardA11yNotGiveable": "Non si può dare — si può dare solo da un 3 a un 10",
+  "exchange.receivedCardA11yLabel": "{{name}} ti ha dato {{card}}",
+  "exchange.seatGot": "ha ricevuto {{card}}",
 
   // ----------------------------------------------------------------- cards.*
   // Card names as read aloud/announced (ExchangeAnnouncement) — card ranks
@@ -225,11 +227,7 @@ export const it: Record<keyof typeof en, string> = {
   // -------------------------------------------------------- exchangeAnnouncement.*
   "exchangeAnnouncement.a11yNoSwap": "Scambio: nessuno scambio, {{loserName}} ha mostrato entrambi i Jolly",
   "exchangeAnnouncement.giveLine": "{{from}} dà {{card}} a {{to}}",
-  "exchangeAnnouncement.closeA11yLabel": "Chiudi annuncio scambio",
-  "exchangeAnnouncement.title": "Scambio",
   "exchangeAnnouncement.noSwapText": "Nessuno scambio — Jolly doppio 🃏",
-  "exchangeAnnouncement.givesWord": " dà ",
-  "exchangeAnnouncement.toWord": " a ",
 
   // ------------------------------------------------------- gameOverOverlay.*
   "gameOverOverlay.position1": "1°",
@@ -369,11 +367,6 @@ export const it: Record<keyof typeof en, string> = {
   "onlineGame.quitConfirmTitle": "Lascia la partita",
   "onlineGame.quitConfirmBody": "Sei sicuro di voler lasciare la partita in corso?",
   "onlineGame.quitConfirmConfirm": "Lascia",
-  "onlineGame.exchangeInProgressTitle": "Scambio in corso...",
-  "onlineGame.exchangeWaitAsLoser": "{{winner}} sta scegliendo la carta da darti.",
-  "onlineGame.exchangeWaitAsOther": "{{winner}} sta scegliendo la carta per {{loser}}.",
-  "onlineGame.theWinner": "Il vincitore",
-  "onlineGame.theLoser": "il perdente",
 
   // ----------------------------------------------------------------- replay.*
   "replay.title": "Replay",

@@ -209,6 +209,8 @@ export function GameProvider({ children }: { children: ReactNode }) {
         setExchangeAnnounceData({
           winnerName: state.players[ep.winnerIdx]?.name ?? "",
           loserName: state.players[ep.loserIdx]?.name ?? "",
+          winnerIdx: ep.winnerIdx,
+          loserIdx: ep.loserIdx,
           bothJokersException: true,
         });
         setExchangeAnnouncing(true);
@@ -260,6 +262,8 @@ export function GameProvider({ children }: { children: ReactNode }) {
         setExchangeAnnounceData({
           winnerName,
           loserName,
+          winnerIdx: ep.winnerIdx,
+          loserIdx: ep.loserIdx,
           bothJokersException: false,
           cardGiven,
           cardReceived,

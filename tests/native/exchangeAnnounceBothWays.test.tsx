@@ -1,9 +1,9 @@
 // tests/native/exchangeAnnounceBothWays.test.tsx — an exchange has two legs,
 // and the announcement names each player as the giver of exactly one of them.
 //
-// The banner reads its two cards from separate props, so being handed only one
-// renders a half-announcement rather than failing: the table watches the loser
-// give a card and never learns what came back.
+// It reads its two cards from separate props, so being handed only one renders
+// a half-announcement rather than failing: the table watches the loser give a
+// card and never learns what came back.
 import { describe, it, expect, jest } from '@jest/globals';
 
 jest.mock('expo-haptics', () => ({
@@ -17,8 +17,16 @@ jest.mock('expo-haptics', () => ({
 import React from 'react';
 import { act, render, within } from '@testing-library/react-native';
 import { ExchangeAnnouncement } from '@/components/ExchangeAnnouncement';
-import { en } from '@/locales/en';
 import type { Card } from '@/lib/gameEngine';
+import type { ExchangeFlight } from '@/components/gameTableModel';
+
+/** Geometry is exchangeFlight's business and tests/gameTableModel.test.ts's; this
+ *  file is about what the announcement says, so any trip will do. */
+const TRIP: ExchangeFlight = {
+  from: { dx: 0, dy: 120 },
+  meet: { dx: 30, dy: 0 },
+  to: { dx: 0, dy: -120 },
+};
 
 const WINNER = 'Ana';
 const LOSER = 'Bea';
@@ -33,6 +41,9 @@ async function announce(props: { cardReceived?: Card; cardGiven?: Card }) {
       winnerName={WINNER}
       loserName={LOSER}
       bothJokersException={false}
+      toWinner={TRIP}
+      toLoser={TRIP}
+      scale={1}
       onDismiss={() => {}}
       {...props}
     />
@@ -84,6 +95,9 @@ describe('the exchange announcement states both legs', () => {
         winnerName={WINNER}
         loserName={LOSER}
         bothJokersException
+        toWinner={TRIP}
+        toLoser={TRIP}
+        scale={1}
         onDismiss={() => {}}
       />
     );
@@ -95,13 +109,17 @@ describe('the exchange announcement states both legs', () => {
     await view.unmount();
   });
 
-  // The alert is announced; the close button is landed on. Never the same node.
-  it('offers its close button as a control of its own, beside the alert', async () => {
+  // A live region is announced, never landed on (CLAUDE.md). The announcement
+  // sits on the felt with no scrim now, so there is nothing to dismiss and no
+  // control anywhere in it — which makes the alert the only node here, and it
+  // must still not be one.
+  it('announces without being a control', async () => {
     const view = await announce({ cardReceived: TAKEN, cardGiven: RETURNED });
+    const alert = view.getByRole('alert');
 
-    expect(within(view.getByRole('alert')).queryAllByLabelText(
-      en['exchangeAnnouncement.closeA11yLabel']
-    )).toHaveLength(0);
+    expect(alert.props.onPress).toBeUndefined();
+    expect(alert.props.accessibilityState?.disabled).toBeUndefined();
+    expect(within(view.getByTestId('exchange-announce')).queryAllByRole('button')).toHaveLength(0);
 
     await view.unmount();
   });

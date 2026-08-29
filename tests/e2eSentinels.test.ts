@@ -76,13 +76,6 @@ test("every sentinel still says what the locale says", () => {
  */
 const COMPARED_BUT_NOT_A_SENTINEL: [string, string, string][] = [
   [
-    "tests/e2e/exchangeAnnounceNodes.spec.ts",
-    "exchangeAnnouncement.closeA11yLabel",
-    "picks the close button out of an accessibility tree, where a node carries a name and " +
-      "nothing else — the button `getByRole` would take by name if the assertion were about " +
-      "the DOM, and there is no locator query for a CDP node",
-  ],
-  [
     "tests/e2e/gameSettingsSheet.spec.ts",
     "gameSettingsSheet.title",
     "asks which control has focus, not whether something is legal — the same identity the file " +

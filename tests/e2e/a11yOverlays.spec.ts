@@ -1,11 +1,13 @@
 // tests/e2e/a11yOverlays.spec.ts — the accessibility properties of the game
 // table that only a real browser can settle.
 //
-// A blocking overlay covers pixels and nothing else — what keeps the table
-// behind it out of reach is the focus trap React Native's Modal brings, and a
-// trap is only observable in a document that has focus in it. What a large
-// text setting does to the table's fixed card geometry is the other question
-// no renderer can answer: it needs real font metrics.
+// The exchange used to be a blocking overlay, and what kept the table behind it
+// out of reach was React Native's Modal focus trap. It is the table itself now
+// (#533), which turns that question inside out: what has to be true is that
+// every control the moment needs is reachable and every card the rules refuse
+// is not. Either way it is only observable in a document that has focus in it.
+// What a large text setting does to the table's fixed card geometry is the
+// other question no renderer can answer: it needs real font metrics.
 import type { Page } from "@playwright/test";
 import { test, expect } from "./fixtures";
 import { openApp, startOfflineGame } from "./helpers/navigation";
@@ -14,13 +16,22 @@ import { HAND_CARDS, TABLE } from "./helpers/selectors.ts";
 
 // ── A11Y-02 ──────────────────────────────────────────────────────────────────
 
+// The names the browser reads out, which is what a tab tour sees. The app runs
+// in Italian, so the rank a save file spells `K` answers to `Re` — a filter
+// written in the save's own alphabet matches nothing and passes on everything.
+const GIVEABLE_SPOKEN = ["4 di Cuori", "9 di Fiori"];
+const UNGIVEABLE_SPOKEN = "Re di Picche";
+
 /**
  * A hand mid-exchange, with the viewer as the winner who owes a card back.
+ *
+ * Two cards in the 3-10 range and a King that is not, so "every card" and "the
+ * ones the rules allow" are different answers.
  *
  * Seeded rather than played: driving an offline hand to its end takes minutes
  * and repeatedly did not finish at all, and none of that is what this test is
  * about. `lib/offlineSave.ts` is the app's own restore path — AsyncStorage is
- * plain localStorage on web — so this arrives at the overlay through the same
+ * plain localStorage on web — so this arrives at the exchange through the same
  * code a player's interrupted match does.
  */
 function midExchangeSave() {
@@ -74,7 +85,7 @@ function midExchangeSave() {
   };
 }
 
-/** Where focus lands after `presses` tabs, as `<dialog-descendant>|<label>`. */
+/** Every name focus lands on across `presses` tabs, in order. */
 async function tabTour(page: Page, presses: number): Promise<string[]> {
   const seen: string[] = [];
   for (let i = 0; i < presses; i++) {
@@ -83,17 +94,17 @@ async function tabTour(page: Page, presses: number): Promise<string[]> {
       await page.evaluate(() => {
         const el = document.activeElement;
         if (!el || el === document.body) return "body";
-        const inDialog = el.closest('[aria-modal="true"]') !== null;
-        const name =
-          el.getAttribute("aria-label") ?? el.textContent?.trim().slice(0, 24) ?? el.tagName;
-        return `${inDialog ? "in" : "OUT"}|${name}`;
+        return el.getAttribute("aria-label") ?? el.textContent?.trim().slice(0, 24) ?? el.tagName;
       })
     );
   }
   return seen;
 }
 
-test("the exchange overlay keeps the tab order inside itself", async ({ page, baseURL }) => {
+test("the exchange leaves reachable exactly the cards the rules allow", async ({
+  page,
+  baseURL,
+}) => {
   test.setTimeout(120_000);
   await openApp(page, baseURL!);
   await page.evaluate(
@@ -105,21 +116,31 @@ test("the exchange overlay keeps the tab order inside itself", async ({ page, ba
 
   await page.getByRole("button", { name: "Riprendi partita" }).click();
   await page.locator(TABLE).waitFor({ timeout: 30_000 });
+  await expect(
+    page.getByTestId("exchange-prompt"),
+    "the exchange asks on the felt"
+  ).toBeVisible({ timeout: 15_000 });
 
-  const dialog = page.locator('[aria-modal="true"]');
-  await expect(dialog, "the exchange overlay has to be a real modal").toBeVisible({
-    timeout: 15_000,
-  });
+  // The whole hand is on screen, which is the point of the rebuild.
+  expect(await page.locator(HAND_CARDS).count(), "the whole hand is drawn").toBe(3);
 
-  // The hand behind it is still in the document — an overlay covers pixels and
-  // nothing else — so the trap is the only thing keeping it out of reach.
-  const handBehind = page.locator(HAND_CARDS);
-  expect(await handBehind.count(), "the table underneath is still rendered").toBeGreaterThan(0);
-
-  // More presses than the overlay has controls, so the tour wraps: an untrapped
-  // order would have escaped into the table well before the last one.
+  // More presses than the table has controls, so the tour wraps and every stop
+  // is seen. A keyboard has no way to know a card is unpickable except by being
+  // told, so a King that answers Tab and then silently does nothing is the
+  // defect this looks for.
   const tour = await tabTour(page, 24);
-  expect(tour.filter((stop) => stop.startsWith("OUT"))).toEqual([]);
+  expect(
+    tour.filter((stop) => stop === UNGIVEABLE_SPOKEN),
+    `an ungiveable card must not be a tab stop while the exchange is open — the tour was [${tour.join(", ")}]`
+  ).toEqual([]);
+  expect(
+    new Set(tour.filter((stop) => GIVEABLE_SPOKEN.includes(stop))).size,
+    `both giveable cards have to be reachable — the tour was [${tour.join(", ")}]`
+  ).toBe(GIVEABLE_SPOKEN.length);
+  expect(
+    tour.some((stop) => stop.startsWith("Dai ")),
+    `the confirm has to be reachable — the tour was [${tour.join(", ")}]`
+  ).toBe(true);
 });
 
 // ── A11Y-13 ──────────────────────────────────────────────────────────────────

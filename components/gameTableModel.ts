@@ -483,6 +483,91 @@ export function flightOrigin(input: FlightOriginInput): { dx: number; dy: number
   return { dx: ringCenterX - pileCenterX, dy: (slotH - midH) / 2 };
 }
 
+export interface ExchangeFlightInput
+  extends Omit<FlightOriginInput, "dir" | "sideDisplayedCount"> {
+  /** The seat the card leaves. */
+  from: FlyDirection;
+  /** The seat it arrives at. */
+  to: FlyDirection;
+  /**
+   * Both side seats' displayed counts. A throw asks about one seat; an
+   * exchange has two ends, and they can both be side seats holding different
+   * numbers of cards — which is two different slot heights.
+   */
+  sideDisplayedCounts: { left: number; right: number };
+  /**
+   * The flying card's own box. Both dimensions, because the gap the two cards
+   * keep runs across their trip in whatever direction that happens to be: a
+   * pair passing side by side needs a card's width between them, and a pair
+   * passing one above the other needs its height.
+   */
+  cardW: number;
+  cardH: number;
+}
+
+export interface ExchangeFlight {
+  from: { dx: number; dy: number };
+  /** Where the card waits out the beat that makes the pair read as a trade. */
+  meet: { dx: number; dy: number };
+  to: { dx: number; dy: number };
+}
+
+/**
+ * One card's trip across an exchange, in the same pile-relative deltas
+ * `flightOrigin` speaks — so a card starts and ends exactly where that seat's
+ * own cards do, rather than at a point measured a second time.
+ *
+ * The two cards of an exchange travel at once, in opposite directions along
+ * the same line, and would collide on it. Each takes a lane instead: the whole
+ * trip is shifted one clearance along the perpendicular of its own direction,
+ * and because the two directions are opposite the two lanes are that whole gap
+ * apart from departure to arrival. A pair that only parted at the middle would
+ * still cross on the way there, which is the thing to keep in mind before
+ * moving any of this: the separation has to hold at every moment, not at one.
+ *
+ * The clearance is how far a card of this size reaches along that
+ * perpendicular. Half a card width would be the answer only for a pair
+ * separated horizontally; separated vertically it leaves them a third of a card
+ * deep in each other, and on a diagonal neither dimension alone is enough.
+ *
+ * The meeting point is the midpoint of the lane, where the two cards sit level
+ * with each other for a beat. That beat is what makes the pair read as a trade
+ * rather than as two deliveries that happen to coincide.
+ */
+export function exchangeFlight(input: ExchangeFlightInput): ExchangeFlight {
+  const at = (dir: FlyDirection) =>
+    flightOrigin({
+      ...input,
+      dir,
+      sideDisplayedCount:
+        dir === "left" || dir === "right" ? input.sideDisplayedCounts[dir] : 0,
+    });
+  const from = at(input.from);
+  const to = at(input.to);
+
+  const vx = to.dx - from.dx;
+  const vy = to.dy - from.dy;
+  const len = Math.hypot(vx, vy);
+  // Two seats resolving to one point cannot happen on a laid-out table, but a
+  // zero-length trip would divide by zero rather than simply going nowhere.
+  const px = len === 0 ? 0 : -vy / len;
+  const py = len === 0 ? 0 : vx / len;
+  // How far a card of this size reaches along the perpendicular — its own
+  // support in that direction. Two lanes that far apart cannot overlap wherever
+  // either card happens to be along them, which is a stronger claim than two
+  // *points* that far apart and is the one this needs.
+  const clearance = (Math.abs(px) * input.cardW + Math.abs(py) * input.cardH) / 2;
+  const offX = len === 0 ? 0 : px * clearance;
+  const offY = len === 0 ? 0 : py * clearance;
+  const lane = (p: { dx: number; dy: number }) => ({ dx: p.dx + offX, dy: p.dy + offY });
+
+  return {
+    from: lane(from),
+    meet: lane({ dx: (from.dx + to.dx) / 2, dy: (from.dy + to.dy) / 2 }),
+    to: lane(to),
+  };
+}
+
 /**
  * Identity of a played combination. Two different players playing the same
  * card ids is impossible, but the same player replaying an identical-looking

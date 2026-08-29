@@ -1,94 +1,52 @@
 import React, { useEffect, useRef, useState } from "react";
-import {
-  View,
-  Text,
-  StyleSheet,
-  Pressable,
-  Modal,
-  useWindowDimensions,
-} from "react-native";
-import Animated, {
-  FadeIn,
-  FadeOut,
-  useSharedValue,
-  useAnimatedStyle,
-  withTiming,
-  withDelay,
-} from "react-native-reanimated";
-import Feather from "@expo/vector-icons/Feather";
+import { StyleSheet, View } from "react-native";
 import type { Card } from "@/lib/gameEngine";
-import { CardView } from "@/components/CardView";
-import { Colors, Spacing, Radius, FontSize, Type, Motion, Shadow, TOUCH_TARGET_MIN } from "@/lib/theme";
-import { usePrefersReducedMotion } from "@/lib/accessibility";
 import { useTranslation } from "@/lib/i18n";
 import { cardSpokenName } from "@/lib/cardNames";
 import { A11yStatus, a11yHidden } from "@/lib/a11y";
-import { CARD_H, CARD_W } from "@/components/cardFaceModel";
+import { Colors, FontSize, Radius, Reading, Scrim, Spacing } from "@/lib/theme";
+import { TableText } from "@/components/table/TableText";
+import type { ExchangeFlight as Trip } from "@/components/gameTableModel";
+import {
+  EXCHANGE_FLIGHT_MS,
+  ExchangeFlyingCard,
+  ExchangeSeatTag,
+} from "@/components/table/ExchangeFlight";
 
-// Domain timings, not generic UI transitions — not a lib/theme.ts Motion
-// value because nothing there represents "how long a card announcement
-// stays up" or "how long a card takes to fly across the table".
-const DISMISS_MS = 5500;
-const FLIGHT_DURATION = 750;
-
-
-function FlyingCard({
-  card,
-  toRight,
-  delay,
-  screenWidth,
-  yOffset,
-  reduceMotion,
-}: {
-  card: Card;
-  toRight: boolean;
-  delay: number;
-  screenWidth: number;
-  yOffset: number;
-  reduceMotion: boolean;
-}) {
-  // The whole flight is planned against the width at mount: `tx` is seeded from
-  // it and a shared value's initial value is never re-seeded, so re-planning
-  // against a later width would launch the card from a start it has left.
-  const [flightWidth] = useState(screenWidth);
-  const tx = useSharedValue(toRight ? -80 : flightWidth + 20);
-
-  useEffect(() => {
-    if (reduceMotion) return;
-    tx.value = withDelay(
-      delay,
-      withTiming(toRight ? flightWidth + 20 : -80, { duration: FLIGHT_DURATION })
-    );
-  }, [delay, flightWidth, reduceMotion, toRight, tx]);
-
-  const animStyle = useAnimatedStyle(() => ({
-    transform: [{ translateX: tx.value }],
-  }));
-
-  // Purely decorative — the same information is announced via a11yLabel and
-  // shown as text, so skip it entirely under reduced motion rather than
-  // showing it parked at a resting frame.
-  if (reduceMotion) return null;
-
-  return (
-    <Animated.View
-      style={[{ position: "absolute", top: yOffset }, animStyle]}
-    >
-      <CardView card={card} noLift />
-    </Animated.View>
-  );
-}
+/**
+ * How long the seat tags stay after the cards land. `Reading`, not `Motion`:
+ * the owner's requirement on #532 was to "keep it for a few second to allow
+ * reading it", which is set by the words rather than by the movement.
+ */
+const TAG_LINGER_MS = Reading.notice;
 
 interface ExchangeAnnouncementProps {
   visible: boolean;
   winnerName: string;
   loserName: string;
   bothJokersException: boolean;
+  /** What the winner chose, travelling to the loser. */
   cardGiven?: Card;
+  /** What was taken off the loser, travelling to the winner. */
   cardReceived?: Card;
+  /** The loser's card's trip, in the pile's own coordinates. */
+  toWinner: Trip;
+  /** …and the winner's, which is the same line walked the other way. */
+  toLoser: Trip;
+  scale: number;
   onDismiss: () => void;
 }
 
+/**
+ * The exchange as it happens, on the table rather than over it.
+ *
+ * There is no scrim and no panel: the two players not trading are watching this
+ * too, and a dialog in front of the felt hides the seats that give the motion
+ * its meaning. Each card leaves its owner's seat and arrives at the other's,
+ * the two pass side by side at the middle, and a tag lights beside each seat
+ * naming what that seat got — which is what a player who looked away can still
+ * read afterwards.
+ */
 export function ExchangeAnnouncement({
   visible,
   winnerName,
@@ -96,40 +54,35 @@ export function ExchangeAnnouncement({
   bothJokersException,
   cardGiven,
   cardReceived,
+  toWinner,
+  toLoser,
+  scale,
   onDismiss,
 }: ExchangeAnnouncementProps) {
   const { t } = useTranslation();
-  const [shown, setShown] = useState(false);
-  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const { width: screenWidth, height: screenHeight } = useWindowDimensions();
-  const reduceMotion = usePrefersReducedMotion();
+  const [landed, setLanded] = useState(false);
+  const dismissRef = useRef(onDismiss);
+  useEffect(() => {
+    dismissRef.current = onDismiss;
+  });
 
   useEffect(() => {
-    if (visible) {
-      setShown(true);
-      timerRef.current = setTimeout(() => {
-        setShown(false);
-        onDismiss();
-      }, DISMISS_MS);
-    } else {
-      if (timerRef.current) clearTimeout(timerRef.current);
-      setShown(false);
+    if (!visible) {
+      setLanded(false);
+      return;
     }
+    // Nothing flies when both Jokers cancelled the exchange, so the notice is
+    // readable from the first frame rather than after a flight that never runs.
+    const flight = bothJokersException ? 0 : EXCHANGE_FLIGHT_MS;
+    const land = setTimeout(() => setLanded(true), flight);
+    const done = setTimeout(() => dismissRef.current(), flight + TAG_LINGER_MS);
     return () => {
-      if (timerRef.current) clearTimeout(timerRef.current);
+      clearTimeout(land);
+      clearTimeout(done);
     };
-  }, [visible, onDismiss]);
+  }, [visible, bothJokersException]);
 
-  if (!visible || !shown) return null;
-
-  function handleDismiss() {
-    if (timerRef.current) clearTimeout(timerRef.current);
-    setShown(false);
-    onDismiss();
-  }
-
-  const midY = screenHeight / 2;
-  const isMutual = !!(cardReceived && cardGiven);
+  if (!visible) return null;
 
   const a11yLabel = bothJokersException
     ? t("exchangeAnnouncement.a11yNoSwap", { loserName })
@@ -151,222 +104,66 @@ export function ExchangeAnnouncement({
         .join(". ");
 
   return (
-    <Modal
-      transparent
-      visible
-      accessibilityLabel={t("exchangeAnnouncement.title")}
-      supportedOrientations={["portrait", "landscape"]}
-      onRequestClose={handleDismiss}
-    >
-      <Animated.View
-        entering={reduceMotion ? undefined : FadeIn.duration(Motion.duration.travel)}
-        exiting={reduceMotion ? undefined : FadeOut.duration(Motion.duration.travel)}
-        style={styles.overlay}
-      >
-        <Pressable
-          style={StyleSheet.absoluteFill}
-          onPress={handleDismiss}
-          {...a11yHidden()}
-        />
+    <View testID="exchange-announce" pointerEvents="none" style={styles.layer}>
+      <A11yStatus label={a11yLabel} role="alert" live="assertive" />
 
-        {cardReceived && (
-          <FlyingCard
-            card={cardReceived}
-            toRight
-            delay={200}
-            screenWidth={screenWidth}
-            yOffset={isMutual ? midY - 100 : midY - 42}
-            reduceMotion={reduceMotion}
-          />
-        )}
-        {cardGiven && (
-          <FlyingCard
-            card={cardGiven}
-            toRight={false}
-            delay={isMutual ? 1100 : 200}
-            screenWidth={screenWidth}
-            yOffset={isMutual ? midY + 16 : midY - 42}
-            reduceMotion={reduceMotion}
-          />
-        )}
-
-        <Pressable
-          testID="exchange-announce-panel"
-          onPress={handleDismiss}
-          style={styles.card}
-          accessibilityViewIsModal
-          // Pointer only: an accessible panel is one leaf on iOS, which seals
-          // the close button inside it. The sentence is A11yStatus's job.
-          accessible={false}
-          // react-native-web gives every Pressable `tabIndex=0`, so without
-          // this the panel is a tab stop with no role and no name.
-          tabIndex={-1}
-        >
-          <A11yStatus label={a11yLabel} role="alert" live="assertive" />
-          <Pressable
-            onPress={handleDismiss}
-            style={({ pressed }) => [styles.closeBtn, { opacity: pressed ? 0.6 : 1 }]}
-            hitSlop={Spacing.xs}
-            accessibilityRole="button"
-            accessibilityLabel={t("exchangeAnnouncement.closeA11yLabel")}
-          >
-            <Feather name="x" size={18} color={Colors.textMuted} {...a11yHidden()} />
-          </Pressable>
-
-          <Text style={styles.title}>{t("exchangeAnnouncement.title")}</Text>
-
-          {bothJokersException ? (
-            <Text style={styles.noSwapText}>
-              {t("exchangeAnnouncement.noSwapText")}
-            </Text>
-          ) : (
-            <View style={styles.rowsContainer}>
-              {cardReceived && (
-                <View style={styles.exchangeBlock}>
-                  {/* The picture of the exchange; the sentence under it says
-                      the same thing in words. */}
-                  <View style={styles.exchangeRow} {...a11yHidden()}>
-                    <Text style={styles.playerName}>{loserName}</Text>
-                    <Text style={styles.arrow}>→</Text>
-                    <View style={styles.cardWrap}>
-                      <CardView card={cardReceived} noLift />
-                    </View>
-                    <Text style={styles.arrow}>→</Text>
-                    <Text style={styles.playerName}>{winnerName}</Text>
-                  </View>
-                  <Text style={styles.descText}>
-                    <Text style={styles.descName}>{loserName}</Text>
-                    <Text style={styles.descPlain}>{t("exchangeAnnouncement.givesWord")}</Text>
-                    <Text style={styles.descCard}>{cardSpokenName(cardReceived, t)}</Text>
-                    <Text style={styles.descPlain}>{t("exchangeAnnouncement.toWord")}</Text>
-                    <Text style={styles.descName}>{winnerName}</Text>
-                  </Text>
-                </View>
-              )}
-
-              {cardReceived && cardGiven && (
-                <View style={styles.separator} />
-              )}
-
-              {cardGiven && (
-                <View style={styles.exchangeBlock}>
-                  <View style={styles.exchangeRow} {...a11yHidden()}>
-                    <Text style={styles.playerName}>{winnerName}</Text>
-                    <Text style={styles.arrow}>→</Text>
-                    <View style={styles.cardWrap}>
-                      <CardView card={cardGiven} noLift />
-                    </View>
-                    <Text style={styles.arrow}>→</Text>
-                    <Text style={styles.playerName}>{loserName}</Text>
-                  </View>
-                  <Text style={styles.descText}>
-                    <Text style={styles.descName}>{winnerName}</Text>
-                    <Text style={styles.descPlain}>{t("exchangeAnnouncement.givesWord")}</Text>
-                    <Text style={styles.descCard}>{cardSpokenName(cardGiven, t)}</Text>
-                    <Text style={styles.descPlain}>{t("exchangeAnnouncement.toWord")}</Text>
-                    <Text style={styles.descName}>{loserName}</Text>
-                  </Text>
-                </View>
-              )}
-            </View>
+      {bothJokersException ? (
+        <TableText {...a11yHidden()} style={styles.noSwap}>
+          {t("exchangeAnnouncement.noSwapText")}
+        </TableText>
+      ) : (
+        <>
+          {cardReceived && (
+            <ExchangeFlyingCard
+              card={cardReceived}
+              trip={toWinner}
+              scale={scale}
+              testID="exchange-flier-to-winner"
+            />
           )}
-        </Pressable>
-      </Animated.View>
-    </Modal>
+          {cardGiven && (
+            <ExchangeFlyingCard
+              card={cardGiven}
+              trip={toLoser}
+              scale={scale}
+              testID="exchange-flier-to-loser"
+            />
+          )}
+
+          {cardReceived && (
+            <ExchangeSeatTag
+              label={t("exchange.seatGot", { card: cardSpokenName(cardReceived, t) })}
+              trip={toWinner}
+              visible={landed}
+            />
+          )}
+          {cardGiven && (
+            <ExchangeSeatTag
+              label={t("exchange.seatGot", { card: cardSpokenName(cardGiven, t) })}
+              trip={toLoser}
+              visible={landed}
+            />
+          )}
+        </>
+      )}
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  overlay: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: Colors.overlay,
-    alignItems: "center",
-    justifyContent: "center",
-    zIndex: 150,
-  },
-  card: {
-    backgroundColor: Colors.bgCard,
-    borderRadius: Radius.lg,
-    borderWidth: 1,
-    borderColor: Colors.border,
-    paddingVertical: Spacing.md,
-    paddingHorizontal: Spacing.lg,
-    alignItems: "center",
-    gap: Spacing.sm,
-    maxWidth: 300,
-    width: "82%",
-    ...Shadow.gold,
-  },
-  closeBtn: {
+  // Sized to nothing and centred on the pile: every child positions itself in
+  // the deltas `flightOrigin` speaks, which are measured from that point.
+  layer: { position: "absolute", width: 0, height: 0, alignItems: "center", justifyContent: "center" },
+  noSwap: {
     position: "absolute",
-    top: Spacing.xs,
-    right: Spacing.xs,
-    width: TOUCH_TARGET_MIN,
-    height: TOUCH_TARGET_MIN,
-    alignItems: "center",
-    justifyContent: "center",
-    zIndex: 1,
-  },
-  title: {
-    ...Type.heading,
-    fontSize: FontSize.md,
+    fontFamily: "Rajdhani_600SemiBold",
+    fontSize: FontSize.sm,
     color: Colors.gold,
     textAlign: "center",
-    letterSpacing: 2,
-    textTransform: "uppercase",
-    marginBottom: Spacing.xs,
-  },
-  noSwapText: {
-    ...Type.body,
-    textAlign: "center",
-  },
-  rowsContainer: {
-    width: "100%",
-    gap: 0,
-  },
-  exchangeBlock: {
-    gap: Spacing.xs + 2,
-    paddingVertical: Spacing.xs,
-    alignItems: "center",
-  },
-  exchangeRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: Spacing.xs + 2,
-  },
-  playerName: {
-    ...Type.subheading,
-    color: Colors.gold,
-    maxWidth: 70,
-    textAlign: "center",
-  },
-  arrow: {
-    ...Type.caption,
-  },
-  cardWrap: {
-    transform: [{ scale: 0.65 }],
-    marginHorizontal: -(CARD_W(1) * 0.175),
-    marginVertical: -(CARD_H(1) * 0.175),
-  },
-  descText: {
-    textAlign: "center",
-    lineHeight: 18,
-  },
-  descName: {
-    ...Type.bodyStrong,
-    color: Colors.gold,
-  },
-  descPlain: {
-    ...Type.body,
-  },
-  descCard: {
-    ...Type.bodyStrong,
-  },
-  separator: {
-    height: 1,
-    backgroundColor: Colors.border,
-    marginVertical: Spacing.sm,
-    width: "100%",
+    backgroundColor: Scrim.heavy,
+    borderRadius: Radius.sm,
+    paddingHorizontal: Spacing.sm,
+    paddingVertical: Spacing.xxs,
+    overflow: "hidden",
   },
 });

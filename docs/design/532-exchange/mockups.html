@@ -1,0 +1,620 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+</head>
+<body>
+<title>The Exchange, Four Ways</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@500;600;700&family=Inter:wght@400;500&display=swap">
+<style>
+  /* Table interiors use the app's own tokens (lib/tokens.ts) in both themes —
+     the game is dark-only and a mockup that lightened would stop being one.
+     Only the page around them follows the viewer. */
+  :root {
+    --felt:        #0B3B25;
+    --felt-dark:   #06251722;
+    --bg:          #031008;
+    --card-bg:     #0A1F18;
+    --surface:     #0E2920;
+    --gold:        #C9A84C;
+    --gold-dark:   #A8832B;
+    --gold-ghost:  rgba(201,168,76,0.14);
+    --ink-card:    #F0EAD6;
+    --muted:       rgba(240,234,214,0.58);
+    --hairline:    rgba(240,234,214,0.10);
+    --success:     #4CAF50;
+    --red:         #C4453C;
+
+    --ground: #f0f2ef;
+    --panel:  #ffffff;
+    --ink:    #14201a;
+    --ink-2:  #47574e;
+    --ink-3:  #7b8a81;
+    --rule:   #d8ded8;
+    --accent: #1e6b45;
+    --accent-soft: rgba(30,107,69,0.10);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --ground: #0c1310; --panel: #131c17; --ink: #e7ede9; --ink-2: #a4b4ab;
+      --ink-3: #74857b; --rule: #23312a; --accent: #6fc79a;
+      --accent-soft: rgba(111,199,154,0.12);
+    }
+  }
+  :root[data-theme="dark"] {
+    --ground: #0c1310; --panel: #131c17; --ink: #e7ede9; --ink-2: #a4b4ab;
+    --ink-3: #74857b; --rule: #23312a; --accent: #6fc79a;
+    --accent-soft: rgba(111,199,154,0.12);
+  }
+
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--ground); color: var(--ink);
+    font-family: Inter, system-ui, -apple-system, sans-serif;
+    font-size: 15px; line-height: 1.55; -webkit-font-smoothing: antialiased;
+  }
+  .wrap { max-width: 1240px; margin: 0 auto; padding: 40px 24px 90px; }
+
+  .eyebrow {
+    font-family: Rajdhani, sans-serif; font-weight: 700; font-size: 12px;
+    letter-spacing: 0.22em; text-transform: uppercase; color: var(--accent);
+    margin: 0 0 10px;
+  }
+  h1 {
+    font-family: Rajdhani, sans-serif; font-weight: 700;
+    font-size: clamp(30px, 4.4vw, 46px); line-height: 1.06;
+    margin: 0 0 16px; text-wrap: balance;
+  }
+  .lede { color: var(--ink-2); max-width: 64ch; margin: 0 0 8px; }
+  .lede b { color: var(--ink); font-weight: 500; }
+
+  h2.set {
+    font-family: Rajdhani, sans-serif; font-weight: 700; font-size: 24px;
+    margin: 0 0 4px; letter-spacing: 0.01em;
+  }
+  .setnum {
+    font-family: Rajdhani, sans-serif; font-weight: 700; font-size: 12px;
+    letter-spacing: 0.2em; color: var(--accent); text-transform: uppercase;
+    margin: 0 0 2px;
+  }
+  .setlede { color: var(--ink-2); max-width: 66ch; margin: 0 0 22px; font-size: 14px; }
+  .setlede code { font-family: ui-monospace, Menlo, monospace; font-size: 12.5px;
+    background: var(--accent-soft); color: var(--accent); padding: 1px 5px; border-radius: 4px; }
+
+  section.set { margin-top: 58px; border-top: 1px solid var(--rule); padding-top: 30px; }
+
+  .row3 { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 26px; align-items: start; }
+  .opt { display: flex; flex-direction: column; gap: 12px; }
+  .opthead { display: flex; align-items: baseline; gap: 9px; }
+  .tag {
+    font-family: Rajdhani, sans-serif; font-weight: 700; font-size: 12px;
+    width: 24px; height: 24px; flex: none; display: grid; place-items: center;
+    border-radius: 6px; background: var(--accent-soft); color: var(--accent);
+  }
+  .opt h3 { font-family: Rajdhani, sans-serif; font-weight: 600; font-size: 18px; margin: 0; }
+  .opt p { margin: 0; font-size: 13.5px; color: var(--ink-2); }
+  .opt p.note { color: var(--ink-3); font-size: 12.5px; }
+  .opt p.note b { color: var(--ink-2); font-weight: 500; }
+
+  /* ── the table ───────────────────────────────────────────── */
+  .table {
+    position: relative; width: 100%; aspect-ratio: 16 / 10;
+    border-radius: 14px; overflow: hidden;
+    background:
+      radial-gradient(ellipse 70% 58% at 50% 42%, #135c39 0%, var(--felt) 46%, #072a19 100%),
+      var(--bg);
+    box-shadow: inset 0 0 0 1px var(--hairline), 0 14px 30px -18px rgba(0,0,0,0.75);
+    font-size: 11px; color: var(--ink-card);
+    user-select: none;
+  }
+  .seat {
+    position: absolute; display: flex; flex-direction: column; align-items: center; gap: 3px;
+    transition: transform .35s ease, filter .35s ease;
+  }
+  .seat .puck {
+    width: 30px; height: 30px; border-radius: 50%;
+    background: var(--card-bg); border: 1px solid var(--hairline);
+    display: grid; place-items: center;
+    font-family: Rajdhani, sans-serif; font-weight: 700; font-size: 13px; color: var(--gold);
+  }
+  .seat .nm { font-size: 9.5px; color: var(--muted); letter-spacing: .04em; }
+  .seat.top { top: 7%; left: 50%; transform: translateX(-50%); }
+  .seat.left { left: 6%; top: 42%; }
+  .seat.right { right: 6%; top: 42%; }
+  .seat.spot .puck { border-color: var(--gold); box-shadow: 0 0 0 3px var(--gold-ghost); }
+  .seat.spot .nm { color: var(--gold); }
+
+  /* cards */
+  .card {
+    width: 30px; height: 42px; border-radius: 4px; flex: none;
+    background: linear-gradient(#FBF7EC, #E8E0CC);
+    color: #14201a; position: relative;
+    box-shadow: 0 2px 5px rgba(0,0,0,.45);
+    font-family: Rajdhani, sans-serif; font-weight: 700; font-size: 12px;
+    display: flex; align-items: flex-start; justify-content: flex-start;
+    padding: 2px 0 0 3px; line-height: 1;
+    transition: opacity .3s ease, filter .3s ease, transform .3s ease, box-shadow .3s ease;
+  }
+  .card.red { color: var(--red); }
+  .card .pip { position: absolute; bottom: 3px; right: 3px; font-size: 11px; }
+  .card.back {
+    background: repeating-linear-gradient(45deg, #123f2a, #123f2a 3px, #0d3221 3px, #0d3221 6px);
+    box-shadow: inset 0 0 0 1px rgba(201,168,76,.35), 0 2px 5px rgba(0,0,0,.45);
+  }
+
+  .hand {
+    position: absolute; bottom: 5%; left: 50%; transform: translateX(-50%);
+    display: flex; gap: 3px; align-items: flex-end;
+  }
+  .card.legal.glow {
+    box-shadow: 0 0 0 1.5px var(--gold), 0 0 12px 2px rgba(201,168,76,.55), 0 2px 5px rgba(0,0,0,.45);
+    transform: translateY(-7px);
+  }
+  .card.illegal.dim { opacity: .3; filter: grayscale(1); }
+  .card.legal.fwd { transform: translateY(-13px) scale(1.06); }
+  .card.illegal.back2 { transform: translateY(5px) scale(.92); opacity: .62; }
+
+  .bandwrap { position: absolute; bottom: 5%; left: 50%; transform: translateX(-50%); }
+  .band {
+    position: absolute; top: -9px; bottom: -5px; border-radius: 5px;
+    background: rgba(201,168,76,.20); border: 1px solid rgba(201,168,76,.55);
+    pointer-events: none;
+  }
+  .bandlabel {
+    position: absolute; top: -25px; left: 50%; transform: translateX(-50%);
+    font-family: Rajdhani, sans-serif; font-weight: 700; font-size: 9px;
+    letter-spacing: .16em; color: var(--gold); white-space: nowrap;
+  }
+
+  /* prompts */
+  .plate {
+    position: absolute; left: 50%; top: 44%; transform: translate(-50%,-50%);
+    display: flex; align-items: center; gap: 9px;
+    background: rgba(6,20,16,.72); border: 1px solid var(--hairline);
+    border-radius: 999px; padding: 6px 14px 6px 6px;
+    backdrop-filter: blur(3px);
+  }
+  .plate .puck { width: 28px; height: 28px; border-radius: 50%; background: var(--felt);
+    display: grid; place-items: center; font-family: Rajdhani, sans-serif;
+    font-weight: 700; color: var(--gold); font-size: 13px; }
+  .plate span { font-family: Rajdhani, sans-serif; font-weight: 600; font-size: 12px; letter-spacing: .02em; }
+  .plate b { color: var(--gold); font-weight: 700; }
+
+  .bubble {
+    position: absolute; background: rgba(6,20,16,.82); border: 1px solid rgba(201,168,76,.5);
+    border-radius: 9px; padding: 5px 9px; font-size: 10.5px; white-space: nowrap;
+    font-family: Rajdhani, sans-serif; font-weight: 600;
+  }
+  .bubble b { color: var(--gold); }
+  .bubble::after {
+    content: ""; position: absolute; width: 7px; height: 7px;
+    background: rgba(6,20,16,.82); border-left: 1px solid rgba(201,168,76,.5);
+    border-bottom: 1px solid rgba(201,168,76,.5);
+  }
+
+  .feltline {
+    position: absolute; left: 50%; transform: translateX(-50%);
+    text-align: center; white-space: nowrap;
+    font-family: Rajdhani, sans-serif; font-weight: 600;
+    letter-spacing: .1em; color: rgba(240,234,214,.42);
+    text-transform: uppercase;
+  }
+  .feltline b { color: var(--gold); }
+
+  .gotcard { position: absolute; left: 50%; top: 33%; transform: translate(-50%,-50%); }
+
+  /* flight */
+  .flier { position: absolute; will-change: transform; }
+
+  .arrowline { position: absolute; height: 1px; background: linear-gradient(90deg, transparent, rgba(201,168,76,.6), transparent); }
+  .chev { position: absolute; color: var(--gold); font-size: 13px; line-height: 1; }
+  .chev.other { color: rgba(240,234,214,.62); }
+
+  .seattag {
+    position: absolute; font-family: Rajdhani, sans-serif; font-weight: 600; font-size: 9.5px;
+    background: rgba(6,20,16,.8); border: 1px solid var(--hairline);
+    border-radius: 6px; padding: 2px 7px; white-space: nowrap;
+    opacity: 0; transition: opacity .3s ease;
+  }
+  .seattag.on { opacity: 1; border-color: rgba(201,168,76,.5); }
+  .seattag b { color: var(--gold); }
+
+  .replay {
+    align-self: flex-start;
+    font: 600 12px/1 Rajdhani, sans-serif; letter-spacing: .12em; text-transform: uppercase;
+    color: var(--accent); background: var(--accent-soft); border: 1px solid transparent;
+    border-radius: 999px; padding: 8px 15px; cursor: pointer;
+  }
+  .replay:hover { border-color: var(--accent); }
+  .replay:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+  .verdict {
+    margin-top: 22px; border: 1px solid var(--rule); border-left: 3px solid var(--accent);
+    border-radius: 10px; padding: 14px 18px; background: var(--panel);
+    font-size: 13.5px; color: var(--ink-2);
+  }
+  .verdict b { color: var(--ink); font-weight: 600; }
+
+  .closing { margin-top: 62px; border-top: 1px solid var(--rule); padding-top: 28px;
+    display: grid; grid-template-columns: repeat(auto-fit, minmax(280px,1fr)); gap: 26px; }
+  .closing h3 { font-family: Rajdhani, sans-serif; font-size: 15px; letter-spacing: .1em;
+    text-transform: uppercase; color: var(--ink-3); margin: 0 0 8px; }
+  .closing p, .closing li { color: var(--ink-2); font-size: 14px; margin: 0 0 8px; }
+  .closing ul { margin: 0; padding-left: 18px; }
+  .closing code { font-family: ui-monospace, Menlo, monospace; font-size: 12.5px;
+    background: var(--accent-soft); color: var(--accent); padding: 1px 5px; border-radius: 4px; }
+
+  @media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important; } }
+</style>
+
+<div class="wrap">
+  <p class="eyebrow">Issue #532 · blocks the rebuild in #533</p>
+  <h1>The exchange, four ways</h1>
+  <p class="lede">
+    You asked for three genuinely different designs per piece, not three settings of one dial.
+    So each set below starts from a different premise. <b>Mix across sets freely</b> — they
+    share the same cards, the same seats and the same rules, so 1B + 2C + 3A + 4B is a real
+    answer, not a compromise.
+  </p>
+  <p class="lede">
+    One thing the research settled that shapes all of it: <b>Murlan's "you may only give a
+    3 to a 10" is this game's own rule.</b> Every other game in the family lets the winner give
+    <i>any</i> card. So the screen is not just pointing at which cards are legal — it is
+    teaching a rule the player has never met.
+  </p>
+
+  <!-- ══ SET 1 ══ -->
+  <section class="set">
+    <p class="setnum">Set 1</p>
+    <h2 class="set">Asking for the card</h2>
+    <p class="setlede">
+      The moment before the pick. The centre of the table is free — nothing is flying yet —
+      so this is the one instant a prompt can own it. All three vacate the centre the moment
+      you choose, because the flight needs that space back.
+    </p>
+    <div class="row3">
+      <div class="opt">
+        <div class="opthead"><span class="tag">A</span><h3>The nameplate</h3></div>
+        <div class="table" id="s1a"></div>
+        <p>A plate at the centre: their avatar, their name, one instruction. Reads at a glance and cannot be missed.</p>
+        <p class="note"><b>Against it:</b> it is a floating panel — the most conventional answer, and the one that feels most like a dialog.</p>
+      </div>
+      <div class="opt">
+        <div class="opthead"><span class="tag">B</span><h3>The seat speaks</h3></div>
+        <div class="table" id="s1b"></div>
+        <p>No centre panel at all. Their seat lifts, brightens, and says it in a tag pointing at them. The request comes from the person.</p>
+        <p class="note"><b>Against it:</b> a corner seat is further from where your eyes are, and on a small phone the tag is tight.</p>
+      </div>
+      <div class="opt">
+        <div class="opthead"><span class="tag">C</span><h3>Their card asks</h3></div>
+        <div class="table" id="s1c"></div>
+        <p>The card they gave you lands face-up in the middle and the words sit on the felt under it. No panel, no chrome — the object is the prompt.</p>
+        <p class="note"><b>Against it:</b> quietest of the three. Someone in a hurry may tap a card before reading why.</p>
+      </div>
+    </div>
+    <div class="verdict"><b>What to weigh:</b> A is loudest and safest. C is the most in-world and reuses a card you have to draw anyway. B is the only one that makes the recipient a <i>person</i> rather than a name in a sentence — which is what you asked for when you said "maybe show his avatar too".</div>
+  </section>
+
+  <!-- ══ SET 2 ══ -->
+  <section class="set">
+    <p class="setnum">Set 2</p>
+    <h2 class="set">Which cards you may give</h2>
+    <p class="setlede">
+      Your whole hand is visible now — that was the complaint. Ranks <code>3</code> to
+      <code>10</code> are legal; everything else is not. Accessibility rules out colour as the
+      only channel, so each option also changes something a monochrome screenshot would show.
+    </p>
+    <div class="row3">
+      <div class="opt">
+        <div class="opthead"><span class="tag">A</span><h3>Glow and dim</h3></div>
+        <div class="table" id="s2a"></div>
+        <p>Legal cards get a gold rim and lift. Illegal ones drop to a third opacity and lose their colour. The pairing is what Hearthstone does, and both halves matter.</p>
+        <p class="note"><b>Against it:</b> says <i>which</i>, never <i>why</i>. A first-time player learns the rule by elimination.</p>
+      </div>
+      <div class="opt">
+        <div class="opthead"><span class="tag">B</span><h3>Two rows</h3></div>
+        <div class="table" id="s2b"></div>
+        <p>Legal cards step forward into their own row; the rest sit back and lower. Distinction by position — survives colour-blindness, dark rooms and a cracked screen.</p>
+        <p class="note"><b>Against it:</b> breaks the fan you have spent tickets getting right, and takes vertical space a phone in landscape does not have.</p>
+      </div>
+      <div class="opt">
+        <div class="opthead"><span class="tag">C</span><h3>The rule, drawn</h3></div>
+        <div class="table" id="s2c"></div>
+        <p>A gold band laid across the hand over ranks 3–10, labelled. It does not point at cards — it draws the rule itself, once, where the cards are.</p>
+        <p class="note"><b>Against it:</b> only works while the hand stays sorted by rank. Reordering (#531) would break it.</p>
+      </div>
+    </div>
+    <div class="verdict"><b>What to weigh:</b> A is the known-good default. C is the only one that answers the question the research says actually matters — it teaches the rule instead of enforcing it silently — but it ties this screen to a sorted hand, and you have a separate ticket about letting players reorder. <b>A and C can be combined</b>: band on first exposure, glow-and-dim after.</div>
+  </section>
+
+  <!-- ══ SET 3 ══ -->
+  <section class="set">
+    <p class="setnum">Set 3</p>
+    <h2 class="set">Both cards moving at once</h2>
+    <p class="setlede">
+      Simultaneous, opposite, never overlapping. There is a perceptual reason and not just a
+      practical one: motion is the strongest grouping cue there is, so two cards travelling
+      together read as <i>one</i> thing. Opposite direction is what makes them two gifts.
+    </p>
+    <div class="row3">
+      <div class="opt">
+        <div class="opthead"><span class="tag">A</span><h3>Two lanes</h3></div>
+        <div class="table" id="s3a"></div>
+        <button class="replay" data-replay="s3a">Replay</button>
+        <p>Straight across, opposite directions, at different heights. Already how <code>ExchangeAnnouncement</code> works today — so this is the cheapest and the most proven.</p>
+        <p class="note"><b>Against it:</b> nothing about it says the two cards have anything to do with each other.</p>
+      </div>
+      <div class="opt">
+        <div class="opthead"><span class="tag">B</span><h3>Over and under</h3></div>
+        <div class="table" id="s3b"></div>
+        <button class="replay" data-replay="s3b">Replay</button>
+        <p>Both arc through the centre, one passing over the other. They cross in depth rather than in space, so they share one lane and still never collide.</p>
+        <p class="note"><b>Against it:</b> depth is faked with scale and shadow. On a small screen the pass can read as a near-miss.</p>
+      </div>
+      <div class="opt">
+        <div class="opthead"><span class="tag">C</span><h3>Meet and part</h3></div>
+        <div class="table" id="s3c"></div>
+        <button class="replay" data-replay="s3c">Replay</button>
+        <p>Both travel to the centre, touch for one beat, then continue to the far side. The contact is what makes it read as a <i>trade</i> rather than two unrelated gifts.</p>
+        <p class="note"><b>Against it:</b> longest of the three, and the pause is a beat the player did not ask for.</p>
+      </div>
+    </div>
+    <div class="verdict"><b>What to weigh:</b> A is free — the code exists. C is the only one that says <i>exchange</i> rather than <i>two deliveries</i>, and the beat in the middle is where the satisfying part lives. B is the compromise and is the weakest on a phone.</div>
+  </section>
+
+  <!-- ══ SET 4 ══ -->
+  <section class="set">
+    <p class="setnum">Set 4</p>
+    <h2 class="set">Saying what just happened</h2>
+    <p class="setlede">
+      You asked for text that does not cover the action. Conventional guidance says keep the
+      middle of the screen clear during play — which is right, and does not contradict Set 1,
+      because that prompt is gone by the time these run.
+    </p>
+    <div class="row3">
+      <div class="opt">
+        <div class="opthead"><span class="tag">A</span><h3>A line on the felt</h3></div>
+        <div class="table" id="s4a"></div>
+        <button class="replay" data-replay="s4a">Replay</button>
+        <p>One low-contrast line printed on the felt, below the flight path. Reads as part of the table rather than something laid over it.</p>
+        <p class="note"><b>Against it:</b> low contrast on felt is exactly the readability trap. Needs a real contrast check, not a taste call.</p>
+      </div>
+      <div class="opt">
+        <div class="opthead"><span class="tag">B</span><h3>Arrows, no words</h3></div>
+        <div class="table" id="s4b"></div>
+        <button class="replay" data-replay="s4b">Replay</button>
+        <p>Two chevrons, one trailing each card, each in its owner's colour. Nothing to read, nothing to translate, no line length to fit in three languages.</p>
+        <p class="note"><b>Against it:</b> tells you a swap happened, never who gained. And it adds motion to a frame that is already the busiest one.</p>
+      </div>
+      <div class="opt">
+        <div class="opthead"><span class="tag">C</span><h3>Tags at the seats</h3></div>
+        <div class="table" id="s4c"></div>
+        <button class="replay" data-replay="s4c">Replay</button>
+        <p>A small tag beside each seat, lighting as that seat's card lands. The words sit where the people are — furthest from the action, and it names what each side got.</p>
+        <p class="note"><b>Against it:</b> two things to read in two places, at the moment your eyes are following a card.</p>
+      </div>
+    </div>
+    <div class="verdict"><b>What to weigh:</b> B is the safest and the only one that costs nothing to translate. C is the only one that survives being watched from a seat that is <i>not</i> in the exchange — the other two players are also looking at this screen, and they care who got what.</div>
+  </section>
+
+  <div class="closing">
+    <div>
+      <h3>Settled before the mockups</h3>
+      <ul>
+        <li><b>The GIOCA button is the confirm.</b> You asked for the normal table with the exchange layered on. A second floating confirm button is the old modal in a smaller coat, so none of these has one.</li>
+        <li><b>The loser never chooses.</b> Their strongest card is taken automatically the moment the phase opens — only the winner picks. That is the rule today and none of this changes it.</li>
+        <li><b>The two-way flight already exists</b> in <code>ExchangeAnnouncement</code>, wired to the wrong moment. Set 3A is that code moved, not new code.</li>
+      </ul>
+    </div>
+    <div>
+      <h3>How to answer</h3>
+      <p>One letter per set — for example "1B, 2A+C, 3C, 4B". Mixing is expected; the sets were built to be independent.</p>
+      <p>Full write-up with sources: <code>docs/research/2026-08-28-card-exchange-interaction.md</code>. Everything an option claims about other games is quoted from a page that was actually read.</p>
+      <p>Nothing here is built. The implementation ticket is #533 and it waits on this pick.</p>
+    </div>
+  </div>
+</div>
+
+<script>
+(function () {
+  var HAND = [
+    { r: "4", s: "♣", red: false, legal: true },
+    { r: "7", s: "♦", red: true,  legal: true },
+    { r: "9", s: "♠", red: false, legal: true },
+    { r: "J", s: "♥", red: true,  legal: false },
+    { r: "K", s: "♠", red: false, legal: false },
+    { r: "2", s: "♦", red: true,  legal: false }
+  ];
+  var GIVEN = { r: "A", s: "♠", red: false };   // what they gave you
+  var BACK  = { r: "4", s: "♣", red: false };   // what you give back
+  var THEM = { initial: "L", name: "leke22" };
+  var YOU  = { initial: "T", name: "you" };
+
+  function cardHTML(c, cls) {
+    return '<div class="card' + (c.red ? " red" : "") + (cls ? " " + cls : "") + '">' +
+      c.r + '<span class="pip">' + c.s + '</span></div>';
+  }
+
+  function seats(spotlight) {
+    return '' +
+      '<div class="seat top' + (spotlight === "top" ? " spot" : "") + '">' +
+        '<div class="puck">' + THEM.initial + '</div><div class="nm">' + THEM.name + '</div></div>' +
+      '<div class="seat left"><div class="puck">A</div><div class="nm">arben</div></div>' +
+      '<div class="seat right"><div class="puck">M</div><div class="nm">mira</div></div>';
+  }
+
+  function hand(mode) {
+    var inner = HAND.map(function (c) {
+      var cls = c.legal ? "legal" : "illegal";
+      if (mode === "glow") cls += c.legal ? " glow" : " dim";
+      if (mode === "rows") cls += c.legal ? " fwd" : " back2";
+      return cardHTML(c, cls);
+    }).join("");
+    if (mode !== "band") return '<div class="hand">' + inner + '</div>';
+    // The band covers the first three cards — the hand is rank-sorted, so the
+    // legal run is contiguous and a single rectangle can express the rule.
+    return '<div class="bandwrap"><div class="hand" style="position:relative">' + inner +
+      '<div class="band" style="left:-4px;width:' + (3 * 33 + 4) + 'px">' +
+        '<div class="bandlabel">3 — 10 · what you may give</div></div>' +
+      '</div></div>';
+  }
+
+  // ── Set 1 ────────────────────────────────────────────────
+  document.getElementById("s1a").innerHTML =
+    seats() +
+    '<div class="plate"><div class="puck">' + THEM.initial + '</div>' +
+    '<span>Choose a card for <b>' + THEM.name + '</b></span></div>' +
+    hand("glow");
+
+  document.getElementById("s1b").innerHTML =
+    seats("top") +
+    '<div class="bubble" style="top:8%;left:50%;transform:translateX(26px)">' +
+      'waiting on a card from <b>you</b>' +
+      '</div>' +
+    hand("glow");
+
+  document.getElementById("s1c").innerHTML =
+    seats() +
+    '<div class="gotcard">' + cardHTML(GIVEN, "") + '</div>' +
+    '<div class="feltline" style="top:52%;font-size:9.5px">' +
+      '<b>' + THEM.name + '</b> gave you this · give one back</div>' +
+    hand("glow");
+
+  // ── Set 2 ────────────────────────────────────────────────
+  document.getElementById("s2a").innerHTML = seats() + hand("glow");
+  document.getElementById("s2b").innerHTML = seats() + hand("rows");
+  document.getElementById("s2c").innerHTML = seats() + hand("band");
+
+  // ── Sets 3 and 4: the flight ─────────────────────────────
+  // Percent coordinates inside the table box. Lanes are separated vertically
+  // for A, shared for B (crossing in depth), and merged at the centre for C.
+  var LANES = {
+    a: { up:   { from: [50, 78], to: [50, 14], mid: [38, 42] },
+         down: { from: [50, 14], to: [50, 78], mid: [62, 50] } },
+    b: { up:   { from: [50, 78], to: [50, 14], mid: [50, 34], lift: true },
+         down: { from: [50, 14], to: [50, 78], mid: [50, 58], lift: false } },
+    c: { up:   { from: [50, 78], to: [50, 14], mid: [44, 44], hold: true },
+         down: { from: [50, 14], to: [50, 78], mid: [56, 44], hold: true } }
+  };
+
+  function flightTable(id, lane, decoration) {
+    var el = document.getElementById(id);
+    el.innerHTML = seats() + hand(null) +
+      '<div class="flier" id="' + id + '-up"></div>' +
+      '<div class="flier" id="' + id + '-down"></div>' +
+      (decoration || "");
+    return el;
+  }
+
+  function place(node, x, y, scale, z) {
+    node.style.left = x + "%";
+    node.style.top = y + "%";
+    node.style.transform = "translate(-50%,-50%) scale(" + (scale || 1) + ")";
+    node.style.zIndex = z || 1;
+  }
+
+  /** One card's trip, as a sequence of keyframes the caller can chain. */
+  function fly(node, path, opts, done) {
+    var hold = opts.hold ? 300 : 0;
+    var lift = opts.lift ? 1.28 : (opts.lift === false ? 0.86 : 1);
+    node.style.transition = "none";
+    place(node, path.from[0], path.from[1], 1, opts.lift ? 3 : 2);
+    node.style.opacity = "1";
+    // Force layout so the first frame is the start, not the end.
+    void node.offsetWidth;
+    node.style.transition = "left .42s cubic-bezier(.3,.7,.4,1), top .42s cubic-bezier(.3,.7,.4,1), transform .42s cubic-bezier(.3,.7,.4,1)";
+    place(node, path.mid[0], path.mid[1], lift, opts.lift ? 3 : 2);
+    setTimeout(function () {
+      node.style.transition = "left .42s cubic-bezier(.4,0,.5,1), top .42s cubic-bezier(.4,0,.5,1), transform .42s cubic-bezier(.4,0,.5,1)";
+      place(node, path.to[0], path.to[1], 1, 2);
+      if (done) setTimeout(done, 420);
+    }, 420 + hold);
+  }
+
+  var timers = [];
+  function run(id, laneKey, after) {
+    timers.forEach(clearTimeout);
+    timers = [];
+    var lanes = LANES[laneKey];
+    var up = document.getElementById(id + "-up");
+    var down = document.getElementById(id + "-down");
+    up.innerHTML = cardHTML(BACK, "");
+    down.innerHTML = cardHTML(GIVEN, "");
+    // Simultaneous on purpose: staggering would read as one card causing the
+    // other, and an exchange is not a chain of two events.
+    fly(up, lanes.up, { hold: lanes.up.hold, lift: lanes.up.lift }, after);
+    fly(down, lanes.down, { hold: lanes.down.hold, lift: lanes.down.lift });
+  }
+
+  // Set 3 — motion alone, no labelling.
+  ["a", "b", "c"].forEach(function (k) { flightTable("s3" + k, k); });
+
+  // Set 4 — one lane pattern (A, the proven one), three ways of naming it.
+  flightTable("s4a", "a",
+    '<div class="feltline" id="s4a-line" style="bottom:26%;font-size:9px;opacity:0;transition:opacity .3s">' +
+    '<b>' + THEM.name + '</b> ⇄ <b>' + YOU.name + '</b></div>');
+
+  flightTable("s4b", "a",
+    '<div class="chev" id="s4b-c1" style="opacity:0;transition:opacity .3s">▲</div>' +
+    '<div class="chev other" id="s4b-c2" style="opacity:0;transition:opacity .3s">▼</div>');
+
+  flightTable("s4c", "a",
+    '<div class="seattag" id="s4c-t1" style="top:7%;left:50%;transform:translateX(30px)">got <b>4♣</b></div>' +
+    '<div class="seattag" id="s4c-t2" style="bottom:26%;left:50%;transform:translateX(-50%)">you got <b>A♠</b></div>');
+
+  function decorate(id) {
+    if (id === "s4a") {
+      var line = document.getElementById("s4a-line");
+      line.style.opacity = "0";
+      timers.push(setTimeout(function () { line.style.opacity = "1"; }, 180));
+    }
+    if (id === "s4b") {
+      var c1 = document.getElementById("s4b-c1");
+      var c2 = document.getElementById("s4b-c2");
+      [c1, c2].forEach(function (c) { c.style.opacity = "0"; c.style.transition = "none"; });
+      place(c1, 38, 56, 1, 1); place(c2, 62, 34, 1, 1);
+      void c1.offsetWidth;
+      timers.push(setTimeout(function () {
+        [c1, c2].forEach(function (c) {
+          c.style.transition = "left .55s ease, top .55s ease, opacity .3s ease";
+          c.style.opacity = "1";
+        });
+        place(c1, 42, 26, 1, 1);
+        place(c2, 58, 66, 1, 1);
+      }, 120));
+      timers.push(setTimeout(function () {
+        [c1, c2].forEach(function (c) { c.style.opacity = "0"; });
+      }, 900));
+    }
+    if (id === "s4c") {
+      var t1 = document.getElementById("s4c-t1");
+      var t2 = document.getElementById("s4c-t2");
+      t1.classList.remove("on"); t2.classList.remove("on");
+      timers.push(setTimeout(function () { t1.classList.add("on"); t2.classList.add("on"); }, 760));
+    }
+  }
+
+  function playAll() {
+    ["a", "b", "c"].forEach(function (k) { run("s3" + k, k); });
+    ["a", "b", "c"].forEach(function (k) { run("s4" + k, "a"); decorate("s4" + k); });
+  }
+
+  document.querySelectorAll("[data-replay]").forEach(function (b) {
+    b.addEventListener("click", function () {
+      var id = b.dataset.replay;
+      var laneKey = id.startsWith("s3") ? id.slice(-1) : "a";
+      run(id, laneKey);
+      if (id.startsWith("s4")) decorate(id);
+    });
+  });
+
+  playAll();
+})();
+</script>
+
+
+</body>
+</html>

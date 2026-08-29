@@ -424,6 +424,8 @@ export function OnlineGameProvider({ userId, children }: { userId: string; child
           setExchangeAnnounceData({
             winnerName: state.players[state.exchangePhase.winnerIdx]?.name ?? "",
             loserName: state.players[state.exchangePhase.loserIdx]?.name ?? "",
+            winnerIdx: state.exchangePhase.winnerIdx,
+            loserIdx: state.exchangePhase.loserIdx,
             bothJokersException: state.exchangePhase.bothJokersException,
             cardReceived,
             cardGiven,
@@ -442,6 +444,8 @@ export function OnlineGameProvider({ userId, children }: { userId: string; child
         setExchangeAnnounceData({
           winnerName,
           loserName,
+          winnerIdx: state.exchangePhase!.winnerIdx,
+          loserIdx: state.exchangePhase!.loserIdx,
           bothJokersException: true,
         });
         setExchangeAnnouncing(true);
