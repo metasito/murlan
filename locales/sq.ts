@@ -291,6 +291,7 @@ export const sq: Record<keyof typeof en, string> = {
   "gameShared.passedLabel": "KALOI",
 
   // -------------------------------------------------------------- game.*
+  "game.moveNotDelivered": "Lëvizja jote nuk arriti në tavolinë. Kontrollo lidhjen dhe provo përsëri.",
   "game.autoPassTitle": "Kalim automatik",
   "game.autoPassBody": "Koha mbaroi: radha jote u kalua.",
 

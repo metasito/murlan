@@ -41,7 +41,7 @@ import {
   gameOverWriters,
   persistGameState,
   safeTimer,
-  sanitizeStateForPlayer,
+  sendGameStateTo,
   startSweeper,
 } from "./gamePersistence.ts";
 import {
@@ -354,10 +354,7 @@ export function setupSocket(httpServer: HttpServer) {
         game.spectators.add(userId);
         spectatorRoomMap.set(socket.id, room.id);
         socket.join(room.id);
-        socket.emit(
-          "game:state",
-          sanitizeStateForPlayer(game.gameState, userId, game.playerMap, game.turnDeadlineMs)
-        );
+        sendGameStateTo(io, userId, game);
         logger.info({ roomId: room.id, userId }, "Spectator joined");
       },
       { limit: 10, windowMs: 60_000 }
@@ -1466,10 +1463,7 @@ async function rejoinSocketToTable(
   await emitRoomStateTo(socket, roomId, game).catch((err: unknown) =>
     logger.warn({ err, roomId, userId }, "emitRoomStateTo failed")
   );
-  socket.emit(
-    "game:state",
-    sanitizeStateForPlayer(game.gameState, userId, game.playerMap, game.turnDeadlineMs)
-  );
+  sendGameStateTo(io, userId, game);
   // The client reads this as the framing of a manche that has just begun and
   // zeroes the match verdict and the rematch tally along with it, so it is
   // only right while one is running — at the results screen `game:over` and

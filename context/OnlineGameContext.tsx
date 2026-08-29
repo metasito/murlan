@@ -14,6 +14,7 @@ import { useSocket } from "@/context/SocketContext";
 import { useNotification } from "@/context/NotificationContext";
 import { t, translateServerPayload, type ServerPayload } from "@/lib/i18n";
 import { Reading } from "@/lib/theme";
+import { sendIntent } from "@/lib/sendIntent";
 import { MATCH_TARGETS, matchIsClosing } from "@/lib/gameEngine";
 import { handCountOf } from "@/components/gameTableModel";
 import { clearReactions, pushReaction } from "@/lib/reactions";
@@ -389,8 +390,12 @@ export function OnlineGameProvider({ userId, children }: { userId: string; child
     };
 
     const onGameState = (
-      state: GameState & { viewerSeatIndex?: number | null } & Partial<TurnDeadline>
+      state: GameState & { viewerSeatIndex?: number | null } & Partial<TurnDeadline>,
+      // Answering is the whole point: a broadcast nobody confirms is re-sent,
+      // and the last state of a hand has no later one to correct it.
+      ack?: () => void
     ) => {
+      ack?.();
       forgetRejoinAttempt();
       if (typeof state.turnSecondsRemaining === "number") {
         setTurnDeadline({
@@ -788,17 +793,37 @@ export function OnlineGameProvider({ userId, children }: { userId: string; child
     });
   }, [gameState, matchState, cumulativeScores]);
 
-  const playCards = useCallback((cardIds: string[]) => {
-    socket?.emit("game:play", { cardIds });
-  }, [socket]);
+  /**
+   * The three intents that decide a hand. Each waits to be told it arrived and
+   * says so if it never was — a move that vanished used to look exactly like a
+   * player who did not move, and cost them the turn.
+   */
+  const sendMove = useCallback(
+    (event: string, payload?: unknown) => {
+      void sendIntent(socket, event, payload).then((outcome) => {
+        if (outcome.ok || outcome.code) return;
+        showNotification({
+          type: "game_error",
+          title: t("common.error"),
+          message: t("game.moveNotDelivered"),
+          duration: Reading.notice,
+        });
+      });
+    },
+    [socket, showNotification]
+  );
 
-  const pass = useCallback(() => {
-    socket?.emit("game:pass");
-  }, [socket]);
+  const playCards = useCallback(
+    (cardIds: string[]) => sendMove("game:play", { cardIds }),
+    [sendMove]
+  );
 
-  const giveExchangeCard = useCallback((cardId: string) => {
-    socket?.emit("game:exchange_give_card", { cardId });
-  }, [socket]);
+  const pass = useCallback(() => sendMove("game:pass"), [sendMove]);
+
+  const giveExchangeCard = useCallback(
+    (cardId: string) => sendMove("game:exchange_give_card", { cardId }),
+    [sendMove]
+  );
 
   const acknowledgeExchange = useCallback(() => {
     setExchangeAnnouncing(false);

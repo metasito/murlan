@@ -282,6 +282,7 @@ export const en = {
   "gameShared.passedLabel": "PASSED",
 
   // -------------------------------------------------------------- game.*
+  "game.moveNotDelivered": "Your move did not reach the table. Check your connection and try again.",
   "game.autoPassTitle": "Auto-pass",
   "game.autoPassBody": "Time is up: your turn was passed.",
 
