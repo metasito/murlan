@@ -256,7 +256,12 @@ export function OnlineGameProvider({ userId, children }: { userId: string; child
   const attemptRejoin = useCallback((): boolean => {
     const currentRoom = roomRef.current;
     const currentGame = gameStateRef.current;
-    if (currentRoom && currentGame && !currentGame.gameOver) {
+    // A room the server calls `in_progress` is worth rejoining even with no
+    // hand on this side. Requiring one made the client's own copy of the deal
+    // the only route into the table: miss it, and the room screen asks for a
+    // seat in a lobby that is already playing, forever.
+    const playing = currentRoom?.status === "in_progress";
+    if (currentRoom && ((currentGame && !currentGame.gameOver) || playing)) {
       requestedRoomIdRef.current = currentRoom.roomId;
       socket?.emit("game:rejoin", { roomId: currentRoom.roomId });
       return true;
@@ -614,6 +619,16 @@ export function OnlineGameProvider({ userId, children }: { userId: string; child
       abandonRejoin(data);
     };
 
+    // The room-wide announcement that the lobby is over. `game:state` is
+    // addressed to one player and is the only other thing that says so, so a
+    // player it does not reach has nothing else to act on: this is what turns
+    // a missed deal into one extra round trip instead of a stranded screen.
+    const onGameStarted = () => {
+      if (gameStateRef.current) return;
+      attemptRejoin();
+    };
+
+    socket?.on("game:started", onGameStarted);
     socket?.on("connect", onConnect);
     socket?.on("disconnect", onDisconnect);
     socket?.on("room:state", onRoomState);
@@ -636,6 +651,7 @@ export function OnlineGameProvider({ userId, children }: { userId: string; child
     if (socket?.connected) setConnected(true);
 
     return () => {
+      socket?.off("game:started", onGameStarted);
       socket?.off("connect", onConnect);
       socket?.off("disconnect", onDisconnect);
       socket?.off("room:state", onRoomState);

@@ -20,6 +20,7 @@ import {
   seatOfUser,
   socketRoomMap,
   spectatorRoomMap,
+  userRoom,
   userSocketMap,
 } from "./gameRoom.ts";
 import type { OnlineGameState } from "./gameRoom.ts";
@@ -131,14 +132,11 @@ export function beginShutdown() {
 
 export function emitToUser(userId: string, event: string, data: unknown) {
   if (!_io) return;
-  const socketId = userSocketMap.get(userId);
-  if (socketId) {
-    _io.to(socketId).emit(event, data);
-  }
+  _io.to(userRoom(userId)).emit(event, data);
 }
 
 export function isUserOnline(userId: string): boolean {
-  return userSocketMap.has(userId);
+  return (_io?.sockets.adapter.rooms.get(userRoom(userId))?.size ?? 0) > 0;
 }
 
 /**
@@ -277,6 +275,9 @@ export function setupSocket(httpServer: HttpServer) {
     // see evictReplacedSession for what reads it on the way out.
     const replacedSocketId = userSocketMap.get(userId);
     userSocketMap.set(userId, socket.id);
+    // Before the first `await`, like every listener below: a send addressed to
+    // this account between here and the end of the handler must find it.
+    void socket.join(userRoom(userId));
     // Opening a socket is what reaching the online area does, so this is the
     // server's only sight of "got past the menu".
     trackEvent("lobby.entered", userId);
@@ -684,6 +685,18 @@ export function setupSocket(httpServer: HttpServer) {
         // someone into a hand whose roster is already frozen.
         await storage.updateRoomStatus(roomId, "in_progress");
         activeGames.set(roomId, newGame);
+
+        // The room hears that it started, before anyone is sent their cards.
+        // `game:state` is addressed to one player and carries both facts at
+        // once — here is your hand, and the lobby is over — so a player who
+        // misses theirs is left on the room screen with no way back: the room
+        // id is only remembered once a `room:state` says `in_progress`, and
+        // without it `game:rejoin` has nothing to ask about. This is a room
+        // broadcast, so it does not depend on resolving any one player.
+        io.to(roomId).emit(
+          "room:state",
+          roomStatePayload({ ...room, status: "in_progress" }, players)
+        );
 
         await dealManche(io, newGame, gameState);
         logger.info(
@@ -1134,8 +1147,8 @@ export function setupSocket(httpServer: HttpServer) {
           socket.emit("friend:error", { message: "You are not friends", code: "NOT_FRIENDS" });
           return;
         }
-        const friendSocket = userSocketMap.get(friendUserId);
-        if (!friendSocket) {
+        const friendIsHere = isUserOnline(friendUserId);
+        if (!friendIsHere) {
           // Nothing about an invite expires while it waits — the room stays
           // `waiting` until the host starts it — so this is worth delivering
           // late. Not awaited: the invite must not be held up by a push.
@@ -1147,7 +1160,7 @@ export function setupSocket(httpServer: HttpServer) {
           });
           return;
         }
-        io.to(friendSocket).emit("friend:invite", {
+        io.to(userRoom(friendUserId)).emit("friend:invite", {
           from: username,
           roomCode,
         });
@@ -1163,7 +1176,7 @@ export function setupSocket(httpServer: HttpServer) {
         const userFriends = await storage.getFriends(userId);
         const onlineIds = userFriends
           .map((f) => f.friend.id)
-          .filter((id) => userSocketMap.has(id));
+          .filter((id) => isUserOnline(id));
         socket.emit("friend:online_list", { onlineIds });
       },
       { limit: 20, windowMs: 60_000 }
@@ -1197,7 +1210,7 @@ export function setupSocket(httpServer: HttpServer) {
       announceOnlineToFriends(io, userId, friends);
       const onlineIds = friends
         .map((f) => f.friend.id)
-        .filter((id) => userSocketMap.has(id));
+        .filter((id) => isUserOnline(id));
       socket.emit("friend:online_list", { onlineIds });
     } catch (err) {
       // Swallowing this silently leaves a connected account with no friends
@@ -1677,12 +1690,9 @@ function announceOnlineToFriends(
   friends: Awaited<ReturnType<typeof storage.getFriends>>
 ) {
   // The read the caller did is awaited, so the socket may already be gone.
-  if (!userSocketMap.has(userId)) return;
+  if (!isUserOnline(userId)) return;
   friends.forEach((f) => {
-    const friendSocket = userSocketMap.get(f.friend.id);
-    if (friendSocket) {
-      io.to(friendSocket).emit("friend:status", { userId, online: true });
-    }
+    io.to(userRoom(f.friend.id)).emit("friend:status", { userId, online: true });
   });
 }
 
@@ -1694,17 +1704,14 @@ async function emitFriendStatusOffline(
   // Debounced, and re-checked after every await: a reconnect inside any of
   // these windows must cancel the offline notice rather than race it.
   await new Promise((resolve) => setTimeout(resolve, 400));
-  if (userSocketMap.has(userId)) return;
+  if (isUserOnline(userId)) return;
   const friends = await storage.getFriends(userId).catch(() => []);
-  if (userSocketMap.has(userId)) return;
+  if (isUserOnline(userId)) return;
   friends.forEach((f) => {
-    const friendSocket = userSocketMap.get(f.friend.id);
-    if (friendSocket) {
-      io.to(friendSocket).emit("friend:status", {
-        userId,
-        online: false,
-        lastSeen,
-      });
-    }
+    io.to(userRoom(f.friend.id)).emit("friend:status", {
+      userId,
+      online: false,
+      lastSeen,
+    });
   });
 }

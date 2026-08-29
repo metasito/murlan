@@ -13,6 +13,7 @@ import {
 } from "../shared/schema.ts";
 import {
   activeGames,
+  userRoom,
   userSocketMap,
 } from "./gameRoom.ts";
 import type { OnlineGameState } from "./gameRoom.ts";
@@ -144,9 +145,10 @@ export function persistGameState(roomId: string, game: OnlineGameState): Promise
 export function broadcastGameState(io: SocketServer, game: OnlineGameState) {
   const { gameState, playerMap } = game;
   const send = (uid: string) => {
-    const target = userSocketMap.get(uid);
-    if (!target) return;
-    io.to(target).emit("game:state", sanitizeStateForPlayer(gameState, uid, playerMap, game.turnDeadlineMs));
+    io.to(userRoom(uid)).emit(
+      "game:state",
+      sanitizeStateForPlayer(gameState, uid, playerMap, game.turnDeadlineMs)
+    );
   };
   Object.values(playerMap).forEach(send);
   // Spectators go through the same sanitiser. findViewerSeat returns null for

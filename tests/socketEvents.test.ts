@@ -83,14 +83,7 @@ function nonLiteralSocketOnCalls(file: string, source: string): string[] {
  * Server events that deliberately have no client listener. An entry without a
  * reason is an entry nobody can ever retire.
  */
-const FIRE_AND_FORGET = new Map<string, string>([
-  [
-    "game:started",
-    "a lifecycle signal the integration suites wait on; the app navigates on gameState " +
-      "becoming non-null instead, because a one-shot event is lost outright if it lands " +
-      "while a client is reconnecting",
-  ],
-]);
+const FIRE_AND_FORGET = new Map<string, string>([]);
 
 /**
  * The two places an event name is computed rather than written out. Both stay
