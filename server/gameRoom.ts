@@ -83,6 +83,21 @@ export const socketRoomMap = new Map<string, string>();
 export const spectatorRoomMap = new Map<string, string>();
 export const userSocketMap = new Map<string, string>();
 
+/**
+ * The Socket.IO room every one of an account's sockets joins, so a message for
+ * a *person* is addressed to the person rather than to a socket id looked up in
+ * a map.
+ *
+ * The map has one failure mode and it is silent: a send that resolves through it
+ * skips anyone whose entry is missing at that instant, and the caller cannot
+ * tell that from "delivered". A room is right when the account has no socket,
+ * one, or two mid-eviction, and it is the same call that reaches another
+ * instance once an adapter exists.
+ */
+export function userRoom(userId: string): string {
+  return `user:${userId}`;
+}
+
 
 export function scoreKeyForSeat(game: OnlineGameState, seat: number): string {
   return scoreKeyForMapSeat(game.playerMap, seat);
