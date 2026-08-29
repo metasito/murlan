@@ -12,6 +12,7 @@ import { registerRoutes } from "./routes.ts";
 import { ensureSchema } from "./schemaDdl.ts";
 import { isAllowedOrigin, isBehindProxy } from "./cors.ts";
 import { registerGithubDevSyncHook } from "./devSyncHook.ts";
+import { runningCommitSha } from "./gitInfo.ts";
 import * as fs from "fs";
 import * as path from "path";
 
@@ -313,10 +314,13 @@ export async function createApp(): Promise<CreatedApp> {
         db: "connected",
         uptime: Math.floor(process.uptime()),
         env: process.env.NODE_ENV,
+        commit: runningCommitSha,
       });
     } catch (err) {
       logger.error({ err }, "Health check DB failure");
-      res.status(503).json({ status: "error", db: "disconnected" });
+      res
+        .status(503)
+        .json({ status: "error", db: "disconnected", commit: runningCommitSha });
     }
   });
 
