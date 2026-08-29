@@ -12,7 +12,7 @@ import { setTimeout as sleep } from "node:timers/promises";
 import { pathToFileURL } from "node:url";
 import type { Socket } from "socket.io-client";
 import { startTestServer, hasDatabase, type TestServer } from "../helpers/testServer.ts";
-import { connectAs, reconnectWith } from "../helpers/client.ts";
+import { connectAs, reconnectWith, DEADLINE_SCALE } from "../helpers/client.ts";
 import { createDeck, getAllValidPlays, type Card, type Combination } from "../../lib/gameEngine.ts";
 import { checkAll, type SeatView, type Violation } from "./invariants.ts";
 
@@ -60,7 +60,7 @@ function makeRng(seed: number): () => number {
  * path reads the room, may rehydrate the game from Postgres, and re-seats the
  * socket before it answers.
  */
-const REJOIN_BUDGET_MS = 5_000;
+const REJOIN_BUDGET_MS = 5_000 * DEADLINE_SCALE;
 
 interface Options {
   seats: number;
@@ -136,28 +136,34 @@ class Seat {
   }
 
   /**
-   * Acts if it is this seat's move. Legality comes from the engine rather than
-   * from a rule restated here — a soak that plays illegally would spend its
-   * time proving the server rejects it.
+   * Acts if it is this seat's move, and says whether it actually did. The
+   * runner counts what was emitted rather than how many times it looked,
+   * because a harness that has stopped playing must not be able to report
+   * progress it never made.
+   *
+   * Legality comes from the engine rather than from a rule restated here — a
+   * soak that plays illegally would spend its time proving the server rejects
+   * it.
    */
-  act(rng: () => number): void {
+  act(rng: () => number): boolean {
     const s = this.state;
     const seat = s?.viewerSeatIndex;
-    if (!s || s.gameOver || typeof seat !== "number" || seat < 0) return;
+    if (!s || s.gameOver || typeof seat !== "number" || seat < 0) return false;
 
     const phase = s.exchangePhase;
     if (phase?.active) {
-      if (phase.winnerIdx !== seat) return;
+      if (phase.winnerIdx !== seat) return false;
       const hand = s.players[seat]?.hand ?? [];
       const giveable = hand.filter((c) => c.id !== phase.cardFromLoser?.id);
       const card = giveable[Math.floor(rng() * giveable.length)];
-      if (card) this.socket.emit("game:exchange_give_card", { cardId: card.id });
-      return;
+      if (!card) return false;
+      this.socket.emit("game:exchange_give_card", { cardId: card.id });
+      return true;
     }
 
-    if (s.currentTurnIndex !== seat) return;
+    if (s.currentTurnIndex !== seat) return false;
     const hand = s.players[seat]?.hand ?? [];
-    if (hand.length === 0) return;
+    if (hand.length === 0) return false;
 
     const isNewRound = s.lastPlayedCombination === null;
     const mustPlay = !s.firstPlayMade ? s.startCard : undefined;
@@ -165,10 +171,11 @@ class Seat {
 
     if (plays.length === 0) {
       this.socket.emit("game:pass");
-      return;
+      return true;
     }
     const combo = plays[Math.floor(rng() * plays.length)];
     this.socket.emit("game:play", { cardIds: combo.cards.map((c) => c.id) });
+    return true;
   }
 }
 
@@ -186,7 +193,11 @@ export interface SoakResult {
  * separately; two views captured mid-broadcast disagree for a reason that is
  * not a defect, and comparing them would make the oracle cry wolf forever.
  */
-async function settle(seats: Seat[], quietMs = 250, capMs = 4_000): Promise<void> {
+async function settle(
+  seats: Seat[],
+  quietMs = 250,
+  capMs = 4_000 * DEADLINE_SCALE
+): Promise<void> {
   const deadline = Date.now() + capMs;
   let last = seats.reduce((sum, s) => sum + s.version, 0);
   while (Date.now() < deadline) {
@@ -241,8 +252,7 @@ export async function runSoak(opts: Options, log = console.log): Promise<SoakRes
         violations.push(...checkAll(views, deckSize, highWaterMark));
         // A fresh deal legitimately refills every hand, so the ceiling is reset
         // by a deal rather than being the running maximum of a single manche.
-        if (total > highWaterMark) highWaterMark = total;
-        else highWaterMark = Math.max(total, highWaterMark);
+        highWaterMark = Math.max(total, highWaterMark);
       }
       if (violations.length > 0) break;
 
@@ -267,9 +277,10 @@ export async function runSoak(opts: Options, log = console.log): Promise<SoakRes
         continue;
       }
 
-      for (const seat of seats) seat.act(rng);
-      moves += 1;
-      if (moves % 25 === 0 && views[0]) {
+      let acted = false;
+      for (const seat of seats) acted = seat.act(rng) || acted;
+      if (acted) moves += 1;
+      if (acted && moves % 25 === 0 && views[0]) {
         log(`soak: move ${moves}, hands [${views[0].handCounts}]`);
       }
 

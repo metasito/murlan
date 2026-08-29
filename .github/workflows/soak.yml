@@ -57,13 +57,18 @@ jobs:
       - run: npm ci
 
       - name: Play
+        # Through `env`, never spliced into the script: `${{ }}` is substituted
+        # as literal text before bash parses the line, so a dispatch input
+        # holding shell syntax would run as shell syntax on the runner.
+        env:
+          MINUTES: ${{ inputs.minutes || '5' }}
+          SEEDS: ${{ inputs.seeds || '1 7 31' }}
         run: |
           set -o pipefail
-          minutes="${{ inputs.minutes || '5' }}"
           failed=0
-          for seed in ${{ inputs.seeds || '1 7 31' }}; do
+          for seed in $SEEDS; do
             echo "::group::seed $seed"
-            npm run soak --silent -- --seats 4 --minutes "$minutes" --seed "$seed" || failed=1
+            npm run soak --silent -- --seats 4 --minutes "$MINUTES" --seed "$seed" || failed=1
             echo "::endgroup::"
           done
           exit $failed

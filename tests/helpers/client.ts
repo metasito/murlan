@@ -85,7 +85,12 @@ export async function reconnectWith(server: TestServer, cookie: string): Promise
   });
   await new Promise<void>((resolve, reject) => {
     socket.once("connect", () => resolve());
-    socket.once("connect_error", (e) => reject(e));
+    socket.once("connect_error", (e) => {
+      // Nothing else holds a reference once this throws — the caller never
+      // gets the socket, so closing here is the only chance to release it.
+      socket.close();
+      reject(e);
+    });
   });
   return socket;
 }
