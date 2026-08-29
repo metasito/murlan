@@ -1159,6 +1159,15 @@ export function setupSocket(httpServer: HttpServer) {
           return { ok: false, code: "ROOM_NOT_FOUND" };
         }
 
+        // The code comes from the client, and the client is not what decides
+        // whether the sender is at that table. Without this, naming any waiting
+        // room's code would invite a friend into a stranger's room.
+        const seated = await storage.getRoomPlayers(room.id);
+        if (!seated.some((p) => p.userId === userId)) {
+          socket.emit("friend:error", { message: "You are not in that room", code: "NOT_IN_ROOM" });
+          return { ok: false, code: "NOT_IN_ROOM" };
+        }
+
         // Written before it is announced. The emit and the push are both ways
         // of saying "look now"; the row is what makes the invite exist, and it
         // is the only one of the three that survives the friend being away.

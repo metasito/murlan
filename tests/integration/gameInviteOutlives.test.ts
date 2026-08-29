@@ -160,6 +160,65 @@ describe("a game invite outlives the socket that would have carried it", {
   });
 
   /**
+   * `waiting` is not the same as joinable. `claimRoomSeat` refuses a full room
+   * with `full`, which is a different answer from `not_waiting` — so a room
+   * nobody has started can still have no seat left, and offering an invite to
+   * it sends the player at a door that will not open.
+   */
+  test("an invite to a room that has filled up is not offered", async () => {
+    const host = await player("full_host");
+    const friend = await player("full_friend");
+    await befriend(host, friend);
+
+    const made = waitFor<RoomState>(host.socket, "room:state");
+    host.socket.emit("room:create", { gameMode: "free_for_all", maxPlayers: 2 });
+    const room = await made;
+
+    host.socket.emit("friend:invite", { friendUserId: friend.user.id, roomCode: room.code });
+    await new Promise((r) => setTimeout(r, 400));
+    assert.equal((await invitesFor(friend.cookie)).length, 1, "one seat free, invite stands");
+
+    // Someone else takes the last seat. Nobody has pressed start, so the room
+    // is still `waiting`.
+    const filler = await player("full_filler");
+    const seated = waitFor<RoomState>(host.socket, "room:state");
+    filler.socket.emit("room:join", { code: room.code });
+    await seated;
+
+    assert.deepEqual(
+      await invitesFor(friend.cookie),
+      [],
+      "the room is full, so the invite leads to a door that will not open"
+    );
+  });
+
+  /**
+   * Server authority: the room code arrives from the client, and the client is
+   * not the thing that decides whether the sender is at that table. Without
+   * this, any account could invite any friend into any waiting room whose code
+   * it could name, including a stranger's.
+   */
+  test("a player who holds no seat in the room cannot invite into it", async () => {
+    const host = await player("outsider_host");
+    const outsider = await player("outsider_sender");
+    const friend = await player("outsider_friend");
+    await befriend(outsider, friend);
+
+    const made = waitFor<RoomState>(host.socket, "room:state");
+    host.socket.emit("room:create", { gameMode: "free_for_all", maxPlayers: 4 });
+    const room = await made;
+
+    // The outsider knows the code but has never sat down in it.
+    outsider.socket.emit("friend:invite", {
+      friendUserId: friend.user.id,
+      roomCode: room.code,
+    });
+    await new Promise((r) => setTimeout(r, 400));
+
+    assert.deepEqual(await invitesFor(friend.cookie), []);
+  });
+
+  /**
    * An invite to somebody who is not a friend is refused, and refusing it must
    * not write a row — the authorisation check is the only thing standing
    * between this table and an unauthenticated write primitive.

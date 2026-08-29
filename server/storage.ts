@@ -486,13 +486,18 @@ class DrizzleStorage {
   /**
    * The rooms this player has been asked to join and can still join.
    *
-   * The `waiting` filter is the expiry: a room that has started, filled or been
-   * abandoned cannot be entered, so its invites are not offered whatever rows
-   * survive. Deleting them is hygiene, not what this guarantee rests on.
+   * Both halves of "can still join" are checked, because `claimRoomSeat`
+   * refuses `full` and `not_waiting` separately: a room nobody has started can
+   * still have no seat left, and offering that invite sends the player at a
+   * door that will not open. Deleting rows is hygiene; this is the guarantee.
    */
   async getGameInvites(
     inviteeId: string
   ): Promise<{ id: string; roomCode: string; fromUsername: string; createdAt: Date }[]> {
+    const seatCount = db
+      .select({ count: sql<number>`count(*)::int` })
+      .from(roomPlayers)
+      .where(eq(roomPlayers.roomId, gameInvites.roomId));
     const rows = await db
       .select({
         id: gameInvites.id,
@@ -503,7 +508,13 @@ class DrizzleStorage {
       .from(gameInvites)
       .innerJoin(rooms, eq(gameInvites.roomId, rooms.id))
       .innerJoin(users, eq(gameInvites.inviterId, users.id))
-      .where(and(eq(gameInvites.inviteeId, inviteeId), eq(rooms.status, "waiting")))
+      .where(
+        and(
+          eq(gameInvites.inviteeId, inviteeId),
+          eq(rooms.status, "waiting"),
+          sql`(${seatCount}) < ${rooms.maxPlayers}`
+        )
+      )
       .orderBy(desc(gameInvites.createdAt));
     return rows;
   }
