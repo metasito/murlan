@@ -125,15 +125,26 @@ function foreignKeysByColumn(cfg: TableConfig): Map<string, ForeignKeyRef> {
  * already exists is by definition not that table's primary key, so dropping
  * the clause there is exact rather than approximate.
  */
+/**
+ * A serial type *is* its own default — Postgres attaches the sequence when it
+ * sees the type. Drizzle still reports `hasDefault` with nothing to render,
+ * which is otherwise indistinguishable from a `$defaultFn` that cannot become
+ * DDL.
+ */
+const SERIAL_TYPES = new Set(["smallserial", "serial", "bigserial"]);
+
 function columnDefinition(
   col: TableConfig["columns"][number],
   cfg: TableConfig,
   fkByColumn: Map<string, ForeignKeyRef>,
   includePrimaryKey: boolean
 ): string {
-  const parts = [quoteIdent(col.name), col.getSQLType()];
+  const sqlType = col.getSQLType();
+  const parts = [quoteIdent(col.name), sqlType];
   if (col.notNull) parts.push("NOT NULL");
-  const defaultClause = formatDefaultClause(col, cfg.name);
+  const defaultClause = SERIAL_TYPES.has(sqlType)
+    ? undefined
+    : formatDefaultClause(col, cfg.name);
   if (defaultClause) parts.push(defaultClause);
   if (col.primary && includePrimaryKey) parts.push("PRIMARY KEY");
   if (col.isUnique) parts.push("UNIQUE");

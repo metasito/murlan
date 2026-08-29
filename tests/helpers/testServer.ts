@@ -20,6 +20,13 @@ import { drainPool } from "../../server/drainPool.ts";
 process.env.MURLAN_PG_POOL_MAX ??= "4";
 
 /**
+ * The socket adapter's pool is a second one per app, on the same budget
+ * argument as above: one client parked on `LISTEN` plus room to publish is all
+ * a single-instance test ever needs.
+ */
+process.env.MURLAN_SOCKET_ADAPTER_POOL_MAX ??= "2";
+
+/**
  * `/api/auth/register` allows 100 per process in production, which is still
  * only about thirty-five tables — a suite reaches it and every later
  * registration comes back 429 with nothing tying it to the cap. Set here for
@@ -148,6 +155,11 @@ export async function startTestServer(
     server.headersTimeout = HEADERS_TIMEOUT_MS;
     await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
     const port = (server.address() as { port: number }).port;
+    // Before any test can call stop(): the adapter strands its Postgres client
+    // if it is closed mid-checkout, and a suite that boots and stops without
+    // connecting a socket is entirely inside that window.
+    const { socketAdapterReady } = await import("../../server/socketAdapter.ts");
+    await socketAdapterReady();
 
     return {
       url: `http://127.0.0.1:${port}`,
@@ -157,7 +169,13 @@ export async function startTestServer(
       httpServer: server,
       async stop() {
         try {
-          io.close();
+          // Held, not fired and forgotten: `close()` is async and awaits the
+          // adapter's own close, which is what releases the Postgres client
+          // parked on `LISTEN`. Ending that pool before this settles waits on
+          // a client that is still checked out, forever. It cannot be awaited
+          // *here* either — it closes the http server too, and that only
+          // finishes once the connections below are dropped.
+          const ioClosed = io.close();
           const closed = new Promise<void>((resolve) => server.close(() => resolve()));
           // `close()` waits out every open connection, and a response body
           // nobody read leaves one open but not idle — so not
@@ -178,6 +196,12 @@ export async function startTestServer(
           // through. Left open it both leaks a connection and keeps the
           // test process alive indefinitely.
           await appPool.end();
+          // The socket adapter holds a second pool whose `LISTEN` client is
+          // released by the close started above. Left open it keeps the test
+          // process alive exactly as the app's pool would.
+          await ioClosed;
+          const { socketAdapterPool } = await import("../../server/socketAdapter.ts");
+          await socketAdapterPool()?.end();
         } finally {
           // Always run, even if closing the server/pool above threw: a
           // failed shutdown must not also leak the schema or leave

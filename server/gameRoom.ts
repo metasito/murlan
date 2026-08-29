@@ -81,6 +81,19 @@ export const socketRoomMap = new Map<string, string>();
 // the disconnect and leave paths for *seated* players, and a spectator dropping
 // out must not run a single line of them.
 export const spectatorRoomMap = new Map<string, string>();
+/**
+ * The socket *this process* is serving for an account, and deliberately only
+ * that. Everything addressed to a person goes to `userRoom(userId)` through the
+ * adapter instead, which is what reaches the other instances.
+ *
+ * What is left needs a local socket object rather than an address: closing a
+ * replaced session while carrying its room association over, evicting a deleted
+ * account, and asking whether anyone at a finished table is still here before
+ * disposing of it. Each is answered with `io.sockets.sockets.get(...)`, which
+ * only ever knows about this process — so the map is exactly as wide as its
+ * remaining job. The cluster-wide half of the singleton rule is
+ * `evictRemoteSessions` in `server/socket.ts`.
+ */
 export const userSocketMap = new Map<string, string>();
 
 /**
