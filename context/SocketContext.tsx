@@ -174,6 +174,11 @@ export function SocketProvider({ children }: { children: ReactNode }) {
       retryAttemptRef.current = 0;
       socket.io.reconnection(false);
       socket.disconnect();
+      // The cached lists are one account's — friends, requests, invitations —
+      // and the query keys do not name whose. The deliberate logout in
+      // SettingsModal clears them; this path is a logout too, and the next
+      // account to sign in on this device would otherwise be served them.
+      qc.clear();
       void logout().finally(() => router.replace("/auth"));
     };
     setSocketAuthFailureHandler(onAuthFailure);
