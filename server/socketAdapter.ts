@@ -38,6 +38,20 @@ export function channelPrefix(databaseUrl: string | undefined): string {
   return schema ? `socket.io#${decodeURIComponent(schema)}` : "socket.io";
 }
 
+/**
+ * The `LIKE` pattern that matches this server's own `LISTEN`, as Postgres
+ * reports it in `pg_stat_activity`.
+ *
+ * Only the prefix is escaped. Escaping the assembled string would turn the
+ * trailing wildcard into a literal percent sign, and the pattern would then
+ * match nothing at all — which is invisible, because the caller's only
+ * response to never matching is to wait out its timeout.
+ */
+export function listenPattern(databaseUrl: string | undefined): string {
+  const prefix = channelPrefix(databaseUrl).replace(/[\\_%]/g, (c) => `\\${c}`);
+  return `LISTEN "${prefix}%`;
+}
+
 let adapterPool: Pool | null = null;
 
 /** The adapter's pool, once `createSocketAdapter()` has built one. */
@@ -57,14 +71,7 @@ export function socketAdapterPool(): Pool | null {
 export async function socketAdapterReady(timeoutMs = 5_000): Promise<void> {
   const pool = adapterPool;
   if (!pool) return;
-  // Postgres itself is the only witness. The pool cannot tell a checkout that
-  // has completed from one still in flight, and it is exactly the in-flight
-  // one that strands — so asking the pool would return the moment the hazard
-  // begins rather than the moment it ends.
-  const like = `LISTEN "${channelPrefix(process.env.DATABASE_URL)}%`.replace(
-    /[_%]/g,
-    (c) => `\\${c}`
-  );
+  const like = listenPattern(process.env.DATABASE_URL);
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
     try {
