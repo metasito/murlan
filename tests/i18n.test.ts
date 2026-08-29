@@ -524,10 +524,20 @@ describe("translate() produces the expected output per locale", () => {
     // player English — which is how `REPLAY_NOT_FOUND` was found.
     const emitted = new Set<string>();
     for (const { source } of serverSources()) {
-      for (const m of source.matchAll(/code: "([A-Z_]+)"/g)) emitted.add(m[1]);
+      // An intent's acknowledgement is machine-read: the client branches on
+      // whether a code is present, and never renders one. Only a code that
+      // travels with a `message:` reaches a player's eyes, so only those need
+      // a catalogue entry — a code carried by both shapes still matches on the
+      // emitted one.
+      const rendered = source.replace(/ok: false, code: "[A-Z_]+"/g, "");
+      for (const m of rendered.matchAll(/code: "([A-Z_]+)"/g)) emitted.add(m[1]);
       // seatClaimCode() and its siblings return the code directly.
-      for (const m of source.matchAll(/return "([A-Z][A-Z_]{3,})";/g)) emitted.add(m[1]);
+      for (const m of rendered.matchAll(/return "([A-Z][A-Z_]{3,})";/g)) emitted.add(m[1]);
     }
+    assert.ok(
+      emitted.has("EXCHANGE_PENDING"),
+      "the ack exclusion took a code that is also emitted to the player"
+    );
     assert.ok(
       emitted.size > 44,
       `expected to find the server's codes, got ${emitted.size} (46 when this floor was set)`

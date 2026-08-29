@@ -18,6 +18,7 @@ import {
 } from "../helpers/testServer.ts";
 import { connectAs, waitFor } from "../helpers/client.ts";
 import type { SanitizedState } from "../helpers/table.ts";
+import type { EventOutcome } from "../../server/socketSafety.ts";
 
 interface RoomState {
   code: string;
@@ -78,13 +79,14 @@ describe("an intent is acknowledged", { skip: hasDatabase() ? false : skipMessag
     a.socket.emit("room:start");
     const [sa, sb] = await Promise.all(deals);
 
-    const leader = sa.currentTurnIndex === sa.viewerSeatIndex ? { c: a, s: sa } : { c: b, s: sb };
+    const leads = sa.currentTurnIndex === sa.viewerSeatIndex;
+    const leader = leads ? { c: a, s: sa } : { c: b, s: sb };
     assert.equal(
       leader.s.currentTurnIndex,
       leader.s.viewerSeatIndex,
       "one of the two seats must hold the opening lead"
     );
-    return leader;
+    return { ...leader, waiting: leads ? b : a };
   }
 
   /** A host alone at a two-seat table, with a bot for company, mid-hand. */
@@ -172,12 +174,39 @@ describe("an intent is acknowledged", { skip: hasDatabase() ? false : skipMessag
   });
 
   /**
-   * A refusal is an answer. An intent the server rejects must still come back,
-   * or a client retrying on silence would retry a thing that will never work.
+   * A refusal is an answer, and it must say it refused. `ok: true` on an intent
+   * the server threw away is worse than the silence it replaced: the client
+   * stops retrying, shows nothing, and the player is told their move worked.
    */
   test("the server answers even when it refuses the intent", async () => {
     const { host } = await table("refuse");
-    const reply = await ackOf(host.socket, "game:play", { cardIds: ["definitely-not-a-card"] });
+    const reply = (await ackOf(host.socket, "game:play", {
+      cardIds: ["definitely-not-a-card"],
+    })) as EventOutcome | null;
     assert.notEqual(reply, null, "a rejected intent is still acknowledged");
+    assert.equal(reply?.ok, false, "and the answer says it was refused");
+    assert.equal(typeof reply?.code, "string", "carrying why, so the client does not retry it");
+  });
+
+  /**
+   * The sharpest case, because nothing else reports it. A socket that holds no
+   * room — a play made on stale UI while a reconnect is still attaching the
+   * socket to its table — falls through `if (!roomId) return`, which emits no
+   * `game:error` at all. If that answers `ok: true`, the move is discarded with
+   * the client believing it landed.
+   */
+  test("an intent the server silently drops is not answered ok", async () => {
+    const c = await player("noroom");
+    const reply = (await ackOf(c.socket, "game:play", { cardIds: ["x"] })) as EventOutcome | null;
+    assert.notEqual(reply, null, "it is still answered");
+    assert.equal(reply?.ok, false, "a play that reached no table did not happen");
+    assert.equal(reply?.code, "NOT_AT_A_TABLE");
+  });
+
+  test("a pass out of turn is refused rather than reported as done", async () => {
+    const { waiting } = await dealtPair("outofturn");
+    const reply = (await ackOf(waiting.socket, "game:pass", undefined)) as EventOutcome | null;
+    assert.equal(reply?.ok, false, "it is not this seat's turn");
+    assert.equal(reply?.code, "NOT_YOUR_TURN");
   });
 });

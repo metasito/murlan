@@ -112,11 +112,23 @@ export interface EventOutcome {
   code?: string;
 }
 
+/**
+ * A handler that returns nothing did the thing. One that turned the intent
+ * away returns why.
+ *
+ * Returning is what makes the refusal reachable: a handler that emitted
+ * `game:error` and returned, or that returned in silence because the socket
+ * held no room, is indistinguishable from success to the wrapper — and
+ * answering `ok: true` there is worse than the silence acknowledgement
+ * replaced, because the client stops retrying and tells the player it worked.
+ */
+type EventResult = void | EventOutcome;
+
 export function onEvent<S extends z.ZodTypeAny>(
   socket: Socket,
   event: string,
   schema: S,
-  handler: (payload: z.infer<S>) => void | Promise<void>,
+  handler: (payload: z.infer<S>) => EventResult | Promise<EventResult>,
   options: EventOptions = {}
 ): void {
   socket.on(event, (...args: unknown[]) => {
@@ -161,8 +173,7 @@ export function onEvent<S extends z.ZodTypeAny>(
           return;
         }
 
-        await handler(parsed.data);
-        answer({ ok: true });
+        answer((await handler(parsed.data)) ?? { ok: true });
       } catch (err) {
         logger.error(
           { err, event, userId: socket.data?.userId },

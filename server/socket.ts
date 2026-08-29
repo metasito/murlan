@@ -712,9 +712,9 @@ export function setupSocket(httpServer: HttpServer) {
       GamePlaySchema,
       async ({ cardIds }) => {
         const roomId = socketRoomMap.get(socket.id);
-        if (!roomId) return;
+        if (!roomId) return { ok: false, code: "NOT_AT_A_TABLE" };
         const game = activeGames.get(roomId);
-        if (!game || game.gameState.gameOver) return;
+        if (!game || game.gameState.gameOver) return { ok: false, code: "NO_LIVE_GAME" };
 
         const { gameState, playerMap } = game;
 
@@ -726,25 +726,25 @@ export function setupSocket(httpServer: HttpServer) {
             message: "You must complete the exchange first",
             code: "EXCHANGE_PENDING",
           });
-          return;
+          return { ok: false, code: "EXCHANGE_PENDING" };
         }
 
         const currentIdx = gameState.currentTurnIndex;
-        if (playerMap[currentIdx] !== userId) return;
+        if (playerMap[currentIdx] !== userId) return { ok: false, code: "NOT_YOUR_TURN" };
 
         const player = gameState.players[currentIdx];
-        if (!player) return;
+        if (!player) return { ok: false, code: "NO_LIVE_GAME" };
         const unique = Array.from(new Set(cardIds));
         const cards = player.hand.filter((c) => unique.includes(c.id));
         if (cards.length !== unique.length) {
           socket.emit("game:error", { message: "Invalid card", code: "INVALID_CARD" });
-          return;
+          return { ok: false, code: "INVALID_CARD" };
         }
 
         const combo = buildCombination(cards);
         if (!combo) {
           socket.emit("game:error", { message: "Invalid combination", code: "INVALID_COMBINATION" });
-          return;
+          return { ok: false, code: "INVALID_COMBINATION" };
         }
 
         const isNewRound = gameState.lastPlayedCombination === null;
@@ -761,13 +761,13 @@ export function setupSocket(httpServer: HttpServer) {
               code: "MUST_PLAY_START_CARD",
               params: { rank: sc.rank },
             });
-            return;
+            return { ok: false, code: "MUST_PLAY_START_CARD" };
           }
         }
 
         if (!canPlay(combo, isNewRound ? null : gameState.lastPlayedCombination)) {
           socket.emit("game:error", { message: "Invalid move", code: "INVALID_MOVE" });
-          return;
+          return { ok: false, code: "INVALID_MOVE" };
         }
 
         // Achievement bookkeeping — see recordPlayFlags; this is the
@@ -815,9 +815,9 @@ export function setupSocket(httpServer: HttpServer) {
       NoPayloadSchema,
       async () => {
         const roomId = socketRoomMap.get(socket.id);
-        if (!roomId) return;
+        if (!roomId) return { ok: false, code: "NOT_AT_A_TABLE" };
         const game = activeGames.get(roomId);
-        if (!game || game.gameState.gameOver) return;
+        if (!game || game.gameState.gameOver) return { ok: false, code: "NO_LIVE_GAME" };
 
         const { gameState, playerMap } = game;
         if (gameState.exchangePhase?.active) {
@@ -825,14 +825,14 @@ export function setupSocket(httpServer: HttpServer) {
             message: "You must complete the exchange first",
             code: "EXCHANGE_PENDING",
           });
-          return;
+          return { ok: false, code: "EXCHANGE_PENDING" };
         }
 
         const currentIdx = gameState.currentTurnIndex;
-        if (playerMap[currentIdx] !== userId) return;
+        if (playerMap[currentIdx] !== userId) return { ok: false, code: "NOT_YOUR_TURN" };
         if (gameState.lastPlayedCombination === null) {
           socket.emit("game:error", { message: "You cannot pass", code: "CANNOT_PASS" });
-          return;
+          return { ok: false, code: "CANNOT_PASS" };
         }
 
         const newState = processPass(gameState);
@@ -1107,18 +1107,18 @@ export function setupSocket(httpServer: HttpServer) {
       GameExchangeGiveCardSchema,
       ({ cardId }) => {
         const roomId = socketRoomMap.get(socket.id);
-        if (!roomId) return;
+        if (!roomId) return { ok: false, code: "NOT_AT_A_TABLE" };
         const game = activeGames.get(roomId);
-        if (!game?.gameState.exchangePhase?.active) return;
+        if (!game?.gameState.exchangePhase?.active) return { ok: false, code: "NO_EXCHANGE" };
 
         const seat = seatOfUser(game, userId);
         if (seat === null || seat !== game.gameState.exchangePhase.winnerIdx)
-          return;
+          return { ok: false, code: "NOT_YOUR_EXCHANGE" };
 
         const next = processExchangeChoice(game.gameState, cardId);
         if (next === game.gameState) {
           socket.emit("game:error", { message: "Invalid card", code: "INVALID_CARD" });
-          return;
+          return { ok: false, code: "INVALID_CARD" };
         }
         game.gameState = next;
 
