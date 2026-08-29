@@ -1747,6 +1747,12 @@ async function handleSeatRelease(
  * predecessor belongs to `evictReplacedSession`, which moves the room
  * association across before closing it. Cutting it here instead would strand
  * the seat.
+ *
+ * Not gated on there being more than one instance, though the adapter would
+ * answer that for free: it answers from the heartbeat's view of its peers, and
+ * a second instance is invisible for the first few seconds of its life —
+ * exactly when a player is most likely to be handed to it. One `pg_notify` per
+ * connection is far below the queries this handler already runs.
  */
 function evictRemoteSessions(
   io: SocketServer,

@@ -45,6 +45,29 @@ test("an unencoded search_path is read the same way", () => {
   );
 });
 
+test("a later -c clause is not read as part of the schema", () => {
+  // `options` may hold several `-c` clauses joined by encoded spaces. Reading
+  // to the next `&` folds all of them into the schema, so two instances on the
+  // *same* schema with different other options would compute different
+  // channels — and silently stop hearing each other, which is the exact defect
+  // this adapter exists to fix.
+  const a = channelPrefix(
+    "postgres://u:p@h/db?options=-c%20search_path%3Dmyschema%20-c%20statement_timeout%3D30000"
+  );
+  const b = channelPrefix(
+    "postgres://u:p@h/db?options=-c%20search_path%3Dmyschema%20-c%20statement_timeout%3D60000"
+  );
+  assert.equal(a, "socket.io#myschema");
+  assert.equal(a, b, "the same schema must give the same channel whatever else is set");
+});
+
+test("a parameter merely ending in search_path is not mistaken for one", () => {
+  assert.equal(
+    channelPrefix("postgres://u:p@h/db?my_search_path=elsewhere"),
+    "socket.io"
+  );
+});
+
 test("the readiness pattern keeps its wildcard and escapes the rest", () => {
   // Silent in both directions: a pattern that cannot match makes the readiness
   // check wait out its whole timeout and report nothing, and a schema name's

@@ -34,7 +34,13 @@ function poolMax(): number {
  * the adapter's own default.
  */
 export function channelPrefix(databaseUrl: string | undefined): string {
-  const schema = databaseUrl?.match(/search_path(?:%3D|=)([^&\s]+)/i)?.[1];
+  // `options` can carry several `-c` clauses separated by encoded spaces, so
+  // the value ends at the first `%20` as surely as at an `&`. Reading to the
+  // next `&` alone swallows every later clause into the "schema", and two
+  // instances on one schema whose other options differ would then compute
+  // different channels and quietly stop hearing each other.
+  const raw = databaseUrl?.match(/(?:^|[?&=\s]|%20)search_path(?:%3D|=)(.+)$/i)?.[1];
+  const schema = raw?.split(/&|%20|\s/i)[0];
   return schema ? `socket.io#${decodeURIComponent(schema)}` : "socket.io";
 }
 
