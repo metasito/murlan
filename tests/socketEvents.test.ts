@@ -214,6 +214,7 @@ const SOCKET_FAMILY = [
   "server/socket.ts",
   "server/socketRooms.ts",
   "server/socketGameplay.ts",
+  "server/socketPresence.ts",
 ];
 
 test("the events that exist are registered through the wrapper", () => {
