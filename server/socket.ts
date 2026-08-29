@@ -15,6 +15,12 @@ import { activeGames as activeGamesTable } from "../shared/schema.ts";
 import { consumeSocketTicket } from "./ticket.ts";
 import { isAllowedOrigin } from "./cors.ts";
 import { createSocketAdapter } from "./socketAdapter.ts";
+import { registerRoomHandlers } from "./socketRooms.ts";
+import {
+  armLobbyGrace,
+  handleSeatRelease,
+  rejoinSocketToTable,
+} from "./socketTable.ts";
 import { allowSocketAction, onEvent } from "./socketSafety.ts";
 import {
   activeGames,
@@ -25,52 +31,28 @@ import {
   userSocketMap,
 } from "./gameRoom.ts";
 import type { OnlineGameState } from "./gameRoom.ts";
-import {
-  disconnectTimers,
-  DISCONNECT_GRACE_MS,
-  LOBBY_GRACE_MS,
-  lobbyGraceTimers,
-  lobbyGraceKey,
-  clearLobbyGrace,
-  usersInLobbyGrace,
-  clearRoomTimers,
-  clearAllTimersForUser,
-} from "./gameTimers.ts";
+import { disconnectTimers, DISCONNECT_GRACE_MS } from "./gameTimers.ts";
 import {
   broadcastGameState,
   disposeGame,
   gameOverWriters,
   persistGameState,
   safeTimer,
-  sendGameStateTo,
   startSweeper,
 } from "./gamePersistence.ts";
 import {
   broadcastRematchIntents,
   handleGameOver,
-  scoresByName,
   tableWantsRematch,
 } from "./gameOver.ts";
+import { armTurn, recordPlayFlags, vacateSeat } from "./gameTurn.ts";
 import {
-  armTurn,
-  armTurnIfIdle,
-  recordPlayFlags,
-  vacateSeat,
-} from "./gameTurn.ts";
-import {
-  buildSeatRoster,
   teamKeyMap,
   restoredMatchOver,
   unpackPersistedState,
 } from "./onlineGameLogic.ts";
 import {
   NoPayloadSchema,
-  RoomCreateSchema,
-  RoomJoinSchema,
-  RoomRejoinSchema,
-  RoomSpectateSchema,
-  RoomQuickmatchSchema,
-  RoomStartSchema,
   GamePlaySchema,
   GameRejoinSchema,
   GameReactionSchema,
@@ -82,17 +64,14 @@ import {
   initializeGame,
   initializeRematch,
   nextDealFirstSeat,
-  teamForSeat,
-  TEAMS_PLAYER_COUNT,
   processPlay,
   processPass,
   processExchangeChoice,
   buildCombination,
   canPlay,
-  targetsFor,
 } from "../lib/gameEngine.ts";
 import type { GameState } from "../lib/gameEngine.ts";
-import { appendReplayMove, startReplayLog } from "./replayShape.ts";
+import { appendReplayMove } from "./replayShape.ts";
 import { dealManche } from "./dealManche.ts";
 
 /**
@@ -120,16 +99,6 @@ const HANDSHAKE_WINDOW_MS = 60_000;
 
 let _io: SocketServer | null = null;
 
-let shuttingDown = false;
-
-/**
- * Called before `io.close()`. Every socket is about to be disconnected, and a
- * lobby seat held for a grace period the next process will never honour is a
- * room nobody can join and nothing will clean up.
- */
-export function beginShutdown() {
-  shuttingDown = true;
-}
 
 export function emitToUser(userId: string, event: string, data: unknown) {
   if (!_io) return;
@@ -343,425 +312,7 @@ export function setupSocket(httpServer: HttpServer) {
     // game:rejoin there — beats an `await` placed ahead of them. A packet with
     // no listener is dropped silently. The work that needs the database runs
     // after instead.
-    // ── Room events ──────────────────────────────────────────────────────────
-
-    onEvent(
-      socket,
-      "room:create",
-      RoomCreateSchema,
-      async ({ gameMode, maxPlayers }) => {
-        if (gameMode === "teams" && maxPlayers !== TEAMS_PLAYER_COUNT) {
-          socket.emit("room:error", {
-            message: "Teams mode needs exactly 4 players",
-            code: "TEAMS_REQUIRE_FOUR",
-          });
-          return;
-        }
-        const room = await storage.createRoom(userId, gameMode, maxPlayers, "private");
-        await storage.addRoomPlayer(room.id, userId, 0);
-
-        socket.join(room.id);
-        socketRoomMap.set(socket.id, room.id);
-
-        const players = await storage.getRoomPlayers(room.id);
-        socket.emit("room:state", roomStatePayload(room, players));
-        logger.info({ roomId: room.id, code: room.code, userId }, "Room created");
-      },
-      { limit: 5, windowMs: 60_000 }
-    );
-
-    // ── Spectating ────────────────────────────────────────────────────────
-    //
-    // A spectator is a viewer with no seat, so sanitizeStateForPlayer already
-    // blanks every hand for them and every game handler resolves the actor by
-    // seat and returns. There is no spectator-specific path to get wrong.
-    onEvent(
-      socket,
-      "room:spectate",
-      RoomSpectateSchema,
-      async ({ code }) => {
-        const room = await storage.getRoomByCode(code.toUpperCase());
-        if (!room) {
-          socket.emit("room:error", { message: "Room not found", code: "ROOM_NOT_FOUND" });
-          return;
-        }
-        const game = activeGames.get(room.id);
-        if (!game || game.gameState.gameOver) {
-          socket.emit("room:error", { message: "Game not found", code: "GAME_NOT_FOUND" });
-          return;
-        }
-        // A seated player watching their own table would be handed the
-        // seatless view and lose sight of their own hand.
-        if (seatOfUser(game, userId) !== null) {
-          socket.emit("room:error", { message: "You are already at the table", code: "ALREADY_IN_ROOM" });
-          return;
-        }
-
-        const previous = spectatorRoomMap.get(socket.id);
-        if (previous && previous !== room.id) {
-          activeGames.get(previous)?.spectators.delete(userId);
-          socket.leave(previous);
-        }
-        game.spectators.add(userId);
-        spectatorRoomMap.set(socket.id, room.id);
-        socket.join(room.id);
-        sendGameStateTo(io, userId, game);
-        logger.info({ roomId: room.id, userId }, "Spectator joined");
-      },
-      { limit: 10, windowMs: 60_000 }
-    );
-
-    // Through onEvent like every other inbound event, not a bare socket.on.
-    // It carries no payload, so validation is moot, but the rate limit and the
-    // per-event error containment are not — and an event registered outside
-    // the wrapper is exactly the one nobody remembers to check.
-    onEvent(
-      socket,
-      "room:unspectate",
-      NoPayloadSchema,
-      () => {
-        const roomId = spectatorRoomMap.get(socket.id);
-        if (!roomId) return;
-        activeGames.get(roomId)?.spectators.delete(userId);
-        spectatorRoomMap.delete(socket.id);
-        socket.leave(roomId);
-      },
-      // Matches room:spectate: leaving cannot be cheaper to spam than joining.
-      { limit: 10, windowMs: 60_000 }
-    );
-
-    onEvent(
-      socket,
-      "room:join",
-      RoomJoinSchema,
-      async ({ code }) => {
-        const room = await storage.getRoomByCode(code.toUpperCase());
-        if (!room) {
-          socket.emit("room:error", { message: "Room not found", code: "ROOM_NOT_FOUND" });
-          return;
-        }
-        if (room.status !== "waiting") {
-          socket.emit("room:error", { message: "Game already started", code: "GAME_ALREADY_STARTED" });
-          return;
-        }
-
-        const claim = await storage.claimRoomSeat(room.id, userId);
-        if (!claim.ok) {
-          socket.emit("room:error", {
-            message: seatClaimMessage(claim.reason),
-            code: seatClaimCode(claim.reason),
-          });
-          return;
-        }
-
-        socket.join(room.id);
-        socketRoomMap.set(socket.id, room.id);
-
-        const updatedPlayers = await storage.getRoomPlayers(room.id);
-        trackEvent("room.joined", userId, {
-          playerCount: updatedPlayers.length,
-          gameMode: room.gameMode,
-        });
-        io.to(room.id).emit("room:state", roomStatePayload(room, updatedPlayers));
-      },
-      { limit: 10, windowMs: 60_000 }
-    );
-
-    /**
-     * Coming back to a waiting lobby on a new socket. The seat row is the whole
-     * proof of membership: it outlives a disconnect for LOBBY_GRACE_MS, so a
-     * caller still holding one dropped and returned, and anyone else holding
-     * the code is arriving, which is `room:join`.
-     *
-     * Without this the returning socket has no socketRoomMap entry, so every
-     * later room event resolves to no room and returns silently.
-     */
-    onEvent(
-      socket,
-      "room:rejoin",
-      RoomRejoinSchema,
-      async ({ code }) => {
-        const room = await storage.getRoomByCode(code.toUpperCase());
-        if (!room) {
-          socket.emit("room:error", { message: "Room not found", code: "ROOM_NOT_FOUND" });
-          return;
-        }
-
-        const seated = await storage.getRoomPlayers(room.id);
-        if (!seated.some((p) => p.userId === userId)) {
-          socket.emit("room:error", {
-            message: "You are not in this room",
-            code: "NOT_IN_ROOM",
-          });
-          return;
-        }
-
-        const claim = await storage.claimRoomSeat(room.id, userId);
-        if (!claim.ok && claim.reason !== "already_joined") {
-          socket.emit("room:error", {
-            message: seatClaimMessage(claim.reason),
-            code: seatClaimCode(claim.reason),
-          });
-          return;
-        }
-
-        socket.join(room.id);
-        socketRoomMap.set(socket.id, room.id);
-        clearLobbyGrace(room.id, userId);
-
-        const players = await storage.getRoomPlayers(room.id);
-        io.to(room.id).emit("room:state", roomStatePayload(room, players));
-      },
-      { limit: 20, windowMs: 60_000 }
-    );
-
-    onEvent(
-      socket,
-      "room:leave",
-      NoPayloadSchema,
-      async () => {
-        const leavingRoomId = socketRoomMap.get(socket.id);
-        if (!leavingRoomId) return;
-        socketRoomMap.delete(socket.id);
-
-        await handleSeatRelease(
-          io,
-          leavingRoomId,
-          userId,
-          socket.data?.username ?? username,
-          { socket, source: "leave" }
-        );
-      },
-      { limit: 20, windowMs: 60_000 }
-    );
-
-    onEvent(
-      socket,
-      "room:quickmatch",
-      RoomQuickmatchSchema,
-      async ({ maxPlayers, gameMode }) => {
-        if (gameMode === "teams" && maxPlayers !== TEAMS_PLAYER_COUNT) {
-          socket.emit("room:error", {
-            message: "Teams mode needs exactly 4 players",
-            code: "TEAMS_REQUIRE_FOUR",
-          });
-          return;
-        }
-        const waiting = await storage.findWaitingPublicRooms(userId);
-
-        let joinedRoomId: string | null = null;
-        for (const candidate of waiting) {
-          if (candidate.containsUser) continue;
-          // Nobody in it means nobody is coming: the row outlived the write
-          // that should have closed it, and seating someone alone in it would
-          // strand them in a lobby with a host who already left.
-          if (candidate.playerCount === 0) continue;
-          if (
-            candidate.room.maxPlayers !== maxPlayers ||
-            candidate.room.gameMode !== gameMode ||
-            candidate.playerCount >= candidate.room.maxPlayers
-          )
-            continue;
-
-          const claim = await storage.claimRoomSeat(candidate.room.id, userId);
-          if (!claim.ok) continue;
-
-          const roomId = candidate.room.id;
-          socket.join(roomId);
-          socketRoomMap.set(socket.id, roomId);
-
-          const updatedPlayers = await storage.getRoomPlayers(roomId);
-          io.to(roomId).emit(
-            "room:state",
-            roomStatePayload(candidate.room, updatedPlayers)
-          );
-          joinedRoomId = roomId;
-          break;
-        }
-
-        if (!joinedRoomId) {
-          const room = await storage.createRoom(userId, gameMode, maxPlayers, "public");
-          await storage.addRoomPlayer(room.id, userId, 0);
-          socket.join(room.id);
-          socketRoomMap.set(socket.id, room.id);
-
-          const players = await storage.getRoomPlayers(room.id);
-          socket.emit("room:state", roomStatePayload(room, players));
-        }
-      },
-      { limit: 10, windowMs: 60_000 }
-    );
-
-    onEvent(
-      socket,
-      "room:start",
-      RoomStartSchema,
-      async ({ fillWithBots, botPersonality, matchLength }) => {
-        const roomId = socketRoomMap.get(socket.id);
-        if (!roomId) return;
-        const room = await storage.getRoomById(roomId);
-        if (!room || room.hostUserId !== userId) return;
-
-        // A live in-memory game is the authority on whether this room may
-        // deal: `rooms.status` reads "finished" between the manches of a
-        // running match as well as after the last one, and it is written a
-        // moment *after* game:over reaches the clients, so it is stale exactly
-        // when a between-hands start arrives.
-        const previous = activeGames.get(roomId);
-
-        if (previous) {
-          if (!previous.matchOver) {
-            // The next manche of a running match is game:rematch_vote's job.
-            // Dealing it here would deal without an exchange phase, and would
-            // let the payload's matchLength rewrite the format of a match
-            // that is already being scored.
-            socket.emit("room:error", {
-              message: "A match is already in progress",
-              code: "MATCH_IN_PROGRESS",
-            });
-            return;
-          }
-
-          // A finished match releases every player's commitment, so the next
-          // one is a new agreement: it needs the whole table ready, not the
-          // host alone. Same ready set as game:rematch_vote, and the same
-          // abstention — a seat with no playerMap entry (a bot, or a human
-          // who left) has nobody who can answer and is not counted.
-          if (seatOfUser(previous, userId) !== null) {
-            previous.rematchVotes.add(userId);
-          }
-          const seated = Object.values(previous.playerMap);
-          io.to(roomId).emit("game:vote_state", {
-            votes: Array.from(previous.rematchVotes),
-            total: seated.length,
-          });
-          if (!seated.every((uid) => previous.rematchVotes.has(uid))) {
-            socket.emit("room:error", {
-              message: "Every player must be ready before a new match starts",
-              code: "NEW_MATCH_NOT_READY",
-            });
-            return;
-          }
-        } else if (room.status !== "waiting" && room.status !== "finished") {
-          // No game in memory: the room row is all there is, and a room
-          // mid-game there is one a restart stranded, not one to deal into.
-          return;
-        }
-
-        // A seat inside its grace is held for someone who is not here. Dealing
-        // them a hand gives the table a player who cannot play it and whom no
-        // disconnect can ever hand to a bot, because their disconnect already
-        // happened. Release the seat instead; they can rejoin the next lobby.
-        const seated = await storage.getRoomPlayers(room.id);
-        const absent = new Set(usersInLobbyGrace(roomId));
-        for (const p of seated.filter((p) => absent.has(p.userId))) {
-          clearLobbyGrace(roomId, p.userId);
-          await handleSeatRelease(io, roomId, p.userId, p.user.username, {
-            source: "disconnect",
-          });
-        }
-        const players = seated.filter((p) => !absent.has(p.userId));
-        // With bots filling every empty seat, one seated human is enough —
-        // the min-2 guard only matters for an all-human table.
-        if (!fillWithBots && players.length < 2) {
-          socket.emit("room:error", { message: "At least 2 players are required", code: "MIN_PLAYERS_REQUIRED" });
-          return;
-        }
-        if (players.length < 1) return;
-
-        clearRoomTimers(roomId);
-
-        const humans = players.map((p) => ({
-          seatIndex: p.seatIndex,
-          userId: p.userId,
-          username: p.user.username,
-        }));
-        // Engine seat index is the position in this roster, sorted by seat, and
-        // playerMap is keyed the same way — so a gap in the DB seat numbering
-        // cannot shift a hand onto the wrong player. Bot seats are left out of
-        // playerMap, which armTurn already reads as "drive this seat with the AI".
-        const roster = buildSeatRoster(humans, room.maxPlayers, { fillWithBots, botPersonality });
-        if (room.gameMode === "teams" && roster.length !== TEAMS_PLAYER_COUNT) {
-          socket.emit("room:error", {
-            message: "Teams mode needs exactly 4 players",
-            code: "TEAMS_REQUIRE_FOUR",
-          });
-          return;
-        }
-
-        const playerSetup = roster.map((r, idx) => ({
-          name: r.username,
-          type: (r.isBot ? "ai" : "human") as "human" | "ai",
-          personality: r.isBot ? r.personality : undefined,
-          team: teamForSeat(idx, roster.length, room.gameMode),
-        }));
-
-        const gameState = initializeGame(playerSetup, room.gameMode);
-        const playerMap: Record<number, string> = {};
-        roster.forEach((r, idx) => {
-          if (!r.isBot) playerMap[idx] = r.userId;
-        });
-
-        const [firstTarget] = targetsFor(roster.length);
-        if (firstTarget === undefined) {
-          throw new Error(`targetsFor(${roster.length}) returned no targets`);
-        }
-
-        const newGame: OnlineGameState = {
-          gameState,
-          playerMap,
-          roomId,
-          joinCode: room.code,
-          rematchVotes: new Set(),
-          rematchIntents: new Map(),
-          cumulativeScores: previous?.cumulativeScores ?? {},
-          gameMode: room.gameMode,
-          maxPlayers: room.maxPlayers,
-          matchTarget: previous?.matchTarget ?? firstTarget,
-          matchLength: matchLength ?? previous?.matchLength ?? "match",
-          matchOver: previous?.matchOver ?? false,
-          handFlags: {},
-          abandonedSeats: new Map<number, string>(),
-          spectators: new Set<string>(),
-          moveLog: startReplayLog(),
-          dealFirstSeat: 0,
-        };
-        // Before the game exists, not after: `claimRoomSeat` re-reads the
-        // status under its own row lock, so a room that is no longer `waiting`
-        // cannot take a straggler. Leaving it to dealManche would open a
-        // window the width of one round-trip in which quick-match can seat
-        // someone into a hand whose roster is already frozen.
-        await storage.updateRoomStatus(roomId, "in_progress");
-        // Nobody can join this room now, so nobody should be looking at an
-        // invitation to it. The read already filters on `waiting`, so this is
-        // hygiene rather than the guarantee — hence logged, never thrown.
-        void storage
-          .clearGameInvites(roomId)
-          .catch((err: unknown) =>
-            logger.warn({ err, roomId }, "Failed to clear invites for a started room")
-          );
-        activeGames.set(roomId, newGame);
-
-        // The room hears that it started, before anyone is sent their cards.
-        // `game:state` is addressed to one player and carries both facts at
-        // once — here is your hand, and the lobby is over — so a player who
-        // misses theirs is left on the room screen with no way back: the room
-        // id is only remembered once a `room:state` says `in_progress`, and
-        // without it `game:rejoin` has nothing to ask about. This is a room
-        // broadcast, so it does not depend on resolving any one player.
-        io.to(roomId).emit(
-          "room:state",
-          roomStatePayload({ ...room, status: "in_progress" }, players)
-        );
-
-        await dealManche(io, newGame, gameState);
-        logger.info(
-          { roomId, playerCount: players.length, botCount: roster.length - players.length },
-          "Game started"
-        );
-      },
-      { limit: 10, windowMs: 60_000 }
-    );
+    registerRoomHandlers({ io, socket, userId, username });
 
     // ── Game events ──────────────────────────────────────────────────────────
 
@@ -1443,299 +994,19 @@ export function setupSocket(httpServer: HttpServer) {
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
-function roomStatePayload(
-  room: {
-    id: string;
-    code: string;
-    hostUserId: string | null;
-    status: string;
-    gameMode: string;
-    maxPlayers: number;
-    visibility: string;
-  },
-  players: { seatIndex: number; userId: string; user: { username: string } }[]
-) {
-  return {
-    roomId: room.id,
-    code: room.code,
-    hostUserId: room.hostUserId,
-    status: room.status,
-    gameMode: room.gameMode,
-    maxPlayers: room.maxPlayers,
-    visibility: room.visibility,
-    players: players.map((p) => ({
-      seatIndex: p.seatIndex,
-      userId: p.userId,
-      username: p.user.username,
-    })),
-  };
-}
 
-/** The seats of a running table in the shape `room_players` reads back. */
-function seatedHumansOf(game: OnlineGameState) {
-  return game.gameState.players.flatMap((player, seatIndex) => {
-    const seatUserId = game.playerMap[seatIndex];
-    return seatUserId
-      ? [{ seatIndex, userId: seatUserId, user: { username: player.name } }]
-      : [];
-  });
-}
 
-/**
- * The room as the live game knows it, for when the `rooms` row cannot be read.
- * `joinCode` rides in the persisted envelope so this survives a restart.
- */
-function roomOf(game: OnlineGameState) {
-  return {
-    id: game.roomId,
-    code: game.joinCode,
-    hostUserId: game.playerMap[0] ?? null,
-    status: "in_progress",
-    gameMode: game.gameMode,
-    maxPlayers: game.maxPlayers,
-    // Reached only when the rooms row could not be read, and a running game
-    // takes nobody either way. Private is the answer that cannot mislead.
-    visibility: "private",
-  };
-}
 
-/**
- * Re-sends `room:state` to a single rejoining socket. The client's only route
- * back into the game screen is `room` -> `/(online)/room` -> `gameState` ->
- * `/(online)/game`, so replying with `game:state` alone strands the player on
- * the lobby holding a live hand. A failed roster read must cost the roster and
- * not the reply.
- */
-async function emitRoomStateTo(socket: Socket, roomId: string, game: OnlineGameState) {
-  const room = await storage.getRoomById(roomId).catch((err: unknown) => {
-    logger.warn({ err, roomId }, "getRoomById failed; answering from the live game");
-    return undefined;
-  });
-  const players = await storage.getRoomPlayers(roomId).catch((err: unknown) => {
-    logger.warn({ err, roomId }, "getRoomPlayers failed; answering from the live roster");
-    return [];
-  });
-  // A running game always seats at least one human, so an empty roster is the
-  // rows being gone rather than the table being empty.
-  socket.emit(
-    "room:state",
-    roomStatePayload(room ?? roomOf(game), players.length > 0 ? players : seatedHumansOf(game))
-  );
-}
 
-/**
- * Puts a socket back at a table it holds a seat at.
- *
- * The one emitter of `game:player_reconnected`, so its payload cannot differ
- * between the two paths that reach it. The caller owns the seat check and the
- * `room_players` row — the grace-timer path still holds one, the rejoin path
- * may not.
- */
-async function rejoinSocketToTable(
-  io: SocketServer,
-  socket: Socket,
-  userId: string,
-  username: string,
-  roomId: string,
-  game: OnlineGameState
-) {
-  socket.join(roomId);
-  socketRoomMap.set(socket.id, roomId);
-
-  // Caught, not propagated: the handler's blanket catch would turn a failed
-  // roster refresh into a SERVER_ERROR that forfeits a live game.
-  await emitRoomStateTo(socket, roomId, game).catch((err: unknown) =>
-    logger.warn({ err, roomId, userId }, "emitRoomStateTo failed")
-  );
-  sendGameStateTo(io, userId, game);
-  // The client reads this as the framing of a manche that has just begun and
-  // zeroes the match verdict and the rematch tally along with it, so it is
-  // only right while one is running — at the results screen `game:over` and
-  // `game:rematch_intents` own those.
-  if (!game.gameState.gameOver) {
-    socket.emit("game:match_state", {
-      target: game.matchTarget,
-      length: game.matchLength,
-      scores: scoresByName(game),
-    });
-  }
-  io.to(roomId).emit("game:player_reconnected", {
-    userId,
-    username,
-    code: "PLAYER_RECONNECTED",
-    message: `${username} is back.`,
-    params: { username },
-  });
-  armTurnIfIdle(io, roomId);
-}
-
-function seatClaimMessage(
-  reason: "no_room" | "not_waiting" | "full" | "already_joined"
-): string {
-  switch (reason) {
-    case "no_room":
-      return "Room not found";
-    case "not_waiting":
-      return "Game already started";
-    case "full":
-      return "Room full";
-    case "already_joined":
-      return "You are already in the room";
-  }
-}
 
 // Stable code counterpart to seatClaimMessage's English fallback text, so the
 // client can localise the same rejection reason (see the `code` field above).
-function seatClaimCode(
-  reason: "no_room" | "not_waiting" | "full" | "already_joined"
-): string {
-  switch (reason) {
-    case "no_room":
-      return "ROOM_NOT_FOUND";
-    case "not_waiting":
-      return "GAME_ALREADY_STARTED";
-    case "full":
-      return "ROOM_FULL";
-    case "already_joined":
-      return "ALREADY_IN_ROOM";
-  }
-}
+
+
 
 /**
- * Holds a lobby seat open for LOBBY_GRACE_MS, then releases it.
- *
- * Nothing is broadcast when the timer is armed. A blip the player recovers
- * from should be invisible to the rest of the room, and the seat row staying
- * put is what makes `room:rejoin` work without a memory of who dropped.
- */
-function armLobbyGrace(
-  io: SocketServer,
-  roomId: string,
-  userId: string,
-  username: string
-): Promise<void> | void {
-  // A shutdown is not a blip. Holding the seat would leave a `waiting` lobby
-  // full of players who are already gone, and the next process has no memory
-  // of the timer that was going to clear it.
-  if (shuttingDown) {
-    return handleSeatRelease(io, roomId, userId, username, { source: "disconnect" });
-  }
-  clearLobbyGrace(roomId, userId);
-  const timer = setTimeout(() => {
-    void (async () => {
-      try {
-        lobbyGraceTimers.delete(lobbyGraceKey(roomId, userId));
-        // Back in *this* room, not merely back online: a player who reconnects
-        // straight into a different lobby is no longer holding this seat, and
-        // asking only whether they have a socket would leave it held.
-        const liveSocket = userSocketMap.get(userId);
-        if (liveSocket && socketRoomMap.get(liveSocket) === roomId) return;
-        await handleSeatRelease(io, roomId, userId, username, { source: "disconnect" });
-        logger.info({ userId, roomId }, "Lobby grace expired — seat released");
-      } catch (err) {
-        logger.error({ err, userId, roomId }, "Lobby grace handler failed");
-      }
-    })();
-  }, LOBBY_GRACE_MS);
-  // A seat waiting to be given back must not be what keeps the process alive:
-  // shutdown disconnects every socket, which arms one of these per lobby, and
-  // the row outlives the process either way.
-  (timer as unknown as { unref?: () => void }).unref?.();
-  lobbyGraceTimers.set(lobbyGraceKey(roomId, userId), timer);
-}
-
-/**
- * Releases a seat: the room_players row, the user's timers, and the seat in a
- * live game. A `room:leave` and a lost connection differ only in what the
- * caller can hand over, so the seat-side work lives in one place.
- *
- * Runs on the disconnect path inside a `void (async () => …)`, so every storage
- * call is `.catch`-guarded: an unguarded throw there strands the room.
- */
-async function handleSeatRelease(
-  io: SocketServer,
-  roomId: string,
-  userId: string,
-  username: string,
-  opts: {
-    socket?: { id: string; leave: (r: string) => void };
-    source: "leave" | "disconnect";
-  }
-) {
-  clearAllTimersForUser(userId, roomId);
-
-  await storage
-    .removeRoomPlayer(roomId, userId)
-    .catch((err) =>
-      logger.warn(
-        { err, roomId, userId, source: opts.source },
-        "Failed to delete the room_players row after a seat was released — the seat stays counted as taken"
-      )
-    );
-  opts.socket?.leave(roomId);
-
-  const room = await storage.getRoomById(roomId).catch((err) => {
-    logger.warn({ err, roomId, userId }, "Failed to read the rooms row while releasing a seat");
-    return null;
-  });
-  if (!room) return;
-
-  if (room.status === "waiting") {
-    const remaining = await storage.getRoomPlayers(roomId).catch((err) => {
-      logger.warn({ err, roomId }, "Failed to read the remaining lobby players");
-      return [];
-    });
-    if (remaining.length === 0) {
-      await storage
-        .updateRoomStatus(roomId, "finished")
-        .catch((err) =>
-          logger.warn(
-            { err, roomId },
-            "Failed to set rooms.status = finished after the last player left the lobby"
-          )
-        );
-      return;
-    }
-    let newHostId = room.hostUserId;
-    if (room.hostUserId === userId) {
-      const [nextHost] = remaining.sort((a, b) => a.seatIndex - b.seatIndex);
-      if (!nextHost) throw new Error(`releaseSeat: room ${roomId} has no remaining players to host`);
-      newHostId = nextHost.userId;
-      await storage
-        .updateRoomHost(roomId, newHostId)
-        .catch((err) =>
-          logger.warn(
-            { err, roomId, userId, newHostId },
-            "Failed to update rooms.host_user_id after the host left the lobby"
-          )
-        );
-    }
-    io.to(roomId).emit(
-      "room:state",
-      roomStatePayload({ ...room, hostUserId: newHostId }, remaining)
-    );
-  } else if (activeGames.has(roomId)) {
-    // `rooms.status` reads "finished" between manches too, so only the
-    // in-memory game knows whether the seat is still held. Removing the DB row
-    // alone leaves it live — auto-playing the leaver's hand, or blocking the
-    // rematch gate.
-    await vacateSeat(io, roomId, userId, username);
-  }
-}
-
-/**
- * Enforces one live socket per account: the newest connection keeps it.
- *
- * `userSocketMap` must already name the new socket — the replaced socket's
- * disconnect handler reads it and then declines to act, so the room
- * association has to move with the account or nothing releases the seat.
- *
- * The client stops reconnecting on this code (`context/SocketContext.tsx`):
- * socket.io retries forever, so two tabs would evict each other indefinitely.
- */
-/**
- * The same one-socket-per-account rule, for the sockets this process cannot
- * see.
+ * The same one-socket-per-account rule as `evictReplacedSession` below, for
+ * the sockets this process cannot see.
  *
  * `userSocketMap` and `io.sockets.sockets` are both process-local, so before
  * the adapter a second connection on another instance simply went unnoticed
@@ -1765,6 +1036,16 @@ function evictRemoteSessions(
   targets.disconnectSockets(true);
 }
 
+/**
+ * Enforces one live socket per account: the newest connection keeps it.
+ *
+ * `userSocketMap` must already name the new socket — the replaced socket's
+ * disconnect handler reads it and then declines to act, so the room
+ * association has to move with the account or nothing releases the seat.
+ *
+ * The client stops reconnecting on this code (`context/SocketContext.tsx`):
+ * socket.io retries forever, so two tabs would evict each other indefinitely.
+ */
 function evictReplacedSession(
   io: SocketServer,
   userId: string,

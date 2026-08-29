@@ -18,7 +18,15 @@ import { fileURLToPath } from "node:url";
 import path from "node:path";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-const SOCKET_SOURCE = path.join(repoRoot, "server", "socket.ts");
+/**
+ * The socket family, scanned as one. A bookkeeping write that swallows its
+ * error is no less silent for having been moved into a sibling file, so the
+ * scan follows the handlers rather than the filename.
+ */
+const SOCKET_SOURCES = ["socket.ts", "socketRooms.ts", "socketTable.ts"].map((f) =>
+  path.join(repoRoot, "server", f)
+);
+const readSocketFamily = () => SOCKET_SOURCES.map((p) => readFileSync(p, "utf8")).join("\n");
 
 function stripComments(s: string): string {
   return s.replace(/\/\*[\s\S]*?\*\//g, "").replace(/\/\/[^\n]*/g, "");
@@ -93,16 +101,19 @@ function swallowingCatches(src: string): number[] {
   return found;
 }
 
-describe("server/socket.ts logs the bookkeeping writes that fail", () => {
+describe("the socket family logs the bookkeeping writes that fail", () => {
   test("no inline promise catch discards its error", () => {
-    const src = readFileSync(SOCKET_SOURCE, "utf8");
-    const offenders = swallowingCatches(src);
+    const offenders = SOCKET_SOURCES.flatMap((p) =>
+      swallowingCatches(readFileSync(p, "utf8")).map(
+        (line) => `${path.relative(repoRoot, p).replaceAll("\\", "/")}:${line}`
+      )
+    );
     assert.deepEqual(
       offenders,
       [],
       "a catch handler that discards the error makes a failed room, seat or host write " +
         "invisible until a player reports the symptom. Log it instead:\n" +
-        offenders.map((line) => `  server/socket.ts:${line}`).join("\n")
+        offenders.map((o) => `  ${o}`).join("\n")
     );
   });
 
@@ -147,9 +158,11 @@ describe("server/socket.ts logs the bookkeeping writes that fail", () => {
     assert.deepEqual(swallowingCatches(logging), []);
   });
 
-  test("the scan actually reaches server/socket.ts's catch handlers", () => {
-    const src = readFileSync(SOCKET_SOURCE, "utf8");
-    const catches = [...src.matchAll(/\.catch\s*\(/g)].length;
-    assert.ok(catches > 8, `expected many catch handlers in server/socket.ts, found ${catches}`);
+  test("the scan actually reaches the socket family's catch handlers", () => {
+    const catches = [...readSocketFamily().matchAll(/\.catch\s*\(/g)].length;
+    assert.ok(
+      catches > 8,
+      `expected many catch handlers across the socket family, found ${catches}`
+    );
   });
 });
