@@ -60,6 +60,40 @@ test("the session table is part of the bootstrap", () => {
   );
 });
 
+test("the socket adapter's spill table is part of the bootstrap", () => {
+  // `@socket.io/postgres-adapter` will happily issue its own CREATE TABLE. It
+  // must not: a second creator is how a table comes to exist on one database
+  // and nowhere else, and the failure that follows is a silently undelivered
+  // broadcast rather than an error.
+  const create = statements.find((s) =>
+    /CREATE TABLE IF NOT EXISTS "socket_io_attachments"/i.test(s)
+  );
+  assert.ok(create, "the adapter's attachment table must be created at boot");
+  // The adapter reads and writes exactly these.
+  assert.match(create, /"payload" bytea/i);
+  assert.match(create, /"created_at" timestamp with time zone/i);
+  assert.ok(
+    statements.some((s) => /socket_io_attachments_created_at_idx/.test(s)),
+    "the adapter deletes by created_at on a timer from every instance, so that " +
+      "column needs an index"
+  );
+});
+
+test("a serial column carries no separate default", () => {
+  // A serial type *is* its own default. Drizzle reports `hasDefault` for one
+  // with nothing to render, which is the same shape as a `$defaultFn` that
+  // cannot become DDL — emitting `DEFAULT undefined` or throwing are both
+  // wrong, and the throw is what a new bigserial column hit.
+  const create = statements.find((s) =>
+    /CREATE TABLE IF NOT EXISTS "socket_io_attachments"/i.test(s)
+  );
+  assert.ok(create);
+  const idLine = create.split("\n").find((l) => l.includes('"id"'));
+  assert.ok(idLine, "the table must declare an id column");
+  assert.match(idLine, /bigserial/i);
+  assert.doesNotMatch(idLine, /DEFAULT/i);
+});
+
 test("columns are added before the indexes that may target them", () => {
   const lastAddColumn = statements.findLastIndex((s) => /ADD COLUMN/i.test(s));
   const firstIndex = statements.findIndex((s) => /CREATE (UNIQUE )?INDEX/i.test(s));

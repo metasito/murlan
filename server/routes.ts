@@ -576,10 +576,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
       by: accepter?.username ?? "Qualcuno",
     });
 
-    if (isUserOnline(accepterId)) {
+    if (await isUserOnline(accepterId)) {
       emitToUser(requesterId, "friend:status", { userId: accepterId, online: true });
     }
-    if (isUserOnline(requesterId)) {
+    if (await isUserOnline(requesterId)) {
       emitToUser(accepterId, "friend:status", { userId: requesterId, online: true });
     }
 

@@ -5,6 +5,7 @@ import { logger } from "./logger.ts";
 import { pool as appPool, QUERY_TIMEOUT_MS } from "./db.ts";
 import { drainPool } from "./drainPool.ts";
 import { beginShutdown } from "./socket.ts";
+import { socketAdapterPool, socketAdapterReady } from "./socketAdapter.ts";
 
 /**
  * Replit Cloud Run sends SIGTERM and SIGKILLs roughly ten seconds later. The
@@ -65,7 +66,19 @@ export async function shutdown(
 
   try {
     beginShutdown();
+    // A SIGTERM arriving moments after boot would otherwise close the adapter
+    // while it is still taking out its subscription, stranding that client so
+    // the pool below never finishes closing.
+    await socketAdapterReady(1_000);
+    // Closes the adapter too, which releases the client parked on `LISTEN` and
+    // stops its cleanup timer — so the pool below has nothing checked out.
     await io.close();
+    const adapterPool = socketAdapterPool();
+    if (adapterPool) {
+      await adapterPool.end().catch((err) =>
+        logger.error({ err }, "Socket adapter pool close failed")
+      );
+    }
     // Only reachable if `io` was never attached to this server.
     if (server.listening) {
       await new Promise<void>((resolve) => server.close(() => resolve()));

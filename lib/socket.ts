@@ -53,7 +53,11 @@ export function connectSocket(userId: string): Socket {
       void fetchSocketTicket().then((ticket) => cb(ticket ? { ticket } : {}));
     },
     withCredentials: true,
-    transports: ["websocket", "polling"],
+    // Websocket only, matching the server. An HTTP long-polling handshake is
+    // spread across several requests that must all reach the same instance,
+    // and this platform's session affinity is documented as best effort only —
+    // so polling is not a fallback here, it is an intermittent 400.
+    transports: ["websocket"],
     autoConnect: true,
     reconnection: true,
     reconnectionAttempts: Infinity,

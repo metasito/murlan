@@ -14,6 +14,7 @@ import { db } from "./db.ts";
 import { activeGames as activeGamesTable } from "../shared/schema.ts";
 import { consumeSocketTicket } from "./ticket.ts";
 import { isAllowedOrigin } from "./cors.ts";
+import { createSocketAdapter } from "./socketAdapter.ts";
 import { allowSocketAction, onEvent } from "./socketSafety.ts";
 import {
   activeGames,
@@ -135,8 +136,48 @@ export function emitToUser(userId: string, event: string, data: unknown) {
   _io.to(userRoom(userId)).emit(event, data);
 }
 
-export function isUserOnline(userId: string): boolean {
-  return (_io?.sockets.adapter.rooms.get(userRoom(userId))?.size ?? 0) > 0;
+/**
+ * Whether this account has a socket anywhere in the cluster.
+ *
+ * `adapter.rooms` holds only the sockets this process is serving, so reading it
+ * reports a player on another instance as offline. `fetchSockets()` asks the
+ * other instances and, when there are none, answers from the local rooms
+ * without a round trip.
+ *
+ * Never throws: the cluster call rejects if an instance does not answer in
+ * time, and no caller here has anything better to do with that than treat the
+ * account as offline — a friend shown offline is a smaller wrong than a
+ * connect handler that dies.
+ */
+export async function isUserOnline(userId: string): Promise<boolean> {
+  if (!_io) return false;
+  try {
+    return (await _io.in(userRoom(userId)).fetchSockets()).length > 0;
+  } catch (err) {
+    logger.warn({ err, userId }, "Cluster presence check failed; treating as offline");
+    return false;
+  }
+}
+
+/**
+ * Every account with a socket anywhere in the cluster, in one round trip.
+ *
+ * Filtering a friends list with `isUserOnline` would ask the cluster once per
+ * friend; this asks once and answers all of them.
+ */
+export async function onlineUserIds(): Promise<Set<string>> {
+  if (!_io) return new Set();
+  try {
+    const sockets = await _io.fetchSockets();
+    return new Set(
+      sockets
+        .map((s) => s.data?.userId)
+        .filter((id): id is string => typeof id === "string")
+    );
+  } catch (err) {
+    logger.warn({ err }, "Cluster presence sweep failed; reporting no friends online");
+    return new Set();
+  }
 }
 
 /**
@@ -215,9 +256,18 @@ export function setupSocket(httpServer: HttpServer) {
       methods: ["GET", "POST"],
       credentials: true,
     },
-    transports: ["websocket", "polling"],
+    // Websocket only. The Postgres adapter's own documentation requires sticky
+    // sessions, because an HTTP long-polling handshake is spread across several
+    // requests that must all reach one instance — and this platform cannot
+    // promise that: Cloud Run's session affinity is documented as best effort,
+    // and explicitly "you cannot assume that a client will always reconnect to
+    // the same instance, even when session affinity is enabled". Leaving
+    // polling enabled would trade silently dropped broadcasts for HTTP 400s
+    // under exactly the load that creates a second instance.
+    transports: ["websocket"],
     maxHttpBufferSize: 1e5,
   });
+  io.adapter(createSocketAdapter());
   _io = io;
 
   // Inject session into socket requests. `next` is cast because express and
@@ -284,6 +334,7 @@ export function setupSocket(httpServer: HttpServer) {
     if (replacedSocketId && replacedSocketId !== socket.id) {
       evictReplacedSession(io, userId, replacedSocketId, socket);
     }
+    evictRemoteSessions(io, userId, socket.id, replacedSocketId);
     logger.debug({ userId, username, socketId: socket.id }, "Socket connected");
 
     // Every registration below must run before this function's first `await`.
@@ -1173,7 +1224,7 @@ export function setupSocket(httpServer: HttpServer) {
         // is the only one of the three that survives the friend being away.
         await storage.recordGameInvite(room.id, userId, friendUserId);
 
-        const friendIsHere = isUserOnline(friendUserId);
+        const friendIsHere = await isUserOnline(friendUserId);
         if (friendIsHere) {
           io.to(userRoom(friendUserId)).emit("friend:invite", {
             from: username,
@@ -1202,9 +1253,10 @@ export function setupSocket(httpServer: HttpServer) {
       NoPayloadSchema,
       async () => {
         const userFriends = await storage.getFriends(userId);
+        const online = await onlineUserIds();
         const onlineIds = userFriends
           .map((f) => f.friend.id)
-          .filter((id) => isUserOnline(id));
+          .filter((id) => online.has(id));
         socket.emit("friend:online_list", { onlineIds });
       },
       { limit: 20, windowMs: 60_000 }
@@ -1235,10 +1287,11 @@ export function setupSocket(httpServer: HttpServer) {
       // be told this account came online, and the online list this socket is
       // sent, are the same rows.
       const friends = await storage.getFriends(userId);
-      announceOnlineToFriends(io, userId, friends);
+      await announceOnlineToFriends(io, userId, friends);
+      const online = await onlineUserIds();
       const onlineIds = friends
         .map((f) => f.friend.id)
-        .filter((id) => isUserOnline(id));
+        .filter((id) => online.has(id));
       socket.emit("friend:online_list", { onlineIds });
     } catch (err) {
       // Swallowing this silently leaves a connected account with no friends
@@ -1680,6 +1733,38 @@ async function handleSeatRelease(
  * The client stops reconnecting on this code (`context/SocketContext.tsx`):
  * socket.io retries forever, so two tabs would evict each other indefinitely.
  */
+/**
+ * The same one-socket-per-account rule, for the sockets this process cannot
+ * see.
+ *
+ * `userSocketMap` and `io.sockets.sockets` are both process-local, so before
+ * the adapter a second connection on another instance simply went unnoticed
+ * and the account held two live sockets — the singleton invariant held only
+ * inside one process. A room-scoped disconnect is the one form of this that
+ * crosses instances.
+ *
+ * Both exclusions matter: the arriving socket must survive, and a *local*
+ * predecessor belongs to `evictReplacedSession`, which moves the room
+ * association across before closing it. Cutting it here instead would strand
+ * the seat.
+ *
+ * Not gated on there being more than one instance, though the adapter would
+ * answer that for free: it answers from the heartbeat's view of its peers, and
+ * a second instance is invisible for the first few seconds of its life —
+ * exactly when a player is most likely to be handed to it. One `pg_notify` per
+ * connection is far below the queries this handler already runs.
+ */
+function evictRemoteSessions(
+  io: SocketServer,
+  userId: string,
+  keepSocketId: string,
+  locallyHandledSocketId: string | undefined
+) {
+  let targets = io.in(userRoom(userId)).except(keepSocketId);
+  if (locallyHandledSocketId) targets = targets.except(locallyHandledSocketId);
+  targets.disconnectSockets(true);
+}
+
 function evictReplacedSession(
   io: SocketServer,
   userId: string,
@@ -1709,13 +1794,13 @@ function evictReplacedSession(
 
 /** Takes the friend rows rather than reading them: the connection handler pays
  *  for one `getFriends`, not two. */
-function announceOnlineToFriends(
+async function announceOnlineToFriends(
   io: SocketServer,
   userId: string,
   friends: Awaited<ReturnType<typeof storage.getFriends>>
 ) {
   // The read the caller did is awaited, so the socket may already be gone.
-  if (!isUserOnline(userId)) return;
+  if (!(await isUserOnline(userId))) return;
   friends.forEach((f) => {
     io.to(userRoom(f.friend.id)).emit("friend:status", { userId, online: true });
   });
@@ -1729,9 +1814,9 @@ async function emitFriendStatusOffline(
   // Debounced, and re-checked after every await: a reconnect inside any of
   // these windows must cancel the offline notice rather than race it.
   await new Promise((resolve) => setTimeout(resolve, 400));
-  if (isUserOnline(userId)) return;
+  if (await isUserOnline(userId)) return;
   const friends = await storage.getFriends(userId).catch(() => []);
-  if (isUserOnline(userId)) return;
+  if (await isUserOnline(userId)) return;
   friends.forEach((f) => {
     io.to(userRoom(f.friend.id)).emit("friend:status", {
       userId,
