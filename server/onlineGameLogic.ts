@@ -75,8 +75,8 @@ export interface VisibleExchangePhaseInput {
  * The part of an exchange phase a given seat is allowed to see.
  *
  * Only the two people in the exchange have any use for either card: each is a
- * named card out of a named player's hand. The winner's ExchangeModal shows
- * what they were handed, the loser is entitled to see what was taken off them,
+ * named card out of a named player's hand. The winner is shown what they were
+ * handed, the loser is entitled to see what was taken off them,
  * and both are entitled to see what came back. Every other seat gets the two
  * seat indices and the both-jokers flag — all the announcement banner reads
  * from them.

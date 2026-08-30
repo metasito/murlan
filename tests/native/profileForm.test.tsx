@@ -5,6 +5,11 @@
 // no matches at all must not be shown a panel about matches.
 import { describe, it, expect, jest, beforeEach } from '@jest/globals';
 
+jest.mock('expo-audio', () => ({
+  createAudioPlayer: () => ({ play: () => {}, remove: () => {}, seekTo: async () => {}, volume: 1 }),
+  setAudioModeAsync: async () => {},
+}));
+
 jest.mock('expo-haptics', () => ({
   selectionAsync: jest.fn(async () => {}),
   impactAsync: jest.fn(async () => {}),
@@ -40,7 +45,9 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { translate, DEFAULT_LOCALE } from '@/shared/i18n';
 import type { TranslationKey, TranslationParams } from '@/shared/i18n';
 
-const ProfileScreen = require('@/app/(online)/profile').default as React.ComponentType;
+import { SettingsProvider } from '@/context/SettingsContext';
+
+const ProfileScreen = require('@/app/profile').default as React.ComponentType;
 
 const t = (key: string, params?: TranslationParams) =>
   translate(DEFAULT_LOCALE, key as TranslationKey, params);
@@ -79,7 +86,9 @@ function show(history: unknown[]) {
   mockData['/api/replays'] = [];
   return render(
     <SafeAreaProvider initialMetrics={METRICS}>
-      <ProfileScreen />
+      <SettingsProvider>
+        <ProfileScreen />
+      </SettingsProvider>
     </SafeAreaProvider>
   );
 }

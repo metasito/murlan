@@ -49,6 +49,13 @@ const SELECT_TILT = -3;
 const DEAL_RISE_PX = -170;
 const DEAL_DURATION_MS = 500;
 const DEAL_EASING = Easing.bezier(0.2, 0.85, 0.3, 1);
+// The exchange's two states. Colour cannot be the only channel that carries
+// them (docs/research/2026-08-28-card-exchange-interaction.md §3.1), and
+// react-native has no desaturation filter, so each state also moves and each
+// changes opacity — both survive a monochrome screen.
+const GIVEABLE_LIFT = -8;
+const UNGIVEABLE_SINK = 4;
+const UNGIVEABLE_OPACITY = 0.32;
 
 interface CardItemProps {
   card: Card;
@@ -63,6 +70,14 @@ interface CardItemProps {
   zIndex: number;
   /** Draw the back — the hand belongs to someone else. */
   faceDown?: boolean;
+  /**
+   * Whether this card may be given, during an exchange. `undefined` outside
+   * one — which is not the same as `false`, and is why this is not a boolean:
+   * an ordinary hand has no ungiveable cards, it has no exchange.
+   */
+  giveable?: boolean;
+  /** What a tap does, when it is not "play this card". */
+  hint?: string;
   /** ms to wait before this card flies in, or -1 for no deal animation. */
   dealDelay: number;
   /** Horizontal distance back to the deck, so the fan converges on one point. */
@@ -99,11 +114,14 @@ function CardItemBase({
   cardW,
   cardH,
   faceDown = false,
+  giveable,
+  hint,
 }: CardItemProps) {
   const reduceMotion = usePrefersReducedMotion();
   const liftY = useSharedValue(0);
   const tilt = useSharedValue(0);
   const glow = useSharedValue(0);
+  const exchangeState = useSharedValue(0);
   const dealing = useSharedValue(dealDelay >= 0 && !reduceMotion ? 1 : 0);
   // The stagger is disarmed one render after the hand appears, so `dealDelay`
   // becomes -1 while this card is still flying in. The deal owes its timing to
@@ -130,30 +148,49 @@ function CardItemBase({
     glow.value = withTiming(isSelected ? 1 : 0, { duration: Motion.duration.tap });
   }, [isSelected, reduceMotion, liftY, tilt, glow]);
 
+  // -1 sunk and faded, 0 untouched, +1 lifted and lit. One value rather than
+  // two so a card cannot briefly be in both states as the phase turns on.
+  const exchangeTarget = giveable === undefined ? 0 : giveable ? 1 : -1;
+  useEffect(() => {
+    exchangeState.value = reduceMotion
+      ? withTiming(exchangeTarget, { duration: Motion.duration.tap })
+      : withSpring(exchangeTarget, Motion.spring.land);
+  }, [exchangeTarget, reduceMotion, exchangeState]);
+
   useEffect(
     () => () => {
       cancelAnimation(liftY);
       cancelAnimation(tilt);
       cancelAnimation(glow);
       cancelAnimation(dealing);
+      cancelAnimation(exchangeState);
     },
-    [liftY, tilt, glow, dealing]
+    [liftY, tilt, glow, dealing, exchangeState]
   );
 
   const aStyle = useAnimatedStyle(() => {
     const d = dealing.value;
+    const e = exchangeState.value;
     // The deal starts upright (0deg) and rotates into the card's own resting
     // tilt as it lands, rather than overshooting past it.
     const restRot = arcRot + tilt.value;
+    const exchangeY = e >= 0 ? e * GIVEABLE_LIFT : -e * UNGIVEABLE_SINK;
+    const faded = e >= 0 ? 1 : 1 + e * (1 - UNGIVEABLE_OPACITY);
     return {
-      opacity: 1 - d,
+      opacity: (1 - d) * faded,
       transform: [
         { translateX: dealFromX * d },
-        { translateY: liftY.value + dealRise * d },
+        { translateY: liftY.value + exchangeY + dealRise * d },
         { rotate: `${restRot * (1 - d)}deg` },
       ],
     };
   });
+
+  // The giveable rim rides the same textless sibling the selection bloom does,
+  // for the same reason: it must never touch the card's own rasterised ranks.
+  const giveableStyle = useAnimatedStyle(() => ({
+    opacity: Math.max(0, exchangeState.value),
+  }));
 
   // A textless sibling behind the card carries the selection bloom, so the
   // glow can be animated with opacity alone and never touches the card's own
@@ -176,6 +213,12 @@ function CardItemBase({
       ]}
     >
       <Animated.View pointerEvents="none" style={[handStyles.cardGlow, glowStyle]} />
+      {giveable === true && (
+        <Animated.View
+          pointerEvents="none"
+          style={[handStyles.giveableRim, { borderRadius: Radius.sm }, giveableStyle]}
+        />
+      )}
       <CardView
         card={card}
         selected={isSelected}
@@ -184,6 +227,7 @@ function CardItemBase({
         faceDown={faceDown}
         scale={cardScale}
         hitWidth={hitW}
+        hint={hint}
         noLift
       />
     </Animated.View>
@@ -207,6 +251,8 @@ function cardItemPropsEqual(a: CardItemProps, b: CardItemProps): boolean {
     a.disabled === b.disabled &&
     a.zIndex === b.zIndex &&
     a.faceDown === b.faceDown &&
+    a.giveable === b.giveable &&
+    a.hint === b.hint &&
     a.dealFromX === b.dealFromX &&
     a.cardScale === b.cardScale &&
     a.dealRise === b.dealRise &&
@@ -244,6 +290,9 @@ export function StraightHand({
   isMyTurn,
   faceDown = false,
   scale = 1,
+  giveableIds,
+  giveHint,
+  refuseHint,
 }: {
   cards: Card[];
   selectedIds: string[];
@@ -258,6 +307,16 @@ export function StraightHand({
   faceDown?: boolean;
   /** The table's own scale — this hand draws its cards at `scale * HAND_SCALE`. */
   scale?: number;
+  /**
+   * The cards this hand may give, during an exchange. Undefined outside one —
+   * an empty array means the exchange is on and nothing qualifies, which is a
+   * different hand from an ordinary one.
+   */
+  giveableIds?: string[];
+  /** What tapping a giveable card does. Required whenever `giveableIds` is set. */
+  giveHint?: string;
+  /** …and why an ungiveable one refuses. */
+  refuseHint?: string;
 }) {
   const { t } = useTranslation();
   const n = cards.length;
@@ -282,6 +341,10 @@ export function StraightHand({
   // Computed before the early return below — Rules of Hooks requires every
   // hook to run unconditionally on every render of this component.
   const selectedSet = useMemo(() => new Set(selectedIds), [selectedIds]);
+  const giveableSet = useMemo(
+    () => (giveableIds === undefined ? null : new Set(giveableIds)),
+    [giveableIds]
+  );
 
   // Armed while the hand is empty, so the render on which a hand appears —
   // the start of a game, or of the next one after a rematch — is the render
@@ -342,7 +405,9 @@ export function StraightHand({
         { width: scrollable ? totalW : rowW, height: visibleH },
       ]}
     >
-      {arc.map((place, i) => (
+      {arc.map((place, i) => {
+        const giveable = giveableSet?.has(cards[i].id);
+        return (
         <CardItem
           key={cards[i].id}
           card={cards[i]}
@@ -351,7 +416,11 @@ export function StraightHand({
           bottom={-crop - place.y}
           arcRot={place.rot}
           onPress={onPress}
-          disabled={disabled}
+          // An ungiveable card during an exchange is a button that reports
+          // itself unavailable, rather than one that silently does nothing.
+          disabled={disabled || giveable === false}
+          giveable={giveable}
+          hint={giveable === undefined ? undefined : giveable ? giveHint : refuseHint}
           faceDown={faceDown}
           zIndex={i}
           dealDelay={dealArmed ? i * Motion.stagger.deal : -1}
@@ -364,7 +433,8 @@ export function StraightHand({
           cardW={cardW}
           cardH={cardH}
         />
-      ))}
+        );
+      })}
     </View>
   );
 
@@ -423,6 +493,15 @@ const handStyles = StyleSheet.create({
     alignSelf: "center",
   },
   handCardWrap: { position: "absolute" },
+  // A rim rather than a fill: the card underneath has to stay readable while
+  // it is lit, and this sibling never touches its rasterised rank glyphs.
+  giveableRim: {
+    position: "absolute",
+    top: -2, left: -2, right: -2, bottom: -2,
+    borderWidth: 2,
+    borderColor: Colors.gold,
+    ...Shadow.goldSoft,
+  },
   // Its own plate. Under a lamp that moves, the felt has no reliably dark end
   // to sit on: the brightest cloth on the table is wherever the light is.
   emptyHandText: {

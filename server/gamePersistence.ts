@@ -11,13 +11,10 @@ import {
   roomPlayers as roomPlayersTable,
   rooms as roomsTable,
 } from "../shared/schema.ts";
-import {
-  activeGames,
-  userRoom,
-  userSocketMap,
-} from "./gameRoom.ts";
+import { activeGames, userRoom } from "./gameRoom.ts";
 import type { OnlineGameState } from "./gameRoom.ts";
 import type { GameOverWriters } from "./gameOver.ts";
+import { releaseRoom, unclaimedRooms } from "./gameOwnership.ts";
 import {
   STATE_ACK_TIMEOUT_MS,
   SWEEP_INTERVAL_MS,
@@ -102,6 +99,10 @@ export function disposeGame(roomId: string, deleteRow = true) {
   if (game) clearRoomDisconnectTimers(game);
   clearRoomTimers(roomId);
   activeGames.delete(roomId);
+  // Handed back the moment the game leaves memory: the claim is what keeps
+  // every other instance off this room, and a lock outliving the table it
+  // protected is a room nobody can ever take over.
+  void releaseRoom(roomId);
   if (deleteRow) {
     db.delete(activeGamesTable)
       .where(eq(activeGamesTable.roomId, roomId))
@@ -281,6 +282,33 @@ export async function pruneStaleRooms(): Promise<number> {
 let sweeper: ReturnType<typeof setInterval> | null = null;
 
 /**
+ * Drops finished tables nobody is still looking at.
+ *
+ * "Nobody" is asked of the cluster, not of `userSocketMap`: the instance that
+ * owns a table need not be the one holding its players' sockets, so a local
+ * read sees a table full of people as empty and deletes the game out from under
+ * their results screen. `fetchSockets()` answers from the local rooms when
+ * there is only one instance, so this costs a round trip only when there is
+ * someone to ask.
+ */
+async function sweepFinishedTables(io: SocketServer): Promise<void> {
+  const finished = [...activeGames.entries()].filter(([, game]) => game.gameState.gameOver);
+  if (finished.length === 0) return;
+  const connected = new Set(
+    (await io.fetchSockets())
+      .map((s) => s.data?.userId)
+      .filter((id): id is string => typeof id === "string")
+  );
+  for (const [roomId, game] of finished) {
+    safeTimer(io, "sweepFinishedTable", roomId, () => {
+      if (!Object.values(game.playerMap).some((uid) => connected.has(uid))) {
+        disposeGame(roomId);
+      }
+    });
+  }
+}
+
+/**
  * Long-running server hygiene: drop finished tables nobody is connected to and
  * forget public rooms that are no longer joinable.
  */
@@ -288,16 +316,9 @@ export function startSweeper(io: SocketServer) {
   if (sweeper) return;
   sweeper = setInterval(() => {
     try {
-      for (const [roomId, game] of activeGames.entries()) {
-        safeTimer(io, "sweepFinishedTable", roomId, () => {
-          const anyoneConnected = Object.values(game.playerMap).some((uid) =>
-            userSocketMap.has(uid)
-          );
-          if (!anyoneConnected && game.gameState.gameOver) {
-            disposeGame(roomId);
-          }
-        });
-      }
+      void sweepFinishedTables(io).catch((err: unknown) =>
+        logger.error({ err }, "Sweeping finished tables failed")
+      );
 
       // Rows orphaned by a restart, which the loop above structurally cannot
       // reach: it walks memory, and a restart is what emptied memory.
@@ -308,6 +329,15 @@ export function startSweeper(io: SocketServer) {
       void pruneStaleRooms().catch((err: unknown) =>
         logger.error({ err }, "Pruning stale rooms failed")
       );
+
+      // Only reachable through a bug — every path that puts a game in memory
+      // claims the room first — but what it would be reporting is two
+      // instances broadcasting one table over each other, which is worth a
+      // loud line rather than a silent divergence.
+      const unclaimed = unclaimedRooms();
+      if (unclaimed.length > 0) {
+        logger.error({ rooms: unclaimed }, "Holding games for rooms this instance does not own");
+      }
     } catch (err) {
       logger.error({ err }, "Sweeper failed");
     }

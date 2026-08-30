@@ -1,0 +1,21 @@
+TABLE	phone-se	lamp-bottom	vp=568x320	table=496x309	card=69x93
+TABLE	phone-se	lamp-right	vp=568x320	table=496x309	card=63x84
+TABLE	phone-se	lamp-top	vp=568x320	table=496x309	card=63x84
+TABLE	phone-se	lamp-left	vp=568x320	table=496x309	card=63x84
+TABLE	phone-se	pile-right	vp=568x320	table=496x309	card=62x84
+TABLE	phone-12	lamp-bottom	vp=844x390	table=769x377	card=86x114
+TABLE	phone-12	lamp-right	vp=844x390	table=769x377	card=77x103
+TABLE	phone-12	lamp-top	vp=844x390	table=769x377	card=77x103
+TABLE	phone-12	lamp-left	vp=844x390	table=769x377	card=77x103
+TABLE	phone-12	pile-right	vp=844x390	table=769x377	card=77x103
+TABLE	phone-max	lamp-bottom	vp=956x440	table=878x425	card=97x129
+TABLE	phone-max	lamp-right	vp=956x440	table=878x425	card=87x116
+TABLE	phone-max	lamp-top	vp=956x440	table=878x425	card=87x116
+TABLE	phone-max	lamp-left	vp=956x440	table=878x425	card=87x116
+TABLE	phone-max	pile-right	vp=956x440	table=878x425	card=87x116
+TABLE	tablet	lamp-bottom	vp=1112x834	table=964x806	card=175x238
+TABLE	tablet	lamp-right	vp=1112x834	table=964x806	card=157x214
+TABLE	tablet	lamp-top	vp=1112x834	table=964x806	card=157x214
+TABLE	tablet	lamp-left	vp=1112x834	table=964x806	card=157x214
+TABLE	tablet	pile-right	vp=1112x834	table=964x806	card=157x214
+  2 passed (1.8m)

@@ -326,63 +326,72 @@ async function playOrPass(page: Page, desc: string): Promise<string | null> {
 // top-bar quit control, whatever its label happens to be.
 const GIVEBACK_CARD_LABEL = /^(3|4|5|6|7|8|9|10) di (Fiori|Cuori|Quadri|Picche)$/;
 
+/** The prompt on the felt. Its presence is what says an exchange is open. */
+const EXCHANGE_PROMPT = '[data-testid="exchange-prompt"]';
+const GIOCA_BTN = '[data-testid="btn-gioca"]';
+
+/**
+ * The winner's giveable cards, in their own hand.
+ *
+ * The exchange happens on the table now, so the hand is the picker: the cards
+ * in the 3-10 range are the enabled ones and everything else in the fan reports
+ * itself disabled. Asking for the enabled ones rather than filtering by rank
+ * alone means this follows `getValidGivebackCards` — including its fallback,
+ * where a hand holding nothing in range offers its single lowest card instead
+ * and a rank filter would find nothing to click.
+ *
+ * Scoped to the hand, not the table: with nothing in range the rank filter
+ * matches nothing and every candidate is tried in turn, so a selector reaching
+ * the whole table would work its way through GIOCA, PASS and the rail's own
+ * controls looking for a card.
+ */
+function giveCandidates(page: Page) {
+  return page.locator(`${HAND_CARDS}[aria-label]:not([aria-disabled="true"])`);
+}
+
+async function giveCandidateLabels(page: Page): Promise<string[]> {
+  return (await giveCandidates(page).evaluateAll((els) =>
+    els.map((el) => el.getAttribute("aria-label") ?? "")
+  )) as string[];
+}
+
 /**
  * Gives back a card during the between-hands exchange (docs/RULES.md §10).
  *
- * The winner's hand renders underneath the modal, so the same
- * accessibilityLabel exists twice: once inside `[data-testid="game-table"]`,
- * once in the modal, which GameTable renders as a *sibling* of the table.
- * Excluding the table testid leaves the modal's copy.
+ * Select-then-confirm: clicking a card only picks it, and the give happens on
+ * the table's own GIOCA, which the exchange borrows (#533). Both clicks are
+ * needed, in that order.
  *
- * The click handler sits on the `<button>` ancestor, matched through
- * Chromium's accessibility tree rather than the DOM: react-native-web turns
- * `accessibilityRole="button"` into a literal `<button>`, and two cannot
- * legally nest, so the parser's treatment of that nesting is not bettable.
- */
-async function giveExchangeCandidateCount(page: Page): Promise<number> {
-  const candidates = page.locator(`[aria-label]:not(${TABLE} [aria-label])`);
-  const labels = (await candidates.evaluateAll((els) =>
-    els.map((el) => el.getAttribute("aria-label") ?? "")
-  )) as string[];
-  return labels.filter((l) => GIVEBACK_CARD_LABEL.test(l)).length;
-}
-
-const EXCHANGE_CONFIRM = '[data-testid="exchange-confirm"]';
-
-/**
- * The modal is select-then-confirm: clicking a card only picks it, and the
- * give happens on the confirm control. Both clicks are needed, in that order.
- *
- * Watch for: the confirm is disabled until a card is picked, so a confirm that
- * does nothing means the card click missed. The candidate count dropping is
- * what proves the give landed — a click that silently missed the gesture
- * responder throws nothing.
+ * Watch for: GIOCA refuses with a shake rather than throwing when no card is
+ * picked, so a confirm that does nothing means the card click missed. The
+ * prompt leaving the felt is what proves the give landed — a click that
+ * silently missed the gesture responder throws nothing.
  */
 async function giveExchangeCard(page: Page): Promise<boolean> {
-  const before = await giveExchangeCandidateCount(page);
-  if (before === 0) return false;
+  const prompt = page.locator(EXCHANGE_PROMPT);
+  if ((await prompt.count()) === 0) return false;
 
-  const candidates = page.locator(`[aria-label]:not(${TABLE} [aria-label])`);
-  const labels = (await candidates.evaluateAll((els) =>
-    els.map((el) => el.getAttribute("aria-label") ?? "")
-  )) as string[];
+  const labels = await giveCandidateLabels(page);
+  const picks = labels
+    .map((l, i) => ({ l, i }))
+    .filter(({ l }) => GIVEBACK_CARD_LABEL.test(l));
+  // The fallback case: nothing in 3-10, so the engine offers the lowest card
+  // and it is the only enabled one in the fan.
+  const order = picks.length > 0 ? picks.map((p) => p.i) : labels.map((_, i) => i);
 
-  for (let i = labels.length - 1; i >= 0; i--) {
-    if (!GIVEBACK_CARD_LABEL.test(labels[i])) continue;
-    // The label sits on SelectableCard's own Pressable, so the matched element
-    // is the control itself and a real click lands on it directly.
+  for (const i of order.reverse()) {
     for (let attempt = 0; attempt < 3; attempt++) {
-      await candidates
+      await giveCandidates(page)
         .nth(i)
         .click({ timeout: CARD_CLICK_TIMEOUT_MS })
         .catch(() => {});
       await sleep(250);
       await page
-        .locator(EXCHANGE_CONFIRM)
+        .locator(GIOCA_BTN)
         .click({ timeout: CARD_CLICK_TIMEOUT_MS })
         .catch(() => {});
       await sleep(250);
-      if ((await giveExchangeCandidateCount(page)) < before) return true;
+      if ((await prompt.count()) === 0) return true;
     }
   }
   return false;

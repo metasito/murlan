@@ -5,10 +5,10 @@
 // need these: keeping them next to `setupSocket` made an import cycle.
 import type { Server as SocketServer } from "socket.io";
 import { logger } from "./logger.ts";
-import { activeGames, socketRoomMap, userRoom, userSocketMap } from "./gameRoom.ts";
+import { socketRoomMap, userRoom, userSocketMap } from "./gameRoom.ts";
 import { safeTimer } from "./gamePersistence.ts";
-import { vacateSeat } from "./gameTurn.ts";
 import { handleSeatRelease } from "./socketTable.ts";
+import { applyOrForward } from "./tableRouter.ts";
 
 let _io: SocketServer | null = null;
 
@@ -90,13 +90,18 @@ export async function evictUser(userId: string): Promise<void> {
 
   if (roomId) {
     try {
-      if (activeGames.has(roomId)) {
-        // Not handleSeatRelease: deleting an account also deletes the rooms
-        // rows it hosted, and that path reads the room back and returns when
-        // it is gone — leaving the seat live in a hand still being played.
-        socket.leave(roomId);
-        await vacateSeat(io, roomId, userId, username);
-      } else {
+      // Not handleSeatRelease when a game is live: deleting an account also
+      // deletes the rooms rows it hosted, and that path reads the room back and
+      // returns when it is gone — leaving the seat live in a hand still being
+      // played. Routed, because the game may be held by another instance.
+      socket.leave(roomId);
+      const vacated = await applyOrForward(io, {
+        kind: "vacate",
+        roomId,
+        userId,
+        username,
+      });
+      if (!vacated.ok) {
         await handleSeatRelease(io, roomId, userId, username, {
           socket,
           source: "leave",

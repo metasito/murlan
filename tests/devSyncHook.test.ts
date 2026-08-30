@@ -1,11 +1,15 @@
 import { createHmac } from "node:crypto";
-import { mkdtemp, readFile } from "node:fs/promises";
+import { execFile } from "node:child_process";
+import { promisify } from "node:util";
+import { mkdtemp, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import type { Request, Response } from "express";
-import { createGithubDevSyncHandler } from "../server/devSyncHook.ts";
+import { DevSyncRefusal, createGithubDevSyncHandler, syncMain } from "../server/devSyncHook.ts";
+
+const execFileAsync = promisify(execFile);
 
 type MockRequest = {
   body: unknown;
@@ -122,4 +126,184 @@ test("ignores pushes for branches other than main", async () => {
     code: "IGNORED_NON_MAIN_PUSH",
   });
   assert.equal(synced, false);
+});
+// A dirty workspace and a diverged main need opposite remedies, and the
+// workflow that reports the failure cannot read this server's log.
+test("a refused sync reports which refusal it was", async () => {
+  const secret = "s3cret";
+  const handler = createGithubDevSyncHandler({
+    secret,
+    sync: async () => {
+      throw new DevSyncRefusal("Dev workspace is not clean; refusing automatic main sync");
+    },
+    triggerFile: join(await mkdtemp(join(tmpdir(), "murlan-sync-")), "trigger"),
+  });
+
+  const res = response();
+  await handler(
+    request({ ref: "refs/heads/main", after: "abc123" }, secret) as unknown as Request,
+    res as unknown as Response
+  );
+
+  assert.equal(res.result.status, 409);
+  const body = res.result.body as { code?: string; reason?: string };
+  assert.equal(body.code, "DEV_SYNC_FAILED");
+  assert.match(
+    body.reason ?? "",
+    /not clean/,
+    "the reason has to cross the wire — the workflow that reports this cannot read the server's log"
+  );
+});
+
+test("the reason is the sync's own words, not a guess at them", async () => {
+  const secret = "s3cret";
+  const handler = createGithubDevSyncHandler({
+    secret,
+    sync: async () => {
+      throw new DevSyncRefusal("Local main and origin/main diverged; refusing automatic sync");
+    },
+    triggerFile: join(await mkdtemp(join(tmpdir(), "murlan-sync-")), "trigger"),
+  });
+
+  const res = response();
+  await handler(
+    request({ ref: "refs/heads/main", after: "abc123" }, secret) as unknown as Request,
+    res as unknown as Response
+  );
+
+  assert.match((res.result.body as { reason?: string }).reason ?? "", /diverged/);
+});
+
+// The message of anything that is not a curated refusal is a git rejection,
+// which reads `Command failed: git <args>\n<git stderr>` — the remote URL and
+// so any token in it, plus absolute workspace paths. The caller publishes what
+// it is told into an issue on a public repository.
+test("a git failure is not quoted back, only refusals are", async () => {
+  const secret = "s3cret";
+  const handler = createGithubDevSyncHandler({
+    secret,
+    sync: async () => {
+      throw new Error(
+        "Command failed: git fetch origin main\n" +
+          "fatal: unable to access 'https://ghp_EXAMPLETOKEN@github.com/metasito/murlan.git/'"
+      );
+    },
+    triggerFile: join(await mkdtemp(join(tmpdir(), "murlan-sync-")), "trigger"),
+  });
+
+  const res = response();
+  await handler(
+    request({ ref: "refs/heads/main", after: "abc123" }, secret) as unknown as Request,
+    res as unknown as Response
+  );
+
+  assert.equal(res.result.status, 409);
+  const reason = (res.result.body as { reason?: string }).reason ?? "";
+  assert.doesNotMatch(reason, /ghp_/, "a credential must never reach the response body");
+  assert.doesNotMatch(reason, /github\.com/);
+  assert.doesNotMatch(reason, /Command failed/);
+  assert.match(reason, /log/, "it still says where the detail is");
+});
+
+// This hook mirrors origin/main unconditionally: whatever the local checkout
+// looks like — a real divergence, an agent's own unpushed commit, uncommitted
+// edits, untracked files — none of it may block the sync or lose data. It
+// gets stashed (never dropped) and local main always ends up exactly on
+// origin/main.
+async function git(cwd: string, args: string[]) {
+  await execFileAsync("git", args, { cwd });
+}
+
+async function initRepoPair() {
+  const root = await mkdtemp(join(tmpdir(), "murlan-sync-repo-"));
+  const remote = join(root, "remote.git");
+  const clone = join(root, "clone");
+  await git(root, ["init", "--bare", "-q", remote]);
+  await git(root, ["clone", "-q", remote, clone]);
+  await git(clone, ["config", "user.email", "test@example.com"]);
+  await git(clone, ["config", "user.name", "Test"]);
+  await writeFile(join(clone, "app.txt"), "v1\n", "utf8");
+  await git(clone, ["add", "."]);
+  await git(clone, ["commit", "-q", "-m", "initial"]);
+  await git(clone, ["push", "-q", "origin", "HEAD:main"]);
+  await git(clone, ["checkout", "-q", "-B", "main"]);
+  return { remote, clone };
+}
+
+async function pushRealWorkFromAnotherClone(remote: string) {
+  const other = await mkdtemp(join(tmpdir(), "murlan-sync-other-"));
+  await git(tmpdir(), ["clone", "-q", remote, other]);
+  // The bare remote's HEAD symref reflects whatever branch name this git's
+  // init.defaultBranch happens to be (main here, master on GitHub's runner),
+  // not necessarily "main" — so the clone can land on an empty unborn branch
+  // instead of the "main" pushed by initRepoPair. Pin it explicitly.
+  await git(other, ["checkout", "-q", "-B", "main", "origin/main"]);
+  await git(other, ["config", "user.email", "test@example.com"]);
+  await git(other, ["config", "user.name", "Test"]);
+  await writeFile(join(other, "app.txt"), "v2\n", "utf8");
+  await git(other, ["commit", "-q", "-am", "real work"]);
+  await git(other, ["push", "-q", "origin", "main"]);
+}
+
+async function assertLandedExactlyOnOrigin(clone: string, result: SyncResultForTest) {
+  const head = (await execFileAsync("git", ["rev-parse", "HEAD"], { cwd: clone })).stdout.trim();
+  const originMain = (
+    await execFileAsync("git", ["rev-parse", "origin/main"], { cwd: clone })
+  ).stdout.trim();
+  assert.equal(head, originMain, "local main should land exactly on origin/main");
+  assert.equal(result.sha, originMain);
+}
+
+type SyncResultForTest = { updated: boolean; sha: string };
+
+test("a diverged local main is discarded and replaced with origin/main, no matter what it touches", async () => {
+  const { remote, clone } = await initRepoPair();
+  await pushRealWorkFromAnotherClone(remote);
+
+  // The local checkout has its own unpushed commit touching real app code —
+  // previously this was refused outright. It must never block the sync now.
+  await writeFile(join(clone, "app.txt"), "local-edit\n", "utf8");
+  await git(clone, ["commit", "-q", "-am", "local edit that never reached origin"]);
+
+  const result = await syncMain(clone);
+
+  assert.equal(result.updated, true);
+  await assertLandedExactlyOnOrigin(clone, result);
+});
+
+test("a dirty working tree is stashed, not refused, and the sync still lands on origin", async () => {
+  const { remote, clone } = await initRepoPair();
+  await pushRealWorkFromAnotherClone(remote);
+
+  // Uncommitted edits and an untracked file — both must be stashed rather
+  // than blocking the sync.
+  await writeFile(join(clone, "app.txt"), "uncommitted-edit\n", "utf8");
+  await writeFile(join(clone, "scratch.txt"), "untracked\n", "utf8");
+
+  const result = await syncMain(clone);
+
+  assert.equal(result.updated, true);
+  await assertLandedExactlyOnOrigin(clone, result);
+
+  const status = (
+    await execFileAsync("git", ["status", "--porcelain"], { cwd: clone })
+  ).stdout.trim();
+  assert.equal(status, "", "the working tree should be clean after the sync");
+
+  const stashList = (
+    await execFileAsync("git", ["stash", "list"], { cwd: clone })
+  ).stdout;
+  assert.match(stashList, /dev-sync: auto-stash/, "the dirty state must be preserved, not dropped");
+});
+
+test("with nothing local to sync, syncing twice reports updated only once", async () => {
+  const { remote, clone } = await initRepoPair();
+  await pushRealWorkFromAnotherClone(remote);
+
+  const first = await syncMain(clone);
+  assert.equal(first.updated, true);
+
+  const second = await syncMain(clone);
+  assert.equal(second.updated, false);
+  assert.equal(second.sha, first.sha);
 });

@@ -37,7 +37,7 @@ import Feather from "@expo/vector-icons/Feather";
 import Ionicons from "@expo/vector-icons/Ionicons";
 import { useQuery } from "@tanstack/react-query";
 import { useAuth } from "@/context/AuthContext";
-import { useGame } from "@/context/GameContext";
+import { useLocalSession } from "@/context/gameHooks";
 import { useSocket } from "@/context/SocketContext";
 import { usePrefersReducedMotion } from "@/lib/accessibility";
 import { Colors, FontSize, makeShadow, Motion, motionMs, Radius, Spacing, TOUCH_TARGET_MIN, Type } from '@/lib/theme';
@@ -416,7 +416,7 @@ function useFriendRequestCount() {
 
 const FRIEND_REQUEST_STALE_MS = 15000;
 
-const goProfile = () => router.push("/(online)/profile");
+const goProfile = () => router.push("/profile");
 const goFriends = () => router.push("/(online)/friends");
 const goRanking = () => router.push("/(online)/leaderboard");
 
@@ -429,16 +429,18 @@ function HomeAccountBar({ onSettings }: { onSettings: () => void }) {
 
   return (
     <View style={styles.accountControls}>
-      {user ? (
-        <Animated.View style={[styles.profileCorner, entrance]}>
-          <HomeAccountButton
-            label={t("home.modeProfile")}
-            testID="home-account-profile"
-            icon={<Ionicons name="person-circle-outline" size={ACCOUNT_ICON} color={Colors.gold} {...a11yHidden()} />}
-            onPress={goProfile}
-          />
-        </Animated.View>
-      ) : null}
+      {/* Signed out too: Profile carries the card back and the felt, which are
+          local and need no account (#98). Behind the sign-in wall they would be
+          unreachable without one, which is the regression moving the screen out
+          of the `(online)` group exists to prevent. */}
+      <Animated.View style={[styles.profileCorner, entrance]}>
+        <HomeAccountButton
+          label={t("home.modeProfile")}
+          testID="home-account-profile"
+          icon={<Ionicons name="person-circle-outline" size={ACCOUNT_ICON} color={Colors.gold} {...a11yHidden()} />}
+          onPress={goProfile}
+        />
+      </Animated.View>
       <Animated.View style={[styles.accountBar, entrance]}>
         {user ? (
           <>
@@ -490,6 +492,15 @@ function HomePlayerUnit({ onSettings }: { onSettings: () => void }) {
           text={t("home.signIn")}
           icon={<Ionicons name="log-in-outline" size={PILL_ICON} color={Colors.gold} {...a11yHidden()} />}
           onPress={() => router.push("/auth")}
+        />
+        <HomePill
+          label={t("home.modeProfile")}
+          text={t("home.modeProfile")}
+          icon={
+            <Ionicons name="person-circle-outline" size={PILL_ICON} color={Colors.gold} {...a11yHidden()} />
+          }
+          testID="home-account-profile"
+          onPress={goProfile}
         />
         <HomePill
           label={t("home.settingsA11yLabel")}
@@ -647,7 +658,7 @@ export default function HomeScreen() {
   const insets = useSafeAreaInsets();
   const { user, loading: authLoading } = useAuth();
   const tutorialDecided = useRef(false);
-  const { hasSavedGame, resumeGame } = useGame();
+  const { hasSavedGame, resumeGame } = useLocalSession();
   const { gameInvites } = useSocket();
   const { t } = useTranslation();
   const { width: W, height: H } = useWindowDimensions();

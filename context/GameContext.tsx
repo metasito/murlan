@@ -36,7 +36,7 @@ import {
   encodeOfflineSave,
   isResumable,
 } from "@/lib/offlineSave";
-import type { ExchangeAnnounceData } from "@/lib/sharedGameFlow";
+import { buildExchangeAnnounce, type ExchangeAnnounceData } from "@/lib/sharedGameFlow";
 import type { BotPersonalityId } from "@/lib/botPersonalities";
 
 export interface PlayerSetupConfig {
@@ -205,12 +205,7 @@ export function GameProvider({ children }: { children: ReactNode }) {
       setDealFirstSeat(nextFirstSeat);
 
       if (state.exchangePhase?.bothJokersException) {
-        const ep = state.exchangePhase;
-        setExchangeAnnounceData({
-          winnerName: state.players[ep.winnerIdx]?.name ?? "",
-          loserName: state.players[ep.loserIdx]?.name ?? "",
-          bothJokersException: true,
-        });
+        setExchangeAnnounceData(buildExchangeAnnounce(state.players, state.exchangePhase));
         setExchangeAnnouncing(true);
       }
 
@@ -253,17 +248,12 @@ export function GameProvider({ children }: { children: ReactNode }) {
     (cardId: string) => {
       if (gameState?.exchangePhase?.active) {
         const ep = gameState.exchangePhase;
-        const winnerName = gameState.players[ep.winnerIdx]?.name ?? "";
-        const loserName = gameState.players[ep.loserIdx]?.name ?? "";
-        const cardReceived = ep.cardFromLoser;
-        const cardGiven = gameState.players[ep.winnerIdx]?.hand.find((c) => c.id === cardId);
-        setExchangeAnnounceData({
-          winnerName,
-          loserName,
-          bothJokersException: false,
-          cardGiven,
-          cardReceived,
-        });
+        setExchangeAnnounceData(
+          buildExchangeAnnounce(gameState.players, ep, {
+            given: gameState.players[ep.winnerIdx]?.hand.find((c) => c.id === cardId),
+            received: ep.cardFromLoser,
+          })
+        );
         setExchangeAnnouncing(true);
       }
       setGameState((prev) => {

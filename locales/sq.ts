@@ -211,17 +211,19 @@ export const sq: Record<keyof typeof en, string> = {
   "reactionLayer.triggerA11yLabel": "Dërgo një reagim",
   "reactionLayer.emojiA11yLabel": "Reagim {{emoji}}",
 
-  // ------------------------------------------------------------ exchangeModal.*
-  "exchangeModal.title": "Shkëmbimi i letrave",
-  "exchangeModal.receives": "merr",
-  "exchangeModal.willReceive": "do të marrë",
-  "exchangeModal.subPrefix": "Zgjidh një letër për t'ia dhënë",
-  "exchangeModal.subSuffix": "(vetëm 3–10):",
-  "exchangeModal.noValidCards": "Nuk ka letër të vlefshme për ta dhënë.",
-  "exchangeModal.hint": "Prek një letër për ta zgjedhur",
-  "exchangeModal.hintConfirm": "Prek një letër tjetër për të ndërruar mendje, ose konfirmo për ta dhënë",
-  "exchangeModal.confirm": "Jep letrën",
-  "exchangeModal.giveCardA11yHint": "Zgjedh këtë letër për t'ia dhënë humbësit",
+  // ----------------------------------------------------------------- exchange.*
+  "exchange.prompt": "{{name}} të dha këtë — jepi një",
+  "exchange.rule": "Mund të japësh nga 3 deri në 10",
+  "exchange.noValidCards": "Asnjë letër nga 3 në 10 — jep më të ulëtën",
+  "exchange.watching": "{{winner}} po zgjedh një letër për {{loser}}",
+  "exchange.waitingForYou": "{{winner}} po zgjedh një letër për ty",
+  "exchange.confirm": "Jep",
+  "exchange.confirmA11yReady": "Jepi {{card}} {{name}}",
+  "exchange.confirmA11yWaiting": "Jepi një letër {{name}}. Zgjidh më parë një nga letrat e theksuara.",
+  "exchange.cardA11yHint": "Zgjedh këtë letër për ta dhënë",
+  "exchange.cardA11yNotGiveable": "Nuk mund të jepet — mund të jepet vetëm nga 3 në 10",
+  "exchange.receivedCardA11yLabel": "{{name}} të dha {{card}}",
+  "exchange.seatGot": "mori {{card}}",
 
   // ----------------------------------------------------------------- cards.*
   "cards.rankAce": "Asi",
@@ -237,11 +239,7 @@ export const sq: Record<keyof typeof en, string> = {
   // -------------------------------------------------------- exchangeAnnouncement.*
   "exchangeAnnouncement.a11yNoSwap": "Shkëmbim: pa shkëmbim, {{loserName}} tregoi të dy Xholat",
   "exchangeAnnouncement.giveLine": "Nga {{from}} te {{to}}: {{card}}",
-  "exchangeAnnouncement.closeA11yLabel": "Mbyll njoftimin e shkëmbimit",
-  "exchangeAnnouncement.title": "Shkëmbimi",
   "exchangeAnnouncement.noSwapText": "Pa shkëmbim — Xhola të dyfishtë 🃏",
-  "exchangeAnnouncement.givesWord": " → ",
-  "exchangeAnnouncement.toWord": " → ",
 
   // ------------------------------------------------------- gameOverOverlay.*
   "gameOverOverlay.position1": "1°",
@@ -376,11 +374,6 @@ export const sq: Record<keyof typeof en, string> = {
   "onlineGame.quitConfirmTitle": "Largohu nga loja",
   "onlineGame.quitConfirmBody": "Je i sigurt që dëshiron të largohesh nga loja në vazhdim?",
   "onlineGame.quitConfirmConfirm": "Largohu",
-  "onlineGame.exchangeInProgressTitle": "Shkëmbimi në vazhdim...",
-  "onlineGame.exchangeWaitAsLoser": "{{winner}} po zgjedh letrën për të ta dhënë.",
-  "onlineGame.exchangeWaitAsOther": "{{winner}} po zgjedh letrën për {{loser}}.",
-  "onlineGame.theWinner": "Fituesi",
-  "onlineGame.theLoser": "humbësi",
 
   // ----------------------------------------------------------------- replay.*
   "replay.title": "Replay",
@@ -417,12 +410,6 @@ export const sq: Record<keyof typeof en, string> = {
   "replay.moveRowA11yLabel": "Lëvizja {{n}}: {{name}}, {{action}}",
 
   // ------------------------------------------------------------- cosmetics.*
-  "settings.cardBack": "Pjesa e pasme e letrave",
-  "settings.cardBackSubtitle": "Si vizatohen letrat e mbuluara",
-  "settings.cardBackA11yLabel": "Pjesa e pasme e letrave",
-  "settings.tableFelt": "Cohja e tavolinës",
-  "settings.tableFeltSubtitle": "Ngjyra e siperfaqes së lojës",
-  "settings.tableFeltA11yLabel": "Cohja e tavolinës",
   "cosmetics.back.smeraldo": "Smerald",
   "cosmetics.back.oro": "Ar",
   "cosmetics.back.rubino": "Rubin",
@@ -827,6 +814,13 @@ export const sq: Record<keyof typeof en, string> = {
   "achievements.ironWill.desc": "Fito një ndeshje të plotë pa luajtur Xholi në dorën përfundimtare.",
 
   // ------------------------------------------------------------- profile.*
+  "profile.lookTitle": "Pamja",
+  "profile.lookCardBack": "Kurrizi i letrave",
+  "profile.lookTableFelt": "Pëlhura e tavolinës",
+  "profile.youTitle": "Ti",
+  "profile.recordTitle": "Rezultatet",
+  "profile.signedOutBody": "Luan offline pa llogari. Hyr për të ruajtur statistikat, vlerësimin dhe përsëritjet, dhe për të luajtur me miqtë.",
+  "profile.signedOutAction": "Hyr",
   "profile.title": "Profili",
   "profile.loggedInAs": "Identifikuar si {{username}}",
   "profile.renameA11yLabel": "Ndrysho emrin tënd të përdoruesit",

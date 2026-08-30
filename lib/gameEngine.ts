@@ -1144,6 +1144,15 @@ export function getValidGivebackCards(hand: Card[], excludeCardId?: string): Car
   return [sortHand(eligible)[0]];
 }
 
+/**
+ * Whether a giveback set is the fallback rather than the ordinary rule — the
+ * hand held nothing in 3-10, so the lowest card was offered instead. The
+ * prompt names a different rule then, and the ranks that decide it stay here.
+ */
+export function givebackIsFallback(giveback: Card[]): boolean {
+  return giveback.length > 0 && !giveback.some((c) => EXCHANGE_VALID_RANKS.includes(c.rank));
+}
+
 export function loserHasBothJokers(hand: Card[]): boolean {
   return (
     hand.some((c) => c.rank === "joker_colored") &&

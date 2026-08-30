@@ -27,8 +27,7 @@ const SOURCE = path.join(repoRoot, "components", "GameTable.tsx");
  */
 const REACHABLE_ON_PURPOSE: Record<string, string> = {
   GameSettingsSheet: "is the sheet",
-  ExchangeModal: "renders a <Modal>, which is above the veil rather than behind it",
-  ExchangeAnnouncement: "renders a <Modal>, which is above the veil rather than behind it",
+  ExchangeAnnouncement: "is a pointer-transparent layer with nothing to reach",
   RotateOverlay: "replaces the table rather than sitting over it",
   Sweep: "is a decoration with nothing to reach",
 };

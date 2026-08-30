@@ -28,6 +28,7 @@ import {
   displayedHandCount,
   fanCounts,
   flightOrigin,
+  exchangeFlight,
   sideSlotHeight,
   seatFanArc,
   SEAT_DISC,
@@ -1734,5 +1735,156 @@ describe("railSideFor", () => {
         `an inset of ${inset} put the rail on the same side in both rotations`
       );
     }
+  });
+});
+
+// ─── exchangeFlight ───────────────────────────────────────────────────────────
+//
+// The exchange flies two cards at once, each from a seat to the other seat, and
+// the pair must never overlap on screen. That is the one claim a unit test can
+// make about it — where each card is at every moment is arithmetic — while
+// whether the rendered boxes actually stay apart is `tests/e2e/`'s job, because
+// react-test-renderer never runs layout.
+
+describe("exchangeFlight", () => {
+  const frame = {
+    scale: 1,
+    windowWidth: 800,
+    windowHeight: 600,
+    tableLeft: 40,
+    tableRight: 20,
+    tableTop: 10,
+    handZoneH: 100,
+    topDisplayedCount: 0,
+  };
+  // Different counts on the two sides, so a left⇄right trip that used one seat's
+  // slot height for both ends cannot pass here.
+  const sideDisplayedCounts = { left: 2, right: 9 };
+  // A real card is far taller than it is wide, which is the whole reason the
+  // clearance cannot be a single number: a pair passing one above the other
+  // needs the taller dimension between them.
+  const cardW = 60;
+  const cardH = 84;
+  /** Every ordered pair of distinct seats — the diagonals included. */
+  const SEATS = ["top", "bottom", "left", "right"] as const;
+  const PAIRS = SEATS.flatMap((from) =>
+    SEATS.filter((to) => to !== from).map((to) => [from, to] as const)
+  );
+
+  const sideCount = (d: "top" | "bottom" | "left" | "right") =>
+    d === "left" || d === "right" ? sideDisplayedCounts[d] : 0;
+
+  const dist = (a: { dx: number; dy: number }, b: { dx: number; dy: number }) =>
+    Math.hypot(a.dx - b.dx, a.dy - b.dy);
+
+  /** Points along one trip: out to the meeting, held there, then on. */
+  const walk = (f: ReturnType<typeof exchangeFlight>) => {
+    const lerp = (a: { dx: number; dy: number }, b: { dx: number; dy: number }, t: number) => ({
+      dx: a.dx + (b.dx - a.dx) * t,
+      dy: a.dy + (b.dy - a.dy) * t,
+    });
+    const STEPS = 20;
+    const out = Array.from({ length: STEPS + 1 }, (_, i) => lerp(f.from, f.meet, i / STEPS));
+    const back = Array.from({ length: STEPS + 1 }, (_, i) => lerp(f.meet, f.to, i / STEPS));
+    return [...out, ...back];
+  };
+
+  /** Overlapping area of two cards centred at `a` and `b`, in px². */
+  const boxOverlap = (a: { dx: number; dy: number }, b: { dx: number; dy: number }) => {
+    const w = cardW - Math.abs(a.dx - b.dx);
+    const h = cardH - Math.abs(a.dy - b.dy);
+    return w > 0 && h > 0 ? w * h : 0;
+  };
+
+  test("a card leaves its owner's seat and arrives at the other one", () => {
+    for (const [from, to] of PAIRS) {
+      const flight = exchangeFlight({ ...frame, sideDisplayedCounts, from, to, cardW, cardH });
+      const origin = flightOrigin({ ...frame, dir: from, sideDisplayedCount: sideCount(from) });
+      const destination = flightOrigin({ ...frame, dir: to, sideDisplayedCount: sideCount(to) });
+      // The trip is derived from the same source the throw animation uses, so
+      // a card starts and ends at that seat's own point — offset into its lane,
+      // and no further than the lane itself is wide.
+      const lane = Math.max(cardW, cardH);
+      assert.ok(
+        dist(flight.from, origin) <= lane,
+        `${from} → ${to} starts ${dist(flight.from, origin).toFixed(0)}px from the ${from} seat`
+      );
+      assert.ok(
+        dist(flight.to, destination) <= lane,
+        `${from} → ${to} ends ${dist(flight.to, destination).toFixed(0)}px from the ${to} seat`
+      );
+      // …and both ends are displaced identically, which is what makes it a
+      // lane rather than a drift.
+      assert.deepEqual(
+        { dx: +(flight.from.dx - origin.dx).toFixed(9), dy: +(flight.from.dy - origin.dy).toFixed(9) },
+        { dx: +(flight.to.dx - destination.dx).toFixed(9), dy: +(flight.to.dy - destination.dy).toFixed(9) },
+        `${from} → ${to}: the two ends are offset differently`
+      );
+    }
+  });
+
+  test("the two cards of one exchange never overlap, at any point of the trip", () => {
+    for (const [from, to] of PAIRS) {
+      const out = exchangeFlight({ ...frame, sideDisplayedCounts, from, to, cardW, cardH });
+      const back = exchangeFlight({ ...frame, sideDisplayedCounts, from: to, to: from, cardW, cardH });
+      // Every moment of the trip, not only the beat at the middle. Two lanes
+      // that only part where they meet still cross on the way there, and a
+      // browser saw exactly that (tests/e2e/exchangeNoOverlap.spec.ts) while an
+      // assertion about the meeting point alone reported everything fine.
+      //
+      // Boxes, not centres, for the same reason: two centres a card *width*
+      // apart are clear of each other only when the gap runs across the card.
+      const collisions = walk(out)
+        .map((a, i) => ({ i, area: boxOverlap(a, walk(back)[i]) }))
+        .filter((c) => c.area > 0);
+      assert.deepEqual(
+        collisions.map((c) => `step ${c.i}: ${c.area.toFixed(0)}px²`),
+        [],
+        `${from} ⇄ ${to}: the two cards overlap while they travel.`
+      );
+    }
+  });
+
+  test("the meeting point sits between the two seats, not past either of them", () => {
+    for (const [from, to] of PAIRS) {
+      const flight = exchangeFlight({ ...frame, sideDisplayedCounts, from, to, cardW, cardH });
+      const whole = dist(flight.from, flight.to);
+      // A meet outside the trip is a card that overshoots and doubles back —
+      // it reads as a miss rather than as a handover.
+      assert.ok(
+        dist(flight.from, flight.meet) < whole && dist(flight.meet, flight.to) < whole,
+        `${from} → ${to}: the meeting point is not between the seats`
+      );
+    }
+  });
+
+  test("the lane runs across the trip, so neither card is sent short or long", () => {
+    for (const [from, to] of PAIRS) {
+      const flight = exchangeFlight({ ...frame, sideDisplayedCounts, from, to, cardW, cardH });
+      const travel = { x: flight.to.dx - flight.from.dx, y: flight.to.dy - flight.from.dy };
+      // The lane is reported rather than recovered from the three points: all
+      // three carry it, so any difference between them has it cancelled out.
+      const along =
+        (travel.x * flight.lane.dx + travel.y * flight.lane.dy) / Math.hypot(travel.x, travel.y);
+      assert.ok(
+        Math.abs(along) < 1e-9,
+        `${from} → ${to}: the lane is displaced ${along.toFixed(2)}px along the ` +
+          `trip rather than across it, which changes when the card arrives`
+      );
+      assert.ok(
+        Math.hypot(flight.lane.dx, flight.lane.dy) > 0,
+        `${from} → ${to}: the trip has no lane, so anything placed off it lands on it`
+      );
+    }
+  });
+
+  test("a bigger card is given proportionally more room, not a fixed gap", () => {
+    const trip = (cardW: number, cardH: number) =>
+      exchangeFlight({ ...frame, sideDisplayedCounts, from: "bottom", to: "top", cardW, cardH });
+    const width = (f: ReturnType<typeof exchangeFlight>) => Math.hypot(f.lane.dx, f.lane.dy);
+    assert.ok(
+      width(trip(120, 168)) > width(trip(40, 56)),
+      "the clearance is a fixed distance rather than the card's own reach"
+    );
   });
 });

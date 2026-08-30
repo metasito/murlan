@@ -14,7 +14,11 @@ import {
 import { router } from "expo-router";
 import { hapticMedium, hapticSelection } from "@/lib/haptics";
 import Ionicons from "@expo/vector-icons/Ionicons";
-import { useOnlineGame } from "@/context/OnlineGameContext";
+import {
+  useOnlineConnection,
+  useOnlineRoom,
+  useOnlineTable,
+} from "@/context/onlineGameHooks";
 import { useAuth } from "@/context/AuthContext";
 import { useSocket } from "@/context/SocketContext";
 import { Colors, Spacing, FontSize, Radius, TOUCH_TARGET_MIN, Type } from '@/lib/theme';
@@ -32,7 +36,9 @@ export default function OnlineLobbyScreen() {
   const watchHint = useA11yHint(t("onlineLobby.watchA11yHint"));
   const { width: W, height: H } = useWindowDimensions();
   const { user } = useAuth();
-  const { createRoom, joinRoom, spectateRoom, room, gameState, isSpectator, connected, error, clearError } = useOnlineGame();
+  const { createRoom, joinRoom, spectateRoom, room, isSpectator } = useOnlineRoom();
+  const { gameState } = useOnlineTable();
+  const { connected, error, clearError } = useOnlineConnection();
   const { pendingInvite, clearInvite } = useSocket();
   const [joinModalVisible, setJoinModalVisible] = useState(false);
   const [joinCode, setJoinCode] = useState("");

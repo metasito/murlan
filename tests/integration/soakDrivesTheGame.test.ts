@@ -11,7 +11,8 @@
 import { test, before, after, describe } from "node:test";
 import assert from "node:assert/strict";
 import { hasDatabase, skipMessage } from "../helpers/testServer.ts";
-import { runSoak } from "../soak/soak.ts";
+import { runSoak, REFUSAL_EVENTS } from "../soak/soak.ts";
+import { errorEventFor } from "../../server/socketSafety.ts";
 
 describe("the soak harness drives a real game", {
   skip: hasDatabase() ? false : skipMessage(),
@@ -44,5 +45,17 @@ describe("the soak harness drives a real game", {
       `a quiet four-handed table disagreed with itself: ${JSON.stringify(result.violations)}`
     );
     assert.equal(result.chaosEvents.length, 0, "chaos was off for this run");
+  });
+
+  // The night this matters, the report reads "and the server said nothing at
+  // all". That sentence is only true if the harness is listening on the events
+  // the server actually refuses with — a rename on either side turns it into a
+  // confident lie about where the defect is.
+  test("it hears a refusal on the events the server refuses with", () => {
+    assert.ok(
+      REFUSAL_EVENTS.includes(errorEventFor("game:rejoin") as never),
+      `the soak listens on ${REFUSAL_EVENTS.join(", ")}, not ${errorEventFor("game:rejoin")}`
+    );
+    assert.ok(REFUSAL_EVENTS.includes("game:rejoin_failed"));
   });
 });

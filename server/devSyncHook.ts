@@ -38,62 +38,72 @@ function signatureMatches(rawBody: Buffer, signature: string | undefined, secret
   );
 }
 
-async function runGit(args: string[]) {
+async function runGit(args: string[], cwd: string) {
   await execFileAsync("git", args, {
-    cwd: process.cwd(),
+    cwd,
     maxBuffer: 2 * 1024 * 1024,
   });
 }
 
-async function gitOutput(args: string[]): Promise<string> {
-  return (await execFileAsync("git", args, { cwd: process.cwd() })).stdout.trim();
+async function gitOutput(args: string[], cwd: string): Promise<string> {
+  return (await execFileAsync("git", args, { cwd })).stdout.trim();
 }
 
-async function isAncestor(ancestor: string, descendant: string): Promise<boolean> {
-  try {
-    await runGit(["merge-base", "--is-ancestor", ancestor, descendant]);
-    return true;
-  } catch {
-    return false;
+/**
+ * A refusal this hook is willing to say out loud.
+ *
+ * Everything else that can fail here is a git command, and git puts its own
+ * stderr in the rejection — which carries the remote URL, and so the token in
+ * it, and absolute workspace paths. The caller publishes what it is told into
+ * a GitHub issue on a public repository, so only these curated sentences may
+ * cross the wire; the rest stays in the log.
+ */
+export class DevSyncRefusal extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "DevSyncRefusal";
   }
 }
 
-export async function syncMain(): Promise<SyncResult> {
-  const originalBranch = await gitOutput(["branch", "--show-current"]);
-  const before = await gitOutput(["rev-parse", "HEAD"]);
-  const dirty = await gitOutput([
-    "status",
-    "--porcelain",
-    "--untracked-files=all",
-  ]);
+// This hook exists to keep the dev preview mirroring origin/main, not to
+// protect local history: whatever the checkout looks like — uncommitted
+// edits, untracked files, an agent's own unpushed commits, a genuine
+// divergence — none of it may block the sync. Uncommitted state gets
+// stashed (never dropped) and local main is always pointed at exactly
+// origin/main afterwards, no comparison or path-based judgment involved.
+export async function syncMain(cwd: string = process.cwd()): Promise<SyncResult> {
+  const before = await gitOutput(["rev-parse", "HEAD"], cwd);
+  const originalBranch = await gitOutput(["branch", "--show-current"], cwd);
+
+  const dirty = await gitOutput(
+    ["status", "--porcelain", "--untracked-files=all"],
+    cwd
+  );
   if (dirty) {
-    throw new Error("Dev workspace is not clean; refusing automatic main sync");
+    await runGit(
+      [
+        "stash",
+        "push",
+        "--include-untracked",
+        "--quiet",
+        "-m",
+        "dev-sync: auto-stash before syncing to origin/main",
+      ],
+      cwd
+    );
   }
 
-  await runGit(["fetch", "origin", "main", "--quiet"]);
+  await runGit(["fetch", "origin", "main", "--quiet"], cwd);
   try {
-    await runGit(["checkout", "main", "--quiet"]);
-    const localMain = await gitOutput(["rev-parse", "HEAD"]);
-    const remoteMain = await gitOutput(["rev-parse", "origin/main"]);
-    if (localMain === remoteMain) return { updated: before !== localMain, sha: localMain };
-    if (await isAncestor(localMain, remoteMain)) {
-      await runGit(["merge", "--ff-only", "origin/main", "--quiet"]);
-    } else if (await isAncestor(remoteMain, localMain)) {
-      // A local commit has not reached GitHub yet. Leave it alone; the push
-      // action will run after it is published, at which point this relation
-      // reverses for the next remote main commit.
-      return { updated: false, sha: localMain };
-    } else {
-      throw new Error("Local main and origin/main diverged; refusing automatic sync");
-    }
+    await runGit(["checkout", "-B", "main", "origin/main", "--quiet"], cwd);
   } catch (error) {
     if (originalBranch && originalBranch !== "main") {
-      await runGit(["checkout", originalBranch, "--quiet"]).catch(() => {});
+      await runGit(["checkout", originalBranch, "--quiet"], cwd).catch(() => {});
     }
     throw error;
   }
 
-  const sha = await gitOutput(["rev-parse", "HEAD"]);
+  const sha = await gitOutput(["rev-parse", "HEAD"], cwd);
   return { updated: before !== sha, sha };
 }
 
@@ -152,7 +162,16 @@ export function createGithubDevSyncHandler({
       });
     } catch (error) {
       logger.error({ err: error }, "GitHub dev sync failed");
-      return res.status(409).json({ error: "Dev sync was not applied", code: "DEV_SYNC_FAILED" });
+      // Whoever is told about this runs on another machine and cannot read
+      // this log, so the reason has to travel with the response.
+      return res.status(409).json({
+        error: "Dev sync was not applied",
+        code: "DEV_SYNC_FAILED",
+        reason:
+          error instanceof DevSyncRefusal
+            ? error.message
+            : "a git command failed; the reason is in the dev preview's log",
+      });
     }
   };
 }

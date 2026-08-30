@@ -7,7 +7,12 @@
 
 import React, { useEffect, useRef, useState } from "react";
 import { router } from "expo-router";
-import { useGame } from "@/context/GameContext";
+import {
+  useLocalExchange,
+  useLocalMatch,
+  useLocalSession,
+  useLocalTable,
+} from "@/context/gameHooks";
 import { useNotification } from "@/context/NotificationContext";
 import { ConfirmDialog, type ConfirmRequest } from "@/components/ConfirmDialog";
 import { pickGivebackCard } from "@/lib/gameEngine";
@@ -40,23 +45,12 @@ export default function GameScreen() {
   const { t } = useTranslation();
   const { showNotification } = useNotification();
   const [confirming, setConfirming] = useState<ConfirmRequest | null>(null);
-  const {
-    gameState,
-    selectedCards,
-    selectCard,
-    playSelected,
-    passTurn,
-    resetGame,
-    runAITurn,
-    chooseExchangeCard,
-    exchangeAnnouncing,
-    exchangeAnnounceData,
-    acknowledgeExchange,
-    rematchPromptOpen,
-    rematchAnswers,
-    rematchTally,
-    answerRematch,
-  } = useGame();
+  const { gameState, selectedCards, selectCard, playSelected, passTurn, runAITurn } =
+    useLocalTable();
+  const { resetGame } = useLocalSession();
+  const { exchangeAnnouncing, exchangeAnnounceData, chooseExchangeCard, acknowledgeExchange } =
+    useLocalExchange();
+  const { rematchPromptOpen, rematchAnswers, rematchTally, answerRematch } = useLocalMatch();
 
   // Timers fire outside the render that scheduled them; refs keep them from
   // calling a stale copy of the context action. Assigned after commit, never

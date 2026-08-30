@@ -13,6 +13,7 @@ import { spawn, type ChildProcess } from "node:child_process";
 import pg from "pg";
 import { io as ioClient, type Socket } from "socket.io-client";
 import { hasDatabase, skipMessage } from "../helpers/testServer.ts";
+import { driveHumansToGameOver } from "../helpers/gameDriver.ts";
 
 const PORTS = [5561, 5562] as const;
 /** Short, so the "was it re-sent?" window below is seconds rather than tens. */
@@ -250,6 +251,77 @@ describe("broadcasts cross server instances", {
       afterStart,
       "game:state arrived again after the acknowledgement window — the ack did " +
         "not cross instances, so every broadcast is being re-sent"
+    );
+  });
+
+  /** A fresh two-seat table, both seats human, hosted from instance 1. */
+  async function openTable(): Promise<{ roomId: string; code: string }> {
+    const created = waitFor<{ code: string; roomId: string }>(aSocket, "room:state");
+    aSocket.emit("room:create", { gameMode: "free_for_all", maxPlayers: 2 });
+    const room = await created;
+    assert.ok(room, "instance 1 never answered room:create");
+
+    const seated = waitFor<{ players: unknown[] }>(aSocket, "room:state");
+    bSocket.emit("room:join", { code: room.code });
+    assert.ok(await seated, "the join never reached the host");
+    return room;
+  }
+
+  test("a player on the other instance can play the hand out", async () => {
+    // `room:start` runs on instance 1, so the game lives in instance 1's
+    // `activeGames`. Every move the other player makes arrives at instance 2,
+    // which holds no copy of it — and answered `NO_LIVE_GAME`, so the table
+    // was playable by exactly the half of it that happened to land on the
+    // instance that dealt.
+    await openTable();
+    const over = await driveHumansToGameOver(
+      [aSocket, bSocket],
+      () => aSocket.emit("room:start"),
+      45_000
+    );
+    assert.ok(over, "the hand never finished");
+  });
+
+  test("the table outlives the instance that owned it", async () => {
+    const room = await openTable();
+    const dealt = waitFor(bSocket, "game:state", 15_000);
+    aSocket.emit("room:start");
+    assert.ok(await dealt, "the game never started");
+
+    // What survives the kill is the `active_games` row, and it is written
+    // fire-and-forget after the deal. Killing before it lands would test
+    // nothing but the race.
+    const admin = new pg.Pool({ connectionString: scoped });
+    try {
+      const deadline = Date.now() + 15_000;
+      for (;;) {
+        const { rowCount } = await admin.query(
+          "SELECT 1 FROM active_games WHERE room_id = $1",
+          [room.roomId]
+        );
+        if (rowCount) break;
+        assert.ok(Date.now() < deadline, "the deal was never persisted");
+        await sleep(200);
+      }
+    } finally {
+      await admin.end();
+    }
+
+    // Last, and deliberately destructive: instance 1 holds the only copy of
+    // this game, and a table that dies with one process is a table nobody can
+    // finish. `game:pass` carries no payload, so a reply of NO_LIVE_GAME can
+    // only mean the handler ran and found no table.
+    instances[0].child.kill("SIGKILL");
+    await sleep(2_000);
+
+    const reply = await bSocket
+      .timeout(20_000)
+      .emitWithAck("game:pass") as { ok: boolean; code?: string };
+    assert.notEqual(
+      reply.code,
+      "NO_LIVE_GAME",
+      "the surviving instance never took the table over — the hand died with " +
+        "the process that dealt it"
     );
   });
 });

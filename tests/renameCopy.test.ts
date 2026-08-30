@@ -82,7 +82,7 @@ describe("a refused rename says which refusal it was", () => {
   // would collapse taken and rate-limited into one sentence with every other
   // test still green.
   test("the rename's catch renders what the server said", () => {
-    const source = readFileSync(new URL("../app/(online)/profile.tsx", import.meta.url), "utf8");
+    const source = readFileSync(new URL("../app/profile.tsx", import.meta.url), "utf8");
     assert.match(
       source,
       /catch[\s\S]{0,120}setError\(serverErrorMessage\(/,

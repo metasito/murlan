@@ -12,7 +12,7 @@ import { hapticMedium, hapticSuccess } from "@/lib/haptics";
 import Ionicons from "@expo/vector-icons/Ionicons";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useSocket } from "@/context/SocketContext";
-import { useOnlineGame } from "@/context/OnlineGameContext";
+import { useOnlineRoom } from "@/context/onlineGameHooks";
 import { useNotification } from "@/context/NotificationContext";
 import { serverErrorMessage } from "@/lib/apiError";
 import { apiRequest } from "@/lib/query-client";
@@ -78,7 +78,7 @@ export default function FriendsScreen() {
   const { t, tn } = useTranslation();
   const searchHint = useA11yHint(t("friends.searchA11yHint"));
   const { socket, onlineIds, gameInvites, dismissGameInvite } = useSocket();
-  const { joinRoom, room } = useOnlineGame();
+  const { joinRoom, room } = useOnlineRoom();
   const qc = useQueryClient();
   const [addLoading, setAddLoading] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");

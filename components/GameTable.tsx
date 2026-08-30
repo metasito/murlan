@@ -40,6 +40,8 @@ import {
   canPlay,
   getCardDisplayRank,
   getSuitSymbol,
+  getValidGivebackCards,
+  givebackIsFallback,
   sortHand,
   type Card,
   type Combination,
@@ -50,6 +52,8 @@ import {
   CHIP_H,
   HAND_ZONE_H,
   CARD_H,
+  exchangeFlight,
+  type ExchangeFlight,
   cardScale,
   actionBtnSize,
   HAND_ZONE_GAP,
@@ -107,9 +111,9 @@ import { useTableFeedback } from "@/components/useTableFeedback";
 import { FlyingCards, PlayedPile, getComboLabel } from "@/components/table/pile";
 import { BombBurst, Sweep } from "@/components/table/moments";
 import { TopOppSlot, SideOppSlot } from "@/components/table/seats";
-import { ExchangeModal } from "@/components/ExchangeModal";
 import { ExchangeAnnouncement } from "@/components/ExchangeAnnouncement";
-import { HAND_SCALE, physicalTouchTarget } from "@/components/cardFaceModel";
+import { ExchangePrompt } from "@/components/table/ExchangePrompt";
+import { CARD_W, FIELD_SCALE, HAND_SCALE, physicalTouchTarget } from "@/components/cardFaceModel";
 import {
   playCardSelect,
   playCardPlay,
@@ -480,6 +484,8 @@ function GiocaButton({
   glowStyle,
   onPress,
   a11yLabel,
+  label,
+  exchange,
   selectedCount,
   size,
   scale,
@@ -495,6 +501,16 @@ function GiocaButton({
   glowStyle: AnimatedStyle<ViewStyle>;
   onPress: () => void;
   a11yLabel: string;
+  /** What the key reads. The exchange borrows this button, so not always PLAY. */
+  label: string;
+  /**
+   * Set while the exchange has borrowed this key, naming who the card goes to
+   * and which one is picked. Named here rather than by the caller: the table
+   * already computes several translated strings per render, and one more with
+   * a parameter object costs it the React Compiler's memoization outright
+   * (scripts/react-compiler-probe.mjs).
+   */
+  exchange?: { toName: string; picked: Card | null };
   selectedCount: number;
   /** The button is square, and never smaller than a comfortable thumb. */
   size: number;
@@ -550,7 +566,16 @@ function GiocaButton({
         onPressIn={() => setPress(true)}
         onPressOut={() => setPress(false)}
         style={styles.actionBtnInner}
-        accessibilityLabel={a11yLabel}
+        accessibilityLabel={
+          exchange
+            ? exchange.picked
+              ? t("exchange.confirmA11yReady", {
+                  card: cardSpokenName(exchange.picked, t),
+                  name: exchange.toName,
+                })
+              : t("exchange.confirmA11yWaiting", { name: exchange.toName })
+            : a11yLabel
+        }
         // No `disabled` state, on either platform: an illegal play is answered
         // with the shake and the spoken reason rather than ignored, so the
         // control is operable and its name is what carries the refusal.
@@ -577,7 +602,7 @@ function GiocaButton({
                 { fontSize: BTN_LABEL_FS * scale, letterSpacing: BTN_TRACKING * scale },
               ]}
             >
-              {t("gameTable.playLabelGioca")}
+              {label}
             </TableText>
             {selectedCount > 1 && (
               <TableText {...a11yHidden()} style={[styles.playBtnSub, { fontSize: BTN_SUB_FS * scale }]}>
@@ -601,7 +626,7 @@ function GiocaButton({
                 { fontSize: BTN_LABEL_FS * scale, letterSpacing: BTN_TRACKING * scale },
               ]}
             >
-              {t("gameTable.playLabelGioca")}
+              {label}
             </TableText>
           </View>
         )}
@@ -901,6 +926,33 @@ export function GameTable({
   const canPass = canPassNowOf({ isMyTurn, isFinished, isNewRound });
   const playBtnValid = isValidPlay && isMyTurn && !isFinished;
 
+  // ── The exchange, on the table ──────────────────────────────────────────────
+  //
+  // The winner picks from their own hand rather than from a filtered row in a
+  // dialog, so the legality the engine enforces has to be readable in the fan:
+  // `getValidGivebackCards` is the same call `processExchangeChoice` validates
+  // against, asked here only to decide which cards light up.
+  const exchangeIsMine = exchange.active && exchange.viewerIsWinner;
+  const giveable = React.useMemo(
+    () =>
+      exchangeIsMine
+        ? getValidGivebackCards(sortedHand, gameState.exchangePhase?.cardFromLoser?.id)
+        : undefined,
+    [exchangeIsMine, sortedHand, gameState.exchangePhase?.cardFromLoser?.id]
+  );
+  const giveableIds = React.useMemo(() => giveable?.map((c) => c.id), [giveable]);
+  // Kept apart from `selectedIds`, which stages a *play*: an exchange gives one
+  // card, and folding it into a multi-select the play button also reads would
+  // let a staged combination survive into the next manche.
+  const [exchangePick, setExchangePick] = useState<string | null>(null);
+  useEffect(() => {
+    if (!exchangeIsMine) setExchangePick(null);
+  }, [exchangeIsMine]);
+  const pickedGiveCard = exchangePick
+    ? (sortedHand.find((c) => c.id === exchangePick) ?? null)
+    : null;
+  const exchangeLoserName = exchange.loser?.name ?? "";
+
   const pileCombo = gameState.lastPlayedCombination;
   const dimLabel = playButtonLabel({
     isMyTurn,
@@ -1051,7 +1103,10 @@ export function GameTable({
     scale,
   });
 
-  const handLiftStyle = useHandLift(isMyTurn && !isFinished && !exchange.active, scale);
+  const handLiftStyle = useHandLift(
+    (isMyTurn && !isFinished && !exchange.active) || exchangeIsMine,
+    scale
+  );
 
   // ── Lifecycle ───────────────────────────────────────────────────────────────
 
@@ -1304,9 +1359,15 @@ export function GameTable({
       if (isFinished || spectating) return;
       hapticSelection();
       playCardSelect();
+      // An exchange gives exactly one card, so a second tap replaces the pick
+      // rather than adding to it.
+      if (exchangeIsMine) {
+        setExchangePick((prev) => (prev === id ? null : id));
+        return;
+      }
       onSelectCard(id);
     },
-    [isFinished, spectating, onSelectCard]
+    [isFinished, spectating, onSelectCard, exchangeIsMine, setExchangePick]
   );
   // The button stays pressable while it is unavailable so a refusal has a
   // channel: an error haptic, a shake, and the reason in words. It keeps
@@ -1326,6 +1387,25 @@ export function GameTable({
     // card the hand does not hold.
     onPlay(selectedObjs.map((c) => c.id));
   }, [playBtnValid, onPlay, selectedObjs, dimReasonText, rejectPlay, setRejectHint]);
+  // The table's own GIOCA is the exchange's confirm — a second floating button
+  // would be the dialog this replaced, in a smaller coat (#532). Its own
+  // function rather than a branch inside handlePlay: they answer the same key,
+  // but only one of them is a play, and the compiler cannot preserve a manual
+  // memo over a translated string (scripts/react-compiler-probe.mjs).
+  const handleExchangeGive = () => {
+    if (!exchangePick) {
+      hapticError();
+      setRejectHint((prev) => ({
+        key: (prev?.key ?? 0) + 1,
+        text: t("exchange.confirmA11yWaiting", { name: exchangeLoserName }),
+      }));
+      rejectPlay();
+      return;
+    }
+    hapticMedium();
+    playCardPlay();
+    onExchangeGive(exchangePick);
+  };
   const handlePass = useCallback(() => {
     if (!canPass) return;
     // Haptic only: the pass sound follows the committed state, so firing it
@@ -1423,6 +1503,38 @@ export function GameTable({
   const pileThrower =
     pileState.playedBy === null ? undefined : players[pileState.playedBy];
   const pileFlushed = !!pileThrower && handCountOf(pileThrower) === 0;
+
+  // The two trips the exchange's cards make, derived here for the same reason
+  // the throw's origin is: this is where the table's own measurements live, and
+  // a second measurement is how a card comes to land somewhere its seat is not.
+  const announce = exchangeAnnouncement?.data;
+  const exchangeTrips = ((): { toWinner: ExchangeFlight; toLoser: ExchangeFlight } | null => {
+    if (!announce) return null;
+    const geometry = {
+      scale,
+      windowWidth: W,
+      windowHeight: H,
+      tableLeft: frame.tableLeft,
+      tableRight: frame.tableRight,
+      tableTop: frame.tableTop,
+      handZoneH: HAND_ZONE_H(handCardH, frame.bottomPad),
+      // Nothing is in flight when an exchange resolves, so each seat's
+      // displayed count is simply the hand it holds.
+      topDisplayedCount: opponents.top ? handCountOf(opponents.top.player) : 0,
+      sideDisplayedCounts: {
+        left: opponents.left ? handCountOf(opponents.left.player) : 0,
+        right: opponents.right ? handCountOf(opponents.right.player) : 0,
+      },
+      cardW: CARD_W(scale * FIELD_SCALE),
+      cardH: CARD_H(scale * FIELD_SCALE),
+    };
+    const winnerDir = seatDirection(announce.winnerIdx, viewerSeat, players.length);
+    const loserDir = seatDirection(announce.loserIdx, viewerSeat, players.length);
+    return {
+      toWinner: exchangeFlight({ ...geometry, from: loserDir, to: winnerDir }),
+      toLoser: exchangeFlight({ ...geometry, from: winnerDir, to: loserDir }),
+    };
+  })();
 
   return (
     <Animated.View style={[styles.root, WEB_CLIP, kickStyle]}>
@@ -1634,7 +1746,20 @@ export function GameTable({
             </View>
 
             <View style={sharedTableStyles.centerSection}>
-              {showStartCardBanner ? (
+              {exchange.active && !exchangeAnnouncement?.visible ? (
+                // The round that opened this phase is already resolved, so the
+                // centre is free — and it is the one place every seat is
+                // already looking. It vacates the moment the cards fly.
+                <ExchangePrompt
+                  receivedCard={gameState.exchangePhase?.cardFromLoser}
+                  winnerName={exchange.winner?.name ?? ""}
+                  loserName={exchangeLoserName}
+                  viewerIsWinner={exchange.viewerIsWinner}
+                  viewerIsLoser={exchange.viewerIsLoser}
+                  noValidCards={!!giveable && givebackIsFallback(giveable)}
+                  scale={scale}
+                />
+              ) : showStartCardBanner ? (
                 <StartCardBanner
                   card={gameState.startCard!}
                   starterIsViewer={isMyTurn}
@@ -1661,6 +1786,21 @@ export function GameTable({
                   settle exactly where PlayedPile then redraws the same cards,
                   and the rail makes the table box asymmetric — centred on the
                   screen instead, the combination lands and then jumps. */}
+              {exchangeAnnouncement?.data && exchangeTrips && (
+                <ExchangeAnnouncement
+                  visible={exchangeAnnouncement.visible}
+                  winnerName={exchangeAnnouncement.data.winnerName}
+                  loserName={exchangeAnnouncement.data.loserName}
+                  bothJokersException={exchangeAnnouncement.data.bothJokersException}
+                  cardGiven={exchangeAnnouncement.data.cardGiven}
+                  cardReceived={exchangeAnnouncement.data.cardReceived}
+                  toWinner={exchangeTrips.toWinner}
+                  toLoser={exchangeTrips.toLoser}
+                  scale={scale * FIELD_SCALE}
+                  onDismiss={exchangeAnnouncement.onDismiss}
+                />
+              )}
+
               {flyInfo && (
                 <FlyingCards
                   key={flyInfo.key}
@@ -1739,9 +1879,14 @@ export function GameTable({
                 <StraightHand
                   faceDown={spectating}
                   cards={sortedHand}
-                  selectedIds={selectedIds}
+                  selectedIds={
+                    exchangeIsMine ? (exchangePick ? [exchangePick] : []) : selectedIds
+                  }
                   onPress={handleCardPress}
                   disabled={isFinished || spectating}
+                  giveableIds={giveableIds}
+                  giveHint={t("exchange.cardA11yHint")}
+                  refuseHint={t("exchange.cardA11yNotGiveable")}
                   availW={frame.handAvailW}
                   roomW={frame.handRoomW}
                   isMyTurn={isMyTurn && !isFinished}
@@ -1752,13 +1897,14 @@ export function GameTable({
 
             {!spectating && (
               <GiocaButton
-                lit={isMyTurn && !isFinished}
-                valid={playBtnValid}
+                lit={exchangeIsMine || (isMyTurn && !isFinished)}
+                valid={exchangeIsMine ? !!exchangePick : playBtnValid}
+                label={exchangeIsMine ? t("exchange.confirm") : t("gameTable.playLabelGioca")}
                 reduceMotion={reduceMotion}
                 rejectX={giocaRejectX}
                 flashStyle={giocaFlashStyle}
                 glowStyle={giocaGlowStyle}
-                onPress={handlePlay}
+                onPress={exchangeIsMine ? handleExchangeGive : handlePlay}
                 // The visible `3c` suffix is hidden and deliberately not folded
                 // in here: each card already reports its own selectedness, and a
                 // button whose name changes on every tap is re-announced on
@@ -1766,10 +1912,15 @@ export function GameTable({
                 // sentence as the signal that the play is legal.
                 a11yLabel={
                   playBtnValid
-                    ? t("gameTable.playA11yValid")
-                    : t("gameTable.playA11yUnavailable", { reason: dimReasonText })
+                      ? t("gameTable.playA11yValid")
+                      : t("gameTable.playA11yUnavailable", { reason: dimReasonText })
                 }
-                selectedCount={selectedIds.length}
+                exchange={
+                  exchangeIsMine
+                    ? { toName: exchangeLoserName, picked: pickedGiveCard }
+                    : undefined
+                }
+                selectedCount={exchangeIsMine ? 0 : selectedIds.length}
                 size={actionBtn}
                 scale={scale}
               />
@@ -1778,18 +1929,6 @@ export function GameTable({
         </View>
       </View>
 
-      {exchange.active && exchange.viewerIsWinner && exchange.loser && exchange.winner && (
-        <ExchangeModal
-          phase={gameState.exchangePhase!}
-          winnerHand={exchange.winner.hand}
-          loserName={exchange.loser.name}
-          winnerName={exchange.winner.name}
-          onSelectCard={(cardId) => {
-            playCardPlay();
-            onExchangeGive(cardId);
-          }}
-        />
-      )}
 
       {rematchPrompt?.visible && (
         <RematchPromptPanel
@@ -1800,17 +1939,6 @@ export function GameTable({
         />
       )}
 
-      {exchangeAnnouncement?.data && (
-        <ExchangeAnnouncement
-          visible={exchangeAnnouncement.visible}
-          winnerName={exchangeAnnouncement.data.winnerName}
-          loserName={exchangeAnnouncement.data.loserName}
-          bothJokersException={exchangeAnnouncement.data.bothJokersException}
-          cardGiven={exchangeAnnouncement.data.cardGiven}
-          cardReceived={exchangeAnnouncement.data.cardReceived}
-          onDismiss={exchangeAnnouncement.onDismiss}
-        />
-      )}
 
       {/* Sits just above the hand row, at the GIOCA end of it — the button
           wears two words, this is the whole sentence, next to the control the
