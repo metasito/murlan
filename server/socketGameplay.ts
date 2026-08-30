@@ -135,6 +135,10 @@ export function registerGameplayHandlers({
         }
         if (!outcome.ok) {
           const failure = REJOIN_FAILURE[outcome.code ?? ""] ?? REJOIN_FAILURE.SERVER_ERROR;
+          // A refused rejoin is a player left on a screen that will not correct
+          // itself, and until this line it reached the log as nothing at all —
+          // indistinguishable from a server that never answered (#603).
+          logger.warn({ roomId, userId, code: outcome.code }, "Rejoin refused");
           socket.emit("game:rejoin_failed", { ...failure, roomId });
           return outcome;
         }
