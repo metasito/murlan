@@ -24,7 +24,6 @@ export default function OnlineLayout() {
         <Stack.Screen name="room" />
         <Stack.Screen name="game" options={{ animation: "slide_from_bottom" }} />
         <Stack.Screen name="friends" />
-        <Stack.Screen name="profile" />
         <Stack.Screen name="replay" />
         <Stack.Screen name="leaderboard" />
         <Stack.Screen name="quickmatch" options={{ gestureEnabled: false }} />

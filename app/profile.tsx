@@ -340,11 +340,21 @@ export default function ProfileScreen() {
   const { user } = useAuth();
   const reduceMotion = usePrefersReducedMotion();
 
-  const statsQuery = useQuery<UserStatsDto>({ queryKey: ["/api/stats/me"] });
-  const historyQuery = useQuery<MatchHistoryDto[]>({ queryKey: ["/api/stats/history"] });
-  const achievementsQuery = useQuery<AchievementStatusDto[]>({ queryKey: ["/api/stats/achievements"] });
-  const replaysQuery = useQuery<ReplaySummary[]>({ queryKey: ["/api/replays"] });
-  const ratingQuery = useQuery<RatingDto>({ queryKey: ["/api/ratings/me"] });
+  // Every one of these needs a session. The screen is reachable without one
+  // now, and a query left running there is five 401s and a record section
+  // that renders nothing anyway.
+  const signedIn = !!user;
+  const statsQuery = useQuery<UserStatsDto>({ queryKey: ["/api/stats/me"], enabled: signedIn });
+  const historyQuery = useQuery<MatchHistoryDto[]>({
+    queryKey: ["/api/stats/history"],
+    enabled: signedIn,
+  });
+  const achievementsQuery = useQuery<AchievementStatusDto[]>({
+    queryKey: ["/api/stats/achievements"],
+    enabled: signedIn,
+  });
+  const replaysQuery = useQuery<ReplaySummary[]>({ queryKey: ["/api/replays"], enabled: signedIn });
+  const ratingQuery = useQuery<RatingDto>({ queryKey: ["/api/ratings/me"], enabled: signedIn });
 
   const stats = statsQuery.data;
   const history = historyQuery.data ?? [];

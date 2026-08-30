@@ -8,7 +8,8 @@
 // storage keys says they are independent; only a browser says the screen is
 // actually reachable and the choice actually survives, which is a different
 // claim and the one that matters.
-import { test, expect, type Page } from "@playwright/test";
+import type { Page } from "@playwright/test";
+import { test, expect } from "./fixtures";
 import { openApp, registerNewAccount, uniqueUsername } from "./helpers/navigation";
 
 const FELT_SECTION = '[data-testid="profile-look"]';
@@ -35,6 +36,7 @@ test.describe("Profile without an account", () => {
   test("is reachable signed out, and the look chosen there survives registering", async ({
     page,
     baseURL,
+    consoleErrors,
   }) => {
     test.setTimeout(180_000);
     await openApp(page, baseURL!);
@@ -80,6 +82,12 @@ test.describe("Profile without an account", () => {
       page.locator(FELT_SECTION),
       "the same picker is on the signed-in screen, not a second one elsewhere"
     ).toBeVisible({ timeout: 20_000 });
+
+    // A route that moves out of its group leaves the old group's layout
+    // declaring a screen that is not there any more, and expo-router says so
+    // in a console warning rather than a failure — the screen still renders.
+    // The spec that owns the route is where that has to be caught.
+    expect(consoleErrors.entries, "no console errors on the profile route").toEqual([]);
   });
 
   // Menus do both orientations, and the pickers are the widest thing on the
@@ -92,7 +100,11 @@ test.describe("Profile without an account", () => {
     ["portrait", 390, 844],
     ["landscape", 844, 390],
   ] as const) {
-    test(`the far end of each picker still works in ${name}`, async ({ page, baseURL }) => {
+    test(`the far end of each picker still works in ${name}`, async ({
+      page,
+      baseURL,
+      consoleErrors,
+    }) => {
       test.setTimeout(120_000);
       await page.setViewportSize({ width, height });
       await openApp(page, baseURL!);
@@ -115,6 +127,10 @@ test.describe("Profile without an account", () => {
           // `aria-selected` belongs to options in a listbox, and never appears.
         ).toHaveAttribute("aria-pressed", "true");
       }
+
+      expect(consoleErrors.entries, `no console errors on the profile route in ${name}`).toEqual(
+        []
+      );
     });
   }
 });
