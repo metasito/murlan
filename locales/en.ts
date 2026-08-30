@@ -316,6 +316,8 @@ export const en = {
   "gameTable.playA11yUnavailable": "Play — unavailable: {{reason}}",
   "gameTable.selectedCountSuffix": "{{n}}c",
   "gameTable.waitingOthers": "You're done! Waiting for the others...",
+  "gameTable.moveCardLeft": "Move this card left",
+  "gameTable.moveCardRight": "Move this card right",
   "gameTable.startCardBannerSelf": "You start! You hold the {{rank}}{{suit}}",
   "gameTable.startCardBannerOther": "{{name}} starts with the {{rank}}{{suit}}",
   "gameTable.a11yYourTurn": "It's your turn.",

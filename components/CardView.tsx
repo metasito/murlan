@@ -494,6 +494,13 @@ interface CardViewProps {
    * is between the player and the lamp rather than under it.
    */
   light?: "standing" | "standingLit" | "flat";
+  /**
+   * Discrete equivalents of a gesture this card also answers, for assistive
+   * technology only (WCAG 2.5.7). They cost no pixels and appear to nobody
+   * else — the same shape `Slider` and `ReplayControls` already use.
+   */
+  a11yActions?: { name: string; label?: string }[];
+  onA11yAction?: (name: string) => void;
 }
 
 function CardViewBase({
@@ -511,6 +518,8 @@ function CardViewBase({
   light,
   hitWidth,
   hint,
+  a11yActions,
+  onA11yAction,
 }: CardViewProps) {
   const { t } = useTranslation();
   const selectedHint = useA11yHint(
@@ -624,6 +633,10 @@ function CardViewBase({
         // reappear in the button rotation every turn.
         {...a11yState({ role: onPress ? "button" : undefined, selected, disabled: !interactive })}
         {...selectedHint.props}
+        accessibilityActions={a11yActions}
+        onAccessibilityAction={
+          onA11yAction ? (e) => onA11yAction(e.nativeEvent.actionName) : undefined
+        }
         // The pressable is the tap strip; the view inside it is the card. Two
         // boxes rather than one because `styles.card` clips to its own rounded
         // corners, and a strip narrower than the card would clip the art with it.

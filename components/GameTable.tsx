@@ -108,6 +108,7 @@ import { StraightHand } from "@/components/table/hand";
 import { RotateOverlay } from "@/components/table/rotateOverlay";
 import { GameSettingsSheet } from "@/components/table/settingsSheet";
 import { useTableFeedback } from "@/components/useTableFeedback";
+import { useHandOrder } from "@/components/useHandOrder";
 import { FlyingCards, PlayedPile, getComboLabel } from "@/components/table/pile";
 import { BombBurst, Sweep } from "@/components/table/moments";
 import { TopOppSlot, SideOppSlot } from "@/components/table/seats";
@@ -888,6 +889,10 @@ export function GameTable({
     }
     return sortHand(viewer?.hand ?? []);
   }, [spectating, viewer]);
+  // The engine's order is the fallback; what the player sees is whatever they
+  // have arranged on top of it (#531). Spectated hands are excluded by the
+  // seat's own cards being synthetic above — there is nothing there to arrange.
+  const { arranged: shownHand, moveTo } = useHandOrder(viewerSeat, sortedHand);
   const selectedObjs = React.useMemo(
     () => sortedHand.filter((c) => selectedIds.includes(c.id)),
     [sortedHand, selectedIds]
@@ -1878,7 +1883,7 @@ export function GameTable({
                 <A11yStatus label={handA11yLabel} />
                 <StraightHand
                   faceDown={spectating}
-                  cards={sortedHand}
+                  cards={shownHand}
                   selectedIds={
                     exchangeIsMine ? (exchangePick ? [exchangePick] : []) : selectedIds
                   }
@@ -1891,6 +1896,7 @@ export function GameTable({
                   roomW={frame.handRoomW}
                   isMyTurn={isMyTurn && !isFinished}
                   scale={scale}
+                  onReorder={spectating ? undefined : moveTo}
                 />
               </View>
             )}

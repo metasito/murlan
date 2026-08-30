@@ -316,6 +316,8 @@ export const sq: Record<keyof typeof en, string> = {
   "gameTable.playA11yUnavailable": "Luaj — jo e disponueshme: {{reason}}",
   "gameTable.selectedCountSuffix": "{{n}}l",
   "gameTable.waitingOthers": "Ke mbaruar! Duke pritur të tjerët...",
+  "gameTable.moveCardLeft": "Zhvendose këtë letër majtas",
+  "gameTable.moveCardRight": "Zhvendose këtë letër djathtas",
   "gameTable.startCardBannerSelf": "Fillon ti! Ke {{rank}}{{suit}}",
   "gameTable.startCardBannerOther": "{{name}} fillon me {{rank}}{{suit}}",
   "gameTable.a11yYourTurn": "Është radha jote.",
