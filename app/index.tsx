@@ -429,16 +429,18 @@ function HomeAccountBar({ onSettings }: { onSettings: () => void }) {
 
   return (
     <View style={styles.accountControls}>
-      {user ? (
-        <Animated.View style={[styles.profileCorner, entrance]}>
-          <HomeAccountButton
-            label={t("home.modeProfile")}
-            testID="home-account-profile"
-            icon={<Ionicons name="person-circle-outline" size={ACCOUNT_ICON} color={Colors.gold} {...a11yHidden()} />}
-            onPress={goProfile}
-          />
-        </Animated.View>
-      ) : null}
+      {/* Signed out too: Profile carries the card back and the felt, which are
+          local and need no account (#98). Behind the sign-in wall they would be
+          unreachable without one, which is the regression moving the screen out
+          of the `(online)` group exists to prevent. */}
+      <Animated.View style={[styles.profileCorner, entrance]}>
+        <HomeAccountButton
+          label={t("home.modeProfile")}
+          testID="home-account-profile"
+          icon={<Ionicons name="person-circle-outline" size={ACCOUNT_ICON} color={Colors.gold} {...a11yHidden()} />}
+          onPress={goProfile}
+        />
+      </Animated.View>
       <Animated.View style={[styles.accountBar, entrance]}>
         {user ? (
           <>
@@ -490,6 +492,15 @@ function HomePlayerUnit({ onSettings }: { onSettings: () => void }) {
           text={t("home.signIn")}
           icon={<Ionicons name="log-in-outline" size={PILL_ICON} color={Colors.gold} {...a11yHidden()} />}
           onPress={() => router.push("/auth")}
+        />
+        <HomePill
+          label={t("home.modeProfile")}
+          text={t("home.modeProfile")}
+          icon={
+            <Ionicons name="person-circle-outline" size={PILL_ICON} color={Colors.gold} {...a11yHidden()} />
+          }
+          testID="home-account-profile"
+          onPress={goProfile}
         />
         <HomePill
           label={t("home.settingsA11yLabel")}

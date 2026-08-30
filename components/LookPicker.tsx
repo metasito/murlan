@@ -7,6 +7,7 @@ import { MenuCard } from "@/components/MenuCard";
 import { useSettings } from "@/context/SettingsContext";
 import { useTranslation } from "@/lib/i18n";
 import { a11yHidden, a11yState } from "@/lib/a11y";
+import { hapticSelection } from "@/lib/haptics";
 import {
   CARD_BACK_IDS,
   TABLE_FELT_IDS,
@@ -46,9 +47,16 @@ function Option({
 }) {
   return (
     <Pressable
-      onPress={onPress}
-      style={[styles.option, selected && styles.optionSelected]}
-      {...a11yState({ role: "button", selected })}
+      onPress={() => {
+        hapticSelection();
+        onPress();
+      }}
+      style={({ pressed }) => [
+        styles.option,
+        selected && styles.optionSelected,
+        pressed && { opacity: 0.8 },
+      ]}
+      {...a11yState({ role: "radio", selected })}
       accessibilityLabel={label}
     >
       <View {...a11yHidden()}>{children}</View>
@@ -56,6 +64,30 @@ function Option({
         {label}
       </Text>
     </Pressable>
+  );
+}
+
+/**
+ * One exclusive set. The heading is the group's name rather than a line of
+ * text beside it: read as its own node it says "Card back" and stops, which
+ * tells a screen reader nothing about the nine controls after it.
+ */
+function OptionRow({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <>
+      <Text style={styles.groupLabel} {...a11yHidden()}>
+        {label}
+      </Text>
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        contentContainerStyle={styles.row}
+        accessibilityRole="radiogroup"
+        accessibilityLabel={label}
+      >
+        {children}
+      </ScrollView>
+    </>
   );
 }
 
@@ -72,8 +104,7 @@ export function LookPicker() {
   return (
     <MenuCard>
       <View testID="profile-look" style={styles.body}>
-        <Text style={styles.groupLabel}>{t("profile.lookCardBack")}</Text>
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.row}>
+        <OptionRow label={t("profile.lookCardBack")}>
           {CARD_BACK_IDS.map((id: CardBackId) => (
             <Option
               key={id}
@@ -84,10 +115,9 @@ export function LookPicker() {
               <CardView card={STAND_IN} faceDown backId={id} scale={PREVIEW_SCALE} decorative noLift />
             </Option>
           ))}
-        </ScrollView>
+        </OptionRow>
 
-        <Text style={styles.groupLabel}>{t("profile.lookTableFelt")}</Text>
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.row}>
+        <OptionRow label={t("profile.lookTableFelt")}>
           {TABLE_FELT_IDS.map((id: TableFeltId) => {
             const stops = getTableFelt(id);
             return (
@@ -106,7 +136,7 @@ export function LookPicker() {
               </Option>
             );
           })}
-        </ScrollView>
+        </OptionRow>
       </View>
     </MenuCard>
   );

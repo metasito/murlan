@@ -13,6 +13,22 @@ import { test, expect } from "./fixtures";
 import { openApp, registerNewAccount, uniqueUsername } from "./helpers/navigation";
 
 const FELT_SECTION = '[data-testid="profile-look"]';
+// Signed in and landscape, the entry is the avatar; everywhere else it is the
+// Profile control. Either is the same door.
+const HOME_PROFILE =
+  '[data-testid="home-account-profile"], [data-testid="home-account-avatar"]';
+
+/**
+ * Reach Profile the way a player does. Typing the URL only asks whether the
+ * route resolves; whether anyone can get there is a different question, and
+ * signed out it is the whole question — the two cosmetics rows have left
+ * Settings, so home is the only door left.
+ */
+async function openProfileFromHome(page: Page): Promise<void> {
+  // Both orientation branches mount; layout hides one of them.
+  await page.locator(`${HOME_PROFILE} >> visible=true`).first().click();
+  await expect(page.locator(FELT_SECTION)).toBeVisible({ timeout: 20_000 });
+}
 
 // Read from the token sets rather than imported: this file runs in Playwright's
 // own process, which has no React Native module resolution.
@@ -44,18 +60,16 @@ test.describe("Profile without an account", () => {
     await page.reload();
     await page.waitForLoadState("networkidle");
 
-    await page.goto(`${baseURL}/profile`);
-    await page.waitForLoadState("networkidle");
-
     // Not a redirect and not a disabled section: the look picker is the point
     // of the screen existing outside the group.
     await expect(
-      page.locator(FELT_SECTION),
-      "a player with no account can still choose how the game looks"
+      page.locator(`${HOME_PROFILE} >> visible=true`).first(),
+      "a player with no account is offered a way to Profile at all"
     ).toBeVisible({ timeout: 20_000 });
+    await openProfileFromHome(page);
 
     const before = await storedFelt(page);
-    const pick = page.locator(`${FELT_SECTION} [role="button"][aria-label*="Bordeaux"]`).first();
+    const pick = page.locator(`${FELT_SECTION} [role="radio"][aria-label*="Bordeaux"]`).first();
     await expect(pick, "every felt is offered, not just the default").toBeVisible();
     await pick.click();
     await page.waitForTimeout(600);
@@ -76,12 +90,7 @@ test.describe("Profile without an account", () => {
       "registering must not discard the look the player already chose"
     ).toBe("bordeaux");
 
-    await page.goto(`${baseURL}/profile`);
-    await page.waitForLoadState("networkidle");
-    await expect(
-      page.locator(FELT_SECTION),
-      "the same picker is on the signed-in screen, not a second one elsewhere"
-    ).toBeVisible({ timeout: 20_000 });
+    await openProfileFromHome(page);
 
     // A route that moves out of its group leaves the old group's layout
     // declaring a screen that is not there any more, and expo-router says so
@@ -109,11 +118,9 @@ test.describe("Profile without an account", () => {
       await page.setViewportSize({ width, height });
       await openApp(page, baseURL!);
       await page.evaluate(() => window.localStorage.setItem("@murlan_tutorial_seen", "1"));
-      await page.goto(`${baseURL}/profile`);
-      await page.waitForLoadState("networkidle");
-      await expect(page.locator(FELT_SECTION)).toBeVisible({ timeout: 20_000 });
+      await openProfileFromHome(page);
 
-      const options = page.locator(`${FELT_SECTION} [role="button"]`);
+      const options = page.locator(`${FELT_SECTION} [role="radio"]`);
       await expect(options, "both pickers render their whole set").toHaveCount(CARD_BACKS + FELTS);
 
       for (const i of [CARD_BACKS - 1, CARD_BACKS + FELTS - 1]) {
@@ -123,9 +130,10 @@ test.describe("Profile without an account", () => {
         await expect(
           option,
           `the last option of a row must be operable in ${name}`
-          // `selected` on a control reaches the DOM as `aria-pressed`;
-          // `aria-selected` belongs to options in a listbox, and never appears.
-        ).toHaveAttribute("aria-pressed", "true");
+          // One exclusive set, so each option is a radio and carries
+          // `aria-checked`. `aria-selected` belongs to a listbox and
+          // `aria-pressed` to an independent toggle; neither appears here.
+        ).toHaveAttribute("aria-checked", "true");
       }
 
       expect(consoleErrors.entries, `no console errors on the profile route in ${name}`).toEqual(

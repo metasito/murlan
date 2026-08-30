@@ -13,7 +13,6 @@ import {
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { useRouter, usePathname } from "expo-router";
 import Feather from "@expo/vector-icons/Feather";
-import { LinearGradient } from "expo-linear-gradient";
 import { useSettings } from "@/context/SettingsContext";
 import { useNotification } from "@/context/NotificationContext";
 import { useAuth } from "@/context/AuthContext";
@@ -63,8 +62,6 @@ const MOTION_LABELS: Record<MotionPreference, TranslationKey> = {
 interface Segment<T> {
   value: T;
   label: string;
-  /** Colour chip above the label — for choices that *are* a colour. */
-  swatch?: readonly [string, string];
 }
 
 /**
@@ -109,14 +106,6 @@ function Segmented<T extends string | number>({
               pressed && { opacity: 0.8 },
             ]}
           >
-            {seg.swatch && (
-              <LinearGradient
-                colors={seg.swatch}
-                start={{ x: 0, y: 0 }}
-                end={{ x: 1, y: 1 }}
-                style={styles.swatch}
-              />
-            )}
             <Text
               {...a11yHidden()}
               numberOfLines={1}
@@ -574,12 +563,6 @@ const styles = StyleSheet.create({
   rowLabels: { flexShrink: 1 },
   segmentRow: { flexDirection: "row", gap: Spacing.xs },
   segmentRowDisabled: { opacity: 0.4 },
-  swatch: {
-    width: 22,
-    height: 14,
-    borderRadius: Radius.sm / 2,
-    marginBottom: Spacing.xxs,
-  },
   segment: {
     flex: 1,
     minHeight: TOUCH_TARGET_MIN,

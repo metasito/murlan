@@ -337,7 +337,12 @@ function SectionHeading({ label }: { label: string }) {
 
 export default function ProfileScreen() {
   const { t, tn } = useTranslation();
-  const { user } = useAuth();
+  // `loading` matters here in a way it never did inside the `(online)` group,
+  // whose layout held a spinner until the session resolved. Outside it, `user`
+  // is null for the first frames of every cold load, and a signed-in player
+  // would be told they have no account until the session comes back. The Look
+  // section does not depend on the answer and renders throughout.
+  const { user, loading } = useAuth();
   const reduceMotion = usePrefersReducedMotion();
 
   // Every one of these needs a session. The screen is reachable without one
@@ -388,7 +393,7 @@ export default function ProfileScreen() {
 
       <View style={styles.contentWrapper}>
         <SectionHeading label={t("profile.youTitle")} />
-        {user ? <UserCard user={user} /> : <SignInCard />}
+        {user ? <UserCard user={user} /> : loading ? null : <SignInCard />}
 
         <SectionHeading label={t("profile.lookTitle")} />
         <LookPicker />
