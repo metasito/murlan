@@ -57,7 +57,10 @@ const CAPTURED: SoakLogEntry[] = [
 /** Cards each seat had left when the run above stopped. */
 const FINAL_COUNTS = [11, 12, 9, 6];
 
-const MOVES = CAPTURED.length - 1;
+/** Derived, not counted: `drop` and `rejoin` entries are replayed without applying a move. */
+const MOVES = CAPTURED.filter(
+  (e) => e.kind === "play" || e.kind === "pass" || e.kind === "exchange"
+).length;
 
 describe("a printed soak log replays as a fixed case", {
   skip: hasDatabase() ? false : skipMessage(),

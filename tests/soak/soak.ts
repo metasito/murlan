@@ -346,20 +346,23 @@ export async function runSoak(opts: Options, log = console.log): Promise<SoakRes
     while (Date.now() < deadline && violations.length === 0) {
       await settle(seats);
 
+      const views = seats.map((s) => s.view()).filter((v): v is SeatView => v !== null);
+
       // Before the oracle runs, not before the seats act: a violation found on
       // the first settled table would otherwise print a log with no deal in it,
-      // which is the one thing the log has to carry. A deal is only whole while
-      // every card is still in the hand it was dealt to, and it is assembled
-      // across the seats because no client is sent another seat's cards.
-      if (
-        dealLoggedFor !== manches &&
-        seats.every((s) => s.state && !s.state.firstPlayMade && s.hand().length > 0)
-      ) {
+      // which is the one thing the log has to carry.
+      //
+      // The signal is that no card has left a hand yet, not `firstPlayMade`:
+      // `initializeRematch` returns that already `true`, so keying on it logged
+      // a deal for the first manche and for no other, and every later entry
+      // named cards the log never dealt. The exchange moves one card between
+      // two hands and so leaves the total alone, which is why this still holds
+      // over it.
+      const inHand = views[0]?.handCounts.reduce((a, b) => a + b, 0) ?? 0;
+      if (dealLoggedFor !== manches && views.length === seats.length && inHand === deckSize) {
         moveLog.push({ at: moves, kind: "deal", manche: manches, hands: seats.map((s) => s.hand()) });
         dealLoggedFor = manches;
       }
-
-      const views = seats.map((s) => s.view()).filter((v): v is SeatView => v !== null);
       if (views.length >= 1) {
         const total = views[0].handCounts.reduce((a, b) => a + b, 0);
         violations.push(...checkAll(views, deckSize, highWaterMark));

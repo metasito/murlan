@@ -1215,6 +1215,20 @@ export function initializeGame(
   dealt?: Card[][]
 ): GameState {
   const hands = dealt ?? dealCards(playerSetup.length, firstSeat).hands;
+  if (dealt) {
+    // This is the one way cards enter a game from outside the deck, so it is
+    // the one place "a card appears exactly once" can be broken by a caller.
+    if (dealt.length !== playerSetup.length) {
+      throw new Error(`a deal for ${playerSetup.length} seats has ${dealt.length} hands`);
+    }
+    const seen = new Set<string>();
+    for (const hand of dealt) {
+      for (const card of hand) {
+        if (seen.has(card.id)) throw new Error(`card ${card.id} is dealt twice`);
+        seen.add(card.id);
+      }
+    }
+  }
 
   const players: Player[] = playerSetup.map((setup, i) => ({
     id: `player_${i}`,

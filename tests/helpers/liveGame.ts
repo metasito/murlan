@@ -4,8 +4,9 @@
 import type { Server as SocketServer } from "socket.io";
 import { activeGames } from "../../server/gameRoom.ts";
 import { clearRoomTimers } from "../../server/gameTimers.ts";
-import { broadcastGameState } from "../../server/gamePersistence.ts";
+import { broadcastGameState, persistGameState } from "../../server/gamePersistence.ts";
 import { armTurn } from "../../server/gameTurn.ts";
+import { startReplayLog } from "../../server/replayShape.ts";
 import { createDeck, initializeGame } from "../../lib/gameEngine.ts";
 
 /**
@@ -63,7 +64,17 @@ export function redealExactly(io: SocketServer, roomId: string, hands: string[][
     0,
     dealt
   );
+  // Everything `dealManche` resets, because the hand this replaces is gone: its
+  // flags would credit its bombs and jokers to this one, and its `moveLog`
+  // would be written to `match_replays` as this hand's replay.
+  game.handFlags = {};
+  game.moveLog = startReplayLog();
+  game.abandonedSeats.clear();
+
   broadcastGameState(io, game);
+  // Postgres still holds the hand this replaces until this lands, and a rejoin
+  // that rehydrates from it would be dealt the shuffle nobody is playing.
+  persistGameState(roomId, game);
   armTurn(io, roomId);
   return true;
 }
