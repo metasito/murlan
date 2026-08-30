@@ -12,7 +12,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import path from "node:path";
-import { fieldsOf } from "../scripts/contextSurface.mjs";
+import { fieldsOf, walk } from "../scripts/contextSurface.mjs";
 
 const ROOT = path.resolve(import.meta.dirname, "..");
 const read = (...p: string[]) => readFileSync(path.join(ROOT, ...p), "utf8");
@@ -103,4 +103,22 @@ test("the slices partition the context, leaving nothing unreachable", () => {
     }
     assert.deepEqual(twice, [], `${iface} has fields in more than one slice`);
   }
+});
+
+test("nothing reaches past the slices for the whole surface", () => {
+  // The slices are only worth having if they are the way in. `useOnlineGame`
+  // and `useGame` stay exported because the slices are built on them, and that
+  // export is also the way back to a thirty-seven-field destructure.
+  const offenders: string[] = [];
+  for (const file of walk(path.join(ROOT, "app")).concat(walk(path.join(ROOT, "components")))) {
+    const src = readFileSync(file, "utf8");
+    if (/\buseOnlineGame\s*\(|\buseGame\s*\(/.test(src)) {
+      offenders.push(path.relative(ROOT, file));
+    }
+  }
+  assert.deepEqual(
+    offenders,
+    [],
+    "a screen calls a context hook directly instead of the slice for its concern"
+  );
 });
