@@ -14,7 +14,7 @@ import { useOnlineGame } from "@/context/OnlineGameContext";
 import { useAuth } from "@/context/AuthContext";
 import { ConfirmDialog, type ConfirmRequest } from "@/components/ConfirmDialog";
 import { GameTable } from "@/components/GameTable";
-import { cardScale, computeScreenPads, railWidth, readExchange } from "@/components/gameTableModel";
+import { cardScale, computeScreenPads, railWidth } from "@/components/gameTableModel";
 import {
   FloatingReactions,
   ReactionPanel,
@@ -224,12 +224,6 @@ export default function OnlineGameScreen() {
   const myRematchAnswer =
     myUserId in rematchIntents.answers ? rematchIntents.answers[myUserId] : null;
 
-  const exchange = readExchange(gameState, mySeatIndex, isSpectator);
-  // One name for two things that must never disagree: the cover that says the
-  // player may not act, and the veil that withdraws what it covers. The winner
-  // is excluded because they still owe a card back — `ExchangeModal` is theirs
-  // and renders above the veil.
-  const exchangeWaiting = exchange.active && !exchange.viewerIsWinner;
   // The results overlay sits above the table and needs the same safe-area pads
   // the table uses; the table computes its own full frame from the same source.
   const pads = computeScreenPads({ insets });
@@ -263,7 +257,6 @@ export default function OnlineGameScreen() {
   return (
     <GameTable
       gameState={gameState}
-      tableCovered={exchangeWaiting}
       // A spectator holds no seat, so the table is drawn from seat 0 and told
       // it is being watched. Every hand arrives blank from the server either
       // way; `spectating` is what makes the bottom one draw as backs rather
@@ -360,25 +353,6 @@ export default function OnlineGameScreen() {
               />
             )}
 
-            {/* Everyone but the winner waits out the exchange. Offline the AI
-                resolves it in under a second, so this exists online only. */}
-            {exchangeWaiting && (
-              <View style={styles.waitOverlay}>
-                <View style={styles.waitCard}>
-                  <Text style={styles.waitGlyph}>🔄</Text>
-                  <Text style={styles.waitTitle}>{t("onlineGame.exchangeInProgressTitle")}</Text>
-                  <Text style={styles.waitBody}>
-                    {exchange.viewerIsLoser
-                      ? t("onlineGame.exchangeWaitAsLoser", { winner: exchange.winner?.name ?? t("onlineGame.theWinner") })
-                      : t("onlineGame.exchangeWaitAsOther", {
-                          winner: exchange.winner?.name ?? t("onlineGame.theWinner"),
-                          loser: exchange.loser?.name ?? t("onlineGame.theLoser"),
-                        })}
-                  </Text>
-                </View>
-              </View>
-            )}
-
             {error && (
               <View style={styles.errorToast} accessibilityLiveRegion="polite">
                 <Ionicons name="alert-circle" size={15} color={Colors.white} />
@@ -421,7 +395,6 @@ export default function OnlineGameScreen() {
 /** Keeps the lone button off the screen edges in landscape, where it is the
  *  full width of a phone lying down. */
 const CONNECTING_ACTION_W = 280;
-const WAIT_CARD_PADDING = 28;
 
 const styles = StyleSheet.create({
   connecting: {
@@ -459,39 +432,6 @@ const styles = StyleSheet.create({
   },
   reconnectBannerTextAlert: { color: Colors.dangerDim },
 
-  waitOverlay: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: Colors.overlay,
-    alignItems: "center",
-    justifyContent: "center",
-    zIndex: 100,
-  },
-  waitCard: {
-    backgroundColor: Colors.feltDark,
-    borderRadius: Radius.lg,
-    borderWidth: 2,
-    borderColor: Colors.goldBorder,
-    padding: WAIT_CARD_PADDING,
-    alignItems: "center",
-    gap: Spacing.cosy,
-    maxWidth: 380,
-    width: "80%",
-  },
-  waitGlyph: { fontSize: FontSize.xxl },
-  waitTitle: {
-    fontFamily: "Rajdhani_700Bold",
-    fontSize: FontSize.lg,
-    color: Colors.gold,
-    letterSpacing: 1,
-    textAlign: "center",
-  },
-  waitBody: {
-    fontFamily: "Inter_400Regular",
-    fontSize: FontSize.sm,
-    color: Colors.text,
-    textAlign: "center",
-    lineHeight: 20,
-  },
 
   errorToast: {
     position: "absolute",

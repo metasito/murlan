@@ -202,17 +202,28 @@ export const en = {
   "reactionLayer.triggerA11yLabel": "Send a reaction",
   "reactionLayer.emojiA11yLabel": "Reaction {{emoji}}",
 
-  // ------------------------------------------------------------ exchangeModal.*
-  "exchangeModal.title": "Card exchange",
-  "exchangeModal.receives": "receives",
-  "exchangeModal.willReceive": "will get",
-  "exchangeModal.subPrefix": "Choose a card to give to",
-  "exchangeModal.subSuffix": "(3–10 only):",
-  "exchangeModal.noValidCards": "No valid card to give back.",
-  "exchangeModal.hint": "Tap a card to choose it",
-  "exchangeModal.hintConfirm": "Tap another card to change your mind, or confirm to give it",
-  "exchangeModal.confirm": "Give card",
-  "exchangeModal.giveCardA11yHint": "Chooses this card to give to the loser",
+  // ----------------------------------------------------------------- exchange.*
+  // Under the card the loser gave, on the felt. The card is the prompt, so the
+  // line names the person and asks for the return rather than describing what
+  // is already on screen.
+  "exchange.prompt": "{{name}} gave you this — give one back",
+  // Murlan's 3-to-10 rule is this game's own; every other game in the family
+  // lets the winner give any card (docs/research/2026-08-28-card-exchange-
+  // interaction.md §2). The glow says which cards; this says why.
+  "exchange.rule": "You may give a 3 to a 10",
+  "exchange.noValidCards": "No card in 3–10 — give your lowest",
+  // What the other two seats read while the winner decides.
+  "exchange.watching": "{{winner}} is choosing a card for {{loser}}",
+  "exchange.waitingForYou": "{{winner}} is choosing a card for you",
+  "exchange.confirm": "Give",
+  "exchange.confirmA11yReady": "Give {{card}} to {{name}}",
+  "exchange.confirmA11yWaiting": "Give a card to {{name}}. Choose one of the highlighted cards first.",
+  "exchange.cardA11yHint": "Chooses this card to give",
+  "exchange.cardA11yNotGiveable": "Cannot be given — only a 3 to a 10 may be given",
+  "exchange.receivedCardA11yLabel": "{{name}} gave you {{card}}",
+  // Beside each seat as that seat's card lands, so the two players not in the
+  // exchange can read what each side got without a legend.
+  "exchange.seatGot": "got {{card}}",
 
   // ----------------------------------------------------------------- cards.*
   "cards.rankAce": "Ace",
@@ -228,11 +239,7 @@ export const en = {
   // -------------------------------------------------------- exchangeAnnouncement.*
   "exchangeAnnouncement.a11yNoSwap": "Exchange: no exchange, {{loserName}} showed both Jokers",
   "exchangeAnnouncement.giveLine": "{{from}} gives {{card}} to {{to}}",
-  "exchangeAnnouncement.closeA11yLabel": "Close exchange announcement",
-  "exchangeAnnouncement.title": "Exchange",
   "exchangeAnnouncement.noSwapText": "No exchange — double Joker 🃏",
-  "exchangeAnnouncement.givesWord": " gives ",
-  "exchangeAnnouncement.toWord": " to ",
 
   // ------------------------------------------------------- gameOverOverlay.*
   "gameOverOverlay.position1": "1st",
@@ -367,11 +374,6 @@ export const en = {
   "onlineGame.quitConfirmTitle": "Leave the game",
   "onlineGame.quitConfirmBody": "Are you sure you want to leave the game in progress?",
   "onlineGame.quitConfirmConfirm": "Leave",
-  "onlineGame.exchangeInProgressTitle": "Exchange in progress...",
-  "onlineGame.exchangeWaitAsLoser": "{{winner}} is choosing the card to give you.",
-  "onlineGame.exchangeWaitAsOther": "{{winner}} is choosing the card for {{loser}}.",
-  "onlineGame.theWinner": "The winner",
-  "onlineGame.theLoser": "the loser",
 
   // ----------------------------------------------------------------- replay.*
   "replay.title": "Replay",

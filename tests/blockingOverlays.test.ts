@@ -25,10 +25,7 @@ const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), ".."
  * — a `<Modal>` somewhere else in the same file says nothing about this one.
  */
 const BLOCKING_OVERLAYS: [string, string][] = [
-  ["components/ExchangeModal.tsx", "styles.overlay"],
   ["components/GameOverOverlay.tsx", "styles.innerCol"],
-  ["components/ExchangeAnnouncement.tsx", "styles.overlay"],
-  ["components/ExchangeAnnouncement.tsx", "StyleSheet.absoluteFill"],
   ["components/ConfirmDialog.tsx", "StyleSheet.absoluteFill"],
   ["components/SettingsModal.tsx", "StyleSheet.absoluteFill"],
   ["components/ErrorFallback.tsx", "styles.modalOverlay"],
@@ -68,25 +65,6 @@ const NON_MODAL_OVERLAYS: [string, number, string, string, [string, RegExp][]][]
       ["answers Escape", /useEscapeToClose\(/],
       ["answers the Android back gesture", /useBackToClose\(/],
       ["is announced as a dialog", /a11yDialog\(/],
-    ],
-  ],
-  [
-    "app/(online)/game.tsx",
-    1,
-    "styles.waitOverlay",
-    "the exchange wait cover holds no control, so there is nothing to trap into and nothing to close — the player waits it out. The rail stays reachable on purpose: the settings sheet it opens is the only route to onQuit",
-    [
-      // Spelled out rather than matched loosely. The cover and the veil are
-      // declared three hundred lines apart, and the seat they must both spare
-      // is the winner — who still owes a card back and whose ExchangeModal
-      // renders above the veil. Inverting this reads as a tidy-up and silently
-      // withdraws the table from the one player who can still act.
-      [
-        "derives the cover and the veil from one condition",
-        /const exchangeWaiting = exchange\.active && !exchange\.viewerIsWinner;/,
-      ],
-      ["withdraws the table under it", /tableCovered=\{exchangeWaiting\}/],
-      ["and gates the cover with the same name", /\{exchangeWaiting && \(/],
     ],
   ],
 ];

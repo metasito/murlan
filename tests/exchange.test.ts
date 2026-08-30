@@ -5,6 +5,7 @@ import {
   getBestCardFromHand,
   getStartingPlayerAfterExchange,
   getValidGivebackCards,
+  givebackIsFallback,
   initializeRematch,
   j,
   loserHasBothJokers,
@@ -34,6 +35,20 @@ describe("getValidGivebackCards (defect 7)", () => {
 
   test("empty hand yields no choices and does not crash", () => {
     assert.deepEqual(getValidGivebackCards([]), []);
+  });
+
+  // The prompt tells the winner which rule is in force, and the fallback is
+  // not "no cards" — it is one card the ordinary rule would have refused. A UI
+  // asking whether the list came back empty asks a question the engine never
+  // answers yes to, so it always states the 3-10 rule beside a King.
+  test("the fallback is recognisable as one, and the ordinary rule is not", () => {
+    const noneInRange = [c("K", "clubs"), c("J", "hearts"), c("A", "spades")];
+    assert.equal(givebackIsFallback(getValidGivebackCards(noneInRange)), true);
+
+    const inRange = [c("K", "clubs"), c("7", "hearts")];
+    assert.equal(givebackIsFallback(getValidGivebackCards(inRange)), false);
+
+    assert.equal(givebackIsFallback([]), false, "an empty hand is not the fallback either");
   });
 });
 

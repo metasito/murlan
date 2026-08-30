@@ -476,6 +476,12 @@ interface CardViewProps {
    */
   decorative?: boolean;
   /**
+   * What tapping this card does right now, when that is not the ordinary
+   * "play it". Takes the place of the selected hint rather than joining it —
+   * `accessibilityState.selected` already carries the selection.
+   */
+  hint?: string;
+  /**
    * How the table's lamp falls on this card. A card standing in a hand has its
    * head nearer a hanging lamp than its foot; one lying flat on the felt
    * catches far less of the same lamp. Omit for the viewer's own hand, which
@@ -497,9 +503,12 @@ function CardViewBase({
   decorative = false,
   light,
   hitWidth,
+  hint,
 }: CardViewProps) {
   const { t } = useTranslation();
-  const selectedHint = useA11yHint(decorative || !selected ? undefined : t("cardView.selectedA11yHint"));
+  const selectedHint = useA11yHint(
+    decorative ? undefined : (hint ?? (selected ? t("cardView.selectedA11yHint") : undefined))
+  );
   const reduceMotion = usePrefersReducedMotion();
   const back = useCardBack();
   const backField = back.field;

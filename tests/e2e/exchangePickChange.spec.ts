@@ -1,15 +1,15 @@
 // tests/e2e/exchangePickChange.spec.ts — changing the exchange pick before
 // confirming.
 //
-// components/ExchangeModal.tsx holds the pick in one `useState`, so tapping a
-// second giveback card has to replace the first rather than add to it. That
-// needs two sequential state-changing presses on one mount, which
-// react-test-renderer cannot see (tests/native/exchangeModalConfirm.test.tsx
-// explains why); only a real re-render, in a real browser, catches it — #328.
+// GameTable holds the pick in one `useState`, so tapping a second giveback
+// card has to replace the first rather than add to it — and now that the fan
+// itself is the picker (#533), the ordinary play selection is a multi-select
+// living on those same cards. Getting the two confused gives away two cards, or
+// the wrong one. Only a real re-render, in a real browser, catches it — #328.
 import type { Page } from "@playwright/test";
 import { test, expect } from "./fixtures";
 import { resumeSaved } from "./helpers/offlineSeed";
-import { HAND_ZONE } from "./helpers/selectors.ts";
+import { HAND_ZONE, TABLE } from "./helpers/selectors.ts";
 
 /** Two cards in the 3–10 giveback range, so both are valid picks. */
 const FIVE = { id: "5_hearts", rank: "5", suit: "hearts", isJoker: false };
@@ -21,7 +21,7 @@ const NINE_SPOKEN = "9 di Fiori";
  * A hand mid-exchange, with the viewer as the winner choosing a giveback —
  * seeded rather than played, the same way tests/e2e/a11yOverlays.spec.ts
  * reaches this phase. `lib/offlineSave.ts` is the app's own restore path, so
- * this arrives at the modal through the same code an interrupted match does.
+ * this arrives at the exchange through the same code an interrupted match does.
  */
 function midExchangeSave() {
   const card = (id: string, rank: string, suit: string) => ({ id, rank, suit, isJoker: false });
@@ -71,17 +71,17 @@ function midExchangeSave() {
 }
 
 /**
- * The exchange modal, scoped apart from the page: the hand it sits over is
- * still in the document underneath it (a11yOverlays.spec.ts's own finding),
- * and the winner's hand holds the same cards the modal offers as picks — an
- * unscoped `getByRole` for a card name matches both.
+ * The exchange, open on the felt. Scoped to the table because that is where the
+ * cards are now — there is no second copy of them in a dialog any more.
  */
-async function openExchangeModal(page: Page, baseURL: string) {
+async function openExchange(page: Page, baseURL: string) {
   await resumeSaved(page, baseURL, midExchangeSave());
 
-  const dialog = page.getByRole("dialog", { name: "Scambio di carte" });
-  await expect(dialog, "the exchange modal has to open").toBeVisible({ timeout: 15_000 });
-  return dialog;
+  await expect(
+    page.getByTestId("exchange-prompt"),
+    "the exchange has to ask on the felt"
+  ).toBeVisible({ timeout: 15_000 });
+  return page.locator(TABLE);
 }
 
 test("changing the exchange pick before confirming gives the last card chosen", async ({
@@ -89,15 +89,15 @@ test("changing the exchange pick before confirming gives the last card chosen", 
   baseURL,
 }) => {
   test.setTimeout(120_000);
-  const dialog = await openExchangeModal(page, baseURL!);
+  const table = await openExchange(page, baseURL!);
 
   // Choose the five...
-  await dialog.getByRole("button", { name: FIVE_SPOKEN, exact: true }).click();
+  await table.getByRole("button", { name: FIVE_SPOKEN, exact: true }).click();
   // ...then change to the nine before confirming.
-  await dialog.getByRole("button", { name: NINE_SPOKEN, exact: true }).click();
-  await dialog.getByTestId("exchange-confirm").click();
+  await table.getByRole("button", { name: NINE_SPOKEN, exact: true }).click();
+  await page.getByTestId("btn-gioca").click();
 
-  // The confirm modal is gone and the announcement names exactly one card as
+  // The prompt has left the felt and the announcement names exactly one card as
   // the winner's leg of the exchange — the last one picked, never the first
   // and never both.
   // A second `role="alert"` exists for the play-sound notification banner
@@ -113,10 +113,10 @@ test("changing the exchange pick before confirming gives the last card chosen", 
     `Ana dà ${FIVE_SPOKEN} a Bea`
   );
 
-  // Ground truth in the actual hand, past the announcement: the nine left,
-  // the five did not.
-  await page.getByRole("button", { name: "Chiudi annuncio scambio" }).click();
-  await expect(alert).toBeHidden({ timeout: 15_000 });
+  // Ground truth in the actual hand, once the announcement has cleared itself:
+  // the nine left, the five did not. Nothing dismisses it any more — it sits on
+  // the felt for a reading beat and goes.
+  await expect(alert).toBeHidden({ timeout: 20_000 });
 
   const hand = page.locator(HAND_ZONE);
   await expect(
