@@ -49,45 +49,6 @@ async function gitOutput(args: string[], cwd: string): Promise<string> {
   return (await execFileAsync("git", args, { cwd })).stdout.trim();
 }
 
-async function isAncestor(ancestor: string, descendant: string, cwd: string): Promise<boolean> {
-  try {
-    await runGit(["merge-base", "--is-ancestor", ancestor, descendant], cwd);
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-// This workspace's own checkpointing commits agent-memory notes locally
-// without pushing them, which used to permanently wedge the sync the moment
-// origin/main moved on. Those notes are disposable scratch space, not work
-// the sync needs to protect — so if every local-only commit touches nothing
-// outside this prefix, it is safe to drop them and fast-forward anyway.
-const DISCARDABLE_LOCAL_PATH_PREFIX = ".agents/memory/";
-
-async function localOnlyCommitsAreDiscardable(
-  localMain: string,
-  remoteMain: string,
-  cwd: string
-): Promise<boolean> {
-  const revList = await gitOutput(["rev-list", `${remoteMain}..${localMain}`], cwd);
-  const commits = revList ? revList.split("\n") : [];
-  if (commits.length === 0) return false;
-
-  for (const commit of commits) {
-    const changed = await gitOutput(
-      ["diff-tree", "--no-commit-id", "--name-only", "-r", commit],
-      cwd
-    );
-    const paths = changed ? changed.split("\n") : [];
-    if (paths.length === 0) continue;
-    if (!paths.every((p) => p.startsWith(DISCARDABLE_LOCAL_PATH_PREFIX))) {
-      return false;
-    }
-  }
-  return true;
-}
-
 /**
  * A refusal this hook is willing to say out loud.
  *
@@ -104,35 +65,37 @@ export class DevSyncRefusal extends Error {
   }
 }
 
+// This hook exists to keep the dev preview mirroring origin/main, not to
+// protect local history: whatever the checkout looks like — uncommitted
+// edits, untracked files, an agent's own unpushed commits, a genuine
+// divergence — none of it may block the sync. Uncommitted state gets
+// stashed (never dropped) and local main is always pointed at exactly
+// origin/main afterwards, no comparison or path-based judgment involved.
 export async function syncMain(cwd: string = process.cwd()): Promise<SyncResult> {
-  const originalBranch = await gitOutput(["branch", "--show-current"], cwd);
   const before = await gitOutput(["rev-parse", "HEAD"], cwd);
+  const originalBranch = await gitOutput(["branch", "--show-current"], cwd);
+
   const dirty = await gitOutput(
     ["status", "--porcelain", "--untracked-files=all"],
     cwd
   );
   if (dirty) {
-    throw new DevSyncRefusal("Dev workspace is not clean; refusing automatic main sync");
+    await runGit(
+      [
+        "stash",
+        "push",
+        "--include-untracked",
+        "--quiet",
+        "-m",
+        "dev-sync: auto-stash before syncing to origin/main",
+      ],
+      cwd
+    );
   }
 
   await runGit(["fetch", "origin", "main", "--quiet"], cwd);
   try {
-    await runGit(["checkout", "main", "--quiet"], cwd);
-    const localMain = await gitOutput(["rev-parse", "HEAD"], cwd);
-    const remoteMain = await gitOutput(["rev-parse", "origin/main"], cwd);
-    if (localMain === remoteMain) return { updated: before !== localMain, sha: localMain };
-    if (await isAncestor(localMain, remoteMain, cwd)) {
-      await runGit(["merge", "--ff-only", "origin/main", "--quiet"], cwd);
-    } else if (await isAncestor(remoteMain, localMain, cwd)) {
-      // A local commit has not reached GitHub yet. Leave it alone; the push
-      // action will run after it is published, at which point this relation
-      // reverses for the next remote main commit.
-      return { updated: false, sha: localMain };
-    } else if (await localOnlyCommitsAreDiscardable(localMain, remoteMain, cwd)) {
-      await runGit(["reset", "--hard", "origin/main", "--quiet"], cwd);
-    } else {
-      throw new DevSyncRefusal("Local main and origin/main diverged; refusing automatic sync");
-    }
+    await runGit(["checkout", "-B", "main", "origin/main", "--quiet"], cwd);
   } catch (error) {
     if (originalBranch && originalBranch !== "main") {
       await runGit(["checkout", originalBranch, "--quiet"], cwd).catch(() => {});
