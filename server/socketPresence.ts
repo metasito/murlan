@@ -219,8 +219,10 @@ export function registerDisconnect({ io, socket, userId, username }: PresenceCon
             userId,
             username,
           });
-          // `NOT_SEATED` is the owner saying the table is live and this
-          // account holds no seat at it; only "no game anywhere" is a lobby.
+          // Only "no game anywhere" is a lobby. `NOT_SEATED` is the owner
+          // saying the table is live and this account holds no seat at it, and
+          // `TABLE_UNREACHABLE` is nobody having answered — releasing a seat on
+          // either would be acting on a question that was never answered.
           if (seat.code !== "NO_LIVE_GAME") return;
 
           // No instance holds a game for this room. Nobody is mid-turn, but the

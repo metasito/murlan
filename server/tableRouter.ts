@@ -242,12 +242,18 @@ export async function applyOrForward(
     const answer = await askOtherInstances(io, action);
     if (answer) return answer;
 
-    // Nobody owned up to the room, or somebody could not answer. The lock is
-    // the authority on which of those it was.
+    // Every instance answered and none of them holds the room. Nothing to take
+    // over, and no reason to ask Postgres — which matters more than it looks:
+    // with one instance this is every lobby disconnect, every seat release and
+    // every leave, and probing the lock for each cost a round trip apiece.
+    // Reviving a stranded hand to give one seat to a bot would set the whole
+    // table playing itself with nobody watching, so `forward` stops here.
+    if (answer === null && mode === "forward") return UNOWNED;
+
+    // Either nobody owns it or somebody could not answer. The lock is the
+    // authority on which.
     if (await claimRoom(roomId)) {
       if (mode === "forward") {
-        // Genuinely ownerless. Reviving a stranded hand to hand one seat to a
-        // bot would set the whole table playing itself with nobody watching.
         await releaseRoom(roomId);
         return UNOWNED;
       }
