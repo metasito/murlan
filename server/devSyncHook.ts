@@ -58,6 +58,22 @@ async function isAncestor(ancestor: string, descendant: string): Promise<boolean
   }
 }
 
+/**
+ * A refusal this hook is willing to say out loud.
+ *
+ * Everything else that can fail here is a git command, and git puts its own
+ * stderr in the rejection — which carries the remote URL, and so the token in
+ * it, and absolute workspace paths. The caller publishes what it is told into
+ * a GitHub issue on a public repository, so only these curated sentences may
+ * cross the wire; the rest stays in the log.
+ */
+export class DevSyncRefusal extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "DevSyncRefusal";
+  }
+}
+
 export async function syncMain(): Promise<SyncResult> {
   const originalBranch = await gitOutput(["branch", "--show-current"]);
   const before = await gitOutput(["rev-parse", "HEAD"]);
@@ -67,7 +83,7 @@ export async function syncMain(): Promise<SyncResult> {
     "--untracked-files=all",
   ]);
   if (dirty) {
-    throw new Error("Dev workspace is not clean; refusing automatic main sync");
+    throw new DevSyncRefusal("Dev workspace is not clean; refusing automatic main sync");
   }
 
   await runGit(["fetch", "origin", "main", "--quiet"]);
@@ -84,7 +100,7 @@ export async function syncMain(): Promise<SyncResult> {
       // reverses for the next remote main commit.
       return { updated: false, sha: localMain };
     } else {
-      throw new Error("Local main and origin/main diverged; refusing automatic sync");
+      throw new DevSyncRefusal("Local main and origin/main diverged; refusing automatic sync");
     }
   } catch (error) {
     if (originalBranch && originalBranch !== "main") {
@@ -152,7 +168,16 @@ export function createGithubDevSyncHandler({
       });
     } catch (error) {
       logger.error({ err: error }, "GitHub dev sync failed");
-      return res.status(409).json({ error: "Dev sync was not applied", code: "DEV_SYNC_FAILED" });
+      // Whoever is told about this runs on another machine and cannot read
+      // this log, so the reason has to travel with the response.
+      return res.status(409).json({
+        error: "Dev sync was not applied",
+        code: "DEV_SYNC_FAILED",
+        reason:
+          error instanceof DevSyncRefusal
+            ? error.message
+            : "a git command failed; the reason is in the dev preview's log",
+      });
     }
   };
 }

@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import type { Request, Response } from "express";
-import { createGithubDevSyncHandler } from "../server/devSyncHook.ts";
+import { DevSyncRefusal, createGithubDevSyncHandler } from "../server/devSyncHook.ts";
 
 type MockRequest = {
   body: unknown;
@@ -122,4 +122,81 @@ test("ignores pushes for branches other than main", async () => {
     code: "IGNORED_NON_MAIN_PUSH",
   });
   assert.equal(synced, false);
+});
+// A dirty workspace and a diverged main need opposite remedies, and the
+// workflow that reports the failure cannot read this server's log.
+test("a refused sync reports which refusal it was", async () => {
+  const secret = "s3cret";
+  const handler = createGithubDevSyncHandler({
+    secret,
+    sync: async () => {
+      throw new DevSyncRefusal("Dev workspace is not clean; refusing automatic main sync");
+    },
+    triggerFile: join(await mkdtemp(join(tmpdir(), "murlan-sync-")), "trigger"),
+  });
+
+  const res = response();
+  await handler(
+    request({ ref: "refs/heads/main", after: "abc123" }, secret) as unknown as Request,
+    res as unknown as Response
+  );
+
+  assert.equal(res.result.status, 409);
+  const body = res.result.body as { code?: string; reason?: string };
+  assert.equal(body.code, "DEV_SYNC_FAILED");
+  assert.match(
+    body.reason ?? "",
+    /not clean/,
+    "the reason has to cross the wire — the workflow that reports this cannot read the server's log"
+  );
+});
+
+test("the reason is the sync's own words, not a guess at them", async () => {
+  const secret = "s3cret";
+  const handler = createGithubDevSyncHandler({
+    secret,
+    sync: async () => {
+      throw new DevSyncRefusal("Local main and origin/main diverged; refusing automatic sync");
+    },
+    triggerFile: join(await mkdtemp(join(tmpdir(), "murlan-sync-")), "trigger"),
+  });
+
+  const res = response();
+  await handler(
+    request({ ref: "refs/heads/main", after: "abc123" }, secret) as unknown as Request,
+    res as unknown as Response
+  );
+
+  assert.match((res.result.body as { reason?: string }).reason ?? "", /diverged/);
+});
+
+// The message of anything that is not a curated refusal is a git rejection,
+// which reads `Command failed: git <args>\n<git stderr>` — the remote URL and
+// so any token in it, plus absolute workspace paths. The caller publishes what
+// it is told into an issue on a public repository.
+test("a git failure is not quoted back, only refusals are", async () => {
+  const secret = "s3cret";
+  const handler = createGithubDevSyncHandler({
+    secret,
+    sync: async () => {
+      throw new Error(
+        "Command failed: git fetch origin main\n" +
+          "fatal: unable to access 'https://ghp_EXAMPLETOKEN@github.com/metasito/murlan.git/'"
+      );
+    },
+    triggerFile: join(await mkdtemp(join(tmpdir(), "murlan-sync-")), "trigger"),
+  });
+
+  const res = response();
+  await handler(
+    request({ ref: "refs/heads/main", after: "abc123" }, secret) as unknown as Request,
+    res as unknown as Response
+  );
+
+  assert.equal(res.result.status, 409);
+  const reason = (res.result.body as { reason?: string }).reason ?? "";
+  assert.doesNotMatch(reason, /ghp_/, "a credential must never reach the response body");
+  assert.doesNotMatch(reason, /github\.com/);
+  assert.doesNotMatch(reason, /Command failed/);
+  assert.match(reason, /log/, "it still says where the detail is");
 });

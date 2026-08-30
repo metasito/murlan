@@ -38,12 +38,32 @@ jobs:
             '{ref: $ref, after: $after, repository: {full_name: $full_name}}')
           digest=$(printf '%s' "$payload" | openssl dgst -sha256 -hmac "$HOOK_SECRET" -hex | awk '{print $2}')
 
-          curl --fail-with-body --silent --show-error \
+          # The preview puts its reason in the response body, and the step that
+          # reports a failure runs on another machine and cannot read the
+          # preview's log — so the body has to be kept rather than printed on
+          # the way out. curl's own diagnostics go to the log only: they name
+          # the hook host, which is a repository variable and so unmasked, and
+          # this ends up in a public issue.
+          set +e
+          reply=$(curl --fail-with-body --silent --show-error \
             --request POST "$HOOK_URL" \
             --header 'Content-Type: application/json' \
             --header 'X-GitHub-Event: push' \
             --header "X-Hub-Signature-256: sha256=$digest" \
-            --data-binary "$payload"
+            --data-binary "$payload" 2>/tmp/curl.err)
+          code=$?
+          set -e
+          echo "$reply"
+          cat /tmp/curl.err >&2 || true
+          # A delimiter the server could also emit would end the value early
+          # and let the rest be read as further outputs (CVE-2022-35954).
+          delim="EOF_$(openssl rand -hex 16)"
+          {
+            echo "reply<<$delim"
+            echo "$reply"
+            echo "$delim"
+          } >> "$GITHUB_OUTPUT"
+          exit $code
 
       # A push-triggered job nobody reviews is invisible when it turns red —
       # nothing blocks a PR on it and no one has a reason to check the
@@ -56,11 +76,20 @@ jobs:
           REPO: ${{ github.repository }}
           SHA: ${{ github.sha }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          REPLY: ${{ steps.send.outputs.reply }}
         shell: bash
         run: |
           set -euo pipefail
           title="Dev preview sync is failing"
-          body=$(printf 'The last push to main (%s) could not reach the Replit dev preview.\n\nRun: %s\n\nThe preview is serving stale code until this is fixed. See the workflow logs above for the specific error (commonly a missing REPLIT_DEV_HOOK_URL / REPLIT_DEV_HOOK_SECRET).' "$SHA" "$RUN_URL")
+          # No reply means the request never got as far as the preview — the
+          # configuration guards above exit before curl runs. Saying what the
+          # preview said would be worse than useless there.
+          if [ -n "${REPLY:-}" ]; then
+            said=$(printf 'What the preview said:\n\n```\n%s\n```\n' "$REPLY")
+          else
+            said='The request never reached the preview, so there is nothing it said. Check the run log — a missing REPLIT_DEV_HOOK_URL or REPLIT_DEV_HOOK_SECRET stops this before the request is made, and a transport failure is reported there too.'
+          fi
+          body=$(printf 'The last push to main (%s) could not reach the Replit dev preview.\n\n%s\nRun: %s\n\nThe preview is serving stale code until this is fixed.' "$SHA" "$said" "$RUN_URL")
           existing=$(gh issue list --repo "$REPO" --search "in:title \"$title\"" --state open --json number --jq '.[0].number' || true)
           if [ -n "$existing" ]; then
             gh issue comment "$existing" --repo "$REPO" --body "$body"
