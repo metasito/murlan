@@ -1,8 +1,12 @@
 // Reads of the server's live in-memory table (server/gameRoom.ts) that an
 // integration test cannot make through the wire. Test-only, so it lives here
 // rather than as an escape hatch inside the server.
+import type { Server as SocketServer } from "socket.io";
 import { activeGames } from "../../server/gameRoom.ts";
 import { clearRoomTimers } from "../../server/gameTimers.ts";
+import { broadcastGameState } from "../../server/gamePersistence.ts";
+import { armTurn } from "../../server/gameTurn.ts";
+import { createDeck, initializeGame } from "../../lib/gameEngine.ts";
 
 /**
  * Whether a room still holds a live in-memory game. The only observable
@@ -21,6 +25,47 @@ export function hasActiveGame(roomId: string): boolean {
 export function forgetActiveGame(roomId: string): boolean {
   clearRoomTimers(roomId);
   return activeGames.delete(roomId);
+}
+
+/**
+ * Deals a room's live table a hand somebody has already played.
+ *
+ * The server shuffles from `crypto` (`lib/gameEngine.ts`'s `shuffleDeck`), so
+ * no seed reaches the deal and a hand can only be recovered by handing its
+ * cards back in. That is what makes a soak log replayable at all, and it is why
+ * this is a write where the rest of this file only reads.
+ *
+ * Everything downstream of the deal — who opens, on which card — is derived by
+ * `initializeGame` rather than restated here, so a replay cannot start from a
+ * table the real deal path would never produce. The turn is re-armed because
+ * the timer running belongs to the hand this one replaces.
+ */
+export function redealExactly(io: SocketServer, roomId: string, hands: string[][]): boolean {
+  const game = activeGames.get(roomId);
+  if (!game) return false;
+
+  const byId = new Map(createDeck().map((card) => [card.id, card]));
+  const dealt = hands.map((ids) =>
+    ids.map((id) => {
+      const card = byId.get(id);
+      if (!card) throw new Error(`no such card in the deck: ${id}`);
+      return card;
+    })
+  );
+  game.gameState = initializeGame(
+    game.gameState.players.map((p) => ({
+      name: p.name,
+      type: p.type,
+      personality: p.personality,
+      team: p.team,
+    })),
+    game.gameState.gameMode,
+    0,
+    dealt
+  );
+  broadcastGameState(io, game);
+  armTurn(io, roomId);
+  return true;
 }
 
 /**
