@@ -1,11 +1,15 @@
 import { createHmac } from "node:crypto";
-import { mkdtemp, readFile } from "node:fs/promises";
+import { execFile } from "node:child_process";
+import { promisify } from "node:util";
+import { mkdtemp, readFile, writeFile, mkdir } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import type { Request, Response } from "express";
-import { DevSyncRefusal, createGithubDevSyncHandler } from "../server/devSyncHook.ts";
+import { DevSyncRefusal, createGithubDevSyncHandler, syncMain } from "../server/devSyncHook.ts";
+
+const execFileAsync = promisify(execFile);
 
 type MockRequest = {
   body: unknown;
@@ -199,4 +203,75 @@ test("a git failure is not quoted back, only refusals are", async () => {
   assert.doesNotMatch(reason, /github\.com/);
   assert.doesNotMatch(reason, /Command failed/);
   assert.match(reason, /log/, "it still says where the detail is");
+});
+
+// This workspace's own checkpointing commits agent-memory notes locally
+// without pushing them. That used to permanently wedge the sync the moment
+// origin/main moved on, so a divergence confined to that path must be
+// discarded and fast-forwarded through instead of refused.
+async function git(cwd: string, args: string[]) {
+  await execFileAsync("git", args, { cwd });
+}
+
+async function initRepoPair() {
+  const root = await mkdtemp(join(tmpdir(), "murlan-sync-repo-"));
+  const remote = join(root, "remote.git");
+  const clone = join(root, "clone");
+  await git(root, ["init", "--bare", "-q", remote]);
+  await git(root, ["clone", "-q", remote, clone]);
+  await git(clone, ["config", "user.email", "test@example.com"]);
+  await git(clone, ["config", "user.name", "Test"]);
+  await writeFile(join(clone, "app.txt"), "v1\n", "utf8");
+  await git(clone, ["add", "."]);
+  await git(clone, ["commit", "-q", "-m", "initial"]);
+  await git(clone, ["push", "-q", "origin", "HEAD:main"]);
+  await git(clone, ["checkout", "-q", "-B", "main"]);
+  return { remote, clone };
+}
+
+test("a divergence confined to .agents/memory/ is discarded, not refused", async () => {
+  const { remote, clone } = await initRepoPair();
+
+  // Someone else pushes real work to origin/main.
+  const other = await mkdtemp(join(tmpdir(), "murlan-sync-other-"));
+  await git(tmpdir(), ["clone", "-q", remote, other]);
+  await git(other, ["config", "user.email", "test@example.com"]);
+  await git(other, ["config", "user.name", "Test"]);
+  await writeFile(join(other, "app.txt"), "v2\n", "utf8");
+  await git(other, ["commit", "-q", "-am", "real work"]);
+  await git(other, ["push", "-q", "origin", "main"]);
+
+  // Meanwhile the local checkout gets an unpushed memory-only commit.
+  await mkdir(join(clone, ".agents", "memory"), { recursive: true });
+  await writeFile(join(clone, ".agents", "memory", "note.md"), "note\n", "utf8");
+  await git(clone, ["add", "."]);
+  await git(clone, ["commit", "-q", "-m", "agent memory note"]);
+
+  const result = await syncMain(clone);
+
+  assert.equal(result.updated, true);
+  const head = (await execFileAsync("git", ["rev-parse", "HEAD"], { cwd: clone })).stdout.trim();
+  const originMain = (
+    await execFileAsync("git", ["rev-parse", "origin/main"], { cwd: clone })
+  ).stdout.trim();
+  assert.equal(head, originMain, "local main should land exactly on origin/main");
+  assert.equal(result.sha, originMain);
+});
+
+test("a divergence that touches real files outside .agents/memory/ is still refused", async () => {
+  const { remote, clone } = await initRepoPair();
+
+  const other = await mkdtemp(join(tmpdir(), "murlan-sync-other-"));
+  await git(tmpdir(), ["clone", "-q", remote, other]);
+  await git(other, ["config", "user.email", "test@example.com"]);
+  await git(other, ["config", "user.name", "Test"]);
+  await writeFile(join(other, "app.txt"), "v2\n", "utf8");
+  await git(other, ["commit", "-q", "-am", "real work"]);
+  await git(other, ["push", "-q", "origin", "main"]);
+
+  // Local checkout has its own unpushed, non-memory commit.
+  await writeFile(join(clone, "app.txt"), "local-edit\n", "utf8");
+  await git(clone, ["commit", "-q", "-am", "local edit outside memory"]);
+
+  await assert.rejects(() => syncMain(clone), DevSyncRefusal);
 });
