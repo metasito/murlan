@@ -8,8 +8,10 @@ name: Soak
 
 on:
   schedule:
-    # 03:00 UTC, when nothing else is competing for runners.
-    - cron: "0 3 * * *"
+    # Not on the hour. GitHub's scheduler is best-effort and queues hardest at
+    # :00, where every other repo's nightly also asks: the first run this
+    # workflow ever had was asked for at 03:00 and dispatched at 08:37.
+    - cron: "23 3 * * *"
   workflow_dispatch:
     inputs:
       minutes:
@@ -22,6 +24,11 @@ on:
 concurrency:
   group: soak-${{ github.ref }}
   cancel-in-progress: true
+
+permissions:
+  contents: read
+  # A nightly nobody is watching reports into the tracker, not into a run log.
+  issues: write
 
 jobs:
   soak:
@@ -68,7 +75,40 @@ jobs:
           failed=0
           for seed in $SEEDS; do
             echo "::group::seed $seed"
-            npm run soak --silent -- --seats 4 --minutes "$MINUTES" --seed "$seed" || failed=1
+            npm run soak --silent -- --seats 4 --minutes "$MINUTES" --seed "$seed" \
+              2>&1 | tee -a soak.log || failed=1
             echo "::endgroup::"
           done
           exit $failed
+
+      # Nobody is watching a 03:00 run. GitHub's own notification for a failed
+      # schedule goes to whoever last touched this file and is one unread email
+      # among many; the queue is where work is actually seen, so that is where
+      # a failure goes. One open issue at a time, because a soak that starts
+      # failing every night must not file an issue every night.
+      - name: Report the failure to the tracker
+        if: failure()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          grep -aE '^soak: (FAILED|[0-9]+ rounds)|^  \[|^  drop\+rejoin' soak.log 2>/dev/null \
+            | tail -40 > found.txt || true
+          # An empty grep is the case worth spelling out: the job died before
+          # the harness said anything, so the run log is the only evidence.
+          [ -s found.txt ] || echo "No violation was printed — the job itself failed." > found.txt
+          {
+            echo "The soak failed. [Run]($RUN_URL)"
+            echo
+            echo '```'
+            cat found.txt
+            echo '```'
+          } > soak-failure.md
+          open=$(gh issue list --label soak --state open --limit 1 --json number --jq '.[0].number // empty')
+          if [ -n "$open" ]; then
+            gh issue comment "$open" --body-file soak-failure.md
+          else
+            gh issue create --title "The soak found something" \
+              --label soak --label bug --label needs-triage --body-file soak-failure.md
+          fi

@@ -62,11 +62,19 @@ function makeRng(seed: number): () => number {
  */
 const REJOIN_BUDGET_MS = 5_000 * DEADLINE_SCALE;
 
+/**
+ * What arrives instead of a table. `game:rejoin_failed` carries the rejoin
+ * path's own refusals; the generic one is what `onEvent` sends when the packet
+ * never reaches the handler at all — rate limited, or malformed. Listening to
+ * both is what lets an unanswered rejoin name its cause instead of guessing.
+ */
+export const REFUSAL_EVENTS = ["game:rejoin_failed", "game:error"] as const;
+
 interface Options {
   seats: number;
   minutes: number;
   seed: number;
-  /** Chance per settled state that the chaos driver does something. */
+  /** Chance per move taken that the chaos driver does something. */
   chaos: number;
 }
 
@@ -94,6 +102,19 @@ class Seat {
   state: TableState | null = null;
   /** Bumped on every `game:state`, so the runner can wait for quiescence. */
   version = 0;
+  /**
+   * The last refusal the server sent this seat. A refusal is an answer: without
+   * it, a rejoin that goes unanswered cannot say whether the server turned it
+   * down — and which code it used — or never replied at all.
+   */
+  lastRefusal: string | null = null;
+  /**
+   * How many refusals this seat has collected all run. A throttled or rejected
+   * client is not playing the game it thinks it is, and its view goes stale for
+   * a reason the oracle would read as disagreement — so the count is reported
+   * even when the run is clean.
+   */
+  refusals = 0;
 
   constructor(socket: Socket, username: string, userId: string, cookie: string) {
     this.socket = socket;
@@ -109,6 +130,12 @@ class Seat {
       this.state = state;
       this.version += 1;
     });
+    for (const event of REFUSAL_EVENTS) {
+      this.socket.on(event, (payload: { code?: string; message?: string } | undefined) => {
+        this.lastRefusal = `${event} ${payload?.code ?? "?"}: ${payload?.message ?? ""}`.trim();
+        this.refusals += 1;
+      });
+    }
   }
 
   /** Re-attached after a reconnect, because the socket object is new. */
@@ -184,6 +211,7 @@ export interface SoakResult {
   moves: number;
   manches: number;
   chaosEvents: string[];
+  refusals: number;
   seed: number;
 }
 
@@ -284,7 +312,12 @@ export async function runSoak(opts: Options, log = console.log): Promise<SoakRes
         log(`soak: move ${moves}, hands [${views[0].handCounts}]`);
       }
 
-      if (rng() < opts.chaos) {
+      // Drawn per move, never per loop pass. A pass that took no turn is the
+      // runner spinning while the server thinks, so how many of those happen is
+      // wall-clock, and drawing there spends the generator at a rate the seed
+      // does not control — two runs of one seed then diverge, and the seed the
+      // failure prints replays a different game.
+      if (acted && rng() < opts.chaos) {
         const victim = seats[Math.floor(rng() * seats.length)];
         chaosEvents.push(`drop+rejoin ${victim.username} at move ${moves}`);
         victim.socket.close();
@@ -292,6 +325,7 @@ export async function runSoak(opts: Options, log = console.log): Promise<SoakRes
         const back = await reconnectWith(server, victim.cookie);
         const before = victim.version;
         victim.adopt(back);
+        victim.lastRefusal = null;
         back.emit("game:rejoin", { roomId: room.roomId });
         // A reconnecting client that is never sent the table sits on a screen
         // that will not correct itself. Waiting also keeps the oracle honest:
@@ -303,7 +337,10 @@ export async function runSoak(opts: Options, log = console.log): Promise<SoakRes
             kind: "rejoin-unanswered",
             detail:
               `${victim.username} reconnected and emitted game:rejoin, and was sent no ` +
-              `state within ${REJOIN_BUDGET_MS}ms`,
+              `state within ${REJOIN_BUDGET_MS}ms — ` +
+              (victim.lastRefusal
+                ? `the server refused it with ${victim.lastRefusal}`
+                : "and the server said nothing at all"),
           });
         }
       }
@@ -315,7 +352,14 @@ export async function runSoak(opts: Options, log = console.log): Promise<SoakRes
     const finalViews = seats.map((s) => s.view()).filter((v): v is SeatView => v !== null);
     violations.push(...checkAll(finalViews, deckSize, highWaterMark));
 
-    return { violations, moves, manches, chaosEvents, seed: opts.seed };
+    return {
+      violations,
+      moves,
+      manches,
+      chaosEvents,
+      refusals: seats.reduce((sum, s) => sum + s.refusals, 0),
+      seed: opts.seed,
+    };
   } finally {
     for (const seat of seats) if (seat.socket.connected) seat.socket.close();
     await server.stop();
@@ -332,13 +376,19 @@ async function main() {
 
   console.log(
     `soak: ${result.moves} rounds of moves, ${result.manches} manches, ` +
-      `${result.chaosEvents.length} disconnections`
+      `${result.chaosEvents.length} disconnections, ${result.refusals} refusals`
   );
   if (result.violations.length === 0) {
     console.log(`soak: no disagreement found (seed ${result.seed})`);
     return;
   }
-  console.error(`\nsoak: FAILED with seed ${result.seed}. Replay with --seed ${result.seed}`);
+  // Not "replay": measured, two runs of one seed still diverge. The deal and
+  // every choice made from it repeat; how the four clients interleave against a
+  // live server does not, and that is what decides which move a drop lands on.
+  console.error(
+    `\nsoak: FAILED with seed ${result.seed}. Re-run it with --seed ${result.seed} — ` +
+      `same deal and same choices, not the same interleaving.`
+  );
   for (const v of result.violations) console.error(`  [${v.kind}] ${v.detail}`);
   console.error("\nchaos leading up to it:");
   for (const e of result.chaosEvents.slice(-10)) console.error(`  ${e}`);
