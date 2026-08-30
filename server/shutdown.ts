@@ -4,8 +4,9 @@ import type { Server as SocketIOServer } from "socket.io";
 import { logger } from "./logger.ts";
 import { pool as appPool, QUERY_TIMEOUT_MS } from "./db.ts";
 import { drainPool } from "./drainPool.ts";
-import { beginShutdown } from "./socketTable.ts";
+import { beginShutdown } from "./gameRoom.ts";
 import { socketAdapterPool, socketAdapterReady } from "./socketAdapter.ts";
+import { closeOwnership } from "./gameOwnership.ts";
 
 /**
  * Replit Cloud Run sends SIGTERM and SIGKILLs roughly ten seconds later. The
@@ -73,6 +74,10 @@ export async function shutdown(
     // Closes the adapter too, which releases the client parked on `LISTEN` and
     // stops its cleanup timer — so the pool below has nothing checked out.
     await io.close();
+    // After `io.close()`, never before: the locks go with this connection, and
+    // handing a room back while its game is still in memory and still being
+    // played lets another instance restore the same table and write over it.
+    await closeOwnership();
     const adapterPool = socketAdapterPool();
     if (adapterPool) {
       await adapterPool.end().catch((err) =>

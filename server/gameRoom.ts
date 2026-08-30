@@ -76,6 +76,23 @@ export interface OnlineGameState {
 }
 
 export const activeGames = new Map<string, OnlineGameState>();
+
+let shuttingDown = false;
+
+/**
+ * Called before `io.close()`. Two things read it: a lobby seat held for a grace
+ * period the next process will never honour is a room nobody can join, and a
+ * table action routed to another instance is work this process will not be here
+ * to finish. It lives here rather than beside either of them because both must
+ * see it and neither may import the other.
+ */
+export function beginShutdown(): void {
+  shuttingDown = true;
+}
+
+export function isShuttingDown(): boolean {
+  return shuttingDown;
+}
 export const socketRoomMap = new Map<string, string>();
 // Spectators are tracked apart from socketRoomMap on purpose: that map drives
 // the disconnect and leave paths for *seated* players, and a spectator dropping

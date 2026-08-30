@@ -202,6 +202,10 @@ export async function startTestServer(
           await ioClosed;
           const { socketAdapterPool } = await import("../../server/socketAdapter.ts");
           await socketAdapterPool()?.end();
+          // The room-ownership client is a third connection, held open for the
+          // life of the process exactly as the two pools are.
+          const { closeOwnership } = await import("../../server/gameOwnership.ts");
+          await closeOwnership();
         } finally {
           // Always run, even if closing the server/pool above threw: a
           // failed shutdown must not also leak the schema or leave
