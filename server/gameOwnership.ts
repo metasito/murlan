@@ -68,6 +68,20 @@ function connect(): Promise<Client | null> {
     });
     try {
       await next.connect();
+      // How fast a table can be taken over from an instance that vanished
+      // without closing anything — a killed container, a partitioned network.
+      // A process that exits sends a FIN and Postgres drops its locks at once;
+      // one that simply stops answering is invisible until the server probes,
+      // and the default is two hours. Best effort: a server that does not
+      // support them accepts the SET and ignores it, and one that refuses it
+      // outright must not cost us the connection.
+      await next
+        .query(
+          "SET tcp_keepalives_idle = 20; SET tcp_keepalives_interval = 5; SET tcp_keepalives_count = 3"
+        )
+        .catch((err: unknown) =>
+          logger.warn({ err }, "Could not shorten the ownership connection's keepalives")
+        );
       client = next;
       return next;
     } catch (err) {

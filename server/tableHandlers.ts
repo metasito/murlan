@@ -71,8 +71,7 @@ import {
   teamForSeat,
 } from "../lib/gameEngine.ts";
 import type { GameState } from "../lib/gameEngine.ts";
-import { appendReplayMove } from "./replayShape.ts";
-import { startReplayLog } from "./replayShape.ts";
+import { appendReplayMove, startReplayLog } from "./replayShape.ts";
 import { dealManche } from "./dealManche.ts";
 import type { TableAction } from "./tableActions.ts";
 import {

@@ -283,10 +283,29 @@ describe("broadcasts cross server instances", {
   });
 
   test("the table outlives the instance that owned it", async () => {
-    await openTable();
+    const room = await openTable();
     const dealt = waitFor(bSocket, "game:state", 15_000);
     aSocket.emit("room:start");
     assert.ok(await dealt, "the game never started");
+
+    // What survives the kill is the `active_games` row, and it is written
+    // fire-and-forget after the deal. Killing before it lands would test
+    // nothing but the race.
+    const admin = new pg.Pool({ connectionString: scoped });
+    try {
+      const deadline = Date.now() + 15_000;
+      for (;;) {
+        const { rowCount } = await admin.query(
+          "SELECT 1 FROM active_games WHERE room_id = $1",
+          [room.roomId]
+        );
+        if (rowCount) break;
+        assert.ok(Date.now() < deadline, "the deal was never persisted");
+        await sleep(200);
+      }
+    } finally {
+      await admin.end();
+    }
 
     // Last, and deliberately destructive: instance 1 holds the only copy of
     // this game, and a table that dies with one process is a table nobody can

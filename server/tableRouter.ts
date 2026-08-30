@@ -99,6 +99,43 @@ function askOtherInstances(
 }
 
 /**
+ * Takeovers in flight, by room.
+ *
+ * The claim keeps two *instances* from taking one room. It does nothing about
+ * two actions on the same instance: both find no owner, both claim (the lock is
+ * re-entrant within a session), both read `active_games`, and the second
+ * overwrites the first — losing whatever move the first had already applied.
+ * So a room is taken over once and the rest of the queue waits for it.
+ */
+const takeovers = new Map<string, Promise<"restored" | "missing" | "unrestorable" | "not_ours">>();
+
+function takeOver(
+  roomId: string,
+  mayCreate: boolean
+): Promise<"restored" | "missing" | "unrestorable" | "not_ours"> {
+  const running = takeovers.get(roomId);
+  if (running) return running;
+  const attempt = (async () => {
+    if (!(await claimRoom(roomId))) return "not_ours";
+    const restored = await rehydrate(roomId);
+    if (restored === "restored") return restored;
+    // A claim that did not end in a game — a `room:start` about to be refused,
+    // a row that was gone — must not keep the room off every other instance for
+    // the life of this process.
+    if (!mayCreate) {
+      await releaseRoom(roomId);
+      return restored;
+    }
+    // Taken again because discarding an unrestorable row goes through
+    // `disposeGame`, which hands the room back — and the deal about to run
+    // would then write a game this instance has no claim on.
+    return (await claimRoom(roomId)) ? restored : "not_ours";
+  })().finally(() => takeovers.delete(roomId));
+  takeovers.set(roomId, attempt);
+  return attempt;
+}
+
+/**
  * Runs a table action wherever the table is.
  *
  * When no instance holds it, this one takes it over: claims the room, restores
@@ -119,22 +156,21 @@ export async function applyOrForward(
   const mode = takeoverMode(action.kind);
   if (mode === "forward") return UNOWNED;
 
-  if (!(await claimRoom(roomId))) {
+  const taken = await takeOver(roomId, mode === "create");
+  if (taken === "not_ours") {
     // Another instance claimed it between the question and the answer. It is
     // the owner now, so ask again rather than refusing a table that exists.
     const second = await askOtherInstances(io, action);
     return second ?? UNOWNED;
   }
+  if (taken === "unrestorable") return { ok: false, code: "GAME_NO_LONGER_VALID" };
+  if (taken === "missing" && mode !== "create") return UNOWNED;
 
   try {
-    const restored = await rehydrate(roomId);
-    if (restored === "unrestorable") return { ok: false, code: "GAME_NO_LONGER_VALID" };
-    if (restored === "missing" && mode !== "create") return UNOWNED;
     return await apply(io, action);
   } finally {
-    // A claim that did not end in a game — a refused `room:start`, a row that
-    // was gone — must not keep the room off every other instance for the life
-    // of this process.
+    // `startMatch` claims before it knows whether it will deal, and refuses for
+    // half a dozen reasons after that.
     if (!activeGames.has(roomId)) await releaseRoom(roomId);
   }
 }

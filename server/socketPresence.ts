@@ -161,8 +161,13 @@ export function registerDisconnect({ io, socket, userId, username }: PresenceCon
           // applies to them; they are simply dropped.
           const spectatingRoom = spectatorRoomMap.get(socket.id);
           if (spectatingRoom) {
-            activeGames.get(spectatingRoom)?.spectators.delete(userId);
             spectatorRoomMap.delete(socket.id);
+            await applyOrForward(io, {
+              kind: "unspectate",
+              roomId: spectatingRoom,
+              userId,
+              username,
+            });
           }
           // Only blank the mapping if it still points at THIS socket: a second
           // tab or a fast reconnect would otherwise black out the live one.
