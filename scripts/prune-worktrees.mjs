@@ -298,19 +298,28 @@ export function findOrphanedWorktreeDirs(dirNames, registeredPaths) {
   });
 }
 
+/** Whether `child` is `parent` itself or sits underneath it. */
+function isAtOrUnder(child, parent) {
+  const [c, p] = [path.resolve(child), path.resolve(parent)];
+  const [cc, pp] = process.platform === "win32" ? [c.toLowerCase(), p.toLowerCase()] : [c, p];
+  return cc === pp || cc.startsWith(pp + path.sep);
+}
+
 /**
- * Removes one named worktree, links detached first, so that an agent tearing down its own
- * worktree by hand has a command that cannot follow the install junction out of the tree.
+ * Removes one named worktree, links detached first, so that tearing a worktree down by hand has
+ * a command that cannot follow the install junction out of the tree.
  *
- * Throws rather than deleting when the path is not a linked worktree of this repository, when it
- * is locked, or when it holds work that is not committed. `--force` waives the last two and
- * nothing else: the detaching is unconditional, because it is the part that protects a directory
- * the caller never named.
+ * Throws rather than deleting when the path is not a linked worktree of this repository, when the
+ * caller is standing inside it, when it is locked, or when it holds work that is not committed.
+ * `force` waives the last two and nothing else: the detaching is unconditional, because it is the
+ * part that protects a directory the caller never named, and the cwd refusal is unconditional
+ * because git empties the tree and drops the registration before failing to delete the directory
+ * a process is holding open - the caller reads exit 1 over a worktree that is already gone.
  *
  * @param {string} targetPath
- * @param {{ force?: boolean }} [options]
+ * @param {{ force?: boolean, dryRun?: boolean }} [options]
  */
-export function removeOneWorktree(targetPath, { force = false } = {}) {
+export function removeOneWorktree(targetPath, { force = false, dryRun = false } = {}) {
   const entries = parseWorktreeList(
     execFileSync("git", ["worktree", "list", "--porcelain"], { encoding: "utf8" }),
   );
@@ -318,6 +327,11 @@ export function removeOneWorktree(targetPath, { force = false } = {}) {
   const match = entries.slice(1).find((entry) => samePath(entry.path, targetPath));
   if (!match) {
     throw new Error(`${targetPath} is not a linked worktree of this repository.`);
+  }
+  if (isAtOrUnder(process.cwd(), match.path)) {
+    throw new Error(
+      `${match.path} is the worktree this command is running in; run it from the main checkout.`,
+    );
   }
   if (!force && match.locked) {
     throw new Error(`${match.path} is locked; pass --force to remove it anyway.`);
@@ -327,10 +341,16 @@ export function removeOneWorktree(targetPath, { force = false } = {}) {
       `${match.path} has uncommitted changes; commit them, or pass --force to remove it anyway.`,
     );
   }
+  if (dryRun) {
+    console.log(`(dry run - would detach the links in ${match.path} and remove it)`);
+    return;
+  }
   for (const name of detachReparsePoints(match.path)) {
     console.log(`detached ${name} (a link, not its target)`);
   }
-  execFileSync("git", ["worktree", "remove", ...(force ? ["--force"] : []), match.path], {
+  // Twice, deliberately: one `--force` does not override a lock, and stopping there would leave
+  // a locked worktree whose links this call has already detached.
+  execFileSync("git", ["worktree", "remove", ...(force ? ["--force", "--force"] : []), match.path], {
     stdio: "inherit",
   });
   console.log(`removed ${match.path}`);
@@ -339,10 +359,19 @@ export function removeOneWorktree(targetPath, { force = false } = {}) {
 const invokedDirectly = isInvokedDirectly(process.argv[1], import.meta.url);
 
 if (invokedDirectly && process.argv.includes("--remove")) {
-  const targetPath = process.argv[process.argv.indexOf("--remove") + 1];
+  // The first non-flag argument, not the next one: `--remove --force <path>` reads the same as
+  // `--remove <path> --force`, rather than reporting `--force` as an unknown worktree.
+  const targetPath = process.argv
+    .slice(process.argv.indexOf("--remove") + 1)
+    .find((arg) => !arg.startsWith("--"));
   try {
-    if (!targetPath) throw new Error("usage: npm run worktrees:remove -- <path> [--force]");
-    removeOneWorktree(targetPath, { force: process.argv.includes("--force") });
+    if (!targetPath) {
+      throw new Error("usage: npm run worktrees:remove -- <path> [--force] [--dry-run]");
+    }
+    removeOneWorktree(targetPath, {
+      force: process.argv.includes("--force"),
+      dryRun: process.argv.includes("--dry-run"),
+    });
   } catch (err) {
     console.error(err.message);
     process.exit(1);

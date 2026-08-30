@@ -74,13 +74,23 @@ describe("removing one named worktree", () => {
 
     assert.equal(fs.existsSync(t.worktree), false, "the worktree directory should be gone");
     assert.equal(fs.readFileSync(t.shim, "utf8"), "the install", "the install must survive untouched");
-    assert.match(git(t.repo, "worktree", "list"), /^(?!.*w1)/s, "git should no longer register it");
+    assert.equal(
+      git(t.repo, "worktree", "list", "--porcelain").includes(`worktree ${t.worktree.replace(/\\/g, "/")}`),
+      false,
+      "git should no longer register it"
+    );
   });
 
-  // The floor. Without it this file would pass on a platform where nothing follows a link, and
-  // report the state of the runner rather than the state of the script.
+  /**
+   * The floor. Without it this file would pass on a platform where nothing follows a link, and
+   * report the state of the runner rather than the state of the script.
+   *
+   * It is live on Windows only. Rather than skip quietly elsewhere - which reads identically to a
+   * floor that has stopped working - the other branch asserts the vacuity out loud: on a platform
+   * whose links nothing recurses into, this whole file passes with or without the detaching, and
+   * the guard is a local one.
+   */
   test("the command it replaces is the one that destroys the install", () => {
-    if (process.platform !== "win32") return;
     const t = makeJunctionedWorktree();
     if (!t) return;
 
@@ -89,11 +99,79 @@ describe("removing one named worktree", () => {
     } catch {
       // Losing the delete partway through is the documented shape of this failure.
     }
-    assert.equal(
-      fs.existsSync(t.shim),
-      false,
-      "planted floor: git worktree remove is expected to follow the junction and empty the install"
+    if (process.platform === "win32") {
+      assert.equal(
+        fs.existsSync(t.shim),
+        false,
+        "planted floor: git worktree remove is expected to follow the junction and empty the install"
+      );
+    } else {
+      assert.equal(
+        fs.readFileSync(t.shim, "utf8"),
+        "the install",
+        "on this platform the raw command is already safe, so nothing in this file is a live guard"
+      );
+    }
+  });
+
+  test("the worktree the command is standing in is refused, not half-removed", () => {
+    const t = makeJunctionedWorktree();
+    if (!t) return;
+
+    assert.throws(
+      () =>
+        execFileSync(process.execPath, [SCRIPT, "--remove", t.worktree], {
+          cwd: t.worktree,
+          encoding: "utf8",
+          stdio: "pipe",
+        }),
+      /running in/i
     );
+    assert.ok(fs.existsSync(path.join(t.worktree, "package.json")), "the worktree stays whole");
+    assert.ok(fs.existsSync(path.join(t.worktree, LINK)), "and its link is left attached");
+  });
+
+  test("--force removes a locked worktree rather than detaching and failing", () => {
+    const t = makeJunctionedWorktree();
+    if (!t) return;
+    git(t.repo, "worktree", "lock", t.worktree);
+
+    execFileSync(process.execPath, [SCRIPT, "--remove", t.worktree, "--force"], {
+      cwd: t.repo,
+      encoding: "utf8",
+      stdio: "pipe",
+    });
+
+    assert.equal(fs.existsSync(t.worktree), false, "the worktree directory should be gone");
+    assert.equal(fs.readFileSync(t.shim, "utf8"), "the install", "the install must survive untouched");
+  });
+
+  test("--dry-run says what it would do and removes nothing", () => {
+    const t = makeJunctionedWorktree();
+    if (!t) return;
+
+    const out = execFileSync(process.execPath, [SCRIPT, "--remove", t.worktree, "--dry-run"], {
+      cwd: t.repo,
+      encoding: "utf8",
+      stdio: "pipe",
+    });
+
+    assert.match(out, /dry run/i);
+    assert.ok(fs.existsSync(path.join(t.worktree, LINK)), "the link is still attached");
+    assert.ok(fs.existsSync(t.worktree), "the worktree is still there");
+  });
+
+  test("the path is found whichever side of the flags it is written", () => {
+    const t = makeJunctionedWorktree();
+    if (!t) return;
+
+    execFileSync(process.execPath, [SCRIPT, "--remove", "--force", t.worktree], {
+      cwd: t.repo,
+      encoding: "utf8",
+      stdio: "pipe",
+    });
+
+    assert.equal(fs.existsSync(t.worktree), false, "the worktree directory should be gone");
   });
 
   test("uncommitted work is never removed on a guess", () => {

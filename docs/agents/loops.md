@@ -353,16 +353,25 @@ prove is merged or gone and leaves anything uncommitted or still under an open p
 alone.
 
 To take down one worktree you have named yourself — the ordinary end of a ticket — use
-`npm run worktrees:remove -- <path>` (rule 38). It refuses a path that is not a linked
-worktree, and one holding uncommitted work, which `--force` waives; what `--force` does not
-waive is detaching the links, because that is the half protecting a directory you did not name.
+`npm run worktrees:remove -- <path>` (rule 38), from the main checkout. It refuses a path that
+is not a linked worktree, one you are standing in, and one holding uncommitted work; `--force`
+waives the last, and never the detaching, because that is the half protecting a directory you
+did not name. Standing in it is refused outright: git empties the tree and drops its
+registration *before* failing to delete a directory a process holds open, so exit 1 there means
+the worktree is already gone rather than untouched.
 
 Both go through `detachReparsePoints`, and the reason they have to is that on Windows a
 recursive delete walks *into* a junction rather than unlinking it. The install is not a copy
 per worktree: it is one directory every worktree points at, so a delete that follows the link
-is deleting every session's install at once, and it has. `tests/worktreeRemoveCommand.test.ts`
-plants that defect — it asserts the raw command *does* destroy a junctioned install — so the
-green next to it means the safe path is the reason, and not the platform.
+is deleting every session's install at once, and it has.
+
+`tests/worktreeRemoveCommand.test.ts` plants that defect — it asserts the raw command *does*
+destroy a junctioned install. **That floor is live on Windows only, and CI is Linux**, where a
+`junction` is an ordinary symlink nothing recurses into: there the same file passes whether or
+not the links are detached at all, and it asserts that vacuity rather than skipping quietly. So
+a change that drops the detaching lands green on CI and is caught only by running the suite
+here. It is the reverse of the usual shape, where the browser suite sees what a local run
+cannot.
 
 ### Metro's cache is machine-wide, and the key is short of two inputs
 
