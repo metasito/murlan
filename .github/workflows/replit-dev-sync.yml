@@ -3,6 +3,9 @@ name: Sync Replit dev preview
 on:
   push:
     branches: [main]
+  # Lets a sync be re-run by hand after the preview comes back up, without
+  # waiting for a new push to main.
+  workflow_dispatch:
 
 concurrency:
   group: replit-dev-sync
