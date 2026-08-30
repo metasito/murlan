@@ -30,3 +30,19 @@ older notification when a newer main push arrives.
 - The Replit workflow processes remain running. A successful sync writes a
   short-lived restart signal, and each workflow supervisor restarts only its
   own backend or Expo child process.
+
+## When a sync is refused
+
+A refusal answers `409` with `code: "DEV_SYNC_FAILED"` and a `reason`. The
+workflow files that reason into a GitHub issue, because the only party that
+sees this failure runs on another machine and cannot read the preview's log.
+
+`reason` carries the sentence for a refusal the hook decided on — a workspace
+that is not clean, a local `main` that has diverged. Any other failure is a git
+command's own, and its message quotes git's stderr, which carries the remote
+URL and so the token in it; those say only that the detail is in the preview's
+log. The endpoint is dev-only and 404s under `NODE_ENV=production`, but this
+repository is public and the issue is too.
+
+The running commit is on `/health` as `commit`, which is how to tell what the
+preview is actually serving without opening a shell on it.
