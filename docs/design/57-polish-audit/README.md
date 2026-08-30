@@ -34,6 +34,29 @@ again rather than re-described.
 | `table-lamp-bottom__tablet.png` | 349px empty band; 148px of unused width |
 | `table-lamp-bottom__phone-12.png` | The same table at phone size, for comparison |
 | `table-long-names__phone-12.png` | Long names truncate and initials fall back to two letters — a plan, not a defect |
+| `settings-sheet__tablet-landscape.png` vs `__phone-12.png` | The same void, inside the in-game sheet: ~70px on a phone, ~380px on a tablet |
+| `online-lobby__tablet-landscape.png` | The online lobby, for the same reason |
+
+## The one number behind most of it
+
+Six screens render their content at a **byte-identical height** whether the window is 390px
+tall or 834px — `/(online)` and `/(online)/room` both end at y=338, friends at 557,
+leaderboard at 404, profile at 1696, rules at 1885. The extra 444px becomes a void.
+
+The cause is one line, repeated: every menu screen reads the window height exactly once, and
+only ever to compute a boolean.
+
+```
+app/index.tsx:654              const isLandscape = W > H;
+app/lobby.tsx:131              const isLandscape = W > H;
+app/(online)/index.tsx:42      const isLandscape = W > H;
+app/(online)/quickmatch.tsx:95 const isLandscape = W > H;
+app/(online)/room.tsx:337      const isLandscape = W > H;
+```
+
+Nothing consults *how much* height there is. A screen fills a tall window only when it
+happens to contain a `flex: 1` child that absorbs the slack — which is why `/`, `/lobby`
+and `/quickmatch` reflow (368→798, 358→802, 366→810) and the rest do not.
 
 ## What was measured and dismissed
 
