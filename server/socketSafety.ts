@@ -71,7 +71,7 @@ export function __resetRateLimits(): void {
   lastSweepAt = 0;
 }
 
-function errorEventFor(event: string): string {
+export function errorEventFor(event: string): string {
   const ns = event.split(":")[0];
   return ns === "room" || ns === "game" || ns === "friend"
     ? `${ns}:error`

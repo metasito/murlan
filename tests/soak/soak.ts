@@ -62,11 +62,19 @@ function makeRng(seed: number): () => number {
  */
 const REJOIN_BUDGET_MS = 5_000 * DEADLINE_SCALE;
 
+/**
+ * What arrives instead of a table. `game:rejoin_failed` carries the rejoin
+ * path's own refusals; the generic one is what `onEvent` sends when the packet
+ * never reaches the handler at all — rate limited, or malformed. Listening to
+ * both is what lets an unanswered rejoin name its cause instead of guessing.
+ */
+export const REFUSAL_EVENTS = ["game:rejoin_failed", "game:error"] as const;
+
 interface Options {
   seats: number;
   minutes: number;
   seed: number;
-  /** Chance per settled state that the chaos driver does something. */
+  /** Chance per move taken that the chaos driver does something. */
   chaos: number;
 }
 
@@ -94,6 +102,12 @@ class Seat {
   state: TableState | null = null;
   /** Bumped on every `game:state`, so the runner can wait for quiescence. */
   version = 0;
+  /**
+   * The last refusal the server sent this seat. A refusal is an answer: without
+   * it, a rejoin that goes unanswered cannot say whether the server turned it
+   * down — and which code it used — or never replied at all.
+   */
+  lastRefusal: string | null = null;
 
   constructor(socket: Socket, username: string, userId: string, cookie: string) {
     this.socket = socket;
@@ -109,6 +123,11 @@ class Seat {
       this.state = state;
       this.version += 1;
     });
+    for (const event of REFUSAL_EVENTS) {
+      this.socket.on(event, (payload: { code?: string; message?: string } | undefined) => {
+        this.lastRefusal = `${event} ${payload?.code ?? "?"}: ${payload?.message ?? ""}`.trim();
+      });
+    }
   }
 
   /** Re-attached after a reconnect, because the socket object is new. */
@@ -284,7 +303,12 @@ export async function runSoak(opts: Options, log = console.log): Promise<SoakRes
         log(`soak: move ${moves}, hands [${views[0].handCounts}]`);
       }
 
-      if (rng() < opts.chaos) {
+      // Drawn per move, never per loop pass. A pass that took no turn is the
+      // runner spinning while the server thinks, so how many of those happen is
+      // wall-clock, and drawing there spends the generator at a rate the seed
+      // does not control — two runs of one seed then diverge, and the seed the
+      // failure prints replays a different game.
+      if (acted && rng() < opts.chaos) {
         const victim = seats[Math.floor(rng() * seats.length)];
         chaosEvents.push(`drop+rejoin ${victim.username} at move ${moves}`);
         victim.socket.close();
@@ -292,6 +316,7 @@ export async function runSoak(opts: Options, log = console.log): Promise<SoakRes
         const back = await reconnectWith(server, victim.cookie);
         const before = victim.version;
         victim.adopt(back);
+        victim.lastRefusal = null;
         back.emit("game:rejoin", { roomId: room.roomId });
         // A reconnecting client that is never sent the table sits on a screen
         // that will not correct itself. Waiting also keeps the oracle honest:
@@ -303,7 +328,10 @@ export async function runSoak(opts: Options, log = console.log): Promise<SoakRes
             kind: "rejoin-unanswered",
             detail:
               `${victim.username} reconnected and emitted game:rejoin, and was sent no ` +
-              `state within ${REJOIN_BUDGET_MS}ms`,
+              `state within ${REJOIN_BUDGET_MS}ms — ` +
+              (victim.lastRefusal
+                ? `the server refused it with ${victim.lastRefusal}`
+                : "and the server said nothing at all"),
           });
         }
       }
