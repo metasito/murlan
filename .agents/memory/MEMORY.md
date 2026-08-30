@@ -1,1 +1,2 @@
 - [GitHub publishing fallback](github-publishing.md) — Git integration can be unavailable to automation even after OAuth is attached; preserve safe sync guards and use a secure write credential.
+- [RN flexWrap+gap grid instability](rn-web-flexwrap-gap-bug.md) — a wrapping flex grid with % flexBasis + gap can collapse to 1-per-line after time in session; build rows explicitly instead.

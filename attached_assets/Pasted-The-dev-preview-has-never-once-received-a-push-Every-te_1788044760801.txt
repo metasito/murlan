@@ -1,0 +1,36 @@
+The dev preview has never once received a push. Every test the owner has run was against whatever code happened to be in the workspace, not against main.
+
+Evidence
+Every run of .github/workflows/replit-dev-sync.yml has failed, twelve consecutively, back to 2026-08-28T17:20Z — the full history available. The log of the most recent one:
+
+env:
+  HOOK_URL:
+  HOOK_SECRET:
+##[error]REPLIT_DEV_HOOK_URL is not configured
+##[error]Process completed with exit code 1.
+Both are empty: the repository variable REPLIT_DEV_HOOK_URL and the secret REPLIT_DEV_HOOK_SECRET were never set. Corroborated from the workspace itself — /tmp/murlan-dev-sync.trigger does not exist, and ps -eo pid,etime shows the backend holding one PID with monotonically growing uptime, so scripts/dev-workflow-supervisor.mjs has never been signalled.
+
+Why it matters more than it looks
+The owner reported five multiplayer defects on the dev preview and they were triaged against main. main is not what was running. #549 (rooms are public or private in the database) and #552 (a lobby seat survives a blip) were both merged during that window and neither could have been in the build being tested. Any conclusion drawn from "this is fixed on main, so why is it still happening" was drawn from a false premise — including, on #544, a root cause built on the assumption that these pushes were restarting the dev backend. They were not.
+
+The failure is silent in the only direction that matters
+A red run on a workflow that no pull request waits for is invisible. Nothing in CI turns red, no reviewer sees it, and the owner has no reason to look — the preview simply serves older code, correctly, forever. Twelve failures produced no signal at all.
+
+What to do
+Configuration (owner):
+
+Repository variable REPLIT_DEV_HOOK_URL = the workspace's public origin + /api/hooks/github (the path registerGithubDevSyncHook mounts, server/devSyncHook.ts:164).
+Repository secret REPLIT_DEV_HOOK_SECRET = a long random string, set identically as a Replit Secret so createGithubDevSyncHandler can verify the HMAC.
+Code, so this cannot be silent again:
+
+The workflow must be visible when it fails. A push-triggered job nobody reads is not a check; either it reports somewhere the owner sees, or it is not worth having.
+The preview should be able to answer "what am I running?" — a commit SHA on an existing status endpoint costs nothing and turns "is dev up to date" from a shell session into a glance.
+Acceptance criteria
+
+A merge to main reaches the dev preview and the backend restarts on it, demonstrated once end to end.
+
+A failing sync is visible without anyone thinking to look at the Actions tab.
+
+The running commit of the dev preview is readable from the app itself.
+
+The Blocked by note on The network layer loses things: make it stable #544 about which code was under test is resolved, and the symptom table there re-derived against a preview that is actually running main.
