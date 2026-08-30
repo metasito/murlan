@@ -22,7 +22,7 @@ import Animated, {
 import { LinearGradient } from "expo-linear-gradient";
 import { hapticLight, hapticMedium, hapticSuccess } from "@/lib/haptics";
 import Ionicons from "@expo/vector-icons/Ionicons";
-import { useGame } from "@/context/GameContext";
+import { useLocalMatch, useLocalSession, useLocalTable } from "@/context/gameHooks";
 import { usePrefersReducedMotion } from "@/lib/accessibility";
 import { standings } from "@/lib/standings";
 import { Colors, FontSize, Motion, motionMs, Radius, Spacing, TOUCH_TARGET_MIN, Type } from '@/lib/theme';
@@ -176,14 +176,9 @@ export default function ResultScreen() {
   const { t } = useTranslation();
   const { width: W, height: H } = useWindowDimensions();
   const isLandscape = W > H;
-  const {
-    gameState,
-    match,
-    tableWantsRematch,
-    startNextHand,
-    startNewMatch,
-    resetGame,
-  } = useGame();
+  const { gameState } = useLocalTable();
+  const { match, tableWantsRematch, startNextHand, startNewMatch } = useLocalMatch();
+  const { resetGame } = useLocalSession();
 
   useEffect(() => {
     if (!gameState) router.replace("/");

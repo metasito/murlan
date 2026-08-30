@@ -37,7 +37,7 @@ import Feather from "@expo/vector-icons/Feather";
 import Ionicons from "@expo/vector-icons/Ionicons";
 import { useQuery } from "@tanstack/react-query";
 import { useAuth } from "@/context/AuthContext";
-import { useGame } from "@/context/GameContext";
+import { useLocalSession } from "@/context/gameHooks";
 import { useSocket } from "@/context/SocketContext";
 import { usePrefersReducedMotion } from "@/lib/accessibility";
 import { Colors, FontSize, makeShadow, Motion, motionMs, Radius, Spacing, TOUCH_TARGET_MIN, Type } from '@/lib/theme';
@@ -658,7 +658,7 @@ export default function HomeScreen() {
   const insets = useSafeAreaInsets();
   const { user, loading: authLoading } = useAuth();
   const tutorialDecided = useRef(false);
-  const { hasSavedGame, resumeGame } = useGame();
+  const { hasSavedGame, resumeGame } = useLocalSession();
   const { gameInvites } = useSocket();
   const { t } = useTranslation();
   const { width: W, height: H } = useWindowDimensions();

@@ -19,7 +19,7 @@ import Animated, {
 import { router, useNavigation } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import Ionicons from "@expo/vector-icons/Ionicons";
-import { useOnlineGame } from "@/context/OnlineGameContext";
+import { useOnlineConnection, useOnlineRoom } from "@/context/onlineGameHooks";
 import { Colors, FontSize, Motion, Radius, Spacing } from '@/lib/theme';
 import { MenuLayout, CONTENT_H_PAD } from "@/components/MenuLayout";
 import { MenuCard } from "@/components/MenuCard";
@@ -83,7 +83,8 @@ export default function QuickmatchScreen() {
   const { t } = useTranslation();
   const MODES = React.useMemo(() => buildModes(t), [t]);
   const { width: W, height: H } = useWindowDimensions();
-  const { quickmatch, leaveRoom, room, error, clearError } = useOnlineGame();
+  const { quickmatch, leaveRoom, room } = useOnlineRoom();
+  const { error, clearError } = useOnlineConnection();
   const navigation = useNavigation();
 
   const [phase, setPhase] = useState<"selecting" | "searching">("selecting");

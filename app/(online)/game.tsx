@@ -10,7 +10,14 @@ import { View, Text, StyleSheet, ActivityIndicator, useWindowDimensions } from "
 import { router } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import Ionicons from "@expo/vector-icons/Ionicons";
-import { useOnlineGame } from "@/context/OnlineGameContext";
+import {
+  useOnlineConnection,
+  useOnlineExchange,
+  useOnlineMatch,
+  useOnlineRoom,
+  useOnlineTable,
+  useOnlineTurnClock,
+} from "@/context/onlineGameHooks";
 import { useAuth } from "@/context/AuthContext";
 import { ConfirmDialog, type ConfirmRequest } from "@/components/ConfirmDialog";
 import { GameTable } from "@/components/GameTable";
@@ -53,39 +60,32 @@ export default function OnlineGameScreen() {
   const { width, height } = useWindowDimensions();
   const { t } = useTranslation();
   const { user } = useAuth();
+  const { gameState, mySeatIndex, playCards, pass, sendReaction } = useOnlineTable();
+  const { turnSeconds, turnDeadlineMs } = useOnlineTurnClock();
+  const { isSpectator, entrySource, leaveRoom } = useOnlineRoom();
   const {
-    gameState,
-    mySeatIndex,
-    turnSeconds,
-    turnDeadlineMs,
-    isSpectator,
-    playerLeft,
-    rejoinFailed,
-    reconnectNotice,
     connected,
     error,
+    reconnectNotice,
+    playerLeft,
+    rejoinFailed,
     clearError,
-    playCards,
-    pass,
-    giveExchangeCard,
-    sendReaction,
-    leaveRoom,
-    voteRematch,
-    entrySource,
-    rematchVoteState,
+    clearPlayerLeft,
+    clearRejoinFailed,
+  } = useOnlineConnection();
+  const {
+    matchState,
     cumulativeScores,
     handScores,
     ratingDeltas,
-    matchState,
+    rematchVoteState,
     rematchIntents,
     rematchPromptOpen,
+    voteRematch,
     answerRematch,
-    exchangeAnnouncing,
-    exchangeAnnounceData,
-    acknowledgeExchange,
-    clearPlayerLeft,
-    clearRejoinFailed,
-  } = useOnlineGame();
+  } = useOnlineMatch();
+  const { exchangeAnnouncing, exchangeAnnounceData, giveExchangeCard, acknowledgeExchange } =
+    useOnlineExchange();
 
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [showReactions, setShowReactions] = useState(false);

@@ -13,7 +13,8 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { LinearGradient } from "expo-linear-gradient";
 import { hapticSelection, hapticSuccess } from "@/lib/haptics";
 import Ionicons from "@expo/vector-icons/Ionicons";
-import { useGame, PlayerSetupConfig } from "@/context/GameContext";
+import type { PlayerSetupConfig } from "@/context/GameContext";
+import { useLocalSession } from "@/context/gameHooks";
 import { useAuth } from "@/context/AuthContext";
 import { GameMode, MatchLength, targetsFor, teamForSeat } from "@/lib/gameEngine";
 import { BOT_PERSONALITIES, botBlurbKey, botSeatNames, getBotPersonality } from "@/lib/botPersonalities";
@@ -130,7 +131,7 @@ export default function LobbyScreen() {
   const { width: W, height: H } = useWindowDimensions();
   const isLandscape = W > H;
   const { mode } = useLocalSearchParams<{ mode: LobbyMode }>();
-  const { setupGame } = useGame();
+  const { setupGame } = useLocalSession();
   const { user } = useAuth();
   const myName = user?.username ?? t("lobby.defaultPlayerName1");
 
