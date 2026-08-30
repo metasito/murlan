@@ -554,10 +554,10 @@ describe("translate() produces the expected output per locale", () => {
   });
 
   test("every game:rejoin_failed reason is renderable and distinct in every locale", () => {
-    // The five emit sites are the only thing standing between the player and
-    // a game that vanishes with no explanation, so they have to follow the
-    // wire's { code, message } contract — `reason` is invisible to
-    // translateServerPayload — and no two of them may render the same
+    // The one emit site is what stands between the player and a game that
+    // vanishes with no explanation, so it has to follow the wire's
+    // { code, message } contract — `reason` is invisible to
+    // translateServerPayload — and no two of its reasons may render the same
     // sentence, or the codes carry no information.
     // Read across the socket family rather than one file: which module the
     // rejoin handler sits in is a layout decision, and the contract being
@@ -568,16 +568,19 @@ describe("translate() produces the expected output per locale", () => {
     const sites = source
       .split("\n")
       .filter((line) => line.includes('"game:rejoin_failed"'));
-    assert.equal(sites.length, 5, "the rejoin handler has five failure exits");
-    for (const site of sites) {
-      assert.ok(site.includes("message:"), `not on the error contract: ${site.trim()}`);
-      assert.ok(!site.includes("reason:"), `still ships reason: ${site.trim()}`);
-      assert.ok(site.includes("roomId"), `no roomId for the client's guard: ${site.trim()}`);
-    }
-
-    const codes = new Set(
-      sites.map((site) => /code: "([A-Z_]+)"/.exec(site)?.[1] ?? "")
+    assert.equal(
+      sites.length,
+      1,
+      "the rejoin failure is spelled in one place; a second emit is a second contract"
     );
+    assert.ok(sites[0].includes("roomId"), `no roomId for the client's guard: ${sites[0].trim()}`);
+    assert.ok(!sites[0].includes("reason:"), `still ships reason: ${sites[0].trim()}`);
+
+    // The reasons themselves, from the table that emit spreads.
+    const table = /REJOIN_FAILURE[^=]*=\s*\{([\s\S]*?)\n\};/.exec(source)?.[1] ?? "";
+    const entries = [...table.matchAll(/\{\s*message: "[^"]+", code: "([A-Z_]+)" \}/g)];
+    assert.ok(entries.length >= 4, `the rejoin failure table has ${entries.length} reasons`);
+    const codes = new Set(entries.map((m) => m[1]));
     assert.deepEqual(
       [...codes].sort(),
       ["GAME_NOT_FOUND", "GAME_NO_LONGER_VALID", "SERVER_ERROR", "UNAUTHORIZED"]
@@ -983,8 +986,8 @@ describe("every player-facing server response carries a code", () => {
       }
     }
     assert.ok(
-      objectCount > 112,
-      `expected to find the server's response payload objects, got ${objectCount} (115 when this floor was set)`
+      objectCount > 100,
+      `expected to find the server's response payload objects, got ${objectCount} (107 when this floor was set)`
     );
     assert.deepEqual(
       violations,

@@ -8,11 +8,12 @@ import type { Server as SocketServer, Socket } from "socket.io";
 import { storage } from "./storage.ts";
 import { logger } from "./logger.ts";
 import {
-  activeGames,
   socketRoomMap,
+  userRoom,
   userSocketMap,
 } from "./gameRoom.ts";
 import type { OnlineGameState } from "./gameRoom.ts";
+import { applyOrForward } from "./tableRouter.ts";
 import {
   LOBBY_GRACE_MS,
   lobbyGraceTimers,
@@ -22,7 +23,9 @@ import {
 } from "./gameTimers.ts";
 import { sendGameStateTo } from "./gamePersistence.ts";
 import { scoresByName } from "./gameOver.ts";
-import { armTurnIfIdle, vacateSeat } from "./gameTurn.ts";
+import { armTurnIfIdle } from "./gameTurn.ts";
+import { TEAMS_PLAYER_COUNT } from "../lib/gameEngine.ts";
+import type { EventOutcome } from "./socketSafety.ts";
 
 let shuttingDown = false;
 
@@ -92,13 +95,43 @@ export function roomOf(game: OnlineGameState) {
 }
 
 /**
- * Re-sends `room:state` to a single rejoining socket. The client's only route
- * back into the game screen is `room` -> `/(online)/room` -> `gameState` ->
+ * Teams is the one mode with a fixed size, checked both where a room is sized
+ * and where it is seated. Returns the refusal when the size is wrong, null when
+ * the caller may carry on — one spelling of the code, whether it goes out as an
+ * acknowledgement or as a `room:error`.
+ *
+ * Takes a sink rather than a socket: one caller is a lobby handler holding the
+ * player's own socket, the other runs on the instance that owns the table and
+ * has only the player's user room. The sink names the event, so it stays a
+ * literal at each call site.
+ */
+export function teamsSizeRefusal(
+  refuse: (payload: { message: string; code: string }) => void,
+  gameMode: string,
+  playerCount: number
+): EventOutcome | null {
+  if (gameMode !== "teams" || playerCount === TEAMS_PLAYER_COUNT) return null;
+  const payload = {
+    message: "Teams mode needs exactly 4 players",
+    code: "TEAMS_REQUIRE_FOUR",
+  };
+  refuse(payload);
+  return { ok: false, code: payload.code };
+}
+
+/**
+ * Re-sends `room:state` to one rejoining player. The client's only route back
+ * into the game screen is `room` -> `/(online)/room` -> `gameState` ->
  * `/(online)/game`, so replying with `game:state` alone strands the player on
  * the lobby holding a live hand. A failed roster read must cost the roster and
  * not the reply.
  */
-export async function emitRoomStateTo(socket: Socket, roomId: string, game: OnlineGameState) {
+export async function emitRoomStateTo(
+  io: SocketServer,
+  userId: string,
+  roomId: string,
+  game: OnlineGameState
+) {
   const room = await storage.getRoomById(roomId).catch((err: unknown) => {
     logger.warn({ err, roomId }, "getRoomById failed; answering from the live game");
     return undefined;
@@ -109,34 +142,38 @@ export async function emitRoomStateTo(socket: Socket, roomId: string, game: Onli
   });
   // A running game always seats at least one human, so an empty roster is the
   // rows being gone rather than the table being empty.
-  socket.emit(
+  io.to(userRoom(userId)).emit(
     "room:state",
     roomStatePayload(room ?? roomOf(game), players.length > 0 ? players : seatedHumansOf(game))
   );
 }
 
+/** The half of a rejoin that belongs to the socket rather than to the table. */
+export function joinSocketToRoom(socket: Socket, roomId: string) {
+  socket.join(roomId);
+  socketRoomMap.set(socket.id, roomId);
+}
+
 /**
- * Puts a socket back at a table it holds a seat at.
+ * Tells a player, and their table, that they are back.
  *
  * The one emitter of `game:player_reconnected`, so its payload cannot differ
- * between the two paths that reach it. The caller owns the seat check and the
- * `room_players` row — the grace-timer path still holds one, the rejoin path
- * may not.
+ * between the two paths that reach it. Everything here is addressed to the
+ * account rather than to a socket: this runs on the instance that owns the
+ * game, which is not necessarily the one holding the player's connection. The
+ * caller owns the seat check and the `room_players` row — the grace-timer path
+ * still holds one, the rejoin path may not.
  */
-export async function rejoinSocketToTable(
+export async function announceRejoin(
   io: SocketServer,
-  socket: Socket,
   userId: string,
   username: string,
   roomId: string,
   game: OnlineGameState
 ) {
-  socket.join(roomId);
-  socketRoomMap.set(socket.id, roomId);
-
   // Caught, not propagated: the handler's blanket catch would turn a failed
   // roster refresh into a SERVER_ERROR that forfeits a live game.
-  await emitRoomStateTo(socket, roomId, game).catch((err: unknown) =>
+  await emitRoomStateTo(io, userId, roomId, game).catch((err: unknown) =>
     logger.warn({ err, roomId, userId }, "emitRoomStateTo failed")
   );
   sendGameStateTo(io, userId, game);
@@ -145,7 +182,7 @@ export async function rejoinSocketToTable(
   // only right while one is running — at the results screen `game:over` and
   // `game:rematch_intents` own those.
   if (!game.gameState.gameOver) {
-    socket.emit("game:match_state", {
+    io.to(userRoom(userId)).emit("game:match_state", {
       target: game.matchTarget,
       length: game.matchLength,
       scores: scoresByName(game),
@@ -274,11 +311,10 @@ export async function handleSeatRelease(
       "room:state",
       roomStatePayload({ ...room, hostUserId: newHostId }, remaining)
     );
-  } else if (activeGames.has(roomId)) {
-    // `rooms.status` reads "finished" between manches too, so only the
-    // in-memory game knows whether the seat is still held. Removing the DB row
-    // alone leaves it live — auto-playing the leaver's hand, or blocking the
-    // rematch gate.
-    await vacateSeat(io, roomId, userId, username);
+  } else {
+    // Routed rather than read out of this process's own map: the seat is live
+    // in whichever instance holds the game, and reading `activeGames` here
+    // found nothing whenever the player's socket had landed anywhere else.
+    await applyOrForward(io, { kind: "vacate", roomId, userId, username });
   }
 }

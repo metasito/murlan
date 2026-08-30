@@ -18,6 +18,7 @@ import {
 } from "./gameRoom.ts";
 import type { OnlineGameState } from "./gameRoom.ts";
 import type { GameOverWriters } from "./gameOver.ts";
+import { releaseRoom, unclaimedRooms } from "./gameOwnership.ts";
 import {
   STATE_ACK_TIMEOUT_MS,
   SWEEP_INTERVAL_MS,
@@ -102,6 +103,10 @@ export function disposeGame(roomId: string, deleteRow = true) {
   if (game) clearRoomDisconnectTimers(game);
   clearRoomTimers(roomId);
   activeGames.delete(roomId);
+  // Handed back the moment the game leaves memory: the claim is what keeps
+  // every other instance off this room, and a lock outliving the table it
+  // protected is a room nobody can ever take over.
+  void releaseRoom(roomId);
   if (deleteRow) {
     db.delete(activeGamesTable)
       .where(eq(activeGamesTable.roomId, roomId))
@@ -308,6 +313,15 @@ export function startSweeper(io: SocketServer) {
       void pruneStaleRooms().catch((err: unknown) =>
         logger.error({ err }, "Pruning stale rooms failed")
       );
+
+      // Only reachable through a bug — every path that puts a game in memory
+      // claims the room first — but what it would be reporting is two
+      // instances broadcasting one table over each other, which is worth a
+      // loud line rather than a silent divergence.
+      const unclaimed = unclaimedRooms();
+      if (unclaimed.length > 0) {
+        logger.error({ rooms: unclaimed }, "Holding games for rooms this instance does not own");
+      }
     } catch (err) {
       logger.error({ err }, "Sweeper failed");
     }

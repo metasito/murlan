@@ -19,17 +19,13 @@ import {
   userRoom,
   userSocketMap,
 } from "./gameRoom.ts";
+import { clearDisconnectGrace } from "./gameTimers.ts";
 import {
-  disconnectTimers,
-  DISCONNECT_GRACE_MS,
-} from "./gameTimers.ts";
-import { trackEvent } from "./events.ts";
-import {
+  announceRejoin,
   armLobbyGrace,
-  handleSeatRelease,
-  rejoinSocketToTable,
+  joinSocketToRoom,
 } from "./socketTable.ts";
-import { armTurn, vacateSeat } from "./gameTurn.ts";
+import { applyOrForward } from "./tableRouter.ts";
 import { NoPayloadSchema, FriendInviteSchema } from "./socketSchemas.ts";
 import { isUserOnline, onlineUserIds } from "./socketRegistry.ts";
 
@@ -124,14 +120,11 @@ export function registerFriendHandlers({ io, socket, userId, username }: Presenc
  */
 export async function announcePresence({ io, socket, userId, username }: PresenceContext) {
 
-    const pendingDcTimer = disconnectTimers.get(userId);
-    if (pendingDcTimer) {
-      clearTimeout(pendingDcTimer);
-      disconnectTimers.delete(userId);
-
+    if (clearDisconnectGrace(userId)) {
       for (const [roomId, game] of activeGames.entries()) {
         if (seatOfUser(game, userId) === null || game.gameState.gameOver) continue;
-        await rejoinSocketToTable(io, socket, userId, username, roomId, game);
+        joinSocketToRoom(socket, roomId);
+        await announceRejoin(io, userId, username, roomId, game);
         logger.info(
           { userId, username, roomId },
           "Player reconnected within grace period"
@@ -211,83 +204,25 @@ export function registerDisconnect({ io, socket, userId, username }: PresenceCon
             return;
           }
 
-          const game = activeGames.get(currentRoomId);
-
-          if (!game) {
-            // A waiting lobby. Nobody is mid-turn, but the seat is still
-            // theirs: releasing it on the disconnect itself made a two-second
-            // hiccup cost a player their place in a room they were waiting in.
-            await armLobbyGrace(io, currentRoomId, userId, username);
-            return;
-          }
-
-          if (game.gameState.gameOver) {
-            // The results screen is the opposite case: the seat counts towards
-            // the rematch gate, so holding it means the others can never start
-            // the next manche.
-            logger.debug(
-              { userId, socketId: socket.id, roomId: currentRoomId },
-              "Seat released without a grace period"
-            );
-            await handleSeatRelease(io, currentRoomId, userId, username, {
-              source: "disconnect",
-            });
-            return;
-          }
-
-          // Distinct from losing: the hand was still running when they went.
-          trackEvent("game.abandoned", userId, {
-            playerCount: game.gameState.players.length,
-            gameMode: game.gameState.gameMode,
-          });
-
-          const graceSeconds = Math.round(DISCONNECT_GRACE_MS / 1000);
-          io.to(currentRoomId).emit("game:player_disconnected", {
+          // Whether this is a hand in progress, a finished table or a waiting
+          // lobby is a question about the game, which lives in one instance's
+          // memory — and not necessarily this one. Reading `activeGames` here
+          // read every table held elsewhere as a lobby and released the seat.
+          const seat = await applyOrForward(io, {
+            kind: "seatLost",
+            roomId: currentRoomId,
             userId,
             username,
-            code: "PLAYER_DISCONNECTED_GRACE",
-            // The grace period is configurable, so the number has to come from
-            // the same constant the timer below is armed with — a hardcoded
-            // "60 seconds" in the text is a promise the server may not keep.
-            message: `${username} disconnected. They have ${graceSeconds} seconds to rejoin.`,
-            params: { username, seconds: graceSeconds },
           });
+          // `NOT_SEATED` is the owner saying the table is live and this
+          // account holds no seat at it; only "no game anywhere" is a lobby.
+          if (seat.code !== "NO_LIVE_GAME") return;
 
-          // A vacant seat must keep playing while we wait, or the table stalls
-          // for a full minute on this player's turn.
-          armTurn(io, currentRoomId);
-
-          const prevTimer = disconnectTimers.get(userId);
-          if (prevTimer) clearTimeout(prevTimer);
-
-          const dcTimer = setTimeout(() => {
-            void (async () => {
-              try {
-                disconnectTimers.delete(userId);
-                if (userSocketMap.has(userId)) return;
-
-                await storage
-                  .removeRoomPlayer(currentRoomId, userId)
-                  .catch((err) =>
-                    logger.warn(
-                      { err, roomId: currentRoomId, userId },
-                      "Failed to delete the room_players row after the disconnect grace expired — the seat stays counted as taken"
-                    )
-                  );
-                await vacateSeat(io, currentRoomId, userId, username);
-                logger.info(
-                  { userId, username, roomId: currentRoomId },
-                  "Disconnect grace expired — seat handed to a bot"
-                );
-              } catch (err) {
-                logger.error(
-                  { err, userId, roomId: currentRoomId },
-                  "Disconnect timeout handler failed"
-                );
-              }
-            })();
-          }, DISCONNECT_GRACE_MS);
-          disconnectTimers.set(userId, dcTimer);
+          // No instance holds a game for this room. Nobody is mid-turn, but the
+          // seat is still theirs: releasing it on the disconnect itself made a
+          // two-second hiccup cost a player their place in a room they were
+          // waiting in.
+          await armLobbyGrace(io, currentRoomId, userId, username);
         } catch (err) {
           logger.error({ err, userId }, "disconnect handler failed");
         }

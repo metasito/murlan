@@ -102,6 +102,20 @@ export function clearLobbyGrace(roomId: string, userId: string): boolean {
   return true;
 }
 
+/**
+ * Cancels the grace a disconnected seat is held under, and says whether one was
+ * armed. Deliberately not the AFK window beside it: a rejoin proves the player
+ * is back, not that they have taken their turn, and re-arming the clock on
+ * every rejoin lets a client loop hold a table open indefinitely.
+ */
+export function clearDisconnectGrace(userId: string): boolean {
+  const t = disconnectTimers.get(userId);
+  if (!t) return false;
+  clearTimeout(t);
+  disconnectTimers.delete(userId);
+  return true;
+}
+
 export function clearAllTimersForUser(userId: string, roomId?: string) {
   const dcTimer = disconnectTimers.get(userId);
   if (dcTimer) {

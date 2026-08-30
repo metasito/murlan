@@ -23,6 +23,8 @@ import { setSocketServer } from "./socketRegistry.ts";
 import { allowSocketAction } from "./socketSafety.ts";
 import { userRoom, userSocketMap } from "./gameRoom.ts";
 import { startSweeper } from "./gamePersistence.ts";
+import { installTableHandlers } from "./tableHandlers.ts";
+import { reopenOwnership } from "./gameOwnership.ts";
 
 // The account-facing surface lives in socketRegistry.ts, apart from this file
 // so the presence family can reach it without an import cycle. Re-exported
@@ -86,6 +88,11 @@ export function setupSocket(httpServer: HttpServer) {
   });
   io.adapter(createSocketAdapter());
   setSocketServer(io);
+  // Before the first connection: a table action forwarded from another
+  // instance arrives on `io`, not on a socket, and one that lands before this
+  // listener exists is answered by nobody.
+  reopenOwnership();
+  installTableHandlers(io);
 
   // Inject session into socket requests. `next` is cast because express and
   // socket.io disagree about it, not about the session: express overloads it

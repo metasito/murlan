@@ -6,6 +6,7 @@ import { pool as appPool, QUERY_TIMEOUT_MS } from "./db.ts";
 import { drainPool } from "./drainPool.ts";
 import { beginShutdown } from "./socketTable.ts";
 import { socketAdapterPool, socketAdapterReady } from "./socketAdapter.ts";
+import { closeOwnership } from "./gameOwnership.ts";
 
 /**
  * Replit Cloud Run sends SIGTERM and SIGKILLs roughly ten seconds later. The
@@ -66,6 +67,10 @@ export async function shutdown(
 
   try {
     beginShutdown();
+    // Ahead of everything else: the locks go with the connection, so another
+    // instance can take this one's tables over the moment its sockets drop
+    // rather than after the drain.
+    await closeOwnership();
     // A SIGTERM arriving moments after boot would otherwise close the adapter
     // while it is still taking out its subscription, stranding that client so
     // the pool below never finishes closing.
