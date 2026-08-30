@@ -44,7 +44,10 @@ function makeJunctionedWorktree() {
   fs.writeFileSync(path.join(repo, "package.json"), "{}", "utf8");
   // As the real checkout ignores `node_modules/`. Without it the junction reads as untracked
   // work and every removal here refuses, which is the fixture lying rather than the script.
-  fs.writeFileSync(path.join(repo, ".gitignore"), `${LINK}/\n`, "utf8");
+  // No trailing slash: a junction is a directory to git and a POSIX symlink is a file, and only
+  // the slashless pattern matches both. With the slash, CI ignored nothing and every removal
+  // there refused on the link itself.
+  fs.writeFileSync(path.join(repo, ".gitignore"), `${LINK}\n`, "utf8");
   git(repo, "add", "--", "package.json", ".gitignore");
   git(repo, "commit", "--quiet", "-m", "init");
 
