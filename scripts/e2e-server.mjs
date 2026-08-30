@@ -23,8 +23,7 @@ import { assertBundleHasRoutes } from "./bundleRoutes.mjs";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const PORT = process.env.E2E_PORT ?? "5199";
-const DB_PORT = process.env.MURLAN_DEV_PG_PORT ?? "55432";
-const DB_URL = `postgres://postgres:postgres@127.0.0.1:${DB_PORT}/murlan_dev`;
+const DEV_STACK = path.join(ROOT, "scripts", "dev-stack.mjs");
 
 function run(cmd, args, useShell) {
   const result = spawnSync(cmd, args, { cwd: ROOT, stdio: "inherit", shell: useShell });
@@ -33,11 +32,28 @@ function run(cmd, args, useShell) {
   }
 }
 
+/**
+ * Where the dev stack actually put Postgres, asked rather than recomputed.
+ *
+ * The container moves to another port when something else already holds the
+ * default (#580, and the CI shard that died for it), so a URL built here from
+ * the same environment `up` started with can name a port nothing is listening
+ * on. `dev-stack env` reads it back off the running container.
+ */
+function databaseUrl() {
+  const r = spawnSync(process.execPath, [DEV_STACK, "env"], { cwd: ROOT, encoding: "utf8" });
+  const url = (r.stdout ?? "").match(/^DATABASE_URL=(.+)$/m)?.[1]?.trim();
+  if (r.status !== 0 || !url) {
+    throw new Error(`dev-stack env did not report a database: ${r.stderr || r.stdout}`);
+  }
+  return url;
+}
+
 process.env.EXPO_PUBLIC_E2E_FAST = "1";
 process.env.MURLAN_AFK_TIMEOUT_MS ??= "5000";
 process.env.MURLAN_DISCONNECT_GRACE_MS ??= "5000";
 
-run(process.execPath, [path.join(ROOT, "scripts", "dev-stack.mjs"), "up"]);
+run(process.execPath, [DEV_STACK, "up"]);
 
 if (process.env.E2E_SKIP_BUILD !== "1" || !existsSync(path.join(ROOT, "dist", "index.html"))) {
   run(process.platform === "win32" ? "npx.cmd" : "npx", ["expo", "export", "--platform", "web"], process.platform === "win32");
@@ -45,7 +61,7 @@ if (process.env.E2E_SKIP_BUILD !== "1" || !existsSync(path.join(ROOT, "dist", "i
 
 assertBundleHasRoutes(path.join(ROOT, "dist"), path.join(ROOT, "app"));
 
-process.env.DATABASE_URL = DB_URL;
+process.env.DATABASE_URL = databaseUrl();
 process.env.SESSION_SECRET = "e2e-test-secret";
 process.env.PORT = PORT;
 

@@ -312,7 +312,7 @@ dev-stack instead of finding out from CI:
 
 ```
 node scripts/dev-stack.mjs up      # the same disposable Postgres the E2E suite uses
-DATABASE_URL=postgres://postgres:postgres@127.0.0.1:55432/murlan_dev \
+DATABASE_URL=$(node scripts/dev-stack.mjs env | sed -n 's/^DATABASE_URL=//p') \
   node --no-warnings --experimental-strip-types --test tests/integration/<file>.test.ts
 node scripts/dev-stack.mjs down
 ```
@@ -409,7 +409,7 @@ Every port this repo's local tooling binds — including the local-substitute pa
 | `5000` | The Express server (`PORT`) | `server/index.ts`, `.replit` (`[[ports]]` localPort/externalPort, `[env] PORT`, `waitForPort`), `package.json` (`expo:dev`, `expo:dev:clean`) |
 | `8081` | Metro (`npx expo start` / `npm start`) | `scripts/build.js`, `.replit` |
 | `5199`+ | Playwright's e2e webServer (`E2E_PORT`) — the base, and the first free port above it when a neighbour holds it | chosen by `scripts/e2ePort.mjs`, used by `tests/e2e/playwright.config.ts` and `scripts/e2e-server.mjs`; a leftover is freed by `scripts/reap.mjs` and by `lib/ticketPipeline/cleanup.ts` |
-| `55432` | The dev-stack's disposable Postgres (`MURLAN_DEV_PG_PORT`) | `murlan-dev-pg` container — `scripts/dev-stack.mjs`, `scripts/e2e-server.mjs` |
+| `55432`+ | The dev-stack's disposable Postgres (`MURLAN_DEV_PG_PORT`) — the base, and the first port above it the Docker daemon will accept when something already holds it. Ask `dev-stack env` rather than assuming 55432 | `murlan-dev-pg` container — `scripts/dev-stack.mjs`, `scripts/devStackPort.mjs`, `scripts/e2e-server.mjs` |
 | `55433` | The verify-only Postgres substituted for CI's database | `murlan-verify-pg` container — freed by `lib/ticketPipeline/cleanup.ts`; also bound manually by CLAUDE.md's "When Actions cannot start" |
 
 ## Playwright, locally
