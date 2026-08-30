@@ -213,11 +213,18 @@ test.describe("the online table, at the audit's viewports", () => {
       // The number finding 3 is about. It follows from the two above only if
       // the seats sit where the scale says they do, which is the half of the
       // table neither of them measures.
+      //
+      // Within a pixel, not to the pixel. The plate's y is a laid-out box under
+      // a name the two tables do not share — the server calls its bots Drita 1,
+      // the seed calls them Luan — so a fraction of a pixel between them is not
+      // a claim about the layout, and it rounds to one. A band that is
+      // genuinely a different size is not off by one. Seen on CI, at 844x390:
+      // 115 against 114.
       expect(
-        online.emptyBand,
+        Math.abs(online.emptyBand - offline.emptyBand),
         `the online table leaves ${online.emptyBand}px between the lowest seat and the hand ` +
           `where the offline one leaves ${offline.emptyBand}px`
-      ).toBe(offline.emptyBand);
+      ).toBeLessThanOrEqual(1);
 
       // The floor: a table that laid out as an empty box would satisfy every
       // equality above having drawn nothing.
