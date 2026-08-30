@@ -312,7 +312,11 @@ dev-stack instead of finding out from CI:
 
 ```
 node scripts/dev-stack.mjs up      # the same disposable Postgres the E2E suite uses
-DATABASE_URL=$(node scripts/dev-stack.mjs env | sed -n 's/^DATABASE_URL=//p') \
+DATABASE_URL=$(node scripts/dev-stack.mjs env | sed -n 's/^DATABASE_URL=//p')
+# Never skip the guard: an empty DATABASE_URL does not fail these tests, it
+# makes every one of them skip itself and the run reads as green.
+[ -n "$DATABASE_URL" ] || { echo "dev-stack is not up"; exit 1; }
+DATABASE_URL="$DATABASE_URL" \
   node --no-warnings --experimental-strip-types --test tests/integration/<file>.test.ts
 node scripts/dev-stack.mjs down
 ```
