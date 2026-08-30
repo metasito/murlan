@@ -1,5 +1,5 @@
 import React, { useEffect, useId } from "react";
-import { View, StyleSheet, Pressable, Image } from "react-native";
+import { View, StyleSheet, Pressable, Image, Platform } from "react-native";
 import { TableText } from "@/components/table/TableText";
 import Animated, {
   useAnimatedStyle,
@@ -494,6 +494,20 @@ interface CardViewProps {
    * is between the player and the lamp rather than under it.
    */
   light?: "standing" | "standingLit" | "flat";
+  /**
+   * Discrete equivalents of a gesture this card also answers, for assistive
+   * technology only (WCAG 2.5.7). They cost no pixels and appear to nobody
+   * else — the same shape `Slider` and `ReplayControls` already use.
+   *
+   * `accessibilityActions` is half the answer and only the native half:
+   * react-native-web forwards it nowhere, so on web the arrow keys below are
+   * the whole of it. A drag with no keyboard equivalent fails the criterion
+   * outright on the surface this app actually ships.
+   */
+  a11yActions?: { name: string; label?: string }[];
+  onA11yAction?: (name: string) => void;
+  /** Which action each arrow key takes, on web. */
+  a11yActionKeys?: Record<string, string>;
 }
 
 function CardViewBase({
@@ -511,6 +525,9 @@ function CardViewBase({
   light,
   hitWidth,
   hint,
+  a11yActions,
+  onA11yAction,
+  a11yActionKeys,
 }: CardViewProps) {
   const { t } = useTranslation();
   const selectedHint = useA11yHint(
@@ -607,6 +624,22 @@ function CardViewBase({
     ? card.rank === "joker_colored" ? Colors.heart : Colors.cardInk
     : card.suit ? SUIT_COLORS[card.suit] : Colors.spade;
 
+  // react-native-web forwards `onKeyDown` straight to the DOM, and forwards
+  // `accessibilityActions` nowhere at all — so on web this is the only
+  // equivalent of the drag there is. Native reaches the same two actions
+  // through VoiceOver's and TalkBack's own rotor.
+  const webActionKeys =
+    Platform.OS === "web" && a11yActionKeys !== undefined && onA11yAction !== undefined
+      ? {
+          onKeyDown: (e: { key: string; preventDefault?: () => void }) => {
+            const action = a11yActionKeys[e.key];
+            if (action === undefined) return;
+            e.preventDefault?.();
+            onA11yAction(action);
+          },
+        }
+      : {};
+
   return (
     <Animated.View style={[animStyle, style]}>
       <Pressable
@@ -624,6 +657,11 @@ function CardViewBase({
         // reappear in the button rotation every turn.
         {...a11yState({ role: onPress ? "button" : undefined, selected, disabled: !interactive })}
         {...selectedHint.props}
+        accessibilityActions={a11yActions}
+        onAccessibilityAction={
+          onA11yAction ? (e) => onA11yAction(e.nativeEvent.actionName) : undefined
+        }
+        {...webActionKeys}
         // The pressable is the tap strip; the view inside it is the card. Two
         // boxes rather than one because `styles.card` clips to its own rounded
         // corners, and a strip narrower than the card would clip the art with it.

@@ -1,0 +1,313 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@500;600;700&display=swap" />
+  <style>
+    body { margin: 0; font-family: Rajdhani, "Trebuchet MS", system-ui, sans-serif; }
+    a { color: #C9A84C; } a:hover { color: #F3E0A6; }
+    .felt { position: absolute; inset: 0; }
+    .felt::before { content: ""; position: absolute; inset: 0;
+      background:
+        radial-gradient(44% 60% at 50% 92%,
+          rgba(255,242,208,.26), rgba(255,226,172,.09) 46%, transparent 78%),
+        radial-gradient(76% 100% at 50% 92%,
+          #2E9F62 0%, #23854F 14%, #186B41 30%, #0F4E31 46%, #093320 62%,
+          #041D12 78%, #010B07 92%, #010604 100%); }
+    .felt::after { content: ""; position: absolute; inset: 0;
+      background:
+        repeating-linear-gradient(45deg,  rgba(255,255,255,.02) 0 1px, transparent 1px 3px),
+        repeating-linear-gradient(-45deg, rgba(0,0,0,.055) 0 1px, transparent 1px 3px),
+        radial-gradient(34% 46% at 50% 92%, rgba(255,236,190,.12), transparent 76%),
+        radial-gradient(128% 104% at 50% 50%, transparent 40%, rgba(0,0,0,.5) 100%); }
+    .stage { position: absolute; inset: 0; overflow: hidden; touch-action: none; user-select: none; -webkit-user-select: none; }
+    .card { position: absolute; border-radius: 8px; overflow: hidden;
+      background: linear-gradient(155deg, #FFFDF7 0%, #F7F4EA 62%, #E6E1D2 100%);
+      box-shadow: 0 2px 6px rgba(0,0,0,.45); will-change: transform;
+      border: 1px solid rgba(90,78,52,.45); }
+    .pip { position: absolute; left: 6px; top: 4px; line-height: 1;
+      font-family: Rajdhani, sans-serif; font-weight: 700; }
+    .suit { position: absolute; left: 6px; font-family: system-ui, sans-serif; line-height: 1; }
+    .held { box-shadow: 0 18px 34px rgba(0,0,0,.62); z-index: 90; }
+    .hint { position: absolute; left: 50%; transform: translateX(-50%);
+      font-size: 12px; letter-spacing: 2.4px; font-weight: 600;
+      color: rgba(240,234,214,.58); text-transform: uppercase; pointer-events: none; }
+    .ring { position: absolute; border-radius: 9999px; border: 2px solid rgba(201,168,76,.5);
+      pointer-events: none; opacity: 0; }
+  </style>
+</helmet>
+
+<div style="position: relative; width: 100%; height: 100%; background: #010604; overflow: hidden">
+  <div class="felt"></div>
+  <div style="position: absolute; left: 0; right: 0; top: 22px; text-align: center;
+              font-size: 13px; letter-spacing: 3px; font-weight: 600; color: rgba(240,234,214,.58)">
+    {{ caption }}
+  </div>
+  <div class="stage" id="stage"></div>
+  <div class="hint" style="bottom: 14px">{{ hint }}</div>
+</div>
+
+</x-dc>
+<script data-dc-script data-props='{
+  "lift":      {"editor":"enum","options":["off the fan","up in the air"],"default":"off the fan","section":"Question 1"},
+  "gap":       {"editor":"enum","options":["overlap step","full card"],"default":"overlap step","section":"Question 2"},
+  "release":   {"editor":"enum","options":["settle","bounce"],"default":"settle","section":"Question 3"},
+  "holdMs":    {"editor":"range","min":150,"max":800,"step":50,"default":500,"unit":"ms","section":"Gesture"},
+  "caption":   {"editor":null},
+  "hint":      {"editor":null}
+}'>
+class Component extends DCLogic {
+  // The real geometry, lifted from components/tableArc.ts rather than
+  // approximated: HAND_ARC { radius: 2200, stepRatio: 0.68, rise: 15 } solved
+  // by the same fitSpread/arcCards maths, at the card size cardFaceModel.ts
+  // declares (64x90) scaled up for a mockup that is looked at rather than
+  // played on.
+  constructor(p) {
+    super(p);
+    this.scale = 1.55;
+    this.cardW = 64 * this.scale;
+    this.cardH = 90 * this.scale;
+    this.order = ['3♠','4♣','5♦','7♥','9♠','10♦','J♣','Q♥','K♦','A♠'];
+    this.state = { order: this.order.slice(), held: null, gapAt: null };
+    this.node = null;
+    this.els = new Map();
+    this.pointer = null;
+  }
+
+  componentDidMount() { this.mount(); }
+
+  /**
+   * What a duration becomes for this viewer. The project's own rule is that
+   * reduced motion loses the travel and keeps the state change legible, so a
+   * shift or a settle becomes instant rather than fast.
+   */
+  motion(ms) {
+    const q = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)');
+    return q && q.matches ? 0 : ms;
+  }
+  componentDidUpdate(prev) {
+    if (prev.lift !== this.props.lift || prev.gap !== this.props.gap) this.layout();
+  }
+
+  // ── the arc, exactly as components/tableArc.ts solves it ──────────────
+  fitSpread(n, radius, cardW, room, step, rise) {
+    if (n < 2) return 0;
+    const width = Math.min(cardW + step * (n - 1), Math.max(cardW + 8, room));
+    const byWidth = 2 * Math.asin(Math.min(1, (width - cardW) / (2 * radius)));
+    const byRise = 2 * Math.acos(Math.max(-1, 1 - rise / radius));
+    return (Math.min(byWidth, byRise) * 180) / Math.PI;
+  }
+
+  arcCards(n) {
+    const radius = 2200 * this.scale;
+    const step = this.cardW * 0.68;
+    const rise = 15 * this.scale;
+    const room = this.node ? this.node.clientWidth - 40 : 900;
+    const spread = this.fitSpread(n, radius, this.cardW, room, step, rise);
+    if (n <= 0) return [];
+    const pts = Array.from({ length: n }, (_, i) => {
+      const t = n === 1 ? 0 : -spread / 2 + (spread * i) / (n - 1);
+      const rad = (t * Math.PI) / 180;
+      return { t, x: radius * Math.sin(rad), y: radius * (1 - Math.cos(rad)) };
+    });
+    const maxY = Math.max(...pts.map((p) => p.y));
+    return pts.map(({ t, x, y }) => ({ x: x - this.cardW / 2, y: y - maxY, rot: t }));
+  }
+
+  mount() {
+    this.node = document.getElementById('stage');
+    if (!this.node) return;
+    this.state.order.forEach((name) => {
+      const el = document.createElement('div');
+      el.className = 'card';
+      el.style.width = this.cardW + 'px';
+      el.style.height = this.cardH + 'px';
+      const red = name.includes('♥') || name.includes('♦');
+      const ink = red ? '#C8102E' : '#1A1A1A';
+      const rank = name.slice(0, name.length - 1);
+      const suit = name.slice(-1);
+      el.innerHTML =
+        '<div class="pip" style="font-size:' + Math.round(26 * this.scale / 1.55) +
+        'px;color:' + ink + '">' + rank + '</div>' +
+        '<div class="suit" style="top:' + Math.round(30 * this.scale / 1.55) +
+        'px;font-size:' + Math.round(22 * this.scale / 1.55) + 'px;color:' + ink + '">' + suit + '</div>';
+      el.addEventListener('pointerdown', (e) => this.down(e, name));
+      this.node.appendChild(el);
+      this.els.set(name, el);
+    });
+    window.addEventListener('pointermove', this.move = (e) => this.onMove(e));
+    window.addEventListener('pointerup', this.up = (e) => this.onUp(e));
+    // Without this a cancelled gesture — an incoming call, a system swipe —
+    // leaves the card held forever, because pointerup never arrives.
+    window.addEventListener('pointercancel', this.cancel = () => this.abort());
+    this.layout();
+  }
+
+  componentWillUnmount() {
+    window.removeEventListener('pointermove', this.move);
+    window.removeEventListener('pointerup', this.up);
+    window.removeEventListener('pointercancel', this.cancel);
+    clearTimeout(this.timer);
+  }
+
+  /** Put a held card back where it was, without committing a move. */
+  abort() {
+    clearTimeout(this.timer);
+    this.pointer = null;
+    this.candidate = null;
+    this.dragging = false;
+    if (this.state.held) this.setState({ held: null, gapAt: null }, () => this.layout());
+  }
+
+  /**
+   * Where each card sits right now. The held card is excluded from the arc
+   * and the rest are laid out as a hand of n-1 — which is the whole of "the
+   * fan closes behind the card that left". The gap is an index the remaining
+   * cards step around, not a slot anything occupies.
+   */
+  layout() {
+    if (!this.node) return;
+    const { order, held, gapAt } = this.state;
+    const rest = order.filter((c) => c !== held);
+    // The remaining cards are laid out as a hand of n-1 — that is the whole of
+    // "the fan closes behind the card that left". The gap is then a horizontal
+    // shift around an index, split either side so the hand's centre holds
+    // still while it opens.
+    const arc = this.arcCards(rest.length);
+    const baseX = this.node.clientWidth / 2;
+    const baseY = this.node.clientHeight - 26;
+    const gapW = held
+      ? (this.props.gap === 'full card' ? this.cardW : this.cardW * 0.68)
+      : 0;
+    const ms = this.motion(200);
+
+    rest.forEach((name, slot) => {
+      const p = arc[slot];
+      const el = this.els.get(name);
+      const open = held && gapAt !== null;
+      const shift = !open ? 0 : (slot >= gapAt ? gapW / 2 : -gapW / 2);
+      el.style.transition = ms ? 'transform ' + ms + 'ms cubic-bezier(.2,.7,.3,1)' : 'none';
+      el.style.transform =
+        'translate(' + (baseX + p.x + shift) + 'px,' + (baseY + p.y - this.cardH) +
+        'px) rotate(' + p.rot + 'deg)';
+      el.style.zIndex = String(10 + slot);
+      el.classList.remove('held');
+    });
+
+    if (held) {
+      const el = this.els.get(held);
+      el.classList.add('held');
+      const airborne = this.props.lift === 'up in the air';
+      const s = airborne ? 1.16 : 1.06;
+      const settleMs = this.motion(260);
+      el.style.transition = this.dragging || !settleMs ? 'none'
+        : 'transform ' + settleMs + 'ms cubic-bezier(.2,.7,.3,1)';
+      el.style.transform =
+        'translate(' + (this.px - this.cardW / 2) + 'px,' +
+        (this.py - this.cardH / 2 - (airborne ? 26 : 8)) + 'px) rotate(0deg) scale(' + s + ')';
+    }
+  }
+
+  down(e, name) {
+    // One finger owns the gesture. Without this a second touch anywhere
+    // rewrites the shared drag state, and the first card is left held with no
+    // pointer that can ever release it.
+    if (this.pointer !== null && this.pointer !== undefined) return;
+    e.preventDefault();
+    this.pointer = e.pointerId;
+    const r = this.node.getBoundingClientRect();
+    this.px = e.clientX - r.left;
+    this.py = e.clientY - r.top;
+    this.startX = this.px;
+    this.startY = this.py;
+    this.candidate = name;
+    this.dragging = false;
+    // The lift begins at the threshold, not at the release: the hold is only
+    // legible if the card answers it while the finger is still down.
+    this.timer = setTimeout(() => {
+      if (!this.candidate) return;
+      this.dragging = true;
+      if (navigator.vibrate) navigator.vibrate(12);
+      this.setState({ held: this.candidate, gapAt: this.dropIndex() }, () => this.layout());
+    }, this.props.holdMs ?? 500);
+  }
+
+  /** The drop index comes from the finger's position along the arc, never
+   *  from which card it is over — the cards overlap, so "over" is ambiguous. */
+  dropIndex() {
+    const rest = this.state.order.filter((c) => c !== (this.state.held ?? this.candidate));
+    const arc = this.arcCards(rest.length);
+    const baseX = this.node.clientWidth / 2;
+    let best = 0;
+    let bestD = Infinity;
+    // rest.length + 1 candidate slots: before each remaining card, and after
+    // the last one.
+    for (let i = 0; i <= rest.length; i++) {
+      const centre = i < rest.length
+        ? baseX + arc[i].x
+        : baseX + arc[rest.length - 1].x + this.cardW;
+      const d = Math.abs(this.px - centre);
+      if (d < bestD) { bestD = d; best = i; }
+    }
+    return best;
+  }
+
+  onMove(e) {
+    if (!this.candidate || e.pointerId !== this.pointer) return;
+    const r = this.node.getBoundingClientRect();
+    this.px = e.clientX - r.left;
+    this.py = e.clientY - r.top;
+    if (!this.dragging) {
+      // A finger that travels before the hold lands is reading the hand, not
+      // reordering it: cancel rather than start a drag from a swipe.
+      if (Math.hypot(this.px - this.startX, this.py - this.startY) > 12) {
+        clearTimeout(this.timer);
+        this.candidate = null;
+        this.pointer = null;
+      }
+      return;
+    }
+    const at = this.dropIndex();
+    if (at !== this.state.gapAt) this.setState({ gapAt: at }, () => this.layout());
+    else this.layout();
+  }
+
+  onUp(e) {
+    if (e && e.pointerId !== this.pointer) return;
+    clearTimeout(this.timer);
+    if (!this.dragging) { this.candidate = null; this.pointer = null; return; }
+    const { order, held, gapAt } = this.state;
+    const rest = order.filter((c) => c !== held);
+    rest.splice(gapAt ?? rest.length, 0, held);
+    this.dragging = false;
+    this.candidate = null;
+    this.pointer = null;
+    const el = this.els.get(held);
+    const bounce = this.props.release === 'bounce';
+    const ms = this.motion(bounce ? 420 : 260);
+    el.style.transition = !ms ? 'none'
+      : bounce
+        ? 'transform ' + ms + 'ms cubic-bezier(.34,1.56,.64,1)'
+        : 'transform ' + ms + 'ms cubic-bezier(.2,.7,.3,1)';
+    this.setState({ order: rest, held: null, gapAt: null }, () => this.layout());
+  }
+
+  renderVals() {
+    const q = [];
+    q.push(this.props.lift === 'up in the air' ? 'in the air' : 'off the fan');
+    q.push(this.props.gap === 'full card' ? 'full-card gap' : 'overlap-step gap');
+    q.push(this.props.release === 'bounce' ? 'bounce' : 'settle');
+    return {
+      caption: q.join('  ·  '),
+      hint: 'press and hold a card, then move it',
+    };
+  }
+}
+</script>
+</body>
+</html>

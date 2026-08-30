@@ -309,6 +309,8 @@ export const it: Record<keyof typeof en, string> = {
   "gameTable.playA11yUnavailable": "Gioca — non disponibile: {{reason}}",
   "gameTable.selectedCountSuffix": "{{n}}c",
   "gameTable.waitingOthers": "Hai finito! Aspetti gli altri...",
+  "gameTable.moveCardLeft": "Sposta questa carta a sinistra",
+  "gameTable.moveCardRight": "Sposta questa carta a destra",
   "gameTable.startCardBannerSelf": "Inizi tu! Hai il {{rank}}{{suit}}",
   "gameTable.startCardBannerOther": "{{name}} inizia con il {{rank}}{{suit}}",
   "gameTable.a11yYourTurn": "È il tuo turno.",
@@ -338,6 +340,7 @@ export const it: Record<keyof typeof en, string> = {
   "gameTable.rematchYesA11yLabel": "Sì, voglio un'altra partita",
   "gameTable.rematchNoA11yLabel": "No, mi fermo qui",
   "gameTable.rematchTally": "{{yes}}/{{total}} sì",
+  "gameTable.a11yCardMoved": "{{card}} spostata in posizione {{position}} di {{total}}.",
   "gameTable.a11yHandSelected_one": "{{count}} selezionata.",
   "gameTable.a11yHandSelected_other": "{{count}} selezionate.",
 

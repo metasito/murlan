@@ -108,6 +108,7 @@ import { StraightHand } from "@/components/table/hand";
 import { RotateOverlay } from "@/components/table/rotateOverlay";
 import { GameSettingsSheet } from "@/components/table/settingsSheet";
 import { useTableFeedback } from "@/components/useTableFeedback";
+import { useHandOrder } from "@/components/useHandOrder";
 import { FlyingCards, PlayedPile, getComboLabel } from "@/components/table/pile";
 import { BombBurst, Sweep } from "@/components/table/moments";
 import { TopOppSlot, SideOppSlot } from "@/components/table/seats";
@@ -888,6 +889,21 @@ export function GameTable({
     }
     return sortHand(viewer?.hand ?? []);
   }, [spectating, viewer]);
+  // The engine's order is the fallback; what the player sees is whatever they
+  // have arranged on top of it (#531). Spectated hands are excluded by the
+  // seat's own cards being synthetic above — there is nothing there to arrange.
+  const { arranged: shownHand, moveTo } = useHandOrder(viewerSeat, sortedHand);
+  // Where the last move put a card. A drag shows its own answer; the discrete
+  // actions behind it (WCAG 2.5.7) move a card with nothing on screen changing
+  // for whoever asked, so the live region below says where it went.
+  const [arranged, setArranged] = React.useState<{ id: string; to: number } | null>(null);
+  const arrange = React.useCallback(
+    (id: string, to: number) => {
+      moveTo(id, to);
+      setArranged({ id, to });
+    },
+    [moveTo]
+  );
   const selectedObjs = React.useMemo(
     () => sortedHand.filter((c) => selectedIds.includes(c.id)),
     [sortedHand, selectedIds]
@@ -1069,6 +1085,17 @@ export function GameTable({
     tableA11yStrings,
     t,
   ]);
+
+  const arrangedA11yLabel = React.useMemo(() => {
+    if (arranged === null) return null;
+    const card = shownHand.find((c) => c.id === arranged.id);
+    if (card === undefined) return null;
+    return t("gameTable.a11yCardMoved", {
+      card: cardSpokenName(card, t),
+      position: arranged.to + 1,
+      total: shownHand.length,
+    });
+  }, [arranged, shownHand, t]);
 
   const handA11yLabel = React.useMemo(() => {
     const count = tn("gameTable.a11yHandCount", sortedHand.length);
@@ -1876,9 +1903,10 @@ export function GameTable({
               // leaf — so a name on this wrapper would reach nobody.
               <View {...harnessState({ handState: handA11yLabel })}>
                 <A11yStatus label={handA11yLabel} />
+                {arrangedA11yLabel !== null && <A11yStatus label={arrangedA11yLabel} />}
                 <StraightHand
                   faceDown={spectating}
-                  cards={sortedHand}
+                  cards={shownHand}
                   selectedIds={
                     exchangeIsMine ? (exchangePick ? [exchangePick] : []) : selectedIds
                   }
@@ -1891,6 +1919,7 @@ export function GameTable({
                   roomW={frame.handRoomW}
                   isMyTurn={isMyTurn && !isFinished}
                   scale={scale}
+                  onReorder={spectating ? undefined : arrange}
                 />
               </View>
             )}
