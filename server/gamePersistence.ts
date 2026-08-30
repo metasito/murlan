@@ -11,11 +11,7 @@ import {
   roomPlayers as roomPlayersTable,
   rooms as roomsTable,
 } from "../shared/schema.ts";
-import {
-  activeGames,
-  userRoom,
-  userSocketMap,
-} from "./gameRoom.ts";
+import { activeGames, userRoom } from "./gameRoom.ts";
 import type { OnlineGameState } from "./gameRoom.ts";
 import type { GameOverWriters } from "./gameOver.ts";
 import { releaseRoom, unclaimedRooms } from "./gameOwnership.ts";
@@ -286,6 +282,33 @@ export async function pruneStaleRooms(): Promise<number> {
 let sweeper: ReturnType<typeof setInterval> | null = null;
 
 /**
+ * Drops finished tables nobody is still looking at.
+ *
+ * "Nobody" is asked of the cluster, not of `userSocketMap`: the instance that
+ * owns a table need not be the one holding its players' sockets, so a local
+ * read sees a table full of people as empty and deletes the game out from under
+ * their results screen. `fetchSockets()` answers from the local rooms when
+ * there is only one instance, so this costs a round trip only when there is
+ * someone to ask.
+ */
+async function sweepFinishedTables(io: SocketServer): Promise<void> {
+  const finished = [...activeGames.entries()].filter(([, game]) => game.gameState.gameOver);
+  if (finished.length === 0) return;
+  const connected = new Set(
+    (await io.fetchSockets())
+      .map((s) => s.data?.userId)
+      .filter((id): id is string => typeof id === "string")
+  );
+  for (const [roomId, game] of finished) {
+    safeTimer(io, "sweepFinishedTable", roomId, () => {
+      if (!Object.values(game.playerMap).some((uid) => connected.has(uid))) {
+        disposeGame(roomId);
+      }
+    });
+  }
+}
+
+/**
  * Long-running server hygiene: drop finished tables nobody is connected to and
  * forget public rooms that are no longer joinable.
  */
@@ -293,16 +316,9 @@ export function startSweeper(io: SocketServer) {
   if (sweeper) return;
   sweeper = setInterval(() => {
     try {
-      for (const [roomId, game] of activeGames.entries()) {
-        safeTimer(io, "sweepFinishedTable", roomId, () => {
-          const anyoneConnected = Object.values(game.playerMap).some((uid) =>
-            userSocketMap.has(uid)
-          );
-          if (!anyoneConnected && game.gameState.gameOver) {
-            disposeGame(roomId);
-          }
-        });
-      }
+      void sweepFinishedTables(io).catch((err: unknown) =>
+        logger.error({ err }, "Sweeping finished tables failed")
+      );
 
       // Rows orphaned by a restart, which the loop above structurally cannot
       // reach: it walks memory, and a restart is what emptied memory.

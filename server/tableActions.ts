@@ -14,6 +14,12 @@ import type { BotPersonalityId } from "../lib/botPersonalities.ts";
 
 /** Every action names the room it is about; that is how the owner is found. */
 export interface TableActionBase {
+  /**
+   * Stamped by the router, unique per attempt-set. A forward whose answer did
+   * not come back in time is sent again, and the owner has to be able to tell
+   * that from a second `game:pass` — replaying one would take a turn twice.
+   */
+  id: string;
   roomId: string;
   userId: string;
   username: string;
@@ -45,6 +51,19 @@ export type TableAction =
   | (TableActionBase & { kind: "vacate" });
 
 export type TableActionKind = TableAction["kind"];
+
+/**
+ * An action as a call site writes it; the router stamps the `id`.
+ *
+ * Distributed over the union rather than a plain `Omit`, which collapses a
+ * union to the properties every member shares — dropping `cardIds`, `emoji`
+ * and the rest without a word.
+ */
+export type TableActionDraft = TableAction extends infer T
+  ? T extends TableAction
+    ? Omit<T, "id">
+    : never
+  : never;
 
 /**
  * What an instance may do with an action for a room no instance holds.

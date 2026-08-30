@@ -10,12 +10,13 @@
 // The carrier is the adapter's own `serverSideEmit`, which the Postgres adapter
 // already implements with acknowledgements. No second channel, and it inherits
 // the adapter's delivery rather than inventing one.
+import { randomUUID } from "node:crypto";
 import type { Server as SocketServer } from "socket.io";
 import { logger } from "./logger.ts";
-import { activeGames } from "./gameRoom.ts";
-import { claimRoom, releaseRoom } from "./gameOwnership.ts";
+import { activeGames, isShuttingDown } from "./gameRoom.ts";
+import { claimRoom, ownsRoom, releaseRoom } from "./gameOwnership.ts";
 import type { EventOutcome } from "./socketSafety.ts";
-import type { TableAction } from "./tableActions.ts";
+import type { TableAction, TableActionDraft } from "./tableActions.ts";
 import { takeoverMode } from "./tableActions.ts";
 
 export const TABLE_ACTION_EVENT = "murlan:table";
@@ -29,16 +30,42 @@ const NOT_MINE = "NOT_THIS_INSTANCE";
 
 const UNOWNED: EventOutcome = { ok: false, code: "NO_LIVE_GAME" };
 
+/**
+ * Someone holds the room and could not be reached. Deliberately not
+ * `NO_LIVE_GAME`: a caller that reads "there is no game" acts on it — the
+ * disconnect path releases the seat as a lobby seat — and doing that because a
+ * message was slow is worse than doing nothing.
+ */
+const UNREACHABLE: EventOutcome = { ok: false, code: "TABLE_UNREACHABLE" };
+
+/** How many times an unanswered forward is tried again before giving up. */
+const ASK_ATTEMPTS = 3;
+const RETRY_BASE_MS = 120;
+
+/**
+ * How long an applied action's answer is remembered, for a forward that was
+ * re-sent because the first answer did not come back in time.
+ *
+ * Comfortably past the adapter's own five-second acknowledgement window and the
+ * retries above. `CLAUDE.md` is explicit that a card appears exactly once, and a
+ * replayed `game:pass` would take a turn twice.
+ */
+const APPLIED_TTL_MS = 60_000;
+const APPLIED_MAX = 2_000;
+
 type Applier = (io: SocketServer, action: TableAction) => Promise<EventOutcome>;
 /**
- * Puts a persisted game back in memory.
+ * Puts a persisted game back in memory, for the caller named by `forUserId`.
  *
- * Three answers, not two: a row written under a shape this build cannot
+ * Three failures, not one: a row written under a shape this build cannot
  * restore is a different thing to tell the player than a table that was never
- * there, and collapsing them would leave a rejoining player reading "game not
- * found" about a game they were in a moment ago.
+ * there, and a caller who holds no seat in the persisted roster must not be
+ * able to pull a table into this instance's memory at all.
  */
-type Rehydrator = (roomId: string) => Promise<"restored" | "missing" | "unrestorable">;
+type Rehydrator = (
+  roomId: string,
+  forUserId: string | null
+) => Promise<"restored" | "missing" | "unrestorable" | "not_seated">;
 
 let apply: Applier = async () => UNOWNED;
 let rehydrate: Rehydrator = async () => "missing";
@@ -48,6 +75,32 @@ export function setTableHandlers(applier: Applier, rehydrator: Rehydrator): void
   rehydrate = rehydrator;
 }
 
+/** Every action this process has already applied, by id. */
+const applied = new Map<string, { outcome: EventOutcome; at: number }>();
+
+function remember(id: string, outcome: EventOutcome): EventOutcome {
+  const now = Date.now();
+  for (const [key, entry] of applied) {
+    if (now - entry.at > APPLIED_TTL_MS) applied.delete(key);
+    else break;
+  }
+  // A bound as well as an expiry: a table storming actions must not be able to
+  // grow this without limit before anything ages out of it.
+  while (applied.size >= APPLIED_MAX) {
+    const [oldest] = applied.keys();
+    if (oldest === undefined) break;
+    applied.delete(oldest);
+  }
+  applied.set(id, { outcome, at: now });
+  return outcome;
+}
+
+async function applyOnce(io: SocketServer, action: TableAction): Promise<EventOutcome> {
+  const seen = applied.get(action.id);
+  if (seen && Date.now() - seen.at <= APPLIED_TTL_MS) return seen.outcome;
+  return remember(action.id, await apply(io, action));
+}
+
 /**
  * Answers table actions other instances forward here.
  *
@@ -55,84 +108,103 @@ export function setTableHandlers(applier: Applier, rehydrator: Rehydrator): void
  * asker sizes its wait by the number of live instances, so an instance that
  * stayed silent would cost every forwarded action the full acknowledgement
  * timeout.
+ *
+ * A room this instance has claimed but not finished loading answers too, once
+ * the takeover it is in the middle of has settled. Answering `NOT_THIS_INSTANCE`
+ * there would refuse every other player at the table for the width of one
+ * restore — which is exactly the moment they are all acting at once.
  */
 export function registerTableRouting(io: SocketServer): void {
   io.on(TABLE_ACTION_EVENT, (action: TableAction, reply?: (r: EventOutcome) => void) => {
     if (typeof reply !== "function") return;
-    if (!activeGames.has(action.roomId)) {
-      reply({ ok: false, code: NOT_MINE });
-      return;
-    }
-    void apply(io, action)
-      .then(reply)
-      .catch((err: unknown) => {
-        logger.error({ err, action: action.kind, roomId: action.roomId }, "Forwarded table action threw");
-        reply({ ok: false, code: "SERVER_ERROR" });
-      });
+    void (async () => {
+      if (!activeGames.has(action.roomId)) {
+        if (!ownsRoom(action.roomId)) return reply({ ok: false, code: NOT_MINE });
+        await inFlight.get(action.roomId)?.catch(() => {});
+        if (!activeGames.has(action.roomId)) return reply({ ok: false, code: NOT_MINE });
+      }
+      reply(await applyOnce(io, action));
+    })().catch((err: unknown) => {
+      logger.error(
+        { err, action: action.kind, roomId: action.roomId },
+        "Forwarded table action threw"
+      );
+      reply({ ok: false, code: "SERVER_ERROR" });
+    });
   });
 }
 
-/** The owner's answer, or null when no instance claimed the room. */
+/**
+ * The owner's answer, `null` when every instance disowned the room, and
+ * `undefined` when at least one did not answer at all.
+ */
 function askOtherInstances(
   io: SocketServer,
   action: TableAction
-): Promise<EventOutcome | null> {
+): Promise<EventOutcome | null | undefined> {
   return new Promise((resolve) => {
     io.serverSideEmit(
       TABLE_ACTION_EVENT,
       action,
       (err: unknown, replies: EventOutcome[] = []) => {
-        // An error here means some instance did not answer in time, not that
-        // nobody did — the replies that did arrive are still in hand, and the
-        // claim below is what keeps a missing answer from becoming a second
-        // owner.
+        const owner = replies.find((r) => r?.code !== NOT_MINE);
+        if (owner) return resolve(owner);
+        // An error means some instance did not answer in time. Reading that as
+        // "no owner" is how a slow owner's table gets taken over underneath it.
         if (err) {
           logger.debug(
             { roomId: action.roomId, action: action.kind },
             "Not every instance answered a forwarded table action"
           );
+          return resolve(undefined);
         }
-        resolve(replies.find((r) => r?.code !== NOT_MINE) ?? null);
+        resolve(null);
       }
     );
   });
 }
 
 /**
- * Takeovers in flight, by room.
+ * The takeover, and the action that triggered it, per room.
  *
- * The claim keeps two *instances* from taking one room. It does nothing about
- * two actions on the same instance: both find no owner, both claim (the lock is
- * re-entrant within a session), both read `active_games`, and the second
- * overwrites the first — losing whatever move the first had already applied.
- * So a room is taken over once and the rest of the queue waits for it.
+ * The advisory lock keeps two *instances* off one room. It does nothing about
+ * two actions on the same instance, because it is re-entrant within a session:
+ * both would find no owner, both would be told they hold the room, and the
+ * second would restore over the first — or hand the lock back in the middle of
+ * a deal that is still running. So the whole of a takeover is serialised per
+ * room, and everything else waits and then finds the game in memory.
  */
-const takeovers = new Map<string, Promise<"restored" | "missing" | "unrestorable" | "not_ours">>();
+const inFlight = new Map<string, Promise<EventOutcome>>();
 
-function takeOver(
-  roomId: string,
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+async function takeOverAndApply(
+  io: SocketServer,
+  action: TableAction,
   mayCreate: boolean
-): Promise<"restored" | "missing" | "unrestorable" | "not_ours"> {
-  const running = takeovers.get(roomId);
-  if (running) return running;
-  const attempt = (async () => {
-    if (!(await claimRoom(roomId))) return "not_ours";
-    const restored = await rehydrate(roomId);
-    if (restored === "restored") return restored;
-    // A claim that did not end in a game — a `room:start` about to be refused,
-    // a row that was gone — must not keep the room off every other instance for
-    // the life of this process.
-    if (!mayCreate) {
-      await releaseRoom(roomId);
-      return restored;
-    }
-    // Taken again because discarding an unrestorable row goes through
-    // `disposeGame`, which hands the room back — and the deal about to run
-    // would then write a game this instance has no claim on.
-    return (await claimRoom(roomId)) ? restored : "not_ours";
-  })().finally(() => takeovers.delete(roomId));
-  takeovers.set(roomId, attempt);
-  return attempt;
+): Promise<EventOutcome> {
+  const { roomId } = action;
+  const restored = await rehydrate(roomId, mayCreate ? null : action.userId);
+  if (restored !== "restored" && !mayCreate) {
+    // Nothing to own, or nothing this caller may own. Holding the lock would
+    // keep the room off every other instance for the life of this process.
+    await releaseRoom(roomId);
+    if (restored === "unrestorable") return { ok: false, code: "GAME_NO_LONGER_VALID" };
+    if (restored === "not_seated") return { ok: false, code: "UNAUTHORIZED" };
+    return UNOWNED;
+  }
+  if (restored === "unrestorable") {
+    // Discarding the row went through `disposeGame`, which hands the room back,
+    // and the deal about to run would otherwise write a game with no claim.
+    if (!(await claimRoom(roomId))) return UNREACHABLE;
+  }
+  try {
+    return await applyOnce(io, action);
+  } finally {
+    // `startMatch` claims before it knows whether it will deal, and refuses for
+    // half a dozen reasons after that.
+    if (!activeGames.has(roomId)) await releaseRoom(roomId);
+  }
 }
 
 /**
@@ -145,32 +217,55 @@ function takeOver(
  */
 export async function applyOrForward(
   io: SocketServer,
-  action: TableAction
+  draft: TableActionDraft
 ): Promise<EventOutcome> {
+  // Stamped once and kept across every retry below: a forward whose answer was
+  // slow is re-sent, and the owner must recognise it rather than play it again.
+  const action: TableAction = { ...draft, id: randomUUID() } as TableAction;
   const { roomId } = action;
-  if (activeGames.has(roomId)) return apply(io, action);
-
-  const remote = await askOtherInstances(io, action);
-  if (remote) return remote;
-
   const mode = takeoverMode(action.kind);
-  if (mode === "forward") return UNOWNED;
 
-  const taken = await takeOver(roomId, mode === "create");
-  if (taken === "not_ours") {
-    // Another instance claimed it between the question and the answer. It is
-    // the owner now, so ask again rather than refusing a table that exists.
-    const second = await askOtherInstances(io, action);
-    return second ?? UNOWNED;
-  }
-  if (taken === "unrestorable") return { ok: false, code: "GAME_NO_LONGER_VALID" };
-  if (taken === "missing" && mode !== "create") return UNOWNED;
+  // A process on its way out routes nothing: its sockets are closing, its
+  // ownership connection goes with them, and the next process restores every
+  // table from `active_games`. Answering "no owner" is what puts the disconnect
+  // path back on the lobby teardown a shutdown needs it to run.
+  if (!activeGames.has(roomId) && isShuttingDown()) return UNOWNED;
 
-  try {
-    return await apply(io, action);
-  } finally {
-    // `startMatch` claims before it knows whether it will deal, and refuses for
-    // half a dozen reasons after that.
-    if (!activeGames.has(roomId)) await releaseRoom(roomId);
+  for (let attempt = 0; attempt < ASK_ATTEMPTS; attempt++) {
+    // Another action may be restoring this very room; wait it out rather than
+    // racing it. Bounded by the attempt count like everything else here, so a
+    // takeover that never settles costs a refusal rather than a hung handler.
+    await inFlight.get(roomId)?.catch(() => {});
+    if (activeGames.has(roomId)) return applyOnce(io, action);
+    if (inFlight.has(roomId)) continue;
+
+    const answer = await askOtherInstances(io, action);
+    if (answer) return answer;
+
+    // Nobody owned up to the room, or somebody could not answer. The lock is
+    // the authority on which of those it was.
+    if (await claimRoom(roomId)) {
+      if (mode === "forward") {
+        // Genuinely ownerless. Reviving a stranded hand to hand one seat to a
+        // bot would set the whole table playing itself with nobody watching.
+        await releaseRoom(roomId);
+        return UNOWNED;
+      }
+      const work = takeOverAndApply(io, action, mode === "create");
+      inFlight.set(roomId, work);
+      try {
+        return await work;
+      } finally {
+        inFlight.delete(roomId);
+      }
+    }
+
+    // An instance holds the room: either it is still loading it, or it could
+    // not answer in time. Ask again — the action carries an id, so a duplicate
+    // that did land is answered from the owner's record, never replayed.
+    await sleep(RETRY_BASE_MS * (attempt + 1));
   }
+
+  logger.warn({ roomId, action: action.kind }, "The instance holding this table never answered");
+  return UNREACHABLE;
 }

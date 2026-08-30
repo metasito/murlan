@@ -18,12 +18,8 @@ import { trackEvent } from "./events.ts";
 import { DEFAULT_LOCALE, translate } from "../shared/i18n.ts";
 import { activeGames as activeGamesTable } from "../shared/schema.ts";
 import type { EventOutcome } from "./socketSafety.ts";
-import {
-  activeGames,
-  seatOfUser,
-  userRoom,
-  userSocketMap,
-} from "./gameRoom.ts";
+import { activeGames, seatOfUser, userRoom } from "./gameRoom.ts";
+import { isUserOnline } from "./socketRegistry.ts";
 import type { OnlineGameState } from "./gameRoom.ts";
 import {
   broadcastGameState,
@@ -97,12 +93,20 @@ function roomError(io: SocketServer, userId: string, payload: unknown): void {
  * Puts a persisted game back in memory, for an instance that has just claimed
  * the room.
  *
+ * `forUserId` is the player whose action triggered the takeover, and they must
+ * hold a seat in the persisted roster. Without that gate any authenticated
+ * account could name any room id and pull that table into whichever instance it
+ * is connected to — where `pruneStaleRooms` then skips it for holding a live
+ * game, and the sweeper only disposes finished ones. `null` is the deal, which
+ * has no persisted roster to check against and does its own host check.
+ *
  * The one place besides `startMatch` that writes `activeGames`, and both run
  * under a claim — `tests/tableOwnership.test.ts` pins that there is no third.
  */
 export async function rehydrateGame(
-  roomId: string
-): Promise<"restored" | "missing" | "unrestorable"> {
+  roomId: string,
+  forUserId: string | null
+): Promise<"restored" | "missing" | "unrestorable" | "not_seated"> {
   const row = await db.query.activeGames.findFirst({
     where: eq(activeGamesTable.roomId, roomId),
   });
@@ -119,6 +123,7 @@ export async function rehydrateGame(
   }
 
   const { playerMap, scores, gameMode, matchLength, matchTarget, maxPlayers } = restored.match;
+  if (forUserId !== null && !Object.values(playerMap).includes(forUserId)) return "not_seated";
   const restoredState = restored.gameState;
   const restoredPlayers = restoredState.players;
   activeGames.set(roomId, {
@@ -637,9 +642,10 @@ function seatLostAction(
     void (async () => {
       try {
         disconnectTimers.delete(userId);
-        // The socket may have come back anywhere; the rejoin action clears this
-        // timer, so reaching here means it did not.
-        if (userSocketMap.has(userId)) return;
+        // Asked of the cluster, not of this process: the instance that owns a
+        // table need not be the one holding the player's socket, and reading
+        // the local map alone hands a connected player's seat to a bot.
+        if (await isUserOnline(userId)) return;
 
         await storage
           .removeRoomPlayer(roomId, userId)

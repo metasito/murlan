@@ -8,6 +8,7 @@ import type { Server as SocketServer, Socket } from "socket.io";
 import { storage } from "./storage.ts";
 import { logger } from "./logger.ts";
 import {
+  isShuttingDown,
   socketRoomMap,
   userRoom,
   userSocketMap,
@@ -26,17 +27,6 @@ import { scoresByName } from "./gameOver.ts";
 import { armTurnIfIdle } from "./gameTurn.ts";
 import { TEAMS_PLAYER_COUNT } from "../lib/gameEngine.ts";
 import type { EventOutcome } from "./socketSafety.ts";
-
-let shuttingDown = false;
-
-/**
- * Called before `io.close()`. Every socket is about to be disconnected, and a
- * lobby seat held for a grace period the next process will never honour is a
- * room nobody can join and nothing will clean up.
- */
-export function beginShutdown() {
-  shuttingDown = true;
-}
 
 export function roomStatePayload(
   room: {
@@ -214,7 +204,7 @@ export function armLobbyGrace(
   // A shutdown is not a blip. Holding the seat would leave a `waiting` lobby
   // full of players who are already gone, and the next process has no memory
   // of the timer that was going to clear it.
-  if (shuttingDown) {
+  if (isShuttingDown()) {
     return handleSeatRelease(io, roomId, userId, username, { source: "disconnect" });
   }
   clearLobbyGrace(roomId, userId);

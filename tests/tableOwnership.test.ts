@@ -68,6 +68,58 @@ describe("a game enters memory in one place, under a claim", () => {
   });
 });
 
+describe("a forwarded action is applied once, however often it is sent", () => {
+  // The forward is retried when its answer does not come back inside the
+  // adapter's acknowledgement window, and `CLAUDE.md` is explicit that a card
+  // appears exactly once — a replayed `game:pass` takes a turn twice. #544 asks
+  // for the de-duplication in the same change as the retry, not after it.
+  async function respondTwice(ids: [string, string]): Promise<number> {
+    const { activeGames } = await import("../server/gameRoom.ts");
+    const { TABLE_ACTION_EVENT, registerTableRouting, setTableHandlers } = await import(
+      "../server/tableRouter.ts"
+    );
+
+    let applied = 0;
+    setTableHandlers(
+      async () => {
+        applied += 1;
+        return { ok: true };
+      },
+      async () => "missing"
+    );
+
+    let receive: ((action: unknown, reply: (r: unknown) => void) => void) | undefined;
+    registerTableRouting({
+      on: (event: string, fn: typeof receive) => {
+        if (event === TABLE_ACTION_EVENT) receive = fn;
+      },
+    } as never);
+    assert.ok(receive, "the router registered no listener for forwarded actions");
+
+    const roomId = `dedupe-${ids.join("-")}`;
+    // The responder only asks whether this process holds the room.
+    activeGames.set(roomId, {} as never);
+    try {
+      for (const id of ids) {
+        await new Promise((resolve) =>
+          receive!({ id, kind: "pass", roomId, userId: "u", username: "u" }, resolve)
+        );
+      }
+    } finally {
+      activeGames.delete(roomId);
+    }
+    return applied;
+  }
+
+  test("the same action arriving twice is applied once", async () => {
+    assert.equal(await respondTwice(["one", "one"]), 1);
+  });
+
+  test("two different actions are both applied", async () => {
+    assert.equal(await respondTwice(["two", "three"]), 2);
+  });
+});
+
 describe("ownershipKey", () => {
   test("is stable, and fits the bigint pg_try_advisory_lock takes", () => {
     const key = ownershipKey("11111111-2222-3333-4444-555555555555");
