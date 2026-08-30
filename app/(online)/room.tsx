@@ -15,7 +15,11 @@ import { hapticMedium, hapticSelection, hapticSuccess } from "@/lib/haptics";
 import * as Clipboard from "expo-clipboard";
 import Ionicons from "@expo/vector-icons/Ionicons";
 import { useQuery } from "@tanstack/react-query";
-import { useOnlineGame } from "@/context/OnlineGameContext";
+import {
+  useOnlineConnection,
+  useOnlineRoom,
+  useOnlineTable,
+} from "@/context/onlineGameHooks";
 import { useNotification } from "@/context/NotificationContext";
 import { useAuth } from "@/context/AuthContext";
 import { useSocket } from "@/context/SocketContext";
@@ -315,15 +319,9 @@ export default function RoomScreen() {
   const entering = reduceMotion ? undefined : FadeIn.duration(Motion.duration.travel);
   const { width: W, height: H } = useWindowDimensions();
   const { user } = useAuth();
-  const {
-    room,
-    gameState,
-    error,
-    clearError,
-    leaveRoom,
-    startGame,
-    entrySource,
-  } = useOnlineGame();
+  const { room, leaveRoom, startGame, entrySource } = useOnlineRoom();
+  const { gameState } = useOnlineTable();
+  const { error, clearError } = useOnlineConnection();
   const { showNotification } = useNotification();
 
   const [fillWithBots, setFillWithBots] = useState(false);

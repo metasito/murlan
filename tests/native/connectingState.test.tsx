@@ -30,38 +30,30 @@ jest.mock('@/context/AuthContext', () => ({
   useAuth: () => ({ user: { id: 'u1', username: 'Ana' } }),
 }));
 
-jest.mock('@/context/OnlineGameContext', () => ({
-  useOnlineGame: () => ({
-    // A spectate the server refused: no state, and no rejoin failure to bounce
-    // off the screen either.
-    gameState: null,
-    mySeatIndex: -1,
-    isSpectator: true,
-    playerLeft: false,
-    rejoinFailed: false,
-    reconnectNotice: null,
+jest.mock('@/context/onlineGameHooks', () => ({
+  // A spectate the server refused: no state, and no rejoin failure to bounce
+  // off the screen either. Only the concerns this path actually reads.
+  useOnlineTable: () => ({ gameState: null, mySeatIndex: -1 }),
+  useOnlineTurnClock: () => ({}),
+  useOnlineRoom: () => ({ isSpectator: true, entrySource: null, leaveRoom: mockLeaveRoom }),
+  useOnlineConnection: () => ({
     connected: true,
     error: null,
+    reconnectNotice: null,
+    playerLeft: false,
+    rejoinFailed: false,
     clearError: jest.fn(),
-    playCards: jest.fn(),
-    pass: jest.fn(),
-    giveExchangeCard: jest.fn(),
-    sendReaction: jest.fn(),
-    leaveRoom: mockLeaveRoom,
-    voteRematch: jest.fn(),
-    entrySource: null,
-    rematchVoteState: null,
-    cumulativeScores: {},
-    matchState: { target: 21, length: 'match', over: false, winners: [], isDraw: false, continues: false },
-    rematchIntents: { yes: 0, total: 0, answers: {} },
-    rematchPromptOpen: false,
-    answerRematch: jest.fn(),
-    exchangeAnnouncing: false,
-    exchangeAnnounceData: null,
-    acknowledgeExchange: jest.fn(),
     clearPlayerLeft: jest.fn(),
     clearRejoinFailed: jest.fn(),
   }),
+  useOnlineMatch: () => ({
+    matchState: { target: 21, length: 'match', over: false, winners: [], isDraw: false, continues: false },
+    rematchVoteState: null,
+    rematchIntents: { yes: 0, total: 0, answers: {} },
+    rematchPromptOpen: false,
+    cumulativeScores: {},
+  }),
+  useOnlineExchange: () => ({ exchangeAnnouncing: false, exchangeAnnounceData: null }),
 }));
 
 // Required, not imported: an import is hoisted above the mock functions the
