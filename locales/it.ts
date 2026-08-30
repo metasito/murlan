@@ -340,6 +340,7 @@ export const it: Record<keyof typeof en, string> = {
   "gameTable.rematchYesA11yLabel": "Sì, voglio un'altra partita",
   "gameTable.rematchNoA11yLabel": "No, mi fermo qui",
   "gameTable.rematchTally": "{{yes}}/{{total}} sì",
+  "gameTable.a11yCardMoved": "{{card}} spostata in posizione {{position}} di {{total}}.",
   "gameTable.a11yHandSelected_one": "{{count}} selezionata.",
   "gameTable.a11yHandSelected_other": "{{count}} selezionate.",
 

@@ -347,6 +347,7 @@ export const sq: Record<keyof typeof en, string> = {
   "gameTable.rematchYesA11yLabel": "Po, dua një ndeshje tjetër",
   "gameTable.rematchNoA11yLabel": "Jo, ndalem këtu",
   "gameTable.rematchTally": "{{yes}}/{{total}} po",
+  "gameTable.a11yCardMoved": "{{card}} u zhvendos në pozicionin {{position}} nga {{total}}.",
   "gameTable.a11yHandSelected_one": "{{count}} e zgjedhur.",
   "gameTable.a11yHandSelected_other": "{{count}} të zgjedhura.",
 

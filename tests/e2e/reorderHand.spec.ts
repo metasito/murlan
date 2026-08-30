@@ -108,6 +108,34 @@ test.describe("arranging your own hand", () => {
     ).toBe(before[0].label);
   });
 
+  // WCAG 2.5.7's alternative, on the surface where it is the *only* one.
+  // `accessibilityActions` is the native half and react-native-web forwards it
+  // nowhere, so on web the arrow keys are the whole of it — and a drag with no
+  // single-pointer equivalent fails the criterion outright.
+  test("arrow keys move the focused card, with no drag at all", async ({ page, baseURL }) => {
+    test.setTimeout(120_000);
+    await page.setViewportSize(VIEWPORT);
+    await openSeededGame(page, baseURL!, 2);
+    await page.locator(TABLE).waitFor({ timeout: 30_000 });
+    await page.waitForTimeout(1_500);
+
+    const before = await handRow(page);
+    expect(before.length, "the seeded hand rendered no cards").toBeGreaterThan(4);
+
+    const target = before[0].label;
+    await page.locator(`${HAND_CARDS}[aria-label="${target}"]`).focus();
+    await page.keyboard.press("ArrowRight");
+    await page.waitForTimeout(400);
+
+    const after = labels(await handRow(page));
+    expect(after, "a card was lost or duplicated").toHaveLength(before.length);
+    expect(
+      after.indexOf(target),
+      `ArrowRight on ${target} left the hand as ${after.join(", ")} — on web this is the only ` +
+        "way to arrange a hand without dragging"
+    ).toBe(1);
+  });
+
   test("a plain tap still only selects", async ({ page, baseURL }) => {
     test.setTimeout(120_000);
     await page.setViewportSize(VIEWPORT);

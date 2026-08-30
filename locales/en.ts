@@ -347,6 +347,7 @@ export const en = {
   "gameTable.rematchYesA11yLabel": "Yes, I want another match",
   "gameTable.rematchNoA11yLabel": "No, I stop here",
   "gameTable.rematchTally": "{{yes}}/{{total}} yes",
+  "gameTable.a11yCardMoved": "{{card}} moved to position {{position}} of {{total}}.",
   "gameTable.a11yHandSelected_one": "{{count}} selected.",
   "gameTable.a11yHandSelected_other": "{{count}} selected.",
 

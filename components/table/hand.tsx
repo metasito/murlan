@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { View, StyleSheet, ScrollView } from "react-native";
+import { View, StyleSheet } from "react-native";
 import { Gesture, GestureDetector } from "react-native-gesture-handler";
 import { scheduleOnRN } from "react-native-worklets";
 import { TableText } from "./TableText";
@@ -68,8 +68,6 @@ const UNGIVEABLE_OPACITY = 0.32;
 // which card to play, which is the exact moment a hand is being read
 // (docs/research/2026-08-30-reordering-a-hand.md).
 const HOLD_MS = 500;
-/** How early an activation may land and still count as the hold's. */
-const HOLD_SLACK_MS = 80;
 // Off the fan rather than up in the air: the card stays where it came from and
 // reads as one being picked out of a hand still being held.
 const HELD_SCALE = 1.06;
@@ -78,6 +76,8 @@ const HELD_RISE = 8;
 const GAP_CARDS = 1;
 const MOVE_LEFT = "moveCardLeft";
 const MOVE_RIGHT = "moveCardRight";
+/** The same two moves from a keyboard, which is the whole of them on web. */
+const MOVE_KEYS = { ArrowLeft: MOVE_LEFT, ArrowRight: MOVE_RIGHT };
 /** Past every card's own `zIndex`, which is its index in a hand of at most 21. */
 const HELD_Z = 100;
 
@@ -276,6 +276,7 @@ function CardItemBase({
         hint={hint}
         a11yActions={a11yActions}
         onA11yAction={onMove ? handleMove : undefined}
+        a11yActionKeys={MOVE_KEYS}
         noLift
       />
     </Animated.View>
@@ -424,15 +425,27 @@ export function StraightHand({
   /** How much of a scrolling row lies outside the window, both ends together. */
   const overhang = Math.max(0, totalW - availW);
 
-  // The row opens on its own middle rather than its left edge. `contentOffset`
-  // is honoured on the first frame on iOS and ignored outright on web, so the
-  // position has to be set once the view exists — and again whenever the hand
-  // changes size, or playing a card leaves the row scrolled off to one side.
-  const scroller = useRef<ScrollView>(null);
-  useEffect(() => {
-    if (overhang === 0) return;
-    scroller.current?.scrollTo({ x: overhang / 2, animated: false });
-  }, [overhang]);
+  // A row wider than its window is moved by this offset rather than by a
+  // ScrollView. The gesture below already has to arbitrate between scrolling
+  // the hand and picking a card out of it — a scroller would be a third party
+  // to that, one that owns the touch on web the moment it is attached
+  // (`tests/e2e/handScroll.spec.ts`) and answers only to a ref the React
+  // Compiler will not let this file read. A shared value answers on the UI
+  // thread, identically on both platforms, and needs no ref at all.
+  //
+  // Measured from the middle of the hand rather than from its left edge, so
+  // zero is where the row opens and no effect has to put it there: at offset 0
+  // the row sits against the left edge of a box the buttons centre on, which
+  // reads as the whole hand having slid sideways. Playing a card narrows the
+  // overhang, and the clamp below carries the row in with it.
+  const pan = useSharedValue(0);
+  const panFrom = useSharedValue(0);
+  const panLimit = overhang / 2;
+  const rowShiftStyle = useAnimatedStyle(() => ({
+    transform: [
+      { translateX: -(panLimit + Math.min(Math.max(pan.value, -panLimit), panLimit)) },
+    ],
+  }));
 
   // ─── Reordering ────────────────────────────────────────────────────────────
   const canReorder = onReorder !== undefined && !disabled && !faceDown;
@@ -448,7 +461,21 @@ export function StraightHand({
   const gap = useSharedValue<number | null>(null);
   const fingerX = useSharedValue(0);
   const fingerY = useSharedValue(0);
-  const downAt = useSharedValue(0);
+  // The hold, and what the finger is doing until it fires. A row wider than the
+  // window has to stay scrollable by touch, and on web that is a straight
+  // contest this gesture cannot both enter and lose: any handler attached to a
+  // view sets `touch-action: none` on it (react-native-gesture-handler's
+  // `GestureHandlerWebDelegate`), which stops the browser scrolling it, and
+  // `pan-x` — the obvious remedy — hands the browser the finger and the drag
+  // never reorders anything. Both were measured (`tests/e2e/handScroll.spec.ts`).
+  // So the gesture arbitrates instead of the browser: it activates by hand, and
+  // until the hold fires a moving finger scrolls the row itself.
+  const holding = useSharedValue(false);
+  const holdTimer = useSharedValue(0);
+  const grabX = useSharedValue(0);
+  const grabY = useSharedValue(0);
+  /** Where inside the card the finger landed, so it comes up under that point. */
+  const grabOffset = useSharedValue(0);
   // 0 under the finger, 1 arrived in its slot. The flight it drives is the
   // *only* thing waiting on it: the reorder itself lands on a timer of the same
   // length, so a spring that never reaches rest — which `Motion.spring.pickup`
@@ -467,7 +494,7 @@ export function StraightHand({
     const p = settle.value;
     // The wrapper sits at the row's own origin, so a card at `left: L` and
     // `bottom: B` is this same box translated by (L, −B).
-    const fromX = fingerX.value - cardW / 2;
+    const fromX = fingerX.value - grabOffset.value;
     const fromY = fingerY.value - HELD_RISE - (visibleH - cardH / 2);
     return {
       transform: [
@@ -521,15 +548,18 @@ export function StraightHand({
 
   // Solved for the span the step produced, so the arc and the overlap floor
   // cannot disagree about how wide the hand is.
-  const { cards: arc, box } = solveArc(rest.length, {
-    budget: HAND_ARC,
-    cardW,
-    cardH,
-    scale: cardScale,
-    room: totalW,
-    step,
-  });
+  const solve = (count: number) =>
+    solveArc(count, { budget: HAND_ARC, cardW, cardH, scale: cardScale, room: totalW, step });
+  // Two arcs: where the whole hand sits, and where the rest of it closes to
+  // with one card lifted out. Every card is *placed* by the first and moved to
+  // the second, so the closing is one animated value rather than a new `left`
+  // landing in a single frame — the fan has to close continuously, or the cards
+  // jump between two arrangements while the finger is still between them.
+  const full = solve(n);
+  const arc = heldCard === null ? full.cards : solve(rest.length).cards;
+  const box = full.box;
   const rowMid = (scrollable ? totalW : rowW) / 2;
+  const place = new Map(cards.map((card, j) => [card.id, full.cards[j]]));
   // Split either side of the slot, so the hand's centre holds still while the
   // gap opens and nothing shifts out from under the thumb.
   const gapW = heldCard === null ? 0 : cardW * GAP_CARDS;
@@ -538,17 +568,14 @@ export function StraightHand({
   // Where the drop index is measured from: the arc without the gap in it. The
   // gap is a consequence of the slot, so measuring the slot against a row the
   // gap has already moved makes the two chase each other.
-  const lefts = arc.map((place) => rowMid + place.x);
+  const lefts = arc.map((at) => rowMid + at.x);
   const ids = rest.map((card) => card.id);
   // Where each slot of the *whole* hand sits — where a released card is going.
-  const slots = (
-    heldCard === null
-      ? arc
-      : solveArc(n, { budget: HAND_ARC, cardW, cardH, scale: cardScale, room: totalW, step }).cards
-  ).map((place) => ({ x: rowMid + place.x, y: crop + place.y, rot: place.rot }));
+  const slots = full.cards.map((at) => ({ x: rowMid + at.x, y: crop + at.y, rot: at.rot }));
 
   const releaseHeld = () => {
     landing.value = false;
+    holding.value = false;
     settle.value = 0;
     held.value = null;
     gap.value = null;
@@ -556,18 +583,29 @@ export function StraightHand({
     setGapAt(null);
   };
 
-  const grab = (x: number, pressedAt: number) => {
-    // A pan can also activate on travel, and a finger travelling across a fan
-    // is reading the hand rather than reordering it
-    // (docs/research/2026-08-30-reordering-a-hand.md). Only an activation the
-    // hold actually paid for starts a drag.
-    if (Date.now() - pressedAt < HOLD_MS - HOLD_SLACK_MS) return;
+  const grab = (x: number) => {
     const i = cardAt(lefts, cardW, x);
     if (i === null) return;
+    // The card comes up under the part of it the finger is actually on. Every
+    // card but the last shows only a `step`-wide strip, so a finger almost
+    // always lands near a left edge, and centring the card on it instead threw
+    // it half a card sideways at the moment of pickup.
+    grabOffset.value = x - lefts[i];
+    holding.value = true;
     held.value = ids[i];
     gap.value = i;
     setHeldId(ids[i]);
     setGapAt(i);
+  };
+
+  /** The hold's own clock. It survives a finger that never moves, which is the point. */
+  const armHold = (x: number) => {
+    clearTimeout(holdTimer.value);
+    holdTimer.value = setTimeout(() => grab(x), HOLD_MS) as unknown as number;
+  };
+  const disarmHold = () => {
+    clearTimeout(holdTimer.value);
+    holdTimer.value = 0;
   };
 
   const trackGap = (x: number) => {
@@ -621,16 +659,38 @@ export function StraightHand({
     // pointer that picked it up can no longer put down.
     .maxPointers(1)
     .enabled(canReorder)
-    .activateAfterLongPress(HOLD_MS)
-    .onBegin((e) => {
-      fingerX.value = e.x;
-      fingerY.value = e.y;
-      downAt.value = Date.now();
+    // Activated by hand rather than by `activateAfterLongPress`, which is a hard
+    // gate this needs to be a soft one: it fails the whole gesture the moment
+    // the finger travels 15px before the hold lands, so a thumb that rolls gets
+    // nothing at all — and worse, it leaves the browser no way to scroll a row
+    // wider than the window. Until the hold fires, a moving finger scrolls.
+    .manualActivation(true)
+    .onTouchesDown((e) => {
+      const touch = e.allTouches[0];
+      if (touch === undefined) return;
+      fingerX.value = touch.x;
+      fingerY.value = touch.y;
+      grabX.value = touch.x;
+      grabY.value = touch.y;
+      panFrom.value = pan.value;
+      scheduleOnRN(armHold, touch.x);
     })
-    .onStart((e) => {
-      fingerX.value = e.x;
-      fingerY.value = e.y;
-      scheduleOnRN(grab, e.x, downAt.value);
+    .onTouchesMove((e, state) => {
+      const touch = e.allTouches[0];
+      if (touch === undefined) return;
+      fingerX.value = touch.x;
+      fingerY.value = touch.y;
+      if (holding.value) {
+        state.activate();
+        return;
+      }
+      // Not held: the finger is reading the hand, so it moves the row rather
+      // than a card. Anything but a horizontal drag is somebody else's gesture.
+      const dx = touch.x - grabX.value;
+      if (Math.abs(dx) > Math.abs(touch.y - grabY.value)) {
+        scheduleOnRN(disarmHold);
+        if (overhang > 0) pan.value = panFrom.value - dx;
+      }
     })
     .onUpdate((e) => {
       fingerX.value = e.x;
@@ -649,6 +709,7 @@ export function StraightHand({
     // edge — never reaches onEnd, and the card it lifted would float there for
     // the rest of the hand.
     .onFinalize(() => {
+      scheduleOnRN(disarmHold);
       if (landing.value) return;
       scheduleOnRN(releaseHeld);
     });
@@ -664,20 +725,27 @@ export function StraightHand({
         { width: scrollable ? totalW : rowW, height: visibleH },
       ]}
     >
-      {arc.map((place, i) => {
+      {arc.map((at, i) => {
         const giveable = giveableSet?.has(rest[i].id);
+        // Placed where it sits in the whole hand; moved from there to where the
+        // closed fan wants it, plus its share of the gap.
+        const home = place.get(rest[i].id) ?? at;
+        // A card the exchange has ruled out is a control reporting itself
+        // unavailable; offering it two working actions anyway says the opposite
+        // in the same breath.
+        const arrangeable = canReorder && giveable !== false;
         return (
         <CardItem
           key={rest[i].id}
           card={rest[i]}
           isSelected={selectedSet.has(rest[i].id)}
-          left={rowMid + place.x}
-          shiftX={gapShift(i)}
-          bottom={-crop - place.y}
-          arcRot={place.rot}
+          left={rowMid + home.x}
+          shiftX={at.x - home.x + gapShift(i)}
+          bottom={-crop - home.y}
+          arcRot={home.rot}
           onPress={onPress}
-          a11yActions={canReorder ? moveActions : undefined}
-          onMove={canReorder ? moveByAction : undefined}
+          a11yActions={arrangeable ? moveActions : undefined}
+          onMove={arrangeable ? moveByAction : undefined}
           // An ungiveable card during an exchange is a button that reports
           // itself unavailable, rather than one that silently does nothing.
           disabled={disabled || giveable === false}
@@ -686,7 +754,7 @@ export function StraightHand({
           faceDown={faceDown}
           zIndex={i}
           dealDelay={dealArmed ? i * Motion.stagger.deal : -1}
-          dealFromX={-place.x - cardW / 2}
+          dealFromX={-home.x - cardW / 2}
           cardScale={cardScale}
           dealRise={dealRise}
           // Every card but the last is covered from `step` on by the one drawn
@@ -726,25 +794,21 @@ export function StraightHand({
         {scrollable ? (
           // The hand compresses inside its share, so this is reached only when
           // even the finger floor cannot fit the row in availW — a full hand on
-          // a small phone. Scroll instead of clipping or of stepping below what
-          // a thumb can separate. A ScrollView clips at its own bounds, so the
-          // row keeps HAND_ROW_HEADROOM as top padding inside it — without it,
-          // a selected card's lift (SELECT_LIFT) is cut off at the top edge.
-          <ScrollView
-            ref={scroller}
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            style={{ width: availW, height: visibleH + arcRise + HAND_ROW_HEADROOM }}
-            contentContainerStyle={{ paddingTop: HAND_ROW_HEADROOM, width: totalW }}
-            // Opens on the middle of the hand. At offset 0 the row is against
-            // the left edge of a box the buttons centre on, which reads as the
-            // whole hand having slid sideways. `contentOffset` alone is the
-            // first frame on iOS and nothing at all on web — the effect below
-            // is what actually holds it there.
-            contentOffset={{ x: overhang / 2, y: 0 }}
+          // a small phone. The row overflows and is moved under a window that
+          // clips it, rather than clipping the hand or stepping below what a
+          // thumb can separate. The window keeps HAND_ROW_HEADROOM as top
+          // padding — without it, a selected card's lift (SELECT_LIFT) is cut
+          // off at the top edge.
+          <View
+            style={{
+              width: availW,
+              height: visibleH + arcRise + HAND_ROW_HEADROOM,
+              paddingTop: HAND_ROW_HEADROOM,
+              overflow: "hidden",
+            }}
           >
-            {row}
-          </ScrollView>
+            <Animated.View style={[{ width: totalW }, rowShiftStyle]}>{row}</Animated.View>
+          </View>
         ) : (
           row
         )}

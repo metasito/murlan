@@ -21,6 +21,13 @@ for (const file of process.argv.slice(2)) {
   const bail = events.filter((e) => e.kind === "CompileError");
   console.log(`${file}: ${bail.length ? "BAILS" : "clean"}`);
   for (const b of bail) {
-    console.log(`   line ${b.fnLoc?.start?.line}  ${b.detail?.reason ?? ""} ${b.detail?.description ?? ""}`);
+    // The function's own line is where the bailout is *reported*; the detail
+    // carries the line that caused it, which is the one worth reading.
+    const opts = b.detail?.options ?? b.detail;
+    const blamed = (opts?.details ?? [])
+      .map((d) => `${d.loc?.start?.line}:${d.loc?.identifierName ?? ""}`)
+      .join(", ");
+    const where = blamed ? `line ${blamed} (in the hook at ${b.fnLoc?.start?.line})` : `line ${b.fnLoc?.start?.line}`;
+    console.log(`   ${where}  ${opts?.reason ?? ""} ${opts?.description ?? ""}`);
   }
 }
