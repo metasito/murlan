@@ -152,7 +152,16 @@ export function createGithubDevSyncHandler({
       });
     } catch (error) {
       logger.error({ err: error }, "GitHub dev sync failed");
-      return res.status(409).json({ error: "Dev sync was not applied", code: "DEV_SYNC_FAILED" });
+      // The reason has to cross the wire. Whoever is told about this failure
+      // is a workflow on another machine, and it cannot read this log — so a
+      // body that says only that something went wrong sends them to look
+      // somewhere they cannot see. A dirty workspace and a diverged main are
+      // the two ordinary causes and they need opposite remedies.
+      return res.status(409).json({
+        error: "Dev sync was not applied",
+        code: "DEV_SYNC_FAILED",
+        reason: error instanceof Error ? error.message : String(error),
+      });
     }
   };
 }

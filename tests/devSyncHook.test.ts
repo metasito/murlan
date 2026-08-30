@@ -123,3 +123,52 @@ test("ignores pushes for branches other than main", async () => {
   });
   assert.equal(synced, false);
 });
+// A sync that refuses has exactly one thing worth saying: why. Twelve failed
+// runs reported `DEV_SYNC_FAILED` and nothing else, so the auto-filed issue
+// said "see the workflow logs" and the workflow logs said the same three
+// words back (#561). A dirty workspace and a diverged main need opposite
+// remedies and were indistinguishable from outside.
+test("a refused sync reports which refusal it was", async () => {
+  const secret = "s3cret";
+  const handler = createGithubDevSyncHandler({
+    secret,
+    sync: async () => {
+      throw new Error("Dev workspace is not clean; refusing automatic main sync");
+    },
+    triggerFile: join(await mkdtemp(join(tmpdir(), "murlan-sync-")), "trigger"),
+  });
+
+  const res = response();
+  await handler(
+    request({ ref: "refs/heads/main", after: "abc123" }, secret) as unknown as Request,
+    res as unknown as Response
+  );
+
+  assert.equal(res.result.status, 409);
+  const body = res.result.body as { code?: string; reason?: string };
+  assert.equal(body.code, "DEV_SYNC_FAILED");
+  assert.match(
+    body.reason ?? "",
+    /not clean/,
+    "the reason has to cross the wire — the workflow that reports this cannot read the server's log"
+  );
+});
+
+test("the reason is the sync's own words, not a guess at them", async () => {
+  const secret = "s3cret";
+  const handler = createGithubDevSyncHandler({
+    secret,
+    sync: async () => {
+      throw new Error("Local main and origin/main diverged; refusing automatic sync");
+    },
+    triggerFile: join(await mkdtemp(join(tmpdir(), "murlan-sync-")), "trigger"),
+  });
+
+  const res = response();
+  await handler(
+    request({ ref: "refs/heads/main", after: "abc123" }, secret) as unknown as Request,
+    res as unknown as Response
+  );
+
+  assert.match((res.result.body as { reason?: string }).reason ?? "", /diverged/);
+});
