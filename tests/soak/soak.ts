@@ -34,7 +34,7 @@ interface TableState {
   viewerSeatIndex: number | null;
 }
 
-interface RoomState {
+export interface RoomState {
   roomId: string;
   code: string;
   status: string;
@@ -78,6 +78,54 @@ interface Options {
   chaos: number;
 }
 
+/**
+ * What happened, in the order it happened, as the runner emitted it.
+ *
+ * The seed cannot carry this. It is drawn from by the choice of play and by the
+ * chaos driver, but the deal is dealt by the server from `crypto`
+ * (`lib/gameEngine.ts`'s `shuffleDeck`), so two runs of one seed are two
+ * different games and the card ids in one mean nothing in the other. A log is
+ * the only thing that survives the run it came from, which is why a failure
+ * prints this rather than only the seed.
+ *
+ * `deal` is assembled from all four seats' own hands, because no single client
+ * is ever sent another seat's cards.
+ */
+export type SoakAction =
+  | { kind: "deal"; manche: number; hands: string[][] }
+  | { kind: "play"; seat: number; cardIds: string[] }
+  | { kind: "pass"; seat: number }
+  | { kind: "exchange"; seat: number; cardId: string }
+  | { kind: "drop"; seat: number; username: string }
+  | { kind: "rejoin"; seat: number; username: string };
+
+/** An intersection rather than `at` on each member: `Omit` over a union collapses it. */
+export type SoakLogEntry = SoakAction & { at: number };
+
+/** What one seat can decide to do on its own turn. */
+export type SeatAction = Extract<SoakAction, { kind: "play" | "pass" | "exchange" }>;
+
+/** One log entry as a line, in the shape a replay reads back. */
+export function formatLogEntry(entry: SoakLogEntry): string {
+  const at = String(entry.at).padStart(4, " ");
+  switch (entry.kind) {
+    case "deal":
+      return `${at}  deal   manche ${entry.manche}  ${entry.hands
+        .map((hand, seat) => `seat${seat}=[${hand.join(" ")}]`)
+        .join("  ")}`;
+    case "play":
+      return `${at}  play   seat${entry.seat}  ${entry.cardIds.join(" ")}`;
+    case "pass":
+      return `${at}  pass   seat${entry.seat}`;
+    case "exchange":
+      return `${at}  give   seat${entry.seat}  ${entry.cardId}`;
+    case "drop":
+      return `${at}  drop   seat${entry.seat}  ${entry.username}`;
+    case "rejoin":
+      return `${at}  rejoin seat${entry.seat}  ${entry.username}`;
+  }
+}
+
 function parseArgs(argv: string[]): Options {
   const read = (name: string, fallback: number) => {
     const at = argv.indexOf(`--${name}`);
@@ -94,7 +142,7 @@ function parseArgs(argv: string[]): Options {
 }
 
 /** One virtual player: a real socket, its own view, and legal moves only. */
-class Seat {
+export class Seat {
   socket: Socket;
   readonly username: string;
   readonly userId: string;
@@ -172,25 +220,25 @@ class Seat {
    * soak that plays illegally would spend its time proving the server rejects
    * it.
    */
-  act(rng: () => number): boolean {
+  act(rng: () => number): SeatAction | null {
     const s = this.state;
     const seat = s?.viewerSeatIndex;
-    if (!s || s.gameOver || typeof seat !== "number" || seat < 0) return false;
+    if (!s || s.gameOver || typeof seat !== "number" || seat < 0) return null;
 
     const phase = s.exchangePhase;
     if (phase?.active) {
-      if (phase.winnerIdx !== seat) return false;
+      if (phase.winnerIdx !== seat) return null;
       const hand = s.players[seat]?.hand ?? [];
       const giveable = hand.filter((c) => c.id !== phase.cardFromLoser?.id);
       const card = giveable[Math.floor(rng() * giveable.length)];
-      if (!card) return false;
+      if (!card) return null;
       this.socket.emit("game:exchange_give_card", { cardId: card.id });
-      return true;
+      return { kind: "exchange", seat, cardId: card.id };
     }
 
-    if (s.currentTurnIndex !== seat) return false;
+    if (s.currentTurnIndex !== seat) return null;
     const hand = s.players[seat]?.hand ?? [];
-    if (hand.length === 0) return false;
+    if (hand.length === 0) return null;
 
     const isNewRound = s.lastPlayedCombination === null;
     const mustPlay = !s.firstPlayMade ? s.startCard : undefined;
@@ -198,12 +246,50 @@ class Seat {
 
     if (plays.length === 0) {
       this.socket.emit("game:pass");
-      return true;
+      return { kind: "pass", seat };
     }
     const combo = plays[Math.floor(rng() * plays.length)];
-    this.socket.emit("game:play", { cardIds: combo.cards.map((c) => c.id) });
-    return true;
+    const cardIds = combo.cards.map((c) => c.id);
+    this.socket.emit("game:play", { cardIds });
+    return { kind: "play", seat, cardIds };
   }
+
+  /** Every card this seat holds, in the order the server sent them. */
+  hand(): string[] {
+    const seat = this.state?.viewerSeatIndex;
+    if (typeof seat !== "number" || seat < 0) return [];
+    return (this.state?.players[seat]?.hand ?? []).map((c) => c.id);
+  }
+}
+
+/**
+ * Registers `count` fresh accounts, seats them at one room and starts it,
+ * pushing each `Seat` onto `seats` as it connects so a caller that throws
+ * half-way still has the sockets it needs to close.
+ */
+export async function openTable(
+  server: TestServer,
+  count: number,
+  seats: Seat[]
+): Promise<RoomState> {
+  const tag = Date.now().toString(36);
+  for (let i = 0; i < count; i++) {
+    const c = await connectAs(server, `soak_${tag}_${i}`);
+    seats.push(new Seat(c.socket, c.user.username, c.user.id, c.cookie));
+  }
+  const host = seats[0];
+  const room = await new Promise<RoomState>((resolve) => {
+    host.socket.once("room:state", resolve);
+    host.socket.emit("room:create", { gameMode: "free_for_all", maxPlayers: count });
+  });
+  for (const seat of seats.slice(1)) {
+    await new Promise<void>((resolve) => {
+      seat.socket.once("room:state", () => resolve());
+      seat.socket.emit("room:join", { code: room.code });
+    });
+  }
+  host.socket.emit("room:start");
+  return room;
 }
 
 export interface SoakResult {
@@ -213,6 +299,8 @@ export interface SoakResult {
   chaosEvents: string[];
   refusals: number;
   seed: number;
+  /** Everything the runner did, in order. See `SoakLogEntry`. */
+  moveLog: SoakLogEntry[];
 }
 
 /**
@@ -221,7 +309,7 @@ export interface SoakResult {
  * separately; two views captured mid-broadcast disagree for a reason that is
  * not a defect, and comparing them would make the oracle cry wolf forever.
  */
-async function settle(
+export async function settle(
   seats: Seat[],
   quietMs = 250,
   capMs = 4_000 * DEADLINE_SCALE
@@ -239,33 +327,17 @@ async function settle(
 export async function runSoak(opts: Options, log = console.log): Promise<SoakResult> {
   const rng = makeRng(opts.seed);
   const deckSize = createDeck().length;
-  const chaosEvents: string[] = [];
+  const moveLog: SoakLogEntry[] = [];
   let moves = 0;
   let manches = 0;
+  let dealLoggedFor = -1;
   let highWaterMark = deckSize;
   let wasOver = false;
 
   const server: TestServer = await startTestServer();
   const seats: Seat[] = [];
   try {
-    const tag = Date.now().toString(36);
-    for (let i = 0; i < opts.seats; i++) {
-      const c = await connectAs(server, `soak_${tag}_${i}`);
-      seats.push(new Seat(c.socket, c.user.username, c.user.id, c.cookie));
-    }
-
-    const host = seats[0];
-    const room = await new Promise<RoomState>((resolve) => {
-      host.socket.once("room:state", resolve);
-      host.socket.emit("room:create", { gameMode: "free_for_all", maxPlayers: opts.seats });
-    });
-    for (const seat of seats.slice(1)) {
-      await new Promise<void>((resolve) => {
-        seat.socket.once("room:state", () => resolve());
-        seat.socket.emit("room:join", { code: room.code });
-      });
-    }
-    host.socket.emit("room:start");
+    const room = await openTable(server, opts.seats, seats);
     log(`soak: seed ${opts.seed}, ${opts.seats} seats, room ${room.code}`);
 
     const violations: Violation[] = [];
@@ -275,6 +347,22 @@ export async function runSoak(opts: Options, log = console.log): Promise<SoakRes
       await settle(seats);
 
       const views = seats.map((s) => s.view()).filter((v): v is SeatView => v !== null);
+
+      // Before the oracle runs, not before the seats act: a violation found on
+      // the first settled table would otherwise print a log with no deal in it,
+      // which is the one thing the log has to carry.
+      //
+      // The signal is that no card has left a hand yet, not `firstPlayMade`:
+      // `initializeRematch` returns that already `true`, so keying on it logged
+      // a deal for the first manche and for no other, and every later entry
+      // named cards the log never dealt. The exchange moves one card between
+      // two hands and so leaves the total alone, which is why this still holds
+      // over it.
+      const inHand = views[0]?.handCounts.reduce((a, b) => a + b, 0) ?? 0;
+      if (dealLoggedFor !== manches && views.length === seats.length && inHand === deckSize) {
+        moveLog.push({ at: moves, kind: "deal", manche: manches, hands: seats.map((s) => s.hand()) });
+        dealLoggedFor = manches;
+      }
       if (views.length >= 1) {
         const total = views[0].handCounts.reduce((a, b) => a + b, 0);
         violations.push(...checkAll(views, deckSize, highWaterMark));
@@ -306,7 +394,12 @@ export async function runSoak(opts: Options, log = console.log): Promise<SoakRes
       }
 
       let acted = false;
-      for (const seat of seats) acted = seat.act(rng) || acted;
+      for (const seat of seats) {
+        const did = seat.act(rng);
+        if (!did) continue;
+        acted = true;
+        moveLog.push({ ...did, at: moves + 1 });
+      }
       if (acted) moves += 1;
       if (acted && moves % 25 === 0 && views[0]) {
         log(`soak: move ${moves}, hands [${views[0].handCounts}]`);
@@ -319,13 +412,15 @@ export async function runSoak(opts: Options, log = console.log): Promise<SoakRes
       // failure prints replays a different game.
       if (acted && rng() < opts.chaos) {
         const victim = seats[Math.floor(rng() * seats.length)];
-        chaosEvents.push(`drop+rejoin ${victim.username} at move ${moves}`);
+        const victimSeat = seats.indexOf(victim);
+        moveLog.push({ at: moves, kind: "drop", seat: victimSeat, username: victim.username });
         victim.socket.close();
         await sleep(200 + Math.floor(rng() * 600));
         const back = await reconnectWith(server, victim.cookie);
         const before = victim.version;
         victim.adopt(back);
         victim.lastRefusal = null;
+        moveLog.push({ at: moves, kind: "rejoin", seat: victimSeat, username: victim.username });
         back.emit("game:rejoin", { roomId: room.roomId });
         // A reconnecting client that is never sent the table sits on a screen
         // that will not correct itself. Waiting also keeps the oracle honest:
@@ -356,9 +451,14 @@ export async function runSoak(opts: Options, log = console.log): Promise<SoakRes
       violations,
       moves,
       manches,
-      chaosEvents,
+      // Read off the log rather than collected beside it: two records of one
+      // fact drift, and this one is asserted on.
+      chaosEvents: moveLog.flatMap((e) =>
+        e.kind === "drop" ? [`drop+rejoin ${e.username} at move ${e.at}`] : []
+      ),
       refusals: seats.reduce((sum, s) => sum + s.refusals, 0),
       seed: opts.seed,
+      moveLog,
     };
   } finally {
     for (const seat of seats) if (seat.socket.connected) seat.socket.close();
@@ -382,16 +482,17 @@ async function main() {
     console.log(`soak: no disagreement found (seed ${result.seed})`);
     return;
   }
-  // Not "replay": measured, two runs of one seed still diverge. The deal and
-  // every choice made from it repeat; how the four clients interleave against a
-  // live server does not, and that is what decides which move a drop lands on.
-  console.error(
-    `\nsoak: FAILED with seed ${result.seed}. Re-run it with --seed ${result.seed} — ` +
-      `same deal and same choices, not the same interleaving.`
-  );
+  // The seed is a label, not a reproduction: it narrows nothing the log does
+  // not carry, and it cannot carry the deal, which the server draws from
+  // `crypto`. What replays a failure is the log below — hand it to a
+  // `tests/integration/` case (`soakLogReplays.test.ts` is one, written from an
+  // actual run of this) and the search becomes a fixture.
+  console.error(`\nsoak: FAILED (seed ${result.seed}).`);
   for (const v of result.violations) console.error(`  [${v.kind}] ${v.detail}`);
-  console.error("\nchaos leading up to it:");
-  for (const e of result.chaosEvents.slice(-10)) console.error(`  ${e}`);
+  console.error("\nwhat happened, in order:");
+  for (const entry of result.moveLog) console.error(`  ${formatLogEntry(entry)}`);
+  console.error("\nthe same log as JSON, to paste into a replay:");
+  console.error(JSON.stringify(result.moveLog));
   process.exit(1);
 }
 

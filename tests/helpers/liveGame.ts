@@ -1,8 +1,13 @@
 // Reads of the server's live in-memory table (server/gameRoom.ts) that an
 // integration test cannot make through the wire. Test-only, so it lives here
 // rather than as an escape hatch inside the server.
+import type { Server as SocketServer } from "socket.io";
 import { activeGames } from "../../server/gameRoom.ts";
 import { clearRoomTimers } from "../../server/gameTimers.ts";
+import { broadcastGameState, persistGameState } from "../../server/gamePersistence.ts";
+import { armTurn } from "../../server/gameTurn.ts";
+import { startReplayLog } from "../../server/replayShape.ts";
+import { createDeck, initializeGame } from "../../lib/gameEngine.ts";
 
 /**
  * Whether a room still holds a live in-memory game. The only observable
@@ -21,6 +26,57 @@ export function hasActiveGame(roomId: string): boolean {
 export function forgetActiveGame(roomId: string): boolean {
   clearRoomTimers(roomId);
   return activeGames.delete(roomId);
+}
+
+/**
+ * Deals a room's live table a hand somebody has already played.
+ *
+ * The server shuffles from `crypto` (`lib/gameEngine.ts`'s `shuffleDeck`), so
+ * no seed reaches the deal and a hand can only be recovered by handing its
+ * cards back in. That is what makes a soak log replayable at all, and it is why
+ * this is a write where the rest of this file only reads.
+ *
+ * Everything downstream of the deal — who opens, on which card — is derived by
+ * `initializeGame` rather than restated here, so a replay cannot start from a
+ * table the real deal path would never produce. The turn is re-armed because
+ * the timer running belongs to the hand this one replaces.
+ */
+export function redealExactly(io: SocketServer, roomId: string, hands: string[][]): boolean {
+  const game = activeGames.get(roomId);
+  if (!game) return false;
+
+  const byId = new Map(createDeck().map((card) => [card.id, card]));
+  const dealt = hands.map((ids) =>
+    ids.map((id) => {
+      const card = byId.get(id);
+      if (!card) throw new Error(`no such card in the deck: ${id}`);
+      return card;
+    })
+  );
+  game.gameState = initializeGame(
+    game.gameState.players.map((p) => ({
+      name: p.name,
+      type: p.type,
+      personality: p.personality,
+      team: p.team,
+    })),
+    game.gameState.gameMode,
+    0,
+    dealt
+  );
+  // Everything `dealManche` resets, because the hand this replaces is gone: its
+  // flags would credit its bombs and jokers to this one, and its `moveLog`
+  // would be written to `match_replays` as this hand's replay.
+  game.handFlags = {};
+  game.moveLog = startReplayLog();
+  game.abandonedSeats.clear();
+
+  broadcastGameState(io, game);
+  // Postgres still holds the hand this replaces until this lands, and a rejoin
+  // that rehydrates from it would be dealt the shuffle nobody is playing.
+  persistGameState(roomId, game);
+  armTurn(io, roomId);
+  return true;
 }
 
 /**

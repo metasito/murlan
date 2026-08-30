@@ -1204,9 +1204,31 @@ export function initializeGame(
     team?: "A" | "B";
   }[],
   gameMode: GameMode,
-  firstSeat = 0
+  firstSeat = 0,
+  /**
+   * The deal, when the caller already has one. `shuffleDeck` draws from
+   * `crypto`, so a hand that has already been played can only be rebuilt by
+   * handing the cards back in — which is what replaying a soak log is
+   * (`tests/integration/soakLogReplays.test.ts`). Everything downstream of the
+   * deal, the opening seat included, is derived here either way.
+   */
+  dealt?: Card[][]
 ): GameState {
-  const { hands } = dealCards(playerSetup.length, firstSeat);
+  const hands = dealt ?? dealCards(playerSetup.length, firstSeat).hands;
+  if (dealt) {
+    // This is the one way cards enter a game from outside the deck, so it is
+    // the one place "a card appears exactly once" can be broken by a caller.
+    if (dealt.length !== playerSetup.length) {
+      throw new Error(`a deal for ${playerSetup.length} seats has ${dealt.length} hands`);
+    }
+    const seen = new Set<string>();
+    for (const hand of dealt) {
+      for (const card of hand) {
+        if (seen.has(card.id)) throw new Error(`card ${card.id} is dealt twice`);
+        seen.add(card.id);
+      }
+    }
+  }
 
   const players: Player[] = playerSetup.map((setup, i) => ({
     id: `player_${i}`,
