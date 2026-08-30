@@ -10,6 +10,15 @@
  * Each is a projection, never a home for logic — the provider still owns every
  * piece of state and every effect. What lives once and is shared with the
  * local game lives in `lib/sharedGameFlow.ts`.
+ *
+ * The `useMemo` around each result buys no render today: the provider already
+ * memoizes its value, so a consumer re-renders when any field changes whatever
+ * these do, and every call site destructures immediately, so the identity is
+ * never observed. It is here because the first call site to keep the object
+ * rather than unpack it — a dependency array, a memoized child — would
+ * otherwise get a new one every render, and that failure looks like an
+ * unrelated render loop. `exhaustive-deps` is an error in this repo, so the
+ * lists cannot drift out of step with the destructures above them.
  */
 import { useMemo } from "react";
 import { useOnlineGame } from "./OnlineGameContext";

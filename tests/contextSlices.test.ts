@@ -10,24 +10,40 @@
 // their own to exercise, and what is being pinned is the shape.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { fieldsOf, walk } from "../scripts/contextSurface.mjs";
 
 const ROOT = path.resolve(import.meta.dirname, "..");
 const read = (...p: string[]) => readFileSync(path.join(ROOT, ...p), "utf8");
 
-/** The names a slice hook destructures off its context hook. */
+/**
+ * The names a slice hook destructures off its context hook.
+ *
+ * Every destructure in the body, not the first: a hook that reads its context
+ * twice widens by whatever the second one takes, and reading only the first
+ * would leave that invisible to the very check meant to catch it. A second
+ * call is rejected outright as well, since it is also how a field ends up in
+ * two slices without the partition below noticing.
+ */
 function sliceFields(source: string, hookName: string): string[] {
   const start = source.indexOf(`export function ${hookName}(`);
   assert.notEqual(start, -1, `no hook ${hookName}`);
   const body = source.slice(start, source.indexOf("\n}", start));
-  const m = body.match(/const\s*\{([^}]*)\}\s*=\s*\n?\s*use(?:Online)?Game\(\)/);
-  assert.ok(m, `${hookName} does not read its context hook by destructuring`);
-  return m[1]
-    .split(",")
+
+  const calls = [...body.matchAll(/use(?:Online)?Game\s*\(/g)];
+  assert.equal(
+    calls.length,
+    1,
+    `${hookName} reads its context ${calls.length} times; a slice reads it once`
+  );
+
+  const names = [...body.matchAll(/const\s*\{([^}]*)\}\s*=\s*\n?\s*use(?:Online)?Game\(\)/g)]
+    .flatMap((m) => m[1].split(","))
     .map((s) => s.trim())
     .filter(Boolean);
+  assert.ok(names.length, `${hookName} does not read its context hook by destructuring`);
+  return names;
 }
 
 const ONLINE: Record<string, string[]> = {
@@ -109,11 +125,22 @@ test("nothing reaches past the slices for the whole surface", () => {
   // The slices are only worth having if they are the way in. `useOnlineGame`
   // and `useGame` stay exported because the slices are built on them, and that
   // export is also the way back to a thirty-seven-field destructure.
+  // Every source directory, not the two that happen to hold consumers today:
+  // a screen moved into a new one would leave the guard behind. The slice
+  // modules are the exception, being what the hooks are for; the providers
+  // define them.
+  const ALLOWED = /[\\/]context[\\/](onlineGameHooks|gameHooks|OnlineGameContext|GameContext)\.tsx?$/;
   const offenders: string[] = [];
-  for (const file of walk(path.join(ROOT, "app")).concat(walk(path.join(ROOT, "components")))) {
-    const src = readFileSync(file, "utf8");
-    if (/\buseOnlineGame\s*\(|\buseGame\s*\(/.test(src)) {
-      offenders.push(path.relative(ROOT, file));
+  for (const dir of ["app", "components", "context", "lib", "hooks"]) {
+    const full = path.join(ROOT, dir);
+    if (!existsSync(full)) continue;
+    for (const file of walk(full)) {
+      if (ALLOWED.test(file)) continue;
+      // Comments mention these hooks by name legitimately; code calls them.
+      const code = readFileSync(file, "utf8")
+        .replace(/\/\*[\s\S]*?\*\//g, "")
+        .replace(/\/\/[^\n]*/g, "");
+      if (/\buseOnlineGame\s*\(|\buseGame\s*\(/.test(code)) offenders.push(path.relative(ROOT, file));
     }
   }
   assert.deepEqual(

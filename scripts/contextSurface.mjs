@@ -6,11 +6,11 @@
  * memory goes stale. This derives it, so the seam plan is measured rather than
  * recalled.
  *
- * A field is "read" where its name appears as a property or an identifier in a
- * file that also destructures the hook. That is deliberately generous: it can
- * over-count a name that means something else in the same file, never
- * under-count a real reader, so the "one consumer" claims it produces are the
- * conservative direction.
+ * A field is "read" where a file destructures it off the hook, or reads it as a
+ * property of a value taken from the hook. Matching the bare identifier
+ * anywhere in a file that mentions the hook instead counts `error`, `pass` and
+ * `room` in every file that has its own, which inflates every field to many
+ * readers and makes the "one consumer" question unanswerable.
  */
 import { readFileSync, readdirSync, statSync } from "node:fs";
 import path from "node:path";
@@ -28,8 +28,18 @@ export function walk(dir, out = []) {
   return out;
 }
 
-/** The field names of a `interface X { … }` block, comments and nesting ignored. */
+/**
+ * The field names of an `interface X { … }` block, comments and nesting
+ * ignored.
+ *
+ * Comments go first, and have to: the nesting depth is counted from braces and
+ * parentheses, so one unbalanced `{` or `(` in a doc comment leaves the walk
+ * permanently inside a nested type and every field below it is dropped. A
+ * caller checking that some set covers this one would then be told it does,
+ * over a list that stops early.
+ */
 export function fieldsOf(source, interfaceName) {
+  source = source.replace(/\/\*[\s\S]*?\*\//g, "").replace(/\/\/[^\n]*/g, "");
   const start = source.indexOf(`interface ${interfaceName}`);
   if (start === -1) throw new Error(`no interface ${interfaceName}`);
   const open = source.indexOf("{", start);
@@ -67,7 +77,11 @@ export function fieldsOf(source, interfaceName) {
  */
 export function destructuredNames(source, hookName) {
   const names = new Set();
-  const re = new RegExp(`\\{([^}]*)\\}\\s*=\\s*${hookName}\\s*\\(`, "g");
+  // Anchored on `const {`, not a bare brace. A destructure that is the first
+  // statement inside a function has no `}` between the function's own opening
+  // brace and its closing one, so a bare-brace match starts at the function
+  // and swallows the first name into `const {  <name>`.
+  const re = new RegExp(`const\\s*\\{([^}]*)\\}\\s*=\\s*${hookName}\\s*\\(`, "g");
   for (const m of source.matchAll(re)) {
     for (const part of m[1].split(",")) {
       const name = part.split(":")[0].trim();
