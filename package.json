@@ -23,6 +23,7 @@
     "db:backup:prune": "node scripts/prune-backups.mjs",
     "agent:check": "node scripts/agent-check.mjs",
     "worktrees:prune": "node scripts/prune-worktrees.mjs",
+    "worktrees:remove": "node scripts/prune-worktrees.mjs --remove",
     "reap": "node scripts/reap.mjs",
     "db:reset": "node scripts/reset-db.mjs && drizzle-kit push",
     "start": "npx expo start",
