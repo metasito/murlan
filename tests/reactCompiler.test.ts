@@ -37,13 +37,14 @@ test("the compiler under test is the one babel-preset-expo builds with", () => {
 /**
  * A hook, by the only rule the compiler itself goes by: the name. Matching the
  * definition as well as the call is deliberate — a file that only declares
- * `useFoo` is exactly the file this was blind to.
+ * `useFoo` is exactly the file this was blind to — and `[(=]` rather than `\(`
+ * so that an arrow-defined `export const useFoo = …` counts as a definition.
  *
  * Loose on purpose. A `.ts` file swept in that has no hook in it compiles clean
  * and costs a few milliseconds; one left out ships unmemoized and says nothing,
  * which is the defect this widening exists to end (docs/agents/RULES.md rule 6).
  */
-const CALLS_A_HOOK = /\buse[A-Z]\w*\s*\(/;
+const CALLS_A_HOOK = /\buse[A-Z]\w*\s*[(=]/;
 
 /**
  * `.tsx` unconditionally, and `.ts` when it holds a hook.
@@ -68,6 +69,11 @@ const COMPILED = [
   ...compiledUnder("app"),
   ...compiledUnder("components"),
   ...compiledUnder("context"),
+  // `lib/` too: the production build compiles whatever the app imports, and
+  // eight hooks live here — `usePrefersReducedMotion`, `useTranslation`,
+  // `useFocusTrap` and the rest. Leaving the directory out would be the same
+  // silent skip one level over.
+  ...compiledUnder("lib"),
 ];
 
 /** babel-preset-expo/build/index.js, for a production client build. */
@@ -148,6 +154,10 @@ test("a bailout in a plain .ts hook is what the widened gate catches", () => {
   assert.ok(
     COMPILED.includes(rel),
     `${rel} is not in COMPILED — the .ts half of the gate is reaching nothing`
+  );
+  assert.ok(
+    COMPILED.some((f) => f.startsWith("lib/")),
+    "no lib/ file reaches the gate; the hooks that live there are being skipped again"
   );
   const original = readFileSync(path.join(repoRoot, rel), "utf8");
   const anchor = "  const [orders, setOrders] = useState<Record<number, string[]>>({});";

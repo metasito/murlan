@@ -172,15 +172,19 @@ function useImpactFeedback(reduceMotion: boolean, scale: number) {
 
   // The writers have to be plain closures — the compiler refuses a function
   // that writes a shared value if that function was passed to a hook, and a
-  // dependency array is passing it — so they are new on every render. These two
-  // are not, and they are what leaves the hook: `GameTable` lists `playImpact`
-  // as a dependency of its play effect, and a rotation must not re-run the
-  // play. Pinned by tests/native/tableFeedbackIdentity.test.tsx, because the
-  // compiler's own memoisation is not a place to keep a correctness property.
+  // dependency array is passing it — so they are new on every render. What
+  // leaves the hook is not: `GameTable` lists `playImpact` among its play
+  // effect's dependencies, and a new identity every render would re-run that
+  // effect every render. It is not what stops the play being replayed — the
+  // `prevComboKeyRef` guard in that effect is — so this is cost, not
+  // correctness.
+  //
+  // The ref is what lets these hold `[]`: naming `kick` as a dependency would
+  // be passing to a hook the very closure that writes a shared value. It is
+  // never refreshed because it never needs to be — both closures read their
+  // only two inputs through `scaleRef` and `reduceMotionRef`, so the pair
+  // captured on the first render behaves the same as any later one.
   const writers = useRef({ kick, reject });
-  useEffect(() => {
-    writers.current = { kick, reject };
-  });
 
   const impact = useCallback(() => writers.current.kick(), []);
   const rejectPlay = useCallback(() => writers.current.reject(), []);

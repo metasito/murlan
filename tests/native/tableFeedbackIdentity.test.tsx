@@ -1,11 +1,19 @@
-// tests/native/tableFeedbackIdentity.test.tsx — playImpact survives a resize.
+// tests/native/tableFeedbackIdentity.test.tsx — what the table is handed keeps
+// its identity.
 //
-// GameTable lists `playImpact` as a dependency of its play effect, so a new
-// identity on every render re-runs the play on every rotation and resize. It
-// used to be a `useCallback` reading `scale` through a ref; it is now a plain
-// closure that the React Compiler memoises, which is only equivalent while the
-// file actually compiles — `tests/reactCompiler.test.ts` is what keeps it doing
-// so, and this is what says the memoisation is really there.
+// `GameTable` lists `playImpact` among its play effect's dependencies, so an
+// identity that changes every render re-runs that effect every render. (It is
+// not what stops the play being replayed — the effect's own `prevComboKeyRef`
+// guard is.)
+//
+// This pins the property, not the change that prompted it: it passes on the
+// arrangement this replaced too, and that is the point — the property has to
+// survive being re-derived a fifth time by whoever fights the compiler next.
+// What it will not survive is the two `useCallback`s in `useImpactFeedback`
+// being dropped in favour of the React Compiler's own memoisation, which does
+// not happen under jest at all: delete them and all four assertions fail.
+// Compiler output is not covered here, and a correctness-adjacent property is
+// not a thing to keep in an optimisation.
 import { describe, it, expect, jest } from "@jest/globals";
 import { renderHook } from "@testing-library/react-native";
 import { useTableFeedback } from "@/components/useTableFeedback";
