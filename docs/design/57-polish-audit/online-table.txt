@@ -1,0 +1,8 @@
+ONLINE	phone-se	vp=568x320	table=496x309	handSlot=30x90	emptyBand=94	cards=14	hand=357x69@251	wide=
+OFFLINE	phone-se	vp=568x320	table=496x309	handSlot=30x90	emptyBand=94	cards=14	hand=357x69@251	wide=
+ONLINE	phone-12	vp=844x390	table=769x377	handSlot=44x111	emptyBand=114	cards=14	hand=605x86@304	wide=
+OFFLINE	phone-12	vp=844x390	table=769x377	handSlot=44x111	emptyBand=114	cards=14	hand=605x86@304	wide=
+ONLINE	phone-max	vp=956x440	table=878x425	handSlot=49x125	emptyBand=130	cards=14	hand=693x98@343	wide=
+OFFLINE	phone-max	vp=956x440	table=878x425	handSlot=49x125	emptyBand=130	cards=14	hand=693x98@343	wide=
+ONLINE	tablet	vp=1112x834	table=964x806	handSlot=50x233	emptyBand=270	cards=14	hand=614x170@664	wide=
+OFFLINE	tablet	vp=1112x834	table=964x806	handSlot=50x233	emptyBand=270	cards=14	hand=614x170@664	wide=
