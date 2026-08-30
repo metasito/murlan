@@ -19,7 +19,7 @@ import { MATCH_TARGETS, matchIsClosing } from "@/lib/gameEngine";
 import { handCountOf } from "@/components/gameTableModel";
 import { clearReactions, pushReaction } from "@/lib/reactions";
 import type { GameState, MatchLength } from "@/lib/gameEngine";
-import type { ExchangeAnnounceData } from "@/lib/sharedGameFlow";
+import { buildExchangeAnnounce, type ExchangeAnnounceData } from "@/lib/sharedGameFlow";
 import type { BotPersonalityId } from "@/lib/botPersonalities";
 
 export interface RoomState {
@@ -421,15 +421,12 @@ export function OnlineGameProvider({ userId, children }: { userId: string; child
         // Neither card reaches a seat outside the exchange. Announcing it to
         // them anyway puts up a banner with nothing in it.
         if (cardReceived || cardGiven) {
-          setExchangeAnnounceData({
-            winnerName: state.players[state.exchangePhase.winnerIdx]?.name ?? "",
-            loserName: state.players[state.exchangePhase.loserIdx]?.name ?? "",
-            winnerIdx: state.exchangePhase.winnerIdx,
-            loserIdx: state.exchangePhase.loserIdx,
-            bothJokersException: state.exchangePhase.bothJokersException,
-            cardReceived,
-            cardGiven,
-          });
+          setExchangeAnnounceData(
+            buildExchangeAnnounce(state.players, state.exchangePhase, {
+              given: cardGiven,
+              received: cardReceived,
+            })
+          );
           setExchangeAnnouncing(true);
         }
       }
@@ -439,15 +436,7 @@ export function OnlineGameProvider({ userId, children }: { userId: string; child
       prevBothJokersExceptionRef.current = currBothJolly;
 
       if (!isActive && currBothJolly && !prevBothJolly) {
-        const winnerName = state.players[state.exchangePhase!.winnerIdx]?.name ?? "";
-        const loserName = state.players[state.exchangePhase!.loserIdx]?.name ?? "";
-        setExchangeAnnounceData({
-          winnerName,
-          loserName,
-          winnerIdx: state.exchangePhase!.winnerIdx,
-          loserIdx: state.exchangePhase!.loserIdx,
-          bothJokersException: true,
-        });
+        setExchangeAnnounceData(buildExchangeAnnounce(state.players, state.exchangePhase!));
         setExchangeAnnouncing(true);
       }
 
