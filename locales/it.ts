@@ -403,12 +403,6 @@ export const it: Record<keyof typeof en, string> = {
   "replay.moveRowA11yLabel": "Mossa {{n}}: {{name}}, {{action}}",
 
   // ------------------------------------------------------------- cosmetics.*
-  "settings.cardBack": "Dorso delle carte",
-  "settings.cardBackSubtitle": "Come sono disegnate le carte coperte",
-  "settings.cardBackA11yLabel": "Dorso delle carte",
-  "settings.tableFelt": "Panno del tavolo",
-  "settings.tableFeltSubtitle": "Il colore del tavolo da gioco",
-  "settings.tableFeltA11yLabel": "Panno del tavolo",
   "cosmetics.back.smeraldo": "Smeraldo",
   "cosmetics.back.oro": "Oro",
   "cosmetics.back.rubino": "Rubino",
@@ -814,6 +808,13 @@ export const it: Record<keyof typeof en, string> = {
   "achievements.ironWill.desc": "Vinci un'intera partita senza giocare Jolly nell'ultima mano.",
 
   // ------------------------------------------------------------- profile.*
+  "profile.lookTitle": "Aspetto",
+  "profile.lookCardBack": "Dorso delle carte",
+  "profile.lookTableFelt": "Panno del tavolo",
+  "profile.youTitle": "Tu",
+  "profile.recordTitle": "Risultati",
+  "profile.signedOutBody": "Giochi offline senza account. Accedi per conservare statistiche, punteggio e replay, e per giocare con gli amici.",
+  "profile.signedOutAction": "Accedi",
   "profile.title": "Profilo",
   "profile.loggedInAs": "Connesso come {{username}}",
   "profile.renameA11yLabel": "Cambia il tuo nome utente",

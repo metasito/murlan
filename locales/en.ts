@@ -410,12 +410,6 @@ export const en = {
   "replay.moveRowA11yLabel": "Move {{n}}: {{name}}, {{action}}",
 
   // ------------------------------------------------------------- cosmetics.*
-  "settings.cardBack": "Card back",
-  "settings.cardBackSubtitle": "How face-down cards are drawn",
-  "settings.cardBackA11yLabel": "Card back",
-  "settings.tableFelt": "Table felt",
-  "settings.tableFeltSubtitle": "The colour of the playing surface",
-  "settings.tableFeltA11yLabel": "Table felt",
   "cosmetics.back.smeraldo": "Emerald",
   "cosmetics.back.oro": "Gold",
   "cosmetics.back.rubino": "Ruby",
@@ -820,6 +814,13 @@ export const en = {
   "achievements.ironWill.desc": "Win an entire match without playing a Joker in the final hand.",
 
   // ------------------------------------------------------------- profile.*
+  "profile.lookTitle": "Look",
+  "profile.lookCardBack": "Card back",
+  "profile.lookTableFelt": "Table felt",
+  "profile.youTitle": "You",
+  "profile.recordTitle": "Record",
+  "profile.signedOutBody": "Play offline without an account. Sign in to keep your stats, your rating and your replays, and to play with friends.",
+  "profile.signedOutAction": "Sign in",
   "profile.title": "Profile",
   "profile.loggedInAs": "Signed in as {{username}}",
   "profile.renameA11yLabel": "Change your username",

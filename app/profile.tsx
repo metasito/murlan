@@ -22,6 +22,7 @@ import {
   RECENT_FORM_LIMIT,
 } from "@/lib/profileStats";
 import { MenuButton } from "@/components/MenuButton";
+import { LookPicker } from "@/components/LookPicker";
 import { useTranslation } from "@/lib/i18n";
 import type { TranslationKey, TranslationParams } from "@/lib/i18n";
 import { usePrefersReducedMotion } from "@/lib/accessibility";
@@ -300,16 +301,65 @@ function UserCard({ user }: { user: { username: string } }) {
   );
 }
 
+/**
+ * What an account adds, for a player who has not got one.
+ *
+ * Not a redirect and not a disabled section: this screen exists outside the
+ * `(online)` group so the look picker below works with no account, and
+ * bouncing a signed-out player away from it would undo that.
+ */
+function SignInCard() {
+  const { t } = useTranslation();
+  return (
+    <MenuCard>
+      <View style={styles.signedOut}>
+        <Text style={styles.signedOutBody}>{t("profile.signedOutBody")}</Text>
+        <MenuButton
+          label={t("profile.signedOutAction")}
+          onPress={() => router.push("/auth")}
+        />
+      </View>
+    </MenuCard>
+  );
+}
+
+/**
+ * The three things this screen is. "Make it clear" is the requirement, and a
+ * long scroll of cards with their own titles is what it was asked to replace.
+ */
+function SectionHeading({ label }: { label: string }) {
+  return (
+    <Text style={styles.sectionHeading} accessibilityRole="header">
+      {label}
+    </Text>
+  );
+}
+
 export default function ProfileScreen() {
   const { t, tn } = useTranslation();
-  const { user } = useAuth();
+  // `loading` matters here in a way it never did inside the `(online)` group,
+  // whose layout held a spinner until the session resolved. Outside it, `user`
+  // is null for the first frames of every cold load, and a signed-in player
+  // would be told they have no account until the session comes back. The Look
+  // section does not depend on the answer and renders throughout.
+  const { user, loading } = useAuth();
   const reduceMotion = usePrefersReducedMotion();
 
-  const statsQuery = useQuery<UserStatsDto>({ queryKey: ["/api/stats/me"] });
-  const historyQuery = useQuery<MatchHistoryDto[]>({ queryKey: ["/api/stats/history"] });
-  const achievementsQuery = useQuery<AchievementStatusDto[]>({ queryKey: ["/api/stats/achievements"] });
-  const replaysQuery = useQuery<ReplaySummary[]>({ queryKey: ["/api/replays"] });
-  const ratingQuery = useQuery<RatingDto>({ queryKey: ["/api/ratings/me"] });
+  // Every one of these needs a session. The screen is reachable without one
+  // now, and a query left running there is five 401s and a record section
+  // that renders nothing anyway.
+  const signedIn = !!user;
+  const statsQuery = useQuery<UserStatsDto>({ queryKey: ["/api/stats/me"], enabled: signedIn });
+  const historyQuery = useQuery<MatchHistoryDto[]>({
+    queryKey: ["/api/stats/history"],
+    enabled: signedIn,
+  });
+  const achievementsQuery = useQuery<AchievementStatusDto[]>({
+    queryKey: ["/api/stats/achievements"],
+    enabled: signedIn,
+  });
+  const replaysQuery = useQuery<ReplaySummary[]>({ queryKey: ["/api/replays"], enabled: signedIn });
+  const ratingQuery = useQuery<RatingDto>({ queryKey: ["/api/ratings/me"], enabled: signedIn });
 
   const stats = statsQuery.data;
   const history = historyQuery.data ?? [];
@@ -342,11 +392,18 @@ export default function ProfileScreen() {
       </View>
 
       <View style={styles.contentWrapper}>
-        {user && <UserCard user={user} />}
+        <SectionHeading label={t("profile.youTitle")} />
+        {user ? <UserCard user={user} /> : loading ? null : <SignInCard />}
+
+        <SectionHeading label={t("profile.lookTitle")} />
+        <LookPicker />
 
         {/* ── Classifica ── */}
         {/* Ahead of Statistiche: it's the one card whose control (open the
             ladder) is useful before a player has any stats to show. */}
+        {user && (
+        <>
+          <SectionHeading label={t("profile.recordTitle")} />
           <Animated.View entering={entering}>
             <MenuCard title={t("ladder.cardTitle")}>
               {ratingQuery.isLoading && <LoadingBlock label={t("ladder.loadingA11yLabel")} />}
@@ -675,6 +732,8 @@ export default function ProfileScreen() {
               )}
             </MenuCard>
           </Animated.View>
+        </>
+        )}
       </View>
     </MenuLayout>
   );
@@ -702,6 +761,21 @@ const styles = StyleSheet.create({
     ...Type.heading,
     fontSize: FontSize.xl,
     letterSpacing: 3,
+  },
+  sectionHeading: {
+    fontFamily: "Rajdhani_700Bold",
+    fontSize: FontSize.lg,
+    letterSpacing: 2,
+    color: Colors.gold,
+    textTransform: "uppercase",
+    marginTop: Spacing.sm,
+  },
+  signedOut: { gap: Spacing.md },
+  signedOutBody: {
+    fontFamily: "Rajdhani_500Medium",
+    fontSize: FontSize.md,
+    lineHeight: FontSize.md * 1.5,
+    color: Colors.textSecondary,
   },
   contentWrapper: {
     gap: Spacing.sm,

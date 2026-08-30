@@ -19,7 +19,7 @@ import type { ReplayDto, ReplaySummary } from "@/lib/replay";
 import { PROVISIONAL_GAMES } from "@/lib/rating";
 
 // Wire shapes as JSON delivers them — `finishedAt` is an ISO string here, not
-// the `Date` shared/schema.ts carries. Same shapes app/(online)/profile.tsx
+// the `Date` shared/schema.ts carries. Same shapes app/profile.tsx
 // reads, declared again rather than reached for across a screen boundary.
 interface UserStatsDto {
   currentStreak: number;

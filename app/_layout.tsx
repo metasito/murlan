@@ -60,6 +60,7 @@ function RootLayoutNav() {
         <Stack.Screen name="rules" />
         <Stack.Screen name="tutorial" />
         <Stack.Screen name="auth" />
+        <Stack.Screen name="profile" />
         <Stack.Screen name="(online)" />
         <Stack.Screen name="game" options={{ animation: "slide_from_bottom" }} />
         <Stack.Screen name="result" options={{ animation: "fade" }} />

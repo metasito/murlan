@@ -410,12 +410,6 @@ export const sq: Record<keyof typeof en, string> = {
   "replay.moveRowA11yLabel": "Lëvizja {{n}}: {{name}}, {{action}}",
 
   // ------------------------------------------------------------- cosmetics.*
-  "settings.cardBack": "Pjesa e pasme e letrave",
-  "settings.cardBackSubtitle": "Si vizatohen letrat e mbuluara",
-  "settings.cardBackA11yLabel": "Pjesa e pasme e letrave",
-  "settings.tableFelt": "Cohja e tavolinës",
-  "settings.tableFeltSubtitle": "Ngjyra e siperfaqes së lojës",
-  "settings.tableFeltA11yLabel": "Cohja e tavolinës",
   "cosmetics.back.smeraldo": "Smerald",
   "cosmetics.back.oro": "Ar",
   "cosmetics.back.rubino": "Rubin",
@@ -820,6 +814,13 @@ export const sq: Record<keyof typeof en, string> = {
   "achievements.ironWill.desc": "Fito një ndeshje të plotë pa luajtur Xholi në dorën përfundimtare.",
 
   // ------------------------------------------------------------- profile.*
+  "profile.lookTitle": "Pamja",
+  "profile.lookCardBack": "Kurrizi i letrave",
+  "profile.lookTableFelt": "Pëlhura e tavolinës",
+  "profile.youTitle": "Ti",
+  "profile.recordTitle": "Rezultatet",
+  "profile.signedOutBody": "Luan offline pa llogari. Hyr për të ruajtur statistikat, vlerësimin dhe përsëritjet, dhe për të luajtur me miqtë.",
+  "profile.signedOutAction": "Hyr",
   "profile.title": "Profili",
   "profile.loggedInAs": "Identifikuar si {{username}}",
   "profile.renameA11yLabel": "Ndrysho emrin tënd të përdoruesit",
