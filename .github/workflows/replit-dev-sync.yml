@@ -44,8 +44,16 @@ jobs:
           # the way out. curl's own diagnostics go to the log only: they name
           # the hook host, which is a repository variable and so unmasked, and
           # this ends up in a public issue.
+          #
+          # The preview restarts itself moments after a successful sync (that
+          # is the whole point), and a push that lands while it is mid-restart
+          # finds nothing listening for a second or two — Replit's edge turns
+          # that into a 502 "couldn't reach this app" page. That is not the
+          # preview rejecting the push, it is the previous sync still taking
+          # effect, so it is worth a few retries before it counts as a failure.
           set +e
           reply=$(curl --fail-with-body --silent --show-error \
+            --retry 6 --retry-delay 5 --retry-all-errors --max-time 20 \
             --request POST "$HOOK_URL" \
             --header 'Content-Type: application/json' \
             --header 'X-GitHub-Event: push' \
