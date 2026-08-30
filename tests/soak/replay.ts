@@ -35,21 +35,9 @@ export interface ReplayResult {
   skipped: SkippedMove[];
   /** Cards left in each seat's hand when the log ran out. */
   finalCounts: number[];
-  /** Where this gave up, if it did. See `GIVE_UP_AFTER`. */
+  /** The move this stopped at, if the log stopped applying. */
   abandonedAt?: number;
 }
-
-/**
- * Consecutive refusals after which the table has plainly diverged from the log
- * and the rest of it is noise. Each refusal costs a whole `MOVE_BUDGET_MS` of
- * waiting, so a log that stops applying at its first move would otherwise spend
- * minutes proving it, once per run, in CI.
- *
- * The floor is that giving up is reported rather than silent: `skipped` still
- * holds every refusal reached, and `abandonedAt` says the log was not finished.
- * A replay that quietly stopped early would read as a clean one.
- */
-const GIVE_UP_AFTER = 5;
 
 /** The total of every seat's state counter — a broadcast to anyone moves it. */
 function versionSum(seats: Seat[]): number {
@@ -95,7 +83,6 @@ export async function replaySoakLog(
   const seats: Seat[] = [];
   const skipped: SkippedMove[] = [];
   let applied = 0;
-  let refusedInARow = 0;
   let abandonedAt: number | undefined;
   try {
     const room = await openTable(server, deal.hands.length, seats);
@@ -136,14 +123,17 @@ export async function replaySoakLog(
 
       if (await waitForBroadcast(seats, before)) {
         applied += 1;
-        refusedInARow = 0;
-      } else {
-        skipped.push({ at: entry.at, kind: entry.kind, why: seat.lastRefusal ?? "no answer at all" });
-        if ((refusedInARow += 1) >= GIVE_UP_AFTER) {
-          abandonedAt = entry.at;
-          break;
-        }
+        continue;
       }
+      // The first refusal ends the reproduction. Every later entry was written
+      // against a table that took this move, so replaying them is a different
+      // game wearing the log's move list — and the turn arbiter plays for a
+      // stuck seat on its own, which makes some of them look like they applied.
+      // Counting refusals instead of stopping at one made this depend on how
+      // they happened to cluster, and it read differently on CI than here.
+      skipped.push({ at: entry.at, kind: entry.kind, why: seat.lastRefusal ?? "no answer at all" });
+      abandonedAt = entry.at;
+      break;
     }
 
     await settle(seats);
