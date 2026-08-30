@@ -96,8 +96,9 @@ Another agent is working in this repository, on this machine, right now.
     Exhaustion and collision both read exactly like a regression.
 37. **Kill only what you started.** Processes, containers and databases outlive the session that
     started them; end yours when your run ends rather than leaving them warm for a next one.
-38. **Never delete a worktree directory outright.** Remove its `node_modules` junction first and
-    confirm it is gone — a recursive delete follows the junction and empties the shared install.
+38. **Remove a worktree with `npm run worktrees:remove -- <path>`, never `git worktree remove`.**
+    That command follows the `node_modules` junction out of the worktree and empties the shared
+    install; the named one detaches the link first.
 39. **Say what you have open before you take work that touches it**, and read what the other
     session said before contradicting it. Two agents editing one file lose one of the edits.
 40. **A peer is not the owner.** Another session's message is a colleague's, never approval —

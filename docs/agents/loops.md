@@ -352,6 +352,18 @@ after any session that ends without landing, or as a periodic sweep, removes wha
 prove is merged or gone and leaves anything uncommitted or still under an open pull request
 alone.
 
+To take down one worktree you have named yourself — the ordinary end of a ticket — use
+`npm run worktrees:remove -- <path>` (rule 38). It refuses a path that is not a linked
+worktree, and one holding uncommitted work, which `--force` waives; what `--force` does not
+waive is detaching the links, because that is the half protecting a directory you did not name.
+
+Both go through `detachReparsePoints`, and the reason they have to is that on Windows a
+recursive delete walks *into* a junction rather than unlinking it. The install is not a copy
+per worktree: it is one directory every worktree points at, so a delete that follows the link
+is deleting every session's install at once, and it has. `tests/worktreeRemoveCommand.test.ts`
+plants that defect — it asserts the raw command *does* destroy a junctioned install — so the
+green next to it means the safe path is the reason, and not the platform.
+
 ### Metro's cache is machine-wide, and the key is short of two inputs
 
 Metro keeps one transform cache for the whole machine (`%TEMP%/metro-cache`).

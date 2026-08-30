@@ -32,6 +32,7 @@
  *
  * Usage: node scripts/prune-worktrees.mjs [--dry-run]
  *        npm run worktrees:prune -- --dry-run
+ *        npm run worktrees:remove -- <path> [--force]
  */
 import { execFileSync } from "node:child_process";
 import fs from "node:fs";
@@ -297,9 +298,56 @@ export function findOrphanedWorktreeDirs(dirNames, registeredPaths) {
   });
 }
 
+/**
+ * Removes one named worktree, links detached first, so that an agent tearing down its own
+ * worktree by hand has a command that cannot follow the install junction out of the tree.
+ *
+ * Throws rather than deleting when the path is not a linked worktree of this repository, when it
+ * is locked, or when it holds work that is not committed. `--force` waives the last two and
+ * nothing else: the detaching is unconditional, because it is the part that protects a directory
+ * the caller never named.
+ *
+ * @param {string} targetPath
+ * @param {{ force?: boolean }} [options]
+ */
+export function removeOneWorktree(targetPath, { force = false } = {}) {
+  const entries = parseWorktreeList(
+    execFileSync("git", ["worktree", "list", "--porcelain"], { encoding: "utf8" }),
+  );
+  // The primary worktree is always the first entry, and is never removable.
+  const match = entries.slice(1).find((entry) => samePath(entry.path, targetPath));
+  if (!match) {
+    throw new Error(`${targetPath} is not a linked worktree of this repository.`);
+  }
+  if (!force && match.locked) {
+    throw new Error(`${match.path} is locked; pass --force to remove it anyway.`);
+  }
+  if (!force && fs.existsSync(match.path) && hasUncommittedChanges(match.path)) {
+    throw new Error(
+      `${match.path} has uncommitted changes; commit them, or pass --force to remove it anyway.`,
+    );
+  }
+  for (const name of detachReparsePoints(match.path)) {
+    console.log(`detached ${name} (a link, not its target)`);
+  }
+  execFileSync("git", ["worktree", "remove", ...(force ? ["--force"] : []), match.path], {
+    stdio: "inherit",
+  });
+  console.log(`removed ${match.path}`);
+}
+
 const invokedDirectly = isInvokedDirectly(process.argv[1], import.meta.url);
 
-if (invokedDirectly) {
+if (invokedDirectly && process.argv.includes("--remove")) {
+  const targetPath = process.argv[process.argv.indexOf("--remove") + 1];
+  try {
+    if (!targetPath) throw new Error("usage: npm run worktrees:remove -- <path> [--force]");
+    removeOneWorktree(targetPath, { force: process.argv.includes("--force") });
+  } catch (err) {
+    console.error(err.message);
+    process.exit(1);
+  }
+} else if (invokedDirectly) {
   const dryRun = process.argv.includes("--dry-run");
 
   const porcelain = execFileSync("git", ["worktree", "list", "--porcelain"], { encoding: "utf8" });

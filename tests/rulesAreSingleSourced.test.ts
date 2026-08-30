@@ -32,6 +32,7 @@ const RULE_PHRASES: [string, RegExp][] = [
   ["read a file once, whole", /read a file once, whole/i],
   ["prove it red first", /fail before your fix/i],
   ["leave no residue", /leave no residue/i],
+  ["remove a worktree with the named command", /never\s+`?git\s+worktree\s+remove/i],
 ];
 
 function read(path: string): string {
