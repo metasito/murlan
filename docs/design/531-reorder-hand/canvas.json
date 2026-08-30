@@ -1,0 +1,10 @@
+{
+  "artboards": [
+    { "file": "Main.dc.html", "x": 0, "y": 0, "w": 900, "h": 560, "title": "Drag a card", "is_interactive": true },
+    { "file": "Anatomy.dc.html", "x": 1000, "y": 0, "w": 860, "h": 980, "title": "What is settled, what I am asking" }
+  ],
+  "annotations": [
+    { "id": "how-to", "x": 0, "y": -130, "w": 900, "text": "Press and hold a card for half a second, then move it.\nThe three chips above this frame change the answers I need from you — try each side while dragging." }
+  ],
+  "launch": { "view": "canvas" }
+}

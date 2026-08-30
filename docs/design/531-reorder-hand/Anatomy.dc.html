@@ -1,0 +1,87 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@500;600;700&display=swap" />
+  <style>
+    body { margin: 0; font-family: Rajdhani, "Trebuchet MS", system-ui, sans-serif; }
+    a { color: #C9A84C; } a:hover { color: #F3E0A6; }
+  </style>
+</helmet>
+
+<div style="width: 100%; height: 100%; background: #0A1F18; color: #F0EAD6; padding: 36px 40px; box-sizing: border-box; display: flex; flex-direction: column; gap: 28px">
+
+  <div style="display: flex; flex-direction: column; gap: 6px">
+    <div style="font-size: 11px; letter-spacing: 3px; color: rgba(240,234,214,.58); font-weight: 600">SETTLED BY THE RESEARCH</div>
+    <div style="font-size: 22px; font-weight: 700; color: #F0EAD6">Not up for a vote — these came out of the sources</div>
+  </div>
+
+  <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px">
+
+    <div style="background: #0E2920; border: 1px solid rgba(201,168,76,.2); border-radius: 12px; padding: 18px; display: flex; flex-direction: column; gap: 8px">
+      <div style="font-size: 15px; font-weight: 700; color: #C9A84C">Long press, 500ms, then move</div>
+      <div style="font-size: 14px; line-height: 1.5; color: rgba(240,234,214,.75)">A press already selects and a press on GIOCA plays. A distance threshold is worse than nothing here — the hand is a horizontal fan, so moving a finger across it is what reading your hand looks like. 500ms is the gesture library's own default.</div>
+    </div>
+
+    <div style="background: #0E2920; border: 1px solid rgba(201,168,76,.2); border-radius: 12px; padding: 18px; display: flex; flex-direction: column; gap: 8px">
+      <div style="font-size: 15px; font-weight: 700; color: #C9A84C">Held is not a bigger selected</div>
+      <div style="font-size: 14px; line-height: 1.5; color: rgba(240,234,214,.75)">Selection already owns lift, rotation and border. What is left to held is scale, shadow, and the one nothing else on the table does: leaving the arc and following the finger in free two dimensions.</div>
+    </div>
+
+    <div style="background: #0E2920; border: 1px solid rgba(201,168,76,.2); border-radius: 12px; padding: 18px; display: flex; flex-direction: column; gap: 8px">
+      <div style="font-size: 15px; font-weight: 700; color: #C9A84C">A gap, never a ghost</div>
+      <div style="font-size: 14px; line-height: 1.5; color: rgba(240,234,214,.75)">The layout already computes each card's place from its index, so opening a gap is not an effect to add — it is what the fan does when the index changes. A ghost placeholder would need geometry the arc has not got.</div>
+    </div>
+
+    <div style="background: #0E2920; border: 1px solid rgba(201,168,76,.2); border-radius: 12px; padding: 18px; display: flex; flex-direction: column; gap: 8px">
+      <div style="font-size: 15px; font-weight: 700; color: #C9A84C">No sort button, and still Level AA</div>
+      <div style="font-size: 14px; line-height: 1.5; color: rgba(240,234,214,.75)">WCAG 2.5.7 needs a way to reorder without dragging. Slider and ReplayControls already answer that shape with accessibility actions — invisible to sighted players. Nothing is added to the screen.</div>
+    </div>
+
+  </div>
+
+  <div style="height: 1px; background: rgba(201,168,76,.2)"></div>
+
+  <div style="display: flex; flex-direction: column; gap: 6px">
+    <div style="font-size: 11px; letter-spacing: 3px; color: rgba(240,234,214,.58); font-weight: 600">WHAT I AM ASKING YOU</div>
+    <div style="font-size: 14px; color: rgba(240,234,214,.75)">Three chips sit above the prototype. Drag a card with each setting and pick what it should ship as.</div>
+  </div>
+
+  <div style="display: flex; flex-direction: column; gap: 12px">
+
+    <div style="display: flex; gap: 16px; align-items: baseline">
+      <div style="min-width: 26px; font-size: 20px; font-weight: 700; color: #C9A84C">1</div>
+      <div style="display: flex; flex-direction: column; gap: 4px">
+        <div style="font-size: 15px; font-weight: 600">How far the card leaves the fan</div>
+        <div style="font-size: 14px; line-height: 1.5; color: rgba(240,234,214,.75)"><strong style="color:#E2C06A">Off the fan</strong> keeps it close to where it came from and reads as picking a card out of a held hand. <strong style="color:#E2C06A">In the air</strong> is unmistakable but the card stops belonging to the hand while it moves.</div>
+      </div>
+    </div>
+
+    <div style="display: flex; gap: 16px; align-items: baseline">
+      <div style="min-width: 26px; font-size: 20px; font-weight: 700; color: #C9A84C">2</div>
+      <div style="display: flex; flex-direction: column; gap: 4px">
+        <div style="font-size: 15px; font-weight: 600">How wide the gap opens</div>
+        <div style="font-size: 14px; line-height: 1.5; color: rgba(240,234,214,.75)"><strong style="color:#E2C06A">Overlap step</strong> keeps the hand the same width the whole time, so nothing else moves under your thumb. <strong style="color:#E2C06A">Full card</strong> cannot be missed, but the whole fan breathes in and out as you drag.</div>
+      </div>
+    </div>
+
+    <div style="display: flex; gap: 16px; align-items: baseline">
+      <div style="min-width: 26px; font-size: 20px; font-weight: 700; color: #C9A84C">3</div>
+      <div style="display: flex; flex-direction: column; gap: 4px">
+        <div style="font-size: 15px; font-weight: 600">What release looks like</div>
+        <div style="font-size: 14px; line-height: 1.5; color: rgba(240,234,214,.75)"><strong style="color:#E2C06A">Settle</strong> is quiet and quick. <strong style="color:#E2C06A">Bounce</strong> is the one small overshoot the design system already wrote a spring for — more physical, and one more thing happening every time you tidy your hand.</div>
+      </div>
+    </div>
+
+  </div>
+
+</div>
+
+</x-dc>
+</body>
+</html>
