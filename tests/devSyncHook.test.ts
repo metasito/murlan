@@ -233,6 +233,11 @@ async function initRepoPair() {
 async function pushRealWorkFromAnotherClone(remote: string) {
   const other = await mkdtemp(join(tmpdir(), "murlan-sync-other-"));
   await git(tmpdir(), ["clone", "-q", remote, other]);
+  // The bare remote's HEAD symref reflects whatever branch name this git's
+  // init.defaultBranch happens to be (main here, master on GitHub's runner),
+  // not necessarily "main" — so the clone can land on an empty unborn branch
+  // instead of the "main" pushed by initRepoPair. Pin it explicitly.
+  await git(other, ["checkout", "-q", "-B", "main", "origin/main"]);
   await git(other, ["config", "user.email", "test@example.com"]);
   await git(other, ["config", "user.name", "Test"]);
   await writeFile(join(other, "app.txt"), "v2\n", "utf8");
