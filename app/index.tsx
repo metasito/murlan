@@ -416,7 +416,7 @@ function useFriendRequestCount() {
 
 const FRIEND_REQUEST_STALE_MS = 15000;
 
-const goProfile = () => router.push("/(online)/profile");
+const goProfile = () => router.push("/profile");
 const goFriends = () => router.push("/(online)/friends");
 const goRanking = () => router.push("/(online)/leaderboard");
 

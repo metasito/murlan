@@ -25,14 +25,6 @@ import { ConfirmDialog, type ConfirmRequest } from "@/components/ConfirmDialog";
 import { apiRequest, queryClient } from "@/lib/query-client";
 import { hapticSelection } from "@/lib/haptics";
 import { usePrefersReducedMotion } from "@/lib/accessibility";
-import {
-  CARD_BACK_IDS,
-  TABLE_FELT_IDS,
-  cardBackField,
-  cardBackNameKey,
-  getTableFelt,
-  tableFeltNameKey,
-} from "@/lib/cosmetics";
 import { Colors, Spacing, Radius, FontSize, Type, Shadow, TOUCH_TARGET_MIN } from "@/lib/theme";
 import { useTranslation, type Locale, type TranslationKey } from "@/lib/i18n";
 import { registerForPush } from "@/lib/pushRegistration";
@@ -145,14 +137,10 @@ export function SettingsModal({ visible, onClose }: Props) {
     musicVolume,
     hapticsEnabled,
     motion,
-    cardBack,
-    tableFelt,
     setSoundVolume,
     setMusicVolume,
     setHapticsEnabled,
     setMotion,
-    setCardBack,
-    setTableFelt,
   } = useSettings();
   const { logout } = useAuth();
   const { notification, showNotification, dismissNotification } = useNotification();
@@ -388,46 +376,6 @@ export function SettingsModal({ visible, onClose }: Props) {
                 selected={motion}
                 onSelect={setMotion}
                 a11yLabel={t("settings.motionA11yLabel")}
-              />
-            </View>
-
-            <View style={styles.stackRow}>
-              <View style={styles.rowLeft}>
-                <RowIcon name="layers" />
-                <View style={styles.rowLabels}>
-                  <Text style={styles.label}>{t("settings.cardBack")}</Text>
-                  <Text style={styles.sublabel}>{t("settings.cardBackSubtitle")}</Text>
-                </View>
-              </View>
-              <Segmented
-                segments={CARD_BACK_IDS.map((id) => ({
-                  value: id,
-                  label: t(cardBackNameKey(id)),
-                  swatch: [cardBackField(id)[1], cardBackField(id)[4]] as const,
-                }))}
-                selected={cardBack}
-                onSelect={setCardBack}
-                a11yLabel={t("settings.cardBackA11yLabel")}
-              />
-            </View>
-
-            <View style={styles.stackRow}>
-              <View style={styles.rowLeft}>
-                <RowIcon name="grid" />
-                <View style={styles.rowLabels}>
-                  <Text style={styles.label}>{t("settings.tableFelt")}</Text>
-                  <Text style={styles.sublabel}>{t("settings.tableFeltSubtitle")}</Text>
-                </View>
-              </View>
-              <Segmented
-                segments={TABLE_FELT_IDS.map((id) => ({
-                  value: id,
-                  label: t(tableFeltNameKey(id)),
-                  swatch: [getTableFelt(id)[0], getTableFelt(id)[4]] as const,
-                }))}
-                selected={tableFelt}
-                onSelect={setTableFelt}
-                a11yLabel={t("settings.tableFeltA11yLabel")}
               />
             </View>
 

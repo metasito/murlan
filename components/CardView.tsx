@@ -20,7 +20,7 @@ import {
   Shadow,
   withAlpha,
 } from "@/lib/theme";
-import { useCardBack } from "@/lib/cosmetics";
+import { getCardBack, useCardBack, type CardBackId } from "@/lib/cosmetics";
 import { usePrefersReducedMotion } from "@/lib/accessibility";
 import { useTranslation } from "@/lib/i18n";
 import { cardSpokenName } from "@/lib/cardNames";
@@ -459,6 +459,12 @@ interface CardViewProps {
   /** Too small for a pip field — one centred mark instead, no court bitmap. */
   compact?: boolean;
   faceDown?: boolean;
+  /**
+   * Draw a specific back rather than the one the player chose. For offering
+   * the choice itself — a picker showing five backs cannot show five copies
+   * of the current one.
+   */
+  backId?: CardBackId;
   disabled?: boolean;
   style?: object;
   noLift?: boolean;
@@ -491,6 +497,7 @@ function CardViewBase({
   scale = 1,
   compact = false,
   faceDown = false,
+  backId,
   disabled = false,
   style,
   noLift = false,
@@ -501,7 +508,8 @@ function CardViewBase({
   const { t } = useTranslation();
   const selectedHint = useA11yHint(decorative || !selected ? undefined : t("cardView.selectedA11yHint"));
   const reduceMotion = usePrefersReducedMotion();
-  const back = useCardBack();
+  const chosenBack = useCardBack();
+  const back = backId ? getCardBack(backId) : chosenBack;
   const backField = back.field;
   const translateY = useSharedValue(0);
   // Finger-down acknowledgement. Separate from the selection lift so a press
@@ -750,6 +758,7 @@ function cardViewPropsEqual(a: CardViewProps, b: CardViewProps): boolean {
     a.scale === b.scale &&
     a.compact === b.compact &&
     a.faceDown === b.faceDown &&
+    a.backId === b.backId &&
     a.disabled === b.disabled &&
     a.noLift === b.noLift &&
     a.decorative === b.decorative &&
