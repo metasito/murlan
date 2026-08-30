@@ -119,6 +119,24 @@ function waitFor<T>(socket: Socket, event: string, ms = 10_000): Promise<T | nul
   });
 }
 
+/** Waits until the row a replacement instance would rehydrate the table from exists. */
+async function persisted(databaseUrl: string, roomId: string): Promise<void> {
+  const admin = new pg.Pool({ connectionString: databaseUrl });
+  try {
+    const deadline = Date.now() + SETTLE_CEILING_MS;
+    for (;;) {
+      const { rowCount } = await admin.query("SELECT 1 FROM active_games WHERE room_id = $1", [
+        roomId,
+      ]);
+      if (rowCount) return;
+      assert.ok(Date.now() < deadline, "the deal was never persisted, so no restart could find it");
+      await sleep(200);
+    }
+  } finally {
+    await admin.end();
+  }
+}
+
 /** Waits until nobody has been told anything for `QUIET_MS`. */
 async function settled(clients: Client[]): Promise<void> {
   const deadline = Date.now() + SETTLE_CEILING_MS;
@@ -220,6 +238,12 @@ describe(
       }
 
       await settled(clients);
+      // Quiet sockets are not a persisted table. `persistGameState` is
+      // fire-and-forget beside `broadcastGameState`, so a client can be holding
+      // a hand the `active_games` row does not carry yet — and the replacement
+      // rehydrates from that row alone. Killing before it lands fails this test
+      // for a race in the test rather than anything about a restart.
+      await persisted(scoped, table.roomId);
       const before = clients.map((c) => ({ game: held(c.game), room: held(c.room) }));
       assert.ok(
         before[0].game !== null && before[1].game !== null,
@@ -234,6 +258,9 @@ describe(
       // has never seen either of them.
       server.kill("SIGKILL");
       for (const c of clients) c.socket.close();
+      // Long enough for the kernel to release the listening socket, which is
+      // all this waits on: the room's advisory lock is session-scoped and
+      // Postgres drops it when the killed backend dies.
       await sleep(1_000);
       server = await boot(scoped);
 
