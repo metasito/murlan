@@ -25,6 +25,9 @@ function startChild() {
   child = spawn("npm", ["run", ...commands[role]], {
     stdio: "inherit",
     env: process.env,
+    // Keep npm, npx, and Expo in their own process group so stopping the
+    // supervisor cannot leave a stale Metro descendant holding the port.
+    detached: true,
   });
   child.once("exit", () => {
     child = undefined;
@@ -35,8 +38,25 @@ function startChild() {
 
 function stopChild() {
   if (!child) return;
-  child.kill("SIGTERM");
-  setTimeout(() => child?.kill("SIGKILL"), 5_000);
+  const pid = child.pid;
+  if (!pid) return;
+
+  // Killing npm alone orphaned the shell/npx/Expo descendants. Signal the
+  // process group instead; the pid check prevents the delayed hard kill from
+  // touching a replacement child that may have already started.
+  try {
+    process.kill(-pid, "SIGTERM");
+  } catch (error) {
+    if (error?.code !== "ESRCH") throw error;
+  }
+  setTimeout(() => {
+    if (child?.pid !== pid) return;
+    try {
+      process.kill(-pid, "SIGKILL");
+    } catch (error) {
+      if (error?.code !== "ESRCH") throw error;
+    }
+  }, 5_000);
 }
 
 function restartAfterSync() {
