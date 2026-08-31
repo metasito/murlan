@@ -81,8 +81,13 @@ env:
       - extendedWaitUntil:
           notVisible: "GUIDA RAPIDA"
           timeout: 10000
+# "Gioca online", not "Online". `homeMenu` promotes exactly one way to play into
+# the hero and filters it out of the tiles, and with `clearState` there is never
+# a saved game - so the hero is always `online` and always carries
+# `home.playOnline`. `home.modeOnline` is then rendered nowhere at all, on any
+# platform, which is what a flow asserting "Online" had been waiting for.
 - assertVisible: "Offline"
-- assertVisible: "Online"
+- assertVisible: "Gioca online"
 - assertVisible: "Il mio profilo"
 # The settings modal is where #389 crashed: Fabric converts accessibilityValue
 # to int while mounting the host view, and the music slider's default volume is
