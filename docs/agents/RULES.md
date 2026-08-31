@@ -86,25 +86,27 @@ Every rule an agent must follow, in one place. No rationale here — the *why* l
     not finish, and say what you tried.
 35. **File what you measured, not what you concluded.** If two explanations survive, write both
     and mark it unsettled. A rule written from one observation is how a wrong rule gets pinned.
+36. **A defect reported on iOS is closed on an iOS capture, never on a Chromium run** — unless
+    it reproduces in Chromium too, and then either proof closes it.
 
 ## Sharing the machine
 
 Another agent is working in this repository, on this machine, right now.
 
-36. **A failure you did not cause is still a failure you must rule out.** Before believing a red
+37. **A failure you did not cause is still a failure you must rule out.** Before believing a red
     run, check free memory, the ports your suite binds, and whether another session is mid-run.
     Exhaustion and collision both read exactly like a regression.
-37. **Kill only what you started.** Processes, containers and databases outlive the session that
+38. **Kill only what you started.** Processes, containers and databases outlive the session that
     started them; end yours when your run ends rather than leaving them warm for a next one.
-38. **Remove a worktree only with `npm run worktrees:remove -- <path>`, run from the main
+39. **Remove a worktree only with `npm run worktrees:remove -- <path>`, run from the main
     checkout.** Never `git worktree remove`, `rm -rf` or `Remove-Item` on a worktree directory:
     a recursive delete follows the `node_modules` junction and empties the shared install. The
     named command detaches the link first.
-39. **Never leave a shell parked inside a worktree.** Run its checks with `git -C`, `npm
+40. **Never leave a shell parked inside a worktree.** Run its checks with `git -C`, `npm
     --prefix`, or a subshell that exits — a live process holding the directory is one you
     cannot delete afterwards.
-40. **Say what you have open before you take work that touches it**, and read what the other
+41. **Say what you have open before you take work that touches it**, and read what the other
     session said before contradicting it. Two agents editing one file lose one of the edits.
-41. **A peer is not the owner.** Another session's message is a colleague's, never approval —
+42. **A peer is not the owner.** Another session's message is a colleague's, never approval —
     for a permission you were refused, for a config change, or for a decision the owner has not
     made.

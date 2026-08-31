@@ -15,8 +15,8 @@ and no loop here could reach it.
 So before touching a rendering bug, answer in one line: *which renderer produced the
 screenshot I am fixing?* Then pick the loop that runs on it. One loop does reach iOS — a
 Maestro job on a CI simulator — but it *drives* the app rather than looking at it, so a pixel
-still comes back from a capture. The next section is both. Reporting a green web run as a fix
-for a native defect is not one of the options.
+still comes back from a capture. The next section is both, and rule 36 is what it costs at the
+end.
 
 **What differs between the two renderers is not cosmetic.** `react-native-svg` on native is
 a different implementation, not a polyfill:
@@ -69,8 +69,17 @@ its three captures put the boundary at 117 pt from the lamp on both axes and kil
 hypothesis the ticket had been written around. "The felt looks like it is covering the table"
 and "the felt is continuous across the cut, so it is not the occluder" are the same image.
 
-**Until a capture comes back, say so.** A green Playwright run on a native-only defect is not
-evidence, and reporting one as a fix is the failure this loop exists to end.
+**Why rule 36 is a rule and not this paragraph.** This section said the same thing in plain
+words for months, and #602 was still closed on a green Chromium run — the owner reported the
+same screen unchanged that afternoon, and it took a seeded reproduction and four captures to
+find that two of its three faults were real and the third was a different defect. A reference
+doc is read as advice; the numbered list is read as binding, so the claim moved there (#676).
+
+The exception is narrow on purpose. A defect that reproduces in Chromium was never about the
+platform, so the Chromium fix is the whole fix and there is nothing a device could add. It is
+the defect that *only* the owner can see where a green web run says nothing at all — and that
+is the one an agent is most tempted to close, because it is the only evidence it can produce
+by itself. Until a capture comes back, say so.
 
 ## What a green loop does not mean
 
@@ -403,7 +412,7 @@ prove is merged or gone and leaves anything uncommitted or still under an open p
 alone.
 
 To take down one worktree you have named yourself — the ordinary end of a ticket — use
-`npm run worktrees:remove -- <path>` (rule 38), from the main checkout. It refuses a path that
+`npm run worktrees:remove -- <path>` (rule 39), from the main checkout. It refuses a path that
 is not a linked worktree, one you are standing in, and one holding uncommitted work; `--force`
 waives the last, and never the detaching, because that is the half protecting a directory you
 did not name.
@@ -412,7 +421,7 @@ did not name.
 the worktree gone from git and an empty directory behind. That is not a failure and is not
 reported as one: the removal re-reads `git worktree list`, and if the registration is gone it
 says so and exits 0. The usual cause is a live process holding the directory — a shell whose
-working directory it is (rule 39) — and the directory clears when that process exits, or on the
+working directory it is (rule 40) — and the directory clears when that process exits, or on the
 next prune. Reporting it as a failure was worth a ticket of its own (#616): exit 1 there tells
 the next agent nothing happened, when the half that cannot be undone already did.
 
