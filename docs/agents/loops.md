@@ -260,8 +260,13 @@ process". Twenty of them, once, on a branch that had touched none of the files n
 when the first will finish — so it polls its own verdict for up to 60s, says so once when it starts
 waiting, and only then refuses with the message above. The refusal carries the best reading as well
 as the last: a box that climbed towards the floor and fell back is worth waiting out again, and one
-that never moved is worth going to look at with `npm run reap`. `--no-wait` gives the old
-refuse-immediately behaviour for a reader at a prompt.
+that never moved is worth going to look at with `npm run reap`.
+
+To be refused now rather than waited for, set `MURLAN_PREFLIGHT_WAIT_MS=0`. The environment rather
+than a flag, because jest and Playwright call this as their `globalSetup` with their own config
+object and nothing on the command line reaches either. `0` still takes one settle — that reading
+exists to survive another suite's teardown burst, not to wait for it. `node
+scripts/preflightMemory.mjs --no-wait` is the same thing for the script run directly.
 
 Two sessions can cross the floor in the same poll and both start, because polling does not
 serialise. With two that is survivable — the loser meets the preflight again on its own next check.

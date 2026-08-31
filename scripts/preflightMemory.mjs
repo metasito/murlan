@@ -72,6 +72,15 @@ export default async function preflightMemory({
   ceilingMs = WAIT_CEILING_MS,
   announce = (msg) => console.error(msg),
 } = {}) {
+  // `globalSetup` is called by jest and Playwright with their own config object, so a flag on the
+  // command line cannot reach either of them — and a person running one of those interactively is
+  // exactly who would rather be told now than waited for. The environment is the one channel all
+  // three entry points share.
+  //
+  // Floored at one settle rather than honoured down to zero: the settle is not part of the
+  // waiting, it is what stops a reading taken inside another suite's teardown burst from being the
+  // one that decides. `MURLAN_PREFLIGHT_WAIT_MS=0` means "do not wait", not "do not look twice".
+  const budget = Math.max(SETTLE_MS, Number(env.MURLAN_PREFLIGHT_WAIT_MS ?? ceilingMs) || 0);
   // CI runners are sized for one job and start near their floor by design; the collision this
   // guards against is two local sessions sharing one developer machine. Injectable because the
   // suite that covers this function runs *on* CI, where reading process.env directly makes every
@@ -83,14 +92,14 @@ export default async function preflightMemory({
 
   // Once, and only when there is actually a wait: a silent pause is indistinguishable from a hang,
   // which is the thing this is trying not to look like. A single settle is not worth announcing.
-  if (ceilingMs > SETTLE_MS) {
+  if (budget > SETTLE_MS) {
     announce(
-      `Waiting up to ${Math.round(ceilingMs / 1000)}s for memory: ` +
+      `Waiting up to ${Math.round(budget / 1000)}s for memory: ` +
         `${gb(readings[0])} GB free, ${gb(memoryFloor(totalBytes))} GB needed.`
     );
   }
 
-  for (let waited = 0; waited < ceilingMs; waited += SETTLE_MS) {
+  for (let waited = 0; waited < budget; waited += SETTLE_MS) {
     await wait(SETTLE_MS);
     readings.push(sample());
     // The latest reading, never the best one seen: taking the best would rule on a stale number in

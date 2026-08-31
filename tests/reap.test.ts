@@ -453,6 +453,48 @@ describe("preflightMemory", () => {
     assert.equal(waits, 1);
   });
 
+  // jest and Playwright call `globalSetup` with their own config object, so a command-line flag
+  // reaches neither — and a person running one of those interactively is exactly who would rather
+  // be refused now than waited for.
+  test("the environment can shorten the wait where a flag cannot reach", async () => {
+    let waits = 0;
+    const samples = [0.2 * GB, 0.3 * GB];
+    await assert.rejects(
+      preflightMemory({
+        sample: () => samples.shift()!,
+        totalBytes: 16 * GB,
+        wait: async () => {
+          waits++;
+        },
+        env: { MURLAN_PREFLIGHT_WAIT_MS: "0" } as unknown as NodeJS.ProcessEnv,
+        announce: () => {
+          throw new Error("nothing was waited for, so nothing should be announced");
+        },
+      }),
+      /0\.30 GB/
+    );
+    // Zero means "do not wait", not "do not look twice": the settle is what keeps a reading taken
+    // inside another suite's teardown burst from being the one that decides.
+    assert.equal(waits, 1);
+  });
+
+  test("the environment wins over the ceiling it was given", async () => {
+    let waits = 0;
+    await assert.rejects(
+      preflightMemory({
+        sample: () => 0.2 * GB,
+        totalBytes: 16 * GB,
+        ceilingMs: 60_000,
+        wait: async () => {
+          waits++;
+        },
+        env: { MURLAN_PREFLIGHT_WAIT_MS: "3000" } as unknown as NodeJS.ProcessEnv,
+        announce: () => {},
+      })
+    );
+    assert.equal(waits, 3);
+  });
+
   test("a machine with room is never sampled twice", async () => {
     let taken = 0;
     await preflightMemory({
