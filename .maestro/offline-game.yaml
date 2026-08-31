@@ -28,23 +28,22 @@
 # animations (the active-turn highlight, the selected-card glow), so
 # every single tap was blocking for its full internal timeout. Capping
 # the settle-wait fixed it. See docs/TESTING.md.
-# Requires a running Expo dev server the emulator can reach.
+# Driven against a real build (`ios.yml`) no dev server is needed: the app
+# carries its own bundle. Driven through Expo Go — a developer here, and
+# `maestro.yml` until #627's Android half lands — it needs one the device can
+# reach, over `adb reverse tcp:8081 tcp:8081`, which forwards the device's own
+# loopback to the host and works on any emulator anywhere. The emulator's
+# `10.0.2.2` alias for the host does not: on a GitHub runner a request to it
+# never reaches the dev server at all.
 #
-# Reached over `adb reverse tcp:8081 tcp:8081`, which forwards the device's own
-# loopback to the host and works on any emulator anywhere, including a CI
-# runner. `10.0.2.2` — the emulator's alias for the host loopback — was the
-# default before, and it is not universal: on a GitHub runner's emulator a
-# request to it never reaches the dev server at all.
-#
-# This value cannot be overridden from the command line. `-e` is applied
-# *before* this block, so an `env:` key here wins over the flag rather than
-# yielding to it — which is why the address has to be one that works
+# MURLAN_PACKAGER_URL cannot be overridden from the command line. `-e` is
+# applied *before* the `env:` block, so a key there wins over the flag rather
+# than yielding to it — which is why the address has to be one that works
 # everywhere. Change it here, or drop the reverse and put a reachable host in.
-# Expo Go's iOS bundle identifier capitalises Exponent; the Android package
-# does not, and a simulator answers NotFound to every request made with the
-# Android spelling. `ios.yml` passes the iOS one in; everything else, this
-# machine included, gets Android's.
-appId: "${typeof MAESTRO_EXPO_GO_APP_ID === 'string' ? MAESTRO_EXPO_GO_APP_ID : 'host.exp.exponent'}"
+# The app under test. `ios.yml` builds the real app and passes its own bundle
+# identifier in; with nothing passed this is Expo Go's Android package, which is
+# what a developer on this machine is driving.
+appId: "${typeof MAESTRO_APP_ID === 'string' ? MAESTRO_APP_ID : 'host.exp.exponent'}"
 env:
   # `disableOnboarding=1` is expo-dev-menu's own switch (expo/expo#19024): it
   # sets isOnboardingFinished before the app launches, so Expo Go never raises
@@ -59,23 +58,30 @@ env:
     # never taken - and asserts against a screen the app never rendered.
     # Which flow runs first is not fixed, so both orders have to work.
     clearState: true
-# Cleared, then stopped: Expo Go takes the link as a cold start and opens the
-# project with it. Delivered to the copy `launchApp` just brought to the
-# front, it is ignored and the flow asserts against Expo Go's own home.
-- stopApp
-- openLink: "${MURLAN_PACKAGER_URL}"
-# iOS asks before handing a custom-scheme link to another app, and the link
-# is not followed until it is answered. The simulator runs it-IT, so the
-# button reads "Apri". Android is never asked, and iOS only asks the first
-# time in a session — so this is optional inside the platform it belongs to,
-# rather than awaited.
+# Only Expo Go has to be reached through a packager. The real app carries its
+# own bundle, so `launchApp` above has already put it on screen, and everything
+# in here would ask the device to open a scheme nothing handles.
 - runFlow:
     when:
-      platform: iOS
+      true: ${typeof MAESTRO_APP_ID !== 'string' || MAESTRO_APP_ID.indexOf('host.exp') === 0}
     commands:
-      - tapOn:
-          text: "Apri"
-          optional: true
+      # Cleared, then stopped: Expo Go takes the link as a cold start and opens
+      # the project with it. Delivered to the copy `launchApp` just brought to
+      # the front, it is ignored and the flow asserts against Expo Go's own home.
+      - stopApp
+      - openLink: "${MURLAN_PACKAGER_URL}"
+      # iOS asks before handing a custom-scheme link to another app, and the
+      # link is not followed until it is answered. The simulator runs it-IT, so
+      # the button reads "Apri". Android is never asked, and iOS only asks the
+      # first time in a session — so this is optional inside the platform it
+      # belongs to, rather than awaited.
+      - runFlow:
+          when:
+            platform: iOS
+          commands:
+            - tapOn:
+                text: "Apri"
+                optional: true
 # Waited for and exited on the Skip button, which the header carries on every beat.
 # "GUIDA RAPIDA" is the card title of an `info` beat only — a `play` beat titles
 # the card after itself and `complete` has its own — so gating on it would skip
