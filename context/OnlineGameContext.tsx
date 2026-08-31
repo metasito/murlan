@@ -429,8 +429,6 @@ export function OnlineGameProvider({ userId, children }: { userId: string; child
         const prevPhase = prevGameStateRef.current?.exchangePhase;
         const cardReceived = prevPhase?.cardFromLoser;
         const cardGiven = state.exchangePhase.cardToLoser;
-        // Neither card reaches a seat outside the exchange. Announcing it to
-        // them anyway puts up a banner with nothing in it.
         if (cardReceived || cardGiven) {
           setExchangeAnnounceData(
             buildExchangeAnnounce(state.players, state.exchangePhase, {
