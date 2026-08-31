@@ -13,6 +13,7 @@ import assert from "node:assert/strict";
 import { readdirSync, readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
+import { blankComments, jsxTags } from "./helpers/sourceScan.ts";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
@@ -94,5 +95,69 @@ describe("no text field is left under the keyboard", () => {
       withInput.length >= 4,
       `expected the screens carrying a text field, got ${withInput.length}: ${withInput.join(", ")}`
     );
+  });
+});
+
+describe("one keyboard strategy", () => {
+  /** Every `behavior={…}` written on a KeyboardAvoidingView, with its file. */
+  function behaviours(): { file: string; expression: string }[] {
+    const out: { file: string; expression: string }[] = [];
+    for (const [file, src] of screenSources()) {
+      const opening = jsxTags(blankComments(src)).filter(
+        (t) => t.name === "KeyboardAvoidingView" && !t.isClose
+      );
+      for (const tag of opening) {
+        const behavior = /behavior=\{([\s\S]*?)\}\s*(?:\w|\/?>|$)/.exec(tag.text);
+        out.push({ file, expression: behavior ? behavior[1].trim() : "" });
+      }
+    }
+    return out;
+  }
+
+  test("every KeyboardAvoidingView takes its behaviour from keyboardBehavior", () => {
+    const rogue = behaviours().filter(
+      (b) => !b.expression.includes("keyboardBehavior") || /["'](padding|height)["']/.test(b.expression)
+    );
+    assert.deepEqual(
+      rogue.map((b) => `${b.file}: behavior={${b.expression}}`),
+      [],
+      "these pick their own strategy. Two that disagree is how the sign-in screen came to run " +
+        "opposite ones at once; call keyboardBehavior() from lib/keyboard.ts instead"
+    );
+  });
+
+  /**
+   * A screen inside `MenuLayout` already has one, so a second is two answers to
+   * one event — including one inside a `<Modal>`, which moves the screen behind
+   * it. Order is not read: the wrapper may be written either side of the layout,
+   * and `avoidsKeyboard={false}` is the way to say the modal's is the only one.
+   */
+  test("no screen renders both MenuLayout and a KeyboardAvoidingView of its own", () => {
+    const doubled = screenSources()
+      .filter(([file]) => file !== MENU_LAYOUT)
+      .filter(([, src]) => {
+        const code = blankComments(src);
+        if (!/<MenuLayout[\s/>]/.test(code) || !/<KeyboardAvoidingView[\s/>]/.test(code)) return false;
+        return !/avoidsKeyboard=\{false\}/.test(code);
+      })
+      .map(([file]) => file);
+    assert.deepEqual(
+      doubled,
+      [],
+      `MenuLayout brings its own; pass avoidsKeyboard={false} if the modal's is the real one: ${doubled.join(", ")}`
+    );
+  });
+
+  // The floor: a walk finding nothing, or a tag regex matching nothing, passes
+  // both assertions above.
+  test("the scan finds the views and the layouts it is judging", () => {
+    const found = behaviours();
+    assert.ok(found.length >= 3, `only ${found.length} KeyboardAvoidingView(s) found`);
+    assert.ok(
+      found.every((b) => b.expression.length > 0),
+      `a KeyboardAvoidingView with no behaviour was read as compliant: ${JSON.stringify(found)}`
+    );
+    const layouts = screenSources().filter(([, src]) => /<MenuLayout[\s/>]/.test(src));
+    assert.ok(layouts.length >= 5, `only ${layouts.length} screen(s) render MenuLayout`);
   });
 });

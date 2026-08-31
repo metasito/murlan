@@ -78,6 +78,11 @@ interface MenuLayoutProps {
   contentPad?: number;
   /** `null` opts a screen out — for the landscape bodies that size their own columns. */
   maxWidth?: number | null;
+  /**
+   * `false` for a screen whose only text field lives in a `<Modal>`: the modal
+   * brings its own avoidance, and this one would move the screen behind it.
+   */
+  avoidsKeyboard?: boolean;
 }
 
 export function MenuLayout({
@@ -87,6 +92,7 @@ export function MenuLayout({
   style,
   contentPad = CONTENT_H_PAD,
   maxWidth = MENU_MAX_W,
+  avoidsKeyboard = true,
 }: MenuLayoutProps) {
   const insets = useSafeAreaInsets();
   const bannerBottom = useBannerBottom();
@@ -133,7 +139,12 @@ export function MenuLayout({
       {/* Only the scrollable branch below carries
           `automaticallyAdjustKeyboardInsets`, so only it can be left to move
           the focused field on its own. */}
-      <KeyboardAvoidingView style={styles.fill} behavior={keyboardBehavior({ contentAdjustsInsets: scrollable })}>
+      <KeyboardAvoidingView
+        style={styles.fill}
+        behavior={
+          avoidsKeyboard ? keyboardBehavior({ contentAdjustsInsets: scrollable }) : undefined
+        }
+      >
         {scrollable ? (
           <View style={styles.fill}>
             <ScrollView

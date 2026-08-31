@@ -219,7 +219,7 @@ export default function OnlineLobbyScreen() {
   );
 
   return (
-    <MenuLayout scrollable={false} centered={false} style={{ paddingBottom: 0 }}>
+    <MenuLayout scrollable={false} centered={false} avoidsKeyboard={false} style={{ paddingBottom: 0 }}>
       <View style={styles.topBar}>
         <Pressable
           onPress={() => router.back()}
