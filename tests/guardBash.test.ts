@@ -92,9 +92,35 @@ describe("the bash guard allows correct usage", () => {
     "node -e \"const p=/git add -A/; console.log(p)\"",
     "gh issue comment 5 --body 'do not use git add -A here'",
     "echo 'find / is slow' > note.txt",
+    // The marker is the acknowledgement that the last failure's artefact was read. Reading it
+    // is the point, so every command that does the reading has to stay open.
+    "MAESTRO_EVIDENCE_READ=1 gh workflow run ios.yml --ref agent/353-x",
+    "MAESTRO_EVIDENCE_READ=1 gh run rerun 33428375221 --failed",
+    "gh run download 33428373840 -n maestro-debug-ios -D /tmp/art",
+    "gh run view 33428373840 --json jobs",
+    // Only the device workflows are gated: a browser or unit run has no pixels to read.
+    "gh workflow run ci.yml --ref main",
   ]) {
     test(`allows: ${cmd}`, () => {
       assert.equal(check(cmd), null, `expected ${cmd} to be allowed`);
+    });
+  }
+});
+
+describe("a device run is gated on having read the last failure's artefact", () => {
+  // A dispatch is ~25 minutes and the previous artefact usually already answers the question.
+  // Run 33428373840 was spent rediscovering a screen the run before it had screenshotted.
+  for (const cmd of [
+    "gh workflow run ios.yml --ref agent/353-ios-offline-game",
+    "gh workflow run maestro.yml",
+    "gh run rerun 33428375221 --failed",
+    "gh run rerun 33428375221",
+  ]) {
+    test(`blocks: ${cmd}`, () => {
+      const message = check(cmd);
+      assert.ok(message, `expected ${cmd} to be blocked`);
+      assert.match(String(message), /MAESTRO_EVIDENCE_READ=1/);
+      assert.match(String(message), /screen-hierarchy|screenshot/);
     });
   }
 });

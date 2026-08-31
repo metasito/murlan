@@ -28,12 +28,12 @@ jobs:
   ios:
     name: Drive the app on a real iOS simulator
     runs-on: macos-latest
-    # More than maestro.yml's 45: this job runs offline-game.yaml as well as
-    # smoke.yaml, and offline-game is a full hand — 16 minutes on a developer
-    # machine. Hitting the cap cancels the job, and a cancelled job skips
-    # every `if: failure()` step below, so an overrun costs the artefacts that
-    # would say what happened.
-    timeout-minutes: 75
+    # More than maestro.yml's 45: this job compiles the app before it drives
+    # it, and then runs offline-game.yaml as well as smoke.yaml — offline-game
+    # is a full hand, 16 minutes on a developer machine. Hitting the cap
+    # cancels the job, and a cancelled job skips every `if: failure()` step
+    # below, so an overrun costs the artefacts that would say what happened.
+    timeout-minutes: 100
 
     steps:
       - uses: actions/checkout@v4
@@ -46,47 +46,68 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      # Same shape as maestro.yml's server: --offline because app.json
-      # carries an EAS projectId, and an unauthenticated runner cannot get a
-      # *signed* manifest for a linked project.
-      - name: Start the Expo dev server
+      # Expo Go cannot host this suite. Its dev-menu window sits above the
+      # app's own and takes the touch: run 33397453801's simulator log has the
+      # tap on "Salta il tutorial" dispatched `to window: <EXDevMenuWindow>`,
+      # which then resigns key — the tap is spent dismissing an invisible
+      # window and the app never sees it. Across every Android and iOS run
+      # this repo has ever recorded, the only taps that landed were on Expo
+      # Go's own native dialogs; a `back` **key** works, because keys go to
+      # the app rather than through window hit-testing (#627).
+      #
+      # Release, not Debug: it bundles the JS into the app, so there is no
+      # Metro to start, no packager URL to reach, no deep link and no
+      # dev menu to be on top in the first place.
+      - name: Build the app
         run: |
-          nohup npx expo start --offline --port 8081 > "$RUNNER_TEMP/metro.log" 2>&1 &
-          disown
-          for i in $(seq 1 60); do
-            if curl -sf http://127.0.0.1:8081/status | grep -q "packager-status:running"; then
-              echo "Metro is up."
-              exit 0
-            fi
-            sleep 2
+          npx expo prebuild --platform ios --no-install
+          pod install --project-directory=ios
+          # Named from app.json rather than fixed here, so renaming the app
+          # does not silently start driving a stale build.
+          #
+          # Matched by the shell rather than by `ls`: this step runs under
+          # `bash -eo pipefail`, where a failed `ls` in a bare assignment kills
+          # the step on the spot and the message below never prints — the
+          # cause is then a raw "No such file or directory" instead of the one
+          # sentence saying what was expected.
+          workspace=""
+          for candidate in ios/*.xcworkspace; do
+            [ -d "$candidate" ] && { workspace="$candidate"; break; }
           done
-          echo "::error::Metro never came up on 8081."
-          cat "$RUNNER_TEMP/metro.log"
-          exit 1
-
-      # See maestro.yml: warms the bundle cache before the simulator is
-      # competing for the CPU, so the device's own request is a cache hit.
-      - name: Build the bundle before the simulator competes for the CPU
-        run: |
-          curl -s -o "$RUNNER_TEMP/manifest.json" -H 'expo-platform: ios' -H 'accept: multipart/mixed,application/expo+json,application/json' http://127.0.0.1:8081/
-          bundle=$(node -e '
-            const body = require("fs").readFileSync(process.env.RUNNER_TEMP + "/manifest.json", "utf8");
-            const json = body.slice(body.indexOf("{"), body.lastIndexOf("}") + 1);
-            let url;
-            try {
-              url = JSON.parse(json).launchAsset?.url;
-            } catch {
-              url = null;
-            }
-            if (!url) {
-              console.error("::error::No launchAsset in the dev server manifest.");
-              process.exit(1);
-            }
-            process.stdout.write(url);
-          ')
-          echo "Warming $bundle"
-          curl -sf -o /dev/null -w 'bundle: %{http_code} in %{time_total}s' "$bundle"
-          echo
+          [ -n "$workspace" ] || { echo "::error::expo prebuild produced no ios/*.xcworkspace."; exit 1; }
+          scheme=$(basename "$workspace" .xcworkspace)
+          echo "Building scheme $scheme"
+          # One slice, for the machine this actually runs on. Release defaults
+          # ONLY_ACTIVE_ARCH to NO and so compiles every valid architecture:
+          # on an Apple-silicon runner half the build is an x86_64 slice
+          # nothing here can execute, and this step is 45% of the job. Asking
+          # for the active architecture says that in the setting that controls
+          # it, and stays right on a runner of either kind — where naming an
+          # architecture would hand the other one a binary its simulator
+          # cannot load. Measured: 794s to 533s.
+          xcodebuild \
+            -workspace "$workspace" \
+            -scheme "$scheme" \
+            -configuration Release \
+            -sdk iphonesimulator \
+            -derivedDataPath "$RUNNER_TEMP/DerivedData" \
+            ONLY_ACTIVE_ARCH=YES \
+            COMPILER_INDEX_STORE_ENABLE=NO \
+            CODE_SIGNING_ALLOWED=NO \
+            build
+          app=""
+          for candidate in "$RUNNER_TEMP/DerivedData/Build/Products/Release-iphonesimulator/"*.app; do
+            [ -d "$candidate" ] && { app="$candidate"; break; }
+          done
+          [ -n "$app" ] || { echo "::error::xcodebuild produced no .app."; exit 1; }
+          echo "APP_BUNDLE=$app" >> "$GITHUB_ENV"
+          # The id the flows are driven with comes from the built app itself,
+          # not from app.json: a prebuild that renamed the bundle would
+          # otherwise leave Maestro asking the simulator for an app that is
+          # not there, which reads as "the app never launched".
+          id=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$app/Info.plist")
+          echo "APP_ID=$id" >> "$GITHUB_ENV"
+          echo "Built $app ($id)"
 
       # `macos-latest` ships a fixed set of pre-created simulators rather
       # than a fresh AVD per run, so the device to drive has to be found
@@ -130,100 +151,89 @@ jobs:
             });
           ')
           echo "SIMULATOR_UDID=$udid" >> "$GITHUB_ENV"
+          # Every other device down, so exactly one simulator is booted while
+          # the flows run. Maestro resolves an iOS target through the simulator
+          # runtime rather than by UDID alone, and run 33418358705's log has
+          # `xcodebuild: WARNING: Using the first of multiple matching
+          # destinations` listing this one UDID twice, once as arm64 and once
+          # as x86_64, followed by ~300 refused connections to the driver's
+          # port. Maestro's own docs name ambiguous simulator targeting as a
+          # cause of exactly that. `--device` below says which device; this
+          # says there is nothing else running to be ambiguous with.
+          xcrun simctl shutdown all 2>/dev/null || true
+          # `shutdown` returns while a device can still be "Shutting Down", and `erase` in that
+          # state fails outright rather than queueing — so the wait belongs with the shutdown,
+          # not with the boot.
+          for _ in $(seq 1 30); do
+            xcrun simctl list devices | grep -q "(Booted)\|(Shutting Down)" || break
+            sleep 2
+          done
+          # Erased before anything is put on it. These simulators are the
+          # image's own and are reused between jobs, so whatever the last run
+          # left behind is still there — including a half-installed Maestro
+          # XCTest runner, which is how a job spends its whole
+          # MAESTRO_DRIVER_STARTUP_TIMEOUT and then reports "iOS driver not
+          # ready in time". Raising that timeout to 5 minutes did not help,
+          # because the runner was never coming up rather than coming up late.
+          xcrun simctl erase "$udid"
           # `bootstatus -b` boots the device if it is not already booted and
           # then waits. A bare `simctl boot` on a device the image left booted
           # exits non-zero instead, taking the step with it.
           xcrun simctl bootstatus "$udid" -b
 
-      # The flows select on Italian copy (see maestro.yml) for the same
-      # reason here: a stock simulator comes up en-US. `defaults write`
-      # against the simulator's own domain only takes effect after the
-      # device restarts, which for a simulator is shutdown+boot rather
-      # than a real reboot.
-      - name: Set the simulator locale to it-IT
-        run: |
-          xcrun simctl spawn "$SIMULATOR_UDID" defaults write "Apple Global Domain" AppleLanguages -array "it-IT"
-          xcrun simctl spawn "$SIMULATOR_UDID" defaults write "Apple Global Domain" AppleLocale -string "it_IT"
-          xcrun simctl shutdown "$SIMULATOR_UDID"
-          # `shutdown` returns while the device can still be "Shutting Down",
-          # and a boot in that state fails outright rather than queueing.
-          for i in $(seq 1 30); do
-            xcrun simctl list devices | grep -q "$SIMULATOR_UDID) (Shutdown)" && break
-            sleep 2
-          done
-          xcrun simctl bootstatus "$SIMULATOR_UDID" -b
-          # AppleLanguages, not AppleLocale, is what the app reads: lib/i18n.ts
-          # picks the locale from expo-localization's `getLocales()`, which on
-          # iOS is `Locale.preferredLanguages`. AppleLocale only carries the
-          # region formats, so checking it alone passes on a device still
-          # rendering English.
-          languages=$(xcrun simctl spawn "$SIMULATOR_UDID" defaults read "Apple Global Domain" AppleLanguages || echo unset)
-          echo "$languages" | tr -d '\n ' | grep -q '^("\{0,1\}it' || { echo "::error::Simulator's preferred language is $languages, not Italian; the flows select on Italian copy."; exit 1; }
-          locale=$(xcrun simctl spawn "$SIMULATOR_UDID" defaults read "Apple Global Domain" AppleLocale || echo unset)
-          [ "$locale" = "it_IT" ] || { echo "::error::Simulator locale is '$locale', not it_IT; the flows select on Italian copy."; exit 1; }
+      - name: Install the app on the simulator
+        run: xcrun simctl install "$SIMULATOR_UDID" "$APP_BUNDLE"
 
-      # Resolved from the SDK this project pins, same as maestro.yml's
-      # Android client fetch and for the same reason: Expo Go carries one
-      # SDK at a time. `iosClientUrl` is a tarball of the simulator .app's
-      # own contents (verified by hand against the SDK 54 release: an
-      # Info.plist with CFBundleIdentifier host.exp.exponent and executable
-      # "Expo Go", not a device .ipa), so it installs with `simctl install`
-      # exactly the way `expo start --ios` installs it on a developer's
-      # own Mac.
-      - name: Fetch and install the Expo Go client for this project's SDK
-        run: |
-          url=$(curl -sf https://api.expo.dev/v2/versions/latest | node -e '
-            let s = "";
-            process.stdin.on("data", (d) => (s += d)).on("end", () => {
-              const major = require("./package.json").dependencies.expo.replace(/^\D*/, "").split(".")[0];
-              const sdk = `${major}.0.0`;
-              const url = JSON.parse(s).data.sdkVersions?.[sdk]?.iosClientUrl;
-              if (!url) {
-                console.error(`::error::No Expo Go iOS client published for SDK ${sdk}.`);
-                process.exit(1);
-              }
-              process.stdout.write(url);
-            });
-          ')
-          echo "Expo Go client: $url"
-          curl -Lsf -o "$RUNNER_TEMP/expo-go.tar.gz" "$url"
-          mkdir -p "$RUNNER_TEMP/Expo Go.app"
-          tar -xzf "$RUNNER_TEMP/expo-go.tar.gz" -C "$RUNNER_TEMP/Expo Go.app"
-          xcrun simctl install "$SIMULATOR_UDID" "$RUNNER_TEMP/Expo Go.app"
       - name: Install Maestro
         run: |
           curl -Ls "https://get.maestro.mobile.dev" | bash
           echo "$HOME/.maestro/bin" >> "$GITHUB_PATH"
 
-      # No `adb reverse` equivalent needed. The iOS Simulator is a process
-      # on the runner's own host, not a virtualised device behind a NAT, so
-      # 127.0.0.1 in the flows' MURLAN_PACKAGER_URL already reaches Metro
-      # directly.
+      # Both flows, named rather than globbed: the order is the thing being
+      # relied on. `clearState` makes each start from the same place, so either
+      # order has to work — but a directory glob would also pick up a flow added
+      # later and run it here without anyone deciding to.
       #
-      # smoke.yaml only, as on Android. offline-game.yaml fails here at the
-      # tutorial skip when it runs second, and its card taps are point taps
-      # derived from an Android emulator's layout — #353 has both.
+      # `MAESTRO_APP_ID` is what tells the flows they are driving the app
+      # itself: given one, they skip the Expo Go launch dance entirely.
       - name: Run the flows
+        env:
+          # Maestro installs its own XCUITest runner onto the simulator before
+          # the first step. On a shared macOS runner that install fails outright
+          # about a third of the time — measured: three of eight dispatches on
+          # 2026-08-31, one of them burning the full five minutes below, which
+          # is what says it was never coming up rather than coming up late.
+          # Erasing the device first (above) helps and does not settle it.
+          MAESTRO_DRIVER_STARTUP_TIMEOUT: "300000"
         run: |
-          curl -sf -o /dev/null -w 'metro /status: %{http_code}' http://127.0.0.1:8081/status || echo "::warning::Metro is no longer answering on 8081."
-          echo
-          # Derived, not hardcoded, for the reason the client fetch above is:
-          # asking for an SDK the project no longer pins makes this diagnostic
-          # report a mismatch that is its own doing.
-          sdk=$(node -p 'require("./package.json").dependencies.expo.replace(/^\D*/, "").split(".")[0] + ".0.0"')
-          curl -s -o "$RUNNER_TEMP/manifest.out" -w 'manifest: %{http_code}' -H 'expo-platform: ios' -H "expo-runtime-version: exposdk:$sdk" -H 'accept: multipart/mixed,application/expo+json,application/json' http://127.0.0.1:8081/
-          echo
-          head -c 1200 "$RUNNER_TEMP/manifest.out"
-          echo
-          # The flows default to the Android package; iOS registers Expo Go as
-          # `host.exp.Exponent`, and a simulator answers NotFound to anything else.
-          maestro test -e MAESTRO_EXPO_GO_APP_ID=host.exp.Exponent .maestro/smoke.yaml
-
-      - name: Collect Metro's log alongside Maestro's debug output
-        if: failure()
-        run: |
-          mkdir -p "$HOME/.maestro/tests"
-          cp "$RUNNER_TEMP/metro.log" "$HOME/.maestro/tests/metro.log" || true
+          # Retried once, and only when the driver never started — the same
+          # shape `maestro.yml` uses for an emulator that never boots (#186,
+          # #647). A flow that ran and failed is a result about the branch and
+          # is never retried: re-running it would turn a real red into a
+          # coin flip, which is the failure mode that judgement exists to
+          # avoid.
+          # Named rather than left to Maestro to resolve. The driver failed to
+          # start in three of eight dispatches while nothing said which device
+          # to drive; run 33428373840 is the first with this flag and the first
+          # whose log has no "iOS driver not ready in time" at all. That is one
+          # run, so the retry below stays as the tripwire that measures whether
+          # it holds.
+          run_flows() {
+            maestro --device "$SIMULATOR_UDID" test -e MAESTRO_APP_ID="$APP_ID" \
+              .maestro/smoke.yaml .maestro/offline-game.yaml 2>&1 | tee "$RUNNER_TEMP/maestro-$1.log"
+            return "${PIPESTATUS[0]}"
+          }
+          if run_flows first; then exit 0; fi
+          grep -q "iOS driver not ready in time" "$RUNNER_TEMP/maestro-first.log" || {
+            echo "::error::The flows ran and failed. That is a result about this branch, not the runner."
+            exit 1
+          }
+          echo "::warning::Maestro's driver never started; erasing the device and trying once more."
+          xcrun simctl shutdown "$SIMULATOR_UDID" 2>/dev/null || true
+          xcrun simctl erase "$SIMULATOR_UDID"
+          xcrun simctl bootstatus "$SIMULATOR_UDID" -b
+          xcrun simctl install "$SIMULATOR_UDID" "$APP_BUNDLE"
+          run_flows second
 
       - name: Upload Maestro debug output
         if: failure()

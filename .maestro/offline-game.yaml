@@ -28,23 +28,22 @@
 # animations (the active-turn highlight, the selected-card glow), so
 # every single tap was blocking for its full internal timeout. Capping
 # the settle-wait fixed it. See docs/TESTING.md.
-# Requires a running Expo dev server the emulator can reach.
+# Driven against a real build (`ios.yml`) no dev server is needed: the app
+# carries its own bundle. Driven through Expo Go — a developer here, and
+# `maestro.yml` until #627's Android half lands — it needs one the device can
+# reach, over `adb reverse tcp:8081 tcp:8081`, which forwards the device's own
+# loopback to the host and works on any emulator anywhere. The emulator's
+# `10.0.2.2` alias for the host does not: on a GitHub runner a request to it
+# never reaches the dev server at all.
 #
-# Reached over `adb reverse tcp:8081 tcp:8081`, which forwards the device's own
-# loopback to the host and works on any emulator anywhere, including a CI
-# runner. `10.0.2.2` — the emulator's alias for the host loopback — was the
-# default before, and it is not universal: on a GitHub runner's emulator a
-# request to it never reaches the dev server at all.
-#
-# This value cannot be overridden from the command line. `-e` is applied
-# *before* this block, so an `env:` key here wins over the flag rather than
-# yielding to it — which is why the address has to be one that works
+# MURLAN_PACKAGER_URL cannot be overridden from the command line. `-e` is
+# applied *before* the `env:` block, so a key there wins over the flag rather
+# than yielding to it — which is why the address has to be one that works
 # everywhere. Change it here, or drop the reverse and put a reachable host in.
-# Expo Go's iOS bundle identifier capitalises Exponent; the Android package
-# does not, and a simulator answers NotFound to every request made with the
-# Android spelling. `ios.yml` passes the iOS one in; everything else, this
-# machine included, gets Android's.
-appId: "${typeof MAESTRO_EXPO_GO_APP_ID === 'string' ? MAESTRO_EXPO_GO_APP_ID : 'host.exp.exponent'}"
+# The app under test. `ios.yml` builds the real app and passes its own bundle
+# identifier in; with nothing passed this is Expo Go's Android package, which is
+# what a developer on this machine is driving.
+appId: "${typeof MAESTRO_APP_ID === 'string' ? MAESTRO_APP_ID : 'host.exp.exponent'}"
 env:
   # `disableOnboarding=1` is expo-dev-menu's own switch (expo/expo#19024): it
   # sets isOnboardingFinished before the app launches, so Expo Go never raises
@@ -59,50 +58,75 @@ env:
     # never taken - and asserts against a screen the app never rendered.
     # Which flow runs first is not fixed, so both orders have to work.
     clearState: true
-# Cleared, then stopped: Expo Go takes the link as a cold start and opens the
-# project with it. Delivered to the copy `launchApp` just brought to the
-# front, it is ignored and the flow asserts against Expo Go's own home.
-- stopApp
-- openLink: "${MURLAN_PACKAGER_URL}"
-# iOS asks before handing a custom-scheme link to another app, and the link
-# is not followed until it is answered. The simulator runs it-IT, so the
-# button reads "Apri". Android is never asked, and iOS only asks the first
-# time in a session — so this is optional inside the platform it belongs to,
-# rather than awaited.
+    # This flow selects on Italian copy, so it asks the app for Italian rather
+    # than depending on the device being in it. Reaching the app as
+    # NSUserDefaults launch arguments, the same mechanism an Xcode scheme uses
+    # — and the parentheses are load-bearing: AppleLanguages is a list, and the
+    # argument domain parses `(it-IT)` as one where a bare `it-IT` would set a
+    # string the locale lookup ignores.
+    #
+    # Only reaches the app being launched here, so under Expo Go it lands on
+    # Expo Go and the relaunch below drops it: that path still needs the device
+    # locale set (docs/TESTING.md).
+    arguments:
+      AppleLanguages: "(it-IT)"
+      AppleLocale: "it_IT"
+# Only Expo Go has to be reached through a packager. The real app carries its
+# own bundle, so `launchApp` above has already put it on screen, and everything
+# in here would ask the device to open a scheme nothing handles.
 - runFlow:
     when:
-      platform: iOS
+      true: ${typeof MAESTRO_APP_ID !== 'string' || MAESTRO_APP_ID.indexOf('host.exp') === 0}
     commands:
-      - tapOn:
-          text: "Apri"
-          optional: true
-- extendedWaitUntil:
-    visible: "IL GIOCO DI CARTE|GUIDA RAPIDA"
-    # A minute is what a developer's machine needs. A CI emulator is slower
-    # than that on a cold start, and running out of budget here reads
-    # identically to the app never loading at all.
-    timeout: 180000
-# Gated and exited on the Skip button, which the header carries on every beat.
+      # Cleared, then stopped: Expo Go takes the link as a cold start and opens
+      # the project with it. Delivered to the copy `launchApp` just brought to
+      # the front, it is ignored and the flow asserts against Expo Go's own home.
+      - stopApp
+      - openLink: "${MURLAN_PACKAGER_URL}"
+      # iOS asks before handing a custom-scheme link to another app, and the
+      # link is not followed until it is answered. Both spellings: the dialog
+      # is the system's, so it is in the *device's* language, which the launch
+      # arguments above do not touch — they set the app's. Android is never
+      # asked, and iOS only asks the first time in a session — so this is
+      # optional inside the platform it belongs to, rather than awaited.
+      - runFlow:
+          when:
+            platform: iOS
+          commands:
+            - tapOn:
+                text: "Apri|Open"
+                optional: true
+# Waited for and exited on the Skip button, which the header carries on every beat.
 # "GUIDA RAPIDA" is the card title of an `info` beat only — a `play` beat titles
 # the card after itself and `complete` has its own — so gating on it would skip
 # the block on most of the tutorial, and waiting for it to go would be satisfied
 # by the tutorial merely advancing a beat. Being untappable on Android does not
 # make the button invisible, which is all `visible` asks.
 #
-# Split by platform because the defect is Android's alone. There no control on
+# Split by platform because Android has no working tap here at all: no control on
 # this screen takes touch — the Skip button no more than the body's own "Inizia"
 # — so the tap fires into nothing; #627 has it measured with `adb shell input
-# tap` and no Maestro in the loop. iOS taps it fine (#353), and Maestro's `back`
-# there is an edge-swipe gesture rather than a key press, so it is not a
-# like-for-like substitute to hand it as well.
+# tap` and no Maestro in the loop. Maestro's `back` on iOS is an edge-swipe
+# gesture rather than a key press, so it is not a like-for-like substitute to
+# hand that platform as well.
 #
 # The iOS tap targets the button's accessibilityLabel, not its visible "Salta":
 # the Text child is `a11yHidden` on purpose, so the label is the only node the
 # control exposes. Collapse this to that tap alone when #627 closes.
 - runFlow:
-    when:
-      visible: "Salta il tutorial"
     commands:
+      # Waited for, not asked about. `clearState` means the tutorial has never
+      # been seen, so on a cleared launch it always comes — but it is *pushed
+      # over* home rather than rendered instead of it, and home gets there
+      # first. A wait on "either screen" was satisfied by home, this block found
+      # nothing and skipped itself, and the assertions after it ran against a
+      # tutorial that arrived in the meantime (#353).
+      #
+      # A CI device is slower than a developer's on a cold start, and running
+      # out of budget here reads identically to the app never loading at all.
+      - extendedWaitUntil:
+          visible: "Salta il tutorial"
+          timeout: 180000
       - runFlow:
           when:
             platform: Android
@@ -113,15 +137,22 @@ env:
             platform: iOS
           commands:
             - tapOn: "Salta il tutorial"
+      # Ten seconds was a developer machine dismissing a sheet. A device on a
+      # shared runner is slower, and running out there reads as a dead control
+      # rather than a slow one.
       - extendedWaitUntil:
           notVisible: "Salta il tutorial"
-          timeout: 10000
+          timeout: 30000
 
 # --- Lobby: offline vs AI, 2 players, single hand ---
 - assertVisible: "Offline"
 - tapOn: "Offline"
-- assertVisible: "Manche secca"
-- tapOn: "Manche secca"
+# The format tiles carry a second line, and Maestro matches the *whole*
+# element: iOS exposes this one as "Manche secca: Una sola mano", so the bare
+# title matches nothing. The trailing `.*` carries the subtitle and the
+# platforms that compose it differently, without pinning today's wording.
+- assertVisible: "Manche secca.*"
+- tapOn: "Manche secca.*"
 - assertVisible: "Inizia Partita"
 - tapOn: "Inizia Partita"
 
@@ -137,72 +168,85 @@ env:
     timeout: 90000
 
 # --- Opening move, only if this seat was dealt the 3 of Spades ---
-# All 3s sort to the front of the hand regardless of shuffle (3 is the
-# lowest rank), but which of up to four 3-slots holds 3♠ varies. The
-# fanned hand overlaps each card with the next one drawn on top, so a
-# *center* tap on a card can land on its right-hand neighbor instead
-# (verified with `adb shell uiautomator dump`: reported bounds are
-# correct, the touch just lands on the overlapping sibling) — a real
-# rendering characteristic worth knowing about, not a Maestro quirk.
-# Tapping ~20px into each slot's exposed left sliver avoids it. Slot 0
-# starts at 17% of screen width in this fixed 2-player/landscape
-# layout, +2.5% per slot. Try up to 4 slots, deselecting a wrong pick
-# before the next attempt, stopping as soon as Gioca reports the
-# selection is valid.
+# The card by its own name, which is the only thing here that is the same on
+# every screen. A fanned hand overlaps each card with the next one drawn on top,
+# so the box a card *draws* into is mostly covered — but the box it is *tapped*
+# by is not: `hand.tsx` gives every card but the last a pressable exactly one
+# slot wide (`hitW={step}`), which is the strip it exposes. That pressable is
+# the node carrying the accessibility label, so its centre is inside the strip
+# and a tap on it can only reach this card.
+#
+# Screen percentages were what this did before, four of them, derived on one
+# Android emulator against a fixed 2-player landscape layout. Nothing made them
+# land on the same card on an iPhone, and the branch only runs when this seat is
+# dealt 3♠ — so they would have passed or failed at random rather than reporting
+# anything (#353).
+# The table appearing is not the hand having arrived. `game-table` mounts while
+# the deal is still flying, and a condition evaluated then reads a hand that is
+# gone a second later: run 33418358705 gated on "3 di Picche", found it, and
+# tapped for six seconds against a hand whose lowest card was the 3 di Quadri —
+# the opponent had already led. Same shape as the tutorial race above: wait for
+# the state, do not ask whether it has arrived.
+#
+# The pass button, because it is the only control on this screen that exposes a
+# node with a real size: the turn summary and the hand's own count are 1x1
+# points, and the play button exposes nothing at all while it is disabled.
+# Waiting for a control to exist is weaker than waiting for the deal to land,
+# but it is checkable — and the alternative was another guess.
+- extendedWaitUntil:
+    visible:
+      id: "btn-passa"
+    timeout: 60000
+# Opening is not optional for the seat that has to do it: passing is illegal
+# until the first card is down, so a flow that skips this waits out the whole
+# hand tapping a button that can never enable.
+#
+# Asked of the app, not of the deal. The banner is the seat's own instruction —
+# it appears only when this seat must open — so gating on it is the same
+# question the game is answering, rather than a guess about what was dealt.
+# Naming a card here is what broke: `3 di Picche` assumed Murlan's four-player
+# opener, and two players take a four-player deal (#681), so the 3 of Spades is
+# often not in play at all and the lowest card dealt opens instead. Run
+# 33428373840 was dealt the 3 of Hearts, skipped this block, and passed thirty
+# times into a disabled button.
+#
+# The card is taken by position rather than by name because the two are spelled
+# differently: the banner writes the suit as a symbol ("Inizi tu! Hai il 3♥")
+# and the card's own label writes it as a word ("3 di Cuori"), so nothing can be
+# carried from one to the other. The hand is sorted ascending and the opener is
+# by definition its lowest card, which makes it the first — verified against
+# that run's captured hierarchy, where the first card node is the one the banner
+# named.
 - runFlow:
     when:
-      visible: "3 di Picche"
+      visible: "Inizi tu.*"
     commands:
-      - runFlow:
-          when:
-            notVisible: "Gioca le carte selezionate"
-          commands:
-            - tapOn:
-                point: "17%,81%"
-                waitToSettleTimeoutMs: 500
-      - runFlow:
-          when:
-            notVisible: "Gioca le carte selezionate"
-          commands:
-            - tapOn:
-                point: "17%,81%"
-                waitToSettleTimeoutMs: 500
-            - tapOn:
-                point: "20%,81%"
-                waitToSettleTimeoutMs: 500
-      - runFlow:
-          when:
-            notVisible: "Gioca le carte selezionate"
-          commands:
-            - tapOn:
-                point: "20%,81%"
-                waitToSettleTimeoutMs: 500
-            - tapOn:
-                point: "22%,81%"
-                waitToSettleTimeoutMs: 500
-      - runFlow:
-          when:
-            notVisible: "Gioca le carte selezionate"
-          commands:
-            - tapOn:
-                point: "22%,81%"
-                waitToSettleTimeoutMs: 500
-            - tapOn:
-                point: "25%,81%"
-                waitToSettleTimeoutMs: 500
+      - tapOn:
+          text: ".+ di (Cuori|Quadri|Fiori|Picche)"
+          index: 0
+          waitToSettleTimeoutMs: 500
+      # The button turns on only for a legal selection, so this is what says the
+      # tap reached the card the banner asked for rather than a neighbour.
       - assertVisible: "Gioca le carte selezionate"
       - tapOn:
           id: "btn-gioca"
           waitToSettleTimeoutMs: 500
 
-# --- Everything else: pass whenever it's legal to. With 2 players a
-# pass immediately ends the round in the AI's favour, so this cycles
-# real turns through the AI until someone's hand empties. `optional`
-# so tapping a disabled/off-turn button is a harmless no-op instead of
-# a flow failure. `times` is a hard backstop independent of whatever
-# `repeat`'s own visibility polling does.
+# Pass whenever it is legal to. With two players a pass ends the round in the
+# AI's favour, so this cycles real turns through the AI until a hand empties.
+# `optional` keeps a tap on the off-turn button a no-op rather than a failure.
+#
+# `while` is what ends the loop: the result screen replaces the table, so the
+# moment `btn-passa` is gone it stops instead of spending its remaining turns on
+# a screen with nothing to pass on. `times` is the ceiling — one pass per turn
+# the opponent takes, against a hand of about twenty, so thirty is the hand plus
+# margin. Each surplus iteration costs a full screen read on a table whose
+# animations never stop, which is where this flow's minutes went.
 - repeat:
-    times: 60
+    times: 30
+    while:
+      visible:
+        id: "btn-passa"
     commands:
       - tapOn:
           id: "btn-passa"
