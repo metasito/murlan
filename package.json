@@ -30,6 +30,7 @@
     "start": "npx expo start",
     "lint": "npx expo lint . -- --max-warnings 0",
     "lint:fix": "npx expo lint . --fix",
+    "pretest": "node scripts/preflightMemory.mjs",
     "test": "node --test \"tests/**/*.test.ts\"",
     "test:native": "jest",
     "perf:web": "playwright test --config tests/e2e/playwright.perf.config.ts --reporter=line",
