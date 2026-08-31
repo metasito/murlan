@@ -1,4 +1,4 @@
-name: Drive the Maestro flows on an Android emulator
+﻿name: Drive the Maestro flows on an Android emulator
 description: >
   Boots the emulator, installs Expo Go, and runs the flows. Lives here rather
   than inline so `maestro.yml` can invoke it twice - once, and again only when
@@ -116,5 +116,6 @@ runs:
           # then dies there with no assertion message at all, which is the
           # emulator going down rather than the app being wrong. More memory,
           # more cores and a longer wait all changed nothing. #185, and
-          # docs/TESTING.md §5 predicted it before any of this ran.
-          maestro test .maestro/smoke.yaml
+          # docs/TESTING.md Â§5 predicted it before any of this ran.
+          bash .github/scripts/probe-627-views.sh
+
