@@ -7,7 +7,7 @@
 // relative and carry its .ts extension; `@/` is safe only in a type-only import,
 // which is erased before resolution.
 
-import type { Combination, GameState, Player } from "@/lib/gameEngine";
+import type { Card, Combination, GameState, Player } from "@/lib/gameEngine";
 import {
   CARD_H,
   CARD_W,
@@ -316,6 +316,38 @@ export const EMPTY_PILE: PileState = { prev: null, current: null, playedBy: null
 //
 // FlyingCards (components/table/pile.tsx) owns the animation; these are the numbers both it
 // and the table's feedback read, so the two cannot drift apart.
+
+/**
+ * The card on its way *into* this seat's hand, for as long as the ceremony
+ * delivering it is on screen.
+ *
+ * The state behind the ceremony has already moved — the exchange ends its
+ * phase, hands the card over and raises the announcement in one tick — so the
+ * hand holds the card before the flight carrying it has left. Naming the card
+ * in flight is what lets the hand leave a place for it instead of already
+ * having it, and the two ends are not symmetric: the winner is receiving what
+ * was taken off the loser, the loser what the winner chose.
+ *
+ * Nothing flies when both Jokers cancelled the exchange, so nothing arrives.
+ */
+export function arrivingCard(
+  announce:
+    | {
+        winnerIdx: number;
+        loserIdx: number;
+        bothJokersException: boolean;
+        cardGiven?: Card;
+        cardReceived?: Card;
+      }
+    | null
+    | undefined,
+  viewerSeat: number | null
+): Card | undefined {
+  if (!announce || announce.bothJokersException || viewerSeat === null) return undefined;
+  if (viewerSeat === announce.winnerIdx) return announce.cardReceived;
+  if (viewerSeat === announce.loserIdx) return announce.cardGiven;
+  return undefined;
+}
 
 export const FLIGHT_MS = 380;
 /** Fraction of the flight after which the card is on the felt and settling. */

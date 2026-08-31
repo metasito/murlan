@@ -64,6 +64,7 @@ import {
   computeTableFrame,
   railSideFor,
   LANDSCAPE_LEFT,
+  arrivingCard,
   describeTableForA11y,
   displayedHandCount,
   EMPTY_PILE,
@@ -897,6 +898,21 @@ export function GameTable({
   // have arranged on top of it (#531). Spectated hands are excluded by the
   // seat's own cards being synthetic above — there is nothing there to arrange.
   const { arranged: shownHand, moveTo } = useHandOrder(viewerSeat, sortedHand);
+  // The exchange commits in the tick that raises its ceremony, so by the time
+  // the card is drawn crossing the felt the hand already holds it — the flight
+  // is a copy over a hand that has finished changing (#672). Held back here
+  // rather than by deferring the state itself: online the state is the
+  // server's, and freezing a whole snapshot for the length of an animation
+  // would swallow every other thing that arrives in that window.
+  //
+  // Arranging first and filtering second, so the card lands in the place the
+  // player arranged for it instead of re-entering an order computed without it.
+  const arriving = arrivingCard(
+    exchangeAnnouncement?.visible ? exchangeAnnouncement.data : null,
+    spectating ? null : viewerSeat
+  );
+  const handOnTable =
+    arriving === undefined ? shownHand : shownHand.filter((c) => c.id !== arriving.id);
   // Where the last move put a card. A drag shows its own answer; the discrete
   // actions behind it (WCAG 2.5.7) move a card with nothing on screen changing
   // for whoever asked, so the live region below says where it went.
@@ -1916,7 +1932,7 @@ export function GameTable({
                 {arrangedA11yLabel !== null && <A11yStatus label={arrangedA11yLabel} />}
                 <StraightHand
                   faceDown={spectating}
-                  cards={shownHand}
+                  cards={handOnTable}
                   selectedIds={
                     exchangeIsMine ? (exchangePick ? [exchangePick] : []) : selectedIds
                   }
