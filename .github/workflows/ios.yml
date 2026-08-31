@@ -1,8 +1,8 @@
 name: iOS UI (Maestro)
 
-# Runs on pull requests targeting `main`, and on demand — not on `push`
-# and not on a schedule: `maestro.yml`'s own header explains why a flaky
-# device job on every push is worse than no job.
+# On demand only (`workflow_dispatch`) — not on `push`, not on a schedule,
+# and not on `pull_request` either; see the paragraph below. `maestro.yml`'s
+# own header explains why a flaky device job on every push is worse than no job.
 #
 # `macos-latest` is free on this repo's standard runners (the repo went
 # public in #277), ships Xcode and iOS simulators preinstalled, and an iOS
@@ -10,10 +10,13 @@ name: iOS UI (Maestro)
 # KVM step, no emulator boot poll, none of #186's "Timeout waiting for
 # emulator to boot". That is the whole reason this job exists alongside
 # `maestro.yml` instead of just fixing the Android one.
-# Disabled on pull requests until its smoke flow passes on `main`. It has been red since
-# the job landed, and a check that is always red teaches every reader that red is fine —
-# it also gates nothing, because ci.yml is the gate and `land.ts` merges past it. On demand
-# only until #354 turns both device loops green, then the `pull_request` trigger comes back.
+# Disabled on pull requests until its smoke flow passes on `main`: it was red when that call
+# was made, and a check that is always red teaches every reader that red is fine — it also
+# gates nothing, because ci.yml is the gate and `land.ts` merges past it.
+#
+# It then went green on 2026-08-26 and the trigger was never restored, so nothing dispatched
+# it for five days while the flow went stale. It is red again today, on #620. #354 owns
+# bringing `pull_request` back, and must not until #620 passes twice running.
 on:
   workflow_dispatch:
 
