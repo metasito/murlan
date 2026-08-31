@@ -206,8 +206,12 @@ env:
 # so tapping a disabled/off-turn button is a harmless no-op instead of
 # a flow failure. `times` is a hard backstop independent of whatever
 # `repeat`'s own visibility polling does.
+# One pass per turn the opponent takes, and it has a hand of about twenty — so
+# thirty is the hand plus margin, not a number picked to be safely large. Sixty
+# was, and every surplus iteration still costs a full screen read on a table
+# whose animations never stop, which is where this flow's minutes went.
 - repeat:
-    times: 60
+    times: 30
     commands:
       - tapOn:
           id: "btn-passa"
