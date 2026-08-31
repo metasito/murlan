@@ -47,6 +47,7 @@ jobs:
       actions: read
     outputs:
       app: ${{ steps.scope.outputs.app }}
+      native: ${{ steps.scope.outputs.native }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -77,6 +78,7 @@ jobs:
               && [ "$(gh api "$runs" --jq '.total_count' 2>/dev/null || echo 0)" -gt 0 ]; then
               echo "Identical tree to #$num at $head, which this workflow already passed."
               echo "app=false" >> "$GITHUB_OUTPUT"
+              echo "native=false" >> "$GITHUB_OUTPUT"
               exit 0
             fi
             echo "No green pull-request run covers this tree — running everything."
@@ -89,9 +91,24 @@ jobs:
           if [ -z "$base" ] || ! git cat-file -e "$base^{commit}" 2>/dev/null; then
             echo "No usable base commit — running everything."
             echo "app=true" >> "$GITHUB_OUTPUT"
+            echo "native=true" >> "$GITHUB_OUTPUT"
             exit 0
           fi
           changed=$(git diff --name-only "$base" HEAD)
+          # The two compile jobs cost about 15 minutes each, against 5 for the
+          # whole rest of this workflow, so they run only when something that
+          # can break them changed. A debug build loads its JavaScript from
+          # Metro instead of bundling it — measured on the run that added the
+          # jobs: iOS logs "SKIP_BUNDLING enabled; skipping.", and none of
+          # Gradle's 596 tasks is createBundleDebugJsAndAssets — so no source
+          # change can reach a compile. Only the dependency set and the app
+          # config prebuild generates the native project from can.
+          if grep -qE '^(package\.json|package-lock\.json|app\.json|\.github/workflows/ci\.yml)$' <<< "$changed"; then
+            echo "A native input changed — compiling for both devices."
+            echo "native=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "native=false" >> "$GITHUB_OUTPUT"
+          fi
           echo "Changed files:"; echo "$changed"
           # Prose the suite asserts *on* is not prose to this filter.
           # `tests/rulesAreSingleSourced.test.ts` reads RULES.md, CLAUDE.md, the
@@ -318,10 +335,16 @@ jobs:
   #
   # `android/` and `ios/` are gitignored: this project is CNG, so both jobs
   # generate the native project from app.json before compiling it.
+  #
+  # Gated on `scope.native`, not on `scope.app`: measured at 938 s and 807 s
+  # against 309 s for the whole rest of the workflow, so running them on every
+  # pull request would triple the wait in the middle of every ticket — the cost
+  # #288 exists to keep down. See the filter in `scope` for why a source change
+  # cannot reach them.
   android-build:
     name: Android compiles
     needs: scope
-    if: needs.scope.outputs.app == 'true'
+    if: needs.scope.outputs.native == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 40
     steps:
@@ -347,7 +370,7 @@ jobs:
   ios-build:
     name: iOS compiles
     needs: scope
-    if: needs.scope.outputs.app == 'true'
+    if: needs.scope.outputs.native == 'true'
     runs-on: macos-latest
     timeout-minutes: 60
     steps:
