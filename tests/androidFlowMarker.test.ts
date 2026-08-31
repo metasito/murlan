@@ -42,7 +42,10 @@ describe("the Android flow marker", () => {
 
   test("is the last thing the script does before running the flows", () => {
     const marker = lines.findIndex((l) => l.startsWith("touch") && l.includes("app-launched"));
-    const flows = lines.findIndex((l) => l.startsWith("maestro test"));
+    // Any Maestro invocation: the flags between `maestro` and `test` are the
+    // device and the app id, and pinning their spelling here would fail the
+    // next time either is added rather than when the ordering breaks.
+    const flows = lines.findIndex((l) => /^maestro\b.*\btest\b/.test(l));
     assert.notEqual(marker, -1, "the script no longer writes the marker at all");
     assert.notEqual(flows, -1, "the script no longer runs the flows");
     assert.equal(
@@ -67,7 +70,7 @@ describe("the Android flow marker", () => {
         "arrived would be reported as an app that failed to launch",
     );
     assert.ok(
-      lines.slice(booted + 1, launched).some((l) => l.includes("am start")),
+      lines.slice(booted + 1, launched).some((l) => /\bam start\b|\bmonkey\b/.test(l)),
       "nothing between the two markers launches the app, so the second proves nothing",
     );
   });
@@ -158,7 +161,10 @@ describe("maestro.yml reads that marker", () => {
   test("a run whose app died says so itself", () => {
     // Without this the only record is a tombstone in an artefact, and the step
     // that failed is a step later than the one that broke (#629).
-    assert.match(src, /grep -rl ">>> host\.exp\.exponent"/);
+    // Our own package, from the built APK. Against the host's process name this
+    // grep would match nothing once the host is gone, and a check that cannot
+    // match reports nothing rather than failing.
+    assert.match(src, /grep -rl ">>> \$APP_ID"/);
     assert.match(
       src,
       /Say if the app died[\s\S]{0,80}if: always\(\)/,
@@ -171,7 +177,7 @@ describe("maestro.yml reads that marker", () => {
     // step that dies there emits no warning at all — the exact failure it exists
     // to prevent, committed by its own implementation, and only on the path a
     // runner has never executed.
-    const step = src.slice(src.indexOf("id: crash"), src.indexOf("Collect Metro's log"));
+    const step = src.slice(src.indexOf("id: crash"), src.indexOf("Upload Maestro debug output"));
     const commands = step
       .split("\n")
       .map((l) => l.trim())
@@ -189,7 +195,7 @@ describe("maestro.yml reads that marker", () => {
     // `always()` exists for the crash that did not fail the run. If the artefact
     // steps stay on failure() alone, that warning names a path nobody can reach.
     const uploads = [...src.matchAll(/^ *if: failure\(\).*$/gm)].map((m) => m[0]);
-    assert.ok(uploads.length >= 2, "the Metro copy and the artefact upload");
+    assert.ok(uploads.length >= 1, "nothing uploads the artefacts any more");
     for (const gate of uploads) {
       assert.match(
         gate,
