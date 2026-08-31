@@ -664,6 +664,7 @@ export const it: Record<keyof typeof en, string> = {
   "onlineLobby.title": "Con Amici",
   "onlineLobby.connectedAs": "Connesso come {{username}}",
   "onlineLobby.connecting": "Connessione…",
+  "onlineLobby.joiningInvite": "Ingresso al tavolo…",
   "onlineLobby.createRoomTitle": "CREA STANZA",
   "onlineLobby.modeLabel": "MODALITÀ",
   "onlineLobby.modeFreeForAll": "Libera",
