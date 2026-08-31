@@ -117,12 +117,14 @@ jobs:
       # applies to the Expo Go SDK below.
       #
       # The iPhone within it is chosen by name rather than taken as simctl
-      # happens to order them, and the SE is excluded: offline-game.yaml taps
-      # the hand fan by percentage of the screen ("17%,81%", +2.5% per slot),
-      # calibrated against a 19.5:9 landscape. The SE is 16:9, so the same
-      # percentages land on a different card, or on none — a red run that
-      # reads as an app regression and is really the runner image having
-      # reordered its device list.
+      # happens to order them, so a runner image that reorders its device list
+      # cannot silently change which device the flows ran on.
+      #
+      # The SE stays excluded, for a smaller reason than the one that used to
+      # be written here: the flows no longer tap the hand by percentage of the
+      # screen (#661 made them name the card), so its 16:9 shape is no longer
+      # disqualifying — it is simply a device nothing has ever driven these
+      # flows on.
       - name: Find and boot an iPhone simulator
         run: |
           udid=$(xcrun simctl list devices available -j | node -e '
