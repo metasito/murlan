@@ -611,14 +611,23 @@ function HomePill({
  *
  * The join cannot happen here: `joinRoom` lives in `OnlineGameContext`, whose
  * provider is mounted inside the `(online)` group alone, and hoisting it would
- * put a socket-backed game context above every signed-out screen. So this
- * navigates into the group and the invite is read there — the invite is
- * already in `SocketContext`, above the whole app, so nothing has to be
- * carried across (#398).
+ * put a socket-backed game context above every signed-out screen. So the tap
+ * records which room the player asked for and the online group performs it —
+ * `SocketContext` sits above the whole app, so nothing is carried across the
+ * route and a back-navigation cannot re-trigger the join.
  */
-function HomeInviteCard({ from, step }: { from: string; step: number }) {
+function HomeInviteCard({
+  from,
+  roomCode,
+  step,
+}: {
+  from: string;
+  roomCode: string;
+  step: number;
+}) {
   const { t } = useTranslation();
   const entrance = useEntrance(step);
+  const { acceptInvite } = useSocket();
 
   return (
     <Animated.View style={[styles.inviteCard, entrance]}>
@@ -630,6 +639,7 @@ function HomeInviteCard({ from, step }: { from: string; step: number }) {
         testID="home-invite-join"
         onPress={() => {
           hapticLight();
+          acceptInvite(roomCode);
           router.push("/(online)");
         }}
         accessibilityLabel={t("home.inviteJoin")}
@@ -839,7 +849,9 @@ export default function HomeScreen() {
             contentContainerStyle={styles.playColumnContent}
             showsVerticalScrollIndicator={false}
           >
-            {invite && <HomeInviteCard from={invite.from} step={STEP_INVITE} />}
+            {invite && (
+        <HomeInviteCard from={invite.from} roomCode={invite.roomCode} step={STEP_INVITE} />
+      )}
             {hero}
             {tiles}
             {howToPlay}
@@ -863,7 +875,9 @@ export default function HomeScreen() {
 
       <View style={styles.header}>{wordmark}</View>
 
-      {invite && <HomeInviteCard from={invite.from} step={STEP_INVITE} />}
+      {invite && (
+        <HomeInviteCard from={invite.from} roomCode={invite.roomCode} step={STEP_INVITE} />
+      )}
 
       <View style={styles.playBlock}>
         {hero}

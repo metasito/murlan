@@ -671,6 +671,7 @@ export const sq: Record<keyof typeof en, string> = {
   "onlineLobby.title": "Me Miq",
   "onlineLobby.connectedAs": "Lidhur si {{username}}",
   "onlineLobby.connecting": "Duke u lidhur…",
+  "onlineLobby.joiningInvite": "Duke hyrë në tavolinë…",
   "onlineLobby.createRoomTitle": "KRIJO DHOMË",
   "onlineLobby.modeLabel": "MODALITETI",
   "onlineLobby.modeFreeForAll": "E lirë",

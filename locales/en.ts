@@ -671,6 +671,7 @@ export const en = {
   "onlineLobby.title": "With Friends",
   "onlineLobby.connectedAs": "Connected as {{username}}",
   "onlineLobby.connecting": "Connecting…",
+  "onlineLobby.joiningInvite": "Joining the table…",
   "onlineLobby.createRoomTitle": "CREATE ROOM",
   "onlineLobby.modeLabel": "MODE",
   "onlineLobby.modeFreeForAll": "Free-for-all",

@@ -10,6 +10,7 @@ import {
   KeyboardAvoidingView,
   Modal,
   Platform,
+  ActivityIndicator,
 } from "react-native";
 import { router } from "expo-router";
 import { hapticMedium, hapticSelection } from "@/lib/haptics";
@@ -26,7 +27,7 @@ import { MenuLayout } from "@/components/MenuLayout";
 import { MenuCard } from "@/components/MenuCard";
 import { MenuButton } from "@/components/MenuButton";
 import { useTranslation } from "@/lib/i18n";
-import { a11yHidden, a11yState, useA11yHint } from "@/lib/a11y";
+import { A11yStatus, a11yHidden, a11yState, useA11yHint } from "@/lib/a11y";
 import { usePrefersReducedMotion } from "@/lib/accessibility";
 
 export default function OnlineLobbyScreen() {
@@ -39,8 +40,9 @@ export default function OnlineLobbyScreen() {
   const { createRoom, joinRoom, spectateRoom, room, isSpectator } = useOnlineRoom();
   const { gameState } = useOnlineTable();
   const { connected, error, clearError } = useOnlineConnection();
-  const { pendingInvite, clearInvite } = useSocket();
+  const { pendingInvite, clearInvite, acceptedInvite, clearAcceptedInvite } = useSocket();
   const [joinModalVisible, setJoinModalVisible] = useState(false);
+  const [joiningInvite, setJoiningInvite] = useState(false);
   const [joinCode, setJoinCode] = useState("");
   const [createMode, setCreateMode] = useState<"free_for_all" | "teams">("free_for_all");
   const [createPlayers, setCreatePlayers] = useState(4);
@@ -64,6 +66,27 @@ export default function OnlineLobbyScreen() {
     if (watching) router.push("/(online)/game");
   }, [watching]);
 
+  // A tap on home's invite card is the player already saying yes, so asking
+  // again with the code prefilled is a step that answers nothing. Held until
+  // the socket is up: `joinRoom` emits, and an emit on a socket that has not
+  // connected is dropped without a word, which would land the player here with
+  // nothing happening and nothing said.
+  useEffect(() => {
+    if (!acceptedInvite) return;
+    setJoiningInvite(true);
+    if (!connected) return;
+    clearAcceptedInvite();
+    joinRoom(acceptedInvite);
+  }, [acceptedInvite, connected, clearAcceptedInvite, joinRoom]);
+
+  // A refused join is the end of it. Success navigates away on `roomId`, so
+  // there is no success case to clear here.
+  useEffect(() => {
+    if (error) setJoiningInvite(false);
+  }, [error]);
+
+  // An invite that merely arrived, on the other hand, has not been answered:
+  // it prefills the code and asks.
   useEffect(() => {
     if (pendingInvite) {
       setJoinCode(pendingInvite.roomCode);
@@ -209,6 +232,20 @@ export default function OnlineLobbyScreen() {
         <Text style={styles.screenTitle}>{t("onlineLobby.title")}</Text>
         <View style={{ width: 38 }} />
       </View>
+
+      {/* Same slot as the error, and mutually exclusive with it: the join either
+          is still happening or has failed. Without this the player taps Join on
+          home, arrives here, and watches an unchanged lobby while the socket
+          connects. */}
+      {joiningInvite && !error && (
+        <View style={styles.joiningBanner}>
+          <A11yStatus label={t("onlineLobby.joiningInvite")} role="alert" live="polite" />
+          <ActivityIndicator size="small" color={Colors.gold} {...a11yHidden()} />
+          <Text style={styles.joiningBannerText} numberOfLines={1} {...a11yHidden()}>
+            {t("onlineLobby.joiningInvite")}
+          </Text>
+        </View>
+      )}
 
       {/* In the layout flow, not over it: an absolutely positioned banner comes
           to rest on the create button and swallows its taps. `Alert` is not an
@@ -409,6 +446,21 @@ const styles = StyleSheet.create({
     paddingHorizontal: Spacing.md,
     paddingVertical: Spacing.sm,
     marginBottom: Spacing.sm,
+  },
+  joiningBanner: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: Spacing.sm,
+    backgroundColor: Colors.goldGhost,
+    borderRadius: Radius.md,
+    paddingHorizontal: Spacing.md,
+    paddingVertical: Spacing.sm,
+    marginBottom: Spacing.sm,
+  },
+  joiningBannerText: {
+    ...Type.body,
+    color: Colors.gold,
+    flex: 1,
   },
   errorBannerText: {
     ...Type.body,
