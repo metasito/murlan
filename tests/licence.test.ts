@@ -6,16 +6,30 @@
 // default gets mistaken for a gap and "fixed".
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
-import { existsSync, readFileSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
+import path from "node:path";
 
-const README = "README.md";
+// Resolved from this file, never from the cwd: a cwd-relative `existsSync`
+// passes from any directory that happens not to hold a licence, which is every
+// directory but one.
+const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+const README = path.join(repoRoot, "README.md");
+
+/**
+ * Anything GitHub would read as a licence, rather than a list of the three
+ * spellings that came to mind. `LICENCE` is the likeliest of all here — it is
+ * the spelling this repository uses in its own prose — and CI is Linux, where
+ * a lowercase `license` is a different file again.
+ */
+const LICENCE_LIKE = /^(licen[cs]e|copying)(\.|$)/i;
 
 describe("the licence position", () => {
-  test("there is no LICENSE file", () => {
-    assert.equal(
-      existsSync("LICENSE") || existsSync("LICENSE.md") || existsSync("LICENSE.txt"),
-      false,
-      "a LICENSE file appeared. #297 decided this source is not licensed for reuse — if that " +
+  test("there is no licence file, under any spelling", () => {
+    assert.deepEqual(
+      readdirSync(repoRoot).filter((name) => LICENCE_LIKE.test(name)),
+      [],
+      "a licence file appeared. #297 decided this source is not licensed for reuse — if that " +
         "changed, the decision goes on #297 and README.md's own statement changes with it"
     );
   });
