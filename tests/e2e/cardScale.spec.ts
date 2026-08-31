@@ -56,3 +56,48 @@ test.describe("card size follows the viewport's short edge", () => {
     ).toBeGreaterThan(shortEdgeRatio * 0.7);
   });
 });
+
+/**
+ * A card draws one outline: its own cut edge.
+ *
+ * Both the face and the back also carried a printed border a few points inside
+ * that edge — a second rounded rectangle, symmetric in the DOM to the point of
+ * a pixel. It still read as off-centre, because a card is not only its box: a
+ * lit lip sits along the bottom edge and the drop shadow falls the same way, so
+ * the *seen* card is a couple of points taller at the bottom than the box the
+ * inner line was centred in. Two nested outlines is one more than a card has,
+ * and the owner asked for the inner one gone (2026-08-31).
+ *
+ * Only a browser can count them: `react-test-renderer` never resolves a style
+ * array into computed values, so a second border is invisible to a unit test.
+ */
+test("a card draws its own cut edge and nothing inside it", async ({ page, baseURL }) => {
+  test.setTimeout(120_000);
+  await page.setViewportSize(LARGE);
+  await openSeededGame(page, baseURL!, 4);
+
+  const outlines = await page.evaluate(() => {
+    const out: { where: string; count: number }[] = [];
+    for (const box of Array.from(document.querySelectorAll('[data-testid="card-box"]'))) {
+      let count = 0;
+      const walk = (n: Element) => {
+        if ((parseFloat(getComputedStyle(n).borderTopWidth) || 0) > 0) count++;
+        for (const k of Array.from(n.children)) walk(k);
+      };
+      walk(box);
+      // SVG strokes drawn as a rounded rect inside the card count too — the
+      // back's panel was one of those, not a CSS border.
+      count += box.querySelectorAll("rect[rx]:not([fill]), rect[rx][fill='none']").length;
+      out.push({ where: box.getAttribute("aria-label") ?? "?", count });
+    }
+    return out;
+  });
+
+  expect(outlines.length, "no card on the table to measure").toBeGreaterThan(0);
+  for (const o of outlines) {
+    expect(
+      o.count,
+      `${o.where} draws ${o.count} outlines — a card has one, its cut edge`
+    ).toBeLessThanOrEqual(1);
+  }
+});

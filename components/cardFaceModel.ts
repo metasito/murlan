@@ -62,19 +62,7 @@ export function cardRadius(w: number): number {
   return w * CARD_RADIUS_RATIO;
 }
 
-const PRINT_BORDER_INSET_RATIO = 2.5 / FACE_H;
-const PRINT_BORDER_RADIUS_RATIO = 2 / FACE_H;
 const STOCK_LIP_RATIO = 1 / FACE_H;
-
-/** How far the printed border sits inside the card's own cut edge. */
-export function printBorderInset(h: number): number {
-  return h * PRINT_BORDER_INSET_RATIO;
-}
-
-/** Corner radius of the printed border — tighter than the cut edge's own. */
-export function printBorderRadius(h: number): number {
-  return h * PRINT_BORDER_RADIUS_RATIO;
-}
 
 /** Height of the lit lip along the stock's bottom edge. */
 export function stockLipHeight(h: number): number {
@@ -86,10 +74,6 @@ export function stockLipHeight(h: number): number {
 // The back's own corner radius is `cardRadius` above, fed the back's own
 // width — CARD_BACK_W/H is a different aspect ratio than the face, so the
 // ratio has to derive from that width rather than reuse the face's radius.
-// Only the lattice panel drawn inside it needs a ratio of its own, authored
-// at 2x table scale like the rest of the card and halved here.
-const BACK_LATTICE_INSET_RATIO = 1.5 / BACK_H;
-const BACK_LATTICE_RADIUS_RATIO = 1.5 / BACK_H;
 
 /**
  * The card back's 45 degree lattice, as one SVG path. A fine line reads as
@@ -111,16 +95,6 @@ export function getLattice(w: number, h: number, spacing: number): string {
     latticeCache.set(key, d);
   }
   return d;
-}
-
-/** How far the lattice panel sits inside the back's own cut edge. */
-export function cardBackLatticeInset(h: number): number {
-  return h * BACK_LATTICE_INSET_RATIO;
-}
-
-/** Corner radius of the lattice panel. */
-export function cardBackLatticeRadius(h: number): number {
-  return h * BACK_LATTICE_RADIUS_RATIO;
 }
 
 /**
