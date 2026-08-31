@@ -39,6 +39,13 @@ const POSITION_LABEL_KEYS: TranslationKey[] = [
   "gameOverOverlay.position4",
 ];
 const POSITION_ICONS = ["trophy", "medal", "ribbon", "remove-circle"] as const;
+// Home states a width so the primary beside it gets a known remainder, and the
+// pair keeps its proportions rather than shifting with the locale's word for
+// "Home". 120 leaves the longest of the three primaries a line to itself at
+// 375pt, the narrowest supported width.
+const HOME_BTN_W = 120;
+const ACTION_ICON = 18;
+const STAT_ICON = 14;
 
 function ScoreRow({
   rank,
@@ -186,7 +193,6 @@ export default function ResultScreen() {
 
   if (!gameState) return null;
 
-  const numPlayers = gameState.players.length;
   const isTeamMode = gameState.gameMode === "teams";
   const isSingleHand = match.length === "single";
 
@@ -275,29 +281,32 @@ export default function ResultScreen() {
       : t("result.tableStops")
     : null;
 
-  const actionsBlock = (compact?: boolean) => (
-    <View style={[styles.actions, compact && styles.actionsRow]}>
+  // One block in both orientations: a quiet exit of a stated width beside a
+  // primary that takes the rest. Both stretch to the taller of the two, so the
+  // pair cannot come out ragged whatever the locale does to the label.
+  const actionsBlock = () => (
+    <View style={styles.actions}>
       <Pressable
         testID="btn-home"
         onPress={handleHome}
-        style={[styles.homeBtn, compact && styles.homeBtnCompact]}
+        style={styles.homeBtn}
         accessibilityRole="button"
         accessibilityLabel={t("result.home")}
       >
-        <Ionicons name="home" size={18} color={Colors.textSecondary} {...a11yHidden()} />
-        {!compact && <Text style={styles.homeBtnText} {...a11yHidden()}>{t("result.home")}</Text>}
+        <Ionicons name="home" size={ACTION_ICON} color={Colors.textSecondary} {...a11yHidden()} />
+        <Text style={styles.homeBtnText} numberOfLines={1} {...a11yHidden()}>{t("result.home")}</Text>
       </Pressable>
       {continueAction && (
         <Pressable
           testID={continueAction.testID}
           onPress={continueAction.onPress}
-          style={[styles.rematchBtn, compact && styles.rematchBtnFlex]}
+          style={styles.rematchBtn}
           accessibilityRole="button"
           accessibilityLabel={continueAction.label}
         >
-          <LinearGradient colors={[Colors.gold, Colors.goldDark]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={[styles.rematchGrad, compact && styles.rematchGradCompact]}>
-            <Ionicons name={continueAction.icon} size={18} color={Colors.bgCard} {...a11yHidden()} />
-            <Text style={styles.rematchText} {...a11yHidden()}>{continueAction.label}</Text>
+          <LinearGradient colors={[Colors.gold, Colors.goldDark]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.rematchGrad}>
+            <Ionicons name={continueAction.icon} size={ACTION_ICON} color={Colors.bgCard} {...a11yHidden()} />
+            <Text style={styles.rematchText} numberOfLines={1} {...a11yHidden()}>{continueAction.label}</Text>
           </LinearGradient>
         </Pressable>
       )}
@@ -324,25 +333,22 @@ export default function ResultScreen() {
     />
   ));
 
-  const statTiles = (iconSize: number) => (
+  // A row apiece rather than a strip of tiles: the strip only fitted because
+  // the column it sits in is narrow, and the same anatomy has to read the same
+  // in portrait, where there is width to spare. The player count is not among
+  // them — the rankings already show one row per player.
+  const statRow = (icon: keyof typeof Ionicons.glyphMap, value: string | number, label: string) => (
+    <View style={styles.statItem}>
+      <Ionicons name={icon} size={STAT_ICON} color={Colors.gold} {...a11yHidden()} />
+      <Text style={styles.statLabel}>{label}</Text>
+      <Text style={styles.statValue}>{value}</Text>
+    </View>
+  );
+
+  const statRows = (
     <>
-      <View style={styles.statItem}>
-        <Ionicons name="people" size={iconSize} color={Colors.gold} />
-        <Text style={styles.statValue}>{numPlayers}</Text>
-        <Text style={styles.statLabel}>{t("result.statPlayers")}</Text>
-      </View>
-      <View style={styles.statItem}>
-        <Ionicons name="layers" size={iconSize} color={Colors.gold} />
-        <Text style={styles.statValue}>{match.hands.length}</Text>
-        <Text style={styles.statLabel}>{t("result.statHands")}</Text>
-      </View>
-      {!isSingleHand && (
-        <View style={styles.statItem}>
-          <Ionicons name="flag" size={iconSize} color={Colors.gold} />
-          <Text style={styles.statValue}>{match.target}</Text>
-          <Text style={styles.statLabel}>{t("result.statTarget")}</Text>
-        </View>
-      )}
+      {statRow("layers", match.hands.length, t("result.statHands"))}
+      {!isSingleHand && statRow("flag", match.target, t("result.statTarget"))}
     </>
   );
 
@@ -356,22 +362,18 @@ export default function ResultScreen() {
         <View style={styles.landscapeBody}>
           <View style={styles.landscapeLeft}>
             <WinnerCelebration name={celebratedName} subtitle={celebrationSubtitle} compact />
-            <View style={styles.statsRowLandscape}>{statTiles(14)}</View>
+            <View style={styles.statList}>{statRows}</View>
             {verdictLine && <Text style={styles.verdictLine}>{verdictLine}</Text>}
-            {actionsBlock(true)}
           </View>
 
+          {/* The actions close this column rather than the other one: the
+              rankings are what the eye reads, so this is where it finishes. */}
           <View style={styles.landscapeRight}>
             <Text style={styles.sectionTitle}>{t("gameOverOverlay.rankingsTitle")}</Text>
-            <ScrollView showsVerticalScrollIndicator={false} style={styles.landscapeRankScroll} contentContainerStyle={styles.landscapeRankList}>
+            <ScrollView testID="result-rankings" showsVerticalScrollIndicator={false} style={styles.landscapeRankScroll} contentContainerStyle={styles.landscapeRankList}>
               {rankRows}
             </ScrollView>
-            <View style={styles.legend}>
-              <Ionicons name="information-circle-outline" size={10} color={Colors.textMuted} />
-              <Text style={styles.legendText}>
-                {t("result.legend", { a: numPlayers - 1, b: numPlayers - 2 })}
-              </Text>
-            </View>
+            {actionsBlock()}
           </View>
         </View>
       </View>
@@ -389,23 +391,17 @@ export default function ResultScreen() {
         showsVerticalScrollIndicator={false}
       >
         <WinnerCelebration name={celebratedName} subtitle={celebrationSubtitle} />
-        <View style={styles.statsRow}>
-          {statTiles(16)}
-          <View style={styles.statItem}>
-            <Ionicons name={isTeamMode ? "people-circle" : "person-circle"} size={16} color={Colors.gold} />
-            <Text style={styles.statValue}>{isTeamMode ? t("gameOverOverlay.modeTeams") : t("gameOverOverlay.modeFreeForAll")}</Text>
-            <Text style={styles.statLabel}>{t("result.statMode")}</Text>
-          </View>
+        <View style={styles.statList}>
+          {statRows}
+          {statRow(
+            isTeamMode ? "people-circle" : "person-circle",
+            isTeamMode ? t("gameOverOverlay.modeTeams") : t("gameOverOverlay.modeFreeForAll"),
+            t("result.statMode")
+          )}
         </View>
         <View style={styles.rankSection}>
           <Text style={styles.sectionTitle}>{t("gameOverOverlay.rankingsTitle")}</Text>
-          <View style={styles.rankList}>{rankRows}</View>
-          <View style={styles.legend}>
-            <Ionicons name="information-circle-outline" size={11} color={Colors.textMuted} />
-            <Text style={styles.legendText}>
-              {t("result.legend", { a: numPlayers - 1, b: numPlayers - 2 })}
-            </Text>
-          </View>
+          <View testID="result-rankings" style={styles.rankList}>{rankRows}</View>
         </View>
         {verdictLine && <Text style={styles.verdictLine}>{verdictLine}</Text>}
         {actionsBlock()}
@@ -457,9 +453,8 @@ const styles = StyleSheet.create({
     width: 170,
     minWidth: 130,
     maxWidth: 200,
-    justifyContent: "space-between",
     paddingVertical: Spacing.xs,
-    gap: Spacing.sm,
+    gap: Spacing.snug,
   },
   landscapeRight: {
     flex: 1,
@@ -525,15 +520,15 @@ const styles = StyleSheet.create({
     textTransform: "uppercase",
   },
 
-  statsRow: { flexDirection: "row", gap: Spacing.slim },
-  statsRowLandscape: { flexDirection: "row", gap: Spacing.xs },
+  statList: { gap: Spacing.slim },
   statItem: {
-    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: Spacing.sm,
     backgroundColor: Colors.bgSurface,
     borderRadius: Radius.sm,
-    padding: Spacing.sm,
-    alignItems: "center",
-    gap: Spacing.xxs,
+    paddingVertical: Spacing.slim,
+    paddingHorizontal: Spacing.snug,
     borderWidth: 1,
     borderColor: Colors.border,
   },
@@ -543,48 +538,43 @@ const styles = StyleSheet.create({
     color: Colors.text,
   },
   statLabel: {
+    flex: 1,
     fontFamily: "Inter_400Regular",
-    fontSize: FontSize.xxs,
+    fontSize: FontSize.xs,
     color: Colors.textMuted,
   },
 
-  actions: { gap: Spacing.sm },
-  actionsRow: { flexDirection: "row", gap: Spacing.sm },
+  // `stretch`, not the default: it is what makes the two the same height when
+  // one of them is taller, which is the pairing this screen was missing.
+  actions: { flexDirection: "row", alignItems: "stretch", gap: Spacing.sm },
   homeBtn: {
+    width: HOME_BTN_W,
     minHeight: TOUCH_TARGET_MIN,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
     gap: Spacing.slim,
     paddingVertical: Spacing.wide,
-    paddingHorizontal: Spacing.md,
+    paddingHorizontal: Spacing.sm,
     borderRadius: Radius.md,
     backgroundColor: Colors.bgSurface,
     borderWidth: 1,
     borderColor: Colors.border,
-  },
-  homeBtnCompact: {
-    paddingVertical: Spacing.wide,
-    paddingHorizontal: Spacing.wide,
-    borderRadius: Radius.md,
   },
   homeBtnText: {
     fontFamily: "Rajdhani_600SemiBold",
     fontSize: FontSize.md,
     color: Colors.textSecondary,
   },
-  rematchBtn: { minHeight: TOUCH_TARGET_MIN, borderRadius: Radius.md, overflow: "hidden" },
-  rematchBtnFlex: { flex: 1 },
+  rematchBtn: { flex: 1, minHeight: TOUCH_TARGET_MIN, borderRadius: Radius.md, overflow: "hidden" },
   rematchGrad: {
+    flex: 1,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
     gap: Spacing.sm,
     paddingVertical: Spacing.wide,
-    paddingHorizontal: Spacing.md,
-  },
-  rematchGradCompact: {
-    paddingVertical: Spacing.wide,
+    paddingHorizontal: Spacing.sm,
   },
   rematchText: {
     fontFamily: "Rajdhani_700Bold",
@@ -640,17 +630,6 @@ const styles = StyleSheet.create({
   },
   totalScoreWinner: { color: Colors.gold },
   scoreSub: {
-    fontFamily: "Inter_400Regular",
-    fontSize: FontSize.xxs,
-    color: Colors.textMuted,
-  },
-  legend: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: Spacing.xs,
-    paddingTop: Spacing.xxs,
-  },
-  legendText: {
     fontFamily: "Inter_400Regular",
     fontSize: FontSize.xxs,
     color: Colors.textMuted,
