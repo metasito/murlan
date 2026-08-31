@@ -98,9 +98,15 @@ env:
 # a fraction — so the screen died on open, on device, against a green CI.
 # Opening it is the only way to exercise that mount for real.
 #
-# Tapped and asserted by accessibility label and by untransformed copy: the
-# modal's own title is uppercased by a style, which is not what the tree holds.
+# Asserted on the music slider, because the slider is what #389 killed: it is
+# the node whose accessibilityValue Fabric converts to int. A title would mount
+# with the crash still in the tree below it.
+#
+# `"Volume"` alone never matched anything — Maestro matches the *whole* element,
+# and the tree holds the slider's label with its value appended
+# ("Volume della musica di sottofondo, 50%" on Android). The trailing `.*`
+# carries that suffix and the platforms that omit it, without pinning a volume.
 - tapOn: "Impostazioni"
-- assertVisible: "Volume"
+- assertVisible: "Volume della musica di sottofondo.*"
 - tapOn: "Chiudi impostazioni"
 - assertVisible: "Offline"
