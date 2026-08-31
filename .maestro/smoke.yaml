@@ -67,17 +67,19 @@ env:
     # identically to the app never loading at all.
     timeout: 180000
 # First cold launch auto-pushes the interactive tutorial
-# (app/index.tsx effect on `@murlan_tutorial_seen`). Skip it like a real
-# user would so the flag gets set and we land on the actual home screen.
+# (app/index.tsx effect on `@murlan_tutorial_seen`), and it has to go before
+# anything on the home screen can be asserted.
 #
-# Tapped by the button's accessibilityLabel rather than its visible "Salta":
-# the label is the one node the control exposes, its Text child being hidden
-# from the tree on purpose.
+# `back`, not a tap on "Salta il tutorial": no control on this screen takes
+# touch on Android, the Skip button no more than the body's own "Inizia" —
+# #627 has it measured with `adb shell input tap` and no Maestro in the loop.
+# Restore the tap when #627 closes. It is the input a real user gives, and
+# this line passes either way, so nothing else will notice it standing in.
 - runFlow:
     when:
-      visible: "Salta il tutorial"
+      visible: "GUIDA RAPIDA"
     commands:
-      - tapOn: "Salta il tutorial"
+      - back
       - extendedWaitUntil:
           notVisible: "GUIDA RAPIDA"
           timeout: 10000
