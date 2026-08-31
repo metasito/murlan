@@ -72,22 +72,13 @@ env:
                 text: "Apri|Open"
                 optional: true
 # Waited for and exited on the Skip button, which the header carries on every beat.
-# "GUIDA RAPIDA" is the card title of an `info` beat only — a `play` beat titles
-# the card after itself and `complete` has its own — so gating on it would skip
-# the block on most of the tutorial, and waiting for it to go would be satisfied
-# by the tutorial merely advancing a beat. Being untappable on Android does not
-# make the button invisible, which is all `visible` asks.
+# "GUIDA RAPIDA" is the card title of an `info` beat only — a `play` beat titles the card
+# after itself and `complete` has its own — so gating on it would skip the block on most of
+# the tutorial, and waiting for it to go would be satisfied by the tutorial merely advancing
+# a beat.
 #
-# Split by platform because Android has no working tap here at all: no control on
-# this screen takes touch — the Skip button no more than the body's own "Inizia"
-# — so the tap fires into nothing; #627 has it measured with `adb shell input
-# tap` and no Maestro in the loop. Maestro's `back` on iOS is an edge-swipe
-# gesture rather than a key press, so it is not a like-for-like substitute to
-# hand that platform as well.
-#
-# The iOS tap targets the button's accessibilityLabel, not its visible "Salta":
-# the Text child is `a11yHidden` on purpose, so the label is the only node the
-# control exposes. Collapse this to that tap alone when #627 closes.
+# The tap targets the button's accessibilityLabel, not its visible "Salta": the Text child is
+# `a11yHidden` on purpose, so the label is the only node the control exposes.
 - runFlow:
     commands:
       # Waited for, not asked about. `clearState` means the tutorial has never
@@ -102,16 +93,7 @@ env:
       - extendedWaitUntil:
           visible: "Salta il tutorial"
           timeout: 180000
-      - runFlow:
-          when:
-            platform: Android
-          commands:
-            - back
-      - runFlow:
-          when:
-            platform: iOS
-          commands:
-            - tapOn: "Salta il tutorial"
+      - tapOn: "Salta il tutorial"
       # Ten seconds was a developer machine dismissing a sheet. A device on a
       # shared runner is slower, and running out there reads as a dead control
       # rather than a slow one.

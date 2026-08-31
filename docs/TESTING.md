@@ -323,48 +323,26 @@ default passes, and the same flow against a wrong port fails.
 
 ### What CI runs, and what it does not
 
-`.github/workflows/maestro.yml` runs **`smoke.yaml` only**, and **on demand
-only** — `on: workflow_dispatch:`, with no `push` trigger. It was taken off
-`main` for #186's boot flake; #354 owns bringing a trigger back, and wants
-`pull_request` rather than `push`. Settling #186 alone is not enough to restore
-it, because the job is also red on #619.
+`.github/workflows/maestro.yml` compiles a **release APK** and drives that, and
+runs both `smoke.yaml` and `offline-game.yaml`. It is **on demand only** —
+`on: workflow_dispatch:`, no `push` trigger. It was taken off `main` for #186's
+boot flake, and #354 owns bringing a trigger back, wanting `pull_request`
+rather than `push`.
 
-`offline-game.yaml` reached the game table on a runner and then died there with
-no assertion message - the emulator going down, not the app being wrong, and the
-thing this section predicted before the job had ever run. More memory, more
-cores and a longer wait changed nothing. It still passes locally, a real hand to
-the result screen in about sixteen minutes. See #185.
+`ios.yml` is the same shape on a simulator: `xcodebuild`, install, drive.
 
-That last paragraph is the state as of **2026-08-21**, and it cannot be
-rechecked yet: the tutorial-skip block in `offline-game.yaml` waits on a Skip
-control that taps and does nothing on Android (#619), so the flow no longer
-reaches the table at all.
+### What CI no longer needs
 
-That is an inference, and worth marking as one. No run of `offline-game.yaml`
-exists to show it — CI drives `smoke.yaml` only, as three lines above says. What
-was measured is smoke's *identical* skip block failing 4/4 on Android; the two
-flows carry the same block, so the same wall stands in front of both.
+Everything below was required while the job drove **Expo Go**, and each item
+stopped the flows before they reached a single screen the app rendered (#35). A
+release build carries its own JavaScript, so all of it is gone: the client APK
+resolved against the pinned SDK, the dev server, the guest's route to it via
+`adb reverse`, `expo start --offline` for the EAS-linked project's unsigned
+manifest, and warming the bundle so the device was not served a cold build.
 
-### What CI supplies that a developer's machine supplies by hand
-
-The first time this job ran, each of these was missing in turn (#35), and each
-one stops the flows before they reach a single screen the app renders:
-
-- **Expo Go is not on a stock system image.** Locally `expo start --android`
-  installs it on first connect. The job downloads the client for the SDK
-  `package.json` pins — Expo Go carries one SDK at a time, so the newest
-  published client is the wrong one as soon as it moves ahead of this project.
-- **The dev server must be reachable from the guest** — see `adb reverse` above.
-- **`expo start --offline`.** `app.json` carries an EAS `projectId`, so Expo Go
-  asks the linked project for a *signed* manifest; signing wants an
-  authenticated Expo account, and a runner has none. Without it the request
-  fails with `Input is required, but 'npx expo' is in non-interactive mode`,
-  and the device reports only "Something went wrong". Offline serves the same
-  manifest unsigned, which Expo Go accepts.
-
-Metro also bundles on demand, so without warming it the first request for the
-bundle is the device's — a cold build of the whole app inside the 60s the flows
-allow for it to appear, on cores the emulator is competing for.
+The Expo Go path still exists for a developer driving flows by hand — see the
+locale note above, which is the one thing that path still needs and the release
+path does not.
 
 ### Real findings from actually running this, not just writing YAML
 
@@ -382,8 +360,8 @@ only taps that ever landed were on Expo Go's own native dialogs.** No flow had
 ever pressed one of our controls. `ios.yml` therefore compiles the app
 (`expo prebuild` + `xcodebuild -configuration Release`) and installs that on
 the simulator — Release so the JS is bundled in, which also removes Metro, the
-packager URL, the deep link and the launch dialog. `maestro.yml` is still on
-Expo Go; #627 owns its half. The rest of this section is what the Expo Go path
+packager URL, the deep link and the launch dialog. Both device jobs now build
+and drive the app itself. The rest of this section is what the Expo Go path
 still has to deal with while it lasts.
 
 **Expo Go's own dev-menu is two stacked layers, and the top one lies about

@@ -129,8 +129,29 @@ Each of these produced a confident, wrong "fixed" in one session:
   Expo Go's own native dialogs — a `back` **key** works, because keys reach the app rather
   than going through window hit-testing (#627). So "the Maestro flow passed" was a claim about
   assertions, not about anything being pressable, and it has been load-bearing in at least one
-  closed ticket. `ios.yml` now compiles the app and drives that instead; `maestro.yml` still
-  goes through Expo Go, so read an Android green with this in mind.
+  closed ticket. Both device jobs now compile the app and drive that, so a green from either
+  is a claim about this app. Any Maestro green recorded before 2026-08-31 is not.
+
+## Which device loop sees what
+
+Both jobs build a **release** binary and drive it, so neither needs a dev server and neither
+can be confused by the host. They are `workflow_dispatch` only — #354 owns the trigger.
+
+| | `ios.yml` | `maestro.yml` |
+| --- | --- | --- |
+| Builds | `xcodebuild`, active arch only | `./gradlew assembleRelease` |
+| Runs | smoke + offline-game | smoke + offline-game |
+| Locale | `launchApp` arguments, no boot | `persist.sys.locale` + a real reboot |
+| Roughly | 23 min | 25 min, most of it Gradle |
+
+Neither can see what the other can. iOS is a simulator on the host, so it has no emulator boot
+to flake (#186) and no KVM; Android is a virtual device, so it is the only one that produces a
+logcat and a tombstone when the app dies natively (#629). A defect that reproduces on one and
+not the other is a real finding about that platform, not a broken job — #209 and #627 were both
+that shape.
+
+What neither sees: anything requiring a signed release or the Play/App Store runtime, and any
+regression in a code path the two flows do not walk.
 
 ## A scan needs a planted floor
 

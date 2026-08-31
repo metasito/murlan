@@ -113,6 +113,51 @@ describe("every flow asks for the locale it selects on", () => {
   }
 });
 
+describe("the Android job drives this app, not Expo Go", () => {
+  const workflow = read(".github/workflows/maestro.yml");
+  const action = read(".github/actions/drive-android-flows/action.yml");
+
+  test("it builds and installs a build of this app", () => {
+    assert.match(workflow, /expo prebuild --platform android/);
+    assert.match(workflow, /assembleRelease/);
+    assert.match(action, /adb install .*APP_APK/);
+  });
+
+  test("it never fetches or installs Expo Go", () => {
+    // The Expo Go client came from a network fetch resolved against the pinned
+    // SDK, and the app was reached by a deep link into it. Either one returning
+    // is the whole class coming back.
+    for (const trace of [/androidClientUrl/, /expo-go/i, /host\.exp/i, /exp:\/\//]) {
+      assert.doesNotMatch(workflow, trace, `maestro.yml still mentions ${trace}`);
+      assert.doesNotMatch(action, trace, `drive-android-flows still mentions ${trace}`);
+    }
+  });
+
+  test("it starts no dev server, because a release build carries its bundle", () => {
+    // A release APK needs no packager. Starting one again would mean the build
+    // is loading its JavaScript from somewhere else, which is a different app.
+    for (const trace of [/expo start/, /8081/, /adb reverse/]) {
+      assert.doesNotMatch(workflow, trace, `maestro.yml still mentions ${trace}`);
+      assert.doesNotMatch(action, trace, `drive-android-flows still mentions ${trace}`);
+    }
+  });
+
+  test("it tells the flows which app they are driving, and names the device", () => {
+    assert.match(action, /maestro\b[^\n]*--device\b/);
+    assert.match(action, /test -e MAESTRO_APP_ID=/);
+  });
+
+  test("the package name comes from the built APK rather than being written twice", () => {
+    assert.match(workflow, /dump packagename/);
+  });
+
+  test("the crash check looks for our own package", () => {
+    // Grepping the host's process name finds nothing once the host is gone,
+    // and a check that can no longer match reports nothing rather than failing.
+    assert.match(workflow, /grep -rl ">>> \$APP_ID"/);
+  });
+});
+
 describe("every flow can be driven without a packager", () => {
   for (const rel of FLOWS) {
     test(`${rel} reaches the packager only under a condition`, () => {
