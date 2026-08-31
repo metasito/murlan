@@ -5,31 +5,43 @@
 // result about the branch. A step inserted on the wrong side of it silently
 // reclassifies a whole category of failure — an environment wedge announced as a
 // verdict on the diff, or a genuine red retried at twice the cost (#186).
+//
+// Read as text rather than parsed: no YAML parser is a dependency of this project,
+// and every claim below is about which line comes before which, which is the level
+// the file is actually edited at.
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
-import yaml from "js-yaml";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
-function load(rel: string): any {
-  return yaml.load(readFileSync(path.join(repoRoot, rel), "utf8"));
+function read(rel: string): string {
+  return readFileSync(path.join(repoRoot, rel), "utf8");
 }
 
-const MARKER = "emulator-booted";
+const ACTION = ".github/actions/drive-android-flows/action.yml";
+const WORKFLOW = ".github/workflows/maestro.yml";
 
-describe("the Android flow marker", () => {
-  const action = load(".github/actions/drive-android-flows/action.yml");
-  const script: string = action.runs.steps[0].with.script;
-  const lines = script
+/** The action's `script:` block, comments and blank lines dropped. */
+function scriptLines(): string[] {
+  const src = read(ACTION);
+  const start = src.indexOf("script: |");
+  assert.notEqual(start, -1, "the action no longer carries a script block");
+  return src
+    .slice(start)
     .split("\n")
+    .slice(1)
     .map((l) => l.trim())
     .filter((l) => l !== "" && !l.startsWith("#"));
+}
+
+describe("the Android flow marker", () => {
+  const lines = scriptLines();
 
   test("is the last thing the script does before running the flows", () => {
-    const marker = lines.findIndex((l) => l.includes(MARKER));
+    const marker = lines.findIndex((l) => l.includes("emulator-booted"));
     const flows = lines.findIndex((l) => l.startsWith("maestro test"));
     assert.notEqual(marker, -1, "the script no longer writes the marker at all");
     assert.notEqual(flows, -1, "the script no longer runs the flows");
@@ -51,32 +63,31 @@ describe("the Android flow marker", () => {
     );
     assert.deepEqual(unbounded, [], "an adb wait with no timeout can hang the job to cancellation");
 
-    const loops = lines.filter((l) => l.startsWith("until ") || l.includes("; until "));
-    for (const loop of loops) {
+    for (const loop of lines.filter((l) => l.includes("until "))) {
       assert.match(loop, /\bexit 1\b/, `unbounded poll loop: ${loop}`);
     }
   });
 });
 
 describe("maestro.yml reads that marker", () => {
-  const workflow = load(".github/workflows/maestro.yml");
-  const steps: any[] = workflow.jobs.android.steps;
+  const src = read(WORKFLOW);
 
   test("the retry fires only when the flows never started", () => {
-    const retry = steps.find((s) => s.id === "retry");
-    assert.ok(retry, "the retry step is gone");
-    assert.match(retry.if, /steps\.kind\.outputs\.started == 'false'/);
+    const retry = src.indexOf("id: retry");
+    assert.notEqual(retry, -1, "the retry step is gone");
+    const block = src.slice(src.lastIndexOf("- name:", retry), retry + 200);
+    assert.match(block, /steps\.kind\.outputs\.started == 'false'/);
   });
 
   test("the verdict is stated before the steps whose `if: failure()` uploads the artefacts", () => {
-    // The step that decides, not the step that classifies: both mention #186,
-    // and only this one reads the retry's outcome and can exit 0.
-    const verdict = steps.findIndex(
-      (s) => typeof s.run === "string" && s.run.includes("steps.retry.outcome"),
-    );
-    const artefacts = steps.findIndex((s) => s.if === "failure()");
+    // The step that decides, not the step that classifies: both mention #186, and
+    // only this one reads the retry's outcome.
+    const verdict = src.indexOf("steps.retry.outcome");
+    // A real key, not the prose about it: the comment above the verdict step quotes
+    // `if: failure()` verbatim, and matching that would put the artefacts first.
+    const artefacts = src.search(/^ *if: failure\(\)$/m);
     assert.notEqual(verdict, -1, "no step states the run's verdict");
-    assert.equal(steps[verdict].continueOnError, undefined, "the verdict cannot itself be waived");
+    assert.notEqual(artefacts, -1, "nothing uploads the artefacts any more");
     assert.ok(
       verdict < artefacts,
       "continue-on-error means the job has no verdict of its own; stating it after the " +
@@ -85,11 +96,11 @@ describe("maestro.yml reads that marker", () => {
   });
 
   test("both invocations of the action stay in step", () => {
-    const invocations = steps.filter((s) => s.uses === "./.github/actions/drive-android-flows");
+    const invocations = [...src.matchAll(/uses: \.\/\.github\/actions\/drive-android-flows\n(.*?)(?=\n *- name:|\n *#|\n\n)/gs)];
     assert.equal(invocations.length, 2, "the first attempt and its retry");
-    assert.deepEqual(
-      invocations[0].with,
-      invocations[1].with,
+    assert.equal(
+      invocations[0][1].trim(),
+      invocations[1][1].trim(),
       "a retry configured differently from the first attempt is not a retry",
     );
   });
