@@ -2,6 +2,8 @@
   "a11yOverlays.spec.ts": 7.7,
   "cardScale.spec.ts": 3.8,
   "controlRail.spec.ts": 7,
+  "exchangeFit.spec.ts": 3.1,
+  "exchangeNoOverlap.spec.ts": 2.5,
   "exchangePickChange.spec.ts": 2.2,
   "gameSettingsSheet.spec.ts": 14.5,
   "handBudget.spec.ts": 8.8,
@@ -16,11 +18,10 @@
   "online.spec.ts": 63.6,
   "reconnect.spec.ts": 4,
   "seatFans.spec.ts": 15,
+  "smokeFlowCopy.spec.ts": 33,
   "suitDefs.spec.ts": 2.2,
   "tableFit.spec.ts": 62.6,
   "tableProportions.spec.ts": 63.6,
   "tapTargets.spec.ts": 31.9,
-  "webFonts.spec.ts": 1.7,
-  "exchangeFit.spec.ts": 3.1,
-  "exchangeNoOverlap.spec.ts": 2.5
+  "webFonts.spec.ts": 1.7
 }
