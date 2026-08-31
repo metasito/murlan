@@ -308,6 +308,75 @@ jobs:
       - run: npm ci
       - run: npm run lint
 
+  # Nothing else in this workflow compiles the app for a device. `build` makes
+  # the web bundle, the server bundle and the static Expo Go export, none of
+  # which touch Gradle or Xcode, so a plugin or dependency that breaks the
+  # native project lands green and is found on someone's phone (#209 was
+  # iOS-only). These two jobs answer "does the native project still build",
+  # which is not the same as "does it render" — the device loops (#442) own
+  # that, and a compile would not have caught #209.
+  #
+  # `android/` and `ios/` are gitignored: this project is CNG, so both jobs
+  # generate the native project from app.json before compiling it.
+  android-build:
+    name: Android compiles
+    needs: scope
+    if: needs.scope.outputs.app == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+      # Expo SDK 54 ships AGP 8, which refuses anything below JDK 17.
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+      - uses: gradle/actions/setup-gradle@v4
+      - run: npm ci
+      # --no-install: `npm ci` above already installed, and letting prebuild run
+      # its own install would resolve outside the lockfile.
+      - run: npx expo prebuild --platform android --no-install
+      - name: Compile
+        working-directory: android
+        run: ./gradlew assembleDebug --no-daemon
+
+  ios-build:
+    name: iOS compiles
+    needs: scope
+    if: needs.scope.outputs.app == 'true'
+    runs-on: macos-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+      - run: npm ci
+      # --no-install skips CocoaPods as well as npm, so the pods are installed
+      # explicitly rather than left out.
+      - run: npx expo prebuild --platform ios --no-install
+      - run: pod install --project-directory=ios
+      # The workspace and scheme are named from app.json rather than fixed here,
+      # so renaming the app does not silently stop compiling anything.
+      - name: Compile
+        run: |
+          workspace=$(ls -d ios/*.xcworkspace | head -1)
+          scheme=$(basename "$workspace" .xcworkspace)
+          echo "Building scheme $scheme"
+          xcodebuild \
+            -workspace "$workspace" \
+            -scheme "$scheme" \
+            -configuration Debug \
+            -sdk iphonesimulator \
+            -derivedDataPath "$RUNNER_TEMP/DerivedData" \
+            CODE_SIGNING_ALLOWED=NO \
+            build
+
   browser:
     name: Browser tests ${{ matrix.shard }}/6
     needs: scope
