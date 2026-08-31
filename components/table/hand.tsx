@@ -557,7 +557,7 @@ export function StraightHand({
   // climb; the whole arc is then pushed past the bottom edge by the crop.
   const arcRise = box.h - cardH;
   // A tilted card stands taller than the card: its box grows by
-  // `w·sin θ + h·cos θ − h`, half of it above and half below. The end cards
+  // `w·sin(a) + h·cos(a) − h`, half of it above and half below. The end cards
   // carry the most of the arc's own tilt and a chosen one adds SELECT_TILT on
   // top, so the worst case is the two together.
   const maxRot = full.cards.reduce((m, at) => Math.max(m, Math.abs(at.rot)), 0);

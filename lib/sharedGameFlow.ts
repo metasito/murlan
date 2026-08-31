@@ -1,6 +1,10 @@
 import { useEffect } from "react";
 
-import { exchangeAnnounceMs } from "@/lib/exchangeCeremony";
+// Relative and extensioned, not `@/`: `tests/sharedGameFlow.test.ts` loads this
+// under `node --test`, which type-strips plain .ts and resolves nothing a
+// bundler would. A type-only import is erased before resolution and may use the
+// alias; a runtime one may not.
+import { exchangeAnnounceMs } from "./exchangeCeremony.ts";
 import type { Card } from "@/lib/gameEngine";
 
 export interface ExchangeAnnounceData {
