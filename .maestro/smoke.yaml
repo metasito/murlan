@@ -70,16 +70,28 @@ env:
 # (app/index.tsx effect on `@murlan_tutorial_seen`), and it has to go before
 # anything on the home screen can be asserted.
 #
-# `back`, not a tap on "Salta il tutorial": no control on this screen takes
-# touch on Android, the Skip button no more than the body's own "Inizia" —
-# #627 has it measured with `adb shell input tap` and no Maestro in the loop.
-# Restore the tap when #627 closes. It is the input a real user gives, and
-# this line passes either way, so nothing else will notice it standing in.
+# Split by platform because the defect is Android's alone. On Android no control
+# on this screen takes touch — the Skip button no more than the body's own
+# "Inizia" — so the tap fires into nothing and the flow dies here; #627 has it
+# measured with `adb shell input tap` and no Maestro in the loop. iOS taps it
+# fine (#353), and Maestro's `back` there is an edge-swipe gesture rather than a
+# key press, so it is not a like-for-like substitute to hand it as well.
+#
+# Collapse this back to the tap alone when #627 closes.
 - runFlow:
     when:
       visible: "GUIDA RAPIDA"
     commands:
-      - back
+      - runFlow:
+          when:
+            platform: Android
+          commands:
+            - back
+      - runFlow:
+          when:
+            platform: iOS
+          commands:
+            - tapOn: "Salta il tutorial"
       - extendedWaitUntil:
           notVisible: "GUIDA RAPIDA"
           timeout: 10000
