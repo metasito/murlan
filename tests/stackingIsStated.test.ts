@@ -20,14 +20,23 @@ import { blankComments, scannedFiles, styleSheetEntries } from "./helpers/source
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
-/** All four edges pinned to its parent, which is what makes it a cover. */
+/**
+ * All four edges pinned, which is what makes it a cover.
+ *
+ * Any inset, not only `0`: the selection bloom sits at 2 on every side and
+ * covers just as much of the card as one at 0 does. `absoluteFillObject` is the
+ * same shape spelled as a spread, and `sourceScan`'s own `FULL_BLEED` reads it.
+ */
 function fillsItsParent(body: string): boolean {
+  if (/absoluteFillObject/.test(body)) return true;
+  const edge = (side: string) =>
+    new RegExp(String.raw`(^|[^\w])${side}:\s*-?[\d.]`).test(body);
   return (
     /position:\s*["']absolute["']/.test(body) &&
-    /(^|[^\w])top:\s*0/.test(body) &&
-    /(^|[^\w])bottom:\s*0/.test(body) &&
-    /(^|[^\w])left:\s*0/.test(body) &&
-    /(^|[^\w])right:\s*0/.test(body)
+    edge("top") &&
+    edge("bottom") &&
+    edge("left") &&
+    edge("right")
   );
 }
 
@@ -86,6 +95,9 @@ test("every opaque full-bleed style says whether it is above or below", () => {
 test("the predicates still recognise a cover, and still ignore what covers nothing", () => {
   const full = 'position: "absolute", top: 0, left: 0, right: 0, bottom: 0,';
   assert.ok(fillsItsParent(full));
+  // An inset cover is still a cover — the selection bloom sits at 2.
+  assert.ok(fillsItsParent('position: "absolute", top: 2, left: 2, right: 2, bottom: 2,'));
+  assert.ok(fillsItsParent("...StyleSheet.absoluteFillObject,"), "the spread spelling");
   assert.ok(!fillsItsParent('position: "absolute", top: 0, left: 0,'), "three edges is not a fill");
   assert.ok(!fillsItsParent('top: 0, left: 0, right: 0, bottom: 0,'), "static flow is not a cover");
   // `borderTopWidth: 0` and `paddingTop: 0` are not `top: 0`.
@@ -104,13 +116,41 @@ test("a call site may state the stacking the sheet leaves open", () => {
 
 // Without this the scan silently covers nothing: a helper that walked no files,
 // or predicates that matched none of them, is clean under every assertion above.
+// Breadth as well as the named cases — three names in two files still pass if
+// the walk stopped after those two files.
 test("the scan reaches the styles it exists for", () => {
-  const found = covers().map((c) => `${c.rel}: ${c.name}`);
+  const found = covers();
+  const names = found.map((c) => `${c.rel}: ${c.name}`);
   for (const name of [
     "components/table/hand.tsx: handStyles.ungiveableVeil",
     "components/table/hand.tsx: handStyles.giveableGlow",
+    "components/table/hand.tsx: handStyles.cardGlow",
     "components/GameTable.tsx: styles.playBtnGlow",
   ]) {
-    assert.ok(found.includes(name), `${name} is the case this scan exists for, and it missed it`);
+    assert.ok(names.includes(name), `${name} is the case this scan exists for, and it missed it`);
   }
+  assert.ok(
+    new Set(found.map((c) => c.rel)).size >= 3,
+    `only ${new Set(found.map((c) => c.rel)).size} file(s) hold a cover, which reads as a walk ` +
+      `that stopped early rather than as a tree with none`
+  );
+});
+
+/**
+ * Stated rather than left to be discovered: a style worn in a file other than
+ * the one declaring it is answered for by neither half of this scan, because
+ * `wornWithoutZ` reads only the declaring file. `portraitOverlayStyles.overlay`
+ * is the live example. Both currently state their stacking in the sheet, so the
+ * gap costs nothing today — this test is what fails when that stops being true.
+ */
+test("a cover worn from another file states its stacking in the sheet", () => {
+  const offenders = covers()
+    .filter((c) => !c.inSheet && wornWithoutZ(c.source, c.name) === 0)
+    .map((c) => `${c.rel}: ${c.name}`);
+  assert.deepEqual(
+    offenders,
+    [],
+    "nothing in the declaring file wears this, so the scan cannot see where it is used. " +
+      "State its `zIndex` in the StyleSheet:\n  " + offenders.join("\n  ")
+  );
 });

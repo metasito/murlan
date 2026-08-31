@@ -270,7 +270,7 @@ function CatchCard({
   return (
     <Animated.View style={liftStyle}>
       <Animated.View pointerEvents="none" style={[pileStyles.catchGlow, glowStyle]} />
-      {children}
+      <View style={pileStyles.caughtCard}>{children}</View>
     </Animated.View>
   );
 }
@@ -449,14 +449,18 @@ const pileStyles = StyleSheet.create({
     minHeight: 80,
   },
   // Behind a catching card, never on it — the same childless-sibling
-  // substitute for an animated shadow hand.tsx's cardGlow uses.
+  // substitute for an animated shadow hand.tsx's cardGlow uses. Which of the
+  // two that is has to be stated, not written: the iOS renderer paints siblings
+  // in its own order (#209), and "behind" is the whole of this effect.
   catchGlow: {
     position: "absolute",
     top: 2, left: 2, right: 2, bottom: 2,
+    zIndex: 0,
     borderRadius: Radius.sm,
     backgroundColor: Colors.gold,
     ...Shadow.goldSoft,
   },
+  caughtCard: { zIndex: 1 },
   // A dark plate, not a gold wash: gold on gold over the felt clears AA at no
   // stop of any felt. The border is where the chip's identity lives.
   winnerTag: {

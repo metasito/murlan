@@ -543,12 +543,8 @@ function GiocaButton({
   }));
 
   return (
-    // The wrapper is named so a device hierarchy can say *where* the button is
-    // lost: #685 has `btn-gioca` absent from the iOS tree while the screenshot
-    // shows it drawn. Present wrapper with no Pressable inside, and absent
-    // wrapper, are different faults with different fixes, and no capture so far
-    // can tell them apart. `btn-passa-box` is the control — that button is in
-    // the tree, so the pair reads as a difference rather than as one absence.
+    // Named so a device hierarchy can say whether the wrapper or the control
+    // inside it is what went missing (#685).
     <Animated.View
       testID="btn-gioca-box"
       style={[
@@ -573,7 +569,7 @@ function GiocaButton({
         onPress={onPress}
         onPressIn={() => setPress(true)}
         onPressOut={() => setPress(false)}
-        style={styles.actionBtnInner}
+        style={[styles.actionBtnInner, styles.playBtnFront]}
         accessibilityLabel={
           exchange
             ? exchange.picked
@@ -2067,7 +2063,7 @@ const styles = StyleSheet.create({
   // a third of black, with no gradient and no border behind it to fight.
   btnDimFace: { backgroundColor: "rgba(0,0,0,0.3)" },
   btnDimLabel: { color: "rgba(239,234,219,0.3)" },
-  actionBtnInner: { flex: 1, zIndex: 1 },
+  actionBtnInner: { flex: 1 },
   actionBtnFace: {
     flex: 1,
     alignItems: "center",
@@ -2099,10 +2095,6 @@ const styles = StyleSheet.create({
   // shadow is cast from — a layer with transparent contents has nothing for
   // iOS to blur and gives Android's elevation no outline — and the button's
   // own gradient covers it exactly, so only the spill is ever seen.
-  // Opaque, and it fills the button exactly. Which of the two is on top is
-  // stated here rather than left to the order they are written in: the felt
-  // (#209) is the same shape, and the iOS renderer resolved that one the other
-  // way round for three sessions.
   playBtnGlow: {
     position: "absolute",
     top: 0,
@@ -2114,6 +2106,8 @@ const styles = StyleSheet.create({
   },
   // The one lit object on the table, and only on the player's own turn.
   playBtnFace: { borderWidth: 1, borderColor: Colors.goldLit },
+  // Over the glow, which fills this button and paints.
+  playBtnFront: { zIndex: 1 },
   playBtnLabel: { color: Colors.bgCard },
   playBtnSub: {
     fontFamily: "Rajdhani_500Medium",

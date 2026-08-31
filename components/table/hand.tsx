@@ -305,6 +305,7 @@ function CardItemBase({
         onA11yAction={onMove ? handleMove : undefined}
         a11yActionKeys={MOVE_KEYS}
         noLift
+        style={handStyles.cardLayer}
       />
       {giveable === false && (
         <Animated.View
@@ -908,25 +909,27 @@ const handStyles = StyleSheet.create({
     gap: Spacing.slim,
   },
   handGlowWrap: { borderRadius: Radius.md, padding: Spacing.xs },
+  // The three layers of a card, in the order they paint. Stated on all of them,
+  // because the iOS renderer does not promise the order they are written in
+  // (#209) and two of these resolve opposite ways around the card.
   cardGlow: {
     position: "absolute",
     top: 2, left: 2, right: 2, bottom: 2,
+    zIndex: 0,
     borderRadius: Radius.sm,
     backgroundColor: Colors.gold,
     ...Shadow.goldSoft,
   },
+  cardLayer: { zIndex: 1 },
   handRow: {
     position: "relative",
     alignSelf: "center",
   },
   handCardWrap: { position: "absolute" },
-  // Over the card, and it says so: the iOS renderer paints siblings in its own
-  // order rather than in tree order, so a veil that relied on coming last would
-  // land under the card it is meant to dim (#209).
   ungiveableVeil: {
     position: "absolute",
     top: 0, left: 0, right: 0, bottom: 0,
-    zIndex: 1,
+    zIndex: 2,
     backgroundColor: UNGIVEABLE_DIM,
   },
   // A halo around the card, on the same principle as the selection bloom above
@@ -939,12 +942,10 @@ const handStyles = StyleSheet.create({
   // run of adjacent cards join into one unbroken hard line with a square cap at
   // either end, which reads as a frame the cards are trapped in rather than as
   // a mark on each of them. Light has no edge to join.
-  // Behind the card, stated: this is the same shape as `ungiveableVeil` above
-  // and resolves the opposite way, so neither may be left to sibling order.
   giveableGlow: {
     position: "absolute",
     top: 0, left: 0, right: 0, bottom: 0,
-    zIndex: -1,
+    zIndex: 0,
     backgroundColor: Colors.gold,
     ...Shadow.gold,
   },
