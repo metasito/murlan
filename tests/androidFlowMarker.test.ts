@@ -88,6 +88,26 @@ describe("the Android flow marker", () => {
     );
   });
 
+  test("the instruments run above the markers, and cannot fail the step", () => {
+    // An instrument is not a verdict. A collector that exits non-zero would
+    // turn a retryable environment failure into a result about the branch, and
+    // one started below `app-launched` would do it on the un-retryable side of
+    // the boundary as well.
+    const collectors = lines.filter((l) => l.startsWith("nohup"));
+    assert.equal(collectors.length, 2, "the logcat stream and the host vitals");
+    const launched = lines.findIndex((l) => l.startsWith("touch") && l.includes("app-launched"));
+    for (const c of collectors) {
+      assert.ok(lines.indexOf(c) < launched, `an instrument starts after the app-launch marker: ${c}`);
+      assert.match(c, /&\s*true$/, `an instrument whose failure is not absorbed: ${c}`);
+    }
+    assert.ok(collectors.some((l) => /adb logcat/.test(l)), "nothing streams the logcat");
+    assert.ok(
+      collectors.some((l) => /loadavg/.test(l) && /free -m/.test(l)),
+      "nothing samples the host's own CPU and memory, which is the only thing that " +
+        "tells an exhausted runner apart from a graphics fault",
+    );
+  });
+
   test("every wait before it is bounded, so a wedge fails rather than hanging", () => {
     // A job that overruns timeout-minutes is cancelled, not failed. `failure()` is
     // then false, so the verdict step and both artefact uploads never run — in
@@ -203,6 +223,26 @@ describe("maestro.yml reads that marker", () => {
         `this step does not run for a crash on a green run: ${gate.trim()}`,
       );
     }
+  });
+
+  test("what the instruments write is what gets uploaded", () => {
+    // They are collected outside `~/.maestro/tests` on purpose — they have to
+    // outlive the device — so the artefact path has to name them, and a
+    // collector whose output nobody uploads is not an instrument.
+    const upload = src.slice(src.indexOf("name: maestro-debug"), src.indexOf("if-no-files-found"));
+    for (const file of ["logcat\\.txt", "host-vitals\\.txt"]) {
+      assert.match(upload, new RegExp(file), `${file} is collected and then not uploaded`);
+    }
+  });
+
+  test("the tombstone search reads the stream that survives the device", () => {
+    const step = src.slice(src.indexOf("id: crash"), src.indexOf("Upload Maestro debug output"));
+    assert.match(
+      step,
+      /grep -rl ">>> \$APP_ID"[^\n]*logcat\.txt/,
+      "the crash check reads only Maestro's own logcat, which does not exist when " +
+        "the device died before Maestro could pull it",
+    );
   });
 
   test("both invocations of the action stay in step", () => {

@@ -211,7 +211,10 @@ jobs:
           # and the grep would then be `>>> ` - every tombstone on the device,
           # reported as ours.
           [ -n "$APP_ID" ] || exit 0
-          tombstone=$(grep -rl ">>> $APP_ID" "$HOME/.maestro/tests" 2>/dev/null | head -1 || true)
+          # The streamed logcat is searched alongside Maestro's own, and is the
+          # only one of the two that exists when the device died before Maestro
+          # could pull it (#185).
+          tombstone=$(grep -rl ">>> $APP_ID" "$HOME/.maestro/tests" "$RUNNER_TEMP/logcat.txt" 2>/dev/null | head -1 || true)
           [ -n "$tombstone" ] || exit 0
           echo "found=true" >> "$GITHUB_OUTPUT"
           # Scoped to the block the file was selected by. A bare match would take
@@ -227,5 +230,12 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: maestro-debug
-          path: ~/.maestro/tests/
+          # The streamed logcat and the host vitals are collected outside
+          # Maestro's own directory precisely because they have to outlive the
+          # device Maestro was reading (#185), so they are named here rather
+          # than swept up by the path above.
+          path: |
+            ~/.maestro/tests/
+            ${{ runner.temp }}/logcat.txt
+            ${{ runner.temp }}/host-vitals.txt
           if-no-files-found: ignore
