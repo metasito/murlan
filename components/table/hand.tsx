@@ -18,7 +18,7 @@ import { Colors, FontSize, Motion, motionMs, Radius, Scrim, Shadow, Spacing } fr
 import { usePrefersReducedMotion } from "@/lib/accessibility";
 import { useTranslation } from "@/lib/i18n";
 import type { Card } from "@/lib/gameEngine";
-import { computeHandLayout } from "@/components/handLayout";
+import { computeHandLayout, hitWidth } from "@/components/handLayout";
 import { cardAt, dropIndex } from "@/components/handOrder";
 import { HAND_ARC, solveArc } from "@/components/tableArc";
 import { HAND_CROP, handRowHeadroom } from "@/components/gameTableModel";
@@ -827,9 +827,7 @@ export function StraightHand({
           dealFromX={-home.x - cardW / 2}
           cardScale={cardScale}
           dealRise={dealRise}
-          // Every card but the last is covered from `step` on by the one drawn
-          // over it, so that strip is all of it a tap can reach.
-          hitW={i === arc.length - 1 ? cardW : step}
+          hitW={hitWidth(i, arc.length, step, cardW)}
           cardW={cardW}
           cardH={cardH}
         />

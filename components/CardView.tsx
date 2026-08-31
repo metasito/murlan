@@ -651,9 +651,16 @@ function CardViewBase({
       >
         {/* Named because it is not the same box as the pressable around it: in
             a hand, that one is only the strip this card exposes. Anything
-            measuring what the player *sees* has to measure this. */}
+            measuring what the player *sees* has to measure this.
+
+            It takes no hits, which is what makes the strip above the only box
+            deciding which card a tap belongs to. The ink overflows the strip,
+            and the platforms do not agree about that overflow on their own: the
+            web hit-tests it and lets paint order settle which card wins, while
+            UIKit does not hit-test outside a view's bounds at all. */}
         <View
           testID="card-box"
+          pointerEvents="none"
           style={[styles.card, { width: w, height: h }, stockStyle, selected && styles.cardSelected]}
         >
           {selectedHint.node}
