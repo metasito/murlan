@@ -173,14 +173,19 @@ async function survey(page: Page): Promise<Control[]> {
       return { top, bottom, left, right };
     };
 
-    /** A scroller with room left below `el`, which is the only way in. */
+    /**
+     * A scroller with room left below `el`, which is the only way in.
+     *
+     * A hidden ancestor is *not* disqualifying on its own — every control on
+     * these screens sits inside a `MenuCard`, and a card below the fold rides
+     * up with the rest of the content. What disqualifies a control is the clip
+     * having actually eaten it, which `clippedBy` answers and the caller checks
+     * before asking this.
+     */
     const canScrollDownTo = (el: Element): boolean => {
       const box = el.getBoundingClientRect();
       for (let p = el.parentElement; p; p = p.parentElement) {
         const cs = getComputedStyle(p);
-        // A hidden ancestor between the control and the scroller eats it
-        // whatever the scroller does — `MenuCard` is exactly that.
-        if (cs.overflow === "hidden") return false;
         if (cs.overflowY !== "auto" && cs.overflowY !== "scroll") continue;
         if (p.scrollHeight <= p.clientHeight + 1) continue;
         const clip = p.getBoundingClientRect();
@@ -209,6 +214,11 @@ async function survey(page: Page): Promise<Control[]> {
       const shownH = Math.min(box.bottom, window.innerHeight) - Math.max(box.top, 0);
       const shownW = Math.min(box.right, window.innerWidth) - Math.max(box.left, 0);
       const onScreen = shownH >= raw.height / 2 && shownW >= raw.width / 2;
+      // Whether a real clip has eaten it, as opposed to the window merely not
+      // having reached it yet. A control a `MenuCard` has cut away is gone
+      // wherever the page is scrolled to; one that is simply further down is
+      // not.
+      const eaten = box.bottom - box.top < raw.height / 2 || box.right - box.left < raw.width / 2;
       out.push({
         label: el.getAttribute("aria-label") || (el.textContent ?? "").trim() || "unnamed",
         top: Math.round(box.top),
@@ -218,7 +228,7 @@ async function survey(page: Page): Promise<Control[]> {
         inside,
         // A scroller only reaches downwards, so it rescues a control below the
         // fold and never one clipped above it.
-        reachable: onScreen || (box.top >= -1 && canScrollDownTo(el)),
+        reachable: onScreen || (!eaten && box.top >= -1 && canScrollDownTo(el)),
       });
     }
     return out;
