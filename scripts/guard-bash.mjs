@@ -4,7 +4,11 @@
  *
  * Blocked:
  *   git add -A / . / --all   sessions share an index; a bare add absorbs another session's work
+ *   git checkout -- / restore  reverts to HEAD, discarding uncommitted work in the same file
  *   find / …                 a filesystem sweep; resolve packages with require.resolve instead
+ *
+ * Registered for both Bash and PowerShell in .claude/settings.json: the same `git` runs from
+ * either, so guarding one shell only moves the mistake to the other.
  *
  * Exit 0 allows. Exit 2 blocks and returns the message on stderr to the agent.
  */
@@ -14,6 +18,20 @@ import { readFileSync } from "node:fs";
 // guard fires on the same text quoted inside an argument — a grep pattern, a heredoc, a message —
 // and blocks work that runs nothing.
 const AT_COMMAND_START = String.raw`(?:^|[;&|]\s*|\$\(\s*|^\s*)`;
+
+/**
+ * Blanks the bodies of here-strings and heredocs before any rule reads the command.
+ *
+ * Their content is data — a commit message, a PR body, a doc — and a line inside one begins at
+ * a line start like any other, so a rule anchored there fires on prose *about* a command. The
+ * guard blocked the very commit that introduced it, whose message quotes the two commands it
+ * refuses. Blanked rather than deleted so nothing on either side is joined into a new match.
+ */
+function withoutQuotedBodies(command) {
+  return command
+    .replace(/@(['"])[\s\S]*?\1@/g, (m) => " ".repeat(m.length)) // PowerShell @'…'@ / @"…"@
+    .replace(/<<-?\s*(['"]?)(\w+)\1[\s\S]*?^\t*\2$/gm, (m) => " ".repeat(m.length)); // sh <<EOF
+}
 
 const RULES = [
   {
@@ -27,6 +45,46 @@ const RULES = [
       "session's in-flight edits into your commit. Stage by pathspec instead:\n" +
       "  git add -- path/to/file another/file\n" +
       "Check what you are about to stage with `git status --short` first.",
+  },
+  {
+    // `git checkout -- <paths>` and `git restore <paths>` discard the working tree. Both are
+    // allowed once a source is named (`git checkout HEAD -- x`, `git restore --source=x`):
+    // that form is only ever reached deliberately, and it is the documented way back once the
+    // work being protected is committed.
+    // `--staged` alone only unstages; it is `--worktree` (the default) that discards edits.
+    test: (c) =>
+      new RegExp(AT_COMMAND_START + String.raw`git\s+checkout\s+--\s`, "m").test(c) ||
+      new RegExp(
+        AT_COMMAND_START +
+          String.raw`git\s+restore\s+(?![^|;&]*(--source|--staged(?![^|;&]*--worktree)))[^|;&]*\S`,
+        "m"
+      ).test(c),
+    message:
+      "git checkout -- / git restore is blocked: it reverts the file to HEAD and throws away " +
+      "every uncommitted change in it — including a fix you have not committed yet. This has " +
+      "cost real work four times.\n" +
+      "Undoing a seeded defect? Reverse it with the Edit tool — the same replacement backwards.\n" +
+      "Really want the file back from a commit? Commit your work first, then name the source:\n" +
+      "  git checkout HEAD -- path/to/file\n" +
+      "Confirm with `git status --short` and `git diff` afterwards.",
+  },
+  {
+    // Measured, not theorised: `git worktree remove --force` on a worktree whose node_modules
+    // is a junction deletes through it into the target and exits 0, silently. That is how the
+    // shared install came to be empty. `worktrees:remove` detaches the link first.
+    test: (c) =>
+      new RegExp(
+        AT_COMMAND_START + String.raw`git\s+worktree\s+remove\b[^|;&]*(\s--force\b|\s-f\b)`,
+        "m"
+      ).test(c),
+    message:
+      "git worktree remove --force is blocked: if the worktree's node_modules is a junction, " +
+      "it deletes through the link into the shared install and still exits 0. That is how " +
+      "C:\\Users\\roton\\murlan\\node_modules was emptied.\n" +
+      "Use the script that detaches the link first:\n" +
+      "  npm run worktrees:remove -- .worktrees/<name>\n" +
+      "Better still, do not create the junction: a worktree nested inside the checkout already " +
+      "resolves up to the parent's node_modules on its own.",
   },
   {
     // A sweep rooted at /, a mounted drive root (/c/, /mnt/c/) or a Windows drive root.
@@ -45,7 +103,8 @@ const RULES = [
 ];
 
 export function check(command) {
-  for (const rule of RULES) if (rule.test(command)) return rule.message;
+  const runnable = withoutQuotedBodies(command);
+  for (const rule of RULES) if (rule.test(runnable)) return rule.message;
   return null;
 }
 
