@@ -13,6 +13,7 @@
 // would pass on a flight that had collided.
 import { test, expect } from "./fixtures";
 import { resumeSaved } from "./helpers/offlineSeed";
+import { tap } from "./helpers/press";
 
 const GIVEBACK_SPOKEN = "5 di Cuori";
 /** Frames to take across the flight, and how long to wait between them. */
@@ -93,8 +94,8 @@ test("the two exchanged cards fly at once and never overlap", async ({ page, bas
   await resumeSaved(page, baseURL!, midExchangeSave());
 
   await expect(page.getByTestId("exchange-prompt")).toBeVisible({ timeout: 15_000 });
-  await page.getByRole("button", { name: GIVEBACK_SPOKEN, exact: true }).click();
-  await page.getByTestId("btn-gioca").click();
+  await tap(page, page.getByRole("button", { name: GIVEBACK_SPOKEN, exact: true }));
+  await tap(page, page.getByTestId("btn-gioca"));
 
   const toWinner = page.getByTestId("exchange-flier-to-winner");
   const toLoser = page.getByTestId("exchange-flier-to-loser");

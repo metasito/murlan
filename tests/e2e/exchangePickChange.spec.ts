@@ -10,6 +10,7 @@ import type { Page } from "@playwright/test";
 import { test, expect } from "./fixtures";
 import { resumeSaved } from "./helpers/offlineSeed";
 import { HAND_ZONE, TABLE } from "./helpers/selectors.ts";
+import { tap } from "./helpers/press";
 
 /** Two cards in the 3–10 giveback range, so both are valid picks. */
 const FIVE = { id: "5_hearts", rank: "5", suit: "hearts", isJoker: false };
@@ -92,10 +93,10 @@ test("changing the exchange pick before confirming gives the last card chosen", 
   const table = await openExchange(page, baseURL!);
 
   // Choose the five...
-  await table.getByRole("button", { name: FIVE_SPOKEN, exact: true }).click();
+  await tap(page, table.getByRole("button", { name: FIVE_SPOKEN, exact: true }));
   // ...then change to the nine before confirming.
-  await table.getByRole("button", { name: NINE_SPOKEN, exact: true }).click();
-  await page.getByTestId("btn-gioca").click();
+  await tap(page, table.getByRole("button", { name: NINE_SPOKEN, exact: true }));
+  await tap(page, page.getByTestId("btn-gioca"));
 
   // The prompt has left the felt and the announcement names exactly one card as
   // the winner's leg of the exchange — the last one picked, never the first

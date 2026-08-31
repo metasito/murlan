@@ -13,6 +13,7 @@ import { openSeededGame, offlineGameSave, resumeSaved, DEAL_SIZE } from "./helpe
 import { buildCombination } from "../../lib/gameEngine";
 import { GIOCA_VALID_LABEL, YOUR_TURN_PREFIX } from "./helpers/labels";
 import { HAND_ZONE, TABLE_STATE } from "./helpers/selectors.ts";
+import { tap } from "./helpers/press";
 
 const VIEWPORTS = [
   { name: "small phone landscape", width: 667, height: 375 },
@@ -331,12 +332,12 @@ async function waitForAnswerableTurn(page: Page): Promise<void> {
         const card = page.locator(
           `${HAND_ZONE} [aria-label="${label.replace(/"/g, '\\"')}"]`
         );
-        await card.click({ timeout: 4_000 }).catch(() => {});
+        await tap(page, card).catch(() => {});
         if ((await gioca.getAttribute("aria-label")) === GIOCA_VALID_LABEL) {
-          await gioca.click({ timeout: 4_000 }).catch(() => {});
+          await tap(page, gioca).catch(() => {});
           break;
         }
-        await card.click({ timeout: 4_000 }).catch(() => {});
+        await tap(page, card).catch(() => {});
       }
     }
     await page.waitForTimeout(200);
