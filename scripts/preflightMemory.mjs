@@ -6,11 +6,15 @@
  * for a defect that is not there. So the run names exhaustion itself rather than letting it
  * arrive disguised. `docs/agents/loops.md` carries the recognition table.
  *
- * The `globalSetup` of both jest and Playwright, which is every entry point that can exhaust the
- * box. Jest reads this from the root config rather than per-project: `runGlobalHook` adds
- * `globalConfig.globalSetup` to the per-project ones, so `projects` does not shadow it.
+ * The `globalSetup` of both jest and Playwright, and — run as a script — the `pretest` of the node
+ * suite, which is every entry point that can exhaust the box. Jest reads this from the root config
+ * rather than per-project: `runGlobalHook` adds `globalConfig.globalSetup` to the per-project ones,
+ * so `projects` does not shadow it. `node --test` has no such hook at all, which is why the third
+ * one is an npm lifecycle script rather than a fourth call site.
  */
 import os from "node:os";
+import { fileURLToPath } from "node:url";
+import path from "node:path";
 
 const GB = 1024 ** 3;
 const WANTED = 1.5 * GB;
@@ -74,4 +78,16 @@ export default async function preflightMemory({
   throw new Error(
     `${verdict.message}\n\nRead ${readings.map(gb).join(" GB, then ")} GB, ${SETTLE_MS} ms apart.`
   );
+}
+
+// Run directly, this is `pretest`. The message is the whole point of the refusal, so it is printed
+// rather than thrown: an unhandled rejection would bury it under a stack trace of this file.
+//
+// `.catch` and not `await`: the suites import this module through a transform that compiles to CJS,
+// where a top-level await is a build error rather than a slower path.
+if (process.argv[1] && fileURLToPath(import.meta.url) === path.resolve(process.argv[1])) {
+  preflightMemory().catch((err) => {
+    console.error(err.message);
+    process.exit(1);
+  });
 }

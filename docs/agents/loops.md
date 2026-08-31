@@ -247,9 +247,14 @@ said was:
 does not care how many workers you gave it. Before believing a red, check free memory and rerun
 with `-w 3`.
 
-Both suites now refuse up front rather than failing this way — `scripts/preflightMemory.mjs` is
-the `globalSetup` of jest and Playwright alike, and names exhaustion. It is off under `CI`, where
-a runner is sized for one job and starts near its floor by design.
+All three suites now refuse up front rather than failing this way — `scripts/preflightMemory.mjs`
+is the `globalSetup` of jest and Playwright alike, and `npm test`'s `pretest`, and it names
+exhaustion. It is off under `CI`, where a runner is sized for one job and starts near its floor by
+design.
+
+The node suite's shape is its own: whole test *files* failing at once rather than assertions inside
+them, and `importing … exited 3221225794` — `0xC0000142`, Windows for "no memory to start a
+process". Twenty of them, once, on a branch that had touched none of the files named.
 
 `npm run reap` clears what a killed run leaves behind. `--dry-run` lists without killing anything.
 A run does not need it first: `scripts/e2ePort.mjs` picks a port that is already free, and clears

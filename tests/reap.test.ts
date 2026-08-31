@@ -1,6 +1,8 @@
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
+import path from "node:path";
 import {
   orphans,
   staleByAge,
@@ -366,6 +368,27 @@ describe("preflightMemory", () => {
       ...local,
     });
     assert.equal(taken, 1);
+  });
+
+  // The check is only worth what it is wired into. The node suite ran unguarded for as long as
+  // this file has existed, and paid for it: twenty whole test files failing at once, two of them
+  // with 0xC0000142 — Windows for "no memory to start a process" — read as a regression (#625).
+  test("every suite runner is behind it", () => {
+    const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+    const at = (rel: string) => readFileSync(path.join(root, rel), "utf8");
+
+    for (const config of ["jest.config.js", "tests/e2e/playwright.config.ts"]) {
+      assert.match(at(config), /preflightMemory/, `${config} no longer runs the preflight`);
+    }
+    // `node --test` has no globalSetup, so its guard is an npm lifecycle script. `pretest` and
+    // not a wrapper: npm runs it for `npm test` and for `agent:check`, which shells the same
+    // script, and neither can be invoked in a way that skips it.
+    const scripts = JSON.parse(at("package.json")).scripts;
+    assert.match(
+      scripts.pretest ?? "",
+      /preflightMemory/,
+      "the node suite runs without a memory preflight"
+    );
   });
 });
 
