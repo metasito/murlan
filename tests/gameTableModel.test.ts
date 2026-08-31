@@ -32,7 +32,7 @@ import {
   sideSlotHeight,
   seatFanArc,
   SEAT_DISC,
-  SEAT_GAP,
+  seatGap,
   seatLabelH,
   FAN_DRAWN_CARDS,
   comboKey,
@@ -142,15 +142,15 @@ describe("layout constants (CLAUDE.md: MUST NOT CHANGE)", () => {
     // The -16px selection lift has to fit inside the zone above the cards; the
     // 16px of slack is what gives it room without clipping.
     for (const h of [CH * 0.7, CH, CH * 1.2]) {
-      assert.equal(HAND_ZONE_H(h, 0), handVisibleH(h) + 16);
-      assert.ok(HAND_ZONE_H(h, 0) - handVisibleH(h) >= 16);
+      assert.equal(HAND_ZONE_H(h, 0, 1), handVisibleH(h) + 16);
+      assert.ok(HAND_ZONE_H(h, 0, 1) - handVisibleH(h) >= 16);
     }
   });
 
   test("the hand zone carries the bottom safe pad itself — it runs to the device edge", () => {
     // PASSA and GIOCA sit on the safe line inside it and are never cropped;
     // only the cards run past it.
-    assert.equal(HAND_ZONE_H(CH, 21) - HAND_ZONE_H(CH, 0), 21);
+    assert.equal(HAND_ZONE_H(CH, 21, 1) - HAND_ZONE_H(CH, 0, 1), 21);
   });
 
   test("only the redundant upside-down index is cropped, never the rank corner", () => {
@@ -967,7 +967,7 @@ describe("the rail's vertical pad", () => {
 describe("computeTableFrame", () => {
   const insets = { top: 20, bottom: 10, left: 44, right: 44 };
   const frameOf = (over: Partial<{ width: number; insets: typeof insets; scale: number }> = {}) =>
-    computeTableFrame({ width: 800, insets, scale: 1, ...over });
+    computeTableFrame({ width: 800, height: 390, insets, scale: 1, ...over });
 
   // The felt itself is edge to edge; the frame is where things are *drawn* on
   // it. Each edge is the safe-area inset or the table's own padding, whichever
@@ -1061,7 +1061,7 @@ describe("computeTableFrame", () => {
   // own columns bind rather than the share.
   test("the seats' columns are what caps the field on the smallest phone", () => {
     const noInsets = { top: 0, bottom: 0, left: 0, right: 0 };
-    const small = computeTableFrame({ width: 568, insets: noInsets, scale: 320 / 390 });
+    const small = computeTableFrame({ width: 568, height: 320, insets: noInsets, scale: 320 / 390 });
     const tableW = 568 - small.tableLeft - small.tableRight;
     assert.equal(Math.round(tableW - SIDE_SECTION_W * 2), 304);
     assert.ok(
@@ -1421,10 +1421,10 @@ describe("flightOrigin", () => {
   test("top: a held fan's own height is folded into the pile's offset, not just its sign", () => {
     // Same solve `topFanHeight` performs internally (`seatFanArc`), so this
     // pins the arithmetic that combines it with `seatLabelH`/`SEAT_DISC`/
-    // `SEAT_GAP`, not the geometry of the solve itself.
+    // `seatGap`, not the geometry of the solve itself.
     const topDisplayedCount = 3;
     const fanH = seatFanArc(topDisplayedCount, BACK_SCALE).bounds.h;
-    const topSectionH = seatLabelH(1) + SEAT_DISC + SEAT_GAP + fanH;
+    const topSectionH = seatLabelH(1) + SEAT_DISC + seatGap(1) + fanH;
     const contentH = base.windowHeight - base.tableTop;
     const midH = contentH - topSectionH - base.handZoneH;
     const pileCenterY = base.tableTop + topSectionH + midH / 2;
@@ -1643,7 +1643,7 @@ describe("cutoutClass", () => {
 describe("computeTableFrame, mirrored", () => {
   const insets = { top: 20, bottom: 10, left: 59, right: 59 };
   const frameOf = (railSide: "left" | "right") =>
-    computeTableFrame({ width: 800, insets, scale: 1, railSide });
+    computeTableFrame({ width: 800, height: 390, insets, scale: 1, railSide });
 
   // The point of the ticket: rotate the phone and the cutout moves to the other
   // side, so the rail has to follow it. Everything about the frame is the same
@@ -1672,23 +1672,23 @@ describe("computeTableFrame, mirrored", () => {
   // between the two knobs.
   test("the rail is grown from the inset on its own side", () => {
     const lopsided = { top: 20, bottom: 10, left: 0, right: 59 };
-    const r = computeTableFrame({ width: 800, insets: lopsided, scale: 1, railSide: "right" });
+    const r = computeTableFrame({ width: 800, height: 390, insets: lopsided, scale: 1, railSide: "right" });
     assert.equal(r.rail, railWidth(59, 1), "a right-hand rail was grown from the left inset");
 
-    const l = computeTableFrame({ width: 800, insets: lopsided, scale: 1, railSide: "left" });
+    const l = computeTableFrame({ width: 800, height: 390, insets: lopsided, scale: 1, railSide: "left" });
     assert.equal(l.rail, railWidth(0, 1), "a left-hand rail was grown from the right inset");
   });
 
   test("the play area's centre is the box's own centre on either side", () => {
     for (const side of ["left", "right"] as const) {
-      const f = computeTableFrame({ width: 844, insets, scale: 1, railSide: side });
+      const f = computeTableFrame({ width: 844, height: 390, insets, scale: 1, railSide: side });
       const boxCentre = f.tableLeft + (844 - f.tableLeft - f.tableRight) / 2;
       assert.equal(boxCentre, (f.tableLeft + 844 - f.tableRight) / 2, side);
     }
   });
 
   test("a frame asked for no side at all still puts the rail on the left", () => {
-    const f = computeTableFrame({ width: 800, insets, scale: 1 });
+    const f = computeTableFrame({ width: 800, height: 390, insets, scale: 1 });
     assert.equal(f.tableLeft, f.rail);
   });
 });

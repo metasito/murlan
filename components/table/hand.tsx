@@ -21,7 +21,7 @@ import type { Card } from "@/lib/gameEngine";
 import { computeHandLayout } from "@/components/handLayout";
 import { cardAt, dropIndex } from "@/components/handOrder";
 import { HAND_ARC, solveArc } from "@/components/tableArc";
-import { HAND_CROP, HAND_ROW_HEADROOM } from "@/components/gameTableModel";
+import { HAND_CROP, handRowHeadroom } from "@/components/gameTableModel";
 import {
   CARD_W,
   CARD_H,
@@ -803,14 +803,14 @@ export function StraightHand({
           // even the finger floor cannot fit the row in availW — a full hand on
           // a small phone. The row overflows and is moved under a window that
           // clips it, rather than clipping the hand or stepping below what a
-          // thumb can separate. The window keeps HAND_ROW_HEADROOM as top
+          // thumb can separate. The window keeps the row's headroom as top
           // padding — without it, a selected card's lift (SELECT_LIFT) is cut
           // off at the top edge.
           <View
             style={{
               width: availW,
-              height: visibleH + arcRise + HAND_ROW_HEADROOM,
-              paddingTop: HAND_ROW_HEADROOM,
+              height: visibleH + arcRise + handRowHeadroom(cardScale),
+              paddingTop: handRowHeadroom(cardScale),
               overflow: "hidden",
             }}
           >

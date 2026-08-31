@@ -15,7 +15,7 @@ import { TOUCH_TARGET_MIN } from "../lib/tokens.ts";
 // the device's short edge — no breakpoints, no tablet branch. 390 is the
 // short edge the base sizes below are authored at (an iPhone-standard
 // viewport); an SE runs ~0.82, a 17 Pro Max ~1.13.
-const BASE_SHORT_EDGE = 390;
+export const BASE_SHORT_EDGE = 390;
 // Caps scale on a maximized desktop browser, where the short edge keeps
 // growing with the window — a real device's short edge tops out well below
 // this (tableFit.spec.ts's own tablet-landscape fixture is 834).

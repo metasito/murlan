@@ -1007,7 +1007,7 @@ export function GameTable({
   );
 
   const railSide = railSideFor(Math.max(insets.left, insets.right), rotation);
-  const frame = computeTableFrame({ width: W, insets, scale, railSide });
+  const frame = computeTableFrame({ width: W, height: H, insets, scale, railSide });
   // The felt box the lamp lives in. The pool is drawn oversized and slid under
   // this box's own clipping, so it needs the box rather than the screen.
   const feltW = W;
@@ -1295,7 +1295,7 @@ export function GameTable({
         tableLeft: frame.tableLeft,
         tableRight: frame.tableRight,
         tableTop: frame.tableTop,
-        handZoneH: HAND_ZONE_H(handCardH, frame.bottomPad),
+        handZoneH: HAND_ZONE_H(handCardH, frame.bottomPad, scale),
         topDisplayedCount,
         sideDisplayedCount,
       }),
@@ -1544,7 +1544,7 @@ export function GameTable({
       tableLeft: frame.tableLeft,
       tableRight: frame.tableRight,
       tableTop: frame.tableTop,
-      handZoneH: HAND_ZONE_H(handCardH, frame.bottomPad),
+      handZoneH: HAND_ZONE_H(handCardH, frame.bottomPad, scale),
       // Nothing is in flight when an exchange resolves, so each seat's
       // displayed count is simply the hand it holds.
       topDisplayedCount: opponents.top ? handCountOf(opponents.top.player) : 0,
@@ -1869,7 +1869,7 @@ export function GameTable({
             style={[
               sharedTableStyles.handSection,
               {
-                height: HAND_ZONE_H(handCardH, frame.bottomPad),
+                height: HAND_ZONE_H(handCardH, frame.bottomPad, scale),
                 paddingBottom: frame.bottomPad,
                 gap: HAND_ZONE_GAP * scale,
               },
@@ -1981,7 +1981,7 @@ export function GameTable({
           style={[
             styles.rejectHint,
             {
-              bottom: HAND_ZONE_H(handCardH, frame.bottomPad) + Spacing.xs,
+              bottom: HAND_ZONE_H(handCardH, frame.bottomPad, scale) + Spacing.xs,
               left: frame.tableLeft,
               right: frame.tableRight,
             },

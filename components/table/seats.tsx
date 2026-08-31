@@ -5,7 +5,7 @@ import { ChipText, TableChip } from "./chrome";
 import {
   FAN_DRAWN_CARDS,
   SEAT_DISC,
-  SEAT_GAP,
+  seatGap,
   displayedHandCount,
   fanCounts,
   impactDelayMs,
@@ -524,7 +524,7 @@ export function TopOppSlot({
       testID="top-seat"
       style={[
         seatStyles.topOppSlot,
-        { paddingTop: seatLabelH(scale) },
+        { paddingTop: seatLabelH(scale), gap: seatGap(scale) },
         !isActive && seatStyles.seatDim,
       ]}
     >
@@ -660,6 +660,7 @@ export function SideOppSlot({
       testID={`side-seat-${side}`}
       style={[
         seatStyles.sideOppSlot,
+        { gap: seatGap(scale) },
         isLeft ? seatStyles.sideLeft : seatStyles.sideRight,
         !isActive && seatStyles.seatDim,
       ]}
@@ -718,13 +719,13 @@ const SEAT_DISC_FILL = [Colors.seatDisc, Colors.seatDiscDeep] as const;
 const seatStyles = StyleSheet.create({
   // The fan sits between the player and the table, never above them: the top
   // seat stacks avatar-then-fan down the screen, and each side seat is the
-  // same construction turned a quarter. The gap is one number for all three.
+  // same construction turned a quarter. The gap is one number for all three,
+  // and it rides the table's scale, so it is passed in rather than set here.
   topOppSlot: {
     alignItems: "center",
     justifyContent: "flex-start",
-    gap: SEAT_GAP,
   },
-  sideOppSlot: { alignItems: "center", justifyContent: "center", gap: SEAT_GAP },
+  sideOppSlot: { alignItems: "center", justifyContent: "center" },
   sideLeft: { flexDirection: "row" },
   sideRight: { flexDirection: "row-reverse" },
   // A seat that is not on move recedes, which is one of the four signals the
