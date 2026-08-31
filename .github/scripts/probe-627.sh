@@ -55,6 +55,28 @@ geom
 before=$(pid)
 adb exec-out screencap -p > "$SHOT/1-tutorial.png" 2>/dev/null; echo "  screenshot: $(wc -c < "$SHOT/1-tutorial.png") bytes"
 
+# Is the whole screen dead to touch, or only the header? "Inizia" sits in the
+# card body, "Salta il tutorial" and "Indietro" sit in the header above it.
+# Tapping one of each localises it without a single line of reasoning.
+tap_by_desc() {
+  d=$(dump)
+  n=$(printf '%s' "$d" | tr '>' '\n' | grep "content-desc=\"$1\"" | head -1)
+  set -- $(printf '%s' "$n" | grep -o 'bounds="\[[0-9]*,[0-9]*\]\[[0-9]*,[0-9]*\]"' | head -1 | grep -o '[0-9][0-9]*' | tr '\n' ' ')
+  [ $# -eq 4 ] || { echo "  not found"; return 1; }
+  echo "  tapping ($(( ($1+$3)/2 )), $(( ($2+$4)/2 )))"
+  adb shell input tap $(( ($1 + $3) / 2 )) $(( ($2 + $4) / 2 ))
+  sleep 3
+}
+step() { dump | grep -oE 'text="[0-9]+ / [0-9]+"' | head -1; }
+
+say "LOCALISING - body control vs header control"
+echo "step before:      $(step)"
+echo "tap BODY 'Inizia':";        tap_by_desc "Inizia"
+echo "step after body:  $(step)   <- changed means the body takes touch"
+echo "tap HEADER 'Salta il tutorial':"; tap_by_desc "Salta il tutorial"
+echo "still on tutorial? $(dump | grep -c 'GUIDA RAPIDA\|Benvenuto a Murlan') (0 means Skip fired)"
+echo "on screen now: $(labels)"
+
 say "the Skip node as the device reports it"
 node=$(printf '%s' "$xml" | tr '>' '\n' | grep 'content-desc="Salta il tutorial"' | head -1)
 echo "$node"
