@@ -1,0 +1,76 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@500;600;700&family=Inter:wght@400;600&display=swap" />
+  <style>
+    body { margin: 0; font-family: Inter, system-ui, sans-serif; }
+    .ttl { font-family: Rajdhani, "Trebuchet MS", sans-serif; }
+    .caps { font-family: Rajdhani, sans-serif; font-size: 11px; letter-spacing: 1.5px; text-transform: uppercase; color: #C9A84C; font-weight: 600 }
+    .card { background: linear-gradient(150deg, #0F4A30, #0B3B25, #082B1A); border: 1px solid rgba(240,234,214,.1); border-radius: 16px; box-shadow: 0 6px 18px rgba(0,0,0,.45) }
+    .pill { border-radius: 999px; border: 1px solid rgba(240,234,214,.1); background: #082B1A; color: rgba(240,234,214,.75); font-size: 13px; display: flex; align-items: center; justify-content: center; height: 40px }
+    .pill.on { border-color: #C9A84C; color: #C9A84C; background: rgba(201,168,76,.15) }
+    .note { position: absolute; font-size: 11px; letter-spacing: .4px; color: rgba(201,168,76,.85); font-family: Rajdhani, sans-serif; font-weight: 600 }
+    .rule { position: absolute; border-top: 1px dashed rgba(201,168,76,.45) }
+  </style>
+</helmet>
+
+<div style="width:1112px; height:834px; position:relative; box-sizing:border-box; background: linear-gradient(#031008 0%, #031008 55%, #082B1A 100%); color:#F0EAD6; padding:20px 20px 0; display:flex; flex-direction:column">
+
+  <!-- top bar -->
+  <div style="display:flex; align-items:center; padding-bottom:8px; margin-bottom:4px; border-bottom:1px solid rgba(240,234,214,.1)">
+    <div style="width:44px; height:44px; display:flex; align-items:center; justify-content:center; color:#C9A84C; font-size:22px">&#8249;</div>
+    <div class="ttl" style="flex:1; text-align:center; font-size:24px; letter-spacing:3px; font-weight:700; color:#F0EAD6">Con Amici</div>
+    <div style="width:38px"></div>
+  </div>
+
+  <div style="display:flex; align-items:center; gap:8px; margin-bottom:4px">
+    <div style="width:8px; height:8px; border-radius:999px; background:#4CAF50"></div>
+    <div style="font-size:13px; color:rgba(240,234,214,.58)">Connesso come hgi3l8o498</div>
+  </div>
+
+  <!-- the two columns: each one centres its own stack in the height the row gives it -->
+  <div style="flex:1; display:flex; gap:20px; align-items:stretch; padding-bottom:20px">
+
+    <div style="flex:1; display:flex; flex-direction:column; justify-content:center; gap:10px">
+      <div class="caps">Crea stanza</div>
+      <div class="card" style="padding:14px; display:flex; flex-direction:column; gap:12px">
+        <div class="caps" style="color:rgba(240,234,214,.58)">Modalit&agrave;</div>
+        <div style="display:flex; gap:4px">
+          <div class="pill on" style="flex:1">&#128100;&nbsp; Libera</div>
+          <div class="pill" style="flex:1">&#128101;&nbsp; Coppie</div>
+        </div>
+        <div class="caps" style="color:rgba(240,234,214,.58)">Giocatori</div>
+        <div style="display:flex; gap:4px">
+          <div class="pill" style="flex:1">2</div>
+          <div class="pill" style="flex:1">3</div>
+          <div class="pill on" style="flex:1">4</div>
+        </div>
+        <div style="height:52px; margin-top:4px; border-radius:999px; background:linear-gradient(180deg,#E2C06A,#C9A84C); color:#031008; font-weight:700; font-size:16px; display:flex; align-items:center; justify-content:center; gap:8px">&#8853; Crea Stanza</div>
+      </div>
+    </div>
+
+    <div style="width:1px; background:rgba(240,234,214,.1); margin:0 10px"></div>
+
+    <div style="flex:1; display:flex; flex-direction:column; justify-content:center; gap:10px">
+      <div class="caps">Entra in una stanza</div>
+      <div class="card" style="padding:14px">
+        <div style="height:52px; border-radius:999px; border:1px solid #C9A84C; color:#C9A84C; font-weight:600; font-size:16px; display:flex; align-items:center; justify-content:center; gap:10px">&#8677; Inserisci codice stanza</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- annotation -->
+  <div class="rule" style="left:20px; right:20px; top:417px"></div>
+  <div class="note" style="left:24px; top:396px">optical middle of the window &mdash; 417px</div>
+  <div class="note" style="right:24px; top:396px; text-align:right">before: both columns stopped at y=322, the divider ran on to 834</div>
+
+</div>
+</x-dc>
+</body>
+</html>

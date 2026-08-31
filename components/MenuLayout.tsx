@@ -90,7 +90,17 @@ export function MenuLayout({
   );
 }
 
-export { CONTENT_H_PAD, MENU_MAX_W };
+/**
+ * The one region of a screen that absorbs spare height, so a tall window is a
+ * bigger screen rather than the same screen with a void under it.
+ *
+ * It never shrinks: inside the outer ScrollView, content taller than the
+ * window has to keep its own height and scroll, and `flex: 1`'s zero basis
+ * would squeeze it into the viewport instead.
+ */
+const takesSlack: ViewStyle = { flexGrow: 1, flexShrink: 0, flexBasis: 'auto' };
+
+export { CONTENT_H_PAD, MENU_MAX_W, takesSlack };
 
 const styles = StyleSheet.create({
   root:     { flex: 1, backgroundColor: Colors.bg },

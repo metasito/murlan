@@ -8,7 +8,7 @@ import { router } from "expo-router";
 import Ionicons from "@expo/vector-icons/Ionicons";
 import { useQuery } from "@tanstack/react-query";
 import { useAuth } from "@/context/AuthContext";
-import { MenuLayout } from "@/components/MenuLayout";
+import { MenuLayout, takesSlack } from "@/components/MenuLayout";
 import { MenuCard } from "@/components/MenuCard";
 import { MenuButton } from "@/components/MenuButton";
 import { Colors, FontSize, Radius, Spacing, TOUCH_TARGET_MIN, Type } from "@/lib/theme";
@@ -67,7 +67,7 @@ export default function LeaderboardScreen() {
         <View style={{ width: 38 }} />
       </View>
 
-      <MenuCard>
+      <MenuCard grow>
         {me && (
           <View
             style={styles.selfBlock}
@@ -81,6 +81,7 @@ export default function LeaderboardScreen() {
           </View>
         )}
 
+        <View style={styles.board}>
         {boardQuery.isLoading && (
           <View style={styles.stateBlock}>
             <ActivityIndicator color={Colors.gold} accessibilityLabel={t("ladder.loadingA11yLabel")} />
@@ -142,6 +143,7 @@ export default function LeaderboardScreen() {
             ))}
           </View>
         )}
+        </View>
 
         <Text style={styles.note}>{t("ladder.rankedOnlyNote")}</Text>
         <MenuButton
@@ -193,6 +195,10 @@ const styles = StyleSheet.create({
   selfSeason: { ...Type.label },
   selfGames: { ...Type.caption, textAlign: "center" },
 
+  // The board is the card's elastic part: the rating above it and the note and
+  // the back button below it keep their own heights, so a taller window shows
+  // more of the ladder rather than more felt under it.
+  board: { ...takesSlack, justifyContent: "center" },
   stateBlock: { alignItems: "center", gap: Spacing.sm, paddingVertical: Spacing.lg },
   stateTitle: { ...Type.subheading },
   stateBody: { ...Type.caption, textAlign: "center" },

@@ -1,0 +1,67 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@500;600;700&family=Inter:wght@400;600&display=swap" />
+  <style>
+    body { margin: 0; font-family: Inter, system-ui, sans-serif; }
+    .ttl { font-family: Rajdhani, "Trebuchet MS", sans-serif; }
+    .caps { font-family: Rajdhani, sans-serif; font-size: 11px; letter-spacing: 1.5px; text-transform: uppercase; color: #C9A84C; font-weight: 600 }
+    .empty { display:flex; flex-direction:column; align-items:center; justify-content:center; gap:6px; text-align:center; color:rgba(240,234,214,.58); font-size:13px }
+    .note { position: absolute; font-size: 11px; color: rgba(201,168,76,.85); font-family: Rajdhani, sans-serif; font-weight: 600; letter-spacing:.4px }
+    .band { position:absolute; left:0; right:0; border-left:2px solid rgba(201,168,76,.35) }
+  </style>
+</helmet>
+
+<div style="width:1112px; height:834px; box-sizing:border-box; position:relative; background: linear-gradient(#031008 0%, #031008 55%, #082B1A 100%); color:#F0EAD6; padding:20px; display:flex; flex-direction:column">
+
+  <div style="display:flex; align-items:center; padding-bottom:8px; margin-bottom:4px; border-bottom:1px solid rgba(240,234,214,.1)">
+    <div style="width:44px; height:44px; display:flex; align-items:center; justify-content:center; color:#C9A84C; font-size:22px">&#8249;</div>
+    <div class="ttl" style="flex:1; text-align:center; font-size:24px; letter-spacing:3px; font-weight:700">Amici</div>
+    <div style="width:38px"></div>
+  </div>
+
+  <div style="flex:1; display:flex; flex-direction:column; gap:8px; padding:8px 0 24px; max-width:800px; width:100%; align-self:center">
+
+    <!-- fixed: a search field has one right height -->
+    <div class="caps" style="margin-top:8px">Aggiungi amico</div>
+    <div style="background:rgba(240,234,214,.04); border:1px solid rgba(240,234,214,.1); border-radius:12px; padding:16px; display:flex; flex-direction:column; gap:10px">
+      <div style="font-size:13px; color:rgba(240,234,214,.75)">Cerca per username</div>
+      <div style="display:flex; gap:10px">
+        <div style="flex:1; height:44px; border-radius:12px; background:rgba(3,16,8,.55); border:1px solid rgba(240,234,214,.1); display:flex; align-items:center; padding:0 14px; color:rgba(240,234,214,.4); font-size:15px">@username</div>
+        <div style="width:52px; height:44px; border-radius:12px; background:rgba(240,234,214,.06); border:1px solid rgba(240,234,214,.1); display:flex; align-items:center; justify-content:center; color:#C9A84C">&#9906;</div>
+      </div>
+    </div>
+
+    <!-- elastic, the larger share: the list that grows with the account -->
+    <div class="caps" style="margin-top:12px">Amici</div>
+    <div style="flex:2; display:flex; min-height:0">
+      <div class="empty" style="flex:1">
+        <div style="font-size:34px; opacity:.7">&#128101;</div>
+        <div>Nessun amico ancora.</div>
+        <div>Cerca un username qui sopra.</div>
+      </div>
+    </div>
+
+    <!-- elastic, smaller share: pending is usually short -->
+    <div class="caps">In sospeso</div>
+    <div style="flex:1; display:flex; min-height:0">
+      <div class="empty" style="flex:1">
+        <div style="font-size:30px; opacity:.7">&#8987;</div>
+        <div>Niente in sospeso.</div>
+        <div>Le richieste che ricevi e quelle che invii compaiono qui.</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="note" style="left:24px; bottom:6px">no new chrome &mdash; the two list sections simply take the slack 2:1, and each empty state centres in the band it owns</div>
+  <div class="note" style="right:24px; bottom:6px; text-align:right">before: y=557 at both 390px and 834px, everything below it void</div>
+</div>
+</x-dc>
+</body>
+</html>

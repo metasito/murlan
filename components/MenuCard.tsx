@@ -2,6 +2,7 @@ import React from 'react';
 import { View, Text, StyleSheet, ViewStyle } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Colors, Spacing, Radius, FontSize, Highlight, Shadow } from '@/lib/theme';
+import { takesSlack } from './MenuLayout';
 
 type Padding = 'sm' | 'md' | 'lg';
 
@@ -11,17 +12,19 @@ interface MenuCardProps {
   style?: ViewStyle;
   width?: number | string;
   padding?: Padding;
+  /** Reaches the floor of whatever height the screen was given. */
+  grow?: boolean;
 }
 
-export function MenuCard({ children, title, style, width = '100%', padding = 'md' }: MenuCardProps) {
+export function MenuCard({ children, title, style, width = '100%', padding = 'md', grow = false }: MenuCardProps) {
   return (
-    <View style={[styles.wrapper, { width } as any, style]}>
+    <View style={[styles.wrapper, grow && takesSlack, { width } as any, style]}>
       {title && (
         <Text style={styles.title} accessibilityRole="header">
           {title}
         </Text>
       )}
-      <View style={[styles.card, paddingStyles[padding]]}>
+      <View style={[styles.card, paddingStyles[padding], grow && styles.cardGrow]}>
         <LinearGradient
           colors={CARD_GRADIENT}
           start={{ x: 0.2, y: 0 }}
@@ -56,6 +59,7 @@ const styles = StyleSheet.create({
     marginBottom: Spacing.xs,
     paddingLeft: Spacing.xs,
   },
+  cardGrow: { flex: 1 },
   card: {
     backgroundColor: Colors.felt,
     borderRadius: Radius.lg,

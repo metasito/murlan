@@ -22,7 +22,7 @@ import {
 import { useAuth } from "@/context/AuthContext";
 import { useSocket } from "@/context/SocketContext";
 import { Colors, Spacing, FontSize, Radius, TOUCH_TARGET_MIN, Type } from '@/lib/theme';
-import { MenuLayout } from "@/components/MenuLayout";
+import { MenuLayout, takesSlack } from "@/components/MenuLayout";
 import { MenuCard } from "@/components/MenuCard";
 import { MenuButton } from "@/components/MenuButton";
 import { useTranslation } from "@/lib/i18n";
@@ -247,6 +247,10 @@ export default function OnlineLobbyScreen() {
 
       {isLandscape ? (
         <View style={[styles.body, styles.bodyLandscape]}>
+          {/* Two shrinkable spacers rather than `justifyContent: "center"`:
+              centring a block taller than its box pushes the top of it off the
+              screen, and the shortest phone in landscape is exactly that case. */}
+          <View style={styles.slack} />
           <View style={styles.contentWrapperLandscape}>
             <View style={styles.statusRow}>
               <View style={[styles.dot, { backgroundColor: connected ? Colors.success : Colors.textMuted }]} />
@@ -261,10 +265,12 @@ export default function OnlineLobbyScreen() {
               {JoinSection}
             </View>
           </View>
+          <View style={styles.slack} />
         </View>
       ) : (
         <ScrollView
-          contentContainerStyle={[styles.body, { paddingBottom: Spacing.lg }]}
+          style={takesSlack}
+          contentContainerStyle={[styles.body, styles.bodyPortrait, { paddingBottom: Spacing.lg }]}
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled"
         >
@@ -411,15 +417,20 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   body: { gap: Spacing.lg },
+  bodyPortrait: { flexGrow: 1, justifyContent: "center" },
   bodyLandscape: { gap: Spacing.md, flex: 1 },
   contentWrapper: {
     gap: Spacing.md,
   },
+  // A radio group and a single button have one right height, so the answer to a
+  // tall window is where the pair sits in it, not how far the cards stretch.
+  // The two columns keep a common top — centring them one by one puts their
+  // section labels at different heights, which reads as a mistake.
   contentWrapperLandscape: {
-    flex: 1,
     gap: Spacing.sm,
   },
-  landscapeRow: { flexDirection: "row", gap: Spacing.roomy, alignItems: "stretch", flex: 1 },
+  slack: { flexGrow: 1, flexShrink: 1, flexBasis: 0 },
+  landscapeRow: { flexDirection: "row", gap: Spacing.roomy, alignItems: "flex-start" },
   dividerV: { width: 1, backgroundColor: Colors.border, alignSelf: "stretch", marginHorizontal: Spacing.snug },
   statusRow: { flexDirection: "row", alignItems: "center", gap: Spacing.sm, marginBottom: Spacing.xs },
   dot: { width: 8, height: 8, borderRadius: Radius.full },
