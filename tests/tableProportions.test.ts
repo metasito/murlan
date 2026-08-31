@@ -15,6 +15,7 @@
 // browser is the most expensive possible way to check.
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import {
   computeTableFrame,
   seatLabelH,
@@ -23,7 +24,7 @@ import {
   SEAT_DISC,
   HAND_ZONE_H,
 } from "../components/gameTableModel.ts";
-import { cardScale, CARD_H } from "../components/cardFaceModel.ts";
+import { cardScale, CARD_H, HAND_SCALE } from "../components/cardFaceModel.ts";
 
 /** The ticket's own list: two phones, a large phone, and two tablets. */
 const VIEWPORTS = [
@@ -47,8 +48,12 @@ function band(width: number, height: number) {
   const scale = cardScale(Math.min(width, height));
   const frame = computeTableFrame({ width, height, insets: NO_INSETS, scale });
   const topSectionH = seatLabelH(scale) + SEAT_DISC * scale + seatGap(scale);
-  const handZoneH = HAND_ZONE_H(CARD_H(scale), frame.bottomPad, scale);
-  const contentH = height - frame.tableTop - frame.tableBottom;
+  const handZoneH = HAND_ZONE_H(CARD_H(scale * HAND_SCALE), frame.bottomPad);
+  // The same two edges GameTable draws the table between: `frame.tableTop`,
+  // and `frame.surplus` up from the window's own bottom. Not `tableBottom` —
+  // the hand deliberately runs past that to the device edge, so subtracting it
+  // here would measure a floor the table does not have.
+  const contentH = height - frame.tableTop - frame.surplus;
   // Against the height the table was *scaled* for, not the window's: past the
   // scale cap those differ, and measuring a capped table against a window it
   // was never sized to fill reads the deliberate surplus as a missing band.
@@ -104,6 +109,16 @@ describe("the table keeps its proportions from phone to tablet", () => {
       frame.tableTop > over / 2 && frame.tableBottom > over / 2,
       `the surplus (${over}px) must sit in the pads: top ${frame.tableTop}, bottom ${frame.tableBottom}`
     );
+  });
+
+  // Everything above measures the model. The model is only right about the
+  // screen if the screen reads it, and the one place that can go wrong
+  // silently is the table's bottom edge: it was `bottom: 0` — the device's own
+  // — which is why the ticket's symptom survived a green model. No unit test
+  // can see a layout, so this reads the source, the way the CARD_W scan does.
+  test("GameTable draws the table's bottom edge at the surplus, not at zero", () => {
+    const src = readFileSync(new URL("../components/GameTable.tsx", import.meta.url), "utf8");
+    assert.match(src, /bottom: frame\.surplus,/);
   });
 
   test("no phone has any surplus — the cap only bites on a large tablet", () => {

@@ -1295,7 +1295,8 @@ export function GameTable({
         tableLeft: frame.tableLeft,
         tableRight: frame.tableRight,
         tableTop: frame.tableTop,
-        handZoneH: HAND_ZONE_H(handCardH, frame.bottomPad, scale),
+        surplus: frame.surplus,
+        handZoneH: HAND_ZONE_H(handCardH, frame.bottomPad),
         topDisplayedCount,
         sideDisplayedCount,
       }),
@@ -1317,6 +1318,7 @@ export function GameTable({
     frame.tableLeft,
     frame.tableRight,
     frame.tableTop,
+    frame.surplus,
     frame.bottomPad,
     handCardH,
   ]);
@@ -1544,7 +1546,8 @@ export function GameTable({
       tableLeft: frame.tableLeft,
       tableRight: frame.tableRight,
       tableTop: frame.tableTop,
-      handZoneH: HAND_ZONE_H(handCardH, frame.bottomPad, scale),
+      surplus: frame.surplus,
+      handZoneH: HAND_ZONE_H(handCardH, frame.bottomPad),
       // Nothing is in flight when an exchange resolves, so each seat's
       // displayed count is simply the hand it holds.
       topDisplayedCount: opponents.top ? handCountOf(opponents.top.player) : 0,
@@ -1715,9 +1718,12 @@ export function GameTable({
             left: frame.tableLeft,
             top: frame.tableTop,
             right: frame.tableRight,
-            // The device's own bottom edge, not the felt's: the hand runs to
+            // The table's own bottom edge, not the felt's: the hand runs to
             // it and past it, which is what buys the table the height above.
-            bottom: 0,
+            // Zero on every phone — `surplus` is only the height a window
+            // taller than the scale cap has, and it is taken off both ends so
+            // the drawn table stays centred rather than growing one gap.
+            bottom: frame.surplus,
           },
         ]}
       >
@@ -1869,7 +1875,7 @@ export function GameTable({
             style={[
               sharedTableStyles.handSection,
               {
-                height: HAND_ZONE_H(handCardH, frame.bottomPad, scale),
+                height: HAND_ZONE_H(handCardH, frame.bottomPad),
                 paddingBottom: frame.bottomPad,
                 gap: HAND_ZONE_GAP * scale,
               },
@@ -1981,7 +1987,7 @@ export function GameTable({
           style={[
             styles.rejectHint,
             {
-              bottom: HAND_ZONE_H(handCardH, frame.bottomPad, scale) + Spacing.xs,
+              bottom: HAND_ZONE_H(handCardH, frame.bottomPad) + Spacing.xs,
               left: frame.tableLeft,
               right: frame.tableRight,
             },

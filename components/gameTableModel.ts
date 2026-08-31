@@ -64,17 +64,20 @@ export function CHIP_H(scale: number): number {
   return 23 * scale;
 }
 /**
- * Headroom above the hand row's own cards — enough to clear a selected card's
- * lift (SELECT_LIFT, components/table/hand.tsx) without the row above it
- * shifting. hand.tsx reuses this same number as its scrollable fallback's own
- * top clearance, so the two cannot drift apart.
+ * How far a selected card rises out of the hand row, and therefore the
+ * headroom the row keeps above its own cards. `hand.tsx` lifts by exactly
+ * this and clears exactly this in its scrollable fallback, so the two cannot
+ * drift apart.
  *
- * It clears a card, so it is a share of one rather than a flat number: 16 is a
- * sixth of the lift on a phone and a fourteenth of it on a tablet, and every
- * pixel of that difference ends up in the band between the seats and the hand.
+ * It clears a card, so it takes the *card's* height rather than the table's
+ * scale: a spectated hand draws backs, which are their own aspect, and the
+ * hand draws at `scale * HAND_SCALE` rather than at the table's own. Read from
+ * the table's scale instead, the reserved band and the lift it reserves for
+ * differed by a fifth on a tablet.
  */
-export function handRowHeadroom(scale: number): number {
-  return 16 * scale;
+const SELECT_LIFT_SHARE = 16 / 90;
+export function handRowHeadroom(cardH: number): number {
+  return cardH * SELECT_LIFT_SHARE;
 }
 
 // ─── The hand's own band ──────────────────────────────────────────────────────
@@ -107,8 +110,8 @@ export function handVisibleH(cardH: number): number {
  * stopping at the felt, so it carries the bottom safe pad itself: the buttons
  * sit above that line and the cards run past it.
  */
-export function HAND_ZONE_H(cardH: number, bottomPad: number, scale: number): number {
-  return handVisibleH(cardH) + bottomPad + handRowHeadroom(scale);
+export function HAND_ZONE_H(cardH: number, bottomPad: number): number {
+  return handVisibleH(cardH) + bottomPad + handRowHeadroom(cardH);
 }
 
 // ─── Width budgets ────────────────────────────────────────────────────────────
@@ -384,12 +387,15 @@ const SEAT_NAME_LINE = 17;
 
 /**
  * The band a seat's floating label needs above its ring: the name's own line,
- * plus the badge row, which is a chip and therefore scales with the table. A
- * side seat's label runs inward rather than upward and does not need this,
- * but the top seat's does — drawn off the top of the screen otherwise.
+ * the gap under it and the badge row, all four of `whoLabel`'s own lengths
+ * (components/table/seats.tsx). A side seat's label runs inward rather than
+ * upward and does not need this, but the top seat's does — drawn off the top
+ * of the screen otherwise.
  */
+export const SEAT_LABEL_GAP = Spacing.xxs;
+export const SEAT_LABEL_PAD = Spacing.xs;
 export function seatLabelH(scale: number): number {
-  return SEAT_NAME_LINE * scale + CHIP_H(scale) + Spacing.xs * scale;
+  return (SEAT_NAME_LINE + SEAT_LABEL_GAP + SEAT_LABEL_PAD) * scale + CHIP_H(scale);
 }
 
 /**
@@ -439,6 +445,8 @@ export interface FlightOriginInput {
   tableLeft: number;
   tableRight: number;
   tableTop: number;
+  /** `TableFrame.surplus` — how far above the window's bottom the table ends. */
+  surplus: number;
   /** HAND_ZONE_H(handCardH, bottomPad) — the hand row's own height. */
   handZoneH: number;
   /**
@@ -472,15 +480,16 @@ export function flightOrigin(input: FlightOriginInput): { dx: number; dy: number
     seatLabelH(scale) +
     ringSize +
     (input.topDisplayedCount > 0 ? seatGap(scale) + topFanHeight(scale, input.topDisplayedCount) : 0);
-  const contentH = input.windowHeight - input.tableTop;
+  const tableFloor = input.windowHeight - input.surplus;
+  const contentH = tableFloor - input.tableTop;
   const midH = contentH - topSectionH - input.handZoneH;
   const pileCenterY = input.tableTop + topSectionH + midH / 2;
 
   if (dir === "bottom") {
-    // The hand zone runs flush to the window's bottom edge (GameTable.tsx
+    // The hand zone runs flush to the table's own bottom edge (GameTable.tsx
     // `handSection`, a flex sibling of the pile's own midSection), so its
     // vertical centre sits `handZoneH / 2` above that edge.
-    const handCenterY = input.windowHeight - input.handZoneH / 2;
+    const handCenterY = tableFloor - input.handZoneH / 2;
     return { dx: 0, dy: handCenterY - pileCenterY };
   }
 
@@ -907,6 +916,14 @@ export interface TableFrame extends ScreenPads {
   tableTop: number;
   tableRight: number;
   tableBottom: number;
+  /**
+   * Half of `surplusHeight` — the height at each end of a window taller than
+   * the scale cap that the contents were never sized for. It is already inside
+   * `tableTop`; anything measuring from the *bottom* edge has to subtract it
+   * itself, because the hand deliberately runs past `tableBottom` to the
+   * device's own edge and so cannot use that as its floor.
+   */
+  surplus: number;
   /** Width available to the hand row between the PASSA and GIOCA buttons. */
   handAvailW: number;
   /** …and the share of it the hand aims at — see HAND_WIDTH_SHARE. */
@@ -970,6 +987,7 @@ export function computeTableFrame(opts: {
     tableTop,
     tableRight,
     tableBottom,
+    surplus,
     handAvailW,
     handRoomW: Math.min(handAvailW, opts.width * HAND_WIDTH_SHARE),
     fieldRoomW: Math.min(tableW - SIDE_SECTION_W * 2, opts.width * FIELD_WIDTH_SHARE),
@@ -990,9 +1008,15 @@ export function notificationTopOffset(opts: {
   landscape: boolean;
   /** The table's own scale — the chips are sized from it. */
   scale: number;
+  /**
+   * `TableFrame.surplus`, which the chips this clears are pushed down by.
+   * Required rather than defaulted: it is zero on every phone, so a caller
+   * that forgot it would be correct everywhere anyone looked.
+   */
+  surplus: number;
 }): number {
   if (!opts.landscape) return opts.topPad;
-  const chipTop = Math.max(PAD_TOP * opts.scale, opts.topPad);
+  const chipTop = Math.max(PAD_TOP * opts.scale, opts.topPad) + opts.surplus;
   return chipTop + CHIP_H(opts.scale) + PAD_INNER * opts.scale;
 }
 

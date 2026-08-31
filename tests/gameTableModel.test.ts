@@ -20,6 +20,7 @@ import {
   HAND_WIDTH_SHARE,
   HAND_ZONE_H,
   handVisibleH,
+  handRowHeadroom,
   cardTilt,
   getOpponentPosition,
   seatDirection,
@@ -138,19 +139,25 @@ describe("layout constants (CLAUDE.md: MUST NOT CHANGE)", () => {
     assert.equal(CARD_H(2), CARD_H(1) * 2);
   });
 
-  test("the hand zone keeps its +16 headroom for the selection lift, at any card height", () => {
-    // The -16px selection lift has to fit inside the zone above the cards; the
-    // 16px of slack is what gives it room without clipping.
+  test("the hand zone keeps headroom for the selection lift, at any card height", () => {
+    // The selection lift has to fit inside the zone above the cards, and it is
+    // the *same* number: both are `handRowHeadroom` of the card being lifted,
+    // so no card size can leave the lift a pixel more than the row reserves.
     for (const h of [CH * 0.7, CH, CH * 1.2]) {
-      assert.equal(HAND_ZONE_H(h, 0, 1), handVisibleH(h) + 16);
-      assert.ok(HAND_ZONE_H(h, 0, 1) - handVisibleH(h) >= 16);
+      assert.equal(HAND_ZONE_H(h, 0), handVisibleH(h) + handRowHeadroom(h));
+      assert.ok(HAND_ZONE_H(h, 0) - handVisibleH(h) >= handRowHeadroom(h));
     }
+  });
+
+  test("the headroom is a share of the card, so a tablet's lift is a tablet's", () => {
+    assert.equal(handRowHeadroom(CH * 2), handRowHeadroom(CH) * 2);
+    assert.equal(handRowHeadroom(CARD_H(1)), 16);
   });
 
   test("the hand zone carries the bottom safe pad itself — it runs to the device edge", () => {
     // PASSA and GIOCA sit on the safe line inside it and are never cropped;
     // only the cards run past it.
-    assert.equal(HAND_ZONE_H(CH, 21, 1) - HAND_ZONE_H(CH, 0, 1), 21);
+    assert.equal(HAND_ZONE_H(CH, 21) - HAND_ZONE_H(CH, 0), 21);
   });
 
   test("only the redundant upside-down index is cropped, never the rank corner", () => {
@@ -903,21 +910,29 @@ describe("notificationTopOffset", () => {
   const topPad = 47;
 
   test("in landscape the banner starts below the HUD chips", () => {
-    const top = notificationTopOffset({ topPad, landscape: true, scale: 1 });
+    const top = notificationTopOffset({ topPad, landscape: true, scale: 1, surplus: 0 });
     assert.ok(top >= topPad + CHIP_H(1), `${top} still overlaps the chips`);
   });
 
   test("portrait — every menu screen — is left exactly where it was", () => {
-    assert.equal(notificationTopOffset({ topPad, landscape: false, scale: 1 }), topPad);
+    assert.equal(notificationTopOffset({ topPad, landscape: false, scale: 1, surplus: 0 }), topPad);
   });
 
   test("a zero inset still clears the chips in landscape", () => {
-    assert.ok(notificationTopOffset({ topPad: 0, landscape: true, scale: 1 }) >= CHIP_H(1));
+    assert.ok(notificationTopOffset({ topPad: 0, landscape: true, scale: 1, surplus: 0 }) >= CHIP_H(1));
+  });
+
+  // The chips this clears are inside the table's frame, and on a window past
+  // the scale cap that frame starts `surplus` lower than the safe pad does.
+  test("a surplus moves the chips down, and the banner with them", () => {
+    const flush = notificationTopOffset({ topPad, landscape: true, scale: 1, surplus: 0 });
+    const inset = notificationTopOffset({ topPad, landscape: true, scale: 1, surplus: 62 });
+    assert.equal(inset - flush, 62);
   });
 
   test("scales with the table, so a tablet's banner clears a tablet's chips", () => {
-    const one = notificationTopOffset({ topPad, landscape: true, scale: 1 });
-    const two = notificationTopOffset({ topPad, landscape: true, scale: 2 });
+    const one = notificationTopOffset({ topPad, landscape: true, scale: 1, surplus: 0 });
+    const two = notificationTopOffset({ topPad, landscape: true, scale: 2, surplus: 0 });
     assert.ok(two > one, `${two} is no lower than ${one}`);
     assert.ok(two >= topPad + CHIP_H(2), `${two} still overlaps a tablet's chips`);
   });
@@ -1373,6 +1388,7 @@ describe("flightOrigin", () => {
     tableLeft: 40,
     tableRight: 20,
     tableTop: 10,
+    surplus: 0,
     handZoneH: 100,
     topDisplayedCount: 0,
     sideDisplayedCount: 0,
@@ -1380,16 +1396,16 @@ describe("flightOrigin", () => {
 
   test("bottom: the throw starts at the hand row's own vertical centre", () => {
     // handRowCenterY = windowHeight - handZoneH/2 = 600-50 = 550;
-    // topSectionH (no fan) = 77, pileCenterY = 293.5 (worked in the `top`
-    // test below, which shares this same pile centre); dy = 550-293.5 = 256.5.
-    assert.deepEqual(flightOrigin({ ...base, dir: "bottom" }), { dx: 0, dy: 256.5 });
+    // topSectionH (no fan) = 79, pileCenterY = 294.5 (worked in the `top`
+    // test below, which shares this same pile centre); dy = 550-294.5 = 255.5.
+    assert.deepEqual(flightOrigin({ ...base, dir: "bottom" }), { dx: 0, dy: 255.5 });
   });
 
   test("bottom: the pile's own centre, not a fixed constant, is what scale moves through", () => {
-    // seatLabelH(2)=84, ringSize(2)=66, topSectionH=150; midH=590-150-100=340;
-    // pileCenterY=10+150+170=330; handRowCenterY is unchanged at 550 (handZoneH
-    // is a caller-measured input here, not itself a function of scale); dy=220.
-    assert.equal(flightOrigin({ ...base, dir: "bottom", scale: 2 }).dy, 220);
+    // seatLabelH(2)=92, ringSize(2)=66, topSectionH=158; midH=590-158-100=332;
+    // pileCenterY=10+158+166=334; handRowCenterY is unchanged at 550 (handZoneH
+    // is a caller-measured input here, not itself a function of scale); dy=216.
+    assert.equal(flightOrigin({ ...base, dir: "bottom", scale: 2 }).dy, 216);
   });
 
   test("top: dx is 0 — the top seat and the pile share the same horizontal centre", () => {
@@ -1398,11 +1414,11 @@ describe("flightOrigin", () => {
 
   test("top: the throw starts above the pile, at the ring's own line", () => {
     // Worked by hand from seatLabelH/SEAT_DISC/CHIP_H/Spacing — see the ADR.
-    // seatLabelH(1) = 17 + CHIP_H(1)=23 + Spacing.xs=4 = 44; ringSize = 33.
-    // topSectionH (no fan) = 44 + 33 = 77; contentH = 600-10 = 590;
-    // midH = 590-77-100 = 413; pileCenterY = 10+77+413/2 = 293.5;
-    // ringCenterY = 10+44+33/2 = 70.5; dy = 70.5-293.5 = -223.
-    assert.equal(flightOrigin({ ...base, dir: "top" }).dy, -223);
+    // seatLabelH(1) = 17 + gap 2 + pad 4 + CHIP_H(1)=23 = 46; ringSize = 33.
+    // topSectionH (no fan) = 46 + 33 = 79; contentH = 600-10 = 590;
+    // midH = 590-79-100 = 411; pileCenterY = 10+79+411/2 = 294.5;
+    // ringCenterY = 10+46+33/2 = 72.5; dy = 72.5-294.5 = -222.
+    assert.equal(flightOrigin({ ...base, dir: "top" }).dy, -222);
   });
 
   test("top: a bigger held fan pushes the pile down, lengthening the throw", () => {
@@ -1754,6 +1770,7 @@ describe("exchangeFlight", () => {
     tableLeft: 40,
     tableRight: 20,
     tableTop: 10,
+    surplus: 0,
     handZoneH: 100,
     topDisplayedCount: 0,
   };

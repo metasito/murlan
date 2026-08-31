@@ -5,6 +5,8 @@ import { ChipText, TableChip } from "./chrome";
 import {
   FAN_DRAWN_CARDS,
   SEAT_DISC,
+  SEAT_LABEL_GAP,
+  SEAT_LABEL_PAD,
   seatGap,
   displayedHandCount,
   fanCounts,
@@ -590,7 +592,13 @@ function SeatWho({
         <View
           style={[
             seatStyles.whoLabel,
-            { width: labelW, left: labelLeft, bottom: disc },
+            {
+              width: labelW,
+              left: labelLeft,
+              bottom: disc,
+              gap: SEAT_LABEL_GAP * scale,
+              paddingBottom: SEAT_LABEL_PAD * scale,
+            },
             anchor === "left" && seatStyles.whoLabelLeft,
             anchor === "right" && seatStyles.whoLabelRight,
           ]}
@@ -738,11 +746,12 @@ const seatStyles = StyleSheet.create({
   // caller supplies width and both insets in points, worked out from the disc
   // it hangs over — centring it on a percentage translate instead leaves the
   // label beside the disc on any renderer that does not resolve one.
+  // The gap and the pad ride the table's scale, so they are passed in rather
+  // than set here — `seatLabelH` reserves this column's height from the same
+  // two numbers, and a flat length here is height it would not know about.
   whoLabel: {
     position: "absolute",
     alignItems: "center",
-    gap: Spacing.xxs,
-    paddingBottom: Spacing.xs,
   },
   // A side seat's label runs inwards from the disc, into the felt, rather than
   // outwards past the edge its own column is flush against.
