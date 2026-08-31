@@ -19,6 +19,7 @@ import {
   type TestServer,
 } from "../helpers/testServer.ts";
 import { connectAs, reconnectWith, waitFor } from "../helpers/client.ts";
+import { befriend, inviteRowsFor } from "../helpers/friends.ts";
 
 interface RoomState {
   code: string;
@@ -51,26 +52,6 @@ describe("a game invite outlives the socket that would have carried it", {
     return c;
   }
 
-  /** Makes the two accounts friends through the same endpoints a player uses. */
-  async function befriend(a: Awaited<ReturnType<typeof player>>, b: Awaited<ReturnType<typeof player>>) {
-    const add = await fetch(`${server.url}/api/friends/add`, {
-      method: "POST",
-      headers: { "content-type": "application/json", cookie: a.cookie },
-      body: JSON.stringify({ username: b.user.username }),
-    });
-    assert.equal(add.status, 200, await add.text());
-    const pending = await fetch(`${server.url}/api/friends/requests`, {
-      headers: { cookie: b.cookie },
-    });
-    const rows = (await pending.json()) as { id: string }[];
-    assert.equal(rows.length, 1, "the request reached the other account");
-    const accept = await fetch(`${server.url}/api/friends/accept/${rows[0].id}`, {
-      method: "POST",
-      headers: { cookie: b.cookie },
-    });
-    assert.equal(accept.status, 200, await accept.text());
-  }
-
   async function invitesFor(cookie: string): Promise<InviteRow[]> {
     const res = await fetch(`${server.url}/api/friends/invites`, { headers: { cookie } });
     // Read once: assert.equal evaluates its message eagerly, so `await
@@ -81,25 +62,11 @@ describe("a game invite outlives the socket that would have carried it", {
   }
 
   /**
-   * The rows themselves, not the endpoint's answer. `/api/friends/invites`
-   * filters on the room still being joinable, so it goes empty the moment the
-   * room closes whether or not anything deleted anything — reading it alone
-   * would pass with the delete removed. Imported here rather than at module
-   * scope: `server/db.ts` builds its pool as it loads, and `startTestServer`
-   * sets `DATABASE_URL` first.
-   */
-  async function inviteRowsFor(roomId: string): Promise<unknown[]> {
-    const { db } = await import("../../server/db.ts");
-    const { gameInvites } = await import("../../shared/schema.ts");
-    const { eq } = await import("drizzle-orm");
-    return db.select().from(gameInvites).where(eq(gameInvites.roomId, roomId));
-  }
-
   /** A host with a waiting room, and a friend who is not connected to hear about it. */
   async function hostAndAbsentFriend(tag: string) {
     const host = await player(`${tag}_host`);
     const friend = await player(`${tag}_friend`);
-    await befriend(host, friend);
+    await befriend(server, host, friend);
 
     const made = waitFor<RoomState>(host.socket, "room:state");
     host.socket.emit("room:create", { gameMode: "free_for_all", maxPlayers: 4 });
@@ -183,7 +150,7 @@ describe("a game invite outlives the socket that would have carried it", {
   test("an invite to a room that has filled up is not offered", async () => {
     const host = await player("full_host");
     const friend = await player("full_friend");
-    await befriend(host, friend);
+    await befriend(server, host, friend);
 
     const made = waitFor<RoomState>(host.socket, "room:state");
     host.socket.emit("room:create", { gameMode: "free_for_all", maxPlayers: 2 });
@@ -217,7 +184,7 @@ describe("a game invite outlives the socket that would have carried it", {
     const host = await player("outsider_host");
     const outsider = await player("outsider_sender");
     const friend = await player("outsider_friend");
-    await befriend(outsider, friend);
+    await befriend(server, outsider, friend);
 
     const made = waitFor<RoomState>(host.socket, "room:state");
     host.socket.emit("room:create", { gameMode: "free_for_all", maxPlayers: 4 });

@@ -232,13 +232,22 @@ export function armLobbyGrace(
 }
 
 /**
- * Retires every invite pointing at a room that can no longer be joined, and
- * tells the people holding one.
- *
  * An invitee is not in the room, so `io.to(roomId)` never reaches them; the
  * account's own room is the only channel that does. The room's code rides along
- * because a client may be holding a second invite it must not clear.
+ * because a client may be holding a second invite it must not act on.
  */
+function tellInvitees(
+  io: SocketServer,
+  inviteeIds: string[],
+  event: string,
+  payload: Record<string, unknown>
+): void {
+  for (const inviteeId of inviteeIds) {
+    io.to(userRoom(inviteeId)).emit(event, payload);
+  }
+}
+
+/** Retires every invite pointing at a room that can no longer be joined. */
 export async function retireRoomInvites(
   io: SocketServer,
   roomId: string,
@@ -248,19 +257,13 @@ export async function retireRoomInvites(
     logger.warn({ err, roomId }, "Failed to clear the invites of a room that closed");
     return [] as string[];
   });
-  for (const inviteeId of invitees) {
-    io.to(userRoom(inviteeId)).emit("friend:invite_retired", { roomCode });
-  }
+  tellInvitees(io, invitees, "friend:invite_retired", { roomCode });
 }
 
 /**
- * Tells everyone holding an invite that the room's last seat went, or came
- * back. The rows are left alone: a full room is not a finished one, and an
- * invite deleted when a stranger sat down could not return when they left.
- *
- * Emitted on both edges rather than only on filling, because the client's
- * answer to either is to ask the server what it may still join —
- * `/api/friends/invites` filters on the seat count, so it is already right.
+ * The room's last seat went, or came back. The rows are left alone: a full room
+ * is not a finished one, and an invite deleted when a stranger sat down could
+ * not return when they left.
  */
 export async function announceRoomJoinable(
   io: SocketServer,
@@ -269,12 +272,24 @@ export async function announceRoomJoinable(
   joinable: boolean
 ): Promise<void> {
   const invitees = await storage.getRoomInvitees(roomId).catch((err: unknown) => {
-    logger.warn({ err, roomId }, "Failed to read who holds an invite to a room that filled");
+    logger.warn({ err, roomId, joinable }, "Failed to read who holds an invite to a room");
     return [] as string[];
   });
-  for (const inviteeId of invitees) {
-    io.to(userRoom(inviteeId)).emit("friend:room_joinable", { roomCode, joinable });
-  }
+  tellInvitees(io, invitees, "friend:room_joinable", { roomCode, joinable });
+}
+
+/**
+ * Announces a room that has just taken its last seat. Every path that seats a
+ * player calls this, so a lobby filled by quickmatch is as closed as one filled
+ * by code — the same public lobby a host can still invite friends into.
+ */
+export async function announceIfFilled(
+  io: SocketServer,
+  room: { id: string; code: string; maxPlayers: number },
+  seated: number
+): Promise<void> {
+  if (seated < room.maxPlayers) return;
+  await announceRoomJoinable(io, room.id, room.code, false);
 }
 
 /**
@@ -351,11 +366,11 @@ export async function handleSeatRelease(
       "room:state",
       roomStatePayload({ ...room, hostUserId: newHostId }, remaining)
     );
-    // The seat that just went is one the room did not have a moment ago, so
-    // anyone whose invite went quiet when it filled can be told it is open.
-    void announceRoomJoinable(io, roomId, room.code, true).catch((err: unknown) =>
-      logger.warn({ err, roomId }, "Failed to announce a seat freeing in a lobby")
-    );
+    // Only the edge, matching the filling side: a 4-seat lobby going 2 → 1 was
+    // joinable before and after, and its invitees have nothing to re-ask.
+    if (remaining.length === room.maxPlayers - 1) {
+      await announceRoomJoinable(io, roomId, room.code, true);
+    }
   } else {
     // Routed rather than read out of this process's own map: the seat is live
     // in whichever instance holds the game, and reading `activeGames` here

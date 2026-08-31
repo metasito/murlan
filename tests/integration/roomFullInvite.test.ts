@@ -19,6 +19,7 @@ import {
   type TestServer,
 } from "../helpers/testServer.ts";
 import { connectAs, waitFor } from "../helpers/client.ts";
+import { befriend, inviteRowsFor } from "../helpers/friends.ts";
 
 interface RoomState {
   code: string;
@@ -52,28 +53,6 @@ describe(
       return c;
     }
 
-    async function befriend(
-      a: Awaited<ReturnType<typeof player>>,
-      b: Awaited<ReturnType<typeof player>>
-    ) {
-      const add = await fetch(`${server.url}/api/friends/add`, {
-        method: "POST",
-        headers: { "content-type": "application/json", cookie: a.cookie },
-        body: JSON.stringify({ username: b.user.username }),
-      });
-      assert.equal(add.status, 200, await add.text());
-      const pending = await fetch(`${server.url}/api/friends/requests`, {
-        headers: { cookie: b.cookie },
-      });
-      const rows = (await pending.json()) as { id: string }[];
-      assert.equal(rows.length, 1, "the request reached the other account");
-      const accept = await fetch(`${server.url}/api/friends/accept/${rows[0].id}`, {
-        method: "POST",
-        headers: { cookie: b.cookie },
-      });
-      assert.equal(accept.status, 200, await accept.text());
-    }
-
     /** What the invitee's own screen would be offered. */
     async function offeredTo(cookie: string): Promise<{ roomCode: string }[]> {
       const res = await fetch(`${server.url}/api/friends/invites`, { headers: { cookie } });
@@ -82,25 +61,11 @@ describe(
       return JSON.parse(text) as { roomCode: string }[];
     }
 
-    /**
-     * The rows themselves. The endpoint above answers nothing about them: its
-     * seat-count filter goes empty on a full room with the notification and the
-     * delete both absent, so reading it alone would pass on the bug.
-     * Imported here rather than at module scope — `server/db.ts` builds its
-     * pool as it loads, and `startTestServer` sets `DATABASE_URL` first.
-     */
-    async function inviteRowsFor(roomId: string): Promise<unknown[]> {
-      const { db } = await import("../../server/db.ts");
-      const { gameInvites } = await import("../../shared/schema.ts");
-      const { eq } = await import("drizzle-orm");
-      return db.select().from(gameInvites).where(eq(gameInvites.roomId, roomId));
-    }
-
     test("the last seat going, and coming back, both reach the invitee", async () => {
       const host = await player("host");
       const friend = await player("friend");
       const stranger = await player("stranger");
-      await befriend(host, friend);
+      await befriend(server, host, friend);
 
       const made = waitFor<RoomState>(host.socket, "room:state");
       // Two seats: the host holds one, so a single stranger fills the room.
@@ -141,6 +106,34 @@ describe(
         [room.code],
         "and the same invite is offered again"
       );
+    });
+
+    /**
+     * The scenario #689 names is strangers filling a lobby, and a stranger
+     * arrives by quickmatch rather than by code — they have no code to type.
+     * That path seats a player through `claimRoomSeat` of its own, so the
+     * announcement has to hang off the seating, not off `room:join`.
+     */
+    test("a stranger arriving by quickmatch closes the door just as loudly", async () => {
+      const host = await player("qm_host");
+      const friend = await player("qm_friend");
+      const stranger = await player("qm_stranger");
+      await befriend(server, host, friend);
+
+      const made = waitFor<RoomState>(host.socket, "room:state");
+      host.socket.emit("room:quickmatch", { gameMode: "free_for_all", maxPlayers: 2 });
+      const room = await made;
+
+      const invited = waitFor(friend.socket, "friend:invite");
+      host.socket.emit("friend:invite", { friendUserId: friend.user.id, roomCode: room.code });
+      await invited;
+
+      const filled = waitFor<JoinableEvent>(friend.socket, "friend:room_joinable");
+      stranger.socket.emit("room:quickmatch", { gameMode: "free_for_all", maxPlayers: 2 });
+      const shut = await filled;
+      assert.equal(shut.roomCode, room.code, "the stranger landed in the room, and it said so");
+      assert.equal(shut.joinable, false);
+      assert.equal((await inviteRowsFor(room.roomId)).length, 1, "the row survives here too");
     });
   }
 );

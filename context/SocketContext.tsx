@@ -319,11 +319,9 @@ export function SocketProvider({ children }: { children: ReactNode }) {
       qc.invalidateQueries({ queryKey: ["/api/friends/invites"] });
     };
 
-    // A room that filled up, or freed a seat again. The invite itself is still
-    // good either way, so this only takes down the banner that would lead to a
-    // door that will not open, and re-asks — the list already filters on the
-    // seat count, so the invite comes back on its own when a seat does. No
-    // banner on the way back: a stranger leaving a lobby is not an invitation.
+    // The invite itself is still good either way, so the list is simply re-asked
+    // — it filters on the seat count already. No banner on the way back: a
+    // stranger leaving a lobby is not an invitation.
     const onRoomJoinable = ({ roomCode, joinable }: { roomCode: string; joinable: boolean }) => {
       if (!joinable) setPendingInvite((prev) => (prev?.roomCode === roomCode ? null : prev));
       qc.invalidateQueries({ queryKey: ["/api/friends/invites"] });

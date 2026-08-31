@@ -15,7 +15,7 @@ import {
   handleSeatRelease,
   roomStatePayload,
   teamsSizeRefusal,
-  announceRoomJoinable,
+  announceIfFilled,
 } from "./socketTable.ts";
 import { applyOrForward } from "./tableRouter.ts";
 import {
@@ -148,12 +148,7 @@ export function registerRoomHandlers({ io, socket, userId, username }: RoomHandl
           gameMode: room.gameMode,
         });
         io.to(room.id).emit("room:state", roomStatePayload(room, updatedPlayers));
-
-        if (updatedPlayers.length >= room.maxPlayers) {
-          void announceRoomJoinable(io, room.id, room.code, false).catch((err: unknown) =>
-            logger.warn({ err, roomId: room.id }, "Failed to announce a room that filled up")
-          );
-        }
+        await announceIfFilled(io, room, updatedPlayers.length);
       },
       { limit: 10, windowMs: 60_000 }
     );
@@ -257,6 +252,7 @@ export function registerRoomHandlers({ io, socket, userId, username }: RoomHandl
             "room:state",
             roomStatePayload(candidate.room, updatedPlayers)
           );
+          await announceIfFilled(io, candidate.room, updatedPlayers.length);
           joinedRoomId = roomId;
           break;
         }
