@@ -9,7 +9,11 @@ name: Android UI (Maestro)
 # `push` trigger each of those is a red main for a reason nobody can act on,
 # which is the exact thing this trigger has always existed to prevent.
 #
-# Turn it back on by restoring `push: branches: [main]` once #186 is settled.
+# Do not turn it back on for #186 alone. As of 2026-08-31 this job is red 4/4 on #619 — the
+# tutorial's Skip control taps and does nothing — so restoring a trigger now would put a
+# known-red device job on every merge, which is the thing this stop-gap exists to prevent.
+# #354 owns the trigger and wants `pull_request`, not `push`; it needs #619 fixed and #186's
+# boot flake either retried clean or made an actionable failure first.
 #
 # Everything a developer's own machine supplies by hand, this supplies
 # explicitly, because the first runs of this job found each one missing in

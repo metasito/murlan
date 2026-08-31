@@ -38,7 +38,9 @@ both. `tests/vignette.test.ts` pins that no radial shapes itself.
 through Expo Go on a real iOS Simulator, on a free `macos-latest` GitHub runner (#205) — the
 same flows `maestro.yml` already runs on Android, with the emulator-only failure classes
 (#185, #186) gone because a Simulator is a process on the host rather than a virtualised
-device. It runs on every pull request targeting `main`, and on demand.
+device. **It runs on demand only** — `on: workflow_dispatch:`, no `pull_request` trigger. It lost
+that trigger for being red, went green on 2026-08-26, and never got it back; #354 owns restoring
+it, and cannot until #620 is fixed.
 
 That job proves the flows still run and the app still renders *something* on device — it does
 not replace looking at the device. A rendering defect like #209 needs a screenshot regardless:
@@ -299,7 +301,7 @@ process that is still serving as a corpse.
 | Anything **visual** (colour, gradient, shadow, size) | the parity harness below | pixels vs the prototype | ~40s |
 | Tokens, contrast, roles | `node --test tests/contrast.test.ts tests/tokenRoles.test.ts tests/cosmetics.test.ts` | AA floors | ~1s |
 | The server, the socket protocol, auth or storage | `tests/integration/` — see below, it needs a database | the routes and handlers end to end | ~10s a file |
-| Anything the app must **boot and stay drivable through on iOS** | `.github/workflows/ios.yml`, dispatched by hand | a crash, a screen that never renders, a control the flows tap going missing — on a real simulator | unmeasured; the job's own ceiling is 75 min |
+| Anything the app must **boot and stay drivable through on iOS** | `.github/workflows/ios.yml`, dispatched by hand | a crash, a screen that never renders, a control the flows tap going missing — on a real simulator | 10–15 min over three runs on 2026-08-31, none of which finished the flow (#620); a full pass is longer, and the 75 min ceiling is sized for offline-game.yaml, which this job does not yet run |
 
 Full sweeps, for the end of an item only: `npx tsc --noEmit` (~5s) → `npm test` (~12s, 1066) →
 `npx jest` (~50s, 527) → `npx eslint components lib tests app` (~25s).
