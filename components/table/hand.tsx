@@ -323,7 +323,7 @@ function CardItemBase({
  * excluded because the deal reads it once at mount (`dealDelayRef`), so a
  * later change to it must not remount the card mid-flight.
  */
-function cardItemPropsEqual(a: CardItemProps, b: CardItemProps): boolean {
+export function cardItemPropsEqual(a: CardItemProps, b: CardItemProps): boolean {
   return (
     a.card.id === b.card.id &&
     a.isSelected === b.isSelected &&

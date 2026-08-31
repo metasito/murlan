@@ -767,7 +767,7 @@ function TopLight({ light }: { light?: CardViewProps["light"] }) {
  * arrives as fresh JSON, so the card objects are new on every server message
  * even when nothing about the hand changed.
  */
-function cardViewPropsEqual(a: CardViewProps, b: CardViewProps): boolean {
+export function cardViewPropsEqual(a: CardViewProps, b: CardViewProps): boolean {
   return (
     a.card.id === b.card.id &&
     a.selected === b.selected &&
@@ -780,7 +780,12 @@ function cardViewPropsEqual(a: CardViewProps, b: CardViewProps): boolean {
     a.noLift === b.noLift &&
     a.decorative === b.decorative &&
     a.light === b.light &&
-    a.style === b.style
+    a.style === b.style &&
+    a.hitWidth === b.hitWidth &&
+    a.hint === b.hint &&
+    a.a11yActions === b.a11yActions &&
+    a.onA11yAction === b.onA11yAction &&
+    a.a11yActionKeys === b.a11yActionKeys
   );
 }
 
