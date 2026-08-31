@@ -11,6 +11,10 @@ import { TOP_GAP } from '@/components/NotificationBanner';
 const BACKDROP = [Colors.bg, Colors.bg, Colors.feltDark] as const;
 
 const CONTENT_H_PAD = 20;
+// Tall enough to read as the page continuing rather than as a shadow, short
+// enough not to wash out the last line of content.
+const MORE_BELOW_H = 56;
+const SCROLL_THROTTLE_MS = 16;
 // The app is served as a web bundle, so a 1920-wide browser is a real viewport
 // and an uncapped menu row puts its two ends a metre apart.
 const MENU_MAX_W = 800;
@@ -35,6 +39,13 @@ export function MenuLayout({
 }: MenuLayoutProps) {
   const insets = useSafeAreaInsets();
   const bannerBottom = useBannerBottom();
+
+  const [viewportH, setViewportH] = React.useState(0);
+  const [contentH,  setContentH]  = React.useState(0);
+  const [offsetY,   setOffsetY]   = React.useState(0);
+  // Half the fade's own height: less than that left to travel and the hint is
+  // covering the end of the content rather than pointing past it.
+  const hasMore = contentH - offsetY - viewportH > MORE_BELOW_H / 2;
 
   const paddingTop    = Math.max(insets.top, contentPad);
   const paddingBottom = Math.max(insets.bottom, contentPad);
@@ -78,15 +89,36 @@ export function MenuLayout({
         behavior={Platform.OS === 'android' ? 'padding' : undefined}
       >
         {scrollable ? (
-          <ScrollView
-            style={styles.fill}
-            contentContainerStyle={styles.scroll}
-            keyboardShouldPersistTaps="handled"
-            automaticallyAdjustKeyboardInsets
-            showsVerticalScrollIndicator={false}
-          >
-            <View testID="menu-content" style={contentStyle}>{children}</View>
-          </ScrollView>
+          <View style={styles.fill}>
+            <ScrollView
+              style={styles.fill}
+              contentContainerStyle={styles.scroll}
+              keyboardShouldPersistTaps="handled"
+              automaticallyAdjustKeyboardInsets
+              showsVerticalScrollIndicator={false}
+              scrollEventThrottle={SCROLL_THROTTLE_MS}
+              onLayout={(e) => setViewportH(e.nativeEvent.layout.height)}
+              onContentSizeChange={(_w, h) => setContentH(h)}
+              onScroll={(e) => setOffsetY(e.nativeEvent.contentOffset.y)}
+            >
+              <View testID="menu-content" style={contentStyle}>{children}</View>
+            </ScrollView>
+            {/* A screen taller than its window otherwise ends flush at the
+                bottom edge and reads as finished — /rules is 240% of a phone
+                (#587). The platforms' own indicators do not answer it: they
+                appear once you already scroll, which is the thing being
+                decided against. */}
+            {hasMore && (
+              <LinearGradient
+                testID="menu-more-below"
+                colors={[Colors.bgClear, Colors.bg]}
+                style={styles.moreBelow}
+                pointerEvents="none"
+                accessibilityElementsHidden
+                importantForAccessibility="no-hide-descendants"
+              />
+            )}
+          </View>
         ) : (
           <View style={styles.fill}>
             <View testID="menu-content" style={contentStyle}>{children}</View>
@@ -121,4 +153,5 @@ const styles = StyleSheet.create({
   // own inner ScrollView take the overflow.
   bounded:  { width: '100%', alignSelf: 'center', flexGrow: 1, flexShrink: 1 },
   centered: { justifyContent: 'center', alignItems: 'center' },
+  moreBelow: { position: 'absolute', left: 0, right: 0, bottom: 0, height: MORE_BELOW_H },
 });
