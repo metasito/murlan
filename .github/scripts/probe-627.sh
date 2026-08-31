@@ -1,103 +1,80 @@
 #!/usr/bin/env bash
 # DIAGNOSTIC ONLY - not for merge. #627.
 #
-# Drives one button with plain `adb shell input tap`, with no Maestro anywhere
-# in the loop. Eleven runs have varied the app and the flow; none has asked
-# whether the tap injection channel itself works. That is the split this
-# answers:
+# A tap at the Skip button's own device-reported centre leaves the app and
+# lands on the Android launcher. Two things do that, and they need opposite
+# fixes:
 #
-#   adb tap lands              -> the app is fine, Maestro's driver is not
-#   only Back-then-tap lands   -> real app bug, reproducible without Maestro
-#   neither lands              -> touch is dead at the window layer
+#   (a) the tap misses - bounds and injection are in different coordinate
+#       spaces (rotation), so it hits something outside the app
+#   (b) the tap lands and the app dies - Skip crashes it, and the launcher is
+#       just what is behind the corpse
+#
+# So: record the rotation and the process id before, and check whether that
+# same process is still alive after. Nothing here is inferred from the screen.
 set -u
 
 PKG=host.exp.exponent
 LINK='exp://127.0.0.1:8081?disableOnboarding=1'
+SHOT="$HOME/.maestro/tests/probe"
+mkdir -p "$SHOT"
 
 say() { echo; echo "### $*"; }
 dump() { adb shell uiautomator dump /sdcard/d.xml >/dev/null 2>&1; adb shell cat /sdcard/d.xml 2>/dev/null; }
 has() { case "$1" in *"$2"*) return 0 ;; *) return 1 ;; esac; }
-
-# Centre of the first node carrying this content-desc, as "x y".
-centre() {
-  n=$(printf '%s' "$1" | tr '>' '\n' | grep "content-desc=\"$2\"" | head -1)
-  b=$(printf '%s' "$n" | grep -o 'bounds="\[[0-9]*,[0-9]*\]\[[0-9]*,[0-9]*\]"' | head -1)
-  [ -n "$b" ] || return 1
-  set -- $(printf '%s' "$b" | grep -o '[0-9][0-9]*' | tr '\n' ' ')
-  echo "$(( ($1 + $3) / 2 )) $(( ($2 + $4) / 2 ))"
-}
-
 labels() { dump | tr '>' '\n' | grep -oE '(text|content-desc)="[^"]+"' | sort -u | tr '\n' ' '; echo; }
-
-say "display geometry"
-adb shell wm size; adb shell wm density
+pid() { adb shell pidof "$PKG" 2>/dev/null | tr -d '\r'; }
+geom() { echo "  rotation=$(adb shell dumpsys window displays 2>/dev/null | grep -oE 'cur=[0-9]+x[0-9]+|rotation=[A-Z_0-9]+' | tr '\n' ' ')  wm=$(adb shell wm size | tr -d '\r')  pid=$(pid)"; }
 
 say "cold start, state cleared"
 adb shell pm clear "$PKG"
-adb shell am start -W -a android.intent.action.VIEW -d "$LINK" "$PKG"
+adb shell am start -W -a android.intent.action.VIEW -d "$LINK" "$PKG" | grep -E 'Status|TotalTime'
 
-# The tutorial is pushed by an effect *after* home has already rendered, so
-# "home is up" is not the end of the launch. Keep sampling to a wall-clock
-# deadline and prefer the tutorial if it ever arrives.
 say "sampling the launch to a 180s deadline"
 deadline=$(( $(date +%s) + 180 ))
-screen=""; xml=""
+xml=""
 while [ "$(date +%s)" -lt "$deadline" ]; do
   x=$(dump)
-  if has "$x" "GUIDA RAPIDA"; then screen=tutorial; xml=$x; break; fi
-  if has "$x" "Gioca online"; then screen=home; xml=$x; fi
-  echo "  t+$(( 180 - (deadline - $(date +%s)) ))s: ${screen:-nothing yet}"
+  if has "$x" "GUIDA RAPIDA"; then xml=$x; break; fi
 done
-echo "settled on: ${screen:-nothing}"
-[ -n "$screen" ] || { echo "::error::The app never rendered; probe cannot run."; exit 1; }
+[ -n "$xml" ] || { echo "::error::Never reached the tutorial."; exit 1; }
+echo "on the tutorial."
 
-# Whatever is on screen, tap one real control and look for the change it causes.
-if [ "$screen" = tutorial ]; then
-  target="Salta il tutorial"; check_gone="GUIDA RAPIDA"; check_here=""
-else
-  target="Impostazioni";      check_gone="";            check_here="Volume"
-fi
-say "target: $target  (on the $screen screen)"
+say "geometry and process, BEFORE the tap"
+geom
+before=$(pid)
+adb exec-out screencap -p > "$SHOT/1-tutorial.png" 2>/dev/null; echo "  screenshot: $(wc -c < "$SHOT/1-tutorial.png") bytes"
 
-xy=$(centre "$xml" "$target") || { echo "::error::'$target' is not in the hierarchy."; printf '%s' "$xml" | tr '>' '\n' | grep -o 'content-desc="[^"]*"' | sort -u; exit 1; }
-echo "centre: $xy"
+say "the Skip node as the device reports it"
+node=$(printf '%s' "$xml" | tr '>' '\n' | grep 'content-desc="Salta il tutorial"' | head -1)
+echo "$node"
+set -- $(printf '%s' "$node" | grep -o 'bounds="\[[0-9]*,[0-9]*\]\[[0-9]*,[0-9]*\]"' | head -1 | grep -o '[0-9][0-9]*' | tr '\n' ' ')
+cx=$(( ($1 + $3) / 2 )); cy=$(( ($2 + $4) / 2 ))
+echo "centre: $cx $cy"
 
-landed() {
-  d=$(dump)
-  [ -z "$check_here" ] || { has "$d" "$check_here" && return 0; return 1; }
-  has "$d" "$check_gone" && return 1
-  return 0
-}
-
-say "ATTEMPT 1 - plain adb tap, no key event has reached the app"
+say "TAP at $cx $cy"
 adb logcat -c
-adb shell input tap $xy
-sleep 3
-echo "--- on screen after tap 1 ---"; labels
-if landed; then echo "RESULT: adb tap WORKED."; exit 0; fi
-echo "the Skip button did not fire."
+adb shell input tap "$cx" "$cy"
+sleep 4
+after=$(pid)
+echo "  pid before=$before  after=${after:-DEAD}"
+geom
+adb exec-out screencap -p > "$SHOT/2-after-tap.png" 2>/dev/null; echo "  screenshot: $(wc -c < "$SHOT/2-after-tap.png") bytes"
+echo "  on screen: $(labels)"
 
-say "ATTEMPT 2 - a second adb tap, in case the first is always swallowed"
-adb shell input tap $xy
-sleep 3
-echo "--- on screen after tap 2 ---"; labels
-if landed; then echo "RESULT: the FIRST tap is swallowed, later taps land."; exit 0; fi
-echo "the Skip button did not fire."
+say "VERDICT"
+if [ -z "$after" ]; then
+  echo "(b) THE APP DIED. The tap landed and killed it - this is a crash, not a miss."
+elif [ "$before" != "$after" ]; then
+  echo "(b) THE APP RESTARTED ($before -> $after). It died and Expo Go came back."
+else
+  echo "(a) The app is ALIVE and the same process. The tap did not reach the button - a miss, not a crash."
+fi
 
-say "ATTEMPT 3 - Back first, then tap (the correlation, without Maestro)"
-adb shell input keyevent 4
-sleep 3
-echo "--- after Back alone, before any tap ---"; labels
-if landed; then echo "NOTE: Back ALONE left the tutorial, so attempt 3 tests nothing about touch."; fi
-adb shell input tap $xy
-sleep 3
-echo "--- after Back then tap ---"; labels
+say "logcat around the tap"
+adb logcat -d -t 600 2>/dev/null | grep -iE 'FATAL|AndroidRuntime|tombstone|SIGSEGV|libc|ReactNative|ExceptionsManager|died|ActivityTaskManager.*host.exp' | tail -40
 
-say "what the app saw"
-adb logcat -d -t 400 | grep -iE 'ReactNative|InputDispatch|ANR|Screens|unhandled|DevMenu' | tail -50
+say "activity stack now"
+adb shell dumpsys activity activities 2>/dev/null | grep -E 'mResumedActivity|topResumedActivity' | head -5
 
-say "window state at the end"
-adb shell dumpsys window windows | grep -E 'mCurrentFocus|mFocusedApp|imeInputTarget'
-
-say "every label on screen at the end"
-dump | tr '>' '\n' | grep -oE '(text|content-desc)="[^"]+"' | sort -u | head -50
+exit 1
