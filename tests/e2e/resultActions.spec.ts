@@ -24,11 +24,50 @@ const VIEWPORTS = [
   { name: "iPad landscape", width: 1112, height: 834 },
 ];
 
-const box = async (page: import("@playwright/test").Page, testId: string) => {
-  const b = await page.locator(`[data-testid="${testId}"]`).boundingBox();
-  expect(b, `[data-testid="${testId}"] should be laid out`).not.toBeNull();
-  return b!;
-};
+/**
+ * All three boxes read in one frame, from the DOM rather than through
+ * `boundingBox()`.
+ *
+ * In portrait the actions sit below the fold of react-native-web's scroll
+ * container, and `boundingBox()` answers null for an element it considers not
+ * visible — which is a fact about scroll position, not about the layout this
+ * spec is measuring. `getBoundingClientRect` has no such opinion, and reading
+ * all three together means they cannot be compared across two scroll states.
+ */
+async function boxes(
+  page: import("@playwright/test").Page,
+  testIds: string[],
+  expectedWidth: number
+) {
+  const read = (ids: string[]) =>
+    ids.map((id) => {
+      const el = document.querySelector(`[data-testid="${id}"]`);
+      if (!el) return null;
+      const r = el.getBoundingClientRect();
+      return { x: r.x, y: r.y, width: r.width, height: r.height };
+    });
+
+  // A resize swaps the whole tree: `app/result.tsx` branches on
+  // `useWindowDimensions`, so portrait and landscape are different elements,
+  // not the same ones moved. Waiting on any single locator can be satisfied by
+  // the branch that is on its way out, which is how this spec first failed —
+  // so the gate is the window reporting the new width *and* all three boxes
+  // being laid out under it.
+  await page.waitForFunction(
+    ({ ids, width }) =>
+      window.innerWidth === width &&
+      ids.every((id) => {
+        const el = document.querySelector(`[data-testid="${id}"]`);
+        if (!el) return false;
+        const r = el.getBoundingClientRect();
+        return r.width > 0 && r.height > 0;
+      }),
+    { ids: testIds, width: expectedWidth }
+  );
+
+  const rects = await page.evaluate(read, testIds);
+  return rects as { x: number; y: number; width: number; height: number }[];
+}
 
 test("the result screen's actions read as a pair, below the rankings, at every supported size", async ({
   page,
@@ -48,11 +87,12 @@ test("the result screen's actions read as a pair, below the rankings, at every s
 
   for (const vp of VIEWPORTS) {
     await page.setViewportSize({ width: vp.width, height: vp.height });
-    await expect(page.locator('[data-testid="btn-prossima-manche"]')).toBeVisible();
 
-    const home = await box(page, "btn-home");
-    const primary = await box(page, "btn-prossima-manche");
-    const rankings = await box(page, "result-rankings");
+    const [home, primary, rankings] = await boxes(
+      page,
+      ["btn-home", "btn-prossima-manche", "result-rankings"],
+      vp.width
+    );
 
     // A pair, which is the defect: the two used to be a square icon and a
     // two-line label of different heights. 1px absorbs the browser's own
