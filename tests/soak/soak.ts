@@ -70,11 +70,22 @@ const REJOIN_BUDGET_MS = 5_000 * DEADLINE_SCALE;
 
 /**
  * What arrives instead of a table. `game:rejoin_failed` carries the rejoin
- * path's own refusals; the generic one is what `onEvent` sends when the packet
- * never reaches the handler at all — rate limited, or malformed. Listening to
- * both is what lets an unanswered rejoin name its cause instead of guessing.
+ * path's own refusals; the `:error` events are what `onEvent` sends when the
+ * packet never reaches the handler at all — rate limited, or malformed.
+ * Listening to all of them is what lets an unanswered rejoin name its cause
+ * instead of guessing.
+ *
+ * One per namespace `errorEventFor` routes to (`server/socketSafety.ts`), not
+ * only the game's: the run opens its table over `room:create` and `room:join`,
+ * which are limited too, and a refusal on a namespace nothing listens to is
+ * the same silence counted as a clean run.
  */
-export const REFUSAL_EVENTS = ["game:rejoin_failed", "game:error"] as const;
+export const REFUSAL_EVENTS = [
+  "game:rejoin_failed",
+  "game:error",
+  "room:error",
+  "friend:error",
+] as const;
 
 /**
  * The refusals a run collected, as one line: the total first, because a clean

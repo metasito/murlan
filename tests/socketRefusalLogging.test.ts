@@ -89,6 +89,43 @@ describe("onEvent leaves every refusal in the log", () => {
     assert.equal(refusal.fields.userId, "u1");
   });
 
+  test("a flood is recorded once, not once per packet", async () => {
+    // The limiter exists to make excess cheap. A line per rejected packet
+    // would hand whoever is flooding a disk-filling primitive for free.
+    const socket = fakeSocket();
+    onEvent(socket as any, "game:play", Payload, async () => undefined, {
+      limit: 1,
+      windowMs: 60_000,
+    });
+
+    for (let i = 0; i < 200; i++) await socket.send("game:play", { roomId: "r1" });
+
+    assert.equal(
+      lines.filter((l) => l.fields.code === "RATE_LIMITED").length,
+      1,
+      "199 rejected packets in one window wrote more than one line"
+    );
+    assert.equal(socket.emitted.filter((e) => e.event === "game:error").length, 199);
+  });
+
+  test("the next window is recorded again — a throttle is not a mute", async () => {
+    const socket = fakeSocket();
+    // Wide enough that both packets of a pair land in the same window even on
+    // a loaded machine: a window this test outran would count three.
+    onEvent(socket as any, "game:play", Payload, async () => undefined, {
+      limit: 1,
+      windowMs: 200,
+    });
+
+    await socket.send("game:play", { roomId: "r1" });
+    await socket.send("game:play", { roomId: "r1" });
+    await new Promise((r) => setTimeout(r, 250));
+    await socket.send("game:play", { roomId: "r1" });
+    await socket.send("game:play", { roomId: "r1" });
+
+    assert.equal(lines.filter((l) => l.fields.code === "RATE_LIMITED").length, 2);
+  });
+
   test("a refusal the handler itself returns is named in the log", async () => {
     const socket = fakeSocket();
     onEvent(socket as any, "game:play", Payload, async () => ({

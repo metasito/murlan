@@ -11,6 +11,29 @@ import { logger } from "./logger.ts";
 interface RateWindow {
   count: number;
   resetAt: number;
+  /**
+   * Whether this window's refusal has already been recorded. The limiter's
+   * whole point is that excess is cheap, and a log write per rejected packet
+   * would hand a flooder a disk-filling primitive for free.
+   */
+  refusalLogged?: boolean;
+}
+
+/**
+ * The one line every refusal is recorded on, wherever it was decided.
+ *
+ * Only ever a *parsed* payload reaches `extra`: the raw packet is
+ * attacker-shaped and unbounded. Room codes are the one credential a payload
+ * carries, and `server/logger.ts` redacts them — `tests/logRedaction.test.ts`
+ * pins that a new one cannot be added without being redacted too.
+ */
+function logRefusal(
+  event: string,
+  socket: Socket,
+  code: string,
+  extra: Record<string, unknown> = {}
+): void {
+  logger.warn({ event, userId: socket.data?.userId, code, ...extra }, "Socket event refused");
 }
 
 export interface EventOptions {
@@ -95,7 +118,13 @@ export function allowSocketAction(
     buckets.set(key, { count: 1, resetAt: now + windowMs });
     return true;
   }
-  if (bucket.count >= limit) return false;
+  if (bucket.count >= limit) {
+    if (!bucket.refusalLogged) {
+      bucket.refusalLogged = true;
+      logRefusal(key, socket, "RATE_LIMITED");
+    }
+    return false;
+  }
   bucket.count += 1;
   return true;
 }
@@ -148,26 +177,13 @@ export function onEvent<S extends z.ZodTypeAny>(
       ack?.(reply);
     };
 
-    /**
-     * The one place a refusal is recorded. Every branch below turns an intent
-     * away, and a handler may too, so keeping the line here is what makes
-     * "refused" and "never arrived" different things in the log — including
-     * for an event added after this was written.
-     *
-     * Only ever the *parsed* payload: the raw packet is attacker-shaped and
-     * unbounded, which is why the malformed branch passes nothing.
-     */
-    const refused = (code: string, extra: Record<string, unknown> = {}) => {
-      logger.warn({ event, userId: socket.data?.userId, code, ...extra }, "Socket event refused");
-    };
-
     void (async () => {
       try {
         if (
           options.limit !== undefined &&
+          // Records its own refusal, once per window rather than per packet.
           !allowSocketAction(socket, event, options.limit, options.windowMs ?? 10_000)
         ) {
-          refused("RATE_LIMITED");
           socket.emit(errorEventFor(event), {
             code: "RATE_LIMITED",
             message: "Too many requests, slow down.",
@@ -178,14 +194,16 @@ export function onEvent<S extends z.ZodTypeAny>(
 
         const parsed = schema.safeParse(rawPayload);
         if (!parsed.success) {
-          refused("INVALID_PAYLOAD");
+          logRefusal(event, socket, "INVALID_PAYLOAD");
           socket.emit(errorEventFor(event), { code: "INVALID_PAYLOAD", message: "Invalid data" });
           answer({ ok: false, code: "INVALID_PAYLOAD" });
           return;
         }
 
         const outcome = (await handler(parsed.data)) ?? { ok: true };
-        if (!outcome.ok) refused(outcome.code ?? "UNSPECIFIED", { payload: parsed.data });
+        if (!outcome.ok) {
+          logRefusal(event, socket, outcome.code ?? "UNSPECIFIED", { payload: parsed.data });
+        }
         answer(outcome);
       } catch (err) {
         logger.error(

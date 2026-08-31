@@ -9,8 +9,12 @@
 // bookkeeping is the claim, not the game.
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
+import path from "node:path";
 import { Seat, formatRefusals, REFUSAL_EVENTS } from "./soak/soak.ts";
-import { getValidGivebackCards, type Card } from "../lib/gameEngine.ts";
+import { errorEventFor } from "../server/socketSafety.ts";
+import type { Card } from "../lib/gameEngine.ts";
 
 /** The half of socket.io-client `Seat` listens on. */
 function fakeSocket() {
@@ -73,14 +77,36 @@ describe("a soak run names what refused it", () => {
       "game:error RATE_LIMITED": 6,
       "game:rejoin_failed UNAUTHORIZED": 1,
     });
-    assert.match(line, /7 refusals/, "the total is what a clean run is read for");
-    assert.match(line, /RATE_LIMITED/);
-    assert.match(line, /UNAUTHORIZED/);
-    assert.match(line, /6/, "which refusal dominated is the first thing that narrows it");
+    assert.equal(
+      line,
+      "7 refusals (6x game:error RATE_LIMITED, 1x game:rejoin_failed UNAUTHORIZED)",
+      "the total is what a clean run is read for, and the heaviest refusal is what narrows it"
+    );
   });
 
   test("a run nothing refused says so plainly", () => {
     assert.equal(formatRefusals({}), "0 refusals");
+  });
+
+  // A refusal on a namespace nothing listens to is the same silence, counted
+  // as a clean run — and the run opens its own table over `room:create` and
+  // `room:join`, which carry limits of their own.
+  test("it listens on the error event of every namespace it emits into", () => {
+    const source = readFileSync(
+      path.join(path.dirname(fileURLToPath(import.meta.url)), "soak", "soak.ts"),
+      "utf8"
+    );
+    const emitted = new Set(
+      [...source.matchAll(/\.emit\(\s*"([a-z]+:[a-z_]+)"/g)].map((m) => m[1])
+    );
+    assert.ok(emitted.size >= 5, `only found ${emitted.size} emits — the scan is not reading it`);
+    for (const event of emitted) {
+      const errorEvent = errorEventFor(event);
+      assert.ok(
+        (REFUSAL_EVENTS as readonly string[]).includes(errorEvent),
+        `the run emits ${event}, whose refusal arrives as ${errorEvent}, which no seat listens on`
+      );
+    }
   });
 });
 
@@ -110,18 +136,32 @@ describe("the soak does not manufacture its own refusals", () => {
     return { seat, socket };
   }
 
+  // The expected ids are written out rather than read back from
+  // `getValidGivebackCards`: asserting against the function the code under
+  // test just called would pass however that function drifted, which is not a
+  // rule check at all — only a check that something was called.
   test("it gives back a card the rules allow, never the ace in its hand", () => {
     const hand = [card("A_clubs", "A"), card("K_hearts", "K"), card("7_spades", "7")];
     for (let i = 0; i < 50; i++) {
       const { seat, socket } = exchangeTurn(hand);
-      const action = seat.act(() => i / 50);
-      assert.ok(action, "the winner owes a card and did nothing");
-      const legal = getValidGivebackCards(hand).map((c) => c.id);
-      assert.ok(
-        legal.includes(socket.sent[0].payload.cardId),
-        `offered ${socket.sent[0].payload.cardId}, which the server refuses — legal: ${legal}`
+      assert.ok(seat.act(() => i / 50), "the winner owes a card and did nothing");
+      assert.equal(
+        socket.sent[0].payload.cardId,
+        "7_spades",
+        "the only 3-10 in this hand is the seven; anything else the server refuses"
       );
     }
+  });
+
+  test("it picks across the whole legal set, not just the first of it", () => {
+    const hand = [card("4_clubs", "4"), card("9_hearts", "9"), card("A_spades", "A")];
+    const offered = new Set<string>();
+    for (let i = 0; i < 50; i++) {
+      const { seat, socket } = exchangeTurn(hand);
+      seat.act(() => i / 50);
+      offered.add(socket.sent[0].payload.cardId);
+    }
+    assert.deepEqual([...offered].sort(), ["4_clubs", "9_hearts"]);
   });
 
   test("it never hands straight back the card it was just given", () => {
@@ -139,6 +179,6 @@ describe("the soak does not manufacture its own refusals", () => {
     const { seat, socket } = exchangeTurn(hand);
     assert.ok(seat.act(() => 0), "the winner owes a card and did nothing");
     assert.equal(socket.sent.length, 1);
-    assert.ok(getValidGivebackCards(hand).some((c) => c.id === socket.sent[0].payload.cardId));
+    assert.equal(socket.sent[0].payload.cardId, "K_hearts", "the lowest of the two");
   });
 });
