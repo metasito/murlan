@@ -33,6 +33,7 @@ const RULE_PHRASES: [string, RegExp][] = [
   ["prove it red first", /fail before your fix/i],
   ["leave no residue", /leave no residue/i],
   ["remove a worktree with the named command", /never\s+`?git\s+worktree\s+remove/i],
+  ["never park a shell in a worktree", /never leave a shell parked/i],
 ];
 
 function read(path: string): string {
