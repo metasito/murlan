@@ -519,9 +519,17 @@ class DrizzleStorage {
     return rows;
   }
 
-  /** Drops a room's invites once it can no longer be joined. */
-  async clearGameInvites(roomId: string): Promise<void> {
-    await db.delete(gameInvites).where(eq(gameInvites.roomId, roomId));
+  /**
+   * Drops a room's invites once it can no longer be joined, and says who held
+   * them. An invite is a pointer to a room, so it must not outlive one — and
+   * the people it has to stop pointing for are exactly the rows just deleted.
+   */
+  async clearGameInvites(roomId: string): Promise<string[]> {
+    const cleared = await db
+      .delete(gameInvites)
+      .where(eq(gameInvites.roomId, roomId))
+      .returning({ inviteeId: gameInvites.inviteeId });
+    return cleared.map((row) => row.inviteeId);
   }
 
   /**

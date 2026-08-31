@@ -232,6 +232,28 @@ export function armLobbyGrace(
 }
 
 /**
+ * Retires every invite pointing at a room that can no longer be joined, and
+ * tells the people holding one.
+ *
+ * An invitee is not in the room, so `io.to(roomId)` never reaches them; the
+ * account's own room is the only channel that does. The room's code rides along
+ * because a client may be holding a second invite it must not clear.
+ */
+export async function retireRoomInvites(
+  io: SocketServer,
+  roomId: string,
+  roomCode: string
+): Promise<void> {
+  const invitees = await storage.clearGameInvites(roomId).catch((err) => {
+    logger.warn({ err, roomId }, "Failed to clear the invites of a room that closed");
+    return [] as string[];
+  });
+  for (const inviteeId of invitees) {
+    io.to(userRoom(inviteeId)).emit("friend:invite_retired", { roomCode });
+  }
+}
+
+/**
  * Releases a seat: the room_players row, the user's timers, and the seat in a
  * live game. A `room:leave` and a lost connection differ only in what the
  * caller can hand over, so the seat-side work lives in one place.
@@ -268,10 +290,13 @@ export async function handleSeatRelease(
   if (!room) return;
 
   if (room.status === "waiting") {
-    const remaining = await storage.getRoomPlayers(roomId).catch((err) => {
+    // `null`, not `[]`: an unreadable roster and an empty one lead opposite
+    // ways, and the branch below deletes rows on the strength of the answer.
+    const remaining = await storage.getRoomPlayers(roomId).catch((err: unknown) => {
       logger.warn({ err, roomId }, "Failed to read the remaining lobby players");
-      return [];
+      return null;
     });
+    if (!remaining) return;
     if (remaining.length === 0) {
       await storage
         .updateRoomStatus(roomId, "finished")
@@ -281,6 +306,7 @@ export async function handleSeatRelease(
             "Failed to set rooms.status = finished after the last player left the lobby"
           )
         );
+      await retireRoomInvites(io, roomId, room.code);
       return;
     }
     let newHostId = room.hostUserId;
