@@ -16,7 +16,7 @@ const RULE_TRACKING = 1.2;
 const CARD_SCALE = 0.9;
 
 interface ExchangePromptProps {
-  /** The card the loser gave, drawn only for the player who has to answer it. */
+  /** The card the loser gave. Drawn for every seat — it is a public move. */
   receivedCard?: Card;
   winnerName: string;
   loserName: string;
@@ -57,13 +57,21 @@ export function ExchangePrompt({
       ? t("exchange.waitingForYou", { winner: winnerName })
       : t("exchange.watching", { winner: winnerName, loser: loserName });
 
-  const spoken =
-    viewerIsWinner && receivedCard
-      ? `${t("exchange.receivedCardA11yLabel", {
-          name: loserName,
+  const spoken = receivedCard
+    ? `${t(
+        viewerIsWinner
+          ? "exchange.receivedCardA11yLabel"
+          : viewerIsLoser
+            ? "exchange.receivedCardA11yLabelGiven"
+            : "exchange.receivedCardA11yLabelWatching",
+        {
+          name: viewerIsWinner ? loserName : winnerName,
+          winner: winnerName,
+          loser: loserName,
           card: cardSpokenName(receivedCard, t),
-        })}. ${line}`
-      : line;
+        }
+      )}. ${line}`
+    : line;
 
   return (
     <Animated.View
@@ -73,8 +81,8 @@ export function ExchangePrompt({
       style={styles.root}
     >
       <A11yStatus label={spoken} />
-      {viewerIsWinner && receivedCard && (
-        <View {...a11yHidden()}>
+      {receivedCard && (
+        <View testID="exchange-received-card" {...a11yHidden()}>
           <CardView card={receivedCard} scale={scale * CARD_SCALE} noLift decorative />
         </View>
       )}

@@ -221,6 +221,8 @@ export const en = {
   "exchange.cardA11yHint": "Chooses this card to give",
   "exchange.cardA11yNotGiveable": "Cannot be given — only a 3 to a 10 may be given",
   "exchange.receivedCardA11yLabel": "{{name}} gave you {{card}}",
+  "exchange.receivedCardA11yLabelGiven": "You gave {{name}} {{card}}",
+  "exchange.receivedCardA11yLabelWatching": "{{loser}} gave {{winner}} {{card}}",
   // Beside each seat as that seat's card lands, so the two players not in the
   // exchange can read what each side got without a legend.
   "exchange.seatGot": "got {{card}}",
