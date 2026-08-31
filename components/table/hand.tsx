@@ -74,6 +74,14 @@ const UNGIVEABLE_FILTER = { filter: "grayscale(1)" } as const;
 // which card to play, which is the exact moment a hand is being read
 // (docs/research/2026-08-30-reordering-a-hand.md).
 const HOLD_MS = 500;
+/**
+ * How far the finger travels before the hold becomes a drag. The gate the tap
+ * needs: below it the press belongs to the card it is on, so selecting one to
+ * play cannot be spent on a rearrangement nobody asked for. It is
+ * react-native-gesture-handler's own default pan distance, a hand's width above
+ * the wobble a thumb has while it decides.
+ */
+const DRAG_SLOP = 10;
 // Off the fan rather than up in the air: the card stays where it came from and
 // reads as one being picked out of a hand still being held.
 const HELD_SCALE = 1.06;
@@ -480,6 +488,8 @@ export function StraightHand({
   // until the hold fires a moving finger scrolls the row itself.
   const holding = useSharedValue(false);
   const holdTimer = useSharedValue(0);
+  /** Set on the UI thread the frame the pick is scheduled, so it is scheduled once. */
+  const picking = useSharedValue(false);
   const grabX = useSharedValue(0);
   const grabY = useSharedValue(0);
   /** Where inside the card the finger landed, so it comes up under that point. */
@@ -584,6 +594,7 @@ export function StraightHand({
   const releaseHeld = () => {
     landing.value = false;
     holding.value = false;
+    picking.value = false;
     settle.value = 0;
     held.value = null;
     gap.value = null;
@@ -592,6 +603,7 @@ export function StraightHand({
   };
 
   const grab = (x: number) => {
+    if (held.value !== null) return;
     const i = cardAt(lefts, cardW, x);
     if (i === null) return;
     // The card comes up under the part of it the finger is actually on. Every
@@ -599,7 +611,6 @@ export function StraightHand({
     // always lands near a left edge, and centring the card on it instead threw
     // it half a card sideways at the moment of pickup.
     grabOffset.value = x - lefts[i];
-    holding.value = true;
     held.value = ids[i];
     gap.value = i;
     setHeldId(ids[i]);
@@ -607,9 +618,11 @@ export function StraightHand({
   };
 
   /** The hold's own clock. It survives a finger that never moves, which is the point. */
-  const armHold = (x: number) => {
+  const armHold = () => {
     clearTimeout(holdTimer.value);
-    holdTimer.value = setTimeout(() => grab(x), HOLD_MS) as unknown as number;
+    holdTimer.value = setTimeout(() => {
+      holding.value = true;
+    }, HOLD_MS) as unknown as number;
   };
   const disarmHold = () => {
     clearTimeout(holdTimer.value);
@@ -681,21 +694,33 @@ export function StraightHand({
       grabX.value = touch.x;
       grabY.value = touch.y;
       panFrom.value = pan.value;
-      scheduleOnRN(armHold, touch.x);
+      scheduleOnRN(armHold);
     })
     .onTouchesMove((e, state) => {
       const touch = e.allTouches[0];
       if (touch === undefined) return;
       fingerX.value = touch.x;
       fingerY.value = touch.y;
+      const dx = touch.x - grabX.value;
+      const dy = touch.y - grabY.value;
       if (holding.value) {
+        // The hold arms the drag; travel is what spends it. Picking a card to
+        // play is the whole game, and a thumb rests on one for longer than a
+        // mouse does — so a press that never travels stays a press, however
+        // long it lasts, and the card is never taken out from under it.
+        if (Math.abs(dx) < DRAG_SLOP && Math.abs(dy) < DRAG_SLOP) return;
         state.activate();
+        if (!picking.value) {
+          picking.value = true;
+          // From where the finger landed, not where it is now: that is the card
+          // it chose, and the offset that brings it up under the same point.
+          scheduleOnRN(grab, grabX.value);
+        }
         return;
       }
       // Not held: the finger is reading the hand, so it moves the row rather
       // than a card. Anything but a horizontal drag is somebody else's gesture.
-      const dx = touch.x - grabX.value;
-      if (Math.abs(dx) > Math.abs(touch.y - grabY.value)) {
+      if (Math.abs(dx) > Math.abs(dy)) {
         scheduleOnRN(disarmHold);
         if (overhang > 0) pan.value = panFrom.value - dx;
       }

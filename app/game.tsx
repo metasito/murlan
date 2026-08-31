@@ -77,11 +77,16 @@ export default function GameScreen() {
   // AI turn loop. The key identifies one AI turn — seat, pass count and the
   // combination on the table — and is null whenever no AI is on move, so an
   // update that changes neither cannot restart the "thinking" timer.
+  // The exchange ends the phase the moment the card is chosen, so `active` is
+  // false while the two cards are still crossing the table. A hand played into
+  // that is a hand played over the ceremony announcing it, which is the one
+  // moment every seat is watching the middle.
   const aiTurnKey = AI_SUSPENDED
     ? null
     : gameState &&
         !gameState.gameOver &&
         !gameState.exchangePhase?.active &&
+        !exchangeAnnouncing &&
         gameState.players[gameState.currentTurnIndex]?.type === "ai"
       ? `${gameState.currentTurnIndex}|${gameState.passCount}|` +
         (gameState.lastPlayedCombination
