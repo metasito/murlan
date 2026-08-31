@@ -179,9 +179,15 @@ jobs:
         id: kind
         if: steps.flows.outcome == 'failure'
         run: |
-          if [ -f "$RUNNER_TEMP/emulator-booted" ]; then
+          # Three states, because there are three. `started` drives the retry
+          # and so answers one question only: did the run get far enough for its
+          # failure to be about the branch?
+          if [ -f "$RUNNER_TEMP/app-launched" ]; then
             echo "started=true" >> "$GITHUB_OUTPUT"
-            echo "The device came up and the flows ran; the flows themselves failed."
+            echo "The app launched and the flows ran; the flows themselves failed."
+          elif [ -f "$RUNNER_TEMP/emulator-booted" ]; then
+            echo "started=false" >> "$GITHUB_OUTPUT"
+            echo "::warning::The device came up but the app never reached a usable state, so this run says nothing about the diff. Retrying once - #647."
           else
             echo "started=false" >> "$GITHUB_OUTPUT"
             echo "::warning::The device never got as far as the flows, so this run says nothing about the diff. Retrying once - #186."
@@ -219,7 +225,11 @@ jobs:
             echo "::error::The device failed to come up twice. That is the runner and not this branch - #186."
             exit 1
           fi
-          echo "::error::The flows ran on a device that came up, so this is a result about the diff."
+          if [ ! -f "$RUNNER_TEMP/app-launched" ]; then
+            echo "::error::The app never reached a usable state, twice. Nothing here is a result about this branch - #647."
+            exit 1
+          fi
+          echo "::error::The flows ran on an app that launched, so this is a result about the diff."
           exit 1
 
       # An app that dies mid-flow does not fail the step it died on. Maestro's

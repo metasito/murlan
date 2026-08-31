@@ -104,13 +104,27 @@ runs:
           # That address does not reach the dev server from this emulator -
           # Metro's log records no request at all over it.
           adb reverse tcp:8081 tcp:8081
-          # Everything above this line is the environment coming up, and the
-          # absence of this marker is what tells `maestro.yml` that a failure
-          # was the runner rather than the diff (#186). So it is written at the
-          # last possible moment: the boot, the reboot, the locale, the install
-          # and the forward are all things a retry can fix, and only what
-          # follows is a result about the branch.
+          # Everything above this line is the device coming up: the boot, the
+          # reboot, the locale, the install and the forward. Its absence is what
+          # tells `maestro.yml` the device itself never arrived (#186).
           touch "$RUNNER_TEMP/emulator-booted"
+          # A device that came up is not yet an app that runs. Expo Go has
+          # started, died within five seconds and left the launcher holding the
+          # foreground for the whole deadline, and the flows then failed against
+          # a screen the app never drew — reported as a verdict on the branch,
+          # because the only boundary was the one above (#647). So the app is
+          # taken to a usable state here, where failing is still retryable.
+          #
+          # The same link the flows use, from the same host loopback: a cold
+          # start is how Expo Go takes a deep link at all, and one delivered to
+          # a copy already at the front is ignored.
+          adb shell am start -W -a android.intent.action.VIEW -d 'exp://127.0.0.1:8081?disableOnboarding=1' host.exp.exponent
+          # Resumed for ten consecutive seconds, not merely resumed once: the
+          # process that dies takes several seconds to do it, and a single poll
+          # lands inside that window as often as outside it.
+          i=0; held=0; until [ $held -ge 10 ]; do if adb shell dumpsys activity activities | grep -q 'topResumedActivity.*host\.exp\.exponent'; then held=$((held+1)); else held=0; fi; i=$((i+1)); [ $i -lt 180 ] || { echo "::error::Expo Go never held the foreground for ten seconds; the app did not reach a usable state."; exit 1; }; sleep 1; done
+          # The app is up, so from here a failure is a result about the branch.
+          touch "$RUNNER_TEMP/app-launched"
           # smoke only. offline-game.yaml passes locally - a real hand driven to
           # the result screen in 16m - and on a runner it reaches the table and
           # then dies there with no assertion message at all, which is the
