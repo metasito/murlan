@@ -34,6 +34,13 @@ const RULE_PHRASES: [string, RegExp][] = [
   ["leave no residue", /leave no residue/i],
   ["remove a worktree with the named command", /never\s+`?git\s+worktree\s+remove/i],
   ["never park a shell in a worktree", /never leave a shell parked/i],
+  // Not the rule's own wording: a restatement is a paraphrase, and a pattern
+  // cut from the sentence only catches someone quoting it. What any spelling of
+  // this rule has to put in one clause is closing (or claiming) and a capture.
+  [
+    "an iOS report closes on an iOS capture",
+    /\b(?:clos|claim)\w*\b[^.\n]{0,60}\bcaptures?\b|\bcaptures?\b[^.\n]{0,60}\b(?:clos|claim)\w*\b/i,
+  ],
 ];
 
 function read(path: string): string {
