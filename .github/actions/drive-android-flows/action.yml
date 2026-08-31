@@ -1,0 +1,110 @@
+name: Drive the Maestro flows on an Android emulator
+description: >
+  Boots the emulator, installs Expo Go, and runs the flows. Lives here rather
+  than inline so `maestro.yml` can invoke it twice - once, and again only when
+  the emulator never booted (#186) - without a second copy of this
+  configuration to drift out of step with the first.
+
+runs:
+  using: composite
+  steps:
+    - name: Run the flows
+      uses: reactivecircus/android-emulator-runner@v2
+      with:
+        api-level: 34
+        target: google_apis
+        arch: x86_64
+        profile: pixel_6
+        emulator-options: -no-window -no-audio -no-boot-anim -gpu swiftshader_indirect -camera-back none
+        # Left on. #35 names this as the first knob to try for a struggling
+        # emulator and it was tried, but it is the wrong one: Reanimated reads
+        # the system scales as a reduced-motion signal and disables animations
+        # of its own accord - it says so in Metro's log - and the game table
+        # then never arrives. What the ANRs actually needed was
+        # hide_error_dialogs, below. Driving real worklets on a real UI thread
+        # is the reason this layer exists.
+        disable-animations: false
+        # Deliberately stock. Raising cores and memory was aimed at
+        # offline-game, which is not run here (#185), and did not save it.
+        #
+        # The boot itself is intermittently slow on a runner - three runs have
+        # ended on "Timeout waiting for emulator to boot", including one on
+        # these very defaults, so it is the runner rather than anything
+        # configured here. The action's own cap is 600s and each of those runs
+        # spent all of it; this gives it half as long again. Unverified: it
+        # cannot be proven except by hitting the flake again. #186.
+        emulator-boot-timeout: 900
+        script: |
+          # The flows select on Italian copy, the same way
+          # tests/e2e/playwright.config.ts pins locale: "it-IT" and for the
+          # same reason: a runner's emulator comes up en-US, so the app
+          # renders "QUICK GUIDE" where the flow waits for "GUIDA RAPIDA" -
+          # on screen, correct, and failing every assertion.
+          #
+          # The property needs root to set and a restart to take effect, and
+          # it has to be a real reboot: `stop; start` brings the framework
+          # back with System UI wedged on a two-core runner, and the app then
+          # ANRs instead of rendering - the hierarchy at the point of failure
+          # held the ANR dialog and nothing else. A reboot comes up clean.
+          #
+          # Every line here runs as its own `sh -c`: no construct may span
+          # lines, and no variable survives to the next one.
+          #
+          # sys.boot_completed comes back long before the framework is serving:
+          # the install below failed first on "Can't find service: package" and
+          # then on "Cannot access system provider: 'settings'". Waiting on the
+          # providers themselves, plus a stopped boot animation, waits for the
+          # thing those errors are really about instead of naming them one at a
+          # time.
+          # The action fails on its own boot timeout before any of this runs,
+          # so the absence of this marker is what tells "the emulator never
+          # booted" apart from "it booted and the flows failed" (#186).
+          touch "$RUNNER_TEMP/emulator-booted"
+          adb root
+          adb wait-for-device
+          adb shell setprop persist.sys.locale it-IT
+          adb unroot
+          adb wait-for-device
+          adb reboot
+          adb wait-for-device
+          until [ "$(adb shell getprop sys.boot_completed | tr -d '\r')" = "1" ]; do sleep 2; done
+          until adb shell "getprop init.svc.bootanim | grep -q stopped && cmd package list packages > /dev/null 2>&1 && cmd settings list system > /dev/null 2>&1"; do sleep 2; done
+          adb shell getprop persist.sys.locale | tr -d '\r' | grep -qx it-IT || { echo "::error::Device locale is not it-IT; the flows select on Italian copy."; exit 1; }
+          # System UI ANRs on this runner while the app is loading, and its
+          # dialog then sits over everything: the app is running fine behind it
+          # - its own Reanimated warnings reach Metro - but the hierarchy holds
+          # the dialog and nothing else, so every assertion fails. This hides
+          # the system dialog only; an app that genuinely hangs still fails.
+          adb shell settings put global hide_error_dialogs 1
+          adb install -r "$RUNNER_TEMP/expo-go.apk"
+          # Expo Go reports a failed manifest fetch as nothing but "Something
+          # went wrong" on the device, which cannot tell a dead dev server
+          # from one answering with an error. Asking the same question from
+          # the host turns that into a status code.
+          curl -sf -o /dev/null -w 'metro /status: %{http_code}' http://127.0.0.1:8081/status || echo "::warning::Metro is no longer answering on 8081."
+          echo
+          curl -s -o "$RUNNER_TEMP/manifest.out" -w 'manifest: %{http_code}' -H 'expo-platform: android' -H 'expo-runtime-version: exposdk:54.0.0' -H 'accept: multipart/mixed,application/expo+json,application/json' http://127.0.0.1:8081/
+          echo
+          head -c 1200 "$RUNNER_TEMP/manifest.out"
+          echo
+          # The flows reach the dev server over this forward, on 127.0.0.1.
+          # They do not take an address from the command line: `-e` is applied
+          # before a flow's own `env:` block, so the flag loses to it silently
+          # and every run went to 10.0.2.2 regardless of what was passed here.
+          # That address does not reach the dev server from this emulator -
+          # Metro's log records no request at all over it.
+          # The flows select on Italian copy, the same way
+          # tests/e2e/playwright.config.ts pins locale: "it-IT" and for the
+          # same reason. A runner's emulator comes up en-US, so the app
+          # renders "QUICK GUIDE" where the flow waits for "GUIDA RAPIDA" -
+          # on screen, correct, and failing every assertion. Root is needed
+          # to set the property, and Maestro cannot attach through a root
+          # adbd, so this drops back down before the flows run.
+          adb reverse tcp:8081 tcp:8081
+          # smoke only. offline-game.yaml passes locally - a real hand driven to
+          # the result screen in 16m - and on a runner it reaches the table and
+          # then dies there with no assertion message at all, which is the
+          # emulator going down rather than the app being wrong. More memory,
+          # more cores and a longer wait all changed nothing. #185, and
+          # docs/TESTING.md §5 predicted it before any of this ran.
+          maestro test .maestro/smoke.yaml
