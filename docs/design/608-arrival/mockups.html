@@ -1,0 +1,583 @@
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>How a Traded Card Arrives</title>
+<!-- Deliberately without <html>/<head>/<body>: browsers synthesise them when
+     this file is opened directly, and the same bytes publish as an artifact,
+     which wraps its own skeleton around them. One file, two ways of reading it. -->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@500;600;700&family=Inter:wght@400;500&display=swap">
+<style>
+  /* Table interiors use the app's own tokens (lib/tokens.ts) in both themes —
+     the game is dark-only. Only the page around them follows the viewer. */
+  :root {
+    --felt: #0B3B25; --bg: #031008; --card-bg: #0A1F18; --surface: #0E2920;
+    --gold: #C9A84C; --gold-dark: #A8832B; --gold-ghost: rgba(201,168,76,0.14);
+    --ink-card: #F0EAD6; --muted: rgba(240,234,214,0.58);
+    --hairline: rgba(240,234,214,0.10); --red: #C4453C;
+
+    --ground: #f0f2ef; --panel: #ffffff; --ink: #14201a; --ink-2: #47574e;
+    --ink-3: #7b8a81; --rule: #d8ded8; --accent: #1e6b45;
+    --accent-soft: rgba(30,107,69,0.10);
+    --warn: #8a5a12; --warn-soft: rgba(138,90,18,0.10);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --ground: #0c1310; --panel: #131c17; --ink: #e7ede9; --ink-2: #a4b4ab;
+      --ink-3: #74857b; --rule: #23312a; --accent: #6fc79a;
+      --accent-soft: rgba(111,199,154,0.12);
+      --warn: #d8a657; --warn-soft: rgba(216,166,87,0.12);
+    }
+  }
+  :root[data-theme="dark"] {
+    --ground: #0c1310; --panel: #131c17; --ink: #e7ede9; --ink-2: #a4b4ab;
+    --ink-3: #74857b; --rule: #23312a; --accent: #6fc79a;
+    --accent-soft: rgba(111,199,154,0.12);
+    --warn: #d8a657; --warn-soft: rgba(216,166,87,0.12);
+  }
+
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--ground); color: var(--ink);
+    font-family: Inter, system-ui, -apple-system, sans-serif;
+    font-size: 15px; line-height: 1.55; -webkit-font-smoothing: antialiased;
+  }
+  .wrap { max-width: 1240px; margin: 0 auto; padding: 40px 24px 90px; }
+
+  .eyebrow {
+    font-family: Rajdhani, sans-serif; font-weight: 700; font-size: 12px;
+    letter-spacing: 0.22em; text-transform: uppercase; color: var(--accent);
+    margin: 0 0 10px;
+  }
+  h1 {
+    font-family: Rajdhani, sans-serif; font-weight: 700;
+    font-size: clamp(30px, 4.4vw, 46px); line-height: 1.06;
+    margin: 0 0 16px; text-wrap: balance;
+  }
+  .lede { color: var(--ink-2); max-width: 64ch; margin: 0 0 10px; }
+  .lede b { color: var(--ink); font-weight: 500; }
+  .lede code, .closing code, .opt code, .verdict code, td code {
+    font-family: ui-monospace, Menlo, monospace; font-size: 12.5px;
+    background: var(--accent-soft); color: var(--accent);
+    padding: 1px 5px; border-radius: 4px;
+  }
+
+  .quote {
+    margin: 22px 0 0; border-left: 3px solid var(--gold); padding: 4px 0 4px 16px;
+    color: var(--ink-2); font-size: 15px; max-width: 62ch;
+  }
+  .quote b { color: var(--ink); font-weight: 500; }
+  .quote cite { display: block; margin-top: 6px; font-style: normal;
+    font-size: 12.5px; color: var(--ink-3); letter-spacing: .04em; }
+
+  section.set { margin-top: 54px; border-top: 1px solid var(--rule); padding-top: 30px; }
+  .setnum {
+    font-family: Rajdhani, sans-serif; font-weight: 700; font-size: 12px;
+    letter-spacing: 0.2em; color: var(--accent); text-transform: uppercase; margin: 0 0 2px;
+  }
+  h2.set { font-family: Rajdhani, sans-serif; font-weight: 700; font-size: 24px;
+    margin: 0 0 6px; letter-spacing: 0.01em; }
+  .setlede { color: var(--ink-2); max-width: 68ch; margin: 0 0 24px; font-size: 14px; }
+
+  .row3 { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 26px; align-items: start; }
+  .opt { display: flex; flex-direction: column; gap: 11px; }
+  .opthead { display: flex; align-items: baseline; gap: 9px; }
+  .tag {
+    font-family: Rajdhani, sans-serif; font-weight: 700; font-size: 12px;
+    width: 24px; height: 24px; flex: none; display: grid; place-items: center;
+    border-radius: 6px; background: var(--accent-soft); color: var(--accent);
+  }
+  .opt h3 { font-family: Rajdhani, sans-serif; font-weight: 600; font-size: 18px; margin: 0; }
+  .opt p { margin: 0; font-size: 13.5px; color: var(--ink-2); }
+  .opt p.note { color: var(--ink-3); font-size: 12.5px; }
+  .opt p.note b { color: var(--ink-2); font-weight: 500; }
+  .opt p.against b { color: var(--warn); }
+
+  /* ── the table ───────────────────────────────────────────── */
+  .table {
+    position: relative; width: 100%; aspect-ratio: 16 / 10;
+    border-radius: 14px; overflow: hidden;
+    background:
+      radial-gradient(ellipse 70% 58% at 50% 42%, #135c39 0%, var(--felt) 46%, #072a19 100%),
+      var(--bg);
+    box-shadow: inset 0 0 0 1px var(--hairline), 0 14px 30px -18px rgba(0,0,0,0.75);
+    font-size: 11px; color: var(--ink-card); user-select: none;
+  }
+  .seat { position: absolute; display: flex; flex-direction: column; align-items: center; gap: 3px; }
+  .seat .puck {
+    width: 30px; height: 30px; border-radius: 50%;
+    background: var(--card-bg); border: 1px solid var(--hairline);
+    display: grid; place-items: center;
+    font-family: Rajdhani, sans-serif; font-weight: 700; font-size: 13px; color: var(--gold);
+  }
+  .seat .nm { font-size: 9.5px; color: var(--muted); letter-spacing: .04em; }
+  .seat.top { top: 6%; left: 50%; transform: translateX(-50%); }
+  .seat.left { left: 5%; top: 40%; }
+  .seat.spot .puck { border-color: var(--gold); box-shadow: 0 0 0 3px var(--gold-ghost); }
+  .seat.spot .nm { color: var(--gold); }
+
+  /* A watching seat's own small fan, so "what the watcher sees" is drawn
+     rather than only described. */
+  .minifan { position: absolute; display: flex; }
+  .minifan i {
+    display: block; width: 9px; height: 13px; border-radius: 2px; margin-left: -4px;
+    background: repeating-linear-gradient(45deg, #123f2a, #123f2a 2px, #0d3221 2px, #0d3221 4px);
+    box-shadow: inset 0 0 0 1px rgba(201,168,76,.30);
+    transition: margin-left .28s ease;
+  }
+  .minifan i:first-child { margin-left: 0; }
+  .minifan.left { left: 5%; top: 57%; }
+
+  .card {
+    width: 30px; height: 42px; border-radius: 4px;
+    background: linear-gradient(#FBF7EC, #E8E0CC);
+    color: #14201a; position: absolute;
+    box-shadow: 0 2px 5px rgba(0,0,0,.45);
+    font-family: Rajdhani, sans-serif; font-weight: 700; font-size: 12px;
+    padding: 2px 0 0 3px; line-height: 1;
+  }
+  .card.red { color: var(--red); }
+  .card .pip { position: absolute; bottom: 3px; right: 3px; font-size: 11px; }
+  .card.new {
+    box-shadow: 0 0 0 1.5px var(--gold), 0 0 14px 2px rgba(201,168,76,.5), 0 4px 9px rgba(0,0,0,.5);
+  }
+  /* `left` and `bottom`, not `transform`: the whole question is whether a card
+     takes a *place* in the row, and a place is a coordinate the neighbours
+     also use. */
+  .card.slide { transition: left var(--shift) ease, bottom var(--shift) ease; }
+
+  .handbox { position: absolute; left: 0; right: 0; bottom: 7%; height: 46px; }
+
+  .caption {
+    position: absolute; left: 50%; bottom: 2px; transform: translateX(-50%);
+    font-family: Rajdhani, sans-serif; font-weight: 600; font-size: 9px;
+    letter-spacing: .16em; text-transform: uppercase; color: rgba(240,234,214,.42);
+    white-space: nowrap; transition: opacity .25s ease;
+  }
+
+  .replay {
+    align-self: flex-start;
+    font: 600 12px/1 Rajdhani, sans-serif; letter-spacing: .12em; text-transform: uppercase;
+    color: var(--accent); background: var(--accent-soft); border: 1px solid transparent;
+    border-radius: 999px; padding: 8px 15px; cursor: pointer;
+  }
+  .replay:hover { border-color: var(--accent); }
+  .replay:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+  .facts { border: 1px solid var(--rule); border-radius: 10px; overflow: hidden; background: var(--panel); }
+  .facts div { display: flex; gap: 10px; padding: 8px 12px; font-size: 12.5px; border-top: 1px solid var(--rule); }
+  .facts div:first-child { border-top: 0; }
+  .facts dt {
+    flex: none; width: 96px; margin: 0; color: var(--ink-3);
+    font-family: Rajdhani, sans-serif; font-weight: 700;
+    letter-spacing: .1em; text-transform: uppercase; font-size: 10px; padding-top: 2px;
+  }
+  .facts dd { margin: 0; color: var(--ink-2); }
+
+  .verdict {
+    margin-top: 24px; border: 1px solid var(--rule); border-left: 3px solid var(--accent);
+    border-radius: 10px; padding: 14px 18px; background: var(--panel);
+    font-size: 13.5px; color: var(--ink-2);
+  }
+  .verdict b { color: var(--ink); font-weight: 600; }
+
+  table.cmp { width: 100%; border-collapse: collapse; margin-top: 26px; font-size: 13px; }
+  table.cmp th, table.cmp td { text-align: left; vertical-align: top; padding: 9px 12px; border-top: 1px solid var(--rule); }
+  table.cmp th { font-family: Rajdhani, sans-serif; font-weight: 700; font-size: 11px;
+    letter-spacing: .14em; text-transform: uppercase; color: var(--ink-3); }
+  table.cmp td { color: var(--ink-2); }
+  table.cmp td:first-child { color: var(--ink); font-weight: 500; }
+  .scroller { overflow-x: auto; }
+
+  .closing { margin-top: 58px; border-top: 1px solid var(--rule); padding-top: 28px;
+    display: grid; grid-template-columns: repeat(auto-fit, minmax(300px,1fr)); gap: 26px; }
+  .closing h3 { font-family: Rajdhani, sans-serif; font-size: 15px; letter-spacing: .1em;
+    text-transform: uppercase; color: var(--ink-3); margin: 0 0 8px; }
+  .closing p, .closing li { color: var(--ink-2); font-size: 14px; margin: 0 0 8px; }
+  .closing ul { margin: 0; padding-left: 18px; }
+
+  @media (prefers-reduced-motion: reduce) {
+    .card.slide, .minifan i, .caption { transition: none !important; }
+  }
+</style>
+
+<div class="wrap">
+  <p class="eyebrow">Issue #608 · set 3 of #532, reopened</p>
+  <h1>How a traded card arrives</h1>
+  <p class="lede">
+    #532 asked how both cards move at once and mocked three answers. You chose none of them,
+    and recorded the requirement instead. #533 shipped the flight anyway, against a question
+    that was still open — so this is that question, asked again about the half nobody drew:
+    <b>not the journey, the landing</b>.
+  </p>
+
+  <p class="quote">
+    let the cards flow manually in each player's deck, like taking its spot, not a sudden
+    animation
+    <cite>— the owner, playing #533</cite>
+  </p>
+  <p class="quote">
+    I want it to be as clear as possible for all the players involved not only the 2 involved
+    in the exchange
+    <cite>— the owner, #532's decision comment, 2026-08-29</cite>
+  </p>
+
+  <p class="lede" style="margin-top:22px">
+    Those two sentences are the whole brief, and they pull in different directions. "Taking
+    its spot" is a quiet, local thing that happens inside one hand. "Clear for all the players"
+    is a loud thing that has to carry across the table to somebody whose own fan is 9px wide.
+    Each option below leans on one of them; the third tries to hold both.
+  </p>
+  <p class="lede">
+    Every demo shows the <b>same moment</b> from the <b>same seat</b>: you are the bottom hand,
+    Bea is the top seat, and the <span style="color:var(--accent);font-weight:500">6♦</span>
+    she gave you is landing. The small fan on the left is Cesk — a seat with no part in the
+    trade, watching. Press replay to run it again.
+  </p>
+
+  <!-- ══ A ══ -->
+  <section class="set">
+    <p class="setnum">Option A</p>
+    <h2 class="set">The room is made first</h2>
+    <p class="setlede">
+      The hand opens a gap at the card's sorted index <i>before</i> the card gets there, and
+      the card descends into a space that is already waiting. Two beats, and the first of them
+      is the hand answering rather than the card arriving.
+    </p>
+    <div class="row3">
+      <div class="opt" style="grid-column: 1 / -1">
+        <div class="table" id="tA"></div>
+        <button class="replay" data-replay="tA">Replay</button>
+      </div>
+    </div>
+    <div class="row3" style="margin-top:16px">
+      <div class="opt">
+        <p><b>What the receiving player sees.</b> Their own cards part, and only then does the
+        new card come down. Because the gap opens first, the eye is already at the index when
+        the card reaches it — you are told <i>where</i> before you are told <i>what</i>.</p>
+      </div>
+      <div class="opt">
+        <p><b>What a watching seat sees.</b> Cesk's read of your fan is that it got one wider,
+        in two steps. The parting is the larger of the two movements and it happens on an
+        otherwise still table, so it is the beat that carries at 9px.</p>
+        <p class="note against"><b>Against it:</b> two beats is the longest of the three, and
+        the gap is briefly a hole in a hand nobody put a card in — which reads as a missing
+        card for as long as it is empty.</p>
+      </div>
+      <div class="opt">
+        <div class="facts">
+          <div><dt>Reduced</dt><dd><code>Motion.reduced.shift = 0</code> collapses both beats: the row is already re-stepped and the card is already in it. One frame, no hole.</dd></div>
+          <div><dt>Numbers</dt><dd><code>computeHandLayout(n+1)</code> once, plus <code>GAP_CARDS</code> and <code>gapShift()</code> — all three exist in <code>hand.tsx</code> today.</dd></div>
+          <div><dt>Two places</dt><dd><b>Yes, for one beat.</b> The card is in the flight layer while the row is already stepping for it.</dd></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ══ B ══ -->
+  <section class="set">
+    <p class="setnum">Option B</p>
+    <h2 class="set">It lands at the edge and walks in</h2>
+    <p class="setlede">
+      The card joins the hand at the near end, as a real member of the row, and then travels
+      along it to its sorted place while the cards it passes step aside. Nothing is ever in two
+      places: the flight ends the moment the card is part of the fan.
+    </p>
+    <div class="row3">
+      <div class="opt" style="grid-column: 1 / -1">
+        <div class="table" id="tB"></div>
+        <button class="replay" data-replay="tB">Replay</button>
+      </div>
+    </div>
+    <div class="row3" style="margin-top:16px">
+      <div class="opt">
+        <p><b>What the receiving player sees.</b> The most literal reading of "taking its spot":
+        the card is handed to you, and then it finds where it belongs. It also shows the sort,
+        which is the one thing no other option teaches.</p>
+      </div>
+      <div class="opt">
+        <p><b>What a watching seat sees.</b> The clearest of the three, and by some distance —
+        the motion continues <i>inside</i> your fan after the flight has stopped, so there is a
+        second, separate event to notice. A watcher who missed the flight still sees this.</p>
+        <p class="note against"><b>Against it:</b> in a compressed hand the walk is mostly
+        hidden behind other cards. <code>computeHandLayout</code> floors the step at
+        <code>MIN_READABLE_STEP = 24</code> against a card ~66px wide, so at fourteen cards
+        roughly two thirds of the travelling card is behind its neighbours for most of the trip.</p>
+      </div>
+      <div class="opt">
+        <div class="facts">
+          <div><dt>Reduced</dt><dd>The walk is the whole option, so under reduced motion it becomes its endpoint: the card in place, the row re-stepped. It degrades to A's still frame — that is, to nothing of its own.</dd></div>
+          <div><dt>Numbers</dt><dd><code>computeHandLayout(n+1)</code> only, held for the whole sequence. No gap maths at all.</dd></div>
+          <div><dt>Two places</dt><dd><b>No.</b> The only option where the card is a row member from the first frame it is in the hand.</dd></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ══ C ══ -->
+  <section class="set">
+    <p class="setnum">Option C</p>
+    <h2 class="set">The fan parts around it as it lands</h2>
+    <p class="setlede">
+      One beat, not two. The card flies to the coordinate it will occupy, and the neighbours
+      move out of its way <i>during</i> the arrival rather than before it — so the row is never
+      open and never jumps. This is the shape #531 already built for a dragged card being
+      released, pointed at an incoming one.
+    </p>
+    <div class="row3">
+      <div class="opt" style="grid-column: 1 / -1">
+        <div class="table" id="tC"></div>
+        <button class="replay" data-replay="tC">Replay</button>
+      </div>
+    </div>
+    <div class="row3" style="margin-top:16px">
+      <div class="opt">
+        <p><b>What the receiving player sees.</b> The hand absorbs the card. There is no hole
+        and no second beat, which makes it the calmest and the shortest — one continuous
+        movement from the felt into the fan.</p>
+      </div>
+      <div class="opt">
+        <p><b>What a watching seat sees.</b> The fan breathes once, at the same instant the
+        flight ends. That is one event, not two, so there is less to catch — but it is
+        simultaneous with the thing the watcher was already looking at.</p>
+        <p class="note against"><b>Against it:</b> the parting is at its smallest exactly when
+        the card is at its most distracting, so from across the table the index is the least
+        legible of the three. It is the option that serves the receiver over the audience.</p>
+      </div>
+      <div class="opt">
+        <div class="facts">
+          <div><dt>Reduced</dt><dd>Already one beat, so <code>Motion.reduced.shift = 0</code> is genuinely the same picture with the travel removed. The best degradation of the three.</dd></div>
+          <div><dt>Numbers</dt><dd><code>computeHandLayout(n+1)</code>, and the release path's <code>settleX/settleY/settleRot</code> + <code>landing</code>, which already land a card "as the fan closes around it".</dd></div>
+          <div><dt>Two places</dt><dd><b>Momentarily.</b> Same as A, but the overlap is the arrival itself rather than an extra beat before it.</dd></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <div class="scroller">
+    <table class="cmp">
+      <tr>
+        <th></th><th>Beats</th><th>Reads at 9px</th><th>Empty hole</th><th>Degrades to</th><th>New maths</th>
+      </tr>
+      <tr>
+        <td>A — room first</td>
+        <td>2</td><td>Good — the parting is alone on a still table</td><td>Yes, briefly</td>
+        <td>A still frame</td><td>None</td>
+      </tr>
+      <tr>
+        <td>B — walks in</td>
+        <td>2</td><td>Best — a second event after the flight</td><td>No</td>
+        <td>Nothing of its own</td><td>None</td>
+      </tr>
+      <tr>
+        <td>C — parts around it</td>
+        <td>1</td><td>Weakest — simultaneous with the flight</td><td>No</td>
+        <td>Itself, minus travel</td><td>None</td>
+      </tr>
+    </table>
+  </div>
+
+  <div class="verdict">
+    <b>What to weigh:</b> none of the three needs a number that is not already in
+    <code>components/handLayout.ts</code> or <code>components/table/hand.tsx</code> — #531's
+    drag-to-reorder built the gap and the landing, and this is that machinery pointed at a card
+    arriving from the felt instead of from a finger. So cost is not the tiebreak.
+    <b>B is the only one that survives being watched</b>, because it puts a second, separate
+    event after the flight — which is exactly the failure #532 recorded against set 3 the first
+    time. <b>C is the best thing to receive</b>, and the only one whose reduced-motion form is
+    still recognisably itself. <b>A is the compromise</b> and carries the one thing neither of
+    the others does: a hole, which is a card missing until it is not.
+    <b>B and C are combinable</b> — land at the edge (B's second event, for the audience) and
+    let the fan part around the card as it walks (C's continuous absorption, for the receiver).
+    That is a fourth answer, and it is the one to ask for if neither column wins on its own.
+  </div>
+
+  <div class="closing">
+    <div>
+      <h3>What this ticket does not decide</h3>
+      <p>The flight itself. Set 3's question — one lane, two lanes, meeting in the middle —
+      is still open and still unchosen; #533 shipped two lanes without an answer. These three
+      all begin the moment the flight ends, so any of them sits under any flight.</p>
+    </div>
+    <div>
+      <h3>What is already in the repo</h3>
+      <ul>
+        <li><code>gapAt</code> / <code>gapShift()</code> / <code>GAP_CARDS</code> — opens a card-wide gap at an index and splits the row either side of it, so the hand's centre holds still.</li>
+        <li><code>settleX</code> / <code>settleY</code> / <code>settleRot</code> / <code>landing</code> — flies a card to a slot "as the fan closes around it", on <code>motionMs("shift")</code>.</li>
+        <li><code>computeHandLayout(n, room, cardW, availW)</code> — the row's step and span, from which every slot coordinate is derived.</li>
+      </ul>
+    </div>
+    <div>
+      <h3>How to answer</h3>
+      <p>Name a letter on #608, or name two if the combination above is the one. The choice
+      becomes an implementation ticket; nothing in <code>components/</code> changes here.</p>
+    </div>
+  </div>
+</div>
+
+<script>
+(function () {
+  "use strict";
+
+  // The hand is drawn from real coordinates rather than a flex row: the whole
+  // question is whether a card takes a *place*, and a place is a number the
+  // neighbours also read. Same shape as computeHandLayout — a step, a span, and
+  // every card's left derived from its index.
+  var HAND = ["4♣", "5♠", "7♥", "9♠", "10♦", "J♣", "Q♥", "K♠"];
+  var NEW = "6♦";
+  var NEW_AT = 2;                 // sorted index of the 6 among the eight above
+  var CARD_W = 30, STEP = 22;
+  var SHIFT = 200, TRAVEL = 260;  // Motion.duration.shift / .travel, verbatim
+  var timers = [];
+
+  function isRed(face) { return face.indexOf("♥") >= 0 || face.indexOf("♦") >= 0; }
+
+  function cardEl(face, isNew) {
+    var el = document.createElement("div");
+    el.className = "card slide" + (isRed(face) ? " red" : "") + (isNew ? " new" : "");
+    el.innerHTML = face + '<span class="pip">' + face.slice(-1) + "</span>";
+    return el;
+  }
+
+  /** Left edge of slot `i` of a row of `n`, centred in a box `w` wide. */
+  function slotX(i, n, w) {
+    return (w - (STEP * (n - 1) + CARD_W)) / 2 + i * STEP;
+  }
+
+  function build(id) {
+    var table = document.getElementById(id);
+    table.innerHTML =
+      '<div class="seat top spot"><div class="puck">B</div><div class="nm">BEA</div></div>' +
+      '<div class="seat left"><div class="puck">C</div><div class="nm">CESK</div></div>' +
+      '<div class="minifan left"><i></i><i></i><i></i><i></i><i></i></div>' +
+      '<div class="handbox"></div>' +
+      '<div class="caption"></div>';
+    return {
+      box: table.querySelector(".handbox"),
+      caption: table.querySelector(".caption"),
+      fan: table.querySelector(".minifan"),
+    };
+  }
+
+  /**
+   * Lays the eight held cards out for a row of `n` slots, skipping `gapAt` so
+   * the gap is an absent slot rather than a nudge — which is what `gapShift`
+   * does in the app.
+   */
+  function layout(cards, box, n, gapAt) {
+    var w = box.clientWidth;
+    var slot = 0;
+    cards.forEach(function (el) {
+      if (slot === gapAt) slot++;
+      el.style.left = slotX(slot, n, w) + "px";
+      el.style.bottom = "0px";
+      slot++;
+    });
+  }
+
+  function at(ms, fn) { timers.push(setTimeout(fn, ms)); }
+
+  function say(refs, text) { refs.caption.textContent = text; }
+
+  /** Cesk's fan widening by one, so the watcher's read is drawn too. */
+  function widen(refs) { refs.fan.style.marginLeft = "-4px"; refs.fan.children[0].style.marginLeft = "4px"; }
+  function narrow(refs) { refs.fan.children[0].style.marginLeft = "0px"; }
+
+  function run(id) {
+    timers.forEach(clearTimeout);
+    timers = [];
+
+    var refs = build(id);
+    var box = refs.box;
+    var w = box.clientWidth;
+    var held = HAND.map(function (f) { return cardEl(f, false); });
+    held.forEach(function (el) { box.appendChild(el); });
+
+    var incoming = cardEl(NEW, true);
+    box.appendChild(incoming);
+
+    // Everything starts from the same picture: eight cards, laid out for eight,
+    // and the ninth still up at Bea's seat.
+    incoming.style.transition = "none";
+    layout(held, box, HAND.length, null);
+    incoming.style.left = (w / 2 - CARD_W / 2) + "px";
+    incoming.style.bottom = "150px";
+    incoming.style.opacity = "0";
+    void incoming.offsetWidth;
+    incoming.style.transition = "";
+    incoming.style.setProperty("--shift", TRAVEL + "ms");
+    incoming.style.transition = "left " + TRAVEL + "ms ease, bottom " + TRAVEL + "ms ease, opacity 120ms ease";
+
+    held.forEach(function (el) { el.style.setProperty("--shift", SHIFT + "ms"); });
+    narrow(refs);
+    say(refs, "");
+
+    var n = HAND.length + 1;
+
+    if (id === "tA") {
+      // Room first: the row re-steps for nine with slot NEW_AT left empty, and
+      // only then does the card come down into it.
+      at(200, function () {
+        layout(held, box, n, NEW_AT);
+        widen(refs);
+        say(refs, "the hand makes room");
+      });
+      at(200 + SHIFT + 120, function () {
+        incoming.style.opacity = "1";
+        incoming.style.left = slotX(NEW_AT, n, w) + "px";
+        incoming.style.bottom = "0px";
+        say(refs, "and the card comes down into it");
+      });
+      at(200 + SHIFT + 120 + TRAVEL, function () { say(refs, ""); });
+    }
+
+    if (id === "tB") {
+      // Walks in: the card lands at the near end as slot 8 of 9, then the row
+      // re-sorts around it and it travels to slot NEW_AT.
+      at(200, function () {
+        incoming.style.opacity = "1";
+        incoming.style.left = slotX(n - 1, n, w) + "px";
+        incoming.style.bottom = "0px";
+        layout(held, box, n, null);
+        widen(refs);
+        say(refs, "it joins the hand at the end");
+      });
+      at(200 + TRAVEL + 160, function () {
+        incoming.style.transition = "left " + SHIFT + "ms ease, bottom " + SHIFT + "ms ease";
+        incoming.style.left = slotX(NEW_AT, n, w) + "px";
+        layout(held, box, n, NEW_AT);
+        say(refs, "then walks to where it belongs");
+      });
+      at(200 + TRAVEL + 160 + SHIFT + 400, function () { say(refs, ""); });
+    }
+
+    if (id === "tC") {
+      // Parts around it: one beat. The row steps for nine with the slot open
+      // and the card flies into that slot at the same time.
+      at(200, function () {
+        layout(held, box, n, NEW_AT);
+        widen(refs);
+        incoming.style.opacity = "1";
+        incoming.style.left = slotX(NEW_AT, n, w) + "px";
+        incoming.style.bottom = "0px";
+        say(refs, "the fan parts as the card lands");
+      });
+      at(200 + TRAVEL + 300, function () { say(refs, ""); });
+    }
+  }
+
+  ["tA", "tB", "tC"].forEach(run);
+
+  document.querySelectorAll("[data-replay]").forEach(function (btn) {
+    btn.addEventListener("click", function () { run(btn.getAttribute("data-replay")); });
+  });
+
+  // A resize changes every slot coordinate, so the demos are rebuilt rather
+  // than left holding numbers from the old width.
+  var resizeTimer = null;
+  window.addEventListener("resize", function () {
+    clearTimeout(resizeTimer);
+    resizeTimer = setTimeout(function () { ["tA", "tB", "tC"].forEach(run); }, 200);
+  });
+})();
+</script>
