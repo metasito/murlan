@@ -13,7 +13,13 @@ import { pathToFileURL } from "node:url";
 import type { Socket } from "socket.io-client";
 import { startTestServer, hasDatabase, type TestServer } from "../helpers/testServer.ts";
 import { connectAs, reconnectWith, DEADLINE_SCALE } from "../helpers/client.ts";
-import { createDeck, getAllValidPlays, type Card, type Combination } from "../../lib/gameEngine.ts";
+import {
+  createDeck,
+  getAllValidPlays,
+  getValidGivebackCards,
+  type Card,
+  type Combination,
+} from "../../lib/gameEngine.ts";
 import { checkAll, type SeatView, type Violation } from "./invariants.ts";
 
 interface SanitizedPlayer {
@@ -64,11 +70,33 @@ const REJOIN_BUDGET_MS = 5_000 * DEADLINE_SCALE;
 
 /**
  * What arrives instead of a table. `game:rejoin_failed` carries the rejoin
- * path's own refusals; the generic one is what `onEvent` sends when the packet
- * never reaches the handler at all — rate limited, or malformed. Listening to
- * both is what lets an unanswered rejoin name its cause instead of guessing.
+ * path's own refusals; the `:error` events are what `onEvent` sends when the
+ * packet never reaches the handler at all — rate limited, or malformed.
+ * Listening to all of them is what lets an unanswered rejoin name its cause
+ * instead of guessing.
+ *
+ * One per namespace `errorEventFor` routes to (`server/socketSafety.ts`), not
+ * only the game's: the run opens its table over `room:create` and `room:join`,
+ * which are limited too, and a refusal on a namespace nothing listens to is
+ * the same silence counted as a clean run.
  */
-export const REFUSAL_EVENTS = ["game:rejoin_failed", "game:error"] as const;
+export const REFUSAL_EVENTS = [
+  "game:rejoin_failed",
+  "game:error",
+  "room:error",
+  "friend:error",
+] as const;
+
+/**
+ * The refusals a run collected, as one line: the total first, because a clean
+ * run is read for that, then what they actually were, heaviest first.
+ */
+export function formatRefusals(refusals: Record<string, number>): string {
+  const entries = Object.entries(refusals).sort((a, b) => b[1] - a[1]);
+  const total = entries.reduce((sum, [, count]) => sum + count, 0);
+  if (total === 0) return "0 refusals";
+  return `${total} refusals (${entries.map(([key, n]) => `${n}x ${key}`).join(", ")})`;
+}
 
 interface Options {
   seats: number;
@@ -157,12 +185,16 @@ export class Seat {
    */
   lastRefusal: string | null = null;
   /**
-   * How many refusals this seat has collected all run. A throttled or rejected
-   * client is not playing the game it thinks it is, and its view goes stale for
-   * a reason the oracle would read as disagreement — so the count is reported
-   * even when the run is clean.
+   * Every refusal this seat collected all run, keyed `event code`. A throttled
+   * or rejected client is not playing the game it thinks it is, and its view
+   * goes stale for a reason the oracle would read as disagreement — so this is
+   * reported even when the run is clean.
+   *
+   * Keyed rather than counted: a total says a run was turned down without
+   * saying what it was turned down for, and reaching that from a bare number
+   * means cross-reading a server log the run does not ship with.
    */
-  refusals = 0;
+  readonly refusals = new Map<string, number>();
 
   constructor(socket: Socket, username: string, userId: string, cookie: string) {
     this.socket = socket;
@@ -180,8 +212,10 @@ export class Seat {
     });
     for (const event of REFUSAL_EVENTS) {
       this.socket.on(event, (payload: { code?: string; message?: string } | undefined) => {
-        this.lastRefusal = `${event} ${payload?.code ?? "?"}: ${payload?.message ?? ""}`.trim();
-        this.refusals += 1;
+        const code = payload?.code ?? "?";
+        this.lastRefusal = `${event} ${code}: ${payload?.message ?? ""}`.trim();
+        const key = `${event} ${code}`;
+        this.refusals.set(key, (this.refusals.get(key) ?? 0) + 1);
       });
     }
   }
@@ -229,7 +263,10 @@ export class Seat {
     if (phase?.active) {
       if (phase.winnerIdx !== seat) return null;
       const hand = s.players[seat]?.hand ?? [];
-      const giveable = hand.filter((c) => c.id !== phase.cardFromLoser?.id);
+      // The engine's own list, which is what the server validates against and
+      // what the UI offers: a giveback is a 3 through 10, and a hand holding
+      // none of those falls back to its lowest card (docs/RULES.md §10).
+      const giveable = getValidGivebackCards(hand, phase.cardFromLoser?.id);
       const card = giveable[Math.floor(rng() * giveable.length)];
       if (!card) return null;
       this.socket.emit("game:exchange_give_card", { cardId: card.id });
@@ -297,7 +334,8 @@ export interface SoakResult {
   moves: number;
   manches: number;
   chaosEvents: string[];
-  refusals: number;
+  /** Every refusal the run collected, keyed `event code`. See `Seat.refusals`. */
+  refusals: Record<string, number>;
   seed: number;
   /** Everything the runner did, in order. See `SoakLogEntry`. */
   moveLog: SoakLogEntry[];
@@ -456,7 +494,10 @@ export async function runSoak(opts: Options, log = console.log): Promise<SoakRes
       chaosEvents: moveLog.flatMap((e) =>
         e.kind === "drop" ? [`drop+rejoin ${e.username} at move ${e.at}`] : []
       ),
-      refusals: seats.reduce((sum, s) => sum + s.refusals, 0),
+      refusals: seats.reduce<Record<string, number>>((all, seat) => {
+        for (const [key, count] of seat.refusals) all[key] = (all[key] ?? 0) + count;
+        return all;
+      }, {}),
       seed: opts.seed,
       moveLog,
     };
@@ -476,7 +517,7 @@ async function main() {
 
   console.log(
     `soak: ${result.moves} rounds of moves, ${result.manches} manches, ` +
-      `${result.chaosEvents.length} disconnections, ${result.refusals} refusals`
+      `${result.chaosEvents.length} disconnections, ${formatRefusals(result.refusals)}`
   );
   if (result.violations.length === 0) {
     console.log(`soak: no disagreement found (seed ${result.seed})`);
