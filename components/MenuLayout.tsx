@@ -1,11 +1,12 @@
 import React from 'react';
 import {
-  View, ScrollView, StyleSheet, Platform, ViewStyle, KeyboardAvoidingView,
+  View, ScrollView, StyleSheet, ViewStyle, KeyboardAvoidingView,
   Animated, Easing,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Colors } from '@/lib/theme';
+import { keyboardBehavior } from '@/lib/keyboard';
 import { a11yHidden } from '@/lib/a11y';
 import { usePrefersReducedMotion } from '@/lib/accessibility';
 import { useBannerBottom } from '@/context/NotificationContext';
@@ -77,6 +78,11 @@ interface MenuLayoutProps {
   contentPad?: number;
   /** `null` opts a screen out — for the landscape bodies that size their own columns. */
   maxWidth?: number | null;
+  /**
+   * `false` for a screen whose only text field lives in a `<Modal>`: the modal
+   * brings its own avoidance, and this one would move the screen behind it.
+   */
+  avoidsKeyboard?: boolean;
 }
 
 export function MenuLayout({
@@ -86,6 +92,7 @@ export function MenuLayout({
   style,
   contentPad = CONTENT_H_PAD,
   maxWidth = MENU_MAX_W,
+  avoidsKeyboard = true,
 }: MenuLayoutProps) {
   const insets = useSafeAreaInsets();
   const bannerBottom = useBannerBottom();
@@ -129,16 +136,14 @@ export function MenuLayout({
         style={StyleSheet.absoluteFill}
         pointerEvents="none"
       />
-      {/* Every menu screen with a text field routes through here. Android's
-          edge-to-edge, unconditional since Expo SDK 54, stopped the framework
-          padding the window for the IME, so `adjustResize` alone no longer
-          reflows anything — KeyboardAvoidingView reads the keyboard events
-          itself instead. iOS is served by the ScrollView's own inset
-          adjustment, and on web both are inert: the browser scrolls the
-          focused input into view. */}
+      {/* Only the scrollable branch below carries
+          `automaticallyAdjustKeyboardInsets`, so only it can be left to move
+          the focused field on its own. */}
       <KeyboardAvoidingView
         style={styles.fill}
-        behavior={Platform.OS === 'android' ? 'padding' : undefined}
+        behavior={
+          avoidsKeyboard ? keyboardBehavior({ contentAdjustsInsets: scrollable }) : undefined
+        }
       >
         {scrollable ? (
           <View style={styles.fill}>

@@ -9,7 +9,6 @@ import {
   useWindowDimensions,
   KeyboardAvoidingView,
   Modal,
-  Platform,
   ActivityIndicator,
 } from "react-native";
 import { router } from "expo-router";
@@ -23,6 +22,7 @@ import {
 import { useAuth } from "@/context/AuthContext";
 import { useSocket } from "@/context/SocketContext";
 import { Colors, Spacing, FontSize, Radius, TOUCH_TARGET_MIN, Type } from '@/lib/theme';
+import { keyboardBehavior } from "@/lib/keyboard";
 import { MenuLayout } from "@/components/MenuLayout";
 import { MenuCard } from "@/components/MenuCard";
 import { MenuButton } from "@/components/MenuButton";
@@ -219,7 +219,7 @@ export default function OnlineLobbyScreen() {
   );
 
   return (
-    <MenuLayout scrollable={false} centered={false} style={{ paddingBottom: 0 }}>
+    <MenuLayout scrollable={false} centered={false} avoidsKeyboard={false} style={{ paddingBottom: 0 }}>
       <View style={styles.topBar}>
         <Pressable
           onPress={() => router.back()}
@@ -361,7 +361,7 @@ export default function OnlineLobbyScreen() {
         accessibilityLabel={t("onlineLobby.joinModalTitle")}
       >
         <KeyboardAvoidingView
-          behavior={Platform.OS === "ios" ? "padding" : "height"}
+          behavior={keyboardBehavior({ contentAdjustsInsets: false })}
           style={styles.modalOverlay}
         >
           <Pressable style={StyleSheet.absoluteFill} onPress={closeJoin} {...a11yHidden()} />
