@@ -222,18 +222,43 @@ jobs:
           echo "::error::The flows ran on a device that came up, so this is a result about the diff."
           exit 1
 
+      # An app that dies mid-flow does not fail the step it died on. Maestro's
+      # next assertion still matches the hierarchy it had already read, so it
+      # passes, and the failure surfaces a step later against whatever is on
+      # screen by then - once, the emulator's own launcher. The step name is
+      # then actively misleading, and the only honest record is the tombstone,
+      # twenty minutes into an artefact nobody downloads. So the run says it
+      # itself (#629). Not gated on failure: a crash that did not manage to
+      # fail the run is worth knowing about more, not less.
+      - name: Say if the app died rather than failed
+        id: crash
+        if: always()
+        run: |
+          # Every command here is `|| true`-ed or pipelined on purpose. This step
+          # runs under `bash -e`, and a grep that matches nothing exits non-zero:
+          # a step that dies here emits no warning at all, which is the failure
+          # this one exists to prevent, in its own implementation.
+          tombstone=$(grep -rl ">>> host.exp.exponent" "$HOME/.maestro/tests" 2>/dev/null | head -1 || true)
+          [ -n "$tombstone" ] || exit 0
+          echo "found=true" >> "$GITHUB_OUTPUT"
+          # Scoped to the block the file was selected by. A bare match would take
+          # the first fatal signal anywhere in the logcat, which can belong to
+          # another process on the emulator and would be reported as ours.
+          signal=$(grep -A6 ">>> host.exp.exponent" "$tombstone" | grep -m1 -o "signal [0-9]* ([A-Z]*)" || echo "an unknown signal")
+          echo "::warning::The app died of a native crash during this run ($signal). Maestro asserts against a stale hierarchy afterwards, so the step that failed is not where the problem is - read the screenshot beside it. Tombstone: ${tombstone#$HOME/.maestro/tests/}. #629"
+
       # Recordings, logs and screenshots from a failed flow are the only way to
       # tell a real regression from an emulator that fell over. Metro's own log
       # goes with them: a flow that dies loading the app failed on a request
       # this is the only record of.
       - name: Collect Metro's log alongside them
-        if: failure()
+        if: failure() || steps.crash.outputs.found == 'true'
         run: |
           mkdir -p "$HOME/.maestro/tests"
           cp "$RUNNER_TEMP/metro.log" "$HOME/.maestro/tests/metro.log" || true
 
       - name: Upload Maestro debug output
-        if: failure()
+        if: failure() || steps.crash.outputs.found == 'true'
         uses: actions/upload-artifact@v4
         with:
           name: maestro-debug

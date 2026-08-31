@@ -85,7 +85,7 @@ describe("maestro.yml reads that marker", () => {
     const verdict = src.indexOf("steps.retry.outcome");
     // A real key, not the prose about it: the comment above the verdict step quotes
     // `if: failure()` verbatim, and matching that would put the artefacts first.
-    const artefacts = src.search(/^ *if: failure\(\)$/m);
+    const artefacts = src.search(/^ *if: failure\(\)/m);
     assert.notEqual(verdict, -1, "no step states the run's verdict");
     assert.notEqual(artefacts, -1, "nothing uploads the artefacts any more");
     assert.ok(
@@ -93,6 +93,50 @@ describe("maestro.yml reads that marker", () => {
       "continue-on-error means the job has no verdict of its own; stating it after the " +
         "artefact steps leaves them nothing to trigger on",
     );
+  });
+
+  test("a run whose app died says so itself", () => {
+    // Without this the only record is a tombstone in an artefact, and the step
+    // that failed is a step later than the one that broke (#629).
+    assert.match(src, /grep -rl ">>> host\.exp\.exponent"/);
+    assert.match(
+      src,
+      /Say if the app died[\s\S]{0,80}if: always\(\)/,
+      "gating this on failure() hides a crash that did not manage to fail the run",
+    );
+  });
+
+  test("no grep in that step can kill it before it warns", () => {
+    // It runs under `bash -e`, where a grep matching nothing exits non-zero. A
+    // step that dies there emits no warning at all — the exact failure it exists
+    // to prevent, committed by its own implementation, and only on the path a
+    // runner has never executed.
+    const step = src.slice(src.indexOf("id: crash"), src.indexOf("Collect Metro's log"));
+    const commands = step
+      .split("\n")
+      .map((l) => l.trim())
+      .filter((l) => l.includes("grep") && !l.startsWith("#"));
+    assert.ok(commands.length > 0, "the step no longer looks for a tombstone at all");
+    for (const line of commands) {
+      assert.ok(
+        line.includes("|| true") || line.includes("|| echo") || /\|\s*head/.test(line),
+        `a grep whose failure is not absorbed: ${line}`,
+      );
+    }
+  });
+
+  test("a green run carrying a tombstone still uploads what the warning points at", () => {
+    // `always()` exists for the crash that did not fail the run. If the artefact
+    // steps stay on failure() alone, that warning names a path nobody can reach.
+    const uploads = [...src.matchAll(/^ *if: failure\(\).*$/gm)].map((m) => m[0]);
+    assert.ok(uploads.length >= 2, "the Metro copy and the artefact upload");
+    for (const gate of uploads) {
+      assert.match(
+        gate,
+        /steps\.crash\.outputs\.found == 'true'/,
+        `this step does not run for a crash on a green run: ${gate.trim()}`,
+      );
+    }
   });
 
   test("both invocations of the action stay in step", () => {
