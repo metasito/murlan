@@ -117,4 +117,4 @@ runs:
           # emulator going down rather than the app being wrong. More memory,
           # more cores and a longer wait all changed nothing. #185, and
           # docs/TESTING.md §5 predicted it before any of this ran.
-          maestro test .maestro/smoke.yaml
+          bash .github/scripts/probe-627.sh
