@@ -543,7 +543,10 @@ function GiocaButton({
   }));
 
   return (
+    // Named so a device hierarchy can say whether the wrapper or the control
+    // inside it is what went missing (#685).
     <Animated.View
+      testID="btn-gioca-box"
       style={[
         styles.actionBtn,
         { width: size, height: size, borderRadius: BTN_RADIUS * scale },
@@ -566,7 +569,7 @@ function GiocaButton({
         onPress={onPress}
         onPressIn={() => setPress(true)}
         onPressOut={() => setPress(false)}
-        style={styles.actionBtnInner}
+        style={[styles.actionBtnInner, styles.playBtnFront]}
         accessibilityLabel={
           exchange
             ? exchange.picked
@@ -675,6 +678,7 @@ function PassaButton({
 
   return (
     <Animated.View
+      testID="btn-passa-box"
       style={[
         styles.actionBtn,
         { width: size, height: size, borderRadius: BTN_RADIUS * scale },
@@ -2098,9 +2102,12 @@ const styles = StyleSheet.create({
     right: 0,
     bottom: 0,
     backgroundColor: Colors.gold,
+    zIndex: 0,
   },
   // The one lit object on the table, and only on the player's own turn.
   playBtnFace: { borderWidth: 1, borderColor: Colors.goldLit },
+  // Over the glow, which fills this button and paints.
+  playBtnFront: { zIndex: 1 },
   playBtnLabel: { color: Colors.bgCard },
   playBtnSub: {
     fontFamily: "Rajdhani_500Medium",
