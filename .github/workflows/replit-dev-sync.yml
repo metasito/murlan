@@ -91,6 +91,16 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          # A dev preview has no wake-on-request: with the workspace closed it
+          # is stopped, and Replit's edge answers this placeholder page. The
+          # push after it is started again syncs anyway, so there is nothing
+          # for an issue to ask anyone to do.
+          case "${REPLY:-}" in
+            *'Run this app to see the results here.'*)
+              echo "::notice::The Replit preview is not running; there is nothing to sync."
+              exit 0
+              ;;
+          esac
           title="Dev preview sync is failing"
           # No reply means the request never got as far as the preview — the
           # configuration guards above exit before curl runs. Saying what the
