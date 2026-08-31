@@ -16,6 +16,7 @@ import { test, describe } from "node:test";
 import assert from "node:assert/strict";
 import {
   aiChoosePlay,
+  bombPossible,
   buildCombination,
   createDeck,
   getRankStrength,
@@ -142,9 +143,48 @@ describe("outstandingAbove counts what can still beat a card", () => {
   });
 });
 
-/** A table where the bot leads, with `hand`, and `played` already gone. */
+describe("bombPossible answers the half rank can still decide", () => {
+  test("a fresh deck is all bombs waiting to happen", () => {
+    assert.equal(bombPossible(new Array<number>(RANK_SLOTS).fill(0), []), true);
+  });
+
+  test("no rank missing all four means no bomb", () => {
+    const played = new Array<number>(RANK_SLOTS).fill(0);
+    for (const rank of NORMAL_RANKS) played[getRankStrength(rank)] = 1;
+    assert.equal(bombPossible(played, []), false);
+  });
+
+  test("holding one of the four myself is enough to rule that rank out", () => {
+    const played = new Array<number>(RANK_SLOTS).fill(0);
+    for (const rank of NORMAL_RANKS) played[getRankStrength(rank)] = 1;
+    played[getRankStrength("7")] = 0;
+    assert.equal(bombPossible(played, []), true);
+    assert.equal(bombPossible(played, [c("7", "hearts")]), false);
+  });
+
+  test("jokers are never a bomb — only one of each exists", () => {
+    const played = new Array<number>(RANK_SLOTS).fill(0);
+    for (const rank of NORMAL_RANKS) played[getRankStrength(rank)] = 1;
+    assert.equal(bombPossible(played, []), false);
+  });
+});
+
+const NORMAL_RANKS: Rank[] = [
+  "3", "4", "5", "6", "7", "8", "9", "10", "J", "Q", "K", "A", "2",
+];
+
+/**
+ * A table where the bot leads, with `hand`, and `played` already gone.
+ *
+ * One card of every rank is played by default, which is what makes a bomb
+ * impossible: `docs/RULES.md` §7.2 lets a bomb beat any single, so a lead is
+ * only safe once no rank is missing all four. A fixture that left the deck
+ * otherwise untouched would be asserting on a board where the bot is right
+ * not to lead.
+ */
 function leadWith(hand: Card[], played: Partial<Record<Rank, number>>, personality: string) {
   const playedRanks = new Array<number>(RANK_SLOTS).fill(0);
+  for (const rank of NORMAL_RANKS) playedRanks[getRankStrength(rank)] = 1;
   for (const [rank, n] of Object.entries(played)) {
     playedRanks[getRankStrength(rank as Rank)] = n as number;
   }
@@ -166,6 +206,23 @@ describe("the hard bot plays what it knows", () => {
     assert.ok(choice, "the bot must lead something");
     assert.equal(choice!.cards.length, 1);
     assert.equal(choice!.cards[0].rank, "joker_colored");
+  });
+
+  test("holds it back while a bomb could still be out there", () => {
+    // The same board, except every 7 is unaccounted for. A bomb beats any
+    // single at any time (docs/RULES.md §7.2), so the joker is not safe and
+    // leading it hands over the round and the card.
+    const hand = [j("colored"), c("4", "hearts"), c("5", "spades"), c("7", "clubs"),
+                  c("9", "hearts"), c("J", "spades"), c("Q", "clubs")];
+    const { me, playedRanks } = leadWith(hand, { "2": 4, joker_bw: 1 }, "gent");
+    playedRanks[getRankStrength("7")] = 0;
+    // The 7 in hand would otherwise account for one of the four.
+    const noSeven = { ...me, hand: hand.filter((card) => card.rank !== "7") };
+
+    const choice = aiChoosePlay(noSeven, null, true, [8, 8, 8], undefined, () => 0.5, false, playedRanks);
+
+    assert.ok(choice, "the bot must still lead something");
+    assert.notEqual(choice!.cards[0].rank, "joker_colored", "led into a possible bomb");
   });
 
   // A regression pin, NOT a proof of the tally: this passes with the memory

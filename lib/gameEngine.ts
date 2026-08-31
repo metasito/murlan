@@ -143,14 +143,32 @@ export function outstandingAbove(
   played: number[] | undefined,
   myHand: Card[]
 ): number {
+  const out = outstandingTally(played, myHand);
+  let total = 0;
+  for (let i = strength + 1; i < RANK_SLOTS; i++) total += out[i];
+  return total;
+}
+
+/** How many of each rank are neither played nor in `myHand`. */
+function outstandingTally(played: number[] | undefined, myHand: Card[]): number[] {
   const mine = emptyRankTally();
   for (const card of myHand) mine[getRankStrength(card.rank)] += 1;
+  return DECK_BY_STRENGTH.map((total, i) =>
+    Math.max(0, total - (played?.[i] ?? 0) - mine[i])
+  );
+}
 
-  let out = 0;
-  for (let i = strength + 1; i < RANK_SLOTS; i++) {
-    out += Math.max(0, DECK_BY_STRENGTH[i] - (played?.[i] ?? 0) - mine[i]);
-  }
-  return out;
+/**
+ * Whether four of some rank are still unaccounted for, so an opponent could be
+ * holding a bomb.
+ *
+ * `docs/RULES.md` §7.2: a bomb beats any single, pair, triple or straight of any
+ * size, at any time — including a joker played as a single. So rank alone never
+ * makes a card safe, and this is the half a tally can still answer exactly.
+ */
+export function bombPossible(played: number[] | undefined, myHand: Card[]): boolean {
+  const out = outstandingTally(played, myHand);
+  return out.some((n, i) => DECK_BY_STRENGTH[i] === 4 && n === 4);
 }
 
 export function cardStrength(card: Card): number {
@@ -754,16 +772,24 @@ export function aiChoosePlay(
   const minOpponent = Math.min(...otherPlayersHandCount);
 
   /**
-   * Whether nothing still unseen can beat this play.
+   * Whether leading this card takes the round on everything a tally can see:
+   * no higher card is outstanding, and no rank is missing all four, so no
+   * opponent can be holding a bomb (`docs/RULES.md` §7.2 — a bomb beats any
+   * single, joker included).
    *
-   * Single cards only. A multi-card shape is beaten by a higher shape of the
-   * same size and by every bomb, which a rank tally cannot rule out, so
-   * claiming a combo is safe would be a guess wearing the same clothes as a
-   * count. `outstandingAbove` already excludes this bot's own hand.
+   * Singles only. A multi-card shape is also beaten by a higher shape of its
+   * own size, which a rank tally cannot rule out.
+   *
+   * The one thing ranks cannot exclude is a royal straight, which needs five
+   * consecutive cards of a single suit and so turns on suits this tally
+   * deliberately does not hold. That is the residual risk, and it is a cheap
+   * one: it is the strongest hand in the game (§7.4), so drawing one out to
+   * answer a single card is a trade worth inducing.
    */
-  const unbeatable = (play: Combination) =>
+  const takesTheRound = (play: Combination) =>
     play.cards.length === 1 &&
-    outstandingAbove(cardStrength(play.cards[0]), playedRanks, player.hand) === 0;
+    outstandingAbove(cardStrength(play.cards[0]), playedRanks, player.hand) === 0 &&
+    !bombPossible(playedRanks, player.hand);
 
   // Universal: if this play empties the hand, always do it. No personality
   // declines to win, so this returns before the knobs are applied.
@@ -785,13 +811,13 @@ export function aiChoosePlay(
     return withPersonality([...plays].sort((a, b) => a.strength - b.strength)[0]);
   }
 
-  // A lead nothing outstanding can beat takes the round for free, so holding it
-  // back wins nothing and costs the lead. Cheapest such card first — the point
-  // is to take the round, not to spend the best card doing it. Above the knobs
-  // deliberately: this is a certainty, and aggression and unpredictability
-  // exist to colour a judgement call.
+  // A lead nothing left can answer takes the round for free, so holding it back
+  // wins nothing and costs the lead. Cheapest such card first — the point is to
+  // take the round, not to spend the best card doing it. Above the knobs
+  // deliberately: aggression and unpredictability exist to colour a judgement
+  // call, and this is as close to a counted one as the tally gets.
   if (isNewRound) {
-    const certain = plays.filter(unbeatable);
+    const certain = plays.filter(takesTheRound);
     if (certain.length > 0) {
       return certain.sort((a, b) => a.strength - b.strength)[0];
     }
