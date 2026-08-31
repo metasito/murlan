@@ -72,7 +72,6 @@ const FLOOR_GRACE_MS = 1000;
 // Clearance between whatever the banner sits under and the banner itself, and
 // again between the banner and whatever the screen puts below it.
 export const TOP_GAP = 8;
-export { SLIDE_DURATION };
 
 export default function NotificationBanner({ notification, onDismiss, onMeasure }: Props) {
   const { t } = useTranslation();

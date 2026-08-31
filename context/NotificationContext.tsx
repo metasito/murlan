@@ -32,10 +32,8 @@ interface NotificationContextValue {
   /**
    * The window y a visible banner reaches down to, and 0 when none is up.
    *
-   * A banner floats over the navigator, so nothing below it knows it is there.
-   * Published rather than derived because the height is the message's: two
-   * lines of text and a title is not the same banner as one line, and a
-   * screen that guessed would either overlap or reserve a strip of nothing.
+   * Measured rather than derived: the height is the message's, and a title
+   * with two lines under it is not the same banner as one line.
    */
   bannerBottom: number;
   reportBannerBottom: (bottom: number) => void;

@@ -2,13 +2,11 @@ import React from 'react';
 import {
   View, ScrollView, StyleSheet, Platform, ViewStyle, KeyboardAvoidingView,
 } from 'react-native';
-import Animated, { LinearTransition } from 'react-native-reanimated';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Colors } from '@/lib/theme';
-import { usePrefersReducedMotion } from '@/lib/accessibility';
 import { useBannerBottom } from '@/context/NotificationContext';
-import { SLIDE_DURATION, TOP_GAP } from '@/components/NotificationBanner';
+import { TOP_GAP } from '@/components/NotificationBanner';
 
 const BACKDROP = [Colors.bg, Colors.bg, Colors.feltDark] as const;
 
@@ -37,21 +35,15 @@ export function MenuLayout({
 }: MenuLayoutProps) {
   const insets = useSafeAreaInsets();
   const bannerBottom = useBannerBottom();
-  const reduceMotion = usePrefersReducedMotion();
 
   const paddingTop    = Math.max(insets.top, contentPad);
   const paddingBottom = Math.max(insets.bottom, contentPad);
   const paddingLeft   = insets.left  + contentPad;
   const paddingRight  = insets.right + contentPad;
 
-  // A banner floats over the navigator, so without this the screen carries on
-  // as if the space were its own and the banner lands on whatever is at the
-  // top — on the online hub, the mode selector the player came to use.
+  // A banner floats over the navigator at a z-index above it, so nothing here
+  // is told it is there and the screen would otherwise lay itself out under it.
   const reserved = Math.max(0, bannerBottom + TOP_GAP - paddingTop);
-  // The banner's own step, not a Motion one: what these two share is that they
-  // are the same movement seen from either side, so a second number here would
-  // be a way for them to drift apart.
-  const slideDur = reduceMotion ? 0 : SLIDE_DURATION;
 
   // `style` is merged last (after `centered`) so callers can override layout
   // — e.g. justifyContent — without it being clobbered by the centered preset.
@@ -62,10 +54,6 @@ export function MenuLayout({
     centered && styles.centered,
     style,
   ];
-  // A layout transition rather than an animated style: an animated entry in
-  // `style` is frozen at the render that mounted it, so the reserved height
-  // would be unreadable to anything — a test included — that inspects it.
-  const room = LinearTransition.duration(slideDur);
 
   return (
     <View style={styles.root}>
@@ -97,11 +85,11 @@ export function MenuLayout({
             automaticallyAdjustKeyboardInsets
             showsVerticalScrollIndicator={false}
           >
-            <Animated.View testID="menu-content" layout={room} style={contentStyle}>{children}</Animated.View>
+            <View testID="menu-content" style={contentStyle}>{children}</View>
           </ScrollView>
         ) : (
           <View style={styles.fill}>
-            <Animated.View testID="menu-content" layout={room} style={contentStyle}>{children}</Animated.View>
+            <View testID="menu-content" style={contentStyle}>{children}</View>
           </View>
         )}
       </KeyboardAvoidingView>
