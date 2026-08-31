@@ -66,6 +66,18 @@ jobs:
           set -e
           echo "$reply"
           cat /tmp/curl.err >&2 || true
+
+          # Replit answers every request to a workspace that is not running
+          # with this page, under a 404. It means the push had nowhere to
+          # land, not that the preview refused it — and no number of retries
+          # wakes a stopped Repl. The workspace syncs to origin/main when it
+          # next boots, so there is nothing here to report or to fix.
+          if [ $code -ne 0 ] && printf '%s' "$reply" | grep -qF 'Run this app to see the results here'; then
+            echo "::notice::The Replit workspace is not running. It will sync to main when it next starts."
+            echo "asleep=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
           # A delimiter the server could also emit would end the value early
           # and let the rest be read as further outputs (CVE-2022-35954).
           delim="EOF_$(openssl rand -hex 16)"
@@ -108,8 +120,11 @@ jobs:
             gh issue create --repo "$REPO" --title "$title" --body "$body"
           fi
 
+      # A workspace that was asleep has not recovered anything: the push it
+      # missed is still missing, and closing an open failure here would report
+      # a success that never happened.
       - name: Close the failing-sync issue now that it recovered
-        if: success()
+        if: success() && steps.send.outputs.asleep != 'true'
         env:
           GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
