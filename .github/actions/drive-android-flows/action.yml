@@ -1,6 +1,6 @@
 name: Drive the Maestro flows on an Android emulator
 description: >
-  Boots the emulator, installs Expo Go, and runs the flows. Lives here rather
+  Boots the emulator, installs the app, and runs the flows. Lives here rather
   than inline so `maestro.yml` can invoke it twice - once, and again only when
   the emulator never booted (#186) - without a second copy of this
   configuration to drift out of step with the first.
@@ -28,13 +28,19 @@ runs:
         # Left on. #35 names this as the first knob to try for a struggling
         # emulator and it was tried, but it is the wrong one: Reanimated reads
         # the system scales as a reduced-motion signal and disables animations
-        # of its own accord - it says so in Metro's log - and the game table
-        # then never arrives. What the ANRs actually needed was
+        # of its own accord, and the game table then never arrives. What the
+        # ANRs actually needed was
         # hide_error_dialogs, below. Driving real worklets on a real UI thread
         # is the reason this layer exists.
         disable-animations: false
-        # Deliberately stock. Raising cores and memory was aimed at
-        # offline-game, which is not run here (#185), and did not save it.
+        # Deliberately stock, and deliberately unchanged in the commit that put
+        # offline-game back on this emulator. Raising cores and memory was
+        # aimed at that flow before and did not save it — but every Android run
+        # this repo has recorded was driving Expo Go, whose dev-menu window ate
+        # the taps, so #185's "the flow reaches the table and the emulator
+        # dies" was never measured against the app itself. Moving the host and
+        # the emulator's resources in one dispatch would leave neither
+        # answerable. Measure first; the knobs are `cores` and `ram-size`.
         #
         # The boot itself is intermittently slow on a runner - three runs have
         # ended on "Timeout waiting for emulator to boot", including one on
@@ -88,53 +94,31 @@ runs:
           adb shell getprop persist.sys.locale | tr -d '\r' | grep -qx it-IT || { echo "::error::Device locale is not it-IT; the flows select on Italian copy."; exit 1; }
           # System UI ANRs on this runner while the app is loading, and its
           # dialog then sits over everything: the app is running fine behind it
-          # - its own Reanimated warnings reach Metro - but the hierarchy holds
+          # - its own Reanimated warnings reach logcat - but the hierarchy holds
           # the dialog and nothing else, so every assertion fails. This hides
           # the system dialog only; an app that genuinely hangs still fails.
           adb shell settings put global hide_error_dialogs 1
-          adb install -r "$RUNNER_TEMP/expo-go.apk"
-          # Expo Go reports a failed manifest fetch as nothing but "Something
-          # went wrong" on the device, which cannot tell a dead dev server
-          # from one answering with an error. Asking the same question from
-          # the host turns that into a status code.
-          curl -sf -o /dev/null -w 'metro /status: %{http_code}' http://127.0.0.1:8081/status || echo "::warning::Metro is no longer answering on 8081."
-          echo
-          curl -s -o "$RUNNER_TEMP/manifest.out" -w 'manifest: %{http_code}' -H 'expo-platform: android' -H 'expo-runtime-version: exposdk:54.0.0' -H 'accept: multipart/mixed,application/expo+json,application/json' http://127.0.0.1:8081/
-          echo
-          head -c 1200 "$RUNNER_TEMP/manifest.out"
-          echo
-          # The flows reach the dev server over this forward, on 127.0.0.1.
-          # They do not take an address from the command line: `-e` is applied
-          # before a flow's own `env:` block, so the flag loses to it silently
-          # and every run went to 10.0.2.2 regardless of what was passed here.
-          # That address does not reach the dev server from this emulator -
-          # Metro's log records no request at all over it.
-          adb reverse tcp:8081 tcp:8081
+          adb install -r "$APP_APK"
           # Everything above this line is the device coming up: the boot, the
-          # reboot, the locale, the install and the forward. Its absence is what
-          # tells `maestro.yml` the device itself never arrived (#186).
+          # reboot, the locale and the install. Its absence is what tells
+          # `maestro.yml` the device itself never arrived (#186).
           touch "$RUNNER_TEMP/emulator-booted"
-          # A device that came up is not yet an app that runs. Expo Go has
+          # A device that came up is not yet an app that runs. The app has
           # started, died within five seconds and left the launcher holding the
           # foreground for the whole deadline, and the flows then failed against
           # a screen the app never drew — reported as a verdict on the branch,
           # because the only boundary was the one above (#647). So the app is
           # taken to a usable state here, where failing is still retryable.
-          #
-          # The same link the flows use, from the same host loopback: a cold
-          # start is how Expo Go takes a deep link at all, and one delivered to
-          # a copy already at the front is ignored.
-          timeout 120 adb shell am start -W -a android.intent.action.VIEW -d 'exp://127.0.0.1:8081?disableOnboarding=1' host.exp.exponent
+          timeout 120 adb shell monkey -p "$APP_ID" -c android.intent.category.LAUNCHER 1
           # Resumed for ten consecutive seconds, not merely resumed once: the
           # process that dies takes several seconds to do it, and a single poll
           # lands inside that window as often as outside it.
-          i=0; held=0; until [ $held -ge 10 ]; do if adb shell dumpsys activity activities | grep -q 'topResumedActivity.*host\.exp\.exponent'; then held=$((held+1)); else held=0; fi; i=$((i+1)); [ $i -lt 180 ] || { echo "::error::Expo Go never held the foreground for ten seconds; the app did not reach a usable state."; exit 1; }; sleep 1; done
+          i=0; held=0; until [ $held -ge 10 ]; do if adb shell dumpsys activity activities | grep -q "topResumedActivity.*$APP_ID"; then held=$((held+1)); else held=0; fi; i=$((i+1)); [ $i -lt 180 ] || { echo "::error::The app never held the foreground for ten seconds; it did not reach a usable state."; exit 1; }; sleep 1; done
           # The app is up, so from here a failure is a result about the branch.
           touch "$RUNNER_TEMP/app-launched"
-          # smoke only. offline-game.yaml passes locally - a real hand driven to
-          # the result screen in 16m - and on a runner it reaches the table and
-          # then dies there with no assertion message at all, which is the
-          # emulator going down rather than the app being wrong. More memory,
-          # more cores and a longer wait all changed nothing. #185, and
-          # docs/TESTING.md §5 predicted it before any of this ran.
-          maestro test .maestro/smoke.yaml
+          # `--device` names the emulator rather than leaving Maestro to resolve
+          # it, which on the iOS side was the difference between a driver that
+          # started and one that failed to in three dispatches of eight.
+          # `MAESTRO_APP_ID` is what tells the flows they are driving the app
+          # itself: given one, they skip the Expo Go launch dance entirely.
+          maestro --device emulator-5554 test -e MAESTRO_APP_ID="$APP_ID" .maestro/smoke.yaml .maestro/offline-game.yaml

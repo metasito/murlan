@@ -24,6 +24,16 @@ import path from "node:path";
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const read = (rel: string) => readFileSync(path.join(repoRoot, rel), "utf8");
 
+/**
+ * The file with its whole-line comments removed, which is what every positive
+ * assertion below reads. The negative ones read `read()` instead, deliberately:
+ * a step left commented out is a step someone is about to put back. That same
+ * property inverts here — commenting out the build, or the `maestro` line, is
+ * the ordinary way somebody bisects a red device job, and against the raw text
+ * every claim in this file would go on passing while the job drove nothing.
+ */
+const code = (rel: string) => read(rel).replace(/^[ \t]*#.*$/gm, "");
+
 const FLOWS = [".maestro/smoke.yaml", ".maestro/offline-game.yaml"];
 
 /**
@@ -40,8 +50,8 @@ function topLevelCommands(rel: string): string[] {
 }
 
 /** Everything after the `---` that ends the config header. */
-function flowBody(rel: string): string {
-  return read(rel).split(/^---$/m).slice(1).join("---");
+function flowBody(rel: string, src: (rel: string) => string = read): string {
+  return src(rel).split(/^---$/m).slice(1).join("---");
 }
 
 /**
@@ -57,7 +67,7 @@ function packagerBlock(rel: string): string {
 }
 
 describe("the iOS job drives this app, not Expo Go", () => {
-  const workflow = read(".github/workflows/ios.yml");
+  const workflow = code(".github/workflows/ios.yml");
 
   test("it builds and installs a build of this app", () => {
     assert.match(workflow, /expo prebuild --platform ios/);
@@ -66,10 +76,8 @@ describe("the iOS job drives this app, not Expo Go", () => {
   });
 
   test("it never fetches or installs Expo Go", () => {
-    // Comments are searched too, deliberately: a step left commented out is a
-    // step someone is about to put back.
     for (const trace of [/iosClientUrl/, /expo-go/i, /host\.exp/i]) {
-      assert.doesNotMatch(workflow, trace, `ios.yml still mentions ${trace}`);
+      assert.doesNotMatch(read(".github/workflows/ios.yml"), trace, `ios.yml still mentions ${trace}`);
     }
   });
 
@@ -97,20 +105,61 @@ describe("every flow asks for the locale it selects on", () => {
       // `it-IT` sets a string, the locale lookup ignores it, and the app comes
       // up in English against a flow that selects on Italian copy — which
       // reads as the app never having rendered.
-      // Comment lines are stripped first. The negative assertions above search
-      // them deliberately — a commented-out step is one someone is about to put
-      // back — but the same property inverts here: a positive match is
-      // satisfied by the very line that has been switched off, and both flows
-      // would launch in English while this stayed green.
-      const launch = flowBody(rel)
+      const launch = flowBody(rel, code)
         .split(/^(?=- )/m)
-        .find((b) => /^- launchApp:/.test(b))
-        ?.replace(/^\s*#.*$/gm, "");
+        .find((b) => /^- launchApp:/.test(b));
       assert.ok(launch, `${rel} has no top-level launchApp`);
       assert.match(launch, /AppleLanguages:\s*"\(it-IT\)"/, `${rel} does not ask for Italian`);
       assert.match(launch, /AppleLocale:\s*"it_IT"/, `${rel} does not ask for Italian formats`);
     });
   }
+});
+
+describe("the Android job drives this app, not Expo Go", () => {
+  const workflow = code(".github/workflows/maestro.yml");
+  const action = code(".github/actions/drive-android-flows/action.yml");
+  const workflowText = read(".github/workflows/maestro.yml");
+  const actionText = read(".github/actions/drive-android-flows/action.yml");
+
+  test("it builds and installs a build of this app", () => {
+    assert.match(workflow, /expo prebuild --platform android/);
+    assert.match(workflow, /assembleRelease/);
+    assert.match(action, /adb install .*APP_APK/);
+  });
+
+  test("it never fetches or installs Expo Go", () => {
+    // The Expo Go client came from a network fetch resolved against the pinned
+    // SDK, and the app was reached by a deep link into it. Either one returning
+    // is the whole class coming back.
+    for (const trace of [/androidClientUrl/, /expo-go/i, /host\.exp/i, /exp:\/\//]) {
+      assert.doesNotMatch(workflowText, trace, `maestro.yml still mentions ${trace}`);
+      assert.doesNotMatch(actionText, trace, `drive-android-flows still mentions ${trace}`);
+    }
+  });
+
+  test("it starts no dev server, because a release build carries its bundle", () => {
+    // A release APK needs no packager. Starting one again would mean the build
+    // is loading its JavaScript from somewhere else, which is a different app.
+    for (const trace of [/expo start/, /8081/, /adb reverse/]) {
+      assert.doesNotMatch(workflowText, trace, `maestro.yml still mentions ${trace}`);
+      assert.doesNotMatch(actionText, trace, `drive-android-flows still mentions ${trace}`);
+    }
+  });
+
+  test("it tells the flows which app they are driving, and names the device", () => {
+    assert.match(action, /maestro\b[^\n]*--device\b/);
+    assert.match(action, /test -e MAESTRO_APP_ID=/);
+  });
+
+  test("the package name comes from the built APK rather than being written twice", () => {
+    assert.match(workflow, /dump packagename/);
+  });
+
+  test("the crash check looks for our own package", () => {
+    // Grepping the host's process name finds nothing once the host is gone,
+    // and a check that can no longer match reports nothing rather than failing.
+    assert.match(workflow, /grep -rl ">>> \$APP_ID"/);
+  });
 });
 
 describe("every flow can be driven without a packager", () => {

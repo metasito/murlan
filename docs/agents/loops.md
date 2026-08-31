@@ -34,11 +34,10 @@ both. `tests/vignette.test.ts` pins that no radial shapes itself.
 
 ## The iOS loop: a CI simulator, or ask for a capture
 
-`.github/workflows/ios.yml` drives `.maestro/smoke.yaml` (offline-game.yaml is #353)
-through Expo Go on a real iOS Simulator, on a free `macos-latest` GitHub runner (#205) — the
-same flows `maestro.yml` already runs on Android, with the emulator-only failure classes
-(#185, #186) gone because a Simulator is a process on the host rather than a virtualised
-device. **It runs on demand only** — `on: workflow_dispatch:`, no `pull_request` trigger. It lost
+`.github/workflows/ios.yml` builds this app and drives both flows on a real iOS Simulator, on
+a free `macos-latest` GitHub runner (#205) — the same flows `maestro.yml` runs on Android,
+with the emulator-only failure classes (#185, #186) gone because a Simulator is a process on
+the host rather than a virtualised device. **It runs on demand only** — `on: workflow_dispatch:`, no `pull_request` trigger. It lost
 that trigger for being red, went green on 2026-08-26, and never got it back; #354 owns restoring
 it, and cannot until #620 is fixed.
 
@@ -119,7 +118,7 @@ Each of these produced a confident, wrong "fixed" in one session:
   the failure lands a step later against whatever is up by then — one run spent its remaining
   twenty minutes scrolling the emulator's own launcher and reported a missing home-screen row.
   The screenshot saved beside the failing step is the evidence; the step name is a guess.
-  `maestro.yml` now annotates a run whose logcat holds a tombstone for `host.exp.exponent`
+  `maestro.yml` now annotates a run whose logcat holds a tombstone for the app's own package
   (#629), but only Android does, and only for a native crash.
 - **A flow run through Expo Go never pressed one of our controls.** Expo Go's dev-menu window
   sits above the app's own and takes the touch: the tap is dispatched `to window:
@@ -129,8 +128,29 @@ Each of these produced a confident, wrong "fixed" in one session:
   Expo Go's own native dialogs — a `back` **key** works, because keys reach the app rather
   than going through window hit-testing (#627). So "the Maestro flow passed" was a claim about
   assertions, not about anything being pressable, and it has been load-bearing in at least one
-  closed ticket. `ios.yml` now compiles the app and drives that instead; `maestro.yml` still
-  goes through Expo Go, so read an Android green with this in mind.
+  closed ticket. Both device jobs now compile the app and drive that, so a green from either
+  is a claim about this app. Any Maestro green recorded before 2026-08-31 is not.
+
+## Which device loop sees what
+
+Both jobs build a **release** binary and drive it, so neither needs a dev server and neither
+can be confused by the host. They are `workflow_dispatch` only — #354 owns the trigger.
+
+| | `ios.yml` | `maestro.yml` |
+| --- | --- | --- |
+| Builds | `xcodebuild`, active arch only | `./gradlew assembleRelease` |
+| Runs | smoke + offline-game | smoke + offline-game |
+| Locale | `launchApp` arguments, no boot | `persist.sys.locale` + a real reboot |
+| Roughly | 23 min, measured | unmeasured; budgeted for 100 |
+
+Neither can see what the other can. iOS is a simulator on the host, so it has no emulator boot
+to flake (#186) and no KVM; Android is a virtual device, so it is the only one that produces a
+logcat and a tombstone when the app dies natively (#629). A defect that reproduces on one and
+not the other is a real finding about that platform, not a broken job — #209 and #627 were both
+that shape.
+
+What neither sees: anything requiring a signed release or the Play/App Store runtime, and any
+regression in a code path the two flows do not walk.
 
 ## A scan needs a planted floor
 
