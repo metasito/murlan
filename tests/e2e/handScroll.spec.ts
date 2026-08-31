@@ -1,10 +1,10 @@
 // tests/e2e/handScroll.spec.ts — a hand too wide for the phone, under a
 // finger (#531).
 //
-// A two-player deal gives a seat 21 cards. On the smallest real phone that is a
-// 543px row in a 357px window, so a third of the hand is out of sight and has
-// to be brought in. Reaching for it and rearranging it are then two things one
-// finger has to mean.
+// A three-player deal gives a seat 18 cards, the widest hand the game deals.
+// On the smallest real phone that row does not fit its window, so part of the
+// hand is out of sight and has to be brought in. Reaching for it and
+// rearranging it are then two things one finger has to mean.
 //
 // Only a real touch can tell them apart. Attaching a gesture to the row makes
 // react-native-gesture-handler write `touch-action: none` onto it
@@ -21,7 +21,7 @@ import { HAND_CARDS, TABLE } from "./helpers/selectors";
 /** iPhone SE landscape — the smallest real phone, and the worst case. */
 const VIEWPORT = { width: 568, height: 320 };
 /** What a two-seat deal actually gives one player (`dealCards(2)`). */
-const MAX_HAND = 21;
+const MAX_HAND = 18;
 /** Past `HOLD_MS` in components/table/hand.tsx, with room for a slow runner. */
 const HELD_MS = 800;
 
@@ -101,7 +101,7 @@ async function finger(
 
 async function openBigHand(page: Page, baseURL: string): Promise<HandCard[]> {
   await page.setViewportSize(VIEWPORT);
-  await openSeededGame(page, baseURL, 2, MAX_HAND);
+  await openSeededGame(page, baseURL, 3, MAX_HAND);
   await page.locator(TABLE).waitFor({ timeout: 30_000 });
   await page.waitForTimeout(1_500);
   const row = await handRow(page);

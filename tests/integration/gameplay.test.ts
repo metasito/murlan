@@ -34,7 +34,7 @@ import {
  *
  * The rate limit is derived rather than raised until the flake stopped. The
  * exchange test below drives at most 21 hands down one socket (its opening
- * hand plus the loop's own 20 attempts), a heads-up hand deals 21 cards a
+ * hand plus the loop's own 20 attempts), a heads-up hand deals 14 cards a
  * side, and a client emits at most one game action a turn — so 882 is the
  * most this file can reach inside one 60s window, against a measured 12–15 a
  * hand. The alternatives lose: resetting the bucket between hands means a

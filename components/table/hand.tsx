@@ -97,7 +97,7 @@ const MOVE_LEFT = "moveCardLeft";
 const MOVE_RIGHT = "moveCardRight";
 /** The same two moves from a keyboard, which is the whole of them on web. */
 const MOVE_KEYS = { ArrowLeft: MOVE_LEFT, ArrowRight: MOVE_RIGHT };
-/** Past every card's own `zIndex`, which is its index in a hand of at most 21. */
+/** Past every card's own `zIndex`, which is its index in a hand of at most 18. */
 const HELD_Z = 100;
 
 interface CardItemProps {
@@ -425,7 +425,7 @@ export function StraightHand({
   const visibleH = cardH - crop;
   const dealRise = DEAL_RISE_PX * cardScale;
   // O(1) membership check per card instead of `selectedIds.includes(card.id)`
-  // (an O(k) scan repeated for every one of the up to 21 cards in a hand).
+  // (an O(k) scan repeated for every one of the up to 18 cards in a hand).
   // Computed before the early return below — Rules of Hooks requires every
   // hook to run unconditionally on every render of this component.
   const selectedSet = useMemo(() => new Set(selectedIds), [selectedIds]);
@@ -761,8 +761,21 @@ export function StraightHand({
   // The middle card rides highest, so the row is as tall as the card plus the
   // climb; the whole arc is then pushed past the bottom edge by the crop.
   const arcRise = box.h - cardH;
-  /** Everything a card can occupy above the row's own top edge. */
-  const topClearance = arcRise + handRowHeadroom(cardH);
+  // A tilted card stands taller than the card: its box grows by
+  // `w·sin θ + h·cos θ − h`, half of it above and half below. The end cards
+  // carry the most of the arc's own tilt and a chosen one adds SELECT_TILT on
+  // top, so the worst case is the two together — and it was the six pixels the
+  // clip took off the first card in the row.
+  const tiltRad =
+    ((Math.max(...full.cards.map((at) => Math.abs(at.rot))) + Math.abs(SELECT_TILT)) * Math.PI) /
+    180;
+  const tiltOverhang =
+    (cardW * Math.sin(tiltRad) + cardH * Math.cos(tiltRad) - cardH) / 2;
+  // Everything a card can occupy above the row's own top edge: the arc's rise,
+  // the lift a chosen card takes, the further lift a giveable one takes during
+  // an exchange — the two stack on the same card — and the box a tilt adds.
+  const topClearance =
+    arcRise + handRowHeadroom(cardH) + Math.abs(GIVEABLE_LIFT) + tiltOverhang;
 
   const row = (
     <GestureDetector gesture={drag}>
@@ -857,7 +870,7 @@ export function StraightHand({
             style={{
               width: availW,
               marginTop: -arcRise,
-              height: topClearance + visibleH + crop + arcRise,
+              height: topClearance + visibleH + crop + arcRise + tiltOverhang,
               paddingTop: topClearance,
               overflow: "hidden",
             }}

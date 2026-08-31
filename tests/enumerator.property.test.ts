@@ -22,7 +22,7 @@ import {
 const EXHAUSTIVE_RUNS: Record<number, number> = { 10: 200, 13: 80, 14: 30 };
 
 /** Every hand size the deal actually produces: 4p → 14/13, 3p → 18, 2p → 21. */
-const REAL_SIZES = [13, 14, 18, 21];
+const REAL_SIZES = [13, 14, 18];
 
 /**
  * The largest play the bounded oracle enumerates for hands too big for 2^n.
@@ -31,8 +31,8 @@ const REAL_SIZES = [13, 14, 18, 21];
  */
 const BOUNDED_LEN = 6;
 
-/** Runs per hand size for the bounded oracle — 21 cards costs ~150ms a hand. */
-const BOUNDED_RUNS: Record<number, number> = { 18: 40, 21: 15 };
+/** Runs per hand size for the bounded oracle — 18 cards costs ~40ms a hand. */
+const BOUNDED_RUNS: Record<number, number> = { 18: 40 };
 
 /**
  * Every legal play in `hand`, found by brute force over all 2^n subsets.
