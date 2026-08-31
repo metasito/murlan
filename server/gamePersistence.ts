@@ -76,8 +76,6 @@ export function sanitizeStateForPlayer(
     // over or never moves. The deadline rides along only as a reset key.
     turnDeadlineMs,
     turnSecondsRemaining: secondsUntil(turnDeadlineMs),
-    // Strips `cardFromLoser` — a named card out of a named player's hand —
-    // down to only the two seats in the exchange, and only while it is active.
     exchangePhase: visibleExchangePhase(
       state.exchangePhase,
       viewerSeatIndex
