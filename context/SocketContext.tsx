@@ -121,7 +121,12 @@ export function SocketProvider({ children }: { children: ReactNode }) {
   const clearInvite = useCallback(() => setPendingInvite(null), []);
 
   const [acceptedInvite, setAcceptedInvite] = useState<string | null>(null);
-  const acceptInvite = useCallback((roomCode: string) => setAcceptedInvite(roomCode), []);
+  // Answering an invite answers it for both: leaving `pendingInvite` up would
+  // reopen the code prompt over the join it just started, for the same room.
+  const acceptInvite = useCallback((roomCode: string) => {
+    setPendingInvite(null);
+    setAcceptedInvite(roomCode);
+  }, []);
   const clearAcceptedInvite = useCallback(() => setAcceptedInvite(null), []);
 
   /**

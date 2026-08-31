@@ -79,11 +79,12 @@ export default function OnlineLobbyScreen() {
     joinRoom(acceptedInvite);
   }, [acceptedInvite, connected, clearAcceptedInvite, joinRoom]);
 
-  // A refused join is the end of it. Success navigates away on `roomId`, so
-  // there is no success case to clear here.
+  // Either way the join is over. Success pushes the room *on top of* this
+  // screen rather than replacing it, so back would come home to a banner still
+  // claiming a join is in flight.
   useEffect(() => {
-    if (error) setJoiningInvite(false);
-  }, [error]);
+    if (error || roomId) setJoiningInvite(false);
+  }, [error, roomId]);
 
   // An invite that merely arrived, on the other hand, has not been answered:
   // it prefills the code and asks.

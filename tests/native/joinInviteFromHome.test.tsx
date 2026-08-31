@@ -16,14 +16,18 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 // statement in the file, and only that prefix is allowed out of scope.
 const mockJoinRoom = jest.fn();
 const mockClearAccepted = jest.fn();
-const mockState = { socket: {} as Record<string, unknown>, connected: true };
+const mockState = {
+  socket: {} as Record<string, unknown>,
+  connected: true,
+  room: null as { roomId: string } | null,
+};
 
 jest.mock('@/context/onlineGameHooks', () => ({
   useOnlineRoom: () => ({
     createRoom: jest.fn(),
     joinRoom: mockJoinRoom,
     spectateRoom: jest.fn(),
-    room: null,
+    room: mockState.room,
     isSpectator: false,
   }),
   useOnlineTable: () => ({ gameState: null }),
@@ -74,6 +78,7 @@ beforeEach(() => {
   mockJoinRoom.mockClear();
   mockClearAccepted.mockClear();
   mockState.connected = true;
+  mockState.room = null;
   mockState.socket = { ...base };
 });
 
@@ -118,6 +123,18 @@ describe('an invite the player has already accepted', () => {
     const r = await mount();
 
     expect(screen.getByText('Joining the table…')).toBeTruthy();
+
+    await r.unmount();
+  });
+
+  it('stops saying so once the room arrives', async () => {
+    // The room is pushed *on top of* this screen rather than replacing it, so
+    // this instance survives the join and is what back returns to.
+    mockState.room = { roomId: 'r1' };
+    mockState.socket = { ...base, acceptedInvite: 'ABC123' };
+    const r = await mount();
+
+    expect(screen.queryByText('Joining the table…')).toBeNull();
 
     await r.unmount();
   });
