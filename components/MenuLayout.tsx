@@ -5,6 +5,7 @@ import {
 import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Colors } from '@/lib/theme';
+import { a11yHidden } from '@/lib/a11y';
 import { useBannerBottom } from '@/context/NotificationContext';
 import { TOP_GAP } from '@/components/NotificationBanner';
 
@@ -114,8 +115,7 @@ export function MenuLayout({
                 colors={[Colors.bgClear, Colors.bg]}
                 style={styles.moreBelow}
                 pointerEvents="none"
-                accessibilityElementsHidden
-                importantForAccessibility="no-hide-descendants"
+                {...a11yHidden()}
               />
             )}
           </View>
