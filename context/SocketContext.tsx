@@ -50,6 +50,18 @@ interface SocketContextValue {
   clearInvite: () => void;
   gameInvites: PendingInvite[];
   dismissGameInvite: (roomCode: string) => void;
+  /**
+   * The room the player has asked to be put into, set by tapping Join on an
+   * invite and consumed by the online group, which is the only place
+   * `joinRoom` exists.
+   *
+   * Distinct from `pendingInvite`, which only says one arrived: an invite that
+   * merely turns up must never move anyone, and this is what separates "look
+   * now" from "take me there".
+   */
+  acceptedInvite: string | null;
+  acceptInvite: (roomCode: string) => void;
+  clearAcceptedInvite: () => void;
 }
 
 /**
@@ -107,6 +119,15 @@ export function SocketProvider({ children }: { children: ReactNode }) {
   const retryAttemptRef = useRef(0);
 
   const clearInvite = useCallback(() => setPendingInvite(null), []);
+
+  const [acceptedInvite, setAcceptedInvite] = useState<string | null>(null);
+  // Answering an invite answers it for both: leaving `pendingInvite` up would
+  // reopen the code prompt over the join it just started, for the same room.
+  const acceptInvite = useCallback((roomCode: string) => {
+    setPendingInvite(null);
+    setAcceptedInvite(roomCode);
+  }, []);
+  const clearAcceptedInvite = useCallback(() => setAcceptedInvite(null), []);
 
   /**
    * Turning an invite down deletes it rather than hiding it. A dismissal that
@@ -364,8 +385,22 @@ export function SocketProvider({ children }: { children: ReactNode }) {
       clearInvite,
       gameInvites,
       dismissGameInvite,
+      acceptedInvite,
+      acceptInvite,
+      clearAcceptedInvite,
     }),
-    [socket, connected, onlineIds, pendingInvite, gameInvites, clearInvite, dismissGameInvite]
+    [
+      socket,
+      connected,
+      onlineIds,
+      pendingInvite,
+      gameInvites,
+      clearInvite,
+      dismissGameInvite,
+      acceptedInvite,
+      acceptInvite,
+      clearAcceptedInvite,
+    ]
   );
 
   return (
