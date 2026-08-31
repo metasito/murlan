@@ -174,7 +174,15 @@ function askOtherInstances(
  * a deal that is still running. So the whole of a takeover is serialised per
  * room, and everything else waits and then finds the game in memory.
  */
-const inFlight = new Map<string, Promise<EventOutcome>>();
+const inFlight = new Map<string, Promise<unknown>>();
+
+/**
+ * What `askClaimAndApply` returns when this attempt settled nothing: another
+ * instance holds the room and could not be reached, so the caller sleeps and
+ * asks again. Distinct from every `EventOutcome`, so "no answer yet" can never
+ * be mistaken for one.
+ */
+const RETRY = Symbol("retry");
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
@@ -205,6 +213,41 @@ async function takeOverAndApply(
     // half a dozen reasons after that.
     if (!activeGames.has(roomId)) await releaseRoom(roomId);
   }
+}
+
+/**
+ * One attempt at finding the table's owner, becoming it, or reporting that the
+ * question is still open.
+ *
+ * A function rather than the loop body it used to be, so the whole span from
+ * the first question to the outcome is a single promise the loop can publish in
+ * `inFlight` before any of it runs.
+ */
+async function askClaimAndApply(
+  io: SocketServer,
+  action: TableAction,
+  mode: ReturnType<typeof takeoverMode>
+): Promise<EventOutcome | typeof RETRY> {
+  const { roomId } = action;
+  const answer = await askOtherInstances(io, action);
+  if (answer) return answer;
+
+  // Every instance answered and none of them holds the room. Nothing to take
+  // over, and no reason to ask Postgres — which matters more than it looks:
+  // with one instance this is every lobby disconnect, every seat release and
+  // every leave, and probing the lock for each cost a round trip apiece.
+  // Reviving a stranded hand to give one seat to a bot would set the whole
+  // table playing itself with nobody watching, so `forward` stops here.
+  if (answer === null && mode === "forward") return UNOWNED;
+
+  // Either nobody owns it or somebody could not answer. The lock is the
+  // authority on which.
+  if (!(await claimRoom(roomId))) return RETRY;
+  if (mode === "forward") {
+    await releaseRoom(roomId);
+    return UNOWNED;
+  }
+  return takeOverAndApply(io, action, mode === "create");
 }
 
 /**
@@ -239,32 +282,21 @@ export async function applyOrForward(
     if (activeGames.has(roomId)) return applyOnce(io, action);
     if (inFlight.has(roomId)) continue;
 
-    const answer = await askOtherInstances(io, action);
-    if (answer) return answer;
-
-    // Every instance answered and none of them holds the room. Nothing to take
-    // over, and no reason to ask Postgres — which matters more than it looks:
-    // with one instance this is every lobby disconnect, every seat release and
-    // every leave, and probing the lock for each cost a round trip apiece.
-    // Reviving a stranded hand to give one seat to a bot would set the whole
-    // table playing itself with nobody watching, so `forward` stops here.
-    if (answer === null && mode === "forward") return UNOWNED;
-
-    // Either nobody owns it or somebody could not answer. The lock is the
-    // authority on which.
-    if (await claimRoom(roomId)) {
-      if (mode === "forward") {
-        await releaseRoom(roomId);
-        return UNOWNED;
-      }
-      const work = takeOverAndApply(io, action, mode === "create");
-      inFlight.set(roomId, work);
-      try {
-        return await work;
-      } finally {
-        inFlight.delete(roomId);
-      }
+    // Registered before the first `await` of the attempt and not one statement
+    // later: the ask and the claim are both awaits, and a second action
+    // entering across either of them would find nothing in flight, be handed
+    // the room by the re-entrant lock, and restore over the first.
+    const attemptSpan = askClaimAndApply(io, action, mode);
+    inFlight.set(roomId, attemptSpan);
+    let settled: EventOutcome | typeof RETRY;
+    try {
+      settled = await attemptSpan;
+    } finally {
+      // Every exit of the span, refusals and throws included: a waiter above is
+      // parked on this entry and nothing else deletes it.
+      inFlight.delete(roomId);
     }
+    if (settled !== RETRY) return settled;
 
     // An instance holds the room: either it is still loading it, or it could
     // not answer in time. Ask again — the action carries an id, so a duplicate
