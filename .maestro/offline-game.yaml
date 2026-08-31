@@ -76,8 +76,15 @@ env:
       - tapOn:
           text: "Apri"
           optional: true
+# The tutorial, not "either screen". `clearState` means it has never been seen,
+# so on a cleared launch it always comes — but it is *pushed over* home rather
+# than rendered instead of it, and home wins the race. Waiting on "either" let
+# home satisfy this, the skip block below find nothing and skip itself, and the
+# assertions after it run against a tutorial that arrived in the meantime: the
+# smoke run that failed on `Gioca online` had the tutorial on screen at the
+# moment it asked (#353).
 - extendedWaitUntil:
-    visible: "IL GIOCO DI CARTE|GUIDA RAPIDA"
+    visible: "Salta il tutorial"
     # A minute is what a developer's machine needs. A CI emulator is slower
     # than that on a cold start, and running out of budget here reads
     # identically to the app never loading at all.
@@ -89,33 +96,32 @@ env:
 # by the tutorial merely advancing a beat. Being untappable on Android does not
 # make the button invisible, which is all `visible` asks.
 #
-# Split by platform because the defect is Android's alone. There no control on
+# Split by platform because Android has no working tap here at all: no control on
 # this screen takes touch — the Skip button no more than the body's own "Inizia"
 # — so the tap fires into nothing; #627 has it measured with `adb shell input
-# tap` and no Maestro in the loop. iOS taps it fine (#353), and Maestro's `back`
-# there is an edge-swipe gesture rather than a key press, so it is not a
-# like-for-like substitute to hand it as well.
+# tap` and no Maestro in the loop. Maestro's `back` on iOS is an edge-swipe
+# gesture rather than a key press, so it is not a like-for-like substitute to
+# hand that platform as well.
 #
 # The iOS tap targets the button's accessibilityLabel, not its visible "Salta":
 # the Text child is `a11yHidden` on purpose, so the label is the only node the
 # control exposes. Collapse this to that tap alone when #627 closes.
 - runFlow:
     when:
-      visible: "Salta il tutorial"
+      platform: Android
     commands:
-      - runFlow:
-          when:
-            platform: Android
-          commands:
-            - back
-      - runFlow:
-          when:
-            platform: iOS
-          commands:
-            - tapOn: "Salta il tutorial"
-      - extendedWaitUntil:
-          notVisible: "Salta il tutorial"
-          timeout: 10000
+      - back
+- runFlow:
+    when:
+      platform: iOS
+    commands:
+      - tapOn: "Salta il tutorial"
+- extendedWaitUntil:
+    notVisible: "Salta il tutorial"
+    # Ten seconds was a developer machine dismissing a sheet. A simulator on a
+    # shared runner is slower, and running out here reads as a dead control
+    # rather than a slow one.
+    timeout: 30000
 
 # --- Lobby: offline vs AI, 2 players, single hand ---
 - assertVisible: "Offline"
