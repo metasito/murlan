@@ -1,90 +1,98 @@
 #!/usr/bin/env bash
 # DIAGNOSTIC ONLY - not for merge. #627.
 #
-# Drives the tutorial's Skip button with plain `adb shell input tap`, with no
-# Maestro anywhere in the loop. Eleven runs have varied the app and the flow;
-# none has asked whether the tap injection channel itself works. That is the
-# split this answers:
+# Drives one button with plain `adb shell input tap`, with no Maestro anywhere
+# in the loop. Eleven runs have varied the app and the flow; none has asked
+# whether the tap injection channel itself works. That is the split this
+# answers:
 #
-#   adb tap dismisses the tutorial  -> the app is fine, Maestro's driver is not
-#   adb tap does nothing, Back+tap works -> real app bug, reproducible without Maestro
-#   neither works -> touch is dead at the window layer
+#   adb tap lands              -> the app is fine, Maestro's driver is not
+#   only Back-then-tap lands   -> real app bug, reproducible without Maestro
+#   neither lands              -> touch is dead at the window layer
 set -u
 
 PKG=host.exp.exponent
 LINK='exp://127.0.0.1:8081?disableOnboarding=1'
 
 say() { echo; echo "### $*"; }
+dump() { adb shell uiautomator dump /sdcard/d.xml >/dev/null 2>&1; adb shell cat /sdcard/d.xml 2>/dev/null; }
+has() { case "$1" in *"$2"*) return 0 ;; *) return 1 ;; esac; }
 
-dump() {
-  adb shell uiautomator dump /sdcard/d.xml >/dev/null 2>&1
-  adb shell cat /sdcard/d.xml 2>/dev/null
+# Centre of the first node carrying this content-desc, as "x y".
+centre() {
+  n=$(printf '%s' "$1" | tr '>' '\n' | grep "content-desc=\"$2\"" | head -1)
+  b=$(printf '%s' "$n" | grep -o 'bounds="\[[0-9]*,[0-9]*\]\[[0-9]*,[0-9]*\]"' | head -1)
+  [ -n "$b" ] || return 1
+  set -- $(printf '%s' "$b" | grep -o '[0-9][0-9]*' | tr '\n' ' ')
+  echo "$(( ($1 + $3) / 2 )) $(( ($2 + $4) / 2 ))"
 }
 
 say "display geometry"
-adb shell wm size
-adb shell wm density
-adb shell dumpsys display | grep -E 'mDisplayWidth|mDisplayHeight|DisplayDeviceInfo' | head -5
+adb shell wm size; adb shell wm density
 
 say "cold start, state cleared"
 adb shell pm clear "$PKG"
 adb shell am start -W -a android.intent.action.VIEW -d "$LINK" "$PKG"
 
-say "waiting for the tutorial (max 180s)"
-found=""
-for i in $(seq 1 90); do
+# The tutorial is pushed by an effect *after* home has already rendered, so
+# "home is up" is not the end of the launch. Keep sampling to a wall-clock
+# deadline and prefer the tutorial if it ever arrives.
+say "sampling the launch to a 180s deadline"
+deadline=$(( $(date +%s) + 180 ))
+screen=""; xml=""
+while [ "$(date +%s)" -lt "$deadline" ]; do
   x=$(dump)
-  case "$x" in
-    *"GUIDA RAPIDA"*) found=tutorial; break ;;
-    *"Gioca online"*) found=home; break ;;
-  esac
-  sleep 2
+  if has "$x" "GUIDA RAPIDA"; then screen=tutorial; xml=$x; break; fi
+  if has "$x" "Gioca online"; then screen=home; xml=$x; fi
+  echo "  t+$(( 180 - (deadline - $(date +%s)) ))s: ${screen:-nothing yet}"
 done
-echo "after $((i * 2))s: ${found:-nothing}"
-[ "$found" = tutorial ] || { echo "::error::Never reached the tutorial; probe cannot run."; exit 1; }
+echo "settled on: ${screen:-nothing}"
+[ -n "$screen" ] || { echo "::error::The app never rendered; probe cannot run."; exit 1; }
 
-say "the Skip node, as the device itself reports it"
-xml=$(dump)
-node=$(echo "$xml" | tr '>' '\n' | grep 'Salta il tutorial' | head -1)
-echo "$node"
-bounds=$(echo "$node" | grep -o 'bounds="\[[0-9]*,[0-9]*\]\[[0-9]*,[0-9]*\]"' | head -1)
-echo "bounds: ${bounds:-NONE}"
-[ -n "$bounds" ] || { echo "::error::Skip button is not in the hierarchy at all."; exit 1; }
+# Whatever is on screen, tap one real control and look for the change it causes.
+if [ "$screen" = tutorial ]; then
+  target="Salta il tutorial"; check_gone="GUIDA RAPIDA"; check_here=""
+else
+  target="Impostazioni";      check_gone="";            check_here="Volume"
+fi
+say "target: $target  (on the $screen screen)"
 
-nums=$(echo "$bounds" | grep -o '[0-9]*' | tr '\n' ' ')
-set -- $nums
-cx=$(( ($1 + $3) / 2 ))
-cy=$(( ($2 + $4) / 2 ))
-echo "centre: $cx $cy"
+xy=$(centre "$xml" "$target") || { echo "::error::'$target' is not in the hierarchy."; printf '%s' "$xml" | tr '>' '\n' | grep -o 'content-desc="[^"]*"' | sort -u; exit 1; }
+echo "centre: $xy"
 
-gone() { case "$(dump)" in *"GUIDA RAPIDA"*) return 1 ;; *) return 0 ;; esac; }
+landed() {
+  d=$(dump)
+  [ -z "$check_here" ] || { has "$d" "$check_here" && return 0; return 1; }
+  has "$d" "$check_gone" && return 1
+  return 0
+}
 
 say "ATTEMPT 1 - plain adb tap, no key event has reached the app"
 adb logcat -c
-adb shell input tap "$cx" "$cy"
+adb shell input tap $xy
 sleep 3
-if gone; then echo "RESULT: adb tap WORKED. The app is fine; Maestro's injection is the bug."; exit 0; fi
-echo "adb tap did nothing."
+if landed; then echo "RESULT: adb tap WORKED. The app is fine; Maestro's injection is the bug."; exit 0; fi
+echo "nothing happened."
 
 say "ATTEMPT 2 - a second adb tap, in case the first is always swallowed"
-adb shell input tap "$cx" "$cy"
+adb shell input tap $xy
 sleep 3
-if gone; then echo "RESULT: the FIRST tap is swallowed, later taps land."; exit 0; fi
-echo "second adb tap did nothing either."
+if landed; then echo "RESULT: the FIRST tap is swallowed, later taps land."; exit 0; fi
+echo "nothing happened."
 
 say "ATTEMPT 3 - Back first, then tap (the correlation, without Maestro)"
 adb shell input keyevent 4
 sleep 2
-case "$(dump)" in *"GUIDA RAPIDA"*) echo "still on the tutorial after Back" ;; *) echo "NOTE: Back itself left the tutorial" ;; esac
-adb shell input tap "$cx" "$cy"
+adb shell input tap $xy
 sleep 3
-if gone; then echo "RESULT: Back unblocks touch. Real app bug, reproduced with zero Maestro."; else echo "RESULT: touch is dead even after Back."; fi
+if landed; then echo "RESULT: Back unblocks touch. Real app bug, reproduced with zero Maestro."
+else echo "RESULT: touch is dead even after Back."; fi
 
 say "what the app saw"
-adb logcat -d -t 400 | grep -iE 'ReactNative|Choreographer|InputDispatch|ANR|Screens|unhandled' | tail -60
+adb logcat -d -t 400 | grep -iE 'ReactNative|InputDispatch|ANR|Screens|unhandled|DevMenu' | tail -50
 
 say "window state at the end"
 adb shell dumpsys window windows | grep -E 'mCurrentFocus|mFocusedApp|imeInputTarget'
 
-say "hierarchy at the end"
-dump | tr '>' '\n' | grep -oE '(text|content-desc)="[^"]+"' | sort -u | head -40
+say "every label on screen at the end"
+dump | tr '>' '\n' | grep -oE '(text|content-desc)="[^"]+"' | sort -u | head -50
