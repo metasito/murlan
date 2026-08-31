@@ -14,8 +14,11 @@ const SEEN_KEY = "@murlan_tutorial_seen";
  */
 export async function markTutorialSeen(userId: string | null): Promise<void> {
   await AsyncStorage.setItem(SEEN_KEY, "1").catch(() => {});
-  if (!userId) return;
-  await apiRequest("POST", "/api/users/me/tutorial-seen").catch(() => {});
+  // Started, never awaited. The device half above is the one the next screen
+  // reads back, and `apiRequest` has no timeout — awaiting a round trip here
+  // makes leaving this screen depend on the phone having signal, which is a
+  // Skip button that silently does nothing.
+  if (userId) void apiRequest("POST", "/api/users/me/tutorial-seen").catch(() => {});
 }
 
 /** Either source counts: the account outlives the install, the device answers offline. */
