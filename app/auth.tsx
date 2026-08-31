@@ -5,8 +5,6 @@ import {
   TextInput,
   StyleSheet,
   Pressable,
-  Platform,
-  KeyboardAvoidingView,
 } from "react-native";
 import { router } from "expo-router";
 import Ionicons from "@expo/vector-icons/Ionicons";
@@ -57,135 +55,130 @@ export default function AuthScreen() {
   }
 
   return (
-    <KeyboardAvoidingView
-      style={{ flex: 1 }}
-      behavior={Platform.OS === "ios" ? "padding" : "height"}
-    >
-      <MenuLayout scrollable centered={false}>
-        <View style={styles.topBar}>
-          <Pressable
-            onPress={() => router.back()}
-            style={styles.backBtn}
-            accessibilityRole="button"
-            accessibilityLabel={t("common.back")}
-            hitSlop={12}
-          >
-            <Ionicons name="chevron-back" size={22} color={Colors.gold} {...a11yHidden()} />
-          </Pressable>
-          <View style={{ width: 38 }} />
+    <MenuLayout scrollable centered={false}>
+      <View style={styles.topBar}>
+        <Pressable
+          onPress={() => router.back()}
+          style={styles.backBtn}
+          accessibilityRole="button"
+          accessibilityLabel={t("common.back")}
+          hitSlop={12}
+        >
+          <Ionicons name="chevron-back" size={22} color={Colors.gold} {...a11yHidden()} />
+        </Pressable>
+        <View style={{ width: 38 }} />
+      </View>
+
+      <View style={styles.contentWrapper}>
+        <View style={styles.header}>
+          <Text style={styles.title}>MURLAN</Text>
+          <Text style={styles.subtitle}>{t("auth.subtitle")}</Text>
         </View>
 
-        <View style={styles.contentWrapper}>
-          <View style={styles.header}>
-            <Text style={styles.title}>MURLAN</Text>
-            <Text style={styles.subtitle}>{t("auth.subtitle")}</Text>
+        <MenuCard style={{ marginBottom: 0 }} padding="sm">
+          <View style={styles.tabs}>
+            {(["login", "register"] as Tab[]).map((tabOption) => (
+              <Pressable
+                key={tabOption}
+                onPress={() => { setTab(tabOption); setError(null); }}
+                style={[styles.tabBtn, tab === tabOption && styles.tabActive]}
+                accessibilityLabel={tabOption === "login" ? t("auth.tabLogin") : t("auth.tabRegister")}
+                {...a11yState({ role: "tab", selected: tab === tabOption })}
+              >
+                <Text {...a11yHidden()} style={[styles.tabText, tab === tabOption && styles.tabTextActive]}>
+                  {tabOption === "login" ? t("auth.tabLogin") : t("auth.tabRegister")}
+                </Text>
+              </Pressable>
+            ))}
           </View>
 
-          <MenuCard style={{ marginBottom: 0 }} padding="sm">
-            <View style={styles.tabs}>
-              {(["login", "register"] as Tab[]).map((tabOption) => (
+          <View style={styles.form}>
+            <View style={styles.field}>
+              <Text style={styles.label}>{t("auth.usernameLabel")}</Text>
+              <View style={styles.inputRow}>
+                <Ionicons name="person-outline" size={16} color={Colors.textMuted} style={styles.inputIcon} />
+                <TextInput
+                  style={styles.input}
+                  value={username}
+                  onChangeText={(v) => { setUsername(v); setError(null); }}
+                  placeholder={t("auth.usernamePlaceholder")}
+                  placeholderTextColor={Colors.textMuted}
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                  autoComplete="username"
+                  textContentType="username"
+                  returnKeyType="next"
+                  onSubmitEditing={() => pwdRef.current?.focus()}
+                  accessibilityLabel={t("auth.usernameA11yLabel")}
+                  {...usernameHint.props}
+                />
+                {usernameHint.node}
+              </View>
+            </View>
+
+            <View style={styles.field}>
+              <Text style={styles.label}>{t("auth.passwordLabel")}</Text>
+              <View style={styles.inputRow}>
+                <Ionicons name="lock-closed-outline" size={16} color={Colors.textMuted} style={styles.inputIcon} />
+                <TextInput
+                  ref={pwdRef}
+                  style={[styles.input, { flex: 1 }]}
+                  value={password}
+                  onChangeText={(v) => { setPassword(v); setError(null); }}
+                  placeholder="••••••"
+                  placeholderTextColor={Colors.textMuted}
+                  secureTextEntry={!showPwd}
+                  autoCapitalize="none"
+                  autoComplete={tab === "login" ? "current-password" : "new-password"}
+                  textContentType={tab === "login" ? "password" : "newPassword"}
+                  returnKeyType="done"
+                  onSubmitEditing={handleSubmit}
+                  accessibilityLabel={t("auth.passwordA11yLabel")}
+                  {...passwordHint.props}
+                />
+                {passwordHint.node}
                 <Pressable
-                  key={tabOption}
-                  onPress={() => { setTab(tabOption); setError(null); }}
-                  style={[styles.tabBtn, tab === tabOption && styles.tabActive]}
-                  accessibilityLabel={tabOption === "login" ? t("auth.tabLogin") : t("auth.tabRegister")}
-                  {...a11yState({ role: "tab", selected: tab === tabOption })}
+                  onPress={() => setShowPwd((v) => !v)}
+                  style={styles.eyeBtn}
+                  accessibilityRole="button"
+                  accessibilityLabel={showPwd ? t("auth.hidePasswordA11yLabel") : t("auth.showPasswordA11yLabel")}
+                  hitSlop={10}
                 >
-                  <Text {...a11yHidden()} style={[styles.tabText, tab === tabOption && styles.tabTextActive]}>
-                    {tabOption === "login" ? t("auth.tabLogin") : t("auth.tabRegister")}
-                  </Text>
+                  <Ionicons
+                    name={showPwd ? "eye-off-outline" : "eye-outline"}
+                    size={18}
+                    color={Colors.textMuted}
+                    {...a11yHidden()}
+                  />
                 </Pressable>
-              ))}
+              </View>
             </View>
 
-            <View style={styles.form}>
-              <View style={styles.field}>
-                <Text style={styles.label}>{t("auth.usernameLabel")}</Text>
-                <View style={styles.inputRow}>
-                  <Ionicons name="person-outline" size={16} color={Colors.textMuted} style={styles.inputIcon} />
-                  <TextInput
-                    style={styles.input}
-                    value={username}
-                    onChangeText={(v) => { setUsername(v); setError(null); }}
-                    placeholder={t("auth.usernamePlaceholder")}
-                    placeholderTextColor={Colors.textMuted}
-                    autoCapitalize="none"
-                    autoCorrect={false}
-                    autoComplete="username"
-                    textContentType="username"
-                    returnKeyType="next"
-                    onSubmitEditing={() => pwdRef.current?.focus()}
-                    accessibilityLabel={t("auth.usernameA11yLabel")}
-                    {...usernameHint.props}
-                  />
-                  {usernameHint.node}
-                </View>
+            {/* A live region announces the text that changes inside it, so it
+                is never `accessible`: that would make it a leaf with no label
+                of its own to speak. */}
+            {error && (
+              <View style={styles.errorBox} accessibilityLiveRegion="polite">
+                <Ionicons name="alert-circle-outline" size={14} color={Colors.dangerDim} />
+                <Text style={styles.errorText}>{error}</Text>
               </View>
+            )}
 
-              <View style={styles.field}>
-                <Text style={styles.label}>{t("auth.passwordLabel")}</Text>
-                <View style={styles.inputRow}>
-                  <Ionicons name="lock-closed-outline" size={16} color={Colors.textMuted} style={styles.inputIcon} />
-                  <TextInput
-                    ref={pwdRef}
-                    style={[styles.input, { flex: 1 }]}
-                    value={password}
-                    onChangeText={(v) => { setPassword(v); setError(null); }}
-                    placeholder="••••••"
-                    placeholderTextColor={Colors.textMuted}
-                    secureTextEntry={!showPwd}
-                    autoCapitalize="none"
-                    autoComplete={tab === "login" ? "current-password" : "new-password"}
-                    textContentType={tab === "login" ? "password" : "newPassword"}
-                    returnKeyType="done"
-                    onSubmitEditing={handleSubmit}
-                    accessibilityLabel={t("auth.passwordA11yLabel")}
-                    {...passwordHint.props}
-                  />
-                  {passwordHint.node}
-                  <Pressable
-                    onPress={() => setShowPwd((v) => !v)}
-                    style={styles.eyeBtn}
-                    accessibilityRole="button"
-                    accessibilityLabel={showPwd ? t("auth.hidePasswordA11yLabel") : t("auth.showPasswordA11yLabel")}
-                    hitSlop={10}
-                  >
-                    <Ionicons
-                      name={showPwd ? "eye-off-outline" : "eye-outline"}
-                      size={18}
-                      color={Colors.textMuted}
-                      {...a11yHidden()}
-                    />
-                  </Pressable>
-                </View>
-              </View>
+            <MenuButton
+              label={tab === "login" ? t("auth.submitLogin") : t("auth.submitRegister")}
+              onPress={handleSubmit}
+              variant="primary"
+              loading={loading}
+              accessibilityLabel={tab === "login" ? t("auth.submitLogin") : t("auth.submitRegister")}
+            />
 
-              {/* A live region announces the text that changes inside it, so it
-                  is never `accessible`: that would make it a leaf with no label
-                  of its own to speak. */}
-              {error && (
-                <View style={styles.errorBox} accessibilityLiveRegion="polite">
-                  <Ionicons name="alert-circle-outline" size={14} color={Colors.dangerDim} />
-                  <Text style={styles.errorText}>{error}</Text>
-                </View>
-              )}
-
-              <MenuButton
-                label={tab === "login" ? t("auth.submitLogin") : t("auth.submitRegister")}
-                onPress={handleSubmit}
-                variant="primary"
-                loading={loading}
-                accessibilityLabel={tab === "login" ? t("auth.submitLogin") : t("auth.submitRegister")}
-              />
-
-              {tab === "register" && (
-                <Text style={styles.hint}>{t("auth.hint")}</Text>
-              )}
-            </View>
-          </MenuCard>
-        </View>
-      </MenuLayout>
-    </KeyboardAvoidingView>
+            {tab === "register" && (
+              <Text style={styles.hint}>{t("auth.hint")}</Text>
+            )}
+          </View>
+        </MenuCard>
+      </View>
+    </MenuLayout>
   );
 }
 

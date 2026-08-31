@@ -1,11 +1,12 @@
 import React from 'react';
 import {
-  View, ScrollView, StyleSheet, Platform, ViewStyle, KeyboardAvoidingView,
+  View, ScrollView, StyleSheet, ViewStyle, KeyboardAvoidingView,
   Animated, Easing,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Colors } from '@/lib/theme';
+import { keyboardBehavior } from '@/lib/keyboard';
 import { a11yHidden } from '@/lib/a11y';
 import { usePrefersReducedMotion } from '@/lib/accessibility';
 import { useBannerBottom } from '@/context/NotificationContext';
@@ -129,17 +130,10 @@ export function MenuLayout({
         style={StyleSheet.absoluteFill}
         pointerEvents="none"
       />
-      {/* Every menu screen with a text field routes through here. Android's
-          edge-to-edge, unconditional since Expo SDK 54, stopped the framework
-          padding the window for the IME, so `adjustResize` alone no longer
-          reflows anything — KeyboardAvoidingView reads the keyboard events
-          itself instead. iOS is served by the ScrollView's own inset
-          adjustment, and on web both are inert: the browser scrolls the
-          focused input into view. */}
-      <KeyboardAvoidingView
-        style={styles.fill}
-        behavior={Platform.OS === 'android' ? 'padding' : undefined}
-      >
+      {/* Only the scrollable branch below carries
+          `automaticallyAdjustKeyboardInsets`, so only it can be left to move
+          the focused field on its own. */}
+      <KeyboardAvoidingView style={styles.fill} behavior={keyboardBehavior({ contentAdjustsInsets: scrollable })}>
         {scrollable ? (
           <View style={styles.fill}>
             <ScrollView

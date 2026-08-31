@@ -25,6 +25,7 @@ import { apiRequest, queryClient } from "@/lib/query-client";
 import { hapticSelection } from "@/lib/haptics";
 import { usePrefersReducedMotion } from "@/lib/accessibility";
 import { Colors, Spacing, Radius, FontSize, Type, Shadow, TOUCH_TARGET_MIN } from "@/lib/theme";
+import { keyboardBehavior } from "@/lib/keyboard";
 import { useTranslation, type Locale, type TranslationKey } from "@/lib/i18n";
 import { registerForPush } from "@/lib/pushRegistration";
 import type { MotionPreference } from "@/lib/accessibility";
@@ -422,7 +423,7 @@ export function SettingsModal({ visible, onClose }: Props) {
 
             {bugOpen && (
               <KeyboardAvoidingView
-                behavior={Platform.OS === "ios" ? "padding" : "height"}
+                behavior={keyboardBehavior({ contentAdjustsInsets: false })}
                 style={styles.bugForm}
               >
                 <Text style={styles.bugHint}>{t("settings.reportBugPrompt")}</Text>
