@@ -10,10 +10,9 @@ import type { Page } from "@playwright/test";
 import { test, expect } from "./fixtures";
 import { openSeededGame } from "./helpers/offlineSeed";
 import { HAND_CARDS, TABLE } from "./helpers/selectors";
+import { PAST_HOLD_MS, tapPoint } from "./helpers/press";
 
 const VIEWPORT = { width: 844, height: 390 };
-/** Past `HOLD_MS` in components/table/hand.tsx, with room for a slow runner. */
-const HOLD_MS = 800;
 
 interface HandCard {
   label: string;
@@ -40,7 +39,7 @@ const labels = (row: HandCard[]) => row.map((c) => c.label);
 async function dragCard(page: Page, from: HandCard, toX: number): Promise<void> {
   await page.mouse.move(from.x, from.y);
   await page.mouse.down();
-  await page.waitForTimeout(HOLD_MS);
+  await page.waitForTimeout(PAST_HOLD_MS);
   // In steps, not in one jump: the drop slot is read from where the finger is,
   // and a single move gives the gesture one sample to decide on.
   await page.mouse.move(toX, from.y, { steps: 16 });
@@ -144,7 +143,7 @@ test.describe("arranging your own hand", () => {
     await page.waitForTimeout(1_500);
 
     const before = await handRow(page);
-    await page.mouse.click(before[0].x, before[0].y);
+    await tapPoint(page, before[0].x, before[0].y);
     await page.waitForTimeout(400);
 
     expect(labels(await handRow(page)), "a tap moved a card").toEqual(labels(before));
@@ -174,7 +173,7 @@ test.describe("arranging your own hand", () => {
     const target = before[2];
     await page.mouse.move(target.x, target.y);
     await page.mouse.down();
-    await page.waitForTimeout(HOLD_MS + 400);
+    await page.waitForTimeout(PAST_HOLD_MS + 400);
     await page.mouse.up();
     await page.waitForTimeout(500);
 
@@ -197,7 +196,7 @@ test.describe("arranging your own hand", () => {
 
     const before = await handRow(page);
     const target = before[2];
-    await page.mouse.click(target.x, target.y);
+    await tapPoint(page, target.x, target.y);
     await page.waitForTimeout(400);
     await expect(page.locator(`${HAND_CARDS}[aria-pressed="true"]`)).toHaveCount(1);
 
@@ -205,7 +204,7 @@ test.describe("arranging your own hand", () => {
     const lifted = (await handRow(page)).find((c) => c.label === target.label)!;
     await page.mouse.move(lifted.x, lifted.y);
     await page.mouse.down();
-    await page.waitForTimeout(HOLD_MS + 400);
+    await page.waitForTimeout(PAST_HOLD_MS + 400);
     await page.mouse.up();
     await page.waitForTimeout(500);
 

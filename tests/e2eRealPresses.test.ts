@@ -1,20 +1,9 @@
 // tests/e2eRealPresses.test.ts — a check asserts that the harness really
 // performed the action, not that it was asked to.
 //
-// This is the browser suite's instance of that rule, and the instance is a
-// duration: `locator.click()` puts the pointer down and up in the same frame,
-// which no finger does. So a synthetic click cannot tell a tap from a hold, and
-// on the surfaces where that difference decides what happens — the hand, the
-// rail, the action buttons — it is not a press at all.
-//
-// #663 is the bill. The reorder hold fired at 500ms, inside the length of an
-// ordinary thumb tap, and broke the tap that selects a card to play. "A plain
-// tap still only selects" went on passing, because its tap was a `click()`.
-//
-// The rule is wider than this file. The same defect turned up the same day in
-// the device harness, where Maestro reported COMPLETED for taps Expo Go's
-// dev-menu window had swallowed (#627) — a different mechanism, the same shape:
-// the harness reported an action it never performed, and the suite stayed green.
+// Here that is a duration. `locator.click()` puts the pointer down and up in
+// the same frame, which no finger does, so it cannot tell a tap from a hold —
+// and a card in the hand answers both.
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync, readdirSync } from "node:fs";
@@ -26,18 +15,13 @@ const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), ".."
 const E2E = path.join(repoRoot, "tests", "e2e");
 
 /**
- * The surfaces where a press has a duration that means something: a card can be
- * tapped to select or held to drag, and the action buttons and rail knobs sit
- * under the same thumb. A menu button is not here — nothing about it changes
- * with how long it is held, so a click on one is an honest click.
+ * The surfaces where a press has a duration that means something. The hand is
+ * the one that answers both a tap and a hold; GIOCA and PASSA are here because
+ * they are the thumb's other two targets on the same screen and a spec driving
+ * a hand drives them in the same breath. A menu button is not here — nothing
+ * about it changes with how long it is held, so a click on one is honest.
  */
-const GESTURE_TESTIDS = [
-  "card-box",
-  "btn-gioca",
-  "btn-passa",
-  "rail-knob",
-  "settings-knob",
-];
+const GESTURE_TESTIDS = ["card-box", "btn-gioca", "btn-passa"];
 
 /**
  * A press that is deliberately instantaneous, with the reason. An entry is a
@@ -84,18 +68,42 @@ const namesGestureSurface = (text: string): boolean =>
   new RegExp(String.raw`["'\`](?:${idPattern})`).test(text) ||
   new RegExp(String.raw`\b(?:${GESTURE_SELECTORS.join("|")}|\w*_SPOKEN)\b`).test(text);
 
+/**
+ * Names bound to a gesture surface in this file, so `const knob = …("btn-gioca")`
+ * makes `knob.click()` a press on one. One hop, and only `const`/`let`: chasing
+ * the names any further binds `click` itself, because `bot.ts` wraps its presses
+ * in a local function of that name, after which every `.click(` in the suite
+ * reads as a card.
+ */
+function gestureLocals(source: string): Set<string> {
+  const out = new Set<string>();
+  for (const m of source.matchAll(/\b(?:const|let)\s+(\w+)\s*=\s*([^;]{0,400})/g)) {
+    if (namesGestureSurface(m[2])) out.add(m[1]);
+  }
+  return out;
+}
+
 /** Every instantaneous press on a gesture surface, as `file:line`. */
 function syntheticPresses(): string[] {
   const out: string[] = [];
   for (const file of pressingFiles()) {
     const rel = path.relative(repoRoot, file).split(path.sep).join("/");
-    const lines = blankComments(readFileSync(file, "utf8")).split(/\r?\n/);
-    lines.forEach((line, i) => {
+    const source = blankComments(readFileSync(file, "utf8"));
+    const locals = gestureLocals(source);
+    const localPattern =
+      locals.size > 0 ? new RegExp(String.raw`\b(?:${[...locals].join("|")})\b`) : null;
+    source.split(/\r?\n/).forEach((line, i) => {
+      // `page.mouse.click()` presses for zero milliseconds at a coordinate and
+      // names no target at all, so it can never be judged by what it presses.
+      // Nothing in this suite has a use for one.
+      if (/\bmouse\.click\(/.test(line)) {
+        out.push(`${rel}:${i + 1}`);
+        return;
+      }
       if (!/\.(?:click|tap)\(/.test(line)) return;
-      // The locator can sit on an earlier line than the `.click(` that presses
-      // it, so the statement is what gets read, not the line.
-      const stmt = lines.slice(Math.max(0, i - 4), i + 1).join(" ");
-      if (namesGestureSurface(stmt)) out.push(`${rel}:${i + 1}`);
+      if (namesGestureSurface(line) || (localPattern?.test(line) ?? false)) {
+        out.push(`${rel}:${i + 1}`);
+      }
     });
   }
   return out;
@@ -107,9 +115,9 @@ test("a press on a gesture surface takes time", () => {
   assert.deepEqual(
     offenders,
     [],
-    "these press a card, an action button or a rail knob with a zero-duration click, which " +
-      "is not a press: the pointer goes down and up in the same frame, so nothing that reads " +
-      "how long a finger stayed can tell them apart (#663). Use `tap` or `holdPast` from " +
+    "these press a card or an action button with a zero-duration click, which is not a press: " +
+      "the pointer goes down and up in the same frame, so nothing that reads how long a finger " +
+      "stayed can tell them apart (#663). Use `tap`, `holdPast` or `tapPoint` from " +
       "tests/e2e/helpers/press.ts, or add the file to INSTANT_ON_PURPOSE with the reason:\n  " +
       offenders.join("\n  ")
   );
@@ -136,14 +144,48 @@ test("the scan recognises a synthetic press and leaves an honest one alone", () 
   assert.ok(namesGestureSurface("giveCandidates(page).nth(i)"), "a card the bot presses");
 });
 
-// The other half of the floor: a selector renamed out of the list takes its
-// presses out of the guard, and every assertion above still passes.
+// The other half of the floor: a name renamed out from under either list takes
+// its presses out of the guard, and every assertion above still passes.
 test("every gesture selector is still a name the suite uses", () => {
   const tree = pressingFiles()
     .map((f) => readFileSync(f, "utf8"))
     .join("\n");
   const gone = GESTURE_SELECTORS.filter((n) => !new RegExp(String.raw`\b${n}\b`).test(tree));
   assert.deepEqual(gone, [], `named here but nowhere in tests/e2e/: ${gone.join(", ")}`);
+});
+
+test("every gesture testID is one the app actually sets", () => {
+  const source = ["app", "components"]
+    .flatMap((dir) =>
+      readdirSync(path.join(repoRoot, dir), { recursive: true, encoding: "utf8" })
+        .filter((f) => /\.tsx?$/.test(f))
+        .map((f) => readFileSync(path.join(repoRoot, dir, f), "utf8"))
+    )
+    .join("\n");
+  const invented = GESTURE_TESTIDS.filter((id) => !source.includes(id));
+  assert.deepEqual(invented, [], `no component sets these testIDs: ${invented.join(", ")}`);
+});
+
+/**
+ * The hold threshold is written down twice — `hand.tsx` keeps its own copy
+ * module-local, so the harness cannot import it. A drift makes every "held past
+ * the threshold" press land short, and the specs go green on a hold that never
+ * happened.
+ */
+test("the harness holds for at least as long as the app calls a hold", () => {
+  const appSource = readFileSync(path.join(repoRoot, "components", "table", "hand.tsx"), "utf8");
+  const app = /\bHOLD_MS\s*=\s*(\d+)/.exec(appSource);
+  assert.ok(app, "components/table/hand.tsx no longer declares HOLD_MS");
+
+  const pressSource = readFileSync(path.join(E2E, "helpers", "press.ts"), "utf8");
+  const harness = /\bHOLD_MS\s*=\s*(\d+)/.exec(pressSource);
+  assert.ok(harness, "tests/e2e/helpers/press.ts no longer declares HOLD_MS");
+
+  assert.equal(
+    Number(harness[1]),
+    Number(app[1]),
+    "the app's hold threshold and the harness's copy of it have drifted apart"
+  );
 });
 
 test("the scan reads every spec and every helper, not a handful", () => {
