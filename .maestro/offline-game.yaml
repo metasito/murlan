@@ -82,11 +82,16 @@ env:
     # than that on a cold start, and running out of budget here reads
     # identically to the app never loading at all.
     timeout: 180000
+# `back`, not a tap on "Salta il tutorial": no control on this screen takes
+# touch on Android, the Skip button no more than the body's own "Inizia" —
+# #627 has it measured with `adb shell input tap` and no Maestro in the loop.
+# Restore the tap when #627 closes. It is the input a real user gives, and
+# this line passes either way, so nothing else will notice it standing in.
 - runFlow:
     when:
-      visible: "Salta il tutorial"
+      visible: "GUIDA RAPIDA"
     commands:
-      - tapOn: "Salta il tutorial"
+      - back
       - extendedWaitUntil:
           notVisible: "GUIDA RAPIDA"
           timeout: 10000
