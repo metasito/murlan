@@ -81,9 +81,11 @@ export interface VisibleExchangePhaseInput {
  * phase closes, when there is nothing left to read it for.
  *
  * `cardToLoser` is the opposite: a card the winner *chose* out of their own
- * hand, which no rule determines, so only the two of them ever see it. It
+ * hand, which no rule determines. While the phase is open it is participants
+ * only, because sending it early would leak the winner's hand to the table. It
  * exists only from the moment the phase closes, since choosing it is what
- * closes the phase.
+ * closes the phase — and once closed it is a finished, public fact about the
+ * table, so every seat sees the trade cross rather than half of it.
  *
  * Every seat also gets the two seat indices and the both-jokers flag — all the
  * announcement banner reads from them.
@@ -106,7 +108,7 @@ export function visibleExchangePhase(
     (viewerSeatIndex === phase.winnerIdx || viewerSeatIndex === phase.loserIdx);
 
   if (phase.active) visible.cardFromLoser = phase.cardFromLoser;
-  if (isParticipant && phase.cardToLoser !== undefined) {
+  if ((isParticipant || !phase.active) && phase.cardToLoser !== undefined) {
     visible.cardToLoser = phase.cardToLoser;
   }
   return visible;

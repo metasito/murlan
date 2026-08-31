@@ -1,7 +1,7 @@
 // tests/exchangeVisibility.test.ts — `visibleExchangePhase` sends
 // `cardFromLoser` to the whole table while the phase is active (RULES.md §10.1
 // determines it, so it is no one's secret) and `cardToLoser` — which the winner
-// chose — to the two of them alone.
+// chose — to the two of them while it is open, and to the table once it closes.
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
 import { visibleExchangePhase } from "../server/onlineGameLogic.ts";
@@ -71,10 +71,11 @@ describe("visibleExchangePhase", () => {
     assert.equal(visibleExchangePhase(undefined, 0), undefined);
   });
 
-  // `cardToLoser` is the other half of the same secret: a named card out of a
-  // named player's hand. It exists only once the winner has chosen, which is
-  // the same moment the phase closes — so unlike `cardFromLoser` it cannot be
-  // gated on `active`, and its own presence is what gates it.
+  // `cardToLoser` is a named card out of a named player's hand, and no rule
+  // determines it — so while the phase is open it is the winner's secret. What
+  // closing the phase changes is not who is entitled to it but what it is: a
+  // finished, public fact about the table, which is the same argument #602
+  // already made for the other leg.
   describe("the card handed back", () => {
     const RETURNED = { id: "6_clubs", suit: "clubs", rank: "6", isJoker: false };
     const settled = { ...activePhase, active: false, cardToLoser: RETURNED };
@@ -87,15 +88,36 @@ describe("visibleExchangePhase", () => {
       assert.deepEqual(visibleExchangePhase(settled, 3)?.cardToLoser, RETURNED);
     });
 
-    test("uninvolved seats never receive it", () => {
+    // #664: with only one leg, the watching seats animate a delivery rather
+    // than a trade, which is what the owner reported seeing.
+    test("the watching seats see the trade cross once it is settled", () => {
       for (const seat of [0, 2]) {
-        const visible = visibleExchangePhase(settled, seat);
-        assert.equal("cardToLoser" in visible!, false, `seat ${seat} was told the card`);
+        assert.deepEqual(
+          visibleExchangePhase(settled, seat)?.cardToLoser,
+          RETURNED,
+          `seat ${seat} saw only half the trade`
+        );
       }
     });
 
-    test("a viewer with no seat receives nothing", () => {
-      assert.equal("cardToLoser" in visibleExchangePhase(settled, null)!, false);
+    test("a viewer with no seat sees it too", () => {
+      assert.deepEqual(visibleExchangePhase(settled, null)?.cardToLoser, RETURNED);
+    });
+
+    // The phase closing is what makes it public, so the guard has to be the
+    // flag and not merely the card's existence: a state carrying a chosen card
+    // while still open must not leak it, however it came about.
+    test("an open phase keeps it from everyone but the two trading", () => {
+      const leaking = { ...activePhase, cardToLoser: RETURNED };
+      for (const seat of [0, 2, null]) {
+        assert.equal(
+          "cardToLoser" in visibleExchangePhase(leaking, seat)!,
+          false,
+          `seat ${seat} was shown the winner's card a beat early`
+        );
+      }
+      assert.deepEqual(visibleExchangePhase(leaking, 1)?.cardToLoser, RETURNED);
+      assert.deepEqual(visibleExchangePhase(leaking, 3)?.cardToLoser, RETURNED);
     });
 
     // The floor: with nothing chosen there is nothing to reveal, so the key is
