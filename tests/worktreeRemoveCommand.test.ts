@@ -1,7 +1,7 @@
 // tests/worktreeRemoveCommand.test.ts
 import { test, describe, afterEach } from "node:test";
 import assert from "node:assert/strict";
-import { execFileSync } from "node:child_process";
+import { execFileSync, spawn, type ChildProcess } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -205,6 +205,50 @@ describe("removing one named worktree", () => {
 
     assert.equal(fs.existsSync(t.worktree), false, "the worktree directory should be gone");
     assert.equal(fs.readFileSync(t.shim, "utf8"), "the install", "the install must survive untouched");
+  });
+
+  /**
+   * The case that actually happens: a session ran its checks with the worktree as its cwd, so a
+   * live process holds the directory when the teardown comes. git unregisters the worktree
+   * *before* it deletes, so the delete failing leaves the worktree gone and the directory behind
+   * — and reporting that as a failure tells the next agent nothing happened when the
+   * irreversible half is done.
+   *
+   * Windows only, and said out loud rather than skipped: a POSIX cwd does not hold a directory
+   * against `rmdir`, so there the removal simply succeeds and this file makes no claim.
+   */
+  test("a directory another process is holding is reported as removed, not as a failure", () => {
+    const t = makeJunctionedWorktree();
+    if (!t) return;
+
+    let holder: ChildProcess | null = null;
+    try {
+      holder = spawn(process.execPath, ["-e", "setTimeout(() => {}, 30000)"], {
+        cwd: t.worktree,
+        stdio: "ignore",
+      });
+      // The child has to have chdir'd before the removal runs, or it holds nothing yet.
+      execFileSync(process.execPath, ["-e", "setTimeout(() => {}, 700)"], { stdio: "ignore" });
+
+      const out = execFileSync(process.execPath, [SCRIPT, "--remove", t.worktree], {
+        cwd: t.repo,
+        encoding: "utf8",
+        stdio: "pipe",
+      });
+
+      assert.equal(
+        git(t.repo, "worktree", "list", "--porcelain").includes(`worktree ${t.worktree.replace(/\\/g, "/")}`),
+        false,
+        "git should have unregistered it either way"
+      );
+      assert.equal(fs.readFileSync(t.shim, "utf8"), "the install", "the install must survive untouched");
+      if (process.platform === "win32") {
+        assert.match(out, /unregistered/i, "it should say the worktree is gone and the directory is not");
+        assert.ok(fs.existsSync(t.worktree), "the held directory is still there, which is the point");
+      }
+    } finally {
+      holder?.kill();
+    }
   });
 
   test("a path that is not a registered worktree is refused, not deleted", () => {

@@ -356,9 +356,15 @@ To take down one worktree you have named yourself — the ordinary end of a tick
 `npm run worktrees:remove -- <path>` (rule 38), from the main checkout. It refuses a path that
 is not a linked worktree, one you are standing in, and one holding uncommitted work; `--force`
 waives the last, and never the detaching, because that is the half protecting a directory you
-did not name. Standing in it is refused outright: git empties the tree and drops its
-registration *before* failing to delete a directory a process holds open, so exit 1 there means
-the worktree is already gone rather than untouched.
+did not name.
+
+**git unregisters a worktree before it deletes the directory**, so a delete that fails leaves
+the worktree gone from git and an empty directory behind. That is not a failure and is not
+reported as one: the removal re-reads `git worktree list`, and if the registration is gone it
+says so and exits 0. The usual cause is a live process holding the directory — a shell whose
+working directory it is (rule 39) — and the directory clears when that process exits, or on the
+next prune. Reporting it as a failure was worth a ticket of its own (#616): exit 1 there tells
+the next agent nothing happened, when the half that cannot be undone already did.
 
 Both go through `detachReparsePoints`, and the reason they have to is that on Windows a
 recursive delete walks *into* a junction rather than unlinking it. The install is not a copy
