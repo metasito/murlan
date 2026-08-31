@@ -335,7 +335,8 @@ export function GameProvider({ children }: { children: ReactNode }) {
       opponents.handCounts,
       requireCard,
       undefined,
-      opponents.partnerHoldsTop
+      opponents.partnerHoldsTop,
+      gameState.playedRanks
     );
 
     if (play) {
