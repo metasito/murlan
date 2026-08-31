@@ -113,6 +113,16 @@ Each of these produced a confident, wrong "fixed" in one session:
   The screenshot saved beside the failing step is the evidence; the step name is a guess.
   `maestro.yml` now annotates a run whose logcat holds a tombstone for `host.exp.exponent`
   (#629), but only Android does, and only for a native crash.
+- **A flow run through Expo Go never pressed one of our controls.** Expo Go's dev-menu window
+  sits above the app's own and takes the touch: the tap is dispatched `to window:
+  <EXDevMenuWindow>`, which then resigns key, so it is spent dismissing an invisible window
+  and the app never sees it. `tapOn` reports `COMPLETED` either way. Across every run this
+  repo recorded up to 2026-08-31, on both platforms, the only taps that ever landed were on
+  Expo Go's own native dialogs — a `back` **key** works, because keys reach the app rather
+  than going through window hit-testing (#627). So "the Maestro flow passed" was a claim about
+  assertions, not about anything being pressable, and it has been load-bearing in at least one
+  closed ticket. `ios.yml` now compiles the app and drives that instead; `maestro.yml` still
+  goes through Expo Go, so read an Android green with this in mind.
 
 ## A scan needs a planted floor
 

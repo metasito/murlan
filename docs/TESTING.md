@@ -352,6 +352,24 @@ allow for it to appear, on cores the emulator is competing for.
 
 ### Real findings from actually running this, not just writing YAML
 
+**Expo Go cannot host a UI suite at all, and this took four sessions to
+establish.** Its dev-menu window sits above the app's own window and takes the
+touch. The simulator's own log names the target: the tap on the tutorial's Skip
+button was dispatched `to window: <EXDevMenuWindow>`, which then resigned key —
+the tap is spent dismissing an invisible window and the app never sees it.
+`tapOn` reports `COMPLETED` regardless. A `back` **key** works on the same
+screen, because keys reach the app rather than going through window
+hit-testing.
+
+Across every Android and iOS run this repo recorded up to 2026-08-31, **the
+only taps that ever landed were on Expo Go's own native dialogs.** No flow had
+ever pressed one of our controls. `ios.yml` therefore compiles the app
+(`expo prebuild` + `xcodebuild -configuration Release`) and installs that on
+the simulator — Release so the JS is bundled in, which also removes Metro, the
+packager URL, the deep link and the launch dialog. `maestro.yml` is still on
+Expo Go; #627 owns its half. The rest of this section is what the Expo Go path
+still has to deal with while it lasts.
+
 **Expo Go's own dev-menu is two stacked layers, and the top one lies about
 being dismissible.** On a fresh connection Expo Go shows a "this is the dev
 menu" explainer *rendered on top of* its real dev menu sheet (Reload / Go
