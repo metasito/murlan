@@ -148,12 +148,26 @@ export function onEvent<S extends z.ZodTypeAny>(
       ack?.(reply);
     };
 
+    /**
+     * The one place a refusal is recorded. Every branch below turns an intent
+     * away, and a handler may too, so keeping the line here is what makes
+     * "refused" and "never arrived" different things in the log — including
+     * for an event added after this was written.
+     *
+     * Only ever the *parsed* payload: the raw packet is attacker-shaped and
+     * unbounded, which is why the malformed branch passes nothing.
+     */
+    const refused = (code: string, extra: Record<string, unknown> = {}) => {
+      logger.warn({ event, userId: socket.data?.userId, code, ...extra }, "Socket event refused");
+    };
+
     void (async () => {
       try {
         if (
           options.limit !== undefined &&
           !allowSocketAction(socket, event, options.limit, options.windowMs ?? 10_000)
         ) {
+          refused("RATE_LIMITED");
           socket.emit(errorEventFor(event), {
             code: "RATE_LIMITED",
             message: "Too many requests, slow down.",
@@ -164,19 +178,18 @@ export function onEvent<S extends z.ZodTypeAny>(
 
         const parsed = schema.safeParse(rawPayload);
         if (!parsed.success) {
-          logger.warn(
-            { event, userId: socket.data?.userId },
-            "Rejected malformed socket payload"
-          );
+          refused("INVALID_PAYLOAD");
           socket.emit(errorEventFor(event), { code: "INVALID_PAYLOAD", message: "Invalid data" });
           answer({ ok: false, code: "INVALID_PAYLOAD" });
           return;
         }
 
-        answer((await handler(parsed.data)) ?? { ok: true });
+        const outcome = (await handler(parsed.data)) ?? { ok: true };
+        if (!outcome.ok) refused(outcome.code ?? "UNSPECIFIED", { payload: parsed.data });
+        answer(outcome);
       } catch (err) {
         logger.error(
-          { err, event, userId: socket.data?.userId },
+          { err, event, userId: socket.data?.userId, code: "SERVER_ERROR" },
           "Socket handler threw — contained"
         );
         socket.emit(errorEventFor(event), { code: "SERVER_ERROR", message: "Server error" });
