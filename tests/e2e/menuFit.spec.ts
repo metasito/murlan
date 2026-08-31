@@ -159,13 +159,23 @@ async function survey(page: Page): Promise<Control[]> {
       const box = visibleBox(el);
       if (box.width === 0 || box.height === 0) continue;
       const inside = box.top >= -1 && box.bottom <= window.innerHeight + 1;
+      // How much of it the player can actually see right now. A control whose
+      // box overhangs an edge but still shows a usable part of itself is a
+      // *size* question, which `tapTargets.spec.ts` already owns — the floor
+      // here is only whether the thing can be got at at all. Measured: room's
+      // back button hangs 13px over the top edge and shows 31 of its 44pt
+      // target, and calling that unreachable reported a screen as broken that
+      // the capture beside it shows working.
+      const onScreen =
+        Math.min(box.bottom, window.innerHeight) - Math.max(box.top, 0) > 0;
       out.push({
         label: el.getAttribute("aria-label") || (el.textContent ?? "").trim() || "unnamed",
         top: Math.round(box.top),
         bottom: Math.round(box.bottom),
         inside,
-        // Only downwards: a control clipped at the *top* is gone for good.
-        reachable: inside || (box.top >= -1 && canScrollDownTo(el)),
+        // A scroller only reaches downwards, so it rescues a control below the
+        // fold and never one clipped above it.
+        reachable: onScreen || (box.top >= -1 && canScrollDownTo(el)),
       });
     }
     return out;
