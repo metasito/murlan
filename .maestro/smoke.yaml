@@ -55,19 +55,6 @@ env:
       - tapOn:
           text: "Apri"
           optional: true
-# The tutorial, not "either screen". `clearState` means it has never been seen,
-# so on a cleared launch it always comes — but it is *pushed over* home rather
-# than rendered instead of it, and home wins the race. Waiting on "either" let
-# home satisfy this, the skip block below find nothing and skip itself, and the
-# assertions after it run against a tutorial that arrived in the meantime: the
-# smoke run that failed on `Gioca online` had the tutorial on screen at the
-# moment it asked (#353).
-- extendedWaitUntil:
-    visible: "Salta il tutorial"
-    # A minute is what a developer's machine needs. A CI emulator is slower
-    # than that on a cold start, and running out of budget here reads
-    # identically to the app never loading at all.
-    timeout: 180000
 # Gated and exited on the Skip button, which the header carries on every beat.
 # "GUIDA RAPIDA" is the card title of an `info` beat only — a `play` beat titles
 # the card after itself and `complete` has its own — so gating on it would skip
@@ -86,21 +73,35 @@ env:
 # the Text child is `a11yHidden` on purpose, so the label is the only node the
 # control exposes. Collapse this to that tap alone when #627 closes.
 - runFlow:
-    when:
-      platform: Android
     commands:
-      - back
-- runFlow:
-    when:
-      platform: iOS
-    commands:
-      - tapOn: "Salta il tutorial"
-- extendedWaitUntil:
-    notVisible: "Salta il tutorial"
-    # Ten seconds was a developer machine dismissing a sheet. A simulator on a
-    # shared runner is slower, and running out here reads as a dead control
-    # rather than a slow one.
-    timeout: 30000
+      # Waited for, not asked about. `clearState` means the tutorial has never
+      # been seen, so on a cleared launch it always comes — but it is *pushed
+      # over* home rather than rendered instead of it, and home gets there
+      # first. A wait on "either screen" was satisfied by home, this block found
+      # nothing and skipped itself, and the assertions after it ran against a
+      # tutorial that arrived in the meantime (#353).
+      #
+      # A CI device is slower than a developer's on a cold start, and running
+      # out of budget here reads identically to the app never loading at all.
+      - extendedWaitUntil:
+          visible: "Salta il tutorial"
+          timeout: 180000
+      - runFlow:
+          when:
+            platform: Android
+          commands:
+            - back
+      - runFlow:
+          when:
+            platform: iOS
+          commands:
+            - tapOn: "Salta il tutorial"
+      # Ten seconds was a developer machine dismissing a sheet. A device on a
+      # shared runner is slower, and running out there reads as a dead control
+      # rather than a slow one.
+      - extendedWaitUntil:
+          notVisible: "Salta il tutorial"
+          timeout: 30000
 # `homeMenu` promotes one way to play into the hero and filters it out of the
 # tiles, so with `clearState` - never a saved game, never an account - the hero
 # is `online` and `home.modeOnline` renders nowhere.
