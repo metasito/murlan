@@ -89,9 +89,13 @@ export function ExchangePrompt({
       <TableText {...a11yHidden()} style={styles.line}>
         {line}
       </TableText>
-      {viewerIsWinner && (
+      {/* Only when there is nothing to highlight. The rim on every giveable
+          card says which ones in the place the player is already looking; a
+          line of type repeating it is one the hand then has to be laid out
+          around. What the rim cannot say is why it is on nothing at all. */}
+      {viewerIsWinner && noValidCards && (
         <TableText {...a11yHidden()} style={styles.rule}>
-          {t(noValidCards ? "exchange.noValidCards" : "exchange.rule")}
+          {t("exchange.noValidCards")}
         </TableText>
       )}
     </Animated.View>

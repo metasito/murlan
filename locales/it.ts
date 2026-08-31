@@ -198,7 +198,6 @@ export const it: Record<keyof typeof en, string> = {
 
   // ----------------------------------------------------------------- exchange.*
   "exchange.prompt": "{{name}} ti ha dato questa — dagliene una",
-  "exchange.rule": "Puoi dare da un 3 a un 10",
   "exchange.noValidCards": "Nessuna carta da 3 a 10 — dai la più bassa",
   "exchange.watching": "{{winner}} sta scegliendo una carta per {{loser}}",
   "exchange.waitingForYou": "{{winner}} sta scegliendo una carta per te",
