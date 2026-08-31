@@ -256,6 +256,17 @@ The node suite's shape is its own: whole test *files* failing at once rather tha
 them, and `importing … exited 3221225794` — `0xC0000142`, Windows for "no memory to start a
 process". Twenty of them, once, on a branch that had touched none of the files named.
 
+**It waits before it refuses.** Two sessions share this machine, and the second has no way to know
+when the first will finish — so it polls its own verdict for up to 60s, says so once when it starts
+waiting, and only then refuses with the message above. The refusal carries the best reading as well
+as the last: a box that climbed towards the floor and fell back is worth waiting out again, and one
+that never moved is worth going to look at with `npm run reap`. `--no-wait` gives the old
+refuse-immediately behaviour for a reader at a prompt.
+
+Two sessions can cross the floor in the same poll and both start, because polling does not
+serialise. With two that is survivable — the loser meets the preflight again on its own next check.
+A third concurrent session is what would break it, and a lock is the answer then, not now.
+
 `npm run reap` clears what a killed run leaves behind. `--dry-run` lists without killing anything.
 A run does not need it first: `scripts/e2ePort.mjs` picks a port that is already free, and clears
 a holder only when that holder's launcher has exited.
