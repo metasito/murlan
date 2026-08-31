@@ -72,6 +72,20 @@ const SCREENS: Screen[] = [
       await createRoom(page, { playerCount: 4, gameMode: "free_for_all" });
     },
   },
+  // Not a `scrollable={false}` screen, and here for a different reason: the
+  // rename card is a row of two `MenuButton`s, and `fullWidth` defaults true,
+  // so a pair of them laid out directly in a `flexDirection: "row"` totals
+  // 200% — the first fills the row and the second leaves the screen entirely.
+  // That is the same floor from the other direction, and it is the one shape a
+  // width check catches that a height check never would.
+  {
+    name: "/profile (renaming)",
+    open: async (page) => {
+      await page.goto("/profile");
+      await page.getByTestId("btn-rename").click();
+      await page.getByRole("button", { name: "Salva" }).waitFor();
+    },
+  },
 ];
 
 /**
@@ -86,6 +100,8 @@ interface Control {
   label: string;
   top: number;
   bottom: number;
+  left: number;
+  right: number;
   /** Fully inside the window with no scrolling at all. */
   inside: boolean;
   /** …or a scroller below it can bring it the rest of the way down. */
@@ -115,6 +131,10 @@ interface Control {
  * - A scroller only reaches **downwards**. Content above a scroll container's
  *   own content box cannot be scrolled back to, so a control whose top is off
  *   the screen is stranded whatever scrollers sit over it.
+ * - **Both axes count.** A vertical-only check would have missed the shape it
+ *   was added for: `MenuButton` defaults `fullWidth`, so two of them laid out
+ *   directly in a `flexDirection: "row"` total 200% and the second leaves the
+ *   screen sideways, at a perfectly ordinary height.
  * - `MenuCard` is `overflow: hidden`, so a box can report an in-window
  *   rectangle while its own painted tail is clipped away. `getBoundingClientRect`
  *   has no opinion about that; the ancestor's does.
@@ -124,17 +144,18 @@ interface Control {
 async function survey(page: Page): Promise<Control[]> {
   return page.evaluate((selector) => {
     /** The clipped box: what an ancestor's `overflow: hidden` actually leaves. */
-    const visibleBox = (el: Element): DOMRect => {
+    const visibleBox = (el: Element) => {
       const box = el.getBoundingClientRect();
-      let top = box.top;
-      let bottom = box.bottom;
+      let { top, bottom, left, right } = box;
       for (let p = el.parentElement; p; p = p.parentElement) {
         if (getComputedStyle(p).overflow === "visible") continue;
         const clip = p.getBoundingClientRect();
         top = Math.max(top, clip.top);
         bottom = Math.min(bottom, clip.bottom);
+        left = Math.max(left, clip.left);
+        right = Math.min(right, clip.right);
       }
-      return new DOMRect(box.x, top, box.width, Math.max(0, bottom - top));
+      return { top, bottom, left, right, w: box.width, h: box.height };
     };
 
     /** A scroller with room left below `el`, which is the only way in. */
@@ -157,8 +178,12 @@ async function survey(page: Page): Promise<Control[]> {
     for (const el of Array.from(document.querySelectorAll(selector))) {
       if (el.closest('[data-testid="notification-banner"]')) continue;
       const box = visibleBox(el);
-      if (box.width === 0 || box.height === 0) continue;
-      const inside = box.top >= -1 && box.bottom <= window.innerHeight + 1;
+      if (box.w === 0 || box.h === 0) continue;
+      const inside =
+        box.top >= -1 &&
+        box.bottom <= window.innerHeight + 1 &&
+        box.left >= -1 &&
+        box.right <= window.innerWidth + 1;
       // How much of it the player can actually see right now. A control whose
       // box overhangs an edge but still shows a usable part of itself is a
       // *size* question, which `tapTargets.spec.ts` already owns — the floor
@@ -167,11 +192,14 @@ async function survey(page: Page): Promise<Control[]> {
       // target, and calling that unreachable reported a screen as broken that
       // the capture beside it shows working.
       const onScreen =
-        Math.min(box.bottom, window.innerHeight) - Math.max(box.top, 0) > 0;
+        Math.min(box.bottom, window.innerHeight) - Math.max(box.top, 0) > 0 &&
+        Math.min(box.right, window.innerWidth) - Math.max(box.left, 0) > 0;
       out.push({
         label: el.getAttribute("aria-label") || (el.textContent ?? "").trim() || "unnamed",
         top: Math.round(box.top),
         bottom: Math.round(box.bottom),
+        left: Math.round(box.left),
+        right: Math.round(box.right),
         inside,
         // A scroller only reaches downwards, so it rescues a control below the
         // fold and never one clipped above it.
@@ -202,7 +230,8 @@ test.describe(`every control is reachable on an ${SMALLEST.name}`, () => {
       const controls = await survey(page);
       expect(controls.length, `${screen.name} rendered no controls at all`).toBeGreaterThan(0);
 
-      const where = (c: Control) => `${c.label} (top ${c.top}, bottom ${c.bottom})`;
+      const where = (c: Control) =>
+        `${c.label} (x ${c.left}–${c.right}, y ${c.top}–${c.bottom})`;
       const context = `Every control, for context:\n  ` + controls.map(where).join("\n  ");
 
       const stranded = controls.filter((c) => !c.reachable);
@@ -218,8 +247,8 @@ test.describe(`every control is reachable on an ${SMALLEST.name}`, () => {
         expect(
           pin!.inside,
           `${screen.name} pins "${screen.pinned}" at the foot, and it has to be on the ` +
-            `window without scrolling — it is at top ${pin!.top}, bottom ${pin!.bottom} ` +
-            `in a ${SMALLEST.height}px window. ${context}`
+            `window without scrolling — it is at ${where(pin!)} in a ` +
+            `${SMALLEST.width}x${SMALLEST.height} window. ${context}`
         ).toBe(true);
       }
     });
