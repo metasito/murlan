@@ -25,6 +25,13 @@ export type { NotificationType, NotificationData };
 interface Props {
   notification: NotificationData | null;
   onDismiss: () => void;
+  /**
+   * Reports the window y this banner reaches down to, so a screen underneath
+   * can make room for it. Passed only by the root copy — the one inside a
+   * Modal shows the same notification, and two reporters would fight over one
+   * number.
+   */
+  onMeasure?: (bottom: number) => void;
 }
 
 const ICON_MAP: Record<NotificationType, React.ComponentProps<typeof Ionicons>["name"]> = {
@@ -62,10 +69,12 @@ const DEFAULT_VISIBLE_DURATION = Reading.notice;
  * thing that dismisses a banner that is behaving.
  */
 const FLOOR_GRACE_MS = 1000;
-// Clearance between whatever the banner sits under and the banner itself.
-const TOP_GAP = 8;
+// Clearance between whatever the banner sits under and the banner itself, and
+// again between the banner and whatever the screen puts below it.
+export const TOP_GAP = 8;
+export { SLIDE_DURATION };
 
-export default function NotificationBanner({ notification, onDismiss }: Props) {
+export default function NotificationBanner({ notification, onDismiss, onMeasure }: Props) {
   const { t } = useTranslation();
   // Pressing the body runs the notification's own action before it dismisses,
   // and every caller that supplies one navigates away.
@@ -146,6 +155,13 @@ export default function NotificationBanner({ notification, onDismiss }: Props) {
     <Animated.View
       testID="notification-banner"
       style={[styles.container, { top: topOffset + TOP_GAP, pointerEvents: notification ? "box-none" as const : "none" as const }, animStyle]}
+      // The resting box, not the animated one: `onLayout` reports the laid-out
+      // position, which `translateY` never moves. That is exactly what a screen
+      // below has to make room for.
+      onLayout={(e) => {
+        const { y, height } = e.nativeEvent.layout;
+        onMeasure?.(y + height);
+      }}
       // The banner never unmounts, so with nothing to announce its close button
       // is an invisible control a screen reader still finds. `pointerEvents`
       // answers for the pointer alone.
