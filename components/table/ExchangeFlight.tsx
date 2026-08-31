@@ -15,19 +15,13 @@ import type { Card } from "@/lib/gameEngine";
 import { a11yHidden } from "@/lib/a11y";
 import { usePrefersReducedMotion } from "@/lib/accessibility";
 import { Colors, Motion, motionMs, Radius, Scrim, Spacing } from "@/lib/theme";
-import type { ExchangeFlight as Trip } from "@/components/gameTableModel";
+import {
+  EXCHANGE_LEG_MS,
+  MEET_HOLD_MS,
+  type ExchangeFlight as Trip,
+} from "@/components/gameTableModel";
 
 const TAG_FS = 11;
-
-/**
- * How long each leg of the trip takes, and how long the two cards sit side by
- * side at the middle. Domain timings rather than `Motion` steps: this is one
- * gesture with a beat in it, not a generic transition, and the beat is what
- * makes a pair of deliveries read as a trade.
- */
-const LEG_MS = 460;
-export const MEET_HOLD_MS = 260;
-export const EXCHANGE_FLIGHT_MS = LEG_MS * 2 + MEET_HOLD_MS;
 
 const OUT_EASING = Easing.bezier(0.3, 0.7, 0.4, 1);
 const IN_EASING = Easing.bezier(0.4, 0, 0.5, 1);
@@ -81,8 +75,8 @@ export function ExchangeFlyingCard({
     }
 
     opacity.value = withTiming(1, { duration: Motion.duration.flash });
-    const out = { duration: LEG_MS, easing: OUT_EASING };
-    const back = { duration: LEG_MS, easing: IN_EASING };
+    const out = { duration: EXCHANGE_LEG_MS, easing: OUT_EASING };
+    const back = { duration: EXCHANGE_LEG_MS, easing: IN_EASING };
     tx.value = withSequence(
       withTiming(trip.meet.dx, out),
       withDelay(MEET_HOLD_MS, withTiming(trip.to.dx, back))
@@ -94,7 +88,7 @@ export function ExchangeFlyingCard({
     // The landing is announced on a timer rather than an animation callback:
     // two values finish this trip, and a callback on either would fire while
     // the other was still running.
-    const landed = setTimeout(notifyDone, EXCHANGE_FLIGHT_MS);
+    const landed = setTimeout(notifyDone, EXCHANGE_LEG_MS * 2 + MEET_HOLD_MS);
 
     return () => {
       clearTimeout(landed);

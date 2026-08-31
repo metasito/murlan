@@ -4,21 +4,14 @@ import type { Card } from "@/lib/gameEngine";
 import { useTranslation } from "@/lib/i18n";
 import { cardSpokenName } from "@/lib/cardNames";
 import { A11yStatus, a11yHidden } from "@/lib/a11y";
-import { Colors, FontSize, Radius, Reading, Scrim, Spacing } from "@/lib/theme";
+import { Colors, FontSize, Radius, Scrim, Spacing } from "@/lib/theme";
 import { TableText } from "@/components/table/TableText";
-import type { ExchangeFlight as Trip } from "@/components/gameTableModel";
 import {
   EXCHANGE_FLIGHT_MS,
-  ExchangeFlyingCard,
-  ExchangeSeatTag,
-} from "@/components/table/ExchangeFlight";
-
-/**
- * How long the seat tags stay after the cards land. `Reading`, not `Motion`:
- * the owner's requirement on #532 was to "keep it for a few second to allow
- * reading it", which is set by the words rather than by the movement.
- */
-const TAG_LINGER_MS = Reading.notice;
+  exchangeAnnounceMs,
+  type ExchangeFlight as Trip,
+} from "@/components/gameTableModel";
+import { ExchangeFlyingCard, ExchangeSeatTag } from "@/components/table/ExchangeFlight";
 
 interface ExchangeAnnouncementProps {
   visible: boolean;
@@ -75,7 +68,7 @@ export function ExchangeAnnouncement({
     // readable from the first frame rather than after a flight that never runs.
     const flight = bothJokersException ? 0 : EXCHANGE_FLIGHT_MS;
     const land = setTimeout(() => setLanded(true), flight);
-    const done = setTimeout(() => dismissRef.current(), flight + TAG_LINGER_MS);
+    const done = setTimeout(() => dismissRef.current(), exchangeAnnounceMs(bothJokersException));
     return () => {
       clearTimeout(land);
       clearTimeout(done);

@@ -284,18 +284,24 @@ function UserCard({ user }: { user: { username: string } }) {
         </Text>
       )}
 
+      {/* `MenuButton` fills the width it is given, so two of them side by side
+          need a half each to fill — sharing the row is the parent's job. */}
       <View style={styles.renameActions}>
-        <MenuButton
-          label={t("common.cancel")}
-          variant="ghost"
-          onPress={() => setEditing(false)}
-          disabled={saving}
-        />
-        <MenuButton
-          label={saving ? t("profile.renameSaving") : t("common.save")}
-          onPress={save}
-          disabled={saving}
-        />
+        <View style={styles.renameAction}>
+          <MenuButton
+            label={t("common.cancel")}
+            variant="ghost"
+            onPress={() => setEditing(false)}
+            disabled={saving}
+          />
+        </View>
+        <View style={styles.renameAction}>
+          <MenuButton
+            label={saving ? t("profile.renameSaving") : t("common.save")}
+            onPress={save}
+            disabled={saving}
+          />
+        </View>
       </View>
     </View>
   );
@@ -820,6 +826,7 @@ const styles = StyleSheet.create({
   },
   renameError: { ...Type.caption, color: Colors.dangerDim },
   renameActions: { flexDirection: "row", gap: Spacing.sm },
+  renameAction: { flex: 1 },
   avatar: {
     width: 48,
     height: 48,
