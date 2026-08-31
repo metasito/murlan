@@ -86,8 +86,8 @@ Every rule an agent must follow, in one place. No rationale here — the *why* l
     not finish, and say what you tried.
 35. **File what you measured, not what you concluded.** If two explanations survive, write both
     and mark it unsettled. A rule written from one observation is how a wrong rule gets pinned.
-36. **A defect reported on iOS is closed on an iOS capture, never on a Chromium run** — unless
-    it reproduces in Chromium too, and then either proof closes it.
+36. **A defect seen on iOS is closed on an iOS capture, never on a Chromium run** — unless you
+    have watched it reproduce in Chromium, and then either proof closes it.
 
 ## Sharing the machine
 

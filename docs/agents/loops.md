@@ -44,8 +44,7 @@ it, and cannot until #620 is fixed.
 
 That job proves the flows still run and the app still renders *something* on device — it does
 not replace looking at the device. A rendering defect like #209 needs a screenshot regardless:
-a named list of states, a screen that reaches each of them on the device, and the rule that a
-native rendering fix is not claimed until the captures come back.
+a named list of states, a screen that reaches each of them on the device, and rule 36.
 
 **The states are `lib/captureStates.ts`.** That list is the contract. `app/capture.tsx` walks it
 on the device and `tests/e2e/lampSeats.spec.ts` walks it in Chromium, so a photograph and a web
@@ -79,7 +78,7 @@ The exception is narrow on purpose. A defect that reproduces in Chromium was nev
 platform, so the Chromium fix is the whole fix and there is nothing a device could add. It is
 the defect that *only* the owner can see where a green web run says nothing at all — and that
 is the one an agent is most tempted to close, because it is the only evidence it can produce
-by itself. Until a capture comes back, say so.
+by itself.
 
 ## What a green loop does not mean
 
