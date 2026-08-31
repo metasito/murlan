@@ -88,8 +88,8 @@ describe("visibleExchangePhase", () => {
       assert.deepEqual(visibleExchangePhase(settled, 3)?.cardToLoser, RETURNED);
     });
 
-    // #664: with only one leg, the watching seats animate a delivery rather
-    // than a trade, which is what the owner reported seeing.
+    // With only one leg, the watching seats animate a delivery rather than a
+    // trade.
     test("the watching seats see the trade cross once it is settled", () => {
       for (const seat of [0, 2]) {
         assert.deepEqual(

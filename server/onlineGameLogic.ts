@@ -59,9 +59,9 @@ export function isBotSeatKey(key: string): boolean {
   return key.startsWith("bot:");
 }
 
-/** The shape of GameState.exchangePhase, restated so this module keeps its
- * "no imports at all" property (see the header). The two cards are `unknown`
- * here on purpose: this helper only decides whether to forward them. */
+/** The shape of GameState.exchangePhase, restated because the two cards are
+ * `unknown` here on purpose: this helper only decides whether to forward
+ * them, never reads one. */
 export interface VisibleExchangePhaseInput {
   active: boolean;
   winnerIdx: number;
@@ -81,11 +81,9 @@ export interface VisibleExchangePhaseInput {
  * phase closes, when there is nothing left to read it for.
  *
  * `cardToLoser` is the opposite: a card the winner *chose* out of their own
- * hand, which no rule determines. While the phase is open it is participants
- * only, because sending it early would leak the winner's hand to the table. It
- * exists only from the moment the phase closes, since choosing it is what
- * closes the phase — and once closed it is a finished, public fact about the
- * table, so every seat sees the trade cross rather than half of it.
+ * hand, which no rule determines, so while the phase is open sending it would
+ * leak that hand. Closing the phase is what lifts that — and only that, which
+ * is why the gate is the flag rather than the card's own presence.
  *
  * Every seat also gets the two seat indices and the both-jokers flag — all the
  * announcement banner reads from them.
@@ -107,8 +105,10 @@ export function visibleExchangePhase(
     viewerSeatIndex !== null &&
     (viewerSeatIndex === phase.winnerIdx || viewerSeatIndex === phase.loserIdx);
 
+  const maySeeChosenCard = isParticipant || !phase.active;
+
   if (phase.active) visible.cardFromLoser = phase.cardFromLoser;
-  if ((isParticipant || !phase.active) && phase.cardToLoser !== undefined) {
+  if (maySeeChosenCard && phase.cardToLoser !== undefined) {
     visible.cardToLoser = phase.cardToLoser;
   }
   return visible;
