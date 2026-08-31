@@ -60,7 +60,10 @@ const COLOR_MAP: Record<NotificationType, string> = {
 // slide-in before it finishes). Not a lib/theme.ts Motion value because no
 // entry there matches 320ms and this exact number is the contract, not a
 // generic transition duration.
-const SLIDE_DURATION = 320;
+// Exported because a screen making room for this banner has to move over the
+// same span: two numbers here would be a way for the two halves of one movement
+// to drift apart.
+export const SLIDE_DURATION = 320;
 const DEFAULT_VISIBLE_DURATION = Reading.notice;
 /**
  * Slack on the floor that ends a banner whose animation chain never reported
