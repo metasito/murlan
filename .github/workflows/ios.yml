@@ -64,7 +64,17 @@ jobs:
           pod install --project-directory=ios
           # Named from app.json rather than fixed here, so renaming the app
           # does not silently start driving a stale build.
-          workspace=$(ls -d ios/*.xcworkspace | head -1)
+          #
+          # Matched by the shell rather than by `ls`: this step runs under
+          # `bash -eo pipefail`, where a failed `ls` in a bare assignment kills
+          # the step on the spot and the message below never prints — the
+          # cause is then a raw "No such file or directory" instead of the one
+          # sentence saying what was expected.
+          workspace=""
+          for candidate in ios/*.xcworkspace; do
+            [ -d "$candidate" ] && { workspace="$candidate"; break; }
+          done
+          [ -n "$workspace" ] || { echo "::error::expo prebuild produced no ios/*.xcworkspace."; exit 1; }
           scheme=$(basename "$workspace" .xcworkspace)
           echo "Building scheme $scheme"
           xcodebuild \
@@ -75,7 +85,10 @@ jobs:
             -derivedDataPath "$RUNNER_TEMP/DerivedData" \
             CODE_SIGNING_ALLOWED=NO \
             build
-          app=$(ls -d "$RUNNER_TEMP/DerivedData/Build/Products/Release-iphonesimulator/"*.app | head -1)
+          app=""
+          for candidate in "$RUNNER_TEMP/DerivedData/Build/Products/Release-iphonesimulator/"*.app; do
+            [ -d "$candidate" ] && { app="$candidate"; break; }
+          done
           [ -n "$app" ] || { echo "::error::xcodebuild produced no .app."; exit 1; }
           echo "APP_BUNDLE=$app" >> "$GITHUB_ENV"
           # The id the flows are driven with comes from the built app itself,

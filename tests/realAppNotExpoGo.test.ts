@@ -36,8 +36,24 @@ const FLOWS = [".maestro/smoke.yaml", ".maestro/offline-game.yaml"];
  * config header; anything indented belongs to a block above it.
  */
 function topLevelCommands(rel: string): string[] {
-  const body = read(rel).split(/^---$/m).slice(1).join("---");
-  return [...body.matchAll(/^- (\w+)/gm)].map((m) => m[1]);
+  return [...flowBody(rel).matchAll(/^- (\w+)/gm)].map((m) => m[1]);
+}
+
+/** Everything after the `---` that ends the config header. */
+function flowBody(rel: string): string {
+  return read(rel).split(/^---$/m).slice(1).join("---");
+}
+
+/**
+ * The one top-level block containing `openLink`, which is the packager
+ * hand-off. Split the same way `topLevelCommands` counts: a `- ` at column 0
+ * opens a block, and everything indented under it belongs to that block.
+ */
+function packagerBlock(rel: string): string {
+  const blocks = flowBody(rel).split(/^(?=- )/m);
+  const found = blocks.filter((b) => /openLink:/.test(b));
+  assert.equal(found.length, 1, `${rel} should reach the packager from exactly one block`);
+  return found[0];
 }
 
 describe("the iOS job drives this app, not Expo Go", () => {
@@ -75,6 +91,20 @@ describe("every flow can be driven without a packager", () => {
       // and at the top level both would run against one.
       assert.ok(!top.includes("openLink"), `${rel} opens the packager link unconditionally`);
       assert.ok(!top.includes("stopApp"), `${rel} stops the app unconditionally`);
+    });
+
+    test(`${rel} gates the packager on which app is being driven`, () => {
+      // Nesting alone proves nothing: a wrapper whose `when:` was dropped is
+      // still not top-level, and would run the whole Expo Go hand-off against
+      // a real build while this file went on passing.
+      const block = packagerBlock(rel);
+      const gate = block.slice(0, block.indexOf("openLink:"));
+      assert.match(gate, /when:/, `${rel}'s packager block has no condition above it`);
+      assert.match(
+        gate,
+        /MAESTRO_APP_ID/,
+        `${rel}'s packager block is not gated on which app is being driven`
+      );
     });
 
     test(`${rel} still launches something`, () => {
