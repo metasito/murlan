@@ -118,11 +118,11 @@ describe("the deal (defect 3) — the whole deck goes out at 3 and 4 players", (
   });
 });
 
-describe("the deal at 2 players — 21 each, 12 undealt", () => {
-  test("each hand has 21 cards and 12 stay undealt", () => {
+describe("the deal at 2 players — 14 each, 26 undealt", () => {
+  test("each hand has 14 cards and 26 stay undealt", () => {
     const { hands, excluded } = dealCards(2);
-    assert.deepEqual(hands.map((h) => h.length), [21, 21]);
-    assert.equal(excluded.length, 12);
+    assert.deepEqual(hands.map((h) => h.length), [14, 14]);
+    assert.equal(excluded.length, 26);
   });
 
   test("every card is accounted for exactly once, dealt or excluded", () => {
@@ -132,11 +132,11 @@ describe("the deal at 2 players — 21 each, 12 undealt", () => {
     assert.equal(new Set(ids(all)).size, 54, "no card is dealt twice or dropped");
   });
 
-  test("21 each holds at every first-seat offset", () => {
+  test("14 each holds at every first-seat offset", () => {
     for (const firstSeat of [0, 1, -1, 5]) {
       const { hands, excluded } = dealCards(2, firstSeat);
-      assert.deepEqual(hands.map((h) => h.length), [21, 21]);
-      assert.equal(excluded.length, 12);
+      assert.deepEqual(hands.map((h) => h.length), [14, 14]);
+      assert.equal(excluded.length, 26);
     }
   });
 

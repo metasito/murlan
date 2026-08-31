@@ -38,7 +38,7 @@ export interface HandLayout {
 /**
  * The hand fills `room` and then compresses inside it: more cards overlap
  * further, they do not reach wider. That is the whole shape of the thing — a
- * hand of five is not a hand of twenty-one spread thin, and a full hand does
+ * hand of five is not a hand of eighteen spread thin, and a full hand does
  * not push the seats off the edge of the felt.
  *
  * Two bounds, both on the step rather than on the span. `MAX_STEP_RATIO` stops

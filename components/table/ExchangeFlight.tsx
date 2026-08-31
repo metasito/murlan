@@ -15,11 +15,8 @@ import type { Card } from "@/lib/gameEngine";
 import { a11yHidden } from "@/lib/a11y";
 import { usePrefersReducedMotion } from "@/lib/accessibility";
 import { Colors, Motion, motionMs, Radius, Scrim, Spacing } from "@/lib/theme";
-import {
-  EXCHANGE_LEG_MS,
-  MEET_HOLD_MS,
-  type ExchangeFlight as Trip,
-} from "@/components/gameTableModel";
+import { EXCHANGE_FLIGHT_MS, EXCHANGE_LEG_MS, MEET_HOLD_MS } from "@/lib/exchangeCeremony";
+import type { ExchangeFlight as Trip } from "@/components/gameTableModel";
 
 const TAG_FS = 11;
 
@@ -88,7 +85,7 @@ export function ExchangeFlyingCard({
     // The landing is announced on a timer rather than an animation callback:
     // two values finish this trip, and a callback on either would fire while
     // the other was still running.
-    const landed = setTimeout(notifyDone, EXCHANGE_LEG_MS * 2 + MEET_HOLD_MS);
+    const landed = setTimeout(notifyDone, EXCHANGE_FLIGHT_MS);
 
     return () => {
       clearTimeout(landed);

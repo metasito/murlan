@@ -18,7 +18,7 @@ import {
   BASE_SHORT_EDGE,
 } from "./cardFaceModel.ts";
 import { arcBounds, solveArc, SEAT_ARC } from "./tableArc.ts";
-import { Reading, Spacing } from "../lib/tokens.ts";
+import { Spacing } from "../lib/tokens.ts";
 
 // ─── Layout constants ─────────────────────────────────────────────────────────
 //
@@ -122,7 +122,7 @@ export function HAND_ZONE_H(cardH: number, bottomPad: number): number {
 
 /**
  * The hand's share. The span the hand fills and then compresses inside, so it
- * is the same width whether the player holds five cards or twenty-one. Only
+ * is the same width whether the player holds five cards or eighteen. Only
  * the finger floor (`MIN_READABLE_STEP`, components/handLayout.ts) can push a
  * hand past it, and past `handAvailW` the row scrolls.
  */
@@ -1196,21 +1196,3 @@ export function rotateGlyphAngle(turn: number): number {
   return (ROTATE_SETTLED - turn) * UPRIGHT_DEGREES;
 }
 
-// ─── The exchange's ceremony ──────────────────────────────────────────────────
-
-/** How long each leg of a traded card's trip takes. */
-export const EXCHANGE_LEG_MS = 460;
-/** …and how long the two cards sit side by side at the middle. */
-export const MEET_HOLD_MS = 260;
-export const EXCHANGE_FLIGHT_MS = EXCHANGE_LEG_MS * 2 + MEET_HOLD_MS;
-
-/**
- * How long the whole exchange holds the table: the flight, and then long enough
- * to read the tag each card leaves beside its new owner. Derived here, beside
- * `impactDelayMs`, because it is the answer to two questions at once — how long
- * the announcement stays up, and how long the turn waits before resuming — and
- * a second copy is how a bot comes to play a card over the ceremony.
- */
-export function exchangeAnnounceMs(bothJokersException: boolean): number {
-  return (bothJokersException ? 0 : EXCHANGE_FLIGHT_MS) + Reading.notice;
-}
