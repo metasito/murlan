@@ -167,6 +167,25 @@ env:
 # land on the same card on an iPhone, and the branch only runs when this seat is
 # dealt 3♠ — so they would have passed or failed at random rather than reporting
 # anything (#353).
+# The table appearing is not the hand having arrived. `game-table` mounts while
+# the deal is still flying, and a condition evaluated then reads a hand that is
+# gone a second later: run 33418358705 gated on "3 di Picche", found it, and
+# tapped for six seconds against a hand whose lowest card was the 3 di Quadri —
+# the opponent had already led. Same shape as the tutorial race above: wait for
+# the state, do not ask whether it has arrived.
+#
+# The pass button, because it is the only control on this screen that exposes a
+# node with a real size: the turn summary and the hand's own count are 1x1
+# points, and the play button exposes nothing at all while it is disabled.
+# Waiting for a control to exist is weaker than waiting for the deal to land,
+# but it is checkable — and the alternative was another guess.
+- extendedWaitUntil:
+    visible:
+      id: "btn-passa"
+    timeout: 60000
+# Only when this deal actually gave us the opening card. It is a real deal, so
+# some will not: the block is skipped then and the hand is passed out below,
+# which still drives the table to the result screen.
 - runFlow:
     when:
       visible: "3 di Picche"
