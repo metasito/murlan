@@ -340,9 +340,15 @@ resolved against the pinned SDK, the dev server, the guest's route to it via
 `adb reverse`, `expo start --offline` for the EAS-linked project's unsigned
 manifest, and warming the bundle so the device was not served a cold build.
 
-The Expo Go path still exists for a developer driving flows by hand — see the
-locale note above, which is the one thing that path still needs and the release
-path does not.
+The Expo Go path still exists for a developer driving flows by hand, and it
+still needs all of the above: `expo start --offline`, `adb reverse tcp:8081
+tcp:8081`, and the client itself. It is a way to look at the app, not a way to
+prove anything about it — its dev-menu window eats every tap.
+
+The device locale is not on that list. The Android job sets
+`persist.sys.locale` and reboots for it whichever build it drives; only iOS
+gets to ask for a locale on launch, through `launchApp` arguments, because
+that is an `NSUserDefaults` mechanism with no Android counterpart.
 
 ### Real findings from actually running this, not just writing YAML
 

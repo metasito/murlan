@@ -28,9 +28,10 @@ jobs:
   ios:
     name: Drive the app on a real iOS simulator
     runs-on: macos-latest
-    # More than maestro.yml's 45: this job compiles the app before it drives
-    # it, and then runs offline-game.yaml as well as smoke.yaml — offline-game
-    # is a full hand, 16 minutes on a developer machine. Hitting the cap
+    # Generous on purpose, and the same as maestro.yml's: this job compiles the
+    # app before it drives it, and then runs offline-game.yaml as well as
+    # smoke.yaml — offline-game is a full hand, 16 minutes on a developer
+    # machine. A measured run is 23. Hitting the cap
     # cancels the job, and a cancelled job skips every `if: failure()` step
     # below, so an overrun costs the artefacts that would say what happened.
     timeout-minutes: 100

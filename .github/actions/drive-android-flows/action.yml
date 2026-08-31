@@ -33,8 +33,14 @@ runs:
         # hide_error_dialogs, below. Driving real worklets on a real UI thread
         # is the reason this layer exists.
         disable-animations: false
-        # Deliberately stock. Raising cores and memory was aimed at
-        # offline-game, which is not run here (#185), and did not save it.
+        # Deliberately stock, and deliberately unchanged in the commit that put
+        # offline-game back on this emulator. Raising cores and memory was
+        # aimed at that flow before and did not save it — but every Android run
+        # this repo has recorded was driving Expo Go, whose dev-menu window ate
+        # the taps, so #185's "the flow reaches the table and the emulator
+        # dies" was never measured against the app itself. Moving the host and
+        # the emulator's resources in one dispatch would leave neither
+        # answerable. Measure first; the knobs are `cores` and `ram-size`.
         #
         # The boot itself is intermittently slow on a runner - three runs have
         # ended on "Timeout waiting for emulator to boot", including one on

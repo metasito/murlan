@@ -3,10 +3,11 @@
 # This is the "is anything on fire" check — offline-game.yaml exercises real
 # gameplay.
 #
-# Driven against a real build (`ios.yml`) nothing below is needed: the app
-# carries its own bundle. Driven through Expo Go — a developer here, and
-# `maestro.yml` until #627's Android half lands — it needs a dev server the
-# device can reach, over `adb reverse tcp:8081 tcp:8081`, which forwards the
+# Driven against a real build — which is both CI jobs, `ios.yml` and
+# `maestro.yml` — nothing below is needed: the app carries its own bundle.
+# Driven through Expo Go, which is only a developer on this machine now, it
+# needs a dev server the device can reach, over `adb reverse tcp:8081 tcp:8081`,
+# which forwards the
 # device's own loopback to the host and works on any emulator anywhere. The
 # emulator's `10.0.2.2` alias for the host does not: on a GitHub runner a
 # request to it never reaches the dev server at all.
@@ -15,7 +16,7 @@
 # applied *before* the `env:` block, so a key there wins over the flag rather
 # than yielding to it — which is why the address has to be one that works
 # everywhere. Change it here, or drop the reverse and put a reachable host in.
-# The app under test. `ios.yml` builds the real app and passes its own bundle
+# The app under test. Both device jobs build the real app and pass its own
 # identifier in; with nothing passed this is Expo Go's Android package, which is
 # what a developer on this machine is driving.
 appId: "${typeof MAESTRO_APP_ID === 'string' ? MAESTRO_APP_ID : 'host.exp.exponent'}"

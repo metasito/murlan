@@ -43,7 +43,10 @@ jobs:
     # one timeout followed by a slow-but-successful retry near 63. A job that
     # overruns is cancelled rather than failed, which loses the verdict and both
     # artefacts - so the retry must not be what pushes it over. The build is
-    # what moved this from 60: `android-build` measured 938s on its first run.
+    # what moved this from 60. `ci.yml`'s `android-build` measured 938s, and
+    # that is a floor rather than the figure: it assembles debug, where this
+    # assembles release and so additionally runs the Metro bundle through
+    # hermesc and crunches the PNGs. Unmeasured until the first dispatch.
     timeout-minutes: 100
 
     steps:
@@ -88,8 +91,12 @@ jobs:
           # `ios.yml` does the same: a prebuild that renamed the package would
           # otherwise leave Maestro asking for an app that is not installed,
           # which reads as "the app never launched".
+          # Guarded rather than trusted: `find`'s status is masked by the pipe,
+          # so a missing SDK yields an empty `$aapt`, and the substitution below
+          # then dies under `bash -e` before either message can be printed.
           aapt=$(find "$ANDROID_HOME/build-tools" -name aapt2 | sort | tail -1)
-          id=$("$aapt" dump packagename "$apk")
+          [ -n "$aapt" ] || { echo "::error::No aapt2 under $ANDROID_HOME/build-tools."; exit 1; }
+          id=$("$aapt" dump packagename "$apk") || { echo "::error::aapt2 could not read $apk."; exit 1; }
           [ -n "$id" ] || { echo "::error::Could not read the package name from $apk."; exit 1; }
           echo "APP_ID=$id" >> "$GITHUB_ENV"
           echo "Built $apk ($id)"
@@ -199,7 +206,11 @@ jobs:
           # a step that dies here emits no warning at all, which is the failure
           # this one exists to prevent, in its own implementation.
           # Our own package, which is what makes this check worth more than it
-          # was: a tombstone under it is our crash rather than the host's.
+          # was: a tombstone under it is our crash rather than the host's. On
+          # `always()` this step also runs when the build never set `APP_ID`,
+          # and the grep would then be `>>> ` - every tombstone on the device,
+          # reported as ours.
+          [ -n "$APP_ID" ] || exit 0
           tombstone=$(grep -rl ">>> $APP_ID" "$HOME/.maestro/tests" 2>/dev/null | head -1 || true)
           [ -n "$tombstone" ] || exit 0
           echo "found=true" >> "$GITHUB_OUTPUT"
