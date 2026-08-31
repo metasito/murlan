@@ -249,6 +249,15 @@ adb shell settings put system system_locales it-IT,en-US
 adb reboot          # a plain relaunch is not enough; the setting needs a reboot to take effect
 ```
 
+On iOS none of that is needed and none of it belongs in `ios.yml`: both flows
+declare `AppleLanguages`/`AppleLocale` as `launchApp` arguments, which reach
+the app through NSUserDefaults' argument domain — the same mechanism an Xcode
+scheme uses. Setting the *device* locale instead is what the job used to do,
+and it cost two boots: `.GlobalPreferences.plist` does not exist until a
+device has booted once, and writing it only takes effect after a restart.
+The system's own dialogs still follow the device language, which is why the
+custom-scheme prompt is matched as `Apri|Open`.
+
 **Maestro.** The documented WSL2 route was a dead end anyone would hit first —
 **it is unnecessary on this machine**. Maestro is a Java CLI; the standard
 installer (`curl -Ls "https://get.maestro.mobile.dev" | bash`) is a bash

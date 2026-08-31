@@ -33,6 +33,15 @@ env:
     # never taken - and asserts against a screen the app never rendered.
     # Which flow runs first is not fixed, so both orders have to work.
     clearState: true
+    # This flow selects on Italian copy, so it asks for Italian rather than
+    # depending on the device being in it. Reaching the app as NSUserDefaults
+    # launch arguments, which is the same mechanism an Xcode scheme uses — and
+    # the parentheses are load-bearing: AppleLanguages is a list, and the
+    # argument domain parses `(it-IT)` as one where a bare `it-IT` would set a
+    # string the locale lookup ignores.
+    arguments:
+      AppleLanguages: "(it-IT)"
+      AppleLocale: "it_IT"
 # Only Expo Go has to be reached through a packager. The real app carries its
 # own bundle, so `launchApp` above has already put it on screen, and everything
 # in here would ask the device to open a scheme nothing handles.
@@ -46,16 +55,17 @@ env:
       - stopApp
       - openLink: "${MURLAN_PACKAGER_URL}"
       # iOS asks before handing a custom-scheme link to another app, and the
-      # link is not followed until it is answered. The simulator runs it-IT, so
-      # the button reads "Apri". Android is never asked, and iOS only asks the
-      # first time in a session — so this is optional inside the platform it
-      # belongs to, rather than awaited.
+      # link is not followed until it is answered. Both spellings: the dialog
+      # is the system's, so it is in the *device's* language, which the launch
+      # arguments above do not touch — they set the app's. Android is never
+      # asked, and iOS only asks the first time in a session — so this is
+      # optional inside the platform it belongs to, rather than awaited.
       - runFlow:
           when:
             platform: iOS
           commands:
             - tapOn:
-                text: "Apri"
+                text: "Apri|Open"
                 optional: true
 # Waited for and exited on the Skip button, which the header carries on every beat.
 # "GUIDA RAPIDA" is the card title of an `info` beat only — a `play` beat titles

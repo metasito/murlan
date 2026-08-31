@@ -74,12 +74,39 @@ describe("the iOS job drives this app, not Expo Go", () => {
   });
 
   test("it tells the flows which app they are driving", () => {
-    assert.match(workflow, /maestro test -e MAESTRO_APP_ID=/);
+    assert.match(workflow, /maestro .*\btest -e MAESTRO_APP_ID=/);
   });
 
   test("the app id comes from the built app rather than being written twice", () => {
     assert.match(workflow, /PlistBuddy -c 'Print :CFBundleIdentifier'/);
   });
+
+  test("it names the simulator, before the subcommand", () => {
+    // Maestro reads `--device` as a global flag: after `test` it is not the
+    // device selector at all, and Maestro goes back to resolving the target
+    // itself — which is the ambiguous targeting that leaves its driver's port
+    // closed. Passing it in the wrong place fails silently, so the order is
+    // the thing worth pinning.
+    assert.match(workflow, /maestro --device "\$SIMULATOR_UDID" test\b/);
+  });
+});
+
+describe("every flow asks for the locale it selects on", () => {
+  for (const rel of FLOWS) {
+    test(`${rel} launches the app in Italian`, () => {
+      // The parentheses are the whole point: AppleLanguages is a list, and
+      // NSUserDefaults' argument domain parses `(it-IT)` as one. A bare
+      // `it-IT` sets a string, the locale lookup ignores it, and the app comes
+      // up in English against a flow that selects on Italian copy — which
+      // reads as the app never having rendered.
+      const launch = flowBody(rel)
+        .split(/^(?=- )/m)
+        .find((b) => /^- launchApp:/.test(b));
+      assert.ok(launch, `${rel} has no top-level launchApp`);
+      assert.match(launch, /AppleLanguages:\s*"\(it-IT\)"/, `${rel} does not ask for Italian`);
+      assert.match(launch, /AppleLocale:\s*"it_IT"/, `${rel} does not ask for Italian formats`);
+    });
+  }
 });
 
 describe("every flow can be driven without a packager", () => {

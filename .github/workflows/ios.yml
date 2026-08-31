@@ -77,12 +77,23 @@ jobs:
           [ -n "$workspace" ] || { echo "::error::expo prebuild produced no ios/*.xcworkspace."; exit 1; }
           scheme=$(basename "$workspace" .xcworkspace)
           echo "Building scheme $scheme"
+          # One slice, for the machine this actually runs on. A Release
+          # simulator build defaults to every valid architecture, so on an
+          # Apple-silicon runner half the compile produces an x86_64 slice
+          # that nothing here can execute — and this step is 45% of the job.
+          # Read rather than assumed: pinning `arm64` outright would hand an
+          # Intel runner a binary its simulator cannot load, which reads as
+          # the app never launching.
+          arch=$(uname -m)
           xcodebuild \
             -workspace "$workspace" \
             -scheme "$scheme" \
             -configuration Release \
             -sdk iphonesimulator \
             -derivedDataPath "$RUNNER_TEMP/DerivedData" \
+            ARCHS="$arch" \
+            ONLY_ACTIVE_ARCH=NO \
+            COMPILER_INDEX_STORE_ENABLE=NO \
             CODE_SIGNING_ALLOWED=NO \
             build
           app=""
@@ -141,6 +152,16 @@ jobs:
             });
           ')
           echo "SIMULATOR_UDID=$udid" >> "$GITHUB_ENV"
+          # Every other device down, so exactly one simulator is booted while
+          # the flows run. Maestro resolves an iOS target through the simulator
+          # runtime rather than by UDID alone, and run 33418358705's log has
+          # `xcodebuild: WARNING: Using the first of multiple matching
+          # destinations` listing this one UDID twice, once as arm64 and once
+          # as x86_64, followed by ~300 refused connections to the driver's
+          # port. Maestro's own docs name ambiguous simulator targeting as a
+          # cause of exactly that. `--device` below says which device; this
+          # says there is nothing else running to be ambiguous with.
+          xcrun simctl shutdown all 2>/dev/null || true
           # Erased before anything is put on it. These simulators are the
           # image's own and are reused between jobs, so whatever the last run
           # left behind is still there — including a half-installed Maestro
@@ -148,42 +169,11 @@ jobs:
           # MAESTRO_DRIVER_STARTUP_TIMEOUT and then reports "iOS driver not
           # ready in time". Raising that timeout to 5 minutes did not help,
           # because the runner was never coming up rather than coming up late.
-          #
-          # `erase` needs the device down, and `shutdown` on an already-down
-          # device exits non-zero.
-          xcrun simctl shutdown "$udid" 2>/dev/null || true
           xcrun simctl erase "$udid"
           # `bootstatus -b` boots the device if it is not already booted and
           # then waits. A bare `simctl boot` on a device the image left booted
           # exits non-zero instead, taking the step with it.
           xcrun simctl bootstatus "$udid" -b
-
-      # The flows select on Italian copy (see maestro.yml) for the same
-      # reason here: a stock simulator comes up en-US. `defaults write`
-      # against the simulator's own domain only takes effect after the
-      # device restarts, which for a simulator is shutdown+boot rather
-      # than a real reboot.
-      - name: Set the simulator locale to it-IT
-        run: |
-          xcrun simctl spawn "$SIMULATOR_UDID" defaults write "Apple Global Domain" AppleLanguages -array "it-IT"
-          xcrun simctl spawn "$SIMULATOR_UDID" defaults write "Apple Global Domain" AppleLocale -string "it_IT"
-          xcrun simctl shutdown "$SIMULATOR_UDID"
-          # `shutdown` returns while the device can still be "Shutting Down",
-          # and a boot in that state fails outright rather than queueing.
-          for i in $(seq 1 30); do
-            xcrun simctl list devices | grep -q "$SIMULATOR_UDID) (Shutdown)" && break
-            sleep 2
-          done
-          xcrun simctl bootstatus "$SIMULATOR_UDID" -b
-          # AppleLanguages, not AppleLocale, is what the app reads: lib/i18n.ts
-          # picks the locale from expo-localization's `getLocales()`, which on
-          # iOS is `Locale.preferredLanguages`. AppleLocale only carries the
-          # region formats, so checking it alone passes on a device still
-          # rendering English.
-          languages=$(xcrun simctl spawn "$SIMULATOR_UDID" defaults read "Apple Global Domain" AppleLanguages || echo unset)
-          echo "$languages" | tr -d '\n ' | grep -q '^("\{0,1\}it' || { echo "::error::Simulator's preferred language is $languages, not Italian; the flows select on Italian copy."; exit 1; }
-          locale=$(xcrun simctl spawn "$SIMULATOR_UDID" defaults read "Apple Global Domain" AppleLocale || echo unset)
-          [ "$locale" = "it_IT" ] || { echo "::error::Simulator locale is '$locale', not it_IT; the flows select on Italian copy."; exit 1; }
 
       - name: Install the app on the simulator
         run: xcrun simctl install "$SIMULATOR_UDID" "$APP_BUNDLE"
@@ -216,8 +206,17 @@ jobs:
           # is never retried: re-running it would turn a real red into a
           # coin flip, which is the failure mode that judgement exists to
           # avoid.
+          # `--device` names the simulator, and belongs before `test` rather
+          # than after it — Maestro's own docs are explicit about the position,
+          # and given after the subcommand it is not the device selector at
+          # all. Left off, Maestro resolves the target itself and run
+          # 33418358705 recorded `xcodebuild: WARNING: Using the first of
+          # multiple matching destinations` for one UDID listed as both arm64
+          # and x86_64, then ~300 refused connections to a driver port that
+          # never opened. Ambiguous simulator targeting is the cause Maestro's
+          # troubleshooting names for exactly that.
           run_flows() {
-            maestro test -e MAESTRO_APP_ID="$APP_ID" \
+            maestro --device "$SIMULATOR_UDID" test -e MAESTRO_APP_ID="$APP_ID" \
               .maestro/smoke.yaml .maestro/offline-game.yaml 2>&1 | tee "$RUNNER_TEMP/maestro-$1.log"
             return "${PIPESTATUS[0]}"
           }
