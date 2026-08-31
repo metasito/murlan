@@ -1,7 +1,7 @@
 // tests/worktreeRemoveCommand.test.ts
 import { test, describe, afterEach } from "node:test";
 import assert from "node:assert/strict";
-import { execFileSync, spawn, type ChildProcess } from "node:child_process";
+import { execFileSync, spawn } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -208,46 +208,63 @@ describe("removing one named worktree", () => {
   });
 
   /**
-   * The case that actually happens: a session ran its checks with the worktree as its cwd, so a
-   * live process holds the directory when the teardown comes. git unregisters the worktree
-   * *before* it deletes, so the delete failing leaves the worktree gone and the directory behind
-   * — and reporting that as a failure tells the next agent nothing happened when the
-   * irreversible half is done.
+   * Makes a worktree's directory impossible to delete, by whichever means the platform gives.
    *
-   * Windows only, and said out loud rather than skipped: a POSIX cwd does not hold a directory
-   * against `rmdir`, so there the removal simply succeeds and this file makes no claim.
+   * Windows gets the case that actually happens — a live process with the worktree as its cwd,
+   * which is a session that ran its checks there. POSIX does not hold a directory that way, so
+   * it takes the parent's write permission instead: different cause, identical shape, and the
+   * shape is what the branch under test reacts to. Without the second the assertions below would
+   * be Windows-only, and CI is Linux — a regression reverting the fix would land green.
    */
-  test("a directory another process is holding is reported as removed, not as a failure", () => {
-    const t = makeJunctionedWorktree();
-    if (!t) return;
-
-    let holder: ChildProcess | null = null;
-    try {
-      holder = spawn(process.execPath, ["-e", "setTimeout(() => {}, 30000)"], {
-        cwd: t.worktree,
+  async function makeUndeletable(worktree: string): Promise<() => Promise<void>> {
+    if (process.platform === "win32") {
+      const holder = spawn(process.execPath, ["-e", "setTimeout(() => {}, 30000)"], {
+        cwd: worktree,
         stdio: "ignore",
       });
       // The child has to have chdir'd before the removal runs, or it holds nothing yet.
       execFileSync(process.execPath, ["-e", "setTimeout(() => {}, 700)"], { stdio: "ignore" });
+      return () =>
+        new Promise<void>((resolve) => {
+          // Awaited, not fired and forgotten: the cwd is pinned until the process is really gone,
+          // and afterEach's own delete is next.
+          holder.once("exit", () => resolve());
+          holder.kill();
+        });
+    }
+    const parent = path.dirname(worktree);
+    const { mode } = fs.statSync(parent);
+    fs.chmodSync(parent, 0o555);
+    return async () => fs.chmodSync(parent, mode);
+  }
 
+  /**
+   * git unregisters a worktree *before* it deletes the directory, so a delete that fails leaves
+   * the worktree gone and the directory behind. Reporting that as a failure tells the next agent
+   * nothing happened when the irreversible half is done.
+   */
+  test("a directory that cannot be deleted is reported as removed, not as a failure", async () => {
+    const t = makeJunctionedWorktree();
+    if (!t) return;
+
+    const restore = await makeUndeletable(t.worktree);
+    try {
       const out = execFileSync(process.execPath, [SCRIPT, "--remove", t.worktree], {
         cwd: t.repo,
         encoding: "utf8",
         stdio: "pipe",
       });
 
+      assert.match(out, /unregistered/i, "it should say the worktree is gone and the directory is not");
       assert.equal(
         git(t.repo, "worktree", "list", "--porcelain").includes(`worktree ${t.worktree.replace(/\\/g, "/")}`),
         false,
-        "git should have unregistered it either way"
+        "git unregisters before it deletes, so the worktree is gone"
       );
+      assert.ok(fs.existsSync(t.worktree), "the undeletable directory is still there, which is the point");
       assert.equal(fs.readFileSync(t.shim, "utf8"), "the install", "the install must survive untouched");
-      if (process.platform === "win32") {
-        assert.match(out, /unregistered/i, "it should say the worktree is gone and the directory is not");
-        assert.ok(fs.existsSync(t.worktree), "the held directory is still there, which is the point");
-      }
     } finally {
-      holder?.kill();
+      await restore();
     }
   });
 

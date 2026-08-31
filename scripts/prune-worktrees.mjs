@@ -313,8 +313,9 @@ function isAtOrUnder(child, parent) {
  * caller is standing inside it, when it is locked, or when it holds work that is not committed.
  * `force` waives the last two and nothing else: the detaching is unconditional, because it is the
  * part that protects a directory the caller never named, and the cwd refusal is unconditional
- * because git empties the tree and drops the registration before failing to delete the directory
- * a process is holding open - the caller reads exit 1 over a worktree that is already gone.
+ * because a caller standing in the worktree is itself the process that will stop the directory
+ * being deleted - it would always leave the empty orphan, and is the one holder that could have
+ * simply stepped out first.
  *
  * @param {string} targetPath
  * @param {{ force?: boolean, dryRun?: boolean }} [options]
@@ -358,12 +359,20 @@ export function removeOneWorktree(targetPath, { force = false, dryRun = false } 
     // git unregisters before it deletes, so a failed delete leaves the worktree gone and the
     // directory behind. Reporting that as a failure says nothing happened when the half that
     // cannot be undone already did, and the next agent reads exit 1 as "still checked out".
-    if (isStillRegistered(match.path)) throw err;
+    // A `git worktree list` that itself fails says nothing, and the conditions that break it are
+    // the ones that plausibly broke the removal — so it counts as still registered, and the
+    // caller keeps the error that actually describes what went wrong.
+    let unregistered = false;
+    try {
+      unregistered = !isStillRegistered(match.path);
+    } catch {
+      unregistered = false;
+    }
+    if (!unregistered) throw err;
     console.log(
       `unregistered ${match.path}, but its directory could not be deleted — a process is ` +
         `holding it open, most often a shell whose working directory it is. The worktree is ` +
-        `gone from git and the branch is free; the empty directory goes when that process ` +
-        `exits, or on the next \`npm run worktrees:prune\`.`,
+        `gone from git and the branch is free; the empty directory goes when that process exits.`,
     );
     return;
   }
@@ -494,6 +503,7 @@ if (invokedDirectly && process.argv.includes("--remove")) {
       // unregistered and empty, so there is nothing here to rescue and nothing to alarm about.
       if (err.code === "EPERM" || err.code === "EBUSY" || err.code === "ENOTEMPTY") {
         console.log(`  held open by another process; it goes when that process exits`);
+        kept++;
         continue;
       }
       console.error(`  failed to remove ${dirPath}: ${err.message}`);
