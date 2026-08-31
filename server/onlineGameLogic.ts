@@ -74,15 +74,19 @@ export interface VisibleExchangePhaseInput {
 /**
  * The part of an exchange phase a given seat is allowed to see.
  *
- * Only the two people in the exchange have any use for either card: each is a
- * named card out of a named player's hand. The winner is shown what they were
- * handed, the loser is entitled to see what was taken off them,
- * and both are entitled to see what came back. Every other seat gets the two
- * seat indices and the both-jokers flag — all the announcement banner reads
- * from them.
+ * `cardFromLoser` goes to the whole table while the phase is open. It is not a
+ * secret to withhold: `docs/RULES.md` §10.1 makes it compulsory and automatic —
+ * the loser's single highest card — so any seat derives it from the rules alone,
+ * and #602 needs it on the felt for every seat. It stops being sent once the
+ * phase closes, when there is nothing left to read it for.
  *
- * `cardFromLoser` is withheld once the phase closes; `cardToLoser` only exists
- * from that moment, since it is what closes it.
+ * `cardToLoser` is the opposite: a card the winner *chose* out of their own
+ * hand, which no rule determines, so only the two of them ever see it. It
+ * exists only from the moment the phase closes, since choosing it is what
+ * closes the phase.
+ *
+ * Every seat also gets the two seat indices and the both-jokers flag — all the
+ * announcement banner reads from them.
  */
 export function visibleExchangePhase(
   phase: VisibleExchangePhaseInput | undefined,
@@ -101,7 +105,7 @@ export function visibleExchangePhase(
     viewerSeatIndex !== null &&
     (viewerSeatIndex === phase.winnerIdx || viewerSeatIndex === phase.loserIdx);
 
-  if (phase.active && isParticipant) visible.cardFromLoser = phase.cardFromLoser;
+  if (phase.active) visible.cardFromLoser = phase.cardFromLoser;
   if (isParticipant && phase.cardToLoser !== undefined) {
     visible.cardToLoser = phase.cardToLoser;
   }

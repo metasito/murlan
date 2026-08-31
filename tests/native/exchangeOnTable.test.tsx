@@ -207,7 +207,9 @@ describe('the winner picks from their own hand', () => {
     // Twice would mean the prompt and the hand are both drawing it — the card
     // is the loser's, and it is not in the winner's hand yet.
     expect(screen.queryAllByLabelText(spoken(FROM_LOSER))).toHaveLength(0);
-    expect(screen.getByTestId('exchange-prompt')).toBeTruthy();
+    expect(
+      screen.getAllByTestId('exchange-received-card', { includeHiddenElements: true })
+    ).toHaveLength(1);
 
     await r.unmount();
   });
@@ -218,13 +220,26 @@ describe('the other seats can read the exchange from the table', () => {
   // requirement in the owner's words: "as clear as possible for all the players
   // involved not only the 2 involved in the exchange". A prompt only the winner
   // can see fails that before any card moves.
+  // The announcement is one sentence: what the card is, then who is choosing.
+  // Only `A11yStatus` reaches a text query — the line on the felt is
+  // `a11yHidden`, so it is the same sentence read once, not twice.
+  const announcement = (ending: string) =>
+    screen.queryAllByText(new RegExp(`${ending.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}$`));
+
   it('tells the loser who is choosing for them', async () => {
     const r = await render(table({ viewerSeat: 1 }));
 
     expect(screen.getByTestId('exchange-prompt')).toBeTruthy();
+    expect(announcement(t('exchange.waitingForYou', { winner: WINNER }))).toHaveLength(1);
+    // The loser gave the card, so the sentence is theirs, not the winner's.
     expect(
-      screen.queryAllByText(t('exchange.waitingForYou', { winner: WINNER }))
-    ).toHaveLength(1);
+      announcement(t('exchange.waitingForYou', { winner: WINNER }))[0].props.children
+    ).toContain(
+      t('exchange.receivedCardA11yLabelGiven', {
+        name: WINNER,
+        card: spoken(FROM_LOSER),
+      })
+    );
 
     await r.unmount();
   });
@@ -233,12 +248,29 @@ describe('the other seats can read the exchange from the table', () => {
     const r = await render(table({ viewerSeat: 2 }));
 
     expect(
-      screen.queryAllByText(t('exchange.watching', { winner: WINNER, loser: LOSER }))
+      announcement(t('exchange.watching', { winner: WINNER, loser: LOSER }))
     ).toHaveLength(1);
     // …and does not offer them a confirm for somebody else's decision.
     expect(screen.getByTestId('btn-gioca').props.accessibilityLabel).not.toBe(
       t('exchange.confirmA11yWaiting', { name: LOSER })
     );
+
+    await r.unmount();
+  });
+
+  // #602: the card the loser gave is a public move — RULES.md §10.1 makes it
+  // compulsory, so no seat is being told a secret — and watching a trade you
+  // cannot see is the defect the ticket names. The winner's own case is
+  // covered above; these are the two seats that used to get nothing.
+  it.each([
+    ['the loser', 1],
+    ['a seat outside the exchange', 2],
+  ])('draws the card on the felt for %s', async (_who, viewerSeat) => {
+    const r = await render(table({ viewerSeat }));
+
+    expect(
+      screen.getAllByTestId('exchange-received-card', { includeHiddenElements: true })
+    ).toHaveLength(1);
 
     await r.unmount();
   });

@@ -52,13 +52,19 @@ const SELECT_TILT = -3;
 const DEAL_RISE_PX = -170;
 const DEAL_DURATION_MS = 500;
 const DEAL_EASING = Easing.bezier(0.2, 0.85, 0.3, 1);
-// The exchange's two states. Colour cannot be the only channel that carries
-// them (docs/research/2026-08-28-card-exchange-interaction.md §3.1), and
-// react-native has no desaturation filter, so each state also moves and each
-// changes opacity — both survive a monochrome screen.
+// The exchange's two states, `docs/design/532-exchange/mockups.html`'s option A
+// verbatim. Colour cannot be the only channel that carries them
+// (docs/research/2026-08-28-card-exchange-interaction.md §3.1): the giveable
+// card rises and the ungiveable one drops to a third of its opacity, and
+// luminance is what survives a monochrome screen. The grey is the second
+// channel on top of that, never the only one. Only the giveable state moves —
+// a sunk card would push past the hand row's bottom edge.
 const GIVEABLE_LIFT = -8;
-const UNGIVEABLE_SINK = 4;
-const UNGIVEABLE_OPACITY = 0.32;
+const UNGIVEABLE_OPACITY = 0.3;
+// `filter` reaches react-native-web as raw CSS and react-native's own
+// processFilter parses the same string, so the string form is the only one that
+// works on both — an array serialises to `[object Object]` on web.
+const UNGIVEABLE_FILTER = { filter: "grayscale(1)" } as const;
 // ─── Reordering (#531) ────────────────────────────────────────────────────────
 //
 // A press already selects and a press on the confirm already plays, so the hold
@@ -216,7 +222,7 @@ function CardItemBase({
     // The deal starts upright (0deg) and rotates into the card's own resting
     // tilt as it lands, rather than overshooting past it.
     const restRot = arcRot + tilt.value;
-    const exchangeY = e >= 0 ? e * GIVEABLE_LIFT : -e * UNGIVEABLE_SINK;
+    const exchangeY = e >= 0 ? e * GIVEABLE_LIFT : 0;
     const faded = e >= 0 ? 1 : 1 + e * (1 - UNGIVEABLE_OPACITY);
     return {
       opacity: (1 - d) * faded,
@@ -256,6 +262,7 @@ function CardItemBase({
         // centre and bend the fan.
         { left, bottom, zIndex, width: cardW, height: cardH },
         aStyle,
+        giveable === false && UNGIVEABLE_FILTER,
       ]}
     >
       <Animated.View pointerEvents="none" style={[handStyles.cardGlow, glowStyle]} />

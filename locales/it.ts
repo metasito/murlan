@@ -208,6 +208,8 @@ export const it: Record<keyof typeof en, string> = {
   "exchange.cardA11yHint": "Sceglie questa carta da dare",
   "exchange.cardA11yNotGiveable": "Non si può dare — si può dare solo da un 3 a un 10",
   "exchange.receivedCardA11yLabel": "{{name}} ti ha dato {{card}}",
+  "exchange.receivedCardA11yLabelGiven": "Hai dato {{card}} a {{name}}",
+  "exchange.receivedCardA11yLabelWatching": "{{loser}} ha dato {{card}} a {{winner}}",
   "exchange.seatGot": "ha ricevuto {{card}}",
 
   // ----------------------------------------------------------------- cards.*
