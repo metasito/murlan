@@ -106,6 +106,13 @@ Each of these produced a confident, wrong "fixed" in one session:
 - **A native test that drives a control without awaiting it** asserts against the state before
   the press. The handler runs, so a mock assertion passes and a rendered-output assertion does
   not — see *The native harness is async* below.
+- **A Maestro step name is not evidence of what was on screen when it ran.** If the app dies
+  mid-flow the *next* assertion still passes, off the hierarchy Maestro had already read, and
+  the failure lands a step later against whatever is up by then — one run spent its remaining
+  twenty minutes scrolling the emulator's own launcher and reported a missing home-screen row.
+  The screenshot saved beside the failing step is the evidence; the step name is a guess.
+  `maestro.yml` now annotates a run whose logcat holds a tombstone for `host.exp.exponent`
+  (#629), but only Android does, and only for a native crash.
 
 ## A scan needs a planted floor
 

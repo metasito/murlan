@@ -95,6 +95,17 @@ describe("maestro.yml reads that marker", () => {
     );
   });
 
+  test("a run whose app died says so itself", () => {
+    // Without this the only record is a tombstone in an artefact, and the step
+    // that failed is a step later than the one that broke (#629).
+    assert.match(src, /grep -rl ">>> host\.exp\.exponent <<<"/);
+    assert.match(
+      src,
+      /Say if the app died[\s\S]{0,60}if: always\(\)/,
+      "gating this on failure() hides a crash that did not manage to fail the run",
+    );
+  });
+
   test("both invocations of the action stay in step", () => {
     const invocations = [...src.matchAll(/uses: \.\/\.github\/actions\/drive-android-flows\n(.*?)(?=\n *- name:|\n *#|\n\n)/gs)];
     assert.equal(invocations.length, 2, "the first attempt and its retry");

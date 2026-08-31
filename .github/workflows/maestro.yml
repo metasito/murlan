@@ -222,6 +222,22 @@ jobs:
           echo "::error::The flows ran on a device that came up, so this is a result about the diff."
           exit 1
 
+      # An app that dies mid-flow does not fail the step it died on. Maestro's
+      # next assertion still matches the hierarchy it had already read, so it
+      # passes, and the failure surfaces a step later against whatever is on
+      # screen by then - once, the emulator's own launcher. The step name is
+      # then actively misleading, and the only honest record is the tombstone,
+      # twenty minutes into an artefact nobody downloads. So the run says it
+      # itself (#629). Not gated on failure: a crash that did not manage to
+      # fail the run is worth knowing about more, not less.
+      - name: Say if the app died rather than failed
+        if: always()
+        run: |
+          tombstone=$(grep -rl ">>> host.exp.exponent <<<" "$HOME/.maestro/tests" 2>/dev/null | head -1)
+          [ -n "$tombstone" ] || exit 0
+          signal=$(grep -m1 -o "signal [0-9]* ([A-Z]*)" "$tombstone")
+          echo "::warning::The app died of a native crash during this run ($signal). Maestro asserts against a stale hierarchy afterwards, so the step that failed is not where the problem is - read the screenshot beside it. Tombstone: ${tombstone#$HOME/.maestro/tests/} in the uploaded artefact. #629"
+
       # Recordings, logs and screenshots from a failed flow are the only way to
       # tell a real regression from an emulator that fell over. Metro's own log
       # goes with them: a flow that dies loading the app failed on a request
