@@ -41,7 +41,7 @@ describe("the Android flow marker", () => {
   const lines = scriptLines();
 
   test("is the last thing the script does before running the flows", () => {
-    const marker = lines.findIndex((l) => l.includes("emulator-booted"));
+    const marker = lines.findIndex((l) => l.startsWith("touch") && l.includes("app-launched"));
     const flows = lines.findIndex((l) => l.startsWith("maestro test"));
     assert.notEqual(marker, -1, "the script no longer writes the marker at all");
     assert.notEqual(flows, -1, "the script no longer runs the flows");
@@ -51,6 +51,37 @@ describe("the Android flow marker", () => {
       "a step was inserted between the marker and the flows: if it can fail on the " +
         "runner it belongs above the marker, so the failure retries instead of being " +
         "reported as a result about the branch",
+    );
+  });
+
+  test("the device coming up and the app launching are two boundaries, in that order", () => {
+    // One marker cannot say both. A device that came up and an app that then
+    // died within five seconds is neither the runner failing to arrive nor a
+    // verdict on the diff, and reporting it as either is what #647 was.
+    const booted = lines.findIndex((l) => l.startsWith("touch") && l.includes("emulator-booted"));
+    const launched = lines.findIndex((l) => l.startsWith("touch") && l.includes("app-launched"));
+    assert.notEqual(booted, -1, "nothing marks the device coming up any more");
+    assert.ok(
+      booted < launched,
+      "the app-launch marker must come after the device one, or a device that never " +
+        "arrived would be reported as an app that failed to launch",
+    );
+    assert.ok(
+      lines.slice(booted + 1, launched).some((l) => l.includes("am start")),
+      "nothing between the two markers launches the app, so the second proves nothing",
+    );
+  });
+
+  test("each attempt clears the markers it is about to write", () => {
+    // `$RUNNER_TEMP` outlives an attempt and the action runs twice in one job,
+    // so a marker the first attempt wrote would answer for the second — and the
+    // verdict would name the wrong cause under the right result.
+    const clear = lines.findIndex((l) => l.startsWith("rm -f") && l.includes("emulator-booted"));
+    assert.notEqual(clear, -1, "a stale marker from the first attempt is read as the retry's");
+    assert.match(lines[clear], /app-launched/, "one marker is cleared and the other is not");
+    assert.ok(
+      clear < lines.findIndex((l) => l.includes("touch")),
+      "the markers are cleared after one of them is written",
     );
   });
 
@@ -77,6 +108,35 @@ describe("maestro.yml reads that marker", () => {
     assert.notEqual(retry, -1, "the retry step is gone");
     const block = src.slice(src.lastIndexOf("- name:", retry), retry + 200);
     assert.match(block, /steps\.kind\.outputs\.started == 'false'/);
+  });
+
+  test("it tells three states apart, and retries the two it can", () => {
+    const kind = src.slice(src.indexOf("id: kind"), src.indexOf("id: retry"));
+    assert.match(kind, /app-launched/, "the app-launch state is not distinguished at all");
+    assert.match(kind, /emulator-booted/, "the device state is not distinguished at all");
+    // `started=true` is what withholds the retry, so exactly one branch may set
+    // it: the one where the app actually launched.
+    assert.equal(
+      (kind.match(/started=true/g) ?? []).length,
+      1,
+      "more than one state withholds the retry",
+    );
+    const launched = kind.indexOf("app-launched");
+    assert.ok(
+      launched < kind.indexOf("started=true"),
+      "the retry is withheld before the app-launch marker is read",
+    );
+  });
+
+  test("the verdict names the app launch rather than blaming the branch for it", () => {
+    const verdict = src.slice(src.indexOf("The run's real verdict"));
+    const blame = verdict.indexOf("result about the diff");
+    const launch = verdict.indexOf("app-launched");
+    assert.notEqual(launch, -1, "the verdict cannot see whether the app ever launched");
+    assert.ok(
+      launch < blame,
+      "the diff is blamed before the app launch is checked, which is the defect itself",
+    );
   });
 
   test("the verdict is stated before the steps whose `if: failure()` uploads the artefacts", () => {

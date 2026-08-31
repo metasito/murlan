@@ -21,7 +21,7 @@ import type { Card } from "@/lib/gameEngine";
 import { computeHandLayout } from "@/components/handLayout";
 import { cardAt, dropIndex } from "@/components/handOrder";
 import { HAND_ARC, solveArc } from "@/components/tableArc";
-import { HAND_CROP, HAND_ROW_HEADROOM } from "@/components/gameTableModel";
+import { HAND_CROP, handRowHeadroom } from "@/components/gameTableModel";
 import {
   CARD_W,
   CARD_H,
@@ -38,9 +38,9 @@ import {
 // caller passes one unchanged reference for every card and CardItem binds its
 // own id once. CardView then sees a new `onPress` only when this card's id or
 // the callback changes — not when some other card's selection does.
-// How far a selected card rises out of the fan, and how far it tips as it is
-// picked up. The rotation is what stops the lift reading as a flat slide.
-const SELECT_LIFT = -16;
+// How far a selected card tips as it is picked up. The rotation is what stops
+// the lift reading as a flat slide; the lift itself is `handRowHeadroom`, a
+// share of the card, so the row's reserved headroom cannot fall short of it.
 const SELECT_TILT = -3;
 // A deal drops from above the table, not up out of the middle of it — a fixed
 // distance (scaled with the hand), not one derived from the card's own
@@ -52,13 +52,19 @@ const SELECT_TILT = -3;
 const DEAL_RISE_PX = -170;
 const DEAL_DURATION_MS = 500;
 const DEAL_EASING = Easing.bezier(0.2, 0.85, 0.3, 1);
-// The exchange's two states. Colour cannot be the only channel that carries
-// them (docs/research/2026-08-28-card-exchange-interaction.md §3.1), and
-// react-native has no desaturation filter, so each state also moves and each
-// changes opacity — both survive a monochrome screen.
+// The exchange's two states, `docs/design/532-exchange/mockups.html`'s option A
+// verbatim. Colour cannot be the only channel that carries them
+// (docs/research/2026-08-28-card-exchange-interaction.md §3.1): the giveable
+// card rises and the ungiveable one drops to a third of its opacity, and
+// luminance is what survives a monochrome screen. The grey is the second
+// channel on top of that, never the only one. Only the giveable state moves —
+// a sunk card would push past the hand row's bottom edge.
 const GIVEABLE_LIFT = -8;
-const UNGIVEABLE_SINK = 4;
-const UNGIVEABLE_OPACITY = 0.32;
+const UNGIVEABLE_OPACITY = 0.3;
+// `filter` reaches react-native-web as raw CSS and react-native's own
+// processFilter parses the same string, so the string form is the only one that
+// works on both — an array serialises to `[object Object]` on web.
+const UNGIVEABLE_FILTER = { filter: "grayscale(1)" } as const;
 // ─── Reordering (#531) ────────────────────────────────────────────────────────
 //
 // A press already selects and a press on the confirm already plays, so the hold
@@ -151,6 +157,7 @@ function CardItemBase({
   onMove,
 }: CardItemProps) {
   const reduceMotion = usePrefersReducedMotion();
+  const selectLift = -handRowHeadroom(cardH);
   const liftY = useSharedValue(0);
   const tilt = useSharedValue(0);
   const glow = useSharedValue(0);
@@ -179,15 +186,15 @@ function CardItemBase({
 
   useEffect(() => {
     if (reduceMotion) {
-      liftY.value = withTiming(isSelected ? SELECT_LIFT : 0, { duration: Motion.duration.tap });
+      liftY.value = withTiming(isSelected ? selectLift : 0, { duration: Motion.duration.tap });
       tilt.value = 0;
       glow.value = withTiming(isSelected ? 1 : 0, { duration: Motion.duration.tap });
       return;
     }
-    liftY.value = withSpring(isSelected ? SELECT_LIFT : 0, Motion.spring.pickup);
+    liftY.value = withSpring(isSelected ? selectLift : 0, Motion.spring.pickup);
     tilt.value = withSpring(isSelected ? SELECT_TILT : 0, Motion.spring.pickup);
     glow.value = withTiming(isSelected ? 1 : 0, { duration: Motion.duration.tap });
-  }, [isSelected, reduceMotion, liftY, tilt, glow]);
+  }, [isSelected, reduceMotion, selectLift, liftY, tilt, glow]);
 
   // -1 sunk and faded, 0 untouched, +1 lifted and lit. One value rather than
   // two so a card cannot briefly be in both states as the phase turns on.
@@ -216,7 +223,7 @@ function CardItemBase({
     // The deal starts upright (0deg) and rotates into the card's own resting
     // tilt as it lands, rather than overshooting past it.
     const restRot = arcRot + tilt.value;
-    const exchangeY = e >= 0 ? e * GIVEABLE_LIFT : -e * UNGIVEABLE_SINK;
+    const exchangeY = e >= 0 ? e * GIVEABLE_LIFT : 0;
     const faded = e >= 0 ? 1 : 1 + e * (1 - UNGIVEABLE_OPACITY);
     return {
       opacity: (1 - d) * faded,
@@ -256,6 +263,7 @@ function CardItemBase({
         // centre and bend the fan.
         { left, bottom, zIndex, width: cardW, height: cardH },
         aStyle,
+        giveable === false && UNGIVEABLE_FILTER,
       ]}
     >
       <Animated.View pointerEvents="none" style={[handStyles.cardGlow, glowStyle]} />
@@ -796,14 +804,14 @@ export function StraightHand({
           // even the finger floor cannot fit the row in availW — a full hand on
           // a small phone. The row overflows and is moved under a window that
           // clips it, rather than clipping the hand or stepping below what a
-          // thumb can separate. The window keeps HAND_ROW_HEADROOM as top
-          // padding — without it, a selected card's lift (SELECT_LIFT) is cut
-          // off at the top edge.
+          // thumb can separate. The window keeps the row's headroom as top
+          // padding — without it, a selected card's lift is cut off at the top
+          // edge.
           <View
             style={{
               width: availW,
-              height: visibleH + arcRise + HAND_ROW_HEADROOM,
-              paddingTop: HAND_ROW_HEADROOM,
+              height: visibleH + arcRise + handRowHeadroom(cardH),
+              paddingTop: handRowHeadroom(cardH),
               overflow: "hidden",
             }}
           >

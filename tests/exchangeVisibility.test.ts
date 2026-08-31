@@ -1,7 +1,7 @@
-// tests/exchangeVisibility.test.ts — `visibleExchangePhase` strips
-// `cardFromLoser` (a named card out of a named player's hand) down to only
-// the two seats in the exchange, and only while the phase is active. Only
-// the winner and the loser have any use for it.
+// tests/exchangeVisibility.test.ts — `visibleExchangePhase` sends
+// `cardFromLoser` to the whole table while the phase is active (RULES.md §10.1
+// determines it, so it is no one's secret) and `cardToLoser` — which the winner
+// chose — to the two of them alone.
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
 import { visibleExchangePhase } from "../server/onlineGameLogic.ts";
@@ -25,23 +25,31 @@ describe("visibleExchangePhase", () => {
     assert.deepEqual(visibleExchangePhase(activePhase, 3)?.cardFromLoser, CARD);
   });
 
-  test("uninvolved seats never receive the card", () => {
+  // #602: the card has to be on the felt for every seat, not just the two
+  // trading. Watching a trade you cannot see is the defect that ticket names.
+  test("the seats watching see it too", () => {
     for (const seat of [0, 2]) {
-      const visible = visibleExchangePhase(activePhase, seat);
-      assert.ok(visible);
-      assert.equal("cardFromLoser" in visible!, false, `seat ${seat} was told the card`);
+      assert.deepEqual(
+        visibleExchangePhase(activePhase, seat)?.cardFromLoser,
+        CARD,
+        `seat ${seat} was not shown the card`
+      );
     }
   });
 
-  test("a viewer with no seat (spectator, unknown user) receives nothing", () => {
-    const visible = visibleExchangePhase(activePhase, null);
-    assert.equal("cardFromLoser" in visible!, false);
+  test("a viewer with no seat (spectator, unknown user) sees it", () => {
+    assert.deepEqual(visibleExchangePhase(activePhase, null)?.cardFromLoser, CARD);
   });
 
-  test("the card stops being sent once the phase closes, even to the winner", () => {
+  test("the card stops being sent once the phase closes, at every seat", () => {
     const closed = { ...activePhase, active: false };
-    assert.equal("cardFromLoser" in visibleExchangePhase(closed, 1)!, false);
-    assert.equal("cardFromLoser" in visibleExchangePhase(closed, 3)!, false);
+    for (const seat of [0, 1, 2, 3, null]) {
+      assert.equal(
+        "cardFromLoser" in visibleExchangePhase(closed, seat)!,
+        false,
+        `seat ${seat} was still being sent the card`
+      );
+    }
   });
 
   test("everything the announcement banner reads is still sent to everyone", () => {

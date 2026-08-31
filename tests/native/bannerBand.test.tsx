@@ -34,7 +34,7 @@ import type { Card, GameState, Player } from '@/lib/gameEngine';
 const INSETS = { top: 0, left: 47, right: 34, bottom: 0 };
 const METRICS = { frame: { x: 0, y: 0, width: WINDOW.width, height: WINDOW.height }, insets: INSETS };
 const SCALE = cardScale(Math.min(WINDOW.width, WINDOW.height));
-const FRAME = computeTableFrame({ width: WINDOW.width, insets: INSETS, scale: SCALE });
+const FRAME = computeTableFrame({ width: WINDOW.width, height: WINDOW.height, insets: INSETS, scale: SCALE });
 
 const card = (id: string): Card => ({ id, rank: '3', suit: 'spades', isJoker: false });
 const seat = (i: number): Player => ({

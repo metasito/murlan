@@ -72,6 +72,23 @@ validates the intent against `lib/gameEngine.ts`, mutates state, persists it
 (`active_games` table), and broadcasts a sanitized copy to every seat (each player's own
 socket gets their own hand; opponents' hands are stripped server-side before emit).
 
+**`playedRanks` on the broadcast state.** A 15-slot tally, indexed by `getRankStrength`, of
+how many cards of each rank have been played this manche. `processPlay` writes it and every
+fresh deal resets it, so the one funnel both the online and offline paths already share keeps
+it correct in both without a second implementation. It is public information — every seat
+watched those cards land — so `sanitizeStateForPlayer` passes it through untouched, and it
+holds ranks only, never card identities. It is the bots' whole memory: without it no bot at
+any difficulty could know a 2 or a joker was already gone.
+
+The field is **optional**, because `GameState` is persisted as jsonb and a hand in flight
+across a deploy rehydrates without it. A bot reading an absent tally must play exactly as it
+did before the tally existed. It is an additive protocol change; older clients ignore it.
+
+At two seats the twelve undealt cards are never played and never in a bot's hand, so they
+read as still outstanding. That makes the bot slightly more cautious than a perfect counter
+and never over-confident, which is the safe direction — do not "fix" it by tracking the
+excluded cards, which would put cards nobody has seen into a broadcast field.
+
 ## 3. Socket lifecycle and the ticket auth model
 
 **Connection:** `lib/socket.ts` owns a singleton `Map<userId, Socket>` — `SocketContext` is

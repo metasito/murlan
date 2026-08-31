@@ -221,6 +221,8 @@ export const en = {
   "exchange.cardA11yHint": "Chooses this card to give",
   "exchange.cardA11yNotGiveable": "Cannot be given — only a 3 to a 10 may be given",
   "exchange.receivedCardA11yLabel": "{{name}} gave you {{card}}",
+  "exchange.receivedCardA11yLabelGiven": "You gave {{name}} {{card}}",
+  "exchange.receivedCardA11yLabelWatching": "{{loser}} gave {{winner}} {{card}}",
   // Beside each seat as that seat's card lands, so the two players not in the
   // exchange can read what each side got without a legend.
   "exchange.seatGot": "got {{card}}",
@@ -566,11 +568,9 @@ export const en = {
   "result.matchDrawSubtitle": "No winner",
   "result.matchProgress": "Match to {{target}} points",
   "result.singleHandFormat": "Single hand",
-  "result.statPlayers": "Players",
   "result.statHands": "Hands",
   "result.statTarget": "Target",
   "result.statMode": "Mode",
-  "result.legend": "+{{a}} / +{{b}} ... +0 for 1st → last",
   "result.home": "Home",
   "result.nextHand": "Next hand",
   "result.newMatch": "New match",
@@ -671,6 +671,7 @@ export const en = {
   "onlineLobby.title": "With Friends",
   "onlineLobby.connectedAs": "Connected as {{username}}",
   "onlineLobby.connecting": "Connecting…",
+  "onlineLobby.joiningInvite": "Joining the table…",
   "onlineLobby.createRoomTitle": "CREATE ROOM",
   "onlineLobby.modeLabel": "MODE",
   "onlineLobby.modeFreeForAll": "Free-for-all",

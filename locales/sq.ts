@@ -223,6 +223,8 @@ export const sq: Record<keyof typeof en, string> = {
   "exchange.cardA11yHint": "Zgjedh këtë letër për ta dhënë",
   "exchange.cardA11yNotGiveable": "Nuk mund të jepet — mund të jepet vetëm nga 3 në 10",
   "exchange.receivedCardA11yLabel": "{{name}} të dha {{card}}",
+  "exchange.receivedCardA11yLabelGiven": "Ke dhënë {{card}} te {{name}}",
+  "exchange.receivedCardA11yLabelWatching": "{{loser}} i dha {{card}} {{winner}}",
   "exchange.seatGot": "mori {{card}}",
 
   // ----------------------------------------------------------------- cards.*
@@ -566,11 +568,9 @@ export const sq: Record<keyof typeof en, string> = {
   "result.matchDrawSubtitle": "Pa fitues",
   "result.matchProgress": "Ndeshje deri në {{target}} pikë",
   "result.singleHandFormat": "Një dorë",
-  "result.statPlayers": "Lojtarë",
   "result.statHands": "Duar",
   "result.statTarget": "Objektivi",
   "result.statMode": "Modaliteti",
-  "result.legend": "+{{a}} / +{{b}} ... +0 për 1° → i fundit",
   "result.home": "Kreu",
   "result.nextHand": "Dora tjetër",
   "result.newMatch": "Ndeshje e re",
@@ -671,6 +671,7 @@ export const sq: Record<keyof typeof en, string> = {
   "onlineLobby.title": "Me Miq",
   "onlineLobby.connectedAs": "Lidhur si {{username}}",
   "onlineLobby.connecting": "Duke u lidhur…",
+  "onlineLobby.joiningInvite": "Duke hyrë në tavolinë…",
   "onlineLobby.createRoomTitle": "KRIJO DHOMË",
   "onlineLobby.modeLabel": "MODALITETI",
   "onlineLobby.modeFreeForAll": "E lirë",

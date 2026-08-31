@@ -10,6 +10,10 @@ const SILVER = '#C0C0C0';
 export const Colors = {
   // Background layers
   bg:           '#031008',
+  // `bg` at zero alpha, for the clear end of a fade over it. Spelt out rather
+  // than 'transparent': a gradient blends its stops non-premultiplied, so a
+  // stop of another hue reads as grey at half strength (see `clear`, below).
+  bgClear:      'rgba(3,16,8,0)',
   bgCard:       '#0A1F18',
   bgSurface:    '#0E2920',
   bgElevated:   '#142E24',

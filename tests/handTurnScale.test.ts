@@ -49,6 +49,7 @@ function row(phone: Phone, n: number, onTurn: boolean) {
   const scale = cardScale(Math.min(phone.width, phone.height));
   const frame = computeTableFrame({
     width: phone.width,
+    height: phone.height,
     insets: { top: 0, bottom: 0, left: 0, right: 0 },
     scale,
   });

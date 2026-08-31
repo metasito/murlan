@@ -208,6 +208,8 @@ export const it: Record<keyof typeof en, string> = {
   "exchange.cardA11yHint": "Sceglie questa carta da dare",
   "exchange.cardA11yNotGiveable": "Non si può dare — si può dare solo da un 3 a un 10",
   "exchange.receivedCardA11yLabel": "{{name}} ti ha dato {{card}}",
+  "exchange.receivedCardA11yLabelGiven": "Hai dato {{card}} a {{name}}",
+  "exchange.receivedCardA11yLabelWatching": "{{loser}} ha dato {{card}} a {{winner}}",
   "exchange.seatGot": "ha ricevuto {{card}}",
 
   // ----------------------------------------------------------------- cards.*
@@ -559,11 +561,9 @@ export const it: Record<keyof typeof en, string> = {
   "result.matchDrawSubtitle": "Nessun vincitore",
   "result.matchProgress": "Partita a {{target}} punti",
   "result.singleHandFormat": "Manche secca",
-  "result.statPlayers": "Giocatori",
   "result.statHands": "Manche",
   "result.statTarget": "Obiettivo",
   "result.statMode": "Modalità",
-  "result.legend": "+{{a}} / +{{b}} ... +0 per 1° → ultimo",
   "result.home": "Home",
   "result.nextHand": "Prossima manche",
   "result.newMatch": "Nuova partita",
@@ -664,6 +664,7 @@ export const it: Record<keyof typeof en, string> = {
   "onlineLobby.title": "Con Amici",
   "onlineLobby.connectedAs": "Connesso come {{username}}",
   "onlineLobby.connecting": "Connessione…",
+  "onlineLobby.joiningInvite": "Ingresso al tavolo…",
   "onlineLobby.createRoomTitle": "CREA STANZA",
   "onlineLobby.modeLabel": "MODALITÀ",
   "onlineLobby.modeFreeForAll": "Libera",

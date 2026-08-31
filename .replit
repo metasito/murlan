@@ -37,8 +37,16 @@ runButton = "Project"
 
 [[workflows.workflow]]
 name = "Project"
-mode = "parallel"
+mode = "sequential"
 author = "agent"
+
+# The push hook lives in this workspace's own dev server, so it can only be
+# reached while the workspace is already awake. Syncing here is what a Repl
+# that slept through a push has instead — and it must finish before anything
+# below it serves the code it is replacing.
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "npm run dev:sync"
 
 [[workflows.workflow.tasks]]
 task = "workflow.run"

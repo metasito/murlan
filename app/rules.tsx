@@ -145,7 +145,17 @@ export default function RulesScreen() {
 
         <View style={styles.quickRef}>
           <Text style={styles.sectionLabel}>{t("rules.strengthSectionLabel")}</Text>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.strengthRow}>
+          {/* Bounded, or the row sizes to its nine cards and takes the page
+              sideways with it instead of scrolling inside it: React Native
+              defaults `flexShrink` to 0, so a child wider than its parent
+              overflows rather than shrinking (`MenuLayout`'s `bounded` carries
+              the same note). At 390 the content reached x=612. */}
+          <ScrollView
+            horizontal
+            style={styles.strengthScroller}
+            showsHorizontalScrollIndicator
+            contentContainerStyle={styles.strengthRow}
+          >
             {[
               { rank: "JKR★", color: Colors.bombText, label: t("rules.strengthJokerColored") },
               { rank: "JKR☆", color: Colors.textMuted, label: t("rules.strengthJokerBlack") },
@@ -302,6 +312,11 @@ const styles = StyleSheet.create({
     color: Colors.textMuted,
     letterSpacing: 2,
     textTransform: "uppercase",
+  },
+  strengthScroller: {
+    width: "100%",
+    flexGrow: 0,
+    flexShrink: 1,
   },
   strengthRow: {
     gap: Spacing.sm,
