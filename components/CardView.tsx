@@ -573,7 +573,10 @@ function CardViewBase({
     };
     return (
       <Animated.View style={[animStyle, style]}>
-        <View style={[styles.card, { width: w, height: h }, styles.cardBack, backStyle]}>
+        <View
+          testID="card-box-back"
+          style={[styles.card, { width: w, height: h }, styles.cardBack, backStyle]}
+        >
           <LinearGradient
             colors={[backField[1], backField[2], backField[4]]}
             start={{ x: 0.15, y: 0 }}
@@ -695,9 +698,8 @@ function CardViewBase({
 
 // ─── Card stock ───────────────────────────────────────────────────────────────
 //
-// Local one-offs rather than design tokens (lib/tokens.ts): the printed border
-// is `Colors.cardEdge`'s hue printed rather than cut, and the lip is the paper
-// ramp's own shade seen edge-on. Neither has a second use to name a token for.
+// A local one-off rather than a design token (lib/tokens.ts): the lip is the
+// paper ramp's own shade seen edge-on, and has no second use to name a token for.
 const STOCK_LIP_COLOR = "#D6D0BC";
 
 /**

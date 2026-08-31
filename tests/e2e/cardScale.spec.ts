@@ -5,7 +5,7 @@
 // on a real device is a property of useWindowDimensions() and the DOM layout
 // built from it — only a browser can measure that end to end.
 import { test, expect } from "@playwright/test";
-import { openSeededGame } from "./helpers/offlineSeed";
+import { DEAL_SIZE, openSeededGame } from "./helpers/offlineSeed";
 
 // Landscape-locked, so the short edge is the viewport height. 375 is a small
 // phone; 834 is a tablet — the same spread tableFit.spec.ts exercises.
@@ -57,47 +57,77 @@ test.describe("card size follows the viewport's short edge", () => {
   });
 });
 
+
+
 /**
- * A card draws one outline: its own cut edge.
+ * A card is bounded by one line: its own cut edge.
  *
- * Both the face and the back also carried a printed border a few points inside
- * that edge — a second rounded rectangle, symmetric in the DOM to the point of
- * a pixel. It still read as off-centre, because a card is not only its box: a
- * lit lip sits along the bottom edge and the drop shadow falls the same way, so
- * the *seen* card is a couple of points taller at the bottom than the box the
- * inner line was centred in. Two nested outlines is one more than a card has,
- * and the owner asked for the inner one gone (2026-08-31).
+ * The rule is about *frames*, not about decoration — a court panel and a
+ * joker's marotte are strokes inside a card and belong there. What must not
+ * exist is a second line following the card's whole outline a few points in,
+ * because a card is not only its box: the lit lip runs along the bottom edge
+ * alone and the drop shadow falls the same way, so a line centred in the box
+ * sits high in the card anyone actually looks at.
  *
- * Only a browser can count them: `react-test-renderer` never resolves a style
- * array into computed values, so a second border is invisible to a unit test.
+ * Measured by geometry rather than by tag, so it holds however the line is
+ * drawn — a CSS border, an SVG rect, a path. Only a browser resolves any of
+ * that: `react-test-renderer` never computes a style array.
  */
-test("a card draws its own cut edge and nothing inside it", async ({ page, baseURL }) => {
+/** How much of the card a line has to span before it is a frame around it. */
+const FRAME_SPAN = 0.82;
+
+test("a card is bounded by its cut edge alone, face and back", async ({ page, baseURL }) => {
   test.setTimeout(120_000);
   await page.setViewportSize(LARGE);
-  await openSeededGame(page, baseURL!, 4);
+  // A full deal, so every rank is on the table — the jokers included, whose
+  // court panel is exactly the interior stroke this must not mistake for a
+  // frame. The opponents' fans are the only backs a table shows.
+  await openSeededGame(page, baseURL!, 4, DEAL_SIZE[4]);
+  await page.waitForTimeout(1_500);
 
-  const outlines = await page.evaluate(() => {
-    const out: { where: string; count: number }[] = [];
-    for (const box of Array.from(document.querySelectorAll('[data-testid="card-box"]'))) {
-      let count = 0;
-      const walk = (n: Element) => {
-        if ((parseFloat(getComputedStyle(n).borderTopWidth) || 0) > 0) count++;
-        for (const k of Array.from(n.children)) walk(k);
-      };
-      walk(box);
-      // SVG strokes drawn as a rounded rect inside the card count too — the
-      // back's panel was one of those, not a CSS border.
-      count += box.querySelectorAll("rect[rx]:not([fill]), rect[rx][fill='none']").length;
-      out.push({ where: box.getAttribute("aria-label") ?? "?", count });
+  const cards = await page.evaluate((span: number) => {
+    const out: { kind: string; card: string; frames: number }[] = [];
+    for (const box of Array.from(document.querySelectorAll('[data-testid^="card-box"]'))) {
+      const card = box.getBoundingClientRect();
+      if (card.width === 0) continue;
+      let frames = 0;
+      for (const n of Array.from(box.querySelectorAll("*"))) {
+        const st = getComputedStyle(n);
+        // A CSS border, or a stroked rectangle with nothing in it. Not a
+        // <path>: the back's lattice is drawn as one path across the whole card
+        // and is texture, not an outline — counting it would make every back
+        // fail for the thing that gives it its pattern.
+        const draws =
+          (parseFloat(st.borderTopWidth) || 0) > 0 ||
+          (n.tagName.toLowerCase() === "rect" && st.fill === "none" && st.stroke !== "none" && st.stroke !== "");
+        if (!draws || st.opacity === "0" || st.visibility === "hidden") continue;
+        const r = n.getBoundingClientRect();
+        if (r.width >= card.width * span && r.height >= card.height * span) frames++;
+      }
+      out.push({
+        kind: box.getAttribute("data-testid") ?? "?",
+        card: box.closest("[aria-label]")?.getAttribute("aria-label") ?? "a face-down card",
+        frames,
+      });
     }
     return out;
-  });
+  }, FRAME_SPAN);
 
-  expect(outlines.length, "no card on the table to measure").toBeGreaterThan(0);
-  for (const o of outlines) {
+  // The floor: without both kinds on screen this passes by measuring nothing.
+  expect(
+    cards.filter((c) => c.kind === "card-box").length,
+    "no card face on the table to measure"
+  ).toBeGreaterThan(0);
+  expect(
+    cards.filter((c) => c.kind === "card-box-back").length,
+    "no card back on the table to measure"
+  ).toBeGreaterThan(0);
+
+  // The cut edge is the box itself, so anything counted here is a second one.
+  for (const c of cards) {
     expect(
-      o.count,
-      `${o.where} draws ${o.count} outlines — a card has one, its cut edge`
-    ).toBeLessThanOrEqual(1);
+      c.frames,
+      `${c.card} carries ${c.frames} line(s) round it inside its own cut edge — it should carry none`
+    ).toBe(0);
   }
 });

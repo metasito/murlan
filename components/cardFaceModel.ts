@@ -49,10 +49,9 @@ export const BACK_SCALE = 0.88;
 
 // ─── Card stock ─────────────────────────────────────────────────────────────
 //
-// A card is a physical object, not a flat swatch: a corner cut, a printed
-// border just inside the edge, and a lit lip where the stock meets the felt.
-// Values below are authored at 2x table scale, like the rest of the card, and
-// halved here to land at scale 1.
+// A card is a physical object, not a flat swatch: a corner cut and a lit lip
+// where the stock meets the felt. Values below are authored at 2x table scale,
+// like the rest of the card, and halved here to land at scale 1.
 
 // Real poker stock has a 1/8in radius on a 2.5in card — 5% of card width. A
 // fixed step of `Radius` (lib/tokens.ts) can't express that, since it has to
