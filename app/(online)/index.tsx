@@ -247,6 +247,10 @@ export default function OnlineLobbyScreen() {
 
       {isLandscape ? (
         <View style={[styles.body, styles.bodyLandscape]}>
+          {/* Two shrinkable spacers rather than `justifyContent: "center"`:
+              centring a block taller than its box pushes the top of it off the
+              screen, and the shortest phone in landscape is exactly that case. */}
+          <View style={styles.slack} />
           <View style={styles.contentWrapperLandscape}>
             <View style={styles.statusRow}>
               <View style={[styles.dot, { backgroundColor: connected ? Colors.success : Colors.textMuted }]} />
@@ -261,10 +265,11 @@ export default function OnlineLobbyScreen() {
               {JoinSection}
             </View>
           </View>
+          <View style={styles.slack} />
         </View>
       ) : (
         <ScrollView
-          contentContainerStyle={[styles.body, { paddingBottom: Spacing.lg }]}
+          contentContainerStyle={[styles.body, styles.bodyPortrait, { paddingBottom: Spacing.lg }]}
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled"
         >
@@ -411,15 +416,25 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   body: { gap: Spacing.lg },
-  bodyLandscape: { gap: Spacing.md, flex: 1 },
+  // Safe here where it is not in the landscape body: this is a ScrollView's
+  // content container, so when the content is taller there is no free space
+  // for `center` to distribute and nothing moves off the top.
+  bodyPortrait: { flexGrow: 1, justifyContent: "center" },
+  // No gap: the two spacers are the composition, and a gap between them and
+  // the block is height taken off a body that cannot scroll.
+  bodyLandscape: { gap: 0, flex: 1 },
   contentWrapper: {
     gap: Spacing.md,
   },
+  // A radio group and a single button have one right height, so the answer to a
+  // tall window is where the pair sits in it, not how far the cards stretch.
+  // The two columns keep a common top — centring them one by one puts their
+  // section labels at different heights, which reads as a mistake.
   contentWrapperLandscape: {
-    flex: 1,
     gap: Spacing.sm,
   },
-  landscapeRow: { flexDirection: "row", gap: Spacing.roomy, alignItems: "stretch", flex: 1 },
+  slack: { flexGrow: 1, flexShrink: 1, flexBasis: 0 },
+  landscapeRow: { flexDirection: "row", gap: Spacing.roomy, alignItems: "flex-start" },
   dividerV: { width: 1, backgroundColor: Colors.border, alignSelf: "stretch", marginHorizontal: Spacing.snug },
   statusRow: { flexDirection: "row", alignItems: "center", gap: Spacing.sm, marginBottom: Spacing.xs },
   dot: { width: 8, height: 8, borderRadius: Radius.full },

@@ -186,6 +186,12 @@ test.describe("the rail's settings sheet", () => {
     // instead.
     await page.getByRole("switch", { name: "Gioca a sinistra" }).scrollIntoViewIfNeeded();
     await expect(page.getByRole("switch", { name: "Gioca a sinistra" })).toBeVisible();
+
+    // And so is the first, which is the end a centred list loses: the rows
+    // centre in the room they are given, and centring overflowing content is
+    // how the top of a list becomes unreachable.
+    await page.getByRole("switch", { name: "Suoni di gioco" }).scrollIntoViewIfNeeded();
+    await expect(page.getByRole("switch", { name: "Suoni di gioco" })).toBeVisible();
     await page.getByRole("button", { name: "Esci dalla partita" }).scrollIntoViewIfNeeded();
     await expect(page.getByRole("button", { name: "Esci dalla partita" })).toBeVisible();
   });

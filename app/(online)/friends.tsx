@@ -18,7 +18,7 @@ import { serverErrorMessage } from "@/lib/apiError";
 import { apiRequest } from "@/lib/query-client";
 import { Colors, Spacing, FontSize, Radius, TOUCH_TARGET_MIN, Type } from '@/lib/theme';
 import { MenuButton } from "@/components/MenuButton";
-import { MenuLayout } from "@/components/MenuLayout";
+import { MenuLayout, takesSlack } from "@/components/MenuLayout";
 import { ConfirmDialog, type ConfirmRequest } from "@/components/ConfirmDialog";
 import { useTranslation } from "@/lib/i18n";
 import { registerForPush } from "@/lib/pushRegistration";
@@ -329,6 +329,7 @@ export default function FriendsScreen() {
           title={t("friends.sectionFriends")}
           count={friends.length > 0 ? friends.length : undefined}
         />
+        <View style={[styles.bandSurface, styles.band, styles.friendsBand]}>
         {friendsLoading && (
           <ActivityIndicator
             color={Colors.gold}
@@ -390,12 +391,13 @@ export default function FriendsScreen() {
             })}
           </View>
         )}
+        </View>
 
         {/* ── SECTION 3: Inviti a Giocare ── */}
         {gameInvites.length > 0 && (
           <>
             <SectionHeader title={t("friends.sectionGameInvites")} count={gameInvites.length} />
-            <View style={styles.listBlock}>
+            <View style={[styles.bandSurface, styles.listBlock]}>
               {gameInvites.map((invite) => (
                 <View key={invite.roomCode} style={styles.row}>
                   <View style={styles.avatarWrapper}>
@@ -443,6 +445,7 @@ export default function FriendsScreen() {
           title={t("friends.sectionPending")}
           count={pendingCount > 0 ? pendingCount : undefined}
         />
+        <View style={[styles.bandSurface, styles.band]}>
         {requests.length === 0 && sentRequests.length === 0 && (
           <View style={styles.empty}>
             <Ionicons name="hourglass-outline" size={32} color={Colors.textMuted} {...a11yHidden()} />
@@ -512,6 +515,7 @@ export default function FriendsScreen() {
             </View>
           </>
         )}
+        </View>
 
       </View>
 
@@ -546,8 +550,26 @@ const styles = StyleSheet.create({
     letterSpacing: 3,
   },
   contentWrapper: {
+    ...takesSlack,
     gap: Spacing.sm,
   },
+  // A band with nothing in it has to read as a region waiting to be filled; an
+  // empty state centred on the backdrop reads as a screen with a hole in it.
+  // `bgCard` rather than the rows' own `bgSurface`, which would leave every
+  // row dissolved into the band it sits in with a tenth-alpha outline as the
+  // only thing between them.
+  bandSurface: {
+    gap: Spacing.sm,
+    backgroundColor: Colors.bgCard,
+    borderRadius: Radius.md,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    padding: Spacing.md,
+  },
+  // The two lists are what grows with the account, so they are what takes a
+  // tall window's spare height — two shares to friends, one to pending.
+  band: { ...takesSlack, justifyContent: "center" },
+  friendsBand: { flexGrow: 2 },
   sectionHeader: {
     flexDirection: "row",
     alignItems: "center",

@@ -313,8 +313,15 @@ export function GameSettingsSheet({
             <ScrollView
               testID="settings-rows"
               showsVerticalScrollIndicator={false}
-              contentContainerStyle={{ gap: ROW_GAP * scale }}
+              contentContainerStyle={{ gap: ROW_GAP * scale, flexGrow: 1 }}
             >
+              {/* The rows keep their own rhythm and sit in the middle of what
+                  they are given: on a tablet the sheet is twice the height five
+                  toggles need, and stretching the gaps would read as a list
+                  with something missing from it. Two shrinkable spacers rather
+                  than `justifyContent`, which centres a list too tall for its
+                  box by pushing the first row out of reach above it. */}
+              <View style={sheetStyles.rowsSlack} />
               <SheetRow
                 label={t("settings.sounds")}
                 icon={soundsEnabled ? "volume-2" : "volume-x"}
@@ -362,6 +369,7 @@ export function GameSettingsSheet({
                 onToggle={onTogglePlayOnLeft}
                 scale={scale}
               />
+              <View style={sheetStyles.rowsSlack} />
             </ScrollView>
             <LinearGradient
               pointerEvents="none"
@@ -435,6 +443,7 @@ const sheetStyles = StyleSheet.create({
     marginBottom: Spacing.xs,
   },
   rowsWrap: { flex: 1 },
+  rowsSlack: { flexGrow: 1, flexShrink: 1, flexBasis: 0 },
   rowsFade: { position: "absolute", left: 0, right: 0, bottom: 0 },
   row: {
     flexDirection: "row",

@@ -1,0 +1,18 @@
+{
+  "artboards": [
+    { "file": "Rule.dc.html", "x": 0, "y": 0, "w": 760, "h": 900, "title": "The rule" },
+    { "file": "Main.dc.html", "x": 880, "y": 0, "w": 1112, "h": 834, "title": "/(online) — tablet landscape" },
+    { "file": "Leaderboard.dc.html", "x": 2112, "y": 0, "w": 1112, "h": 834, "title": "/leaderboard — tablet landscape" },
+    { "file": "Friends.dc.html", "x": 3344, "y": 0, "w": 1112, "h": 834, "title": "/friends — tablet landscape" }
+  ],
+  "annotations": [
+    {
+      "id": "brief",
+      "x": 0,
+      "y": -170,
+      "w": 520,
+      "text": "#585 — menu screens ignore how much height they are given. Measured at 1112x834 (iPad landscape); the same rule holds at 834x1112, 390x844 and 844x390. Tweak anything here and I will build it."
+    }
+  ],
+  "launch": { "view": "canvas" }
+}

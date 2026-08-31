@@ -1,0 +1,58 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@500;600;700&family=Inter:wght@400;600&display=swap" />
+  <style>
+    body { margin: 0; font-family: Inter, system-ui, sans-serif; }
+    .ttl { font-family: Rajdhani, "Trebuchet MS", sans-serif; }
+    .card { background: linear-gradient(150deg, #0F4A30, #0B3B25, #082B1A); border: 1px solid rgba(240,234,214,.1); border-radius: 16px; box-shadow: 0 6px 18px rgba(0,0,0,.45) }
+    .row { display:flex; align-items:center; gap:12px; padding:10px 14px; border-radius:12px; background:rgba(240,234,214,.04); border:1px solid rgba(240,234,214,.06) }
+    .note { position: absolute; font-size: 11px; color: rgba(201,168,76,.85); font-family: Rajdhani, sans-serif; font-weight: 600; letter-spacing:.4px }
+  </style>
+</helmet>
+
+<div style="width:1112px; height:834px; box-sizing:border-box; position:relative; background: linear-gradient(#031008 0%, #031008 55%, #082B1A 100%); color:#F0EAD6; padding:20px; display:flex; flex-direction:column">
+
+  <div style="display:flex; align-items:center; padding-bottom:8px; margin-bottom:4px; border-bottom:1px solid rgba(240,234,214,.1)">
+    <div style="width:44px; height:44px; display:flex; align-items:center; justify-content:center; color:#C9A84C; font-size:22px">&#8249;</div>
+    <div class="ttl" style="flex:1; text-align:center; font-size:24px; letter-spacing:3px; font-weight:700">Classifica</div>
+    <div style="width:38px"></div>
+  </div>
+
+  <!-- the card takes the column's height; inside it the board is the elastic region -->
+  <div class="card" style="flex:1; margin:16px 0 16px; padding:16px; display:flex; flex-direction:column; max-width:800px; width:100%; align-self:center">
+
+    <div style="text-align:center; padding-bottom:14px; border-bottom:1px solid rgba(240,234,214,.1)">
+      <div class="ttl" style="font-size:40px; font-weight:700; color:#C9A84C; line-height:1.1">1000</div>
+      <div style="font-size:13px; font-weight:600; margin-top:2px">Stagione Agosto 2026</div>
+      <div style="font-size:12px; color:rgba(240,234,214,.58)">Provvisorio &mdash; ancora 5 mani per entrare in classifica</div>
+    </div>
+
+    <!-- elastic: the board grows into the slack, so more of it is visible without scrolling -->
+    <div style="flex:1; display:flex; flex-direction:column; gap:8px; padding:14px 0; overflow:hidden">
+      <div class="row"><div class="ttl" style="width:28px; font-size:18px; font-weight:700; color:#E2C06A">1</div><div style="flex:1; font-weight:600">amaranta</div><div class="ttl" style="font-size:17px; color:#C9A84C">1284</div></div>
+      <div class="row"><div class="ttl" style="width:28px; font-size:18px; font-weight:700; color:rgba(240,234,214,.75)">2</div><div style="flex:1; font-weight:600">bledi_k</div><div class="ttl" style="font-size:17px; color:#C9A84C">1241</div></div>
+      <div class="row"><div class="ttl" style="width:28px; font-size:18px; font-weight:700; color:#A8832B">3</div><div style="flex:1; font-weight:600">rota</div><div class="ttl" style="font-size:17px; color:#C9A84C">1198</div></div>
+      <div class="row"><div class="ttl" style="width:28px; font-size:18px; font-weight:700; color:rgba(240,234,214,.58)">4</div><div style="flex:1; font-weight:600">tirana_kid</div><div class="ttl" style="font-size:17px; color:#C9A84C">1160</div></div>
+      <div class="row" style="border-color:rgba(201,168,76,.5); background:rgba(201,168,76,.1)"><div class="ttl" style="width:28px; font-size:18px; font-weight:700; color:rgba(240,234,214,.58)">5</div><div style="flex:1; font-weight:600">hgi3l8o498</div><div class="ttl" style="font-size:17px; color:#C9A84C">1000</div></div>
+      <div class="row"><div class="ttl" style="width:28px; font-size:18px; font-weight:700; color:rgba(240,234,214,.58)">6</div><div style="flex:1; font-weight:600">durres_9</div><div class="ttl" style="font-size:17px; color:#C9A84C">987</div></div>
+      <div class="row"><div class="ttl" style="width:28px; font-size:18px; font-weight:700; color:rgba(240,234,214,.58)">7</div><div style="flex:1; font-weight:600">gjoni</div><div class="ttl" style="font-size:17px; color:#C9A84C">941</div></div>
+    </div>
+
+    <!-- the footer stays on the card's floor rather than riding up under the list -->
+    <div style="text-align:center; font-size:12px; color:rgba(240,234,214,.58); margin-bottom:12px">Solo partite online tutti contro tutti, senza bot.</div>
+    <div style="height:44px; border-radius:999px; border:1px solid #C9A84C; color:#C9A84C; font-weight:600; display:flex; align-items:center; justify-content:center">Indietro</div>
+  </div>
+
+  <div class="note" style="left:24px; bottom:6px">the card is the board; empty, the trophy state centres in this same region instead of squatting at the top</div>
+  <div class="note" style="right:24px; bottom:6px; text-align:right">before: y=392 at both 390px and 834px</div>
+</div>
+</x-dc>
+</body>
+</html>

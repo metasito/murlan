@@ -1,0 +1,66 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@500;600;700&family=Inter:wght@400;600&display=swap" />
+  <style>
+    body { margin: 0; font-family: Inter, system-ui, sans-serif; }
+    .ttl { font-family: Rajdhani, "Trebuchet MS", sans-serif; }
+    .box { background:#0E2920; border:1px solid rgba(201,168,76,.2); border-radius:12px; padding:16px; display:flex; flex-direction:column; gap:6px }
+    .h { font-size:15px; font-weight:700; color:#C9A84C; font-family: Rajdhani, sans-serif; letter-spacing:.5px }
+    .b { font-size:13px; line-height:1.5; color:rgba(240,234,214,.75) }
+    code { font-family: ui-monospace, Menlo, Consolas, monospace; font-size:12px; color:#E2C06A }
+  </style>
+</helmet>
+
+<div style="width:760px; height:900px; box-sizing:border-box; background:#0A1F18; color:#F0EAD6; padding:32px 34px; display:flex; flex-direction:column; gap:20px">
+
+  <div style="display:flex; flex-direction:column; gap:4px">
+    <div class="ttl" style="font-size:11px; letter-spacing:3px; color:rgba(240,234,214,.58); font-weight:600">#585 &mdash; THE RULE, NOT SIX COPIES OF A NUMBER</div>
+    <div class="ttl" style="font-size:23px; font-weight:700">A menu screen names the region that takes the slack</div>
+  </div>
+
+  <div class="box">
+    <div class="h">The defect was never a missing height calculation</div>
+    <div class="b">Every screen already gets the full window: <code>MenuLayout</code>'s content box carries <code>flexGrow: 1</code>. What no screen says is <em>which</em> of its regions is elastic, so all of them stack at the top and the slack lands at the bottom in one lump. Nothing here measures a window &mdash; measuring is what produced six copies last time.</div>
+  </div>
+
+  <div class="box">
+    <div class="h">One primitive, in the shared layout</div>
+    <div class="b"><code>MenuCard grow</code> for a card that should reach the floor, and an exported <code>takesSlack</code> style for a plain region. Both are <code>flexGrow: 1; flexShrink: 0; flexBasis: auto</code> &mdash; it grows into spare height and never gives any back, which is what keeps it correct inside the outer <code>ScrollView</code> when the content is taller than the window.</div>
+  </div>
+
+  <div class="box">
+    <div class="h">Which region, per screen</div>
+    <div class="b">
+      <b>/(online)</b> &mdash; nothing grows. Two short forms; the columns centre in the height the row already stretches to, and the divider finally spans a composition rather than a void.<br>
+      <b>/leaderboard</b> &mdash; the card reaches the floor, the board inside it is elastic, the note and Indietro sit on the card's floor.<br>
+      <b>/friends</b> &mdash; the two list sections share the slack 2:1; each empty state centres in its own band.<br>
+      <b>in-game settings sheet</b> &mdash; the rows keep their rhythm and centre in the region that was already elastic.
+    </div>
+  </div>
+
+  <div class="box">
+    <div class="h">What the check pins</div>
+    <div class="b"><code>tests/e2e/menuHeight.spec.ts</code> opens each screen at a phone height and a tablet height and compares where its content ends. A screen has to absorb a stated share of the extra height &mdash; and the share is per screen, because centring a short form is a legitimate answer and stretching one is not. A screen whose content already overflows the tall window scrolls and is skipped: it has no void.</div>
+  </div>
+
+  <div class="box">
+    <div class="h">Two things the audit's table got wrong, and the measurement says so</div>
+    <div class="b"><b>/(online)/room</b> already passes at 390&rarr;834 and 844&rarr;1112: its seat list is elastic. The audit read an <em>empty</em> room.<br><b>/rules</b> and <b>/profile</b> are 1885px and 1696px of content &mdash; taller than any window here. Identical bottoms there mean "the same content", not "a void". /rules' scrolling is #587.</div>
+  </div>
+
+  <div class="box" style="border-color:rgba(201,168,76,.45)">
+    <div class="h">To tweak</div>
+    <div class="b">The 2:1 split on /friends, whether /(online)'s columns centre or its cards grow, and whether the settings rows centre or spread evenly &mdash; those are the three judgement calls. Say which you'd rather and it is a one-line change each.</div>
+  </div>
+
+</div>
+</x-dc>
+</body>
+</html>
