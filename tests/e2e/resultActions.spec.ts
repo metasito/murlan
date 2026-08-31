@@ -12,6 +12,7 @@
 import { test, expect } from "./fixtures";
 import { openApp, startOfflineGame } from "./helpers/navigation";
 import { driveGameToCompletion } from "./helpers/bot";
+import { settled } from "./helpers/settle";
 
 const RESULT_URL = /\/result/;
 
@@ -87,6 +88,11 @@ test("the result screen's actions read as a pair, below the rankings, at every s
 
   for (const vp of VIEWPORTS) {
     await page.setViewportSize({ width: vp.width, height: vp.height });
+    // The branch swap remounts `ScoreRow`, which enters from `translateX(30)`,
+    // so every rank row is 30px past its resting right edge for the length of
+    // its own staggered spring. Measuring through that reads the entrance as
+    // overflow — the rows really are outside the window, just not for long.
+    await settled(page, 3000, '[data-testid="result-rankings"]');
 
     const [home, primary, rankings] = await boxes(
       page,

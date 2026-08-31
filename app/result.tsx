@@ -453,9 +453,8 @@ const styles = StyleSheet.create({
     width: 170,
     minWidth: 130,
     maxWidth: 200,
-    justifyContent: "space-between",
     paddingVertical: Spacing.xs,
-    gap: Spacing.sm,
+    gap: Spacing.snug,
   },
   landscapeRight: {
     flex: 1,
