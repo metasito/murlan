@@ -210,7 +210,6 @@ export const en = {
   // Murlan's 3-to-10 rule is this game's own; every other game in the family
   // lets the winner give any card (docs/research/2026-08-28-card-exchange-
   // interaction.md §2). The glow says which cards; this says why.
-  "exchange.rule": "You may give a 3 to a 10",
   "exchange.noValidCards": "No card in 3–10 — give your lowest",
   // What the other two seats read while the winner decides.
   "exchange.watching": "{{winner}} is choosing a card for {{loser}}",

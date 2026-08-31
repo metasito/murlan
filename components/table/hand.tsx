@@ -60,7 +60,12 @@ const DEAL_EASING = Easing.bezier(0.2, 0.85, 0.3, 1);
 // channel on top of that, never the only one. Only the giveable state moves —
 // a sunk card would push past the hand row's bottom edge.
 const GIVEABLE_LIFT = -8;
-const UNGIVEABLE_OPACITY = 0.3;
+// The dim is laid *over* the card rather than taken out of the card's own
+// opacity. A fan overlaps by design, so a translucent card is one the cards
+// behind it show through: six of them together read as a rendering fault
+// rather than as six cards that cannot be given, and the felt shows through
+// the lot. An opaque veil recedes the card and stacks with nothing.
+const UNGIVEABLE_DIM = Scrim.medium;
 // `filter` reaches react-native-web as raw CSS and react-native's own
 // processFilter parses the same string, so the string form is the only one that
 // works on both — an array serialises to `[object Object]` on web.
@@ -232,9 +237,8 @@ function CardItemBase({
     // tilt as it lands, rather than overshooting past it.
     const restRot = arcRot + tilt.value;
     const exchangeY = e >= 0 ? e * GIVEABLE_LIFT : 0;
-    const faded = e >= 0 ? 1 : 1 + e * (1 - UNGIVEABLE_OPACITY);
     return {
-      opacity: (1 - d) * faded,
+      opacity: 1 - d,
       transform: [
         { translateX: dealFromX * d + shift.value },
         { translateY: liftY.value + exchangeY + dealRise * d },
@@ -253,6 +257,8 @@ function CardItemBase({
   // glow can be animated with opacity alone and never touches the card's own
   // rasterised rank characters.
   const glowStyle = useAnimatedStyle(() => ({ opacity: glow.value }));
+
+  const veilStyle = useAnimatedStyle(() => ({ opacity: Math.max(0, -exchangeState.value) }));
 
   const cardId = card.id;
   const handlePress = useCallback(() => onPress(cardId), [onPress, cardId]);
@@ -295,6 +301,12 @@ function CardItemBase({
         a11yActionKeys={MOVE_KEYS}
         noLift
       />
+      {giveable === false && (
+        <Animated.View
+          pointerEvents="none"
+          style={[handStyles.ungiveableVeil, { borderRadius: Radius.sm }, veilStyle]}
+        />
+      )}
     </Animated.View>
   );
 }
@@ -749,6 +761,8 @@ export function StraightHand({
   // The middle card rides highest, so the row is as tall as the card plus the
   // climb; the whole arc is then pushed past the bottom edge by the crop.
   const arcRise = box.h - cardH;
+  /** Everything a card can occupy above the row's own top edge. */
+  const topClearance = arcRise + handRowHeadroom(cardH);
 
   const row = (
     <GestureDetector gesture={drag}>
@@ -829,14 +843,22 @@ export function StraightHand({
           // even the finger floor cannot fit the row in availW — a full hand on
           // a small phone. The row overflows and is moved under a window that
           // clips it, rather than clipping the hand or stepping below what a
-          // thumb can separate. The window keeps the row's headroom as top
-          // padding — without it, a selected card's lift is cut off at the top
-          // edge.
+          // thumb can separate.
+          //
+          // The window has to clear everything the row *draws*, which is more
+          // than the row is tall: a card sits `arcRise` above the row's top at
+          // the arc's high point and lifts `handRowHeadroom` further when it is
+          // chosen, and it hangs `crop` below the bottom. `overflow` takes both
+          // axes or neither, so a box sized to the row alone cuts a straight
+          // line across the fan — which is what this looked like on the
+          // smallest handset. The negative margin spends the extra room
+          // upwards, so the row lands where it does at every other size.
           <View
             style={{
               width: availW,
-              height: visibleH + arcRise + handRowHeadroom(cardH),
-              paddingTop: handRowHeadroom(cardH),
+              marginTop: -arcRise,
+              height: topClearance + visibleH + crop + arcRise,
+              paddingTop: topClearance,
               overflow: "hidden",
             }}
           >
@@ -872,6 +894,15 @@ const handStyles = StyleSheet.create({
     alignSelf: "center",
   },
   handCardWrap: { position: "absolute" },
+  // Over the card, and it says so: the iOS renderer paints siblings in its own
+  // order rather than in tree order, so a veil that relied on coming last would
+  // land under the card it is meant to dim (#209).
+  ungiveableVeil: {
+    position: "absolute",
+    top: 0, left: 0, right: 0, bottom: 0,
+    zIndex: 1,
+    backgroundColor: UNGIVEABLE_DIM,
+  },
   // A rim rather than a fill: the card underneath has to stay readable while
   // it is lit, and this sibling never touches its rasterised rank glyphs.
   giveableRim: {

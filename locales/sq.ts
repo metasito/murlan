@@ -213,7 +213,6 @@ export const sq: Record<keyof typeof en, string> = {
 
   // ----------------------------------------------------------------- exchange.*
   "exchange.prompt": "{{name}} të dha këtë — jepi një",
-  "exchange.rule": "Mund të japësh nga 3 deri në 10",
   "exchange.noValidCards": "Asnjë letër nga 3 në 10 — jep më të ulëtën",
   "exchange.watching": "{{winner}} po zgjedh një letër për {{loser}}",
   "exchange.waitingForYou": "{{winner}} po zgjedh një letër për ty",
