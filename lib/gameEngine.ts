@@ -96,6 +96,16 @@ export interface GameState {
   startCard?: Card;
   startReason?: StartReason;
   exchangePhase?: ExchangePhase;
+  /**
+   * How many cards of each rank have been played this manche, indexed by
+   * `getRankStrength`. Public information — every seat watched them land — so
+   * `sanitizeStateForPlayer` passes it through untouched.
+   *
+   * Optional because `GameState` is persisted as jsonb: a hand in flight across
+   * a deploy rehydrates without it, and a bot reading an absent tally must play
+   * exactly as it did before the tally existed.
+   */
+  playedRanks?: number[];
 }
 
 const RANK_ORDER: Rank[] = [
@@ -103,8 +113,44 @@ const RANK_ORDER: Rank[] = [
   "J", "Q", "K", "A", "2", "joker_bw", "joker_colored",
 ];
 
+export const RANK_SLOTS = RANK_ORDER.length;
+
 export function getRankStrength(rank: Rank): number {
   return RANK_ORDER.indexOf(rank);
+}
+
+/** How many of each rank a full deck holds, indexed by `getRankStrength`. */
+const DECK_BY_STRENGTH: number[] = RANK_ORDER.map((rank) =>
+  rank === "joker_bw" || rank === "joker_colored" ? 1 : 4
+);
+
+export const emptyRankTally = (): number[] => new Array<number>(RANK_SLOTS).fill(0);
+
+/**
+ * How many cards stronger than `strength` are neither played nor in `myHand` —
+ * that is, how many could still beat it in someone else's hand.
+ *
+ * At two seats twelve cards are never dealt (`dealCards` excludes them), so they
+ * are counted here as outstanding. That errs towards caution — the bot may hold
+ * back a card that was actually unbeatable — and never towards over-confidence,
+ * which is the only direction that loses a hand it should have won.
+ *
+ * An absent `played` means nothing is known to have been played, which is what a
+ * state rehydrated from before the tally existed must look like.
+ */
+export function outstandingAbove(
+  strength: number,
+  played: number[] | undefined,
+  myHand: Card[]
+): number {
+  const mine = emptyRankTally();
+  for (const card of myHand) mine[getRankStrength(card.rank)] += 1;
+
+  let out = 0;
+  for (let i = strength + 1; i < RANK_SLOTS; i++) {
+    out += Math.max(0, DECK_BY_STRENGTH[i] - (played?.[i] ?? 0) - mine[i]);
+  }
+  return out;
 }
 
 export function cardStrength(card: Card): number {
@@ -696,7 +742,8 @@ export function aiChoosePlay(
   otherPlayersHandCount: number[],
   requireCard?: Card,
   rng: () => number = Math.random,
-  partnerHoldsTop = false
+  partnerHoldsTop = false,
+  playedRanks?: number[]
 ): Combination | null {
   const plays = getAllValidPlays(player.hand, lastPlayed, isNewRound, requireCard);
   if (plays.length === 0) return null;
@@ -705,6 +752,18 @@ export function aiChoosePlay(
   const diff = personality.difficulty;
   const myCards = player.hand.length;
   const minOpponent = Math.min(...otherPlayersHandCount);
+
+  /**
+   * Whether nothing still unseen can beat this play.
+   *
+   * Single cards only. A multi-card shape is beaten by a higher shape of the
+   * same size and by every bomb, which a rank tally cannot rule out, so
+   * claiming a combo is safe would be a guess wearing the same clothes as a
+   * count. `outstandingAbove` already excludes this bot's own hand.
+   */
+  const unbeatable = (play: Combination) =>
+    play.cards.length === 1 &&
+    outstandingAbove(cardStrength(play.cards[0]), playedRanks, player.hand) === 0;
 
   // Universal: if this play empties the hand, always do it. No personality
   // declines to win, so this returns before the knobs are applied.
@@ -724,6 +783,18 @@ export function aiChoosePlay(
 
   if (diff === "easy") {
     return withPersonality([...plays].sort((a, b) => a.strength - b.strength)[0]);
+  }
+
+  // A lead nothing outstanding can beat takes the round for free, so holding it
+  // back wins nothing and costs the lead. Cheapest such card first — the point
+  // is to take the round, not to spend the best card doing it. Above the knobs
+  // deliberately: this is a certainty, and aggression and unpredictability
+  // exist to colour a judgement call.
+  if (isNewRound) {
+    const certain = plays.filter(unbeatable);
+    if (certain.length > 0) {
+      return certain.sort((a, b) => a.strength - b.strength)[0];
+    }
   }
 
   const bombs = plays.filter(
@@ -879,9 +950,14 @@ export function processPlay(state: GameState, combination: Combination): GameSta
   const newState = structuredClone(state);
   const player = newState.players[newState.currentTurnIndex];
 
+  // Both paths route every play through here — the server online, the client
+  // itself offline — so the tally is written once and cannot drift between them.
+  const tally = newState.playedRanks ?? emptyRankTally();
   combination.cards.forEach((played) => {
     player.hand = player.hand.filter((c) => c.id !== played.id);
+    tally[getRankStrength(played.rank)] += 1;
   });
+  newState.playedRanks = tally;
 
   newState.lastPlayedCombination = combination;
   newState.lastPlayedBy = newState.currentTurnIndex;
@@ -1052,6 +1128,7 @@ export function initializeRematch(
       currentTurnIndex: safeWinnerIdx,
       lastPlayedCombination: null,
       lastPlayedBy: safeWinnerIdx,
+      playedRanks: emptyRankTally(),
       passCount: 0,
       gameMode,
       roundWinner: null,
@@ -1081,6 +1158,7 @@ export function initializeRematch(
     currentTurnIndex: safeWinnerIdx,
     lastPlayedCombination: null,
     lastPlayedBy: safeWinnerIdx,
+    playedRanks: emptyRankTally(),
     passCount: 0,
     gameMode,
     roundWinner: null,
@@ -1247,6 +1325,7 @@ export function initializeGame(
     currentTurnIndex: startIdx,
     lastPlayedCombination: null,
     lastPlayedBy: startIdx,
+    playedRanks: emptyRankTally(),
     passCount: 0,
     gameMode,
     roundWinner: null,

@@ -119,7 +119,8 @@ export function autoMoveForSeat(
       opponents.handCounts,
       requireCard,
       undefined,
-      opponents.partnerHoldsTop
+      opponents.partnerHoldsTop,
+      state.playedRanks
     );
     if (combo) {
       recordPlayFlags(game, seat, combo);
