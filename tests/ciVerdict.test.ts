@@ -43,6 +43,32 @@ describe("reading ci.yml's verdict", () => {
     assert.ok(!v.infrastructure);
   });
 
+  // A skipped job also reports zero steps, and a gate that skips one job while the rest of the
+  // run executes is the case that tells these apart. `android-build`/`ios-build` skip whenever
+  // no native input changed, so without this every genuinely red run would be read as
+  // infrastructure, and `driveToGreen` would abort instead of sending a fix agent.
+  test("a job skipped by its gate is not infrastructure, and the real failure still names itself", () => {
+    const v = decideVerdict(done("failure"), [
+      { name: "Typecheck and tests", conclusion: "failure", steps: 9 },
+      { name: "Android compiles", conclusion: "skipped", steps: 0 },
+      { name: "iOS compiles", conclusion: "skipped", steps: 0 },
+    ]);
+    assert.equal(v.pass, false);
+    assert.ok(!v.infrastructure);
+    assert.equal(v.failedStep, "Typecheck and tests");
+  });
+
+  // The distinction is the conclusion, not the order: a stepless *failure* alongside a skip is
+  // still infrastructure.
+  test("a stepless failure is still infrastructure even next to a skipped job", () => {
+    const v = decideVerdict(done("failure"), [
+      { name: "Android compiles", conclusion: "skipped", steps: 0 },
+      { name: "scope", conclusion: "failure", steps: 0 },
+    ]);
+    assert.equal(v.infrastructure, true);
+    assert.equal(v.failedStep, "scope");
+  });
+
   test("a run still in progress does not pass", () => {
     const v = decideVerdict({ databaseId: 7, conclusion: null, status: "in_progress" });
     assert.equal(v.pass, false);

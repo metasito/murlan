@@ -10,6 +10,14 @@ on:
   # A branch with no open PR yet has no other way to get a real run —
   # `gh workflow run ci.yml --ref <branch>`.
   workflow_dispatch:
+  # The device compiles run only when a native input changed, so a break that
+  # comes from outside the diff — a new Xcode or Android SDK on the runner
+  # image, a CocoaPods change — would otherwise first appear weeks later, on
+  # whichever pull request happened to touch package-lock.json, and read as
+  # that branch's fault. A schedule has no base commit, which sends `scope`
+  # down its "running everything" path and compiles both platforms.
+  schedule:
+    - cron: "17 4 * * 1"
 
 # Superseding a pull request's own push saves runner time; superseding `main`'s
 # run destroys the only evidence that merged code was ever tested — the docs
@@ -96,15 +104,25 @@ jobs:
           fi
           changed=$(git diff --name-only "$base" HEAD)
           # The two compile jobs cost about 15 minutes each, against 5 for the
-          # whole rest of this workflow, so they run only when something that
-          # can break them changed. A debug build loads its JavaScript from
-          # Metro instead of bundling it — measured on the run that added the
-          # jobs: iOS logs "SKIP_BUNDLING enabled; skipping.", and none of
-          # Gradle's 596 tasks is createBundleDebugJsAndAssets — so no source
-          # change can reach a compile. Only the dependency set and the app
-          # config prebuild generates the native project from can.
-          if grep -qE '^(package\.json|package-lock\.json|app\.json|\.github/workflows/ci\.yml)$' <<< "$changed"; then
-            echo "A native input changed — compiling for both devices."
+          # whole rest of this workflow, so they do not run on every change. A
+          # debug build loads its JavaScript from Metro instead of bundling it —
+          # measured rather than assumed on the run that added the jobs: iOS
+          # logs "SKIP_BUNDLING enabled; skipping.", and none of Gradle's 596
+          # tasks is createBundleDebugJsAndAssets — so the JavaScript sources
+          # cannot reach a compile.
+          #
+          # Named as what *cannot* reach one, for the same reason the prose
+          # filter below is an allowlist: listing the native inputs instead
+          # fails unsafe, skipping the compile for anything it has not heard of.
+          # `patches/` edits native sources through patch-package, `assets/` is
+          # copied into both native projects and compiled by AAPT2 and actool,
+          # and an `app.config.ts` would replace app.json outright — an
+          # allowlist would have silently missed all three.
+          if grep -qE '^\.github/workflows/ci\.yml$' <<< "$changed"; then
+            echo "This workflow changed — it must exercise its own compile jobs."
+            echo "native=true" >> "$GITHUB_OUTPUT"
+          elif grep -qvE '^(app|components|context|lib|locales|shared|server|tests|docs|scripts|public|\.claude|\.agents|\.maestro|\.github)/|\.md$' <<< "$changed"; then
+            echo "Something outside the JavaScript sources changed — compiling for both devices."
             echo "native=true" >> "$GITHUB_OUTPUT"
           else
             echo "native=false" >> "$GITHUB_OUTPUT"
@@ -358,7 +376,6 @@ jobs:
         with:
           distribution: temurin
           java-version: "17"
-      - uses: gradle/actions/setup-gradle@v4
       - run: npm ci
       # --no-install: `npm ci` above already installed, and letting prebuild run
       # its own install would resolve outside the lockfile.

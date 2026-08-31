@@ -48,7 +48,13 @@ export function decideVerdict(run: RunRow | undefined, jobs: JobRow[] = []): Ver
     return { pass: true, runId: run.databaseId, reason: "ci.yml passed" };
   }
 
-  const stepless = jobs.filter((j) => j.conclusion !== "success" && j.steps === 0);
+  // A skipped job reports zero steps too, and it means the opposite: its gate answered, rather
+  // than the runner never starting. `android-build`/`ios-build` skip whenever no native input
+  // changed, so counting them here would call every genuinely red run infrastructure and stop
+  // `driveToGreen` from ever sending a fix agent.
+  const stepless = jobs.filter(
+    (j) => j.conclusion !== "success" && j.conclusion !== "skipped" && j.steps === 0,
+  );
   if (stepless.length > 0) {
     return {
       pass: false,
