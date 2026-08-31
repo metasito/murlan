@@ -1,13 +1,15 @@
 import React from 'react';
 import {
   View, ScrollView, StyleSheet, Platform, ViewStyle, KeyboardAvoidingView,
+  Animated, Easing,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Colors } from '@/lib/theme';
 import { a11yHidden } from '@/lib/a11y';
+import { usePrefersReducedMotion } from '@/lib/accessibility';
 import { useBannerBottom } from '@/context/NotificationContext';
-import { TOP_GAP } from '@/components/NotificationBanner';
+import { SLIDE_DURATION, TOP_GAP } from '@/components/NotificationBanner';
 
 const BACKDROP = [Colors.bg, Colors.bg, Colors.feltDark] as const;
 
@@ -19,6 +21,49 @@ const SCROLL_THROTTLE_MS = 16;
 // The app is served as a web bundle, so a 1920-wide browser is a real viewport
 // and an uncapped menu row puts its two ends a metre apart.
 const MENU_MAX_W = 800;
+
+/**
+ * `target`, reached over `duration` rather than in a single frame.
+ *
+ * A plain number, deliberately, and that is the whole reason this exists rather
+ * than an animated style: the value is layout padding, and an animated entry in
+ * `style` is frozen at the render that mounted it, so nothing below could read
+ * what was reserved. A layout transition is not available either — reanimated
+ * implements one on web as a FLIP, scaling the whole subtree for its duration.
+ * Mirroring an `Animated.Value` into state costs a render per frame of the
+ * movement, and that is what buys a number anything can read.
+ *
+ * Starts settled: a screen mounted while a banner is already up has nothing to
+ * animate, and sliding its content down on arrival would be a second movement
+ * nobody asked for.
+ */
+function useEasedTo(target: number, duration: number): number {
+  const value = React.useRef(new Animated.Value(target)).current;
+  const [eased, setEased] = React.useState(target);
+
+  React.useEffect(() => {
+    if (duration === 0) {
+      value.setValue(target);
+      setEased(target);
+      return;
+    }
+    const id = value.addListener((v) => setEased(v.value));
+    const animation = Animated.timing(value, {
+      toValue: target,
+      duration,
+      easing: Easing.out(Easing.cubic),
+      // Layout props cannot be driven off the JS thread.
+      useNativeDriver: false,
+    });
+    animation.start();
+    return () => {
+      animation.stop();
+      value.removeListener(id);
+    };
+  }, [target, duration, value]);
+
+  return eased;
+}
 
 interface MenuLayoutProps {
   children: React.ReactNode;
@@ -40,6 +85,7 @@ export function MenuLayout({
 }: MenuLayoutProps) {
   const insets = useSafeAreaInsets();
   const bannerBottom = useBannerBottom();
+  const reduceMotion = usePrefersReducedMotion();
 
   const [viewportH, setViewportH] = React.useState(0);
   const [contentH,  setContentH]  = React.useState(0);
@@ -55,7 +101,12 @@ export function MenuLayout({
 
   // A banner floats over the navigator at a z-index above it, so nothing here
   // is told it is there and the screen would otherwise lay itself out under it.
-  const reserved = Math.max(0, bannerBottom + TOP_GAP - paddingTop);
+  // Eased on the banner's own step, so the content moves with it rather than
+  // jumping clear a third of a second before it arrives.
+  const reserved = useEasedTo(
+    Math.max(0, bannerBottom + TOP_GAP - paddingTop),
+    reduceMotion ? 0 : SLIDE_DURATION
+  );
 
   // `style` is merged last (after `centered`) so callers can override layout
   // — e.g. justifyContent — without it being clobbered by the centered preset.
