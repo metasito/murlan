@@ -307,12 +307,20 @@ default passes, and the same flow against a wrong port fails.
 
 ### What CI runs, and what it does not
 
-`.github/workflows/maestro.yml` runs **`smoke.yaml` only**, on pushes to `main`
-and on demand. `offline-game.yaml` reaches the game table on a runner and then
-dies there with no assertion message - the emulator going down, not the app
-being wrong, and the thing this section predicted before the job had ever run.
-More memory, more cores and a longer wait changed nothing. It still passes
-locally, a real hand to the result screen in about sixteen minutes. See #185.
+`.github/workflows/maestro.yml` runs **`smoke.yaml` only**, and **on demand
+only** — `on: workflow_dispatch:`, with no `push` trigger. Its own header says
+why (#186) and #354 owns restoring it.
+
+`offline-game.yaml` reached the game table on a runner and then died there with
+no assertion message - the emulator going down, not the app being wrong, and the
+thing this section predicted before the job had ever run. More memory, more
+cores and a longer wait changed nothing. It still passes locally, a real hand to
+the result screen in about sixteen minutes. See #185.
+
+That last paragraph is the state as of **2026-08-21**, and it cannot be
+rechecked yet: `offline-game.yaml:85` waits on the tutorial's Skip control,
+which taps and does nothing on Android (#619), so the flow no longer reaches
+the table at all.
 
 ### What CI supplies that a developer's machine supplies by hand
 
