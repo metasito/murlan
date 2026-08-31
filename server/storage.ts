@@ -532,6 +532,15 @@ class DrizzleStorage {
     return cleared.map((row) => row.inviteeId);
   }
 
+  /** Who holds an invite to this room, leaving the rows alone. */
+  async getRoomInvitees(roomId: string): Promise<string[]> {
+    const held = await db
+      .select({ inviteeId: gameInvites.inviteeId })
+      .from(gameInvites)
+      .where(eq(gameInvites.roomId, roomId));
+    return held.map((row) => row.inviteeId);
+  }
+
   /**
    * Turns one invite down. Addressed by room code rather than row id because
    * the unique index makes (invitee, room) name exactly one row, which also

@@ -15,6 +15,7 @@ import {
   handleSeatRelease,
   roomStatePayload,
   teamsSizeRefusal,
+  announceIfFilled,
 } from "./socketTable.ts";
 import { applyOrForward } from "./tableRouter.ts";
 import {
@@ -147,6 +148,7 @@ export function registerRoomHandlers({ io, socket, userId, username }: RoomHandl
           gameMode: room.gameMode,
         });
         io.to(room.id).emit("room:state", roomStatePayload(room, updatedPlayers));
+        await announceIfFilled(io, room, updatedPlayers.length);
       },
       { limit: 10, windowMs: 60_000 }
     );
@@ -250,6 +252,7 @@ export function registerRoomHandlers({ io, socket, userId, username }: RoomHandl
             "room:state",
             roomStatePayload(candidate.room, updatedPlayers)
           );
+          await announceIfFilled(io, candidate.room, updatedPlayers.length);
           joinedRoomId = roomId;
           break;
         }

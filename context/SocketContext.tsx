@@ -319,6 +319,14 @@ export function SocketProvider({ children }: { children: ReactNode }) {
       qc.invalidateQueries({ queryKey: ["/api/friends/invites"] });
     };
 
+    // The invite itself is still good either way, so the list is simply re-asked
+    // — it filters on the seat count already. No banner on the way back: a
+    // stranger leaving a lobby is not an invitation.
+    const onRoomJoinable = ({ roomCode, joinable }: { roomCode: string; joinable: boolean }) => {
+      if (!joinable) setPendingInvite((prev) => (prev?.roomCode === roomCode ? null : prev));
+      qc.invalidateQueries({ queryKey: ["/api/friends/invites"] });
+    };
+
     // Keep the whole payload: the server emits a stable `code` (plus `params`)
     // alongside a plain-text `message`, so the client can render it in the
     // player's own language. `translateServerPayload` falls back to the
@@ -360,6 +368,7 @@ export function SocketProvider({ children }: { children: ReactNode }) {
     socket.on("friend:request_accepted", onRequestAccepted);
     socket.on("friend:invite", onInvite);
     socket.on("friend:invite_retired", onInviteRetired);
+    socket.on("friend:room_joinable", onRoomJoinable);
     socket.on("friend:error", onFriendError);
     socket.on("socket:error", onSocketError);
 
@@ -383,6 +392,7 @@ export function SocketProvider({ children }: { children: ReactNode }) {
       socket.off("friend:request_accepted", onRequestAccepted);
       socket.off("friend:invite", onInvite);
       socket.off("friend:invite_retired", onInviteRetired);
+      socket.off("friend:room_joinable", onRoomJoinable);
       socket.off("friend:error", onFriendError);
       socket.off("socket:error", onSocketError);
     };
