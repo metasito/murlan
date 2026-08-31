@@ -79,3 +79,13 @@ ALLOW_DESTRUCTIVE=1 node scripts/reset-db.mjs --yes && npm run db:push
 | [`docs/ARCHITECTURE.md`](./docs/ARCHITECTURE.md) | Layers, data flow, socket lifecycle, persistence |
 | [`docs/TESTING.md`](./docs/TESTING.md) | What each test layer covers and how to run it |
 | [`replit.md`](./replit.md) | Replit-specific run/deploy notes |
+
+## Licence and contributions
+
+**This source is public to read. It is not licensed for reuse.** There is no
+`LICENSE` file and that is deliberate (#297): all rights are reserved, so it may
+not be copied, modified or redistributed. Read it, learn from it, and write your
+own.
+
+Outside pull requests are not accepted. Issues are welcome — a bug report on the
+live game is useful whether or not the code is reusable.
