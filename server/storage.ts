@@ -533,6 +533,21 @@ class DrizzleStorage {
   }
 
   /**
+   * Who holds an invite to this room, leaving the rows alone.
+   *
+   * A room that filled up can empty again, and a deleted invite cannot come
+   * back — so the transition that is merely "not joinable right now" reads the
+   * holders rather than clearing them.
+   */
+  async getRoomInvitees(roomId: string): Promise<string[]> {
+    const held = await db
+      .select({ inviteeId: gameInvites.inviteeId })
+      .from(gameInvites)
+      .where(eq(gameInvites.roomId, roomId));
+    return held.map((row) => row.inviteeId);
+  }
+
+  /**
    * Turns one invite down. Addressed by room code rather than row id because
    * the unique index makes (invitee, room) name exactly one row, which also
    * makes a repeated decline a no-op instead of an error.

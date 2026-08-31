@@ -254,6 +254,30 @@ export async function retireRoomInvites(
 }
 
 /**
+ * Tells everyone holding an invite that the room's last seat went, or came
+ * back. The rows are left alone: a full room is not a finished one, and an
+ * invite deleted when a stranger sat down could not return when they left.
+ *
+ * Emitted on both edges rather than only on filling, because the client's
+ * answer to either is to ask the server what it may still join —
+ * `/api/friends/invites` filters on the seat count, so it is already right.
+ */
+export async function announceRoomJoinable(
+  io: SocketServer,
+  roomId: string,
+  roomCode: string,
+  joinable: boolean
+): Promise<void> {
+  const invitees = await storage.getRoomInvitees(roomId).catch((err: unknown) => {
+    logger.warn({ err, roomId }, "Failed to read who holds an invite to a room that filled");
+    return [] as string[];
+  });
+  for (const inviteeId of invitees) {
+    io.to(userRoom(inviteeId)).emit("friend:room_joinable", { roomCode, joinable });
+  }
+}
+
+/**
  * Releases a seat: the room_players row, the user's timers, and the seat in a
  * live game. A `room:leave` and a lost connection differ only in what the
  * caller can hand over, so the seat-side work lives in one place.
@@ -326,6 +350,11 @@ export async function handleSeatRelease(
     io.to(roomId).emit(
       "room:state",
       roomStatePayload({ ...room, hostUserId: newHostId }, remaining)
+    );
+    // The seat that just went is one the room did not have a moment ago, so
+    // anyone whose invite went quiet when it filled can be told it is open.
+    void announceRoomJoinable(io, roomId, room.code, true).catch((err: unknown) =>
+      logger.warn({ err, roomId }, "Failed to announce a seat freeing in a lobby")
     );
   } else {
     // Routed rather than read out of this process's own map: the seat is live
