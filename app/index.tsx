@@ -627,7 +627,7 @@ function HomeInviteCard({
 }) {
   const { t } = useTranslation();
   const entrance = useEntrance(step);
-  const { acceptInvite } = useSocket();
+  const { acceptInvite, dismissGameInvite } = useSocket();
 
   return (
     <Animated.View style={[styles.inviteCard, entrance]}>
@@ -639,6 +639,7 @@ function HomeInviteCard({
         testID="home-invite-join"
         onPress={() => {
           hapticLight();
+          dismissGameInvite(roomCode);
           acceptInvite(roomCode);
           router.push("/(online)");
         }}
