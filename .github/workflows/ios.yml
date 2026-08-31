@@ -141,6 +141,18 @@ jobs:
             });
           ')
           echo "SIMULATOR_UDID=$udid" >> "$GITHUB_ENV"
+          # Erased before anything is put on it. These simulators are the
+          # image's own and are reused between jobs, so whatever the last run
+          # left behind is still there — including a half-installed Maestro
+          # XCTest runner, which is how a job spends its whole
+          # MAESTRO_DRIVER_STARTUP_TIMEOUT and then reports "iOS driver not
+          # ready in time". Raising that timeout to 5 minutes did not help,
+          # because the runner was never coming up rather than coming up late.
+          #
+          # `erase` needs the device down, and `shutdown` on an already-down
+          # device exits non-zero.
+          xcrun simctl shutdown "$udid" 2>/dev/null || true
+          xcrun simctl erase "$udid"
           # `bootstatus -b` boots the device if it is not already booted and
           # then waits. A bare `simctl boot` on a device the image left booted
           # exits non-zero instead, taking the step with it.
