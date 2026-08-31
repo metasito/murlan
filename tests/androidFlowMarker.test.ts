@@ -41,7 +41,7 @@ describe("the Android flow marker", () => {
   const lines = scriptLines();
 
   test("is the last thing the script does before running the flows", () => {
-    const marker = lines.findIndex((l) => l.includes("app-launched"));
+    const marker = lines.findIndex((l) => l.startsWith("touch") && l.includes("app-launched"));
     const flows = lines.findIndex((l) => l.startsWith("maestro test"));
     assert.notEqual(marker, -1, "the script no longer writes the marker at all");
     assert.notEqual(flows, -1, "the script no longer runs the flows");
@@ -58,8 +58,8 @@ describe("the Android flow marker", () => {
     // One marker cannot say both. A device that came up and an app that then
     // died within five seconds is neither the runner failing to arrive nor a
     // verdict on the diff, and reporting it as either is what #647 was.
-    const booted = lines.findIndex((l) => l.includes("emulator-booted"));
-    const launched = lines.findIndex((l) => l.includes("app-launched"));
+    const booted = lines.findIndex((l) => l.startsWith("touch") && l.includes("emulator-booted"));
+    const launched = lines.findIndex((l) => l.startsWith("touch") && l.includes("app-launched"));
     assert.notEqual(booted, -1, "nothing marks the device coming up any more");
     assert.ok(
       booted < launched,
@@ -69,6 +69,19 @@ describe("the Android flow marker", () => {
     assert.ok(
       lines.slice(booted + 1, launched).some((l) => l.includes("am start")),
       "nothing between the two markers launches the app, so the second proves nothing",
+    );
+  });
+
+  test("each attempt clears the markers it is about to write", () => {
+    // `$RUNNER_TEMP` outlives an attempt and the action runs twice in one job,
+    // so a marker the first attempt wrote would answer for the second — and the
+    // verdict would name the wrong cause under the right result.
+    const clear = lines.findIndex((l) => l.startsWith("rm -f") && l.includes("emulator-booted"));
+    assert.notEqual(clear, -1, "a stale marker from the first attempt is read as the retry's");
+    assert.match(lines[clear], /app-launched/, "one marker is cleared and the other is not");
+    assert.ok(
+      clear < lines.findIndex((l) => l.includes("touch")),
+      "the markers are cleared after one of them is written",
     );
   });
 

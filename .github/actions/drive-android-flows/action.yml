@@ -44,6 +44,12 @@ runs:
         # cannot be proven except by hitting the flake again. #186.
         emulator-boot-timeout: ${{ inputs.emulator-boot-timeout }}
         script: |
+          # $RUNNER_TEMP outlives an attempt, and this action runs twice in one
+          # job. A marker left by the first attempt would be read as a claim
+          # about the second — a device that failed to boot on the retry
+          # answered for by the first attempt's "the device came up", which is
+          # the wrong cause under the right verdict.
+          rm -f "$RUNNER_TEMP/emulator-booted" "$RUNNER_TEMP/app-launched"
           # The flows select on Italian copy, the same way
           # tests/e2e/playwright.config.ts pins locale: "it-IT" and for the
           # same reason: a runner's emulator comes up en-US, so the app
@@ -118,7 +124,7 @@ runs:
           # The same link the flows use, from the same host loopback: a cold
           # start is how Expo Go takes a deep link at all, and one delivered to
           # a copy already at the front is ignored.
-          adb shell am start -W -a android.intent.action.VIEW -d 'exp://127.0.0.1:8081?disableOnboarding=1' host.exp.exponent
+          timeout 120 adb shell am start -W -a android.intent.action.VIEW -d 'exp://127.0.0.1:8081?disableOnboarding=1' host.exp.exponent
           # Resumed for ten consecutive seconds, not merely resumed once: the
           # process that dies takes several seconds to do it, and a single poll
           # lands inside that window as often as outside it.

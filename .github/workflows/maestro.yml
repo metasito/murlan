@@ -226,7 +226,7 @@ jobs:
             exit 1
           fi
           if [ ! -f "$RUNNER_TEMP/app-launched" ]; then
-            echo "::error::The app never reached a usable state, twice. Nothing here is a result about this branch - #647."
+            echo "::error::The app never reached a usable state, and the retry did not change that. Nothing here is a result about this branch - #647."
             exit 1
           fi
           echo "::error::The flows ran on an app that launched, so this is a result about the diff."
