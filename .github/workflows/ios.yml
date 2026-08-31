@@ -189,6 +189,14 @@ jobs:
       # `MAESTRO_APP_ID` is what tells the flows they are driving the app
       # itself: given one, they skip the Expo Go launch dance entirely.
       - name: Run the flows
+        env:
+          # Maestro installs its XCUITest runner on the simulator before the
+          # first step and gives up on its own default, which a shared runner
+          # misses intermittently — one dispatch started in seconds and the
+          # next spent 2m15s and failed with no flow having run. That reads as
+          # a red branch and is a cold macOS host, so the wait is made long
+          # enough to be about the driver rather than about the weather.
+          MAESTRO_DRIVER_STARTUP_TIMEOUT: "300000"
         run: maestro test -e MAESTRO_APP_ID="$APP_ID" .maestro/smoke.yaml .maestro/offline-game.yaml
 
       - name: Upload Maestro debug output
