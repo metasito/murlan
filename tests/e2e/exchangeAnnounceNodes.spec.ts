@@ -11,6 +11,7 @@
 // uses and for the same reason.
 import { test, expect } from "./fixtures";
 import { resumeSaved } from "./helpers/offlineSeed";
+import { tap } from "./helpers/press";
 
 /** Roles a reader lands on. An announcement must hold none of them. */
 const WIDGETS = new Set(["button", "radio", "link", "checkbox", "switch", "tab"]);
@@ -99,8 +100,8 @@ test("the exchange announcement speaks without becoming a control", async ({
   });
   // The hand stays on the table and the table's own key is the confirm, so both
   // clicks land on controls that were already there.
-  await page.getByRole("button", { name: GIVEBACK_SPOKEN, exact: true }).click();
-  await page.getByTestId("btn-gioca").click();
+  await tap(page, page.getByRole("button", { name: GIVEBACK_SPOKEN, exact: true }));
+  await tap(page, page.getByTestId("btn-gioca"));
 
   // The sentence is on screen before the tree is read; it clears itself on a
   // timer, so an unwaited read races it.

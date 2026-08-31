@@ -18,6 +18,7 @@ import type { Locator, Page } from "@playwright/test";
 // resolver, which will not guess one. Playwright accepts it either way.
 import { GIOCA_VALID_LABEL, YOUR_TURN_PREFIX } from "./labels.ts";
 
+import { tap } from "./press.ts";
 import { HAND_CARDS, TABLE, TABLE_STATE } from "./selectors.ts";
 const EXCHANGE_GIVE_PREFIX = "Fase di scambio: devi dare una carta a";
 
@@ -209,7 +210,7 @@ async function playOrPass(page: Page, desc: string): Promise<string | null> {
 
   async function click(locator: Locator): Promise<boolean> {
     try {
-      await locator.click({ timeout: CARD_CLICK_TIMEOUT_MS });
+      await tap(page, locator);
       // Selecting a card runs a haptic call, a sound, and a Reanimated pop;
       // clicking the next candidate before React has flushed the resulting
       // state update is how a select and its own deselect end up racing
@@ -381,15 +382,9 @@ async function giveExchangeCard(page: Page): Promise<boolean> {
 
   for (const i of order.reverse()) {
     for (let attempt = 0; attempt < 3; attempt++) {
-      await giveCandidates(page)
-        .nth(i)
-        .click({ timeout: CARD_CLICK_TIMEOUT_MS })
-        .catch(() => {});
+      await tap(page, giveCandidates(page).nth(i)).catch(() => {});
       await sleep(250);
-      await page
-        .locator(GIOCA_BTN)
-        .click({ timeout: CARD_CLICK_TIMEOUT_MS })
-        .catch(() => {});
+      await tap(page, page.locator(GIOCA_BTN)).catch(() => {});
       await sleep(250);
       if ((await prompt.count()) === 0) return true;
     }

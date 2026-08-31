@@ -13,6 +13,7 @@ import { test, expect, type Page } from "@playwright/test";
 import { openSeededGame } from "./helpers/offlineSeed";
 import { GIOCA_VALID_LABEL } from "./helpers/labels";
 import { HAND_ZONE } from "./helpers/selectors.ts";
+import { tap } from "./helpers/press";
 
 const VIEWPORT = { width: 844, height: 390 };
 
@@ -129,13 +130,13 @@ async function playOneCombination(page: Page): Promise<void> {
     .evaluateAll((els) => els.map((el) => el.getAttribute("aria-label") ?? ""));
   for (const label of labels) {
     const card = page.locator(`${HAND_ZONE} [aria-label="${label}"]`);
-    await card.click({ timeout: 4_000 }).catch(() => {});
+    await tap(page, card).catch(() => {});
     if ((await gioca.getAttribute("aria-label")) === GIOCA_VALID_LABEL) {
-      await gioca.click({ timeout: 4_000 }).catch(() => {});
+      await tap(page, gioca).catch(() => {});
       await page.waitForTimeout(1_500);
       return;
     }
-    await card.click({ timeout: 4_000 }).catch(() => {});
+    await tap(page, card).catch(() => {});
   }
   throw new Error("no legal opening play was found in the seeded hand");
 }
