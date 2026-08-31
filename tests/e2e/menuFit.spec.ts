@@ -143,30 +143,46 @@ interface Control {
  */
 async function survey(page: Page): Promise<Control[]> {
   return page.evaluate((selector) => {
-    /** The clipped box: what an ancestor's `overflow: hidden` actually leaves. */
-    const visibleBox = (el: Element) => {
+    /**
+     * What an ancestor's `overflow: hidden` actually leaves of `el`.
+     *
+     * Two ancestors are deliberately skipped. A **scroller** clips, but its
+     * content can be scrolled in, so intersecting against it would report every
+     * below-the-fold control as gone — that is `canScrollDownTo`'s question,
+     * not this one. The **document** is skipped because the app ships
+     * `body { overflow: hidden }` sized to the viewport, so treating it as a
+     * clip clamps every control into the window and makes the whole check
+     * unfalsifiable: a button below the fold measures as zero-height, gets
+     * dropped, and nothing is ever stranded.
+     */
+    const clippedBy = (el: Element) => {
       const box = el.getBoundingClientRect();
       let { top, bottom, left, right } = box;
       for (let p = el.parentElement; p; p = p.parentElement) {
-        if (getComputedStyle(p).overflow === "visible") continue;
+        if (p === document.body || p === document.documentElement) continue;
+        const cs = getComputedStyle(p);
+        const scrolls = (v: string) => v === "auto" || v === "scroll";
+        if (scrolls(cs.overflowY) || scrolls(cs.overflowX)) continue;
+        if (cs.overflow === "visible") continue;
         const clip = p.getBoundingClientRect();
         top = Math.max(top, clip.top);
         bottom = Math.min(bottom, clip.bottom);
         left = Math.max(left, clip.left);
         right = Math.min(right, clip.right);
       }
-      return { top, bottom, left, right, w: box.width, h: box.height };
+      return { top, bottom, left, right };
     };
 
     /** A scroller with room left below `el`, which is the only way in. */
     const canScrollDownTo = (el: Element): boolean => {
       const box = el.getBoundingClientRect();
       for (let p = el.parentElement; p; p = p.parentElement) {
-        const overflowY = getComputedStyle(p).overflowY;
-        if (overflowY !== "auto" && overflowY !== "scroll") continue;
+        const cs = getComputedStyle(p);
+        // A hidden ancestor between the control and the scroller eats it
+        // whatever the scroller does — `MenuCard` is exactly that.
+        if (cs.overflow === "hidden") return false;
+        if (cs.overflowY !== "auto" && cs.overflowY !== "scroll") continue;
         if (p.scrollHeight <= p.clientHeight + 1) continue;
-        // The scroller itself has to be on the screen, or scrolling it moves
-        // the control within a box the player still cannot see.
         const clip = p.getBoundingClientRect();
         if (clip.bottom <= 0 || clip.top >= window.innerHeight) continue;
         if (box.top >= clip.top - 1) return true;
@@ -177,23 +193,22 @@ async function survey(page: Page): Promise<Control[]> {
     const out = [];
     for (const el of Array.from(document.querySelectorAll(selector))) {
       if (el.closest('[data-testid="notification-banner"]')) continue;
-      const box = visibleBox(el);
-      if (box.w === 0 || box.h === 0) continue;
+      const raw = el.getBoundingClientRect();
+      if (raw.width === 0 || raw.height === 0) continue;
+      const box = clippedBy(el);
       const inside =
         box.top >= -1 &&
         box.bottom <= window.innerHeight + 1 &&
         box.left >= -1 &&
         box.right <= window.innerWidth + 1;
-      // How much of it the player can actually see right now. A control whose
-      // box overhangs an edge but still shows a usable part of itself is a
-      // *size* question, which `tapTargets.spec.ts` already owns — the floor
-      // here is only whether the thing can be got at at all. Measured: room's
-      // back button hangs 13px over the top edge and shows 31 of its 44pt
-      // target, and calling that unreachable reported a screen as broken that
-      // the capture beside it shows working.
-      const onScreen =
-        Math.min(box.bottom, window.innerHeight) - Math.max(box.top, 0) > 0 &&
-        Math.min(box.right, window.innerWidth) - Math.max(box.left, 0) > 0;
+      // Half of each side, not a single pixel. A control showing one pixel of
+      // itself is not operable, and `> 0` would pass a primary button that had
+      // slipped 43 of its 44 below the fold. Half is what clears the one real
+      // case measured here — room's back button hangs over the top edge and
+      // still shows 31 of its 44pt target — without excusing anything worse.
+      const shownH = Math.min(box.bottom, window.innerHeight) - Math.max(box.top, 0);
+      const shownW = Math.min(box.right, window.innerWidth) - Math.max(box.left, 0);
+      const onScreen = shownH >= raw.height / 2 && shownW >= raw.width / 2;
       out.push({
         label: el.getAttribute("aria-label") || (el.textContent ?? "").trim() || "unnamed",
         top: Math.round(box.top),

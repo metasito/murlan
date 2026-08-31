@@ -297,7 +297,11 @@ export default function OnlineLobbyScreen() {
         // their content and carry their pinned footers off the bottom.
         <ScrollView
           contentContainerStyle={[styles.body, styles.bodyLandscape]}
-          showsVerticalScrollIndicator={false}
+          // The indicator stays, unlike every other menu scroller here: this is
+          // a `MenuLayout scrollable={false}` screen, so `menu-more-below`'s
+          // fade never applies to it, and without either cue the only sign that
+          // Crea Stanza exists below the fold is a half-cut radio. #587 is the
+          // same finding — a screen that ends flush reads as finished.
           keyboardShouldPersistTaps="handled"
         >
           {/* Two shrinkable spacers rather than `justifyContent: "center"`:
