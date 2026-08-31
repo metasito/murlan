@@ -55,12 +55,24 @@ for (const vp of VIEWPORTS) {
     // hint is owed at every one of them. Asserting it is *present* rather than
     // merely rendered: `MenuLayout` mounts it only once it has measured both
     // heights, so a hint that never appears is the regression.
-    const doc = await page.evaluate(() => ({
-      scrollH: document.documentElement.scrollHeight,
-      innerH: window.innerHeight,
-    }));
-    expect(doc.scrollH, `/rules should overflow ${vp.name}; if it no longer does, this test is checking nothing`)
-      .toBeGreaterThan(doc.innerH);
+    //
+    // Measured on the scroll container, not the document: react-native-web
+    // scrolls an inner div inside a fixed-height root, so
+    // `documentElement.scrollHeight` is exactly the window height at every
+    // viewport and an assertion against it can never fail.
+    const overflow = await page.evaluate(() => {
+      const content = document.querySelector('[data-testid="menu-content"]');
+      for (let el = content?.parentElement; el; el = el.parentElement) {
+        if (el.scrollHeight > el.clientHeight + 1) {
+          return { scrollH: el.scrollHeight, clientH: el.clientHeight };
+        }
+      }
+      return null;
+    });
+    expect(
+      overflow,
+      `/rules should scroll at ${vp.name}; if it no longer overflows, the hint is not owed and this test is checking nothing`,
+    ).not.toBeNull();
 
     await expect(page.getByTestId("menu-more-below")).toBeAttached();
   });
