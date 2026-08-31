@@ -284,7 +284,26 @@ export default function OnlineLobbyScreen() {
       )}
 
       {isLandscape ? (
-        <View style={[styles.body, styles.bodyLandscape]}>
+        // The block is a fixed height a short window cannot always hold — an
+        // iPhone SE in landscape is 320pt against ~330 of content, and Crea
+        // Stanza is what falls off the end (#621). The scroller is the same one
+        // the portrait branch below already owns, and it has to live here
+        // rather than in `MenuLayout`: a ScrollView measures its content
+        // unbounded on *both* engines — react-native-web gives its content
+        // container `flex-shrink: 0`, and Yoga leaves the child of an
+        // `Overflow::Scroll` node undefined and so never resolves a shrink
+        // (`CalculateLayout.cpp` `:166`, `:655`) — so a layout-wide fallback
+        // would let room.tsx's and lobby.tsx's own inner scrollers grow to
+        // their content and carry their pinned footers off the bottom.
+        <ScrollView
+          contentContainerStyle={[styles.body, styles.bodyLandscape]}
+          // The indicator stays, unlike every other menu scroller here: this is
+          // a `MenuLayout scrollable={false}` screen, so `menu-more-below`'s
+          // fade never applies to it, and without either cue the only sign that
+          // Crea Stanza exists below the fold is a half-cut radio. #587 is the
+          // same finding — a screen that ends flush reads as finished.
+          keyboardShouldPersistTaps="handled"
+        >
           {/* Two shrinkable spacers rather than `justifyContent: "center"`:
               centring a block taller than its box pushes the top of it off the
               screen, and the shortest phone in landscape is exactly that case. */}
@@ -304,7 +323,7 @@ export default function OnlineLobbyScreen() {
             </View>
           </View>
           <View style={styles.slack} />
-        </View>
+        </ScrollView>
       ) : (
         <ScrollView
           contentContainerStyle={[styles.body, styles.bodyPortrait, { paddingBottom: Spacing.lg }]}
@@ -475,7 +494,11 @@ const styles = StyleSheet.create({
   bodyPortrait: { flexGrow: 1, justifyContent: "center" },
   // No gap: the two spacers are the composition, and a gap between them and
   // the block is height taken off a body that cannot scroll.
-  bodyLandscape: { gap: 0, flex: 1 },
+  // `flexGrow`, not `flex: 1`: this is a scroll container's content, and a zero
+  // basis would hold it at the window's height — which is the clipping this
+  // scroller exists to end. Growing keeps the two spacers' centring on any
+  // window tall enough to have slack to give them.
+  bodyLandscape: { gap: 0, flexGrow: 1 },
   contentWrapper: {
     gap: Spacing.md,
   },

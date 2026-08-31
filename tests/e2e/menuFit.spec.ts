@@ -1,0 +1,281 @@
+// Every control on a menu screen has to be reachable on the smallest handset
+// the app claims to support.
+//
+// This is the opposite bound to `menuHeight.spec.ts`, which asks whether a
+// screen *fills* a tall window. Nothing asked whether it *fits* a short one,
+// and on an iPhone SE in landscape the online hub's Crea Stanza button — the
+// screen's entire purpose — sat below the bottom edge with nothing to scroll
+// (#621). A screen can answer this two ways and both are correct: fit inside
+// the window, or overflow it and scroll. What is never correct is the third.
+//
+// Reachability, not visibility-on-arrival, is what is asserted. A control the
+// player has to scroll to is a design question; a control they cannot get to
+// at all is a correctness floor, and only the floor belongs in a check that
+// must never go red at random.
+
+import { test, expect } from "./fixtures";
+import type { Page } from "@playwright/test";
+import { openApp, registerNewAccount, uniqueUsername } from "./helpers/navigation";
+import { goToOnlineLobby, createRoom } from "./helpers/online";
+import { settled } from "./helpers/settle";
+import { PHONES } from "./helpers/phones";
+
+/** The smallest handset the layout suite claims, read rather than restated. */
+const SMALLEST = PHONES.reduce((a, b) => (a.width * a.height <= b.width * b.height ? a : b));
+
+const SETTLE_CEILING_MS = 2_000;
+
+interface Screen {
+  name: string;
+  open: (page: Page) => Promise<void>;
+  /**
+   * A control this screen pins, which must be on the window **without
+   * scrolling** — not merely reachable.
+   *
+   * Reachability alone cannot tell a fix from a regression here. Put a scroller
+   * over the whole layout and every control on every screen becomes reachable
+   * by construction, including the Start button that used to sit fixed at the
+   * foot and now rides the content off the bottom. That is the defect #585
+   * fixed, and this is what would catch it coming back.
+   */
+  pinned?: string;
+}
+
+// The `scrollable={false}` screens, which are the ones whose overflow had no
+// answer. `/(online)/quickmatch` is the fourth and is not here: reaching it
+// needs a live matchmaking queue with a second client in it, which is a
+// harness this check does not justify — it shares `MenuLayout`'s fallback
+// with the three below and nothing about it is screen-specific.
+// `app/+not-found.tsx` is a title and one button.
+const SCREENS: Screen[] = [
+  {
+    name: "/lobby",
+    pinned: "Inizia Partita",
+    open: async (page) => {
+      await page.getByRole("button", { name: "Offline" }).click();
+      await page.getByRole("button", { name: "Inizia Partita" }).waitFor();
+    },
+  },
+  {
+    name: "/(online)",
+    open: async (page) => {
+      await goToOnlineLobby(page);
+    },
+  },
+  {
+    // Its Start button is disabled until the room fills, so it reads as a wait.
+    // Fixed at the foot, and the one control this screen must not let scroll.
+    name: "/(online)/room",
+    pinned: "In attesa di giocatori",
+    open: async (page) => {
+      await goToOnlineLobby(page);
+      await createRoom(page, { playerCount: 4, gameMode: "free_for_all" });
+    },
+  },
+  // Not a `scrollable={false}` screen, and here for a different reason: the
+  // rename card is a row of two `MenuButton`s, and `fullWidth` defaults true,
+  // so a pair of them laid out directly in a `flexDirection: "row"` totals
+  // 200% — the first fills the row and the second leaves the screen entirely.
+  // That is the same floor from the other direction, and it is the one shape a
+  // width check catches that a height check never would.
+  {
+    name: "/profile (renaming)",
+    open: async (page) => {
+      await page.goto("/profile");
+      await page.getByTestId("btn-rename").click();
+      await page.getByRole("button", { name: "Salva" }).waitFor();
+    },
+  },
+];
+
+/**
+ * Radios and textboxes count, not only buttons: a screen that puts its primary
+ * button inside the window and its player-count picker below it is just as
+ * broken. The hub's own defect happened to reach both.
+ */
+const CONTROL_SELECTOR =
+  'button:not([disabled]), [role="button"], [role="radio"], input, textarea';
+
+interface Control {
+  label: string;
+  top: number;
+  bottom: number;
+  left: number;
+  right: number;
+  /** Fully inside the window with no scrolling at all. */
+  inside: boolean;
+  /** …or a scroller below it can bring it the rest of the way down. */
+  reachable: boolean;
+}
+
+/**
+ * Every control, where it sits on arrival, and whether anything could bring it
+ * the rest of the way in.
+ *
+ * One `evaluate`, deliberately: a per-control round trip that asks the browser
+ * to scroll to each one in turn leaves the page at a different offset for
+ * every measurement, and a control counted from a scrolled page is not being
+ * measured in the state the player arrives in.
+ *
+ * Three things this has to get right, each of which it got wrong first:
+ *
+ * - The parked banner is excluded **by identity, not by position**.
+ *   `NotificationBanner` never returns null; it parks off the top edge with
+ *   nothing to say (CLAUDE.md). Discarding everything above y=0 would hide it,
+ *   but it would also hide a real top-stranding — and the hub uses two
+ *   shrinkable spacers rather than `justifyContent: "center"` precisely
+ *   because "centring a block taller than its box pushes the top of it off the
+ *   screen, and the shortest phone in landscape is exactly that case"
+ *   (`app/(online)/index.tsx`). A control above the fold is the known failure
+ *   mode here, so it must not be filtered out by where it happens to sit.
+ * - A scroller only reaches **downwards**. Content above a scroll container's
+ *   own content box cannot be scrolled back to, so a control whose top is off
+ *   the screen is stranded whatever scrollers sit over it.
+ * - **Both axes count.** A vertical-only check would have missed the shape it
+ *   was added for: `MenuButton` defaults `fullWidth`, so two of them laid out
+ *   directly in a `flexDirection: "row"` total 200% and the second leaves the
+ *   screen sideways, at a perfectly ordinary height.
+ * - `MenuCard` is `overflow: hidden`, so a box can report an in-window
+ *   rectangle while its own painted tail is clipped away. `getBoundingClientRect`
+ *   has no opinion about that; the ancestor's does.
+ *   `menuHeight.spec.ts` names this hole as the one it avoids, and reopening
+ *   it here would excuse exactly the failure this check exists for.
+ */
+async function survey(page: Page): Promise<Control[]> {
+  return page.evaluate((selector) => {
+    /**
+     * What an ancestor's `overflow: hidden` actually leaves of `el`.
+     *
+     * Two ancestors are deliberately skipped. A **scroller** clips, but its
+     * content can be scrolled in, so intersecting against it would report every
+     * below-the-fold control as gone — that is `canScrollDownTo`'s question,
+     * not this one. The **document** is skipped because the app ships
+     * `body { overflow: hidden }` sized to the viewport, so treating it as a
+     * clip clamps every control into the window and makes the whole check
+     * unfalsifiable: a button below the fold measures as zero-height, gets
+     * dropped, and nothing is ever stranded.
+     */
+    const clippedBy = (el: Element) => {
+      const box = el.getBoundingClientRect();
+      let { top, bottom, left, right } = box;
+      for (let p = el.parentElement; p; p = p.parentElement) {
+        if (p === document.body || p === document.documentElement) continue;
+        const cs = getComputedStyle(p);
+        const scrolls = (v: string) => v === "auto" || v === "scroll";
+        if (scrolls(cs.overflowY) || scrolls(cs.overflowX)) continue;
+        if (cs.overflow === "visible") continue;
+        const clip = p.getBoundingClientRect();
+        top = Math.max(top, clip.top);
+        bottom = Math.min(bottom, clip.bottom);
+        left = Math.max(left, clip.left);
+        right = Math.min(right, clip.right);
+      }
+      return { top, bottom, left, right };
+    };
+
+    /**
+     * A scroller with room left below `el`, which is the only way in.
+     *
+     * A hidden ancestor is *not* disqualifying on its own — every control on
+     * these screens sits inside a `MenuCard`, and a card below the fold rides
+     * up with the rest of the content. What disqualifies a control is the clip
+     * having actually eaten it, which `clippedBy` answers and the caller checks
+     * before asking this.
+     */
+    const canScrollDownTo = (el: Element): boolean => {
+      const box = el.getBoundingClientRect();
+      for (let p = el.parentElement; p; p = p.parentElement) {
+        const cs = getComputedStyle(p);
+        if (cs.overflowY !== "auto" && cs.overflowY !== "scroll") continue;
+        if (p.scrollHeight <= p.clientHeight + 1) continue;
+        const clip = p.getBoundingClientRect();
+        if (clip.bottom <= 0 || clip.top >= window.innerHeight) continue;
+        if (box.top >= clip.top - 1) return true;
+      }
+      return false;
+    };
+
+    const out = [];
+    for (const el of Array.from(document.querySelectorAll(selector))) {
+      if (el.closest('[data-testid="notification-banner"]')) continue;
+      const raw = el.getBoundingClientRect();
+      if (raw.width === 0 || raw.height === 0) continue;
+      const box = clippedBy(el);
+      const inside =
+        box.top >= -1 &&
+        box.bottom <= window.innerHeight + 1 &&
+        box.left >= -1 &&
+        box.right <= window.innerWidth + 1;
+      // Half of each side, not a single pixel. A control showing one pixel of
+      // itself is not operable, and `> 0` would pass a primary button that had
+      // slipped 43 of its 44 below the fold. Half is what clears the one real
+      // case measured here — room's back button hangs over the top edge and
+      // still shows 31 of its 44pt target — without excusing anything worse.
+      const shownH = Math.min(box.bottom, window.innerHeight) - Math.max(box.top, 0);
+      const shownW = Math.min(box.right, window.innerWidth) - Math.max(box.left, 0);
+      const onScreen = shownH >= raw.height / 2 && shownW >= raw.width / 2;
+      // Whether a real clip has eaten it, as opposed to the window merely not
+      // having reached it yet. A control a `MenuCard` has cut away is gone
+      // wherever the page is scrolled to; one that is simply further down is
+      // not.
+      const eaten = box.bottom - box.top < raw.height / 2 || box.right - box.left < raw.width / 2;
+      out.push({
+        label: el.getAttribute("aria-label") || (el.textContent ?? "").trim() || "unnamed",
+        top: Math.round(box.top),
+        bottom: Math.round(box.bottom),
+        left: Math.round(box.left),
+        right: Math.round(box.right),
+        inside,
+        // A scroller only reaches downwards, so it rescues a control below the
+        // fold and never one clipped above it.
+        reachable: onScreen || (!eaten && box.top >= -1 && canScrollDownTo(el)),
+      });
+    }
+    return out;
+  }, CONTROL_SELECTOR);
+}
+
+test.describe(`every control is reachable on an ${SMALLEST.name}`, () => {
+  for (const screen of SCREENS) {
+    test(`${screen.name} — nothing is stranded below the fold`, async ({ page, baseURL }) => {
+      test.setTimeout(120_000);
+      await page.setViewportSize({ width: SMALLEST.width, height: SMALLEST.height });
+      await openApp(page, baseURL!);
+      await registerNewAccount(page, uniqueUsername("fit"));
+      await screen.open(page);
+      await settled(page, SETTLE_CEILING_MS);
+
+      // The ticket's own first finding: the capture the original report linked
+      // was never in the repo, so the measurement had no artefact behind it.
+      await test.info().attach(`${screen.name.replace(/\W+/g, "-")}__se-landscape.png`, {
+        body: await page.screenshot(),
+        contentType: "image/png",
+      });
+
+      const controls = await survey(page);
+      expect(controls.length, `${screen.name} rendered no controls at all`).toBeGreaterThan(0);
+
+      const where = (c: Control) =>
+        `${c.label} (x ${c.left}–${c.right}, y ${c.top}–${c.bottom})`;
+      const context = `Every control, for context:\n  ` + controls.map(where).join("\n  ");
+
+      const stranded = controls.filter((c) => !c.reachable);
+      expect(
+        stranded.map(where),
+        `${SMALLEST.width}x${SMALLEST.height} — these cannot be reached by scrolling, so ` +
+          `the player can never operate them. ${context}`
+      ).toEqual([]);
+
+      if (screen.pinned !== undefined) {
+        const pin = controls.find((c) => c.label === screen.pinned);
+        expect(pin, `${screen.name} never rendered "${screen.pinned}". ${context}`).toBeDefined();
+        expect(
+          pin!.inside,
+          `${screen.name} pins "${screen.pinned}" at the foot, and it has to be on the ` +
+            `window without scrolling — it is at ${where(pin!)} in a ` +
+            `${SMALLEST.width}x${SMALLEST.height} window. ${context}`
+        ).toBe(true);
+      }
+    });
+  }
+});

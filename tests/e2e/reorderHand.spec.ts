@@ -156,4 +156,63 @@ test.describe("arranging your own hand", () => {
     ).toHaveCount(1);
   });
 
+  // A thumb rests on a card for longer than a mouse does, routinely past the
+  // hold. Picking a card to play is the whole game, so a press that never
+  // travels is a tap however long it lasts — the hold is what a *drag* starts
+  // from, not something a stationary finger can spend its tap on.
+  test("a stationary press past the hold still selects, and moves nothing", async ({
+    page,
+    baseURL,
+  }) => {
+    test.setTimeout(120_000);
+    await page.setViewportSize(VIEWPORT);
+    await openSeededGame(page, baseURL!, 2);
+    await page.locator(TABLE).waitFor({ timeout: 30_000 });
+    await page.waitForTimeout(1_500);
+
+    const before = await handRow(page);
+    const target = before[2];
+    await page.mouse.move(target.x, target.y);
+    await page.mouse.down();
+    await page.waitForTimeout(HOLD_MS + 400);
+    await page.mouse.up();
+    await page.waitForTimeout(500);
+
+    const after = await handRow(page);
+    expect(labels(after), "a press with no travel rearranged the hand").toEqual(labels(before));
+    await expect(
+      page.locator(`${HAND_CARDS}[aria-pressed="true"]`),
+      "a press held past the hold selected nothing — the reorder ate the tap"
+    ).toHaveCount(1);
+  });
+
+  // The same press again, on a card that is already chosen. This is the one the
+  // owner reported as unplayable: a card that cannot be put back down.
+  test("a stationary press deselects a selected card", async ({ page, baseURL }) => {
+    test.setTimeout(120_000);
+    await page.setViewportSize(VIEWPORT);
+    await openSeededGame(page, baseURL!, 2);
+    await page.locator(TABLE).waitFor({ timeout: 30_000 });
+    await page.waitForTimeout(1_500);
+
+    const before = await handRow(page);
+    const target = before[2];
+    await page.mouse.click(target.x, target.y);
+    await page.waitForTimeout(400);
+    await expect(page.locator(`${HAND_CARDS}[aria-pressed="true"]`)).toHaveCount(1);
+
+    // Where it sits now — selection lifts the card out of the row.
+    const lifted = (await handRow(page)).find((c) => c.label === target.label)!;
+    await page.mouse.move(lifted.x, lifted.y);
+    await page.mouse.down();
+    await page.waitForTimeout(HOLD_MS + 400);
+    await page.mouse.up();
+    await page.waitForTimeout(500);
+
+    await expect(
+      page.locator(`${HAND_CARDS}[aria-pressed="true"]`),
+      `pressing ${target.label} again left it selected`
+    ).toHaveCount(0);
+  });
+
 });
