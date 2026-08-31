@@ -85,9 +85,23 @@ export default async function preflightMemory({
 //
 // `.catch` and not `await`: the suites import this module through a transform that compiles to CJS,
 // where a top-level await is a build error rather than a slower path.
+// It says what it decided even when it decides nothing, the way `preflight.mjs` does. A guard that
+// is silent when it passes cannot be told from a guard that never ran — which is the failure this
+// one is most exposed to, since it is reached through an npm lifecycle name rather than a call.
+//
+// `exitCode` and not `exit()`: a piped stdout is written asynchronously, and exiting on the spot
+// can take the message with it.
 if (process.argv[1] && fileURLToPath(import.meta.url) === path.resolve(process.argv[1])) {
-  preflightMemory().catch((err) => {
-    console.error(err.message);
-    process.exit(1);
-  });
+  preflightMemory()
+    .then(() => {
+      console.log(
+        process.env.CI
+          ? "preflight: skipped under CI."
+          : `preflight: ${gb(os.freemem())} GB free of ${gb(os.totalmem())} GB.`
+      );
+    })
+    .catch((err) => {
+      console.error(err.message);
+      process.exitCode = 1;
+    });
 }

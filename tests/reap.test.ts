@@ -2,6 +2,7 @@ import { test, describe } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
+import { spawnSync } from "node:child_process";
 import path from "node:path";
 import {
   orphans,
@@ -389,6 +390,17 @@ describe("preflightMemory", () => {
       /preflightMemory/,
       "the node suite runs without a memory preflight"
     );
+
+    // Named in `pretest` is not the same as running when `pretest` runs: the script decides
+    // whether to check itself from `process.argv[1]`, and a guard that got that wrong would be a
+    // silent no-op wearing the name of a check. Under `CI` the verdict is fixed, so this is the
+    // one spawn that says the same thing on every machine.
+    const ran = spawnSync(process.execPath, [path.join(root, "scripts/preflightMemory.mjs")], {
+      encoding: "utf8",
+      env: { ...process.env, CI: "1" },
+    });
+    assert.equal(ran.status, 0, `the preflight refused a CI run: ${ran.stderr}`);
+    assert.match(ran.stdout, /^preflight:/m, "running the script decided nothing");
   });
 });
 
