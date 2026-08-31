@@ -30,14 +30,24 @@ say "cold start, state cleared"
 adb shell pm clear "$PKG"
 adb shell am start -W -a android.intent.action.VIEW -d "$LINK" "$PKG" | grep -E 'Status|TotalTime'
 
-say "sampling the launch to a 180s deadline"
-deadline=$(( $(date +%s) + 180 ))
+say "sampling the launch to a 300s deadline"
+deadline=$(( $(date +%s) + 300 ))
 xml=""
 while [ "$(date +%s)" -lt "$deadline" ]; do
   x=$(dump)
   if has "$x" "GUIDA RAPIDA"; then xml=$x; break; fi
+  # Say what IS on screen, every time. A wait that reports only the absence of
+  # what it wanted is how the previous four runs each cost 10 minutes and
+  # answered nothing.
+  echo "  t+$(( 300 - (deadline - $(date +%s)) ))s pid=$(pid) :: $(printf '%s' "$x" | tr '>' '\n' | grep -oE '(text|content-desc)="[^"]+"' | sort -u | tr '\n' ' ' | cut -c1-220)"
 done
-[ -n "$xml" ] || { echo "::error::Never reached the tutorial."; exit 1; }
+if [ -z "$xml" ]; then
+  echo "::error::Never reached the tutorial in 300s. State at give-up:"
+  geom
+  echo "  metro /status: $(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:8081/status)"
+  adb logcat -d -t 300 2>/dev/null | grep -iE 'FATAL|AndroidRuntime|ReactNative|Expo|bundl' | tail -30
+  exit 1
+fi
 echo "on the tutorial."
 
 say "geometry and process, BEFORE the tap"
