@@ -87,6 +87,30 @@ const RULES = [
       "resolves up to the parent's node_modules on its own.",
   },
   {
+    // A device run costs ~25 minutes and its artefact already holds the answer to the next
+    // one. Run 33428373840 was spent discovering a screen the previous run's screenshot had
+    // captured: the flow gated its opening move on the 3 of Spades, the deal held the 3 of
+    // Hearts, and every later tap went into a button that cannot enable until someone opens.
+    // Reading the artefact is the rule; this is the only thing that has ever made it happen.
+    test: (c) =>
+      new RegExp(
+        AT_COMMAND_START +
+          String.raw`gh\s+(workflow\s+run\s+\S*(ios|maestro)|run\s+rerun)\b(?![^|;&]*MAESTRO_EVIDENCE_READ)`,
+        "m"
+      ).test(c) && !/MAESTRO_EVIDENCE_READ=1/.test(c),
+    message:
+      "Dispatching a device run is blocked until you have read the last failure's own pixels.\n" +
+      "A run is ~25 minutes; the artefact is already on disk and usually holds the answer.\n" +
+      "  gh run download <failed-run-id> -n maestro-debug-ios -D <scratchpad>/<run-id>\n" +
+      "Then, before forming any hypothesis:\n" +
+      "  - Read the screenshot under */screenshots/ with the Read tool. Look at it.\n" +
+      "  - Dump the labelled nodes from */screen-hierarchy/*.json and check your selectors\n" +
+      "    against the real text, including index: and regex matches.\n" +
+      "Having actually done that, re-run the same command with the marker:\n" +
+      "  MAESTRO_EVIDENCE_READ=1 <your command>\n" +
+      "The marker is a claim that you looked. Do not set it to get past this message.",
+  },
+  {
     // A sweep rooted at /, a mounted drive root (/c/, /mnt/c/) or a Windows drive root.
     test: (c) =>
       new RegExp(

@@ -33,12 +33,16 @@ env:
     # never taken - and asserts against a screen the app never rendered.
     # Which flow runs first is not fixed, so both orders have to work.
     clearState: true
-    # This flow selects on Italian copy, so it asks for Italian rather than
-    # depending on the device being in it. Reaching the app as NSUserDefaults
-    # launch arguments, which is the same mechanism an Xcode scheme uses — and
-    # the parentheses are load-bearing: AppleLanguages is a list, and the
+    # This flow selects on Italian copy, so it asks the app for Italian rather
+    # than depending on the device being in it. Reaching the app as
+    # NSUserDefaults launch arguments, the same mechanism an Xcode scheme uses
+    # — and the parentheses are load-bearing: AppleLanguages is a list, and the
     # argument domain parses `(it-IT)` as one where a bare `it-IT` would set a
     # string the locale lookup ignores.
+    #
+    # Only reaches the app being launched here, so under Expo Go it lands on
+    # Expo Go and the relaunch below drops it: that path still needs the device
+    # locale set (docs/TESTING.md).
     arguments:
       AppleLanguages: "(it-IT)"
       AppleLocale: "it_IT"

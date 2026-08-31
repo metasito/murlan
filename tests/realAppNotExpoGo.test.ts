@@ -81,13 +81,11 @@ describe("the iOS job drives this app, not Expo Go", () => {
     assert.match(workflow, /PlistBuddy -c 'Print :CFBundleIdentifier'/);
   });
 
-  test("it names the simulator, before the subcommand", () => {
-    // Maestro reads `--device` as a global flag: after `test` it is not the
-    // device selector at all, and Maestro goes back to resolving the target
-    // itself — which is the ambiguous targeting that leaves its driver's port
-    // closed. Passing it in the wrong place fails silently, so the order is
-    // the thing worth pinning.
-    assert.match(workflow, /maestro --device "\$SIMULATOR_UDID" test\b/);
+  test("it tells Maestro which simulator to drive", () => {
+    // Left to resolve the target itself, Maestro's driver failed to start in
+    // three of eight dispatches. Which device, not where the flag sits —
+    // `--device` is accepted both before `test` and on the subcommand.
+    assert.match(workflow, /maestro\b[^\n]*--device "\$SIMULATOR_UDID"/);
   });
 });
 
@@ -99,9 +97,15 @@ describe("every flow asks for the locale it selects on", () => {
       // `it-IT` sets a string, the locale lookup ignores it, and the app comes
       // up in English against a flow that selects on Italian copy — which
       // reads as the app never having rendered.
+      // Comment lines are stripped first. The negative assertions above search
+      // them deliberately — a commented-out step is one someone is about to put
+      // back — but the same property inverts here: a positive match is
+      // satisfied by the very line that has been switched off, and both flows
+      // would launch in English while this stayed green.
       const launch = flowBody(rel)
         .split(/^(?=- )/m)
-        .find((b) => /^- launchApp:/.test(b));
+        .find((b) => /^- launchApp:/.test(b))
+        ?.replace(/^\s*#.*$/gm, "");
       assert.ok(launch, `${rel} has no top-level launchApp`);
       assert.match(launch, /AppleLanguages:\s*"\(it-IT\)"/, `${rel} does not ask for Italian`);
       assert.match(launch, /AppleLocale:\s*"it_IT"/, `${rel} does not ask for Italian formats`);

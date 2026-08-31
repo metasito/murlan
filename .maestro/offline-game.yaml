@@ -58,12 +58,16 @@ env:
     # never taken - and asserts against a screen the app never rendered.
     # Which flow runs first is not fixed, so both orders have to work.
     clearState: true
-    # This flow selects on Italian copy, so it asks for Italian rather than
-    # depending on the device being in it. Reaching the app as NSUserDefaults
-    # launch arguments, which is the same mechanism an Xcode scheme uses — and
-    # the parentheses are load-bearing: AppleLanguages is a list, and the
+    # This flow selects on Italian copy, so it asks the app for Italian rather
+    # than depending on the device being in it. Reaching the app as
+    # NSUserDefaults launch arguments, the same mechanism an Xcode scheme uses
+    # — and the parentheses are load-bearing: AppleLanguages is a list, and the
     # argument domain parses `(it-IT)` as one where a bare `it-IT` would set a
     # string the locale lookup ignores.
+    #
+    # Only reaches the app being launched here, so under Expo Go it lands on
+    # Expo Go and the relaunch below drops it: that path still needs the device
+    # locale set (docs/TESTING.md).
     arguments:
       AppleLanguages: "(it-IT)"
       AppleLocale: "it_IT"
@@ -193,37 +197,51 @@ env:
     visible:
       id: "btn-passa"
     timeout: 60000
-# Only when this deal actually gave us the opening card. It is a real deal, so
-# some will not: the block is skipped then and the hand is passed out below,
-# which still drives the table to the result screen.
+# Opening is not optional for the seat that has to do it: passing is illegal
+# until the first card is down, so a flow that skips this waits out the whole
+# hand tapping a button that can never enable.
+#
+# Asked of the app, not of the deal. The banner is the seat's own instruction —
+# it appears only when this seat must open — so gating on it is the same
+# question the game is answering, rather than a guess about what was dealt.
+# Naming a card here is what broke: `3 di Picche` assumed Murlan's four-player
+# opener, and two players take a four-player deal (#681), so the 3 of Spades is
+# often not in play at all and the lowest card dealt opens instead. Run
+# 33428373840 was dealt the 3 of Hearts, skipped this block, and passed thirty
+# times into a disabled button.
+#
+# The card is taken by position rather than by name because the two are spelled
+# differently: the banner writes the suit as a symbol ("Inizi tu! Hai il 3♥")
+# and the card's own label writes it as a word ("3 di Cuori"), so nothing can be
+# carried from one to the other. The hand is sorted ascending and the opener is
+# by definition its lowest card, which makes it the first — verified against
+# that run's captured hierarchy, where the first card node is the one the banner
+# named.
 - runFlow:
     when:
-      visible: "3 di Picche"
+      visible: "Inizi tu.*"
     commands:
       - tapOn:
-          text: "3 di Picche"
+          text: ".+ di (Cuori|Quadri|Fiori|Picche)"
+          index: 0
           waitToSettleTimeoutMs: 500
       # The button turns on only for a legal selection, so this is what says the
-      # tap reached the card it named rather than a neighbour.
+      # tap reached the card the banner asked for rather than a neighbour.
       - assertVisible: "Gioca le carte selezionate"
       - tapOn:
           id: "btn-gioca"
           waitToSettleTimeoutMs: 500
 
-# --- Everything else: pass whenever it's legal to. With 2 players a
-# pass immediately ends the round in the AI's favour, so this cycles
-# real turns through the AI until someone's hand empties. `optional`
-# so tapping a disabled/off-turn button is a harmless no-op instead of
-# a flow failure. `times` is a hard backstop independent of whatever
-# `repeat`'s own visibility polling does.
-# Pass until the hand is over, and no further. `while` is what ends this — the
-# result screen replaces the table, so the moment `btn-passa` is gone the loop
-# stops instead of spending its remaining turns on a screen that has nothing to
-# pass on. `times` stays as the ceiling: one pass per turn the opponent takes,
-# against a hand of about twenty, so thirty is the hand plus margin rather than
-# a number picked to be safely large. Sixty was, and every surplus iteration
-# costs a full screen read on a table whose animations never stop — which is
-# where this flow's minutes went.
+# Pass whenever it is legal to. With two players a pass ends the round in the
+# AI's favour, so this cycles real turns through the AI until a hand empties.
+# `optional` keeps a tap on the off-turn button a no-op rather than a failure.
+#
+# `while` is what ends the loop: the result screen replaces the table, so the
+# moment `btn-passa` is gone it stops instead of spending its remaining turns on
+# a screen with nothing to pass on. `times` is the ceiling — one pass per turn
+# the opponent takes, against a hand of about twenty, so thirty is the hand plus
+# margin. Each surplus iteration costs a full screen read on a table whose
+# animations never stop, which is where this flow's minutes went.
 - repeat:
     times: 30
     while:
