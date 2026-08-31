@@ -133,8 +133,12 @@ env:
 # --- Lobby: offline vs AI, 2 players, single hand ---
 - assertVisible: "Offline"
 - tapOn: "Offline"
-- assertVisible: "Manche secca"
-- tapOn: "Manche secca"
+# The format tiles carry a second line, and Maestro matches the *whole*
+# element: iOS exposes this one as "Manche secca: Una sola mano", so the bare
+# title matches nothing. The trailing `.*` carries the subtitle and the
+# platforms that compose it differently, without pinning today's wording.
+- assertVisible: "Manche secca.*"
+- tapOn: "Manche secca.*"
 - assertVisible: "Inizia Partita"
 - tapOn: "Inizia Partita"
 
