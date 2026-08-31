@@ -27,6 +27,8 @@ centre() {
   echo "$(( ($1 + $3) / 2 )) $(( ($2 + $4) / 2 ))"
 }
 
+labels() { dump | tr '>' '\n' | grep -oE '(text|content-desc)="[^"]+"' | sort -u | tr '\n' ' '; echo; }
+
 say "display geometry"
 adb shell wm size; adb shell wm density
 
@@ -71,22 +73,25 @@ say "ATTEMPT 1 - plain adb tap, no key event has reached the app"
 adb logcat -c
 adb shell input tap $xy
 sleep 3
-if landed; then echo "RESULT: adb tap WORKED. The app is fine; Maestro's injection is the bug."; exit 0; fi
-echo "nothing happened."
+echo "--- on screen after tap 1 ---"; labels
+if landed; then echo "RESULT: adb tap WORKED."; exit 0; fi
+echo "the Skip button did not fire."
 
 say "ATTEMPT 2 - a second adb tap, in case the first is always swallowed"
 adb shell input tap $xy
 sleep 3
+echo "--- on screen after tap 2 ---"; labels
 if landed; then echo "RESULT: the FIRST tap is swallowed, later taps land."; exit 0; fi
-echo "nothing happened."
+echo "the Skip button did not fire."
 
 say "ATTEMPT 3 - Back first, then tap (the correlation, without Maestro)"
 adb shell input keyevent 4
-sleep 2
+sleep 3
+echo "--- after Back alone, before any tap ---"; labels
+if landed; then echo "NOTE: Back ALONE left the tutorial, so attempt 3 tests nothing about touch."; fi
 adb shell input tap $xy
 sleep 3
-if landed; then echo "RESULT: Back unblocks touch. Real app bug, reproduced with zero Maestro."
-else echo "RESULT: touch is dead even after Back."; fi
+echo "--- after Back then tap ---"; labels
 
 say "what the app saw"
 adb logcat -d -t 400 | grep -iE 'ReactNative|InputDispatch|ANR|Screens|unhandled|DevMenu' | tail -50
