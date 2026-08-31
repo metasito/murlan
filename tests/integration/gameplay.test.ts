@@ -34,7 +34,7 @@ import {
  *
  * The rate limit is derived rather than raised until the flake stopped. The
  * exchange test below drives at most 21 hands down one socket (its opening
- * hand plus the loop's own 20 attempts), a heads-up hand deals 21 cards a
+ * hand plus the loop's own 20 attempts), a heads-up hand deals 14 cards a
  * side, and a client emits at most one game action a turn — so 882 is the
  * most this file can reach inside one 60s window, against a measured 12–15 a
  * hand. The alternatives lose: resetting the bucket between hands means a
@@ -137,10 +137,10 @@ describe("gameplay integrity", { skip: hasDatabase() ? false : skipMessage() }, 
 
     // Reaching an exchange is probabilistic: when the loser holds both jokers
     // (docs/RULES.md §10) no card is owed back and the hand runs straight to
-    // game:over. Heads-up that is (21/54)·(20/53) = 14.7% per hand, so the
-    // expected number of attempts is ~1.2 and the cap only bites in the tail —
-    // raising it is close to free in runtime and takes the odds of a spurious
-    // failure from 1e-3% at 6 attempts to 2.1e-15% at 20.
+    // game:over. Heads-up that is (14/54)·(13/53) = 6.4% per hand, so the cap
+    // below only bites in the tail: the odds of twenty straight hands all
+    // skipping the exchange are 6.4%^20, which is not a number this suite will
+    // meet.
     //
     // The alternative — dealing the loser a stacked hand — is deliberately not
     // taken. It would mean a seam that rigs the deal in a server whose entire

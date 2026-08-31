@@ -202,7 +202,7 @@ describe("enumeration completeness", () => {
     );
   });
 
-  test("enumeration does not inspect a full 21-card hand once per subset", () => {
+  test("enumeration does not inspect an oversized hand once per subset", () => {
     const suits = ["hearts", "clubs", "spades", "diamonds"] as const;
     const ranks = ["3", "4", "5", "6", "7", "8", "9", "10", "J", "Q", "K", "A", "2"] as const;
     const size = 21;

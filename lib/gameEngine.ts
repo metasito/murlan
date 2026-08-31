@@ -306,6 +306,8 @@ export function shuffleDeck(deck: Card[]): Card[] {
   return shuffled;
 }
 
+const HEADS_UP_HAND = 14;
+
 /**
  * Deals cards one at a time, round-robin from `firstSeat`. 4 players =
  * 14/14/13/13, 3 players = 18 each — the whole deck, so the 3♠ and both
@@ -316,9 +318,11 @@ export function shuffleDeck(deck: Card[]): Card[] {
  *
  * 2 players is the one seat count that does NOT deal the whole deck: dealing
  * everything leaves each player able to deduce the other's exact hand by
- * elimination, so 21 cards go to each (42 of 54) and the remaining 12 are
- * left face down and unused for the manche (docs/RULES.md §3, decided in
- * `docs/BRIEF.md` §3.1 after docs/research/card-dealing-variable-player-count.md).
+ * elimination, so 14 cards go to each (28 of 54) and the remaining 26 are
+ * left face down and unused for the manche. It is the four-player hand size,
+ * which is what makes a duel play like the game rather than like a
+ * bomb-heavy variant of it (docs/RULES.md §3, decided in `docs/BRIEF.md` §3.1
+ * after docs/research/card-dealing-variable-player-count.md).
  */
 export function dealCards(
   playerCount: number,
@@ -329,7 +333,7 @@ export function dealCards(
   const hands: Card[][] = Array.from({ length: playerCount }, () => []);
   const start = ((firstSeat % playerCount) + playerCount) % playerCount;
 
-  const handSize = playerCount === 2 ? 21 : Math.ceil(deck.length / playerCount);
+  const handSize = playerCount === 2 ? HEADS_UP_HAND : Math.ceil(deck.length / playerCount);
   const dealt = Math.min(deck.length, handSize * playerCount);
   for (let i = 0; i < dealt; i++) {
     hands[(start + i) % playerCount].push(deck[i]);
@@ -585,7 +589,7 @@ function bucketByStraightValue(cards: Card[]): Map<number, Card[]> {
  * fill, yielded as the list of candidate cards per position.
  *
  * At most 14 starts x 9 lengths = 126 windows, so this stays far below a
- * millisecond even for a 21-card two-player hand.
+ * millisecond even for the widest hand the deal produces.
  */
 function* enumerateStraightWindows(cards: Card[]): Generator<Card[][]> {
   const byValue = bucketByStraightValue(cards);

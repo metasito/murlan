@@ -27,6 +27,7 @@ import {
   CARD_H,
   CARD_BACK_W,
   CARD_BACK_H,
+  cardRadius,
   HAND_NEAR_RATIO,
   HAND_SCALE,
   HAND_SCALE_ON_TURN,
@@ -52,14 +53,18 @@ const SELECT_TILT = -3;
 const DEAL_RISE_PX = -170;
 const DEAL_DURATION_MS = 500;
 const DEAL_EASING = Easing.bezier(0.2, 0.85, 0.3, 1);
-// The exchange's two states, `docs/design/532-exchange/mockups.html`'s option A
-// verbatim. Colour cannot be the only channel that carries them
-// (docs/research/2026-08-28-card-exchange-interaction.md §3.1): the giveable
-// card rises and the ungiveable one drops to a third of its opacity, and
-// luminance is what survives a monochrome screen. The grey is the second
-// channel on top of that, never the only one. Only the giveable state moves —
-// a sunk card would push past the hand row's bottom edge.
-const GIVEABLE_LIFT = -8;
+// The exchange's two states. Colour cannot be the only channel that carries
+// them (docs/research/2026-08-28-card-exchange-interaction.md §3.1), and it is
+// not: the ungiveable card recedes under a veil, which is luminance and
+// survives a monochrome screen, while the giveable one glows, which is light
+// against none.
+//
+// Neither of them *moves*. `docs/design/532-exchange/mockups.html`'s option A
+// lifted the giveable card, and a lift reads well on a mockup of six evenly
+// spaced ones. In the fan it splits the row into a high half and a low half
+// with a step between them, and a hand that is not level reads as broken rather
+// than as sorted (reported 2026-08-31, twice).
+//
 // The dim is laid *over* the card rather than taken out of the card's own
 // opacity. A fan overlaps by design, so a translucent card is one the cards
 // behind it show through: six of them together read as a rendering fault
@@ -70,6 +75,8 @@ const UNGIVEABLE_DIM = Scrim.medium;
 // processFilter parses the same string, so the string form is the only one that
 // works on both — an array serialises to `[object Object]` on web.
 const UNGIVEABLE_FILTER = { filter: "grayscale(1)" } as const;
+
+
 // ─── Reordering (#531) ────────────────────────────────────────────────────────
 //
 // A press already selects and a press on the confirm already plays, so the hold
@@ -97,7 +104,7 @@ const MOVE_LEFT = "moveCardLeft";
 const MOVE_RIGHT = "moveCardRight";
 /** The same two moves from a keyboard, which is the whole of them on web. */
 const MOVE_KEYS = { ArrowLeft: MOVE_LEFT, ArrowRight: MOVE_RIGHT };
-/** Past every card's own `zIndex`, which is its index in a hand of at most 21. */
+/** Past every card's own `zIndex`, which is its index in a hand of at most 18. */
 const HELD_Z = 100;
 
 interface CardItemProps {
@@ -232,16 +239,14 @@ function CardItemBase({
 
   const aStyle = useAnimatedStyle(() => {
     const d = dealing.value;
-    const e = exchangeState.value;
     // The deal starts upright (0deg) and rotates into the card's own resting
     // tilt as it lands, rather than overshooting past it.
     const restRot = arcRot + tilt.value;
-    const exchangeY = e >= 0 ? e * GIVEABLE_LIFT : 0;
     return {
       opacity: 1 - d,
       transform: [
         { translateX: dealFromX * d + shift.value },
-        { translateY: liftY.value + exchangeY + dealRise * d },
+        { translateY: liftY.value + dealRise * d },
         { rotate: `${restRot * (1 - d)}deg` },
       ],
     };
@@ -284,7 +289,7 @@ function CardItemBase({
       {giveable === true && (
         <Animated.View
           pointerEvents="none"
-          style={[handStyles.giveableRim, { borderRadius: Radius.sm }, giveableStyle]}
+          style={[handStyles.giveableGlow, { borderRadius: cardRadius(cardW) }, giveableStyle]}
         />
       )}
       <CardView
@@ -425,7 +430,7 @@ export function StraightHand({
   const visibleH = cardH - crop;
   const dealRise = DEAL_RISE_PX * cardScale;
   // O(1) membership check per card instead of `selectedIds.includes(card.id)`
-  // (an O(k) scan repeated for every one of the up to 21 cards in a hand).
+  // (an O(k) scan repeated for every one of the up to 18 cards in a hand).
   // Computed before the early return below — Rules of Hooks requires every
   // hook to run unconditionally on every render of this component.
   const selectedSet = useMemo(() => new Set(selectedIds), [selectedIds]);
@@ -445,7 +450,7 @@ export function StraightHand({
 
   // The overlap step is solved against the share, not against everything the
   // row could reach — a hand of three does not stretch across the felt, and a
-  // hand of twenty-one compresses inside the same span rather than reaching
+  // hand of eighteen compresses inside the same span rather than reaching
   // past it. Only `availW` is hard: past that the row scrolls. Solved above
   // the empty-hand return so the scroll effect below it can be a hook.
   const { step, totalW, scrollable } = computeHandLayout(n, room, cardW, availW);
@@ -516,26 +521,6 @@ export function StraightHand({
   const settleRot = useSharedValue(0);
   /** Held for the length of the flight, so the gesture ending cannot cut it short. */
   const landing = useSharedValue(false);
-  // The held card is the only thing on this table that leaves the arc and
-  // follows a finger in free two dimensions, which is what makes "held" legible
-  // beside "selected" without a legend — selection has already spent lift,
-  // rotation and a border.
-  const heldStyle = useAnimatedStyle(() => {
-    const p = settle.value;
-    // The wrapper sits at the row's own origin, so a card at `left: L` and
-    // `bottom: B` is this same box translated by (L, −B).
-    const fromX = fingerX.value - grabOffset.value;
-    const fromY = fingerY.value - HELD_RISE - (visibleH - cardH / 2);
-    return {
-      transform: [
-        { translateX: fromX + (settleX.value - fromX) * p },
-        { translateY: fromY + (settleY.value - fromY) * p },
-        { rotate: `${settleRot.value * p}deg` },
-        { scale: HELD_SCALE + (1 - HELD_SCALE) * p },
-      ],
-    };
-  });
-
   // WCAG 2.5.7: reordering is a convenience rather than something the game
   // needs, so the drag has to have a single-pointer equivalent. It is two
   // discrete actions on the card itself, which costs no pixels and shows to
@@ -561,6 +546,54 @@ export function StraightHand({
     [cards, onReorder]
   );
 
+  // Solved for the span the step produced, so the arc and the overlap floor
+  // cannot disagree about how wide the hand is. Above the empty-hand return,
+  // because the clearance it feeds is read by a hook.
+  const solve = (count: number) =>
+    solveArc(count, { budget: HAND_ARC, cardW, cardH, scale: cardScale, room: totalW, step });
+  const full = solve(n);
+  const box = full.box;
+  // The middle card rides highest, so the row is as tall as the card plus the
+  // climb; the whole arc is then pushed past the bottom edge by the crop.
+  const arcRise = box.h - cardH;
+  // A tilted card stands taller than the card: its box grows by
+  // `w·sin(a) + h·cos(a) − h`, half of it above and half below. The end cards
+  // carry the most of the arc's own tilt and a chosen one adds SELECT_TILT on
+  // top, so the worst case is the two together.
+  const maxRot = full.cards.reduce((m, at) => Math.max(m, Math.abs(at.rot)), 0);
+  const tiltRad = ((maxRot + Math.abs(SELECT_TILT)) * Math.PI) / 180;
+  const tiltOverhang = (cardW * Math.sin(tiltRad) + cardH * Math.cos(tiltRad) - cardH) / 2;
+  /** The highest a card in the fan ever sits above the row's own top edge. */
+  const fanRise = arcRise + handRowHeadroom(cardH);
+  // Everything a card can occupy above that edge: the fan's own reach, and the
+  // box a tilt adds on top of it.
+  const topClearance = fanRise + tiltOverhang;
+  // A held card follows the finger, and a finger goes as high as it likes. It
+  // stops level with the fan's own high point: the card is lifted out of the
+  // hand, not thrown into the air, and a rise the row can state is a rise the
+  // window can clear.
+  const heldCeiling = crop - fanRise + (cardH * (HELD_SCALE - 1)) / 2;
+
+  // The held card is the only thing on this table that leaves the arc and
+  // follows a finger in free two dimensions, which is what makes "held" legible
+  // beside "selected" without a legend — selection has already spent lift,
+  // rotation and a border.
+  const heldStyle = useAnimatedStyle(() => {
+    const p = settle.value;
+    // The wrapper sits at the row's own origin, so a card at `left: L` and
+    // `bottom: B` is this same box translated by (L, −B).
+    const fromX = fingerX.value - grabOffset.value;
+    const fromY = Math.max(heldCeiling, fingerY.value - HELD_RISE - (visibleH - cardH / 2));
+    return {
+      transform: [
+        { translateX: fromX + (settleX.value - fromX) * p },
+        { translateY: fromY + (settleY.value - fromY) * p },
+        { rotate: `${settleRot.value * p}deg` },
+        { scale: HELD_SCALE + (1 - HELD_SCALE) * p },
+      ],
+    };
+  });
+
   if (n === 0) {
     return (
       <View style={[handStyles.handCenter, { width: availW, height: visibleH }]}>
@@ -576,18 +609,12 @@ export function StraightHand({
   const heldCard = heldId === null ? null : (cards.find((c) => c.id === heldId) ?? null);
   const rest = heldCard === null ? cards : cards.filter((c) => c.id !== heldCard.id);
 
-  // Solved for the span the step produced, so the arc and the overlap floor
-  // cannot disagree about how wide the hand is.
-  const solve = (count: number) =>
-    solveArc(count, { budget: HAND_ARC, cardW, cardH, scale: cardScale, room: totalW, step });
-  // Two arcs: where the whole hand sits, and where the rest of it closes to
-  // with one card lifted out. Every card is *placed* by the first and moved to
-  // the second, so the closing is one animated value rather than a new `left`
-  // landing in a single frame — the fan has to close continuously, or the cards
-  // jump between two arrangements while the finger is still between them.
-  const full = solve(n);
+  // The second arc: where the rest of the hand closes to with one card lifted
+  // out. Every card is *placed* by `full` and moved to this, so the closing is
+  // one animated value rather than a new `left` landing in a single frame — the
+  // fan has to close continuously, or the cards jump between two arrangements
+  // while the finger is still between them.
   const arc = heldCard === null ? full.cards : solve(rest.length).cards;
-  const box = full.box;
   const rowMid = (scrollable ? totalW : rowW) / 2;
   const place = new Map(cards.map((card, j) => [card.id, full.cards[j]]));
   // Split either side of the slot, so the hand's centre holds still while the
@@ -758,11 +785,6 @@ export function StraightHand({
       if (landing.value) return;
       scheduleOnRN(releaseHeld);
     });
-  // The middle card rides highest, so the row is as tall as the card plus the
-  // climb; the whole arc is then pushed past the bottom edge by the crop.
-  const arcRise = box.h - cardH;
-  /** Everything a card can occupy above the row's own top edge. */
-  const topClearance = arcRise + handRowHeadroom(cardH);
 
   const row = (
     <GestureDetector gesture={drag}>
@@ -845,19 +867,23 @@ export function StraightHand({
           // clips it, rather than clipping the hand or stepping below what a
           // thumb can separate.
           //
-          // The window has to clear everything the row *draws*, which is more
-          // than the row is tall: a card sits `arcRise` above the row's top at
-          // the arc's high point and lifts `handRowHeadroom` further when it is
-          // chosen, and it hangs `crop` below the bottom. `overflow` takes both
-          // axes or neither, so a box sized to the row alone cuts a straight
-          // line across the fan — which is what this looked like on the
-          // smallest handset. The negative margin spends the extra room
-          // upwards, so the row lands where it does at every other size.
+          // The window clears everything the row *draws*, which is more than the
+          // row is tall: `topClearance` above it, and below it the crop plus
+          // what a tilt hangs past the bottom edge. `overflow` takes both axes
+          // or neither, so a box sized to the row alone cuts a straight line
+          // across the fan.
+          //
+          // The two negative margins give that extra room back to the layout,
+          // so the box occupies exactly `visibleH` and the row lands where the
+          // unclipped branch below puts it. Stated rather than left to cancel
+          // out: the parent centres its children, so a box that is taller than
+          // what it stands in for moves the hand by half the difference.
           <View
             style={{
               width: availW,
-              marginTop: -arcRise,
-              height: topClearance + visibleH + crop + arcRise,
+              marginTop: -topClearance,
+              marginBottom: -(crop + tiltOverhang),
+              height: topClearance + visibleH + crop + tiltOverhang,
               paddingTop: topClearance,
               overflow: "hidden",
             }}
@@ -905,12 +931,21 @@ const handStyles = StyleSheet.create({
   },
   // A rim rather than a fill: the card underneath has to stay readable while
   // it is lit, and this sibling never touches its rasterised rank glyphs.
-  giveableRim: {
+  // A halo around the card, on the same principle as the selection bloom above
+  // and for the same reason: a filled sibling *behind* the card, so all that is
+  // ever seen of it is the light that spills past the card's own silhouette.
+  // The card covers the fill; nothing is drawn over the card.
+  //
+  // Never a border. A hand fans by overlapping, so three of a four-sided rim's
+  // sides are hidden and only its top edge survives — and the top edges of a
+  // run of adjacent cards join into one unbroken hard line with a square cap at
+  // either end, which reads as a frame the cards are trapped in rather than as
+  // a mark on each of them. Light has no edge to join.
+  giveableGlow: {
     position: "absolute",
-    top: -2, left: -2, right: -2, bottom: -2,
-    borderWidth: 2,
-    borderColor: Colors.gold,
-    ...Shadow.goldSoft,
+    top: 0, left: 0, right: 0, bottom: 0,
+    backgroundColor: Colors.gold,
+    ...Shadow.gold,
   },
   // Its own plate. Under a lamp that moves, the felt has no reliably dark end
   // to sit on: the brightest cloth on the table is wherever the light is.

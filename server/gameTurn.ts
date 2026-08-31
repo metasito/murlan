@@ -165,8 +165,12 @@ function emitTurnDeadline(io: SocketServer, roomId: string, game: OnlineGameStat
  * the AFK chain never breaks and a vacated seat is always resolvable:
  *   seat has a user  -> arm that user's AFK timer
  *   seat is vacant   -> a bot plays it after a short delay
+ *
+ * `botDelayMs` is that delay. A move the table is still watching an animation
+ * for has to lengthen it, or the bot plays over the ceremony announcing the
+ * move before it.
  */
-export function armTurn(io: SocketServer, roomId: string) {
+export function armTurn(io: SocketServer, roomId: string, botDelayMs = BOT_MOVE_DELAY_MS) {
   const game = activeGames.get(roomId);
   if (!game) return;
 
@@ -186,7 +190,7 @@ export function armTurn(io: SocketServer, roomId: string) {
       setTimeout(() => {
         botTimers.delete(roomId);
         safeTimer(io, "botTurn", roomId, () => runBotTurn(io, roomId));
-      }, BOT_MOVE_DELAY_MS)
+      }, botDelayMs)
     );
     emitTurnDeadline(io, roomId, game);
     return;
