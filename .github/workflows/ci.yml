@@ -10,6 +10,14 @@ on:
   # A branch with no open PR yet has no other way to get a real run —
   # `gh workflow run ci.yml --ref <branch>`.
   workflow_dispatch:
+  # The device compiles run only when a native input changed, so a break that
+  # comes from outside the diff — a new Xcode or Android SDK on the runner
+  # image, a CocoaPods change — would otherwise first appear weeks later, on
+  # whichever pull request happened to touch package-lock.json, and read as
+  # that branch's fault. A schedule has no base commit, which sends `scope`
+  # down its "running everything" path and compiles both platforms.
+  schedule:
+    - cron: "17 4 * * 1"
 
 # Superseding a pull request's own push saves runner time; superseding `main`'s
 # run destroys the only evidence that merged code was ever tested — the docs
@@ -47,6 +55,7 @@ jobs:
       actions: read
     outputs:
       app: ${{ steps.scope.outputs.app }}
+      native: ${{ steps.scope.outputs.native }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -77,6 +86,7 @@ jobs:
               && [ "$(gh api "$runs" --jq '.total_count' 2>/dev/null || echo 0)" -gt 0 ]; then
               echo "Identical tree to #$num at $head, which this workflow already passed."
               echo "app=false" >> "$GITHUB_OUTPUT"
+              echo "native=false" >> "$GITHUB_OUTPUT"
               exit 0
             fi
             echo "No green pull-request run covers this tree — running everything."
@@ -89,9 +99,34 @@ jobs:
           if [ -z "$base" ] || ! git cat-file -e "$base^{commit}" 2>/dev/null; then
             echo "No usable base commit — running everything."
             echo "app=true" >> "$GITHUB_OUTPUT"
+            echo "native=true" >> "$GITHUB_OUTPUT"
             exit 0
           fi
           changed=$(git diff --name-only "$base" HEAD)
+          # The two compile jobs cost about 15 minutes each, against 5 for the
+          # whole rest of this workflow, so they do not run on every change. A
+          # debug build loads its JavaScript from Metro instead of bundling it —
+          # measured rather than assumed on the run that added the jobs: iOS
+          # logs "SKIP_BUNDLING enabled; skipping.", and none of Gradle's 596
+          # tasks is createBundleDebugJsAndAssets — so the JavaScript sources
+          # cannot reach a compile.
+          #
+          # Named as what *cannot* reach one, for the same reason the prose
+          # filter below is an allowlist: listing the native inputs instead
+          # fails unsafe, skipping the compile for anything it has not heard of.
+          # `patches/` edits native sources through patch-package, `assets/` is
+          # copied into both native projects and compiled by AAPT2 and actool,
+          # and an `app.config.ts` would replace app.json outright — an
+          # allowlist would have silently missed all three.
+          if grep -qE '^\.github/workflows/ci\.yml$' <<< "$changed"; then
+            echo "This workflow changed — it must exercise its own compile jobs."
+            echo "native=true" >> "$GITHUB_OUTPUT"
+          elif grep -qvE '^(app|components|context|lib|locales|shared|server|tests|docs|scripts|public|\.claude|\.agents|\.maestro|\.github)/|\.md$' <<< "$changed"; then
+            echo "Something outside the JavaScript sources changed — compiling for both devices."
+            echo "native=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "native=false" >> "$GITHUB_OUTPUT"
+          fi
           echo "Changed files:"; echo "$changed"
           # Prose the suite asserts *on* is not prose to this filter.
           # `tests/rulesAreSingleSourced.test.ts` reads RULES.md, CLAUDE.md, the
@@ -307,6 +342,80 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run lint
+
+  # Nothing else in this workflow compiles the app for a device. `build` makes
+  # the web bundle, the server bundle and the static Expo Go export, none of
+  # which touch Gradle or Xcode, so a plugin or dependency that breaks the
+  # native project lands green and is found on someone's phone (#209 was
+  # iOS-only). These two jobs answer "does the native project still build",
+  # which is not the same as "does it render" — the device loops (#442) own
+  # that, and a compile would not have caught #209.
+  #
+  # `android/` and `ios/` are gitignored: this project is CNG, so both jobs
+  # generate the native project from app.json before compiling it.
+  #
+  # Gated on `scope.native`, not on `scope.app`: measured at 938 s and 807 s
+  # against 309 s for the whole rest of the workflow, so running them on every
+  # pull request would triple the wait in the middle of every ticket — the cost
+  # #288 exists to keep down. See the filter in `scope` for why a source change
+  # cannot reach them.
+  android-build:
+    name: Android compiles
+    needs: scope
+    if: needs.scope.outputs.native == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+      # Expo SDK 54 ships AGP 8, which refuses anything below JDK 17.
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+      - run: npm ci
+      # --no-install: `npm ci` above already installed, and letting prebuild run
+      # its own install would resolve outside the lockfile.
+      - run: npx expo prebuild --platform android --no-install
+      - name: Compile
+        working-directory: android
+        run: ./gradlew assembleDebug --no-daemon
+
+  ios-build:
+    name: iOS compiles
+    needs: scope
+    if: needs.scope.outputs.native == 'true'
+    runs-on: macos-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+      - run: npm ci
+      # --no-install skips CocoaPods as well as npm, so the pods are installed
+      # explicitly rather than left out.
+      - run: npx expo prebuild --platform ios --no-install
+      - run: pod install --project-directory=ios
+      # The workspace and scheme are named from app.json rather than fixed here,
+      # so renaming the app does not silently stop compiling anything.
+      - name: Compile
+        run: |
+          workspace=$(ls -d ios/*.xcworkspace | head -1)
+          scheme=$(basename "$workspace" .xcworkspace)
+          echo "Building scheme $scheme"
+          xcodebuild \
+            -workspace "$workspace" \
+            -scheme "$scheme" \
+            -configuration Debug \
+            -sdk iphonesimulator \
+            -derivedDataPath "$RUNNER_TEMP/DerivedData" \
+            CODE_SIGNING_ALLOWED=NO \
+            build
 
   browser:
     name: Browser tests ${{ matrix.shard }}/6
