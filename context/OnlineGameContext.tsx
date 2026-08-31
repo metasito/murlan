@@ -16,10 +16,14 @@ import { t, translateServerPayload, type ServerPayload } from "@/lib/i18n";
 import { Reading } from "@/lib/theme";
 import { sendIntent } from "@/lib/sendIntent";
 import { MATCH_TARGETS, matchIsClosing } from "@/lib/gameEngine";
-import { exchangeAnnounceMs, handCountOf } from "@/components/gameTableModel";
+import { handCountOf } from "@/components/gameTableModel";
 import { clearReactions, pushReaction } from "@/lib/reactions";
 import type { GameState, MatchLength } from "@/lib/gameEngine";
-import { buildExchangeAnnounce, type ExchangeAnnounceData } from "@/lib/sharedGameFlow";
+import {
+  buildExchangeAnnounce,
+  useExchangeCeremonyExpiry,
+  type ExchangeAnnounceData,
+} from "@/lib/sharedGameFlow";
 import type { BotPersonalityId } from "@/lib/botPersonalities";
 
 export interface RoomState {
@@ -186,15 +190,12 @@ export function OnlineGameProvider({ userId, children }: { userId: string; child
   const [exchangeAnnounceData, setExchangeAnnounceData] = useState<ExchangeAnnounceData | null>(null);
   const [rejoinFailed, setRejoinFailed] = useState(false);
 
-  // The ceremony's own clock, beside the state it ends rather than inside the
-  // view that draws it: a flag only a mounted overlay can clear is a table that
-  // stays under a ceremony if the overlay ever does not mount.
-  useEffect(() => {
-    if (!exchangeAnnouncing) return;
-    const ms = exchangeAnnounceMs(exchangeAnnounceData?.bothJokersException ?? false);
-    const done = setTimeout(() => setExchangeAnnouncing(false), ms);
-    return () => clearTimeout(done);
-  }, [exchangeAnnouncing, exchangeAnnounceData]);
+  const endAnnouncing = useCallback(() => setExchangeAnnouncing(false), []);
+  useExchangeCeremonyExpiry(
+    exchangeAnnouncing,
+    exchangeAnnounceData?.bothJokersException,
+    endAnnouncing
+  );
   const [reconnectNotice, setReconnectNotice] = useState<string | null>(null);
   const [isSpectator, setIsSpectator] = useState(false);
 

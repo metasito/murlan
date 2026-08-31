@@ -114,7 +114,7 @@ test.describe("the opponents' fans", () => {
   test("draw a capped fan while the badge keeps the real count", async ({ page, baseURL }) => {
     test.setTimeout(120_000);
     await page.setViewportSize(VIEWPORT);
-    // Two seats, because a four-hand deal cannot give anyone twenty-one.
+    // Seeded past any real deal: the cap is about the count, not about §3.
     await openSeededGame(page, baseURL!, 2, LONG_HAND);
     await page.waitForTimeout(1_500);
 

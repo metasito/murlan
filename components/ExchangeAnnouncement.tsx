@@ -6,11 +6,8 @@ import { cardSpokenName } from "@/lib/cardNames";
 import { A11yStatus, a11yHidden } from "@/lib/a11y";
 import { Colors, FontSize, Radius, Scrim, Spacing } from "@/lib/theme";
 import { TableText } from "@/components/table/TableText";
-import {
-  EXCHANGE_FLIGHT_MS,
-  exchangeAnnounceMs,
-  type ExchangeFlight as Trip,
-} from "@/components/gameTableModel";
+import { EXCHANGE_FLIGHT_MS, exchangeAnnounceMs } from "@/lib/exchangeCeremony";
+import type { ExchangeFlight as Trip } from "@/components/gameTableModel";
 import { ExchangeFlyingCard, ExchangeSeatTag } from "@/components/table/ExchangeFlight";
 
 interface ExchangeAnnouncementProps {

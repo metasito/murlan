@@ -133,7 +133,7 @@ describe("computeHandLayout", () => {
     }
   });
 
-  test("21-card 2-player hand on a small device scrolls instead of clipping", () => {
+  test("a row past any real deal on a small device scrolls instead of clipping", () => {
     const { step, totalW, scrollable } = computeHandLayout(21, 320, CW);
     assert.equal(scrollable, true);
     assert.ok(step >= MIN_READABLE_STEP);
@@ -166,7 +166,7 @@ describe("computeHandLayout", () => {
     }
   });
 
-  // The hand is the same width whether it holds five cards or twenty-one —
+  // The hand is the same width whether it holds five cards or eighteen —
   // it compresses inside its share rather than reaching further for each card
   // added. Only the finger floor may push it past that share.
   test("a full hand takes no more room than the share it is given", () => {

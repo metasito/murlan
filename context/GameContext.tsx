@@ -36,8 +36,11 @@ import {
   encodeOfflineSave,
   isResumable,
 } from "@/lib/offlineSave";
-import { buildExchangeAnnounce, type ExchangeAnnounceData } from "@/lib/sharedGameFlow";
-import { exchangeAnnounceMs } from "@/components/gameTableModel";
+import {
+  buildExchangeAnnounce,
+  useExchangeCeremonyExpiry,
+  type ExchangeAnnounceData,
+} from "@/lib/sharedGameFlow";
 import type { BotPersonalityId } from "@/lib/botPersonalities";
 
 export interface PlayerSetupConfig {
@@ -172,16 +175,12 @@ export function GameProvider({ children }: { children: ReactNode }) {
   const [exchangeAnnouncing, setExchangeAnnouncing] = useState(false);
   const [exchangeAnnounceData, setExchangeAnnounceData] = useState<ExchangeAnnounceData | null>(null);
 
-  // The ceremony's own clock, kept beside the state it ends rather than inside
-  // the view that draws it. The turn waits on this flag, and a flag only a
-  // mounted overlay can clear is a game that stops if the overlay ever does not
-  // mount.
-  useEffect(() => {
-    if (!exchangeAnnouncing) return;
-    const ms = exchangeAnnounceMs(exchangeAnnounceData?.bothJokersException ?? false);
-    const done = setTimeout(() => setExchangeAnnouncing(false), ms);
-    return () => clearTimeout(done);
-  }, [exchangeAnnouncing, exchangeAnnounceData]);
+  const endAnnouncing = useCallback(() => setExchangeAnnouncing(false), []);
+  useExchangeCeremonyExpiry(
+    exchangeAnnouncing,
+    exchangeAnnounceData?.bothJokersException,
+    endAnnouncing
+  );
 
   /**
    * The single write path for engine output: a manche that has just ended is

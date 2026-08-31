@@ -15,13 +15,13 @@
 // these two tests are the two answers it has to keep giving.
 import type { Page } from "@playwright/test";
 import { test, expect } from "./fixtures";
-import { openSeededGame } from "./helpers/offlineSeed";
+import { DEAL_SIZE, openSeededGame } from "./helpers/offlineSeed";
 import { HAND_CARDS, TABLE } from "./helpers/selectors";
 
 /** iPhone SE landscape — the smallest real phone, and the worst case. */
 const VIEWPORT = { width: 568, height: 320 };
-/** What a two-seat deal actually gives one player (`dealCards(2)`). */
-const MAX_HAND = 18;
+/** The widest hand the game deals anyone, whatever §3 says today. */
+const MAX_HAND = DEAL_SIZE[3];
 /** Past `HOLD_MS` in components/table/hand.tsx, with room for a slow runner. */
 const HELD_MS = 800;
 

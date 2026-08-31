@@ -112,3 +112,66 @@ for (const vp of VIEWPORTS) {
     expect.soft(hit, "the point at the confirm's centre does not resolve to it").toBe(true);
   });
 }
+
+/**
+ * The giveable marker is light around a card, never a line around a run.
+ *
+ * A hand fans by overlapping, so a four-sided rim around each giveable card
+ * loses three of its sides to the card drawn over it. What survives is the top
+ * edge, and the top edges of a run of adjacent cards join into one unbroken
+ * hard line with a square cap at either end. The owner read the result as a
+ * rectangle the cards were sitting inside, and a card lifting through it as
+ * being cut by it (2026-08-31) — which is not a thing the app draws anywhere.
+ *
+ * Two properties, both of which the rim broke and a halo cannot: the marker
+ * draws no border, and it carries the card's own corner radius, so what is seen
+ * of it follows the card's cutout rather than boxing it.
+ */
+test("the giveable marker is light around a card, not a line around the run", async ({
+  page,
+  baseURL,
+}) => {
+  test.setTimeout(120_000);
+  await page.setViewportSize({ width: 568, height: 320 });
+  await resumeSaved(page, baseURL!, midExchangeSave());
+  await page.locator(TABLE).waitFor({ timeout: 30_000 });
+  await expect(page.getByTestId("exchange-prompt")).toBeVisible({ timeout: 15_000 });
+  await page.waitForTimeout(1_500);
+
+  const marks = await page.evaluate(() => {
+    const gold = "rgb(201, 168, 76)";
+    const out: { border: number; radius: number; cardRadius: number }[] = [];
+    for (const button of Array.from(document.querySelectorAll('[role="button"]'))) {
+      const wrap = button.parentElement?.parentElement;
+      if (!wrap || button.getAttribute("aria-disabled") === "true") continue;
+      // The card's own corners, read off the thing that draws the card.
+      const face = button.querySelector("*");
+      const cardRadius = face ? parseFloat(getComputedStyle(face).borderTopLeftRadius) || 0 : 0;
+      for (const kid of Array.from(wrap.children)) {
+        const st = getComputedStyle(kid);
+        const marks = st.backgroundColor === gold || st.borderTopColor === gold;
+        if (!marks || st.opacity === "0") continue;
+        out.push({
+          border: parseFloat(st.borderTopWidth) || 0,
+          radius: parseFloat(st.borderTopLeftRadius) || 0,
+          cardRadius,
+        });
+      }
+    }
+    return out;
+  });
+
+  expect(marks.length, "no giveable card carries a marker at all").toBeGreaterThan(0);
+  for (const m of marks) {
+    expect(
+      m.border,
+      `a giveable marker draws a ${m.border}pt border — under the fan's overlap only its top ` +
+        `edge survives, and those join into one line across the whole run`
+    ).toBe(0);
+    expect(
+      m.radius,
+      `a giveable marker is rounded to ${m.radius} against the card's own ${m.cardRadius}, ` +
+        `so it does not follow the card's cutout`
+    ).toBeGreaterThan(0);
+  }
+});

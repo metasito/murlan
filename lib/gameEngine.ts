@@ -306,6 +306,8 @@ export function shuffleDeck(deck: Card[]): Card[] {
   return shuffled;
 }
 
+const HEADS_UP_HAND = 14;
+
 /**
  * Deals cards one at a time, round-robin from `firstSeat`. 4 players =
  * 14/14/13/13, 3 players = 18 each — the whole deck, so the 3♠ and both
@@ -322,14 +324,6 @@ export function shuffleDeck(deck: Card[]): Card[] {
  * bomb-heavy variant of it (docs/RULES.md §3, decided in `docs/BRIEF.md` §3.1
  * after docs/research/card-dealing-variable-player-count.md).
  */
-/**
- * The hand two players are dealt, and the largest of the four the canonical
- * four-seat deal produces. Tiến Lên and Big Two both answer the two-player
- * problem by keeping the hand the four-seat game uses, and it is the size that
- * holds a bomb, a Joker and a straight about as often as a four-seat hand does.
- */
-const HEADS_UP_HAND = 14;
-
 export function dealCards(
   playerCount: number,
   firstSeat = 0
@@ -595,7 +589,7 @@ function bucketByStraightValue(cards: Card[]): Map<number, Card[]> {
  * fill, yielded as the list of candidate cards per position.
  *
  * At most 14 starts x 9 lengths = 126 windows, so this stays far below a
- * millisecond even for a 21-card two-player hand.
+ * millisecond even for the widest hand the deal produces.
  */
 function* enumerateStraightWindows(cards: Card[]): Generator<Card[][]> {
   const byValue = bucketByStraightValue(cards);

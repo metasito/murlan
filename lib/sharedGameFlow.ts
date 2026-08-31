@@ -1,3 +1,6 @@
+import { useEffect } from "react";
+
+import { exchangeAnnounceMs } from "@/lib/exchangeCeremony";
 import type { Card } from "@/lib/gameEngine";
 
 export interface ExchangeAnnounceData {
@@ -36,4 +39,26 @@ export function buildExchangeAnnounce(
     cardGiven: cards.given,
     cardReceived: cards.received,
   };
+}
+
+/**
+ * Ends the ceremony on its own clock, beside the state it ends rather than
+ * inside the view that draws it. The turn waits on this flag, and a flag only a
+ * mounted overlay can clear is a table that stays under a ceremony for good if
+ * the overlay ever does not mount.
+ *
+ * One implementation for both providers, for the same reason as everything else
+ * in this file: the online and the offline table run the same ceremony, and two
+ * clocks for it are two clocks that can disagree.
+ */
+export function useExchangeCeremonyExpiry(
+  announcing: boolean,
+  bothJokersException: boolean | undefined,
+  end: () => void
+): void {
+  useEffect(() => {
+    if (!announcing) return;
+    const done = setTimeout(end, exchangeAnnounceMs(bothJokersException ?? false));
+    return () => clearTimeout(done);
+  }, [announcing, bothJokersException, end]);
 }
