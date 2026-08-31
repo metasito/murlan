@@ -76,7 +76,7 @@ env:
       - tapOn:
           text: "Apri"
           optional: true
-# Gated and exited on the Skip button, which the header carries on every beat.
+# Waited for and exited on the Skip button, which the header carries on every beat.
 # "GUIDA RAPIDA" is the card title of an `info` beat only — a `play` beat titles
 # the card after itself and `complete` has its own — so gating on it would skip
 # the block on most of the tutorial, and waiting for it to go would be satisfied
