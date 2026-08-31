@@ -96,6 +96,102 @@ interface TableFeedback {
   celebrateFlush: () => void;
 }
 
+/**
+ * The kick and reject animations: the values, the style that reads them, the
+ * two callbacks that write them, and the cancellation that follows them on
+ * unmount — all in the one hook.
+ *
+ * They are together because the compiler will not compile them apart, and each
+ * of the four other arrangements is refused for a different reason: writing a
+ * value the same function used in an effect, writing one another hook returned,
+ * writing one passed to a hook — which a dependency array is. What is left is
+ * the shape the compiler names itself, *modify it where it is constructed*,
+ * with the writers as plain closures. `components/table/hand.tsx` arrives at
+ * the same place from the other side, with its gesture.
+ */
+function useImpactFeedback(reduceMotion: boolean, scale: number) {
+  const kickX = useSharedValue(0);
+  const kickY = useSharedValue(0);
+  const kickScale = useSharedValue(1);
+  const giocaRejectX = useSharedValue(0);
+  const [boomTrigger, setBoomTrigger] = useState(0);
+
+  // Both inputs are read through refs so the two writers below depend on
+  // nothing, which is what lets the callbacks that expose them hold `[]`.
+  const scaleRef = useRef(scale);
+  const reduceMotionRef = useRef(reduceMotion);
+  useEffect(() => {
+    scaleRef.current = scale;
+    reduceMotionRef.current = reduceMotion;
+  }, [scale, reduceMotion]);
+
+  const kick = () => {
+    if (reduceMotionRef.current) return;
+    const s = scaleRef.current;
+    const e = KICK_EASING;
+    const jolt = (axis: "x" | "y") =>
+      withSequence(...KICK_JOLTS.map((j) => withTiming(j[axis] * s, { duration: j.ms, easing: e })));
+    kickScale.value = withSequence(
+      withTiming(KICK_SCALE_PEAK, { duration: KICK_PUNCH_MS, easing: e }),
+      withTiming(KICK_SCALE_SETTLE, { duration: KICK_SETTLE_MS, easing: e }),
+      withTiming(1, { duration: KICK_MS - KICK_PUNCH_MS - KICK_SETTLE_MS, easing: e })
+    );
+    kickX.value = jolt("x");
+    kickY.value = jolt("y");
+    setBoomTrigger((t) => t + 1);
+  };
+
+  const reject = () => {
+    if (reduceMotionRef.current) return;
+    giocaRejectX.value = withSequence(
+      withTiming(BTN_REJECT_TRAVEL, { duration: BTN_REJECT_LEG_MS }),
+      withTiming(-BTN_REJECT_TRAVEL, { duration: BTN_REJECT_LEG_MS }),
+      withTiming(BTN_REJECT_TRAVEL, { duration: BTN_REJECT_LEG_MS }),
+      withTiming(0, { duration: BTN_REJECT_LEG_MS })
+    );
+  };
+
+  const kickStyle = useAnimatedStyle(() => ({
+    transform: [
+      { translateX: kickX.value },
+      { translateY: kickY.value },
+      { scale: kickScale.value },
+    ],
+  }));
+
+  // Reanimated keeps driving shared values after unmount unless cancelled.
+  useEffect(
+    () => () => {
+      cancelAnimation(kickX);
+      cancelAnimation(kickY);
+      cancelAnimation(kickScale);
+      cancelAnimation(giocaRejectX);
+    },
+    [kickX, kickY, kickScale, giocaRejectX]
+  );
+
+  // The writers have to be plain closures — the compiler refuses a function
+  // that writes a shared value if that function was passed to a hook, and a
+  // dependency array is passing it — so they are new on every render. What
+  // leaves the hook is not: `GameTable` lists `playImpact` among its play
+  // effect's dependencies, and a new identity every render would re-run that
+  // effect every render. It is not what stops the play being replayed — the
+  // `prevComboKeyRef` guard in that effect is — so this is cost, not
+  // correctness.
+  //
+  // The ref is what lets these hold `[]`: naming `kick` as a dependency would
+  // be passing to a hook the very closure that writes a shared value. It is
+  // never refreshed because it never needs to be — both closures read their
+  // only two inputs through `scaleRef` and `reduceMotionRef`, so the pair
+  // captured on the first render behaves the same as any later one.
+  const writers = useRef({ kick, reject });
+
+  const impact = useCallback(() => writers.current.kick(), []);
+  const rejectPlay = useCallback(() => writers.current.reject(), []);
+
+  return { kickStyle, giocaRejectX, impact, rejectPlay, boomTrigger };
+}
+
 export function useTableFeedback({
   isMyTurn,
   isFinished,
@@ -121,14 +217,6 @@ export function useTableFeedback({
   const prevRoundClosedRef = useRef(
     roundClosedWithWinner({ lastPlayedCombination, roundWinner })
   );
-  // Read fresh inside playImpact without putting `scale` in its own deps —
-  // GameTable's play effect lists playImpact as a dependency, and a table
-  // rotation/resize must not re-run it.
-  const scaleRef = useRef(scale);
-  useEffect(() => {
-    scaleRef.current = scale;
-  }, [scale]);
-
   // Steady-state emphasis is opacity and glow, never scale: a fractional scale
   // on a view containing text makes React Native resample the already-rasterised
   // glyphs, and PASSA/GIOCA read as blurry for as long as it is applied.
@@ -140,13 +228,12 @@ export function useTableFeedback({
   const giocaFlashVal = useSharedValue(0);
   const passaFlashVal = useSharedValue(0);
   const giocaGlowVal = useSharedValue(0);
-  const kickX = useSharedValue(0);
-  const kickY = useSharedValue(0);
-  const kickScale = useSharedValue(1);
-  const giocaRejectX = useSharedValue(0);
+  const { kickStyle, giocaRejectX, impact, rejectPlay, boomTrigger } = useImpactFeedback(
+    reduceMotion,
+    scale
+  );
   // BombBurst and Sweep own their animations; these just say "again" —
   // PlayedPile's `bounceTrigger` is the same pattern.
-  const [boomTrigger, setBoomTrigger] = useState(0);
   const [flushTrigger, setFlushTrigger] = useState(0);
 
   useEffect(() => {
@@ -246,76 +333,38 @@ export function useTableFeedback({
   }, [canPass, reduceMotion, passaFlashVal]);
 
   // Reanimated keeps driving shared values after unmount unless cancelled.
-  // GiocaButton/PassaButton own and cancel their own press values.
+  // GiocaButton/PassaButton own and cancel their own press values; the impact
+  // values cancel themselves, in the hook that owns them.
   useEffect(
     () => () => {
       cancelAnimation(giocaFlashVal);
       cancelAnimation(passaFlashVal);
-      cancelAnimation(kickX);
-      cancelAnimation(kickY);
-      cancelAnimation(kickScale);
-      cancelAnimation(giocaRejectX);
     },
-    [giocaFlashVal, passaFlashVal, kickX, kickY, kickScale, giocaRejectX]
+    [giocaFlashVal, passaFlashVal]
   );
 
   const giocaFlashStyle = useAnimatedStyle(() => ({ opacity: giocaFlashVal.value }));
   const passaFlashStyle = useAnimatedStyle(() => ({ opacity: passaFlashVal.value }));
-  const kickStyle = useAnimatedStyle(() => ({
-    transform: [
-      { translateX: kickX.value },
-      { translateY: kickY.value },
-      { scale: kickScale.value },
-    ],
-  }));
   // Opacity only, on the childless sibling behind the button. A shadow written
   // per frame is main-thread paint the browser cannot composite.
   const giocaGlowStyle = useAnimatedStyle(() => ({ opacity: giocaGlowVal.value }));
 
   const playImpact = useCallback(
     (heavy: boolean) => {
-      if (heavy) {
-        playBomb();
-        hapticHeavy();
-        // The biggest play in the game should not have to share the mix.
-        duckMusicFor(1100);
-        if (!reduceMotion) {
-          const s = scaleRef.current;
-          const e = KICK_EASING;
-          const jolt = (axis: "x" | "y") =>
-            withSequence(
-              ...KICK_JOLTS.map((j) => withTiming(j[axis] * s, { duration: j.ms, easing: e }))
-            );
-          kickScale.value = withSequence(
-            withTiming(KICK_SCALE_PEAK, { duration: KICK_PUNCH_MS, easing: e }),
-            withTiming(KICK_SCALE_SETTLE, { duration: KICK_SETTLE_MS, easing: e }),
-            withTiming(1, { duration: KICK_MS - KICK_PUNCH_MS - KICK_SETTLE_MS, easing: e })
-          );
-          kickX.value = jolt("x");
-          kickY.value = jolt("y");
-          setBoomTrigger((t) => t + 1);
-        }
-      } else {
-        playCardPlay();
-      }
+      if (!heavy) return playCardPlay();
+      playBomb();
+      hapticHeavy();
+      // The biggest play in the game should not have to share the mix.
+      duckMusicFor(1100);
+      impact();
     },
-    [reduceMotion, kickX, kickY, kickScale]
+    [impact]
   );
 
   const celebrateFlush = useCallback(() => {
     if (reduceMotion) return;
     setFlushTrigger((t) => t + 1);
   }, [reduceMotion]);
-
-  const rejectPlay = useCallback(() => {
-    if (reduceMotion) return;
-    giocaRejectX.value = withSequence(
-      withTiming(BTN_REJECT_TRAVEL, { duration: BTN_REJECT_LEG_MS }),
-      withTiming(-BTN_REJECT_TRAVEL, { duration: BTN_REJECT_LEG_MS }),
-      withTiming(BTN_REJECT_TRAVEL, { duration: BTN_REJECT_LEG_MS }),
-      withTiming(0, { duration: BTN_REJECT_LEG_MS })
-    );
-  }, [reduceMotion, giocaRejectX]);
 
   return {
     giocaFlashStyle,

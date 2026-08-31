@@ -34,10 +34,31 @@ test("the compiler under test is the one babel-preset-expo builds with", () => {
   );
 });
 
-function tsxUnder(dir: string): string[] {
+/**
+ * A hook, by the only rule the compiler itself goes by: the name. Matching the
+ * definition as well as the call is deliberate — a file that only declares
+ * `useFoo` is exactly the file this was blind to — and `[(=]` rather than `\(`
+ * so that an arrow-defined `export const useFoo = …` counts as a definition.
+ *
+ * Loose on purpose. A `.ts` file swept in that has no hook in it compiles clean
+ * and costs a few milliseconds; one left out ships unmemoized and says nothing,
+ * which is the defect this widening exists to end (docs/agents/RULES.md rule 6).
+ */
+const CALLS_A_HOOK = /\buse[A-Z]\w*\s*[(=]/;
+
+/**
+ * `.tsx` unconditionally, and `.ts` when it holds a hook.
+ *
+ * A hook extracted into a plain `.ts` file bails out for the same reasons and at
+ * the same cost as one in a component, and the compiler skips the whole file in
+ * silence. `components/useTableFeedback.ts` shipped that way for the life of
+ * this gate.
+ */
+function compiledUnder(dir: string): string[] {
   return readdirSync(path.join(repoRoot, dir), { recursive: true, encoding: "utf8" })
-    .filter((f) => f.endsWith(".tsx"))
-    .map((f) => `${dir}/${f.split(path.sep).join("/")}`);
+    .filter((f) => f.endsWith(".tsx") || f.endsWith(".ts"))
+    .map((f) => `${dir}/${f.split(path.sep).join("/")}`)
+    .filter((rel) => rel.endsWith(".tsx") || CALLS_A_HOOK.test(readFileSync(path.join(repoRoot, rel), "utf8")));
 }
 
 /**
@@ -45,9 +66,14 @@ function tsxUnder(dir: string): string[] {
  * the day it lands.
  */
 const COMPILED = [
-  ...tsxUnder("app"),
-  ...tsxUnder("components"),
-  ...tsxUnder("context"),
+  ...compiledUnder("app"),
+  ...compiledUnder("components"),
+  ...compiledUnder("context"),
+  // `lib/` too: the production build compiles whatever the app imports, and
+  // eight hooks live here — `usePrefersReducedMotion`, `useTranslation`,
+  // `useFocusTrap` and the rest. Leaving the directory out would be the same
+  // silent skip one level over.
+  ...compiledUnder("lib"),
 ];
 
 /** babel-preset-expo/build/index.js, for a production client build. */
@@ -115,6 +141,37 @@ test("a render-time ref write is what the compiler refuses to compile in context
     reasons.some((r) => r.includes("Cannot access refs during render")),
     "writing a ref during render no longer costs GameProvider its compilation — either the ref " +
       "write moved somewhere the compiler tolerates, or the plugin changed"
+  );
+});
+
+// The floor for the `.ts` half, which is a separate claim from the `.tsx` one
+// above: `COMPILED` reaching a plain `.ts` hook is worth nothing unless a
+// bailout in one actually fails the assertion. This gate walked `.tsx` only for
+// its whole life, and `components/useTableFeedback.ts` shipped uncompiled
+// underneath it the entire time.
+test("a bailout in a plain .ts hook is what the widened gate catches", () => {
+  const rel = "components/useHandOrder.ts";
+  assert.ok(
+    COMPILED.includes(rel),
+    `${rel} is not in COMPILED — the .ts half of the gate is reaching nothing`
+  );
+  assert.ok(
+    COMPILED.some((f) => f.startsWith("lib/")),
+    "no lib/ file reaches the gate; the hooks that live there are being skipped again"
+  );
+  const original = readFileSync(path.join(repoRoot, rel), "utf8");
+  const anchor = "  const [orders, setOrders] = useState<Record<number, string[]>>({});";
+  assert.ok(original.includes(anchor), `${rel} no longer contains the line this test patches`);
+  const reasons = compile(
+    rel,
+    original.replace(
+      anchor,
+      `${anchor}\n  const seatRef = useRef(seat);\n  seatRef.current = seat;`
+    )
+  ).map((e) => e.detail?.reason ?? e.detail?.description ?? "");
+  assert.ok(
+    reasons.some((r) => r.includes("Cannot access refs during render")),
+    `a render-time ref write in ${rel} compiled clean; the .ts half of the gate cannot fail`
   );
 });
 
