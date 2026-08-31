@@ -5,7 +5,9 @@ import { ChipText, TableChip } from "./chrome";
 import {
   FAN_DRAWN_CARDS,
   SEAT_DISC,
-  SEAT_GAP,
+  SEAT_LABEL_GAP,
+  SEAT_LABEL_PAD,
+  seatGap,
   displayedHandCount,
   fanCounts,
   impactDelayMs,
@@ -524,7 +526,7 @@ export function TopOppSlot({
       testID="top-seat"
       style={[
         seatStyles.topOppSlot,
-        { paddingTop: seatLabelH(scale) },
+        { paddingTop: seatLabelH(scale), gap: seatGap(scale) },
         !isActive && seatStyles.seatDim,
       ]}
     >
@@ -590,7 +592,13 @@ function SeatWho({
         <View
           style={[
             seatStyles.whoLabel,
-            { width: labelW, left: labelLeft, bottom: disc },
+            {
+              width: labelW,
+              left: labelLeft,
+              bottom: disc,
+              gap: SEAT_LABEL_GAP * scale,
+              paddingBottom: SEAT_LABEL_PAD * scale,
+            },
             anchor === "left" && seatStyles.whoLabelLeft,
             anchor === "right" && seatStyles.whoLabelRight,
           ]}
@@ -660,6 +668,7 @@ export function SideOppSlot({
       testID={`side-seat-${side}`}
       style={[
         seatStyles.sideOppSlot,
+        { gap: seatGap(scale) },
         isLeft ? seatStyles.sideLeft : seatStyles.sideRight,
         !isActive && seatStyles.seatDim,
       ]}
@@ -718,13 +727,13 @@ const SEAT_DISC_FILL = [Colors.seatDisc, Colors.seatDiscDeep] as const;
 const seatStyles = StyleSheet.create({
   // The fan sits between the player and the table, never above them: the top
   // seat stacks avatar-then-fan down the screen, and each side seat is the
-  // same construction turned a quarter. The gap is one number for all three.
+  // same construction turned a quarter. The gap is one number for all three,
+  // and it rides the table's scale, so it is passed in rather than set here.
   topOppSlot: {
     alignItems: "center",
     justifyContent: "flex-start",
-    gap: SEAT_GAP,
   },
-  sideOppSlot: { alignItems: "center", justifyContent: "center", gap: SEAT_GAP },
+  sideOppSlot: { alignItems: "center", justifyContent: "center" },
   sideLeft: { flexDirection: "row" },
   sideRight: { flexDirection: "row-reverse" },
   // A seat that is not on move recedes, which is one of the four signals the
@@ -737,11 +746,12 @@ const seatStyles = StyleSheet.create({
   // caller supplies width and both insets in points, worked out from the disc
   // it hangs over — centring it on a percentage translate instead leaves the
   // label beside the disc on any renderer that does not resolve one.
+  // The gap and the pad ride the table's scale, so they are passed in rather
+  // than set here — `seatLabelH` reserves this column's height from the same
+  // two numbers, and a flat length here is height it would not know about.
   whoLabel: {
     position: "absolute",
     alignItems: "center",
-    gap: Spacing.xxs,
-    paddingBottom: Spacing.xs,
   },
   // A side seat's label runs inwards from the disc, into the felt, rather than
   // outwards past the edge its own column is flush against.

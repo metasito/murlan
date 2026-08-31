@@ -21,7 +21,7 @@ import type { Card } from "@/lib/gameEngine";
 import { computeHandLayout } from "@/components/handLayout";
 import { cardAt, dropIndex } from "@/components/handOrder";
 import { HAND_ARC, solveArc } from "@/components/tableArc";
-import { HAND_CROP, HAND_ROW_HEADROOM } from "@/components/gameTableModel";
+import { HAND_CROP, handRowHeadroom } from "@/components/gameTableModel";
 import {
   CARD_W,
   CARD_H,
@@ -38,9 +38,9 @@ import {
 // caller passes one unchanged reference for every card and CardItem binds its
 // own id once. CardView then sees a new `onPress` only when this card's id or
 // the callback changes — not when some other card's selection does.
-// How far a selected card rises out of the fan, and how far it tips as it is
-// picked up. The rotation is what stops the lift reading as a flat slide.
-const SELECT_LIFT = -16;
+// How far a selected card tips as it is picked up. The rotation is what stops
+// the lift reading as a flat slide; the lift itself is `handRowHeadroom`, a
+// share of the card, so the row's reserved headroom cannot fall short of it.
 const SELECT_TILT = -3;
 // A deal drops from above the table, not up out of the middle of it — a fixed
 // distance (scaled with the hand), not one derived from the card's own
@@ -157,6 +157,7 @@ function CardItemBase({
   onMove,
 }: CardItemProps) {
   const reduceMotion = usePrefersReducedMotion();
+  const selectLift = -handRowHeadroom(cardH);
   const liftY = useSharedValue(0);
   const tilt = useSharedValue(0);
   const glow = useSharedValue(0);
@@ -185,15 +186,15 @@ function CardItemBase({
 
   useEffect(() => {
     if (reduceMotion) {
-      liftY.value = withTiming(isSelected ? SELECT_LIFT : 0, { duration: Motion.duration.tap });
+      liftY.value = withTiming(isSelected ? selectLift : 0, { duration: Motion.duration.tap });
       tilt.value = 0;
       glow.value = withTiming(isSelected ? 1 : 0, { duration: Motion.duration.tap });
       return;
     }
-    liftY.value = withSpring(isSelected ? SELECT_LIFT : 0, Motion.spring.pickup);
+    liftY.value = withSpring(isSelected ? selectLift : 0, Motion.spring.pickup);
     tilt.value = withSpring(isSelected ? SELECT_TILT : 0, Motion.spring.pickup);
     glow.value = withTiming(isSelected ? 1 : 0, { duration: Motion.duration.tap });
-  }, [isSelected, reduceMotion, liftY, tilt, glow]);
+  }, [isSelected, reduceMotion, selectLift, liftY, tilt, glow]);
 
   // -1 sunk and faded, 0 untouched, +1 lifted and lit. One value rather than
   // two so a card cannot briefly be in both states as the phase turns on.
@@ -803,14 +804,14 @@ export function StraightHand({
           // even the finger floor cannot fit the row in availW — a full hand on
           // a small phone. The row overflows and is moved under a window that
           // clips it, rather than clipping the hand or stepping below what a
-          // thumb can separate. The window keeps HAND_ROW_HEADROOM as top
-          // padding — without it, a selected card's lift (SELECT_LIFT) is cut
-          // off at the top edge.
+          // thumb can separate. The window keeps the row's headroom as top
+          // padding — without it, a selected card's lift is cut off at the top
+          // edge.
           <View
             style={{
               width: availW,
-              height: visibleH + arcRise + HAND_ROW_HEADROOM,
-              paddingTop: HAND_ROW_HEADROOM,
+              height: visibleH + arcRise + handRowHeadroom(cardH),
+              paddingTop: handRowHeadroom(cardH),
               overflow: "hidden",
             }}
           >

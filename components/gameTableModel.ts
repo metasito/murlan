@@ -8,7 +8,15 @@
 // which is erased before resolution.
 
 import type { Combination, GameState, Player } from "@/lib/gameEngine";
-import { CARD_H, CARD_W, cardScale, CARD_BACK_H, CARD_BACK_W, BACK_SCALE } from "./cardFaceModel.ts";
+import {
+  CARD_H,
+  CARD_W,
+  cardScale,
+  CARD_BACK_H,
+  CARD_BACK_W,
+  BACK_SCALE,
+  BASE_SHORT_EDGE,
+} from "./cardFaceModel.ts";
 import { arcBounds, solveArc, SEAT_ARC } from "./tableArc.ts";
 import { Spacing } from "../lib/tokens.ts";
 
@@ -56,12 +64,21 @@ export function CHIP_H(scale: number): number {
   return 23 * scale;
 }
 /**
- * Headroom above the hand row's own cards — enough to clear a selected card's
- * lift (SELECT_LIFT, components/table/hand.tsx) without the row above it
- * shifting. hand.tsx reuses this same number as its scrollable fallback's own
- * top clearance, so the two cannot drift apart.
+ * How far a selected card rises out of the hand row, and therefore the
+ * headroom the row keeps above its own cards. `hand.tsx` lifts by exactly
+ * this and clears exactly this in its scrollable fallback, so the two cannot
+ * drift apart.
+ *
+ * It clears a card, so it takes the *card's* height rather than the table's
+ * scale: a spectated hand draws backs, which are their own aspect, and the
+ * hand draws at `scale * HAND_SCALE` rather than at the table's own. Read from
+ * the table's scale instead, the reserved band and the lift it reserves for
+ * differed by a fifth on a tablet.
  */
-export const HAND_ROW_HEADROOM = 16;
+const SELECT_LIFT_SHARE = 16 / 90;
+export function handRowHeadroom(cardH: number): number {
+  return cardH * SELECT_LIFT_SHARE;
+}
 
 // ─── The hand's own band ──────────────────────────────────────────────────────
 //
@@ -94,7 +111,7 @@ export function handVisibleH(cardH: number): number {
  * sit above that line and the cards run past it.
  */
 export function HAND_ZONE_H(cardH: number, bottomPad: number): number {
-  return handVisibleH(cardH) + bottomPad + HAND_ROW_HEADROOM;
+  return handVisibleH(cardH) + bottomPad + handRowHeadroom(cardH);
 }
 
 // ─── Width budgets ────────────────────────────────────────────────────────────
@@ -358,18 +375,27 @@ export function sparkOffset(i: number, scale: number): SparkOffset {
 
 /** The seat disc's diameter at scale 1 (components/table/seats.tsx `SeatRing`). */
 export const SEAT_DISC = 33;
-/** Ring to fan, the same on every seat (components/table/seats.tsx `SeatWho`). */
-export const SEAT_GAP = Spacing.slim;
+/**
+ * Ring to fan, the same on every seat (components/table/seats.tsx `SeatWho`).
+ * A share of the table, like the ring and the fan it separates — a flat gap is
+ * a tenth of the seat column on a phone and a twentieth of it on a tablet.
+ */
+export function seatGap(scale: number): number {
+  return Spacing.slim * scale;
+}
 const SEAT_NAME_LINE = 17;
 
 /**
  * The band a seat's floating label needs above its ring: the name's own line,
- * plus the badge row, which is a chip and therefore scales with the table. A
- * side seat's label runs inward rather than upward and does not need this,
- * but the top seat's does — drawn off the top of the screen otherwise.
+ * the gap under it and the badge row, all four of `whoLabel`'s own lengths
+ * (components/table/seats.tsx). A side seat's label runs inward rather than
+ * upward and does not need this, but the top seat's does — drawn off the top
+ * of the screen otherwise.
  */
+export const SEAT_LABEL_GAP = Spacing.xxs;
+export const SEAT_LABEL_PAD = Spacing.xs;
 export function seatLabelH(scale: number): number {
-  return SEAT_NAME_LINE * scale + CHIP_H(scale) + Spacing.xs;
+  return (SEAT_NAME_LINE + SEAT_LABEL_GAP + SEAT_LABEL_PAD) * scale + CHIP_H(scale);
 }
 
 /**
@@ -419,6 +445,8 @@ export interface FlightOriginInput {
   tableLeft: number;
   tableRight: number;
   tableTop: number;
+  /** `TableFrame.surplus` — how far above the window's bottom the table ends. */
+  surplus: number;
   /** HAND_ZONE_H(handCardH, bottomPad) — the hand row's own height. */
   handZoneH: number;
   /**
@@ -451,16 +479,17 @@ export function flightOrigin(input: FlightOriginInput): { dx: number; dy: number
   const topSectionH =
     seatLabelH(scale) +
     ringSize +
-    (input.topDisplayedCount > 0 ? SEAT_GAP + topFanHeight(scale, input.topDisplayedCount) : 0);
-  const contentH = input.windowHeight - input.tableTop;
+    (input.topDisplayedCount > 0 ? seatGap(scale) + topFanHeight(scale, input.topDisplayedCount) : 0);
+  const tableFloor = input.windowHeight - input.surplus;
+  const contentH = tableFloor - input.tableTop;
   const midH = contentH - topSectionH - input.handZoneH;
   const pileCenterY = input.tableTop + topSectionH + midH / 2;
 
   if (dir === "bottom") {
-    // The hand zone runs flush to the window's bottom edge (GameTable.tsx
+    // The hand zone runs flush to the table's own bottom edge (GameTable.tsx
     // `handSection`, a flex sibling of the pile's own midSection), so its
     // vertical centre sits `handZoneH / 2` above that edge.
-    const handCenterY = input.windowHeight - input.handZoneH / 2;
+    const handCenterY = tableFloor - input.handZoneH / 2;
     return { dx: 0, dy: handCenterY - pileCenterY };
   }
 
@@ -771,6 +800,21 @@ export interface EdgeInsets {
   right: number;
 }
 
+/**
+ * Height the table is given but was not scaled for.
+ *
+ * `cardScale` caps at `MAX_SHORT_EDGE`, so on a window taller than that the
+ * contents are drawn for the cap while the window keeps its own height. Zero
+ * everywhere below the cap, which is every phone.
+ */
+export function surplusHeight(width: number, height: number, scale: number): number {
+  // Portrait is not a state the table lays out in, and there the height is the
+  // long edge — the subtraction below would read the whole difference between
+  // the two edges as surplus.
+  if (height > width) return 0;
+  return Math.max(0, height - BASE_SHORT_EDGE * scale);
+}
+
 export interface ScreenPads {
   topPad: number;
   bottomPad: number;
@@ -872,6 +916,14 @@ export interface TableFrame extends ScreenPads {
   tableTop: number;
   tableRight: number;
   tableBottom: number;
+  /**
+   * Half of `surplusHeight` — the height at each end of a window taller than
+   * the scale cap that the contents were never sized for. It is already inside
+   * `tableTop`; anything measuring from the *bottom* edge has to subtract it
+   * itself, because the hand deliberately runs past `tableBottom` to the
+   * device's own edge and so cannot use that as its floor.
+   */
+  surplus: number;
   /** Width available to the hand row between the PASSA and GIOCA buttons. */
   handAvailW: number;
   /** …and the share of it the hand aims at — see HAND_WIDTH_SHARE. */
@@ -889,6 +941,8 @@ export interface TableFrame extends ScreenPads {
  */
 export function computeTableFrame(opts: {
   width: number;
+  /** The window's own height — what the scale cap is measured against. */
+  height: number;
   insets: EdgeInsets;
   /** The table's own scale — the rail widens with it. */
   scale: number;
@@ -902,14 +956,19 @@ export function computeTableFrame(opts: {
 }): TableFrame {
   const { topPad, bottomPad, leftPad, rightPad } = computeScreenPads(opts);
   const railSide = opts.railSide ?? "left";
+  // Past `MAX_SHORT_EDGE` the scale stops growing but the window does not, so
+  // there is height the contents were never sized for. It becomes pad at both
+  // ends rather than being left to the band between the seats and the hand —
+  // stretching one gap is what made a tablet read as a scaled-up phone (#586).
+  const surplus = surplusHeight(opts.width, opts.height, opts.scale) / 2;
 
   // The rail eats the cutout's edge, so the play area starts at its outer edge
   // and everything centred on the table centres on that box rather than on the
   // screen — centring on 50% puts the pile and the top seat ~17px off on an
   // 844pt phone.
   const rail = railWidth(railSide === "left" ? leftPad : rightPad, opts.scale);
-  const tableTop = Math.max(PAD_TOP * opts.scale, topPad);
-  const tableBottom = Math.max(PAD_BOTTOM * opts.scale, bottomPad);
+  const tableTop = Math.max(PAD_TOP * opts.scale, topPad) + surplus;
+  const tableBottom = Math.max(PAD_BOTTOM * opts.scale, bottomPad) + surplus;
   const away = Math.max(PAD_AWAY * opts.scale, railSide === "left" ? rightPad : leftPad);
   const tableLeft = railSide === "left" ? rail : away;
   const tableRight = railSide === "left" ? away : rail;
@@ -928,6 +987,7 @@ export function computeTableFrame(opts: {
     tableTop,
     tableRight,
     tableBottom,
+    surplus,
     handAvailW,
     handRoomW: Math.min(handAvailW, opts.width * HAND_WIDTH_SHARE),
     fieldRoomW: Math.min(tableW - SIDE_SECTION_W * 2, opts.width * FIELD_WIDTH_SHARE),
@@ -948,9 +1008,15 @@ export function notificationTopOffset(opts: {
   landscape: boolean;
   /** The table's own scale — the chips are sized from it. */
   scale: number;
+  /**
+   * `TableFrame.surplus`, which the chips this clears are pushed down by.
+   * Required rather than defaulted: it is zero on every phone, so a caller
+   * that forgot it would be correct everywhere anyone looked.
+   */
+  surplus: number;
 }): number {
   if (!opts.landscape) return opts.topPad;
-  const chipTop = Math.max(PAD_TOP * opts.scale, opts.topPad);
+  const chipTop = Math.max(PAD_TOP * opts.scale, opts.topPad) + opts.surplus;
   return chipTop + CHIP_H(opts.scale) + PAD_INNER * opts.scale;
 }
 

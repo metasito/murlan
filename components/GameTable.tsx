@@ -1007,7 +1007,7 @@ export function GameTable({
   );
 
   const railSide = railSideFor(Math.max(insets.left, insets.right), rotation);
-  const frame = computeTableFrame({ width: W, insets, scale, railSide });
+  const frame = computeTableFrame({ width: W, height: H, insets, scale, railSide });
   // The felt box the lamp lives in. The pool is drawn oversized and slid under
   // this box's own clipping, so it needs the box rather than the screen.
   const feltW = W;
@@ -1295,6 +1295,7 @@ export function GameTable({
         tableLeft: frame.tableLeft,
         tableRight: frame.tableRight,
         tableTop: frame.tableTop,
+        surplus: frame.surplus,
         handZoneH: HAND_ZONE_H(handCardH, frame.bottomPad),
         topDisplayedCount,
         sideDisplayedCount,
@@ -1317,6 +1318,7 @@ export function GameTable({
     frame.tableLeft,
     frame.tableRight,
     frame.tableTop,
+    frame.surplus,
     frame.bottomPad,
     handCardH,
   ]);
@@ -1544,6 +1546,7 @@ export function GameTable({
       tableLeft: frame.tableLeft,
       tableRight: frame.tableRight,
       tableTop: frame.tableTop,
+      surplus: frame.surplus,
       handZoneH: HAND_ZONE_H(handCardH, frame.bottomPad),
       // Nothing is in flight when an exchange resolves, so each seat's
       // displayed count is simply the hand it holds.
@@ -1715,9 +1718,12 @@ export function GameTable({
             left: frame.tableLeft,
             top: frame.tableTop,
             right: frame.tableRight,
-            // The device's own bottom edge, not the felt's: the hand runs to
+            // The table's own bottom edge, not the felt's: the hand runs to
             // it and past it, which is what buys the table the height above.
-            bottom: 0,
+            // Zero on every phone — `surplus` is only the height a window
+            // taller than the scale cap has, and it is taken off both ends so
+            // the drawn table stays centred rather than growing one gap.
+            bottom: frame.surplus,
           },
         ]}
       >

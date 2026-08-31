@@ -13,6 +13,7 @@ import {
   cardScale,
   computeScreenPads,
   notificationTopOffset,
+  surplusHeight,
 } from "@/components/gameTableModel";
 import { Colors, Reading, Spacing, Radius, Type, Shadow, TOUCH_TARGET_MIN } from "@/lib/theme";
 import { usePrefersReducedMotion } from "@/lib/accessibility";
@@ -91,10 +92,12 @@ export default function NotificationBanner({ notification, onDismiss, onMeasure 
   const reduceMotion = usePrefersReducedMotion();
 
   const { topPad } = computeScreenPads({ insets });
+  const scale = cardScale(Math.min(width, height));
   const topOffset = notificationTopOffset({
     topPad,
     landscape: width > height,
-    scale: cardScale(Math.min(width, height)),
+    scale,
+    surplus: surplusHeight(width, height, scale) / 2,
   });
   // Reduced motion: keep the exact same callback chain (still a single,
   // sequential path to onDismiss) but collapse every leg to ~0ms so nothing
