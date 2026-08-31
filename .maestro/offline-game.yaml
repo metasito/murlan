@@ -137,59 +137,28 @@ env:
     timeout: 90000
 
 # --- Opening move, only if this seat was dealt the 3 of Spades ---
-# All 3s sort to the front of the hand regardless of shuffle (3 is the
-# lowest rank), but which of up to four 3-slots holds 3♠ varies. The
-# fanned hand overlaps each card with the next one drawn on top, so a
-# *center* tap on a card can land on its right-hand neighbor instead
-# (verified with `adb shell uiautomator dump`: reported bounds are
-# correct, the touch just lands on the overlapping sibling) — a real
-# rendering characteristic worth knowing about, not a Maestro quirk.
-# Tapping ~20px into each slot's exposed left sliver avoids it. Slot 0
-# starts at 17% of screen width in this fixed 2-player/landscape
-# layout, +2.5% per slot. Try up to 4 slots, deselecting a wrong pick
-# before the next attempt, stopping as soon as Gioca reports the
-# selection is valid.
+# The card by its own name, which is the only thing here that is the same on
+# every screen. A fanned hand overlaps each card with the next one drawn on top,
+# so the box a card *draws* into is mostly covered — but the box it is *tapped*
+# by is not: `hand.tsx` gives every card but the last a pressable exactly one
+# slot wide (`hitW={step}`), which is the strip it exposes. That pressable is
+# the node carrying the accessibility label, so its centre is inside the strip
+# and a tap on it can only reach this card.
+#
+# Screen percentages were what this did before, four of them, derived on one
+# Android emulator against a fixed 2-player landscape layout. Nothing made them
+# land on the same card on an iPhone, and the branch only runs when this seat is
+# dealt 3♠ — so they would have passed or failed at random rather than reporting
+# anything (#353).
 - runFlow:
     when:
       visible: "3 di Picche"
     commands:
-      - runFlow:
-          when:
-            notVisible: "Gioca le carte selezionate"
-          commands:
-            - tapOn:
-                point: "17%,81%"
-                waitToSettleTimeoutMs: 500
-      - runFlow:
-          when:
-            notVisible: "Gioca le carte selezionate"
-          commands:
-            - tapOn:
-                point: "17%,81%"
-                waitToSettleTimeoutMs: 500
-            - tapOn:
-                point: "20%,81%"
-                waitToSettleTimeoutMs: 500
-      - runFlow:
-          when:
-            notVisible: "Gioca le carte selezionate"
-          commands:
-            - tapOn:
-                point: "20%,81%"
-                waitToSettleTimeoutMs: 500
-            - tapOn:
-                point: "22%,81%"
-                waitToSettleTimeoutMs: 500
-      - runFlow:
-          when:
-            notVisible: "Gioca le carte selezionate"
-          commands:
-            - tapOn:
-                point: "22%,81%"
-                waitToSettleTimeoutMs: 500
-            - tapOn:
-                point: "25%,81%"
-                waitToSettleTimeoutMs: 500
+      - tapOn:
+          text: "3 di Picche"
+          waitToSettleTimeoutMs: 500
+      # The button turns on only for a legal selection, so this is what says the
+      # tap reached the card it named rather than a neighbour.
       - assertVisible: "Gioca le carte selezionate"
       - tapOn:
           id: "btn-gioca"
