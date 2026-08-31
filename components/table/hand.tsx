@@ -929,8 +929,6 @@ const handStyles = StyleSheet.create({
     zIndex: 1,
     backgroundColor: UNGIVEABLE_DIM,
   },
-  // A rim rather than a fill: the card underneath has to stay readable while
-  // it is lit, and this sibling never touches its rasterised rank glyphs.
   // A halo around the card, on the same principle as the selection bloom above
   // and for the same reason: a filled sibling *behind* the card, so all that is
   // ever seen of it is the light that spills past the card's own silhouette.
@@ -941,9 +939,12 @@ const handStyles = StyleSheet.create({
   // run of adjacent cards join into one unbroken hard line with a square cap at
   // either end, which reads as a frame the cards are trapped in rather than as
   // a mark on each of them. Light has no edge to join.
+  // Behind the card, stated: this is the same shape as `ungiveableVeil` above
+  // and resolves the opposite way, so neither may be left to sibling order.
   giveableGlow: {
     position: "absolute",
     top: 0, left: 0, right: 0, bottom: 0,
+    zIndex: -1,
     backgroundColor: Colors.gold,
     ...Shadow.gold,
   },
