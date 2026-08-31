@@ -8,7 +8,9 @@ import { CARD_W } from "../components/cardFaceModel.ts";
 import {
   MAX_STEP_RATIO,
   MIN_READABLE_STEP,
+  cardAtX,
   computeHandLayout,
+  hitWidth,
 } from "../components/handLayout.ts";
 import { HAND_ARC } from "../components/tableArc.ts";
 
@@ -177,5 +179,45 @@ describe("computeHandLayout", () => {
         assert.ok(totalW <= room + 1e-9, `n=${n} spans ${totalW} of a ${room} share`);
       }
     }
+  });
+});
+
+describe("which card a tap belongs to", () => {
+  const N = 14;
+  const { step } = computeHandLayout(N, 600, CW);
+
+  test("the strips tile the row: no overlap, no gap", () => {
+    let x = 0;
+    for (let i = 0; i < N; i++) {
+      assert.equal(cardAtX(x, N, step, CW), i, `the left edge of card ${i} belongs to it`);
+      const w = hitWidth(i, N, step, CW);
+      assert.equal(
+        cardAtX(x + w - 1e-6, N, step, CW),
+        i,
+        `the right edge of card ${i}'s strip belongs to it`
+      );
+      x += w;
+    }
+    // The last card owns a whole card rather than a step, so the strips end
+    // exactly where the row does.
+    assert.equal(x, step * (N - 1) + CW);
+  });
+
+  test("only the last card is as wide as it is drawn", () => {
+    for (let i = 0; i < N - 1; i++) assert.equal(hitWidth(i, N, step, CW), step);
+    assert.equal(hitWidth(N - 1, N, step, CW), CW);
+  });
+
+  test("a tap off either end belongs to no card", () => {
+    assert.equal(cardAtX(-1, N, step, CW), null);
+    assert.equal(cardAtX(step * (N - 1) + CW, N, step, CW), null);
+  });
+
+  test("a hand of one is the whole card", () => {
+    const one = computeHandLayout(1, 600, CW);
+    assert.equal(hitWidth(0, 1, one.step, CW), CW);
+    assert.equal(cardAtX(0, 1, one.step, CW), 0);
+    assert.equal(cardAtX(CW - 1e-6, 1, one.step, CW), 0);
+    assert.equal(cardAtX(CW, 1, one.step, CW), null);
   });
 });

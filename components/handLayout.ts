@@ -62,3 +62,30 @@ export function computeHandLayout(
   const totalW = step * (n - 1) + cardW;
   return { step, totalW, scrollable: totalW > availW };
 }
+
+/**
+ * The strip of card `i` that a tap belongs to, as a width from its own left
+ * edge. Every card but the last is covered from `step` on by the one drawn over
+ * it, so that strip is all of it a finger can reach.
+ *
+ * This is the hand's whole hit-testing rule, and it is here rather than in the
+ * component because the platforms do not agree on what happens when a card's
+ * ink overflows its strip: the web hit-tests the overflow and lets paint order
+ * settle it, and UIKit does not hit-test outside a view's bounds at all. So the
+ * card is drawn inside a box that takes no hits, and this decides the rest.
+ */
+export function hitWidth(i: number, n: number, step: number, cardW: number): number {
+  return i === n - 1 ? cardW : step;
+}
+
+/**
+ * The index of the card a tap at `x` belongs to, `x` measured from the left
+ * edge of card 0. Null when the tap is off the row on either side.
+ */
+export function cardAtX(x: number, n: number, step: number, cardW: number): number | null {
+  if (x < 0 || n <= 0) return null;
+  const last = n - 1;
+  if (x >= last * step) return x < last * step + cardW ? last : null;
+  // Every card before the last owns exactly one step, so which one is division.
+  return step > 0 ? Math.floor(x / step) : 0;
+}
