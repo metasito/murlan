@@ -30,8 +30,6 @@ import {
   CARD_BACK_W,
   CARD_H,
   CARD_W,
-  cardBackLatticeInset,
-  cardBackLatticeRadius,
   cardRadius,
   COURT_RANKS,
   courtArtRect,
@@ -41,8 +39,6 @@ import {
   INDEX_TEXT_W,
   INDEX_X,
   placedPips,
-  printBorderInset,
-  printBorderRadius,
   rankFontSize,
   rankInset,
   stockLipHeight,
@@ -421,26 +417,9 @@ function OrnateCardBack({
   const r = Math.min(w, h) * 0.19;
   const ink = back.ink;
   const field = back.field;
-  // The cut edge itself is the enclosing View's own border (styles.cardBack);
-  // this is the printed panel just inside it, echoing the face's PrintBorder.
-  const panelInset = cardBackLatticeInset(h);
-  const panelRadius = cardBackLatticeRadius(h);
-
   return (
     <Svg width={w} height={h} style={StyleSheet.absoluteFill} pointerEvents="none">
       <Path d={getLattice(w, h, back.lattice)} stroke={ink} strokeOpacity={0.13} strokeWidth={0.6} fill="none" />
-      <Rect
-        x={panelInset}
-        y={panelInset}
-        width={w - panelInset * 2}
-        height={h - panelInset * 2}
-        rx={panelRadius}
-        ry={panelRadius}
-        fill="none"
-        stroke={ink}
-        strokeWidth={0.7}
-        strokeOpacity={0.34}
-      />
       <Path d={starPath(cx, cy, r, back.starPoints)} fill={ink} fillOpacity={0.55} />
       <Circle cx={cx} cy={cy} r={r * 0.42} fill={field[4]} />
       <Circle cx={cx} cy={cy} r={r * 0.42} fill="none" stroke={ink} strokeOpacity={0.7} strokeWidth={0.8} />
@@ -594,7 +573,10 @@ function CardViewBase({
     };
     return (
       <Animated.View style={[animStyle, style]}>
-        <View style={[styles.card, { width: w, height: h }, styles.cardBack, backStyle]}>
+        <View
+          testID="card-box-back"
+          style={[styles.card, { width: w, height: h }, styles.cardBack, backStyle]}
+        >
           <LinearGradient
             colors={[backField[1], backField[2], backField[4]]}
             start={{ x: 0.15, y: 0 }}
@@ -682,7 +664,6 @@ function CardViewBase({
             end={{ x: 0.9, y: 1 }}
             style={StyleSheet.absoluteFill}
           />
-          <PrintBorder inset={printBorderInset(h)} radius={printBorderRadius(h)} />
           <CardFaceArt card={card} color={color} w={w} h={h} compact={compact} />
           {!compact && COURT_RANKS.has(card.rank) && <CourtArt card={card} w={w} h={h} />}
           <TableText
@@ -717,10 +698,8 @@ function CardViewBase({
 
 // ─── Card stock ───────────────────────────────────────────────────────────────
 //
-// Local one-offs rather than design tokens (lib/tokens.ts): the printed border
-// is `Colors.cardEdge`'s hue printed rather than cut, and the lip is the paper
-// ramp's own shade seen edge-on. Neither has a second use to name a token for.
-const PRINT_BORDER_COLOR = "rgba(90,78,52,0.2)";
+// A local one-off rather than a design token (lib/tokens.ts): the lip is the
+// paper ramp's own shade seen edge-on, and has no second use to name a token for.
 const STOCK_LIP_COLOR = "#D6D0BC";
 
 /**
@@ -739,15 +718,6 @@ function cardStockShadow(lipHeight: number): Record<string, any> {
   const base = Shadow.card as Record<string, any>;
   if (typeof base.boxShadow !== "string") return base;
   return { ...base, boxShadow: `0px ${lipHeight}px 0px ${STOCK_LIP_COLOR}, ${base.boxShadow}` };
-}
-
-function PrintBorder({ inset, radius }: { inset: number; radius: number }) {
-  return (
-    <View
-      pointerEvents="none"
-      style={[styles.printBorder, { left: inset, right: inset, top: inset, bottom: inset, borderRadius: radius }]}
-    />
-  );
 }
 
 // ─── TopLight ─────────────────────────────────────────────────────────────────
@@ -823,11 +793,6 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: Colors.cardEdge,
     overflow: "hidden",
-  },
-  printBorder: {
-    position: "absolute",
-    borderWidth: 1,
-    borderColor: PRINT_BORDER_COLOR,
   },
   cardSelected: {
     borderColor: Colors.gold,

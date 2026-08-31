@@ -184,6 +184,12 @@ fraction, and it is a larger radius than most digital cards use. The white borde
 printed area exists because of bleed tolerance; reproducing it is part of why a card reads as
 printed rather than as a screen element.
 
+> **Overruled, 2026-08-31 (#670).** The app drew that inner border and the owner read it as
+> off-centre, repeatedly. It was symmetric in the box to within a pixel — but the card is not
+> only its box: the lit lip runs along the bottom edge alone and the drop shadow falls the
+> same way, so a line centred in the box sits high in the card anyone looks at. A card is now
+> bounded by its cut edge alone, and the lip and the shadow carry "printed object" instead.
+
 **Index sizing and readability.** Indices sit upper-left and lower-right (four corners in
 many European decks, so the card fans either way)
 ([Crab Fragment Labs, Designing Traditional Card Decks](https://crabfragmentlabs.com/lecture-hall/designing-traditional-card-decks)).
