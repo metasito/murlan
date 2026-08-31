@@ -12,6 +12,12 @@ import { test, expect } from "./fixtures";
 // iPhone 12, the handset the layout suite runs on.
 const VIEWPORT = { width: 390, height: 844 };
 
+// `lib/tutorialSeen.ts`'s SEEN_KEY. Every other spec seeds it through
+// `openApp`; this one is the exception `tests/onlineTableHarness.test.ts`
+// allows for, because the first-run tutorial is what it is about — so it
+// asserts on the key rather than setting it.
+const SEEN_KEY = "@murlan_tutorial_seen";
+
 test("skipping the first-run tutorial lands on the home screen", async ({ page, baseURL }) => {
   test.setTimeout(90_000);
   await page.setViewportSize(VIEWPORT);
@@ -25,9 +31,15 @@ test("skipping the first-run tutorial lands on the home screen", async ({ page, 
 
   await skip.click();
 
-  // The tutorial is gone and the home screen is under it — and it stays gone,
-  // which is the other way this can fail: the title screen re-offers the
-  // tutorial on every mount unless the seen flag was written on the way out.
   await expect(page.getByRole("button", { name: "Offline" })).toBeVisible({ timeout: 15_000 });
+  await expect(skip).toHaveCount(0);
+
+  // And it stays gone. The title screen re-offers the tutorial on every mount
+  // while this key is unset, and `router.replace("/")` is a mount — so a Skip
+  // that navigated but did not record itself looks, one frame later, exactly
+  // like a Skip that did nothing at all.
+  const seen = await page.evaluate((key) => window.localStorage.getItem(key), SEEN_KEY);
+  expect(seen, "leaving the tutorial did not record that it had been offered").toBe("1");
+  await page.waitForTimeout(1_000);
   await expect(skip).toHaveCount(0);
 });
