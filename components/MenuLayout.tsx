@@ -37,9 +37,13 @@ const MENU_MAX_W = 800;
  * animate, and sliding its content down on arrival would be a second movement
  * nobody asked for.
  */
-function useEasedTo(target: number, duration: number): number {
-  const value = React.useRef(new Animated.Value(target)).current;
+function useEasedTo(target: number, fullDuration: number): number {
+  // Lazy state rather than a ref: the React Compiler bails out of a component
+  // that reads `.current` during render, and an unmemoized subtree is the cost.
+  const [value] = React.useState(() => new Animated.Value(target));
   const [eased, setEased] = React.useState(target);
+  const reduceMotion = usePrefersReducedMotion();
+  const duration = reduceMotion ? 0 : fullDuration;
 
   React.useEffect(() => {
     if (duration === 0) {
@@ -85,7 +89,6 @@ export function MenuLayout({
 }: MenuLayoutProps) {
   const insets = useSafeAreaInsets();
   const bannerBottom = useBannerBottom();
-  const reduceMotion = usePrefersReducedMotion();
 
   const [viewportH, setViewportH] = React.useState(0);
   const [contentH,  setContentH]  = React.useState(0);
@@ -103,10 +106,7 @@ export function MenuLayout({
   // is told it is there and the screen would otherwise lay itself out under it.
   // Eased on the banner's own step, so the content moves with it rather than
   // jumping clear a third of a second before it arrives.
-  const reserved = useEasedTo(
-    Math.max(0, bannerBottom + TOP_GAP - paddingTop),
-    reduceMotion ? 0 : SLIDE_DURATION
-  );
+  const reserved = useEasedTo(Math.max(0, bannerBottom + TOP_GAP - paddingTop), SLIDE_DURATION);
 
   // `style` is merged last (after `centered`) so callers can override layout
   // — e.g. justifyContent — without it being clobbered by the centered preset.
