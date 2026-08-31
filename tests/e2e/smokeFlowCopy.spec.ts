@@ -25,7 +25,7 @@ const FLOW = path.join(__dirname, "..", "..", ".maestro", "smoke.yaml");
  */
 function homeAssertions(): string[] {
   const flow = readFileSync(FLOW, "utf8");
-  const start = flow.indexOf('notVisible: "GUIDA RAPIDA"');
+  const start = flow.indexOf(`notVisible: "Salta il tutorial"`);
   const end = flow.indexOf('tapOn: "Impostazioni"');
   expect(start, "the tutorial-skip block moved; this slice no longer means home").toBeGreaterThan(0);
   expect(end, "the flow no longer opens settings; this slice no longer means home").toBeGreaterThan(start);

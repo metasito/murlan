@@ -82,13 +82,39 @@ env:
     # than that on a cold start, and running out of budget here reads
     # identically to the app never loading at all.
     timeout: 180000
+# Gated and exited on the Skip button, which the header carries on every beat.
+# "GUIDA RAPIDA" is the card title of an `info` beat only — a `play` beat titles
+# the card after itself and `complete` has its own — so gating on it would skip
+# the block on most of the tutorial, and waiting for it to go would be satisfied
+# by the tutorial merely advancing a beat. Being untappable on Android does not
+# make the button invisible, which is all `visible` asks.
+#
+# Split by platform because the defect is Android's alone. There no control on
+# this screen takes touch — the Skip button no more than the body's own "Inizia"
+# — so the tap fires into nothing; #627 has it measured with `adb shell input
+# tap` and no Maestro in the loop. iOS taps it fine (#353), and Maestro's `back`
+# there is an edge-swipe gesture rather than a key press, so it is not a
+# like-for-like substitute to hand it as well.
+#
+# The iOS tap targets the button's accessibilityLabel, not its visible "Salta":
+# the Text child is `a11yHidden` on purpose, so the label is the only node the
+# control exposes. Collapse this to that tap alone when #627 closes.
 - runFlow:
     when:
       visible: "Salta il tutorial"
     commands:
-      - tapOn: "Salta il tutorial"
+      - runFlow:
+          when:
+            platform: Android
+          commands:
+            - back
+      - runFlow:
+          when:
+            platform: iOS
+          commands:
+            - tapOn: "Salta il tutorial"
       - extendedWaitUntil:
-          notVisible: "GUIDA RAPIDA"
+          notVisible: "Salta il tutorial"
           timeout: 10000
 
 # --- Lobby: offline vs AI, 2 players, single hand ---

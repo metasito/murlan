@@ -67,19 +67,42 @@ env:
     # identically to the app never loading at all.
     timeout: 180000
 # First cold launch auto-pushes the interactive tutorial
-# (app/index.tsx effect on `@murlan_tutorial_seen`). Skip it like a real
-# user would so the flag gets set and we land on the actual home screen.
+# (app/index.tsx effect on `@murlan_tutorial_seen`), and it has to go before
+# anything on the home screen can be asserted.
 #
-# Tapped by the button's accessibilityLabel rather than its visible "Salta":
-# the label is the one node the control exposes, its Text child being hidden
-# from the tree on purpose.
+# Gated and exited on the Skip button, which the header carries on every beat.
+# "GUIDA RAPIDA" is the card title of an `info` beat only — a `play` beat titles
+# the card after itself and `complete` has its own — so gating on it would skip
+# the block on most of the tutorial, and waiting for it to go would be satisfied
+# by the tutorial merely advancing a beat. Being untappable on Android does not
+# make the button invisible, which is all `visible` asks.
+#
+# Split by platform because the defect is Android's alone. There no control on
+# this screen takes touch — the Skip button no more than the body's own "Inizia"
+# — so the tap fires into nothing; #627 has it measured with `adb shell input
+# tap` and no Maestro in the loop. iOS taps it fine (#353), and Maestro's `back`
+# there is an edge-swipe gesture rather than a key press, so it is not a
+# like-for-like substitute to hand it as well.
+#
+# The iOS tap targets the button's accessibilityLabel, not its visible "Salta":
+# the Text child is `a11yHidden` on purpose, so the label is the only node the
+# control exposes. Collapse this to that tap alone when #627 closes.
 - runFlow:
     when:
       visible: "Salta il tutorial"
     commands:
-      - tapOn: "Salta il tutorial"
+      - runFlow:
+          when:
+            platform: Android
+          commands:
+            - back
+      - runFlow:
+          when:
+            platform: iOS
+          commands:
+            - tapOn: "Salta il tutorial"
       - extendedWaitUntil:
-          notVisible: "GUIDA RAPIDA"
+          notVisible: "Salta il tutorial"
           timeout: 10000
 # `homeMenu` promotes one way to play into the hero and filters it out of the
 # tiles, so with `clearState` - never a saved game, never an account - the hero
@@ -96,9 +119,15 @@ env:
 # a fraction — so the screen died on open, on device, against a green CI.
 # Opening it is the only way to exercise that mount for real.
 #
-# Tapped and asserted by accessibility label and by untransformed copy: the
-# modal's own title is uppercased by a style, which is not what the tree holds.
+# Asserted on the music slider, because the slider is what #389 killed: it is
+# the node whose accessibilityValue Fabric converts to int. A title would mount
+# with the crash still in the tree below it.
+#
+# `"Volume"` alone never matched anything — Maestro matches the *whole* element,
+# and the tree holds the slider's label with its value appended
+# ("Volume della musica di sottofondo, 50%" on Android). The trailing `.*`
+# carries that suffix and the platforms that omit it, without pinning a volume.
 - tapOn: "Impostazioni"
-- assertVisible: "Volume"
+- assertVisible: "Volume della musica di sottofondo.*"
 - tapOn: "Chiudi impostazioni"
 - assertVisible: "Offline"
