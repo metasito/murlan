@@ -232,6 +232,33 @@ export function armLobbyGrace(
 }
 
 /**
+ * Retires every invite pointing at a room that can no longer be joined, and
+ * tells the people holding one.
+ *
+ * The read side already refuses to serve an invite whose room has stopped
+ * waiting, so the row alone is not what strands the invitee: their list is
+ * cached, and nothing they are listening on says it changed. They are not in
+ * the room, so `io.to(roomId)` never reaches them — the account's own room does.
+ *
+ * The room's code rides along so a client holding two invites clears the right
+ * banner. Which invites survive is still the server's answer to give — the code
+ * names the one that died, and the list is asked for again either way.
+ */
+export async function retireRoomInvites(
+  io: SocketServer,
+  roomId: string,
+  roomCode: string
+): Promise<void> {
+  const invitees = await storage.clearGameInvites(roomId).catch((err) => {
+    logger.warn({ err, roomId }, "Failed to clear the invites of a room that closed");
+    return [] as string[];
+  });
+  for (const inviteeId of invitees) {
+    io.to(userRoom(inviteeId)).emit("friend:invite_retired", { roomCode });
+  }
+}
+
+/**
  * Releases a seat: the room_players row, the user's timers, and the seat in a
  * live game. A `room:leave` and a lost connection differ only in what the
  * caller can hand over, so the seat-side work lives in one place.
@@ -281,6 +308,7 @@ export async function handleSeatRelease(
             "Failed to set rooms.status = finished after the last player left the lobby"
           )
         );
+      await retireRoomInvites(io, roomId, room.code);
       return;
     }
     let newHostId = room.hostUserId;

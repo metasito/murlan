@@ -52,6 +52,7 @@ import {
 import {
   announceRejoin,
   handleSeatRelease,
+  retireRoomInvites,
   roomStatePayload,
   teamsSizeRefusal,
 } from "./socketTable.ts";
@@ -564,13 +565,10 @@ async function startMatchAction(
   // is already frozen.
   await storage.updateRoomStatus(roomId, "in_progress");
   // Nobody can join this room now, so nobody should be looking at an
-  // invitation to it. The read already filters on `waiting`, so this is hygiene
-  // rather than the guarantee — hence logged, never thrown.
-  void storage
-    .clearGameInvites(roomId)
-    .catch((err: unknown) =>
-      logger.warn({ err, roomId }, "Failed to clear invites for a started room")
-    );
+  // invitation to it — and the read filtering on `waiting` is not enough on its
+  // own, because the invitee's list is cached and they are not in this room to
+  // hear that it started.
+  void retireRoomInvites(io, roomId, room.code);
   activeGames.set(roomId, newGame);
 
   // The room hears that it started, before anyone is sent their cards.

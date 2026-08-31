@@ -309,6 +309,16 @@ export function SocketProvider({ children }: { children: ReactNode }) {
       });
     };
 
+    // An invite this account holds has stopped being good — its room started,
+    // or emptied and closed. The list is cached with `staleTime: Infinity`, so
+    // without this the banner on the home screen outlives the room it points at
+    // until the next reconnect. No payload: which invites survive is the
+    // server's answer to give, and asking it again is the whole job.
+    const onInviteRetired = ({ roomCode }: { roomCode: string }) => {
+      setPendingInvite((prev) => (prev?.roomCode === roomCode ? null : prev));
+      qc.invalidateQueries({ queryKey: ["/api/friends/invites"] });
+    };
+
     // Keep the whole payload: the server emits a stable `code` (plus `params`)
     // alongside a plain-text `message`, so the client can render it in the
     // player's own language. `translateServerPayload` falls back to the
@@ -349,6 +359,7 @@ export function SocketProvider({ children }: { children: ReactNode }) {
     socket.on("friend:request_incoming", onRequestIncoming);
     socket.on("friend:request_accepted", onRequestAccepted);
     socket.on("friend:invite", onInvite);
+    socket.on("friend:invite_retired", onInviteRetired);
     socket.on("friend:error", onFriendError);
     socket.on("socket:error", onSocketError);
 
@@ -371,6 +382,7 @@ export function SocketProvider({ children }: { children: ReactNode }) {
       socket.off("friend:request_incoming", onRequestIncoming);
       socket.off("friend:request_accepted", onRequestAccepted);
       socket.off("friend:invite", onInvite);
+      socket.off("friend:invite_retired", onInviteRetired);
       socket.off("friend:error", onFriendError);
       socket.off("socket:error", onSocketError);
     };

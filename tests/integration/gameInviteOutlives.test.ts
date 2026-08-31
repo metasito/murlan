@@ -18,7 +18,7 @@ import {
   skipMessage,
   type TestServer,
 } from "../helpers/testServer.ts";
-import { connectAs, waitFor } from "../helpers/client.ts";
+import { connectAs, reconnectWith, waitFor } from "../helpers/client.ts";
 
 interface RoomState {
   code: string;
@@ -216,6 +216,48 @@ describe("a game invite outlives the socket that would have carried it", {
     await new Promise((r) => setTimeout(r, 400));
 
     assert.deepEqual(await invitesFor(friend.cookie), []);
+  });
+
+  /**
+   * An invite is a pointer to a room, so it must not outlive one.
+   *
+   * The host leaves, the lobby empties, and the room closes without ever
+   * starting. The read filters on `waiting`, so the endpoint stops offering it
+   * — but the invitee is not in that room and hears nothing, and their list is
+   * cached with `staleTime: Infinity`, so the banner sat on their home screen
+   * pointing at a room that no longer existed.
+   *
+   * Two halves, and the row is only the first: the invitee has to be *told*,
+   * on the one channel that reaches an account which is not in the room.
+   */
+  test("an invite does not outlive the room it points at", async () => {
+    const { host, friend, room } = await hostAndAbsentFriend("closed");
+
+    host.socket.emit("friend:invite", {
+      friendUserId: friend.user.id,
+      roomCode: room.code,
+    });
+    await new Promise((r) => setTimeout(r, 400));
+    assert.equal(
+      (await invitesFor(friend.cookie)).length,
+      1,
+      "nothing to test: the invite was never written"
+    );
+
+    // Back on their socket, so there is something listening when the room dies.
+    const back = await reconnectWith(server, friend.cookie);
+    sockets.push(back);
+    const told = waitFor<{ roomCode: string }>(back, "friend:invite_retired");
+
+    host.socket.emit("room:leave", { roomId: room.roomId });
+
+    const payload = await told;
+    assert.equal(payload.roomCode, room.code, "the invitee was told about the wrong room");
+    assert.deepEqual(
+      await invitesFor(friend.cookie),
+      [],
+      "the invite outlived the room it points at"
+    );
   });
 
   /**
