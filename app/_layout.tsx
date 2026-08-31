@@ -38,7 +38,7 @@ function trackForRoute(pathname: string): MusicTrack {
 }
 
 function RootLayoutNav() {
-  const { notification, dismissNotification } = useNotification();
+  const { notification, dismissNotification, reportBannerBottom } = useNotification();
   const pathname = usePathname();
 
   // The reporter is a plain module, so the route reaches it by being pushed
@@ -77,7 +77,11 @@ function RootLayoutNav() {
           <Stack.Screen name="capture" />
         </Stack.Protected>
       </Stack>
-      <NotificationBanner notification={notification} onDismiss={dismissNotification} />
+      <NotificationBanner
+        notification={notification}
+        onDismiss={dismissNotification}
+        onMeasure={reportBannerBottom}
+      />
       <OfflineBanner />
     </View>
   );
