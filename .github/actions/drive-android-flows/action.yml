@@ -98,6 +98,23 @@ runs:
           # the dialog and nothing else, so every assertion fails. This hides
           # the system dialog only; an app that genuinely hangs still fails.
           adb shell settings put global hide_error_dialogs 1
+          # Collected as it happens, not at the end. Maestro pulls the logcat
+          # when a flow finishes, and the failure this is here to explain kills
+          # the emulator - so the pull hits "device offline" and the run's only
+          # record of its own death is the one line the emulator managed to
+          # print to the job log (#185). A stream that started earlier survives
+          # the device it was reading.
+          #
+          # The host vitals answer the question the logcat cannot: whether the
+          # runner ran out of CPU or memory at that moment, or whether both
+          # were calm and the fault is the graphics pipe. Two years of comments
+          # in this file assert the former without ever having measured it.
+          #
+          # Both are `nohup`ed because every line here is its own `sh -c`,
+          # which exits immediately; the child is reparented and keeps writing.
+          # Neither may fail the step - an instrument is not a verdict.
+          nohup adb logcat -v time -b all > "$RUNNER_TEMP/logcat.txt" 2>&1 & true
+          nohup sh -c 'while true; do date -u +%H:%M:%S; cat /proc/loadavg; free -m | head -2; sleep 5; done' > "$RUNNER_TEMP/host-vitals.txt" 2>&1 & true
           adb install -r "$APP_APK"
           # Everything above this line is the device coming up: the boot, the
           # reboot, the locale and the install. Its absence is what tells
