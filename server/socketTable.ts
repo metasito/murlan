@@ -235,14 +235,9 @@ export function armLobbyGrace(
  * Retires every invite pointing at a room that can no longer be joined, and
  * tells the people holding one.
  *
- * The read side already refuses to serve an invite whose room has stopped
- * waiting, so the row alone is not what strands the invitee: their list is
- * cached, and nothing they are listening on says it changed. They are not in
- * the room, so `io.to(roomId)` never reaches them — the account's own room does.
- *
- * The room's code rides along so a client holding two invites clears the right
- * banner. Which invites survive is still the server's answer to give — the code
- * names the one that died, and the list is asked for again either way.
+ * An invitee is not in the room, so `io.to(roomId)` never reaches them; the
+ * account's own room is the only channel that does. The room's code rides along
+ * because a client may be holding a second invite it must not clear.
  */
 export async function retireRoomInvites(
   io: SocketServer,
@@ -295,10 +290,13 @@ export async function handleSeatRelease(
   if (!room) return;
 
   if (room.status === "waiting") {
-    const remaining = await storage.getRoomPlayers(roomId).catch((err) => {
+    // `null`, not `[]`: an unreadable roster and an empty one lead opposite
+    // ways, and the branch below deletes rows on the strength of the answer.
+    const remaining = await storage.getRoomPlayers(roomId).catch((err: unknown) => {
       logger.warn({ err, roomId }, "Failed to read the remaining lobby players");
-      return [];
+      return null;
     });
+    if (!remaining) return;
     if (remaining.length === 0) {
       await storage
         .updateRoomStatus(roomId, "finished")

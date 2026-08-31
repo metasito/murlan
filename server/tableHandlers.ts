@@ -564,11 +564,10 @@ async function startMatchAction(
   // round-trip in which quick-match can seat someone into a hand whose roster
   // is already frozen.
   await storage.updateRoomStatus(roomId, "in_progress");
-  // Nobody can join this room now, so nobody should be looking at an
-  // invitation to it — and the read filtering on `waiting` is not enough on its
-  // own, because the invitee's list is cached and they are not in this room to
-  // hear that it started.
-  void retireRoomInvites(io, roomId, room.code);
+  // Not awaited: nothing below reads the rows, and the deal must not wait on it.
+  void retireRoomInvites(io, roomId, room.code).catch((err: unknown) =>
+    logger.warn({ err, roomId }, "Failed to retire the invites of a room that started")
+  );
   activeGames.set(roomId, newGame);
 
   // The room hears that it started, before anyone is sent their cards.

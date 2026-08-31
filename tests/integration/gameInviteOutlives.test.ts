@@ -80,6 +80,21 @@ describe("a game invite outlives the socket that would have carried it", {
     return JSON.parse(text) as InviteRow[];
   }
 
+  /**
+   * The rows themselves, not the endpoint's answer. `/api/friends/invites`
+   * filters on the room still being joinable, so it goes empty the moment the
+   * room closes whether or not anything deleted anything — reading it alone
+   * would pass with the delete removed. Imported here rather than at module
+   * scope: `server/db.ts` builds its pool as it loads, and `startTestServer`
+   * sets `DATABASE_URL` first.
+   */
+  async function inviteRowsFor(roomId: string): Promise<unknown[]> {
+    const { db } = await import("../../server/db.ts");
+    const { gameInvites } = await import("../../shared/schema.ts");
+    const { eq } = await import("drizzle-orm");
+    return db.select().from(gameInvites).where(eq(gameInvites.roomId, roomId));
+  }
+
   /** A host with a waiting room, and a friend who is not connected to hear about it. */
   async function hostAndAbsentFriend(tag: string) {
     const host = await player(`${tag}_host`);
@@ -254,9 +269,14 @@ describe("a game invite outlives the socket that would have carried it", {
     const payload = await told;
     assert.equal(payload.roomCode, room.code, "the invitee was told about the wrong room");
     assert.deepEqual(
+      await inviteRowsFor(room.roomId),
+      [],
+      "the row outlived the room it points at"
+    );
+    assert.deepEqual(
       await invitesFor(friend.cookie),
       [],
-      "the invite outlived the room it points at"
+      "the invite is still being offered"
     );
   });
 

@@ -311,9 +311,9 @@ export function SocketProvider({ children }: { children: ReactNode }) {
 
     // An invite this account holds has stopped being good — its room started,
     // or emptied and closed. The list is cached with `staleTime: Infinity`, so
-    // without this the banner on the home screen outlives the room it points at
-    // until the next reconnect. No payload: which invites survive is the
-    // server's answer to give, and asking it again is the whole job.
+    // without this the banner outlives the room it points at until the next
+    // reconnect. The code names which room died, and nothing more: which
+    // invites survive is the server's answer to give, so the list is re-asked.
     const onInviteRetired = ({ roomCode }: { roomCode: string }) => {
       setPendingInvite((prev) => (prev?.roomCode === roomCode ? null : prev));
       qc.invalidateQueries({ queryKey: ["/api/friends/invites"] });

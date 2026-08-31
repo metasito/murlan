@@ -639,9 +639,6 @@ function HomeInviteCard({
         testID="home-invite-join"
         onPress={() => {
           hapticLight();
-          // Answered, so the row goes with it — the friends screen has always
-          // done this, and leaving it here was why an invite joined from home
-          // stayed on the home screen afterwards.
           dismissGameInvite(roomCode);
           acceptInvite(roomCode);
           router.push("/(online)");
