@@ -205,6 +205,26 @@ node. On a `Pressable` that host is the `View` carrying the responder props, and
 problem. On a `TextInput` the host does carry `onChangeText`, so the same reach appears to
 work there, which is how it gets adopted.
 
+## A reanimated value cannot be read back from `props.style`
+
+An entry `useAnimatedStyle` contributes to `style` is **frozen at the render that mounted it**,
+so a test that flattens `props.style` reads the value the component started with and never the
+live one. `tests/native/feltTranslate.test.tsx` works around it where it has to, by using the
+animated entry's *position in the array* rather than its contents.
+
+The consequence when writing a component, not a test: **if a number has to be readable — by a
+test, or by anything below it in the tree — it cannot be animated through `style`.** #589 hit
+this making a menu screen reserve the room a notification banner occupies. Keep the value a
+plain number and animate around it.
+
+Reaching for a layout transition instead is not the escape it looks like. On web,
+`LinearTransition` is a FLIP: `react-native-reanimated/src/layoutReanimation/web/transition/Linear.web.ts`
+applies `transform: translate(...) scale(sx, sy)` to the element for the duration, so putting
+one on a container scales everything inside it, while native animates the real Yoga values and
+does not. And on a container that is already `flexGrow: 1` inside a `flexGrow: 1` parent, a
+padding change produces no size delta at all, so the transition is inert exactly where it would
+have been harmless and fires only where it distorts. Check both halves before using one.
+
 ## `import.meta.dirname` is `undefined` under `npx tsx --test`
 
 The `node --test` files that use it fail under `tsx` with `The "paths[0]" argument must be of
@@ -379,6 +399,23 @@ Both go through `detachReparsePoints`, and the reason they have to is that on Wi
 recursive delete walks *into* a junction rather than unlinking it. The install is not a copy
 per worktree: it is one directory every worktree points at, so a delete that follows the link
 is deleting every session's install at once, and it has.
+
+**Do not create the junction in the first place.** A worktree under `.worktrees/` is nested
+inside the checkout, so Node's resolver walks up and finds the parent's `node_modules` by
+itself — no link needed. The `mklink /J` an agent loop may carry buys nothing and exists only
+for a recursive delete to walk into. It is also actively harmful: a junction breaks *ESM*
+resolution specifically, so `npx tsc` and `npx eslint` keep working through it while
+`node --test` fails every file with `Cannot find package 'typescript'`, which reads exactly
+like a broken branch.
+
+**`git worktree remove --force` is the trap, and it is silent.** Measured on 2026-08-31 with a
+throwaway junction target: it deletes straight through the link into the target, empties it,
+and **exits 0** with nothing in its output to notice. `--force` is what an agent reaches for
+the moment the plain remove refuses — which it does whenever a shell is standing in the
+directory — so the two failures compose. `scripts/guard-bash.mjs` now blocks the raw
+`--force` and points at `npm run worktrees:remove`. Note that this paragraph, the one above
+and `tests/worktreeRemoveCommand.test.ts` were all already in place when it happened again:
+for a rule this mechanical, a guard that refuses the command is the only thing that holds.
 
 `tests/worktreeRemoveCommand.test.ts` plants that defect — it asserts the raw command *does*
 destroy a junctioned install. **That floor is live on Windows only, and CI is Linux**, where a
