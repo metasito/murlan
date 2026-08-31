@@ -59,7 +59,10 @@ const styles = StyleSheet.create({
     marginBottom: Spacing.xs,
     paddingLeft: Spacing.xs,
   },
-  cardGrow: { flex: 1 },
+  // The same rule as the wrapper, and not `flex: 1`, whose zero basis shrinks:
+  // this card clips what it cannot fit (`overflow: 'hidden'` below), so being
+  // squeezed loses the tail of a list rather than scrolling it.
+  cardGrow: takesSlack,
   card: {
     backgroundColor: Colors.felt,
     borderRadius: Radius.lg,

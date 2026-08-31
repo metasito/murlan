@@ -9,12 +9,18 @@ import { test, expect } from "./fixtures";
 import type { Page } from "@playwright/test";
 import { openApp, registerNewAccount, uniqueUsername } from "./helpers/navigation";
 import { goToOnlineLobby, createRoom } from "./helpers/online";
+import { settled } from "./helpers/settle";
+import { PHONES } from "./helpers/phones";
 
-// Real handsets and a real tablet, in logical points, per the ticket.
-const PHONE_LANDSCAPE = { width: 844, height: 390 };
+// The handset comes from the one list that holds them; the iPad has no entry
+// there because that file is the phones the *table* is laid out for.
+const PHONE_LANDSCAPE = PHONES.find((p) => p.name === "iPhone 12")!;
+const PHONE_PORTRAIT = { width: PHONE_LANDSCAPE.height, height: PHONE_LANDSCAPE.width };
 const TABLET_LANDSCAPE = { width: 1112, height: 834 };
-const PHONE_PORTRAIT = { width: 390, height: 844 };
 const TABLET_PORTRAIT = { width: 834, height: 1112 };
+
+/** Long enough for a resize to reach a commit on a loaded runner. */
+const SETTLE_CEILING_MS = 2_000;
 
 interface Screen {
   name: string;
@@ -23,6 +29,12 @@ interface Screen {
    * rather than once, because a list that grows and a short form that centres
    * are both right answers and one bar cannot ask for both: a radio group
    * stretched to 800px is padding pretending to be design.
+   *
+   * Each sits well under what its screen actually reaches, and far above what
+   * the defect did — the numbers are in docs/design/585-menu-height/README.md.
+   * A bar set just under the passing value would go red on a font-metric
+   * change rather than on the defect coming back, and a check that goes red at
+   * random gets disabled and then lies (#118).
    */
   fill: number;
   open: (page: Page) => Promise<void>;
@@ -54,7 +66,7 @@ const SCREENS: Screen[] = [
   // pending band, and the band's own floor is further down than that.
   {
     name: "/friends",
-    fill: 0.85,
+    fill: 0.8,
     open: async (page) => {
       await page.goto("/friends");
       await page.getByText("Amici", { exact: true }).first().waitFor();
@@ -63,7 +75,7 @@ const SCREENS: Screen[] = [
   // The card reaches the floor and Indietro sits on it.
   {
     name: "/leaderboard",
-    fill: 0.9,
+    fill: 0.85,
     open: async (page) => {
       await page.goto("/leaderboard");
       await page.getByText("Classifica", { exact: true }).first().waitFor();
@@ -83,10 +95,13 @@ async function contentBottom(page: Page): Promise<number> {
   return page.evaluate(() => {
     let low = 0;
     for (const el of Array.from(document.querySelectorAll("*"))) {
+      // Upper-cased before comparing: `tagName` is case-preserving inside SVG,
+      // so an inline `<svg>` answers "svg" and an icon drawn by
+      // react-native-svg would go unmeasured.
       const paints =
         el.childElementCount === 0 &&
         ((el.textContent ?? "").trim() !== "" ||
-          ["INPUT", "IMG", "SVG", "TEXTAREA"].includes(el.tagName));
+          ["INPUT", "IMG", "SVG", "TEXTAREA"].includes(el.tagName.toUpperCase()));
       if (!paints) continue;
       const box = el.getBoundingClientRect();
       if (box.width === 0 || box.height === 0 || box.bottom <= 0) continue;
@@ -102,13 +117,57 @@ async function bottomAt(
   size: { width: number; height: number }
 ): Promise<number> {
   await page.setViewportSize(size);
-  // A resize reflows on the next frame; two settle even a layout that reads
-  // its own measured width back in.
-  await page.evaluate(
-    () => new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(done)))
-  );
+  // A resize reaches the layout through a `resize` listener, `setState` and the
+  // React scheduler, so a frame or two is not a settle: measured early, this
+  // reads the *old* layout and reports a void the screen has not got.
+  await settled(page, SETTLE_CEILING_MS);
   return contentBottom(page);
 }
+
+/**
+ * Whether anything on the screen can actually be scrolled to.
+ *
+ * A box extending past the viewport is not the same question: `MenuCard` is
+ * `overflow: 'hidden'`, so a card that grew past the window would report a
+ * bottom far below it while silently clipping its own tail — and skipping on
+ * that reading would excuse the one failure `grow` can cause.
+ */
+async function scrolls(page: Page): Promise<boolean> {
+  return page.evaluate(() =>
+    Array.from(document.querySelectorAll("*")).some((el) => {
+      const overflowY = getComputedStyle(el).overflowY;
+      return (
+        (overflowY === "auto" || overflowY === "scroll") &&
+        el.scrollHeight > el.clientHeight + 1
+      );
+    })
+  );
+}
+
+// The other half of the same rule, and the one a share-of-the-window check
+// cannot see: making a region take the slack must not cost the screen its
+// scroll. `flexShrink: 0` on a ScrollView is exactly that mistake — the
+// scroller grows to its content instead of scrolling it, and on a short window
+// the last control is below the fold with no way to reach it.
+test("the online lobby still scrolls when its content does not fit", async ({
+  page,
+  baseURL,
+}) => {
+  test.setTimeout(90_000);
+  // Shorter than any handset in `phones.ts`, which is the point: the assertion
+  // is that overflow scrolls, not that this window is one anybody has.
+  await page.setViewportSize({ width: 320, height: 480 });
+  await openApp(page, baseURL!);
+  await registerNewAccount(page, uniqueUsername("h"));
+  await goToOnlineLobby(page);
+  await settled(page, SETTLE_CEILING_MS);
+
+  expect(await scrolls(page), "nothing on the lobby scrolls at 320x480").toBe(true);
+
+  const join = page.getByRole("button", { name: "Inserisci codice stanza" });
+  await join.scrollIntoViewIfNeeded();
+  await expect(join).toBeVisible();
+});
 
 for (const screen of SCREENS) {
   for (const [orientation, short, tall] of [
@@ -125,16 +184,18 @@ for (const screen of SCREENS) {
       await registerNewAccount(page, uniqueUsername("h"));
       await screen.open(page);
 
-      const onPhone = await bottomAt(page, short);
-      const onTablet = await bottomAt(page, tall);
       // `MENU_HEIGHT_CAPTURE=<dir>` photographs what the numbers describe.
       // docs/design/585-menu-height/README.md is what it produced.
-      if (process.env.MENU_HEIGHT_CAPTURE) {
-        const slug = screen.name.replace(/[^a-z]+/gi, "-").replace(/^-|-$/g, "");
-        await page.screenshot({
-          path: `${process.env.MENU_HEIGHT_CAPTURE}/${slug}__tablet-${orientation}.png`,
-        });
-      }
+      const capture = process.env.MENU_HEIGHT_CAPTURE;
+      const slug = screen.name.replace(/[^a-z]+/gi, "-").replace(/^-|-$/g, "");
+      const shoot = async (at: string) => {
+        if (capture) await page.screenshot({ path: `${capture}/${slug}__${at}.png` });
+      };
+
+      const onPhone = await bottomAt(page, short);
+      await shoot(`phone-${orientation}`);
+      const onTablet = await bottomAt(page, tall);
+      await shoot(`tablet-${orientation}`);
       const owed = Math.round(tall.height * screen.fill);
       console.log(
         `HEIGHT\t${screen.name}\t${orientation}\t${short.height}px→y=${onPhone}\t` +
@@ -145,8 +206,8 @@ for (const screen of SCREENS) {
       // no slack to strand, and an identical bottom there means "the same
       // content", not "a void" (/rules, /profile).
       test.skip(
-        onTablet > tall.height,
-        `content is ${onTablet}px tall — taller than the ${tall.height}px window, so it scrolls`
+        await scrolls(page),
+        `the screen scrolls at ${tall.height}px, so it has no slack to strand`
       );
 
       expect(

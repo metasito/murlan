@@ -329,7 +329,7 @@ export default function FriendsScreen() {
           title={t("friends.sectionFriends")}
           count={friends.length > 0 ? friends.length : undefined}
         />
-        <View style={[styles.band, styles.friendsBand]}>
+        <View style={[styles.bandSurface, styles.band, styles.friendsBand]}>
         {friendsLoading && (
           <ActivityIndicator
             color={Colors.gold}
@@ -397,7 +397,7 @@ export default function FriendsScreen() {
         {gameInvites.length > 0 && (
           <>
             <SectionHeader title={t("friends.sectionGameInvites")} count={gameInvites.length} />
-            <View style={styles.listBlock}>
+            <View style={[styles.bandSurface, styles.listBlock]}>
               {gameInvites.map((invite) => (
                 <View key={invite.roomCode} style={styles.row}>
                   <View style={styles.avatarWrapper}>
@@ -445,7 +445,7 @@ export default function FriendsScreen() {
           title={t("friends.sectionPending")}
           count={pendingCount > 0 ? pendingCount : undefined}
         />
-        <View style={styles.band}>
+        <View style={[styles.bandSurface, styles.band]}>
         {requests.length === 0 && sentRequests.length === 0 && (
           <View style={styles.empty}>
             <Ionicons name="hourglass-outline" size={32} color={Colors.textMuted} {...a11yHidden()} />
@@ -553,21 +553,22 @@ const styles = StyleSheet.create({
     ...takesSlack,
     gap: Spacing.sm,
   },
-  // The two lists are what grows with the account, so they are what takes a
-  // tall window's spare height — two shares to friends, one to pending. They
-  // carry the search card's own surface: a band with nothing in it has to read
-  // as a region waiting to be filled, and an empty state centred on the
-  // backdrop reads as a screen with a hole in it instead.
-  band: {
-    ...takesSlack,
-    justifyContent: "center",
+  // A band with nothing in it has to read as a region waiting to be filled; an
+  // empty state centred on the backdrop reads as a screen with a hole in it.
+  // `bgCard` rather than the rows' own `bgSurface`, which would leave every
+  // row dissolved into the band it sits in with a tenth-alpha outline as the
+  // only thing between them.
+  bandSurface: {
     gap: Spacing.sm,
-    backgroundColor: Colors.bgSurface,
+    backgroundColor: Colors.bgCard,
     borderRadius: Radius.md,
     borderWidth: 1,
     borderColor: Colors.border,
     padding: Spacing.md,
   },
+  // The two lists are what grows with the account, so they are what takes a
+  // tall window's spare height — two shares to friends, one to pending.
+  band: { ...takesSlack, justifyContent: "center" },
   friendsBand: { flexGrow: 2 },
   sectionHeader: {
     flexDirection: "row",

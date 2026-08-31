@@ -22,7 +22,7 @@ import {
 import { useAuth } from "@/context/AuthContext";
 import { useSocket } from "@/context/SocketContext";
 import { Colors, Spacing, FontSize, Radius, TOUCH_TARGET_MIN, Type } from '@/lib/theme';
-import { MenuLayout, takesSlack } from "@/components/MenuLayout";
+import { MenuLayout } from "@/components/MenuLayout";
 import { MenuCard } from "@/components/MenuCard";
 import { MenuButton } from "@/components/MenuButton";
 import { useTranslation } from "@/lib/i18n";
@@ -269,7 +269,6 @@ export default function OnlineLobbyScreen() {
         </View>
       ) : (
         <ScrollView
-          style={takesSlack}
           contentContainerStyle={[styles.body, styles.bodyPortrait, { paddingBottom: Spacing.lg }]}
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled"
@@ -417,8 +416,13 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   body: { gap: Spacing.lg },
+  // Safe here where it is not in the landscape body: this is a ScrollView's
+  // content container, so when the content is taller there is no free space
+  // for `center` to distribute and nothing moves off the top.
   bodyPortrait: { flexGrow: 1, justifyContent: "center" },
-  bodyLandscape: { gap: Spacing.md, flex: 1 },
+  // No gap: the two spacers are the composition, and a gap between them and
+  // the block is height taken off a body that cannot scroll.
+  bodyLandscape: { gap: 0, flex: 1 },
   contentWrapper: {
     gap: Spacing.md,
   },
