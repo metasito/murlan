@@ -9,11 +9,12 @@ name: Android UI (Maestro)
 # `push` trigger each of those is a red main for a reason nobody can act on,
 # which is the exact thing this trigger has always existed to prevent.
 #
-# Do not turn it back on for #186 alone. As of 2026-08-31 this job is red 4/4 on #619 — the
-# tutorial's Skip control taps and does nothing — so restoring a trigger now would put a
-# known-red device job on every merge, which is the thing this stop-gap exists to prevent.
-# #354 owns the trigger and wants `pull_request`, not `push`; it needs #619 fixed and #186's
-# boot flake either retried clean or made an actionable failure first.
+# Do not turn it back on for #186 alone. As of 2026-08-31 this job is red every run on #627 —
+# a Maestro tap never reaches a Pressable on the tutorial screen, so the flows cannot get past
+# it — and restoring a trigger now would put a known-red device job on every merge, which is
+# the thing this stop-gap exists to prevent. #354 owns the trigger and wants `pull_request`,
+# not `push`; it needs #627 fixed and #186's boot flake either retried clean or made an
+# actionable failure first.
 #
 # Everything a developer's own machine supplies by hand, this supplies
 # explicitly, because the first runs of this job found each one missing in
@@ -22,6 +23,14 @@ name: Android UI (Maestro)
 # will not hand out a signed manifest without an Expo account.
 on:
   workflow_dispatch:
+    inputs:
+      emulator-boot-timeout:
+        # The retry below only fires when the device never came up, which on a
+        # healthy runner it always does. Lowering this is the only way to make
+        # that branch run on demand instead of waiting for the flake.
+        description: Seconds to allow for the emulator to boot (lower it to exercise the retry)
+        required: false
+        default: "900"
 
 concurrency:
   group: maestro-${{ github.ref }}
@@ -34,7 +43,12 @@ jobs:
   android:
     name: Drive the app on a real Android emulator
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    # Two boot waits fit inside this, which is the point: at 900s each, plus
+    # ~2 min of setup before the first, a double timeout lands near 32 min and
+    # one timeout followed by a slow-but-successful retry near 40. A job that
+    # overruns is cancelled rather than failed, which loses the verdict and both
+    # artefacts - so the retry must not be what pushes it over.
+    timeout-minutes: 60
 
     steps:
       - uses: actions/checkout@v4
@@ -158,24 +172,39 @@ jobs:
         id: flows
         continue-on-error: true
         uses: ./.github/actions/drive-android-flows
+        with:
+          emulator-boot-timeout: ${{ inputs.emulator-boot-timeout || '900' }}
 
       - name: Which kind of failure that was
         id: kind
         if: steps.flows.outcome == 'failure'
         run: |
           if [ -f "$RUNNER_TEMP/emulator-booted" ]; then
-            echo "booted=true" >> "$GITHUB_OUTPUT"
-            echo "The emulator booted; the flows themselves failed."
+            echo "started=true" >> "$GITHUB_OUTPUT"
+            echo "The device came up and the flows ran; the flows themselves failed."
           else
-            echo "booted=false" >> "$GITHUB_OUTPUT"
-            echo "::warning::The emulator never booted, so this run says nothing about the diff. Retrying once - #186."
+            echo "started=false" >> "$GITHUB_OUTPUT"
+            echo "::warning::The device never got as far as the flows, so this run says nothing about the diff. Retrying once - #186."
           fi
 
-      - name: Retry, and only for a boot that never happened
+      # The retry asks for the same AVD on the same port inside the same job. A
+      # first emulator that outlived its own timeout still holds 5554, and the
+      # action's own teardown swallows the error when it cannot reach it - so
+      # the second attempt would fail to bind and poll the corpse for another
+      # 900s, guaranteeing the double-timeout verdict from a single flake.
+      - name: Make sure nothing from the first attempt still holds the port
+        if: steps.flows.outcome == 'failure' && steps.kind.outputs.started == 'false'
+        run: |
+          pkill -f 'emulator -port 5554' || true
+          adb kill-server || true
+
+      - name: Retry, and only when the flows never started
         id: retry
-        if: steps.flows.outcome == 'failure' && steps.kind.outputs.booted == 'false'
+        if: steps.flows.outcome == 'failure' && steps.kind.outputs.started == 'false'
         continue-on-error: true
         uses: ./.github/actions/drive-android-flows
+        with:
+          emulator-boot-timeout: ${{ inputs.emulator-boot-timeout || '900' }}
 
       # `continue-on-error` above keeps the job alive long enough to tell those
       # two apart, which means the job's verdict is no longer its own - it has
@@ -187,10 +216,10 @@ jobs:
             exit 0
           fi
           if [ "${{ steps.retry.outcome }}" = "failure" ] && [ ! -f "$RUNNER_TEMP/emulator-booted" ]; then
-            echo "::error::The emulator failed to boot twice. That is the runner and not this branch - #186."
+            echo "::error::The device failed to come up twice. That is the runner and not this branch - #186."
             exit 1
           fi
-          echo "::error::The flows failed on an emulator that booted, so this is a result about the diff."
+          echo "::error::The flows ran on a device that came up, so this is a result about the diff."
           exit 1
 
       # Recordings, logs and screenshots from a failed flow are the only way to
