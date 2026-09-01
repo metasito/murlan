@@ -7,6 +7,7 @@ import { foldHandIntoMatch, resolveMatchFor } from "../lib/gameEngine.ts";
 import type { GameState, GameMode, MatchLength } from "../lib/gameEngine.ts";
 import type { GameResult } from "../lib/achievements.ts";
 import { exchangeAnnounceMs } from "../lib/exchangeCeremony.ts";
+import { STATE_ACK_TIMEOUT_MS } from "./gameTimers.ts";
 import { z } from "zod";
 
 /** seat -> userId from the persisted map, dropping any entry that is not one. */
@@ -70,33 +71,38 @@ export interface VisibleExchangePhaseInput {
   bothJokersException: boolean;
   cardFromLoser: unknown;
   cardToLoser?: unknown;
-  /** Epoch ms the phase closed — `markExchangeSettled` stamps it. */
   settledAt?: number;
 }
 
 /**
- * Whether the ceremony that reads `cardToLoser` is still on screen.
+ * Whether the ceremony that reads `cardToLoser` is still on screen. An
+ * unstamped closed phase reads as over: with no window to be inside, a seat
+ * that never watched the trade cross is told nothing.
  *
- * An unstamped closed phase reads as over rather than as running: a row
- * persisted before the stamp existed, or a phase that closed without a
- * broadcast, has no window to be inside, and a card nobody watched cross is
- * exactly what this bounds.
+ * The ack timeout is part of the window rather than slack around it.
+ * `sendGameStateTo` owes one resend to a client that never acknowledged the
+ * settle, and that resend re-derives from live state — so a window ending at
+ * the ceremony alone would answer it with half a trade, which
+ * `OnlineGameContext`'s `cardReceived || cardGiven` guard raises as a one-legged
+ * ceremony rather than refusing. Written as the sum so neither constant can be
+ * changed into the other.
  */
 function ceremonyRunning(phase: VisibleExchangePhaseInput, now: number): boolean {
   if (phase.active || phase.settledAt === undefined) return false;
-  return now - phase.settledAt < exchangeAnnounceMs(phase.bothJokersException);
+  const window = exchangeAnnounceMs(phase.bothJokersException) + STATE_ACK_TIMEOUT_MS;
+  return now - phase.settledAt < window;
 }
 
 /**
- * Stamps the moment an exchange closed, on the state itself so it survives a
- * restart the way the phase does.
+ * Stamps `settledAt`, on the state itself so it rides the persisted phase.
  *
- * Called from `broadcastGameState` rather than from each of the three places
- * that close a phase — a settle nobody broadcasts is not one any seat can be
- * shown, and one funnel cannot be half-updated the way three call sites can.
+ * `broadcastGameState` is the caller rather than each of the three places a
+ * phase closes: a settle nobody broadcasts is not one any seat can be shown,
+ * and one funnel cannot be half-updated the way three call sites can. That
+ * wiring is pinned by `tests/exchangeVisibility.test.ts`.
  */
 export function markExchangeSettled(
-  phase: { active: boolean; settledAt?: number } | undefined,
+  phase: Pick<VisibleExchangePhaseInput, "active" | "settledAt"> | undefined,
   now: number = Date.now()
 ): void {
   if (!phase) return;
@@ -116,10 +122,9 @@ export function markExchangeSettled(
  * `cardToLoser` is the opposite: a card the winner *chose* out of their own
  * hand, which no rule determines, so while the phase is open sending it would
  * leak that hand. Closing the phase lifts that, but only for as long as the
- * ceremony is on screen: `exchangePhase` is never cleared, so an unbounded gate
- * would put the card in every broadcast for the rest of the manche and hand it
- * to seats that connect long after the trade (#704). The two participants keep
- * it either way — it came out of one's hand and into the other's.
+ * ceremony is on screen — `exchangePhase` is never cleared, so the phase's own
+ * flag would keep the card public for the rest of the manche. The two
+ * participants keep it either way: it came out of one's hand into the other's.
  *
  * Every seat also gets the two seat indices and the both-jokers flag — all the
  * announcement banner reads from them.

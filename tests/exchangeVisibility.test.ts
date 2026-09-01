@@ -1,11 +1,19 @@
 // tests/exchangeVisibility.test.ts — `visibleExchangePhase` sends
 // `cardFromLoser` to the whole table while the phase is active (RULES.md §10.1
 // determines it, so it is no one's secret) and `cardToLoser` — which the winner
-// chose — to the two of them while it is open, and to the table once it closes.
+// chose — to the two of them while it is open, and to the table for as long as
+// the ceremony that reads it is on screen.
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
-import { markExchangeSettled, visibleExchangePhase } from "../server/onlineGameLogic.ts";
+import {
+  markExchangeSettled,
+  packPersistedState,
+  unpackPersistedState,
+  visibleExchangePhase,
+} from "../server/onlineGameLogic.ts";
 import { exchangeAnnounceMs } from "../lib/exchangeCeremony.ts";
+import { STATE_ACK_TIMEOUT_MS } from "../server/gameTimers.ts";
+import { readFileSync } from "node:fs";
 
 const CARD = { id: "2_spades", suit: "spades", rank: "2", isJoker: false };
 
@@ -113,11 +121,23 @@ describe("visibleExchangePhase", () => {
       assert.deepEqual(visibleExchangePhase(settled, null, DURING)?.cardToLoser, RETURNED);
     });
 
-    // #704: `exchangePhase` is never cleared, so an unbounded gate put the card
-    // in every broadcast for the rest of the manche — and handed it to anyone
-    // who connected long after the trade, having never watched it cross.
+    // `exchangePhase` is never cleared, so the flag alone would keep the card
+    // public for the rest of the manche — and hand it to anyone connecting long
+    // after the trade, having never watched it cross.
     describe("is bounded to the ceremony that reads it", () => {
-      const OVER = SETTLED_AT + exchangeAnnounceMs(false);
+      const OVER = SETTLED_AT + exchangeAnnounceMs(false) + STATE_ACK_TIMEOUT_MS;
+
+      // `sendGameStateTo` owes one resend to a client that never acknowledged
+      // the settle, and it re-derives from live state when it fires. Answering
+      // that with half a trade is what the ack timeout is inside the window for.
+      test("the one resend a client is owed still carries the card", () => {
+        const resent = SETTLED_AT + exchangeAnnounceMs(false) + STATE_ACK_TIMEOUT_MS - 1;
+        assert.deepEqual(visibleExchangePhase(settled, 0, resent)?.cardToLoser, RETURNED);
+        assert.ok(
+          STATE_ACK_TIMEOUT_MS > 0,
+          "the ack timeout is zero, so this case is the ceremony's own end"
+        );
+      });
 
       test("a seat arriving after the ceremony is told nothing", () => {
         for (const seat of [0, 2, null]) {
@@ -155,7 +175,7 @@ describe("visibleExchangePhase", () => {
       // is the ceremony's own clock rather than a number of its own.
       test("the two-joker ceremony closes on its own shorter clock", () => {
         const cancelled = { ...settled, bothJokersException: true };
-        const shorter = SETTLED_AT + exchangeAnnounceMs(true);
+        const shorter = SETTLED_AT + exchangeAnnounceMs(true) + STATE_ACK_TIMEOUT_MS;
         assert.deepEqual(visibleExchangePhase(cancelled, 0, shorter - 1)?.cardToLoser, RETURNED);
         assert.equal("cardToLoser" in visibleExchangePhase(cancelled, 0, shorter)!, false);
         assert.ok(
@@ -170,6 +190,25 @@ describe("visibleExchangePhase", () => {
         const unstamped = { ...settled, settledAt: undefined };
         assert.equal("cardToLoser" in visibleExchangePhase(unstamped, 0, DURING)!, false);
         assert.deepEqual(visibleExchangePhase(unstamped, 1, DURING)?.cardToLoser, RETURNED);
+      });
+
+      // The stamp rides the phase into the existing jsonb column rather than a
+      // new one, so a restart has to come back inside the window it left in —
+      // an envelope that dropped it would silently reopen the exposure instead.
+      test("the stamp survives the persisted envelope", () => {
+        const stored = packPersistedState({ exchangePhase: settled }, {}, 0, "ABC123", {
+          playerMap: { 0: "u" },
+          scores: { u: 0 },
+          gameMode: "free_for_all",
+          matchLength: "match",
+          matchTarget: 1,
+          maxPlayers: 4,
+        });
+        const back = unpackPersistedState<{ exchangePhase: typeof settled }>(
+          JSON.parse(JSON.stringify(stored))
+        );
+        assert.ok(back.ok, back.ok ? "" : back.reason);
+        assert.equal(back.gameState.exchangePhase.settledAt, SETTLED_AT);
       });
     });
 
@@ -204,7 +243,7 @@ describe("visibleExchangePhase", () => {
   });
 
   test("the two-joker exception is visible to the table", () => {
-    const both = { ...activePhase, active: false, bothJokersException: true, settledAt: 1 };
+    const both = { ...activePhase, active: false, bothJokersException: true };
     assert.equal(visibleExchangePhase(both, 0)?.bothJokersException, true);
   });
 });
@@ -236,5 +275,29 @@ describe("markExchangeSettled", () => {
 
   test("no phase at all is not an error", () => {
     assert.doesNotThrow(() => markExchangeSettled(undefined, NOW));
+  });
+
+  /**
+   * The two halves above are each sound on their own, and both stay green if
+   * nothing ever calls the writer: the sanitizer would then see an unstamped
+   * phase forever and no seat but the two trading would ever be shown the card
+   * (docs/agents/RULES.md rule 6).
+   *
+   * Read off the source because `server/gamePersistence.ts` builds a pg pool at
+   * import — the reason these helpers live in `onlineGameLogic.ts` at all.
+   */
+  test("the broadcast is what stamps it, before it serves any seat", () => {
+    const source = readFileSync(
+      new URL("../server/gamePersistence.ts", import.meta.url),
+      "utf8"
+    );
+    const body = source.slice(source.indexOf("export function broadcastGameState"));
+    const stamp = body.indexOf("markExchangeSettled(");
+    const firstSend = body.indexOf("sendGameStateTo(");
+    assert.ok(stamp >= 0, "broadcastGameState no longer stamps the settle time");
+    assert.ok(
+      firstSend >= 0 && stamp < firstSend,
+      "a seat is served before the settle is stamped, so it is told nothing"
+    );
   });
 });
