@@ -16,7 +16,7 @@ import Animated, {
 import { scheduleOnRN } from "react-native-worklets";
 import Ionicons from "@expo/vector-icons/Ionicons";
 import { CardView } from "@/components/CardView";
-import { Colors, FontSize, Motion, Radius, Scrim, Shadow, Spacing, Layer } from "@/lib/theme";
+import { Colors, FontSize, Hold, Motion, Radius, Scrim, Shadow, Spacing, Layer } from "@/lib/theme";
 import { usePrefersReducedMotion } from "@/lib/accessibility";
 import { useTranslation, type TranslationKey } from "@/lib/i18n";
 import type { Card, Combination } from "@/lib/gameEngine";
@@ -43,11 +43,14 @@ const FLY_LANDING_ROTS: Record<FlyDirection, number> = {
 const ARC_PEAK = 22;
 const LAND_DIP = 5;
 /**
- * The longest a flight may hold the felt. The throw is `FLIGHT_MS` and the
- * landing settles for a spring after it; this is well past both, so it never
- * cuts a flight that is running — it only ends one that has stopped reporting.
+ * The longest a flight may hold the felt. The throw is `FLIGHT_MS`, the table
+ * holds still, and the landing settles for a spring after that; this is well
+ * past all three, so it never cuts a flight that is running — it only ends one
+ * that has stopped reporting. The hold is a term rather than slack it happens
+ * to fit inside: a longer hold pushes the settle later, and a floor that fired
+ * first would run `onDone` twice.
  */
-const FLIGHT_LIMIT_MS = FLIGHT_MS * 3;
+const FLIGHT_LIMIT_MS = FLIGHT_MS * 3 + Hold.land;
 
 /**
  * Where a combination's cards sit on the felt. A combination mid-throw and the
@@ -132,7 +135,6 @@ export function FlyingCards({
     );
     // The card is down at `impactDelayMs()`, then the table sits still for the
     // hold before the settle — and the pile bounce riding its callback — runs.
-    // `reduceMotion` returned above, so this branch is always the full flight.
     settle.value = withDelay(
       impactDelayMs(reduceMotion) + landingHoldMs(reduceMotion),
       withSequence(

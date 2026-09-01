@@ -351,19 +351,14 @@ export function impactDelayMs(reduceMotion: boolean): number {
 
 /**
  * The beat the table sits still on at contact, before the aftermath — the
- * settle spring, and with it the pile's own bounce — is allowed to run.
+ * settle spring, and the pile bounce riding its callback — runs.
  *
- * Clamped by the landing rather than branched on `reduceMotion`: a hold can
- * never outlast the flight that produced it, and under reduced motion that
- * flight is `0`, so the same clamp is what makes the hold disappear there.
- * `impactDelayMs()` stays the one place the landing is derived.
- *
- * One value, not a tier. A bomb should sit longer than an ordinary play, but
- * the ladder of beats belongs to #101's escalation table, and a second tier
- * invented here is a number that table would have to contradict.
+ * A hold marks a landing, so it is asked of the landing rather than of
+ * `reduceMotion`: reading the flag here as well is the second derivation the
+ * two could drift apart on. One value; the ladder of beats is #101's.
  */
 export function landingHoldMs(reduceMotion: boolean): number {
-  return Math.min(Hold.land, impactDelayMs(reduceMotion));
+  return impactDelayMs(reduceMotion) === 0 ? 0 : Hold.land;
 }
 
 // ─── Bomb burst ────────────────────────────────────────────────────────────────

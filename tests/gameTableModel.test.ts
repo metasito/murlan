@@ -1386,27 +1386,36 @@ describe("the table holds still at the landing frame", () => {
     assert.equal(landingHoldMs(false), Hold.land);
   });
 
-  test("under reduced motion there is nothing to hold on", () => {
-    // No branch on `reduceMotion` produces this — the hold is clamped by the
-    // landing, and the landing is 0 here. A hold that survived would be a beat
-    // of nothing before a card that never flew.
+  test("no landing, no hold", () => {
+    // The contract, not the shipped path: `FlyingCards` returns before it ever
+    // reaches the hold under reduced motion. What this pins is that a caller
+    // reaching it anyway is answered from the landing rather than from a second
+    // reading of the flag, which is the pair that could drift.
+    assert.equal(impactDelayMs(true), 0);
     assert.equal(landingHoldMs(true), 0);
   });
 
-  test("the hold can never outlast the flight that produced it", () => {
-    assert.ok(landingHoldMs(false) <= impactDelayMs(false));
-  });
-
-  test("the hold is derived, not written down a second time", () => {
+  test("the settle waits out the landing and then the hold", () => {
     const src = readFileSync(path.join(repoRoot, "components", "table", "pile.tsx"), "utf8");
-    // The settle is what the hold delays, and the file that draws the flight
-    // used to re-derive the landing as `FLIGHT_MS * LANDING_FRACTION` — the
-    // same number as impactDelayMs(), free to drift from it.
     assert.ok(
       !/FLIGHT_MS\s*\*\s*LANDING_FRACTION/.test(src),
       "pile.tsx must call impactDelayMs(), not recompute the landing"
     );
-    assert.match(src, /landingHoldMs\(/, "the flight must actually wait out the hold");
+    // Both terms, in one expression: a call that reaches the hold and discards
+    // it leaves the aftermath running on the frame of contact, which is the
+    // whole defect.
+    assert.ok(
+      src.includes("impactDelayMs(reduceMotion) + landingHoldMs(reduceMotion)"),
+      "the settle must be delayed by the landing plus the hold"
+    );
+  });
+
+  test("the flight's safety floor clears the hold it now delays", () => {
+    // `FLIGHT_LIMIT_MS` also calls `onDone`. If a longer hold pushed the settle
+    // spring past it — which #101's bomb tier is meant to do — the floor would
+    // fire first and the pile would advance twice.
+    const src = readFileSync(path.join(repoRoot, "components", "table", "pile.tsx"), "utf8");
+    assert.match(src, /const FLIGHT_LIMIT_MS = .*Hold\.land/);
   });
 });
 

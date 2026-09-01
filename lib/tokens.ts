@@ -459,17 +459,15 @@ export const Reading = {
 } as const;
 
 /**
- * Stillness, which is not motion and so is not a `Motion` step.
+ * Stillness: a beat where nothing moves at all, inserted into a chain that is
+ * already running. `Reading` is the precedent — a duration the app spends not
+ * animating — and the reason these are not `Motion` steps: `motionMs()` and
+ * `Motion.reduced` shorten travel, and there is no travel here to shorten.
  *
- * A beat where nothing moves at all, inserted into a chain that is already
- * running. `Reading` is the precedent: a duration the app spends not animating.
+ * Counted in frames rather than taken off the `Motion` scale, because that is
+ * the unit the effect is described and felt in.
  */
 export const Hold = {
-  /**
-   * The table at a card's contact with the felt — Nijman's *sleep*
-   * (*Art of Screenshake*, INDIGO 2013). Three frames at 60fps. A card whose
-   * aftermath begins on the same frame it stops moving reads as having been
-   * placed; the beat is what makes it read as having hit.
-   */
+  /** The table at a card's contact — Nijman's *sleep* (*Art of Screenshake*, INDIGO 2013). Three frames at 60fps. */
   land: 50,
 } as const;
