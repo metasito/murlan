@@ -263,3 +263,62 @@ describe("slotForCard", () => {
     }
   });
 });
+
+/**
+ * A card's strip carries the step of the hand it is in *now*. One holding the
+ * hand's previous step is off by the difference between the two, and that error
+ * accumulates along the row rather than staying with the card.
+ *
+ * Only the arithmetic can say so. A strip a few pixels narrow still contains
+ * the centre of its own card's art by a wide margin, so a coordinate press
+ * lands on the right card either way, and an element-aimed one cannot miss at
+ * all. `tests/e2e/handTapStrips.spec.ts` is the other half, on the DOM's boxes.
+ */
+describe("a tap strip left at the previous hand's width", () => {
+  /** Where the press goes: the middle of the strip the *current* hand draws. */
+  const aimAt = (i: number, step: number) => i * step + step / 2;
+
+  /** The first card whose own press the stale strips give to somebody else. */
+  function firstMisrouted(n: number, room: number): number {
+    const stale = computeHandLayout(n, room, CW).step;
+    const fresh = computeHandLayout(n - 1, room, CW).step;
+    for (let i = 0; i < n - 1; i++) {
+      if (cardAtX(aimAt(i, fresh), n - 1, stale, CW) !== i) return i;
+    }
+    return -1;
+  }
+
+  test("sends a press to the wrong card, further along the row each time", () => {
+    // A full hand in a phone's share: the step is compressed, so playing a card
+    // widens it and every later slot moves out from under its own strip.
+    const room = 600;
+    for (const n of [14, 18]) {
+      const i = firstMisrouted(n, room);
+      assert.notEqual(i, -1, `a hand of ${n} in ${room} never misroutes, so this proves nothing`);
+      assert.ok(i > 0, "the first card cannot drift — it sits at the row's own origin");
+    }
+  });
+
+  test("cannot, only where both hands land on the same stop", () => {
+    // `MIN_READABLE_STEP` holds both of these, and `cardW * MAX_STEP_RATIO`
+    // both of those: the step the play would have moved is the step it already
+    // had, so the stale strip is the fresh one and there is nothing to drift.
+    assert.equal(firstMisrouted(18, 320), -1, "both against the finger floor");
+    assert.equal(firstMisrouted(13, 900), -1, "both against the widest step a card takes");
+  });
+
+  test("still does, where the stop holds only one of them", () => {
+    // Being against a stop is not itself safety, and a fixture picked for
+    // "clamped" rather than for "clamped on both sides" is green for a reason
+    // it does not hold. Here the hand is on the floor at 24.00 and the hand it
+    // becomes is off it at 25.60, which is the same 1.6px per slot as any
+    // other pair — accumulated, it reaches card 7 of 11.
+    assert.equal(computeHandLayout(12, 320, CW).step, MIN_READABLE_STEP);
+    assert.ok(computeHandLayout(11, 320, CW).step > MIN_READABLE_STEP);
+    assert.notEqual(
+      firstMisrouted(12, 320),
+      -1,
+      "a step leaving a stop moves like any other, and the strips must move with it"
+    );
+  });
+});
