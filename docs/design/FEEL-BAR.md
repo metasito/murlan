@@ -5,9 +5,9 @@ below, never the ceiling. This file is the ceiling: for each moment, named refer
 critic can `WebFetch` and compare us against, plus ideas past any reference for what "even
 cooler" means, stated as frame properties rather than adjectives.
 
-Every reference URL below was fetched and its cited numbers confirmed present in the
-fetched text before being written here. Where a source publishes no number for a quality
-we needed, that is stated rather than invented.
+Every entry below cites what was checked, and how, at that entry — a per-line claim, not a
+blanket one. Where a source publishes no number for a quality we needed, that is stated
+rather than invented.
 
 Our own tokens, cited throughout for grounding: `Motion.duration` (`flash` 90ms, `tap`
 120ms, `shift` 200ms, `travel` 260ms, `reveal` 600ms, `dwell` 1200ms),
@@ -67,8 +67,9 @@ casino product, not an afterthought.
 Balatro ships as an unencrypted LÖVE2D `.love` archive — unzipping the Steam build gives
 its literal Lua source, mirrored at this repository and verified here by direct fetch. This
 is Balatro's own contact-feedback primitive, called on essentially every card event
-(`self:juice_up(0.3, 0.5)` on seals, `juice_up(1, 0.5)` on editions — verified in
-`card.lua` at the same repository, same fetch pass).
+(`self:juice_up(0.3, 0.3)` on seals — quoted verbatim from `Card:set_seal()`, both the
+immediate and delayed-event branches use the same figure; `juice_up(1, 0.5)` on editions —
+verified in `card.lua` at the same repository, same fetch pass).
 - Numbers, quoted from `Moveable:juice_up`/`Moveable:move_juice`: default `amount = 0.4`;
   effect duration `end_time = G.TIMERS.REAL + 0.4` (400ms); resting scale offset during the
   effect is `1 - 0.6*amount`; rotation amplitude is `0.6*amount`; the oscillation itself is
@@ -190,13 +191,14 @@ quality:
 **1. Balatro's discard — the closest shipped equivalent, checked for what it withholds**
 `https://raw.githubusercontent.com/GladdonT/balatro-source-code/main/functions/state_events.lua`
 Balatro has no "pass," but its discard is the same shape: a frequent, low-stakes action a
-player takes often and that must not compete with the game's bigger moments. Read directly
-from `G.FUNCS.discard_cards_from_highlighted()`: each discarded card's own draw-out
-animation is staggered by `i*100/highlighted_count` (a percentage delay scaled by how many
-cards are discarded at once) via `ease_discard(-1)`, and — checked directly against the
-same `juice_up` call sites documented under **Card landing** and **Bomb** — **no
-`juice_up` call appears anywhere in the discard path**. The game's own frequent, unremarkable
-action gets movement and nothing else.
+player takes often and that must not compete with the game's bigger moments.
+`G.FUNCS.discard_cards_from_highlighted()` was read in full, start to end (not scanned) —
+each discarded card's own draw-out animation is staggered by `i*100/highlighted_count` (a
+percentage delay scaled by how many cards are discarded at once) via
+`draw_card(G.hand, G.discard, i*100/highlighted_count, 'down', false, ...)`, and the string
+`juice_up` does not appear anywhere in that function's own body, confirmed by reading every
+line of it rather than by searching the file for the term. The game's own frequent,
+unremarkable action gets movement and nothing else.
 - Numbers: stagger step `100/highlighted_count` percent per card (e.g. 5 discarded cards →
   20% steps); 0 `juice_up` calls in the discard function, against 8+ distinct call sites
   elsewhere in the source for events the game *does* want to sell (editions, seals, sold
@@ -258,20 +260,28 @@ a design intent.
 `https://raw.githubusercontent.com/GladdonT/balatro-source-code/main/functions/state_events.lua`
 No shipped card game's own "you won this round" *screen* is documented anywhere with
 numbers — but Balatro's own win/round-evaluation event chain is the actual code that runs
-it, verified by direct fetch of `state_events.lua`'s `end_round()` and win-state handling.
-- Numbers: hand highlight/emphasis holds for `delay(0.2)`; the hand-name label updates
-  after `delay = 0.4`; the chip/mult total eases in over `delay = 0.5`; results finalize
-  after `delay(0.3)`; on an outright game win, `play_sound('win')` fires immediately, the
-  game pauses, and the win-screen character (Jimbo) appears only after `delay = 2.5` —
-  a staged sequence, not one cut.
-- What it does that a static "You win" banner doesn't: nothing appears all at once — a win
-  is presented as roughly a 1-second chain of small reveals (highlight → name → total →
-  finalize) before an even longer 2.5s beat for the biggest win state, so the eye tracks a
-  sequence of distinct events rather than reading one screen.
-- Frame check: sampling frames across the first 500ms after a manche is won shows at least
-  three visually distinct states (hand highlighted only; hand name shown; chip/mult total
-  mid-count) — a capture set with only two states (before/after) has collapsed a staged
-  reveal into a cut.
+it, verified by direct fetch of `state_events.lua`'s `evaluate_play()` and `win_game()`.
+The file uses `delay(0.4)` in at least five unrelated places (new-round setup, hand-level
+display, post-play state transitions) and one conditional `delay(0.3)` — neither is tied
+cleanly enough to a single "win" beat to attribute without guessing, so both are left out
+below rather than assigned to whichever occurrence looked closest.
+- Numbers, each quoted from its own exact surrounding lines: in `evaluate_play()`,
+  `delay(0.2)` precedes the loop `for i=1, #scoring_hand do highlight_card(scoring_hand[i],
+  (i-0.999)/5, 'up') end` — the scoring cards' own highlight; further down the same
+  function, `if hand_chips*mult > 0 then delay(0.8) ... play_sound('chips2') end` gates a
+  sound cue, and a separate event with `ref_value = 'chips', ease_to = G.GAME.chips +
+  math.floor(hand_chips*mult), delay = 0.5` is the chip/mult total's own count-up ease — two
+  different numbers for two different things, not one; in `win_game()`, `delay = 2.5` gates
+  the event that shows the win-screen character (Jimbo).
+- What it does that a static "You win" banner doesn't: nothing appears all at once — cards
+  highlight first, a sound cue fires 0.8s later, the chip/mult total counts up on its own
+  0.5s ease, and only on the biggest win does a 2.5s beat bring in a character — four
+  distinct, separately-timed reveals rather than one screen.
+- Frame check: sampling frames across the first second after a manche is won shows the
+  scoring cards highlighted before the total begins counting, and the total still counting
+  (not yet at rest) at least 200ms after the highlight appears — a capture set where the
+  highlight and the final total appear on the same frame has collapsed the sequence into a
+  cut.
 
 **2. WCAG 2.2.2 Pause, Stop, Hide**
 `https://www.w3.org/WAI/WCAG21/Understanding/pause-stop-hide.html`
@@ -294,17 +304,22 @@ auto-playing celebration may run before it needs a pause control.
 `https://raw.githubusercontent.com/GladdonT/balatro-source-code/main/functions/state_events.lua`
 No shipped card or casino game documents a loss/defeat *screen's* own timing with numbers
 in any developer write-up I could fetch and verify. What is fetchable and checkable is
-Balatro's own `end_round()` code path on a loss, read directly: the moment `game_over` is
-true, `G.STATE = G.STATES.GAME_OVER` fires with **no `delay()` and no `juice_up()` call in
-the transition itself** — contrast this with the same file's win path (see **Win**), which
-stages four separate delayed beats before showing a result.
-- Numbers: 0 `delay()` calls and 0 `juice_up()` calls in the `GAME_OVER` state transition,
-  against 4+ staged `delay()` calls in the same file's win path — a real, checked asymmetry
-  in a shipped game between how a win and a loss are paced.
-- What it does that our own design intent needs to answer rather than copy: Balatro's own
-  loss is instant, no choreography at all — which is exactly the "the losing side should
-  not be faster than the winning side" question #101's rank-10 finding raises, with a real
-  shipped counter-example on the record rather than an assumption of what shipped games do.
+Balatro's own `end_round()` code path on a loss, read directly: the whole check — `local
+game_over = true`, the jokers' `end_of_round` evaluation that can flip it, and the
+`G.STATE = G.STATES.GAME_OVER` assignment itself — sits inside one `G.E_MANAGER:add_event`
+whose own wrapper is `trigger = 'after', delay = 0.2`, so the earliest the state can change
+is 0.2s after the event is scheduled. Inside that 0.2s-delayed block, the assignment itself
+fires with no further `delay()` or `juice_up()` call of its own — no *second*, additional
+beat once the block runs.
+- Numbers: the enclosing event's own `delay = 0.2` (quoted verbatim above); 0 further
+  `delay()` or `juice_up()` calls between entering that block and the `GAME_OVER`
+  assignment — the block runs once it starts, but does not stage anything after it starts.
+- What it does that our own design intent needs to answer rather than copy: past that one
+  0.2s gate, Balatro's own loss has no further choreography — no staged reveal like the win
+  path's (see **Win**) highlight → sound → count-up chain. That is the asymmetry #101's
+  rank-10 finding ("the losing side should not be faster than the winning side") is arguing
+  against, with a real shipped example on the record rather than an assumption of what
+  shipped games do.
 - Frame check: measured against our own decided intent (#101 rank-10, option 1: gate the
   celebration's escalation rather than remove the loss beat), the losing seats' acknowledgment
   must NOT collapse to zero frames the way Balatro's does — at least one frame between the
