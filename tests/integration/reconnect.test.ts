@@ -9,6 +9,7 @@ import {
   type TestServer,
 } from "../helpers/testServer.ts";
 import { MATCH_TARGETS, targetsFor } from "../../lib/gameEngine.ts";
+import { lobbyGraceMs } from "../../server/gameTimers.ts";
 import { connectAs, waitFor } from "../helpers/client.ts";
 import {
   driveHandToExchangeOrOver,
@@ -540,9 +541,10 @@ describe("reconnect", { skip: hasDatabase() ? false : skipMessage() }, () => {
 
       bob.socket.disconnect();
       // Nothing is broadcast on this path, so there is no event to await: the
-      // release runs off the socket's own disconnect. Long enough for it to
-      // have happened, far short of the grace this file sets.
-      await new Promise((resolve) => setTimeout(resolve, 500));
+      // release runs off the socket's own disconnect. Asked of the server
+      // rather than restated, so a grace shorter than this reads as the seat
+      // legitimately expiring instead of as the defect.
+      await new Promise((resolve) => setTimeout(resolve, Math.min(500, lobbyGraceMs() / 2)));
 
       assert.equal(
         seatedUsers(room.roomId)?.[1],
