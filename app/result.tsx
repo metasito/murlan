@@ -4,7 +4,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { hapticLight, hapticMedium } from "@/lib/haptics";
 import { useLocalMatch, useLocalSession, useLocalTable } from "@/context/gameHooks";
 import { standings } from "@/lib/standings";
-import { celebration } from "@/lib/matchState";
+import { celebratesViewer, celebration } from "@/lib/matchState";
 import { ResultBoard, type ContinueAction, type ResultRow } from "@/components/ResultBoard";
 import { Spacing } from "@/lib/theme";
 import { useTranslation } from "@/lib/i18n";
@@ -49,10 +49,20 @@ export default function ResultScreen() {
     points: row.points,
   }));
 
+  const celebrationCandidates = [
+    match.over ? match.winners[0] : undefined,
+    lastHand?.rankings[0],
+    rows[0]?.id,
+  ];
   const celebratedName = celebration(
     gameState.players,
-    [match.over ? match.winners[0] : undefined, lastHand?.rankings[0], rows[0]?.id],
+    celebrationCandidates,
     isTeamMode ? (team) => t("lobby.team", { team }) : null
+  );
+  const viewerCelebrated = celebratesViewer(
+    gameState.players,
+    celebrationCandidates,
+    gameState.players.find((p) => p.type === "human")?.id
   );
 
   const handleHome = () => {
@@ -102,6 +112,7 @@ export default function ResultScreen() {
           : t("result.matchProgress", { target: match.target })
       }
       celebratedName={celebratedName}
+      viewerCelebrated={viewerCelebrated}
       celebrationSubtitle={
         match.over
           ? match.isDraw

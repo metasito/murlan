@@ -373,6 +373,7 @@ export default function OnlineGameScreen() {
                 }}
                 voteState={rematchVoteState}
                 myUserId={user?.id ?? ""}
+                mySeatIndex={mySeatIndex}
                 cumulativeScores={cumulativeScores}
                 handScores={handScores}
                 ratingDelta={ratingDeltas[user?.id ?? ""] ?? null}

@@ -160,10 +160,12 @@ function WinnerCelebration({
   name,
   subtitle,
   compact,
+  viewerCelebrated,
 }: {
   name: string;
   subtitle: string;
   compact: boolean;
+  viewerCelebrated: boolean;
 }) {
   const reduceMotion = usePrefersReducedMotion();
   const scale = useSharedValue(0);
@@ -173,8 +175,8 @@ function WinnerCelebration({
   // The verdict lands once. Kept off the motion effect below, which re-runs
   // when `usePrefersReducedMotion` settles asynchronously after first paint.
   useEffect(() => {
-    hapticSuccess();
-  }, []);
+    if (viewerCelebrated) hapticSuccess();
+  }, [viewerCelebrated]);
 
   useEffect(() => {
     opacity.value = withTiming(1, { duration: motionMs("reveal", reduceMotion) });
@@ -237,6 +239,7 @@ export function ResultBoard({
   formatLine,
   celebratedName,
   celebrationSubtitle,
+  viewerCelebrated,
   rows,
   handCount,
   target,
@@ -255,6 +258,8 @@ export function ResultBoard({
   formatLine: string;
   celebratedName: string;
   celebrationSubtitle: string;
+  /** Whether the viewing seat is among those `celebratedName` names. */
+  viewerCelebrated: boolean;
   /** Already in finishing order. */
   rows: ResultRow[];
   handCount: number;
@@ -441,6 +446,7 @@ export function ResultBoard({
               name={celebratedName}
               subtitle={celebrationSubtitle}
               compact
+              viewerCelebrated={viewerCelebrated}
             />
             {stats}
           </View>
@@ -486,6 +492,7 @@ export function ResultBoard({
           name={celebratedName}
           subtitle={celebrationSubtitle}
           compact={false}
+          viewerCelebrated={viewerCelebrated}
         />
         {stats}
         <View style={styles.rankSection}>
