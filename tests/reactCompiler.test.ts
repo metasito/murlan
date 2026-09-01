@@ -122,24 +122,57 @@ test("every screen and component compiles with no bailouts", () => {
   );
 });
 
+/**
+ * Where a counterfactual injects. A construct the file holds, never an exact
+ * line of it: these are files this suite does not own, and the coupling is
+ * invisible from them, so a rename or a reordered dependency array must not be
+ * able to unanchor a patch.
+ */
+function anchored(rel: string, construct: RegExp, what: string) {
+  const source = readFileSync(path.join(repoRoot, rel), "utf8");
+  const match = construct.exec(source);
+  assert.ok(
+    match,
+    `${rel} holds no ${what}, which is where this counterfactual injects. Re-anchor it on ` +
+      `another construct the file does have — never on an exact line of it`
+  );
+  return { source, match };
+}
+
+const STATE_DECLARATION = /^([ \t]*)const \[\w+, set\w+\] = useState/m;
+const FIRST_EFFECT = /^([ \t]*)useEffect\(/m;
+const DEPENDENCY_ARRAY = /\}, \[[^[\]\n]+\]\)/;
+
+/**
+ * A render-time ref write, in the body that declares the file's first piece of
+ * state. It goes *before* that declaration and refers to nothing the file
+ * declares, so neither a rename nor an initializer spanning lines can put it
+ * anywhere but the top level of the body.
+ */
+function withRenderTimeRefWrite(rel: string): string {
+  const { source, match } = anchored(rel, STATE_DECLARATION, "`const [x, setX] = useState…` declaration");
+  const at = match.index;
+  return `${source.slice(0, at)}${match[1]}const probeRef = useRef(null);\n${match[1]}probeRef.current = 1;\n${source.slice(at)}`;
+}
+
+/** Distinguishes an injection the compiler never saw from one it tolerated. */
+function reasonsFor(rel: string, patched: string): string[] {
+  const reasons = compile(rel, patched).map((e) => e.detail?.reason ?? e.detail?.description ?? "");
+  assert.notEqual(
+    reasons.length,
+    0,
+    `${rel} compiled clean with the bailout injected, so it landed outside every function the ` +
+      `compiler visits — anchor this counterfactual inside one`
+  );
+  return reasons;
+}
+
 // The floor for context/GameContext.tsx joining the assertion above: proving
 // the counterfactual, so a directory cannot satisfy it by happening to
 // compile clean today for a reason unrelated to a render-time ref write.
 test("a render-time ref write is what the compiler refuses to compile in context/GameContext.tsx", () => {
   const rel = "context/GameContext.tsx";
-  const original = readFileSync(path.join(repoRoot, rel), "utf8");
-  // The provider's own state, rather than any one feature's: a line that only
-  // exists while a feature is written this way takes the floor with it when
-  // that feature moves.
-  const anchor = "  const [gameState, setGameState] = useState<GameState | null>(null);";
-  assert.ok(original.includes(anchor), `${rel} no longer contains the line this test patches`);
-  const reasons = compile(
-    rel,
-    original.replace(
-      anchor,
-      `${anchor}\n  const gameStateRef = useRef<GameState | null>(null);\n  gameStateRef.current = gameState;`
-    )
-  ).map((e) => e.detail?.reason ?? e.detail?.description ?? "");
+  const reasons = reasonsFor(rel, withRenderTimeRefWrite(rel));
   assert.ok(
     reasons.some((r) => r.includes("Cannot access refs during render")),
     "writing a ref during render no longer costs GameProvider its compilation — either the ref " +
@@ -162,16 +195,7 @@ test("a bailout in a plain .ts hook is what the widened gate catches", () => {
     COMPILED.some((f) => f.startsWith("lib/")),
     "no lib/ file reaches the gate; the hooks that live there are being skipped again"
   );
-  const original = readFileSync(path.join(repoRoot, rel), "utf8");
-  const anchor = "  const [orders, setOrders] = useState<Record<number, string[]>>({});";
-  assert.ok(original.includes(anchor), `${rel} no longer contains the line this test patches`);
-  const reasons = compile(
-    rel,
-    original.replace(
-      anchor,
-      `${anchor}\n  const seatRef = useRef(seat);\n  seatRef.current = seat;`
-    )
-  ).map((e) => e.detail?.reason ?? e.detail?.description ?? "");
+  const reasons = reasonsFor(rel, withRenderTimeRefWrite(rel));
   assert.ok(
     reasons.some((r) => r.includes("Cannot access refs during render")),
     `a render-time ref write in ${rel} compiled clean; the .ts half of the gate cannot fail`
@@ -230,19 +254,68 @@ test("no react-hooks rule is switched off under app/, components/ or context/", 
 // so the assertions above cannot be satisfied by weakening the compiler options.
 test("a suppressed react-hooks rule is what the compiler refuses to compile", () => {
   const rel = "components/CardView.tsx";
-  const original = readFileSync(path.join(repoRoot, rel), "utf8");
-  const anchor = "  }, [selected, noLift, reduceMotion, translateY]);";
-  assert.ok(original.includes(anchor), `${rel} no longer contains the effect this test patches`);
-  const reasons = compile(
+  // The suppression, not the effect it precedes: a react-hooks rule being off
+  // anywhere inside a component is what costs it its compilation, so nothing
+  // here reads a dependency array — the construct an exhaustive-deps autofix
+  // rewrites unprompted.
+  const { source, match } = anchored(rel, FIRST_EFFECT, "`useEffect(` call of its own");
+  const reasons = reasonsFor(
     rel,
-    original.replace(
-      anchor,
-      "  // eslint-disable-next-line react-hooks/exhaustive-deps\n  }, [selected, noLift]);"
-    )
-  ).map((e) => e.detail?.reason ?? e.detail?.description ?? "");
+    `${source.slice(0, match.index)}${match[1]}// eslint-disable-next-line react-hooks/exhaustive-deps\n${source.slice(match.index)}`
+  );
   assert.ok(
     reasons.some((r) => r.includes("ESLint")),
     "adding a react-hooks suppression back no longer costs the component its compilation — " +
       "either the compiler options here drifted from babel-preset-expo's, or the plugin changed"
   );
+});
+
+/**
+ * The two edits a rename or an exhaustive-deps autofix makes unprompted, each
+ * paired with the construct it needs: an edit that quietly matches nothing must
+ * not pass for a file that survived it.
+ */
+const ORDINARY_EDITS = [
+  {
+    what: "the first state pair renamed",
+    needs: STATE_DECLARATION,
+    apply: (source: string) => {
+      const pair = /const \[(\w+), (set\w+)\] = useState/.exec(source);
+      return pair ? source.replace(new RegExp(`\\b(?:${pair[1]}|${pair[2]})\\b`, "g"), "$&Renamed") : source;
+    },
+  },
+  {
+    what: "the first dependency array reversed",
+    needs: DEPENDENCY_ARRAY,
+    apply: (source: string) =>
+      source.replace(/\}, \[([^[\]\n]+)\]\)/, (_whole, deps: string) => {
+        const parts = deps.split(",").map((d) => d.trim());
+        return `}, [${[...parts].reverse().join(", ")}])`;
+      }),
+  },
+] as const;
+
+// The property the anchors above are for, asserted rather than argued.
+test("an ordinary edit leaves every counterfactual anchored", () => {
+  for (const [rel, construct] of [
+    ["context/GameContext.tsx", STATE_DECLARATION],
+    ["components/useHandOrder.ts", STATE_DECLARATION],
+    ["components/CardView.tsx", FIRST_EFFECT],
+  ] as const) {
+    const source = readFileSync(path.join(repoRoot, rel), "utf8");
+    for (const edit of ORDINARY_EDITS) {
+      const edited = edit.apply(source);
+      assert.equal(
+        edited !== source,
+        edit.needs.test(source),
+        `${rel}: ${edit.what} did not do what its own construct says it should, so what this ` +
+          `asserts about the file is not what it reads as`
+      );
+      assert.ok(
+        construct.exec(edited),
+        `${rel}: ${edit.what} unanchored the counterfactual that patches it; anchor that on a ` +
+          `construct the edit cannot remove`
+      );
+    }
+  }
 });
