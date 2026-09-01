@@ -82,7 +82,7 @@ export function ReactionTrigger({ onPress }: { onPress: () => void }) {
     <Pressable
       onPress={onPress}
       style={({ pressed }) => [styles.trigger, pressed && styles.triggerPressed]}
-      hitSlop={12}
+      hitSlop={Spacing.cosy}
       accessibilityRole="button"
       accessibilityLabel={t("reactionLayer.triggerA11yLabel")}
     >

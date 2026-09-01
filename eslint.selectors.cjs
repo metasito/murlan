@@ -53,6 +53,15 @@ const TIMING_LITERAL =
 const TIMING_LITERAL_MESSAGE =
   'Use a Motion step from @/lib/theme, picked by the role it plays (flash, tap, shift, travel, reveal, dwell). A duration that is not motion — how long something stays readable, a scatter that must not synchronise — takes a named module constant that says so, never a bare number.';
 
+// A JSX prop rather than a style property, so none of the selectors above sees
+// it. It is a distance on the same scale as a padding — the reach of a control
+// past its own box — and it was written as 4, 8, 10 and 12 across seven screens
+// while the rest of the app took it from `Spacing`.
+const HIT_SLOP_LITERAL =
+  `JSXAttribute[name.name="hitSlop"] > JSXExpressionContainer > ${BARE_NUMBER}`;
+const HIT_SLOP_LITERAL_MESSAGE =
+  "Use a Spacing token from @/lib/theme: hitSlop is a distance on the same scale as a padding. Note that react-native-web reads hitSlop on nothing but the legacy Touchable, so on web the control's own box is the whole target — if this is the only thing making it reachable, give the box a real size instead.";
+
 const TOKEN_AS_STRING = `Literal[value=/^(${TOKEN_OBJECTS})\\.[A-Za-z0-9_]+$/]`;
 const TOKEN_AS_TEMPLATE = `TemplateElement[value.raw=/^(${TOKEN_OBJECTS})\\.[A-Za-z0-9_]+$/]`;
 
@@ -72,6 +81,8 @@ module.exports = {
   TIMING_LITERAL_MESSAGE,
   TOUCH_TARGET_LITERAL,
   TOUCH_TARGET_LITERAL_MESSAGE,
+  HIT_SLOP_LITERAL,
+  HIT_SLOP_LITERAL_MESSAGE,
   TOKEN_AS_STRING,
   TOKEN_AS_TEMPLATE,
   STRING_TOKEN_MESSAGE,

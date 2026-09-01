@@ -107,7 +107,7 @@ function PlayerRow({ index, config, onChange, isHuman, lobbyMode }: PlayerRowPro
             name: personality.name,
             style: t(botBlurbKey(personality.id)),
           })}
-          hitSlop={8}
+          hitSlop={Spacing.sm}
         >
           <Text {...a11yHidden()} style={styles.personalityText} numberOfLines={1}>
             {t(botBlurbKey(personality.id))}

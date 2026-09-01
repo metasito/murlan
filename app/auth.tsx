@@ -132,7 +132,7 @@ export default function AuthScreen() {
                   style={styles.eyeBtn}
                   accessibilityRole="button"
                   accessibilityLabel={showPwd ? t("auth.hidePasswordA11yLabel") : t("auth.showPasswordA11yLabel")}
-                  hitSlop={10}
+                  hitSlop={Spacing.snug}
                 >
                   <Ionicons
                     name={showPwd ? "eye-off-outline" : "eye-outline"}

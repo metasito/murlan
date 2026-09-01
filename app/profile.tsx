@@ -133,7 +133,7 @@ function UserCard({ user }: { user: { username: string } }) {
           style={styles.renameBtn}
           accessibilityRole="button"
           accessibilityLabel={t("profile.renameA11yLabel")}
-          hitSlop={12}
+          hitSlop={Spacing.cosy}
           testID="btn-rename"
         >
           <Ionicons name="pencil" size={18} color={Colors.gold} {...a11yHidden()} />

@@ -985,6 +985,10 @@ describe("every player-facing server response carries a code", () => {
         violations.push(`${file}: ${text.replace(/\s+/g, " ").trim().slice(0, 90)}`);
       }
     }
+    // A floor against the scanner silently matching nothing, not a count of
+    // the server's responses — it moved down when server/emit.ts collapsed the
+    // twice- and thrice-built socket emits into one declaration each, which
+    // removed real payload literals rather than hiding any.
     assert.ok(
       objectCount > 90,
       `expected to find the server's response payload objects, got ${objectCount} (100 when this floor was set)`

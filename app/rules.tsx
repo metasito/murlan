@@ -74,7 +74,7 @@ function FAQItem({ item, isLast }: { item: FAQ; isLast: boolean }) {
         style={styles.faqQuestion}
         accessibilityLabel={item.question}
         {...a11yState({ role: "button", expanded: open })}
-        hitSlop={4}
+        hitSlop={Spacing.xs}
       >
         <Text style={styles.faqQuestionText} {...a11yHidden()}>{item.question}</Text>
         <Ionicons

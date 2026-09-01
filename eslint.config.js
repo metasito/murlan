@@ -14,6 +14,8 @@ const {
   TIMING_LITERAL_MESSAGE,
   TOUCH_TARGET_LITERAL,
   TOUCH_TARGET_LITERAL_MESSAGE,
+  HIT_SLOP_LITERAL,
+  HIT_SLOP_LITERAL_MESSAGE,
 } = require('./eslint.selectors.cjs');
 
 module.exports = defineConfig([
@@ -79,6 +81,10 @@ module.exports = defineConfig([
         {
           selector: TOUCH_TARGET_LITERAL,
           message: TOUCH_TARGET_LITERAL_MESSAGE,
+        },
+        {
+          selector: HIT_SLOP_LITERAL,
+          message: HIT_SLOP_LITERAL_MESSAGE,
         },
       ],
     },
