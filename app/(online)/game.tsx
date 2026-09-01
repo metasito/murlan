@@ -78,6 +78,7 @@ export default function OnlineGameScreen() {
     cumulativeScores,
     handScores,
     ratingDeltas,
+    handRecorded,
     rematchVoteState,
     rematchIntents,
     rematchPromptOpen,
@@ -375,6 +376,7 @@ export default function OnlineGameScreen() {
                 cumulativeScores={cumulativeScores}
                 handScores={handScores}
                 ratingDelta={ratingDeltas[user?.id ?? ""] ?? null}
+                handRecorded={handRecorded}
                 match={matchState}
               />
             )}

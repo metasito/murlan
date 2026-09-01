@@ -37,6 +37,7 @@ export function GameOverOverlay({
   cumulativeScores,
   handScores,
   ratingDelta,
+  handRecorded,
   match,
 }: {
   gameState: GameState;
@@ -52,6 +53,8 @@ export function GameOverOverlay({
   handScores: Record<string, number>;
   /** What it did to this player's ladder rating, or null for a hand that earned none. */
   ratingDelta: number | null;
+  /** Whether the hand just played wrote a `/api/stats/history` row. */
+  handRecorded: boolean;
   match: OnlineMatchState;
 }) {
   const { t } = useTranslation();
@@ -154,6 +157,7 @@ export function GameOverOverlay({
           myUserId={myUserId}
           ratingDelta={ratingDelta}
           mancheCanFollow={canContinue}
+          handRecorded={handRecorded}
         />
       )}
     </>

@@ -121,6 +121,7 @@ export async function handleGameOver(
     // shows its empty state on absence rather than on a zero, which is a real
     // outcome.
     ratingDeltas: Object.fromEntries(ratingDeltasByUser),
+    recorded: result.recordable,
   };
   io.to(roomId).emit("game:over", over);
 

@@ -72,4 +72,10 @@ export interface GameOverPayload {
    * that write lands (server/ratings.ts).
    */
   ratingDeltas: Record<string, number>;
+  /**
+   * Whether this hand wrote a `/api/stats/history` row — a bot-majority
+   * table writes none. Wider than `ratingDeltas` being empty: a teams hand
+   * is recorded and unrated.
+   */
+  recorded: boolean;
 }

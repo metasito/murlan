@@ -67,6 +67,7 @@ export function HandBreakdown({
   myUserId,
   ratingDelta,
   mancheCanFollow,
+  handRecorded,
 }: {
   myUserId: string;
   ratingDelta: number | null;
@@ -77,6 +78,8 @@ export function HandBreakdown({
    * AFK_TIMEOUT_MS) whether or not they are still looking at the table.
    */
   mancheCanFollow: boolean;
+  /** From `game:over`'s `recorded` field — a bot-majority table writes no row. */
+  handRecorded: boolean;
 }) {
   const { t } = useTranslation();
 
@@ -89,11 +92,10 @@ export function HandBreakdown({
   const ratingQuery = useQuery<RatingDto>({ queryKey: ["/api/ratings/me"], ...fresh });
 
   const history = historyQuery.data ?? [];
-  // The newest row is *inferred* to be the hand just played: the write is
-  // fire-and-forget after `game:over`, so nothing ties a row to this manche.
-  // Acceptable for v1 — the rating change, the one number the inference used
-  // to get wrong, now arrives on the event itself.
-  const thisHand = history[0];
+  // `history[0]` is only this hand's row when the server says the hand was
+  // recorded — a bot-majority table writes none, and the newest row would
+  // then belong to whatever hand came before it.
+  const thisHand = handRecorded ? history[0] : undefined;
   // From the row above rather than from the newest replay: a hand that records
   // no row records no replay either, and the newest replay would then be a
   // different hand's.

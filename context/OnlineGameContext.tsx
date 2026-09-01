@@ -94,6 +94,8 @@ interface OnlineGameContextValue {
   handScores: Record<string, number>;
   /** What the hand just played did to each seat's rating, by user id. Empty when the hand rated nobody. */
   ratingDeltas: Record<string, number>;
+  /** Whether the hand just played wrote a `/api/stats/history` row — a bot-majority table writes none. */
+  handRecorded: boolean;
   matchState: OnlineMatchState;
   rematchIntents: RematchIntentState;
   /** True while the table is being asked whether it wants another match. */
@@ -183,6 +185,7 @@ export function OnlineGameProvider({ userId, children }: { userId: string; child
   const [handScores, setHandScores] = useState<Record<string, number>>({});
   /** What the hand just played did to each seat's ladder rating, by user id. */
   const [ratingDeltas, setRatingDeltas] = useState<Record<string, number>>({});
+  const [handRecorded, setHandRecorded] = useState(false);
   const [matchState, setMatchState] = useState<OnlineMatchState>(INITIAL_MATCH);
   const [rematchIntents, setRematchIntents] = useState<RematchIntentState>(INITIAL_INTENTS);
   const [rejoinFailed, setRejoinFailed] = useState(false);
@@ -509,6 +512,7 @@ export function OnlineGameProvider({ userId, children }: { userId: string; child
       // beside a fresh scoreboard.
       setHandScores({});
       setRatingDeltas({});
+      setHandRecorded(false);
       setRematchIntents(INITIAL_INTENTS);
     };
 
@@ -524,11 +528,13 @@ export function OnlineGameProvider({ userId, children }: { userId: string; child
       matchContinues,
       isDraw,
       ratingDeltas,
+      recorded,
     }: GameOverPayload) => {
       // Kept whole and keyed by user id: this context has no identity of its
       // own, and the overlay that shows the number already knows whose it is.
       // Undefined and empty are the same answer — the hand rated nobody.
       setRatingDeltas(ratingDeltas ?? {});
+      setHandRecorded(recorded);
       if (scores) {
         setCumulativeScores(Object.fromEntries(scores.map((r) => [r.engineId, r.total])));
         setHandScores(Object.fromEntries(scores.map((r) => [r.engineId, r.points])));
@@ -850,6 +856,7 @@ export function OnlineGameProvider({ userId, children }: { userId: string; child
       cumulativeScores,
       handScores,
       ratingDeltas,
+      handRecorded,
       matchState,
       rematchIntents,
       rematchPromptOpen,
@@ -873,7 +880,7 @@ export function OnlineGameProvider({ userId, children }: { userId: string; child
       clearPlayerLeft,
       clearRejoinFailed,
     }),
-    [room, gameState, connected, error, playerLeft, rejoinFailed, reconnectNotice, mySeatIndex, turnDeadline, entrySource, rematchVoteState, cumulativeScores, handScores, ratingDeltas, matchState, rematchIntents, rematchPromptOpen, exchangeAnnouncing, exchangeAnnounceData, createRoom, joinRoom, spectateRoom, isSpectator, leaveRoom, quickmatch, startGame, voteRematch, answerRematch, playCards, pass, giveExchangeCard, acknowledgeExchange, sendReaction, clearError, clearPlayerLeft, clearRejoinFailed]
+    [room, gameState, connected, error, playerLeft, rejoinFailed, reconnectNotice, mySeatIndex, turnDeadline, entrySource, rematchVoteState, cumulativeScores, handScores, ratingDeltas, handRecorded, matchState, rematchIntents, rematchPromptOpen, exchangeAnnouncing, exchangeAnnounceData, createRoom, joinRoom, spectateRoom, isSpectator, leaveRoom, quickmatch, startGame, voteRematch, answerRematch, playCards, pass, giveExchangeCard, acknowledgeExchange, sendReaction, clearError, clearPlayerLeft, clearRejoinFailed]
   );
 
   return (
