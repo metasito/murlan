@@ -215,4 +215,32 @@ describe("§7.4 — royal straight / flush: ranked above bombs, beaten only by a
     assert.equal(canPlay(royalHigh, royalLow), true, "§7.4: only a higher royal straight beats a royal straight");
     assert.equal(canPlay(royalLow, royalHigh), false, "§7.4: only a higher royal straight beats a royal straight");
   });
+
+  test("a royal straight of a different length never beats another, even with the strictly higher top card the same-length rule alone would reward", () => {
+    // docs/BRIEF.md §3.1 ("Royal straight comparison"): beating a royal
+    // straight requires the same card count, consistent with normal
+    // straights (§6's "same length required, compare the top card"). Both
+    // combos below top out on an Ace — the strongest possible top card — so
+    // a length check dropped from the royal-vs-royal branch would read
+    // strength alone and wrongly call this a win.
+    const royalSixLowTop = combo([
+      c("3", "clubs"), c("4", "clubs"), c("5", "clubs"), c("6", "clubs"), c("7", "clubs"), c("8", "clubs"),
+    ]);
+    const royalFiveAceTop = combo([
+      c("9", "diamonds"), c("10", "diamonds"), c("J", "diamonds"), c("Q", "diamonds"), c("K", "diamonds"),
+    ]);
+    const royalSixAceTop = combo([
+      c("9", "hearts"), c("10", "hearts"), c("J", "hearts"), c("Q", "hearts"), c("K", "hearts"), c("A", "hearts"),
+    ]);
+    assert.equal(
+      canPlay(royalSixAceTop, royalFiveAceTop),
+      false,
+      "§7.4: a 6-card royal straight never beats a 5-card royal straight, whatever its top card"
+    );
+    assert.equal(
+      canPlay(royalFiveAceTop, royalSixLowTop),
+      false,
+      "§7.4: a 5-card royal straight never beats a 6-card royal straight, whatever its top card"
+    );
+  });
 });
