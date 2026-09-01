@@ -15,8 +15,7 @@ import { test, expect } from "./fixtures";
 import { openApp, registerNewAccount, uniqueUsername } from "./helpers/navigation";
 import { settled } from "./helpers/settle";
 import { it as copy } from "../../locales/it";
-import { SLIDE_DURATION } from "../../components/NotificationBanner";
-import { Reading } from "../../lib/theme";
+import { Reading } from "../../lib/tokens";
 
 const FRIENDS_BUTTON = /^Amici/;
 const BANNER = '[data-testid="notification-banner"]';
@@ -25,13 +24,14 @@ const BANNER = '[data-testid="notification-banner"]';
  * How long the banner has to come to rest before its box is read.
  *
  * This spec builds its own context, so it does not get the reduced motion the
- * `page` fixture emulates and the slide really runs. Room for it plus
- * `settled`'s three samples, and never more than half the banner's own life:
- * it dismisses itself `Reading.notice` after it lands, and a wait that outlived
- * that would measure a banner on its way out — which reads as covering nothing
- * for the same reason reading too early does.
+ * `page` fixture emulates and the slide really runs. `settled` returns as soon
+ * as the box holds still, so this is the bound on failure rather than a wait,
+ * and the only thing it has to be is shorter than the banner's own life: it
+ * dismisses itself `Reading.notice` after landing, and a bound that outlived
+ * that would let a banner on its way out be measured — which reads as covering
+ * nothing for the same reason reading too early does.
  */
-const BANNER_STILL_MS = Math.min(SLIDE_DURATION * 4, Reading.notice / 2);
+const BANNER_STILL_MS = Reading.notice / 2;
 
 /** Real handsets and a real tablet, both ways up. A banner costs most where the window is shortest. */
 const VIEWPORTS = [
