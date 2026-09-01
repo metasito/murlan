@@ -20,8 +20,10 @@
 # Needs a dev server only when driven through Expo Go by hand — see
 # smoke.yaml and docs/TESTING.md for the packager URL caveat.
 #
-# Performance note: every tapOn in the game-table section pins
-# `waitToSettleTimeoutMs: 500`. Without it, a first full run took
+# Performance note: every tapOn that *lands on* the game table pins
+# `waitToSettleTimeoutMs: 500` — which includes the last tap of the menu, since
+# the wait happens after the tap, against the screen it opened.
+# `tests/gameTableTapSettle.test.ts` holds the line. Without it, a first full run took
 # ~17 minutes and the app fell out of the JS session partway through —
 # Maestro's default "wait for the UI to stop changing" behaviour never
 # resolves against this screen's continuous Reanimated glow/pulse
@@ -137,7 +139,11 @@ env:
 - assertVisible: "Manche secca.*"
 - tapOn: "Manche secca.*"
 - assertVisible: "Inizia Partita"
-- tapOn: "Inizia Partita"
+# Capped like the taps on the table itself, because this is the one that lands
+# there: the wait runs after the tap, against the screen it opened.
+- tapOn:
+    text: "Inizia Partita"
+    waitToSettleTimeoutMs: 500
 
 # The device, not the app. This screen is landscape-locked and iOS draws it
 # turned inside a portrait simulator, and XCUITest then returns only the part
