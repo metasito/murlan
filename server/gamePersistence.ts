@@ -20,6 +20,7 @@ import {
   SWEEP_INTERVAL_MS,
   clearRoomTimers,
   clearRoomDisconnectTimers,
+  clearRoomLobbyGraces,
   secondsUntil,
 } from "./gameTimers.ts";
 import {
@@ -97,6 +98,7 @@ export function disposeGame(roomId: string, deleteRow = true) {
   const game = activeGames.get(roomId);
   if (game) clearRoomDisconnectTimers(game);
   clearRoomTimers(roomId);
+  clearRoomLobbyGraces(roomId);
   activeGames.delete(roomId);
   // Handed back the moment the game leaves memory: the claim is what keeps
   // every other instance off this room, and a lock outliving the table it

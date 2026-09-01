@@ -9,6 +9,7 @@ import {
   type TestServer,
 } from "../helpers/testServer.ts";
 import { MATCH_TARGETS, targetsFor } from "../../lib/gameEngine.ts";
+import { lobbyGraceMs } from "../../server/gameTimers.ts";
 import { connectAs, waitFor } from "../helpers/client.ts";
 import {
   driveHandToExchangeOrOver,
@@ -503,6 +504,64 @@ describe("reconnect", { skip: hasDatabase() ? false : skipMessage() }, () => {
         banked,
         "the scoreboard must be the running one, not a fresh match's zeroes"
       );
+    } finally {
+      await closeTable(table);
+    }
+  });
+
+  /**
+   * The window between two manches — the hand is over, the next has not been
+   * dealt — is the one where a drop used to cost the seat outright, with none
+   * of the grace every other drop gets. The seat left `playerMap`, and from
+   * then on every `game:rejoin` was answered `UNAUTHORIZED`: the account was
+   * out of the match it was still playing, with no way back in.
+   *
+   * Found by the soak (#736), where a player dropped as a manche ended and
+   * took no part in any of the ones that followed.
+   */
+  test("a blip between manches does not cost the player their seat", async () => {
+    const { seatedUsers } = await import("../helpers/liveGame.ts");
+    const alice = await connectAs(server, "between_alice");
+    const bob = await connectAs(server, "between_bob");
+    const room = await setUpRoom([alice, bob], 2);
+    const table = [alice, bob];
+    try {
+      gameOverOf(
+        await driveHandToExchangeOrOver(
+          table,
+          () => alice.socket.emit("room:start"),
+          { stopOnExchange: false }
+        )
+      );
+      assert.equal(
+        seatedUsers(room.roomId)?.[1],
+        bob.user.id,
+        "the seat has to be held before the drop, or the assertion below is vacuous"
+      );
+
+      bob.socket.disconnect();
+      // Nothing is broadcast on this path, so there is no event to await: the
+      // release runs off the socket's own disconnect. Asked of the server
+      // rather than restated, so a grace shorter than this reads as the seat
+      // legitimately expiring instead of as the defect.
+      await new Promise((resolve) => setTimeout(resolve, Math.min(500, lobbyGraceMs() / 2)));
+
+      assert.equal(
+        seatedUsers(room.roomId)?.[1],
+        bob.user.id,
+        "a drop between manches must hold the seat under the same grace as any other"
+      );
+
+      const back = await reconnect(bob);
+      table[1] = { ...bob, socket: back };
+      const answered = Promise.race([
+        waitFor(back, "game:player_reconnected", 5_000).then(() => "rejoined" as const),
+        waitFor<{ code?: string }>(back, "game:rejoin_failed", 5_000).then(
+          (p) => `refused ${p.code}` as const
+        ),
+      ]);
+      back.emit("game:rejoin", { roomId: room.roomId });
+      assert.equal(await answered, "rejoined");
     } finally {
       await closeTable(table);
     }

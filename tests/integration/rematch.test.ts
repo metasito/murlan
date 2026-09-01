@@ -27,6 +27,12 @@ import {
  * file's process.
  */
 process.env.MURLAN_AFK_TIMEOUT_MS = "300";
+/**
+ * A seat dropped between manches is held under this, not under the disconnect
+ * grace. Shortened so the test below can watch it expire; nothing else in this
+ * file reaches it, because no other table here loses a human.
+ */
+process.env.MURLAN_LOBBY_GRACE_MS = "800";
 
 /**
  * `game:rematch_vote` deals the next manche from the running game's own
@@ -153,6 +159,37 @@ describe("rematch roster", { skip: hasDatabase() ? false : skipMessage() }, () =
       "seat numbering must not change across a manche"
     );
     await closeTable(room.roomId, jack);
+  });
+
+  /**
+   * The gate is `rematchVotes.size >= the seated-seat count`, and a seat
+   * leaving moves the *right* side of it. A vote is the only thing that
+   * evaluates it, so a table whose last missing voter gives up its seat
+   * instead of voting has already cast every vote it will ever cast, and sits
+   * on a full tally that nothing reads.
+   */
+  test("a seat given up between manches deals the hand its vote was holding", async () => {
+    const [nora, omar] = await makeClients(server, [
+      "rematch_gone_nora",
+      "rematch_gone_omar",
+    ]);
+    const room = await setUpRoom([nora, omar], 4);
+
+    gameOverOf(
+      await driveHandToExchangeOrOver([nora, omar], () => {
+        nora.socket.emit("room:start", { fillWithBots: true });
+      })
+    );
+
+    const dealt = waitForDeal(nora.socket);
+    nora.socket.emit("game:rematch_vote");
+    // Omar never answers: the seat goes, and with it the vote the table was
+    // waiting on.
+    omar.socket.disconnect();
+
+    const state = await dealt;
+    assert.equal(state.players.length, 4, "the table deals on with the seats it has");
+    await closeTable(room.roomId, nora);
   });
 
   /**

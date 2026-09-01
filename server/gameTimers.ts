@@ -96,6 +96,17 @@ export function usersInLobbyGrace(roomId: string): string[] {
     .map((k) => k.slice(prefix.length));
 }
 
+/**
+ * Cancels every pending lobby release in a room.
+ *
+ * A seat can be held under one of these while its game is still live, so the
+ * timer outlives a table that is disposed underneath it — and fires against a
+ * room that no longer exists.
+ */
+export function clearRoomLobbyGraces(roomId: string) {
+  for (const userId of usersInLobbyGrace(roomId)) clearLobbyGrace(roomId, userId);
+}
+
 /** Cancels a pending lobby release. Returns whether one was armed. */
 export function clearLobbyGrace(roomId: string, userId: string): boolean {
   const key = lobbyGraceKey(roomId, userId);

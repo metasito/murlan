@@ -51,6 +51,7 @@ import {
 } from "./onlineGameLogic.ts";
 import {
   announceRejoin,
+  armLobbyGrace,
   handleSeatRelease,
   retireRoomInvites,
   roomStatePayload,
@@ -320,57 +321,57 @@ function exchangeAction(
   return OK;
 }
 
-async function rematchVoteAction(
+/**
+ * `total` is the seated-seat count: bots and seats whose player left hold no
+ * vote, exactly as countRematchAnswers counts them.
+ */
+function broadcastRematchVotes(io: SocketServer, game: OnlineGameState, roomId: string) {
+  io.to(roomId).emit("game:vote_state", {
+    votes: Array.from(game.rematchVotes),
+    total: Object.keys(game.playerMap).length,
+  });
+}
+
+function rematchAnswered(game: OnlineGameState): boolean {
+  return game.rematchVotes.size >= Object.keys(game.playerMap).length;
+}
+
+/** The table was asked during the closing manche and said no. */
+function rematchRefused(game: OnlineGameState): boolean {
+  return game.matchOver && !tableWantsRematch(game);
+}
+
+/**
+ * Deals the manche the table has voted for, or says why it cannot and leaves
+ * every vote where it was.
+ *
+ * `notifyUserId` is the vote that closed the gate. It is `null` when a seat
+ * *leaving* closed it, and then a refusal is logged rather than shown: nobody
+ * pressed anything, and the toast would land on whoever happened to be first
+ * in `playerMap`.
+ */
+async function dealVotedManche(
   io: SocketServer,
   game: OnlineGameState,
-  action: Extract<TableAction, { kind: "rematchVote" }>
+  roomId: string,
+  notifyUserId: string | null
 ): Promise<EventOutcome> {
-  const { roomId, userId } = action;
-  if (!game.gameState.gameOver) return { ok: false, code: "NO_LIVE_GAME" };
-  if (seatOfUser(game, userId) === null) return { ok: false, code: "NOT_SEATED" };
-
-  // `total` is the seated-seat count: bots and seats whose player left hold no
-  // vote, exactly as countRematchAnswers counts them.
-  const broadcastVoteState = () =>
-    io.to(roomId).emit("game:vote_state", {
-      votes: Array.from(game.rematchVotes),
-      total: Object.keys(game.playerMap).length,
-    });
-
-  // The table was asked during the closing manche and said no. Nobody gets to
-  // restart it from the results screen after that.
-  if (game.matchOver && !tableWantsRematch(game)) {
-    gameError(io, userId, {
-      message: "The table chose not to play again",
-      code: "REMATCH_DECLINED",
-    });
-    return { ok: false, code: "REMATCH_DECLINED" };
-  }
-
-  game.rematchVotes.add(userId);
-  broadcastVoteState();
-  if (game.rematchVotes.size < Object.keys(game.playerMap).length) return OK;
+  const refuse = (code: string, message: string): EventOutcome => {
+    if (notifyUserId) gameError(io, notifyUserId, { message, code });
+    else logger.warn({ roomId, code }, "The next manche could not be dealt");
+    broadcastRematchVotes(io, game, roomId);
+    return { ok: false, code };
+  };
 
   // The database is read for the room's settings and nothing else: the next
   // manche's seats are copied from the running game. `room_players` holds
   // humans only, so a roster rebuilt from it drops every bot seat and
   // renumbers whatever is left.
   const room = await storage.getRoomById(roomId);
-  if (!room) {
-    gameError(io, userId, { message: "Room not found", code: "ROOM_NOT_FOUND" });
-    broadcastVoteState();
-    return { ok: false, code: "ROOM_NOT_FOUND" };
-  }
+  if (!room) return refuse("ROOM_NOT_FOUND", "Room not found");
 
   const seats = game.gameState.players;
-  if (seats.length < 2) {
-    gameError(io, userId, {
-      message: "At least 2 players are required",
-      code: "MIN_PLAYERS_REQUIRED",
-    });
-    broadcastVoteState();
-    return { ok: false, code: "MIN_PLAYERS_REQUIRED" };
-  }
+  if (seats.length < 2) return refuse("MIN_PLAYERS_REQUIRED", "At least 2 players are required");
 
   // Cleared only once the next manche is certain to be dealt. A vote discarded
   // on the way out of a bail-out can never be retried: the overlay would sit
@@ -408,6 +409,45 @@ async function rematchVoteAction(
   return OK;
 }
 
+async function rematchVoteAction(
+  io: SocketServer,
+  game: OnlineGameState,
+  action: Extract<TableAction, { kind: "rematchVote" }>
+): Promise<EventOutcome> {
+  const { roomId, userId } = action;
+  if (!game.gameState.gameOver) return { ok: false, code: "NO_LIVE_GAME" };
+  if (seatOfUser(game, userId) === null) return { ok: false, code: "NOT_SEATED" };
+
+  // Nobody gets to restart it from the results screen after that.
+  if (rematchRefused(game)) {
+    gameError(io, userId, {
+      message: "The table chose not to play again",
+      code: "REMATCH_DECLINED",
+    });
+    return { ok: false, code: "REMATCH_DECLINED" };
+  }
+
+  game.rematchVotes.add(userId);
+  broadcastRematchVotes(io, game, roomId);
+  if (!rematchAnswered(game)) return OK;
+  return dealVotedManche(io, game, roomId, userId);
+}
+
+/**
+ * The gate again, after a seat has gone: it counts votes against the seats
+ * still there, and a vote is the only thing that ever evaluates it.
+ */
+async function dealIfSeatLeftGateClosed(
+  io: SocketServer,
+  roomId: string
+): Promise<EventOutcome> {
+  const game = activeGames.get(roomId);
+  if (!game || !game.gameState.gameOver || !rematchAnswered(game)) return OK;
+  if (rematchRefused(game)) return OK;
+  if (Object.keys(game.playerMap).length === 0) return OK;
+  return dealVotedManche(io, game, roomId, null);
+}
+
 async function rejoinAction(
   io: SocketServer,
   game: OnlineGameState,
@@ -421,6 +461,7 @@ async function rejoinAction(
   // player may well have come back on another one. Clearing it here is what
   // makes the answer independent of that.
   clearDisconnectGrace(userId);
+  clearLobbyGrace(roomId, userId);
 
   // Idempotent — an INSERT on every reconnect would pile up duplicate
   // room_players rows and corrupt the next rematch.
@@ -489,6 +530,10 @@ async function startMatchAction(
   // the seat instead; they can rejoin the next lobby.
   const seated = await storage.getRoomPlayers(room.id);
   const absent = new Set(usersInLobbyGrace(roomId));
+  // The finished match's tally, discarded before any seat leaves: releasing one
+  // lowers the rematch gate, and a stale full count would deal that match one
+  // more manche underneath the new one being dealt here.
+  previous?.rematchVotes.clear();
   for (const p of seated.filter((p) => absent.has(p.userId))) {
     clearLobbyGrace(roomId, p.userId);
     await handleSeatRelease(io, roomId, p.userId, p.user.username, { source: "disconnect" });
@@ -606,12 +651,12 @@ function seatLostAction(
   if (seatOfUser(game, userId) === null) return { ok: false, code: "NOT_SEATED" };
 
   if (game.gameState.gameOver) {
-    // The results screen is the opposite case: the seat counts towards the
-    // rematch gate, so holding it means the others can never start the next
-    // manche.
-    return handleSeatRelease(io, roomId, userId, username, { source: "disconnect" }).then(
-      () => OK
-    );
+    // The lobby grace, not the disconnect one: a seat between hands counts
+    // towards the rematch gate, so the table cannot wait a full minute on it.
+    // Its expiry also asks the right question — back in *this* room, not
+    // merely back online.
+    const releasing = armLobbyGrace(io, roomId, userId, username);
+    return releasing ? releasing.then(() => OK) : OK;
   }
 
   // Distinct from losing: the hand was still running when they went.
@@ -657,6 +702,9 @@ function seatLostAction(
             )
           );
         await vacateSeat(io, roomId, userId, username);
+        // The hand may well have ended inside the grace, which puts this seat
+        // in the rematch tally it is now leaving.
+        await dealIfSeatLeftGateClosed(io, roomId);
         logger.info({ userId, username, roomId }, "Disconnect grace expired — seat handed to a bot");
       } catch (err) {
         logger.error({ err, userId, roomId }, "Disconnect timeout handler failed");
@@ -725,7 +773,9 @@ async function applyTableAction(
       // game knows whether the seat is still held. Removing the DB row alone
       // leaves it live — auto-playing the leaver's hand, or blocking the
       // rematch gate.
-      return vacateSeat(io, action.roomId, action.userId, action.username).then(() => OK);
+      return vacateSeat(io, action.roomId, action.userId, action.username).then(() =>
+        dealIfSeatLeftGateClosed(io, action.roomId)
+      );
   }
 }
 
