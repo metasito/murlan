@@ -59,6 +59,7 @@ const VALUES: Record<string, [unknown, unknown]> = {
   giveable: [false, true],
   dealDelay: [0, 120],
   dealFromX: [0, 120],
+  dealFade: [false, true],
   dealRise: [0, 120],
   cardW: [64, 92],
   cardH: [90, 128],

@@ -94,7 +94,10 @@ export function ExchangeAnnouncement({
         </TableText>
       ) : (
         <>
-          {cardReceived && (
+          {/* A flier parks at its destination rather than fading, so it is
+              retired at the landing — the instant the receiving hand takes the
+              card in. The tags below take over for the rest of the notice. */}
+          {cardReceived && !landed && (
             <ExchangeFlyingCard
               card={cardReceived}
               trip={toWinner}
@@ -102,7 +105,7 @@ export function ExchangeAnnouncement({
               testID="exchange-flier-to-winner"
             />
           )}
-          {cardGiven && (
+          {cardGiven && !landed && (
             <ExchangeFlyingCard
               card={cardGiven}
               trip={toLoser}

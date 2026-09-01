@@ -103,8 +103,11 @@ test("the two exchanged cards fly at once and never overlap", async ({ page, bas
 
   const frames: { a: Box; b: Box }[] = [];
   for (let i = 0; i < SAMPLES; i++) {
-    const a = await toWinner.boundingBox().catch(() => null);
-    const b = await toLoser.boundingBox().catch(() => null);
+    // A short timeout, because `boundingBox` auto-waits for its element: the
+    // fliers are gone the instant they land, and the default wait would spend
+    // the whole test budget on the first sample past that.
+    const a = await toWinner.boundingBox({ timeout: SAMPLE_GAP_MS }).catch(() => null);
+    const b = await toLoser.boundingBox({ timeout: SAMPLE_GAP_MS }).catch(() => null);
     // The pair leaves together and lands together; a frame with only one of
     // them is the end of the flight, not a failure.
     if (a && b) frames.push({ a, b });

@@ -18,7 +18,7 @@ import { Colors, FontSize, Motion, motionMs, Radius, Scrim, Shadow, Spacing } fr
 import { usePrefersReducedMotion } from "@/lib/accessibility";
 import { useTranslation } from "@/lib/i18n";
 import type { Card } from "@/lib/gameEngine";
-import { computeHandLayout, hitWidth } from "@/components/handLayout";
+import { computeHandLayout, hitWidth, slotForCard } from "@/components/handLayout";
 import { cardAt, dropIndex } from "@/components/handOrder";
 import { HAND_ARC, solveArc } from "@/components/tableArc";
 import { HAND_CROP, handRowHeadroom } from "@/components/gameTableModel";
@@ -132,6 +132,12 @@ interface CardItemProps {
   dealDelay: number;
   /** Horizontal distance back to the deck, so the fan converges on one point. */
   dealFromX: number;
+  /**
+   * Fade the card up as it travels. False for a card arriving off the felt: a
+   * flier hands over to it at the same point in the same frame, and fading in
+   * there is a blink in the middle of a crossing that has to stay visible.
+   */
+  dealFade: boolean;
   /** The table's own scale, times HAND_SCALE — this hand's card size. */
   cardScale: number;
   /** Vertical distance a dealt card rises from, derived from that same size. */
@@ -164,6 +170,7 @@ function CardItemBase({
   zIndex,
   dealDelay,
   dealFromX,
+  dealFade,
   cardScale,
   dealRise,
   hitW,
@@ -243,7 +250,7 @@ function CardItemBase({
     // tilt as it lands, rather than overshooting past it.
     const restRot = arcRot + tilt.value;
     return {
-      opacity: 1 - d,
+      opacity: dealFade ? 1 - d : 1,
       transform: [
         { translateX: dealFromX * d + shift.value },
         { translateY: liftY.value + dealRise * d },
@@ -337,6 +344,7 @@ export function cardItemPropsEqual(a: CardItemProps, b: CardItemProps): boolean 
     a.giveable === b.giveable &&
     a.hint === b.hint &&
     a.dealFromX === b.dealFromX &&
+    a.dealFade === b.dealFade &&
     a.cardScale === b.cardScale &&
     a.dealRise === b.dealRise &&
     a.hitW === b.hitW &&
@@ -380,6 +388,8 @@ export function StraightHand({
   giveHint,
   refuseHint,
   onReorder,
+  arrivingIndex,
+  descendingId,
 }: {
   cards: Card[];
   selectedIds: string[];
@@ -410,10 +420,35 @@ export function StraightHand({
    * an opponent's fan and a spectated one are not arrangeable.
    */
   onReorder?: (id: string, to: number) => void;
+  /**
+   * The slot a card still in flight is coming to. The row steps for the hand
+   * *including* it and holds that slot empty, so the card lands in a space
+   * already waiting rather than over a fan that has not moved.
+   */
+  arrivingIndex?: number;
+  /**
+   * The card that slot was held for, named on the render it mounts, so it
+   * travels into the space rather than appearing in it. From the row's centre
+   * rather than in from the deck: it is arriving off the felt, not being dealt.
+   */
+  descendingId?: string;
 }) {
   const { t } = useTranslation();
   const reduceMotion = usePrefersReducedMotion();
   const n = cards.length;
+  // Declared here rather than in the reordering section below: the row parts
+  // for an arriving card only when nothing is held, and the layout is solved
+  // above that section.
+  const [heldId, setHeldId] = useState<string | null>(null);
+  // A drag already under way owns the row: it solves the arc for the hand
+  // *without* the card the finger holds, and a slot held open for an arrival on
+  // top of that is two index spaces at once. The caller stops offering
+  // `onReorder` when a card is in the air, but a gesture already in progress
+  // keeps its held card for at least one render past that.
+  const parting = heldId === null ? arrivingIndex : undefined;
+  /** Slots the row is stepped for — the cards it draws, plus the one arriving. */
+  const slotCount = parting === undefined ? n : n + 1;
+  const slotOf = (i: number) => slotForCard(i, parting);
   const onTurn = isMyTurn === true;
   // Bigger cards *and* the same fraction more air between them: the share the
   // row aims at grows with the card, so the fan opens rather than just
@@ -454,7 +489,7 @@ export function StraightHand({
   // hand of eighteen compresses inside the same span rather than reaching
   // past it. Only `availW` is hard: past that the row scrolls. Solved above
   // the empty-hand return so the scroll effect below it can be a hook.
-  const { step, totalW, scrollable } = computeHandLayout(n, room, cardW, availW);
+  const { step, totalW, scrollable } = computeHandLayout(slotCount, room, cardW, availW);
   const rowW = Math.min(totalW, availW);
   /** How much of a scrolling row lies outside the window, both ends together. */
   const overhang = Math.max(0, totalW - availW);
@@ -483,7 +518,6 @@ export function StraightHand({
 
   // ─── Reordering ────────────────────────────────────────────────────────────
   const canReorder = onReorder !== undefined && !disabled && !faceDown;
-  const [heldId, setHeldId] = useState<string | null>(null);
   const [gapAt, setGapAt] = useState<number | null>(null);
   // What the gesture is holding, beside the state the render draws from: the
   // last `onUpdate` and the `onEnd` that follows it can land in the same frame,
@@ -552,7 +586,7 @@ export function StraightHand({
   // because the clearance it feeds is read by a hook.
   const solve = (count: number) =>
     solveArc(count, { budget: HAND_ARC, cardW, cardH, scale: cardScale, room: totalW, step });
-  const full = solve(n);
+  const full = solve(slotCount);
   const box = full.box;
   // The middle card rides highest, so the row is as tall as the card plus the
   // climb; the whole arc is then pushed past the bottom edge by the crop.
@@ -617,12 +651,17 @@ export function StraightHand({
   // while the finger is still between them.
   const arc = heldCard === null ? full.cards : solve(rest.length).cards;
   const rowMid = (scrollable ? totalW : rowW) / 2;
-  const place = new Map(cards.map((card, j) => [card.id, full.cards[j]]));
+  // Every card is *placed* by the row as it stood and *moved* to the row with
+  // the slot in it. `left` is a plain style entry and never animates, so a card
+  // placed straight at its n+1 slot would jump there in a frame; anchoring it
+  // where it already was and carrying the whole delta in `shiftX` is what makes
+  // the row visibly part (#650).
+  const closed = parting === undefined ? full : solve(n);
+  const place = new Map(cards.map((card, j) => [card.id, closed.cards[j]]));
   // Split either side of the slot, so the hand's centre holds still while the
   // gap opens and nothing shifts out from under the thumb.
   const gapW = heldCard === null ? 0 : cardW * GAP_CARDS;
-  const gapShift = (slot: number) =>
-    gapAt === null ? 0 : slot >= gapAt ? gapW / 2 : -gapW / 2;
+  const gapShift = (i: number) => (gapAt === null ? 0 : i >= gapAt ? gapW / 2 : -gapW / 2);
   // Where the drop index is measured from: the arc without the gap in it. The
   // gap is a consequence of the slot, so measuring the slot against a row the
   // gap has already moved makes the two chase each other.
@@ -790,25 +829,29 @@ export function StraightHand({
   const row = (
     <GestureDetector gesture={drag}>
     <View
+      testID="hand-row"
       style={[
         handStyles.handRow,
         { width: scrollable ? totalW : rowW, height: visibleH },
       ]}
     >
-      {arc.map((at, i) => {
-        const giveable = giveableSet?.has(rest[i].id);
+      {rest.map((card, i) => {
+        const slot = slotOf(i);
+        const at = arc[slot] ?? arc[arc.length - 1];
+        const descending = card.id === descendingId;
+        const giveable = giveableSet?.has(card.id);
         // Placed where it sits in the whole hand; moved from there to where the
         // closed fan wants it, plus its share of the gap.
-        const home = place.get(rest[i].id) ?? at;
+        const home = place.get(card.id) ?? at;
         // A card the exchange has ruled out is a control reporting itself
         // unavailable; offering it two working actions anyway says the opposite
         // in the same breath.
         const arrangeable = canReorder && giveable !== false;
         return (
         <CardItem
-          key={rest[i].id}
-          card={rest[i]}
-          isSelected={selectedSet.has(rest[i].id)}
+          key={card.id}
+          card={card}
+          isSelected={selectedSet.has(card.id)}
           left={rowMid + home.x}
           shiftX={at.x - home.x + gapShift(i)}
           bottom={-crop - home.y}
@@ -823,11 +866,16 @@ export function StraightHand({
           hint={giveable === undefined ? undefined : giveable ? giveHint : refuseHint}
           faceDown={faceDown}
           zIndex={i}
-          dealDelay={dealArmed ? i * Motion.stagger.deal : -1}
-          dealFromX={-home.x - cardW / 2}
+          dealDelay={dealArmed ? i * Motion.stagger.deal : descending ? 0 : -1}
+          // From the row's own centre, which is where the flight carrying it
+          // stops (`flightOrigin`'s `bottom` is `dx: 0`). The crossing and the
+          // descent are then one continuous move into the waiting slot, rather
+          // than a card that stops at the middle and reappears at one end.
+          dealFromX={descending ? -home.x : -home.x - cardW / 2}
+          dealFade={!descending}
           cardScale={cardScale}
           dealRise={dealRise}
-          hitW={hitWidth(i, arc.length, step, cardW)}
+          hitW={hitWidth(slot, arc.length, step, cardW)}
           cardW={cardW}
           cardH={cardH}
         />

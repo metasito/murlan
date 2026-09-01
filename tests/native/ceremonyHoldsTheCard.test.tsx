@@ -77,9 +77,9 @@ const seat = (id: string, name: string, hand: Card[]): Player => ({
  * given `TO_LOSER` away and holds `FROM_LOSER`, and the loser the reverse.
  * Both cards are still in the air.
  */
-const settled = (): GameState => ({
+const settled = (winnerHand: Card[] = [...KEPT_BY_WINNER, FROM_LOSER]): GameState => ({
   players: [
-    seat('player_0', 'Ana', [...KEPT_BY_WINNER, FROM_LOSER]),
+    seat('player_0', 'Ana', winnerHand),
     seat('player_1', 'Bea', [...KEPT_BY_LOSER, TO_LOSER]),
     seat('player_2', 'Cesk', [card('6', 'hearts')]),
   ],
@@ -114,15 +114,33 @@ const announce = (bothJokersException = false) => ({
 
 const noop = () => {};
 
+/**
+ * The table while the winner is still choosing: the phase is open, the engine
+ * has already handed them `FROM_LOSER`, and `ExchangePrompt` is drawing that
+ * same card on the felt.
+ */
+const prompting = (): GameState => {
+  const state = settled();
+  state.exchangePhase = { ...state.exchangePhase!, active: true, cardToLoser: undefined };
+  state.players[LOSER_SEAT] = seat('player_1', 'Bea', KEPT_BY_LOSER);
+  return state;
+};
+
 const table = (opts: {
   viewerSeat: number;
   visible: boolean;
   bothJokersException?: boolean;
   spectating?: boolean;
+  /** Build the winner's hand without the traded card, as a size control. */
+  shortOne?: boolean;
+  /** The phase still open, rather than one tick after the choice. */
+  choosing?: boolean;
 }) => (
   <SafeAreaProvider initialMetrics={METRICS}>
     <GameTable
-      gameState={settled()}
+      gameState={
+        opts.choosing ? prompting() : settled(opts.shortOne ? KEPT_BY_WINNER : undefined)
+      }
       viewerSeat={opts.viewerSeat}
       spectating={opts.spectating}
       selectedIds={[]}
@@ -173,6 +191,26 @@ describe('the hand leaves a place for the card still in the air', () => {
     await r.unmount();
   });
 
+  // The owner's report, and the older half of the defect: the engine hands the
+  // winner the loser's card as the phase opens, so it sat in the fan for the
+  // whole prompt while the prompt drew it on the felt.
+  it('does not hold the card the prompt is drawing on the felt', async () => {
+    const r = await render(table({ viewerSeat: WINNER_SEAT, visible: false, choosing: true }));
+
+    // The felt's copy is there, and it is the only one. Hidden from the
+    // accessibility tree — the prompt speaks it through one live region — so it
+    // is only reachable by asking for hidden elements.
+    expect(
+      screen.getByTestId('exchange-received-card', { includeHiddenElements: true })
+    ).toBeTruthy();
+    for (const c of KEPT_BY_WINNER) {
+      expect(named(c)).toBeGreaterThan(0);
+    }
+    expect(named(FROM_LOSER)).toBe(0);
+
+    await r.unmount();
+  });
+
   it('gives the card to the hand once the ceremony is over', async () => {
     const r = await render(table({ viewerSeat: WINNER_SEAT, visible: false }));
 
@@ -190,6 +228,46 @@ describe('the hand leaves a place for the card still in the air', () => {
     expect(named(FROM_LOSER)).toBeGreaterThan(0);
 
     await r.unmount();
+  });
+
+  /**
+   * The row's own width, which `computeHandLayout` solves from the number of
+   * slots. It is the one number that says whether the row stepped for the hand
+   * *including* the card still in the air.
+   */
+  const rowWidth = () => {
+    const style = screen.getByTestId('hand-row').props.style as
+      | { width?: number }[]
+      | { width?: number };
+    const flat = Array.isArray(style) ? Object.assign({}, ...style) : style;
+    const { width } = flat as { width?: number };
+    // Two undefineds compare equal, and so do two rows clamped to `availW`.
+    // Either would pass the comparison below while measuring nothing.
+    expect(typeof width).toBe('number');
+    return width;
+  };
+
+  // Option A's whole thesis: the eye is told *where* before it is told *what*.
+  // A row still stepped for the cards it draws would close over the slot and
+  // the card would arrive on top of a fan that never moved.
+  it('steps the row for the card in the air, not for the cards it draws', async () => {
+    const during = await render(table({ viewerSeat: WINNER_SEAT, visible: true }));
+    const holdingASlot = rowWidth();
+    await during.unmount();
+
+    const after = await render(table({ viewerSeat: WINNER_SEAT, visible: false }));
+    const withTheCard = rowWidth();
+    await after.unmount();
+
+    // The floor: at this size the row's width does track the count, so the
+    // equality above is a row that stepped for the missing card rather than a
+    // number that never moves.
+    const never = await render(table({ viewerSeat: WINNER_SEAT, visible: false, shortOne: true }));
+    const twoCards = rowWidth();
+    await never.unmount();
+
+    expect(twoCards).toBeLessThan(withTheCard as number);
+    expect(holdingASlot).toBe(withTheCard);
   });
 
   // A spectated hand is synthetic — `hidden-N` ids standing in for cards the

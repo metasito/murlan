@@ -89,3 +89,11 @@ export function cardAtX(x: number, n: number, step: number, cardW: number): numb
   // Every card before the last owns exactly one step, so which one is division.
   return step > 0 ? Math.floor(x / step) : 0;
 }
+
+/**
+ * Which slot a drawn card takes when the row holds one open for a card still
+ * arriving. `undefined` means nothing is arriving.
+ */
+export function slotForCard(i: number, arrivingIndex: number | undefined): number {
+  return arrivingIndex === undefined || i < arrivingIndex ? i : i + 1;
+}
