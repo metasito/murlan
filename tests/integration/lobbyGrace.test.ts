@@ -21,7 +21,7 @@ import { io as ioClient } from "socket.io-client";
 import type { SanitizedState } from "../helpers/table.ts";
 
 // Short enough that the expiry test does not stall the suite, long enough that
-// the survival test is not racing it. Read at module scope by gameTimers.ts.
+// the survival test is not racing it. `gameTimers` re-reads it per use (#713).
 process.env.MURLAN_LOBBY_GRACE_MS = "1500";
 
 /**

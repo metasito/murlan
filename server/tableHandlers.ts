@@ -36,7 +36,7 @@ import {
 import { armTurn, recordPlayFlags, vacateSeat } from "./gameTurn.ts";
 import { exchangeAnnounceMs } from "../lib/exchangeCeremony.ts";
 import {
-  DISCONNECT_GRACE_MS,
+  disconnectGraceMs,
   clearRoomTimers,
   clearDisconnectGrace,
   clearLobbyGrace,
@@ -620,7 +620,7 @@ function seatLostAction(
     gameMode: game.gameState.gameMode,
   });
 
-  const graceSeconds = Math.round(DISCONNECT_GRACE_MS / 1000);
+  const graceSeconds = Math.round(disconnectGraceMs() / 1000);
   io.to(roomId).emit("game:player_disconnected", {
     userId,
     username,
@@ -662,7 +662,7 @@ function seatLostAction(
         logger.error({ err, userId, roomId }, "Disconnect timeout handler failed");
       }
     })();
-  }, DISCONNECT_GRACE_MS);
+  }, disconnectGraceMs());
   disconnectTimers.set(userId, dcTimer);
   return OK;
 }

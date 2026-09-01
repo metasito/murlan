@@ -30,9 +30,11 @@ import {
  * Its own file: `/api/auth/register` is limited per process and the suites that
  * already seat a table sit at that ceiling.
  *
- * `server/socket.ts` reads these once at module scope, and `node --test` gives
- * this file its own process. The grace is deliberately short — if the eviction
- * ever did arm it, the bot takeover lands inside the window this test watches.
+ * `node --test` gives this file its own process, and the server reads these on
+ * every use rather than freezing them at import (#713) — so setting them here,
+ * below the hoisted imports, still reaches it. The grace is deliberately short:
+ * if the eviction ever did arm it, the bot takeover lands inside the window
+ * this test watches.
  */
 process.env.MURLAN_AFK_TIMEOUT_MS = "5000";
 process.env.MURLAN_DISCONNECT_GRACE_MS = "500";

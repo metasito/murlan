@@ -7,8 +7,8 @@ import type { OnlineGameState } from "./gameRoom.ts";
 import {
   afkTimers,
   botTimers,
-  AFK_TIMEOUT_MS,
-  BOT_MOVE_DELAY_MS,
+  afkTimeoutMs,
+  botMoveDelayMs,
   clearAfkTimer,
   clearRoomTimers,
   secondsUntil,
@@ -170,7 +170,7 @@ function emitTurnDeadline(io: SocketServer, roomId: string, game: OnlineGameStat
  * for has to lengthen it, or the bot plays over the ceremony announcing the
  * move before it.
  */
-export function armTurn(io: SocketServer, roomId: string, botDelayMs = BOT_MOVE_DELAY_MS) {
+export function armTurn(io: SocketServer, roomId: string, botDelayMs = botMoveDelayMs()) {
   const game = activeGames.get(roomId);
   if (!game) return;
 
@@ -197,7 +197,7 @@ export function armTurn(io: SocketServer, roomId: string, botDelayMs = BOT_MOVE_
   }
 
   const username = game.gameState.players[seat]?.name ?? "";
-  game.turnDeadlineMs = Date.now() + AFK_TIMEOUT_MS;
+  game.turnDeadlineMs = Date.now() + afkTimeoutMs();
   startAfkTimer(io, roomId, userId, username);
   emitTurnDeadline(io, roomId, game);
 }
@@ -322,7 +322,7 @@ function startAfkTimer(
           });
         }
       });
-    }, AFK_TIMEOUT_MS)
+    }, afkTimeoutMs())
   );
 }
 

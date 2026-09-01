@@ -14,8 +14,8 @@ import type { SanitizedState } from "../helpers/gameDriver.ts";
  * Long enough that no seat is auto-passed while the assertions run, and
  * nothing like the 30 the client used to hardcode — the point of the suite is
  * that the displayed clock follows this value with no client change.
- * `server/socket.ts` reads it once at module scope, so it must be set before
- * that module is first imported.
+ * `gameTimers` re-reads it per use (#713), so it reaches the server wherever
+ * in this file it is set.
  */
 const AFK_SECONDS = 9;
 process.env.MURLAN_AFK_TIMEOUT_MS = String(AFK_SECONDS * 1000);
