@@ -83,9 +83,8 @@ export interface VisibleExchangePhaseInput {
  * resend re-derives from live state — answering it after the window would hand
  * over half a trade, which `OnlineGameContext`'s `cardReceived || cardGiven`
  * guard raises as a one-legged ceremony rather than refusing. That ordering is
- * asserted in `tests/exchangeVisibility.test.ts` rather than read from here:
- * `gameTimers` builds its values from `process.env` at module scope, and this
- * module is in the static import graph of every integration test that sets one.
+ * asserted in `tests/exchangeVisibility.test.ts` rather than added to the window
+ * here, so the two clocks stay independent of each other.
  */
 function ceremonyRunning(phase: VisibleExchangePhaseInput, now: number): boolean {
   if (phase.active || phase.settledAt === undefined) return false;

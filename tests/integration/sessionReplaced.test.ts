@@ -9,6 +9,7 @@ import {
 } from "../helpers/testServer.ts";
 import { connectAs, waitFor, DEADLINE_SCALE } from "../helpers/client.ts";
 import { activeGames, socketRoomMap, userSocketMap } from "../../server/gameRoom.ts";
+import { disconnectGraceMs } from "../../server/gameTimers.ts";
 import {
   setUpRoom,
   startGame,
@@ -30,14 +31,18 @@ import {
  * Its own file: `/api/auth/register` is limited per process and the suites that
  * already seat a table sit at that ceiling.
  *
- * `server/socket.ts` reads these once at module scope, and `node --test` gives
- * this file its own process. The grace is deliberately short — if the eviction
- * ever did arm it, the bot takeover lands inside the window this test watches.
+ * The grace is deliberately short: if the eviction ever did arm it, the bot
+ * takeover lands inside the window this test watches.
  */
 process.env.MURLAN_AFK_TIMEOUT_MS = "5000";
 process.env.MURLAN_DISCONNECT_GRACE_MS = "500";
 
-const GRACE_MS = 500;
+/**
+ * Asked of the server rather than restated, so a grace this file cannot
+ * actually shorten shows up as its own deadlines moving with it instead of as
+ * a timeout with nothing to point at.
+ */
+const GRACE_MS = disconnectGraceMs();
 
 interface SocketError {
   code?: string;
@@ -122,8 +127,10 @@ describe(
         );
         await closed;
 
-        // Long past the grace the eviction must not have armed.
-        await new Promise((resolve) => setTimeout(resolve, GRACE_MS * 3));
+        // Long past the grace the eviction must not have armed. Scaled like
+        // every other deadline here: on a slow runner an unscaled sleep stops
+        // outlasting the grace, and the test passes by not having waited.
+        await new Promise((resolve) => setTimeout(resolve, GRACE_MS * 3 * DEADLINE_SCALE));
         assert.deepEqual(
           announced,
           [],
@@ -184,10 +191,13 @@ describe(
           bob.socket,
           "game:player_disconnected"
         );
+        // The takeover is one grace after the close, plus whatever the round
+        // trip costs — so the deadline is that, not a multiple picked to look
+        // generous. `waitFor` applies DEADLINE_SCALE itself.
         const takenOver = waitFor<{ userId: string; seatIndex: number }>(
           bob.socket,
           "game:seat_bot_takeover",
-          GRACE_MS * 10
+          GRACE_MS + 2_000
         );
         // Both deadlines are already running, so when the first assertion fails
         // this one rejects a moment later with nothing awaiting it. node:test

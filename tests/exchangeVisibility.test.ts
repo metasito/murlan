@@ -12,7 +12,7 @@ import {
   visibleExchangePhase,
 } from "../server/onlineGameLogic.ts";
 import { exchangeAnnounceMs } from "../lib/exchangeCeremony.ts";
-import { STATE_ACK_TIMEOUT_MS } from "../server/gameTimers.ts";
+import { stateAckTimeoutMs } from "../server/gameTimers.ts";
 import { readFileSync } from "node:fs";
 
 const CARD = { id: "2_spades", suit: "spades", rank: "2", isJoker: false };
@@ -147,8 +147,8 @@ describe("visibleExchangePhase", () => {
        */
       test("the resend a client is owed lands inside the window", () => {
         assert.ok(
-          STATE_ACK_TIMEOUT_MS < exchangeAnnounceMs(false),
-          `the state-ack resend (${STATE_ACK_TIMEOUT_MS}ms) now fires after the ceremony ` +
+          stateAckTimeoutMs() < exchangeAnnounceMs(false),
+          `the state-ack resend (${stateAckTimeoutMs()}ms) now fires after the ceremony ` +
             `(${exchangeAnnounceMs(false)}ms), so a client that missed the settle is re-sent ` +
             `half a trade`
         );

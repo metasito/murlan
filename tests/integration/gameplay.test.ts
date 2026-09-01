@@ -26,11 +26,8 @@ import {
  * defaults, and the per-user game-action rate limit raised past anything this
  * file can spend, so the tests below don't stall on real-world timer lengths or
  * get throttled replaying several hands down one socket. The bot's own pace
- * comes from the harness. `server/socket.ts` reads these once at module scope,
- * so they must be set
- * before that module is first imported — this file always runs as its own
- * process under `node --test`, so the override never leaks into another test
- * file's process.
+ * comes from the harness. `node --test` gives this file its own process, so
+ * the override never leaks into another test file.
  *
  * The rate limit is derived rather than raised until the flake stopped. The
  * exchange test below drives at most 21 hands down one socket (its opening

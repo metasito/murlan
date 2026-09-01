@@ -16,7 +16,7 @@ import {
 import type { OnlineGameState } from "./gameRoom.ts";
 import { applyOrForward } from "./tableRouter.ts";
 import {
-  LOBBY_GRACE_MS,
+  lobbyGraceMs,
   lobbyGraceTimers,
   lobbyGraceKey,
   clearLobbyGrace,
@@ -189,7 +189,7 @@ export async function announceRejoin(
 }
 
 /**
- * Holds a lobby seat open for LOBBY_GRACE_MS, then releases it.
+ * Holds a lobby seat open for the lobby grace, then releases it.
  *
  * Nothing is broadcast when the timer is armed. A blip the player recovers
  * from should be invisible to the rest of the room, and the seat row staying
@@ -223,7 +223,7 @@ export function armLobbyGrace(
         logger.error({ err, userId, roomId }, "Lobby grace handler failed");
       }
     })();
-  }, LOBBY_GRACE_MS);
+  }, lobbyGraceMs());
   // A seat waiting to be given back must not be what keeps the process alive:
   // shutdown disconnects every socket, which arms one of these per lobby, and
   // the row outlives the process either way.

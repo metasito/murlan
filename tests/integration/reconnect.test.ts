@@ -25,10 +25,8 @@ import {
  * The reconnect paths: what the table is told when a dropped player comes
  * back, and what the turn scheduler does about it.
  *
- * `server/socket.ts` reads these once at module scope, so they must be set
- * before that module is first imported — this file always runs as its own
- * process under `node --test`, so the override never leaks into another test
- * file's process. The grace window has to outlast a real HTTP round-trip for
+ * `node --test` gives this file its own process, so the override never leaks
+ * into another test file. The grace window has to outlast a real HTTP round-trip for
  * the ticket plus a websocket handshake, since a returning player is a whole
  * new socket here.
  */

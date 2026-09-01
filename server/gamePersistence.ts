@@ -16,7 +16,7 @@ import type { OnlineGameState } from "./gameRoom.ts";
 import type { GameOverWriters } from "./gameOver.ts";
 import { releaseRoom, unclaimedRooms } from "./gameOwnership.ts";
 import {
-  STATE_ACK_TIMEOUT_MS,
+  stateAckTimeoutMs,
   SWEEP_INTERVAL_MS,
   clearRoomTimers,
   clearRoomDisconnectTimers,
@@ -169,7 +169,7 @@ export function sendGameStateTo(io: SocketServer, uid: string, game: OnlineGameS
     const live = retrying ? activeGames.get(game.roomId) : game;
     if (!live) return;
     io.to(userRoom(uid))
-      .timeout(STATE_ACK_TIMEOUT_MS)
+      .timeout(stateAckTimeoutMs())
       .emit(
         "game:state",
         sanitizeStateForPlayer(live.gameState, uid, live.playerMap, live.turnDeadlineMs),
