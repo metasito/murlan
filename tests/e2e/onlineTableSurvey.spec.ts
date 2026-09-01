@@ -183,7 +183,11 @@ function line(kind: "ONLINE" | "OFFLINE", vp: (typeof VIEWPORTS)[number], m: Mea
     `vp=${vp.width}x${vp.height}`,
     `table=${m.table.width}x${m.table.height}`,
     `handSlot=${m.handSlot.width}x${m.handSlot.height}`,
-    `emptyBand=${m.emptyBand.toFixed(3)}`,
+    // Rounded like every other field here. The record is held to by exact
+    // string equality, and stillness is only ever established to the whole
+    // pixel (`settled`), so a band written to three decimals is the one field
+    // that can fail for a movement no check in this suite can see.
+    `emptyBand=${Math.round(m.emptyBand)}`,
     `cards=${m.cards}`,
     `hand=${m.hand.width}x${m.hand.height}@${m.hand.top}`,
     `wide=${m.wide.join(" | ")}`,
@@ -205,6 +209,11 @@ test.describe("the online table, at the audit's viewports", () => {
       await page.setViewportSize({ width: vp.width, height: vp.height });
 
       await openOnlineTable(page, baseURL!, { playerCount: SEATS, gameMode: "free_for_all" });
+      // Scoped to the table, because `settled`'s default reading is the
+      // interactive controls and a seat ring is a plain view with no role — so
+      // by that reading the screen is still while the rings this measures are
+      // fractions of a pixel from where they land.
+      await settled(page, SETTLE_CEILING_MS, TABLE);
       const online = await measure(page);
       mkdirSync(path.join(AUDIT_DIR, "captures"), { recursive: true });
       await page.screenshot({
@@ -217,7 +226,7 @@ test.describe("the online table, at the audit's viewports", () => {
       // and comparing them measures the deal rather than the layout.
       await openSeededGame(page, baseURL!, SEATS, online.cards);
       await page.locator(TABLE).waitFor({ timeout: 30_000 });
-      await settled(page, SETTLE_CEILING_MS);
+      await settled(page, SETTLE_CEILING_MS, TABLE);
       const offline = await measure(page);
 
       console.log(line("ONLINE", vp, online));
