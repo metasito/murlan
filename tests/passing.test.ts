@@ -1,9 +1,21 @@
 // One test per clause of docs/RULES.md §9 (passing, end of a trick/round, next
-// lead) plus §7.3 (what beats a bomb). §9 is six unnumbered bullets in document
-// order; this file numbers them 9.1-9.6 by that order and quotes each verbatim
-// (markdown emphasis stripped). Each was shown red once against a planted
+// lead), plus §7.3/§7.4 (what beats a bomb, and the royal-straight exception
+// to it). §9 is six unnumbered bullets in document order; this file numbers
+// them 9.1-9.6 by that order and quotes each verbatim (markdown emphasis
+// stripped). Every test here was shown red once against a planted-and-reverted
 // defect in lib/gameEngine.ts — flip the branch, run, restore — per
 // docs/agents/RULES.md rule 6; no planted defect is part of this commit.
+//
+// §9.1, §9.3, §9.4, §9.5 and both §9.6 tests overlap tests/flow.test.ts's
+// coverage of the same code paths (its "leader may not pass", "round end
+// threshold" and turn-rotation describes); §7.3/§7.4 overlap
+// tests/combinations.test.ts's canPlay() coverage. Kept anyway: this file's
+// only value over those is that a failure names the clause it violates, which
+// is what #773 asked for. §9.2 was rewritten (not just kept) because its
+// original assertions never exercised the "last player has gone out" branch
+// of the pass-count formula its own heading quotes; §7.3 gained a dedicated
+// bomb-vs-bomb test for the same reason — its old assertions were all about
+// §7.4's royal straight, not about §7.3's own clause.
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
 import {
@@ -22,8 +34,10 @@ const combo = (cards: Card[]) => buildCombination(cards)!;
 
 describe("§9.1 — \"A player who cannot or does not wish to beat the current play passes.\"", () => {
   test("passing is accepted once a play is on the table, even for a player holding a legal beat", () => {
-    // Three seats so one pass does not itself close the round (that is §9.2) —
-    // this test isolates only whether the pass itself is accepted.
+    // Three seats, so a single pass does not close the round under the
+    // correct threshold — but this test does not isolate itself from every
+    // possible threshold defect: it only claims the pass itself is accepted.
+    // §9.2 owns the pass-count formula and can still turn this red.
     const state = makeState(
       [
         makePlayer("p0", pair("7")),
@@ -46,50 +60,38 @@ describe("§9.1 — \"A player who cannot or does not wish to beat the current p
 });
 
 describe("§9.2 — \"Passing does not lock a player out of the round … three consecutive passes in a 4-player game (activePlayers − 1)\"", () => {
-  test("4 players, all still holding cards: the round closes on the third pass, not the fourth", () => {
+  test("the −1 applies only while the last player is still active — a player who has gone out needs every remaining active player's pass, not one fewer", () => {
+    // 3 seats: p0 (the last play's owner) has gone out. activeCount = 2
+    // (p1, p2). Correct passesNeeded = activeCount = 2, because p0 cannot
+    // itself pass or answer — the "− 1" in the clause only ever excludes the
+    // last player, and there is nothing to exclude once they have gone out.
+    // A formula that subtracts 1 unconditionally closes the round after a
+    // single opponent's pass, robbing the other of the chance to answer.
     let state = makeState(
       [
-        makePlayer("p0", pair("7")),
+        makePlayer("p0", [], { finishPosition: 1 }),
         makePlayer("p1", pair("9")),
-        makePlayer("p2", pair("J")),
-        makePlayer("p3", pair("Q")),
+        makePlayer("p2", pair("K")),
       ],
       {
-        currentTurnIndex: 3,
+        currentTurnIndex: 2,
         lastPlayedBy: 0,
         lastPlayedCombination: combo(pair("5")),
+        rankings: ["p0"],
       }
     );
-
     state = processPass(state);
-    assert.equal(state.roundWinner, null, "one pass does not end the round");
-    state = processPass(state);
-    assert.equal(state.roundWinner, null, "two passes do not end the round");
+    assert.equal(
+      state.roundWinner,
+      null,
+      "one pass must not close the round while another active player can still answer"
+    );
     state = processPass(state);
     assert.equal(
       state.roundWinner,
       0,
-      "the third pass (activePlayers − 1 = 3) hands the round to p0"
+      "the second pass closes it once every remaining active player has passed"
     );
-  });
-
-  test("a passer is not removed from the round: they can still be asked to answer again next time", () => {
-    // Passing does not lock the passer out — nothing in the state marks p1 as
-    // ineligible, and p1's hand is untouched.
-    const state = makeState(
-      [
-        makePlayer("p0", pair("7")),
-        makePlayer("p1", pair("9")),
-        makePlayer("p2", pair("J")),
-      ],
-      {
-        currentTurnIndex: 1,
-        lastPlayedBy: 0,
-        lastPlayedCombination: combo(pair("5")),
-      }
-    );
-    const next = processPass(state);
-    assert.deepEqual(next.players[1].hand.map((card) => card.id), state.players[1].hand.map((card) => card.id));
   });
 });
 
@@ -177,11 +179,26 @@ describe("§9.6 — \"Going out … Play continues among the rest. The hand ends
   });
 });
 
-describe("§7.3 — \"A bomb is beaten only by a higher bomb\" — pinned against the engine's actual royal-straight exception", () => {
+describe("§7.3 — \"A bomb is beaten only by a higher bomb\"", () => {
+  const bomb5 = combo([c("5", "hearts"), c("5", "clubs"), c("5", "spades"), c("5", "diamonds")]);
+  const bomb5Again = combo([c("5", "hearts"), c("5", "clubs"), c("5", "spades"), c("5", "diamonds")]);
+  const pair8 = combo([c("8", "hearts"), c("8", "clubs")]);
+
+  test("nothing but a strictly higher bomb beats a bomb — not a pair, and not an equal bomb", () => {
+    assert.equal(canPlay(pair8, bomb5), false, "§7.3: a pair cannot beat a bomb");
+    assert.equal(
+      canPlay(bomb5Again, bomb5),
+      false,
+      "§7.3: an equal-strength bomb does not beat a bomb — strictly higher only"
+    );
+  });
+});
+
+describe("§7.4 — royal straight / flush: ranked above bombs, beaten only by a higher royal straight of the same length", () => {
   // docs/BRIEF.md §3.1 ("Royal straight") already records the decision behind
   // this: keep the royal straight beating bombs, no engine change — only
-  // docs/RULES.md was meant to carry the exception. §7.3 read on its own does
-  // not state it; §7.4 does. This test pins what canPlay() actually does.
+  // docs/RULES.md was meant to carry the exception, and §7.4 is where it
+  // actually lives (§7.3 states the bomb-only rule with no mention of it).
   const bomb5 = combo([c("5", "hearts"), c("5", "clubs"), c("5", "spades"), c("5", "diamonds")]);
   const bombK = combo([c("K", "hearts"), c("K", "clubs"), c("K", "spades"), c("K", "diamonds")]);
   const royalLow = combo([
@@ -191,17 +208,11 @@ describe("§7.3 — \"A bomb is beaten only by a higher bomb\" — pinned agains
     c("9", "hearts"), c("10", "hearts"), c("J", "hearts"), c("Q", "hearts"), c("K", "hearts"),
   ]);
 
-  test("a bomb never beats a royal straight, even a higher bomb against a lower royal", () => {
-    assert.equal(canPlay(bombK, royalLow), false, "§7.3: a bomb is beaten only by a higher bomb, never played to beat a royal straight");
-  });
-
-  test("a royal straight beats a bomb unconditionally, of any strength", () => {
-    assert.equal(canPlay(royalLow, bombK), true, "§7.3/§7.4: a royal straight beats a bomb");
-    assert.equal(canPlay(royalLow, bomb5), true, "§7.3/§7.4: a royal straight beats a bomb");
-  });
-
-  test("only a higher royal straight of the same length beats a royal straight", () => {
-    assert.equal(canPlay(royalHigh, royalLow), true, "§7.3: only a higher royal straight beats a royal straight");
-    assert.equal(canPlay(royalLow, royalHigh), false, "§7.3: only a higher royal straight beats a royal straight");
+  test("a royal straight beats any bomb unconditionally; a bomb never beats a royal straight; only a higher same-length royal straight beats a royal straight", () => {
+    assert.equal(canPlay(royalLow, bombK), true, "§7.4: a royal straight beats a bomb of any strength");
+    assert.equal(canPlay(royalLow, bomb5), true, "§7.4: a royal straight beats a bomb of any strength");
+    assert.equal(canPlay(bombK, royalLow), false, "§7.4: a bomb never beats a royal straight");
+    assert.equal(canPlay(royalHigh, royalLow), true, "§7.4: only a higher royal straight beats a royal straight");
+    assert.equal(canPlay(royalLow, royalHigh), false, "§7.4: only a higher royal straight beats a royal straight");
   });
 });
