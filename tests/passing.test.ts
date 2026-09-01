@@ -266,4 +266,50 @@ describe("§7.4 — royal straight / flush: ranked above bombs, beaten only by a
       "§7.4: a 6-card royal straight never beats an 8-card royal straight, whatever its top card"
     );
   });
+
+  test("a 5-card royal straight and an 8-card royal straight never beat each other, in either direction", () => {
+    // 5 and 8 are congruent mod 3 (both ≡ 2), so a comparison that checked
+    // `length % 3 === length % 3` instead of exact equality would let
+    // either one through here whenever strength favoured it.
+    const royalFiveAceTop = combo([
+      c("10", "diamonds"), c("J", "diamonds"), c("Q", "diamonds"), c("K", "diamonds"), c("A", "diamonds"),
+    ]);
+    const royalFiveKingTop = combo([
+      c("9", "clubs"), c("10", "clubs"), c("J", "clubs"), c("Q", "clubs"), c("K", "clubs"),
+    ]);
+    const royalEightAceTop = combo([
+      c("7", "hearts"), c("8", "hearts"), c("9", "hearts"), c("10", "hearts"),
+      c("J", "hearts"), c("Q", "hearts"), c("K", "hearts"), c("A", "hearts"),
+    ]);
+    const royalEightLowTop = combo([
+      c("3", "spades"), c("4", "spades"), c("5", "spades"), c("6", "spades"),
+      c("7", "spades"), c("8", "spades"), c("9", "spades"), c("10", "spades"),
+    ]);
+    assert.equal(
+      canPlay(royalEightAceTop, royalFiveKingTop),
+      false,
+      "§7.4: an 8-card royal straight never beats a 5-card royal straight, whatever its top card"
+    );
+    assert.equal(
+      canPlay(royalFiveAceTop, royalEightLowTop),
+      false,
+      "§7.4: a 5-card royal straight never beats an 8-card royal straight, whatever its top card"
+    );
+  });
+
+  test("§7.5 — \"Equal strength never beats.\" — an equal-strength same-length royal straight does not beat another", () => {
+    const royalSevenA = combo([
+      c("3", "diamonds"), c("4", "diamonds"), c("5", "diamonds"), c("6", "diamonds"),
+      c("7", "diamonds"), c("8", "diamonds"), c("9", "diamonds"),
+    ]);
+    const royalSevenB = combo([
+      c("3", "clubs"), c("4", "clubs"), c("5", "clubs"), c("6", "clubs"),
+      c("7", "clubs"), c("8", "clubs"), c("9", "clubs"),
+    ]);
+    assert.equal(
+      canPlay(royalSevenB, royalSevenA),
+      false,
+      "§7.5: an equal-strength same-length royal straight does not beat another — strictly higher only"
+    );
+  });
 });
