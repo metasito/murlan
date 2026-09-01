@@ -15,9 +15,8 @@ export const botTimers = new Map<string, ReturnType<typeof setTimeout>>();
  * every import above the module body — so a test setting one of these in its own
  * body only reaches the modules that were *not* already in the static graph.
  * Which ones those are is an accident of who imports whom, and it changes
- * silently when anyone adds an import anywhere in `server/`. One such import
- * turned a 500ms grace into the 60s default and hung a suite that had been
- * passing on the accident (#713). Pinned by `tests/timerEnvIsLive.test.ts`.
+ * silently when anyone adds an import anywhere in `server/`.
+ * Pinned by `tests/timerEnvIsLive.test.ts`.
  */
 function timeoutFromEnv(name: string, defaultMs: number): number {
   const raw = process.env[name];

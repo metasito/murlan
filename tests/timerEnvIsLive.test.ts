@@ -1,16 +1,11 @@
-// tests/timerEnvIsLive.test.ts — a `MURLAN_*` timeout set by a test reaches the
-// server no matter which modules are already loaded.
-//
-// Every integration suite shortens a timer by assigning to `process.env` in its
-// own module body, and every one of them also has a static `import` of a server
-// module. ESM hoists imports above the body, so any timer frozen at module scope
-// is settled before the assignment runs, and the test silently gets the
-// production default. Which modules that catches is an accident of who imports
-// whom, and it changes whenever anyone adds an import anywhere in `server/`
-// (#713).
+// A `MURLAN_*` timeout set by a test reaches the server no matter which modules
+// are already loaded. Every integration suite depends on this: each assigns to
+// `process.env` in its own module body, which ESM runs after every hoisted
+// import. The mechanism is documented on `timeoutFromEnv` in
+// `server/gameTimers.ts`.
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { readFileSync, readdirSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
 
@@ -22,9 +17,6 @@ import "../server/gameRoom.ts";
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
 describe("a timeout set after the server is loaded", () => {
-  // The exact shape of the failure: `sessionReplaced.test.ts` asks for a 500ms
-  // disconnect grace and waited on the 60s default, so the bot takeover it
-  // watches for was two minutes away and the suite timed out at 20s.
   test("is the value the server actually uses", async () => {
     const timers = await import("../server/gameTimers.ts");
     const before = timers.disconnectGraceMs();
@@ -70,17 +62,36 @@ describe("a timeout set after the server is loaded", () => {
    * mechanism is still there and still live.
    */
   test("no env-derived timeout is captured at module scope", () => {
-    const source = readFileSync(path.join(repoRoot, "server/gameTimers.ts"), "utf8");
-    const frozen = source.match(/^export const \w+\s*=\s*timeoutFromEnv\(/gm) ?? [];
+    const declared = readFileSync(path.join(repoRoot, "server/gameTimers.ts"), "utf8");
     assert.deepEqual(
-      frozen,
+      declared.match(/^export const \w+\s*=\s*timeoutFromEnv\(/gm) ?? [],
       [],
       "a timeout is read at module scope again, so whether a test can shorten it " +
-        "depends on who imported this module first"
+        "depends on who imported gameTimers first"
     );
     assert.ok(
-      /timeoutFromEnv\(/.test(source),
+      /timeoutFromEnv\(/.test(declared),
       "nothing reads the environment here any more, so the cases above prove nothing"
+    );
+
+    // Reading it live and then freezing the result one file over is the same
+    // defect relocated, and the check above cannot see it.
+    const readers = /\b(afkTimeoutMs|disconnectGraceMs|lobbyGraceMs|stateAckTimeoutMs|botMoveDelayMs)\(\)/;
+    const captured: string[] = [];
+    for (const file of readdirSync(path.join(repoRoot, "server"))) {
+      if (!file.endsWith(".ts") || file === "gameTimers.ts") continue;
+      const source = readFileSync(path.join(repoRoot, "server", file), "utf8");
+      for (const [i, line] of source.split("\n").entries()) {
+        if (/^(export )?const \w+(: *[\w<>[\]| ]+)? *=/.test(line) && readers.test(line)) {
+          captured.push(`server/${file}:${i + 1}`);
+        }
+      }
+    }
+    assert.deepEqual(
+      captured,
+      [],
+      "a timeout is read once into a module-scope constant, which freezes it again " +
+        "for every caller of that module"
     );
   });
 });

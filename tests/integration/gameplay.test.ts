@@ -26,9 +26,7 @@ import {
  * defaults, and the per-user game-action rate limit raised past anything this
  * file can spend, so the tests below don't stall on real-world timer lengths or
  * get throttled replaying several hands down one socket. The bot's own pace
- * comes from the harness. `gameTimers` reads these on every use rather than
- * freezing them at import (#713), so setting them below the hoisted imports
- * still reaches the server; `node --test` gives this file its own process, so
+ * comes from the harness. `node --test` gives this file its own process, so
  * the override never leaks into another test file.
  *
  * The rate limit is derived rather than raised until the flake stopped. The

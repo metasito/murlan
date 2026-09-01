@@ -20,8 +20,7 @@ import { connectAs, waitFor } from "../helpers/client.ts";
 import type { SanitizedState } from "../helpers/table.ts";
 
 // Short enough that a suite is not spent waiting for a retry, long enough that
-// the ack of a healthy client wins the race comfortably. `gameTimers` re-reads
-// it per use (#713), so it does not matter what has already been imported.
+// the ack of a healthy client wins the race comfortably.
 process.env.MURLAN_STATE_ACK_TIMEOUT_MS = "700";
 
 interface RoomState {

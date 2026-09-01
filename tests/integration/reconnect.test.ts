@@ -25,8 +25,6 @@ import {
  * The reconnect paths: what the table is told when a dropped player comes
  * back, and what the turn scheduler does about it.
  *
- * `gameTimers` reads these on every use rather than freezing them at import
- * (#713), so setting them below the hoisted imports still reaches the server;
  * `node --test` gives this file its own process, so the override never leaks
  * into another test file. The grace window has to outlast a real HTTP round-trip for
  * the ticket plus a websocket handshake, since a returning player is a whole
