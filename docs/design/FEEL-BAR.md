@@ -60,39 +60,9 @@ casino product, not an afterthought.
   ~42.9s/hand pace a real table tolerates, which is the point: our deal can afford to be
   unhurried relative to the casino floor, not raced against it.
 
-**3. Balatro's digit-stagger, as the closest documented fixed-step stagger case**
-`https://blakecrosley.com/guides/design/balatro`
-A design-analysis write-up of Balatro's scoring sequence, not its deal — Balatro's own
-dealing animation isn't covered anywhere I could verify — but it is the only shipped-game
-source with real numbers for staggering a run of same-type elements one after another,
-which is the mechanism a hand of cards being dealt needs too.
-- Numbers: score-digit reveal stagger at 0ms, 50ms, 100ms, 150ms (four elements, 50ms
-  apart, verified by direct fetch); digit roll itself 0.4s with
-  `cubic-bezier(0.34, 1.56, 0.64, 1)` (an overshoot ease, not a linear one).
-- What it does that a flat translate-in doesn't: each element's stagger delay is a fixed
-  step (50ms) rather than a fraction of total count, so adding a fifth element doesn't
-  compress the first four — the run reads as one gesture at any hand size, which is
-  `Motion.stagger.deal`'s own design (42ms per card, not per-hand-size).
-- Frame check: a 13-card deal and a 3-card deal both show the same 42ms gap between any
-  two consecutive cards' launch frames — the gap must not shrink as hand size grows.
-
 ## Card landing
 
-**1. Balatro's contact feedback**
-`https://blakecrosley.com/guides/design/balatro`
-The same source's card-hover/select treatment, verified by direct fetch — the shipped
-reference closest to a card's own landing feel, rather than a system-level floor.
-- Numbers: card hover lift −12px `translateY` at 1.05× scale; selected state −24px at
-  1.08×; hover transition 0.15s ease-out; scanline overlay period 2px transparent / 2px at
-  `rgba(0,0,0,0.15)`.
-- What it does that a translate-and-stop doesn't: the card's scale and vertical offset both
-  move together, so contact reads as a physical lift-then-drop rather than a position swap.
-- Frame check: at the frame nearest `impactDelayMs()` (312ms after play), the landed card's
-  bounding box is momentarily narrower on one axis and wider on the other than its resting
-  geometry — never a uniform scale-down — consistent with `Motion.spring.land`'s single
-  ~7% overshoot.
-
-**2. Android haptics design principles**
+**1. Android haptics design principles**
 `https://developer.android.com/develop/ui/views/haptics/haptics-principles`
 Google's own haptics guidance for touch feedback, verified by direct fetch — not a card
 game, but the floor for how short a *landing's* haptic pulse can be before the actuator's
@@ -108,7 +78,7 @@ own physics, not the design, decides how long it reads.
   (within one frame, ~16ms, of `impactDelayMs()`), and no second haptic pulse fires before
   the first one's own 50ms ring-out tail has had time to finish.
 
-**3. "Juice It or Lose It" (Jonasson & Purho, GDC Europe 2012)**
+**2. "Juice It or Lose It" (Jonasson & Purho, GDC Europe 2012)**
 `https://www.gdcvault.com/play/1016487/Juice-It-or-Lose`
 No numeric figures are published in the fetchable abstract — the talk itself is
 video-only and this page is metadata plus a synopsis, not a transcript, so it is cited for
@@ -159,20 +129,6 @@ repo's own comments already credit it for (`Hold.land`'s doc comment cites Nijma
 - Frame check: plotting shake amplitude against time shows a curve, not a ramp — amplitude
   at 75% of the decay window is under 10% of peak, not ~25% (which is what linear decay
   would give at the same point).
-
-**3. Balatro's screen-shake tiers**
-`https://blakecrosley.com/guides/design/balatro`
-A shipped card game's own tiered-shake implementation, verified by direct fetch — concrete
-duration and amplitude numbers to sit beside Eiserloh's math above.
-- Numbers: small shake 0.2s ease-out, medium 0.3s ease-out, large 0.5s ease-out; large-shake
-  translation range −8px to 8px, small-shake range −4px to 4px.
-- What it does that ours (pre-#763) doesn't: ties shake amplitude *and* duration to event
-  size as one escalation, not amplitude alone — a large event shakes longer as well as
-  harder, which our own decay-only spec (fixed ~260ms across tiers) does not yet vary.
-- Frame check: sampling the table's translateX across the shake window shows the bomb
-  tier's envelope (trauma 0.55, decaying as trauma², ~260ms) crossing zero more times than
-  the flush/straight tier's, which shows none — an escalation visible in the number of
-  zero-crossings, not just peak amplitude.
 
 ### Beyond the references
 
@@ -243,21 +199,21 @@ tier's own upper edge.
 
 ## Win
 
-**1. Balatro's scoring reveal**
-`https://blakecrosley.com/guides/design/balatro`
-This is Balatro's win-adjacent moment — the sequence that plays when a hand's score is
-revealed, which is the closest documented shipped analogue to a manche won, since no
-source found documents a "you won this round" screen specifically with numbers.
-- Numbers: digit roll 0.4s, `cubic-bezier(0.34, 1.56, 0.64, 1)` (overshoot ease); digit
-  stagger 0/50/100/150ms; medium shake 0.3s ease-out accompanies the reveal.
-- What it does that a static "You win" banner doesn't: the score isn't shown, it's *counted
-  up* to, with an overshoot on arrival — the number itself performs the win rather than
-  merely reporting it.
-- Frame check: the manche-won banner's copy (per grammar C's tier row: hold 120ms, trauma
-  0.40, "lamp lifts, then the banner") does not appear as a single opaque frame — there is
-  at least one intermediate frame where the banner's content differs from both its start
-  and end state (e.g. a count mid-roll, an opacity between 0 and 1 with the lamp-lift still
-  completing), so the hand-off from lamp to banner is visible as a sequence, not a cut.
+**1. Eiserloh's trauma math, applied to our own manche/partita values**
+`https://archive.org/stream/GDC2016Eiserloh/GDC2016-Eiserloh_djvu.txt`
+No shipped-game source with a "you won this round" screen documented in numbers turned up
+in this pass — reported rather than papered over. What the same transcript cited under
+**Bomb** gives for free is the actual visible-shake percentage grammar C's own manche
+(trauma 0.40) and partita (trauma 0.50) rows produce, since we already know the exponent
+(#763: trauma²).
+- Numbers: trauma² at 0.40 → 16% visible shake; trauma² at 0.50 → 25% — both under the
+  bomb's 30% (0.55²), and the four-tier sequence (ordinary win 0%, manche 16%, partita 25%,
+  bomb 30%) is not evenly spaced — it compresses toward the top, which is #101's own
+  deliberate inversion (a bomb outranks a manche) restated as a measurable curve rather
+  than an ordering.
+- Frame check: measuring peak table offset across the four non-zero tiers gives a
+  monotonically increasing but non-linear sequence (0%, 16%, 25%, 30%) — a capture set that
+  shows equal steps between tiers has drifted from the spec's own math.
 
 **2. WCAG 2.2.2 Pause, Stop, Hide**
 `https://www.w3.org/WAI/WCAG21/Understanding/pause-stop-hide.html`
