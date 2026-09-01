@@ -8,6 +8,7 @@
 // which is erased before resolution.
 
 import type { Card, Combination, GameState, Player } from "@/lib/gameEngine";
+import type { ExchangeAnnounceData } from "@/lib/sharedGameFlow";
 import {
   CARD_H,
   CARD_W,
@@ -318,29 +319,17 @@ export const EMPTY_PILE: PileState = { prev: null, current: null, playedBy: null
 // and the table's feedback read, so the two cannot drift apart.
 
 /**
- * The card on its way *into* this seat's hand, for as long as the ceremony
- * delivering it is on screen.
+ * The card on its way *into* this seat's hand.
  *
- * The state behind the ceremony has already moved — the exchange ends its
- * phase, hands the card over and raises the announcement in one tick — so the
- * hand holds the card before the flight carrying it has left. Naming the card
- * in flight is what lets the hand leave a place for it instead of already
- * having it, and the two ends are not symmetric: the winner is receiving what
- * was taken off the loser, the loser what the winner chose.
+ * The exchange ends its phase, hands the card over and raises its ceremony in
+ * one tick, so the hand holds the card before the flight carrying it has left
+ * (#672). The two ends are not symmetric: each seat is receiving what the other
+ * gave, never what it gave away, which really has left the hand.
  *
  * Nothing flies when both Jokers cancelled the exchange, so nothing arrives.
  */
 export function arrivingCard(
-  announce:
-    | {
-        winnerIdx: number;
-        loserIdx: number;
-        bothJokersException: boolean;
-        cardGiven?: Card;
-        cardReceived?: Card;
-      }
-    | null
-    | undefined,
+  announce: ExchangeAnnounceData | null | undefined,
   viewerSeat: number | null
 ): Card | undefined {
   if (!announce || announce.bothJokersException || viewerSeat === null) return undefined;

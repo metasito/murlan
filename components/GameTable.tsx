@@ -47,7 +47,7 @@ import {
   type Combination,
   type GameState,
 } from "@/lib/gameEngine";
-import type { ExchangeAnnounceData } from "@/lib/sharedGameFlow";
+import { useTradedCardsLanded, type ExchangeAnnounceData } from "@/lib/sharedGameFlow";
 import {
   CHIP_H,
   HAND_ZONE_H,
@@ -898,19 +898,28 @@ export function GameTable({
   // have arranged on top of it (#531). Spectated hands are excluded by the
   // seat's own cards being synthetic above — there is nothing there to arrange.
   const { arranged: shownHand, moveTo } = useHandOrder(viewerSeat, sortedHand);
-  // The exchange commits in the tick that raises its ceremony, so by the time
-  // the card is drawn crossing the felt the hand already holds it — the flight
-  // is a copy over a hand that has finished changing (#672). Held back here
-  // rather than by deferring the state itself: online the state is the
+  // The exchange commits in the tick that raises its ceremony, so the hand
+  // holds the traded card before the flight carrying it has left. Held back
+  // here rather than by deferring the state itself: online the state is the
   // server's, and freezing a whole snapshot for the length of an animation
   // would swallow every other thing that arrives in that window.
   //
+  // Only until the card lands, not for the whole notice — the tags beside each
+  // seat stay up another `Reading.notice` to be read, and a hand short of a
+  // card for four seconds after it arrived is a different defect.
+  //
   // Arranging first and filtering second, so the card lands in the place the
   // player arranged for it instead of re-entering an order computed without it.
-  const arriving = arrivingCard(
-    exchangeAnnouncement?.visible ? exchangeAnnouncement.data : null,
-    spectating ? null : viewerSeat
+  const tradedCardsLanded = useTradedCardsLanded(
+    exchangeAnnouncement?.visible === true,
+    exchangeAnnouncement?.data?.bothJokersException
   );
+  const arriving = tradedCardsLanded
+    ? undefined
+    : arrivingCard(
+        exchangeAnnouncement?.visible ? exchangeAnnouncement.data : null,
+        spectating ? null : viewerSeat
+      );
   const handOnTable =
     arriving === undefined ? shownHand : shownHand.filter((c) => c.id !== arriving.id);
   // Where the last move put a card. A drag shows its own answer; the discrete
@@ -1085,7 +1094,7 @@ export function GameTable({
       {
         isMyTurn,
         currentTurnName: players[gameState.currentTurnIndex]?.name ?? "",
-        myCardCount: sortedHand.length,
+        myCardCount: handOnTable.length,
         lastPlay,
         opponents: opponentsA11y,
         exchange: exchangeA11y,
@@ -1098,7 +1107,7 @@ export function GameTable({
     gameState.currentTurnIndex,
     players,
     viewerSeat,
-    sortedHand.length,
+    handOnTable.length,
     isMyTurn,
     spectating,
     exchange,
@@ -1113,15 +1122,15 @@ export function GameTable({
     return t("gameTable.a11yCardMoved", {
       card: cardSpokenName(card, t),
       position: arranged.to + 1,
-      total: shownHand.length,
+      total: handOnTable.length,
     });
-  }, [arranged, shownHand, t]);
+  }, [arranged, shownHand, handOnTable.length, t]);
 
   const handA11yLabel = React.useMemo(() => {
-    const count = tn("gameTable.a11yHandCount", sortedHand.length);
+    const count = tn("gameTable.a11yHandCount", handOnTable.length);
     const selected = selectedIds.length > 0 ? tn("gameTable.a11yHandSelected", selectedIds.length) : null;
     return selected ? `${count} ${selected}` : count;
-  }, [tn, sortedHand.length, selectedIds.length]);
+  }, [tn, handOnTable.length, selectedIds.length]);
 
   const {
     giocaFlashStyle,
@@ -1945,7 +1954,11 @@ export function GameTable({
                   roomW={frame.handRoomW}
                   isMyTurn={isMyTurn && !isFinished}
                   scale={scale}
-                  onReorder={spectating ? undefined : arrange}
+                  // Off while a card is still in the air: the fan is drawn
+                  // without it, but `arrange` moves within the whole hand, so a
+                  // drop during the flight would land a slot from where the
+                  // finger let go.
+                  onReorder={spectating || arriving !== undefined ? undefined : arrange}
                 />
               </View>
             )}

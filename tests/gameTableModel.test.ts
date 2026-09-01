@@ -1907,13 +1907,14 @@ describe("exchangeFlight", () => {
   });
 });
 
-// The exchange ends its phase, hands the card over and raises its ceremony in
-// one tick, so the hand holds the traded card before the flight carrying it has
-// left. This is what the table leaves a place for instead (#672).
+// What the table leaves a place for while the flight carrying it is still on
+// screen (#672).
 describe("arrivingCard", () => {
   const GIVEN = { id: "6_clubs", suit: "clubs", rank: "6", isJoker: false } as const;
   const RECEIVED = { id: "2_spades", suit: "spades", rank: "2", isJoker: false } as const;
   const announce = {
+    winnerName: "Ana",
+    loserName: "Bea",
     winnerIdx: 1,
     loserIdx: 3,
     bothJokersException: false,
@@ -1940,8 +1941,6 @@ describe("arrivingCard", () => {
     assert.equal(arrivingCard(announce, null), undefined);
   });
 
-  // Nothing flies, so nothing arrives — a hand that left a gap for it would
-  // hold one open for the length of a notice with no card coming.
   test("both Jokers cancelling the exchange delivers nothing to either seat", () => {
     const cancelled = { ...announce, bothJokersException: true };
     for (const seat of [1, 3]) {
@@ -1954,8 +1953,6 @@ describe("arrivingCard", () => {
     assert.equal(arrivingCard(undefined, 1), undefined);
   });
 
-  // The winner's chosen card leaves their hand for real — it is in the air, not
-  // waiting to arrive — so only the incoming leg is held back at each seat.
   test("neither seat is told the card it is giving away", () => {
     assert.notDeepEqual(arrivingCard(announce, 1), GIVEN);
     assert.notDeepEqual(arrivingCard(announce, 3), RECEIVED);

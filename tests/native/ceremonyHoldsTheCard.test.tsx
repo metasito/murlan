@@ -1,14 +1,9 @@
 // tests/native/ceremonyHoldsTheCard.test.tsx — the hand does not hold the
 // traded card while the flight carrying it is still on screen.
 //
-// The exchange ends its phase, hands the card over and raises the announcement
-// in one tick, so the state behind the ceremony has already moved on. Left
-// alone, the two cards are drawn crossing the felt over a hand that finished
-// changing before they set off — a decorative copy rather than a delivery, and
-// the arrival #650 is built on has nowhere to arrive.
-//
-// The `arrivingCard` unit tests say which card each seat is owed; only a
-// rendered table says whether the hand actually leaves the place for it.
+// `arrivingCard` (tests/gameTableModel.test.ts) says which card each seat is
+// owed. Only a rendered table says whether the fan actually leaves the place
+// for it, which is what #650 lands into.
 import { describe, it, expect, jest } from '@jest/globals';
 import React from 'react';
 import { render, screen } from '@testing-library/react-native';
@@ -187,8 +182,6 @@ describe('the hand leaves a place for the card still in the air', () => {
     await r.unmount();
   });
 
-  // Nothing flies when both Jokers cancelled the exchange, so a hand that held
-  // a card back would hold it back for the length of a notice with no delivery.
   it('holds nothing back when both Jokers cancelled the exchange', async () => {
     const r = await render(
       table({ viewerSeat: WINNER_SEAT, visible: true, bothJokersException: true })
@@ -197,5 +190,24 @@ describe('the hand leaves a place for the card still in the air', () => {
     expect(named(FROM_LOSER)).toBeGreaterThan(0);
 
     await r.unmount();
+  });
+
+  // A spectated hand is synthetic — `hidden-N` ids standing in for cards the
+  // watcher may not be shown — so there is nothing to hold back and no id that
+  // could match the one arriving. The claim is that the ceremony changes
+  // nothing, which is the same count either side of it rather than a number
+  // written down here.
+  it('holds nothing back from a spectator watching the winner\'s seat', async () => {
+    const during = await render(
+      table({ viewerSeat: WINNER_SEAT, visible: true, spectating: true })
+    );
+    const backsDuring = screen.getAllByTestId('card-box-back').length;
+    await during.unmount();
+
+    const after = await render(
+      table({ viewerSeat: WINNER_SEAT, visible: false, spectating: true })
+    );
+    expect(screen.getAllByTestId('card-box-back').length).toBe(backsDuring);
+    await after.unmount();
   });
 });
