@@ -21,6 +21,7 @@ import {
   type PlayerType,
 } from "../../lib/gameEngine.ts";
 import { autoMoveForSeat } from "../../lib/autoMove.ts";
+import { comboKey } from "../../components/gameTableModel.ts";
 import { mulberry32 } from "../helpers.ts";
 
 interface HandResult {
@@ -137,6 +138,12 @@ export interface SimulateMatchOptions {
    * weakest-legal-move driver, looks like to the engine.
    */
   useAi?: boolean[];
+  /**
+   * Collects every `computeAiTurnKey` collision found while playing, instead
+   * of stopping at the first one — so a soak run can report how many turned
+   * up across the whole search rather than only the first.
+   */
+  collectAiTurnKeyCollisions?: AiTurnKeyCollision[];
 }
 
 export interface SimulatedManche {
@@ -151,6 +158,8 @@ export interface SimulateMatchResult {
   target: number;
   winners: string[];
   isDraw: boolean;
+  /** How many non-null `aiTurnKey` states this match's run checked for a collision. */
+  aiTurnKeyChecks: number;
 }
 
 export class MatchStallError extends Error {
@@ -163,6 +172,60 @@ export class MatchStallError extends Error {
     this.seed = seed;
     this.manches = manches;
   }
+}
+
+/**
+ * A manche ended with a seat that was dealt cards never once given a turn —
+ * the shape of a turn-advance no-op (one seat plays its whole hand alone
+ * while `activePlayers.length <= 1` still reads as a normal finish). A
+ * winner existing is not enough evidence a match played fairly.
+ */
+export class SilentSeatError extends Error {
+  seed: number;
+  mancheIndex: number;
+  seat: number;
+
+  constructor(message: string, seed: number, mancheIndex: number, seat: number) {
+    super(message);
+    this.name = "SilentSeatError";
+    this.seed = seed;
+    this.mancheIndex = mancheIndex;
+    this.seat = seat;
+  }
+}
+
+/**
+ * `app/game.tsx`'s own key for "does the AI turn effect need to reschedule",
+ * reproduced exactly: seat, pass count, and the table's last combination —
+ * gated on `!gameOver`, `!exchangePhase.active` and the acting seat being
+ * `"ai"`, matching that file's `aiTurnKey`. `exchangeAnnouncing` is not
+ * modelled (this harness never renders a ceremony) — treating it as always
+ * false only *adds* candidate collisions the real app's extra null would
+ * break, so it cannot hide one that exists.
+ */
+function computeAiTurnKey(state: GameState): string | null {
+  if (state.gameOver) return null;
+  if (state.exchangePhase?.active) return null;
+  const player = state.players[state.currentTurnIndex];
+  if (!player || player.type !== "ai") return null;
+  const combo = state.lastPlayedCombination
+    ? comboKey(state.lastPlayedCombination, state.lastPlayedBy)
+    : "-";
+  return `${state.currentTurnIndex}|${state.passCount}|${combo}`;
+}
+
+/** Everything the key leaves out — if this differs while the key doesn't,
+ * a real render would skip the reschedule a new AI decision needs. */
+function handFingerprint(state: GameState): string {
+  return state.players.map((p) => p.hand.map((c) => c.id).join(",")).join("|");
+}
+
+export interface AiTurnKeyCollision {
+  seed: number;
+  mancheIndex: number;
+  key: string;
+  before: { fingerprint: string; state: GameState };
+  after: { fingerprint: string; state: GameState };
 }
 
 /**
@@ -181,6 +244,7 @@ export function simulateOfflineMatch(opts: SimulateMatchOptions): SimulateMatchR
     let dealFirstSeat = 0;
     let prevRankings: string[] = [];
     const manches: SimulatedManche[] = [];
+    let aiTurnKeyChecks = 0;
 
     while (!match.over) {
       if (manches.length >= maxManches) {
@@ -209,6 +273,25 @@ export function simulateOfflineMatch(opts: SimulateMatchOptions): SimulateMatchR
         );
       }
 
+      // Every seat dealt cards must be given at least one turn before this
+      // manche's `gameOver` — a turn-advance that silently keeps re-picking
+      // the same seat still reaches `activePlayers.length <= 1` and looks
+      // like a normal finish (a winner, a plausible rankings array) with the
+      // other seat never once having acted.
+      const dealtSeats = state.players
+        .map((p, i) => ({ i, dealt: p.hand.length > 0 }))
+        .filter((s) => s.dealt)
+        .map((s) => s.i);
+      const actedSeats = new Set<number>();
+
+      // `app/game.tsx`'s `aiTurnKey`, reset per manche because that screen
+      // remounts on every navigation to /game (a fresh component instance
+      // has no previous effect value to compare against) — see
+      // `computeAiTurnKey`'s own comment for what this is chasing.
+      let lastAiTurnKey: string | null = null;
+      let lastAiTurnFingerprint: string | null = null;
+      let lastAiTurnState: GameState | null = null;
+
       let moves = 0;
       while (!state.gameOver) {
         if (moves >= maxMovesPerManche) {
@@ -221,9 +304,32 @@ export function simulateOfflineMatch(opts: SimulateMatchOptions): SimulateMatchR
         }
         moves++;
 
+        const key = computeAiTurnKey(state);
+        if (key !== null) {
+          aiTurnKeyChecks++;
+          const fingerprint = handFingerprint(state);
+          if (key === lastAiTurnKey && fingerprint !== lastAiTurnFingerprint && lastAiTurnState) {
+            opts.collectAiTurnKeyCollisions?.push({
+              seed: opts.seed,
+              mancheIndex: manches.length,
+              key,
+              before: { fingerprint: lastAiTurnFingerprint!, state: lastAiTurnState },
+              after: { fingerprint, state },
+            });
+          }
+          lastAiTurnKey = key;
+          lastAiTurnFingerprint = fingerprint;
+          lastAiTurnState = state;
+        } else {
+          lastAiTurnKey = null;
+          lastAiTurnFingerprint = null;
+          lastAiTurnState = null;
+        }
+
         const seat = state.exchangePhase?.active
           ? state.exchangePhase.winnerIdx
           : state.currentTurnIndex;
+        actedSeats.add(seat);
         const useAiForSeat = opts.useAi?.[seat] ?? true;
         const next = autoMoveForSeat(state, seat, useAiForSeat, {});
         if (!next) {
@@ -235,6 +341,18 @@ export function simulateOfflineMatch(opts: SimulateMatchOptions): SimulateMatchR
           );
         }
         state = next;
+      }
+
+      for (const seat of dealtSeats) {
+        if (!actedSeats.has(seat)) {
+          throw new SilentSeatError(
+            `manche ${manches.length} ended with seat ${seat} never given a turn ` +
+              `(acted: [${[...actedSeats].join(",")}], rankings: ${JSON.stringify(state.rankings)})`,
+            opts.seed,
+            manches.length,
+            seat
+          );
+        }
       }
 
       prevRankings = state.rankings;
@@ -252,6 +370,7 @@ export function simulateOfflineMatch(opts: SimulateMatchOptions): SimulateMatchR
       target: match.target,
       winners: match.winners,
       isDraw: match.isDraw,
+      aiTurnKeyChecks,
     };
   });
 }

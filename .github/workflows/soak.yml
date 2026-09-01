@@ -112,3 +112,60 @@ jobs:
             gh issue create --title "The soak found something" \
               --label soak --label bug --label needs-triage --body-file soak-failure.md
           fi
+
+  # tests/matchTerminates.test.ts (#770) — headless, no Postgres, no sockets.
+  # CI runs it on a fixed seed band (1..200) every push, which is deliberately
+  # never widened there: a check that scans new ground on every run is a check
+  # that can go red for a commit that touched nothing relevant. This job moves
+  # MURLAN_MATCH_SOAK_START forward by one band's width per UTC day instead —
+  # every day searches ground the last one hadn't, none twice, and neither
+  # band grows the deterministic band CI depends on.
+  offline-match-soak:
+    name: Play offline matches headless
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+
+      - name: Choose today's band
+        env:
+          MURLAN_MATCH_SOAK_SEEDS: "20000"
+        run: |
+          start=$(( $(date -u +%s) / 86400 * MURLAN_MATCH_SOAK_SEEDS + 1 ))
+          echo "band: $start..$(( start + MURLAN_MATCH_SOAK_SEEDS - 1 ))"
+          # $GITHUB_ENV, not `export`: each step's `run:` is its own shell, so
+          # a plain export here would not reach the "Play" step below.
+          echo "MURLAN_MATCH_SOAK_START=$start" >> "$GITHUB_ENV"
+          echo "MURLAN_MATCH_SOAK_SEEDS=$MURLAN_MATCH_SOAK_SEEDS" >> "$GITHUB_ENV"
+
+      - name: Play
+        run: node --test tests/matchTerminates.test.ts
+
+      - name: Report the failure to the tracker
+        if: failure()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          {
+            echo "The offline-match soak (#770) found something. [Run]($RUN_URL)"
+            echo
+            echo "Re-run locally with the same band:"
+            echo '```'
+            echo "MURLAN_MATCH_SOAK_START=$MURLAN_MATCH_SOAK_START MURLAN_MATCH_SOAK_SEEDS=$MURLAN_MATCH_SOAK_SEEDS node --test tests/matchTerminates.test.ts"
+            echo '```'
+          } > offline-soak-failure.md
+          open=$(gh issue list --label soak --state open --limit 1 --json number --jq '.[0].number // empty')
+          if [ -n "$open" ]; then
+            gh issue comment "$open" --body-file offline-soak-failure.md
+          else
+            gh issue create --title "The offline-match soak found something" \
+              --label soak --label bug --label needs-triage --body-file offline-soak-failure.md
+          fi
