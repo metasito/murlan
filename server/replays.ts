@@ -15,6 +15,8 @@ const ownedBy = (userId: string) =>
 
 export async function saveReplay(input: {
   roomId: string;
+  /** The same instant `recordGameResult` writes — see its own note on why. */
+  finishedAt: Date;
   gameMode: GameMode;
   seats: ReplaySeat[];
   moves: ReplayMove[];
@@ -27,6 +29,7 @@ export async function saveReplay(input: {
   await db.transaction(async (tx) => {
     await tx.insert(matchReplays).values({
       roomId: input.roomId,
+      finishedAt: input.finishedAt,
       gameMode: input.gameMode,
       playerIds,
       seats: input.seats,

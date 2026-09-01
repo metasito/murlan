@@ -52,6 +52,13 @@ export async function recordGameResult(
   results: GameResult[],
   gameMode: GameMode,
   /**
+   * The hand's one end time, shared with the replay written beside this. It is
+   * required rather than defaulted so that `(userId, finishedAt)` pairs the two
+   * exactly — a caller falling back to `defaultNow()` would leave the pairing
+   * to whichever write the database served first.
+   */
+  finishedAt: Date,
+  /**
    * What this hand did to each seat's ladder rating, read before the hand was
    * written (server/ratings.ts `previewRatedDeltas`). Absent for every seat a
    * table did not rate, which is what leaves `rating_delta` null rather than
@@ -112,6 +119,7 @@ export async function recordGameResult(
 
         await tx.insert(matchHistory).values({
           userId,
+          finishedAt,
           gameMode,
           placement,
           playerCount,

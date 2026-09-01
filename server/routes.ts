@@ -19,7 +19,8 @@ import { deletePushToken, savePushToken } from "./push.ts";
 import { DEFAULT_LOCALE, translate, type Locale } from "../shared/i18n.ts";
 import { emitToUser, evictUser, isUserOnline } from "./socket.ts";
 import { mintSocketTicket } from "./ticket.ts";
-import { getUserStats, getMatchHistory, getUserAchievements } from "./stats.ts";
+import { getUserStats, getUserAchievements } from "./stats.ts";
+import { getMatchHistoryView } from "./matchHistoryView.ts";
 import { getReplayForUser, listReplaysForUser } from "./replays.ts";
 import { getLeaderboard, getRating, PROVISIONAL_GAMES } from "./ratings.ts";
 import { recordClientError } from "./clientErrors.ts";
@@ -614,7 +615,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   app.get("/api/stats/history", requireAuth, async (req, res) => {
-    const history = await getMatchHistory(req.session.userId!);
+    const history = await getMatchHistoryView(req.session.userId!);
     res.json(history);
   });
 

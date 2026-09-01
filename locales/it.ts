@@ -376,15 +376,7 @@ export const it: Record<keyof typeof en, string> = {
 
   // ----------------------------------------------------------------- replay.*
   "replay.title": "Replay",
-  "replay.cardTitle": "Rivedi le mani",
-  "replay.emptyTitle": "Nessun replay",
-  "replay.emptyBody": "I replay delle mani online restano disponibili per {{days}} giorni.",
   "replay.loadingA11yLabel": "Caricamento replay",
-  "replay.errorTitle": "Replay non disponibili",
-  "replay.errorRetry": "Riprova",
-  "replay.rowA11yLabel": "Rivedi: {{mode}}, {{players}}, {{time}}, {{moves}}",
-  "replay.moves_one": "{{count}} mossa",
-  "replay.moves_other": "{{count}} mosse",
   "replay.moveOf": "Mossa {{n}} di {{total}}",
   "replay.start": "Inizio",
   "replay.prevA11yLabel": "Mossa precedente",
@@ -863,6 +855,10 @@ export const it: Record<keyof typeof en, string> = {
   "profile.historyPlayers_one": "{{count}} giocatore",
   "profile.historyPlayers_other": "{{count}} giocatori",
   "profile.historyRowA11yLabel": "{{position}} posto, {{mode}}, {{players}}, {{points}} punti, {{time}}",
+  "profile.historyWith": "con {{names}}",
+  "profile.historyBotSeat": "un'IA",
+  "profile.historyUnknownSeat": "un account eliminato",
+  "profile.historyWatchA11yLabel": "Guarda: {{summary}}",
 
   "profile.achievementsTitle": "Obiettivi",
   "profile.achievementsLoadingA11yLabel": "Caricamento obiettivi",

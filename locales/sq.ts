@@ -383,15 +383,7 @@ export const sq: Record<keyof typeof en, string> = {
 
   // ----------------------------------------------------------------- replay.*
   "replay.title": "Replay",
-  "replay.cardTitle": "Rishiko duart",
-  "replay.emptyTitle": "Asnjë replay",
-  "replay.emptyBody": "Duart online mbeten të rishikueshme për {{days}} ditë.",
   "replay.loadingA11yLabel": "Duke ngarkuar replay-t",
-  "replay.errorTitle": "Replay-t nuk janë të disponueshëm",
-  "replay.errorRetry": "Provo përsëri",
-  "replay.rowA11yLabel": "Rishiko: {{mode}}, {{players}}, {{time}}, {{moves}}",
-  "replay.moves_one": "{{count}} lëvizje",
-  "replay.moves_other": "{{count}} lëvizje",
   "replay.moveOf": "Lëvizja {{n}} nga {{total}}",
   "replay.start": "Fillimi",
   "replay.prevA11yLabel": "Lëvizja e mëparshme",
@@ -869,6 +861,10 @@ export const sq: Record<keyof typeof en, string> = {
   "profile.historyPlayers_one": "{{count}} lojtar",
   "profile.historyPlayers_other": "{{count}} lojtarë",
   "profile.historyRowA11yLabel": "Vendi {{position}}, {{mode}}, {{players}}, {{points}} pikë, {{time}}",
+  "profile.historyWith": "me {{names}}",
+  "profile.historyBotSeat": "një IA",
+  "profile.historyUnknownSeat": "një llogari e fshirë",
+  "profile.historyWatchA11yLabel": "Shiko: {{summary}}",
 
   "profile.achievementsTitle": "Arritjet",
   "profile.achievementsLoadingA11yLabel": "Duke ngarkuar arritjet",

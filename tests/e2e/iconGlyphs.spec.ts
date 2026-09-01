@@ -83,7 +83,7 @@ test("online screens render every icon glyph, across the states reachable once s
 
   await page.getByRole("button", { name: "Il mio profilo" }).click();
   await page.waitForTimeout(1500);
-  await assertAllGlyphsRender(page, "profile — empty state", 16);
+  await assertAllGlyphsRender(page, "profile — empty state", 15);
 
   expect(consoleErrors.entries, "no console errors/warnings across the online screens").toEqual([]);
 });
@@ -122,7 +122,9 @@ test("the replay screen renders the correct transport icon in both its paused an
   // leaves behind.
   await page.goto(`${baseURL}/profile`);
   await page.waitForLoadState("networkidle");
-  await page.getByRole("button", { name: /^Rivedi:/ }).first().click({ timeout: 15_000 });
+  // The hand's own row in the recent-hands card, which is a button only while
+  // its replay still pairs — there is no separate replays list to click.
+  await page.getByRole("button", { name: /^Guarda:/ }).first().click({ timeout: 15_000 });
   await page.waitForURL(/replay/, { timeout: 15_000 });
   await page.waitForTimeout(500);
 

@@ -26,6 +26,7 @@ export interface GameOverWriters {
   recordGameResult: (
     results: GameResult[],
     gameMode: GameMode,
+    finishedAt: Date,
     ratingDeltas?: Map<string, number>
   ) => Promise<void>;
   /**
@@ -45,6 +46,7 @@ export interface GameOverWriters {
   ) => Promise<void>;
   saveReplay: (input: {
     roomId: string;
+    finishedAt: Date;
     gameMode: GameMode;
     seats: ReplaySeat[];
     moves: ReplayMove[];
@@ -171,7 +173,7 @@ export async function handleGameOver(
     } else {
       // Deliberately not awaited: a stats write must never be able to block
       // or delay whatever runs after handleGameOver at any of its call sites.
-      writers.recordGameResult(gameResults, game.gameMode, ratingDeltasByUser).catch((err) =>
+      writers.recordGameResult(gameResults, game.gameMode, finishedAt, ratingDeltasByUser).catch((err) =>
         logger.error({ err, roomId }, "Failed to record game results")
       );
       // The ladder moves on the same gate as stats: a bot-majority table
@@ -190,6 +192,7 @@ export async function handleGameOver(
     if (game.moveLog && game.moveLog.length > 0) {
       writers.saveReplay({
         roomId,
+        finishedAt,
         gameMode: game.gameMode,
         seats: replaySeatsOf(state.players, game.playerMap),
         moves: game.moveLog,
