@@ -13,6 +13,7 @@ import { pathToFileURL } from "node:url";
 import type { Socket } from "socket.io-client";
 import { startTestServer, hasDatabase, type TestServer } from "../helpers/testServer.ts";
 import { connectAs, reconnectWith, DEADLINE_SCALE } from "../helpers/client.ts";
+import { lobbyGraceMs } from "../../server/gameTimers.ts";
 import {
   createDeck,
   getAllValidPlays,
@@ -67,6 +68,31 @@ function makeRng(seed: number): () => number {
  * socket before it answers.
  */
 const REJOIN_BUDGET_MS = 5_000 * DEADLINE_SCALE;
+
+/**
+ * How long a dropped seat stays away, and why it may not grow.
+ *
+ * The oracle below calls an unanswered rejoin a violation. That is only true while the seat
+ * still exists: inside `lobbyGraceMs()` the server is holding it, so silence is a defect.
+ * Past it the seat is released correctly and the same violation would name working behaviour
+ * — with the refusal reading `UNAUTHORIZED` either way, which is what makes it undetectable
+ * by eye.
+ */
+export const AWAY_WINDOW_MS = { floor: 200, spread: 600 };
+
+export function awayWindowOutsideGrace(
+  window: typeof AWAY_WINDOW_MS,
+  graceMs: number
+): string | null {
+  const longest = window.floor + window.spread;
+  if (longest < graceMs) return null;
+  return (
+    `a dropped seat can stay away ${longest}ms against a ${graceMs}ms lobby grace, so the ` +
+    `server may release the seat while the soak still expects it held. Every unanswered ` +
+    `rejoin past that point reports working behaviour as a defect. Shorten the window, or ` +
+    `give a legitimate expiry an oracle of its own — it is not this one.`
+  );
+}
 
 /**
  * What arrives instead of a table. `game:rejoin_failed` carries the rejoin
@@ -363,6 +389,9 @@ export async function settle(
 }
 
 export async function runSoak(opts: Options, log = console.log): Promise<SoakResult> {
+  const misread = awayWindowOutsideGrace(AWAY_WINDOW_MS, lobbyGraceMs());
+  if (misread) throw new Error(`soak: ${misread}`);
+
   const rng = makeRng(opts.seed);
   const deckSize = createDeck().length;
   const moveLog: SoakLogEntry[] = [];
@@ -453,7 +482,7 @@ export async function runSoak(opts: Options, log = console.log): Promise<SoakRes
         const victimSeat = seats.indexOf(victim);
         moveLog.push({ at: moves, kind: "drop", seat: victimSeat, username: victim.username });
         victim.socket.close();
-        await sleep(200 + Math.floor(rng() * 600));
+        await sleep(AWAY_WINDOW_MS.floor + Math.floor(rng() * AWAY_WINDOW_MS.spread));
         const back = await reconnectWith(server, victim.cookie);
         const before = victim.version;
         victim.adopt(back);
