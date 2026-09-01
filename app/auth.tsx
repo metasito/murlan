@@ -9,6 +9,7 @@ import {
 import { router } from "expo-router";
 import Ionicons from "@expo/vector-icons/Ionicons";
 import { hapticLight } from "@/lib/haptics";
+import { ScreenHeader } from "@/components/ScreenHeader";
 import { useAuth } from "@/context/AuthContext";
 import { Colors, FontSize, Radius, Spacing, TOUCH_TARGET_MIN, Type } from "@/lib/theme";
 import { MenuLayout } from "@/components/MenuLayout";
@@ -56,18 +57,7 @@ export default function AuthScreen() {
 
   return (
     <MenuLayout scrollable centered={false}>
-      <View style={styles.topBar}>
-        <Pressable
-          onPress={() => router.back()}
-          style={styles.backBtn}
-          accessibilityRole="button"
-          accessibilityLabel={t("common.back")}
-          hitSlop={12}
-        >
-          <Ionicons name="chevron-back" size={22} color={Colors.gold} {...a11yHidden()} />
-        </Pressable>
-        <View style={{ width: 38 }} />
-      </View>
+      <ScreenHeader />
 
       <View style={styles.contentWrapper}>
         <View style={styles.header}>
@@ -183,18 +173,6 @@ export default function AuthScreen() {
 }
 
 const styles = StyleSheet.create({
-  topBar: {
-    flexDirection: "row",
-    alignItems: "center",
-    width: "100%",
-    marginBottom: Spacing.xs,
-  },
-  backBtn: {
-    width: TOUCH_TARGET_MIN,
-    height: TOUCH_TARGET_MIN,
-    alignItems: "center",
-    justifyContent: "center",
-  },
   contentWrapper: {
     width: "100%",
     maxWidth: 480,

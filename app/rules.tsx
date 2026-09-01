@@ -15,6 +15,7 @@ import Animated, {
 import { LinearGradient } from "expo-linear-gradient";
 import Ionicons from "@expo/vector-icons/Ionicons";
 import { Colors, FontSize, motionMs, Radius, Spacing, TOUCH_TARGET_MIN, Type } from "@/lib/theme";
+import { ScreenHeader } from "@/components/ScreenHeader";
 import { MenuLayout } from "@/components/MenuLayout";
 import { usePrefersReducedMotion } from "@/lib/accessibility";
 import { useTranslation, type TranslationKey } from "@/lib/i18n";
@@ -96,19 +97,7 @@ export default function RulesScreen() {
 
   return (
     <MenuLayout scrollable centered={false}>
-      <View style={styles.topBar}>
-        <Pressable
-          onPress={() => router.back()}
-          style={styles.backBtn}
-          accessibilityRole="button"
-          accessibilityLabel={t("common.back")}
-          hitSlop={12}
-        >
-          <Ionicons name="chevron-back" size={NAV_ICON} color={Colors.gold} {...a11yHidden()} />
-        </Pressable>
-        <Text style={styles.screenTitle}>{t("rules.headerTitle")}</Text>
-        <View style={{ width: 38 }} />
-      </View>
+      <ScreenHeader title={t("rules.headerTitle")} />
 
       <View style={styles.contentWrapper}>
         <View style={styles.heroBanner}>
@@ -213,28 +202,6 @@ export default function RulesScreen() {
 }
 
 const styles = StyleSheet.create({
-  topBar: {
-    flexDirection: "row",
-    alignItems: "center",
-    width: "100%",
-    paddingBottom: Spacing.sm,
-    marginBottom: Spacing.md,
-    borderBottomWidth: 1,
-    borderBottomColor: Colors.border,
-  },
-  backBtn: {
-    width: TOUCH_TARGET_MIN,
-    height: TOUCH_TARGET_MIN,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  screenTitle: {
-    flex: 1,
-    textAlign: "center",
-    ...Type.heading,
-    fontSize: FontSize.xl,
-    letterSpacing: 3,
-  },
   contentWrapper: {
     width: "100%",
     maxWidth: 800,

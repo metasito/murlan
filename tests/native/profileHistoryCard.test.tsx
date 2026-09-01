@@ -79,9 +79,9 @@ const hand = (id: string, participants: Participant[], replayId: string | null) 
 });
 
 /** The label a watchable row carries, whatever summary it wraps. */
-const WATCH_LABEL = new RegExp(t('profile.historyWatchA11yLabel', { summary: '' }));
+const WATCH_LABEL = new RegExp(t('history.watchA11yLabel', { summary: '' }));
 /** How a row opens its list of seats, whatever the copy says. */
-const WITH_PREFIX = new RegExp(t('profile.historyWith', { names: '' }));
+const WITH_PREFIX = new RegExp(t('history.with', { names: '' }));
 
 /**
  * A row's seats are asserted on its accessibility label, not on its text: the
@@ -90,7 +90,7 @@ const WITH_PREFIX = new RegExp(t('profile.historyWith', { names: '' }));
  */
 const seats = (names: string) =>
   new RegExp(
-    t('profile.historyWith', { names }).replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+    t('history.with', { names }).replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
   );
 
 function show(history: unknown[]) {
@@ -142,7 +142,7 @@ describe('the recent-hands card', () => {
     ]);
     await act(async () => {});
 
-    const names = `${t('profile.historyBotSeat')}, ${t('profile.historyUnknownSeat')}`;
+    const names = `${t('history.botSeat')}, ${t('history.unknownSeat')}`;
     expect(view.getByLabelText(seats(names))).toBeTruthy();
     await view.unmount();
   });
@@ -199,7 +199,7 @@ describe('the door out of the card', () => {
     );
     await act(async () => {});
 
-    expect(view.queryByLabelText(t('profile.historyDoorA11yLabel', { n: 5 }))).toBeNull();
+    expect(view.queryByLabelText(t('history.doorA11yLabel', { n: 5 }))).toBeNull();
     await view.unmount();
   });
 
@@ -210,7 +210,7 @@ describe('the door out of the card', () => {
     await act(async () => {});
 
     await fireEvent.press(
-      view.getByLabelText(t('profile.historyDoorA11yLabel', { n: 8 }))
+      view.getByLabelText(t('history.doorA11yLabel', { n: 8 }))
     );
     expect(mockPush).toHaveBeenCalledWith('/(online)/history');
     await view.unmount();

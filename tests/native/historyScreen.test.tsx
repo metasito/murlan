@@ -74,7 +74,7 @@ const hands = (n: number) =>
 
 /** A row is found by its seats, which live in the row's own label. */
 const seats = (names: string) =>
-  new RegExp(t('profile.historyWith', { names }).replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
+  new RegExp(t('history.with', { names }).replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
 
 function show(history: unknown[]) {
   mockData['/api/stats/history'] = history;
@@ -148,7 +148,7 @@ describe('the full history screen', () => {
     const view = await show([]);
     await act(async () => {});
 
-    expect(view.getByLabelText(new RegExp(t('profile.historyEmptyTitle')))).toBeTruthy();
+    expect(view.getByLabelText(new RegExp(t('history.emptyTitle')))).toBeTruthy();
     expect(view.queryByLabelText(t('history.nextA11yLabel'))).toBeNull();
     await view.unmount();
   });

@@ -13,6 +13,7 @@ import {
 } from "react-native";
 import { router } from "expo-router";
 import { hapticMedium, hapticSelection } from "@/lib/haptics";
+import { ScreenHeader } from "@/components/ScreenHeader";
 import Ionicons from "@expo/vector-icons/Ionicons";
 import {
   useOnlineConnection,
@@ -220,19 +221,7 @@ export default function OnlineLobbyScreen() {
 
   return (
     <MenuLayout scrollable={false} centered={false} avoidsKeyboard={false} style={{ paddingBottom: 0 }}>
-      <View style={styles.topBar}>
-        <Pressable
-          onPress={() => router.back()}
-          style={styles.backBtn}
-          accessibilityRole="button"
-          accessibilityLabel={t("common.back")}
-          hitSlop={12}
-        >
-          <Ionicons name="chevron-back" size={22} color={Colors.gold} {...a11yHidden()} />
-        </Pressable>
-        <Text style={styles.screenTitle}>{t("onlineLobby.title")}</Text>
-        <View style={{ width: 38 }} />
-      </View>
+      <ScreenHeader title={t("onlineLobby.title")} />
 
       {/* Same slot as the error, and mutually exclusive with it: the join either
           is still happening or has failed. Without this the player taps Join on
@@ -435,28 +424,6 @@ export default function OnlineLobbyScreen() {
 }
 
 const styles = StyleSheet.create({
-  topBar: {
-    flexDirection: "row",
-    alignItems: "center",
-    width: "100%",
-    paddingBottom: Spacing.sm,
-    marginBottom: Spacing.xs,
-    borderBottomWidth: 1,
-    borderBottomColor: Colors.border,
-  },
-  backBtn: {
-    width: TOUCH_TARGET_MIN,
-    height: TOUCH_TARGET_MIN,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  screenTitle: {
-    flex: 1,
-    textAlign: "center",
-    ...Type.heading,
-    fontSize: FontSize.xl,
-    letterSpacing: 3,
-  },
   errorBanner: {
     flexDirection: "row",
     alignItems: "center",

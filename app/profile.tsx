@@ -5,7 +5,6 @@ import {
   TextInput,
   StyleSheet,
   Pressable,
-  ActivityIndicator,
 } from "react-native";
 import Animated, { FadeIn } from "react-native-reanimated";
 import { router } from "expo-router";
@@ -13,7 +12,9 @@ import Ionicons from "@expo/vector-icons/Ionicons";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "@/context/AuthContext";
 import { Colors, Spacing, Radius, FontSize, Type, Motion, TOUCH_TARGET_MIN } from "@/lib/theme";
+import { ScreenHeader } from "@/components/ScreenHeader";
 import { MenuLayout } from "@/components/MenuLayout";
+import { Avatar } from "@/components/Avatar";
 import { MenuCard } from "@/components/MenuCard";
 import {
   recentForm,
@@ -22,6 +23,7 @@ import {
   RECENT_FORM_LIMIT,
 } from "@/lib/profileStats";
 import { MenuButton } from "@/components/MenuButton";
+import { LoadingBlock, ErrorBlock, EmptyBlock } from "@/components/StateBlock";
 import { LookPicker } from "@/components/LookPicker";
 import { useTranslation } from "@/lib/i18n";
 import { relativeTime } from "@/lib/relativeTime";
@@ -90,52 +92,6 @@ const POSITION_LABEL_KEYS: TranslationKey[] = [
   "gameOverOverlay.position3",
   "gameOverOverlay.position4",
 ];
-
-function LoadingBlock({ label }: { label: string }) {
-  return (
-    <View style={styles.stateBlock}>
-      <ActivityIndicator color={Colors.gold} accessibilityLabel={label} />
-    </View>
-  );
-}
-
-function ErrorBlock({
-  title,
-  retryLabel,
-  retryA11yLabel,
-  onRetry,
-}: {
-  title: string;
-  retryLabel: string;
-  retryA11yLabel: string;
-  onRetry: () => void;
-}) {
-  return (
-    <View style={styles.stateBlock}>
-      <Ionicons name="alert-circle-outline" size={28} color={Colors.textMuted} />
-      <Text style={styles.stateTitle}>{title}</Text>
-      <MenuButton
-        label={retryLabel}
-        onPress={onRetry}
-        variant="secondary"
-        size="sm"
-        fullWidth={false}
-        accessibilityLabel={retryA11yLabel}
-        icon={<Ionicons name="refresh" size={16} color={Colors.gold} />}
-      />
-    </View>
-  );
-}
-
-function EmptyBlock({ icon, title, body }: { icon: IconName; title: string; body: string }) {
-  return (
-    <View style={styles.stateBlock} {...a11yGroup(`${title}. ${body}`)}>
-      <Ionicons name={icon} size={28} color={Colors.textMuted} {...a11yHidden()} />
-      <Text style={styles.stateTitle} {...a11yHidden()}>{title}</Text>
-      <Text style={styles.stateBody} {...a11yHidden()}>{body}</Text>
-    </View>
-  );
-}
 
 function StatTile({ icon, value, label }: { icon: IconName; value: string; label: string }) {
   return (
@@ -208,9 +164,7 @@ function UserCard({ user }: { user: { username: string } }) {
           style={styles.userIdentity}
           {...a11yGroup(t("profile.loggedInAs", { username: user.username }))}
         >
-          <View style={styles.avatar} {...a11yHidden()}>
-            <Text style={styles.avatarText}>{user.username.charAt(0).toUpperCase()}</Text>
-          </View>
+          <Avatar name={user.username} size="xl" ring />
           <Text style={styles.username} numberOfLines={1} {...a11yHidden()}>
             {user.username}
           </Text>
@@ -356,19 +310,7 @@ export default function ProfileScreen() {
 
   return (
     <MenuLayout scrollable centered={false}>
-      <View style={styles.topBar}>
-        <Pressable
-          onPress={() => router.back()}
-          style={styles.backBtn}
-          accessibilityRole="button"
-          accessibilityLabel={t("common.back")}
-          hitSlop={12}
-        >
-          <Ionicons name="chevron-back" size={22} color={Colors.gold} {...a11yHidden()} />
-        </Pressable>
-        <Text style={styles.screenTitle}>{t("profile.title")}</Text>
-        <View style={{ width: 38 }} />
-      </View>
+      <ScreenHeader title={t("profile.title")} />
 
       <View style={styles.contentWrapper}>
         <SectionHeading label={t("profile.youTitle")} />
@@ -389,9 +331,7 @@ export default function ProfileScreen() {
               {ratingQuery.isError && (
                 <ErrorBlock
                   title={t("ladder.errorTitle")}
-                  retryLabel={t("common.retry")}
-                  retryA11yLabel={t("ladder.errorRetry")}
-                  onRetry={() => ratingQuery.refetch()}
+                  retry={{ label: t("common.retry"), a11yLabel: t("ladder.errorRetry"), onPress: () => ratingQuery.refetch() }}
                 />
               )}
               {rating && (() => {
@@ -428,9 +368,7 @@ export default function ProfileScreen() {
               {statsQuery.isError && (
                 <ErrorBlock
                   title={t("profile.statsErrorTitle")}
-                  retryLabel={t("common.retry")}
-                  retryA11yLabel={t("profile.retryStatsA11yLabel")}
-                  onRetry={() => statsQuery.refetch()}
+                  retry={{ label: t("common.retry"), a11yLabel: t("profile.retryStatsA11yLabel"), onPress: () => statsQuery.refetch() }}
                 />
               )}
               {stats && stats.gamesPlayed === 0 && (
@@ -523,7 +461,7 @@ export default function ProfileScreen() {
                     style={styles.formCountRow}
                     {...a11yGroup(
                       t("profile.formByPlayersRowA11yLabel", {
-                        players: tn("profile.historyPlayers", slice.playerCount),
+                        players: tn("history.players", slice.playerCount),
                         played: slice.played,
                         won: slice.won,
                         avg: slice.averagePlacement,
@@ -531,7 +469,7 @@ export default function ProfileScreen() {
                     )}
                   >
                     <Text style={styles.formCountKey} {...a11yHidden()}>
-                      {tn("profile.historyPlayers", slice.playerCount)}
+                      {tn("history.players", slice.playerCount)}
                     </Text>
                     <Text style={styles.formCountValue} {...a11yHidden()}>
                       {t("profile.formAveragePlacement", { n: slice.averagePlacement })}
@@ -544,21 +482,19 @@ export default function ProfileScreen() {
 
           {/* ── Partite recenti ── */}
           <Animated.View entering={entering}>
-            <MenuCard title={t("profile.historyTitle")}>
-              {historyQuery.isLoading && <LoadingBlock label={t("profile.historyLoadingA11yLabel")} />}
+            <MenuCard title={t("history.cardTitle")}>
+              {historyQuery.isLoading && <LoadingBlock label={t("history.loadingA11yLabel")} />}
               {historyQuery.isError && (
                 <ErrorBlock
-                  title={t("profile.historyErrorTitle")}
-                  retryLabel={t("common.retry")}
-                  retryA11yLabel={t("profile.retryHistoryA11yLabel")}
-                  onRetry={() => historyQuery.refetch()}
+                  title={t("history.errorTitle")}
+                  retry={{ label: t("common.retry"), a11yLabel: t("history.retryA11yLabel"), onPress: () => historyQuery.refetch() }}
                 />
               )}
               {historyQuery.isSuccess && history.length === 0 && (
                 <EmptyBlock
                   icon="time-outline"
-                  title={t("profile.historyEmptyTitle")}
-                  body={t("profile.historyEmptyBody")}
+                  title={t("history.emptyTitle")}
+                  body={t("history.emptyBody")}
                 />
               )}
               {history.length > 0 && (
@@ -571,12 +507,12 @@ export default function ProfileScreen() {
                       style={styles.doorRow}
                       onPress={() => router.push("/(online)/history")}
                       accessibilityRole="button"
-                      accessibilityLabel={t("profile.historyDoorA11yLabel", {
+                      accessibilityLabel={t("history.doorA11yLabel", {
                         n: history.length,
                       })}
                     >
                       <Text style={styles.doorText} {...a11yHidden()}>
-                        {t("profile.historyDoor", { count: history.length })}
+                        {t("history.door", { count: history.length })}
                       </Text>
                       <Ionicons
                         name="chevron-forward"
@@ -598,9 +534,7 @@ export default function ProfileScreen() {
               {achievementsQuery.isError && (
                 <ErrorBlock
                   title={t("profile.achievementsErrorTitle")}
-                  retryLabel={t("common.retry")}
-                  retryA11yLabel={t("profile.retryAchievementsA11yLabel")}
-                  onRetry={() => achievementsQuery.refetch()}
+                  retry={{ label: t("common.retry"), a11yLabel: t("profile.retryAchievementsA11yLabel"), onPress: () => achievementsQuery.refetch() }}
                 />
               )}
               {achievements.length > 0 && (
@@ -650,28 +584,6 @@ export default function ProfileScreen() {
 }
 
 const styles = StyleSheet.create({
-  topBar: {
-    flexDirection: "row",
-    alignItems: "center",
-    width: "100%",
-    paddingBottom: Spacing.sm,
-    marginBottom: Spacing.xs,
-    borderBottomWidth: 1,
-    borderBottomColor: Colors.border,
-  },
-  backBtn: {
-    width: TOUCH_TARGET_MIN,
-    height: TOUCH_TARGET_MIN,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  screenTitle: {
-    flex: 1,
-    textAlign: "center",
-    ...Type.heading,
-    fontSize: FontSize.xl,
-    letterSpacing: 3,
-  },
   sectionHeading: {
     fontFamily: "Rajdhani_700Bold",
     fontSize: FontSize.lg,
@@ -731,22 +643,8 @@ const styles = StyleSheet.create({
   renameError: { ...Type.caption, color: Colors.dangerDim },
   renameActions: { flexDirection: "row", gap: Spacing.sm },
   renameAction: { flex: 1 },
-  avatar: {
-    width: 48,
-    height: 48,
-    borderRadius: Radius.full,
-    backgroundColor: Colors.felt,
-    borderWidth: 1,
-    borderColor: Colors.gold,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  avatarText: { fontFamily: "Rajdhani_700Bold", fontSize: FontSize.xl, color: Colors.gold },
   username: { ...Type.heading, fontSize: FontSize.lg },
 
-  stateBlock: { alignItems: "center", paddingVertical: Spacing.lg, gap: Spacing.sm },
-  stateTitle: { ...Type.label, textAlign: "center" },
-  stateBody: { ...Type.caption, textAlign: "center", lineHeight: 18, maxWidth: 280 },
 
   statsGrid: { flexDirection: "row", flexWrap: "wrap", gap: Spacing.sm },
   statTile: {

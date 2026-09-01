@@ -9,6 +9,7 @@ import {
 } from "react-native";
 import { router, useFocusEffect } from "expo-router";
 import { hapticMedium, hapticSuccess } from "@/lib/haptics";
+import { ScreenHeader } from "@/components/ScreenHeader";
 import Ionicons from "@expo/vector-icons/Ionicons";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useSocket } from "@/context/SocketContext";
@@ -17,8 +18,9 @@ import { useNotification } from "@/context/NotificationContext";
 import { serverErrorMessage } from "@/lib/apiError";
 import { apiRequest } from "@/lib/query-client";
 import { Colors, Spacing, FontSize, Radius, TOUCH_TARGET_MIN, Type } from '@/lib/theme';
-import { MenuButton } from "@/components/MenuButton";
 import { MenuLayout, takesSlack } from "@/components/MenuLayout";
+import { Avatar } from "@/components/Avatar";
+import { ErrorBlock, EmptyBlock } from "@/components/StateBlock";
 import { ConfirmDialog, type ConfirmRequest } from "@/components/ConfirmDialog";
 import { useTranslation } from "@/lib/i18n";
 import { relativeTime } from "@/lib/relativeTime";
@@ -50,14 +52,6 @@ function SectionHeader({ title, count }: { title: string; count?: number }) {
 /** The direction inside PENDING. Quieter than a section, and never a count. */
 function GroupLabel({ text }: { text: string }) {
   return <Text style={styles.groupLabel} accessibilityRole="header">{text}</Text>;
-}
-
-function Avatar({ name }: { name: string }) {
-  return (
-    <View style={styles.avatar}>
-      <Text style={styles.avatarText}>{name.charAt(0).toUpperCase()}</Text>
-    </View>
-  );
 }
 
 export default function FriendsScreen() {
@@ -224,19 +218,7 @@ export default function FriendsScreen() {
 
   return (
     <MenuLayout scrollable centered={false}>
-      <View style={styles.topBar}>
-        <Pressable
-          onPress={() => router.back()}
-          style={styles.backBtn}
-          accessibilityRole="button"
-          accessibilityLabel={t("common.back")}
-          hitSlop={12}
-        >
-          <Ionicons name="chevron-back" size={22} color={Colors.gold} {...a11yHidden()} />
-        </Pressable>
-        <Text style={styles.screenTitle}>{t("friends.title")}</Text>
-        <View style={{ width: 38 }} />
-      </View>
+      <ScreenHeader title={t("friends.title")} />
 
       <View style={styles.contentWrapper}>
         {/* ── SECTION 1: Aggiungi Amico ── */}
@@ -324,24 +306,13 @@ export default function FriendsScreen() {
           />
         )}
         {!friendsLoading && friendsErrored && (
-          <View style={styles.empty}>
-            <Ionicons name="alert-circle-outline" size={32} color={Colors.textMuted} />
-            <Text style={styles.emptyText}>{t("friends.loadErrorTitle")}</Text>
-            <MenuButton
-              label={t("common.retry")}
-              onPress={() => refetchFriends()}
-              variant="secondary"
-              size="sm"
-              fullWidth={false}
-              icon={<Ionicons name="refresh" size={16} color={Colors.gold} />}
-            />
-          </View>
+          <ErrorBlock
+            title={t("friends.loadErrorTitle")}
+            retry={{ label: t("common.retry"), a11yLabel: t("friends.loadRetryA11yLabel"), onPress: () => refetchFriends() }}
+          />
         )}
         {!friendsLoading && !friendsErrored && friends.length === 0 && (
-          <View style={styles.empty}>
-            <Ionicons name="people-outline" size={36} color={Colors.textMuted} />
-            <Text style={styles.emptyText}>{t("friends.emptyFriends")}</Text>
-          </View>
+          <EmptyBlock icon="people-outline" title={t("friends.emptyFriends")} />
         )}
         {friends.length > 0 && (
           <View style={styles.listBlock}>
@@ -353,10 +324,7 @@ export default function FriendsScreen() {
               // sealed inside.
               return (
                 <View key={item.id} style={styles.row}>
-                  <View style={styles.avatarWrapper} {...a11yHidden()}>
-                    <Avatar name={item.username} />
-                    <View style={[styles.statusDot, { backgroundColor: isOnline ? Colors.success : Colors.textMuted }]} />
-                  </View>
+                  <Avatar name={item.username} size="lg" online={isOnline} />
                   <View style={styles.rowInfo}>
                     <Text style={styles.rowName}>{item.username}</Text>
                     <Text style={[styles.rowSub, isOnline && { color: Colors.success }]}>
@@ -386,10 +354,7 @@ export default function FriendsScreen() {
             <View style={[styles.bandSurface, styles.listBlock]}>
               {gameInvites.map((invite) => (
                 <View key={invite.roomCode} style={styles.row}>
-                  <View style={styles.avatarWrapper}>
-                    <Avatar name={invite.from} />
-                    <View style={[styles.statusDot, { backgroundColor: Colors.success }]} />
-                  </View>
+                  <Avatar name={invite.from} size="lg" online />
                   <View style={styles.rowInfo}>
                     <Text style={styles.rowName}>{invite.from}</Text>
                     <Text style={styles.rowSub}>{t("friends.roomLabel", { code: invite.roomCode })}</Text>
@@ -433,10 +398,7 @@ export default function FriendsScreen() {
         />
         <View style={[styles.bandSurface, styles.band]}>
         {requests.length === 0 && sentRequests.length === 0 && (
-          <View style={styles.empty}>
-            <Ionicons name="hourglass-outline" size={32} color={Colors.textMuted} {...a11yHidden()} />
-            <Text style={styles.emptyText}>{t("friends.emptyPending")}</Text>
-          </View>
+          <EmptyBlock icon="hourglass-outline" title={t("friends.emptyPending")} />
         )}
         {requests.length > 0 && (
           <>
@@ -510,31 +472,7 @@ export default function FriendsScreen() {
   );
 }
 
-const EMPTY_STATE_PADDING_V = 28;
-
 const styles = StyleSheet.create({
-  topBar: {
-    flexDirection: "row",
-    alignItems: "center",
-    width: "100%",
-    paddingBottom: Spacing.sm,
-    marginBottom: Spacing.xs,
-    borderBottomWidth: 1,
-    borderBottomColor: Colors.border,
-  },
-  backBtn: {
-    width: TOUCH_TARGET_MIN,
-    height: TOUCH_TARGET_MIN,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  screenTitle: {
-    flex: 1,
-    textAlign: "center",
-    ...Type.heading,
-    fontSize: FontSize.xl,
-    letterSpacing: 3,
-  },
   contentWrapper: {
     ...takesSlack,
     gap: Spacing.sm,
@@ -601,26 +539,6 @@ const styles = StyleSheet.create({
     gap: Spacing.cosy,
     minHeight: TOUCH_TARGET_MIN,
   },
-  avatarWrapper: { position: "relative" },
-  avatar: {
-    width: 42,
-    height: 42,
-    borderRadius: Radius.full,
-    backgroundColor: Colors.felt,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  statusDot: {
-    position: "absolute",
-    bottom: 0,
-    right: 0,
-    width: 11,
-    height: 11,
-    borderRadius: Radius.sm,
-    borderWidth: 2,
-    borderColor: Colors.bgSurface,
-  },
-  avatarText: { fontFamily: "Rajdhani_700Bold", fontSize: FontSize.lg, color: Colors.gold },
   rowInfo: { flex: 1, gap: Spacing.xxs },
   rowName: { ...Type.bodyStrong },
   rowSub: { ...Type.caption },
@@ -724,12 +642,5 @@ const styles = StyleSheet.create({
   },
   searchErrorText: {
     ...Type.caption,
-  },
-
-  empty: { alignItems: "center", paddingVertical: EMPTY_STATE_PADDING_V, gap: Spacing.snug },
-  emptyText: {
-    ...Type.caption,
-    textAlign: "center",
-    lineHeight: 20,
   },
 });

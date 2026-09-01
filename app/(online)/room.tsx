@@ -12,6 +12,8 @@ import {
 import { router } from "expo-router";
 import Animated, { FadeIn } from "react-native-reanimated";
 import { hapticMedium, hapticSelection, hapticSuccess } from "@/lib/haptics";
+import { ScreenHeader } from "@/components/ScreenHeader";
+import { Avatar } from "@/components/Avatar";
 import * as Clipboard from "expo-clipboard";
 import Ionicons from "@expo/vector-icons/Ionicons";
 import { useQuery } from "@tanstack/react-query";
@@ -285,12 +287,7 @@ function InviteFriendsPanel({
                 accessibilityLabel={sent ? t("room.inviteSentA11yLabel", { username: friend.username }) : t("room.inviteA11yLabel", { username: friend.username })}
                 {...a11yState({ role: "button", disabled: sent })}
               >
-                <View style={inviteStyles.avatar} {...a11yHidden()}>
-                  <Text style={inviteStyles.avatarInitial}>
-                    {friend.username.charAt(0).toUpperCase()}
-                  </Text>
-                  <View style={inviteStyles.onlineDot} />
-                </View>
+                <Avatar name={friend.username} size="sm" online />
                 <Text style={inviteStyles.friendName} numberOfLines={1} {...a11yHidden()}>
                   {friend.username}
                 </Text>
@@ -464,19 +461,11 @@ export default function RoomScreen() {
   if (isLandscape) {
     return (
       <MenuLayout scrollable={false} centered={false} maxWidth={null} style={{ paddingBottom: 0 }}>
-        <View style={styles.topBar}>
-          <Pressable
-            onPress={handleLeave}
-            style={styles.backBtn}
-            accessibilityRole="button"
-            accessibilityLabel={t("room.leaveA11yLabel")}
-            hitSlop={8}
-          >
-            <Ionicons name="chevron-back" size={22} color={Colors.gold} {...a11yHidden()} />
-          </Pressable>
-          <Text style={styles.screenTitle}>{t("room.title")}</Text>
-          <View style={{ width: 38 }} />
-        </View>
+        <ScreenHeader
+          title={t("room.title")}
+          onBack={handleLeave}
+          backLabel={t("room.leaveA11yLabel")}
+        />
 
         <View style={styles.landscapeBody}>
           {/* LEFT: code card, mode pill, start button */}
@@ -565,11 +554,7 @@ export default function RoomScreen() {
                     >
                       {player ? (
                         <>
-                          <View style={[styles.slotAvatar, styles.slotAvatarCompact]}>
-                            <Text style={[styles.slotInitial, styles.slotInitialCompact]}>
-                              {player.username.charAt(0).toUpperCase()}
-                            </Text>
-                          </View>
+                          <Avatar name={player.username} size="sm" />
                           <View style={[styles.slotInfo, { marginLeft: Spacing.sm }]}>
                             <Text style={styles.slotName} numberOfLines={1}>
                               {player.username}
@@ -587,9 +572,7 @@ export default function RoomScreen() {
                         </>
                       ) : (
                         <>
-                          <View style={[styles.slotAvatar, styles.slotAvatarEmpty, styles.slotAvatarCompact]}>
-                            <Ionicons name="person-add-outline" size={14} color={Colors.textMuted} />
-                          </View>
+                          <Avatar size="sm" />
                           <Text style={[styles.slotWaiting, { marginLeft: Spacing.sm }]}>{t("room.waitingSeat")}</Text>
                         </>
                       )}
@@ -617,19 +600,11 @@ export default function RoomScreen() {
 
   return (
     <MenuLayout scrollable={false} centered={false} style={{ paddingBottom: 0 }}>
-      <View style={styles.topBar}>
-        <Pressable
-          onPress={handleLeave}
-          style={styles.backBtn}
-          accessibilityRole="button"
-          accessibilityLabel={t("room.leaveA11yLabel")}
-          hitSlop={8}
-        >
-          <Ionicons name="chevron-back" size={22} color={Colors.gold} {...a11yHidden()} />
-        </Pressable>
-        <Text style={styles.screenTitle}>{t("room.title")}</Text>
-        <View style={{ width: 38 }} />
-      </View>
+      <ScreenHeader
+        title={t("room.title")}
+        onBack={handleLeave}
+        backLabel={t("room.leaveA11yLabel")}
+      />
 
       <ScrollView
         style={{ flex: 1 }}
@@ -701,11 +676,7 @@ export default function RoomScreen() {
                 >
                   {player ? (
                     <>
-                      <View style={styles.slotAvatar}>
-                        <Text style={styles.slotInitial}>
-                          {player.username.charAt(0).toUpperCase()}
-                        </Text>
-                      </View>
+                      <Avatar name={player.username} size="md" />
                       <View style={[styles.slotInfo, { marginLeft: Spacing.cosy }]}>
                         <Text style={styles.slotName} numberOfLines={1}>
                           {player.username}
@@ -723,9 +694,7 @@ export default function RoomScreen() {
                     </>
                   ) : (
                     <>
-                      <View style={[styles.slotAvatar, styles.slotAvatarEmpty]}>
-                        <Ionicons name="person-add-outline" size={18} color={Colors.textMuted} />
-                      </View>
+                      <Avatar size="md" />
                       <Text style={[styles.slotWaiting, { marginLeft: Spacing.cosy }]}>{t("room.waitingSeat")}</Text>
                     </>
                   )}
@@ -827,32 +796,6 @@ const inviteStyles = StyleSheet.create({
     gap: Spacing.snug,
     paddingHorizontal: Spacing.cosy,
   },
-  avatar: {
-    width: 30,
-    height: 30,
-    borderRadius: Radius.full,
-    backgroundColor: Colors.felt,
-    alignItems: "center",
-    justifyContent: "center",
-    position: "relative",
-    flexShrink: 0,
-  },
-  avatarInitial: {
-    fontFamily: "Rajdhani_700Bold",
-    fontSize: FontSize.sm,
-    color: Colors.gold,
-  },
-  onlineDot: {
-    position: "absolute",
-    bottom: 0,
-    right: 0,
-    width: 9,
-    height: 9,
-    borderRadius: Radius.full,
-    backgroundColor: Colors.success,
-    borderWidth: 1.5,
-    borderColor: Colors.bgSurface,
-  },
   friendName: {
     fontFamily: "Inter_400Regular",
     fontSize: FontSize.sm,
@@ -875,23 +818,6 @@ const inviteStyles = StyleSheet.create({
 });
 
 const styles = StyleSheet.create({
-  topBar: {
-    flexDirection: "row",
-    alignItems: "center",
-    width: "100%",
-    paddingBottom: Spacing.sm,
-    marginBottom: Spacing.xs,
-    borderBottomWidth: 1,
-    borderBottomColor: Colors.border,
-  },
-  backBtn: { width: TOUCH_TARGET_MIN, height: TOUCH_TARGET_MIN, alignItems: "center", justifyContent: "center" },
-  screenTitle: {
-    flex: 1,
-    textAlign: "center",
-    ...Type.heading,
-    fontSize: FontSize.xl,
-    letterSpacing: 3,
-  },
 
   landscapeBody: {
     flex: 1,
@@ -991,22 +917,6 @@ const styles = StyleSheet.create({
     color: Colors.textMuted,
     letterSpacing: 2,
   },
-  slotAvatar: {
-    width: 36,
-    height: 36,
-    borderRadius: Radius.full,
-    backgroundColor: Colors.felt,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  slotAvatarCompact: {
-    width: 28,
-    height: 28,
-    borderRadius: Radius.full,
-  },
-  slotAvatarEmpty: { backgroundColor: Colors.bgCard },
-  slotInitial: { fontFamily: "Rajdhani_700Bold", fontSize: FontSize.md, color: Colors.gold },
-  slotInitialCompact: { fontSize: FontSize.sm },
   slotInfo: { flex: 1, gap: Spacing.xxs },
   slotName: { fontFamily: "Inter_500Medium", fontSize: FontSize.sm, color: Colors.text },
   hostBadge: {

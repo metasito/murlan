@@ -58,13 +58,13 @@ export function HistoryRow({ hand }: { hand: MatchHistoryDto }) {
       : t("gameOverOverlay.modeFreeForAll");
   const timeText = relativeTime(hand.finishedAt, t, tn);
   const pointsText = t("gameOverOverlay.pointsAbbrev", { n: hand.points });
-  const playersText = tn("profile.historyPlayers", hand.playerCount);
+  const playersText = tn("history.players", hand.playerCount);
   const names = hand.participants
-    .map((p) => p.name ?? t(p.bot ? "profile.historyBotSeat" : "profile.historyUnknownSeat"))
+    .map((p) => p.name ?? t(p.bot ? "history.botSeat" : "history.unknownSeat"))
     .join(", ");
-  const withText = names ? t("profile.historyWith", { names }) : "";
+  const withText = names ? t("history.with", { names }) : "";
   const summary = [
-    t("profile.historyRowA11yLabel", {
+    t("history.rowA11yLabel", {
       position: posText,
       mode: modeText,
       players: playersText,
@@ -112,7 +112,7 @@ export function HistoryRow({ hand }: { hand: MatchHistoryDto }) {
         router.push({ pathname: "/(online)/replay", params: { id: hand.replayId! } })
       }
       accessibilityRole="button"
-      accessibilityLabel={t("profile.historyWatchA11yLabel", { summary })}
+      accessibilityLabel={t("history.watchA11yLabel", { summary })}
     >
       {body}
       <Ionicons name="play-circle" size={PLAY_ICON} color={Colors.gold} {...a11yHidden()} />

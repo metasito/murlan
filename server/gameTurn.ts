@@ -23,16 +23,9 @@ import {
 import { handleGameOver } from "./gameOver.ts";
 import { appendReplayMove } from "./replayShape.ts";
 import {
-  processPlay,
-  processPass,
-  processExchangeChoice,
-  buildCombination,
-  sortHand,
-  aiChoosePlay,
-  opponentsOf,
-  getValidGivebackCards,
-  getStartingPlayerAfterExchange,
-} from "../lib/gameEngine.ts";
+  autoMoveForSeat as sharedAutoMove,
+  recordPlayFlags as recordFlags,
+} from "../lib/autoMove.ts";
 import type { GameState, Combination } from "../lib/gameEngine.ts";
 
 /** The seat that must act right now: the exchange winner, or the turn holder. */
@@ -42,109 +35,26 @@ function actingSeat(state: GameState): number {
     : state.currentTurnIndex;
 }
 
-/**
- * Safety valve: the exchange winner holds no card they are allowed to give
- * back. Nobody — human or bot — can satisfy the phase, so it is closed and the
- * hand continues. Without this the whole table sits behind the exchange
- * overlay forever.
- */
-function resolveStuckExchange(state: GameState): GameState {
-  const next = structuredClone(state);
-  if (next.exchangePhase) next.exchangePhase.active = false;
-  next.currentTurnIndex = getStartingPlayerAfterExchange(state);
-  next.lastPlayedBy = next.currentTurnIndex;
-  return next;
-}
-
-/**
- * Achievement bookkeeping: the engine has no notion of "did this
- * seat play a bomb/joker this hand", so every path that actually plays a
- * combination — the human game:play handler and this module's own
- * bot/AFK-forced auto-play — has to update it here, or a forced move (most
- * commonly an AFK-forced lone joker) silently under-counts the purist /
- * iron_will / wild_card achievements.
- */
-export function recordPlayFlags(game: AutoMovable, seat: number, combo: Combination) {
-  const flags = (game.handFlags[seat] ??= { bomb: false, joker: false });
-  if (combo.type === "bomb") flags.bomb = true;
-  if (combo.cards.some((c) => c.isJoker)) flags.joker = true;
-}
-
 export type AutoMovable = Pick<OnlineGameState, "gameState" | "handFlags" | "moveLog">;
 
+/** See lib/autoMove.ts. Kept here so the human `game:play` path has one import. */
+export function recordPlayFlags(game: AutoMovable, seat: number, combo: Combination) {
+  recordFlags(game.handFlags, seat, combo);
+}
+
 /**
- * One automated action for a seat.
- *
- * `useAi` picks the real engine AI (a seat abandoned by its player), otherwise
- * the minimum legal move (an AFK human, who should not be played well on their
- * behalf). Returns the new state, or null when the seat cannot act at all.
+ * One automated action for a seat — the shared rule, given this table's flags
+ * and its replay log.
  */
 export function autoMoveForSeat(
   game: AutoMovable,
   seat: number,
   useAi: boolean
 ): GameState | null {
-  const state = game.gameState;
-
-  if (state.exchangePhase?.active) {
-    if (state.exchangePhase.winnerIdx !== seat) return null;
-    const player = state.players[seat];
-    if (!player) return null;
-    const valid = getValidGivebackCards(player.hand, state.exchangePhase.cardFromLoser?.id);
-    const [chosen] = valid;
-    if (!chosen) return resolveStuckExchange(state);
-    return processExchangeChoice(state, chosen.id);
-  }
-
-  if (state.currentTurnIndex !== seat) return null;
-  const player = state.players[seat];
-  if (!player || player.hand.length === 0) return null;
-
-  const isNewRound = state.lastPlayedCombination === null;
-  // The start card is only mandatory for the very first play of the hand.
-  const requireCard = !state.firstPlayMade ? state.startCard : undefined;
-
-  /** Records the move for the replay log and hands back the state it produced. */
-  const logged = (combo: Combination | null, next: GameState): GameState => {
-    appendReplayMove(game, seat, combo, next);
-    return next;
-  };
-
-  if (useAi) {
-    const opponents = opponentsOf(state, seat);
-    const combo = aiChoosePlay(
-      player,
-      isNewRound ? null : state.lastPlayedCombination,
-      isNewRound,
-      opponents.handCounts,
-      requireCard,
-      undefined,
-      opponents.partnerHoldsTop,
-      state.playedRanks
-    );
-    if (combo) {
-      recordPlayFlags(game, seat, combo);
-      return logged(combo, processPlay(state, combo));
-    }
-    if (!isNewRound) return logged(null, processPass(state));
-    // A new round cannot be passed — fall through to the forced minimum play.
-  }
-
-  if (isNewRound) {
-    // Read the mandatory opening card from the state instead of assuming 3♠:
-    // with the full deal it is always present, but it is not always a spade 3.
-    const forced = requireCard
-      ? player.hand.find((c) => c.id === requireCard.id)
-      : undefined;
-    const card = forced ?? sortHand([...player.hand])[0];
-    if (!card) return null;
-    const combo = buildCombination([card]);
-    if (!combo) return null;
-    recordPlayFlags(game, seat, combo);
-    return logged(combo, processPlay(state, combo));
-  }
-
-  return logged(null, processPass(state));
+  return sharedAutoMove(game.gameState, seat, useAi, {
+    handFlags: game.handFlags,
+    onMove: (movedSeat, combo, next) => appendReplayMove(game, movedSeat, combo, next),
+  });
 }
 
 /**
