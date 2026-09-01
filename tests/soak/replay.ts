@@ -144,9 +144,6 @@ export async function replaySoakLog(
         const back = await reconnectWith(server, seat.cookie);
         const before = seat.version;
         seat.adopt(back);
-        // Or an unanswered rejoin is reported with a refusal left over from an
-        // earlier move, which is the confident lie this field exists to prevent.
-        seat.lastRefusal = null;
         back.emit("game:rejoin", { roomId });
         const answeredBy = Date.now() + MOVE_BUDGET_MS;
         while (seat.version === before && Date.now() < answeredBy) await sleep(50);
@@ -160,7 +157,7 @@ export async function replaySoakLog(
       // cannot be the previous move's still arriving.
       await settle(seats);
       const before = seat.version;
-      seat.lastRefusal = null;
+      seat.clearRefusal();
       if (entry.kind === "play") seat.socket.emit("game:play", { cardIds: entry.cardIds });
       else if (entry.kind === "pass") seat.socket.emit("game:pass");
       else seat.socket.emit("game:exchange_give_card", { cardId: entry.cardId });

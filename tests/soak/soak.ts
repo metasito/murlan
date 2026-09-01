@@ -89,6 +89,59 @@ export const AWAY_WINDOW_MS = { floor: 200, spread: 600 };
 export const heldSeatGraceMs = () => Math.min(disconnectGraceMs(), lobbyGraceMs());
 
 /**
+ * What an unanswered `game:rejoin` is evidence of, read off the refusal that came
+ * back with it.
+ *
+ * `awayWindowOutsideGrace` makes the same claim before the run and cannot see it:
+ * it compares two constants, so a stalled runner, a paused container or a grace
+ * lowered by a config this harness never reads all break the premise while that
+ * check still passes. A `SEAT_RELEASED` is that break observed.
+ *
+ * One-directional. `releasedSeats` is memory-only, so a server restart mid-match
+ * downgrades the code back to `UNAUTHORIZED`: its presence means the window broke,
+ * its absence never means the window held.
+ */
+export function rejoinFailure(
+  seat: {
+    username: string;
+    lastRefusal: string | null;
+    lastRefusalCode: string | null;
+    gaveUpItsOwnSeat: boolean;
+  },
+  budgetMs: number,
+  graceMs: number
+): Violation {
+  const waited =
+    `${seat.username} reconnected and emitted game:rejoin, and was sent no state within ` +
+    `${budgetMs}ms`;
+
+  // Not on the code alone: a deliberate leave and a deleted account reach the same
+  // code through `vacateSeat` without a grace being involved at all, and reporting
+  // one of those as the window breaking sends the reader to the server for a defect
+  // that is in neither place.
+  if (seat.lastRefusalCode === "SEAT_RELEASED" && !seat.gaveUpItsOwnSeat) {
+    const longest = AWAY_WINDOW_MS.floor + AWAY_WINDOW_MS.spread;
+    return {
+      kind: "away-window-outran-grace",
+      detail:
+        `${waited} — the table had already given the seat up, and this harness never asked ` +
+        `it to. The seat may stay away ${longest}ms and the grace holding it is ${graceMs}ms, ` +
+        `so on this run something took longer than the numbers allow: the server released it ` +
+        `correctly and the rejoin is right to fail. Look at what stalled, not at the rejoin.`,
+    };
+  }
+
+  return {
+    kind: "rejoin-unanswered",
+    detail:
+      `${waited} — ` +
+      (seat.lastRefusal
+        ? `the server refused it with ${seat.lastRefusal}`
+        : "and the server said nothing at all"),
+  };
+}
+
+/**
  * How far under the grace the window has to sit.
  *
  * `longest` is the sleep alone, and the server's clock covers more than that: it starts when
@@ -231,6 +284,19 @@ export class Seat {
    */
   lastRefusal: string | null = null;
   /**
+   * The code of that refusal on its own. Read rather than parsed back out of
+   * `lastRefusal`: what the oracle branches on is the code, and recovering it
+   * from a sentence assembled for a human is a second definition of it.
+   */
+  lastRefusalCode: string | null = null;
+  /**
+   * Whether this client gave its own seat up. `SEAT_RELEASED` says the table
+   * took the seat back, not why: a grace expiring and a deliberate leave reach
+   * it through the same `vacateSeat`. Only the harness knows which, so it
+   * carries the answer rather than the oracle assuming it.
+   */
+  gaveUpItsOwnSeat = false;
+  /**
    * Every refusal this seat collected all run, keyed `event code`. A throttled
    * or rejected client is not playing the game it thinks it is, and its view
    * goes stale for a reason the oracle would read as disagreement — so this is
@@ -260,15 +326,39 @@ export class Seat {
       this.socket.on(event, (payload: { code?: string; message?: string } | undefined) => {
         const code = payload?.code ?? "?";
         this.lastRefusal = `${event} ${code}: ${payload?.message ?? ""}`.trim();
+        this.lastRefusalCode = payload?.code ?? null;
         const key = `${event} ${code}`;
         this.refusals.set(key, (this.refusals.get(key) ?? 0) + 1);
       });
     }
   }
 
+  /**
+   * The only place this harness gives a seat up. The emit and the record are one
+   * call because apart they drift: a leave the seat does not know about turns
+   * every later `SEAT_RELEASED` into a false report of the away window
+   * outrunning the grace, and the run stays green while saying it.
+   */
+  leave(roomId: string) {
+    this.gaveUpItsOwnSeat = true;
+    this.socket.emit("room:leave", { roomId });
+  }
+
+  /**
+   * Forgets the last refusal, so what the oracle reads is the answer to the
+   * attempt it is judging. Both fields together, and never at a call site: the
+   * pair clearing by hand is how a `SEAT_RELEASED` from an earlier drop
+   * survives into a later one and reports a window that never broke.
+   */
+  clearRefusal() {
+    this.lastRefusal = null;
+    this.lastRefusalCode = null;
+  }
+
   /** Re-attached after a reconnect, because the socket object is new. */
   adopt(socket: Socket) {
     this.socket = socket;
+    this.clearRefusal();
     this.listen();
   }
 
@@ -508,7 +598,6 @@ export async function runSoak(opts: Options, log = console.log): Promise<SoakRes
         const back = await reconnectWith(server, victim.cookie);
         const before = victim.version;
         victim.adopt(back);
-        victim.lastRefusal = null;
         moveLog.push({ at: moves, kind: "rejoin", seat: victimSeat, username: victim.username });
         back.emit("game:rejoin", { roomId: room.roomId });
         // A reconnecting client that is never sent the table sits on a screen
@@ -517,15 +606,7 @@ export async function runSoak(opts: Options, log = console.log): Promise<SoakRes
         const answeredBy = Date.now() + REJOIN_BUDGET_MS;
         while (victim.version === before && Date.now() < answeredBy) await sleep(100);
         if (victim.version === before) {
-          violations.push({
-            kind: "rejoin-unanswered",
-            detail:
-              `${victim.username} reconnected and emitted game:rejoin, and was sent no ` +
-              `state within ${REJOIN_BUDGET_MS}ms — ` +
-              (victim.lastRefusal
-                ? `the server refused it with ${victim.lastRefusal}`
-                : "and the server said nothing at all"),
-          });
+          violations.push(rejoinFailure(victim, REJOIN_BUDGET_MS, heldSeatGraceMs()));
         }
       }
     }
