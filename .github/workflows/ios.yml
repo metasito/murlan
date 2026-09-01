@@ -113,9 +113,7 @@ jobs:
       # `macos-latest` ships a fixed set of pre-created simulators rather
       # than a fresh AVD per run, so the device to drive has to be found
       # rather than declared. Which one, and why, is in
-      # `scripts/pick-simulator.mjs` — a file rather than a `node -e` inside
-      # these single quotes, where an apostrophe in a comment silently
-      # truncated the program (#708) and where nothing could test it.
+      # `scripts/pick-simulator.mjs`, where it can be run and tested.
       - name: Find and boot an iPhone simulator
         run: |
           udid=$(xcrun simctl list devices available -j | node scripts/pick-simulator.mjs)

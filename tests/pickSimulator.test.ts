@@ -1,19 +1,14 @@
 // tests/pickSimulator.test.ts — which iOS simulator the device loop drives.
 //
-// Nothing checked this until #708. The picker lived as thirty lines of
-// JavaScript inside a shell single-quoted string in `ios.yml`, so the only way
-// to run it was to dispatch a 29-minute job, and the only way to learn what it
-// chose was to read a log line.
-//
-// The fixture is real: `xcrun simctl list devices available -j` off
-// `macos-latest`, captured in run 33454838368 and trimmed to the two fields
-// the picker reads. Run 33440973925 logged `Using iPhone Air on
+// The fixture is the runner's own `xcrun simctl list devices available -j`,
+// captured in run 33454838368 and trimmed to the two fields the picker reads.
+// Run 33440973925 logged `Using iPhone Air on
 // com.apple.CoreSimulator.SimRuntime.iOS-26-5` against that same image, which
-// is what the first test below pins — so the fixture is anchored to a run
-// rather than to reasoning about it.
+// is what the first test pins — so the expected answer is anchored to a run
+// rather than to reasoning about one.
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { readFileSync, readdirSync } from "node:fs";
 import { execFileSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
@@ -102,22 +97,29 @@ describe("the simulator the iOS loop drives", () => {
 });
 
 describe("the workflow runs the script rather than a copy of it", () => {
-  const workflows = ["ios.yml", "maestro.yml"].map((f) => path.join(".github", "workflows", f));
+  const workflowDir = path.join(repoRoot, ".github", "workflows");
 
   test("ios.yml pipes simctl into the script", () => {
-    const ios = readFileSync(path.join(repoRoot, workflows[0]), "utf8");
+    const ios = readFileSync(path.join(workflowDir, "ios.yml"), "utf8");
     assert.match(ios, /simctl list devices available -j \| node scripts\/pick-simulator\.mjs/);
   });
 
   test("no workflow embeds a program inside a shell quote", () => {
     // The hazard is the quoting, not this one program: a `'` anywhere inside
     // `node -e '...'` - a comment included - closes the string, the shell
-    // re-parses the rest, and the interpreter gets a truncated script. Run
-    // 33451719934 died that way, and the message was `SyntaxError: Unexpected
-    // end of input` from a `JSON.parse` that never saw its input (#708).
-    for (const rel of workflows) {
-      const text = readFileSync(path.join(repoRoot, rel), "utf8");
-      assert.doesNotMatch(text, /\b(node|python3?|ruby|osascript) -e '/, `${rel} inlines a program`);
+    // re-parses the rest, and the interpreter is handed a truncated program
+    // that fails somewhere else entirely.
+    //
+    // Read off disk rather than from a list, because a list cannot cover a
+    // workflow added after it. `sh -c '...'` carries the same hazard and is
+    // deliberately not matched: it is the shell's own idiom for a one-liner,
+    // and `drive-android-flows` uses it for the two collectors it backgrounds.
+    const embedded = /\b(node|python3?|ruby|osascript)\s+(-e|--eval)\s+'/;
+    const files = readdirSync(workflowDir).filter((f) => /\.ya?ml$/.test(f));
+    assert.ok(files.length > 1, "found no workflows to scan");
+    for (const file of files) {
+      const text = readFileSync(path.join(workflowDir, file), "utf8");
+      assert.doesNotMatch(text, embedded, `${file} inlines a program in a shell quote`);
     }
   });
 
@@ -148,13 +150,23 @@ describe("the script the workflow runs", () => {
   });
 
   test("an empty pipe is named rather than reported as a broken program", () => {
-    // This is the failure that cost run 33451719934: an apostrophe in a
-    // comment closed the shell string, node got nothing, and the job died on
-    // `SyntaxError: Unexpected end of input` - which says nothing about
-    // quoting, or about simctl.
+    // A bare `SyntaxError: Unexpected end of input` from `JSON.parse` reads as
+    // a broken script, and sends the next reader into this file rather than to
+    // whatever upstream produced nothing.
     const result = run("");
     assert.equal(result.code, 1);
     assert.match(String(result.stderr), /simctl produced 0 bytes/);
+  });
+
+  test("valid JSON that is not a listing is named too", () => {
+    // `JSON.parse` accepts `null`, a number and a string, so the catch above
+    // does not fire and reading `.devices` off one of those would throw out of
+    // the stdin handler - past the branch that exists to say what arrived.
+    for (const input of ["null", "42", '"nope"']) {
+      const result = run(input);
+      assert.equal(result.code, 1, `${input} was not rejected`);
+      assert.match(String(result.stderr), /::error::No iOS runtime/);
+    }
   });
 
   test("no iPhone on the image fails the step with a reason", () => {
