@@ -139,6 +139,9 @@ export function tn(base: string, count: number, params?: TranslationParams): str
   return t(key, { count, ...params });
 }
 
+/** `tn`'s shape, for anything taking it as a parameter. `TFn` lives in `lib/cardNames.ts`. */
+export type TnFn = typeof tn;
+
 export interface ServerPayload {
   code?: string;
   message?: string;

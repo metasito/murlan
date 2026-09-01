@@ -32,15 +32,10 @@ import Animated, {
 import * as ScreenOrientation from "expo-screen-orientation";
 import Ionicons from "@expo/vector-icons/Ionicons";
 import {
-  buildCombination,
-  canPlay,
-  getCardDisplayRank,
-  getSuitSymbol,
   getValidGivebackCards,
   givebackIsFallback,
   sortHand,
   type Card,
-  type Combination,
   type GameState,
 } from "@/lib/gameEngine";
 import { useTradedCardsLanded, type ExchangeAnnounceData } from "@/lib/sharedGameFlow";
@@ -68,24 +63,19 @@ import {
   impactDelayMs,
   lightPosition,
   passedSeats,
-  playButtonLabel,
   readExchange,
   roundClosedWithWinner,
   seatDirection,
-  straightTopRankChar,
   turnTimerActive,
   viewerOwnsSeat,
   type FlyDirection,
   type OpponentSide,
   type PileState,
-  type PlayButtonLabel,
   type TableA11yExchange,
   type TableA11yLastPlay,
   type TableA11yOpponent,
-  type TableA11yStrings,
 } from "@/components/gameTableModel";
-import { useTranslation, type TranslationKey } from "@/lib/i18n";
-import { cardSpokenName, rankSpokenName, suitSpokenName, type TFn } from "@/lib/cardNames";
+import { useTranslation } from "@/lib/i18n";
 import {
   CHIP_NAME_MAX_W,
   ChipDot,
@@ -98,6 +88,15 @@ import {
   StartReasonBanner,
   TableChip,
 } from "@/components/table/chrome";
+import {
+  arrangedLabel,
+  handLabel,
+  lastPlayLabel,
+  playRefusalLabel,
+  tableStrings,
+  topBarLabel,
+} from "@/components/table/a11yLabels";
+import { readStagedPlay } from "@/components/table/stagedPlay";
 import { TurnTimer } from "@/components/table/turnTimer";
 import { GiocaButton, PassaButton } from "@/components/table/actions";
 import { RematchPromptPanel, type RematchAnswers } from "@/components/table/rematchPrompt";
@@ -163,7 +162,6 @@ const BANNER_BAND_Z = 50;
 const FELT_Z = { zIndex: 0 } as const;
 const TABLE_Z = { zIndex: 1 } as const;
 
-// gameTableModel.ts's `playButtonLabel` returns a rejection reason, not copy.
 /**
  * A sentence the browser harness reads, as `data-<hyphenated key>`. `dataSet` is
  * react-native-web's own escape hatch and reaches the DOM; React Native has no such
@@ -173,53 +171,6 @@ const TABLE_Z = { zIndex: 1 } as const;
  * `tests/e2e/helpers/selectors.ts` holds the other end.
  */
 const harnessState = (state: Record<string, string>) => ({ dataSet: state }) as ViewProps;
-
-// The translation boundary for why a play is refused. Total, so a new reason
-// cannot reach a screen reader without a sentence of its own.
-const PLAY_A11Y_SPOKEN_KEYS: Record<PlayButtonLabel, TranslationKey> = {
-  play: "gameTable.playA11ySpokenNothingSelected",
-  notACombination: "gameTable.playA11ySpokenInvalid",
-  needsStartCard: "gameTable.playA11ySpokenStartCard",
-  royalUnbeatable: "gameTable.playA11ySpokenRoyalUnbeatable",
-  bombOnly: "gameTable.playA11ySpokenBombOnly",
-  wrongType: "gameTable.playA11ySpokenWrongType",
-  wrongLength: "gameTable.playA11ySpokenWrongLength",
-  tooLow: "gameTable.playA11ySpokenTooLow",
-};
-
-// ─── Screen-reader table description ───────────────────────────────────────
-//
-// describeTableForA11y (gameTableModel.ts) is pure and takes every phrase
-// pre-translated; this is the translation boundary that builds them.
-/**
- * Spoken form of a played combination — richer than getComboLabel's chip text,
- * which a sighted player pairs with the cards they can see: "pair of 8s", not
- * "Pair". For a straight only the top card is named, since that is what decides
- * whether a reply beats it.
- */
-function lastPlayA11yLabel(combo: Combination, t: TFn): string {
-  switch (combo.type) {
-    case "single":
-      return cardSpokenName(combo.cards[0], t);
-    case "pair":
-      return t("gameTable.a11yLastPlayPair", { rank: rankSpokenName(combo.cards[0].rank, t) });
-    case "triple":
-      return t("gameTable.a11yLastPlayTriple", { rank: rankSpokenName(combo.cards[0].rank, t) });
-    case "bomb":
-      return t("gameTable.a11yLastPlayBomb", { rank: rankSpokenName(combo.cards[0].rank, t) });
-    case "straight":
-      return t("gameTable.a11yLastPlayStraight", {
-        count: combo.cards.length,
-        rank: rankSpokenName(straightTopRankChar(combo.strength), t),
-      });
-    case "royal_straight":
-      return t("gameTable.a11yLastPlayRoyalStraight", {
-        count: combo.cards.length,
-        rank: rankSpokenName(straightTopRankChar(combo.strength), t),
-        suit: suitSpokenName(combo.cards[0].suit, t),
-      });
-  }
-}
 
 export interface TurnTimerConfig {
   /** Length of the countdown, in seconds. */
@@ -480,13 +431,28 @@ export function GameTable({
     },
     [moveTo]
   );
-  const selectedObjs = React.useMemo(
-    () => sortedHand.filter((c) => selectedIds.includes(c.id)),
-    [sortedHand, selectedIds]
-  );
-  const tentativeCombo = React.useMemo(
-    () => (selectedObjs.length > 0 ? buildCombination(selectedObjs) : null),
-    [selectedObjs]
+  const staged = React.useMemo(
+    () =>
+      readStagedPlay({
+        hand: sortedHand,
+        selectedIds,
+        lastPlayedCombination: gameState.lastPlayedCombination,
+        startCard: gameState.startCard,
+        firstPlayMade: gameState.firstPlayMade,
+        isNewRound,
+        isMyTurn,
+        isFinished,
+      }),
+    [
+      sortedHand,
+      selectedIds,
+      gameState.lastPlayedCombination,
+      gameState.startCard,
+      gameState.firstPlayMade,
+      isNewRound,
+      isMyTurn,
+      isFinished,
+    ]
   );
   // Which seats have already answered the round on the table. Derived rather
   // than stored, so a new lead empties it on the same commit that lands the
@@ -507,16 +473,7 @@ export function GameTable({
     ]
   );
 
-  const requiresStartCard = !gameState.firstPlayMade && !!gameState.startCard;
-  const selectionHasStartCard =
-    !!gameState.startCard && selectedObjs.some((c) => c.id === gameState.startCard!.id);
-  const isValidPlay =
-    tentativeCombo !== null &&
-    canPlay(tentativeCombo, isNewRound ? null : gameState.lastPlayedCombination) &&
-    (!requiresStartCard || selectionHasStartCard);
-
   const canPass = canPassNowOf({ isMyTurn, isFinished, isNewRound });
-  const playBtnValid = isValidPlay && isMyTurn && !isFinished;
 
   // ── The exchange, on the table ──────────────────────────────────────────────
   //
@@ -543,37 +500,12 @@ export function GameTable({
     : null;
   const exchangeLoserName = exchange.loser?.name ?? "";
 
-  const pileCombo = gameState.lastPlayedCombination;
-  const dimLabel = playButtonLabel({
-    isMyTurn,
-    isFinished,
-    selectedCount: selectedIds.length,
-    selection: tentativeCombo
-      ? { type: tentativeCombo.type, length: tentativeCombo.cards.length }
-      : null,
-    pile: pileCombo ? { type: pileCombo.type, length: pileCombo.cards.length } : null,
-    requiresStartCard,
-    selectionHasStartCard,
-  });
   // Two words fit on the button; the sentence is what the screen reader speaks
-  // and what the toast shows when the refusal is tapped. Only the start-card
-  // reason reads the card. At 2 players the opening card can be the fallback
-  // "lowest dealt card" rather than the 3♠ (docs/RULES.md §4).
-  const startCardDisplayRank = gameState.startCard ? getCardDisplayRank(gameState.startCard.rank) : "";
-  const startCardSuitSymbol = gameState.startCard ? getSuitSymbol(gameState.startCard.suit) : "";
-  const startCardSpokenName = gameState.startCard ? cardSpokenName(gameState.startCard, t) : "";
-  // `playButtonLabel` answers "play" to three different questions — not your turn,
-  // your hand is over, nothing selected — and only the last is about the selection.
-  const dimReasonKey = !isMyTurn
-    ? "gameTable.playA11ySpokenNotYourTurn"
-    : isFinished
-      ? "gameTable.playA11ySpokenYouAreDone"
-      : PLAY_A11Y_SPOKEN_KEYS[dimLabel];
-  const dimReasonText = t(dimReasonKey, {
-    rank: startCardDisplayRank,
-    suit: startCardSuitSymbol,
-    card: startCardSpokenName,
-  });
+  // and what the toast shows when the refusal is tapped.
+  const dimReasonText = playRefusalLabel(
+    { dimLabel: staged.refusal, isMyTurn, isFinished, startCard: gameState.startCard },
+    t
+  );
 
   const opponents = React.useMemo(
     () => arrangeOpponents(players, viewerSeat),
@@ -598,26 +530,13 @@ export function GameTable({
   // face-down set when spectating — `viewer.hand.length` is 0 in that case,
   // because a watcher is sent no cards at all.
 
-  const tableA11yStrings: TableA11yStrings = React.useMemo(
-    () => ({
-      yourTurn: t("gameTable.a11yYourTurn"),
-      turnOf: (name) => t("gameTable.a11yTurnOf", { name }),
-      emptyTable: t("gameTable.a11yEmptyTable"),
-      youPlayed: (label) => t("gameTable.a11yYouPlayed", { label }),
-      playerPlayed: (name, label) => t("gameTable.a11yPlayerPlayed", { name, label }),
-      opponentCardCount: (name, count) => tn("gameTable.a11yOpponentCards", count, { name }),
-      yourCardCount: (count) => tn("gameTable.a11yYourCards", count),
-      exchangeGiveCard: (loserName) => t("gameTable.a11yExchangeGive", { name: loserName }),
-      exchangeWaitForCard: (winnerName) => t("gameTable.a11yExchangeWait", { name: winnerName }),
-    }),
-    [t, tn]
-  );
+  const tableA11yStrings = React.useMemo(() => tableStrings(t, tn), [t, tn]);
 
   const tableA11yLabel = React.useMemo(() => {
     const combo = gameState.lastPlayedCombination;
     const lastPlay: TableA11yLastPlay | null = combo
       ? {
-          label: lastPlayA11yLabel(combo, t),
+          label: lastPlayLabel(combo, t),
           byViewer: viewerOwnsSeat(gameState.lastPlayedBy, viewerSeat, spectating),
           byName: players[gameState.lastPlayedBy]?.name ?? "",
         }
@@ -660,22 +579,23 @@ export function GameTable({
     t,
   ]);
 
-  const arrangedA11yLabel = React.useMemo(() => {
-    if (arranged === null) return null;
-    const card = shownHand.find((c) => c.id === arranged.id);
-    if (card === undefined) return null;
-    return t("gameTable.a11yCardMoved", {
-      card: cardSpokenName(card, t),
-      position: arranged.to + 1,
-      total: handOnTable.length,
-    });
-  }, [arranged, shownHand, handOnTable.length, t]);
+  const arrangedA11yLabel = React.useMemo(
+    () =>
+      arranged === null
+        ? null
+        : arrangedLabel(
+            shownHand.find((c) => c.id === arranged.id),
+            arranged.to,
+            handOnTable.length,
+            t
+          ),
+    [arranged, shownHand, handOnTable.length, t]
+  );
 
-  const handA11yLabel = React.useMemo(() => {
-    const count = tn("gameTable.a11yHandCount", handOnTable.length);
-    const selected = selectedIds.length > 0 ? tn("gameTable.a11yHandSelected", selectedIds.length) : null;
-    return selected ? `${count} ${selected}` : count;
-  }, [tn, handOnTable.length, selectedIds.length]);
+  const handA11yLabel = React.useMemo(
+    () => handLabel(handOnTable.length, selectedIds.length, tn),
+    [tn, handOnTable.length, selectedIds.length]
+  );
 
   const {
     giocaFlashStyle,
@@ -693,7 +613,7 @@ export function GameTable({
     isFinished,
     exchangeActive: exchange.active,
     canPass,
-    playBtnValid,
+    playBtnValid: staged.playable,
     selectedCount: selectedIds.length,
     passCount: gameState.passCount,
     lastPlayedCombination: gameState.lastPlayedCombination,
@@ -935,8 +855,8 @@ export function GameTable({
   // hand: a fresh arrow per render defeats every card's memo comparator.
   // Staging a play while an opponent thinks is how every game in this family
   // works, and it is what stops the turn clock starting from a blank hand.
-  // Only the *submission* is gated on the turn: `playBtnValid` already requires
-  // it, so GIOCA lights on its own the moment the turn arrives.
+  // Only the *submission* is gated on the turn: `staged.playable` already
+  // requires it, so GIOCA lights on its own the moment the turn arrives.
   const handleCardPress = useCallback(
     (id: string) => {
       if (isFinished || spectating) return;
@@ -956,7 +876,7 @@ export function GameTable({
   // channel: an error haptic, a shake, and the reason in words. It keeps
   // reporting itself as disabled to assistive tech.
   const handlePlay = useCallback(() => {
-    if (!playBtnValid) {
+    if (!staged.playable) {
       hapticError();
       setRejectHint((prev) => ({ key: (prev?.key ?? 0) + 1, text: dimReasonText }));
       rejectPlay();
@@ -965,11 +885,10 @@ export function GameTable({
     // Haptic only: the throw is acknowledged in the hand, and card_play sounds
     // when the card actually reaches the pile.
     hapticMedium();
-    // The validated set, not the raw selection: `playBtnValid` is computed from
-    // `selectedObjs`, and the server rejects — silently — any request naming a
-    // card the hand does not hold.
-    onPlay(selectedObjs.map((c) => c.id));
-  }, [playBtnValid, onPlay, selectedObjs, dimReasonText, rejectPlay, setRejectHint]);
+    // The validated set, not the raw selection: the server rejects — silently —
+    // any request naming a card the hand does not hold.
+    onPlay(staged.cards.map((c) => c.id));
+  }, [staged, onPlay, dimReasonText, rejectPlay, setRejectHint]);
   // The table's own GIOCA is the exchange's confirm — a second floating button
   // would be the dialog this replaced, in a smaller coat (#532). Its own
   // function rather than a branch inside handlePlay: they answer the same key,
@@ -1042,15 +961,7 @@ export function GameTable({
         ? t("gameShared.you")
         : (players[pileState.playedBy]?.name ?? "");
 
-  const topBarA11yLabel =
-    pileState.current === null
-      ? t("gameTable.a11yEmptyTable")
-      : playedByViewer
-        ? t("gameTable.a11yYouPlayed", { label: lastPlayA11yLabel(pileState.current, t) })
-        : t("gameTable.a11yPlayerPlayed", {
-            name: lastPlayName,
-            label: lastPlayA11yLabel(pileState.current, t),
-          });
+  const topBarA11yLabel = topBarLabel(pileState.current, playedByViewer, lastPlayName, t);
 
   // The seat on move sweeps its own rim over the same window the viewer's chip
   // counts down, so both are armed by one gate. There is no per-seat deadline
@@ -1501,9 +1412,9 @@ export function GameTable({
                 // every tap. `tests/e2e/helpers/bot.ts` also reads this exact
                 // sentence as the signal that the play is legal.
                 a11yLabel={
-                  playBtnValid
-                      ? t("gameTable.playA11yValid")
-                      : t("gameTable.playA11yUnavailable", { reason: dimReasonText })
+                  staged.playable
+                    ? t("gameTable.playA11yValid")
+                    : t("gameTable.playA11yUnavailable", { reason: dimReasonText })
                 }
                 exchange={
                   exchangeIsMine
