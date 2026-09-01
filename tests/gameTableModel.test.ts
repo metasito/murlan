@@ -8,11 +8,13 @@ import { fileURLToPath } from "node:url";
 import path from "node:path";
 import { CARD_H, CARD_W, BACK_SCALE } from "../components/cardFaceModel.ts";
 import { TOUCH_TARGET_MIN } from "../lib/tokens.ts";
+import type { Card } from "../lib/gameEngine.ts";
 import {
   ROTATE_SETTLED,
   ROTATE_UPRIGHT,
   rotateGlyphAngle,
   arrivingCard,
+  readHandArrival,
   actionBtnSize,
   HAND_ZONE_GAP,
   CHIP_H,
@@ -1956,5 +1958,91 @@ describe("arrivingCard", () => {
   test("neither seat is told the card it is giving away", () => {
     assert.notDeepEqual(arrivingCard(announce, 1), GIVEN);
     assert.notDeepEqual(arrivingCard(announce, 3), RECEIVED);
+  });
+
+  // The one window in which the hand does not draw its traded card, from the
+  // exchange opening to the flight landing (#650).
+  describe("readHandArrival", () => {
+    const KEPT = { id: "9_clubs", suit: "clubs", rank: "9", isJoker: false } as const;
+    const hand = [KEPT, RECEIVED] as Card[];
+    const winnersPrompt = {
+      ...INACTIVE_EXCHANGE,
+      active: true,
+      viewerIsWinner: true,
+      cardFromLoser: RECEIVED as Card,
+    };
+    const read = (over: Partial<Parameters<typeof readHandArrival>[0]>) =>
+      readHandArrival({
+        hand,
+        exchange: INACTIVE_EXCHANGE,
+        announce: null,
+        viewerSeat: 1,
+        landed: false,
+        reduceMotion: false,
+        ...over,
+      });
+
+    test("nothing is held back outside an exchange", () => {
+      assert.deepEqual(read({}), {
+        withheldId: undefined,
+        arrivingIndex: undefined,
+        descendingId: undefined,
+      });
+    });
+
+    // The engine gives the winner the card as the phase opens and the prompt
+    // draws it on the felt, so the fan must not draw it too.
+    test("the winner's prompt holds the card back without parting the row", () => {
+      const at = read({ exchange: winnersPrompt });
+      assert.equal(at.withheldId, RECEIVED.id);
+      assert.equal(at.arrivingIndex, undefined, "the row parts for a flight, not for a prompt");
+    });
+
+    test("the loser is holding nothing back while the winner chooses", () => {
+      const watching = { ...winnersPrompt, viewerIsWinner: false, viewerIsLoser: true };
+      assert.equal(read({ exchange: watching }).withheldId, undefined);
+    });
+
+    test("the flight parts the row at the card's own place in the hand", () => {
+      const at = read({ announce });
+      assert.equal(at.withheldId, RECEIVED.id);
+      assert.equal(at.arrivingIndex, 1);
+      assert.equal(at.descendingId, RECEIVED.id);
+    });
+
+    // A ceremony naming a card the hand does not hold would otherwise open a
+    // gap nothing ever descends into.
+    test("a card the hand does not hold parts nothing", () => {
+      const at = read({ announce, hand: [KEPT] as Card[] });
+      assert.equal(at.arrivingIndex, undefined);
+    });
+
+    test("the landing gives the card back, and still names it for its mount", () => {
+      const at = read({ announce, landed: true });
+      assert.equal(at.withheldId, undefined, "the hand draws it the moment it lands");
+      assert.equal(at.descendingId, RECEIVED.id, "…and it travels in on that same render");
+    });
+
+    // Nothing flies, so nothing is ever missing from the row.
+    test("reduced motion holds nothing back for a flight", () => {
+      const at = read({ announce, reduceMotion: true });
+      assert.equal(at.withheldId, undefined);
+      assert.equal(at.arrivingIndex, undefined);
+      assert.equal(at.descendingId, undefined);
+    });
+
+    // …but the prompt's duplicate is a correctness defect rather than motion.
+    test("reduced motion still holds back the card the prompt is drawing", () => {
+      assert.equal(
+        read({ exchange: winnersPrompt, reduceMotion: true }).withheldId,
+        RECEIVED.id
+      );
+    });
+
+    test("a spectator's synthetic hand is left alone", () => {
+      const at = read({ announce, viewerSeat: null });
+      assert.equal(at.withheldId, undefined);
+      assert.equal(at.descendingId, undefined);
+    });
   });
 });

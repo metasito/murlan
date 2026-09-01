@@ -1102,6 +1102,57 @@ export function readExchange(
   };
 }
 
+export interface HandArrival {
+  /** Kept out of the fan, because something else is already drawing it. */
+  withheldId?: string;
+  /** The slot the row parts at — set only while the card is actually flying. */
+  arrivingIndex?: number;
+  /** What the parted slot is waiting for, so the row can travel it in. */
+  descendingId?: string;
+}
+
+/**
+ * One window in which the receiving hand does not draw its traded card,
+ * running from the exchange opening to the flight landing (#650).
+ *
+ * The engine gives the winner the loser's card as the phase opens while
+ * `ExchangePrompt` draws that same card on the felt, and the ceremony then
+ * commits and raises the flight in one tick — so without this the card is in
+ * two places for the whole prompt and again for the whole flight.
+ *
+ * The row only *parts* for the second half: a gap held open beside the giveback
+ * picker is a hole to choose next to rather than the first beat of an arrival.
+ */
+export function readHandArrival(input: {
+  /** The hand as arranged, which is where the card takes its place. */
+  hand: Card[];
+  exchange: ExchangeView;
+  /** The live ceremony, or null when none is running. */
+  announce: ExchangeAnnounceData | null;
+  /** Null for a spectator: a synthetic hand has nothing to hold back. */
+  viewerSeat: number | null;
+  landed: boolean;
+  reduceMotion: boolean;
+}): HandArrival {
+  // Nothing flies under reduced motion, so there is nothing to wait for and the
+  // row would hold a slot open for a card already in it.
+  const incoming = input.reduceMotion
+    ? undefined
+    : arrivingCard(input.announce, input.viewerSeat);
+  const flying = input.landed ? undefined : incoming;
+  const onTheFelt = input.exchange.viewerIsWinner ? input.exchange.cardFromLoser : null;
+  const slot = flying === undefined ? -1 : input.hand.findIndex((c) => c.id === flying.id);
+  return {
+    withheldId: flying?.id ?? onTheFelt?.id,
+    // A card the ceremony names but the hand does not hold parts nothing: a gap
+    // with nothing ever descending into it would stay open all game.
+    arrivingIndex: slot < 0 ? undefined : slot,
+    // `incoming` rather than `flying`, so the id still names the card on the
+    // render it lands — which is the render the row mounts it on.
+    descendingId: incoming?.id,
+  };
+}
+
 // ─── Screen-reader description ─────────────────────────────────────────────────
 //
 // The whole table in words. Every phrase arrives already translated from

@@ -94,12 +94,9 @@ export function ExchangeAnnouncement({
         </TableText>
       ) : (
         <>
-          {/*
-            Retired the instant they land, which is the instant each receiving
-            hand takes its card in: a flier parks at its destination rather than
-            fading, so leaving it up for the rest of the notice would draw the
-            same card twice for four seconds. The tags below take over.
-          */}
+          {/* A flier parks at its destination rather than fading, so it is
+              retired at the landing — the instant the receiving hand takes the
+              card in. The tags below take over for the rest of the notice. */}
           {cardReceived && !landed && (
             <ExchangeFlyingCard
               card={cardReceived}

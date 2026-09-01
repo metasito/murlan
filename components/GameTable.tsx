@@ -64,7 +64,7 @@ import {
   computeTableFrame,
   railSideFor,
   LANDSCAPE_LEFT,
-  arrivingCard,
+  readHandArrival,
   describeTableForA11y,
   displayedHandCount,
   EMPTY_PILE,
@@ -898,48 +898,28 @@ export function GameTable({
   // have arranged on top of it (#531). Spectated hands are excluded by the
   // seat's own cards being synthetic above — there is nothing there to arrange.
   const { arranged: shownHand, moveTo } = useHandOrder(viewerSeat, sortedHand);
-  // The engine gives the winner the loser's card the instant the phase opens
-  // (`gameEngine.setupExchange`) and `ExchangePrompt` draws that same card on
-  // the table, so it is in the fan and on the felt at once for the whole prompt
-  // — then the ceremony commits and raises the flight in one tick, so it is in
-  // the fan again before the flight carrying it has left. One window, from the
-  // phase opening to the landing, in which the hand does not draw it.
-  //
   // Held back at display rather than by deferring the state: online the state
   // is the server's, and freezing a whole snapshot for the length of a phase
   // would swallow every other thing that arrives in that window.
   //
-  // Arranging first and filtering second, so the card lands in the place the
+  // Arranged first and filtered second, so the card lands in the place the
   // player arranged for it instead of re-entering an order computed without it.
   const announcing = exchangeAnnouncement?.visible === true;
   const announceData = exchangeAnnouncement?.data ?? null;
-  const tradedCardsLanded = useTradedCardsLanded(announcing, announceData?.bothJokersException);
-  // Under reduced motion nothing flies, so there is nothing to wait for and the
-  // row would hold a slot open for a card already in it.
-  const incoming =
-    reduceMotion || !announcing
-      ? undefined
-      : arrivingCard(announceData, spectating ? null : viewerSeat);
   // Only until the card lands, not for the whole notice — the tags beside each
   // seat stay up another `Reading.notice` to be read, and a hand short of a card
   // for four seconds after it arrived is a different defect.
-  const arriving = tradedCardsLanded ? undefined : incoming;
-  // The prompt's own copy, which is on the felt rather than in the air. No gap
-  // opens for it: the row parts as the card starts travelling, so the parting
-  // is the first beat of the arrival rather than a hole to choose a giveback
-  // beside.
-  const onTheFelt = exchange.viewerIsWinner ? (exchange.cardFromLoser ?? undefined) : undefined;
-  const withheld = arriving ?? onTheFelt;
+  const tradedCardsLanded = useTradedCardsLanded(announcing, announceData?.bothJokersException);
+  const { withheldId, arrivingIndex, descendingId } = readHandArrival({
+    hand: shownHand,
+    exchange,
+    announce: announcing ? announceData : null,
+    viewerSeat: spectating ? null : viewerSeat,
+    landed: tradedCardsLanded,
+    reduceMotion,
+  });
   const handOnTable =
-    withheld === undefined ? shownHand : shownHand.filter((c) => c.id !== withheld.id);
-  // Where the card ends up, so the row parts *there* rather than at an end.
-  // A card the announcement names but the hand does not hold parts nothing: a
-  // gap with nothing ever descending into it would stay open all game.
-  const arrivalSlot = arriving === undefined ? -1 : shownHand.findIndex((c) => c.id === arriving.id);
-  const arrivingIndex = arrivalSlot < 0 ? undefined : arrivalSlot;
-  // `incoming` rather than `arriving`, so the id still names the card on the
-  // render it lands — which is the render the row mounts it on.
-  const descendingId = incoming?.id;
+    withheldId === undefined ? shownHand : shownHand.filter((c) => c.id !== withheldId);
   // Where the last move put a card. A drag shows its own answer; the discrete
   // actions behind it (WCAG 2.5.7) move a card with nothing on screen changing
   // for whoever asked, so the live region below says where it went.
@@ -1970,11 +1950,10 @@ export function GameTable({
                   roomW={frame.handRoomW}
                   isMyTurn={isMyTurn && !isFinished}
                   scale={scale}
-                  // Off while a card is still in the air: the fan is drawn
-                  // without it, but `arrange` moves within the whole hand, so a
-                  // drop during the flight would land a slot from where the
-                  // finger let go.
-                  onReorder={spectating || arriving !== undefined ? undefined : arrange}
+                  // Off whenever a card is held back: the fan is drawn without
+                  // it, but `arrange` moves within the whole hand, so a drop
+                  // would land a slot from where the finger let go.
+                  onReorder={spectating || withheldId !== undefined ? undefined : arrange}
                   arrivingIndex={arrivingIndex}
                   descendingId={descendingId}
                 />

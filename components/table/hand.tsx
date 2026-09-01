@@ -132,6 +132,12 @@ interface CardItemProps {
   dealDelay: number;
   /** Horizontal distance back to the deck, so the fan converges on one point. */
   dealFromX: number;
+  /**
+   * Fade the card up as it travels. False for a card arriving off the felt: a
+   * flier hands over to it at the same point in the same frame, and fading in
+   * there is a blink in the middle of a crossing that has to stay visible.
+   */
+  dealFade: boolean;
   /** The table's own scale, times HAND_SCALE — this hand's card size. */
   cardScale: number;
   /** Vertical distance a dealt card rises from, derived from that same size. */
@@ -164,6 +170,7 @@ function CardItemBase({
   zIndex,
   dealDelay,
   dealFromX,
+  dealFade,
   cardScale,
   dealRise,
   hitW,
@@ -243,7 +250,7 @@ function CardItemBase({
     // tilt as it lands, rather than overshooting past it.
     const restRot = arcRot + tilt.value;
     return {
-      opacity: 1 - d,
+      opacity: dealFade ? 1 - d : 1,
       transform: [
         { translateX: dealFromX * d + shift.value },
         { translateY: liftY.value + dealRise * d },
@@ -337,6 +344,7 @@ export function cardItemPropsEqual(a: CardItemProps, b: CardItemProps): boolean 
     a.giveable === b.giveable &&
     a.hint === b.hint &&
     a.dealFromX === b.dealFromX &&
+    a.dealFade === b.dealFade &&
     a.cardScale === b.cardScale &&
     a.dealRise === b.dealRise &&
     a.hitW === b.hitW &&
@@ -643,7 +651,13 @@ export function StraightHand({
   // while the finger is still between them.
   const arc = heldCard === null ? full.cards : solve(rest.length).cards;
   const rowMid = (scrollable ? totalW : rowW) / 2;
-  const place = new Map(cards.map((card, j) => [card.id, full.cards[slotOf(j)]]));
+  // Every card is *placed* by the row as it stood and *moved* to the row with
+  // the slot in it. `left` is a plain style entry and never animates, so a card
+  // placed straight at its n+1 slot would jump there in a frame; anchoring it
+  // where it already was and carrying the whole delta in `shiftX` is what makes
+  // the row visibly part (#650).
+  const closed = parting === undefined ? full : solve(n);
+  const place = new Map(cards.map((card, j) => [card.id, closed.cards[j]]));
   // Split either side of the slot, so the hand's centre holds still while the
   // gap opens and nothing shifts out from under the thumb.
   const gapW = heldCard === null ? 0 : cardW * GAP_CARDS;
@@ -858,6 +872,7 @@ export function StraightHand({
           // descent are then one continuous move into the waiting slot, rather
           // than a card that stops at the middle and reappears at one end.
           dealFromX={descending ? -home.x : -home.x - cardW / 2}
+          dealFade={!descending}
           cardScale={cardScale}
           dealRise={dealRise}
           hitW={hitWidth(slot, arc.length, step, cardW)}
