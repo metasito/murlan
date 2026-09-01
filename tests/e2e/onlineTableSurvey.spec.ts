@@ -20,7 +20,6 @@ import type { Page } from "@playwright/test";
 import { test, expect } from "./fixtures";
 import { openSeededGame } from "./helpers/offlineSeed";
 import { openOnlineTable } from "./helpers/onlineTable";
-import { settled } from "./helpers/settle";
 import { HAND_CARDS, HAND_ZONE, TABLE, TABLE_STATE } from "./helpers/selectors";
 import { YOUR_TURN_PREFIX } from "./helpers/labels";
 
@@ -56,7 +55,6 @@ function recorded(): Map<string, string> {
     return new Map();
   }
 }
-const SETTLE_CEILING_MS = 8_000;
 /** Past `SWEEP_MS` (components/table/moments.tsx), the longest of the moment overlays. */
 const MOMENT_CEILING_MS = 1_600;
 
@@ -176,11 +174,12 @@ function readTable(page: Page): Promise<Measurement> {
   );
 }
 
-function line(kind: "ONLINE" | "OFFLINE", vp: (typeof VIEWPORTS)[number], m: Measurement): string {
+/**
+ * Everything the record holds, and so everything that has to have stopped
+ * moving before a measurement is taken.
+ */
+function fields(m: Measurement): string {
   return [
-    kind,
-    vp.name,
-    `vp=${vp.width}x${vp.height}`,
     `table=${m.table.width}x${m.table.height}`,
     `handSlot=${m.handSlot.width}x${m.handSlot.height}`,
     // Rounded like every other field here. The record is held to by exact
@@ -192,6 +191,46 @@ function line(kind: "ONLINE" | "OFFLINE", vp: (typeof VIEWPORTS)[number], m: Mea
     `hand=${m.hand.width}x${m.hand.height}@${m.hand.top}`,
     `wide=${m.wide.join(" | ")}`,
   ].join("\t");
+}
+
+function line(kind: "ONLINE" | "OFFLINE", vp: (typeof VIEWPORTS)[number], m: Measurement): string {
+  return [kind, vp.name, `vp=${vp.width}x${vp.height}`, fields(m)].join("\t");
+}
+
+/** Readings of the record's own fields that must agree before one is taken. */
+const AGREEING_READINGS = 3;
+const READING_GAP_MS = 150;
+const STILL_MEASURING_CEILING_MS = 20_000;
+
+/**
+ * A measurement of a table that has stopped moving.
+ *
+ * `settled` is a proxy: it watches the elements it can reach, in rounded
+ * pixels, and returns at its ceiling whether or not the screen ever went
+ * still. Neither is enough for a record held to by exact equality, and it is
+ * the wrong thing to watch anyway — what has to be stable is this measurement,
+ * so this watches that and nothing else. A screen that will not hold one
+ * reading says so, rather than being recorded mid-movement.
+ */
+async function stillMeasure(page: Page, kind: "ONLINE" | "OFFLINE"): Promise<Measurement> {
+  const deadline = Date.now() + STILL_MEASURING_CEILING_MS;
+  let previous: Measurement | null = null;
+  let agreeing = 1;
+
+  for (;;) {
+    const current = await measure(page);
+    agreeing = previous && fields(current) === fields(previous) ? agreeing + 1 : 1;
+    if (agreeing >= AGREEING_READINGS) return current;
+    if (Date.now() >= deadline) {
+      throw new Error(
+        `the ${kind} table never held one measurement for ${AGREEING_READINGS} readings in ` +
+          `${STILL_MEASURING_CEILING_MS}ms, so nothing it reports is what it lays out as. ` +
+          `Last two:\n  ${fields(previous!)}\n  ${fields(current)}`
+      );
+    }
+    previous = current;
+    await page.waitForTimeout(READING_GAP_MS);
+  }
 }
 
 const rows: string[] = [];
@@ -209,12 +248,7 @@ test.describe("the online table, at the audit's viewports", () => {
       await page.setViewportSize({ width: vp.width, height: vp.height });
 
       await openOnlineTable(page, baseURL!, { playerCount: SEATS, gameMode: "free_for_all" });
-      // Scoped to the table, because `settled`'s default reading is the
-      // interactive controls and a seat ring is a plain view with no role — so
-      // by that reading the screen is still while the rings this measures are
-      // fractions of a pixel from where they land.
-      await settled(page, SETTLE_CEILING_MS, TABLE);
-      const online = await measure(page);
+      const online = await stillMeasure(page, "ONLINE");
       mkdirSync(path.join(AUDIT_DIR, "captures"), { recursive: true });
       await page.screenshot({
         path: path.join(AUDIT_DIR, "captures", `online-table__${vp.name}.png`),
@@ -226,8 +260,7 @@ test.describe("the online table, at the audit's viewports", () => {
       // and comparing them measures the deal rather than the layout.
       await openSeededGame(page, baseURL!, SEATS, online.cards);
       await page.locator(TABLE).waitFor({ timeout: 30_000 });
-      await settled(page, SETTLE_CEILING_MS, TABLE);
-      const offline = await measure(page);
+      const offline = await stillMeasure(page, "OFFLINE");
 
       console.log(line("ONLINE", vp, online));
       console.log(line("OFFLINE", vp, offline));
