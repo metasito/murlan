@@ -17,6 +17,14 @@ const E2E_DIR = path.join(repoRoot, "tests", "e2e");
 /** Kept in step with .github/workflows/ci.yml's `shard:` matrix. */
 const SHARDS = 6;
 
+/**
+ * How much of the suite may sit at `UNMEASURED_SECONDS` before the evenness
+ * assertion below stops being about time. Room for a spec or two written since
+ * the last measurement, and nowhere near enough for the constant to carry the
+ * split.
+ */
+const UNMEASURED_SHARE = 0.1;
+
 describe("every browser spec reaches exactly one shard", () => {
   test("the union of the shards is the whole suite, with nothing repeated", () => {
     const files = specFilesIn(E2E_DIR);
@@ -67,6 +75,26 @@ describe("the split is stable and even", () => {
     assert.ok(
       Math.max(...seconds) <= Math.min(...seconds) * (4 / 3),
       `shards range ${Math.min(...seconds)}s to ${Math.max(...seconds)}s`
+    );
+  });
+
+  test("the evenness above is measured, not assumed", () => {
+    // What the assertion above compares is `UNMEASURED_SECONDS` per unmeasured
+    // spec, and a constant divides evenly: the less of the suite is measured,
+    // the more even the split looks. At 22 of 47 unmeasured it read a flat 331s
+    // across six shards that really ran 119s to 226s, and #441's defect was
+    // back with its own guard reporting it fixed. Counted rather than weighed,
+    // because weighing needs the very seconds that are missing.
+    const files = specFilesIn(E2E_DIR);
+    const timings = readTimings();
+    const guessed = files.filter((file) => !(file in timings));
+
+    assert.ok(
+      guessed.length <= files.length * UNMEASURED_SHARE,
+      `${guessed.length} of ${files.length} specs are priced at the ${UNMEASURED_SECONDS}s ` +
+        `guess, over the ${UNMEASURED_SHARE * 100}% the split can absorb and still be even in ` +
+        `wall clock: ${guessed.join(", ")}. scripts/e2e-timings.mjs regenerates the file from a ` +
+        `CI run's own reports, and says at the top where to get one.`
     );
   });
 
