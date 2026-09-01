@@ -69,6 +69,12 @@ export interface ExchangePhase {
    */
   cardToLoser?: Card;
   bothJokersException: boolean;
+  /**
+   * When the phase closed, in epoch ms — how long `cardToLoser` stays public.
+   * Written by the server and never sent to a client; the engine must not write
+   * it, or a clock inside the rules makes every engine test a different game.
+   */
+  settledAt?: number;
 }
 
 export interface StartReason {

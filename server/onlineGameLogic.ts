@@ -6,6 +6,7 @@ import type { BotPersonalityId } from "../lib/botPersonalities.ts";
 import { foldHandIntoMatch, resolveMatchFor } from "../lib/gameEngine.ts";
 import type { GameState, GameMode, MatchLength } from "../lib/gameEngine.ts";
 import type { GameResult } from "../lib/achievements.ts";
+import { exchangeAnnounceMs } from "../lib/exchangeCeremony.ts";
 import { z } from "zod";
 
 /** seat -> userId from the persisted map, dropping any entry that is not one. */
@@ -69,6 +70,43 @@ export interface VisibleExchangePhaseInput {
   bothJokersException: boolean;
   cardFromLoser: unknown;
   cardToLoser?: unknown;
+  settledAt?: number;
+}
+
+/**
+ * Whether the ceremony that reads `cardToLoser` is still on screen. An
+ * unstamped closed phase reads as over: with no window to be inside, a seat
+ * that never watched the trade cross is told nothing.
+ *
+ * The window has to outlast `STATE_ACK_TIMEOUT_MS`, because `sendGameStateTo`
+ * owes one resend to a client that never acknowledged the settle and that
+ * resend re-derives from live state — answering it after the window would hand
+ * over half a trade, which `OnlineGameContext`'s `cardReceived || cardGiven`
+ * guard raises as a one-legged ceremony rather than refusing. That ordering is
+ * asserted in `tests/exchangeVisibility.test.ts` rather than read from here:
+ * `gameTimers` builds its values from `process.env` at module scope, and this
+ * module is in the static import graph of every integration test that sets one.
+ */
+function ceremonyRunning(phase: VisibleExchangePhaseInput, now: number): boolean {
+  if (phase.active || phase.settledAt === undefined) return false;
+  return now - phase.settledAt < exchangeAnnounceMs(phase.bothJokersException);
+}
+
+/**
+ * Stamps `settledAt`, on the state itself so it rides the persisted phase.
+ *
+ * `broadcastGameState` is the caller rather than each of the three places a
+ * phase closes: a settle nobody broadcasts is not one any seat can be shown,
+ * and one funnel cannot be half-updated the way three call sites can. That
+ * wiring is pinned by `tests/exchangeVisibility.test.ts`.
+ */
+export function markExchangeSettled(
+  phase: Pick<VisibleExchangePhaseInput, "active" | "settledAt"> | undefined,
+  now: number = Date.now()
+): void {
+  if (!phase) return;
+  if (phase.active) delete phase.settledAt;
+  else phase.settledAt ??= now;
 }
 
 /**
@@ -82,15 +120,18 @@ export interface VisibleExchangePhaseInput {
  *
  * `cardToLoser` is the opposite: a card the winner *chose* out of their own
  * hand, which no rule determines, so while the phase is open sending it would
- * leak that hand. Closing the phase is what lifts that — and only that, which
- * is why the gate is the flag rather than the card's own presence.
+ * leak that hand. Closing the phase lifts that, but only for as long as the
+ * ceremony is on screen — `exchangePhase` is never cleared, so the phase's own
+ * flag would keep the card public for the rest of the manche. The two
+ * participants keep it either way: it came out of one's hand into the other's.
  *
  * Every seat also gets the two seat indices and the both-jokers flag — all the
  * announcement banner reads from them.
  */
 export function visibleExchangePhase(
   phase: VisibleExchangePhaseInput | undefined,
-  viewerSeatIndex: number | null
+  viewerSeatIndex: number | null,
+  now: number = Date.now()
 ): Record<string, unknown> | undefined {
   if (!phase) return undefined;
 
@@ -105,7 +146,7 @@ export function visibleExchangePhase(
     viewerSeatIndex !== null &&
     (viewerSeatIndex === phase.winnerIdx || viewerSeatIndex === phase.loserIdx);
 
-  const maySeeChosenCard = isParticipant || !phase.active;
+  const maySeeChosenCard = isParticipant || ceremonyRunning(phase, now);
 
   if (phase.active) visible.cardFromLoser = phase.cardFromLoser;
   if (maySeeChosenCard && phase.cardToLoser !== undefined) {
